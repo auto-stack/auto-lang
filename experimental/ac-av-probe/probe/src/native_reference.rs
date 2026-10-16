@@ -69,8 +69,8 @@ pub fn build_and_run(
     let exe = workdir.join("module.exe");
 
     // Lower to a STAGED object; publish moves it into place transactionally.
-    let sel = native::find_entry(checked, entry)
-        .map_err(|ds| NativeError::Build(format!("{:?}", ds)))?;
+    let sel =
+        native::find_entry(checked, entry).map_err(|ds| NativeError::Build(format!("{:?}", ds)))?;
     let bytes = native::lower_object(checked, &sel, &native::RuntimeInjection::default())
         .map_err(|ds| NativeError::Build(format!("{:?}", ds)))?;
     std::fs::write(&tmp_obj, &bytes).map_err(|e| NativeError::Build(e.to_string()))?;
@@ -92,10 +92,8 @@ pub fn build_and_run(
 
     // Run with output capture under the contained executor.
     let mut cmd = std::process::Command::new(&exe);
-    let (code, stdout, stderr) =
-        link::run_deadlined_split(&mut cmd, NATIVE_RUN_BUDGET).map_err(|e| {
-            NativeError::Run(format!("{:?}", e))
-        })?;
+    let (code, stdout, stderr) = link::run_deadlined_split(&mut cmd, NATIVE_RUN_BUDGET)
+        .map_err(|e| NativeError::Run(format!("{:?}", e)))?;
     if started.elapsed() > NATIVE_TOTAL_BUDGET {
         return Err(NativeError::Budget("total exceeded 70s"));
     }

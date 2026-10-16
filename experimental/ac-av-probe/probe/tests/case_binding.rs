@@ -32,7 +32,11 @@ fn av_binding_case_trap_rem_overflow() {
     let r = run(&case_src("av/core/trap_rem_overflow.at"), &[]);
     match &r.av {
         Some(auto_av_core::contract::ExecOutcome::Trap { kind, .. }) => {
-            assert_eq!(kind.code(), "av.trap.rem-overflow", "oracle: rem-overflow trap");
+            assert_eq!(
+                kind.code(),
+                "av.trap.rem-overflow",
+                "oracle: rem-overflow trap"
+            );
         }
         other => panic!("oracle: run-stage trap, got {:?}", other),
     }

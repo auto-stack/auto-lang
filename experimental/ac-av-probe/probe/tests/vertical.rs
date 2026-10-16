@@ -18,10 +18,32 @@ fn t01_vertical_ephemeral_pipeline_matches_independent_expected() {
         r.diag
     );
     let v = r.value_i32().expect("success value");
-    assert_eq!(v, VERTICAL_EXPECTED, "AV result must match the independent expected");
-    // The ephemeral driver still exercised the full lower/emit/verify path.
-    assert_eq!(*r.counters.get("mir_build").unwrap_or(&0), 2, "two functions lowered");
-    assert!(*r.counters.get("av_execute").unwrap_or(&0) >= 1, "AV executed");
+    assert_eq!(
+        v, VERTICAL_EXPECTED,
+        "AV result must match the independent expected"
+    );
+    // The ephemeral driver still exercised the full lower/emit/verify path:
+    // ONE real whole-module lowering call, two ABC units emitted, nothing
+    // persisted (no store attached).
+    assert_eq!(
+        *r.counters.get("mir_lower_modules").unwrap_or(&0),
+        1,
+        "one real lowering call"
+    );
+    assert_eq!(
+        *r.counters.get("mir_units_persisted").unwrap_or(&0),
+        0,
+        "no store: nothing persisted"
+    );
+    assert_eq!(
+        *r.counters.get("abc_units_emitted").unwrap_or(&0),
+        2,
+        "two ABC units emitted"
+    );
+    assert!(
+        *r.counters.get("av_execute").unwrap_or(&0) >= 1,
+        "AV executed"
+    );
 }
 
 #[test]
@@ -32,14 +54,26 @@ fn t01_vertical_store_round_and_hit() {
     let r1 = d.request(VERTICAL_SRC, "d_main", &[]);
     assert!(r1.ok(), "first (miss) request: {:?}", r1.diag);
     assert_eq!(r1.value_i32(), Some(VERTICAL_EXPECTED));
-    assert_eq!(*r1.counters.get("cache_hit_abc").unwrap_or(&0), 0, "fresh = all misses");
+    assert_eq!(
+        *r1.counters.get("cache_hit_abc").unwrap_or(&0),
+        0,
+        "fresh = all misses"
+    );
     let r2 = d.request(VERTICAL_SRC, "d_main", &[]);
     assert!(r2.ok(), "second (hit) request: {:?}", r2.diag);
     assert_eq!(r2.value_i32(), Some(VERTICAL_EXPECTED));
     // Hit contract: no mir_build / abc_emit, AV still executed. (The
     // counters are absent when zero units missed — absence means zero.)
-    assert_eq!(*r2.counters.get("mir_build").unwrap_or(&0), 0, "hit skips mir lowering");
-    assert_eq!(*r2.counters.get("abc_emit").unwrap_or(&0), 0, "hit skips abc emission");
+    assert_eq!(
+        *r2.counters.get("mir_build").unwrap_or(&0),
+        0,
+        "hit skips mir lowering"
+    );
+    assert_eq!(
+        *r2.counters.get("abc_emit").unwrap_or(&0),
+        0,
+        "hit skips abc emission"
+    );
     assert!(
         *r2.counters.get("av_execute").unwrap_or(&0) > 0,
         "a hit STILL executes AV (never a cached PASS)"
@@ -60,8 +94,8 @@ fn t01_vertical_native_cross_check() {
     }
     let workdir = std::env::temp_dir().join(format!("av798-t01-native-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
-    let run = nr::build_and_run(&compiled.checked, "d_main", &workdir, None)
-        .expect("native build+run");
+    let run =
+        nr::build_and_run(&compiled.checked, "d_main", &workdir, None).expect("native build+run");
     assert_eq!(
         run.exit_code, VERTICAL_EXPECTED,
         "native exit must match the independent expected"

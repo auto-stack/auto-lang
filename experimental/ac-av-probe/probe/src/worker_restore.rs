@@ -7,12 +7,11 @@
 //! assembly and execution. A restored artifact set is data, never trust.
 
 use crate::cache::{
-    assemble_closure, decode_sidecar, get_by_artifact_id, merge_spans,
-    EnvelopeIdentity,
+    assemble_closure, decode_sidecar, get_by_artifact_id, merge_spans, EnvelopeIdentity,
 };
+use ac_artifact_probe::store::ManagedStore;
 use auto_av_core::mir::OwnerScope;
 use auto_av_core::{abc_verify, decode_abc, execute, CancelFlag, ExecLimits};
-use ac_artifact_probe::store::ManagedStore;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -100,9 +99,7 @@ pub fn restore_and_run(
         // Diagnostics sidecar (best-effort; code content never depends on it).
         let skey = crate::cache::sidecar_key(owner, &link.name, snapshot);
         let sexpect = EnvelopeIdentity::sidecar(owner, snapshot);
-        if let Ok(Some(sp)) =
-            crate::cache::get_enveloped_opt(&store, &skey, "A08", &sexpect)
-        {
+        if let Ok(Some(sp)) = crate::cache::get_enveloped_opt(&store, &skey, "A08", &sexpect) {
             if let Ok(spans) = decode_sidecar(&sp) {
                 merge_spans(&mut module, &spans);
             }
@@ -141,7 +138,11 @@ pub fn restore_and_run(
         auto_av_core::contract::ExecOutcome::Trap { kind, span } => RestoreOutcome {
             executed_ok: true,
             value: None,
-            trap: Some(format!("{}@{}", kind.code(), span.map(|s| s.to_string()).unwrap_or_default())),
+            trap: Some(format!(
+                "{}@{}",
+                kind.code(),
+                span.map(|s| s.to_string()).unwrap_or_default()
+            )),
             error: None,
             units_loaded: loaded,
             units_verified: verified,

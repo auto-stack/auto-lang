@@ -10,11 +10,12 @@
 
 use crate::abc_verify::LoadedModule;
 use crate::contract::{
-    CANCEL_CHECK_INTERVAL, ExecOutcome, ResourceKind, SpanInfo, TrapKind, Value,
-    MAX_AV_FRAMES, MAX_AV_INSTR_STEPS, MAX_AV_SLOT_BYTES, MAX_AV_WALL, MAX_TRACE_BYTES,
-    SLOT_CELL_BYTES,
+    ExecOutcome, ResourceKind, SpanInfo, TrapKind, Value, CANCEL_CHECK_INTERVAL, MAX_AV_FRAMES,
+    MAX_AV_INSTR_STEPS, MAX_AV_SLOT_BYTES, MAX_AV_WALL, MAX_TRACE_BYTES, SLOT_CELL_BYTES,
 };
-use crate::mir::{BinOp, CalleeRef, MirInstr, MirFunction, MirModule, MirType, Terminator, TraceEvent, UnOp};
+use crate::mir::{
+    BinOp, CalleeRef, MirFunction, MirInstr, MirModule, MirType, Terminator, TraceEvent, UnOp,
+};
 use std::time::Instant;
 
 /// Per-execution limits (defaults = the frozen probe budgets).
@@ -100,13 +101,20 @@ pub fn execute_entry(
     let entry_fn = match m.funcs.get(m.entry as usize) {
         Some(f) => f,
         None => {
-            return (ExecOutcome::Infra(format!("entry function #{} missing", m.entry)), trace);
+            return (
+                ExecOutcome::Infra(format!("entry function #{} missing", m.entry)),
+                trace,
+            );
         }
     };
     let n_params = entry_fn.param_slots().len();
     if n_params != args.len() {
         return (
-            ExecOutcome::Infra(format!("entry expects {} args, driver passed {}", n_params, args.len())),
+            ExecOutcome::Infra(format!(
+                "entry expects {} args, driver passed {}",
+                n_params,
+                args.len()
+            )),
             trace,
         );
     }
@@ -168,13 +176,19 @@ pub fn execute_entry(
         let func = match m.funcs.get(func_idx as usize) {
             Some(f) => f,
             None => {
-                return (ExecOutcome::Infra(format!("frame func #{} missing", func_idx)), trace)
+                return (
+                    ExecOutcome::Infra(format!("frame func #{} missing", func_idx)),
+                    trace,
+                )
             }
         };
         let block = match func.blocks.get(block_idx as usize) {
             Some(b) => b,
             None => {
-                return (ExecOutcome::Infra(format!("frame block #{} missing", block_idx)), trace)
+                return (
+                    ExecOutcome::Infra(format!("frame block #{} missing", block_idx)),
+                    trace,
+                )
             }
         };
         if ip < block.instrs.len() {
@@ -212,7 +226,13 @@ pub fn execute_entry(
                             fr.slots[*dst as usize] = v;
                         }
                         Err(EvalErr::Trap(kind)) => {
-                            return (ExecOutcome::Trap { kind, span: span_of(func, flat) }, trace)
+                            return (
+                                ExecOutcome::Trap {
+                                    kind,
+                                    span: span_of(func, flat),
+                                },
+                                trace,
+                            )
                         }
                         Err(EvalErr::Infra(msg)) => return (ExecOutcome::Infra(msg), trace),
                     }
@@ -228,7 +248,13 @@ pub fn execute_entry(
                             fr.slots[*dst as usize] = v;
                         }
                         Err(EvalErr::Trap(kind)) => {
-                            return (ExecOutcome::Trap { kind, span: span_of(func, flat) }, trace)
+                            return (
+                                ExecOutcome::Trap {
+                                    kind,
+                                    span: span_of(func, flat),
+                                },
+                                trace,
+                            )
                         }
                         Err(EvalErr::Infra(msg)) => return (ExecOutcome::Infra(msg), trace),
                     }
@@ -331,8 +357,7 @@ pub fn execute_entry(
                         Value::I32(_) => {
                             return (
                                 ExecOutcome::Infra(
-                                    "branch condition holds i32 (admission violation)"
-                                        .to_string(),
+                                    "branch condition holds i32 (admission violation)".to_string(),
                                 ),
                                 trace,
                             )
@@ -405,9 +430,18 @@ fn eval_bin(op: BinOp, l: Value, r: Value) -> Result<Value, EvalErr> {
     use BinOp::*;
     match (l, r) {
         (Value::I32(a), Value::I32(b)) => Ok(match op {
-            AddI32 => Value::I32(a.checked_add(b).ok_or(EvalErr::Trap(TrapKind::IntOverflow))?),
-            SubI32 => Value::I32(a.checked_sub(b).ok_or(EvalErr::Trap(TrapKind::IntOverflow))?),
-            MulI32 => Value::I32(a.checked_mul(b).ok_or(EvalErr::Trap(TrapKind::IntOverflow))?),
+            AddI32 => Value::I32(
+                a.checked_add(b)
+                    .ok_or(EvalErr::Trap(TrapKind::IntOverflow))?,
+            ),
+            SubI32 => Value::I32(
+                a.checked_sub(b)
+                    .ok_or(EvalErr::Trap(TrapKind::IntOverflow))?,
+            ),
+            MulI32 => Value::I32(
+                a.checked_mul(b)
+                    .ok_or(EvalErr::Trap(TrapKind::IntOverflow))?,
+            ),
             DivI32 => {
                 if b == 0 {
                     return Err(EvalErr::Trap(TrapKind::DivByZero));
@@ -451,7 +485,8 @@ fn eval_bin(op: BinOp, l: Value, r: Value) -> Result<Value, EvalErr> {
 fn eval_un(op: UnOp, v: Value) -> Result<Value, EvalErr> {
     match (op, v) {
         (UnOp::NegI32, Value::I32(a)) => Ok(Value::I32(
-            a.checked_neg().ok_or(EvalErr::Trap(TrapKind::IntOverflow))?,
+            a.checked_neg()
+                .ok_or(EvalErr::Trap(TrapKind::IntOverflow))?,
         )),
         (UnOp::NotBool, Value::Bool(b)) => Ok(Value::Bool(!b)),
         _ => Err(EvalErr::Infra(format!(

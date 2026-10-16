@@ -27,8 +27,8 @@ pub use abc::{decode_abc, encode_abc, AbcDecodeError, DecodedAbc};
 pub use abc_verify::{verify_abc, verify_abc_bytes, AbcAdmissionError, LoadedModule};
 pub use av::{execute, execute_entry, CancelCheck, CancelFlag, ExecLimits, ExecTrace};
 pub use contract::{
-    AvSemanticsVersion, MirSemanticsVersion, ABC_SCHEMA, AV_PROFILE, ExecOutcome, MIR_SCHEMA,
-    PRODUCER_ID, ResourceKind, SpanInfo, TrapKind, Value,
+    AvSemanticsVersion, ExecOutcome, MirSemanticsVersion, ResourceKind, SpanInfo, TrapKind, Value,
+    ABC_SCHEMA, AV_PROFILE, MIR_SCHEMA, PRODUCER_ID,
 };
 pub use mir::{MirModule, MirModuleUncheckedMarker, TraceEvent};
 pub use mir_verify::{verify_mir, verify_mir_with_deadline, CheckedMir, MirVerifyError};

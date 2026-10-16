@@ -43,8 +43,16 @@ pub const MIR_LAYER: LayerSpec = LayerSpec {
     producer: PRODUCER_ID,
     consumers: &["av probe ABC emission", "diagnostics"],
     key_inputs: &[
-        "producer", "owner-module", "unit", "profile", "body-sig-content", "callee-sigs",
-        "mir-schema", "mir-semantics", "av-semantics", "capabilities-config",
+        "producer",
+        "owner-module",
+        "unit",
+        "profile",
+        "body-sig-content",
+        "callee-sigs",
+        "mir-schema",
+        "mir-semantics",
+        "av-semantics",
+        "capabilities-config",
     ],
     ref_kinds: &["provenance"],
     storage: "one binary unit per function inside the shared managed store (LayoutData carrier)",
@@ -60,8 +68,16 @@ pub const ABC_LAYER: LayerSpec = LayerSpec {
     producer: PRODUCER_ID,
     consumers: &["av executor closure assembly"],
     key_inputs: &[
-        "producer", "owner-module", "unit", "profile", "body-sig-content", "callee-sigs",
-        "abc-codec", "abc-semantics", "av-semantics", "capabilities-config",
+        "producer",
+        "owner-module",
+        "unit",
+        "profile",
+        "body-sig-content",
+        "callee-sigs",
+        "abc-codec",
+        "abc-semantics",
+        "av-semantics",
+        "capabilities-config",
     ],
     ref_kinds: &["required-data", "provenance"],
     storage: "one ABC unit per function + module link manifest (LayoutData carrier)",
@@ -87,7 +103,9 @@ pub fn encode_sidecar(spans: &[(u32, auto_av_core::contract::SpanInfo)]) -> Vec<
     out
 }
 
-pub fn decode_sidecar(bytes: &[u8]) -> Result<Vec<(u32, auto_av_core::contract::SpanInfo)>, CacheError> {
+pub fn decode_sidecar(
+    bytes: &[u8],
+) -> Result<Vec<(u32, auto_av_core::contract::SpanInfo)>, CacheError> {
     if bytes.len() < 4 {
         return Err(CacheError::Codec("sidecar truncated".into()));
     }
@@ -334,19 +352,34 @@ pub fn envelope_unwrap(bytes: &[u8], expect: &EnvelopeIdentity) -> Result<Vec<u8
         ));
     }
     if kind != expect.kind as u8 {
-        return bad(format!("envelope kind {} is not the expected {:?}", kind, expect.kind));
+        return bad(format!(
+            "envelope kind {} is not the expected {:?}",
+            kind, expect.kind
+        ));
     }
     if stage != expect.stage {
-        return bad(format!("envelope stage {} is not the expected {}", stage, expect.stage));
+        return bad(format!(
+            "envelope stage {} is not the expected {}",
+            stage, expect.stage
+        ));
     }
     if strs[0] != expect.producer {
-        return bad(format!("envelope producer `{}` is not `{}`", strs[0], expect.producer));
+        return bad(format!(
+            "envelope producer `{}` is not `{}`",
+            strs[0], expect.producer
+        ));
     }
     if strs[1] != expect.schema {
-        return bad(format!("envelope schema `{}` is not `{}`", strs[1], expect.schema));
+        return bad(format!(
+            "envelope schema `{}` is not `{}`",
+            strs[1], expect.schema
+        ));
     }
     if strs[2] != expect.owner_module {
-        return bad(format!("envelope owner `{}` is not `{}`", strs[2], expect.owner_module));
+        return bad(format!(
+            "envelope owner `{}` is not `{}`",
+            strs[2], expect.owner_module
+        ));
     }
     if (mir_sem, abc_sem, av_sem) != (expect.mir_sem, expect.abc_sem, expect.av_sem) {
         return bad(format!(
@@ -355,7 +388,10 @@ pub fn envelope_unwrap(bytes: &[u8], expect: &EnvelopeIdentity) -> Result<Vec<u8
         ));
     }
     if snapshot != expect.snapshot {
-        return bad(format!("envelope snapshot {} is not {}", snapshot, expect.snapshot));
+        return bad(format!(
+            "envelope snapshot {} is not {}",
+            snapshot, expect.snapshot
+        ));
     }
     Ok(bytes[p..p + plen].to_vec())
 }
@@ -373,7 +409,9 @@ use auto_ac_prototype::hir;
 /// cosmetic fields are excluded.
 pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec<u8> {
     let body = &module.bodies[body_id.0 as usize];
-    let mut c = CanonBuf { out: Vec::with_capacity(1024) };
+    let mut c = CanonBuf {
+        out: Vec::with_capacity(1024),
+    };
     // Locals.
     c.w("[loc");
     for l in &body.locals {
@@ -432,7 +470,11 @@ pub fn canonical_hir_function(module: &hir::Module, body_id: hir::BodyId) -> Vec
                 c.w(" ");
                 c.w(&rhs.0.to_string());
             }
-            hir::ExprKind::Call { callee, eval_args, bindings } => {
+            hir::ExprKind::Call {
+                callee,
+                eval_args,
+                bindings,
+            } => {
                 c.w("c ");
                 let callee_name = module
                     .defs
@@ -644,8 +686,10 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
                             }
                         }
                         if !children_pending {
-                            let mut ns =
-                                FnSig { params: Vec::with_capacity(sig.params.len()), result: 0 };
+                            let mut ns = FnSig {
+                                params: Vec::with_capacity(sig.params.len()),
+                                result: 0,
+                            };
                             for p in &sig.params {
                                 ns.params.push(ty_map[*p as usize]);
                             }
@@ -710,7 +754,11 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
         let slots = f
             .slots
             .iter()
-            .map(|s| MirSlot { kind: s.kind, ty: ty_map[s.ty as usize], name: s.name.clone() })
+            .map(|s| MirSlot {
+                kind: s.kind,
+                ty: ty_map[s.ty as usize],
+                name: s.name.clone(),
+            })
             .collect();
         unit.funcs.push(MirFunction {
             owner: f.owner.clone(),
@@ -735,7 +783,11 @@ pub fn split_units(m: &MirModule) -> Result<Vec<MirModule>, String> {
 /// rejections. The assembled module still passes `verify_mir`/`verify_abc`
 /// before execution — this is the complete-consistency gate, not a trust
 /// grant.
-pub fn assemble_closure(units: &[MirModule], owner: &str, entry: &str) -> Result<MirModule, String> {
+pub fn assemble_closure(
+    units: &[MirModule],
+    owner: &str,
+    entry: &str,
+) -> Result<MirModule, String> {
     let mut merged = MirModule::new(OwnerScope {
         schema: MIR_SCHEMA.to_string(),
         module: owner.to_string(),
@@ -796,13 +848,24 @@ pub fn assemble_closure(units: &[MirModule], owner: &str, entry: &str) -> Result
         let slots = u.funcs[0]
             .slots
             .iter()
-            .map(|s| MirSlot { kind: s.kind, ty: ty_map[s.ty as usize], name: s.name.clone() })
+            .map(|s| MirSlot {
+                kind: s.kind,
+                ty: ty_map[s.ty as usize],
+                name: s.name.clone(),
+            })
             .collect();
         let sig = ty_map[u.funcs[0].sig as usize];
         if !matches!(merged.types.get(sig as usize), Some(MirType::Fn(_))) {
-            return Err(format!("unit `{}` sig is not a function type", u.funcs[0].name));
+            return Err(format!(
+                "unit `{}` sig is not a function type",
+                u.funcs[0].name
+            ));
         }
-        fused.push(Fused { name: u.funcs[0].name.clone(), idx: merged.funcs.len() as FuncIdx, sig });
+        fused.push(Fused {
+            name: u.funcs[0].name.clone(),
+            idx: merged.funcs.len() as FuncIdx,
+            sig,
+        });
         names.push(u.funcs[0].name.clone());
         merged.funcs.push(MirFunction {
             owner: merged.owner.clone(),
@@ -826,10 +889,12 @@ pub fn assemble_closure(units: &[MirModule], owner: &str, entry: &str) -> Result
     }
     // Patch deferred callees; interned-type equality is content equality.
     for (fi, bi, ii, target, sig_merged) in patches {
-        let t = fused
-            .iter()
-            .find(|f| f.name == target)
-            .ok_or_else(|| format!("closure import `fn:{}` does not resolve to any unit", target))?;
+        let t = fused.iter().find(|f| f.name == target).ok_or_else(|| {
+            format!(
+                "closure import `fn:{}` does not resolve to any unit",
+                target
+            )
+        })?;
         if t.sig != sig_merged {
             return Err(format!(
                 "closure signature mismatch for `fn:{}`: call site type #{} != unit type #{}",
@@ -876,7 +941,10 @@ fn merge_types(merged: &mut MirModule, u: &MirModule) -> Vec<TypeIdx> {
                         .chain(std::iter::once(&sig.result))
                         .any(|p| map[*p as usize] == u32::MAX);
                     if !pending {
-                        let mut ns = FnSig { params: Vec::with_capacity(sig.params.len()), result: 0 };
+                        let mut ns = FnSig {
+                            params: Vec::with_capacity(sig.params.len()),
+                            result: 0,
+                        };
                         for p in &sig.params {
                             ns.params.push(map[*p as usize]);
                         }

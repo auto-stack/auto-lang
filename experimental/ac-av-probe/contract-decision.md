@@ -1,5 +1,10 @@
 # PLAN-798 contract-decision.md — T-01 全路径可行性门的冻结决策
 
+> **r2 对齐（2026-10-16，复审 F798-R1-02 后按 plan r2 重写 §6）**：条目预算语义由
+> r1.1 的"每表族"解释性修订升格为计划 r2 正式合同——模块表族与每函数表族各自
+> ≤65 536（分配前检查），组合上界落到请求级预算（4 MiB 输入、2M 验证步、5s 墙），
+> 三反控（单函数/模块表/组合步数）入 mir_admission_ 测试族。
+
 2026-10-16，work stage T-01。本文件冻结 `av.core-i32/1` profile 的逻辑 Schema、wire
 编号/布局、内部调用/返回、entry、预算/计步、资源分类、合法 carrier 与参考负载。
 后续 T-02..T-05 在此基础上实现并验收；任何变更须回到本文件并记 revision。
@@ -94,7 +99,7 @@ ABC 输入不因"由本编译器生成"跳过验证。分页：编码按 ≤256K
 |---|---|---|
 | source/HIR/ABC 输入 | ≤4 MiB | `av.resource.input-size` |
 | codec 页 | ≤256 KiB | `av.resource.codec-page` |
-| 表条目（r1.1 修订：**每表族**防护——模块表 types+consts+imports+funcs ≤65 536，且**每个函数** slots+blocks+instrs ≤65 536，均在深检前检查） | ≤65 536/表族 | `av.resource.table-entries` |
+| 表条目（**r2 正式合同**：**每表族**防护——模块表 types+consts+imports+funcs ≤65 536，且**每个函数** slots+blocks+instrs ≤65 536，均在深检前检查） | ≤65 536/表族 | `av.resource.table-entries` |
 | 前门嵌套（token 流，含全部括号种类；Atom 路径守 `[` 深度护递归文档 parser） | ≤128 | `av.resource.frontend-nesting` |
 | MIR/ABC 验证 | ≤2M 工作步、wall ≤5s | `av.resource.verify-steps/-wall` |
 | AV 执行 | ≤1M 指令步、≤1024 帧、活槽 ≤8 MiB、wall ≤2s | `av.resource.instr-steps/frames/slot-bytes/execution-wall` |
@@ -109,11 +114,14 @@ div-by-zero、div-overflow(MIN/-1)、rem-overflow(MIN%-1)。
 **计步定义**：验证侧 = 逐指令/逐块访问各计 1 步（+块内字数）；执行侧 = 每条
 指令 1 步。不可通过不计验证/分配规避——表配额在分配前检查。
 
-**r1.1 修订记录**（T-05 实测触发）：冻结的 256 KiB/100 函数参考负载按函数内
-~17 块展开后整模块 72k 条目，超出"全部表合计≤65 536"的字面读法；而负载规模
-同为 §5.5 冻结项、不得缩小。修订为**每表族**防护（模块表 + 每函数表各自
-≤65 536）：单表分配守卫不变，整模块规模由 2M 工作步、5s 验证墙与 4 MiB 输入
-上限约束。此修订不放宽任何单表安全性质。
+**r2 修订记录**（T-05 实测触发 r1.1 解释性修订 → 复审 F798-R1-02 判定须正式
+修订 → plan r2 冻结）：冻结的 256 KiB/100 函数参考负载按函数内 ~17 块展开后
+整模块 72k 条目，超出 r1"全部表合计≤65 536"的字面读法；负载规模同为 §5.5
+冻结项不得缩小，二者不可同时成立。r2 冻结为**每表族**防护（模块表 + 每函数
+表各自 ≤65 536）：单表分配守卫不变，整模块/闭包组合规模由 2M 工作步、5s
+验证墙与 4 MiB 输入上限显式约束。**三反控**（`mir_admission_`）：
+(1) 单函数超族 → `av.resource.table-entries`；(2) 模块表超族（70k consts）→
+同分类；(3) 组合超界（40×31k 块闭包）→ `av.resource.verify-steps`。
 
 ## 7. 前门递归风险核查（§5.5 T-01 义务）
 
@@ -141,8 +149,13 @@ div-by-zero、div-overflow(MIN/-1)、rem-overflow(MIN%-1)。
   **代码内容不含 span**——位置变更共享代码单元，sidecar（kind 4，键含 snapshot）
   重绑诊断。native 参考对象 key 另含 target/CPU/ABI/backend/flags（future，
   本计划仅合同+准入）。
-- 恢复：按 manifest→单元 artifact id 读取（store 地址 admission 护读）→信封
-  逐字段校验→decode→verify_abc 重验→装配→再整体验证→执行。不恢复 trusted；
+- 恢复（r2 两层接线）：A09 ABC 命中→decode→verify_abc 重验；A08 MIR 命中→
+  decode→**verify_mir 重入验证**→供 ABC 发射（不重新 lowering）。按 manifest→
+  单元 artifact id 读取（store 地址 admission 护读）→信封逐字段校验。MIR 单元
+  wire 复用 ABC 编码器（同一 MIR 内容的忠实序列化，信封 kind/schema/层区分）。
+  计数分离（F798-R1-06）：`mir_lower_modules`=整模块 lowering 真实调用数、
+  `mir_units_persisted`/`mir_units_restored`、`abc_units_emitted`、
+  `closure_encodes`、`peak_staging_bytes`（受管暂存峰值）。不恢复 trusted；
   错 producer/schema/owner/stage/语义版本 = 受控拒绝（非 miss、非覆盖重建）。
   命中仍 av_execute>0 并重新比较（不缓存 PASS/运行结果）。
 - 变更失效：callee body 变只重键其单元（caller 代码可复用）；callee 签名变

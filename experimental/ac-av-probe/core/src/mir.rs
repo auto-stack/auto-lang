@@ -141,19 +141,48 @@ pub enum CalleeRef {
 
 #[derive(Clone, Debug)]
 pub enum MirInstr {
-    Const { dst: SlotId, value: u32 },
-    Copy { dst: SlotId, src: SlotId },
-    Bin { op: BinOp, dst: SlotId, lhs: SlotId, rhs: SlotId },
-    Un { op: UnOp, dst: SlotId, operand: SlotId },
-    Call { callee: CalleeRef, dst: SlotId, args: Vec<SlotId> },
-    Trace { event: TraceEvent },
+    Const {
+        dst: SlotId,
+        value: u32,
+    },
+    Copy {
+        dst: SlotId,
+        src: SlotId,
+    },
+    Bin {
+        op: BinOp,
+        dst: SlotId,
+        lhs: SlotId,
+        rhs: SlotId,
+    },
+    Un {
+        op: UnOp,
+        dst: SlotId,
+        operand: SlotId,
+    },
+    Call {
+        callee: CalleeRef,
+        dst: SlotId,
+        args: Vec<SlotId>,
+    },
+    Trace {
+        event: TraceEvent,
+    },
 }
 
 #[derive(Clone, Debug)]
 pub enum Terminator {
-    Jump { target: BlockId },
-    Branch { cond: SlotId, then: BlockId, else_: BlockId },
-    Return { value: SlotId },
+    Jump {
+        target: BlockId,
+    },
+    Branch {
+        cond: SlotId,
+        then: BlockId,
+        else_: BlockId,
+    },
+    Return {
+        value: SlotId,
+    },
 }
 
 #[derive(Clone, Debug)]

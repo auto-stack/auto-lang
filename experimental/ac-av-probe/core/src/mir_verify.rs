@@ -15,8 +15,8 @@
 //! accepted. Legal CFG cycles are dataflow, not errors.
 
 use crate::contract::{
-    ResourceKind, SpanInfo, TRACE_CAPABILITY, MAX_TABLE_ENTRIES, MAX_VERIFY_WALL,
-    MAX_VERIFY_WORK_STEPS,
+    ResourceKind, SpanInfo, MAX_TABLE_ENTRIES, MAX_VERIFY_WALL, MAX_VERIFY_WORK_STEPS,
+    TRACE_CAPABILITY,
 };
 use crate::mir::*;
 use std::collections::VecDeque;
@@ -27,24 +27,44 @@ use std::time::Instant;
 /// typing, control-flow or initialization violation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MirVerifyError {
-    Invalid { code: String, message: String, span: Option<SpanInfo> },
-    Unsupported { code: String, message: String, span: Option<SpanInfo> },
-    Resource { kind: ResourceKind, message: String },
+    Invalid {
+        code: String,
+        message: String,
+        span: Option<SpanInfo>,
+    },
+    Unsupported {
+        code: String,
+        message: String,
+        span: Option<SpanInfo>,
+    },
+    Resource {
+        kind: ResourceKind,
+        message: String,
+    },
 }
 
 impl MirVerifyError {
     fn inv(code: &str, message: String) -> Self {
-        MirVerifyError::Invalid { code: code.to_string(), message, span: None }
+        MirVerifyError::Invalid {
+            code: code.to_string(),
+            message,
+            span: None,
+        }
     }
 
     fn uns(code: &str, message: String) -> Self {
-        MirVerifyError::Unsupported { code: code.to_string(), message, span: None }
+        MirVerifyError::Unsupported {
+            code: code.to_string(),
+            message,
+            span: None,
+        }
     }
 
     pub fn code(&self) -> String {
         match self {
-            MirVerifyError::Invalid { code, .. }
-            | MirVerifyError::Unsupported { code, .. } => code.clone(),
+            MirVerifyError::Invalid { code, .. } | MirVerifyError::Unsupported { code, .. } => {
+                code.clone()
+            }
             MirVerifyError::Resource { kind, .. } => kind.code().to_string(),
         }
     }
@@ -90,10 +110,17 @@ pub fn verify_mir_with_deadline(
     module: &MirModule,
     deadline: Instant,
 ) -> Result<CheckedMir, MirVerifyError> {
-    let mut v = Verifier { module, steps: 0, deadline };
+    let mut v = Verifier {
+        module,
+        steps: 0,
+        deadline,
+    };
     v.run()?;
     let stats = v.stats_snapshot();
-    Ok(CheckedMir { inner: module.clone(), stats })
+    Ok(CheckedMir {
+        inner: module.clone(),
+        stats,
+    })
 }
 
 struct Verifier<'a> {
@@ -133,13 +160,20 @@ impl<'a> Verifier<'a> {
         if self.module.profile != crate::contract::AV_PROFILE {
             return Err(MirVerifyError::uns(
                 "mir.profile",
-                format!("profile `{}` is not the supported `{}`", self.module.profile, crate::contract::AV_PROFILE),
+                format!(
+                    "profile `{}` is not the supported `{}`",
+                    self.module.profile,
+                    crate::contract::AV_PROFILE
+                ),
             ));
         }
         if self.module.is_unit && self.module.funcs.len() != 1 {
             return Err(MirVerifyError::inv(
                 "mir.unit-shape",
-                format!("a unit carries exactly one function, found {}", self.module.funcs.len()),
+                format!(
+                    "a unit carries exactly one function, found {}",
+                    self.module.funcs.len()
+                ),
             ));
         }
 
@@ -201,18 +235,32 @@ impl<'a> Verifier<'a> {
             let Some(sig) = self.module.sig_of(imp.sig) else {
                 return Err(MirVerifyError::inv(
                     "mir.import-sig",
-                    format!("import #{} `{}` does not reference a function type", ii, imp.symbol),
+                    format!(
+                        "import #{} `{}` does not reference a function type",
+                        ii, imp.symbol
+                    ),
                 ));
             };
             self.check_sig_indices(sig)?;
         }
         // ---- capability admission for trace intrinsics ------------------
-        let uses_trace = self.module.imports.iter().any(|i| {
-            i.symbol == "hir.test.mark_a" || i.symbol == "hir.test.mark_b"
-        }) || self.module.funcs.iter().any(|f| {
-            f.blocks.iter().any(|b| b.instrs.iter().any(|i| matches!(i, MirInstr::Trace { .. })))
-        });
-        if uses_trace && !self.module.capabilities.iter().any(|c| c == TRACE_CAPABILITY) {
+        let uses_trace = self
+            .module
+            .imports
+            .iter()
+            .any(|i| i.symbol == "hir.test.mark_a" || i.symbol == "hir.test.mark_b")
+            || self.module.funcs.iter().any(|f| {
+                f.blocks
+                    .iter()
+                    .any(|b| b.instrs.iter().any(|i| matches!(i, MirInstr::Trace { .. })))
+            });
+        if uses_trace
+            && !self
+                .module
+                .capabilities
+                .iter()
+                .any(|c| c == TRACE_CAPABILITY)
+        {
             return Err(MirVerifyError::uns(
                 "mir.capability",
                 format!(
@@ -240,7 +288,9 @@ impl<'a> Verifier<'a> {
         // closures; single-function units verify their one function as-is —
         // closure assembly selects and re-checks the real module entry.
         if !self.module.is_unit {
-            if !entry_sig.params.is_empty() || self.module.type_shape(entry_sig.result) != Some(ScalarShape::I32) {
+            if !entry_sig.params.is_empty()
+                || self.module.type_shape(entry_sig.result) != Some(ScalarShape::I32)
+            {
                 return Err(MirVerifyError::inv(
                     "mir.entry-sig",
                     "module entry must be zero-param i32 (frozen entry contract)".to_string(),
@@ -311,12 +361,19 @@ impl<'a> Verifier<'a> {
             if s.ty as usize >= self.module.types.len() {
                 return Err(MirVerifyError::inv(
                     "mir.slot-type",
-                    format!("slot #{} of `{}` references out-of-range type {}", si, f.name, s.ty),
+                    format!(
+                        "slot #{} of `{}` references out-of-range type {}",
+                        si, f.name, s.ty
+                    ),
                 ));
             }
         }
         // params first and in signature order
-        let mut param_iter = f.slots.iter().enumerate().filter(|(_, s)| s.kind == SlotKind::Param);
+        let mut param_iter = f
+            .slots
+            .iter()
+            .enumerate()
+            .filter(|(_, s)| s.kind == SlotKind::Param);
         for (want_ty, _p) in sig.params.iter().enumerate() {
             match param_iter.next() {
                 Some((si, s)) => {
@@ -345,7 +402,10 @@ impl<'a> Verifier<'a> {
         if param_iter.next().is_some() {
             return Err(MirVerifyError::inv(
                 "mir.param-count",
-                format!("function `{}` has more param slots than its signature", f.name),
+                format!(
+                    "function `{}` has more param slots than its signature",
+                    f.name
+                ),
             ));
         }
         // shape: blocks / entry
@@ -369,7 +429,10 @@ impl<'a> Verifier<'a> {
             if last.0 >= flat_total {
                 return Err(MirVerifyError::inv(
                     "mir.span-range",
-                    format!("span map of `{}` references instruction {} beyond count {}", f.name, last.0, flat_total),
+                    format!(
+                        "span map of `{}` references instruction {} beyond count {}",
+                        f.name, last.0, flat_total
+                    ),
                 ));
             }
         }
@@ -394,7 +457,10 @@ impl<'a> Verifier<'a> {
                             None => {
                                 return Err(err(
                                     "mir.const-ref",
-                                    format!("const instruction references out-of-range constant {}", value),
+                                    format!(
+                                        "const instruction references out-of-range constant {}",
+                                        value
+                                    ),
                                 ))
                             }
                         };
@@ -403,7 +469,10 @@ impl<'a> Verifier<'a> {
                         if self.module.type_shape(dt) != want_shape {
                             return Err(err(
                                 "mir.const-type",
-                                format!("const into slot {} of type {}; constant has another shape", dst, dt),
+                                format!(
+                                    "const into slot {} of type {}; constant has another shape",
+                                    dst, dt
+                                ),
                             ));
                         }
                     }
@@ -430,11 +499,11 @@ impl<'a> Verifier<'a> {
                         let ok = if op.result_is_bool() {
                             match op {
                                 BinOp::EqI32 | BinOp::NeI32 => {
-                                    shapes.1.is_some() && shapes.1 == shapes.2 && shapes.0 == Some(Bool)
+                                    shapes.1.is_some()
+                                        && shapes.1 == shapes.2
+                                        && shapes.0 == Some(Bool)
                                 }
-                                _ => {
-                                    shapes == (Some(Bool), Some(I32), Some(I32))
-                                }
+                                _ => shapes == (Some(Bool), Some(I32), Some(I32)),
                             }
                         } else {
                             shapes == (Some(I32), Some(I32), Some(I32))
@@ -462,7 +531,10 @@ impl<'a> Verifier<'a> {
                         if !ok {
                             return Err(err(
                                 "mir.un-type",
-                                format!("unary {:?} does not type check for types ({},{})", op, dt, ot),
+                                format!(
+                                    "unary {:?} does not type check for types ({},{})",
+                                    op, dt, ot
+                                ),
                             ));
                         }
                     }
@@ -489,28 +561,33 @@ impl<'a> Verifier<'a> {
                                     None => {
                                         return Err(err(
                                             "mir.callee-ref",
-                                            format!("call references out-of-range function {}", idx),
+                                            format!(
+                                                "call references out-of-range function {}",
+                                                idx
+                                            ),
                                         ))
                                     }
                                 }
                             }
-                            CalleeRef::Import(idx) => match self.module.imports.get(*idx as usize) {
-                                Some(imp) => match self.module.sig_of(imp.sig) {
-                                    Some(s) => s.clone(),
+                            CalleeRef::Import(idx) => {
+                                match self.module.imports.get(*idx as usize) {
+                                    Some(imp) => match self.module.sig_of(imp.sig) {
+                                        Some(s) => s.clone(),
+                                        None => {
+                                            return Err(err(
+                                                "mir.import-sig",
+                                                format!("import #{} has no function type", idx),
+                                            ))
+                                        }
+                                    },
                                     None => {
                                         return Err(err(
-                                            "mir.import-sig",
-                                            format!("import #{} has no function type", idx),
+                                            "mir.import-ref",
+                                            format!("call references out-of-range import {}", idx),
                                         ))
                                     }
-                                },
-                                None => {
-                                    return Err(err(
-                                        "mir.import-ref",
-                                        format!("call references out-of-range import {}", idx),
-                                    ))
                                 }
-                            },
+                            }
                         };
                         if callee_sig.params.len() != args.len() {
                             return Err(err(
@@ -522,19 +599,26 @@ impl<'a> Verifier<'a> {
                                 ),
                             ));
                         }
-                        for (ai, (a, want)) in args.iter().zip(callee_sig.params.iter()).enumerate() {
+                        for (ai, (a, want)) in args.iter().zip(callee_sig.params.iter()).enumerate()
+                        {
                             let at = slot_ty_of(f, *a, sp, &format!("call arg #{}", ai))?;
                             if at != *want {
                                 return Err(err(
                                     "mir.call-arg-type",
-                                    format!("call arg #{} has type {}, signature wants {}", ai, at, want),
+                                    format!(
+                                        "call arg #{} has type {}, signature wants {}",
+                                        ai, at, want
+                                    ),
                                 ));
                             }
                         }
                         if dt != callee_sig.result {
                             return Err(err(
                                 "mir.call-result-type",
-                                format!("call dst has type {}, callee returns {}", dt, callee_sig.result),
+                                format!(
+                                    "call dst has type {}, callee returns {}",
+                                    dt, callee_sig.result
+                                ),
                             ));
                         }
                     }
@@ -580,7 +664,10 @@ impl<'a> Verifier<'a> {
                     if vt != sig.result {
                         return Err(err(
                             "mir.return-type",
-                            format!("return value type {} does not match signature result {}", vt, sig.result),
+                            format!(
+                                "return value type {} does not match signature result {}",
+                                vt, sig.result
+                            ),
                         ));
                     }
                 }
@@ -731,33 +818,37 @@ impl<'a> Verifier<'a> {
                 }
             };
             if b != f.entry {
-                for p in preds[b as usize].iter().filter(|p| reachable[**p as usize]).skip(1) {
+                for p in preds[b as usize]
+                    .iter()
+                    .filter(|p| reachable[**p as usize])
+                    .skip(1)
+                {
                     intersect(&mut new_in, &out_state[*p as usize]);
                 }
             }
             // Reads must be initialized in `in ∪ defs-so-far`: walk instructions
             // in order, checking uses then applying the def.
             let mut live = new_in.clone();
-        let mut fail: Option<(u32, u32)> = None;
-        'blk: for (ii, instr) in f.blocks[b as usize].instrs.iter().enumerate() {
-            let flat = bases[b as usize] + ii as u32;
-            for u in instr.use_slots() {
-                if !bit_is_set(&live, u as usize) {
-                    fail = Some((u, flat));
-                    break 'blk;
+            let mut fail: Option<(u32, u32)> = None;
+            'blk: for (ii, instr) in f.blocks[b as usize].instrs.iter().enumerate() {
+                let flat = bases[b as usize] + ii as u32;
+                for u in instr.use_slots() {
+                    if !bit_is_set(&live, u as usize) {
+                        fail = Some((u, flat));
+                        break 'blk;
+                    }
+                }
+                if let Some(d) = instr.def_slot() {
+                    set_bit(&mut live, d as usize);
                 }
             }
-            if let Some(d) = instr.def_slot() {
-                set_bit(&mut live, d as usize);
-            }
-        }
-        if fail.is_none() {
-            if let Some((slot, flat)) = term_reads[b as usize] {
-                if !bit_is_set(&live, slot as usize) {
-                    fail = Some((slot, flat));
+            if fail.is_none() {
+                if let Some((slot, flat)) = term_reads[b as usize] {
+                    if !bit_is_set(&live, slot as usize) {
+                        fail = Some((slot, flat));
+                    }
                 }
             }
-        }
             if let Some((slot, flat)) = fail {
                 let sp = self.span_of(f, flat);
                 let name = f
@@ -770,7 +861,10 @@ impl<'a> Verifier<'a> {
                     message: format!(
                         "read of uninitialized slot `{}` (kind {:?}) in `{}`",
                         name,
-                        f.slots.get(slot as usize).map(|s| s.kind).unwrap_or(SlotKind::Temp),
+                        f.slots
+                            .get(slot as usize)
+                            .map(|s| s.kind)
+                            .unwrap_or(SlotKind::Temp),
                         f.name
                     ),
                     span: sp,
@@ -857,7 +951,9 @@ fn set_bit(m: &mut [u64], i: usize) {
 }
 
 fn bit_is_set(m: &[u64], i: usize) -> bool {
-    m.get(i / 64).map(|w| *w >> (i % 64) & 1 == 1).unwrap_or(false)
+    m.get(i / 64)
+        .map(|w| *w >> (i % 64) & 1 == 1)
+        .unwrap_or(false)
 }
 
 fn union(a: &[u64], b: &[u64]) -> Vec<u64> {
@@ -882,18 +978,27 @@ mod tests {
     use crate::contract::MIR_SCHEMA;
 
     fn owner() -> OwnerScope {
-        OwnerScope { schema: MIR_SCHEMA.to_string(), module: "m".to_string() }
+        OwnerScope {
+            schema: MIR_SCHEMA.to_string(),
+            module: "m".to_string(),
+        }
     }
 
     fn entry_fn(m: &mut MirModule, name: &str) -> u32 {
         let ti = m.intern_type(MirType::I32);
-        let sig = m.intern_type(MirType::Fn(FnSig { params: vec![], result: ti }));
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
         let f = MirFunction {
             owner: owner(),
             name: name.to_string(),
             sig,
             slots: vec![],
-            blocks: vec![MirBlock { instrs: vec![], term: Terminator::Return { value: 0 } }],
+            blocks: vec![MirBlock {
+                instrs: vec![],
+                term: Terminator::Return { value: 0 },
+            }],
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
@@ -908,7 +1013,11 @@ mod tests {
         let fi = entry_fn(&mut m, "main");
         // one slot holding the return value
         let t = m.intern_type(MirType::I32);
-        m.funcs[fi as usize].slots = vec![MirSlot { kind: SlotKind::Local, ty: t, name: Some("r".into()) }];
+        m.funcs[fi as usize].slots = vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: t,
+            name: Some("r".into()),
+        }];
         let c = m.intern_const(MirConst::I32(7));
         m.funcs[fi as usize].blocks[0].instrs = vec![MirInstr::Const { dst: 0, value: c }];
         m.entry = fi;
@@ -922,14 +1031,24 @@ mod tests {
         let fi = entry_fn(&mut m, "main");
         let t = m.intern_type(MirType::I32);
         m.funcs[fi as usize].slots = vec![
-            MirSlot { kind: SlotKind::Local, ty: t, name: Some("r".into()) },
-            MirSlot { kind: SlotKind::Local, ty: t, name: Some("dead".into()) },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t,
+                name: Some("r".into()),
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: t,
+                name: Some("dead".into()),
+            },
         ];
         // return slot 1 without initializing it
         m.funcs[fi as usize].blocks[0].term = Terminator::Return { value: 1 };
         m.entry = fi;
         let err = verify_mir(&m).unwrap_err();
-        assert!(matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.uninitialized-read"));
+        assert!(
+            matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.uninitialized-read")
+        );
     }
 
     #[test]
@@ -939,30 +1058,55 @@ mod tests {
         let ti = m.intern_type(MirType::I32);
         let tb = m.intern_type(MirType::Bool);
         m.funcs[fi as usize].slots = vec![
-            MirSlot { kind: SlotKind::Temp, ty: tb, name: None },
-            MirSlot { kind: SlotKind::Local, ty: ti, name: Some("r".into()) },
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: tb,
+                name: None,
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: Some("r".into()),
+            },
         ];
         let c_true = m.intern_const(MirConst::Bool(true));
         let c1 = m.intern_const(MirConst::I32(1));
         let f = &mut m.funcs[fi as usize];
         // b0: r = 1 (slot1); branch on slot0 (uninit bool → also invalid, so init it first)
         f.blocks[0].instrs = vec![
-            MirInstr::Const { dst: 0, value: c_true },
+            MirInstr::Const {
+                dst: 0,
+                value: c_true,
+            },
             MirInstr::Const { dst: 1, value: c1 },
         ];
-        f.blocks[0].term = Terminator::Branch { cond: 0, then: 1, else_: 2 };
+        f.blocks[0].term = Terminator::Branch {
+            cond: 0,
+            then: 1,
+            else_: 2,
+        };
         // b1: jump b2 ; b2: return slot1 — all init: fine
-        f.blocks.push(MirBlock { instrs: vec![], term: Terminator::Jump { target: 2 } });
-        f.blocks.push(MirBlock { instrs: vec![], term: Terminator::Return { value: 1 } });
+        f.blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Jump { target: 2 },
+        });
+        f.blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Return { value: 1 },
+        });
         m.entry = fi;
         verify_mir(&m).expect("both arms keep r initialized");
 
         // now make the then-arm reinit-only path: remove init from entry
         let f = &mut m.funcs[fi as usize];
-        f.blocks[0].instrs.retain(|i| matches!(i, MirInstr::Const { dst: 0, .. }));
+        f.blocks[0]
+            .instrs
+            .retain(|i| matches!(i, MirInstr::Const { dst: 0, .. }));
         // slot1 initialized in NEITHER arm now → rejection
         let err = verify_mir(&m).unwrap_err();
-        assert!(matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.uninitialized-read"));
+        assert!(
+            matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.uninitialized-read")
+        );
     }
 
     #[test]
@@ -972,26 +1116,54 @@ mod tests {
         let ti = m.intern_type(MirType::I32);
         let tb = m.intern_type(MirType::Bool);
         m.funcs[fi as usize].slots = vec![
-            MirSlot { kind: SlotKind::Temp, ty: tb, name: None }, // 0 cond
-            MirSlot { kind: SlotKind::Local, ty: ti, name: Some("r".into()) }, // 1
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: tb,
+                name: None,
+            }, // 0 cond
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: Some("r".into()),
+            }, // 1
         ];
         let c_true = m.intern_const(MirConst::Bool(true));
         let c1 = m.intern_const(MirConst::I32(1));
         let f = &mut m.funcs[fi as usize];
-        f.blocks[0].instrs = vec![MirInstr::Const { dst: 0, value: c_true }];
-        f.blocks[0].term = Terminator::Branch { cond: 0, then: 1, else_: 3 };
+        f.blocks[0].instrs = vec![MirInstr::Const {
+            dst: 0,
+            value: c_true,
+        }];
+        f.blocks[0].term = Terminator::Branch {
+            cond: 0,
+            then: 1,
+            else_: 3,
+        };
         // b1 (loop body): r = 1; jump b2
         f.blocks.push(MirBlock {
             instrs: vec![MirInstr::Const { dst: 1, value: c1 }],
             term: Terminator::Jump { target: 2 },
         });
         // b2 (latch): branch cond → body : exit
-        f.blocks.push(MirBlock { instrs: vec![], term: Terminator::Branch { cond: 0, then: 1, else_: 3 } });
+        f.blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Branch {
+                cond: 0,
+                then: 1,
+                else_: 3,
+            },
+        });
         // b3 (exit): return r — r only initialized INSIDE the loop → reject
-        f.blocks.push(MirBlock { instrs: vec![], term: Terminator::Return { value: 1 } });
+        f.blocks.push(MirBlock {
+            instrs: vec![],
+            term: Terminator::Return { value: 1 },
+        });
         m.entry = fi;
         let err = verify_mir(&m).unwrap_err();
-        assert!(matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.uninitialized-read"), "got {err:?}");
+        assert!(
+            matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.uninitialized-read"),
+            "got {err:?}"
+        );
     }
 
     #[test]
@@ -1002,20 +1174,32 @@ mod tests {
         f.blocks[0].term = Terminator::Jump { target: 9 };
         m.entry = fi;
         let err = verify_mir(&m).unwrap_err();
-        assert!(matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.jump-target"));
+        assert!(
+            matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.jump-target")
+        );
     }
 
     #[test]
     fn mir_admission_wrong_entry_result_type() {
         let mut m = MirModule::new(owner());
         let tb = m.intern_type(MirType::Bool);
-        let sig = m.intern_type(MirType::Fn(FnSig { params: vec![], result: tb }));
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: tb,
+        }));
         let f = MirFunction {
             owner: owner(),
             name: "main".into(),
             sig,
-            slots: vec![MirSlot { kind: SlotKind::Local, ty: tb, name: None }],
-            blocks: vec![MirBlock { instrs: vec![], term: Terminator::Return { value: 0 } }],
+            slots: vec![MirSlot {
+                kind: SlotKind::Local,
+                ty: tb,
+                name: None,
+            }],
+            blocks: vec![MirBlock {
+                instrs: vec![],
+                term: Terminator::Return { value: 0 },
+            }],
             entry: 0,
             source_snapshot: 0,
             spans: vec![],
@@ -1030,16 +1214,26 @@ mod tests {
     fn mir_admission_table_budget_is_resource() {
         let mut m = MirModule::new(owner());
         let ti = m.intern_type(MirType::I32);
-        let sig = m.intern_type(MirType::Fn(FnSig { params: vec![], result: ti }));
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
         // A function with many empty blocks to blow the 65_536 budget.
         let blocks: Vec<MirBlock> = (0..70_000)
-            .map(|_| MirBlock { instrs: vec![], term: Terminator::Jump { target: 0 } })
+            .map(|_| MirBlock {
+                instrs: vec![],
+                term: Terminator::Jump { target: 0 },
+            })
             .collect();
         m.funcs.push(MirFunction {
             owner: owner(),
             name: "big".into(),
             sig,
-            slots: vec![MirSlot { kind: SlotKind::Local, ty: ti, name: None }],
+            slots: vec![MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: None,
+            }],
             blocks,
             entry: 0,
             source_snapshot: 0,
@@ -1047,6 +1241,12 @@ mod tests {
         });
         m.entry = 0;
         let err = verify_mir(&m).unwrap_err();
-        assert!(matches!(err, MirVerifyError::Resource { kind: ResourceKind::TableEntries, .. }));
+        assert!(matches!(
+            err,
+            MirVerifyError::Resource {
+                kind: ResourceKind::TableEntries,
+                ..
+            }
+        ));
     }
 }

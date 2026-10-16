@@ -25,10 +25,10 @@
 //! above the 128-level source front door, rejecting deeper hand-made trees
 //! with a controlled `mir.lower.depth` error.
 
-use auto_av_core::contract::SpanInfo;
-use auto_av_core::mir::*;
 use auto_ac_prototype::hir;
 use auto_ac_prototype::verify::CheckedModule;
+use auto_av_core::contract::SpanInfo;
+use auto_av_core::mir::*;
 use std::collections::BTreeMap;
 
 /// Adapter rejection taxonomy (mirrors the core taxonomy).
@@ -40,10 +40,16 @@ pub enum AdapterError {
 
 impl AdapterError {
     fn uns(code: &str, message: String) -> Self {
-        AdapterError::Unsupported { code: code.to_string(), message }
+        AdapterError::Unsupported {
+            code: code.to_string(),
+            message,
+        }
     }
     fn inv(code: &str, message: String) -> Self {
-        AdapterError::Invalid { code: code.to_string(), message }
+        AdapterError::Invalid {
+            code: code.to_string(),
+            message,
+        }
     }
     pub fn code(&self) -> String {
         match self {
@@ -71,7 +77,10 @@ pub fn lower_checked(
         other => {
             return Err(AdapterError::uns(
                 "lower.domain",
-                format!("HIR domain `{}` is outside the av.core-i32/1 profile", other.as_str()),
+                format!(
+                    "HIR domain `{}` is outside the av.core-i32/1 profile",
+                    other.as_str()
+                ),
             ));
         }
     }
@@ -142,11 +151,23 @@ pub fn lower_checked(
         if name == entry_name {
             entry_idx = Some(out.funcs.len() as u32);
         }
-        let mir_fn = lower_function(module, &mut out, di, body_id, sig, source_snapshot, &def_map, name.clone())?;
+        let mir_fn = lower_function(
+            module,
+            &mut out,
+            di,
+            body_id,
+            sig,
+            source_snapshot,
+            &def_map,
+            name.clone(),
+        )?;
         out.funcs.push(mir_fn);
     }
     let entry = entry_idx.ok_or_else(|| {
-        AdapterError::inv("lower.entry", format!("no function named `{}` in module", entry_name))
+        AdapterError::inv(
+            "lower.entry",
+            format!("no function named `{}` in module", entry_name),
+        )
     })?;
     out.entry = entry;
     Ok(out)
@@ -166,7 +187,10 @@ fn scalar_shape_of_use(u: &hir::TypeUse, m: &hir::Module) -> Result<ScalarShape,
         },
     };
     s.ok_or_else(|| {
-        AdapterError::uns("lower.type-use", format!("type use {:?} is not an i32/bool scalar", u))
+        AdapterError::uns(
+            "lower.type-use",
+            format!("type use {:?} is not an i32/bool scalar", u),
+        )
     })
 }
 
@@ -278,7 +302,11 @@ impl<'a> FnLower<'a> {
             ScalarShape::Bool => self.t_bool,
         };
         let idx = self.base_slots + self.extra_slots.len() as SlotId;
-        self.extra_slots.push(MirSlot { kind: SlotKind::Temp, ty, name: None });
+        self.extra_slots.push(MirSlot {
+            kind: SlotKind::Temp,
+            ty,
+            name: None,
+        });
         idx
     }
 
@@ -312,7 +340,10 @@ impl<'a> FnLower<'a> {
         if depth > MAX_EXPR_DEPTH {
             return Err(AdapterError::uns(
                 "mir.lower.depth",
-                format!("expression nesting exceeds the lowering ceiling {}", MAX_EXPR_DEPTH),
+                format!(
+                    "expression nesting exceeds the lowering ceiling {}",
+                    MAX_EXPR_DEPTH
+                ),
             ));
         }
         let shape = self.expr_shape(eid)?;
@@ -331,7 +362,15 @@ impl<'a> FnLower<'a> {
                 let r = self.eval_expr(*rhs, depth + 1)?;
                 let dst = self.temp(shape);
                 let mop = map_binop(*op)?;
-                self.emit(MirInstr::Bin { op: mop, dst, lhs: l, rhs: r }, sp);
+                self.emit(
+                    MirInstr::Bin {
+                        op: mop,
+                        dst,
+                        lhs: l,
+                        rhs: r,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             hir::ExprKind::Unary { op, operand } => {
@@ -341,7 +380,14 @@ impl<'a> FnLower<'a> {
                     hir::UnaryOp::NegI32 => UnOp::NegI32,
                     hir::UnaryOp::NotBool => UnOp::NotBool,
                 };
-                self.emit(MirInstr::Un { op: mop, dst, operand: v }, sp);
+                self.emit(
+                    MirInstr::Un {
+                        op: mop,
+                        dst,
+                        operand: v,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             hir::ExprKind::Logical { op, lhs, rhs } => {
@@ -355,25 +401,45 @@ impl<'a> FnLower<'a> {
                     hir::LogicOp::And => (rhs_b, skip_b),
                     hir::LogicOp::Or => (skip_b, rhs_b),
                 };
-                self.set_term(Terminator::Branch { cond: l, then: then_b, else_: else_b });
+                self.set_term(Terminator::Branch {
+                    cond: l,
+                    then: then_b,
+                    else_: else_b,
+                });
                 // Skipped arm: result = the short-circuit value.
                 self.cur = skip_b;
                 self.terminated = false;
                 let c = self.const_bool(matches!(op, hir::LogicOp::Or));
-                self.emit(MirInstr::Const { dst: result, value: c }, sp);
+                self.emit(
+                    MirInstr::Const {
+                        dst: result,
+                        value: c,
+                    },
+                    sp,
+                );
                 self.set_term(Terminator::Jump { target: join });
                 // Taken arm: result = rhs.
                 self.cur = rhs_b;
                 self.terminated = false;
                 let r = self.eval_expr(*rhs, depth + 1)?;
                 let rsp = self.span(*rhs);
-                self.emit(MirInstr::Copy { dst: result, src: r }, rsp);
+                self.emit(
+                    MirInstr::Copy {
+                        dst: result,
+                        src: r,
+                    },
+                    rsp,
+                );
                 self.set_term(Terminator::Jump { target: join });
                 self.cur = join;
                 self.terminated = false;
                 Ok(result)
             }
-            hir::ExprKind::Call { callee, eval_args, bindings } => {
+            hir::ExprKind::Call {
+                callee,
+                eval_args,
+                bindings,
+            } => {
                 // Source-order evaluation, then binding-map reorder.
                 let mut arg_slots = Vec::with_capacity(eval_args.len());
                 for a in eval_args {
@@ -420,7 +486,11 @@ impl<'a> FnLower<'a> {
                         )
                     })?;
                 let sig_idx = fn_type_index(hir_ty, self.hir_module, self.out)?;
-                let n_params = self.out.sig_of(sig_idx).map(|s| s.params.len()).unwrap_or(0);
+                let n_params = self
+                    .out
+                    .sig_of(sig_idx)
+                    .map(|s| s.params.len())
+                    .unwrap_or(0);
                 let mut actuals: Vec<SlotId> = vec![0; n_params];
                 for b in bindings {
                     let pos = b.param as usize;
@@ -433,12 +503,22 @@ impl<'a> FnLower<'a> {
                     actuals[pos] = arg_slots[b.arg as usize];
                 }
                 let dst = self.temp(shape);
-                self.emit(MirInstr::Call { callee: callee_ref, dst, args: actuals }, sp);
+                self.emit(
+                    MirInstr::Call {
+                        callee: callee_ref,
+                        dst,
+                        args: actuals,
+                    },
+                    sp,
+                );
                 Ok(dst)
             }
             other => Err(AdapterError::uns(
                 "lower.expr",
-                format!("expression kind `{}` is outside the av profile", expr_kind_name(other)),
+                format!(
+                    "expression kind `{}` is outside the av profile",
+                    expr_kind_name(other)
+                ),
             )),
         }
     }
@@ -515,7 +595,11 @@ fn lower_function(
         let ty = scalar_type_idx_of(&l.ty, hir_module, out)?;
         let idx = slots.len() as SlotId;
         slots.push(MirSlot {
-            kind: if l.role == hir::LocalRole::Param { SlotKind::Param } else { SlotKind::Local },
+            kind: if l.role == hir::LocalRole::Param {
+                SlotKind::Param
+            } else {
+                SlotKind::Local
+            },
             ty,
             name: Some(l.name.clone()),
         });
@@ -545,8 +629,12 @@ fn lower_function(
     let entry_b = lower.new_block();
     debug_assert_eq!(entry_b, 0);
 
-    let mut stack: Vec<Task> =
-        vec![Task { hir_block: body.entry, stmt_idx: 0, mir_block: 0, exit: None }];
+    let mut stack: Vec<Task> = vec![Task {
+        hir_block: body.entry,
+        stmt_idx: 0,
+        mir_block: 0,
+        exit: None,
+    }];
     while let Some(mut task) = stack.pop() {
         lower.cur = task.mir_block;
         lower.terminated = false;
@@ -599,7 +687,11 @@ fn lower_function(
                     let else_b = els.map(|_| lower.new_block());
                     let join = lower.new_block();
                     let else_target = else_b.unwrap_or(join);
-                    lower.set_term(Terminator::Branch { cond: c, then: then_b, else_: else_target });
+                    lower.set_term(Terminator::Branch {
+                        cond: c,
+                        then: then_b,
+                        else_: else_target,
+                    });
                     // LIFO: continuation processed last.
                     stack.push(Task {
                         hir_block: task.hir_block,
@@ -608,12 +700,25 @@ fn lower_function(
                         exit: task.exit,
                     });
                     if let (Some(eb), Some(eb_hir)) = (else_b, els) {
-                        stack.push(Task { hir_block: *eb_hir, stmt_idx: 0, mir_block: eb, exit: Some(join) });
+                        stack.push(Task {
+                            hir_block: *eb_hir,
+                            stmt_idx: 0,
+                            mir_block: eb,
+                            exit: Some(join),
+                        });
                     }
-                    stack.push(Task { hir_block: *then, stmt_idx: 0, mir_block: then_b, exit: Some(join) });
+                    stack.push(Task {
+                        hir_block: *then,
+                        stmt_idx: 0,
+                        mir_block: then_b,
+                        exit: Some(join),
+                    });
                     break;
                 }
-                hir::Stmt::Loop { id, body: loop_body } => {
+                hir::Stmt::Loop {
+                    id,
+                    body: loop_body,
+                } => {
                     let header = lower.new_block();
                     let body_b = lower.new_block();
                     let exit = lower.new_block();
@@ -628,7 +733,12 @@ fn lower_function(
                         mir_block: exit,
                         exit: task.exit,
                     });
-                    stack.push(Task { hir_block: *loop_body, stmt_idx: 0, mir_block: body_b, exit: Some(header) });
+                    stack.push(Task {
+                        hir_block: *loop_body,
+                        stmt_idx: 0,
+                        mir_block: body_b,
+                        exit: Some(header),
+                    });
                     break;
                 }
                 hir::Stmt::Break { target } => {

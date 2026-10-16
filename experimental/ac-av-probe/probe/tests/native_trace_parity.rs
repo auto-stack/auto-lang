@@ -39,8 +39,7 @@ fn av_semantics_native_trace_parity() {
     }
     assert!(lib.is_file(), "support lib missing at {}", lib.display());
     let compiled = compile_scalar_source(src, "trace.at", &caps).expect("frontend");
-    let workdir =
-        std::env::temp_dir().join(format!("av798-trace-parity-{}", std::process::id()));
+    let workdir = std::env::temp_dir().join(format!("av798-trace-parity-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
     let run = auto_av_probe::native_reference::build_and_run(
         &compiled.checked,

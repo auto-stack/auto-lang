@@ -10,7 +10,10 @@ use auto_av_probe::driver::Driver;
 use auto_av_probe::hir_adapter::lower_checked;
 
 fn owner() -> OwnerScope {
-    OwnerScope { schema: auto_av_core::contract::ABC_SCHEMA.to_string(), module: "m".into() }
+    OwnerScope {
+        schema: auto_av_core::contract::ABC_SCHEMA.to_string(),
+        module: "m".into(),
+    }
 }
 
 fn compile_lower_run(src: &str, caps: &[String]) -> auto_av_probe::driver::RequestOutcome {
@@ -30,7 +33,11 @@ fn abc_codec_roundtrip_is_byte_stable() {
     let b1 = encode_abc(&m).unwrap();
     let d = decode_abc(&b1.to_flat()).unwrap();
     let b2 = encode_abc(&d.module).unwrap();
-    assert_eq!(b1.to_flat(), b2.to_flat(), "encode(decode(encode(m))) == encode(m)");
+    assert_eq!(
+        b1.to_flat(),
+        b2.to_flat(),
+        "encode(decode(encode(m))) == encode(m)"
+    );
     // Every page within the frozen codec page budget.
     for p in &b1.pages {
         assert!(p.len() <= auto_av_core::contract::MAX_CODEC_PAGE_BYTES);
@@ -45,7 +52,10 @@ fn abc_codec_rejects_truncation_and_trailing() {
     let flat = encode_abc(&m).unwrap().to_flat();
     // Truncation (header intact).
     let err = decode_abc(&flat[..flat.len() - 12]).unwrap_err();
-    assert!(matches!(err.code().as_str(), "abc.decode.truncated" | "abc.decode.checksum"));
+    assert!(matches!(
+        err.code().as_str(),
+        "abc.decode.truncated" | "abc.decode.checksum"
+    ));
     // Trailing bytes.
     let mut with_trailing = flat.clone();
     with_trailing.truncate(with_trailing.len() - 8); // drop trailer first
@@ -98,7 +108,7 @@ fn abc_codec_rejects_unknown_version_opcode_and_illegal_bool() {
     o.extend_from_slice(&1u32.to_le_bytes()); // funcs
     o.extend_from_slice(&0u32.to_le_bytes()); // entry
     o.extend_from_slice(&0u16.to_le_bytes()); // capabilities
-    // function: sig 0, name "", 0 slots, entry 0, 1 block
+                                              // function: sig 0, name "", 0 slots, entry 0, 1 block
     o.extend_from_slice(&0u32.to_le_bytes());
     o.extend_from_slice(&0u16.to_le_bytes());
     o.extend_from_slice(&0u32.to_le_bytes());
@@ -132,7 +142,10 @@ fn abc_admission_only_verify_produces_executable_handle() {
     let (out, _) = execute(&loaded, &ExecLimits::default(), &cancel);
     assert_eq!(
         out,
-        ExecOutcome::Success { value: Value::I32(7), steps: out_steps(&out) }
+        ExecOutcome::Success {
+            value: Value::I32(7),
+            steps: out_steps(&out)
+        }
     );
 }
 
@@ -162,7 +175,10 @@ fn abc_admission_tampered_inner_never_executes() {
     match decode_abc(&flat) {
         Err(_) => { /* rejected at decode: acceptable */ }
         Ok(decoded) => {
-            assert!(verify_abc(decoded, &owner()).is_err(), "tampered body must not verify");
+            assert!(
+                verify_abc(decoded, &owner()).is_err(),
+                "tampered body must not verify"
+            );
         }
     }
 }
@@ -195,7 +211,11 @@ fn av_semantics_trap_matrix_structured_outcomes() {
 }
 
 fn assert_trap(r: &auto_av_probe::driver::RequestOutcome, kind: TrapKind) {
-    assert!(r.diag.is_none(), "trap is a RUNTIME outcome, not a compile rejection: {:?}", r.diag);
+    assert!(
+        r.diag.is_none(),
+        "trap is a RUNTIME outcome, not a compile rejection: {:?}",
+        r.diag
+    );
     match &r.av {
         Some(ExecOutcome::Trap { kind: k, .. }) if k == &kind => {}
         other => panic!("expected trap {:?}, got {:?}", kind, other),
@@ -215,7 +235,10 @@ fn av_semantics_unexecuted_rhs_trap_stays_latent() {
         "fn main() int {\n    var f = 0 < 0\n    if f || 1 / 0 > 0 {\n        return 1\n    }\n    return 0\n}\n",
     );
     match &r.av {
-        Some(ExecOutcome::Trap { kind: TrapKind::DivByZero, .. }) => {}
+        Some(ExecOutcome::Trap {
+            kind: TrapKind::DivByZero,
+            ..
+        }) => {}
         other => panic!("expected div-by-zero on evaluated RHS, got {:?}", other),
     }
 }
@@ -225,7 +248,11 @@ fn av_semantics_trace_order_and_capability_gating() {
     let src = "fn side(x int) int {\n    let m = mark_a()\n    return x + m\n}\n\nfn main() int {\n    let a = mark_b()\n    let b = side(1)\n    let c = mark_a()\n    if a + b + c != 9 {\n        return 1\n    }\n    return 0\n}\n";
     // Without the capability the module is rejected BEFORE execution.
     let r = compile_lower_run(src, &[]);
-    assert!(r.diag.is_some() || r.av.is_none(), "trace marks require the capability: {:?}", r.diag);
+    assert!(
+        r.diag.is_some() || r.av.is_none(),
+        "trace marks require the capability: {:?}",
+        r.diag
+    );
     let stage = r.diag.as_ref().map(|d| d.stage.clone());
     assert!(
         matches!(stage.as_deref(), Some("mir-verify") | Some("frontend")),
@@ -238,7 +265,11 @@ fn av_semantics_trace_order_and_capability_gating() {
     let r = compile_lower_run(src, &caps);
     assert!(r.diag.is_none(), "with capability: {:?}", r.diag);
     use auto_av_core::mir::TraceEvent::*;
-    assert_eq!(r.trace, vec![MarkB, MarkA, MarkA], "source-order trace events");
+    assert_eq!(
+        r.trace,
+        vec![MarkB, MarkA, MarkA],
+        "source-order trace events"
+    );
     // mark_b()=2, side(1)=1+mark_a()=2 → 3, mark_a()=1 → 2+3+1=6 ≠ 9 → 1.
     assert_eq!(r.value_i32(), Some(1));
 }
@@ -249,14 +280,23 @@ fn av_semantics_named_args_evaluate_in_source_order() {
     // RIGHT as written, then map to params.
     let src = "fn add(a int, b int) int {\n    return a + b\n}\n\nfn main() int {\n    if add(b: 10 / 2, a: 7 % 4) != 8 {\n        return 1\n    }\n    if add(add(1, 2), add(3 % 2, 4 - 1)) != 7 {\n        return 2\n    }\n    return 0\n}\n";
     let r = run_src(src);
-    assert_eq!(r.value_i32(), Some(0), "named-arg mapping + nested calls: {:?}", r.av);
+    assert_eq!(
+        r.value_i32(),
+        Some(0),
+        "named-arg mapping + nested calls: {:?}",
+        r.av
+    );
 }
 
 #[test]
 fn av_semantics_recursion_with_fuel() {
     let src = "fn fib(n int) int {\n    if n < 2 {\n        return n\n    }\n    return fib(n - 1) + fib(n - 2)\n}\n\nfn main() int {\n    if fib(15) != 610 {\n        return 1\n    }\n    return 0\n}\n";
     let r = run_src(src);
-    assert_eq!(r.value_i32(), Some(0), "fuel-protected recursion computes fib(15)");
+    assert_eq!(
+        r.value_i32(),
+        Some(0),
+        "fuel-protected recursion computes fib(15)"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -268,7 +308,10 @@ fn av_semantics_recursion_with_fuel() {
 fn av_semantics_infinite_loop_hits_instruction_fuel() {
     let r = run_src("fn main() int {\n    var x = 0\n    for 0 < 1 {\n        x = x + 1\n    }\n    return x\n}\n");
     match &r.av {
-        Some(ExecOutcome::Resource { kind: ResourceKind::InstrSteps, .. }) => {}
+        Some(ExecOutcome::Resource {
+            kind: ResourceKind::InstrSteps,
+            ..
+        }) => {}
         other => panic!("expected instr-steps resource, got {:?}", other),
     }
     // Distinct from trap/timeout: the outcome is a resource classification.
@@ -294,11 +337,21 @@ fn av_semantics_frame_budget_is_guest_not_host() {
     let src = "fn even(n int) int {\n    if n == 0 {\n        return 1\n    }\n    return odd(n - 1)\n}\n\nfn odd(n int) int {\n    if n == 0 {\n        return 0\n    }\n    return even(n - 1)\n}\n\nfn main() int {\n    if even(2000) != 0 {\n        return 1\n    }\n    return 0\n}\n";
     let r = run_src(src);
     match &r.av {
-        Some(ExecOutcome::Resource { kind: ResourceKind::Frames, .. }) => {}
-        other => panic!("expected frames resource at depth 2000 > 1024, got {:?}", other),
+        Some(ExecOutcome::Resource {
+            kind: ResourceKind::Frames,
+            ..
+        }) => {}
+        other => panic!(
+            "expected frames resource at depth 2000 > 1024, got {:?}",
+            other
+        ),
     }
     // Within budget: depth 999 each side (~999 frames) succeeds.
     let src = src.replace("even(2000)", "even(999)");
     let r = run_src(&src);
-    assert_eq!(r.value_i32(), Some(0), "depth-999 mutual recursion succeeds");
+    assert_eq!(
+        r.value_i32(),
+        Some(0),
+        "depth-999 mutual recursion succeeds"
+    );
 }

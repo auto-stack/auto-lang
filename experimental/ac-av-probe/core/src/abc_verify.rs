@@ -66,9 +66,12 @@ pub fn verify_abc(
     for f in module.funcs.iter_mut() {
         f.owner = expected_owner.clone();
     }
-    let checked = verify_mir_with_deadline(&module, deadline())
-        .map_err(AbcAdmissionError::Verify)?;
-    Ok(LoadedModule { checked, av_semantics: AV_SEMANTICS })
+    let checked =
+        verify_mir_with_deadline(&module, deadline()).map_err(AbcAdmissionError::Verify)?;
+    Ok(LoadedModule {
+        checked,
+        av_semantics: AV_SEMANTICS,
+    })
 }
 
 fn deadline() -> std::time::Instant {

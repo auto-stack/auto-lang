@@ -23,7 +23,10 @@ fn lower(src: &str) -> MirModule {
 fn mir_admission_mutation_matrix_rejects_and_proves_change() {
     let src = "fn main() int {\n    var x = 3\n    if x > 1 {\n        x = x + 1\n    }\n    for x > 2 {\n        x = x - 1\n    }\n    return x\n}\n";
     let base = lower(src);
-    assert!(verify_mir(&base).is_ok(), "legal loop/merge lowers and verifies");
+    assert!(
+        verify_mir(&base).is_ok(),
+        "legal loop/merge lowers and verifies"
+    );
     let base_hash = fnv1a64(&format!("{:?}", base.funcs[0].blocks).as_bytes());
 
     // Dangling jump target.
@@ -33,7 +36,10 @@ fn mir_admission_mutation_matrix_rejects_and_proves_change() {
     } else {
         panic!("expected a jump at block 1");
     }
-    assert_ne!(fnv1a64(&format!("{:?}", m.funcs[0].blocks).as_bytes()), base_hash);
+    assert_ne!(
+        fnv1a64(&format!("{:?}", m.funcs[0].blocks).as_bytes()),
+        base_hash
+    );
     let err = verify_mir(&m).unwrap_err();
     assert_eq!(err.code(), "mir.jump-target", "dangling target: {err:?}");
 
@@ -47,7 +53,10 @@ fn mir_admission_mutation_matrix_rejects_and_proves_change() {
             }
         }
     }
-    assert_ne!(fnv1a64(&format!("{:?}", m.funcs[0].blocks).as_bytes()), base_hash);
+    assert_ne!(
+        fnv1a64(&format!("{:?}", m.funcs[0].blocks).as_bytes()),
+        base_hash
+    );
     let err = verify_mir(&m).unwrap_err();
     assert_eq!(err.code(), "mir.slot-ref", "out-of-range slot: {err:?}");
 
@@ -55,12 +64,15 @@ fn mir_admission_mutation_matrix_rejects_and_proves_change() {
     let mut m = base.clone();
     let ti = m.intern_type(MirType::I32);
     let si = m.funcs[0].slots.len() as u32;
-    m.funcs[0].slots.push(MirSlot { kind: SlotKind::Local, ty: ti, name: None });
+    m.funcs[0].slots.push(MirSlot {
+        kind: SlotKind::Local,
+        ty: ti,
+        name: None,
+    });
     let c0 = m.intern_const(MirConst::I32(1));
-    m.funcs[0].blocks[0].instrs.insert(
-        0,
-        MirInstr::Const { dst: si, value: c0 },
-    );
+    m.funcs[0].blocks[0]
+        .instrs
+        .insert(0, MirInstr::Const { dst: si, value: c0 });
     if let Terminator::Branch { cond, .. } = &mut m.funcs[0].blocks[0].term {
         *cond = si;
     } else {
@@ -70,6 +82,115 @@ fn mir_admission_mutation_matrix_rejects_and_proves_change() {
     assert!(
         err.code() == "mir.branch-cond-type" || err.code() == "mir.uninitialized-read",
         "i32 branch cond rejected somewhere in admission: {err:?}"
+    );
+}
+
+/// V-09 r2 counter-control 2/3: the MODULE table family has its own
+/// allocation guard (independent of the per-function guard).
+#[test]
+fn mir_admission_module_tables_over_budget_is_resource() {
+    let mut m = MirModule::new(OwnerScope {
+        schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+        module: "m".into(),
+    });
+    // 70_000 consts blow the module-table family while no function exists.
+    for i in 0..70_000i32 {
+        m.intern_const(MirConst::I32(i));
+    }
+    let ti = m.intern_type(MirType::I32);
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: ti,
+    }));
+    let c = m.intern_const(MirConst::I32(1));
+    m.funcs.push(MirFunction {
+        owner: m.owner.clone(),
+        name: "d_main".into(),
+        sig,
+        slots: vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: ti,
+            name: None,
+        }],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Const { dst: 0, value: c }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    m.entry = 0;
+    let err = verify_mir(&m).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            auto_av_core::mir_verify::MirVerifyError::Resource {
+                kind: auto_av_core::contract::ResourceKind::TableEntries,
+                ..
+            }
+        ),
+        "module table family guard: {err:?}"
+    );
+}
+
+/// V-09 r2 counter-control 3/3: the COMBINATION upper bound. Every
+/// per-family table is under budget, but the whole-module closure exceeds
+/// the request-level verify work budget — rejected as VerifySteps.
+#[test]
+fn mir_admission_combination_bound_is_verify_steps() {
+    let mut m = MirModule::new(OwnerScope {
+        schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+        module: "combo".into(),
+    });
+    let ti = m.intern_type(MirType::I32);
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: ti,
+    }));
+    let c = m.intern_const(MirConst::I32(1));
+    // 40 functions x 31k blocks (each family ~62k entries < 65 536); the
+    // closure totals ~1.24M instructions -> beyond the 2M-step budget when
+    // counting typing + init visits.
+    for f in 0..40 {
+        let n = 31_000u32;
+        let mut blocks = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            blocks.push(MirBlock {
+                instrs: vec![MirInstr::Const { dst: 0, value: c }],
+                term: if i + 1 == n {
+                    Terminator::Return { value: 0 }
+                } else {
+                    Terminator::Jump { target: i + 1 }
+                },
+            });
+        }
+        m.funcs.push(MirFunction {
+            owner: m.owner.clone(),
+            name: format!("d_f{f:02}"),
+            sig,
+            slots: vec![MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: None,
+            }],
+            blocks,
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+    }
+    m.entry = 0;
+    let err = verify_mir(&m).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            auto_av_core::mir_verify::MirVerifyError::Resource {
+                kind: auto_av_core::contract::ResourceKind::VerifySteps,
+                ..
+            }
+        ),
+        "combination bound via request-level steps: {err:?}"
     );
 }
 
@@ -83,7 +204,10 @@ fn mir_admission_merge_half_initialized_rejected() {
     });
     let ti = m.intern_type(MirType::I32);
     let tb = m.intern_type(MirType::Bool);
-    let sig = m.intern_type(MirType::Fn(FnSig { params: vec![], result: ti }));
+    let sig = m.intern_type(MirType::Fn(FnSig {
+        params: vec![],
+        result: ti,
+    }));
     let c_true = m.intern_const(MirConst::Bool(true));
     let c1 = m.intern_const(MirConst::I32(1));
     let f = MirFunction {
@@ -91,13 +215,28 @@ fn mir_admission_merge_half_initialized_rejected() {
         name: "d_main".into(),
         sig,
         slots: vec![
-            MirSlot { kind: SlotKind::Temp, ty: tb, name: None },
-            MirSlot { kind: SlotKind::Local, ty: ti, name: Some("r".into()) },
+            MirSlot {
+                kind: SlotKind::Temp,
+                ty: tb,
+                name: None,
+            },
+            MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: Some("r".into()),
+            },
         ],
         blocks: vec![
             MirBlock {
-                instrs: vec![MirInstr::Const { dst: 0, value: c_true }],
-                term: Terminator::Branch { cond: 0, then: 1, else_: 2 },
+                instrs: vec![MirInstr::Const {
+                    dst: 0,
+                    value: c_true,
+                }],
+                term: Terminator::Branch {
+                    cond: 0,
+                    then: 1,
+                    else_: 2,
+                },
             },
             // then arm initializes r…
             MirBlock {
@@ -105,8 +244,14 @@ fn mir_admission_merge_half_initialized_rejected() {
                 term: Terminator::Jump { target: 3 },
             },
             // …the else arm does not → the merge intersection drops r.
-            MirBlock { instrs: vec![], term: Terminator::Jump { target: 3 } },
-            MirBlock { instrs: vec![], term: Terminator::Return { value: 1 } },
+            MirBlock {
+                instrs: vec![],
+                term: Terminator::Jump { target: 3 },
+            },
+            MirBlock {
+                instrs: vec![],
+                term: Terminator::Return { value: 1 },
+            },
         ],
         entry: 0,
         source_snapshot: 0,
@@ -115,7 +260,11 @@ fn mir_admission_merge_half_initialized_rejected() {
     m.funcs.push(f);
     m.entry = 0;
     let err = verify_mir(&m).unwrap_err();
-    assert_eq!(err.code(), "mir.uninitialized-read", "half-initialized merge: {err:?}");
+    assert_eq!(
+        err.code(),
+        "mir.uninitialized-read",
+        "half-initialized merge: {err:?}"
+    );
     let _ = c1;
 }
 
@@ -131,7 +280,8 @@ fn mir_lower_landed_fixtures_verify() {
         let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {}", name, e));
         let c = auto_ac_prototype::source::compile_scalar_source(&src, name, &[])
             .unwrap_or_else(|ds| panic!("{}: {:?}", name, ds));
-        let m = lower_checked(&c.checked, "d_main", 0).unwrap_or_else(|e| panic!("{}: {:?}", name, e));
+        let m =
+            lower_checked(&c.checked, "d_main", 0).unwrap_or_else(|e| panic!("{}: {:?}", name, e));
         verify_mir(&m).unwrap_or_else(|e| panic!("{}: {:?}", name, e));
     }
 }
@@ -147,12 +297,19 @@ fn mir_lower_deep_statement_nesting_is_iterative() {
     // ceiling rejection for hand-made expression trees.
     let mut src = String::from("fn main() int {\n    var x = 0\n");
     for i in 0..200 {
-        src.push_str(&format!("    if x == {} {{\n        x = {}\n    }}\n", i, i + 1));
+        src.push_str(&format!(
+            "    if x == {} {{\n        x = {}\n    }}\n",
+            i,
+            i + 1
+        ));
     }
     src.push_str("    return x\n}\n");
     let m = lower(&src);
     verify_mir(&m).expect("200 sequential if/else-joins verify");
-    assert!(m.funcs[0].blocks.len() > 400, "each if opens then/Join blocks");
+    assert!(
+        m.funcs[0].blocks.len() > 400,
+        "each if opens then/Join blocks"
+    );
 }
 
 /// Unsupported surfaces are controlled rejections, never silent fallbacks.
@@ -160,8 +317,12 @@ fn mir_lower_deep_statement_nesting_is_iterative() {
 fn mir_lower_unsupported_domain_rejected() {
     // Text-domain content is outside the av profile.
     let src = "fn main() int {\n    return 1\n}\n";
-    let c = auto_ac_prototype::source::compile_text_source(src, "t.at", &["ac.runtime.text.v1".to_string()])
-        .expect("text frontend");
+    let c = auto_ac_prototype::source::compile_text_source(
+        src,
+        "t.at",
+        &["ac.runtime.text.v1".to_string()],
+    )
+    .expect("text frontend");
     let err = lower_checked(&c.checked, "d_main", 0).unwrap_err();
     assert_eq!(err.code(), "lower.domain");
 }

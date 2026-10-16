@@ -74,7 +74,10 @@ pub enum AbcDecodeError {
 
 impl AbcDecodeError {
     fn fmt_err(code: &str, message: String) -> Self {
-        AbcDecodeError::Format { code: code.to_string(), message }
+        AbcDecodeError::Format {
+            code: code.to_string(),
+            message,
+        }
     }
 
     pub fn code(&self) -> String {
@@ -152,7 +155,13 @@ impl PageWriter {
             self.absorb(&page);
             self.pages.push(page);
         }
-        AbcBytes { version: ABC_VERSION, profile: ABC_PROFILE_CORE_I32, pages: self.pages, total_len: self.total, checksum: self.checksum }
+        AbcBytes {
+            version: ABC_VERSION,
+            profile: ABC_PROFILE_CORE_I32,
+            pages: self.pages,
+            total_len: self.total,
+            checksum: self.checksum,
+        }
     }
 }
 
@@ -210,7 +219,10 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
     w.push(ABC_MAGIC);
     put_u16(&mut w, ABC_VERSION);
     put_u16(&mut w, ABC_PROFILE_CORE_I32);
-    let has_sidecar = m.funcs.iter().any(|f| !f.spans.is_empty() || f.source_snapshot != 0);
+    let has_sidecar = m
+        .funcs
+        .iter()
+        .any(|f| !f.spans.is_empty() || f.source_snapshot != 0);
     put_u16(&mut w, if has_sidecar { FLAG_SOURCE_SIDECAR } else { 0 });
     put_u16(&mut w, 0); // reserved
     put_u32(&mut w, m.types.len() as u32);
@@ -278,7 +290,13 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         }
         put_u16(&mut w, sym.len() as u16);
         w.push(sym);
-        put_u8(&mut w, match imp.effect { Effect::Observable => 0, Effect::Pure => 1 });
+        put_u8(
+            &mut w,
+            match imp.effect {
+                Effect::Observable => 0,
+                Effect::Pure => 1,
+            },
+        );
         put_u32(&mut w, imp.sig);
     }
     // Functions.
@@ -295,7 +313,14 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         w.push(name);
         put_u32(&mut w, f.slots.len() as u32);
         for s in &f.slots {
-            put_u8(&mut w, match s.kind { SlotKind::Param => 0, SlotKind::Local => 1, SlotKind::Temp => 2 });
+            put_u8(
+                &mut w,
+                match s.kind {
+                    SlotKind::Param => 0,
+                    SlotKind::Local => 1,
+                    SlotKind::Temp => 2,
+                },
+            );
             put_u32(&mut w, s.ty);
         }
         put_u32(&mut w, f.entry);
@@ -353,7 +378,13 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
                     }
                     MirInstr::Trace { event } => {
                         put_u8(&mut w, OP_TRACE);
-                        put_u8(&mut w, match event { TraceEvent::MarkA => 1, TraceEvent::MarkB => 2 });
+                        put_u8(
+                            &mut w,
+                            match event {
+                                TraceEvent::MarkA => 1,
+                                TraceEvent::MarkB => 2,
+                            },
+                        );
                     }
                 }
             }
@@ -434,12 +465,20 @@ impl<'a> Cursor<'a> {
             });
         }
         let end = self.pos.checked_add(n).ok_or_else(|| {
-            AbcDecodeError::fmt_err("abc.decode.length-overflow", "length arithmetic overflow".to_string())
+            AbcDecodeError::fmt_err(
+                "abc.decode.length-overflow",
+                "length arithmetic overflow".to_string(),
+            )
         })?;
         if end > self.data.len() {
             return Err(AbcDecodeError::fmt_err(
                 "abc.decode.truncated",
-                format!("need {} bytes at offset {}, stream has {}", n, self.pos, self.data.len()),
+                format!(
+                    "need {} bytes at offset {}, stream has {}",
+                    n,
+                    self.pos,
+                    self.data.len()
+                ),
             ));
         }
         let s = &self.data[self.pos..end];
@@ -460,7 +499,9 @@ impl<'a> Cursor<'a> {
     }
     fn u64(&mut self) -> Result<u64, AbcDecodeError> {
         let b = self.take(8)?;
-        Ok(u64::from_le_bytes([b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7]]))
+        Ok(u64::from_le_bytes([
+            b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
+        ]))
     }
     fn i32(&mut self) -> Result<i32, AbcDecodeError> {
         Ok(self.u32()? as i32)
@@ -474,50 +515,77 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     if bytes.len() > crate::contract::MAX_INPUT_BYTES {
         return Err(AbcDecodeError::Resource {
             kind: ResourceKind::InputTooLarge,
-            message: format!("ABC input {} exceeds {}", bytes.len(), crate::contract::MAX_INPUT_BYTES),
+            message: format!(
+                "ABC input {} exceeds {}",
+                bytes.len(),
+                crate::contract::MAX_INPUT_BYTES
+            ),
         });
     }
     if bytes.len() < 4 + 2 + 2 + 2 + 2 + 5 * 4 + 8 {
-        return Err(AbcDecodeError::fmt_err("abc.decode.truncated", "header shorter than its fixed layout".to_string()));
+        return Err(AbcDecodeError::fmt_err(
+            "abc.decode.truncated",
+            "header shorter than its fixed layout".to_string(),
+        ));
     }
     // Trailer checksum over everything before the last 8 bytes.
     let body_len = bytes.len() - 8;
-    let want = u64::from_le_bytes(
-        bytes[body_len..].try_into().expect("8 bytes"),
-    );
+    let want = u64::from_le_bytes(bytes[body_len..].try_into().expect("8 bytes"));
     let got = fnv1a64(&bytes[..body_len]);
     if want != got {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.checksum",
-            format!("trailer checksum mismatch: stored {:016x}, computed {:016x}", want, got),
+            format!(
+                "trailer checksum mismatch: stored {:016x}, computed {:016x}",
+                want, got
+            ),
         ));
     }
-    let mut c = Cursor { data: &bytes[..body_len], pos: 0, steps: 0 };
+    let mut c = Cursor {
+        data: &bytes[..body_len],
+        pos: 0,
+        steps: 0,
+    };
     let magic = c.take(4)?;
     if magic != ABC_MAGIC {
-        return Err(AbcDecodeError::fmt_err("abc.decode.magic", "not an AVAB stream".to_string()));
+        return Err(AbcDecodeError::fmt_err(
+            "abc.decode.magic",
+            "not an AVAB stream".to_string(),
+        ));
     }
     let version = c.u16()?;
     if version != ABC_VERSION {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.version",
-            format!("unknown ABC version {} (this build accepts {})", version, ABC_VERSION),
+            format!(
+                "unknown ABC version {} (this build accepts {})",
+                version, ABC_VERSION
+            ),
         ));
     }
     let profile = c.u16()?;
     if profile != ABC_PROFILE_CORE_I32 {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.profile",
-            format!("unknown ABC profile id {} (this build accepts {})", profile, ABC_PROFILE_CORE_I32),
+            format!(
+                "unknown ABC profile id {} (this build accepts {})",
+                profile, ABC_PROFILE_CORE_I32
+            ),
         ));
     }
     let flags = c.u16()?;
     if flags & !FLAG_SOURCE_SIDECAR != 0 {
-        return Err(AbcDecodeError::fmt_err("abc.decode.flags", format!("unknown flag bits {:x}", flags)));
+        return Err(AbcDecodeError::fmt_err(
+            "abc.decode.flags",
+            format!("unknown flag bits {:x}", flags),
+        ));
     }
     let reserved = c.u16()?;
     if reserved != 0 {
-        return Err(AbcDecodeError::fmt_err("abc.decode.reserved", "reserved field must be zero".to_string()));
+        return Err(AbcDecodeError::fmt_err(
+            "abc.decode.reserved",
+            "reserved field must be zero".to_string(),
+        ));
     }
     let n_types = c.u32()? as usize;
     let n_consts = c.u32()? as usize;
@@ -530,23 +598,35 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         let n = c.u16()? as usize;
         let cb = c.take(n)?.to_vec();
         capabilities.push(String::from_utf8(cb).map_err(|_| {
-            AbcDecodeError::fmt_err("abc.decode.capability-utf8", "capability is not UTF-8".to_string())
+            AbcDecodeError::fmt_err(
+                "abc.decode.capability-utf8",
+                "capability is not UTF-8".to_string(),
+            )
         })?);
     }
     // Quota: counts alone are bounded by the frozen table budget (checked
     // again post-assembly by the verifier; checked HERE before allocation).
-    if n_types.saturating_add(n_consts).saturating_add(n_imports).saturating_add(n_funcs)
+    if n_types
+        .saturating_add(n_consts)
+        .saturating_add(n_imports)
+        .saturating_add(n_funcs)
         > crate::contract::MAX_TABLE_ENTRIES
     {
         return Err(AbcDecodeError::Resource {
             kind: ResourceKind::TableEntries,
-            message: format!("header table counts exceed {}", crate::contract::MAX_TABLE_ENTRIES),
+            message: format!(
+                "header table counts exceed {}",
+                crate::contract::MAX_TABLE_ENTRIES
+            ),
         });
     }
 
     let mut module = MirModule {
         profile: crate::contract::AV_PROFILE.to_string(),
-        owner: OwnerScope { schema: String::new(), module: String::new() },
+        owner: OwnerScope {
+            schema: String::new(),
+            module: String::new(),
+        },
         is_unit: n_funcs == 1,
         types: Vec::with_capacity(n_types.min(1024)),
         consts: Vec::with_capacity(n_consts.min(1024)),
@@ -567,7 +647,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             TY_FN => {
                 let n = c.u32()? as usize;
                 if n > u8::MAX as usize {
-                    return Err(AbcDecodeError::fmt_err("abc.decode.sig-arity", format!("signature arity {} exceeds wire width", n)));
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.decode.sig-arity",
+                        format!("signature arity {} exceeds wire width", n),
+                    ));
                 }
                 let mut params = Vec::with_capacity(n);
                 for _ in 0..n {
@@ -577,7 +660,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 module.types.push(MirType::Fn(FnSig { params, result }));
             }
             other => {
-                return Err(AbcDecodeError::fmt_err("abc.decode.type-tag", format!("unknown type tag {}", other)));
+                return Err(AbcDecodeError::fmt_err(
+                    "abc.decode.type-tag",
+                    format!("unknown type tag {}", other),
+                ));
             }
         }
     }
@@ -589,12 +675,18 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             1 => {
                 let b = c.u8()?;
                 if b > 1 {
-                    return Err(AbcDecodeError::fmt_err("abc.decode.bool", format!("boolean constant byte {} is not 0/1", b)));
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.decode.bool",
+                        format!("boolean constant byte {} is not 0/1", b),
+                    ));
                 }
                 module.consts.push(MirConst::Bool(b == 1));
             }
             other => {
-                return Err(AbcDecodeError::fmt_err("abc.decode.const-tag", format!("unknown const tag {}", other)));
+                return Err(AbcDecodeError::fmt_err(
+                    "abc.decode.const-tag",
+                    format!("unknown const tag {}", other),
+                ));
             }
         }
     }
@@ -603,34 +695,46 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         let n = c.u16()? as usize;
         let sym_bytes = c.take(n)?.to_vec();
         let symbol = String::from_utf8(sym_bytes).map_err(|_| {
-            AbcDecodeError::fmt_err("abc.decode.symbol-utf8", "import symbol is not UTF-8".to_string())
+            AbcDecodeError::fmt_err(
+                "abc.decode.symbol-utf8",
+                "import symbol is not UTF-8".to_string(),
+            )
         })?;
         let eff = c.u8()?;
         let effect = match eff {
             0 => Effect::Observable,
             1 => Effect::Pure,
             other => {
-                return Err(AbcDecodeError::fmt_err("abc.decode.effect", format!("unknown effect byte {}", other)));
+                return Err(AbcDecodeError::fmt_err(
+                    "abc.decode.effect",
+                    format!("unknown effect byte {}", other),
+                ));
             }
         };
         let sig = c.u32()?;
-        module.imports.push(MirImport { symbol, effect, sig });
+        module.imports.push(MirImport {
+            symbol,
+            effect,
+            sig,
+        });
     }
     // Functions.
     let mut sidecar_needed = flags & FLAG_SOURCE_SIDECAR != 0;
-    let mut raw_funcs: Vec<(TypeIdx, String, Vec<MirSlot>, BlockId, Vec<MirBlock>)> = Vec::with_capacity(n_funcs);
-    // Per-TABLE-FAMILY probe (contract-decision §6 r1.1): module tables were
-    // checked above; each FUNCTION's slot/block/instruction table is checked
+    let mut raw_funcs: Vec<(TypeIdx, String, Vec<MirSlot>, BlockId, Vec<MirBlock>)> =
+        Vec::with_capacity(n_funcs);
+    // Per-TABLE-FAMILY probe (plan §3 r2): module tables were checked in
+    // the header; each FUNCTION's slot/block/instruction table is checked
     // at its own boundary — never accumulated across the whole module.
-    let mut table_probe = n_types + n_consts + n_imports + n_funcs;
-    let _ = table_probe;
-    let mut fn_probe: usize = 0;
+    let mut fn_probe: usize;
     for _ in 0..n_funcs {
         let sig = c.u32()?;
         let nlen = c.u16()? as usize;
         let name_bytes = c.take(nlen)?.to_vec();
         let name = String::from_utf8(name_bytes).map_err(|_| {
-            AbcDecodeError::fmt_err("abc.decode.name-utf8", "function name is not UTF-8".to_string())
+            AbcDecodeError::fmt_err(
+                "abc.decode.name-utf8",
+                "function name is not UTF-8".to_string(),
+            )
         })?;
         let nslots = c.u32()? as usize;
         fn_probe = nslots;
@@ -642,11 +746,18 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 1 => SlotKind::Local,
                 2 => SlotKind::Temp,
                 other => {
-                    return Err(AbcDecodeError::fmt_err("abc.decode.slot-kind", format!("unknown slot kind {}", other)));
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.decode.slot-kind",
+                        format!("unknown slot kind {}", other),
+                    ));
                 }
             };
             let ty = c.u32()?;
-            slots.push(MirSlot { kind, ty, name: None });
+            slots.push(MirSlot {
+                kind,
+                ty,
+                name: None,
+            });
         }
         let entry_block = c.u32()?;
         let nblocks = c.u32()? as usize;
@@ -660,7 +771,9 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                     kind: ResourceKind::TableEntries,
                     message: format!(
                         "function `{}` table entries {} exceed the frozen budget {}",
-                        name, fn_probe, crate::contract::MAX_TABLE_ENTRIES
+                        name,
+                        fn_probe,
+                        crate::contract::MAX_TABLE_ENTRIES
                     ),
                 });
             }
@@ -693,7 +806,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                             BIN_EQ => BinOp::EqI32,
                             BIN_NE => BinOp::NeI32,
                             other => {
-                                return Err(AbcDecodeError::fmt_err("abc.decode.bin-subop", format!("unknown binary sub-opcode {}", other)));
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.bin-subop",
+                                    format!("unknown binary sub-opcode {}", other),
+                                ));
                             }
                         };
                         let dst = c.u32()?;
@@ -707,7 +823,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                             UN_NEG => UnOp::NegI32,
                             UN_NOT => UnOp::NotBool,
                             other => {
-                                return Err(AbcDecodeError::fmt_err("abc.decode.un-subop", format!("unknown unary sub-opcode {}", other)));
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.un-subop",
+                                    format!("unknown unary sub-opcode {}", other),
+                                ));
                             }
                         };
                         let dst = c.u32()?;
@@ -720,7 +839,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                             0 => CalleeRef::Func(c.u32()?),
                             1 => CalleeRef::Import(c.u32()?),
                             other => {
-                                return Err(AbcDecodeError::fmt_err("abc.decode.callee-kind", format!("unknown callee kind {}", other)));
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.callee-kind",
+                                    format!("unknown callee kind {}", other),
+                                ));
                             }
                         };
                         let dst = c.u32()?;
@@ -737,13 +859,19 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                             1 => TraceEvent::MarkA,
                             2 => TraceEvent::MarkB,
                             other => {
-                                return Err(AbcDecodeError::fmt_err("abc.decode.trace-event", format!("unknown trace event {}", other)));
+                                return Err(AbcDecodeError::fmt_err(
+                                    "abc.decode.trace-event",
+                                    format!("unknown trace event {}", other),
+                                ));
                             }
                         };
                         MirInstr::Trace { event }
                     }
                     other => {
-                        return Err(AbcDecodeError::fmt_err("abc.decode.opcode", format!("unknown opcode {:#04x}", other)));
+                        return Err(AbcDecodeError::fmt_err(
+                            "abc.decode.opcode",
+                            format!("unknown opcode {:#04x}", other),
+                        ));
                     }
                 };
                 instrs.push(instr);
@@ -759,7 +887,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 }
                 TERM_RETURN => Terminator::Return { value: c.u32()? },
                 other => {
-                    return Err(AbcDecodeError::fmt_err("abc.decode.term-opcode", format!("unknown terminator opcode {:#04x}", other)));
+                    return Err(AbcDecodeError::fmt_err(
+                        "abc.decode.term-opcode",
+                        format!("unknown terminator opcode {:#04x}", other),
+                    ));
                 }
             };
             blocks.push(MirBlock { instrs, term });
@@ -772,7 +903,11 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     if sidecar_needed {
         let sc_len = c.u32()? as usize;
         let sc = c.take(sc_len)?;
-        let mut sc_cur = Cursor { data: sc, pos: 0, steps: 0 };
+        let mut sc_cur = Cursor {
+            data: sc,
+            pos: 0,
+            steps: 0,
+        };
         for _ in 0..n_funcs {
             let snap = sc_cur.u64()?;
             let nspans = sc_cur.u32()? as usize;
@@ -796,13 +931,19 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     if c.pos != c.data.len() {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.trailing-bytes",
-            format!("{} trailing bytes after the declared layout", c.data.len() - c.pos),
+            format!(
+                "{} trailing bytes after the declared layout",
+                c.data.len() - c.pos
+            ),
         ));
     }
     sidecar_needed = false;
     let _ = sidecar_needed;
 
-    let owner = OwnerScope { schema: crate::contract::ABC_SCHEMA.to_string(), module: String::new() };
+    let owner = OwnerScope {
+        schema: crate::contract::ABC_SCHEMA.to_string(),
+        module: String::new(),
+    };
     module.owner = owner;
     for (fi, (sig, name, slots, entry_block, blocks)) in raw_funcs.into_iter().enumerate() {
         module.funcs.push(MirFunction {
@@ -816,5 +957,9 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             spans: span_tables[fi].clone(),
         });
     }
-    Ok(DecodedAbc { version, profile, module })
+    Ok(DecodedAbc {
+        version,
+        profile,
+        module,
+    })
 }

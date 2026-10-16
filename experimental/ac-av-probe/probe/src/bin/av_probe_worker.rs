@@ -1,16 +1,20 @@
 //! PLAN-798 bounded worker: cross-process restore + re-verify + execute.
 //!
-//! `restore-run` opens the managed store, loads the module manifest and its
-//! ABC units BY ARTIFACT ID (the store's address admission guards every
-//! read), re-validates every envelope against the expected producer/schema/
-//! owner/stage, re-decodes and re-verifies each unit, re-binds diagnostics
-//! sidecars, assembles + verifies the closure and executes the entry. It
-//! never receives or reads the source, never consults expected outputs, and
-//! prints one JSON result line.
-//!
-//! `bench-turnaround` drives the six-scenario sample loop for the
-//! turnaround tier (PLAN-798 §5.5) against a fixed 256 KiB / 100-function
-//! load; raw samples print as JSONL for the report script.
+//! Subcommands:
+//! - `restore-run`: open the managed store, load the module manifest and its
+//!   ABC units BY ARTIFACT ID (the store's address admission guards every
+//!   read), re-validate every envelope, re-decode and re-verify each unit,
+//!   re-bind diagnostics sidecars, assemble + verify the closure, execute
+//!   the entry. Never receives the source; prints one JSON result line.
+//! - `request`: ONE driver request in THIS fresh process (restart-scenario
+//!   entrypoint); prints the outcome JSON and exits 0 only on success.
+//! - `gc-loop`: run store GC repeatedly until a stop file appears
+//!   (concurrent-GC scenario driver).
+//! - `bench-turnaround`: the six-scenario turnaround tier (plan §5.5 r2
+//!   semantics). Enforces the hard gate: `--gate-ms` is the enforced P95
+//!   bound; `--gate-ms 0` MUST fail (review F798-R1-03 countercontrol).
+//!   Writes raw JSONL samples, prints a REAL summary object, exits non-zero
+//!   on any gate/validation failure.
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -23,6 +27,8 @@ fn main() {
     }
     match args[0].as_str() {
         "restore-run" => restore_run(&args[1..]),
+        "request" => request(&args[1..]),
+        "gc-loop" => gc_loop(&args[1..]),
         "bench-turnaround" => bench_turnaround(&args[1..]),
         other => {
             eprintln!("unknown subcommand `{}`", other);
@@ -32,8 +38,10 @@ fn main() {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: av-probe-worker restore-run --store DIR --owner NAME --entry FN --manifest-artifact ID [--snapshot HEX]");
-    eprintln!("       av-probe-worker bench-turnaround --samples N --out FILE");
+    eprintln!("usage: av_probe_worker restore-run --store DIR --owner NAME --entry FN --manifest-artifact ID [--snapshot HEX]");
+    eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
+    eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
+    eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
     exit(2)
 }
 
@@ -72,6 +80,71 @@ fn restore_run(args: &[String]) -> ! {
     exit(if outcome.executed_ok { 0 } else { 4 })
 }
 
+/// One request in a fresh process. The wall time covers the full
+/// request → outcome span inside this process (store open included).
+fn request(args: &[String]) -> ! {
+    let store_dir = flag(args, "--store").unwrap_or_else(|| usage());
+    let src_file = flag(args, "--src-file").unwrap_or_else(|| usage());
+    let entry = flag(args, "--entry").unwrap_or_else(|| usage());
+    let project = flag(args, "--project").unwrap_or_else(|| "restart".into());
+    let caps: Vec<String> = flag(args, "--caps")
+        .map(|c| {
+            c.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let src = std::fs::read_to_string(&src_file).unwrap_or_else(|e| {
+        eprintln!("read {}: {}", src_file, e);
+        exit(2)
+    });
+    let started = std::time::Instant::now();
+    let mut d = auto_av_probe::driver::Driver::with_store(&PathBuf::from(store_dir), &project)
+        .unwrap_or_else(|e| {
+            eprintln!("store: {}", e);
+            exit(3)
+        });
+    let r = d.request(&src, &entry, &caps);
+    let wall_ms = started.elapsed().as_secs_f64() * 1000.0;
+    let payload = serde_json::json!({
+        "wall_ms": wall_ms,
+        "ok": r.ok(),
+        "value": r.value_i32(),
+        "diag": r.diag.as_ref().map(|d| format!("{}:{}", d.stage, d.code)),
+        "counters": r.counters.iter().map(|(k, v)| (k.clone(), *v)).collect::<std::collections::BTreeMap<String, u64>>(),
+        "source_hash": r.source_hash,
+    });
+    let mut line = serde_json::to_string(&payload).unwrap_or_default();
+    line.push('\n');
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(if r.ok() { 0 } else { 4 })
+}
+
+/// Repeated GC until the stop file appears (real cross-process concurrency
+/// against requests in other processes).
+fn gc_loop(args: &[String]) -> ! {
+    let store_dir = flag(args, "--store").unwrap_or_else(|| usage());
+    let stop_file = flag(args, "--stop-file").unwrap_or_else(|| usage());
+    let interval_ms: u64 = flag(args, "--interval-ms")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(25);
+    let store = ac_artifact_probe::store::ManagedStore::open(&PathBuf::from(store_dir))
+        .unwrap_or_else(|e| {
+            eprintln!("store: {}", e);
+            exit(3)
+        });
+    let cfg = ac_artifact_probe::store::gc::gc_config_default();
+    let mut passes = 0u64;
+    while !std::path::Path::new(&stop_file).exists() {
+        let _ = ac_artifact_probe::store::gc::run_gc(&store, cfg);
+        passes += 1;
+        std::thread::sleep(std::time::Duration::from_millis(interval_ms));
+    }
+    eprintln!("gc-loop: {} passes", passes);
+    exit(0)
+}
+
 fn bench_turnaround(args: &[String]) -> ! {
     let samples: usize = flag(args, "--samples")
         .and_then(|s| s.parse().ok())
@@ -80,22 +153,55 @@ fn bench_turnaround(args: &[String]) -> ! {
         .and_then(|s| s.parse().ok())
         .unwrap_or(1000.0);
     let out_path = flag(args, "--out").unwrap_or_else(|| "-".into());
-    let load = auto_av_probe::load256::generate();
-    let edited = auto_av_probe::load256::generate_with(true);
-    let conflicted = auto_av_probe::load256::edit_signature_conflict(&load.source);
+    let self_exe = std::env::current_exe().expect("self exe");
+
+    // Worker private-bytes delta (plan §3/§5.5 r2): measured across the
+    // whole bench in THIS process.
+    #[cfg(windows)]
+    let mem0 = ac_artifact_probe::sysinfo::current_process_memory();
+
+    let bench = auto_av_probe::bench::BenchInputs {
+        load: auto_av_probe::load256::generate(),
+        conflict: auto_av_probe::load256::edit_signature_conflict(
+            &auto_av_probe::load256::generate().source,
+        ),
+        samples,
+        gate_ms,
+        self_exe: self_exe.clone(),
+        revision_target: 256 * 1024,
+    };
+    let (rows, mut summary) = auto_av_probe::bench::run_six_scenarios(&bench);
+
     let mut out: Box<dyn Write> = if out_path == "-" {
         Box::new(std::io::stdout())
     } else {
         Box::new(std::fs::File::create(&out_path).expect("out file"))
     };
-    let root = std::env::temp_dir().join(format!("av798-bench-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
-    let result = auto_av_probe::bench::run_six_scenarios(&root, &load, &edited, &conflicted, samples);
-    for line in result {
-        let mut l = serde_json::to_string(&line).unwrap_or_default();
+    for row in &rows {
+        let mut l = serde_json::to_string(row).unwrap_or_default();
         l.push('\n');
         out.write_all(l.as_bytes()).ok();
     }
-    let _ = std::fs::remove_dir_all(&root);
-    exit(0)
+
+    #[cfg(windows)]
+    {
+        let mem1 = ac_artifact_probe::sysinfo::current_process_memory();
+        summary.worker_private_bytes_delta =
+            Some((mem1.private_bytes as f64 - mem0.private_bytes as f64).max(0.0));
+        summary.worker_private_bytes_ok = summary
+            .worker_private_bytes_delta
+            .map(|d| d <= 128.0 * 1024.0 * 1024.0);
+    }
+
+    // Real summary + gate enforcement (F798-R1-03): gate failures make the
+    // exit non-zero. `--gate-ms 0` always fails by construction.
+    let failures = auto_av_probe::bench::validate_and_gate(&rows, &summary, samples);
+    let mut summary_value = serde_json::to_value(&summary).unwrap_or_default();
+    if let serde_json::Value::Object(map) = &mut summary_value {
+        map.insert("hard_gate_failures".into(), serde_json::json!(failures));
+    }
+    let mut line = serde_json::to_string(&summary_value).unwrap_or_default();
+    line.push('\n');
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(if failures.is_empty() { 0 } else { 5 })
 }

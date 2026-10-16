@@ -16,7 +16,10 @@ struct Lcg(u64);
 
 impl Lcg {
     fn next(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((self.0 >> 33) & 0xffff) as u32
     }
     fn between(&mut self, lo: u32, hi: u32) -> i32 {
@@ -24,6 +27,7 @@ impl Lcg {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct Load256 {
     pub source: String,
     pub expected_main: i32,
@@ -32,16 +36,23 @@ pub struct Load256 {
 /// Generate the frozen 256 KiB load. `body_edit` flips fn_037's first
 /// multiplier (+1), producing a different but still-correct expected.
 pub fn generate_with(body_edit: bool) -> Load256 {
-    generate_with_sized(body_edit, 256 * 1024)
+    generate_revision(u32::from(body_edit))
+}
+
+/// Revision `n` (0 = base): fn_037's first multiplier gains `n`. Distinct
+/// revisions produce distinct sources AND distinct independent expected
+/// values — the body-edit scenario requests one per sample (plan §5.5 r2).
+pub fn generate_revision(n: u32) -> Load256 {
+    generate_with_sized(n, 256 * 1024)
 }
 
 pub fn generate() -> Load256 {
-    generate_with(false)
+    generate_revision(0)
 }
 
 /// Size-parameterized core: ALWAYS 100 caller functions (fn_037 exists at
 /// every scale); the per-body block count shrinks for small targets.
-pub fn generate_with_sized(body_edit: bool, target: usize) -> Load256 {
+pub fn generate_with_sized(rev: u32, target: usize) -> Load256 {
     let target = target.max(16 * 1024);
     let mut src = String::with_capacity(target + 8192);
     let mut expected: i32 = 0;
@@ -67,8 +78,10 @@ pub fn generate_with_sized(body_edit: bool, target: usize) -> Load256 {
     let mut main_calls = String::new();
     for i in 0..100usize {
         let x = (i as i32 % 7) + 1;
-        let a0 = rng.between(3, 40) + if body_edit && i == 37 { 1 } else { 0 };
-        src.push_str(&format!("fn fn_{i:03}(x int) int {{\n    var acc = x * {a0}\n"));
+        let a0 = rng.between(3, 40) + if i == 37 { rev as i32 } else { 0 };
+        src.push_str(&format!(
+            "fn fn_{i:03}(x int) int {{\n    var acc = x * {a0}\n"
+        ));
         let mut acc = x * a0;
         for _ in 0..blocks_per_fn {
             let b = rng.between(2, 60);
@@ -100,7 +113,10 @@ pub fn generate_with_sized(body_edit: bool, target: usize) -> Load256 {
     source.push_str("fn main() int {\n    var total = 0\n");
     source.push_str(&main_calls);
     source.push_str("    return total\n}\n");
-    Load256 { source, expected_main: expected }
+    Load256 {
+        source,
+        expected_main: expected,
+    }
 }
 
 /// The frozen signature-conflict edit: fn_leaf_1 gains a parameter, turning
@@ -111,6 +127,9 @@ pub fn edit_signature_conflict(base: &str) -> String {
         "fn fn_leaf_1(v int, w int) int {",
         1,
     );
-    assert!(edited != base, "load256: fn_leaf_1 marker missing — frozen load drifted");
+    assert!(
+        edited != base,
+        "load256: fn_leaf_1 marker missing — frozen load drifted"
+    );
     edited
 }

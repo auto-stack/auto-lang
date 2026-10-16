@@ -1,55 +1,52 @@
-# PLAN-798 T-05 周转基准报告（六场景 × 30 样本，release）
+# PLAN-798 T-05 周转基准报告（r2，六场景 × 30 样本，release，硬门强制执行）
 
-2026-10-16，参考 Windows 机（本机）。负载：`load256::generate()` 冻结件
-（100 caller + 14 leaf + main，267 KiB，独立闭式期望 2665）；编辑位 fn_037 首
-乘子；签名冲突 = fn_leaf_1 增参。原始样本：`turnaround-raw.jsonl`（180 行，
-逐样本 wall/命中/重算/执行计数/失败态，可复验）。
+2026-10-16（r2 修复轮，闭合复审 F798-R1-03/04/05）。负载：`load256::generate()`
+冻结件（100 caller + 14 leaf + main，≈267 KiB，独立闭式期望）；编辑场景每样本
+请求**当轮新修订**（fn_037 首乘子 +1..+30，各有独立期望）。原始样本
+`turnaround-raw.jsonl`（180 行，逐样本 wall/输入 hash/计数/失败态）；汇总
+`turnaround-summary.json` 由 worker 生成（真实结构，含 gate 断言结果）。
 
-| 场景 | P50 (ms) | P95 (ms) | P99 (ms) | max | 失败 | 平均 ABC 命中 | 平均 mir_build | 平均 av_execute |
-|---|---|---|---|---|---|---|---|---|
-| fresh | 782.0 | 841.6 | 1295.7 | 1295.7 | 0 | 111.2 | 3.83 | 1 |
-| same-process-hot | 774.9 | 831.5 | 962.0 | 962.0 | 0 | 115 | 0 | 1 |
-| restart-disk-hot（含跨工程） | 781.0 | 821.8 | 886.7 | 886.7 | 0 | 115 | 0 | 1 |
-| **single-body-edit** | **753.2** | **829.4** | 888.4 | 888.4 | **0** | 115.0 | 0.03 | **1** |
-| **signature-conflict** | **37.9** | **41.4** | 41.5 | 41.5 | **0** | — | 0 | 0（正确诊断态） |
-| gc-concurrent | 940.0 | 1159.2 | 1182.8 | 1182.8 | 0 | 115 | 0 | 1 |
+## 硬门（§5.5 r2：由正式入口强制执行）
 
-## 硬门（§5.5 冻结语义）
+**PASS（exit 0）**。单函数 body 编辑：请求→当前正确 AV 结果
+P95 = **506.5 ms < 1000 ms**（30/30，每样本独立输入 hash 与独立期望）；签名冲突
+编辑：请求→目标诊断 P95 = **21.3 ms < 1000 ms**（30/30，全部命中
+`frontend:source.argument`，不接受任意诊断）。**反控**：`--gate-ms 0` 故障注入
+实测 exit 5（失败原因逐条列于汇总）——门真实接线。
 
-**PASS**。warm 会话单函数 body 编辑：请求→当前正确 AV 结果
-P95 = **829.4 ms < 1000 ms**（30/30 样本值与独立期望一致，失败 0）；
-签名冲突编辑：请求→当前正确诊断 P95 = **41.4 ms < 1000 ms**（30/30 正确
-frontend 诊断，失败 0）。
+| 场景 | P50 (ms) | P95 (ms) | P99 (ms) | 失败 | 场景条件（r2 强制） |
+|---|---|---|---|---|---|
+| fresh | 3752.6 | 4424.5 | 4523.0 | 0 | 每样本独立冷 store |
+| same-process-hot | 435.2 | 582.2 | 587.4 | 0 | 同进程同 store |
+| restart-disk-hot | 515.3 | 743.6 | 791.9 | 0 | 每样本新进程（跨工程交替） |
+| **single-body-edit** | **418.1** | **506.5** | 543.0 | **0** | 每样本当轮新修订 |
+| **signature-conflict** | **18.6** | **21.3** | 23.1 | **0** | 仅目标 frontend 诊断计 ok |
+| gc-concurrent | 431.2 | 814.8 | 816.8 | 0 | GC 进程与请求真并发 |
 
-含当次必要前端（整模块重查，如实计量——267 KiB 词法/解析/resolve/typecheck/
-verify 约占每请求墙钟的主要部分）/verify/依赖/cache 读取解码/MIR/ABC/AV/比较；
-未扣任何 IPC/等待（本 tier 为 Rust 定向 runner；正式 AutoDown adapter 端到端
-待 T-07 后按同负载重测）。
+worker private-bytes 增量 = **8.6 MiB ≤ 128 MiB**（bench 全程实测，计入 gate）。
 
-## 命中/重算事实
+## 命中/重算事实（r2 计数分离）
 
-- 命中请求：mir_build=0、abc_emit=0、**av_execute=1**（命中仍执行并重新比较，
-  不缓存 PASS/运行结果）。
-- body 编辑：仅 fn_037 单元重算（首轮 1 miss，其后该变体亦命中），
-  其余 114 单元复用——"未读 body 的 caller 代码可复用"成立。
-- 签名冲突：frontend 诊断态（stage=frontend），非崩溃、非 trap。
-- fresh 场景内 30 样本共享 store 根，故样例 2+ 为命中态；真正的全冷构建 =
-  每场景首样本（P99 1295.7ms 反映首个全 miss 样本）。
+- 编辑场景每样本：`mir_lower_modules=1`（整模块 lowering 恰一次，如实）、
+  `mir_units_persisted=1`、`abc_units_emitted=1`（仅被改单元链重键）、其余 114
+  单元命中复用；`closure_encodes=1`（闭包 codec 如实计入请求墙）。
+- 命中请求：lowering/持久化/发射全部为 0，`av_execute=1`（仍执行并重新比较）。
+- fresh（真冷）P95 4.4s 如实另报：冷 store 下 115 单元全 miss + 首次前端；
+  不在硬门定义内（§5.5 硬门仅 body 编辑/签名冲突两路径）。
 
-## 边界与如实计量说明
+## 边界与如实计量
 
-- gc-concurrent P95 1159ms 超过 1000ms：该场景不在硬门定义内（硬门仅 body
-  编辑与签名冲突两路径）；GC 竞争开销按 §5.5 单列报告。
-- p99/max 反映冷启动与 GC 交叠样本；未删除任何失败样本（本报告失败数为 0）。
-- native 冷构建/全冷/广泛失效按 §5.5 另报（native 参考单次构建见
-  `native_trace_parity`/vertical 测试；非本硬门组成）。
-- debug 档冒烟（3 样本/场景）在 `av_turnaround_six_scenarios_smoke`。
+- gc-concurrent P95 814.8ms：真并发 GC（独立 `gc-loop` 进程，20ms 间隔）与请求
+  重叠的开销，不在硬门内，如实报告。
+- 本 tier 为 Rust 定向 runner；正式 AutoDown adapter 端到端（T-07 后按同负载
+  重测）仍 pending，不以本报告冒充。
+- debug 档冒烟（3 样本/场景，INF 门只验场景/样本/诊断校验）：
+  `av_turnaround_six_scenarios_smoke`。
 
 ## 复验
 
 ```
 powershell -File scripts/verify-ac-av-798.ps1 -Scope turnaround -Samples 30
+# 反控（必须失败，exit 5）：
+experimental/ac-av-probe/target/release/av_probe_worker.exe bench-turnaround --samples 1 --gate-ms 0 --out -
 ```
-
-脚本构建 release worker、跑六场景、断言硬门并落盘 raw/summary；退出码非 0 即
-门失败。

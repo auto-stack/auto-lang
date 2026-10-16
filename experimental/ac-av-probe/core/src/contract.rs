@@ -175,9 +175,18 @@ impl ResourceKind {
 /// two admission rejections happen before execution starts).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExecOutcome {
-    Success { value: Value, steps: u64 },
-    Trap { kind: TrapKind, span: Option<SpanInfo> },
-    Resource { kind: ResourceKind, message: String },
+    Success {
+        value: Value,
+        steps: u64,
+    },
+    Trap {
+        kind: TrapKind,
+        span: Option<SpanInfo>,
+    },
+    Resource {
+        kind: ResourceKind,
+        message: String,
+    },
     Cancelled,
     /// Executor-internal failure (budget bookkeeping etc.) — never used to
     /// absorb a language trap or a resource classification.

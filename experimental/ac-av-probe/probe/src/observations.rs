@@ -28,7 +28,10 @@ pub struct Obs {
 
 impl Obs {
     pub fn new() -> Self {
-        Obs { t0: Some(Instant::now()), ..Default::default() }
+        Obs {
+            t0: Some(Instant::now()),
+            ..Default::default()
+        }
     }
 
     pub fn counter(&mut self, name: &str, delta: u64) {
@@ -44,7 +47,12 @@ impl Obs {
     }
 
     /// Record a span measured by the given closure.
-    pub fn span<T>(&mut self, name: &str, parent: Option<&str>, f: impl FnOnce(&mut Self) -> T) -> T {
+    pub fn span<T>(
+        &mut self,
+        name: &str,
+        parent: Option<&str>,
+        f: impl FnOnce(&mut Self) -> T,
+    ) -> T {
         let started = Instant::now();
         let start_off = started - self.t0.expect("obs initialized");
         let out = f(self);
@@ -126,8 +134,16 @@ pub fn summarize(scenario: &str, samples: &[f64]) -> ScenarioSummary {
         p50_ms: percentile_ms(&ok, 50.0),
         p95_ms: percentile_ms(&ok, 95.0),
         p99_ms: percentile_ms(&ok, 99.0),
-        min_ms: ok.iter().cloned().fold(f64::INFINITY, f64::min).min(f64::INFINITY),
+        min_ms: ok
+            .iter()
+            .cloned()
+            .fold(f64::INFINITY, f64::min)
+            .min(f64::INFINITY),
         max_ms: ok.iter().cloned().fold(0.0, f64::max),
-        mean_ms: if ok.is_empty() { 0.0 } else { ok.iter().sum::<f64>() / ok.len() as f64 },
+        mean_ms: if ok.is_empty() {
+            0.0
+        } else {
+            ok.iter().sum::<f64>() / ok.len() as f64
+        },
     }
 }

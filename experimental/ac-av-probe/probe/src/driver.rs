@@ -55,7 +55,10 @@ impl RequestOutcome {
     /// The i32 result when the request executed successfully.
     pub fn value_i32(&self) -> Option<i32> {
         match &self.av {
-            Some(ExecOutcome::Success { value: Value::I32(v), .. }) => Some(*v),
+            Some(ExecOutcome::Success {
+                value: Value::I32(v),
+                ..
+            }) => Some(*v),
             _ => None,
         }
     }
@@ -75,16 +78,21 @@ impl Driver {
     /// A driver WITHOUT a store: pure pipeline (no cache), for admission /
     /// semantics tiers and cross-checks.
     pub fn ephemeral() -> Driver {
-        Driver { store: None, project: String::new(), owner_override: None }
+        Driver {
+            store: None,
+            project: String::new(),
+            owner_override: None,
+        }
     }
 
     /// A driver over a real managed store root (created when absent).
-    pub fn with_store(
-        root: &std::path::Path,
-        project: &str,
-    ) -> Result<Driver, String> {
+    pub fn with_store(root: &std::path::Path, project: &str) -> Result<Driver, String> {
         let store = open_store(root).map_err(|e| e.to_string())?;
-        Ok(Driver { store: Some(store), project: project.to_string(), owner_override: None })
+        Ok(Driver {
+            store: Some(store),
+            project: project.to_string(),
+            owner_override: None,
+        })
     }
 
     pub fn set_owner(&mut self, owner: Option<String>) {
@@ -96,8 +104,7 @@ impl Driver {
         let mut obs = Obs::new();
         let snapshot = fnv1a64(src.as_bytes());
         let source_hash = format!("{:016x}", snapshot);
-        let (diag, av, trace, manifest) =
-            self.request_inner(src, entry, caps, snapshot, &mut obs);
+        let (diag, av, trace, manifest) = self.request_inner(src, entry, caps, snapshot, &mut obs);
         RequestOutcome {
             diag,
             av,
@@ -137,7 +144,10 @@ impl Driver {
                 o.counter("frontend_reject", 1);
                 StageDiag {
                     stage: "frontend".to_string(),
-                    code: d.as_ref().map(|x| x.code.clone()).unwrap_or_else(|| "source.unknown".into()),
+                    code: d
+                        .as_ref()
+                        .map(|x| x.code.clone())
+                        .unwrap_or_else(|| "source.unknown".into()),
                     message: d
                         .map(|x| x.message.clone())
                         .unwrap_or_else(|| "frontend failed without a diagnostic".into()),
@@ -150,7 +160,10 @@ impl Driver {
         };
         let checked: &CheckedModule = &compiled.checked;
         let module = &checked.bundle().modules[0];
-        let owner = self.owner_override.clone().unwrap_or_else(|| module.id_text.clone());
+        let owner = self
+            .owner_override
+            .clone()
+            .unwrap_or_else(|| module.id_text.clone());
         let caps_fp = caps_fingerprint(caps);
 
         // Function bodies in def order, with canonical fingerprints.
@@ -176,8 +189,10 @@ impl Driver {
         }
         obs.set_counter("units", infos.len() as u64);
 
-        // ---- per-unit cache lookup --------------------------------------
+        // ---- per-unit cache lookup (A09 ABC layer first) ------------------
         let mut hits = 0u64;
+        let mut staging_now: usize = 0;
+        let mut staging_peak: usize = 0;
         if let Some(store) = self.store.as_ref() {
             let expect = EnvelopeIdentity::abc(&owner);
             for info in infos.iter_mut() {
@@ -185,6 +200,8 @@ impl Driver {
                 match get_enveloped_opt(store, &key, "A09", &expect) {
                     Ok(Some(payload)) => {
                         hits += 1;
+                        staging_now += payload.len();
+                        staging_peak = staging_peak.max(staging_now);
                         info.abc_hit = Some(payload);
                     }
                     Ok(None) => {}
@@ -205,13 +222,103 @@ impl Driver {
                 }
             }
         }
-        let misses = infos.iter().filter(|i| i.abc_hit.is_none()).count() as u64;
+        let abc_misses: Vec<usize> = infos
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| i.abc_hit.is_none())
+            .map(|(n, _)| n)
+            .collect();
         obs.set_counter("cache_hit_abc", hits);
-        obs.set_counter("cache_miss_abc", misses);
+        obs.set_counter("cache_miss_abc", abc_misses.len() as u64);
 
-        // ---- misses: lower + verify + emit + store -----------------------
+        // ---- A08 MIR layer: restore-verify-reuse before any lowering -------
+        // A MIR hit re-enters verify_mir on restore (never trusted) and
+        // feeds ABC emission without re-lowering (F798-R1-06 wiring).
+        let mir_owner = OwnerScope {
+            schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+            module: owner.clone(),
+        };
+        let mut mir_restored = 0u64;
+        let mut mir_units: Vec<(usize, MirModule)> = Vec::new();
+        let mut still_missing: Vec<usize> = abc_misses.clone();
+        if let Some(store) = self.store.as_ref() {
+            let expect = EnvelopeIdentity::mir(&owner, 0);
+            let mut remaining: Vec<usize> = Vec::new();
+            for idx in abc_misses.iter() {
+                let idx = *idx;
+                let info = &infos[idx];
+                let key = crate::cache::mir_unit_key(&owner, &info.name, &info.fp, &caps_fp);
+                match get_enveloped_opt(store, &key, "A08", &expect) {
+                    Ok(Some(payload)) => {
+                        staging_now += payload.len();
+                        staging_peak = staging_peak.max(staging_now);
+                        let decoded = match decode_abc(&payload) {
+                            Ok(d) => d,
+                            Err(e) => {
+                                return (
+                                    Some(StageDiag {
+                                        stage: "mir-load".to_string(),
+                                        code: e.code(),
+                                        message: format!("unit `{}`: {:?}", info.name, e),
+                                    }),
+                                    None,
+                                    vec![],
+                                    None,
+                                )
+                            }
+                        };
+                        let mut unit = decoded.module;
+                        unit.owner = mir_owner.clone();
+                        for f in unit.funcs.iter_mut() {
+                            f.owner = mir_owner.clone();
+                        }
+                        // MIR restore MUST re-enter the MIR verifier.
+                        if let Err(e) =
+                            obs.span("mir_restore_verify", Some("request"), |_| verify_mir(&unit))
+                        {
+                            return (
+                                Some(StageDiag {
+                                    stage: "mir-verify".to_string(),
+                                    code: e.code(),
+                                    message: format!(
+                                        "unit `{}` MIR restore re-verification failed",
+                                        info.name
+                                    ),
+                                }),
+                                None,
+                                vec![],
+                                None,
+                            );
+                        }
+                        mir_restored += 1;
+                        mir_units.push((idx, unit));
+                    }
+                    Ok(None) => remaining.push(idx),
+                    Err(e) => {
+                        return (
+                            Some(StageDiag {
+                                stage: "cache".to_string(),
+                                code: "cache.identity".to_string(),
+                                message: format!("MIR unit `{}`: {}", info.name, e),
+                            }),
+                            None,
+                            vec![],
+                            None,
+                        );
+                    }
+                }
+            }
+            still_missing = remaining;
+        }
+        obs.set_counter("mir_units_restored", mir_restored);
+
+        // ---- remaining misses: ONE whole-module lower, then per-unit persist --
         let mut fresh_units: Vec<MirModule> = Vec::new();
-        if misses > 0 {
+        let mut mir_persisted = 0u64;
+        let mut abc_emitted = 0u64;
+        if !still_missing.is_empty() {
+            // Real whole-module lowering — counted as exactly ONE call per
+            // request, never per-unit (review F798-R1-06).
             let m = match obs.span("mir_lower", Some("request"), |o| {
                 lower_checked(checked, entry, snapshot).map_err(|e: AdapterError| {
                     o.counter("lower_reject", 1);
@@ -225,6 +332,7 @@ impl Driver {
                 Ok(m) => m,
                 Err(d) => return (Some(d), None, vec![], None),
             };
+            obs.counter("mir_lower_modules", 1);
             if let Err(d) = obs.span("mir_verify", Some("request"), |o| {
                 verify_mir(&m).map_err(|e| {
                     o.counter("mir_verify_reject", 1);
@@ -237,7 +345,6 @@ impl Driver {
             }) {
                 return (Some(d), None, vec![], None);
             }
-            obs.set_counter("mir_build", misses);
             let units = match obs.span("mir_split", Some("request"), |_| {
                 split_units(&m).map_err(|e| StageDiag {
                     stage: "mir-split".to_string(),
@@ -252,7 +359,9 @@ impl Driver {
                 .iter()
                 .map(|u| (u.funcs[0].name.as_str(), u))
                 .collect();
-            for info in infos.iter().filter(|i| i.abc_hit.is_none()) {
+            for idx in still_missing.iter() {
+                let idx = *idx;
+                let info = &infos[idx];
                 let unit = match by_fp.get(info.name.as_str()) {
                     Some(u) => *u,
                     None => {
@@ -268,10 +377,99 @@ impl Driver {
                         )
                     }
                 };
-                // Code content excludes spans: position changes share this
-                // unit; the sidecar re-binds diagnostics to the snapshot.
+                // Persist the MIR unit (code content, spans stripped) under
+                // the A08 MirUnit envelope.
                 let mut spanless = (*unit).clone();
                 let spans = std::mem::take(&mut spanless.funcs[0].spans);
+                if let Some(store) = self.store.as_ref() {
+                    let mkey = crate::cache::mir_unit_key(&owner, &info.name, &info.fp, &caps_fp);
+                    let mbytes = match encode_abc(&spanless) {
+                        Ok(b) => b,
+                        Err(e) => {
+                            return (
+                                Some(StageDiag {
+                                    stage: "mir-emit".to_string(),
+                                    code: e.code(),
+                                    message: format!("unit `{}`: {:?}", info.name, e),
+                                }),
+                                None,
+                                vec![],
+                                None,
+                            )
+                        }
+                    };
+                    staging_now += mbytes.total_len;
+                    staging_peak = staging_peak.max(staging_now);
+                    let mexpect = EnvelopeIdentity::mir(&owner, 0);
+                    if let Err(e) = put_enveloped(
+                        store,
+                        &mkey,
+                        "A08",
+                        &mexpect,
+                        &mbytes.to_flat(),
+                        vec![],
+                        Some(&self.project),
+                    ) {
+                        return (
+                            Some(StageDiag {
+                                stage: "cache".to_string(),
+                                code: "cache.put".to_string(),
+                                message: format!("MIR unit `{}`: {}", info.name, e),
+                            }),
+                            None,
+                            vec![],
+                            None,
+                        );
+                    }
+                    mir_persisted += 1;
+                    // Sidecar track (position-bound diagnostics) for this unit.
+                    let skey = sidecar_key(&owner, &info.name, snapshot);
+                    let sexpect = EnvelopeIdentity::sidecar(&owner, snapshot);
+                    let spayload = encode_sidecar(&spans);
+                    let _ = put_enveloped(
+                        store,
+                        &skey,
+                        "A08",
+                        &sexpect,
+                        &spayload,
+                        vec![],
+                        Some(&self.project),
+                    );
+                }
+                fresh_units.push((*unit).clone());
+            }
+        }
+
+        // ---- ABC emission for every unit without an ABC hit ----------------
+        // (from restored MIR units first, then the freshly split ones).
+        {
+            let mut emit_sources: Vec<MirModule> =
+                mir_units.iter().map(|(_, u)| u.clone()).collect();
+            emit_sources.extend(fresh_units.iter().cloned());
+            let by_name: std::collections::BTreeMap<&str, &MirModule> = emit_sources
+                .iter()
+                .map(|u| (u.funcs[0].name.as_str(), u))
+                .collect();
+            for idx in abc_misses.iter() {
+                let idx = *idx;
+                let info = &infos[idx];
+                let unit = match by_name.get(info.name.as_str()) {
+                    Some(u) => *u,
+                    None => {
+                        return (
+                            Some(StageDiag {
+                                stage: "abc-emit".to_string(),
+                                code: "abc.emit.missing-unit".to_string(),
+                                message: format!("no MIR source for unit `{}`", info.name),
+                            }),
+                            None,
+                            vec![],
+                            None,
+                        )
+                    }
+                };
+                let mut spanless = (*unit).clone();
+                std::mem::take(&mut spanless.funcs[0].spans);
                 let bytes = match encode_abc(&spanless) {
                     Ok(b) => b,
                     Err(e) => {
@@ -287,7 +485,9 @@ impl Driver {
                         )
                     }
                 };
-                obs.counter("abc_emit", 1);
+                staging_now += bytes.total_len;
+                staging_peak = staging_peak.max(staging_now);
+                abc_emitted += 1;
                 if let Some(store) = self.store.as_ref() {
                     let key = abc_unit_key(&owner, &info.name, &info.fp, &caps_fp);
                     let expect = EnvelopeIdentity::abc(&owner);
@@ -311,23 +511,15 @@ impl Driver {
                             None,
                         );
                     }
-                    // Sidecar track (position-bound diagnostics).
-                    let skey = sidecar_key(&owner, &info.name, snapshot);
-                    let sexpect = EnvelopeIdentity::sidecar(&owner, snapshot);
-                    let spayload = encode_sidecar(&spans);
-                    let _ = put_enveloped(
-                        store,
-                        &skey,
-                        "A08",
-                        &sexpect,
-                        &spayload,
-                        vec![],
-                        Some(&self.project),
-                    );
                 }
-                fresh_units.push((*unit).clone());
             }
         }
+        obs.set_counter("mir_units_persisted", mir_persisted);
+        obs.set_counter("abc_units_emitted", abc_emitted);
+        obs.set_counter("peak_staging_bytes", staging_peak as u64);
+        // The restored-MIR units participate in the closure as well.
+        let mut fresh_units = fresh_units;
+        fresh_units.extend(mir_units.iter().map(|(_, u)| u.clone()));
 
         // ---- closure assembly -------------------------------------------
         // Hits: decode + verify each restored unit (never trusted).
@@ -430,6 +622,7 @@ impl Driver {
             Err(d) => return (Some(d), None, vec![], None),
         };
         obs.set_counter("verify_load", 1);
+        obs.counter("closure_encodes", 1);
 
         // ---- manifest ----------------------------------------------------
         let mut manifest_out: Option<ModuleManifest> = None;
@@ -470,8 +663,9 @@ impl Driver {
         // ---- execute ------------------------------------------------------
         let cancel = CancelFlag::new(false);
         let limits = ExecLimits::default();
-        let (outcome, trace) =
-            obs.span("av_execute", Some("request"), |_| execute(&loaded, &limits, &cancel));
+        let (outcome, trace) = obs.span("av_execute", Some("request"), |_| {
+            execute(&loaded, &limits, &cancel)
+        });
         obs.set_counter("av_execute", 1);
         if let ExecOutcome::Success { steps, .. } = &outcome {
             obs.set_counter("av_steps", *steps);
@@ -481,7 +675,11 @@ impl Driver {
 }
 
 fn decoded_clone(d: &auto_av_core::DecodedAbc) -> auto_av_core::DecodedAbc {
-    auto_av_core::DecodedAbc { version: d.version, profile: d.profile, module: d.module.clone() }
+    auto_av_core::DecodedAbc {
+        version: d.version,
+        profile: d.profile,
+        module: d.module.clone(),
+    }
 }
 
 fn sig_string(
@@ -527,7 +725,7 @@ fn sig_string(
 /// [`front_door_admit_atom`] guards it BEFORE that parser runs. Breaches
 /// are RESOURCE rejections, never syntax errors.
 pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
-    use auto_ac_prototype::source::lexer::{tokenize, P, Tok};
+    use auto_ac_prototype::source::lexer::{tokenize, Tok, P};
     if src.len() > MAX_INPUT_BYTES {
         return Err(StageDiag {
             stage: "admission".into(),

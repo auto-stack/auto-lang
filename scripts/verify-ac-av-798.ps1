@@ -67,10 +67,10 @@ switch ($Scope) {
         & cargo build --release -p auto-av-probe --bin av_probe_worker 2>&1 | Write-Host
         if ($LASTEXITCODE -ne 0) { Pop-Location; exit 1 }
         $raw = Join-Path $reportDir "turnaround-raw.jsonl"
-        & (Join-Path $ws "target/release/av_probe_worker.exe") bench-turnaround --samples $Samples --gate-ms $GateMs --out "$raw"
+        $summary = Join-Path $reportDir "turnaround-summary.json"
+        & (Join-Path $ws "target/release/av_probe_worker.exe") bench-turnaround --samples $Samples --gate-ms $GateMs --out "$raw" | Out-File $summary -Encoding utf8
         $code = $LASTEXITCODE
         Pop-Location
-        $benchOut = @("worker exit: $code")
         $benchOut | Out-File (Join-Path $reportDir "turnaround-summary.json") -Encoding utf8
         if ($code -ne 0) {
             Write-Host "FAILED: turnaround hard gate (exit $code)"

@@ -31,24 +31,40 @@ fn av_cache_hit_lifecycle() {
     let r2 = d.request(BASE, "d_main", &[]);
     assert!(r2.ok());
     assert_eq!(*r2.counters.get("cache_hit_abc").unwrap_or(&0), 2);
-    assert_eq!(*r2.counters.get("mir_build").unwrap_or(&0), 0);
-    assert_eq!(*r2.counters.get("abc_emit").unwrap_or(&0), 0);
-    assert!(*r2.counters.get("av_execute").unwrap_or(&0) > 0, "hit still executes");
-    assert_eq!(r2.value_i32(), r1.value_i32(), "independent re-comparison each request");
+    assert_eq!(*r2.counters.get("mir_lower_modules").unwrap_or(&0), 0);
+    assert_eq!(*r2.counters.get("mir_units_persisted").unwrap_or(&0), 0);
+    assert_eq!(*r2.counters.get("abc_units_emitted").unwrap_or(&0), 0);
+    assert!(
+        *r2.counters.get("av_execute").unwrap_or(&0) > 0,
+        "hit still executes"
+    );
+    assert_eq!(
+        r2.value_i32(),
+        r1.value_i32(),
+        "independent re-comparison each request"
+    );
 
     // Restart: a NEW driver instance (cold in-process state) over the same
     // store root.
     let mut d3 = Driver::with_store(&root, "proj-a").unwrap();
     let r3 = d3.request(BASE, "d_main", &[]);
     assert!(r3.ok(), "restart/disk-hot: {:?}", r3.diag);
-    assert_eq!(*r3.counters.get("cache_hit_abc").unwrap_or(&0), 2, "disk-hot hits");
+    assert_eq!(
+        *r3.counters.get("cache_hit_abc").unwrap_or(&0),
+        2,
+        "disk-hot hits"
+    );
 
     // Cross-project: a different project label shares the same logical
     // units (content identity, not project identity).
     let mut d4 = Driver::with_store(&root, "proj-b").unwrap();
     let r4 = d4.request(BASE, "d_main", &[]);
     assert!(r4.ok());
-    assert_eq!(*r4.counters.get("cache_hit_abc").unwrap_or(&0), 2, "cross-project sharing");
+    assert_eq!(
+        *r4.counters.get("cache_hit_abc").unwrap_or(&0),
+        2,
+        "cross-project sharing"
+    );
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -65,21 +81,40 @@ fn av_cache_dependency_invalidation() {
     let body_edit = BASE.replace("a * 10 + b", "a * 10 - b");
     let r1 = d.request(&body_edit, "d_main", &[]);
     assert!(r1.ok(), "{:?}", r1.diag);
-    assert_eq!(*r1.counters.get("cache_miss_abc").unwrap_or(&0), 1, "only helper misses");
-    assert_eq!(*r1.counters.get("cache_hit_abc").unwrap_or(&0), 1, "d_main unit reuses");
+    assert_eq!(
+        *r1.counters.get("cache_miss_abc").unwrap_or(&0),
+        1,
+        "only helper misses"
+    );
+    assert_eq!(
+        *r1.counters.get("cache_hit_abc").unwrap_or(&0),
+        1,
+        "d_main unit reuses"
+    );
     // And the result CHANGED (helper(3,4) = 26 now → main returns 1).
     assert_eq!(r1.value_i32(), Some(1));
 
     // Back to the base body: full hit again (both keys live).
     let r2 = d.request(BASE, "d_main", &[]);
-    assert_eq!(*r2.counters.get("cache_hit_abc").unwrap_or(&0), 2, "both variants hit");
+    assert_eq!(
+        *r2.counters.get("cache_hit_abc").unwrap_or(&0),
+        2,
+        "both variants hit"
+    );
 
     // Signature edit: helper gains a param → callers' fingerprints embed
     // callee signature content → BOTH units re-key; the request itself now
     // fails binding (arity mismatch) with a frontend diagnostic.
-    let sig_edit = BASE.replace("fn helper(a int, b int) int {", "fn helper(a int, b int, c int) int {");
+    let sig_edit = BASE.replace(
+        "fn helper(a int, b int) int {",
+        "fn helper(a int, b int, c int) int {",
+    );
     let r3 = d.request(&sig_edit, "d_main", &[]);
-    assert!(r3.diag.is_some(), "signature conflict is a diagnosed request: {:?}", r3.av);
+    assert!(
+        r3.diag.is_some(),
+        "signature conflict is a diagnosed request: {:?}",
+        r3.av
+    );
     assert_eq!(r3.diag.as_ref().unwrap().stage, "frontend");
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -109,7 +144,10 @@ fn av_cache_wrong_identity_rejected() {
     // Reading with OUR identity must reject (not return the payload).
     let ours = EnvelopeIdentity::abc("m");
     let err = get_enveloped_opt(&store, &key, "A09", &ours).unwrap_err();
-    assert!(matches!(err, cache::CacheError::Envelope(_)), "wrong producer rejected: {err}");
+    assert!(
+        matches!(err, cache::CacheError::Envelope(_)),
+        "wrong producer rejected: {err}"
+    );
     // Same for a schema/owner/stage mismatch.
     let mut stage_wrong = EnvelopeIdentity::abc("m");
     stage_wrong.stage = 1;
@@ -130,7 +168,10 @@ fn av_cache_corrupt_frame_rejected() {
     let mid = env.len() / 2;
     env[mid] ^= 0xff; // corrupt inner, frame checksum now stale
     let err = envelope_unwrap(&env, &id).unwrap_err();
-    assert!(matches!(err, cache::CacheError::Envelope(_)), "tampered envelope: {err}");
+    assert!(
+        matches!(err, cache::CacheError::Envelope(_)),
+        "tampered envelope: {err}"
+    );
 }
 
 /// V-08: same-key different-content is a Conflict — the previously
@@ -143,11 +184,20 @@ fn av_cache_conflict_preserves_committed() {
     let id = EnvelopeIdentity::abc("m");
     let a1 = put_enveloped(&store, &key, "A09", &id, b"content-one", vec![], Some("p")).unwrap();
     let err = put_enveloped(&store, &key, "A09", &id, b"content-two", vec![], Some("p"));
-    assert!(matches!(err, Err(cache::CacheError::Store(
-        ac_artifact_probe::store::StoreError::Conflict { .. }
-    ))), "same key different content conflicts: {:?}", err);
+    assert!(
+        matches!(
+            err,
+            Err(cache::CacheError::Store(
+                ac_artifact_probe::store::StoreError::Conflict { .. }
+            ))
+        ),
+        "same key different content conflicts: {:?}",
+        err
+    );
     // The old committed artifact still reads back intact.
-    let got = get_enveloped_opt(&store, &key, "A09", &id).unwrap().unwrap();
+    let got = get_enveloped_opt(&store, &key, "A09", &id)
+        .unwrap()
+        .unwrap();
     assert_eq!(got, b"content-one".to_vec());
     let _ = a1;
     let _ = std::fs::remove_dir_all(&root);
@@ -165,17 +215,20 @@ fn av_cache_gc_and_lease() {
     let manifest = r.manifest.as_ref().expect("manifest written");
     let store = open_store(&root).unwrap();
     let sentinel = manifest.units[0].artifact.clone();
-    let lease = store.acquire_lease("exec", 60, Some(&sentinel)).expect("lease");
+    let lease = store
+        .acquire_lease("exec", 60, Some(&sentinel))
+        .expect("lease");
     // GC under a live lease must not delete the leased artifact's payload.
     let cfg = ac_artifact_probe::store::gc::gc_config_default();
     let _receipt = ac_artifact_probe::store::gc::run_gc(&store, cfg).expect("gc");
     // The leased unit still loads through the manifest chain.
-    let payload = cache::get_by_artifact_id(
-        &store,
-        &sentinel,
-        &EnvelopeIdentity::abc(&manifest.owner),
+    let payload =
+        cache::get_by_artifact_id(&store, &sentinel, &EnvelopeIdentity::abc(&manifest.owner));
+    assert!(
+        payload.is_ok(),
+        "leased artifact survives GC: {:?}",
+        payload.err()
     );
-    assert!(payload.is_ok(), "leased artifact survives GC: {:?}", payload.err());
     lease.release();
     // Stale lease sweep is a no-op now.
     let swept = store.sweep_stale_leases().expect("sweep");
@@ -200,7 +253,10 @@ fn av_cache_worker_restore_new_process() {
     // The manifest's own artifact id: find it via its key.
     let store = open_store(&root).unwrap();
     let key = cache::manifest_key(&manifest.owner, &manifest.entry, &manifest.fingerprint());
-    let art = store.get_artifact("A09", &key).unwrap().expect("manifest artifact");
+    let art = store
+        .get_artifact("A09", &key)
+        .unwrap()
+        .expect("manifest artifact");
     drop(store);
 
     let worker = env!("CARGO_BIN_EXE_av_probe_worker");
@@ -232,7 +288,10 @@ fn av_cache_worker_restore_new_process() {
         serde_json::from_str(line.trim()).expect("worker JSON");
     assert!(parsed.executed_ok, "{:?}", parsed.error);
     assert_eq!(parsed.value, r.value_i32(), "restored execution matches");
-    assert_eq!(parsed.units_verified, 2, "both units re-verified in the new process");
+    assert_eq!(
+        parsed.units_verified, 2,
+        "both units re-verified in the new process"
+    );
     let _ = fnv1a64;
     let _ = std::fs::remove_dir_all(&root);
 }
