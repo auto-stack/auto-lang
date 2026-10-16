@@ -122,7 +122,7 @@ stage=work | plan_id=PLAN-785 | plan_revision=1 | worktree_path=D:/autostack/.wt
 - **merge-owned 冻结门禁**（交付提交 c8f697009）：裸 cargo t **5371/5371 PASS**（1548 skipped，72.2s）；cargo tv **163/163 PASS**（5.17s）；未触 ui_gen/aavm/trans（不 tu/taa/tt）。
 - **ledger_refreshed**：`.autoos/specs.json` v28→v29（Regime B **受管离线投影**——HTTP 探测 store 不在线；五护栏：字节备份 `.autoos/specs.json.p785-bak`/脚本改写/作用域 diff（其余条目逐项相等，恰 +5）/schema 六节校验/回读验证）；条目 P785-D1、P785-D2（designs）/P785-T（tests）/P785-R3（reviews）/P785-M（reports）——最低四节面满足，全部带 file+tags。
 - **archived**：本文件 git mv 至 docs/plans/archive/，status=archived，8/8；SD canonical 在 master（vm/overview 30f59c0e…/ui/overview ab0aefe9…）；合入报告 docs/plans/reports/785-clipboard-provider-merge.md 随分支落库。
-- **cleaned**：wt-guard 双树 clean → worktree/分支/组目录移除（见下补记）。
+- **cleaned**（2026-10-16 执行完毕）：wt-guard 双树 clean（auto-lang/auto-down 均"clean — 无任何 reparse point"）→ `git worktree remove` 双树 → `git branch -d plan-785-dev`（删除于 ecce1dc8c=已落地提交）→ 组目录 `D:/autostack/.wt/lang-785` 移除（`.wt/` 列表复核消失）；master 祖先链含 ecce1dc8c（`git merge-base --is-ancestor` ✓）。
 - **观察项**：auto.exe 未随合并重建（本计划行为面零变，非必需；需要现值可 `cargo build -p auto`）；KNOWN-DEBT 中 F-785-P01/P02 条目仍在工作区（该文件同时携带 786 会话未提交记录——归属其簿记会话，随下次文件级提交落库，计划 §9 已有完整描述，无信息丢失）。
 - **批量回归**：785 % 5 == 0 → **到期**，已交接 /auto-plan:regress（主检出单实例）。
 
