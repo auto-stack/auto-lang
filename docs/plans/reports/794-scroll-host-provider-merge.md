@@ -17,8 +17,8 @@
 | prepared | done | R2 pass@d027e5f61；冻结 SD SHA256=`84d2b2776faba28671437fbc91e708986408adb1240057639689923cca4c5bac`；Spec 目标=vm/overview + ui/overview + widgets/scroll-pane + ui/design/scroll-child-anchor |
 | landed | done | ff-only `93c508d7d..5ddef1315`，无 merge commit；range-diff 等价：T-02 修复提交 `=` 全等，T-01/T-03 仅 Cargo.toml 并集上下文与 baseline 元数据差异（实现字节面不变） |
 | ledger_refreshed | done | guarded offline projection（无 store writer）；`.autoos/specs.json` v35→v36；items P794-D1/D2/T/R2/M |
-| archived | done | `docs/plans/archive/794-scroll-host-provider.md` + 本收据与 attachments/794 入库 |
-| cleaned | done | wt-guard clean → worktree/分支/组目录移除 |
+| archived | done | `docs/plans/archive/794-scroll-host-provider.md`（status=archived, 8/8）+ 本收据与 attachments/794 入库（`c9c37968d`） |
+| cleaned | done | wt-guard clean → `git worktree remove` 成功 → `codex/plan-794-dev` 删除（was 5ddef1315）→ 组目录保留 auto-down 兄弟（`a09c910f0`） |
 
 ## Merge-owned 冻结门禁（最终 tip 5ddef1315）
 
@@ -42,6 +42,14 @@
 | SD-04 | docs/specs/auto-lang/ui/design/scroll-child-anchor.md | Native 层调用边界迁 provider |
 
 索引回写：`docs/specs/plans.md`、`auto-lang/vm/plans.md`、`auto-lang/ui/plans.md`、`goals.md`（GOAL-003/007）、`INDEX.md`（spec-index.py 再生成，无字节变化）。
+
+## 批量回归到期检查
+
+`.last-batch-regression.json` 在案：`last_covered_plan_id=795`，timestamp=2026-10-16T16:10:00Z。PLAN-794 不可被 5 整除，且未晚于 last_covered；收据未超 48h。**不触发** `/auto-plan:regress`。
+
+## 部署注记
+
+本计划触面为 auto-lang 库（VM native / host capabilities / UI adapter）+ 测试 fixture。无独立运行中的生产进程需重启；消费方按常规在下次构建时纳入 `5ddef1315`。
 
 ## 验收映射（AC-01..05 由 R2 pass 覆盖，AC-06 本收据）
 
