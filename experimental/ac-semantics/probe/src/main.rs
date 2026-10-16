@@ -15,13 +15,20 @@ use std::process::exit;
 
 fn usage() -> ! {
     eprintln!(
-        "usage:\n  sema-probe put <store-root> <source.at> <fn-name> [project]\n  sema-probe get <store-root> <source.at> <fn-name>"
+        "usage:\n  sema-probe put <store-root> <source.at> <fn-name> [project]\n  sema-probe get <store-root> <source.at> <fn-name>
+  sema-probe bench-turnaround <out-dir> [store-root]"
     );
     exit(2);
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        usage();
+    }
+    if args[1] == "bench-turnaround" {
+        return bench_turnaround(&args);
+    }
     if args.len() < 5 {
         usage();
     }
@@ -131,4 +138,37 @@ fn desc_name(t: &ac_sema_contract::TypeDesc) -> String {
         ac_sema_contract::TypeDesc::Opaque { name } => format!("opaque:{name}"),
         other => format!("{other:?}"),
     }
+}
+
+/// T-05: run the six measured scenarios and write the raw-samples
+/// report (machine info + stats + per-sample traces) to <out-dir>.
+fn bench_turnaround(args: &[String]) {
+    let out_dir = std::path::PathBuf::from(&args[2]);
+    let store_root = args
+        .get(3)
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("ac796-turnaround-bench"));
+    let _ = std::fs::remove_dir_all(&store_root);
+    let harness = ac_sema_probe::turnaround::Harness::new(store_root.clone());
+    let store = ac_sema_probe::open_store(&store_root).expect("open store");
+    let t_prep = std::time::Instant::now();
+
+    let mut all: Vec<(&'static str, Vec<ac_sema_probe::turnaround::Sample>)> = Vec::new();
+    all.push(("no-op", harness.scenario_no_op(&store)));
+    all.push(("local-body-edit", harness.scenario_local_body_edit(&store)));
+    all.push(("sig-change", harness.scenario_sig_change(&store)));
+    all.push(("restart-disk-hot", harness.scenario_restart_disk_hot()));
+    all.push(("cross-project", harness.scenario_cross_project(&store)));
+    all.push(("gc-concurrent", harness.scenario_gc_concurrent(&store)));
+    all.push(("full-cold", harness.scenario_full_cold()));
+    all.push(("wide-invalidation", harness.scenario_wide_invalidation(&store)));
+
+    let machine = ac_sema_probe::turnaround::machine_info();
+    let path = ac_sema_probe::turnaround::write_report(&out_dir, &machine, &all)
+        .expect("write report");
+    println!(
+        "{{\"event\":\"bench-done\",\"report\":\"{}\",\"prep_total_ms\":{}}}",
+        path.display(),
+        t_prep.elapsed().as_millis()
+    );
 }

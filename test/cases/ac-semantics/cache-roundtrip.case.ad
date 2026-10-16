@@ -21,11 +21,11 @@ case {
     { id: "restart-hit", adapter: "sema", action: "query", after: "process-restart",
       query: { kind: "infer-body", fn: "main" },
       expect: { completion: "success", cache: "hit", compute_called: false } },
-    { id: "callee-sig-change-stale", adapter: "sema", action: "query",
+    { id: "callee-sig-change-miss", adapter: "sema", action: "query",
       mutate: { replace: "helper(a int, b int)", with: "helper(a bool, b int)" },
       query: { kind: "infer-body", fn: "main" },
-      expect: { completion: "success", cache: "stale",
-        reason_contains: "fn-sig:helper" } }
+      expect: { completion: "success", cache: "miss",
+        note: "called-sigs-fp key component changes (contract-decision D7); one key never holds two contents" } }
   ]
 }
 ```

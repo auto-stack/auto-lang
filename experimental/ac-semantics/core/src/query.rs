@@ -246,6 +246,78 @@ pub fn record_canonical(r: &crate::input::InputRecord) -> Vec<u8> {
     out
 }
 
+/// Syntactic callee set of one function body (names in Call nodes,
+/// collected ITERATIVELY — bodies are unbounded in depth).
+pub fn called_names(f: &crate::input::InputFn) -> std::collections::BTreeSet<String> {
+    use crate::input::{InputExpr, InputExprKind, InputStmt};
+    let mut names = std::collections::BTreeSet::new();
+    let mut exprs: Vec<&InputExpr> = Vec::new();
+    let mut blocks: Vec<&crate::input::InputBlock> = vec![&f.body];
+    while let Some(b) = blocks.pop() {
+        for s in &b.stmts {
+            match s {
+                InputStmt::Let { value, .. }
+                | InputStmt::Assign { value, .. }
+                | InputStmt::Return { value, .. } => exprs.push(value),
+                InputStmt::If { cond, then, els, .. } => {
+                    exprs.push(cond);
+                    blocks.push(then);
+                    if let Some(e) = els {
+                        blocks.push(e);
+                    }
+                }
+                InputStmt::While { cond, body, .. } => {
+                    exprs.push(cond);
+                    blocks.push(body);
+                }
+                InputStmt::Loop { body, .. } => blocks.push(body),
+                InputStmt::Break { .. } | InputStmt::Continue { .. } => {}
+            }
+        }
+    }
+    while let Some(e) = exprs.pop() {
+        match &e.kind {
+            InputExprKind::Call { callee, args } => {
+                names.insert(callee.clone());
+                for a in args {
+                    exprs.push(a);
+                }
+            }
+            InputExprKind::Binary { lhs, rhs, .. } => {
+                exprs.push(lhs);
+                exprs.push(rhs);
+            }
+            InputExprKind::Unary { operand, .. } => exprs.push(operand),
+            _ => {}
+        }
+    }
+    names
+}
+
+/// Fingerprint of the SIGNATURE SET the target syntactically calls:
+/// part of the InferBody key so a read-callee signature change produces
+/// a different key (structurally impossible to conflict one key with
+/// two contents; the manifest still validates body/negative/source
+/// dependencies at hit time).
+pub fn called_sigs_fp(input: &SemaInput, fn_name: &str) -> String {
+    match input.lookup_fn(fn_name) {
+        None => fp(b"absent"),
+        Some(f) => {
+            let names = called_names(f);
+            let mut parts: Vec<String> = Vec::new();
+            for n in names {
+                let sig = match input.lookup_fn(&n) {
+                    Some(callee) => fp(&fn_sig_canonical(callee)),
+                    None => "absent".to_string(),
+                };
+                parts.push(format!("{n}={sig}"));
+            }
+            let joined = parts.join("\u{1}");
+            fp(joined.as_bytes())
+        }
+    }
+}
+
 fn fp(bytes: &[u8]) -> String {
     ac_sema_contract::identity::domain_hash("ac796/dep-fp/v1", &[bytes])
 }
@@ -292,6 +364,10 @@ impl SemaQueryKey {
                     "type-cand-fp".into(),
                     fp(input.record_candidates().join("\u{1}").as_bytes()),
                 ));
+                // the callee SIGNATURE SET the target reads (D7: a read
+                // signature change is a key change — one key can never
+                // hold two contents)
+                c.push(("called-sigs-fp".into(), called_sigs_fp(input, fn_name)));
             }
             QueryKind::FnSig { fn_name } => {
                 let f = input.lookup_fn(fn_name);

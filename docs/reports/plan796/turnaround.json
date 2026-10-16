@@ -1,0 +1,5773 @@
+{
+  "machine": {
+    "os": "windows (x86_64)",
+    "arch": "x86_64",
+    "parallelism": 20,
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+    "generator": "gen796-1mi/v1",
+    "samples_per_scenario": 30,
+    "hard_gate_ms": 1000
+  },
+  "stats": [
+    {
+      "scenario": "no-op",
+      "samples": 30,
+      "p50_ns": 13665300,
+      "p95_ns": 14455600,
+      "p99_ns": 16268200,
+      "max_ns": 16268200,
+      "compute_calls": 1,
+      "cache_hits": 29,
+      "statuses": [
+        [
+          "published",
+          1
+        ],
+        [
+          "hit",
+          29
+        ]
+      ]
+    },
+    {
+      "scenario": "local-body-edit",
+      "samples": 30,
+      "p50_ns": 3655900,
+      "p95_ns": 4320300,
+      "p99_ns": 14044300,
+      "max_ns": 14044300,
+      "compute_calls": 29,
+      "cache_hits": 1,
+      "statuses": [
+        [
+          "hit",
+          1
+        ],
+        [
+          "published",
+          29
+        ]
+      ]
+    },
+    {
+      "scenario": "sig-change",
+      "samples": 30,
+      "p50_ns": 13801100,
+      "p95_ns": 20938600,
+      "p99_ns": 24315400,
+      "max_ns": 24315400,
+      "compute_calls": 2,
+      "cache_hits": 28,
+      "statuses": [
+        [
+          "published",
+          2
+        ],
+        [
+          "hit",
+          28
+        ]
+      ]
+    },
+    {
+      "scenario": "restart-disk-hot",
+      "samples": 30,
+      "p50_ns": 13004400,
+      "p95_ns": 14857600,
+      "p99_ns": 16105200,
+      "max_ns": 16105200,
+      "compute_calls": 0,
+      "cache_hits": 30,
+      "statuses": [
+        [
+          "hit",
+          30
+        ]
+      ]
+    },
+    {
+      "scenario": "cross-project",
+      "samples": 30,
+      "p50_ns": 12785100,
+      "p95_ns": 15028100,
+      "p99_ns": 22069100,
+      "max_ns": 22069100,
+      "compute_calls": 0,
+      "cache_hits": 30,
+      "statuses": [
+        [
+          "hit",
+          30
+        ]
+      ]
+    },
+    {
+      "scenario": "gc-concurrent",
+      "samples": 30,
+      "p50_ns": 30315200,
+      "p95_ns": 40963000,
+      "p99_ns": 41713900,
+      "max_ns": 41713900,
+      "compute_calls": 0,
+      "cache_hits": 30,
+      "statuses": [
+        [
+          "hit",
+          30
+        ]
+      ]
+    },
+    {
+      "scenario": "full-cold",
+      "samples": 30,
+      "p50_ns": 12974000,
+      "p95_ns": 14010000,
+      "p99_ns": 14394500,
+      "max_ns": 14394500,
+      "compute_calls": 1,
+      "cache_hits": 29,
+      "statuses": [
+        [
+          "published",
+          1
+        ],
+        [
+          "hit",
+          29
+        ]
+      ]
+    },
+    {
+      "scenario": "wide-invalidation",
+      "samples": 30,
+      "p50_ns": 5316100,
+      "p95_ns": 27957800,
+      "p99_ns": 29961400,
+      "max_ns": 29961400,
+      "compute_calls": 20,
+      "cache_hits": 10,
+      "statuses": [
+        [
+          "published",
+          20
+        ],
+        [
+          "hit",
+          10
+        ]
+      ]
+    }
+  ],
+  "raw": [
+    [
+      "no-op",
+      [
+        {
+          "scenario": "no-op",
+          "index": 0,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 562100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 496500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 23400,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3301600,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4395000,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "no-op",
+          "index": 1,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 457100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13675800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14137700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 2,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 450800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13046300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13501400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 3,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 480700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13224200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13709000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 4,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 500000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13084800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13589700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 5,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 453700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12739400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13197100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 6,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 469900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13368300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13842800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 7,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 481700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13073700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13559400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 8,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 495000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13119500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13619500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 9,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 507800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13281900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13794700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 10,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 491900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 15772400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 16268200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 11,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 505200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13735000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14244500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 12,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 506900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13513800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14024800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 13,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 474800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12729400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13208200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 14,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 478500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13101600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13584600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 15,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 593100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13066500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13665300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 477200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12865700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13347600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 447600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12894100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13347200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 470700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12799700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13277100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 479800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12676000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13160800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 457700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12772800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13234800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 21,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 473800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13133200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13613300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 22,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 472300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13881700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14362700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 23,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 501600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13513700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14021500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 24,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 489300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13758900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14255700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 25,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 492300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13392600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13892000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 26,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 484300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12952900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13444100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 27,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 456200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13375800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13838500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 28,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 490300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13957700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14455600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "no-op",
+          "index": 29,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 490000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13225300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13722100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        }
+      ]
+    ],
+    [
+      "local-body-edit",
+      [
+        {
+          "scenario": "local-body-edit",
+          "index": 0,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 548900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13489900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14044300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 1,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 553900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 494000,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7400,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2661900,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3727200,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 2,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 463900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 454300,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6900,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3264800,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4195200,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 3,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 475200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 459900,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7300,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2511200,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3459600,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 4,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 476900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 453600,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7300,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2518900,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3462600,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 5,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 404300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 433700,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2460900,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3311700,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 6,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 466300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 446500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7500,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2531900,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3458100,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 7,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 457600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 450900,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6800,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2583000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3504600,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 8,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 525700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 527700,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 8100,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2513400,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3581500,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 9,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 443800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 436500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 8000,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2650000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3543800,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 10,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 452200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 432200,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6600,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2650700,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3546300,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 11,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 460300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 455500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2728000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3655900,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 12,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 478700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 471600,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7200,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2694600,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3658300,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 13,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 405700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 430600,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2579200,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3428200,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 14,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 404800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 646500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2523200,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3586700,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 15,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 402500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 438900,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6900,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2531400,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3385400,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 403100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 424500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6500,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3186400,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4025800,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 432100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 478100,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6800,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2713900,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3637100,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 463400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 442400,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7400,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3400900,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4320300,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 474300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 465200,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6900,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2699000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3651400,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 463400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 452700,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7600,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2883600,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3813800,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 21,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 481400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 471500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7400,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2985600,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3954500,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 22,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 414300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 436600,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7100,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2705800,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3569400,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 23,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 396100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 420400,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7000,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2880200,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3708800,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 24,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 455100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 443900,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7000,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2816000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3726700,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 25,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 455700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 466500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7100,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2907300,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3841900,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 26,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 452800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 437900,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6800,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3098300,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4001200,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 27,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 464500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 455400,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6800,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2697500,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3629600,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 28,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 456900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 434800,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 6700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2914700,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3818200,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 29,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 420700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 442300,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7300,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3117100,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3994800,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        }
+      ]
+    ],
+    [
+      "sig-change",
+      [
+        {
+          "scenario": "sig-change",
+          "index": 0,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 507200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 494100,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 17600,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3078000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4105000,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 824,
+          "status": "published"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 1,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 482600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 525100,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 22100,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3452500,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4487400,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 824,
+          "status": "published"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 2,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 549300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 15306800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 15861100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 3,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 956100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 16356500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 17318700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 4,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 520300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 14067700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14593100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 5,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 487300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13328500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13822900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 6,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 490200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 14831400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 15325700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 7,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 607700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12980600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13594300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 8,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 523500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12868700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13396700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 9,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 524100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13216800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13745700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 10,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 517400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12749500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13270900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 11,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 493800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13647200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14146300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 12,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 514100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12894000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13413400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 13,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 493700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12676100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13174600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 14,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 595600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13199900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13801100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 15,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 597100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 15020500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 15624500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 546400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12903200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13453900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 500900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12954300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13462400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 504600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 14269600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14778700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 523400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 14998900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 15529900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 516100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12924400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13445300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 21,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 472600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13736500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14213700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 22,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 475900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12547500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13027500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 23,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 463300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 14632800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 15100100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 24,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 542900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 23767900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 24315400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 25,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1217900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 19711800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 20938600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 26,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 501300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13711500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14217200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 27,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 530000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12399800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12934000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 28,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 471400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=7f96625f319759ca01629d04b649c6ff157976a48707f94c"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12971500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13447000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 787,
+          "status": "hit"
+        },
+        {
+          "scenario": "sig-change",
+          "index": 29,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 525000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ff1092e8cd0f4954adf8300e02688d278fa6d69d36b6cde3"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12953700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13483000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 734,
+          "status": "hit"
+        }
+      ]
+    ],
+    [
+      "restart-disk-hot",
+      [
+        {
+          "scenario": "restart-disk-hot",
+          "index": 0,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 550000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12292800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12847400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 1,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 496400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13054600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13555800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 2,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 520200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12485500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13011400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 3,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 503500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12559300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13068200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 4,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 399400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12920400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13325700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 5,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 496100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 14089700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14590600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 6,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 537900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13018500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13562000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 7,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1691600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13152700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14857600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 8,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 524900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12858400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13390300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 9,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 533100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13079000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13616800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 10,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 465600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 15634400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 16105200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 11,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 463200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12961300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13428900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 12,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 472000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12304600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12782600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 13,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 478400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12291700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12775200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 14,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 464000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12496700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12965100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 15,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 463400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12034900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12503000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 389800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 11912300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12307300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 462000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12398100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12864400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 462800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12231600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12702200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 444400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 11963600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12412100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 446900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 11933800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12384800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 21,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 446800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12068800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12520300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 22,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 472400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13096300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13575000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 23,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 470200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12529600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13004400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 24,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 479800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12374000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12857900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 25,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 490200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12208500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12703300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 26,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 435900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 11945500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12385800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 27,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 468700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12219500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12693500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 28,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 497600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13055900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13559900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "restart-disk-hot",
+          "index": 29,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 501000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12634900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13140400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        }
+      ]
+    ],
+    [
+      "cross-project",
+      [
+        {
+          "scenario": "cross-project",
+          "index": 0,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 507300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 21556800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 22069100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 1,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 390300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13747800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14143100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 2,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 472700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13104800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13582200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 3,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 407800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12417000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12829100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 4,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 449200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12118300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12571900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 5,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 450400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12587900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13043000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 6,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 429400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13476900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13910400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 7,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 410700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12347700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12764200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 8,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 433100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12105800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12543500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 9,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 399200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12087300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12490700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 10,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 428000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12185700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12617800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 11,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 403100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12323900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12731400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 12,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 453700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12793000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13251800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 13,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 439100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12196100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12639900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 14,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 413400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13995000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14412300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 15,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 454400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12114800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12575400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 390000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12627000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13021200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 446200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12389800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12840200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 392200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12157900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12554500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 472500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12937000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13415200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 513600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 14509000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 15028100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 21,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 572300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12340800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12920200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 22,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 434000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12163700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12601800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 23,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 446300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 11943300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12394900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 24,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 387400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12078800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12470400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 25,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 435800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12509500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12950300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 26,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 385900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12395100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12785100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 27,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 427800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12137600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12569300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 28,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 427100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 11963600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12394700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "cross-project",
+          "index": 29,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 423300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12066400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12494500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        }
+      ]
+    ],
+    [
+      "gc-concurrent",
+      [
+        {
+          "scenario": "gc-concurrent",
+          "index": 0,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 408800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13289400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13702500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 1,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1149900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 36761000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 37927200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 2,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1191900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 37405300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 38605900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 3,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1488800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 34655300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 36155200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 4,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1243100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 39710700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 40963000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 5,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 2675600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 37103300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 39788500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 6,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1016600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 38575400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 39599800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 7,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1412600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 38234700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 39656600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 8,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1176100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 40530000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 41713900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 9,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1120700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 30537300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 31665700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 10,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 963600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 27727600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 28698600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 11,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1064600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 27952600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29024900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 12,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1186900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 27430200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 28625600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 13,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1150100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 28568500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29727800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 14,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1081500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 29225400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 30315200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 15,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1033700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 28422100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29463400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1087700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 28634700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29730000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 983800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 28212300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29203400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1109900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 29112300,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 30231100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1241400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 30085400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 31335200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1233600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 27824800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29068000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 21,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1048800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 29653500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 30709900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 22,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1146400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 28318200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29472400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 23,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1299000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 28524800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29833900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 24,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1186000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 26259100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 27453200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 25,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 968400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 29435800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 30412700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 26,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 985200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 31430400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 32423200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 27,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1216400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 30966100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 32193700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 28,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1085000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 27638700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 28732000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "gc-concurrent",
+          "index": 29,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 920900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 16078400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 17006800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        }
+      ]
+    ],
+    [
+      "full-cold",
+      [
+        {
+          "scenario": "full-cold",
+          "index": 0,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 532700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 457400,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 7600,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 2446600,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 3453400,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 1,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 510000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13878800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14394500,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 2,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 436500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12155900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12598200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 3,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 396000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12284700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12686000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 4,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 402200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12422500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12829100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 5,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 400500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12176900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12582100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 6,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 406700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12704400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13116000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 7,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 498000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12694600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13197100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 8,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 455600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12493600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12953600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 9,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 424700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12552600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12981800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 10,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 411500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12268100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12685200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 11,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 427300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12342000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12773200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 12,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 429700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12520700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12954800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 13,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 437200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12397900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12839400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 14,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 488000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13516800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 14010000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 15,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 389500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12580100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12974000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 518400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13337600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13861400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 391500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12588200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12984200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 434800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13206800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13646400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 452000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12529100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12985800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 447600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12242900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12695600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 21,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 451200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12795000,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13250800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 22,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 398700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12140800,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12544300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 23,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 486600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12357100,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12848400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 24,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 455900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12418400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12879800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 25,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 455100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 13364400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13824200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 26,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 455600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12796700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13256900,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 27,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 440300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12648200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13093000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 28,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 392000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 11972600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 12368700,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        },
+        {
+          "scenario": "full-cold",
+          "index": 29,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 425800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 12877700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 13307400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 632,
+          "status": "hit"
+        }
+      ]
+    ],
+    [
+      "wide-invalidation",
+      [
+        {
+          "scenario": "wide-invalidation",
+          "index": 0,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 503300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 496200,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 36400,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 5414200,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 6458900,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 1,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 602600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 520700,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 39500,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 4352000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 5522500,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 2,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 591800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 518000,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 42100,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3506200,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4664300,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 3,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 602000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 499000,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 43500,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3230700,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4380900,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 4,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 521400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 492700,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 28900,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3275400,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4323500,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 5,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 508300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 507100,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 53600,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3458900,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4534000,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 6,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 506200,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 456500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 28600,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3138100,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4133900,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 7,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 491800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 479600,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 38300,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 4301000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 5316100,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 8,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 540300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 489600,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 36300,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3953000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 5026200,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 9,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 552900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 485800,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 35900,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3479300,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4559800,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 10,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 542900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 476800,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 15900,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 4192500,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 5233500,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 11,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 460600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 470300,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 13700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3240600,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4190800,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 12,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 475700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 558000,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 28500,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 4972000,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 6041300,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 13,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 517700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 497200,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 17000,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3992400,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 5031300,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 14,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 559400,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 493800,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 15800,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3355600,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4431300,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 15,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 501800,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 438600,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 11300,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3483100,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4440200,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 515700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 452800,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 11700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3392800,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4378100,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 435000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 446900,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 15200,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3860600,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4762900,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 581700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 487000,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 15700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3549500,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 4639900,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 658100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 584900,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 15200,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 4630900,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 5897100,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 128,
+          "status": "published"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 595100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 19026700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 19627800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 641,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 21,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 481000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 20486200,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 20971000,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 588,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 22,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 666700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 20864900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 21536300,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 641,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 23,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 518700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 22108400,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 22632100,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 588,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 24,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 714700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 19277900,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 19999600,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 641,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 25,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 487700,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 29468700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 29961400,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 588,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 26,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1097900,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 26850600,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 27957800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 641,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 27,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 581600,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 22229700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 22816800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 588,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 28,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 535100,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=8b271208eedadf286485bb3a9b309b8b518864ad3bca6d91"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 24381500,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 24921200,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 641,
+          "status": "hit"
+        },
+        {
+          "scenario": "wide-invalidation",
+          "index": 29,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 548000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=9854f730befc904051e2ed04bea6256b103b2eb5c56d11f0"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 19785700,
+              "detail": "hit"
+            }
+          ],
+          "total_ns": 20337800,
+          "compute_calls": 0,
+          "cache_hit": true,
+          "io_bytes": 588,
+          "status": "hit"
+        }
+      ]
+    ]
+  ]
+}

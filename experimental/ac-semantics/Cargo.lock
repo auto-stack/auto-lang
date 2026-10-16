@@ -38,6 +38,8 @@ dependencies = [
  "ac-sema-contract",
  "ac-sema-core",
  "auto-ac-prototype",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
