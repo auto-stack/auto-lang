@@ -313,3 +313,14 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
    required ID 拒绝）、tier-bound-ignored-excluded（ignored 单列不拒）、
    tier-bound-zero-selection（零绑定失败）；既有普通/slow/合法筛选/零测试/短跑/
    非零退出行为全部保持。
+## 17. R9 修复后的补充冻结（2026-10-17，复审 R9 后）
+
+1. **完整 ID 精确匹配（补全 §16）**：档位绑定的必验全名（`<binary-id> <fully-qualified
+   test-name>`）必须精确命中 PASS 行——缺失即拒，不再退化到末段比较；短名兼容仅经
+   显式 `-ShortIdFallback`（手写短 ID 调用专用，真实档位调用永不设置）。实际入口
+   反控（Run-NextestTier + 模拟 list/run 边界，selftest 永久化）：wrong-binary 同名
+   /wrong-module 同名均拒且 fails 传播，精确命中过。
+2. **PASS 行计数器填充形态**：nextest 对序号按总宽度填充（`( 15/163)`）——计数器
+   捕获组容忍内部空格，否则 ≥10 序号的测试 ID 被连同计数器捕获、精确匹配失败
+   （R8 的短名回退曾掩盖该缺陷；R9 精确匹配要求下真机 tv 档暴露并修复，
+   tier-e2e-padded-counter-exact 正控固化）。

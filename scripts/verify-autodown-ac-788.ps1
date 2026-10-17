@@ -163,7 +163,11 @@ function Test-LibTestFamily {
 # mismatch, and any unknown summary tail. The slow annotation "(N slow)"
 # is a known grammar component (R6).
 function Test-NextestFamily {
-    param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds = @(), [int]$MinPassed = 1)
+    # R9: tier-bound full ids ("<binary-id> <fully-qualified-name>") must
+    # match EXACTLY — a miss refuses; the short-segment fallback exists
+    # ONLY for explicitly hand-written short ids and is gated behind
+    # -ShortIdFallback (the real tier calls never set it).
+    param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds = @(), [int]$MinPassed = 1, [switch]$ShortIdFallback)
     if ($ExitCode -ne 0) { return "exit=$ExitCode" }
     $totalRun = 0; $totalPassed = 0; $totalSkipped = 0
     foreach ($lm in [regex]::Matches($Text, '(?m)^\s*Summary\s+\[\s*[\d.]+s\]\s+(\d+) tests? run: (\d+) passed(?: \((\d+) slow\))?(?:, (\d+) failed)?(?:, (\d+) skipped)?\s*$')) {
@@ -191,7 +195,10 @@ function Test-NextestFamily {
     # of ids, so exact lookup goes through a HashSet with the segment
     # fallback only for hand-written ids.
     $passedNames = @{}
-    foreach ($m in [regex]::Matches($Text, '(?m)^\s*(?:PASS|DONE)\s+\[\s*[\d.]+s\]\s+(?:\(\d+/\d+\)\s+)?(.+?)\s*$')) {
+    # nextest pads counters to the total's width ("( 15/163)") — the
+    # counter group tolerates that padding or the padded id capture
+    # swallows the counter and breaks exact matching.
+    foreach ($m in [regex]::Matches($Text, '(?m)^\s*(?:PASS|DONE)\s+\[\s*[\d.]+s\]\s+(?:\(\s*\d+/\d+\s*\)\s+)?(.+?)\s*$')) {
         $passedNames[$m.Groups[1].Value.Trim()] = $true
     }
     if ($passedNames.Count -ne $totalPassed) {
@@ -200,6 +207,11 @@ function Test-NextestFamily {
     $passedSet = [System.Collections.Generic.HashSet[string]]::new([string[]]$passedNames.Keys)
     foreach ($id in $RequiredIds) {
         if ($passedSet.Contains($id)) { continue }
+        if (-not $ShortIdFallback) {
+            # R9: no fallback for tier ids — a same-named test in another
+            # binary or module must NOT substitute the required item.
+            return "required id never reported PASS by nextest: $id"
+        }
         $short = ($id -split '::')[-1]
         $hit = $false
         foreach ($k in $passedNames.Keys) {
@@ -249,13 +261,35 @@ function Get-NextestSelection {
 }
 
 function Run-NextestTier {
-    param([string]$Name, [string[]]$RunArgv, [string[]]$ListArgv)
+    # SimulateSelectionJson/SimulateRunText are a SELFTEST-ONLY seam: they
+    # replace the cargo list/run boundary with canned data so the actual
+    # tier entry path (bind -> exact check -> fails propagation) can be
+    # counter-controlled without running whole tiers (the R9 controls).
+    param([string]$Name, [string[]]$RunArgv, [string[]]$ListArgv,
+          [string]$SimulateSelectionJson, [string]$SimulateRunText, [int]$SimulateExit = 0)
     Write-Host "== $Name" -ForegroundColor Cyan
-    $sel = Get-NextestSelection -ListArgv $ListArgv
+    if ($PSBoundParameters.ContainsKey('SimulateSelectionJson')) {
+        $sel = ConvertFrom-NextestListJson -Text $SimulateSelectionJson
+    } else {
+        $sel = Get-NextestSelection -ListArgv $ListArgv
+    }
     if ($sel.Required.Count -eq 0) { throw "$Name`: the tier's frozen selection bound ZERO required tests" }
     Write-Host ("   tier selection bound: {0} required, {1} ignored (filter-excluded reported at verdict)" -f $sel.Required.Count, $sel.Ignored.Count)
     $reqIds = [string[]]$sel.Required
     $minReq = [int]$sel.Required.Count
+    if ($PSBoundParameters.ContainsKey('SimulateRunText')) {
+        $why = Test-NextestFamily -Text $SimulateRunText -ExitCode $SimulateExit -RequiredIds $reqIds -MinPassed $minReq
+        if ($why) {
+            $script:fails++
+            Write-Host "   FAMILY FAIL ($why)" -ForegroundColor Red
+            return $why
+        }
+        Write-Host "   family ok" -ForegroundColor Green
+        if ($null -ne $script:LastNextestReceipt) {
+            Write-Host "   receipt: $($script:LastNextestReceipt)" -ForegroundColor DarkCyan
+        }
+        return $null
+    }
     Run-CargoFamily $Name $RunArgv $reqIds $minReq -Format "nextest"
     if ($null -ne $script:LastNextestReceipt) {
         Write-Host "   receipt: $($script:LastNextestReceipt)" -ForegroundColor DarkCyan
@@ -272,13 +306,14 @@ function Run-CargoFamily {
         [string[]]$AllowedIgnored = @(),
         [hashtable]$RequiredInBinary = @{},
         [hashtable]$MinPerBinary = @{},
-        [string]$Format = "libtest"
+        [string]$Format = "libtest",
+        [switch]$AllowShortIds
     )
     Write-Host "== $Name" -ForegroundColor Cyan
     $text = (& cargo @Argv 2>&1 | Out-String)
     $code = $LASTEXITCODE
     $why = if ($Format -eq "nextest") {
-        Test-NextestFamily -Text $text -ExitCode $code -RequiredIds $RequiredIds -MinPassed $MinPassed
+        Test-NextestFamily -Text $text -ExitCode $code -RequiredIds $RequiredIds -MinPassed $MinPassed -ShortIdFallback:$AllowShortIds
     } else {
         Test-LibTestFamily -Text $text -ExitCode $code -RequiredIds $RequiredIds `
             -RequiredInBinary $RequiredInBinary -MinPassed $MinPassed -MinPerBinary $MinPerBinary `
@@ -331,12 +366,17 @@ if ($Scope -eq "selftest") {
         @{ name = "nextest-slow-count-zero-run"; fmt = "nextest"; text = "     Summary [   0.001s] 0 tests run: 0 passed (0 slow), 0 skipped"; exit = 0; ids = @(); min = 1; want = "no tests were run (0 tests run)" },
         @{ name = "nextest-failed-component"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 failed, 0 skipped"; exit = 0; ids = @(); want = "failed=1 in a nextest summary" },
         @{ name = "nextest-conservation-run-mismatch"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 skipped"; exit = 0; ids = @(); want = "summary run=5 != passed+failed (4+0)" },
-        @{ name = "nextest-real-filtered-success"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) ac-artifact-probe::plan788_r1_ r1_observed_spans_carry_real_frontend_boundaries`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("r1_observed_spans_carry_real_frontend_boundaries"); min = 1; want = $null },
+        @{ name = "nextest-real-filtered-success-shortid"; fmt = "nextest"; shortok = $true; text = "        PASS [   0.100s] (1/1) ac-artifact-probe::plan788_r1_ r1_observed_spans_carry_real_frontend_boundaries`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("r1_observed_spans_carry_real_frontend_boundaries"); min = 1; want = $null },
+        @{ name = "nextest-shortid-fallback-off"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) beta::bin r1_observed_spans_carry_real_frontend_boundaries`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("r1_observed_spans_carry_real_frontend_boundaries"); min = 1; want = "required id never reported PASS by nextest: r1_observed_spans_carry_real_frontend_boundaries" },
         @{ name = "nextest-filtered-required-excluded"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) alpha::other`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("alpha::needed"); min = 1; want = "required id never reported PASS by nextest: alpha::needed" },
         @{ name = "nextest-required-ignored-skipped"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) alpha::other`n     Summary [   0.120s] 1 test run: 1 passed, 2 skipped"; exit = 0; ids = @("alpha::needed"); min = 1; want = "required id never reported PASS by nextest: alpha::needed" },
         @{ name = "tier-bound-partial-substitution"; fmt = "nextest-bound"; listjson = '{"rust-build-meta":{},"test-count":2,"rust-suites":{"alpha":{"binary-id":"alpha::bin","testcases":{"one":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}},"two":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}},"gone":{"kind":"test","ignored":false,"filter-match":{"status":"mismatch"}}}}}}'; text = "        PASS [   0.100s] (1/1) alpha::bin one`n        PASS [   0.120s] (2/2) alpha::bin stranger`n     Summary [   0.120s] 2 tests run: 2 passed, 1 skipped"; exit = 0; want = "required id never reported PASS by nextest: alpha::bin two"; wantsel = "2/0" },
         @{ name = "tier-bound-ignored-excluded"; fmt = "nextest-bound"; listjson = '{"rust-build-meta":{},"test-count":2,"rust-suites":{"alpha":{"binary-id":"alpha::bin","testcases":{"one":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}},"tool":{"kind":"test","ignored":true,"filter-match":{"status":"matches"}}}}}}'; text = "        PASS [   0.100s] (1/1) alpha::bin one`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; want = $null; wantsel = "1/1" },
         @{ name = "tier-bound-zero-selection"; fmt = "nextest-bound"; listjson = '{"rust-build-meta":{},"test-count":0,"rust-suites":{}}'; text = "     Summary [   0.1s] 0 tests run: 0 passed"; exit = 0; want = "no tests were run (0 tests run)"; wantsel = "0/0" },
+        @{ name = "tier-e2e-exact-hit"; fmt = "tier-e2e"; listjson = '{"rust-build-meta":{},"test-count":1,"rust-suites":{"alpha":{"binary-id":"alpha::bin","testcases":{"tests::needed":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}}}}}}'; text = "        PASS [   0.100s] (1/1) alpha::bin tests::needed`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; want = $null },
+        @{ name = "tier-e2e-padded-counter-exact"; fmt = "tier-e2e"; listjson = '{"rust-build-meta":{},"test-count":1,"rust-suites":{"alpha":{"binary-id":"alpha::bin","testcases":{"tests::needed":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}}}}}}'; text = "        PASS [   0.221s] ( 15/163) alpha::bin tests::needed`n     Summary [   0.221s] 1 test run: 1 passed, 1 skipped"; exit = 0; want = $null },
+        @{ name = "tier-e2e-wrong-binary-same-name"; fmt = "tier-e2e"; listjson = '{"rust-build-meta":{},"test-count":1,"rust-suites":{"alpha":{"binary-id":"alpha::bin","testcases":{"tests::needed":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}}}}}}'; text = "        PASS [   0.100s] (1/1) beta::bin tests::needed`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; want = "required id never reported PASS by nextest: alpha::bin tests::needed" },
+        @{ name = "tier-e2e-wrong-module-same-name"; fmt = "tier-e2e"; listjson = '{"rust-build-meta":{},"test-count":1,"rust-suites":{"alpha":{"binary-id":"alpha::bin","testcases":{"tests::needed":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}}}}}}'; text = "        PASS [   0.100s] (1/1) alpha::bin other::needed`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; want = "required id never reported PASS by nextest: alpha::bin tests::needed" },
         @{ name = "nextest-missing-id"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::other`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @("alpha::needed"); want = "required id never reported PASS by nextest: alpha::needed" }
         @{ name = "nextest-zero-run"; fmt = "nextest"; text = "     Summary [   0.001s] 0 tests run: 0 passed, 0 skipped"; exit = 0; ids = @(); min = 1; want = "no tests were run (0 tests run)" },
         @{ name = "nextest-short-run"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::one`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @(); min = 2; want = "testsRun=1 < required 2" },
@@ -349,6 +389,27 @@ if ($Scope -eq "selftest") {
         $perbin = if ($c.perbin) { $c.perbin } else { @{} }
         $min = if ($null -ne $c.min) { [int]$c.min } else { 1 }
         $fmt = if ($c.fmt) { $c.fmt } else { "libtest" }
+        if ($fmt -eq "tier-e2e") {
+            # R9: the ACTUAL Run-NextestTier entry with the cargo list/run
+            # boundary replaced by canned data — wrong-binary and
+            # wrong-module same-name substitutions must refuse with fails
+            # propagation; the exact hit must pass.
+            $before = $script:fails
+            $why = Run-NextestTier "[selftest] $($c.name)" @("simulated") @("simulated") -SimulateSelectionJson $c.listjson -SimulateRunText $c.text -SimulateExit $c.exit
+            $delta = $script:fails - $before
+            # the negative controls legitimately increment the shared
+            # counter — the DELTA is the assertion; restore the baseline so
+            # the selftest total only counts real selftest failures.
+            $script:fails = $before
+            $ok = if ($null -eq $why) { ($null -eq $c.want) -and ($delta -eq 0) } else { ($why -eq $c.want) -and ($delta -eq 1) }
+            if ($ok) {
+                Write-Host "selftest $($c.name): ok" -ForegroundColor Green
+            } else {
+                $script:fails++
+                Write-Host "selftest $($c.name): FAIL (got '$why' delta=$delta, want '$($c.want)')" -ForegroundColor Red
+            }
+            continue
+        }
         if ($fmt -eq "nextest-bound") {
             # R8: the TIER-BINDING control path — the required set is
             # derived from a canned `nextest list` JSON exactly as the real
@@ -361,7 +422,8 @@ if ($Scope -eq "selftest") {
                 if ($got -ne $c.wantsel) { $why = "selection parsed $got, want $($c.wantsel)" }
             }
         } elseif ($fmt -eq "nextest") {
-            $why = Test-NextestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids -MinPassed $min
+            $sw = if ($c.shortok) { [switch]$true } else { [switch]$false }
+            $why = Test-NextestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids -MinPassed $min -ShortIdFallback:$sw
         } else {
             $why = Test-LibTestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids `
                 -RequiredInBinary $bind -MinPassed $min -MinPerBinary $perbin -AllowedIgnored $allow
