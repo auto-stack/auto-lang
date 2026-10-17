@@ -170,7 +170,7 @@ T-01 冻结收据（2026-10-17，基线 282e50053 实读源码）：
 - **冻结门禁**（2026-10-14 裁定，merge-owned，跑于 4d3e9746d；二次 rebase 仅 docs/plans 簿记、crates/test/scripts/Cargo.toml diff 为空，证据显式复用于 ecf53035e）：裸 `cargo t` **5265/5265 PASS**（1 slow=plan738 p4 67.5s，1550 skipped=预配置 skip 面，零红零 flake）；定向门——核心 38+6、parity+身份 2、ninja-lib 12+1 manual ignored、consumer 5、verify-deps PASS、777 strict pass。tv/tu/tt/tb/taa 无触面不适用。
 - `ledger_refreshed`：.autoos/specs.json **v43→v44 guarded offline projection**（本会话无 auto-ai store writer；备份 .autoos/specs.json.bak-v43-805；程序化 read-modify-write；范围守卫=仅 designs/tests/reviews/reports 四节各 prepend 1 条（P805-D1/P805-T/P805-R2/P805-M）+version+1，其余节逐节全等；六节 id 集合校验+读回验证通过）。
 - `archived`：git mv → docs/plans/archive/805-toolchain-rules-core-extraction.md，status: archived，T-08 勾，8/8；规范/ledger/簿记随本提交入默认分支。
-- `cleaned`：见下方终回执。
+- `cleaned`：wt-guard 双树 clean（lang-805/auto-lang + lang-805/auto-down）→ worktree×2/分支 plan-805-dev（=ecf53035e 已入 master）/组目录 D:/autostack/.wt/lang-805 零残留移除；主检出仅余他线预存簿记脏项（docs/plans/803-*.md worktree 删除与 ledger_770.py，会话开始前已存在，未触碰未裹入）。
 - **生产工件检查**：auto-lang 为库仓，无随 master 消费的后端 release 二进制/守护进程/Web bundle 重建协议（auto-musk 专属步骤不适用）；本仓生产消费面=cargo 工作区自身，裸 t 已覆盖。
 - **批量回归到期判定**：805 % 5 = 0 且 805 > covered（.last-batch-regression.json last_covered_plan_id=800）→ **到期**，合入后由 /auto-plan:regress 在主检出单实例执行。
 
