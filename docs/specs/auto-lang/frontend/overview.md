@@ -44,6 +44,15 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
 - 方言体系（轴 A）已实现：`Dialect` trait + `UiDialect`（`Scenario::UI` 下接管
   `widget`/`msg`/`model`/`view`/`on`），产出仍是基础 `Stmt` 变体；PLAN-778 起
   支持外部 crate 经 `ParserBridge` 显式注册方言（见"方言外部化"节）。
+- PLAN-806 起 UI **声明文法**（msg/model + 字段注解）外置为轻 crate
+  **auto-ui-dialect**（`crates/auto-ui-dialect`，依赖仅 auto-parser-api）：
+  完整算法自 Parser 逐字迁出，单一份实现经 `dyn ParseContext` 驱动；
+  顶层 `UiDialect` 派发与 widget/component/store 结构路径、import 新建
+  Parser 的 `with_session` 默认装配全部真实委托，旧公开
+  `parse_msg_decl`/`parse_model_block` 仅薄兼容委托（Rust 调用形状与 AST
+  类型身份不变），原算法已删除。未迁：widget/view/on/actions/style/
+  computed 等结构文法仍在 Parser（见"未迁事实"）。规范见
+  [auto-ui-dialect/project.md](../../auto-ui-dialect/project.md)。
 - `use` 体系两层：预处理用 `scan_use_statements`（字符串级，免解析）；
   解析后用 `ModulePath`（`pac`/`super` 前缀）+ `ModuleResolver`/`FilesystemResolver` 落盘。
 - AST 序列化三件套 `ToNode`/`ToAtom`/`AtomWriter` 覆盖全部 AST 类型（S 表达式文本）。

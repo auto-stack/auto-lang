@@ -12,7 +12,7 @@
 
 ## 关键字接管细节（以代码为准）
 
-- `widget`/`msg`/`model` 是**普通标识符**（`TokenKind::Ident`），UI 场景下经 `Dialect::try_parse_stmt` 接管为声明语句。
+- `widget`/`msg`/`model` 是**普通标识符**（`TokenKind::Ident`），UI 场景下经 `Dialect::try_parse_stmt` 接管为声明语句；PLAN-806 起 `msg`/`model` 的**解析算法**单一份外置于轻 crate [auto-ui-dialect](../../../auto-ui-dialect/project.md)（顶层派发与 widget/component/store 结构路径、import 默认装配同源委托，默认文法与 778 冻结的外部裸字段子集边界不变）——`widget` 壳与其余 UI 文法（view/on/actions/style/computed 等）仍在上层未迁。
 - `view`/`on` 是**真实 TokenKind**，走 `try_parse_token_stmt`；`view` 与 core 语言的参数模式关键字（`fn foo(view x int)`）复用同一 token，靠语句位置区分。
 - `view fn` 前缀为 view fragment（plan-367 P2-3）——内联展开，调用点无独立组件。
 - `component fn`（plan-408）自 Plan 425 起为 **`widget` 的语法糖**：解析期直接产出 WidgetDecl（body 自动包 `view` 块、params→props），fragment 双轨已删除。**新代码请用 `widget`**；`component fn` 仅作兼容拼写保留。同文件 widget 引用自动走组件路径（`<Name/>` + `@/components/Name.vue`）。

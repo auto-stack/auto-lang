@@ -37,6 +37,17 @@
   与不透明快照凭据 `ParseCheckpoint`（有作用域句柄表：一次性、跨上下文/
   过期受控拒绝、方言调用退出按签发作用域失效）。旧 trait + by-value
   `BridgeCheckpoint` 公开面保持不变。
+- 内建声明文法经端口单源化（PLAN-806，`crates/auto-ui-dialect`）：完整
+  msg/model/字段注解算法自 Parser 逐字迁出为轻 crate 单一份实现，同样以
+  `dyn ParseContext` 驱动（端口不再只是外部方言面——内建文法实现亦走
+  端口，Parser 内 `parse_msg_decl_inner`/`parse_model_block_inner` 一行
+  建桥委托，原算法与 `parse_model_field_annotations` 删除）。分派权限与
+  恢复规约不变：顶层仍经 builtin 段 `UiDialect` 同一分支（fn/on 体护栏
+  前置让行），widget/component/store 结构路径直连 inner 委托，None/Err
+  三态与游标/五旗标恢复由派发器兜底不变；778 冻结的外部 model 子集
+  （裸字段）仅在 `ModelGrammar::ExternalSubset` 显式策略下提供，默认
+  `Builtin` 无裸字段——默认文法零漂移。规范见
+  [auto-ui-dialect/project.md](../../../auto-ui-dialect/project.md)。
 - `view` 的两义性：Core 语言里是参数模式关键字（`fn foo(view x int)`），UI 场景在
   语句位置是 view 块/fragment——由 `try_parse_token_stmt` 按场景分派
   （dialect/ui.rs 头注）。
