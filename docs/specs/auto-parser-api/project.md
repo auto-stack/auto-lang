@@ -42,12 +42,15 @@ auto-lang 侧兼容出口：`crate::session`/`crate::dialect::DialectPriority`
   恢复不变量（Arc 注册永不出表/None 强制回滚/Err 边界恢复 context 旗标）
   由既有 `try_dialect_stmt`/`try_token_dialect_stmt` 兜底；注册跨
   `with_session` 保留。
-- `ParseCheckpoint`（有作用域句柄，T-01 D3）：不透明凭据 `{Parser 实例 id,
-  槽位, 全局单调 gen}`，后端为 Parser 内 `port_snapshots` 句柄表（tombstone
-  槽位复用）。跨上下文（实例 id 不符）/过期（调用退出水位截断、已消费、
-  gen 更替）使用在 `restore` 处**受控拒绝**（当前 token 位置语法错误 Err）；
-  凭据 move-only 单用；嵌套派发水位更高故外层凭据不受内层调用影响（递归
-  不覆盖外层快照）。无 unsafe 延寿、无源码 'static 要求、无全局快照池。
+- `ParseCheckpoint`（有作用域句柄，T-01 D3；F-801-R1-01 修订）：不透明凭据
+  `{Parser 实例 id, 槽位, 全局单调 gen}`，后端为 Parser 内 `port_snapshots`
+  句柄表（tombstone 槽位复用；每槽记录**签发它的方言调用作用域**，派发器
+  每次调用唯一、嵌套保存/恢复）。跨上下文（实例 id 不符）/过期（调用退出
+  按签发作用域失效——`port_release_scope` 置 tombstone，与槽位复用与否
+  无关；已消费、gen 更替）使用在 `restore` 处**受控拒绝**（当前 token
+  位置语法错误 Err，游标不动）；凭据 move-only 单用；外层存活快照不受
+  内层调用退出影响（递归不覆盖外层快照）。无 unsafe 延寿、无源码 'static
+  要求、无全局快照池。
 - 跨界数据面：只传 owned 文本（`cur_text() -> String`）与现有 AST 值；
   不返回 Parser/lexer/scope/TypeStore 引用。诊断单调追加（checkpoint 不
   回滚 errors/warnings，不承诺符号表级事务回滚）。
@@ -56,7 +59,7 @@ auto-lang 侧兼容出口：`crate::session`/`crate::dialect::DialectPriority`
 
 - 旧 `auto_lang::dialect::Dialect` + `ParserBridge` 公开面保持不变（PLAN-778
   冻结面零漂移；by-value `BridgeCheckpoint` 与端口凭据是两条独立机制，
-  旧方言投机解析不受水位清理影响）。内建 `UiDialect` 仍经 `pub(crate)
+  旧方言投机解析不经端口作用域清理）。内建 `UiDialect` 仍经 `pub(crate)
   parser()` escape hatch 使用完整 Parser——内建完整 UI 文法在 Parser 上，
   不在本 crate。
 - 生产入口/import 新建 Parser 不自动继承外部注册（沿 778 冻结边界）；

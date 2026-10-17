@@ -168,9 +168,14 @@ impl<'p, 'a> ParserBridge<'p, 'a> {
 }
 
 /// PLAN-801 端口快照句柄表槽位（Parser 内部后端，`port_snapshots` 元素）。
-/// `data: None` 为 tombstone——可被后续 checkpoint 槽位复用；凭据合法性由
-/// （实例 id, 槽位, 全局单调 gen）三元组在 `Parser::port_restore` 校验。
+/// `scope` 记录**签发该快照的方言调用**（派发器每次调用唯一、嵌套保存/
+/// 恢复）——调用退出按归属失效，与槽位下标无关（tombstone 复用可使本轮
+/// 新快照落在调用入口表长之下，长度水位无法表达调用实际拥有的槽位，
+/// F-801-R1-01）。`data: None` 为 tombstone——可被后续 checkpoint 复用；
+/// 凭据合法性由（实例 id, 槽位, 全局单调 gen）+ 存活位在
+/// `Parser::port_restore` 校验。
 pub(crate) struct PortSnapshotSlot<'a> {
+    pub(crate) scope: u64,
     pub(crate) gen: u64,
     pub(crate) data: Option<BridgeCheckpoint<'a>>,
 }

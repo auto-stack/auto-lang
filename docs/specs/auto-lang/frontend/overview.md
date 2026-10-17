@@ -173,7 +173,8 @@ verify-deps.sh 无 auto-lang/auto-man/auto-vm/auto-ui）；解析集成测试在
 注册，Override→builtin→Append 与恢复不变量（Arc 留表/None 回滚/Err 边界
 恢复）全部由既有派发器兜底。端口 checkpoint 为有作用域句柄表后端：
 凭据一次性、跨上下文/过期使用受控拒绝（语法错误 Err）、方言调用退出按
-水位清表（嵌套派发保外层）；旧 `ParserBridge` by-value checkpoint 路径
+**签发作用域**失效（槽位记录归属调用，与 tombstone 复用无关；嵌套派发
+保外层存活快照）；旧 `ParserBridge` by-value checkpoint 路径
 零漂移，旧 trait/桥面/注册入口全部保持（`probe <expr>` 兼容用例在
 driver `LegacyProbeDialect`）。剩余边如实保留：内建 UiDialect 经
 `pub(crate)` escape hatch 用完整 Parser（完整 UI 文法仍在 Parser 上，

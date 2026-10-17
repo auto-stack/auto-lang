@@ -35,7 +35,7 @@
 - 新接口端口（PLAN-801，`crates/auto-parser-api`）：外部实现只见对象安全
   `ParseContext`（`&mut dyn` 形态的 778 桥面，由 `ParserBridge` 在上层实现）
   与不透明快照凭据 `ParseCheckpoint`（有作用域句柄表：一次性、跨上下文/
-  过期受控拒绝、方言调用退出水位清表）。旧 trait + by-value
+  过期受控拒绝、方言调用退出按签发作用域失效）。旧 trait + by-value
   `BridgeCheckpoint` 公开面保持不变。
 - `view` 的两义性：Core 语言里是参数模式关键字（`fn foo(view x int)`），UI 场景在
   语句位置是 view 块/fragment——由 `try_parse_token_stmt` 按场景分派

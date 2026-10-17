@@ -253,14 +253,20 @@ pub struct Parser<'a> {
     dialects_builtin: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
     dialects_post: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
     /// PLAN-801 端口快照句柄表：`ParseContext::checkpoint` 的有作用域后端
-    ///（T-01 D3）。槽位 tombstone 复用，签发 gen 在本 Parser 内全局单调
-    /// 不重复；派发器在每次方言调用后按水位 truncate（调用退出清理，
-    /// 嵌套水位保外层快照——递归不覆盖外层）。
+    ///（T-01 D3；F-801-R1-01 修订）。槽位 tombstone 复用，签发 gen 在本
+    /// Parser 内全局单调不重复；**每个槽位记录签发它的方言调用作用域**
+    ///（`port_call_scope`），派发器在每次方言调用退出时按归属失效该调用
+    /// 签发的快照（`port_release_scope`），嵌套调用作用域保存/恢复——
+    /// 外层存活快照不受内层退出影响，内层退出凭据必失效，与槽位复用
+    /// 与否无关。
     port_snapshots: Vec<crate::parser_bridge::PortSnapshotSlot<'a>>,
     /// 本 Parser 实例身份（端口凭据跨上下文拒绝的判据；全局计数器签发）。
     port_instance_id: u64,
     /// 端口凭据下一次签发代次（单调递增，永不重复→槽位复用无误接受）。
     port_gen_next: u64,
+    /// 当前方言调用作用域（派发器每次调用前递增、退出后恢复；checkpoint
+    /// 以此标记槽位归属）。
+    port_call_scope: u64,
     pub skip_check: bool,
     pub compile_dest: CompileDest,
     /// Error recovery: collected errors during parsing
@@ -454,6 +460,7 @@ impl<'a> Parser<'a> {
             port_snapshots: Vec::new(),
             port_instance_id: next_port_instance_id(),
             port_gen_next: 0,
+            port_call_scope: 0,
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -534,6 +541,7 @@ impl<'a> Parser<'a> {
             port_snapshots: Vec::new(),
             port_instance_id: next_port_instance_id(),
             port_gen_next: 0,
+            port_call_scope: 0,
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -597,6 +605,7 @@ impl<'a> Parser<'a> {
             port_snapshots: Vec::new(),
             port_instance_id: next_port_instance_id(),
             port_gen_next: 0,
+            port_call_scope: 0,
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -708,8 +717,10 @@ impl<'a> Parser<'a> {
     // ---- PLAN-801 端口快照句柄表后端（ParseContext::checkpoint/restore） ----
 
     /// 签发一张端口快照凭据：快照数据（游标+五旗标）入表，凭据=（实例
-    /// id, 槽位, 单调 gen）。tombstone 槽位复用；无 unsafe、无 'static、
-    /// 无全局池（T-01 D3）。调用退出清理由派发器水位负责。
+    /// id, 槽位, 单调 gen），槽位标记**当前方言调用作用域**。tombstone
+    /// 槽位复用（复用槽位换新 gen，旧凭据自然失效）；无 unsafe、无
+    /// 'static、无全局池（T-01 D3）。调用退出按作用域失效由派发器
+    /// `port_release_scope` 负责。
     pub(crate) fn port_checkpoint(&mut self) -> auto_parser_api::ParseCheckpoint {
         let gen = self.port_gen_next;
         self.port_gen_next += 1;
@@ -717,16 +728,38 @@ impl<'a> Parser<'a> {
             Some(i) => i,
             None => {
                 self.port_snapshots
-                    .push(crate::parser_bridge::PortSnapshotSlot { gen, data: None });
+                    .push(crate::parser_bridge::PortSnapshotSlot {
+                        scope: self.port_call_scope,
+                        gen,
+                        data: None,
+                    });
                 self.port_snapshots.len() - 1
             }
         };
         let data = self.bridge_checkpoint();
         self.port_snapshots[slot] = crate::parser_bridge::PortSnapshotSlot {
+            scope: self.port_call_scope,
             gen,
             data: Some(data),
         };
         auto_parser_api::ParseCheckpoint::new(self.port_instance_id, slot as u32, gen)
+    }
+
+    /// 失效指定方言调用作用域签发的全部快照（调用退出清理，
+    /// F-801-R1-01：按签发归属而非表长——tombstone 复用可使本轮新快照
+    /// 落在调用入口表长之下，长度截断清不到它们）。仅置 tombstone（gen
+    /// 保留），未兑现凭据在 `port_restore` 处被存活位拒绝且游标不动；
+    /// 其他作用域（含外层存活快照）不受影响。尾部 tombstone 保守收缩
+    /// （只剥尾，不动中部，槽位下标不漂移）。
+    pub(crate) fn port_release_scope(&mut self, scope: u64) {
+        for slot in &mut self.port_snapshots {
+            if slot.scope == scope {
+                slot.data = None;
+            }
+        }
+        while matches!(self.port_snapshots.last(), Some(s) if s.data.is_none()) {
+            self.port_snapshots.pop();
+        }
     }
 
     /// 兑现端口快照凭据：合法（本实例 + 槽位在表 + gen 匹配 + 未消费）则
@@ -851,14 +884,19 @@ impl<'a> Parser<'a> {
                 }
                 let cp = self.bridge_checkpoint();
                 let dialect = std::sync::Arc::clone(dialect);
-                // PLAN-801：端口快照水位——方言调用退出时清掉本次调用签发
-                // 的槽位（调用退出清理；嵌套派发水位更高，外层凭据不受影响）。
-                let port_watermark = self.port_snapshots.len();
+                // PLAN-801（F-801-R1-01 修订）：端口快照按**签发作用域**
+                // 清理——调用前递增作用域（嵌套保存/恢复），退出时失效本
+                // 作用域签发的快照。外层存活快照（他作用域）不受影响；
+                // tombstone 复用导致的新快照落在入口表长之下也能正确失效。
+                let prev_port_scope = self.port_call_scope;
+                self.port_call_scope += 1;
+                let call_scope = self.port_call_scope;
                 let outcome = {
                     let mut bridge = crate::parser_bridge::ParserBridge::new(self);
                     dialect.try_parse_stmt(&mut bridge, ident)
                 };
-                self.port_snapshots.truncate(port_watermark);
+                self.port_release_scope(call_scope);
+                self.port_call_scope = prev_port_scope;
                 match outcome {
                     Ok(Some(stmt)) => return Ok(Some(stmt)),
                     Ok(None) => self.bridge_restore(cp),
@@ -890,14 +928,17 @@ impl<'a> Parser<'a> {
                 }
                 let cp = self.bridge_checkpoint();
                 let dialect = std::sync::Arc::clone(dialect);
-                // PLAN-801：端口快照水位（同 try_dialect_stmt——调用退出清理，
-                // 嵌套派发水位更高，外层凭据不受影响）。
-                let port_watermark = self.port_snapshots.len();
+                // PLAN-801（F-801-R1-01 修订）：端口快照按签发作用域清理
+                //（同 try_dialect_stmt——嵌套保存/恢复，退出失效本作用域）。
+                let prev_port_scope = self.port_call_scope;
+                self.port_call_scope += 1;
+                let call_scope = self.port_call_scope;
                 let outcome = {
                     let mut bridge = crate::parser_bridge::ParserBridge::new(self);
                     dialect.try_parse_token_stmt(&mut bridge, kind)
                 };
-                self.port_snapshots.truncate(port_watermark);
+                self.port_release_scope(call_scope);
+                self.port_call_scope = prev_port_scope;
                 match outcome {
                     Ok(Some(stmt)) => return Ok(Some(stmt)),
                     Ok(None) => self.bridge_restore(cp),

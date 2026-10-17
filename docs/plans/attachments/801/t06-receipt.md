@@ -76,6 +76,35 @@ b53036ec17752fc6  crates/auto-lang/src/parser_bridge.rs
 d822ab350f211fd9  test/fixtures/modularity/ui-dialect-consumer/src/lib.rs
 ```
 
+## R1 复审修复轮（F-801-R1-01/02 闭合）
+
+- **F-801-R1-01（快照过期失效漏洞）**：不变量=端口快照寿命由**签发
+  作用域**决定，而非表长水位。根因：tombstone 复用可使递归内层调用签发
+  的快照落在外层调用入口表长之下，`truncate(watermark)` 清不到；gen/
+  实例 id 校验全匹配，过期凭据照常恢复游标。修复：`PortSnapshotSlot`
+  增 `scope` 字段（签发调用作用域，派发器每次调用前递增、嵌套保存/
+  恢复），调用退出 `port_release_scope` 按归属置 tombstone（尾部保守
+  收缩），两派发器同改；`port_restore` 增存活位校验（原有）。受影响
+  路径=Ident/token 两派发 × Some/None/Err 三态；复审 12 例反例收编为
+  永久回归 `tests/r1_scope_expiry.rs`（6 无洞正控 + 6 复用槽位反例，
+  全绿）；既有 V04 三例/跨 Parser/旧 BridgeCheckpoint 控制保持绿
+  （driver 48/48）。
+- **F-801-R1-02（交付验收缺失）**：本版 12 成员闭包经 792 正式入口
+  `test/fixtures/modularity/generated-ui-consumer/driver.py` 完整重跑，
+  **25/25 PASS exit0**：V01 fresh 独立锁+真实 build（generate crates=13
+  含 auto-parser-api；resolve 3s patch 单源+pin 全命中；build 118s 产物
+  在位）、V02 A→B 不带 target locked 重定位（112s，metadata iced_widget
+  单源@B 内、越界 path=无，资源字节=producer）、V03 十四态负控（等长
+  篡改/坏 hash/缺资源/未登记/漏 patch/不兼容 pin/外来目录/换装保旧/
+  sidecar 外部与根相对/邻位保留/raw TOML/他应用存活）+恢复绿、V04 开发
+  路由与模板同源。收据与日志：
+  `attachments/801/delivery-driver-r2-receipt.json`、
+  `delivery-driver-r2.log.txt`（scratch=组内 scratch-consumer，已留档）。
+- **SD 增补（SD-04）**：canonical
+  `docs/specs/repository-boundaries/generated-ui-distribution.md` 交付
+  闭包清单 11→12 成员（+auto-parser-api 及其闭包内依赖说明）已在
+  worktree 备稿；frontmatter `supersedes_spec_components` 增补该 target。
+
 ## 验证汇总（work 阶段定向面）
 
 - V01：fixture 3/3 + verify-deps.sh PASS + metadata 闭包=[auto-parser-api,
