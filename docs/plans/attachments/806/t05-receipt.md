@@ -71,7 +71,7 @@ ui_gen/trans 源（不追加 tu/tt 合并门）。
   path=无；V03 十四态负控（等长篡改/坏 hash/缺资源/未登记/漏 patch exit101/
   不兼容 pin exit101/外来目录/换装保旧/恢复后成功/sidecar 外部+根相对/raw TOML/
   邻位保留/他应用存活）+恢复绿；V04 开发路由+模板同源。收据
-  [delivery-driver-receipt.json](delivery-driver-receipt.json)、
+  [delivery-driver-receipt.json.txt](delivery-driver-receipt.json.txt)、
   [delivery-driver.log.txt](delivery-driver.log.txt)。
 
 ## 净删与迁位清单
