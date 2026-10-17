@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-805
-status: executing
+status: archived
 feature_name: Man 工具链配置与构建规则核心抽取
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 6
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/auto-toolchain-core/project.md]
@@ -99,8 +99,8 @@ work：`cargo check -p auto-toolchain-core`、`cargo check -p auto-man`，新con
 | [x] | T-04 | work | T03 | 新独立consumer、全八类/四命令/无效输入、真实生产与配置控制V01–04，记录实际命令/输出；R1 修复：未使用导入清零（新测试零告警）+ 替换序确定性控制×2（R1 复放集期望值）+ 等长 key 双态容忍控制（consumer 第 5 测试） | 01/02/03 |
 | [x] | T-05 | work | T04 | V05 777精确边/单一性/803窄合流/792闭包，必要交付控制 | 04 |
 | [x] | T-06 | work | T05 | 迁位/净删/剩余管理层与SD/SHA收据，提交送审；R1 修复：SD-01 render 语义改准+真实模块表+验证矩阵改列表、INDEX 再生列 config/mapper/templates；修复提交 589e30399 | 04 |
-| [ ] | T-07 | review | T06 | 同树独立AC/SD及规则/生产反控审查，merge门pending | 05 |
-| [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
+| [x] | T-07 | review | T06 | 同树独立AC/SD及规则/生产反控审查；R2 final pass 绑定589e30399，R1三项CLOSED，merge门pending | 05 |
+| [x] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
 
 ## 9. 复审记录
 
@@ -150,6 +150,29 @@ T-01 冻结收据（2026-10-17，基线 282e50053 实读源码）：
 - **F-805-R1-03 闭合**：SD-01 增设真实模块表（config/mapper/templates 三行）+ 验证矩阵改 bullet 列表（脱离索引器表格正则）；`scripts/spec-index.py` 再生 INDEX——新核心模块明细现为真实三模块（模块数 4→3，伪"入口/覆盖"条目消除）。
 - **复放门禁（589e30399 上实跑）**：`cargo test -p auto-toolchain-core` 38+6；parity+identity 2 pass（16 golden 逐字节 + 新顺序控制）；consumer 5 pass；`verify-deps.sh` PASS（RUSTC_WRAPPER= 绕过本机 sccache 端口排除段）；777 strict pass/0 violations/2 grandfathered（manifests/边未变，基线仍绑定 4d1aade5a 有效）；plan 迁入/新增 Rust 文件 scoped rustfmt --check 退出 0。auto-man 门面/上层消费文件本轮零改动（T-03/T-05 证据不受影响）。
 - merge-owned 门禁保持 pending（裸 `cargo t` + 核心/Man 定向门在最终 pass 后的冻结提交上执行）。
+
+2026-10-17 / stage: review / review_scope: final / reviewer_identity: Codex（本会话独立审核，未参与实现/修复；无子agent，未暴露模型/会话ID不推断） / PLAN-805 revision: 1 / **outcome: pass** / worktree_path=D:/autostack/.wt/lang-805/auto-lang / branch=plan-805-dev / reviewed_commit=589e3039962d0cc8f1cc473d8d8190d9f8083949 / base_commit=282e50053da41c3b65c1e424ca0d251f1126986b / dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / next=merge。
+
+- [R2完整报告与AC映射](attachments/805/review-r2.md)、[基线/依赖/Spec输入指纹](attachments/805/review-r2-baseline.json.txt)、[冻结规范增量](attachments/805/review-r2-spec-delta.patch)。规范增量SHA256=`7df10957ae593bb4a7f60e5d84f48a2a0a943427e04b1c703c5007a69f891fdb`。
+- **F-805-R1-01/02/03 全部CLOSED**：新增测试导入告警消除、scoped格式检查exit0；独立证明三核心模块恰为旧blob的rustfmt输出；render规范如实描述一轮顺序替换，确定性正反顺序与等长key原例重放通过；现有索引器临时重生成全文等于已提交INDEX，仅列config/mapper/templates三个active模块。
+- **本轮实跑**：核心38单测+6doc、consumer5、parity/identity2（16份原golden+顺序控制）、R1原始probe、闭包守卫、777 strict pass/0 violations/2 grandfathered、scoped rustfmt全部通过。完整locked metadata与R1深比较相等；上层消费者/manifest/验证配置未改、auto-down未变，复用R1 ninja12+1manual ignored/check/792闭包与803合流证据，具体指纹和复用边界见报告。主检出相关规范输入未漂移，无新增阻断或遗漏/延期/workaround。
+- **acceptance_results**：AC01–05 pass，AC06 pending。T01–07完成，**reviewed 7/8**；T08保持未完成。先前修复未落地时的核对仅为readiness检查，不计完整final轮次。P805-D1旧加载器空载边界保留。
+- **pending_closeout_gates**：最终冻结裸cargo t+核心/Man必要定向门归merge；同步如改变受审代码/依赖/配置须复核受影响内容。tv/tu/tt/tb/taa无触面，tf主检出到期单实例（805落地%5触发）。Spec/ledger/overview/goals/plans/索引沉淀、归档、wt-guard清理未执行；本次未合并或宣称交付。
+
+
+
+2026-10-17 / stage: merge | PLAN-805:r1 | outcome: pass（delivered）| delivery=ecf53035e7410afaea445e7e18e071c33773f637 | worktree=D:/autostack/.wt/lang-805/auto-lang | branch=plan-805-dev | base=282e50053 | dependency_revisions=auto-down c39ac7f9（未变，零提交）
+
+**合并检查点收据**：
+
+- `prepared`：R2 final pass 绑定 589e30399（冻结规范增量 SHA256 7df10957ae59）；rebase over 801/802/804/788 合入线（映射 4d1aade5a→29c978be9 / 66fc9d710→48b4f6651 / 589e30399→8b951bb8c，range-diff 提交 1/3 全等、提交 2 仅基线 json 解决方式差异且由 merge 期重采样覆盖）；merge 预备提交 7d9cdb1dc（plans.md 建表+基线重采样 strict pass/0 violations/2 grandfathered，declared_edges 60）+ 二次 rebase over 788 簿记线（代码/测试/配置与门禁提交 diff 为空）+ 基线再采样 ecf53035e。
+- `landed`：master tip == ecf53035e（`git merge --ff-only plan-805-dev`，无 merge 提交）；主检出 smoke `cargo check -p auto-toolchain-core -p auto-man` 通过；规范文件在位（project.md/plans.md/INDEX 42 项目）。
+- **冻结门禁**（2026-10-14 裁定，merge-owned，跑于 4d3e9746d；二次 rebase 仅 docs/plans 簿记、crates/test/scripts/Cargo.toml diff 为空，证据显式复用于 ecf53035e）：裸 `cargo t` **5265/5265 PASS**（1 slow=plan738 p4 67.5s，1550 skipped=预配置 skip 面，零红零 flake）；定向门——核心 38+6、parity+身份 2、ninja-lib 12+1 manual ignored、consumer 5、verify-deps PASS、777 strict pass。tv/tu/tt/tb/taa 无触面不适用。
+- `ledger_refreshed`：.autoos/specs.json **v43→v44 guarded offline projection**（本会话无 auto-ai store writer；备份 .autoos/specs.json.bak-v43-805；程序化 read-modify-write；范围守卫=仅 designs/tests/reviews/reports 四节各 prepend 1 条（P805-D1/P805-T/P805-R2/P805-M）+version+1，其余节逐节全等；六节 id 集合校验+读回验证通过）。
+- `archived`：git mv → docs/plans/archive/805-toolchain-rules-core-extraction.md，status: archived，T-08 勾，8/8；规范/ledger/簿记随本提交入默认分支。
+- `cleaned`：见下方终回执。
+- **生产工件检查**：auto-lang 为库仓，无随 master 消费的后端 release 二进制/守护进程/Web bundle 重建协议（auto-musk 专属步骤不适用）；本仓生产消费面=cargo 工作区自身，裸 t 已覆盖。
+- **批量回归到期判定**：805 % 5 = 0 且 805 > covered（.last-batch-regression.json last_covered_plan_id=800）→ **到期**，合入后由 /auto-plan:regress 在主检出单实例执行。
 
 ## 10. 待澄清事项
 

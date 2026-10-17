@@ -4,6 +4,18 @@
       "id": "reports",
       "items": [
         {
+          "id": "P805-M",
+          "title": "PLAN-805 合入收据（delivery/沉淀/投影/归档/清理）",
+          "content": "delivery=ecf53035e ff-only（rebase over 801/802/804/788 合入线：一次 rebase 唯一冲突基线 json 取 master 侧后merge 期重采样覆盖，二次 rebase over 788 簿记线零冲突；映射 4d1aade5a→29c978be9/66fc9d710→48b4f6651/589e30399→8b951bb8c+merge 预备 4d3e9746d→7d9cdb1dc，range-diff 1/3 提交全等、基线 json 为解决方式差异且已重采样）；冻结门禁裸 cargo t 5265/5265（1 slow，1550 skipped 预配置）+定向门（核心 38+6/parity+身份/ninja-lib 12+1/consumer 5/verify-deps/strict pass 0 违例）跑于 4d3e9746d，二次 rebase 仅 docs/plans 簿记、代码/测试/配置 diff 为空、证据显式复用。沉淀=SD-01/02+plans.md 建表+GROUPS/INDEX 42 项目；ledger v43→v44 guarded offline projection（本条目+D/T/R2 四条，备份 bak-v43-805，范围守卫仅本计划条目）。归档 archive/805+T-08 8/8。",
+          "file": "docs/plans/805-toolchain-rules-core-extraction.md",
+          "tags": [
+            "PLAN-805",
+            "stage:merge",
+            "delivery:ecf53035e7410afaea445e7e18e071c33773f637"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P802-M",
           "title": "PLAN-802 合入沉淀收据（code editor host provider 交付）",
           "content": "交付=24facbf97 ff-only（实现 8eb28c6f5+3abdf9d48+b47da60ce + specs 沉淀 24facbf97；range-diff 4/4 全等，reviewed b32d4df7d→b47da60ce 映射在案）。冻结门禁：裸 cargo t 5343/5343（1 flaky=在案 plan484_024 负载族重试恢复）+ cargo tv 163/163（tu/taa 不触发——ui_gen/aavm 零改动）。SD-01/02/03 落三目标 Spec + 三 plans.md 索引 + INDEX 再生（38 projects）。ledger v41→v42 guarded offline projection（备份 v41-802）。实机 oracle 证据冻结（v06-live 三分判定+六态自检）。KNOWN-DEBT P802-D1（VM 局部槽≥16 预存限制，范围外）。",
@@ -4374,6 +4386,19 @@
       "id": "designs",
       "items": [
         {
+          "id": "P805-D1",
+          "title": "auto-toolchain-core 模块契约（工具链配置/flag 映射/命令模板单一来源）",
+          "content": "SD-01：Man 工具链规则唯一实现——config（CompilerKind 八类含 gnu/llvm 别名、ExecutableType 四角色大小写敏感、FlagFormat 三型、FlagMappings 八默认表、CompilerLocation、CompilerConfig 八类默认/扩展名访问器）、mapper（FlagMapper；map_output 前缀/双段型 trim_end_matches 剥全部重复尾缀、Postfix 不剥）、templates（四命令内联模板+按 key 长度降序一轮顺序渲染：后处理短 key 可展开先前插入值、已处理 key 不回扫、等长 key 继承 HashMap 序、未知占位符保留；TICLang 复用 clang 模板）。闭包仅 auto-val+std（toolchain-core-consumer+verify-deps 钉住，777 man-ecosystem 域）；auto-man 旧三模块薄 re-export 门面（同类型身份），am.at 加载（CompilerStore，预存空载缺口 P805-D1 债）/PATH 磁盘进程观测（Resolver）/Ninja 执行（Builder）留上层；不进 792 交付闭包（反向依赖仅 auto-man）。迁移提交与 base 282e50053 blob 逐字节相等，R1 修复轮 rustfmt 后以 16 件 golden 行为对拍为证。",
+          "file": "docs/specs/auto-toolchain-core/project.md",
+          "tags": [
+            "PLAN-805",
+            "stage:merge",
+            "delivery:ecf53035e7410afaea445e7e18e071c33773f637",
+            "sha256:39588ca058f9"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P802-D3",
           "title": "code_editor 会话端点 provider 时期同源与 701 合同保持（SD-03）",
           "content": "PLAN-802 SD-03：VM shim 经 provider、UI adapter 与 a2r/merged 臂仍委托同一 ui::code_editor 注册表函数——三轨同源不因迁移漂移。端点契约保持：save 裸写 rope 字节（BOM/EOL 归 front）、光标 0 基行/char 列、selection bytes、scroll 写=intent 队列（未绑定丢弃恒 true）、读=注册表投影单源、用户滚动后 ≤2s 读回收敛（三分判定 certified 才过——实机 oracle docs/plans/attachments/802/v06-live/）、Q-2 回声零依赖。同 drain 命令投影由 renderer 先 note_controller_offset 再安排滚动的实现序支撑（异步采样不证亚帧，如实边界）。",
@@ -7646,6 +7671,19 @@
       "id": "tests",
       "items": [
         {
+          "id": "P805-T",
+          "title": "工具链规则验证矩阵（golden 对拍/类型同一性/外部闭包/顺序控制）",
+          "content": "V01 toolchain-core-consumer 独立闭包 5 测试+verify-deps（normal/build 无语言栈，auto-val 合法）；V02/V03 plan805_toolchain_parity——旧臂 base 282e50053 双捕获 16 件 golden（八类默认/alias/三 FlagFormat/mapper 边界含重复尾缀/八类×四模板/render 语义/九件 NinjaBuilder memory 生产输出/CompilerStore am.at 三态）新臂逐字节断言+替换序确定性控制×2（R1 复放集期望）+等长 key 256 次双态容忍控制；V02 plan805_type_identity 旧路径↔新 crate 直传；核心 38 单测+6 doc；ninja:: 选择面 12+1 manual ignored（MSVC 同目录优先/钉定守卫）。",
+          "file": "crates/auto-man/tests/plan805_toolchain_parity.rs",
+          "tags": [
+            "PLAN-805",
+            "stage:merge",
+            "delivery:ecf53035e7410afaea445e7e18e071c33773f637",
+            "sha256:11e4f75454f7"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P802-T1",
           "title": "code editor provider 测试资产（no-ui fixture/in-crate 回归锚/实机 oracle）",
           "content": "PLAN-802 测试资产：① 外部 no-ui consumer fixture（test/fixtures/modularity/code-editor-provider-consumer，独立 workspace 零 UI feature）7 测试——V01 真 VM 全管线×2（22 native 互异参数/精确弹序/Unicode/负钳位/1基转换）、V02 缺席矩阵 21 错误文本逐字+9913 值臂+ID 钉扎 22+Clone/merge+if_absent、V03 delta FIFO 恰一次/text 不清队列/VM 字符串池越 provider 寿命。② in-crate plan802_code_editor_provider 7 测试——core 剪断锚（五直引形态永久钉扎）/装配身份（快照/覆盖/Clone/merge/binding_revision）/真注册表往返（多字节 edit/undo/fold/delta 水位/load-save CRLF 字节保真/失败值形）/provider swap 寿命/滚动投影链/clamp/真 arboard 剪贴板往返（保存恢复+跨进程锁）。③ 实机 oracle v06_driver.py（六态 mock 自检+三分判定+Win32 真滚轮，R1–R5 五轮复审验收面）。",
@@ -9285,6 +9323,19 @@
     {
       "id": "reviews",
       "items": [
+        {
+          "id": "P805-R2",
+          "title": "PLAN-805 final review R2 — pass",
+          "content": "独立终审（承接 R1 needs_fix→修复 589e30399）：F-805-R1-01 CLOSED（未使用导入清零+迁入模块 fmt exit 0，独立 blob→rustfmt→当前相等）；F-805-R1-02 CLOSED（render 语义改准一轮顺序替换/后 key 展开先插值/不回扫/等长继承 HashMap，算法未动，R1 原探针重放+确定性控制×2+等长双态控制）；F-805-R1-03 CLOSED（真实模块表 config/mapper/templates，INDEX 重生成与提交一致）。核心 38+6、consumer 5/5、16 golden、身份、闭包守卫、strict 0 违例全过；metadata 与 R1 相等、792 交付闭包不可达。冻结规范增量 SHA256 7df10957ae59（绑定 589e30399）。merge 门由 T-08 执行。",
+          "file": "docs/plans/attachments/805/review-r2.md",
+          "tags": [
+            "PLAN-805",
+            "stage:merge",
+            "delivery:ecf53035e7410afaea445e7e18e071c33773f637",
+            "reviewed_commit:589e3039962d0cc8f1cc473d8d8190d9f8083949"
+          ],
+          "status": "active"
+        },
         {
           "id": "P802-R1",
           "title": "PLAN-802 独立最终复审 R1–R5（第五轮 pass）",
@@ -12439,5 +12490,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 43
+  "version": 44
 }
