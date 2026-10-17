@@ -253,3 +253,21 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
 5. **失败样本先落盘**：六场景/语法门/修订流的判定失败（Err 或 Ok(false)）先写入
    raw JSONL（含错误串），再触发 gate 断言；raw 头记录测量时刻与 harness 形态，
    竞争轮与安静轮均保留不删。
+## 13. R5 修复后的补充冻结（2026-10-17，复审 R5 后）
+
+1. **验收身份必须来自请求侧**：harness 保存每次请求发出的 nonce/hash（与
+   revision/scratch/steps 一并关联），判定/发布一律用请求侧身份；响应回显仅用于
+   关联，永不用于授权。实际入口中继负控固化：真实 worker 前的重写中继把每条响应
+   request_hash 改为伪造值（`r5_wrong_hash_refused_and_recorded`）——判定必须拒绝、
+   失败样本落盘；不可只给仲裁函数加模拟 Err。
+2. **失败记录生命周期覆盖读/EOF/解析**：读错、提前 EOF、不可解码响应先按请求端
+   身份记录失败样本（含原始尾部/时刻）再失败退出（`read_response_line`，
+   六场景与语法门全出口接入；中继坏 JSON 负控 `r5_bad_json_failure_recorded` 以
+   catch_unwind 证明"先落盘后 panic"次序）；修订流读/解析错误按 lane 记
+   stream-error 行并计入 Pub.stream_errors，终态断言为零且无未应答 in-flight。
+3. **修订流到达时钟纯化**：全部请求（heavy ~2.7MB 行含 31 连插+31 连删）在 t0 前
+   预计算完毕，到达循环只睡醒+递交；t0 在预计算后设定。
+4. **nextest 门禁下限与守恒**：MinPassed 传入并生效——零测试（0 tests run）、
+   run<MinPassed、摘要整行锚定（尾部杂讯拒）、run==passed+failed+skipped、
+   PASS 行数==passed 总量（nextest id 可含空格，按整行捕获、末段/空白 token 匹配）
+   全部强制；真实成功格式（零 failed 分量省略/单数/(i/N)）保持通过。

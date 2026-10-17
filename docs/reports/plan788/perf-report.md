@@ -24,16 +24,16 @@ R3 测量合同（落实 §8 冻结的"含校验/发布"）：
 
 | 场景 | n | P50 | P95 | P99 | 硬门 |
 |---|---|---|---|---|---|
-| fresh | 30 | 559 | 659 | 677 | — |
-| hot | 30 | 699 | 741 | 759 | P95<1000ms ✓ |
-| restart-disk-hot | 30 | 535 | 588 | 871 | — |
-| cross-project | 30 | 541 | 759 | 820 | — |
-| body-edit | 30 | 699 | 755 | 761 | P95<1000ms ✓ |
-| gc-concurrent | 30 | 668 | 690 | 706 | — |
+| fresh | 30 | 537 | 586 | 814 | — |
+| hot | 30 | 466 | 513 | 516 | P95<1000ms ✓ |
+| restart-disk-hot | 30 | 521 | 692 | 723 | — |
+| cross-project | 30 | 522 | 756 | 767 | — |
+| body-edit | 30 | 478 | 529 | 588 | P95<1000ms ✓ |
+| gc-concurrent | 30 | 476 | 667 | 677 | — |
 
-**硬门判定（冻结参考环境，安静单实例轮）**：hot P95=741ms < 1000ms ✓；局部 body
-编辑 P95=755ms < 1000ms ✓（每样本真重算：parse=1、object=lowered）。syntax 局部
-edit（V-12 syntax 门）：n=30，P95=3ms < 1000ms ✓（墙钟含 admission+投影持久化+
+**硬门判定（冻结参考环境，安静单实例轮）**：hot P95=513ms < 1000ms ✓；局部 body
+编辑 P95=529ms < 1000ms ✓（每样本真重算：parse=1、object=lowered）。syntax 局部
+edit（V-12 syntax 门）：n=30，P95=1ms < 1000ms ✓（墙钟含 admission+投影持久化+
 字节 oracle）。
 
 **V-13 修订流（R3 重写）**：双真实 worker 车道、固定 100ms 到达时钟（驱动器从不等

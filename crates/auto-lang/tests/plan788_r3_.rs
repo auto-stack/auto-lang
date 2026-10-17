@@ -84,6 +84,12 @@ static DIR_SEQ: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize:
 impl Sess {
     fn spawn(tag: &str) -> (Sess, PathBuf) {
         let exe = worker_binary().expect("worker binary located/built");
+        Sess::spawn_exe(&exe, tag, &[])
+    }
+
+    /// R5: spawn a session against an arbitrary counterparty binary (the
+    /// fault-injection relay below); env pairs travel to that process.
+    fn spawn_exe(exe: &Path, tag: &str, env: &[(&str, String)]) -> (Sess, PathBuf) {
         let work = std::env::temp_dir().join(format!(
             "p788r3-w-{}-{}-{}",
             tag,
@@ -92,12 +98,14 @@ impl Sess {
         ));
         let _ = std::fs::remove_dir_all(&work);
         std::fs::create_dir_all(&work).unwrap();
-        let mut child = Command::new(&exe)
-            .stdin(Stdio::piped())
+        let mut cmd = Command::new(exe);
+        cmd.stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .unwrap();
+            .stderr(Stdio::null());
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let mut child = cmd.spawn().unwrap();
         let reader = BufReader::new(child.stdout.take().unwrap());
         let mut stdin = child.stdin.take().unwrap();
         writeln!(stdin, r#"{{"op":"begin","schema":"acworker/1"}}"#).unwrap();
@@ -992,11 +1000,9 @@ fn r3_native_bytes_real_worker_path_producers() {
     s.reader.read_line(&mut resp).unwrap();
     let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
     let _ = t;
-    let got_nonce = v["nonce"].as_str().unwrap().to_string();
-    let got_hash = v["request_hash"].as_str().unwrap().to_string();
-    validate_response(&v, &got_nonce, &got_hash, "run").expect("invalid-UTF-8 stderr survives admission");
-    assert_eq!(got_nonce, nonce);
-    assert_eq!(got_hash, hash);
+    // R5 (F01): admission runs against the REQUEST-side identity — the
+    // response echo may never authorize itself.
+    validate_response(&v, &nonce, &hash, "run").expect("invalid-UTF-8 stderr survives admission");
     let stderr_bytes = b64d_strict(v["ok"]["run"]["stderr_b64"].as_str().unwrap()).unwrap();
     assert_eq!(
         stderr_bytes,
@@ -1080,6 +1086,87 @@ fn r4_publication_oracle_negative_controls() {
 }
 
 
+
+/// R5 (F02): a bare failure sample — used by every exit path that fails
+/// BEFORE a judgment exists (read error, early EOF, undecodable JSON).
+fn failure_sample(scenario: &str, idx: usize, wall_ms: u128, input_sha: &str, error: String) -> Sample {
+    Sample {
+        scenario: scenario.into(),
+        idx,
+        wall_ms,
+        queue_ms: None,
+        exit: None,
+        revision: None,
+        parse: None,
+        lower: None,
+        link: None,
+        object_hit: None,
+        input_sha: input_sha.into(),
+        ok: false,
+        error: Some(error),
+        stage_spans: vec![],
+        gc: None,
+    }
+}
+
+/// R5 (F02): read + parse ONE response line. ANY failure — read error,
+/// early EOF, undecodable JSON — is first RECORDED as a failure sample
+/// (with the raw tail for diagnosis), only then panics. No failure exits
+/// before its sample is durable.
+/// Parse an ALREADY-READ response line with the same record-then-panic
+/// contract (used by the syntax gate, which reads through `round_trip`).
+fn read_response_line_from(
+    resp: &str,
+    rec: &mut Recorder,
+    scenario: &str,
+    idx: usize,
+    wall_ms: u128,
+    input_sha: &str,
+) -> serde_json::Value {
+    match serde_json::from_str(resp.trim()) {
+        Ok(v) => v,
+        Err(e) => {
+            let tail: String = resp.chars().rev().take(120).collect::<Vec<_>>().into_iter().rev().collect();
+            rec.push(failure_sample(scenario, idx, wall_ms, input_sha,
+                format!("undecodable response ({e}); raw tail {tail:?}")));
+            panic!("{scenario} {idx}: undecodable response: {e} (failure sample recorded)");
+        }
+    }
+}
+
+fn read_response_line(
+    reader: &mut BufReader<std::process::ChildStdout>,
+    rec: &mut Recorder,
+    scenario: &str,
+    idx: usize,
+    wall_ms: u128,
+    input_sha: &str,
+) -> serde_json::Value {
+    let mut resp = String::new();
+    match reader.read_line(&mut resp) {
+        Ok(0) => {
+            rec.push(failure_sample(scenario, idx, wall_ms, input_sha,
+                "early EOF before a response line".into()));
+            panic!("{scenario} {idx}: worker closed stdout before answering (failure sample recorded)");
+        }
+        Ok(_) => {}
+        Err(e) => {
+            rec.push(failure_sample(scenario, idx, wall_ms, input_sha,
+                format!("read response: {e}")));
+            panic!("{scenario} {idx}: read response failed: {e} (failure sample recorded)");
+        }
+    }
+    match serde_json::from_str(resp.trim()) {
+        Ok(v) => v,
+        Err(e) => {
+            let tail: String = resp.chars().rev().take(120).collect::<Vec<_>>().into_iter().rev().collect();
+            rec.push(failure_sample(scenario, idx, wall_ms, input_sha,
+                format!("undecodable response ({e}); raw tail {tail:?}")));
+            panic!("{scenario} {idx}: undecodable response: {e} (failure sample recorded)");
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // R4-05: failure-sample durability counter-control
 // ---------------------------------------------------------------------------
@@ -1130,6 +1217,188 @@ fn r4_failure_sample_durability_control() {
     assert!(v["error"].as_str().is_some());
 }
 
+
+// ---------------------------------------------------------------------------
+// R5: fault-injection relay — the REAL worker behind a mutating middleman.
+// The relay forwards the session verbatim and rewrites each RESPONSE line
+// per P788R5_MUTATION ("hash" rewrites the request_hash value to a forged
+// one; "badjson" emits an undecodable line). These are the review's actual
+// entry-point controls, made permanent: identity must come from the
+// REQUEST side, and read/parse failures must leave durable samples.
+// ---------------------------------------------------------------------------
+
+fn relay_binary() -> PathBuf {
+    static CACHE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| {
+        let root = temp_root("r5-relay");
+        let src = root.join("relay.rs");
+        std::fs::write(
+            &src,
+            r#"
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Command, Stdio};
+fn main() {
+    let worker = std::env::var("P788R5_WORKER").expect("P788R5_WORKER");
+    let mode = std::env::var("P788R5_MUTATION").unwrap_or_default();
+    let mut child = Command::new(&worker)
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null())
+        .spawn().expect("spawn real worker");
+    let mut cin = child.stdin.take().unwrap();
+    let mut cout = BufReader::new(child.stdout.take().unwrap());
+    // stdin forwarding runs on its OWN thread — responses must flow while
+    // the parent has not sent `end` (a synchronous forward would deadlock).
+    std::thread::spawn(move || {
+        let stdin = std::io::stdin();
+        for line in stdin.lock().lines() {
+            if writeln!(cin, "{}", line.unwrap()).is_err() {
+                break;
+            }
+            let _ = cin.flush();
+        }
+    });
+    let mut out = std::io::stdout();
+    loop {
+        let mut resp = String::new();
+        match cout.read_line(&mut resp) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(_) => break,
+        }
+        if mode == "hash" {
+            let key = "\"request_hash\":\"";
+            if let Some(a) = resp.find(key) {
+                let start = a + key.len();
+                if let Some(rel) = resp[start..].find('"') {
+                    let end = start + rel;
+                    let mutated = format!("{}{}{}", &resp[..start], "forged-r5", &resp[end..]);
+                    writeln!(out, "{}", mutated.trim_end()).unwrap();
+                    out.flush().unwrap();
+                    continue;
+                }
+            }
+            writeln!(out, "{}", resp.trim_end()).unwrap();
+        } else if mode == "badjson" {
+            writeln!(out, "{{not-json").unwrap();
+            out.flush().unwrap();
+        } else {
+            writeln!(out, "{}", resp.trim_end()).unwrap();
+        }
+        out.flush().unwrap();
+    }
+    let _ = child.wait();
+}
+"#,
+        )
+        .unwrap();
+        let exe = root.join("relay.exe");
+        let out = Command::new("rustc")
+            .arg(&src)
+            .arg("-o")
+            .arg(&exe)
+            .output()
+            .expect("rustc for relay");
+        assert!(
+            out.status.success(),
+            "relay rustc: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+        exe
+    })
+    .clone()
+}
+
+/// R5-01: the relay rewrites every response's request_hash AFTER the real
+/// worker produced it. Judged against the REQUEST-side identity the forged
+/// response is REFUSED and the failure sample is durable — this is the
+/// review's actual-entry control, permanent.
+#[test]
+fn r5_wrong_hash_refused_and_recorded() {
+    let root = temp_root("r5-hash");
+    let real = worker_binary().expect("worker binary");
+    let relay = relay_binary();
+    let mut rec = Recorder::new("r5-hash");
+    let (mut s, work) = Sess::spawn_exe(
+        &relay,
+        "r5hash",
+        &[
+            ("P788R5_WORKER", real.display().to_string()),
+            ("P788R5_MUTATION", "hash".to_string()),
+        ],
+    );
+    let base = "fn main() int { return 3 }";
+    let anchor = base.find('3').unwrap();
+    let steps = serde_json::json!([{ "start": anchor, "end": anchor + 1, "insert_b64": b64("4".as_bytes()) }]);
+    let (n, h) = s.next_ids();
+    let mut req = syntax_edit_request(base, steps, &work);
+    patch_ids(&mut req, &n, &h);
+    let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
+    writeln!(s.stdin, "{}", line).unwrap();
+    s.stdin.flush().unwrap();
+    let t = Instant::now();
+    let v = read_response_line(&mut s.reader, &mut rec, "r5-hash", 0, t.elapsed().as_millis(), &sha_hex(base.as_bytes()));
+    // the control really mutated the hash
+    assert_ne!(
+        v["request_hash"].as_str().unwrap_or(""),
+        h,
+        "the relay must have forged the hash (control validity)"
+    );
+    assert_eq!(v["nonce"].as_str().unwrap_or(""), n, "nonce correlation intact");
+    // judged against the REQUEST-side identity → refused
+    let want = base.replace('3', "4");
+    let judged = judge_syntax_edit(&v, &n, &h, &work, &root, &want);
+    let err = judged.err().expect("a forged request_hash must be refused");
+    assert!(
+        err.contains("identity mismatch"),
+        "refusal names the identity: {err}"
+    );
+    // the failure sample is durable BEFORE any gate
+    rec.push(failure_sample("r5-hash", 0, t.elapsed().as_millis(), &sha_hex(base.as_bytes()), err.clone()));
+    let text = std::fs::read_to_string(&rec.path).unwrap();
+    assert!(text.contains("identity mismatch"), "durable: {text}");
+    s.close();
+}
+
+/// R5-02: the relay emits an undecodable response line. The read/parse
+/// path records the failure sample and only THEN fails — catch_unwind
+/// proves the ordering (the sample is on disk despite the panic).
+#[test]
+fn r5_bad_json_failure_recorded() {
+    let _root = temp_root("r5-json");
+    let real = worker_binary().expect("worker binary");
+    let relay = relay_binary();
+    let mut rec = Recorder::new("r5-json");
+    let raw_path = rec.path.clone();
+    let (mut s, work) = Sess::spawn_exe(
+        &relay,
+        "r5json",
+        &[
+            ("P788R5_WORKER", real.display().to_string()),
+            ("P788R5_MUTATION", "badjson".to_string()),
+        ],
+    );
+    let base = "fn main() int { return 3 }";
+    let anchor = base.find('3').unwrap();
+    let steps = serde_json::json!([{ "start": anchor, "end": anchor + 1, "insert_b64": b64("4".as_bytes()) }]);
+    let (n, h) = s.next_ids();
+    let mut req = syntax_edit_request(base, steps, &work);
+    patch_ids(&mut req, &n, &h);
+    let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
+    writeln!(s.stdin, "{}", line).unwrap();
+    s.stdin.flush().unwrap();
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        read_response_line(&mut s.reader, &mut rec, "r5-json", 0, 0, &sha_hex(base.as_bytes()));
+    }));
+    assert!(
+        result.is_err(),
+        "an undecodable response must fail the sample path (after recording)"
+    );
+    let text = std::fs::read_to_string(&raw_path).unwrap();
+    assert!(
+        text.contains("undecodable response") && text.contains("not-json"),
+        "the failure sample (with the raw tail) is durable despite the panic: {text}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // F02: turnaround — six native scenarios, walls through FULL judgment
 // ---------------------------------------------------------------------------
@@ -1154,20 +1423,13 @@ fn turnaround_native_six_scenarios_p95_gates() {
         let t0 = Instant::now();
         let (mut s, work) = Sess::spawn("fresh");
         let mut req = ac_run_request(&src, Some(store.to_str().unwrap()), "fresh", "fresh-proj", &work, 70000);
-        let (nonce, hash, _, v) = {
-            // ids are minted by request_raw; patch then send
-            let (n, h) = s.next_ids();
-            patch_ids(&mut req, &n, &h);
-            let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
-            let t = Instant::now();
-            writeln!(s.stdin, "{}", line).unwrap();
-            s.stdin.flush().unwrap();
-            let mut resp = String::new();
-            s.reader.read_line(&mut resp).unwrap();
-            let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
-            (n, h, t.elapsed(), v)
-        };
-        let judged = judge_ac_run(&v, &nonce, &hash, &work, &art, 3);
+        let (n, h) = s.next_ids();
+        patch_ids(&mut req, &n, &h);
+        let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
+        writeln!(s.stdin, "{}", line).unwrap();
+        s.stdin.flush().unwrap();
+        let v = read_response_line(&mut s.reader, &mut rec, "fresh", i, t0.elapsed().as_millis(), &sha_hex(src.as_bytes()));
+        let judged = judge_ac_run(&v, &n, &h, &work, &art, 3);
         s.close();
         let wall = t0.elapsed().as_millis();
         let (ok, spans, error) = judged_fields(&judged);
@@ -1225,9 +1487,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
             let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
             writeln!(s.stdin, "{}", line).unwrap();
             s.stdin.flush().unwrap();
-            let mut resp = String::new();
-            s.reader.read_line(&mut resp).unwrap();
-            let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
+            let v = read_response_line(&mut s.reader, &mut rec, "hot", i, t.elapsed().as_millis(), &sha_hex(P04.as_bytes()));
             let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, 3));
             let wall = t.elapsed().as_millis();
             rec.push(Sample {
@@ -1269,9 +1529,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
         writeln!(s.stdin, "{}", line).unwrap();
         s.stdin.flush().unwrap();
-        let mut resp = String::new();
-        s.reader.read_line(&mut resp).unwrap();
-        let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
+        let v = read_response_line(&mut s.reader, &mut rec, "restart-disk-hot", i, t0.elapsed().as_millis(), &sha_hex(P04.as_bytes()));
         let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, 3));
         s.close();
         let wall = t0.elapsed().as_millis();
@@ -1310,9 +1568,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
         writeln!(s.stdin, "{}", line).unwrap();
         s.stdin.flush().unwrap();
-        let mut resp = String::new();
-        s.reader.read_line(&mut resp).unwrap();
-        let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
+        let v = read_response_line(&mut s.reader, &mut rec, "cross-project", i, t0.elapsed().as_millis(), &sha_hex(P04.as_bytes()));
         let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, 3));
         s.close();
         let wall = t0.elapsed().as_millis();
@@ -1355,9 +1611,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
             let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
             writeln!(s.stdin, "{}", line).unwrap();
             s.stdin.flush().unwrap();
-            let mut resp = String::new();
-            s.reader.read_line(&mut resp).unwrap();
-            let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
+            let v = read_response_line(&mut s.reader, &mut rec, "body-edit", i, t.elapsed().as_millis(), &sha_hex(src.as_bytes()));
             let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, want));
             let wall = t.elapsed().as_millis();
             let parse = counter(&v, "parse");
@@ -1425,9 +1679,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
             let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
             writeln!(s.stdin, "{}", line).unwrap();
             s.stdin.flush().unwrap();
-            let mut resp = String::new();
-            s.reader.read_line(&mut resp).unwrap();
-            let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
+            let v = read_response_line(&mut s.reader, &mut rec, "gc-concurrent", i, t.elapsed().as_millis(), &sha_hex(P04.as_bytes()));
             let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, 3));
             let req_end = Instant::now();
             let wall = t.elapsed().as_millis();
@@ -1576,6 +1828,10 @@ struct Pub {
     superseded: std::collections::BTreeSet<u32>,
     records: Vec<RevRecord>,
     completion_order: Vec<u32>,
+    /// R5 (F02): read/parse failures on a lane — every one is durable in
+    /// the raw JSONL before it counts here, and any nonzero count fails
+    /// the stream invariants.
+    stream_errors: usize,
 }
 
 #[test]
@@ -1592,7 +1848,7 @@ fn turnaround_syntax_gate_and_revision_stream() {
         let (mut s, work) = Sess::spawn("syn");
         let base = "fn helper() int { return 7 }\nfn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }";
         let pos3 = base.find('3').unwrap();
-        let round_trip = |s: &mut Sess, digit: &str| -> String {
+        let round_trip = |s: &mut Sess, digit: &str| -> (String, String, String) {
             let (n, h) = s.next_ids();
             let steps = serde_json::json!([{ "start": pos3, "end": pos3 + 1, "insert_b64": b64(digit.as_bytes()) }]);
             let mut req = syntax_edit_request(base, steps, &work);
@@ -1602,7 +1858,7 @@ fn turnaround_syntax_gate_and_revision_stream() {
             s.stdin.flush().unwrap();
             let mut resp = String::new();
             s.reader.read_line(&mut resp).unwrap();
-            resp
+            (n, h, resp)
         };
         for k in 0..WARMUP {
             let digit = ((k % 9) + 1).to_string();
@@ -1613,13 +1869,13 @@ fn turnaround_syntax_gate_and_revision_stream() {
             let digit = ((k % 9) + 1).to_string();
             let want = base.replace('3', &digit);
             let t = Instant::now();
-            let resp = round_trip(&mut s, &digit);
-            let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
-            // wall runs through admission + persist + oracle (F02):
-            let nonce = v["nonce"].as_str().unwrap().to_string();
-            let hash = v["request_hash"].as_str().unwrap().to_string();
+            let (req_nonce, req_hash, resp) = round_trip(&mut s, &digit);
+            let v = read_response_line_from(&resp, &mut rec, "syntax-edit", k, t.elapsed().as_millis(), &sha_hex(base.as_bytes()));
+            // R5 (F01): the EXPECTED identity is the REQUEST-side one —
+            // reading nonce/hash back from the response compared the
+            // response with itself and let forged hashes through.
             // R4 (F05): the failure sample is durable BEFORE the assert.
-            let judged = judge_syntax_edit(&v, &nonce, &hash, &work, &art, &want);
+            let judged = judge_syntax_edit(&v, &req_nonce, &req_hash, &work, &art, &want);
             let (ok, revision, syn_error) = match &judged {
                 Ok((ok, rev)) => (*ok, *rev, None),
                 Err(e) => (false, None, Some(e.clone())),
@@ -1669,7 +1925,6 @@ fn turnaround_syntax_gate_and_revision_stream() {
     {
         let base = "fn main() int { return  }";
         let anchor = base.find("return ").unwrap() + 7;
-        let t0 = Instant::now();
 
         // per-lane raw worker handles (Sess is single-reader; lanes need
         // dedicated writer AND reader threads).
@@ -1726,12 +1981,66 @@ fn turnaround_syntax_gate_and_revision_stream() {
             superseded: std::collections::BTreeSet::new(),
             records: Vec::new(),
             completion_order: Vec::new(),
+            stream_errors: 0,
         }));
+        // R5 (F01): the EXPECTED identity of each revision — minted on the
+        // REQUEST side at arrival; readers correlate via the response
+        // nonce but judge against THIS pair, never against the echo.
+        let identity_of: std::sync::Arc<
+            std::sync::Mutex<std::collections::BTreeMap<u32, (String, String)>>,
+        > = std::sync::Arc::new(std::sync::Mutex::new(std::collections::BTreeMap::new()));
         // R4-01: the newest revision already HANDED to a lane — publication
         // must not fall behind the arrival front.
         let max_issued: std::sync::Arc<std::sync::atomic::AtomicU32> =
             std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
 
+        // ---- R5: every request is FULLY PRECOMPUTED (steps, oracle doc,
+        // scratch, identity, serialized line) BEFORE the clock starts —
+        // the arrival loop only sleeps to the tick and hands the line to
+        // the lane writer, so neither heavy construction (~2.7MB lines)
+        // nor serialization can push an arrival past its slot.
+        let mut prebuilt: std::collections::BTreeMap<
+            u32,
+            (String, String, u32, bool, String),
+        > = std::collections::BTreeMap::new(); // k -> (line, want_doc, steps, heavy, scratch)
+        for k in 1..=REQS {
+            let heavy = k % HEAVY_EVERY == 3;
+            let digits: String = (1..=k)
+                .map(|i| (i % 10).to_string())
+                .collect::<Vec<_>>()
+                .join("");
+            let mut steps = vec![serde_json::json!({
+                "start": anchor, "end": anchor, "insert_b64": b64(digits.as_bytes())
+            })];
+            if heavy {
+                let churn: String = "x".repeat(CHURN_BYTES);
+                let at = anchor + digits.len();
+                for _ in 0..CHURN_PAIRS {
+                    steps.push(serde_json::json!({
+                        "start": at, "end": at, "insert_b64": b64(churn.as_bytes())
+                    }));
+                }
+                for _ in 0..CHURN_PAIRS {
+                    steps.push(serde_json::json!({
+                        "start": at, "end": at + churn.len(), "insert_b64": b64("".as_bytes())
+                    }));
+                }
+            }
+            let want_doc = format!("{}{}{}", &base[..anchor], digits, &base[anchor..]);
+            let work = if heavy { &work_a_root } else { &work_b_root }
+                .join(format!("r{k}"));
+            std::fs::create_dir_all(&work).unwrap();
+            let nonce = format!("rev-{k}");
+            let hash = format!("revh-{k}");
+            let mut req = syntax_edit_request(base, serde_json::json!(steps), &work);
+            patch_ids(&mut req, &nonce, &hash);
+            let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
+            prebuilt.insert(k, (line, want_doc, steps.len() as u32, heavy, work.display().to_string()));
+        }
+
+        // the clock starts ONLY after all precompute/lane setup is done —
+        // arrivals measure from a clean t0.
+        let t0 = Instant::now();
         // writer threads: own the lane stdin; never block the arrival clock
         let (tx_a, rx_a) = std::sync::mpsc::channel::<(u32, String)>();
         let (tx_b, rx_b) = std::sync::mpsc::channel::<(u32, String)>();
@@ -1746,31 +2055,31 @@ fn turnaround_syntax_gate_and_revision_stream() {
         std::fs::create_dir_all(&art_a).unwrap();
         std::fs::create_dir_all(&art_b).unwrap();
         let r_a = (
-            expected.clone(), nonce_to_k.clone(), enqueue.clone(),
+            expected.clone(), nonce_to_k.clone(), identity_of.clone(), enqueue.clone(),
             written.clone(), pub_state.clone(),
         );
         let work_a_for_reader = scratch_of.clone();
         let raw_for_a = rec.path.clone();
         let max_a = max_issued.clone();
         let hr_a = std::thread::spawn(move || {
-            let (expected, nonce_to_k, enqueue, written, pub_state) = r_a;
+            let (expected, nonce_to_k, identity_of, enqueue, written, pub_state) = r_a;
             lane_reader(
                 reader_a, work_a_for_reader, art_a, "heavy", expected, nonce_to_k,
-                enqueue, written, pub_state, max_a, raw_for_a, t0,
+                identity_of, enqueue, written, pub_state, max_a, raw_for_a, t0,
             )
         });
         let r_b = (
-            expected.clone(), nonce_to_k.clone(), enqueue.clone(),
+            expected.clone(), nonce_to_k.clone(), identity_of.clone(), enqueue.clone(),
             written.clone(), pub_state.clone(),
         );
         let work_b_for_reader = scratch_of.clone();
         let raw_for_b = rec.path.clone();
         let max_b = max_issued.clone();
         let hr_b = std::thread::spawn(move || {
-            let (expected, nonce_to_k, enqueue, written, pub_state) = r_b;
+            let (expected, nonce_to_k, identity_of, enqueue, written, pub_state) = r_b;
             lane_reader(
                 reader_b, work_b_for_reader, art_b, "light", expected, nonce_to_k,
-                enqueue, written, pub_state, max_b, raw_for_b, t0,
+                identity_of, enqueue, written, pub_state, max_b, raw_for_b, t0,
             )
         });
 
@@ -1783,57 +2092,20 @@ fn turnaround_syntax_gate_and_revision_stream() {
             }
             enqueue.lock().unwrap().insert(k, ms_since(t0));
             max_issued.fetch_max(k, std::sync::atomic::Ordering::SeqCst);
-            let heavy = k % HEAVY_EVERY == 3;
-            let digits: String = (1..=k)
-                .map(|i| (i % 10).to_string())
-                .collect::<Vec<_>>()
-                .join("");
-            let mut steps = vec![serde_json::json!({
-                "start": anchor, "end": anchor, "insert_b64": b64(digits.as_bytes())
-            })];
-            if heavy {
-                // 31 consecutive 64KiB inserts, then 31 deletes — the
-                // per-step fresh↔incremental equivalence check re-parses
-                // the CUMULATIVE document (quadratic total work), so a
-                // heavy revision reliably outlives its 100ms-later light
-                // successor; the net churn is zero and the final revision
-                // is still exactly base+digits.
-                let churn: String = "x".repeat(CHURN_BYTES);
-                let at = anchor + digits.len();
-                for _ in 0..CHURN_PAIRS {
-                    steps.push(serde_json::json!({
-                        "start": at, "end": at, "insert_b64": b64(churn.as_bytes())
-                    }));
-                }
-                for _ in 0..CHURN_PAIRS {
-                    steps.push(serde_json::json!({
-                        "start": at, "end": at + churn.len(), "insert_b64": b64("".as_bytes())
-                    }));
-                }
-            }
-            // R4-01: the expected document is base with the digit run
-            // INSERTED at the anchor — the base suffix after the anchor
-            // stays (the R3 oracle dropped it and every real
-            // reconstruction mismatched while still being granted).
-            let want_doc = format!("{}{}{}", &base[..anchor], digits, &base[anchor..]);
-            expected.lock().unwrap().insert(k, (want_doc, steps.len() as u32));
-            let work = if heavy { &work_a_root } else { &work_b_root }
-                .join(format!("r{k}"));
-            std::fs::create_dir_all(&work).unwrap();
-            scratch_of.lock().unwrap().insert(k, work.clone());
+            let (line, want_doc, steps, heavy, scratch) = prebuilt.remove(&k).unwrap();
+            expected.lock().unwrap().insert(k, (want_doc, steps));
+            let work = PathBuf::from(scratch);
+            scratch_of.lock().unwrap().insert(k, work);
             let nonce = format!("rev-{k}");
             let hash = format!("revh-{k}");
-            let mut req = syntax_edit_request(base, serde_json::json!(steps), &work);
-            patch_ids(&mut req, &nonce, &hash);
-            nonce_to_k.lock().unwrap().insert(nonce, k);
-            let line =
-                serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
+            nonce_to_k.lock().unwrap().insert(nonce.clone(), k);
+            identity_of.lock().unwrap().insert(k, (nonce, hash));
+            pub_state.lock().unwrap().in_flight.insert(k);
             if heavy {
                 tx_a.send((k, line)).unwrap();
             } else {
                 tx_b.send((k, line)).unwrap();
             }
-            pub_state.lock().unwrap().in_flight.insert(k);
         }
         drop(tx_a);
         drop(tx_b);
@@ -1937,6 +2209,17 @@ fn turnaround_syntax_gate_and_revision_stream() {
             max_depth >= 2,
             "the stream must expose real queue backlog (max in-flight {max_depth})"
         );
+        // R5 (F02): no read/parse failure on either lane, and every issued
+        // revision received a completion record (nothing vanished).
+        assert_eq!(
+            st.stream_errors, 0,
+            "lane read/parse failures are durable in the raw JSONL and fail the stream here"
+        );
+        assert!(
+            st.in_flight.is_empty(),
+            "revisions left without a response: {:?}",
+            st.in_flight
+        );
         // every completed response passed the runner admission AND the
         // byte oracle (the honest Ok(false) verdict travels — R4-01), and
         // the worker's revision counter equals the request's step count.
@@ -2018,6 +2301,9 @@ fn lane_reader(
     nonce_to_k: std::sync::Arc<
         std::sync::Mutex<std::collections::BTreeMap<String, u32>>,
     >,
+    identity_of: std::sync::Arc<
+        std::sync::Mutex<std::collections::BTreeMap<u32, (String, String)>>,
+    >,
     enqueue: std::sync::Arc<
         std::sync::Mutex<std::collections::BTreeMap<u32, u128>>,
     >,
@@ -2031,8 +2317,21 @@ fn lane_reader(
 ) {
     loop {
         let mut line = String::new();
-        if reader.read_line(&mut line).unwrap_or(0) == 0 {
-            break;
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(e) => {
+                // R5 (F02): a read failure is DURABLE before anything else.
+                let mut st = st_arc.lock().unwrap();
+                st.stream_errors += 1;
+                drop(st);
+                let mut f = std::fs::OpenOptions::new().append(true).open(&raw_path).unwrap();
+                let _ = writeln!(f, "{}", serde_json::json!({
+                    "kind": "stream-error", "lane": lane,
+                    "at_ms": ms_since(t0), "error": format!("read: {e}"),
+                }));
+                continue;
+            }
         }
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -2040,12 +2339,31 @@ fn lane_reader(
         }
         let v: serde_json::Value = match serde_json::from_str(trimmed) {
             Ok(v) => v,
-            Err(_) => continue,
+            Err(e) => {
+                // R5 (F02): an undecodable response is DURABLE, never a
+                // silent continue — the raw tail names the damage.
+                let tail: String = trimmed.chars().rev().take(120).collect::<Vec<_>>().into_iter().rev().collect();
+                let mut st = st_arc.lock().unwrap();
+                st.stream_errors += 1;
+                drop(st);
+                let mut f = std::fs::OpenOptions::new().append(true).open(&raw_path).unwrap();
+                let _ = writeln!(f, "{}", serde_json::json!({
+                    "kind": "stream-error", "lane": lane,
+                    "at_ms": ms_since(t0), "error": format!("undecodable: {e}"),
+                    "raw_tail": tail,
+                }));
+                continue;
+            }
         };
         let nonce = v["nonce"].as_str().unwrap_or("").to_string();
-        let hash = v["request_hash"].as_str().unwrap_or("").to_string();
         let k = match nonce_to_k.lock().unwrap().get(&nonce) {
             Some(k) => *k,
+            None => continue,
+        };
+        // R5 (F01): judge against the REQUEST-side identity — the response
+        // echo is only used to correlate, never to authorize.
+        let (want_nonce, want_hash) = match identity_of.lock().unwrap().get(&k) {
+            Some(x) => x.clone(),
             None => continue,
         };
         let completed_ms = ms_since(t0);
@@ -2059,7 +2377,7 @@ fn lane_reader(
         let judged = {
             let scratch = scratch_of.lock().unwrap().get(&k).cloned();
             match scratch {
-                Some(s) => judge_syntax_edit(&v, &nonce, &hash, &s, &art, &want_text),
+                Some(s) => judge_syntax_edit(&v, &want_nonce, &want_hash, &s, &art, &want_text),
                 None => continue,
             }
         };

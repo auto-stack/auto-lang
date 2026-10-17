@@ -152,28 +152,54 @@ function Test-LibTestFamily {
 
 # ---- nextest parsing (closeout: root cargo t/tv/tt) -------------------------
 # nextest's ACTUAL output (verified against real runs): per-test lines
-# "PASS [   0.552s] (1/2) binary::test_name" and a final summary
-# "Summary [   0.911s] 2 tests run: 2 passed, 0 skipped" — the zero-failed
-# component is OMITTED on success and the singular "1 test run" is legal.
+# "PASS [   0.552s] (1/2) binary::test_name" and a full-line summary
+# "     Summary [   0.911s] 2 tests run: 2 passed, 0 skipped" — the
+# zero-failed component is OMITTED on success and the singular
+# "1 test run" is legal. R5 (F03): the summary must be the WHOLE line
+# (trailing junk does not ride along), run/passed counts are conserved
+# with the PASS lines, and a floor on RUN tests (MinPassed) refuses
+# zero-test or short logs.
 function Test-NextestFamily {
-    param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds = @())
+    param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds = @(), [int]$MinPassed = 1)
     if ($ExitCode -ne 0) { return "exit=$ExitCode" }
-    $summaries = [regex]::Matches($Text, '(\d+) tests? run: (\d+) passed(?:, (\d+) failed)?(?:, (\d+) skipped)?')
-    if ($summaries.Count -eq 0) { return "no nextest summaries parsed" }
-    foreach ($s in $summaries) {
-        $failed = if ($s.Groups[3].Success) { [int]$s.Groups[3].Value } else { 0 }
-        $skipped = if ($s.Groups[4].Success) { [int]$s.Groups[4].Value } else { 0 }
+    $totalRun = 0; $totalPassed = 0
+    foreach ($lm in [regex]::Matches($Text, '(?m)^\s*Summary\s+\[\s*[\d.]+s\]\s+(\d+) tests? run: (\d+) passed(?:, (\d+) failed)?(?:, (\d+) skipped)?\s*$')) {
+        $run = [int]$lm.Groups[1].Value
+        $passed = [int]$lm.Groups[2].Value
+        $failed = if ($lm.Groups[3].Success) { [int]$lm.Groups[3].Value } else { 0 }
+        $skipped = if ($lm.Groups[4].Success) { [int]$lm.Groups[4].Value } else { 0 }
         if ($failed -ne 0) { return "failed=$failed in a nextest summary" }
         if ($skipped -ne 0) { return "skipped=$skipped in a nextest summary (no skips are allowlisted)" }
+        if ($passed + $failed + $skipped -ne $run) { return "summary run=$run != passed+failed+skipped" }
+        $totalRun += $run; $totalPassed += $passed
     }
+    if (-not [regex]::IsMatch($Text, 'Summary\s+\[')) {
+        return "no nextest summaries parsed"
+    }
+    if ($totalRun -eq 0) {
+        # a full-line "0 tests run: 0 passed" summary IS the zero-run shape
+        if ([regex]::IsMatch($Text, '(?m)^\s*Summary\s+\[\s*[\d.]+s\]\s+0 tests? run:')) {
+            return "no tests were run (0 tests run)"
+        }
+        return "summary present but no full-line summary parsed (unknown shape)"
+    }
+    if ($totalRun -lt $MinPassed) { return "testsRun=$totalRun < required $MinPassed" }
+    # R5: nextest ids may contain SPACES ("crate::bin testname" shape) —
+    # capture the rest of the line, then match ids on full equality or the
+    # final ::-segment / whitespace-token.
     $passedNames = @{}
-    foreach ($m in [regex]::Matches($Text, '(?:PASS|DONE)\s+\[\s*[\d.]+s\]\s+(?:\(\d+/\d+\)\s+)?(\S+)')) {
-        $passedNames[$m.Groups[1].Value] = $true
+    foreach ($m in [regex]::Matches($Text, '(?m)^\s*(?:PASS|DONE)\s+\[\s*[\d.]+s\]\s+(?:\(\d+/\d+\)\s+)?(.+?)\s*$')) {
+        $passedNames[$m.Groups[1].Value.Trim()] = $true
+    }
+    if ($passedNames.Count -ne $totalPassed) {
+        return "PASS lines ($($passedNames.Count)) do not match summary passed ($totalPassed)"
     }
     foreach ($id in $RequiredIds) {
         $short = ($id -split '::')[-1]
         $hit = $false
-        foreach ($k in $passedNames.Keys) { if ($k -eq $id -or ($k -split '::')[-1] -eq $short) { $hit = $true } }
+        foreach ($k in $passedNames.Keys) {
+            if ($k -eq $id -or ($k -split '::')[-1] -eq $short -or (($k -split '\s+')[-1]) -eq $short) { $hit = $true }
+        }
         if (-not $hit) { return "required id never reported PASS by nextest: $id" }
     }
     return $null
@@ -195,7 +221,7 @@ function Run-CargoFamily {
     $text = (& cargo @Argv 2>&1 | Out-String)
     $code = $LASTEXITCODE
     $why = if ($Format -eq "nextest") {
-        Test-NextestFamily -Text $text -ExitCode $code -RequiredIds $RequiredIds
+        Test-NextestFamily -Text $text -ExitCode $code -RequiredIds $RequiredIds -MinPassed $MinPassed
     } else {
         Test-LibTestFamily -Text $text -ExitCode $code -RequiredIds $RequiredIds `
             -RequiredInBinary $RequiredInBinary -MinPassed $MinPassed -MinPerBinary $MinPerBinary `
@@ -247,6 +273,10 @@ if ($Scope -eq "selftest") {
         @{ name = "nextest-failed-component"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 failed, 0 skipped"; exit = 0; ids = @(); want = "failed=1 in a nextest summary" },
         @{ name = "nextest-skipped"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 skipped"; exit = 0; ids = @(); want = "skipped=1 in a nextest summary (no skips are allowlisted)" },
         @{ name = "nextest-missing-id"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::other`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @("alpha::needed"); want = "required id never reported PASS by nextest: alpha::needed" }
+        @{ name = "nextest-zero-run"; fmt = "nextest"; text = "     Summary [   0.001s] 0 tests run: 0 passed, 0 skipped"; exit = 0; ids = @(); min = 1; want = "no tests were run (0 tests run)" },
+        @{ name = "nextest-short-run"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::one`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @(); min = 2; want = "testsRun=1 < required 2" },
+        @{ name = "nextest-trailing-junk"; fmt = "nextest"; text = "     Summary [   1.0s] 2 tests run: 2 passed, 0 skipped, slow: compile pauses`n        PASS [   0.1s] (1/2) a::x`n        PASS [   0.2s] (2/2) a::y"; exit = 0; ids = @(); min = 1; want = "summary present but no full-line summary parsed (unknown shape)" },
+        @{ name = "nextest-pass-count-mismatch"; fmt = "nextest"; text = "        PASS [   0.1s] (1/2) a::x`n     Summary [   0.2s] 2 tests run: 2 passed"; exit = 0; ids = @(); min = 1; want = "PASS lines (1) do not match summary passed (2)" }
     )
     foreach ($c in $cases) {
         $allow = if ($c.name -eq "allowlisted-skip" -or $c.name -eq "ignored-with-reason") { @("pilot_oracle_bootstrap") } else { @() }
@@ -255,7 +285,7 @@ if ($Scope -eq "selftest") {
         $min = if ($null -ne $c.min) { [int]$c.min } else { 1 }
         $fmt = if ($c.fmt) { $c.fmt } else { "libtest" }
         if ($fmt -eq "nextest") {
-            $why = Test-NextestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids
+            $why = Test-NextestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids -MinPassed $min
         } else {
             $why = Test-LibTestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids `
                 -RequiredInBinary $bind -MinPassed $min -MinPerBinary $perbin -AllowedIgnored $allow
