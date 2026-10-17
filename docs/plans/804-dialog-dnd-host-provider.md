@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-804
-status: drafting
+status: execution_done
 feature_name: 对话框与拖出宿主能力迁移
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/shell-a2r-seams.md]
 new_spec_components: [docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md]
@@ -57,6 +57,26 @@ Dnd provider接owned JSON，复用parse_payload_json的text/files/virtual_files�
 
 统一宿主入口补两槽，明确ui-dialog-only（无ui）的高层兼容安装，原始AutoVM仍按既有provider模式只快照，不暗装UI。显式default/instance恒胜兼容默认。与802/799/801的共享窗口、792source闭包及合流责任见[本批编排](reports/extraction-followup-parallel-order-20261017.md)。
 
+### T-01 冻结矩阵（work 勘定，基面 master b7ecea5e3）
+
+三 native 参数/栈/feature/缺席逐字面值（来源 `vm/native.rs` 旧 2296-2323/2598-2778/3099-3110、`ui/native_dnd.rs` start_drag、`ui/dialog.rs`）：
+
+| native | 弹参（在位臂） | feature 门 | 缺席/降级臂 | 返回 lane |
+|---|---|---|---|---|
+| dialog_open 2927 | pop_string_arg(filter) 1 个 | `ui-dialog` | feature-off：`VMError "dialog_open: the \`ui-dialog\` feature is disabled"`，**不弹实参**（错误中止） | String（`to_string_lossy`；取消/不可用 = `""`） |
+| dialog_save 2928 | pop_string_arg(default_name) 1 个 | `ui-dialog` | 同形 `"dialog_save: …disabled"`，不弹实参 | String；取消 = `""` |
+| dnd_start 2938 | pop_string_arg(payload_json) 1 个 | `windows ∧ native-dnd ∧ ui` | off 臂：**弹实参后弃**、返 `false`；在位臂坏 JSON = `false` | Bool |
+
+过滤语义（open 与 a2r host 同规则）：`split([',',';',' ','\t'])` → `trim` → `trim_start_matches('.')` → 弃空；非空才 `add_filter("Files", exts)`。save：default_name 非空才 `set_file_name`。父窗：VM 臂 Windows 下 `dialog_parent::attach`（EnumWindows 最大可见自有顶层窗，OnceLock 进程期缓存，跳 `#32770`/`Winit Thread Event Target`）；a2r 臂（`ui::dialog`，需 ui+ui-dialog 编译）**无父窗**（PLAN-681 §9 F1 缝，语义保留）。
+
+start_drag 会话合同（488 步骤 9 定案，逐条保持）：空载荷→false 无会话；`DRAG_ACTIVE` 重入→false；否则 OleInitialize（幂等计数）→ DndDataObject+DndDropSource → `DoDragDrop` **调用线程内联阻塞**（自带消息泵，copy|move|link）→ 效果发 DONE 通道、`DRAG_SESSION_GEN++`、`DRAG_ACTIVE=false`、返 **true=执行过会话**（落下或取消均 true，效果另由事件报告——不得把 cancel 映射 false / 把 true 当 drop 成功）；`SEEN_DRAG_BUTTON` 每会话重置（程序化起拖 keys=0 未及见按下判继续）。事件链：DONE 通道 → iced subscription 16ms 轮询 `take_finished_effect`（`ui/session.rs`）→ `DesktopEvent::DndFinished` → renderer update → 发起方 App（dispatch 环前后读 `drag_session_generation` 比对锚定，`ui/iced/renderer.rs`）。
+
+装配入口现状（两槽并入同集合）：`install_ui_host_capabilities`（lib.rs，现 `#[cfg(feature="ui")]`；7 个 run/debug/test 调用点——需扩为 ui-dialog-only 亦可装配）、`run_file_dynamic_ui_inner`（lib.rs，ui-iced）、`VmBridge` 两构造（vm_bridge.rs，ui 面）。`ui::dialog` 模块在 `#[cfg(feature="ui")] pub mod ui` 内再 `#[cfg(feature="ui-dialog")]`——**ui-dialog 单开时 a2r 门面今日不编译**，仅 VM shim 直引 rfd 工作；OS 实现迁 `host_adapters` 后不受 ui 门（本计划修正点）。
+
+802 共享窗口裁定：plan-802-dev（4029dd705）**未合入**、latest 复审 needs_fix——804 以 master 为基面独立实现；共享写面=vm/native.rs NI 结构/Clone/new + engine.rs `new_inner` 快照块 + lib.rs 统一安装 + vm_bridge 装配行，合并取并集、后合者重核（无 799/801/803 硬前置，冻结于 §4）。
+
+真 OS 证据路径勘定（§10 T-01 责任项）：本机 win32 真桌面可用——V04 用真 Win32 顶层窗 + `#32770` 对话框自动化（他线程 FindWindow/SetWindowText/按钮消息，路径写在临时目录）；V05 用自建测试接收窗（RegisterDragDrop + STA 泵，既有 spike 基建）+ SendInput 合成按下-移动-释放驱动**真 DoDragDrop 会话**（QueryContinueDrag 的 SEEN_DRAG_BUTTON 语义显式支持程序化起拖）。二者均为 env 门控测试（不进日常档），T-05 实跑取收据；合成输入会短暂移动真实光标（DoDragDrop 必须收到真实按下输入线程——计划 oracle 本义），收据如实登记。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs target | before/after rule | rationale | acceptance IDs |
@@ -96,18 +116,29 @@ work仅定向provider/装配/OS反控、`cargo check -p auto-lang`、新consumer
 
 | 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 既有provider交付、合同确认 | native.rs/dialog_parent、ui/dialog.rs/native_dnd.rs、NI/VM/组合入口：旧矩阵/线程/取消及802共享窗口决策 | 01/02/03 |
-| [ ] | T-02 | work | T01 | host_capabilities两provider/槽、NI/VM快照/clone/merge、三shim，check及定向V01/02 | 01/02 |
-| [ ] | T-03 | work | T02、共享接线窗口 | 新host_adapters/dialog.rs、UI dnd adapter、ui/dialog薄门面和宿主装配，删除VM OS实现；V03/feature-only | 02/03/04 |
-| [ ] | T-04 | work | T03 | 新独立consumer及旧a2r/OS组件/装配反控，V01–04；记录filter/fixture实际命令 | 01/02/03 |
-| [ ] | T-05 | work | T04 | V04真模态+V05真拖出，V06 777/792/802合流验证，必要证据必须齐 | 03/04 |
-| [ ] | T-06 | work | T05 | 来源/删边/去重/剩余族/SD收据，提交冻结代码送审 | 04 |
+| [x] | T-01 | work | 既有provider交付、合同确认 | native.rs/dialog_parent、ui/dialog.rs/native_dnd.rs、NI/VM/组合入口：旧矩阵/线程/取消及802共享窗口决策——§5 T-01 冻结矩阵；worktree `D:/autostack/.wt/lang-804/auto-lang`（含 auto-down 兄弟 detached@c39ac7f），branch **plan-804-dev**（计划原文拟名 codex/plan-804-dev 按仓规 AGENTS.md 落 plan-804-dev），基面 b7ecea5e3 | 01/02/03 |
+| [x] | T-02 | work | T01 | host_capabilities两provider/槽、NI/VM快照/clone/merge、三shim——DialogHostProvider/DndHostProvider 双族（set/if_absent/get/clear ×2）、NI 双槽+Clone 保留、engine `new_inner` 快照、AutoVM 实例 accessor、三 shim feature 中性化（dialog 缺席在弹参前 raise 保旧栈面；dnd 缺席弹参后 false）。证据：`cargo check -p auto-lang` ✅；in-crate `plan804` 6/6（剪断锚/缺席契约/委托+槽独立/取消空串/槽锁重入/装配身份+merge）✅；兄弟回归锚 779:4+785:6+790:7+794:6 全绿 ✅ | 01/02 |
+| [x] | T-03 | work | T02、共享接线窗口 | 新host_adapters/dialog.rs、UI dnd adapter、ui/dialog薄门面和宿主装配，删除VM OS实现——`host_adapters::dialog`（filter_exts 单一 parser + dialog_parent 原样迁入 + parented/unparented 双策略 + install_process_default + in-crate 3 测）；`ui::dnd_host_provider`（windows∧native-dnd 双门控，委托 parse_payload_json→start_drag）；`ui::dialog` 薄门面（unparented_open/save）；装配点：lib.rs 统一入口（cfg 扩 `any(ui, ui-dialog)`）+ run_file_dynamic_ui_inner + VmBridge ×2；vm/native.rs 删 dialog_parent/rfd/旧双臂。证据：`cargo check -p auto-lang --no-default-features --features ui-dialog` exit 0 ✅（ui-dialog-only 高层路径接线）；`--features native-dnd` 下 dnd adapter compat_install 1/1 ✅；compat_install 全家 5/5 + filter_exts + owner_satisfies 迁入锚全绿 ✅ | 02/03/04 |
+| [x] | T-04 | work | T03 | 新独立consumer及旧a2r/OS组件/装配反控——`test/fixtures/modularity/dialog-dnd-provider-consumer`（no-ui 独立 workspace + `ui-dialog-host` passthrough feature）；根 Cargo.toml exclude 登记。命令与证据：`cargo test --manifest-path test/fixtures/modularity/dialog-dnd-provider-consumer/Cargo.toml` → **7/7**（V01 a/b/c 全管线+双实例不串线+dnd JSON 三形态原文透传、V02 缺席文本逐字+不暗装+槽独立+取消空串、V03 ID 钉扎 2927/2928/2938+注入不 bump revision+Clone/merge 保双槽）。反控：无既有测试直调三 native（.at 命中为无关状态变量）；ui_gen 旧映射 `auto_lang::ui::dialog::open` 签名不变（facade 兼容）；`--features ui-dialog-host` 编译 ✅ | 01/02/03 |
+| [x] | T-05 | work | T04 | V04真模态+V05真拖出，V06合流验证——**全部实机证据齐**：①`AUTO_LANG_DIALOG_E2E=1 cargo test -p auto-lang --lib plan804_os_e2e::dialog_e2e -- --test-threads=1` → **4/4**（VM 链+owner=我方窗实锚/open 选真 Unicode 文件/save 默认名种子+选目标/取消空串/模态后 owner 可用/a2r unparented owner=0/run_with_capture 高层入口）；②ui-dialog-only 形态 `AUTO_LANG_DIALOG_E2E=1 cargo test --manifest-path …/dialog-dnd-provider-consumer/Cargo.toml --features ui-dialog-host v04_ui_dialog_only -- --test-threads=1` → **1/1**（兼容安装真入槽+真模态选文件）；③`AUTO_LANG_DND_E2E=1 cargo test -p auto-lang --features native-dnd --lib plan804_os_e2e::dnd_e2e -- --test-threads=1` → **1/1 五会话**（text 落下内容一致+Drop/Enter 线程=调用线程+effect copy/现有文件 CF_HDROP 路径一致/虚拟文件描述符+FileContents 落地 bytes 双通道一致/ESC 取消 true+无 Drop+effect none/取消后再落=DRAG_ACTIVE 复原+代际≥5）。V06：FileDialog::new/pick_file/save_file/add_filter 全仓唯一于 host_adapters::dialog（renderer pick_folder=PLAN-019 族外）；dialog_parent 单份；native.rs crate::ui 52→50（dnd 两处清零）；兄弟锚 779:4+785:6+790:7+794:6 全绿（无回退）；777 observe 零新增边、strict fail=基面预存（stash 复证，803 合并已刷新 master 基线，本树重绑归 merge）；792 输入零变化（facade 签名不变→fresh/locked/重放无需重跑）；802 仍未合入（R3 修复轮在途）→共享写面并集责任留 T-08 | 03/04 |
+| [x] | T-06 | work | T05 | 来源/删边/去重/剩余族/SD收据，冻结提交 **315ed5b5f**（branch plan-804-dev，18 文件）——终验：`cargo check -p auto-lang` 0 错 ✅；`plan804` default 10/10 ✅、native-dnd 11/11 ✅；fixture no-ui 7/7 ✅；`--no-default-features --features ui-dialog` check exit 0 ✅；三套实机档复跑全绿（6.44s/0.73s/4.79s）；计划文件 rustfmt 全净（命中差异均为预存子模件）；renderer.rs PLAN-019 注释旧位置引用随迁更正。SD 素材见 §9 work 收据 | 04 |
 | [ ] | T-07 | review | T06 | 同树独立AC/SD和OS证据审查，merge门pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
 
 ## 9. 复审记录
 
 2026-10-17 / stage: new / PLAN-804 revision: 1 / outcome: pass / next: 合同确认后work。无799/801硬前置；802未交付的provider接口不作基础，本族沿已交付模式增量实现，共享写面短窗口串行。[本轮预检](attachments/extraction-followup-20261017/preflight.md)。
+
+2026-10-17 / stage: work / PLAN-804 revision: 1 / outcome: **pass（work 全部完成，execution_done，送 T-07 同树独立终审）** / worktree `D:/autostack/.wt/lang-804/auto-lang`（auto-down 兄弟 detached@c39ac7f）/ branch `plan-804-dev` / base `b7ecea5e3` / code `315ed5b5f` / deps: master（802/803 均未消费，803 已另行合入 master——本树基面早于该合并，并集责任在 T-08）/ task_ids: T-01..T-06 全勾 / evidence: 见 §8 各任务行（check 双形态 + in-crate 10/11 + fixture 7 + 实机 4+1+1五会话 + 兄弟锚 23 + 777 observe）/ blockers: 无 / next_responsible_role: **review（T-07，merge 门 pending）**
+
+**work 收据附录（T-06 SD 素材与剩余族登记）**：
+
+- **SD-01（新 docs/specs/auto-lang/ui/design/dialog-dnd-host-capabilities.md）素材**：三 native owned 边界（`&str` raw filter/default_name、owned JSON→Bool、owned String 出参）；缺席矩阵（dialog=feature-off 文本逐字 VMError 不弹参 / dnd=false）；线程合同（DoDragDrop 输入线程内联阻塞、模态可重入、槽锁调用前释放——V03 重入测实锚）；会话/完成语义（true=执行过会话，效果经 on_dnd_finished 另报，cancel≠false）；父窗策略（parented=EnumWindows 最大可见自有窗 OnceLock 进程缓存 / a2r unparented，F1 缝）。证据锚：host_adapters/dialog.rs、vm/native.rs 三 shim、plan804 in-crate+e2e。
+- **SD-02（vm/overview）素材**：VM 直调 OS/UI 的 2927/2928/2938 边删除，改为 DialogHostProvider/DndHostProvider 双独立槽实例装配（第 7/8 族，沿 779-794 模式）；native.rs 本族 rfd/raw-window-handle/Win32/COM 直引清零（in-crate 剪断锚）。
+- **SD-03（ui/overview）素材**：adapter 归属（dialog=host_adapters 新层 ui-dialog 单门控；dnd=ui 门内 windows∧native-dnd）；纠正陈旧线程叙述（native_dnd.rs 文件头"专用 STA 线程"→实际输入线程内联，以 shim/start_drag 注释为准）；如实登记剩余族（见下）。
+- **SD-04（shell-a2r-seams）素材**：dialog 单一实现（host_adapters::dialog）+ ui::dialog 薄门面；VM/a2r parent 策略差异不变（e2e owner 实锚双向）；去重与兼容分开。
+- **剩余族登记（native.rs 剩余 crate::ui 50 处，本族非目标）**：code_editor 族（802 在途负责）；scroll 测试内引用（794 域）；dnd 本族已清零。renderer 内 rfd pick_folder（PLAN-019 壁纸族，注释已随迁更正）不在 dialog_open/save 家族。
+- **环境注记**：①本树 Cargo.lock（gitignored）zbus_names 4.3.5→4.3.4（aliyun 镜像滞后缺 4.3.5，官方未 yank；只影响本树解析，无合并面）；②实机档会短暂移动光标/弹真对话框（计划 oracle 本义，env 门控不进日常档）；③V05 首跑曾观察一次冷启 flake（输入驱动先于会话就绪），已以前台化+600ms 初始等待加固，复跑稳定；④ui-dialog-only 形态 lib-test 编译受预存无门 ui 引用文件（plan765/711/712）所阻——该形态既定门禁为 cargo check（过），高层入口运行时证据由 fixture `ui-dialog-host` 承担；⑤777 strict 在本树 fail 为基面预存（基线绑定旧锚，803 合并已在 master 刷新；merge 阶段合流后 `--refresh-baseline` 重绑）。
 
 ## 10. 待澄清事项
 
