@@ -42,6 +42,12 @@ schema = "module-boundaries/1"
 # ToAtom/AtomWriter，自 auto-lang 逐字抽取；依赖闭包 = auto-val/auto-lex/
 # serde，闭包由 test/fixtures/modularity/ast-model-consumer 钉住）。
 "auto-ast" = "lang-core"
+# PLAN-801：方言端口 API crate（轻 CompilerSession/Scenario +
+# ExternalDialect + 对象安全 ParseContext + 快照凭据）；依赖闭包 =
+# auto-ast/auto-lex/auto-diagnostics（闭包由 test/fixtures/modularity/
+# dialect-api-consumer 钉住），auto-lang 单向依赖之实现端口——外部文法
+# 实现脱离语言实现包（方言接口依赖倒置）。
+"auto-parser-api" = "lang-core"
 # 语言工具基建（被 auto-lang 消费的底层 util/生成/测试基建）。
 "auto-cache" = "lang-infra"
 "shim-metadata" = "lang-infra"
