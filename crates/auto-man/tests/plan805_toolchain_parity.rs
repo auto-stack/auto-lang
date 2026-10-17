@@ -17,7 +17,7 @@
 //! 角落，golden 只含与序无关的确定案例。
 
 use auto_man::builder::ninja::config::{
-    CompilerConfig, CompilerKind, CompilerLocation, ExecutableType, FlagFormat, FlagMappings,
+    CompilerConfig, CompilerKind, CompilerLocation, ExecutableType, FlagFormat,
 };
 use auto_man::builder::ninja::mapper::FlagMapper;
 use auto_man::builder::ninja::templates::CommandTemplates;
@@ -286,6 +286,29 @@ fn template_goldens(goldens: &mut Vec<(String, String)>) {
     vars.insert("in", "X".to_string());
     vars.insert("input", "in.c".to_string());
     render.push_str(&format!("long_short={}\n", t.render("{input} {in}", &vars)));
+
+    // 替换序控制（F-805-R1-02，复审 R1 复放集，期望值锚定冻结核心=旧臂
+    // blob）：按 key 长度降序做**一轮**顺序替换——后处理的（更短）key 会
+    // 展开先前插入值中的占位符；但已处理的 key 不回扫（非不动点迭代）。
+    // 两例 key 长度不同、确定性；不入 golden（golden 保持旧臂捕获面）。
+    let mut vars: HashMap<&str, String> = HashMap::new();
+    vars.insert("longkey", "{x}".to_string());
+    vars.insert("x", "done".to_string());
+    assert_eq!(
+        t.render("{longkey}", &vars),
+        "done",
+        "长 key 先插入 {{x}}，短 key 后处理再展开"
+    );
+
+    let mut vars: HashMap<&str, String> = HashMap::new();
+    vars.insert("longkey", "done".to_string());
+    vars.insert("x", "{longkey}".to_string());
+    assert_eq!(
+        t.render("{x}", &vars),
+        "{longkey}",
+        "已处理的 key 不再回扫（非不动点）"
+    );
+
     // 四命令渲染（空 ldflags 双空格保持——不去重/不清理）
     render.push_str(&format!(
         "render_compile={}\n",

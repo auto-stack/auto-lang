@@ -25,6 +25,10 @@ Targeting/Hightec/TICLang 八类，含 `gnu`/`llvm` 别名与大小写不敏感
   auto-man 旧公开路径 `builder::ninja::{config,mapper,templates}` 是
   薄 re-export 门面（同一类型身份，可直接互传，类型同一性断言见
   `crates/auto-man/tests/plan805_type_identity.rs`）。
+- 迁移与格式：自 base `282e50053` 迁入——迁移提交 `4d1aade5a` 与
+  base 三文件 Git blob 逐字节相等（复审 R1 已核实）；R1 修复轮按仓规
+  对迁入文件做 rustfmt（仅排版，无语义改动），此后证据面=16 件 golden
+  行为对拍 + 定向测试，不再以"字节一致"作为当前修订的相等主张。
 - 行为冻结：自 base `282e50053` 逐字迁移（字节一致）；旧臂 oracle 为
   `crates/auto-man/tests/fixtures/plan805/` 的 16 件 golden（八类默认
   dump、alias/未知 kind、三 FlagFormat、mapper 边界含重复尾缀/空格/
@@ -61,10 +65,16 @@ Targeting/Hightec/TICLang 八类，含 `gnu`/`llvm` 别名与大小写不敏感
    `main.o.o` → `main`）；Postfix 型用原始 output 不剥。
 3. `map_compile_only`：Prefix/Postfix 原样返回模板串；Both 型返回
    `prefix+postfix` 拼接（无分隔符）。
-4. `CommandTemplates::render` 按变量名长度降序（稳定排序）替换完整
-   `{key}` 占位符；未知占位符**原样保留**（不删除/不加引号/不递归
-   插值）。等长 key 的迭代序来自 HashMap（原未定序角落，如实保留；
-   完整 `{key}` token 互不为子串，正常值下结果确定）。
+4. `CommandTemplates::render` 按 key 字节长度降序做**一轮顺序替换**：
+   逐 key 对**当前累计结果**执行 `str::replace`（完整 `{key}` 占位符）。
+   因此——(a) 后处理的（更短）key 会展开先前插入值中的占位符
+   （`{longkey:"{x}", x:"done"}` 渲染 `{longkey}` 得 `done`）；
+   (b) 已处理的 key **不回扫**（非不动点迭代：`{longkey:"done",
+   x:"{longkey}"}` 渲染 `{x}` 得 `{longkey}` 定型）；(c) 未知占位符
+   原样保留。等长 key 的处理序继承 HashMap 迭代（原未定序角落，
+   如实保留；控制断言结果只落两种合法排序之内，见 consumer
+   `external_consumer_pins_render_ordering_semantics`）。不加引号、
+   不去重、不排序 flags。
 5. `CommandTemplates::new` 按编译器 kind 派发模板表（**TICLang →
    clang 模板**）；命令模板不消费 `FlagMappings.output`（自定义
    output 格式只经 `FlagMapper::map_output` 生效）。
@@ -76,13 +86,19 @@ Targeting/Hightec/TICLang 八类，含 `gnu`/`llvm` 别名与大小写不敏感
    TICLang 默认 `-Oz -Wall`；八类默认 executables/cflags 全表见
    config.rs（冻结于 golden `config_defaults.txt`）。
 
-## 验证矩阵（work 阶段实跑；merge 阶段冻结裸 `cargo t` + 定向门）
+## 模块
 
-| 入口 | 覆盖 |
-|---|---|
-| `cargo test -p auto-toolchain-core` | 38 单测 + 6 doc 测试（随迁移的纯测试） |
-| `cargo test -p auto-man --test plan805_toolchain_parity` | 16 golden 逐字节对拍（V02/03/04） |
-| `cargo test -p auto-man --test plan805_type_identity` | 旧路径↔新 crate 类型同一性（V02） |
-| `cargo test --manifest-path test/fixtures/modularity/toolchain-core-consumer/Cargo.toml` | 外部独立消费（V01，4 测试） |
-| `bash test/fixtures/modularity/toolchain-core-consumer/verify-deps.sh` | normal/build 闭包无语言栈（V01 oracle） |
-| `python scripts/modularity-audit.py --mode strict` | 777 边界基线（域登记后重绑） |
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| config | `CompilerKind`/`ExecutableType`/`FlagFormat`/`FlagMappings`/`CompilerLocation`/`CompilerConfig` 与八类默认表、扩展名/可执行文件访问器 | active |
+| mapper | `FlagMapper`：通用标志→编译器特定格式（单值/批量/format，`map_output` 尾缀语义） | active |
+| templates | `CommandTemplates`：四命令内联字符串模板 + 占位符渲染（长度降序一轮顺序替换） | active |
+
+## 验证（work 阶段实跑；merge 阶段冻结裸 `cargo t` + 定向门）
+
+- `cargo test -p auto-toolchain-core` — 38 单测 + 6 doc 测试（随迁移的纯测试）。
+- `cargo test -p auto-man --test plan805_toolchain_parity` — 16 golden 逐字节对拍 + 替换序直接控制（V02/03/04）。
+- `cargo test -p auto-man --test plan805_type_identity` — 旧路径↔新 crate 类型同一性（V02）。
+- `cargo test --manifest-path test/fixtures/modularity/toolchain-core-consumer/Cargo.toml` — 外部独立消费 + render 顺序/等长 key 角落控制（V01，5 测试）。
+- `bash test/fixtures/modularity/toolchain-core-consumer/verify-deps.sh` — normal/build 闭包无语言栈（V01 oracle）。
+- `python scripts/modularity-audit.py --mode strict` — 777 边界基线（域登记后重绑）。

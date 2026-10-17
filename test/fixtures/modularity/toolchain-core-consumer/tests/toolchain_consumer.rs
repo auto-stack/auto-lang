@@ -246,3 +246,40 @@ fn external_consumer_renders_all_four_commands() {
     vars.insert("cc", "gcc".to_string());
     assert_eq!(t.render("{cc} {unknown_var}", &vars), "gcc {unknown_var}");
 }
+
+/// 替换序规则（F-805-R1-02）：按 key 长度降序**一轮**顺序替换——后处理
+/// 的更短 key 会展开先前插入值中的占位符；已处理 key 不回扫。等长 key
+/// 的处理序继承 HashMap 迭代（原未定序角落）：本控制断言结果只落在
+/// 两种合法排序结果之内，不存在第三态。
+#[test]
+fn external_consumer_pins_render_ordering_semantics() {
+    let t = CommandTemplates::new(&CompilerConfig::gcc_default());
+
+    // 长度不同 → 确定：长 key 先插入 {x}，短 key 后处理再展开
+    let mut vars: HashMap<&str, String> = HashMap::new();
+    vars.insert("longkey", "{x}".to_string());
+    vars.insert("x", "done".to_string());
+    assert_eq!(t.render("{longkey}", &vars), "done");
+
+    // 长度不同 → 确定：x 后处理插入 {longkey}，longkey 已处理不回扫
+    let mut vars: HashMap<&str, String> = HashMap::new();
+    vars.insert("longkey", "done".to_string());
+    vars.insert("x", "{longkey}".to_string());
+    assert_eq!(t.render("{x}", &vars), "{longkey}");
+
+    // 等长 key（aa / bb）→ 处理序不定，但结果只可能是两种排序之一：
+    // aa 先 → "{bb}" 插入后 bb 再展开 → "done"；bb 先 → 模板无 "{bb}"
+    // 不变，aa 后插入 "{bb}" 定型。
+    let mut outcomes = std::collections::HashSet::new();
+    for _ in 0..256 {
+        let mut vars: HashMap<&str, String> = HashMap::new();
+        vars.insert("aa", "{bb}".to_string());
+        vars.insert("bb", "done".to_string());
+        outcomes.insert(t.render("{aa}", &vars));
+    }
+    assert!(
+        outcomes.iter().all(|o| o == "done" || o == "{bb}"),
+        "等长 key 只允许两种合法排序结果，实际: {:?}",
+        outcomes
+    );
+}

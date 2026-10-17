@@ -1,5 +1,5 @@
-use auto_val::AutoStr;
 use super::config::{CompilerConfig, FlagFormat};
+use auto_val::AutoStr;
 
 /// 标志映射器 - 将通用标志转换为编译器特定格式
 pub struct FlagMapper;
@@ -61,12 +61,8 @@ impl FlagMapper {
         let base_output = output.as_str().trim_end_matches(obj_ext);
 
         match &config.flags.output {
-            FlagFormat::Prefix(template) => {
-                template.replace("{}", base_output)
-            }
-            FlagFormat::Postfix(template) => {
-                template.replace("{}", output.as_str())
-            }
+            FlagFormat::Prefix(template) => template.replace("{}", base_output),
+            FlagFormat::Postfix(template) => template.replace("{}", output.as_str()),
             FlagFormat::Both(prefix, postfix) => {
                 format!("{}{}{}", prefix, base_output, postfix)
             }
@@ -91,14 +87,16 @@ impl FlagMapper {
 
     /// 批量构建 include 标志
     pub fn build_includes(config: &CompilerConfig, includes: &[AutoStr]) -> Vec<String> {
-        includes.iter()
+        includes
+            .iter()
             .map(|inc| Self::map_include(config, inc))
             .collect()
     }
 
     /// 批量构建 define 标志
     pub fn build_defines(config: &CompilerConfig, defines: &[AutoStr]) -> Vec<String> {
-        defines.iter()
+        defines
+            .iter()
             .map(|def| Self::map_define(config, def))
             .collect()
     }
@@ -112,7 +110,8 @@ impl FlagMapper {
 
     /// 批量构建 library path 标志
     pub fn build_library_paths(config: &CompilerConfig, paths: &[AutoStr]) -> Vec<String> {
-        paths.iter()
+        paths
+            .iter()
             .map(|path| Self::map_library_path(config, path))
             .collect()
     }
@@ -141,7 +140,6 @@ impl FlagMapper {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     fn create_test_msvc_config() -> CompilerConfig {
         CompilerConfig::msvc_default()
@@ -154,35 +152,56 @@ mod tests {
     #[test]
     fn test_map_include_msvc() {
         let config = create_test_msvc_config();
-        assert_eq!(FlagMapper::map_include(&config, &"include".into()), "/Iinclude");
-        assert_eq!(FlagMapper::map_include(&config, &"/usr/include".into()), "/I/usr/include");
+        assert_eq!(
+            FlagMapper::map_include(&config, &"include".into()),
+            "/Iinclude"
+        );
+        assert_eq!(
+            FlagMapper::map_include(&config, &"/usr/include".into()),
+            "/I/usr/include"
+        );
     }
 
     #[test]
     fn test_map_include_gcc() {
         let config = create_test_gcc_config();
-        assert_eq!(FlagMapper::map_include(&config, &"include".into()), "-Iinclude");
-        assert_eq!(FlagMapper::map_include(&config, &"/usr/include".into()), "-I/usr/include");
+        assert_eq!(
+            FlagMapper::map_include(&config, &"include".into()),
+            "-Iinclude"
+        );
+        assert_eq!(
+            FlagMapper::map_include(&config, &"/usr/include".into()),
+            "-I/usr/include"
+        );
     }
 
     #[test]
     fn test_map_define_msvc() {
         let config = create_test_msvc_config();
         assert_eq!(FlagMapper::map_define(&config, &"DEBUG".into()), "/DDEBUG");
-        assert_eq!(FlagMapper::map_define(&config, &"VERSION=1".into()), "/DVERSION=1");
+        assert_eq!(
+            FlagMapper::map_define(&config, &"VERSION=1".into()),
+            "/DVERSION=1"
+        );
     }
 
     #[test]
     fn test_map_define_gcc() {
         let config = create_test_gcc_config();
         assert_eq!(FlagMapper::map_define(&config, &"DEBUG".into()), "-DDEBUG");
-        assert_eq!(FlagMapper::map_define(&config, &"VERSION=1".into()), "-DVERSION=1");
+        assert_eq!(
+            FlagMapper::map_define(&config, &"VERSION=1".into()),
+            "-DVERSION=1"
+        );
     }
 
     #[test]
     fn test_map_library_msvc() {
         let config = create_test_msvc_config();
-        assert_eq!(FlagMapper::map_library(&config, &"mylib".into()), "mylib.lib");
+        assert_eq!(
+            FlagMapper::map_library(&config, &"mylib".into()),
+            "mylib.lib"
+        );
     }
 
     #[test]

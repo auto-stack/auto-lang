@@ -152,7 +152,7 @@
 | auto-package-lock | active | 3 | [package-lock/project.md](package-lock/project.md) |
 | auto-package-resolver | active | 1 | [package-resolver/project.md](package-resolver/project.md) |
 | auto-man-assets | active | 0 | [auto-man-assets/project.md](auto-man-assets/project.md) |
-| auto-toolchain-core | active | 4 | [auto-toolchain-core/project.md](auto-toolchain-core/project.md) |
+| auto-toolchain-core | active | 3 | [auto-toolchain-core/project.md](auto-toolchain-core/project.md) |
 
 <details><summary>auto-cli 模块明细</summary>
 
@@ -303,10 +303,9 @@
 
 | 模块 | 职责 | 状态 |
 |---|---|---|
-| 入口 | 覆盖 |  |
-| `cargo test -p auto-toolchain-core` | 38 单测 + 6 doc 测试（随迁移的纯测试） |  |
-| `cargo test -p auto-man --test plan805_type_identity` | 旧路径↔新 crate 类型同一性（V02） |  |
-| `bash test/fixtures/modularity/toolchain-core-consumer/verify-deps.sh` | normal/build 闭包无语言栈（V01 oracle） |  |
+| config | `CompilerKind`/`ExecutableType`/`FlagFormat`/`FlagMappings`/`CompilerLocation`/`CompilerConfig` 与八类默认表、扩展名/可执行文件访问器 | active |
+| mapper | `FlagMapper`：通用标志→编译器特定格式（单值/批量/format，`map_output` 尾缀语义） | active |
+| templates | `CommandTemplates`：四命令内联字符串模板 + 占位符渲染（长度降序一轮顺序替换） | active |
 
 </details>
 

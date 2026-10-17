@@ -53,10 +53,10 @@ impl fmt::Display for CompilerKind {
 /// 可执行文件类型
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ExecutableType {
-    Compiler,    // cc
-    Archiver,    // ar
-    Linker,      // link
-    Assembler,   // as
+    Compiler,  // cc
+    Archiver,  // ar
+    Linker,    // link
+    Assembler, // as
 }
 
 impl ExecutableType {
@@ -83,21 +83,17 @@ impl ExecutableType {
 /// 标志格式类型
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum FlagFormat {
-    Prefix(String),           // "-I{}" -> -I/path
-    Postfix(String),          // "{}.lib" -> path.lib
-    Both(String, String),     // "/Fo{}", ".obj" -> /Fopath.obj
+    Prefix(String),       // "-I{}" -> -I/path
+    Postfix(String),      // "{}.lib" -> path.lib
+    Both(String, String), // "/Fo{}", ".obj" -> /Fopath.obj
 }
 
 impl FlagFormat {
     /// 应用标志格式到值
     pub fn apply(&self, value: &str) -> String {
         match self {
-            FlagFormat::Prefix(template) => {
-                template.replace("{}", value)
-            }
-            FlagFormat::Postfix(template) => {
-                template.replace("{}", value)
-            }
+            FlagFormat::Prefix(template) => template.replace("{}", value),
+            FlagFormat::Postfix(template) => template.replace("{}", value),
             FlagFormat::Both(prefix, postfix) => {
                 format!("{}{}{}", prefix, value, postfix)
             }
@@ -217,9 +213,9 @@ impl FlagMappings {
 /// 编译器位置配置
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum CompilerLocation {
-    Env,                          // 从环境变量 PATH 查找
-    Dir(AutoPath),                // 指定安装目录
-    Executable(ExecutableType, AutoPath),  // 直接指定可执行文件
+    Env,                                  // 从环境变量 PATH 查找
+    Dir(AutoPath),                        // 指定安装目录
+    Executable(ExecutableType, AutoPath), // 直接指定可执行文件
 }
 
 /// 编译器配置
@@ -445,17 +441,35 @@ mod tests {
         assert_eq!(CompilerKind::from_str("Clang"), Some(CompilerKind::Clang));
         assert_eq!(CompilerKind::from_str("iar"), Some(CompilerKind::IAR));
         assert_eq!(CompilerKind::from_str("ghs"), Some(CompilerKind::GHS));
-        assert_eq!(CompilerKind::from_str("targeting"), Some(CompilerKind::Targeting));
-        assert_eq!(CompilerKind::from_str("hightec"), Some(CompilerKind::Hightec));
+        assert_eq!(
+            CompilerKind::from_str("targeting"),
+            Some(CompilerKind::Targeting)
+        );
+        assert_eq!(
+            CompilerKind::from_str("hightec"),
+            Some(CompilerKind::Hightec)
+        );
         assert_eq!(CompilerKind::from_str("unknown"), None);
     }
 
     #[test]
     fn test_executable_type_from_str() {
-        assert_eq!(ExecutableType::from_str("cc"), Some(ExecutableType::Compiler));
-        assert_eq!(ExecutableType::from_str("ar"), Some(ExecutableType::Archiver));
-        assert_eq!(ExecutableType::from_str("link"), Some(ExecutableType::Linker));
-        assert_eq!(ExecutableType::from_str("as"), Some(ExecutableType::Assembler));
+        assert_eq!(
+            ExecutableType::from_str("cc"),
+            Some(ExecutableType::Compiler)
+        );
+        assert_eq!(
+            ExecutableType::from_str("ar"),
+            Some(ExecutableType::Archiver)
+        );
+        assert_eq!(
+            ExecutableType::from_str("link"),
+            Some(ExecutableType::Linker)
+        );
+        assert_eq!(
+            ExecutableType::from_str("as"),
+            Some(ExecutableType::Assembler)
+        );
         assert_eq!(ExecutableType::from_str("unknown"), None);
     }
 
@@ -531,7 +545,10 @@ mod tests {
         assert_eq!(config.kind, CompilerKind::IAR);
         assert_eq!(config.get_object_extension(), ".o");
         assert!(!config.default_cflags.is_empty());
-        assert!(config.default_cflags.iter().any(|f| f.as_str() == "--debug"));
+        assert!(config
+            .default_cflags
+            .iter()
+            .any(|f| f.as_str() == "--debug"));
     }
 
     #[test]

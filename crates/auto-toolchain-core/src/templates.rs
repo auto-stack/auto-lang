@@ -1,5 +1,5 @@
-use std::collections::HashMap;
 use super::config::CompilerConfig;
+use std::collections::HashMap;
 
 /// 命令模板
 pub struct CommandTemplates {
@@ -243,41 +243,22 @@ mod tests {
             "-DDEBUG",
             "-O2",
             "main.o",
-            "main.c"
+            "main.c",
         );
-        assert_eq!(
-            result,
-            "gcc -c -Iinclude -DDEBUG -O2 -omain.o main.c"
-        );
+        assert_eq!(result, "gcc -c -Iinclude -DDEBUG -O2 -omain.o main.c");
     }
 
     #[test]
     fn test_render_link() {
         let templates = CommandTemplates::gcc_templates();
-        let result = templates.render_link(
-            "gcc",
-            "main",
-            "main.o",
-            "",
-            "-lmylib"
-        );
-        assert_eq!(
-            result,
-            "gcc -omain main.o  -lmylib"
-        );
+        let result = templates.render_link("gcc", "main", "main.o", "", "-lmylib");
+        assert_eq!(result, "gcc -omain main.o  -lmylib");
     }
 
     #[test]
     fn test_render_archive() {
         let templates = CommandTemplates::gcc_templates();
-        let result = templates.render_archive(
-            "ar",
-            "libmylib.a",
-            "obj1.o obj2.o"
-        );
-        assert_eq!(
-            result,
-            "ar rcs libmylib.a obj1.o obj2.o"
-        );
+        let result = templates.render_archive("ar", "libmylib.a", "obj1.o obj2.o");
+        assert_eq!(result, "ar rcs libmylib.a obj1.o obj2.o");
     }
 }
