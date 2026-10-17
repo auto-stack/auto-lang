@@ -186,9 +186,10 @@ function Test-NextestFamily {
         return "summary present but no full-line summary parsed (unknown shape)"
     }
     if ($totalRun -lt $MinPassed) { return "testsRun=$totalRun < required $MinPassed" }
-    # R5: nextest ids may contain SPACES ("crate::bin testname" shape) —
-    # capture the rest of the line, then match ids on full equality or the
-    # final ::-segment / whitespace-token.
+    # R5/R8: nextest ids may contain SPACES ("crate::bin testname" shape) —
+    # capture the rest of the line; tier-bound required sets are thousands
+    # of ids, so exact lookup goes through a HashSet with the segment
+    # fallback only for hand-written ids.
     $passedNames = @{}
     foreach ($m in [regex]::Matches($Text, '(?m)^\s*(?:PASS|DONE)\s+\[\s*[\d.]+s\]\s+(?:\(\d+/\d+\)\s+)?(.+?)\s*$')) {
         $passedNames[$m.Groups[1].Value.Trim()] = $true
@@ -196,15 +197,69 @@ function Test-NextestFamily {
     if ($passedNames.Count -ne $totalPassed) {
         return "PASS lines ($($passedNames.Count)) do not match summary passed ($totalPassed)"
     }
+    $passedSet = [System.Collections.Generic.HashSet[string]]::new([string[]]$passedNames.Keys)
     foreach ($id in $RequiredIds) {
+        if ($passedSet.Contains($id)) { continue }
         $short = ($id -split '::')[-1]
         $hit = $false
         foreach ($k in $passedNames.Keys) {
-            if ($k -eq $id -or ($k -split '::')[-1] -eq $short -or (($k -split '\s+')[-1]) -eq $short) { $hit = $true }
+            if (($k -split '::')[-1] -eq $short -or (($k -split '\s+')[-1]) -eq $short) { $hit = $true; break }
         }
         if (-not $hit) { return "required id never reported PASS by nextest: $id" }
     }
+    # R8: the selection receipt — selected/required sizes and the tier's
+    # filter-excluded count travel with every nextest family result.
+    $script:LastNextestReceipt = "selected-required=$($RequiredIds.Count) passed=$totalPassed filter-excluded=$totalSkipped"
     return $null
+}
+
+# ---- R8: tier selection binding --------------------------------------------
+# Derive the EXPECTED selected identity set from the SAME frozen config the
+# tier runs under: `cargo nextest list <tier args minus run> --message-format
+# json`. JSON per test carries filter-match.status (matches/mismatch) and an
+# ignored flag; the bound required set is every matched non-ignored test as
+# "<binary-id> <name>" — the exact shape PASS lines use, so a sibling
+# binary's or partial log cannot substitute the tier's result.
+function ConvertFrom-NextestListJson {
+    param([string]$Text)
+    $required = @(); $ignored = @()
+    $jsonLine = ($Text -split "`r?`n") | Where-Object { $_.Trim().StartsWith('{') } | Select-Object -First 1
+    if (-not $jsonLine) { throw "nextest list produced no JSON object" }
+    $j = $jsonLine | ConvertFrom-Json
+    foreach ($suiteProp in $j.'rust-suites'.PSObject.Properties) {
+        $bin = $suiteProp.Value.'binary-id'
+        foreach ($tcProp in $suiteProp.Value.testcases.PSObject.Properties) {
+            $tc = $tcProp.Value
+            if ($tc.'filter-match'.status -eq 'matches') {
+                $full = "{0} {1}" -f $bin, $tcProp.Name
+                if ($tc.ignored) { $ignored += $full } else { $required += $full }
+            }
+        }
+    }
+    return @{ Required = $required; Ignored = $ignored }
+}
+
+function Get-NextestSelection {
+    param([string[]]$ListArgv)
+    $text = (& cargo @ListArgv 2>&1 | Out-String)
+    if ($LASTEXITCODE -ne 0) {
+        throw "nextest list failed (exit=$LASTEXITCODE): $text"
+    }
+    return ConvertFrom-NextestListJson -Text $text
+}
+
+function Run-NextestTier {
+    param([string]$Name, [string[]]$RunArgv, [string[]]$ListArgv)
+    Write-Host "== $Name" -ForegroundColor Cyan
+    $sel = Get-NextestSelection -ListArgv $ListArgv
+    if ($sel.Required.Count -eq 0) { throw "$Name`: the tier's frozen selection bound ZERO required tests" }
+    Write-Host ("   tier selection bound: {0} required, {1} ignored (filter-excluded reported at verdict)" -f $sel.Required.Count, $sel.Ignored.Count)
+    $reqIds = [string[]]$sel.Required
+    $minReq = [int]$sel.Required.Count
+    Run-CargoFamily $Name $RunArgv $reqIds $minReq -Format "nextest"
+    if ($null -ne $script:LastNextestReceipt) {
+        Write-Host "   receipt: $($script:LastNextestReceipt)" -ForegroundColor DarkCyan
+    }
 }
 
 function Run-CargoFamily {
@@ -279,6 +334,9 @@ if ($Scope -eq "selftest") {
         @{ name = "nextest-real-filtered-success"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) ac-artifact-probe::plan788_r1_ r1_observed_spans_carry_real_frontend_boundaries`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("r1_observed_spans_carry_real_frontend_boundaries"); min = 1; want = $null },
         @{ name = "nextest-filtered-required-excluded"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) alpha::other`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("alpha::needed"); min = 1; want = "required id never reported PASS by nextest: alpha::needed" },
         @{ name = "nextest-required-ignored-skipped"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) alpha::other`n     Summary [   0.120s] 1 test run: 1 passed, 2 skipped"; exit = 0; ids = @("alpha::needed"); min = 1; want = "required id never reported PASS by nextest: alpha::needed" },
+        @{ name = "tier-bound-partial-substitution"; fmt = "nextest-bound"; listjson = '{"rust-build-meta":{},"test-count":2,"rust-suites":{"alpha":{"binary-id":"alpha::bin","testcases":{"one":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}},"two":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}},"gone":{"kind":"test","ignored":false,"filter-match":{"status":"mismatch"}}}}}}'; text = "        PASS [   0.100s] (1/1) alpha::bin one`n        PASS [   0.120s] (2/2) alpha::bin stranger`n     Summary [   0.120s] 2 tests run: 2 passed, 1 skipped"; exit = 0; want = "required id never reported PASS by nextest: alpha::bin two"; wantsel = "2/0" },
+        @{ name = "tier-bound-ignored-excluded"; fmt = "nextest-bound"; listjson = '{"rust-build-meta":{},"test-count":2,"rust-suites":{"alpha":{"binary-id":"alpha::bin","testcases":{"one":{"kind":"test","ignored":false,"filter-match":{"status":"matches"}},"tool":{"kind":"test","ignored":true,"filter-match":{"status":"matches"}}}}}}'; text = "        PASS [   0.100s] (1/1) alpha::bin one`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; want = $null; wantsel = "1/1" },
+        @{ name = "tier-bound-zero-selection"; fmt = "nextest-bound"; listjson = '{"rust-build-meta":{},"test-count":0,"rust-suites":{}}'; text = "     Summary [   0.1s] 0 tests run: 0 passed"; exit = 0; want = "no tests were run (0 tests run)"; wantsel = "0/0" },
         @{ name = "nextest-missing-id"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::other`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @("alpha::needed"); want = "required id never reported PASS by nextest: alpha::needed" }
         @{ name = "nextest-zero-run"; fmt = "nextest"; text = "     Summary [   0.001s] 0 tests run: 0 passed, 0 skipped"; exit = 0; ids = @(); min = 1; want = "no tests were run (0 tests run)" },
         @{ name = "nextest-short-run"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::one`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @(); min = 2; want = "testsRun=1 < required 2" },
@@ -291,7 +349,18 @@ if ($Scope -eq "selftest") {
         $perbin = if ($c.perbin) { $c.perbin } else { @{} }
         $min = if ($null -ne $c.min) { [int]$c.min } else { 1 }
         $fmt = if ($c.fmt) { $c.fmt } else { "libtest" }
-        if ($fmt -eq "nextest") {
+        if ($fmt -eq "nextest-bound") {
+            # R8: the TIER-BINDING control path — the required set is
+            # derived from a canned `nextest list` JSON exactly as the real
+            # closeout tiers do, then the gate checks the run log against
+            # that bound selection.
+            $sel = ConvertFrom-NextestListJson -Text $c.listjson
+            $why = Test-NextestFamily -Text $c.text -ExitCode $c.exit -RequiredIds ([string[]]$sel.Required) -MinPassed ([Math]::Max(1, $sel.Required.Count))
+            if ($null -eq $why -and $c.wantsel) {
+                $got = "{0}/{1}" -f $sel.Required.Count, $sel.Ignored.Count
+                if ($got -ne $c.wantsel) { $why = "selection parsed $got, want $($c.wantsel)" }
+            }
+        } elseif ($fmt -eq "nextest") {
             $why = Test-NextestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids -MinPassed $min
         } else {
             $why = Test-LibTestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids `
@@ -369,9 +438,9 @@ if ($Scope -eq "acceptance") {
 # (t/tv/tt) run under NEXTEST — verified per its real output format; the
 # remaining families are libtest multi-binary runs.
 Run-CargoFamily "auto-lang full (test-cases)" @("test", "-p", "auto-lang", "--features", "test-cases") @() 1
-Run-CargoFamily "root cargo t (nextest)" @("t") @() 1 -Format "nextest"
-Run-CargoFamily "root cargo tv (nextest)" @("tv") @() 1 -Format "nextest"
-Run-CargoFamily "root cargo tt (nextest)" @("tt") @() 1 -Format "nextest"
+Run-NextestTier "root cargo t (nextest)" @("t") @("nextest","list","-p","auto-lang","--lib","--test","schema_drift","--test","docs_gen","--test","component_registry_test","--features","ui-iced,test-cases","--message-format","json")
+Run-NextestTier "root cargo tv (nextest)" @("tv") @("nextest","list","-p","auto-lang","--lib","--profile","tv","--features","test-cases","--message-format","json")
+Run-NextestTier "root cargo tt (nextest)" @("tt") @("nextest","list","-p","auto-lang","--lib","--features","test-trans,test-cases","--message-format","json")
 Run-CargoFamily "worker full (release)" @("test", "--manifest-path", "experimental/ac-case-worker/Cargo.toml", "--release") @() 1
 Run-CargoFamily "probe full (release)" @("test", "--manifest-path", "experimental/ac-artifact-probe/Cargo.toml", "--release") @() 1
 Run-CargoFamily "ac-syntax runtime (release)" @("test", "--manifest-path", "experimental/ac-syntax/runtime/Cargo.toml", "--release") @() 1

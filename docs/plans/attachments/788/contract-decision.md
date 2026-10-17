@@ -298,3 +298,18 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
    零测试、run<MinPassed、失败传播、未知摘要尾部不变。正控：普通（R4）、slow
    （R6）、显式 -E 筛选与 default-filter（R7）四份真实日志；负控：守恒不匹配、
    required 被筛除、零测试、短跑、尾部杂讯、PASS 行计数不匹配。
+## 16. R8 修复后的补充冻结（2026-10-17，复审 R8 后）
+
+1. **实际档位必验集合绑定（补全 §15 的接线）**：每个 closeout nextest 档位先以
+   `cargo nextest list <档位实参 minus run> --message-format json` 从同一冻结配置
+   推导预期选中集合（filter-match.status==matches 且非 ignored 的
+   `<binary-id> <name>` 全名集合，与 PASS 行同形），作为该档真实调用的
+   RequiredIds 与 MinPassed；ignored 项从必验中单列（如 pilot_oracle_bootstrap），
+   选中必验未执行/兄弟 binary 或部分集合替代均拒绝；零绑定直接失败。每次 nextest
+   family 判定附选择收据（selected-required/passed/filter-excluded 单列）。
+   真实验证：tv 档绑定 163 必验，`cargo tv` 实跑 family ok，
+   收据 selected-required=163 passed=163 filter-excluded=6721。
+2. **绑定路径负控永久化**：tier-bound-partial-substitution（外来测试顶替选中项→
+   required ID 拒绝）、tier-bound-ignored-excluded（ignored 单列不拒）、
+   tier-bound-zero-selection（零绑定失败）；既有普通/slow/合法筛选/零测试/短跑/
+   非零退出行为全部保持。
