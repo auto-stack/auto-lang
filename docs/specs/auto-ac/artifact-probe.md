@@ -28,6 +28,18 @@ ac-core 零产品依赖由 dep_audit 永久断言;探针不改变语言面、不
 - **SQLite 真实收缩**：`auto_vacuum=INCREMENTAL`+checkpoint;GC 决策用
   `settled_space` 沉降物理总量（NTFS 新写块可见性滞后的应对）。
 
+## 788 消费扩展（真实 consumer 接线）
+
+- `DriverCacheMode{Reuse,Fresh,ReadOnly}` + `vertical_observed/
+  vertical_and_run_observed`：同一参数化管线的观察入口（实测阶段 span
+  parse/resolve/typecheck/emit/bind/verify/lower/link/run/cache-read）；Fresh
+  跳结果读取、ReadOnly 跳全部 put+roots 标记；store/GC/codec/schema 合同不变。
+- `VerticalCfg.compiler_fp`（worker exe 内容哈希）+ `capabilities` +
+  `support_libs` 入缓存 key（None=旧 783 key）。
+- 新增一次性 GC 工具 bin `src/bin/store-gc.rs`：与 783 套件同一
+  ManagedStore+run_gc 入口、无新 GC 语义；并发场景作独立进程运行（水位可传，
+  0/0 强制真实 decide+delete 扫描）。
+
 ## 运行面
 
 `scripts/verify-ac-artifact-probe.ps1`:-Scope acceptance（18 族清单化校验:

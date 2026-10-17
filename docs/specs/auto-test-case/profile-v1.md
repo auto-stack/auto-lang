@@ -1,8 +1,18 @@
 # TestCase Profile v1（autolang.case/1 / suite/1 / test-report/1）
 
-> 状态：active（A 阶段冻结；扩展走 Design 35 B）。
+> 状态：active（A 阶段冻结；B 阶段扩展已交付为 v2，见下）。
 > 本文是 v1 合同的 current-state 规范；逐字段 schema 以
 > `crates/auto-test-case/src/contract.rs` 的解码器为准（解码器即合同）。
+
+## v2 导航与版本拒绝边界
+
+- B 阶段（PLAN-788）新增 `autolang.case/2` / `suite/2` / `test-report/2`：
+  解锁 native（ac check/build/run）与 syntax（parse/edit）通道、hir-atom 输入、
+  预算/cache/capabilities/exit/perf 等字段——完整合同见
+  [profile-v2-native.md](profile-v2-native.md)。
+- 版本拒绝边界：三入口按 schema 字符串**精确相等**分派；`wrong_schema` 仍精确
+  拒绝未知版本（`case/2` 现为受支持分派，`case/3`/`case/1x` 等仍拒绝）。v1
+  文档塞任何 v2 字段按 unknown-field 定位拒绝的行为不变。
 
 ## case 合同
 

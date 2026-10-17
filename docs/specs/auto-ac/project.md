@@ -180,3 +180,17 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 ## 相关 plan
 
 见 [plans.md](plans.md)。
+
+## AutoDown TestCase 入口（PLAN-788 引用式导入）
+
+- AutoDown 用例可声明 ac 源码或原始 HIR 经 `auto-case` v2 检查/构建/执行：引用
+  式 fixture（payload 生成期内嵌），不迁移语料、不退役旧门禁（`cargo test
+  --manifest experimental/ac-core` 各套件保持）。
+- p15 评估序与 p16 trap 前可观察输出经 **trace-marks 具名支持库**（capabilities
+  `hir.test.trace.v1` + `support_lib: "trace-marks"`，worker 构建/链接 PLAN-741
+  marks runtime）落地。
+- 字节保真生产者：V-06 经**产品消费腿**覆盖（NUL/CRLF 为可比对 oracle 字节、
+  非法 UTF-8 经协议链路逐字节保真）；core/scalar 语言内非 ASCII 输出无可表达
+  内建，随 text 批次导入。
+- 通道合同见 `docs/specs/auto-test-case/profile-v2-native.md`（auto-test-case
+  模块属主）；语料 `crates/auto-lang/test/cases/ac-native/`（42 case + 账本）。

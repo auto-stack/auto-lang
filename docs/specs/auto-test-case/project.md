@@ -15,8 +15,11 @@ TestCase 协议核心（`autolang.case/1` / `autolang.suite/1` / `autolang.test-
   toolchain（vendored parser 指纹、crate 版本、生效限额）逐轴入报告；旧报告经
   `stale` 语义核查，任何轴漂移即 STALE。
 - 只读纪律：输出与输入/oracle 根不相交（canonical 双向比较 + 祖先 reparse 审计）。
-- 非目标：Rust 真编译、AC/ACC/native、通用进程隔离/deadline、cache、XFAIL——
-  均为显式 unsupported/非目标（Design 35 B/C 阶段）。
+- 非目标边界随 B 阶段（PLAN-788）收缩：native（ac core/scalar、Windows
+  x86_64-pc-windows-msvc）、contained 进程隔离/deadline/输出 cap、783 统一
+  cache、syntax 观测已按 v2 交付（[profile-v2-native.md](profile-v2-native.md)，
+  worker 在 `experimental/ac-case-worker`）；仍未导入：text/record/text-record
+  profile、XFAIL、语言内非 ASCII 输出（随 text 批）。
 
 ## 模块清单
 
@@ -30,7 +33,9 @@ TestCase 协议核心（`autolang.case/1` / `autolang.suite/1` / `autolang.test-
 | compare / report | 观测比较（bytes/lf/text/message）、逐 check 报告与 gate 退出码 | active |
 | sha256 | 极简指纹（无外部依赖） | active |
 
-## 支持表（v1 冻结）
+## 支持表
+
+**v1 冻结（avm/a2r）**：
 
 | 通道 | avm/run | a2r/emit |
 |---|---|---|
@@ -43,6 +48,12 @@ TestCase 协议核心（`autolang.case/1` / `autolang.suite/1` / `autolang.test-
   空 matcher、裸 stage 一律 admission ERROR（无辨识力的强 oracle被拒）。
 - 声明本 adapter 观测不到的通道 = admission ERROR，不是忽略。
 
-> 来源：docs/plans/archive 待归档的 773-autodown-testcase-protocol-pilot.md（A 阶段）；
-> 合同细则见 [profile-v1.md](profile-v1.md)，结构与依赖约束见
-> [architecture.md](architecture.md)。
+**v2 native/syntax（PLAN-788，B 阶段）**：ac×{check,build,run}（core/scalar，
+typed stages/exit/原始 bytes 流/预算硬 cap/部分产物边界/783 cache 三模式/逐行
+身份轴）与 syntax×{parse,edit}（两 grammar、三投影、fresh↔incremental 等价），
+语料 42 case + legacy-map 对账；见 [profile-v2-native.md](profile-v2-native.md)。
+
+> 来源：docs/plans/archive 待归档的 773-autodown-testcase-protocol-pilot.md（A 阶段）、
+> docs/plans/788-autodown-ac-native-turnaround.md（B 阶段）；
+> 合同细则见 [profile-v1.md](profile-v1.md) / [profile-v2-native.md](profile-v2-native.md)，
+> 结构与依赖约束见 [architecture.md](architecture.md)。

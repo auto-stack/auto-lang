@@ -40,6 +40,22 @@ crates/auto-lang（adapters/orchestration/CLI）──▶  auto-test-case
   Msg → 归 Infrastructure（fail-safe：永不假 PASS，但 project-mode 强错误
   oracle 不可满足）。
 
+## B 阶段执行拓扑（PLAN-788：native worker 与全量父侧判定）
+
+- 单管线复用：auto-lang `test_cases::ac` 编排，`experimental/ac-case-worker`
+  独立 workspace 持有实验编译栈（ac-core 前端/verify/lower、783 store、787
+  runtime——无第二执行器）；**auto-lang 零静态依赖实验编译器/Cranelift**
+  （红线），经 `acworker/1` JSON-lines 有界会话 IPC 子进程调用（deny_unknown_
+  fields、nonce/request_hash 回显+父侧比对、行限预分配）。
+- **PASS 判定永在父侧**：typed admission（`validate_response`：schema/身份/
+  形状/解码后流 cap）、manifest 分配前全校验+持久化（`admit_and_persist_
+  artifacts`）、流比较（`compare_stream_field`）为可复用公共入口，周转 harness
+  与 runner 使用同一入口；worker PASS 不受信。
+- 父侧 I/O 生命周期统一：stdin 写入线程化并纳入请求墙钟；stderr 排空超限即
+  时杀树（与响应/截止同 ≤10ms 轮询循环）；stdout 读取带界；产品消费 run 经
+  同一 contained 执行器（不重编译、不裸 spawn）。
+- 身份/stale 见 [profile-v2-native.md](profile-v2-native.md)（逐行适用集合）。
+
 ## 执行限制与试点边界
 
 - 可信有限 pilot：无外部进程/网络/FFI/自举重型执行；未实现的 budget/fixture/env/
