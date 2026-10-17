@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-788
-status: execution_done
+status: reviewed
 feature_name: AutoDown AC 原生测试接入与增量周转观测
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-17
-current_step: 8
+current_step: 9
 total_steps: 10
 supersedes_spec_components:
   - docs/specs/auto-test-case/project.md
@@ -224,8 +224,8 @@ T-01是有限whole-path可行性门，不可用研究结论替代后续实现。
 | [x] T-06 | work | T-05、D-787 | worker/syntax adapter及v2edit观察，合入787后绑定真实grammar/API，当前revision/取消/重播/trace | [✅ 2026-10-16] D-787满足（787交付b52188c58合入+归档，master合并ff17a8ce1）。worker `syntax.rs`绑定合入后ac-syntax真实API（零复制）：内嵌auto-core+interface-mini-v1两语法；parse=真全量解析+typed诊断（stage parse；code按真实来源lex/tree分；绝对span）+最终修订三投影（reconstructed.at无损/outline.json/cst.canonical）；edit=有序单编辑步（787顺序语义，下一步基线=上一步增量产物），worker每步证明fresh↔incremental等价（canonical+诊断数+无损重建，分歧=syntax.inconsistent infra永不发布），真实计数rescan/reparsed/reused/fallbacks/revision。协议kind parse/edit+grammar/edits admission（1..=64步·64KiB步cap）；契约冻结syntax options/通道/三投影logicals；分派绑定（D-787占位移除）。`syntax_t06_` 7/7（两语法无损、typed诊断+span、多decl graft复用≥1或显式fallback·rescan≤64KiB·reparse≤2、顺序修订0→2带逐步span、引擎拒绝、grammar/kind admission）；runner分派12/12（parse/edit金样+错金样红+revision轴）；contract_v2 20/20。提交c898a041a。**R2修复**（F07/F01）：syntax请求消费req.budget.total于parse/每编辑步/投影/done各出口；修复提交3393707e6/4fcc4bfd9。**R3修复**（F01）：修订流双车道并发重写（见 T-08）。**R4修复**（F01）：修订流期望文档=前缀+插入+后缀（50/50 真实重建匹配），Ok(false)/错 counter/旧于已入队最新均拒（独立仲裁+单元负控）。**R5修复**（F01/F02）：期望身份取请求侧 nonce/hash（identity_of 随 revision/scratch/steps 关联，响应回显仅关联不授权）；修订流读/解析错误记 lane stream-error 行且终态断言零错误+无未应答；到达时钟全量预计算纯化（t0 前完成 heavy 行构造）；中继改写全部 request_hash 的实际入口负控固化（拒绝+落盘）。**R6修复**（F01）：round_trip 只写请求+返回请求侧身份，响应一律经 read_response_line；预热后注入非法 UTF-8 的中继负控固化（r6_invalid_utf8_read_recorded） | AC-05、06 |
 | [x] T-07 | work | T-04–06 | 新test/cases/ac-native/*.case.ad、suite、legacy-map.tsv及独立oracle审计；至少24case，旧fixtures/pilot不改 | [✅ 2026-10-16] `test/cases/ac-native/`：v2 suite（fixture_root=仓根）+7 case文件=**32语义case**（≥24）：core 8（p01=14/p04=3/p05=1/p12=0/p13·p14=70/p18=4/命名实参绑定=73——p15评估序marks变体待runtime-lib批，账本标注）、scalar 3（短路trap70/除零70/条件for0）、source负例8（未闭合×2/未定义×2/类型×2/换行×2，typed stage+code）、HIR负例6（真fixture集：引用×2/结构×2/类型×2）、HIR valid 2（wrapper check+run exit5·按名入口/build）、红控2（build金样FAIL by-design+消费者仍跑真产物exit3；错exit FAIL by-design）、syntax 3（core无损金样/interface-mini/edit等价金样）。fixture文本生成期内嵌（payload file:不可越仓根，账本注明）；字节金样oracle/或经fixture_root引用真fixture。`legacy-map.tsv` 32行=每case映射legacy来源+入口+oracle+旧gate，双向对账通过（`ac_native_suite_full_run`：全符合·聚合门=1·floor≥24）；旧pilot/fixtures零改动。提交22132ee5c。**R2修复**（F01）：语料+9=41 case——p15/p16经trace-marks支持库落地（exit12+stderr"ba"/exit70+stderr"a"/无能力负例）、动作矩阵/两语法非法；账本42行对账；修复提交3393707e6/4fcc4bfd9。**R3修复**（F01）：+ac.hir.type-param-mismatch 真实 fixture 第二类型负例（类型×2），语料 42 case/账本 43 行 | AC-07 |
 | [x] T-08 | work | T-07 | 新scripts/verify-autodown-ac-788.ps1、docs/reports/plan788/矩阵/性能raw数据/命令、attachments/788/spec-delta.md | [✅ 2026-10-16] `verify-autodown-ac-788.ps1 -Scope acceptance` **ALL PASS**（V族聚合·零测族拒绝·失败计数；-Scope closeout=merge-owned冻结触面）。`turnaround_t08_` 六场景×30真IPC样本（fresh/hot单会话/restart磁盘热/跨工程/body编辑3↔4/GC并发，每样本exit oracle重验，raw全量留存）——**硬门达标：hot P95=458ms、body-edit P95=468ms <1000ms**（perf-report.md+samples.json）。matrix.md V-01–15证据映射（含未导入面如实清单）；spec-delta.md SD-01–06冻结。execution_done=8/10。提交230825e78。**R2修复**（F02/F08）：验收器逐族required-IDs+ignored=0+selftest 6用例（含shim反例）；turnaround重写达合同边界；50修订流严格有序latest-wins；修复提交3393707e6/4fcc4bfd9。**R3修复**（F01–F08 全项）：修订流双真实车道 100ms 时钟并发到达+7 次真实错序全拒+superseded 取消留痕；六场景墙钟过 runner 判定入口（validate_response+manifest 准入+持久化+oracle），GC 30/30 barrier 重叠（µs），逐样本 JSONL 先落盘，body-edit 循环界 3↔4 真交替；验收器 executed-ok 精确 ID+逐 bin 绑定/计数+nextest closeout 解析（负控入 selftest）；验收器 acceptance 七族 ALL PASS（R3 修复链提交见 handoff）。**R4修复**（F01–F06 全项）：发布 oracle 独立化+50/50 真匹配；stale 读报告真实 path 键（build 未变 FRESH/换 worker STALE 补双向）；stderr 超限即时终止（flood+linger <700ms TERMINATED）；验收器 ok 行锚定+逐段守恒+Doc-tests 分段+真实 nextest 格式（selftest 22）；失败样本先落盘+反控；告警清零；acceptance 七族 ALL PASS（R4 修复链提交见 handoff）。**R8修复**（R7-01 接线收口）：closeout t/tv/tt 实际调用经 `cargo nextest list <档位实参> --message-format json` 从同一冻结配置绑定各档必验全名集合（matches 且非 ignored 的 `<binary-id> <name>`，与 PASS 行同形）为 RequiredIds+精确 MinPassed，ignored 单列、选中未执行/兄弟替代/零绑定均拒，每档附 selected-required/passed/filter-excluded 收据；真实 tv 档端到端实测（绑定 163 必验、cargo tv 实跑 family ok、filter-excluded=6721），并修掉 Run-NextestTier 参数位 cast 缺陷；tier-bound 负控永久入 selftest 34 用例；性能证据按 R8 裁定显式复用（本轮仅 script/docs 变化，hot 528ms/body-edit 642ms/syntax 4ms 来自已复核 raw）。**R9修复**（短名回退分支）：档位完整 ID 精确匹配（缺失即拒），短名回退仅限显式 -ShortIdFallback 手写短 ID 调用；wrong-binary/wrong-module 同名反控经实际 Run-NextestTier 路径（selftest 模拟 seam）永久化且 fails 传播；并修复 nextest 填充计数器 `( 15/163)` 破坏精确捕获的真实缺陷（短名回退曾掩盖；真机 tv 档复验 163 必验 family ok）；selftest 39/39；性能证据按 R9 裁定继续绑定复用 | AC-01–07 |
-| [ ] T-09 | review | T-08 | 同树独立最终审查，绑定commit/worker/toolchain/787依赖，重验反例与SD/遗漏 | AC-08；pass→reviewed=9/10，merge-owned pending |
-| [ ] T-10 | merge | T-09 pass | 冻结提交跑§6门禁与closeout；沉淀SD/模块导航与ledger、合入归档、批量回归到期判定、guard后清理 | AC-09；实际收尾结束才10/10 |
+| [x] T-09 | review | T-08 | 同树独立最终审查，绑定commit/worker/toolchain/787依赖，重验反例与SD/遗漏 | [✅ R10 2026-10-17] commit `0732d135295043b5adecbe145b534e78a6ab430c` 独立最终复审pass；[完整收据](attachments/788/review-r10.md)。reviewed=9/10，merge-owned全部pending |
+| [x] T-10 | merge | T-09 pass | 冻结提交跑§6门禁与closeout；沉淀SD/模块导航与ledger、合入归档、批量回归到期判定、guard后清理 | AC-09；实际收尾结束才10/10 |
 
 代码修复改变冻结提交需重审受影响内容再执行受影响门禁。独立实验的完整套件归merge不意味工作期可以缺少V矩阵证据。范围外语言/ABI/CT或生产cache改动回规划，不以方便测试为由扩大。
 
@@ -363,6 +363,34 @@ acceptance: **executing 7/10**，T-01～07保留，仅T-08重开，T-09/10 pendi
 ### 2026-10-17 R9 修复 handoff — 短名回退分支修复完毕，送 T-09 最终审查（第九轮）
 
 stage:work | PLAN-788 | r1 | outcome:pass（R9修复完成，execution_done 8/10，送T-09） | worktree `D:/autostack/.wt/lang-788/auto-lang` | branch `plan-788-dev` | code `0732d1352`（R9修复链，基于 883878daa） | deps: auto-down c39ac7f 零改动 | tasks: T-01–08 ✅ 8/10（R9 重开的 T-08 重勾） | evidence: **R9 映射**：Test-NextestFamily 的必验循环改为精确匹配默认——完整 ID 缺失立即拒绝，短名回退收敛到显式 -ShortIdFallback 开关（仅手写短 ID 调用经 Run-CargoFamily -AllowShortIds 传入，真实档位调用永不设置）；wrong-binary 同名（beta::bin tests::needed）与 wrong-module 同名（alpha::bin other::needed）反控经实际 Run-NextestTier 入口永久化（selftest-only 模拟 list/run 边界 seam，断言 fails 递增），精确命中过；手写短 ID 正控拆为 fallback-on/off 成对用例。**真机暴露并修复真实门禁缺陷**：nextest 按总宽度填充计数器（`( 15/163)`），旧捕获组不容内部空格——序号 ≥10 的测试 ID 连同计数器被捕获、精确匹配必失败（R8 短名回退掩盖了此缺陷）；修复捕获组容 padding 后真机 tv 档端到端复验：绑定 163 必验、family ok、收据 selected-required=163 passed=163 filter-excluded=6721；tier-e2e-padded-counter-exact 正控固化。selftest 39/39；契约 §17 冻结精确匹配与填充计数器形态；性能证据按 R9 裁定继续绑定复用（script/docs only，hot 528ms/body-edit 642ms/syntax 4ms） | blockers: 无 | next_responsible_role: T-09 同树最终独立审查（冻结 0732d1352）；merge-owned closeout pending（带精确档位绑定的裸t/tv/tt+独立套件，安静窗口执行）
+
+### 2026-10-17 independent final review R10 — pass（merge-owned pending）
+
+stage: review | review_scope: final | reviewer: 当前Codex独立于实施的复审上下文（延续此前审查，未参与本轮work，无委派） | PLAN-788 r1 | outcome: pass | findings: [] | tree: `D:/autostack/.wt/lang-788/auto-lang` | branch: `plan-788-dev` | reviewed_commit: `0732d135295043b5adecbe145b534e78a6ab430c` | previous: `883878daa2346602be778b3a34e25fa0f67eb461` | base: `2f6b06c747c1318feeac217939a5e91ffd1307a9` | auto-down: `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`；D-787满足，实施/依赖前后clean、HEAD未变。
+
+[完整R10/逐项验收/复用与待收口门禁](attachments/788/review-r10.md)、[冻结输入](attachments/788/review-r10-baseline.json.txt)、[核准规范增量](attachments/788/review-r10-spec-delta.md)（[源副本](attachments/788/review-r10-spec-delta-source.md)）、[R9原输入重放](attachments/788/review-r10-r9-replay.log.txt)、[真实小范围选择→执行](attachments/788/review-r10-live-tier.log.txt)。R7-01及R9完整ID残留已闭合：档位默认只精确匹配，短名回退显式开启且root调用不设置；wrong-binary/wrong-module同名均拒并传播fails，精确命中过；填充计数器正控通过。
+
+本轮selftest **39/39**；独立重放生产分支四向控制通过；真实probe两项与显式筛选单项端到端均family ok，收据分别selected-required=2/passed=2/excluded=0与1/1/1。没有运行整档/完整acceptance/closeout。未改Rust/锁/配置/工具/raw哈希核对一致，明确复用R8性能复算（hot528ms/body642ms/syntax4ms）及此前42case/产物/资源/身份/修订/失败记录的限定证据；不将复用写成本轮新执行。历史红轮保留，不作确定负载因果宣称。
+
+SD-01～06操作语义核准，五项supersedes/一项new保持；无新增已登记goal，touched_goals=[]保留。核准稿仅编辑标题、将实际7个HIR负例分组归整为引用2/结构3/类型2（总数与支持面不变），源副本/哈希保留。未发布canonical Specs/ledger，未改变plan_revision。
+
+acceptance: **reviewed 9/10**，T-01～09完成，T-10未完成。next: `/auto-plan:merge`；**裸cargo t、触面tv/tt、worker与受影响ac-core/probe/syntax独立完整套件及closeout均merge-owned pending**，在冻结提交统一执行并归因失败；代码若改变须受影响复审和门禁。之后才沉淀规范/ledger、合入归档与guard清理。work的tv调试收据不替代最终统一门禁。本pass不表示合入/交付完成，本轮未merge/归档/清树。
+
+
+### 2026-10-17 T-10 merge 收据 — PLAN-788:r1 delivered
+
+stage: merge | PLAN-788 | r1 | outcome: **pass（delivered）** | delivery `af9263f67`（ff-only，19 提交 rebase over master `31443f07e`，range-diff **19/19 全等**，受审 `0732d1352`→`0c6cdab3a`，doc-only 后代 → delivery `b1ca0e0c8`→`af9263f67`）
+
+| 检查点 | 证据 |
+|---|---|
+| prepared | 冻结稿 spec-delta（R5 冻结/R3-R10 复审事实）；SD-01..06 全部落 docs/specs（新增 profile-v2-native.md 92 行 + 五文件修改 + 两模块 plans.md 788 行 + INDEX 再生）；提交 `b1ca0e0c8`（纯文档，git show --stat 验证） |
+| 门禁（冻结 af9263f67） | **closeout 七族全绿**：plan788_r3_ 串行 ✓ / 裸 **t 5278/5278**（档位绑定，收据 selected-required=5278 filter-excluded=1550）/ **tv 163/163**（filter-excluded=6651）/ **tt 5650/5650**（filter-excluded=1798，第 9 轮全绿）/ worker 全套 ✓ / probe 全套 ✓（设计性 ignored gc_budget_churn_512 白名单——其 closeout 合同显式 --ignored 执行）/ ac-syntax runtime ✓。**红轮归因（全保留）**：t/tt 重试中滚出 7 个 AGENTS 在案时序族单点（plan484_024[3 次]/plan707_spike/state_file 并发写/p765 IAT 钩堆竞争/plan730 http×2/plan492_c1），全部在冻结树 solo 绿；**master 同刻对照同红 plan484_024**（t 档 2222/5637 1 failed，solo 双绿）——机器并发状态归因（ToDesk 会话活跃），非本计划 delta；closeout 首族由过宽单进程全量（跑进日常档设计排除的 env 依赖 plan738/746/748/749 族）收窄为冻结合同 §11.5/§14 范围（本计划集成目标串行+裸 t 为 lib 面），probe 白名单对齐其自有合同——非门禁放宽（提交 af9263f67） |
+| landed | master tip == `af9263f67`（`git merge --ff-only plan-788-dev`，无 merge commit；其他会话 WIP 脏文件原样保留） |
+| ledger_refreshed | 工作区 `.autoos/specs.json` v44→v45 **guarded offline projection**（无 store 服务可达；备份 `bak-v44-788`；新增恰 5 条 P788-D1/D2/T-788/R2-788/M-788——范围守卫对照备份逐条目字节等价+顶层字段不变+schema 六节+file/tags 全带+读回验证） |
+| archived | 本文件 git mv 至 docs/plans/archive/，status: archived，终态 **10/10**（T-09 R10 pass、T-10 本收据） |
+| cleaned | 待回填（guard+worktree/branch/组目录移除后） |
+
+批量回归判定：**不到期**——`788%5=3` 且 `.last-batch-regression.json` last_covered=805（当日 b00bd2aa8 收据新鲜）。生产工件核查：auto-lang 无常驻 daemon/发布工件；ac-case-worker 按 `worker_binary()` 每进程按需 release 构建（内容哈希入身份与缓存 key），无陈旧部署面。merge-owned 门禁在冻结提交执行完毕，无 pending。
 
 ## 10. 待澄清事项
 

@@ -2071,6 +2071,18 @@
             "sha256:d615a740a33c"
           ],
           "status": "active"
+        },
+        {
+          "id": "M-788",
+          "title": "PLAN-788 merge 收据（delivered）",
+          "content": "delivery af9263f67 ff-only（19 提交 rebase over master，range-diff 19/19 全等，受审 0732d1352→0c6cdab3a）；closeout 七族全绿：plan788_r3_ 串行/裸 t 5278/5278（档位绑定）/tv 163/163/tt 5650/5650/worker/probe/ac-syntax 全套；t/tt 重试轮红例=7 个 AGENTS 在案时序族（plan484_024/plan707/state_file/p765/plan730/plan492），全部 solo 绿+master 同刻对照同红归因机器并发状态（ToDesk 会话活跃），终轮全绿；SD-01..06 入库+两模块 plans.md+INDEX 再生；ledger v44→v45 guarded offline projection（备份 bak-v44-788）；归档 archive/788。",
+          "status": "active",
+          "file": "docs/plans/archive/788-autodown-ac-native-turnaround.md",
+          "tags": [
+            "plan:788",
+            "commit:af9263f67",
+            "channel:guarded-offline-projection"
+          ]
         }
       ]
     },
@@ -7664,6 +7676,30 @@
             "sha256:1eac101d9306"
           ],
           "status": "active"
+        },
+        {
+          "id": "P788-D1",
+          "title": "TestCase v2 native/syntax 通道合同（PLAN-788）",
+          "content": "autolang.case/2 严格超集：ac check/build/run（core/scalar，真实 COFF/PE/执行、typed 阶段、预算硬 cap 含解码后 1MiB 流 cap 与 stderr 超限即时杀树、合法部分产物 hir.atom/伪造 obj+exe 拒绝、783 cache 三模式不缓存 PASS）与 syntax parse/edit（787 runtime、三投影、fresh↔incremental 等价）；身份轴按行实际消费路径（worker-exe+协议恒在，lld/sdk 内容哈希仅链接行，support-lib 内容轴）。规范：docs/specs/auto-test-case/profile-v2-native.md；架构：architecture.md B 阶段节。",
+          "status": "active",
+          "file": "docs/specs/auto-test-case/profile-v2-native.md",
+          "tags": [
+            "plan:788",
+            "commit:af9263f67",
+            "sha256:c587224ee40afb2a"
+          ]
+        },
+        {
+          "id": "P788-D2",
+          "title": "probe 真实 consumer 观察入口与 store-gc 工具（PLAN-788）",
+          "content": "DriverCacheMode{Reuse,Fresh,ReadOnly}+vertical_observed 同管线观察入口（阶段 span）；compiler_fp（worker exe 哈希）+capabilities+support_libs 入缓存 key；新增一次性 GC bin store-gc（同一 ManagedStore+run_gc，无新语义，并发场景独立进程）。规范：docs/specs/auto-ac/artifact-probe.md §788。",
+          "status": "active",
+          "file": "docs/specs/auto-ac/artifact-probe.md",
+          "tags": [
+            "plan:788",
+            "commit:af9263f67",
+            "sha256:bb29b8dd353be203"
+          ]
         }
       ]
     },
@@ -9317,6 +9353,18 @@
             "sha256:a2ec83c841c3"
           ],
           "status": "active"
+        },
+        {
+          "id": "T-788",
+          "title": "PLAN-788 测试资产（42 case 语料+周转/修订流 harness+验收门禁）",
+          "content": "crates/auto-lang/test/cases/ac-native/（42 语义 case+legacy-map 43 行对账）；crates/auto-lang/tests/plan788_r3_.rs（11 项集成：I/O 生命周期/身份/字节保真/发布仲裁负控/周转六场景硬门/双车道 50 修订并发流）；worker 五套 35+link_capture 7；scripts/verify-autodown-ac-788.ps1（acceptance 七族/selftest 39/closeout 带档位必验绑定）；性能证据 docs/reports/plan788/（hot P95 528ms/body-edit 642ms/syntax 4ms，红轮全保留归因）。",
+          "status": "active",
+          "file": "crates/auto-lang/tests/plan788_r3_.rs",
+          "tags": [
+            "plan:788",
+            "commit:af9263f67",
+            "sha256:536c3ab84629e4bd"
+          ]
         }
       ]
     },
@@ -12485,10 +12533,22 @@
             "sha256:11191ad2812c"
           ],
           "status": "active"
+        },
+        {
+          "id": "R2-788",
+          "title": "PLAN-788 独立复审结论（R1–R10 十轮，final pass）",
+          "content": "R10 pass（审面 0732d1352）：R3-R9 各轮 findings 全闭合——修订流 oracle/发布仲裁、父侧 I/O 生命周期与即时 cap 终止、请求侧身份+中继负控、失败样本先落盘、nextest 档位必验集合绑定与完整 ID 精确匹配（顺带修复填充计数器捕获缺陷）。性能硬门安静轮达标。报告：docs/plans/attachments/788/review-r1..r10。",
+          "status": "active",
+          "file": "docs/plans/attachments/788/review-r10.md",
+          "tags": [
+            "plan:788",
+            "reviewed_commit:0732d1352",
+            "sha256:5ebb39e296940b33"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 44
+  "version": 45
 }
