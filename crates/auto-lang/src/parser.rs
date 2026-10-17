@@ -14914,90 +14914,12 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse msg declaration, returning the MsgDecl directly
+    ///（PLAN-806：完整算法单一份迁 crates/auto-ui-dialect，此处与顶层
+    /// 派发、widget/component/store 结构路径共用同一实现——经
+    /// ParserBridge 的 ParseContext 端口驱动，不留第二份算法。）
     fn parse_msg_decl_inner(&mut self) -> AutoResult<MsgDecl> {
-        self.expect_ident("msg")?;
-        // Plan 448 A: the name token after `msg` was never semantic (event
-        // lookup always takes the tail segment; every backend derives the
-        // enum name from the widget name or hardcodes "Msg"). Canonical form
-        // is `msg { ... }`; a legacy `msg Name { ... }` still parses with the
-        // name read and discarded.
-        if !self.is_kind(TokenKind::LBrace) {
-            self.next();
-        }
-
-        self.expect(TokenKind::LBrace)?;
-        self.skip_empty_lines(); // Skip empty lines after opening brace
-
-        let mut variants = Vec::new();
-
-        while !self.is_kind(TokenKind::RBrace) {
-            self.skip_empty_lines(); // Skip empty lines before each variant
-            if self.is_kind(TokenKind::RBrace) {
-                break;
-            }
-
-            // Quoted variant names ("update" / "link-click") are
-            // contractual emit names — record the quote so the Vue codegen
-            // always declares/emits them (see MsgVariant.quoted).
-            let quoted = self.is_kind(TokenKind::Str);
-            let variant_name = self.cur.text.clone();
-            self.next();
-
-            // Check for payload type. Plan 043 M5 #1: support multi-param
-            // payloads `Complete(str, int)` / `RunSmart(int, str, []str)`
-            // (was single-type only). Empty vec = unit variant.
-            // Plan 435 挂账②:support named params `Change(value: str)` —
-            // gallery 官方组件在用;名字记入 payload_names(位置形态为 None)。
-            // lookahead 用 lexer 单 token 回推(同 `::` 判定模式)。
-            let mut payload = vec![];
-            let mut payload_names = vec![];
-            if self.is_kind(TokenKind::LParen) {
-                self.next();
-                loop {
-                    let name = if self.is_kind(TokenKind::Ident) || self.is_kind(TokenKind::Str) {
-                        if let Ok(tok) = self.lexer.next() {
-                            if tok.kind == TokenKind::Colon {
-                                self.lexer.push_token(tok);
-                                let n = self.cur.text.to_string();
-                                self.next(); // cur = 回推的 Colon
-                                self.expect(TokenKind::Colon)?;
-                                Some(n)
-                            } else {
-                                self.lexer.push_token(tok);
-                                None // 位置形态,token 原样归还
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    payload.push(self.parse_type()?);
-                    payload_names.push(name);
-                    if self.is_kind(TokenKind::Comma) {
-                        self.next();
-                    } else {
-                        break;
-                    }
-                }
-                self.expect(TokenKind::RParen)?;
-            }
-
-            variants.push(MsgVariant {
-                name: variant_name,
-                quoted,
-                payload,
-                payload_names,
-            });
-
-            if self.is_kind(TokenKind::Comma) {
-                self.next();
-            }
-            self.skip_empty_lines(); // Skip empty lines after comma
-        }
-        self.expect(TokenKind::RBrace)?;
-
-        Ok(MsgDecl { variants })
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        auto_ui_dialect::parse_msg_decl(&mut bridge)
     }
 
     /// Parse model block (UI scenario only)
@@ -15007,130 +14929,11 @@ impl<'a> Parser<'a> {
     }
 
     /// Parse model block, returning the ModelBlock directly
+    ///（PLAN-806：薄委托同上；注解解析随算法迁出，内建策略=无裸字段。）
     fn parse_model_block_inner(&mut self) -> AutoResult<ModelBlock> {
-        self.expect_ident("model")?;
-        self.expect(TokenKind::LBrace)?;
-        self.skip_empty_lines();
-
-        let mut fields = Vec::new();
-
-        while !self.is_kind(TokenKind::RBrace) {
-            self.skip_empty_lines();
-            if self.is_kind(TokenKind::RBrace) {
-                break;
-            }
-
-            // Plan 119 & 05-Nav: Parse annotations for model fields
-            let (is_primary, decorators) = self.parse_model_field_annotations()?;
-
-            // Plan 130: Support `var` keyword for mutable model fields
-            // Default is immutable (like `let`), use `var` to allow modification in `on` handlers
-            let mutable = if self.cur.text.as_str() == "var" {
-                self.next();
-                true
-            } else {
-                false
-            };
-
-            let name = self.cur.text.clone();
-            self.next();
-            // Support optional type annotation: `name = expr` or `name type = expr`
-            let ty = if self.is_kind(TokenKind::Asn) {
-                Type::Unknown
-            } else {
-                self.parse_type()?
-            };
-            let init = if self.is_kind(TokenKind::Asn) {
-                self.next();
-                self.parse_expr()?
-            } else {
-                Expr::Nil
-            };
-            fields.push(ModelField {
-                name,
-                ty,
-                init,
-                mutable,
-                is_primary,
-                decorators,
-            });
-            self.skip_empty_lines();
-        }
-        self.expect(TokenKind::RBrace)?;
-
-        Ok(ModelBlock { fields })
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        auto_ui_dialect::parse_model_block(&mut bridge)
     }
-
-    /// Parse annotations for model fields (Plan 119: #[primary], Plan 05-Nav: decorators)
-    /// Returns (is_primary, decorators) tuple
-    fn parse_model_field_annotations(&mut self) -> AutoResult<(bool, Vec<Decorator>)> {
-        let mut is_primary = false;
-        let mut decorators = Vec::new();
-
-        // Parse multiple annotations: #[primary] #[Consume("key")]
-        while self.is_kind(TokenKind::Hash) {
-            self.next(); // skip #
-
-            if !self.is_kind(TokenKind::LSquare) {
-                // Not an annotation, unexpected # - just return what we have
-                return Ok((is_primary, decorators));
-            }
-
-            self.next(); // skip [
-
-            if !self.is_kind(TokenKind::Ident) {
-                // Empty annotation, skip
-                if self.is_kind(TokenKind::RSquare) {
-                    self.next();
-                }
-                continue;
-            }
-
-            let annot_name = self.cur.text.clone();
-            self.next(); // skip annotation name
-
-            match annot_name.as_str() {
-                "primary" => {
-                    is_primary = true;
-                }
-                "Consume" | "Provide" | "NavParam" => {
-                    // Parse arguments: ("key") or ("routeName")
-                    let mut args = Vec::new();
-                    if self.is_kind(TokenKind::LParen) {
-                        self.next(); // skip (
-                                     // Parse string argument
-                        if self.is_kind(TokenKind::Str) {
-                            args.push(self.cur.text.to_string());
-                            self.next();
-                        }
-                        if self.is_kind(TokenKind::RParen) {
-                            self.next(); // skip )
-                        }
-                    }
-                    decorators.push(Decorator {
-                        name: annot_name,
-                        args,
-                    });
-                }
-                _ => {
-                    return Err(SyntaxError::Generic {
-                        message: format!(
-                            "Unknown model field annotation '{}'. Valid: #[primary], #[Consume(\"key\")], #[Provide(\"key\")], #[NavParam(\"routeName\")]",
-                            annot_name
-                        ),
-                        span: pos_to_span(self.cur.pos),
-                    }.into());
-                }
-            }
-
-            if self.is_kind(TokenKind::RSquare) {
-                self.next(); // skip ]
-            }
-        }
-
-        Ok((is_primary, decorators))
-    }
-
     /// Parse computed block, returning the ComputedBlock directly
     fn parse_computed_block_inner(&mut self) -> AutoResult<ComputedBlock> {
         self.expect_ident("computed")?;

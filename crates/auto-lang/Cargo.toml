@@ -179,6 +179,10 @@ auto-ast = { path = "../auto-ast" }
 # ExternalDialect + 对象安全 ParseContext）；session/DialectPriority 为薄
 # re-export 门面，ParserBridge 实现端口并经 adapter 进同一三段派发表。
 auto-parser-api = { path = "../auto-parser-api" }
+# PLAN-806: UI msg/model 声明文法单一份实现（完整算法自本 crate Parser
+# 迁出）；pub parse_msg_decl/parse_model_block 与结构路径 inner 一律薄
+# 委托此处，经 ParserBridge 的 ParseContext 端口驱动，无第二份算法。
+auto-ui-dialect = { path = "../auto-ui-dialect" }
 auto-cache = { path = "../auto-cache" }
 # Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
 shim-metadata = { path = "../shim-metadata" }
