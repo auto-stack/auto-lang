@@ -48,6 +48,11 @@ schema = "module-boundaries/1"
 # dialect-api-consumer 钉住），auto-lang 单向依赖之实现端口——外部文法
 # 实现脱离语言实现包（方言接口依赖倒置）。
 "auto-parser-api" = "lang-core"
+# PLAN-806：UI msg/model 声明文法单一份实现 crate（完整算法自 auto-lang
+# Parser 迁出，经 dyn ParseContext 端口驱动）；依赖闭包 = auto-parser-api
+#（闭包由 test/fixtures/modularity/ui-declarations-consumer 钉住），
+# auto-lang 单向依赖之——UI 声明文法脱离语言实现包。
+"auto-ui-dialect" = "lang-core"
 # 语言工具基建（被 auto-lang 消费的底层 util/生成/测试基建）。
 "auto-cache" = "lang-infra"
 "shim-metadata" = "lang-infra"
