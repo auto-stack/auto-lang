@@ -3985,7 +3985,7 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
 
 /// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
 /// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
-pub const DELIVERY_CRATES: [&str; 11] = [
+pub const DELIVERY_CRATES: [&str; 12] = [
     "auto-lang",
     "auto-val",
     "auto-atom",
@@ -3997,6 +3997,10 @@ pub const DELIVERY_CRATES: [&str; 11] = [
     // 自身依赖 auto-val/auto-lex 已在闭包）——后合入者按合流合同窄接线
     //（docs/plans/reports/model-decoupling-parallel-order-20261016.md）。
     "auto-ast",
+    // PLAN-801 落地后 auto-lang 的必需 path 依赖（方言端口 API；其自身
+    // 依赖 auto-ast/auto-lex/auto-diagnostics 已在闭包）——沿 792 合流
+    // 合同窄接线（extraction-next-parallel-order-20261017 §文件所有权）。
+    "auto-parser-api",
     "auto-cache",
     "shim-metadata",
     "auto-bindgen",
