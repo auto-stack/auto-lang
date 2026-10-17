@@ -151,37 +151,35 @@ function Test-LibTestFamily {
 }
 
 # ---- nextest parsing (closeout: root cargo t/tv/tt) -------------------------
-# nextest's ACTUAL output (verified against real runs): per-test lines
-# "PASS [   0.552s] (1/2) binary::test_name" and a full-line summary
-# "     Summary [   0.911s] 2 tests run: 2 passed, 0 skipped" — the
-# zero-failed component is OMITTED on success and the singular
-# "1 test run" is legal. R5 (F03): the summary must be the WHOLE line
-# (trailing junk does not ride along), run/passed counts are conserved
-# with the PASS lines, and a floor on RUN tests (MinPassed) refuses
-# zero-test or short logs.
+# nextest's ACTUAL semantics (verified against real runs, R7 correction of
+# the R5/R6 model): "run" counts tests that actually EXECUTED; tests the
+# tier filters exclude (repo default-filter / explicit -E) are counted in
+# "skipped" SEPARATELY — `1 test run: 1 passed, 1 skipped` is a legal
+# one-selected-one-excluded result, NOT a required-test skip. Conservation
+# therefore applies to EXECUTED tests: passed + failed == run. Filter
+# exclusions are reported, not refused; a REQUIRED test that did not
+# execute (skipped or ignored) still refuses via the required-PASS check,
+# as does a zero-run or short-run tier, any failure, a PASS-line/summary
+# mismatch, and any unknown summary tail. The slow annotation "(N slow)"
+# is a known grammar component (R6).
 function Test-NextestFamily {
     param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds = @(), [int]$MinPassed = 1)
     if ($ExitCode -ne 0) { return "exit=$ExitCode" }
-    $totalRun = 0; $totalPassed = 0
-    # R6 (F02): nextest appends a KNOWN slow-test annotation after the
-    # passed count on success ("2 tests run: 2 passed (2 slow), 0 skipped")
-    # — a grammar component of the tool, not trailing junk; the line stays
-    # fully anchored otherwise.
+    $totalRun = 0; $totalPassed = 0; $totalSkipped = 0
     foreach ($lm in [regex]::Matches($Text, '(?m)^\s*Summary\s+\[\s*[\d.]+s\]\s+(\d+) tests? run: (\d+) passed(?: \((\d+) slow\))?(?:, (\d+) failed)?(?:, (\d+) skipped)?\s*$')) {
         $run = [int]$lm.Groups[1].Value
         $passed = [int]$lm.Groups[2].Value
         $failed = if ($lm.Groups[4].Success) { [int]$lm.Groups[4].Value } else { 0 }
         $skipped = if ($lm.Groups[5].Success) { [int]$lm.Groups[5].Value } else { 0 }
         if ($failed -ne 0) { return "failed=$failed in a nextest summary" }
-        if ($skipped -ne 0) { return "skipped=$skipped in a nextest summary (no skips are allowlisted)" }
-        if ($passed + $failed + $skipped -ne $run) { return "summary run=$run != passed+failed+skipped" }
-        $totalRun += $run; $totalPassed += $passed
+        # executed-test conservation: every test that RAN passed or failed
+        if ($passed + $failed -ne $run) { return "summary run=$run != passed+failed ($passed+$failed)" }
+        $totalRun += $run; $totalPassed += $passed; $totalSkipped += $skipped
     }
     if (-not [regex]::IsMatch($Text, 'Summary\s+\[')) {
         return "no nextest summaries parsed"
     }
     if ($totalRun -eq 0) {
-        # a full-line "0 tests run: 0 passed" summary IS the zero-run shape
         if ([regex]::IsMatch($Text, '(?m)^\s*Summary\s+\[\s*[\d.]+s\]\s+0 tests? run:')) {
             return "no tests were run (0 tests run)"
         }
@@ -277,7 +275,10 @@ if ($Scope -eq "selftest") {
         @{ name = "nextest-real-slow-success"; fmt = "nextest"; text = "        PASS [   0.400s] (1/2) alpha::slow_one`n        PASS [   0.790s] (2/2) alpha::slow_two`n     Summary [0.790s] 2 tests run: 2 passed (2 slow), 0 skipped"; exit = 0; ids = @("alpha::slow_one"); want = $null },
         @{ name = "nextest-slow-count-zero-run"; fmt = "nextest"; text = "     Summary [   0.001s] 0 tests run: 0 passed (0 slow), 0 skipped"; exit = 0; ids = @(); min = 1; want = "no tests were run (0 tests run)" },
         @{ name = "nextest-failed-component"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 failed, 0 skipped"; exit = 0; ids = @(); want = "failed=1 in a nextest summary" },
-        @{ name = "nextest-skipped"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 skipped"; exit = 0; ids = @(); want = "skipped=1 in a nextest summary (no skips are allowlisted)" },
+        @{ name = "nextest-conservation-run-mismatch"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 skipped"; exit = 0; ids = @(); want = "summary run=5 != passed+failed (4+0)" },
+        @{ name = "nextest-real-filtered-success"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) ac-artifact-probe::plan788_r1_ r1_observed_spans_carry_real_frontend_boundaries`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("r1_observed_spans_carry_real_frontend_boundaries"); min = 1; want = $null },
+        @{ name = "nextest-filtered-required-excluded"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) alpha::other`n     Summary [   0.120s] 1 test run: 1 passed, 1 skipped"; exit = 0; ids = @("alpha::needed"); min = 1; want = "required id never reported PASS by nextest: alpha::needed" },
+        @{ name = "nextest-required-ignored-skipped"; fmt = "nextest"; text = "        PASS [   0.100s] (1/1) alpha::other`n     Summary [   0.120s] 1 test run: 1 passed, 2 skipped"; exit = 0; ids = @("alpha::needed"); min = 1; want = "required id never reported PASS by nextest: alpha::needed" },
         @{ name = "nextest-missing-id"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::other`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @("alpha::needed"); want = "required id never reported PASS by nextest: alpha::needed" }
         @{ name = "nextest-zero-run"; fmt = "nextest"; text = "     Summary [   0.001s] 0 tests run: 0 passed, 0 skipped"; exit = 0; ids = @(); min = 1; want = "no tests were run (0 tests run)" },
         @{ name = "nextest-short-run"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::one`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @(); min = 2; want = "testsRun=1 < required 2" },

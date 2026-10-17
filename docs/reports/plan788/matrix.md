@@ -1,10 +1,10 @@
-# PLAN-788 验收矩阵（T-08，2026-10-16；R3–R6 修订 2026-10-17）
+# PLAN-788 验收矩阵（T-08，2026-10-16；R3–R7 修订 2026-10-17）
 
 聚合入口：`powershell -NoProfile -File scripts/verify-autodown-ac-788.ps1 -Scope acceptance`
 （ALL PASS，2026-10-17 R3 修复后实测；零测族拒绝、失败计数、P95 硬门内嵌；required ID
 按 executed-ok 精确名逐 ID 绑定所属 test binary，逐 binary 最小计数，prose/前缀/
 兄弟 binary 总数/无摘要支撑的 ok 名/伪状态词（okay-but-not-executed）均不能替代，逐 binary 摘要守恒
-（ok 行数==passed），nextest 按真实格式（零 failed 省略/单数/(i/N) 序号/`(N slow)` 注记，id 可含空格）核对+MinPassed 下限（零测试/run<下限拒）+run 守恒+PASS 行计数守恒+摘要整行锚定（未知尾部仍拒）——普通与 slow 两份真实日志正控，负控入 selftest 28 用例）。
+（ok 行数==passed），nextest 按真实格式（零 failed 省略/单数/(i/N) 序号/`(N slow)` 注记，id 可含空格）核对+MinPassed 下限（零测试/run<下限拒）+**执行守恒 passed+failed==run**+PASS 行计数守恒+摘要整行锚定（未知尾部仍拒）+分档筛选排除单列不拒（required 被筛除仍拒）——普通/slow/显式 -E 筛选/default-filter 四份真实日志正控，负控入 selftest 31 用例；R7 纠正了 R5/R6 的错误算式 run==passed+failed+skipped）。
 `-Scope closeout` 为 merge-owned 冻结提交触面（t/tv/tt 按 nextest 实际输出核对 +
 worker/probe/ac-syntax 独立套件）。
 

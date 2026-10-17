@@ -24,15 +24,15 @@ R3 测量合同（落实 §8 冻结的"含校验/发布"）：
 
 | 场景 | n | P50 | P95 | P99 | 硬门 |
 |---|---|---|---|---|---|
-| fresh | 30 | 533 | 934 | 993 | — |
-| hot | 30 | 467 | 594 | 778 | P95<1000ms ✓ |
-| restart-disk-hot | 30 | 533 | 712 | 756 | — |
-| cross-project | 30 | 533 | 600 | 603 | — |
-| body-edit | 30 | 476 | 509 | 553 | P95<1000ms ✓ |
-| gc-concurrent | 30 | 492 | 635 | 804 | — |
+| fresh | 30 | 615 | 1270 | 3326 | — |
+| hot | 30 | 514 | 528 | 555 | P95<1000ms ✓ |
+| restart-disk-hot | 30 | 635 | 871 | 1272 | — |
+| cross-project | 30 | 594 | 702 | 747 | — |
+| body-edit | 30 | 567 | 642 | 659 | P95<1000ms ✓ |
+| gc-concurrent | 30 | 491 | 534 | 567 | — |
 
-**硬门判定（冻结参考环境，安静单实例轮）**：hot P95=594ms < 1000ms ✓；局部 body
-编辑 P95=509ms < 1000ms ✓（每样本真重算：parse=1、object=lowered）。syntax 局部
+**硬门判定（冻结参考环境，安静单实例轮）**：hot P95=528ms < 1000ms ✓；局部 body
+编辑 P95=642ms < 1000ms ✓（每样本真重算：parse=1、object=lowered）。syntax 局部
 edit（V-12 syntax 门）：n=30，P95=1ms < 1000ms ✓（墙钟含 admission+投影持久化+
 字节 oracle）。
 
@@ -42,6 +42,10 @@ fresh↔incremental 等价检查按累计文档解析，成本二次增长，~52
 （~3ms）→ **7 次真实错序完成**全部被 latest-wins 仲裁拒绝（refused-stale /
 cancelled(superseded-late) 留痕）；发布序列严格递增、最终发布=修订 50；积压深度≥2
 可见；50 条记录全留存（`turnaround-samples-syntax.jsonl` 的 revision-stream 行）。
+
+方差与归因（如实，R7 增补）：R7 审查轮 body-edit P95=1013ms 红轮（同轮 hot 959ms 过门、
+180+80 条原始记录在 attachments/788/review-r7-*，审查环境未控制并发负载）——归因竞争
+负载；R7 修复后安静轮 body-edit 569ms/hot 494ms 过门（本表）。
 
 方差与归因（如实，R6 增补）：R6 审查轮 hot P95=1495ms（审查环境未控制其他会话负载，
 失败轮 180 条原始样本完整保留于 attachments/788/review-r6-native-samples.jsonl.txt，

@@ -250,6 +250,10 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
    摘要守恒（ok 行数==passed）；binary 绑定按文件叶名精确匹配；nextest 按真实格式
    （零 failed 分量省略、`1 test run` 单数、PASS 行带 `(i/N)` 序号）。负控：
    okay-but-not-executed、ok 名无摘要支撑、兄弟 binary 替代。
+   **（R7 纠正）** nextest 的守恒式与 skip 语义以 R7 §15 为准——`run` 为实际执行数，
+   分档筛选排除计入 skipped 且单列，`passed+failed==run` 才是正确算式；本条早先
+   隐含的 `run==passed+failed+skipped` 与"任何 skipped 拒绝"不符合工具真实语义，
+   系 R5/R6 复审与 work 共同引入，特此更正。
 5. **失败样本先落盘**：六场景/语法门/修订流的判定失败（Err 或 Ok(false)）先写入
    raw JSONL（含错误串），再触发 gate 断言；raw 头记录测量时刻与 harness 形态，
    竞争轮与安静轮均保留不删。
@@ -283,3 +287,14 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
    （`2 tests run: 2 passed (2 slow), 0 skipped`）——属工具语法成分而非尾部杂讯，
    整行解析纳入该分量；最少数/守恒/零测试/未知尾部拒绝不变，普通与 slow 两份
    真实日志均为正控。
+## 15. R7 修复后的补充冻结（2026-10-17，复审 R7 后）
+
+1. **nextest 选择/计数真实语义（取代 §13.4 的错误算式）**：`run` = 实际执行的测试数；
+   分档筛选排除（仓库 `.cargo/config.toml` t/tv/tt → `.config/nextest.toml` 的
+   default-filter/tv 正向筛选，或显式 `-E`）计入 `skipped` 且**单列不拒**——
+   `1 test run: 1 passed, 1 skipped` 是合法的"选中 1/排除 1"结果。守恒式为
+   **`passed + failed == run`**（执行过的每个测试非过即败）；PASS 行数==passed
+   保持。必验不执行（被 ignore/筛除的 required 项）仍由 required-PASS 行检查拒绝；
+   零测试、run<MinPassed、失败传播、未知摘要尾部不变。正控：普通（R4）、slow
+   （R6）、显式 -E 筛选与 default-filter（R7）四份真实日志；负控：守恒不匹配、
+   required 被筛除、零测试、短跑、尾部杂讯、PASS 行计数不匹配。
