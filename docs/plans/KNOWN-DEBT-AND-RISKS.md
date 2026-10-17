@@ -2009,3 +2009,17 @@ compile_scalar_source 的瞬态分配做剖析与收敛（或由 798 后续修�
 后重定目标语义）。证据：docs/reports/plan798/turnaround.md（r2.1 内存章节）
 + turnaround-summary.json（frontend_peak_bytes/target_met 字段）+
 av_resources_peak_sampler_distinguishes_transient_spike（采样器区分性反控）。
+
+- 2026-10-17 PLAN-803 work T-06：Man 模板资源迁移登记的三项**预存遗留**（随资源层抽取如实入账，未在本轮修复——行为改善须另立计划，见 auto-man-assets/project.md 冻结语义节）：①`Templates::copy` 先创建/截断目标文件再 eval_template 的破坏性失败窗口（eval 错误会留下空/半截文件——基线实测 13 模板全部渲染成功，窗口当前不可由内嵌模板触发，但 panic 链逐字保留）；②模板求值旧 VM 插值怪癖（`app("${name}")`→`app("")`、多行整文件插值等，五族输出已按基线 `1dd123361a` 冻结在 tests/plan803_asset_facade_tests.rs）；③GHS exporter app 级 program.gpj mold 解析级求值失败（`Expected term, got Dep`，flipped 代码只含模板文本与数据无关、模板字节 hash 证明与旧臂相同 ⇒ 预存旧臂行为，default.gpj 生成正常，panic 边界已冻结）。收据：docs/plans/attachments/803/t01-oldarm-probe.txt + t01-newarm-replay-identical.txt；实现 904b5e5e0。
+
+## PLAN-803 final review R1（2026-10-17，三项已由 R2 验证关闭；以下为历史 needs_fix）
+
+受审 `bbad82a9f9a5b667d33fec28dcf680f6d95a1e7e`，revision=1；[独立报告与反例](attachments/803/review-r1/review.md)。F803-R1-01：三个 RustEmbed::iter 门面 opaque 返回破坏旧 Filenames 具体类型调用，旧正控过、新反例 E0308；F803-R1-02：新增测试 rustfmt 与 diff EOF 检查红；F803-R1-03：纯资源无 IO/内嵌说明缺 debug 读源码与 release 内嵌边界，实际解包 consumer debug 移开资源失败、release 成功，须如实说明而非追加未经批准的跨模式保证。T-02/03/04/06 重开，executing 2/8；T-01/05 完成证据保留。合同/健康/SD 缺口不能以记债代替关闭。原树 work 修复提交后复审，merge-owned 全档、Spec/ledger/归档/清理 pending；未合入。
+
+## PLAN-803 final review R2（2026-10-17，已由 R3 验证关闭；以下为历史 needs_fix）
+
+受审 `a9b401421d205fdfea5c9c8b66d195c8589771e5`，revision=1；[报告](attachments/803/review-r2/review.md)。R1三项API/格式/构建模式说明均独立验证关闭，资源6/6、门面9/9、consumer4/4、旧asset1/1、adapter11/11与模式/缺资源反控通过。新 F803-R2-01：asset.rs:80/133/192具体Filenames修复引入三条refining_impl_trait_reachable警告（28→31），健康门未闭；保持具体API类型，以最小范围显式允许有意细化及理由，勿改回opaque/全仓关警告。仅T-03重开，executing5/8；修复提交后复审受影响警告/API正控。merge-owned整档与沉淀/归档/清理pending；记债不批准延期，未合入。
+
+### PLAN-803 R3 闭合收据（2026-10-17）
+
+F803-R2-01于`b455b4ef99210ab7d40e95c4b9e8340ad79e3340`独立验证关闭：三个方法级有意细化声明保留具体API，auto-man警告31→28回预存基线，无新增警告；标准门面9/9与格式检查通过。[R3报告](attachments/803/review-r3/review.md)。R1三项亦已闭合，无开放复审finding；原非目标遗留债仍留存。Plan reviewed7/8；merge-owned冻结门/沉淀/归档/清理pending，未合入。

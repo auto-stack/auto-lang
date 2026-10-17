@@ -2026,11 +2026,11 @@
           "id": "P803-M",
           "title": "PLAN-803 合入收据（delivery/沉淀/投影/归档/清理）",
           "content": "merge 收据：delivery=两段 rebase over master（96f177df0；range-diff 5/5——4 全等+基线提交按冲突解决重写取 master 侧）+沉淀提交；冻结门禁裸 cargo t 5261/5261（三次间歇红 plan484_024/plan707_wait/plan707_cancel 均 solo 秒绿归因在案负载时序族）+分列定向门全绿；ledger v40→v41 guarded offline projection（备份 specs.json.bak-v40-803，范围守卫+回读校验）；归档 archive/803 + wt-guard 后清理。",
-          "file": "docs/plans/803-man-template-assets-extraction.md",
+          "file": "docs/plans/archive/803-man-template-assets-extraction.md",
           "tags": [
             "PLAN-803",
             "stage:merge",
-            "delivery:f8ccf3f7f"
+            "delivery:89bb13944"
           ],
           "status": "active"
         }
@@ -7531,7 +7531,7 @@
           "tags": [
             "PLAN-803",
             "stage:merge",
-            "delivery:f8ccf3f7f",
+            "delivery:89bb13944",
             "sha256:d84d88e52753"
           ],
           "status": "active"
@@ -7544,7 +7544,7 @@
           "tags": [
             "PLAN-803",
             "stage:merge",
-            "delivery:f8ccf3f7f",
+            "delivery:89bb13944",
             "sha256:d7f8bd092788"
           ],
           "status": "active"
@@ -9160,7 +9160,7 @@
           "tags": [
             "PLAN-803",
             "stage:merge",
-            "delivery:f8ccf3f7f"
+            "delivery:89bb13944"
           ],
           "status": "active"
         }
