@@ -140,7 +140,7 @@ work命令：`cargo check -p auto-parser-api`、`cargo check -p auto-lang`、两
 | landed | master tip=786c49964==delivery（git merge --ff-only，无 merge 提交）；rebase over ffb0145f4（802 代码线+788/804/805/806 簿记）零冲突，range-diff 9/9 全等，映射：8f3e8e9f8→52a71a444、ace61f7c4→77446bc25、29ea71232→56dbda6ed、643d5bdeb→be17a404a、06e559a60→7e895c350、7c2c74ddc→e30676163、9f94b32ce→4d83aab9c、**49512993b→b95e51d06**、67eb95903→786c49964 |
 | ledger_refreshed | .autoos/specs.json v42→v43，guarded offline projection（无 HTTP store 在运行；字节级备份 .autoos/specs.json.bak-v42-801 未跟踪留存）；条目 P801-D1/D2（designs 255）、P801-T（tests 136）、P801-R2（reviews 272）、P801-M（reports 171），读回校验 ID/内容/schema 六节通过 |
 | archived | docs/plans/archive/801-dialect-api-dependency-inversion.md（git mv）+status: archived+T-08 勾结 8/8+本收据与 ledger 同笔提交入默认分支；附件 attachments/801 全量（R1/R2 复审+delivery 收据+t06）已随 delivery/簿记入库 |
-| cleaned | 双树 wt-guard clean（auto-lang+auto-down）→worktree/分支/组目录移除，回执见下 |
+| cleaned | 双树 wt-guard clean→worktree remove（auto-lang+auto-down）→branch plan-801-dev 删除（was 786c49964）→组目录 .wt/lang-801 移除（含 R2 复审 delivery scratch 9.8GB，收据已由复审持久化附件）；终态 8/8 archived，merge pass |
 
 冻结门禁（delivery 786c49964 上）：裸 cargo t --no-fail-fast **5264/5265 过**，唯一红=plan730_raw_receive_commit_conflict_roundtrip（负载时序 flake，solo 0.11s 绿；首轮 fail-fast 位 plan707_cancel 亦 solo 绿——803 收据同族归因在案，机器多会话并行编译负载）；**cargo tv 163/163**；tu（ui_gen 零触面）/taa（aavm 零触面）不触发；tf 批量档到期判定见下。生产制品观察：本仓无守护进程/Web bundle 消费面；`auto` CLI 为按需 cargo 构建（792 driver 已在受审提交独立重建验证），无运行中生产进程需重启。批量回归判定：801%5=1 非整除触发；last-batch-regression covered=800 当日新鲜（803 收据同判），48h 窗口内——**不到期**，不触发 /auto-plan:regress。
 
