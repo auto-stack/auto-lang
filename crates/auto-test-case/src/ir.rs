@@ -191,7 +191,23 @@ pub struct ResolvedOracle {
     pub exit: Option<i32>,
     /// v2 ac optional perf assertion face (record-only unless declared).
     pub perf: Option<crate::contract::PerfExpect>,
+    /// v2 probe (PLAN-796): per-step expectations with every
+    /// `bindings_file` sidecar read and hashed (same content-bound
+    /// admission as artifacts — mutating a bindings oracle changes the
+    /// identity and invalidates old PASSes).
+    pub probe: Option<Vec<ResolvedProbeStep>>,
     pub oracle_sha256: String,
+}
+
+/// One probe step expectation with its bindings sidecar resolved.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedProbeStep {
+    pub cache: Option<String>,
+    pub compute_calls: Option<u32>,
+    pub bindings_file: Option<String>,
+    pub bindings_bytes: Option<Vec<u8>>,
+    pub bindings_sha256: Option<String>,
+    pub stages_include: Vec<String>,
 }
 
 /// Resolve every `file:` reference of a check's expectation against
@@ -232,6 +248,39 @@ pub fn resolve_oracle(
         });
     }
 
+    // PLAN-796: probe step expectations — resolve bindings sidecars under
+    // the same bounded-read admission as artifacts.
+    let mut probe = None;
+    if let Some(steps) = &expect.probe {
+        let mut out = Vec::new();
+        for st in steps {
+            let (bfile, bbytes, bsha) = match &st.bindings_file {
+                None => (None, None, None),
+                Some(f) => {
+                    let full = ref_base.join(f.replace('/', std::path::MAIN_SEPARATOR_STR));
+                    let bytes = read_bounded(&full, "max_sidecar_bytes", limits.max_sidecar_bytes)
+                        .map_err(|e| {
+                            fail(format!(
+                                "probe bindings {} (check {:?}): {}",
+                                f, check.id, e
+                            ))
+                        })?;
+                    let digest = hex(&sha256(&bytes));
+                    (Some(f.clone()), Some(bytes), Some(digest))
+                }
+            };
+            out.push(ResolvedProbeStep {
+                cache: st.cache.clone(),
+                compute_calls: st.compute_calls,
+                bindings_file: bfile,
+                bindings_bytes: bbytes,
+                bindings_sha256: bsha,
+                stages_include: st.stages_include.clone(),
+            });
+        }
+        probe = Some(out);
+    }
+
     // Content-bound oracle identity: declarations AND sidecar bytes.
     let mut combined = String::new();
     combined.push_str(&format!("{:?}\0", expect.completion));
@@ -255,6 +304,14 @@ pub fn resolve_oracle(
             a.path, a.file, a.compare, a.sha256
         ));
     }
+    if let Some(steps) = &probe {
+        for st in steps {
+            combined.push_str(&format!(
+                "probe\0{:?}\0{:?}\0{}\0{:?}\0",
+                st.cache, st.compute_calls, st.bindings_sha256.clone().unwrap_or_default(), st.stages_include
+            ));
+        }
+    }
     let oracle_sha256 = hex(&sha256(combined.as_bytes()));
 
     Ok(ResolvedOracle {
@@ -265,6 +322,7 @@ pub fn resolve_oracle(
         artifacts,
         exit: expect.exit,
         perf: expect.perf,
+        probe,
         oracle_sha256,
     })
 }
@@ -310,6 +368,7 @@ mod tests {
                     artifacts: vec![],
                     exit: None,
                     perf: None,
+                    probe: None,
                 },
                 product_from: None,
                 skip: None,

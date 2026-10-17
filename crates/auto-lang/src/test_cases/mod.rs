@@ -43,6 +43,7 @@ mod ac_protocol;
 pub mod avm;
 pub mod materialize;
 pub mod stale;
+pub mod sema;
 
 /// A language failure observed at a production stage boundary (Plan 773
 /// F-08): the stage is derived from the ERROR TYPE (and, for run-stage
@@ -208,9 +209,10 @@ pub fn run_suite_selected(
             && a != Adapter::A2r.as_str()
             && a != Adapter::Ac.as_str()
             && a != Adapter::Syntax.as_str()
+            && a != Adapter::Probe.as_str()
         {
             return Err(format!(
-                "bad selector: adapter {:?} is not a declared adapter (avm, a2r, ac, syntax)",
+                "bad selector: adapter {:?} is not a declared adapter (avm, a2r, ac, syntax, probe)",
                 a
             ));
         }
@@ -722,6 +724,16 @@ fn dispatch_check(
         (Adapter::Ac, auto_test_case::contract::Action::Check)
         | (Adapter::Ac, auto_test_case::contract::Action::Build)
         | (Adapter::Ac, auto_test_case::contract::Action::Run) => ac::run_check(
+            resolved,
+            check,
+            oracle,
+            &project_dir,
+            &artifact_dir,
+            run_dir,
+        ),
+        // PLAN-796 T-06: restricted probe/run seam — the sema worker
+        // executes REGISTERED recipes; judgement is entirely parent-side.
+        (Adapter::Probe, auto_test_case::contract::Action::Run) => sema::run_check(
             resolved,
             check,
             oracle,

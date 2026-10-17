@@ -9,6 +9,7 @@
 //! ZERO lines of 783/787 implementation change.
 
 pub mod budget;
+pub mod ipc;
 pub mod store;
 pub mod turnaround;
 

@@ -1,7 +1,3 @@
-# PLAN-796 turnaround reference load (head of gen796-1mi/v1).
-# The full 1MiB module is regenerated deterministically by the harness
-# (experimental/ac-semantics probe/src/turnaround.rs::reference_module);
-# this checked-in head pins the generator shape for review.
 fn f0(x int) int { let y0 = x * 1 + 1
 var z0 = y0
 while z0 < 100 { z0 = z0 + 1 }

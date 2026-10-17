@@ -191,28 +191,36 @@ fn sema_boundary_797_description_surface_frozen() {
     assert_eq!(ac_sema_contract::Mode::Owned.as_str(), "owned");
 }
 
-/// V-09: the pending AutoDown contract stays HONESTLY marked — every
-/// case file carries the not-executed pending marker until T-06 lands,
-/// and none claims runner execution.
+/// V-09 (T-06 landed): the corpus files carry the EXECUTED status and
+/// run through the unified runner (probe_adapter_corpus_executes_green
+/// is the execution proof); none may regress to a pending marker, and
+/// none may claim a shell/executable payload.
 #[test]
-fn sema_boundary_case_files_pending_markers_honest() {
-    let dir = repo_root().join("test/cases/ac-semantics");
+fn sema_boundary_case_files_executed_status_honest() {
+    let dir = repo_root().join("crates/auto-lang/test/cases/ac-semantics");
     let mut checked = 0;
     for entry in std::fs::read_dir(&dir).unwrap().flatten() {
         let path = entry.path();
-        if path.extension().and_then(|e| e.to_str()) == Some("ad") {
+        if path.extension().and_then(|e| e.to_str()) == Some("ad")
+            && path.file_name().and_then(|n| n.to_str()) != Some("ac-semantics.suite.ad")
+        {
             let text = std::fs::read_to_string(&path).unwrap();
             assert!(
-                text.to_lowercase().contains("not-executed"),
-                "{} must carry the not-executed marker until T-06",
+                text.to_lowercase().contains("status: executed"),
+                "{} must carry the executed status (T-06 landed)",
                 path.display()
             );
-            assert!(text.contains("D-788"), "{} must name the D-788 gate", path.display());
             assert!(
-                !text.contains("\"executed\": true"),
-                "{} must not claim runner execution",
+                !text.to_lowercase().contains("not-executed"),
+                "{} must not regress to a pending marker",
                 path.display()
             );
+            assert!(
+                !text.contains("shell") && !text.contains(".exe"),
+                "{} must not carry shell/executable payloads",
+                path.display()
+            );
+            assert!(text.contains("sema/query-v1"), "{} names the registered recipe", path.display());
             checked += 1;
         }
     }

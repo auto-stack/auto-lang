@@ -11,7 +11,7 @@
 |---|---|---|
 | SD-01..04 | 内容终稿（随 T-01..T-05 实现） | 新 auto-semantics 规范四件 |
 | SD-05/06 | 内容终稿 | 对既有 auto-ac/auto-hir 规范的追加段（不改原producer范围） |
-| SD-07/08 | **pending D-788** | 788 合入后在 T-06 单写者窗口定稿（probe adapter/recipe/decoder 能力版本） |
+| SD-07/08 | **已定稿并实现（T-06，D-788 满足后单写者窗口）** | probe/run 接缝按 788 最终协议落地，冻结细节见 contract-decision D13 |
 
 ## SD-01 add `docs/specs/auto-semantics/project.md`
 
@@ -80,23 +80,32 @@
   旧实现（infer 嵌 Codegen 等）不切换，仅作为差分对照 oracle 被只读引用。
 - 验收：AC-01/02；测试 infer_core_ parity。
 
-## SD-07 modify `docs/specs/auto-test-case/architecture.md` — **pending D-788**
+## SD-07 modify `docs/specs/auto-test-case/architecture.md` — **已定稿（T-06 交付）**
 
-- before：TestCase 架构为 v1 支持边界（无 probe adapter/recipe 注册面）。
-- after（定稿于 T-06 单写者窗口，788 合入后）：受限 probe/run adapter 公共接缝——
-  Atom 数据 source kind、声明式 registered recipe（语义 recipe 首个实现，797 按同合同
-  追加 ABI recipe）、结构化结果/诊断/trace；admission 只接受已登记 recipe 与可信工具
-  身份，case 不携 shell/任意 exe；复用 788 worker/产物身份/预算/containment。
-- 验收：AC-05；测试 probe_adapter_、AutoDown 统一 runner 真执行（V-08）。
-- **本轮状态**：未实现、未定稿——.case.ad 三份仍标 not-executed（诚实 pending）。
+- before：TestCase 架构为 v1 支持 + B 阶段 ac/syntax worker 拓扑，无 probe
+  adapter/recipe 注册面。
+- after：**追加**"受限 probe/run adapter"节——`adapter: "probe"` × `action: "run"`
+  经注册配方表（`REGISTERED_PROBE_RECIPES=["sema/query-v1"]`，797 按同合同追加
+  ABI 配方）；声明式步骤（query/edit-source/restart，1..=64）；工具身份经可信
+  宿主配置（`SEMA_CASE_WORKER` env 或源树定位自建），case 永不携带可执行；
+  worker=独立 sema-probe 进程经 `semaworker/1` JSON-lines IPC（acworker/1 同形
+  信封/回显/有界 IO）；PASS 判定全在父侧；restart 步=真实跨进程持久化路径。
+  实现锚点：auto-test-case `contract.rs`（Adapter::Probe/ProbeStep/ProbeSemaSpec/
+  ProbeStepExpect）、auto-lang `test_cases/sema.rs`（执行与判定）、
+  `experimental/ac-semantics/probe/src/ipc.rs`（worker）。
+- 验收：AC-05；probe_adapter_ 5 例（语料真执行/负 oracle 翻红/解码反例/atom-data
+  admission/v1 pilot 不受扰）；V-08 经 verify 脚本实装 PASS。
 
-## SD-08 modify `docs/specs/auto-test-case/profile-v2-native.md` — **pending D-788**
+## SD-08 modify `docs/specs/auto-test-case/profile-v2-native.md` — **已定稿（T-06 交付）**
 
-- before：v2 native/syntax 能力版本，无 probe/Atom 数据 kind。
-- after（定稿于 T-06）：显式增加 probe/Atom 数据 kind/观察与能力版本；decoder 与报告
-  同步；已有 ac/syntax/v1 行为保持不变（兼容正例在 T-06 验证）。
-- 验收：AC-05/06。
-- **本轮状态**：未实现、未定稿。
+- before：v2 = v1 严格超集，新增面仅 ac/syntax（hir-atom 源、ac 通道、syntax 投影）。
+- after：**追加** probe/Atom 数据面——源类别 `syntax: "atom-data"`（.atomdata 虚拟
+  路径）；`adapter: "probe"` 可观察通道=结构化 `probe`（cache/compute_calls/
+  bindings_file/stages_include；stdout/stderr/result 通道对 probe 恒不可声明）；
+  probe 错误 completion 支持前端阶段（parse/resolve/typecheck），worker/协议失败
+  =Infrastructure 永不满足语言负例；oracle 身份纳入 bindings 边车内容 hash
+  （改 oracle 字节即失效旧 PASS）；v1 接受/拒绝集字节不变（plan788_r3_ 全绿）。
+- 验收：AC-05/06；解码反例（未注册配方/v1+probe/缺步骤/未知 op）+ 兼容面。
 
 ## 依赖与并行审计（V-09 边界，随 sema_boundary_ 落地）
 

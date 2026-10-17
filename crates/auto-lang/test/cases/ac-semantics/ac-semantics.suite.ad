@@ -1,0 +1,13 @@
+# PLAN-796 T-06: AC semantic probe corpus (v2). The `probe` adapter runs
+# the registered `sema/query-v1` recipe through the sema worker; every
+# judgement is parent-side. fixture_root = this directory (sources and
+# oracles live beside the cases).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ac-semantics", include: [
+    "infer-bindings.case.ad",
+    "cache-roundtrip.case.ad",
+    "callee-sig-change.case.ad",
+    "turnaround.case.ad"
+] }
+```

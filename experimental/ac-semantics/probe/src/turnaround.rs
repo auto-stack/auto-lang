@@ -202,7 +202,6 @@ pub fn measure_query(
 ) -> Sample {
     let mut stages: Vec<Stage> = Vec::new();
     let mut compute_calls = 0u32;
-    let mut cache_hit = false;
     let mut io_bytes = 0u64;
     let status: &'static str;
 
@@ -233,7 +232,6 @@ pub fn measure_query(
         dur_ns: t.elapsed().as_nanos(),
         detail: stale_reason.unwrap_or_else(|| if hit_now { "hit".into() } else { "miss".into() }),
     });
-    cache_hit = hit_now;
 
     if !hit_now {
         // stage 3: real inference (the new solver, the edited function)
@@ -277,7 +275,7 @@ pub fn measure_query(
         stages,
         total_ns: t_total.elapsed().as_nanos(),
         compute_calls,
-        cache_hit,
+        cache_hit: hit_now,
         io_bytes,
         status,
     }
@@ -374,7 +372,6 @@ impl Harness {
         let src2 = self.reference_src.replace("fn f0(", "fn g0(");
         let _ = src2;
         let input = reference_input(&self.reference_src);
-        let q = QueryKind::InferBody { fn_name: "f3".into() };
         let proj_b: SemaInput = {
             let mut i2 = input.clone();
             i2.package = "proj-b".into();

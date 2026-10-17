@@ -940,6 +940,7 @@ fn consumer_check(id: &str, exit: i32) -> CheckSpec {
             artifacts: vec![],
             exit: Some(exit),
             perf: None,
+            probe: None,
         },
         product_from: Some("upstream".into()),
         skip: None,

@@ -10,6 +10,7 @@ ac-sema-contract = { path = "../contract" }
 ac-sema-core = { path = "../core", features = ["core-ast"] }
 ac-artifact-probe = { path = "../../ac-artifact-probe" }
 serde = { version = "1", features = ["derive"] }
+base64 = "0.22"
 serde_json = "1"
 auto-ac-prototype = { path = "../../ac-core" }
 

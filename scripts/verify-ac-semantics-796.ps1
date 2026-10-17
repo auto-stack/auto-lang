@@ -41,12 +41,12 @@ function Add-Result([string]$Id, [string]$Status, [string]$Note) {
     if ($Status -ne 'PASS') { $script:Failed++ }
 }
 
-function Run-Suite([string]$Id, [string[]]$CargoArgs, [string]$Note) {
-    Write-Host ">> cargo $($CargoArgs -join ' ')" -ForegroundColor DarkGray
+function Run-Suite([string]$Id, [string[]]$CargoArgs, [string]$Note, [string]$Cwd = $ws) {
+    Write-Host ">> cargo $($CargoArgs -join ' ') (in $Cwd)" -ForegroundColor DarkGray
     # run through cmd so native stderr never becomes a PS error record
     # (EAP=Stop + 2>&1 misfires on Windows PowerShell 5.1)
     $argline = ($CargoArgs | ForEach-Object { if ($_ -match '\s') { '"$_"' } else { $_ } }) -join ' '
-    $out = (& cmd /c "cargo $argline 2>&1") -join "`n"
+    $out = (& cmd /c "cd /d `"$Cwd`" && cargo $argline 2>&1") -join "`n"
     $code = $LASTEXITCODE
     $summary = ($out -split "`n" | Select-String 'test result:') -join '; '
     if ($code -eq 0 -and $summary -match '0 failed') {
@@ -98,20 +98,16 @@ if ($Scope -eq 'acceptance') {
     # --- V-09 / AC-06: boundary + parallel audit ----------------------
     Run-Suite 'V-09' @('test', '-p', 'ac-sema-probe', '--test', 'sema_boundary_audit') 'sema_boundary_ tree/diff/provenance'
 
-    # --- V-08 / AC-05: formal AutoDown execution ---------------------
-    # HONEST BLOCK: D-788 (PLAN-788 final review/gates/merge/receipts)
-    # is not satisfied; T-06 has not registered the runner. The case
-    # files must still carry their not-executed markers (asserted by
-    # sema_boundary_case_files_pending_markers_honest) and this check
-    # fails acceptance BY DESIGN until T-06 lands.
-    $d788 = ((& cmd /c "git -C `"$repoRoot`" merge-base --is-ancestor 54e6a46caf1badddaba898a471492ae52e7a1fbf master 2>nul") -and ($LASTEXITCODE -eq 0))
-    $caseFiles = Get-ChildItem (Join-Path $repoRoot 'test/cases/ac-semantics') -Filter '*.case.ad'
-    $stillPending = ($caseFiles | Where-Object { (Get-Content $_.FullName -Raw) -match 'not-executed' }).Count
-    if ($d788) {
-        Add-Result 'V-08' 'FAIL' 'D-788 satisfied but runner checks not yet implemented in this script — finish T-06 wiring'
-    }
-    else {
-        Add-Result 'V-08' 'BLOCKED' ("D-788 unmet (788 not merged); {0}/{1} case files honestly pending T-06" -f $stillPending, $caseFiles.Count)
+    # --- V-08 / AC-05: formal AutoDown execution (T-06 landed) --------
+    # D-788 was satisfied (PLAN-788 merged, receipts on master); the
+    # probe adapter corpus now EXECUTES through the unified runner:
+    # real sema worker processes, real restart boundary, parent-side
+    # judgement. The corpus+admission suite is the V-08 gate.
+    Run-Suite 'V-08' @('test', '-p', 'auto-lang', '--features', 'test-cases', '--', 'probe_adapter') 'probe adapter through the unified runner (V-08)' $repoRoot
+    $caseFiles = Get-ChildItem (Join-Path $repoRoot 'crates/auto-lang/test/cases/ac-semantics') -Filter '*.case.ad'
+    $pending = ($caseFiles | Where-Object { (Get-Content $_.FullName -Raw) -match 'not-executed' }).Count
+    if ($pending -gt 0) {
+        Add-Result 'V-08b' 'FAIL' ("{0}/{1} case files still carry not-executed markers" -f $pending, $caseFiles.Count)
     }
 }
 else {

@@ -133,3 +133,34 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
 - `cargo test -p ac-sema-probe --test sema_cache_first_case`：7 passed（见 D12）。
 - 环境注记：sccache 默认端口撞 Hyper-V 保留段（os error 10013），本 workspace
   验证统一以 `SCCACHE_SERVER_PORT=44001` 运行。
+
+## D13 probe/run 接缝冻结（T-06，按 788 最终协议修订）
+
+- **adapter/action**：`adapter: "probe"` × `action: "run"`（v2-only；v1 带 probe
+  字段=解码拒绝，v1 接受/拒绝集字节不变——plan788_r3_ 兼容面全绿）。
+- **注册配方表**（解码器常量 `REGISTERED_PROBE_RECIPES`）：`sema/query-v1`。
+  case 只能引用注册名——绝不携带可执行/路径/shell（未知 op/字段=定位错误）。
+  797 在同表追加 ABI 配方，不另写 runner。
+- **步骤面**（`options.steps`，1..=64）：`query`（完整查询流：lookup→miss/stale
+  才真算→发布；报告 cache/compute_calls/bindings/diagnostics/stages）；
+  `edit-source {from,to}`（字面量须恰好匹配一次=可判别编辑 oracle；链式生效）；
+  `restart`（结束当前 worker 会话，父侧以**新进程**续跑剩余步骤、同一 store
+  root——统一 runner 内的真实跨进程持久化路径）。
+- **sema 绑定**：`options.sema {package,module,kind:"infer-body",fn}`。
+- **期望面**（`expect.probe[]`，与 query 步一一对应）：`cache ∈
+  hit|miss|stale|published`（worker 报 `published<miss>` 等带原因细形，父侧
+  归并为粗词表）、`compute_calls`（命中断言 0=禁调反控可声明 oracle）、
+  `bindings_file`（case 相对边车 JSON，oracle 身份含其内容 hash）、
+  `stages_include`。诊断结局（diags<miss>）v1 不发布不声明——由库级套件覆盖。
+- **源类别**：`syntax: "atom-data"`（.atomdata，Atom 数据载荷）随接缝注册；
+  sema/query-v1 只消费 `.at`（执行期 admission 拒绝其它类别）。
+- **IPC**：`semaworker/1`（acworker/1 同形：begin/request/end、nonce+
+  request_hash 回显、deny_unknown_fields、单响应、父侧墙钟+有界读+stderr
+  即杀）。worker=sema-probe `serve` 子命令；工具身份经 `SEMA_CASE_WORKER`
+  env 覆盖或源树定位+release 自建（可信宿主配置绑定，case 无工具字段）。
+- **判定**：全在父侧（auto-lang `test_cases::sema`）：信封/schema/回显/形状
+  admission → 逐 query 步比对 oracle → 结构化回执 `probe-receipt.json`
+  （NativeRecord 携 query_steps/compute_calls 计数与 toolchain 轴）。
+- **边界保持**：auto-lang 零静态依赖实验语义栈（worker 经子进程 IPC）；
+  ac/syntax 既有语义零改动（plan788_r3_/ac_case_tests 全绿）；共享文件
+  （contract.rs/ir.rs/suite.rs/mod.rs）本窗口单写者=796。

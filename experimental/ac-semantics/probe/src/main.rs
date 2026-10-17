@@ -29,6 +29,10 @@ fn main() {
     if args[1] == "bench-turnaround" {
         return bench_turnaround(&args);
     }
+    if args.len() == 2 && args[1] == "serve" {
+        // semaworker/1 bounded single-shot session (T-06)
+        std::process::exit(ac_sema_probe::ipc::serve());
+    }
     if args.len() < 5 {
         usage();
     }
