@@ -94,11 +94,11 @@ work：`cargo check -p auto-toolchain-core`、`cargo check -p auto-man`，新con
 | 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 791/795/800归档、合同确认 | ninja/config.rs/mapper.rs/templates.rs及store/resolver/builder消费者，闭包/公开面和八类旧臂冻结 | 01/02/03 |
-| [x] | T-02 | work | T01 | 新crates/auto-toolchain-core，单份模型/mapper/templates/纯测试，check与V01/02 | 01/02 |
+| [x] | T-02 | work | T01 | 新crates/auto-toolchain-core，单份模型/mapper/templates/纯测试，check与V01/02；R1 F01 修复：迁入三文件已 rustfmt（scoped --check 退出 0），迁移相等证据绑定 4d1aade5a blob 复核，当前修订以 16 golden 行为对拍为证 | 01/02 |
 | [x] | T-03 | work | T02 | 旧三模块/ninja出口薄re-export，真实CompilerStore/Resolver/NinjaBuilder接线，删除旧实现，定向V03/04 | 02/03 |
-| [x] | T-04 | work | T03 | 新独立consumer、全八类/四命令/无效输入、真实生产与配置控制V01–04，记录实际命令/输出 | 01/02/03 |
+| [x] | T-04 | work | T03 | 新独立consumer、全八类/四命令/无效输入、真实生产与配置控制V01–04，记录实际命令/输出；R1 修复：未使用导入清零（新测试零告警）+ 替换序确定性控制×2（R1 复放集期望值）+ 等长 key 双态容忍控制（consumer 第 5 测试） | 01/02/03 |
 | [x] | T-05 | work | T04 | V05 777精确边/单一性/803窄合流/792闭包，必要交付控制 | 04 |
-| [x] | T-06 | work | T05 | 迁位/净删/剩余管理层与SD/SHA收据，提交送审 | 04 |
+| [x] | T-06 | work | T05 | 迁位/净删/剩余管理层与SD/SHA收据，提交送审；R1 修复：SD-01 render 语义改准+真实模块表+验证矩阵改列表、INDEX 再生列 config/mapper/templates；修复提交 589e30399 | 04 |
 | [ ] | T-07 | review | T06 | 同树独立AC/SD及规则/生产反控审查，merge门pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
 
@@ -131,6 +131,25 @@ T-01 冻结收据（2026-10-17，基线 282e50053 实读源码）：
 - **债登记**：P805-D1（预存，非 805 引入）——`CompilerStore::load_from_am_config` 以 `get_kid(Str)` 找 compilers 而解析器产位置 Int 键，合法 am.at 形态下恒空载；三态行为已冻结入 golden，修复建议 `get_nodes` 同型迭代，见 KNOWN-DEBT-AND-RISKS.md Plan 805 节。
 - **预存环境/既知项**（非本计划引入）：`cargo test -p auto-man` 全 targets 因 P736-R4 预存坏 target（plan734 bin/fixture）编译失败，故 ninja 选择面经 `--lib` 跑（12+1 ignored）；本机 sccache 配置端口落 Windows 排除段（os error 10013），所有 cargo 调用经 `RUSTC_WRAPPER=` 绕过。
 - **未跑（merge-owned，pending）**：冻结裸 `cargo t` + 核心/Man 定向门在 merge 阶段统一执行；未碰 VM/ui_gen/trans/book/aavm，tv/tu/tt/tb/taa 不适用；tf 到期判定归 `/auto-plan:regress`。
+
+2026-10-17 / stage: review / review_scope: final / reviewer_identity: Codex（本次审核会话，未参与实施；无子 agent，实际模型/会话 ID 未暴露） / PLAN-805 revision: 1 / **outcome: needs_fix** / worktree_path=D:/autostack/.wt/lang-805/auto-lang / branch=plan-805-dev / reviewed_commit=66fc9d71001eab80dd33aacfe74102da565288a5 / base_commit=282e50053da41c3b65c1e424ca0d251f1126986b / dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / next=原树 work 修复并提交，再复审。
+
+- [R1完整报告、AC映射与修复要求](attachments/805/review-r1.md)；[基线/依赖/Spec源哈希](attachments/805/review-r1-baseline.json.txt)；[冻结规范候选增量](attachments/805/review-r1-spec-delta.patch)；[可重放顺序反例](attachments/805/review-r1-render-probe.rs)。
+- **F-805-R1-01（P2，health，T02/04/06，AC05）**：新增 parity 测试 `FlagMappings` 未使用导入实际 warning；迁入三个核心模块 scoped rustfmt check exit 1。既存依赖告警与 golden 输出末尾空行不混为新增问题。
+- **F-805-R1-02（P2，SD-01，T04/06，AC04/05）**：新 Spec“不递归插值”未准确描述单轮顺序替换；实测 `{longkey}`→插入`{x}`→`done`，逆序则保留`{longkey}`，等长 key 保留 HashMap 未定序。修正文案并补区分性控制，不改原算法迎合新承诺。
+- **F-805-R1-03（P3，SD-01，T06）**：新项目索引把验证表头/命令解析成模块明细、空状态，建议随 SD 修复；本项不单独决定 needs_fix。
+- **本轮实跑**：核心38单测+6doc、独立consumer4、16 golden对拍+类型身份2、ninja选择12 passed/1 manual ignored、两包check、777 strict pass/0 violations/2 grandfathered；metadata完整normal/build/dev图和792的11成员闭包无新核心漏包；新旧三模块Git blob逐字一致。AC01/02/03行为通过，AC04 partial，AC05 fail，AC06 merge-owned pending。未发现生产算法回归；P805-D1旧加载器空载保持并非成功加载。
+- **状态**：保留T01/T03/T05，重开T02/T04/T06，T07/T08未完成，**executing 3/8**。未修改实施或主检出canonical Spec/live ledger，未合并/归档/清树。修复后重绑受影响证据与规范增量SHA。**pending_closeout_gates**：最终pass后merge冻结裸cargo t+核心/Man定向门；tv/tu/tt/tb/taa本面不适用，tf归主检出到期批量回归。
+
+2026-10-17 / stage: work（R1 修复轮）| PLAN-805 | plan_revision: 1 | outcome: pass（R1 三 findings 全闭合，复放受影响定向门全绿，二送 T-07 final review）| worktree=D:/autostack/.wt/lang-805/auto-lang | branch=plan-805-dev | base=282e50053 | code=589e30399（4d1aade5a → 66fc9d710 → 589e30399）| dependency_revisions=auto-down c39ac7f9（未变）| task_ids=T-02/T-04/T-06 重勾 | blockers=无 | next_responsible_role=review（T-07 第二轮）
+
+**R1 修复收据（证据绑定 589e30399）**：
+
+- **F-805-R1-01 闭合**：① `plan805_toolchain_parity.rs` 移除未使用 `FlagMappings` 导入——修复后定向测试编译零新增告警（对照复放日志，`FlagMappings` warning 0 次命中；残余 `unused doc comment`/`Sender` 为依赖库既存，与 review check 日志同款）；② 迁入三模块 `config/mapper/templates.rs` 按 F01 指令 rustfmt（scoped `--check` 退出 0），**相等证据口径切换**：迁移逐字节相等绑定 4d1aade5a（复审 blob SHA 已核实），当前修订以 16 golden 行为对拍 + 38+6 单测为证（格式化后复跑全过）；③ golden 末尾空行保持未动。
+- **F-805-R1-02 闭合**：SD-01 冻结语义第 4 条改写为准确算法描述——「按 key 字节长度降序做**一轮**顺序替换，逐 key 对当前累计结果 `str::replace`：后处理的（更短）key 会展开先前插入值中的占位符；已处理 key 不回扫（非不动点）；等长 key 处理序继承 HashMap」，删除"不递归插值"表述，算法零改动。补区分性控制（期望值取自 R1 复放集，锚定冻结核心=旧臂 blob）：parity 测试两条确定性断言（`{longkey:"{x}",x:"done"}` 渲染 `{longkey}` 得 `done`；`{longkey:"done",x:"{longkey}"}` 渲染 `{x}` 得 `{longkey}`，直接断言不入 golden 保持旧臂捕获面）+ consumer 新增第 5 测试 `external_consumer_pins_render_ordering_semantics`（同两例 + 等长 key 256 次迭代结果只落 `{bb}`/`done` 两种合法排序之内、无第三态）。
+- **F-805-R1-03 闭合**：SD-01 增设真实模块表（config/mapper/templates 三行）+ 验证矩阵改 bullet 列表（脱离索引器表格正则）；`scripts/spec-index.py` 再生 INDEX——新核心模块明细现为真实三模块（模块数 4→3，伪"入口/覆盖"条目消除）。
+- **复放门禁（589e30399 上实跑）**：`cargo test -p auto-toolchain-core` 38+6；parity+identity 2 pass（16 golden 逐字节 + 新顺序控制）；consumer 5 pass；`verify-deps.sh` PASS（RUSTC_WRAPPER= 绕过本机 sccache 端口排除段）；777 strict pass/0 violations/2 grandfathered（manifests/边未变，基线仍绑定 4d1aade5a 有效）；plan 迁入/新增 Rust 文件 scoped rustfmt --check 退出 0。auto-man 门面/上层消费文件本轮零改动（T-03/T-05 证据不受影响）。
+- merge-owned 门禁保持 pending（裸 `cargo t` + 核心/Man 定向门在最终 pass 后的冻结提交上执行）。
 
 ## 10. 待澄清事项
 
