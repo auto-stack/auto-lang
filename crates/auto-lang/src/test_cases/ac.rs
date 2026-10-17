@@ -170,9 +170,11 @@ fn call_worker(
         }
         let _ = tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
     });
-    // R3 (F03): the stderr drain reports OVER-CAP instead of silently
-    // truncating — a worker that floods stderr is a controlled
-    // infrastructure failure, never a truncated success.
+    // R3 (F03) + R4 (F03): the stderr drain reports OVER-CAP instead of
+    // silently truncating — and the over-cap SIGNAL feeds the same wait
+    // loop as the stdout response, so a flooding worker is TERMINATED at
+    // the cap, not merely refused after answering.
+    let (cap_tx, cap_rx) = std::sync::mpsc::channel::<usize>();
     let err_reader = std::thread::spawn(move || {
         let mut sink = Vec::new();
         let mut chunk = [0u8; 65536];
@@ -190,26 +192,22 @@ fn call_worker(
                 Err(_) => break,
             }
         }
+        if let Some(observed) = exceeded {
+            let _ = cap_tx.send(observed);
+        }
         match exceeded {
             Some(observed) => Err(observed),
             None => Ok(sink),
         }
     });
-    let response = match rx.recv_timeout(deadline.saturating_sub(started.elapsed())) {
-        Ok(Ok(bytes)) => String::from_utf8_lossy(&bytes).to_string(),
-        Ok(Err(observed)) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = out_reader.join();
-            let _ = err_reader.join();
-            return Err(format!(
-                "worker response exceeded the {} byte IPC bound (observed {}); the worker was killed",
-                READ_CAP, observed
-            ));
-        }
-        Err(_) => {
-            let _ = child.kill();
-            let _ = child.wait();
+    let kill_and_reap = |child: &mut std::process::Child| {
+        let _ = child.kill();
+        let _ = child.wait();
+    };
+    let response = loop {
+        let left = deadline.saturating_sub(started.elapsed());
+        if left.is_zero() {
+            kill_and_reap(&mut child);
             let _ = out_reader.join();
             let _ = err_reader.join();
             return Err(format!(
@@ -217,7 +215,65 @@ fn call_worker(
                 deadline
             ));
         }
+        match rx.recv_timeout(left.min(Duration::from_millis(10))) {
+            Ok(r) => break r,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                // the stderr cap is a TERMINATION event, checked with the
+                // same cadence as the deadline itself (R4 F03: a worker
+                // that floods stderr and then lingers must not outlive the
+                // cap by more than one poll slice)
+                if let Ok(observed) = cap_rx.try_recv() {
+                    kill_and_reap(&mut child);
+                    let _ = out_reader.join();
+                    let _ = err_reader.join();
+                    return Err(format!(
+                        "worker stderr exceeded the {} byte bound ({} observed) — the worker tree was TERMINATED at the cap, never a truncated success",
+                        STDERR_CAP, observed
+                    ));
+                }
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                // the reader always sends before exiting; empty here means
+                // it died without a message — treat as an answer-less end
+                match rx.try_recv() {
+                    Ok(r) => break r,
+                    Err(_) => {
+                        kill_and_reap(&mut child);
+                        let _ = out_reader.join();
+                        let _ = err_reader.join();
+                        return Err(
+                            "ac-case-worker stdout closed before answering".to_string(),
+                        );
+                    }
+                }
+            }
+        }
     };
+    // R1 (F03): the stdout side keeps its own hard READ_CAP — an oversized
+    // response is a controlled failure and the worker is killed for it.
+    let response = match response {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+        Err(observed) => {
+            kill_and_reap(&mut child);
+            let _ = out_reader.join();
+            let _ = err_reader.join();
+            return Err(format!(
+                "worker response exceeded the {} byte IPC bound (observed {}); the worker was killed",
+                READ_CAP, observed
+            ));
+        }
+    };
+    // A cap that raced in just after the response still refuses AND
+    // terminates — a flooding worker's answer is never trusted.
+    if let Ok(observed) = cap_rx.try_recv() {
+        kill_and_reap(&mut child);
+        let _ = out_reader.join();
+        let _ = err_reader.join();
+        return Err(format!(
+            "worker stderr exceeded the {} byte bound ({} observed) — the worker tree was TERMINATED at the cap, never a truncated success",
+            STDERR_CAP, observed
+        ));
+    }
     let _ = out_reader.join();
     // R2 (F05): the SAME absolute deadline bounds the post-response wait —
     // a worker that answered and then hung (or slept past its budget) is
@@ -229,6 +285,14 @@ fn call_worker(
         match child.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) => {
+                if let Ok(observed) = cap_rx.try_recv() {
+                    kill_and_reap(&mut child);
+                    let _ = err_reader.join();
+                    return Err(format!(
+                        "worker stderr exceeded the {} byte bound ({} observed) — the worker tree was TERMINATED at the cap, never a truncated success",
+                        STDERR_CAP, observed
+                    ));
+                }
                 if std::time::Instant::now() >= wait_deadline {
                     let _ = child.kill();
                     let _ = child.wait();

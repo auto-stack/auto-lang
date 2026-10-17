@@ -42,10 +42,10 @@ deny_unknown_fields，nonce/hash 回显+父侧 schema/ok-error 互斥/形状 adm
 单管线复用（ac-core 前端/verify/lower、783 store、787 runtime——无第二执行器）；
 产物 DAG：manifest 分配前全校验（固定集合/唯一/scratch 内/声明长度/64·128MiB/按
 action 必需），消费=manifest 核验后运行（不重编译）；消费者 verdict 状态传播
-（ERROR 不吞）。R3 补遗：父侧 I/O 生命周期统一——stdin 写入线程化并纳入请求墙钟、
-stderr 排空带 cap 信号、stdout 读取带界；判定入口（validate_response /
-manifest 准入+持久化 / 流比较）为可复用公共函数，周转 harness 与 runner 使用同一
-入口。
+（ERROR 不吞）。R3/R4 补遗：父侧 I/O 生命周期统一——stdin 写入线程化并纳入请求墙钟、
+stderr 排空超限即时杀树回收（与响应/截止同循环，≤10ms 片）、stdout 读取带界；
+判定入口（validate_response / manifest 准入+持久化 / 流比较）为可复用公共函数，
+周转 harness 与 runner 使用同一入口。
 
 ## SD-04 modify `docs/specs/auto-test-case/project.md`
 

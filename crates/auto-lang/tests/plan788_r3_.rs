@@ -118,23 +118,6 @@ impl Sess {
         (format!("n-{}", self.req_no), format!("h-{}", self.req_no))
     }
 
-    /// Write + read + PARSE. The wall stops after the JSON parse — callers
-    /// extend it through admission/judgment (F02: never before validation).
-    fn request_raw(&mut self, req: serde_json::Value) -> (String, String, Duration, serde_json::Value) {
-        let (nonce, hash) = self.next_ids();
-        let line = serde_json::to_string(&serde_json::json!({
-            "op": "request", "request": req
-        }))
-        .unwrap();
-        let t = Instant::now();
-        writeln!(self.stdin, "{}", line).unwrap();
-        self.stdin.flush().unwrap();
-        let mut resp = String::new();
-        self.reader.read_line(&mut resp).unwrap();
-        let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
-        (nonce, hash, t.elapsed(), v)
-    }
-
     fn close(mut self) {
         let _ = writeln!(self.stdin, r#"{{"op":"end"}}"#);
         let _ = self.stdin.flush();
@@ -202,6 +185,20 @@ fn judge_ac_run(
     Ok((exit == Some(want_exit), spans))
 }
 
+
+/// R4 (F05): a judgment failure is RECORDED before it can fail the gate —
+/// every scenario loop turns the Result into (ok, spans, error), pushes the
+/// Sample, and only THEN asserts. An admission failure or invalid response
+/// can no longer vanish with the panicking sample.
+fn judged_fields(
+    judged: &Result<(bool, Vec<(String, u64)>), String>,
+) -> (bool, Vec<(String, u64)>, Option<String>) {
+    match judged {
+        Ok((ok, spans)) => (*ok, spans.clone(), None),
+        Err(e) => (false, Vec::new(), Some(e.clone())),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // sample recorder: JSONL appended PER SAMPLE, before any gate
 // ---------------------------------------------------------------------------
@@ -265,6 +262,13 @@ impl Recorder {
                 "worker_exe_sha256": worker_sha,
                 "resource_gaps": ["cpu_ms", "io_bytes", "peak_rss"],
                 "recorded_per_sample_before_gates": true,
+                // R4 (F05): the measurement environment travels with the
+                // raw file — attribution of long tails starts here.
+                "measured_at_unix_ms": std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0),
+                "harness": "auto-lang integration test plan788_r3_ (--test-threads=1 expected)",
             })
         );
         Recorder {
@@ -404,8 +408,14 @@ fn main(){
         let n=field(&l,"nonce");let h=field(&l,"request_hash");
         let scratch=field(&l,"scratch").replace("\\\\","\\");
         std::fs::write(std::path::Path::new(&scratch).join("app.exe"),b"x").unwrap();
-        if std::env::var("P788R3_MODE").unwrap_or_default()=="stderr-overcap"{
+        let mode=std::env::var("P788R3_MODE").unwrap_or_default();
+        if mode=="stderr-overcap"||mode=="stderr-overcap-slow"{
             let _=io::stderr().write_all(&vec![b'z';(1<<20)+1]);
+        }
+        if mode=="stderr-overcap-slow"{
+            // linger BEFORE answering — an immediate-kill parent ends the
+            // run at the cap; a merely-late parent waits the full linger
+            std::thread::sleep(std::time::Duration::from_millis(1200));
         }
         // JSON-escape the substituted path (backslashes) so the printed
         // line stays a legal JSON string.
@@ -598,6 +608,39 @@ fn r3_parent_io_lifecycle_overcap_and_deadline() {
         "stderr over-cap refusal: {report}"
     );
 
+    // (b2, R4-03) stderr flood then a 1200ms LINGER before answering,
+    // total budget 3000ms: the parent must TERMINATE the worker at the cap
+    // (well under the linger), not merely refuse its late answer.
+    let t0 = Instant::now();
+    let (gate, report) = run_suite_subprocess(
+        &root,
+        "stderr-overcap-slow",
+        "fn main() int { return 3 }",
+        "auto",
+        r#"{ id: "run", adapter: "ac", action: "run", options: { budget: { total_ms: 3000 } }, expect: { completion: "success", exit: 3 } }"#,
+        Some(&mock),
+        &[
+            ("P788R3_OK_FILE", okfile.display().to_string()),
+            ("P788R3_MODE", "stderr-overcap-slow".to_string()),
+        ],
+    );
+    let wall = t0.elapsed().as_millis();
+    assert_ne!(gate, 0);
+    assert_eq!(row(&report, "run")["status"], "ERROR", "{report}");
+    let detail = row(&report, "run")["detail"].as_str().unwrap_or_default().to_string();
+    assert!(
+        detail.contains("stderr exceeded"),
+        "refusal names the stderr cap: {report}"
+    );
+    assert!(
+        detail.contains("TERMINATED at the cap"),
+        "the refusal must state the immediate termination: {report}"
+    );
+    assert!(
+        wall < 700,
+        "the worker must be reaped AT the cap, not after its 1200ms linger (took {wall}ms)"
+    );
+
     // (c) a worker that NEVER READS stdin, 100ms total budget, ~100KB
     // source: the parent's deadline must cover the WRITE too — the old
     // synchronous write blocked ~1.2s on the full pipe.
@@ -774,6 +817,31 @@ fn r3_stale_production_paths_per_adapter_action() {
         "a linked ac/run row with unchanged linker/SDK content must be FRESH: {out}"
     );
 
+    // (b2) ac/build (a LINKED row with NO run observation — the R4 bug
+    // read the wrong artifact key and flagged it STALE unchanged) → FRESH.
+    let (gate, report) = run_suite_subprocess(
+        &root,
+        "build-run",
+        "fn main() int { return 3 }",
+        "auto",
+        r#"{ id: "build", adapter: "ac", action: "build", expect: { completion: "success" } }"#,
+        None,
+        &[],
+    );
+    assert_eq!(gate, 0, "{report}");
+    let suite = root.join("build-run").join("suite.ad");
+    let report_path = root.join("build-run-report.json");
+    let (stale_gate, out) = stale_subprocess(&suite, &report_path, None);
+    assert_eq!(
+        stale_gate, 0,
+        "an unchanged LINKED ac/build row (obj/exe artifacts, lld/sdk axes applicable and equal) must be FRESH: {out}"
+    );
+
+    // (b3) the same build row under a REPLACED worker → STALE.
+    let (stale_gate, out) = stale_subprocess(&suite, &report_path, Some(&altered));
+    assert_eq!(stale_gate, 1, "build row under a different worker: {out}");
+    assert!(out.contains("worker-exe-sha256"), "drift names the axis: {out}");
+
     // (c) syntax parse with a REPLACED worker → STALE naming the axis (the
     // R3 bug left syntax rows FRESH after a worker swap).
     let (gate, report) = run_suite_subprocess(
@@ -941,6 +1009,127 @@ fn r3_native_bytes_real_worker_path_producers() {
     s.close();
 }
 
+
+/// R4-01: the INDEPENDENT latest-wins publication oracle. A completion may
+/// publish only when it is (a) not superseded, (b) newer than everything
+/// already published, (c) at least as new as the newest revision already
+/// ENQUEUED (a stale completion must not publish over a newer arrival),
+/// (d) judged Ok with the BYTE ORACLE TRUE (an Ok(false) never publishes),
+/// and (e) the worker's own revision counter equals the request's step
+/// count. Everything else gets an honest refusal category; the categories
+/// are unit-tested with negative controls below.
+fn decide_publication(
+    cancelled: bool,
+    k: u32,
+    last_published: u32,
+    max_enqueued: u32,
+    judged: &Result<(bool, Option<u32>), String>,
+    steps: u32,
+) -> &'static str {
+    if cancelled {
+        return "cancelled(superseded-late)";
+    }
+    if k <= last_published {
+        return "refused-out-of-order";
+    }
+    if k < max_enqueued {
+        return "refused-stale(newer-already-issued)";
+    }
+    match judged {
+        Err(_) => "refused-judgment",
+        Ok((false, _)) => "refused-oracle-mismatch",
+        Ok((true, Some(c))) if *c != steps => "refused-revision-counter",
+        Ok((true, Some(_))) => "published",
+        // a missing counter is an incomplete observation — never a pass
+        Ok((true, None)) => "refused-judgment",
+    }
+}
+
+/// R4-01: negative controls for the publication oracle — wrong bytes
+/// (Ok(false)), admission errors, wrong/missing revision counters, a newer
+/// already-issued revision and superseded tasks must ALL be refused; only
+/// the clean newest completion publishes.
+#[test]
+fn r4_publication_oracle_negative_controls() {
+    let good: Result<(bool, Option<u32>), String> = Ok((true, Some(3)));
+    assert_eq!(decide_publication(false, 5, 4, 5, &good, 3), "published");
+    assert_eq!(
+        decide_publication(false, 5, 4, 6, &good, 3),
+        "refused-stale(newer-already-issued)"
+    );
+    assert_eq!(decide_publication(false, 5, 6, 6, &good, 3), "refused-out-of-order");
+    assert_eq!(
+        decide_publication(true, 5, 4, 5, &good, 3),
+        "cancelled(superseded-late)"
+    );
+    let mismatch: Result<(bool, Option<u32>), String> = Ok((false, Some(3)));
+    assert_eq!(
+        decide_publication(false, 5, 4, 5, &mismatch, 3),
+        "refused-oracle-mismatch",
+        "an Ok(false) byte mismatch must NEVER publish (the R4-01 bug)"
+    );
+    let err: Result<(bool, Option<u32>), String> = Err("admission refused".into());
+    assert_eq!(decide_publication(false, 5, 4, 5, &err, 3), "refused-judgment");
+    let wrong_counter: Result<(bool, Option<u32>), String> = Ok((true, Some(2)));
+    assert_eq!(
+        decide_publication(false, 5, 4, 5, &wrong_counter, 3),
+        "refused-revision-counter"
+    );
+    let no_counter: Result<(bool, Option<u32>), String> = Ok((true, None));
+    assert_eq!(decide_publication(false, 5, 4, 5, &no_counter, 3), "refused-judgment");
+}
+
+
+// ---------------------------------------------------------------------------
+// R4-05: failure-sample durability counter-control
+// ---------------------------------------------------------------------------
+
+#[test]
+fn r4_failure_sample_durability_control() {
+    // A response that fails the runner's REAL admission (wrong schema)
+    // flows through judged_fields into a Recorder BEFORE any gate — the
+    // failing sample must already be on disk, marked not-ok, with the
+    // refusal reason verbatim.
+    let root = temp_root("r4-durability");
+    let mut rec = Recorder::new("durability");
+    let bad = serde_json::json!({
+        "schema": "acworker/999", "nonce": "n", "request_hash": "h",
+        "ok": { "diagnostics": [], "artifacts": [], "trace": [],
+                "toolchain": {}, "metric_gaps": [] },
+    });
+    let judged = judge_ac_run(&bad, "n", "h", &root, &root, 3);
+    let (ok, spans, error) = judged_fields(&judged);
+    assert!(error.is_some(), "the wrong-schema response must fail admission");
+    assert!(!ok);
+    rec.push(Sample {
+        scenario: "durability-control".into(),
+        idx: 0,
+        wall_ms: 0,
+        queue_ms: None,
+        exit: bad["ok"]["run"]["exit_code"].as_i64(),
+        revision: None,
+        parse: None,
+        lower: None,
+        link: None,
+        object_hit: None,
+        input_sha: sha_hex(b"durability-control"),
+        ok,
+        error: error.clone(),
+        stage_spans: spans,
+        gc: None,
+    });
+    let text = std::fs::read_to_string(&rec.path).unwrap();
+    let last = text.lines().rev().find(|l| !l.trim().is_empty()).unwrap();
+    let v: serde_json::Value = serde_json::from_str(last).unwrap();
+    assert_eq!(v["scenario"], "durability-control");
+    assert_eq!(v["ok"], false, "the failure sample is recorded as not-ok");
+    assert!(
+        v["error"].as_str().unwrap_or_default().contains("acworker/1"),
+        "the refusal reason is verbatim in the durable record: {v}"
+    );
+    assert!(v["error"].as_str().is_some());
+}
+
 // ---------------------------------------------------------------------------
 // F02: turnaround — six native scenarios, walls through FULL judgment
 // ---------------------------------------------------------------------------
@@ -981,7 +1170,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         let judged = judge_ac_run(&v, &nonce, &hash, &work, &art, 3);
         s.close();
         let wall = t0.elapsed().as_millis();
-        let (ok, spans) = judged.unwrap_or_else(|e| panic!("fresh {i}: {e}"));
+        let (ok, spans, error) = judged_fields(&judged);
         rec.push(Sample {
             scenario: "fresh".into(),
             idx: i,
@@ -995,11 +1184,11 @@ fn turnaround_native_six_scenarios_p95_gates() {
             object_hit: object_hit(&v),
             input_sha: sha_hex(src.as_bytes()),
             ok,
-            error: None,
+            error: error.clone(),
             stage_spans: spans,
             gc: None,
         });
-        assert!(ok, "fresh {i} failed");
+        assert!(ok, "fresh {i} failed: {error:?}");
         fresh.push(wall);
     }
 
@@ -1039,7 +1228,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
             let mut resp = String::new();
             s.reader.read_line(&mut resp).unwrap();
             let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
-            let (ok, spans) = judge_ac_run(&v, &n, &h, &work, &art, 3).unwrap_or_else(|e| panic!("hot {i}: {e}"));
+            let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, 3));
             let wall = t.elapsed().as_millis();
             rec.push(Sample {
                 scenario: "hot".into(),
@@ -1054,11 +1243,11 @@ fn turnaround_native_six_scenarios_p95_gates() {
                 object_hit: object_hit(&v),
                 input_sha: sha_hex(P04.as_bytes()),
                 ok,
-                error: None,
+                error: error.clone(),
                 stage_spans: spans,
                 gc: None,
             });
-            assert!(ok, "hot {i}");
+            assert!(ok, "hot {i}: {error:?}");
             samples.push(wall);
         }
         s.close();
@@ -1083,7 +1272,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         let mut resp = String::new();
         s.reader.read_line(&mut resp).unwrap();
         let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
-        let (ok, spans) = judge_ac_run(&v, &n, &h, &work, &art, 3).unwrap_or_else(|e| panic!("restart {i}: {e}"));
+        let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, 3));
         s.close();
         let wall = t0.elapsed().as_millis();
         rec.push(Sample {
@@ -1099,11 +1288,11 @@ fn turnaround_native_six_scenarios_p95_gates() {
             object_hit: object_hit(&v),
             input_sha: sha_hex(P04.as_bytes()),
             ok,
-            error: None,
+            error: error.clone(),
             stage_spans: spans,
             gc: None,
         });
-        assert!(ok, "restart {i}");
+        assert!(ok, "restart {i}: {error:?}");
         restart.push(wall);
     }
 
@@ -1124,7 +1313,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
         let mut resp = String::new();
         s.reader.read_line(&mut resp).unwrap();
         let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
-        let (ok, spans) = judge_ac_run(&v, &n, &h, &work, &art, 3).unwrap_or_else(|e| panic!("cross {i}: {e}"));
+        let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, 3));
         s.close();
         let wall = t0.elapsed().as_millis();
         rec.push(Sample {
@@ -1140,11 +1329,11 @@ fn turnaround_native_six_scenarios_p95_gates() {
             object_hit: object_hit(&v),
             input_sha: sha_hex(P04.as_bytes()),
             ok,
-            error: None,
+            error: error.clone(),
             stage_spans: spans,
             gc: None,
         });
-        assert!(ok, "cross {i}");
+        assert!(ok, "cross {i}: {error:?}");
         cross.push(wall);
     }
 
@@ -1169,7 +1358,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
             let mut resp = String::new();
             s.reader.read_line(&mut resp).unwrap();
             let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
-            let (ok, spans) = judge_ac_run(&v, &n, &h, &work, &art, want).unwrap_or_else(|e| panic!("body-edit {i}: {e}"));
+            let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, want));
             let wall = t.elapsed().as_millis();
             let parse = counter(&v, "parse");
             let hit = object_hit(&v);
@@ -1186,11 +1375,11 @@ fn turnaround_native_six_scenarios_p95_gates() {
                 object_hit: hit.clone(),
                 input_sha: sha_hex(src.as_bytes()),
                 ok,
-                error: None,
+                error: error.clone(),
                 stage_spans: spans,
                 gc: None,
             });
-            assert!(ok, "body-edit {i}");
+            assert!(ok, "body-edit {i}: {error:?}");
             assert_eq!(parse, Some(1), "body-edit {i} must re-parse (real recompute)");
             assert_eq!(hit.as_deref(), Some("lowered"), "body-edit {i} must not resume a cached object");
             samples.push(wall);
@@ -1239,7 +1428,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
             let mut resp = String::new();
             s.reader.read_line(&mut resp).unwrap();
             let v: serde_json::Value = serde_json::from_str(resp.trim()).unwrap();
-            let (ok, spans) = judge_ac_run(&v, &n, &h, &work, &art, 3).unwrap_or_else(|e| panic!("gc {i}: {e}"));
+            let (ok, spans, error) = judged_fields(&judge_ac_run(&v, &n, &h, &work, &art, 3));
             let req_end = Instant::now();
             let wall = t.elapsed().as_millis();
             let (summary, fin_at) = fin_rx
@@ -1268,7 +1457,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
                 object_hit: object_hit(&v),
                 input_sha: sha_hex(P04.as_bytes()),
                 ok,
-                error: None,
+                error: error.clone(),
                 stage_spans: spans,
                 gc: Some(GcInterval {
                     started_before_req: true,
@@ -1277,7 +1466,7 @@ fn turnaround_native_six_scenarios_p95_gates() {
                     summary,
                 }),
             });
-            assert!(ok, "gc {i}");
+            assert!(ok, "gc {i}: {error:?}");
             samples.push(wall);
         }
         s.close();
@@ -1429,8 +1618,12 @@ fn turnaround_syntax_gate_and_revision_stream() {
             // wall runs through admission + persist + oracle (F02):
             let nonce = v["nonce"].as_str().unwrap().to_string();
             let hash = v["request_hash"].as_str().unwrap().to_string();
-            let (ok, revision) = judge_syntax_edit(&v, &nonce, &hash, &work, &art, &want)
-                .unwrap_or_else(|e| panic!("syntax {k}: {e}"));
+            // R4 (F05): the failure sample is durable BEFORE the assert.
+            let judged = judge_syntax_edit(&v, &nonce, &hash, &work, &art, &want);
+            let (ok, revision, syn_error) = match &judged {
+                Ok((ok, rev)) => (*ok, *rev, None),
+                Err(e) => (false, None, Some(e.clone())),
+            };
             let wall = t.elapsed().as_millis();
             rec.push(Sample {
                 scenario: "syntax-edit".into(),
@@ -1445,11 +1638,11 @@ fn turnaround_syntax_gate_and_revision_stream() {
                 object_hit: None,
                 input_sha: sha_hex(base.as_bytes()),
                 ok,
-                error: None,
+                error: syn_error.clone(),
                 stage_spans: vec![],
                 gc: None,
             });
-            assert!(ok, "syntax sample {k}: reconstruction oracle");
+            assert!(ok, "syntax sample {k}: reconstruction oracle: {syn_error:?}");
             samples.push(wall);
         }
         s.close();
@@ -1481,7 +1674,7 @@ fn turnaround_syntax_gate_and_revision_stream() {
         // per-lane raw worker handles (Sess is single-reader; lanes need
         // dedicated writer AND reader threads).
         let exe = worker_binary().expect("worker binary");
-        let mut spawn_lane = |tag: &str| -> (
+        let spawn_lane = |tag: &str| -> (
             std::process::ChildStdin,
             BufReader<std::process::ChildStdout>,
             std::process::Child,
@@ -1534,6 +1727,10 @@ fn turnaround_syntax_gate_and_revision_stream() {
             records: Vec::new(),
             completion_order: Vec::new(),
         }));
+        // R4-01: the newest revision already HANDED to a lane — publication
+        // must not fall behind the arrival front.
+        let max_issued: std::sync::Arc<std::sync::atomic::AtomicU32> =
+            std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
 
         // writer threads: own the lane stdin; never block the arrival clock
         let (tx_a, rx_a) = std::sync::mpsc::channel::<(u32, String)>();
@@ -1554,11 +1751,12 @@ fn turnaround_syntax_gate_and_revision_stream() {
         );
         let work_a_for_reader = scratch_of.clone();
         let raw_for_a = rec.path.clone();
+        let max_a = max_issued.clone();
         let hr_a = std::thread::spawn(move || {
             let (expected, nonce_to_k, enqueue, written, pub_state) = r_a;
             lane_reader(
                 reader_a, work_a_for_reader, art_a, "heavy", expected, nonce_to_k,
-                enqueue, written, pub_state, raw_for_a, t0,
+                enqueue, written, pub_state, max_a, raw_for_a, t0,
             )
         });
         let r_b = (
@@ -1567,11 +1765,12 @@ fn turnaround_syntax_gate_and_revision_stream() {
         );
         let work_b_for_reader = scratch_of.clone();
         let raw_for_b = rec.path.clone();
+        let max_b = max_issued.clone();
         let hr_b = std::thread::spawn(move || {
             let (expected, nonce_to_k, enqueue, written, pub_state) = r_b;
             lane_reader(
                 reader_b, work_b_for_reader, art_b, "light", expected, nonce_to_k,
-                enqueue, written, pub_state, raw_for_b, t0,
+                enqueue, written, pub_state, max_b, raw_for_b, t0,
             )
         });
 
@@ -1583,6 +1782,7 @@ fn turnaround_syntax_gate_and_revision_stream() {
                 std::thread::sleep(target - now);
             }
             enqueue.lock().unwrap().insert(k, ms_since(t0));
+            max_issued.fetch_max(k, std::sync::atomic::Ordering::SeqCst);
             let heavy = k % HEAVY_EVERY == 3;
             let digits: String = (1..=k)
                 .map(|i| (i % 10).to_string())
@@ -1611,7 +1811,11 @@ fn turnaround_syntax_gate_and_revision_stream() {
                     }));
                 }
             }
-            let want_doc = format!("{}{}", &base[..anchor], digits);
+            // R4-01: the expected document is base with the digit run
+            // INSERTED at the anchor — the base suffix after the anchor
+            // stays (the R3 oracle dropped it and every real
+            // reconstruction mismatched while still being granted).
+            let want_doc = format!("{}{}{}", &base[..anchor], digits, &base[anchor..]);
             expected.lock().unwrap().insert(k, (want_doc, steps.len() as u32));
             let work = if heavy { &work_a_root } else { &work_b_root }
                 .join(format!("r{k}"));
@@ -1670,10 +1874,41 @@ fn turnaround_syntax_gate_and_revision_stream() {
             !refused.is_empty(),
             "the heavy/light lanes must produce at least one real out-of-order completion that the publisher REFUSED"
         );
+        // R4-01: every refusal carries a LEGITIMATE category, each verified
+        // against its own evidence — out-of-order/superseded completions
+        // really had a newer completion first; a stale publication refusal
+        // really had a newer revision ISSUED before it completed; oracle
+        // mismatches and judgment failures never happen on a healthy
+        // stream (asserted below via recon_ok/counter).
+        let enq_of = |k: u32| enqueue.lock().unwrap()[&k];
+        for r in &refused {
+            match r.publish {
+                "refused-out-of-order" | "cancelled(superseded-late)" => assert_eq!(
+                    r.out_of_order,
+                    Some(true),
+                    "rev {}: {} must be a genuinely newer-first completion",
+                    r.revision,
+                    r.publish
+                ),
+                "refused-stale(newer-already-issued)" => {
+                    let newer_issued_before_completion = (r.revision + 1..=REQS).any(|j| {
+                        records.contains_key(&j) || enq_of(j) < r.completed_at_ms.unwrap_or(u128::MAX)
+                    });
+                    assert!(
+                        newer_issued_before_completion,
+                        "rev {}: stale refusal must rest on a newer revision issued before completion",
+                        r.revision
+                    );
+                }
+                other => panic!("unknown refusal category {other:?} on rev {}", r.revision),
+            }
+        }
         assert!(
-            refused.iter().all(|r| r.publish == "refused-judgment"
-                || r.out_of_order == Some(true)),
-            "every arbitration refusal must be a genuinely out-of-order or superseded completion"
+            refused
+                .iter()
+                .all(|r| r.publish != "refused-oracle-mismatch" && r.publish != "refused-judgment"),
+            "a healthy stream must not produce byte mismatches or admission failures (found: {:?})",
+            refused.iter().map(|r| (r.revision, r.publish)).collect::<Vec<_>>()
         );
         // arrival clock discipline: enqueue times track k*100ms with no
         // cumulative drift (the driver never waited for responses).
@@ -1702,12 +1937,25 @@ fn turnaround_syntax_gate_and_revision_stream() {
             max_depth >= 2,
             "the stream must expose real queue backlog (max in-flight {max_depth})"
         );
-        // every completed response passed the runner admission (recon
-        // oracle) — judgment failures keep their durable record in the raw
-        // JSONL and fail here by name.
+        // every completed response passed the runner admission AND the
+        // byte oracle (the honest Ok(false) verdict travels — R4-01), and
+        // the worker's revision counter equals the request's step count.
         assert!(
             st.records.iter().all(|r| r.recon_ok == Some(true)),
-            "every completion must survive full admission + reconstruction oracle"
+            "every completion must survive full admission + reconstruction oracle: {:?}",
+            st.records
+                .iter()
+                .filter(|r| r.recon_ok != Some(true))
+                .map(|r| (r.revision, r.recon_ok, r.error.clone()))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            st.records.iter().all(|r| r.counter_revision == Some(r.steps)),
+            "the worker revision counter must equal the request step count: {:?}",
+            st.records
+                .iter()
+                .map(|r| (r.revision, r.counter_revision, r.steps))
+                .collect::<Vec<_>>()
         );
         let refused_count = refused.len();
         let superseded = st.superseded.len();
@@ -1777,6 +2025,7 @@ fn lane_reader(
         std::sync::Mutex<std::collections::BTreeMap<u32, u128>>,
     >,
     st_arc: std::sync::Arc<std::sync::Mutex<Pub>>,
+    max_issued: std::sync::Arc<std::sync::atomic::AtomicU32>,
     raw_path: PathBuf,
     t0: Instant,
 ) {
@@ -1821,18 +2070,19 @@ fn lane_reader(
         let enq = enqueue.lock().unwrap().get(&k).copied();
         let wr = written.lock().unwrap().get(&k).copied();
         let cancelled = st.superseded.contains(&k);
-        // Arbitration FIRST (a refused publication is refused regardless of
-        // the judgment outcome); a judgment failure of the still-newest
-        // revision is its own honest category.
-        let publish: &'static str = if cancelled {
-            "cancelled(superseded-late)"
-        } else if k <= st.last_published {
-            "refused-out-of-order"
-        } else if judged.is_err() {
-            "refused-judgment"
-        } else {
-            "published"
-        };
+        // R4-01: the INDEPENDENT oracle decides — an Ok(false) byte
+        // mismatch, a wrong revision counter, or a completion older than
+        // the newest ENQUEUED revision all refuse; only the clean newest
+        // completion publishes.
+        let max_enqueued = max_issued.load(std::sync::atomic::Ordering::SeqCst);
+        let publish = decide_publication(
+            cancelled,
+            k,
+            st.last_published,
+            max_enqueued,
+            &judged,
+            steps,
+        );
         if publish == "published" {
             // publishing k supersedes every older in-flight task
             let superseded: Vec<u32> = st.in_flight.iter().copied().filter(|&j| j < k).collect();
@@ -1851,7 +2101,9 @@ fn lane_reader(
             steps,
             out_of_order: Some(out_of_order),
             publish,
-            recon_ok: judged.is_ok().then_some(true),
+            // R4-01: the BYTE-ORACLE verdict travels — Ok(false) is
+            // recorded as false, never granted as correct.
+            recon_ok: judged.as_ref().ok().map(|(ok, _)| *ok),
             counter_revision: judged.as_ref().ok().and_then(|(_, r)| *r),
             error: judged.as_ref().err().cloned(),
         };

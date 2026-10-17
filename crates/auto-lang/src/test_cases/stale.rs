@@ -261,7 +261,13 @@ pub fn check_with_native(
                         .and_then(|a| a.as_array())
                         .map(|arr| {
                             arr.iter().any(|a| {
-                                a.get("logical_path")
+                                // R4 (F02): the report serializes ArtifactRef
+                                // under `path` (not logical_path) — reading
+                                // the wrong key made genuinely-linked BUILD
+                                // rows look unlinked and their lld/sdk axes
+                                // "not applicable", flagging unchanged
+                                // reports STALE.
+                                a.get("path")
                                     .and_then(|l| l.as_str())
                                     .map(|l| l == "app.obj" || l == "app.exe")
                                     .unwrap_or(false)

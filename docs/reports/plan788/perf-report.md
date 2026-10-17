@@ -24,16 +24,16 @@ R3 测量合同（落实 §8 冻结的"含校验/发布"）：
 
 | 场景 | n | P50 | P95 | P99 | 硬门 |
 |---|---|---|---|---|---|
-| fresh | 30 | 553 | 595 | 598 | — |
-| hot | 30 | 480 | 605 | 662 | P95<1000ms ✓ |
-| restart-disk-hot | 30 | 556 | 664 | 806 | — |
-| cross-project | 30 | 536 | 600 | 658 | — |
-| body-edit | 30 | 491 | 585 | 616 | P95<1000ms ✓ |
-| gc-concurrent | 30 | 496 | 548 | 590 | — |
+| fresh | 30 | 559 | 659 | 677 | — |
+| hot | 30 | 699 | 741 | 759 | P95<1000ms ✓ |
+| restart-disk-hot | 30 | 535 | 588 | 871 | — |
+| cross-project | 30 | 541 | 759 | 820 | — |
+| body-edit | 30 | 699 | 755 | 761 | P95<1000ms ✓ |
+| gc-concurrent | 30 | 668 | 690 | 706 | — |
 
-**硬门判定（冻结参考环境，安静单实例轮）**：hot P95=605ms < 1000ms ✓；局部 body
-编辑 P95=585ms < 1000ms ✓（每样本真重算：parse=1、object=lowered）。syntax 局部
-edit（V-12 syntax 门）：n=30，P95=1ms < 1000ms ✓（墙钟含 admission+投影持久化+
+**硬门判定（冻结参考环境，安静单实例轮）**：hot P95=741ms < 1000ms ✓；局部 body
+编辑 P95=755ms < 1000ms ✓（每样本真重算：parse=1、object=lowered）。syntax 局部
+edit（V-12 syntax 门）：n=30，P95=3ms < 1000ms ✓（墙钟含 admission+投影持久化+
 字节 oracle）。
 
 **V-13 修订流（R3 重写）**：双真实 worker 车道、固定 100ms 到达时钟（驱动器从不等
@@ -43,9 +43,14 @@ fresh↔incremental 等价检查按累计文档解析，成本二次增长，~52
 cancelled(superseded-late) 留痕）；发布序列严格递增、最终发布=修订 50；积压深度≥2
 可见；50 条记录全留存（`turnaround-samples-syntax.jsonl` 的 revision-stream 行）。
 
-方差注（如实）：同机并发负载轮曾见 hot P95=921ms、cross P95=1117ms——门以无竞争
-单实例轮判定；逐样本语义/计数/GC 重叠断言在所有轮次全部成立（fail 轮的样本同样
-留存在 JSONL——例如 ms 截断致 overlap=0 的轮次已改用 µs 精度修复）。
+方差与归因（如实，R4 修复轮全谱）：本机为多会话工作机（并行计划 worktree/构建，
+采样负载 18–100% 瞬变）。R4 审查轮 hot P95=2095ms、R4 修复首两轮 hot P95=1149ms
+（采样负载 ~30–50%）与 987ms——均为竞争轮，原始数据完整保留（审查轮见
+attachments/788/review-r4-*，修复轮 JSONL 未删选）；语义/计数/GC 重叠断言在所有
+轮次全部成立，红轮仅红在墙钟门。安静窗口两连轮（负载 ~30% 以下）：hot P95=567ms
+与上表 741ms 轮——硬门证据取安静轮，与 R3 安静轮（605ms）一致量级。ms 截断致
+GC overlap=0 的轮次已改 µs 精度修复。判定失败样本先落盘（含错误串）再判门
+（`r4_failure_sample_durability_control` 反控）。
 
 执行命令：`cargo test -p auto-lang --features test-cases --test plan788_r3_ --
 --test-threads=1 --nocapture`（native 94s / syntax ~6s；验收器

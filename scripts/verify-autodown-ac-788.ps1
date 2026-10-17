@@ -36,17 +36,25 @@ function Split-LibTestSegments {
     foreach ($line in ($Text -split "`r?`n")) {
         # -cmatch (CASE-SENSITIVE): libtest also prints "running N tests"
         # which must NOT be taken for cargo's "Running <binary>" header.
+        # Headers: cargo's "Running <binary>" AND the "Doc-tests <crate>"
+        # section (which has NO Running header — its 0-passed summary used
+        # to merge into the previous segment and clobber its counts).
         if ($line -cmatch '^\s*Running\s+(?:unittests\s+|benchmarks\s+|doctests\s+|tests\\)?(\S+)') {
             if ($null -ne $cur) { $segments += ,$cur }
             $cur = @{ Binary = $Matches[1]; OkNames = @(); IgnoredNames = @(); Passed = 0; Failed = 0; Ignored = 0; HasSummary = $false }
+        } elseif ($line -cmatch '^\s*Doc-tests\s+(\S+)') {
+            if ($null -ne $cur) { $segments += ,$cur }
+            $cur = @{ Binary = "Doc-tests $($Matches[1])"; OkNames = @(); IgnoredNames = @(); Passed = 0; Failed = 0; Ignored = 0; HasSummary = $false }
         } elseif ($null -eq $cur) {
             # output before any Running header still belongs to a (single)
             # implicit target — cargo always prints the header, but be robust
             $cur = @{ Binary = "<implicit>"; OkNames = @(); IgnoredNames = @(); Passed = 0; Failed = 0; Ignored = 0; HasSummary = $false }
         }
-        if ($line -match '^test (\S+) \.\.\. ok') {
+        if ($line -cmatch '^test (\S+) \.\.\. ok\s*$') {
             $cur.OkNames += $Matches[1]
-        } elseif ($line -match '^test (\S+) \.\.\. ignored') {
+        } elseif ($line -cmatch '^test (\S+) \.\.\. ignored(?:\s*,.*)?$') {
+            # libtest may append the ignore REASON after a comma ("ignored,
+            # oracle regeneration tool: ...") — the name still counts.
             $cur.IgnoredNames += $Matches[1]
         } elseif ($line -match '(\d+) passed; (\d+) failed; (\d+) ignored') {
             $cur.Passed = [int]$Matches[1]; $cur.Failed = [int]$Matches[2]; $cur.Ignored = [int]$Matches[3]
@@ -63,6 +71,15 @@ function Split-LibTestSegments {
 # RequiredInBinary segment (if bound) or in exactly one segment (if not);
 # per-binary minimums hold (a fat sibling binary cannot substitute a missing
 # family), and the family total >= MinPassed.
+# Exact binary matching (R4 F04): a bound binary name matches a segment
+# only when the segment's file LEAF equals "<bin>.rs" / "<bin>.exe" / the
+# bare name — substring containment ("alphaX.rs") does not.
+function Test-BinaryLeafMatch {
+    param([string]$Binary, [string]$Bin)
+    $leaf = Split-Path $Binary -Leaf
+    return ($leaf -eq "$Bin.rs" -or $leaf -eq "$Bin.exe" -or $leaf -eq $Bin)
+}
+
 function Test-LibTestFamily {
     param(
         [string]$Text, [int]$ExitCode,
@@ -79,6 +96,13 @@ function Test-LibTestFamily {
         if ($s.Ignored -ne $s.IgnoredNames.Count) {
             return "summary ignored=$($s.Ignored) does not match named ignored tests ($($s.IgnoredNames.Count)) ($($s.Binary))"
         }
+        # R4 (F04): per-binary CONSERVATION — every executed-ok line the
+        # segment claims must be backed by its summary count (and vice
+        # versa); a binary claiming a required ok with a 0-passed summary
+        # refuses here, for every family.
+        if ($s.OkNames.Count -ne $s.Passed) {
+            return "summary passed=$($s.Passed) does not match executed-ok lines ($($s.OkNames.Count)) ($($s.Binary))"
+        }
     }
     $allIgnored = @()
     foreach ($s in $summarized) { $allIgnored += $s.IgnoredNames }
@@ -89,7 +113,7 @@ function Test-LibTestFamily {
     foreach ($s in $summarized) { $totalPassed += $s.Passed }
     if ($totalPassed -lt $MinPassed) { return "totalPassed=$totalPassed < required $MinPassed" }
     foreach ($bin in $MinPerBinary.Keys) {
-        $seg = @($summarized | Where-Object { $_.Binary -like "*$bin*" })
+        $seg = @($summarized | Where-Object { Test-BinaryLeafMatch -Binary $_.Binary -Bin $bin })
         if ($seg.Count -eq 0) { return "required binary '$bin' produced no summary" }
         $p = 0
         foreach ($s in $seg) { $p += $s.Passed }
@@ -107,7 +131,7 @@ function Test-LibTestFamily {
         $idLast = ($id -split '::')[-1]
         if ($RequiredInBinary.ContainsKey($id)) {
             $bin = $RequiredInBinary[$id]
-            $seg = @($summarized | Where-Object { $_.Binary -like "*$bin*" })
+            $seg = @($summarized | Where-Object { Test-BinaryLeafMatch -Binary $_.Binary -Bin $bin })
             $hit = $false
             foreach ($s in $seg) {
                 foreach ($n in $s.OkNames) {
@@ -127,19 +151,23 @@ function Test-LibTestFamily {
 }
 
 # ---- nextest parsing (closeout: root cargo t/tv/tt) -------------------------
-# nextest prints "PASS [ 0.012s] binary::test_name" lines plus a final
-# "Summary [ 12.3s] N tests run: M passed, K failed, J skipped."
+# nextest's ACTUAL output (verified against real runs): per-test lines
+# "PASS [   0.552s] (1/2) binary::test_name" and a final summary
+# "Summary [   0.911s] 2 tests run: 2 passed, 0 skipped" — the zero-failed
+# component is OMITTED on success and the singular "1 test run" is legal.
 function Test-NextestFamily {
     param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds = @())
     if ($ExitCode -ne 0) { return "exit=$ExitCode" }
-    $summaries = [regex]::Matches($Text, '(\d+) tests run: (\d+) passed, (\d+) failed, (\d+) skipped')
+    $summaries = [regex]::Matches($Text, '(\d+) tests? run: (\d+) passed(?:, (\d+) failed)?(?:, (\d+) skipped)?')
     if ($summaries.Count -eq 0) { return "no nextest summaries parsed" }
     foreach ($s in $summaries) {
-        if ([int]$s.Groups[3].Value -ne 0) { return "failed=$($s.Groups[3].Value) in a nextest summary" }
-        if ([int]$s.Groups[4].Value -ne 0) { return "skipped=$($s.Groups[4].Value) in a nextest summary (no skips are allowlisted)" }
+        $failed = if ($s.Groups[3].Success) { [int]$s.Groups[3].Value } else { 0 }
+        $skipped = if ($s.Groups[4].Success) { [int]$s.Groups[4].Value } else { 0 }
+        if ($failed -ne 0) { return "failed=$failed in a nextest summary" }
+        if ($skipped -ne 0) { return "skipped=$skipped in a nextest summary (no skips are allowlisted)" }
     }
     $passedNames = @{}
-    foreach ($m in [regex]::Matches($Text, '(?:PASS|DONE)\s+\[\s*[\d.]+s\]\s+(\S+)')) {
+    foreach ($m in [regex]::Matches($Text, '(?:PASS|DONE)\s+\[\s*[\d.]+s\]\s+(?:\(\d+/\d+\)\s+)?(\S+)')) {
         $passedNames[$m.Groups[1].Value] = $true
     }
     foreach ($id in $RequiredIds) {
@@ -185,38 +213,46 @@ function Run-CargoFamily {
 if ($Scope -eq "selftest") {
     $cases = @(
         # legal controls
-        @{ name = "fully-legal"; text = "running 1 test`ntest a ... ok`ntest result: ok. 5 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("a"); min = 1; want = $null },
+        @{ name = "fully-legal"; text = "running 1 test`ntest a ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("a"); min = 1; want = $null },
         # R3 F06 negatives (permanent): prose text and name PREFIXES can no
         # longer satisfy a required ID.
         @{ name = "id-only-in-prose"; text = "note: needed something`ntest unrelated ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); min = 1; want = "required id never executed-ok: needed" },
         @{ name = "id-prefix-substitution"; text = "running 1 test`ntest needed_extra ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); min = 1; want = "required id never executed-ok: needed" },
         # binary binding: the required id exists but in the WRONG binary
-        @{ name = "wrong-binary"; text = "     Running tests\alpha.rs (a.exe)`ntest result: ok. 1 passed; 0 failed; 0 ignored`n     Running tests\beta.rs (b.exe)`ntest needed ... ok`ntest result: ok. 9 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); bind = @{ "needed" = "alpha" }; min = 1; want = "required id missing from binary 'alpha' executed-ok set: needed" },
+        @{ name = "wrong-binary"; text = "     Running tests\alpha.rs (a.exe)`ntest other ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n     Running tests\beta.rs (b.exe)`ntest needed ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); bind = @{ "needed" = "alpha" }; min = 1; want = "required id missing from binary 'alpha' executed-ok set: needed" },
         # the lowercase "running N tests" libtest banner must NOT be taken
         # for cargo's "Running <binary>" header (case-sensitive match) —
         # no binary segment exists, so the bound id cannot be found there
         @{ name = "lowercase-running-not-header"; text = "running 7 tests`ntest needed ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); bind = @{ "needed" = "alpha" }; min = 1; want = "required id missing from binary 'alpha' executed-ok set: needed" },
         # module prefixes satisfy a bare required id (exact last segment)
         @{ name = "module-prefix-legal"; text = "running 1 test`ntest tests::ac_case_tests::needed ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); min = 1; want = $null },
+        # R4 (F04) negatives: an "okay-but-not-executed" state word is not
+        # an ok line; a claimed ok name without summary backing refuses.
+        @{ name = "ok-prefix-state"; text = "running 1 test`ntest needed ... okay-but-not-executed`ntest result: ok. 0 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @("needed"); min = 0; want = "required id never executed-ok: needed" },
+        @{ name = "zero-passed-but-ok-name"; text = "running 1 test`ntest needed ... ok`ntest result: ok. 0 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @(); min = 1; want = "summary passed=0 does not match executed-ok lines (1) (<implicit>)" },
         # per-binary minimum: a fat sibling cannot substitute a missing family
-        @{ name = "sibling-substitution"; text = "     Running tests\alpha.rs (a.exe)`ntest result: ok. 0 passed; 0 failed; 0 ignored`n     Running tests\beta.rs (b.exe)`ntest result: ok. 9 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @(); min = 1; perbin = @{ "alpha" = 3 }; want = "binary 'alpha' passed=0 < required 3 — a sibling binary cannot substitute it" },
+        @{ name = "sibling-substitution"; text = "     Running tests\alpha.rs (a.exe)`ntest result: ok. 0 passed; 0 failed; 0 ignored`n     Running tests\beta.rs (b.exe)`ntest filler ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n"; exit = 0; ids = @(); min = 1; perbin = @{ "alpha" = 3 }; want = "binary 'alpha' passed=0 < required 3 — a sibling binary cannot substitute it" },
         # legacy shapes still refused
         @{ name = "zero-selected"; text = "running 0 tests`ntest result: ok. 0 passed; 0 failed; 0 ignored"; exit = 0; ids = @(); min = 1; want = "totalPassed=0 < required 1" },
         @{ name = "partially-skipped"; text = "test result: ok. 4 passed; 0 failed; 999 ignored"; exit = 0; ids = @(); min = 1; want = "summary ignored=999 does not match named ignored tests (0) (<implicit>)" },
-        @{ name = "unnamed-skip"; text = "test mystery_tool ... ignored`ntest result: ok. 4 passed; 0 failed; 1 ignored"; exit = 0; ids = @(); min = 1; want = "ignored test not allowlisted: mystery_tool" },
-        @{ name = "allowlisted-skip"; text = "test pilot_oracle_bootstrap ... ignored`ntest result: ok. 4 passed; 0 failed; 1 ignored"; exit = 0; ids = @(); min = 1; want = $null },
+        @{ name = "unnamed-skip"; text = "test mystery_tool ... ignored`ntest result: ok. 0 passed; 0 failed; 1 ignored"; exit = 0; ids = @(); min = 1; want = "ignored test not allowlisted: mystery_tool" },
+        @{ name = "allowlisted-skip"; text = "test fine ... ok`ntest pilot_oracle_bootstrap ... ignored`ntest result: ok. 1 passed; 0 failed; 1 ignored"; exit = 0; ids = @(); min = 1; want = $null },
+        @{ name = "ignored-with-reason"; text = "test fine ... ok`ntest pilot_oracle_bootstrap ... ignored, oracle regeneration tool: run explicitly`ntest result: ok. 1 passed; 0 failed; 1 ignored"; exit = 0; ids = @(); min = 1; want = $null },
+        @{ name = "doc-tests-section-separate"; text = "     Running tests\vendor.rs (v.exe)`ntest vendored_ok ... ok`ntest result: ok. 1 passed; 0 failed; 0 ignored`n   Doc-tests crate-x`ntest result: ok. 0 passed; 0 failed; 0 ignored"; exit = 0; ids = @(); min = 1; want = $null },
         @{ name = "nonzero-exit"; text = "test result: FAILED. 1 passed; 1 failed; 0 ignored"; exit = 101; ids = @(); min = 1; want = "exit=101" },
         @{ name = "failed-in-summary"; text = "test x ... ok`ntest result: FAILED. 1 passed; 1 failed; 0 ignored"; exit = 0; ids = @(); min = 1; want = "failed=1 in a summary (<implicit>)" },
         # nextest parser
-        @{ name = "nextest-ok"; fmt = "nextest"; text = "PASS [ 0.01s] alpha::needed`nSummary [ 1.0s] 5 tests run: 5 passed, 0 failed, 0 skipped"; exit = 0; ids = @("alpha::needed"); want = $null },
-        @{ name = "nextest-skipped"; fmt = "nextest"; text = "Summary [ 1.0s] 5 tests run: 4 passed, 0 failed, 1 skipped"; exit = 0; ids = @(); want = "skipped=1 in a nextest summary (no skips are allowlisted)" },
-        @{ name = "nextest-missing-id"; fmt = "nextest"; text = "PASS [ 0.01s] alpha::other`nSummary [ 1.0s] 1 tests run: 1 passed, 0 failed, 0 skipped"; exit = 0; ids = @("alpha::needed"); want = "required id never reported PASS by nextest: alpha::needed" }
+        @{ name = "nextest-real-success"; fmt = "nextest"; text = "        PASS [   0.552s] (1/2) alpha::needed`n        PASS [   0.911s] (2/2) alpha::other`n     Summary [   0.911s] 2 tests run: 2 passed, 0 skipped"; exit = 0; ids = @("alpha::needed"); want = $null },
+        @{ name = "nextest-singular"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::needed`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @("alpha::needed"); want = $null },
+        @{ name = "nextest-failed-component"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 failed, 0 skipped"; exit = 0; ids = @(); want = "failed=1 in a nextest summary" },
+        @{ name = "nextest-skipped"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 skipped"; exit = 0; ids = @(); want = "skipped=1 in a nextest summary (no skips are allowlisted)" },
+        @{ name = "nextest-missing-id"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::other`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @("alpha::needed"); want = "required id never reported PASS by nextest: alpha::needed" }
     )
     foreach ($c in $cases) {
-        $allow = if ($c.name -eq "allowlisted-skip") { @("pilot_oracle_bootstrap") } else { @() }
+        $allow = if ($c.name -eq "allowlisted-skip" -or $c.name -eq "ignored-with-reason") { @("pilot_oracle_bootstrap") } else { @() }
         $bind = if ($c.bind) { $c.bind } else { @{} }
         $perbin = if ($c.perbin) { $c.perbin } else { @{} }
-        $min = if ($c.min) { [int]$c.min } else { 1 }
+        $min = if ($null -ne $c.min) { [int]$c.min } else { 1 }
         $fmt = if ($c.fmt) { $c.fmt } else { "libtest" }
         if ($fmt -eq "nextest") {
             $why = Test-NextestFamily -Text $c.text -ExitCode $c.exit -RequiredIds $c.ids

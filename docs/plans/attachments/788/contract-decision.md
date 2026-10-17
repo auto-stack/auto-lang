@@ -230,3 +230,26 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
    均不能替代（负控永久入 selftest）。closeout 的根 cargo t/tv/tt 按 **nextest 实际
    输出**（PASS 行 + "N tests run: M passed, K failed, J skipped"）另行核对，跳过
    不设白名单。
+## 12. R4 修复后的补充冻结（2026-10-17，复审 R4 后）
+
+1. **stderr cap 即时终止**（补 §11.4 前的缺口）：stderr 超限信号与 stdout 响应/截止
+   同处一个事件等待循环（≤10ms 轮询片）——超限即杀树回收，不等响应、不等 worker
+   自然退出；响应后/等待期的超限同样即时终止。反例：flood→lingering 1200ms→respond
+   形状必须在 cap 附近（<700ms 含子进程开销）结束并声明 TERMINATED。
+2. **修订流发布 oracle**（独立于实现）：完成可发布当且仅当——未被 superseded、
+   新于已发布、不旧于**已入队**最新修订、判定 Ok 且**字节 oracle 为真**（Ok(false)
+   永不发布）、worker revision counter == 请求步数。类别：published /
+   refused-out-of-order / cancelled(superseded-late) /
+   refused-stale(newer-already-issued) / refused-oracle-mismatch /
+   refused-revision-counter / refused-judgment；负控单元测试固化（错误字节/Err/错
+   counter/过期/取消均拒）。期望文档=base 前缀+插入+base 后缀（尾部不可丢）。
+3. **stale 链接判定**按报告真实形状：ArtifactRef 序列化键为 `path`（非
+   logical_path）；build 行无 run 观察时以 obj/exe 产物判链接。覆盖
+   check/build/run/产品消费/syntax 的未变 FRESH 与换 worker STALE 双向。
+4. **验收器守恒**：executed-ok 行锚定行尾（`... ok` 后不得有其他字符）；逐 binary
+   摘要守恒（ok 行数==passed）；binary 绑定按文件叶名精确匹配；nextest 按真实格式
+   （零 failed 分量省略、`1 test run` 单数、PASS 行带 `(i/N)` 序号）。负控：
+   okay-but-not-executed、ok 名无摘要支撑、兄弟 binary 替代。
+5. **失败样本先落盘**：六场景/语法门/修订流的判定失败（Err 或 Ok(false)）先写入
+   raw JSONL（含错误串），再触发 gate 断言；raw 头记录测量时刻与 harness 形态，
+   竞争轮与安静轮均保留不删。
