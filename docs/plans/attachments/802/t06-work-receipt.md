@@ -1,38 +1,60 @@
 # PLAN-802 T-06 工作收据（送审冻结基线）
 
-代码提交：`4029dd705` + R1 修复 `ad1427e33`（branch `plan-802-dev`，base
-`1dd123361`，worktree `D:/autostack/.wt/lang-802/auto-lang`，git status
-clean）。auto-down 兄弟 `c39ac7f`（detached，只读消费）。本收据为 work 阶段
-证据汇总；merge-owned 门禁（裸 `cargo t`/`cargo tv`/触面档/tf 批量回归）按
-2026-10-14 时序裁定**保持 pending**，由最终 review 通过后的 merge 阶段在冻结
-提交上执行。
+代码提交：`4029dd705` + R1 修复 `ad1427e33` + R2 格式 `b32d4df7d`（branch
+`plan-802-dev`，base `1dd123361`，worktree
+`D:/autostack/.wt/lang-802/auto-lang`，git status clean）。auto-down 兄弟
+`c39ac7f`（detached，只读消费）。本收据为 work 阶段证据汇总；merge-owned
+门禁（裸 `cargo t`/`cargo tv`/触面档/tf 批量回归）按 2026-10-14 时序裁定
+**保持 pending**，由最终 review 通过后的 merge 阶段在冻结提交上执行。
 
-## R1 修复轮（F802-R1-01 闭合，2026-10-17）
+## R2 修复轮（F802-R2-01/02 闭合，2026-10-17）
 
-V06 实机验证已补齐：探针应用 + 驱动（[v06-live/](v06-live/)，pac +
-src/front/app.at + v06_driver.py，MCP 标准 urllib 客户端 + Win32 SendInput
-真滚轮）在真实 iced 窗口（`auto run -r vm`，本机 Windows 会话）8/8 PASS
-exit 0（[证据 JSON](v06-live/v06-evidence.json.txt)、[auto 日志](v06-live/v06-auto.log.txt)、
-[末帧截图](v06-live/v06-final-window.png)）：
+**F802-R2-02（格式）**：复审点名的四处新增文件（code_editor_provider.rs
+118/285/298、plan802 测试 6 处、host_capabilities.rs 459、consumer fixture）
+经 `rustfmt --edition 2021 --config skip_children=true` 全过（`b32d4df7d`；
+renderer.rs 复审未点名，其预存格式差异不属本计划新增面，未整文件重排）。
+格式化后定向回归 27/27 + fixture 7/7 PASS。
 
-| 步骤 | 结果 |
-|---|---|
-| baseline-top | oy=0.0（701 顶部中性值） |
-| programmatic-150 | oy=150.0 **命令值直达**（trace 无中间值）；2.25s 含探针采样量化（press+state 每轮 ~0.6s；701 ≤2s 契约对象为用户滚动收敛，非程序化） |
-| clamp-to-max | 越界 999999 → oy=7541.0（= content 8020 − viewport 479.200 精确上界），复采稳定 |
-| user-wheel-readback | **真滚轮**（SendInput，ALT 手法前台化+点击激活）5 格：oy 7541→7241（5×60px），读端点回填 **0.713s ≤ 2.0s**（701 收敛契约，含心跳） |
-| unbound-counter-control | 未绑定键入队（note=unbound-fired）后真实编辑器 oy 不变 |
-| scroll-state-reader-observe | ScrollStateReader pane editor-scroll-ed 可观测（viewport/content/offset 三元） |
+**F802-R2-01（驱动 oracle 判定缺陷）**：v06_driver.py 重写判定纪律并先跑
+三态 mock 自检再上实机：
 
-**实机验证定位的预存缺口（已修，`ad1427e33`）**：`render_dynamic_view` 的
-code_editor 臂（VM 轨主路径）自 PLAN-629 寄宿化以来未把 editor-scroll-{key}
-绑进 scroll controller 注册表（29480 desktop 泛型臂 701 起已绑）——
-`code_editor_scroll_to` 的 intent 在 VM 轨 pane 缺失被 drain 静默丢弃，写端点
-在 VM 实机窗口恒 no-op。**非 802 迁移引入**（旧 shim 直 enqueue 同一注册表
-同队列；802 provider 化不改变入队目标）。修复 = 镜像 29480 的一行
-`bind_controller(scroll_id, scroll_id)`（handle=widget id 单源）。修复后
-701 供②b 端点合同在 VM 轨闭环。回归：plan802 + code_editor_natives +
-plan794 + plan728 21/21 PASS。
+1. **clamp 上界按真实几何对拍**：上界 = Reader pane 实测 content_h −
+   viewport_h（本次 8020.0 − 479.200 = 7540.800），|oy_max − 上界| ≤ 1.0px
+   （实测偏差 0.200px）+ 复采稳定 + Reader 可见偏移同值对拍。错误上界
+   （复审负控值 2000）必判 FAIL。
+2. **ScrollStateReader 必验门禁化**：结构化解析（pane 按键命中、
+   viewport/content/offset 数值齐全），失败进入非零退出；Reader↔读端点
+   静止点一致性（±1.5px）为独立必验。截图降为显式辅助面（不门禁、不
+   计入必验计数）。
+3. **诚实描述与帧身份**：程序化收敛只声称「命令值收敛 + 采样窗内无中间
+   落点」（命令后首个非零落点即 150；异步采样不证明同帧——R1 收据中
+   "命令值直达"的夸大表述作废）；用户滚动计时改 **Reader pane 直读**
+   （单跳 ~0.1-0.3s/轮；press+state 两跳叠加采样量化曾把通道节拍推过界，
+   重跑实录）+ 观察节拍计量 + **tick 身份**：滚轮被**下一个读回拍**捕获
+   （tick 22→23，无漏拍——收敛受单拍间隔约束），预算 = 通道 2s + 实测
+   观察量子（1.243s），实测读回 1.336s。
+4. **三态自检先行**（`--selftest`，mock 验证判定逻辑而非编辑器验收）：
+   valid→PASS、wrong_bound→正确拒绝、missing_reader→正确拒绝
+   （[自检证据](v06-live/v06-selftest-valid.json.txt) 等）。
+
+冻结基线实机重跑（`b32d4df7d` 构建产物，SHA256 记录于证据 JSON 与
+当前二进制逐字节一致）：必验 12 项 + 辅助 1 项全 PASS exit 0
+（[证据 JSON](v06-live/v06-evidence.json.txt)）：基线 0 / Reader 几何
+8020×479.2 / 程序化 150 无中间落点 / Reader 可见 150 / clamp 偏差
+0.200px / Reader 可见 7541 / 观察节拍 / 滚轮下一拍捕获 1.336s /
+端点一致 7241↔7241 / 未绑定反控 / Reader 结构化必验。
+
+## R1 修复轮（F802-R1-01，2026-10-17；oracle 缺陷由 R2 轮修正）
+
+V06 实机验证首次补齐（探针应用 + 驱动，MCP + Win32 SendInput 真滚轮，
+真实 iced 窗口）。R2 轮修正判定纪律后重跑见上节；本轮历史价值：定位
+**预存缺口**并修复——`render_dynamic_view` 的 code_editor 臂（VM 轨主
+路径）自 PLAN-629 寄宿化以来未把 editor-scroll-{key} 绑进 scroll
+controller 注册表（29480 desktop 泛型臂 701 起已绑），`code_editor_
+scroll_to` 的 intent 在 VM 轨 pane 缺失被 drain 静默丢弃，写端点在 VM
+实机窗口恒 no-op。**非 802 迁移引入**（旧 shim 直 enqueue 同一注册表同
+队列）。修复 = 镜像 29480 的一行 `bind_controller(scroll_id, scroll_id)`
+（`ad1427e33`）。修复后 701 供②b 端点合同在 VM 轨闭环。
 
 探针资产注记（复现要点）：Init 先于首帧渲染（编辑器注册表空，set_text
 no-editor raise——缺席臂逐字面值在实机再次验证）；内容装载走 value prop
