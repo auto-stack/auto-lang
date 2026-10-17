@@ -23,10 +23,20 @@
     `Ok(None)` 让位给下一个方言/默认路径、`Err` 报错。
   - `try_parse_token_stmt(parser, kind)`：接管真实 TokenKind（如 `TokenKind::View`/
     `TokenKind::On`），默认不接管。
-- 派发实现（parser.rs:437/458）：`try_dialect_stmt`/`try_token_dialect_stmt` 用
-  `mem::take` 把方言表移出 `self`，遍历局部副本后放回——规避"方言方法借 `&mut Parser`
-  而方言表借 `&self.dialects`"的自引用冲突。新增方言派发点须沿用此模式。
-- 注册（parser.rs:419 `build_dialects`）：当前仅 `UiDialect`，`Scenario::UI` 时装配。
+- 派发实现（parser.rs `try_dialect_stmt`/`try_token_dialect_stmt`）：方言表元素为
+  Arc 共享句柄，派发时克隆 Arc 调用而非移出——`mem::take` 移表模式已废除
+  （PLAN-778 R1：Err 提前退出会永久丢失整张方言表，且委托递归期间活跃方言
+  不可见）。恢复不变量由派发器兜底：Ok(None) 后强制回滚游标+五旗标；Err 后
+  恢复五旗标、游标留失败位置、注册不丢。新增方言派发点不得恢复移出式派发。
+- 注册（`build_dialects`）：内建仅 `UiDialect`，`Scenario::UI` 时装配；
+  外部方言经 `register_dialect`（旧 trait）/`register_external_dialect`
+  （PLAN-801 新接口 `ExternalDialect`，经 `ExternalDialectAdapter` 协议转换）
+  显式注册进同一张三段表（Override 前插/Append 后接），跨 `with_session` 保留。
+- 新接口端口（PLAN-801，`crates/auto-parser-api`）：外部实现只见对象安全
+  `ParseContext`（`&mut dyn` 形态的 778 桥面，由 `ParserBridge` 在上层实现）
+  与不透明快照凭据 `ParseCheckpoint`（有作用域句柄表：一次性、跨上下文/
+  过期受控拒绝、方言调用退出水位清表）。旧 trait + by-value
+  `BridgeCheckpoint` 公开面保持不变。
 - `view` 的两义性：Core 语言里是参数模式关键字（`fn foo(view x int)`），UI 场景在
   语句位置是 view 块/fragment——由 `try_parse_token_stmt` 按场景分派
   （dialect/ui.rs 头注）。
@@ -43,4 +53,4 @@
 - 不管轴 B（执行后端统一）与轴 C（AURA IR 程序形态），见诊断文档 §3/§4.3。
 - 不为方言引入独立 AST 类型层——产物必须落回基础 `Stmt` 变体。
 
-> 来源: docs/design/dialect-extension-diagnosis.md §4/§6.1；代码核对 crates/auto-lang/src/dialect.rs、dialect/ui.rs、parser.rs:174-470
+> 来源: docs/design/dialect-extension-diagnosis.md §4/§6.1；代码核对 crates/auto-lang/src/dialect.rs、dialect/ui.rs、parser.rs（PLAN-801 增补：crates/auto-parser-api、dialect/external.rs、parser_bridge.rs 端口实现）

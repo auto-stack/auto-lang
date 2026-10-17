@@ -156,6 +156,30 @@ with_header/body_depth 五个上下文旗标。Err 时注册不丢失，恢复�
 由结构解析器直连内建，不经过语句方言派发；widget/msg/component/actions/style/view/
 on/store 的完整外部化、生产接线与 UI AST 迁移尚未完成。
 
+### 方言接口独立与 Parser 依赖倒置（PLAN-801）
+
+在 778 桥面之上新增 `crates/auto-parser-api` 轻端口 crate（依赖闭包 =
+auto-ast/auto-lex/auto-diagnostics，lang-core 域）：`ExternalDialect` trait +
+对象安全 `ParseContext` 端口 + 不透明快照凭据 `ParseCheckpoint` + 轻
+`CompilerSession`/`Scenario`/`DialectPriority` 单一定义（`auto_lang::session`
+与 `auto_lang::dialect::DialectPriority` 为薄 re-export，类型身份不变）。
+外部文法 crate 只依赖该端口 crate 即可实现方言——model 子集单份实现已迁
+`test/fixtures/modularity/dialect-api-consumer`（V01 闭包 oracle：
+verify-deps.sh 无 auto-lang/auto-man/auto-vm/auto-ui）；解析集成测试在
+上层 driver `ui-dialect-consumer`（auto-lang + 轻实现）。
+
+生产接入走**同一张**三段派发表：`Parser::register_external_dialect`/
+`with_external_dialect` 经 `ExternalDialectAdapter`（协议转换，不重复语法）
+注册，Override→builtin→Append 与恢复不变量（Arc 留表/None 回滚/Err 边界
+恢复）全部由既有派发器兜底。端口 checkpoint 为有作用域句柄表后端：
+凭据一次性、跨上下文/过期使用受控拒绝（语法错误 Err）、方言调用退出按
+水位清表（嵌套派发保外层）；旧 `ParserBridge` by-value checkpoint 路径
+零漂移，旧 trait/桥面/注册入口全部保持（`probe <expr>` 兼容用例在
+driver `LegacyProbeDialect`）。剩余边如实保留：内建 UiDialect 经
+`pub(crate)` escape hatch 用完整 Parser（完整 UI 文法仍在 Parser 上，
+不宣称 auto-ui 可搬仓）；生产入口/import 注册注入与 widget 结构直连
+边界未变，属后续按族外置合同。
+
 ## 已知坑
 
 - `parser.rs` 超 20k 行（`wc -l crates/auto-lang/src/parser.rs` = 20562，2026-09-07 快照），
