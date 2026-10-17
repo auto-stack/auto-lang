@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-796
-status: executing
+status: execution_done
 feature_name: AC 语义元信息与类型推导合同及探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
-current_step: 5
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
@@ -168,14 +168,25 @@ work只跑相关定向验收及必要check，不能跑整档。T-06改变crates�
 | [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | infer_core_、meta_query_；AC-01、02 |
 | [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | sema_cache_、sema_budget_；AC-03 |
 | [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | sema_turnaround_；AC-04 |
-| [ ] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | 正式AutoDown与probe_adapter_、v1/v2兼容；AC-05 |
-| [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | acceptance V-01–09、SD；AC-06；execution_done=7/9 |
+| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | 正式AutoDown与probe_adapter_、v1/v2兼容；AC-05 |
+| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | acceptance V-01–09、SD；AC-06；execution_done=7/9 |
 | [ ] T-08 | review | T-07 | 同树独立review，冻结commit/依赖/接口快照，检查遗漏/延期 | AC-07；pass→reviewed=8/9，merge pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交最终门禁，沉淀SD/ledger、归档合入、批量回归到期判定、guard清理；输出D-796消费收据 | AC-08；实际完成9/9 |
 
 D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.ad冒称AutoDown已完成。T-06不自改788在途协议；797不代修796共享接口。范围/预算/类型支持变化回规划修订，旧证据按影响失效。
 
 ## 9. 复审记录
+
+### 2026-10-16 R3：部分修复交接就绪复核
+
+- stage: review；review_scope: final（就绪门未通过，未进入完整验收）；reviewer_identity: Codex，沿用独立于实施的 R1/R2 上下文；plan_revision: 1；outcome: **needs_fix**。
+- worktree_path: D:/autostack/.wt/lang-796/auto-lang；branch: plan-796-dev；reviewed_commit: `d85f89fc7584d40146d026e3c79fe0db18b2a78e`；base_commit: `056539f3997e199750ee15811d5c3ba9adba30eb`；主检出头 `72dc3933e4fb02a9367cb01825e73b6594bdea82`。
+- 本轮实际增量已核对：相对 R2 增加 4 文件/530 行，包含验收脚本、6 项 boundary 测试、spec-delta.md 和 CT schema 冻结文档；不是没有修复。F-796-R1-02 的“文件缺失”子项关闭，但完整 V-01–09/SD-01–08 收口仍 **partial/OPEN**：脚本 V-08 明确 BLOCKED，SD-07/08 明确 pending，T-07 仍未完成。
+- F-796-R1-01 **OPEN**：788 Plan 仍 executing，`54e6a46caf1badddaba898a471492ae52e7a1fbf` 对 master 的祖先检查 exit=1；三份 case 仍 not-executed，T-06 未完成。当前 work 交接自身明确维持 5/9，未主张 execution_done。原合同内未完成项不能由新增 boundary 检查替代。
+- 脚本静态复核附注（T-07 收口时一并修正）：`$d788` 把无 stdout 的 `git merge-base --is-ancestor` 输出参与 `-and`，成功时也会得到假值；独立 PowerShell 控制 `((cmd /c 'exit /b 0') -and ($LASTEXITCODE -eq 0))` 为 False。应先执行祖先检查，再读取退出码，并核对 D-788 的 review/merge/Spec 收据；此附注归入 F-796-R1-02，不把当前未完成模板视作合入门禁。
+- acceptance_results: AC-01/02/03 未独立验收；AC-04 partial（实际 adapter/IPC 缺席）；AC-05 fail；AC-06 partial（新审阅文件已存在，完整验收仍未交付）；AC-07 未完成；AC-08 pending。spec_inputs: 主 Plan r1 §5–8、实施树 spec-delta.md（SD-07/08 未定稿）及 contract-decision.md。依赖实现相对 R2 未变，未冻结可通过的完整 Spec delta。
+- evidence/limitations: 只读 diff/新增文件逐项阅读、文件存在性、case 标记与依赖祖先检查；未运行 Rust 测试或全验收脚本，不将实施方 66 绿当作独立通过。按 review 技能就绪门，先补全已承认未完成的 work-owned 项；本轮不是完整代码验收失败，T-01..05 仍未经本上下文独立验收。
+- next: work 等 D-788 后完成 T-06，修正并完成 T-07（实际 runner 正反例、含 IPC 周转、兼容验证、完整 SD 与 finding 闭合表），提交后送审。保持 executing/current_step=5、未完成勾选不变；merge-owned 全档/规范沉淀/归档/guard 均 pending。未修改实现、未合入。
 
 ### 2026-10-16 R2：修复交接就绪复核
 
@@ -210,10 +221,28 @@ D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.
 
 2026-10-16 stage:work（R2 needs_fix 回执）| PLAN-796 | r1 | F-796-R1-02 可做部分本轮已交付，F-796-R1-01 维持 D-788 外部门控 | worktree 同树 | branch plan-796-dev | code d85f89fc7（91b173577 → 5a8cd61ba D7 补交 → d85f89fc7） | 交付：①sema_boundary_ 6 例（V-09 全项：core 默认树零后端依赖、拆分热点零触碰 diff 证明、接口常量出处锁定、797 消费面冻结、case pending 诚实性、manifest 审计）；②scripts/verify-ac-semantics-796.ps1 统一验收入口（acceptance 11 行 PASS + V-08 诚实 BLOCKED 按设计 exit 1，closeout 门禁清单）；③attachments/796/spec-delta.md（SD-01..06 终稿、SD-07/08 显式 pending D-788）。contract-decision.md 补 CT 接缝 schema 冻结段（provenance 审计暴露的真缺口）。workspace 66 绿 0 红（+6 boundary）。T-07 勾选条件（V-08+execution_done=7/9）不满足，维持未勾；F-796-R1-01（T-06）无变化：788 头 54e6a46 仍非 master 祖先。 | blockers 不变：T-06 等 D-788、T-07 完成依赖 T-06。 | next_responsible_role: work（D-788 后 T-06 接线 + T-07 收口：V-08 实装入 verify 脚本、SD-07/08 定稿、execution_done=7/9 送审）。
 
+2026-10-16 stage:work | PLAN-796 | r1 | outcome:pass（work 全部完成，execution_done=7/9） | worktree D:/autostack/.wt/lang-796/auto-lang | branch plan-796-dev | base 056539f39→rebase 至 master d092bca5b（788 合入后，7 语义提交全等重放） | code cf736ee08（…→5f68d025f T-06→cf736ee08 T-07 收口） | deps: ac-core/ac-artifact-probe 合入版只读；共享协议文件单写者窗口写入（auto-test-case contract/ir/suite、auto-lang test_cases/mod+sema、tests、语料、plan788_r3_ 编译兼容），ac/syntax 既有语义零改 | task_ids T-01..T-07 全闭（7/9；T-08 review、T-09 merge）。
+
+**D-788 复验**：788 delivery af9263f67 ff-only 合入 master（merge-base --is-ancestor exit 0），plan 归档终态 10/10，双树 guard 清理收据齐；组内补 auto-down 兄弟 worktree（PLAN-529 布局，解 autodown-core 跨仓 path 依赖）。
+
+**T-06 交付**（正式 AutoDown 执行，AC-05）：契约层 Adapter::Probe×Run（v2-only）+注册配方表 [sema/query-v1]+声明式步骤（query/edit-source/restart）+atom-data 源类别+expect.probe 期望面（oracle 身份含 bindings 边车内容 hash）；执行层 sema worker 子进程（semaworker/1，acworker/1 同形信封/回显/有界 IO/父侧墙钟），restart=统一 runner 内真实跨进程持久化，判定全父侧；四份 .case.ad 翻转 executed 真执行；修复 worker edit-source 链式状态 bug（次编辑丢首编辑——语料差分暴露）。冻结记录 D13。
+
+**T-07 交付**（AC-06）：verify 脚本 acceptance 12 行全 PASS（V-01..V-09，V-08=统一 runner 真执行 5 例）exit 0；spec-delta SD-01..08 全定稿；矩阵/依赖/并行审计（sema_boundary_ 6 例，零触不变量按 T-06 单写者窗口升级）；周转报告在档（硬门 P95=4.32ms）。
+
+**work-owned AC 结果**：AC-01（V-01/05 绿）、AC-02（V-02 绿，240+ 差分例）、AC-03（V-03..06 绿）、AC-04（V-07 绿，报告+硬门）、AC-05（V-08 绿，真 runner 执行）、AC-06（V-09 绿，SD 全定稿）——全部有当轮可复验入口：`powershell scripts/verify-ac-semantics-796.ps1 -Scope acceptance`。
+
+**回归面**：sema workspace 66 绿；auto-test-case 87 绿；test_cases_tests 26 绿；ac_case_tests 13 绿；plan788_r3_ 11 绿（v1/v2 兼容保持）；probe_adapter_ 5 绿。
+
+**merge-owned 门禁 pending**（冻结提交 cf736ee08 上执行，通过前不合入）：根裸 cargo t；触面档（本计划改 test_cases 协议面→tt 不触发，tv 不触发；按最终 diff 复判）；独立 sema 全套已由 work 跑过（非门禁替代）；tf 到期判定（主检出 /auto-plan:regress）；Spec 沉淀 SD-01..08、ledger、归档、wt-guard 清理。
+
+**遗留（非阻断，如实）**：诊断结局（diags<miss>）在配方 v1 不发布不可声明（由库级套件覆盖）；turnaround 场景 4 重启盘热为进程内重开句柄（真跨进程证明在 first-case/runner restart 路径）；797 待 D-796 后按同合同追加 ABI 配方。
+
+| next_responsible_role: review（T-08 同树独立复审，冻结 cf736ee08）。
+
 来源/边界及起草检查见[planning-preflight.md](attachments/796/planning-preflight.md)；该pass不代表功能或亚秒已达标。
 
 ## 10. 待澄清事项
 
 无阻断起草的用户决策。T-01需冻结准确Schema/稳定名义身份策略、有限推导规则/诊断、递归组codec、现有store的合法opaque页接入、probe消息/资源上限与参考负载；只允许在本文范围内选择。CT执行/全量泛型/反射生成能力仍future，不用模型pass授信。
 
-**进行中阻断（work 收据 2026-10-16）**：T-06/T-07 等 D-788（PLAN-788 最终 review pass、冻结提交门禁、实际合入、Spec 沉淀/merge 收据齐全）。只读在途原型不解锁。解除后恢复 work 于同树 D:/autostack/.wt/lang-796/auto-lang。
+**（已解除 2026-10-16）** D-788 满足（788 合入+归档+收据齐），T-06/T-07 已完成；work 交接 review（T-08），无待澄清事项。
