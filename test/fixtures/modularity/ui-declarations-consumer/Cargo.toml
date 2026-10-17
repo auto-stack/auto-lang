@@ -1,0 +1,32 @@
+# PLAN-806 V01 轻消费方 fixture（独立 workspace crate）。
+#
+# 角色：证明 auto-ui-dialect 的完整 msg/model 声明算法在**无 auto-lang**
+# 闭包内真实可用（真算法而非转调 Parser 函数）——本 crate 自带一个
+# 消费方最小 ParseContext（预词法 token 向量游标），驱动
+# auto_ui_dialect::{parse_msg_decl, parse_model_block, parse_model_block_subset}
+# 产出 auto-ast 同一类型。manifest 即验收证据：依赖仅 auto-ui-dialect
+#（闭包=auto-parser-api/auto-ast/auto-lex/auto-diagnostics/auto-val 轻层），
+# normal/build/dev 闭包不含 auto-lang/Parser/VM/renderer。真 Parser 派发/
+# 场景/结构路径/import/消费对照在上层 driver（auto-lang 侧测试与
+# test/fixtures/modularity/ui-dialect-consumer）。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/ui-declarations-consumer/Cargo.toml
+#   bash test/fixtures/modularity/ui-declarations-consumer/verify-deps.sh
+
+[package]
+name = "ui-declarations-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-ui-dialect = { path = "../../../../crates/auto-ui-dialect" }
+# toy ParseContext 实现面（ParseContext/ParseCheckpoint/ast/token/error/
+# session 类型）与预词法 Lexer——均为轻层。
+auto-parser-api = { path = "../../../../crates/auto-parser-api" }
+auto-lex = { path = "../../../../crates/auto-lex" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

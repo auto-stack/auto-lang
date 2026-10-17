@@ -21,6 +21,10 @@ members = [
     # auto-ast/auto-lex/auto-diagnostics — no Parser/VM/UI/Man implementation
     # in its closure; external grammar impls depend on this crate only).
     "crates/auto-parser-api",
+    # PLAN-806: UI msg/model 声明文法单一份实现 crate（完整算法自 Parser
+    # 逐字迁出，经 dyn ParseContext 驱动；闭包仅 auto-parser-api 轻层，
+    # 无 auto-lang/Parser/VM/renderer）。
+    "crates/auto-ui-dialect",
     # PLAN-799: AST model crate (Code/Stmt/Expr/Type/UI-compat nodes +
     # ToNode/ToAtom/AtomWriter serialization; extracted verbatim from
     # auto-lang; no Parser/TypeStore/inference/VM/UI deps).
@@ -105,6 +109,12 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/dialect-api-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/dialect-api-consumer/verify-deps.sh
     "test/fixtures/modularity/dialect-api-consumer",
+    # PLAN-806: UI 声明文法轻消费方探针——独立 fixture crate（依赖仅
+    # auto-ui-dialect + auto-lex，证明完整 msg/model 声明算法在无
+    # auto-lang 闭包内可驱动；生产接线/字节级对照在上层 driver），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/ui-declarations-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/ui-declarations-consumer/verify-deps.sh
+    "test/fixtures/modularity/ui-declarations-consumer",
     # PLAN-779: 外部 native provider 消费方探针——独立 fixture crate
     #（无 UI feature 构建，证明 frame 族 core 供值链在 crate 边界外真实
     # 工作），门禁经
