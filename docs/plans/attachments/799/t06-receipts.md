@@ -24,7 +24,7 @@ master@`143aff0a258fdca8bda9a3b8068dc8a9cced623c`（=PLAN-800 R2 复审入库后
 | V01/V02 fixture | ast-model-consumer（manifest 仅 auto-ast）3 lib + 1 replay 全绿；门面路径 golden diff 36/36 逐字节一致 |
 | ParserBridge 对照 | ui-dialect-consumer 26/26 |
 | 777 audit | 域规则 `auto-ast=lang-core` 加入；strict 新边全合法（auto-ast→lex/val、lang→ast）；基线重采样须净树，提交后执行（见 §5） |
-| 792 窄接线回放 | auto-man delivery 单测 9/9；**driver.py 25/25**（V01 fresh+real build 112s / V02 重定位 locked 110s+身份 / V03 a-j 全负控确定性红+复绿 / V04 dev 模式+模板同源）——11-crate 闭包含 auto-ast；收据 `replay-792-driver-receipt.json` |
+| 792 窄接线回放 | auto-man delivery 单测 9/9；**driver.py 25/25**（V01 fresh+real build 112s / V02 重定位 locked 110s+身份 / V03 a-j 全负控确定性红+复绿 / V04 dev 模式+模板同源）——11-crate 闭包含 auto-ast；收据 `review-r2/driver-receipt.json.txt`（worktree 侧 replay 副本随树清理丢失，r2 复审持久副本为准） |
 | 794 兼容 | scroll-provider-consumer 5/5（八 native/record/参数类型经门面同身份） |
 | rustfmt | 触面文件全 clean（examples/schema_loader 存量债与 master 同集，未触碰） |
 

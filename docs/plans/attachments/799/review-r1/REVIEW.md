@@ -1,7 +1,7 @@
 # PLAN-799 final review R1 — needs_fix
 
 2026-10-17；plan revision 1；受审提交 `d35d4c0846d112ea661cb90fb950dff8c00d56d9`，实现提交 `ea291d3ab`；基面 `143aff0a258fdca8bda9a3b8068dc8a9cced623c`。
-既有树 `D:/autostack/.wt/lang-799/auto-lang`，branch `plan-799-dev`，入/出净树、HEAD相同。审核人=本聊天 Codex（独立于实施上下文；未暴露模型/session ID，不虚构）。输入、依赖 tree 与文件 hash 见 baseline.json；冻结规范增量见 spec-delta.patch。未修改实现/规范/ledger，未合入。
+既有树 `D:/autostack/.wt/lang-799/auto-lang`，branch `plan-799-dev`，入/出净树、HEAD相同。审核人=本聊天 Codex（独立于实施上下文；未暴露模型/session ID，不虚构）。输入、依赖 tree 与文件 hash 见 baseline.json.txt；冻结规范增量见 spec-delta.patch。未修改实现/规范/ledger，未合入。
 
 ## F799-R1-01 / P2 / 原合同兼容性回归
 
