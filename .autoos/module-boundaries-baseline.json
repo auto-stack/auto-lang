@@ -1,6 +1,6 @@
 {
-  "base_revision": "ab56d5625d2c847081b54a11638d10e966bd1d0b",
-  "config_sha256": "7f94f21625e63ec1f495a53f9a97482b5052eada6aacfb54cd8d8fd6abf190ba",
+  "base_revision": "643d5bdebf8eb76791abf2845d7c5e50afbb8476",
+  "config_sha256": "9fdff521ca9ab3f7ce07cb0d49b88f134ac971a14b4fb85eaf9ff25c80697c37",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -255,6 +255,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-parser-api",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-parser-api",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-test-case",
       "from": "auto-lang",
       "kind": "normal",
@@ -423,6 +432,33 @@
       "optional": false,
       "target": null,
       "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ast",
+      "from": "auto-parser-api",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ast",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-diagnostics",
+      "from": "auto-parser-api",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-diagnostics",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lex",
+      "from": "auto-parser-api",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lex",
       "to_scope": "member"
     },
     {
