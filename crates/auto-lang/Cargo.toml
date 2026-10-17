@@ -175,6 +175,10 @@ auto-diagnostics = { path = "../auto-diagnostics" }
 # PLAN-799: AST model single source (Code/Stmt/Expr/Type/UI-compat nodes +
 # ToNode/ToAtom/AtomWriter); the ast module is a thin re-export facade.
 auto-ast = { path = "../auto-ast" }
+# PLAN-801: 方言端口 API 单一来源（轻 CompilerSession/Scenario +
+# ExternalDialect + 对象安全 ParseContext）；session/DialectPriority 为薄
+# re-export 门面，ParserBridge 实现端口并经 adapter 进同一三段派发表。
+auto-parser-api = { path = "../auto-parser-api" }
 auto-cache = { path = "../auto-cache" }
 # Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
 shim-metadata = { path = "../shim-metadata" }

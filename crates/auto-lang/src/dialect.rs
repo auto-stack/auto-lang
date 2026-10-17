@@ -62,10 +62,17 @@ pub trait Dialect: Send + Sync {
 ///
 /// 派发序恒为 pre → builtin → post；首个 keywords 命中且返回 `Some` 者胜。
 /// 注册跨 `with_session` 保留（`with_session` 只重建内建段）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DialectPriority {
-    Override,
-    Append,
-}
+///
+/// PLAN-801：单一定义迁至 auto-parser-api（`auto_parser_api::DialectPriority`），
+/// 此处薄 re-export——类型身份不变，旧调用点（含
+/// `Parser::register_dialect`/`with_dialect`）零改动。
+pub use auto_parser_api::DialectPriority;
 
+/// PLAN-801 新接口外部方言 trait（crate 边界外实现，只依赖轻端口 crate）。
+/// 与旧 [`Dialect`] 同表派发（经 `dialect::external::ExternalDialectAdapter`
+/// 协议转换 + `Parser::register_external_dialect` 注册）；恢复不变量同一套
+/// 派发器兜底。外部 crate 优先实现本 trait；旧 trait 为兼容面保持。
+pub use auto_parser_api::ExternalDialect;
+
+pub mod external;
 pub mod ui;

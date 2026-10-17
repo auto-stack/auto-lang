@@ -45,11 +45,8 @@ pub trait ExternalDialect: Send + Sync {
     /// - 返回 `Ok(None)`：关键字虽在列表里但本次不归我管（派发器保证 None
     ///   后游标回滚，不吞 token）。
     /// - 返回 `Err(_)`：报错（方言注册不丢失，错误由核心收集/恢复机制收纳）。
-    fn try_parse_stmt(
-        &self,
-        ctx: &mut dyn ParseContext,
-        keyword: &str,
-    ) -> AutoResult<Option<Stmt>>;
+    fn try_parse_stmt(&self, ctx: &mut dyn ParseContext, keyword: &str)
+        -> AutoResult<Option<Stmt>>;
 
     /// 命中真实 TokenKind 时调用（view/on 等非 Ident 的 UI token）。
     /// 默认不接管（返回 `Ok(None)`）；需要接管的方言覆写此方法。

@@ -166,3 +166,93 @@ impl<'p, 'a> ParserBridge<'p, 'a> {
         .into()
     }
 }
+
+/// PLAN-801 端口快照句柄表槽位（Parser 内部后端，`port_snapshots` 元素）。
+/// `data: None` 为 tombstone——可被后续 checkpoint 槽位复用；凭据合法性由
+/// （实例 id, 槽位, 全局单调 gen）三元组在 `Parser::port_restore` 校验。
+pub(crate) struct PortSnapshotSlot<'a> {
+    pub(crate) gen: u64,
+    pub(crate) data: Option<BridgeCheckpoint<'a>>,
+}
+
+// ---- PLAN-801：对象安全端口实现（`&mut dyn ParseContext` 面） ----
+//
+// ParserBridge 既是 778 冻结的具体门面（上方 inherent 方法，含泛型
+// `syntax_error(impl Into<String>)`），也实现 auto-parser-api 端口 trait，
+// 供 `ExternalDialectAdapter` 把 `&mut ParserBridge` 作为
+// `&mut dyn ParseContext` 传给新接口方言。对象安全参数形态的方法在此
+// 委托同名 inherent 方法（inherent 优先解析，零重复实现）。
+//
+// checkpoint/restore 是例外：端口形态走句柄表后端（有作用域凭据 +
+// 受控拒绝），不与 inherent 的 by-value BridgeCheckpoint 路径混用——
+// 旧路径（778 派发器 None 回滚 / 旧方言投机解析）零漂移。
+
+impl<'p, 'a> auto_parser_api::ParseContext for ParserBridge<'p, 'a> {
+    fn cur_kind(&mut self) -> TokenKind {
+        self.cur_kind()
+    }
+
+    fn cur_text(&mut self) -> String {
+        self.cur_text()
+    }
+
+    fn cur_pos(&mut self) -> Pos {
+        self.cur_pos()
+    }
+
+    fn is_kind(&mut self, kind: TokenKind) -> bool {
+        self.is_kind(kind)
+    }
+
+    fn advance(&mut self) -> Token {
+        self.advance()
+    }
+
+    fn expect(&mut self, kind: TokenKind) -> AutoResult<()> {
+        self.expect(kind)
+    }
+
+    fn expect_keyword(&mut self, word: &str) -> AutoResult<()> {
+        self.expect_keyword(word)
+    }
+
+    fn skip_empty_lines(&mut self) -> usize {
+        self.skip_empty_lines()
+    }
+
+    fn checkpoint(&mut self) -> auto_parser_api::ParseCheckpoint {
+        self.parser.port_checkpoint()
+    }
+
+    fn restore(&mut self, cp: auto_parser_api::ParseCheckpoint) -> AutoResult<()> {
+        self.parser.port_restore(cp)
+    }
+
+    fn parse_type(&mut self) -> AutoResult<Type> {
+        self.parse_type()
+    }
+
+    fn parse_expr(&mut self) -> AutoResult<Expr> {
+        self.parse_expr()
+    }
+
+    fn scenario(&self) -> Scenario {
+        self.scenario()
+    }
+
+    fn is_ui_scenario(&self) -> bool {
+        self.is_ui_scenario()
+    }
+
+    fn in_on_body(&self) -> bool {
+        self.in_on_body()
+    }
+
+    fn in_fn_body(&self) -> bool {
+        self.in_fn_body()
+    }
+
+    fn syntax_error(&self, message: String) -> AutoError {
+        self.syntax_error(message)
+    }
+}

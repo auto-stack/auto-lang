@@ -209,6 +209,13 @@ struct FnAnnotations {
 /// 最坏分段栈提交约束在 ~170MB 量级)。
 const MAX_BODY_NESTING: u32 = 256;
 
+/// PLAN-801：Parser 实例身份计数器（端口快照凭据的跨上下文拒绝判据）。
+fn next_port_instance_id() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
 pub struct Parser<'a> {
     pub scope: ScopeManager,
     /// Plan 419 §8.3:parse_body 嵌套深度(护栏计数)。
@@ -245,6 +252,15 @@ pub struct Parser<'a> {
     dialects_pre: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
     dialects_builtin: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
     dialects_post: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
+    /// PLAN-801 端口快照句柄表：`ParseContext::checkpoint` 的有作用域后端
+    ///（T-01 D3）。槽位 tombstone 复用，签发 gen 在本 Parser 内全局单调
+    /// 不重复；派发器在每次方言调用后按水位 truncate（调用退出清理，
+    /// 嵌套水位保外层快照——递归不覆盖外层）。
+    port_snapshots: Vec<crate::parser_bridge::PortSnapshotSlot<'a>>,
+    /// 本 Parser 实例身份（端口凭据跨上下文拒绝的判据；全局计数器签发）。
+    port_instance_id: u64,
+    /// 端口凭据下一次签发代次（单调递增，永不重复→槽位复用无误接受）。
+    port_gen_next: u64,
     pub skip_check: bool,
     pub compile_dest: CompileDest,
     /// Error recovery: collected errors during parsing
@@ -435,6 +451,9 @@ impl<'a> Parser<'a> {
             dialects_pre: Vec::new(),
             dialects_builtin: Vec::new(),
             dialects_post: Vec::new(),
+            port_snapshots: Vec::new(),
+            port_instance_id: next_port_instance_id(),
+            port_gen_next: 0,
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -512,6 +531,9 @@ impl<'a> Parser<'a> {
             dialects_pre: Vec::new(),
             dialects_builtin: Vec::new(),
             dialects_post: Vec::new(),
+            port_snapshots: Vec::new(),
+            port_instance_id: next_port_instance_id(),
+            port_gen_next: 0,
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -572,6 +594,9 @@ impl<'a> Parser<'a> {
             dialects_pre: Vec::new(),
             dialects_builtin: Vec::new(),
             dialects_post: Vec::new(),
+            port_snapshots: Vec::new(),
+            port_instance_id: next_port_instance_id(),
+            port_gen_next: 0,
             skip_check: false,
             errors: Vec::new(),
             warnings: Vec::new(),             // Plan 122: Warnings collection
@@ -647,6 +672,93 @@ impl<'a> Parser<'a> {
     ) -> Self {
         self.register_dialect(dialect, priority);
         self
+    }
+
+    /// PLAN-801：注册新接口外部方言（`auto_parser_api::ExternalDialect`，
+    /// 只依赖轻端口 crate 的实现方）。经 `ExternalDialectAdapter` 协议转换
+    /// 进入与旧 trait **同一张**三段派发表：Override 前插 pre 段 /
+    /// Append 后接 post 段，派发序与恢复不变量（Arc 注册永不出表 /
+    /// None 强制回滚 / Err 边界恢复 context）与 `register_dialect` 完全
+    /// 一致；注册跨 `with_session` 保留。
+    pub fn register_external_dialect(
+        &mut self,
+        dialect: Box<dyn crate::dialect::ExternalDialect>,
+        priority: crate::dialect::DialectPriority,
+    ) {
+        let adapter: std::sync::Arc<dyn crate::dialect::Dialect> =
+            std::sync::Arc::new(crate::dialect::external::ExternalDialectAdapter {
+                inner: dialect.into(),
+            });
+        match priority {
+            crate::dialect::DialectPriority::Override => self.dialects_pre.push(adapter),
+            crate::dialect::DialectPriority::Append => self.dialects_post.push(adapter),
+        }
+    }
+
+    /// `register_external_dialect` 的 builder 形态（PLAN-801）。
+    pub fn with_external_dialect(
+        mut self,
+        dialect: Box<dyn crate::dialect::ExternalDialect>,
+        priority: crate::dialect::DialectPriority,
+    ) -> Self {
+        self.register_external_dialect(dialect, priority);
+        self
+    }
+
+    // ---- PLAN-801 端口快照句柄表后端（ParseContext::checkpoint/restore） ----
+
+    /// 签发一张端口快照凭据：快照数据（游标+五旗标）入表，凭据=（实例
+    /// id, 槽位, 单调 gen）。tombstone 槽位复用；无 unsafe、无 'static、
+    /// 无全局池（T-01 D3）。调用退出清理由派发器水位负责。
+    pub(crate) fn port_checkpoint(&mut self) -> auto_parser_api::ParseCheckpoint {
+        let gen = self.port_gen_next;
+        self.port_gen_next += 1;
+        let slot = match self.port_snapshots.iter().position(|s| s.data.is_none()) {
+            Some(i) => i,
+            None => {
+                self.port_snapshots
+                    .push(crate::parser_bridge::PortSnapshotSlot { gen, data: None });
+                self.port_snapshots.len() - 1
+            }
+        };
+        let data = self.bridge_checkpoint();
+        self.port_snapshots[slot] = crate::parser_bridge::PortSnapshotSlot {
+            gen,
+            data: Some(data),
+        };
+        auto_parser_api::ParseCheckpoint::new(self.port_instance_id, slot as u32, gen)
+    }
+
+    /// 兑现端口快照凭据：合法（本实例 + 槽位在表 + gen 匹配 + 未消费）则
+    /// 恢复游标与五旗标（诊断单调追加），凭据一次性；否则**受控拒绝**——
+    /// 返回当前 token 位置的语法错误（跨上下文/过期/重复使用）。
+    pub(crate) fn port_restore(&mut self, cp: auto_parser_api::ParseCheckpoint) -> AutoResult<()> {
+        let (parser_id, slot, gen) = cp.parts();
+        let rejected = |cur: &Token| -> AutoError {
+            crate::error::SyntaxError::Generic {
+                message: "dialect checkpoint rejected: credential from another parse context \
+                          or already consumed/expired"
+                    .to_string(),
+                span: pos_to_span(cur.pos),
+            }
+            .into()
+        };
+        if parser_id != self.port_instance_id {
+            return Err(rejected(&self.cur));
+        }
+        let idx = slot as usize;
+        let valid = idx < self.port_snapshots.len()
+            && self.port_snapshots[idx].gen == gen
+            && self.port_snapshots[idx].data.is_some();
+        if !valid {
+            return Err(rejected(&self.cur));
+        }
+        let data = self.port_snapshots[idx]
+            .data
+            .take()
+            .expect("gen-matched live slot carries snapshot data");
+        self.bridge_restore(data);
+        Ok(())
     }
 
     /// 按 session 装配内建方言表。集中所有内建方言注册，便于一眼看清
@@ -739,10 +851,14 @@ impl<'a> Parser<'a> {
                 }
                 let cp = self.bridge_checkpoint();
                 let dialect = std::sync::Arc::clone(dialect);
+                // PLAN-801：端口快照水位——方言调用退出时清掉本次调用签发
+                // 的槽位（调用退出清理；嵌套派发水位更高，外层凭据不受影响）。
+                let port_watermark = self.port_snapshots.len();
                 let outcome = {
                     let mut bridge = crate::parser_bridge::ParserBridge::new(self);
                     dialect.try_parse_stmt(&mut bridge, ident)
                 };
+                self.port_snapshots.truncate(port_watermark);
                 match outcome {
                     Ok(Some(stmt)) => return Ok(Some(stmt)),
                     Ok(None) => self.bridge_restore(cp),
@@ -774,10 +890,14 @@ impl<'a> Parser<'a> {
                 }
                 let cp = self.bridge_checkpoint();
                 let dialect = std::sync::Arc::clone(dialect);
+                // PLAN-801：端口快照水位（同 try_dialect_stmt——调用退出清理，
+                // 嵌套派发水位更高，外层凭据不受影响）。
+                let port_watermark = self.port_snapshots.len();
                 let outcome = {
                     let mut bridge = crate::parser_bridge::ParserBridge::new(self);
                     dialect.try_parse_token_stmt(&mut bridge, kind)
                 };
+                self.port_snapshots.truncate(port_watermark);
                 match outcome {
                     Ok(Some(stmt)) => return Ok(Some(stmt)),
                     Ok(None) => self.bridge_restore(cp),
