@@ -107,6 +107,8 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 
 ## 9. 复审记录
 
+2026-10-17 / stage: work / PLAN-806 revision: 1 / outcome: blocked（前置半满足） / worktree_path=未建树（前置未满足；§6 拟 D:/autostack/.wt/lang-806/auto-lang，branch codex/plan-806-dev） / branch=无 / base_commit=master 80f40af641d087823ba40910d390b1224abc9632 / code_commit=无（零代码改动，仅本簿记+附件） / dependency_revisions=799 已合入归档（auto-ast 在主检出）；801 execution_done、code 49512993b 送 T-07 二轮复审、merge 门 pending、主检出无 auto-parser-api；本轮未读取/复制 801 worktree 未交付 API / task_ids=T-01（仅 master 侧只读预检，任务未完成） / evidence=[t01-readonly-prep.md](attachments/806/t01-readonly-prep.md)：三算法定位与行为冻结点（msg 旧名读弃/quoted/named-payload lexer 回推；model 注解/未知注解诊断原文与 span/默认无裸字段）、生产调用点全图（顶层 dialect/ui.rs:49-50 + widget 13098/13101 + store 14371/14374 + component 15841/15845 直连 inner + import 走 with_session 默认装配 build_dialects）、pilot 状态（master 无 parse_model_subset/ExternalModelDialect，778 fixture r2_bare_field_boundary 在位）、旧臂锚点起点 / blockers=801 T-07 二轮复审→T-08 合入（冻结裸 t+tv 等 merge 门）是唯一解阻动作；解阻后以主检出真实 auto-parser-api 完成 T-01 剩余（lookahead 等价/pilot 单源策略/callsite 差额冻结）并建树 / next_responsible_role=801 review（T-07）→ 801 merge（T-08）→ 806 work（T-01 执行）
+
 2026-10-17 / stage: new / PLAN-806 revision: 1 / outcome: blocked / next: 799与801审查合入后，work以真实API执行T-01。此前仅只读准备，不复制未交付类型/接口；不等待802/803/804/805整体完成。[预检](attachments/extraction-followup-20261017/preflight.md)。
 
 ## 10. 待澄清事项
