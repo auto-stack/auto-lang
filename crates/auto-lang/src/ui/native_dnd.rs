@@ -2,10 +2,12 @@
 //!
 //! 拖出（desktop → native）：`DndPayload` → 自实现 `IDataObject`
 //! （CF_UNICODETEXT / CF_HDROP / CFSTR_FILEDESCRIPTOR + CFSTR_FILECONTENTS）
-//! + `IDropSource`，`DoDragDrop` 跑在专用 STA 线程（消息泵）。
-//! 拖入（native → desktop）：自实现 `IDropTarget` 挂宿主 HWND
-//! （`RegisterDragDrop`），DragEnter/Over/Leave/Drop → `DesktopMessage`
-//! → 指针命中虚拟窗口 → App 级 `on_native_drop` 事件。
+//! + `IDropSource`，`DoDragDrop` **在收到按下的输入线程上内联阻塞**
+//! （自带消息泵；早期"专用 STA 线程"方案实测收不到输入已废——488
+//! 步骤 9 E2E 定案，见 `win32::start_drag` 注释）。
+//! 拖入（native → desktop）：自实现 `IDropTarget` 经跨套间 STA 代理挂
+//! 宿主 HWND（`RegisterDragDrop`），DragEnter/Over/Leave/Drop →
+//! `DesktopMessage` → 指针命中虚拟窗口 → App 级 `on_native_drop` 事件。
 //!
 //! 本模块承载 payload 模型与纯逻辑（格式清单/优先级），全平台可编译可单测；
 //! Win32/COM 调用仅出现在 `win32` 子模块（`#[cfg(all(windows,
@@ -500,7 +502,7 @@ pub mod win32 {
         }
     }
 
-    // ── 步骤 4：拖出会话（专用 STA 线程 + 完成通道） ─────────────────────
+    // ── 步骤 4：拖出会话（输入线程内联 DoDragDrop + 完成通道） ────────────
 
     /// DoDragDrop 的完成效果（`on_dnd_finished` 事件载荷域）。
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -556,14 +558,15 @@ pub mod win32 {
         DRAG_SESSION_GEN.load(std::sync::atomic::Ordering::SeqCst)
     }
 
-    /// 发起系统拖拽（受理即返）：空载荷 / 已有会话在拖 / 线程拉起失败 →
-    /// false。完成后 [`take_finished_effect`] 可取到效果（每次会话一条）。
-    /// 发起系统拖拽（**调用线程内联阻塞**至落下/取消）。OLE 拖拽循环必须
-    /// 跑在收到按下鼠标消息的输入线程上（实测：专用 STA 线程收不到任何
-    /// 输入——QueryContinueDrag 零调用卡死；T3 fixture 证明同线程型工作，
-    /// 488 步骤 9 E2E 定案）。桌面模式下 VM handler 在 UI 线程执行
-    /// （call_handler ← update），即被点击线程——原生 App 的标准模态拖拽
-    /// 形态；DoDragDrop 自带消息泵，阻塞期事件面照常。
+    /// 发起系统拖拽（**调用线程内联阻塞**至落下/取消）。空载荷 / 已有
+    /// 会话在拖（重入受理即拒）→ false；**true = 执行过会话**（落下或取消
+    /// 均 true——完成效果另经 [`take_finished_effect`] → on_dnd_finished
+    /// 事件报告，不得把 cancel 映射 false / 把 true 当 drop 成功）。
+    /// OLE 拖拽循环必须跑在收到按下鼠标消息的输入线程上（实测：专用 STA
+    /// 线程收不到任何输入——QueryContinueDrag 零调用卡死；T3 fixture 证明
+    /// 同线程型工作，488 步骤 9 E2E 定案）。桌面模式下 VM handler 在 UI
+    /// 线程执行（call_handler ← update），即被点击线程——原生 App 的标准
+    /// 模态拖拽形态；DoDragDrop 自带消息泵，阻塞期事件面照常。
     pub fn start_drag(payload: DndPayload) -> bool {
         use std::sync::atomic::Ordering;
         let trace = std::env::var("AUTO_DND_TRACE").map_or(false, |v| v == "1");

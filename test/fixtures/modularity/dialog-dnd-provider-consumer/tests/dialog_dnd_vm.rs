@@ -226,10 +226,7 @@ fn v01_process_default_reaches_real_vm_stdout() {
     let (_, stdout_a) = auto_lang::run_with_capture(DIALOG_PROGRAM).expect("run A");
     assert_eq!(
         stdout_lines(&stdout_a),
-        vec![
-            "A:C:\\plan804\\打开-甲🎉.at",
-            "A:C:\\plan804\\保存-甲🎉.md",
-        ],
+        vec!["A:C:\\plan804\\打开-甲🎉.at", "A:C:\\plan804\\保存-甲🎉.md",],
         "provider A 实值须到达 stdout（got {:?}）",
         stdout_a
     );
@@ -245,11 +242,7 @@ fn v01_process_default_reaches_real_vm_stdout() {
         "save 收到精确 raw default_name"
     );
 
-    let b = FakeDialog::new(
-        "B:",
-        "D:\\另处\\开启-β.at",
-        "D:\\另处\\存为-β.txt",
-    );
+    let b = FakeDialog::new("B:", "D:\\另处\\开启-β.at", "D:\\另处\\存为-β.txt");
     set_process_default_dialog_host_provider(b);
     let (_, stdout_b) = auto_lang::run_with_capture(DIALOG_PROGRAM).expect("run B");
     assert_eq!(
@@ -296,17 +289,9 @@ fn v01_two_live_instances_do_not_cross_talk() {
 
     let compiled = compile_program(DIALOG_PROGRAM);
 
-    set_process_default_dialog_host_provider(FakeDialog::new(
-        "A:",
-        "p1-open.at",
-        "p1-save.md",
-    ));
+    set_process_default_dialog_host_provider(FakeDialog::new("A:", "p1-open.at", "p1-save.md"));
     let (vm1, buf1) = build_vm(&compiled);
-    set_process_default_dialog_host_provider(FakeDialog::new(
-        "B:",
-        "p2-open.at",
-        "p2-save.md",
-    ));
+    set_process_default_dialog_host_provider(FakeDialog::new("B:", "p2-open.at", "p2-save.md"));
     let (vm2, buf2) = build_vm(&compiled);
 
     assert!(vm1.dialog_host_provider().is_some(), "vm1 持构造期快照");
@@ -314,14 +299,26 @@ fn v01_two_live_instances_do_not_cross_talk() {
 
     let out1 = run_with(&vm1, &buf1);
     let out2 = run_with(&vm2, &buf2);
-    assert_eq!(stdout_lines(&out1), vec!["A:p1-open.at", "A:p1-save.md"], "vm1 保持快照 A");
-    assert_eq!(stdout_lines(&out2), vec!["B:p2-open.at", "B:p2-save.md"], "vm2 取新默认 B");
+    assert_eq!(
+        stdout_lines(&out1),
+        vec!["A:p1-open.at", "A:p1-save.md"],
+        "vm1 保持快照 A"
+    );
+    assert_eq!(
+        stdout_lines(&out2),
+        vec!["B:p2-open.at", "B:p2-save.md"],
+        "vm2 取新默认 B"
+    );
 
     // 实例级覆盖：只影响被覆盖实例。
     vm2.set_dialog_host_provider(FakeDialog::new("C:", "ovr.at", "ovr.md"));
     let out2b = run_with(&vm2, &buf2);
     let lines2b = stdout_lines(&out2b);
-    assert_eq!(&lines2b[lines2b.len() - 2..], &["C:ovr.at", "C:ovr.md"], "实例级覆盖生效");
+    assert_eq!(
+        &lines2b[lines2b.len() - 2..],
+        &["C:ovr.at", "C:ovr.md"],
+        "实例级覆盖生效"
+    );
     let out1_again = run_with(&vm1, &buf1);
     let lines1 = stdout_lines(&out1_again);
     assert_eq!(
@@ -354,7 +351,11 @@ fn v02_absent_contract_and_no_hidden_install() {
 
     // dnd 缺席：值降级 false（非 raise）。
     let (_, stdout) = auto_lang::run_with_capture(DND_PROGRAM).expect("dnd 缺席=值降级");
-    assert_eq!(stdout_lines(&stdout), vec!["false", "false", "false"], "缺席 dnd=false");
+    assert_eq!(
+        stdout_lines(&stdout),
+        vec!["false", "false", "false"],
+        "缺席 dnd=false"
+    );
 
     // 不暗装：高层入口跑过后双进程默认槽仍 None（no-ui 无安装路径——
     // "原始 AutoVM 仍按既有 provider 模式只快照"）。
@@ -377,7 +378,11 @@ fn v02_slots_are_independent() {
     clear_process_default_dnd_host_provider();
     set_process_default_dialog_host_provider(FakeDialog::new("X:", "only.at", "only.md"));
     let (_, stdout) = auto_lang::run_with_capture(DND_PROGRAM).expect("dnd 缺席=值降级");
-    assert_eq!(stdout_lines(&stdout), vec!["false", "false", "false"], "dialog 在位不掩盖 dnd 缺席");
+    assert_eq!(
+        stdout_lines(&stdout),
+        vec!["false", "false", "false"],
+        "dialog 在位不掩盖 dnd 缺席"
+    );
 
     // 只装 dnd（清 dialog 槽后）。
     clear_process_default_dialog_host_provider();
@@ -390,7 +395,11 @@ fn v02_slots_are_independent() {
         "槽独立：dialog 缺席错误不因 dnd 在位而改变"
     );
     let (_, stdout) = auto_lang::run_with_capture(DND_PROGRAM).expect("dnd 在位");
-    assert_eq!(stdout_lines(&stdout), vec!["false", "false", "false"], "dnd 回放 false 到达");
+    assert_eq!(
+        stdout_lines(&stdout),
+        vec!["false", "false", "false"],
+        "dnd 回放 false 到达"
+    );
 }
 
 /// 取消 = 空串（值语义非 raise）：provider 回 "" → stdout 空行。
@@ -410,9 +419,7 @@ fn v02_cancel_is_empty_string() {
 /// 钉扎（2927/2928/2938 解析不变）。
 #[test]
 fn v03_identity_and_merge_preserve_providers() {
-    use auto_lang::vm::native::{
-        NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_DND_START,
-    };
+    use auto_lang::vm::native::{NATIVE_DIALOG_OPEN, NATIVE_DIALOG_SAVE, NATIVE_DND_START};
 
     let _g = serialized();
     let _guard = DefaultGuard::new();
@@ -430,9 +437,16 @@ fn v03_identity_and_merge_preserve_providers() {
     let rev0 = ni.binding_revision();
     ni.set_dialog_host_provider(FakeDialog::new("I:", "i.at", "i.md"));
     ni.set_dnd_host_provider(fake_dnd(true));
-    assert_eq!(ni.binding_revision(), rev0, "注入不得撤销绑定身份/失效 proof");
+    assert_eq!(
+        ni.binding_revision(),
+        rev0,
+        "注入不得撤销绑定身份/失效 proof"
+    );
     let cloned = ni.clone();
-    assert!(cloned.dialog_host_provider().is_some(), "Clone 保 dialog 槽");
+    assert!(
+        cloned.dialog_host_provider().is_some(),
+        "Clone 保 dialog 槽"
+    );
     assert!(cloned.dnd_host_provider().is_some(), "Clone 保 dnd 槽");
 
     // VM 级 merge：目标实例两槽不丢。
@@ -443,7 +457,10 @@ fn v03_identity_and_merge_preserve_providers() {
     let mut carrier = NativeInterface::new();
     carrier.register_static(NATIVE_DIALOG_OPEN, plan804_noop_shim);
     vm.merge_native_interface(&carrier);
-    assert!(vm.dialog_host_provider().is_some(), "merge 后 dialog 槽保留");
+    assert!(
+        vm.dialog_host_provider().is_some(),
+        "merge 后 dialog 槽保留"
+    );
     assert!(vm.dnd_host_provider().is_some(), "merge 后 dnd 槽保留");
 }
 
@@ -472,7 +489,11 @@ mod ui_dialog_only_e2e {
     #[link(name = "user32")]
     extern "system" {
         fn EnumWindows(cb: extern "system" fn(isize, isize) -> i32, lparam: isize) -> i32;
-        fn EnumChildWindows(parent: isize, cb: extern "system" fn(isize, isize) -> i32, lparam: isize) -> i32;
+        fn EnumChildWindows(
+            parent: isize,
+            cb: extern "system" fn(isize, isize) -> i32,
+            lparam: isize,
+        ) -> i32;
         fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
         fn GetClassNameW(hwnd: isize, buf: *mut u16, max: i32) -> i32;
         fn IsWindowVisible(hwnd: isize) -> i32;
@@ -530,24 +551,21 @@ mod ui_dialog_only_e2e {
         CHILD_HITS.with(|h| h.borrow_mut().clear());
         unsafe { EnumChildWindows(root, child_enum_cb, 0) };
         CHILD_HITS.with(|h| {
-            h.borrow()
-                .iter()
-                .copied()
-                .find(|&w| {
-                    if class_of(w) != want_class {
-                        return false;
-                    }
-                    match want_text {
-                        Some(t) => window_text(w).contains(t),
-                        None => true,
-                    }
-                })
+            h.borrow().iter().copied().find(|&w| {
+                if class_of(w) != want_class {
+                    return false;
+                }
+                match want_text {
+                    Some(t) => window_text(w).contains(t),
+                    None => true,
+                }
+            })
         })
     }
 
-    /// 驱动：找 #32770 → 深找文件名 Edit 设路径 → 真「打开」按钮 BM_CLICK；
-    /// 8s 未关则 WM_CLOSE 兜底（防挂死）。
-    fn drive(set_path: &str, ack: mpsc::Sender<bool>) {
+    /// 驱动：找 #32770 → 深找文件名 Edit 设路径 → 真「打开」按钮 BM_CLICK
+    /// （accept）或 WM_CLOSE 取消；8s 未关则 WM_CLOSE 兜底（防挂死）。
+    fn drive(set_path: &str, accept: bool, ack: mpsc::Sender<(bool, String)>) {
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
         let mut dlg = 0isize;
         while std::time::Instant::now() < deadline {
@@ -560,19 +578,26 @@ mod ui_dialog_only_e2e {
             std::thread::sleep(std::time::Duration::from_millis(40));
         }
         if dlg == 0 {
-            let _ = ack.send(false);
+            eprintln!("[plan804-uidiag] save-cancel driver: 15s 未找到 #32770");
+            let _ = ack.send((false, String::new()));
             return;
         }
         let edit = find_descendant(dlg, "Edit", None);
-        if let Some(edit) = edit {
-            let w: Vec<u16> = set_path.encode_utf16().chain(std::iter::once(0)).collect();
-            unsafe { SetWindowTextW(edit, w.as_ptr()) };
-        }
-        std::thread::sleep(std::time::Duration::from_millis(120));
-        let btn = find_descendant(dlg, "Button", Some("打开"));
-        if let Some(btn) = btn {
-            unsafe { PostMessageW(btn, BM_CLICK, 0, 0) };
+        let initial = edit.map(window_text);
+        if accept {
+            if let Some(edit) = edit {
+                let w: Vec<u16> = set_path.encode_utf16().chain(std::iter::once(0)).collect();
+                unsafe { SetWindowTextW(edit, w.as_ptr()) };
+            }
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            let btn = find_descendant(dlg, "Button", Some("打开"));
+            if let Some(btn) = btn {
+                unsafe { PostMessageW(btn, BM_CLICK, 0, 0) };
+            } else {
+                unsafe { PostMessageW(dlg, WM_CLOSE, 0, 0) };
+            }
         } else {
+            std::thread::sleep(std::time::Duration::from_millis(120));
             unsafe { PostMessageW(dlg, WM_CLOSE, 0, 0) };
         }
         let deadline2 = std::time::Instant::now() + std::time::Duration::from_secs(8);
@@ -583,10 +608,11 @@ mod ui_dialog_only_e2e {
             std::thread::sleep(std::time::Duration::from_millis(100));
         }
         if unsafe { IsWindow(dlg) } == 0 {
-            let _ = ack.send(true);
+            let _ = ack.send((true, initial.unwrap_or_default()));
         } else {
+            eprintln!("[plan804-uidiag] save-cancel driver: WM_CLOSE 后 8s 仍在");
             unsafe { PostMessageW(dlg, WM_CLOSE, 0, 0) };
-            let _ = ack.send(false);
+            let _ = ack.send((false, initial.unwrap_or_default()));
         }
     }
 
@@ -614,12 +640,13 @@ mod ui_dialog_only_e2e {
 
         let (tx, rx) = mpsc::channel();
         let path_str = pick.to_string_lossy().into_owned();
-        std::thread::spawn(move || drive(&path_str, tx));
+        std::thread::spawn(move || drive(&path_str, true, tx));
 
         let program = "let p = dialog_open(\" .at, 文件🎉 \")\nprint(p)\n";
-        let (result, stdout) = auto_lang::run_with_capture(program).expect("ui-dialog-only 高层入口成功");
+        let (result, stdout) =
+            auto_lang::run_with_capture(program).expect("ui-dialog-only 高层入口成功");
         let _ = result;
-        let found = rx.recv().expect("driver ack");
+        let (found, _) = rx.recv().expect("driver ack");
         assert!(found, "未找到/未驱动 #32770 模态");
         let line = stdout.lines().next().unwrap_or("");
         assert!(
@@ -630,6 +657,23 @@ mod ui_dialog_only_e2e {
         assert!(
             auto_lang::vm::host_capabilities::process_default_dialog_host_provider().is_some(),
             "高层入口经兼容安装补缺 dialog 默认槽"
+        );
+
+        // ── save 取消腿（合同 V04"两者取消"——真 save 模态 WM_CLOSE）──
+        let (tx2, rx2) = mpsc::channel();
+        std::thread::spawn(move || drive("", false, tx2));
+        let program2 = "let p = dialog_save(\"ui-dialog-only-取消🎉\")
+print(p)
+";
+        let (_r2, stdout2) = auto_lang::run_with_capture(program2).expect("save 高层入口成功");
+        let (found2, seeded) = rx2.recv().expect("driver ack 2");
+        assert!(found2, "save 取消模态未找到/未驱动");
+        let line2 = stdout2.lines().next().unwrap_or("");
+        assert_eq!(line2, "", "save 取消 = 空串（got {stdout2:?}）");
+        // save 对话框编辑框须预置默认名（真种子，非 fake）。
+        assert!(
+            seeded.contains("ui-dialog-only-取消🎉"),
+            "save 编辑框须预置默认文件名（got {seeded:?}）"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

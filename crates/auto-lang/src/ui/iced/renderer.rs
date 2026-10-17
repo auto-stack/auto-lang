@@ -35926,6 +35926,279 @@ mod tests {
         assert_eq!(dnd_finished_target(&mut ds), Some(app_b), "无锚回退焦点");
     }
 
+    /// PLAN-804 V05 App 层（F804-R1-02 修复）：真实 dispatch 链上完成事件
+    /// 送达**发起方 App**。链路各跳均为生产原函数：发起 = App handler 内
+    /// `bridge.call_handler`（VM shim → 真 provider → 真 DoDragDrop，
+    /// SendInput 合成按下+ESC 驱动真会话完成）；锚定 = dispatch 环代际
+    /// 比对（镜像 run_session DM::App 臂的 dnd_drag_generation 前后读 +
+    /// maybe_anchor_dnd_initiator）；消费 = 真完成通道
+    /// （take_finished_effect——session.rs DndFinishedRecipe 订阅的轮询源）
+    /// + DndFinished 臂原两步（dnd_finished_target + inject_native_event）。
+    /// 可区分控制：两 App 均带 on_dnd_finished handler、焦点在**他窗**——
+    /// 仅发起方收到（裸 VM 会话证据见 plan804_os_e2e dnd_e2e，两者互补
+    /// 不互替）。
+    #[test]
+    #[cfg(all(windows, feature = "native-dnd"))]
+    fn v05_dnd_finished_reaches_initiating_app_over_real_chain() {
+        if !std::env::var("AUTO_LANG_DND_E2E").map_or(false, |v| v == "1") {
+            eprintln!("skip: AUTO_LANG_DND_E2E != 1（真拖出实机档不进日常门）");
+            return;
+        }
+        use windows::Win32::Foundation::POINT;
+        use windows::Win32::UI::Input::KeyboardAndMouse::{
+            SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+            KEYEVENTF_KEYUP, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+            MOUSEEVENTF_MOVE, MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY, VK_ESCAPE,
+        };
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, DestroyWindow, GetCursorPos, GetSystemMetrics,
+            PeekMessageW, RegisterClassW, SetCursorPos, SetForegroundWindow, SetWindowPos,
+            ShowWindow, HWND_TOPMOST, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_NOMOVE, SWP_NOSIZE,
+            SW_SHOWNORMAL, WINDOW_STYLE, WNDCLASSW,
+        };
+
+        const APP_AT: &str = r#"widget DragApp {
+    msg Msg {
+        StartDrag,
+        on_dnd_finished(str),
+    }
+    model {
+        var finish str = "(none-yet)"
+        var started str = "(not)"
+    }
+    view { text "${.finish}" }
+    on {
+        .StartDrag -> {
+            let ok = dnd_start("{\"text\":\"plan804 App 链拖出🎉\"}")
+            .started = "ok=" + ok.str()
+        }
+        .on_dnd_finished(eff) -> {
+            .finish = "got:" + eff
+        }
+    }
+}
+"#;
+
+        fn str_state(
+            ds: &crate::ui::session::DesktopSession,
+            app: crate::ui::session::AppId,
+            field: &str,
+        ) -> String {
+            match ds
+                .apps
+                .get(&app)
+                .unwrap()
+                .component
+                .read_state(field)
+                .unwrap_or_else(|e| panic!("{field} 读回失败: {e}"))
+            {
+                auto_val::Value::Str(s) => s.to_string(),
+                other => panic!("{field} 应为 str: {other:?}"),
+            }
+        }
+
+        // 真会话 + 两 App（同源，均可收 on_dnd_finished）；焦点在干扰方。
+        let mut ds = t3_session_with_shell();
+        let add_drag_app = |ds: &mut crate::ui::session::DesktopSession, title: &str| {
+            let comp = crate::build_dynamic_component(APP_AT, None).unwrap();
+            let app = ds.allocate_app(comp);
+            ds.wm_add_win(
+                app,
+                title.to_string(),
+                iced::Rectangle::new(iced::Point::new(0.0, 0.0), iced::Size::new(200.0, 150.0)),
+            )
+        };
+        let initiator_wid = add_drag_app(&mut ds, "发起方🎉");
+        let other_wid = add_drag_app(&mut ds, "干扰方β");
+        ds.wm_focus(other_wid);
+        let app_of = |ds: &crate::ui::session::DesktopSession, wid: crate::ui::session::Wid| {
+            ds.host.as_ref().unwrap().wm.wins.get(&wid).unwrap().app
+        };
+        let (initiator, other) = (app_of(&ds, initiator_wid), app_of(&ds, other_wid));
+        assert_ne!(initiator, other, "两 App 可区分");
+
+        // 测试线程的真前台窗：合成键盘（ESC）按系统焦点路由——拖拽循环
+        // 所在线程必须有前台窗，否则 ESC 送往用户聚焦的他进程窗口、
+        // 会话永不收场（首版实录）。置顶+前台后复用 OS 档同款驱动形态。
+        let hmodule = unsafe {
+            windows::Win32::System::LibraryLoader::GetModuleHandleW(None).expect("hmodule")
+        };
+        let class_name: Vec<u16> = "auto_lang_plan804_app_chain"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        unsafe extern "system" fn sink_proc(
+            hwnd: windows::Win32::Foundation::HWND,
+            msg: u32,
+            wp: windows::Win32::Foundation::WPARAM,
+            lp: windows::Win32::Foundation::LPARAM,
+        ) -> windows::Win32::Foundation::LRESULT {
+            unsafe { DefWindowProcW(hwnd, msg, wp, lp) }
+        }
+        let wc = WNDCLASSW {
+            lpfnWndProc: Some(sink_proc),
+            hInstance: hmodule.into(),
+            lpszClassName: windows::core::PCWSTR(class_name.as_ptr()),
+            ..Default::default()
+        };
+        unsafe { RegisterClassW(&wc) };
+        let title: Vec<u16> = "plan804 App 链前台窗🎉"
+            .encode_utf16()
+            .chain(std::iter::once(0))
+            .collect();
+        let hinst: windows::Win32::Foundation::HINSTANCE = hmodule.into();
+        let fg_hwnd = unsafe {
+            CreateWindowExW(
+                Default::default(),
+                windows::core::PCWSTR(class_name.as_ptr()),
+                windows::core::PCWSTR(title.as_ptr()),
+                WINDOW_STYLE(0x00CF0000),
+                120,
+                160,
+                420,
+                280,
+                None,
+                None,
+                Some(&hinst),
+                None,
+            )
+            .expect("CreateWindowExW")
+        };
+        unsafe {
+            ShowWindow(fg_hwnd, SW_SHOWNORMAL);
+            let _ = SetWindowPos(fg_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            let _ = SetForegroundWindow(fg_hwnd);
+        }
+
+        // 驱动线程：合成按下 → ESC 取消 → **必发 LEFTUP**（真会话以
+        // DRAGDROP_S_CANCEL 收场，效果 none——取消即真完成，效果链完整
+        // 可断言）。看门狗：此后 20s 内每秒补发 ESC+LEFTUP 突发，会话在
+        // 任何输入丢失形态下都不可能挂死测试（已收场则多发无害——下一
+        // 会话尚未开始）。光标在会话断后由主线程复原。
+        let saved = {
+            let mut p = POINT::default();
+            let _ = unsafe { GetCursorPos(&mut p) };
+            p
+        };
+        let session_done = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let done_flag = session_done.clone();
+        std::thread::spawn(move || unsafe {
+            let send_mouse = |flags: MOUSE_EVENT_FLAGS, dx: i32, dy: i32| {
+                let input = INPUT {
+                    r#type: INPUT_MOUSE,
+                    Anonymous: INPUT_0 {
+                        mi: MOUSEINPUT {
+                            dx,
+                            dy,
+                            mouseData: 0,
+                            dwFlags: flags,
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+                let _ = SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+            };
+            let send_esc = |up: bool| {
+                let input = INPUT {
+                    r#type: INPUT_KEYBOARD,
+                    Anonymous: INPUT_0 {
+                        ki: KEYBDINPUT {
+                            wVk: VK_ESCAPE,
+                            wScan: 0,
+                            dwFlags: if up {
+                                KEYEVENTF_KEYUP
+                            } else {
+                                KEYBD_EVENT_FLAGS::default()
+                            },
+                            time: 0,
+                            dwExtraInfo: 0,
+                        },
+                    },
+                };
+                let _ = SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+            };
+            let w = GetSystemMetrics(SM_CXSCREEN) as i64;
+            let h = GetSystemMetrics(SM_CYSCREEN) as i64;
+            let ax = (200i64 * 65535 / (w - 1).max(1)) as i32;
+            let ay = (200i64 * 65535 / (h - 1).max(1)) as i32;
+            std::thread::sleep(std::time::Duration::from_millis(600));
+            send_mouse(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, ax, ay);
+            std::thread::sleep(std::time::Duration::from_millis(80));
+            send_mouse(MOUSEEVENTF_LEFTDOWN, 0, 0);
+            std::thread::sleep(std::time::Duration::from_millis(120));
+            send_esc(false);
+            std::thread::sleep(std::time::Duration::from_millis(40));
+            send_esc(true);
+            std::thread::sleep(std::time::Duration::from_millis(60));
+            send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
+            for _ in 0..20 {
+                std::thread::sleep(std::time::Duration::from_secs(1));
+                if done_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                send_esc(false);
+                send_esc(true);
+                send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
+            }
+        });
+
+        // dispatch 环（镜像 run_session DM::App 臂）：代际前读 → 真 handler
+        // 派发（内联阻塞过完整会话）→ 代际后读 + 锚定。
+        let gen_before = dnd_drag_generation();
+        {
+            let Some(sess) = ds.app_mut(initiator) else {
+                panic!("发起方 App 会话在册");
+            };
+            let _ = sess.component.bridge_mut().call_handler("StartDrag", &[]);
+        }
+        session_done.store(true, std::sync::atomic::Ordering::SeqCst);
+        let gen_after = dnd_drag_generation();
+        assert!(gen_after > gen_before, "handler 内真会话完成（代际推进）");
+        maybe_anchor_dnd_initiator(&mut ds, initiator, gen_before, gen_after);
+        assert_eq!(
+            ds.desktop.dnd_initiator,
+            Some(initiator),
+            "dispatch 环锚定发起方（焦点在干扰方）"
+        );
+        assert_eq!(
+            str_state(&ds, initiator, "started"),
+            "ok=true",
+            "发起 handler 内 dnd_start 返 true（执行过会话）"
+        );
+
+        // 完成消费（镜像 DndFinished 臂：真通道效果 → 目标解析 → 注入）。
+        let effect = crate::ui::native_dnd::win32::take_finished_effect()
+            .expect("真完成通道有本会话效果（订阅同源）");
+        assert_eq!(effect.as_str(), "none", "ESC 取消会话效果 = none");
+        let target = dnd_finished_target(&mut ds).expect("交付目标=锚定发起方");
+        assert_eq!(target, initiator, "锚定优先于完成时焦点（焦点在干扰方）");
+        inject_native_event(
+            &mut ds,
+            target,
+            "on_dnd_finished",
+            &[auto_val::Value::str("none")],
+        );
+
+        // 发起方收到、干扰方未收到（可区分控制）。
+        assert_eq!(
+            str_state(&ds, initiator, "finish"),
+            "got:none",
+            "发起方 on_dnd_finished 真实送达"
+        );
+        assert_eq!(
+            str_state(&ds, other, "finish"),
+            "(none-yet)",
+            "焦点所在的干扰方未收到完成事件"
+        );
+        // 锚定一次性（取走后无残留）。
+        assert_eq!(ds.desktop.dnd_initiator, None, "锚定消费即取走");
+        let _ = unsafe { SetCursorPos(saved.x, saved.y) };
+        unsafe {
+            let _ = DestroyWindow(fg_hwnd);
+        }
+    }
+
     #[test]
     fn switcher_summon_advance_confirm_roundtrip() {
         let mut ds = t3_session_with_shell();

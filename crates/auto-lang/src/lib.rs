@@ -488,7 +488,7 @@ fn install_ui_host_capabilities() {
         crate::ui::dnd_host_provider::install_process_default();
     }
     // PLAN-804: dialog adapter（host_adapters 落点，ui-dialog 单门控——
-    /// 与 ui renderer 门无关，ui-dialog-only 形态同装）。
+    // 与 ui renderer 门无关，ui-dialog-only 形态同装）。
     #[cfg(feature = "ui-dialog")]
     crate::host_adapters::dialog::install_process_default();
 }

@@ -240,7 +240,7 @@ mod plan804_dialog_dnd {
         assert!(!auto_val_decode_bool(task.ram.pop_nv()), "dnd 缺席 false");
 
         // 反向：dnd 在位（本 VM）、dialog 覆盖为缺席不可行（set 无 None
-        /// 面）——用第二 VM 验证仅 dnd 在位时 dialog 报缺席错误。
+        // 面）——用第二 VM 验证仅 dnd 在位时 dialog 报缺席错误。
         let vm2 = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 256);
         let dnd = FakeDnd::new(true);
         vm2.set_dnd_host_provider(dnd.clone());

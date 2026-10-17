@@ -34,14 +34,6 @@ mod dialog_e2e {
     // ── 原始 user32/kernel32 extern（ui-dialog-only 构建无 windows crate
     //    依赖——与 host_adapters::dialog::dialog_parent 同款纪律）─────────
     #[repr(C)]
-    struct Rect {
-        left: i32,
-        top: i32,
-        right: i32,
-        bottom: i32,
-    }
-
-    #[repr(C)]
     struct WndClassW {
         style: u32,
         wndproc: Option<unsafe extern "system" fn(isize, u32, usize, isize) -> isize>,
@@ -91,8 +83,6 @@ mod dialog_e2e {
         fn EnumWindows(cb: extern "system" fn(isize, isize) -> i32, lparam: isize) -> i32;
         fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
         fn GetClassNameW(hwnd: isize, buf: *mut u16, max: i32) -> i32;
-        fn FindWindowExW(parent: isize, after: isize, class: *const u16, name: *const u16)
-            -> isize;
         fn SetWindowTextW(hwnd: isize, text: *const u16) -> i32;
         fn GetWindowTextW(hwnd: isize, buf: *mut u16, max: i32) -> i32;
         fn GetWindowTextLengthW(hwnd: isize) -> i32;
@@ -231,59 +221,14 @@ mod dialog_e2e {
             std::thread::Builder::new()
                 .name("plan804-e2e-owner".into())
                 .spawn(move || {
-                    let class_name = wide("auto_lang_plan804_e2e_owner");
-                    let wc = WndClassW {
-                        style: 0,
-                        wndproc: Some(test_wndproc),
-                        cls_extra: 0,
-                        wnd_extra: 0,
-                        inst: 0,
-                        icon: 0,
-                        cursor: 0,
-                        background: 0,
-                        menu_name: std::ptr::null(),
-                        class_name: class_name.as_ptr(),
-                    };
-                    let atom = unsafe { RegisterClassW(&wc) };
-                    assert_ne!(atom, 0, "RegisterClassW(owner) failed");
-                    let title_w = wide("plan804-e2e 共享父窗🎉");
-                    let hwnd = unsafe {
-                        CreateWindowExW(
-                            0,
-                            class_name.as_ptr(),
-                            title_w.as_ptr(),
-                            0x00CF0000, // WS_OVERLAPPEDWINDOW
-                            80,
-                            80,
-                            480,
-                            320,
-                            0,
-                            0,
-                            0,
-                            std::ptr::null_mut(),
-                        )
-                    };
-                    assert_ne!(hwnd, 0, "CreateWindowExW(owner) failed");
-                    unsafe { ShowWindow(hwnd, SW_SHOWNORMAL) };
-                    let _ = tx.send(hwnd);
-                    // 永泵（进程期）：owner 窗响应绘制/启用态流转。
+                    // 线程持有 OwnWindow 不 drop——线程永不退出即窗口全进程
+                    // 存活（与 dialog_parent 的 HWND OnceLock 同寿命）。
+                    let w = OwnWindow::create("plan804-e2e 共享父窗🎉");
+                    let _ = tx.send(w.hwnd);
+                    // 永泵（进程期）：owner 窗响应绘制/启用态流转；loop
+                    // 不返回 = w 永不 drop = 窗口与 OnceLock 缓存同寿命。
                     loop {
-                        let mut msg = Msg {
-                            hwnd: 0,
-                            message: 0,
-                            wparam: 0,
-                            lparam: 0,
-                            time: 0,
-                            pt_x: 0,
-                            pt_y: 0,
-                        };
-                        unsafe {
-                            while PeekMessageW(&mut msg, 0, 0, 0, PM_REMOVE) != 0 {
-                                TranslateMessage(&msg);
-                                DispatchMessageW(&msg);
-                            }
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        pump_for(std::time::Duration::from_secs(1));
                     }
                 })
                 .expect("spawn owner thread");
@@ -318,8 +263,8 @@ mod dialog_e2e {
         })
     }
 
-    fn IsWindow_(hwnd: isize) -> i32 {
-        unsafe { IsWindow(hwnd) }
+    fn is_window_alive(hwnd: isize) -> bool {
+        unsafe { IsWindow(hwnd) != 0 }
     }
 
     /// 驱动参数：定位本进程（tid==0 时任意线程）的可见 #32770 模态 →
@@ -429,12 +374,12 @@ mod dialog_e2e {
             // 以清晰断言失败替代挂死（300s 停滞不再可能）。
             let deadline2 = std::time::Instant::now() + std::time::Duration::from_secs(8);
             while std::time::Instant::now() < deadline2 {
-                if unsafe { IsWindow_(dlg) } == 0 {
+                if !is_window_alive(dlg) {
                     break;
                 }
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
-            if unsafe { IsWindow_(dlg) } != 0 {
+            if is_window_alive(dlg) {
                 unsafe { PostMessageW(dlg, WM_CLOSE, 0, 0) };
             }
         } else {
@@ -542,6 +487,27 @@ mod dialog_e2e {
         assert!(dlg3 != 0, "cancel 模态未找到");
         assert_eq!(got_cancel, "", "取消 = 空串（值语义非错误）");
 
+        // ── save：取消 = 空串（合同 V04"两者取消"——真实 save 模态取消，
+        // 非 fake 返回）──
+        let (tx4, rx4) = mpsc::channel();
+        let spec = DriveSpec {
+            caller_thread: unsafe { GetCurrentThreadId() },
+            set_path: None,
+            accept: false,
+            accept_label: "保存",
+            timeout: std::time::Duration::from_secs(10),
+        };
+        let driver = std::thread::spawn(move || drive_dialog(spec, tx4));
+        let got_save_cancel = provider.save("取消场景默认名🎉.txt");
+        let (dlg4, initial4, _) = rx4.recv().expect("driver ack 4");
+        driver.join().unwrap();
+        assert!(dlg4 != 0, "save cancel 模态未找到");
+        assert!(
+            initial4.contains("取消场景默认名🎉"),
+            "save 取消腿同样验证默认名种子（got {initial4:?}）"
+        );
+        assert_eq!(got_save_cancel, "", "save 取消 = 空串（值语义非错误）");
+
         // 模态后父窗可用（Plan 428：owner 不被遗留禁用）。
         assert!(
             unsafe { IsWindowEnabled(own_hwnd) } != 0,
@@ -604,8 +570,10 @@ mod dialog_e2e {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// V-04(c) a2r 旧路径（unparented）：真模态 owner == 0（F1 缝诚实
-    /// 保留）+ 混合 filter 接受。
+    /// V-04(c) a2r 旧路径（unparented）：经保留的 `ui::dialog` 门面开真模态，
+    /// **存活期** owner == 0（F804-R1-01：销毁后读 GW_OWNER 恒 0 无法区分
+    /// 策略——owner 断言一律用 driver 存活期采集值；与 v04_1 的
+    /// owner==我方窗 正控成对，错误策略会被双向拒绝）。
     #[test]
     fn v04_3_unparented_a2r_path_has_no_owner() {
         if !env_gate() {
@@ -625,12 +593,14 @@ mod dialog_e2e {
             timeout: std::time::Duration::from_secs(10),
         };
         let driver = std::thread::spawn(move || drive_dialog(spec, tx));
-        let got = crate::host_adapters::dialog::unparented_open(" .at ;md\tpng");
-        let (dlg, _, _) = rx.recv().expect("driver ack");
+        let got = crate::ui::dialog::open(" .at ;md\tpng");
+        let (dlg, _, live_owner) = rx.recv().expect("driver ack");
         driver.join().unwrap();
         assert!(dlg != 0, "模态未找到");
-        let owner = unsafe { GetWindow(dlg, GW_OWNER) };
-        assert_eq!(owner, 0, "unparented（a2r 旧策略）：对话框不得有 owner");
+        assert_eq!(
+            live_owner, 0,
+            "unparented（a2r 旧策略）：存活期对话框不得有 owner"
+        );
         assert!(
             same_path(&got, &pick.to_string_lossy()),
             "a2r 路径返回所选路径（got {got:?}）"
@@ -684,9 +654,7 @@ mod dnd_e2e {
 
     use windows::core::implement;
     use windows::Win32::Foundation::{POINT, POINTL};
-    use windows::Win32::System::Com::{
-        IDataObject, DVASPECT_CONTENT, FORMATETC, STGMEDIUM, TYMED_HGLOBAL,
-    };
+    use windows::Win32::System::Com::{IDataObject, DVASPECT_CONTENT, FORMATETC, TYMED_HGLOBAL};
     use windows::Win32::System::DataExchange::RegisterClipboardFormatW;
     use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
     use windows::Win32::System::Ole::{
@@ -704,8 +672,8 @@ mod dnd_e2e {
     use windows::Win32::UI::WindowsAndMessaging::{
         CreateWindowExW, DefWindowProcW, DestroyWindow, GetCursorPos, GetSystemMetrics,
         GetWindowRect, PeekMessageW, RegisterClassW, SetCursorPos, SetWindowPos, ShowWindow,
-        HWND_TOPMOST, PM_REMOVE, SM_CXSCREEN, SM_CYSCREEN, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNORMAL,
-        WINDOW_STYLE, WNDCLASSW,
+        HWND_TOPMOST, PM_REMOVE, SM_CXSCREEN, SM_CXVIRTUALSCREEN, SM_CYSCREEN, SM_CYVIRTUALSCREEN,
+        SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNORMAL, WINDOW_STYLE, WNDCLASSW,
     };
 
     const CF_UNICODETEXT_U16: u16 = 13;
@@ -963,7 +931,9 @@ mod dnd_e2e {
     }
 
     /// 驱动线程：等待 → 移至 (x,y) → 按下 → 拖动微移 → 释放（或 ESC 取消）。
-    fn drive_drag(x: i32, y: i32, cancel: bool) {
+    /// ：本会话结束旗标（测试侧 shim 返回后置位）——看门狗
+    /// 突发随它停止，不误杀同测试的后续会话。
+    fn drive_drag(x: i32, y: i32, cancel: bool, session_done: std::sync::Arc<AtomicBool>) {
         std::thread::sleep(std::time::Duration::from_millis(600));
         let (ax, ay) = to_absolute(x, y);
         send_mouse(MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE, ax, ay);
@@ -979,7 +949,17 @@ mod dnd_e2e {
             send_key(VK_ESCAPE, false);
             std::thread::sleep(std::time::Duration::from_millis(30));
             send_key(VK_ESCAPE, true);
-        } else {
+        }
+        send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
+        // 看门狗突发（panic 中断主测时注入态不残留系统）：会话旗标置位
+        // （正常收场）即停；至多 20s。
+        for _ in 0..20 {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            if session_done.load(Ordering::SeqCst) {
+                break;
+            }
+            send_key(VK_ESCAPE, false);
+            send_key(VK_ESCAPE, true);
             send_mouse(MOUSEEVENTF_LEFTUP, 0, 0);
         }
     }
@@ -1003,16 +983,25 @@ mod dnd_e2e {
             };
             unsafe { RegisterClassW(&wc) };
             let title = wide("plan804 拖出接收窗🎉");
+            // 全屏置顶接收窗：活桌面可能有其他置顶窗抢落点（实录：DragEnter
+            // 命中而 Drop 被他窗吞）——全屏覆盖使任何释放位置都落本目标，
+            // oracle 确定性不再依赖桌面瞬时 z 序（无框全屏，五会话约 5s）。
+            let (sw, sh) = unsafe {
+                (
+                    GetSystemMetrics(SM_CXVIRTUALSCREEN).max(200),
+                    GetSystemMetrics(SM_CYVIRTUALSCREEN).max(200),
+                )
+            };
             let hwnd = unsafe {
                 CreateWindowExW(
                     Default::default(),
                     windows::core::PCWSTR(class_name.as_ptr()),
                     windows::core::PCWSTR(title.as_ptr()),
-                    WINDOW_STYLE(0x00CF0000), // WS_OVERLAPPEDWINDOW
-                    120,
-                    160,
-                    420,
-                    280,
+                    WINDOW_STYLE(0x80000000), // WS_POPUP（无框全屏）
+                    0,
+                    0,
+                    sw,
+                    sh,
                     None,
                     None,
                     Some(&hinst),
@@ -1021,7 +1010,7 @@ mod dnd_e2e {
                 .expect("CreateWindowExW")
             };
             unsafe {
-                ShowWindow(hwnd, SW_SHOWNORMAL);
+                let _ = ShowWindow(hwnd, SW_SHOWNORMAL);
                 // 证据窗置顶+前台（防桌面遮挡/焦点他窗吃掉合成输入）。
                 let _ = SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
                 let _ = windows::Win32::UI::WindowsAndMessaging::SetForegroundWindow(hwnd);
@@ -1099,9 +1088,27 @@ mod dnd_e2e {
             crate::ui::dnd_host_provider::UiDndHostProvider,
         ));
 
+        // 输入清洁门：活桌面并发用户输入会 interleaved（实录：用户按住
+        // 鼠标时 SEEN 提前置位、释放即提前终止会话）——启动前等待异步
+        // 键态无按下（左/右键/ESC，至多 10s）。
+        fn wait_clean_input() {
+            use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            loop {
+                let held = [0x01u16, 0x02, 0x1B]
+                    .iter()
+                    .any(|&vk| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0);
+                if !held || std::time::Instant::now() > deadline {
+                    return;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(100));
+            }
+        }
+
         // 单会话：重置记录 → spawn 驱动 → shim 内联阻塞至会话结束 →
         // 返回 shim 的 Bool 出口 + Drop 完成旗标。光标每会话复原。
         let run_session = |payload_json: &str, cancel: bool| -> bool {
+            wait_clean_input();
             DROP_DONE.store(false, Ordering::SeqCst);
             *RECORD.lock().unwrap() = None;
             let saved = {
@@ -1109,11 +1116,14 @@ mod dnd_e2e {
                 let _ = unsafe { GetCursorPos(&mut p) };
                 p
             };
-            std::thread::spawn(move || drive_drag(cx, cy, cancel));
+            let done_flag = std::sync::Arc::new(AtomicBool::new(false));
+            let flag_for_driver = done_flag.clone();
+            std::thread::spawn(move || drive_drag(cx, cy, cancel, flag_for_driver));
             let mut task = AutoTask::new(0, 512, 0);
             let idx = vm.add_string(payload_json.as_bytes().to_vec());
             vm.rc_push_str_idx(&mut task, idx);
             shim_dnd_start(&mut task, &vm).expect("shim 成功");
+            done_flag.store(true, Ordering::SeqCst);
             let ok = auto_val::decode_bool(task.ram.pop_nv());
             let _ = unsafe { SetCursorPos(saved.x, saved.y) };
             ok
