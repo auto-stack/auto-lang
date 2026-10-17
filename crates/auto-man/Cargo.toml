@@ -26,6 +26,11 @@ auto-package-resolver = { path = "../auto-package-resolver" }
 # planning — asset.rs is the compat facade (Auto eval + file IO adapter)
 # delegating to this crate.
 auto-man-assets = { path = "../auto-man-assets" }
+# PLAN-805: toolchain config model / flag mapping / command template core —
+# builder/ninja/{config,mapper,templates}.rs are thin re-export facades over
+# this crate; am.at loading (CompilerStore), PATH/disk/process resolution
+# (CompilerResolver) and Ninja execution (NinjaBuilder) stay here.
+auto-toolchain-core = { path = "../auto-toolchain-core" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
 blake3 = { workspace = true }  # Plan 134: File hashing utilities

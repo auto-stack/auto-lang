@@ -77,6 +77,31 @@ AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析�
   auto-man（gallery/wm 由 vue/画廊栈消费，shadcn-ui 被 auto-lang
   ui_gen 契约锚定）。
 
+## 工具链规则核心抽取分工（PLAN-805）
+
+工具链配置模型/flag 映射/四命令模板的单一定义在
+`crates/auto-toolchain-core`（见
+[auto-toolchain-core spec](../auto-toolchain-core/project.md)）；
+`builder/ninja/{config,mapper,templates}.rs` 是薄 re-export 门面
+（同一类型身份，旧公开路径 `builder::ninja::*` 与根 re-export 不变）：
+
+- **adapter 职责**（留在 auto-man）：`CompilerStore` 动态 am.at 加载
+  （AutoConfig 解析/坏节点 warn 跳过/缺文件空 store）、
+  `CompilerResolver` PATH/磁盘/进程观测与 MSVC 同目录优先、
+  `NinjaBuilder` 生产编排（FlagMapper/CommandTemplates 真实消费 +
+  `quote_if_spaced` + ninja 执行）。
+- **行为冻结**：八类默认/alias 口径/`map_output` 尾缀语义/render
+  次序与占位符保留，按基线 `282e50053` 旧臂 16 件 golden 逐字节冻结
+  （`tests/plan805_toolchain_parity.rs`；类型同一性
+  `tests/plan805_type_identity.rs`）。
+- **遗留缺口如实入账**（非 805 引入，未随抽取修复）：
+  `CompilerStore::load_from_am_config` 以 `get_kid(Str("compilers"))`
+  找节点，而解析器对文档形 kids 产位置 Int 键——现行 am.at 文档形态
+  下加载器恒空载（golden `compiler_store.txt` 冻结该三态行为；修复
+  另立计划，见 KNOWN-DEBT P805-D1）。
+- 不属本抽取：Target/Pac/构建 DAG、Cargo/Vue 生成器、模板资产
+  （PLAN-803 资源与本文的内联命令模板是两个不相交概念）。
+
 ## 依赖解析核心抽取分工（PLAN-800）
 
 已解析依赖视图与模块路径规则的单一定义在 `crates/auto-package-resolver`
@@ -252,7 +277,7 @@ graph LR
 | automan | 核心编排：命令分发、工程上下文 | active |
 | pac | pac.at 包定义解析与模型 | active |
 | resolver | 依赖解析（ModuleResolver trait 实现；PLAN-800 起为语言 adapter——ExecutionMode/pac.at 行扫描/trait 接线留此，路径规则单一定义在 auto-package-resolver，见上节） | active |
-| builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号 | active |
+| builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号；**PLAN-805 起 config/mapper/templates 为薄 re-export 门面**——工具链规则单一定义在 crates/auto-toolchain-core（见上节），本模块保 am.at 加载/定位/执行 adapter | active |
 | exporter | IDE 工程导出：cmake / ghs / iar | active |
 | git / index / lock / pull | 依赖获取、注册索引、锁文件（PLAN-795 起 lock 为 Target/Git adapter+兼容门面，规则单一定义在 auto-package-lock，见上节） | active |
 | scanner / target / dir / cache | 工程扫描、target 目录管理、本地缓存 | active |

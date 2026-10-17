@@ -1,0 +1,4 @@
+valid_doc_names_empty=true
+valid_doc_has_mygcc=false
+bad_syntax_is_err=true
+missing_names_empty=true

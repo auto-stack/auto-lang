@@ -152,6 +152,7 @@
 | auto-package-lock | active | 3 | [package-lock/project.md](package-lock/project.md) |
 | auto-package-resolver | active | 1 | [package-resolver/project.md](package-resolver/project.md) |
 | auto-man-assets | active | 0 | [auto-man-assets/project.md](auto-man-assets/project.md) |
+| auto-toolchain-core | active | 4 | [auto-toolchain-core/project.md](auto-toolchain-core/project.md) |
 
 <details><summary>auto-cli 模块明细</summary>
 
@@ -178,7 +179,7 @@
 | automan | 核心编排：命令分发、工程上下文 | active |
 | pac | pac.at 包定义解析与模型 | active |
 | resolver | 依赖解析（ModuleResolver trait 实现；PLAN-800 起为语言 adapter——ExecutionMode/pac.at 行扫描/trait 接线留此，路径规则单一定义在 auto-package-resolver，见上节） | active |
-| builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号 | active |
+| builder | 构建调度：cargo / ninja / tool / vue 后端；ninja 后端 `finish()` 经 `builder/ninja/runner.rs` 探测链解析宿主（Plan 580：`AUTO_NINJA` env 覆盖 → PATH `ninja(.exe)` → PATH `n2(.exe)`（ninja 原作者 Rust 重实现，兜底 `cargo install --locked --git` 钉 rev `b1fead52`）→ 全无返回含两条手动安装路径的 Err），构建非零退出上抛 Err（不再吞状态/spawn panic）；resolver 对 MSVC Linker/Archiver 同目录优先（编译器定位目录下 link.exe/lib.exe 先于 PATH，避免 Git coreutils link.exe 抢先），`setup()` 四工具路径含空格加引号；**PLAN-805 起 config/mapper/templates 为薄 re-export 门面**——工具链规则单一定义在 crates/auto-toolchain-core（见上节），本模块保 am.at 加载/定位/执行 adapter | active |
 | exporter | IDE 工程导出：cmake / ghs / iar | active |
 | git / index / lock / pull | 依赖获取、注册索引、锁文件（PLAN-795 起 lock 为 Target/Git adapter+兼容门面，规则单一定义在 auto-package-lock，见上节） | active |
 | scanner / target / dir / cache | 工程扫描、target 目录管理、本地缓存 | active |
@@ -295,6 +296,17 @@
 | 模块 | 职责 | 状态 |
 |---|---|---|
 | lib | DependencyEntry/PackagePathNotFound/PackageResolverCore + 全部路径规则 | active |
+
+</details>
+
+<details><summary>auto-toolchain-core 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| 入口 | 覆盖 |  |
+| `cargo test -p auto-toolchain-core` | 38 单测 + 6 doc 测试（随迁移的纯测试） |  |
+| `cargo test -p auto-man --test plan805_type_identity` | 旧路径↔新 crate 类型同一性（V02） |  |
+| `bash test/fixtures/modularity/toolchain-core-consumer/verify-deps.sh` | normal/build 闭包无语言栈（V01 oracle） |  |
 
 </details>
 

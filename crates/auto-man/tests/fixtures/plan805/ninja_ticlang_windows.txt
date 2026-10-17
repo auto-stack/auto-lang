@@ -1,0 +1,42 @@
+# ninja build file for plan805-probe with ticlang compiler
+
+# includes
+includes = -I../include -I../路径 中文
+
+# defines
+defines = -DDEBUG=1 -DVERSION=2
+
+# cflags
+cflags = -Oz -Wall
+
+# rules
+rule as
+    command = C:/__plan805_probe__/tc/tiarmclang.exe -I../include -I../路径 中文 -Oz -Wall -o$out $in
+    description = Assembling $in
+
+rule cc
+    command = C:/__plan805_probe__/tc/tiarmclang.exe -c -I../include -I../路径 中文 -DDEBUG=1 -DVERSION=2 -Oz -Wall -o$out $in
+    description = Compiling $in
+
+rule link
+    command = C:/__plan805_probe__/tc/tiarmclang.exe -o$out $in $ldflags $libs
+    description = Linking $out
+
+rule lib
+    command = C:/__plan805_probe__/tc/tiarmar.exe rcs $out $in
+    description = Building library $out
+
+# build objects for target app
+build main.o: cc ../src/main.c
+# target executable
+build app.exe: link main.o
+# build objects for target math
+build math.o: cc ../math/math.c
+# target library
+build math.lib: lib math.o
+
+# build objects for target t
+build test.o: cc ../t/test.c
+# target executable
+build t.exe: link test.o
+

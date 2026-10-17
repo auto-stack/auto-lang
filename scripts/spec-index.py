@@ -17,7 +17,7 @@ GROUPS = {
     "工具链": ["auto-cli", "auto-man", "auto-gen", "auto-lsp", "auto-vm",
                "auto-cache", "auto-bindgen", "auto-macros", "shim-metadata",
                "auto-gen-core", "package-lock", "package-resolver",
-               "auto-man-assets"],
+               "auto-man-assets", "auto-toolchain-core"],
     "UI/Web 生态": ["auto-playground", "widgets", "forge-ui", "lab-ui",
                     "playground-vue", "website", "blueprint", "autoui-skill"],
     "外围/验证": ["parity", "a2r-actor-tests"],

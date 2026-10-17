@@ -1,0 +1,5 @@
+prefix=-Iinc dir
+postfix=my lib.lib
+both=/Foout put.obj
+unicode=-I路径/中文 目录
+value_with_hole=[a{}b]

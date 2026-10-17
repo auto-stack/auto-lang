@@ -1,0 +1,128 @@
+== msvc ==
+kind=msvc
+name=msvc
+exec[ar]=lib.exe
+exec[as]=ml64.exe
+exec[cc]=cl.exe
+exec[link]=link.exe
+flags.include=/Iv
+flags.define=/Dv
+flags.library=v.lib
+flags.library_path=/LIBPATH:v
+flags.output=/Fov.obj
+flags.compile_only=/c
+default_cflags=/O2 /W3 /MD
+obj_ext=.obj exe_ext=.exe
+location=Env
+== gcc ==
+kind=gcc
+name=gcc
+exec[ar]=ar.exe
+exec[as]=as.exe
+exec[cc]=gcc.exe
+exec[link]=gcc.exe
+flags.include=-Iv
+flags.define=-Dv
+flags.library=-lv
+flags.library_path=-Lv
+flags.output=-ov
+flags.compile_only=-c
+default_cflags=-O2 -Wall
+obj_ext=.o exe_ext=
+location=Env
+== clang ==
+kind=clang
+name=clang
+exec[ar]=ar.exe
+exec[as]=clang.exe
+exec[cc]=clang.exe
+exec[link]=clang.exe
+flags.include=-Iv
+flags.define=-Dv
+flags.library=-lv
+flags.library_path=-Lv
+flags.output=-ov
+flags.compile_only=-c
+default_cflags=-O2 -Wall
+obj_ext=.o exe_ext=
+location=Env
+== ghs ==
+kind=ghs
+name=ghs
+exec[ar]=cxarm.exe
+exec[as]=asarm.exe
+exec[cc]=ccarm.exe
+exec[link]=ccarm.exe
+flags.include=-Iv
+flags.define=-Dv
+flags.library=-lv
+flags.library_path=-Lv
+flags.output=-ov
+flags.compile_only=-c
+default_cflags=-O -g
+obj_ext=.o exe_ext=
+location=Env
+== iar ==
+kind=iar
+name=iar
+exec[ar]=iarchive.exe
+exec[as]=iasmarm.exe
+exec[cc]=iccarm.exe
+exec[link]=ilinkarm.exe
+flags.include=-Iv
+flags.define=-Dv
+flags.library=-lv
+flags.library_path=-Lv
+flags.output=-ov
+flags.compile_only=--debug
+default_cflags=--no_cse --no_unroll --no_inline --no_code_motion --no_tbaa --no_clustering --no_scheduling --debug --endian=little --cpu=Cortex-M4 -e --fpu=VFPv4_sp
+obj_ext=.o exe_ext=
+location=Env
+== targeting ==
+kind=targeting
+name=targeting
+exec[ar]=tlib.exe
+exec[as]=tas.exe
+exec[cc]=tcpp.exe
+exec[link]=tlink.exe
+flags.include=-Iv
+flags.define=-Dv
+flags.library=-lv
+flags.library_path=-Lv
+flags.output=-ov
+flags.compile_only=-c
+default_cflags=-O2 -Wall
+obj_ext=.o exe_ext=
+location=Env
+== hightec ==
+kind=hightec
+name=hightec
+exec[ar]=ar.exe
+exec[as]=as.exe
+exec[cc]=gcc.exe
+exec[link]=gcc.exe
+flags.include=-Iv
+flags.define=-Dv
+flags.library=-lv
+flags.library_path=-Lv
+flags.output=-ov
+flags.compile_only=-c
+default_cflags=-O2 -Wall
+obj_ext=.o exe_ext=
+location=Env
+== ticlang ==
+kind=ticlang
+name=ticlang
+exec[ar]=tiarmar.exe
+exec[as]=tiarmclang.exe
+exec[cc]=tiarmclang.exe
+exec[link]=tiarmclang.exe
+flags.include=-Iv
+flags.define=-Dv
+flags.library=-lv
+flags.library_path=-Lv
+flags.output=-ov
+flags.compile_only=-c
+default_cflags=-Oz -Wall
+obj_ext=.o exe_ext=
+location=Env

@@ -50,6 +50,11 @@ members = [
     # path planning, extracted language-free from auto-man asset.rs
     # (rust-embed resources; auto-man keeps the Auto-eval/IO adapter).
     "crates/auto-man-assets",
+    # PLAN-805: toolchain config model / flag mapping / command template
+    # core, extracted verbatim from auto-man builder/ninja
+    # (config.rs/mapper.rs/templates.rs); auto-man keeps the am.at loading,
+    # PATH/disk/process resolution and Ninja execution as upper layers.
+    "crates/auto-toolchain-core",
     "crates/auto-lsp",
     "crates/auto-val",
     # PLAN-036 T-02: shell pack a2r 生成物（无窗组件库——入库=真编译门）
@@ -147,6 +152,12 @@ exclude = [
     # 依赖），门禁经
     # cargo test --manifest-path test/fixtures/modularity/man-assets-consumer/Cargo.toml
     "test/fixtures/modularity/man-assets-consumer",
+    # PLAN-805: 外部工具链规则核心消费方探针——独立 fixture crate（唯一依赖
+    # auto-toolchain-core，证明八类配置/flag 映射/命令模板无 auto-lang/
+    # auto-man/auto-gen/VM/UI/AST 闭包可用；auto-val 为合法数据层），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/toolchain-core-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/toolchain-core-consumer/verify-deps.sh
+    "test/fixtures/modularity/toolchain-core-consumer",
     # PLAN-793: 外部诊断消费方探针——独立 fixture crate（仅依赖
     # auto-diagnostics/auto-lex/miette，证明诊断基础无 auto-lang/Man/UI
     # 闭包可用），门禁经

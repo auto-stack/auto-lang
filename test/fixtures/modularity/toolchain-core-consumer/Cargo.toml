@@ -1,0 +1,31 @@
+# PLAN-805 工具链规则核心消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-toolchain-core 的公开面
+# （CompilerKind/ExecutableType/FlagFormat/FlagMappings/CompilerLocation/
+# CompilerConfig/FlagMapper/CommandTemplates），证明八类工具链配置、
+# flag 映射与四命令模板可被无 auto-lang/auto-man/auto-gen/auto-ui/
+# auto-vm/auto-ast 的外部 consumer 编译并运行（AC-01/V01；auto-val 是
+# 规则模型的合法数据类型层，允许出现在闭包内）。
+#
+# 闭包证明 = 本 manifest 的依赖表 + verify-deps.sh（cargo tree 断言
+# normal/build 闭包无 auto-lang/auto-man/auto-gen/auto-ui/auto-vm/
+# auto-ast）。
+#
+# 显式脱离根 workspace：本目录在根 Cargo.toml exclude 内，且此处空
+# [workspace] 表使其成为独立解析单元。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/toolchain-core-consumer/Cargo.toml
+# 依赖闭包断言（V01 oracle）：
+#   bash test/fixtures/modularity/toolchain-core-consumer/verify-deps.sh
+
+[package]
+name = "toolchain-core-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-toolchain-core = { path = "../../../../crates/auto-toolchain-core" }
+
+# 独立 workspace（见上）；无锁文件、无成员。测试纯内存规则消费，
+# 不做 PATH/磁盘/进程观测（那些留 auto-man 上层）。
+[workspace]

@@ -1,0 +1,40 @@
+== msvc ==
+compile={cc} {compile_only} {includes} {defines} {cflags} /Fo{output} {input}
+assemble={as} {includes} {aflags} /Fo{output} {input}
+link={link} /OUT:{output} {input} {ldflags} {libs}
+archive={ar} /OUT:{output} {input}
+== gcc ==
+compile={cc} {compile_only} {includes} {defines} {cflags} -o{output} {input}
+assemble={as} {includes} {aflags} -o{output} {input}
+link={link} -o{output} {input} {ldflags} {libs}
+archive={ar} rcs {output} {input}
+== clang ==
+compile={cc} {compile_only} {includes} {defines} {cflags} -o{output} {input}
+assemble={as} {includes} {aflags} -o{output} {input}
+link={link} -o{output} {input} {ldflags} {libs}
+archive={ar} rcs {output} {input}
+== ghs ==
+compile={cc} {compile_only} {includes} {defines} {cflags} -o{output} {input}
+assemble={as} {includes} {aflags} -o{output} {input}
+link={link} -o{output} {input} {ldflags} {libs}
+archive={ar} -r {output} {input}
+== iar ==
+compile={cc} {includes} {defines} {cflags} --debug -o{output} {input}
+assemble={as} {includes} {aflags} -o{output} {input}
+link={link} -o{output} {input} {ldflags} {libs}
+archive={ar} -o{output} {input}
+== targeting ==
+compile={cc} {compile_only} {includes} {defines} {cflags} -o{output} {input}
+assemble={as} {includes} {aflags} -o{output} {input}
+link={link} -o{output} {input} {ldflags} {libs}
+archive={ar} -r {output} {input}
+== hightec ==
+compile={cc} {compile_only} {includes} {defines} {cflags} -o{output} {input}
+assemble={as} {includes} {aflags} -o{output} {input}
+link={link} -o{output} {input} {ldflags} {libs}
+archive={ar} rcs {output} {input}
+== ticlang ==
+compile={cc} {compile_only} {includes} {defines} {cflags} -o{output} {input}
+assemble={as} {includes} {aflags} -o{output} {input}
+link={link} -o{output} {input} {ldflags} {libs}
+archive={ar} rcs {output} {input}

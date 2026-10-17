@@ -79,6 +79,11 @@ schema = "module-boundaries/1"
 # rust-embed+std、禁依赖 auto-lang/auto-man/auto-val
 # （闭包由 test/fixtures/modularity/man-assets-consumer 钉住）。
 "auto-man-assets" = "man-ecosystem"
+# PLAN-805：工具链配置模型/flag 映射/四命令模板单一来源——man 生态的
+# 纯规则层，auto-man（am.at 加载/PATH 磁盘进程观测/Ninja 执行 adapter）
+# 之下；auto-val+std、禁依赖 auto-lang/auto-man/auto-gen/auto-vm/UI
+# （闭包由 test/fixtures/modularity/toolchain-core-consumer 钉住）。
+"auto-toolchain-core" = "man-ecosystem"
 # 顶层装配/工具/CLI（允许依赖任意下层域）。
 "auto" = "cli"
 "auto-lsp" = "tool"

@@ -1,0 +1,8 @@
+missing_var=gcc {nope} {input}
+long_short=in.c X
+render_compile=gcc -c -Iinclude -Iinc 2 -DDEBUG -DVERSION=2 -O2 -Wall -omain.o main.c
+render_assemble=as -Iinclude -g -omain.o main.S
+render_link=gcc -omain main.o  -lmylib -l"my lib2"
+render_archive=ar rcs libmylib.a obj1.o obj2.o
+render_unicode=gcc -c -I路径/中文 -DDEBUG -O2 -o主.o 主.c
+render_msvc_compile=cl.exe /c /Iinc /DDEBUG /O2 /W3 /MD /Fomain.obj main.c

@@ -1,0 +1,14 @@
+[package]
+name = "auto-toolchain-core"
+version = "0.1.0"
+edition = "2021"
+description = "Toolchain config model, flag mapping and command template core, extracted verbatim from auto-man builder/ninja (PLAN-805)"
+license = "Proprietary"
+keywords = ["automation", "package-manager", "toolchain"]
+
+[dependencies]
+# 工具链规则闭包 = auto-val（AutoStr/AutoPath 同型直用）+ std——不得依赖
+# auto-lang/auto-man/auto-gen/auto-vm/UI 或任何解释器/IO/进程栈；闭包由
+# test/fixtures/modularity/toolchain-core-consumer（PLAN-805 V01）与
+# module-boundaries 基线（"auto-toolchain-core" = man-ecosystem）钉住。
+auto-val = { path = "../auto-val" }

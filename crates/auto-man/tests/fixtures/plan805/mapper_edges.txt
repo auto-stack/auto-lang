@@ -1,0 +1,17 @@
+includes_empty=
+defines_empty=
+includes_multi=-Iinc1 -Iinc 2 -I含空格/目录
+defines_multi=-DDEBUG=1 -DVERSION=2
+libraries=-lmylib1 -lmy lib2
+library_paths=["/LIBPATH:C:/libs", "/LIBPATH:D:/a b"]
+map_output(gcc)=-omain
+map_output(gcc_noext)=-ooutput
+map_output(gcc_repeat)=-omain
+map_output(msvc)=/Fomain.obj
+map_output(msvc_repeat)=/Fomain.obj
+map_output(msvc_noext)=/Fooutput.obj
+map_output(postfix)=main.elf.elf
+compile_only_gcc=-c
+compile_only_msvc=/c
+compile_only_iar=--debug
+compile_only(both)=-c extra
