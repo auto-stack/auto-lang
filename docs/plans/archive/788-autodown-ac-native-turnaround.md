@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-788
-status: reviewed
+status: archived
 feature_name: AutoDown AC 原生测试接入与增量周转观测
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-17
-current_step: 9
+current_step: 10
 total_steps: 10
 supersedes_spec_components:
   - docs/specs/auto-test-case/project.md
@@ -388,7 +388,7 @@ stage: merge | PLAN-788 | r1 | outcome: **pass（delivered）** | delivery `af92
 | landed | master tip == `af9263f67`（`git merge --ff-only plan-788-dev`，无 merge commit；其他会话 WIP 脏文件原样保留） |
 | ledger_refreshed | 工作区 `.autoos/specs.json` v44→v45 **guarded offline projection**（无 store 服务可达；备份 `bak-v44-788`；新增恰 5 条 P788-D1/D2/T-788/R2-788/M-788——范围守卫对照备份逐条目字节等价+顶层字段不变+schema 六节+file/tags 全带+读回验证） |
 | archived | 本文件 git mv 至 docs/plans/archive/，status: archived，终态 **10/10**（T-09 R10 pass、T-10 本收据） |
-| cleaned | 待回填（guard+worktree/branch/组目录移除后） |
+| cleaned | 双树 wt-guard clean（auto-lang + auto-down 兄弟 c39ac7f9d 前后零改动）；worktree/branch plan-788-dev/兄弟 worktree/组目录 `.wt/lang-788/` 全部移除（worktree list 零残留）；主检出 git status 仅余其他会话 WIP 与历史备份文件（本计划零残留） |
 
 批量回归判定：**不到期**——`788%5=3` 且 `.last-batch-regression.json` last_covered=805（当日 b00bd2aa8 收据新鲜）。生产工件核查：auto-lang 无常驻 daemon/发布工件；ac-case-worker 按 `worker_binary()` 每进程按需 release 构建（内容哈希入身份与缓存 key），无陈旧部署面。merge-owned 门禁在冻结提交执行完毕，无 pending。
 
