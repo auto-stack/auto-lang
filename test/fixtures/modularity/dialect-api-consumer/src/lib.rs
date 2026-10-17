@@ -23,10 +23,9 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
-use auto_parser_api::ast::{Expr, ModelBlock, ModelField, Stmt, Type};
+use auto_parser_api::ast::Stmt;
 use auto_parser_api::error::AutoResult;
 use auto_parser_api::session::{CompilerSession, Scenario};
-use auto_parser_api::token::TokenKind;
 use auto_parser_api::{ExternalDialect, ParseContext};
 
 /// 探针计数：证明外部方言真实被派发（attempt）与真实接管（accept）。
@@ -87,69 +86,13 @@ impl ExternalDialect for ExternalModelDialect {
     }
 }
 
-/// 冻结子集解析：`model { [var] name [type] [= expr] }`（游标在 `model` 上）。
-/// 字段类型/初值用核心文法（ctx.parse_type/parse_expr 委托）。
+/// 冻结子集解析入口（游标在 `model` 上）——PLAN-806 T-04 起委托
+/// `auto-ui-dialect` 的单份字段算法（`ModelGrammar::ExternalSubset`
+/// 策略：裸字段允许、注解让行 NotClaimed→Ok(None)），本 crate 不再
+/// 保有第二份 model 文法；字段类型/初值仍经端口委托核心文法。
 fn parse_model_subset(ctx: &mut dyn ParseContext) -> AutoResult<Option<Stmt>> {
-    ctx.expect_keyword("model")?;
-    ctx.expect(TokenKind::LBrace)?;
-    ctx.skip_empty_lines();
-
-    let mut fields = Vec::new();
-    while !ctx.is_kind(TokenKind::RBrace) && !ctx.is_kind(TokenKind::EOF) {
-        ctx.skip_empty_lines();
-        if ctx.is_kind(TokenKind::RBrace) {
-            break;
-        }
-        // 注解未迁（#[primary]/#[Consume(...)] 等）→ 整块让行内建。
-        if ctx.is_kind(TokenKind::Hash) {
-            return Ok(None);
-        }
-        // var 是真实 TokenKind（非 Ident），按文本判定（镜像内建实现）。
-        let mutable = if ctx.cur_text() == "var" {
-            ctx.advance();
-            true
-        } else {
-            false
-        };
-        if ctx.cur_kind() != TokenKind::Ident {
-            let got = ctx.cur_text();
-            return Err(ctx.syntax_error(format!(
-                "model field name expected identifier, got '{}'",
-                got
-            )));
-        }
-        let name = ctx.cur_text();
-        ctx.advance();
-        // 可选类型：`name type = expr` / `name = expr` / 裸字段 `name`。
-        // 冻结文法（778 §T-01 第 6 条）允许类型与初值**同时省略**：
-        // 裸字段终止符 = 行界/块界/EOF；其余非 `=` token 交给核心类型
-        // 文法，非法形态（如数字）得到合法的类型错误。
-        let ty = if ctx.is_kind(TokenKind::Asn)
-            || ctx.is_kind(TokenKind::Newline)
-            || ctx.is_kind(TokenKind::RBrace)
-            || ctx.is_kind(TokenKind::EOF)
-        {
-            Type::Unknown
-        } else {
-            ctx.parse_type()?
-        };
-        let init = if ctx.is_kind(TokenKind::Asn) {
-            ctx.advance();
-            ctx.parse_expr()?
-        } else {
-            Expr::Nil
-        };
-        fields.push(ModelField {
-            name: name.into(),
-            ty,
-            init,
-            mutable,
-            is_primary: false,
-            decorators: Vec::new(),
-        });
-        ctx.skip_empty_lines();
+    match auto_ui_dialect::parse_model_block_subset(ctx)? {
+        auto_ui_dialect::ModelSubset::Block(block) => Ok(Some(Stmt::ModelBlock(block))),
+        auto_ui_dialect::ModelSubset::NotClaimed => Ok(None),
     }
-    ctx.expect(TokenKind::RBrace)?;
-
-    Ok(Some(Stmt::ModelBlock(ModelBlock { fields })))
 }

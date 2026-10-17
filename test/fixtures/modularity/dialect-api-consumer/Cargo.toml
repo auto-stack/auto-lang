@@ -21,6 +21,10 @@ publish = false
 
 [dependencies]
 auto-parser-api = { path = "../../../../crates/auto-parser-api" }
+# PLAN-806 T-04：model 子集不再保有第二份字段算法——单份实现在
+# auto-ui-dialect（ModelGrammar::ExternalSubset 策略），本 crate 仅保留
+# 方言包装（probe/checkpoint 回滚/让行协议）。闭包仍为轻层（无 auto-lang）。
+auto-ui-dialect = { path = "../../../../crates/auto-ui-dialect" }
 
 # 独立 workspace（见上）；无锁文件、无成员。
 [workspace]
