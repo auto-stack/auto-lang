@@ -1,7 +1,7 @@
 {
-  "last_covered_plan_id": 800,
-  "timestamp": "2026-10-17T00:00:00Z",
-  "covered_commit": "22436586409513757c56cdece6d03e2c085b6d35",
+  "last_covered_plan_id": 805,
+  "timestamp": "2026-10-17T05:19:03Z",
+  "covered_commit": "b00bd2aa81114f453158b59b0e9bd3bef4f732bc",
   "legs": [
     "tf",
     "tt",
@@ -9,36 +9,33 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 103.0,
-      "run": 6333,
-      "passed": 6333,
+      "seconds": 78.5,
+      "run": 6263,
+      "passed": 6263,
       "failed": 0,
       "skipped": 519,
-      "note": "终跑 --no-fail-fast 全量 6333/6333 全绿；过程中 fail-fast 首跑红 ffi_dual_019_dep_layout_invariants、一次中间跑红 plan484_024——均上份收据在案负载时序族（本窗口再次 solo/复跑绿确认）"
+      "note": "全绿零红（已知 flake 族本轮未触发）；1M churn/语料族/画廊围栏（heavy 闸门单实例）全过"
     },
     "tt": {
-      "seconds": 136.8,
-      "run": 5707,
-      "passed": 5707,
+      "seconds": 104.2,
+      "run": 5637,
+      "passed": 5637,
       "failed": 0,
       "skipped": 1798,
-      "note": "全绿（1 slow）"
+      "note": "全绿（1 slow=plan738 p4 55.9s）"
     },
     "tb": {
-      "seconds": 101.5,
-      "run": 5359,
-      "passed": 5359,
+      "seconds": 70.8,
+      "run": 5289,
+      "passed": 5289,
       "failed": 0,
       "skipped": 1548,
-      "note": "全绿（1 slow）"
+      "note": "全绿"
     }
   },
   "new_reds": [],
-  "known_reds_seen": [
-    "ffi_dual_tests::ffi_dual_019_dep_layout_invariants",
-    "plan484_chart_component_tests::plan484_smoke::plan484_024_charts_streaming_recompute"
-  ],
-  "taa": "not_triggered: window 44a1494f92..HEAD touches zero aavm trigger paths",
-  "environment": "主检出单实例（预检 0 nextest/cargo/rustc）；PLAN-800 merge 收口触发（800%5=0）",
-  "window": "44a1494f92..22436586409513757c56cdece6d03e2c085b6d35 (795 closeout -> 800 closeout: 792 delivery+merge / 787 delivery+merge+ledger v38 / 788 bookkeeping / 798 r2 / 800 delivery+merge)"
+  "known_reds_seen": [],
+  "taa": "not_triggered: window 22436586409513757c56cdece6d03e2c085b6d35..HEAD touches zero aavm trigger paths",
+  "environment": "主检出单实例（预检无 cargo/nextest/rustc 进程；RUSTC_WRAPPER= 绕过本机 sccache 端口排除段）；PLAN-805 merge 收口触发（805%5=0，covered 800→805）",
+  "window": "22436586409513757c56cdece6d03e2c085b6d35..b00bd2aa81114f453158b59b0e9bd3bef4f732bc (800 closeout -> 805 closeout: 801/802/804/787 merge 线+788 簿记+805 delivery+merge+归档)"
 }
