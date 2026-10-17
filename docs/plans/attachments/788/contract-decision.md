@@ -271,3 +271,15 @@ case 输入沿用 v1 admission 限额（auto-test-case `Limits`），不另设�
    run<MinPassed、摘要整行锚定（尾部杂讯拒）、run==passed+failed+skipped、
    PASS 行数==passed 总量（nextest id 可含空格，按整行捕获、末段/空白 token 匹配）
    全部强制；真实成功格式（零 failed 分量省略/单数/(i/N)）保持通过。
+## 14. R6 修复后的补充冻结（2026-10-17，复审 R6 后）
+
+1. **读取出口统一（修正 §13.2 的过度声明）**：R5 的"六场景与语法门全出口接入"
+   在语法门的实际读取处（round_trip 内 read_line unwrap）未成立——R6 起语法门
+   round_trip 只写请求并返回请求侧身份，响应一律经 read_response_line（读错/提前
+   EOF/非法 UTF-8/解析错先记失败样本再失败）；实际入口负控：预热后注入
+   `[0xff,'
+']` 的中继（`r6_invalid_utf8_read_recorded`，含第二请求在途的时序）。
+2. **nextest 已知 slow 注记**：真实成功摘要可含 `(N slow)` 分量
+   （`2 tests run: 2 passed (2 slow), 0 skipped`）——属工具语法成分而非尾部杂讯，
+   整行解析纳入该分量；最少数/守恒/零测试/未知尾部拒绝不变，普通与 slow 两份
+   真实日志均为正控。

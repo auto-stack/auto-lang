@@ -1,10 +1,10 @@
-# PLAN-788 验收矩阵（T-08，2026-10-16；R3/R4/R5 修订 2026-10-17）
+# PLAN-788 验收矩阵（T-08，2026-10-16；R3–R6 修订 2026-10-17）
 
 聚合入口：`powershell -NoProfile -File scripts/verify-autodown-ac-788.ps1 -Scope acceptance`
 （ALL PASS，2026-10-17 R3 修复后实测；零测族拒绝、失败计数、P95 硬门内嵌；required ID
 按 executed-ok 精确名逐 ID 绑定所属 test binary，逐 binary 最小计数，prose/前缀/
 兄弟 binary 总数/无摘要支撑的 ok 名/伪状态词（okay-but-not-executed）均不能替代，逐 binary 摘要守恒
-（ok 行数==passed），nextest 按真实格式（零 failed 省略/单数/(i/N) 序号，id 可含空格）核对+MinPassed 下限（零测试/run<下限拒）+run 守恒+PASS 行计数守恒+摘要整行锚定——负控入 selftest 26 用例）。
+（ok 行数==passed），nextest 按真实格式（零 failed 省略/单数/(i/N) 序号/`(N slow)` 注记，id 可含空格）核对+MinPassed 下限（零测试/run<下限拒）+run 守恒+PASS 行计数守恒+摘要整行锚定（未知尾部仍拒）——普通与 slow 两份真实日志正控，负控入 selftest 28 用例）。
 `-Scope closeout` 为 merge-owned 冻结提交触面（t/tv/tt 按 nextest 实际输出核对 +
 worker/probe/ac-syntax 独立套件）。
 
@@ -22,7 +22,7 @@ worker/probe/ac-syntax 独立套件）。
 | V-10 | AC-04 | 783 concurrency_/store_boundary_ 9 绿 + cache_t05_ read-only 缺根 infra/命中消费/miss 永不发布 + gc-concurrent 场景 30 样本功能恒验（R3：真实 GC 独立进程 + barrier 起止区间，30/30 重叠证明） |
 | V-11 | AC-05 | syntax_t06_ 7/7（两语法 lossless/typed 诊断+span/多 decl graft 复用≥1 或显式 fallback、rescan≤64KiB、reparse≤2）+ 语料 syntax 3 case 金样 |
 | V-12 | AC-06 | `turnaround_native_six_scenarios_p95_gates`（R3，auto-lang `--test plan788_r3_`）：六场景×30 样本，墙钟=请求构造→IPC→parse→validate_response→manifest 准入+持久化→oracle 比较（runner 同名入口，无判前止钟）；body-edit 循环界 3↔4 真交替+唯一 marker、逐样本 parse==1/object=lowered；GC=真实 store-gc 进程并发、30/30 barrier 重叠；P95 硬门 **hot 487ms / body-edit 551ms < 1000ms**；raw JSONL 逐样本先落盘（含 spans/counters/hits/gc 区间/错误） |
-| V-13 | AC-06 | `turnaround_syntax_gate_and_revision_stream`（R3）：syntax edit 门 P95=1ms（墙钟含 admission+持久化+字节 oracle）；修订流=双真实 worker 车道、固定 100ms 到达时钟（无累积漂移断言）、heavy（31 连插+31 连删 64KiB，~520ms）vs light（~3ms）产生 **7 次真实错序完成**，latest-wins 仲裁全部拒绝（refused/cancelled 留痕），发布序列严格递增、最终发布=50，积压深度≥2 可见，50 条记录全留存；R4：期望文档=前缀+插入+后缀（50/50 真实重建与 oracle 匹配），发布仲裁为独立 oracle（Ok(false)/Err/错 counter/旧于已入队最新均拒，负控单元 `r4_publication_oracle_negative_controls`），counter==steps 全量核验；R5：期望身份取**请求侧** nonce/hash（响应回显仅关联），中继改写全部 request_hash 的实际入口负控固化（`r5_wrong_hash_refused_and_recorded`：拒绝+落盘），坏 JSON 中继证明读/解析失败先落盘再失败（`r5_bad_json_failure_recorded`），到达时钟预计算纯化；syntax_t06_ revision_trace_sequential_edits（0→2 逐步 span） |
+| V-13 | AC-06 | `turnaround_syntax_gate_and_revision_stream`（R3）：syntax edit 门 P95=1ms（墙钟含 admission+持久化+字节 oracle）；修订流=双真实 worker 车道、固定 100ms 到达时钟（无累积漂移断言）、heavy（31 连插+31 连删 64KiB，~520ms）vs light（~3ms）产生 **7 次真实错序完成**，latest-wins 仲裁全部拒绝（refused/cancelled 留痕），发布序列严格递增、最终发布=50，积压深度≥2 可见，50 条记录全留存；R4：期望文档=前缀+插入+后缀（50/50 真实重建与 oracle 匹配），发布仲裁为独立 oracle（Ok(false)/Err/错 counter/旧于已入队最新均拒，负控单元 `r4_publication_oracle_negative_controls`），counter==steps 全量核验；R5：期望身份取**请求侧** nonce/hash（响应回显仅关联），中继改写全部 request_hash 的实际入口负控固化（`r5_wrong_hash_refused_and_recorded`：拒绝+落盘），坏 JSON 中继证明读/解析失败先落盘再失败（`r5_bad_json_failure_recorded`）；R6：语法门实际读取统一经 read_response_line（round_trip 只写），预热后注入非法 UTF-8 的中继负控固化（`r6_invalid_utf8_read_recorded`：读错先落盘再失败），到达时钟预计算纯化；syntax_t06_ revision_trace_sequential_edits（0→2 逐步 span） |
 | V-14 | AC-07 | ac_native_suite_full_run：42 case（≥24）全符合（2 红控 by-design FAIL；HIR 负例 7=引用 2/结构 2/类型 2——R3 增 ac.hir.type-param-mismatch 真实 fixture 第二类型负例）+ legacy-map 43 行双向对账 + 聚合门=1；v1/CLI 兼容 test_cases_tests 26 绿 |
 | V-15 | AC-01/07 | r1 报告 v2 合法 JSON（serde_json round-trip）+ schema 随 suite 分派；R3：`r3_stale_production_paths_per_adapter_action`——production stale（auto-case 子进程）：ac/check 未变 FRESH（lld/sdk 不适用于 check 行）、链接过的 ac/run 未变 FRESH（lld/sdk 内容轴适用且相等）、syntax 与 check 换 worker（AC_CASE_WORKER=内容哈希不同的副本）均 STALE 且指名 worker-exe-sha256 轴；轴适用集合=adapter/action/linked/support_lib（链接判定读报告真实键 `path`——R4 修复了 build 行误 STALE），多轴或缺轴均漂移；build 方向补未变 FRESH/换 worker STALE |
 

@@ -163,11 +163,15 @@ function Test-NextestFamily {
     param([string]$Text, [int]$ExitCode, [string[]]$RequiredIds = @(), [int]$MinPassed = 1)
     if ($ExitCode -ne 0) { return "exit=$ExitCode" }
     $totalRun = 0; $totalPassed = 0
-    foreach ($lm in [regex]::Matches($Text, '(?m)^\s*Summary\s+\[\s*[\d.]+s\]\s+(\d+) tests? run: (\d+) passed(?:, (\d+) failed)?(?:, (\d+) skipped)?\s*$')) {
+    # R6 (F02): nextest appends a KNOWN slow-test annotation after the
+    # passed count on success ("2 tests run: 2 passed (2 slow), 0 skipped")
+    # — a grammar component of the tool, not trailing junk; the line stays
+    # fully anchored otherwise.
+    foreach ($lm in [regex]::Matches($Text, '(?m)^\s*Summary\s+\[\s*[\d.]+s\]\s+(\d+) tests? run: (\d+) passed(?: \((\d+) slow\))?(?:, (\d+) failed)?(?:, (\d+) skipped)?\s*$')) {
         $run = [int]$lm.Groups[1].Value
         $passed = [int]$lm.Groups[2].Value
-        $failed = if ($lm.Groups[3].Success) { [int]$lm.Groups[3].Value } else { 0 }
-        $skipped = if ($lm.Groups[4].Success) { [int]$lm.Groups[4].Value } else { 0 }
+        $failed = if ($lm.Groups[4].Success) { [int]$lm.Groups[4].Value } else { 0 }
+        $skipped = if ($lm.Groups[5].Success) { [int]$lm.Groups[5].Value } else { 0 }
         if ($failed -ne 0) { return "failed=$failed in a nextest summary" }
         if ($skipped -ne 0) { return "skipped=$skipped in a nextest summary (no skips are allowlisted)" }
         if ($passed + $failed + $skipped -ne $run) { return "summary run=$run != passed+failed+skipped" }
@@ -270,6 +274,8 @@ if ($Scope -eq "selftest") {
         # nextest parser
         @{ name = "nextest-real-success"; fmt = "nextest"; text = "        PASS [   0.552s] (1/2) alpha::needed`n        PASS [   0.911s] (2/2) alpha::other`n     Summary [   0.911s] 2 tests run: 2 passed, 0 skipped"; exit = 0; ids = @("alpha::needed"); want = $null },
         @{ name = "nextest-singular"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::needed`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @("alpha::needed"); want = $null },
+        @{ name = "nextest-real-slow-success"; fmt = "nextest"; text = "        PASS [   0.400s] (1/2) alpha::slow_one`n        PASS [   0.790s] (2/2) alpha::slow_two`n     Summary [0.790s] 2 tests run: 2 passed (2 slow), 0 skipped"; exit = 0; ids = @("alpha::slow_one"); want = $null },
+        @{ name = "nextest-slow-count-zero-run"; fmt = "nextest"; text = "     Summary [   0.001s] 0 tests run: 0 passed (0 slow), 0 skipped"; exit = 0; ids = @(); min = 1; want = "no tests were run (0 tests run)" },
         @{ name = "nextest-failed-component"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 failed, 0 skipped"; exit = 0; ids = @(); want = "failed=1 in a nextest summary" },
         @{ name = "nextest-skipped"; fmt = "nextest"; text = "     Summary [   1.0s] 5 tests run: 4 passed, 1 skipped"; exit = 0; ids = @(); want = "skipped=1 in a nextest summary (no skips are allowlisted)" },
         @{ name = "nextest-missing-id"; fmt = "nextest"; text = "        PASS [   0.010s] (1/1) alpha::other`n     Summary [   0.010s] 1 test run: 1 passed"; exit = 0; ids = @("alpha::needed"); want = "required id never reported PASS by nextest: alpha::needed" }

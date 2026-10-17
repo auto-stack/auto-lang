@@ -1113,27 +1113,6 @@ fn failure_sample(scenario: &str, idx: usize, wall_ms: u128, input_sha: &str, er
 /// early EOF, undecodable JSON — is first RECORDED as a failure sample
 /// (with the raw tail for diagnosis), only then panics. No failure exits
 /// before its sample is durable.
-/// Parse an ALREADY-READ response line with the same record-then-panic
-/// contract (used by the syntax gate, which reads through `round_trip`).
-fn read_response_line_from(
-    resp: &str,
-    rec: &mut Recorder,
-    scenario: &str,
-    idx: usize,
-    wall_ms: u128,
-    input_sha: &str,
-) -> serde_json::Value {
-    match serde_json::from_str(resp.trim()) {
-        Ok(v) => v,
-        Err(e) => {
-            let tail: String = resp.chars().rev().take(120).collect::<Vec<_>>().into_iter().rev().collect();
-            rec.push(failure_sample(scenario, idx, wall_ms, input_sha,
-                format!("undecodable response ({e}); raw tail {tail:?}")));
-            panic!("{scenario} {idx}: undecodable response: {e} (failure sample recorded)");
-        }
-    }
-}
-
 fn read_response_line(
     reader: &mut BufReader<std::process::ChildStdout>,
     rec: &mut Recorder,
@@ -1257,6 +1236,11 @@ fn main() {
         }
     });
     let mut out = std::io::stdout();
+    let mut forwarded: u32 = 0;
+    let count: usize = std::env::var("P788R5_COUNT")
+        .ok()
+        .and_then(|c| c.parse().ok())
+        .unwrap_or(0);
     loop {
         let mut resp = String::new();
         match cout.read_line(&mut resp) {
@@ -1264,7 +1248,18 @@ fn main() {
             Ok(_) => {}
             Err(_) => break,
         }
-        if mode == "hash" {
+        if mode == "utf8-after" {
+            // forward the first P788R5_COUNT responses verbatim, then emit
+            // a raw invalid-UTF-8 byte + newline (the read error control)
+            forwarded += 1;
+            if forwarded as usize > count {
+                let mut so = std::io::stdout();
+                so.write_all(&[0xffu8, b'\n']).unwrap();
+                so.flush().unwrap();
+                continue;
+            }
+            writeln!(out, "{}", resp.trim_end()).unwrap();
+        } else if mode == "hash" {
             let key = "\"request_hash\":\"";
             if let Some(a) = resp.find(key) {
                 let start = a + key.len();
@@ -1396,6 +1391,71 @@ fn r5_bad_json_failure_recorded() {
     assert!(
         text.contains("undecodable response") && text.contains("not-json"),
         "the failure sample (with the raw tail) is durable despite the panic: {text}"
+    );
+}
+
+
+/// R6-01: the relay forwards warmup responses verbatim, then emits a raw
+/// invalid-UTF-8 byte for the first real sample. The syntax gate's ACTUAL
+/// read path must record the failure sample before failing — this is the
+/// review's control, permanent, through the same read entry the gate uses.
+#[test]
+fn r6_invalid_utf8_read_recorded() {
+    let _root = temp_root("r6-utf8");
+    let real = worker_binary().expect("worker binary");
+    let relay = relay_binary();
+    let mut rec = Recorder::new("r6-utf8");
+    let raw_path = rec.path.clone();
+    let (mut s, work) = Sess::spawn_exe(
+        &relay,
+        "r6utf8",
+        &[
+            ("P788R5_WORKER", real.display().to_string()),
+            ("P788R5_MUTATION", "utf8-after".to_string()),
+            ("P788R5_COUNT", "1".to_string()),
+        ],
+    );
+    let base = "fn main() int { return 3 }";
+    let pos3 = base.find('3').unwrap();
+    let _ = work;
+    // one clean round trip (the "warmup" the relay forwards verbatim)
+    let (n, h) = {
+        let (n, h) = s.next_ids();
+        let steps = serde_json::json!([{ "start": pos3, "end": pos3 + 1, "insert_b64": b64("4".as_bytes()) }]);
+        let mut req = syntax_edit_request(base, steps, &work);
+        patch_ids(&mut req, &n, &h);
+        let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
+        writeln!(s.stdin, "{}", line).unwrap();
+        s.stdin.flush().unwrap();
+        (n, h)
+    };
+    let _ = read_response_line(&mut s.reader, &mut rec, "r6-utf8-warmup", 0, 0, &sha_hex(base.as_bytes()));
+    let _ = (n, h);
+    // a SECOND request must be in flight so the worker actually answers —
+    // the relay then rewrites THAT response into the invalid-UTF-8 byte
+    // (without this the relay blocks on the worker and only the 180s
+    // session watchdog would end the pipe).
+    {
+        let (n2, h2) = s.next_ids();
+        let steps = serde_json::json!([{ "start": pos3, "end": pos3 + 1, "insert_b64": b64("5".as_bytes()) }]);
+        let mut req = syntax_edit_request(base, steps, &work);
+        patch_ids(&mut req, &n2, &h2);
+        let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
+        writeln!(s.stdin, "{}", line).unwrap();
+        s.stdin.flush().unwrap();
+    }
+    // the next read hits the injected 0xff — recorded, THEN failed
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        read_response_line(&mut s.reader, &mut rec, "syntax-edit", 0, 0, &sha_hex(base.as_bytes()));
+    }));
+    assert!(
+        result.is_err(),
+        "an invalid-UTF-8 read error must fail the sample path (after recording)"
+    );
+    let text = std::fs::read_to_string(&raw_path).unwrap();
+    assert!(
+        text.contains("read response:") && text.contains("valid UTF-8"),
+        "the read-failure sample is durable despite the panic: {text}"
     );
 }
 
@@ -1848,7 +1908,11 @@ fn turnaround_syntax_gate_and_revision_stream() {
         let (mut s, work) = Sess::spawn("syn");
         let base = "fn helper() int { return 7 }\nfn main() int { var i = 0; while i < 3 { i = i + 1 }; return i }";
         let pos3 = base.find('3').unwrap();
-        let round_trip = |s: &mut Sess, digit: &str| -> (String, String, String) {
+        // R6-01: round_trip only WRITES the request and returns the
+        // REQUEST-side identity — the response is read exclusively through
+        // read_response_line, so read/EOF/UTF-8/parse failures are always
+        // recorded before they can fail the run.
+        let round_trip = |s: &mut Sess, digit: &str| -> (String, String) {
             let (n, h) = s.next_ids();
             let steps = serde_json::json!([{ "start": pos3, "end": pos3 + 1, "insert_b64": b64(digit.as_bytes()) }]);
             let mut req = syntax_edit_request(base, steps, &work);
@@ -1856,21 +1920,21 @@ fn turnaround_syntax_gate_and_revision_stream() {
             let line = serde_json::to_string(&serde_json::json!({"op":"request","request":req})).unwrap();
             writeln!(s.stdin, "{}", line).unwrap();
             s.stdin.flush().unwrap();
-            let mut resp = String::new();
-            s.reader.read_line(&mut resp).unwrap();
-            (n, h, resp)
+            (n, h)
         };
         for k in 0..WARMUP {
             let digit = ((k % 9) + 1).to_string();
-            let _ = round_trip(&mut s, &digit);
+            let (n, h) = round_trip(&mut s, &digit);
+            let _ = read_response_line(&mut s.reader, &mut rec, "syntax-warmup", k, 0, &sha_hex(base.as_bytes()));
+            let _ = (n, h);
         }
         let mut samples = Vec::new();
         for k in 0..SAMPLES {
             let digit = ((k % 9) + 1).to_string();
             let want = base.replace('3', &digit);
             let t = Instant::now();
-            let (req_nonce, req_hash, resp) = round_trip(&mut s, &digit);
-            let v = read_response_line_from(&resp, &mut rec, "syntax-edit", k, t.elapsed().as_millis(), &sha_hex(base.as_bytes()));
+            let (req_nonce, req_hash) = round_trip(&mut s, &digit);
+            let v = read_response_line(&mut s.reader, &mut rec, "syntax-edit", k, t.elapsed().as_millis(), &sha_hex(base.as_bytes()));
             // R5 (F01): the EXPECTED identity is the REQUEST-side one —
             // reading nonce/hash back from the response compared the
             // response with itself and let forged hashes through.
