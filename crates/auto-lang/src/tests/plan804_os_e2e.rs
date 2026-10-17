@@ -666,7 +666,7 @@ mod dnd_e2e {
     use windows::Win32::UI::Input::KeyboardAndMouse::{
         SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYBD_EVENT_FLAGS,
         KEYEVENTF_KEYUP, MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
-        MOUSEEVENTF_MOVE, MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY, VK_ESCAPE, VK_RETURN, VK_TAB,
+        MOUSEEVENTF_MOVE, MOUSEINPUT, MOUSE_EVENT_FLAGS, VIRTUAL_KEY, VK_ESCAPE,
     };
     use windows::Win32::UI::Shell::{CFSTR_FILECONTENTS, CFSTR_FILEDESCRIPTORW};
     use windows::Win32::UI::WindowsAndMessaging::{
@@ -1266,6 +1266,42 @@ mod dnd_e2e {
     /// +焦点在 B 对照）覆盖——两者互补构成 V05 完整 oracle：本测证明
     /// 真实链路端到端交付，该测证明路由偏差抗性。
     /// 输入纪律同 F804-R2-02：清洁门 + join 驱动 + panic 守卫。
+    /// F804-R3-02：子进程所有权守卫——spawn 成功即归属，Drop（成功/断言
+    /// 失败 panic/超时/任何 unwind 出口）终止并 wait，宿主子进程零遗留
+    /// （复审两轮复现：启动超时后宿主存活）。
+    struct ChildGuard(std::process::Child);
+    impl ChildGuard {
+        fn child(&mut self) -> &mut std::process::Child {
+            &mut self.0
+        }
+    }
+    impl Drop for ChildGuard {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    /// F804-R3-01：严格清洁门（真宿主档）——含本测注入的全部键
+    /// （LBUTTON/RBUTTON/ESC/TAB/RETURN；复审实录：桌面预存 RETURN 按下
+    /// 时不得注入键盘）。10s 内不清即 panic 快败，绝不外泄键入。
+    fn wait_clean_input_strict() {
+        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let held = [0x01u16, 0x02, 0x1B, 0x09, 0x0D]
+                .iter()
+                .any(|&vk| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0);
+            if !held {
+                return;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("输入未清洁（LBUTTON/RBUTTON/ESC/TAB/RETURN 有按下）——为避免键入外泄快败，清洁后重跑");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+    }
+
     #[cfg(feature = "ui-iced")]
     #[test]
     fn v05_real_host_dnd_finished_delivery() {
@@ -1309,11 +1345,13 @@ mod dnd_e2e {
         let other_finish = marker_dir.join("other-finish.txt");
 
         // 启动真宿主子进程。
-        let mut child = std::process::Command::new(&host_exe)
-            .arg(&marker_dir)
-            .spawn()
-            .expect("spawn real host child");
-        let child_pid = child.id();
+        let mut child_guard = ChildGuard(
+            std::process::Command::new(&host_exe)
+                .arg(&marker_dir)
+                .spawn()
+                .expect("spawn real host child"),
+        );
+        let child_pid = child_guard.child().id();
 
         // 等子进程宿主窗出现（按子进程 pid 找其顶层可见窗）。
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(25);
@@ -1334,51 +1372,49 @@ mod dnd_e2e {
             }
             std::thread::sleep(std::time::Duration::from_millis(150));
         }
-        let (host_hwnd, r) =
+        let (_host_hwnd, r) =
             host.unwrap_or_else(|| panic!("真宿主窗 25s 未出现（child pid {child_pid}）"));
 
-        // 输入纪律（F804-R2-02）：清洁门 + 守卫。
-        wait_clean_input_host();
+        // 输入纪律（F804-R2-02/R3-01）：严格清洁门（含 TAB/RETURN——本测
+        // 注入键盘，预存按下时快败不注入）+ 守卫。
+        wait_clean_input_strict();
         let guard = HostInputGuard::new();
 
-        // 键盘触发（Tab+Enter）：窗口在模态前取 rect（实录：Init 自启使
-        // 窗口出生即挂，GetWindowRect 阻塞）。**先取前台并复核**（实录：
-        // 用户焦点在他窗时键入会打向用户应用——绝不允许），失败快败；
-        // Tab 聚焦首个可聚焦件（唯一按钮——多 focus 无害），Enter 触发
-        // onclick → 真 UI 线程进入模态。
-        // 随后中心点 press/release 收场：模态在=真落下（宿主窗生产
-        // DesktopDropTarget，效果 copy；目标未及注册则 none——两者均为
-        // 真链路完成效果，由 finish marker 实录）。
+        // 触发：纯鼠标（实录：desktop 模式 Tab/Enter 焦点在虚拟窗层，
+        // 不达按钮 onclick；鼠标位置语义无焦点依赖、无键入外泄面）。
+        // 发起方虚拟窗在 example 中为 component[1]（级联 +48=顶层；实录
+        // component[0] 被 60% 尺寸后窗几乎全遮挡——按钮零命中），客户区
+        // 实测约占宿主窗 x:20%..80%、y:37%..94%。目标点序**先取
+        // (50%,57%)**——该窗客户区中心（按钮 w-full h-full 充满窗，任意
+        // 客户点命中；中心点对 DPI 换算最鲁棒）。重试环容纳模态启动延迟：
+        // 首次点击命中按钮即启动模态，后续 press/release 即真落下（宿主
+        // 窗生产 DesktopDropTarget，效果 copy；目标未及注册则 none——均
+        // 为真链路完成效果，由 finish marker 实录）。未中则外扩网格
+        // （行 42%..86% 避顶部 chrome[实录：顶行误点关闭钮]与壳面板
+        // [实录：固定 (30%,30%) 落 dashboard 而不达 App]）。零位移点按
+        // 不拖窗。
         std::thread::sleep(std::time::Duration::from_millis(1500));
-        {
-            use windows::Win32::UI::WindowsAndMessaging::{
-                GetForegroundWindow, SetForegroundWindow,
-            };
-            let fg = unsafe { SetForegroundWindow(HWND(host_hwnd as *mut _)) };
-            let fg_now = unsafe { GetForegroundWindow() };
-            assert!(
-                fg.as_bool() && fg_now.0 as isize == host_hwnd,
-                "无法取得子窗前台（活桌面焦点被占）——为避免键入打向用户窗口而快败，安静桌面重跑"
-            );
-        }
-        send_key(VK_TAB, false);
-        std::thread::sleep(std::time::Duration::from_millis(60));
-        send_key(VK_TAB, true);
-        std::thread::sleep(std::time::Duration::from_millis(120));
-        send_key(VK_RETURN, false);
-        std::thread::sleep(std::time::Duration::from_millis(60));
-        send_key(VK_RETURN, true);
-        std::thread::sleep(std::time::Duration::from_millis(800));
-        let cx = r.left + (r.right - r.left) / 2;
-        let cy = r.top + (r.bottom - r.top) / 2;
-        // 重试环：Enter→模态启动在负载下可慢于单发窗口（扫描版天然重试
-        // 而过、单发版实录卡死）——每 1.5s 补一次 press/release：模态在=
-        // 真落下；未起/已收=无害原地点按。至多 10 次。
+        let targets: [(u32, u32); 13] = [
+            (3, 4), // 首选：发起方窗客户区中心
+            (2, 3),
+            (4, 3),
+            (2, 5),
+            (4, 5),
+            (3, 3),
+            (3, 5),
+            (2, 4),
+            (4, 4),
+            (1, 3),
+            (5, 3),
+            (1, 6),
+            (5, 6),
+        ];
         let mut delivered = false;
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
-        for _ in 0..10 {
+        for (fx, fy) in targets {
+            let cx = r.left + (r.right - r.left) * fx as i32 / 6;
+            let cy = r.top + (r.bottom - r.top) * fy as i32 / 7;
             click_at(cx, cy);
-            let poll_end = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+            let poll_end = std::time::Instant::now() + std::time::Duration::from_millis(1200);
             while std::time::Instant::now() < poll_end {
                 if finish.is_file() {
                     delivered = true;
@@ -1386,27 +1422,25 @@ mod dnd_e2e {
                 }
                 std::thread::sleep(std::time::Duration::from_millis(150));
             }
-            if delivered || std::time::Instant::now() > deadline + std::time::Duration::from_secs(5)
-            {
+            if delivered {
                 break;
             }
         }
         assert!(
             delivered,
-            "真宿主链未在 15s 内完成交付（finish marker 缺失）"
+            "目标点序扫描未命中发起方按钮（finish marker 缺失）"
         );
 
         // 子进程退出（Process.exit(0)）。
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
         loop {
-            match child.try_wait().expect("try_wait child") {
+            match child_guard.child().try_wait().expect("try_wait child") {
                 Some(status) => {
                     assert!(status.success(), "真宿主子进程须正常退出（got {status:?}）");
                     break;
                 }
                 None if std::time::Instant::now() > deadline => {
-                    let _ = child.kill();
-                    panic!("真宿主子进程 15s 未退出");
+                    panic!("真宿主子进程 15s 未退出（守卫 Drop 将终止回收）");
                 }
                 None => std::thread::sleep(std::time::Duration::from_millis(100)),
             }
@@ -1454,21 +1488,6 @@ mod dnd_e2e {
         PID.with(|c| c.set(pid));
         let _ = unsafe { EnumWindows(Some(cb), LPARAM(0)) };
         HITS.lock().unwrap().clone()
-    }
-
-    /// 真宿主档输入清洁门（同五会话版语义）。
-    fn wait_clean_input_host() {
-        use windows::Win32::UI::Input::KeyboardAndMouse::GetAsyncKeyState;
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        loop {
-            let held = [0x01u16, 0x02, 0x1B]
-                .iter()
-                .any(|&vk| unsafe { GetAsyncKeyState(vk as i32) } as u16 & 0x8000 != 0);
-            if !held || std::time::Instant::now() > deadline {
-                return;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
-        }
     }
 
     /// 真宿主档输入守卫（F804-R2-02 纪律：panic/早退路径配对释放+光标复原）。
