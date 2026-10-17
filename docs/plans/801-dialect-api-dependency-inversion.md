@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-801
-status: drafting
+status: executing
 feature_name: 方言接口独立与 Parser 依赖倒置
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 0
+current_step: 1
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md]
 new_spec_components: [docs/specs/auto-parser-api/project.md]
@@ -97,7 +97,8 @@ work命令：`cargo check -p auto-parser-api`、`cargo check -p auto-lang`、两
 
 | 状态 | ID | owner_stage | 依赖 | 已核对路径/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 799已审查合入、合同确认 | parser_bridge.rs/dialect.rs/session.rs/parser.rs及799最终模型，整链可行性/旧API/快照决策与旧臂冻结 | 01/02/03 |
+| [x] | T-01 | work | 799已审查合入、合同确认 | parser_bridge.rs/dialect.rs/session.rs/parser.rs及799最终模型，整链可行性/旧API/快照决策与旧臂冻结 | 01/02/03 |
+| [✅ 2026-10-17 work] 799 交付重绑：auto-ast 已合入主检出（delivery 9b510f79a，归档回执 48ff19821；闭包=auto-val/auto-lex/serde），`auto_lang::{ast,token,lexer,error}` 均已是 auto-ast/auto-lex/auto-diagnostics 薄门面（类型身份单一实现）。整链核实与 T01 有界决策（D1–D7，全文见 §9 本轮记录）：**D1** 新 crate `crates/auto-parser-api`（lang-core 域）仅依赖 auto-ast/auto-lex/auto-diagnostics，auto-lang 单向依赖之，外部方言闭包零语言实现；**D2** 端口=对象安全 `ParseContext` trait，镜像 778 桥面（游标/expect/空行/checkpoint/parse_type/parse_expr/scenario/on·fn体/syntax_error(String)），泛型便利方法留 ParserBridge 具体门面；**D3** 快照=有作用域句柄表（弃生命周期令牌）：`ParseCheckpoint{parser实例id,slot,全局单调gen}` 不透明凭据，表挂 Parser、派发器每次方言调用后按 watermark truncate（调用退出清理；嵌套水位保外层），跨上下文=实例 id 拒绝、过期=gen 不重复拒绝、restore 单用镜像旧 move 语义，无 unsafe/无 'static/无全局池；**D4** CompilerSession/Scenario+DialectPriority 迁 auto-parser-api 单一定义，旧路径 re-export（类型身份不变）；**D5** 生产接入=ExternalDialectAdapter 实现旧 Dialect trait 进同一三段派发表（pre→builtin→post 与 778 恢复不变量全走既有 try_dialect_stmt/try_token_dialect_stmt，零第二派发表）；**D6** 旧 Dialect/ParserBridge/BridgeCheckpoint/register_dialect/Box 形态与内建 escape hatch 全保持；**D7** fixture 拓扑：新 dialect-api-consumer 仅依赖 auto-parser-api（+verify-deps.sh 闭包 oracle 镜像 791/795/800 模式），旧 ui-dialect-consumer 转 driver（auto-lang+dialect-api-consumer），旧 trait 最小兼容用例=`probe <expr>`→Stmt::Expr（非第二份 model 算法）。结论：无需暴露 Parser/TypeStore、无需复制 AST、无需降低恢复承诺，**可行性成立，进 T-02**；777 增 lang-core 域映射、792 需把 auto-parser-api 纳入 DELIVERY_CRATES 重验（T-05）。实施树改用仓规 `D:/autostack/.wt/lang-801/auto-lang` + branch `plan-801-dev`（AGENTS.md 命名约定优先于计划拟名 codex/plan-801-dev）。 |
 | [ ] | T-02 | work | T01 | 新crates/auto-parser-api及dialect-api-consumer，轻session/端口/trait，check及V01 | 01/03 |
 | [ ] | T-03 | work | T02 | 上层adapter与生产注册/同表派发，旧trait/桥兼容及快照作用域，V03/04 | 02/03 |
 | [ ] | T-04 | work | T03 | model单份迁入轻consumer、原consumer转driver，V02/05及必要引用适配 | 01/02/03 |
@@ -109,6 +110,8 @@ work命令：`cargo check -p auto-parser-api`、`cargo check -p auto-lang`、两
 ## 9. 复审记录
 
 2026-10-17 / stage: new / PLAN-801 revision: 1 / outcome: blocked / next: 799实施、final review和合入后，work重核模型并执行T-01。阻塞为已确认的实施前置，本轮T/AC均未完成。见[合同预检](attachments/extraction-next-20261017/preflight.md)。
+
+2026-10-17 / stage: work / PLAN-801 revision: 1 / outcome: pass（T-01 完成，前置解除）/ worktree=D:/autostack/.wt/lang-801/auto-lang / branch=plan-801-dev / base=master 4755b486a / 前置核验=799 已合入归档（delivery 9b510f79a，终回执 48ff19821），auto-ast 在主检出，789/793/800 均归档 / evidence=T-01 决策 D1–D7（§8 T-01 行），主检出自查无代码路径 WIP（仅他线 docs/plans 簿记） / blockers=无 / next=T-02 实施（crates/auto-parser-api + dialect-api-consumer）。
 
 ## 10. 待澄清事项
 
