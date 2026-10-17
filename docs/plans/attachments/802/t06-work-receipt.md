@@ -2,12 +2,46 @@
 
 代码提交：`4029dd705` + R1 修复 `ad1427e33` + R2 格式 `b32d4df7d`（branch
 `plan-802-dev`，base `1dd123361`，worktree
-`D:/autostack/.wt/lang-802/auto-lang`，git status clean）。auto-down 兄弟
+`D:/autostack/.wt/lang-802/auto-lang`，git status clean；R3 轮无 Rust 改动，
+冻结代码仍为 `b32d4df7d`，实机二进制 SHA256 与证据一致）。auto-down 兄弟
 `c39ac7f`（detached，只读消费）。本收据为 work 阶段证据汇总；merge-owned
 门禁（裸 `cargo t`/`cargo tv`/触面档/tf 批量回归）按 2026-10-14 时序裁定
 **保持 pending**，由最终 review 通过后的 merge 阶段在冻结提交上执行。
 
-## R2 修复轮（F802-R2-01/02 闭合，2026-10-17）
+## R3 修复轮（F802-R3-01 闭合，2026-10-17）
+
+**时序 oracle 重写（保留 ≤2s 冻结契约）**：
+
+1. **预算 = 2.0s + u，u 仅含实测单次观察迭代耗时**（Reader tick/offset
+   取同一 `scroll_state` 响应 + 端点经 press(read) 回执单跳采样——
+   `state_changes` 仅含变更字段，无变更即沿用，零额外查询）。**通道刷新
+   节拍不再计入**（R2 版混入 tick 间隔致 2.5s 迟到误放行）。
+2. **u 受独立必验抖动门**（≤0.60s）：观察者停滞时判"本轮无法认证时序"
+   （FAIL 重跑），不放宽预算。本次实测 u=0.534s。
+3. **t0 取实际输入之前**（保守端，含前台化/点击/滚轮注入开销——测得值
+   只会偏大）；端点一致性在计时循环**内**采样（user-wheel 端点与 Reader
+   同迭代首见：均 1.273s ≤ 2.0+0.534=2.534s）。
+4. **tick-progress 独立必验**：读回 tick 推进（停滞=通道冻结判 FAIL，
+   本次 15→18）。
+5. **五态 mock 自检先行**（`--selftest`）：0.5s 有效对照**通过**、
+   2.5s 迟到对照**拒绝**（R3 负控复现修复）、tick 停滞**拒绝**、
+   wrong_bound/missing_reader 维持**拒绝**——判定与实机共用同一
+   `run_oracle` 路径。
+6. **程序化臂分相时序**（不删除同帧验收要求）：入队回执 0.067s / Reader
+   窗口首见 150 @0.078s / 读端点首见 150 @2.27s（≤采样预算 3.0s），两
+   观察首变值均恰为命令值（无中间落点）；**同 drain 投影的源证据** =
+   renderer.rs:23006（同一 drain 消费路径先 `note_controller_offset` 再
+   安排 `__mcp_scroll`）——亚帧身份由源证据支撑，异步采样如实声明不测
+   亚帧（测量边界）。
+
+冻结基线实机重跑（`b32d4df7d` 构建，SHA256 一致）：**必验 12 项 + 辅助
+1 项（共 13）全 PASS exit 0**（[证据 JSON](v06-live/v06-evidence.json.txt)）：
+基线 0 / Reader 几何 8020×479.2 / 程序化分相 / clamp 偏差 0.200px /
+抖动门 u=0.534s / tick 推进 / 滚轮双观察 1.273s≤2.534s / 端点一致
+7241↔7241（窗内）/ 未绑定反控 / Reader 结构化必验。上轮收据"12+1"计数
+有误（实为 12 必验+1 辅助），本轮已按 JSON 逐项核对。
+
+## R2 修复轮（F802-R2-01/02，2026-10-17；时序预算缺陷由 R3 轮修正）
 
 **F802-R2-02（格式）**：复审点名的四处新增文件（code_editor_provider.rs
 118/285/298、plan802 测试 6 处、host_capabilities.rs 459、consumer fixture）
