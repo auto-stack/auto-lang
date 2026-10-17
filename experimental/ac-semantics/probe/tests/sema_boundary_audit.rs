@@ -81,9 +81,12 @@ fn sema_boundary_core_tree_has_no_product_backends() {
     );
 }
 
-/// V-09: the implementation diff touches NONE of the split-route
-/// hotspots — 783 store, ac-core, product crates, root manifest and
-/// cargo config are byte-identical to the fork point on master.
+/// V-09: the implementation diff stays inside the SANCTIONED
+/// namespaces. Through T-05 (pre-D-788) that meant zero touches under
+/// crates/; since T-06 (D-788 satisfied, single-writer window open) the
+/// shared TestCase protocol files ARE the sanctioned write face — while
+/// the 783 store, ac-core, root manifest and cargo config remain
+/// byte-identical to the fork point on master.
 #[test]
 fn sema_boundary_split_route_hotspots_untouched() {
     let root = repo_root();
@@ -111,8 +114,22 @@ fn sema_boundary_split_route_hotspots_untouched() {
         ".cargo/",
     ];
     let forbidden_exact = ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"];
+    // sanctioned shared-protocol faces (T-06 single-writer window): the
+    // decoder/suite/ir in auto-test-case, the test_cases adapter tree +
+    // runner tests + corpus in auto-lang, and the 788 contract test that
+    // mechanically absorbs the new ExpectSpec field (compile compat).
+    const SANCTIONED_SHARED: &[&str] = &[
+        "crates/auto-test-case/",
+        "crates/auto-lang/src/test_cases/",
+        "crates/auto-lang/src/tests",
+        "crates/auto-lang/test/cases/ac-semantics/",
+        "crates/auto-lang/tests/plan788_r3_.rs",
+    ];
     for line in changed.lines() {
         for p in forbidden_prefixes {
+            if SANCTIONED_SHARED.iter().any(|s| line.starts_with(s)) {
+                continue;
+            }
             assert!(
                 !line.starts_with(p),
                 "hotspot path `{line}` modified ({p}) — split-route zero-touch violated"
@@ -123,13 +140,15 @@ fn sema_boundary_split_route_hotspots_untouched() {
             "root file `{line}` modified — root workspace must stay untouched"
         );
         // implementation lives ONLY under the sanctioned namespaces
+        let legacy_root = "test/cases/ac-semantics/"; // pre-T-06 location (moved)
         assert!(
             line.starts_with("experimental/ac-semantics/")
-                || line.starts_with("test/cases/ac-semantics/")
+                || line.starts_with(legacy_root)
                 || line.starts_with("docs/reports/plan796/")
                 || line.starts_with("docs/plans/attachments/796/")
                 || line.starts_with("scripts/verify-ac-semantics-796.ps1")
                 || line.starts_with("docs/plans/796-")
+                || SANCTIONED_SHARED.iter().any(|s| line.starts_with(s))
                 || line.ends_with(".case.ad"),
             "unexpected changed path `{line}` outside sanctioned namespaces"
         );

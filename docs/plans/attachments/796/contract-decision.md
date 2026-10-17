@@ -121,9 +121,10 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
   callee 签名变 Stale、target body 变 Miss、query 流程 compute_calls 控制、
   负依赖（新定义 g 后旧 unknown-name 裁决不得作为命中复用）、跨 package 不合并、
   非法 payload 受控拒绝。
-- `test/cases/ac-semantics/*.case.ad`：v1 兼容 fenced 块、adapter `sema`、显式
-  `status: not-executed`（D-788 前）；oracle 为独立审阅的期望查询输出快照；
-  Rust 定向对应用例现在真实执行（与 .case.ad 描述同一输入/期望）。
+- `test/cases/ac-semantics/*.case.ad`（T-06 起移至 `crates/auto-lang/test/cases/
+  ac-semantics/` 并翻转 `status: executed`，协议升级为 autolang.case/2 +
+  adapter probe + recipe sema/query-v1，见 D13）；oracle 为独立审阅的期望查询
+  输出快照；Rust 定向对应用例与其同输入同期望。
 
 ## 首例验证记录（T-01 收据）
 
