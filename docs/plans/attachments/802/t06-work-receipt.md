@@ -2,13 +2,37 @@
 
 代码提交：`4029dd705` + R1 修复 `ad1427e33` + R2 格式 `b32d4df7d`（branch
 `plan-802-dev`，base `1dd123361`，worktree
-`D:/autostack/.wt/lang-802/auto-lang`，git status clean；R3 轮无 Rust 改动，
-冻结代码仍为 `b32d4df7d`，实机二进制 SHA256 与证据一致）。auto-down 兄弟
-`c39ac7f`（detached，只读消费）。本收据为 work 阶段证据汇总；merge-owned
-门禁（裸 `cargo t`/`cargo tv`/触面档/tf 批量回归）按 2026-10-14 时序裁定
-**保持 pending**，由最终 review 通过后的 merge 阶段在冻结提交上执行。
+`D:/autostack/.wt/lang-802/auto-lang`，git status clean；R3/R4 轮均零 Rust
+改动，冻结代码仍为 `b32d4df7d`，实机二进制 SHA256 与证据一致）。auto-down
+兄弟 `c39ac7f`（detached，只读消费）。本收据为 work 阶段证据汇总；
+merge-owned 门禁（裸 `cargo t`/`cargo tv`/触面档/tf 批量回归）按 2026-10-14
+时序裁定**保持 pending**，由最终 review 通过后的 merge 阶段在冻结提交上执行。
 
-## R3 修复轮（F802-R3-01 闭合，2026-10-17）
+## R4 修复轮（F802-R3-01 终闭合，2026-10-17）
+
+**≤2s 冻结合同的三分判定（budget=2.0+u 误放行根因消除）**：
+
+1. **判定函数 `classify_convergence(F, L)`**：F=首见新值时刻（真收敛 T 的
+   保守上界，T∈(L,F]），L=末见旧值时刻。**certified**（F ≤ 2.0+ε，ε=0.05s
+   固定时间戳余量）才可过；**violation**（L > 阈值，2s 后仍见旧值）确证
+   违约；**indeterminate**（F 越阈但 L 未越——测量区间跨越合同阈值）=
+   **不可认证=非 pass**。测量不确定度不再加宽成功门限（R4 负控：2.2s
+   实际延迟+0.25s/查询耗时曾被 2.0+u=2.534s 误放行）。
+2. **观察耗时/抖动降为独立诊断**（u≤0.60s 停滞则本轮不认证；不进成功
+   门限）；观察迭代维持 tick/offset 同响应 + press 回执单跳端点采样；
+   t0=输入前（保守）；端点窗内采样；tick 推进独立必验。
+3. **六态 mock 自检先行**（共用 run_oracle）：0.5s 有效**通过**；
+   **2.2s 延迟+0.25s/查询耗时**（R4 负控）**拒绝**（indeterminate/violation
+   非 pass）；2.5s 迟到**拒绝**（violation，L>阈值）；tick 停滞/错误上界/
+   缺 Reader 维持**拒绝**。
+4. **冻结基线实机重跑**（`b32d4df7d` 构建，SHA256 一致）：必验 12 + 辅助
+   1（共 13）全 PASS exit 0（[证据 JSON](v06-live/v06-evidence.json.txt)）。
+   滚轮双观察均 **certified**：Reader pane F=1.713s（L=1.202）、读端点
+   F=1.797s（L=1.713）≤ 2.05s；端点一致 7241↔7241（窗内）；clamp 偏差
+   0.200px；程序化分相（入队 0.052s / 窗口首见 150 @0.093s / 端点首见
+   150 @1.741s，无中间落点；同 drain 投影=renderer.rs:23006 源证据）。
+
+## R3 修复轮（F802-R3-01 部分闭合，2026-10-17；预算式判定由 R4 轮修正）
 
 **时序 oracle 重写（保留 ≤2s 冻结契约）**：
 
