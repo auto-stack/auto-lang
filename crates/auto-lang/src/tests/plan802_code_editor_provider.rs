@@ -189,10 +189,10 @@ mod plan802_assembly {
 
         // 还原全局槽。
         match saved {
-            Some(p) => crate::vm::host_capabilities::set_process_default_code_editor_host_provider(p),
-            None => {
-                crate::vm::host_capabilities::clear_process_default_code_editor_host_provider()
+            Some(p) => {
+                crate::vm::host_capabilities::set_process_default_code_editor_host_provider(p)
             }
+            None => crate::vm::host_capabilities::clear_process_default_code_editor_host_provider(),
         }
     }
 }
@@ -317,7 +317,10 @@ mod plan802_real_adapter {
         // delta：undo/redo 与键入同流入队——先排空（三源同流锚），再断言
         // 空水位形态 + 连续空读同形（真编辑器形；fixture V03 为 fake 形）。
         let d_drain = p.delta(&key).expect("delta");
-        assert!(d_drain.contains("\"revision\":"), "delta JSON 形（got {d_drain}）");
+        assert!(
+            d_drain.contains("\"revision\":"),
+            "delta JSON 形（got {d_drain}）"
+        );
         assert!(
             d_drain.contains("\"replacement\":\"!\""),
             "键入/undo/redo 三源同流在队（got {d_drain}）"
@@ -400,7 +403,10 @@ mod plan802_real_adapter {
         vm.rc_push_str_idx(&mut task, k);
         vm.rc_push_str_idx(&mut task, bad);
         shim_code_editor_save(&mut task, &vm).unwrap();
-        assert!(!auto_val::decode_bool(task.ram.pop_nv()), "save 失败=false 值");
+        assert!(
+            !auto_val::decode_bool(task.ram.pop_nv()),
+            "save 失败=false 值"
+        );
 
         let _ = std::fs::remove_file(&src);
         let _ = std::fs::remove_file(&dst);
@@ -426,7 +432,10 @@ mod plan802_real_adapter {
         );
         // 新 VM + 新 provider 实例读同一文档（注册表单一真源）。
         let vm2 = vm_with_registry();
-        assert_eq!(vm2.code_editor_provider().unwrap().text(&key).as_deref(), Some("长寿文档-🎯"));
+        assert_eq!(
+            vm2.code_editor_provider().unwrap().text(&key).as_deref(),
+            Some("长寿文档-🎯")
+        );
         // 无此键 → None（shim 侧 raise no-editor 形）。
         assert!(vm2
             .code_editor_provider()
@@ -576,7 +585,11 @@ mod plan802_clipboard {
 
         // paste：光标处插入剪贴板内容。
         assert_eq!(p.paste(&key), Some(true));
-        assert_eq!(p.text(&key).as_deref(), Some("甲乙丙-🎯"), "paste 插入回内容");
+        assert_eq!(
+            p.text(&key).as_deref(),
+            Some("甲乙丙-🎯"),
+            "paste 插入回内容"
+        );
 
         // readonly 编辑器（PLAN-089）：cut/paste 拒绝（false）、copy 允许。
         crate::ui::code_editor::code_editor_dispose(&key);
@@ -590,7 +603,11 @@ mod plan802_clipboard {
         assert_eq!(p.copy(&key), Some(true), "readonly copy 允许");
         assert_eq!(p.cut(&key), Some(false), "readonly cut 拒绝（非 None）");
         assert_eq!(p.paste(&key), Some(false), "readonly paste 拒绝（非 None）");
-        assert_eq!(p.text(&key).as_deref(), Some("只读内容"), "readonly 文本不变");
+        assert_eq!(
+            p.text(&key).as_deref(),
+            Some("只读内容"),
+            "readonly 文本不变"
+        );
 
         // 恢复剪贴板（原 None 时置空串——arboard 无清空 API 的近似形）。
         match saved {

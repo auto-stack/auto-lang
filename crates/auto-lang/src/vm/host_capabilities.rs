@@ -459,8 +459,8 @@ pub trait CodeEditorHostProvider: Send + Sync {
 /// 进程级默认 code editor host provider（显式注册；None = 未注册 → shim
 /// 走 T-01 冻结的缺席臂）。替换/快照/if-absent 语义与 frame/text/media/
 /// scroll 族逐条相同。
-static PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER:
-    RwLock<Option<Arc<dyn CodeEditorHostProvider>>> = RwLock::new(None);
+static PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER: RwLock<Option<Arc<dyn CodeEditorHostProvider>>> =
+    RwLock::new(None);
 
 /// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
 pub fn set_process_default_code_editor_host_provider(provider: Arc<dyn CodeEditorHostProvider>) {

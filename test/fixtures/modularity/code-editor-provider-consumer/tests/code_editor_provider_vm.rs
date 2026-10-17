@@ -97,8 +97,7 @@ impl FakeEditor {
             text: "文本-p802-🎉".to_string(),
             delta_fifo: Mutex::new(VecDeque::from(vec![
                 r#"{"revision":7,"deltas":[]}"#.to_string(),
-                r#"{"revision":8,"deltas":[{"start":1,"end":2,"replacement":"乙"}]}"#
-                    .to_string(),
+                r#"{"revision":8,"deltas":[{"start":1,"end":2,"replacement":"乙"}]}"#.to_string(),
             ])),
             delta_calls: Mutex::new(0),
             cursor: Some(CodeEditorCursorDto {
@@ -108,10 +107,7 @@ impl FakeEditor {
             }),
             load_map,
             save_map,
-            scroll: CodeEditorScrollOffsetDto {
-                x: 6.5,
-                y: 13.75,
-            },
+            scroll: CodeEditorScrollOffsetDto { x: 6.5, y: 13.75 },
             scroll_to_calls: Mutex::new(Vec::new()),
             clip_reply: Some(true),
         })
@@ -626,7 +622,10 @@ fn v02_absent_capability_is_frozen_absence_arm() {
 
     // 裸 VM 构造式缺席锚（no-ui 进程无装配路径——new 即无快照源）。
     let vm = AutoVM::new(VirtualFlash::new(0), 64);
-    assert!(vm.code_editor_provider().is_none(), "no-ui 裸 VM 无 provider");
+    assert!(
+        vm.code_editor_provider().is_none(),
+        "no-ui 裸 VM 无 provider"
+    );
 }
 
 /// ID 钉扎（22 canonical 名双射 + 9907 不占用）+ Clone/merge 保 provider +
@@ -672,14 +671,20 @@ fn v02_identity_clone_merge_rules_preserved() {
         "provider 注入不 bump binding_revision"
     );
     let clone = ni.clone();
-    assert!(clone.code_editor_provider().is_some(), "NI Clone 不丢 provider");
+    assert!(
+        clone.code_editor_provider().is_some(),
+        "NI Clone 不丢 provider"
+    );
 
     let mut vm = AutoVM::new(VirtualFlash::new(0), 64);
     vm.set_code_editor_provider(FakeEditor::sentinel());
     let mut carrier = NativeInterface::new();
     carrier.register_dynamic(|_t: &mut AutoTask, _v: &AutoVM| Ok(()));
     vm.merge_native_interface(&carrier);
-    assert!(vm.code_editor_provider().is_some(), "VM merge 路径不丢 provider");
+    assert!(
+        vm.code_editor_provider().is_some(),
+        "VM merge 路径不丢 provider"
+    );
 }
 
 /// 兼容安装优先关系（无 UI 构建下直接验 host_capabilities 槽语义）：显式
@@ -694,8 +699,7 @@ fn v02_if_absent_respects_explicit_default() {
     // 空槽 → 补缺。
     set_process_default_code_editor_host_provider_if_absent(a.clone());
     assert_eq!(
-        process_default_code_editor_host_provider()
-            .map(|p| CodeEditorHostProvider::text(&*p, "k")),
+        process_default_code_editor_host_provider().map(|p| CodeEditorHostProvider::text(&*p, "k")),
         Some(Some("文本-p802-🎉".to_string())),
         "空槽补缺成功"
     );
@@ -703,8 +707,7 @@ fn v02_if_absent_respects_explicit_default() {
     set_process_default_code_editor_host_provider(Arc::new(ExplicitOther));
     set_process_default_code_editor_host_provider_if_absent(FakeEditor::sentinel());
     assert_eq!(
-        process_default_code_editor_host_provider()
-            .map(|p| CodeEditorHostProvider::text(&*p, "k")),
+        process_default_code_editor_host_provider().map(|p| CodeEditorHostProvider::text(&*p, "k")),
         Some(Some("@explicit".to_string())),
         "兼容安装不得覆盖显式默认"
     );
@@ -745,7 +748,11 @@ print(d3)
         "FIFO 保序 + 空队列水位哨兵（got {out:?}）"
     );
     // 恰一次：3 次 native delta = 3 次 provider delta；2 次 text 独立计数。
-    assert_eq!(fake.delta_call_count(), 3, "delta 每次 native 调用恰一次消费");
+    assert_eq!(
+        fake.delta_call_count(),
+        3,
+        "delta 每次 native 调用恰一次消费"
+    );
     assert_eq!(
         fake.calls_snapshot()
             .iter()

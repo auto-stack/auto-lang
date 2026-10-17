@@ -118,8 +118,7 @@ impl CodeEditorHostProvider for CodeEditorRegistryProvider {
     }
 
     fn fold_hidden_count(&self, key: &str) -> usize {
-        crate::ui::code_editor::code_editor_with(key, |core| core.fold_hidden_count())
-            .unwrap_or(0)
+        crate::ui::code_editor::code_editor_with(key, |core| core.fold_hidden_count()).unwrap_or(0)
     }
 
     fn undo(&self, key: &str) -> bool {
@@ -285,8 +284,8 @@ mod tests {
             Fake("@plan802-explicit:哨兵-🎉"),
         ));
         install_process_default();
-        let cur = crate::vm::host_capabilities::process_default_code_editor_host_provider()
-            .unwrap();
+        let cur =
+            crate::vm::host_capabilities::process_default_code_editor_host_provider().unwrap();
         assert_eq!(
             CodeEditorHostProvider::text(&*cur, "任意键"),
             Some("@plan802-explicit:哨兵-🎉".to_string()),
@@ -298,9 +297,7 @@ mod tests {
             Some(p) => {
                 crate::vm::host_capabilities::set_process_default_code_editor_host_provider(p)
             }
-            None => {
-                crate::vm::host_capabilities::clear_process_default_code_editor_host_provider()
-            }
+            None => crate::vm::host_capabilities::clear_process_default_code_editor_host_provider(),
         }
     }
 }
