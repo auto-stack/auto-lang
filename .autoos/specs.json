@@ -2046,6 +2046,19 @@
             "delivery:89bb13944"
           ],
           "status": "active"
+        },
+        {
+          "id": "P801-M",
+          "title": "PLAN-801 合入收据（delivery/沉淀/投影/归档/清理）",
+          "content": "delivery=786c49964 ff-only（9 提交 rebase over 802 代码线+他线簿记，range-diff 9/9 全等；映射 8f3e8e9f8→52a71a444/ace61f7c4→77446bc25/29ea71232→56dbda6ed/643d5bdeb→be17a404a/06e559a60→7e895c350/7c2c74ddc→e30676163/9f94b32ce→4d83aab9c/49512993b→b95e51d06/67eb95903→786c49964）；冻结门禁裸 t 5264/5265（1 负载时序 flake plan730 solo 0.11s 绿+首轮 plan707_cancel solo 绿，803 同族归因在案）+tv 163/163（tu/taa 零触面）；沉淀=SD-01..04 入库+auto-parser-api plans.md+GROUPS+INDEX 再生 41 项目；ledger v42→v43 guarded offline projection（备份 bak-v42-801）；归档 archive/801。",
+          "file": "docs/plans/archive/801-dialect-api-dependency-inversion.md",
+          "tags": [
+            "PLAN-801",
+            "stage:merge",
+            "delivery:786c49964",
+            "sha256:d615a740a33c"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -7600,6 +7613,32 @@
             "sha256:d7f8bd092788"
           ],
           "status": "active"
+        },
+        {
+          "id": "P801-D1",
+          "title": "auto-parser-api 模块契约（方言端口 API 单一来源）",
+          "content": "SD-01：方言端口合同唯一实现——轻 CompilerSession/Scenario/DialectPriority + ExternalDialect trait + 对象安全 ParseContext 端口 + 快照凭据 ParseCheckpoint；依赖闭包仅 auto-ast/auto-lex/auto-diagnostics（lang-core 域，777 规则），轻层门面 re-export ast/token/error 与旧 auto_lang 模块名对齐；外部文法实现闭包零语言实现（dialect-api-consumer+verify-deps 钉住）。快照寿命按签发作用域失效（F-801-R1-01：槽位记 scope+port_release_scope 归属清理，tombstone 复用不可绕过；跨上下文/过期受控拒绝且游标不动；move-only 单用；无 unsafe/无源码静态生命要求/无全局池）。剩余边如实：内建 UiDialect escape hatch 完整文法在 Parser、生产入口注册不自动注入、widget 体 model 直连。",
+          "file": "docs/specs/auto-parser-api/project.md",
+          "tags": [
+            "PLAN-801",
+            "stage:merge",
+            "delivery:786c49964",
+            "sha256:8070fd361984"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P801-D2",
+          "title": "auto-lang 前端方言双接口与同表派发（PLAN-801）",
+          "content": "SD-02/03：ParserBridge 在上层实现 ParseContext（泛型便利方法留具体门面，端口对象安全参数形态）；ExternalDialectAdapter 协议转换使新接口方言进同一三段派发表（register_external_dialect，Override→builtin→Append 与 778 恢复不变量零漂移）；session/DialectPriority 迁移单一定义+旧路径薄门面（类型身份不变）；dialect-system 陈旧 mem::take 描述修正为 Arc 派发+新端口；792 交付闭包 11→12 成员（SD-04）。",
+          "file": "docs/specs/auto-lang/frontend/overview.md",
+          "tags": [
+            "PLAN-801",
+            "stage:merge",
+            "delivery:786c49964",
+            "sha256:1eac101d9306"
+          ],
+          "status": "active"
         }
       ]
     },
@@ -9225,6 +9264,19 @@
             "PLAN-803",
             "stage:merge",
             "delivery:89bb13944"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P801-T",
+          "title": "方言端口验证矩阵（闭包/驱动/递归寿命回归）",
+          "content": "V01–V06：dialect-api-consumer 独立闭包（fixture 3/3+verify-deps+metadata 闭包=[api,ast,lex,diag,val]）；driver 全套 48 例（778 断言逐字保持经新注册=V02 投影 oracle、v03 混排派发 4、v04 快照寿命 3、v05 旧 API/类型身份 3）；R1 反例 12 例收编 r1_scope_expiry（Ident/token×Some/None/Err 复用槽位+正控）；R2 独立三层/兄弟组合 12；792 正式交付 driver 25/25（fresh 锁真构建/重定位 locked/十四态负控）。",
+          "file": "test/fixtures/modularity/ui-dialect-consumer/tests/r1_scope_expiry.rs",
+          "tags": [
+            "PLAN-801",
+            "stage:merge",
+            "delivery:786c49964",
+            "sha256:a2ec83c841c3"
           ],
           "status": "active"
         }
@@ -12369,10 +12421,23 @@
             "reviewed:b455b4ef9"
           ],
           "status": "active"
+        },
+        {
+          "id": "P801-R2",
+          "title": "PLAN-801 final review R2 — pass",
+          "content": "独立终审（承接 R1 needs_fix）：F-801-R1-01 CLOSED（源码核对作用域机制+原 12 例重放+48/48+新三层/兄弟组合 12/12）；F-801-R1-02 CLOSED（全新 scratch 独立完整执行正式交付 driver exit0 25/25，producer=49512993b，fresh 210s/locked 222s，A/B parser 源码 SHA 与受审一致）；strict 0 违规、无镜像 AST/双份算法/第二派发表/暴露 Parser。merge 门（裸 t+tv/沉淀/归档/清理）由 T-08 执行。",
+          "file": "docs/plans/attachments/801/review-r2.md",
+          "tags": [
+            "PLAN-801",
+            "stage:merge",
+            "delivery:786c49964",
+            "sha256:11191ad2812c"
+          ],
+          "status": "active"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 42
+  "version": 43
 }

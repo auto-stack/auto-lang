@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-801
-status: execution_done
+status: archived
 feature_name: 方言接口独立与 Parser 依赖倒置
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 6
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-parser-api/project.md]
@@ -66,6 +66,7 @@ Checkpoint为与本次上下文关联的不透明凭据；T01选择安全生命�
 | SD-01 | add | docs/specs/auto-parser-api/project.md | 无独立接口→轻方言/端口/快照与无实现依赖 | 外部实现脱离语言包 | AC-01/02 |
 | SD-02 | modify | docs/specs/auto-lang/frontend/overview.md | 旧桥pilot→兼容双接口、单派发及剩余完整文法边 | 真实生产切口 | AC-02/03/04 |
 | SD-03 | modify | docs/specs/auto-lang/frontend/design/dialect-system.md | 陈旧mem::take→已有Arc递归恢复及新adapter | 防止778行为倒退 | AC-02/04 |
+| SD-04 | modify | docs/specs/repository-boundaries/generated-ui-distribution.md | 11成员交付闭包→12成员，新增auto-parser-api及其包内轻依赖说明 | 与本版正式交付生成/fresh/locked验证保持一致（R1修复已交，R2补齐表格索引） | AC-04 |
 
 ## 6. 测试设计
 
@@ -113,10 +114,13 @@ work命令：`cargo check -p auto-parser-api`、`cargo check -p auto-lang`、两
 | [x] | T-06 | work | T05 | R1：更新真实验收/快照收据，补generated-ui-distribution权威闭包SD目标与impact，冻结新提交送审 | 04 |
 | [✅ 2026-10-17 R1 修复, code 49512993b] SD-04 新增：generated-ui-distribution.md 交付闭包清单 11→12 成员（+auto-parser-api 及闭包内依赖说明）worktree 备稿；SD-01..03 快照契约同步作用域语义（"水位截断"→"签发作用域失效"）；frontmatter supersedes 增补该 target；t06-receipt 增 R1 修复轮闭合节（finding→不变量→受影响路径→修复与永久用例→结果→剩余缺口=无）。新冻结 code=49512993b 送 T-07 二轮复审。原收据/SHA 见下行历史。 |
 | [✅ 2026-10-17 work, code 9f94b32ce] 剩余边四条如实登记（内建 escape hatch 完整文法/生产入口注册注入/widget 结构直连/旧 trait 兼容层，见 attachments/801/t06-receipt.md）；迁位净删清单（27 files +1654/−315，净删边=外部文法实现→auto-lang）；SD-01（新 auto-parser-api/project.md）/SD-02（frontend/overview 增 PLAN-801 节）/SD-03（dialect-system 陈旧 mem::take→Arc 派发+新端口）worktree 备稿待 merge 沉淀；SHA256×10 入收据。work 阶段收口送 T-07 独立复审。 |
-| [ ] | T-07 | review | T06 | 同树独立逐项及生命周期/兼容反控复审，merge门pending | 05 |
-| [ ] | T-08 | merge | final pass | 同步master，受影响复审/冻结门、Spec/ledger/归档/wt-guard清理 | 06 |
+| [x] | T-07 | review | T06 | R2 final pass@49512993b；R1两finding CLOSED，独立原例12/12+新组合12/12、consumer48/48、正式交付25/25；merge门pending | 05 |
+| [x] | T-08 | merge | final pass | 同步master，受影响复审/冻结门、Spec/ledger/归档/wt-guard清理 | 06 |
+| [✅ 2026-10-17 merge] delivery=786c49964 ff-only（9 提交 rebase over 802 代码线+他线簿记零冲突，range-diff 9/9 全等；受审提交 49512993b→b95e51d06）；冻结门禁：裸 cargo t --no-fail-fast 5265 全量枚举 5264 过/1 红=plan730 上传服务负载时序 flake（solo 0.11s 绿）+首轮 fail-fast 位 plan707_cancel 同族（solo 绿，803 同族归因在案）；cargo tv 163/163；tu/taa 零触面不触发；沉淀=SD-01..04+GROUPS/INDEX（41 项目）+plans.md+ledger v42→v43 guarded offline projection（P801-D1/D2/T/R2/M 五条目，备份 bak-v42-801）；归档 archive/801；清理收据见 §9 终回执。 |
 
 ## 9. 复审记录
+
+2026-10-17 / stage: review / review_scope: final（R2） / reviewer_identity=独立于实施的本轮Codex审查上下文，承接R1审查、未另开agent / plan_id=PLAN-801 / plan_revision=1 / outcome=pass / worktree_path=D:/autostack/.wt/lang-801/auto-lang / branch=plan-801-dev / reviewed_commit=49512993baced60ca424af4fe49ecb88abc639a4 / base_commit=043ca8567a5f6e86c8af9147a706d96e4f2bde3b / previous_review_commit=9f94b32ce60e2db2dfd5d70c67b8ff540a1e5533 / dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 clean；根锁e781475c209b7b0cefc77c6f4384d7fd1e4e8925300fe07d35fe79fe9fab56e4，根配置/777基线/consumer锁/792 driver与R1逐hash一致 / spec_inputs=[R2基线](attachments/801/review-r2-baseline.json.txt)；[四目标SD冻结](attachments/801/review-r2-spec-delta.patch) SHA256=9dd8349c49f05848dafdf638b811c1b3549cf1f0c9a0f5ef756ab7dfae0f744f，当前main dry-run exit0、未应用 / finding_closure=F-801-R1-01 CLOSED（按签发作用域失效；旧独立12/12原样重放，新三层嵌套/兄弟调用/Ident-token/Some-None-Err组合12/12，consumer48/48）；F-801-R1-02 CLOSED（新目录独立正式driver25/25 exit0，fresh真实build210s、A→B不带target的locked build222s、metadata包内单源、资源/缺输入/坏hash及其他正式负控和恢复绿；SD-04权威闭包11→12已核对，补齐原SD表索引不改合同） / acceptance_results=AC01..05 pass，AC06 merge-owned pending / findings=无新增阻断项 / evidence=[R2报告](attachments/801/review-r2.md)、[原例重放](attachments/801/review-r2-r1-replay.log.txt)、[新组合](attachments/801/review-r2-combinations.log.txt)、[正式交付](attachments/801/review-r2-delivery.log.txt)、[持久收据](attachments/801/review-r2-delivery-receipt.json.txt)；check exit0/411既有告警、strict pass/0违规/2既有grandfathered、无新增fmt问题（6hunk为base已有）、diff-check exit0；未变轻consumer/API/闭包证据按hash精确复用R1，不复用受影响Parser/交付行为；A/B包内Parser/bridge源码与受审提交相同、producer git_head=49512993b且clean / pending_closeout_gates=最终集成冻结提交裸cargo t+tv、规范/ledger/索引/归档/guard清理；ui_gen无触面不跑tu，tf主检出到期批量档；未跑整档或合入 / next=merge；reviewed 7/8，T07完成、T08待办。pass仅冻结代码/验收/规范审查，门禁通过前不得合入或宣称交付完成，后续变动须判断受影响复审/验证。
 
 2026-10-17 / stage: work / PLAN-801 revision: 1 / outcome: pass（R1 两 findings 全修，T-03..T-06 R1 要求完成）/ worktree_path=D:/autostack/.wt/lang-801/auto-lang / branch=plan-801-dev / base_commit=043ca8567 / code_commit=49512993b（fix 轮：9f94b32ce→49512993b；修复在复审冻结基线 9f94b32ce 之上单一提交） / dependency_revisions=auto-down c39ac7f 不变 / task_ids=T-03..T-06（R1 重开项）/ finding_closure=F-801-R1-01：不变量=端口快照寿命由签发作用域决定；受影响路径=Ident/token 两派发×Some/None/Err×tombstone 复用形态；修复=槽位 scope 归属+port_release_scope；永久用例=r1_scope_expiry 12 例（6 正控+6 反例）；结果=12/12+driver 48/48+定向 dialect 7/7+plan778 4/4；剩余缺口=无（跨 Parser/旧 BridgeCheckpoint 控制保持绿）。F-801-R1-02：受影响面=本版 12 成员交付闭包；修复=792 driver 完整重跑 25/25 exit0（V01 fresh 锁+真构建 118s/V02 重定位 locked 112s+metadata 身份/V03 十四态负控+恢复绿/V04 保持）+SD-04 权威闭包 11→12 备稿+supersedes/收据同步；剩余缺口=无。 / evidence=attachments/801/{t06-receipt.md R1 节, delivery-driver-r2-receipt.json, delivery-driver-r2.log.txt, r1_scope_expiry.rs} / blockers=无（merge 门保持 pending：冻结裸 t+tv；tf 主检出批量档） / next_responsible_role=review（T-07 二轮 final review，审查基线 49512993b）
 
@@ -127,6 +131,18 @@ work命令：`cargo check -p auto-parser-api`、`cargo check -p auto-lang`、两
 2026-10-17 / stage: work / PLAN-801 revision: 1 / outcome: pass（T-01 完成，前置解除）/ worktree=D:/autostack/.wt/lang-801/auto-lang / branch=plan-801-dev / base=master 4755b486a / 前置核验=799 已合入归档（delivery 9b510f79a，终回执 48ff19821），auto-ast 在主检出，789/793/800 均归档 / evidence=T-01 决策 D1–D7（§8 T-01 行），主检出自查无代码路径 WIP（仅他线 docs/plans 簿记） / blockers=无 / next=T-02 实施（crates/auto-parser-api + dialect-api-consumer）。
 
 2026-10-17 / stage: work / PLAN-801 revision: 1 / outcome: pass（T-01..T-06 全部完成，work-owned AC 达成）/ worktree_path=D:/autostack/.wt/lang-801/auto-lang / branch=plan-801-dev / base_commit=043ca8567（master 分叉点，含 T-01 簿记）/ code_commit=9f94b32ce（链：8f3e8e9f8→ace61f7c4→29ea71232→643d5bdeb→06e559a60→7c2c74ddc→9f94b32ce）/ dependency_revisions=auto-down c39ac7f（组内兄弟 detached，只读） / task_ids=T-01..T-06 / evidence=AC-01（V01：fixture 3/3+verify-deps+metadata 闭包无语言实现）；AC-02（V02 778 断言逐字保持 26 测试+V03 4/4+V04 3/3，driver 全套 36/8 目标）；AC-03（V05 3/3 类型身份+旧 API 面；单一实现 grep 审计四项全唯一）；AC-04（777 strict pass+基线 4 边重采样；792 DELIVERY_CRATES 12+delivery 9/9；SD-01..03 备稿+SHA 收据 attachments/801/t06-receipt.md） / blockers=无（review/merge-owned 门禁显式 pending：冻结裸 cargo t+cargo tv——parser.rs 触 VM/编译器面；ui_gen 零触面不跑 tu；tf 到期主检出批量档；预存 bench E0601 非本线引入已在收据登记） / next_responsible_role=review（T-07 同树独立复审）
+
+### §9.6 PLAN-801:r1 合入收据（2026-10-17，stage: merge）
+
+| Checkpoint | Evidence |
+|---|---|
+| prepared | reviewed=49512993b（R2 pass，SD 冻结 patch SHA 9dd8349c…）+merge 规范预备 67eb95903（纯文档/索引增量，实现/依赖零变动）；canonical 目标=auto-parser-api/project.md（新）+frontend/overview+dialect-system+generated-ui-distribution（改） |
+| landed | master tip=786c49964==delivery（git merge --ff-only，无 merge 提交）；rebase over ffb0145f4（802 代码线+788/804/805/806 簿记）零冲突，range-diff 9/9 全等，映射：8f3e8e9f8→52a71a444、ace61f7c4→77446bc25、29ea71232→56dbda6ed、643d5bdeb→be17a404a、06e559a60→7e895c350、7c2c74ddc→e30676163、9f94b32ce→4d83aab9c、**49512993b→b95e51d06**、67eb95903→786c49964 |
+| ledger_refreshed | .autoos/specs.json v42→v43，guarded offline projection（无 HTTP store 在运行；字节级备份 .autoos/specs.json.bak-v42-801 未跟踪留存）；条目 P801-D1/D2（designs 255）、P801-T（tests 136）、P801-R2（reviews 272）、P801-M（reports 171），读回校验 ID/内容/schema 六节通过 |
+| archived | docs/plans/archive/801-dialect-api-dependency-inversion.md（git mv）+status: archived+T-08 勾结 8/8+本收据与 ledger 同笔提交入默认分支；附件 attachments/801 全量（R1/R2 复审+delivery 收据+t06）已随 delivery/簿记入库 |
+| cleaned | 双树 wt-guard clean（auto-lang+auto-down）→worktree/分支/组目录移除，回执见下 |
+
+冻结门禁（delivery 786c49964 上）：裸 cargo t --no-fail-fast **5264/5265 过**，唯一红=plan730_raw_receive_commit_conflict_roundtrip（负载时序 flake，solo 0.11s 绿；首轮 fail-fast 位 plan707_cancel 亦 solo 绿——803 收据同族归因在案，机器多会话并行编译负载）；**cargo tv 163/163**；tu（ui_gen 零触面）/taa（aavm 零触面）不触发；tf 批量档到期判定见下。生产制品观察：本仓无守护进程/Web bundle 消费面；`auto` CLI 为按需 cargo 构建（792 driver 已在受审提交独立重建验证），无运行中生产进程需重启。批量回归判定：801%5=1 非整除触发；last-batch-regression covered=800 当日新鲜（803 收据同判），48h 窗口内——**不到期**，不触发 /auto-plan:regress。
 
 ## 10. 待澄清事项
 
