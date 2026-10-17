@@ -8,7 +8,7 @@
 ## 修复闭合
 
 - F799-R1-01 closed：auto_val::AutoResult仍为模型私有use。永久旧门面glob回归1/1、双路径身份/解析错误/投影测试2/2本轮均通过（regressions.log.txt）。没有修改旧消费者规避冲突。
-- F799-R2-01 closed：新提交仅将 `pub use auto_lex::token::Pos` 在相同模块导入块中移至auto_val导入之前，一行移位；无新增/删除item、cfg、宏或行为变化。与R2同款根入口 `rustfmt --check --edition 2021 crates/auto-ast/src/lib.rs crates/auto-lang/src/ast_parse_ext.rs crates/auto-lang/tests/ast_facade_glob_compat.rs crates/auto-lang/tests/ast_cross_path_identity.rs` exit0（format.log.txt；成功无输出）。git diff --check亦exit0。
+- F799-R2-01 closed：新提交仅将 `pub use auto_lex::token::Pos` 在相同模块导入块中移至auto_val导入之前，一行移位；无新增/删除item、cfg、宏或行为变化。与R2同款根入口 `rustfmt --check --edition 2021 crates/auto-ast/src/lib.rs crates/auto-lang/src/ast_parse_ext.rs crates/auto-lang/tests/ast_facade_glob_compat.rs crates/auto-lang/tests/ast_cross_path_identity.rs` exit0（成功无输出；该命令无差异时零输出，结果已在此记录）。git diff --check亦exit0。
 - 两轮失败后的诊断/覆盖调整已核：work明确说明此前只检查新测试文件、遗漏被修改模型根模块；现改为受影响包crate根入口递归格式检查。本轮独立复验该入口，不以work的clean断言放行。
 - R2外部UI方言oracle阻断已消除：`cargo test --offline --manifest-path test/fixtures/modularity/ui-dialect-consumer/Cargo.toml` exit0，6+8+12=26项全部通过（ui-dialect.log.txt）。fixture锁文件SHA与R2相同，未替换依赖或降低断言；本轮不推断镜像服务的恢复原因，仅确认锁定输入下实际通过。
 
@@ -23,7 +23,7 @@
 | AC-05 | pass | 本轮独立复审完成，两finding闭合，无新finding |
 | AC-06 | pending merge | 见下；未宣称交付完成 |
 
-本轮相对R2只有导入块排序，已核完整git diff。依赖auto-val/lex/diagnostics的tree、根Cargo.lock/.cargo/config.toml、所有fixture锁文件、driver、永久测试与规范文本的SHA均与R2一致（baseline.json.txt）。792生成/源码复制/锁投影/保护算法、fixture工程、资源、测试配置均未改；排序不改变导出的item和生产行为，本轮当前AST库及外部消费者重新编译/测试通过。因此复用R2不受格式变更影响的依赖闭包、交付行为和消费者证据，不再重复整套交付冷构建。R2交付源的原始byte hash只说明R2自身来源，不冒称等于本轮排序后的ast.rs；当前修复差异明确绑定8069076b7。原始收据路径为 `../review-r2/{driver-receipt.json.txt,driver.log.txt,boundaries.json.txt,consumer-metadata.json.txt,check-1.log.txt..check-6.log}`，生产消费者原证见R1报告。
+本轮相对R2只有导入块排序，已核完整git diff。依赖auto-val/lex/diagnostics的tree、根Cargo.lock/.cargo/config.toml、所有fixture锁文件、driver、永久测试与规范文本的SHA均与R2一致（baseline.json.txt）。792生成/源码复制/锁投影/保护算法、fixture工程、资源、测试配置均未改；排序不改变导出的item和生产行为，本轮当前AST库及外部消费者重新编译/测试通过。因此复用R2不受格式变更影响的依赖闭包、交付行为和消费者证据，不再重复整套交付冷构建。R2交付源的原始byte hash只说明R2自身来源，不冒称等于本轮排序后的ast.rs；当前修复差异明确绑定8069076b7。原始收据路径为 `../review-r2/{driver-receipt.json.txt,driver.log.txt,boundaries.json.txt,consumer-metadata.json.txt,check-1.log.txt..check-6.log.txt}`，生产消费者原证见R1报告。
 
 ## 规范增量与遗漏扫描
 
