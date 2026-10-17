@@ -57,7 +57,7 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **adapter**：`ui::frame_provider::FrameBenchProvider` 从既有 `frame_bench` 通道读取；捕获开关（`AUTO_FRAME_BENCH` 门控零开销）、时源、renderer note 语义不变。`install_process_default` 统一调用 if-absent——**兼容默认只补空槽，不覆盖调用方显式选择**（优先关系契约见 vm/overview 三层清单）。
 - **自动装配位置**：VmBridge 两构造（`new_with_children`/`new_from_decls`）、`run_file_dynamic_ui_inner`、CLI ui-iced 入口（auto crate main），以及 crate 根组合助手 `install_ui_host_capabilities`。根助手覆盖 run 家族执行漏斗（`execute_autovm_with_deadline`）、test/debug、`create_vm_from_source/abt`、配置求值、REPL、解释器、back_proxy 的宿主创建路径；ui 构建提供兼容默认，no-ui 构建助手为 no-op。**不得**沿用"仅前三点注入、其余库程序轨须自行注册"的早期不完整描述。
 - **调用方保证**：高层入口前设置显式默认，UI 开/关两种构建均保持真实供值；无人注册时 UI 宿主恢复 frame_bench 默认，门开可读真值。原始 AutoVM 仍只按构造时默认快照，UI 实现不接回 vm core。
-- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）、文件/图像剪贴板 2934..2937（PLAN-790）与 scroll controller 族 9900..9905/9922/9923（PLAN-794，见下节）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；code_editor、dialog、dnd_start、term/media 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
+- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）、文件/图像剪贴板 2934..2937（PLAN-790）、scroll controller 族 9900..9905/9922/9923（PLAN-794）与 code editor 22 native 全族（PLAN-802）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；dialog、dnd_start、term/media、diff 族 9915..9917 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
 
 ## 现状（2026-10-16）——文本剪贴板 adapter 宿主装配（PLAN-785）
 
@@ -127,6 +127,37 @@ shim 内联同源同值）。
 （2910..2915/2919..2924/9906..9913 含其滚动三函数）、dialog（2927/2928）、
 dnd_start（2938）、term/media 等按 790 版清单减去 scroll controller 族
 （9900..9905/9922/9923）。
+
+## 现状（2026-10-17）——code editor adapter 宿主装配（PLAN-802）
+
+> 779/785/790/794 装配模式的 editor 批次（VM 侧契约见 vm/overview code
+> editor native 宿主能力节）。SD-02。
+
+`CodeEditorRegistryProvider`（无状态）委托 `ui::code_editor` 既有注册表
+（rope/undo/fold/光标/delta 队列仍是**单一真源**，adapter 只做 core 值域
+↔ UI 函数返回形转换，不复制第二 registry）；滚动三项委托
+`editor_scroll_handle` + scroll controller 注册表投影/intent（**非** 794
+通用 scroll 参数协议——handle 约定单源 `core::editor_scroll_handle`）；
+文件 IO/OS 剪贴板留 UI 实现侧。挂 `code-editor` 单门控；cut/copy/paste
+实现级第二门控 `ui-clipboard` 在方法体内（无此 feature 返 `None` =
+shim 组合特征 raise 臂，= 迁移前 code-editor on + ui-clipboard off 组合
+行为）。
+
+宿主接线四点与 779/785/790/794 同集：`install_ui_host_capabilities`、
+`run_file_dynamic_ui_inner`、VmBridge 两构造（全 if-absent）。
+
+**VM 轨 scroller 同源绑定（R1 修复轮补齐）**：`render_dynamic_view` 的
+code_editor 臂自 802 起与 desktop 泛型臂（29480 同款）把 editor 寄宿
+scroller 绑进 scroll controller 注册表（`bind_controller(scroll_id,
+scroll_id)`，handle=widget id）——修复 PLAN-629 寄宿化以来 VM 轨漏绑致
+`code_editor_scroll_to` 写端点 intent 被 drain 静默丢弃的预存缺口。
+
+**未迁边界（更新）**：core→ui 生产直引剩余（vm/native.rs 口径）=diff
+族 9915..9917（PLAN-703 面，非目标保留）、dnd_start（2938）、term/
+media/dialog/ffi 族——editor 22 native 生产边清零（`code_editor::
+code_editor_*`/`editor_scroll_handle`/`ClipboardOp`/`ui::scroll` intent
+直引形态由 plan802 core 剪断锚永久钉扎）。不宣称 term/media/dialog/dnd
+或整体 renderer 已独立。
 
 ## 现状（2026-10-11）——remote-frame 宿主侧远程帧消费元件（PLAN-760）
 

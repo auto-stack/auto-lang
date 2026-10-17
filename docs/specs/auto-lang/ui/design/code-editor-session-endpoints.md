@@ -65,3 +65,22 @@ a2r/merged 臂——三面同步（VM shim/catalog/a2r 映射，687 形）。
 a2r/merged 臂（`vm_builtin_host_call`）直调同名 core 函数——VM shim
 与 a2r 实现同源（供料回执表 T-00② 形探针=下游门；端点返回形与本契
 约漂移时双方向有界修订回 new）。
+
+## provider 时期同源（PLAN-802）
+
+VM shim 供值改经 `vm::host_capabilities::CodeEditorHostProvider`（UI 宿主
+注册 `CodeEditorRegistryProvider` adapter，见 ui/overview code editor
+adapter 节）；UI adapter 与 a2r/merged 臂**仍委托同一 `ui::code_editor`
+注册表函数**——三轨实现同源不因迁移漂移。端点契约全部保持：save 裸写
+rope 字节（BOM/EOL 归 front）、光标 0 基行/char 列、selection bytes、
+scroll 写=intent 队列（未绑定丢弃、恒 true=已入队）、读=注册表投影单源、
+用户滚动后 ≤2s 读回收敛、Q-2 回声零依赖。
+
+**VM 轨 scroller 同源绑定**：`render_dynamic_view` code_editor 臂与
+desktop 泛型臂同款 `bind_controller(editor_scroll_handle(key))`（R1 修复
+轮补齐——修复 PLAN-629 起 VM 轨漏绑致写端点 intent 被静默丢弃的预存
+缺口）；editor 句柄 offset 回写臂（`__scroll_state_read` 消费者）原样，
+读端点投影新鲜度仍由 ScrollStateReader 心跳节拍承载。实机验收 oracle：
+docs/plans/attachments/802/v06-live/（三分判定 certified 才过；异步采样
+不证明亚帧——同 drain 命令投影由 renderer 先 `note_controller_offset`
+再安排滚动的实现序支撑）。

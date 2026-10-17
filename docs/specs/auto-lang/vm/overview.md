@@ -80,6 +80,7 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - 文本剪贴板 native 2925/2926 为 779 装配模式的首个真实迁移批次（PLAN-785）：core shim 经 `vm::host_capabilities::ClipboardTextProvider` 供值，不再直引 ui::clipboard；缺席=原 feature-disabled VMError、在位不可用=空串/false。详见 [文本剪贴板 native 宿主能力（PLAN-785）](#文本剪贴板-native-宿主能力plan-785)。
 - 文件/图像剪贴板 native 2934..2937 为同模式 files/image 批次（PLAN-790）：core shim 经 `vm::host_capabilities::ClipboardMediaProvider` 供值，不再直引 ui::clipboard_native；缺席/失败=G3 **值降级**（空表/false/null，非 VMError——与文本族构成族差异）。详见 [文件/图像剪贴板 native 宿主能力（PLAN-790）](#文件图像剪贴板-native-宿主能力plan-790)。
 - scroll controller 族 9900..9905 与子锚点 9922/9923 为 scroll 批次（PLAN-794）：core shim 经 per-VM `vm::host_capabilities::ScrollHostProvider` 供值，不再直引 ui::scroll；缺席=值降级（controller=Int 0、intent 族=Bool false、state=Float 0.0、to_child="error:unsupported"、anchor_state="unknown"）。详见 [scroll native 宿主能力（PLAN-794）](#scroll-native-宿主能力plan-794)。
+- code editor 22 native 全族（2910..2915/2919..2924/2932/2933/2939/9906/9908..9913）为 editor 批次（PLAN-802）：core shim 经 per-VM `vm::host_capabilities::CodeEditorHostProvider`（19 具名方法）供值，不再直引 ui::code_editor；缺席=21 项 raise feature-disabled 形 VMError + 9913 scroll_to 弹参返 false（唯一值缺席臂）。详见 [code editor native 宿主能力（PLAN-802）](#code-editor-native-宿主能力plan-802)。
 
 ## Frame native 宿主能力装配（PLAN-779）
 
@@ -171,6 +172,48 @@ pending 晚一拍；key 不在当帧→invalid:not_found（一次性）；同 (h
 外部 no-ui 宿主可注入自定义 provider；真 no-ui 消费方探针
 （test/fixtures/modularity/scroll-provider-consumer，独立 workspace）
 为验收 oracle。
+
+
+## code editor native 宿主能力（PLAN-802）
+
+code editor 22 native（`text/cursor_line/cursor_col/selection_len/find/
+set_text` 2910..2915、`undo/redo/select_all/cut/copy/paste` 2919..2924、
+`fold_toggle/fold_hidden_count` 2932/2933、`delta` 2939、`edit` 9906、
+`load_file/save/set_cursor/scroll_offset_x/scroll_offset_y/scroll_to`
+9908..9913；canonical `auto.code_editor.*`）供值经 per-VM
+`CodeEditorHostProvider`——19 具名方法 ↔ 22 native（`cursor` 三读与
+`scroll_offset` 双读共享一次 DTO 读取，与迁移前 `code_editor_cursor`/
+`controller_snapshot` 单调用形态同构）；禁字符串 method 总分发与 UI
+通用对象句柄。值域纪律：owned `String` 键/文本/delta JSON、usize/i64/f64
+标量、core 自有 DTO（`CodeEditorCursorDto{line 0基, char_col, selection_
+bytes}`/`CodeEditorScrollOffsetDto{x,y}`）；不暴露 CodeEditorCore/rope/
+ScrollIntent/ClipboardOp/renderer 引用或 VM 堆句柄。core shim **不直接
+引用** ui::code_editor；装配=779/785/790/794 同构三级（实例注入 >
+构造期进程默认快照 > 兼容 if-absent 补空槽）；注入不 bump
+binding_revision/不撤 proof；Clone/merge 保 provider。
+
+**缺席语义=T-01 冻结缺席臂逐字面值**（= 迁移前 feature-off 分支）：
+21 项 raise `…: the \`code-editor\` feature is disabled`（cut/copy/paste
+为 `code-editor`+`ui-clipboard` 组合特征文案）；9913 scroll_to 唯一
+**值缺席臂**——弹 3 参、push Bool false、不 raise。在位值语义：
+load_file 失败=-1 值、save 失败=false 值（非 raise）；text/delta/
+set_text 无此键编辑器=raise no-editor 形；cut/copy/paste 的 provider
+`Option<bool>` None 臂=宿主有编辑器面但无 OS 剪贴板面（组合特征文案）。
+
+单位/语义锚（673/701 不变）：光标 0 基行 + char 列、selection_len=
+选中行内容字节和（不含行分隔符）、fold 入口 1 基行（shim 侧 max(1)-1
+转 0 基）、edit offset=byte offset（负 offset 钳在 shim i32→usize 边界，
+反区间/越界/非 UTF-8 char 边界=provider 返 false）；delta 恰一次
+destructive read（空队列返当前水位 `"deltas":[]` JSON，text 不清队列）；
+save=rope→文件直写（无全文 VM 字符串往返，BOM/EOL 包装归 front）；
+scroll 三项经 provider 委托 `editor_scroll_handle`+controller 注册表
+投影/intent（单位/≤2s 收敛合同见 ui/design/
+code-editor-session-endpoints.md）。
+
+外部 no-ui 宿主可注入自定义 provider；真 no-ui 消费方探针
+（test/fixtures/modularity/code-editor-provider-consumer，独立 workspace）
+为验收 oracle。catalog/codegen/intrinsics 零改动（ID/canonical 名/短名
+不变，9907 归 Env.track 不占用）。
 
 
 ## 布尔短路求值语义（plan-615）
