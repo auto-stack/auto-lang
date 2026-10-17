@@ -16,6 +16,10 @@ publish = false
 
 [dependencies]
 auto-lang = { path = "../../../../crates/auto-lang" }
+# PLAN-801：被测新接口方言（model 单份实现，轻闭包 crate）。
+dialect-api-consumer = { path = "../dialect-api-consumer" }
+# PLAN-801：端口类型（ParseContext/ParseCheckpoint——driver 测试直接命名）。
+auto-parser-api = { path = "../../../../crates/auto-parser-api" }
 
 # 独立 workspace（见上）；无锁文件、无成员。
 [workspace]

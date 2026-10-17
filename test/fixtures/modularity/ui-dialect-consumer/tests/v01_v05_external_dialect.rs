@@ -1,6 +1,11 @@
 //! PLAN-778 外部 UI 方言探针验收腿 V-01..V-05（正反控）。
 //!
 //! 对应 docs/plans/778 §6 测试设计矩阵；全部断言只用 auto-lang 公开面。
+//!
+//! PLAN-801：model 实现（ExternalModelDialect/Probe）单份迁入轻闭包 crate
+//! dialect-api-consumer（仅依赖 auto-parser-api），经 with_external_dialect
+//! 新接口注册；**断言逐字保持**——本文件即 V02"AST 投影等于旧臂"的 oracle
+//!（778 语法/混合派发/恢复/递归在新接口路径上投影不变）。
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -10,17 +15,19 @@ use auto_lang::dialect::DialectPriority;
 use auto_lang::error::{AutoError, SyntaxError};
 use auto_lang::parser::Parser;
 use auto_lang::session::CompilerSession;
-use ui_dialect_consumer::{ExternalModelDialect, Probe};
+use dialect_api_consumer::{ExternalModelDialect, Probe};
 
 fn ui_session() -> CompilerSession {
     CompilerSession::ui()
 }
 
 fn override_parser<'a>(code: &'a str, probe: Arc<Probe>) -> Parser<'a> {
-    Parser::from(code).with_session(ui_session()).with_dialect(
-        Box::new(ExternalModelDialect::new(probe)),
-        DialectPriority::Override,
-    )
+    Parser::from(code)
+        .with_session(ui_session())
+        .with_external_dialect(
+            Box::new(ExternalModelDialect::new(probe)),
+            DialectPriority::Override,
+        )
 }
 
 /// V-01（AC-01）：外部方言真实接管 `model { count int = 1 }`，产出 typed
@@ -80,7 +87,7 @@ fn v02_core_assignment_not_swallowed() {
     let probe = Arc::new(Probe::default());
     // 不带 with_session → CompilerSession::default() = Core。
     let ast = Parser::from("model = 1")
-        .with_dialect(
+        .with_external_dialect(
             Box::new(ExternalModelDialect::new(probe.clone())),
             DialectPriority::Override,
         )
@@ -151,7 +158,7 @@ fn v03_registration_survives_with_session() {
     let probe = Arc::new(Probe::default());
     // 先注册、后设 session——顺序不得清空外部注册。
     let ast = Parser::from("model { count int = 1 }")
-        .with_dialect(
+        .with_external_dialect(
             Box::new(ExternalModelDialect::new(probe.clone())),
             DialectPriority::Override,
         )
@@ -327,7 +334,7 @@ fn v05_conflict_resolution_distinguishable() {
     let probe2 = Arc::new(Probe::default());
     let ast2 = Parser::from("model { count int = 1 }")
         .with_session(ui_session())
-        .with_dialect(
+        .with_external_dialect(
             Box::new(ExternalModelDialect::new(probe2.clone())),
             DialectPriority::Append,
         )

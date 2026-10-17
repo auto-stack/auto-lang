@@ -13,12 +13,12 @@ use auto_lang::ast::{Stmt, Type};
 use auto_lang::dialect::DialectPriority;
 use auto_lang::parser::Parser;
 use auto_lang::session::CompilerSession;
-use ui_dialect_consumer::{ExternalModelDialect, Probe};
+use dialect_api_consumer::{ExternalModelDialect, Probe};
 
 fn ui_override(code: &str, probe: Arc<Probe>) -> Parser<'_> {
     Parser::from(code)
         .with_session(CompilerSession::ui())
-        .with_dialect(
+        .with_external_dialect(
             Box::new(ExternalModelDialect::new(probe)),
             DialectPriority::Override,
         )

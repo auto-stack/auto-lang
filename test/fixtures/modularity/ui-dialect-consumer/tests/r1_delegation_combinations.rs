@@ -3,6 +3,11 @@
 //! 来源：独立复审反例（docs/plans/attachments/778/review-r1/independent.rs）
 //! ——修复后收编为永久组合控制，覆盖"外部回调委托期间的注册可见性"与
 //! "委托 Err 后的 context 恢复"，含 Ident/token 两路派发与正控。
+//!
+//! PLAN-801：model 方言改由 dialect-api-consumer 新接口实现（注册换
+//! with_external_dialect）；文件内联的 ContextProbe/TokenNone/TokenRetry
+//! 旧 trait 方言保持旧注册——新旧两臂在同一文件内互为对照（递归/恢复
+//! 不变量跨接口一致）。
 
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -14,7 +19,7 @@ use auto_lang::parser::Parser;
 use auto_lang::parser_bridge::ParserBridge;
 use auto_lang::session::CompilerSession;
 use auto_lang::token::TokenKind;
-use ui_dialect_consumer::{ExternalModelDialect, Probe};
+use dialect_api_consumer::{ExternalModelDialect, Probe};
 
 /// F778-R1-01 反例（P1）：外部 model 方言解析初值中的闭包时，活跃方言自身
 /// 不得从注册表消失——闭包 body 内嵌 model 再派发必须仍由外部方言接管
@@ -25,7 +30,7 @@ fn r1_nested_expression_keeps_active_registration() {
     let input = "model { child = () => { model { count int = 1 } } }";
     let result = Parser::from(input)
         .with_session(CompilerSession::ui())
-        .with_dialect(
+        .with_external_dialect(
             Box::new(ExternalModelDialect::new(probe.clone())),
             DialectPriority::Override,
         )
@@ -45,7 +50,7 @@ fn r1_sibling_nested_block_control() {
     let probe = Arc::new(Probe::default());
     let result = Parser::from("{ model { count int = 1 } }\nmodel { count int = 2 }")
         .with_session(CompilerSession::ui())
-        .with_dialect(
+        .with_external_dialect(
             Box::new(ExternalModelDialect::new(probe.clone())),
             DialectPriority::Override,
         )
