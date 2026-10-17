@@ -28,6 +28,13 @@ mod plan794_scroll_host_provider;
 // PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
 // 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
 mod plan802_code_editor_provider;
+// PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
+// 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
+mod plan804_dialog_dnd_provider;
+// PLAN-804 V-04/V-05: 真 OS 实机证据档——env 门控（AUTO_LANG_DIALOG_E2E/
+// AUTO_LANG_DND_E2E=1 才运行，日常档零 OS 面零交互；详见文件头）。
+#[cfg(windows)]
+mod plan804_os_e2e; (feat(vm): dialog/dnd host provider 迁移——2927/2928/2938 三 native 依赖倒置 (Plan 804))
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 #[cfg(feature = "test-trans")]
 mod a2r_c_abi_gates;

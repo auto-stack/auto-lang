@@ -462,19 +462,38 @@ fn format_value_for_display(vm: &crate::vm::engine::AutoVM, val: &Value) -> Stri
 /// PLAN-802: code editor host adapter 同纪律并入（22 native 全族——core
 /// shim 已不直引 ui::code_editor；code-editor 构建恢复 editor 注册表
 /// 接线，缺席槽=802 T-01 冻结缺席臂）。
-#[cfg(feature = "ui")]
+/// PLAN-804: 两槽并入（2927/2928 + 2938）——本入口的门同时扩为
+/// `any(ui, ui-dialog)`：dialog adapter 走 ui-dialog 单门控，**ui-dialog
+/// only（无 ui）构建恢复迁移前高层对话框路径**（不把 OS 实现藏在 ui
+/// renderer 门后）；dnd adapter 走 windows+native-dnd 双门控（模块本身
+/// 在 ui 门内=三分），缺席槽=false/VMError 同旧。
+#[cfg(any(feature = "ui", feature = "ui-dialog"))]
 fn install_ui_host_capabilities() {
-    crate::ui::frame_provider::install_process_default();
-    #[cfg(feature = "ui-clipboard")]
-    crate::ui::clipboard_provider::install_process_default();
-    #[cfg(all(windows, feature = "native-clipboard"))]
-    crate::ui::clipboard_media_provider::install_process_default();
-    crate::ui::scroll_host_provider::install_process_default();
-    #[cfg(feature = "code-editor")]
-    crate::ui::code_editor_provider::install_process_default();
+    #[cfg(feature = "ui")]
+    {
+        crate::ui::frame_provider::install_process_default();
+        #[cfg(feature = "ui-clipboard")]
+        crate::ui::clipboard_provider::install_process_default();
+        #[cfg(all(windows, feature = "native-clipboard"))]
+        crate::ui::clipboard_media_provider::install_process_default();
+        crate::ui::scroll_host_provider::install_process_default();
+        // PLAN-802: code editor host adapter（code-editor 单门控——editor
+        // 注册表接线恢复，22 native 全族）。
+        #[cfg(feature = "code-editor")]
+        crate::ui::code_editor_provider::install_process_default();
+        // PLAN-804: dnd adapter（委托 ui::native_dnd 既有
+        // parse_payload_json + win32::start_drag；模块在 ui 门内，此处
+        // 双门控即有效三分 windows ∧ native-dnd ∧ ui）。
+        #[cfg(all(windows, feature = "native-dnd"))]
+        crate::ui::dnd_host_provider::install_process_default();
+    }
+    // PLAN-804: dialog adapter（host_adapters 落点，ui-dialog 单门控——
+    /// 与 ui renderer 门无关，ui-dialog-only 形态同装）。
+    #[cfg(feature = "ui-dialog")]
+    crate::host_adapters::dialog::install_process_default();
 }
 
-#[cfg(not(feature = "ui"))]
+#[cfg(not(any(feature = "ui", feature = "ui-dialog")))]
 fn install_ui_host_capabilities() {}
 
 pub fn run(code: &str) -> AutoResult<String> {
@@ -5620,6 +5639,14 @@ fn run_file_dynamic_ui_inner(
     // code-editor 单门控——editor 注册表接线恢复，22 native 全族）。
     #[cfg(feature = "code-editor")]
     crate::ui::code_editor_provider::install_process_default();
+    // PLAN-804: dialog adapter 同点并入（if-absent 兼容默认；ui-dialog
+    // 单门控——host_adapters 落点，2927/2928 parented 策略接线恢复）。
+    #[cfg(feature = "ui-dialog")]
+    crate::host_adapters::dialog::install_process_default();
+    // PLAN-804: dnd adapter 同点并入（if-absent 兼容默认；windows+
+    // native-dnd 双门控，本函数在 ui-iced 门内=有效三分，2938 接线恢复）。
+    #[cfg(all(windows, feature = "native-dnd"))]
+    crate::ui::dnd_host_provider::install_process_default();
     let comp = build_dynamic_component_inner(code, path, override_scenario)?;
     // PLAN-031 T-05：-q vm 轨分岔（env 门）——装载链零改：CWD/主题/后端
     // 序由 run_vm_ui 上游照常执行（组件已按同链装载），仅"自开 OS 窗"
@@ -8218,6 +8245,12 @@ mod plan370_test_support;
 
 #[cfg(feature = "ui")]
 pub mod ui;
+
+// PLAN-804: 宿主 OS 能力适配层（vm core 与 ui renderer 门之外的第三
+// 落点——首员 = ui-dialog 单门控的 OS 文件对话框）。crate 根是宿主接线
+// 的合法层；vm core 经 vm::host_capabilities provider 接口消费，不直引
+// 本层。
+pub mod host_adapters;
 
 // Re-export UI types when feature is enabled
 #[cfg(feature = "ui")]

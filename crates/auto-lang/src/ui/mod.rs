@@ -96,9 +96,16 @@ pub mod scroll_host_provider;
 pub mod code_editor_provider;
 // PLAN-681: native open/save file dialogs — host of the `dialog_open`/
 // `dialog_save` VM builtins (natives 2927/2928) for a2r generated apps,
-// behind `ui-dialog` (enabled by `ui-iced`).
+// behind `ui-dialog` (enabled by `ui-iced`). PLAN-804 起为薄门面（单一
+// OS 实现在 host_adapters::dialog，本模块保 a2r unparented 策略）。
 #[cfg(feature = "ui-dialog")]
 pub mod dialog;
+// PLAN-804: dnd host provider adapter——委托 ui::native_dnd 既有载荷
+// parser 与 Win32 会话实现（2938；779/785/790/794 同构）。双门控
+// windows × native-dnd（模块在 ui 门内=有效三分，与迁移前 shim 门逐字
+// 相同）；无 adapter 形态 VM 缺席 provider → false 降级。
+#[cfg(all(windows, feature = "native-dnd"))]
+pub mod dnd_host_provider;
 // Plan 485: native clipboard bridge (CF_HDROP files / DIBV5+PNG images).
 // Pure codec helpers compile on every tier (`cargo t clipboard_native`);
 // Win32 calls are double-gated inside (windows × `native-clipboard`).

@@ -873,6 +873,23 @@ impl AutoVM {
             {
                 native_interface.set_code_editor_provider(provider);
             }
+
+            // PLAN-804: 同纪律快照 dialog host provider（2927/2928）。
+            // 缺席快照 = shim 侧 feature-disabled 形 VMError（T-01 冻结
+            // 矩阵，与迁移前 no-ui 构建一致）。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_dialog_host_provider()
+            {
+                native_interface.set_dialog_host_provider(provider);
+            }
+
+            // PLAN-804: 同纪律快照 dnd host provider（2938）。缺席快照 =
+            // shim 侧 false 降级（G5，与迁移前 off 臂同形）。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_dnd_host_provider()
+            {
+                native_interface.set_dnd_host_provider(provider);
+            }
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
@@ -1376,6 +1393,38 @@ impl AutoVM {
         &self,
     ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>> {
         self.native_interface.code_editor_provider()
+    }
+
+    /// PLAN-804: 实例级 dialog host provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 2927/2928。
+    pub fn set_dialog_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>,
+    ) {
+        self.native_interface.set_dialog_host_provider(provider);
+    }
+
+    /// PLAN-804: 本 VM 当前 dialog host provider（None=缺席错误语义）。
+    pub fn dialog_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>> {
+        self.native_interface.dialog_host_provider()
+    }
+
+    /// PLAN-804: 实例级 dnd host provider 注入/覆盖。读取面=shim 2938。
+    pub fn set_dnd_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>,
+    ) {
+        self.native_interface.set_dnd_host_provider(provider);
+    }
+
+    /// PLAN-804: 本 VM 当前 dnd host provider（None=false 降级语义）。
+    pub fn dnd_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>> {
+        self.native_interface.dnd_host_provider()
     }
 
     /// Plan 197 Task 9: Load generic registry from codegen

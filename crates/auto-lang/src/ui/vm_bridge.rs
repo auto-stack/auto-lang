@@ -651,6 +651,14 @@ impl VmBridge {
         // editor 注册表接线恢复，22 native 全族）。
         #[cfg(feature = "code-editor")]
         crate::ui::code_editor_provider::install_process_default();
+        // PLAN-804: dialog adapter 同点并入（if-absent 兼容默认；
+        // ui-dialog 单门控，2927/2928 parented 策略接线恢复）。
+        #[cfg(feature = "ui-dialog")]
+        crate::host_adapters::dialog::install_process_default();
+        // PLAN-804: dnd adapter 同点并入（if-absent 兼容默认；
+        // windows+native-dnd 双门控，本构造在 ui 门内=有效三分，2938）。
+        #[cfg(all(windows, feature = "native-dnd"))]
+        crate::ui::dnd_host_provider::install_process_default();
 
         let widget_name = widget.name.clone();
 
@@ -787,6 +795,11 @@ impl VmBridge {
         // 同 new_with_children）。
         #[cfg(feature = "code-editor")]
         crate::ui::code_editor_provider::install_process_default();
+        // PLAN-804: dialog/dnd adapter 同点并入（同 new_with_children）。
+        #[cfg(feature = "ui-dialog")]
+        crate::host_adapters::dialog::install_process_default();
+        #[cfg(all(windows, feature = "native-dnd"))]
+        crate::ui::dnd_host_provider::install_process_default();
 
         let widget_name = decl.name.to_string();
 

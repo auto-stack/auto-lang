@@ -15307,9 +15307,10 @@ fn execute_wallpaper_preview(state: &mut crate::ui::session::DesktopSession, pat
     inject_wallpaper_picker(state);
 }
 
-/// PLAN-019 v1.7：目录浏览臂——原生 pick_folder 对话框（rfd；宿主进程
-/// 无 dialog_parent 复用面——native.rs 私有模块——v1 无父窗绑定，模态
-/// 语义不受影响）→ 选定走 [`execute_set_wallpapers_dir`] 同一写臂
+/// PLAN-019 v1.7：目录浏览臂——原生 pick_folder 对话框（rfd；PLAN-804
+/// 起 dialog_parent 为 host_adapters::dialog 私有模块——pick_folder 族
+/// 仍无复用面，v1 无父窗绑定，模态语义不受影响）→ 选定走
+/// [`execute_set_wallpapers_dir`] 同一写臂
 /// （config 单源 + mtime 热轮询），取消 = no-op。
 fn execute_wallpaper_browse_dir(state: &mut crate::ui::session::DesktopSession) {
     let Some(dir) = rfd::FileDialog::new()

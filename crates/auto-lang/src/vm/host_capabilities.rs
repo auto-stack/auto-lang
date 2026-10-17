@@ -483,6 +483,62 @@ pub fn set_process_default_code_editor_host_provider_if_absent(
     }
 }
 
+// ── PLAN-804: 对话框宿主能力（dialog_open 2927 / dialog_save 2928）─────
+//
+// 779/785/790/794 装配模式的 dialog 批次：core shim 不再直引 rfd/
+// raw-window-handle/Win32（dialog_parent 迁往 host_adapters），经本接口
+// 由宿主供值；UI/OS 实现放 crate 上层 `host_adapters::dialog`（ui-dialog
+// 单门控，独立于 ui renderer 门——ui-dialog-only 构建恢复旧高层路径），
+// no-ui 宿主可注入自定义实现。
+//
+// 值域纪律（计划 §2/§5）：跨界仅 owned `String`——出参路径串（""=取消/
+// 宿主不可用，非 raise）；入参 raw filter/default_name（`&str` 借用 shim
+// 侧 `pop_string_arg` 已物化的 owned String，785 set_text 同款，不泄漏 VM
+// 字符串索引/借用缓冲）。provider 接**原始** filter/default_name——逗号/
+// 分号/空格/tab 分割、去前导点、空项丢弃的公共过滤语义只在单一 OS 实现
+// （host_adapters::dialog）维护，core 不复制第二套 parser。
+//
+// 缺席语义（T-01 冻结矩阵 = 迁移前 feature-off 臂逐字面值）：无 provider
+// → `VMError "dialog_open/save: the \`ui-dialog\` feature is disabled"`
+// （shim 在弹实参前 raise——错误中止下栈面与旧臂一致）；在位 provider
+// 取消/不可用返回空串。模态重入：NI 槽锁在调用前释放（accessor clone Arc
+// 即返），真实模态阻塞可重入，provider 回调可再访问/设置槽（V03）。
+
+/// OS 文件对话框能力接口（owning String 值域，无 UI/Win32 类型）。
+pub trait DialogHostProvider: Send + Sync {
+    /// 打开文件选择对话框；返回所选路径（`to_string_lossy` 形），
+    /// `""` = 取消/宿主不可用（实现方保证）。
+    fn open(&self, filter: &str) -> String;
+    /// 保存目标选择对话框；返回目标路径，`""` = 取消/不可用。
+    fn save(&self, default_name: &str) -> String;
+}
+
+/// 进程级默认 dialog host provider（显式注册；None = 未注册 → shim
+/// 缺席错误）。替换/快照/if-absent 语义与 frame/text/media/scroll 族
+/// 逐条相同。
+static PROCESS_DEFAULT_DIALOG_HOST_PROVIDER: RwLock<Option<Arc<dyn DialogHostProvider>>> =
+    RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_dialog_host_provider(provider: Arc<dyn DialogHostProvider>) {
+    let mut slot = PROCESS_DEFAULT_DIALOG_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_DIALOG_HOST_PROVIDER poisoned");
+    *slot = Some(provider);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子——语义同 frame/text/media/scroll
+/// 族）。供 ui-dialog 构建的内建宿主隐式入口（含 ui-dialog-only 无 ui
+/// 形态）：不覆盖调用方显式默认。
+pub fn set_process_default_dialog_host_provider_if_absent(provider: Arc<dyn DialogHostProvider>) {
+    let mut slot = PROCESS_DEFAULT_DIALOG_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_DIALOG_HOST_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
+}
+
 /// 当前进程默认（`AutoVM::new` 构造期快照消费）。
 pub fn process_default_code_editor_host_provider() -> Option<Arc<dyn CodeEditorHostProvider>> {
     PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER
@@ -496,6 +552,87 @@ pub fn clear_process_default_code_editor_host_provider() {
     let mut slot = PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER
         .write()
         .expect("PROCESS_DEFAULT_CODE_EDITOR_HOST_PROVIDER poisoned");
+    *slot = None;
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_dialog_host_provider() -> Option<Arc<dyn DialogHostProvider>> {
+    PROCESS_DEFAULT_DIALOG_HOST_PROVIDER
+        .read()
+        .expect("PROCESS_DEFAULT_DIALOG_HOST_PROVIDER poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到缺席错误语义）。测试装配/宿主拆卸用。
+pub fn clear_process_default_dialog_host_provider() {
+    let mut slot = PROCESS_DEFAULT_DIALOG_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_DIALOG_HOST_PROVIDER poisoned");
+    *slot = None;
+}
+
+// ── PLAN-804: 拖出宿主能力（dnd_start 2938）────────────────────────────
+//
+// 同批次第二槽（与 dialog 槽独立装配——一种能力在位不得掩盖另一种缺席，
+// 计划 §2）：core shim 不再直引 UI 的 native_dnd 模块，经本接口由宿主供值；
+// OS/COM 实现留 UI 侧 adapter（windows ∧ native-dnd ∧ ui 三门控安装，
+// 委托既有 start_drag），no-ui 宿主可注入自定义实现。
+//
+// 值域纪律：JSON 仍是 dnd 现有 wire 输入——provider 接 owned JSON 串，
+// text/files/virtual_files、base64 与裸反斜杠重试规则由唯一 UI 载荷
+// parser（ui 侧 native_dnd 模块的 parse_payload_json）解释，core 不复制第二套
+// parser。返回 Bool = 旧 start_drag 会话合同（T-01 冻结）：true=执行过
+// 会话（落下**或取消**），效果另由 on_dnd_finished 事件报告——不得把
+// cancel 映射 false / 把 true 当 drop 成功。实际 DoDragDrop 在调用线程
+// （输入线程）内联阻塞；不得改成 spawn/async 提前返 true。
+//
+// 缺席语义（T-01 冻结矩阵 = 迁移前 off 臂同形）：无 provider → 弹实参
+// 后返 false（G5 值降级，非 raise）。
+
+/// 拖出（OLE drag-out）能力接口（owned JSON 入 / Bool 出，无 UI 类型）。
+pub trait DndHostProvider: Send + Sync {
+    /// 发起系统拖拽：受理并完成会话后 true=执行过会话（落下或取消均
+    /// true）；空载荷/坏 JSON/已有会话重入 → false。
+    fn start(&self, payload_json: String) -> bool;
+}
+
+/// 进程级默认 dnd host provider（显式注册；None = 未注册 → shim 返
+/// false）。替换/快照/if-absent 语义与 dialog 族逐条相同。
+static PROCESS_DEFAULT_DND_HOST_PROVIDER: RwLock<Option<Arc<dyn DndHostProvider>>> =
+    RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_dnd_host_provider(provider: Arc<dyn DndHostProvider>) {
+    let mut slot = PROCESS_DEFAULT_DND_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_DND_HOST_PROVIDER poisoned");
+    *slot = Some(provider);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子——语义同 dialog 族）。供 UI 宿主
+/// 隐式入口（windows+native-dnd+ui 形态）：不覆盖调用方显式默认。
+pub fn set_process_default_dnd_host_provider_if_absent(provider: Arc<dyn DndHostProvider>) {
+    let mut slot = PROCESS_DEFAULT_DND_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_DND_HOST_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_dnd_host_provider() -> Option<Arc<dyn DndHostProvider>> {
+    PROCESS_DEFAULT_DND_HOST_PROVIDER
+        .read()
+        .expect("PROCESS_DEFAULT_DND_HOST_PROVIDER poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到 false 降级语义）。测试装配/宿主拆卸用。
+pub fn clear_process_default_dnd_host_provider() {
+    let mut slot = PROCESS_DEFAULT_DND_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_DND_HOST_PROVIDER poisoned");
     *slot = None;
 }
 

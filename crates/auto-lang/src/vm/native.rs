@@ -142,6 +142,20 @@ pub struct NativeInterface {
     code_editor_provider: std::sync::RwLock<
         Option<std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>>,
     >,
+    /// PLAN-804: OS 文件对话框能力槽（2927/2928）。装配语义与既有五族
+    /// 逐条相同（per-NativeInterface 持有、Clone 保留、注入不动绑定身份）；
+    /// 缺席语义 = 原 feature-off 形 VMError（文本逐字）。模态重入纪律：
+    /// accessor 先 clone Arc 释放槽锁再返回——shim 调用 provider 时不持
+    /// 本锁，真实模态阻塞/回调重入安全（V03）。
+    dialog_host_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>>,
+    >,
+    /// PLAN-804: 拖出能力槽（2938）。装配语义与 dialog 槽逐条相同（两槽
+    /// 独立装配，一种在位不掩盖另一种缺席）；缺席语义 = 迁移前 off 臂
+    /// 同形 false（值降级，非 raise）。
+    dnd_host_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>>,
+    >,
 }
 
 impl Clone for NativeInterface {
@@ -193,6 +207,20 @@ impl Clone for NativeInterface {
                     .expect("code_editor_provider poisoned")
                     .clone(),
             ),
+            // PLAN-804: dialog/dnd host provider 随装配克隆保留（同上，
+            // merge_native_interface 经 Clone+merge 路径不丢宿主能力）。
+            dialog_host_provider: std::sync::RwLock::new(
+                self.dialog_host_provider
+                    .read()
+                    .expect("dialog_host_provider poisoned")
+                    .clone(),
+            ),
+            dnd_host_provider: std::sync::RwLock::new(
+                self.dnd_host_provider
+                    .read()
+                    .expect("dnd_host_provider poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -213,6 +241,8 @@ impl NativeInterface {
             clipboard_media_provider: std::sync::RwLock::new(None),
             scroll_host_provider: std::sync::RwLock::new(None),
             code_editor_provider: std::sync::RwLock::new(None),
+            dialog_host_provider: std::sync::RwLock::new(None),
+            dnd_host_provider: std::sync::RwLock::new(None),
         }
     }
 
@@ -323,6 +353,49 @@ impl NativeInterface {
         self.code_editor_provider
             .read()
             .expect("code_editor_provider poisoned")
+            .clone()
+    }
+    /// PLAN-804: 注入/替换本接口（=本 VM）的 dialog host provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_dialog_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>,
+    ) {
+        *self
+            .dialog_host_provider
+            .write()
+            .expect("dialog_host_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-804: 当前 dialog host provider（None=缺席错误语义）。clone
+    /// Arc 即释放槽锁——模态阻塞/回调重入不持锁（V03）。
+    pub fn dialog_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>> {
+        self.dialog_host_provider
+            .read()
+            .expect("dialog_host_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-804: 注入/替换本接口（=本 VM）的 dnd host provider。
+    pub fn set_dnd_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>,
+    ) {
+        *self
+            .dnd_host_provider
+            .write()
+            .expect("dnd_host_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-804: 当前 dnd host provider（None=false 降级语义）。
+    pub fn dnd_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>> {
+        self.dnd_host_provider
+            .read()
+            .expect("dnd_host_provider poisoned")
             .clone()
     }
 
@@ -2454,31 +2527,30 @@ pub fn shim_clipboard_image_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 }
 
 // ── Plan 488: OLE 拖出（auto.dnd.start；拖入路由在 renderer 侧） ────────
-// 降级契约（G5）：非 Windows / 未开 `native-dnd` 时返 false，事件不触发，
-// .at 代码零条件分支。UI 桥在 `ui/native_dnd.rs`（Win32 双门控同
-// native-dock；COM 实现步骤 3，STA 会话步骤 4）。
+// 降级契约（G5）：无 provider（非 Windows / 未开 `native-dnd` / no-ui /
+// 未装配）返 false，事件不触发，.at 代码零条件分支。PLAN-804 依赖倒置：
+// shim 不再直引 `ui::native_dnd`——载荷 JSON 交
+// [`crate::vm::host_capabilities::DndHostProvider`] 唯一解释（UI adapter
+// 委托既有 parse_payload_json + win32::start_drag，windows ∧ native-dnd ∧
+// ui 三门控安装），shim 体因此 feature 中性。
 
 /// `dnd_start(payload_json) -> Bool`：发起系统拖拽（**调用线程内联阻塞**
 /// 至落下/取消——OLE 拖拽循环必须跑在收到按下的输入线程上，488 步骤 9
 /// E2E 定案；桌面模式 VM handler 在 UI 线程执行即被点击线程，DoDragDrop
 /// 自带消息泵，模态期与原生 App 一致）。完成效果经 `on_dnd_finished`
-/// 事件回 App。载荷 JSON 见 `ui::native_dnd::parse_payload_json`
-/// （text/files/virtual_files 组合）。
-#[cfg(all(windows, feature = "native-dnd", feature = "ui"))]
+/// 事件回 App。返回 true = 执行过会话（落下**或取消**）——效果另报，
+/// 不得把 cancel 映射 false 或把 true 当 drop 成功（T-01 冻结）。
+/// 载荷 JSON 字段（text/files/virtual_files 组合）见 `ui::native_dnd`
+/// 模块的 parse_payload_json 文档。
 pub fn shim_dnd_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // pop_string_arg 已物化 owned String + StakeGuard.nv 配平；provider 接
+    // owned JSON（缺席臂同样消费实参保持栈纪律——与迁移前 off 臂同形）。
     let payload_json = pop_string_arg(task, vm);
-    let ok = crate::ui::native_dnd::parse_payload_json(&payload_json)
-        .map(crate::ui::native_dnd::win32::start_drag)
-        .unwrap_or(false);
+    let ok = match vm.native_interface.dnd_host_provider() {
+        Some(provider) => provider.start(payload_json),
+        None => false,
+    };
     task.ram.push_nv(auto_val::encode_bool(ok));
-    Ok(())
-}
-
-/// 降级臂（G5）：false（仍弹出实参保持栈纪律）。
-#[cfg(not(all(windows, feature = "native-dnd", feature = "ui")))]
-pub fn shim_dnd_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _ = pop_string_arg(task, vm);
-    task.ram.push_nv(auto_val::encode_bool(false));
     Ok(())
 }
 
@@ -2755,183 +2827,46 @@ pub fn shim_scroll_anchor_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     Ok(())
 }
 
-// ── Plan 418: native file dialogs (rfd, sync API) ──────────────────────
-// Both return "" on cancel/unavailable (headless CI included).
-
-/// Plan 428 debt fix: parent the blocking dialogs to the app's main
-/// window. The dialogs previously had NO owner — they could open BEHIND
-/// the app window ("frozen" UX) or, destroyed abnormally, leak the owner
-/// disabled forever (428 acceptance finding, KNOWN-DEBT-AND-RISKS 428).
-/// The HWND is discovered via Win32 (largest visible top-level window of
-/// this process — no iced plumbing needed) and cached for the process
-/// lifetime. Non-Windows targets keep the plain dialog.
-#[cfg(all(feature = "ui-dialog", target_os = "windows"))]
-mod dialog_parent {
-    use raw_window_handle::{
-        DisplayHandle, HasDisplayHandle, HasWindowHandle, RawWindowHandle, Win32WindowHandle,
-        WindowHandle,
-    };
-    use std::cell::Cell;
-    use std::num::NonZeroIsize;
-    use std::sync::OnceLock;
-
-    #[repr(C)]
-    struct Rect {
-        left: i32,
-        top: i32,
-        right: i32,
-        bottom: i32,
-    }
-
-    #[link(name = "user32")]
-    extern "system" {
-        fn EnumWindows(cb: extern "system" fn(isize, isize) -> i32, lparam: isize) -> i32;
-        fn IsWindowVisible(hwnd: isize) -> i32;
-        fn GetWindowThreadProcessId(hwnd: isize, pid: *mut u32) -> u32;
-        fn GetClassNameW(hwnd: isize, class: *mut u16, max: i32) -> i32;
-        fn GetWindowRect(hwnd: isize, rect: *mut Rect) -> i32;
-    }
-
-    thread_local! {
-        /// (hwnd, area) of the best main-window candidate so far.
-        static BEST: Cell<(isize, i64)> = const { Cell::new((0, -1)) };
-    }
-
-    extern "system" fn enum_cb(hwnd: isize, _lparam: isize) -> i32 {
-        // Skip invisible helpers (GPU/IME) and non-app windows.
-        if unsafe { IsWindowVisible(hwnd) } == 0 {
-            return 1;
-        }
-        let mut pid = 0u32;
-        unsafe { GetWindowThreadProcessId(hwnd, &mut pid) };
-        if pid != std::process::id() {
-            return 1;
-        }
-        let mut buf = [0u16; 64];
-        let n = unsafe { GetClassNameW(hwnd, buf.as_mut_ptr(), buf.len() as i32) }.max(0) as usize;
-        let class = String::from_utf16_lossy(&buf[..n]);
-        // #32770 = Win32 dialog (a dialog can't own our dialog); the
-        // winit event target is a message-only-ish shim, not the window.
-        if class == "#32770" || class == "Winit Thread Event Target" {
-            return 1;
-        }
-        let mut r = Rect {
-            left: 0,
-            top: 0,
-            right: 0,
-            bottom: 0,
-        };
-        if unsafe { GetWindowRect(hwnd, &mut r) } == 0 {
-            return 1;
-        }
-        let area = (r.right - r.left).max(0) as i64 * (r.bottom - r.top).max(0) as i64;
-        BEST.with(|b| {
-            if area > b.get().1 {
-                b.set((hwnd, area));
-            }
-        });
-        1
-    }
-
-    fn main_hwnd() -> Option<NonZeroIsize> {
-        static HWND: OnceLock<Option<NonZeroIsize>> = OnceLock::new();
-        *HWND.get_or_init(|| {
-            BEST.with(|b| b.set((0, -1)));
-            unsafe { EnumWindows(enum_cb, 0) };
-            let (hwnd, area) = BEST.with(|b| b.get());
-            (area > 0).then(|| NonZeroIsize::new(hwnd)).flatten()
-        })
-    }
-
-    /// rfd's `set_parent` bound: a Win32 HWND + the trivial Windows
-    /// display handle.
-    struct Owner(NonZeroIsize);
-
-    impl HasWindowHandle for Owner {
-        fn window_handle(&self) -> Result<WindowHandle<'_>, raw_window_handle::HandleError> {
-            let raw = RawWindowHandle::Win32(Win32WindowHandle::new(self.0));
-            // SAFETY: the HWND came from EnumWindows on a live window and
-            // is cached for the process lifetime.
-            Ok(unsafe { WindowHandle::borrow_raw(raw) })
-        }
-    }
-
-    impl HasDisplayHandle for Owner {
-        fn display_handle(&self) -> Result<DisplayHandle<'_>, raw_window_handle::HandleError> {
-            Ok(DisplayHandle::windows())
-        }
-    }
-
-    /// Attach `dialog` to the main window when one was found.
-    pub fn attach(dialog: rfd::FileDialog) -> rfd::FileDialog {
-        match main_hwnd() {
-            Some(hwnd) => dialog.set_parent(&Owner(hwnd)),
-            None => dialog,
-        }
-    }
-
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        /// The handle wrappers must satisfy rfd's `set_parent` bound and
-        /// construct without error (the HWND value itself is opaque).
-        #[test]
-        fn owner_satisfies_rfd_parent_bound() {
-            let owner = Owner(NonZeroIsize::new(1).unwrap());
-            assert!(owner.window_handle().is_ok());
-            assert!(owner.display_handle().is_ok());
-            // set_parent takes `&W: HasWindowHandle + HasDisplayHandle`.
-            fn bound<W: HasWindowHandle + HasDisplayHandle>(_: &W) {}
-            bound(&owner);
-        }
-    }
-}
-
-#[cfg(all(feature = "ui-dialog", target_os = "windows"))]
-use dialog_parent::attach;
-#[cfg(all(feature = "ui-dialog", not(target_os = "windows")))]
-fn attach(dialog: rfd::FileDialog) -> rfd::FileDialog {
-    dialog
-}
+// ── Plan 418: native file dialogs（rfd，同步 API）──────────────────────
+// PLAN-804 依赖倒置：OS 对话框、父窗选择（原 dialog_parent，Win32
+// EnumWindows 最大可见自有顶层窗 + rfd set_parent）迁 crate 上层
+// `host_adapters::dialog`（ui-dialog 单门控，独立于 ui renderer 门）；
+// shim 只编解码并调用 [`crate::vm::host_capabilities::DialogHostProvider`]
+// ——过滤语义在单一 OS 实现维护，core 不复制第二套 parser。两者返回
+// "" on cancel/unavailable（headless CI included）。
+//
+// 缺席语义（T-01 冻结矩阵 = 迁移前 feature-off 臂逐字面值）：无 provider
+// → feature-disabled 形 VMError，**在弹实参前 raise**（旧 off 臂不弹实参；
+// 错误中止下栈面不可观察，缺席矩阵按逐字面值冻结）。在位 provider 取消
+// 或不可用返回空串。Plan 428 债修（父窗锚定）语义由 VM 默认 adapter
+// （parented 策略）保持——见 host_adapters::dialog。
 
 /// `dialog_open(filter) -> String` — filter is a `,. ;`-separated extension
-/// list (".at, .au"); empty disables filtering.
-#[cfg(feature = "ui-dialog")]
+/// list (".at, .au"); empty disables filtering. "" on cancel.
 pub fn shim_dialog_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let Some(provider) = vm.native_interface.dialog_host_provider() else {
+        return Err(VMError::RuntimeError(
+            "dialog_open: the `ui-dialog` feature is disabled".into(),
+        ));
+    };
+    // pop_string_arg 已物化 owned String + StakeGuard.nv 配平；provider 接
+    // raw filter（&str 借用 owned 实参，不泄漏 VM 池索引）。
     let filter = pop_string_arg(task, vm);
-    let exts: Vec<String> = filter
-        .split([',', ';', ' ', '\t'])
-        .map(|s| s.trim().trim_start_matches('.').to_string())
-        .filter(|s| !s.is_empty())
-        .collect();
-    let mut dialog = rfd::FileDialog::new();
-    if !exts.is_empty() {
-        dialog = dialog.add_filter("Files", &exts);
-    }
-    dialog = attach(dialog);
-    let path = dialog
-        .pick_file()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let path = provider.open(&filter);
     let idx = vm.add_string(path.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
     Ok(())
 }
 
 /// `dialog_save(default_name) -> String` — "" on cancel.
-#[cfg(feature = "ui-dialog")]
 pub fn shim_dialog_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let Some(provider) = vm.native_interface.dialog_host_provider() else {
+        return Err(VMError::RuntimeError(
+            "dialog_save: the `ui-dialog` feature is disabled".into(),
+        ));
+    };
     let default_name = pop_string_arg(task, vm);
-    let mut dialog = rfd::FileDialog::new();
-    if !default_name.is_empty() {
-        dialog = dialog.set_file_name(default_name);
-    }
-    dialog = attach(dialog);
-    let path = dialog
-        .save_file()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let path = provider.save(&default_name);
     let idx = vm.add_string(path.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
     Ok(())
@@ -3160,18 +3095,7 @@ pub fn shim_sys_users(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // 本处原 feature-off stub 群（text/delta/edit/cursor_line/cursor_col/
 // selection_len/find/set_text/fold_toggle/fold_hidden_count/undo/redo/
 // select_all/cut/copy/paste）并入各 shim 的缺席臂，逐字面值保留。
-#[cfg(not(feature = "ui-dialog"))]
-pub fn shim_dialog_open(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "dialog_open: the `ui-dialog` feature is disabled".into(),
-    ))
-}
-#[cfg(not(feature = "ui-dialog"))]
-pub fn shim_dialog_save(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    Err(VMError::RuntimeError(
-        "dialog_save: the `ui-dialog` feature is disabled".into(),
-    ))
-}
+
 
 /// `system_status() -> Int` — exit code of the last `system()` call.
 pub fn shim_shell_system_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
