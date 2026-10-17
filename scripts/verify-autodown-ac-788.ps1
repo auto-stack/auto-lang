@@ -499,12 +499,19 @@ if ($Scope -eq "acceptance") {
 # closeout (merge-owned): frozen-commit full surfaces. The root aliases
 # (t/tv/tt) run under NEXTEST — verified per its real output format; the
 # remaining families are libtest multi-binary runs.
-Run-CargoFamily "auto-lang full (test-cases)" @("test", "-p", "auto-lang", "--features", "test-cases") @() 1
+# R10 merge-scope correction: the full single-process libtest family ran
+# env-dependent plan738/746/748/749 suites that the daily tier excludes BY
+# DESIGN (process isolation); contract §11.5/§14 define closeout as the
+# nextest tiers + independent suites. The plan's own integration target
+# runs scoped and serial here; the lib face is the bare-t family below.
+Run-CargoFamily "auto-lang plan788_r3_ (integration, serial)" @("test", "-p", "auto-lang", "--features", "test-cases", "--test", "plan788_r3_", "--", "--test-threads=1") @("turnaround_native_six_scenarios_p95_gates", "turnaround_syntax_gate_and_revision_stream") 2
 Run-NextestTier "root cargo t (nextest)" @("t") @("nextest","list","-p","auto-lang","--lib","--test","schema_drift","--test","docs_gen","--test","component_registry_test","--features","ui-iced,test-cases","--message-format","json")
 Run-NextestTier "root cargo tv (nextest)" @("tv") @("nextest","list","-p","auto-lang","--lib","--profile","tv","--features","test-cases","--message-format","json")
 Run-NextestTier "root cargo tt (nextest)" @("tt") @("nextest","list","-p","auto-lang","--lib","--features","test-trans,test-cases","--message-format","json")
 Run-CargoFamily "worker full (release)" @("test", "--manifest-path", "experimental/ac-case-worker/Cargo.toml", "--release") @() 1
-Run-CargoFamily "probe full (release)" @("test", "--manifest-path", "experimental/ac-artifact-probe/Cargo.toml", "--release") @() 1
+# gc_budget_churn_512 is the probe's OWN design ignore: its closeout
+# contract executes it explicitly with --ignored (documented in the test).
+Run-CargoFamily "probe full (release)" @("test", "--manifest-path", "experimental/ac-artifact-probe/Cargo.toml", "--release") @() 1 @("gc_budget_churn_512_converges_between_watermarks")
 Run-CargoFamily "ac-syntax runtime (release)" @("test", "--manifest-path", "experimental/ac-syntax/runtime/Cargo.toml", "--release") @() 1
 
 if ($fails -gt 0) { throw "closeout: $fails surface(s) failed" }
