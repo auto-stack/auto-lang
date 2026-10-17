@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-806
-status: executing
+status: execution_done
 feature_name: UI msg 与 model 声明文法正式外置
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md]
 new_spec_components: [docs/specs/auto-ui-dialect/project.md]
@@ -96,16 +96,24 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 
 | 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 799/801审查合入、合同确认 | parser.rs三算法/all callsites、801最终端口及pilot，整链可行性/差额/旧臂/默认策略冻结 | 01/02/03 |
-| [ ] | T-02 | work | T01 | 新crates/auto-ui-dialect及完整msg/model/注解算法，安全lookahead，轻consumer与check/V01 | 01/02 |
-| [ ] | T-03 | work | T02 | Parser公开/inner薄委托与UiDialect默认装配、全部widget/component/store及默认import路径接线，V04 | 02/03 |
-| [ ] | T-04 | work | T03 | 801 pilot复用单份model、默认bare反控及显式bare正控；删除原算法，V02/03/05 | 02/03 |
-| [ ] | T-05 | work | T04 | V01–06全矩阵、777精确边/792source闭包与受影响交付控制，实际命令收据 | 01–04 |
-| [ ] | T-06 | work | T05 | 未迁widget/view/on等清单、净删/组合宿主剩余边及SD/SHA收据，提交送审 | 04 |
+| [x] | T-01 | work | 799/801审查合入、合同确认 | parser.rs三算法/all callsites、801最终端口及pilot，整链可行性/差额/旧臂/默认策略冻结 | 01/02/03 |
+| [✅ 2026-10-17 work] 801 已合入归档（delivery 786c49964，auto-parser-api 在主检出）；决策 D1–D7 冻结（crate/闭包、checkpoint+advance/restore lookahead 等价+微残差登记、expect_ident 逐字复刻、ModelGrammar 单份策略、薄委托+守卫不变、syntax_error 同构、777/792 登记面），§9 work T-01 记录+master 侧只读预检 attachments/806/t01-readonly-prep.md。 |
+| [x] | T-02 | work | T01 | 新crates/auto-ui-dialect及完整msg/model/注解算法，安全lookahead，轻consumer与check/V01 | 01/02 |
+| [✅ 2026-10-17 work, code 970960b4a] 新 crate 三文件（declarations.rs 逐字迁出 master 5d8834bcc parser.rs 14917-15132 基线）；ui-declarations-consumer 轻消费方 9/9 绿 + verify-deps PASS（闭包={lex,parser-api,ui-dialect} 无 auto-lang）；cargo check -p auto-ui-dialect 零警告。 |
+| [x] | T-03 | work | T02 | Parser公开/inner薄委托与UiDialect默认装配、全部widget/component/store及默认import路径接线，V04 | 02/03 |
+| [✅ 2026-10-17 work, code 557e0a176] inner 两方法一行建桥委托、parse_model_field_annotations 删除（parser.rs −213 行）；pub 签名/Stmt 包装、UiDialect 分支与结构守卫、with_session 默认装配不变；check -p auto-lang 0 error 零新增警告（411=801 基线）；冻结旧臂内联 12/12 + 滤面 45/45；V04 plan806 7/7（含真实被导入文件 treeview.at）。 |
+| [x] | T-04 | work | T03 | 801 pilot复用单份model、默认bare反控及显式bare正控；删除原算法，V02/03/05 | 02/03 |
+| [✅ 2026-10-17 work, code 8093301b8] dialect-api-consumer 删第二份字段算法（−65 行）改调 parse_model_block_subset（NotClaimed→Ok(None) 协议保持）；轻测 3/3+闭包门 PASS；上层 driver 48/48（r2_bare_field_boundary 默认反控+pilot 正控 8/8 等）；默认文法零漂移。 |
+| [x] | T-05 | work | T04 | V01–06全矩阵、777精确边/792source闭包与受影响交付控制，实际命令收据 | 01–04 |
+| [✅ 2026-10-17 work, code 8a86fe323+504ca0e0d] 777 增 lang-core 域+基线重采样（增量恰 2 合法边，strict pass 0 违规）；792 DELIVERY_CRATES 12→13+delivery 单测 10/10+交付 driver 25/25 exit0（fresh 111s/locked 135s/十四态负控/恢复绿，收据入附件）；V05 tu 867/867 零金样更新；命令矩阵全收据 attachments/806/t05-receipt.md。 |
+| [x] | T-06 | work | T05 | 未迁widget/view/on等清单、净删/组合宿主剩余边及SD/SHA收据，提交送审 | 04 |
+| [✅ 2026-10-17 work, code af3748db7+f84f405f4+a20fcf6fe] SD-01 新 auto-ui-dialect/project.md+SD-02..04 三处备稿（worktree 待 merge 沉淀）；未迁清单/净删/微残差登记入 t05-receipt；代码链 970960b4a→a20fcf6fe 共 8 提交，送 T-07 同树独立复审，merge 门 pending。 |
 | [ ] | T-07 | review | T06 | 同树独立完整语法/所有调用/恢复/消费/SD审查，merge门pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
 
 ## 9. 复审记录
+
+2026-10-17 / stage: work / PLAN-806 revision: 1 / outcome: pass（T-01..T-06 全部完成，work-owned AC-01..04 达成）/ worktree_path=D:/autostack/.wt/lang-806/auto-lang / branch=codex/plan-806-dev / base_commit=5d8834bcc（master 分叉点，含 T-01 簿记）/ code_commit=a20fcf6fe（链：970960b4a→557e0a176→8093301b8→8a86fe323→504ca0e0d→af3748db7→f84f405f4→a20fcf6fe，工作树 clean）/ dependency_revisions=组内兄弟 auto-down detached c39ac7f9（只读，a2r-actor-tests path 解析用）；driver scratch 9.8GB 已清（收据先归档） / task_ids=T-01..T-06 / evidence=[t05-receipt.md](attachments/806/t05-receipt.md) 命令矩阵：AC-01（V01 轻测 9/9+verify-deps PASS+check 零警告）；AC-02（冻结旧臂重放 12/12+48/48+45/45，默认/pilot 差异 r2 8/8，错误文本字面量钉住）；AC-03（V04 plan806 7/7 含真实被导入文件+V05 tu 867/867 零金样更新）；AC-04（单源审计三标记仅存新 crate、parser.rs −213/pilot −65、777 strict pass 增量恰 2 边、792 driver 25/25 exit0+delivery 单测 10/10、SD-01..04 备稿） / blockers=无（merge 门显式 pending：冻结裸 cargo t+cargo tv——parser.rs 触 VM/编译器面；ui_gen/trans 零源触面不追加 tu/tt；tf 主检出到期判定；docs_gen 不触发） / 已登记微残差=T-01 D2 lookahead 窗口 lexer Err 提前记录（时序差异，计划 §5 认可形态）+历史怪癖 msg{+EOF 无限形态保持不修 / next_responsible_role=review（T-07 同树独立完整复审，审查基线 a20fcf6fe）
 
 2026-10-17 / stage: work / PLAN-806 revision: 1 / outcome: pass（T-01 完成，前置解除）/ worktree=待建 D:/autostack/.wt/lang-806/auto-lang（branch codex/plan-806-dev，§6 冻结名）/ 前置核验=799 已合入（auto-ast 在位）；**801 已合入归档**（archive/801 status: archived 终态 8/8；delivery 786c49964 冻结门裸 t 5264/5265[唯一红 plan730 时序 flake solo 绿]+tv 163/163；worktree 已清）——主检出 crates/auto-parser-api 在位 / 决策 D1–D7= D1 新 crates/auto-ui-dialect 唯一依赖 auto-parser-api（闭包 ast/lex/diagnostics+val 轻层无 auto-lang；fixture ui-declarations-consumer 镜像 dialect-api-consumer 独立 workspace 模式+verify-deps）。D2 msg named-payload 探测以 checkpoint+advance/restore 等价替换 lexer.next/push_token 直读（探测点 pushback 缓冲必空；advance=Parser::next→lexer 同一前沿；restore 恢复 lexer 全态+cur/prev+五旗标；登记微残差=lexer Err 时旧码静默吞 vs advance 提前记录同内容错误，仅时序/error_limit 提前，§5 认可形态）。D3 关键字消费不用 ctx.expect_keyword（错误文本 "expected 'x'"+Ident kind 检查 ≠ expect_ident "Expected 'x'"+纯文本比较）——新 crate 逐字复刻 expect_ident。D4 单份 model=ModelGrammar::{Builtin,ExternalSubset} 一份块循环+字段算法按策略开关三差异（注解 Builtin 解析/Subset 字段首遇 Hash→NotClaimed；名字 Subset 需 Ident 否则 Err "model field name expected identifier, got '{}'"；裸字段 Subset 终止符 Asn/Newline/RBrace/EOF→Unknown，Builtin 仅 Asn→Unknown 否则必 parse_type；EOF 循环守卫仅 Subset）；dialect-api-consumer 删第二份 parse_model_subset 改调子集入口。D5 Parser pub 两方法保签名+Stmt 包装，inner 三方法一行建桥委托，注解方法删除；UiDialect/widget(13259,13262)/store(14532,14535)/component(16002,16006) 守卫不变（cur.text 匹配，master 当前行号）；import 经 with_session/build_dialects 默认装配不变。D6 未知注解错误经 ctx.syntax_error（桥面=SyntaxError::Generic 同文消息+pos_to_span(cur.pos) 逐字同构）；expect 族经桥面→Parser::expect 同实现。D7 777 module-boundaries 增 auto-ui-dialect=lang-core+基线重采样；792 DELIVERY_CRATES（auto-man/src/rust_ui.rs:3988 现 [&str;12]）12→13 / 冻结策略=V02/V03 期望字面量测试先旧臂跑绿（错字面量以旧臂实跑修正）再换新臂重放 / blockers=无 / next=T-02 建树实施
 
