@@ -179,7 +179,9 @@ final review通过后merge冻结跑裸`cargo t`及新crate/Man定向门。未改
 - **landed**：master=89bb13944 = delivery（ff-only，零 merge commit）。两段 rebase：over 96f177df0（range-diff 5/5——4 全等+基线提交取 master 侧重写）+ over 4755b486a（7/7 全等，纯簿记无冲突）。映射：904b5e5e0→5fa60ead0→3536d8513；bbad82a9f→d9db1a1c3→5200ad0c5；a9b401421→1d1502479→5cec72fad；b455b4ef9→2c3b7941d→62b785419；79b086ea6→ab56d5625→f5c71086a；f8ccf3f7f→8010f81e7；4ae9f6826→89bb13944。复审后增量=纯文档/派生配置（plans.md/INDEX/GROUPS/ledger/基线重采样），与受测代码 delta=0 文件——门禁证据有效。
 - **冻结门禁（绑定 f8ccf3f7f≡89bb13944 代码同一）**：裸 cargo t 5261/5261 全绿（72.8s；三次间歇红 plan484_024/plan707_wait/plan707_cancel 均 solo 秒绿归因——在案负载时序族，799/800 同案）；分列定向门：asset:: 1/1、project_model_adapter:: 11/11、plan803_asset_facade_tests 9/9、auto-man-assets 6/6、consumer manifest 4/4 + verify-deps PASS。tv/tu 无触面未跑；777 strict pass 0 violations（merge 期再采样 8010f81e7）。
 - **archived**：docs/plans/archive/803-man-template-assets-extraction.md（本文件），status=archived，T-08 勾选，attachments/803 探针/复审收据随本提交入库；ledger P803-M 回填 delivery:89bb13944 与归档路径。
-- **cleaned**：见下方收口回填。
+- **cleaned**：双树 wt-guard clean（auto-lang + auto-down 兄弟）；worktree remove ×2、分支 plan-803-dev 删除（was 89bb13944=已落地 delivery）、组目录 D:/autostack/.wt/lang-803 零残留移除；主检出验证：git status 无 803 路径残留（他线 WIP 簿记按共享例外保留原状）。
+- **批量回归到期判定**：不到期——803%5=3 非 5 整除；.last-batch-regression.json last_covered=800 当日（2026-10-17）新鲜，窗口内无 >48h 滞后。
+- **部署面注记**：auto-lang 仓无 803 触面的生产部署产物（本计划未触及 backend 二进制/web bundle 供给链）；生产消费如后续接入 Man 资源层，按各自发布流程重建。
 
 ## 10. 待澄清事项
 
