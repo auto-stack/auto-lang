@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-801
-status: executing
+status: execution_done
 feature_name: 方言接口独立与 Parser 依赖倒置
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 1
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md]
 new_spec_components: [docs/specs/auto-parser-api/project.md]
@@ -99,11 +99,16 @@ work命令：`cargo check -p auto-parser-api`、`cargo check -p auto-lang`、两
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 799已审查合入、合同确认 | parser_bridge.rs/dialect.rs/session.rs/parser.rs及799最终模型，整链可行性/旧API/快照决策与旧臂冻结 | 01/02/03 |
 | [✅ 2026-10-17 work] 799 交付重绑：auto-ast 已合入主检出（delivery 9b510f79a，归档回执 48ff19821；闭包=auto-val/auto-lex/serde），`auto_lang::{ast,token,lexer,error}` 均已是 auto-ast/auto-lex/auto-diagnostics 薄门面（类型身份单一实现）。整链核实与 T01 有界决策（D1–D7，全文见 §9 本轮记录）：**D1** 新 crate `crates/auto-parser-api`（lang-core 域）仅依赖 auto-ast/auto-lex/auto-diagnostics，auto-lang 单向依赖之，外部方言闭包零语言实现；**D2** 端口=对象安全 `ParseContext` trait，镜像 778 桥面（游标/expect/空行/checkpoint/parse_type/parse_expr/scenario/on·fn体/syntax_error(String)），泛型便利方法留 ParserBridge 具体门面；**D3** 快照=有作用域句柄表（弃生命周期令牌）：`ParseCheckpoint{parser实例id,slot,全局单调gen}` 不透明凭据，表挂 Parser、派发器每次方言调用后按 watermark truncate（调用退出清理；嵌套水位保外层），跨上下文=实例 id 拒绝、过期=gen 不重复拒绝、restore 单用镜像旧 move 语义，无 unsafe/无 'static/无全局池；**D4** CompilerSession/Scenario+DialectPriority 迁 auto-parser-api 单一定义，旧路径 re-export（类型身份不变）；**D5** 生产接入=ExternalDialectAdapter 实现旧 Dialect trait 进同一三段派发表（pre→builtin→post 与 778 恢复不变量全走既有 try_dialect_stmt/try_token_dialect_stmt，零第二派发表）；**D6** 旧 Dialect/ParserBridge/BridgeCheckpoint/register_dialect/Box 形态与内建 escape hatch 全保持；**D7** fixture 拓扑：新 dialect-api-consumer 仅依赖 auto-parser-api（+verify-deps.sh 闭包 oracle 镜像 791/795/800 模式），旧 ui-dialect-consumer 转 driver（auto-lang+dialect-api-consumer），旧 trait 最小兼容用例=`probe <expr>`→Stmt::Expr（非第二份 model 算法）。结论：无需暴露 Parser/TypeStore、无需复制 AST、无需降低恢复承诺，**可行性成立，进 T-02**；777 增 lang-core 域映射、792 需把 auto-parser-api 纳入 DELIVERY_CRATES 重验（T-05）。实施树改用仓规 `D:/autostack/.wt/lang-801/auto-lang` + branch `plan-801-dev`（AGENTS.md 命名约定优先于计划拟名 codex/plan-801-dev）。 |
-| [ ] | T-02 | work | T01 | 新crates/auto-parser-api及dialect-api-consumer，轻session/端口/trait，check及V01 | 01/03 |
-| [ ] | T-03 | work | T02 | 上层adapter与生产注册/同表派发，旧trait/桥兼容及快照作用域，V03/04 | 02/03 |
-| [ ] | T-04 | work | T03 | model单份迁入轻consumer、原consumer转driver，V02/05及必要引用适配 | 01/02/03 |
-| [ ] | T-05 | work | T04 | V01–06、777精确domain/边，沿792既有入口闭合受影响交付清单与验证 | 01–04 |
-| [ ] | T-06 | work | T05 | 剩余完整UI文法/Parser图、单一实现/迁位净删与SD/SHA收据，提交送审 | 04 |
+| [x] | T-02 | work | T01 | 新crates/auto-parser-api及dialect-api-consumer，轻session/端口/trait，check及V01 | 01/03 |
+| [✅ 2026-10-17 work, code 8f3e8e9f8] crates/auto-parser-api（475 行 src：轻 session 迁入/ExternalDialect/DialectPriority/对象安全 ParseContext+句柄凭据 ParseCheckpoint；轻层门面 re-export ast/token/error 与旧 auto_lang 模块名对齐）+ dialect-api-consumer fixture（model 子集单份实现迁入）；workspace members+exclude 接线。V01：fixture 3/3 + verify-deps.sh PASS（normal/build 闭包无 auto-lang/man/vm/ui）+ cargo metadata 闭包=[api,ast,lex,diag,val]。 |
+| [x] | T-03 | work | T02 | 上层adapter与生产注册/同表派发，旧trait/桥兼容及快照作用域，V03/04 | 02/03 |
+| [✅ 2026-10-17 work, code ace61f7c4] ParserBridge 实现 ParseContext（同名 inherent 委托零重复；checkpoint/restore 走句柄表后端）；ExternalDialectAdapter 进同一三段派发表；register_external_dialect/with_external_dialect；轻 session/DialectPriority 迁移为薄门面（类型身份不变）；派发器每次方言调用后按水位 truncate（调用退出清理，嵌套保外层）。定向：dialect 7/7+session 136/136+plan778 4/4，零新增警告（基线 414→411）。V03/04 测试落 T-04 driver 提交（29ea71232）：v03_dispatch 4/4、v04_snapshot_lifetime 3/3。 |
+| [x] | T-04 | work | T03 | model单份迁入轻consumer、原consumer转driver，V02/05及必要引用适配 | 01/02/03 |
+| [✅ 2026-10-17 work, code 29ea71232] ui-dialect-consumer 转上层 driver（auto-lang+dialect-api-consumer+auto-parser-api）；旧 trait 最小兼容用例 LegacyProbeDialect（probe expr→Stmt::Expr，用 by-value checkpoint+泛型 syntax_error，非第二份 model 算法）；778 r1/r2/v01_v05 断言逐字保持仅换 with_external_dialect 注册（V02"AST 投影等于旧臂"oracle）；v05_legacy_api 3/3（session/Priority 跨门面类型身份双向编译断言）。driver 全套 36 测试 8 目标 PASS；期间修 v04 测试自身 if-let MutexGuard 临时量死锁（edition 2021 语义，测试代码缺陷非产品缺陷）。 |
+| [x] | T-05 | work | T04 | V01–06、777精确domain/边，沿792既有入口闭合受影响交付清单与验证 | 01–04 |
+| [✅ 2026-10-17 work, code 643d5bdeb+06e559a60+7c2c74ddc] 777：auto-parser-api 域登记 lang-core + 基线重采样（增量恰 4 条合法声明边：auto-lang→auto-parser-api + 端口→ast/lex/diagnostics，零新增禁向，strict verdict=pass 0 违规）；792：DELIVERY_CRATES 11→12 纳入 auto-parser-api，delivery 单测 9/9 PASS；V06 单一实现审计：parse_model_subset/parse_model_block/派发器/ExternalModelDialect 全仓唯一（grep 收据入 t06-receipt）。 |
+| [x] | T-06 | work | T05 | 剩余完整UI文法/Parser图、单一实现/迁位净删与SD/SHA收据，提交送审 | 04 |
+| [✅ 2026-10-17 work, code 9f94b32ce] 剩余边四条如实登记（内建 escape hatch 完整文法/生产入口注册注入/widget 结构直连/旧 trait 兼容层，见 attachments/801/t06-receipt.md）；迁位净删清单（27 files +1654/−315，净删边=外部文法实现→auto-lang）；SD-01（新 auto-parser-api/project.md）/SD-02（frontend/overview 增 PLAN-801 节）/SD-03（dialect-system 陈旧 mem::take→Arc 派发+新端口）worktree 备稿待 merge 沉淀；SHA256×10 入收据。work 阶段收口送 T-07 独立复审。 |
 | [ ] | T-07 | review | T06 | 同树独立逐项及生命周期/兼容反控复审，merge门pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master，受影响复审/冻结门、Spec/ledger/归档/wt-guard清理 | 06 |
 
@@ -112,6 +117,8 @@ work命令：`cargo check -p auto-parser-api`、`cargo check -p auto-lang`、两
 2026-10-17 / stage: new / PLAN-801 revision: 1 / outcome: blocked / next: 799实施、final review和合入后，work重核模型并执行T-01。阻塞为已确认的实施前置，本轮T/AC均未完成。见[合同预检](attachments/extraction-next-20261017/preflight.md)。
 
 2026-10-17 / stage: work / PLAN-801 revision: 1 / outcome: pass（T-01 完成，前置解除）/ worktree=D:/autostack/.wt/lang-801/auto-lang / branch=plan-801-dev / base=master 4755b486a / 前置核验=799 已合入归档（delivery 9b510f79a，终回执 48ff19821），auto-ast 在主检出，789/793/800 均归档 / evidence=T-01 决策 D1–D7（§8 T-01 行），主检出自查无代码路径 WIP（仅他线 docs/plans 簿记） / blockers=无 / next=T-02 实施（crates/auto-parser-api + dialect-api-consumer）。
+
+2026-10-17 / stage: work / PLAN-801 revision: 1 / outcome: pass（T-01..T-06 全部完成，work-owned AC 达成）/ worktree_path=D:/autostack/.wt/lang-801/auto-lang / branch=plan-801-dev / base_commit=043ca8567（master 分叉点，含 T-01 簿记）/ code_commit=9f94b32ce（链：8f3e8e9f8→ace61f7c4→29ea71232→643d5bdeb→06e559a60→7c2c74ddc→9f94b32ce）/ dependency_revisions=auto-down c39ac7f（组内兄弟 detached，只读） / task_ids=T-01..T-06 / evidence=AC-01（V01：fixture 3/3+verify-deps+metadata 闭包无语言实现）；AC-02（V02 778 断言逐字保持 26 测试+V03 4/4+V04 3/3，driver 全套 36/8 目标）；AC-03（V05 3/3 类型身份+旧 API 面；单一实现 grep 审计四项全唯一）；AC-04（777 strict pass+基线 4 边重采样；792 DELIVERY_CRATES 12+delivery 9/9；SD-01..03 备稿+SHA 收据 attachments/801/t06-receipt.md） / blockers=无（review/merge-owned 门禁显式 pending：冻结裸 cargo t+cargo tv——parser.rs 触 VM/编译器面；ui_gen 零触面不跑 tu；tf 到期主检出批量档；预存 bench E0601 非本线引入已在收据登记） / next_responsible_role=review（T-07 同树独立复审）
 
 ## 10. 待澄清事项
 
