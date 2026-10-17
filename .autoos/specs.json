@@ -4,6 +4,19 @@
       "id": "reports",
       "items": [
         {
+          "id": "P802-M",
+          "title": "PLAN-802 合入沉淀收据（code editor host provider 交付）",
+          "content": "交付=24facbf97 ff-only（实现 8eb28c6f5+3abdf9d48+b47da60ce + specs 沉淀 24facbf97；range-diff 4/4 全等，reviewed b32d4df7d→b47da60ce 映射在案）。冻结门禁：裸 cargo t 5343/5343（1 flaky=在案 plan484_024 负载族重试恢复）+ cargo tv 163/163（tu/taa 不触发——ui_gen/aavm 零改动）。SD-01/02/03 落三目标 Spec + 三 plans.md 索引 + INDEX 再生（38 projects）。ledger v41→v42 guarded offline projection（备份 v41-802）。实机 oracle 证据冻结（v06-live 三分判定+六态自检）。KNOWN-DEBT P802-D1（VM 局部槽≥16 预存限制，范围外）。",
+          "file": "docs/plans/reports/802-code-editor-host-provider-merge.md",
+          "tags": [
+            "PLAN-802",
+            "delivery:24facbf97",
+            "outcome:pass",
+            "completion:delivered"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P794-M",
           "title": "PLAN-794 合入沉淀收据（scroll host provider 交付）",
           "content": "交付=5ddef1315 ff-only（实现 4f41eb004..2b8a48e5f + specs 沉淀 7e5225426 + 基线重锚 5ddef1315）。冻结门禁最终 tip：裸 t 5335/5335 + tv 163/163（tu 不触发）；777 strict pass 0 违例（declared_edges=48）。SD-01..04 落四目标 Spec + plans/goals/INDEX 回写。ledger v35→v36 guarded offline projection。range-diff：修复提交全等，实现提交仅 Cargo.toml 并集上下文差异。",
@@ -4348,6 +4361,45 @@
       "id": "designs",
       "items": [
         {
+          "id": "P802-D3",
+          "title": "code_editor 会话端点 provider 时期同源与 701 合同保持（SD-03）",
+          "content": "PLAN-802 SD-03：VM shim 经 provider、UI adapter 与 a2r/merged 臂仍委托同一 ui::code_editor 注册表函数——三轨同源不因迁移漂移。端点契约保持：save 裸写 rope 字节（BOM/EOL 归 front）、光标 0 基行/char 列、selection bytes、scroll 写=intent 队列（未绑定丢弃恒 true）、读=注册表投影单源、用户滚动后 ≤2s 读回收敛（三分判定 certified 才过——实机 oracle docs/plans/attachments/802/v06-live/）、Q-2 回声零依赖。同 drain 命令投影由 renderer 先 note_controller_offset 再安排滚动的实现序支撑（异步采样不证亚帧，如实边界）。",
+          "file": "docs/specs/auto-lang/ui/design/code-editor-session-endpoints.md",
+          "tags": [
+            "PLAN-802",
+            "SD-03",
+            "delivery:24facbf97",
+            "reviewed:b32d4df7d"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P802-D2",
+          "title": "UI CodeEditorRegistryProvider adapter 与四接线点/VM 轨 scroller 同源绑定（SD-02）",
+          "content": "PLAN-802 SD-02：CodeEditorRegistryProvider（无状态）委托 ui::code_editor 既有注册表（单一真源，不复制第二 registry）；滚动三项委托 editor_scroll_handle+scroll controller 注册表（非 794 通用参数协议）；文件 IO/OS 剪贴板留 UI 实现侧。code-editor 单门控 + cut/copy/paste 实现级 ui-clipboard 门控（缺=返 None=组合特征 raise 臂）。宿主接线四点 if-absent（install_ui_host_capabilities/run_file_dynamic_ui_inner/VmBridge 两构造）。R1 修复轮补 render_dynamic_view code_editor 臂 bind_controller（与 desktop 泛型臂同款）——修复 PLAN-629 起 VM 轨漏绑致 scroll_to 写端点 intent 被 drain 静默丢弃的预存缺口。未迁族清单收窄（editor 22 项出列，余 diff/dnd/term/media/dialog/ffi）。",
+          "file": "docs/specs/auto-lang/ui/overview.md",
+          "tags": [
+            "PLAN-802",
+            "SD-02",
+            "delivery:24facbf97",
+            "reviewed:b32d4df7d"
+          ],
+          "status": "active"
+        },
+        {
+          "id": "P802-D1",
+          "title": "code editor native 宿主能力 CodeEditorHostProvider/DTO/缺席矩阵/装配（SD-01）",
+          "content": "PLAN-802 SD-01：22 native（2910..2915/2919..2924/2932/2933/2939/9906/9908..9913）经 per-VM CodeEditorHostProvider 供值——19 具名方法（cursor×3/scroll_offset×2 共享一次 DTO 读取，与迁移前单调用形态同构）；owned 值域（String 键/文本/delta JSON、usize/i64/f64、CodeEditorCursorDto{0基行,char列,selection bytes}/CodeEditorScrollOffsetDto），零 CodeEditorCore/rope/ScrollIntent/ClipboardOp/VM 堆句柄泄漏。装配=779/785/790/794 同构三级；注入不 bump binding_revision；Clone/merge 保 provider。缺席=T-01 冻结缺席臂逐字面值（21 项 raise feature-disabled 形 + 9913 scroll_to 弹参返 false 唯一值臂；cut/copy/paste Option<bool> None=组合特征文案）。单位锚保持（0基/char列/bytes/fold 1基 shim 转/负参钳 shim/delta 恰一次 destructive read/save rope 直写）。catalog/codegen/intrinsics 零改动。",
+          "file": "docs/specs/auto-lang/vm/overview.md",
+          "tags": [
+            "PLAN-802",
+            "SD-01",
+            "delivery:24facbf97",
+            "reviewed:b32d4df7d"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P794-D2",
           "title": "UI ScrollControllerProvider adapter 与 scroll-pane/child-anchor 调用边界（SD-02/03/04）",
           "content": "PLAN-794 SD-02/03/04：ScrollControllerProvider（无状态）委托 ui::scroll::controller 原注册表/锚点状态机（renderer binding/measured 单一真源，不复制第二 registry），ui 单门控；progress 经 geometry::progress 单源现算。宿主接线四点 if-absent（install_ui_host_capabilities/run_file_dynamic_ui_inner/VmBridge 两构造）。未迁族清单收窄减 scroll controller 族。scroll-pane 增宿主装配说明，测量/intent 合同零改动。scroll-child-anchor 调用边界迁 provider，781 状态机与完成 oracle 原样留 controller.rs/renderer。",
@@ -7555,6 +7607,18 @@
       "id": "tests",
       "items": [
         {
+          "id": "P802-T1",
+          "title": "code editor provider 测试资产（no-ui fixture/in-crate 回归锚/实机 oracle）",
+          "content": "PLAN-802 测试资产：① 外部 no-ui consumer fixture（test/fixtures/modularity/code-editor-provider-consumer，独立 workspace 零 UI feature）7 测试——V01 真 VM 全管线×2（22 native 互异参数/精确弹序/Unicode/负钳位/1基转换）、V02 缺席矩阵 21 错误文本逐字+9913 值臂+ID 钉扎 22+Clone/merge+if_absent、V03 delta FIFO 恰一次/text 不清队列/VM 字符串池越 provider 寿命。② in-crate plan802_code_editor_provider 7 测试——core 剪断锚（五直引形态永久钉扎）/装配身份（快照/覆盖/Clone/merge/binding_revision）/真注册表往返（多字节 edit/undo/fold/delta 水位/load-save CRLF 字节保真/失败值形）/provider swap 寿命/滚动投影链/clamp/真 arboard 剪贴板往返（保存恢复+跨进程锁）。③ 实机 oracle v06_driver.py（六态 mock 自检+三分判定+Win32 真滚轮，R1–R5 五轮复审验收面）。",
+          "file": "docs/plans/attachments/802/t06-work-receipt.md",
+          "tags": [
+            "PLAN-802",
+            "delivery:24facbf97",
+            "tests:fixture+in-crate+v06-live"
+          ],
+          "status": "active"
+        },
+        {
           "id": "P794-T",
           "title": "PLAN-794 测试资产（in-crate plan794 + 外部 scroll-provider-consumer + p781 探针）",
           "content": "in-crate tests/plan794_scroll_host_provider.rs（剪断锚/ID 钉扎/缺席矩阵/fake 委托精确参数/Clone-merge-两 VM/真实 adapter 接线）；外部 fixture test/fixtures/modularity/scroll-provider-consumer 5/5（V01 no-ui 真管线 + V02 arity/轴/Unicode/缺席/32 轮清栈）；p781 VM 探针 60/60（含 R1 修复：新鲜查询 oracle+永久负控+pending 重放）；Vue 59/59 指纹复用。",
@@ -9169,6 +9233,20 @@
     {
       "id": "reviews",
       "items": [
+        {
+          "id": "P802-R1",
+          "title": "PLAN-802 独立最终复审 R1–R5（第五轮 pass）",
+          "content": "R1 needs_fix（V06 live iced 消费链未跑，F802-R1-01）→ R1 修复轮补实机+定位 VM 轨 bind 预存缺口 → R2 needs_fix（驱动 oracle 误放行：错误上界/Reader 失败仍 exit0；格式红）→ R2 修复轮（几何对拍/结构化必验/诚实描述+rustfmt）→ R3 needs_fix（预算 2.0+u 放宽冻结 ≤2s 契约）→ R3 修复轮（单查询不确定度+t0 输入前）→ R4 needs_fix（2.2s 带查询耗时负控仍误放行）→ R4 修复轮（三分判定 certified/violation/indeterminate，测量不确定度不加宽门限）→ R5 pass：六态自检独立重放全对、2.2s 反例不再 PASS、实机 Reader 1.713s/端点 1.797s 均 certified≤2s、clamp 偏差 0.200px、12 必验+1 辅助逐条核对。reviewed_commit b32d4df7d；独立 consumer 7/7、定向 27/27、fmt PASS。P802-D1 局部槽≥16 预存限制登记 KNOWN-DEBT（范围外）。",
+          "file": "docs/plans/attachments/802/review-r5.md",
+          "tags": [
+            "PLAN-802",
+            "outcome:pass",
+            "reviewed:b32d4df7d",
+            "rounds:R1-R5",
+            "delivery:24facbf97"
+          ],
+          "status": "active"
+        },
         {
           "id": "P794-R2",
           "title": "PLAN-794 独立最终复审 R2（三 finding 闭合后 pass）",
@@ -12296,5 +12374,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 41
+  "version": 42
 }

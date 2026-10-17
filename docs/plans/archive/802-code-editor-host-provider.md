@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-802
-status: executing
+status: archived
 feature_name: CodeEditor native 全族宿主能力迁移
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 6
+current_step: 8
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/code-editor-session-endpoints.md]
 new_spec_components: []
@@ -104,8 +104,8 @@ work命令：`cargo check -p auto-lang`，新consumer `cargo test --manifest-pat
 | [x] | T-04 | work | T03 | 新 no-ui consumer fixture（7 测试）+ in-crate plan802（7 测试）；施工期发现预存局部槽≥16 限制（P802-D1，非本改面）；fixture/测试 R2 格式门过 | 01/02/03 |
 | [x] | T-05 | work | T04 | **R4 修复轮**：≤2s 冻结合同三分判定（certified 才过/violation 确证违约/indeterminate 不可认证=非 pass；测量不确定度不加宽门限），六态 mock 自检（0.5s 过；2.2s+查询耗时/2.5s/停滞/错误上界/缺 Reader 全拒），实机双观察均 certified（pane F=1.713s/端点 F=1.797s≤2.05s）；R1 轮修复预存 VM 轨 bind（`ad1427e33`）；V07 777 口径 52→23/a2r 臂未动/792 闭包不变 metadata 证明（[收据](attachments/802/t06-work-receipt.md) R4/R3/R2/R1 轮） | 03/04 |
 | [x] | T-06 | work | T05 | 22映射/剩余边/净删与SD收据齐（[t06-work-receipt.md](attachments/802/t06-work-receipt.md) 含 R1–R4 修复轮）；冻结代码 `b32d4df7d` 送审（R3/R4 零 Rust 改动；worktree clean，二进制 SHA256 与证据一致）；merge 门 pending | 04 |
-| [ ] | T-07 | review | T06 | 同树独立反控/AC/SD审查，merge门保持pending | 05 |
-| [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、Spec/ledger/归档/wt-guard清理 | 06 |
+| [x] | T-07 | review | T06 | 同树独立反控/AC/SD审查，merge门保持pending | 05 |
+| [x] | T-08 | merge | final pass | 交付 `24facbf97` ff-only（range-diff 4/4 全等，b32d4df7d→b47da60ce）；冻结门禁裸 t 5343/5343+tv 163/163；SD-01/02/03+三索引+INDEX 落 master；ledger v41→v42 guarded offline projection；归档+guard 清理；[合并收据](../reports/802-code-editor-host-provider-merge.md) | 06 |
 
 ## 9. 复审记录
 
@@ -134,3 +134,15 @@ work命令：`cargo check -p auto-lang`，新consumer `cargo test --manifest-pat
 2026-10-17 / stage: review / review_scope: final / PLAN-802 revision: 1 / outcome: needs_fix / reviewer: 当前独立审查上下文（沿用R1..R3） / worktree: D:/autostack/.wt/lang-802/auto-lang / branch: plan-802-dev / reviewed_commit: b32d4df7d3a4a43746a22ec4b8d41d1856dc9ab2 / base: 1dd123361a75aa4b683376dcb2049299122724c9 / dependency: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / 原树clean、二进制SHA一致 / evidence: [R4报告与有查询耗时反例](attachments/802/review-r4.md) / 新五态selftest PASS；源码/依赖/配置/测试输入未变，明确复用R3 consumer7/7、定向27/27和fmt / F802-R3-01仍OPEN：Reader与press各0.25s、实际2.2s迟到，在2.5s首见更新仍全部PASS（u=0.5≤抖动门），测量跨阈值不可直接授pass；旧2.5s/tick停滞/错误上界/缺Reader控制已正确拒绝 / AC01/02 pass、03/04 partial、05 fail、06 pending / T05/06重开，executing4/8；Spec输入与SD冻结引用见报告，未发布canonical/ledger / merge-owned裸t/tv及收尾pending / next: 原树work修正跨阈值判定，保留有效/迟到对照再送审。
 
 2026-10-17 / stage: work（R4 修复轮） / PLAN-802 revision: 1 / outcome: pass（F802-R3-01 终闭合——三分判定，重新送审） / worktree `D:/autostack/.wt/lang-802/auto-lang`（clean；本轮零 Rust 改动，冻结代码仍 `b32d4df7d`，实机二进制 SHA256 与证据一致）/ branch `plan-802-dev` / **根因（R4 诊断）**：budget=2.0+u 把测量不确定度加宽为成功门限——观察区间跨越 2s 阈值时（R4 负控：2.2s 实际延迟+0.25s/查询，F=2.5、L=2.0、u=0.5）本应不可认证却判 pass；R3 版 mock 零查询耗时检不出该窗口。**闭合**：判定改三分函数 classify_convergence(F,L)——certified（F≤2.0+ε，ε=0.05s 固定时间戳余量）才过；violation（L>阈值）确证违约；indeterminate（F 越阈 L 未越）=不可认证=非 pass；观察耗时/抖动降为独立诊断（停滞则不认证，不进门限）。**六态自检**（共用 run_oracle）：0.5s 有效通过；2.2s+0.25s/查询（R4 负控复现）拒绝；2.5s 迟到拒绝（violation）；tick 停滞/错误上界/缺 Reader 拒绝。**实机**（b32d4df7d 构建）：必验 12+辅助 1 全 PASS exit 0，滚轮 Reader pane F=1.713s（L=1.202）/读端点 F=1.797s（L=1.713）均 certified≤2.05s；端点一致 7241↔7241 窗内；clamp 偏差 0.200px；程序化分相维持（renderer.rs:23006 源证据）。/ merge 门 pending：裸 `cargo t`+`cargo tv` 由 merge 在 b32d4df7d 执行 / next_responsible_role: review（T-07 第五轮，含 R1–R4 finding 闭合核验）。
+
+2026-10-17 / stage: review / review_scope: final / PLAN-802 revision: 1 / outcome: pass / reviewer: 当前独立审查上下文（沿用R1..R4） / worktree: D:/autostack/.wt/lang-802/auto-lang / branch: plan-802-dev / reviewed_commit: b32d4df7d3a4a43746a22ec4b8d41d1856dc9ab2 / base: 1dd123361a75aa4b683376dcb2049299122724c9 / dependency: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / 原树clean前后稳定，二进制SHA与实机JSON一致 / evidence: [R5报告](attachments/802/review-r5.md)、[冻结SD文字](attachments/802/review-r5-spec-delta.md) / 六态selftest及独立R4原样反例重放PASS（有效0.5s通过，2.2s带查询耗时不可认证，2.5s/停滞tick/错误clamp/缺Reader拒绝）；work实机Reader1.713s、端点1.797s均在原2s内 / F802-R1-01/R2-01/R3-01 CLOSED，R2-02保持CLOSED，无新finding / 源码依赖测试配置输入未变，明确复用R3独立consumer7/7、定向27/27、fmt及R2 metadata / AC01..05 pass，AC06 pending / reviewed7/8，T07完成 / merge-owned：同步master后受影响核验，最终冻结裸cargo t+tv及Spec/ledger/索引/归档/wt-guard清理pending；未合入、未宣称交付 / next: merge。
+
+2026-10-17 / stage: merge / PLAN-802:r1 / outcome: pass / completion: delivered。
+合并收据（checkpoint 全验证）：
+- prepared：reviewed 基线 b32d4df7d（R1–R5，R5 pass）；冻结 SD delta=计划 §5 三条；worktree 8586acb7e 纯文档后代核验（6 spec 文件，实现/依赖零改动）→ delivery。
+- landed：master tip=24facbf97=delivery（ff-only 零合并提交）；rebase 映射 4029dd705→8eb28c6f5 / ad1427e33→3abdf9d48 / b32d4df7d→b47da60ce / 8586acb7e→24facbf97，range-diff 4/4 全等；主检出冒烟 fixture 7/7。
+- gates（merge-owned，reviewed 基线上）：裸 cargo t 5343/5343（1 flaky=在案 plan484_024 负载族重试恢复；三例间歇红均 solo 绿归因，零本改面触点）+ cargo tv 163/163；tu/taa 不触发。
+- ledger_refreshed：.autoos/specs.json v41→v42 **guarded offline projection**（store 服务不可达；备份 .autoos/specs.json.bak-v41-802；条目 P802-D1/D2/D3/T1/R1/M；schema/scope/回读校验通过，既有条目零扰动）。
+- archived：docs/plans/archive/802-code-editor-host-provider.md（git mv；status archived；8/8）；合并报告 docs/plans/reports/802-code-editor-host-provider-merge.md；三 plans.md 索引+INDEX（38 projects）随 delivery 落 master。
+- cleaned：wt-guard 双树 clean（auto-lang+auto-down）→ worktree/branch plan-802-dev（was 24facbf97）/组目录 .wt/lang-802 全移除。
+生产制品观察：主检出 target/debug/auto.exe merge 后未重建（本计划不改 CLI 行为面；802 语义实机验证完成于 worktree 产物 SHA d916ff74…）。批量回归：802%5=2 非到期号；上收据 last_covered=800（今日），48h 窗口内——不到期。
