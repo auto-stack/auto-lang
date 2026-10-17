@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-805
-status: drafting
+status: executing
 feature_name: Man 工具链配置与构建规则核心抽取
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-17
 plan_revision: 1
-current_step: 0
+current_step: 6
 total_steps: 8
 supersedes_spec_components: [docs/specs/auto-man/project.md]
 new_spec_components: [docs/specs/auto-toolchain-core/project.md]
@@ -93,18 +93,44 @@ work：`cargo check -p auto-toolchain-core`、`cargo check -p auto-man`，新con
 
 | 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 791/795/800归档、合同确认 | ninja/config.rs/mapper.rs/templates.rs及store/resolver/builder消费者，闭包/公开面和八类旧臂冻结 | 01/02/03 |
-| [ ] | T-02 | work | T01 | 新crates/auto-toolchain-core，单份模型/mapper/templates/纯测试，check与V01/02 | 01/02 |
-| [ ] | T-03 | work | T02 | 旧三模块/ninja出口薄re-export，真实CompilerStore/Resolver/NinjaBuilder接线，删除旧实现，定向V03/04 | 02/03 |
-| [ ] | T-04 | work | T03 | 新独立consumer、全八类/四命令/无效输入、真实生产与配置控制V01–04，记录实际命令/输出 | 01/02/03 |
-| [ ] | T-05 | work | T04 | V05 777精确边/单一性/803窄合流/792闭包，必要交付控制 | 04 |
-| [ ] | T-06 | work | T05 | 迁位/净删/剩余管理层与SD/SHA收据，提交送审 | 04 |
+| [x] | T-01 | work | 791/795/800归档、合同确认 | ninja/config.rs/mapper.rs/templates.rs及store/resolver/builder消费者，闭包/公开面和八类旧臂冻结 | 01/02/03 |
+| [x] | T-02 | work | T01 | 新crates/auto-toolchain-core，单份模型/mapper/templates/纯测试，check与V01/02 | 01/02 |
+| [x] | T-03 | work | T02 | 旧三模块/ninja出口薄re-export，真实CompilerStore/Resolver/NinjaBuilder接线，删除旧实现，定向V03/04 | 02/03 |
+| [x] | T-04 | work | T03 | 新独立consumer、全八类/四命令/无效输入、真实生产与配置控制V01–04，记录实际命令/输出 | 01/02/03 |
+| [x] | T-05 | work | T04 | V05 777精确边/单一性/803窄合流/792闭包，必要交付控制 | 04 |
+| [x] | T-06 | work | T05 | 迁位/净删/剩余管理层与SD/SHA收据，提交送审 | 04 |
 | [ ] | T-07 | review | T06 | 同树独立AC/SD及规则/生产反控审查，merge门pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
 
 ## 9. 复审记录
 
 2026-10-17 / stage: new / PLAN-805 revision: 1 / outcome: pass / next: 合同确认后work。本轮无799/801/802/803硬依赖；三个纯模块和803资源根互不重叠，共享manifest/出口短窗口串行。[预检](attachments/extraction-followup-20261017/preflight.md)。
+
+2026-10-17 / stage: work 开工 / PLAN-805 revision: 1 / worktree=D:/autostack/.wt/lang-805/auto-lang / branch=plan-805-dev（合同§6拟名 codex/plan-805-dev，按仓规 AGENTS.md L1 约定改用 plan-<NNN>-dev；其余合同不变）/ base=282e50053（master）。
+
+T-01 冻结收据（2026-10-17，基线 282e50053 实读源码）：
+
+- **config.rs（596行）公开面**：`CompilerKind`（8变体；`from_str` 大小写不敏感 + 别名 `gnu`→GCC/`llvm`→Clang、未知→None；`as_str` 全小写；`Display` 走 as_str）、`ExecutableType`（`from_str` **大小写敏感**精确匹配 `cc|compiler`/`ar|archiver`/`link|linker`/`as|assembler`；`as_str`=cc/ar/link/as）、`FlagFormat::{Prefix,Postfix,Both}` + `apply`（Prefix/Postfix=`template.replace("{}",value)`，Both=三段 format!）、`FlagMappings`（6 字段 include/define/library/library_path/output/compile_only + 8 个 `*_default()`）、`CompilerLocation::{Env,Dir(AutoPath),Executable(ExecutableType,AutoPath)}`、`CompilerConfig`（6 pub 字段 + `new()` + 8 个 `*_default()` + `get_executable`/`get_object_extension`（MSVC=".obj"余".o"）/`get_executable_extension`（MSVC=".exe"余""））。
+- **八类默认冻结**：executables 表（MSVC cl/link/lib/ml64；GCC gcc/gcc/ar/as；Clang clang/clang/ar/clang；IAR iccarm/ilinkarm/iarchive/iasmarm；GHS ccarm/ccarm/cxarm/asarm；Targeting tcpp/tlink/tlib/tas；Hightec gcc/gcc/ar/as；TICLang tiarmclang/tiarmclang/tiarmar/tiarmclang，均 .exe 后缀）+ default_cflags（MSVC `/O2 /W3 /MD`；GCC/Clang/GHS/Targeting/Hightec `-O2 -Wall`；IAR 12 条 `--no_cse…--fpu=VFPv4_sp`；TICLang `-Oz -Wall`）+ FlagMappings 8 表（MSVC 独有 `/I{} /D{} {}.lib /LIBPATH:{} Both("/Fo",".obj") /c`；IAR 独有 compile_only=`--debug`；余同 GCC 形）。
+- **mapper.rs（291行）**：`FlagMapper` 13 关联函数；`map_output` 语义冻结——Prefix/Both 用 `output.trim_end_matches(obj_ext)` 的 base_output（重复尾缀全剥），Postfix 用原始 output；`map_compile_only` Both=concat(prefix,postfix)；批量 build_* 保序、format_flags=join(" ")。
+- **templates.rs（283行）**：`CommandTemplates` 4 pub String 字段；`new()` 按 kind 派发（**TICLang→clang_templates**）；8 个私有 `*_templates()`（单测同模块可访问，迁出后仍私有）；`render()` 按变量名长度降序（stable sort）替换——**等长 key 的迭代序来自 HashMap，属原未定序角落，登记不归一**（占位符为完整 `{key}` token，等长互不为子串，正常值下结果确定）；`render_compile/assemble/link/archive` 固定 7/5/5/3 参。四命令模板冻结：MSVC `/Fo{output}`+`/OUT:`、GCC/Clang/Hightec `rcs`、IAR `--debug -o`+归档 `-o`、GHS/Targeting 归档 `-r`。
+- **消费者（留上层）**：compiler_store.rs（AutoConfig/am.at 解析+坏节点 warn 跳过）、resolver.rs（PATH/磁盘/进程观测 + `default_executable` 与 config 默认表镜像 + MSVC 同目录优先）、builder.rs NinjaBuilder（`load_compiler_config` 缺省 gcc_default；**`build_includes` 是本地 `-I../{p}` 格式不走 FlagMapper**；`build_defines` 走 `FlagMapper::format_defines`；`build_cflags` join default_cflags；渲染经 `CommandTemplates::new`+`quote_if_spaced`）、pac.rs:1163+（port.at compiler 节点解析）、port.rs（`Port.compiler` 字段+平台默认）、lib.rs:123（`pub use builder::ninja::config::CompilerConfig`）、builder.rs:59（BuilderKind 派发）。类型引用全部限于 auto-man 内，无仓外消费者。
+- **闭包确认**：三模块依赖仅 auto-val/std，无 AutoConfig/Parser/AST/AutoGen/进程依赖；792 交付闭包 `DELIVERY_CRATES`（rust_ui.rs:3988，11 crate）不含 auto-man 系，新 crate 仅被 auto-man 依赖→不进入 792 闭包（T-05 出 metadata 证明）。
+- **旧臂 golden 捕获方案**：V04 oracle 在 base 提交上以未跟踪探针测试捕获（NinjaBuilder memory 输出钉 `CompilerLocation::Dir` 不存在目录规避 PATH/磁盘观测；单 src/target 规避 `srcs: HashSet` 迭代序不定），fixture 冻结入 `crates/auto-man/tests/fixtures/plan805/`，抽取后同测试按旧公开路径（经 re-export 消费新实现）断言字节一致。
+
+2026-10-17 / stage: work | PLAN-805 | plan_revision: 1 | outcome: pass（T-01..T-06 全部完成，冻结树全绿，送 T-07 final review） | worktree=D:/autostack/.wt/lang-805/auto-lang | branch=plan-805-dev | base=282e50053 | code=66fc9d710（4d1aade5a 实现 + 66fc9d710 777 基线重绑） | dependency_revisions=auto-down c39ac7f9（组内 detached 兄弟，未改动） | task_ids=T-01..T-06 | blockers=无 | next_responsible_role=review（T-07 同树独立 final review）
+
+**Work 收据（证据绑定 66fc9d710）**：
+
+- **迁移**：三模块**逐字**迁至 `crates/auto-toolchain-core/src/{config,mapper,templates}.rs`（与 base 282e50053 diff 为空，字节一致）；旧三文件改为薄 re-export 门面（仅 `pub use auto_toolchain_core::*` + 文档说明），`builder::ninja::*` 旧出口/mod.rs/lib.rs:123 根 re-export 零改动——CompilerStore/Resolver/NinjaBuilder/Port/Pac 经旧路径消费新实现（真实接线，非旁路）。净账：auto-man 侧 -1146 行实现 → +30 行门面；新 crate 1195 行（含原纯测试）。
+- **V01**：`test/fixtures/modularity/toolchain-core-consumer/`（Cargo.toml 独立 workspace + 4 测试 + verify-deps.sh）——外部消费八类完整模型/别名解析/flag 映射/四命令渲染/自定义 CompilerConfig；闭包=consumer→auto-toolchain-core→auto-val+第三方，normal/build 无 auto-lang/auto-man/auto-gen/auto-ui/auto-vm/auto-ast（verify-deps PASS；本机 sccache 端口排除段故障，经 RUSTC_WRAPPER= 空跑通，脚本与 800/803 同型）。
+- **V02/V03**：旧臂 golden 16 件（base 上双捕获 run1/run2 diff 为空=确定性）→ 新臂断言模式逐字节 PASS（`plan805_toolchain_parity`）：八类默认 dump/alias（含 `gnu`/`llvm`、ExecutableType 大小写敏感）/三 FlagFormat（含值含 `{}` 的全量替换）/mapper 边界（空集/多值/空格/Unicode/`main.o.o` 重复尾缀全剥/Postfix 不剥/Both compile_only 拼接）/八类×4 模板（TICLang=clang）/render（缺变量原样保留、长短 key、空 ldflags 双空格）/MSVC `/Fo{output}`。类型同一性 `plan805_type_identity`（旧路径值直传新 crate 函数+反向+跨 crate HashMap 键）编译即证。
+- **V04**：NinjaBuilder memory 生产对拍 9 件（八类 windows + gcc linux 自定义 flag/含空格工具路径触发 quote_if_spaced）逐字节一致；Resolver 既有定向控制（MSVC 同目录优先/Executable 钉定栈溢出守卫/裸名守门）在 `builder::ninja::` 选择面 12 passed+1 ignored；CompilerStore am.at 三态冻结（合法文档→空 store Ok / 坏语法→Err / 缺文件→空 store Ok）。
+- **V05**：① 单一性——`pub enum/struct` 全仓唯一定义于新 crate（grep 证据）；② 777——`auto-toolchain-core = man-ecosystem` 域登记，实现提交后基线重绑（declared_edges 56，**strict pass/0 violations/2 grandfathered**，无规则放宽，F-795-R1-01 同序）；③ 803 合流——root/auto-man Cargo.toml 与 auto-man-assets 条目原样保留（只追加），资源零触碰；④ 792——cargo metadata 证明新 crate 反向依赖=仅 auto-man，`DELIVERY_CRATES` 11 成员零泄漏，不进入交付闭包、无需 admission/staging 变更。
+- **SD 素材**（worktree 已入库）：SD-01 `docs/specs/auto-toolchain-core/project.md`（含冻结语义 7 条+验证矩阵）；SD-02 `docs/specs/auto-man/project.md` 新增「工具链规则核心抽取分工（PLAN-805）」节+builder 行门面注记；`scripts/spec-index.py` 工具链组+INDEX 再生（41 项目）。
+- **债登记**：P805-D1（预存，非 805 引入）——`CompilerStore::load_from_am_config` 以 `get_kid(Str)` 找 compilers 而解析器产位置 Int 键，合法 am.at 形态下恒空载；三态行为已冻结入 golden，修复建议 `get_nodes` 同型迭代，见 KNOWN-DEBT-AND-RISKS.md Plan 805 节。
+- **预存环境/既知项**（非本计划引入）：`cargo test -p auto-man` 全 targets 因 P736-R4 预存坏 target（plan734 bin/fixture）编译失败，故 ninja 选择面经 `--lib` 跑（12+1 ignored）；本机 sccache 配置端口落 Windows 排除段（os error 10013），所有 cargo 调用经 `RUSTC_WRAPPER=` 绕过。
+- **未跑（merge-owned，pending）**：冻结裸 `cargo t` + 核心/Man 定向门在 merge 阶段统一执行；未碰 VM/ui_gen/trans/book/aavm，tv/tu/tt/tb/taa 不适用；tf 到期判定归 `/auto-plan:regress`。
 
 ## 10. 待澄清事项
 
