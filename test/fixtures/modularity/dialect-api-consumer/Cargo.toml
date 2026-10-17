@@ -1,0 +1,26 @@
+# PLAN-801 V01 外部方言 API 消费方探针（独立 fixture crate）。
+#
+# 角色：真实外部文法实现——model 子集方言的单份实现（PLAN-778 外部
+# model 探针收编，不留第二份算法）。manifest 即验收证据：唯一依赖是
+# auto-parser-api（path），其 normal/build 闭包 = auto-ast/auto-lex/
+# auto-diagnostics + auto-val（lang-core 轻层），**不含** auto-lang/
+# Parser/VM/UI/Man——证明外部文法实现不再依赖语言实现（AC-01 依赖倒置）。
+# 本 crate 的测试不以 auto-lang 作 dev 依赖（解析集成测试放上层 driver
+# test/fixtures/modularity/ui-dialect-consumer）。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/dialect-api-consumer/Cargo.toml
+#   bash test/fixtures/modularity/dialect-api-consumer/verify-deps.sh
+
+[package]
+name = "dialect-api-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-parser-api = { path = "../../../../crates/auto-parser-api" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

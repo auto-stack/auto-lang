@@ -1,0 +1,22 @@
+[package]
+name = "auto-parser-api"
+version = "0.1.0"
+edition = "2021"
+description = "AutoLang dialect port API: light CompilerSession/Scenario + ExternalDialect + object-safe ParseContext (PLAN-801 dependency inversion; no auto-lang/Parser/VM/UI/Man implementation dependency)"
+
+# PLAN-801: 方言接口独立与 Parser 依赖倒置。外部文法实现只依赖本 crate
+# 即可实现方言并委托核心表达式/类型解析；解析端口由 auto-lang 在上层实现
+# （ParserBridge 实现本 trait），生产注册经 auto-lang 的
+# Parser::register_external_dialect 进入同一三段派发表。
+#
+# 依赖闭包冻结（T-01 D1）：仅 lang-core 轻层——auto-ast（Stmt/Expr/Type
+# 单一 AST 模型，PLAN-799）、auto-lex（Token/TokenKind/Pos，PLAN-789）、
+# auto-diagnostics（AutoError/AutoResult，PLAN-793）。禁依赖 auto-lang/
+# Parser/lexer 实现/TypeStore/推断/VM/UI/Man——777 lang-core 域规则
+#（.autoos/module-boundaries.toml）。闭包由
+# test/fixtures/modularity/dialect-api-consumer 钉住。
+
+[dependencies]
+auto-ast = { path = "../auto-ast" }
+auto-lex = { path = "../auto-lex" }
+auto-diagnostics = { path = "../auto-diagnostics" }
