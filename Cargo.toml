@@ -157,6 +157,12 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/package-lock-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/package-lock-consumer/verify-deps.sh
     "test/fixtures/modularity/package-lock-consumer",
+    # PLAN-807: 外部文本基础消费方探针——独立 fixture crate（唯一依赖
+    # auto-text-core，证明 rope/分页/快照/diff 闭包无 auto-lang/auto-man/
+    # auto-ui/auto-vm/解释器栈），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/text-core-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/text-core-consumer/verify-deps.sh
+    "test/fixtures/modularity/text-core-consumer",
     # PLAN-800: 外部解析核心消费方探针——独立 fixture crate（仅依赖
     # auto-package-resolver/std，证明依赖视图/路径候选/依赖内模块判定核心
     # 无 auto-lang/auto-man/auto-val/VM/UI 闭包可用），门禁经

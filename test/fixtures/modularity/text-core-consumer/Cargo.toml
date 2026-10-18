@@ -1,0 +1,28 @@
+# PLAN-807 文本基础消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-text-core 的公开面（Rope/
+# RopeSnapshot/PageStore/PageState/PageConfig + diff 四入口/envelope/dirs），
+# 证明文本基础（rope/分页/快照/diff）可被无 auto-lang/auto-man/auto-ui/
+# auto-vm/解释器栈的外部 consumer 编译并运行：内存/分页双轨一致、
+# 快照冻结、diff 语义、envelope 错误值形（AC-01/V-06）。
+#
+# 闭包证明 = 本 manifest 的依赖表 + verify-deps.sh（cargo tree 断言
+# normal/build 闭包无 auto-lang/auto-man/auto-ui/auto-vm）。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/text-core-consumer/Cargo.toml
+# 依赖闭包断言（V-06 oracle）：
+#   bash test/fixtures/modularity/text-core-consumer/verify-deps.sh
+
+[package]
+name = "text-core-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-text-core = { path = "../../../../crates/auto-text-core" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]
