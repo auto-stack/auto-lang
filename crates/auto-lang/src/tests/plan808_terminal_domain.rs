@@ -743,10 +743,11 @@ mod plan808_absent {
 
 mod plan808_real_dll {
     use std::path::PathBuf;
-    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Arc, Mutex};
     use std::time::{Duration, Instant};
 
-    use auto_terminal_core::EngineService;
+    use auto_terminal_core::{EngineService, TerminalHostProvider, TerminalRetiredCache};
 
     use crate::vm::engine::AutoVM;
     use crate::vm::task::AutoTask;
@@ -1526,6 +1527,299 @@ mod plan808_real_dll {
         terminal_dispose(key_b);
         reaper.disarm();
     }
+
+    /// Test wrapper that pauses inside `live_handle_count` so a concurrent
+    /// prune window can be observed deterministically (R3-F01). All other
+    /// methods delegate to the real service.
+    struct PausedCount {
+        inner: Arc<EngineService>,
+        armed: AtomicBool,
+        entered: mpsc::SyncSender<()>,
+        release: Mutex<mpsc::Receiver<()>>,
+    }
+
+    impl PausedCount {
+        fn new(
+            inner: Arc<EngineService>,
+            entered: mpsc::SyncSender<()>,
+            release: mpsc::Receiver<()>,
+        ) -> Self {
+            Self {
+                inner,
+                armed: AtomicBool::new(true),
+                entered,
+                release: Mutex::new(release),
+            }
+        }
+    }
+
+    impl TerminalHostProvider for PausedCount {
+        fn spawn(&self, cols: i64, rows: i64) -> i32 {
+            TerminalHostProvider::spawn(&*self.inner, cols, rows)
+        }
+        fn spawn_ex(&self, program: &str, argv: &[String], cwd: &str, cols: i64, rows: i64) -> i32 {
+            TerminalHostProvider::spawn_ex(&*self.inner, program, argv, cwd, cols, rows)
+        }
+        fn write_line(&self, handle: i64, line: &str) {
+            TerminalHostProvider::write_line(&*self.inner, handle, line)
+        }
+        fn write_raw(&self, handle: i64, vt: &str) {
+            TerminalHostProvider::write_raw(&*self.inner, handle, vt)
+        }
+        fn rows(&self, handle: i64) -> Vec<String> {
+            TerminalHostProvider::rows(&*self.inner, handle)
+        }
+        fn rows_for(&self, handle: i64, key: &str) -> Vec<String> {
+            TerminalHostProvider::rows_for(&*self.inner, handle, key)
+        }
+        fn resize(&self, handle: i64, cols: i64, rows: i64) {
+            TerminalHostProvider::resize(&*self.inner, handle, cols, rows)
+        }
+        fn apply_resize(&self, handle: i64) -> i32 {
+            TerminalHostProvider::apply_resize(&*self.inner, handle)
+        }
+        fn apply_resize_for(&self, handle: i64, key: &str) -> i32 {
+            TerminalHostProvider::apply_resize_for(&*self.inner, handle, key)
+        }
+        fn pump_input(&self, handle: i64) -> i32 {
+            TerminalHostProvider::pump_input(&*self.inner, handle)
+        }
+        fn pump_for(&self, handle: i64, key: &str) -> i32 {
+            TerminalHostProvider::pump_for(&*self.inner, handle, key)
+        }
+        fn scroll_pending_for(&self, handle: i64, key: &str) -> i32 {
+            TerminalHostProvider::scroll_pending_for(&*self.inner, handle, key)
+        }
+        fn pend_resize_geom(&self, key: &str, geom: &str) -> i32 {
+            TerminalHostProvider::pend_resize_geom(&*self.inner, key, geom)
+        }
+        fn menu_take(&self) -> i32 {
+            TerminalHostProvider::menu_take(&*self.inner)
+        }
+        fn interrupt(&self, handle: i64) -> i32 {
+            TerminalHostProvider::interrupt(&*self.inner, handle)
+        }
+        fn is_exited(&self, handle: i64) -> bool {
+            TerminalHostProvider::is_exited(&*self.inner, handle)
+        }
+        fn free(&self, handle: i64) {
+            TerminalHostProvider::free(&*self.inner, handle)
+        }
+        fn cursor_row(&self, handle: i64) -> i32 {
+            TerminalHostProvider::cursor_row(&*self.inner, handle)
+        }
+        fn cursor_col(&self, handle: i64) -> i32 {
+            TerminalHostProvider::cursor_col(&*self.inner, handle)
+        }
+        fn viewport_cols(&self, handle: i64) -> i32 {
+            TerminalHostProvider::viewport_cols(&*self.inner, handle)
+        }
+        fn viewport_rows(&self, handle: i64) -> i32 {
+            TerminalHostProvider::viewport_rows(&*self.inner, handle)
+        }
+        fn backlog_pending_mb(&self, handle: i64) -> i32 {
+            TerminalHostProvider::backlog_pending_mb(&*self.inner, handle)
+        }
+        fn backlog_paused(&self, handle: i64) -> i32 {
+            TerminalHostProvider::backlog_paused(&*self.inner, handle)
+        }
+        fn backlog_take_alerts(&self, handle: i64) -> i32 {
+            TerminalHostProvider::backlog_take_alerts(&*self.inner, handle)
+        }
+        fn backlog_dropped(&self, handle: i64) -> i32 {
+            TerminalHostProvider::backlog_dropped(&*self.inner, handle)
+        }
+        fn history(&self, handle: i64) -> i32 {
+            TerminalHostProvider::history(&*self.inner, handle)
+        }
+        fn window_width(&self) -> i32 {
+            TerminalHostProvider::window_width(&*self.inner)
+        }
+        fn window_height(&self) -> i32 {
+            TerminalHostProvider::window_height(&*self.inner)
+        }
+        fn config_profiles(&self) -> Vec<String> {
+            TerminalHostProvider::config_profiles(&*self.inner)
+        }
+        fn config_default_profile(&self) -> String {
+            TerminalHostProvider::config_default_profile(&*self.inner)
+        }
+        fn config_profiles_full(&self) -> Vec<String> {
+            TerminalHostProvider::config_profiles_full(&*self.inner)
+        }
+        fn config_spawn_program(&self, profile: &str) -> String {
+            TerminalHostProvider::config_spawn_program(&*self.inner, profile)
+        }
+        fn config_spawn_argv(&self, profile: &str) -> Vec<String> {
+            TerminalHostProvider::config_spawn_argv(&*self.inner, profile)
+        }
+        fn config_spawn_cwd(&self, profile: &str) -> String {
+            TerminalHostProvider::config_spawn_cwd(&*self.inner, profile)
+        }
+        fn owns_handle(&self, handle: i64) -> bool {
+            self.inner.owns_handle(handle)
+        }
+        fn live_handle_count(&self) -> usize {
+            if self.armed.swap(false, Ordering::SeqCst) {
+                self.entered.send(()).unwrap();
+                let _ = self
+                    .release
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(5));
+            }
+            self.inner.live_handle_count()
+        }
+        fn cached_cursor_viewport(&self, handle: i64) -> Option<TerminalRetiredCache> {
+            self.inner.cached_cursor_viewport(handle)
+        }
+    }
+
+    fn vm_viewport(vm: &AutoVM, handle: i64) -> (i32, i32) {
+        (
+            vm_cache("viewport_cols", vm, handle),
+            vm_cache("viewport_rows", vm, handle),
+        )
+    }
+
+    fn vm_cursor(vm: &AutoVM, handle: i64) -> (i32, i32) {
+        (
+            vm_cache("cursor_row", vm, handle),
+            vm_cache("cursor_col", vm, handle),
+        )
+    }
+
+    /// F808-R3-01 permanent regression: while prune evaluates
+    /// `live_handle_count` outside the lock, the visible owner list must stay
+    /// routable. A real VM read/free in that window must reach the original
+    /// owner and release the live session (not merely restore the list later).
+    #[test]
+    fn prune_window_keeps_owner_routable_and_free_releases() {
+        let Some(path) = dll_path() else { return };
+        let svc = service_with_dll(&path);
+        let h = svc.spawn_ex("cmd.exe", &["/C".into(), "exit 0".into()], "", 80, 24);
+        assert_ne!(h, 0);
+        let mut reaper = Reaper::new(&svc, vec![h]);
+        let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+        let (release_tx, release_rx) = mpsc::channel();
+        let owner = Arc::new(PausedCount::new(svc.clone(), entered_tx, release_rx));
+        let vm = AutoVM::new(VirtualFlash::new(0), 1024);
+        vm.set_terminal_provider(owner);
+        vm.set_terminal_provider(Arc::new(EngineService::without_dll()));
+        let ni = vm.native_interface.clone();
+        let worker = std::thread::spawn(move || ni.prune_terminal_owners());
+        entered_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("prune must reach live_handle_count");
+
+        // Observed inside the pause: owner, viewport and a real free.
+        assert!(
+            vm.native_interface.terminal_owner_for(h).is_some(),
+            "the visible owner list must stay routable during prune"
+        );
+        assert_eq!(vm_viewport(&vm, h), (80, 24));
+        shim_free(&vm, h);
+        assert_eq!(
+            svc.live_handle_count(),
+            0,
+            "the VM free in the prune window must release the original session"
+        );
+
+        release_tx.send(()).unwrap();
+        worker.join().unwrap();
+        // The frozen values survive the prune/free.
+        assert_eq!(vm_viewport(&vm, h), (80, 24));
+        reaper.disarm();
+    }
+
+    /// F808-R3-02 permanent regression: the frozen cache is published
+    /// process-wide at free time, so another VM or a direct core-free caller
+    /// keeps the values even after its owner history is pruned, without a
+    /// pre-read and without retaining the old service.
+    #[test]
+    fn retired_cache_is_shared_across_consumers_and_direct_free() {
+        let Some(path) = dll_path() else { return };
+
+        // Cross-VM: VM1 frees the shared session; VM2 had switched to B and
+        // has not read the cache; its unknown-handle free triggers prune.
+        let svc = service_with_dll(&path);
+        let h = svc.spawn_ex(
+            "cmd.exe",
+            &["/K".into(), "echo PLAN808_SHARED_CACHE".into()],
+            "D:/autostack/auto-lang",
+            91,
+            31,
+        );
+        assert_ne!(h, 0);
+        let mut reaper = Reaper::new(&svc, vec![h]);
+        assert!(wait_marker(&svc, h, "PLAN808_SHARED_CACHE")
+            .iter()
+            .any(|l| l.contains("PLAN808_SHARED_CACHE")));
+        let expected_cursor = svc.cursor(h);
+        let vm1 = AutoVM::new(VirtualFlash::new(0), 1024);
+        let vm2 = AutoVM::new(VirtualFlash::new(0), 1024);
+        let control = AutoVM::new(VirtualFlash::new(0), 1024);
+        vm1.set_terminal_provider(svc.clone());
+        vm2.set_terminal_provider(svc.clone());
+        control.set_terminal_provider(svc.clone());
+        let replacement = Arc::new(EngineService::without_dll());
+        vm2.set_terminal_provider(replacement.clone());
+        shim_free(&vm1, h);
+        assert_eq!(svc.live_handle_count(), 0, "VM1 free releases A");
+        control.set_terminal_provider(replacement);
+        assert_eq!(
+            vm_viewport(&control, h),
+            (91, 31),
+            "pre-read control before prune"
+        );
+        // Production prune path: an unknown-handle free is a no-op for the
+        // old handle and must not change its frozen values.
+        shim_free(&vm2, -7777);
+        shim_free(&control, -7777);
+        assert_eq!(vm_viewport(&vm1, h), (91, 31));
+        assert_eq!(
+            vm_viewport(&vm2, h),
+            (91, 31),
+            "another VM after prune must keep the frozen viewport"
+        );
+        assert_eq!(vm_viewport(&control, h), (91, 31));
+        assert_eq!(
+            vm_cursor(&vm2, h),
+            (expected_cursor.0 as i32, expected_cursor.1 as i32),
+            "cursor values are shared too"
+        );
+        reaper.disarm();
+
+        // Direct core free (no shim in the consuming VM), then prune, then
+        // the first read.
+        let svc2 = service_with_dll(&path);
+        let h2 = svc2.spawn_ex("cmd.exe", &["/C".into(), "exit 0".into()], "", 92, 32);
+        assert_ne!(h2, 0);
+        let mut reaper2 = Reaper::new(&svc2, vec![h2]);
+        let vm = AutoVM::new(VirtualFlash::new(0), 1024);
+        let control2 = AutoVM::new(VirtualFlash::new(0), 1024);
+        vm.set_terminal_provider(svc2.clone());
+        control2.set_terminal_provider(svc2.clone());
+        vm.set_terminal_provider(Arc::new(EngineService::without_dll()));
+        svc2.free(h2);
+        assert_eq!(svc2.live_handle_count(), 0);
+        control2.set_terminal_provider(Arc::new(EngineService::without_dll()));
+        assert_eq!(
+            vm_viewport(&control2, h2),
+            (92, 32),
+            "direct-free pre-read control"
+        );
+        shim_free(&vm, -7777);
+        shim_free(&control2, -7777);
+        assert_eq!(
+            vm_viewport(&vm, h2),
+            (92, 32),
+            "direct core free must publish the frozen viewport"
+        );
+        assert_eq!(vm_viewport(&control2, h2), (92, 32));
+        assert_eq!(vm_cursor(&vm, h2), (0, 0));
+        reaper2.disarm();
+    }
 }
 
 // ── F808-R1-02: production VmBridge constructors install the adapter ─────
@@ -1935,15 +2229,16 @@ mod plan808_reentrancy {
         });
         let ni_query = ni.clone();
         let query = std::thread::spawn(move || {
-            let mut found = false;
             for _ in 0..500 {
-                if ni_query.terminal_owner_for(7).is_some() {
-                    found = true;
-                    break;
-                }
+                // R3-F01: every query in the concurrent window must resolve
+                // the live owner — not merely one out of many attempts.
+                assert!(
+                    ni_query.terminal_owner_for(7).is_some(),
+                    "live owner lost during a concurrent prune window"
+                );
                 std::thread::yield_now();
             }
-            found
+            true
         });
 
         for pruner in pruners {

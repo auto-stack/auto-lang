@@ -498,6 +498,13 @@ impl EngineService {
     /// viewport entries are intentionally kept (legacy observable values;
     /// monotonic handles never alias a new session).
     pub fn free(&self, handle: i64) {
+        // R3-F02: publish the frozen cursor/viewport values process-wide
+        // before the session is retired. Pure values only — another VM or a
+        // direct-free consumer can read them after the owner is pruned, and
+        // nothing keeps this service alive.
+        if let Some(cache) = self.cached_cursor_viewport(handle) {
+            crate::retired::remember(handle, cache);
+        }
         let lib = self.library();
         self.sessions.with_free(
             handle,

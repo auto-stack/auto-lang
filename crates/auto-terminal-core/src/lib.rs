@@ -20,10 +20,12 @@
 
 pub mod engine;
 pub mod provider;
+pub mod retired;
 pub mod types;
 
 pub use engine::{shared, EngineService};
 pub use provider::{default_provider, TerminalHostProvider};
+pub use retired::retired_cache;
 pub use types::{
     decode_style_color, TerminalCell, TerminalColor, TerminalGeometry, TerminalRetiredCache,
     TerminalSnapshot, MAX_RESIZE_COLS, MAX_RESIZE_ROWS, MIN_RESIZE_COLS, PALETTE_SLOTS,

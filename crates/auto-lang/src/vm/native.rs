@@ -611,45 +611,61 @@ impl NativeInterface {
     /// (F808-R1-04) without losing owners that still have handles.
     ///
     /// Provider methods and removed-provider destructors run **outside** the
-    /// owners lock, and concurrent additions are merged back (R2-F01).
+    /// owners lock. The visible owner list is **never emptied** while those
+    /// lock-free calls run: it is snapshotted intact, evaluated outside, and
+    /// only the dead entries are removed under a short write lock that calls
+    /// no provider code (R3-F01). A provider that became live during the
+    /// window is re-added after the partition.
     pub fn prune_terminal_owners(&self) {
-        let old = {
-            let mut owners = self
-                .terminal_owners
-                .write()
-                .expect("terminal_owners poisoned");
-            std::mem::take(&mut *owners)
-        };
-        let mut kept = Vec::new();
-        let mut removed = Vec::new();
-        for provider in old {
-            if provider.live_handle_count() > 0 {
-                kept.push(provider);
-            } else {
-                removed.push(provider);
-            }
+        // 1. Snapshot the live list; no provider call under the lock.
+        let snapshot: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = self
+            .terminal_owners
+            .read()
+            .expect("terminal_owners poisoned")
+            .clone();
+
+        // 2. Evaluate outside the lock; the visible list stays resolvable.
+        let dead: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = snapshot
+            .into_iter()
+            .filter(|provider| provider.live_handle_count() == 0)
+            .collect();
+        if dead.is_empty() {
+            return;
         }
-        {
+
+        // 3. Remove only the evaluated-dead entries under the write lock.
+        //    Concurrent additions are already in the current list and are
+        //    preserved; no provider method runs here.
+        let removed: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = {
             let mut owners = self
                 .terminal_owners
                 .write()
                 .expect("terminal_owners poisoned");
-            // Concurrent set/remember additions landed in the emptied list;
-            // merge them first (most recent first).
-            let mut merged = std::mem::take(&mut *owners);
-            for provider in kept {
-                if !merged
+            let mut removed = Vec::new();
+            owners.retain(|provider| {
+                if dead
                     .iter()
-                    .any(|existing| std::sync::Arc::ptr_eq(existing, &provider))
+                    .any(|dead_provider| std::sync::Arc::ptr_eq(dead_provider, provider))
                 {
-                    merged.push(provider);
+                    removed.push(provider.clone());
+                    false
+                } else {
+                    true
                 }
-            }
-            *owners = merged;
+            });
             self.terminal_owners_gen
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            removed
+        };
+
+        // 4. A provider may have gained a session while step 2 was running;
+        //    re-add it instead of dropping a live owner. The final Drop of
+        //    truly dead providers happens outside every lock.
+        for provider in removed {
+            if provider.live_handle_count() > 0 {
+                self.remember_terminal_owner(provider);
+            }
         }
-        drop(removed); // outside the lock: Drop may reenter
     }
 
     /// Remember the frozen cursor/viewport cache of a handle freed through

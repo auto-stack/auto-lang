@@ -90,6 +90,13 @@ fn terminal_cache(vm: &AutoVM, handle: i64) -> TerminalRetiredCache {
             return cache;
         }
     }
+    // R3-F02: process-wide retired values cover other VMs and direct
+    // `EngineService::free` callers whose owner history was pruned.
+    if let Some(cache) = auto_terminal_core::retired_cache(handle) {
+        vm.native_interface
+            .remember_terminal_retired_cache(handle, cache);
+        return cache;
+    }
     // Unknown handle: keep the legacy current-provider values (0 for the
     // engine service; fake providers may expose their own).
     TerminalRetiredCache {
