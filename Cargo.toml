@@ -65,6 +65,10 @@ members = [
     # (config.rs/mapper.rs/templates.rs); auto-man keeps the am.at loading,
     # PATH/disk/process resolution and Ninja execution as upper layers.
     "crates/auto-toolchain-core",
+    # PLAN-808: terminal host-domain core (owned cell/color/geometry contract,
+    # runtime autoterm_core.dll engine service + 34-method terminal capability
+    # port); auto-lang keeps the VM codec, UI view/input adapter and assembly.
+    "crates/auto-terminal-core",
     "crates/auto-lsp",
     "crates/auto-val",
     # PLAN-036 T-02: shell pack a2r 生成物（无窗组件库——入库=真编译门）
@@ -206,6 +210,12 @@ exclude = [
     # 供值链在 crate 边界外真实工作），门禁经
     # cargo test --manifest-path test/fixtures/modularity/dialog-dnd-provider-consumer/Cargo.toml
     "test/fixtures/modularity/dialog-dnd-provider-consumer",
+    # PLAN-808: 外部 terminal 域核心消费方探针——独立 fixture crate（唯一
+    # 依赖 auto-terminal-core，证明 owned cell/geometry 合同、DLL 服务与
+    # 34 方法端口无 auto-lang/UI/auto-man/auto-term 闭包可用），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/terminal-core-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/terminal-core-consumer/verify-deps.sh
+    "test/fixtures/modularity/terminal-core-consumer",
     # PLAN-792: 生成式 Rust UI 独立消费方探针——非 cargo 消费者本身；消费
     # bundle 由正式生成入口（auto gen --delivery-root）在受管 scratch 生成，
     # 门禁经

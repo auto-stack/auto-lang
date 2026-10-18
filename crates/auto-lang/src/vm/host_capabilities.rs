@@ -687,6 +687,50 @@ pub fn set_process_default_editor_snapshot_provider_if_absent(
     }
 }
 
+// ── PLAN-808: 终端宿主能力（34 native 全族：2943..2949、2957..2959、
+//    2976..2982、2983..2987、2988..2993、2998..3003）────────────────────
+//
+// `pilot`（779）以来第六个真实迁移批次，但形态不同：terminal 是**有状态
+// 域**——端口 + 引擎服务一起迁移到 `auto-terminal-core`，VM 只编解码。
+// 端口与 owned 值域（`TerminalColor/TerminalCell/TerminalSnapshot`）定义
+// 在 core crate（无 auto-lang/UI 依赖）；本模块只做进程默认槽与 re-export。
+//
+// 缺席语义（T-01 冻结，与其它 provider 族**不同**）：VM 无槽时 shim 回落
+// `auto_terminal_core::default_provider()`（进程共享 engine service），
+// 保留迁移前"无 UI 也能 spawn/rows/backlog"的行为；UI 宿主安装 adapter 后
+// 才有输入泵/几何/menu/scroll/window/palette 面。无 provider ≠ 禁用引擎。
+//
+// 句柄归属：默认共享 service 是进程单例（旧静态句柄表的等价物）；隔离
+// 注入可用 `EngineService::new()` 包装成独立 provider，句柄只在所属 service
+// 解析，跨 service 返回旧缺席值，不会误释放他方指针。
+
+pub use auto_terminal_core::TerminalHostProvider;
+
+/// 进程级默认 terminal provider（显式注册；None = 回落共享 engine service）。
+static PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER: RwLock<Option<Arc<dyn TerminalHostProvider>>> =
+    RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_terminal_host_provider(provider: Arc<dyn TerminalHostProvider>) {
+    let mut slot = PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER poisoned");
+    *slot = Some(provider);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子——语义同 frame/text/media/scroll 族）。
+/// 供 UI 内建宿主隐式入口：不覆盖调用方显式默认。
+pub fn set_process_default_terminal_host_provider_if_absent(
+    provider: Arc<dyn TerminalHostProvider>,
+) {
+    let mut slot = PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
+}
+
 /// 当前进程默认（`AutoVM::new` 构造期快照消费）。
 pub fn process_default_editor_snapshot_provider() -> Option<Arc<dyn EditorSnapshotProvider>> {
     PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER
@@ -701,6 +745,22 @@ pub fn clear_process_default_editor_snapshot_provider() {
     let mut slot = PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER
         .write()
         .expect("PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER poisoned");
+    *slot = None;
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_terminal_host_provider() -> Option<Arc<dyn TerminalHostProvider>> {
+    PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER
+        .read()
+        .expect("PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到共享 engine service 回落语义）。测试装配/宿主拆卸用。
+pub fn clear_process_default_terminal_host_provider() {
+    let mut slot = PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_TERMINAL_HOST_PROVIDER poisoned");
     *slot = None;
 }
 

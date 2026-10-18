@@ -1,778 +1,47 @@
-//! auto-os Plan 013 T2: AutoTerm 引擎 VM 绑定(auto.term.*,ID 2943-2949,
-//! native_catalog 三表登记——register_std_shims 自动绑 shim + canonical 名)。
+//! PLAN-808: terminal native shims (`auto.term.*`, IDs 2943..2949,
+//! 2957..2959, 2976..2982, 2983..2987, 2988..2993, 2998..3003).
 //!
-//! 语义对齐 auto-term `at-gen/src/engine.rs` 手写胶水(PLAN-009 T8):
-//! libloading 加载 `autoterm_core.dll`,glue 侧持句柄表(i64 → 原始指针)
-//! 与快照表(句柄 → 视口行文本),`engine_rows` 内联 feed + 全量重采。
-//! 两处刻意差异(宿主桌面适配):
-//! - DLL 解析增加「宿主 exe 同目录」首选拜(003 §5 随包分发契约;
-//!   at-gen 只需组内 target 扫描);
-//! - DLL 缺席时 `spawn` 返 0(契约内失败:句柄 0 = 失败),其余调用按
-//!   无效句柄静默 no-op——宿主桌面不因部署缺件崩 VM(at-gen 为 dev
-//!   harness,缺席即 panic)。
+//! This module is **codec only**: pop arguments in the legacy order, call the
+//! terminal capability port, push the result. The engine service, DLL symbol
+//! contract, handle table and sampling live in `auto-terminal-core`; the UI
+//! view/input/palette/window projection lives in `ui::terminal_provider`.
 //!
-//! 无环铁律:auto-lang 对 auto-term 零 Cargo 依赖,引擎只经运行期 DLL
-//! 加载(at-gen 同款)。
+//! Provider resolution (frozen T-01 assembly): instance provider → process
+//! default provider → `auto_terminal_core::default_provider()` (the
+//! process-shared engine service). The last step preserves the pre-extraction
+//! "engine works without any UI host" behavior; a missing provider is NOT an
+//! error state for this family.
+//!
+//! No Cargo edge to auto-term: the DLL is loaded at runtime by the core
+//! service (search order: `AUTOTERM_ENGINE_DLL` → executable directory →
+//! ancestor `target/{debug,release}`).
 
-use libloading::Library;
-use std::ffi::{c_char, c_int};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Arc;
+
+use auto_terminal_core::TerminalHostProvider;
 
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::ffi::convert::VMConvertible;
 use crate::vm::task::AutoTask;
 
-static LIB: OnceLock<Option<Library>> = OnceLock::new();
-static NEXT_HANDLE: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1);
-type SnapMap = std::collections::HashMap<i64, Vec<String>>;
-static SNAPSHOTS: std::sync::LazyLock<Mutex<SnapMap>> =
-    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
-static HANDLES: OnceLock<Mutex<std::collections::HashMap<i64, i64>>> = OnceLock::new();
-// 014:光标格与视口几何(glue 侧采样;feed 时随拍刷新,spawn 时落初值)。
-// PLAN-018 D5 per-handle 化:键 = 引擎句柄,多 Pane 几何/光标互不串线
-// (旧进程级单例 CURSOR/VIEWPORT 退役;shim 按柄读缺省 (0,0))。
-type GeomMap = std::collections::HashMap<i64, (i64, i64)>;
-static CURSORS: std::sync::LazyLock<Mutex<GeomMap>> =
-    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
-static VIEWPORTS: std::sync::LazyLock<Mutex<GeomMap>> =
-    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
-
-fn geom_of(map: &Mutex<GeomMap>, handle: i64) -> (i64, i64) {
-    *map.lock().unwrap().get(&handle).unwrap_or(&(0, 0))
+fn terminal_provider(vm: &AutoVM) -> Arc<dyn TerminalHostProvider> {
+    vm.native_interface
+        .terminal_provider()
+        .unwrap_or_else(auto_terminal_core::default_provider)
 }
 
-fn set_geom(map: &Mutex<GeomMap>, handle: i64, v: (i64, i64)) {
-    map.lock().unwrap().insert(handle, v);
-}
+// ── spawn / input / harvest ──────────────────────────────────────────────
 
-/// PLAN-018 D10:引擎 scheme 表装载(进程一次;FFI `palette_color` 纯
-/// 查询 → ui 注册表缓存覆盖内置回退表)。旧 DLL 无符号 = 静默保留内置
-/// (报警面同款皮实语义)。无 ui 特征无消费者,跳过。
-fn load_palettes_once(lib: &Library) {
-    #[cfg(feature = "ui")]
-    {
-        static LOADED: OnceLock<()> = OnceLock::new();
-        LOADED.get_or_init(|| unsafe {
-            let Ok(color) = lib.get::<unsafe extern "C" fn(c_int, c_int, c_int) -> u32>(
-                b"autoterm_engine_palette_color\0",
-            ) else {
-                return;
-            };
-            for scheme in [0i32, 1] {
-                let mut table = [0u32; crate::ui::terminal::TERMINAL_PALETTE_SLOTS];
-                let mut ok = true;
-                for slot in 0..18i32 {
-                    let is_fg = if slot == 0 { 1 } else { 0 };
-                    let v = color(scheme, slot, is_fg);
-                    if v == 0xFFFF_FFFF {
-                        ok = false;
-                        break;
-                    }
-                    table[slot as usize] = v;
-                }
-                if ok {
-                    crate::ui::terminal::terminal_palette_load(scheme, table);
-                }
-            }
-        });
-    }
-    #[cfg(not(feature = "ui"))]
-    {
-        let _ = lib;
-    }
-}
-
-fn lib() -> Option<&'static Library> {
-    LIB.get_or_init(|| {
-        // 解析顺序:env → 宿主 exe 同目录(003 §5)→ exe 祖先 target/
-        // {debug,release}(组内布局,仿 at-gen)。
-        let mut candidates: Vec<std::path::PathBuf> = Vec::new();
-        if let Ok(p) = std::env::var("AUTOTERM_ENGINE_DLL") {
-            candidates.push(std::path::PathBuf::from(p));
-        }
-        if let Ok(exe) = std::env::current_exe() {
-            if let Some(dir) = exe.parent() {
-                candidates.push(dir.join("autoterm_core.dll"));
-                for anc in dir.ancestors().take(4) {
-                    candidates.push(anc.join("target/debug/autoterm_core.dll"));
-                    candidates.push(anc.join("target/release/autoterm_core.dll"));
-                }
-            }
-        }
-        let found = candidates.into_iter().find(|p| p.is_file());
-        match found {
-            Some(path) => match unsafe { Library::new(&path) } {
-                Ok(l) => {
-                    load_palettes_once(&l);
-                    Some(l)
-                }
-                Err(e) => {
-                    eprintln!("[term-engine] autoterm_core.dll 加载失败({path:?}): {e}");
-                    None
-                }
-            },
-            None => {
-                eprintln!(
-                    "[term-engine] autoterm_core.dll 未找到(部署至宿主同目录,或设 AUTOTERM_ENGINE_DLL;auto-term 侧先 cargo build -p autoterm-core)"
-                );
-                None
-            }
-        }
-    });
-    LIB.get().and_then(|o| o.as_ref())
-}
-
-fn handles() -> std::sync::MutexGuard<'static, std::collections::HashMap<i64, i64>> {
-    HANDLES
-        .get_or_init(|| Mutex::new(std::collections::HashMap::new()))
-        .lock()
-        .unwrap()
-}
-
-fn snapshots() -> std::sync::MutexGuard<'static, SnapMap> {
-    SNAPSHOTS.lock().unwrap()
-}
-
-fn ptr_of(handle: i64) -> *mut core::ffi::c_void {
-    handles().get(&handle).copied().unwrap_or(0) as *mut core::ffi::c_void
-}
-
-/// spawn(缺省 shell = COMSPEC/cmd);返回句柄(0 = 失败/DLL 缺席)。
-fn engine_spawn(cols: i64, rows: i64) -> i64 {
-    let Some(lib) = lib() else {
-        return 0;
-    };
-    unsafe {
-        let spawn: libloading::Symbol<
-            unsafe extern "C" fn(c_int, c_int, *const c_char) -> *mut core::ffi::c_void,
-        > = lib
-            .get(b"autoterm_engine_spawn\0")
-            .expect("autoterm_engine_spawn symbol");
-        let h = spawn(cols as c_int, rows as c_int, std::ptr::null());
-        if h.is_null() {
-            return 0;
-        }
-        let handle = NEXT_HANDLE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        // SAFETY: 句柄由 spawn 签名约定持有,free 前有效;原始指针无法
-        // round-trip 进 VM int,故 glue 侧持句柄→指针表(at-gen 同款)。
-        handles().insert(handle, h as i64);
-        set_geom(&VIEWPORTS, handle, (cols, rows));
-        set_geom(&CURSORS, handle, (0, 0));
-        handle
-    }
-}
-
-/// PLAN-018 D5 SpawnSpec:engine_spawn_ex(program/argv/cwd/几何)VM 轨。
-/// cwd 空 = 继承宿主;DLL 缺席/失败 = 0(契约内失败,与旧 spawn 同)。
-fn engine_spawn_ex(program: &str, argv: Vec<String>, cwd: &str, cols: i64, rows: i64) -> i64 {
-    let Some(lib) = lib() else {
-        return 0;
-    };
-    let c_prog = match std::ffi::CString::new(program) {
-        Ok(s) => s,
-        Err(_) => return 0,
-    };
-    let c_args: Vec<std::ffi::CString> = argv
-        .iter()
-        .filter_map(|a| std::ffi::CString::new(a.as_str()).ok())
-        .collect();
-    let c_argv: Vec<*const c_char> = c_args.iter().map(|a| a.as_ptr()).collect();
-    let c_cwd = if cwd.is_empty() {
-        None
-    } else {
-        std::ffi::CString::new(cwd).ok()
-    };
-    unsafe {
-        let spawn_ex: libloading::Symbol<
-            unsafe extern "C" fn(
-                *const c_char,
-                *const *const c_char,
-                c_int,
-                *const c_char,
-                c_int,
-                c_int,
-            ) -> *mut core::ffi::c_void,
-        > = match lib.get(b"autoterm_engine_spawn_ex\0") {
-            Ok(s) => s,
-            Err(_) => return 0, // 旧 DLL(无符号)= 契约内失败
-        };
-        let h = spawn_ex(
-            c_prog.as_ptr(),
-            if c_argv.is_empty() {
-                std::ptr::null()
-            } else {
-                c_argv.as_ptr()
-            },
-            c_argv.len() as c_int,
-            c_cwd
-                .as_ref()
-                .map(|c| c.as_ptr())
-                .unwrap_or(std::ptr::null()),
-            cols as c_int,
-            rows as c_int,
-        );
-        if h.is_null() {
-            return 0;
-        }
-        let handle = NEXT_HANDLE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        handles().insert(handle, h as i64);
-        set_geom(&VIEWPORTS, handle, (cols, rows));
-        set_geom(&CURSORS, handle, (0, 0));
-        handle
-    }
-}
-
-/// 宿主→子进程一行输入(补 \r\n)。
-fn engine_write_line(handle: i64, line: &str) {
-    let Some(lib) = lib() else { return };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return;
-    }
-    let mut bytes = line.as_bytes().to_vec();
-    bytes.extend_from_slice(b"\r\n");
-    unsafe {
-        let write: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
-        > = lib
-            .get(b"autoterm_engine_write_input\0")
-            .expect("autoterm_engine_write_input symbol");
-        write(h, bytes.as_ptr(), bytes.len());
-    }
-}
-
-/// PLAN-026 needs_fix:engine_write_raw(handle int, vt str)——键入 VT 串
-/// 原样裸写引擎(无行补缀;split 形态键入载荷经 HTTP 抵达后由
-/// term_send_keys 端点直写焦点 Pane;与 engine_write_line 的"行"语义
-/// 相对,pump_inner 同款写面)。
-fn engine_write_raw(handle: i64, vt: &str) {
-    let Some(lib) = lib() else { return };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return;
-    }
-    let bytes = vt.as_bytes();
-    unsafe {
-        let write: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
-        > = lib
-            .get(b"autoterm_engine_write_input\0")
-            .expect("autoterm_engine_write_input symbol");
-        write(h, bytes.as_ptr(), bytes.len());
-    }
-}
-
-/// PLAN-026 needs_fix:VM shim 壳(栈参序:vt 顶,handle 次)。
-pub fn shim_term_write_raw(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let vt: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    engine_write_raw(handle, &vt);
-    Ok(())
-}
-
-/// 014 直键入泵:排空 terminal 组件键入队列(同进程注册表
-/// `ui::terminal`,iced widget 键盘捕获入队),逐键**裸写**引擎(无
-/// \r\n 补缀——VT 串里 Enter 已是 \r、控制码/CSI 原样)。返回泵送键数
-/// (DLL 缺席/句柄无效时队列照样排空丢弃,不回灌)。
-/// 旧件 = 广播排空(单端应用行为不变)。
-fn engine_pump_input(handle: i64) -> i64 {
-    pump_inner(handle, drain_pending_keys())
-}
-
-/// PLAN-018 D5 定向泵:只排空 `key` terminal 的队列并裸写该柄——
-/// 多 Pane 键入互不串线。
-fn engine_pump_input_for(handle: i64, key: &str) -> i64 {
-    pump_inner(handle, drain_pending_keys_for(key))
-}
-
-fn pump_inner(handle: i64, keys: Vec<String>) -> i64 {
-    let n = keys.len() as i64;
-    if n == 0 {
-        return 0;
-    }
-    let Some(lib) = lib() else { return n };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return n;
-    }
-    unsafe {
-        let write: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, *const u8, usize),
-        > = lib
-            .get(b"autoterm_engine_write_input\0")
-            .expect("autoterm_engine_write_input symbol");
-        for key in &keys {
-            let bytes = key.as_bytes();
-            write(h, bytes.as_ptr(), bytes.len());
-        }
-    }
-    n
-}
-
-/// 收割引擎输出并刷新 glue 侧快照(feed + 损伤行全量重采 + 光标采样 +
-/// 逐格样式旁路)。`sideband` 决定样式上屏目标:旧 `engine_rows` 广播
-/// 全部注册 terminal(兼容面);PLAN-018 D5 `rows_for` 按 key 定向。
-fn engine_feed_snapshot(
-    lib: &Library,
-    h: *mut core::ffi::c_void,
-    handle: i64,
-    sideband: Sideband<'_>,
-) {
-    unsafe {
-        let feed: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
-            .get(b"autoterm_engine_feed_ready\0")
-            .expect("autoterm_engine_feed_ready symbol");
-        feed(h);
-        // PLAN-019 滚轮回灌:widget 滚轮队列 → 引擎 display_offset。排水先于
-        // 损伤重采,同拍快照即滚动视图。仅 Key 侧带排水(可见 pane 均走
-        // rows_for;All 门面无 key,不重复排水)。no-ui 构建为 no-op。
-        // PLAN-025 T-02:承接行窗绝对锚(store 喂入门)。
-        let mut anchor_opt: i64 = i64::MIN;
-        if let Sideband::Key(key) = sideband {
-            anchor_opt = apply_scroll_queue(lib, h, handle, key);
-        }
-        let take: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, *mut c_int, c_int) -> c_int,
-        > = lib
-            .get(b"autoterm_engine_take_dirty_rows\0")
-            .expect("autoterm_engine_take_dirty_rows symbol");
-        let mut rows = [0 as c_int; 64];
-        take(h, rows.as_mut_ptr(), 64);
-        // 光标格随拍采样(可见时刷新;隐藏保持上次值;per-handle D5)。
-        let cursor: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, *mut c_int, *mut c_int) -> c_int,
-        > = lib
-            .get(b"autoterm_engine_cursor\0")
-            .expect("autoterm_engine_cursor symbol");
-        let (mut r, mut c) = (0 as c_int, 0 as c_int);
-        if cursor(h, &mut r, &mut c) == 1 {
-            set_geom(&CURSORS, handle, (r as i64, c as i64));
-        }
-        // Full(-1)或脏行集都全量重采(行数由 rows 文本直至 -1 决定),
-        // 逐行取文本 + 逐格样式,文本进快照、样式走组件旁路。
-        let row_text: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut c_char, c_int) -> c_int,
-        > = lib
-            .get(b"autoterm_engine_row_text\0")
-            .expect("autoterm_engine_row_text symbol");
-        let row_style: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut u32, c_int) -> c_int,
-        > = lib
-            .get(b"autoterm_engine_row_style\0")
-            .expect("autoterm_engine_row_style symbol");
-        let mut lines = Vec::new();
-        let mut sink = RowSink::new();
-        for r in 0..256i32 {
-            let mut buf = [0 as c_char; 512];
-            let need = row_text(h, r, buf.as_mut_ptr(), 512);
-            if need < 0 {
-                break;
-            }
-            let n = (need as usize).saturating_sub(1).min(511);
-            let bytes: Vec<u8> = buf[..n].iter().map(|&c| c as u8).collect();
-            let text = String::from_utf8_lossy(&bytes).into_owned();
-            // 逐格样式:fg/bg 交错 u32(kind<<24|value),2×cols 容量;
-            // 旁路上屏走 ui 适配层(无 ui 特征时丢弃,文本面不受影响)。
-            let mut styles = [0u32; 1024];
-            let styled = row_style(h, r, styles.as_mut_ptr(), 1024);
-            sink.feed(sideband, r, &text, &styles[..styled.max(0) as usize]);
-            lines.push(text);
-        }
-        // PLAN-025 T-03:视口行入 window_store(Key 臂;槽位面不受扰)。
-        if let Sideband::Key(key) = sideband {
-            if anchor_opt != i64::MIN {
-                sink.into_store(key, anchor_opt);
-            }
-        }
-        snapshots().insert(handle, lines);
-    }
-}
-
-/// PLAN-018 D5:样式旁路上屏目标(旧广播语义保留为兼容面)。
-#[derive(Clone, Copy)]
-enum Sideband<'k> {
-    /// 广播全部注册 terminal(旧 `engine_rows`;单端应用行为不变)。
-    All,
-    /// 只投喂该 key 的 terminal(定向;缺 key = no-op)。
-    Key(&'k str),
-}
-
-// ── ui 注册表适配层(F-02:vm/ffi 无 ui 特征编译时优雅降级为 no-op;
-//    报警/泵/几何通道只在与渲染同进程时有意义)──────────────────────
-
-/// 排空 terminal 组件键入队列;无 ui 特征恒空(泵变 no-op)。
-#[cfg(feature = "ui")]
-fn drain_pending_keys() -> Vec<String> {
-    crate::ui::terminal::terminal_drain_all_inputs()
-}
-#[cfg(not(feature = "ui"))]
-fn drain_pending_keys() -> Vec<String> {
-    Vec::new()
-}
-
-/// 取注册表待定几何;无 ui 特征恒 None(apply_resize 变 no-op)。
-#[cfg(feature = "ui")]
-fn take_pending_resize() -> Option<(u16, u16)> {
-    crate::ui::terminal::terminal_take_any_resize()
-}
-#[cfg(not(feature = "ui"))]
-fn take_pending_resize() -> Option<(u16, u16)> {
-    None
-}
-
-/// PLAN-018 D5 定向排空:只取 `key` terminal 的键入队列(缺 key/无 ui
-/// 特征恒空——载荷不跨 key 串线)。
-#[cfg(feature = "ui")]
-fn drain_pending_keys_for(key: &str) -> Vec<String> {
-    crate::ui::terminal::terminal_core(key)
-        .map(crate::ui::terminal::terminal_drain_inputs_for)
-        .unwrap_or_default()
-}
-#[cfg(not(feature = "ui"))]
-fn drain_pending_keys_for(_key: &str) -> Vec<String> {
-    Vec::new()
-}
-
-/// PLAN-018 D5 定向几何:只取 `key` terminal 的待定请求(缺 key/无 ui
-/// 特征恒 None)。
-#[cfg(feature = "ui")]
-fn take_pending_resize_for(key: &str) -> Option<(u16, u16)> {
-    crate::ui::terminal::terminal_core(key).and_then(crate::ui::terminal::terminal_take_resize_for)
-}
-#[cfg(not(feature = "ui"))]
-fn take_pending_resize_for(_key: &str) -> Option<(u16, u16)> {
-    None
-}
-
-/// PLAN-015 D4:菜单动作载荷(注册表任意端,BTreeMap 键序);无 ui
-/// 特征恒 None。
-#[cfg(feature = "ui")]
-fn take_menu_item_any() -> Option<u8> {
-    crate::ui::terminal::terminal_take_menu_item_any()
-}
-#[cfg(not(feature = "ui"))]
-fn take_menu_item_any() -> Option<u8> {
-    None
-}
-
-/// 逐行样式消费面:旁路上屏(广播/定向)+ PLAN-025 T-03 视口行收集
-/// (喂 window_store 用;ui 臂)。无 ui 特性丢弃(快照文本面不受影响)。
-#[cfg(feature = "ui")]
-struct RowSink {
-    rows: Vec<Vec<crate::ui::terminal::TermCell>>,
-}
-#[cfg(feature = "ui")]
-impl RowSink {
-    fn new() -> Self {
-        RowSink { rows: Vec::new() }
-    }
-    fn feed(&mut self, sideband: Sideband<'_>, row: i32, text: &str, styles: &[u32]) {
-        let pairs = styles.len() / 2;
-        let mut cells: Vec<crate::ui::terminal::TermCell> = Vec::with_capacity(pairs);
-        for (ci, ch) in text.chars().enumerate() {
-            if ci >= pairs {
-                break;
-            }
-            cells.push(crate::ui::terminal::TermCell {
-                ch,
-                fg: decode_style_color(styles[ci * 2]),
-                bg: decode_style_color(styles[ci * 2 + 1]),
-            });
-        }
-        if !cells.is_empty() {
-            match sideband {
-                Sideband::All => {
-                    crate::ui::terminal::terminal_feed_cells_all(row as usize, cells.clone())
-                }
-                Sideband::Key(key) => {
-                    crate::ui::terminal::terminal_feed_cells_for(key, row as usize, cells.clone())
-                }
-            }
-        }
-        self.rows.push(cells);
-    }
-    /// PLAN-025 T-03:视口行入 window_store(绝对 id 寻址;Key 臂)。
-    fn into_store(self, key: &str, anchor: i64) {
-        if !self.rows.is_empty() {
-            crate::ui::terminal::terminal_feed_window_for(key, anchor, &self.rows);
-        }
-    }
-}
-#[cfg(not(feature = "ui"))]
-struct RowSink;
-#[cfg(not(feature = "ui"))]
-impl RowSink {
-    fn new() -> Self {
-        RowSink
-    }
-    fn feed(&mut self, _sideband: Sideband<'_>, _row: i32, _text: &str, _styles: &[u32]) {}
-    fn into_store(self, _key: &str, _anchor: i64) {}
-}
-
-/// PLAN-019 滚轮回灌(排水先于损伤重采,同拍快照即滚动视图;仅 Key 侧带
-/// 排水,All 门面无 key 不重复)。ui 臂:排空 core 滚动队列 → 引擎
-/// scroll → 回写 display_offset/history/badge 与拇指比例。no-ui 臂
-/// 为 no-op(tv/tt 等无 ui 特性档编译零依赖)。
-///
-/// PLAN-025(VM 臂同款接线,rust 轨 term.rs 同构):T-02 绝对行锚回写
-/// (anchor = h − o);用户滚动回灌(delta≠0)标 view bound(T-05 抖动
-/// 根修——bind 写臂不回拉视图已知位);T-03 预取窗瞬态 scroll 采样。
-/// 返回行窗首行绝对行号(缺 core = i64::MIN,喂 store 门用)。
-#[cfg(feature = "ui")]
-fn apply_scroll_queue(lib: &Library, h: *mut core::ffi::c_void, handle: i64, key: &str) -> i64 {
-    unsafe {
-        let Some(core) = crate::ui::terminal::terminal_core(key) else {
-            return i64::MIN;
-        };
-        let delta = crate::ui::terminal::terminal_take_scroll_delta(core);
-        if delta != 0 {
-            let scroll: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void, c_int)> =
-                lib.get(b"autoterm_engine_scroll\0")
-                    .expect("autoterm_engine_scroll symbol");
-            scroll(h, delta as c_int);
-        }
-        let soff: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
-            .get(b"autoterm_engine_scroll_offset\0")
-            .expect("autoterm_engine_scroll_offset symbol");
-        let off = soff(h);
-        crate::ui::terminal::terminal_set_scroll_offset(core, off.max(0) as usize);
-        let hist: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
-            .get(b"autoterm_engine_history\0")
-            .expect("autoterm_engine_history symbol");
-        let n = hist(h);
-        crate::ui::terminal::terminal_set_history(core, n.max(0) as usize);
-        // T-02 锚 + T-05 防抖标记。
-        let (off_v, hist_v) = (off.max(0), n.max(0));
-        let anchor = hist_v as i64 - off_v as i64;
-        crate::ui::terminal::terminal_set_window_anchor(core, anchor);
-        if delta != 0 {
-            crate::ui::terminal::terminal_mark_view_bound(core);
-        }
-        // T-03 预取窗(N=24,16ms 泵周期口径;瞬态 scroll,终态恢复 o)。
-        let rows_v = geom_of(&VIEWPORTS, handle).1 as i32;
-        prefetch_window(lib, h, key, anchor, off_v, hist_v, rows_v);
-        anchor
-    }
-}
-#[cfg(not(feature = "ui"))]
-fn apply_scroll_queue(_lib: &Library, _h: *mut core::ffi::c_void, _handle: i64, _key: &str) -> i64 {
-    i64::MIN
-}
-
-/// 采样引擎视口一行 → styled cells(None = 行越界)。PLAN-025 T-03:
-/// 预取窗采样用(rust 轨 term.rs sample_engine_row 同构)。
-#[cfg(feature = "ui")]
-fn sample_engine_row(
-    lib: &Library,
-    h: *mut core::ffi::c_void,
-    r: i32,
-) -> Option<Vec<crate::ui::terminal::TermCell>> {
-    unsafe {
-        let row_text: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut c_char, c_int) -> c_int,
-        > = lib
-            .get(b"autoterm_engine_row_text\0")
-            .expect("autoterm_engine_row_text symbol");
-        let mut buf = [0 as c_char; 512];
-        let need = row_text(h, r, buf.as_mut_ptr(), 512);
-        if need < 0 {
-            return None;
-        }
-        let n = (need as usize).saturating_sub(1).min(511);
-        let bytes: Vec<u8> = buf[..n].iter().map(|&c| c as u8).collect();
-        let text = String::from_utf8_lossy(&bytes).into_owned();
-        let row_style: libloading::Symbol<
-            unsafe extern "C" fn(*mut core::ffi::c_void, c_int, *mut u32, c_int) -> c_int,
-        > = lib
-            .get(b"autoterm_engine_row_style\0")
-            .expect("autoterm_engine_row_style symbol");
-        let mut styles = [0u32; 1024];
-        let styled = row_style(h, r, styles.as_mut_ptr(), 1024);
-        let pairs = (styled.max(0) as usize) / 2;
-        let mut cells: Vec<crate::ui::terminal::TermCell> = Vec::with_capacity(pairs);
-        for (ci, ch) in text.chars().enumerate() {
-            if ci >= pairs {
-                break;
-            }
-            cells.push(crate::ui::terminal::TermCell {
-                ch,
-                fg: decode_style_color(styles[ci * 2]),
-                bg: decode_style_color(styles[ci * 2 + 1]),
-            });
-        }
-        Some(cells)
-    }
-}
-
-/// PLAN-025 T-03 预取窗采样(VM 臂;rust 轨 term.rs prefetch_window
-/// 同构):引擎瞬态 scroll 上/下各 N 行入 window_store,终态 offset
-/// 恢复。上翻钳位 [0, history] 与引擎同界,id 数学零漂移。
-#[cfg(feature = "ui")]
-fn prefetch_window(
-    lib: &Library,
-    h: *mut core::ffi::c_void,
-    key: &str,
-    anchor: i64,
-    off: i32,
-    hist: i32,
-    rows: i32,
-) {
-    const N: i32 = 24;
-    if rows <= 0 {
-        return;
-    }
-    unsafe {
-        let scroll: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void, c_int)> = lib
-            .get(b"autoterm_engine_scroll\0")
-            .expect("autoterm_engine_scroll symbol");
-        let n_up = N.min(hist - off).min(rows);
-        if n_up > 0 {
-            let mut stash: Vec<Vec<crate::ui::terminal::TermCell>> = Vec::new();
-            scroll(h, n_up);
-            for r in 0..n_up {
-                match sample_engine_row(lib, h, r) {
-                    Some(cells) => stash.push(cells),
-                    None => break,
-                }
-            }
-            scroll(h, -n_up);
-            if !stash.is_empty() {
-                let base = anchor - stash.len() as i64;
-                crate::ui::terminal::terminal_feed_window_for(key, base, &stash);
-            }
-        }
-        let n_down = N.min(off).min(rows);
-        if n_down > 0 {
-            let mut below: Vec<Vec<crate::ui::terminal::TermCell>> = Vec::new();
-            scroll(h, -n_down);
-            for r in (rows - n_down).max(0)..rows {
-                match sample_engine_row(lib, h, r) {
-                    Some(cells) => below.push(cells),
-                    None => break,
-                }
-            }
-            scroll(h, n_down);
-            if !below.is_empty() {
-                let base = anchor + n_down as i64 + (rows - n_down).max(0) as i64;
-                crate::ui::terminal::terminal_feed_window_for(key, base, &below);
-            }
-        }
-    }
-}
-
-/// FFI 标量色 → 组件色((kind<<24)|value:0=Default 1=Indexed 2=RGB)。
-#[cfg(feature = "ui")]
-fn decode_style_color(v: u32) -> crate::ui::terminal::TermColor {
-    let kind = v >> 24;
-    let value = v & 0x00FF_FFFF;
-    match kind {
-        1 => crate::ui::terminal::TermColor::Indexed(value as u8),
-        2 => crate::ui::terminal::TermColor::Rgb(
-            (value >> 16) as u8,
-            (value >> 8) as u8,
-            value as u8,
-        ),
-        _ => crate::ui::terminal::TermColor::Default,
-    }
-}
-
-/// 视口行文本快照:先收割引擎输出(内联 feed + 损伤刷新)再回读。
-/// 旧件 = 广播样式旁路(单端应用行为不变)。
-fn engine_rows(handle: i64) -> Vec<String> {
-    engine_rows_inner(handle, Sideband::All)
-}
-
-/// PLAN-018 D5:定向变体——样式旁路只投喂 `key` 对应的 terminal。
-fn engine_rows_for(handle: i64, key: &str) -> Vec<String> {
-    engine_rows_inner(handle, Sideband::Key(key))
-}
-
-fn engine_rows_inner(handle: i64, sideband: Sideband<'_>) -> Vec<String> {
-    let Some(lib) = lib() else {
-        return Vec::new();
-    };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return Vec::new();
-    }
-    engine_feed_snapshot(lib, h, handle, sideband);
-    snapshots().get(&handle).cloned().unwrap_or_default()
-}
-
-fn engine_resize(handle: i64, cols: i64, rows: i64) {
-    let Some(lib) = lib() else { return };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return;
-    }
-    if std::env::var("P024_TRACE").is_ok() {
-        eprintln!("[P024-TRACE] engine_resize handle={handle} {cols}x{rows}");
-    }
-    unsafe {
-        let resize: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void, c_int, c_int)> =
-            lib.get(b"autoterm_engine_resize\0")
-                .expect("autoterm_engine_resize symbol");
-        resize(h, cols as c_int, rows as c_int);
-    }
-}
-
-fn engine_interrupt(handle: i64) -> i64 {
-    let Some(lib) = lib() else { return -1 };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return -1;
-    }
-    unsafe {
-        let interrupt: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
-            lib.get(b"autoterm_engine_interrupt\0")
-                .expect("autoterm_engine_interrupt symbol");
-        interrupt(h) as i64
-    }
-}
-
-fn engine_is_exited(handle: i64) -> bool {
-    let Some(lib) = lib() else { return true };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return true;
-    }
-    unsafe {
-        let exited: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
-            .get(b"autoterm_engine_is_exited\0")
-            .expect("autoterm_engine_is_exited symbol");
-        exited(h) == 1
-    }
-}
-
-fn engine_free(handle: i64) {
-    let Some(lib) = lib() else { return };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return;
-    }
-    unsafe {
-        let free: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void)> = lib
-            .get(b"autoterm_engine_free\0")
-            .expect("autoterm_engine_free symbol");
-        free(h);
-    }
-    handles().remove(&handle);
-    snapshots().remove(&handle);
-}
-
-// ── VM shim 薄壳(参数逆序 pop,net/tcp 族同款惯例)────────────────
-
-pub fn shim_term_spawn(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+/// 2943 `spawn(cols int, rows int) -> int`.
+pub fn shim_term_spawn(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let rows = crate::vm::native::pop_arg_i32(task) as i64;
     let cols = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_spawn(cols, rows) as i32));
+    let handle = terminal_provider(vm).spawn(cols, rows);
+    task.ram.push_nv(auto_val::encode_i32(handle));
     Ok(())
 }
 
-/// PLAN-018 D5:engine_spawn_ex(program str, argv []str, cwd str,
-/// cols int, rows int) int——SpawnSpec VM 面(cwd 空 = 继承宿主)。
+/// 2983 `spawn_ex(program str, argv []str, cwd str, cols int, rows int) -> int`.
 pub fn shim_term_spawn_ex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let rows = crate::vm::native::pop_arg_i32(task) as i64;
     let cols = crate::vm::native::pop_arg_i32(task) as i64;
@@ -782,613 +51,305 @@ pub fn shim_term_spawn_ex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let program: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    task.ram.push_nv(auto_val::encode_i32(
-        engine_spawn_ex(&program, argv, &cwd, cols, rows) as i32,
-    ));
+    let handle = terminal_provider(vm).spawn_ex(&program, &argv, &cwd, cols, rows);
+    task.ram.push_nv(auto_val::encode_i32(handle));
     Ok(())
 }
 
+/// 2944 `write_line(handle int, line str)`.
 pub fn shim_term_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let line: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    engine_write_line(handle, &line);
+    terminal_provider(vm).write_line(handle, &line);
     Ok(())
 }
 
-/// 014 直键入:engine_pump_input(handle) int。
-pub fn shim_term_pump_input(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_pump_input(handle) as i32));
-    Ok(())
-}
-
-/// PLAN-018 D5:engine_pump_for(handle int, key str) int——定向键入泵。
-pub fn shim_term_pump_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let key: String = VMConvertible::pop_from_stack(task, vm)
+/// 3000 `write_raw(handle int, vt str)`.
+pub fn shim_term_write_raw(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let vt: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(
-        engine_pump_input_for(handle, &key) as i32
-    ));
+    terminal_provider(vm).write_raw(handle, &vt);
     Ok(())
 }
 
-/// PLAN-018 D5:engine_rows_for(handle int, key str) []str——定向快照。
-pub fn shim_term_rows_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let key: String = VMConvertible::pop_from_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+/// 2945 `rows(handle int) -> []str`.
+pub fn shim_term_rows(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    engine_rows_for(handle, &key)
+    terminal_provider(vm)
+        .rows(handle)
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
-// ── 014:几何随动 + 光标格(glue 静态量读写,泵同款管线)────────────
-
-/// 应用注册表里的待定几何:`terminal_take_any_resize()` → 引擎 resize →
-/// 该柄 VIEWPORT 刷新。返回 1=已应用 0=无请求。(旧件:任意端语义。)
-fn engine_apply_resize(handle: i64) -> i64 {
-    let Some((cols, rows)) = take_pending_resize() else {
-        return 0;
-    };
-    engine_resize(handle, cols as i64, rows as i64);
-    set_geom(&VIEWPORTS, handle, (cols as i64, rows as i64));
-    1
-}
-
-/// PLAN-018 D5:定向变体——只消费 `key` terminal 的待定几何请求。
-fn engine_apply_resize_for(handle: i64, key: &str) -> i64 {
-    let Some((cols, rows)) = take_pending_resize_for(key) else {
-        return 0;
-    };
-    engine_resize(handle, cols as i64, rows as i64);
-    set_geom(&VIEWPORTS, handle, (cols as i64, rows as i64));
-    1
-}
-
-pub fn shim_term_apply_resize(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+/// 2984 `rows_for(handle int, key str) -> []str`.
+pub fn shim_term_rows_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_apply_resize(handle) as i32));
+    terminal_provider(vm)
+        .rows_for(handle, &key)
+        .push_to_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))
+}
+
+/// 2946 `resize(handle int, cols int, rows int)`.
+pub fn shim_term_resize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let rows = crate::vm::native::pop_arg_i32(task) as i64;
+    let cols = crate::vm::native::pop_arg_i32(task) as i64;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    terminal_provider(vm).resize(handle, cols, rows);
     Ok(())
 }
 
-/// PLAN-018 D5:engine_apply_resize_for(handle int, key str) int——定向
-/// 几何泵(只消费 key terminal 的待定请求,多 Pane 请求互不串线)。
+// ── lifecycle ────────────────────────────────────────────────────────────
+
+/// 2947 `interrupt(handle int) -> int`.
+pub fn shim_term_interrupt(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let result = terminal_provider(vm).interrupt(handle);
+    task.ram.push_nv(auto_val::encode_i32(result));
+    Ok(())
+}
+
+/// 2948 `is_exited(handle int) -> bool`.
+pub fn shim_term_is_exited(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let exited = terminal_provider(vm).is_exited(handle);
+    task.ram.push_nv(auto_val::encode_bool(exited));
+    Ok(())
+}
+
+/// 2949 `free(handle int)`.
+pub fn shim_term_free(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    terminal_provider(vm).free(handle);
+    Ok(())
+}
+
+// ── input pump / geometry ────────────────────────────────────────────────
+
+/// 2957 `pump_input(handle int) -> int`.
+pub fn shim_term_pump_input(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let count = terminal_provider(vm).pump_input(handle);
+    task.ram.push_nv(auto_val::encode_i32(count));
+    Ok(())
+}
+
+/// 2985 `pump_for(handle int, key str) -> int`.
+pub fn shim_term_pump_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key: String = VMConvertible::pop_from_stack(task, vm)
+        .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let count = terminal_provider(vm).pump_for(handle, &key);
+    task.ram.push_nv(auto_val::encode_i32(count));
+    Ok(())
+}
+
+/// 2976 `apply_resize(handle int) -> int`.
+pub fn shim_term_apply_resize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let applied = terminal_provider(vm).apply_resize(handle);
+    task.ram.push_nv(auto_val::encode_i32(applied));
+    Ok(())
+}
+
+/// 2986 `apply_resize_for(handle int, key str) -> int`.
 pub fn shim_term_apply_resize_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(
-        engine_apply_resize_for(handle, &key) as i32
-    ));
+    let applied = terminal_provider(vm).apply_resize_for(handle, &key);
+    task.ram.push_nv(auto_val::encode_i32(applied));
     Ok(())
 }
 
-/// PLAN-028 T-03:engine_pend_resize_geom(key str, geom str) int——分体轨
-/// 桥写入口。geom = 前端 014 探针 storage 发布形态("colsxrows")原样跨界
-/// (.at 侧零解析——str.to_int/split 无 a2r 前端 handler 转译路径,026
-/// 实证),rust 侧解析后落 per-key 待定几何,既有 apply 泵消费。
-/// 返回 1=已落位 0=忽略(geom 非法/退化尺寸/同值)。014 护栏同款:
-/// 最小化退化(cols<2/rows<1)拒收,不 clamp 上来。
-#[cfg(feature = "ui")]
-fn engine_pend_resize_geom(key: &str, geom: &str) -> i64 {
-    let Some((cols_s, rows_s)) = geom.split_once('x') else {
-        return 0;
-    };
-    let (Ok(cols), Ok(rows)) = (cols_s.trim().parse::<u16>(), rows_s.trim().parse::<u16>()) else {
-        return 0;
-    };
-    if cols < crate::ui::terminal::MIN_RESIZE_COLS
-        || rows < 1
-        || cols > crate::ui::terminal::MAX_RESIZE_COLS
-        || rows > crate::ui::terminal::MAX_RESIZE_ROWS
-    {
-        return 0;
-    }
-    if crate::ui::terminal::terminal_pend_resize(key, cols, rows) {
-        1
-    } else {
-        0
-    }
-}
-
-#[cfg(not(feature = "ui"))]
-fn engine_pend_resize_geom(_key: &str, _geom: &str) -> i64 {
-    0
-}
-
-/// PLAN-028 T-03:engine_pend_resize_geom(key str, geom str) int shim。
+/// 3002 `pend_resize_geom(key str, geom str) -> int`.
 pub fn shim_term_engine_pend_resize_geom(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let geom: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    task.ram.push_nv(auto_val::encode_i32(
-        engine_pend_resize_geom(&key, &geom) as i32
-    ));
+    let queued = terminal_provider(vm).pend_resize_geom(&key, &geom);
+    task.ram.push_nv(auto_val::encode_i32(queued));
     Ok(())
 }
 
-/// PLAN-028 T-03/SD-03:engine_history(handle) int——引擎回滚历史行数
-/// (nums 尾段数据源;DLL autoterm_engine_history 同源,泵 scroll 面
-/// 同款管线,几何句柄零耦合)。
-fn engine_history(handle: i64) -> i64 {
-    let Some(lib) = lib() else { return 0 };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return 0;
-    }
-    unsafe {
-        let hist: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> = lib
-            .get(b"autoterm_engine_history\0")
-            .expect("autoterm_engine_history symbol");
-        hist(h).max(0) as i64
-    }
-}
-
-/// PLAN-028 T-03:engine_history(handle int) int shim。
-pub fn shim_term_engine_history(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_history(handle) as i32));
-    Ok(())
-}
-
-/// PLAN-015 D4:engine_menu_take() int——菜单动作载荷(0=Copy 1=Paste
-/// 2=SelectAll 3=Interrupt;-1=无载荷;注册表任意端,BTreeMap 键序)。
-fn engine_menu_take() -> i64 {
-    take_menu_item_any().map(i64::from).unwrap_or(-1)
-}
-
-pub fn shim_term_menu_take(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_menu_take() as i32));
-    Ok(())
-}
-
-/// PLAN-020 T-00b:窗口尺寸面(逻辑 px)。读 iced_adapter 窗口全局
-/// (renderer 每帧 set_window_width/height),与引擎零耦合——分屏矩形
-/// 投影的前端 px 类几何标定源。非 ui 特性(无窗口)返缺省槽位值。
-///
-/// PLAN-024 T-01:读序 = 桌面轨 per-app override 优先(该 App 虚拟窗
-/// 内容区,session split 拆借时注入),缺省回落 theme 全局。独立窗轨
-/// (run_app/动态轨,022 T-03 写入路)与 vm 无窗口轨不注入 override,
-/// 读路径与既有行为零变化。
-#[cfg(feature = "ui")]
-thread_local! {
-    static APP_WINDOW_PX: std::cell::Cell<(f32, f32)> = const { std::cell::Cell::new((0.0, 0.0)) };
-}
-
-/// PLAN-024 T-01:桌面轨注入——值为该 App 虚拟窗内容区(逻辑 px,
-/// vwin rect 外沿扣 chrome)。退化尺寸(w/h < 1)拒收保号,语义同
-/// 022 T-03 退化拒收(0 会把投影 px 归零)。
-#[cfg(feature = "ui")]
-pub fn set_app_window_px(w: f32, h: f32) {
-    if w >= 1.0 && h >= 1.0 {
-        APP_WINDOW_PX.with(|c| c.set((w, h)));
-    }
-}
-
-/// PLAN-024 T-01:测试读子(注入语义断言用;非测试面不可见)。
-#[cfg(all(test, feature = "ui"))]
-pub(crate) fn app_window_px_for_test() -> (f32, f32) {
-    APP_WINDOW_PX.with(|c| c.get())
-}
-
-#[cfg(feature = "ui")]
-pub fn shim_term_window_width(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let w = APP_WINDOW_PX.with(|c| c.get().0);
-    let w = if w >= 1.0 {
-        w
-    } else {
-        crate::ui::style::theme::window_width()
-    };
-    if std::env::var("P024_TRACE").is_ok() {
-        let ov = APP_WINDOW_PX.with(|c| c.get());
-        eprintln!(
-            "[P024-TRACE] window_width -> {w} (override={ov:?} theme={})",
-            crate::ui::style::theme::window_width()
-        );
-    }
-    task.ram.push_nv(auto_val::encode_i32(w as i32));
-    Ok(())
-}
-
-#[cfg(not(feature = "ui"))]
-pub fn shim_term_window_width(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    task.ram.push_nv(auto_val::encode_i32(1024));
-    Ok(())
-}
-
-#[cfg(feature = "ui")]
-pub fn shim_term_window_height(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let h = APP_WINDOW_PX.with(|c| c.get().1);
-    let h = if h >= 1.0 {
-        h
-    } else {
-        crate::ui::style::theme::window_height()
-    };
-    task.ram.push_nv(auto_val::encode_i32(h as i32));
-    Ok(())
-}
-
-#[cfg(not(feature = "ui"))]
-pub fn shim_term_window_height(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    task.ram.push_nv(auto_val::encode_i32(768));
-    Ok(())
-}
-
-pub fn shim_term_viewport_cols(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    // PLAN-018 D5 per-handle 化:读该柄视口(缺省 0,0;旧件为进程级
-    // 单例,多柄下串线——本面从此按柄隔离)。
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let cols = geom_of(&VIEWPORTS, handle).0;
-    task.ram.push_nv(auto_val::encode_i32(cols as i32));
-    Ok(())
-}
-
-pub fn shim_term_viewport_rows(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let rows = geom_of(&VIEWPORTS, handle).1;
-    task.ram.push_nv(auto_val::encode_i32(rows as i32));
-    Ok(())
-}
-
-pub fn shim_term_cursor_row(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let row = geom_of(&CURSORS, handle).0;
-    task.ram.push_nv(auto_val::encode_i32(row as i32));
-    Ok(())
-}
-
-pub fn shim_term_cursor_col(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let col = geom_of(&CURSORS, handle).1;
-    task.ram.push_nv(auto_val::encode_i32(col as i32));
-    Ok(())
-}
-
-// ── 014 积压报警回读面(VM 轨;语义对齐 at-app 侧车 term.rs,db.at 同源)──
-
-/// 告警迟滞态(pending 越过 2MB 置位,回落 512KB 解除;上升沿即报警
-/// 即取走,无累计字段)。
-static BACKLOG_STATE: std::sync::Mutex<(bool, ())> = std::sync::Mutex::new((false, ()));
-const BACKLOG_WARN_BYTES: i32 = 2 * 1024 * 1024;
-const BACKLOG_CLEAR_BYTES: i32 = 512 * 1024;
-
-/// 当前积压 MB(live 采样;句柄无效 = 0)。
-fn engine_backlog_pending_mb(handle: i64) -> i64 {
-    let Some(lib) = lib() else { return 0 };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return 0;
-    }
-    unsafe {
-        let pending: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
-            lib.get(b"autoterm_engine_pending_bytes\0")
-                .expect("autoterm_engine_pending_bytes symbol");
-        (pending(h).max(0) as i64) / (1024 * 1024)
-    }
-}
-
-/// reader 是否反压暂停中(1/0;旧 DLL 无此符号 → 0——报警面必须比被
-/// 报警的路径更皮实,侧车同款)。
-fn engine_backlog_paused(handle: i64) -> i64 {
-    let Some(lib) = lib() else { return 0 };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return 0;
-    }
-    unsafe {
-        let Ok(paused) = (lib.get::<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int>(
-            b"autoterm_engine_backlog_paused\0",
-        )) else {
-            return 0;
-        };
-        paused(h) as i64
-    }
-}
-
-/// 取走自上次调用以来的积压报警次数(0/1,上升沿即取走;内联采样
-/// pending 做迟滞判定——越过 2MB 报警并 stderr 留痕,回落 512KB 解除)。
-fn engine_backlog_take_alerts(handle: i64) -> i64 {
-    let pending = engine_backlog_pending_bytes(handle);
-    let mut st = BACKLOG_STATE.lock().unwrap();
-    let (active, _) = *st;
-    if !active && pending >= BACKLOG_WARN_BYTES {
-        *st = (true, ());
-        drop(st);
-        eprintln!(
-            "[term-backlog] ⚠ reader→drain 积压 {pending} 字节越过告警线 \
-             {BACKLOG_WARN_BYTES}——产出侧洪峰或消费侧停摆"
-        );
-        1
-    } else {
-        if active && pending <= BACKLOG_CLEAR_BYTES {
-            *st = (false, ());
-        }
-        0
-    }
-}
-
-/// 累计环逐出块数(丢帧计数;符号缺席/句柄无效 = 0)。
-fn engine_backlog_dropped(handle: i64) -> i64 {
-    let Some(lib) = lib() else { return 0 };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return 0;
-    }
-    unsafe {
-        let Ok(dropped) = (lib.get::<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int>(
-            b"autoterm_engine_overflow_count\0",
-        )) else {
-            return 0;
-        };
-        dropped(h).max(0) as i64
-    }
-}
-
-/// 积压字节原始采样(take_alerts 判定用)。
-fn engine_backlog_pending_bytes(handle: i64) -> i32 {
-    let Some(lib) = lib() else { return 0 };
-    let h = ptr_of(handle);
-    if h.is_null() {
-        return 0;
-    }
-    unsafe {
-        let pending: libloading::Symbol<unsafe extern "C" fn(*mut core::ffi::c_void) -> c_int> =
-            lib.get(b"autoterm_engine_pending_bytes\0")
-                .expect("autoterm_engine_pending_bytes symbol");
-        pending(h).max(0)
-    }
-}
-
-pub fn shim_term_backlog_pending_mb(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(
-        engine_backlog_pending_mb(handle) as i32
-    ));
-    Ok(())
-}
-
-pub fn shim_term_backlog_paused(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_backlog_paused(handle) as i32));
-    Ok(())
-}
-
-pub fn shim_term_backlog_take_alerts(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(
-        engine_backlog_take_alerts(handle) as i32
-    ));
-    Ok(())
-}
-
-pub fn shim_term_backlog_dropped(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_backlog_dropped(handle) as i32));
-    Ok(())
-}
-
-pub fn shim_term_rows(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    engine_rows(handle)
-        .push_to_stack(task, vm)
-        .map_err(|e| VMError::RuntimeError(e.to_string()))
-}
-
-pub fn shim_term_resize(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let rows = crate::vm::native::pop_arg_i32(task) as i64;
-    let cols = crate::vm::native::pop_arg_i32(task) as i64;
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    engine_resize(handle, cols, rows);
-    Ok(())
-}
-
-pub fn shim_term_interrupt(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_i32(engine_interrupt(handle) as i32));
-    Ok(())
-}
-
-pub fn shim_term_is_exited(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram
-        .push_nv(auto_val::encode_bool(engine_is_exited(handle)));
-    Ok(())
-}
-
-pub fn shim_term_free(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
-    let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    engine_free(handle);
-    Ok(())
-}
-
-// ── 014 泄漏探针:at-app「键入→泵→收割→样式旁路」完整循环的无头压测
-// (隔离 iced;ash 为 shell,外部 powershell 同步采样进程内存)。
-#[cfg(all(test, feature = "ui"))]
-mod ash_leak_probe {
-    use super::*;
-    use std::time::Duration;
-
-    /// PLAN-759 T-07 门禁分层：本探针依赖跨仓 auto-term 的
-    /// `autoterm_core.dll` 二进制——日常档以**可见 ignored** 分层（缺 DLL
-    /// 的机器/auto-term 侧 clean 后不再恒红，也绝不静默 return 冒充通过）；
-    /// 集成门禁**真跑**（显式请求时 DLL 缺席=红，force-check）：
-    /// ```text
-    /// # 构建（auto-term 专用 worktree/独立 target，勿绑主检出）：
-    /// git -C D:/autostack/auto-term worktree add --detach D:/autostack/.wt/<grp>/auto-term
-    /// cargo build --manifest-path D:/autostack/.wt/<grp>/auto-term/Cargo.toml -p autoterm-core
-    /// # 集成门禁（显式跑 ignored）：
-    /// AUTOTERM_ENGINE_DLL=D:/autostack/.wt/<grp>/auto-term/target/debug/autoterm_core.dll \
-    ///   cargo nextest run -p auto-lang --lib ash_stream_leak_probe --run-ignored only
-    /// ```
-    /// （engine_spawn 解析序：env `AUTOTERM_ENGINE_DLL` → 宿主 exe 同目录。）
-    #[test]
-    #[ignore = "integration: 需 auto-term 侧 autoterm_core.dll——设 AUTOTERM_ENGINE_DLL 指向其构建产物(auto-term 仓 cargo build -p autoterm-core)后 --run-ignored only 显式跑"]
-    fn ash_stream_leak_probe() {
-        let core = crate::ui::terminal::terminal("leak-probe", 100, 30);
-        let handle = engine_spawn(100, 30);
-        assert!(
-            handle != 0,
-            "spawn ash 失败(先 cargo build -p autoterm-core)"
-        );
-        std::thread::sleep(Duration::from_millis(1000));
-        engine_rows(handle);
-        println!("probe: ash spawned, start streaming");
-        for i in 0..20000u32 {
-            // 一次键入的完整生命周期:widget 入队 → pump 裸写 → 收割。
-            crate::ui::terminal::terminal_push_input(core, "x");
-            engine_pump_input(handle);
-            engine_rows(handle);
-            if i % 1000 == 0 {
-                let pending_len = crate::ui::terminal::terminal_take_damage(core).dirty_count();
-                println!(
-                    "iter {i}: handles={} snapshots={} pending_dirty={pending_len}",
-                    handles().len(),
-                    snapshots().len(),
-                );
-            }
-        }
-        println!("probe: done 20000 keystroke cycles");
-        std::thread::sleep(Duration::from_millis(500));
-    }
-}
-
-// ── PLAN-025(VM 臂):T-04 即时泵探针 + B 部配置面 stub ────────────────
-
-/// PLAN-025 T-04 即时泵探针:该 key 滚动增量是否待排(peek,不排空;
-/// 泵节拍门消费)。无 ui 特性恒 0(无滚动队列)。
-#[cfg(feature = "ui")]
-fn engine_scroll_pending_for(_handle: i64, key: &str) -> i64 {
-    match crate::ui::terminal::terminal_core(key) {
-        Some(core) => crate::ui::terminal::terminal_scroll_delta_pending(core) as i64,
-        None => 0,
-    }
-}
-#[cfg(not(feature = "ui"))]
-fn engine_scroll_pending_for(_handle: i64, _key: &str) -> i64 {
-    0
-}
-
-/// engine_scroll_pending_for(handle int, key str) int。
+/// 3001 `scroll_pending_for(handle int, key str) -> int`.
 pub fn shim_term_scroll_pending_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    task.ram.push_nv(auto_val::encode_i32(
-        engine_scroll_pending_for(handle, &key) as i32,
-    ));
+    let pending = terminal_provider(vm).scroll_pending_for(handle, &key);
+    task.ram.push_nv(auto_val::encode_i32(pending));
     Ok(())
 }
 
-// PLAN-025 B 部 VM 臂配置面 stub:profile 消费 = 非目标(§10.2,024
-// 合流后另立);auto-lang 不得依赖 autoterm-config(无环铁律)。空集
-// 语义 = G6 降级(spawn 回落缺省 shell),与"配置缺席"行为一致。
+/// 2987 `menu_take() -> int`.
+pub fn shim_term_menu_take(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let item = terminal_provider(vm).menu_take();
+    task.ram.push_nv(auto_val::encode_i32(item));
+    Ok(())
+}
 
-/// config_profiles() []str——VM 臂空集。
+// ── cached geometry / query surfaces ─────────────────────────────────────
+
+/// 2958 `cursor_row(handle int) -> int`.
+pub fn shim_term_cursor_row(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let row = terminal_provider(vm).cursor_row(handle);
+    task.ram.push_nv(auto_val::encode_i32(row));
+    Ok(())
+}
+
+/// 2959 `cursor_col(handle int) -> int`.
+pub fn shim_term_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let col = terminal_provider(vm).cursor_col(handle);
+    task.ram.push_nv(auto_val::encode_i32(col));
+    Ok(())
+}
+
+/// 2977 `viewport_cols(handle int) -> int`.
+pub fn shim_term_viewport_cols(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let cols = terminal_provider(vm).viewport_cols(handle);
+    task.ram.push_nv(auto_val::encode_i32(cols));
+    Ok(())
+}
+
+/// 2978 `viewport_rows(handle int) -> int`.
+pub fn shim_term_viewport_rows(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let rows = terminal_provider(vm).viewport_rows(handle);
+    task.ram.push_nv(auto_val::encode_i32(rows));
+    Ok(())
+}
+
+/// 3003 `history(handle int) -> int`.
+pub fn shim_term_engine_history(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let rows = terminal_provider(vm).history(handle);
+    task.ram.push_nv(auto_val::encode_i32(rows));
+    Ok(())
+}
+
+/// 2979 `backlog_pending_mb(handle int) -> int`.
+pub fn shim_term_backlog_pending_mb(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let mb = terminal_provider(vm).backlog_pending_mb(handle);
+    task.ram.push_nv(auto_val::encode_i32(mb));
+    Ok(())
+}
+
+/// 2980 `backlog_paused(handle int) -> int`.
+pub fn shim_term_backlog_paused(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let paused = terminal_provider(vm).backlog_paused(handle);
+    task.ram.push_nv(auto_val::encode_i32(paused));
+    Ok(())
+}
+
+/// 2981 `backlog_take_alerts(handle int) -> int`.
+pub fn shim_term_backlog_take_alerts(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let alerts = terminal_provider(vm).backlog_take_alerts(handle);
+    task.ram.push_nv(auto_val::encode_i32(alerts));
+    Ok(())
+}
+
+/// 2982 `backlog_dropped(handle int) -> int`.
+pub fn shim_term_backlog_dropped(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as i64;
+    let dropped = terminal_provider(vm).backlog_dropped(handle);
+    task.ram.push_nv(auto_val::encode_i32(dropped));
+    Ok(())
+}
+
+/// 2998 `window_width() -> int`.
+pub fn shim_term_window_width(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let width = terminal_provider(vm).window_width();
+    task.ram.push_nv(auto_val::encode_i32(width));
+    Ok(())
+}
+
+/// 2999 `window_height() -> int`.
+pub fn shim_term_window_height(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let height = terminal_provider(vm).window_height();
+    task.ram.push_nv(auto_val::encode_i32(height));
+    Ok(())
+}
+
+// ── configuration stubs (intentionally empty; no autoterm-config edge) ───
+
+/// 2988 `config_profiles() -> []str`.
 pub fn shim_term_config_profiles(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let empty: Vec<String> = Vec::new();
-    empty
+    let profiles = terminal_provider(vm).config_profiles();
+    profiles
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
-/// config_default_profile() str——VM 臂恒空串。
+/// 2989 `config_default_profile() -> str`.
 pub fn shim_term_config_default_profile(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    String::new()
+    terminal_provider(vm)
+        .config_default_profile()
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
-/// config_profiles_full() []str——VM 臂空集。
+/// 2990 `config_profiles_full() -> []str`.
 pub fn shim_term_config_profiles_full(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let empty: Vec<String> = Vec::new();
-    empty
+    let profiles = terminal_provider(vm).config_profiles_full();
+    profiles
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
-/// config_spawn_program(profile str) str——VM 臂恒空(回落缺省 shell)。
+/// 2991 `config_spawn_program(profile str) -> str`.
 pub fn shim_term_config_spawn_program(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _profile: String = VMConvertible::pop_from_stack(task, vm)
+    let profile: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    String::new()
+    terminal_provider(vm)
+        .config_spawn_program(&profile)
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
-/// config_spawn_argv(profile str) []str——VM 臂空集。
+/// 2992 `config_spawn_argv(profile str) -> []str`.
 pub fn shim_term_config_spawn_argv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _profile: String = VMConvertible::pop_from_stack(task, vm)
+    let profile: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let empty: Vec<String> = Vec::new();
-    empty
-        .push_to_stack(task, vm)
+    let argv = terminal_provider(vm).config_spawn_argv(&profile);
+    argv.push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
-/// config_spawn_cwd(profile str) str——VM 臂恒空(继承宿主)。
+/// 2993 `config_spawn_cwd(profile str) -> str`.
 pub fn shim_term_config_spawn_cwd(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
-    let _profile: String = VMConvertible::pop_from_stack(task, vm)
+    let profile: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    String::new()
+    terminal_provider(vm)
+        .config_spawn_cwd(&profile)
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
 
-// ── PLAN-028 T-03:geom 桥写解析层测试(ui 臂;注册表 + 泵出口往返)──
-#[cfg(all(test, feature = "ui"))]
-mod p028_geom_bridge_tests {
-    use super::*;
+// ── window-pixel compatibility facade (view state owner = UI adapter) ────
 
-    #[test]
-    fn geom_parse_guards_and_registry_write() {
-        crate::ui::terminal::terminal_dispose("p028-geom");
-        // 非法串/退化尺寸拒收(014 护栏:最小化退化不落不应用)。
-        assert_eq!(engine_pend_resize_geom("p028-geom", "abc"), 0);
-        assert_eq!(engine_pend_resize_geom("p028-geom", "80"), 0);
-        assert_eq!(engine_pend_resize_geom("p028-geom", "80x"), 0);
-        assert_eq!(
-            engine_pend_resize_geom("p028-geom", "1x30"),
-            0,
-            "退化 cols 拒收"
-        );
-        assert_eq!(
-            engine_pend_resize_geom("p028-geom", "80x0"),
-            0,
-            "退化 rows 拒收"
-        );
-        assert_eq!(
-            engine_pend_resize_geom("p028-geom", "0x30"),
-            0,
-            "最小化 0 尺寸拒收"
-        );
-        // 合法:落 per-key pending,既有定向泵出口取走。
-        assert_eq!(engine_pend_resize_geom("p028-geom", "80x30"), 1);
-        let core = crate::ui::terminal::terminal_core("p028-geom").expect("桥写惰性建核");
-        assert_eq!(
-            crate::ui::terminal::terminal_take_resize_for(core),
-            Some((80, 30))
-        );
-        assert_eq!(
-            crate::ui::terminal::terminal_take_resize_for(core),
-            None,
-            "取走即清"
-        );
-        // 同值重推仍落位(core 占位 (0,0);去重归前端推送面,泵侧幂等)。
-        assert_eq!(engine_pend_resize_geom("p028-geom", "80x30"), 1);
-        assert_eq!(
-            crate::ui::terminal::terminal_take_resize_for(core),
-            Some((80, 30))
-        );
-        crate::ui::terminal::terminal_dispose("p028-geom");
-    }
+/// PLAN-024 T-01 desktop-track injection. Compat facade forwarding to the
+/// named UI view adapter; the state is a thread-local view projection, not
+/// engine state. No-UI builds have no window and keep the legacy "function
+/// absent" surface.
+#[cfg(feature = "ui")]
+pub fn set_app_window_px(w: f32, h: f32) {
+    crate::ui::terminal_provider::set_app_window_px(w, h);
+}
+
+/// Test read face (injection semantics assertions).
+#[cfg(all(test, feature = "ui"))]
+pub(crate) fn app_window_px_for_test() -> (f32, f32) {
+    crate::ui::terminal_provider::app_window_px_for_test()
 }

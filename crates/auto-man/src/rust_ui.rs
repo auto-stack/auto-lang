@@ -3985,7 +3985,7 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
 
 /// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
 /// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
-pub const DELIVERY_CRATES: [&str; 14] = [
+pub const DELIVERY_CRATES: [&str; 15] = [
     "auto-lang",
     "auto-val",
     "auto-atom",
@@ -4009,6 +4009,10 @@ pub const DELIVERY_CRATES: [&str; 14] = [
     // 快照/diff 单一来源；其唯一三方依赖 imara-diff 走 registry）——沿
     // 792 合流合同窄接线，不登记则交付根 fresh 解析红。
     "auto-text-core",
+    // PLAN-808 落地后 auto-lang 的必需 path 依赖（terminal 域核心：owned
+    // cell/geometry 合同 + DLL 服务 + 34 方法端口；自身闭包仅 libloading，
+    // 由 terminal-core-consumer/verify-deps.sh 钉住）。
+    "auto-terminal-core",
     "auto-cache",
     "shim-metadata",
     "auto-bindgen",

@@ -45,14 +45,11 @@ pub mod iced;
 #[cfg(feature = "ui-iced")]
 pub use iced::{Terminal, TerminalState};
 
-/// Cell color — scalar mirror of the engine's ANSI color surface.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum TermColor {
-    Default,
-    /// 0-255 palette (0-15 correspond to the named colors).
-    Indexed(u8),
-    Rgb(u8, u8, u8),
-}
+// PLAN-808: the owned cell/color value contract lives in
+// `auto-terminal-core` (single definition, single style-decoding algorithm).
+// Re-export under the historical names so every existing path
+// (`crate::ui::terminal::TermCell` / `TermColor`) stays unchanged.
+pub use auto_terminal_core::{TerminalCell as TermCell, TerminalColor as TermColor};
 
 /// Cursor shape — scalar mirror of the engine's cursor surface.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -61,24 +58,6 @@ pub enum TermCursorShape {
     Beam,
     Underline,
     Hidden,
-}
-
-/// One grid cell.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct TermCell {
-    pub ch: char,
-    pub fg: TermColor,
-    pub bg: TermColor,
-}
-
-impl TermCell {
-    pub fn plain(ch: char) -> Self {
-        Self {
-            ch,
-            fg: TermColor::Default,
-            bg: TermColor::Default,
-        }
-    }
 }
 
 /// Damage since the last consume — mirror of the engine's `Damage`.
@@ -1152,8 +1131,8 @@ pub const TERMINAL_SCHEME_LIGHT: i32 = 1;
 
 /// 一个方案的 [18] rgb 表:[0]=def-fg、[1]=def-bg、[2..18]=base16。
 /// 内置表与 autoterm-core palette.rs 单源同值(渲染端回退基线;引擎在线
-/// 时由 glue 经 FFI `palette_color` 查询装载覆盖——引擎单源契约)。
-pub const TERMINAL_PALETTE_SLOTS: usize = 18;
+/// 时由 PLAN-808 UI adapter 经 core `palette_tables` 查询装载覆盖——引擎单源契约)。
+pub const TERMINAL_PALETTE_SLOTS: usize = auto_terminal_core::PALETTE_SLOTS;
 
 /// scheme 0 内置表(016 像素金样逐字节基线)。
 pub const PALETTE_CLASSIC_DARK: [u32; TERMINAL_PALETTE_SLOTS] = [
@@ -1226,9 +1205,8 @@ pub fn terminal_resolve_scheme(core: &TerminalCore) -> i32 {
 /// 折叠重排病理(满历史网格 → GB 级瞬态分配,19:13 案;责任划分与完整
 /// 链路见 autoterm DEBTS #15)。退化空间=可见性事件,不该进几何通道;
 /// 引擎 TermSession::resize 另有兜底,此处是第一道闸。
-pub const MIN_RESIZE_COLS: u16 = 2;
-pub const MAX_RESIZE_COLS: u16 = 500;
-pub const MAX_RESIZE_ROWS: u16 = 200;
+/// PLAN-808: the domain rules live in `auto-terminal-core`; re-exported here.
+pub use auto_terminal_core::{MAX_RESIZE_COLS, MAX_RESIZE_ROWS, MIN_RESIZE_COLS};
 
 /// Widget layout 由可用空间反推网格几何;与当前几何不同才落位(覆盖
 /// 旧请求——只关心最新值)。返回 true = 本次落了待定请求。

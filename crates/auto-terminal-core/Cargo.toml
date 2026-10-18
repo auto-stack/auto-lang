@@ -1,0 +1,24 @@
+# PLAN-808: terminal host-domain core crate.
+#
+# Owns the non-UI engine service (DLL loading, symbol contract, session handle
+# table, row/cursor/viewport/backlog state) plus the owned value contract and
+# the `TerminalHostProvider` port. It must NOT depend on auto-lang / UI /
+# auto-man / auto-term: the DLL is loaded at runtime through libloading and
+# the ABI stays in auto-term.
+#
+# Closure guard: the only dependencies are std and libloading. The external
+# consumer fixture (test/fixtures/modularity/terminal-core-consumer) builds
+# this crate without any auto-lang checkout.
+
+[package]
+name = "auto-terminal-core"
+version = "0.1.0"
+edition = "2021"
+description = "Terminal host-domain core: owned cells/geometry contract, runtime autoterm_core.dll service, session lifecycle and the light terminal provider port (PLAN-808)"
+license = "MIT"
+keywords = ["terminal", "pty", "host-capability"]
+
+[dependencies]
+# Already in the workspace lock (auto-lang runtime dependency); the DLL is a
+# runtime resource, never a Cargo edge to auto-term.
+libloading = "0.8"

@@ -200,6 +200,10 @@ autodown-core = { path = "../../../auto-down/autodown/packages/engine/rust", opt
 auto-test-case = { path = "../auto-test-case", optional = true }
 # Plan 216: C FFI Bindgen manifest types
 auto-bindgen = { path = "../auto-bindgen" }
+# PLAN-808: terminal host-domain core — owned cells/geometry contract, runtime
+# autoterm_core.dll service and the 34-method TerminalHostProvider port. The
+# crate has no auto-lang/UI/auto-man/auto-term Cargo edge.
+auto-terminal-core = { path = "../auto-terminal-core" }
 rustyline = { workspace = true, features = ["with-file-history"] }
 strum = { workspace = true }
 strum_macros = { workspace = true }

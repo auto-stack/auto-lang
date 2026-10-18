@@ -1,0 +1,27 @@
+# PLAN-808 external terminal-core consumer probe (independent fixture crate).
+#
+# Role: simulate an external crate that only depends on `auto-terminal-core`'s
+# public surface (EngineService / TerminalHostProvider / owned cell+geometry+
+# snapshot types). It proves the terminal domain core compiles and runs
+# without any auto-lang / UI / auto-man checkout: the DLL is a runtime
+# resource loaded through libloading, and the absent-capability matrix is
+# deterministic. The real-DLL smoke is env-gated (AUTOTERM_ENGINE_DLL) and is
+# evidence only when the env is present (explicit PENDING otherwise).
+#
+# Explicitly outside the root workspace (empty [workspace] below; the root
+# Cargo.toml exclude list is the second guard). Gate entry:
+#   cargo test --manifest-path test/fixtures/modularity/terminal-core-consumer/Cargo.toml
+# Dependency closure oracle (V-06):
+#   bash test/fixtures/modularity/terminal-core-consumer/verify-deps.sh
+
+[package]
+name = "terminal-core-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-terminal-core = { path = "../../../../crates/auto-terminal-core" }
+
+# Independent workspace (see above); no lock file, no members.
+[workspace]

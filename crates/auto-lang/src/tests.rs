@@ -32,6 +32,9 @@ mod plan807_text_core; // PLAN-807: 文本基础抽取（剪断锚/快照端口/
                        // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
                        // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
 mod plan804_dialog_dnd_provider;
+// PLAN-808: terminal 34 native host-domain extraction——codec 剪断/34 形状/
+// 装配身份/缺席矩阵/真实 DLL 会话生命周期与 UI 投影回归锚
+mod plan808_terminal_domain;
 // PLAN-804 V-04/V-05: 真 OS 实机证据档——env 门控（AUTO_LANG_DIALOG_E2E/
 // AUTO_LANG_DND_E2E=1 才运行，日常档零 OS 面零交互；详见文件头）。
 #[cfg(windows)]

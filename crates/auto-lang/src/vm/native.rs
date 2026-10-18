@@ -164,6 +164,14 @@ pub struct NativeInterface {
     editor_snapshot_provider: std::sync::RwLock<
         Option<std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>>,
     >,
+    /// PLAN-808: terminal 能力槽（34 native 全族：2943..2949、2957..2959、
+    /// 2976..2982、2983..2987、2988..2993、2998..3003）。装配语义与既有
+    /// provider 槽逐条相同（per-NativeInterface 持有、Clone 保留、注入不动
+    /// 绑定身份）。**缺席语义不同于其他族**：无槽时 shim 回落到进程共享
+    /// engine service（非 raise/非全空），保留迁移前"无 UI 也能驱动引擎"
+    /// 的行为。
+    terminal_provider:
+        std::sync::RwLock<Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>>>,
 }
 
 impl Clone for NativeInterface {
@@ -235,6 +243,13 @@ impl Clone for NativeInterface {
                     .expect("editor_snapshot_provider poisoned")
                     .clone(),
             ),
+            // PLAN-808: terminal provider 随装配克隆保留（同上）。
+            terminal_provider: std::sync::RwLock::new(
+                self.terminal_provider
+                    .read()
+                    .expect("terminal_provider poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -258,6 +273,7 @@ impl NativeInterface {
             dialog_host_provider: std::sync::RwLock::new(None),
             dnd_host_provider: std::sync::RwLock::new(None),
             editor_snapshot_provider: std::sync::RwLock::new(None),
+            terminal_provider: std::sync::RwLock::new(None),
         }
     }
 
@@ -435,6 +451,29 @@ impl NativeInterface {
         self.dnd_host_provider
             .read()
             .expect("dnd_host_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-808: 注入/替换本接口（=本 VM）的 terminal provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_terminal_provider(
+        &self,
+        provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
+    ) {
+        *self
+            .terminal_provider
+            .write()
+            .expect("terminal_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-808: 当前 terminal provider（None → shim 回落进程共享 engine
+    /// service；**不是**缺席错误/空值，见槽位注释）。
+    pub fn terminal_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
+        self.terminal_provider
+            .read()
+            .expect("terminal_provider poisoned")
             .clone()
     }
 

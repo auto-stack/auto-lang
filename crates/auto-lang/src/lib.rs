@@ -477,6 +477,9 @@ fn install_ui_host_capabilities() {
         #[cfg(all(windows, feature = "native-clipboard"))]
         crate::ui::clipboard_media_provider::install_process_default();
         crate::ui::scroll_host_provider::install_process_default();
+        // PLAN-808: terminal 域 adapter（ui 单门控——引擎服务 + UI 输入/
+        // 投影/menu/scroll/window/palette 接线恢复；34 native 全族）。
+        crate::ui::terminal_provider::install_process_default();
         // PLAN-802: code editor host adapter（code-editor 单门控——editor
         // 注册表接线恢复，22 native 全族）。
         #[cfg(feature = "code-editor")]
@@ -5635,6 +5638,9 @@ fn run_file_dynamic_ui_inner(
     // PLAN-794: scroll host adapter 同点并入（if-absent 兼容默认；ui 单
     // 门控——controller 注册表接线恢复，9900..9905/9922/9923）。
     crate::ui::scroll_host_provider::install_process_default();
+    // PLAN-808: terminal adapter 同点并入（if-absent 兼容默认；ui 单门控——
+    // 34 native 全族的输入/投影/menu/scroll/window/palette 接线恢复）。
+    crate::ui::terminal_provider::install_process_default();
     // PLAN-802: code editor host adapter 同点并入（if-absent 兼容默认；
     // code-editor 单门控——editor 注册表接线恢复，22 native 全族）。
     #[cfg(feature = "code-editor")]

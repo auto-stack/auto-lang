@@ -65,6 +65,11 @@ schema = "module-boundaries/1"
 "auto-macros" = "lang-infra"
 # 标准运行时/宿主能力（a2r-std）。
 "a2r-std" = "runtime"
+# PLAN-808：terminal 宿主域核心——owned cell/color/geometry 合同 + 运行期
+# autoterm_core.dll 服务 + 34 方法 TerminalHostProvider 端口；闭包仅
+# std+libloading（由 terminal-core-consumer/verify-deps.sh 钉住），禁依赖
+# lang-monolith/lang-infra/man/tool/UI（runtime-no-compiler-ui-man 规则）。
+"auto-terminal-core" = "runtime"
 # 测试域。
 "a2r-actor-tests" = "test"
 # 工程工具域：man 核心 / man 生态（模板生成）。

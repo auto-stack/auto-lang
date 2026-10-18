@@ -899,6 +899,16 @@ impl AutoVM {
             {
                 native_interface.set_editor_snapshot_provider(provider);
             }
+
+            // PLAN-808: 同纪律快照 terminal provider（34 native 全族）。
+            // 缺席快照**不是**错误/空值——shim 回落进程共享 engine service
+            // （迁移前无 UI 也驱动引擎的行为保留）；UI 宿主安装 adapter 后
+            // 才有输入/几何/menu/scroll/window/palette 面。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_terminal_host_provider()
+            {
+                native_interface.set_terminal_provider(provider);
+            }
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
@@ -1452,6 +1462,24 @@ impl AutoVM {
         &self,
     ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>> {
         self.native_interface.editor_snapshot_provider()
+    }
+
+    /// PLAN-808: 实例级 terminal provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=34 项 `auto.term.*`。
+    pub fn set_terminal_provider(
+        &self,
+        provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
+    ) {
+        self.native_interface.set_terminal_provider(provider);
+    }
+
+    /// PLAN-808: 本 VM 当前 terminal provider（None → shim 回落进程共享
+    /// engine service，不是禁用引擎）。
+    pub fn terminal_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
+        self.native_interface.terminal_provider()
     }
 
     /// Plan 197 Task 9: Load generic registry from codegen
