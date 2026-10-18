@@ -228,3 +228,33 @@ fn port_from_node_parity() {
     // port_at = build/win；去尾斜杠规则在 set_port（效果半）
     assert_eq!(port.at, "build/win");
 }
+
+/// V-04（auto-man 级）：Pac::resolve 在内部 target 环上有界报错而非
+/// 旧臂 while 挂死；错误具名环成员且不开始 scan（App/Lib 环不触发
+/// download，隔离验证闭包段）。
+#[test]
+fn resolve_internal_cycle_bounded_error() {
+    let config = auto_lang::config::AutoConfig::new(
+        r#"
+        name: "cyc"
+        app("a") {
+            links: ["b"]
+        }
+        lib("b") {
+            links: ["a"]
+        }
+        "#,
+    )
+    .unwrap();
+    let mut pac = Pac::new(config);
+    let err = pac.resolve().expect_err("内部环必须报错");
+    let msg = err.to_string();
+    assert!(msg.contains("no progress"), "错误文本: {}", msg);
+    assert!(
+        msg.contains("a") && msg.contains("b"),
+        "环成员具名: {}",
+        msg
+    );
+    // 不开始 scan：targets 未被 scan 填充（srcs 为空）
+    assert!(pac.targets.iter().all(|t| t.srcs.is_empty()));
+}

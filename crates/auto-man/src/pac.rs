@@ -15,7 +15,7 @@ use auto_lang::Atom;
 use auto_man_core as core_;
 use auto_val::pretty;
 use auto_val::shared;
-use auto_val::{Array, AutoPath, AutoStr, Kid, Node, Obj, Shared, Value, ValueKey};
+use auto_val::{Array, AutoPath, AutoStr, Kid, Node, Obj, Shared, Value};
 use log::*;
 use std::collections::HashMap;
 use std::fmt;
@@ -553,114 +553,9 @@ impl Pac {
         core_::get_build_names(targets_map)
     }
 
-    /// Resolve target dependencies by building transitive closure of links
-    ///
-    /// This function iteratively resolves dependencies until all targets have
-    /// their complete dependency tree calculated. Returns true if all targets
-    /// are resolved, false if some targets still have unresolved dependencies.
-    fn resolve_target_deps(targets_map: &mut HashMap<AutoStr, Target>) -> bool {
-        let all_resolved = Self::check_all_resolved(targets_map);
-
-        // Build resolved links map for targets whose dependencies are all resolved
-        let resolved_links = Self::build_resolved_links(targets_map);
-
-        // Apply the resolved links to update target dependency information
-        Self::apply_resolved_links(targets_map, resolved_links);
-
-        all_resolved
-    }
-
-    /// Check if all targets are marked as resolved
-    fn check_all_resolved(targets_map: &HashMap<AutoStr, Target>) -> bool {
-        targets_map.values().all(|t| t.is_resolved)
-    }
-
-    /// Build a map of resolved links for targets whose dependencies are all resolved
-    ///
-    /// For each target, if all its direct and transitive dependencies are resolved,
-    /// collect the complete set of links (transitive closure).
-    fn build_resolved_links(targets_map: &HashMap<AutoStr, Target>) -> HashMap<AutoStr, Vec<Node>> {
-        let mut resolved_links: HashMap<AutoStr, Vec<Node>> = HashMap::new();
-
-        for target in targets_map.values() {
-            if target.links.is_empty() {
-                // Target with no dependencies is trivially resolved
-                resolved_links.insert(target.name.clone(), vec![]);
-                continue;
-            }
-
-            // Check if we can resolve this target's dependencies
-            if let Some(links) = Self::try_resolve_target_links(target, targets_map) {
-                resolved_links.insert(target.name.clone(), links);
-            }
-        }
-
-        resolved_links
-    }
-
-    /// Try to resolve all links for a target
-    ///
-    /// Returns Some(links) if all dependencies are resolved, None otherwise.
-    /// When successful, returns the transitive closure of all links.
-    fn try_resolve_target_links(
-        target: &Target,
-        targets_map: &HashMap<AutoStr, Target>,
-    ) -> Option<Vec<Node>> {
-        let mut all_deps_resolved = true;
-        let mut links = Vec::new();
-
-        // Start with direct links
-        links.extend(target.links.iter().cloned());
-
-        // Transitively collect links from dependencies
-        for link in &target.links {
-            // println!("LINKS TO RESOLVE: {}", link);
-            let Some(dep) = targets_map.get(&link.id()) else {
-                continue;
-            };
-
-            if !dep.is_resolved {
-                all_deps_resolved = false;
-                break;
-            }
-
-            // Add transitive links from this dependency
-            links.extend(dep.links.iter().cloned());
-        }
-
-        if all_deps_resolved {
-            Some(links)
-        } else {
-            None
-        }
-    }
-
-    /// Apply resolved links to update targets in the map
-    ///
-    /// For each target in resolved_links, mark it as resolved and update
-    /// its dependency information (dep_names and all_links).
-    fn apply_resolved_links(
-        targets_map: &mut HashMap<AutoStr, Target>,
-        resolved_links: HashMap<AutoStr, Vec<Node>>,
-    ) {
-        for (target_name, links) in resolved_links {
-            // Extract dependency names from the links
-            let dep_names: Vec<AutoStr> = links
-                .iter()
-                .filter_map(|link| {
-                    let id = link.id();
-                    targets_map.get(&id).map(|dep| dep.name.clone())
-                })
-                .collect();
-
-            // Update the target with resolved information
-            if let Some(target) = targets_map.get_mut(&target_name) {
-                target.is_resolved = true;
-                target.dep_names = dep_names;
-                target.all_links = links;
-            }
-        }
-    }
+    // （PLAN-809 T-04：resolve_target_deps/check_all_resolved/
+    // build_resolved_links/try_resolve_target_links/apply_resolved_links
+    // 五函数族已删——单一实现在 auto_man_core::closure。）
 
     pub fn pull(&mut self) -> AutoResult<()> {
         self.is_update = true;
@@ -698,52 +593,15 @@ impl Pac {
         self.print_targets();
 
         // 2. link targets with dependencies
+        // （PLAN-809 T-04：闭包与 major 合并单源在 auto_man_core::closure；
+        // 有界图准入——内部 target 环返回具名 NoProgress 错误而非旧臂
+        // while 挂死，且不开始后续 scan。）
         info!("Linking targets with dependencies");
 
         let mut targets_map = self.targets_map();
-        let mut major_targets = Vec::new();
-
-        // resolve target's links, expanding indirect dependencies into target.dep_names
-        let mut done = false;
-        while !done {
-            done = Self::resolve_target_deps(&mut targets_map);
-        }
-
-        let major_target_names = targets_map
-            .values()
-            .filter(|t| t.is_major())
-            .map(|t| t.name.clone())
-            .collect::<Vec<AutoStr>>();
-
-        for n in major_target_names {
-            let mut deps = Vec::new();
-            let t = targets_map.get(&n).unwrap();
-            for l in &t.all_links {
-                let Some(dep) = targets_map.get(&l.id()) else {
-                    continue;
-                };
-                let mut merge = dep.clone();
-                merge.merge_link(l);
-                deps.push(merge);
-            }
-            let Some(t) = targets_map.get_mut(&n) else {
-                continue;
-            };
-            t.deps = deps;
-        }
-
-        // copy dep's target info into major targets
-        targets_map
-            .values()
-            .filter(|t| {
-                t.kind == TargetKind::Device
-                    || t.kind == TargetKind::App
-                    || t.kind == TargetKind::Lib
-                    || t.kind == TargetKind::Test
-            })
-            .for_each(|t| major_targets.push(t.clone()));
-
-        self.targets = major_targets;
+        core_::resolve_target_closure(&mut targets_map)
+            .map_err(|e| auto_val::AutoError::from(e.to_string()))?;
+        self.targets = core_::assemble_major_targets(&mut targets_map);
 
         // 3. scan targets for its local source files
         info!("Scanning targets for srcs and incs, only major targets and their deps are scanned");
@@ -1649,65 +1507,5 @@ theme: { }
         assert_eq!(group.name, "root");
     }
 
-    // Tests for refactored dependency resolution functions
-
-    #[test]
-    fn test_check_all_resolved() {
-        use crate::target::{Target, TargetKind};
-        use std::collections::HashMap;
-
-        let mut targets = HashMap::new();
-
-        // Create two targets, both resolved
-        let mut target1: Target = Target::new("app1", TargetKind::App);
-        target1.is_resolved = true;
-        let mut target2: Target = Target::new("lib1", TargetKind::Lib);
-        target2.is_resolved = true;
-
-        targets.insert(target1.name.clone(), target1);
-        targets.insert(target2.name.clone(), target2);
-
-        // All targets should be resolved
-        assert!(Pac::check_all_resolved(&targets));
-    }
-
-    #[test]
-    fn test_check_all_resolved_unresolved() {
-        use crate::target::{Target, TargetKind};
-        use std::collections::HashMap;
-
-        let mut targets = HashMap::new();
-
-        // Create one resolved, one unresolved
-        let mut target1: Target = Target::new("app1", TargetKind::App);
-        target1.is_resolved = true;
-        let mut target2: Target = Target::new("lib1", TargetKind::Lib);
-        target2.is_resolved = false;
-
-        targets.insert(target1.name.clone(), target1);
-        targets.insert(target2.name.clone(), target2);
-
-        // Not all targets should be resolved
-        assert!(!Pac::check_all_resolved(&targets));
-    }
-
-    #[test]
-    fn test_build_resolved_links_no_links() {
-        use crate::target::{Target, TargetKind};
-        use std::collections::HashMap;
-
-        let mut targets = HashMap::new();
-
-        // Create target with no links
-        let target: Target = Target::new("app1", TargetKind::App);
-        targets.insert(target.name.clone(), target);
-
-        let resolved_links = Pac::build_resolved_links(&targets);
-
-        // Should have one entry with empty links
-        assert_eq!(resolved_links.len(), 1);
-        let key = auto_val::AutoStr::from("app1");
-        assert!(resolved_links.contains_key(&key));
-        assert!(resolved_links.get(&key).unwrap().is_empty());
-    }
+    // 闭包函数族测试已随实现迁 auto_man_core::closure::tests
 }

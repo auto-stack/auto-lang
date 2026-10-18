@@ -19,6 +19,7 @@
 //! - Pac（有效果字段）结构体留在 auto-man，纯方法逐项委托本 crate。
 
 pub mod backend;
+pub mod closure;
 pub mod dir;
 pub mod group;
 pub mod node_ext;
@@ -30,6 +31,10 @@ pub mod target;
 pub use backend::{
     default_frontend_with_legacy, frontend_types_with_legacy, output_dirs, BackendName,
     RenderSelection,
+};
+pub use closure::{
+    assemble_major_targets, build_resolved_links, check_all_resolved, resolve_target_closure,
+    resolve_target_deps, try_resolve_target_links, GraphError,
 };
 pub use dir::Dir;
 pub use group::{dir_groups, File, Group};
