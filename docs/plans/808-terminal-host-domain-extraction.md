@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-808
-status: drafting
+status: execution_done
 feature_name: 终端宿主域整体解耦与会话生命周期收口
 author: [Codex]
 created_at: 2026-10-18
 updated_at: 2026-10-18
 plan_revision: 1
-current_step: 0
+current_step: 7
 total_steps: 10
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/terminal-mux-model.md]
 new_spec_components: [docs/specs/auto-terminal-core/project.md]
@@ -122,13 +122,20 @@ review独立上下文在同一工作树检查所有AC/SD及资源失败出口。
 
 | 状态 | ID | owner_stage | 依赖 | 文件/动作、交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 既有provider已交付 | 穷举native/term_engine/UI/生成器及余edge；新增`attachments/808/contract-baseline.md`冻结34项、所有者/锁序/线程/feature矩阵、配置stub、实际DLL来源/能力、旧oracle和driver；有界probe确认FFI寿命及provider替换路由，未决先阻塞依赖实现 | AC-01..04 |
-| [ ] | T-02 | work | T-01 | 新`crates/auto-terminal-core`owned类型/端口、句柄owner与轻consumer骨架；check/签名及无反向闭包控制 | AC-01,03 |
-| [ ] | T-03 | work | T-02 | DLL加载/符号/采样/会话表/背压迁服务，原term_engine删业务；保旧缺件/配置空值；core定向V-04/05 | AC-01,03 |
-| [ ] | T-04 | work | T-03 | UI terminal owned转换/input/view/palette/窗口adapter及Mux真源，保set_app_window_px门面；V-02/03与锁序反例 | AC-02,03 |
-| [ ] | T-05 | work | T-04 | VM34项/实例存储/默认装配完整接线，核对已支持生成Rust组件消费；V-01与替换/两VM控制 | AC-01..03 |
-| [ ] | T-06 | work | T-05 | 建plan808测试/独立consumer和实际DLL进程driver，V-01..06全矩阵含真实资源退出；记录未支持面，不能skip当绿 | AC-01..04 |
-| [ ] | T-07 | work | T-06 | 777/792并集和受影响fresh/locked；删重复glue，终端/媒体剩余owner表、净迁移/SD草案及`attachments/808/handoff.md`；定向check后提交 | AC-04 |
+| [x] | T-01 | work | 既有provider已交付 | 穷举native/term_engine/UI/生成器及余edge；新增`attachments/808/contract-baseline.md`冻结34项、所有者/锁序/线程/feature矩阵、配置stub、实际DLL来源/能力、旧oracle和driver；有界probe确认FFI寿命及provider替换路由，未决先阻塞依赖实现 | AC-01..04 |
+[✅ 已完成] 2026-10-18：34项矩阵/catalog 34条/shim 34一一对应；term_engine 49处UI直引登记；DLL=auto-term main@7a0d0e8 构建 SHA256 c17ecca1…（22导出在位、双会话隔离、kill/exit/free 探针 pass）；provider 端口/默认共享/每service句柄表/锁序冻结。收据 [contract-baseline.md](attachments/808/contract-baseline.md) + [probe](attachments/808/t01-dll-probe.log.txt)。 | AC-01..04 |
+| [x] | T-02 | work | T-01 | 新`crates/auto-terminal-core`owned类型/端口、句柄owner与轻consumer骨架；check/签名及无反向闭包控制 | AC-01,03 |
+[✅ 已完成] 2026-10-18：`crates/auto-terminal-core`（edition 2021，闭包仅 libloading）——owned `TerminalColor/TerminalCell/Geometry/Snapshot` + `decode_style_color` 单份；`EngineService`（LIB/符号/句柄/快照/光标/视口/背压/palette）+ 34 方法 `TerminalHostProvider`；`shared()` 进程单例与 `new()/with_candidates()/without_dll()` 隔离实例。`cargo check -p auto-terminal-core` 0；`cargo test -p auto-terminal-core` 4/4（absent/load-failure/类型解码）。外部无反向闭包：terminal-core-consumer `verify-deps.sh` PASS（仅 libloading/windows-link）。 | AC-01,03 |
+| [x] | T-03 | work | T-02 | DLL加载/符号/采样/会话表/背压迁服务，原term_engine删业务；保旧缺件/配置空值；core定向V-04/05 | AC-01,03 |
+[✅ 已完成] 2026-10-18：DLL 加载/符号/采样/会话表/背压/palette 查询全部落 core；`term_engine.rs` 1394→355 行，仅 34 shim + 2 处窗口门面委托，`libloading/Library/autoterm_engine_/HANDLES/SNAPSHOTS/terminal_*` 业务零残留（plan808 core-cut 测试永久钉扎）。缺件/缺符号/无效句柄/config 空值逐项冻结；core 4/4 + plan808 absent 2/2。 | AC-01,03 |
+| [x] | T-04 | work | T-03 | UI terminal owned转换/input/view/palette/窗口adapter及Mux真源，保set_app_window_px门面；V-02/03与锁序反例 | AC-02,03 |
+[✅ 已完成] 2026-10-18：`ui::terminal_provider::TerminalUiProvider`（共享 service + UI 注册表）承接输入/几何/menu/scroll/window/palette/样式旁路/window_store；`TermCell/TermColor/几何常量/palette slots` 由 core 单份 re-export（路径不变）；`set_app_window_px` 门面保留。定向 UI 测试 41/41（含 per-key 定向、once 消费、p025 滚动回归、窗口注入），plan808 real-UI 投影 1/1（真 DLL）。 | AC-02,03 |
+| [x] | T-05 | work | T-04 | VM34项/实例存储/默认装配完整接线，核对已支持生成Rust组件消费；V-01与替换/两VM控制 | AC-01..03 |
+[✅ 已完成] 2026-10-18：NI `terminal_provider` 槽（Clone/new）+ AutoVM 构造快照/实例 set/get + `host_capabilities` 进程默认四级 API；34 shim 全部 provider 化（ID/canonical/弹序/返回 shape 不变）；`install_ui_host_capabilities`/`run_file_dynamic_ui_inner` 同点 if-absent 装配；无 provider 回落共享 engine（window 1024×768/config 空保留）。plan808 assembly 4/4（34 形状/快照/实例/Clone+merge/binding revision/无 provider 回落）+ real-DLL 替换路由 1/1；生成 Rust terminal 金样 3 项待合并跑（见 T-06/收据）。 | AC-01..03 |
+| [x] | T-06 | work | T-05 | 建plan808测试/独立consumer和实际DLL进程driver，V-01..06全矩阵含真实资源退出；记录未支持面，不能skip当绿 | AC-01..04 |
+[✅ 已完成] 2026-10-18：`tests/plan808_terminal_domain.rs` 10/10（真实 DLL 环境：34 形状/装配/缺席矩阵/双会话/自然+交互退出/重复 free/provider 替换/真 UI 定向输入+几何+menu+scroll 单源+window 投影）；独立 consumer fixture 4/4 + verify-deps PASS；真实 DLL=auto-term@7a0d0e8 SHA256 c17ecca1…。无 DLL 运行显式 PENDING（不记绿）。 | AC-01..04 |
+| [x] | T-07 | work | T-06 | 777/792并集和受影响fresh/locked；删重复glue，终端/媒体剩余owner表、净迁移/SD草案及`attachments/808/handoff.md`；定向check后提交 | AC-04 |
+[✅ 已完成] 2026-10-18：提交 `3c02068ca`（实现/测试/fixture）+ `c346f1077`（777 基线重绑）。777：observe core_to_ui 905→860，strict **pass**（0 violations/2 grandfathered）。792：`DELIVERY_CRATES` 12→13（auto-terminal-core），driver **25/25**（fresh 141s/relocated locked 120s/负控/dev 路由；[收据](attachments/808/t07-792-driver-receipt.json)）。净迁移：term_engine 1394→355 行、UI 直引 49→2、core 1182 行新、adapter 540 行；剩余 edge owner 表 + SD 草案 + 送审收据 [handoff.md](attachments/808/handoff.md)/[spec-delta.md](attachments/808/spec-delta.md)。 | AC-04 |
 | [ ] | T-08 | review | T-07 | 同树独立AC/SD/34项全链/真实DLL及UI生命周期审查，终端外边清单完整；记录merge门pending | AC-05 |
 | [ ] | T-09 | merge | T-08 pass | 合流共享装配/manifest并集，必要复审后最终冻结门；失败归因修复并复审重冻 | AC-06 |
 | [ ] | T-10 | merge | T-09 | 规范/ledger沉淀、归档/发行输入/owner交接、guard clean后工作树清理及计数 | AC-06 |
@@ -138,6 +145,8 @@ handoff：`D:/autostack/.wt/lang-808/auto-lang`，分支`codex/plan-808-dev`；�
 ## 9. 复审记录
 
 2026-10-18 revision 1 drafting；仅合同预检，尚未实施或独立review。阶段结果须逐次绑定实际SHA/平台/DLL身份及原始失败/退出证据，不能将“函数返回”替代资源退出。
+
+2026-10-18 / stage: work / PLAN-808 revision: 1 / outcome: **pass（work-owned T-01..T-07 全完成，送 T-08 同树独立终审）** / worktree `D:/autostack/.wt/lang-808/auto-lang` / branch `codex/plan-808-dev` / base `2046a025b9a445d35a02da2c72a1613259a0cb60` / code `3c02068ca`（实现/测试/fixture）+ `c346f1077`（777 基线重绑），tree clean / dependency_revisions: auto-down sibling `c39ac7f` detached 只读；真实 DLL = auto-term `main`@`7a0d0e8` 构建 SHA256 `c17ecca1…`；root Cargo.lock（ignored）SHA256 `9a431eb9…` / task_ids: T-01..T-07 / acceptance: AC-01..04 work pass（34 形状/真实 DLL 生命周期/UI 投影/Mux 单源/缺席矩阵/独立 consumer），AC-05 review pending、AC-06 merge pending / evidence: [contract-baseline.md](attachments/808/contract-baseline.md)、[handoff.md](attachments/808/handoff.md)、[spec-delta.md](attachments/808/spec-delta.md)、[T-01 probe](attachments/808/t01-dll-probe.log.txt)、[777 observe](attachments/808/t07-777-observe.json)、[792 receipt](attachments/808/t07-792-driver-receipt.json)/[log](attachments/808/t07-792-driver.log.txt)；core 4/4、UI 41/41、plan808 10/10（真实 DLL）、consumer 4/4 + verify-deps PASS、792 25/25、fmt 0 diff / blockers: 无；如实登记（1）无 DLL 运行时 plan808 真实测试显式 PENDING（不记绿），review/merge 环境须以 `AUTOTERM_ENGINE_DLL` 复跑；（2）`terminal_` 过滤面唯一红 `plan705_client_total_deadline_terminal_error` 为并发负载时序 flake，solo 1/1 绿、不属 terminal 面；（3）媒体/i18n R03 残边不在本计划 / pending_closeout_gates: merge 冻结提交裸 `cargo t`+`cargo tv`、777 strict 在最终组合树重绑、792 受影响 fresh/locked 重放（若闭包变化）、Spec/ledger/索引/归档/guard 清理 / next_responsible_role: **review（T-08）**。本记录不宣称 merge 门已过或 R03 整包完成。
 
 ## 10. 待澄清事项
 
