@@ -506,6 +506,39 @@ mod tests {
         assert!(index_directory(&nope).is_err());
     }
 
+    /// PLAN-811 V-04: reparse point（junction）不跟随——目录联接回指上层
+    /// 时索引必须终止于真实子树，不得环回。junction 在 Windows 无需特权
+    /// （`mklink /J`）；非 Windows 或创建失败时本反例跳过（覆盖限制：
+    /// symlink 形态与 junction 同走 symlink_metadata 分支）。
+    #[test]
+    fn index_does_not_follow_junction_reparse_points() {
+        let base = tmp_tree();
+        let loop_link = base.join("loop-link");
+        let link_str = loop_link.to_string_lossy().into_owned();
+        let base_str = base.to_string_lossy().into_owned();
+        let created = std::process::Command::new("cmd")
+            .args(["/c", "mklink", "/J", &link_str, &base_str])
+            .output();
+        match created {
+            Ok(output) if output.status.success() => {
+                let idx = index_directory(&base).unwrap();
+                let names: Vec<_> = idx.entries.iter().map(|e| e.relative_path.clone()).collect();
+                assert!(
+                    !names.iter().any(|n| n.starts_with("loop-link/")),
+                    "junction 条目不得进入索引: {names:?}"
+                );
+                assert_eq!(idx.entries.len(), 5, "junction 不改变真实子树集合: {names:?}");
+                let _ = std::fs::remove_dir(&loop_link);
+            }
+            _ => {
+                // 非 Windows / mklink 不可用：symlink 分支经 symlink_metadata
+                // 判定与 junction 同路；跳过并注明（不伪称已测）。
+                eprintln!("skip: junction creation unavailable on this host");
+            }
+        }
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
     #[test]
     fn parse_range_covers_the_http_surface() {
         let len = 1000u64;
