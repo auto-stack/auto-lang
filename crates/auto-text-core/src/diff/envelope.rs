@@ -343,7 +343,7 @@ fn build_rows_windowed(
     let mut rows = Vec::new();
     let mut row_idx = 0usize;
     // 单 Row 物化闭包：窗口判定+计数单源。
-    let mut push_row = |rows: &mut Vec<Row>, row_idx: &mut usize, row: Row| {
+    let push_row = |rows: &mut Vec<Row>, row_idx: &mut usize, row: Row| {
         let idx = *row_idx;
         *row_idx += 1;
         if idx >= rows_offset && idx < window_end {
