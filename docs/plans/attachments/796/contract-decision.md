@@ -260,3 +260,17 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
 - **健康门**（F-R7-03）：本计划新建的 `reflect.rs`、`codec.rs` 纳入 scoped
   rustfmt（不使用整仓格式化）；`CloseHandle` FFI 声明对齐既有
   `stage3.rs` 的 `isize` 签名，消除新增 `clashing_extern_declarations`。
+
+## D18 R8 修复轮冻结（2026-10-19）
+
+- **名称多重性与前置页预算**（F-R8-01）：solve 预留按标识符出现次数×4 计
+  （每语句/表达式/参数/调用），publish 预留按绑定名×8（覆盖 summary、clone、
+  manifest、编码等并存副本）；发布前先检查**预计编码页大小**，超过
+  `MAX_PAGE_BODY` 即 `ResourceExhausted`（ledger=`page`，在 meter 记录拒绝），
+  不进入 clone/encode；超内存仍在 solve/publish 前置拒绝。R8 长名反例
+  （1000/2000/3000×1000 字符）全部 typed resource，无 codec 尾错。
+- **方法签名入版本**（F-R8-02）：`record_canonical` 纳入 record 的**方法签名**
+  （`fn_sig_canonical`：名称/参数/返回；不含 body）。字段/方法/键/有效单元版本/
+  读取准入因此同步失效；纯方法 body 编辑保持可复用正控；热 store 在失效后与
+  独立新 store 发布同一 artifact。
+- **健康**：新增预算/版本代码无新增警告；计划文件格式保持 scoped 全绿。

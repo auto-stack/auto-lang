@@ -177,6 +177,23 @@ impl SessionMeter {
         Ok(ScratchGuard { meter: self, n })
     }
 
+    /// Record a NON-scratch budget rejection (the pre-encode page
+    /// ledger) so the session receipt counts it like every other
+    /// resource rejection (F-796-R8-01).
+    pub fn record_rejection(
+        &mut self,
+        ledger: &'static str,
+        wanted: usize,
+        budget: usize,
+    ) -> BudgetRejected {
+        self.rejected += 1;
+        BudgetRejected {
+            ledger,
+            wanted,
+            budget,
+        }
+    }
+
     pub fn managed_bytes(&self) -> usize {
         self.hot.bytes() + self.scratch_bytes
     }

@@ -455,7 +455,12 @@ pub fn record_units(input: &SemaInput) -> Vec<Vec<String>> {
     units
 }
 
-/// Canonical content of one record's ordered field set.
+/// Canonical content of one record's PUBLISHED facts: the ordered field
+/// set AND the method SIGNATURES (F-796-R8-02). A RecordMeta page
+/// publishes `methods` (params/ret/decl content), so a method
+/// signature change must change the definition/effective version; a
+/// body-only edit stays reusable because `fn_sig_canonical` excludes
+/// the body.
 pub fn record_canonical(r: &crate::input::InputRecord) -> Vec<u8> {
     let mut out = Vec::new();
     out.extend_from_slice(r.name.as_bytes());
@@ -475,6 +480,11 @@ pub fn record_canonical(r: &crate::input::InputRecord) -> Vec<u8> {
             Ann::Unsupported(_) => b'x',
         };
         out.push(tag);
+        out.push(0);
+    }
+    for m in &r.methods {
+        out.push(b'M');
+        out.extend_from_slice(&fn_sig_canonical(m));
         out.push(0);
     }
     out

@@ -129,6 +129,15 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
   输入不再以低记账成功发布或以 codec 错误兜底；深链发布仍只分区一次。
 - **SD-07**：`CloseHandle` 采用与既有 Win32 绑定一致的 `isize` 签名；本计划新建
   源文件纳入 scoped rustfmt（不整仓格式化），健康门闭合。
+## R8 修复轮补充（2026-10-19，D18）
+
+- **SD-02**：`record_canonical`/有效单元版本覆盖 record 的**方法签名**（名称/
+  参数/返回，不含 body）——方法参数或返回类型变化使字段页、键、组有效版本与
+  读取准入同步失效；纯方法 body 编辑作为可复用正控；热 store 与新 store 结果
+  一致。
+- **SD-04**：预算按名称**多重性**预留（solve×4、publish×8），并在 clone/编码前
+  检查预计页大小；超页/超内存一律 typed `ResourceExhausted`（页 ledger 记录在
+  meter），不再以 codec 尾错兜底。
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各

@@ -469,17 +469,6 @@ pub fn lookup_only_metered<'m>(
     lookup_core(store, input, query, meter, true, None)
 }
 
-/// Direct lookup (no SCC/group fallback) — the publication loop already
-/// owns the deterministic unit partition, so it never rebuilds the
-/// module graph per record (F-796-R6 V-06 deep-chain attribution).
-fn lookup_direct(
-    store: &ManagedStore,
-    input: &SemaInput,
-    query: &QueryKind,
-) -> Result<FetchOutcome, ProbeError> {
-    lookup_core(store, input, query, None, false, None)
-}
-
 /// Direct lookup with a PRECOMPUTED effective environment (publication
 /// loop: one SCC partition per module).
 fn lookup_direct_env(
@@ -742,7 +731,7 @@ fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
     let mut blocks: Vec<&ac_sema_core::input::InputBlock> = Vec::new();
     if let Some(f) = input.lookup_fn(fn_name) {
         for (n, _) in &f.params {
-            bytes = bytes.saturating_add(96 + n.len().saturating_mul(2));
+            bytes = bytes.saturating_add(96 + n.len().saturating_mul(4));
         }
         blocks.push(&f.body);
     }
@@ -751,11 +740,11 @@ fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
             bytes = bytes.saturating_add(STMT_COST);
             match st {
                 InputStmt::Let { name, value, .. } => {
-                    bytes = bytes.saturating_add(name.len().saturating_mul(2));
+                    bytes = bytes.saturating_add(name.len().saturating_mul(4));
                     exprs.push(value);
                 }
                 InputStmt::Assign { target, value, .. } => {
-                    bytes = bytes.saturating_add(target.len().saturating_mul(2));
+                    bytes = bytes.saturating_add(target.len().saturating_mul(4));
                     exprs.push(value);
                 }
                 InputStmt::Return { value, .. } => exprs.push(value),
@@ -781,11 +770,11 @@ fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
         bytes = bytes.saturating_add(EXPR_COST);
         match &e.kind {
             InputExprKind::Call { callee, args } => {
-                bytes = bytes.saturating_add(callee.len().saturating_mul(2));
+                bytes = bytes.saturating_add(callee.len().saturating_mul(4));
                 exprs.extend(args.iter());
             }
             InputExprKind::Var(n) => {
-                bytes = bytes.saturating_add(n.len().saturating_mul(2));
+                bytes = bytes.saturating_add(n.len().saturating_mul(4));
             }
             InputExprKind::Binary { lhs, rhs, .. } => {
                 exprs.push(lhs);
@@ -803,17 +792,19 @@ fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
 fn facts_estimate(s: &ac_sema_core::InferSummary) -> usize {
     let mut b = 4 * 1024usize;
     for (n, _) in &s.facts.bindings {
-        b = b.saturating_add(96 + n.len().saturating_mul(2));
+        b = b.saturating_add(96 + n.len().saturating_mul(8));
     }
     b = b.saturating_add(s.facts.expr_types.len().saturating_mul(48));
     for d in &s.facts.diagnostics {
-        b = b.saturating_add(128 + d.code.len().saturating_mul(2) + d.message.len());
+        b = b.saturating_add(
+            128 + d.code.len().saturating_mul(4) + d.message.len().saturating_mul(2),
+        );
     }
     for sig in &s.reads.sigs {
-        b = b.saturating_add(96 + sig.len().saturating_mul(2));
+        b = b.saturating_add(96 + sig.len().saturating_mul(4));
     }
     for (_, n, set) in &s.reads.negatives {
-        b = b.saturating_add(128 + n.len().saturating_mul(2) + set.len());
+        b = b.saturating_add(128 + n.len().saturating_mul(4) + set.len());
     }
     b
 }
@@ -1115,6 +1106,27 @@ pub fn publish_infer_result(
     publish_infer_result_charged(store, input, query, summary, project, None)
 }
 
+/// Conservative estimate of the ENCODED page body (F-796-R8-01): the
+/// payload cap must be enforced as a typed resource BEFORE the facts
+/// are cloned/encoded, not as a late codec error after the allocation.
+fn estimated_page_bytes(s: &ac_sema_core::InferSummary) -> usize {
+    let mut b = 4 * 1024usize;
+    for (n, _) in &s.facts.bindings {
+        b = b.saturating_add(n.len() + 8);
+    }
+    b = b.saturating_add(s.facts.expr_types.len().saturating_mul(12));
+    for d in &s.facts.diagnostics {
+        b = b.saturating_add(d.code.len() + d.message.len() + 16);
+    }
+    for sig in &s.reads.sigs {
+        b = b.saturating_add(sig.len() + 8);
+    }
+    for (_, n, set) in &s.reads.negatives {
+        b = b.saturating_add(n.len() + set.len() + 16);
+    }
+    b
+}
+
 /// Charged publish (F-796-R6-05 + R7-02): ONE conservative reservation
 /// covers the facts clone, the manifest and the encoded page BEFORE the
 /// clone happens; an over-budget publish is a typed resource rejection,
@@ -1125,9 +1137,24 @@ pub fn publish_infer_result_charged(
     query: &QueryKind,
     summary: &ac_sema_core::InferSummary,
     project: Option<&str>,
-    meter: Option<&mut crate::budget::SessionMeter>,
+    mut meter: Option<&mut crate::budget::SessionMeter>,
 ) -> Result<String, ProbeError> {
     let reserve = facts_estimate(summary).saturating_add(ac_sema_contract::MAX_PAGE_BODY);
+    // the pre-encode page ledger is checked FIRST: an unencodable page
+    // must never drive the clone/encode allocations (typed resource,
+    // recorded on the session meter)
+    let page_want = estimated_page_bytes(summary);
+    if page_want > ac_sema_contract::MAX_PAGE_BODY {
+        let err = match meter.as_deref_mut() {
+            Some(m) => m.record_rejection("page", page_want, ac_sema_contract::MAX_PAGE_BODY),
+            None => crate::budget::BudgetRejected {
+                ledger: "page",
+                wanted: page_want,
+                budget: ac_sema_contract::MAX_PAGE_BODY,
+            },
+        };
+        return Err(ProbeError::BudgetRejected(err));
+    }
     let mut guard = None;
     if let Some(m) = meter {
         guard = Some(m.scratch(reserve).map_err(ProbeError::BudgetRejected)?);

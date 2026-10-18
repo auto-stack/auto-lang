@@ -159,7 +159,8 @@ if ($Scope -eq 'acceptance') {
 
     # --- V-03 / AC-03: queries, deps, cache lifecycle ----------------
     Run-Suite 'V-03' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps') 'meta_query_ dependency faces' $ws 7
-    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + repairs' $ws 30 @(
+    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + repairs' $ws 31 @(
+        'sema_cache_r8_method_signature_is_a_freshness_input',
         'sema_cache_r7_three_level_leaf_edit_republishes_current_closure',
         'sema_cache_r7_scc_formation_and_split_change_the_carrier',
         'sema_cache_r7_external_group_dependency_tracks_effective_version',
@@ -172,7 +173,7 @@ if ($Scope -eq 'acceptance') {
     )
 
     # --- V-06 / AC-03: budgets and pressure ---------------------------
-    Run-Suite 'V-06' @('test', '-p', 'ac-sema-probe', '--test', 'sema_budget_pressure') 'sema_budget_ 32MiB/deep/churn/prealloc' $ws 8 @('sema_budget_deep_chain_4096_full_path', 'sema_budget_streamed_32mib_under_managed_budget', 'sema_budget_large_inference_rejects_before_publish', 'sema_budget_long_names_are_accounted', 'sema_budget_cache_readback_reserves_before_decode')
+    Run-Suite 'V-06' @('test', '-p', 'ac-sema-probe', '--test', 'sema_budget_pressure') 'sema_budget_ 32MiB/deep/churn/prealloc' $ws 11 @('sema_budget_deep_chain_4096_full_path', 'sema_budget_streamed_32mib_under_managed_budget', 'sema_budget_large_inference_rejects_before_publish', 'sema_budget_long_names_are_accounted', 'sema_budget_cache_readback_reserves_before_decode', 'sema_budget_long_names_reject_before_encode', 'sema_budget_oversized_page_rejected_as_resource_before_encode', 'sema_budget_long_name_readback_is_charged')
 
     # --- V-04 / V-07 / AC-04: turnaround stages + the hard gate ------
     Run-Suite 'V-04' @('test', '-p', 'ac-sema-probe', '--test', 'sema_turnaround_scenarios') 'sema_turnaround_ six scenarios + gate' $ws 5

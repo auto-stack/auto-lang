@@ -448,3 +448,100 @@ fn sema_budget_cache_readback_reserves_before_decode() {
         meter.scratch_peak()
     );
 }
+
+/// F-796-R8-01: 1000-char names are live in MULTIPLE copies (binding,
+/// summary, clone, manifest, encode). 2000 occurrences exceed the
+/// 8MiB solve reservation; 1000 occurrences exceed it in the publish
+/// window. Both must be typed `ResourceExhausted` BEFORE the encode —
+/// the R8 probe measured 9.26MB/4.63MB actual live with a 5.57MB/2.79MB
+/// ledger and a late codec error.
+#[test]
+fn sema_budget_long_names_reject_before_encode() {
+    let (rej2k, meter2k) = run_lets(2_000, 1_000, "r8-long-2000");
+    assert_eq!(
+        rej2k.disposition,
+        ac_sema_probe::Disposition::ResourceExhausted,
+        "2000 long names must be rejected before solve/publish: {:?}",
+        rej2k.reason
+    );
+    assert!(meter2k.rejections() >= 1);
+    let reason2k = rej2k.reason.clone().unwrap_or_default();
+    assert!(
+        reason2k.contains("scratch") || reason2k.contains("page"),
+        "typed resource reason must name the ledger: {reason2k}"
+    );
+
+    let (rej1k, meter1k) = run_lets(1_000, 1_000, "r8-long-1000");
+    assert_eq!(
+        rej1k.disposition,
+        ac_sema_probe::Disposition::ResourceExhausted,
+        "1000 long names must be rejected in the publish window: {:?}",
+        rej1k.reason
+    );
+    assert!(meter1k.rejections() >= 1);
+    let reason1k = rej1k.reason.clone().unwrap_or_default();
+    assert!(
+        reason1k.contains("scratch") || reason1k.contains("page"),
+        "{reason1k}"
+    );
+
+    // no page was published by either rejected query
+    let root = std::env::temp_dir().join("ac796-r8-long-2000");
+    let store = open_store(&root.join("store")).unwrap();
+    assert!(matches!(
+        ac_sema_probe::lookup_only(
+            &store,
+            &lets_input(2_000, 1_000),
+            &QueryKind::InferBody {
+                fn_name: "main".into()
+            }
+        )
+        .unwrap(),
+        FetchOutcome::Miss
+    ));
+}
+
+/// The page-size front door is SEPARATE from the memory ledger: 1000
+/// names of 600 chars fit in memory but their encoded body exceeds the
+/// 512KiB small-query cap — typed `ResourceExhausted` (ledger=page),
+/// never a late codec error.
+#[test]
+fn sema_budget_oversized_page_rejected_as_resource_before_encode() {
+    let (rej, meter) = run_lets(1_000, 600, "r8-page-front-door");
+    assert_eq!(
+        rej.disposition,
+        ac_sema_probe::Disposition::ResourceExhausted,
+        "{:?}",
+        rej.reason
+    );
+    let reason = rej.reason.clone().unwrap_or_default();
+    assert!(
+        reason.contains("page"),
+        "the pre-encode page ledger must fire: {reason}"
+    );
+    assert!(meter.rejections() >= 1);
+}
+
+/// A long-name page that FITS the budgets is still served on readback
+/// with the pre-decode reservation charged (cold compute vs readback
+/// accounting is symmetric).
+#[test]
+fn sema_budget_long_name_readback_is_charged() {
+    let root = scratch("r8-long-readback");
+    let store = open_store(&root.join("store")).unwrap();
+    let input = lets_input(400, 1_000);
+    let q = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
+    let first = ac_sema_probe::run_query_flow(&store, &input, &q, None, None).unwrap();
+    assert_eq!(first.disposition, ac_sema_probe::Disposition::PublishedMiss);
+    let mut meter = SessionMeter::new();
+    let second = ac_sema_probe::run_query_flow(&store, &input, &q, None, Some(&mut meter)).unwrap();
+    assert_eq!(second.disposition, ac_sema_probe::Disposition::Hit);
+    assert_eq!(second.compute_calls, 0);
+    assert!(
+        meter.scratch_peak() >= 1_000_000,
+        "readback must reserve the decode window (peak {})",
+        meter.scratch_peak()
+    );
+}

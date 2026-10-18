@@ -997,3 +997,75 @@ fn sema_cache_r7_external_group_dependency_tracks_effective_version() {
         assert_eq!(art, p3["A"], "{r} current group after member edit");
     }
 }
+
+// ---------------------------------------------------------------------------
+// F-796-R8-02: published METHOD signatures are part of the record's
+// definition/effective version (body-only edits stay reusable)
+// ---------------------------------------------------------------------------
+
+/// R8-02: a method SIGNATURE change invalidates the record page; the
+/// hot store then serves exactly what a fresh store publishes. A
+/// method BODY-only edit (same signature) remains a hit because the
+/// page publishes signatures, not bodies.
+#[test]
+fn sema_cache_r8_method_signature_is_a_freshness_input() {
+    let root = scratch("r8-methods");
+    let store = open_store(&root.join("store")).unwrap();
+    let qr = QueryKind::RecordFields { record: "R".into() };
+    let v1 = record_input("type R { value int; fn get(x int) int { return x } }", "m");
+    let p1 = r7_publish(&store, &v1);
+    let v2 = record_input(
+        "type R { value int; fn get(x bool) bool { return x } }",
+        "m",
+    );
+    match lookup_only(&store, &v2, &qr).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("method signature change must not hit the old page: {other:?}"),
+    }
+    let p2 = r7_publish(&store, &v2);
+    assert_ne!(p1["R"], p2["R"], "method signature change = new page");
+
+    // INDEPENDENT ORACLE: a fresh store publishing v2 must produce the
+    // same artifact as the hot store after invalidation.
+    let root2 = scratch("r8-methods-fresh");
+    let store2 = open_store(&root2.join("store")).unwrap();
+    let fresh = r7_publish(&store2, &v2);
+    assert_eq!(
+        p2["R"], fresh["R"],
+        "hot-store result must equal the fresh-store result"
+    );
+
+    match lookup_only(&store, &v2, &qr).unwrap() {
+        FetchOutcome::Hit { page, .. } => match &page.body {
+            ac_sema_contract::PageBody::RecordMeta(m) => {
+                let (name, ty, _) = &m.methods[0].params[0];
+                assert_eq!(name, "x");
+                assert_eq!(*ty, ac_sema_contract::TypeDesc::Bool);
+                assert_eq!(m.methods[0].ret, ac_sema_contract::TypeDesc::Bool);
+            }
+            other => panic!("R page kind: {other:?}"),
+        },
+        other => panic!("v2 must hit: {other:?}"),
+    }
+
+    // BODY-only edit, same signature: the page publishes signatures, so
+    // it is reusable and identical.
+    let v2b = record_input(
+        "type R { value int; fn get(x bool) bool { return !x } }",
+        "m",
+    );
+    match lookup_only(&store, &v2b, &qr).unwrap() {
+        FetchOutcome::Hit { artifact_id, .. } => {
+            assert_eq!(artifact_id, p2["R"], "body-only edit stays reusable")
+        }
+        other => panic!("body-only edit must hit: {other:?}"),
+    }
+
+    // method ADDITION also changes the version
+    let v3 = record_input(
+        "type R { value int; fn get(x bool) bool { return x }; fn put(y int) int { return y } }",
+        "m",
+    );
+    let p3 = r7_publish(&store, &v3);
+    assert_ne!(p3["R"], p2["R"], "method addition = new page");
+}
