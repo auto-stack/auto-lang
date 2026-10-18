@@ -5,3 +5,6 @@
 {"tier": "typing-small-5m", "edits": 200, "p50_ms": 0.0178, "p95_ms": 0.0212, "max_ms": 0.0398, "note": "小文件臂逐键带（frozen ② 不劣化基线）"}
 {"tier": "typing-paged-1g", "edits": 200, "p50_ms": 0.1662, "p95_ms": 0.1753, "max_ms": 0.2859, "note": "1GB 后援形远端逐键带（fault-in 保温后帧预算内）"}
 {"tier": "1g", "rss": {"via": "scripts/measure_test_mem.py p728_bench_ladder --ignored（debug 档）", "peak_MB": 17, "tier_class": "LT", "note": "进程峰值含预扫瞬态与测试基线；稳态结构计量 3.03MB"}}
+{"tier":"typing-small-5m","edits":200,"p50_ms":0.0622,"p95_ms":0.1146,"max_ms":0.1230}
+{"tier":"typing-paged-1g","edits":200,"p50_ms":1.0383,"p95_ms":2.8834,"max_ms":5.7310}
+{"tier":"1g","bytes":1073741834,"lines":23280107,"gen_ms":3028.9,"load_ms":18621.3,"answer_ms":4.149,"digest":"0x17dcf2bba1afe59f","edit_50_ms":8.4,"edit_max_ms":0.247,"structural_resident_bytes":3033703,"save_ms":1464.4,"cache_bytes":4279}

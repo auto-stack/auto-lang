@@ -53,7 +53,11 @@ schema = "module-boundaries/1"
 #（闭包由 test/fixtures/modularity/ui-declarations-consumer 钉住），
 # auto-lang 单向依赖之——UI 声明文法脱离语言实现包。
 "auto-ui-dialect" = "lang-core"
-# 语言工具基建（被 auto-lang 消费的底层 util/生成/测试基建）。
+# PLAN-807：文本基础 crate（持久化 rope/文件后援分页/快照/diff 引擎，
+# 自 auto-lang ui/code_editor 逐字抽取；依赖闭包 = imara-diff+std，闭包由
+# test/fixtures/modularity/text-core-consumer 钉住）。auto-lang 单向依赖之
+# （抽取方向 lang-monolith→lang-core）；适用 lang-core 禁向族。
+"auto-text-core" = "lang-core"# 语言工具基建（被 auto-lang 消费的底层 util/生成/测试基建）。
 "auto-cache" = "lang-infra"
 "shim-metadata" = "lang-infra"
 "auto-bindgen" = "lang-infra"
