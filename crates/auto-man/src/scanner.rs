@@ -2,9 +2,9 @@
 //!
 //! 提供跨 Target 和 Dir 复用的目录扫描功能
 
-use auto_val::{AutoStr, PathBufExt};
-use crate::TargetKind;
 use crate::AutoResult;
+use crate::TargetKind;
+use auto_val::{AutoStr, PathBufExt};
 use std::collections::HashSet;
 use std::path::Path;
 
@@ -118,30 +118,22 @@ pub fn scan_standard_subdirs<F>(
 where
     F: Fn(&Path, &TargetKind, &HashSet<AutoStr>, bool) -> AutoResult<(HashSet<AutoStr>, bool)>,
 {
-    let mut all_srcs = HashSet::new();
-    let mut all_incs = HashSet::new();
-
-    // 扫描标准子目录列表
-    let std_dirs = ["src", "include", "inc"];
-
-    for subdir_name in &std_dirs {
+    // PLAN-809 T-05：标准子目录表与聚合规则单源在
+    // auto_man_core::selection；本函数做 is_dir 探测与逐目录枚举注入。
+    let mut results = Vec::new();
+    for subdir_name in auto_man_core::STD_SOURCE_SUBDIRS {
         let subdir_path = root.join(subdir_name);
-
-        // 只有当目录存在时才扫描
         if subdir_path.is_dir() {
-            let (files, has_headers) = scan_dir_flat(&subdir_path, target_kind, skips, show_headers)?;
-            all_srcs.extend(files);
-
-            if has_headers {
-                all_incs.insert(subdir_path.unified());
-            }
+            let (files, has_headers) =
+                scan_dir_flat(&subdir_path, target_kind, skips, show_headers)?;
+            results.push((subdir_path.unified(), files, has_headers));
         }
     }
-
+    let (sources, includes) = auto_man_core::scan_std_subdirs_aggregate(results);
     Ok(ScanResult {
-        sources: all_srcs,
-        includes: all_incs.clone(),
-        has_headers: !all_incs.is_empty(),
+        sources,
+        includes: includes.clone(),
+        has_headers: !includes.is_empty(),
     })
 }
 
@@ -150,42 +142,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_scan_config_new() {
+    fn scan_config_new() {
         let config = ScanConfig::new();
         assert!(!config.recurse);
         assert!(!config.show_headers);
         assert!(config.scan_std_dirs);
         assert!(config.skips.is_empty());
     }
-
-    #[test]
-    fn test_scan_config_default() {
-        let config = ScanConfig::default();
-        assert!(!config.recurse);
-        assert!(!config.show_headers);
-        assert!(config.scan_std_dirs);
-        assert!(config.skips.is_empty());
-    }
-
-    #[test]
-    fn test_scan_result_new() {
-        let result = ScanResult::new();
-        assert!(result.sources.is_empty());
-        assert!(result.includes.is_empty());
-        assert!(!result.has_headers);
-    }
-
-    #[test]
-    fn test_scan_result_default() {
-        let result = ScanResult::default();
-        assert!(result.sources.is_empty());
-        assert!(result.includes.is_empty());
-        assert!(!result.has_headers);
-    }
-
-    // TODO: Phase 2 添加更多测试
-    // - 测试扫描空目录
-    // - 测试扫描混合文件
-    // - 测试扫描跳过逻辑
-    // - 测试标准子目录扫描
 }

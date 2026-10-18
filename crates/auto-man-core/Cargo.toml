@@ -16,6 +16,8 @@ auto-toolchain-core = { path = "../auto-toolchain-core" }
 # 块解析产物复用同一形状，避免第二份定义）
 auto-project-model = { path = "../auto-project-model" }
 log = { workspace = true }
+# 选择规则半的 skips glob 匹配（原 auto-man/dir.rs scan_dir_flat 同库）
+glob-match = { workspace = true }
 
 [lib]
 name = "auto_man_core"

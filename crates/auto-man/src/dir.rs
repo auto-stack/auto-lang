@@ -201,74 +201,25 @@ pub fn scan_dir_flat(
     if !path.is_dir() {
         return Ok((HashSet::new(), false));
     }
-
-    let mut files_found = HashSet::new();
-    let mut headers_found = false;
-    let files = std::fs::read_dir(path)?;
-    let skip_globs = skips
-        .iter()
-        .filter(|s| s.contains("*"))
-        .map(|s| s.clone())
-        .collect::<Vec<AutoStr>>();
-    for file in files {
+    // PLAN-809 T-05：选择规则单源在 auto_man_core::selection；本函数只做
+    // FS 枚举（read_dir → ScanEntry）。
+    let mut entries = Vec::new();
+    for file in std::fs::read_dir(path)? {
         let file = file?;
-        // check for Auto Source files
         let path = file.path();
         if !path.is_file() {
             continue;
         }
-        // info!("..   got {}", path.display());
-        let file_name = path.file_name();
-        match file_name {
-            Some(file_name) => {
-                let file_name = AutoStr::from(file_name.to_str().unwrap());
-                if skips.contains(&file_name) {
-                    info!("- skipping {}", file_name.as_str());
-                    continue;
-                }
-                let mut is_skip = false;
-                for skip in &skip_globs {
-                    if glob_match::glob_match(skip.as_str(), file_name.as_str()) {
-                        is_skip = true;
-                        break;
-                    }
-                }
-                if is_skip {
-                    info!("- skipping {}", file_name.as_str());
-                    continue;
-                }
-            }
-            None => {
-                return Err(format!("{} is not a file", path.display()).into());
-            }
-        }
-
-        let file_name = path.file_name().unwrap();
-
-        let ext = path.extension();
-        let path_str = path.unified();
-
-        // 使用 FileFilter 判断是否应该包含此文件
-        use crate::file_types::{FileFilter, FileType};
-        let filter = FileFilter::for_target(kind);
-        let file_name_str = file_name.to_str().unwrap();
-        let ext_str = ext.and_then(|e| e.to_str());
-
-        if !filter.should_include(file_name_str, ext_str) {
-            continue;
-        }
-
-        // 处理头文件
-        if let Some(file_type) = ext_str.and_then(FileType::from_extension) {
-            if file_type.is_header() {
-                headers_found = true;
-                if use_header {
-                    files_found.insert(path_str);
-                }
-            } else if file_type.is_source() {
-                files_found.insert(path_str);
-            }
-        }
+        let name = match path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => return Err(format!("{} is not a file", path.display()).into()),
+        };
+        entries.push(auto_man_core::ScanEntry {
+            name,
+            path: path.unified(),
+        });
     }
-    Ok((files_found, headers_found))
+    Ok(auto_man_core::select_flat_entries(
+        entries, kind, skips, use_header,
+    ))
 }

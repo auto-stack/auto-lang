@@ -502,29 +502,20 @@ impl Pac {
     pub fn set_port(&mut self, port_name: AutoStr) -> AutoResult<()> {
         self.merge_port(port_name.clone())?;
 
-        // 0. check port
-        let mut at = self.port.at.clone();
-        if at.ends_with("/") {
-            at = at[0..at.len() - 1].into()
-        }
-        self.build_at = at.clone();
-        self.build_location = AutoPath::new(at.clone()).to_astr();
-        // set builder
-        // For rust projects, use "rust" as build dir and cargo builder
-        let builder_name: AutoStr;
-        if self.backend.as_str() == "rust" {
-            builder_name = "cargo".into();
-            self.build_location = "rust".into();
-        } else {
-            builder_name = self.port.builder.clone();
-        }
+        // PLAN-809 T-05：绑定选择规则单源在
+        // auto_man_core::planning::select_port_binding；本方法做状态应用
+        // 与 builder 物化（效果半）。
+        let sel = core_::select_port_binding(&self.port, &self.backend);
+        self.build_at = sel.build_at;
+        self.build_location = sel.build_location.clone();
+        let builder_name = sel.builder_name;
         let build_path = AutoPath::new(self.build_location.clone());
         println!(
             "setting port builder: {} {}, at {}",
             port_name, builder_name, build_path
         );
         self.builder = make_builder(&builder_name, build_path);
-        if self.port.builder == "ghs" || self.port.builder == "ninja" {
+        if sel.show_headers {
             self.set_show_headers();
         }
         // set tool

@@ -489,20 +489,19 @@ fn scan_auto(t: &mut Target) -> AutoResult<()> {
 }
 
 fn scan_auto_dir(t: &Target, dir: &Path, files: &mut Vec<AutoStr>) {
+    // PLAN-809 T-05：排除表/下潜过滤规则单源在 auto_man_core::selection。
     if let Ok(entries) = dir.read_dir() {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() && path.extension() == Some(std::ffi::OsStr::new("at")) {
-                if path.file_name() == Some(std::ffi::OsStr::new("pac.at"))
-                    || path.file_name() == Some(std::ffi::OsStr::new("device.at"))
-                    || path.file_name() == Some(std::ffi::OsStr::new("os.at"))
-                {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if auto_man_core::is_excluded_auto_config(name) {
                     continue;
                 }
                 files.push(path.unified());
             } else if path.is_dir() && t.recurse {
                 let dir_name = path.file_name().unwrap_or_default().to_string_lossy();
-                if dir_name.starts_with('.') || dir_name == "rust" {
+                if !auto_man_core::auto_recurse_into(&dir_name) {
                     continue;
                 }
                 scan_auto_dir(t, &path, files);

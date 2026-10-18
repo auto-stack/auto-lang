@@ -169,6 +169,10 @@ impl NinjaBuilder {
 impl Builder for NinjaBuilder {
     fn build(&mut self, pac: &mut Pac) -> AutoResult<()> {
         self.setup(pac)?;
+        // （PLAN-809 T-05 recorded adjustment：deps 先建/rename 去重的
+        // 规划序保留在 adapter——它操作 t.deps 内嵌克隆与 pac.targets
+        // 的混合句柄，抽入 core 需造无第二消费者的间接层；规则归属在
+        // contract §13 登记。）
         let mut targets_done = HashSet::new();
         for t in &pac.targets {
             if !t.deps.is_empty() {
