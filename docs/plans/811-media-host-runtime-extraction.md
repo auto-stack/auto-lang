@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-811
-status: drafting
+status: execution_done
 feature_name: 媒体宿主域、资源生命周期与跨端消费整体解耦
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-19
 plan_revision: 1
-current_step: 0
+current_step: 3
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/image-surface-events.md, docs/specs/auto-man/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-media-core/project.md]
@@ -136,14 +136,14 @@ review同树独立上下文审AC/SD与原始反例，merge在冻结提交统一�
 
 | 状态 | ID | owner_stage | 依赖 | 实际文件/动作、交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 原provider/支持合同已交付 | 新`attachments/811/contract-baseline.md`：image_pipeline/media_service/17 native/HTTP/生成/renderer完整读写图；旧oracle/预算/实际ID与thumb按名注册、当前设计差额、service owner/scan关闭/shutdown满channel有界probe、真消费者命令矩阵；阻塞点先决策 | AC-01..05 |
-| [ ] | T-02 | work | T-01 | 新`auto-media-core`及轻consumer骨架，迁公共类型/registry/metadata/rendition/HTTP规则，UI路径薄重导出同型同service；check/V-01/04 | AC-01,03 |
-| [ ] | T-03 | work | T-02 | 迁cache/queue/latest-wins/worker/scan/session，建立冻结owned runtime及默认共享门面；必要关闭/迟到发布/锁序有界修复不改变支持输入，V-02/03 | AC-02,03 |
-| [ ] | T-04 | work | T-03 | media_service全部索引/Range纯规则迁同包，保旧路径/根优先/路径隐藏/链接规则；codec与图像阈值定向V-04 | AC-01,03 |
-| [ ] | T-05 | work | T-04 | VM stdlib17项/ticket映射及HTTP适配消费core，移除UI类型与业务规则重复；保持开关/注册和用户路由，真VM/HTTP定向 | AC-01,02,04 |
-| [ ] | T-06 | work | T-05 | Iced renderer/notify与Man api_gen/rust_ui媒体生成/HTTP消费同一core；不搬809项目读取/生成算法；真生成编译与事件/渲染/流输出对照 | AC-04 |
-| [ ] | T-07 | work | T-06 | 建plan811/Man consumer/独立manifest，V-01..06含真实三形态和资源退出；777/792并集/受影响fresh/locked与负控 | AC-01..05 |
-| [ ] | T-08 | work | T-07 | SD-01..06草案、净删/迁出/剩余owner与资源清单，新`attachments/811/handoff.md`绑定修订/环境/输入/原始结果；提交送审 | AC-05 |
+| [x] | T-01 | work | 原provider/支持合同已交付 | 新`attachments/811/contract-baseline.md`：image_pipeline/media_service/17 native/HTTP/生成/renderer完整读写图；旧oracle/预算/实际ID与thumb按名注册、当前设计差额、service owner/scan关闭/shutdown满channel有界probe、真消费者命令矩阵；阻塞点先决策 | AC-01..05 |
+| [x] | T-02 | work | T-01 | 新`auto-media-core`及轻consumer骨架，迁公共类型/registry/metadata/rendition/HTTP规则，UI路径薄重导出同型同service；check/V-01/04 | AC-01,03 |
+| [x] | T-03 | work | T-02 | 迁cache/queue/latest-wins/worker/scan/session，建立冻结owned runtime及默认共享门面；必要关闭/迟到发布/锁序有界修复不改变支持输入，V-02/03 | AC-02,03 |
+| [x] | T-04 | work | T-03 | media_service全部索引/Range纯规则迁同包，保旧路径/根优先/路径隐藏/链接规则；codec与图像阈值定向V-04 | AC-01,03 |
+| [x] | T-05 | work | T-04 | VM stdlib17项/ticket映射及HTTP适配消费core，移除UI类型与业务规则重复；保持开关/注册和用户路由，真VM/HTTP定向 | AC-01,02,04 |
+| [x] | T-06 | work | T-05 | Iced renderer/notify与Man api_gen/rust_ui媒体生成/HTTP消费同一core；不搬809项目读取/生成算法；真生成编译与事件/渲染/流输出对照 | AC-04 |
+| [x] | T-07 | work | T-06 | 建plan811/Man consumer/独立manifest，V-01..06含真实三形态和资源退出；777/792并集/受影响fresh/locked与负控 | AC-01..05 |
+| [x] | T-08 | work | T-07 | SD-01..06草案、净删/迁出/剩余owner与资源清单，新`attachments/811/handoff.md`绑定修订/环境/输入/原始结果；提交送审 | AC-05 |
 | [ ] | T-09 | review | T-08 | 同树独立完整媒体AC/SD/close-vs-scan/满channel/真消费者及旧路径审查，保留merge门pending | AC-06 |
 | [ ] | T-10 | merge | T-09 pass | 公共装配/792/777并集合流后必要复审，最终冻结提交运行§6适用门；失败归因修复再审重冻 | AC-07 |
 | [ ] | T-11 | merge | T-10 | canonical Spec/ledger沉淀、归档/来源接口交接，guard clean再清理唯一树/分支/组，核对终态计数 | AC-07 |
@@ -153,6 +153,9 @@ handoff：`D:/autostack/.wt/lang-811/auto-lang`，分支`codex/plan-811-dev`；�
 ## 9. 复审记录
 
 2026-10-19 / stage: new / PLAN-811 revision: 1 / outcome: pass（合同文档预检，**非实施/独立验收pass**）/ next: work T-01 / changed: T-01..11、AC-01..07、SD-01..06。当前未执行未来测试或Cargo；来源hash/取号/预检见本批附件，不以历史设计的Implemented标签替代本Plan真实生产证据。
+
+
+2026-10-19 / stage: work / PLAN-811 revision: 1 / outcome: pass（work 完成，**非独立验收pass**）/ worktree: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / base: ab08955c2 / code: 0f2ab56a9（T-02..T-07 十提交）/ 依赖: auto-down 兄弟 detached c39ac7f9（零源改） / task_ids: T-01..T-08 / evidence: [handoff](attachments/811/handoff.md)§3（core 30/30、plan811 7/7、Man 3/3、777 strict pass、792 25/25、back_proxy th 媒体面 4/4、parity PASS；预存红×3 基线重放归因；V-05 浏览器实机=环境 pending 如实登记） / blockers: 无 / next: review T-09（merge 门 pending：冻结提交裸 cargo t + tv）
 
 ## 10. 待澄清事项
 
