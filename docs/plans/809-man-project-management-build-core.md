@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-809
-status: drafting
+status: executing
 feature_name: Man 项目、管理与构建规划核心整体解耦
 author: [Codex]
 created_at: 2026-10-18
 updated_at: 2026-10-18
 plan_revision: 1
-current_step: 0
+current_step: 1
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/project-model/project.md]
 new_spec_components: [docs/specs/auto-man-core/project.md, docs/specs/project-model/design/generation-request.md]
@@ -127,7 +127,7 @@ review独立上下文同树检查生产委托、双状态、全部Builder/生成
 
 | 状态 | ID | owner_stage | 依赖 | 文件/动作、可验证交付与命令 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | depends_on均已交付 | 新`attachments/809/contract-baseline.md`：穷举Pac/Target/Dir/Port/Builder/生成器读点，规则/效果归属、API兼容编译probe、I-PROJECT字段/覆盖及无双状态方案、图错误与旧oracle、真实工具命令矩阵； unresolved先阻塞依赖任务 | AC-01..04 |
+| [x] | T-01 | work | depends_on均已交付 | [✅ 已完成] `attachments/809/contract-baseline.md`：Pac 30 方法/Target 40 方法/Dir/Port/Group/file_types/scanner 逐项规则/效果归属表（R-01..R-08/E-01..E-08）；关键架构事实=core 输入边界是 Node/Obj（AutoConfig 仅 {code,root,args}，Pac::new 只读 root/args）；两处内嵌 FS 探针（get_root_dir/merge）改注入谓词；9 生成器零 &Pac 参数、读点三层（行扫/重型解析/调用方 env 种植）+ I-PROJECT 字段合同 A-D 组（字段集 ⊃ Pac 字段集：npm_deps/styles/i18n/exe_name/dep-roots/rust_sidecar/front/back.project）；Builder 三实现读点表（Vue 零读取）；图错误合同（环=挂死证实、外部 link 不阻塞、NoProgress+cycle_candidates）；API 兼容=分类迁移+扩展 trait 保方法语法（Rust 跨 crate inherent impl 红线）；CLI→Pac 调用链矩阵+V-05 driver 环境矩阵。depends_on 七计划 archived 核实+主检出零代码 WIP。§12 未决项均已映射归属任务，无阻塞 | AC-01..04 |
 | [ ] | T-02 | work | T-01 | `auto-project-model`新增具名generation_request模块/轻consumer，静态和动态已求值输入投影，unknown/source/root；project-model定向V-02/03 | AC-02,03 |
 | [ ] | T-03 | work | T-02 | 新`auto-man-core`数据/view及Pac/Target纯声明/选择/投影规则，旧门面兼容；core test/check与V-01签名构造pin | AC-01 |
 | [ ] | T-04 | work | T-03 | 依赖/链接闭包/target选择及复用resolver/lock，明确内部环无进展错误；删Pac旧算法，V-03/04 | AC-01,03 |
@@ -144,6 +144,8 @@ handoff：`D:/autostack/.wt/lang-809/auto-lang`，分支`codex/plan-809-dev`；w
 ## 9. 复审记录
 
 2026-10-18 revision 1 drafting；当前仅合同及预检，未实施/测试或review pass。内部target环受控拒绝是本Plan明示新增合同，正常迁移语义仍冻结；Spec delta须随最终实现接受审查，不能提前写为已交付。
+
+2026-10-18 work T-01 完成：worktree `D:/autostack/.wt/lang-809/auto-lang`（branch `codex/plan-809-dev`，base=master 2046a025b）建立；depends_on 七计划 archived；contract-baseline.md 冻结（读点穷举/归属/兼容/图错误/命令矩阵）。下一 T-02 generation_request 模块。
 
 ## 10. 待澄清事项
 
