@@ -7,7 +7,7 @@
 ## 1. 代码身份
 
 - base commit：`2046a025b`（master）
-- 送审冻结提交：`1f5e05141`（HEAD；§8 清单末行）
+- 送审冻结提交（R1 修复后二轮）：`1eb8434f5`（R1 首轮受审为 `1f5e05141`；见 §10 修复记录）
 - 依赖修订：workspace +`crates/auto-text-core`（imara-diff 0.2 唯一三方；
   dev-deps serde_json）；auto-lang +path dep auto-text-core、−直接 imara-diff
 - 组内兄弟：`D:/autostack/.wt/lang-807/auto-down`（detached @c39ac7f，
@@ -28,7 +28,7 @@
   `EditorSnapshotRegistryProvider` 挂 `code_editor_provider::install_process_default`
   同四点位 if-absent。
 - 四 diff shim（9915/16/17/21）与 a2r_std::diff 四函数 on 臂零 `crate::ui`；
-  off 臂 raise/panic 文案逐字保留；`ui_gen/rust.rs` 发射串零改动。
+  off 臂：四 VM shim 不取参 raise 逐字；a2r `diff_files/diff_dirs/diff_snapshots` panic 逐字、`diff_files_window` 为仅 on 导出（off=符号缺席，旧 base 同形——R1 勘定）；`ui_gen/rust.rs` 发射串零改动。
 - 777：domains +`auto-text-core = lang-core`；基线重采（base_revision 见
   §6）；792：`DELIVERY_CRATES` 12→13。
 
@@ -81,14 +81,16 @@
 - driver：`python test/fixtures/modularity/generated-ui-consumer/driver.py
   --scratch D:/p807-scratch-792`（正式入口、真实生成/fresh 解析/locked
   构建/重放/负控全档；cargo 1.98.0）。
-- 结果：**25/25 PASS**——manifest = 13 源 crate（含 auto-text-core
-  229,843B/44 文件）+ 1 patch 条目；V01 fresh resolve（5s，patch 单源 +
+- 结果：**25/25 PASS**（R1 复审独立重跑亦 25/25）——manifest = 13 源 crate
+  （含 auto-text-core 229,843B/**7 文件**，source digest
+  `aad3fc5489bbf03c29b0f697b6256f54431dbbf1c95237831151db0c57cbfa1a`；R1
+  勘定：原稿「44 文件」为笔误）+ 1 patch 条目；V01 fresh resolve（5s，patch 单源 +
   pin 全命中）+ 真实 build --locked（214s，产物在位）；V02 重定位 locked
   build（226s）+ metadata 单源/越界 path=无 + 资源字节一致；V03a-j 全部
   负控确定性红（tamper/missing/corrupt/unlisted/missing-patch/bad-pin/
   foreign-dir/redelivery 保旧/sidecar 外部 path/根相对/staging 兄弟保留/
   raw TOML/他应用交付存活）；V04 dev 模式与交付输出逐字节同源。
-- 收据：`attachments/807/receipt-792-driver.json`（driver 原始输出）。
+- 收据：`attachments/807/receipt-792-driver.json.txt`（driver 原始输出；review-r1 独立重跑另见 `review-r1/delivery.log.txt` 25/25 与`delivery-receipt.json.txt`）。
 
 ## 8. 提交清单（work 树）
 
@@ -128,3 +130,25 @@
 - 806 会话并行在途（另一工作树）；公共写面本计划只增自己的片段（根
   Cargo.toml members+exclude、tests.rs 一行、host_capabilities 追加节、
   777 基线——后入者取并集）。
+
+
+## 10. R1 修复记录（2026-10-18，[review-r1](review-r1/REVIEW.md) 全 finding 闭合）
+
+| Finding | 修复 | 重放证据 |
+|---|---|---|
+| F807-R1-01（快照装配测试依赖全局空槽，703+807 联跑确定性失败） | `snapshot_port_assembly_identity` 重构：显式可区分非空默认 A/B 验证构造期快照隔离（不假设槽初态）；缺席断言仅用构造式 `new_without_host_snapshot`；新增 `compat_install_never_overrides_explicit_default` 真实宿主先安装永久控制（显式默认不被兼容 if-absent 覆盖；空槽补缺装真实 adapter 且对未注册键诚实 None）；FakeSnap 带内容标签可区分实例 | 同进程单线程联跑 `-- plan703 plan807 --test-threads=1`：**15/15**（R1 失败形态 13/1 → 全过）；plan807 单独 8/8 |
+| F807-R1-02（类型身份测试缺 feature 门控，关 UI 4 处 E0433） | `plan807_identity` 加 `#[cfg(feature = "code-editor")]`；关门形态的身份/单源证明由独立 consumer fixture 承担（闭包零语言/UI/VM，3/3） | `cargo test --lib --no-default-features plan807 --no-run`：plan807 文件**零错误**（余为旧族既有项，复审明确不归本计划） |
+| F807-R1-03（冻结材料误称 a2r 四入口 off 均 panic） | contract-baseline §3 纯快照形签名更正为 `DiffSnapshotsPair` 枚举实参、§6 a2r 矩阵更正（`diff_files_window` 旧/新均仅 on 导出，off=符号缺席 E0425；其余三函数 off panic 逐字）；handoff §2/§7 同步 | 文档面更正（保持既有支持面，未新增 fallback/未扩大启用面） |
+| F807-R1-04（fmt/doc/交接未收口） | 触面 `rustfmt --check --config skip_children=true` 全过；`worker_exited_handle` 私有 rustdoc 链接清零（`cargo doc -p auto-text-core --no-deps` 零警告）；2 个随源遗传 unused_mut 清偿；handoff 收据链接 `.json`→`.json.txt`、新包文件数 44→**7**（manifest/digest 勘定） | fmt exit 0；doc 零警告；core 65/3 + consumer 3/3 复跑全绿 |
+
+R1 资源绑定补充（review 独立重放，见 `review-r1/resource-rows.jsonl.txt`/
+`rss.json.txt`/`baseline.json.txt`）：1GB 输入 1,073,741,834B / 23,280,107 行、
+digest `0x17dcf2bba1afe59f`、结构驻留 3,033,703B ≤12MiB、**独立进程
+working-set 峰值 16.5MiB**（RSS 非结构计量阈值）、load 23.77s/save 1.05s；
+源/依赖 lock/工具/编译形态（default+code-editor debug）指纹全量入
+`review-r1/baseline.json.txt`——未来合流改变任一输入须重放影响面，不得
+自动复用。
+
+R1 修复提交：`1eb8434f5`（冻结树 12 文件；修复不触 a2r/native 语义面，
+故 §3 表中 VM/a2r 相关收据绑定 `1f5e05141` 仍有效，fmt/doc/mut/测试面
+绑定 `1eb8434f5`）。

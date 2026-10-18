@@ -6,6 +6,14 @@
 
 ## 1. 有界 probe（分页最小 API 跨包证明）——PASS
 
+（T-02 复核注：§3/§2 的两处实施勘定已并入下文——`prefetch_byte_range/
+file_len` 升 pub、`prune_spans/PruneSpans` T-02..T-03 过渡 pub；观测面由
+静态计数改为每店 `worker_exited_handle`。）
+
+（R1 复审勘定并入：§3 纯快照形签名更正为 `DiffSnapshotsPair` 枚举实参；
+§6 a2r 行更正——`diff_files_window` 旧/新均为**仅 on 导出**（off=符号
+缺席，E0425），非 panic 臂；其余三函数 off panic 文案逐字冻结不变。）
+
 - 方法：worktree base 源的逐字副本放入独立 crate `p807-probe`（临时目录，
   不入受管树），仅做最小可见性调整：
   ① `PageConfig` struct `pub(crate)`→`pub`；
@@ -34,10 +42,14 @@
     （不 join、不阻塞 drop 路径）；
   ③ 存活 snapshot 经 `Node::Chunk{store: Arc<PageStore>}` 继续持强引用——
     snapshot 存活期间 store/线程存活是正确语义，不算泄漏；
-  ④ 观测面：`file_backing` 内静态 `PREFETCH_WORKERS_ALIVE: AtomicUsize`
-    （spawn +1 / 退出 −1），crate 内永久回归测试断言"全外部引用释放后计数回落"
-    （轮询截止，防抖）；auto-lang 层以"最后释放后 Windows 同名重建成功"
-    （delete-pending 语义：句柄全关前同名 create 失败）作 OS 级旁证。
+  ④ 观测面（T-02 实施勘定，优于 T-01 草案的进程级静态计数——免并行测试
+    互扰）：`PageStore::worker_exited_handle() -> Arc<AtomicBool>` 每店克隆
+    句柄（store 释放后仍可读；Release/Acquire 配对），worker 全部退出路径
+    （recv Err / upgrade 失败 / spawn 失败臂）置位；crate 内永久回归测试
+    `prefetch_worker_exits_after_last_external_release` 断言"snapshot 存活
+    期间不退出且可读、最后释放后有界轮询内退出"；auto-lang 层另以
+    "最后释放后 Windows 同名重建成功"（delete-pending 语义：句柄全关前
+    同名 create 失败）作 OS 级旁证（T-06）。
 
 ## 3. 新 crate 冻结：`auto-text-core`
 
@@ -57,7 +69,10 @@
   src/diff/dirs.rs           — 逐字迁移
   ```
 - 公开面（frozen；`PruneSpans`/`prune_spans`/`PageDesc`/`prescan`/内部
-  query 引擎函数全部留 crate 私有）：
+  query 引擎函数全部留 crate 私有；**过渡例外**：T-02 提交时 diff 引擎尚在
+  auto-lang 侧消费 `prune_spans`/`PruneSpans`，两符号在 T-02..T-03 窗口
+  暂为 `pub` 并带 transitional 注记，T-03 迁入 diff 后回 `pub(crate)`——
+  终态与冻结一致）：
   - `rope::{Rope, RopeSnapshot, PageStore, PageState, PageConfig}`
   - `Rope`：`new/from_str/snapshot/len_bytes/len_chars/line_count/
     byte_to_point/point_to_byte/line_start_byte/line_end_byte/slice_bytes/
@@ -67,7 +82,10 @@
   - `RopeSnapshot`：既有全部 pub 查询面（len/line/point/slice/to_string/
     lines/content_hash/range_hash/subtree_equal）
   - `PageStore`：既有 pub 面（`page_state/cache_bytes/
-    structural_resident_bytes/prefetched_pages/prefetch_around`）
+    structural_resident_bytes/prefetched_pages/prefetch_around`）+
+    T-02 实施勘定两处升 pub：`prefetch_byte_range`（UI core/mod.rs:846/1008
+    跨包消费点——分页窗口再物化与编辑时预取）、`file_len`（观测面家族，
+    与 Debug 输出配对；迁移后无 crate 内调用方）
   - `diff::{DiffOpts,Hunk,DiffOut,Refinement,diff_lines,diff_lines_parallel,
     diff_lines_windowed,diff_snapshots,refine_inline}`
   - `diff::dirs::{DirCounts,DirDiffError,DirDiffIter,DirDiffOptions,
@@ -75,8 +93,12 @@
   - `diff::envelope::{diff_files_envelope,diff_files_envelope_window,
     diff_files_envelope_from_paths,diff_files_envelope_from_paths_window,
     diff_dirs_envelope}` + **新增纯快照形**
-    `diff_snapshots_envelope_snapshots(sa:&RopeSnapshot,sb:&RopeSnapshot)->String`
-    （行=净形 hunk rows:[]，与旧 key 形成功路径逐字节一致）。
+    `diff_snapshots_envelope_snapshots(pair: DiffSnapshotsPair) -> String`
+    （R1 勘定：入参为枚举 `DiffSnapshotsPair::{Both(RopeSnapshot,
+    RopeSnapshot) | Missing(String)}`——T-01 草案的双 `&RopeSnapshot` 形
+    实施期按计划 §5.3"接收快照或具名missing结果"收敛为枚举；成功/缺键
+    路径与旧 key 形逐字节一致，`Missing` 由调用方（UI adapter/VM 端口/
+    a2r 端口）经既有判错优先解析）。
 - 测试：rope/file_backing/dirs 的 `#[cfg(test)]` 单测族随源逐字迁移（= §6
   旧 oracle 载体）；`diff_bench`（100MB 谱）与 `plan704_*` 回归同迁。
 
@@ -130,7 +152,7 @@
 | 9916 `auto.diff_snapshots(ka,kb)` | kb→ka | — | hunk 净形 rows:[]；缺 key/provider→err envelope |
 | 9917 `auto.diff_dirs(pa,pb)` | pb→pa | cap 5000→truncated | 五态+counts+truncated+err |
 | 9921 `auto.diff_files_window(pa,pb,ctx,off,lim)` | lim→off→ctx→pb→pa | 三 int 各 `.max(0) as usize` | 窗口形（rows_total+truncated 激活） |
-| a2r `diff_files/diff_files_window/diff_dirs/diff_snapshots` | 同语义（i64 ctx/off/lim） | 同上 | panic 文案逐字（off 臂） |
+| a2r `diff_files/diff_dirs/diff_snapshots`（off 有 panic 臂）+ `diff_files_window`（**仅 on 导出**） | 同语义（i64 ctx/off/lim） | 同上 | 前三者 off 臂 panic 文案逐字；`diff_files_window` feature off = **符号缺席**（旧 base 同形——off 根本无该符号，调用处 E0425 编译红；R1 勘定：T-01 草案误称"四入口均有 off panic"，按保持既有支持面原意记为 on-only，不默默新增 fallback 扩大启用面） |
 | ui_gen 发射 | — | `({a2}).max(0) as usize` 等 | 发射串零改动（§4） |
 
 - envelope 字段序（frozen，PLAN-716 golden 钉）：

@@ -109,17 +109,11 @@ review独立上下文在同树复核AC/SD及反例；用户未指定具体agent/
 | [x] | T-05 | work | T-04 | `a2r_std.rs`/`ui_gen/rust.rs`及editor实际路径接线，旧公开门面签名、feature/error对照；scoped plan807与生成器定向测 | AC-01,03 |
 | [x] | T-06 | work | T-05 | 建consumer/上层反例，完成V-01..06含必要1GB定向资源测和分页失败/drop观测；777/792并集更新+受影响driver；资源证据列明源码/依赖/配置/输入和实际编译形态 | AC-01..04 |
 | [x] | T-07 | work | T-06 | 去重审计、API/剩余UI边/资源清单及SD草案，附件`attachments/807/handoff.md`（新增）绑定SHA与验证结果；check/相关反例通过，提交后送审 | AC-01..04 |
-
-T-01 证据（2026-10-18）：[contract-baseline.md](attachments/807/contract-baseline.md) 已冻结（公开面逐项、重导出映射、EditorSnapshotProvider 终名与缺席语义映射、四 native/a2r/发射冻结矩阵、分页资源合同、777/792 登记片段、命令表）。probe PASS：独立 crate 逐字副本（仅 PageConfig/open_file_backed/content_hash_of 三处 pub(crate)→pub）29 单测+1 跨包集成测全绿、std-only（0.33s）。预取强引用闭环已观测确认（drop rope+snapshot 后 strong_count≥2）并冻结 Weak 修复设计（§2）。worktree `D:/autostack/.wt/lang-807/auto-lang` 分支 `codex/plan-807-dev` base `2046a025b`。
-| [ ] | T-02 | work | T-01 | 新`crates/auto-text-core/{Cargo.toml,src/}`迁rope+file_backing与最小API，原路径薄重导出，check+签名pin+V-01/02 | AC-01,02 |
-| [ ] | T-03 | work | T-02 | 同包迁diff/envelope/dirs；将key查找剥离UI，删原算法；core单测+V-05 | AC-01,04 |
-| [ ] | T-04 | work | T-03 | `vm/host_capabilities.rs`/native/实例装配和新快照adapter接线，保802现有实现兼容；plan807定向测V-04 | AC-03 |
-| [ ] | T-05 | work | T-04 | `a2r_std.rs`/`ui_gen/rust.rs`及editor实际路径接线，旧公开门面签名、feature/error对照；scoped plan807与生成器定向测 | AC-01,03 |
-| [ ] | T-06 | work | T-05 | 建consumer/上层反例，完成V-01..06含必要1GB定向资源测和分页失败/drop观测；777/792并集更新+受影响driver；资源证据列明源码/依赖/配置/输入和实际编译形态 | AC-01..04 |
-| [ ] | T-07 | work | T-06 | 去重审计、API/剩余UI边/资源清单及SD草案，附件`attachments/807/handoff.md`（新增）绑定SHA与验证结果；check/相关反例通过，提交后送审 | AC-01..04 |
 | [ ] | T-08 | review | T-07 | 同一工作树独立审查完整AC/SD、实际生产路径、分页测适用性和失败清理；必须保留未完成merge门 | AC-05 |
 | [ ] | T-09 | merge | T-08 pass | 合流master并集，变更则复审影响面，在新冻结提交运行§6最终门及受影响资源重放；门失败归因、不得跳过 | AC-06 |
 | [ ] | T-10 | merge | T-09 | canonical Spec/ledger沉淀、归档与真实交付收据，wt-guard clean再清理；核对最终计数 | AC-06 |
+
+T-01 证据（2026-10-18）：[contract-baseline.md](attachments/807/contract-baseline.md) 已冻结（公开面逐项、重导出映射、EditorSnapshotProvider 终名与缺席语义映射、四 native/a2r/发射冻结矩阵、分页资源合同、777/792 登记片段、命令表）。probe PASS：独立 crate 逐字副本（仅 PageConfig/open_file_backed/content_hash_of 三处 pub(crate)→pub）29 单测+1 跨包集成测全绿、std-only（0.33s）。预取强引用闭环已观测确认（drop rope+snapshot 后 strong_count≥2）并冻结 Weak 修复设计（§2）。worktree `D:/autostack/.wt/lang-807/auto-lang` 分支 `codex/plan-807-dev` base `2046a025b`。
 
 handoff：`D:/autostack/.wt/lang-807/auto-lang`，分支`codex/plan-807-dev`。work先确认实际base/兄弟依赖，不在master改代码；同树用于work/review/merge，不另建同步review树。与808/804共享装配及manifest只改各自精确片段；后入者同步并集和复测。
 
@@ -130,6 +124,16 @@ handoff：`D:/autostack/.wt/lang-807/auto-lang`，分支`codex/plan-807-dev`。w
 2026-10-18：work 完成记录（stage: work | PLAN-807 | rev 1 | pass | worktree `D:/autostack/.wt/lang-807/auto-lang` | branch `codex/plan-807-dev` | base `2046a025b` | code `1f5e05141`（8 提交：bc2fc322c/75f492fc8/6a931eb20/d340bd0a8/7cb1239b4/43c077e0d/3717b2164/1f5e05141）| deps: workspace+auto-text-core（新）、auto-down 组内兄弟 @c39ac7f 零改动 | T-01..T-07 | 证据全表见 [handoff.md](attachments/807/handoff.md)：core 65过3ignore、plan807 7/7、consumer 3/3+闭包断言、plan703/710/716=7/22/14、plan728 5+2谱位、1GB 资源测结构驻留 3,033,703B≤12MB、777 strict pass 0 违规、792 driver 25/25、feature-off 编译绿、新 crate 零警告 | blockers 无 | next: review（T-08，同树独立上下文））
 
 work 阶段注记：冻结合同两处实施勘定已并入 contract-baseline（`prefetch_byte_range/file_len` 升 pub；`prune_spans/PruneSpans` 过渡 pub 已于 T-03 回 pub(crate)；观测面由静态计数改为每店 `worker_exited_handle`——严格优于草案且与计划 §5.3"具名missing结果"对齐的 `DiffSnapshotsPair` 纯形）。merge-owned 门（裸 t/tv/tu + 必要资源重放绑定条件）保持 pending。
+
+2026-10-18：**独立 final review R1：needs_fix**（stage: review | review_scope: final | reviewer: 本次 Codex 独立审查上下文，未参与实施；未暴露可核验 model/session ID | PLAN-807 rev 1 | worktree `D:/autostack/.wt/lang-807/auto-lang` | branch `codex/plan-807-dev` | reviewed_commit `1f5e0514181d9c108809487fedd2f1ac27ca40cf` | base `2046a025b9a445d35a02da2c72a1613259a0cb60` | dependency auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` clean）。[完整报告/AC/修复要求](attachments/807/review-r1/REVIEW.md)、[基面/依赖/配置/Spec 指纹](attachments/807/review-r1/baseline.json.txt)、[冻结 Spec delta](attachments/807/review-r1/spec-delta-frozen.md)。
+
+F807-R1-01（P2）：快照装配测试假定全局槽为空；703 真宿主用例先运行后，807 断言确定性红（组合 13 pass/1 fail，单独 807 7/7）。F807-R1-02（P2）：新增类型身份测试未设 UI/code-editor 门控，关闭特征编译新增 4 处 E0433（旧族其他编译错误另列，不要求本计划扩大修复）。F807-R1-03（P2）：T-01 把 a2r 四入口关闭特征都冻结成 panic，实际旧/新 `diff_files_window` 均无 off 导出，单文件 compile pin 为 E0425；须纠正真实支持矩阵/签名/验收收据，不能默默扩大启用面。F807-R1-04（P3）：本轮触面 rustfmt 失败、新 public→private rustdoc 链接警告及 handoff 链接/文件计数未收口。
+
+已独立通过：core 65（3 个显式谱位 ignored）、consumer 3、相关旧探针 41（2 谱位 ignored）、新增核心反例 5、实际 adapter/VM/a2r/负参数栈对照 3、off 四 VM+实际三 a2r 组合 1；计数有覆盖重叠，不作为唯一 case 总数相加。777 strict pass 0 violations/2 窄豁免，自测 15/15；792 driver 25/25，额外真实缺包 0→101→恢复0。1GB 定向新谱通过：1,073,741,834B / 23,280,107 行、结构驻留 3,033,703B≤12MiB，RSS 采样峰值16.5MiB（表17），源/依赖/配置/输入/编译形态指纹已绑定；不再保留本轮 RSS 未测缺口。AC-01/03 partial、AC-02/04 在本冻结基面 pass、AC-05 fail、AC-06 pending。
+
+本轮回 `executing 3/10`：重开 T-01/05/06/07，保留 T-02/03/04，T-08 不勾；去除同 ID 重复历史任务行（仅簿记规范化，保留原 work 历史收据，不改变 revision/合同含义）。next：原树修完整 findings 并提交，再重放受影响项后复审。merge-owned 裸 `cargo t`+`cargo tv`+`cargo tu`、必要资源影响面重验、共享片段合流/规范与 ledger/归档/wt-guard 清理仍 pending；本次未运行整档、未修实施或合入。
+
+2026-10-18：**R1 修复完成记录（work）**（stage: work | PLAN-807 | rev 1 | pass | worktree 同树 | branch `codex/plan-807-dev` | base `2046a025b` | code `1eb8434f5`（R1 修复提交，前冻结 `1f5e05141`）| findings F807-R1-01/02/03/04 全闭合 | 证据见 [handoff §10](attachments/807/handoff.md)：F-01 重构显式 A/B 默认+真实宿主先安装永久控制，联跑反例重放 `-- plan703 plan807 --test-threads=1` **15/15**（原 13/1）；F-02 `plan807_identity` 加 code-editor 门，`--no-default-features --no-run` 本文件零错误（余为旧族既有项）；F-03 contract-baseline §3 纯快照形签名更正为 `DiffSnapshotsPair`、§6 a2r 矩阵更正（`diff_files_window` 旧/新均仅 on 导出，off=符号缺席；未新增 fallback）；F-04 触面 rustfmt 全过+doc 零警告+遗传 mut 清偿+handoff 链接/文件数勘定（7 文件/digest aad3fc54…） | plan807 8/8、core 65/3、consumer 3/3 复跑全绿 | blockers 无 | next: review（T-08 二轮，同树独立上下文，受审提交 `1eb8434f5`））。merge-owned 门保持 pending。
 
 ## 10. 待澄清事项
 
