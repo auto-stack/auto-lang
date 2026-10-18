@@ -555,6 +555,52 @@ render: \"vm\"
         assert_eq!(spec.modules[0].0, "extra");
     }
 
+    /// R5：sidecar 对象/嵌套 prop 形态经真实 pac→request→PacSource 全链
+    /// 不丢模块/依赖（R4-02 修复的回归锚——重建必须挂 root prop 而非
+    /// wrapper kid）。
+    #[test]
+    fn sidecar_obj_and_nested_prop_forms_survive_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let root_dir = dir.path();
+        std::fs::write(
+            root_dir.join("extra.rs"),
+            "// m
+",
+        )
+        .unwrap();
+        // 对象 prop 形态
+        std::fs::write(
+            root_dir.join("pac.at"),
+            "name: \"obj-side\"
+render: \"vm\"
+rust_sidecar: {
+    modules: [\"extra:extra.rs\"]
+    deps: [\"libloading:0.8\"]
+}
+",
+        )
+        .unwrap();
+        let pac_path = root_dir.join("pac.at");
+        let config =
+            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
+        let pac = Pac::new(config);
+        let req = request_of(&pac, &pac_path);
+        assert!(
+            req.raw.iter().any(|p| p.key == "rust_sidecar"),
+            "对象形态进入 req.raw"
+        );
+        let spec = crate::rust_ui::PacSource::from_request(&req).sidecar_spec(root_dir);
+        assert_eq!(
+            spec.modules.len(),
+            1,
+            "对象形态不丢模块：{:?}",
+            spec.modules
+        );
+        assert_eq!(spec.deps.len(), 1, "对象形态不丢依赖：{:?}", spec.deps);
+        assert_eq!(spec.modules[0].0, "extra");
+        assert_eq!(spec.deps[0].0, "libloading");
+    }
+
     /// B 组键经求值 root 追加（npm_deps/exe_name/theme 块/sidecar）。
     #[test]
     fn apply_evaluated_root_b_group() {

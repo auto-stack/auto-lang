@@ -3287,20 +3287,6 @@ impl<'a> PacSource<'a> {
                 // （req.raw 中 key=="rust_sidecar" 的 Value::Obj/Node——
                 // core sidecar_decl_from_root 的 prop 兜底臂同域）。
                 let mut sidecar_nodes: Vec<auto_val::Node> = r
-                    .raw
-                    .iter()
-                    .filter(|p| p.key == "rust_sidecar")
-                    .filter_map(|p| match &p.value {
-                        Some(auto_val::Value::Obj(_)) => {
-                            let mut n = auto_val::Node::new("root");
-                            n.set_prop("rust_sidecar", p.value.clone().unwrap());
-                            Some(n)
-                        }
-                        Some(auto_val::Value::Node(inner)) => Some((**inner).clone()),
-                        _ => None,
-                    })
-                    .collect();
-                let declared: Vec<auto_val::Node> = r
                     .raw_nodes
                     .iter()
                     .filter(|n| n.head == "rust_sidecar")
@@ -3315,9 +3301,16 @@ impl<'a> PacSource<'a> {
                         node
                     })
                     .collect();
-                sidecar_nodes.extend(declared);
-                // prop 形态包进 root 让 core 的兜底臂命中；节点形态直挂
+                // R5：prop 形态（Obj/嵌套 Node）**直接挂 root 的 prop**——
+                // core sidecar_decl_from_root 的兜底臂读 root.get_prop
+                // （R4-02 错把 prop 包进 wrapper kid 再挂 kids，兜底臂永不
+                // 命中）。节点形态仍挂 kids（主臂 get_nodes）。
                 let mut root = auto_val::Node::new("root");
+                for p in r.raw.iter().filter(|p| p.key == "rust_sidecar") {
+                    if let Some(v) = &p.value {
+                        root.set_prop("rust_sidecar", v.clone());
+                    }
+                }
                 for n in sidecar_nodes {
                     root.add_kid(n);
                 }
