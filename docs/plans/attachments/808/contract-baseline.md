@@ -105,7 +105,8 @@ canonical 名、栈形状、返回类型 **不变**；catalog/codegen 无需改�
   C 行不含 A marker（**双会话不串线**）→ `free`。
 - 结论：DLL 指针寿命 = spawn→free；free 后不得再触同一指针；旧 glue 的
   `ptr_of` 表删除语义与 DLL 契约一致。provider 替换不得让旧句柄路由到
-  另一个 service（句柄表按 service 实例归属，见 §3.1）。
+  另一个 service（R1 起由进程全局句柄命名空间 + per-VM owner 历史保证，
+  见 §3.1/§5）。
 
 ## 3. 所有权、锁序、线程与 feature 矩阵
 
@@ -114,7 +115,9 @@ canonical 名、栈形状、返回类型 **不变**；catalog/codegen 无需改�
 | 状态 | 旧 owner | 新 owner |
 |---|---|---|
 | `Library`/DLL 符号查询 | `term_engine::LIB`（OnceLock） | `auto-terminal-core::EngineService`（每实例 OnceLock；Library 私有） |
-| NEXT_HANDLE / HANDLES（i64→ptr） | 进程静态 | service 实例字段（默认共享 service = 进程单例） |
+| NEXT_HANDLE（i64 命名空间） | 进程静态 | **进程静态**（core 全局 atomic；两隔离 service 不重号，R1） |
+| HANDLES（i64→ptr） | 进程静态 | service 实例会话表（每会话 = 私有指针 + 操作门 + 退役位，R1） |
+| provider 历史（handle→owner 路由） | 无（旧 glue 进程静态唯一） | per-`NativeInterface` 的 `terminal_owners`（强 Arc 历史；按 `owns_handle` 反查，R1） |
 | SNAPSHOTS（handle→行文本） | 进程静态 | service 实例 |
 | CURSORS / VIEWPORTS | 进程静态 | service 实例（free 后**保留旧值**，冻结旧臂） |
 | BACKLOG_STATE（全局迟滞） | 进程静态 | service 实例（默认共享 service = 进程全局） |
@@ -126,21 +129,28 @@ canonical 名、栈形状、返回类型 **不变**；catalog/codegen 无需改�
 
 **默认共享 vs 隔离**：`EngineService::shared()` 是进程单例，作为无 provider
 时的默认回落；UI adapter 持有同一 `Arc<EngineService>`，因此 UI 安装前后
-spawn 的句柄仍由同一句柄表解析（旧跨调用/共享行为保留）。`EngineService::new()`
-可创建隔离实例（测试/两 VM 隔离注入）；句柄只在所属 service 内解析，跨
-service 使用返回旧缺席值（0/-1/空），**不会误释放**另一 service 的指针。
+spawn 的句柄仍由同一会话表解析（旧跨调用/共享行为保留）。`EngineService::new()`
+可创建隔离实例（测试/两 VM 隔离注入）。**句柄命名空间是进程全局的**，两
+隔离 service 不会发出同号句柄；VM 保留曾安装 provider 的历史，带 handle
+的 shim 先按 `owns_handle` 反查原 owner——provider 替换后旧句柄仍路由到
+原 service，不会误释放新 service 的会话（R1-F01）。旧 owner 在最后一个
+会话释放后被剪枝；其末引用 Drop 时释放剩余会话（R1-F04）。
 
 ### 3.2 锁序（实施必须遵守）
 
 1. `service.lib` OnceLock 初始化 → 不持其他 service 锁。
-2. `handles` 临界区只做查询/插入/删除，**不跨 FFI**：取指针→释放锁→调 DLL。
-3. `snapshots`/`geoms`/`cursor`/`backlog` 各自短临界区；互不嵌套。
-4. UI adapter 顺序固定：**先 service 调用（锁已释放）→ 再 UI 注册表锁**。
+2. 会话表锁只做查询/插入/摘除，**不跨会话门/FFI/UI**；每个会话有独立
+   操作门 + 退役位（R1-F03）。
+3. `free`：表锁内摘除 → 释放表锁 → 取会话门（等待在途操作）→ 置退役 →
+   调 DLL free **恰好一次**。在途/后继 lease 在门内复查退役位，绝不使用
+   已释放指针。
+4. `snapshots`/`geoms`/`cursor`/`backlog` 各自短临界区；互不嵌套。
+5. UI adapter 顺序固定：**先 service 调用（锁已释放）→ 再 UI 注册表锁**。
    UI 代码（widget/dynamic）从不回调 service；无反向锁序。
-5. 不持 service/registry 锁回调 UI 或 DLL（防重入锁死）——旧 glue 已有的
+6. 不持 service/registry 锁回调 UI 或 DLL（防重入锁死）——旧 glue 已有的
    纪律原样保留。
-6. DLL 内部每柄锁（auto-term `engine_lock`）与 service 锁无交叉持有；
-   service 不模拟/替代该锁。
+7. DLL 内部每柄锁（auto-term `engine_lock`）与 service 门无交叉持有；
+   service 门保护的是 DLL 锁不覆盖的 free 生命周期窗口。
 
 ### 3.3 线程亲和
 
@@ -187,12 +197,18 @@ service 使用返回旧缺席值（0/-1/空），**不会误释放**另一 servi
 
 - spawn 失败（DLL spawn 返回 NULL / spawn_ex 符号缺失 / CString 失败）→0，
   不分配句柄、不写 CURSORS/VIEWPORTS。
-- 成功：NEXT_HANDLE 单调递增（从 1 开始）；VIEWPORT=(cols,rows)、CURSOR=(0,0)。
-- `free`：DLL free → HANDLES/SNAPSHOTS 删除；CURSORS/VIEWPORTS 保留
-  （旧臂；残留键数 = 历史句柄数，单调 ID 保证不复用，不会串到新会话）。
-- 重复 free：第二次 ptr_of=0 → no-op（不触 DLL、不误删新会话）。
+- 成功：**进程全局** NEXT_HANDLE 单调递增（旧 glue 单计数器语义；两隔离
+  service 不重号）；VIEWPORT=(cols,rows)、CURSOR=(0,0)。
+- `free`：会话表内摘除 → 等会话门（在途操作结束）→ 置退役 → DLL free
+  **恰好一次** → SNAPSHOTS 删除；CURSORS/VIEWPORTS 保留旧值（旧臂；单调
+  全局 ID 不复用，不会串到新会话）。
+- 重复/并发 free：只有摘除成功者获得 free token；其余 no-op（不触 DLL、
+  不误删新会话）。
 - free 后读：`rows=[]`；`is_exited=true`；`cursor/viewport` 返回旧缓存值；
-  `history/backlog=0`。
+  `history/backlog=0`；等待中的 lease 看到退役位后返回缺席值。
+- provider 替换：句柄按 VM 记录的 provider 历史反查原 owner；旧 owner
+  保留到最后一个会话释放（R1-F01/F04）。
+- service 末引用 Drop：在 Library 析构前逐会话 free（R1-F04）。
 - interrupt 不 free；is_exited 不 free；测试/driver 必须在截止后 kill+free。
 
 ### 4.3 采样与滚动
@@ -234,9 +250,15 @@ crates/auto-lang/src/
 - **端口位置**：`TerminalHostProvider` 定义在 `auto-terminal-core`（owned
   值域，无 UI/VM 类型/裸指针/闭包）；`auto-lang` 依赖 core 并 re-export。
   VM shim 只做弹参、调用 provider、push 结果。
-- **默认回落**：shim 解析序 = 本 VM 实例 provider → 进程默认 provider →
-  `EngineService::shared()`（内置非 UI 实现）。因此**无 provider 不等于
-  禁用引擎**，旧"无 UI 也能 spawn/rows"行为保留。
+- **默认回落**：shim 解析序 = 原 owner（按句柄）→ 本 VM 实例 provider →
+  进程默认 provider → `EngineService::shared()`（内置非 UI 实现）。
+  **无 provider 不等于禁用引擎**，旧"无 UI 也能 spawn/rows"行为保留。
+- **owner 路由（R1）**：VM `NativeInterface` 保存曾安装 provider 的历史；
+  带 handle 的 shim 先 `terminal_owner_for(handle)`，再回落当前/共享。
+  旧 owner 在最后一个会话释放后剪枝（可触发 Drop）。
+- **会话生命周期（R1）**：core 每会话门 + 退役位；free 表内摘除→等门→
+  退役→DLL free 一次；`Drop for EngineService` 在 Library 析构前清空活
+  会话。句柄命名空间进程全局唯一。
 - **UI adapter**：`TerminalUiProvider { service: Arc<EngineService> }`；
   `install_process_default()` 用 `if_absent` 补缺（显式默认恒胜，779 纪律）。
   UI adapter 的组合方法（rows/rows_for/pump/apply_resize/menu/pend/scroll/
@@ -307,7 +329,10 @@ crates/auto-lang/src/
 |---|---|---|
 | provider 端口定义位置 | `auto-terminal-core` | core 合同单份；VM 只编解码 |
 | 默认回落 | 共享 `EngineService`（非 raise） | 保留无 UI 引擎行为 |
-| 句柄归属 | 每 service 实例；默认共享 | 旧跨调用共享保留；隔离注入不串线 |
+| 句柄命名空间 | **进程全局唯一**（core 静态计数器） | 两隔离 service 不得重号；owner 路由可判定 |
+| 句柄 owner 路由 | per-VM provider 历史 + `owns_handle` 反查 | provider 替换后旧句柄仍归原 owner（R1-F01） |
+| 会话并发/释放 | 每会话门 + 退役位；free 摘除→等待→一次 DLL free | DLL 锁不验证存活；防双 free/在途释放（R1-F03） |
+| service 末引用 | `Drop` 逐个 free（Library 析构前） | 独立 service 不泄漏 PTY/子进程（R1-F04） |
 | free 后 CURSORS/VIEWPORTS | 保留旧值 | 旧臂可观察值冻结；单调句柄不复用 |
 | backlog 迟滞 | 每 service 全局（默认=进程全局） | 旧静态语义 |
 | palette | UI 缓存 + core 懒查询 | 旧 DLL 单源/内置回退 |
@@ -317,7 +342,8 @@ crates/auto-lang/src/
 | 媒体/i18n | 不迁 | 其他 owner |
 
 **T-01 阻塞判定**：无。真实 DLL 在位且探针通过；FFI 寿命与多会话隔离已
-确认；provider 替换路由由"每 service 句柄表 + 默认共享回退"冻结，T-02
+确认；provider 替换路由由"全局句柄命名空间 + per-VM owner 历史 + 会话
+lease/退役 + service Drop"冻结（R1 补强），T-02
 实施后以两 VM 隔离测试验证。
 
 ## 9. 计数与证据

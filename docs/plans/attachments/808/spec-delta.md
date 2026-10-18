@@ -42,30 +42,45 @@
 
 ## 引擎服务（EngineService）
 
-- 每实例持有：`Library`（私有）、NEXT_HANDLE、句柄表（i64→原始指针的
-  usize 私有存储）、行文本快照、光标/视口缓存、背压迟滞态、palette 表缓存。
+- 每实例持有：`Library`（私有）、会话表（每会话 = 私有原始指针 + 操作门 +
+  退役位）、行文本快照、光标/视口缓存、背压迟滞态、palette 表缓存。
+- **句柄命名空间 = 进程全局**（旧 glue 单计数器语义）：两隔离 service 不会
+  发出相同 handle 值；handle 是进程内不透明会话 ID。
 - 34 native 的旧值语义逐项冻结（缺 DLL/无效句柄/可选符号/必须符号），
   见 PLAN-808 T-01 矩阵；`spawn_ex` 符号缺失=0、`backlog_paused`/
   `overflow_count` 符号缺失=0、`palette_color` 符号缺失=内置回退。
-- 会话生命期：`free` 调 DLL 后删除句柄/快照；**重复 free no-op**；
-  光标/视口缓存保留旧值（旧可观察臂；单调句柄不复用，不串新会话）。
+- **会话生命期（R1 修复）**：每次 FFI 操作在会话门内取得 lease；`free`
+  先从会话表摘除（新操作不再可见），等待在途 lease 结束，置退役位并
+  调用 DLL free **恰好一次**；并发/重复 free 是 no-op，且绝不会以已释放
+  指针再次进入 DLL。不同会话各有独立门，互不阻塞。表锁不跨门/FFI/UI。
+- `Drop for EngineService` 在 `Library` 字段析构前释放全部活会话；隔离
+  service 末引用释放不遗留 PTY/子进程。默认 shared service 仍按旧语义
+  跨 VM 共享会话，VM drop 不承诺杀死共享会话。
+- 光标/视口缓存保留旧值（旧可观察臂；单调句柄不复用，不串新会话）。
 - `shared()` 是进程单例（旧静态句柄表的等价物）；`new()`/`with_candidates`
-  提供隔离实例（两 VM 隔离注入；句柄只在所属 service 解析，跨 service
-  返回旧缺席值，不会误释放他方指针）。
-- 锁序：句柄表临界区不跨 FFI；状态锁短临界区、互不嵌套；不持服务锁
-  回调 UI/DLL。DLL 内部每柄串行由 auto-term FFI 保证，core 不复制。
+  提供隔离实例。跨 service 使用未绑定句柄返回旧缺席值；VM 装配按
+  原 owner 路由已暴露句柄（见下节），不会误释放他方会话。
 
-## TerminalHostProvider（34 方法）
+## TerminalHostProvider（34 native + 2 lifecycle helpers）
 
 - 一 native 一方法（2943..2949、2957..2959、2976..2982、2983..2987、
   2988..2993、2998..3003）；owned 值域，不返回 UI 核心/裸指针/VMValue/
-  闭包。
+  闭包。**两个非 native 生命周期辅助**（不改变 native 栈形状）：
+  `owns_handle(handle)->bool`（当前是否持有活会话）与
+  `live_handle_count()->usize`（活会话数），供 VM owner 路由/剪枝。
 - 默认实现（`EngineService`）：引擎面全在位；输入泵/几何/menu/scroll/
   window 为无 UI 降级（0/0/0/-1、window 1024×768）；config 六项空
-  （不新增 autoterm-config 依赖）。
+  （不新增 autoterm-config 依赖）；`owns_handle`/`live_handle_count`
+  读会话表。
 - 装配：VM 实例 provider → 进程默认 provider → 默认共享 service；
   **无 provider ≠ 禁用引擎**（保留旧无 UI 行为）。UI 宿主安装 adapter
   后才有输入/投影/menu/scroll/window/palette 面。
+- **provider 替换与旧句柄（R1 修复）**：`NativeInterface` 保留本 VM 曾
+  安装的 provider 历史（强 Arc）。所有带 handle 的 shim 先按
+  `owns_handle` 反查原 owner，再回落当前 provider / 共享 service；因此
+  切换 provider 后旧句柄仍读/写/释放到原服务，不会误释放新服务的同号
+  会话。旧 owner 在最后一个会话释放后被剪枝；若其为本 VM 唯一强引用，
+  service Drop 随即释放剩余资源。
 
 ## 不在本域
 
@@ -117,8 +132,11 @@ provider。
 
 缺席/句柄语义（T-01 冻结）：缺 DLL/无效句柄 spawn=0、rows=[]、
 interrupt=-1、is_exited=true、history/backlog=0、cursor/viewport 缓存缺省
-(0,0)；free 后光标/视口保留旧缓存（旧可观察臂）；重复 free no-op；
-句柄归属 service 实例，跨 service 使用返回旧缺席值且不会误释放原会话。
+(0,0)；free 后光标/视口保留旧缓存（旧可观察臂）；重复/并发 free no-op
+且 DLL free 恰好一次（每会话 lease + 退役位）；service 末引用 Drop 在
+Library 析构前释放活会话。句柄为**进程全局**命名空间；VM 保留曾安装
+provider 的历史，带 handle 的 shim 先反查原 owner——provider 替换后旧
+句柄仍读/写/释放到原服务，不会误释放新服务的会话。
 config 六项保持空集/空串；window 无 UI=1024×768，UI=thread-local override
 或 theme；`set_app_window_px` 兼容门面转发 `ui::terminal_provider`。
 display_offset 唯一真源仍为引擎，UI 只投影（Mux 契约不变）。
@@ -147,7 +165,10 @@ window px thread-local、palette 懒装载全部留在 UI adapter；引擎 DLL/
 定义并在此 re-export，路径不变）。`set_app_window_px` 保留兼容门面。
 
 宿主接线与 779/785/790/794/802/804 同集：`install_ui_host_capabilities`、
-`run_file_dynamic_ui_inner`、VmBridge 两构造（全 if-absent）。
+`run_file_dynamic_ui_inner`、VmBridge 两构造（`new_with_children` /
+`new_from_decls`，全 if-absent）。**R1 修复**：两 VmBridge 构造原缺
+terminal 安装（组件自己的 VM 快照无 provider，输入无法消费）；现均先
+安装再构造 AutoVM，显式默认恒胜，组件 VM 自己消费输入/投影。
 `ui_gen/rust.rs` terminal 发射与 `aura_view_builder::convert_terminal`
 的 View::Terminal props/事件语义不变；未支持的 a2r 引擎原生绑定如实
 记"不在原支持面"，不新增。

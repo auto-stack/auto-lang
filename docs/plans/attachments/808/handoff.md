@@ -11,7 +11,8 @@ merge-owned pending 门。代码/测试均在本计划唯一实施树：
 - real DLL: `D:/autostack/auto-term/target/debug/autoterm_core.dll`
   SHA256 `c17ecca15a84f86cb26ad1f391490afe2e8b7420a369047c4bac3f6b8f0e8f58`
   （auto-term `main` @ `7a0d0e8b718fb260641f0d09ada95a7346771cd3`，clean）
-- code commit: `3c02068ca`（实现+测试）；`c346f1077`（777 基线重绑）
+- code commits: `3c02068ca`（首轮实现+测试）；`c346f1077`（777 首轮基线
+  重绑）；**`69961e046`（R1 findings 修复，当前冻结代码）**
 - root `Cargo.lock`（gitignored）SHA256：
   `9a431eb9e6163c154798db92543028db38a29af70ddac008014cc48ebd6a8fe1`
   （新 member `auto-terminal-core` 已解析；仅 libloading 既有锁条目）
@@ -60,34 +61,49 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | 门 | 命令 | 结果 |
 |---|---|---|
 | core check | `cargo check -p auto-terminal-core` | exit 0 |
-| core tests | `cargo test -p auto-terminal-core` | 4/4 pass |
+| core tests | `cargo test -p auto-terminal-core` | 6/6 pass（R1：lease/free 并发/隔离/absent） |
 | core+lang check | `cargo check -p auto-terminal-core -p auto-lang` | exit 0 |
 | Ui terminal 定向 | `cargo test -p auto-lang --lib ui::terminal -- --test-threads=1` | 41/41 pass |
-| plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | 10/10 pass |
+| plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | **13/13 pass**（R1：含双活服务 owner 路由、drop/reap、VmBridge 生产构造） |
 | 独立 consumer | `cargo test --manifest-path test/fixtures/modularity/terminal-core-consumer/Cargo.toml`（DLL env） | 4/4 pass |
 | consumer 闭包 | `bash test/fixtures/modularity/terminal-core-consumer/verify-deps.sh` | PASS（仅 libloading/windows-link） |
 | no-UI 构建 | `cargo check -p auto-lang --no-default-features` | exit 0（34 shim + core 服务无 UI 依赖；config/window 1024×768 缺席臂保留） |
 | ui-only 组合 | `cargo check -p auto-lang --no-default-features --features ui` | 预存红（`ui_gen/vue.rs` iced、`sched_diag`/`vm_bridge` session/dynamic 未门控——F-785-P01 既有缺陷，非本计划文件；默认含 ui-iced 档绿） |
 | 真实 DLL 有界探针 | `python docs/plans/attachments/808/t01-dll-probe.py` | 34 checks pass |
-| 777 observe | `python scripts/modularity-audit.py --mode observe --no-cargo-check` | 收据 `t07-777-observe.json`（core_to_ui 860） |
-| 792 delivery driver | `python test/fixtures/modularity/generated-ui-consumer/driver.py` | **25/25 pass**（fresh 141s + relocated locked 120s；收据 `t07-792-driver-receipt.json` / 日志 `t07-792-driver.log.txt`） |
+| 777 strict | `python scripts/modularity-audit.py --mode strict --no-cargo-check` | **pass，0 violations / 2 grandfathered**（`r1-777-strict.json.txt`；core_to_ui 868） |
+| 792 delivery driver | `python test/fixtures/modularity/generated-ui-consumer/driver.py` | 见 `r1-792-driver.log.txt` / `r1-792-driver-receipt.json.txt`（R1 代码重跑：**25/25**） |
+| 复审原反例重放 | `powershell -File attachments/808/review-r1/replay.ps1` | **全部期望值命中**（`r1-replay.log.txt`）：ha=1/hb=2、A_live=0/B_live=1、in-flight free=0、并发 free=1 次、drop free=1 次、VmBridge 装 adapter=true、泵 1/0、真实 child free/drop 均 false（已回收） |
 | fmt | `rustfmt --check` 触面文件 | 0 diff |
 | 生成 Rust terminal 金样 | `cargo test -p auto-lang --lib terminal_`（3 金样名） | 3/3 pass（该过滤面 25/26；唯一红 `plan705_client_total_deadline_terminal_error` 为并发负载下时序 flake，solo 复跑 1/1 绿、不属 terminal 面） |
 
 真实 DLL 测试在缺 `AUTOTERM_ENGINE_DLL` 时打印显式 `PENDING(plan808)`，
 不计为通过；work 证据以 env 开启运行的结果为准。
 
+### 4.1 R1 复审 finding 闭合表（commit `69961e046`）
+
+| Finding | 不变量 | 修复 | 永久正负控制 |
+|---|---|---|---|
+| F808-R1-01 P1 旧句柄误释放新服务 | 已暴露句柄在 provider 替换后仍绑定原 owner | 进程全局 handle 命名空间；NI 保留 provider 历史；带 handle 的 shim 用 `owns_handle` 反查原 owner 再回落当前/共享 | plan808 `provider_replacement_keeps_old_handle_bound_to_owner`：A/B 各有活会话；切换后旧柄读/写/释放只动 A，重复 free 不动 B；第二 VM 与共享回落；core 全局唯一 handle |
+| F808-R1-02 P1 VmBridge 漏装 adapter | 生产组件构造入口先装 adapter 再建 VM | `new_with_children`/`new_from_decls` 加 `terminal_provider::install_process_default()` | plan808 `both_bridge_constructors_install_terminal_adapter`：清空默认槽后真实构造两个 bridge，槽 Some、bridge VM 快照 Some、bridge 自己的 VM 泵排空输入；显式默认优先 |
+| F808-R1-03 P1 并发 free 双进 DLL | 每会话恰好一次 free，不与在途操作重叠 | `SessionTable`：表锁不跨门；lease/retire；free 先摘除、等门、置退役、调 DLL 一次 | core `session_leases_serialize_free_and_never_double_free`：在途 lease 阻塞 free；free 后 lease absent；两线程并发 free 恰一次动作；`different_sessions_do_not_block_each_other` |
+| F808-R1-04 P1 service drop 不释放会话 | 末引用释放/替换剪枝时释放会话，子进程退出 | `Drop for EngineService` 在 Library 析构前逐会话 free；owner 剪枝释放旧 service | plan808 `service_drop_frees_live_session_and_child` + `provider_replacement_last_reference_releases_old_service`：PowerShell 子进程自报 PID；drop/末引用释放后 OS 进程消失（非仅表归零） |
+| F808-R1-05 P3 两条新警告 | 本计划新增文件零警告 | 删除未用 `TerminalHostProvider` 导入与多余 `mut` | `rustfmt --check` + 定向编译无本计划文件 warning |
+
 ## 5. 计划/规范交接
 
 - SD 草案：[spec-delta.md](spec-delta.md)（SD-01 add auto-terminal-core/
   project.md；SD-02 vm overview；SD-03 ui overview；SD-04 terminal-mux-model）。
-- 777 基线：本树 manifest/config 已变，已在干净提交 `3c02068ca` 上
-  `--refresh-baseline` 重绑（`c346f1077`）并 strict pass（0 violations /
-  2 grandfathered）；merge 在最终 master 组合上再重绑。
+- 777 基线：首轮 manifest/config 已在干净提交 `3c02068ca` 上重绑
+  （`c346f1077`）。R1 修复未改 manifest/config，在 `69961e046` 上 strict
+  **pass**（0 violations / 2 grandfathered，`r1-777-strict.json.txt`）；
+  merge 在最终 master 组合上再重绑。
 - 792：`DELIVERY_CRATES` 已加 `auto-terminal-core`（13 项，生成
-  crates=14）；driver 在最终代码上 **25/25**（fresh/relocated locked/
-  负控/dev 路由）。merge 合流其它新成员/闭包变化时按 792 driver 重放
-  受影响 fresh/locked。
+  crates=14）；R1 代码上 driver **25/25**（fresh 108s / relocated locked /
+  负控 / dev 路由；`r1-792-driver-receipt.json.txt`）。merge 合流其它新
+  成员/闭包变化时按 792 driver 重放受影响 fresh/locked。
+- 收据持久化：原先被 `.gitignore` 的 `*.json` 已改为 `.json.txt`
+  （`t07-777-observe.json.txt`、`t07-792-driver-receipt.json.txt`、
+  `r1-777-strict.json.txt`、`r1-792-driver-receipt.json.txt`）随簿记入库。
 - ledger/索引/归档：未改（merge-owned）。
 
 ## 6. merge-owned pending 门（不得在本阶段宣称交付）
