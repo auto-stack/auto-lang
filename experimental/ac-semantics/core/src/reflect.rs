@@ -315,6 +315,7 @@ mod tests {
         SemaInput {
             package: "p".into(),
             module: "m".into(),
+            source_fp: String::new(),
             fns: vec![InputFn {
                 name: "f".into(),
                 params: vec![("a".into(), Ann::I32)],

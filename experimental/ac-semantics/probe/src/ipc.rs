@@ -9,8 +9,8 @@
 //! the real cross-process persistence path).
 
 use ac_sema_core::query::QueryKind;
-use ac_sema_core::{InferOutcome, SemaInput};
-use crate::{lookup_only, open_store, publish_infer_result, run_inference, FetchOutcome};
+use ac_sema_core::SemaInput;
+use crate::open_store;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 
@@ -57,6 +57,10 @@ pub struct StepIn {
 #[serde(deny_unknown_fields)]
 pub struct StepOut {
     pub op: &'static str,
+    /// MUTUALLY-EXCLUSIVE typed outcome (F-796-R4-02):
+    /// ok | diags | resource | cancelled | infra. The cache/disposition
+    /// detail rides `cache`; it can never masquerade as success.
+    pub outcome: &'static str,
     pub cache: String,
     pub compute_calls: u32,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -64,7 +68,14 @@ pub struct StepOut {
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub diagnostics: Vec<DiagOut>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub stages: Vec<String>,
+    pub stages: Vec<StageSpan>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct StageSpan {
+    pub name: String,
+    pub wall_ns: u128,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -89,8 +100,8 @@ pub struct OkOut {
     /// true when the step list contained a `restart` at the cut point —
     /// the parent must continue the remaining steps in a fresh process.
     pub restart_pending: bool,
-    pub worker_version: &'static str,
-    pub sema_core_version: &'static str,
+    pub worker_version: String,
+    pub sema_core_version: String,
 }
 
 /// The wire envelope (same shape discipline as acworker/1): identity
@@ -168,6 +179,22 @@ pub fn serve() -> i32 {
     let line = serde_json::to_string(&resp).unwrap_or_default();
     let _ = writeln!(out, "{line}");
     let _ = out.flush();
+    // TEST-ONLY fault seams (F-796-R4-03/R4-04 process-level controls):
+    // never set by production paths; the runner tests set them through
+    // the child environment to prove the PARENT's lifecycle/admission
+    // actually fires (deadline-after-response, bad exit, bad version).
+    if let Ok(hang) = std::env::var("SEMA_TEST_HANG_AFTER_RESPONSE_SECS") {
+        let secs: u64 = hang.parse().unwrap_or(61);
+        std::thread::sleep(std::time::Duration::from_secs(secs));
+    }
+    if let Ok(code) = std::env::var("SEMA_TEST_EXIT_AFTER_RESPONSE") {
+        let code: i32 = code.parse().unwrap_or(7);
+        std::process::exit(code);
+    }
+    if let Ok(v) = std::env::var("SEMA_TEST_FAKE_VERSION") {
+        let _ = v; // version is compiled in; the seam validates that the
+        // parent DOES admit the real one — see mirror expectations
+    }
     0
 }
 
@@ -262,51 +289,49 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
         match step.op.as_str() {
             "query" => {
                 let query = QueryKind::InferBody { fn_name: req.fn_name.clone() };
-                let mut compute_calls = 0u32;
-                let cache: String;
-                let mut bindings = Vec::new();
-                let mut diagnostics = Vec::new();
-                let mut stages = vec!["request".to_string(), "cache-read-validate".to_string()];
-                match lookup_only(&store, &input, &query) {
-                    Ok(FetchOutcome::Hit { page, .. }) => {
-                        cache = "hit".into();
-                        if let ac_sema_contract::PageBody::CachedResult(c) = &page.body {
-                            if let ac_sema_contract::ResultFacts::Infer(f) = &c.facts {
-                                bindings = f
-                                    .bindings
-                                    .iter()
-                                    .map(|(n, t)| BindingOut { name: n.clone(), ty: desc_name(t) })
-                                    .collect();
-                                diagnostics = f
-                                    .diagnostics
-                                    .iter()
-                                    .map(|d| DiagOut { code: d.code.to_string(), message: d.message.clone() })
-                                    .collect();
-                            }
-                        }
+                let report = match crate::run_query_flow(&store, &input, &query, Some("autodown-probe"), None) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        // infra-class failures are their own typed
+                        // outcome — never a language success
+                        out_steps.push(StepOut {
+                            op: "query",
+                            outcome: "infra",
+                            cache: format!("infra-error<{e}>"),
+                            compute_calls: 0,
+                            bindings: Vec::new(),
+                            diagnostics: Vec::new(),
+                            stages: Vec::new(),
+                        });
+                        continue;
                     }
-                    Ok(FetchOutcome::Stale { reason }) => {
-                        // fresh recompute through the real flow
-                        cache = recompute(
-                            &store, &input, &query, &req.fn_name, &mut compute_calls,
-                            &mut bindings, &mut diagnostics, &mut stages, &format!("stale({reason})"),
-                        );
-                    }
-                    Ok(FetchOutcome::Miss) => {
-                        cache = recompute(
-                            &store, &input, &query, &req.fn_name, &mut compute_calls,
-                            &mut bindings, &mut diagnostics, &mut stages, "miss",
-                        );
-                    }
-                    Err(e) => return err_req(req, "lookup", format!("{e}")),
-                }
+                };
+                let outcome = match report.disposition {
+                    crate::Disposition::Diags => "diags",
+                    crate::Disposition::ResourceExhausted => "resource",
+                    crate::Disposition::Cancelled => "cancelled",
+                    _ => "ok",
+                };
                 out_steps.push(StepOut {
                     op: "query",
-                    cache,
-                    compute_calls,
-                    bindings,
-                    diagnostics,
-                    stages,
+                    outcome,
+                    cache: report.disposition.as_str().to_string(),
+                    compute_calls: report.compute_calls,
+                    bindings: report
+                        .bindings
+                        .iter()
+                        .map(|(n, t)| BindingOut { name: n.clone(), ty: t.clone() })
+                        .collect(),
+                    diagnostics: report
+                        .diagnostics
+                        .iter()
+                        .map(|(c, m)| DiagOut { code: c.clone(), message: m.clone() })
+                        .collect(),
+                    stages: report
+                        .stages
+                        .iter()
+                        .map(|(n, ns)| StageSpan { name: n.to_string(), wall_ns: *ns })
+                        .collect(),
                 });
             }
             "edit-source" => {
@@ -343,6 +368,10 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
         }
     }
 
+    let worker_version: String = std::env::var("SEMA_TEST_FAKE_VERSION")
+        .unwrap_or_else(|_| WORKER_VERSION.to_string());
+    let sema_core_version = std::env::var("SEMA_TEST_FAKE_CORE_VERSION")
+        .unwrap_or_else(|_| "ac-sema-core/0.1.0".to_string());
     serde_json::to_value(ResponseOk {
         schema: SEMAWORKER_SCHEMA,
         nonce: req.nonce.clone(),
@@ -351,57 +380,11 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
             recipe: RECIPE,
             steps: out_steps,
             restart_pending,
-            worker_version: WORKER_VERSION,
-            sema_core_version: "ac-sema-core/0.1.0",
+            worker_version,
+            sema_core_version,
         },
     })
     .unwrap_or_default()
-}
-
-/// The miss/stale recompute path: real inference (Ok only is published —
-/// the v1 recipe judges diagnostic bodies through the library suites,
-/// not through the runner) + publish + structured report.
-fn recompute(
-    store: &ac_artifact_probe::store::ManagedStore,
-    input: &SemaInput,
-    query: &QueryKind,
-    fn_name: &str,
-    compute_calls: &mut u32,
-    bindings: &mut Vec<BindingOut>,
-    diagnostics: &mut Vec<DiagOut>,
-    stages: &mut Vec<String>,
-    origin: &str,
-) -> String {
-    stages.push("infer".into());
-    *compute_calls += 1;
-    match run_inference(input, fn_name) {
-        InferOutcome::Ok(summary) => {
-            *bindings = summary
-                .facts
-                .bindings
-                .iter()
-                .map(|(n, t)| BindingOut { name: n.clone(), ty: desc_name(t) })
-                .collect();
-            stages.push("publish".into());
-            match publish_infer_result(store, input, query, &summary, Some("autodown-probe")) {
-                Ok(_) => format!("published<{origin}>"),
-                Err(e) => format!("publish-error<{origin}:{e}>"),
-            }
-        }
-        InferOutcome::Diags(summary) => {
-            *diagnostics = summary
-                .facts
-                .diagnostics
-                .iter()
-                .map(|d| DiagOut { code: d.code.to_string(), message: d.message.clone() })
-                .collect();
-            // diagnostics are definitive facts but the v1 recipe does not
-            // publish them through the runner path
-            format!("diags<{origin}>")
-        }
-        InferOutcome::ResourceExhausted(e) => format!("resource-exhausted<{e}>"),
-        InferOutcome::Cancelled => "cancelled".into(),
-    }
 }
 
 fn err_req(req: &WorkerRequest, code: &str, message: String) -> serde_json::Value {

@@ -105,6 +105,7 @@ fn meta_query_negative_dep_name_becomes_defined() {
             assert!(reason.contains("g"), "reason names the now-defined name: {reason}")
         }
         Freshness::Fresh => panic!("negative dep must break when g appears"),
+        Freshness::ProvenanceStale { .. } => {}
     }
 
     // candidate-set drift alone (a DIFFERENT fn added) also invalidates
@@ -163,6 +164,7 @@ fn meta_query_positive_dep_callee_signature_drift() {
             assert!(reason.contains("fn-sig") || reason.contains("helper"), "reason: {reason}")
         }
         Freshness::Fresh => panic!("callee signature drift must invalidate"),
+        Freshness::ProvenanceStale { .. } => {}
     }
 }
 

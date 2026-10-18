@@ -473,6 +473,22 @@ impl<'a> InferSession<'a> {
                         1 => {
                             let f = cands[0];
                             self.read_sig(callee);
+                            // ARITY admission (F-796-R4-01): a direct call
+                            // must pass exactly the declared parameter
+                            // count — missing or extra arguments are
+                            // definitive diagnostics, never unsolved
+                            // variables or silently ignored extras
+                            if args.len() != f.params.len() {
+                                self.diag(
+                                    "arity-mismatch",
+                                    e.span,
+                                    format!(
+                                        "`{callee}` expects {} argument(s), found {}",
+                                        f.params.len(),
+                                        args.len()
+                                    ),
+                                );
+                            }
                             let fret = self.ann_ty(f.ret, e.span);
                             self.record_expr(e, fret, expected);
                             for (i, arg) in args.iter().enumerate().rev() {
@@ -648,7 +664,7 @@ mod tests {
     }
 
     fn input(fns: Vec<InputFn>) -> SemaInput {
-        SemaInput { package: "test".into(), module: "m".into(), fns, records: Vec::new() }
+        SemaInput { package: "test".into(), module: "m".into(), fns, records: Vec::new(), source_fp: String::new() }
     }
 
     /// Positive: annotated arithmetic + condition + call consistency.

@@ -235,9 +235,18 @@ pub fn check_with_native(
         // linked; the support-lib content axis when the contract declares
         // it. Missing, extra or contradicting axes are drift — never
         // silent consistency. Lazy discovery keeps non-native suites cheap.
-        if matches!(r.get("adapter").and_then(|a| a.as_str()), Some("ac") | Some("syntax")) {
-            let current = current_native
-                .get_or_insert_with(crate::test_cases::ac::current_toolchain_identity);
+        if matches!(
+            r.get("adapter").and_then(|a| a.as_str()),
+            Some("ac") | Some("syntax") | Some("probe")
+        ) {
+            let is_probe = r.get("adapter").and_then(|a| a.as_str()) == Some("probe");
+            let current = if is_probe {
+                current_native
+                    .get_or_insert_with(crate::test_cases::sema::current_toolchain_identity)
+            } else {
+                current_native
+                    .get_or_insert_with(crate::test_cases::ac::current_toolchain_identity)
+            };
             let row_axes: BTreeMap<String, String> = r
                 .get("native")
                 .and_then(|n| n.get("toolchain"))
@@ -274,8 +283,13 @@ pub fn check_with_native(
                             })
                         })
                         .unwrap_or(false);
-                let mut applicable: Vec<&str> =
-                    vec!["worker-exe-sha256", "ac-worker-protocol"];
+                let mut applicable: Vec<&str> = if is_probe {
+                    // F-796-R4-04: probe rows bind to the sema worker's
+                    // CONTENT identity and the mirrored versions
+                    vec!["sema-worker-exe-sha256", "sema-worker-version"]
+                } else {
+                    vec!["worker-exe-sha256", "ac-worker-protocol"]
+                };
                 if applicability.links_conditionally && linked {
                     applicable.extend(["lld-sha256", "sdk-um-sha256"]);
                 }

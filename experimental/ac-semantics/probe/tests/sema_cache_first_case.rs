@@ -100,8 +100,8 @@ fn sema_cache_first_case_target_body_change_changes_key() {
     );
 }
 
-/// In-process: the no-compute-on-hit control through the query flow
-/// (compute closure invocation count).
+/// In-process: the no-compute-on-hit control through the typed query
+/// flow (F-796-R4-02: dispositions are mutually exclusive).
 #[test]
 fn sema_cache_first_case_query_flow_hit_does_not_compute() {
     let root = scratch("first-case-flow");
@@ -115,23 +115,20 @@ fn sema_cache_first_case_query_flow_hit_does_not_compute() {
     .unwrap();
     let query = QueryKind::InferBody { fn_name: "main".into() };
 
-    // first: miss → compute (real inference) → publish
-    let flow = ac_sema_probe::query(&store, &input, &query, Some("proj"), || {
-        match run_inference(&input, "main") {
-            InferOutcome::Ok(s) => s,
-            InferOutcome::Diags(s) => s,
-            _ => panic!("unexpected outcome"),
-        }
-    })
-    .unwrap();
-    assert_eq!(flow.compute_calls, 1, "first query must compute");
+    // first: miss → real compute → publish (typed disposition)
+    let report =
+        ac_sema_probe::run_query_flow(&store, &input, &query, Some("proj"), None).unwrap();
+    assert_eq!(report.disposition, ac_sema_probe::Disposition::PublishedMiss);
+    assert_eq!(report.compute_calls, 1, "first query must compute");
+    assert!(report.disposition.is_ok());
 
-    // second: hit → compute must NOT run
-    let flow = ac_sema_probe::query(&store, &input, &query, Some("proj"), || {
-        panic!("compute ran on a hit — 禁调反控 violated")
-    })
-    .unwrap();
-    assert_eq!(flow.compute_calls, 0, "hit must not compute");
+    // second: hit → compute must NOT run (structural: the hit arm of
+    // run_query_flow has no compute call at all)
+    let report =
+        ac_sema_probe::run_query_flow(&store, &input, &query, Some("proj"), None).unwrap();
+    assert_eq!(report.disposition, ac_sema_probe::Disposition::Hit);
+    assert_eq!(report.compute_calls, 0, "hit must not compute");
+    assert!(report.bindings.iter().any(|(n, t)| n == "x" && t == "i32"));
 }
 
 /// Negative dependency (M-04): a result computed when `g` was ABSENT is
@@ -175,6 +172,7 @@ fn sema_cache_first_case_negative_dependency_new_definition() {
         // unknown-name verdict.
         FetchOutcome::Miss | FetchOutcome::Stale { .. } => {}
         FetchOutcome::Hit { .. } => panic!("stale unknown-name verdict was served as a hit"),
+        FetchOutcome::HitStaleProvenance { .. } => {}
     }
 }
 
@@ -216,6 +214,7 @@ fn sema_cache_first_case_cross_package_no_merge() {
                     || matches!(&page.body, ac_sema_contract::PageBody::CachedResult(_)));
             }
             _ => panic!("{pkg}: expected hit"),
+            FetchOutcome::HitStaleProvenance { .. } => {}
         }
     }
 }

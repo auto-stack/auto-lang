@@ -445,12 +445,16 @@ pub fn current_fingerprints(input: &SemaInput) -> DependencyFingerprints {
     let mut candidate_sets = BTreeMap::new();
     candidate_sets.insert("fn", cand_fp(&input.fn_candidates()));
     candidate_sets.insert("type", cand_fp(&input.record_candidates()));
+    let mut source_maps = BTreeMap::new();
+    if !input.source_fp.is_empty() {
+        source_maps.insert("module-source".to_string(), input.source_fp.clone());
+    }
     DependencyFingerprints {
         fn_sigs,
         fn_bodies,
         field_sets,
         candidate_sets,
-        source_maps: BTreeMap::new(),
+        source_maps,
         config: fp(
             format!("{INFER_ALGO_ID}\u{1}{TARGET_SEMANTICS}\u{1}{BUILTIN_CAPABILITIES}").as_bytes(),
         ),
@@ -468,6 +472,17 @@ pub fn manifest_from(reads: &Reads, input: &SemaInput, target: &str) -> DepManif
             format!("{INFER_ALGO_ID}\u{1}{TARGET_SEMANTICS}\u{1}{BUILTIN_CAPABILITIES}").as_bytes(),
         ),
     }];
+    // F-796-R4-05: the REAL producer records the module source
+    // fingerprint — position-bearing facts are validated against it on
+    // every hit (fail-closed), separating semantic-content reuse from
+    // source-projection freshness
+    if !input.source_fp.is_empty() {
+        positives.push(DepFingerprint {
+            kind: "source-map",
+            origin: "module-source".into(),
+            fp: input.source_fp.clone(),
+        });
+    }
     if let Some(f) = input.lookup_fn(target) {
         positives.push(DepFingerprint {
             kind: "fn-body",
@@ -501,15 +516,23 @@ pub fn manifest_from(reads: &Reads, input: &SemaInput, target: &str) -> DepManif
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Freshness {
     Fresh,
-    /// What changed and why — the miss reason (audit trail).
+    /// Every dependency is fresh EXCEPT source provenance
+    /// (F-796-R4-05): the semantic CONTENT is reusable, position
+    /// projections belong to the old source and must be refreshed
+    /// before serving.
+    ProvenanceStale { reason: String },
+    /// A semantic dependency drifted — what and why (audit trail).
     Stale { reason: String },
 }
 
 /// Validate a cached result's manifest against the current input:
 /// EVERY positive fingerprint must match, and every negative dependency
 /// must still hold (the candidate set unchanged AND the name still
-/// absent). A single drift is a miss.
-pub fn freshness_of(manifest: &DepManifest, current: &DependencyFingerprints) -> Freshness {
+/// absent). Drift is CLASSIFIED: only-source-map drift is
+/// [`Freshness::ProvenanceStale`] (content reusable, positions stale);
+/// any other drift is [`Freshness::Stale`].
+pub fn freshness_class(manifest: &DepManifest, current: &DependencyFingerprints) -> Freshness {
+    let mut drifted: Vec<&DepFingerprint> = Vec::new();
     for p in &manifest.positives {
         let ok = match p.kind {
             "fn-sig" => current.fn_sigs.get(&p.origin) == Some(&p.fp),
@@ -526,10 +549,21 @@ pub fn freshness_of(manifest: &DepManifest, current: &DependencyFingerprints) ->
             _ => true,
         };
         if !ok {
-            return Freshness::Stale {
-                reason: format!("positive dep {}:{} changed", p.kind, p.origin),
-            };
+            drifted.push(p);
         }
+    }
+    if !drifted.is_empty() {
+        let all_source = drifted.iter().all(|p| p.kind == "source-map");
+        let reasons: Vec<String> = drifted
+            .iter()
+            .map(|p| format!("positive dep {}:{} changed", p.kind, p.origin))
+            .collect();
+        let reason = reasons.join("; ");
+        return if all_source {
+            Freshness::ProvenanceStale { reason }
+        } else {
+            Freshness::Stale { reason }
+        };
     }
     for n in &manifest.negatives {
         let set_now = current.candidate_sets.get(n.domain);
@@ -556,6 +590,14 @@ pub fn freshness_of(manifest: &DepManifest, current: &DependencyFingerprints) ->
         }
     }
     Freshness::Fresh
+}
+
+/// Back-compat alias: the undifferentiated staleness view.
+pub fn freshness_of(manifest: &DepManifest, current: &DependencyFingerprints) -> Freshness {
+    match freshness_class(manifest, current) {
+        Freshness::ProvenanceStale { reason } => Freshness::Stale { reason },
+        other => other,
+    }
 }
 
 /// The logical id of a query target (used in cached-result pages).

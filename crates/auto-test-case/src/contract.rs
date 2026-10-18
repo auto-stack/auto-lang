@@ -1858,7 +1858,13 @@ fn decode_expect(
                     )?;
                     let cache = match pf.sub("cache") {
                         None => None,
-                        Some(CVal::Str(c)) if ["hit", "miss", "stale", "published"].contains(&c.as_str()) => {
+                        // R4 vocabulary: hit/miss/stale/published (coarse
+                        // outcomes), reprojected (content reused, positions
+                        // refreshed) and diags (definitive diagnostics
+                        // under an error completion)
+                        Some(CVal::Str(c))
+                            if ["hit", "miss", "stale", "published", "reprojected", "diags"]
+                                .contains(&c.as_str()) => {
                             Some(c.clone())
                         }
                         Some(other) => {

@@ -131,6 +131,21 @@ fn infer_core_parity_hand_corpus() {
         "bad-assign",
         "fn main() int { var x = 1\nx = true\nreturn x }",
     );
+    // F-796-R4-01 permanent arity cases: missing / extra / mistyped
+    // arguments are definitive rejections on BOTH pipelines; the legal
+    // forward-recursive call stays accepted
+    diff_case(
+        "bad-arity-missing",
+        "fn f(x int) int { return x }\nfn main() int { return f() }",
+    );
+    diff_case(
+        "bad-arity-extra",
+        "fn f(x int) int { return x }\nfn main() int { return f(1, 2) }",
+    );
+    diff_case(
+        "ok-forward-recursion-arity",
+        "fn even(n int) bool { return odd(n - 1) }\nfn odd(n int) bool { return even(n - 1) }\nfn main() bool { return even(4) }",
+    );
 }
 
 /// Deterministic volume: generated WELL-TYPED programs (by

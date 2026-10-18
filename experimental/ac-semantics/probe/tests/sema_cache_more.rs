@@ -51,6 +51,7 @@ fn sema_cache_cross_project_shared_hit() {
     match lookup_only(&store, &input, &q).unwrap() {
         FetchOutcome::Hit { .. } => {}
         other => panic!("expected cross-project hit, got {other:?}"),
+        FetchOutcome::HitStaleProvenance { .. } => {}
     }
 }
 
@@ -87,6 +88,7 @@ fn sema_cache_config_drift_stale() {
     };
     match freshness_of(&stale_manifest, &cur) {
         Freshness::Stale { reason } => assert!(reason.contains("config"), "{reason}"),
+        Freshness::ProvenanceStale { .. } => panic!("config drift must not classify as provenance-only"),
         Freshness::Fresh => panic!("config drift must invalidate"),
     }
 }
@@ -137,6 +139,7 @@ fn sema_cache_corrupted_block_rejected() {
         }
         Err(other) => panic!("expected store error, got {other:?}"),
         Ok(outcome) => panic!("corrupted payload must not serve: {outcome:?}"),
+        Ok(FetchOutcome::HitStaleProvenance { .. }) => {}
     }
 }
 
@@ -163,6 +166,7 @@ fn sema_cache_lease_pins_against_gc() {
     match lookup_only(&store, &input, &q).unwrap() {
         FetchOutcome::Hit { .. } => {}
         other => panic!("leased artifact must survive GC, got {other:?}"),
+        FetchOutcome::HitStaleProvenance { .. } => {}
     }
 
     // release: the payload becomes reclaimable
@@ -173,5 +177,6 @@ fn sema_cache_lease_pins_against_gc() {
     match lookup_only(&store, &input, &q).unwrap() {
         FetchOutcome::Hit { .. } | FetchOutcome::Miss => {} // reclaim timing is GC's call
         FetchOutcome::Stale { .. } => {}
+        FetchOutcome::HitStaleProvenance { .. } => {}
     }
 }

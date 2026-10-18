@@ -760,6 +760,7 @@ fn leak_code(s: String) -> &'static str {
     match s.as_str() {
         "type-mismatch" => "type-mismatch",
         "unknown-name" => "unknown-name",
+        "arity-mismatch" => "arity-mismatch",
         "cond-not-bool" => "cond-not-bool",
         "assign-immutable" => "assign-immutable",
         "ambiguous-candidates" => "ambiguous-candidates",

@@ -36,7 +36,12 @@ pub fn parse_into_input(
 ) -> Result<SemaInput, String> {
     let prog = auto_ac_prototype::source::parse_program_with(src, profile)
         .map_err(|d| format!("parse: {} ({:?})", d.message, d.code))?;
-    Ok(project(&prog, package, module))
+    let mut input = project(&prog, package, module);
+    input.source_fp = ac_sema_contract::identity::domain_hash(
+        "ac796/source-fp/v1",
+        &[src.as_bytes()],
+    );
+    Ok(input)
 }
 
 /// The old pipeline's verdict for differential cross-checks: accept iff
@@ -132,7 +137,7 @@ pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> SemaInp
             }
         }
     }
-    SemaInput { package: package.into(), module: module.into(), fns, records }
+    SemaInput { package: package.into(), module: module.into(), fns, records, source_fp: String::new() }
 }
 
 fn project_fn(f: &core_ast::FnItem) -> InputFn {

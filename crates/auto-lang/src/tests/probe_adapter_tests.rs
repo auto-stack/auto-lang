@@ -30,6 +30,11 @@ fn out_of(root: &Path, sub: &str) -> PathBuf {
     ))
 }
 
+/// Serializes every test that spawns the real sema worker: fault
+/// injection is process-global state, so worker-spawning tests must not
+/// interleave with it (or with each other's fault windows).
+static FAULT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn status_of(report: &auto_test_case::report::RunReport, check: &str) -> Status {
     report
         .results
@@ -44,6 +49,8 @@ fn status_of(report: &auto_test_case::report::RunReport, check: &str) -> Status 
 /// restart boundary, parent-side oracle judgement.
 #[test]
 fn probe_adapter_corpus_executes_green() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
     let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ac-semantics");
     let root = temp_root("corpus");
     let out = out_of(&root, "out");
@@ -73,6 +80,8 @@ fn probe_adapter_corpus_executes_green() {
 /// FAIL (the worker really served it from the store without computing).
 #[test]
 fn probe_adapter_negative_oracle_fails() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
     let root = temp_root("neg");
     std::fs::write(
         root.join("neg.suite.ad"),
@@ -249,4 +258,158 @@ fn probe_adapter_v1_pilot_untouched() {
     for r in &report.results {
         assert_ne!(r.status, Status::Error, "pilot check {} errored", r.check_id);
     }
+}
+
+
+
+// ---- F-796-R4-02/03/04 permanent controls ---------------------------------
+
+
+/// Build a one-case suite where `check_tail` is the full check body
+/// after `id:` (adapter/options/expect). The source embeds verbatim.
+fn run_fault_case(tag: &str, source: &str, check_tail: &str) -> auto_test_case::report::RunReport {
+    let root = temp_root(tag);
+    let doc = format!(
+        "# fault suite\n```test-suite\nsuite {{ schema: \"autolang.suite/2\", id: \"fault\", include: [\"fault.case.ad\"] }}\n```\n\n```test-case\ncase {{ schema: \"autolang.case/2\", id: \"fault.case\",\n  source: {{ text: \"{src}\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [ {{ id: \"c\", {tail} }} ] }}\n```\n",
+        src = source.replace('\\', "\\\\").replace('"', "\\\"").replace('\n', "\\n"),
+        tail = check_tail,
+    );
+    std::fs::write(root.join("fault.suite.ad"), doc.clone()).unwrap();
+    std::fs::write(root.join("fault.case.ad"), doc).unwrap();
+    let out = out_of(&root, "out");
+    run_suite(&root.join("fault.suite.ad"), &out, &Limits::defaults()).expect("suite runs")
+}
+
+const QUERY_C: &str = "adapter: \"probe\", action: \"run\", \
+options: { recipe: \"sema/query-v1\", \
+sema: { package: \"p\", module: \"m\", kind: \"infer-body\", fn: \"main\" }, \
+steps: [ { op: \"query\" } ] }";
+
+const QUERY_MISSING_C: &str = "adapter: \"probe\", action: \"run\", \
+options: { recipe: \"sema/query-v1\", \
+sema: { package: \"p\", module: \"m\", kind: \"infer-body\", fn: \"missing\" }, \
+steps: [ { op: \"query\" } ] }";
+
+/// F-796-R4-02: a REAL type error (`return true` from an int fn) with
+/// a SUCCESS expectation must FAIL — never PASS on a cache string.
+#[test]
+fn probe_adapter_type_error_with_success_expect_fails() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    let report = run_fault_case(
+        "te-succ",
+        "fn main() int { return true }",
+        &format!(
+            "{QUERY_C}, expect: {{ completion: \"success\", probe: [ {{ compute_calls: 1 }} ] }} "
+        ),
+    );
+    assert_eq!(status_of(&report, "c"), Status::Fail);
+}
+
+/// F-796-R4-02: the same type error with the DECLARED error completion
+/// (typecheck/type-mismatch) passes — language negatives are judged,
+/// distinguishable from infra errors.
+#[test]
+fn probe_adapter_type_error_with_error_expect_passes() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    let report = run_fault_case(
+        "te-err",
+        "fn main() int { return true }",
+        &format!(
+            "{QUERY_C}, expect: {{ completion: {{ stage: \"typecheck\", code: \"type-mismatch\" }}, probe: [ {{ cache: \"diags\" }} ] }} "
+        ),
+    );
+    assert_eq!(status_of(&report, "c"), Status::Pass);
+}
+
+/// F-796-R4-02: querying a missing function is a resolve-stage error
+/// (unknown-name), declarable and judged.
+#[test]
+fn probe_adapter_unknown_fn_is_error_completion() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    let report = run_fault_case(
+        "unk",
+        "fn main() int { return 1 }",
+        &format!(
+            "{QUERY_MISSING_C}, expect: {{ completion: {{ stage: \"resolve\", code: \"unknown-name\" }}, probe: [ {{ cache: \"diags\" }} ] }} "
+        ),
+    );
+    assert_eq!(status_of(&report, "c"), Status::Pass);
+}
+
+fn set_faults(envs: Vec<(String, String)>, wall_ms: Option<u64>) {
+    crate::test_cases::sema::TEST_FAULTS
+        .write()
+        .unwrap()
+        .replace(crate::test_cases::sema::TestFaults { child_envs: envs, session_wall_ms: wall_ms });
+}
+
+fn clear_faults() {
+    crate::test_cases::sema::TEST_FAULTS.write().unwrap().take();
+}
+
+/// F-796-R4-03: a worker that responds correctly and then SLEEPS past
+/// the (test-shortened) parent wall is killed and the check is an
+/// infrastructure ERROR — not a pass seconds later.
+#[test]
+fn probe_adapter_worker_hang_after_response_is_infra_error() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_faults(
+        vec![("SEMA_TEST_HANG_AFTER_RESPONSE_SECS".into(), "30".into())],
+        Some(3_000),
+    );
+    let result = std::panic::catch_unwind(|| {
+        let report = run_fault_case(
+            "hang",
+            "fn main() int { return 1 }",
+            &format!(
+                "{QUERY_C}, expect: {{ completion: \"success\", probe: [ {{ cache: \"published\" }} ] }} "
+            ),
+        );
+        status_of(&report, "c")
+    });
+    clear_faults();
+    assert_eq!(result.expect("suite ran"), Status::Error);
+}
+
+/// F-796-R4-04: a worker that exits 7 after a correct response is an
+/// infrastructure ERROR, never a pass.
+#[test]
+fn probe_adapter_worker_bad_exit_is_infra_error() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_faults(vec![("SEMA_TEST_EXIT_AFTER_RESPONSE".into(), "7".into())], None);
+    let result = std::panic::catch_unwind(|| {
+        let report = run_fault_case(
+            "exit7",
+            "fn main() int { return 1 }",
+            &format!(
+                "{QUERY_C}, expect: {{ completion: \"success\", probe: [ {{ cache: \"published\" }} ] }} "
+            ),
+        );
+        status_of(&report, "c")
+    });
+    clear_faults();
+    assert_eq!(result.expect("suite ran"), Status::Error);
+}
+
+/// F-796-R4-04: a worker reporting a WRONG version is admitted against
+/// the mirrored expectation and rejected as infra.
+#[test]
+fn probe_adapter_worker_bad_version_is_infra_error() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_faults(vec![("SEMA_TEST_FAKE_VERSION".into(), "INVALID".into())], None);
+    let result = std::panic::catch_unwind(|| {
+        let report = run_fault_case(
+            "badver",
+            "fn main() int { return 1 }",
+            &format!(
+                "{QUERY_C}, expect: {{ completion: \"success\", probe: [ {{ cache: \"published\" }} ] }} "
+            ),
+        );
+        status_of(&report, "c")
+    });
+    clear_faults();
+    assert_eq!(result.expect("suite ran"), Status::Error);
 }

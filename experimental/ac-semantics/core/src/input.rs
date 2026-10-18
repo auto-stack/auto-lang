@@ -62,6 +62,12 @@ pub struct SemaInput {
     pub module: String,
     pub fns: Vec<InputFn>,
     pub records: Vec<InputRecord>,
+    /// Exact-source fingerprint at projection time (F-796-R4-05):
+    /// binds position-bearing facts to the source bytes they were
+    /// derived from. Semantic CONTENT keys stay span-free (position-only
+    /// edits still reuse the value); serving CURRENT positions requires
+    /// the fingerprint to match, else a projection refresh.
+    pub source_fp: String,
 }
 
 impl SemaInput {

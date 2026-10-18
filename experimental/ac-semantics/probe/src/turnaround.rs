@@ -224,6 +224,13 @@ pub fn measure_query(
             io_bytes += page_bytes(page);
             (None, true)
         }
+        // provenance-only drift: the library-level scenario measures
+        // the sub-stage; a full refresh runs through run_query_flow in
+        // the store/runner suites
+        FetchOutcome::HitStaleProvenance { page, reason, .. } => {
+            io_bytes += page_bytes(page);
+            (Some(reason.clone()), false)
+        }
         FetchOutcome::Stale { reason } => (Some(reason.clone()), false),
         FetchOutcome::Miss => (None, false),
     };

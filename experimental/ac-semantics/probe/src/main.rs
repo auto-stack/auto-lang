@@ -119,6 +119,10 @@ fn main() {
                         }
                     }
                 }
+                Ok(FetchOutcome::HitStaleProvenance { reason, .. }) => {
+                    // no compute path: content reusable, positions old
+                    println!("{{\"event\":\"hit-stale-provenance\",\"compute_called\":false,\"reason\":\"{reason}\"}}");
+                }
                 Ok(FetchOutcome::Stale { reason }) => {
                     println!("{{\"event\":\"stale\",\"reason\":\"{reason}\"}}");
                 }
