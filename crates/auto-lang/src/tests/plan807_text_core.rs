@@ -101,6 +101,39 @@ mod plan807_snapshot_port {
             .map(|s| s.to_string())
     }
 
+    /// F807-R2-01 根因修复：这两个用例是**进程默认槽的全局写者**
+    /// （set/clear/restore），而 `test_default_slot_lock` 只同步持锁的
+    /// 测试写者——普通真实宿主用例（如 plan703 经 VmBridge 的
+    /// if-absent 安装与 VM 构造期快照）是不持锁的 reader/写者，共享
+    /// libtest 进程下二者交错会把 FakeSnap（只认 `have`）或空槽快照进
+    /// 真实 VM，联跑确定性红（R2 实录：threads=8 首跑 13/2 + 三独立进程
+    /// 复现）。修复=把全局槽写者的**整个生命周期**隔离进子进程：重执行
+    /// 本测试二进制、`--exact` 只跑目标用例体，子进程独享全局槽（写完
+    /// 即进程退出），对同进程任何 reader 零共享窗口。实值 oracle 全部
+    /// 保留在用例体内，不删测试、不 sleep/retry、不依赖单线程调度。
+    fn run_slot_test_in_child_process(full_path: &str) {
+        use std::process::Command;
+        let exe = std::env::current_exe().expect("current test binary");
+        let out = Command::new(&exe)
+            .args(["--exact", "--ignored", "--test-threads=1", full_path])
+            .env("P807_SLOT_CHILD", "1")
+            .output()
+            .expect("spawn isolated child test process");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(
+            out.status.success(),
+            "isolated child {full_path} failed:\n{stdout}\n{stderr}"
+        );
+    }
+
+    /// 用例体守卫：仅当经父 wrapper 以 `P807_SLOT_CHILD` 驱动时执行；
+    /// 裸 `--ignored` 全量跑（无该变量）时空过——共享进程永不执行全局
+    /// 槽写者（防 bench 类显式 `--ignored` 调度把污染重新引入）。
+    fn slot_child_body_active() -> bool {
+        std::env::var("P807_SLOT_CHILD").is_ok()
+    }
+
     fn call_diff_snapshots(vm: &AutoVM, key_a: &str, key_b: &str) -> String {
         let mut task = AutoTask::new(0, 256, 0);
         // Args push left-to-right: key_a 先入栈，key_b 后入（shim 反序 pop）。
@@ -116,15 +149,25 @@ mod plan807_snapshot_port {
             .unwrap_or_default()
     }
 
-    /// 装配身份：构造式缺席/构造期快照隔离（显式 A/B 默认，不假设全局
-    /// 槽初态——F807-R1-01：普通运行入口的 if-absent 安装不取本测试隔离
-    /// 锁，共享进程的默认槽可能已被宿主装配占用，"空槽才成立"的断言在
-    /// 联跑下确定性失败）/实例覆盖只影响本 VM/Clone·merge 保留/注入不动
-    /// binding_revision（802 同款面，快照槽镜像）。
+    /// 装配身份（驱动面）：子进程执行 `…_actual`（全局槽写者进程隔离，
+    /// F807-R2-01；实值 oracle 全在用例体）。
     #[test]
     fn snapshot_port_assembly_identity() {
-        let _slot = crate::vm::host_capabilities::test_default_slot_lock();
-        let saved = crate::vm::host_capabilities::process_default_editor_snapshot_provider();
+        run_slot_test_in_child_process(
+            "tests::plan807_text_core::plan807_snapshot_port::snapshot_port_assembly_identity_actual",
+        );
+    }
+
+    /// 装配身份（用例体）：构造式缺席/构造期快照隔离（显式 A/B 默认，
+    /// 不假设全局槽初态——F807-R1-01）/实例覆盖只影响本 VM/Clone·merge
+    /// 保留/注入不动 binding_revision（802 同款面，快照槽镜像）。独占
+    /// 子进程——无需跨测试隔离锁/保存还原（进程退出即释放全局槽）。
+    #[test]
+    #[ignore = "child-process body — driven by snapshot_port_assembly_identity（全局槽写者进程隔离，F807-R2-01）"]
+    fn snapshot_port_assembly_identity_actual() {
+        if !slot_child_body_active() {
+            return;
+        }
 
         // 构造式缺席（构造式路径，不依赖全局槽时序）：跳过快照=无 provider。
         let bare = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 64);
@@ -186,24 +229,28 @@ mod plan807_snapshot_port {
             vm.editor_snapshot_provider().is_some(),
             "VM merge 保 provider"
         );
-
-        // 还原全局槽。
-        match saved {
-            Some(p) => {
-                crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(p)
-            }
-            None => crate::vm::host_capabilities::clear_process_default_editor_snapshot_provider(),
-        }
     }
 
-    /// 真实宿主先安装的永久控制（F807-R1-01 要求；F779-R2-01 优先关系
-    /// 镜像锚，plan802 同款纪律）：兼容 if-absent 安装**不覆盖**显式默认；
-    /// 空槽补缺装上的是真实 UI adapter（对未注册键诚实返回 None，不伪造
-    /// 快照——真宿主面控制，非 fake 冒充）。
+    /// 真实宿主先安装的永久控制（驱动面）：子进程执行 `…_actual`
+    /// （F807-R2-01 进程隔离）。
     #[test]
     fn compat_install_never_overrides_explicit_default() {
-        let _slot = crate::vm::host_capabilities::test_default_slot_lock();
-        let saved = crate::vm::host_capabilities::process_default_editor_snapshot_provider();
+        run_slot_test_in_child_process(
+            "tests::plan807_text_core::plan807_snapshot_port::compat_install_never_overrides_explicit_default_actual",
+        );
+    }
+
+    /// 真实宿主先安装的永久控制（用例体；F807-R1-01 要求，F779-R2-01
+    /// 优先关系镜像锚，plan802 同款纪律）：兼容 if-absent 安装**不覆盖**
+    /// 显式默认；空槽补缺装上的是真实 UI adapter（对未注册键诚实返回
+    /// None，不伪造快照——真宿主面控制，非 fake 冒充）。独占子进程——
+    /// 无需隔离锁/保存还原。
+    #[test]
+    #[ignore = "child-process body — driven by compat_install_never_overrides_explicit_default（全局槽写者进程隔离，F807-R2-01）"]
+    fn compat_install_never_overrides_explicit_default_actual() {
+        if !slot_child_body_active() {
+            return;
+        }
 
         // 显式默认先在位 → 兼容安装（真实 UI adapter if-absent）不覆盖。
         crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
@@ -227,14 +274,6 @@ mod plan807_snapshot_port {
             installed.unwrap().snapshot("p807-unregistered").is_none(),
             "真实 adapter 对未注册键诚实返回 None（真宿主面）"
         );
-
-        // 还原全局槽。
-        match saved {
-            Some(p) => {
-                crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(p)
-            }
-            None => crate::vm::host_capabilities::clear_process_default_editor_snapshot_provider(),
-        }
     }
 
     /// shim 语义（V-04）：在位 provider 双有效键 → hunk 净形；缺 key_b →
