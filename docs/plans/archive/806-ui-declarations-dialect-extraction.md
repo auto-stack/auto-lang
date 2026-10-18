@@ -157,6 +157,7 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 | 冻结门 | 裸 `cargo t` **5308/5308 exit0**（112.7s，RUSTC_WRAPPER="" 机内 sccache 端口冲突在案）+ `cargo tv` **163/163**（037462acb=差异前尖，复用论证见上）；ui_gen/trans 源未改不追加 tu/tt；777 strict pass 0 违规（终态基线 base_revision 绑定 rebase 后树） |
 | ledger_refreshed | `.autoos/specs.json` v46→v47 **guarded offline projection**（存储服务不可达；字节级备份 bak-v46-806；程序化增量恰 4 条：designs P806-D1 / tests P806-T / reviews P806-R4 / reports P806-M，均带 file+tags[plan:806, commit:c4158b89e, sha256:*]；diff 证明其余条目/顶层字段零扰动；读回校验通过） |
 | archived | docs/plans/archive/806-ui-declarations-dialect-extraction.md（git mv）+status: archived+T-08 勾结 **8/8**+本收据与 ledger 同笔提交入默认分支；attachments/806 全量（R1-R4 复审+792 driver 收据+t05-receipt 含 R2/R3 更正节）已随 delivery/簿记入库 |
+| cleaned | 双树 wt-guard clean→worktree remove（auto-lang+auto-down 兄弟）→branch codex/plan-806-dev 删除（was c4158b89e，删除前 git branch --contains 确认 master 已含）→组目录 .wt/lang-806 移除；终态 8/8 archived，merge pass |
 | 生产制品观察 | 本仓无守护进程/Web bundle 消费面；`auto` CLI 为按需 cargo 构建（R4 已在本提交独立重建验证 792 driver 25/25）；无运行中生产进程需重启 |
 | 批量回归判定 | 806%5=1 非整除触发；`docs/plans/.last-batch-regression.json` covered=805（timestamp 2026-10-17T05:19Z，约 25h 前 <48h；805 后合入的 788/801/806 均非 5 整除）——**不到期**，不触发 /auto-plan:regress |
 
