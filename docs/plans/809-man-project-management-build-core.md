@@ -1,0 +1,150 @@
+---
+plan_id: PLAN-809
+status: drafting
+feature_name: Man 项目、管理与构建规划核心整体解耦
+author: [Codex]
+created_at: 2026-10-18
+updated_at: 2026-10-18
+plan_revision: 1
+current_step: 0
+total_steps: 11
+supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/project-model/project.md]
+new_spec_components: [docs/specs/auto-man-core/project.md, docs/specs/project-model/design/generation-request.md]
+touched_goals: [GOAL-003]
+affects: [auto-man-core, auto-project-model, auto-man]
+depends_on: [PLAN-780, PLAN-786, PLAN-791, PLAN-795, PLAN-800, PLAN-803, PLAN-805]
+---
+
+# [PLAN-809] Man 项目、管理与构建规划核心整体解耦
+
+## 0. 变更摘要
+
+交付R05完整管理/构建规划模块，而非再抽几个工具函数：新建`auto-man-core`承接声明归一、Target依赖/链接闭包、源文件选择与构建规划纯规则；复用已有project-model/resolver/lock/toolchain/gen-core/assets。语言执行、Git/FS观测、转译与Builder实际执行在上层具名adapter，真实Pac/Automan路径委托新核心，原规则退役。
+
+同一Plan交付I-PROJECT轻项目/生成请求数据合同，供后续R04把Man内UI生成器搬出。I-PROJECT不单独编号，不让UI依赖Man大库。暂不执行本计划、不搬仓、不把整个auto-man宣布独立。
+
+## 1. 目标
+
+- 无完整语言/VM/UI依赖的管理核心能独立给出真实项目的依赖、目标、源/包含文件和构建动作规划；不止新DTO与演示consumer。
+- Pac/Target旧公开字段/方法和动态配置继续可用；管理规则单源，效果依赖从纯规则分离，三类真实Builder继续工作。
+- I-PROJECT带来源、显式后端/模式、资源与输出根及生成所需轻字段，未知/不支持数据不丢失、不假称可生成；保留静态/动态求值分流。
+- 不迁UI生成器/资产（R04）、不做统一工具执行协议/薄CLI（R06）、不更改pac格式或顺手修模板发布事务/编译器store遗留问题。
+
+## 2. 架构方案
+
+依赖方向为`auto-man(adapter/旧门面) → auto-man-core(管理规则) → 现有轻数据/规则包`。`auto-project-model`增具名generation-request模块承接I-PROJECT；与其现有静态扫描器分开，输入可以是静态已准入描述或动态配置求值后的显式投影，不强制所有工程先过静态扫描器。
+
+**不整体搬Pac/Target后再在旧crate写inherent impl**（Rust不允许）；默认保留语言/Builder相关旧门面，核心以借用view/具名输入和动作结果驱动单份规则。需要迁的纯数据采用唯一类型重导出；无法迁的旧字段通过适配view直接借用或一次调用期快照/结果apply，不维护两个长期可变project/target状态。T-01以编译探针冻结字段/方法兼容方案、动作边界与所有者，之后才能批量迁移。
+
+## 3. 技术栈
+
+Rust，复用auto-val/auto-atom、auto-project-model、auto-package-resolver、auto-package-lock、auto-toolchain-core等现有规则；按实际需要选择最小依赖，不为“通用core”收入Parser/AutoConfig/AutoVM/Builder/IndexStore/renderer。泛型view/trait用于真实规则输入，不建立无实际消费者的抽象框架。
+
+## 4. 需求分析与背景调查
+
+授权：用户要求按较大模块粒度建立下一批计划，可并行且最终几个干净仓；本轮只起草auto-lang仓内计划。相邻旧仓已保全，真正承接/默认分支切换仍在R08/R09；未授权本会话写远端。来源：[总路线](reports/v06-extraction-execution-roadmap.md)、[并行合同](reports/module-migration-batch-807-809.md)、[hash清单](attachments/module-batch-20261018/inputs.json)。
+
+权威输入：[Man](../specs/auto-man/project.md)、[project-model](../specs/project-model/project.md)、[包锁](../specs/package-lock/project.md)、[resolver](../specs/package-resolver/project.md)、[工具链](../specs/auto-toolchain-core/project.md)。关键实际写面：`auto-man/src/{pac,target,dir,group,port,builder,automan}.rs`、`project_model_adapter.rs`、builder子目录、`auto-project-model/src/descriptor.rs`。
+
+现状不是纯DTO搬家：Pac持AutoConfig派生字段、BackendConfig/ThemeDecl、Box<dyn Builder>和Index；Target持声明/已扫描srcs/links/deps又带语言转译/FS方法。Pac::resolve下载后构建依赖闭包，再scan；旧while无进展时会死循环。HashMap遍历不能擅自作为稳定全序承诺；missing link可能是系统/外部链接，不可一律报错。Builder三个实现当前直接消费Pac/Target；核心不能留假入口、生产继续旧算法。
+
+project-model只有冻结静态子集，786只切展示三字段且有64/65保守路由护栏；未知raw/unsupported必须保留，不能把它扩为完整VM替身。795已用零DTO往返view保锁规则单源；800/805已有resolver/工具链核心，不再复制。799/801不构成新前置，806/807/808亦非前置；前列depends_on均须work核实已交付。
+
+## 5. 详细设计
+
+### 5.1 I-PROJECT数据交接
+
+在现有`auto-project-model`新增具名模块（建议`generation_request.rs`，T-01冻结API）及独立consumer。一次请求承载来源/工程根、实际输入源清单、选定后端与运行/生成模式、输出根、资源声明和生成所需轻展示/开关/主题原始声明等；具体字段由**真实UI生成器读取点穷举**决定，不能只凭想象列最小字段导致搬迁再反向抓Pac。
+
+复用现有SourceInfo/Render等身份；BackendConfig/ThemeDecl等语言-owned类型不进入轻包。若需无损主题/扩展属性，用已有auto-val结构值/具名声明表达，保来源/未知项；不把Token/AST塞进去也不靠Any/serde任意blob逃避合同。输入来源可追溯“静态准入/动态求值结果”，请求不能将静态unsupported当已求值。路径按pac/source根解释而非cwd；env/locale/CLI覆盖在明确adapter顺序生效。纯数据消费不执行网络/建目录/编译。
+
+R04只在本Plan**review+merge整体交付后**消费I-PROJECT，本合同不安排中途phase merge，不让后续依赖WIP；接口报告/样例可提前只读交接。实际UI生成器暂留Man，但其项目读取必须先经该请求/访问合同，以证明字段完整；生成算法/全量资源迁移仍归R04。
+
+### 5.2 核心管理规则与效果adapter
+
+| 核心（本Plan必须单源且生产使用） | 上层adapter（具名且不伪报已搬） |
+|---|---|
+| Target/Pac声明纯字段归一、场景/端口/后端选择及数据投影 | AutoConfig执行型求值、BackendConfig/ThemeDecl转换、交互选择和locale/env |
+| target/direct/transitive links、dep_names/all_links合成、已有resolver/lock对接与构建目标选择 | Index/Git/网络/磁盘状态观测与物化、旧Target门面结果apply |
+| Dir递归/筛选/源包含选择规则、group与纯输出数据规划 | 文件枚举/metadata/真实文件写入，避免core内隐式cwd/env |
+| Builder所需目标、编译/链接输入、依赖约束、工具链规则及动作规划 | Ninja/Cargo/Vue命令执行、转译/缓存/API生成、日志/进程/返回码 |
+
+不是把“全部效果”再藏成一个`Fn(&mut Pac)`接口：每类观测/动作有typed输入输出、失败阶段和真实消费证据。旧Builder可留签名门面，通过view接收核心计划后执行，核心不能反向持Builder。纯Node/Value转换同样单源，语言Atom结果封装留上层。
+
+### 5.3 兼容、异常与资源边界
+
+- 正常图规则、声明覆盖、外部link、排序/去重及格式按旧臂和Spec冻结；对原无序结果以集合/偏序及实际文件文本分别验，不伪造字节稳定排序承诺。所有三Builder已有支持面不能只选Ninja就宣称整体完成。
+- **有界图准入**：合法DAG无回归；可证明的内部target cycle或无进展闭包返回具名、带target路径的规划错误，不沿旧while挂死，不把外部链接名判为missing dependency。此为迁入管理核心明确新增的失败合同，不要求旧臂产生同错误；用手算小图/独立oracle验证。资源不足和非法图分开记录，不凭迁移新设静态语法限制。
+- 动态pac/port/am.at继续显式语言adapter；复用786保守护栏而不扩张静态等价域。字段读写后重新view/规划时可见新值，不能遗留双状态。必要公开签名pin和结构体构造consumer证明兼容；若无法保持，T-01先提出具体重规划，不偷偷用Deref新类型破坏字段构造。
+- Git/FS/外部进程仍用现有facility，不新建一个平行runner。迁移前后读写/下载/scan/构建顺序、锁格式、失败/输出可见性冻结；不把803先建后求值失败窗口偷偷修成“原子事务”。测试使用隔离temp和本地fixture，禁止worktree内创建junction/symlink。
+
+### 5.4 实际生产闭环与发行
+
+至少证明Pac::new/resolve→Target scan/links→build_targets→真实Ninja/Cargo/Vue Builder在本Plan核心规划上工作；Automan原调用不绕回第二套规则。无需为测试执行远端包下载，可用本地受控Git/索引/小项目，并对既有CLI入口记录受影响命令/产物/exit。UI生成请求通过真实现有生成器输出对照，R06再接工具进程协议。
+
+新增core和扩展project-model的normal/build/dev闭包无auto-lang/UI/auto-man/auto-gen完整执行栈；独立manifest的fresh/locked消费、777合法域边、792新增受管source及受影响资源清单随迁移维护。不能把新核心的纯边等同整个CLI已轻量化。
+
+### 规范增量
+
+| delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
+|---|---|---|---|---|---|
+| SD-01 | add | docs/specs/auto-man-core/project.md | 规则散在Pac/Target/Dir/Builder→单份管理/图/扫描选择/构建规划、效果边及图错误合同 | 独立核心 | AC-01..04 |
+| SD-02 | add | docs/specs/project-model/design/generation-request.md | 无通用生成输入→I-PROJECT字段/来源/覆盖顺序/未知与动态准入/无副作用 | UI工具脱Man前置 | AC-02 |
+| SD-03 | modify | docs/specs/project-model/project.md | 静态pilot不变；新增独立请求数据消费，不扩大静态语法或786护栏 | 避免假等价 | AC-02,03 |
+| SD-04 | modify | docs/specs/auto-man/project.md | 记录实际core委托/旧公开门面/adapter和仍未迁UI/CLI/发行职责 | 不虚报全Man独立 | AC-01..04 |
+
+## 6. 测试设计
+
+T-01基于实际工程/生成器读点冻结旧臂oracle；T-06建新`crates/auto-man/tests/plan809_management_core.rs`、`test/fixtures/modularity/man-core-consumer/`与`project-request-consumer/`。以下V项owner_stage=work，尚未实施；不会把未来命令描述成已执行证据。
+
+| Case | AC / invariant | 输入与生产入口 | 可区分oracle／边界 |
+|---|---|---|---|
+| V-01 | AC-01 真实核心/公开兼容 | 旧Pac/Target公开字段构造/方法consumer，Pac::resolve→build_targets，独立man-core consumer | 同一规则生成的links/dep_names/targets/源输入与冻结旧臂一致；静态调用图+删旧算法审计，不只mock计数 |
+| V-02 | AC-02 请求完整/无副作用 | 真实Vue/Rust/Jet/Ark等现有生成器读点，含window/theme/shadcn/default_classes、资源/输出、external backend；动态pac与未知属性 | 新请求生产接线后同输入产物对照；无路径回抓Pac/AutoConfig；不同cwd路径仍按source根；请求构造无写入/网络。具体支持面T-01穷举，不凭示例四个后端替代全集 |
+| V-03 | AC-03 静态/动态正确 | 780冻结语料/786相关64与65/unsupported/unknown/port覆盖、动态表达式与执行型am.at | 原准入/回退/错误stage保持；raw不丢失，静态不支持未误报已求值；不要求核心执行语言 |
+| V-04 | AC-03 图及可变状态 | diamond/重复link/断开图/外部link、内部自环和双环、无进展；门面变更字段后二次plan | 合法图按独立手算/偏序oracle；内部环有具名有界错误、外部系统link仍允许；变更可见不读旧缓存；错误不开始后续构建 |
+| V-05 | AC-04 三Builder/效果顺序 | 真实Ninja/Cargo/Vue最小项目，含local dep/port/scan选择；工具失败/不可写输出/缺依赖、动态转译路径 | 命令/输入/产物与旧臂，编译运行或等价可消费产物；失败阶段/exit及副作用顺序不漂移；使用受控本地输入但不以fake runner替代全部真工具链 |
+| V-06 | AC-04 复用/发行 | pac.lock既有golden、resolver/toolchain调用、独立fresh/locked、777 strict和792受影响profile | 锁字节/验证不漂移，规则没有第二份；core闭包无语言/renderer/Man，缺源包或反向边负控失败 |
+
+work：`cargo check -p auto-man-core -p auto-project-model -p auto-man`、`cargo test -p auto-man-core`、`cargo test -p auto-project-model`、`cargo test -p auto-man --test plan809_management_core`、两个新增consumer独立manifest测试。已有包锁/resolver/toolchain及Builder相关定向回归按触面选择。实际CLI/生成命令与本地fixture由T-01冻结、T-06实现可复跑driver，不臆造不存在的CLI flags。777用`python scripts/modularity-audit.py --mode strict --no-cargo-check`；所有构建/测试在唯一计划树，环境不足明确pending。
+
+review独立上下文同树检查生产委托、双状态、全部Builder/生成读取面、SD及失败控制；用户未指定agent/model，不创建其他会话。merge在最终冻结提交跑裸`cargo t`及core/project-model/auto-man必要包测试；实际改UI生成代码则`cargo tu`、trans则`cargo tt`、VM编译器则`cargo tv`，按最终diff触面决定，不提前整档。tf为主检出到期批量。本文档起草Category A不跑Cargo/docs_gen。
+
+## 7. 验收标准
+
+| ID | owner_stage | 可观察验收与证据 |
+|---|---|---|
+| AC-01 | work | core拥有并被实际生产消费的完整管理/构建规划规则；旧公开门面可消费、无第二长期可变状态/第二算法；V-01 |
+| AC-02 | work | I-PROJECT无语言/Man/UI大库、真实生成器项目读取改轻合同，所有实际需要字段有来源/覆盖/未知处理及无副作用证据；V-02；交付后才供R04消费 |
+| AC-03 | work | 静态/动态准入与786护栏保持，合法图/外部link不回归，内部环/无进展受控且门面字段变更即时可见；V-03/04 |
+| AC-04 | work | 三Builder/受影响CLI与效果失败实测、锁/solver/toolchain复用、独立fresh/locked及777/792完整；V-05/06；环境缺失为pending |
+| AC-05 | review | 同树独立审查绑定最终修订并核对AC/SD/遗漏，零新增未处理warning/格式/debug问题，merge门pending明确 |
+| AC-06 | merge | 冻结门、规范/ledger/归档/接口发布交接及wt-guard clean后清理都有实际收据，R04取得已合入I-PROJECT版本 |
+
+## 8. 执行步骤
+
+共11项，五阶段：合同冻结→请求/核心实现→生产委托→完整模块验收→独立审查合流。不为每个数据模型/工具函数另取号。
+
+| 状态 | ID | owner_stage | 依赖 | 文件/动作、可验证交付与命令 | AC |
+|---|---|---|---|---|---|
+| [ ] | T-01 | work | depends_on均已交付 | 新`attachments/809/contract-baseline.md`：穷举Pac/Target/Dir/Port/Builder/生成器读点，规则/效果归属、API兼容编译probe、I-PROJECT字段/覆盖及无双状态方案、图错误与旧oracle、真实工具命令矩阵； unresolved先阻塞依赖任务 | AC-01..04 |
+| [ ] | T-02 | work | T-01 | `auto-project-model`新增具名generation_request模块/轻consumer，静态和动态已求值输入投影，unknown/source/root；project-model定向V-02/03 | AC-02,03 |
+| [ ] | T-03 | work | T-02 | 新`auto-man-core`数据/view及Pac/Target纯声明/选择/投影规则，旧门面兼容；core test/check与V-01签名构造pin | AC-01 |
+| [ ] | T-04 | work | T-03 | 依赖/链接闭包/target选择及复用resolver/lock，明确内部环无进展错误；删Pac旧算法，V-03/04 | AC-01,03 |
+| [ ] | T-05 | work | T-04 | Dir/Group/Port纯规则与source/compile/link构建规划迁core，FS/语言/执行留具名adapter；真实Builder三族消费计划，check+V-05定向 | AC-01,04 |
+| [ ] | T-06 | work | T-05 | Pac/Automan默认生产委托，现有UI生成器项目读取接I-PROJECT而非搬算法；建plan809及两consumer/真实工具driver，完整V-01..06，旧读取/规则副本清理 | AC-01..04 |
+| [ ] | T-07 | work | T-06 | 777规则/基线与792 source/resource并集、受影响fresh/locked；重复实现/双状态审计、受影响CLI/失败清理/动态路径复测 | AC-03,04 |
+| [ ] | T-08 | work | T-07 | SD草案+`attachments/809/handoff.md`、I-PROJECT接口示例/版本/字段读取映射及剩余UI/CLI adapter归属；绑定代码/命令/净迁移证据，提交送审 | AC-01..04 |
+| [ ] | T-09 | review | T-08 | 同树独立AC/SD/全部生产规则与支持矩阵审查；不能用静态pilot当全部工程；merge门显式pending | AC-05 |
+| [ ] | T-10 | merge | T-09 pass | 并集master，实际变更复审，最终冻结提交按§6运行门；失败归因后修复/复审/重冻 | AC-06 |
+| [ ] | T-11 | merge | T-10 | 规范/ledger沉淀、归档、I-PROJECT已合入SHA交接，guard clean后树/分支清理及最终计数 | AC-06 |
+
+handoff：`D:/autostack/.wt/lang-809/auto-lang`，分支`codex/plan-809-dev`；work确认实际base与兄弟依赖，同树用于后续review/merge。与807/808仅manifest/777/792接线短窗口；与未来R04对Pac/生成器项目读取有实际共享面，R04须等本合同接口合入再接，不准并改同段。
+
+## 9. 复审记录
+
+2026-10-18 revision 1 drafting；当前仅合同及预检，未实施/测试或review pass。内部target环受控拒绝是本Plan明示新增合同，正常迁移语义仍冻结；Spec delta须随最终实现接受审查，不能提前写为已交付。
+
+## 10. 待澄清事项
+
+当前没有需用户先答的阻塞项。T-01有界验证public字段/方法兼容、I-PROJECT字段全集和效果拆缝。若核心规则无法在不破坏旧公开面/支持后端的条件下抽取、需改工程格式或扩大到相邻仓，必须提出具体重规划；不能退化为只做DTO或把全体实现再包进opaque callback。三Builder实际工具环境不足时保留pending，独立模块完整交付不以缺环境跳过。
