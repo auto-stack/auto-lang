@@ -1,7 +1,7 @@
 # PLAN-809 work→review 交接（handoff）
 
 - worktree: `D:/autostack/.wt/lang-809/auto-lang`，branch `codex/plan-809-dev`
-- base: master `2046a025b`；代码提交链：dd4991a7b(T-02)→bc11055ac(T-03)→5c9eb4fdb(T-04)→322aa88d1(T-05)→8ee334f90(T-06a/b)→a4b4a0168(T-06c)→(T-06d/777)
+- base: master `2046a025b`；代码提交链：dd4991a7b(T-02)→bc11055ac(T-03)→5c9eb4fdb(T-04)→322aa88d1(T-05)→8ee334f90(T-06a/b)→a4b4a0168(T-06c)→aa1d40e1d(T-06d/777)→**c41a4fe4c(R1-F01..F03)→3b733aa5d(R1-F04)**
 - 兄弟依赖：`D:/autostack/.wt/lang-809/auto-down`（detached @ master c39ac7f，只读）
 
 ## 已交付（work-owned）
@@ -15,13 +15,19 @@
 - V-05 证据半：v05_ninja_builder_memory_consumes_core_plan（Pac::new→set_port→resolve→真实 NinjaBuilder 内存模式消费 core 规划）+ 工具可用性探针
 - 777：auto-man-core 登记 man-ecosystem 域；两 consumer fixture（project-request/man-core）+verify-deps.sh
 
-## 显式 pending / 范围记录（review 须核对）
+## R1 Findings 闭合（2026-10-18 修复轮，c41a4fe4c+3b733aa5d）
 
-1. **V-05 真实工具执行**：ninja/cargo/npm spawn 的完整受控 fixture driver 未落（时间预算）；内存模式证据+探针已入。环境不足为 pending（AC-04 允许），merge 前建议补 cargo 族真跑（cargo 必备）。
-2. **run 路径再生成**：run_vue/run_jet 等入口的内部再生成仍走 legacy 自扫（gen 路径已全切请求）；R04 迁生成器时统一退役。
-3. **跨文件读取留 adapter**：dep 自身 pac.at 的 npm_deps 合并（vue）、sidecar spec 装载（load_sidecar）、api_gen 的 auto_lang resolve_back_dir——单工程合同外，记录归 R04。
-4. **777 基线再生成**：module-boundaries.toml 已加 auto-man-core 条目；`--mode strict` 基线 json 重跑归 T-07 收尾/merge 前（与 792 source 清单并集）。
-5. plan734_commands_fixture 测试目标在 master 同坏（预存，非本计划）。
+| finding → 不变量 → 受影响面 → 修复与永久用例 → 结果 → 余缺 |
+|---|
+| F809-R1-01 → V-05 断言须有区分力+真实工具/失败面证据 → plan809 V-05 测试 → v05_memory_and_cargo_real_serialized（真实 cargo spawn+Cargo.toml 断言+内存 build.ninja 含 main.c/rule/link+空工程负控+cargo 无 rust 目标 setup Err+索引缺依赖 resolve Err；cwd 切换串行化注记）+ v05_vue_real_build_and_failure（真实 npm run build 离线 node 脚本产物标记+exit 3 Err 传播）→ 7/7 过 → ninja 真实 spawn **失败传播**已实测（D:\softin
+inja.exe exit 1，编译器缺失环境）；成功产物路径以内存模式覆盖，编译器就绪环境的 ninja 成功跑留环境注记 |
+| F809-R1-02 → 生产生成读取全量经合同（无批准延期）→ automan run/run_backend/build_backend/run_workspace/run_member_frontend/open_jet/open_ark + main.rs → 全部 `*_with_request`（rust_ui build/run、vue/jet/ark/tauri run、Automan::gen_request()/成员 request_of）→ automan.rs+main.rs legacy 分派 grep=0；scoped 16+3 过 → dep pac.at 合并/sidecar spec/resolve_back_dir 三处跨文件读取已逐项映射到合同边界（SD-02 边界节具名，R04 收编——非笼统豁免） |
+| F809-R1-03 → 规划纯规则单源（一个消费者不构成留在旧层的理由）→ ninja build 迭代+download_deps 决策段 → core BuildOrderItem+ordered_build_renames（adapter 句柄回查执行）+ dep_fetch_action/pinned_version/admit_new_dep_libs（观测注入）/admit_transitive_deps，download_deps 消费 → core 45/45（含 ordered/download_decisions oracle）→ 无 |
+| F809-R1-04 → work-owned 收口证据 → 777/792/SD/接口 → 基线显式重采样（c41a4fe4c，+5 边）strict **pass** violations=0 grandfathered=2（收据 t07-777-strict-pass.json）；792 受影响面=rust_ui delivery 管线，delivery 9/9 隔离复验；SD-01..04 as-built 文本入 work 树 docs/specs/ → 无 |
+
+### I-PROJECT 字段读取映射（接口交接，R04 消费面）
+
+请求字段 → 生成器读取点：identity.name→jet/ark/rust_ui(423,641)/vue(display)；display.title[_zh]→vue(index_title)/rust_ui(title_env 2666)；runtime.window→rust_ui(window_env 2665)；exe_name→rust_ui(pac_bin_block 4420)；runtime.api→rust_ui(api 门 6344)；external_backend→rust_ui(6217)；theme_decl→vue(composed)/rust_ui(apply_theme)；dep_roots→rust_ui(resolve_bps 2874)/vue(collect_dep_front_dirs 输入)；shadcn/default_classes→vue(3323/3329)；npm_deps/styles/i18n→vue(3927/4022)；front_decl→vue(front_rel_path)；has_rust_sidecar→rust_ui(563 门外)。run 侧 env 种植（main.rs AUTO_* 14+）不经请求——R04 统一。
 
 ## 复验命令（work 树）
 
