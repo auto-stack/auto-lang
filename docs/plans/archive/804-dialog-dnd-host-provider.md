@@ -207,7 +207,7 @@ work仅定向provider/装配/OS反控、`cargo check -p auto-lang`、新consumer
 | landed | master `963f8553c` → `9ebaf6a54` `--ff-only`（无 merge commit）；主检出集成 smoke `cargo check -p auto-lang` exit0（30.5s）；主检出仅余他计划簿记脏面（未触碰） |
 | ledger_refreshed | `.autoos/specs.json` v45→v46 **guarded offline projection**（无 store writer 可达——9247 为 MCP 非 store；备份 `bak-v45-804`；+4 条目 `P804-D1`（designs，file=新 design 文件）/`P804-T`（tests）/`P804-R4`（reviews，reviewed_commit:1ca36a674）/`P804-M`（reports）；守卫：六节 id 集合不变、既有条目逐条等价、version 恰+1、读回验证） |
 | archived | 本提交：`git mv docs/plans/804-dialog-dnd-host-provider.md docs/plans/archive/` + status: archived + current_step 8/8 + review-r1..r4 与 merge 附件（777 三收据/792 收据与日志）一并入库 |
-| cleaned | 待清理后回填 |
+| cleaned | 双 worktree 移除前各自 fresh `wt-guard.sh` clean + worktree clean（auto-lang 9ebaf6a54=delivery tip 已入 master；auto-down 兄弟 detached@c39ac7f 只读未改）；`git worktree remove` ×2（auto-down 经其主检出）+ `git branch -d plan-804-dev`（was 9ebaf6a54）+ p804v/scratch-consumer 调试与 792 scratch 清除 + 组目录 lang-804 rmdir——`.wt/` 下零 804 残留。部署工件：本仓为库仓无自有产物（评估在收据）；tf 不到期（covered=805/2026-10-17，804%5=4） |
 
 **merge 门禁明细**（绑定 397369eaa/1edb3aa40——与终 tip 9ebaf6a54 的差仅为基线 JSON 与 master docs 线，代码逐字节同；复用依据=输入不变显式声明）：
 
