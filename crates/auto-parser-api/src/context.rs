@@ -61,6 +61,20 @@ pub trait ParseContext {
     /// 跳过空行（含注释性空行），返回跳过行数。进入块体解析循环时的标准动作。
     fn skip_empty_lines(&mut self) -> usize;
 
+    /// **原始单 token 前瞻（零副作用）**：返回当前 token 之后的下一个
+    /// **原始** token 的 `TokenKind`——不跳过注释 token、不收集 pending
+    /// doc comments、不记录词法错误、游标不动。该 token 原样归还流中，
+    /// 随后的 [`ParseContext::advance`] / [`ParseContext::expect`] 重新
+    /// 读到同一 token 并正常执行其全部副作用（注释跳过 / docs 收集 /
+    /// 错误记录）。词法失败返回 `None`（同样零副作用——不记录该错误）。
+    ///
+    /// Core 含义（PLAN-806 具名通用能力，F806-R2-01 修复引入）：等价于
+    /// "读下一个原始 token 并立即回推"的投机判定面，供文法在消费前做
+    /// 一次性探测（如 msg named payload 的 `Ident :` 判定）。实现方必须
+    /// 保证：幂等可重入（连续调用结果一致）、与随后首次 `advance` 实际
+    /// 消费的 token 一致、不产生任何诊断或状态副作用。
+    fn peek_next_kind(&mut self) -> Option<TokenKind>;
+
     // ---- checkpoint（投机解析 / None 回滚） ----
 
     /// 快照当前游标（lexer 状态 + cur/prev token）与语句级上下文旗标，

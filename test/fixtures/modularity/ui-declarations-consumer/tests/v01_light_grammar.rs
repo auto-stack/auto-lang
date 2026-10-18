@@ -56,10 +56,7 @@ fn msg_quoted_multi_payload_named_and_positional() {
     assert_eq!(named.payload_names, vec![Some("value".to_string())]);
 
     let mixed = &d.variants[4];
-    assert_eq!(
-        mixed.payload_names,
-        vec![None, Some("total".to_string())]
-    );
+    assert_eq!(mixed.payload_names, vec![None, Some("total".to_string())]);
 }
 
 /// 命名 payload 探测的 lookahead 回推：`Set(str)` 位置形态后紧跟的
@@ -85,12 +82,14 @@ fn msg_bad_payload_errors() {
 /// init=Nil；未注解字段 flags 清零。
 #[test]
 fn model_builtin_annotations_and_flags() {
-    let m = model(r#"model {
+    let m = model(
+        r#"model {
         #[primary] title str = "x"
         #[Consume("pathStack")] pathStack str
         #[Provide("k")] #[NavParam("r")] dual int = 1
         var count int = 0
-    }"#)
+    }"#,
+    )
     .unwrap();
     assert_eq!(m.fields.len(), 4);
 
@@ -132,7 +131,10 @@ fn model_unknown_annotation_error_text() {
         "Unknown model field annotation 'Bad'. Valid: #[primary], #[Consume(\"key\")], #[Provide(\"key\")], #[NavParam(\"routeName\")]"
     ));
     // 诊断经 syntax_error 出口（消费方观察口可见）。
-    assert!(ctx.errors().iter().any(|e| e.contains("Unknown model field annotation 'Bad'")));
+    assert!(ctx
+        .errors()
+        .iter()
+        .any(|e| e.contains("Unknown model field annotation 'Bad'")));
 }
 
 /// 默认/子集策略差异（单份字段算法的两个合同面）：
@@ -161,6 +163,23 @@ fn model_subset_bare_field_and_not_claimed() {
     assert!(subset("model {\n    \"name\" str\n}").is_err());
     // 内建默认入口同输入是完整解析（注解归内建）——两策略共用单份算法。
     assert!(model("model {\n    #[primary] x int = 1\n}").is_ok());
+}
+
+/// 端口原语 `peek_next_kind` 语义（F806-R2-01 修复的 Core 面）：幂等、
+/// 游标不动——消费方实现同样必须零副作用。
+#[test]
+fn port_peek_next_kind_semantics_light() {
+    use auto_parser_api::context::ParseContext;
+    let mut ctx = ToyContext::new("value : str");
+    assert_eq!(
+        ctx.peek_next_kind(),
+        Some(auto_parser_api::token::TokenKind::Colon)
+    );
+    assert_eq!(
+        ctx.peek_next_kind(),
+        Some(auto_parser_api::token::TokenKind::Colon)
+    );
+    assert_eq!(ctx.cur_text(), "value", "cursor must not move");
 }
 
 /// 轻会话面在无 auto-lang 闭包内可用（V01 素材）。

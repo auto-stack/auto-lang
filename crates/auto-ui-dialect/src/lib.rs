@@ -25,9 +25,9 @@
 //!
 //! 行为冻结要点（迁出时未收紧/未扩展）：
 //! - msg：旧 `msg Name {` 名字读弃（Plan 448 A）；quoted variant 合同名；
-//!   多 payload（Plan 043 M5 #1）；named payload 以 checkpoint+advance/
-//!   restore 等价旧 lexer 单 token 回推（Plan 435 挂账②；端口不允许
-//!   直读 lexer，等价性论证与微残差登记见 PLAN-806 T-01 D2）；
+//!   多 payload（Plan 043 M5 #1）；named payload 经端口零副作用原语
+//!   `peek_next_kind` 做原始单 token 前瞻（Plan 435 挂账②；与旧
+//!   lexer 单 token 回推逐字同构——F806-R2-01 修复后的冻结形态）；
 //! - model：`#[primary]`/`#[Consume]`/`#[Provide]`/`#[NavParam]` 注解
 //!   （Plan 119/05-Nav），未知注解错误文本与 span 逐字保持；`var`
 //!   可变旗标（Plan 130）；空行/逗号宽容；

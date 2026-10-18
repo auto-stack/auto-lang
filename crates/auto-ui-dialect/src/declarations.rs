@@ -10,7 +10,9 @@
 //!   `self.expect(k)` → `ctx.expect(k)`（桥面→`Parser::expect` 同实现）；
 //! - `self.cur.text` → `ctx.cur_text()`（owned String，`.into()` 回 Name）；
 //! - named-payload lookahead `lexer.next()`+`push_token` 单 token 回推 →
-//!   `checkpoint`+`advance`+（非 Colon 时）`restore`；
+//!   原始单 token 前瞻 `peek_next_kind`（零副作用原语；F806-R2-01 修复：
+//!   checkpoint+advance/restore 形态曾引入注释跳过/docs 收集/词法错误
+//!   记录的副作用扩散与文法扩大，已废弃）；
 //! - `parse_type`/`parse_expr` → 端口委托核心文法（不复制）；
 //! - 未知注解 `SyntaxError::Generic{.., pos_to_span(self.cur.pos)}` →
 //!   `ctx.syntax_error(msg)`（桥面实现逐字同构）。
@@ -76,23 +78,23 @@ pub fn parse_msg_decl(ctx: &mut dyn ParseContext) -> AutoResult<MsgDecl> {
         // (was single-type only). Empty vec = unit variant.
         // Plan 435 挂账②:support named params `Change(value: str)` —
         // gallery 官方组件在用;名字记入 payload_names(位置形态为 None)。
-        // lookahead 以 checkpoint+advance/restore 等价旧 lexer 单 token
-        // 回推(端口不直读 lexer;等价论证见 PLAN-806 T-01 D2)。
+        // lookahead 用原始单 token 前瞻 peek_next_kind（F806-R2-01 修复：
+        // 零副作用——不跳注释/不收 docs/不记词法错误/游标不动，与旧
+        // lexer.next()+push_token 逐字同构；Colon 命中后 advance 消费的
+        // 正是被回推的同一 token）。
         let mut payload = vec![];
         let mut payload_names = vec![];
         if ctx.is_kind(TokenKind::LParen) {
             ctx.advance();
             loop {
                 let name = if ctx.is_kind(TokenKind::Ident) || ctx.is_kind(TokenKind::Str) {
-                    let cp = ctx.checkpoint();
-                    let candidate = ctx.cur_text();
-                    ctx.advance(); // cur = 下一个真实 token
-                    if ctx.is_kind(TokenKind::Colon) {
+                    if ctx.peek_next_kind() == Some(TokenKind::Colon) {
+                        let candidate = ctx.cur_text();
+                        ctx.advance(); // cur = 回推的 Colon
                         ctx.expect(TokenKind::Colon)?;
                         Some(candidate)
                     } else {
-                        ctx.restore(cp)?; // token 原样归还(位置形态)
-                        None
+                        None // 位置形态,token 原样在流中
                     }
                 } else {
                     None

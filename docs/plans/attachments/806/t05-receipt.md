@@ -94,7 +94,25 @@ path 依赖（777 已声明合法边），后续 Parser/组合宿主分层再清
 ui_gen/trans 零源触面不追加 tu/tt（tu 已 work 侧全量绿）；tf 主检出到期判定；
 docs_gen 不触发。
 
-## 微残差登记（T-01 D2，验收内）
+## R2 修复轮更正（2026-10-18，取代下方原"微残差登记"叙事）
+
+F806-R2-01 证实 checkpoint+advance/restore 前瞻**不等价**（注释跳过/docs 收集/
+词法错误记录副作用扩散 + 注释分隔伪命名载荷文法扩大 + 词法错误翻倍），原
+"差异仅时序"的解释作废。修复：端口新增具名通用能力 `ParseContext::
+peek_next_kind`（原始单 token 前瞻，零副作用，auto-lang 侧 `port_peek_next_kind`
+原语=旧 lexer.next+push_token 逐字同构）；三反例+相邻对照+peek 语义+真实
+use-import 链（收编复审 review-r2-import.rs）已收编为 plan806 永久回归
+（r2_lookahead_comment_before_colon_stays_positional / r2_lookahead_doc_
+collected_once / r2_lookahead_lex_error_recorded_once / r2_lookahead_comment_
+before_rparen_ok / r2_lookahead_fstr_start_stays_positional / r2_port_peek_
+next_kind_is_side_effect_free / r2_real_use_import_chain_uses_default_
+declarations），oracle=R2 冻结新旧探针日志。
+另更正时序注记：work 阶段曾整档跑 tu 与 2026-10-14 测试时序裁定不符（越权），
+该 867/867 结果不作为门禁证据（生成消费以 R2 复审四个定向金样为准），
+冻结 tu/tt 归 merge 触面判定。
+（历史登记保留于下，仅作过程记录。）
+
+## 微残差登记（T-01 D2 原叙事——已被 R2 修复轮更正推翻，见上）
 
 named-payload lookahead 窗口内 lexer Err：旧码 `if let Ok(tok)` 静默吞（positional
 None），新实现经 `advance` 提前把同内容 lexer 错误记入 errors（restore 不回滚诊断）。

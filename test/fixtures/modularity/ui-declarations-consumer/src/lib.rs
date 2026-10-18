@@ -43,14 +43,23 @@ impl ToyContext {
                 Err(_) => {
                     tokens.push(Token {
                         kind: TokenKind::EOF,
-                        pos: Pos { line: 0, at: 0, pos: 0, len: 0 },
+                        pos: Pos {
+                            line: 0,
+                            at: 0,
+                            pos: 0,
+                            len: 0,
+                        },
                         text: "".into(),
                     });
                     break;
                 }
             }
         }
-        Self { tokens, idx: 0, errors: std::cell::RefCell::new(Vec::new()) }
+        Self {
+            tokens,
+            idx: 0,
+            errors: std::cell::RefCell::new(Vec::new()),
+        }
     }
 
     fn cur(&self) -> &Token {
@@ -115,6 +124,11 @@ impl ParseContext for ToyContext {
             n += 1;
         }
         n
+    }
+
+    fn peek_next_kind(&mut self) -> Option<TokenKind> {
+        // 原始单 token 前瞻：预词法向量下标 +1，零副作用（游标不动）。
+        self.tokens.get(self.idx + 1).map(|t| t.kind)
     }
 
     fn checkpoint(&mut self) -> auto_parser_api::ParseCheckpoint {

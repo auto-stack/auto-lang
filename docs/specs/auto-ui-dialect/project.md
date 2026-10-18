@@ -30,9 +30,12 @@ normal/build/dev 无 auto-lang/auto-man/auto-vm/auto-ui）即轻闭包证据（V
 （Plan 448 A——名字从未语义化）；variant 名可带引号（`MsgVariant.quoted`
 合同性 emit 名）；多 payload（Plan 043 M5 #1）；named payload
 `Change(value: str)`（Plan 435 挂账②，名字入 `payload_names` 逐位平行，
-位置形态 None）；空行/逗号宽容；缺 `)`/`}` 经 `expect` 报错。
-**已知历史怪癖（不修）**：`msg {` 后直接 EOF 时变体循环无 EOF 守卫
-（旧臂同形态）。
+位置形态 None）；空行/逗号宽容；载荷列表缺 `)` 经 `expect` 报错
+（UnexpectedToken，位置/文本与旧臂逐字一致）。
+**已知历史怪癖（不修，适用边界如实）**：**缺块闭括号且源到 EOF**
+（如 `msg { Inc` 后无 `}`）时变体循环无 EOF 守卫，旧臂即为无界形态
+（不收敛到错误出口）——不得描述为已覆盖的错误恢复路径；载荷列表内
+的 `)` 缺失不在此列（如上，`expect` 确定性报错）。
 
 **model**（`ModelGrammar` 两策略共用一份块循环与字段算法）：
 
@@ -54,12 +57,14 @@ normal/build/dev 无 auto-lang/auto-man/auto-vm/auto-ui）即轻闭包证据（V
 - 关键字消费：复刻 `Parser::expect_ident`（纯文本比较、错误文本
   "Expected 'x', got 'y'"、当前 token 位 span）——**不用**桥面
   `expect_keyword`（其文本 "expected 'x'" 与 Ident kind 检查均不等价）。
-- named-payload lookahead：`checkpoint`+`advance`+（非 Colon 时）`restore`
-  等价旧 `lexer.next()`+`push_token` 单 token 回推（探测点 pushback 缓冲
-  必空；restore 恢复 lexer 全态+cur/prev+语句级旗标；诊断单调）。
-  登记微残差：lookahead 窗口内 lexer Err 时旧码静默吞、新实现经
-  `advance` 提前记录同内容错误（仅时序/error_limit 提前；后续 parse_type
-  推进本会记录）。
+- named-payload lookahead：端口零副作用原语 `peek_next_kind`（原始单
+  token 前瞻，F806-R2-01 修复引入的具名通用能力）——与旧
+  `lexer.next()`+`push_token` 单 token 回推逐字同构：不跳过注释 token、
+  不收集 pending_docs、不记录词法错误、游标不动、词法失败返回 None；
+  Colon 命中后 `advance` 消费的正是被回推的同一 token。
+  （曾以 checkpoint+advance/restore 实现，R2 复审证实其经 `Parser::next`
+  引入注释跳过/docs 收集/词法错误记录的副作用扩散与"注释分隔伪命名
+  载荷"文法扩大，已废弃并收编三反例为永久回归。）
 - 错误出口：未知注解经 `ctx.syntax_error`（桥面实现与旧臂逐字同构）；
   `expect` 族经桥面走 `Parser::expect` 同一实现。
 
