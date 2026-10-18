@@ -1564,6 +1564,9 @@ struct MediaSessionEntry {
 #[derive(Debug)]
 struct MediaSession {
     id: String,
+    /// Kept for debug/inspection of the session origin; deliberately not
+    /// exposed through any public read path (verbatim migration shape).
+    #[allow(dead_code)]
     root: PathBuf,
     entries: Vec<MediaSessionEntry>,
     selected: usize,
