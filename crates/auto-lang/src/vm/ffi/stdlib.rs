@@ -76,13 +76,15 @@ macro_rules! vm_debug {
 #[cfg(all(test, feature = "ui-iced"))]
 mod image_pipeline_vm_http_tests {
     use super::*;
-    use crate::ui::image_pipeline::{MediaAssetKey, MediaAssetState, MediaMetadata, RenditionSpec};
+    use auto_media_core::image_pipeline::{
+        MediaAssetKey, MediaAssetState, MediaMetadata, RenditionSpec,
+    };
     use std::sync::Arc;
 
     #[test]
     fn image_media_route_has_priority_without_changing_user_routes() {
         assert!(media_response_for_vm_request("GET", "/api/user", None).is_none());
-        let registry = crate::ui::image_pipeline::global_media_registry();
+        let registry = auto_media_core::image_pipeline::global_media_registry();
         let ticket = registry.queue(
             MediaAssetKey {
                 source_fingerprint: "vm-fixture".into(),
@@ -5207,7 +5209,7 @@ const IMAGE_TICKET_HANDLE_CAPACITY: usize = 256;
 #[cfg(feature = "ui-iced")]
 static IMAGE_TICKET_HANDLES: std::sync::LazyLock<
     std::sync::Mutex<
-        std::collections::VecDeque<(u64, crate::ui::image_pipeline::MediaAssetTicket)>,
+        std::collections::VecDeque<(u64, auto_media_core::image_pipeline::MediaAssetTicket)>,
     >,
 > = std::sync::LazyLock::new(|| std::sync::Mutex::new(std::collections::VecDeque::new()));
 #[cfg(feature = "ui-iced")]
@@ -5234,7 +5236,9 @@ pub const IMAGE_NATIVE_NAMES: &[&str] = &[
 ];
 
 #[cfg(feature = "ui-iced")]
-fn image_ticket_from_handle(handle: u64) -> Option<crate::ui::image_pipeline::MediaAssetTicket> {
+fn image_ticket_from_handle(
+    handle: u64,
+) -> Option<auto_media_core::image_pipeline::MediaAssetTicket> {
     IMAGE_TICKET_HANDLES
         .lock()
         .ok()?
@@ -5244,13 +5248,16 @@ fn image_ticket_from_handle(handle: u64) -> Option<crate::ui::image_pipeline::Me
 }
 
 #[cfg(feature = "ui-iced")]
-fn insert_image_ticket_handle(handle: u64, ticket: crate::ui::image_pipeline::MediaAssetTicket) {
+fn insert_image_ticket_handle(
+    handle: u64,
+    ticket: auto_media_core::image_pipeline::MediaAssetTicket,
+) {
     let mut handles = IMAGE_TICKET_HANDLES
         .lock()
         .expect("image handle lock poisoned");
     if handles.len() >= IMAGE_TICKET_HANDLE_CAPACITY {
         if let Some((_, evicted)) = handles.pop_front() {
-            crate::ui::image_pipeline::global_media_registry().release(evicted.id);
+            auto_media_core::image_pipeline::global_media_registry().release(evicted.id);
         }
     }
     handles.push_back((handle, ticket));
@@ -5260,9 +5267,9 @@ fn insert_image_ticket_handle(handle: u64, ticket: crate::ui::image_pipeline::Me
 pub fn shim_image_queue(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let ticket = crate::ui::image_pipeline::queue_media_path(
+    let ticket = auto_media_core::image_pipeline::queue_media_path(
         path,
-        crate::ui::image_pipeline::MediaPriority::Current,
+        auto_media_core::image_pipeline::MediaPriority::Current,
     );
     let handle = IMAGE_HANDLE_COUNTER.fetch_add(1, Ordering::Relaxed);
     insert_image_ticket_handle(handle, ticket);
@@ -5286,7 +5293,7 @@ pub fn shim_image_open(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError>
 pub fn shim_image_retain(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     let handle = task.ram.pop_i64() as u64;
     if let Some(ticket) = image_ticket_from_handle(handle) {
-        let _ = crate::ui::image_pipeline::global_media_registry().retain(ticket.id);
+        let _ = auto_media_core::image_pipeline::global_media_registry().retain(ticket.id);
         task.ram.push_i64(handle as i64);
     } else {
         task.ram.push_i64(0);
@@ -5297,7 +5304,7 @@ pub fn shim_image_retain(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErro
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_release(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     if let Some(ticket) = image_ticket_from_handle(task.ram.pop_i64() as u64) {
-        crate::ui::image_pipeline::global_media_registry().release(ticket.id);
+        auto_media_core::image_pipeline::global_media_registry().release(ticket.id);
     }
     Ok(())
 }
@@ -5313,7 +5320,7 @@ pub fn shim_image_close(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError
             .and_then(|index| handles.remove(index).map(|(_, ticket)| ticket))
     };
     if let Some(ticket) = ticket {
-        crate::ui::image_pipeline::global_media_registry().release(ticket.id);
+        auto_media_core::image_pipeline::global_media_registry().release(ticket.id);
     }
     Ok(())
 }
@@ -5331,7 +5338,7 @@ pub fn shim_image_request(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMErr
 pub fn shim_image_scan(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    crate::ui::image_pipeline::scan_media_directory(path);
+    auto_media_core::image_pipeline::scan_media_directory(path);
     task.ram.push_i64(0);
     Ok(())
 }
@@ -5339,7 +5346,7 @@ pub fn shim_image_scan(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 #[cfg(feature = "ui-iced")]
 pub fn shim_image_stats(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
     task.ram.push_i64(
-        crate::ui::image_pipeline::global_media_registry()
+        auto_media_core::image_pipeline::global_media_registry()
             .stats()
             .completed as i64,
     );
@@ -5353,7 +5360,7 @@ pub fn shim_image_open_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     push_string_result(
         task,
         vm,
-        crate::ui::image_pipeline::open_media_session(root),
+        auto_media_core::image_pipeline::open_media_session(root),
     )
 }
 
@@ -5364,7 +5371,7 @@ pub fn shim_image_snapshot(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     push_string_result(
         task,
         vm,
-        crate::ui::image_pipeline::media_session_snapshot(&session),
+        auto_media_core::image_pipeline::media_session_snapshot(&session),
     )
 }
 
@@ -5375,7 +5382,7 @@ pub fn shim_image_current_uri(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     push_string_result(
         task,
         vm,
-        crate::ui::image_pipeline::media_session_uri(&session),
+        auto_media_core::image_pipeline::media_session_uri(&session),
     )
 }
 
@@ -5383,7 +5390,7 @@ pub fn shim_image_current_uri(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 pub fn shim_image_names(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    crate::ui::image_pipeline::media_session_names(&session)
+    auto_media_core::image_pipeline::media_session_names(&session)
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
 }
@@ -5396,7 +5403,7 @@ pub fn shim_image_navigate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     push_string_result(
         task,
         vm,
-        crate::ui::image_pipeline::navigate_media_session(&session, delta),
+        auto_media_core::image_pipeline::navigate_media_session(&session, delta),
     )
 }
 
@@ -5411,7 +5418,7 @@ pub fn shim_image_request_view(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
     push_string_result(
         task,
         vm,
-        crate::ui::image_pipeline::request_media_view(
+        auto_media_core::image_pipeline::request_media_view(
             &session,
             index,
             viewport_width,
@@ -5425,7 +5432,7 @@ pub fn shim_image_request_view(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 pub fn shim_image_close_session(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let session: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let closed = crate::ui::image_pipeline::close_media_session(&session);
+    let closed = auto_media_core::image_pipeline::close_media_session(&session);
     closed
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
@@ -5438,7 +5445,7 @@ pub fn shim_image_session_stats(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
     push_string_result(
         task,
         vm,
-        crate::ui::image_pipeline::media_session_stats(&session),
+        auto_media_core::image_pipeline::media_session_stats(&session),
     )
 }
 
@@ -5451,7 +5458,7 @@ pub fn shim_image_thumb(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     push_string_result(
         task,
         vm,
-        crate::ui::image_pipeline::queue_media_thumbnail(path, size),
+        auto_media_core::image_pipeline::queue_media_thumbnail(path, size),
     )
 }
 
@@ -5520,13 +5527,13 @@ pub(crate) fn media_response_for_vm_request(
     method: &str,
     path: &str,
     if_none_match: Option<&str>,
-) -> Option<crate::ui::image_pipeline::MediaHttpResponse> {
+) -> Option<auto_media_core::image_pipeline::MediaHttpResponse> {
     if !path.starts_with("/api/__auto/media/") {
         return None;
     }
     let path = path.split_once('?').map(|(path, _)| path).unwrap_or(path);
-    Some(crate::ui::image_pipeline::media_http_response(
-        crate::ui::image_pipeline::global_media_registry(),
+    Some(auto_media_core::image_pipeline::media_http_response(
+        auto_media_core::image_pipeline::global_media_registry(),
         method,
         path,
         if_none_match,
