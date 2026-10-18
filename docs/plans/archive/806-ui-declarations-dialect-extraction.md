@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-806
-status: reviewed
+status: archived
 feature_name: UI msg 与 model 声明文法正式外置
 author: [Codex]
 created_at: 2026-10-17
@@ -121,7 +121,8 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 | [✅ 2026-10-18 R2 修复, code e2fc6ebf3] SD-01 lookahead/怪癖适用边界校准（缺块闭括号+EOF=无界怪癖≠已覆盖错误出口；载荷缺 `)`=expect 确定性报错）；generated-ui-distribution.md 12→13+依赖边说明（SD-05 具名+frontmatter supersedes 增补）；t05-receipt 增 R2 更正节（微残差叙事作废+tu 整档时序越权注记）；新冻结 code=e2fc6ebf3 送 T-07 二轮复审。 |
 | [✅ 2026-10-17 work, code af3748db7+f84f405f4+a20fcf6fe] SD-01 新 auto-ui-dialect/project.md+SD-02..04 三处备稿（worktree 待 merge 沉淀）；未迁清单/净删/微残差登记入 t05-receipt；代码链 970960b4a→a20fcf6fe 共 8 提交，送 T-07 同树独立复审，merge 门 pending。 |
 | [x] | T-07 | review | T06 | R4 pass@50644ad43；原反例及新失败协议/真实import/无UI/消费/Spec与正式交付25项验证通过，merge门pending | 05 |
-| [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
+| [x] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
+| [✅ 2026-10-18 merge] 见 §9.6 合入收据。 |
 
 ## 9. 复审记录
 
@@ -146,6 +147,18 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 2026-10-17 / stage: work / PLAN-806 revision: 1 / outcome: blocked（前置半满足） / worktree_path=未建树（前置未满足；§6 拟 D:/autostack/.wt/lang-806/auto-lang，branch codex/plan-806-dev） / branch=无 / base_commit=master 80f40af641d087823ba40910d390b1224abc9632 / code_commit=无（零代码改动，仅本簿记+附件） / dependency_revisions=799 已合入归档（auto-ast 在主检出）；801 execution_done、code 49512993b 送 T-07 二轮复审、merge 门 pending、主检出无 auto-parser-api；本轮未读取/复制 801 worktree 未交付 API / task_ids=T-01（仅 master 侧只读预检，任务未完成） / evidence=[t01-readonly-prep.md](attachments/806/t01-readonly-prep.md)：三算法定位与行为冻结点（msg 旧名读弃/quoted/named-payload lexer 回推；model 注解/未知注解诊断原文与 span/默认无裸字段）、生产调用点全图（顶层 dialect/ui.rs:49-50 + widget 13098/13101 + store 14371/14374 + component 15841/15845 直连 inner + import 走 with_session 默认装配 build_dialects）、pilot 状态（master 无 parse_model_subset/ExternalModelDialect，778 fixture r2_bare_field_boundary 在位）、旧臂锚点起点 / blockers=801 T-07 二轮复审→T-08 合入（冻结裸 t+tv 等 merge 门）是唯一解阻动作；解阻后以主检出真实 auto-parser-api 完成 T-01 剩余（lookahead 等价/pilot 单源策略/callsite 差额冻结）并建树 / next_responsible_role=801 review（T-07）→ 801 merge（T-08）→ 806 work（T-01 执行）
 
 2026-10-17 / stage: new / PLAN-806 revision: 1 / outcome: blocked / next: 799与801审查合入后，work以真实API执行T-01。此前仅只读准备，不复制未交付类型/接口；不等待802/803/804/805整体完成。[预检](attachments/extraction-followup-20261017/preflight.md)。
+
+### §9.6 PLAN-806:r1 合入收据（2026-10-18，stage: merge，outcome: pass）
+
+| Checkpoint | 证据 |
+|---|---|
+| prepared | reviewed 7/8（R4 pass，reviewed_commit 50644ad43）；R4 冻结六文件 Spec 增量（review-r4-spec-delta.patch SHA-256 d04e9f8b…）；merge 备稿=文档-only reviewed 后代（auto-ui-dialect/plans.md 新建+auto-parser-api/plans.md 806 行+INDEX 再生 43 projects，实现/依赖零变化） |
+| landed | delivery **c4158b89e** ff-only（两次 rebase：先 onto d19ba82cb 解 777 基线冲突[取 master 侧+终态重采样]，簿记提交 4b06a9ce1 后二次 rebase 12/12）；range-diff 评审关键 9 提交全等（50644ad43→675b5a8c3 等），基线重采样提交按预期差异=终态重绑定；门禁证据复用论证：037462acb..c4158b89e 差异 151 文件全在 docs/plans、非 docs 零变化（代码/依赖/配置/输入不变）；master tip==delivery ✅ |
+| 冻结门 | 裸 `cargo t` **5308/5308 exit0**（112.7s，RUSTC_WRAPPER="" 机内 sccache 端口冲突在案）+ `cargo tv` **163/163**（037462acb=差异前尖，复用论证见上）；ui_gen/trans 源未改不追加 tu/tt；777 strict pass 0 违规（终态基线 base_revision 绑定 rebase 后树） |
+| ledger_refreshed | `.autoos/specs.json` v46→v47 **guarded offline projection**（存储服务不可达；字节级备份 bak-v46-806；程序化增量恰 4 条：designs P806-D1 / tests P806-T / reviews P806-R4 / reports P806-M，均带 file+tags[plan:806, commit:c4158b89e, sha256:*]；diff 证明其余条目/顶层字段零扰动；读回校验通过） |
+| archived | docs/plans/archive/806-ui-declarations-dialect-extraction.md（git mv）+status: archived+T-08 勾结 **8/8**+本收据与 ledger 同笔提交入默认分支；attachments/806 全量（R1-R4 复审+792 driver 收据+t05-receipt 含 R2/R3 更正节）已随 delivery/簿记入库 |
+| 生产制品观察 | 本仓无守护进程/Web bundle 消费面；`auto` CLI 为按需 cargo 构建（R4 已在本提交独立重建验证 792 driver 25/25）；无运行中生产进程需重启 |
+| 批量回归判定 | 806%5=1 非整除触发；`docs/plans/.last-batch-regression.json` covered=805（timestamp 2026-10-17T05:19Z，约 25h 前 <48h；805 后合入的 788/801/806 均非 5 整除）——**不到期**，不触发 /auto-plan:regress |
 
 ## 10. 待澄清事项
 

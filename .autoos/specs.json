@@ -2096,6 +2096,18 @@
             "sha256:8277983e8d54dd54"
           ],
           "status": "active"
+        },
+        {
+          "id": "P806-M",
+          "title": "PLAN-806 merge 沉淀收据（2026-10-18）",
+          "content": "delivery c4158b89e ff-only 合入 master（rebase 后 range-diff 评审关键 9 提交全等，基线重采样提交按预期差异=终态重绑定；门禁证据复用论证=037462acb..c4158b89e 差异全在 docs/plans 零代码/依赖/配置变化）；冻结门 裸 cargo t 5308/5308 exit0 + cargo tv 163/163；六份 Spec 增量（SD-01 新 auto-ui-dialect/project.md、SD-02/03/04 frontend 三处、SD-05 generated-ui-distribution 12→13、auto-parser-api/project.md 校准）+ plans.md×2 + INDEX 再生；777 strict pass 0 违规；ledger v46→v47 guarded offline projection（无存储写方可达，备份 bak-v46-806）。",
+          "status": "active",
+          "file": "docs/plans/attachments/806/t05-receipt.md",
+          "tags": [
+            "plan:806",
+            "commit:c4158b89e",
+            "sha256:7173d389bf72093f"
+          ]
         }
       ]
     },
@@ -7725,6 +7737,18 @@
             "commit:9ebaf6a54",
             "sha256:72e847300eecc208"
           ]
+        },
+        {
+          "id": "P806-D1",
+          "title": "UI msg/model 声明文法单一份外置——auto-ui-dialect crate（PLAN-806）",
+          "content": "完整 msg/model/字段注解算法自 auto-lang Parser 逐字迁出为轻 crate 单一份实现（依赖仅 auto-parser-api，777 lang-core 域，增量恰 2 合法声明边），经 dyn ParseContext 端口驱动、expr/type 委托核心文法；named-payload 前瞻用端口原语 probe_next_kind（成功=零副作用/幂等，失败=旧回推前瞻失败消费协议，逐字同构旧 lexer.next+push_token）；ModelGrammar::{Builtin,ExternalSubset} 单份策略：默认文法无裸字段，778 冻结外部子集裸字段仅显式 pilot；生产全路径（顶层 UiDialect 派发/widget/store/component 结构直连/import with_session 默认装配）真实委托，Parser pub 方法薄兼容委托、原算法净删 213 行；dialect-api-consumer 删第二份字段算法改委托；canonical 规范见 file。",
+          "status": "active",
+          "file": "docs/specs/auto-ui-dialect/project.md",
+          "tags": [
+            "plan:806",
+            "commit:c4158b89e",
+            "sha256:30a7f460f6dccabd"
+          ]
         }
       ]
     },
@@ -9401,6 +9425,18 @@
             "plan:804",
             "commit:9ebaf6a54",
             "sha256:8ccf4ce4d5db49a8"
+          ]
+        },
+        {
+          "id": "P806-T",
+          "title": "UI 声明文法外置永久回归与轻/驱动消费方资产（PLAN-806）",
+          "content": "crates/auto-lang/src/tests/plan806_ui_declarations.rs 18 例（顶层默认装配/widget/component fn+store 结构路径/真实被导入文件/Core fn-on 体护栏/未知注解错误文本冻结/默认裸字段拒绝 + r2_lookahead_* 三反例与相邻对照 + r3_probe_* 端口失败消费协议 4 例 + r2_port_probe_next_kind 成功路径 + ui-iced 门控的真实 use-import 链含 Bad806 负控）；轻消费方 test/fixtures/modularity/ui-declarations-consumer（toy ParseContext 驱动真算法 10 例+verify-deps 闭包门）；driver ui-dialect-consumer 48 例（r2_bare_field_boundary 默认/pilot 边界 8 等）保持零改动全绿。",
+          "status": "active",
+          "file": "crates/auto-lang/src/tests/plan806_ui_declarations.rs",
+          "tags": [
+            "plan:806",
+            "commit:c4158b89e",
+            "sha256:1750f724de230b3c"
           ]
         }
       ]
@@ -12594,10 +12630,22 @@
             "reviewed_commit:1ca36a674",
             "sha256:0e9e670127586a96"
           ]
+        },
+        {
+          "id": "P806-R4",
+          "title": "PLAN-806 R4 终审 pass（R1-R4 全 finding 闭环）",
+          "content": "四轮最终审查收口：R1 就绪核查（无实施树）→R2 三 findings（前瞻副作用/交付规范漏包/格式）→R3 两 findings（端口失败合同失配/测试 feature 门）→R4 全闭环 pass。18 计划验收+48 外部方言+45 定向+正式交付 driver 完整复验 25/25（首轮交付早退记录如实保留）；probe_next_kind 双路径合同经独立消费者探针重放验证（推进型/非推进型失败×单/重复×后续消费全对照）；merge-owned 冻结门由 merge 阶段执行。",
+          "status": "active",
+          "file": "docs/plans/attachments/806/review-r4.md",
+          "tags": [
+            "plan:806",
+            "reviewed_commit:50644ad43",
+            "sha256:69995ef7553f022b"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 46
+  "version": 47
 }
