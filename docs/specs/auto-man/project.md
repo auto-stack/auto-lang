@@ -367,3 +367,10 @@ routes 外无其余内嵌否决（vm-only/ext/locales/i18n；`vp` None → false
 - 关闭：shutdown 端点与 Ctrl+C/SIGTERM 同 watch（VM 网络线程 join / rust 子进程
   有界排空后 parent 退出），端口与子进程零残留。部署/配置/策略合同见
   [stdlib/design/http-service-deployment.md](../stdlib/design/http-service-deployment.md)。
+
+## PLAN-809 管理核心委托（SD-04，as-built）
+
+- 单一规则源=auto-man-core（声明归一/闭包含有界图准入/源选择/构建规划/下载决策）；本 crate 经 re-export 门面+扩展 trait（TargetEffects/DirEffects）保持旧公开面身份与方法语法；Pac/Builder/Automan 仍在本 crate（效果承载者）。
+- I-PROJECT：生成器（vue/jet/ark/rust_ui/tauri）项目读取经 generation_request（`_with_request` 全入口）；gen/run/build/open 生产分派经 generation_request_adapter::request_of（automan+main 零遗留 legacy 分派调用，grep 审计）。legacy 自扫路径保留为行为冻结 oracle，R04 迁移退役。
+- 未迁面（如实）：语言执行/AutoConfig 求值、Git/索引下载执行、三 Builder 进程执行、exporter、UI 生成算法本体（R04）、dep pac.at 跨文件/sidecar spec/resolve_back_dir 读取（R04 收编）。
+- 777：auto-man-core 入 man-ecosystem 域；基线重采样收据 attachments/809/t07-777-strict-pass.json（verdict=pass violations=0 grandfathered=2 R5 退出项）。

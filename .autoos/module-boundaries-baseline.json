@@ -1,6 +1,6 @@
 {
-  "base_revision": "7491e0e77f3deea59c660f64cacba033cea12bc5",
-  "config_sha256": "fe3ebda7e52681123658a6c5a33fc731d83463a0ab6c7e3e05f74631f1f3aa7b",
+  "base_revision": "c41a4fe4cc6b87967959521bcb32e8963c9644dc",
+  "config_sha256": "5c57e2ab9be63656c354f0a45c22a603618a61a888a2cc3e3ed25e213583135c",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -390,6 +390,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-man-core",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-core",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-package-lock",
       "from": "auto-man",
       "kind": "normal",
@@ -428,6 +437,42 @@
     {
       "dep_key": "auto-val",
       "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-atom",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-project-model",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-toolchain-core",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-toolchain-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-man-core",
       "kind": "normal",
       "optional": false,
       "target": null,
@@ -547,7 +592,7 @@
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
     "core_to_ui": 905,
-    "man_to_language": 575,
+    "man_to_language": 579,
     "ui_to_language": 181
   }
 }

@@ -80,3 +80,7 @@ astr 相等案例），**不扩大模型语法**。消费侧安全前置：调�
 
 registry/loader、其余 Pac/VM 消费者、剩余文本读取与 locale 求值不在本次
 迁移范围。PLAN-780 已文档化的 unsupported/错误与语义归一规则全部保留。
+
+## generation_request 独立消费（PLAN-809 SD-03，as-built）
+
+`generation_request` 为具名独立模块（非静态扫描器一部分）：输入可以是静态准入描述（from_descriptor——静态子集与 786 护栏不变、不扩语法域）或动态求值后的显式投影（dynamic/直接构造），不强制工程先过静态扫描器。静态 origin 携带 unsupported 不伪造已求值（is_evaluated 诚实判定）。外部消费证据 = project-request-consumer（闭包 auto-atom/auto-val 单证）。
