@@ -6,10 +6,13 @@
 //! `ui/image_pipeline.rs`; the historical in-`ui` path remains as a thin
 //! re-export facade with unchanged type identity.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Condvar, Mutex};
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 /// Opaque identifier used in public media URIs.  It deliberately has no path
@@ -224,10 +227,10 @@ pub struct MediaAssetRegistry {
 
 /// Process-wide registry shared by generated servers and native renderers.
 /// It exposes opaque tickets only; no source path enters the HTTP-facing API.
+/// PLAN-811: the instance lives on the default shared [`MediaRuntime`] so the
+/// registry, worker pool, and session table share one lifetime owner.
 pub fn global_media_registry() -> &'static MediaAssetRegistry {
-    static REGISTRY: std::sync::LazyLock<MediaAssetRegistry> =
-        std::sync::LazyLock::new(|| MediaAssetRegistry::new(Duration::from_secs(30)));
-    &REGISTRY
+    global_media_runtime().registry()
 }
 
 /// PLAN-095 T-02: process-wide count of non-terminal media assets — the
@@ -1182,14 +1185,942 @@ pub const fn checked_rgba_bytes(width: u32, height: u32) -> Option<usize> {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Bounded executor: decode workers + resize lane
+// ---------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+enum MediaSource {
+    Path(PathBuf),
+    Bytes(Arc<[u8]>),
+}
+
+#[derive(Clone, Debug)]
+struct MediaWorkItem {
+    id: u64,
+    ticket: MediaAssetTicket,
+    source: MediaSource,
+    spec: RenditionSpec,
+    priority: MediaPriority,
+    generation: u64,
+    view_revision: u64,
+}
+
+#[derive(Debug)]
+struct DecodedWork {
+    item: MediaWorkItem,
+    encoded: Arc<[u8]>,
+    metadata: MediaMetadata,
+    image: image::DynamicImage,
+}
+
+enum ResizeMessage {
+    Work(DecodedWork),
+    Stop,
+}
+
+struct PipelineCaches {
+    encoded: EncodedByteLru,
+    decoded: DecodedPixelCache,
+}
+
+struct WorkerState {
+    stopping: bool,
+    queue: MediaPriorityQueue,
+    jobs: HashMap<u64, MediaWorkItem>,
+}
+
+struct WorkerInner {
+    state: Mutex<WorkerState>,
+    wake: Condvar,
+    registry: MediaAssetRegistry,
+    resize_tx: SyncSender<ResizeMessage>,
+    caches: Mutex<PipelineCaches>,
+    latest: Mutex<HashMap<MediaAssetId, MediaLatestWins>>,
+}
+
+static NEXT_MEDIA_WORK_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Bounded media executor: two decode/read workers feed one resize/publish
+/// lane. Workers sleep on condition variables or channel receives while idle;
+/// no UI call performs filesystem I/O or image decoding.
+pub struct MediaWorkerPool {
+    inner: Arc<WorkerInner>,
+    // Join handles sit behind a mutex so shutdown/drop can run through &self
+    // (the pool is shared as a process static and by MediaRuntime).
+    workers: Mutex<Vec<JoinHandle<()>>>,
+}
+
+impl MediaWorkerPool {
+    pub fn new() -> Self {
+        Self::with_registry(MediaAssetRegistry::default())
+    }
+
+    pub fn with_registry(registry: MediaAssetRegistry) -> Self {
+        let (resize_tx, resize_rx) = sync_channel(8);
+        let inner = Arc::new(WorkerInner {
+            state: Mutex::new(WorkerState {
+                stopping: false,
+                queue: MediaPriorityQueue::new(),
+                jobs: HashMap::new(),
+            }),
+            wake: Condvar::new(),
+            registry,
+            resize_tx,
+            caches: Mutex::new(PipelineCaches {
+                encoded: EncodedByteLru::default(),
+                decoded: DecodedPixelCache::default(),
+            }),
+            latest: Mutex::new(HashMap::new()),
+        });
+        let resize_inner = inner.clone();
+        let resize_thread = thread::Builder::new()
+            .name("media-resize".into())
+            .spawn(move || {
+                run_resize_worker(resize_inner, resize_rx);
+            })
+            .expect("spawn media resize worker");
+        let mut workers = vec![resize_thread];
+        for name in ["media-decode-1", "media-decode-2"] {
+            let worker_inner = inner.clone();
+            workers.push(
+                thread::Builder::new()
+                    .name(name.into())
+                    .spawn(move || {
+                        run_decode_worker(worker_inner);
+                    })
+                    .expect("spawn media decode worker"),
+            );
+        }
+        Self {
+            inner,
+            workers: Mutex::new(workers),
+        }
+    }
+
+    pub fn worker_count(&self) -> usize {
+        self.workers.lock().map(|w| w.len()).unwrap_or(0)
+    }
+
+    pub fn submit_path(
+        &self,
+        ticket: MediaAssetTicket,
+        path: PathBuf,
+        spec: RenditionSpec,
+        priority: MediaPriority,
+        generation: u64,
+        view_revision: u64,
+    ) -> bool {
+        self.submit(MediaWorkItem {
+            id: NEXT_MEDIA_WORK_ID.fetch_add(1, Ordering::Relaxed),
+            ticket,
+            source: MediaSource::Path(path),
+            spec,
+            priority,
+            generation,
+            view_revision,
+        })
+    }
+
+    pub fn submit_bytes(
+        &self,
+        ticket: MediaAssetTicket,
+        bytes: Arc<[u8]>,
+        spec: RenditionSpec,
+        priority: MediaPriority,
+        generation: u64,
+        view_revision: u64,
+    ) -> bool {
+        self.submit(MediaWorkItem {
+            id: NEXT_MEDIA_WORK_ID.fetch_add(1, Ordering::Relaxed),
+            ticket,
+            source: MediaSource::Bytes(bytes),
+            spec,
+            priority,
+            generation,
+            view_revision,
+        })
+    }
+
+    fn submit(&self, item: MediaWorkItem) -> bool {
+        if let Ok(mut latest) = self.inner.latest.lock() {
+            if let Some(gate) = latest.get_mut(&item.ticket.id) {
+                gate.advance(item.generation, item.view_revision);
+            } else {
+                latest.insert(
+                    item.ticket.id,
+                    MediaLatestWins::new(item.generation, item.view_revision),
+                );
+            }
+        }
+        let mut state = self.inner.state.lock().expect("media worker lock poisoned");
+        if state.stopping || !state.queue.push(MediaWork::new(item.id, item.priority)) {
+            return false;
+        }
+        state.jobs.insert(item.id, item);
+        self.inner.wake.notify_one();
+        true
+    }
+
+    pub fn decoded_pixels(&self, id: MediaAssetId) -> Option<(u32, u32, Arc<[u8]>)> {
+        self.inner.caches.lock().ok()?.decoded.get_rendered(id)
+    }
+
+    /// Stops new work, drains the ingress queue, stops the resize lane, and
+    /// joins every owned worker thread. Idempotent; safe through `&self`.
+    pub fn shutdown(&self) {
+        {
+            let mut state = self.inner.state.lock().expect("media worker lock poisoned");
+            state.stopping = true;
+            state.queue.clear();
+            state.jobs.clear();
+            self.inner.wake.notify_all();
+        }
+        let _ = self.inner.resize_tx.send(ResizeMessage::Stop);
+        if let Ok(mut workers) = self.workers.lock() {
+            for worker in workers.drain(..) {
+                let _ = worker.join();
+            }
+        }
+    }
+}
+
+fn take_media_work(inner: &Arc<WorkerInner>) -> Option<MediaWorkItem> {
+    let mut state = inner.state.lock().expect("media worker lock poisoned");
+    loop {
+        if state.stopping {
+            return None;
+        }
+        if let Some(work) = state.queue.pop() {
+            return state.jobs.remove(&work.id);
+        }
+        state = inner.wake.wait(state).expect("media worker lock poisoned");
+    }
+}
+
+fn run_decode_worker(inner: Arc<WorkerInner>) {
+    while let Some(item) = take_media_work(&inner) {
+        let item_id = item.ticket.id;
+        if let Ok(mut latest) = inner.latest.lock() {
+            if !latest.get_mut(&item.ticket.id).is_some_and(|gate| {
+                gate.accept_decode_complete(item.generation, item.view_revision)
+            }) {
+                let _ = inner
+                    .registry
+                    .transition(item.ticket.id, MediaAssetState::Stale);
+                continue;
+            }
+        }
+        let result = (|| {
+            inner
+                .registry
+                .transition(item.ticket.id, MediaAssetState::Reading)?;
+            let encoded: Arc<[u8]> = match &item.source {
+                MediaSource::Path(path) => Arc::from(
+                    std::fs::read(path)
+                        .map_err(|_| MediaAssetError::Rejected("image read failed".into()))?,
+                ),
+                MediaSource::Bytes(bytes) => bytes.clone(),
+            };
+            let metadata = inspect_image_metadata(&encoded)?;
+            inner
+                .registry
+                .update_metadata(item.ticket.id, metadata.clone());
+            inner
+                .registry
+                .transition(item.ticket.id, MediaAssetState::Decoding)?;
+            let image = image::load_from_memory(&encoded).map_err(|_| MediaAssetError::Corrupt)?;
+            Ok::<_, MediaAssetError>(DecodedWork {
+                item,
+                encoded,
+                metadata,
+                image,
+            })
+        })();
+        match result {
+            Ok(decoded) => {
+                if inner.resize_tx.send(ResizeMessage::Work(decoded)).is_err() {
+                    return;
+                }
+            }
+            Err(error) => {
+                let _ = inner.registry.fail(item_id, error);
+            }
+        }
+    }
+}
+
+fn oriented_image(
+    image: image::DynamicImage,
+    orientation: MediaOrientation,
+) -> image::DynamicImage {
+    match orientation {
+        MediaOrientation::Normal => image,
+        MediaOrientation::FlipHorizontal => image.fliph(),
+        MediaOrientation::Rotate180 => image.rotate180(),
+        MediaOrientation::FlipVertical => image.flipv(),
+        MediaOrientation::Transpose => image.rotate90().fliph(),
+        MediaOrientation::Rotate90 => image.rotate90(),
+        MediaOrientation::Transverse => image.rotate270().fliph(),
+        MediaOrientation::Rotate270 => image.rotate270(),
+    }
+}
+
+fn render_decoded(
+    image: image::DynamicImage,
+    orientation: MediaOrientation,
+    spec: &RenditionSpec,
+) -> RenderedImage {
+    let oriented = oriented_image(image, orientation);
+    let rendered = if spec.original_pixels || spec.width == 0 || spec.height == 0 {
+        oriented
+    } else {
+        oriented.resize(
+            spec.width,
+            spec.height,
+            image::imageops::FilterType::Lanczos3,
+        )
+    };
+    let rgba = rendered.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    RenderedImage {
+        width,
+        height,
+        rgba: Arc::from(rgba.into_raw()),
+    }
+}
+
+fn run_resize_worker(inner: Arc<WorkerInner>, resize_rx: Receiver<ResizeMessage>) {
+    while let Ok(message) = resize_rx.recv() {
+        let ResizeMessage::Work(work) = message else {
+            break;
+        };
+        if let Ok(mut latest) = inner.latest.lock() {
+            if !latest.get_mut(&work.item.ticket.id).is_some_and(|gate| {
+                gate.accept_publish(work.item.generation, work.item.view_revision)
+            }) {
+                let _ = inner
+                    .registry
+                    .transition(work.item.ticket.id, MediaAssetState::Stale);
+                continue;
+            }
+        }
+        if inner
+            .registry
+            .transition(work.item.ticket.id, MediaAssetState::Transforming)
+            .is_err()
+        {
+            continue;
+        }
+        let rendered = render_decoded(work.image, work.metadata.orientation, &work.item.spec);
+        let pin = match work.item.priority {
+            MediaPriority::Current | MediaPriority::SettledCurrent => MediaPin::Hard,
+            MediaPriority::Neighbor => MediaPin::Soft,
+            MediaPriority::Thumbnail => MediaPin::None,
+        };
+        if let Ok(mut caches) = inner.caches.lock() {
+            caches
+                .encoded
+                .insert(work.item.ticket.id, work.encoded.clone());
+            caches.decoded.insert_rendered(
+                work.item.ticket.id,
+                rendered.width,
+                rendered.height,
+                rendered.rgba,
+                pin,
+            );
+        }
+        let _ = inner.registry.publish_ready(
+            work.item.ticket.id,
+            work.item.ticket.revision,
+            work.encoded,
+        );
+    }
+}
+
+impl Drop for MediaWorkerPool {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Metadata-only viewer sessions + the runtime aggregate
+// ---------------------------------------------------------------------------
+
+/// A viewer session is deliberately host-owned.  The public value is only the
+/// stable session id; paths and tickets remain in this bounded table and are
+/// never serialized into Auto state or media URLs.
+const MAX_MEDIA_SESSIONS: usize = 32;
+const MAX_SESSION_ENTRIES: usize = 256;
+
+#[derive(Debug)]
+struct MediaSessionEntry {
+    path: PathBuf,
+    ticket: MediaAssetTicket,
+    name: String,
+}
+
+#[derive(Debug)]
+struct MediaSession {
+    id: String,
+    root: PathBuf,
+    entries: Vec<MediaSessionEntry>,
+    selected: usize,
+    generation: u64,
+}
+
+// Session ids stay unique for the whole process (monotonic global counter),
+// matching the pre-PLAN-811 behavior of the single shared session table.
+static MEDIA_SESSION_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+struct RuntimeInner {
+    registry: MediaAssetRegistry,
+    workers: MediaWorkerPool,
+    sessions: Mutex<VecDeque<MediaSession>>,
+}
+
+impl RuntimeInner {
+    // Shared queueing core. Callers that only hold `Arc<RuntimeInner>`
+    // (detached scan/populate threads) must use these instead of
+    // constructing a temporary `MediaRuntime` — dropping an aggregate
+    // value would shut the runtime down.
+    fn queue_rendition(
+        &self,
+        path: PathBuf,
+        spec: RenditionSpec,
+        priority: MediaPriority,
+        revision: u64,
+    ) -> MediaAssetTicket {
+        let key = MediaAssetKey {
+            source_fingerprint: path.to_string_lossy().into_owned(),
+            orientation: MediaOrientation::Normal,
+            rendition: spec.clone(),
+            revision,
+        };
+        let ticket = self.registry.queue(key, MediaMetadata::default());
+        if !self
+            .workers
+            .submit_path(ticket, path, spec, priority, revision, revision)
+        {
+            let _ = self.registry.fail(
+                ticket.id,
+                MediaAssetError::Rejected("media queue is full".into()),
+            );
+        }
+        ticket
+    }
+
+    fn queue_path(&self, path: PathBuf, priority: MediaPriority) -> MediaAssetTicket {
+        let key = MediaAssetKey {
+            source_fingerprint: path.to_string_lossy().into_owned(),
+            orientation: MediaOrientation::Normal,
+            rendition: RenditionSpec::original(),
+            revision: 1,
+        };
+        let ticket = self.registry.queue(key, MediaMetadata::default());
+        if !self
+            .workers
+            .submit_path(ticket, path, RenditionSpec::original(), priority, 0, 1)
+        {
+            let _ = self.registry.fail(
+                ticket.id,
+                MediaAssetError::Rejected("media queue is full".into()),
+            );
+        }
+        ticket
+    }
+}
+
+/// Aggregate media runtime: one registry + one bounded worker pool + the
+/// host-owned session table, sharing a single lifetime owner (PLAN-811).
+///
+/// The process default is [`global_media_runtime`] — VM natives, the HTTP
+/// data plane, and renderers all hit that single shared instance and ticket
+/// namespace, exactly as the pre-split globals did. A locally constructed
+/// `MediaRuntime` isolates its own registry/tickets/sessions for controllable
+/// lifetimes and tests; its [`MediaRuntime::shutdown`] (or drop) stops new
+/// work, joins the owned worker threads, terminal-izes every registry entry
+/// (late worker callbacks are rejected by the state machine — a closed
+/// session cannot be resurrected), and drops the session table.
+pub struct MediaRuntime {
+    inner: Arc<RuntimeInner>,
+}
+
+impl MediaRuntime {
+    /// Builds an owned runtime whose registry uses the given unreferenced
+    /// ticket TTL (the process default uses 30s).
+    pub fn new(ttl: Duration) -> Self {
+        let registry = MediaAssetRegistry::new(ttl);
+        let workers = MediaWorkerPool::with_registry(registry.clone());
+        Self {
+            inner: Arc::new(RuntimeInner {
+                registry,
+                workers,
+                sessions: Mutex::new(VecDeque::new()),
+            }),
+        }
+    }
+
+    pub fn registry(&self) -> &MediaAssetRegistry {
+        &self.inner.registry
+    }
+
+    pub fn worker_pool(&self) -> &MediaWorkerPool {
+        &self.inner.workers
+    }
+
+    /// Terminates this runtime's owned work: no new submissions succeed,
+    /// queued work is dropped without execution, worker threads join, every
+    /// registry entry reaches a terminal state (observable via
+    /// `pending_count() == 0`), and the session table is dropped. Late
+    /// callbacks from in-flight decode/resize lanes are rejected by the
+    /// registry state machine — they cannot resurrect closed resources.
+    pub fn shutdown(&self) {
+        self.inner.workers.shutdown();
+        self.inner.registry.shutdown();
+        if let Ok(mut sessions) = self.inner.sessions.lock() {
+            sessions.clear();
+        }
+    }
+
+    fn queue_rendition(
+        &self,
+        path: PathBuf,
+        spec: RenditionSpec,
+        priority: MediaPriority,
+        revision: u64,
+    ) -> MediaAssetTicket {
+        self.inner.queue_rendition(path, spec, priority, revision)
+    }
+
+    fn queue_path(&self, path: impl Into<PathBuf>, priority: MediaPriority) -> MediaAssetTicket {
+        self.inner.queue_path(path.into(), priority)
+    }
+
+    /// Queues a small square thumbnail rendition for one image file (PLAN-023
+    /// `auto.image.thumb` runtime). Returns the opaque media URI for the
+    /// rendition, or "" when the path is missing, unreadable, or has an
+    /// unsupported extension — callers render their icon fallback off "".
+    ///
+    /// The registry queue takes a reference on dedup hit, and file-manager-style
+    /// callers never hold tickets, so the reference is released immediately: the
+    /// entry rides its expiry grace (decode finishes in milliseconds) and
+    /// stays evictable afterwards, while the decoded-pixels LRU keeps the URI
+    /// rendering until budget pressure evicts it (self-healing on re-navigation).
+    pub fn queue_thumbnail(&self, path: impl Into<PathBuf>, size: i32) -> String {
+        let path = path.into();
+        if !supported_media_path(&path) {
+            return String::new();
+        }
+        if !path.is_file() {
+            return String::new();
+        }
+        let edge = size.clamp(16, 1024) as u32;
+        let spec = RenditionSpec {
+            width: edge,
+            height: edge,
+            rotation_degrees: 0,
+            quality: 85,
+            original_pixels: false,
+        };
+        let ticket = self.queue_rendition(path, spec, MediaPriority::Thumbnail, 1);
+        self.inner.registry.release(ticket.id);
+        media_uri(ticket)
+    }
+
+    /// Starts a directory scan away from VM/UI handler threads. Each
+    /// discovered supported file is submitted to the bounded media executor;
+    /// the call itself returns immediately and never exposes source paths to
+    /// the control plane.
+    pub fn scan_directory(&self, path: impl Into<PathBuf>) {
+        let inner = self.inner.clone();
+        let root = path.into();
+        thread::Builder::new()
+            .name("media-directory-scan".into())
+            .spawn(move || {
+                let Ok(entries) = std::fs::read_dir(root) else {
+                    return;
+                };
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if path.is_file() {
+                        inner.queue_path(path, MediaPriority::Thumbnail);
+                    }
+                }
+            })
+            .ok();
+    }
+
+    /// Open a file or directory without blocking the caller on filesystem
+    /// I/O. The returned id is safe to keep in Auto model state.
+    pub fn open_session(&self, root: impl Into<PathBuf>) -> String {
+        let root = root.into();
+        let id = format!(
+            "image-session-{}",
+            MEDIA_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed)
+        );
+        if let Ok(mut sessions) = self.inner.sessions.lock() {
+            if sessions.len() >= MAX_MEDIA_SESSIONS {
+                if let Some(evicted) = sessions.pop_front() {
+                    for entry in evicted.entries {
+                        self.inner.registry.release(entry.ticket.id);
+                    }
+                }
+            }
+            sessions.push_back(MediaSession {
+                id: id.clone(),
+                root: root.clone(),
+                entries: Vec::new(),
+                selected: 0,
+                generation: 1,
+            });
+        }
+        let worker_inner = self.inner.clone();
+        let worker_id = id.clone();
+        thread::Builder::new()
+            .name("media-session-open".into())
+            .spawn(move || populate_media_session(worker_inner, worker_id, root))
+            .ok();
+        id
+    }
+
+    fn snapshot_locked(session: &MediaSession) -> String {
+        let uri = session
+            .entries
+            .get(session.selected)
+            .map(|entry| media_uri(entry.ticket))
+            .unwrap_or_default();
+        let name = session
+            .entries
+            .get(session.selected)
+            .map(|entry| entry.name.as_str())
+            .unwrap_or("");
+        // `id`, `uri`, and `name` are generated/filename values.  Escape the
+        // two user-visible strings so this metadata response remains valid JSON.
+        let escape = |value: &str| value.replace('\\', "\\\\").replace('"', "\\\"");
+        format!(
+            "{{\"session\":\"{}\",\"selected\":{},\"count\":{},\"generation\":{},\"name\":\"{}\",\"uri\":\"{}\"}}",
+            escape(&session.id), session.selected, session.entries.len(), session.generation, escape(name), escape(&uri)
+        )
+    }
+
+    /// Return a metadata-only snapshot for a session.
+    pub fn session_snapshot(&self, session_id: &str) -> String {
+        self.inner
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|sessions| {
+                sessions
+                    .iter()
+                    .find(|session| session.id == session_id)
+                    .map(Self::snapshot_locked)
+            })
+            .unwrap_or_else(|| "{\"error\":\"unknown_session\"}".into())
+    }
+
+    /// Return only the currently selected opaque media URI. This lets a front
+    /// model bind `ImageSurface.src` without parsing JSON or receiving paths.
+    pub fn session_uri(&self, session_id: &str) -> String {
+        self.inner
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|sessions| {
+                sessions
+                    .iter()
+                    .find(|session| session.id == session_id)
+                    .and_then(|session| {
+                        session
+                            .entries
+                            .get(session.selected)
+                            .map(|entry| media_uri(entry.ticket))
+                    })
+            })
+            .unwrap_or_default()
+    }
+
+    /// Return bounded display names for the current directory session. Names
+    /// are metadata only; the corresponding media URI is still resolved by
+    /// index.
+    pub fn session_names(&self, session_id: &str) -> Vec<String> {
+        self.inner
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|sessions| {
+                sessions
+                    .iter()
+                    .find(|session| session.id == session_id)
+                    .map(|session| {
+                        session
+                            .entries
+                            .iter()
+                            .map(|entry| entry.name.clone())
+                            .collect()
+                    })
+            })
+            .unwrap_or_default()
+    }
+
+    /// Move the selection while preserving a bounded, host-side session table.
+    pub fn navigate_session(&self, session_id: &str, delta: i32) -> String {
+        let Ok(mut sessions) = self.inner.sessions.lock() else {
+            return "{\"error\":\"session_lock\"}".into();
+        };
+        let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) else {
+            return "{\"error\":\"unknown_session\"}".into();
+        };
+        if !session.entries.is_empty() {
+            let len = session.entries.len() as i32;
+            session.selected = (session.selected as i32 + delta).rem_euclid(len) as usize;
+            session.generation = session.generation.saturating_add(1);
+        }
+        Self::snapshot_locked(session)
+    }
+
+    /// Queue a viewport rendition for the selected asset.  The original
+    /// ticket is retained until the replacement is published, so a stale
+    /// request cannot invalidate the currently displayed media.
+    pub fn request_view(
+        &self,
+        session_id: &str,
+        index: i32,
+        width: i32,
+        height: i32,
+        quality: i32,
+    ) -> String {
+        let (path, generation) = {
+            let Ok(mut sessions) = self.inner.sessions.lock() else {
+                return "{\"error\":\"session_lock\"}".into();
+            };
+            let Some(session) = sessions.iter_mut().find(|session| session.id == session_id)
+            else {
+                return "{\"error\":\"unknown_session\"}".into();
+            };
+            if session.entries.is_empty() {
+                return Self::snapshot_locked(session);
+            }
+            session.selected = index.clamp(0, session.entries.len() as i32 - 1) as usize;
+            session.generation = session.generation.saturating_add(1);
+            (
+                session.entries[session.selected].path.clone(),
+                session.generation,
+            )
+        };
+        let spec = RenditionSpec {
+            width: width.max(0) as u32,
+            height: height.max(0) as u32,
+            rotation_degrees: 0,
+            quality: quality.clamp(1, 100) as u8,
+            original_pixels: false,
+        };
+        let ticket = self.queue_rendition(path, spec, MediaPriority::SettledCurrent, generation);
+        if let Ok(mut sessions) = self.inner.sessions.lock() {
+            if let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) {
+                let old_ticket = session.entries[session.selected].ticket;
+                session.entries[session.selected].ticket = ticket;
+                // The session owns exactly one reference per entry. Release the
+                // superseded ticket after swapping it so repeated view requests
+                // cannot grow the registry indefinitely while queued work settles.
+                if old_ticket.id != ticket.id {
+                    self.inner.registry.release(old_ticket.id);
+                }
+                return Self::snapshot_locked(session);
+            }
+        }
+        self.inner.registry.release(ticket.id);
+        "{\"error\":\"unknown_session\"}".into()
+    }
+
+    /// Release all tickets held by a session.  Returns false for an already
+    /// closed or unknown id, allowing generated APIs to report deterministic
+    /// close state.
+    pub fn close_session(&self, session_id: &str) -> bool {
+        let Some(session) = self.inner.sessions.lock().ok().and_then(|mut sessions| {
+            sessions
+                .iter()
+                .position(|session| session.id == session_id)
+                .and_then(|index| sessions.remove(index))
+        }) else {
+            return false;
+        };
+        for entry in session.entries {
+            self.inner.registry.release(entry.ticket.id);
+        }
+        true
+    }
+
+    /// Session stats answer with the runtime registry's global counters (the
+    /// historical `auto.image.session_stats` semantics — the session argument
+    /// is deliberately ignored).
+    pub fn session_stats(&self, _session_id: &str) -> String {
+        let stats = self.inner.registry.stats();
+        format!(
+            "{{\"queued\":{},\"running\":{},\"completed\":{},\"dropped\":{},\"encoded_bytes\":{},\"decoded_bytes\":{},\"cache_hits\":{},\"cache_misses\":{}}}",
+            stats.queued, stats.running, stats.completed, stats.dropped, stats.encoded_bytes, stats.decoded_bytes, stats.cache_hits, stats.cache_misses
+        )
+    }
+}
+
+impl Drop for MediaRuntime {
+    fn drop(&mut self) {
+        self.shutdown();
+    }
+}
+
+fn append_session_entry(inner: &Arc<RuntimeInner>, session_id: &str, path: PathBuf) {
+    if !supported_media_path(&path) {
+        return;
+    }
+    let ticket = inner.queue_path(path.clone(), MediaPriority::Thumbnail);
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("image")
+        .to_owned();
+    let mut sessions = match inner.sessions.lock() {
+        Ok(sessions) => sessions,
+        Err(_) => {
+            inner.registry.release(ticket.id);
+            return;
+        }
+    };
+    let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) else {
+        // Session closed while the populate worker was scanning: release the
+        // ticket immediately — a late callback never resurrects a closed
+        // session or re-feeds another one.
+        inner.registry.release(ticket.id);
+        return;
+    };
+    if session.entries.len() >= MAX_SESSION_ENTRIES {
+        inner.registry.release(ticket.id);
+        return;
+    }
+    session
+        .entries
+        .push(MediaSessionEntry { path, ticket, name });
+}
+
+fn populate_media_session(inner: Arc<RuntimeInner>, session_id: String, root: PathBuf) {
+    // All filesystem work happens on this detached worker, never on a VM/UI
+    // handler thread.  Sorting makes directory navigation deterministic.
+    let mut paths = Vec::new();
+    if root.is_file() {
+        paths.push(root);
+    } else if root.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(&root) {
+            paths.extend(
+                entries
+                    .flatten()
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_file()),
+            );
+            paths.sort();
+        }
+    }
+    for path in paths {
+        append_session_entry(&inner, &session_id, path);
+    }
+}
+
+/// The process-default shared media runtime (30s unreferenced ticket TTL):
+/// one registry, one worker pool, one session table behind every legacy free
+/// function, VM native, HTTP fast path, and renderer hook. Dropping a VM
+/// never shuts this shared instance down.
+pub fn global_media_runtime() -> &'static MediaRuntime {
+    static RUNTIME: std::sync::LazyLock<MediaRuntime> =
+        std::sync::LazyLock::new(|| MediaRuntime::new(Duration::from_secs(30)));
+    &RUNTIME
+}
+
+pub fn global_media_worker_pool() -> &'static MediaWorkerPool {
+    global_media_runtime().worker_pool()
+}
+
+pub fn queue_media_path(path: impl Into<PathBuf>, priority: MediaPriority) -> MediaAssetTicket {
+    global_media_runtime().queue_path(path, priority)
+}
+
+pub fn scan_media_directory(path: impl Into<PathBuf>) {
+    global_media_runtime().scan_directory(path);
+}
+
+pub fn open_media_session(root: impl Into<PathBuf>) -> String {
+    global_media_runtime().open_session(root)
+}
+
+pub fn media_session_snapshot(session_id: &str) -> String {
+    global_media_runtime().session_snapshot(session_id)
+}
+
+pub fn media_session_uri(session_id: &str) -> String {
+    global_media_runtime().session_uri(session_id)
+}
+
+pub fn media_session_names(session_id: &str) -> Vec<String> {
+    global_media_runtime().session_names(session_id)
+}
+
+pub fn navigate_media_session(session_id: &str, delta: i32) -> String {
+    global_media_runtime().navigate_session(session_id, delta)
+}
+
+pub fn request_media_view(
+    session_id: &str,
+    index: i32,
+    width: i32,
+    height: i32,
+    quality: i32,
+) -> String {
+    global_media_runtime()
+        .request_view(session_id, index, width, height, quality)
+}
+
+pub fn close_media_session(session_id: &str) -> bool {
+    global_media_runtime().close_session(session_id)
+}
+
+pub fn media_session_stats(session_id: &str) -> String {
+    global_media_runtime().session_stats(session_id)
+}
+
+pub fn queue_media_thumbnail(path: impl Into<PathBuf>, size: i32) -> String {
+    global_media_runtime().queue_thumbnail(path, size)
+}
+
+/// Resolves already-decoded pixels for the native renderer. The lookup never
+/// opens a file or decodes encoded bytes; only the resize lane populates this
+/// bounded cache.
+pub fn resolve_media_pixels(uri: &str) -> Option<(u32, u32, Arc<[u8]>)> {
+    if !uri.starts_with("/api/__auto/media/") {
+        return None;
+    }
+    let (id, _) = parse_media_path(uri)?;
+    global_media_worker_pool().decoded_pixels(id)
+}
+
+/// Resolve a media URI for rendering, also returning the asset id (the
+/// renderer keys its texture-Handle cache on it).
+pub fn resolve_media_render(uri: &str) -> Option<(MediaAssetId, u32, u32, Arc<[u8]>)> {
+    if !uri.starts_with("/api/__auto/media/") {
+        return None;
+    }
+    let (id, _) = parse_media_path(uri)?;
+    global_media_worker_pool()
+        .decoded_pixels(id)
+        .map(|(w, h, px)| (id, w, h, px))
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
 
     use super::{
         checked_rgba_bytes, MediaAssetKey, MediaAssetRegistry, MediaAssetState, MediaLookup,
-        MediaMetadata, MediaOrientation, RenditionSpec,
+        MediaMetadata, MediaOrientation, MediaPriority, RenditionSpec,
     };
 
     #[test]
@@ -1340,6 +2271,258 @@ mod tests {
         assert!(!gate.accept_publish(5, 9));
         assert!(gate.accept_publish(5, 10));
         assert_eq!(gate.dropped(), 2);
+    }
+
+    #[test]
+    fn worker_shutdown_joins_two_decode_workers_and_resize_lane() {
+        let workers = super::MediaWorkerPool::new();
+        assert_eq!(workers.worker_count(), 3);
+        workers.shutdown();
+        assert_eq!(workers.worker_count(), 0);
+    }
+
+    #[test]
+    fn worker_pipeline_reads_decodes_resizes_and_publishes() {
+        let registry = MediaAssetRegistry::new(Duration::from_secs(1));
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image::RgbaImage::new(2, 3))
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        let key = MediaAssetKey {
+            source_fingerprint: "worker-fixture".into(),
+            orientation: MediaOrientation::Normal,
+            rendition: RenditionSpec::viewport(1, 1),
+            revision: 1,
+        };
+        let ticket = registry.queue(key, MediaMetadata::default());
+        let workers = super::MediaWorkerPool::with_registry(registry.clone());
+        assert!(workers.submit_bytes(
+            ticket,
+            Arc::from(bytes.into_inner()),
+            RenditionSpec::viewport(1, 1),
+            MediaPriority::Current,
+            1,
+            1
+        ));
+        assert_eq!(
+            registry.wait_for_terminal(ticket.id, Duration::from_secs(2)),
+            Some(MediaAssetState::Ready)
+        );
+        assert!(matches!(
+            registry.lookup(ticket.id, ticket.revision),
+            MediaLookup::Ready(_)
+        ));
+        workers.shutdown();
+    }
+
+    #[test]
+    fn viewer_session_opens_directory_and_exposes_only_metadata() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures");
+        let session = super::open_media_session(root);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while super::media_session_names(&session).is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let names = super::media_session_names(&session);
+        assert!(names.iter().any(|name| name == "rgb-1x1.png"));
+        let snapshot = super::media_session_snapshot(&session);
+        assert!(snapshot.contains("\"count\":"));
+        assert!(
+            !snapshot.contains("fixtures"),
+            "snapshot must not leak source paths"
+        );
+        let _ = super::request_media_view(&session, 0, 32, 32, 90);
+        let uri = super::media_session_uri(&session);
+        assert!(uri.is_empty() || uri.starts_with("/api/__auto/media/"));
+        assert!(super::close_media_session(&session));
+        assert!(!super::close_media_session(&session));
+    }
+
+    #[test]
+    fn media_change_generation_advances_on_queue_and_terminal() {
+        use super::{media_change_generation, queue_media_path, MediaPriority};
+        let before = media_change_generation();
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png");
+        let ticket = queue_media_path(&fixture, MediaPriority::Current);
+        assert_ne!(
+            media_change_generation(),
+            before,
+            "queue must bump generation"
+        );
+        let mid = media_change_generation();
+        let _ = super::global_media_registry().fail(ticket.id, super::MediaAssetError::Corrupt);
+        assert_ne!(
+            media_change_generation(),
+            mid,
+            "terminal failure must bump generation"
+        );
+    }
+
+    #[test]
+    fn thumbnail_queue_rejects_unsupported_and_queues_supported_paths() {
+        // Missing path (supported ext) and unsupported ext both degrade to ""
+        // so callers can fall back to their icon branch.
+        assert_eq!(super::queue_media_thumbnail("not-a-file.png", 64), "");
+        assert_eq!(super::queue_media_thumbnail("fixture.txt", 64), "");
+
+        // Supported fixture queues a Thumbnail-priority rendition and returns
+        // an opaque media URI that never leaks the source path.
+        let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png");
+        let uri = super::queue_media_thumbnail(&fixture, 64);
+        assert!(uri.starts_with("/api/__auto/media/"));
+        assert!(!uri.contains("fixtures"));
+        let route = uri.strip_prefix("/api/__auto/media/").unwrap();
+        let (id, revision) = route.split_once('/').unwrap();
+        assert_eq!(id.len(), 32);
+        assert_eq!(revision, "1");
+    }
+
+    // PLAN-811 T-03: owned-runtime lifecycle invariants (shutdown closure,
+    // close-vs-scan race, bounded shutdown under a full ingress queue, and
+    // runtime isolation).
+
+    #[test]
+    fn owned_runtime_shutdown_is_observable_and_rejects_late_publishes() {
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let registry = runtime.registry().clone();
+        let ticket = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "shutdown-fixture".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        assert!(registry.pending_count() > 0, "queued asset is pending");
+        runtime.shutdown();
+        // Terminal-ized: the pump gate observes zero pending work.
+        assert_eq!(
+            registry.pending_count(),
+            0,
+            "shutdown must drive every entry to a terminal state"
+        );
+        assert!(registry.is_shutdown());
+        // A late publish cannot resurrect the closed asset.
+        assert!(matches!(
+            registry.publish_ready(ticket.id, ticket.revision, Arc::<[u8]>::from([9])),
+            Err(super::MediaAssetError::Rejected(_))
+        ));
+        // New submissions are refused after shutdown.
+        let again = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "shutdown-fixture-2".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        assert!(!runtime.worker_pool().submit_bytes(
+            again,
+            Arc::from(Vec::new()),
+            RenditionSpec::original(),
+            MediaPriority::Current,
+            0,
+            1
+        ));
+        // Session table is dropped: subsequent ops report unknown_session.
+        assert_eq!(
+            runtime.session_snapshot("image-session-999999"),
+            "{\"error\":\"unknown_session\"}"
+        );
+    }
+
+    #[test]
+    fn close_during_populate_releases_tickets_and_never_resurrects() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures");
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let session = runtime.open_session(&root);
+        // Close immediately: the populate worker is still scanning. Late
+        // appends must release their tickets instead of resurrecting the
+        // session.
+        assert!(runtime.close_session(&session));
+        assert!(!runtime.close_session(&session), "double close is false");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while Instant::now() < deadline {
+            assert_eq!(
+                runtime.session_snapshot(&session),
+                "{\"error\":\"unknown_session\"}",
+                "closed session never comes back"
+            );
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        runtime.shutdown();
+    }
+
+    #[test]
+    fn shutdown_with_saturated_ingress_queue_completes_within_deadline() {
+        // Saturate the 8-slot ingress queue with more work than it accepts,
+        // then require shutdown to converge within an external deadline —
+        // a full bounded queue must not turn teardown into a deadlock.
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let registry = runtime.registry().clone();
+        let mut accepted = 0;
+        for i in 0..12u64 {
+            let ticket = registry.queue(
+                MediaAssetKey {
+                    source_fingerprint: format!("saturate-{i}"),
+                    orientation: Default::default(),
+                    rendition: RenditionSpec::viewport(4, 4),
+                    revision: i + 1,
+                },
+                MediaMetadata::default(),
+            );
+            if runtime.worker_pool().submit_bytes(
+                ticket,
+                Arc::from(Vec::new()),
+                RenditionSpec::viewport(4, 4),
+                MediaPriority::Thumbnail,
+                0,
+                i + 1,
+            ) {
+                accepted += 1;
+            }
+        }
+        assert!(accepted > 0, "at least the first work item is accepted");
+        let deadline = Instant::now() + Duration::from_secs(10);
+        runtime.shutdown();
+        assert!(
+            Instant::now() < deadline,
+            "shutdown converged within the external deadline"
+        );
+        assert_eq!(registry.pending_count(), 0);
+    }
+
+    #[test]
+    fn owned_runtimes_isolate_tickets_and_sessions_from_the_shared_default() {
+        let local = super::MediaRuntime::new(Duration::from_secs(60));
+        let ticket = local.queue_path(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png"),
+            MediaPriority::Current,
+        );
+        // The local ticket is invisible through the process-default
+        // registry — and vice versa, default-global assets never leak into
+        // the local runtime.
+        assert_eq!(
+            super::global_media_registry().lookup(ticket.id, ticket.revision),
+            MediaLookup::Missing
+        );
+        let session = local.open_session(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/ui/031-image-viewer/tests/fixtures"),
+        );
+        assert_eq!(
+            super::media_session_snapshot(&session),
+            "{\"error\":\"unknown_session\"}",
+            "local session ids are not visible on the default runtime"
+        );
+        local.shutdown();
     }
 
     // PLAN-095 T-02: renderer-facing notify contract (status projection +
