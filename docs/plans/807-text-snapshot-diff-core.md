@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-807
-status: executing
+status: execution_done
 feature_name: 文本、分页快照与 diff 基础模块整体抽取
 author: [Codex]
 created_at: 2026-10-18
 updated_at: 2026-10-18
 plan_revision: 1
-current_step: 1
+current_step: 7
 total_steps: 10
 supersedes_spec_components: [docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/paged-rope.md, docs/specs/auto-lang/vm/overview.md]
 new_spec_components: [docs/specs/auto-text-core/project.md]
@@ -103,6 +103,12 @@ review独立上下文在同树复核AC/SD及反例；用户未指定具体agent/
 | 状态 | ID | owner_stage | 依赖 | 文件/动作、可验证交付与命令 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 802交付 | 核对上述rope/diff/native/a2r/ui_gen与Specs；附件`attachments/807/contract-baseline.md`（新增）冻结API/支持/资源/旧oracle/命令及快照端口选择；有界probe证明分页最小API可跨包，未解决正确性问题不得开始依赖实现 | AC-01..04 |
+| [x] | T-02 | work | T-01 | 新`crates/auto-text-core/{Cargo.toml,src/}`迁rope+file_backing与最小API，原路径薄重导出，check+签名pin+V-01/02 | AC-01,02 |
+| [x] | T-03 | work | T-02 | 同包迁diff/envelope/dirs；将key查找剥离UI，删原算法；core单测+V-05 | AC-01,04 |
+| [x] | T-04 | work | T-03 | `vm/host_capabilities.rs`/native/实例装配和新快照adapter接线，保802现有实现兼容；plan807定向测V-04 | AC-03 |
+| [x] | T-05 | work | T-04 | `a2r_std.rs`/`ui_gen/rust.rs`及editor实际路径接线，旧公开门面签名、feature/error对照；scoped plan807与生成器定向测 | AC-01,03 |
+| [x] | T-06 | work | T-05 | 建consumer/上层反例，完成V-01..06含必要1GB定向资源测和分页失败/drop观测；777/792并集更新+受影响driver；资源证据列明源码/依赖/配置/输入和实际编译形态 | AC-01..04 |
+| [x] | T-07 | work | T-06 | 去重审计、API/剩余UI边/资源清单及SD草案，附件`attachments/807/handoff.md`（新增）绑定SHA与验证结果；check/相关反例通过，提交后送审 | AC-01..04 |
 
 T-01 证据（2026-10-18）：[contract-baseline.md](attachments/807/contract-baseline.md) 已冻结（公开面逐项、重导出映射、EditorSnapshotProvider 终名与缺席语义映射、四 native/a2r/发射冻结矩阵、分页资源合同、777/792 登记片段、命令表）。probe PASS：独立 crate 逐字副本（仅 PageConfig/open_file_backed/content_hash_of 三处 pub(crate)→pub）29 单测+1 跨包集成测全绿、std-only（0.33s）。预取强引用闭环已观测确认（drop rope+snapshot 后 strong_count≥2）并冻结 Weak 修复设计（§2）。worktree `D:/autostack/.wt/lang-807/auto-lang` 分支 `codex/plan-807-dev` base `2046a025b`。
 | [ ] | T-02 | work | T-01 | 新`crates/auto-text-core/{Cargo.toml,src/}`迁rope+file_backing与最小API，原路径薄重导出，check+签名pin+V-01/02 | AC-01,02 |
@@ -120,6 +126,10 @@ handoff：`D:/autostack/.wt/lang-807/auto-lang`，分支`codex/plan-807-dev`。w
 ## 9. 复审记录
 
 2026-10-18：revision 1 drafting。仅建立合同，未实施、未review pass、未执行未来测试。来源hash及本批文档预检见附件；执行后各角色追加修订绑定证据，历史收据不覆盖当前合同。
+
+2026-10-18：work 完成记录（stage: work | PLAN-807 | rev 1 | pass | worktree `D:/autostack/.wt/lang-807/auto-lang` | branch `codex/plan-807-dev` | base `2046a025b` | code `1f5e05141`（8 提交：bc2fc322c/75f492fc8/6a931eb20/d340bd0a8/7cb1239b4/43c077e0d/3717b2164/1f5e05141）| deps: workspace+auto-text-core（新）、auto-down 组内兄弟 @c39ac7f 零改动 | T-01..T-07 | 证据全表见 [handoff.md](attachments/807/handoff.md)：core 65过3ignore、plan807 7/7、consumer 3/3+闭包断言、plan703/710/716=7/22/14、plan728 5+2谱位、1GB 资源测结构驻留 3,033,703B≤12MB、777 strict pass 0 违规、792 driver 25/25、feature-off 编译绿、新 crate 零警告 | blockers 无 | next: review（T-08，同树独立上下文））
+
+work 阶段注记：冻结合同两处实施勘定已并入 contract-baseline（`prefetch_byte_range/file_len` 升 pub；`prune_spans/PruneSpans` 过渡 pub 已于 T-03 回 pub(crate)；观测面由静态计数改为每店 `worker_exited_handle`——严格优于草案且与计划 §5.3"具名missing结果"对齐的 `DiffSnapshotsPair` 纯形）。merge-owned 门（裸 t/tv/tu + 必要资源重放绑定条件）保持 pending。
 
 ## 10. 待澄清事项
 
