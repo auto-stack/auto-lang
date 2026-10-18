@@ -1,7 +1,7 @@
 {
-  "last_covered_plan_id": 805,
-  "timestamp": "2026-10-17T05:19:03Z",
-  "covered_commit": "b00bd2aa81114f453158b59b0e9bd3bef4f732bc",
+  "last_covered_plan_id": 812,
+  "timestamp": "2026-10-18T22:45:45Z",
+  "covered_commit": "67a01025ad7429fa9d11eb87d0dbded00a9821b1",
   "legs": [
     "tf",
     "tt",
@@ -9,33 +9,36 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 78.5,
-      "run": 6263,
+      "seconds": 127.5,
+      "run": 6264,
       "passed": 6263,
       "failed": 0,
-      "skipped": 519,
-      "note": "全绿零红（已知 flake 族本轮未触发）；1M churn/语料族/画廊围栏（heavy 闸门单实例）全过"
+      "skipped": 517,
+      "note": "6263 过；唯一红 ffi_dual_019_dep_layout_invariants=KNOWN-DEBT REG-2 在案 tf 批量负载 flake（solo 复过 3.4s）；1M churn/语料族/画廊围栏全过"
     },
     "tt": {
-      "seconds": 104.2,
-      "run": 5637,
-      "passed": 5637,
+      "seconds": 151.7,
+      "run": 5651,
+      "passed": 5651,
       "failed": 0,
-      "skipped": 1798,
-      "note": "全绿（1 slow=plan738 p4 55.9s）"
+      "skipped": 1796,
+      "note": "全绿（11 slow；首轮 2 超时 ac_case syntax_parse/plan738 p4 为冷负载型，热复跑 5651/5651 全过）"
     },
     "tb": {
-      "seconds": 70.8,
-      "run": 5289,
+      "seconds": 114.3,
+      "run": 5290,
       "passed": 5289,
       "failed": 0,
-      "skipped": 1548,
-      "note": "全绿"
+      "skipped": 1546,
+      "note": "5289 过；唯一红 plan484_charts_gallery_bare_names_render=charts_gallery 在案预存红族"
     }
   },
   "new_reds": [],
-  "known_reds_seen": [],
-  "taa": "not_triggered: window 22436586409513757c56cdece6d03e2c085b6d35..HEAD touches zero aavm trigger paths",
-  "environment": "主检出单实例（预检无 cargo/nextest/rustc 进程；RUSTC_WRAPPER= 绕过本机 sccache 端口排除段）；PLAN-805 merge 收口触发（805%5=0，covered 800→805）",
-  "window": "22436586409513757c56cdece6d03e2c085b6d35..b00bd2aa81114f453158b59b0e9bd3bef4f732bc (800 closeout -> 805 closeout: 801/802/804/787 merge 线+788 簿记+805 delivery+merge+归档)"
+  "known_reds_seen": [
+    "ffi_dual_019_dep_layout_invariants (KNOWN-DEBT REG-2 tf 批量负载 flake，solo 绿)",
+    "plan484_charts_gallery_bare_names_render (charts_gallery 预存红族)"
+  ],
+  "taa": "not_triggered: window b00bd2aa8..67a01025ad7429fa9d11eb87d0dbded00a9821b1 touches zero aavm trigger paths",
+  "environment": "主检出单实例（预检等 plan811 worktree 定向复审门退出后开跑；RUSTC_WRAPPER= 清空）",
+  "window": "b00bd2aa8..67a01025ad7429fa9d11eb87d0dbded00a9821b1 (805 closeout -> 808 closeout: 806/807/812/808 merge 线+簿记)"
 }
