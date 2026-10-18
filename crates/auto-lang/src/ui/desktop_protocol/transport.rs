@@ -435,7 +435,9 @@ mod pipe_stub {
 }
 
 #[cfg(not(windows))]
-pub use pipe_stub::{connect, listen, try_claim_pipe, PendingServer, PipeClaim};
+pub use pipe_stub::{
+    connect, listen, try_claim_pipe, PendingServer, PipeClaim, CLAIM_DENIED_MARKER,
+};
 
 // ---------------------------------------------------------------------------
 // WebSocket（Plan 508 G3/G4 远程线）：tokio-tungstenite + 线程桥接同步

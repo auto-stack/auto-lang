@@ -64,3 +64,10 @@ graph LR
 > 使 vm-bootstrap 组笔记（note.id 前缀 `vm-bootstrap/`）在 playground 可运行
 > （官方宿主自动开启；走查 105 条 104 成功/80 条 golden 逐字节一致，余为仓库
 > 既有 #[ignore] 隔离态）。project/files 路径不受影响。
+
+## Linux 后台发布契约（PLAN-812）
+
+- 网站静态前端与后台必须采用兼容的响应格式：`/api/run` 包含 `bytecode` 与 `meta` 字段（成功执行验收示例时字节码非空），`/api/trans` 返回 `files[]`（每项含 `path`、`code`）；旧版仅返回 `code` 的后台不能满足当前 IDE。
+- `auto-lang` 的 `a2r-std` 是通用依赖；非 Windows transport 占位模块重导出与调用方一致的 `CLAIM_DENIED_MARKER`，仍保留不支持原生 named-pipe 的错误行为。
+- 发布物包含 Linux 程序、Notes manifest、项目示例、自举库与独立前端。当前资源由编译期 `CARGO_MANIFEST_DIR` 定位，部署必须保留对应绝对布局；只复制程序可能导致资源回退或项目缺失。
+- 更新前备份旧程序和 unit；原子替换程序并重启原服务，验收失败恢复旧程序。上线检查包含真实字节码、Rust/C/Python/TypeScript/ABT 转译、多文件示例及网站页面 Run/Trans 的右窗内容。
