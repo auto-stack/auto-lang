@@ -7262,6 +7262,23 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 /// 6. Copy public assets
 /// 7. Start dev server
 pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    run_vue_project_inner(root_dir, args, None)
+}
+
+/// 请求路径（PLAN-809 R1-F02：run 的项目读取经 I-PROJECT）。
+pub fn run_vue_project_with_request(
+    root_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    run_vue_project_inner(root_dir, args, Some(req))
+}
+
+fn run_vue_project_inner(
+    root_dir: &Path,
+    args: Vec<String>,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
     // PLAN-646: dev 运行面开启 Select Anything DOM 标记（data-auto-*）——
     // SFC 注入 data-auto-{tag,id,span} 供 overlay 框选采集；产物构建
     // （build_vue_project）不设，保持输出逐字节不变。VueGenerator::new()
@@ -7301,8 +7318,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     let changed_count = incremental_compile_changed(root_dir)?;
 
-    // Load project context
-    let project = VueProject::from_workspace(root_dir)?;
+    // Load project context（R1-F02：请求在场则经合同读取，不再回读 pac.at）
+    let project = match req {
+        Some(r) => VueProject::from_workspace_with_request(root_dir, r)?,
+        None => VueProject::from_workspace(root_dir)?,
+    };
 
     // Determine total steps based on whether project exists
     let total_steps = 6;

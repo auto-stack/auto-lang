@@ -628,6 +628,15 @@ impl Automan {
     }
 
     /// Open Jetpack Compose project with Android Studio
+    /// PLAN-809 R1-F02：本工程生成请求（I-PROJECT）——run/build/open 等
+    /// 生产分派共用构造点（self.pac + cwd pac.at）。
+    fn gen_request(&self) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
+        let pac_at = self.root_dir.join("pac.at");
+        Ok(crate::generation_request_adapter::request_of(
+            &self.pac, &pac_at,
+        ))
+    }
+
     fn open_jet_project(&self) -> AutoResult<()> {
         // Get current directory (project root)
         let root_dir = std::env::current_dir()
@@ -641,7 +650,13 @@ impl Automan {
             println!("Jet project directory not found, generating...");
             // Generate the jet project first
             let output_dir = root_dir.join("gen").join("front").join("jet");
-            crate::jet::generate_jet_project(&root_dir, Some(&output_dir), true)?;
+            let req = self.gen_request()?;
+            crate::jet::generate_jet_project_with_request(
+                &root_dir,
+                Some(&output_dir),
+                true,
+                &req,
+            )?;
         }
 
         println!("Opening Jetpack Compose project with Android Studio...");
@@ -770,7 +785,13 @@ impl Automan {
             println!("Ark project directory not found, generating...");
             // Generate the ark project first
             let output_dir = root_dir.join("gen").join("front").join("ark");
-            crate::ark::generate_ark_project(&root_dir, Some(&output_dir), true)?;
+            let req = self.gen_request()?;
+            crate::ark::generate_ark_project_with_request(
+                &root_dir,
+                Some(&output_dir),
+                true,
+                &req,
+            )?;
         }
 
         println!("Opening ArkTS/HarmonyOS project with DevEco Studio...");
@@ -1113,7 +1134,10 @@ impl Automan {
                     .map_err(|e| format!("Failed to get current directory: {}", e))?;
                 // Tauri build uses run_tauri_project's build phase (generate +
                 // API gen + install). The actual server launch is deferred to run.
-                crate::tauri::run_tauri_project(&root_dir, vec![])?;
+                {
+                    let req = self.gen_request()?;
+                    crate::tauri::run_tauri_project_with_request(&root_dir, vec![], &req)?;
+                }
             }
             auto_lang::config::BackendType::Jet => {
                 println!("Building Jetpack Compose project (backend: jet)");
@@ -1131,7 +1155,10 @@ impl Automan {
                 let root_dir = std::env::current_dir()
                     .map_err(|e| format!("Failed to get current directory: {}", e))?;
                 if root_dir.join("src").join("front").exists() {
-                    crate::rust_ui::build_rust_ui(&root_dir)?;
+                    {
+                        let req = self.gen_request()?;
+                        crate::rust_ui::build_rust_ui_with_request(&root_dir, &req)?;
+                    }
                 } else {
                     println!("Transpiling Auto code to Rust (backend: rust)");
                     // Plan 531 P523-1: rust target 链补齐——targets 的 autos
@@ -1680,16 +1707,25 @@ impl Automan {
             }
             auto_lang::config::BackendType::Jet => {
                 println!("Running Jetpack Compose project (backend: jet)");
-                crate::jet::run_jet_project(&root_dir, args)
+                {
+                    let req = self.gen_request()?;
+                    crate::jet::run_jet_project_with_request(&root_dir, args, &req)
+                }
             }
             auto_lang::config::BackendType::Arkts => {
                 println!("Running ArkTS/HarmonyOS project (backend: ark)");
-                crate::ark::run_ark_project(&root_dir, args)
+                {
+                    let req = self.gen_request()?;
+                    crate::ark::run_ark_project_with_request(&root_dir, args, &req)
+                }
             }
             auto_lang::config::BackendType::Rust => {
                 // Check if this is a UI project (has front/ dir)
                 if root_dir.join("src").join("front").exists() {
-                    crate::rust_ui::run_rust_ui(&root_dir, args)
+                    {
+                        let req = self.gen_request()?;
+                        crate::rust_ui::run_rust_ui_with_request(&root_dir, args, &req)
+                    }
                 } else {
                     println!("Running Rust project (backend: rust)");
                     let mut cmd = std::process::Command::new("cargo");
@@ -1737,7 +1773,10 @@ impl Automan {
                         Err("AutoVM server mode requires an api.at contract (local src/back/ or pac.at back.project external backend)".into())
                     }
                 } else {
-                    crate::rust_ui::run_vm_ui(&root_dir, args)
+                    {
+                        let req = self.gen_request()?;
+                        crate::rust_ui::run_vm_ui_with_request(&root_dir, args, &req)
+                    }
                 }
             }
             auto_lang::config::BackendType::Vscode => {
@@ -1752,14 +1791,20 @@ impl Automan {
     fn run_vue(&mut self, args: Vec<String>) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::vue::run_vue_project(&root_dir, args)
+        {
+            let req = self.gen_request()?;
+            crate::vue::run_vue_project_with_request(&root_dir, args, &req)
+        }
     }
 
     /// Run Tauri dev server using npm run tauri dev (full workflow: generate Vue, generate Tauri, install, run)
     fn run_tauri(&mut self, args: Vec<String>) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::tauri::run_tauri_project(&root_dir, args)
+        {
+            let req = self.gen_request()?;
+            crate::tauri::run_tauri_project_with_request(&root_dir, args, &req)
+        }
     }
 
     /// Build all workspace members (Plan 130)
@@ -1859,13 +1904,14 @@ impl Automan {
         frontend: &auto_lang::config::BackendType,
         root_dir: &Path,
         args: Vec<String>,
+        req: &auto_project_model::generation_request::GenerationRequest,
     ) -> AutoResult<()> {
         use auto_lang::config::BackendType;
 
         match frontend {
             BackendType::Vue => {
                 println!("  Running Vue dev server");
-                crate::vue::run_vue_project(root_dir, args)?;
+                crate::vue::run_vue_project_with_request(root_dir, args, req)?;
             }
             BackendType::Jet => {
                 println!("  Running Jetpack project");
@@ -1873,7 +1919,7 @@ impl Automan {
             }
             BackendType::Tauri => {
                 println!("  Running Tauri project");
-                crate::tauri::run_tauri_project(root_dir, args)?;
+                crate::tauri::run_tauri_project_with_request(root_dir, args, req)?;
             }
             BackendType::Rust => {
                 println!("  Running Rust backend");
@@ -1956,7 +2002,14 @@ impl Automan {
 
             // Load member's pac.at
             let config = AutoConfig::read(&member_pac_path)?;
-            let member_pac = Pac::new(config);
+            let member_pac = Pac::new(auto_lang::config::AutoConfig {
+                code: config.code.clone(),
+                root: config.root.clone(),
+                args: config.args.clone(),
+            });
+            // PLAN-809 R1-F02：成员请求（run_member_frontend 经合同读取）。
+            let member_req =
+                crate::generation_request_adapter::request_of(&member_pac, &member_pac_path);
 
             // Run based on member's frontend types (Plan 132: support array backends)
             let frontends = member_pac.frontend_types();
@@ -1970,7 +2023,7 @@ impl Automan {
                 }
             } else if frontends.len() == 1 {
                 // Single frontend - run directly
-                Self::run_member_frontend(&frontends[0], &root_dir, args.clone())?;
+                Self::run_member_frontend(&frontends[0], &root_dir, args.clone(), &member_req)?;
                 frontend_started = true;
             } else {
                 // Multiple frontends - let user select (or default to first in non-interactive)
@@ -1992,7 +2045,12 @@ impl Automan {
                     0
                 };
 
-                Self::run_member_frontend(&frontends[selection], &root_dir, args.clone())?;
+                Self::run_member_frontend(
+                    &frontends[selection],
+                    &root_dir,
+                    args.clone(),
+                    &member_req,
+                )?;
                 frontend_started = true;
             }
         }

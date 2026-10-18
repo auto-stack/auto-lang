@@ -286,9 +286,148 @@ pub fn assemble_major_targets(targets_map: &mut HashMap<AutoStr, Target>) -> Vec
     major_targets
 }
 
+// ========== 依赖下载决策（PLAN-809 R1-F03 / contract R-07） ==========
+// 纯决策单源：按目标决定动作、按已知名集合决定并入；Git/索引/FS 执行
+// 与递归求值留在 auto-man adapter。
+
+/// 单个 Dep/Device 目标的下载动作决策。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DepAction {
+    /// 已物化（exists），跳过。
+    Skip,
+    /// 需要获取（按 origin 分派执行）。
+    Fetch,
+}
+
+/// 决策：仅 Dep/Device 参与下载；exists 观测注入（adapter 传真实 FS）。
+pub fn dep_fetch_action(target: &Target, exists: bool) -> Option<DepAction> {
+    match target.kind {
+        TargetKind::Dep | TargetKind::Device => {
+            if exists {
+                Some(DepAction::Skip)
+            } else {
+                Some(DepAction::Fetch)
+            }
+        }
+        _ => None,
+    }
+}
+
+/// 版本 pin 决策：父传播 version=="latest" 时目标置 latest。
+pub fn pinned_version(target_version: &AutoStr, parent_version: &AutoStr) -> AutoStr {
+    if parent_version == "latest" {
+        "latest".into()
+    } else {
+        target_version.clone()
+    }
+}
+
+/// dep-pac 的其余 lib 目标并入 new_deps 的决策（原 download_deps 段）：
+/// 排除与当前 dep 同名者、已知名（target_names）不重入；dirs 的
+/// append_root 以 dep 根相对存在性观测注入。
+pub fn admit_new_dep_libs(
+    libs: &[Target],
+    known: &std::collections::HashSet<AutoStr>,
+    current_dep_name: &AutoStr,
+    dep_root_at: &AutoStr,
+    dir_exists: impl Fn(&str) -> bool,
+) -> Vec<Target> {
+    let mut admitted = Vec::new();
+    for lib in libs {
+        if lib.name == *current_dep_name {
+            continue;
+        }
+        if known.contains(&lib.name) {
+            continue;
+        }
+        let mut lib = lib.clone();
+        for (_, v) in lib.dirs.iter_mut() {
+            let path = format!("{}/{}", dep_root_at, v.at);
+            if dir_exists(&path) {
+                v.append_root(dep_root_at.clone());
+            }
+        }
+        admitted.push(lib);
+    }
+    admitted
+}
+
+/// 递归下载返回的传递 deps 并入决策：已知名不重入。
+pub fn admit_transitive_deps<'a>(
+    deps: impl IntoIterator<Item = &'a Target>,
+    known: &std::collections::HashSet<AutoStr>,
+) -> Vec<Target> {
+    let mut admitted = Vec::new();
+    for dep in deps {
+        if known.contains(&dep.name) {
+            continue;
+        }
+        admitted.push(dep.clone());
+    }
+    admitted
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// R1-F03：下载动作/版本 pin/并入决策的纯规则 oracle。
+    #[test]
+    fn download_decisions_rules() {
+        use super::*;
+        use std::collections::HashSet;
+
+        let mut dep = Target::new("d", TargetKind::Dep);
+        dep.version = "1.0".into();
+        let app = Target::new("a", TargetKind::App);
+
+        // 动作：仅 Dep/Device；exists 跳过
+        assert_eq!(dep_fetch_action(&dep, true), Some(DepAction::Skip));
+        assert_eq!(dep_fetch_action(&dep, false), Some(DepAction::Fetch));
+        assert_eq!(dep_fetch_action(&app, false), None);
+
+        // 版本 pin：父 latest 传播
+        assert_eq!(pinned_version(&"1.0".into(), &"latest".into()), "latest");
+        assert_eq!(pinned_version(&"1.0".into(), &"0.9".into()), "1.0");
+
+        // lib 并入：同名排除、已知不重入、append_root 观测注入
+        let mut lib = Target::new("libx", TargetKind::Lib);
+        lib.dirs.insert(
+            "src".into(),
+            crate::dir::Dir::from_str("src".into(), "libs/libx".into(), TargetKind::Lib),
+        );
+        let mut same = Target::new("d", TargetKind::Lib);
+        let known: HashSet<AutoStr> = ["known".into()].into_iter().collect();
+        let admitted: Vec<Target> = admit_new_dep_libs(
+            &[lib.clone(), same],
+            &known,
+            &"d".into(),
+            &"deps/d".into(),
+            |p| p == "deps/d/libs/libx/src",
+        );
+        assert_eq!(admitted.len(), 1, "同名 dep 排除");
+        assert_eq!(admitted[0].name, "libx");
+        let src_dir = admitted[0].dirs.get(&AutoStr::from("src")).unwrap();
+        assert!(
+            src_dir.at.starts_with("deps/d/"),
+            "append_root 按观测应用：{}",
+            src_dir.at
+        );
+        // 观测为假 → 不 append
+        let admitted2 =
+            admit_new_dep_libs(&[lib], &known, &"d".into(), &"deps/d".into(), |_| false);
+        let d2 = admitted2[0].dirs.get(&AutoStr::from("src")).unwrap();
+        assert_eq!(d2.at, "libs/libx/src");
+
+        // 传递 dep 并入：已知不重入
+        let t1 = Target::new("t1", TargetKind::Dep);
+        let mut t2 = Target::new("known", TargetKind::Dep);
+        t2.version = "9".into();
+        let adm = admit_transitive_deps([&t1, &t2], &known);
+        assert_eq!(adm.len(), 1);
+        assert_eq!(adm[0].name, "t1");
+    }
+
     use crate::target::{Target, TargetKind};
     use auto_val::{AutoStr, Node, Value};
 

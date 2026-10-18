@@ -6099,6 +6099,20 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
 /// `cargo build` the shared-workspace member. Mirrors `run_rust_ui`'s
 /// regeneration logic without running the app.
 pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
+    let source = PacSource::legacy();
+    build_rust_ui_inner(project_dir, &source)
+}
+
+/// 请求路径（PLAN-809 R1-F02：run/build 生产再生成同样经 I-PROJECT）。
+pub fn build_rust_ui_with_request(
+    project_dir: &Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    let source = PacSource::from_request(req);
+    build_rust_ui_inner(project_dir, &source)
+}
+
+fn build_rust_ui_inner(project_dir: &Path, source: &PacSource) -> AutoResult<()> {
     let ws_dir = resolve_rust_workspace_dir(project_dir);
     let member_name = front_member_name(project_dir);
     let rust_dir = ws_dir.join(&member_name);
@@ -6106,14 +6120,13 @@ pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
 
     if full {
         println!("{}", "Generating Rust UI project...".bright_cyan());
-        generate_rust_ui(project_dir, None, false)?;
+        generate_rust_ui_inner(project_dir, None, false, source)?;
     } else if code {
         println!(
             "{}",
             "Regenerating Rust UI code (source changed)...".bright_cyan()
         );
-        let __src = PacSource::legacy();
-        regenerate_code_only(project_dir, &rust_dir, &__src)?;
+        regenerate_code_only(project_dir, &rust_dir, source)?;
     }
 
     // PLAN-681 R-1（复审 needs_fix 修正）：build 路径补 back crate 刷新。
@@ -6163,6 +6176,21 @@ pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
 }
 
 pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    let source = PacSource::legacy();
+    run_rust_ui_inner(project_dir, args, &source)
+}
+
+/// 请求路径（PLAN-809 R1-F02）。
+pub fn run_rust_ui_with_request(
+    project_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    let source = PacSource::from_request(req);
+    run_rust_ui_inner(project_dir, args, &source)
+}
+
+fn run_rust_ui_inner(project_dir: &Path, args: Vec<String>, source: &PacSource) -> AutoResult<()> {
     // Rust project lives in the resolved workspace (Stage B P-2 landing order).
     let ws_dir = resolve_rust_workspace_dir(project_dir);
     let member_name = front_member_name(project_dir);
@@ -6171,14 +6199,13 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
 
     if full {
         println!("{}", "Generating Rust UI project...".bright_cyan());
-        generate_rust_ui(project_dir, None, false)?;
+        generate_rust_ui_inner(project_dir, None, false, source)?;
     } else if code {
         println!(
             "{}",
             "Regenerating Rust UI code (source changed)...".bright_cyan()
         );
-        let __src = PacSource::legacy();
-        regenerate_code_only(project_dir, &rust_dir, &__src)?;
+        regenerate_code_only(project_dir, &rust_dir, source)?;
     }
 
     // Plan 347: In merged mode, skip the backend HTTP server — API functions

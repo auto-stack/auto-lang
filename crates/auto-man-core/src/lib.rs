@@ -36,8 +36,9 @@ pub use backend::{
     RenderSelection,
 };
 pub use closure::{
-    assemble_major_targets, build_resolved_links, check_all_resolved, resolve_target_closure,
-    resolve_target_deps, try_resolve_target_links, GraphError,
+    admit_new_dep_libs, admit_transitive_deps, assemble_major_targets, build_resolved_links,
+    check_all_resolved, dep_fetch_action, pinned_version, resolve_target_closure,
+    resolve_target_deps, try_resolve_target_links, DepAction, GraphError,
 };
 pub use dir::Dir;
 pub use file_types::{FileFilter, FileType};
@@ -49,7 +50,10 @@ pub use pac::{
     libs_of, list_port_names, pac_from_decl, pac_from_decl_with_probe, pac_is_ui, pac_is_workspace,
     pac_to_node, path_depth, relative_path, targets_map, PacDecl,
 };
-pub use planning::{select_port_binding, select_rust_package, PortSelection, RustPackageSpec};
+pub use planning::{
+    ordered_build_renames, select_port_binding, select_rust_package, BuildOrderItem, PortSelection,
+    RustPackageSpec,
+};
 pub use port::{port_from_node, Port};
 pub use scene::{is_ui, is_workspace, Scene};
 pub use selection::{

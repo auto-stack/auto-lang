@@ -169,27 +169,53 @@ impl NinjaBuilder {
 impl Builder for NinjaBuilder {
     fn build(&mut self, pac: &mut Pac) -> AutoResult<()> {
         self.setup(pac)?;
-        // （PLAN-809 T-05 recorded adjustment：deps 先建/rename 去重的
-        // 规划序保留在 adapter——它操作 t.deps 内嵌克隆与 pac.targets
-        // 的混合句柄，抽入 core 需造无第二消费者的间接层；规则归属在
-        // contract §13 登记。）
-        let mut targets_done = HashSet::new();
-        for t in &pac.targets {
-            if !t.deps.is_empty() {
-                for dep in t.deps.iter() {
-                    if targets_done.contains(&dep.rename) {
-                        continue;
-                    } else {
-                        self.target(dep, pac)?;
-                        targets_done.insert(dep.rename.clone());
-                    }
+        // PLAN-809 R1-F03：deps 先建/rename 去重的规划序单源在
+        // auto_man_core::planning::ordered_build_renames；本方法把
+        // pac.targets（含内嵌 deps 克隆）映射为 BuildOrderItem 抽象，
+        // 按返回 rename 序回到首个匹配句柄执行（与旧臂遍历序等价）。
+        let items: Vec<auto_man_core::BuildOrderItem> = pac
+            .targets
+            .iter()
+            .map(|t| auto_man_core::BuildOrderItem {
+                rename: t.rename.clone(),
+                dep_renames: t.deps.iter().map(|d| d.rename.clone()).collect(),
+            })
+            .collect();
+        let order = auto_man_core::ordered_build_renames(&items);
+        for rename in &order {
+            // 首个 rename 匹配：pac.targets 顺序优先，其次各 target 的
+            // 内嵌 deps（旧臂执行句柄语义）。
+            let found = pac
+                .targets
+                .iter()
+                .find(|t| &t.rename == rename)
+                .map(|_| (usize::MAX, rename.clone()))
+                .or_else(|| {
+                    pac.targets.iter().enumerate().find_map(|(ti, t)| {
+                        t.deps
+                            .iter()
+                            .find(|d| &d.rename == rename)
+                            .map(|_| (ti, rename.clone()))
+                    })
+                });
+            if let Some((ti, _)) = found {
+                if ti == usize::MAX {
+                    let idx = pac
+                        .targets
+                        .iter()
+                        .position(|t| &t.rename == rename)
+                        .unwrap();
+                    let t = &pac.targets[idx];
+                    self.target(t, pac)?;
+                } else {
+                    let dep = pac.targets[ti]
+                        .deps
+                        .iter()
+                        .find(|d| &d.rename == rename)
+                        .unwrap();
+                    let dep = dep.clone();
+                    self.target(&dep, pac)?;
                 }
-            }
-            if targets_done.contains(&t.rename) {
-                continue;
-            } else {
-                self.target(t, pac)?;
-                targets_done.insert(t.rename.clone());
             }
         }
         self.finish(pac)?;

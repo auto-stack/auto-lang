@@ -744,7 +744,24 @@ pub fn build_ark_project(root_dir: &Path) -> AutoResult<()> {
 }
 
 /// Run ArkTS project (auto run command for ark backend)
-pub fn run_ark_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
+pub fn run_ark_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    run_ark_project_inner(root_dir, args, None)
+}
+
+/// 请求路径（PLAN-809 R1-F02）。
+pub fn run_ark_project_with_request(
+    root_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    run_ark_project_inner(root_dir, args, Some(req))
+}
+
+fn run_ark_project_inner(
+    root_dir: &Path,
+    _args: Vec<String>,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
     println!(
         "{}",
         "Running ArkTS/HarmonyOS project (backend: ark)".bright_cyan()

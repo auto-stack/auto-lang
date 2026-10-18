@@ -26,11 +26,34 @@ use crate::AutoResult;
 /// 5. Install shadcn-vue components
 /// 6. Initialize Tauri if not exists
 /// 7. npm run tauri dev (no build needed for dev mode)
-pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
-    println!("{}", "Running Tauri dev server (backend: tauri)".bright_cyan());
+pub fn run_tauri_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    run_tauri_project_inner(root_dir, args, None)
+}
+
+/// 请求路径（PLAN-809 R1-F02）。
+pub fn run_tauri_project_with_request(
+    root_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    run_tauri_project_inner(root_dir, args, Some(req))
+}
+
+fn run_tauri_project_inner(
+    root_dir: &Path,
+    _args: Vec<String>,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
+    println!(
+        "{}",
+        "Running Tauri dev server (backend: tauri)".bright_cyan()
+    );
 
     // Load Vue project context
-    let project = crate::vue::VueProject::from_workspace(root_dir)?;
+    let project = match req {
+        Some(r) => crate::vue::VueProject::from_workspace_with_request(root_dir, r)?,
+        None => crate::vue::VueProject::from_workspace(root_dir)?,
+    };
 
     // Check if Tauri is already initialized
     let vue_dir = root_dir.join("gen").join("front").join("vue");
@@ -39,16 +62,27 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
 
     // Step 1: Generate project structure if not exists
     let total_steps = if project.exists() {
-        if tauri_exists { 5 } else { 6 }
+        if tauri_exists {
+            5
+        } else {
+            6
+        }
     } else {
-        if tauri_exists { 6 } else { 7 }
+        if tauri_exists {
+            6
+        } else {
+            7
+        }
     };
     let mut current_step = 0;
 
     if !project.exists() {
         current_step += 1;
         println!();
-        println!("▶ Step {}/{}: Generating Vue project...", current_step, total_steps);
+        println!(
+            "▶ Step {}/{}: Generating Vue project...",
+            current_step, total_steps
+        );
         project.generate()?;
     }
 
@@ -61,7 +95,10 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     // Step 2: Generate API client code (if api.at exists)
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Generating API client...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Generating API client...",
+        current_step, total_steps
+    );
     if let Err(e) = crate::api_gen::generate_api(root_dir, "tauri") {
         // API generation is optional - only warn on failure
         println!("  ⚠ API generation skipped: {}", e);
@@ -72,7 +109,10 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     if rust_dir.exists() {
         current_step += 1;
         println!();
-        println!("▶ Step {}/{}: Generating Rust backend crate (Plan 151)...", current_step, total_steps);
+        println!(
+            "▶ Step {}/{}: Generating Rust backend crate (Plan 151)...",
+            current_step, total_steps
+        );
         if let Err(e) = crate::tauri_backend::generate_tauri_backend(root_dir) {
             println!("  ⚠ Rust backend generation skipped: {}", e);
         } else {
@@ -90,13 +130,19 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     // complete when pnpm resolves — same ordering as run/build vue paths.
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Materializing UI components...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Materializing UI components...",
+        current_step, total_steps
+    );
     project.materialize_ui_components()?;
 
     // Step 4: npm install + registry fallback for non-bundled components
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Installing dependencies...",
+        current_step, total_steps
+    );
     project.npm_install()?;
 
     println!();
@@ -107,7 +153,10 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     if !tauri_exists {
         current_step += 1;
         println!();
-        println!("▶ Step {}/{}: Initializing Tauri...", current_step, total_steps);
+        println!(
+            "▶ Step {}/{}: Initializing Tauri...",
+            current_step, total_steps
+        );
         init_tauri(&vue_dir)?;
 
         // Plan 151: Update src-tauri/Cargo.toml to depend on ../../rust
@@ -133,7 +182,10 @@ pub fn run_tauri_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> 
     // Step 6: Run Tauri dev (no build needed - tauri dev handles it)
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Starting Tauri dev server...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Starting Tauri dev server...",
+        current_step, total_steps
+    );
     run_tauri_dev(root_dir)?;
 
     Ok(())
@@ -153,8 +205,13 @@ fn apply_desktop_window_config(conf: &str) -> AutoResult<String> {
         println!("  {} Tauri desktop window: fullscreen", "✓".bright_green());
     }
     serde_json::to_string_pretty(&v)
-        .map(|s| format!("{}
-", s))
+        .map(|s| {
+            format!(
+                "{}
+",
+                s
+            )
+        })
         .map_err(|e| e.into())
 }
 
@@ -199,17 +256,26 @@ fn update_tauri_cargo_toml(tauri_dir: &Path) -> AutoResult<()> {
     let updated = if content.contains("[dependencies]") {
         content.replace(
             "[dependencies]",
-            &format!("[dependencies]\n{} = {{ path = \"../../rust\" }}", package_name)
+            &format!(
+                "[dependencies]\n{} = {{ path = \"../../rust\" }}",
+                package_name
+            ),
         )
     } else {
-        format!(r#"[dependencies]
-{} = {{ path = "../../../back/rust" }}"#, package_name)
+        format!(
+            r#"[dependencies]
+{} = {{ path = "../../../back/rust" }}"#,
+            package_name
+        )
     };
 
     std::fs::write(&cargo_toml_path, updated)
         .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
 
-    println!("  ✓ Updated src-tauri/Cargo.toml to depend on ../../rust (package: {})", package_name);
+    println!(
+        "  ✓ Updated src-tauri/Cargo.toml to depend on ../../rust (package: {})",
+        package_name
+    );
     Ok(())
 }
 
@@ -276,14 +342,23 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
         "init",
         "--ci",
         "--force",
-        "--app-name", "App",
-        "--window-title", "App",
-        "--dev-url", "http://localhost:3000",
-        "--before-dev-command", &before_dev_cmd,
-        "--frontend-dist", "../dist",
+        "--app-name",
+        "App",
+        "--window-title",
+        "App",
+        "--dev-url",
+        "http://localhost:3000",
+        "--before-dev-command",
+        &before_dev_cmd,
+        "--frontend-dist",
+        "../dist",
     ];
 
-    println!("  Running: {} tauri {}", crate::pkg::exec_cmd(), init_args.join(" "));
+    println!(
+        "  Running: {} tauri {}",
+        crate::pkg::exec_cmd(),
+        init_args.join(" ")
+    );
 
     crate::pkg::exec_local("tauri", &init_args, vue_dir)
         .map_err(|e| format!("Tauri init failed: {}", e))?;
@@ -299,7 +374,10 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
         // webview = 一个虚拟桌面) + honor AUTO_FRONT_PORT so `--front-port`
         // keeps the devUrl and the vite server in sync.
         if crate::vue::desktop_mode() {
-            if let Some(port) = std::env::var("AUTO_FRONT_PORT").ok().filter(|p| !p.is_empty()) {
+            if let Some(port) = std::env::var("AUTO_FRONT_PORT")
+                .ok()
+                .filter(|p| !p.is_empty())
+            {
                 updated = updated.replace(
                     "http://localhost:3000",
                     &format!("http://localhost:{}", port),
@@ -320,7 +398,10 @@ fn init_tauri(vue_dir: &Path) -> AutoResult<()> {
 
         // Only add if not already present
         if !content.contains("[workspace]") {
-            let updated = format!("{}\n\n# Exclude from root workspace\n[workspace]\n", content);
+            let updated = format!(
+                "{}\n\n# Exclude from root workspace\n[workspace]\n",
+                content
+            );
             std::fs::write(&tauri_cargo_toml, updated)
                 .map_err(|e| format!("Failed to write src-tauri/Cargo.toml: {}", e))?;
             println!("  ✓ Added [workspace] to exclude from root workspace");
@@ -355,8 +436,7 @@ fn update_tauri_lib_rs(tauri_dir: &Path) -> AutoResult<()> {
         )
     );
 
-    std::fs::write(&lib_rs_path, updated)
-        .map_err(|e| format!("Failed to write lib.rs: {}", e))?;
+    std::fs::write(&lib_rs_path, updated).map_err(|e| format!("Failed to write lib.rs: {}", e))?;
 
     println!("  ✓ Registered commands in src-tauri/src/lib.rs");
     Ok(())
@@ -371,7 +451,11 @@ fn run_tauri_dev(root_dir: &Path) -> AutoResult<()> {
     }
 
     println!();
-    println!("{} {}", "Starting Tauri dev...".bright_green(), "(this may take a while for first build)".bright_black());
+    println!(
+        "{} {}",
+        "Starting Tauri dev...".bright_green(),
+        "(this may take a while for first build)".bright_black()
+    );
     println!();
 
     // Use npx tauri dev instead of npm run tauri dev

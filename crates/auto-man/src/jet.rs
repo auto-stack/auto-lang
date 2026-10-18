@@ -838,7 +838,24 @@ fn generate_jet_project_with_project(
 /// 2. Generate project structure if not exists
 /// 3. Build the project
 /// 4. Install and run on connected device/emulator
-pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
+pub fn run_jet_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    run_jet_project_inner(root_dir, args, None)
+}
+
+/// 请求路径（PLAN-809 R1-F02）。
+pub fn run_jet_project_with_request(
+    root_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    run_jet_project_inner(root_dir, args, Some(req))
+}
+
+fn run_jet_project_inner(
+    root_dir: &Path,
+    _args: Vec<String>,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
     println!(
         "{}",
         "Running Jetpack Compose project (backend: jet)".bright_cyan()
@@ -847,7 +864,10 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // Step 1: Generate code (always, incremental)
     println!();
     println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
-    generate_jet_project(root_dir, None, false)?;
+    match req {
+        Some(r) => generate_jet_project_with_request(root_dir, None, false, r)?,
+        None => generate_jet_project(root_dir, None, false)?,
+    }
 
     let jet_dir = root_dir.join("gen").join("front").join("jet");
 

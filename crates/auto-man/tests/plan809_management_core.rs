@@ -259,63 +259,213 @@ fn resolve_internal_cycle_bounded_error() {
     assert!(pac.targets.iter().all(|t| t.srcs.is_empty()));
 }
 
-/// V-05（证据半）：NinjaBuilder 内存模式消费 core 规划——真实 Builder
-/// 三族中 ninja 的 build.ninja 生成在内存输出模式下无工具依赖可验；
-/// 真实工具执行（ninja/cargo/npm spawn）与受控 fixture 工程的完整
-/// driver 记录在 handoff（环境不足显式 pending，AC-04 允许）。
+/// V-05（串行）：内存区分力+负控 与 真实 cargo 执行/失败路径。
+/// cwd 切换是进程级的——两段合入单测试避免并行互踩（R1-F01 修复注记）。
 #[test]
-fn v05_ninja_builder_memory_consumes_core_plan() {
-    // 工具可用性探针（记录用途；缺失不红）
-    let has_ninja = which("ninja").is_some();
-    let has_cargo = which("cargo").is_some();
-    let has_npm = which("npm").is_some();
-    println!("v05 tool availability: ninja={has_ninja} cargo={has_cargo} npm={has_npm}");
+fn v05_memory_and_cargo_real_serialized() {
+    v05a_ninja_memory_discriminating();
+    v05b_cargo_real_build_and_failure_paths();
+}
 
+fn v05a_ninja_memory_discriminating() {
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
-    // 最小 C 工程：app + src 源文件（core 选择规则扫描面）
     std::fs::create_dir_all(root.join("apps/main")).unwrap();
+    std::fs::write(root.join("apps/main/main.c"), "int main(void){return 0;}\n").unwrap();
+    std::fs::write(root.join("pac.at"), "name: \"v05a\"\napp(\"main\") { }\n").unwrap();
+
+    let cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(root).unwrap();
+    let ninja_bytes = (|| -> AutoResult<Vec<u8>> {
+        let config =
+            auto_lang::config::AutoConfig::from_file(&root.join("pac.at"), &auto_val::Obj::new())?;
+        let mut pac = Pac::new(config);
+        pac.set_port("win32".into())?;
+        pac.resolve()?;
+        let mut builder = pac.builder.take().expect("set_port 已装配 builder");
+        builder.enable_memory_output()?;
+        builder.build(&mut pac)?;
+        let outputs = builder.get_memory_output();
+        let key = outputs.keys().next().cloned().expect("内存输出非空");
+        Ok(outputs.get(&key).cloned().expect("字节存在"))
+    })();
+    std::env::set_current_dir(cwd).unwrap();
+    let bytes = ninja_bytes.expect("内存模式构建成功");
+    let text = String::from_utf8_lossy(&bytes).to_string();
+    assert!(
+        text.contains("main.c"),
+        "build.ninja 应含 main.c 编译规则：\n{}",
+        text
+    );
+    assert!(text.contains("rule"), "规则段在场");
+    assert!(
+        text.contains("exe") || text.contains("link"),
+        "链接规则在场：\n{}",
+        text
+    );
+
+    // 空产物负控：无源文件工程不得产出源编译行
+    let dir2 = tempfile::tempdir().unwrap();
+    let root2 = dir2.path();
+    std::fs::create_dir_all(root2.join("apps/empty")).unwrap();
+    std::fs::write(root2.join("pac.at"), "name: \"v05b\"\napp(\"empty\") { }\n").unwrap();
+    let cwd2 = std::env::current_dir().unwrap();
+    std::env::set_current_dir(root2).unwrap();
+    let bytes2 = (|| -> AutoResult<Vec<u8>> {
+        let config =
+            auto_lang::config::AutoConfig::from_file(&root2.join("pac.at"), &auto_val::Obj::new())?;
+        let mut pac = Pac::new(config);
+        pac.set_port("win32".into())?;
+        pac.resolve()?;
+        let mut builder = pac.builder.take().expect("set_port 已装配 builder");
+        builder.enable_memory_output()?;
+        builder.build(&mut pac)?;
+        let outputs = builder.get_memory_output();
+        Ok(outputs.values().next().cloned().unwrap_or_default())
+    })();
+    std::env::set_current_dir(cwd2).unwrap();
+    let text2 = String::from_utf8_lossy(&bytes2.expect("空工程构建成功")).to_string();
+    assert!(
+        !text2.contains("main.c") && !text2.contains("empty.c"),
+        "空工程不得产出源编译规则：\n{}",
+        text2
+    );
+}
+
+fn v05b_cargo_real_build_and_failure_paths() {
+    if which("cargo").is_none() {
+        eprintln!("V05-PENDING: cargo 不可用，真实执行未完成（记录非通过）");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("rust/src")).unwrap();
     std::fs::write(
-        root.join("apps/main/main.c"),
-        "int main(void){return 0;}
-",
+        root.join("rust/src/main.rs"),
+        "fn main() { println!(\"v05b\"); }\n",
     )
     .unwrap();
     std::fs::write(
         root.join("pac.at"),
-        "name: \"v05c\"
-app(\"main\") { }
-",
+        "name: \"v05cargo\"\nlang: \"rust\"\napp(\"main\") { }\n",
     )
     .unwrap();
 
     let cwd = std::env::current_dir().unwrap();
     std::env::set_current_dir(root).unwrap();
-    let result = (|| -> AutoResult<()> {
+    let result = (|| -> AutoResult<std::path::PathBuf> {
         let config =
             auto_lang::config::AutoConfig::from_file(&root.join("pac.at"), &auto_val::Obj::new())?;
         let mut pac = Pac::new(config);
         pac.set_port("win32".into())?;
-        // 闭包+major 装配（core 单源）后真实 Builder 消费
         pac.resolve()?;
-        let mut builder =
-            crate::builder::new_builder(crate::builder::BuilderKind::Ninja("build".into()));
-        builder.enable_memory_output()?;
-        builder.build(&mut pac)?;
-        let outputs = builder.get_memory_output();
-        let ninja_file = outputs
-            .values()
-            .next()
-            .map(|v| String::from_utf8_lossy(v).to_string())
-            .unwrap_or_default();
-        assert!(
-            ninja_file.contains("build.ninja") || !ninja_file.is_empty() || outputs.is_empty(),
-            "内存输出形态（无 ninja 可执行依赖）"
-        );
-        Ok(())
+        pac.build()?;
+        let toml = root.join("rust/Cargo.toml");
+        assert!(toml.is_file(), "Cargo.toml 已生成");
+        Ok(toml)
     })();
     std::env::set_current_dir(cwd).unwrap();
-    result.expect("ninja memory-mode build on core plan");
+    let toml = result.expect("真实 cargo build 成功");
+    let toml_text = std::fs::read_to_string(&toml).unwrap();
+    assert!(toml_text.contains("name ="), "包名在场");
+
+    // 失败路径 1：cargo builder 无 rust 目标 → setup 阶段 Err（阶段可
+    // 区分，不 spawn；render rust 选 cargo + 显式 c 目标构造该形态）
+    let dir2 = tempfile::tempdir().unwrap();
+    let root2 = dir2.path();
+    std::fs::write(
+        root2.join("pac.at"),
+        "name: \"nocargo\"\nrender: \"rust\"\napp(\"main\") { lang: \"c\" }\n",
+    )
+    .unwrap();
+    let cwd2 = std::env::current_dir().unwrap();
+    std::env::set_current_dir(root2).unwrap();
+    let err = (|| -> AutoResult<()> {
+        let config =
+            auto_lang::config::AutoConfig::from_file(&root2.join("pac.at"), &auto_val::Obj::new())?;
+        let mut pac = Pac::new(config);
+        pac.set_port("win32".into())?;
+        pac.resolve()?;
+        pac.build()?;
+        Ok(())
+    })();
+    std::env::set_current_dir(cwd2).unwrap();
+    let err = err.expect_err("无 rust 目标必须报错");
+    assert!(
+        err.to_string().contains("no rust target"),
+        "失败阶段文本：{}",
+        err
+    );
+
+    // 失败路径 2：索引缺依赖 → resolve 阶段 Err（download 面，不进入构建）
+    let dir3 = tempfile::tempdir().unwrap();
+    let root3 = dir3.path();
+    std::fs::write(
+        root3.join("pac.at"),
+        "name: \"missdep\"\ndep \"no-such-dep-xyz\" { }\n",
+    )
+    .unwrap();
+    let cwd3 = std::env::current_dir().unwrap();
+    std::env::set_current_dir(root3).unwrap();
+    let err3 = (|| -> AutoResult<()> {
+        let config =
+            auto_lang::config::AutoConfig::from_file(&root3.join("pac.at"), &auto_val::Obj::new())?;
+        let mut pac = Pac::new(config);
+        pac.set_port("win32".into())?;
+        pac.resolve()?;
+        Ok(())
+    })();
+    std::env::set_current_dir(cwd3).unwrap();
+    let err3 = err3.expect_err("缺依赖必须报错");
+    assert!(
+        err3.to_string().to_lowercase().contains("not found")
+            || err3.to_string().to_lowercase().contains("failed"),
+        "缺依赖错误可诊断：{}",
+        err3
+    );
+}
+
+/// V-05c：真实 VueBuilder 执行（npm+node，离线 build 脚本）+ 失败传播。
+#[test]
+fn v05_vue_real_build_and_failure() {
+    if which("npm").is_none() || which("node").is_none() {
+        eprintln!("V05-PENDING: npm/node 不可用，真实执行未完成（记录非通过）");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::write(
+        root.join("package.json"),
+        "{ \"name\": \"v05c\", \"version\": \"0.0.1\", \"scripts\": { \"build\": \"node -e \\\"require('fs').writeFileSync('v05-marker.txt','ok')\\\"\" } }",
+    )
+    .unwrap();
+    let mut builder = crate::builder::new_builder(crate::builder::BuilderKind::Vue(
+        auto_val::AutoPath::new(root.to_str().unwrap()),
+    ));
+    builder
+        .build(&mut Pac::new(
+            auto_lang::config::AutoConfig::new("name: \"v05c\"\n").unwrap(),
+        ))
+        .expect("真实 npm run build 成功");
+    assert!(root.join("v05-marker.txt").is_file(), "build 产物标记在场");
+
+    // 失败传播：build 脚本非零退出 → Err
+    let dir2 = tempfile::tempdir().unwrap();
+    let root2 = dir2.path();
+    std::fs::write(
+        root2.join("package.json"),
+        "{ \"name\": \"v05d\", \"version\": \"0.0.1\", \"scripts\": { \"build\": \"node -e \\\"process.exit(3)\\\"\" } }",
+    )
+    .unwrap();
+    let mut builder2 = crate::builder::new_builder(crate::builder::BuilderKind::Vue(
+        auto_val::AutoPath::new(root2.to_str().unwrap()),
+    ));
+    let err = builder2
+        .build(&mut Pac::new(
+            auto_lang::config::AutoConfig::new("name: \"v05d\"\n").unwrap(),
+        ))
+        .expect_err("非零退出必须 Err");
+    assert!(!err.to_string().is_empty(), "失败文本非空：{}", err);
 }
 
 fn which(tool: &str) -> Option<std::path::PathBuf> {

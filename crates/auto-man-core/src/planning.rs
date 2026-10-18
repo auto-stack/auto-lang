@@ -45,6 +45,37 @@ pub fn select_port_binding(port: &Port, backend: &AutoStr) -> PortSelection {
     }
 }
 
+/// Builder 目标规划输入项（PLAN-809 R1-F03：ninja deps 先建/rename 去重
+/// 序的纯决策——adapter 把 pac.targets 及其内嵌 deps 克隆映射为此抽象，
+/// 执行半按返回的 rename 序回到具体句柄）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct BuildOrderItem {
+    /// 目标的 rename（去重键）。
+    pub rename: AutoStr,
+    /// 其内嵌依赖（t.deps）的 rename 序（声明序保留）。
+    pub dep_renames: Vec<AutoStr>,
+}
+
+/// deps 先建、rename 全局去重的执行序（原 ninja `build` 迭代规则的
+/// 单源迁移：逐 target 先其 deps 再自身，首个 rename 出现者胜）。
+pub fn ordered_build_renames(items: &[BuildOrderItem]) -> Vec<AutoStr> {
+    let mut order = Vec::new();
+    let mut done: std::collections::HashSet<AutoStr> = std::collections::HashSet::new();
+    for item in items {
+        for dep in &item.dep_renames {
+            if !done.contains(dep) {
+                order.push(dep.clone());
+                done.insert(dep.clone());
+            }
+        }
+        if !done.contains(&item.rename) {
+            order.push(item.rename.clone());
+            done.insert(item.rename.clone());
+        }
+    }
+    order
+}
+
 /// Cargo 包选择规格（原 builder/cargo.rs `setup` 的选择决策半）：
 /// 首个 rust App/Lib 目标；版本空/latest → 0.1.0；数字开头包名加
 /// `app-` 前缀（Plan 531 P523-1）；空名回落 pac 名。
@@ -118,6 +149,35 @@ mod tests {
         assert!(select_port_binding(&port, &"c".into()).show_headers);
         port.builder = "cmake".into();
         assert!(!select_port_binding(&port, &"c".into()).show_headers);
+    }
+
+    #[test]
+    fn ordered_build_renames_deps_first_dedup() {
+        use crate::planning::BuildOrderItem;
+        let items = vec![
+            BuildOrderItem {
+                rename: AutoStr::from("app"),
+                dep_renames: vec![AutoStr::from("d1"), AutoStr::from("d1")],
+            },
+            BuildOrderItem {
+                rename: AutoStr::from("lib"),
+                dep_renames: vec![AutoStr::from("d1")],
+            },
+        ];
+        assert_eq!(
+            ordered_build_renames(&items),
+            vec![
+                AutoStr::from("d1"),
+                AutoStr::from("app"),
+                AutoStr::from("lib")
+            ]
+        );
+        // 无 deps：自身按序
+        let items2 = vec![BuildOrderItem {
+            rename: AutoStr::from("solo"),
+            dep_renames: vec![],
+        }];
+        assert_eq!(ordered_build_renames(&items2), vec![AutoStr::from("solo")]);
     }
 
     #[test]

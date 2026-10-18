@@ -668,14 +668,20 @@ impl Pac {
 
             match target.kind {
                 TargetKind::Dep | TargetKind::Device => {
-                    // 1. update if exists
-                    if target.exists() {
-                        continue;
+                    // known 视图：旧臂 target_names 为 HashMap<AutoStr,bool>，
+                    // core 决策收 HashSet（键集等价）。
+                    let known: std::collections::HashSet<AutoStr> =
+                        target_names.keys().cloned().collect();
+                    // 1. 动作/版本 pin 决策单源在 core（R1-F03/R-07）；
+                    //    exists 观测在此传入。
+                    let exists_now = target.exists();
+                    match core_::dep_fetch_action(target, exists_now) {
+                        Some(core_::DepAction::Skip) => continue,
+                        Some(core_::DepAction::Fetch) => {}
+                        None => {}
                     }
+                    target.version = core_::pinned_version(&target.version, version);
 
-                    if version == "latest" {
-                        target.version = "latest".into();
-                    }
                     // 2. download or copy the dep target
                     match target.origin {
                         TargetOrigin::Index => {
@@ -713,34 +719,23 @@ impl Pac {
                         // merge the lib target into current dep target
                         target.merge(lib_target);
                     }
-                    // get other lib targetsm
-                    for lib in pac.libs() {
-                        if lib.name == target.name {
-                            continue;
-                        }
-                        if !target_names.contains_key(&lib.name) {
-                            let mut lib = lib.clone();
-                            // check new root dir
-                            for (_, v) in lib.dirs.iter_mut() {
-                                let path = Path::new(target.at.as_str()).join(v.at.as_str());
-                                if path.is_dir() {
-                                    v.append_root(target.at.clone());
-                                }
-                            }
-
-                            new_deps.insert(lib.name.clone(), lib);
-                        }
+                    // get other lib targetsm（并入决策单源在 core：
+                    // 同名排除/已知不重入/append_root 观测注入）
+                    for lib in core_::admit_new_dep_libs(
+                        &pac.libs().into_iter().cloned().collect::<Vec<_>>(),
+                        &known,
+                        &target.name,
+                        &target.at,
+                        |p| Path::new(p).is_dir(),
+                    ) {
+                        new_deps.insert(lib.name.clone(), lib);
                     }
 
                     // 4. recursively download dep's deps
                     pac.download_deps(&target.parent(), &target.version.clone())?;
-                    // merge dep's dep into current pac if not exists
-                    for dep in pac.deps() {
-                        // if !new_deps.contains_key(&dep.name)
-                        // && !target_names.contains_key(&dep.name)
-                        if !target_names.contains_key(&dep.name) {
-                            new_deps.insert(dep.name.clone(), dep.clone());
-                        }
+                    // merge dep's dep into current pac if not exists（并入决策单源在 core）
+                    for dep in core_::admit_transitive_deps(pac.deps().into_iter(), &known) {
+                        new_deps.insert(dep.name.clone(), dep);
                     }
                 }
                 _ => {}
