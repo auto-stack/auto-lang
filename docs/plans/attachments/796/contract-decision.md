@@ -186,3 +186,17 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
 - **预算真接线**（F08）：scratch 预留失败=typed resource；record 名有界注册表
   8192；OS 窗内采样。
 - **验收器**（F11）：每行最小执行计数；V-07 绑库级+IPC 双报告与生成器身份。
+
+## D15 R5 修复轮冻结（2026-10-18）
+
+- **范围纪律**：修复轮禁跑整仓格式化（fmt --all 曾误解析根 workspace 污染 39 个
+  无关生产文件，已全部复原；共享文件整文件复原后仅重放语义行）。diff 对
+  cf736ee08 收窄至计划命名空间+共享语义编辑（sema_boundary 审计锁定）。
+- **F06 完整准入**：admit_portable_value/admit_typedesc 迭代递归（Mode/Fn 参数/
+  返回任意深度 Unknown 拒）；CtResult::admit_as_model（schema/递归值/marking，
+  VmExecuteFromModel 受控拒）；ModelCt::evaluate 强制 callback 结果同准入。
+- **F07 合法递归组**：PageKind::RecGroup（成员按 logical 排序编码，组内容版本
+  成员序无关）；Kosaraju SCC 依赖序发布；单例无自环=RecordMeta 单页，组=整组一
+  页（组内纯 DeclRef/组外 required 边）；RecordFields lookup 单键 Miss 后按当前
+  输入推导组键回退+成员准入（非成员不受组页服务）；循环拒绝路径删除——合法间接
+  递归组是 §5.1 承诺面，不再拒绝。

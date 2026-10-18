@@ -27,9 +27,13 @@ cargo tree 断言）；支持矩阵 15 类（6 Implemented / 7 SchemaOnly / 2 Fu
 
 LogicalId 名义身份（重启序无关/同名跨包不合并）；DeclRef 重导防篡改；envelope
 `ac796/semaref/v1` admission；页 codec `ac796/sema-page/v1`（TypeDesc 13 变体、
-递归组间接引用、≤512KiB、≤8192 深）；**R4 后**：record 页字段是**真实间接
-TypeDesc::Record{DeclRef}**（非 Opaque 名串），发布经 Kahn 迭代序带 required-data
-边（保留页跨 GC 存活；环=受控拒绝，组发布未实装）；CT 接缝 `ac796/ct-seam/v1`。
+递归组间接引用、≤512KiB、≤8192 深）；**R4/R5 后**：record 页字段是**真实间接
+TypeDesc::Record{DeclRef}**（非 Opaque 名串）；发布经 SCC 分区（Kosaraju 依赖序）：
+单例无自环=单页，**合法间接递归组=PageKind::RecGroup 整组一页**（组内纯 DeclRef、
+组外 required-data 边、组内容版本成员序无关；lookup 按当前输入推导组键回退+成员
+准入）；保留页跨 GC 存活；CT 接缝 `ac796/ct-seam/v1` **递归准入**（任意深度
+Unknown 拒绝——Mode/Fn 参数/返回位置；模型结果 schema/值/marking 三重准入，
+模型 producer 永不 mint vm_execute）。
 
 ## SD-03 add `docs/specs/auto-semantics/inference-profile.md`
 
