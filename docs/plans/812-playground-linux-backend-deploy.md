@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-812
-status: execution_done
+status: reviewed
 feature_name: playground-linux-backend-deploy
 author: [Codex]
 plan_revision: 2
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 2
+current_step: 3
 total_steps: 4
 ---
 
@@ -79,10 +79,12 @@ Rust/Cargo、Axum、Ubuntu 22.04 WSL、Linux x86_64、systemd、HTTPS API 与浏
 
 - [x] T-01 (work; AC-01): 确认计划后承接工作目录，完成 Cargo.toml/transport.rs 最小修复、双平台定向检查并提交。[✅] Windows check pass（409 既有警告）；transport 定向 9/9；Linux release pass（3m44s，268 既有 lib 警告+后台 1 项既有字段警告）；rustfmt 与 diff check pass。实现 e7177e3fa → b2a75c1c2d3f83068b2d262d1448245292326c6c，rebase 仅同步主分支文档簿记，range-diff 1/1 完全等价；依赖 c39ac7f。
 - [x] T-02 (work; AC-02, AC-03): Linux release 与资源包冻结，在本地 Linux 启动、smoke；使用已批准的回滚脚本部署，核验公网与浏览器。[✅] 发布二进制 847132bb...a71b11；最终包 cf13cb38...5fc390；本地隔离包/服务器/公网 HTTPS 均通过（1343 examples、stdout=7、15 条 bytecode/meta、五种 trans、多模块 greet）。线上 Run/Trans 两右窗已实点验证，截图已入证据。首次漏带 stdlib 自动回滚已验证，补齐后成功部署。源码基线 7cab6ca2b7498c5a8ef28e070f8d107267ac18c9；详见 attachments/812/verification.md。
-- [ ] T-03 (review; AC-04): 明确冻结基线，重查差异、验收与 SD-01，记录 merge-owned 门禁 pending。
+- [x] T-03 (review; AC-04): 明确冻结基线，重查差异、验收与 SD-01，记录 merge-owned 门禁 pending。[✅] final pass，reviewed_commit=7cab6ca2b7498c5a8ef28e070f8d107267ac18c9；复审实际 diff、依赖 target=null、Linux 构建、定向 9/9、隔离包/回滚/公网与 UI 证据，SD-01 与代码一致。裸 cargo t 仍 pending，未合入。
 - [ ] T-04 (merge; AC-05): 完成所有 work 验收并最终复审后统一执行 merge-owned 门禁，合入、沉淀、归档和 guard 清理。
 
 ## 9. 复审记录
+
+2026-10-19 final review: stage=review; review_scope=final; plan_revision=2; outcome=pass; worktree=D:/autostack/.wt/lang-812/auto-lang; branch=plan-812-dev; reviewed_commit=7cab6ca2b7498c5a8ef28e070f8d107267ac18c9; base=ab08955c2（实现之前主分支簿记基线）; auto-down=c39ac7f。reviewer=本 Codex 会话的独立复审步骤；局限=与实现共享上下文，未声称有另一独立代理；从冻结代码/原始结果重建结论。AC-01..04 全部 pass；AC-05 pending merge。Spec source SHA256=8bd7c084e979417dda827a19f1fe36472227024b288287b71c7cccdff06b38c2（docs/specs/auto-playground/project.md）。检查表：仅移动既有依赖到通用段，Windows 依赖不变；仅重导出已存在的 Linux 常量，不改变 stub 行为；无编译器/VM/转译算法变更；发布完整 stdlib 与编译期路径资产；失败回滚实际演练通过；凭据不入交付文件；无遗漏、未经批准延后或页面绕行补丁；既有 409 warnings 有界记录、零新增警告/债务。复审另从公网执行 print(3+4)：stdout=7、bytecode=8、meta 存在；服务 active、已装二进制 SHA 与发布包一致。pending_closeout_gates=bare cargo t（touched surface tiers=none，tf=batch-only）。next=merge gate→沉淀/归档/guard 清理。
 
 2026-10-19: 用户明确批准 r1。r2 仅修正任务时序：线上验收 AC-03 属 work，须在最终复审前完成，避免原 T-04 同时承载 work 验收和 review 后收尾的循环依赖。目标、修复范围、门槛及部署授权不变，继承已有授权；实现文件两处，另准备 SD-01 与可重放 smoke/install 证据。
 
