@@ -4,10 +4,10 @@
 //! the category-matrix invariants (V-01 / AC-01).
 
 use ac_sema_contract::codec::{
-    decode_page, encode_page, CachedResult, CodecError, DepFingerprint, DepManifest,
-    FieldDesc, FnMeta, InferFacts, Mode, ModuleIndex, NegDep, PageBody, PageHeader, PageKind,
-    PageView, RecGroup, RecordMeta, RecordShape, ResultFacts, SemaPage, TypeDesc,
-    MAX_NESTING_DEPTH, SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V1,
+    decode_page, encode_page, CachedResult, CodecError, DepFingerprint, DepManifest, FieldDesc,
+    FnMeta, InferFacts, Mode, ModuleIndex, NegDep, PageBody, PageHeader, PageKind, PageView,
+    RecGroup, RecordMeta, RecordShape, ResultFacts, SemaPage, TypeDesc, MAX_NESTING_DEPTH,
+    SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V1,
 };
 use ac_sema_contract::{
     logical_id, ContentVersion, DeclKind, DeclRef, PackageId, SEMA_PRODUCER_ID,
@@ -18,11 +18,23 @@ fn pkg() -> PackageId {
 }
 
 fn decl(name: &str) -> DeclRef {
-    DeclRef::new(&pkg(), "m", DeclKind::Record, name, ContentVersion::of_canonical(name.as_bytes()))
+    DeclRef::new(
+        &pkg(),
+        "m",
+        DeclKind::Record,
+        name,
+        ContentVersion::of_canonical(name.as_bytes()),
+    )
 }
 
 fn fndecl(name: &str) -> DeclRef {
-    DeclRef::new(&pkg(), "m", DeclKind::Fn, name, ContentVersion::of_canonical(name.as_bytes()))
+    DeclRef::new(
+        &pkg(),
+        "m",
+        DeclKind::Fn,
+        name,
+        ContentVersion::of_canonical(name.as_bytes()),
+    )
 }
 
 fn index_page() -> SemaPage {
@@ -58,7 +70,9 @@ fn sema_identity_typedesc_full_set_roundtrip() {
             TypeDesc::Bool,
             TypeDesc::Char,
             TypeDesc::ByteBuffer,
-            TypeDesc::Opaque { name: "extern".into() },
+            TypeDesc::Opaque {
+                name: "extern".into(),
+            },
         ],
         ret: Box::new(TypeDesc::Record { decl: decl("Pair") }.with_mode(Mode::Owned)),
     };
@@ -74,22 +88,41 @@ fn sema_identity_typedesc_full_set_roundtrip() {
 fn sema_identity_recgroup_indirect_cycle_verifiable() {
     let a = RecordShape {
         decl: decl("A"),
-        fields: vec![FieldDesc { name: "next".into(), ty: TypeDesc::Record { decl: decl("B") } }],
+        fields: vec![FieldDesc {
+            name: "next".into(),
+            ty: TypeDesc::Record { decl: decl("B") },
+        }],
     };
     let b = RecordShape {
         decl: decl("B"),
-        fields: vec![FieldDesc { name: "prev".into(), ty: TypeDesc::Record { decl: decl("A") } }],
+        fields: vec![FieldDesc {
+            name: "prev".into(),
+            ty: TypeDesc::Record { decl: decl("A") },
+        }],
     };
-    let g1 = RecGroup { members: vec![a.clone(), b.clone()] };
-    let g2 = RecGroup { members: vec![b.clone(), a.clone()] }; // rotated: same group
-    assert_eq!(g1.group_content(), g2.group_content(), "group version is member-order free");
+    let g1 = RecGroup {
+        members: vec![a.clone(), b.clone()],
+    };
+    let g2 = RecGroup {
+        members: vec![b.clone(), a.clone()],
+    }; // rotated: same group
+    assert_eq!(
+        g1.group_content(),
+        g2.group_content(),
+        "group version is member-order free"
+    );
     assert!(g1.verify().is_ok());
     // duplicate member → controlled rejection, not a panic (V-01)
-    let bad = RecGroup { members: vec![a.clone(), a] };
+    let bad = RecGroup {
+        members: vec![a.clone(), a],
+    };
     assert!(bad.verify().is_err());
     // content change in ONE member changes the group version
     let mut c = g1.clone();
-    c.members[0].fields.push(FieldDesc { name: "extra".into(), ty: TypeDesc::I32 });
+    c.members[0].fields.push(FieldDesc {
+        name: "extra".into(),
+        ty: TypeDesc::I32,
+    });
     assert_ne!(g1.group_content(), c.group_content());
 }
 
@@ -101,8 +134,14 @@ fn sema_identity_recordmeta_preserves_field_order() {
         shape: RecordShape {
             decl: decl("T"),
             fields: vec![
-                FieldDesc { name: "zeta".into(), ty: TypeDesc::I32 },
-                FieldDesc { name: "alpha".into(), ty: TypeDesc::Bool },
+                FieldDesc {
+                    name: "zeta".into(),
+                    ty: TypeDesc::I32,
+                },
+                FieldDesc {
+                    name: "alpha".into(),
+                    ty: TypeDesc::Bool,
+                },
             ],
         },
         methods: vec![FnMeta {
@@ -158,15 +197,19 @@ fn sema_identity_decode_deep_nesting_bounds() {
 
 #[test]
 fn sema_identity_decode_truncated_and_trailing_rejected() {
-    let bytes = ac_sema_contract::codec::encode_typedesc_bytes(&TypeDesc::Opaque { name: "x".into() })
-        .unwrap();
+    let bytes =
+        ac_sema_contract::codec::encode_typedesc_bytes(&TypeDesc::Opaque { name: "x".into() })
+            .unwrap();
     assert!(matches!(
         ac_sema_contract::codec::decode_typedesc_bytes(&bytes[..bytes.len() - 1]),
         Err(CodecError::Truncated { .. })
     ));
     let mut bytes = encode_page(&index_page()).unwrap();
     bytes.push(0);
-    assert!(matches!(decode_page(&bytes), Err(CodecError::TrailingBytes(_))));
+    assert!(matches!(
+        decode_page(&bytes),
+        Err(CodecError::TrailingBytes(_))
+    ));
 }
 
 /// Wrong envelope owner/schema/codec-version are controlled admission
@@ -175,10 +218,16 @@ fn sema_identity_decode_truncated_and_trailing_rejected() {
 fn sema_identity_page_envelope_admission() {
     let mut page = index_page();
     page.header.producer = "some-other-producer/9".into();
-    assert!(matches!(encode_page(&page), Err(CodecError::BadProducer { .. })));
+    assert!(matches!(
+        encode_page(&page),
+        Err(CodecError::BadProducer { .. })
+    ));
     page.header.producer = SEMA_PRODUCER_ID.into();
     page.header.schema = "ac796/wrong/v9".into();
-    assert!(matches!(encode_page(&page), Err(CodecError::BadSchema { .. })));
+    assert!(matches!(
+        encode_page(&page),
+        Err(CodecError::BadSchema { .. })
+    ));
     // decode-side codec-version drift: bump the version byte after the
     // two length-prefixed strings
     page.header.schema = SEMA_PAGE_SCHEMA_V1.into();
@@ -188,7 +237,10 @@ fn sema_identity_page_envelope_admission() {
     let prod_len = u32::from_le_bytes(bytes[off..off + 4].try_into().unwrap()) as usize;
     let cv = off + 4 + prod_len;
     bytes[cv] = 9;
-    assert!(matches!(decode_page(&bytes), Err(CodecError::UnsupportedCodec(_))));
+    assert!(matches!(
+        decode_page(&bytes),
+        Err(CodecError::UnsupportedCodec(_))
+    ));
 }
 
 /// Typed view accessors are KIND-CHECKED: reading a FnMeta out of a
@@ -199,7 +251,10 @@ fn sema_identity_view_kind_checked_access() {
     let v = PageView::new(&page);
     assert!(v.try_as_fn_meta().is_err());
     assert!(v.try_as_record_meta().is_err());
-    assert!(v.field("x").is_none(), "field lookup on a non-record page is None");
+    assert!(
+        v.field("x").is_none(),
+        "field lookup on a non-record page is None"
+    );
 }
 
 /// CachedResult pages round-trip with manifest + facts intact
@@ -219,8 +274,16 @@ fn sema_identity_cached_result_roundtrip_with_manifest() {
             diagnostics: vec![],
         }),
         manifest: DepManifest {
-            positives: vec![DepFingerprint { kind: "fn-sig", origin: "helper".into(), fp: "abc".into() }],
-            negatives: vec![NegDep { domain: "fn", name: "g".into(), set_fp: "def".into() }],
+            positives: vec![DepFingerprint {
+                kind: "fn-sig",
+                origin: "helper".into(),
+                fp: "abc".into(),
+            }],
+            negatives: vec![NegDep {
+                domain: "fn",
+                name: "g".into(),
+                set_fp: "def".into(),
+            }],
         },
     });
     let bytes = encode_page(&page).unwrap();
@@ -233,7 +296,7 @@ fn sema_identity_cached_result_roundtrip_with_manifest() {
 /// (AC-01 auditable coverage).
 #[test]
 fn sema_identity_matrix_invariants_hold() {
-    use ac_sema_contract::metadata::{matrix_invariants, CATEGORY_MATRIX, MetaSupport};
+    use ac_sema_contract::metadata::{matrix_invariants, MetaSupport, CATEGORY_MATRIX};
     assert_eq!(matrix_invariants(), Ok(()));
     // the v0.6-committed categories the plan names explicitly are all
     // registered (declarations, types, fields, methods, constraints,
@@ -256,7 +319,10 @@ fn sema_identity_matrix_invariants_hold() {
         "runtime.projection",
         "ffi.interface",
     ] {
-        assert!(ac_sema_contract::metadata::category(id).is_some(), "missing category row {id}");
+        assert!(
+            ac_sema_contract::metadata::category(id).is_some(),
+            "missing category row {id}"
+        );
     }
     // support levels are honest: implemented rows registered; future
     // rows never claim a schema (nothing reads as full-Auto reflection)
@@ -264,7 +330,10 @@ fn sema_identity_matrix_invariants_hold() {
         .iter()
         .filter(|c| c.support == MetaSupport::Implemented)
         .count();
-    assert!(implemented >= 6, "the probe's implemented surface is registered");
+    assert!(
+        implemented >= 6,
+        "the probe's implemented surface is registered"
+    );
     for c in CATEGORY_MATRIX {
         if c.support == MetaSupport::Future {
             assert_eq!(c.schema, "-", "future row {} must not claim a schema", c.id);

@@ -59,7 +59,9 @@ fn main() {
         eprintln!("fatal: open store: {e}");
         exit(5);
     });
-    let query = QueryKind::InferBody { fn_name: fn_name.clone() };
+    let query = QueryKind::InferBody {
+        fn_name: fn_name.clone(),
+    };
 
     match cmd {
         "put" => {
@@ -69,17 +71,11 @@ fn main() {
                 eprintln!("fatal: inference did not succeed cleanly");
                 exit(6);
             };
-            let art = publish_infer_result(
-                &store,
-                &input,
-                &query,
-                &summary,
-                project.as_deref(),
-            )
-            .unwrap_or_else(|e| {
-                eprintln!("fatal: publish: {e}");
-                exit(7);
-            });
+            let art = publish_infer_result(&store, &input, &query, &summary, project.as_deref())
+                .unwrap_or_else(|e| {
+                    eprintln!("fatal: publish: {e}");
+                    exit(7);
+                });
             let mut out = std::io::stdout().lock();
             writeln!(out, "{{\"event\":\"published\",\"artifact\":\"{art}\"}}").unwrap();
             writeln!(
@@ -169,11 +165,14 @@ fn bench_turnaround(args: &[String]) {
     all.push(("cross-project", harness.scenario_cross_project(&store)));
     all.push(("gc-concurrent", harness.scenario_gc_concurrent(&store)));
     all.push(("full-cold", harness.scenario_full_cold()));
-    all.push(("wide-invalidation", harness.scenario_wide_invalidation(&store)));
+    all.push((
+        "wide-invalidation",
+        harness.scenario_wide_invalidation(&store),
+    ));
 
     let machine = ac_sema_probe::turnaround::machine_info();
-    let path = ac_sema_probe::turnaround::write_report(&out_dir, &machine, &all)
-        .expect("write report");
+    let path =
+        ac_sema_probe::turnaround::write_report(&out_dir, &machine, &all).expect("write report");
     println!(
         "{{\"event\":\"bench-done\",\"report\":\"{}\",\"prep_total_ms\":{}}}",
         path.display(),

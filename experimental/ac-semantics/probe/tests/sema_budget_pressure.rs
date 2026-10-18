@@ -43,7 +43,9 @@ fn filler_page(i: usize, fields: usize) -> SemaPage {
             })
             .collect(),
     };
-    let group = ac_sema_contract::RecGroup { members: vec![shape.clone()] };
+    let group = ac_sema_contract::RecGroup {
+        members: vec![shape.clone()],
+    };
     SemaPage {
         header: PageHeader {
             schema: ac_sema_contract::SEMA_PAGE_SCHEMA_V1.into(),
@@ -96,7 +98,11 @@ fn sema_budget_streamed_32mib_under_managed_budget() {
     .unwrap();
 
     let mem_after = ac_artifact_probe::sysinfo::imp::current_process_memory().private_bytes;
-    assert!(total_bytes >= 32 * 1024 * 1024, "streamed pages must reach ≥32MiB, got {}", total_bytes);
+    assert!(
+        total_bytes >= 32 * 1024 * 1024,
+        "streamed pages must reach ≥32MiB, got {}",
+        total_bytes
+    );
     assert_eq!(count, 256);
     assert!(
         meter.managed_bytes() <= MANAGED_BUDGET,
@@ -133,7 +139,11 @@ fn sema_budget_hot_lru_and_scratch_ledgers() {
         let _g = meter.scratch(1024 * 1024).unwrap();
     }
     assert_eq!(meter.scratch_peak(), 1024 * 1024);
-    assert_eq!(meter.managed_bytes(), meter.hot.bytes(), "scratch returned on drop");
+    assert_eq!(
+        meter.managed_bytes(),
+        meter.hot.bytes(),
+        "scratch returned on drop"
+    );
     // a page bigger than the whole budget is a controlled rejection
     let mut strict = HotPages::new(1024);
     let big = filler_page(0, 5000);
@@ -186,8 +196,14 @@ fn sema_budget_deep_chain_4096_full_path() {
     let root = scratch("budget-deep");
     let store = open_store(&root.join("store")).unwrap();
     ac_sema_probe::publish_record_meta(&store, &input, "R0", Some("deep")).unwrap();
-    match ac_sema_probe::lookup_only(&store, &input, &QueryKind::RecordFields { record: "R0".into() })
-        .unwrap()
+    match ac_sema_probe::lookup_only(
+        &store,
+        &input,
+        &QueryKind::RecordFields {
+            record: "R0".into(),
+        },
+    )
+    .unwrap()
     {
         FetchOutcome::Hit { .. } => {}
         other => panic!("deep chain head page must hit, got {other:?}"),
@@ -204,17 +220,23 @@ fn sema_budget_churn_512_gc_converges_sentinel_survives() {
 
     // sentinel: a module-index page under its own project + a lease
     let sentinel_src = "fn sentinel() int { return 42 }";
-    let sentinel_input = parse_into_input(sentinel_src, "sentinel", "s", SourceProfile::Core).unwrap();
+    let sentinel_input =
+        parse_into_input(sentinel_src, "sentinel", "s", SourceProfile::Core).unwrap();
     let sentinel_art =
-        ac_sema_probe::publish_module_index(&store, &sentinel_input, Some("sentinel-proj")).unwrap();
-    let lease = store.acquire_lease("sentinel-keep", 600, Some(&sentinel_art)).unwrap();
+        ac_sema_probe::publish_module_index(&store, &sentinel_input, Some("sentinel-proj"))
+            .unwrap();
+    let lease = store
+        .acquire_lease("sentinel-keep", 600, Some(&sentinel_art))
+        .unwrap();
 
     // churn: 512 revisions of a body edit, each published UNROOTED
     // except the current one (previous current-root dropped each step)
     for i in 0..512u32 {
         let src = format!("fn main() int {{ return {i} + 1 }}");
         let input = parse_into_input(&src, "churn", "m", SourceProfile::Core).unwrap();
-        let q = QueryKind::InferBody { fn_name: "main".into() };
+        let q = QueryKind::InferBody {
+            fn_name: "main".into(),
+        };
         let sum = match run_inference(&input, "main") {
             InferOutcome::Ok(s) => s,
             other => panic!("rev {i}: {other:?}"),

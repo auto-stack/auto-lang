@@ -6,8 +6,8 @@
 
 #![cfg(windows)]
 
-use ac_sema_probe::turnaround::{stats_of, Harness, HARD_GATE, SAMPLES};
 use ac_sema_probe::open_store;
+use ac_sema_probe::turnaround::{stats_of, Harness, HARD_GATE, SAMPLES};
 
 fn harness(family: &str) -> (Harness, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("ac796-{}", family));
@@ -27,7 +27,11 @@ fn sema_turnaround_reference_load_shape() {
         src.len()
     );
     let input = ac_sema_probe::turnaround::reference_input(&src);
-    assert!(input.fns.len() > 1000, "substantial fn population, got {}", input.fns.len());
+    assert!(
+        input.fns.len() > 1000,
+        "substantial fn population, got {}",
+        input.fns.len()
+    );
     // deterministic: same generator call → identical bytes
     let src2 = ac_sema_probe::turnaround::reference_module(1024 * 1024);
     assert_eq!(src, src2);
@@ -45,7 +49,11 @@ fn sema_turnaround_stage_traces_present() {
         assert!(s.total_ns > 0);
         let names: Vec<&str> = s.stages.iter().map(|st| st.name).collect();
         assert!(names.contains(&"request"), "request stage in {:?}", names);
-        assert!(names.contains(&"cache-read-validate"), "cache stage in {:?}", names);
+        assert!(
+            names.contains(&"cache-read-validate"),
+            "cache stage in {:?}",
+            names
+        );
         // every sample either hit or published — with a real status
         assert!(
             s.status == "published" || s.status == "hit",
@@ -55,7 +63,10 @@ fn sema_turnaround_stage_traces_present() {
         if s.status == "published" {
             assert!(names.contains(&"infer"), "infer stage in {:?}", names);
             assert!(names.contains(&"publish"), "publish stage in {:?}", names);
-            assert_eq!(s.compute_calls, 1, "published means exactly one real compute");
+            assert_eq!(
+                s.compute_calls, 1,
+                "published means exactly one real compute"
+            );
         }
         if s.status == "hit" {
             assert_eq!(s.compute_calls, 0, "hit never computes");
@@ -78,7 +89,10 @@ fn sema_turnaround_hard_gate_local_body_edit_p95() {
         stats.p95_ns as f64 / 1e6,
         HARD_GATE.as_millis()
     );
-    assert!(stats.compute_calls >= SAMPLES as u64, "each sample performed a real edit+recompute");
+    assert!(
+        stats.compute_calls >= SAMPLES as u64,
+        "each sample performed a real edit+recompute"
+    );
 }
 
 /// All six scenarios run with 30 raw samples each; normal samples
@@ -111,12 +125,18 @@ fn sema_turnaround_six_scenarios_30_samples() {
     }
     // no-op turns into hits after the first sample
     let stats = stats_of("no-op", &all[0].1);
-    assert!(stats.cache_hits >= SAMPLES as u64 - 1, "no-op hits after warm-up");
+    assert!(
+        stats.cache_hits >= SAMPLES as u64 - 1,
+        "no-op hits after warm-up"
+    );
     // restart-disk-hot: every sample is a disk hit through a FRESH store
     // handle (cross-process persistence itself is proven in
     // sema_cache_first_case with real child processes)
     let stats = stats_of("restart-disk-hot", &all[3].1);
-    assert_eq!(stats.cache_hits, SAMPLES as u64, "disk-hot restarts all hit");
+    assert_eq!(
+        stats.cache_hits, SAMPLES as u64,
+        "disk-hot restarts all hit"
+    );
 }
 
 /// The report writer emits machine info, per-scenario stats and RAW
@@ -126,9 +146,7 @@ fn sema_turnaround_six_scenarios_30_samples() {
 fn sema_turnaround_report_written() {
     let (h, root) = harness("turnaround-report");
     let store = open_store(&h.store_root).unwrap();
-    let all = vec![
-        ("local-body-edit", h.scenario_local_body_edit(&store)),
-    ];
+    let all = vec![("local-body-edit", h.scenario_local_body_edit(&store))];
     let out = root.join("report");
     let machine = ac_sema_probe::turnaround::machine_info();
     let path = ac_sema_probe::turnaround::write_report(&out, &machine, &all).unwrap();

@@ -8,9 +8,9 @@
 //! remaining steps in a FRESH process against the same store root —
 //! the real cross-process persistence path).
 
+use crate::open_store;
 use ac_sema_core::query::QueryKind;
 use ac_sema_core::SemaInput;
-use crate::open_store;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, Write};
 
@@ -193,7 +193,7 @@ pub fn serve() -> i32 {
     }
     if let Ok(v) = std::env::var("SEMA_TEST_FAKE_VERSION") {
         let _ = v; // version is compiled in; the seam validates that the
-        // parent DOES admit the real one — see mirror expectations
+                   // parent DOES admit the real one — see mirror expectations
     }
     0
 }
@@ -203,7 +203,10 @@ fn fail_protocol(msg: &str) -> i32 {
         schema: SEMAWORKER_SCHEMA,
         nonce: String::new(),
         request_hash: String::new(),
-        error: WorkerError { code: "protocol".into(), message: msg.into() },
+        error: WorkerError {
+            code: "protocol".into(),
+            message: msg.into(),
+        },
     };
     let mut out = std::io::stdout().lock();
     let _ = writeln!(out, "{}", serde_json::to_string(&resp).unwrap_or_default());
@@ -288,8 +291,16 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
     for step in &req.steps {
         match step.op.as_str() {
             "query" => {
-                let query = QueryKind::InferBody { fn_name: req.fn_name.clone() };
-                let report = match crate::run_query_flow(&store, &input, &query, Some("autodown-probe"), None) {
+                let query = QueryKind::InferBody {
+                    fn_name: req.fn_name.clone(),
+                };
+                let report = match crate::run_query_flow(
+                    &store,
+                    &input,
+                    &query,
+                    Some("autodown-probe"),
+                    None,
+                ) {
                     Ok(r) => r,
                     Err(e) => {
                         // infra-class failures are their own typed
@@ -320,22 +331,34 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
                     bindings: report
                         .bindings
                         .iter()
-                        .map(|(n, t)| BindingOut { name: n.clone(), ty: t.clone() })
+                        .map(|(n, t)| BindingOut {
+                            name: n.clone(),
+                            ty: t.clone(),
+                        })
                         .collect(),
                     diagnostics: report
                         .diagnostics
                         .iter()
-                        .map(|(c, m)| DiagOut { code: c.clone(), message: m.clone() })
+                        .map(|(c, m)| DiagOut {
+                            code: c.clone(),
+                            message: m.clone(),
+                        })
                         .collect(),
                     stages: report
                         .stages
                         .iter()
-                        .map(|(n, ns)| StageSpan { name: n.to_string(), wall_ns: *ns })
+                        .map(|(n, ns)| StageSpan {
+                            name: n.to_string(),
+                            wall_ns: *ns,
+                        })
                         .collect(),
                 });
             }
             "edit-source" => {
-                let (from, to) = (step.from.as_deref().unwrap_or(""), step.to.as_deref().unwrap_or(""));
+                let (from, to) = (
+                    step.from.as_deref().unwrap_or(""),
+                    step.to.as_deref().unwrap_or(""),
+                );
                 let hits = source.matches(from).count();
                 if from.is_empty() || hits != 1 {
                     return err_req(
@@ -362,14 +385,12 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
                 restart_pending = true;
                 break;
             }
-            other => {
-                return err_req(req, "step", format!("unknown op {other:?}"))
-            }
+            other => return err_req(req, "step", format!("unknown op {other:?}")),
         }
     }
 
-    let worker_version: String = std::env::var("SEMA_TEST_FAKE_VERSION")
-        .unwrap_or_else(|_| WORKER_VERSION.to_string());
+    let worker_version: String =
+        std::env::var("SEMA_TEST_FAKE_VERSION").unwrap_or_else(|_| WORKER_VERSION.to_string());
     let sema_core_version = std::env::var("SEMA_TEST_FAKE_CORE_VERSION")
         .unwrap_or_else(|_| "ac-sema-core/0.1.0".to_string());
     serde_json::to_value(ResponseOk {
@@ -392,7 +413,10 @@ fn err_req(req: &WorkerRequest, code: &str, message: String) -> serde_json::Valu
         schema: SEMAWORKER_SCHEMA,
         nonce: req.nonce.clone(),
         request_hash: req.request_hash.clone(),
-        error: WorkerError { code: code.into(), message },
+        error: WorkerError {
+            code: code.into(),
+            message,
+        },
     })
     .unwrap_or_default()
 }

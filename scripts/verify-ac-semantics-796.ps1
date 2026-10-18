@@ -41,7 +41,7 @@ function Add-Result([string]$Id, [string]$Status, [string]$Note) {
     if ($Status -ne 'PASS') { $script:Failed++ }
 }
 
-function Run-Suite([string]$Id, [string[]]$CargoArgs, [string]$Note, [string]$Cwd = $ws) {
+function Run-Suite([string]$Id, [string[]]$CargoArgs, [string]$Note, [string]$Cwd = $ws, [int]$MinPassed = 1) {
     Write-Host ">> cargo $($CargoArgs -join ' ') (in $Cwd)" -ForegroundColor DarkGray
     # run through cmd so native stderr never becomes a PS error record
     # (EAP=Stop + 2>&1 misfires on Windows PowerShell 5.1)
@@ -49,61 +49,78 @@ function Run-Suite([string]$Id, [string[]]$CargoArgs, [string]$Note, [string]$Cw
     $out = (& cmd /c "cd /d `"$Cwd`" && cargo $argline 2>&1") -join "`n"
     $code = $LASTEXITCODE
     $summary = ($out -split "`n" | Select-String 'test result:') -join '; '
-    if ($code -eq 0 -and $summary -match '0 failed') {
-        Add-Result $Id 'PASS' "$Note ($summary)"
+    # F-796-R4-11: a zero-selection run is NOT a pass - count the
+    # tests that actually EXECUTED across every result line and bind a
+    # per-row minimum.
+    $executed = 0
+    $joined = $out -split "`n" -join ' '
+    foreach ($m in [regex]::Matches($joined, 'test result: [a-z]+\. (\d+) passed')) {
+        $executed += [int]$m.Groups[1].Value
+    }
+    if ($code -eq 0 -and $summary -match '0 failed' -and $executed -ge $MinPassed) {
+        Add-Result $Id 'PASS' "$Note ($executed executed; $summary)"
     }
     else {
-        Add-Result $Id 'FAIL' "$Note :: $summary"
+        Add-Result $Id 'FAIL' "$Note :: executed=$executed (<$MinPassed bound) :: $summary"
     }
 }
 
 if ($Scope -eq 'acceptance') {
     # --- V-01 / AC-01: identity, recursive groups, matrix ------------
-    Run-Suite 'V-01' @('test', '-p', 'ac-sema-contract') 'sema_identity_ + unit (contract)'
+    Run-Suite 'V-01' @('test', '-p', 'ac-sema-contract') 'sema_identity_ + unit (contract)' $ws 14
 
     # --- V-02 / AC-02: real inference vs the old pipeline ------------
-    Run-Suite 'V-02a' @('test', '-p', 'ac-sema-core') 'infer_core_ unit suite'
-    Run-Suite 'V-02b' @('test', '-p', 'ac-sema-probe', '--test', 'infer_core_parity') 'differential parity corpus'
+    Run-Suite 'V-02a' @('test', '-p', 'ac-sema-core') 'infer_core_ unit suite' $ws 13
+    Run-Suite 'V-02b' @('test', '-p', 'ac-sema-probe', '--test', 'infer_core_parity') 'differential parity corpus' $ws 4
 
     # --- V-03 / AC-03: queries, deps, cache lifecycle ----------------
-    Run-Suite 'V-03' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps') 'meta_query_ dependency faces'
-    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more') 'sema_cache_ first case + lifecycle'
+    Run-Suite 'V-03' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps') 'meta_query_ dependency faces' $ws 7
+    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + R4 repairs' $ws 21
 
     # --- V-06 / AC-03: budgets and pressure ---------------------------
-    Run-Suite 'V-06' @('test', '-p', 'ac-sema-probe', '--test', 'sema_budget_pressure') 'sema_budget_ 32MiB/deep/churn'
+    Run-Suite 'V-06' @('test', '-p', 'ac-sema-probe', '--test', 'sema_budget_pressure') 'sema_budget_ 32MiB/deep/churn' $ws 5
 
     # --- V-04 / V-07 / AC-04: turnaround stages + the hard gate ------
-    Run-Suite 'V-04' @('test', '-p', 'ac-sema-probe', '--test', 'sema_turnaround_scenarios') 'sema_turnaround_ six scenarios + gate'
+    Run-Suite 'V-04' @('test', '-p', 'ac-sema-probe', '--test', 'sema_turnaround_scenarios') 'sema_turnaround_ six scenarios + gate' $ws 5
 
     # report gate: the committed report must exist and carry a PASS verdict
     $report = Join-Path $repoRoot 'docs/reports/plan796/turnaround.json'
-    if (Test-Path $report) {
-        $json = Get-Content $report -Raw | ConvertFrom-Json
-        $gate = ($json.stats | Where-Object { $_.scenario -eq 'local-body-edit' })
-        $verdict = ('{0}' -f $gate.p95_ns) -match '^\d+$'
-        if ($verdict -and [long]$gate.p95_ns -lt 1000000000) {
-            Add-Result 'V-07' 'PASS' ("report hard gate P95 {0:N2}ms < 1000ms" -f ($gate.p95_ns / 1e6))
-        }
-        else {
-            Add-Result 'V-07' 'FAIL' "report gate missing/over threshold"
-        }
+    $ipcReport = Join-Path $repoRoot 'docs/reports/plan796/turnaround-ipc.json'
+    if (-not (Test-Path $report)) {
+        Add-Result 'V-07' 'FAIL' 'docs/reports/plan796/turnaround.json missing'
+    }
+    elseif (-not (Test-Path $ipcReport)) {
+        Add-Result 'V-07' 'FAIL' 'turnaround-ipc.json missing (real adapter/IPC path)'
     }
     else {
-        Add-Result 'V-07' 'FAIL' 'docs/reports/plan796/turnaround.json missing'
+        $json = Get-Content $report -Raw | ConvertFrom-Json
+        $ipc = Get-Content $ipcReport -Raw | ConvertFrom-Json
+        $gate = ($json.stats | Where-Object { $_.scenario -eq 'local-body-edit' })
+        $libOk = ([long]$gate.p95_ns -lt 1000000000) -and ([int]$gate.samples -ge 30)
+        $ipcOk = ($ipc.verdict -eq 'PASS') -and (@($ipc.samples).Count -ge 30)
+        $genOk = $json.machine.generator -eq 'gen796-1mi/v1'
+        if ($libOk -and $ipcOk -and $genOk) {
+            Add-Result 'V-07' 'PASS' ("library P95 {0:N2}ms ({1} samples) + REAL IPC P95 {2:N2}ms ({3} samples); generator {4}" -f ($gate.p95_ns / 1e6), $gate.samples, [double]$ipc.p95_ms, @($ipc.samples).Count, $json.machine.generator)
+        }
+        else {
+            Add-Result 'V-07' 'FAIL' "libOk=$libOk ipcOk=$ipcOk genOk=$genOk (need >=30 samples each, gate under 1000ms, frozen generator)"
+        }
     }
 
     # --- V-05 / AC-01: CT/generic seam (model-only, schema-frozen) ----
-    Run-Suite 'V-05' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps', '--', 'meta_query_ct_model_seam_admission_and_cycles') 'ct seam admission/cycles (model)'
+    Run-Suite 'V-05' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps', '--', 'meta_query_ct_model_seam_admission_and_cycles') 'ct seam admission/cycles (model)' $ws 1
 
     # --- V-09 / AC-06: boundary + parallel audit ----------------------
-    Run-Suite 'V-09' @('test', '-p', 'ac-sema-probe', '--test', 'sema_boundary_audit') 'sema_boundary_ tree/diff/provenance'
+    Run-Suite 'V-09' @('test', '-p', 'ac-sema-probe', '--test', 'sema_boundary_audit') 'sema_boundary_ tree/diff/provenance' $ws 6
 
     # --- V-08 / AC-05: formal AutoDown execution (T-06 landed) --------
     # D-788 was satisfied (PLAN-788 merged, receipts on master); the
     # probe adapter corpus now EXECUTES through the unified runner:
     # real sema worker processes, real restart boundary, parent-side
     # judgement. The corpus+admission suite is the V-08 gate.
-    Run-Suite 'V-08' @('test', '-p', 'auto-lang', '--features', 'test-cases', '--', 'probe_adapter') 'probe adapter through the unified runner (V-08)' $repoRoot
+    Run-Suite 'V-08' @('test', '-p', 'auto-lang', '--features', 'test-cases', '--', 'probe_adapter') 'probe adapter through the unified runner (V-08)' $repoRoot 11
+    # the REAL adapter/IPC turnaround hard gate (F-796-R4-10)
+    Run-Suite 'V-08c' @('test', '-p', 'auto-lang', '--features', 'test-cases', '--lib', '--', 'tests::probe_adapter_turnaround_ipc') 'real adapter/IPC path P95 gate (30 samples)' $repoRoot 1
     $caseFiles = Get-ChildItem (Join-Path $repoRoot 'crates/auto-lang/test/cases/ac-semantics') -Filter '*.case.ad'
     $pending = ($caseFiles | Where-Object { (Get-Content $_.FullName -Raw) -match 'not-executed' }).Count
     if ($pending -gt 0) {

@@ -167,9 +167,7 @@ fn render_one(
 
 /// `write_texture` 的目标描述子（写成自由函数而非闭包：闭包无法表达
 /// 「返回值借用入参」的生命周期关系）。
-fn tex_copy_dest(
-    tex: &iced_wgpu::wgpu::Texture,
-) -> iced_wgpu::wgpu::TexelCopyTextureInfo<'_> {
+fn tex_copy_dest(tex: &iced_wgpu::wgpu::Texture) -> iced_wgpu::wgpu::TexelCopyTextureInfo<'_> {
     iced_wgpu::wgpu::TexelCopyTextureInfo {
         texture: tex,
         mip_level: 0,

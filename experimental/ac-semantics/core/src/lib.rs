@@ -13,19 +13,19 @@
 //!   task-local and never persisted;
 //! * runtime projection is a downstream policy, never an identity input.
 
-pub mod budget;
 #[cfg(feature = "core-ast")]
 pub mod adapter;
-pub mod input;
+pub mod budget;
 pub mod infer;
+pub mod input;
 pub mod query;
 pub mod reflect;
 
 pub use budget::{Budget, BudgetError};
+pub use infer::{InferOutcome, InferSession, InferSummary};
 pub use input::{
     Ann, InputBlock, InputExpr, InputExprKind, InputFn, InputRecord, InputStmt, SemaInput, Span,
 };
-pub use infer::{InferOutcome, InferSession, InferSummary};
 pub use query::{
     current_fingerprints, freshness_of, manifest_from, DependencyFingerprints, Freshness,
     QueryKind, SemaQueryKey,

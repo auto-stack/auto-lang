@@ -27,7 +27,11 @@ pub fn ctype_to_c_str(ty: &CTypeDesc) -> String {
         CTypeDesc::FnPtr { ret, params } => format!(
             "{} (*)({})",
             ctype_to_c_str(ret),
-            params.iter().map(ctype_to_c_str).collect::<Vec<_>>().join(", ")
+            params
+                .iter()
+                .map(ctype_to_c_str)
+                .collect::<Vec<_>>()
+                .join(", ")
         ),
     }
 }
@@ -50,7 +54,11 @@ pub fn ctype_to_rust_str(ty: &CTypeDesc) -> String {
         CTypeDesc::PtrMut => "*mut c_void".into(),
         CTypeDesc::FnPtr { ret, params } => format!(
             "fn({}) -> {}",
-            params.iter().map(ctype_to_rust_str).collect::<Vec<_>>().join(", "),
+            params
+                .iter()
+                .map(ctype_to_rust_str)
+                .collect::<Vec<_>>()
+                .join(", "),
             ctype_to_rust_str(ret)
         ),
     }

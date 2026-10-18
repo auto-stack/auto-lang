@@ -34,7 +34,11 @@ fn pascal_case(name: &str) -> String {
 /// Entry point dispatched from `main`.
 pub fn run(action: UiAction) -> Result<()> {
     match action {
-        UiAction::Build { target, out, widgets } => build(&target, &out, &widgets),
+        UiAction::Build {
+            target,
+            out,
+            widgets,
+        } => build(&target, &out, &widgets),
         UiAction::List => {
             for name in VueGenerator::LIBRARY_WIDGETS {
                 println!("{name}");
@@ -77,18 +81,30 @@ fn backlog() -> Result<()> {
     }
 
     if uncovered.is_empty() {
-        println!("All {} AURA widgets are covered by @auto-ui/widgets.", total);
+        println!(
+            "All {} AURA widgets are covered by @auto-ui/widgets.",
+            total
+        );
         return Ok(());
     }
 
-    println!("AURA widgets not yet in @auto-ui/widgets ({} uncovered / {} total):\n", uncovered.len(), total);
+    println!(
+        "AURA widgets not yet in @auto-ui/widgets ({} uncovered / {} total):\n",
+        uncovered.len(),
+        total
+    );
     for (cat, tags) in &by_cat {
         println!("  {}:", cat);
         for tag in tags {
             println!("    - {}", tag);
         }
     }
-    println!("\n{} covered / {} total ({} uncovered)", covered, total, uncovered.len());
+    println!(
+        "\n{} covered / {} total ({} uncovered)",
+        covered,
+        total,
+        uncovered.len()
+    );
     Ok(())
 }
 
@@ -128,8 +144,7 @@ fn build(target: &str, out: &str, widgets: &[String]) -> Result<()> {
 
         let pascal = pascal_case(name);
         let sfc_path = widget_dir.join(format!("{pascal}.vue"));
-        fs::write(&sfc_path, &sfc)
-            .map_err(|e| miette::miette!("write {sfc_path:?}: {e}"))?;
+        fs::write(&sfc_path, &sfc).map_err(|e| miette::miette!("write {sfc_path:?}: {e}"))?;
 
         for (rel, content) in gen.generate_widget_support_files(name) {
             let path = widget_dir.join(&rel);
@@ -137,8 +152,7 @@ fn build(target: &str, out: &str, widgets: &[String]) -> Result<()> {
                 fs::create_dir_all(parent)
                     .map_err(|e| miette::miette!("create dir for {path:?}: {e}"))?;
             }
-            fs::write(&path, content)
-                .map_err(|e| miette::miette!("write {path:?}: {e}"))?;
+            fs::write(&path, content).map_err(|e| miette::miette!("write {path:?}: {e}"))?;
         }
 
         written += 1;
@@ -147,8 +161,7 @@ fn build(target: &str, out: &str, widgets: &[String]) -> Result<()> {
     // Shared files (registry root): the `cn` helper every widget imports.
     for (rel, content) in gen.library_shared_files() {
         let path = out_dir.join(rel);
-        fs::write(&path, content)
-            .map_err(|e| miette::miette!("write shared {path:?}: {e}"))?;
+        fs::write(&path, content).map_err(|e| miette::miette!("write shared {path:?}: {e}"))?;
     }
 
     println!(
@@ -183,8 +196,7 @@ fn build_gallery_stubs(out: &str) -> Result<()> {
     }
     gen_ts.push_str("]\n");
     let gen_path = src_dir.join("widgets.generated.ts");
-    fs::write(&gen_path, &gen_ts)
-        .map_err(|e| miette::miette!("write {gen_path:?}: {e}"))?;
+    fs::write(&gen_path, &gen_ts).map_err(|e| miette::miette!("write {gen_path:?}: {e}"))?;
 
     // 2. Generate stub pages for missing widgets
     let total = VueGenerator::LIBRARY_WIDGETS.len();
@@ -256,8 +268,8 @@ fn inspect(path: &str) -> Result<()> {
     println!();
 
     let opts = ComponentGenOptions::default();
-    let result = generate_component_from_file(at_path, opts)
-        .map_err(|e| miette::miette!("{}", e))?;
+    let result =
+        generate_component_from_file(at_path, opts).map_err(|e| miette::miette!("{}", e))?;
 
     println!("Widgets: {}", result.widgets.len());
     for w in &result.widgets {
@@ -270,8 +282,7 @@ fn inspect(path: &str) -> Result<()> {
         for s in &w.state_vars {
             println!("  │    • {}: {:?}", s.name, s.type_info);
         }
-        let mut handler_names: Vec<&str> =
-            w.handlers.keys().map(|k| k.as_str()).collect();
+        let mut handler_names: Vec<&str> = w.handlers.keys().map(|k| k.as_str()).collect();
         handler_names.sort();
         println!("  │  handlers: {}", handler_names.len());
         for h in &handler_names {
@@ -287,16 +298,10 @@ fn inspect(path: &str) -> Result<()> {
 
     // API & Store
     if !result.detected_api_imports.is_empty() {
-        println!(
-            "API imports: {}",
-            result.detected_api_imports.join(", ")
-        );
+        println!("API imports: {}", result.detected_api_imports.join(", "));
     }
     if !result.detected_store_deps.is_empty() {
-        println!(
-            "Store deps:  {}",
-            result.detected_store_deps.join(", ")
-        );
+        println!("Store deps:  {}", result.detected_store_deps.join(", "));
     }
     if !result.store_composables.is_empty() {
         println!("Store composables:");
@@ -318,8 +323,7 @@ fn inspect(path: &str) -> Result<()> {
     // Validation warnings
     if !result.validation_warnings.is_empty() {
         println!();
-        let warn_text =
-            auto_lang::ui_gen::validators::format_warnings(&result.validation_warnings);
+        let warn_text = auto_lang::ui_gen::validators::format_warnings(&result.validation_warnings);
         println!("{}", warn_text);
     } else {
         println!("\n{} No validation warnings", "✓".bright_green());

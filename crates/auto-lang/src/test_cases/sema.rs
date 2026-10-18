@@ -67,7 +67,10 @@ fn locate_worker() -> Result<PathBuf, String> {
         if p.is_file() {
             return Ok(p);
         }
-        return Err(format!("SEMA_CASE_WORKER points at a missing file: {}", env_path));
+        return Err(format!(
+            "SEMA_CASE_WORKER points at a missing file: {}",
+            env_path
+        ));
     }
     let mut dir: Option<&Path> = Some(Path::new(env!("CARGO_MANIFEST_DIR")));
     let manifest = loop {
@@ -76,7 +79,10 @@ fn locate_worker() -> Result<PathBuf, String> {
                 "sema-probe worker not located: no experimental/ac-semantics above the crate and no SEMA_CASE_WORKER override".to_string(),
             );
         };
-        let m = d.join("experimental").join("ac-semantics").join("Cargo.toml");
+        let m = d
+            .join("experimental")
+            .join("ac-semantics")
+            .join("Cargo.toml");
         if m.is_file() {
             break m;
         }
@@ -135,11 +141,19 @@ fn locate_worker() -> Result<PathBuf, String> {
             .join("\n");
         return Err(format!("sema worker build failed:\n{}", tail));
     }
-    let exe = manifest.parent().unwrap().join("target").join("release").join("sema-probe.exe");
+    let exe = manifest
+        .parent()
+        .unwrap()
+        .join("target")
+        .join("release")
+        .join("sema-probe.exe");
     if exe.is_file() {
         Ok(exe)
     } else {
-        Err(format!("sema worker build produced no binary at {}", exe.display()))
+        Err(format!(
+            "sema worker build produced no binary at {}",
+            exe.display()
+        ))
     }
 }
 
@@ -151,7 +165,10 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
     if let Ok(sha) = worker_exe_sha256() {
         m.insert("sema-worker-exe-sha256".to_string(), sha);
     }
-    m.insert("sema-worker-version".to_string(), EXPECTED_WORKER_VERSION.to_string());
+    m.insert(
+        "sema-worker-version".to_string(),
+        EXPECTED_WORKER_VERSION.to_string(),
+    );
     m
 }
 
@@ -386,13 +403,18 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         return Err(if timed_out {
             "sema worker exceeded the parent wall (response-or-exit deadline)".to_string()
         } else {
-            format!("sema worker stderr exceeded the {}-byte cap — tree killed", STDERR_CAP)
+            format!(
+                "sema worker stderr exceeded the {}-byte cap — tree killed",
+                STDERR_CAP
+            )
         });
     }
     let _ = exited;
     let exit = child.wait().map_err(|e| format!("reap sema worker: {e}"))?;
     let stderr_tail = err_reader.join().unwrap_or_default();
-    let _ = out_reader.join().map_err(|_| "stdout reader panicked".to_string())?;
+    let _ = out_reader
+        .join()
+        .map_err(|_| "stdout reader panicked".to_string())?;
     let bytes = received
         .ok_or("sema worker closed without a response")?
         .map_err(|n| format!("sema worker response exceeded the read cap ({n} bytes)"))?;
@@ -502,7 +524,9 @@ pub fn run_check(
                 ProbeStep::Restart => serde_json::json!({"op": "restart"}),
             })
             .collect();
-        let nonce = hex(&sha256(format!("{}|{:?}|{}", std::process::id(), started, si).as_bytes()));
+        let nonce = hex(&sha256(
+            format!("{}|{:?}|{}", std::process::id(), started, si).as_bytes(),
+        ));
         let mut request = serde_json::json!({
             "recipe": "sema/query-v1",
             "nonce": nonce,
@@ -633,13 +657,23 @@ pub fn run_check(
                         actual: format!(
                             "ok carrying {} diagnostic(s) [{}]",
                             got.diagnostics.len(),
-                            got.diagnostics.first().map(|d| d.code.as_str()).unwrap_or("?")
+                            got.diagnostics
+                                .first()
+                                .map(|d| d.code.as_str())
+                                .unwrap_or("?")
                         ),
                         first_diff: None,
                     });
                 }
             }
-            (Completion::Error { stage, code, message }, "diags") => {
+            (
+                Completion::Error {
+                    stage,
+                    code,
+                    message,
+                },
+                "diags",
+            ) => {
                 let want_stage = stage.as_str();
                 let matched = got.diagnostics.iter().any(|d| {
                     stage_of(&d.code) == want_stage
@@ -757,8 +791,11 @@ pub fn run_check(
         },
     });
     let receipt_path = artifact_dir.join("probe-receipt.json");
-    std::fs::write(&receipt_path, serde_json::to_string_pretty(&receipt).unwrap())
-        .map_err(|e| format!("receipt write: {e}"))?;
+    std::fs::write(
+        &receipt_path,
+        serde_json::to_string_pretty(&receipt).unwrap(),
+    )
+    .map_err(|e| format!("receipt write: {e}"))?;
     let receipt_sha = hex(&sha256(&std::fs::read(&receipt_path).unwrap_or_default()));
 
     let artifacts = vec![ArtifactRef {
@@ -789,7 +826,11 @@ pub fn run_check(
         ],
         gaps: vec![],
     };
-    let status = if mismatches.is_empty() { Status::Pass } else { Status::Fail };
+    let status = if mismatches.is_empty() {
+        Status::Pass
+    } else {
+        Status::Fail
+    };
     Ok(Verdict {
         status,
         mismatches,
@@ -806,7 +847,9 @@ fn replace_once(src: &[u8], from: &str, to: &str) -> Result<Vec<u8>, String> {
     let s = std::str::from_utf8(src).map_err(|e| format!("source not utf-8: {e}"))?;
     let hits = s.matches(from).count();
     if hits != 1 {
-        return Err(format!("edit-source literal matched {hits} times (expected exactly once)"));
+        return Err(format!(
+            "edit-source literal matched {hits} times (expected exactly once)"
+        ));
     }
     Ok(s.replacen(from, to, 1).into_bytes())
 }

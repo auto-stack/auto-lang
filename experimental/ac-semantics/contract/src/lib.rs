@@ -22,6 +22,6 @@ pub use codec::{
     MAX_NESTING_DEPTH, MAX_PAGE_BODY, SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V1,
 };
 pub use identity::{
-    logical_id, ContentVersion, DeclKind, DeclRef, LogicalId, PackageId, RefError,
-    SEMA_LOGICAL_DOMAIN, SEMA_PRODUCER_ID, SEMA_REF_SCHEMA_V1, SemaRef,
+    logical_id, ContentVersion, DeclKind, DeclRef, LogicalId, PackageId, RefError, SemaRef,
+    SEMA_LOGICAL_DOMAIN, SEMA_PRODUCER_ID, SEMA_REF_SCHEMA_V1,
 };

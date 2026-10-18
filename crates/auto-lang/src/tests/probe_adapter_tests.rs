@@ -33,7 +33,7 @@ fn out_of(root: &Path, sub: &str) -> PathBuf {
 /// Serializes every test that spawns the real sema worker: fault
 /// injection is process-global state, so worker-spawning tests must not
 /// interleave with it (or with each other's fault windows).
-static FAULT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+pub(crate) static FAULT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn status_of(report: &auto_test_case::report::RunReport, check: &str) -> Status {
     report
@@ -54,14 +54,13 @@ fn probe_adapter_corpus_executes_green() {
     let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/ac-semantics");
     let root = temp_root("corpus");
     let out = out_of(&root, "out");
-    let report = run_suite(&suite_dir.join("ac-semantics.suite.ad"), &out, &Limits::defaults())
-        .expect("ac-semantics suite runs");
-    for check in [
-        "bindings",
-        "roundtrip",
-        "callee-sig",
-        "stages",
-    ] {
+    let report = run_suite(
+        &suite_dir.join("ac-semantics.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("ac-semantics suite runs");
+    for check in ["bindings", "roundtrip", "callee-sig", "stages"] {
         assert_eq!(
             status_of(&report, check),
             Status::Pass,
@@ -158,7 +157,8 @@ fn probe_adapter_decode_negatives() {
         r#"adapter: "probe", action: "run",
       options: { recipe: "my-shell-exploit/v9", steps: [ { op: "query" } ] }"#,
     );
-    let err: auto_test_case::contract::ContractError = decode_case_doc(&doc).expect_err("unregistered recipe must be rejected");
+    let err: auto_test_case::contract::ContractError =
+        decode_case_doc(&doc).expect_err("unregistered recipe must be rejected");
     assert!(format!("{err}").contains("not registered"), "{err}");
 
     // v1 + probe = rejected (v1 never grows adapters)
@@ -167,7 +167,8 @@ fn probe_adapter_decode_negatives() {
         r#"adapter: "probe", action: "run",
       options: { recipe: "sema/query-v1", steps: [ { op: "query" } ] }"#,
     );
-    let err: auto_test_case::contract::ContractError = decode_case_doc(&doc).expect_err("probe in v1 must be rejected");
+    let err: auto_test_case::contract::ContractError =
+        decode_case_doc(&doc).expect_err("probe in v1 must be rejected");
     assert!(format!("{err}").contains("probe"), "{err}");
 
     // steps missing → decode error
@@ -184,7 +185,8 @@ fn probe_adapter_decode_negatives() {
         r#"adapter: "probe", action: "run",
       options: { recipe: "sema/query-v1", steps: [ { op: "shell" } ] }"#,
     );
-    let err: auto_test_case::contract::ContractError = decode_case_doc(&doc).expect_err("shell op must be rejected");
+    let err: auto_test_case::contract::ContractError =
+        decode_case_doc(&doc).expect_err("shell op must be rejected");
     assert!(format!("{err}").contains("unknown probe op"), "{err}");
 }
 
@@ -233,10 +235,12 @@ suite { schema: "autolang.suite/2", id: "atom", include: ["atom.case.ad"] }
 "#,
     )
     .unwrap();
-    let fenced = format!("# atom case
+    let fenced = format!(
+        "# atom case
 ```test-case
 {doc_case}```
-");
+"
+    );
     std::fs::write(root.join("atom.case.ad"), fenced).unwrap();
     let out = out_of(&root, "out");
     let report =
@@ -256,14 +260,16 @@ fn probe_adapter_v1_pilot_untouched() {
         .expect("pilot suite still runs");
     assert!(!report.results.is_empty());
     for r in &report.results {
-        assert_ne!(r.status, Status::Error, "pilot check {} errored", r.check_id);
+        assert_ne!(
+            r.status,
+            Status::Error,
+            "pilot check {} errored",
+            r.check_id
+        );
     }
 }
 
-
-
 // ---- F-796-R4-02/03/04 permanent controls ---------------------------------
-
 
 /// Build a one-case suite where `check_tail` is the full check body
 /// after `id:` (adapter/options/expect). The source embeds verbatim.
@@ -343,7 +349,10 @@ fn set_faults(envs: Vec<(String, String)>, wall_ms: Option<u64>) {
     crate::test_cases::sema::TEST_FAULTS
         .write()
         .unwrap()
-        .replace(crate::test_cases::sema::TestFaults { child_envs: envs, session_wall_ms: wall_ms });
+        .replace(crate::test_cases::sema::TestFaults {
+            child_envs: envs,
+            session_wall_ms: wall_ms,
+        });
 }
 
 fn clear_faults() {
@@ -379,7 +388,10 @@ fn probe_adapter_worker_hang_after_response_is_infra_error() {
 #[test]
 fn probe_adapter_worker_bad_exit_is_infra_error() {
     let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    set_faults(vec![("SEMA_TEST_EXIT_AFTER_RESPONSE".into(), "7".into())], None);
+    set_faults(
+        vec![("SEMA_TEST_EXIT_AFTER_RESPONSE".into(), "7".into())],
+        None,
+    );
     let result = std::panic::catch_unwind(|| {
         let report = run_fault_case(
             "exit7",
@@ -399,7 +411,10 @@ fn probe_adapter_worker_bad_exit_is_infra_error() {
 #[test]
 fn probe_adapter_worker_bad_version_is_infra_error() {
     let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
-    set_faults(vec![("SEMA_TEST_FAKE_VERSION".into(), "INVALID".into())], None);
+    set_faults(
+        vec![("SEMA_TEST_FAKE_VERSION".into(), "INVALID".into())],
+        None,
+    );
     let result = std::panic::catch_unwind(|| {
         let report = run_fault_case(
             "badver",

@@ -9,8 +9,8 @@
 //! algorithm, schema, target-relevant semantics, builtin capabilities
 //! and producer version (contract-decision D7).
 
-use crate::input::{Ann, SemaInput};
 use crate::infer::Reads;
+use crate::input::{Ann, SemaInput};
 use ac_sema_contract::{
     ContentVersion, DeclKind, DepFingerprint, DepManifest, LogicalId, NegDep, PackageId,
     SEMA_PAGE_SCHEMA_V1,
@@ -146,7 +146,13 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
     fn enc_stmt(out: &mut Vec<u8>, s: &crate::input::InputStmt) {
         use crate::input::InputStmt;
         match s {
-            InputStmt::Let { name, ann, mutable, value, .. } => {
+            InputStmt::Let {
+                name,
+                ann,
+                mutable,
+                value,
+                ..
+            } => {
                 out.push(b'L');
                 out.extend_from_slice(name.as_bytes());
                 out.push(0);
@@ -161,7 +167,12 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
                 out.push(*mutable as u8);
                 enc_expr(out, value);
             }
-            InputStmt::Assign { target, path, value, .. } => {
+            InputStmt::Assign {
+                target,
+                path,
+                value,
+                ..
+            } => {
                 out.push(b'A');
                 out.extend_from_slice(target.as_bytes());
                 out.push(0);
@@ -175,7 +186,9 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
                 out.push(b'R');
                 enc_expr(out, value);
             }
-            InputStmt::If { cond, then, els, .. } => {
+            InputStmt::If {
+                cond, then, els, ..
+            } => {
                 out.push(b'I');
                 enc_expr(out, cond);
                 out.push(b'{');
@@ -259,7 +272,9 @@ pub fn called_names(f: &crate::input::InputFn) -> std::collections::BTreeSet<Str
                 InputStmt::Let { value, .. }
                 | InputStmt::Assign { value, .. }
                 | InputStmt::Return { value, .. } => exprs.push(value),
-                InputStmt::If { cond, then, els, .. } => {
+                InputStmt::If {
+                    cond, then, els, ..
+                } => {
                     exprs.push(cond);
                     blocks.push(then);
                     if let Some(e) = els {
@@ -352,14 +367,19 @@ impl SemaQueryKey {
                 let f = input.lookup_fn(fn_name);
                 c.push((
                     "fn-sig-fp".into(),
-                    f.map(|f| fp(&fn_sig_canonical(f))).unwrap_or_else(|| "absent".into()),
+                    f.map(|f| fp(&fn_sig_canonical(f)))
+                        .unwrap_or_else(|| "absent".into()),
                 ));
                 c.push((
                     "fn-body-fp".into(),
-                    f.map(|f| fp(&fn_body_canonical(f))).unwrap_or_else(|| "absent".into()),
+                    f.map(|f| fp(&fn_body_canonical(f)))
+                        .unwrap_or_else(|| "absent".into()),
                 ));
                 // the candidate sets the lookup domain ran against
-                c.push(("fn-cand-fp".into(), fp(input.fn_candidates().join("\u{1}").as_bytes())));
+                c.push((
+                    "fn-cand-fp".into(),
+                    fp(input.fn_candidates().join("\u{1}").as_bytes()),
+                ));
                 c.push((
                     "type-cand-fp".into(),
                     fp(input.record_candidates().join("\u{1}").as_bytes()),
@@ -368,19 +388,35 @@ impl SemaQueryKey {
                 // signature change is a key change — one key can never
                 // hold two contents)
                 c.push(("called-sigs-fp".into(), called_sigs_fp(input, fn_name)));
+                // F-796-R4-05 (D7): the SOURCE REVISION of the
+                // position-bearing projection is part of the key — a
+                // position-drifted source gets a fresh key (fresh
+                // compute, CURRENT spans); old positions are never
+                // served for a new revision, and one key can never
+                // hold two source revisions
+                c.push((
+                    "src-fp".into(),
+                    if input.source_fp.is_empty() {
+                        "none".to_string()
+                    } else {
+                        input.source_fp.clone()
+                    },
+                ));
             }
             QueryKind::FnSig { fn_name } => {
                 let f = input.lookup_fn(fn_name);
                 c.push((
                     "fn-sig-fp".into(),
-                    f.map(|f| fp(&fn_sig_canonical(f))).unwrap_or_else(|| "absent".into()),
+                    f.map(|f| fp(&fn_sig_canonical(f)))
+                        .unwrap_or_else(|| "absent".into()),
                 ));
             }
             QueryKind::RecordFields { record } => {
                 let r = input.lookup_record(record);
                 c.push((
                     "field-set-fp".into(),
-                    r.map(|r| fp(&record_canonical(r))).unwrap_or_else(|| "absent".into()),
+                    r.map(|r| fp(&record_canonical(r)))
+                        .unwrap_or_else(|| "absent".into()),
                 ));
             }
             QueryKind::ListCandidates { domain } => {
@@ -492,7 +528,11 @@ pub fn manifest_from(reads: &Reads, input: &SemaInput, target: &str) -> DepManif
     }
     for s in &reads.sigs {
         if s != target {
-            positives.push(DepFingerprint { kind: "fn-sig", origin: s.clone(), fp: String::new() });
+            positives.push(DepFingerprint {
+                kind: "fn-sig",
+                origin: s.clone(),
+                fp: String::new(),
+            });
         }
     }
     for p in positives.iter_mut() {
@@ -507,7 +547,11 @@ pub fn manifest_from(reads: &Reads, input: &SemaInput, target: &str) -> DepManif
         negatives: reads
             .negatives
             .iter()
-            .map(|(d, n, set)| NegDep { domain: *d, name: n.clone(), set_fp: set.clone() })
+            .map(|(d, n, set)| NegDep {
+                domain: *d,
+                name: n.clone(),
+                set_fp: set.clone(),
+            })
             .collect(),
     }
 }
@@ -520,9 +564,13 @@ pub enum Freshness {
     /// (F-796-R4-05): the semantic CONTENT is reusable, position
     /// projections belong to the old source and must be refreshed
     /// before serving.
-    ProvenanceStale { reason: String },
+    ProvenanceStale {
+        reason: String,
+    },
     /// A semantic dependency drifted — what and why (audit trail).
-    Stale { reason: String },
+    Stale {
+        reason: String,
+    },
 }
 
 /// Validate a cached result's manifest against the current input:
@@ -538,9 +586,7 @@ pub fn freshness_class(manifest: &DepManifest, current: &DependencyFingerprints)
             "fn-sig" => current.fn_sigs.get(&p.origin) == Some(&p.fp),
             "fn-body" => current.fn_bodies.get(&p.origin) == Some(&p.fp),
             "field-set" => current.field_sets.get(&p.origin) == Some(&p.fp),
-            "candidate-set" => {
-                current.candidate_sets.values().any(|v| v == &p.fp)
-            }
+            "candidate-set" => current.candidate_sets.values().any(|v| v == &p.fp),
             "config" => current.config == p.fp,
             "group-content" => true,
             // fail-closed: an unregistered source origin cannot be
@@ -582,10 +628,7 @@ pub fn freshness_class(manifest: &DepManifest, current: &DependencyFingerprints)
         }
         if set_now != Some(&n.set_fp) {
             return Freshness::Stale {
-                reason: format!(
-                    "negative dep candidate set for domain {} changed",
-                    n.domain
-                ),
+                reason: format!("negative dep candidate set for domain {} changed", n.domain),
             };
         }
     }
@@ -609,12 +652,7 @@ pub fn target_logical(input: &SemaInput, query: &QueryKind) -> LogicalId {
         QueryKind::RecordFields { record } => (DeclKind::Record, record.clone()),
         QueryKind::ListCandidates { .. } => (DeclKind::Fn, "<domain>".to_string()),
     };
-    ac_sema_contract::logical_id(
-        &PackageId::new(&input.package),
-        &input.module,
-        kind,
-        &name,
-    )
+    ac_sema_contract::logical_id(&PackageId::new(&input.package), &input.module, kind, &name)
 }
 
 /// Content version of a query target's definition (page header field).
@@ -628,9 +666,10 @@ pub fn target_content(input: &SemaInput, query: &QueryKind) -> ContentVersion {
                 b
             })
             .unwrap_or_default(),
-        QueryKind::RecordFields { record } => {
-            input.lookup_record(record).map(record_canonical).unwrap_or_default()
-        }
+        QueryKind::RecordFields { record } => input
+            .lookup_record(record)
+            .map(record_canonical)
+            .unwrap_or_default(),
         QueryKind::ListCandidates { domain } => {
             let set = match *domain {
                 "fn" => input.fn_candidates(),

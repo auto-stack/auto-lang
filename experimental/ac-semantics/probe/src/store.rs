@@ -41,7 +41,10 @@ pub const SEMA_CARRIER: ChunkKind = ChunkKind::SnapshotRecord;
 pub const FLOW_WALL_MS: u128 = 5_000;
 
 fn store_key(k: &SemaQueryKey) -> QueryKey {
-    QueryKey { layer: SEMA_LAYER, components: k.components.clone() }
+    QueryKey {
+        layer: SEMA_LAYER,
+        components: k.components.clone(),
+    }
 }
 
 /// What a lookup found (never computed here).
@@ -53,7 +56,11 @@ pub enum FetchOutcome {
     /// source fingerprint (F-796-R4-05): semantic CONTENT is reusable,
     /// the cached positions belong to the OLD source. Never served as
     /// plain positions — the caller must refresh the projection.
-    HitStaleProvenance { page: SemaPage, artifact_id: String, reason: String },
+    HitStaleProvenance {
+        page: SemaPage,
+        artifact_id: String,
+        reason: String,
+    },
     /// A semantic dependency drifted (signature/body/sets/negative).
     Stale { reason: String },
     /// No artifact under the key.
@@ -65,19 +72,34 @@ pub enum FetchOutcome {
 pub enum ProbeError {
     Store(StoreError),
     Codec(ac_sema_contract::CodecError),
-    KindMismatch { expected: String, found: String },
-    TargetMismatch { found: String, expected: String },
+    KindMismatch {
+        expected: String,
+        found: String,
+    },
+    TargetMismatch {
+        found: String,
+        expected: String,
+    },
     /// F-796-R4-09: the cached/published facts do not belong to the
     /// queried declaration.
-    FactsMismatch { detail: String },
-    UnknownTarget { what: &'static str, name: String },
+    FactsMismatch {
+        detail: String,
+    },
+    UnknownTarget {
+        what: &'static str,
+        name: String,
+    },
     NotCacheable(&'static str),
     /// F-796-R4-05: a projection refresh diverged from the cached
     /// semantic content — reported, never silently overwritten.
-    CacheDivergence { detail: String },
+    CacheDivergence {
+        detail: String,
+    },
     /// F-796-R4-07: mutually-referential record groups need group
     /// publication, which this probe version does not implement.
-    CyclicRecordGroup { cycle: String },
+    CyclicRecordGroup {
+        cycle: String,
+    },
     BudgetRejected(crate::budget::BudgetRejected),
 }
 
@@ -90,16 +112,25 @@ impl std::fmt::Display for ProbeError {
                 write!(f, "page kind mismatch: expected {expected}, found {found}")
             }
             ProbeError::TargetMismatch { found, expected } => {
-                write!(f, "cached target mismatch: found {found}, expected {expected}")
+                write!(
+                    f,
+                    "cached target mismatch: found {found}, expected {expected}"
+                )
             }
             ProbeError::FactsMismatch { detail } => write!(f, "facts ownership mismatch: {detail}"),
             ProbeError::UnknownTarget { what, name } => write!(f, "unknown {what} `{name}`"),
             ProbeError::NotCacheable(w) => write!(f, "outcome not cacheable: {w}"),
             ProbeError::CacheDivergence { detail } => {
-                write!(f, "projection refresh diverged from cached content: {detail}")
+                write!(
+                    f,
+                    "projection refresh diverged from cached content: {detail}"
+                )
             }
             ProbeError::CyclicRecordGroup { cycle } => {
-                write!(f, "cyclic record group needs group publication (unsupported): {cycle}")
+                write!(
+                    f,
+                    "cyclic record group needs group publication (unsupported): {cycle}"
+                )
             }
             ProbeError::BudgetRejected(e) => write!(f, "{e}"),
         }
@@ -141,7 +172,11 @@ fn admit_cached(
 ) -> Result<(), ProbeError> {
     if c.query != query.as_str() {
         return Err(ProbeError::FactsMismatch {
-            detail: format!("page query tag `{}` does not match `{}`", c.query, query.as_str()),
+            detail: format!(
+                "page query tag `{}` does not match `{}`",
+                c.query,
+                query.as_str()
+            ),
         });
     }
     if c.target != *expect_target {
@@ -198,7 +233,9 @@ fn admit_summary_ownership(
             }
             Ok(())
         }
-        _ => Err(ProbeError::NotCacheable("only infer-body summaries publish through this API")),
+        _ => Err(ProbeError::NotCacheable(
+            "only infer-body summaries publish through this API",
+        )),
     }
 }
 
@@ -246,18 +283,24 @@ pub fn lookup_only(
     if let PageBody::CachedResult(c) = &page.body {
         let current = current_fingerprints(input);
         match freshness_class(&c.manifest, &current) {
-            ac_sema_core::Freshness::Fresh => {
-                Ok(FetchOutcome::Hit { page, artifact_id: loaded.artifact_id })
-            }
-            ac_sema_core::Freshness::ProvenanceStale { reason } => Ok(FetchOutcome::HitStaleProvenance {
+            ac_sema_core::Freshness::Fresh => Ok(FetchOutcome::Hit {
                 page,
                 artifact_id: loaded.artifact_id,
-                reason,
             }),
+            ac_sema_core::Freshness::ProvenanceStale { reason } => {
+                Ok(FetchOutcome::HitStaleProvenance {
+                    page,
+                    artifact_id: loaded.artifact_id,
+                    reason,
+                })
+            }
             ac_sema_core::Freshness::Stale { reason } => Ok(FetchOutcome::Stale { reason }),
         }
     } else {
-        Ok(FetchOutcome::Hit { page, artifact_id: loaded.artifact_id })
+        Ok(FetchOutcome::Hit {
+            page,
+            artifact_id: loaded.artifact_id,
+        })
     }
 }
 
@@ -346,11 +389,17 @@ fn content_signature(f: &InferFacts) -> Vec<u8> {
 }
 
 fn binding_strings(f: &InferFacts) -> Vec<(String, String)> {
-    f.bindings.iter().map(|(n, t)| (n.clone(), desc_name(t))).collect()
+    f.bindings
+        .iter()
+        .map(|(n, t)| (n.clone(), desc_name(t)))
+        .collect()
 }
 
 fn diag_strings(f: &InferFacts) -> Vec<(String, String)> {
-    f.diagnostics.iter().map(|d| (d.code.to_string(), d.message.clone())).collect()
+    f.diagnostics
+        .iter()
+        .map(|d| (d.code.to_string(), d.message.clone()))
+        .collect()
 }
 
 fn desc_name(t: &TypeDesc) -> String {
@@ -370,7 +419,7 @@ pub fn run_query_flow(
     input: &SemaInput,
     query: &QueryKind,
     project: Option<&str>,
-    meter: Option<&mut crate::budget::SessionMeter>,
+    mut meter: Option<&mut crate::budget::SessionMeter>,
 ) -> Result<QueryReport, ProbeError> {
     let mut stages: Vec<(&'static str, u128)> = Vec::new();
     let mut io_bytes = 0u64;
@@ -387,9 +436,10 @@ pub fn run_query_flow(
         FetchOutcome::Hit { page, .. } => {
             io_bytes += encode_page(&page).map(|b| b.len() as u64).unwrap_or(0);
             let (bindings, diagnostics) = match &page.body {
-                PageBody::CachedResult(CachedResult { facts: ResultFacts::Infer(f), .. }) => {
-                    (binding_strings(f), diag_strings(f))
-                }
+                PageBody::CachedResult(CachedResult {
+                    facts: ResultFacts::Infer(f),
+                    ..
+                }) => (binding_strings(f), diag_strings(f)),
                 _ => (Vec::new(), Vec::new()),
             };
             Ok(QueryReport {
@@ -410,14 +460,19 @@ pub fn run_query_flow(
             // divergence is a controlled error — never served, never
             // overwritten.
             let cached_sig = match &page.body {
-                PageBody::CachedResult(CachedResult { facts: ResultFacts::Infer(f), .. }) => {
-                    content_signature(f)
-                }
+                PageBody::CachedResult(CachedResult {
+                    facts: ResultFacts::Infer(f),
+                    ..
+                }) => content_signature(f),
                 _ => Vec::new(),
             };
             let fn_name = match query {
                 QueryKind::InferBody { fn_name } => fn_name.clone(),
-                _ => return Err(ProbeError::NotCacheable("provenance refresh is infer-body only")),
+                _ => {
+                    return Err(ProbeError::NotCacheable(
+                        "provenance refresh is infer-body only",
+                    ))
+                }
             };
             let t = Instant::now();
             let outcome = run_inference(input, &fn_name);
@@ -495,10 +550,29 @@ pub fn run_query_flow(
             match outcome {
                 InferOutcome::Ok(summary) => {
                     stages.push(("infer", infer_ns));
-                    let guard = meter.and_then(|m| m.scratch(64 * 1024).ok());
+                    // the publish scratch reservation is part of the
+                    // REAL flow: an over-budget ledger rejects HERE as
+                    // a typed resource state, never a silent skip
+                    let _guard = match meter.as_mut() {
+                        None => None,
+                        Some(m) => match m.scratch(64 * 1024) {
+                            Ok(g) => Some(g),
+                            Err(e) => {
+                                return Ok(QueryReport {
+                                    disposition: Disposition::ResourceExhausted,
+                                    compute_calls: 1,
+                                    bindings: Vec::new(),
+                                    diagnostics: Vec::new(),
+                                    stages,
+                                    io_bytes,
+                                    reason: Some(format!("{e}")),
+                                })
+                            }
+                        },
+                    };
                     let t = Instant::now();
                     let art = publish_infer_result(store, input, query, &summary, project)?;
-                    drop(guard);
+                    drop(_guard);
                     let _ = art;
                     stages.push(("publish", t.elapsed().as_nanos()));
                     Ok(QueryReport {
@@ -564,10 +638,14 @@ pub fn publish_infer_result(
 ) -> Result<String, ProbeError> {
     let target = ac_sema_core::query::target_logical(input, query);
     admit_summary_ownership(summary, query, &target)?;
-    let manifest = ac_sema_core::manifest_from(&summary.reads, input, &match query {
-        QueryKind::InferBody { fn_name } => fn_name.clone(),
-        _ => String::new(),
-    });
+    let manifest = ac_sema_core::manifest_from(
+        &summary.reads,
+        input,
+        &match query {
+            QueryKind::InferBody { fn_name } => fn_name.clone(),
+            _ => String::new(),
+        },
+    );
     let cached = CachedResult {
         query: query.as_str(),
         target,
@@ -644,7 +722,12 @@ fn record_typedesc(
     name: &str,
 ) -> Result<(TypeDesc, Option<String>), ProbeError> {
     let Some(r) = input.lookup_record(name) else {
-        return Ok((TypeDesc::Opaque { name: format!("record:{name}") }, None));
+        return Ok((
+            TypeDesc::Opaque {
+                name: format!("record:{name}"),
+            },
+            None,
+        ));
     };
     let content =
         ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::record_canonical(r));
@@ -655,7 +738,9 @@ fn record_typedesc(
         name,
         content,
     );
-    let dep_query = QueryKind::RecordFields { record: name.to_string() };
+    let dep_query = QueryKind::RecordFields {
+        record: name.to_string(),
+    };
     let artifact = match lookup_only(store, input, &dep_query)? {
         FetchOutcome::Hit { artifact_id, .. } => Some(artifact_id),
         _ => None,
@@ -665,7 +750,9 @@ fn record_typedesc(
 
 /// Records each record references (known record names only).
 fn record_deps(input: &SemaInput, name: &str) -> Vec<String> {
-    let Some(r) = input.lookup_record(name) else { return Vec::new() };
+    let Some(r) = input.lookup_record(name) else {
+        return Vec::new();
+    };
     let mut out = Vec::new();
     for (_, a) in &r.fields {
         if let ac_sema_core::Ann::Record(rec) = a {
@@ -685,12 +772,17 @@ fn ensure_record_page(
     name: &str,
     project: Option<&str>,
 ) -> Result<String, ProbeError> {
-    let query = QueryKind::RecordFields { record: name.to_string() };
+    let query = QueryKind::RecordFields {
+        record: name.to_string(),
+    };
     if let FetchOutcome::Hit { artifact_id, .. } = lookup_only(store, input, &query)? {
         return Ok(artifact_id);
     }
     let Some(r) = input.lookup_record(name) else {
-        return Err(ProbeError::UnknownTarget { what: "record", name: name.to_string() });
+        return Err(ProbeError::UnknownTarget {
+            what: "record",
+            name: name.to_string(),
+        });
     };
     let pkg = ac_sema_contract::PackageId::new(&input.package);
     let mut required_edges: Vec<String> = Vec::new();
@@ -709,12 +801,17 @@ fn ensure_record_page(
                 }
                 inner
             }
-            ac_sema_core::Ann::Inferred => TypeDesc::Opaque { name: "?inferred".into() },
-            ac_sema_core::Ann::Unsupported(w) => {
-                TypeDesc::Opaque { name: format!("unsupported:{w}") }
-            }
+            ac_sema_core::Ann::Inferred => TypeDesc::Opaque {
+                name: "?inferred".into(),
+            },
+            ac_sema_core::Ann::Unsupported(w) => TypeDesc::Opaque {
+                name: format!("unsupported:{w}"),
+            },
         };
-        shape_fields.push(ac_sema_contract::FieldDesc { name: n.clone(), ty });
+        shape_fields.push(ac_sema_contract::FieldDesc {
+            name: n.clone(),
+            ty,
+        });
     }
     let shape = ac_sema_contract::RecordShape {
         decl: ac_sema_contract::DeclRef::new(
@@ -722,13 +819,15 @@ fn ensure_record_page(
             &input.module,
             ac_sema_contract::DeclKind::Record,
             name,
-            ac_sema_contract::ContentVersion::of_canonical(
-                &ac_sema_core::query::record_canonical(r),
-            ),
+            ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::record_canonical(
+                r,
+            )),
         ),
         fields: shape_fields,
     };
-    let group = ac_sema_contract::RecGroup { members: vec![shape.clone()] };
+    let group = ac_sema_contract::RecGroup {
+        members: vec![shape.clone()],
+    };
     let meta = RecordMeta {
         shape,
         methods: r
@@ -799,16 +898,25 @@ pub fn publish_record_meta(
     let all = publish_module_records(store, input, project)?;
     all.get(record)
         .cloned()
-        .ok_or_else(|| ProbeError::UnknownTarget { what: "record", name: record.to_string() })
+        .ok_or_else(|| ProbeError::UnknownTarget {
+            what: "record",
+            name: record.to_string(),
+        })
 }
 
 fn plain_desc(a: &ac_sema_core::Ann) -> TypeDesc {
     match a {
         ac_sema_core::Ann::I32 => TypeDesc::I32,
         ac_sema_core::Ann::Bool => TypeDesc::Bool,
-        ac_sema_core::Ann::Record(r) => TypeDesc::Opaque { name: format!("record:{r}") },
-        ac_sema_core::Ann::Inferred => TypeDesc::Opaque { name: "?inferred".into() },
-        ac_sema_core::Ann::Unsupported(w) => TypeDesc::Opaque { name: format!("unsupported:{w}") },
+        ac_sema_core::Ann::Record(r) => TypeDesc::Opaque {
+            name: format!("record:{r}"),
+        },
+        ac_sema_core::Ann::Inferred => TypeDesc::Opaque {
+            name: "?inferred".into(),
+        },
+        ac_sema_core::Ann::Unsupported(w) => TypeDesc::Opaque {
+            name: format!("unsupported:{w}"),
+        },
     }
 }
 
@@ -886,7 +994,9 @@ pub fn publish_module_records(
         }
         remaining = next_round;
         if !progressed {
-            return Err(ProbeError::CyclicRecordGroup { cycle: remaining.join(" -> ") });
+            return Err(ProbeError::CyclicRecordGroup {
+                cycle: remaining.join(" -> "),
+            });
         }
     }
     Ok(out)

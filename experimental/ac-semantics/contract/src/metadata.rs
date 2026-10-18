@@ -129,7 +129,10 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         support: MetaSupport::SchemaOnly,
         owner: "sema contract (796)",
         schema: "ac796/semaref/v1 (InstanceKey/CTRequest freeze)",
-        consumers: &["instantiation (future)", "ABI monomorphization (797 future)"],
+        consumers: &[
+            "instantiation (future)",
+            "ABI monomorphization (797 future)",
+        ],
         granularity: "per template declaration",
         refs: "template description + substitution key; model constraints only",
         residency: "schema only",

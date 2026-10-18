@@ -7,7 +7,9 @@ use ac_sema_contract::{DepFingerprint, DepManifest, NegDep};
 use ac_sema_core::adapter::parse_into_input;
 use ac_sema_core::query::{current_fingerprints, freshness_of, QueryKind};
 use ac_sema_core::{Freshness, InferOutcome, InferSession};
-use ac_sema_probe::{lookup_only, open_store, publish_infer_result, publish_record_meta, run_inference};
+use ac_sema_probe::{
+    lookup_only, open_store, publish_infer_result, publish_record_meta, run_inference,
+};
 use auto_ac_prototype::source::SourceProfile;
 
 fn core_src(src: &str, module: &str) -> ac_sema_core::SemaInput {
@@ -33,7 +35,14 @@ fn meta_query_field_set_change_invalidates_only_readers() {
     publish_record_meta(&store, &input1, "Pair", Some("proj")).unwrap();
 
     // fields query hits on the unchanged module
-    match lookup_only(&store, &input1, &QueryKind::RecordFields { record: "Pair".into() }).unwrap()
+    match lookup_only(
+        &store,
+        &input1,
+        &QueryKind::RecordFields {
+            record: "Pair".into(),
+        },
+    )
+    .unwrap()
     {
         ac_sema_probe::FetchOutcome::Hit { .. } => {}
         other => panic!("expected fields hit, got {other:?}"),
@@ -42,7 +51,14 @@ fn meta_query_field_set_change_invalidates_only_readers() {
     // a field is ADDED: the field-set key component changes → Miss
     let src2 = "type Pair { left int; right bool; mid bool }\nfn main() int { return 1 }";
     let input2 = rec_src(src2, "m");
-    match lookup_only(&store, &input2, &QueryKind::RecordFields { record: "Pair".into() }).unwrap()
+    match lookup_only(
+        &store,
+        &input2,
+        &QueryKind::RecordFields {
+            record: "Pair".into(),
+        },
+    )
+    .unwrap()
     {
         ac_sema_probe::FetchOutcome::Miss => {}
         other => panic!("expected fields miss after field added, got {other:?}"),
@@ -65,13 +81,30 @@ fn meta_query_signature_query_survives_body_edit() {
         InferOutcome::Ok(s) => s,
         other => panic!("{other:?}"),
     };
-    publish_infer_result(&store, &input1, &QueryKind::InferBody { fn_name: "f".into() }, &sum, Some("proj")).unwrap();
+    publish_infer_result(
+        &store,
+        &input1,
+        &QueryKind::InferBody {
+            fn_name: "f".into(),
+        },
+        &sum,
+        Some("proj"),
+    )
+    .unwrap();
 
     // body-only edit: infer-body key changes (miss), while the SIGNATURE
     // (and the caller that only read the signature) is unaffected
     let src2 = "fn f(a int) int { return a * 100 }";
     let input2 = core_src(src2, "m");
-    match lookup_only(&store, &input2, &QueryKind::InferBody { fn_name: "f".into() }).unwrap() {
+    match lookup_only(
+        &store,
+        &input2,
+        &QueryKind::InferBody {
+            fn_name: "f".into(),
+        },
+    )
+    .unwrap()
+    {
         ac_sema_probe::FetchOutcome::Miss => {}
         other => panic!("expected infer-body miss after body edit, got {other:?}"),
     }
@@ -102,7 +135,10 @@ fn meta_query_negative_dep_name_becomes_defined() {
     let cur2 = current_fingerprints(&core_src(src2, "m"));
     match freshness_of(&manifest, &cur2) {
         Freshness::Stale { reason } => {
-            assert!(reason.contains("g"), "reason names the now-defined name: {reason}")
+            assert!(
+                reason.contains("g"),
+                "reason names the now-defined name: {reason}"
+            )
         }
         Freshness::Fresh => panic!("negative dep must break when g appears"),
         Freshness::ProvenanceStale { .. } => {}
@@ -112,7 +148,10 @@ fn meta_query_negative_dep_name_becomes_defined() {
     // the recorded lookup domain
     let src3 = "fn h() int { return 3 }\nfn main() int { return 1 }";
     let cur3 = current_fingerprints(&core_src(src3, "m"));
-    assert!(matches!(freshness_of(&manifest, &cur3), Freshness::Stale { .. }));
+    assert!(matches!(
+        freshness_of(&manifest, &cur3),
+        Freshness::Stale { .. }
+    ));
 }
 
 /// source-map dependencies fail CLOSED: a manifest that read source
@@ -132,13 +171,21 @@ fn meta_query_source_map_fails_closed() {
         negatives: vec![],
     };
     // origin not registered → stale (fail closed)
-    assert!(matches!(freshness_of(&manifest, &cur), Freshness::Stale { .. }));
+    assert!(matches!(
+        freshness_of(&manifest, &cur),
+        Freshness::Stale { .. }
+    ));
     // registered with the same fp → fresh
-    cur.source_maps.insert("file:m.at".into(), "hash-of-original-bytes".into());
+    cur.source_maps
+        .insert("file:m.at".into(), "hash-of-original-bytes".into());
     assert_eq!(freshness_of(&manifest, &cur), Freshness::Fresh);
     // bytes changed (a position-only edit IS a byte change) → stale
-    cur.source_maps.insert("file:m.at".into(), "hash-of-moved-bytes".into());
-    assert!(matches!(freshness_of(&manifest, &cur), Freshness::Stale { .. }));
+    cur.source_maps
+        .insert("file:m.at".into(), "hash-of-moved-bytes".into());
+    assert!(matches!(
+        freshness_of(&manifest, &cur),
+        Freshness::Stale { .. }
+    ));
 }
 
 /// Positive dependency drift: a callee SIGNATURE change invalidates a
@@ -161,7 +208,10 @@ fn meta_query_positive_dep_callee_signature_drift() {
     let manifest = ac_sema_core::manifest_from(&sum.reads, &input1, "main");
     match freshness_of(&manifest, &cur2) {
         Freshness::Stale { reason } => {
-            assert!(reason.contains("fn-sig") || reason.contains("helper"), "reason: {reason}")
+            assert!(
+                reason.contains("fn-sig") || reason.contains("helper"),
+                "reason: {reason}"
+            )
         }
         Freshness::Fresh => panic!("callee signature drift must invalidate"),
         Freshness::ProvenanceStale { .. } => {}
@@ -176,7 +226,11 @@ fn meta_query_ct_model_seam_admission_and_cycles() {
     use ac_sema_core::{CtAdmission, CtRequest, ModelCt, PortableValue};
 
     // portable: direct fold
-    let req = CtRequest::new("tpl/sum", vec![PortableValue::I32(2), PortableValue::I32(3)], vec![]);
+    let req = CtRequest::new(
+        "tpl/sum",
+        vec![PortableValue::I32(2), PortableValue::I32(3)],
+        vec![],
+    );
     let res = ModelCt::fold_i32_sum(&req).unwrap();
     assert!(matches!(res.value, PortableValue::I32(5)));
     assert_eq!(res.marking.as_str(), "model_compute");
@@ -238,5 +292,8 @@ fn meta_query_reflection_projections() {
     assert_eq!(ty, ac_sema_contract::TypeDesc::I32);
     assert!(ac_sema_core::query_field(&input, "Pair", "nope").is_none());
     assert!(ac_sema_core::query_field(&input, "Ghost", "left").is_none());
-    assert_eq!(ac_sema_core::list_candidates(&input, "type"), vec!["Pair".to_string()]);
+    assert_eq!(
+        ac_sema_core::list_candidates(&input, "type"),
+        vec!["Pair".to_string()]
+    );
 }

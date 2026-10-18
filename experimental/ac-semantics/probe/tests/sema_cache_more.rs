@@ -9,7 +9,9 @@ use ac_artifact_probe::store::{run_gc, GcConfig, ManagedStore};
 use ac_sema_core::adapter::parse_into_input;
 use ac_sema_core::query::QueryKind;
 use ac_sema_core::{InferOutcome, InferSummary};
-use ac_sema_probe::{lookup_only, open_store, publish_infer_result, run_inference, FetchOutcome, ProbeError};
+use ac_sema_probe::{
+    lookup_only, open_store, publish_infer_result, run_inference, FetchOutcome, ProbeError,
+};
 use auto_ac_prototype::source::SourceProfile;
 
 fn scratch(family: &str) -> std::path::PathBuf {
@@ -40,7 +42,9 @@ fn sema_cache_cross_project_shared_hit() {
     let root = scratch("cache-xproj");
     let store = open_store(&root.join("store")).unwrap();
     let input = input_of(SRC);
-    let q = QueryKind::InferBody { fn_name: "main".into() };
+    let q = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
 
     // project A publishes
     let sum = publish_main(&store, "proj-a");
@@ -62,11 +66,16 @@ fn sema_cache_idempotent_republication_same_artifact() {
     let root = scratch("cache-idem");
     let store = open_store(&root.join("store")).unwrap();
     let input = input_of(SRC);
-    let q = QueryKind::InferBody { fn_name: "main".into() };
+    let q = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
     let sum = publish_main(&store, "proj-a");
     let a1 = publish_infer_result(&store, &input, &q, &sum, Some("proj-a")).unwrap();
     let a2 = publish_infer_result(&store, &input, &q, &sum, Some("proj-b")).unwrap();
-    assert_eq!(a1, a2, "identical content republicates to the same artifact");
+    assert_eq!(
+        a1, a2,
+        "identical content republicates to the same artifact"
+    );
 }
 
 /// Algorithm/config drift (V-04 换算法): a manifest recorded under a
@@ -88,7 +97,9 @@ fn sema_cache_config_drift_stale() {
     };
     match freshness_of(&stale_manifest, &cur) {
         Freshness::Stale { reason } => assert!(reason.contains("config"), "{reason}"),
-        Freshness::ProvenanceStale { .. } => panic!("config drift must not classify as provenance-only"),
+        Freshness::ProvenanceStale { .. } => {
+            panic!("config drift must not classify as provenance-only")
+        }
         Freshness::Fresh => panic!("config drift must invalidate"),
     }
 }
@@ -101,7 +112,9 @@ fn sema_cache_corrupted_block_rejected() {
     let root = scratch("cache-corrupt");
     let store = open_store(&root.join("store")).unwrap();
     let input = input_of(SRC);
-    let q = QueryKind::InferBody { fn_name: "main".into() };
+    let q = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
     let sum = publish_main(&store, "proj");
     publish_infer_result(&store, &input, &q, &sum, Some("proj")).unwrap();
 
@@ -133,7 +146,9 @@ fn sema_cache_corrupted_block_rejected() {
         Err(ProbeError::Store(e)) => {
             let msg = format!("{e}");
             assert!(
-                msg.contains("address mismatch") || msg.contains("checksum") || msg.contains("magic"),
+                msg.contains("address mismatch")
+                    || msg.contains("checksum")
+                    || msg.contains("magic"),
                 "expected CAS/checksum rejection, got: {msg}"
             );
         }
@@ -150,12 +165,16 @@ fn sema_cache_lease_pins_against_gc() {
     let root = scratch("cache-lease");
     let store = open_store(&root.join("store")).unwrap();
     let input = input_of(SRC);
-    let q = QueryKind::InferBody { fn_name: "main".into() };
+    let q = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
     let sum = publish_main(&store, "proj");
     let art = publish_infer_result(&store, &input, &q, &sum, Some("proj")).unwrap();
 
     // pin via lease (required-data semantics for the retained payload)
-    let lease = store.acquire_lease("sema-required-data", 600, Some(&art)).unwrap();
+    let lease = store
+        .acquire_lease("sema-required-data", 600, Some(&art))
+        .unwrap();
     assert!(store.lease_live(&lease.lease_id).unwrap());
 
     // drop the project root, then GC with a hair trigger: the lease

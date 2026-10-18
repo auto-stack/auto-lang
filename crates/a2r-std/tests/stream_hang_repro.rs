@@ -50,10 +50,7 @@ fn serve_stream(mut stream: TcpStream, shape: &'static str) {
             Ok(0) => return,
             Ok(_) if line.trim().is_empty() => break,
             Ok(_) => {
-                if let Some(v) = line
-                    .to_ascii_lowercase()
-                    .strip_prefix("content-length:")
-                {
+                if let Some(v) = line.to_ascii_lowercase().strip_prefix("content-length:") {
                     content_length = v.trim().parse().unwrap_or(0);
                 }
             }
@@ -104,11 +101,8 @@ fn consume_like_client(url: String) -> (usize, String, Duration) {
     let t0 = Instant::now();
     let chunks = Arc::new(AtomicUsize::new(0));
     let terminal = Arc::new(std::sync::Mutex::<Option<String>>::new(None));
-    let stream = a2r_std::http::post_stream_with_headers(
-        &url,
-        "{}",
-        "Content-Type: application/json",
-    );
+    let stream =
+        a2r_std::http::post_stream_with_headers(&url, "{}", "Content-Type: application/json");
     let watchdog = {
         let chunks = chunks.clone();
         let terminal = terminal.clone();
@@ -151,9 +145,7 @@ fn hang_repro_silent_hold_recovers_by_idle_timeout() {
     init_short_idle_timeout();
     let port = spawn_stream_stub("silent_hold");
     let (chunks, kind, elapsed) = consume_like_client(format!("http://127.0.0.1:{port}/v1/chat"));
-    println!(
-        "[repro-silent-hold] chunks={chunks} kind={kind} elapsed={elapsed:?}"
-    );
+    println!("[repro-silent-hold] chunks={chunks} kind={kind} elapsed={elapsed:?}");
     assert_eq!(chunks, 5, "5 个数据块应全部送达");
     assert!(
         kind.starts_with("failed:stream idle timeout"),

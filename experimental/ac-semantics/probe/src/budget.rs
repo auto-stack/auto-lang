@@ -57,7 +57,13 @@ impl Default for HotPages {
 
 impl HotPages {
     pub fn new(budget: usize) -> Self {
-        HotPages { order: Vec::new(), pages: std::collections::HashMap::new(), budget, bytes: 0, evictions: 0 }
+        HotPages {
+            order: Vec::new(),
+            pages: std::collections::HashMap::new(),
+            budget,
+            bytes: 0,
+            evictions: 0,
+        }
     }
 
     fn page_bytes(p: &SemaPage) -> usize {
@@ -67,7 +73,11 @@ impl HotPages {
     pub fn insert(&mut self, key: String, page: SemaPage) -> Result<(), BudgetRejected> {
         let sz = Self::page_bytes(&page);
         if sz > self.budget {
-            return Err(BudgetRejected { ledger: "hot", wanted: sz, budget: self.budget });
+            return Err(BudgetRejected {
+                ledger: "hot",
+                wanted: sz,
+                budget: self.budget,
+            });
         }
         if let Some((_, old)) = self.pages.remove(&key) {
             self.bytes -= old;
@@ -75,7 +85,9 @@ impl HotPages {
         }
         while self.bytes + sz > self.budget {
             // evict LRU (last in order)
-            let Some(victim) = self.order.pop() else { break };
+            let Some(victim) = self.order.pop() else {
+                break;
+            };
             if let Some((_, (page, vsz))) = self.pages.remove_entry(&victim) {
                 self.bytes -= vsz;
                 drop(page);
@@ -140,7 +152,12 @@ impl Default for SessionMeter {
 
 impl SessionMeter {
     pub fn new() -> Self {
-        SessionMeter { hot: HotPages::default(), scratch_bytes: 0, scratch_peak: 0, rejected: 0 }
+        SessionMeter {
+            hot: HotPages::default(),
+            scratch_bytes: 0,
+            scratch_peak: 0,
+            rejected: 0,
+        }
     }
 
     /// Reserve `n` scratch bytes (solver staging, decode buffers).

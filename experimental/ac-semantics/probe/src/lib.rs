@@ -17,12 +17,12 @@ pub use budget::{
     publish_streamed, BudgetRejected, HotPages, SessionMeter, StreamError, HOT_BUDGET,
     MANAGED_BUDGET, SCRATCH_BUDGET,
 };
-pub use turnaround::{
-    machine_info, stats_of, write_report, Harness, Sample, ScenarioStats, HARD_GATE,
-    REFERENCE_GENERATOR, SAMPLES,
-};
 pub use store::{
     lookup_only, open_store, publish_infer_result, publish_module_index, publish_module_records,
     publish_record_meta, run_inference, run_query_flow, Disposition, FetchOutcome, ProbeError,
     QueryReport, SEMA_CARRIER, SEMA_LAYER,
+};
+pub use turnaround::{
+    machine_info, stats_of, write_report, Harness, Sample, ScenarioStats, HARD_GATE,
+    REFERENCE_GENERATOR, SAMPLES,
 };

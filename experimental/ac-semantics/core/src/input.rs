@@ -189,23 +189,44 @@ pub enum InputExprKind {
     IntLit(i32),
     BoolLit(bool),
     Var(String),
-    Call { callee: String, args: Vec<InputExpr> },
-    Binary { op: BinOpKind, lhs: Box<InputExpr>, rhs: Box<InputExpr> },
-    Unary { neg: bool, operand: Box<InputExpr> },
+    Call {
+        callee: String,
+        args: Vec<InputExpr>,
+    },
+    Binary {
+        op: BinOpKind,
+        lhs: Box<InputExpr>,
+        rhs: Box<InputExpr>,
+    },
+    Unary {
+        neg: bool,
+        operand: Box<InputExpr>,
+    },
     /// A construction outside the limited surface: reported as
     /// unsupported-construct, never silently typed.
-    Unsupported { what: &'static str },
+    Unsupported {
+        what: &'static str,
+    },
 }
 
 impl InputExpr {
     pub fn int(v: i32) -> Self {
-        InputExpr { kind: InputExprKind::IntLit(v), span: Span::new(0, 0) }
+        InputExpr {
+            kind: InputExprKind::IntLit(v),
+            span: Span::new(0, 0),
+        }
     }
     pub fn boolean(v: bool) -> Self {
-        InputExpr { kind: InputExprKind::BoolLit(v), span: Span::new(0, 0) }
+        InputExpr {
+            kind: InputExprKind::BoolLit(v),
+            span: Span::new(0, 0),
+        }
     }
     pub fn var(name: &str) -> Self {
-        InputExpr { kind: InputExprKind::Var(name.into()), span: Span::new(0, 0) }
+        InputExpr {
+            kind: InputExprKind::Var(name.into()),
+            span: Span::new(0, 0),
+        }
     }
 }
 
@@ -217,7 +238,10 @@ impl InputExpr {
 impl Drop for InputExpr {
     fn drop(&mut self) {
         fn dummy() -> InputExpr {
-            InputExpr { kind: InputExprKind::IntLit(0), span: Span::new(0, 0) }
+            InputExpr {
+                kind: InputExprKind::IntLit(0),
+                span: Span::new(0, 0),
+            }
         }
         let detach = |node: &mut InputExpr, stack: &mut Vec<InputExpr>| match &mut node.kind {
             InputExprKind::Binary { lhs, rhs, .. } => {

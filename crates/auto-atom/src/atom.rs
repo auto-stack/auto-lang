@@ -636,7 +636,10 @@ impl AtomBuilder {
     }
 
     /// Set the Atom to an Array from values
-    pub fn array_values(self, values: impl IntoIterator<Item = impl Into<auto_val::Value>>) -> Self {
+    pub fn array_values(
+        self,
+        values: impl IntoIterator<Item = impl Into<auto_val::Value>>,
+    ) -> Self {
         let array = auto_val::Array::from(values);
         self.array(array)
     }
@@ -862,7 +865,7 @@ mod tests {
         let atom = Atom::node(
             auto_val::Node::new("config")
                 .with_prop("version", "1.0")
-                .with_prop("debug", true)
+                .with_prop("debug", true),
         );
 
         assert!(atom.is_node());
@@ -875,8 +878,9 @@ mod tests {
 
     #[test]
     fn test_node_with_children() {
-        let atom = Atom::node_with_children("root",
-            [auto_val::Node::new("child1"), auto_val::Node::new("child2")]
+        let atom = Atom::node_with_children(
+            "root",
+            [auto_val::Node::new("child1"), auto_val::Node::new("child2")],
         );
 
         assert!(atom.is_node());
@@ -890,9 +894,10 @@ mod tests {
 
     #[test]
     fn test_node_full() {
-        let atom = Atom::node_full("config",
+        let atom = Atom::node_full(
+            "config",
             [("version", "1.0")],
-            [auto_val::Node::new("db"), auto_val::Node::new("cache")]
+            [auto_val::Node::new("db"), auto_val::Node::new("cache")],
         );
 
         assert!(atom.is_node());
@@ -932,11 +937,7 @@ mod tests {
     #[test]
     fn test_obj_from() {
         // Using manual chaining instead of array to avoid type inference issues
-        let atom = Atom::obj(
-            auto_val::Obj::new()
-                .with("name", "Alice")
-                .with("age", 30)
-        );
+        let atom = Atom::obj(auto_val::Obj::new().with("name", "Alice").with("age", 30));
 
         assert!(atom.is_obj());
         if let Atom::Obj(obj) = atom {
@@ -949,9 +950,7 @@ mod tests {
 
     #[test]
     fn test_builder_node() {
-        let atom = Atom::builder()
-            .node(auto_val::Node::new("config"))
-            .build();
+        let atom = Atom::builder().node(auto_val::Node::new("config")).build();
 
         assert!(atom.is_node());
         if let Atom::Node(node) = atom {
@@ -962,18 +961,14 @@ mod tests {
     #[test]
     fn test_builder_array() {
         let arr = auto_val::Array::from(vec![1, 2, 3]);
-        let atom = Atom::builder()
-            .array(arr)
-            .build();
+        let atom = Atom::builder().array(arr).build();
 
         assert!(atom.is_array());
     }
 
     #[test]
     fn test_builder_array_values() {
-        let atom = Atom::builder()
-            .array_values([1, 2, 3, 4, 5])
-            .build();
+        let atom = Atom::builder().array_values([1, 2, 3, 4, 5]).build();
 
         assert!(atom.is_array());
         if let Atom::Array(arr) = atom {
@@ -986,9 +981,7 @@ mod tests {
     #[test]
     fn test_builder_obj() {
         let obj = auto_val::Obj::new();
-        let atom = Atom::builder()
-            .obj(obj)
-            .build();
+        let atom = Atom::builder().obj(obj).build();
 
         assert!(atom.is_obj());
     }
@@ -1004,9 +997,7 @@ mod tests {
 
     #[test]
     fn test_builder_empty() {
-        let atom = Atom::builder()
-            .empty()
-            .build();
+        let atom = Atom::builder().empty().build();
 
         assert!(atom.is_empty_atom());
     }
@@ -1031,7 +1022,10 @@ mod tests {
         assert!(atom.is_node());
         if let Atom::Node(node) = atom {
             assert_eq!(node.name, "config");
-            assert_eq!(node.get_prop_of("version"), auto_val::Value::Str("1.0".into()));
+            assert_eq!(
+                node.get_prop_of("version"),
+                auto_val::Value::Str("1.0".into())
+            );
             assert_eq!(node.get_prop_of("debug"), auto_val::Value::Bool(true));
         }
     }
@@ -1057,12 +1051,24 @@ mod tests {
             other => panic!("expected Node, got {:?}", other),
         };
         assert_eq!(parsed_node.name, "role");
-        assert_eq!(parsed_node.get_prop_of("name"), auto_val::Value::str("precise-coder"));
+        assert_eq!(
+            parsed_node.get_prop_of("name"),
+            auto_val::Value::str("precise-coder")
+        );
         // Float survives as a float.
-        assert!(matches!(parsed_node.get_prop_of("temperature"), auto_val::Value::Double(_)));
+        assert!(matches!(
+            parsed_node.get_prop_of("temperature"),
+            auto_val::Value::Double(_)
+        ));
         // Bare integer literals are parsed as Int (i32); the value survives.
-        assert_eq!(parsed_node.get_prop_of("max_turns"), auto_val::Value::Int(40));
-        assert_eq!(parsed_node.get_prop_of("model_tier"), auto_val::Value::str("max"));
+        assert_eq!(
+            parsed_node.get_prop_of("max_turns"),
+            auto_val::Value::Int(40)
+        );
+        assert_eq!(
+            parsed_node.get_prop_of("model_tier"),
+            auto_val::Value::str("max")
+        );
     }
 
     #[test]
@@ -1122,6 +1128,9 @@ mod tests {
             Atom::Node(n) => n,
             other => panic!("expected Node, got {:?}", other),
         };
-        assert_eq!(parsed_node.get_prop_of("token_budget"), auto_val::Value::Int(2_000_000));
+        assert_eq!(
+            parsed_node.get_prop_of("token_budget"),
+            auto_val::Value::Int(2_000_000)
+        );
     }
 }

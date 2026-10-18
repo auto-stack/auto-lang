@@ -15,9 +15,7 @@ use super::sandbox::{FunctionShim, ShimType};
 /// PLAN-592: 扫描 path 依赖(dep foo(path:))的源码提取公共函数签名。
 /// registry 扫描(`scan_crate_signatures`)只认 ~/.cargo/registry,路径 fixture
 /// 此前永远走不到 enrich——自由函数签名退化且丢失 &str/String owned 语义。
-pub fn scan_path_dep_signatures(
-    crate_dir: &Path,
-) -> Result<HashMap<String, FunctionShim>, String> {
+pub fn scan_path_dep_signatures(crate_dir: &Path) -> Result<HashMap<String, FunctionShim>, String> {
     let lib_rs = crate_dir.join("src").join("lib.rs");
     if !lib_rs.exists() {
         return Err(format!("lib.rs not found at {}", lib_rs.display()));
@@ -48,10 +46,7 @@ pub fn scan_crate_signatures(crate_name: &str) -> Result<HashMap<String, Functio
     let lib_rs = crate_dir.join("src").join("lib.rs");
 
     if !lib_rs.exists() {
-        return Err(format!(
-            "lib.rs not found at {}",
-            lib_rs.display()
-        ));
+        return Err(format!("lib.rs not found at {}", lib_rs.display()));
     }
 
     let source = std::fs::read_to_string(&lib_rs)
@@ -62,19 +57,14 @@ pub fn scan_crate_signatures(crate_name: &str) -> Result<HashMap<String, Functio
     // Parse the top-level file
     scan_file_for_fns(&source, &mut result, &crate_dir.join("src"), crate_name);
 
-    log::info!(
-        "syn scan: found {} pub fns in {}",
-        result.len(),
-        crate_name
-    );
+    log::info!("syn scan: found {} pub fns in {}", result.len(), crate_name);
 
     Ok(result)
 }
 
 /// Find ~/.cargo/registry/src/ directory.
 fn find_cargo_registry_src() -> Result<PathBuf, String> {
-    let home = dirs::home_dir()
-        .ok_or_else(|| "Cannot find home directory".to_string())?;
+    let home = dirs::home_dir().ok_or_else(|| "Cannot find home directory".to_string())?;
     let reg = home.join(".cargo").join("registry").join("src");
     if !reg.exists() {
         return Err(format!("Cargo registry src not found at {}", reg.display()));
@@ -205,12 +195,9 @@ fn is_public(vis: &syn::Visibility) -> bool {
 
 /// Check if a function has a self receiver (method, not free function).
 fn has_receiver(sig: &syn::Signature) -> bool {
-    sig.inputs.iter().any(|arg| {
-        matches!(
-            arg,
-            syn::FnArg::Receiver(_)
-        )
-    })
+    sig.inputs
+        .iter()
+        .any(|arg| matches!(arg, syn::FnArg::Receiver(_)))
 }
 
 /// Extract a function signature into a FunctionShim.
@@ -249,11 +236,11 @@ fn extract_fn_signature(
 /// Check if a syn type is `Result<T, E>`.
 fn is_result_type(ty: &syn::Type) -> bool {
     match ty {
-        syn::Type::Path(type_path) => {
-            type_path.path.segments.last().map_or(false, |seg| {
-                seg.ident == "Result"
-            })
-        }
+        syn::Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .map_or(false, |seg| seg.ident == "Result"),
         _ => false,
     }
 }

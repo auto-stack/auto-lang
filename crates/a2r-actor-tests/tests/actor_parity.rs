@@ -20,8 +20,8 @@ fn workspace_root() -> PathBuf {
 fn case_paths(case: &str) -> (PathBuf, PathBuf) {
     let root = workspace_root();
     let stem = case.rsplit('_').next().unwrap(); // "001_start_hook" → "start_hook"? No.
-    // The directory is `NNN_<name>` and files are `<name>.at`. Derive <name>
-    // by stripping the leading `NNN_`.
+                                                 // The directory is `NNN_<name>` and files are `<name>.at`. Derive <name>
+                                                 // by stripping the leading `NNN_`.
     let name = case.split_once('_').map(|(_, n)| n).unwrap_or(case);
     let at = root
         .join("crates/auto-lang/test/a2r/22_actors")
@@ -63,7 +63,10 @@ fn transpile(at_path: &std::path::Path) -> String {
 /// `[workspace]` table keeps it out of the host workspace.
 fn throwaway_cargo_toml(case: &str) -> String {
     // Sanitize case name into a valid crate name (replace non-alnum with _).
-    let pkg = format!("actor_{}", case.replace(|c: char| !c.is_alphanumeric(), "_"));
+    let pkg = format!(
+        "actor_{}",
+        case.replace(|c: char| !c.is_alphanumeric(), "_")
+    );
     format!(
         r#"[package]
 name = "{pkg}"

@@ -306,7 +306,10 @@ mod tests {
         assert_eq!(
             d.feed(b"data: this-line-is-way-longer-than-sixteen\n", &mut out)
                 .unwrap_err(),
-            SseDecodeError::Budget { kind: "line", limit: 16 }
+            SseDecodeError::Budget {
+                kind: "line",
+                limit: 16
+            }
         );
 
         // Utf8Carry：跨 chunk 码点无损 + 非法字节 lossy。

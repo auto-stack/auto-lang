@@ -22,7 +22,7 @@ use crate::budget::{Budget, BudgetError};
 use crate::input::{
     Ann, BinOpKind, InputBlock, InputExpr, InputExprKind, InputFn, InputStmt, SemaInput, Span,
 };
-use ac_sema_contract::{FactDiag, InferFacts, LogicalId, PackageId, TypeDesc, DeclKind};
+use ac_sema_contract::{DeclKind, FactDiag, InferFacts, LogicalId, PackageId, TypeDesc};
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -91,7 +91,11 @@ struct Frames<'b> {
 
 impl<'b> Frames<'b> {
     fn empty() -> Self {
-        Frames { blocks: Vec::new(), idx: Vec::new(), scopes: vec![BTreeMap::new()] }
+        Frames {
+            blocks: Vec::new(),
+            idx: Vec::new(),
+            scopes: vec![BTreeMap::new()],
+        }
     }
     fn push_block(&mut self, b: &'b InputBlock) {
         self.blocks.push(b);
@@ -179,7 +183,9 @@ impl<'a> InferSession<'a> {
     }
 
     fn check_cancel(&self) -> bool {
-        self.cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed))
+        self.cancel
+            .as_ref()
+            .is_some_and(|c| c.load(Ordering::Relaxed))
     }
 
     fn charge(&mut self, n: u64) {
@@ -218,17 +224,26 @@ impl<'a> InferSession<'a> {
         match self.resolve(t) {
             Ty::I32 => TypeDesc::I32,
             Ty::Bool => TypeDesc::Bool,
-            Ty::Var(_) => TypeDesc::Opaque { name: "?unsolved".into() },
+            Ty::Var(_) => TypeDesc::Opaque {
+                name: "?unsolved".into(),
+            },
         }
     }
 
     fn diag(&mut self, code: &'static str, span: Span, message: String) {
-        self.diags.push(FactDiag { code, start: span.start, end: span.end, message });
+        self.diags.push(FactDiag {
+            code,
+            start: span.start,
+            end: span.end,
+            message,
+        });
     }
 
     fn record_negative(&mut self, domain: &'static str, name: &str) {
         let set_fp = self.candidate_fp(domain);
-        self.reads.negatives.push((domain, name.to_string(), set_fp));
+        self.reads
+            .negatives
+            .push((domain, name.to_string(), set_fp));
         self.diags.push(FactDiag {
             code: "unknown-name",
             start: 0,
@@ -327,8 +342,6 @@ impl<'a> InferSession<'a> {
         }
     }
 
-
-
     // -- statement walk -------------------------------------------------
 
     fn run_body(&mut self, f: &InputFn) -> Result<(), BudgetError> {
@@ -336,7 +349,11 @@ impl<'a> InferSession<'a> {
         let mut frames = Frames::empty();
         for (name, ann) in &f.params {
             let t = self.ann_ty(*ann, Span::new(0, 0));
-            frames.scopes.last_mut().unwrap().insert(name.clone(), (t, true));
+            frames
+                .scopes
+                .last_mut()
+                .unwrap()
+                .insert(name.clone(), (t, true));
             self.bindings.push((name.clone(), t));
         }
         frames.push_block(&f.body);
@@ -365,7 +382,13 @@ impl<'a> InferSession<'a> {
                 continue;
             };
             match stmt {
-                InputStmt::Let { name, ann, mutable, value, .. } => {
+                InputStmt::Let {
+                    name,
+                    ann,
+                    mutable,
+                    value,
+                    ..
+                } => {
                     let want = match ann {
                         Ann::Inferred => None,
                         a => Some(self.ann_ty(*a, value.span)),
@@ -378,9 +401,18 @@ impl<'a> InferSession<'a> {
                         (None, None) => self.mint_var(),
                     };
                     self.bindings.push((name.clone(), bind));
-                    frames.scopes.last_mut().unwrap().insert(name.clone(), (bind, *mutable));
+                    frames
+                        .scopes
+                        .last_mut()
+                        .unwrap()
+                        .insert(name.clone(), (bind, *mutable));
                 }
-                InputStmt::Assign { target, path, value, .. } => {
+                InputStmt::Assign {
+                    target,
+                    path,
+                    value,
+                    ..
+                } => {
                     if !path.is_empty() {
                         self.diag(
                             "unsupported-construct",
@@ -405,7 +437,9 @@ impl<'a> InferSession<'a> {
                 InputStmt::Return { value, .. } => {
                     self.walk(value, Some(ret), frames);
                 }
-                InputStmt::If { cond, then, els, .. } => {
+                InputStmt::If {
+                    cond, then, els, ..
+                } => {
                     self.walk(cond, Some(Ty::Bool), frames);
                     if let Some(e) = els {
                         frames.push_block(e);
@@ -610,10 +644,16 @@ impl<'a> InferSession<'a> {
         }
         // dedupe negative deps (same name looked up repeatedly)
         let mut seen = std::collections::BTreeSet::new();
-        self.reads.negatives.retain(|(d, n, _)| seen.insert(format!("{d}\u{1}{n}")));
+        self.reads
+            .negatives
+            .retain(|(d, n, _)| seen.insert(format!("{d}\u{1}{n}")));
         let facts = InferFacts {
             fn_logical: self.fn_logical(fn_name),
-            bindings: self.bindings.iter().map(|(n, t)| (n.clone(), self.ty_desc(*t))).collect(),
+            bindings: self
+                .bindings
+                .iter()
+                .map(|(n, t)| (n.clone(), self.ty_desc(*t)))
+                .collect(),
             expr_types: self
                 .expr_types
                 .iter()
@@ -623,7 +663,12 @@ impl<'a> InferSession<'a> {
         };
         let steps = self.budget.steps_used();
         let elapsed = self.budget.elapsed();
-        InferSummary { facts, reads: self.reads.clone(), steps, elapsed }
+        InferSummary {
+            facts,
+            reads: self.reads.clone(),
+            steps,
+            elapsed,
+        }
     }
 
     fn name_of(&self, t: Ty) -> &'static str {
@@ -647,7 +692,10 @@ mod tests {
     /// eq-pair type lookup depends on it).
     fn expr(kind: InputExprKind) -> InputExpr {
         let s = NEXT_SPAN.fetch_add(1, O::Relaxed);
-        InputExpr { kind, span: Span::new(s, s + 1) }
+        InputExpr {
+            kind,
+            span: Span::new(s, s + 1),
+        }
     }
 
     fn block(stmts: Vec<InputStmt>) -> InputBlock {
@@ -657,14 +705,23 @@ mod tests {
     fn fn_of(name: &str, params: Vec<(&str, Ann)>, ret: Ann, body: InputBlock) -> InputFn {
         InputFn {
             name: name.into(),
-            params: params.into_iter().map(|(n, a)| (n.to_string(), a)).collect(),
+            params: params
+                .into_iter()
+                .map(|(n, a)| (n.to_string(), a))
+                .collect(),
             ret,
             body,
         }
     }
 
     fn input(fns: Vec<InputFn>) -> SemaInput {
-        SemaInput { package: "test".into(), module: "m".into(), fns, records: Vec::new(), source_fp: String::new() }
+        SemaInput {
+            package: "test".into(),
+            module: "m".into(),
+            fns,
+            records: Vec::new(),
+            source_fp: String::new(),
+        }
     }
 
     /// Positive: annotated arithmetic + condition + call consistency.
@@ -695,7 +752,10 @@ mod tests {
                         mutable: false,
                         value: expr(InputExprKind::Call {
                             callee: "add".into(),
-                            args: vec![expr(InputExprKind::IntLit(1)), expr(InputExprKind::IntLit(2))],
+                            args: vec![
+                                expr(InputExprKind::IntLit(1)),
+                                expr(InputExprKind::IntLit(2)),
+                            ],
                         }),
                         span: Span::new(0, 0),
                     },
@@ -714,7 +774,11 @@ mod tests {
         match s.infer_function("main") {
             InferOutcome::Ok(sum) => {
                 // un-annotated let took the call's i32
-                assert!(sum.facts.bindings.iter().any(|(n, t)| n == "x" && *t == TypeDesc::I32));
+                assert!(sum
+                    .facts
+                    .bindings
+                    .iter()
+                    .any(|(n, t)| n == "x" && *t == TypeDesc::I32));
             }
             other => panic!("expected Ok, got {other:?}",),
         }
@@ -739,7 +803,11 @@ mod tests {
         let mut s = InferSession::new(&inp);
         match s.infer_function("f") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "type-mismatch"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "type-mismatch"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }
@@ -753,15 +821,26 @@ mod tests {
             vec![],
             Ann::I32,
             block(vec![InputStmt::Return {
-                value: expr(InputExprKind::Call { callee: "g".into(), args: vec![] }),
+                value: expr(InputExprKind::Call {
+                    callee: "g".into(),
+                    args: vec![],
+                }),
                 span: Span::new(0, 0),
             }]),
         )]);
         let mut s = InferSession::new(&inp);
         match s.infer_function("f") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "unknown-name"));
-                assert!(sum.reads.negatives.iter().any(|(d, n, _)| *d == "fn" && n == "g"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "unknown-name"));
+                assert!(sum
+                    .reads
+                    .negatives
+                    .iter()
+                    .any(|(d, n, _)| *d == "fn" && n == "g"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }
@@ -797,7 +876,11 @@ mod tests {
         let mut s = InferSession::new(&inp);
         match s.infer_function("f") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "assign-immutable"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "assign-immutable"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }
@@ -852,23 +935,42 @@ mod tests {
     #[test]
     fn infer_core_ambiguous_candidates_diag() {
         let body = block(vec![InputStmt::Return {
-            value: expr(InputExprKind::Call { callee: "g".into(), args: vec![] }),
+            value: expr(InputExprKind::Call {
+                callee: "g".into(),
+                args: vec![],
+            }),
             span: Span::new(0, 0),
         }]);
         let inp = input(vec![
             fn_of("g", vec![], Ann::I32, body.clone()),
             fn_of("g", vec![], Ann::I32, body),
-            fn_of("main", vec![], Ann::I32, block(vec![InputStmt::Return {
-                value: expr(InputExprKind::Call { callee: "g".into(), args: vec![] }),
-                span: Span::new(0, 0),
-            }])),
+            fn_of(
+                "main",
+                vec![],
+                Ann::I32,
+                block(vec![InputStmt::Return {
+                    value: expr(InputExprKind::Call {
+                        callee: "g".into(),
+                        args: vec![],
+                    }),
+                    span: Span::new(0, 0),
+                }]),
+            ),
         ]);
         let mut s = InferSession::new(&inp);
         match s.infer_function("main") {
             InferOutcome::Diags(sum) => {
-                assert!(sum.facts.diagnostics.iter().any(|d| d.code == "ambiguous-candidates"));
+                assert!(sum
+                    .facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "ambiguous-candidates"));
                 // the candidate-set negative dep was recorded
-                assert!(sum.reads.negatives.iter().any(|(d, n, _)| *d == "fn" && n == "g"));
+                assert!(sum
+                    .reads
+                    .negatives
+                    .iter()
+                    .any(|(d, n, _)| *d == "fn" && n == "g"));
             }
             other => panic!("expected Diags, got {other:?}"),
         }
@@ -965,7 +1067,10 @@ mod tests {
             "f",
             vec![],
             Ann::I32,
-            block(vec![InputStmt::Return { value: e, span: Span::new(0, 0) }]),
+            block(vec![InputStmt::Return {
+                value: e,
+                span: Span::new(0, 0),
+            }]),
         )]);
         let mut s = InferSession::new(&inp);
         match s.infer_function("f") {

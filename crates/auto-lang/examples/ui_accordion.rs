@@ -4,8 +4,8 @@
 // Run with:
 //   cargo run -p auto-lang --example ui_accordion --features ui-iced
 
-use auto_lang::ui::{Component, View};
 use auto_lang::ui::view::AccordionItem;
+use auto_lang::ui::{Component, View};
 
 #[derive(Debug)]
 struct AccordionApp {
@@ -44,7 +44,9 @@ impl Component for AccordionApp {
             .spacing(20)
             .padding(20)
             .child(View::text("Accordion Example".to_string()))
-            .child(View::text("Click on section headers to expand/collapse".to_string()))
+            .child(View::text(
+                "Click on section headers to expand/collapse".to_string(),
+            ))
             .child(
                 View::accordion()
                     .items(vec![
@@ -81,7 +83,7 @@ impl Component for AccordionApp {
                     ])
                     .allow_multiple(true)
                     .on_toggle(|idx, expanded| Message::ToggleSection(idx, expanded))
-                    .build()
+                    .build(),
             )
             .build()
     }
@@ -97,8 +99,6 @@ fn main() -> auto_lang::ui::AppResult<()> {
         return auto_lang::ui::iced::run_app::<AccordionApp>();
     }
 
-
     #[cfg(not(feature = "ui-iced"))]
-    {
-    }
+    {}
 }

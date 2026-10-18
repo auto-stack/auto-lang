@@ -9,11 +9,11 @@
 //! the measured window and reported separately — it is never
 //! subtracted from a user path that actually waited.
 
+use crate::{lookup_only, open_store, publish_infer_result, run_inference, FetchOutcome};
 use ac_artifact_probe::store::ManagedStore;
 use ac_sema_core::adapter::parse_into_input;
 use ac_sema_core::query::QueryKind;
 use ac_sema_core::{InferOutcome, SemaInput};
-use crate::{lookup_only, open_store, publish_infer_result, run_inference, FetchOutcome};
 use serde::Serialize;
 use std::time::{Duration, Instant};
 
@@ -124,8 +124,13 @@ pub fn reference_module(target_bytes: usize) -> String {
 
 /// Parse the reference module (tool prep).
 pub fn reference_input(src: &str) -> SemaInput {
-    parse_into_input(src, "ref", "reference", auto_ac_prototype::source::SourceProfile::Core)
-        .expect("reference module parses")
+    parse_into_input(
+        src,
+        "ref",
+        "reference",
+        auto_ac_prototype::source::SourceProfile::Core,
+    )
+    .expect("reference module parses")
 }
 
 // ---------------------------------------------------------------------------
@@ -158,7 +163,10 @@ pub fn apply_body_edit(input: &mut SemaInput, fn_name: &str, rev: u32) {
                 name: format!("rev{rev}"),
                 ann: ac_sema_core::Ann::I32,
                 mutable: false,
-                value: InputExpr { kind: InputExprKind::IntLit(rev as i32), span: Span::new(0, 0) },
+                value: InputExpr {
+                    kind: InputExprKind::IntLit(rev as i32),
+                    span: Span::new(0, 0),
+                },
                 span: Span::new(0, 0),
             },
         );
@@ -254,8 +262,8 @@ pub fn measure_query(
             InferOutcome::Ok(sum) | InferOutcome::Diags(sum) => {
                 // stage 4: publish the fresh result
                 let t = Instant::now();
-                let art =
-                    publish_infer_result(store, input, query, &sum, Some("turnaround")).expect("publish");
+                let art = publish_infer_result(store, input, query, &sum, Some("turnaround"))
+                    .expect("publish");
                 let _ = &art;
                 stages.push(Stage {
                     name: "publish",
@@ -270,7 +278,11 @@ pub fn measure_query(
         }
         stages.insert(
             2,
-            Stage { name: "infer", dur_ns: infer_ns, detail: "new-solver".into() },
+            Stage {
+                name: "infer",
+                dur_ns: infer_ns,
+                detail: "new-solver".into(),
+            },
         );
     } else {
         status = "hit";
@@ -289,7 +301,9 @@ pub fn measure_query(
 }
 
 fn page_bytes(p: &ac_sema_contract::SemaPage) -> u64 {
-    ac_sema_contract::encode_page(p).map(|b| b.len() as u64).unwrap_or(0)
+    ac_sema_contract::encode_page(p)
+        .map(|b| b.len() as u64)
+        .unwrap_or(0)
 }
 
 fn estimate_summary_bytes(s: &ac_sema_core::InferSummary) -> u64 {
@@ -307,13 +321,18 @@ pub struct Harness {
 
 impl Harness {
     pub fn new(store_root: std::path::PathBuf) -> Self {
-        Harness { store_root, reference_src: reference_module(1024 * 1024) }
+        Harness {
+            store_root,
+            reference_src: reference_module(1024 * 1024),
+        }
     }
 
     /// Scenario 1 — no-op: identical input, repeated queries → hits.
     pub fn scenario_no_op(&self, store: &ManagedStore) -> Vec<Sample> {
         let input = reference_input(&self.reference_src);
-        let q = QueryKind::InferBody { fn_name: "f0".into() };
+        let q = QueryKind::InferBody {
+            fn_name: "f0".into(),
+        };
         // warm (first publish outside measurement is NOT done: first
         // sample computes, the rest hit — samples keep both statuses)
         (0..SAMPLES)
@@ -325,7 +344,9 @@ impl Harness {
     /// f0's body (new revision) and re-queries.
     pub fn scenario_local_body_edit(&self, store: &ManagedStore) -> Vec<Sample> {
         let mut input = reference_input(&self.reference_src);
-        let q = QueryKind::InferBody { fn_name: "f0".into() };
+        let q = QueryKind::InferBody {
+            fn_name: "f0".into(),
+        };
         (0..SAMPLES)
             .map(|i| {
                 apply_body_edit(&mut input, "f0", i as u32 + 1);
@@ -340,7 +361,9 @@ impl Harness {
         let mut input = reference_input(&self.reference_src);
         // make f0 call f1 so f0's manifest reads f1's signature
         make_f0_call_f1(&mut input);
-        let q = QueryKind::InferBody { fn_name: "f0".into() };
+        let q = QueryKind::InferBody {
+            fn_name: "f0".into(),
+        };
         (0..SAMPLES)
             .map(|i| {
                 // flip f1's param between i32 and bool each revision —
@@ -358,7 +381,9 @@ impl Harness {
     /// lives in sema_cache_first_case (real child processes).
     pub fn scenario_restart_disk_hot(&self) -> Vec<Sample> {
         let input = reference_input(&self.reference_src);
-        let q = QueryKind::InferBody { fn_name: "f0".into() };
+        let q = QueryKind::InferBody {
+            fn_name: "f0".into(),
+        };
         {
             let store = open_store(&self.store_root).unwrap();
             let _ = measure_query(&store, &input, &q, "warmup", 0); // ensure published
@@ -384,7 +409,9 @@ impl Harness {
             i2.package = "proj-b".into();
             i2
         };
-        let q2 = QueryKind::InferBody { fn_name: "f3".into() };
+        let q2 = QueryKind::InferBody {
+            fn_name: "f3".into(),
+        };
         // warm proj-b once OUTSIDE samples
         let _ = measure_query(store, &proj_b, &q2, "warmup", 0);
         (0..SAMPLES)
@@ -396,7 +423,9 @@ impl Harness {
     /// runs on the same store.
     pub fn scenario_gc_concurrent(&self, store: &ManagedStore) -> Vec<Sample> {
         let input = reference_input(&self.reference_src);
-        let q = QueryKind::InferBody { fn_name: "f2".into() };
+        let q = QueryKind::InferBody {
+            fn_name: "f2".into(),
+        };
         let _ = measure_query(store, &input, &q, "warmup", 0);
         (0..SAMPLES)
             .map(|i| {
@@ -432,7 +461,9 @@ impl Harness {
         let _ = std::fs::remove_dir_all(&cold_root);
         let store = open_store(&cold_root).unwrap();
         let input = reference_input(&self.reference_src);
-        let q = QueryKind::InferBody { fn_name: "f0".into() };
+        let q = QueryKind::InferBody {
+            fn_name: "f0".into(),
+        };
         (0..SAMPLES)
             .map(|i| measure_query(&store, &input, &q, "full-cold", i))
             .collect()
@@ -487,7 +518,11 @@ fn make_caller(input: &mut SemaInput, caller: &str, callee: &str, arg: &str) {
 
 fn flip_f1_param_named(input: &mut SemaInput, name: &str, to_bool: bool) {
     let f = input.fns.iter_mut().find(|f| f.name == name).unwrap();
-    f.params[0].1 = if to_bool { ac_sema_core::Ann::Bool } else { ac_sema_core::Ann::I32 };
+    f.params[0].1 = if to_bool {
+        ac_sema_core::Ann::Bool
+    } else {
+        ac_sema_core::Ann::I32
+    };
 }
 
 fn make_f0_call_f1(input: &mut SemaInput) {
@@ -497,7 +532,10 @@ fn make_f0_call_f1(input: &mut SemaInput) {
         value: InputExpr {
             kind: InputExprKind::Call {
                 callee: "f1".into(),
-                args: vec![InputExpr { kind: InputExprKind::Var("x".into()), span: Span::new(0, 0) }],
+                args: vec![InputExpr {
+                    kind: InputExprKind::Var("x".into()),
+                    span: Span::new(0, 0),
+                }],
             },
             span: Span::new(0, 0),
         },
@@ -507,7 +545,11 @@ fn make_f0_call_f1(input: &mut SemaInput) {
 
 fn flip_f1_param(input: &mut SemaInput, to_bool: bool) {
     let f1 = input.fns.iter_mut().find(|f| f.name == "f1").unwrap();
-    f1.params[0].1 = if to_bool { ac_sema_core::Ann::Bool } else { ac_sema_core::Ann::I32 };
+    f1.params[0].1 = if to_bool {
+        ac_sema_core::Ann::Bool
+    } else {
+        ac_sema_core::Ann::I32
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -534,7 +576,9 @@ pub fn machine_info() -> MachineInfo {
     MachineInfo {
         os: format!("{} ({})", std::env::consts::OS, std::env::consts::ARCH),
         arch: std::env::consts::ARCH.into(),
-        parallelism: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0),
+        parallelism: std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(0),
         rustc,
         generator: REFERENCE_GENERATOR,
         samples_per_scenario: SAMPLES,
@@ -550,8 +594,7 @@ pub fn write_report(
     all: &[(&'static str, Vec<Sample>)],
 ) -> std::io::Result<std::path::PathBuf> {
     std::fs::create_dir_all(dir)?;
-    let stats: Vec<ScenarioStats> =
-        all.iter().map(|(name, s)| stats_of(name, s)).collect();
+    let stats: Vec<ScenarioStats> = all.iter().map(|(name, s)| stats_of(name, s)).collect();
     #[derive(Serialize)]
     struct Report<'a> {
         machine: &'a MachineInfo,
@@ -561,7 +604,12 @@ pub fn write_report(
     let json_path = dir.join("turnaround.json");
     std::fs::write(
         &json_path,
-        serde_json::to_string_pretty(&Report { machine, stats: stats.clone(), raw: all }).unwrap(),
+        serde_json::to_string_pretty(&Report {
+            machine,
+            stats: stats.clone(),
+            raw: all,
+        })
+        .unwrap(),
     )?;
     let mut md = String::from("# PLAN-796 T-05 周转报告\n\n");
     md.push_str(&format!(
@@ -600,7 +648,11 @@ pub fn write_report(
     md.push_str(&format!(
         "\n硬门判定: local-body-edit P95 = {:.2} ms → {}\n",
         hard as f64 / 1e6,
-        if hard < HARD_GATE.as_nanos() { "PASS" } else { "FAIL" }
+        if hard < HARD_GATE.as_nanos() {
+            "PASS"
+        } else {
+            "FAIL"
+        }
     ));
     let md_path = dir.join("turnaround.md");
     std::fs::write(&md_path, md)?;

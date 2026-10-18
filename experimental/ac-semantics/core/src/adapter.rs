@@ -36,11 +36,9 @@ pub fn parse_into_input(
 ) -> Result<SemaInput, String> {
     let prog = auto_ac_prototype::source::parse_program_with(src, profile)
         .map_err(|d| format!("parse: {} ({:?})", d.message, d.code))?;
-    let mut input = project(&prog, package, module);
-    input.source_fp = ac_sema_contract::identity::domain_hash(
-        "ac796/source-fp/v1",
-        &[src.as_bytes()],
-    );
+    let mut input = project(&prog, package, module)?;
+    input.source_fp =
+        ac_sema_contract::identity::domain_hash("ac796/source-fp/v1", &[src.as_bytes()]);
     Ok(input)
 }
 
@@ -48,19 +46,14 @@ pub fn parse_into_input(
 /// resolve AND typecheck both pass; on accept, the resolved local
 /// binding types come back for fact comparison.
 #[cfg(feature = "core-ast")]
-pub fn old_pipeline_verdict(
-    src: &str,
-    profile: SourceProfile,
-) -> OldVerdict {
+pub fn old_pipeline_verdict(src: &str, profile: SourceProfile) -> OldVerdict {
     let prog = match auto_ac_prototype::source::parse_program_with(src, profile) {
         Ok(p) => p,
         Err(d) => return OldVerdict::Rejected(format!("parse: {}", d.message)),
     };
     let resolved = match auto_ac_prototype::source::resolve_with(&prog, &[], profile) {
         Ok(r) => r,
-        Err(diags) => {
-            return OldVerdict::Rejected(format!("resolve: {}", diags[0].message))
-        }
+        Err(diags) => return OldVerdict::Rejected(format!("resolve: {}", diags[0].message)),
     };
     match auto_ac_prototype::source::typecheck_with(&resolved, profile) {
         Ok(()) => OldVerdict::Accepted(Box::new(OldFacts {
@@ -69,7 +62,12 @@ pub fn old_pipeline_verdict(
                 .iter()
                 .map(|f| OldFn {
                     name: f.name.clone(),
-                    params: f.param_names.iter().map(|n| n.clone()).zip(f.params.iter().map(vt_name)).collect(),
+                    params: f
+                        .param_names
+                        .iter()
+                        .map(|n| n.clone())
+                        .zip(f.params.iter().map(vt_name))
+                        .collect(),
                     result: vt_name(&f.result),
                     locals: f
                         .locals
@@ -118,87 +116,138 @@ pub struct OldFn {
 }
 
 #[cfg(feature = "core-ast")]
-pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> SemaInput {
+pub fn project(prog: &core_ast::Program, package: &str, module: &str) -> Result<SemaInput, String> {
     let mut fns = Vec::new();
     let mut records = Vec::new();
     for item in &prog.items {
         match item {
-            core_ast::Item::Fn(f) => fns.push(project_fn(f)),
+            core_ast::Item::Fn(f) => fns.push(project_fn(f)?),
             core_ast::Item::Type(t) => {
                 records.push(InputRecord {
                     name: t.name.name.clone(),
                     fields: t
                         .fields
                         .iter()
-                        .map(|fd| (fd.name.name.clone(), ann_of(&fd.ty)))
-                        .collect(),
-                    methods: t.methods.iter().map(project_fn).collect(),
+                        .map(|fd| Ok::<_, String>((fd.name.name.clone(), ann_of(&fd.ty)?)))
+                        .collect::<Result<Vec<_>, _>>()?,
+                    methods: t
+                        .methods
+                        .iter()
+                        .map(project_fn)
+                        .collect::<Result<Vec<_>, _>>()?,
                 });
             }
         }
     }
-    SemaInput { package: package.into(), module: module.into(), fns, records, source_fp: String::new() }
+    Ok(SemaInput {
+        package: package.into(),
+        module: module.into(),
+        fns,
+        records,
+        source_fp: String::new(),
+    })
 }
 
-fn project_fn(f: &core_ast::FnItem) -> InputFn {
-    InputFn {
+fn project_fn(f: &core_ast::FnItem) -> Result<InputFn, String> {
+    Ok(InputFn {
         name: f.name.name.clone(),
         params: f
             .params
             .iter()
-            .map(|p| (p.name.name.clone(), ann_of(&p.ty)))
-            .collect(),
-        ret: ann_of(&f.ret),
-        body: project_block(&f.body),
-    }
+            .map(|p| Ok::<_, String>((p.name.name.clone(), ann_of(&p.ty)?)))
+            .collect::<Result<Vec<_>, _>>()?,
+        ret: ann_of(&f.ret)?,
+        body: project_block(&f.body)?,
+    })
 }
 
-fn ann_of(a: &core_ast::TypeAnn) -> Ann {
+fn ann_of(a: &core_ast::TypeAnn) -> Result<Ann, String> {
     match &a.kind {
-        core_ast::TypeRef::Builtin(w) => match w {
+        core_ast::TypeRef::Builtin(w) => Ok(match w {
             core_ast::TypeWord::Int | core_ast::TypeWord::I32 => Ann::I32,
             core_ast::TypeWord::Bool => Ann::Bool,
             // text/char annotations are outside the limited profile
             core_ast::TypeWord::Str | core_ast::TypeWord::StrOwned | core_ast::TypeWord::Char => {
                 Ann::Unsupported("text-annotation")
             }
-        },
-        core_ast::TypeRef::Record(ident) => Ann::Record(record_static(&ident.name)),
+        }),
+        core_ast::TypeRef::Record(ident) => Ok(Ann::Record(record_static(&ident.name)?)),
     }
 }
 
-fn record_static(name: &str) -> &'static str {
+fn record_static(name: &str) -> Result<&'static str, String> {
     match name {
-        "Pair" => "Pair",
-        "Node" => "Node",
-        "List" => "List",
-        "Tree" => "Tree",
-        "Cell" => "Cell",
-        "Outer" => "Outer",
-        "Inner" => "Inner",
-        other => leaked(other),
+        "Pair" => Ok("Pair"),
+        "Node" => Ok("Node"),
+        "List" => Ok("List"),
+        "Tree" => Ok("Tree"),
+        "Cell" => Ok("Cell"),
+        "Outer" => Ok("Outer"),
+        "Inner" => Ok("Inner"),
+        other => registered(other),
     }
 }
 
-fn leaked(name: &str) -> &'static str {
-    // bounded leak of dynamically-named records (probe scale)
-    Box::leak(name.to_string().into_boxed_str())
+/// BOUNDED registry for dynamically-named records (F-796-R4-08): a
+/// fixed-capacity intern table replaces unbounded `Box::leak` — the
+/// residency is accounted and a table overflow is a controlled error,
+/// not silent process-lifetime growth.
+fn registered(name: &str) -> Result<&'static str, String> {
+    use std::collections::BTreeSet;
+    use std::sync::Mutex;
+    const MAX_INTERNED: usize = 8192;
+    static TABLE: Mutex<Option<BTreeSet<&'static str>>> = Mutex::new(None);
+    let mut guard = TABLE.lock().map_err(|_| "intern table poisoned")?;
+    let table = guard.get_or_insert_with(BTreeSet::new);
+    if let Some(s) = table.get(name) {
+        return Ok(s);
+    }
+    if table.len() >= MAX_INTERNED {
+        return Err(format!(
+            "record name registry full ({} entries) — refusing unbounded residency",
+            MAX_INTERNED
+        ));
+    }
+    let leaked: &'static str = Box::leak(name.to_string().into_boxed_str());
+    table.insert(leaked);
+    Ok(leaked)
 }
 
-fn project_block(b: &core_ast::Block) -> InputBlock {
-    InputBlock { stmts: b.stmts.iter().map(project_stmt).collect() }
+fn project_block(b: &core_ast::Block) -> Result<InputBlock, String> {
+    Ok(InputBlock {
+        stmts: b
+            .stmts
+            .iter()
+            .map(project_stmt)
+            .collect::<Result<Vec<_>, _>>()?,
+    })
 }
 
-fn project_stmt(s: &core_ast::Stmt) -> InputStmt {
-    match s {
-        core_ast::Stmt::Let { name, ann, mutable, value, span: sp, .. } => InputStmt::Let {
+fn project_stmt(s: &core_ast::Stmt) -> Result<InputStmt, String> {
+    Ok(match s {
+        core_ast::Stmt::Let {
+            name,
+            ann,
+            mutable,
+            value,
+            span: sp,
+            ..
+        } => InputStmt::Let {
             name: name.name.clone(),
-            ann: ann.as_ref().map(ann_of).unwrap_or(Ann::Inferred),
+            ann: ann
+                .as_ref()
+                .map(ann_of)
+                .transpose()?
+                .unwrap_or(Ann::Inferred),
             mutable: *mutable,
             value: project_expr(&value),
             span: Span::new(sp.start as u32, sp.end as u32),
         },
-        core_ast::Stmt::Assign { target, value, span: sp } => InputStmt::Assign {
+        core_ast::Stmt::Assign {
+            target,
+            value,
+            span: sp,
+        } => InputStmt::Assign {
             target: target.base.name.clone(),
             path: target.path.iter().map(|p| p.name.clone()).collect(),
             value: project_expr(&value),
@@ -208,26 +257,37 @@ fn project_stmt(s: &core_ast::Stmt) -> InputStmt {
             value: project_expr(&value),
             span: Span::new(sp.start as u32, sp.end as u32),
         },
-        core_ast::Stmt::If { cond, then, els, span: sp } => InputStmt::If {
+        core_ast::Stmt::If {
+            cond,
+            then,
+            els,
+            span: sp,
+        } => InputStmt::If {
             cond: project_expr(&cond),
-            then: project_block(&then),
-            els: els.as_ref().map(project_block),
+            then: project_block(&then)?,
+            els: els.as_ref().map(project_block).transpose()?,
             span: Span::new(sp.start as u32, sp.end as u32),
         },
-        core_ast::Stmt::While { cond, body, span: sp } => InputStmt::While {
+        core_ast::Stmt::While {
+            cond,
+            body,
+            span: sp,
+        } => InputStmt::While {
             cond: project_expr(&cond),
-            body: project_block(&body),
+            body: project_block(&body)?,
             span: Span::new(sp.start as u32, sp.end as u32),
         },
         core_ast::Stmt::Loop { body, span: sp } => InputStmt::Loop {
-            body: project_block(&body),
+            body: project_block(&body)?,
             span: Span::new(sp.start as u32, sp.end as u32),
         },
-        core_ast::Stmt::Break { span: sp } => InputStmt::Break { span: Span::new(sp.start as u32, sp.end as u32) },
-        core_ast::Stmt::Continue { span: sp } => {
-            InputStmt::Continue { span: Span::new(sp.start as u32, sp.end as u32) }
-        }
-    }
+        core_ast::Stmt::Break { span: sp } => InputStmt::Break {
+            span: Span::new(sp.start as u32, sp.end as u32),
+        },
+        core_ast::Stmt::Continue { span: sp } => InputStmt::Continue {
+            span: Span::new(sp.start as u32, sp.end as u32),
+        },
+    })
 }
 
 fn project_arg(a: &core_ast::Arg) -> Option<InputExpr> {
@@ -246,8 +306,13 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
         core_ast::ExprKind::BoolLit(v) => InputExprKind::BoolLit(*v),
         core_ast::ExprKind::Var(v) => InputExprKind::Var(v.name.clone()),
         core_ast::ExprKind::Call { callee, args } => {
-            if args.iter().any(|a| matches!(a, core_ast::Arg::Named { .. })) {
-                InputExprKind::Unsupported { what: "named-arg-call" }
+            if args
+                .iter()
+                .any(|a| matches!(a, core_ast::Arg::Named { .. }))
+            {
+                InputExprKind::Unsupported {
+                    what: "named-arg-call",
+                }
             } else {
                 InputExprKind::Call {
                     callee: callee.name.clone(),
@@ -265,19 +330,25 @@ fn project_expr(e: &core_ast::Expr) -> InputExpr {
             operand: Box::new(project_expr(&operand)),
         },
         // -- outside the limited inference surface: explicit unsupported --
-        core_ast::ExprKind::StrLit(_) => InputExprKind::Unsupported { what: "str-literal" },
-        core_ast::ExprKind::CharLit(_) => InputExprKind::Unsupported { what: "char-literal" },
-        core_ast::ExprKind::Method { .. } => InputExprKind::Unsupported { what: "text-method" },
-        core_ast::ExprKind::TypeWordArg(_) => {
-            InputExprKind::Unsupported { what: "type-word-arg" }
-        }
-        core_ast::ExprKind::CtorNamed { .. } => {
-            InputExprKind::Unsupported { what: "record-construction" }
-        }
+        core_ast::ExprKind::StrLit(_) => InputExprKind::Unsupported {
+            what: "str-literal",
+        },
+        core_ast::ExprKind::CharLit(_) => InputExprKind::Unsupported {
+            what: "char-literal",
+        },
+        core_ast::ExprKind::Method { .. } => InputExprKind::Unsupported {
+            what: "text-method",
+        },
+        core_ast::ExprKind::TypeWordArg(_) => InputExprKind::Unsupported {
+            what: "type-word-arg",
+        },
+        core_ast::ExprKind::CtorNamed { .. } => InputExprKind::Unsupported {
+            what: "record-construction",
+        },
         core_ast::ExprKind::Field { .. } => InputExprKind::Unsupported { what: "field-read" },
-        core_ast::ExprKind::MethodCall { .. } => {
-            InputExprKind::Unsupported { what: "record-method-call" }
-        }
+        core_ast::ExprKind::MethodCall { .. } => InputExprKind::Unsupported {
+            what: "record-method-call",
+        },
         core_ast::ExprKind::MutArg { .. } => InputExprKind::Unsupported { what: "mut-arg" },
     };
     InputExpr { kind, span }

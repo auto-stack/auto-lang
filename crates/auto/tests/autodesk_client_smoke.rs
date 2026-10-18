@@ -79,19 +79,25 @@ fn autodesk_client_two_process_smoke() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     let wid = wid.expect("真实 auto 二进制已孵化");
-    assert!(ph.session.apps.contains_key(&AppId(1)), "462 AppSession 落地");
+    assert!(
+        ph.session.apps.contains_key(&AppId(1)),
+        "462 AppSession 落地"
+    );
 
     // ---- 协议点击 ×2 → 帧递增 ----
     for expect in 1..=2i64 {
-        let injected = ph.pointer_down(60.0, 40.0, MouseButton::Left).expect("窗内命中");
+        let injected = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
         server_end.send(&injected).unwrap();
         let mut seen = false;
         for _ in 0..300 {
             pump(&mut server_end, &mut ph);
             if let Some(list) = ph.composed(wid.0) {
-                if list.ops.iter().any(|op| matches!(op,
-                    DrawOp::Text { text, .. } if text == &format!("count: {expect}")))
-                {
+                if list.ops.iter().any(|op| {
+                    matches!(op,
+                    DrawOp::Text { text, .. } if text == &format!("count: {expect}"))
+                }) {
                     seen = true;
                     break;
                 }
@@ -109,7 +115,10 @@ fn autodesk_client_two_process_smoke() {
         if let Some(status) = child.try_wait().expect("try_wait") {
             break status;
         }
-        assert!(start.elapsed() < std::time::Duration::from_secs(30), "子进程 30s 未退出");
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(30),
+            "子进程 30s 未退出"
+        );
         std::thread::sleep(std::time::Duration::from_millis(50));
     };
     assert!(status.success(), "子进程退出码 {status}");

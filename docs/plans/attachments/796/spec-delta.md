@@ -1,118 +1,99 @@
 # PLAN-796 规范增量（spec-delta）
 
-2026-10-16；stage:work（T-07 T-06 无关部分交付）；锚定代码 `5a8cd61ba`+本轮；
-冻结决策出处：[contract-decision.md](contract-decision.md)（D1–D12）。
-**本文是评审用 delta 文档，不是已发布的规范**——canonical Spec 落盘由 merge 阶段执行
-（`/auto-plan:merge` + specs.json upsert + spec-index.py）。SD-07/08 显式 pending D-788。
+2026-10-18 重写冻结（R4 修复轮后）；锚定代码 = 本分支 HEAD（F-796-R4-01..13 全闭合）；
+冻结决策出处：[contract-decision.md](contract-decision.md)（D1–D13，含 R4 期间的
+D7 增补：called-sigs-fp 与 **src-fp 入键**——同键不容两容的 CAS 定律）。
+**本文是评审用 delta 文档，不是已发布的规范**——canonical Spec 落盘由 merge 阶段执行。
 
-## 状态总览
+## 状态总览（R4 修复后全部定稿）
 
-| delta | 状态 | 说明 |
+| delta | 状态 | 要点 |
 |---|---|---|
-| SD-01..04 | 内容终稿（随 T-01..T-05 实现） | 新 auto-semantics 规范四件 |
-| SD-05/06 | 内容终稿 | 对既有 auto-ac/auto-hir 规范的追加段（不改原producer范围） |
-| SD-07/08 | **已定稿并实现（T-06，D-788 满足后单写者窗口）** | probe/run 接缝按 788 最终协议落地，冻结细节见 contract-decision D13 |
+| SD-01..04 | 定稿并实现 | 新 auto-semantics 四件；预算/来源/保活按 R4 修复后事实绑定 |
+| SD-05/06 | 定稿并实现 | auto-ac/auto-hir 追加段；不冒充旧 producer、不创建公共 Checked |
+| SD-07/08 | 定稿并实现 | probe/run 接缝含 R4 的 typed 结局/生命周期/身份准入 |
 
 ## SD-01 add `docs/specs/auto-semantics/project.md`
 
-- before：无 auto-semantics 模块导航。
-- after：新增模块总览——三类数据分离（Semantic Facts / Inference Work State /
-  Runtime Reflection Projection，Design 42 §2）；新独立 workspace
-  `experimental/ac-semantics`（contract/core/probe 三包，core-ast feature 隔离后端依赖，
-  默认构建 `cargo tree` 零 auto-lang/UI/VM/Cranelift/auto-man，sema_boundary_ 断言）；
-  支持矩阵引用 SD-02 的 category matrix（15 类：6 Implemented / 7 SchemaOnly / 2 Future，
-  `sema_identity_matrix_invariants_hold` 锁定）；验证入口
-  `scripts/verify-ac-semantics-796.ps1 -Scope acceptance|closeout`。
-- 验收：AC-01/06；测试 sema_identity_、sema_boundary_。
+三类数据分离（Facts/Work State/Runtime Projection）；独立 workspace
+`experimental/ac-semantics`（contract/core/probe；core-ast feature 隔离后端依赖，
+默认树零 auto-lang/UI/VM/Cranelift/auto-man/auto-val/auto-cache——sema_boundary_
+cargo tree 断言）；支持矩阵 15 类（6 Implemented / 7 SchemaOnly / 2 Future）；
+验证入口 `scripts/verify-ac-semantics-796.ps1 -Scope acceptance|closeout`
+（acceptance 13 行：每行绑定最小执行计数，零选择=FAIL；closeout 列 merge-owned
+门禁清单与 tf 收据在场检查）。
 
 ## SD-02 add `docs/specs/auto-semantics/semantic-contract.md`
 
-- before：名义身份/版本/递归组无统一合同，各后端自持类型副本。
-- after：`LogicalId = blake3(producer‖"ac796/logical/v1"‖len₈·(package,module,kind,name))`
-  ——名义相等、重启 intern 序无关、同名跨包永不合并；`DeclRef`（logical+组件+ContentVersion）
-  重导校验防篡改；ref envelope `ac796/semaref/v1` owner/schema admission；描述 codec
-  `ac796/sema-page/v1`（TypeDesc 13 变体全集含 view/mut/owned，递归 record 一律间接
-  DeclRef 组 RecGroup，组版本成员序无关，>8192 嵌套受控 TooDeep，≤512KiB 页）；
-  category matrix 全表（owner/schema/消费者/粒度/ref/驻留/现状/future owner）。
-- 验收：AC-01；测试 sema_identity_ 14 例。
+LogicalId 名义身份（重启序无关/同名跨包不合并）；DeclRef 重导防篡改；envelope
+`ac796/semaref/v1` admission；页 codec `ac796/sema-page/v1`（TypeDesc 13 变体、
+递归组间接引用、≤512KiB、≤8192 深）；**R4 后**：record 页字段是**真实间接
+TypeDesc::Record{DeclRef}**（非 Opaque 名串），发布经 Kahn 迭代序带 required-data
+边（保留页跨 GC 存活；环=受控拒绝，组发布未实装）；CT 接缝 `ac796/ct-seam/v1`。
 
 ## SD-03 add `docs/specs/auto-semantics/inference-profile.md`
 
-- before：无独立推导 profile（旧 InferenceContext 混合 Database/TypeStore/工作态）。
-- after：有限 i32/bool 双向推导+显式 worklist（`ac796-bidir-worklist/1`）；未注解绑定
-  铸类型变量、union-find 代换、循环代换 occurs 受控诊断（不挂死）；unsolved/歧义候选/
-  unknown-name 为确定性诊断，**无 Any 兜底**；资源/取消为基础设施态永不缓存；步数定义
-  （worklist 解一/AST 节点一/作用域查一，≤1M 步 ≤5s）；差分对照合同——与现有 core
-  resolve+typecheck 独立运行，接受/拒绝与绑定类型（程序序）逐对一致（240+ 生成例）；
-  推导工作态（变量/代换/worklist）永不持久化。
-- 验收：AC-02；测试 infer_core_ 13+4 例。
+有限 i32/bool 双向推导+worklist；**R4 后**：直接调用含**实参数量准入**
+（arity-mismatch 确定性诊断）；occurs/unsolved/歧义/unknown 均确定性诊断无 Any
+兜底；差分对照合同（新旧管线独立运行，接受/拒绝与绑定类型程序序逐对一致——
+手写 17+ 例与 LCG 240 例）；工作态永不持久化。
 
 ## SD-04 add `docs/specs/auto-semantics/query-cache.md`
 
-- before：A06 无消费者，无语义缓存合同。
-- after：查询键组件（query/package/module/algo/schema/producer/target-sem/caps + 按类
-  输入指纹，InferBody 含 **called-sigs-fp**——被读签名变化=键变化，一键不容两容，
-  783 Conflict 不得绕过）；依赖 manifest（正：config/fn-sig/fn-body/field-set；负：候选
-  集域内名字缺席+集合指纹；source-map fail-closed）命中时整体重验；783 受管隔离
-  namespace（layer `S796`、SnapshotRecord 载体、非 Hir 非 A06，读入三重 admission）；
-  `lookup_only` 无 compute 路径（禁调反控结构性）；预算（热页 LRU≤8MiB、scratch≤8MiB、
-  受管≤16MiB、页流式≥32MiB、private Δ≤64MiB、深链≥4096 全迭代、512 换轮 GC 收敛+
-  哨兵保活）；六场景 trace（请求/缓存读验/推导/发布不重叠计时，30 原始样本不删）。
-- 验收：AC-03/04；测试 sema_cache_ 12、sema_budget_ 5、sema_turnaround_ 5；报告
-  `docs/reports/plan796/turnaround.{md,json}`。
+查询键组件含 called-sigs-fp 与 **src-fp（R4 冻结）**：被读签名或源修订变化=
+键变化（一键不容两容；位置漂移不得服务旧位置——漂移源走新键新算，spans 恒绑定
+当前修订）；freshness 三态分类（Fresh/ProvenanceStale/Stale）；typed 结局互斥
+（hit/reprojected/published-miss/published-stale/diags/resource/cancelled——
+cache 词永不冒充成功）；**事实归属双向准入**（发布前 summary.fn_logical==target；
+每次读取校验 query tag/target/variant/fn_logical）；预算账本接入真实查询流
+（scratch 预留失败=typed resource 拒绝；有界 record 名注册表 8192 上限替代
+无界 Box::leak；OS private-bytes 窗内采样）；受管隔离 namespace S796
+（SnapshotRecord 载体，三重 admission+事实归属）。
 
-## SD-05 modify `docs/specs/auto-ac/artifact-contract.md`
+## SD-05 modify `docs/specs/auto-ac/artifact-contract.md`（追加节）
 
-- before：A06 semantic-interface-meta 为 Future 登记（producer "resolve/typecheck"），
-  无语义 producer 消费先例。
-- after：**追加**一节"796 语义 producer 的 A06 接缝"：S796 namespace 使用 783 通用
-  块/图 API 作容器（SnapshotRecord 载体、producer/schema admission、lease/root 复用）；
-  原有 Future 登记与原 producer 范围**一字不改**（796 不冒充旧 producer 已支持 A06）；
-  A05/A12 接缝仅 schema 冻结（CT seam `ac796/ct-seam/v1`、RuntimeProjectionPolicy 四级，
-  model_compute 标记，vm_execute 由真 AVM 路径独占）。
-- 验收：AC-01/03；测试 sema_identity_、sema_cache_、meta_query_（CT 接缝）。
+796 语义 producer 的 A06 接缝：S796 namespace 用 783 通用块/图 API 作容器；
+原 Future 登记与旧 producer 范围一字不改；A05/A12 仅 schema 冻结
+（model_compute 独占 vm_execute）。
 
-## SD-06 modify `docs/specs/auto-hir/stage-contract.md`
+## SD-06 modify `docs/specs/auto-hir/stage-contract.md`（追加节）
 
-- before：语义事实与 checked 准入无信任边界描述。
-- after：**追加**一节：语义事实（InferFacts，无工作态）是 checked 准入的输入之一；
-  有限 profile 的推导结果不残留未解变量即可准入，资源/取消状态不得作为准入裁决；
-  旧实现（infer 嵌 Codegen 等）不切换，仅作为差分对照 oracle 被只读引用。
-- 验收：AC-01/02；测试 infer_core_ parity。
+before（现行）：verify 是 Checked 的唯一构造路径，语义事实无独立信任边界描述。
+after（追加，不改现行）：InferFacts（无工作态）可作为 checked 准入的**只读输入**
+被消费；资源/取消状态不得作为准入裁决；**本计划不创建公共 Checked、不取代也不
+绕过既有 verify**——旧实现仅作差分对照 oracle 被只读引用。
 
-## SD-07 modify `docs/specs/auto-test-case/architecture.md` — **已定稿（T-06 交付）**
+## SD-07 modify `docs/specs/auto-test-case/architecture.md`（已实现）
 
-- before：TestCase 架构为 v1 支持 + B 阶段 ac/syntax worker 拓扑，无 probe
-  adapter/recipe 注册面。
-- after：**追加**"受限 probe/run adapter"节——`adapter: "probe"` × `action: "run"`
-  经注册配方表（`REGISTERED_PROBE_RECIPES=["sema/query-v1"]`，797 按同合同追加
-  ABI 配方）；声明式步骤（query/edit-source/restart，1..=64）；工具身份经可信
-  宿主配置（`SEMA_CASE_WORKER` env 或源树定位自建），case 永不携带可执行；
-  worker=独立 sema-probe 进程经 `semaworker/1` JSON-lines IPC（acworker/1 同形
-  信封/回显/有界 IO）；PASS 判定全在父侧；restart 步=真实跨进程持久化路径。
-  实现锚点：auto-test-case `contract.rs`（Adapter::Probe/ProbeStep/ProbeSemaSpec/
-  ProbeStepExpect）、auto-lang `test_cases/sema.rs`（执行与判定）、
-  `experimental/ac-semantics/probe/src/ipc.rs`（worker）。
-- 验收：AC-05；probe_adapter_ 5 例（语料真执行/负 oracle 翻红/解码反例/atom-data
-  admission/v1 pilot 不受扰）；V-08 经 verify 脚本实装 PASS。
+adapter probe×run（v2-only）；注册配方表 [sema/query-v1]；声明式步骤
+（query/edit-source/restart）；工具身份可信宿主绑定（SEMA_CASE_WORKER），
+case 永不携带可执行；**R4 后**：worker `semaworker/1` 全生命周期（父墙覆盖
+响应+退出+回收；stderr 越限即杀；4MiB 读上限；构建限时）；退出状态/版本镜像
+准入；exe 内容 hash 入报告与 stale 轴（sema-worker-exe-sha256/version）；
+restart=统一 runner 内真实跨进程持久化；**判定全在父侧**（typed 结局先于
+oracle：ok 需零诊断、diags 须匹配 stage/code/message、resource/cancelled/infra
+=Infrastructure Error 永非语言裁决）。
 
-## SD-08 modify `docs/specs/auto-test-case/profile-v2-native.md` — **已定稿（T-06 交付）**
+## SD-08 modify `docs/specs/auto-test-case/profile-v2-native.md`（已实现）
 
-- before：v2 = v1 严格超集，新增面仅 ac/syntax（hir-atom 源、ac 通道、syntax 投影）。
-- after：**追加** probe/Atom 数据面——源类别 `syntax: "atom-data"`（.atomdata 虚拟
-  路径）；`adapter: "probe"` 可观察通道=结构化 `probe`（cache/compute_calls/
-  bindings_file/stages_include；stdout/stderr/result 通道对 probe 恒不可声明）；
-  probe 错误 completion 支持前端阶段（parse/resolve/typecheck），worker/协议失败
-  =Infrastructure 永不满足语言负例；oracle 身份纳入 bindings 边车内容 hash
-  （改 oracle 字节即失效旧 PASS）；v1 接受/拒绝集字节不变（plan788_r3_ 全绿）。
-- 验收：AC-05/06；解码反例（未注册配方/v1+probe/缺步骤/未知 op）+ 兼容面。
+v2 追加 probe 面：atom-data 源类别；expect.probe 期望（cache 词表含
+reprojected/diags）；probe 错误 completion 支持前端阶段（parse/resolve/typecheck）
+且由父侧真实判定（类型错程序配 success 期望=FAIL，配 error completion=PASS）；
+bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
+（plan788_r3_ 兼容面全绿）。
 
-## 依赖与并行审计（V-09 边界，随 sema_boundary_ 落地）
+## 依赖与并行审计（R4 后事实）
 
-- **796 依赖**（只读消费）：ac-core 公开 AST/parse（feature 门控，默认零后端依赖）；
-  783 ManagedStore/codec/identity（零修改，merge-base..HEAD diff 于
-  experimental/ac-artifact-probe、experimental/ac-core、crates/、根 Cargo.toml 均为空）。
-- **依赖 796**：797（ABI probe）只读消费 ref/description 快照（D6 全集 +
-  ac796/ct-seam/v1 已冻结可读）；共享接口变更须通知式收据（本轮无变更）。
-- **冻结版本出处**：全部接口常量（producer/三个 schema 域/algo id/layer/载体）在
-  contract-decision.md 有文可查（sema_boundary_frozen_versions_have_provenance 锁定）。
+- 796 依赖（只读）：ac-core 公开 AST/parse（feature 门控）、783 store API。
+- **T-06 起共享协议文件为授权写面**（auto-test-case contract/ir/suite、auto-lang
+  test_cases/runner 测试/语料、plan788_r3_ 新字段编译兼容）；783/ac-core 源码、
+  根 manifest/cargo 配置仍零触碰（sema_boundary_ diff 断言按阶段化允许清单）。
+- 依赖 796：797 只读消费（D6 全集+ct-seam schema 冻结可读）。
+- 冻结接口常量全部有 contract-decision 出处（sema_boundary 锁定）。
+
+## touched_goals 说明
+
+frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各
+project.md 的 goals 面）无"语义元信息/类型推导/统一缓存"对应目标条目——
+PLAN-796 是 Design 42 的首个实施计划，其目标在本文 SD-01..08 沉淀后才进入
+specs 体系；不虚构 goal ID，merge 时由 ledger 流程登记新目标映射。

@@ -241,9 +241,7 @@ fn call_worker(
                         kill_and_reap(&mut child);
                         let _ = out_reader.join();
                         let _ = err_reader.join();
-                        return Err(
-                            "ac-case-worker stdout closed before answering".to_string(),
-                        );
+                        return Err("ac-case-worker stdout closed before answering".to_string());
                     }
                 }
             }
@@ -418,8 +416,7 @@ pub fn validate_response(
         // regardless of whether the case declares a stream oracle.
         if let Some(run) = &ok.run {
             for (name, raw) in [("stdout", &run.stdout_b64), ("stderr", &run.stderr_b64)] {
-                let decoded =
-                    b64d_strict(raw).map_err(|e| format!("{}: {}", name, e))?;
+                let decoded = b64d_strict(raw).map_err(|e| format!("{}: {}", name, e))?;
                 if decoded.len() > MAX_STREAM_BYTES {
                     return Err(format!(
                         "{} decoded {} bytes exceeds the {} byte stream cap — refused regardless of declared comparison",
@@ -685,7 +682,9 @@ pub fn run_check(
         .unwrap_or(false);
     let is_ac = check.adapter == auto_test_case::contract::Adapter::Ac;
     if is_ac && diags {
-        let forged = seen_logical.iter().any(|l| l == "app.obj" || l == "app.exe");
+        let forged = seen_logical
+            .iter()
+            .any(|l| l == "app.obj" || l == "app.exe");
         if forged {
             return Ok(Verdict::error(
                 "language failure carrying success artifacts (obj/exe) — refused".to_string(),
@@ -943,8 +942,8 @@ pub fn admit_and_persist_artifacts(
         let logical = a["logical"].as_str().unwrap_or("");
         let path_text = a["path"].as_str().unwrap_or("");
         let want_sha = a["sha256"].as_str().unwrap_or("");
-        let bytes =
-            std::fs::read(path_text).map_err(|e| format!("read worker artifact {}: {}", logical, e))?;
+        let bytes = std::fs::read(path_text)
+            .map_err(|e| format!("read worker artifact {}: {}", logical, e))?;
         let got_sha = hex(&sha256(&bytes));
         if got_sha != want_sha {
             return Err(format!(

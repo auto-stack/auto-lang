@@ -206,9 +206,12 @@ pub fn run_check(
                         }
                     }
                     if let Some(want) = &oracle.stdout {
-                        if let Some(m) =
-                            compare_bytes(want.text.as_bytes(), stdout.as_bytes(), want.compare, "stdout")
-                        {
+                        if let Some(m) = compare_bytes(
+                            want.text.as_bytes(),
+                            stdout.as_bytes(),
+                            want.compare,
+                            "stdout",
+                        ) {
                             mismatches.push(m);
                         }
                     }
@@ -291,8 +294,8 @@ mod tests {
     #[test]
     fn classify_io_is_infrastructure_not_run() {
         // A REAL io::Error from the OS, wrapped the way the pipeline wraps it.
-        let io_err = std::fs::read("Z:/definitely/not/here/atc-probe.bin")
-            .expect_err("read must fail");
+        let io_err =
+            std::fs::read("Z:/definitely/not/here/atc-probe.bin").expect_err("read must fail");
         let e = AutoError::Io(io_err.to_string());
         match classify_staged(&e, None) {
             StageOutcome::Infrastructure(_) => {}
@@ -306,11 +309,13 @@ mod tests {
         let inner = AutoError::MultipleErrors {
             count: 1,
             plural: "error".into(),
-            errors: vec![AutoError::Syntax(crate::error::SyntaxError::UnexpectedToken {
-                expected: "expression".into(),
-                found: "}".into(),
-                span: miette::SourceSpan::new(0usize.into(), 1usize.into()),
-            })],
+            errors: vec![AutoError::Syntax(
+                crate::error::SyntaxError::UnexpectedToken {
+                    expected: "expression".into(),
+                    found: "}".into(),
+                    span: miette::SourceSpan::new(0usize.into(), 1usize.into()),
+                },
+            )],
         };
         let outer = AutoError::MultipleErrors {
             count: 1,
@@ -355,7 +360,10 @@ mod tests {
         }
         // The SAME message without a typed trap code is infrastructure —
         // message-text matching is no longer a language channel.
-        assert!(matches!(classify_staged(&e, None), StageOutcome::Infrastructure(_)));
+        assert!(matches!(
+            classify_staged(&e, None),
+            StageOutcome::Infrastructure(_)
+        ));
     }
 
     #[test]
@@ -366,4 +374,3 @@ mod tests {
         assert_eq!(panic_message(&n), "<non-string panic payload>");
     }
 }
-

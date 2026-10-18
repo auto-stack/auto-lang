@@ -2,7 +2,9 @@
 //!
 //! Each adapter wraps a real Linux system service via D-Bus (zbus) or syscalls.
 
-use auto_cosmic_ports::{BatteryState, ClockPort, Notification, NotificationsPort, PowerPort, SystemPort};
+use auto_cosmic_ports::{
+    BatteryState, ClockPort, Notification, NotificationsPort, PowerPort, SystemPort,
+};
 use std::sync::Mutex;
 
 // ---------------------------------------------------------------------------
@@ -95,7 +97,12 @@ impl PowerPort for LinuxPowerPort {
         // dbus configured), fall back to a safe default rather than panicking.
         let conn = match self.connection() {
             Ok(c) => c,
-            Err(_) => return BatteryState { level: 1.0, on_ac: true },
+            Err(_) => {
+                return BatteryState {
+                    level: 1.0,
+                    on_ac: true,
+                }
+            }
         };
 
         // Query the DisplayDevice proxy for Percentage and State.
@@ -108,7 +115,12 @@ impl PowerPort for LinuxPowerPort {
             .build::<zbus::blocking::Proxy>()
         {
             Ok(p) => p,
-            Err(_) => return BatteryState { level: 1.0, on_ac: true },
+            Err(_) => {
+                return BatteryState {
+                    level: 1.0,
+                    on_ac: true,
+                }
+            }
         };
 
         let pct: f64 = proxy.get_property("Percentage").unwrap_or(100.0);
@@ -191,7 +203,11 @@ mod tests {
         let c = LinuxClockPort::new();
         let now = c.now_secs();
         // Should be a plausible Unix timestamp (> year 2020).
-        assert!(now > 1_500_000_000, "clock returned implausible time: {}", now);
+        assert!(
+            now > 1_500_000_000,
+            "clock returned implausible time: {}",
+            now
+        );
     }
 
     #[test]

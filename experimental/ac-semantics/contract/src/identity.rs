@@ -297,7 +297,10 @@ mod tests {
         assert!(r.verify().is_ok());
         let mut bad = r.clone();
         bad.logical = LogicalId("deadbeef".into());
-        assert!(matches!(bad.verify(), Err(RefError::TamperedLogical { .. })));
+        assert!(matches!(
+            bad.verify(),
+            Err(RefError::TamperedLogical { .. })
+        ));
     }
 
     #[test]

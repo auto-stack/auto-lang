@@ -22,14 +22,22 @@ use ac_sema_contract::{DeclRef, FnMeta, Mode, RecordShape, TypeDesc};
 /// One field of one record: (ordinal, name, description). `None` is a
 /// real miss (no such record or no such field) — the caller reports it,
 /// never a fake empty field.
-pub fn query_field(input: &SemaInput, record: &str, field: &str) -> Option<(usize, String, TypeDesc)> {
+pub fn query_field(
+    input: &SemaInput,
+    record: &str,
+    field: &str,
+) -> Option<(usize, String, TypeDesc)> {
     let r = input.lookup_record(record)?;
     let (i, (n, a)) = r.fields.iter().enumerate().find(|(_, (n, _))| n == field)?;
     Some((i, n.clone(), ann_desc(a)))
 }
 
 /// A function's signature as portable metadata.
-pub fn query_signature(input: &SemaInput, fn_name: &str, content: ac_sema_contract::ContentVersion) -> Option<FnMeta> {
+pub fn query_signature(
+    input: &SemaInput,
+    fn_name: &str,
+    content: ac_sema_contract::ContentVersion,
+) -> Option<FnMeta> {
     let f = input.lookup_fn(fn_name)?;
     Some(FnMeta {
         decl: DeclRef::new(
@@ -50,7 +58,11 @@ pub fn query_signature(input: &SemaInput, fn_name: &str, content: ac_sema_contra
 }
 
 /// A record's full ordered shape.
-pub fn record_shape(input: &SemaInput, record: &str, content: ac_sema_contract::ContentVersion) -> Option<RecordShape> {
+pub fn record_shape(
+    input: &SemaInput,
+    record: &str,
+    content: ac_sema_contract::ContentVersion,
+) -> Option<RecordShape> {
     let r = input.lookup_record(record)?;
     Some(RecordShape {
         decl: DeclRef::new(
@@ -63,14 +75,24 @@ pub fn record_shape(input: &SemaInput, record: &str, content: ac_sema_contract::
         fields: r
             .fields
             .iter()
-            .map(|(n, a)| ac_sema_contract::FieldDesc { name: n.clone(), ty: ann_desc(a) })
+            .map(|(n, a)| ac_sema_contract::FieldDesc {
+                name: n.clone(),
+                ty: ann_desc(a),
+            })
             .collect(),
     })
 }
 
 /// List a record's fields in declaration order.
 pub fn list_fields(input: &SemaInput, record: &str) -> Option<Vec<String>> {
-    Some(input.lookup_record(record)?.fields.iter().map(|(n, _)| n.clone()).collect())
+    Some(
+        input
+            .lookup_record(record)?
+            .fields
+            .iter()
+            .map(|(n, _)| n.clone())
+            .collect(),
+    )
 }
 
 /// List a domain's candidate set (sorted — it is the lookup domain,
@@ -89,9 +111,15 @@ fn ann_desc(a: &Ann) -> TypeDesc {
         Ann::Bool => TypeDesc::Bool,
         // Record annotations describe nominal types by name here; the
         // probe-level publication upgrades them to full DeclRefs.
-        Ann::Record(r) => TypeDesc::Opaque { name: format!("record:{r}") },
-        Ann::Inferred => TypeDesc::Opaque { name: "?inferred".into() },
-        Ann::Unsupported(w) => TypeDesc::Opaque { name: format!("unsupported:{w}") },
+        Ann::Record(r) => TypeDesc::Opaque {
+            name: format!("record:{r}"),
+        },
+        Ann::Inferred => TypeDesc::Opaque {
+            name: "?inferred".into(),
+        },
+        Ann::Unsupported(w) => TypeDesc::Opaque {
+            name: format!("unsupported:{w}"),
+        },
     }
 }
 
@@ -146,14 +174,22 @@ pub struct CtRequest {
 
 impl CtRequest {
     pub fn new(callee: impl Into<String>, args: Vec<PortableValue>, deps: Vec<String>) -> Self {
-        CtRequest { schema: CT_SEAM_SCHEMA, callee: callee.into(), args, deps }
+        CtRequest {
+            schema: CT_SEAM_SCHEMA,
+            callee: callee.into(),
+            args,
+            deps,
+        }
     }
 
     /// Admission: reject schema drift, Unknown/unsolved type references
     /// and (structurally) non-portable inputs before any producer runs.
     pub fn admit(&self) -> Result<(), CtAdmission> {
         if self.schema != CT_SEAM_SCHEMA {
-            return Err(CtAdmission::WrongSchema { expected: CT_SEAM_SCHEMA, found: self.schema });
+            return Err(CtAdmission::WrongSchema {
+                expected: CT_SEAM_SCHEMA,
+                found: self.schema,
+            });
         }
         for a in &self.args {
             if let PortableValue::TypeRef(TypeDesc::Opaque { name }) = a {
@@ -169,18 +205,26 @@ impl CtRequest {
 /// Controlled admission failures of the CT seam.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CtAdmission {
-    WrongSchema { expected: &'static str, found: &'static str },
+    WrongSchema {
+        expected: &'static str,
+        found: &'static str,
+    },
     NonPortableValue(&'static str),
     UnknownValue,
     UncheckedExecutable,
-    CyclicRequest { chain: Vec<String> },
+    CyclicRequest {
+        chain: Vec<String>,
+    },
 }
 
 impl std::fmt::Display for CtAdmission {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CtAdmission::WrongSchema { expected, found } => {
-                write!(f, "ct seam schema mismatch: expected {expected}, found {found}")
+                write!(
+                    f,
+                    "ct seam schema mismatch: expected {expected}, found {found}"
+                )
             }
             CtAdmission::NonPortableValue(w) => write!(f, "non-portable ct value: {w}"),
             CtAdmission::UnknownValue => write!(f, "unknown/unsolved ct value rejected"),
@@ -210,7 +254,12 @@ pub struct CtResult {
 
 impl CtResult {
     pub fn model(value: PortableValue, deps: Vec<String>) -> Self {
-        CtResult { schema: CT_SEAM_SCHEMA, value, marking: ComputeMarking::ModelCompute, deps }
+        CtResult {
+            schema: CT_SEAM_SCHEMA,
+            value,
+            marking: ComputeMarking::ModelCompute,
+            deps,
+        }
     }
 }
 
@@ -338,8 +387,12 @@ mod tests {
         assert_eq!(ty, TypeDesc::Bool);
         assert!(query_field(&i, "Pair", "middle").is_none());
         assert!(query_field(&i, "Nope", "left").is_none());
-        let sig = query_signature(&i, "f", ac_sema_contract::ContentVersion::of_canonical(b"c"))
-            .unwrap();
+        let sig = query_signature(
+            &i,
+            "f",
+            ac_sema_contract::ContentVersion::of_canonical(b"c"),
+        )
+        .unwrap();
         assert_eq!(sig.ret, TypeDesc::Bool);
         assert_eq!(sig.params.len(), 1);
         assert_eq!(list_fields(&i, "Pair").unwrap(), vec!["left", "right"]);
@@ -349,17 +402,27 @@ mod tests {
 
     #[test]
     fn meta_query_ct_seam_admission() {
-        let req = CtRequest::new("tpl/x", vec![PortableValue::I32(3), PortableValue::Bool(true)], vec![]);
+        let req = CtRequest::new(
+            "tpl/x",
+            vec![PortableValue::I32(3), PortableValue::Bool(true)],
+            vec![],
+        );
         assert!(req.admit().is_ok());
         let res = CtResult::model(PortableValue::I32(9), vec!["dep1".into()]);
         assert_eq!(res.marking.as_str(), "model_compute");
         // vm_execute is not mintable through the public constructor
-        assert_eq!(CtResult::model(PortableValue::Unit, vec![]).marking, ComputeMarking::ModelCompute);
+        assert_eq!(
+            CtResult::model(PortableValue::Unit, vec![]).marking,
+            ComputeMarking::ModelCompute
+        );
     }
 
     #[test]
     fn meta_query_projection_policy_levels() {
         assert_eq!(RuntimeProjectionPolicy::None.as_str(), "none");
-        assert_eq!(RuntimeProjectionPolicy::AuthorizedAccess.as_str(), "authorized-access");
+        assert_eq!(
+            RuntimeProjectionPolicy::AuthorizedAccess.as_str(),
+            "authorized-access"
+        );
     }
 }

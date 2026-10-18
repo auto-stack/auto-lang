@@ -9,7 +9,10 @@ use auto_bindgen::extractor::get_builtin_manifest;
 use clap::Parser;
 
 #[derive(Parser, Debug)]
-#[command(name = "auto-bindgen", about = "Generate C header manifests for AutoLang C FFI")]
+#[command(
+    name = "auto-bindgen",
+    about = "Generate C header manifests for AutoLang C FFI"
+)]
 struct Cli {
     /// C header to generate manifest for (e.g. "string.h")
     #[arg(long)]

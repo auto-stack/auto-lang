@@ -45,7 +45,11 @@ fn diff_case(name: &str, src: &str) {
             // binding-type agreement on the target function, IN
             // PROGRAM ORDER (shadowed names correspond by declaration
             // order, not by set identity)
-            let old_fn = old.fns.iter().find(|f| f.name == target).expect("target in old");
+            let old_fn = old
+                .fns
+                .iter()
+                .find(|f| f.name == target)
+                .expect("target in old");
             let new_bindings: Vec<(String, &str)> = new_sum
                 .facts
                 .bindings
@@ -110,7 +114,10 @@ fn infer_core_parity_hand_corpus() {
         "fn f(a int) int { return a + 1 }\nfn main() int { let x = f(1)\nlet y = f(x)\nreturn y }",
     );
     // invalid: annotation vs initializer
-    diff_case("bad-let-ann", "fn main() int { let x int = true\nreturn 1 }");
+    diff_case(
+        "bad-let-ann",
+        "fn main() int { let x int = true\nreturn 1 }",
+    );
     // invalid: cond not bool
     diff_case("bad-cond", "fn main() int { if 1 { return 1 }\nreturn 0 }");
     diff_case("bad-while-cond", "fn main() int { while 2 { }\nreturn 0 }");
@@ -155,7 +162,9 @@ fn infer_core_parity_hand_corpus() {
 fn infer_core_parity_generated_volume() {
     let mut seed: u64 = 0x796_796;
     let mut rng = move || {
-        seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        seed = seed
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         (seed >> 33) as u32
     };
     for k in 0..120u32 {
@@ -170,9 +179,8 @@ fn infer_core_parity_generated_volume() {
         diff_case(&format!("gen-ok-{k}"), &src);
 
         // inject a bool into an i32 hole: `hX(true)`
-        let bad = format!(
-            "fn h0(a int) int {{ return a + 1 }}\nfn main() int {{ return h0(true) }}\n"
-        );
+        let bad =
+            format!("fn h0(a int) int {{ return a + 1 }}\nfn main() int {{ return h0(true) }}\n");
         diff_case(&format!("gen-bad-{k}"), &bad);
     }
 }
@@ -235,7 +243,10 @@ fn infer_core_parity_text_constructs_unsupported_not_mistyped() {
     match InferSession::new(&input).infer_function("main") {
         InferOutcome::Diags(sum) => {
             assert!(
-                sum.facts.diagnostics.iter().any(|d| d.code == "unsupported-construct"),
+                sum.facts
+                    .diagnostics
+                    .iter()
+                    .any(|d| d.code == "unsupported-construct"),
                 "str literal must surface as unsupported-construct"
             );
         }

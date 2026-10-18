@@ -15,9 +15,9 @@
 //! - `//` and `/* */` comments
 //! - Newlines as item separators inside arrays, objects, and node bodies
 
-use auto_val::{Array, AutoStr, Node, Obj, Value, ValueKey};
 use crate::error::{AtomError, AtomResult};
 use crate::Atom;
+use auto_val::{Array, AutoStr, Node, Obj, Value, ValueKey};
 
 /// Parse static Atom text into an [`Atom`].
 ///
@@ -133,10 +133,7 @@ impl<'a> Parser<'a> {
                 self.advance();
                 Ok(())
             }
-            Some(ch) => Err(self.error(format!(
-                "expected '{}' but found '{}'",
-                expected, ch
-            ))),
+            Some(ch) => Err(self.error(format!("expected '{}' but found '{}'", expected, ch))),
             None => Err(self.error(format!("expected '{}' but reached end of input", expected))),
         }
     }
@@ -172,7 +169,9 @@ impl<'a> Parser<'a> {
                 let ident = self.parse_identifier()?;
                 let ident_str = ident.as_str();
                 match ident_str {
-                    "true" | "false" | "null" => Ok(Atom::new(self.parse_identifier_value(ident)?)?),
+                    "true" | "false" | "null" => {
+                        Ok(Atom::new(self.parse_identifier_value(ident)?)?)
+                    }
                     _ => {
                         // Could be a node or a bare identifier value.
                         self.skip_whitespace_and_comments();
@@ -306,9 +305,8 @@ impl<'a> Parser<'a> {
             } else if let Value::Node(child) = first {
                 node.add_kid(*child);
             } else {
-                return Err(self.error(
-                    "node body entries must be either pairs (key: value) or child nodes",
-                ));
+                return Err(self
+                    .error("node body entries must be either pairs (key: value) or child nodes"));
             }
 
             self.skip_whitespace_and_comments();

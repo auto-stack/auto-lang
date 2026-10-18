@@ -71,7 +71,11 @@ fn main() -> auto_lang::ui::AppResult<()> {
     let bat = app.power.battery();
     println!(
         "ClockBatteryApplet: {:02}:{:02}:{:02}, battery {:.0}%, AC={}",
-        h, m, s, bat.level * 100.0, bat.on_ac
+        h,
+        m,
+        s,
+        bat.level * 100.0,
+        bat.on_ac
     );
 
     // Script a few ticks + a battery change to exercise the mock loop.
@@ -82,7 +86,10 @@ fn main() -> auto_lang::ui::AppResult<()> {
     let bat2 = app.power.battery();
     println!(
         "After 2 min: {:02}:{:02}:{:02}, battery {:.0}%",
-        h2, m2, s2, bat2.level * 100.0
+        h2,
+        m2,
+        s2,
+        bat2.level * 100.0
     );
 
     // Render via the unified HostBackend (W1 seam) — headless path on Windows.

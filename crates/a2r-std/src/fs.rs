@@ -145,8 +145,12 @@ pub fn read_text_range(path: impl AsRef<Path>, offset: usize, limit: usize) -> S
         next_offset: Option<u64>,
     }
     let ok = |text: String, total: i64, next_offset: Option<u64>| {
-        serde_json::to_string(&ReadTextRangeOut { text, total, next_offset })
-            .expect("read_text_range envelope serialization cannot fail")
+        serde_json::to_string(&ReadTextRangeOut {
+            text,
+            total,
+            next_offset,
+        })
+        .expect("read_text_range envelope serialization cannot fail")
     };
     let err = || ok(String::new(), -1, None);
     if limit == 0 {
@@ -197,7 +201,11 @@ pub fn read_text_range(path: impl AsRef<Path>, offset: usize, limit: usize) -> S
         Err(_) => return err(),
     };
     let end_abs = (e + win_start as usize) as u64;
-    let next_offset = if end_abs >= total { None } else { Some(end_abs) };
+    let next_offset = if end_abs >= total {
+        None
+    } else {
+        Some(end_abs)
+    };
     ok(text, total as i64, next_offset)
 }
 

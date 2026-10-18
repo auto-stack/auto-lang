@@ -172,7 +172,9 @@ pub fn run_check(
     // outside the scratch (F-05).
     let mut refs: Vec<ArtifactRef> = Vec::new();
     for (logical, bytes) in &artifacts {
-        let stored = artifact_dir.join("actual").join(validated_rel_path(logical)?);
+        let stored = artifact_dir
+            .join("actual")
+            .join(validated_rel_path(logical)?);
         if let Some(parent) = stored.parent() {
             std::fs::create_dir_all(parent).map_err(|e| format!("actual mkdir: {}", e))?;
         }
@@ -265,7 +267,11 @@ fn default_module_name(entry_path: &str) -> String {
 }
 
 /// A REAL language failure judged against the declared error completion.
-fn judge_language_failure(completion: &Completion, failure: &Failure, refs: Vec<ArtifactRef>) -> Verdict {
+fn judge_language_failure(
+    completion: &Completion,
+    failure: &Failure,
+    refs: Vec<ArtifactRef>,
+) -> Verdict {
     match completion {
         Completion::Success => {
             let mut v = Verdict::fail(vec![Mismatch {
@@ -325,7 +331,12 @@ fn judge_language_failure(completion: &Completion, failure: &Failure, refs: Vec<
 /// local separator without leaving the scratch root (F-05): forward-slash
 /// relative, no drive/absolute prefix, no `..`/`.`/empty components.
 fn validated_rel_path(logical: &str) -> Result<PathBuf, String> {
-    let bad = || format!("artifact logical path {:?} escapes the scratch root", logical);
+    let bad = || {
+        format!(
+            "artifact logical path {:?} escapes the scratch root",
+            logical
+        )
+    };
     if logical.is_empty() || logical.contains('\0') || logical.contains('\\') {
         return Err(bad());
     }

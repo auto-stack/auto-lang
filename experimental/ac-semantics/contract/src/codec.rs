@@ -105,14 +105,24 @@ pub enum TypeDesc {
     Char,
     ByteBuffer,
     /// Named opaque type (externally laid out; identity by name).
-    Opaque { name: String },
+    Opaque {
+        name: String,
+    },
     /// Function type: parameter descriptions in declaration order + result.
-    Fn { params: Vec<TypeDesc>, ret: Box<TypeDesc> },
+    Fn {
+        params: Vec<TypeDesc>,
+        ret: Box<TypeDesc>,
+    },
     /// Nominal record — ALWAYS an indirect reference to its [`DeclRef`];
     /// recursion is expressed through this indirection, never by value.
-    Record { decl: DeclRef },
+    Record {
+        decl: DeclRef,
+    },
     /// Mode-annotated type (view/mut/owned over an inner description).
-    Mode { inner: Box<TypeDesc>, mode: Mode },
+    Mode {
+        inner: Box<TypeDesc>,
+        mode: Mode,
+    },
 }
 
 impl TypeDesc {
@@ -124,7 +134,10 @@ impl TypeDesc {
     }
     /// Wrap in a mode annotation.
     pub fn with_mode(self, mode: Mode) -> Self {
-        TypeDesc::Mode { inner: Box::new(self), mode }
+        TypeDesc::Mode {
+            inner: Box::new(self),
+            mode,
+        }
     }
 }
 
@@ -184,7 +197,8 @@ impl RecGroup {
             if m.decl.kind != DeclKind::Record {
                 return Err(RefError::BadContentVersion(format!(
                     "group member {} is a {}, not a record",
-                    m.decl.name, m.decl.kind.as_str()
+                    m.decl.name,
+                    m.decl.kind.as_str()
                 )));
             }
         }
@@ -375,10 +389,16 @@ impl std::fmt::Display for CodecError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             CodecError::BadSchema { expected, found } => {
-                write!(f, "page schema mismatch: expected {expected}, found {found}")
+                write!(
+                    f,
+                    "page schema mismatch: expected {expected}, found {found}"
+                )
             }
             CodecError::BadProducer { expected, found } => {
-                write!(f, "page producer mismatch: expected {expected}, found {found}")
+                write!(
+                    f,
+                    "page producer mismatch: expected {expected}, found {found}"
+                )
             }
             CodecError::UnsupportedCodec(v) => write!(f, "unsupported codec version {v}"),
             CodecError::BadTag(what, v) => write!(f, "bad {what} tag {v}"),
@@ -435,21 +455,33 @@ impl<'a> Cur<'a> {
     pub(crate) fn str(&mut self, at: &'static str) -> Result<String, CodecError> {
         let n = self.u32(at)? as usize;
         if n > MAX_VEC_LEN as usize {
-            return Err(CodecError::TooLarge { what: "string", len: n as u64 });
+            return Err(CodecError::TooLarge {
+                what: "string",
+                len: n as u64,
+            });
         }
         let b = self.take(n, at)?;
         String::from_utf8(b.to_vec()).map_err(|_| CodecError::BadUtf8)
     }
-    pub(crate) fn vec_len(&mut self, what: &'static str, at: &'static str) -> Result<usize, CodecError> {
+    pub(crate) fn vec_len(
+        &mut self,
+        what: &'static str,
+        at: &'static str,
+    ) -> Result<usize, CodecError> {
         let n = self.u32(at)?;
         if n > MAX_VEC_LEN {
-            return Err(CodecError::TooLarge { what, len: n as u64 });
+            return Err(CodecError::TooLarge {
+                what,
+                len: n as u64,
+            });
         }
         Ok(n as usize)
     }
     pub(crate) fn done(&self) -> Result<(), CodecError> {
         if self.pos != self.buf.len() {
-            Err(CodecError::TrailingBytes((self.buf.len() - self.pos) as u64))
+            Err(CodecError::TrailingBytes(
+                (self.buf.len() - self.pos) as u64,
+            ))
         } else {
             Ok(())
         }
@@ -556,19 +588,31 @@ pub(crate) fn decode_typedesc(cur: &mut Cur<'_>) -> Result<TypeDesc, CodecError>
             11 => {
                 let n = cur.u32(at)?;
                 if n > MAX_VEC_LEN {
-                    return Err(CodecError::TooLarge { what: "fn params", len: n as u64 });
+                    return Err(CodecError::TooLarge {
+                        what: "fn params",
+                        len: n as u64,
+                    });
                 }
                 if stack.len() as u32 >= MAX_NESTING_DEPTH {
-                    return Err(CodecError::TooDeep { at: stack.len() as u32 });
+                    return Err(CodecError::TooDeep {
+                        at: stack.len() as u32,
+                    });
                 }
-                stack.push(Frame::Fn { params: Vec::new(), expect: n + 1 });
+                stack.push(Frame::Fn {
+                    params: Vec::new(),
+                    expect: n + 1,
+                });
                 continue 'read;
             }
-            12 => TypeDesc::Record { decl: decode_declref(cur)? },
+            12 => TypeDesc::Record {
+                decl: decode_declref(cur)?,
+            },
             13 => {
                 let mode = Mode::from_u8(cur.u8(at)?)?;
                 if stack.len() as u32 >= MAX_NESTING_DEPTH {
-                    return Err(CodecError::TooDeep { at: stack.len() as u32 });
+                    return Err(CodecError::TooDeep {
+                        at: stack.len() as u32,
+                    });
                 }
                 stack.push(Frame::Mode { mode });
                 continue 'read;
@@ -589,7 +633,10 @@ pub(crate) fn decode_typedesc(cur: &mut Cur<'_>) -> Result<TypeDesc, CodecError>
                     match stack.pop().unwrap() {
                         Frame::Fn { mut params, .. } => {
                             let ret = params.pop().expect("fn frame closed with children");
-                            done = TypeDesc::Fn { params, ret: Box::new(ret) };
+                            done = TypeDesc::Fn {
+                                params,
+                                ret: Box::new(ret),
+                            };
                             // continue attaching upward
                         }
                         _ => unreachable!(),
@@ -597,7 +644,10 @@ pub(crate) fn decode_typedesc(cur: &mut Cur<'_>) -> Result<TypeDesc, CodecError>
                 }
                 Some(Frame::Mode { .. }) => match stack.pop().unwrap() {
                     Frame::Mode { mode } => {
-                        done = TypeDesc::Mode { inner: Box::new(done), mode };
+                        done = TypeDesc::Mode {
+                            inner: Box::new(done),
+                            mode,
+                        };
                     }
                     _ => unreachable!(),
                 },
@@ -633,7 +683,14 @@ fn decode_declref(cur: &mut Cur<'_>) -> Result<DeclRef, CodecError> {
     let name = cur.str(at)?;
     let content = ContentVersion(cur.str(at)?);
     let logical = LogicalId(cur.str(at)?);
-    let r = DeclRef { logical, package, module, kind, name, content };
+    let r = DeclRef {
+        logical,
+        package,
+        module,
+        kind,
+        name,
+        content,
+    };
     r.verify().map_err(CodecError::BadRef)?;
     Ok(r)
 }
@@ -674,7 +731,12 @@ fn decode_fnmeta(cur: &mut Cur<'_>) -> Result<FnMeta, CodecError> {
         "view" => "view",
         _ => return Err(CodecError::BadTag("receiver", 0)),
     };
-    Ok(FnMeta { decl, params, ret, receiver })
+    Ok(FnMeta {
+        decl,
+        params,
+        ret,
+        receiver,
+    })
 }
 
 fn encode_shape(out: &mut Vec<u8>, s: &RecordShape) -> Result<(), CodecError> {
@@ -748,9 +810,19 @@ fn decode_inferfacts(cur: &mut Cur<'_>) -> Result<InferFacts, CodecError> {
         let start = cur.u32(at)?;
         let end = cur.u32(at)?;
         let message = cur.str(at)?;
-        diagnostics.push(FactDiag { code: leak_code(code), start, end, message });
+        diagnostics.push(FactDiag {
+            code: leak_code(code),
+            start,
+            end,
+            message,
+        });
     }
-    Ok(InferFacts { fn_logical, bindings, expr_types, diagnostics })
+    Ok(InferFacts {
+        fn_logical,
+        bindings,
+        expr_types,
+        diagnostics,
+    })
 }
 
 /// Map a decoded diagnostic code onto the static code set; unknown codes
@@ -811,7 +883,13 @@ fn decode_index(cur: &mut Cur<'_>) -> Result<ModuleIndex, CodecError> {
         let v = ContentVersion(cur.str(at)?);
         decl_versions.push((l, v));
     }
-    Ok(ModuleIndex { package, module, fn_names, record_names, decl_versions })
+    Ok(ModuleIndex {
+        package,
+        module,
+        fn_names,
+        record_names,
+        decl_versions,
+    })
 }
 
 fn encode_manifest(out: &mut Vec<u8>, m: &DepManifest) -> Result<(), CodecError> {
@@ -838,7 +916,11 @@ fn decode_manifest(cur: &mut Cur<'_>) -> Result<DepManifest, CodecError> {
         let kind = cur.str(at)?;
         let origin = cur.str(at)?;
         let fp = cur.str(at)?;
-        positives.push(DepFingerprint { kind: leak_dep_kind(kind), origin, fp });
+        positives.push(DepFingerprint {
+            kind: leak_dep_kind(kind),
+            origin,
+            fp,
+        });
     }
     let n = cur.vec_len("negatives", at)?;
     let mut negatives = Vec::with_capacity(n);
@@ -846,9 +928,16 @@ fn decode_manifest(cur: &mut Cur<'_>) -> Result<DepManifest, CodecError> {
         let domain = cur.str(at)?;
         let name = cur.str(at)?;
         let set_fp = cur.str(at)?;
-        negatives.push(NegDep { domain: leak_domain(domain), name, set_fp });
+        negatives.push(NegDep {
+            domain: leak_domain(domain),
+            name,
+            set_fp,
+        });
     }
-    Ok(DepManifest { positives, negatives })
+    Ok(DepManifest {
+        positives,
+        negatives,
+    })
 }
 
 fn leak_dep_kind(s: String) -> &'static str {
@@ -921,7 +1010,12 @@ fn decode_cached(cur: &mut Cur<'_>) -> Result<CachedResult, CodecError> {
         _ => return Err(CodecError::BadTag("result-facts", t)),
     };
     let manifest = decode_manifest(cur)?;
-    Ok(CachedResult { query: leak_query(query), target, facts, manifest })
+    Ok(CachedResult {
+        query: leak_query(query),
+        target,
+        facts,
+        manifest,
+    })
 }
 
 fn leak_query(s: String) -> &'static str {
@@ -978,7 +1072,10 @@ pub fn encode_page(page: &SemaPage) -> Result<Vec<u8>, CodecError> {
         }
     }
     if body.len() > MAX_PAGE_BODY {
-        return Err(CodecError::TooLarge { what: "page body", len: body.len() as u64 });
+        return Err(CodecError::TooLarge {
+            what: "page body",
+            len: body.len() as u64,
+        });
     }
     let mut out = Vec::with_capacity(body.len() + 64);
     encode_str(&mut out, &page.header.schema);
@@ -998,11 +1095,17 @@ pub fn decode_page(bytes: &[u8]) -> Result<SemaPage, CodecError> {
     let at = "page";
     let schema = cur.str(at)?;
     if schema != SEMA_PAGE_SCHEMA_V1 {
-        return Err(CodecError::BadSchema { expected: SEMA_PAGE_SCHEMA_V1.into(), found: schema });
+        return Err(CodecError::BadSchema {
+            expected: SEMA_PAGE_SCHEMA_V1.into(),
+            found: schema,
+        });
     }
     let producer = cur.str(at)?;
     if producer != SEMA_PRODUCER_ID {
-        return Err(CodecError::BadProducer { expected: SEMA_PRODUCER_ID.into(), found: producer });
+        return Err(CodecError::BadProducer {
+            expected: SEMA_PRODUCER_ID.into(),
+            found: producer,
+        });
     }
     let codec_version = cur.u16(at)?;
     if codec_version != SEMA_CODEC_VERSION {
@@ -1012,7 +1115,10 @@ pub fn decode_page(bytes: &[u8]) -> Result<SemaPage, CodecError> {
     let content = ContentVersion(cur.str(at)?);
     let body_len = cur.u32(at)? as usize;
     if body_len > MAX_PAGE_BODY {
-        return Err(CodecError::TooLarge { what: "page body", len: body_len as u64 });
+        return Err(CodecError::TooLarge {
+            what: "page body",
+            len: body_len as u64,
+        });
     }
     let body_bytes = cur.take(body_len, "page body")?;
     let mut bcur = Cur::new(body_bytes);
@@ -1030,7 +1136,11 @@ pub fn decode_page(bytes: &[u8]) -> Result<SemaPage, CodecError> {
                 methods.push(decode_fnmeta(&mut bcur)?);
             }
             let group_content = ContentVersion(bcur.str("recordmeta")?);
-            PageBody::RecordMeta(RecordMeta { shape, methods, group_content })
+            PageBody::RecordMeta(RecordMeta {
+                shape,
+                methods,
+                group_content,
+            })
         }
         PageKind::InferBody => PageBody::InferBody(decode_inferfacts(&mut bcur)?),
         PageKind::ModuleIndex => PageBody::ModuleIndex(decode_index(&mut bcur)?),
@@ -1038,7 +1148,16 @@ pub fn decode_page(bytes: &[u8]) -> Result<SemaPage, CodecError> {
     };
     bcur.done()?;
     cur.done()?;
-    Ok(SemaPage { header: PageHeader { schema, producer, codec_version, kind, content }, body })
+    Ok(SemaPage {
+        header: PageHeader {
+            schema,
+            producer,
+            codec_version,
+            kind,
+            content,
+        },
+        body,
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1067,31 +1186,44 @@ impl<'a> PageView<'a> {
     pub fn try_as_fn_meta(&self) -> Result<&'a FnMeta, CodecError> {
         match &self.page.body {
             PageBody::FnMeta(m) => Ok(m),
-            _ => Err(CodecError::BadTag("page-kind-for-fnmeta", self.page.header.kind as u8)),
+            _ => Err(CodecError::BadTag(
+                "page-kind-for-fnmeta",
+                self.page.header.kind as u8,
+            )),
         }
     }
 
     pub fn try_as_record_meta(&self) -> Result<&'a RecordMeta, CodecError> {
         match &self.page.body {
             PageBody::RecordMeta(m) => Ok(m),
-            _ => Err(CodecError::BadTag("page-kind-for-recordmeta", self.page.header.kind as u8)),
+            _ => Err(CodecError::BadTag(
+                "page-kind-for-recordmeta",
+                self.page.header.kind as u8,
+            )),
         }
     }
 
     pub fn try_as_infer_facts(&self) -> Result<&'a InferFacts, CodecError> {
         match &self.page.body {
-            PageBody::InferBody(f) | PageBody::CachedResult(CachedResult {
+            PageBody::InferBody(f)
+            | PageBody::CachedResult(CachedResult {
                 facts: ResultFacts::Infer(f),
                 ..
             }) => Ok(f),
-            _ => Err(CodecError::BadTag("page-kind-for-infer", self.page.header.kind as u8)),
+            _ => Err(CodecError::BadTag(
+                "page-kind-for-infer",
+                self.page.header.kind as u8,
+            )),
         }
     }
 
     pub fn try_as_cached(&self) -> Result<&'a CachedResult, CodecError> {
         match &self.page.body {
             PageBody::CachedResult(c) => Ok(c),
-            _ => Err(CodecError::BadTag("page-kind-for-cached", self.page.header.kind as u8)),
+            _ => Err(CodecError::BadTag(
+                "page-kind-for-cached",
+                self.page.header.kind as u8,
+            )),
         }
     }
 
@@ -1099,6 +1231,10 @@ impl<'a> PageView<'a> {
     /// name, preserving declaration order (§5.3 只读反射投影).
     pub fn field(&self, name: &str) -> Option<(usize, &'a FieldDesc)> {
         let m = self.try_as_record_meta().ok()?;
-        m.shape.fields.iter().enumerate().find(|(_, f)| f.name == name)
+        m.shape
+            .fields
+            .iter()
+            .enumerate()
+            .find(|(_, f)| f.name == name)
     }
 }

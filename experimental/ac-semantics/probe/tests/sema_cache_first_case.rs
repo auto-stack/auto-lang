@@ -26,8 +26,14 @@ fn scratch(family: &str) -> PathBuf {
 }
 
 fn run_bin(args: &[&str]) -> (i32, String) {
-    let out = Command::new(BIN).args(args).output().expect("spawn sema-probe");
-    (out.status.code().unwrap_or(-1), String::from_utf8_lossy(&out.stdout).into_owned())
+    let out = Command::new(BIN)
+        .args(args)
+        .output()
+        .expect("spawn sema-probe");
+    (
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+    )
 }
 
 const MAIN_AND_HELPER: &str = "fn helper(a int, b int) int { return a + b }\n\
@@ -43,18 +49,44 @@ fn sema_cache_first_case_cross_process_roundtrip() {
     std::fs::write(&src, MAIN_AND_HELPER).unwrap();
 
     // process 1: real inference + publish, then EXIT
-    let (code, out) = run_bin(&["put", store_root.to_str().unwrap(), src.to_str().unwrap(), "main", "proj-796"]);
+    let (code, out) = run_bin(&[
+        "put",
+        store_root.to_str().unwrap(),
+        src.to_str().unwrap(),
+        "main",
+        "proj-796",
+    ]);
     assert_eq!(code, 0, "put failed: {out}");
-    assert!(out.contains("\"event\":\"published\""), "no publish receipt: {out}");
-    assert!(out.contains("\"name\":\"x\""), "no binding fact for x: {out}");
+    assert!(
+        out.contains("\"event\":\"published\""),
+        "no publish receipt: {out}"
+    );
+    assert!(
+        out.contains("\"name\":\"x\""),
+        "no binding fact for x: {out}"
+    );
 
     // process 2: fresh open, lookup WITHOUT compute, expect HIT
-    let (code, out) = run_bin(&["get", store_root.to_str().unwrap(), src.to_str().unwrap(), "main"]);
+    let (code, out) = run_bin(&[
+        "get",
+        store_root.to_str().unwrap(),
+        src.to_str().unwrap(),
+        "main",
+    ]);
     assert_eq!(code, 0, "get failed: {out}");
-    assert!(out.contains("\"event\":\"hit\""), "expected hit, got: {out}");
-    assert!(out.contains("\"compute_called\":false"), "compute must not run on hit: {out}");
+    assert!(
+        out.contains("\"event\":\"hit\""),
+        "expected hit, got: {out}"
+    );
+    assert!(
+        out.contains("\"compute_called\":false"),
+        "compute must not run on hit: {out}"
+    );
     // the restored facts carry the inferred binding types
-    assert!(out.contains("\"name\":\"x\",\"ty\":\"i32\""), "x must be i32: {out}");
+    assert!(
+        out.contains("\"name\":\"x\",\"ty\":\"i32\""),
+        "x must be i32: {out}"
+    );
 }
 
 #[test]
@@ -63,13 +95,24 @@ fn sema_cache_first_case_callee_signature_change_invalidates() {
     let store_root = root.join("store");
     let src = root.join("m.at");
     std::fs::write(&src, MAIN_AND_HELPER).unwrap();
-    let (code, out) = run_bin(&["put", store_root.to_str().unwrap(), src.to_str().unwrap(), "main", "proj-796"]);
+    let (code, out) = run_bin(&[
+        "put",
+        store_root.to_str().unwrap(),
+        src.to_str().unwrap(),
+        "main",
+        "proj-796",
+    ]);
     assert_eq!(code, 0, "put failed: {out}");
 
     // caller UNCHANGED; helper's SIGNATURE changes (param i32 → bool)
     let edited = MAIN_AND_HELPER.replace("helper(a int, b int)", "helper(a bool, b int)");
     std::fs::write(&src, edited).unwrap();
-    let (code, out) = run_bin(&["get", store_root.to_str().unwrap(), src.to_str().unwrap(), "main"]);
+    let (code, out) = run_bin(&[
+        "get",
+        store_root.to_str().unwrap(),
+        src.to_str().unwrap(),
+        "main",
+    ]);
     assert_eq!(code, 0, "get failed: {out}");
     // the caller's own key components did not change — the MISS comes
     // from the dependency manifest re-validation, reported as stale
@@ -85,14 +128,25 @@ fn sema_cache_first_case_target_body_change_changes_key() {
     let store_root = root.join("store");
     let src = root.join("m.at");
     std::fs::write(&src, MAIN_AND_HELPER).unwrap();
-    let (code, out) = run_bin(&["put", store_root.to_str().unwrap(), src.to_str().unwrap(), "main", "proj-796"]);
+    let (code, out) = run_bin(&[
+        "put",
+        store_root.to_str().unwrap(),
+        src.to_str().unwrap(),
+        "main",
+        "proj-796",
+    ]);
     assert_eq!(code, 0, "put failed: {out}");
 
     // the TARGET's body changes → different body fingerprint → the key
     // itself differs → plain miss (fresh recompute path)
     let edited = MAIN_AND_HELPER.replace("x * 2", "x * 3");
     std::fs::write(&src, edited).unwrap();
-    let (code, out) = run_bin(&["get", store_root.to_str().unwrap(), src.to_str().unwrap(), "main"]);
+    let (code, out) = run_bin(&[
+        "get",
+        store_root.to_str().unwrap(),
+        src.to_str().unwrap(),
+        "main",
+    ]);
     assert_eq!(code, 0, "get failed: {out}");
     assert!(
         out.contains("\"event\":\"miss\"") || out.contains("\"event\":\"stale\""),
@@ -113,19 +167,22 @@ fn sema_cache_first_case_query_flow_hit_does_not_compute() {
         auto_ac_prototype::source::SourceProfile::Core,
     )
     .unwrap();
-    let query = QueryKind::InferBody { fn_name: "main".into() };
+    let query = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
 
     // first: miss → real compute → publish (typed disposition)
-    let report =
-        ac_sema_probe::run_query_flow(&store, &input, &query, Some("proj"), None).unwrap();
-    assert_eq!(report.disposition, ac_sema_probe::Disposition::PublishedMiss);
+    let report = ac_sema_probe::run_query_flow(&store, &input, &query, Some("proj"), None).unwrap();
+    assert_eq!(
+        report.disposition,
+        ac_sema_probe::Disposition::PublishedMiss
+    );
     assert_eq!(report.compute_calls, 1, "first query must compute");
     assert!(report.disposition.is_ok());
 
     // second: hit → compute must NOT run (structural: the hit arm of
     // run_query_flow has no compute call at all)
-    let report =
-        ac_sema_probe::run_query_flow(&store, &input, &query, Some("proj"), None).unwrap();
+    let report = ac_sema_probe::run_query_flow(&store, &input, &query, Some("proj"), None).unwrap();
     assert_eq!(report.disposition, ac_sema_probe::Disposition::Hit);
     assert_eq!(report.compute_calls, 0, "hit must not compute");
     assert!(report.bindings.iter().any(|(n, t)| n == "x" && t == "i32"));
@@ -145,7 +202,9 @@ fn sema_cache_first_case_negative_dependency_new_definition() {
         auto_ac_prototype::source::SourceProfile::Core,
     )
     .unwrap();
-    let query = QueryKind::InferBody { fn_name: "main".into() };
+    let query = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
     // diagnostic outcome is definitive (unknown-name) — cacheable under
     // the full key
     let summary = match run_inference(&input1, "main") {
@@ -183,7 +242,9 @@ fn sema_cache_first_case_cross_package_no_merge() {
     let root = scratch("first-case-pkg");
     let store: ManagedStore = open_store(&root.join("store")).unwrap();
     let src = "fn main() int { return 1 }";
-    let q = QueryKind::InferBody { fn_name: "main".into() };
+    let q = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
     for pkg in ["app.a", "app.b"] {
         let input = ac_sema_core::adapter::parse_into_input(
             src,
@@ -210,8 +271,11 @@ fn sema_cache_first_case_cross_package_no_merge() {
         match ac_sema_probe::lookup_only(&store, &input, &q).unwrap() {
             FetchOutcome::Hit { page, .. } => {
                 let expect = ac_sema_core::query::target_logical(&input, &q);
-                assert!(format!("{:?}", page).contains(expect.as_str().chars().take(8).collect::<String>().as_str())
-                    || matches!(&page.body, ac_sema_contract::PageBody::CachedResult(_)));
+                assert!(
+                    format!("{:?}", page)
+                        .contains(expect.as_str().chars().take(8).collect::<String>().as_str())
+                        || matches!(&page.body, ac_sema_contract::PageBody::CachedResult(_))
+                );
             }
             _ => panic!("{pkg}: expected hit"),
             FetchOutcome::HitStaleProvenance { .. } => {}
@@ -228,7 +292,10 @@ fn sema_cache_first_case_illegal_payload_rejected() {
     bytes.extend_from_slice(&8u32.to_le_bytes()); // schema len
     bytes.extend_from_slice(b"ac796/XX");
     let err = ac_sema_contract::decode_page(&bytes).unwrap_err();
-    assert!(matches!(err, ac_sema_contract::CodecError::BadSchema { .. }));
+    assert!(matches!(
+        err,
+        ac_sema_contract::CodecError::BadSchema { .. }
+    ));
 
     // empty / truncated
     assert!(ac_sema_contract::decode_page(&[]).is_err());

@@ -12,12 +12,18 @@ use std::process::Command;
 
 /// The ac-semantics workspace root (= probe crate dir / ..).
 fn workspace_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").canonicalize().unwrap()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .canonicalize()
+        .unwrap()
 }
 
 /// The repository root (= probe crate dir / ../../..).
 fn repo_root() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..").canonicalize().unwrap()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .canonicalize()
+        .unwrap()
 }
 
 /// V-09: `cargo tree` over the DEFAULT build of ac-sema-core shows no
@@ -38,7 +44,11 @@ fn sema_boundary_core_tree_has_no_product_backends() {
     let crate_names: Vec<String> = tree
         .lines()
         .map(|l| l.split(" (").next().unwrap_or("").to_string())
-        .map(|l| l.trim().trim_start_matches(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_')).to_string())
+        .map(|l| {
+            l.trim()
+                .trim_start_matches(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
+                .to_string()
+        })
         .map(|l| l.split_whitespace().next().unwrap_or("").to_string())
         .collect();
     assert!(
@@ -56,7 +66,9 @@ fn sema_boundary_core_tree_has_no_product_backends() {
         "auto-cache",
     ] {
         assert!(
-            !crate_names.iter().any(|n| n == forbidden || n.starts_with(&format!("{forbidden}-"))),
+            !crate_names
+                .iter()
+                .any(|n| n == forbidden || n.starts_with(&format!("{forbidden}-"))),
             "ac-sema-core default tree must not contain `{forbidden}`:\n{tree}"
         );
     }
@@ -64,7 +76,14 @@ fn sema_boundary_core_tree_has_no_product_backends() {
     assert!(tree.contains("ac-sema-contract"));
     // the contract crate itself only hashes
     let contract = Command::new("cargo")
-        .args(["tree", "-p", "ac-sema-contract", "-e", "normal", "--offline"])
+        .args([
+            "tree",
+            "-p",
+            "ac-sema-contract",
+            "-e",
+            "normal",
+            "--offline",
+        ])
         .current_dir(workspace_root())
         .output()
         .expect("cargo tree runs");
@@ -72,11 +91,16 @@ fn sema_boundary_core_tree_has_no_product_backends() {
     let ct_names: Vec<String> = ct
         .lines()
         .map(|l| l.split(" (").next().unwrap_or("").to_string())
-        .map(|l| l.trim().trim_start_matches(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_')).to_string())
+        .map(|l| {
+            l.trim()
+                .trim_start_matches(|c: char| !(c.is_alphanumeric() || c == '-' || c == '_'))
+                .to_string()
+        })
         .map(|l| l.split_whitespace().next().unwrap_or("").to_string())
         .collect();
     assert!(
-        ct_names.iter().any(|n| n == "blake3") && !ct_names.iter().any(|n| n.starts_with("auto-lang")),
+        ct_names.iter().any(|n| n == "blake3")
+            && !ct_names.iter().any(|n| n.starts_with("auto-lang")),
         "contract tree names: {ct_names:?}"
     );
 }
@@ -175,9 +199,18 @@ fn sema_boundary_frozen_versions_have_provenance() {
             "{constant} = `{value}` must appear in contract-decision.md"
         );
     }
-    assert!(doc.contains(ac_sema_core::query::INFER_ALGO_ID), "algo id documented");
-    assert!(doc.contains(ac_sema_core::reflect::CT_SEAM_SCHEMA), "ct seam schema documented");
-    assert!(doc.contains(ac_sema_probe::SEMA_LAYER), "store layer documented");
+    assert!(
+        doc.contains(ac_sema_core::query::INFER_ALGO_ID),
+        "algo id documented"
+    );
+    assert!(
+        doc.contains(ac_sema_core::reflect::CT_SEAM_SCHEMA),
+        "ct seam schema documented"
+    );
+    assert!(
+        doc.contains(ac_sema_probe::SEMA_LAYER),
+        "store layer documented"
+    );
     assert!(doc.contains("SnapshotRecord"), "carrier kind documented");
     // code constants are the single mint: the layer name never claims
     // an A-layer registration
@@ -193,16 +226,39 @@ fn sema_boundary_797_description_surface_frozen() {
     // every variant must be handled here — adding one without updating
     // the frozen set fails to compile
     let count = |t: &ac_sema_contract::TypeDesc| match t {
-        Unit | I32 | U32 | I64 | U64 | F64 | Bool | Char | ByteBuffer | Opaque { .. }
-        | Fn { .. } | Record { .. } | Mode { .. } => 13usize,
+        Unit
+        | I32
+        | U32
+        | I64
+        | U64
+        | F64
+        | Bool
+        | Char
+        | ByteBuffer
+        | Opaque { .. }
+        | Fn { .. }
+        | Record { .. }
+        | Mode { .. } => 13usize,
     };
     assert_eq!(count(&ac_sema_contract::TypeDesc::I32), 13);
     let doc = std::fs::read_to_string(
         repo_root().join("docs/plans/attachments/796/contract-decision.md"),
     )
     .unwrap();
-    for token in ["U32", "U64", "F64", "ByteBuffer", "Opaque", "view|mut|owned", "间接", "ac796/ct-seam/v1"] {
-        assert!(doc.contains(token), "D6 documents `{token}` for the 797 surface");
+    for token in [
+        "U32",
+        "U64",
+        "F64",
+        "ByteBuffer",
+        "Opaque",
+        "view|mut|owned",
+        "间接",
+        "ac796/ct-seam/v1",
+    ] {
+        assert!(
+            doc.contains(token),
+            "D6 documents `{token}` for the 797 surface"
+        );
     }
     // modes are the three frozen ones
     assert_eq!(ac_sema_contract::Mode::View.as_str(), "view");
@@ -239,7 +295,11 @@ fn sema_boundary_case_files_executed_status_honest() {
                 "{} must not carry shell/executable payloads",
                 path.display()
             );
-            assert!(text.contains("sema/query-v1"), "{} names the registered recipe", path.display());
+            assert!(
+                text.contains("sema/query-v1"),
+                "{} names the registered recipe",
+                path.display()
+            );
             checked += 1;
         }
     }
@@ -254,8 +314,21 @@ fn sema_boundary_manifest_dependency_audit() {
     let root = workspace_root();
     for (manifest, extra_allowed) in [
         ("contract/Cargo.toml", vec!["blake3"]),
-        ("core/Cargo.toml", vec!["ac-sema-contract", "auto-ac-prototype"]),
-        ("probe/Cargo.toml", vec!["ac-sema-contract", "ac-sema-core", "ac-artifact-probe", "auto-ac-prototype", "serde", "serde_json"]),
+        (
+            "core/Cargo.toml",
+            vec!["ac-sema-contract", "auto-ac-prototype"],
+        ),
+        (
+            "probe/Cargo.toml",
+            vec![
+                "ac-sema-contract",
+                "ac-sema-core",
+                "ac-artifact-probe",
+                "auto-ac-prototype",
+                "serde",
+                "serde_json",
+            ],
+        ),
     ] {
         let text = std::fs::read_to_string(root.join(manifest)).unwrap();
         // dependency scan ignores comment lines — the manifests'
@@ -264,8 +337,10 @@ fn sema_boundary_manifest_dependency_audit() {
             .lines()
             .filter(|l| !l.trim_start().starts_with('#'))
             .collect::<Vec<_>>()
-            .join("
-");
+            .join(
+                "
+",
+            );
         for forbidden in [
             "auto-lang",
             "cranelift",
@@ -286,6 +361,12 @@ fn sema_boundary_manifest_dependency_audit() {
     }
     // the ONLY bridging path to backends is the feature-gated adapter
     let core_manifest = std::fs::read_to_string(root.join("core/Cargo.toml")).unwrap();
-    assert!(core_manifest.contains("optional = true"), "auto-ac-prototype stays optional");
-    assert!(core_manifest.contains("[features]"), "feature table present");
+    assert!(
+        core_manifest.contains("optional = true"),
+        "auto-ac-prototype stays optional"
+    );
+    assert!(
+        core_manifest.contains("[features]"),
+        "feature table present"
+    );
 }

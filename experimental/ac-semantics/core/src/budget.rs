@@ -34,7 +34,10 @@ impl std::fmt::Display for BudgetError {
                 write!(f, "resource: {steps} steps exceeded the {max}-step budget")
             }
             BudgetError::DeadlineExceeded { elapsed_ms, max_ms } => {
-                write!(f, "resource: {elapsed_ms}ms exceeded the {max_ms}ms wall budget")
+                write!(
+                    f,
+                    "resource: {elapsed_ms}ms exceeded the {max_ms}ms wall budget"
+                )
             }
         }
     }
@@ -50,7 +53,12 @@ impl Default for Budget {
 
 impl Budget {
     pub fn new(max_steps: u64, wall: Duration) -> Self {
-        Budget { max_steps, wall, steps: 0, start: Instant::now() }
+        Budget {
+            max_steps,
+            wall,
+            steps: 0,
+            start: Instant::now(),
+        }
     }
 
     /// Charge `n` steps and check both limits. Called from solver loops
@@ -58,7 +66,10 @@ impl Budget {
     pub fn charge(&mut self, n: u64) -> Result<(), BudgetError> {
         self.steps = self.steps.saturating_add(n);
         if self.steps > self.max_steps {
-            return Err(BudgetError::StepsExhausted { steps: self.steps, max: self.max_steps });
+            return Err(BudgetError::StepsExhausted {
+                steps: self.steps,
+                max: self.max_steps,
+            });
         }
         self.check_deadline()
     }

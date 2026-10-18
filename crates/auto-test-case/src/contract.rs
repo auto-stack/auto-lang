@@ -1356,13 +1356,22 @@ fn decode_options(
             ));
         }
         let steps = match f.sub("steps") {
-            None => return Err(err(&f.path_of("steps"), "probe/run requires a non-empty step sequence")),
+            None => {
+                return Err(err(
+                    &f.path_of("steps"),
+                    "probe/run requires a non-empty step sequence",
+                ))
+            }
             Some(v) => {
                 let list = as_list(v, &f.path_of("steps"))?;
                 if list.is_empty() || list.len() > PROBE_MAX_STEPS {
                     return Err(err(
                         &f.path_of("steps"),
-                        format!("probe step sequence must be 1..={} steps, got {}", PROBE_MAX_STEPS, list.len()),
+                        format!(
+                            "probe step sequence must be 1..={} steps, got {}",
+                            PROBE_MAX_STEPS,
+                            list.len()
+                        ),
                     ));
                 }
                 let mut out = Vec::new();
@@ -1383,7 +1392,10 @@ fn decode_options(
                                 ));
                             }
                             if from.len() > 64 * 1024 || to.len() > 64 * 1024 {
-                                return Err(err(&sf.path_of("to"), "edit-source literals exceed the 64KiB step cap"));
+                                return Err(err(
+                                    &sf.path_of("to"),
+                                    "edit-source literals exceed the 64KiB step cap",
+                                ));
                             }
                             ProbeStep::EditSource { from, to }
                         }
@@ -1391,7 +1403,10 @@ fn decode_options(
                         other => {
                             return Err(err(
                                 &sf.path_of("op"),
-                                format!("unknown probe op {:?} (supported: query, edit-source, restart)", other),
+                                format!(
+                                "unknown probe op {:?} (supported: query, edit-source, restart)",
+                                other
+                            ),
                             ))
                         }
                     };
@@ -1401,7 +1416,12 @@ fn decode_options(
             }
         };
         let sema = match f.sub("sema") {
-            None => return Err(err(&f.path_of("sema"), "sema/query-v1 requires a sema binding")),
+            None => {
+                return Err(err(
+                    &f.path_of("sema"),
+                    "sema/query-v1 requires a sema binding",
+                ))
+            }
             Some(v) => {
                 let spath = f.path_of("sema");
                 let pairs = as_obj(v, &spath)?;
@@ -1468,7 +1488,10 @@ pub enum ProbeStep {
     /// Run the recipe's full query flow (lookup → miss? compute → publish)
     /// and report the structured result for parent-side judging.
     Query,
-    EditSource { from: String, to: String },
+    EditSource {
+        from: String,
+        to: String,
+    },
     Restart,
 }
 
@@ -1844,7 +1867,11 @@ fn decode_expect(
                 if list.is_empty() || list.len() > PROBE_MAX_STEPS {
                     return Err(err(
                         &f.path_of("probe"),
-                        format!("probe expectations must be 1..={} entries, got {}", PROBE_MAX_STEPS, list.len()),
+                        format!(
+                            "probe expectations must be 1..={} entries, got {}",
+                            PROBE_MAX_STEPS,
+                            list.len()
+                        ),
                     ));
                 }
                 let mut out = Vec::new();
@@ -1864,7 +1891,8 @@ fn decode_expect(
                         // under an error completion)
                         Some(CVal::Str(c))
                             if ["hit", "miss", "stale", "published", "reprojected", "diags"]
-                                .contains(&c.as_str()) => {
+                                .contains(&c.as_str()) =>
+                        {
                             Some(c.clone())
                         }
                         Some(other) => {
@@ -1883,7 +1911,10 @@ fn decode_expect(
                         Some(other) => {
                             return Err(err(
                                 &pf.path_of("compute_calls"),
-                                format!("compute_calls must be a small non-negative integer, got {}", other.type_name()),
+                                format!(
+                                    "compute_calls must be a small non-negative integer, got {}",
+                                    other.type_name()
+                                ),
                             ))
                         }
                     };
@@ -1916,7 +1947,10 @@ fn decode_expect(
                                     other => {
                                         return Err(err(
                                             &format!("{}.stages_include[{}]", pf.path, j),
-                                            format!("expected non-empty stage name, got {}", other.type_name()),
+                                            format!(
+                                                "expected non-empty stage name, got {}",
+                                                other.type_name()
+                                            ),
                                         ))
                                     }
                                 }
@@ -1924,7 +1958,12 @@ fn decode_expect(
                             out
                         }
                     };
-                    out.push(ProbeStepExpect { cache, compute_calls, bindings_file, stages_include });
+                    out.push(ProbeStepExpect {
+                        cache,
+                        compute_calls,
+                        bindings_file,
+                        stages_include,
+                    });
                 }
                 Some(out)
             }

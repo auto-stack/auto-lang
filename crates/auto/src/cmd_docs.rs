@@ -29,11 +29,11 @@ pub fn run(action: DocsAction) -> Result<()> {
             let mut written: Vec<String> = Vec::new();
             if want("core") {
                 let path = "docs/components/core.md";
-                let text = auto_lang::ui_gen::docs_gen::generate_core_reference(std::path::Path::new("."));
+                let text =
+                    auto_lang::ui_gen::docs_gen::generate_core_reference(std::path::Path::new("."));
                 std::fs::create_dir_all("docs/components")
                     .map_err(|e| miette::miette!("create docs dir: {e}"))?;
-                std::fs::write(path, text)
-                    .map_err(|e| miette::miette!("write {path}: {e}"))?;
+                std::fs::write(path, text).map_err(|e| miette::miette!("write {path}: {e}"))?;
                 written.push(path.to_string());
             }
             if want("kitchen-sink") || want("kitchen_sink") {
@@ -60,9 +60,7 @@ pub fn run(action: DocsAction) -> Result<()> {
                 written.push(path_display);
             }
             if written.is_empty() {
-                return Err(miette::miette!(
-                    "--only 仅支持 core | kitchen-sink"
-                ));
+                return Err(miette::miette!("--only 仅支持 core | kitchen-sink"));
             }
             println!(
                 "wrote {} artifact{} —— 复核 diff;kitchen-sink 变更需重采样 gallery golden",
