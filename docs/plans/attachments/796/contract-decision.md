@@ -165,3 +165,24 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
 - **边界保持**：auto-lang 零静态依赖实验语义栈（worker 经子进程 IPC）；
   ac/syntax 既有语义零改动（plan788_r3_/ac_case_tests 全绿）；共享文件
   （contract.rs/ir.rs/suite.rs/mod.rs）本窗口单写者=796。
+
+## D14 R4 修复轮冻结（2026-10-18）
+
+- **结局模型**（F02）：一次查询恰一 typed 结局（hit/reprojected/published-miss/
+  published-stale/diags/resource/cancelled；runner 侧另 infra）——cache 词永不
+  冒充成功；诊断结局可经 error completion（stage=resolve/typecheck + code）声明
+  并由父侧判定；resource/cancelled/infra=Infrastructure Error 永非语言裁决。
+- **键定律收口**（F05）：InferBody 键含 src-fp（源字节指纹）——一键不容两容；
+  位置漂移不得服务旧位置；freshness 三态（Fresh/ProvenanceStale/Stale）保留
+  ProvenanceStale 分类作纵深（reprojected 流：内容一致性校验后刷新发布）。
+- **生命周期**（F03）：父墙覆盖 spawn→响应→退出→回收；stderr 越限即杀；读上限
+  4MiB+框余；worker 源构建限时 300s+限额；测试接缝 SEMA_TEST_*（env 门控）+
+  父侧 TEST_FAULTS（锁保护，仅测试）。
+- **身份准入**（F04）：子进程退出状态=成功必需；worker/sema-core 版本对镜像
+  常量精确匹配（EXPECTED_WORKER_VERSION 等）；exe 内容 hash 入
+  NativeRecord.toolchain 与 stale 轴（probe 行 sema-worker-exe-sha256/version）。
+- **保活**（F07）：record 页 required-data 边保引用页跨 GC；发布 Kahn 迭代序
+  （深链无栈崩）；环=受控拒绝（组发布 future）。
+- **预算真接线**（F08）：scratch 预留失败=typed resource；record 名有界注册表
+  8192；OS 窗内采样。
+- **验收器**（F11）：每行最小执行计数；V-07 绑库级+IPC 双报告与生成器身份。
