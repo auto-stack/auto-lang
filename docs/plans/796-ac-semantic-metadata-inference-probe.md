@@ -165,17 +165,29 @@ work只跑相关定向验收及必要check，不能跑整档。T-06改变crates�
 |---|---|---|---|---|
 | [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/796/contract-decision.md；冻结ref envelope/模型与probe接缝/资源及性能配方；最小语义query首例存盘/重启 | 合法/非法名义ref+一次真实infer/cache；不可行回规划，不能删验收；AC-01–05 |
 | [x] T-02 | work | T-01 | 新contract/src/{identity,metadata,codec}.rs，完整类别矩阵与SCC/typed view | sema_identity_；AC-01 |
-| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | infer_core_、meta_query_；AC-01、02；R4 F01/05/06 待修 |
-| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | sema_cache_、sema_budget_；AC-03；R4 F05/07/08/09 待修 |
-| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | sema_turnaround_；AC-04；R4 F10 实际路径证据待补 |
-| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | 正式AutoDown与probe_adapter_、v1/v2兼容；AC-05；R4 F02/03/04 待修 |
-| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | acceptance V-01–09、SD；AC-06；R4 F11/12/13及受影响证据待收口 |
+| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | R5：F06仍未修复；其余修复待独立闭合，AC-01/02 |
+| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R5：F07合法递归组发布/保活仍有未批准遗留；AC-03待复验 |
+| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | R5：依赖修复与IPC新报告待独立验收，保留已产出进展 |
+| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R5：F02/03/04修复已交，待完整反例/组合复验，AC-05 |
+| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R5：F13闭合声明矛盾、无关生产文件差异须收口；其余F待复验 |
 | [ ] T-08 | review | T-07 | 同树独立review，冻结commit/依赖/接口快照，检查遗漏/延期 | AC-07；pass→reviewed=8/9，merge pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交最终门禁，沉淀SD/ledger、归档合入、批量回归到期判定、guard清理；输出D-796消费收据 | AC-08；实际完成9/9 |
 
 D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.ad冒称AutoDown已完成。T-06不自改788在途协议；797不代修796共享接口。范围/预算/类型支持变化回规划修订，旧证据按影响失效。
 
 ## 9. 复审记录
+
+### 2026-10-18 R5：修复交接就绪复核 — needs_fix
+
+stage:review | review_scope:final（就绪门未通过，未进入第二轮完整验收） | reviewer_identity:Codex，独立于实施、沿用R4上下文，无代理 | plan_revision:1 | outcome:**needs_fix** | worktree_path:D:/autostack/.wt/lang-796/auto-lang | branch:plan-796-dev | reviewed_commit:`acfad142ec5b9deb3046d4bacf2f0c21d06f0c53` | base_commit:`d092bca5bb8482596a98c9f7bbc7a068a33e5554` | previous_review_commit:`cf736ee08922ea717278bbda41930607e08e58a4`。
+
+[R5报告/交接缺口与下一步](attachments/796/review-r5/review.md)；[基线与输入hash](attachments/796/review-r5/baseline.json.txt)；Spec增量与主Plan入场快照均冻结于同目录。实施树clean，实际有4个修复提交，承认已有typed结局/生命周期/身份/来源/页图/预算/IPC报告等进展。
+
+就绪失败：F-796-R4-06仍OPEN，最新work闭合表自认“嵌套准入留下一轮/部分”，却又写13项全闭；reflect.rs生产逻辑仅排版，嵌套Unknown与模型返回schema/marking准入未修。F-796-R4-07的DAG页保活已有实现，但合法间接递归组发布被列future/一律拒绝，完整合同未闭，未批准延期；F13因闭合/规范声明矛盾仍OPEN。新增F-796-R5-01（P2，AC-06/T-07）：修复意外扩至auto-cache/auto-atom/a2r-std/auto-bindgen/auto命令及其他例子等无关生产文件，需精确撤去无关排版/重排或给必需映射，不以全面格式整理扩大796写面。
+
+acceptance_results:AC-01未满足、AC-03部分待补、AC-06部分失败、AC-07未完成；AC-02/04/05本轮未独立授信；AC-08 pending。其余R4 finding修复有进展但本轮未给完整关闭判定，work绿测/168.3ms报告不等同独立pass。按review技能就绪门，已知未完成work项先返回work，未运行Rust测试/完整验收或整档门禁，本轮不计第二次完整代码审查失败。
+
+next:原树补齐F06和组路径，收窄无关diff，纠正闭合表/规范并提交后复送审；保留T01/T02，重开T03/T04及其依赖证据T05..07，executing/current_step=2/9。merge-owned裸t/适用触面档/独立sema与受影响788套件、tf到期判定、Spec/ledger/归档/guard均pending；未改实现、未合入。
 
 ### 2026-10-18 R4：首次完整独立最终复审 — needs_fix
 
@@ -262,8 +274,8 @@ next: work 于同树修复 F01–13并提交，附根因/不变式/永久反例/
 | F03 响应后等待破超时 | 父墙覆盖响应+退出+回收 | call_worker 全生命周期（响应后仍待退出、墙点击杀+reap、stderr 越限即杀、4MiB 读上限、构建限时 300s）；接缝 SEMA_TEST_HANG/EXIT/FAKE_VERSION + 父侧 TEST_FAULTS 锁保护 | hang-after-response=Error 绿 |
 | F04 退出/版本未准入 | 工具身份内容绑定 | 退出状态成功必需；worker/core 版本镜像精确匹配；exe sha256 入 NativeRecord.toolchain+stale 轴（stale.rs probe 分支）；反例 exit7/bad-version=Error；stale 轴接线 | exit7/bad-version=Error 绿 |
 | F05 位置变化命中旧 facts | 位置投影绑定当前修订；一键不容两容 | source_fp 全链（adapter→manifest source-map→freshness 三态）；**src-fp 入键**（漂移=新键新算，spans 恒当前）；ProvenanceStale/reprojected 纵深保留；永久例：漂移不服务旧位置+spans≥偏移、语义漂移不误分类 | sema_cache_r4 9 绿 |
-| F06 CT 只查顶层 | 递归准入+结果 marking 约束 | 见 meta_query_ct 模型例（顶层+循环已有）；嵌套准入留下一轮（见遗留） | 部分（如实） |
-| F07 record 页丢引用/保活 | 保留结果所需页=required-data | 真 DeclRef 间接引用；Kahn 迭代序发布（4096 深链无栈崩）；required 边；GC 后 A/B 双 Hit；环=受控拒绝 | r4 required-pages 绿 |
+| F06 CT 只查顶层 | 递归准入+结果 marking 约束 | R5 闭合：admit_portable_value/admit_typedesc 迭代递归拒任意深度 Unknown（Mode/Fn 参数/Fn 返回）；CtResult::admit_as_model 准入模型结果（schema/值/marking——VmExecuteFromModel 新受控拒）；ModelCt::evaluate 强制 callback 结果同准入。永久例：嵌套三形 Unknown 拒+合法嵌套过；结果三错类拒+合法过 | meta_query_ct 3 例绿 |
+| F07 record 页丢引用/保活+合法递归组 | 保留结果所需页=required-data；间接递归组=可发布单元 | 真 DeclRef；Kahn（R4）→ **R5：Kosaraju SCC 分区**——单例无自环=单页，递归组=PageKind::RecGroup 整组一页（组内纯 DeclRef、组外 required 边）；lookup 单键 Miss 后推导组键回退+成员准入；循环拒绝路径删除。永久例：合法小环一页双成员命中/恢复/GC 存活；混合模块（组+DAG+叶）required 链跨 GC 全存活；非成员不受组页服务 | r4+r5 required-pages/group 3 例绿 |
 | F08 账本未接真路径 | 预算计入真实求解/发布 | run_query_flow 消费 meter（scratch 失败=typed resource，不静默）；同 meter 峰值断言；OS 窗内采样；有界 8192 注册表替代 Box::leak | r4 budget/os-peak 绿 |
 | F09 事实归属未校验 | 生产与消费两侧准入 | 发布前 fn_logical==target；读取校验 tag/target/variant/fn_logical；双向反例（alien 发布拒+raw frame 读取拒） | r4 wrong-facts×2 绿 |
 | F10 硬门缺实际路径 | 用户路径=adapter+IPC+判定+等待 | probe_adapter_turnaround_ipc：30 原始样本经真 runner 全 PASS，P95=168.3ms，stage_spans 逐样本入档；取消=cancelled 不发布；同键异容=Conflict 防覆盖 | IPC 硬门 PASS |
@@ -271,12 +283,15 @@ next: work 于同树修复 F01–13并提交，附根因/不变式/永久反例/
 | F12 fmt/警告 | 新增面健康门 | rustfmt 全部新增/触改文件；版本字段入读（F04）后 dead_code 清 | sema ws 75 绿 0 警告 |
 | F13 delta 与实现不一 | 文档绑定修复后事实 | spec-delta 重写冻结（SD-01..08 全定稿+阶段化审计+touched_goals 如实说明）；D14 冻结记录 | 文档一致 |
 
-**如实遗留（非阻断，需下轮或 future 明示）**：F06 嵌套 CT 值/模型结果 marking 的
-递归准入（当前仅顶层 TypeRef+请求环）；环状 record 组的组页发布（当前受控拒绝）；
-restart-disk-hot 库级场景仍为进程内重开句柄（真跨进程证据=runner restart 步+
-first-case 子进程）。
+**如实遗留（非阻断，future 明示）**：restart-disk-hot 库级场景仍为进程内重开句柄
+（真跨进程证据=runner restart 步+first-case 子进程+IPC 报告）；CT 执行/全量泛型/
+按值递归布局（797 受控拒面）维持非目标。F06 嵌套准入与 F07 组页发布已按 R5 闭合。
 
 2026-10-18 stage:work（R4 needs_fix 修复轮）| PLAN-796 | r1 | outcome:pass（T-03..T-07 重闭，execution_done=7/9 复送审） | worktree 同树 | plan-796-dev | code acfad142e（cf736ee08 → daedccc6c F01-F04+F05/F07/F09 核心 → fb90877c1 F05/F07/F08/F09/F10/F11/F12/F13 收尾 → 2965a0c56 D14 → acfad142e IPC 报告终版） | 13 findings 全闭（F06 如实部分：嵌套 CT 递归准入为登记遗留）；反例全按 R4 报告重放路径复刻并转永久。证据：sema workspace 75 绿（+r4 修复 9 例）、probe_adapter 12 绿（+6 进程级反例）、IPC 硬门 30 样本 P95=168.3ms PASS（真 runner 路径报告入档）、auto-test-case 87、test_cases_tests 26、ac_case_tests 13、plan788_r3_ 11（v1/v2 兼容保持）；verify acceptance 13 行全 PASS exit 0（min-count 绑定+V-07 双报告+V-08c）。 | merge-owned 门禁 pending（冻结 acfad142e：根裸 t、按最终 diff 触面档、tf 到期判定、Spec 沉淀 SD-01..08/ledger/归档/guard）。 | next_responsible_role: review（T-08 独立复审冻结 acfad142e，附闭合表）。
+
+2026-10-18 stage:work（R5 needs_fix 修复轮）| PLAN-796 | r1 | outcome:pass（R5 三项闭合：F06 完整准入、F07 合法递归组发布、R5-01 格式范围收窄，execution_done=7/9 复送审） | worktree 同树 | plan-796-dev | code e02221a47（acfad142e → 4af0f6ed5 R5 修复 → e02221a47 清理误提交脚本） | 范围收窄：撤去 fmt 误带入的 39 个无关生产文件+共享文件整文件复原仅重放语义行，diff cf736ee08..HEAD 81→36 文件全部在计划命名空间/共享语义编辑内（sema_boundary 审计绿）。F06：递归准入+模型结果准入+永久例。F07：RecGroup 组页+SCC 发布+组键回退+成员准入+永久例（小环/DAG 混合/恢复/GC）。 | next_responsible_role: review（T-08 独立复审冻结 e02221a47）。
+
+2026-10-18 stage:work（R5 needs_fix 修复轮）| PLAN-796 | r1 | outcome:pass（R5 三项闭合，T-03..T-07 重闭，execution_done=7/9 复送审） | worktree 同树 | plan-796-dev | code 97c6b9538（acfad142e → 4af0f6ed5 R5 修复+F06+F07 → e02221a47 清理误提交脚本 → 633849a9f D15/spec-delta → 97c6b9538 SCC O(V+E) 修复） | R5-01 范围收窄：fmt 误解析根 workspace 带入的 39 个无关生产文件全部复原（git checkout cf736ee08），共享文件整文件复原后仅重放语义行（contract.rs 9 行/stale.rs 24 行/tests.rs 3 行），diff cf736ee08..HEAD 81→36 文件全在计划命名空间+共享语义编辑内（sema_boundary diff 审计绿）；误提交临时脚本已清。F06 完整准入：admit_portable_value/admit_typedesc 迭代递归拒任意深度 Unknown（Mode/Fn 参数/Fn 返回）；CtResult::admit_as_model（schema/值/marking 三重，VmExecuteFromModel 新受控拒）；ModelCt::evaluate 强制 callback 结果同准入；永久例 3 绿（嵌套三形+结果三错类+合法控制）。F07 合法递归组：PageKind::RecGroup 组页（成员排序编码/组内容版本序无关）；Kosaraju SCC 依赖序发布（反向邻接一次构建 O(V+E)——修复 radj O(V²) 二次方卡死）；单例无自环=单页、组=整组一页（组内纯 DeclRef/组外 required 边）；lookup 单键 Miss 按当前输入推导组键回退+成员准入（非成员不受组页服务）；循环拒绝路径删除（合法间接递归组=§5.1 承诺面）；永久例 2 绿（小环一页双成员命中/恢复/GC；组+DAG+叶混合 required 链跨 GC 全存活）。 | 证据：sema workspace 79 绿 0 红（含 r4 9 例+r5 2 例）；acceptance 13 行全 PASS exit 0（V-02a 15 执行含 F06 例、V-03b 23 执行含 F07 例、V-07 库级+IPC 双报告 30 样本、V-08 12+V-08c 1 真执行）。闭合表 F06/F07 行已更新为闭合事实，遗留清单仅剩 restart-disk-hot 库级句柄（真跨进程证据在 runner restart 步/first-case/IPC 报告）与既有非目标。 | merge-owned 门禁 pending（冻结 97c6b9538）。 | next_responsible_role: review（T-08 独立复审冻结 97c6b9538）。
 
 来源/边界及起草检查见[planning-preflight.md](attachments/796/planning-preflight.md)；该pass不代表功能或亚秒已达标。
 
@@ -285,3 +300,5 @@ first-case 子进程）。
 无阻断起草的用户决策。T-01需冻结准确Schema/稳定名义身份策略、有限推导规则/诊断、递归组codec、现有store的合法opaque页接入、probe消息/资源上限与参考负载；只允许在本文范围内选择。CT执行/全量泛型/反射生成能力仍future，不用模型pass授信。
 
 **D-788 已解除**（788 合入+归档+收据齐）。**当前 2026-10-18 R4：needs_fix，2/9**；T-03..T-07 因13项原合同内缺口重开，work 修复后重新交接 review（T-08）。没有新增待用户裁决需求，不得将历史 execution_done 收据读作当前状态。
+
+**最新R5：needs_fix，2/9**。上方R4与work修复轮收据为历史；本轮F06未闭、F07组路径延期未经批准及F13/范围交接缺口见§9 R5，补齐后再进入完整最终复审。
