@@ -32,7 +32,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use libloading::Library;
 
-use crate::types::{decode_style_color, TerminalCell, TerminalSnapshot, PALETTE_SLOTS};
+use crate::types::{
+    decode_style_color, TerminalCell, TerminalRetiredCache, TerminalSnapshot, PALETTE_SLOTS,
+};
 
 type SpawnFn = unsafe extern "C" fn(c_int, c_int, *const c_char) -> *mut c_void;
 type SpawnExFn = unsafe extern "C" fn(
@@ -715,6 +717,23 @@ impl EngineService {
     /// Update cached viewport geometry (used by apply_resize paths).
     pub fn set_viewport(&self, handle: i64, cols: i64, rows: i64) {
         self.viewports.lock().unwrap().insert(handle, (cols, rows));
+    }
+
+    /// Cursor/viewport cache for a live **or retired** handle. Retired
+    /// entries are the legacy post-free observable values; they never touch
+    /// the DLL. `None` = this service never saw the handle.
+    pub fn cached_cursor_viewport(&self, handle: i64) -> Option<TerminalRetiredCache> {
+        let cursors = self.cursors.lock().unwrap();
+        let viewports = self.viewports.lock().unwrap();
+        match (cursors.get(&handle), viewports.get(&handle)) {
+            (None, None) => None,
+            (cursor, viewport) => Some(TerminalRetiredCache {
+                cursor_row: cursor.map(|(row, _)| *row).unwrap_or(0),
+                cursor_col: cursor.map(|(_, col)| *col).unwrap_or(0),
+                viewport_cols: viewport.map(|(cols, _)| *cols).unwrap_or(0),
+                viewport_rows: viewport.map(|(_, rows)| *rows).unwrap_or(0),
+            }),
+        }
     }
 
     fn pending_bytes(&self, handle: i64) -> i32 {

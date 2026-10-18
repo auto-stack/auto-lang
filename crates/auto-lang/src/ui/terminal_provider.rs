@@ -20,7 +20,8 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 
 use auto_terminal_core::{
-    EngineService, TerminalHostProvider, MAX_RESIZE_COLS, MAX_RESIZE_ROWS, MIN_RESIZE_COLS,
+    EngineService, TerminalHostProvider, TerminalRetiredCache, MAX_RESIZE_COLS, MAX_RESIZE_ROWS,
+    MIN_RESIZE_COLS,
 };
 
 use crate::ui::terminal::{
@@ -406,6 +407,10 @@ impl TerminalHostProvider for TerminalUiProvider {
 
     fn live_handle_count(&self) -> usize {
         self.service.live_handle_count()
+    }
+
+    fn cached_cursor_viewport(&self, handle: i64) -> Option<TerminalRetiredCache> {
+        self.service.cached_cursor_viewport(handle)
     }
 }
 

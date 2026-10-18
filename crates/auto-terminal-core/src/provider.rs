@@ -13,6 +13,7 @@
 use std::sync::Arc;
 
 use crate::engine::{shared, EngineService};
+use crate::types::TerminalRetiredCache;
 
 /// Terminal capability port (34 methods ↔ 34 `auto.term.*` natives).
 ///
@@ -110,6 +111,14 @@ pub trait TerminalHostProvider: Send + Sync {
     /// isolated service can Drop and free its sessions, F808-R1-04).
     fn live_handle_count(&self) -> usize {
         0
+    }
+
+    /// Cached cursor/viewport for a live **or retired** handle. The cache
+    /// shims fall back to this after free so the legacy post-free values
+    /// survive provider replacement/owner pruning (R2-F02). `None` = this
+    /// provider never saw the handle.
+    fn cached_cursor_viewport(&self, _handle: i64) -> Option<TerminalRetiredCache> {
+        None
     }
 }
 
@@ -257,6 +266,10 @@ impl TerminalHostProvider for EngineService {
 
     fn live_handle_count(&self) -> usize {
         EngineService::live_handle_count(self)
+    }
+
+    fn cached_cursor_viewport(&self, handle: i64) -> Option<TerminalRetiredCache> {
+        EngineService::cached_cursor_viewport(self, handle)
     }
 }
 

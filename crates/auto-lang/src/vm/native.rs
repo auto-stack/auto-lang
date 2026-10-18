@@ -179,6 +179,17 @@ pub struct NativeInterface {
     /// Pruned when a replaced owner has no live sessions (R1-F04).
     terminal_owners:
         std::sync::RwLock<Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>>>,
+    /// Generation bumped on every owner-list mutation. Owner queries snapshot
+    /// the list and query providers **outside** the lock; a concurrent
+    /// set/prune is detected by the generation and retried so a live owner is
+    /// never lost (R2-F01).
+    terminal_owners_gen: std::sync::atomic::AtomicU64,
+    /// Per-VM retired handle cache (cursor/viewport) captured when a handle
+    /// is freed through the shims. It preserves the frozen post-free values
+    /// without keeping the original service alive or touching a freed DLL
+    /// pointer (R2-F02).
+    terminal_retired:
+        std::sync::Mutex<std::collections::HashMap<i64, auto_terminal_core::TerminalRetiredCache>>,
 }
 
 impl Clone for NativeInterface {
@@ -265,6 +276,16 @@ impl Clone for NativeInterface {
                     .expect("terminal_owners poisoned")
                     .clone(),
             ),
+            terminal_owners_gen: std::sync::atomic::AtomicU64::new(
+                self.terminal_owners_gen
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            terminal_retired: std::sync::Mutex::new(
+                self.terminal_retired
+                    .lock()
+                    .expect("terminal_retired poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -290,6 +311,8 @@ impl NativeInterface {
             editor_snapshot_provider: std::sync::RwLock::new(None),
             terminal_provider: std::sync::RwLock::new(None),
             terminal_owners: std::sync::RwLock::new(Vec::new()),
+            terminal_owners_gen: std::sync::atomic::AtomicU64::new(0),
+            terminal_retired: std::sync::Mutex::new(std::collections::HashMap::new()),
         }
     }
 
@@ -473,21 +496,28 @@ impl NativeInterface {
     /// PLAN-808: 注入/替换本接口（=本 VM）的 terminal provider。
     /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
     /// The provider is also remembered in `terminal_owners`: handles already
-    /// exposed by it stay bound to it after later replacements.
+    /// exposed by it stay bound to it after later replacements. The old slot
+    /// value is dropped **outside** the write lock (R2-F01: its Drop may
+    /// reenter the interface).
     pub fn set_terminal_provider(
         &self,
         provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
     ) {
-        *self
-            .terminal_provider
-            .write()
-            .expect("terminal_provider poisoned") = Some(provider.clone());
+        let old = {
+            let mut slot = self
+                .terminal_provider
+                .write()
+                .expect("terminal_provider poisoned");
+            std::mem::replace(&mut *slot, Some(provider.clone()))
+        };
+        drop(old);
         self.remember_terminal_owner(provider);
     }
 
     /// Remember a provider for handle-owner routing (deduplicated by Arc
     /// identity). Called by `set_terminal_provider` and by the spawn shims
-    /// for the fallback shared provider.
+    /// for the fallback shared provider. No provider callback runs under the
+    /// owners lock (R2-F01).
     pub fn remember_terminal_owner(
         &self,
         provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
@@ -496,40 +526,156 @@ impl NativeInterface {
             .terminal_owners
             .write()
             .expect("terminal_owners poisoned");
-        if !owners
+        if owners
             .iter()
             .any(|existing| std::sync::Arc::ptr_eq(existing, &provider))
         {
+            // Dropping the duplicate clone can only release an Arc that the
+            // list still owns; release the lock first anyway.
+            drop(owners);
+            drop(provider);
+        } else {
             owners.push(provider);
+            self.terminal_owners_gen
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
     /// Find the provider that owns `handle` (most recently installed first).
     /// Returns `None` when no remembered provider owns it — callers then use
     /// the current provider / shared fallback.
+    ///
+    /// The provider list is snapshotted under the read lock and queried
+    /// outside it; the generation retry prevents a concurrent set/prune from
+    /// hiding a live owner (R2-F01).
     pub fn terminal_owner_for(
         &self,
         handle: i64,
     ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
-        self.terminal_owners
-            .read()
-            .expect("terminal_owners poisoned")
-            .iter()
-            .rev()
-            .find(|provider| provider.owns_handle(handle))
-            .cloned()
+        use std::sync::atomic::Ordering;
+        for _ in 0..3 {
+            let generation = self.terminal_owners_gen.load(Ordering::Relaxed);
+            let snapshot: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = self
+                .terminal_owners
+                .read()
+                .expect("terminal_owners poisoned")
+                .clone();
+            if let Some(owner) = snapshot
+                .iter()
+                .rev()
+                .find(|provider| provider.owns_handle(handle))
+                .cloned()
+            {
+                return Some(owner);
+            }
+            if self.terminal_owners_gen.load(Ordering::Relaxed) == generation {
+                return None;
+            }
+        }
+        None
+    }
+
+    /// Find a remembered provider that still has the *retired* cache for
+    /// `handle` (after free). Used only by the cursor/viewport cache shims;
+    /// live operations continue to use [`terminal_owner_for`] (R2-F02).
+    pub fn terminal_cache_owner_for(
+        &self,
+        handle: i64,
+    ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
+        use std::sync::atomic::Ordering;
+        for _ in 0..3 {
+            let generation = self.terminal_owners_gen.load(Ordering::Relaxed);
+            let snapshot: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = self
+                .terminal_owners
+                .read()
+                .expect("terminal_owners poisoned")
+                .clone();
+            if let Some(owner) = snapshot
+                .iter()
+                .rev()
+                .find(|provider| provider.cached_cursor_viewport(handle).is_some())
+                .cloned()
+            {
+                return Some(owner);
+            }
+            if self.terminal_owners_gen.load(Ordering::Relaxed) == generation {
+                return None;
+            }
+        }
+        None
     }
 
     /// Drop remembered owners with no live sessions. The current slot is not
     /// touched (it stays installed even at zero sessions). This lets a
     /// replaced isolated service Drop and free any remaining sessions
     /// (F808-R1-04) without losing owners that still have handles.
+    ///
+    /// Provider methods and removed-provider destructors run **outside** the
+    /// owners lock, and concurrent additions are merged back (R2-F01).
     pub fn prune_terminal_owners(&self) {
-        let mut owners = self
-            .terminal_owners
-            .write()
-            .expect("terminal_owners poisoned");
-        owners.retain(|provider| provider.live_handle_count() > 0);
+        let old = {
+            let mut owners = self
+                .terminal_owners
+                .write()
+                .expect("terminal_owners poisoned");
+            std::mem::take(&mut *owners)
+        };
+        let mut kept = Vec::new();
+        let mut removed = Vec::new();
+        for provider in old {
+            if provider.live_handle_count() > 0 {
+                kept.push(provider);
+            } else {
+                removed.push(provider);
+            }
+        }
+        {
+            let mut owners = self
+                .terminal_owners
+                .write()
+                .expect("terminal_owners poisoned");
+            // Concurrent set/remember additions landed in the emptied list;
+            // merge them first (most recent first).
+            let mut merged = std::mem::take(&mut *owners);
+            for provider in kept {
+                if !merged
+                    .iter()
+                    .any(|existing| std::sync::Arc::ptr_eq(existing, &provider))
+                {
+                    merged.push(provider);
+                }
+            }
+            *owners = merged;
+            self.terminal_owners_gen
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+        drop(removed); // outside the lock: Drop may reenter
+    }
+
+    /// Remember the frozen cursor/viewport cache of a handle freed through
+    /// the shims. A copy survives provider replacement and owner pruning
+    /// without keeping the old service alive (R2-F02).
+    pub fn remember_terminal_retired_cache(
+        &self,
+        handle: i64,
+        cache: auto_terminal_core::TerminalRetiredCache,
+    ) {
+        self.terminal_retired
+            .lock()
+            .expect("terminal_retired poisoned")
+            .insert(handle, cache);
+    }
+
+    /// Retired cache for a freed handle (None = never observed freed here).
+    pub fn terminal_retired_cache(
+        &self,
+        handle: i64,
+    ) -> Option<auto_terminal_core::TerminalRetiredCache> {
+        self.terminal_retired
+            .lock()
+            .expect("terminal_retired poisoned")
+            .get(&handle)
+            .copied()
     }
 
     /// PLAN-808: 当前 terminal provider（None → shim 回落进程共享 engine

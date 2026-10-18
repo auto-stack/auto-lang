@@ -1002,8 +1002,8 @@ mod plan808_real_dll {
         assert_ne!(ha, 0);
         assert_ne!(hb, 0);
         assert_ne!(ha, hb, "handle namespace must be process-globally unique");
-        let mut reaper_a = Reaper::new(&svc_a, vec![ha]);
-        let mut reaper_b = Reaper::new(&svc_b, vec![hb]);
+        let reaper_a = Reaper::new(&svc_a, vec![ha]);
+        let reaper_b = Reaper::new(&svc_b, vec![hb]);
         assert!(wait_marker(&svc_a, ha, "PLAN808_OWNER_A")
             .iter()
             .any(|l| l.contains("PLAN808_OWNER_A")));
@@ -1073,6 +1073,92 @@ mod plan808_real_dll {
         assert!(rows_s.iter().any(|l| l.contains("PLAN808_OWNER_SHARED")));
         shim_free(&bare, hs);
         assert!(!shared.owns_handle(hs));
+    }
+
+    fn vm_cache(which: &str, vm: &AutoVM, handle: i64) -> i32 {
+        let mut task = AutoTask::new(0, 1024, 0);
+        task.ram.push_nv(auto_val::encode_i32(handle as i32));
+        match which {
+            "cursor_row" => crate::vm::ffi::term_engine::shim_term_cursor_row(&mut task, vm),
+            "cursor_col" => crate::vm::ffi::term_engine::shim_term_cursor_col(&mut task, vm),
+            "viewport_cols" => crate::vm::ffi::term_engine::shim_term_viewport_cols(&mut task, vm),
+            "viewport_rows" => crate::vm::ffi::term_engine::shim_term_viewport_rows(&mut task, vm),
+            _ => unreachable!(),
+        }
+        .unwrap();
+        task.ram.pop_i32()
+    }
+
+    /// F808-R2-02 permanent regression: the frozen cursor/viewport cache of a
+    /// freed handle survives provider replacement and owner pruning. Both
+    /// orders (free→switch and switch→free) and the retired/unknown/repeat
+    /// free controls are covered; the cached values are copied into the VM,
+    /// so the old service need not stay alive.
+    #[test]
+    fn freed_handle_cache_survives_provider_switch() {
+        let Some(path) = dll_path() else { return };
+        let svc_a = service_with_dll(&path);
+        let svc_b = Arc::new(EngineService::without_dll());
+        let vm = AutoVM::new(VirtualFlash::new(0), 1024);
+
+        // Order 1: free while A is still current, then switch to B.
+        let h1 = svc_a.spawn_ex("cmd.exe", &["/C".into(), "exit 0".into()], "", 80, 24);
+        assert_ne!(h1, 0);
+        let reaper = Reaper::new(&svc_a, vec![h1]);
+        vm.set_terminal_provider(svc_a.clone());
+        assert_eq!(vm_cache("viewport_cols", &vm, h1), 80);
+        assert_eq!(vm_cache("viewport_rows", &vm, h1), 24);
+        shim_free(&vm, h1);
+        vm.set_terminal_provider(svc_b.clone());
+        assert_eq!(
+            vm_cache("viewport_cols", &vm, h1),
+            80,
+            "free→switch must keep the frozen viewport"
+        );
+        assert_eq!(vm_cache("viewport_rows", &vm, h1), 24);
+        assert_eq!(vm_cache("cursor_row", &vm, h1), 0);
+        assert_eq!(vm_cache("cursor_col", &vm, h1), 0);
+        shim_free(&vm, h1); // repeat free is a no-op
+        assert_eq!(vm_cache("viewport_cols", &vm, h1), 80);
+
+        // Order 2: switch to B first, then free the old handle; capture a
+        // non-zero cursor from a live feed before free.
+        let h2 = svc_a.spawn_ex(
+            "cmd.exe",
+            &["/K".into(), "echo PLAN808_CACHE".into()],
+            "D:/autostack/auto-lang",
+            90,
+            30,
+        );
+        assert_ne!(h2, 0);
+        let reaper2 = Reaper::new(&svc_a, vec![h2]);
+        vm.set_terminal_provider(svc_a.clone());
+        assert!(wait_marker(&svc_a, h2, "PLAN808_CACHE")
+            .iter()
+            .any(|l| l.contains("PLAN808_CACHE")));
+        let expected_cursor = svc_a.cursor(h2);
+        assert_eq!(vm_cache("viewport_cols", &vm, h2), 90);
+        assert_eq!(vm_cache("viewport_rows", &vm, h2), 30);
+        vm.set_terminal_provider(svc_b.clone());
+        shim_free(&vm, h2); // resolves owner A, captures 90×30 + cursor
+        assert_eq!(
+            vm_cache("viewport_cols", &vm, h2),
+            90,
+            "switch→free must keep the frozen viewport"
+        );
+        assert_eq!(vm_cache("viewport_rows", &vm, h2), 30);
+        assert_eq!(vm_cache("cursor_row", &vm, h2), expected_cursor.0 as i32);
+        assert_eq!(vm_cache("cursor_col", &vm, h2), expected_cursor.1 as i32);
+
+        // Unknown handle keeps the legacy 0×0 absent values.
+        let unknown = i32::MAX - 7;
+        assert_eq!(vm_cache("viewport_cols", &vm, unknown as i64), 0);
+        assert_eq!(vm_cache("viewport_rows", &vm, unknown as i64), 0);
+        assert_eq!(vm_cache("cursor_row", &vm, unknown as i64), 0);
+        assert_eq!(vm_cache("cursor_col", &vm, unknown as i64), 0);
+
+        reaper.disarm();
+        reaper2.disarm();
     }
 
     /// F808-R1-04 permanent regression: dropping the last reference to an
@@ -1577,5 +1663,297 @@ mod plan808_vm_bridge_assembly {
             Some(provider) => host::set_process_default_terminal_host_provider(provider),
             None => host::clear_process_default_terminal_host_provider(),
         }
+    }
+}
+// ── F808-R2-01: no provider callback/destructor under NI locks ───────────
+
+mod plan808_reentrancy {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{mpsc, Arc, Weak};
+    use std::time::Duration;
+
+    use auto_terminal_core::{EngineService, TerminalHostProvider, TerminalRetiredCache};
+
+    use crate::vm::native::NativeInterface;
+
+    /// Provider whose lifecycle helpers (`owns_handle`, `live_handle_count`)
+    /// and `Drop` reenter the interface. The reentry is disarmed per point so
+    /// each test exercises exactly one callback path.
+    struct Reentrant {
+        ni: Weak<NativeInterface>,
+        mode: &'static str,
+        armed: AtomicBool,
+        live_handle: Option<i64>,
+        inner: EngineService,
+    }
+
+    impl Reentrant {
+        fn new(ni: Weak<NativeInterface>, mode: &'static str, live_handle: Option<i64>) -> Self {
+            Self {
+                ni,
+                mode,
+                armed: AtomicBool::new(true),
+                live_handle,
+                inner: EngineService::without_dll(),
+            }
+        }
+
+        fn callback(&self, point: &str) {
+            if self.mode == point && self.armed.swap(false, Ordering::SeqCst) {
+                if let Some(ni) = self.ni.upgrade() {
+                    if point == "slot-drop" {
+                        ni.terminal_provider();
+                    } else {
+                        ni.remember_terminal_owner(Arc::new(EngineService::without_dll()));
+                    }
+                }
+            }
+        }
+    }
+
+    impl Drop for Reentrant {
+        fn drop(&mut self) {
+            self.callback("drop");
+            self.callback("slot-drop");
+        }
+    }
+
+    impl TerminalHostProvider for Reentrant {
+        fn spawn(&self, cols: i64, rows: i64) -> i32 {
+            TerminalHostProvider::spawn(&self.inner, cols, rows)
+        }
+        fn spawn_ex(&self, program: &str, argv: &[String], cwd: &str, cols: i64, rows: i64) -> i32 {
+            TerminalHostProvider::spawn_ex(&self.inner, program, argv, cwd, cols, rows)
+        }
+        fn write_line(&self, handle: i64, line: &str) {
+            TerminalHostProvider::write_line(&self.inner, handle, line)
+        }
+        fn write_raw(&self, handle: i64, vt: &str) {
+            TerminalHostProvider::write_raw(&self.inner, handle, vt)
+        }
+        fn rows(&self, handle: i64) -> Vec<String> {
+            TerminalHostProvider::rows(&self.inner, handle)
+        }
+        fn rows_for(&self, handle: i64, key: &str) -> Vec<String> {
+            TerminalHostProvider::rows_for(&self.inner, handle, key)
+        }
+        fn resize(&self, handle: i64, cols: i64, rows: i64) {
+            TerminalHostProvider::resize(&self.inner, handle, cols, rows)
+        }
+        fn apply_resize(&self, handle: i64) -> i32 {
+            TerminalHostProvider::apply_resize(&self.inner, handle)
+        }
+        fn apply_resize_for(&self, handle: i64, key: &str) -> i32 {
+            TerminalHostProvider::apply_resize_for(&self.inner, handle, key)
+        }
+        fn pump_input(&self, handle: i64) -> i32 {
+            TerminalHostProvider::pump_input(&self.inner, handle)
+        }
+        fn pump_for(&self, handle: i64, key: &str) -> i32 {
+            TerminalHostProvider::pump_for(&self.inner, handle, key)
+        }
+        fn scroll_pending_for(&self, handle: i64, key: &str) -> i32 {
+            TerminalHostProvider::scroll_pending_for(&self.inner, handle, key)
+        }
+        fn pend_resize_geom(&self, key: &str, geom: &str) -> i32 {
+            TerminalHostProvider::pend_resize_geom(&self.inner, key, geom)
+        }
+        fn menu_take(&self) -> i32 {
+            TerminalHostProvider::menu_take(&self.inner)
+        }
+        fn interrupt(&self, handle: i64) -> i32 {
+            TerminalHostProvider::interrupt(&self.inner, handle)
+        }
+        fn is_exited(&self, handle: i64) -> bool {
+            TerminalHostProvider::is_exited(&self.inner, handle)
+        }
+        fn free(&self, handle: i64) {
+            TerminalHostProvider::free(&self.inner, handle)
+        }
+        fn cursor_row(&self, handle: i64) -> i32 {
+            TerminalHostProvider::cursor_row(&self.inner, handle)
+        }
+        fn cursor_col(&self, handle: i64) -> i32 {
+            TerminalHostProvider::cursor_col(&self.inner, handle)
+        }
+        fn viewport_cols(&self, handle: i64) -> i32 {
+            TerminalHostProvider::viewport_cols(&self.inner, handle)
+        }
+        fn viewport_rows(&self, handle: i64) -> i32 {
+            TerminalHostProvider::viewport_rows(&self.inner, handle)
+        }
+        fn backlog_pending_mb(&self, handle: i64) -> i32 {
+            TerminalHostProvider::backlog_pending_mb(&self.inner, handle)
+        }
+        fn backlog_paused(&self, handle: i64) -> i32 {
+            TerminalHostProvider::backlog_paused(&self.inner, handle)
+        }
+        fn backlog_take_alerts(&self, handle: i64) -> i32 {
+            TerminalHostProvider::backlog_take_alerts(&self.inner, handle)
+        }
+        fn backlog_dropped(&self, handle: i64) -> i32 {
+            TerminalHostProvider::backlog_dropped(&self.inner, handle)
+        }
+        fn history(&self, handle: i64) -> i32 {
+            TerminalHostProvider::history(&self.inner, handle)
+        }
+        fn window_width(&self) -> i32 {
+            TerminalHostProvider::window_width(&self.inner)
+        }
+        fn window_height(&self) -> i32 {
+            TerminalHostProvider::window_height(&self.inner)
+        }
+        fn config_profiles(&self) -> Vec<String> {
+            TerminalHostProvider::config_profiles(&self.inner)
+        }
+        fn config_default_profile(&self) -> String {
+            TerminalHostProvider::config_default_profile(&self.inner)
+        }
+        fn config_profiles_full(&self) -> Vec<String> {
+            TerminalHostProvider::config_profiles_full(&self.inner)
+        }
+        fn config_spawn_program(&self, profile: &str) -> String {
+            TerminalHostProvider::config_spawn_program(&self.inner, profile)
+        }
+        fn config_spawn_argv(&self, profile: &str) -> Vec<String> {
+            TerminalHostProvider::config_spawn_argv(&self.inner, profile)
+        }
+        fn config_spawn_cwd(&self, profile: &str) -> String {
+            TerminalHostProvider::config_spawn_cwd(&self.inner, profile)
+        }
+        fn owns_handle(&self, handle: i64) -> bool {
+            self.callback("owns");
+            self.live_handle == Some(handle)
+        }
+        fn live_handle_count(&self) -> usize {
+            self.callback("count");
+            usize::from(self.live_handle.is_some())
+        }
+        fn cached_cursor_viewport(&self, handle: i64) -> Option<TerminalRetiredCache> {
+            self.inner.cached_cursor_viewport(handle)
+        }
+    }
+
+    fn run_with_timeout<F>(name: &str, f: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        let (tx, rx) = mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            f();
+            let _ = tx.send(());
+        });
+        match rx.recv_timeout(Duration::from_secs(3)) {
+            Ok(()) => holder.join().expect("reentrancy test thread panicked"),
+            Err(_) => panic!("{name}: provider callback/drop reentered under an NI lock"),
+        }
+    }
+
+    #[test]
+    fn owner_query_callback_reenters_without_deadlock() {
+        let ni = Arc::new(NativeInterface::new());
+        let provider = Arc::new(Reentrant::new(Arc::downgrade(&ni), "owns", None));
+        ni.set_terminal_provider(provider);
+        run_with_timeout("owns", move || {
+            assert!(ni.terminal_owner_for(1).is_none());
+        });
+    }
+
+    #[test]
+    fn prune_live_count_callback_reenters_without_deadlock() {
+        let ni = Arc::new(NativeInterface::new());
+        let provider = Arc::new(Reentrant::new(Arc::downgrade(&ni), "count", None));
+        ni.set_terminal_provider(provider);
+        run_with_timeout("count", move || ni.prune_terminal_owners());
+    }
+
+    #[test]
+    fn prune_removed_provider_drop_reenters_without_deadlock() {
+        let ni = Arc::new(NativeInterface::new());
+        let provider = Arc::new(Reentrant::new(Arc::downgrade(&ni), "drop", None));
+        ni.set_terminal_provider(provider);
+        run_with_timeout("drop", move || ni.prune_terminal_owners());
+    }
+
+    #[test]
+    fn slot_replacement_provider_drop_reenters_without_deadlock() {
+        let ni = Arc::new(NativeInterface::new());
+        let provider = Arc::new(Reentrant::new(Arc::downgrade(&ni), "slot-drop", None));
+        ni.set_terminal_provider(provider);
+        run_with_timeout("slot-drop", move || {
+            ni.set_terminal_provider(Arc::new(EngineService::without_dll()));
+        });
+    }
+
+    /// Positive controls: the same callbacks/destructor are harmless when no
+    /// NI lock is held.
+    #[test]
+    fn direct_provider_controls_complete() {
+        run_with_timeout("direct-owns", || {
+            let provider = Reentrant::new(Weak::new(), "owns", None);
+            assert!(!provider.owns_handle(1));
+        });
+        run_with_timeout("direct-count", || {
+            let provider = Reentrant::new(Weak::new(), "count", None);
+            assert_eq!(provider.live_handle_count(), 0);
+        });
+        run_with_timeout("direct-drop", || {
+            let provider = Reentrant::new(Weak::new(), "drop", None);
+            drop(provider);
+        });
+        run_with_timeout("direct-slot-drop", || {
+            let provider = Reentrant::new(Weak::new(), "slot-drop", None);
+            drop(provider);
+        });
+    }
+
+    /// Concurrent set/query/prune must keep a live owner discoverable; the
+    /// generation retry and merge-back are exercised here.
+    #[test]
+    fn concurrent_set_query_prune_keeps_live_owner() {
+        let ni = Arc::new(NativeInterface::new());
+        let live = Arc::new(Reentrant::new(Arc::downgrade(&ni), "none", Some(7)));
+        ni.remember_terminal_owner(live.clone());
+
+        let mut pruners = Vec::new();
+        for _ in 0..2 {
+            let ni = ni.clone();
+            pruners.push(std::thread::spawn(move || {
+                for _ in 0..100 {
+                    ni.prune_terminal_owners();
+                    std::thread::yield_now();
+                }
+            }));
+        }
+        let ni_remember = ni.clone();
+        let live_remember = live.clone();
+        let remember = std::thread::spawn(move || {
+            for _ in 0..100 {
+                ni_remember.remember_terminal_owner(live_remember.clone());
+                std::thread::yield_now();
+            }
+        });
+        let ni_query = ni.clone();
+        let query = std::thread::spawn(move || {
+            let mut found = false;
+            for _ in 0..500 {
+                if ni_query.terminal_owner_for(7).is_some() {
+                    found = true;
+                    break;
+                }
+                std::thread::yield_now();
+            }
+            found
+        });
+
+        for pruner in pruners {
+            pruner.join().unwrap();
+        }
+        remember.join().unwrap();
+        assert!(
+            query.join().unwrap(),
+            "a live owner must not be lost under concurrent set/query/prune"
+        );
+        assert!(ni.terminal_owner_for(7).is_some());
     }
 }

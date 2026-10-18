@@ -78,6 +78,18 @@ pub struct TerminalSnapshot {
     pub display_offset: i32,
 }
 
+/// Frozen cursor/viewport cache of a handle. Captured when a handle is freed
+/// so the UI/VM can keep the legacy post-free observable values after the
+/// original provider is replaced or dropped (R2-F02). This is a value copy:
+/// it never contains a DLL pointer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TerminalRetiredCache {
+    pub cursor_row: i64,
+    pub cursor_col: i64,
+    pub viewport_cols: i64,
+    pub viewport_rows: i64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

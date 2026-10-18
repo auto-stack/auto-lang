@@ -18,7 +18,7 @@
 
 use std::sync::Arc;
 
-use auto_terminal_core::TerminalHostProvider;
+use auto_terminal_core::{TerminalHostProvider, TerminalRetiredCache};
 
 use crate::vm::engine::{AutoVM, VMError};
 use crate::vm::ffi::convert::VMConvertible;
@@ -51,11 +51,53 @@ fn terminal_provider_for(vm: &AutoVM, handle: i64) -> Arc<dyn TerminalHostProvid
 
 /// Release through the original owner, then prune replaced owners with no
 /// live sessions so an isolated service can Drop and free its resources
-/// (F808-R1-04).
+/// (F808-R1-04). The frozen cursor/viewport cache is copied into the VM
+/// before the owner can be pruned/dropped, so post-free reads keep the old
+/// values across provider replacement (R2-F02).
 fn free_terminal_handle(vm: &AutoVM, handle: i64) {
     let owner = terminal_provider_for(vm, handle);
+    if let Some(cache) = owner.cached_cursor_viewport(handle) {
+        vm.native_interface
+            .remember_terminal_retired_cache(handle, cache);
+    }
     owner.free(handle);
     vm.native_interface.prune_terminal_owners();
+}
+
+/// Resolve the frozen cursor/viewport cache for a handle.
+///
+/// Order: per-VM retired copy → live owner → remembered retired owner (direct
+/// free, no shim) → current provider's legacy values. A retired owner's
+/// values are copied into the VM map so a later provider switch/drop cannot
+/// turn them into zero (R2-F02); the copy contains no DLL pointer.
+fn terminal_cache(vm: &AutoVM, handle: i64) -> TerminalRetiredCache {
+    if let Some(cache) = vm.native_interface.terminal_retired_cache(handle) {
+        return cache;
+    }
+    let owner = terminal_provider_for(vm, handle);
+    if owner.owns_handle(handle) {
+        return TerminalRetiredCache {
+            cursor_row: owner.cursor_row(handle) as i64,
+            cursor_col: owner.cursor_col(handle) as i64,
+            viewport_cols: owner.viewport_cols(handle) as i64,
+            viewport_rows: owner.viewport_rows(handle) as i64,
+        };
+    }
+    if let Some(retired) = vm.native_interface.terminal_cache_owner_for(handle) {
+        if let Some(cache) = retired.cached_cursor_viewport(handle) {
+            vm.native_interface
+                .remember_terminal_retired_cache(handle, cache);
+            return cache;
+        }
+    }
+    // Unknown handle: keep the legacy current-provider values (0 for the
+    // engine service; fake providers may expose their own).
+    TerminalRetiredCache {
+        cursor_row: owner.cursor_row(handle) as i64,
+        cursor_col: owner.cursor_col(handle) as i64,
+        viewport_cols: owner.viewport_cols(handle) as i64,
+        viewport_rows: owner.viewport_rows(handle) as i64,
+    }
 }
 
 // ── spawn / input / harvest ──────────────────────────────────────────────
@@ -235,7 +277,7 @@ pub fn shim_term_menu_take(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// 2958 `cursor_row(handle int) -> int`.
 pub fn shim_term_cursor_row(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let row = terminal_provider_for(vm, handle).cursor_row(handle);
+    let row = terminal_cache(vm, handle).cursor_row as i32;
     task.ram.push_nv(auto_val::encode_i32(row));
     Ok(())
 }
@@ -243,7 +285,7 @@ pub fn shim_term_cursor_row(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// 2959 `cursor_col(handle int) -> int`.
 pub fn shim_term_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let col = terminal_provider_for(vm, handle).cursor_col(handle);
+    let col = terminal_cache(vm, handle).cursor_col as i32;
     task.ram.push_nv(auto_val::encode_i32(col));
     Ok(())
 }
@@ -251,7 +293,7 @@ pub fn shim_term_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// 2977 `viewport_cols(handle int) -> int`.
 pub fn shim_term_viewport_cols(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let cols = terminal_provider_for(vm, handle).viewport_cols(handle);
+    let cols = terminal_cache(vm, handle).viewport_cols as i32;
     task.ram.push_nv(auto_val::encode_i32(cols));
     Ok(())
 }
@@ -259,7 +301,7 @@ pub fn shim_term_viewport_cols(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// 2978 `viewport_rows(handle int) -> int`.
 pub fn shim_term_viewport_rows(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let rows = terminal_provider_for(vm, handle).viewport_rows(handle);
+    let rows = terminal_cache(vm, handle).viewport_rows as i32;
     task.ram.push_nv(auto_val::encode_i32(rows));
     Ok(())
 }
