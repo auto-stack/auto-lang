@@ -1,0 +1,28 @@
+[package]
+name = "auto-media-core"
+version = "0.1.0"
+edition = "2021"
+description = "Media foundation: renderer-neutral image asset pipeline (registry/tickets/caches/scheduler/HTTP rules) and the local media file service (index/Range), extracted verbatim from auto-lang's ui (PLAN-811)"
+license = "MIT"
+keywords = ["media", "image", "cache", "http", "range"]
+
+[features]
+# The image codec lane (decode/EXIF/limits) is optional so language builds
+# without `image-pipeline` pull no codec dependency; the media file service
+# (index/Range, blake3-only) stays always available.
+default = ["image-codec"]
+image-codec = ["dep:image", "dep:kamadak-exif"]
+
+[dependencies]
+# The media core must NOT depend on auto-lang/auto-man/auto-ui/auto-vm or any
+# interpreter/renderer stack (closure pinned by
+# test/fixtures/modularity/media-core-consumer).
+blake3 = { workspace = true }
+thiserror = { workspace = true }
+fastrand = "2.4.1"
+image = { version = "0.25", optional = true }
+kamadak-exif = { version = "0.6", optional = true }
+
+[dev-dependencies]
+# Inlined fixture-manifest tests parse the image-viewer fixture manifest.
+serde_json = { workspace = true }

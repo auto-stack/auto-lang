@@ -4374,12 +4374,19 @@ fn cached_media_handle(
 ) -> iced::widget::image::Handle {
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
+    // Keyed by the opaque `MediaAssetId` itself (PLAN-811: the raw u128
+    // field is private to auto-media-core; the id derives Hash/Eq).
     static CACHE: OnceLock<
-        Mutex<HashMap<u128, (std::sync::Arc<[u8]>, iced::widget::image::Handle)>>,
+        Mutex<
+            HashMap<
+                crate::ui::image_pipeline::MediaAssetId,
+                (std::sync::Arc<[u8]>, iced::widget::image::Handle),
+            >,
+        >,
     > = OnceLock::new();
     let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
     let mut guard = cache.lock().expect("media handle cache poisoned");
-    if let Some((prev, handle)) = guard.get(&asset.0) {
+    if let Some((prev, handle)) = guard.get(&asset) {
         if std::sync::Arc::ptr_eq(prev, &rgba) {
             return handle.clone();
         }
@@ -4388,7 +4395,7 @@ fn cached_media_handle(
     if guard.len() >= 128 {
         guard.clear();
     }
-    guard.insert(asset.0, (rgba, handle.clone()));
+    guard.insert(asset, (rgba, handle.clone()));
     handle
 }
 

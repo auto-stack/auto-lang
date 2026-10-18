@@ -15,6 +15,13 @@ members = [
     # PLAN-791: interpreter-free generation core (guard/output/error/report);
     # auto-gen stays the Auto executable-template adapter over it.
     "crates/auto-gen-core",
+    # PLAN-811: media foundation crate (renderer-neutral image asset
+    # pipeline data plane/runtime + local media file service), extracted
+    # verbatim from auto-lang's ui/{image_pipeline,media_service};
+    # auto-lang keeps thin re-export facades at the old paths. No
+    # auto-lang/auto-man/auto-ui/auto-vm deps (closure pinned by
+    # test/fixtures/modularity/media-core-consumer).
+    "crates/auto-media-core",
     "crates/auto-lang",
     # PLAN-807: text foundation crate (persistent rope, file-backed paging,
     # snapshots, diff engine), extracted verbatim from auto-lang's
