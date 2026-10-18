@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 3
+current_step: 4
 total_steps: 4
 ---
 
@@ -80,7 +80,7 @@ Rust/Cargo、Axum、Ubuntu 22.04 WSL、Linux x86_64、systemd、HTTPS API 与浏
 - [x] T-01 (work; AC-01): 确认计划后承接工作目录，完成 Cargo.toml/transport.rs 最小修复、双平台定向检查并提交。[✅] Windows check pass（409 既有警告）；transport 定向 9/9；Linux release pass（3m44s，268 既有 lib 警告+后台 1 项既有字段警告）；rustfmt 与 diff check pass。实现 e7177e3fa → b2a75c1c2d3f83068b2d262d1448245292326c6c，rebase 仅同步主分支文档簿记，range-diff 1/1 完全等价；依赖 c39ac7f。
 - [x] T-02 (work; AC-02, AC-03): Linux release 与资源包冻结，在本地 Linux 启动、smoke；使用已批准的回滚脚本部署，核验公网与浏览器。[✅] 发布二进制 847132bb...a71b11；最终包 cf13cb38...5fc390；本地隔离包/服务器/公网 HTTPS 均通过（1343 examples、stdout=7、15 条 bytecode/meta、五种 trans、多模块 greet）。线上 Run/Trans 两右窗已实点验证，截图已入证据。首次漏带 stdlib 自动回滚已验证，补齐后成功部署。源码基线 7cab6ca2b7498c5a8ef28e070f8d107267ac18c9；详见 docs/plans/attachments/812/verification.md。
 - [x] T-03 (review; AC-04): 明确冻结基线，重查差异、验收与 SD-01，记录 merge-owned 门禁 pending。[✅] final pass，reviewed_commit=7cab6ca2b7498c5a8ef28e070f8d107267ac18c9；复审实际 diff、依赖 target=null、Linux 构建、定向 9/9、隔离包/回滚/公网与 UI 证据，SD-01 与代码一致。裸 cargo t 仍 pending，未合入。
-- [ ] T-04 (merge; AC-05): 最终门禁、快进合入、规范沉淀与归档已完成；待 fresh wt-guard 与临时工作目录/分支清理后勾选。
+- [x] T-04 (merge; AC-05): 最终门禁、快进合入、规范沉淀、归档和 fresh wt-guard 清理全部完成。[✅] Windows auto-lang/auto-down 与 Linux build-source 护栏均 clean 后移除；plan-812-dev 分支及两个临时组已移除；恢复件保留 D:/autostack/.recovery/plan-812-20261019。
 
 ## 9. 复审记录
 
@@ -101,4 +101,6 @@ Rust/Cargo、Axum、Ubuntu 22.04 WSL、Linux x86_64、systemd、HTTPS API 与浏
 - landed：delivery=1c52a1c3b17b4e439ed9d15a28e5ceb762b136b4，master ff-only，无 merge commit。旧→新 5/5 range-diff 全等：b2a75c1c2→a1cc3e292，2ba18261f→b37191a2a，7cab6ca2b→70d08b9ff，e88bd9ea3→ed38a7736，740dd811c→1c52a1c3b。主分支新增只含计划/风险簿记，代码与依赖未变，门禁证据可复用。
 - ledger_refreshed：docs/specs/auto-playground/project.md SD-01 + plans.md；spec-index.py 已执行（INDEX 无新增差异；两个 ungrouped 提示为既有目录分类，不扩大本期）。.autoos/specs.json guarded offline projection（文档指定 :8080 store writer 不可达）；v48→49，仅 P746-1 保留原超时契约并追加发布知识、P812-R/P812-M/P812-T 与 version 5 处手术变更；六段结构与 SpecItem 字段回读通过，其他条目/顶层字段原样保留。字节备份和哈希在 recovery 与 ledger-projection.json.txt。
 - archived：completion_kind=delivered；docs/plans/archive/812-playground-linux-backend-deploy.md；线上 active，binary SHA256=847132bbd1b6d7d2a9f5e434b2f3e379daa9b7260020a2f428b54dd871a71b11，回滚备份继续保留。凭据未进入代码、日志或发布物。
-- cleaned：pending；归档后 fresh guard 清理完成再补实际收据。其他会话未提交设计/计划/风险 WIP 保留，不声称整个主工作区 clean。
+- cleaned：done；Windows Plan auto-lang/auto-down 与 Linux build-source 均 fresh wt-guard clean 后移除，git worktree list 与路径存在性回读确认；plan-812-dev 删除，lang-812/fix-playground-linux-build 空组已移除。Windows 本地预览工作目录/服务继续保留给用户。其他会话未提交设计/计划/风险 WIP 保留，不声称整个主工作区 clean。
+- batch_due_check：以 clock.curr_time 的 2026-10-18T21:44:16Z（客户端 2026-10-19 Asia/Shanghai）计算，原始 ISO8601 收据时间 2026-10-17T05:19:03Z，覆盖 PLAN-805、年龄 40.42h；805 后无已落地且可被 5 整除的计划，未到期，未运行 tf/tt/tb。使用原始时间串，避免 JSON 自动日期转换丢失时区偏移。
+- archive verification：归档提交 99d1bda7e 已在 master；实际 status=archived，任务 4/4，ledger v49 的 canonical/review/report/test 文件引用全部存在，交付范围无未提交代码或投影差异。
