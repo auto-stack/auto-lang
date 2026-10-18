@@ -12,7 +12,8 @@ merge-owned pending 门。代码/测试均在本计划唯一实施树：
   SHA256 `c17ecca15a84f86cb26ad1f391490afe2e8b7420a369047c4bac3f6b8f0e8f58`
   （auto-term `main` @ `7a0d0e8b718fb260641f0d09ada95a7346771cd3`，clean）
 - code commits: `3c02068ca`（首轮实现+测试）；`c346f1077`（777 首轮基线
-  重绑）；**`69961e046`（R1 findings 修复，当前冻结代码）**
+  重绑）；`69961e046`（R1 findings 修复）；**`69337f541`（R2 findings
+  修复，当前冻结代码）**
 - root `Cargo.lock`（gitignored）SHA256：
   `9a431eb9e6163c154798db92543028db38a29af70ddac008014cc48ebd6a8fe1`
   （新 member `auto-terminal-core` 已解析；仅 libloading 既有锁条目）
@@ -64,7 +65,7 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | core tests | `cargo test -p auto-terminal-core` | 6/6 pass（R1：lease/free 并发/隔离/absent） |
 | core+lang check | `cargo check -p auto-terminal-core -p auto-lang` | exit 0 |
 | Ui terminal 定向 | `cargo test -p auto-lang --lib ui::terminal -- --test-threads=1` | 41/41 pass |
-| plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | **13/13 pass**（R1：含双活服务 owner 路由、drop/reap、VmBridge 生产构造） |
+| plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | **20/20 pass**（R2：13 原例 + retired 缓存 + 6 重入/并发控制） |
 | 独立 consumer | `cargo test --manifest-path test/fixtures/modularity/terminal-core-consumer/Cargo.toml`（DLL env） | 4/4 pass |
 | consumer 闭包 | `bash test/fixtures/modularity/terminal-core-consumer/verify-deps.sh` | PASS（仅 libloading/windows-link） |
 | no-UI 构建 | `cargo check -p auto-lang --no-default-features` | exit 0（34 shim + core 服务无 UI 依赖；config/window 1024×768 缺席臂保留） |
@@ -73,6 +74,8 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | 777 strict | `python scripts/modularity-audit.py --mode strict --no-cargo-check` | **pass，0 violations / 2 grandfathered**（`r1-777-strict.json.txt`；core_to_ui 868） |
 | 792 delivery driver | `python test/fixtures/modularity/generated-ui-consumer/driver.py` | 见 `r1-792-driver.log.txt` / `r1-792-driver-receipt.json.txt`（R1 代码重跑：**25/25**） |
 | 复审原反例重放 | `powershell -File attachments/808/review-r1/replay.ps1` | **全部期望值命中**（`r1-replay.log.txt`）：ha=1/hb=2、A_live=0/B_live=1、in-flight free=0、并发 free=1 次、drop free=1 次、VmBridge 装 adapter=true、泵 1/0、真实 child free/drop 均 false（已回收） |
+| R2 重入反例重放 | `powershell -File attachments/808/review-r2/run-callback-probe.ps1` | **8/8 case completed_before_3s=true exit=0**（`r2-callback-replay.log.txt`；owns/count/drop/slot-drop × direct-control/非 control） |
+| R2 缓存反例重放 | `powershell -File attachments/808/review-r2/build-probes.ps1` | **四行全部期望值**（`r2-cache-replay.log.txt`）：free 前后/替换后均 80×24，switch→free 均 90×30 |
 | fmt | `rustfmt --check` 触面文件 | 0 diff |
 | 生成 Rust terminal 金样 | `cargo test -p auto-lang --lib terminal_`（3 金样名） | 3/3 pass（该过滤面 25/26；唯一红 `plan705_client_total_deadline_terminal_error` 为并发负载下时序 flake，solo 复跑 1/1 绿、不属 terminal 面） |
 
@@ -89,6 +92,24 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | F808-R1-04 P1 service drop 不释放会话 | 末引用释放/替换剪枝时释放会话，子进程退出 | `Drop for EngineService` 在 Library 析构前逐会话 free；owner 剪枝释放旧 service | plan808 `service_drop_frees_live_session_and_child` + `provider_replacement_last_reference_releases_old_service`：PowerShell 子进程自报 PID；drop/末引用释放后 OS 进程消失（非仅表归零） |
 | F808-R1-05 P3 两条新警告 | 本计划新增文件零警告 | 删除未用 `TerminalHostProvider` 导入与多余 `mut` | `rustfmt --check` + 定向编译无本计划文件 warning |
 
+### 4.2 R2 复审 finding 闭合表（commit `69337f541`）
+
+| Finding | 不变量 | 修复 | 永久正负控制 |
+|---|---|---|---|
+| F808-R2-01 P1 NI 锁内执行 provider 回调/析构（4 路重入死锁） | 任何 NI 锁内不得执行 provider 方法或析构 | `terminal_owner_for`/`terminal_cache_owner_for` 锁内只快照 Arc 列表、锁外查询，generation 变化重试；`prune_terminal_owners` 锁内摘下列表、锁外 `live_handle_count`/析构，锁外求值后把并发新增合并回；`set_terminal_provider` 锁内只换槽、旧 provider 锁外析构；`remember` 重复项锁外释放 | plan808 `plan808_reentrancy`：owns/count/drop/slot-drop 四路重入均 3s 内完成；四路 direct 正控；并发 set/query/prune 保活 owner。复审原 `callback-probe` 重放 8/8 完成 |
+| F808-R2-02 P2 free 后视口缓存经 provider 切换变 0×0 | retired 句柄的 cursor/viewport 冻结值在切换/剪枝/销毁后仍可读 | shim free 在 owner 剪枝/销毁前把 cache 复制进 per-VM retired 表；缓存 shim 解析序 = retired 表 → 活 owner → retired owner（懒复制）→ 当前 provider；只存纯值，不持旧 service、不触 DLL 指针 | plan808 `freed_handle_cache_survives_provider_switch`：free→switch 80×24、switch→free 90×30 + 非零 cursor、重复 free、未知柄 0×0。复审原 `cache-probe` 四行全部期望值 |
+| F808-R2-03 P3 修复轮新增两条 `unused_mut` | 新增文件零未处理 warning | `reaper_a`/`reaper_b` 去掉 `mut` | 定向编译无本计划文件 warning |
+
+### 4.3 第二次失败诊断（review 要求）
+
+| 维度 | 内容 |
+|---|---|
+| 剩余不变量 | ① NI 锁外执行 provider 方法/析构（查询/剪枝/槽替换）；② live/retired 句柄的 owner 语义分离：live 走 `owns_handle`，retired 的 cursor/viewport 值必须仍可按冻结臂读取；③ 强 owner 保留（句柄存活）与资源释放（free/剪枝/Drop）互不矛盾 |
+| 之前为何漏检 | R1 只验证“活句柄 owner 路由”和“live_handle_count=0 剪枝”，oracle 以 live-only `owns_handle` 为唯一入口；没有 retired/unknown 句柄断言，也没有会重入的 provider。绿色 13/13 无法证明“锁外回调”与“free 后缓存”两类规则 |
+| 受影响路径/状态 | `terminal_owner_for`（查询）、`prune_terminal_owners`（live_count/移除析构）、`set_terminal_provider`（旧槽析构）、`remember_terminal_owner`（重复项释放）；handle 状态 = live / retired / unknown；替换/free 两种顺序 |
+| 设计/oracle 调整 | 查询=快照+generation 重试；剪枝=摘除→锁外求值/析构→合并并发新增；槽替换=换值→锁外析构。缓存：新增 `TerminalRetiredCache` 值拷贝 + per-VM retired 表，缓存 shim 四段解析；oracle 从 live-only 扩为 live/retired/unknown 三态 + 两种顺序 + 重入 provider/并发 set-query-prune |
+| 当前结果 | 复审原 `callback-probe` 8/8 完成、`cache-probe` 四行期望值；plan808 20/20（真实 DLL）；core 6/6；UI 41/41；no-default 0；consumer 4/4；777 strict pass；792 25/25（R2 代码重跑） |
+
 ## 5. 计划/规范交接
 
 - SD 草案：[spec-delta.md](spec-delta.md)（SD-01 add auto-terminal-core/
@@ -98,8 +119,8 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
   **pass**（0 violations / 2 grandfathered，`r1-777-strict.json.txt`）；
   merge 在最终 master 组合上再重绑。
 - 792：`DELIVERY_CRATES` 已加 `auto-terminal-core`（13 项，生成
-  crates=14）；R1 代码上 driver **25/25**（fresh 108s / relocated locked /
-  负控 / dev 路由；`r1-792-driver-receipt.json.txt`）。merge 合流其它新
+  crates=14）；R2 代码上 driver **25/25**（fresh 124s / relocated locked /
+  负控 / dev 路由；`r2-792-driver-receipt.json.txt`）。merge 合流其它新
   成员/闭包变化时按 792 driver 重放受影响 fresh/locked。
 - 收据持久化：原先被 `.gitignore` 的 `*.json` 已改为 `.json.txt`
   （`t07-777-observe.json.txt`、`t07-792-driver-receipt.json.txt`、
