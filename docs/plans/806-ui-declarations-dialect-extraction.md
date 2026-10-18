@@ -4,11 +4,11 @@ status: execution_done
 feature_name: UI msg 与 model 声明文法正式外置
 author: [Codex]
 created_at: 2026-10-17
-updated_at: 2026-10-17
+updated_at: 2026-10-18
 plan_revision: 1
 current_step: 6
 total_steps: 8
-supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md]
+supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-ui-dialect/project.md]
 touched_goals: [GOAL-003, GOAL-007]
 affects: [auto-ui-dialect, auto-lang/frontend]
@@ -65,6 +65,7 @@ pilot不保第二份model算法：801独立model consumer改为复用新model解
 | SD-02 | modify | docs/specs/auto-lang/frontend/overview.md | 默认内建算法→组合装配/兼容委托及真实结构/import调用 | 不漏生产内部路径 | AC-02/03/04 |
 | SD-03 | modify | docs/specs/auto-lang/frontend/design/dialect-system.md | 声明分派与端口权限/恢复规约、默认与pilot策略区别 | 不改变Core和外部优先级 | AC-02/03 |
 | SD-04 | modify | docs/specs/auto-lang/ui/design/scenario-dialect.md | msg/model正式外置，其他UI grammar仍上层 | 不夸大全UI文法已拆出 | AC-03/04 |
+| SD-05 | modify | docs/specs/repository-boundaries/generated-ui-distribution.md | 交付闭包12 crate→13（+auto-ui-dialect 及其闭包内依赖边说明） | 权威交付规范不漏新包（F806-R2-02） | AC-04 |
 
 ## 6. 测试设计
 
@@ -94,24 +95,35 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 
 ## 8. 执行步骤
 
+2026-10-18 R2 当前状态：仅 T-03/T-04 验证完成；T-01/T-02/T-05/T-06 因 F806-R2-01～03 重开。各行附属的 2026-10-17 work 完成说明保留为历史声明，不代表本轮验收通过；具体反例和独立验证见 [R2复审](attachments/806/review-r2.md)。
+
 | 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [x] | T-01 | work | 799/801审查合入、合同确认 | parser.rs三算法/all callsites、801最终端口及pilot，整链可行性/差额/旧臂/默认策略冻结 | 01/02/03 |
+| [x] | T-01 | work | 799/801审查合入、合同确认 | parser.rs三算法/all callsites、801最终端口及pilot，整链可行性/差额/旧臂/默认策略冻结；R2：前瞻等价性未成立 | 01/02/03 |
+| [✅ 2026-10-18 R2 修复, code e2fc6ebf3] 不变量修订=前瞻必须零副作用（不跳注释/不收 docs/不记词法错误/游标不动/不扩文法）；受影响路径=named payload 探测×{注释分隔,doc 相邻,词法错误窗口,位置形态}；修复=端口具名通用能力 `ParseContext::peek_next_kind`（auto-lang `port_peek_next_kind` 原语=旧 lexer.next+push_token 逐字同构）替换 checkpoint+advance/restore；永久用例=plan806 r2_* 7 例（oracle=R2 冻结新旧探针日志）；结果=14/14 绿；剩余缺口=无。 |
 | [✅ 2026-10-17 work] 801 已合入归档（delivery 786c49964，auto-parser-api 在主检出）；决策 D1–D7 冻结（crate/闭包、checkpoint+advance/restore lookahead 等价+微残差登记、expect_ident 逐字复刻、ModelGrammar 单份策略、薄委托+守卫不变、syntax_error 同构、777/792 登记面），§9 work T-01 记录+master 侧只读预检 attachments/806/t01-readonly-prep.md。 |
-| [x] | T-02 | work | T01 | 新crates/auto-ui-dialect及完整msg/model/注解算法，安全lookahead，轻consumer与check/V01 | 01/02 |
+| [x] | T-02 | work | T01 | 新crates/auto-ui-dialect及完整msg/model/注解算法，安全lookahead，轻consumer与check/V01；R2：修复F806-R2-01 | 01/02 |
+| [✅ 2026-10-18 R2 修复, code e2fc6ebf3] declarations.rs 前瞻改 peek_next_kind 形态；轻 consumer 增 peek 语义测试 10/10+verify-deps PASS；cargo check×2 零新警告。 |
 | [✅ 2026-10-17 work, code 970960b4a] 新 crate 三文件（declarations.rs 逐字迁出 master 5d8834bcc parser.rs 14917-15132 基线）；ui-declarations-consumer 轻消费方 9/9 绿 + verify-deps PASS（闭包={lex,parser-api,ui-dialect} 无 auto-lang）；cargo check -p auto-ui-dialect 零警告。 |
 | [x] | T-03 | work | T02 | Parser公开/inner薄委托与UiDialect默认装配、全部widget/component/store及默认import路径接线，V04 | 02/03 |
 | [✅ 2026-10-17 work, code 557e0a176] inner 两方法一行建桥委托、parse_model_field_annotations 删除（parser.rs −213 行）；pub 签名/Stmt 包装、UiDialect 分支与结构守卫、with_session 默认装配不变；check -p auto-lang 0 error 零新增警告（411=801 基线）；冻结旧臂内联 12/12 + 滤面 45/45；V04 plan806 7/7（含真实被导入文件 treeview.at）。 |
 | [x] | T-04 | work | T03 | 801 pilot复用单份model、默认bare反控及显式bare正控；删除原算法，V02/03/05 | 02/03 |
 | [✅ 2026-10-17 work, code 8093301b8] dialect-api-consumer 删第二份字段算法（−65 行）改调 parse_model_block_subset（NotClaimed→Ok(None) 协议保持）；轻测 3/3+闭包门 PASS；上层 driver 48/48（r2_bare_field_boundary 默认反控+pilot 正控 8/8 等）；默认文法零漂移。 |
-| [x] | T-05 | work | T04 | V01–06全矩阵、777精确边/792source闭包与受影响交付控制，实际命令收据 | 01–04 |
+| [x] | T-05 | work | T04 | V01–06全矩阵、777精确边/792source闭包与受影响交付控制，实际命令收据；R2：补前瞻副作用反例/三文件format | 01–04 |
+| [✅ 2026-10-18 R2 修复, code e2fc6ebf3] 三反例+相邻对照收编 plan806（14/14）；三文件+触及文件 rustfmt --check 全过（parser.rs 无关重排已回退，仅+16 行原语）；重放 light 10/10+driver 48/48+内联 12/12+滤面 45/45。 |
 | [✅ 2026-10-17 work, code 8a86fe323+504ca0e0d] 777 增 lang-core 域+基线重采样（增量恰 2 合法边，strict pass 0 违规）；792 DELIVERY_CRATES 12→13+delivery 单测 10/10+交付 driver 25/25 exit0（fresh 111s/locked 135s/十四态负控/恢复绿，收据入附件）；V05 tu 867/867 零金样更新；命令矩阵全收据 attachments/806/t05-receipt.md。 |
-| [x] | T-06 | work | T05 | 未迁widget/view/on等清单、净删/组合宿主剩余边及SD/SHA收据，提交送审 | 04 |
+| [x] | T-06 | work | T05 | 未迁widget/view/on等清单、净删/组合宿主剩余边及SD/SHA收据，提交送审；R2：纠正等价/微残差说明，补交付权威Spec/impact | 04 |
+| [✅ 2026-10-18 R2 修复, code e2fc6ebf3] SD-01 lookahead/怪癖适用边界校准（缺块闭括号+EOF=无界怪癖≠已覆盖错误出口；载荷缺 `)`=expect 确定性报错）；generated-ui-distribution.md 12→13+依赖边说明（SD-05 具名+frontmatter supersedes 增补）；t05-receipt 增 R2 更正节（微残差叙事作废+tu 整档时序越权注记）；新冻结 code=e2fc6ebf3 送 T-07 二轮复审。 |
 | [✅ 2026-10-17 work, code af3748db7+f84f405f4+a20fcf6fe] SD-01 新 auto-ui-dialect/project.md+SD-02..04 三处备稿（worktree 待 merge 沉淀）；未迁清单/净删/微残差登记入 t05-receipt；代码链 970960b4a→a20fcf6fe 共 8 提交，送 T-07 同树独立复审，merge 门 pending。 |
 | [ ] | T-07 | review | T06 | 同树独立完整语法/所有调用/恢复/消费/SD审查，merge门pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
 
 ## 9. 复审记录
+
+2026-10-18 / stage: work / PLAN-806 revision: 1 / outcome: pass（R2 三 findings 全修，T-01/T-02/T-05/T-06 R2 要求重勾 6/8）/ worktree_path=D:/autostack/.wt/lang-806/auto-lang / branch=codex/plan-806-dev / base_commit=5d8834bcc / code_commit=e2fc6ebf3（修复在复审冻结基线 a20fcf6fe 之上单一提交；工作树 clean）/ dependency_revisions=auto-down c39ac7f9 不变 / finding_closure=F-806-R2-01：不变量=前瞻零副作用且不扩文法；受影响路径=named payload 探测×{注释分隔伪命名,doc 相邻重复收集,词法错误窗口翻倍,位置形态,comment-before-rparen,FStrStart}；修复=端口具名通用能力 ParseContext::peek_next_kind（Core 含义/幂等/零副作用已文档化+Core 语义永久测试）+auto-lang port_peek_next_kind 原语+declarations.rs 弃 checkpoint+advance/restore；永久用例=plan806 r2_* 7 例（三反例 oracle 逐字=R2 冻结新旧探针日志：Err@25 UnexpectedToken RParen/docs 单份/UnknownCharacter@14 单份）+真实 use-import 链收编（review-r2-import.rs，含 Bad806 负控）；结果=plan806 14/14+light 10/10+driver 48/48+内联 12/12+滤面 45/45；剩余缺口=无（相邻 named/positional/comment/恢复对照保持）。F-806-R2-02：受影响面=权威交付规范+plan impact；修复=generated-ui-distribution.md 12→13+auto-ui-dialect 闭包内依赖边说明+SD-05 具名+frontmatter supersedes 增补；剩余缺口=无。F-806-R2-03：修复=三文件+全部触及文件 rustfmt --check 过（parser.rs 无关重排回退，仅+16 行原语）；剩余缺口=无。 / evidence=attachments/806/t05-receipt.md R2 修复轮更正节（含 tu 整档时序越权注记与作废的原微残差叙事）/ blockers=无（merge 门保持 pending：冻结裸 t+tv；ui_gen/trans 源未改不追加 tu/tt；tf 主检出到期判定）/ next_responsible_role=review（T-07 二轮 final review，审查基线 e2fc6ebf3）
+
+
+2026-10-18 / stage: review / review_scope: final / reviewer_identity: 当前独立 Codex 检查会话（未参与实施，无额外 agent；未暴露身份不臆造） / plan_id: PLAN-806 / plan_revision: 1 / outcome: needs_fix / worktree_path: D:/autostack/.wt/lang-806/auto-lang / branch: codex/plan-806-dev / reviewed_commit: a20fcf6fe9885102d0059c04c9ac1e0551a3e3dc / base_commit: 5d8834bcc9cb4bde66ca9b610259036b82642227 / dependency_revisions: 799/801已合入，兄弟auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / spec_inputs: [baseline](attachments/806/review-r2-baseline.json.txt)五源blob与实现/配置SHA256，[SD冻结patch](attachments/806/review-r2-spec-delta.patch)sha256=dcd77cffcd1d568c5c4b5b4471ff9018bea6955e3a775ba6c6bcf4d43164f820 / acceptance_results: AC01独立包/闭包pass、AC02 fail、AC03/04 partial、AC05 fail、AC06 merge-owned pending / findings: R1送审基线缺失已CLOSED；F806-R2-01(P2，原始前瞻改advance后扩大注释夹名/冒号文法并重复pending_docs/lexer错误)、F806-R2-02(P2，generated-ui-distribution权威闭包仍12且漏auto-ui-dialect，需补SD/impact)、F806-R2-03(P2，三新增测试文件scoped format未过) / evidence: [R2完整报告](attachments/806/review-r2.md)，轻测9/9、旧driver48/48、plan806 7/7、msg/model/dialect 45/45、定向生成4/4；独立生产use+VM handler状态1→2及导入注解错误注册；无UI库features=[]构建+解析通过；777 strict0违规；正式792 driver25/25 exit0（fresh123s/重定位locked113s） / pending_closeout_gates: 最终pass后冻结裸t+tv及实际触面档、规范/ledger/归档/guard；本轮无整档/发布/merge/清实施树 / next: 原树work修复三finding并提交，受影响复审。保留T03/T04，重开T01/T02/T05/T06，executing 2/8。R1仅就绪核查，本轮首次实际完整实施审查；不以历史绿总数替代原合同。
 
 2026-10-17 / stage: work / PLAN-806 revision: 1 / outcome: pass（T-01..T-06 全部完成，work-owned AC-01..04 达成）/ worktree_path=D:/autostack/.wt/lang-806/auto-lang / branch=codex/plan-806-dev / base_commit=5d8834bcc（master 分叉点，含 T-01 簿记）/ code_commit=a20fcf6fe（链：970960b4a→557e0a176→8093301b8→8a86fe323→504ca0e0d→af3748db7→f84f405f4→a20fcf6fe，工作树 clean）/ dependency_revisions=组内兄弟 auto-down detached c39ac7f9（只读，a2r-actor-tests path 解析用）；driver scratch 9.8GB 已清（收据先归档） / task_ids=T-01..T-06 / evidence=[t05-receipt.md](attachments/806/t05-receipt.md) 命令矩阵：AC-01（V01 轻测 9/9+verify-deps PASS+check 零警告）；AC-02（冻结旧臂重放 12/12+48/48+45/45，默认/pilot 差异 r2 8/8，错误文本字面量钉住）；AC-03（V04 plan806 7/7 含真实被导入文件+V05 tu 867/867 零金样更新）；AC-04（单源审计三标记仅存新 crate、parser.rs −213/pilot −65、777 strict pass 增量恰 2 边、792 driver 25/25 exit0+delivery 单测 10/10、SD-01..04 备稿） / blockers=无（merge 门显式 pending：冻结裸 cargo t+cargo tv——parser.rs 触 VM/编译器面；ui_gen/trans 零源触面不追加 tu/tt；tf 主检出到期判定；docs_gen 不触发） / 已登记微残差=T-01 D2 lookahead 窗口 lexer Err 提前记录（时序差异，计划 §5 认可形态）+历史怪癖 msg{+EOF 无限形态保持不修 / next_responsible_role=review（T-07 同树独立完整复审，审查基线 a20fcf6fe）
 
