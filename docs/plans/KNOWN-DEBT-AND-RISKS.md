@@ -2023,3 +2023,9 @@ av_resources_peak_sampler_distinguishes_transient_spike（采样器区分性反�
 ### PLAN-803 R3 闭合收据（2026-10-17）
 
 F803-R2-01于`b455b4ef99210ab7d40e95c4b9e8340ad79e3340`独立验证关闭：三个方法级有意细化声明保留具体API，auto-man警告31→28回预存基线，无新增警告；标准门面9/9与格式检查通过。[R3报告](attachments/803/review-r3/review.md)。R1三项亦已闭合，无开放复审finding；原非目标遗留债仍留存。Plan reviewed7/8；merge-owned冻结门/沉淀/归档/清理pending，未合入。
+
+
+### PLAN-812 merge 环境风险候选（2026-10-19）
+
+- **P812-D1 / low / 测试基础设施**：fixture 子 Cargo 未隔离父 `CARGO_TARGET_DIR`，但产物按各自 `target/release` 查找；本次缓存复用环境导致 FFI oracle 已编译而找不到文件、构建锁争用和超时。属于非标准构建环境兼容性候选，不修改本次产品修复；标准目录、清除本次无效 `.parity_cache_ok`、预热 AC worker 后相关定向复验通过。后续宜隔离子构建目标目录并校验 marker 对应产物。证据：docs/plans/attachments/812/verification.md；首轮 2 FAIL/13 TIMEOUT 的 raw log 保存在 recovery 收据目录。
+- **P812-D2 / low / Windows 审计测试观测**：`p765_iat_trace_writes_audit_and_preserves_exit_code` 在高并行/冷构建负载中一次观察到退出码 `0xC0000374` 而非 9；同冻结代码单独重放 1/1 pass。尚未归因，不能声称已根治或已双树证明预存；本期未改该实现，不以此观测扩大线上修复范围。最终日常门禁结果记录在 PLAN-812 归档收据。
