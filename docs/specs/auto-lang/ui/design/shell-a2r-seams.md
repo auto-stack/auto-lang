@@ -59,7 +59,7 @@ RenderQueue）直接承继本面——typed 载体即 wire payload 词汇。
   `auto_lang::vm::ui_console`（与 VM shim 同一 ring，bool 语义块表达式保形）；
   code_editor 8 员 → `auto_lang::ui::code_editor`（cut/copy/paste 经
   clipboard_op、fold 两员经 code_editor_with——与 shim 体同形）；
-  dialog_open/save → `auto_lang::ui::dialog`（rfd 宿主，父窗锚 v1 从简）；
+  dialog_open/save → `auto_lang::ui::dialog` 薄门面 → `host_adapters::dialog` 唯一 rfd/IFileDialog 实现（PLAN-804 起 VM/a2r 双份构建合一；VM 路径 parented、a2r 门面 unparented 差异保留）；
   file_basename → `auto_lang::a2r_std::fs::basename`；Process.exit →
   `std::process::exit`；json.to_value → serde 解析（无效串 Null）。
   机制红线（沿 671 T-06/674）：表只认 VM 内建名位，消费方标识符零硬编码，

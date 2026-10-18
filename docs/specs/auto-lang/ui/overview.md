@@ -57,7 +57,7 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **adapter**：`ui::frame_provider::FrameBenchProvider` 从既有 `frame_bench` 通道读取；捕获开关（`AUTO_FRAME_BENCH` 门控零开销）、时源、renderer note 语义不变。`install_process_default` 统一调用 if-absent——**兼容默认只补空槽，不覆盖调用方显式选择**（优先关系契约见 vm/overview 三层清单）。
 - **自动装配位置**：VmBridge 两构造（`new_with_children`/`new_from_decls`）、`run_file_dynamic_ui_inner`、CLI ui-iced 入口（auto crate main），以及 crate 根组合助手 `install_ui_host_capabilities`。根助手覆盖 run 家族执行漏斗（`execute_autovm_with_deadline`）、test/debug、`create_vm_from_source/abt`、配置求值、REPL、解释器、back_proxy 的宿主创建路径；ui 构建提供兼容默认，no-ui 构建助手为 no-op。**不得**沿用"仅前三点注入、其余库程序轨须自行注册"的早期不完整描述。
 - **调用方保证**：高层入口前设置显式默认，UI 开/关两种构建均保持真实供值；无人注册时 UI 宿主恢复 frame_bench 默认，门开可读真值。原始 AutoVM 仍只按构造时默认快照，UI 实现不接回 vm core。
-- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）、文件/图像剪贴板 2934..2937（PLAN-790）、scroll controller 族 9900..9905/9922/9923（PLAN-794）与 code editor 22 native 全族（PLAN-802）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；dialog、dnd_start、term/media、diff 族 9915..9917 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
+- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）、文件/图像剪贴板 2934..2937（PLAN-790）、scroll controller 族 9900..9905/9922/9923（PLAN-794）code editor 22 native 全族（PLAN-802）与 dialog_open/save+dnd_start（PLAN-804）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；term/media、diff 族 9915..9917 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
 
 ## 现状（2026-10-16）——文本剪贴板 adapter 宿主装配（PLAN-785）
 
@@ -158,6 +158,33 @@ media/dialog/ffi 族——editor 22 native 生产边清零（`code_editor::
 code_editor_*`/`editor_scroll_handle`/`ClipboardOp`/`ui::scroll` intent
 直引形态由 plan802 core 剪断锚永久钉扎）。不宣称 term/media/dialog/dnd
 或整体 renderer 已独立。
+
+## 现状（2026-10-18）——dialog/dnd adapter 宿主装配（PLAN-804）
+
+> 779/785/790/794/802 装配模式的 dialog/dnd 批次（VM 侧契约见
+> vm/overview dialog/dnd native 宿主能力节；完整值域/缺席矩阵/完成链/
+> 父窗策略见 ui/design/dialog-dnd-host-capabilities.md）。
+
+dialog OS 实现归 `host_adapters::dialog` 单一实现（IFileDialog；
+`ParentedOsDialogProvider` parented VM 路径 + unparented a2r 门面路径；
+filter_exts 公共 parser 单份），挂 `ui-dialog` **单门控**——独立于 ui
+renderer 门，`ui-dialog`-only（无 ui）构建经扩门
+`install_ui_host_capabilities`（`any(ui, ui-dialog)`）继续安装（恢复迁移
+前高层对话框路径）；旧 `ui::dialog` 门面保留为薄委托。dnd adapter
+`ui/dnd_host_provider.rs` 挂 windows ∧ native-dnd 门控（模块在 ui 门内
+=有效三分），委托既有 `ui::native_dnd`（**输入线程内联阻塞** DoDragDrop
+——非专用 STA 线程，历史叙述已源码级纠正；完成效果经生产订阅链
+`dnd_finished_subscription`→`DndFinished` 臂→发起方锚定
+`on_dnd_finished` 交付，见 design 文件 §5）。
+
+宿主接线与 779/785/790/794/802 同集：`install_ui_host_capabilities`、
+`run_file_dynamic_ui_inner`、VmBridge 两构造（全 if-absent）。
+
+**未迁边界（更新）**：core→ui 生产直引剩余（vm/native.rs 口径）=diff 族
+9915..9917（PLAN-703 面，非目标保留）、term/media/ffi 族——dialog 2 +
+dnd 1 native 生产边清零（rfd/raw-window-handle/Win32 dialog 与
+ui::native_dnd 直引形态由 plan804 core 剪断锚永久钉扎）。不宣称
+term/media 或整体 renderer 已独立。
 
 ## 现状（2026-10-11）——remote-frame 宿主侧远程帧消费元件（PLAN-760）
 

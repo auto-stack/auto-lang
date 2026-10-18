@@ -8,6 +8,7 @@
 ## 历史主线（archive/）
 
 | 802 | code-editor-host-provider（vm 面） | ✅（reviewed→archived） | archive/ | code editor 22 native（2910..2915/2919..2924/2932/2933/2939/9906/9908..9913）迁 CodeEditorHostProvider：19 具名方法 owned DTO（cursor×3/scroll_offset×2 共享读取）+三级装配+缺席矩阵逐字面值（21 raise feature-disabled 形+9913 scroll_to 弹参返 false 唯一值臂；load=-1/save=false 值形）；单位锚（0基行/char列/selection bytes/fold 1基 shim 转/负参钳 shim）；delta 恰一次 destructive read；catalog/codegen 零改动；SD-01 vm/overview |
+| 804 | dialog-dnd-host-provider（vm 面） | ✅（reviewed→archived） | archive/ | dialog_open/save 2927/2928+dnd_start 2938 迁双独立槽 DialogHostProvider/DndHostProvider：owned String/Bool 值域（filter/raw 语义单份 OS parser）+三级装配+缺席矩阵逐字面值（dialog 弹参前 raise feature-disabled 形、dnd 弹参后 false 值降级；true=执行过会话含取消，效果归 on_dnd_finished）；模态重入=accessor 释放槽锁；VM parented/a2r unparented 父窗差异保留；SD-02 vm/overview |
 | 781 | reader-runtime-prerequisites（vm 面） | ✅（reviewed→archived） | archive/ | HTTP handler 请求级累计执行预算：env AUTO_HTTP_STEP_BUDGET（1..=4G，非法启动期指名非零退出；默认 10M 逐字节不变）→ engine DriveBudget::LegacyHttp 段帽=policy、跨 park/resume/嵌套 fn 累计不重置、耗尽=指名资源拒绝；三入口+段恢复消费；canonical [handler-execution-budget.md](design/handler-execution-budget.md)；10MiB 导入 profile=双 env（+AUTO_HTTP_REQUEST_TIMEOUT_MS） |
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |------|------|------|------|-----------|

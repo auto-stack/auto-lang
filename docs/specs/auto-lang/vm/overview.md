@@ -81,6 +81,7 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - 文件/图像剪贴板 native 2934..2937 为同模式 files/image 批次（PLAN-790）：core shim 经 `vm::host_capabilities::ClipboardMediaProvider` 供值，不再直引 ui::clipboard_native；缺席/失败=G3 **值降级**（空表/false/null，非 VMError——与文本族构成族差异）。详见 [文件/图像剪贴板 native 宿主能力（PLAN-790）](#文件图像剪贴板-native-宿主能力plan-790)。
 - scroll controller 族 9900..9905 与子锚点 9922/9923 为 scroll 批次（PLAN-794）：core shim 经 per-VM `vm::host_capabilities::ScrollHostProvider` 供值，不再直引 ui::scroll；缺席=值降级（controller=Int 0、intent 族=Bool false、state=Float 0.0、to_child="error:unsupported"、anchor_state="unknown"）。详见 [scroll native 宿主能力（PLAN-794）](#scroll-native-宿主能力plan-794)。
 - code editor 22 native 全族（2910..2915/2919..2924/2932/2933/2939/9906/9908..9913）为 editor 批次（PLAN-802）：core shim 经 per-VM `vm::host_capabilities::CodeEditorHostProvider`（19 具名方法）供值，不再直引 ui::code_editor；缺席=21 项 raise feature-disabled 形 VMError + 9913 scroll_to 弹参返 false（唯一值缺席臂）。详见 [code editor native 宿主能力（PLAN-802）](#code-editor-native-宿主能力plan-802)。
+- dialog_open/save 2927/2928 与 dnd_start 2938 为 dialog/dnd 批次（PLAN-804）：core shim 经 per-VM `vm::host_capabilities::DialogHostProvider`/`DndHostProvider` 双独立槽供值，不再直引 rfd/Win32/UI native_dnd；缺席=dialog 弹参前 feature-disabled 形 VMError、dnd 弹参后 false（值降级）。详见 [dialog/dnd native 宿主能力（PLAN-804）](#dialogdnd-native-宿主能力plan-804)。
 
 ## Frame native 宿主能力装配（PLAN-779）
 
@@ -215,6 +216,31 @@ code-editor-session-endpoints.md）。
 为验收 oracle。catalog/codegen/intrinsics 零改动（ID/canonical 名/短名
 不变，9907 归 Env.track 不占用）。
 
+
+## dialog/dnd native 宿主能力（PLAN-804）
+
+dialog_open/dialog_save（2927/2928，canonical `auto.dialog.*`）与
+dnd_start（2938）供值经 per-VM `DialogHostProvider`（`open(filter)`/
+`save(default_name)` → owned String，`""`=取消/不可用）与
+`DndHostProvider`（`start(payload_json: String)` → Bool）**双独立槽**——
+一种能力在位不得掩盖另一种缺席。值域跨界仅 owned String/Bool（filter/
+default_name 为 shim 侧已物化 String 的临时借用；payload JSON 由唯一 UI
+parser 解释，core 不复制过滤/载荷语法）。core shim 只编解码/委托，
+**不直引** rfd/raw-window-handle/Win32/UI native_dnd；装配=779/785/790/
+794/802 同构三级（实例注入 > 构造期进程默认快照 > 兼容 if-absent）；
+Clone/merge 保槽、注入不 bump binding_revision/proof；模态重入纪律=
+accessor clone Arc 释放槽锁后再调 provider。
+
+缺席语义（= 迁移前 feature-off 臂逐字面值）：dialog 两 native 在弹实参
+**前** raise `…: the \`ui-dialog\` feature is disabled` VMError（错误中止
+下栈面与旧臂一致）；dnd_start 弹实参后返 false（G5 值降级，非 raise）。
+在位取消/不可用=空串（dialog）/会话级失败 false（dnd——true=执行过会话，
+含取消；效果另由 on_dnd_finished 事件交付，不得把 true 当 drop 成功）。
+
+父窗策略：VM 默认 parented（EnumWindows 最大可见本进程顶层窗 +
+OnceLock 进程缓存）、a2r 门面 unparented（差异保留，V04 正反控钉扎）。
+完成事件按发起者身份代际锚定交付发起方 App（详见 ui/design/
+dialog-dnd-host-capabilities.md）。
 
 ## 布尔短路求值语义（plan-615）
 
