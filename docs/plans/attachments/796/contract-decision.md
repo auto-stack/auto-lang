@@ -240,3 +240,23 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
 - **格式门**（F-R6-09）：仅对本计划新增/触改文件运行 rustfmt（不使用
   `cargo fmt --all`——该命令会穿透根 workspace 污染无关文件）；共享文件保持
   回归基线 + 语义行重放。
+
+## D17 R7 修复轮冻结（2026-10-19）
+
+- **有效单元版本**（F-R7-01）：`KeyEnv` 对当前输入做一次 SCC 分区并按依赖序计算
+  每个单元的有效版本 = 成员自身 canonical + 外部依赖单元的有效版本（传递闭包）。
+  RecordFields 键含 `ref-versions-fp`（直接依赖的**有效单元版本**）与
+  `unit-topology-fp`（singleton/group 载体与成员集）；组键含
+  `group-content-fp` = 单元有效版本。`RecordMeta.group_content` 与
+  `RecGroup.header.content` 写同一有效版本；读取侧 `admit_page` 以 O(1) 比较
+  有效版本并校验当前成员集（不再只验直接 DeclRef）。叶编辑、SCC 形成/拆分、
+  外部组依赖均产生新键新载体；旧页按旧键不可变共存。发布循环只建一个 KeyEnv。
+- **预算前置预留**（F-R7-02）：solve 预估改为保守策略值（16KiB 基座 + 每语句
+  512 + 每表达式 256 + 标识符字节），在求解前持有；发布按 facts 预估 +
+  MAX_PAGE_BODY 在 clone/编码前预留；缓存读在 `get_artifact` 前预留
+  `READ_RESERVE = 3×MAX_PAGE_BODY`（payload 尚未分配）。超预算一律
+  `ResourceExhausted` typed 状态（20k 节点：预估 15.59MB > 8MiB 即拒绝，不再
+  先求解/发布后报 codec 错）。
+- **健康门**（F-R7-03）：本计划新建的 `reflect.rs`、`codec.rs` 纳入 scoped
+  rustfmt（不使用整仓格式化）；`CloseHandle` FFI 声明对齐既有
+  `stage3.rs` 的 `isize` 签名，消除新增 `clashing_extern_declarations`。

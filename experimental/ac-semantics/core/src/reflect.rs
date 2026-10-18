@@ -238,7 +238,10 @@ impl std::fmt::Display for CtAdmission {
                 write!(f, "cyclic ct request chain: {}", chain.join(" -> "))
             }
             CtAdmission::VmExecuteFromModel => {
-                write!(f, "model producer minted a vm_execute marking (AVM path only)")
+                write!(
+                    f,
+                    "model producer minted a vm_execute marking (AVM path only)"
+                )
             }
         }
     }
@@ -496,7 +499,6 @@ mod tests {
         );
     }
 
-
     /// F-796-R4-06: Unknown markers are rejected ANYWHERE in the value
     /// — nested inside Mode wrappers and Fn parameter/result positions.
     #[test]
@@ -506,11 +508,17 @@ mod tests {
         let nested_mode = CtRequest::new(
             "tpl/m",
             vec![PortableValue::TypeRef(
-                TypeDesc::Opaque { name: "?unsolved".into() }.with_mode(Mode::View),
+                TypeDesc::Opaque {
+                    name: "?unsolved".into(),
+                }
+                .with_mode(Mode::View),
             )],
             vec![],
         );
-        assert!(matches!(nested_mode.admit(), Err(CtAdmission::UnknownValue)));
+        assert!(matches!(
+            nested_mode.admit(),
+            Err(CtAdmission::UnknownValue)
+        ));
 
         // Fn param carrying a Mode-wrapped Unknown
         let nested_fn_param = CtRequest::new(
@@ -521,7 +529,10 @@ mod tests {
             })],
             vec![],
         );
-        assert!(matches!(nested_fn_param.admit(), Err(CtAdmission::UnknownValue)));
+        assert!(matches!(
+            nested_fn_param.admit(),
+            Err(CtAdmission::UnknownValue)
+        ));
 
         // Unknown in the Fn RESULT position
         let nested_fn_ret = CtRequest::new(
@@ -532,7 +543,10 @@ mod tests {
             })],
             vec![],
         );
-        assert!(matches!(nested_fn_ret.admit(), Err(CtAdmission::UnknownValue)));
+        assert!(matches!(
+            nested_fn_ret.admit(),
+            Err(CtAdmission::UnknownValue)
+        ));
 
         // LEGAL nesting still passes: Mode(Owned, Fn(i32) -> Record ref)
         let legal = CtRequest::new(
@@ -570,16 +584,24 @@ mod tests {
             marking: M::ModelCompute,
             deps: vec![],
         };
-        assert!(matches!(bad_schema.admit_as_model(), Err(CtAdmission::WrongSchema { .. })));
+        assert!(matches!(
+            bad_schema.admit_as_model(),
+            Err(CtAdmission::WrongSchema { .. })
+        ));
 
         // Unknown value in the result
         let unknown_val = CtResult {
             schema: CT_SEAM_SCHEMA,
-            value: PortableValue::TypeRef(TypeDesc::Opaque { name: "?unsolved".into() }),
+            value: PortableValue::TypeRef(TypeDesc::Opaque {
+                name: "?unsolved".into(),
+            }),
             marking: M::ModelCompute,
             deps: vec![],
         };
-        assert!(matches!(unknown_val.admit_as_model(), Err(CtAdmission::UnknownValue)));
+        assert!(matches!(
+            unknown_val.admit_as_model(),
+            Err(CtAdmission::UnknownValue)
+        ));
 
         // vm_execute minted by a MODEL producer — reserved for AVM
         let vm_marked = CtResult {
@@ -588,7 +610,10 @@ mod tests {
             marking: M::VmExecute,
             deps: vec![],
         };
-        assert!(matches!(vm_marked.admit_as_model(), Err(CtAdmission::VmExecuteFromModel)));
+        assert!(matches!(
+            vm_marked.admit_as_model(),
+            Err(CtAdmission::VmExecuteFromModel)
+        ));
 
         // the legal model result passes
         let ok = CtResult::model(PortableValue::I32(3), vec![]);
@@ -621,14 +646,15 @@ mod tests {
                     },
                 })
             });
-            assert!(out.is_err(), "fault {fault} must be rejected at the model boundary");
+            assert!(
+                out.is_err(),
+                "fault {fault} must be rejected at the model boundary"
+            );
         }
         // the legal callback result still flows
         let mut ct = ModelCt::new();
         let req = CtRequest::new("tpl/ok", vec![PortableValue::I32(4)], vec![]);
-        let out = ct
-            .evaluate(&req, |r, _| ModelCt::fold_i32_sum(r))
-            .unwrap();
+        let out = ct.evaluate(&req, |r, _| ModelCt::fold_i32_sum(r)).unwrap();
         assert!(matches!(out.value, PortableValue::I32(4)));
     }
 

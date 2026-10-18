@@ -254,48 +254,205 @@ pub fn record_dep_names(input: &SemaInput, name: &str) -> Vec<String> {
     out
 }
 
-/// Fingerprint of the DIRECT reference content versions embedded in one
-/// record's published shape. Part of every RecordFields key: a dependency
-/// content change (B: int -> bool) changes A's key instead of serving
-/// A's cached page with B's stale ref version.
-pub fn record_refs_fp(input: &SemaInput, name: &str) -> String {
+/// Effective dependency environment for record keys/versions
+/// (F-796-R7-01): the unit partition (singleton / recursive SCC) plus a
+/// TRANSITIVE effective version per unit. A unit's effective version is
+/// its members' declaration canonicals plus the effective versions of
+/// its EXTERNAL dependencies — so a leaf edit propagates through every
+/// reader, and a topology change (singleton ↔ group) produces a
+/// different key and carrier.
+pub struct KeyEnv {
+    units: Vec<Vec<String>>,
+    unit_of: std::collections::BTreeMap<String, usize>,
+    unit_eff: Vec<String>,
+}
+
+impl KeyEnv {
+    pub fn new(input: &SemaInput) -> Self {
+        let units = record_units(input);
+        let mut unit_of: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        for (i, u) in units.iter().enumerate() {
+            for n in u {
+                unit_of.insert(n.clone(), i);
+            }
+        }
+        let mut unit_eff: Vec<String> = vec![String::new(); units.len()];
+        for (i, unit) in units.iter().enumerate() {
+            let mut members: Vec<&str> = unit.iter().map(|s| s.as_str()).collect();
+            members.sort();
+            let mut parts: Vec<String> = Vec::new();
+            let mut external: Vec<(String, String)> = Vec::new();
+            for name in &members {
+                let canonical = input
+                    .lookup_record(name)
+                    .map(record_canonical)
+                    .unwrap_or_default();
+                let content = ContentVersion::of_canonical(&canonical);
+                parts.push(format!("{name}@{}", content.as_str()));
+                for dep in record_dep_names(input, name) {
+                    let dunit = match unit_of.get(&dep) {
+                        Some(u) => *u,
+                        None => continue,
+                    };
+                    if dunit != i {
+                        // dependency order: the external unit is already
+                        // fully versioned
+                        let eff = &unit_eff[dunit];
+                        external.push((dep, eff.clone()));
+                    }
+                }
+            }
+            external.sort();
+            external.dedup();
+            for (dep, eff) in external {
+                parts.push(format!("dep:{dep}={eff}"));
+            }
+            unit_eff[i] = fp(parts.join("\u{1}").as_bytes());
+        }
+        KeyEnv {
+            units,
+            unit_of,
+            unit_eff,
+        }
+    }
+
+    pub fn units(&self) -> &[Vec<String>] {
+        &self.units
+    }
+
+    fn unit_index(&self, name: &str) -> Option<usize> {
+        self.unit_of.get(name).copied()
+    }
+
+    pub fn members(&self, name: &str) -> Option<&[String]> {
+        self.unit_index(name).map(|i| self.units[i].as_slice())
+    }
+
+    /// The unit's transitive effective version (page-content identity).
+    pub fn effective(&self, name: &str) -> Option<&str> {
+        self.unit_index(name).map(|i| self.unit_eff[i].as_str())
+    }
+
+    /// A record is served by a GROUP page iff its unit is a real SCC
+    /// (more than one member) or it references itself.
+    pub fn is_group(&self, input: &SemaInput, name: &str) -> bool {
+        match self.unit_index(name) {
+            Some(i) => {
+                self.units[i].len() > 1 || record_dep_names(input, name).iter().any(|d| d == name)
+            }
+            None => false,
+        }
+    }
+
+    /// Topology identity of the record's carrier (singleton vs group and
+    /// the exact member set): part of every RecordFields key, so a
+    /// singleton page can never be served for the grouped form (or the
+    /// reverse).
+    pub fn topology_fp(&self, name: &str) -> String {
+        match self.unit_index(name) {
+            None => fp(b"absent"),
+            Some(i) => {
+                let mut members = self.units[i].clone();
+                members.sort();
+                if members.len() > 1 {
+                    fp(format!("group:{}", members.join("+")).as_bytes())
+                } else {
+                    fp(format!("single:{}", members[0]).as_bytes())
+                }
+            }
+        }
+    }
+
+    /// The group/unit effective version (the published page content).
+    pub fn group_eff(&self, members: &[String]) -> String {
+        members
+            .iter()
+            .find_map(|m| self.effective(m))
+            .unwrap_or_default()
+            .to_string()
+    }
+}
+
+/// Dependency fingerprint with the effective unit versions (key
+/// component for RecordFields).
+pub fn record_refs_fp(input: &SemaInput, env: &KeyEnv, name: &str) -> String {
     let mut parts: Vec<String> = Vec::new();
     for dep in record_dep_names(input, name) {
-        let content = input
-            .lookup_record(&dep)
-            .map(|r| {
-                ContentVersion::of_canonical(&record_canonical(r))
-                    .as_str()
-                    .to_string()
-            })
-            .unwrap_or_default();
-        parts.push(format!("{dep}={content}"));
+        if let Some(eff) = env.effective(&dep) {
+            parts.push(format!("{dep}={eff}"));
+        }
     }
+    parts.sort();
     fp(parts.join("\u{1}").as_bytes())
 }
 
-/// Canonical identity of the published recursive-group page for `members`
-/// (sorted). Mirrors [`record_canonical`] plus the direct reference
-/// content versions, so an edit inside any member yields a DIFFERENT
-/// group key and a different page (F-796-R6-01).
-pub fn group_content_fp(input: &SemaInput, members: &[String]) -> String {
-    let mut sorted: Vec<String> = members.to_vec();
-    sorted.sort();
-    let mut parts: Vec<String> = Vec::new();
-    for name in sorted {
-        // own definition content AND direct reference versions: any
-        // member edit changes the group key
-        let own = input
-            .lookup_record(&name)
-            .map(|r| {
-                ContentVersion::of_canonical(&record_canonical(r))
-                    .as_str()
-                    .to_string()
-            })
-            .unwrap_or_default();
-        parts.push(format!("{}@{own}@{}", name, record_refs_fp(input, &name)));
+/// SCC partition (iterative Kosaraju) of the record reference graph, in
+/// DEPENDENCY ORDER (referenced units first). A unit is a singleton
+/// without self-reference or a recursive group.
+pub fn record_units(input: &SemaInput) -> Vec<Vec<String>> {
+    use std::collections::BTreeSet;
+    let names: Vec<String> = input.records.iter().map(|r| r.name.clone()).collect();
+    let name_set: BTreeSet<&str> = names.iter().map(|s| s.as_str()).collect();
+    let adj = |n: &str| -> Vec<String> {
+        record_dep_names(input, n)
+            .into_iter()
+            .filter(|d| name_set.contains(d.as_str()))
+            .collect()
+    };
+    let mut visited: BTreeSet<String> = BTreeSet::new();
+    let mut order: Vec<String> = Vec::new();
+    for start in &names {
+        if visited.contains(start) {
+            continue;
+        }
+        let mut stack: Vec<(String, usize)> = vec![(start.clone(), 0)];
+        visited.insert(start.clone());
+        while let Some((node, idx)) = stack.pop() {
+            let succ = adj(&node);
+            if idx < succ.len() {
+                stack.push((node.clone(), idx + 1));
+                let next = succ[idx].clone();
+                if visited.insert(next.clone()) {
+                    stack.push((next, 0));
+                }
+            } else {
+                order.push(node.clone());
+            }
+        }
     }
-    fp(parts.join("\u{1}").as_bytes())
+    let mut reverse: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for n in &names {
+        reverse.insert(n.clone(), Vec::new());
+    }
+    for n in &names {
+        for d in adj(n) {
+            reverse.entry(d).or_default().push(n.clone());
+        }
+    }
+    let radj = |n: &str| -> &[String] { reverse.get(n).map(|v| v.as_slice()).unwrap_or(&[]) };
+    let mut assigned: BTreeSet<String> = BTreeSet::new();
+    let mut units: Vec<Vec<String>> = Vec::new();
+    for start in order.iter().rev() {
+        if assigned.contains(start) {
+            continue;
+        }
+        let mut comp: Vec<String> = Vec::new();
+        let mut stack = vec![start.clone()];
+        assigned.insert(start.clone());
+        while let Some(node) = stack.pop() {
+            comp.push(node.clone());
+            for next in radj(&node) {
+                if assigned.insert(next.clone()) {
+                    stack.push(next.clone());
+                }
+            }
+        }
+        units.push(comp);
+    }
+    units.reverse();
+    units
 }
 
 /// Canonical content of one record's ordered field set.
@@ -416,6 +573,20 @@ impl SemaQueryKey {
     /// manifest even though the top-level signature components did not
     /// change).
     pub fn build(query: &QueryKind, input: &SemaInput) -> Self {
+        Self::build_with_env(query, input, None)
+    }
+
+    /// Key build with a PRECOMPUTED effective-dependency environment
+    /// (the publication loop builds one per module instead of one per
+    /// record — the 4096-chain cost control, F-796-R6 V-06).
+    pub fn build_with_env(query: &QueryKind, input: &SemaInput, env: Option<&KeyEnv>) -> Self {
+        let owned: Option<KeyEnv> =
+            if env.is_none() && matches!(query, QueryKind::RecordFields { .. }) {
+                Some(KeyEnv::new(input))
+            } else {
+                None
+            };
+        let env = env.or(owned.as_ref());
         let mut c: Vec<(String, String)> = vec![
             ("query".into(), query.as_str().into()),
             ("package".into(), input.package.clone()),
@@ -482,11 +653,14 @@ impl SemaQueryKey {
                     r.map(|r| fp(&record_canonical(r)))
                         .unwrap_or_else(|| "absent".into()),
                 ));
-                // F-796-R6-01: the shape embeds DIRECT dependency content
-                // versions — they are part of the key, so a referenced
-                // record's content change is a new key (never a hit that
-                // serves the old ref version)
-                c.push(("ref-versions-fp".into(), record_refs_fp(input, record)));
+                // F-796-R7-01: the key carries the DIRECT dependencies'
+                // EFFECTIVE unit versions (transitive) and the carrier
+                // topology — a leaf edit, an SCC formation/split or an
+                // external group dependency all produce a different key,
+                // never a hit onto an old required-data closure.
+                let env = env.expect("record key environment");
+                c.push(("ref-versions-fp".into(), record_refs_fp(input, env, record)));
+                c.push(("unit-topology-fp".into(), env.topology_fp(record)));
             }
             QueryKind::ListCandidates { domain } => {
                 let set = match *domain {

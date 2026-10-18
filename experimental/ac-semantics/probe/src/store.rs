@@ -23,6 +23,7 @@ use ac_sema_contract::{
     decode_page, encode_page, CachedResult, InferFacts, ModuleIndex, PageBody, PageHeader,
     PageKind, RecordMeta, ResultFacts, SemaPage, TypeDesc, SEMA_PAGE_SCHEMA_V1,
 };
+use ac_sema_core::query::KeyEnv;
 use ac_sema_core::query::{current_fingerprints, freshness_class, QueryKind};
 use ac_sema_core::{InferOutcome, InferSession, SemaInput, SemaQueryKey};
 use std::collections::BTreeMap;
@@ -262,11 +263,12 @@ fn admit_summary_ownership(
     }
 }
 
-/// Group page key (F-796-R6-01): membership AND the member content
-/// versions (via `group_content_fp`) plus algorithm/schema/producer.
-/// An edit inside any member is a NEW key, so old pages stay immutable
-/// under old keys and a current-input lookup can never reuse them.
-fn group_key(input: &SemaInput, member_names: &[String]) -> QueryKey {
+/// Group page key (F-796-R6-01 + R7-01): membership, carrier topology
+/// and the unit's TRANSITIVE effective version (member canonicals plus
+/// external dependencies' effective versions). Any leaf edit, SCC
+/// formation/split or external group change is a NEW key; old pages
+/// stay immutable under old keys.
+fn group_key(input: &SemaInput, member_names: &[String], env: &KeyEnv) -> QueryKey {
     let mut members = member_names.to_vec();
     members.sort();
     QueryKey {
@@ -282,30 +284,23 @@ fn group_key(input: &SemaInput, member_names: &[String]) -> QueryKey {
                 ac_sema_contract::SEMA_PAGE_SCHEMA_V1.into(),
             ),
             ("producer".into(), ac_sema_contract::SEMA_PRODUCER_ID.into()),
-            (
-                "group-content-fp".into(),
-                ac_sema_core::query::group_content_fp(input, &members),
-            ),
+            ("group-content-fp".into(), env.group_eff(&members)),
         ],
     }
 }
 
-/// Charge the payload allocation BEFORE decoding (F-796-R6-05) and
-/// decode. The guard covers the window where the raw payload and the
-/// decoded page coexist.
-fn decode_charged(
+/// Conservative reservation for one cache read + decode window
+/// (F-796-R7-02): the raw payload allocation happens INSIDE the store
+/// read, so the reservation must be taken BEFORE `get_artifact` (a
+/// payload-size-based charge afterward would account memory that was
+/// already live). The contract caps a page body at MAX_PAGE_BODY; the
+/// decoded tree can be several times the payload, so reserve 3x.
+const READ_RESERVE: usize = ac_sema_contract::MAX_PAGE_BODY * 3;
+
+fn decode_loaded(
     loaded: ac_artifact_probe::store::LoadedArtifact,
-    meter: Option<&mut crate::budget::SessionMeter>,
 ) -> Result<(SemaPage, String), ProbeError> {
-    let mut guard = None;
-    if let Some(m) = meter {
-        guard = Some(
-            m.scratch(loaded.payload.len().saturating_mul(2))
-                .map_err(ProbeError::BudgetRejected)?,
-        );
-    }
     let page = decode_page(&loaded.payload)?;
-    drop(guard);
     Ok((page, loaded.artifact_id))
 }
 
@@ -358,20 +353,80 @@ fn admit_shape_refs(
     Ok(())
 }
 
-/// The complete read-side version admission (F-796-R6-01): page header
-/// target content + every embedded nominal ref must be the CURRENT
-/// definition version. A page reached under the current key that fails
-/// this is a controlled rejection, never a served stale value.
+/// The complete read-side version admission (F-796-R6-01 + R7-01):
+/// page content must match the unit's CURRENT EFFECTIVE version (the
+/// transitive dependency closure), the carrier topology must match the
+/// current SCC partition, and every embedded nominal ref must be the
+/// current declaration version. A page reached under the current key
+/// that fails this is a controlled rejection, never a served stale
+/// closure.
 fn admit_page(
     page: &SemaPage,
     input: &SemaInput,
     query: Option<&QueryKind>,
+    env: Option<&KeyEnv>,
 ) -> Result<(), ProbeError> {
     match &page.body {
-        PageBody::RecordMeta(m) => admit_shape_refs(&m.shape, input),
+        PageBody::RecordMeta(m) => {
+            admit_shape_refs(&m.shape, input)?;
+            let Some(env) = env else {
+                return Ok(());
+            };
+            let expect = env.effective(&m.shape.decl.name).ok_or_else(|| {
+                ProbeError::RefVersionMismatch {
+                    name: m.shape.decl.name.clone(),
+                    cached: m.group_content.as_str().to_string(),
+                    current: "<record no longer declared>".into(),
+                }
+            })?;
+            if m.group_content.as_str() != expect {
+                return Err(ProbeError::RefVersionMismatch {
+                    name: m.shape.decl.name.clone(),
+                    cached: m.group_content.as_str().to_string(),
+                    current: expect.to_string(),
+                });
+            }
+            Ok(())
+        }
         PageBody::RecGroup(members) => {
             for m in members {
                 admit_shape_refs(m, input)?;
+            }
+            let Some(env) = env else {
+                return Ok(());
+            };
+            let Some(first) = members.first() else {
+                return Err(ProbeError::TargetMismatch {
+                    found: "empty recursive group".into(),
+                    expected: "at least one member".into(),
+                });
+            };
+            let expect =
+                env.effective(&first.decl.name)
+                    .ok_or_else(|| ProbeError::RefVersionMismatch {
+                        name: first.decl.name.clone(),
+                        cached: page.header.content.as_str().to_string(),
+                        current: "<record no longer declared>".into(),
+                    })?;
+            if page.header.content.as_str() != expect {
+                return Err(ProbeError::RefVersionMismatch {
+                    name: first.decl.name.clone(),
+                    cached: page.header.content.as_str().to_string(),
+                    current: expect.to_string(),
+                });
+            }
+            let mut got: Vec<String> = members.iter().map(|m| m.decl.name.clone()).collect();
+            got.sort();
+            let mut want: Vec<String> = env
+                .members(&first.decl.name)
+                .map(|m| m.to_vec())
+                .unwrap_or_default();
+            want.sort();
+            if got != want {
+                return Err(ProbeError::TargetMismatch {
+                    found: format!("group members {}", got.join("+")),
+                    expected: format!("current unit {}", want.join("+")),
+                });
             }
             Ok(())
         }
@@ -400,7 +455,7 @@ pub fn lookup_only(
     input: &SemaInput,
     query: &QueryKind,
 ) -> Result<FetchOutcome, ProbeError> {
-    lookup_core(store, input, query, None, true)
+    lookup_core(store, input, query, None, true, None)
 }
 
 /// Metered lookup (F-796-R6-05): the payload/decode window is charged to
@@ -411,7 +466,7 @@ pub fn lookup_only_metered<'m>(
     query: &QueryKind,
     meter: Option<&'m mut crate::budget::SessionMeter>,
 ) -> Result<FetchOutcome, ProbeError> {
-    lookup_core(store, input, query, meter, true)
+    lookup_core(store, input, query, meter, true, None)
 }
 
 /// Direct lookup (no SCC/group fallback) — the publication loop already
@@ -422,7 +477,18 @@ fn lookup_direct(
     input: &SemaInput,
     query: &QueryKind,
 ) -> Result<FetchOutcome, ProbeError> {
-    lookup_core(store, input, query, None, false)
+    lookup_core(store, input, query, None, false, None)
+}
+
+/// Direct lookup with a PRECOMPUTED effective environment (publication
+/// loop: one SCC partition per module).
+fn lookup_direct_env(
+    store: &ManagedStore,
+    input: &SemaInput,
+    query: &QueryKind,
+    env: &KeyEnv,
+) -> Result<FetchOutcome, ProbeError> {
+    lookup_core(store, input, query, None, false, Some(env))
 }
 
 fn lookup_core(
@@ -431,43 +497,55 @@ fn lookup_core(
     query: &QueryKind,
     mut meter: Option<&mut crate::budget::SessionMeter>,
     allow_group: bool,
+    env: Option<&KeyEnv>,
 ) -> Result<FetchOutcome, ProbeError> {
-    let key = SemaQueryKey::build(query, input);
+    let owned;
+    let env = match env {
+        Some(e) => Some(e),
+        None if matches!(query, QueryKind::RecordFields { .. }) => {
+            owned = key_env(input);
+            Some(&owned)
+        }
+        None => None,
+    };
+    let key = SemaQueryKey::build_with_env(query, input, env);
+    // F-796-R7-02: reserve the read/decode window BEFORE the payload is
+    // allocated by the store read
+    let mut read_guard = None;
+    if let Some(m) = meter.as_deref_mut() {
+        read_guard = Some(
+            m.scratch(READ_RESERVE)
+                .map_err(ProbeError::BudgetRejected)?,
+        );
+    }
     let loaded = match store.get_artifact(SEMA_LAYER, &store_key(&key))? {
         Some(l) => l,
         None => {
             if !allow_group {
                 return Ok(FetchOutcome::Miss);
             }
-            // F-796-R5 (F07): a RecordFields miss may be a member of a
-            // recursive GROUP page published under the group's canonical
-            // key — derive the record's unit from the CURRENT input
-            // (deterministic SCC partition) and retry through the group
-            // key with member admission
+            // F-796-R5 (F07) + R7-01: a RecordFields miss may be a member
+            // of a recursive GROUP page; the CURRENT unit and effective
+            // version decide the carrier and the key
             let QueryKind::RecordFields { record } = query else {
                 return Ok(FetchOutcome::Miss);
             };
-            let Some(unit) = scc_units(input)
-                .into_iter()
-                .find(|u| u.iter().any(|n| n == record))
-            else {
+            let env = env.expect("record env");
+            let Some(unit) = env.members(record) else {
                 return Ok(FetchOutcome::Miss);
             };
-            let is_group = unit.len() > 1
-                || ac_sema_core::query::record_dep_names(input, record)
-                    .iter()
-                    .any(|d| d == record);
-            if !is_group {
+            if !env.is_group(input, record) {
                 return Ok(FetchOutcome::Miss);
             }
-            match store.get_artifact(SEMA_LAYER, &group_key(input, &unit))? {
+            match store.get_artifact(SEMA_LAYER, &group_key(input, unit, env))? {
                 Some(l) => l,
                 None => return Ok(FetchOutcome::Miss),
             }
         }
     };
-    let (page, artifact_id) = decode_charged(loaded, meter.as_deref_mut())?;
-    admit_page(&page, input, Some(query))?;
+    let (page, artifact_id) = decode_loaded(loaded)?;
+    admit_page(&page, input, Some(query), env)?;
+    drop(read_guard);
     let expected = expected_kind(query);
     // F-796-R5 (F07): a RecordFields query may be served by the
     // member's recursive GROUP page — admitted below by membership
@@ -651,20 +729,36 @@ fn desc_name(t: &TypeDesc) -> String {
 /// rejects before work — never a fixed post-hoc reservation.
 fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
     use ac_sema_core::input::{InputExpr, InputExprKind, InputStmt};
-    let mut nodes = 0usize;
+    // Conservative per-node costs calibrated against the R7 allocator
+    // evidence (~660 live bytes per `let v = N`, i.e. ~330/node): one
+    // statement 512 + one expression 256 + names, plus a 16 KiB base.
+    // The estimate is a POLICY RESERVATION, not a measurement: it must
+    // never undercount the real concurrent allocation.
+    const SOLVER_BASE: usize = 16 * 1024;
+    const STMT_COST: usize = 512;
+    const EXPR_COST: usize = 256;
+    let mut bytes = SOLVER_BASE;
     let mut exprs: Vec<&InputExpr> = Vec::new();
     let mut blocks: Vec<&ac_sema_core::input::InputBlock> = Vec::new();
     if let Some(f) = input.lookup_fn(fn_name) {
-        nodes += f.params.len();
+        for (n, _) in &f.params {
+            bytes = bytes.saturating_add(96 + n.len().saturating_mul(2));
+        }
         blocks.push(&f.body);
     }
     while let Some(b) = blocks.pop() {
         for st in &b.stmts {
-            nodes += 1;
+            bytes = bytes.saturating_add(STMT_COST);
             match st {
-                InputStmt::Let { value, .. }
-                | InputStmt::Assign { value, .. }
-                | InputStmt::Return { value, .. } => exprs.push(value),
+                InputStmt::Let { name, value, .. } => {
+                    bytes = bytes.saturating_add(name.len().saturating_mul(2));
+                    exprs.push(value);
+                }
+                InputStmt::Assign { target, value, .. } => {
+                    bytes = bytes.saturating_add(target.len().saturating_mul(2));
+                    exprs.push(value);
+                }
+                InputStmt::Return { value, .. } => exprs.push(value),
                 InputStmt::If {
                     cond, then, els, ..
                 } => {
@@ -684,9 +778,15 @@ fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
         }
     }
     while let Some(e) = exprs.pop() {
-        nodes += 1;
+        bytes = bytes.saturating_add(EXPR_COST);
         match &e.kind {
-            InputExprKind::Call { args, .. } => exprs.extend(args.iter()),
+            InputExprKind::Call { callee, args } => {
+                bytes = bytes.saturating_add(callee.len().saturating_mul(2));
+                exprs.extend(args.iter());
+            }
+            InputExprKind::Var(n) => {
+                bytes = bytes.saturating_add(n.len().saturating_mul(2));
+            }
             InputExprKind::Binary { lhs, rhs, .. } => {
                 exprs.push(lhs);
                 exprs.push(rhs);
@@ -695,7 +795,27 @@ fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
             _ => {}
         }
     }
-    (nodes.saturating_mul(64)).saturating_add(1024)
+    bytes
+}
+
+/// Conservative size of the facts/manifest the publish path clones and
+/// encodes (F-796-R7-02): charged BEFORE the clone.
+fn facts_estimate(s: &ac_sema_core::InferSummary) -> usize {
+    let mut b = 4 * 1024usize;
+    for (n, _) in &s.facts.bindings {
+        b = b.saturating_add(96 + n.len().saturating_mul(2));
+    }
+    b = b.saturating_add(s.facts.expr_types.len().saturating_mul(48));
+    for d in &s.facts.diagnostics {
+        b = b.saturating_add(128 + d.code.len().saturating_mul(2) + d.message.len());
+    }
+    for sig in &s.reads.sigs {
+        b = b.saturating_add(96 + sig.len().saturating_mul(2));
+    }
+    for (_, n, set) in &s.reads.negatives {
+        b = b.saturating_add(128 + n.len().saturating_mul(2) + set.len());
+    }
+    b
 }
 
 /// Solve under a scratch reservation derived from the actual body. The
@@ -995,8 +1115,10 @@ pub fn publish_infer_result(
     publish_infer_result_charged(store, input, query, summary, project, None)
 }
 
-/// Charged publish (F-796-R6-05): the encoded payload allocation is
-/// charged to the session meter for the duration of the store write.
+/// Charged publish (F-796-R6-05 + R7-02): ONE conservative reservation
+/// covers the facts clone, the manifest and the encoded page BEFORE the
+/// clone happens; an over-budget publish is a typed resource rejection,
+/// never a late codec error.
 pub fn publish_infer_result_charged(
     store: &ManagedStore,
     input: &SemaInput,
@@ -1005,6 +1127,11 @@ pub fn publish_infer_result_charged(
     project: Option<&str>,
     meter: Option<&mut crate::budget::SessionMeter>,
 ) -> Result<String, ProbeError> {
+    let reserve = facts_estimate(summary).saturating_add(ac_sema_contract::MAX_PAGE_BODY);
+    let mut guard = None;
+    if let Some(m) = meter {
+        guard = Some(m.scratch(reserve).map_err(ProbeError::BudgetRejected)?);
+    }
     let target = ac_sema_core::query::target_logical(input, query);
     admit_summary_ownership(summary, query, &target)?;
     let manifest = ac_sema_core::manifest_from(
@@ -1031,7 +1158,9 @@ pub fn publish_infer_result_charged(
         },
         body: PageBody::CachedResult(cached),
     };
-    publish_page_charged(store, input, query, &page, project, meter)
+    let art = publish_page(store, input, query, &page, project)?;
+    drop(guard);
+    Ok(art)
 }
 
 /// Publish a module index page (declaration candidate sets).
@@ -1148,6 +1277,7 @@ fn required_edges_of(
     name: &str,
     unit: &std::collections::BTreeSet<String>,
     published: &BTreeMap<String, String>,
+    env: &KeyEnv,
 ) -> Result<Vec<String>, ProbeError> {
     let mut out = Vec::new();
     for dep in ac_sema_core::query::record_dep_names(input, name) {
@@ -1164,7 +1294,7 @@ fn required_edges_of(
         let dep_query = QueryKind::RecordFields {
             record: dep.clone(),
         };
-        match lookup_direct(store, input, &dep_query)? {
+        match lookup_direct_env(store, input, &dep_query, env)? {
             FetchOutcome::Hit { artifact_id, .. } => out.push(artifact_id),
             _ => {
                 return Err(ProbeError::UnknownTarget {
@@ -1180,76 +1310,11 @@ fn required_edges_of(
 /// SCC partition (iterative Kosaraju) of the record reference graph.
 /// Returns units in DEPENDENCY ORDER (referenced groups first); a unit
 /// is a singleton without self-reference or a recursive group.
-fn scc_units(input: &SemaInput) -> Vec<Vec<String>> {
-    use std::collections::BTreeSet;
+/// Build the effective-dependency environment and count the partition
+/// (the permanent deep-chain control: publication must partition ONCE).
+fn key_env(input: &SemaInput) -> KeyEnv {
     SCC_BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let names: Vec<String> = input.records.iter().map(|r| r.name.clone()).collect();
-    let name_set: BTreeSet<&str> = names.iter().map(|s| s.as_str()).collect();
-    let adj = |n: &str| -> Vec<String> {
-        ac_sema_core::query::record_dep_names(input, n)
-            .into_iter()
-            .filter(|d| name_set.contains(d.as_str()))
-            .collect()
-    };
-    // 1st pass: DFS finish order (iterative)
-    let mut visited: BTreeSet<String> = BTreeSet::new();
-    let mut order: Vec<String> = Vec::new();
-    for start in &names {
-        if visited.contains(start) {
-            continue;
-        }
-        let mut stack: Vec<(String, usize)> = vec![(start.clone(), 0)];
-        visited.insert(start.clone());
-        while let Some((node, idx)) = stack.pop() {
-            let succ = adj(&node);
-            if idx < succ.len() {
-                stack.push((node.clone(), idx + 1));
-                let next = succ[idx].clone();
-                if visited.insert(next.clone()) {
-                    stack.push((next, 0));
-                }
-            } else {
-                order.push(node.clone());
-            }
-        }
-    }
-    // 2nd pass on the REVERSE graph in reverse finish order — the
-    // reverse adjacency is BUILT ONCE (a per-node scan is O(V^2) and
-    // made the deep-chain lookups quadratic; this is the fix)
-    let mut reverse: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for n in &names {
-        reverse.insert(n.clone(), Vec::new());
-    }
-    for n in &names {
-        for d in adj(n) {
-            reverse.entry(d).or_default().push(n.clone());
-        }
-    }
-    let radj = |n: &str| -> &[String] { reverse.get(n).map(|v| v.as_slice()).unwrap_or(&[]) };
-    let mut assigned: BTreeSet<String> = BTreeSet::new();
-    let mut units: Vec<Vec<String>> = Vec::new();
-    for start in order.iter().rev() {
-        if assigned.contains(start) {
-            continue;
-        }
-        let mut comp: Vec<String> = Vec::new();
-        let mut stack = vec![start.clone()];
-        assigned.insert(start.clone());
-        while let Some(node) = stack.pop() {
-            comp.push(node.clone());
-            for next in radj(&node) {
-                if assigned.insert(next.clone()) {
-                    stack.push(next.clone());
-                }
-            }
-        }
-        units.push(comp);
-    }
-    // Kosaraju emits SCCs in reverse topological condensation order;
-    // reverse so a unit's dependencies come FIRST
-    units.reverse();
-    units
+    KeyEnv::new(input)
 }
 
 /// Root a REUSED artifact under the current project (F-796-R6-02):
@@ -1277,11 +1342,12 @@ fn ensure_record_page(
     unit: &std::collections::BTreeSet<String>,
     published: &BTreeMap<String, String>,
     project: Option<&str>,
+    env: &KeyEnv,
 ) -> Result<String, ProbeError> {
     let query = QueryKind::RecordFields {
         record: name.to_string(),
     };
-    if let FetchOutcome::Hit { artifact_id, .. } = lookup_direct(store, input, &query)? {
+    if let FetchOutcome::Hit { artifact_id, .. } = lookup_direct_env(store, input, &query, env)? {
         root_reuse(store, project, &artifact_id)?;
         return Ok(artifact_id);
     }
@@ -1293,10 +1359,14 @@ fn ensure_record_page(
     };
     let pkg = ac_sema_contract::PackageId::new(&input.package);
     let shape = shape_of(input, name)?;
-    let required_edges = required_edges_of(store, input, name, unit, published)?;
-    let group = ac_sema_contract::RecGroup {
-        members: vec![shape.clone()],
-    };
+    let required_edges = required_edges_of(store, input, name, unit, published, env)?;
+    let effective = env
+        .effective(name)
+        .ok_or_else(|| ProbeError::UnknownTarget {
+            what: "record unit",
+            name: name.to_string(),
+        })?
+        .to_string();
     let meta = RecordMeta {
         shape,
         methods: r
@@ -1324,7 +1394,7 @@ fn ensure_record_page(
                 }
             })
             .collect(),
-        group_content: group.group_content(),
+        group_content: ac_sema_contract::ContentVersion(effective),
     };
     let page = SemaPage {
         header: PageHeader {
@@ -1336,7 +1406,7 @@ fn ensure_record_page(
         },
         body: PageBody::RecordMeta(meta),
     };
-    let key = SemaQueryKey::build(&query, input);
+    let key = SemaQueryKey::build_with_env(&query, input, Some(env));
     let payload = encode_page(&page)?;
     let edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = required_edges
         .into_iter()
@@ -1467,28 +1537,29 @@ pub fn publish_module_records(
     project: Option<&str>,
 ) -> Result<BTreeMap<String, String>, ProbeError> {
     let mut out = BTreeMap::new();
-    for unit in scc_units(input) {
+    // ONE effective-dependency partition per module (R7-01): the key,
+    // page content and carrier topology all derive from this env
+    let env = key_env(input);
+    for unit in env.units() {
         let unit_set: std::collections::BTreeSet<String> = unit.iter().cloned().collect();
-        let is_group = unit.len() > 1
-            || ac_sema_core::query::record_dep_names(input, &unit[0])
-                .iter()
-                .any(|d| *d == unit[0]);
+        let is_group = env.is_group(input, &unit[0]);
         if !is_group {
             // singleton without self-reference: single page (reused if
             // a page for exactly this record already exists)
             let name = &unit[0];
-            if let Ok(FetchOutcome::Hit { artifact_id, .. }) = lookup_direct(
+            if let Ok(FetchOutcome::Hit { artifact_id, .. }) = lookup_direct_env(
                 store,
                 input,
                 &QueryKind::RecordFields {
                     record: name.clone(),
                 },
+                &env,
             ) {
                 root_reuse(store, project, &artifact_id)?;
                 out.insert(name.clone(), artifact_id);
                 continue;
             }
-            let art = ensure_record_page(store, input, name, &unit_set, &out, project)?;
+            let art = ensure_record_page(store, input, name, &unit_set, &out, project, &env)?;
             out.insert(name.clone(), art);
             continue;
         }
@@ -1497,24 +1568,23 @@ pub fn publish_module_records(
         // published already and become required-data edges)
         let mut required_edges: Vec<String> = Vec::new();
         let mut members: Vec<ac_sema_contract::RecordShape> = Vec::new();
-        for name in &unit {
+        for name in unit {
             members.push(shape_of(input, name)?);
-            required_edges.extend(required_edges_of(store, input, name, &unit_set, &out)?);
+            required_edges.extend(required_edges_of(
+                store, input, name, &unit_set, &out, &env,
+            )?);
         }
         required_edges.sort();
         required_edges.dedup();
-        let group = ac_sema_contract::RecGroup {
-            members: members.clone(),
-        };
-        let key = group_key(input, &unit);
-        // an unchanged group under the SAME content-versioned key is
-        // reused (and rooted), never rewritten; an edited member is a
-        // DIFFERENT key, so old immutable versions coexist
+        let key = group_key(input, unit, &env);
+        // an unchanged group under the SAME effective-versioned key is
+        // reused (and rooted), never rewritten; an edited member or a
+        // topology change is a DIFFERENT key
         if let Some(loaded) = store.get_artifact(SEMA_LAYER, &key)? {
             let page = decode_page(&loaded.payload)?;
-            admit_page(&page, input, None)?;
+            admit_page(&page, input, None, Some(&env))?;
             root_reuse(store, project, &loaded.artifact_id)?;
-            for name in &unit {
+            for name in unit {
                 out.insert(name.clone(), loaded.artifact_id.clone());
             }
             continue;
@@ -1525,7 +1595,7 @@ pub fn publish_module_records(
                 producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
                 codec_version: ac_sema_contract::SEMA_CODEC_VERSION,
                 kind: PageKind::RecGroup,
-                content: group.group_content(),
+                content: ac_sema_contract::ContentVersion(env.group_eff(unit)),
             },
             body: PageBody::RecGroup(members),
         };
@@ -1544,7 +1614,7 @@ pub fn publish_module_records(
         };
         let art = store.put_artifact(req)?;
         root_reuse(store, project, &art)?;
-        for name in &unit {
+        for name in unit {
             out.insert(name.clone(), art.clone());
         }
     }

@@ -804,3 +804,196 @@ fn sema_cache_r6_reuse_roots_current_project_and_survives_gc() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// F-796-R7-01: effective dependency-unit versions, carrier topology,
+// and current-closure retention
+// ---------------------------------------------------------------------------
+
+fn r7_publish(
+    store: &ManagedStore,
+    input: &ac_sema_core::SemaInput,
+) -> std::collections::BTreeMap<String, String> {
+    publish_module_records(store, input, None).unwrap()
+}
+
+fn r7_root_only(store: &ManagedStore, project: &str, artifact: &str) {
+    store.register_root(project, artifact, "soft").unwrap();
+}
+
+fn r7_page_artifact(
+    store: &ManagedStore,
+    input: &ac_sema_core::SemaInput,
+    record: &str,
+) -> (ac_sema_contract::PageKind, String) {
+    match lookup_only(
+        store,
+        input,
+        &QueryKind::RecordFields {
+            record: record.into(),
+        },
+    )
+    .unwrap()
+    {
+        FetchOutcome::Hit { page, artifact_id } => (page.header.kind, artifact_id),
+        other => panic!("{record} must hit, got {other:?}"),
+    }
+}
+
+/// R7-01a: a THREE-LEVEL DAG leaf edit (C.value int→bool) must
+/// invalidate A (whose declaration did not change): before publication
+/// the current input does not hit the old A page; after publication A
+/// is a new artifact whose required closure points at the CURRENT B/C.
+/// Rooting ONLY the entry A keeps the current B and C alive across GC.
+#[test]
+fn sema_cache_r7_three_level_leaf_edit_republishes_current_closure() {
+    let root = scratch("r7-three-level");
+    let store = open_store(&root.join("store")).unwrap();
+    let v1 = record_input(
+        "type A { next B }\ntype B { next C }\ntype C { value int }",
+        "m",
+    );
+    let p1 = r7_publish(&store, &v1);
+    let v2 = record_input(
+        "type A { next B }\ntype B { next C }\ntype C { value bool }",
+        "m",
+    );
+    let qa = QueryKind::RecordFields { record: "A".into() };
+    match lookup_only(&store, &v2, &qa).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("leaf edit must not hit the old A closure: {other:?}"),
+    }
+    let p2 = r7_publish(&store, &v2);
+    assert_ne!(
+        p1["A"], p2["A"],
+        "A must be republished for the new closure"
+    );
+    assert_ne!(p1["B"], p2["B"]);
+    assert_ne!(p1["C"], p2["C"]);
+    // release every project root (publication used None) and root ONLY A
+    r7_root_only(&store, "only-entry", &p2["A"]);
+    run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+    for (name, want) in [("A", &p2["A"]), ("B", &p2["B"]), ("C", &p2["C"])] {
+        let (kind, art) = r7_page_artifact(&store, &v2, name);
+        assert_eq!(kind, ac_sema_contract::PageKind::RecordMeta);
+        assert_eq!(&art, want, "{name} must be the CURRENT artifact after GC");
+    }
+}
+
+/// R7-01b: an SCC FORMATION (C.next: A) changes the carrier — the
+/// current input never hits the historical singleton, the published
+/// group is what the lookup returns, and a later SPLIT returns a fresh
+/// singleton (never the old group page).
+#[test]
+fn sema_cache_r7_scc_formation_and_split_change_the_carrier() {
+    let root = scratch("r7-scc-forms");
+    let store = open_store(&root.join("store")).unwrap();
+    let chain = record_input(
+        "type A { next B }\ntype B { next C }\ntype C { value int }",
+        "m",
+    );
+    let p1 = r7_publish(&store, &chain);
+    let qa = QueryKind::RecordFields { record: "A".into() };
+    let cycle = record_input(
+        "type A { next B }\ntype B { next C }\ntype C { next A }",
+        "m",
+    );
+    match lookup_only(&store, &cycle, &qa).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("SCC formation must not serve the old singleton: {other:?}"),
+    }
+    let p2 = r7_publish(&store, &cycle);
+    assert_eq!(p2["A"], p2["B"], "one group page");
+    assert_eq!(p2["A"], p2["C"]);
+    let (kind, art) = r7_page_artifact(&store, &cycle, "A");
+    assert_eq!(kind, ac_sema_contract::PageKind::RecGroup);
+    assert_eq!(art, p2["A"]);
+    r7_root_only(&store, "only-cycle", &p2["A"]);
+    run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+    for r in ["A", "B", "C"] {
+        let (kind, art) = r7_page_artifact(&store, &cycle, r);
+        assert_eq!(kind, ac_sema_contract::PageKind::RecGroup);
+        assert_eq!(art, p2["A"], "{r} served by the current group");
+    }
+
+    // SPLIT: break C's edge back into a chain with a DIFFERENT leaf type
+    let split = record_input(
+        "type A { next B }\ntype B { next C }\ntype C { value bool }",
+        "m",
+    );
+    let p3 = r7_publish(&store, &split);
+    assert_ne!(p3["A"], p1["A"], "split singleton is a fresh page");
+    let (kind, art) = r7_page_artifact(&store, &split, "A");
+    assert_eq!(kind, ac_sema_contract::PageKind::RecordMeta);
+    assert_eq!(art, p3["A"]);
+    assert_ne!(
+        art, p2["A"],
+        "the old group page is never served as a singleton"
+    );
+    r7_root_only(&store, "only-split", &p3["A"]);
+    run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+    for (name, want) in [("A", &p3["A"]), ("B", &p3["B"]), ("C", &p3["C"])] {
+        let (kind, art) = r7_page_artifact(&store, &split, name);
+        assert_eq!(kind, ac_sema_contract::PageKind::RecordMeta);
+        assert_eq!(&art, want, "{name} current after split+GC");
+    }
+}
+
+/// R7-01c: an EXTERNAL GROUP DEPENDENCY (W.g: A where A,B are one SCC)
+/// — a leaf edit outside the group and a member edit inside it both
+/// change W; rooting ONLY W keeps W, its external leaf and the current
+/// group page alive across GC.
+#[test]
+fn sema_cache_r7_external_group_dependency_tracks_effective_version() {
+    let root = scratch("r7-ext-group");
+    let store = open_store(&root.join("store")).unwrap();
+    let v1 = record_input(
+        "type A { next B }\ntype B { prev A }\ntype L { v int }\ntype W { g A; leaf L }",
+        "m",
+    );
+    let p1 = r7_publish(&store, &v1);
+    let qw = QueryKind::RecordFields { record: "W".into() };
+
+    // leaf edit OUTSIDE the group changes W
+    let v2 = record_input(
+        "type A { next B }\ntype B { prev A }\ntype L { v bool }\ntype W { g A; leaf L }",
+        "m",
+    );
+    match lookup_only(&store, &v2, &qw).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("W must not reuse a page whose leaf dependency changed: {other:?}"),
+    }
+    let p2 = r7_publish(&store, &v2);
+    assert_ne!(p1["W"], p2["W"]);
+    assert_ne!(p1["L"], p2["L"]);
+    assert_eq!(p2["A"], p2["B"], "A/B stay one group page");
+    r7_root_only(&store, "only-w", &p2["W"]);
+    run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+    for (name, want) in [("W", &p2["W"]), ("L", &p2["L"])] {
+        let (_, art) = r7_page_artifact(&store, &v2, name);
+        assert_eq!(&art, want, "{name} current after GC");
+    }
+    for r in ["A", "B"] {
+        let (kind, art) = r7_page_artifact(&store, &v2, r);
+        assert_eq!(kind, ac_sema_contract::PageKind::RecGroup);
+        assert_eq!(art, p2["A"], "{r} group current through W's required edge");
+    }
+
+    // member edit INSIDE the group also changes W's effective dependency
+    let v3 = record_input(
+        "type A { next B; extra int }\ntype B { prev A }\ntype L { v bool }\ntype W { g A; leaf L }",
+        "m",
+    );
+    let p3 = r7_publish(&store, &v3);
+    assert_ne!(p2["W"], p3["W"]);
+    assert_ne!(p2["A"], p3["A"]);
+    r7_root_only(&store, "only-w3", &p3["W"]);
+    run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+    let (_, art) = r7_page_artifact(&store, &v3, "W");
+    assert_eq!(art, p3["W"]);
+    for r in ["A", "B"] {
+        let (kind, art) = r7_page_artifact(&store, &v3, r);
+        assert_eq!(kind, ac_sema_contract::PageKind::RecGroup);
+        assert_eq!(art, p3["A"], "{r} current group after member edit");
+    }
+}

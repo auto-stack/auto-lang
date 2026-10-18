@@ -1245,7 +1245,10 @@ impl<'a> PageView<'a> {
     pub fn try_as_rec_group(&self) -> Result<&'a [RecordShape], CodecError> {
         match &self.page.body {
             PageBody::RecGroup(m) => Ok(m),
-            _ => Err(CodecError::BadTag("page-kind-for-recgroup", self.page.header.kind as u8)),
+            _ => Err(CodecError::BadTag(
+                "page-kind-for-recgroup",
+                self.page.header.kind as u8,
+            )),
         }
     }
 

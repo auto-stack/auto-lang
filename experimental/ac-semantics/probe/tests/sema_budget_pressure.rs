@@ -14,7 +14,9 @@ use ac_sema_contract::{
 use ac_sema_core::adapter::parse_into_input;
 use ac_sema_core::query::{fn_body_canonical, QueryKind};
 use ac_sema_core::{InferOutcome, InferSession};
-use ac_sema_probe::budget::{publish_streamed, HotPages, SessionMeter, HOT_BUDGET, MANAGED_BUDGET};
+use ac_sema_probe::budget::{
+    publish_streamed, HotPages, SessionMeter, HOT_BUDGET, MANAGED_BUDGET, SCRATCH_BUDGET,
+};
 use ac_sema_probe::{open_store, publish_infer_result, run_inference, FetchOutcome};
 use auto_ac_prototype::source::SourceProfile;
 
@@ -328,4 +330,121 @@ fn sema_budget_small_query_payload_cap() {
         }
         other => panic!("expected TooLarge, got {other:?}"),
     }
+}
+
+// ---------------------------------------------------------------------------
+// F-796-R7-02: conservative pre-allocation accounting
+// ---------------------------------------------------------------------------
+
+fn lets_input(n: usize, name_len: usize) -> ac_sema_core::SemaInput {
+    let mut src = String::from("fn main() int {\n");
+    for i in 0..n {
+        let mut name = format!("v{i}");
+        while name.len() < name_len {
+            name.push('x');
+        }
+        src.push_str(&format!("let {name} = {i}\n"));
+    }
+    src.push_str("return 1\n}");
+    parse_into_input(&src, "r7budget", "m", SourceProfile::Core).unwrap()
+}
+
+fn run_lets(n: usize, name_len: usize, family: &str) -> (ac_sema_probe::QueryReport, SessionMeter) {
+    let root = scratch(family);
+    let store = open_store(&root.join("store")).unwrap();
+    let input = lets_input(n, name_len);
+    let q = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
+    let mut meter = SessionMeter::new();
+    let report = ac_sema_probe::run_query_flow(&store, &input, &q, None, Some(&mut meter)).unwrap();
+    (report, meter)
+}
+
+/// 10k facts publish inside the 8MiB scratch budget; 20k exceed the
+/// contract and are a typed `ResourceExhausted` BEFORE any solve or
+/// publish (the R7 allocator probe measured 13.2MiB live for 20k while
+/// the old ledger said 2.5MiB and still published).
+#[test]
+fn sema_budget_large_inference_rejects_before_publish() {
+    let (ok, ok_meter) = run_lets(10_000, 4, "r7-budget-10k");
+    assert_eq!(ok.disposition, ac_sema_probe::Disposition::PublishedMiss);
+    assert!(
+        ok_meter.managed_bytes() <= MANAGED_BUDGET,
+        "10k managed ledger {} > {MANAGED_BUDGET}",
+        ok_meter.managed_bytes()
+    );
+    assert!(
+        ok_meter.scratch_peak() >= 6 * 1024 * 1024,
+        "10k must reserve conservatively (peak {} bytes)",
+        ok_meter.scratch_peak()
+    );
+
+    let (rej, rej_meter) = run_lets(20_000, 4, "r7-budget-20k");
+    assert_eq!(
+        rej.disposition,
+        ac_sema_probe::Disposition::ResourceExhausted,
+        "20k must be rejected by the budget front door: {:?}",
+        rej.reason
+    );
+    assert!(
+        rej_meter.rejections() >= 1,
+        "the ledger must record the rejection"
+    );
+    assert!(
+        rej_meter.scratch_peak() <= SCRATCH_BUDGET,
+        "peak {} exceeds the scratch budget",
+        rej_meter.scratch_peak()
+    );
+    // nothing was published by the rejected query
+    let root = std::env::temp_dir().join("ac796-r7-budget-20k");
+    let store = open_store(&root.join("store")).unwrap();
+    assert!(matches!(
+        ac_sema_probe::lookup_only(
+            &store,
+            &lets_input(20_000, 4),
+            &QueryKind::InferBody {
+                fn_name: "main".into()
+            }
+        )
+        .unwrap(),
+        FetchOutcome::Miss
+    ));
+}
+
+/// Long identifier names are part of the reservation (the old per-node
+/// constant ignored them).
+#[test]
+fn sema_budget_long_names_are_accounted() {
+    let (_, short) = run_lets(2_000, 4, "r7-budget-short-names");
+    let (_, long) = run_lets(2_000, 200, "r7-budget-long-names");
+    assert!(
+        long.scratch_peak() >= short.scratch_peak().saturating_add(700_000),
+        "200-char names over 2000 lets must add ≥700KB to the reservation (short {}, long {})",
+        short.scratch_peak(),
+        long.scratch_peak()
+    );
+}
+
+/// A cache HIT still reserves the read/decode window BEFORE the payload
+/// is allocated, and is charged on the ledger.
+#[test]
+fn sema_budget_cache_readback_reserves_before_decode() {
+    let root = scratch("r7-budget-readback");
+    let store = open_store(&root.join("store")).unwrap();
+    let input = lets_input(10_000, 4);
+    let q = QueryKind::InferBody {
+        fn_name: "main".into(),
+    };
+    let first = ac_sema_probe::run_query_flow(&store, &input, &q, None, None).unwrap();
+    assert_eq!(first.disposition, ac_sema_probe::Disposition::PublishedMiss);
+    let mut meter = SessionMeter::new();
+    let second = ac_sema_probe::run_query_flow(&store, &input, &q, None, Some(&mut meter)).unwrap();
+    assert_eq!(second.disposition, ac_sema_probe::Disposition::Hit);
+    assert_eq!(second.compute_calls, 0);
+    assert!(
+        meter.scratch_peak() >= 1_000_000,
+        "the read/decode reservation must precede the store read (peak {})",
+        meter.scratch_peak()
+    );
 }

@@ -117,6 +117,18 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
   从 raw 样本独立重算 P95/样本数/状态/阶段；acceptance helper 的必需用例按名称
   绑定并有四类负控（`-Scope selftest`）。
 
+## R7 修复轮补充（2026-10-19，D17）
+
+- **SD-02**：record/组页的“当前引用”定义为**有效单元版本**（成员 canonical +
+  外部依赖单元有效版本的传递闭包），不再只是直接声明版本；键含有效引用版本与
+  载体拓扑；页内容写同一有效版本；读取侧以 O(1) 有效版本比较 + 当前成员集校验
+  准入，覆盖三层依赖、SCC 形成/拆分与外部组依赖。
+- **SD-04**：预算改为**前置保守预留**——solve 预估（16KiB + 512/语句 +
+  256/表达式 + 名称字节）、publish（facts 预估 + 页上限，clone 前）、cache
+  read（3×页上限，store 读取前）；超额在求解/发布前返回 typed resource；20k 级
+  输入不再以低记账成功发布或以 codec 错误兜底；深链发布仍只分区一次。
+- **SD-07**：`CloseHandle` 采用与既有 Win32 绑定一致的 `isize` 签名；本计划新建
+  源文件纳入 scoped rustfmt（不整仓格式化），健康门闭合。
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各

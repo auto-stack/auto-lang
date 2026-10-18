@@ -386,7 +386,7 @@ mod containment {
             len: u32,
         ) -> i32;
         fn AssignProcessToJobObject(job: Handle, process: Handle) -> i32;
-        fn CloseHandle(handle: Handle) -> i32;
+        fn CloseHandle(hObject: isize) -> i32;
         fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> Handle;
         fn Thread32First(snapshot: Handle, entry: *mut ThreadEntry) -> i32;
         fn Thread32Next(snapshot: Handle, entry: *mut ThreadEntry) -> i32;
@@ -413,11 +413,11 @@ mod containment {
                     std::mem::size_of::<JobExtendedLimit>() as u32,
                 ) == 0
                 {
-                    CloseHandle(job);
+                    CloseHandle(job as isize);
                     return None;
                 }
                 if AssignProcessToJobObject(job, child.as_raw_handle() as Handle) == 0 {
-                    CloseHandle(job);
+                    CloseHandle(job as isize);
                     return None;
                 }
                 Some(JobGuard(job))
@@ -430,7 +430,7 @@ mod containment {
             // KILL_ON_JOB_CLOSE: dropping the last handle reaps every
             // process the job still holds (the whole worker tree).
             unsafe {
-                CloseHandle(self.0);
+                CloseHandle(self.0 as isize);
             }
         }
     }
@@ -445,7 +445,7 @@ mod containment {
             let mut entry: ThreadEntry = std::mem::zeroed();
             entry.dw_size = std::mem::size_of::<ThreadEntry>() as u32;
             if Thread32First(snapshot, &mut entry) == 0 {
-                CloseHandle(snapshot);
+                CloseHandle(snapshot as isize);
                 return Err("thread enumeration failed while resuming the worker");
             }
             let mut resumed = false;
@@ -453,13 +453,13 @@ mod containment {
                 if entry.owner_process_id == child.id() {
                     let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, entry.thread_id);
                     if thread.is_null() {
-                        CloseHandle(snapshot);
+                        CloseHandle(snapshot as isize);
                         return Err("failed to open the worker's main thread");
                     }
                     let prev = ResumeThread(thread);
-                    CloseHandle(thread);
+                    CloseHandle(thread as isize);
                     if prev == u32::MAX {
-                        CloseHandle(snapshot);
+                        CloseHandle(snapshot as isize);
                         return Err("failed to resume the worker's main thread");
                     }
                     resumed = true;
@@ -468,7 +468,7 @@ mod containment {
                     break;
                 }
             }
-            CloseHandle(snapshot);
+            CloseHandle(snapshot as isize);
             if resumed {
                 Ok(())
             } else {
