@@ -17,8 +17,10 @@
 
 auto-man `generation_request_adapter`：request_from_pac（A 组全量投影）+ apply_evaluated_root/apply_evaluated_props（B 组，Pac.props 即求值 root 全量 props）+ request_of 单调用入口。生成器读缝：jet/ark（JetReads/ArkReads）、rust_ui（PacSource：name/exe/window/title/dep_roots/api/external/theme 激活）、vue（VueReads 九字段+Value 等价转换）；全部 `_with_request` 入口，legacy 自扫保留为冻结 oracle（R04 退役）。automan gen/run/build/open 分派全量经请求（零遗留 grep 审计）。
 
-## 边界（明确不在本合同）
+## 边界（as-built 校准，R4）
 
-dep 自身 pac.at 的 npm_deps/styles 合并（vue 构建内跨文件读取）、sidecar spec 装载（load_sidecar）、api_gen 的 auto_lang resolve_back_dir——单工程外，R04 迁生成器时收编。
+- **sidecar 声明在本合同内**（R4-02 后）：节点/对象/嵌套三形态经请求承载（raw_nodes+raw），core::sidecar_decl_from_root 单源解析，PacSource 全生成/交付入口消费，不回读主 pac.at。
+- dep 自身 pac.at 的 npm_deps/styles 合并（vue 构建内跨文件资源读取，主声明已合同化）、api_gen 的 auto_lang resolve_back_dir——跨文件效果边，R04 迁生成器时收编。
+- 全量/无损表述以本 Plan 实测矩阵为准（对拍+来源反转+干扰排除用例见 plan809/adapters 测试）。
 
 验证：project-model generation_request_tests（8）+ project-request-consumer（3+闭包单证）+ vue plan809_v02 双源对拍 + generation_request_adapter 2 完备性。
