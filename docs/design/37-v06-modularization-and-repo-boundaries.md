@@ -5,6 +5,7 @@
 > 继承：[Design 32](32-autoui-repo-extraction.md) 的双缝方向；本提案补充真实反向类型依赖、auto-man 独立交付、语言内部拆分与实际删减。历史裁定不在原文中抹除。
 > 当前行为以 [Specs overview](../specs/overview.md)、各模块 Specs 与代码为准；下文都是目标态，未沉淀为现行 Spec。
 > 2026-10-13 补充：已核查既有 `../auto-ui` 与 `../auto-man`。推荐复用原仓身份与 URL，保留 legacy 引用，在迁移分支准备新代码后以新提交推进默认分支；下文“独立仓”不再意味着重新创建这两个仓。
+> 2026-10-18 调度更新：用户已确定后续采用较大的模块交付粒度，统一路线见[剩余迁移总路线图](../plans/reports/v06-extraction-execution-roadmap.md)。§8.0–8.7保留历史批次依据；当前状态与R00–R12工作包编排以§8.8及总路线图为准，当前行为仍以各模块Spec为准。
 
 ## 1. 目标与边界
 
@@ -238,7 +239,7 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 
 793诊断/795包锁已交付，在其基础上新增两份合同，与792发行验证、794 scroll实现并行：
 
-- [799 前端模型](../plans/799-frontend-ast-model-extraction.md)：auto-lang → auto-ast → 轻值/词法；AST数据/类型表达/序列化单一来源，ParserExt实现和解析耦合测试留上层。保留旧AST类型身份和UI兼容节点，不把Parser/推断倒灌底层，不提前宣称UiAst终态完成。
+- [799 前端模型](../plans/archive/799-frontend-ast-model-extraction.md)：auto-lang → auto-ast → 轻值/词法；AST数据/类型表达/序列化单一来源，ParserExt实现和解析耦合测试留上层。保留旧AST类型身份和UI兼容节点，不把Parser/推断倒灌底层，不提前宣称UiAst终态完成。
 - [800 Man依赖模型](../plans/archive/800-man-dependency-model-extraction.md)：auto-man语言adapter → auto-package-resolver；轻名称/路径规则与ModulePath/ExecutionMode/pac legacy读取分开，生产旧resolver真实委托。源配置继续归project-model、锁格式归package-lock，不重复发明模型或改变pac协议。
 
 源码主写面不同，manifest/导出/Spec与边界基线按小共享窗口串行。若同时ready推荐792→794→799→800；没有新交付硬依赖，允许就绪先合，后合入者承担闭包/兼容与受影响复审重验。完整责任矩阵见[并行与合流合同](../plans/reports/model-decoupling-parallel-order-20261016.md)。这两份仍为目标计划，本轮不发布为现行Spec、不启动agent或实施源码。
@@ -249,9 +250,9 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 
 | Plan | 实际切口 | 入场条件 |
 |---|---|---|
-| [801 方言接口](../plans/801-dialect-api-dependency-inversion.md) | auto-parser-api轻合同、生产Parser端口与旧API适配，外部model实现不拉语言实现包 | 硬等799审查合入；完整UI文法与入口传播另验 |
-| [802 CodeEditor宿主](../plans/802-code-editor-host-provider.md) | 22 native全族owned provider、单一UI adapter及实际装配 | 785/790/794已满足，可与799/803并行 |
-| [803 Man模板资源](../plans/803-man-template-assets-extraction.md) | 三组资源/纯路径计划独立auto-man-assets，旧copy/GHS/IAR真委托，语言/IO留上层 | 786/791/792已满足，可与799/802并行，无800 API硬依赖 |
+| [801 方言接口](../plans/archive/801-dialect-api-dependency-inversion.md) | auto-parser-api轻合同、生产Parser端口与旧API适配，外部model实现不拉语言实现包 | 原前置为799审查合入；完整UI文法与入口传播另验 |
+| [802 CodeEditor宿主](../plans/archive/802-code-editor-host-provider.md) | 22 native全族owned provider、单一UI adapter及实际装配 | 785/790/794为基础，原可与799/803并行 |
+| [803 Man模板资源](../plans/archive/803-man-template-assets-extraction.md) | 三组资源/纯路径计划独立auto-man-assets，旧copy/GHS/IAR真委托，语言/IO留上层 | 786/791/792为基础，无800 API硬依赖 |
 
 当前可并行799、802、803；799交付后801不必等待其他线。800已交付，本批同步其实际源码/Spec，不重开合同。共享manifest/导出/装配/777基线小窗口串行，后合入者承担792实际交付闭包及受影响验证；完整规则见[本批编排](../plans/reports/extraction-next-parallel-order-20261017.md)。§8.3–8.5的早期状态和推荐顺序为历史规划，今日放行以本节及实际代码/合同为准。
 
@@ -264,23 +265,37 @@ Category A 不跑 cargo t/docs_gen；Rust 按现行 t+触面 tv/tu/tt 等；UI c
 | Plan | 迁移切口 | 对799/801及当前复审线的依赖 |
 |---|---|---|
 | [804](../plans/804-dialog-dnd-host-provider.md) | dialog两项+dnd_start共三native owned provider，合并VM/a2r重复对话框构建逻辑，保旧parent策略/输入线程/完成语义 | 无799/801硬依赖；与802共享装配短窗口串行，不消费其未交付API |
-| [805](../plans/805-toolchain-rules-core-extraction.md) | auto-toolchain-core单份八类配置/flags/命令模板，生产Ninja真实委托，加载/定位/执行留adapter | 无799/801/803接口依赖；内联命令模板不是803资产资源 |
+| [805](../plans/archive/805-toolchain-rules-core-extraction.md) | auto-toolchain-core单份八类配置/flags/命令模板，生产Ninja真实委托，加载/定位/执行留adapter | 无799/801/803接口依赖；内联命令模板不是803资产资源 |
 | [806](../plans/806-ui-declarations-dialect-extraction.md) | auto-ui-dialect完整msg/model与注解算法外置，顶层和widget/component/store内部统一委托 | 硬等799→801审查合入，不把778裸字段pilot扩为默认文法 |
 
 本轮观察802 latest readiness为needs_fix（V06实机证据待补），799/803也仍在复审/修复收口，均未合入；801仍drafting。804/805可在合同确认后独立推进，不把前端前置放大全局停工；806先规划、后等待真实API。§8.6状态为上一轮快照，本轮调度以[804–806编排](../plans/reports/extraction-followup-parallel-order-20261017.md)及实际合同/代码为准。
 
 804后仍有diff四项、term/media等宿主或算法边；805后仍有Target/构建DAG/管理编排/薄CLI；806后仍有完整结构/事件UI文法。UI/Man真正G/H搬仓需相应D/E/F退出门，不因三项合同创建即放行；去重/退役与UiAst终态继续保留。此次不写canonical Spec，不修复或合并其他计划。
 
+### 8.8 按完整模块交付的剩余总路线（2026-10-18）
+
+用户明确后续提高模块粒度，本轮仅整理统一路线，不批量创建Plan、不取号、不执行迁移。当前799/801/802/805已交付，803实现及Spec已落地、原会话处理归档簿记；804 reviewed待merge，806 execution_done待独立review。状态快照和证据来源见[总路线图](../plans/reports/v06-extraction-execution-roadmap.md)。
+
+- **R00**：原804/806合同分别收口，不新增收尾计划，不重写在途AC。
+- **M1九个模块包R01–R09**：完整UI文法与入口；文本/快照/diff基础；剩余宿主域；UI分层与语言SDK；Man管理构建核心；工具协议与薄CLI；发行闭包/资源/外部消费；auto-ui旧仓承接；auto-man旧仓承接及三仓交付。
+- **M2三个模块包R10–R12**：UiAst/lowering终态；兼容入口退役；语言内部组织/去重/净瘦身。可按稳定接口与发行准备交错，不因M1完成而取消。
+
+R01等806实际合入；R02/R03/R05可与当前收口线独立推进。R04汇合UI文法/数据/宿主边界，并消费R05先交接的I-PROJECT轻数据合同，将Man内UI生成器/专属资产移到UI工具；未阶段合入则等R05整体，禁止消费WIP或反依赖Man大库。R06最终生产链汇合R04/R05；R07分别冻结UI/Man发行profile，R08/R09准备可以并行、最终三仓消费需要已交付UI版本。公共manifest/类型/装配/资源切换短窗口串行，不设置无关计划全部归档的全局门。
+
+M1预算约8–12份新增较大Plan（九包基准，真实独立契约才拆，发行验收可并入搬仓合同）；M2约3–5份。每Plan交付生产接线、旧实现清理、支持面正反控与外部消费，内部阶段不再逐个取号。此前7项待合入的计数属于旧时点，不继续累加。
+
+R08/R09必须通过总路线图G1–G8：功能/支持面、DAG与类型身份、资源/锁/producer闭包、宿主及子进程寿命、旧仓恢复及来源映射、真正独立仓/外部消费、受管发布失败保护、独立审查与冻结合入交接。旧根UI API如需暂保，兼容承载置于基础SDK闭包之外；纯Core不能反向重导出完整UI。旧仓默认分支切换/远端写入在具体交付合同中明确，本轮不操作。
+
 ## 9. 决策状态
 
 | 决策 | 状态 |
 |---|---|
-| 三主要仓 + 两个底层可交付模块；先 crate 后 repo | 本轮推荐，待确认实施 |
+| 三主要仓 + 两个底层可交付模块；先 crate 后 repo | 总体目标与模块粒度已确认；逐模块实施按具体Plan，底层数据/runtime不以另建仓为M1前置 |
 | UI DSL 与工具双缝、VM 可进程内托管 | 继承 Design 32 方向 |
-| auto-man 也具备独立仓目标 | 对 Design 32 D4 的新提案；最新用户目标要求可独立，不假定已批准搬仓 |
-| 复用已有 auto-ui/auto-man 仓；legacy 保旧实现，默认分支增量接新实现 | 本轮补充推荐，已核查本地仓；尚未创建分支/切换默认分支或操作远端 |
+| auto-man 也具备独立仓目标 | 用户目标已明确；实际搬仓/默认分支切换在R09具体交付合同中执行 |
+| 复用已有 auto-ui/auto-man 仓；legacy 保旧实现，默认分支增量接新实现 | 784已交付本地保全/准备树与恢复收据，R08/R09按当前源状态复核；尚未正式承接新实现或切旧默认分支 |
 | 兼容 AST 暂留，终态退出 | 分期提案，退出门不得取消 |
-| ParserBridge 和 frame provider 首批小型探针 | 778/779及784–786、800均已交付；799执行中，801–803为后续合同 |
+| ParserBridge 和 frame provider 首批小型探针 | 已进入生产模块迁移：799/801/802/803/805实现已落地，804/806继续原合同收口 |
 | 静态 pac 优先，但执行型配置不静默破坏 | 780对拍pilot及786有限展示读取已交付，全面默认切换仍须另立Plan |
 | 具体 UiAst 承载、完整 native 生命周期接口 | 待完整链路原型，先形成有界决策工件 |
 | 数据/runtime 独立仓名称、版本发布渠道、切换窗口 | 拆仓前决定；不阻止首批仓内边界工作 |
