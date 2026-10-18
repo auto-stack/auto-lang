@@ -1069,3 +1069,67 @@ fn sema_cache_r8_method_signature_is_a_freshness_input() {
     let p3 = r7_publish(&store, &v3);
     assert_ne!(p3["R"], p2["R"], "method addition = new page");
 }
+
+/// R9-01: a method RETURN type changing between two records (`A` -> `B`)
+/// must change the definition/effective version and the method decl
+/// content. A tag-only canonical encoding made both collide.
+#[test]
+fn sema_cache_r9_method_record_return_is_part_of_the_version() {
+    let root = scratch("r9-method-record");
+    let store = open_store(&root.join("store")).unwrap();
+    let qr = QueryKind::RecordFields { record: "R".into() };
+    let v1 = record_input(
+        "type A { value int }\ntype B { value bool }\ntype R { value int; fn get(x A, y B) A { return x } }",
+        "m",
+    );
+    let p1 = r7_publish(&store, &v1);
+    let v2 = record_input(
+        "type A { value int }\ntype B { value bool }\ntype R { value int; fn get(x A, y B) B { return y } }",
+        "m",
+    );
+    match lookup_only(&store, &v2, &qr).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("record return A->B must not hit the old page: {other:?}"),
+    }
+    let p2 = r7_publish(&store, &v2);
+    assert_ne!(p1["R"], p2["R"], "record return change = new page");
+
+    // independent oracle: fresh store publishing v2 == hot store result
+    let root2 = scratch("r9-method-record-fresh");
+    let store2 = open_store(&root2.join("store")).unwrap();
+    let fresh = r7_publish(&store2, &v2);
+    assert_eq!(p2["R"], fresh["R"], "hot store == fresh store");
+
+    match lookup_only(&store, &v2, &qr).unwrap() {
+        FetchOutcome::Hit { page, .. } => match &page.body {
+            ac_sema_contract::PageBody::RecordMeta(m) => {
+                assert_eq!(
+                    m.methods[0].ret,
+                    ac_sema_contract::TypeDesc::Opaque {
+                        name: "record:B".into()
+                    },
+                    "published return must be B"
+                );
+                assert_eq!(
+                    m.methods[0].params[0].1,
+                    ac_sema_contract::TypeDesc::Opaque {
+                        name: "record:A".into()
+                    }
+                );
+            }
+            other => panic!("R page kind: {other:?}"),
+        },
+        other => panic!("v2 must hit: {other:?}"),
+    }
+
+    // body-only edit with the SAME signature stays reusable
+    let v2b = record_input(
+        "type A { value int }\ntype B { value bool }\ntype R { value int; fn get(x A, y B) B { let z = y
+return z } }",
+        "m",
+    );
+    match lookup_only(&store, &v2b, &qr).unwrap() {
+        FetchOutcome::Hit { artifact_id, .. } => assert_eq!(artifact_id, p2["R"]),
+        other => panic!("same-signature body edit must hit: {other:?}"),
+    }
+}

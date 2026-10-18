@@ -1109,7 +1109,10 @@ pub fn publish_infer_result(
 /// Conservative estimate of the ENCODED page body (F-796-R8-01): the
 /// payload cap must be enforced as a typed resource BEFORE the facts
 /// are cloned/encoded, not as a late codec error after the allocation.
-fn estimated_page_bytes(s: &ac_sema_core::InferSummary) -> usize {
+fn estimated_page_bytes(
+    s: &ac_sema_core::InferSummary,
+    manifest: &ac_sema_contract::DepManifest,
+) -> usize {
     let mut b = 4 * 1024usize;
     for (n, _) in &s.facts.bindings {
         b = b.saturating_add(n.len() + 8);
@@ -1118,11 +1121,15 @@ fn estimated_page_bytes(s: &ac_sema_core::InferSummary) -> usize {
     for d in &s.facts.diagnostics {
         b = b.saturating_add(d.code.len() + d.message.len() + 16);
     }
-    for sig in &s.reads.sigs {
-        b = b.saturating_add(sig.len() + 8);
+    // the ACTUAL manifest is encoded into the page: config/source-map/
+    // fn-body(origin = TARGET NAME)/fn-sig positives and negative names
+    // are all part of the budget (F-796-R9-02 — a long target name is
+    // encoded as the fn-body origin and was previously invisible here)
+    for p in &manifest.positives {
+        b = b.saturating_add(p.kind.len() + p.origin.len() + p.fp.len() + 24);
     }
-    for (_, n, set) in &s.reads.negatives {
-        b = b.saturating_add(n.len() + set.len() + 16);
+    for n in &manifest.negatives {
+        b = b.saturating_add(n.domain.len() + n.name.len() + n.set_fp.len() + 24);
     }
     b
 }
@@ -1139,11 +1146,21 @@ pub fn publish_infer_result_charged(
     project: Option<&str>,
     mut meter: Option<&mut crate::budget::SessionMeter>,
 ) -> Result<String, ProbeError> {
-    let reserve = facts_estimate(summary).saturating_add(ac_sema_contract::MAX_PAGE_BODY);
+    let target = ac_sema_core::query::target_logical(input, query);
+    admit_summary_ownership(summary, query, &target)?;
+    let manifest = ac_sema_core::manifest_from(
+        &summary.reads,
+        input,
+        &match query {
+            QueryKind::InferBody { fn_name } => fn_name.clone(),
+            _ => String::new(),
+        },
+    );
     // the pre-encode page ledger is checked FIRST: an unencodable page
     // must never drive the clone/encode allocations (typed resource,
-    // recorded on the session meter)
-    let page_want = estimated_page_bytes(summary);
+    // recorded on the session meter). The estimate is derived from the
+    // ACTUAL manifest that will be encoded.
+    let page_want = estimated_page_bytes(summary, &manifest);
     if page_want > ac_sema_contract::MAX_PAGE_BODY {
         let err = match meter.as_deref_mut() {
             Some(m) => m.record_rejection("page", page_want, ac_sema_contract::MAX_PAGE_BODY),
@@ -1155,20 +1172,13 @@ pub fn publish_infer_result_charged(
         };
         return Err(ProbeError::BudgetRejected(err));
     }
+    let reserve = facts_estimate(summary)
+        .saturating_add(page_want)
+        .saturating_add(ac_sema_contract::MAX_PAGE_BODY);
     let mut guard = None;
     if let Some(m) = meter {
         guard = Some(m.scratch(reserve).map_err(ProbeError::BudgetRejected)?);
     }
-    let target = ac_sema_core::query::target_logical(input, query);
-    admit_summary_ownership(summary, query, &target)?;
-    let manifest = ac_sema_core::manifest_from(
-        &summary.reads,
-        input,
-        &match query {
-            QueryKind::InferBody { fn_name } => fn_name.clone(),
-            _ => String::new(),
-        },
-    );
     let cached = CachedResult {
         query: query.as_str(),
         target,

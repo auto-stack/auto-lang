@@ -274,3 +274,20 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
   读取准入因此同步失效；纯方法 body 编辑保持可复用正控；热 store 在失效后与
   独立新 store 发布同一 artifact。
 - **健康**：新增预算/版本代码无新增警告；计划文件格式保持 scoped 全绿。
+
+## D19 R9 修复轮冻结（2026-10-19）
+
+- **Ann 完整编码**（F-R9-01）：`fn_sig_canonical`/`record_canonical` 统一经
+  `write_ann` 编码——record 引用保留名称（`rec:<name>`），unsupported 保留描述
+  （`unsupported:<what>`），不再使用无名称 tag。方法返回 `record:A` 与
+  `record:B` 不可碰撞；方法签名/字段/键/有效版本/读取准入同步失效；纯 body
+  编辑保持可复用。
+- **页预算按实际 manifest**（F-R9-02）：发布前先构造将编码的 manifest，页估算
+  逐字段覆盖 facts + config/source-map/fn-body(origin=**目标函数名**)/fn-sig
+  正依赖与 negative（domain/name/set_fp）；超 `MAX_PAGE_BODY` 在 clone/encode
+  前 typed `ResourceExhausted`（meter 记录 page 拒绝）。长目标名 600k 不再晚到
+  codec 错；400k 正控成功发布。
+- **IPC 硬门窗口**（测量口径）：1MiB 局部编辑拆为 cold warm-up（`query`+
+  `restart`）与 edit session（`edit-source`+`query`）；硬门 P95 取 edit session
+  的父侧完整墙钟（spawn+IPC+parse+edit+query+exit），cold warm-up 单独在
+  `total_ms` 报告。阶段 trace 与 30 原始样本保留；V-08 与 V-08c 分离执行。

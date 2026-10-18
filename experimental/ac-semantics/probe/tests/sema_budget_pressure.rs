@@ -545,3 +545,58 @@ fn sema_budget_long_name_readback_is_charged() {
         meter.scratch_peak()
     );
 }
+
+/// F-796-R9-02: the FINAL page/manifest includes the target function
+/// name as the `fn-body` positive origin. A 600k-char target name is a
+/// typed `ResourceExhausted` on the page ledger BEFORE clone/encode
+/// (the R9 probe previously got a late codec error); 400k still
+/// publishes below the 512KiB cap.
+#[test]
+fn sema_budget_target_name_is_part_of_the_page_budget() {
+    fn target_name_input(suffix: usize) -> (String, ac_sema_core::SemaInput) {
+        let name = format!("f{}", "x".repeat(suffix));
+        let src = format!("fn {name}() int {{ return 1 }}");
+        let input = parse_into_input(&src, "r9", "m", SourceProfile::Core).unwrap();
+        (name, input)
+    }
+
+    let root = scratch("r9-target-400k");
+    let store = open_store(&root.join("store")).unwrap();
+    let (name, input) = target_name_input(400_000);
+    let q = QueryKind::InferBody { fn_name: name };
+    let mut meter = SessionMeter::new();
+    let ok = ac_sema_probe::run_query_flow(&store, &input, &q, None, Some(&mut meter)).unwrap();
+    assert_eq!(
+        ok.disposition,
+        ac_sema_probe::Disposition::PublishedMiss,
+        "400k target name page is under the cap: {:?}",
+        ok.reason
+    );
+
+    let root2 = scratch("r9-target-600k");
+    let store2 = open_store(&root2.join("store")).unwrap();
+    let (name2, input2) = target_name_input(600_000);
+    let q2 = QueryKind::InferBody { fn_name: name2 };
+    let mut meter2 = SessionMeter::new();
+    let rej =
+        ac_sema_probe::run_query_flow(&store2, &input2, &q2, None, Some(&mut meter2)).unwrap();
+    assert_eq!(
+        rej.disposition,
+        ac_sema_probe::Disposition::ResourceExhausted,
+        "600k target name must be a typed page rejection: {:?}",
+        rej.reason
+    );
+    let reason = rej.reason.clone().unwrap_or_default();
+    assert!(
+        reason.contains("page"),
+        "the page ledger must name the oversized final page: {reason}"
+    );
+    assert!(meter2.rejections() >= 1);
+    assert!(
+        matches!(
+            ac_sema_probe::lookup_only(&store2, &input2, &q2).unwrap(),
+            FetchOutcome::Miss
+        ),
+        "no page may be published by the rejected query"
+    );
+}

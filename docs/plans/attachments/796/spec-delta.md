@@ -138,6 +138,17 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
 - **SD-04**：预算按名称**多重性**预留（solve×4、publish×8），并在 clone/编码前
   检查预计页大小；超页/超内存一律 typed `ResourceExhausted`（页 ledger 记录在
   meter），不再以 codec 尾错兜底。
+## R9 修复轮补充（2026-10-19，D19）
+
+- **SD-02**：所有已表示 Ann 的 canonical 编码保留完整信息（record 名称、
+  unsupported 描述）；方法签名（含 record 返回类型）参与字段页键/有效版本/
+  读取准入；纯 body 编辑正控保持。
+- **SD-04**：页预算从**实际将编码的 manifest** 逐字段估算（含目标函数名作为
+  fn-body origin、config/source-map/sig/negative）；超页在 clone/encode 前返回
+  typed `ResourceExhausted`（page ledger 记入 meter），不再有 codec 尾错。
+- **SD-07（验证口径）**：IPC 硬门在 restarted edit session 上测量父侧完整
+  墙钟（含 spawn/IPC/parse/edit/query/exit），cold warm-up 查询单列 total；
+  30 原始样本与阶段 trace 保留。
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各

@@ -797,6 +797,7 @@ pub fn run_check(
     let mut mismatches: Vec<Mismatch> = Vec::new();
     let mut reported_query_steps: Vec<StepOut> = Vec::new();
     let mut stage_spans: Vec<(String, u64)> = Vec::new();
+    let mut session_walls: Vec<u64> = Vec::new();
     let mut infra_detail: Option<String> = None;
     let exe_sha = worker_exe_sha256()?;
 
@@ -827,7 +828,13 @@ pub fn run_check(
         let request_hash = hex(&sha256(request.to_string().as_bytes()));
         request["request_hash"] = serde_json::json!(request_hash);
 
-        let resp = match call_worker(&request.to_string(), SESSION_WALL) {
+        let session_started = Instant::now();
+        let resp_result = call_worker(&request.to_string(), SESSION_WALL);
+        // the FULL parent-side wall of THIS session (spawn + IPC +
+        // worker parse/edit/query + exit): the local-edit gate measures
+        // the edit session, excluding the separate cold warm-up query
+        session_walls.push(session_started.elapsed().as_millis() as u64);
+        let resp = match resp_result {
             Ok(r) => r,
             Err(e) => {
                 // infrastructure lifecycle failure — an ERROR outcome,
@@ -928,7 +935,15 @@ pub fn run_check(
                             .map(|s| s.meter.rejections)
                             .sum(),
                     ),
-                ],
+                ]
+                .into_iter()
+                .chain(
+                    session_walls
+                        .iter()
+                        .enumerate()
+                        .map(|(i, ms)| (format!("session_wall_ms_{i}"), *ms as u32)),
+                )
+                .collect::<Vec<(String, u32)>>(),
                 toolchain: probe_toolchain_axes(&exe_sha),
                 gaps: vec![],
             }),
@@ -1136,7 +1151,15 @@ pub fn run_check(
                     .map(|s| s.meter.rejections)
                     .sum(),
             ),
-        ],
+        ]
+        .into_iter()
+        .chain(
+            session_walls
+                .iter()
+                .enumerate()
+                .map(|(i, ms)| (format!("session_wall_ms_{i}"), *ms as u32)),
+        )
+        .collect::<Vec<(String, u32)>>(),
         toolchain: probe_toolchain_axes(&exe_sha),
         gaps: vec![],
     };

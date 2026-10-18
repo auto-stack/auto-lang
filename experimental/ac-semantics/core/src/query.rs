@@ -57,6 +57,28 @@ impl QueryKind {
     }
 }
 
+/// FULL encoding of one annotation (F-796-R9-01): every represented
+/// distinction the producer publishes must survive canonicalization —
+/// a record reference keeps its NAME, and an unsupported annotation
+/// keeps its DESCRIPTION. A tag-only code made `record:A` and
+/// `record:B` collide in the definition/effective version.
+fn write_ann(out: &mut Vec<u8>, a: &Ann) {
+    match a {
+        Ann::I32 => out.extend_from_slice(b"i32"),
+        Ann::Bool => out.extend_from_slice(b"bool"),
+        Ann::Record(r) => {
+            out.extend_from_slice(b"rec:");
+            out.extend_from_slice(r.as_bytes());
+        }
+        Ann::Inferred => out.extend_from_slice(b"?inferred"),
+        Ann::Unsupported(w) => {
+            out.extend_from_slice(b"unsupported:");
+            out.extend_from_slice(w.as_bytes());
+        }
+    }
+    out.push(0);
+}
+
 /// Canonical content of one function's SIGNATURE (params + ret,
 /// declaration order; positions excluded — D4).
 pub fn fn_sig_canonical(f: &crate::input::InputFn) -> Vec<u8> {
@@ -66,28 +88,10 @@ pub fn fn_sig_canonical(f: &crate::input::InputFn) -> Vec<u8> {
     for (n, a) in &f.params {
         out.extend_from_slice(n.as_bytes());
         out.push(b':');
-        let tag = match a {
-            Ann::I32 => b'i',
-            Ann::Bool => b'b',
-            Ann::Record(r) => {
-                out.extend_from_slice(b"rec:");
-                out.extend_from_slice(r.as_bytes());
-                0
-            }
-            Ann::Inferred => b'?',
-            Ann::Unsupported(_) => b'x',
-        };
-        out.push(tag);
-        out.push(0);
+        write_ann(&mut out, a);
     }
     out.push(b'-');
-    out.push(match f.ret {
-        Ann::I32 => b'i',
-        Ann::Bool => b'b',
-        Ann::Record(_) => b'r',
-        Ann::Inferred => b'?',
-        Ann::Unsupported(_) => b'x',
-    });
+    write_ann(&mut out, &f.ret);
     out
 }
 
@@ -468,19 +472,7 @@ pub fn record_canonical(r: &crate::input::InputRecord) -> Vec<u8> {
     for (n, a) in &r.fields {
         out.extend_from_slice(n.as_bytes());
         out.push(b':');
-        let tag = match a {
-            Ann::I32 => b'i',
-            Ann::Bool => b'b',
-            Ann::Record(r) => {
-                out.extend_from_slice(b"rec:");
-                out.extend_from_slice(r.as_bytes());
-                0
-            }
-            Ann::Inferred => b'?',
-            Ann::Unsupported(_) => b'x',
-        };
-        out.push(tag);
-        out.push(0);
+        write_ann(&mut out, a);
     }
     for m in &r.methods {
         out.push(b'M');
