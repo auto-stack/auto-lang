@@ -156,6 +156,14 @@ pub struct NativeInterface {
     dnd_host_provider: std::sync::RwLock<
         Option<std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>>,
     >,
+    /// PLAN-807: 编辑器快照能力槽（diff_snapshots 9916 供值）。装配语义
+    /// 与既有七族逐条相同（per-NativeInterface 持有、Clone 保留、注入不
+    /// 动绑定身份）；缺席语义 = "无法找到相应 editor" err envelope（值，
+    /// 非 raise）。独立于 PLAN-802 的 code_editor_provider 槽——快照供值
+    /// 是单一方法能力，不给 802 trait 加必实现方法（外部实现零破坏）。
+    editor_snapshot_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>>,
+    >,
 }
 
 impl Clone for NativeInterface {
@@ -221,6 +229,12 @@ impl Clone for NativeInterface {
                     .expect("dnd_host_provider poisoned")
                     .clone(),
             ),
+            editor_snapshot_provider: std::sync::RwLock::new(
+                self.editor_snapshot_provider
+                    .read()
+                    .expect("editor_snapshot_provider poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -243,6 +257,7 @@ impl NativeInterface {
             code_editor_provider: std::sync::RwLock::new(None),
             dialog_host_provider: std::sync::RwLock::new(None),
             dnd_host_provider: std::sync::RwLock::new(None),
+            editor_snapshot_provider: std::sync::RwLock::new(None),
         }
     }
 
@@ -387,6 +402,30 @@ impl NativeInterface {
             .dnd_host_provider
             .write()
             .expect("dnd_host_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-807: 注入/替换本接口（=本 VM）的 editor snapshot provider
+    /// （diff_snapshots 9916 供值）。绑定身份不变，不触发 revision/proof
+    /// 失效。
+    pub fn set_editor_snapshot_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>,
+    ) {
+        *self
+            .editor_snapshot_provider
+            .write()
+            .expect("editor_snapshot_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-807: 当前 editor snapshot provider（None="无法找到相应
+    /// editor" err envelope 语义）。
+    pub fn editor_snapshot_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>> {
+        self.editor_snapshot_provider
+            .read()
+            .expect("editor_snapshot_provider poisoned")
+            .clone()
     }
 
     /// PLAN-804: 当前 dnd host provider（None=false 降级语义）。
@@ -1911,7 +1950,9 @@ pub fn shim_diff_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     let ctx = pop_arg_i32(task).max(0) as usize;
     let path_b = pop_string_arg(task, vm);
     let path_a = pop_string_arg(task, vm);
-    let json = crate::ui::code_editor::diff::envelope::diff_files_envelope_from_paths(
+    // PLAN-807: 纯路径面直调文本 core（零 crate::ui 引用；envelope 语义
+    // 冻结不变）。
+    let json = auto_text_core::diff::envelope::diff_files_envelope_from_paths(
         &path_a, &path_b, ctx,
     );
     let idx = vm.add_string(json.into_bytes());
@@ -1933,7 +1974,25 @@ pub fn shim_diff_files(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 pub fn shim_diff_snapshots(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key_b = pop_string_arg(task, vm);
     let key_a = pop_string_arg(task, vm);
-    let json = crate::ui::code_editor::diff::envelope::diff_snapshots_envelope(&key_a, &key_b);
+    // PLAN-807: 快照经 EditorSnapshotProvider 端口供值（同源 owned 快照，
+    // 零全文字符串 VM 中转）；缺 provider = 无法找到相应 editor → 既有
+    // err envelope（missing=key_a，与旧两键皆缺路径同形）；判错优先
+    // key_a 先（冻结序）。
+    let pair = match vm.native_interface.editor_snapshot_provider() {
+        Some(provider) => match (provider.snapshot(&key_a), provider.snapshot(&key_b)) {
+            (Some(sa), Some(sb)) => {
+                auto_text_core::diff::envelope::DiffSnapshotsPair::Both(sa, sb)
+            }
+            (None, _) => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(
+                key_a.clone(),
+            ),
+            (Some(_), None) => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(
+                key_b.clone(),
+            ),
+        },
+        None => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(key_a.clone()),
+    };
+    let json = auto_text_core::diff::envelope::diff_snapshots_envelope_snapshots(pair);
     let idx = vm.add_string(json.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
     Ok(())
@@ -1953,7 +2012,8 @@ pub fn shim_diff_snapshots(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path_b = pop_string_arg(task, vm);
     let path_a = pop_string_arg(task, vm);
-    let json = crate::ui::code_editor::diff::envelope::diff_dirs_envelope(&path_a, &path_b);
+    // PLAN-807: 纯目录面直调文本 core。
+    let json = auto_text_core::diff::envelope::diff_dirs_envelope(&path_a, &path_b);
     let idx = vm.add_string(json.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
     Ok(())
@@ -2000,7 +2060,8 @@ pub fn shim_diff_files_window(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
     let ctx = pop_arg_i32(task).max(0) as usize;
     let path_b = pop_string_arg(task, vm);
     let path_a = pop_string_arg(task, vm);
-    let json = crate::ui::code_editor::diff::envelope::diff_files_envelope_from_paths_window(
+    // PLAN-807: 纯窗口面直调文本 core。
+    let json = auto_text_core::diff::envelope::diff_files_envelope_from_paths_window(
         &path_a, &path_b, ctx, offset, limit,
     );
     let idx = vm.add_string(json.into_bytes());

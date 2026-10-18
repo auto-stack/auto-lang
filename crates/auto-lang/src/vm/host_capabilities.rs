@@ -636,6 +636,75 @@ pub fn clear_process_default_dnd_host_provider() {
     *slot = None;
 }
 
+// ── PLAN-807: 编辑器快照宿主能力（diff_snapshots 9916 供值槽）─────────
+//
+// 779/785/790/794/802/804 装配模式的文本批次快照槽：core shim
+// `auto.diff_snapshots(key_a, key_b)` 不再直引 UI 的 editor 注册表，经本
+// 接口由宿主供值——UI 宿主注册委托 `code_editor_with(key, doc_snapshot)`
+// 的 adapter（editor 注册表仍是单一真源，core 不复制 rope 状态），no-ui
+// 宿主可注入自定义实现。
+//
+// 值域纪律：出参 = `auto_text_core::RopeSnapshot`——文本 core 的同源
+// owned Arc 快照（COW 冻结视图，快照传输不经 VM 全文字符串中转）；
+// **文本 core 类型，非 UI 类型**，满足 802 值域纪律。若读取期间编辑器
+// 被删除/替换，已取得的快照仍有效（COW 冻结——实现方无需额外防护）。
+//
+// 缺席语义（T-01 冻结）：无 provider = 无法找到相应 editor → shim 落
+// 既有 err envelope（"编辑器不存在: <key_a>"，值非 raise）；有 provider
+// 但 key 无编辑器 = 同 err 形（判错优先 key_a 先，在 shim 侧）。feature
+// off 臂（cfg not code-editor）不取参即 raise——与迁移前逐字一致。
+
+/// 编辑器快照能力接口（同源 owned 快照值域，无 UI 类型）。
+pub trait EditorSnapshotProvider: Send + Sync {
+    /// 取键名对应编辑器的文档快照；None = 无此键编辑器。
+    fn snapshot(&self, key: &str) -> Option<auto_text_core::RopeSnapshot>;
+}
+
+/// 进程级默认 editor snapshot provider（显式注册；None = 未注册 → shim
+/// 走"无法找到相应 editor"err envelope）。替换/快照/if-absent 语义与
+/// frame/…/dnd 族逐条相同。
+static PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER: RwLock<
+    Option<Arc<dyn EditorSnapshotProvider>>,
+> = RwLock::new(None);
+
+/// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
+pub fn set_process_default_editor_snapshot_provider(provider: Arc<dyn EditorSnapshotProvider>) {
+    let mut slot = PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER poisoned");
+    *slot = Some(provider);
+}
+
+/// 兼容默认装配（仅空槽补缺，同锁原子——语义同既有七族）。供 UI 等内建
+/// 宿主隐式入口：不覆盖调用方显式默认。
+pub fn set_process_default_editor_snapshot_provider_if_absent(
+    provider: Arc<dyn EditorSnapshotProvider>,
+) {
+    let mut slot = PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER poisoned");
+    if slot.is_none() {
+        *slot = Some(provider);
+    }
+}
+
+/// 当前进程默认（`AutoVM::new` 构造期快照消费）。
+pub fn process_default_editor_snapshot_provider() -> Option<Arc<dyn EditorSnapshotProvider>> {
+    PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER
+        .read()
+        .expect("PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER poisoned")
+        .clone()
+}
+
+/// 清除进程默认（回到"无法找到相应 editor"err envelope 语义）。测试
+/// 装配/宿主拆卸用。
+pub fn clear_process_default_editor_snapshot_provider() {
+    let mut slot = PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER
+        .write()
+        .expect("PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER poisoned");
+    *slot = None;
+}
+
 /// 测试隔离（crate 级共享，cfg(test)）——持有者 = **清空/替换进程默认
 /// 槽的测试**（clear/set/restore 序列需跨操作原子，防彼此互踩）。普通
 /// 程序测试**零配合豁免**：其唯一槽写是 install 的 if-absent 补缺，对

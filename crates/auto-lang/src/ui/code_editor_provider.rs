@@ -25,6 +25,7 @@
 
 use crate::vm::host_capabilities::{
     CodeEditorCursorDto, CodeEditorHostProvider, CodeEditorScrollOffsetDto,
+    EditorSnapshotProvider,
 };
 use std::sync::Arc;
 
@@ -193,6 +194,23 @@ pub fn install_process_default() {
     crate::vm::host_capabilities::set_process_default_code_editor_host_provider_if_absent(
         Arc::new(CodeEditorRegistryProvider),
     );
+    // PLAN-807: 同点位补装编辑器快照 adapter（独立槽 if-absent——与 22
+    // native 槽互不掩盖；diff_snapshots 9916 经此供值）。
+    crate::vm::host_capabilities::set_process_default_editor_snapshot_provider_if_absent(
+        Arc::new(EditorSnapshotRegistryProvider),
+    );
+}
+
+/// PLAN-807: 编辑器快照 adapter——委托 ui::code_editor 既有注册表
+/// （`code_editor_with(key, doc_snapshot)`，COW 冻结视图；注册表仍是
+/// 单一真源，本 adapter 无状态）。读取期间编辑器被删/换不影响已取得
+/// 的快照（COW 冻结语义由 rope 保证）。
+struct EditorSnapshotRegistryProvider;
+
+impl EditorSnapshotProvider for EditorSnapshotRegistryProvider {
+    fn snapshot(&self, key: &str) -> Option<auto_text_core::RopeSnapshot> {
+        crate::ui::code_editor::code_editor_with(key, |core| core.doc_snapshot())
+    }
 }
 
 #[cfg(test)]

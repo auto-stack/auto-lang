@@ -890,6 +890,15 @@ impl AutoVM {
             {
                 native_interface.set_dnd_host_provider(provider);
             }
+
+            // PLAN-807: 同纪律快照 editor snapshot provider（9916 供值）。
+            // 缺席快照 = shim 侧"无法找到相应 editor"err envelope（值，
+            // 非 raise，与迁移前无编辑器注册同形）。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_editor_snapshot_provider()
+            {
+                native_interface.set_editor_snapshot_provider(provider);
+            }
         }
 
         // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
@@ -1425,6 +1434,24 @@ impl AutoVM {
         &self,
     ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>> {
         self.native_interface.dnd_host_provider()
+    }
+
+    /// PLAN-807: 实例级 editor snapshot provider 注入/覆盖（diff_snapshots
+    /// 9916 供值；宿主 adapter、外部 consumer、测试装配用）。覆盖构造期
+    /// 快照；只影响本 VM，不触碰绑定身份。
+    pub fn set_editor_snapshot_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>,
+    ) {
+        self.native_interface.set_editor_snapshot_provider(provider);
+    }
+
+    /// PLAN-807: 本 VM 当前 editor snapshot provider（None="无法找到相应
+    /// editor" err envelope 语义）。
+    pub fn editor_snapshot_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>> {
+        self.native_interface.editor_snapshot_provider()
     }
 
     /// Plan 197 Task 9: Load generic registry from codegen
