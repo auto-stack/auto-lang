@@ -1022,10 +1022,8 @@ fn append_length_tails(a: &Arc<Node>, b: &Arc<Node>, out: &mut PruneSpans) {
 /// shared tails on either side still register.
 ///
 /// Consumed by the diff engine's snapshot preprocessing (PLAN-703 T-04).
-/// PLAN-807 transitional: `pub` only for the T-02..T-03 window (consumed
-/// by the still-in-auto-lang diff engine); T-03 restores `pub(crate)`.
 #[derive(Debug, Default)]
-pub struct PruneSpans {
+pub(crate) struct PruneSpans {
     /// `(a_start, a_end, b_start, b_end)` — byte-identical content on both
     /// sides (positions may shift apart across edits — structural sharing
     /// means the same Arc can sit at different document offsets).
@@ -1597,11 +1595,7 @@ impl RopeSnapshot {
         q_subtree_equal(&self.root, &other.root)
     }
     /// Aligned prune spans vs `other` — see [`Rope::prune_spans`].
-    ///
-    /// PLAN-807 transitional: `pub` only for the T-02..T-03 window while
-    /// the diff engine still consumes it from auto-lang; T-03 moves the
-    /// engine into this crate and restores `pub(crate)`.
-    pub fn prune_spans(&self, other: &RopeSnapshot) -> PruneSpans {
+    pub(crate) fn prune_spans(&self, other: &RopeSnapshot) -> PruneSpans {
         let mut out = PruneSpans::default();
         collect_prune_spans(
             &self.root,

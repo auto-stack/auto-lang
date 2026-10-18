@@ -23,4 +23,6 @@
 
 pub mod rope;
 
+pub mod diff;
+
 pub use rope::{PageConfig, PageState, PageStore, Rope, RopeSnapshot};
