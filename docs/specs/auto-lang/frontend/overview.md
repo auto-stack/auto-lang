@@ -50,7 +50,12 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   顶层 `UiDialect` 派发与 widget/component/store 结构路径、import 新建
   Parser 的 `with_session` 默认装配全部真实委托，旧公开
   `parse_msg_decl`/`parse_model_block` 仅薄兼容委托（Rust 调用形状与 AST
-  类型身份不变），原算法已删除。未迁：widget/view/on/actions/style/
+  类型身份不变），原算法已删除。PLAN-810 起完整 UI 文法（widget/store/
+  component/view/fragment/节点族/on 块/actions/style/timer/routes/menubar/
+  toolbar/scene/use/setup/expose/watch/computed/bind）亦单源迁入
+  auto-ui-dialect `grammar` 模块，经 `UiParseContext` 端口驱动；Parser 上
+  仅余同签名薄委托门面。未迁：on-events/arrow 事件文法（Core 共享归
+  Core）、
   computed 等结构文法仍在 Parser（见"未迁事实"）。规范见
   [auto-ui-dialect/project.md](../../auto-ui-dialect/project.md)。
 - `use` 体系两层：预处理用 `scan_use_statements`（字符串级，免解析）；
@@ -162,7 +167,8 @@ with_header/body_depth 五个上下文旗标。Err 时注册不丢失，恢复�
 
 裸字段支持属于显式注册的外部 pilot，默认内建 model 仍要求类型或初值，行为不变。生产
 入口和导入中新建的 Parser 不自动继承外部注册；需要各入口显式注入。widget 体内 model
-由结构解析器直连内建，不经过语句方言派发；widget/msg/component/actions/style/view/
+由结构解析器直连内建，不经过语句方言派发（PLAN-810 起全部直连/派发臂经端口消费
+auto-ui-dialect 单源文法）；widget/msg/component/actions/style/view/
 on/store 的完整外部化、生产接线与 UI AST 迁移尚未完成。
 
 ### 方言接口独立与 Parser 依赖倒置（PLAN-801）
@@ -186,8 +192,9 @@ verify-deps.sh 无 auto-lang/auto-man/auto-vm/auto-ui）；解析集成测试在
 保外层存活快照）；旧 `ParserBridge` by-value checkpoint 路径
 零漂移，旧 trait/桥面/注册入口全部保持（`probe <expr>` 兼容用例在
 driver `LegacyProbeDialect`）。剩余边如实保留：内建 UiDialect 经
-`pub(crate)` escape hatch 用完整 Parser（完整 UI 文法仍在 Parser 上，
-不宣称 auto-ui 可搬仓）；生产入口/import 注册注入与 widget 结构直连
+`pub(crate)` escape hatch **已删除**（PLAN-810：完整 UI 文法单源在
+auto-ui-dialect，内建方言与外部方言同样只经端口面）；生产入口/import
+注册注入与 widget 结构直连
 边界未变，属后续按族外置合同。
 
 ## 已知坑

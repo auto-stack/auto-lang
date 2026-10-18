@@ -3,17 +3,24 @@
 > **Status**: active
 > 路径：`crates/auto-ui-dialect`  | 技术栈：Rust（依赖仅 auto-parser-api）
 >
-> PLAN-806 交付：UI msg 与 model 声明文法正式外置——完整 msg/model/字段
-> 注解算法自 auto-lang `Parser` 逐字迁出为单一份实现，经对象安全端口
-> `dyn ParseContext` 驱动；默认 UI 生产路径（顶层派发与 widget/component/
-> store 结构路径、import 新建 Parser 的默认装配）全部真实委托，Parser 原
-> 算法删除、旧公开方法仅薄兼容委托。本 spec 为该冻结增量的 canonical 沉淀。
+> PLAN-806 交付：UI msg 与 model 声明文法外置；PLAN-810 交付：**完整
+> UI 文法**外置——widget/store/component/view/fragment/节点族/on 块/
+> actions/style/timer/routes/menubar/toolbar/scene/use/setup/expose/watch/
+> computed/bind 及全部依赖 helper 自 auto-lang `Parser` 逐字迁出为单一份
+> 实现，经对象安全端口 `dyn UiParseContext`（`ParseContext` 的 UI 伴随
+> 子 trait）驱动；默认 UI 生产路径（顶层派发、结构直连、import 默认装配）
+> 全部真实委托，`ParserBridge::parser()` escape hatch 删除、Parser 原算法
+> 删除、旧公开方法仅薄兼容委托。本 spec 为该冻结增量的 canonical 沉淀。
 
 ## 模块与依赖
 
-`crates/auto-ui-dialect` 是 UI 声明文法（msg/model）的唯一实现：
-`src/declarations.rs`（`parse_msg_decl`/`parse_model_block`/
-`parse_model_block_subset` + `ModelGrammar`/`ModelSubset`）。normal 依赖闭包
+`crates/auto-ui-dialect` 是完整 UI 文法的唯一实现：`src/declarations.rs`
+（PLAN-806：`parse_msg_decl`/`parse_model_block`/
+`parse_model_block_subset` + `ModelGrammar`/`ModelSubset`）与
+`src/grammar/`（PLAN-810：`mod.rs` 定义 `UiParseContext` 端口；
+`widget.rs`/`view.rs`/`scene.rs`/`store.rs`/`actions.rs`/`helpers.rs`
+承载全部 UI 结构/事件/样式文法与纯 helper）。详细文法合同见
+[design/full-grammar.md](design/full-grammar.md)。normal 依赖闭包
 仅 auto-parser-api（其闭包 = auto-ast/auto-lex/auto-diagnostics + auto-val
 轻层）——无 auto-lang/Parser/lexer 实现/TypeStore/VM/UI renderer 反向边
 （module-boundaries 域 `lang-core`；合法声明边恰两条：auto-lang→本 crate、
@@ -72,26 +79,29 @@ normal/build/dev 无 auto-lang/auto-man/auto-vm/auto-ui）即轻闭包证据（V
 - 错误出口：未知注解经 `ctx.syntax_error`（桥面实现与旧臂逐字同构）；
   `expect` 族经桥面走 `Parser::expect` 同一实现。
 
-## 生产接线（auto-lang 上层，单源无第二份）
+## 生产接线（auto-lang 上层，单源无第二份；PLAN-810 起全端口）
 
-- 顶层：`dialect/ui.rs::UiDialect`（builtin 段）`"msg"`/`"model"` 分支 →
-  `Parser::parse_msg_decl`/`parse_model_block`（pub 兼容委托，签名与
-  `Stmt::MsgDecl`/`Stmt::ModelBlock` 包装不变）→ 本 crate。
-- 结构路径：`parse_widget_decl`/`parse_store_decl`/`parse_component_fn_decl`
-  体内 `parse_msg_decl_inner`/`parse_model_block_inner` 一行建桥委托
-  （`ParserBridge` 实现 `ParseContext`）；`parse_model_field_annotations`
-  自 Parser 删除。
+- 顶层：`dialect/ui.rs::UiDialect`（builtin 段，薄注册 adapter）各分支直调
+  本 crate（msg/model→declarations，widget/component/actions/style→grammar，
+  view→grammar，on→`ParseContext::parse_on_events` Core 共享文法）——
+  **不调用也不存在** `ParserBridge::parser()` escape hatch。
+- 兼容门面：Parser 公开 `parse_widget_decl`/`parse_store_decl`/
+  `parse_scene_decl`/`parse_actions_decl_stmt`/`parse_style_recipe_decl_stmt`/
+  `parse_view_block`/`parse_view_block_or_fragment`/`parse_component_fn_decl`/
+  `parse_msg_decl`/`parse_model_block` 均为建桥薄委托（同签名）；
+  `parse_stmt_inner` 直连段（scene 门/store 门/`pub style`）与
+  `ast_parse_ext`/import 路径同源消费。
 - import：新 Parser 经 `with_session`/`build_dialects` 默认装配（仅
   `Scenario::UI` 推 `UiDialect`），主文件与被导入文件同源；默认装配不是
   用户 Override 注册（三段表 pre/builtin/post 与注册传播不变，PLAN-778
-  冻结）。Core 护栏保持：fn/on 体内 `msg`/`model` 是标识符用法
+  冻结）。Core 护栏保持：fn/on 体内 UI 关键字是标识符用法
   （`UiDialect::try_parse_stmt` 前置 `in_on_body/in_fn_body` 让行）。
 
-## 边界与未迁清单（不得冒称完整 UI 文法已拆出）
+## 边界与剩余边（PLAN-810 后）
 
-未迁（仍在 auto-lang Parser，另立计划）：`widget` 壳与 view/on/actions/
-style/computed/setup/expose、store/component 壳文法、`use`/import 扫描、
-`ParserBridge` 的 `pub(crate) parser()` escape hatch（UiDialect 其余分支
-仍经其取回完整 Parser）。auto-lang 依赖本 crate 的组合宿主剩余边已按
-module-boundaries 声明（lang-core 域内合法边），后续 Parser/组合宿主
-分层再清理。
+未迁（明确归属，另立合同）：顶层 on-events/arrow 事件文法（Core 共享——
+非 UI 回退与 `ast_parse_ext` 同源，归 Core）；View/On TokenKind 兼容基础
+AST（R10 退出）；`scan_use_statements` 字符串级 use 扫描与真实文件 import
+加载（语言所有者——UI 专属 use 块已在本 crate，模块加载器不属 UI 文法）；
+UI 生成器/renderer/Man 工具与 Git 仓迁移（R04/R08）。auto-lang→本 crate
+的组合宿主边为 module-boundaries 已声明合法边（lang-core 域）。

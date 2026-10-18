@@ -43,7 +43,9 @@
   端口，Parser 内 `parse_msg_decl_inner`/`parse_model_block_inner` 一行
   建桥委托，原算法与 `parse_model_field_annotations` 删除）。分派权限与
   恢复规约不变：顶层仍经 builtin 段 `UiDialect` 同一分支（fn/on 体护栏
-  前置让行），widget/component/store 结构路径直连 inner 委托，None/Err
+  前置让行），widget/component/store 结构路径直连 inner 委托（PLAN-810
+  起全部经 UiParseContext 端口消费 auto-ui-dialect 单源文法，
+  `ParserBridge::parser()` escape hatch 已删除），None/Err
   三态与游标/五旗标恢复由派发器兜底不变；778 冻结的外部 model 子集
   （裸字段）仅在 `ModelGrammar::ExternalSubset` 显式策略下提供，默认
   `Builtin` 无裸字段——默认文法零漂移。规范见
