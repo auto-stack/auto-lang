@@ -509,7 +509,7 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path, src_: &PacSource) -
         )
     })?;
 
-    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    let sidecar = src_.sidecar_spec(project_dir);
     if !sidecar.is_empty() {
         crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, rust_dir)?;
     }
@@ -582,7 +582,7 @@ fn generate_rust_ui_inner(
         .map_err(|e| format!("Failed to write {}: {}", cargo_path.display(), e))?;
 
     // PLAN-013 T2: pac.at rust_sidecar 供给(用户 .rs 模块 + Cargo 依赖)。
-    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    let sidecar = source.sidecar_spec(project_dir);
     if !sidecar.is_empty() {
         crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &output)?;
         println!(
@@ -3181,6 +3181,13 @@ impl<'a> PacSource<'a> {
         Self { req: Some(req) }
     }
 
+    /// 测试/适配探针用公开构造（同 from_request）。
+    pub fn from_request_pub(
+        req: &'a auto_project_model::generation_request::GenerationRequest,
+    ) -> Self {
+        Self::from_request(req)
+    }
+
     #[allow(dead_code)]
     pub fn is_request(&self) -> bool {
         self.req.is_some()
@@ -5379,7 +5386,7 @@ fn generate_rust_ui_delivery_inner(
     delivery_preflight_producer(&producer_root)?;
 
     // R1-F03：sidecar 外部 path 显式拒绝（registry 版本依赖/项目内模块照常）。
-    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    let sidecar = source.sidecar_spec(project_dir);
     delivery_validate_sidecar(&sidecar)?;
 
     // 守卫（外来非空目录拒绝；换装语义下不清理既有交付）。

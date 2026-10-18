@@ -646,12 +646,27 @@ impl Automan {
         mode: auto_project_model::generation_request::RequestMode,
     ) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
         let pac_at = self.root_dir.join("pac.at");
-        Ok(crate::generation_request_adapter::request_of_in(
+        let mut req = crate::generation_request_adapter::request_of_in(
             &self.pac,
             &pac_at,
             mode,
             self.delivery_root.clone(),
-        ))
+        );
+        // R3-03：CLI --render 覆盖（render_override）应用到请求投影——
+        // 本次有效前端选择进入合同，生成器不再自行重判。
+        if let Some(o) = &self.render_override {
+            use auto_project_model::descriptor::{RenderDecl, RenderSpec};
+            let spec = match auto_man_core::BackendName::from_str(o) {
+                Some(b) => RenderSpec::Single(b.as_str().to_string()),
+                None => RenderSpec::Unknown(o.clone()),
+            };
+            req.render = RenderDecl {
+                render: spec,
+                legacy_backend: Some(o.clone()),
+                effective_backend: Some(o.clone()),
+            };
+        }
+        Ok(req)
     }
 
     fn open_jet_project(&self) -> AutoResult<()> {
@@ -1294,8 +1309,15 @@ impl Automan {
                     args: member_config_kept.args.clone(),
                 });
                 // PLAN-809 T-06c：成员的生成请求一次构造、多处消费（I-PROJECT）。
-                let member_req =
-                    crate::generation_request_adapter::request_of(&member_pac, &member_pac_path);
+                let member_req = crate::generation_request_adapter::request_of_in(
+                    &member_pac,
+                    &member_pac_path,
+                    auto_project_model::generation_request::RequestMode::Generate,
+                    output
+                        .as_ref()
+                        .map(|o| std::path::PathBuf::from(o))
+                        .or_else(|| self.delivery_root.clone()),
+                );
 
                 // Get frontend types from member's pac.at
                 let frontends = if member_pac.has_backend_config() {
@@ -1495,7 +1517,15 @@ impl Automan {
         let self_req = {
             let root_dir = std::env::current_dir()
                 .map_err(|e| format!("Failed to get current directory: {}", e))?;
-            crate::generation_request_adapter::request_of(&self.pac, &root_dir.join("pac.at"))
+            crate::generation_request_adapter::request_of_in(
+                &self.pac,
+                &root_dir.join("pac.at"),
+                auto_project_model::generation_request::RequestMode::Generate,
+                output
+                    .as_ref()
+                    .map(|o| std::path::PathBuf::from(o))
+                    .or_else(|| self.delivery_root.clone()),
+            )
         };
 
         // Generate for selected backend only
@@ -2031,8 +2061,12 @@ impl Automan {
                 args: config.args.clone(),
             });
             // PLAN-809 R1-F02：成员请求（run_member_frontend 经合同读取）。
-            let member_req =
-                crate::generation_request_adapter::request_of(&member_pac, &member_pac_path);
+            let member_req = crate::generation_request_adapter::request_of_in(
+                &member_pac,
+                &member_pac_path,
+                auto_project_model::generation_request::RequestMode::Run,
+                None,
+            );
 
             // Run based on member's frontend types (Plan 132: support array backends)
             let frontends = member_pac.frontend_types();

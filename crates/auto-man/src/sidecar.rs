@@ -22,7 +22,7 @@
 
 use std::path::{Path, PathBuf};
 
-use auto_val::{Obj, Value};
+use auto_val::Obj;
 
 use crate::AutoResult;
 
@@ -65,59 +65,6 @@ pub fn from_decl(decl: &auto_man_core::SidecarDecl) -> SidecarSpec {
             .map(|(n, p)| (n.clone(), PathBuf::from(p)))
             .collect(),
         deps: decl.deps.clone(),
-    }
-}
-
-fn fill(spec: &mut SidecarSpec, modules: Vec<String>, deps: Vec<String>) {
-    for entry in modules {
-        // 首个 ':' 分隔;模块名必须是合法 Rust ident(防 "C:/..." 被误拆)。
-        if let Some((name, path)) = entry.split_once(':') {
-            let name = name.trim();
-            let valid_ident = name
-                .chars()
-                .next()
-                .map(|c| c.is_ascii_lowercase() || c == '_')
-                .unwrap_or(false)
-                && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
-            if valid_ident && !path.trim().is_empty() {
-                spec.modules
-                    .push((name.to_string(), PathBuf::from(path.trim())));
-            }
-        }
-    }
-    for entry in deps {
-        if let Some((name, version)) = entry.split_once(':') {
-            let name = name.trim();
-            if !name.is_empty() && !version.trim().is_empty() {
-                // PLAN-025 续(024 顺带根修):name:path:REL 形态 = path
-                // 依赖(025 pac.at 注入约定;注入器此前未实现该分支,
-                // 生成 `name = "path:REL"` 畸形 toml 挡死 cargo build)。
-                // 值存最终 toml 表达式:版本依赖原样;path 依赖展开
-                // `{ path = "REL" }`。幂等检查按行前缀 name 仍命中。
-                if let Some(rel) = version.strip_prefix("path:") {
-                    let rel = rel.trim();
-                    if !rel.is_empty() {
-                        spec.deps
-                            .push((name.to_string(), format!("{{ path = \"{rel}\" }}")));
-                        continue;
-                    }
-                }
-                spec.deps
-                    .push((name.to_string(), version.trim().to_string()));
-            }
-        }
-    }
-}
-
-fn read_str_list(value: &Value) -> Vec<String> {
-    match value {
-        Value::Array(arr) | Value::Block(arr) => arr
-            .iter()
-            .map(|v| v.to_astr().trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect(),
-        Value::Str(s) if !s.trim().is_empty() => vec![s.trim().to_string()],
-        _ => Vec::new(),
     }
 }
 

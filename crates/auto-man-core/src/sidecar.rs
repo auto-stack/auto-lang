@@ -4,7 +4,7 @@
 //! 提形与条目校验（合法 Rust ident、`C:/` 路径防误拆）单源于此；
 //! AutoConfig 求值与文件复制/Cargo 注入留 auto-man adapter（sidecar.rs）。
 
-use auto_val::{AutoStr, Node, Value};
+use auto_val::{Node, Value};
 
 /// 声明解析结果（字符串形态；路径→PathBuf 由 adapter 转）。
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -135,5 +135,21 @@ mod tests {
         // 缺省空
         let empty = Node::new("root");
         assert!(sidecar_decl_from_root(&empty).is_empty());
+        // R3-02：Block 列表形态与 Array 同值对拍（旧支持域保留）
+        let mut nb = Node::new("rust_sidecar");
+        nb.set_prop(
+            "modules",
+            Value::Block(auto_val::Array::from_vec(vec![auto_val::Value::Str(
+                AutoStr::from("m:extra.rs"),
+            )])),
+        );
+        let mut root_b = Node::new("root");
+        root_b.add_kid(nb);
+        let db = sidecar_decl_from_root(&root_b);
+        assert_eq!(
+            db.modules,
+            vec![("m".to_string(), "extra.rs".to_string())],
+            "Block 形态与 Array 同值同果"
+        );
     }
 }

@@ -2662,7 +2662,7 @@ pub(crate) struct VueReads {
 
 impl VueReads {
     /// legacy 自扫（行为冻结：与原 from_workspace 内联读取逐字段一致）。
-    fn scan(root_dir: &Path, pac_path: &Path, pac_content: &str) -> Self {
+    fn scan(_root_dir: &Path, pac_path: &Path, pac_content: &str) -> Self {
         // theme{} 声明 → 合成（PLAN-601；AutoConfig 臂保留给 legacy 路径）
         let composed_theme: Option<auto_lang::design_tokens::decl::ComposedTheme> =
             match auto_lang::config::AutoConfig::from_file(pac_path, &auto_val::Obj::new()) {
@@ -3550,14 +3550,6 @@ export default router
     }
 
     /// Collect front directories for all dependencies under root_dir/deps/
-    fn collect_dep_front_dirs(root_dir: &Path) -> Vec<(String, PathBuf, bool)> {
-        // legacy：主 pac.at 文本扫描本地依赖声明（行为冻结）。
-        let pac_path = root_dir.join("pac.at");
-        let roots = fs::read_to_string(&pac_path)
-            .map(|c| parse_dep_roots_text(&c))
-            .unwrap_or_default();
-        Self::collect_dep_front_dirs_with_roots(root_dir, &roots)
-    }
 
     /// 共享收集体（R2-F02）：物化 deps/ 枚举（效果边）+ 本工程本地依赖
     /// 声明经 roots（合同数据），不再回读本工程 pac.at 文本。

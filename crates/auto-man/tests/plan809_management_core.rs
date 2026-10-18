@@ -265,6 +265,7 @@ fn resolve_internal_cycle_bounded_error() {
 fn v05_memory_and_cargo_real_serialized() {
     v05a_ninja_memory_discriminating();
     v05b_cargo_real_build_and_failure_paths();
+    v05d_unwritable_output_and_real_ninja_when_compiler();
 }
 
 fn v05a_ninja_memory_discriminating() {
@@ -549,4 +550,92 @@ fn r2_f01_ninja_first_encounter_identity() {
     app3.deps = vec![dep3];
     let out3 = build_memory(vec![app3]);
     assert!(out3.contains("override.c") && out3.contains("app.c"));
+}
+
+/// R2-04 矩阵补充：不可写输出失败路径（Cargo 输出位被文件占位 →
+/// setup 写 Cargo.toml 失败必须 Err，不静默）；真实 Ninja 成功产物在
+/// 编译器可用时执行（缺编译器=显式 pending 记录）。
+#[allow(dead_code)]
+fn v05d_unwritable_output_and_real_ninja_when_compiler() {
+    // 失败路径：不可写输出（rust/ 下预置同名文件占位目录路径）
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("rust/src")).unwrap();
+    std::fs::write(
+        root.join("rust/src/main.rs"),
+        "fn main() {}
+",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("pac.at"),
+        "name: \"uw\"
+lang: \"rust\"
+app(\"main\") { }
+",
+    )
+    .unwrap();
+    // rust/Cargo.toml 占位为一个**目录**——write_file 对目录失败
+    std::fs::create_dir_all(root.join("rust/Cargo.toml")).unwrap();
+    let cwd = std::env::current_dir().unwrap();
+    std::env::set_current_dir(root).unwrap();
+    let err = (|| -> AutoResult<()> {
+        let config =
+            auto_lang::config::AutoConfig::from_file(&root.join("pac.at"), &auto_val::Obj::new())?;
+        let mut pac = Pac::new(config);
+        pac.set_port("win32".into())?;
+        pac.resolve()?;
+        pac.build()?;
+        Ok(())
+    })();
+    std::env::set_current_dir(cwd).unwrap();
+    assert!(err.is_err(), "输出位不可写必须失败：{:?}", err.map(|_| ()));
+
+    // 真实 Ninja：编译器在 PATH 时执行成功产物断言；缺编译器显式 pending
+    let compiler = which("gcc")
+        .or_else(|| which("clang"))
+        .or_else(|| which("cl"));
+    match compiler {
+        None => {
+            eprintln!(
+                "V05-PENDING: 无 C 编译器（gcc/clang/cl）——真实 Ninja 成功                  产物验收未执行，保持 pending（AC-04 环境缺失语义）"
+            );
+        }
+        Some(_) => {
+            let dir2 = tempfile::tempdir().unwrap();
+            let root2 = dir2.path();
+            std::fs::create_dir_all(root2.join("apps/main")).unwrap();
+            std::fs::write(
+                root2.join("apps/main/main.c"),
+                "#include <stdio.h>
+int main(void){printf(\"ninja-ok\n\");return 0;}
+",
+            )
+            .unwrap();
+            std::fs::write(
+                root2.join("pac.at"),
+                "name: \"nj\"
+app(\"main\") { }
+",
+            )
+            .unwrap();
+            let cwd2 = std::env::current_dir().unwrap();
+            std::env::set_current_dir(root2).unwrap();
+            let built = (|| -> AutoResult<()> {
+                let config = auto_lang::config::AutoConfig::from_file(
+                    &root2.join("pac.at"),
+                    &auto_val::Obj::new(),
+                )?;
+                let mut pac = Pac::new(config);
+                pac.set_port("win32".into())?;
+                pac.resolve()?;
+                pac.build()?; // 真实 spawn ninja
+                Ok(())
+            })();
+            std::env::set_current_dir(cwd2).unwrap();
+            built.unwrap_or_else(|e| {
+                panic!("真实 ninja build 应成功（编译器在场）：{e}");
+            });
+        }
+    }
 }

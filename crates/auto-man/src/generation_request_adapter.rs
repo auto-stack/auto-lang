@@ -252,20 +252,35 @@ pub fn request_of_in(
     req.raw_nodes = pac.raw_nodes.iter().map(node_to_raw_decl).collect();
     req.front_node_form = pac.front_node.as_ref().map(|s| s.to_string());
     req.has_rust_sidecar = pac.has_rust_sidecar;
-    // 调用上下文（front 目录 .at 一次枚举；不存在则空）
+    // 调用上下文（R3-03：input_sources 用**请求自身**的 front 解析——
+    // front_node_form/front_decl 优先，再按 from_workspace 同序回退
+    // （root/<rel> → src/front → source/front → front），不用第二套猜目录；
+    // 递归枚举 .at（与生成器消费面一致）。
     let project_root = pac_at_path.parent().map(|p| p.to_path_buf());
     if let Some(root) = &project_root {
-        let front = crate::vue::resolve_front_dir_public(root);
+        let front_rel = req
+            .front_node_form
+            .clone()
+            .or_else(|| req.front_decl.clone());
+        let front = match front_rel {
+            Some(rel) if root.join(&rel).exists() => root.join(rel),
+            _ => {
+                // from_workspace 同序回退链
+                if root.join("src").join("front").exists() {
+                    root.join("src").join("front")
+                } else if root.join("source").join("front").exists() {
+                    root.join("source").join("front")
+                } else if root.join("front").exists() {
+                    root.join("front")
+                } else {
+                    root.join("src").join("front")
+                }
+            }
+        };
         if front.is_dir() {
-            req.input_sources = std::fs::read_dir(&front)
-                .map(|entries| {
-                    entries
-                        .flatten()
-                        .map(|e| e.path())
-                        .filter(|p| p.extension().map(|e| e == "at").unwrap_or(false))
-                        .collect()
-                })
-                .unwrap_or_default();
+            let mut files = Vec::new();
+            collect_at_recursive(&front, &mut files);
+            req.input_sources = files;
         }
     }
     req.mode = mode;
@@ -275,6 +290,23 @@ pub fn request_of_in(
 
 /// auto_val Node → 请求 RawNodeDecl（内容无损投影；行号信息在求值后
 /// 不可得，置 0）。
+fn collect_at_recursive(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if name.starts_with('.') {
+                    continue;
+                }
+                collect_at_recursive(&p, out);
+            } else if p.extension().map(|x| x == "at").unwrap_or(false) {
+                out.push(p);
+            }
+        }
+    }
+}
+
 fn node_to_raw_decl(n: &auto_val::Node) -> auto_project_model::descriptor::RawNodeDecl {
     auto_project_model::descriptor::RawNodeDecl {
         head: n.name.to_string(),
@@ -421,6 +453,106 @@ mod tests {
             Pac::new(auto_lang::config::AutoConfig::new("name: \"f\"\nwindow: \"fit\"\n").unwrap());
         let req2 = request_from_pac(&pac2, SourceInfo::inline());
         assert!(req2.window_fit());
+    }
+
+    /// R3-03：input_sources 用请求自身 front 解析（front 声明优先、递归、
+    /// 正交 src/front 干扰排除）。
+    #[test]
+    fn input_sources_follow_request_front() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let custom = root.join("custom").join("front");
+        std::fs::create_dir_all(custom.join("pages")).unwrap();
+        std::fs::create_dir_all(root.join("src").join("front")).unwrap();
+        std::fs::write(custom.join("app.at"), "widget A {}").unwrap();
+        std::fs::write(custom.join("pages").join("child.at"), "widget C {}").unwrap();
+        std::fs::write(
+            root.join("src").join("front").join("wrong.at"),
+            "widget W {}",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("pac.at"),
+            "name: \"cf\"
+render: \"vue\"
+front: \"custom/front\"
+",
+        )
+        .unwrap();
+        let pac_path = root.join("pac.at");
+        let config =
+            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
+        let pac = Pac::new(config);
+        let req = request_of(&pac, &pac_path);
+        let names: Vec<String> = req
+            .input_sources
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            names.contains(&"app.at".to_string()),
+            "custom front app.at：{:?}",
+            names
+        );
+        assert!(
+            names.contains(&"child.at".to_string()),
+            "递归 pages/child.at：{:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"wrong.at".to_string()),
+            "src/front 干扰排除：{:?}",
+            names
+        );
+    }
+
+    /// R3-01：请求侧 sidecar 声明真实驱动生成（来源=请求，磁盘不改产物）。
+    #[test]
+    fn sidecar_source_is_request_not_disk() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let front = root.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(front.join("app.at"), "widget S { view { text \"s\" {} } }").unwrap();
+        // 磁盘声明无 sidecar；请求手工带 sidecar
+        std::fs::write(
+            root.join("pac.at"),
+            "name: \"sc\"
+render: \"vm\"
+",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("extra.rs"),
+            "// sidecar module
+",
+        )
+        .unwrap();
+        let pac_path = root.join("pac.at");
+        let config =
+            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
+        let pac = Pac::new(config);
+        let mut req = request_of(&pac, &pac_path);
+        // 请求注入 sidecar 声明（等价于另一磁盘 pac 声明 rust_sidecar）
+        req.raw_nodes
+            .push(auto_project_model::descriptor::RawNodeDecl {
+                head: "rust_sidecar".into(),
+                name: None,
+                raw_args: None,
+                props: vec![auto_project_model::descriptor::NodeProp {
+                    key: "modules".into(),
+                    value: auto_val::Value::str_array(vec![auto_val::AutoStr::from(
+                        "extra:extra.rs",
+                    )]),
+                    line: 0,
+                }],
+                children: vec![],
+                line: 0,
+            });
+        let source = crate::rust_ui::PacSource::from_request_pub(&req);
+        let spec = source.sidecar_spec(root);
+        assert_eq!(spec.modules.len(), 1, "请求声明驱动（磁盘无 sidecar）");
+        assert_eq!(spec.modules[0].0, "extra");
     }
 
     /// B 组键经求值 root 追加（npm_deps/exe_name/theme 块/sidecar）。
