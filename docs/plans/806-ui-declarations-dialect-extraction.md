@@ -11,7 +11,7 @@ total_steps: 8
 supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-ui-dialect/project.md]
 touched_goals: [GOAL-003, GOAL-007]
-affects: [auto-ui-dialect, auto-lang/frontend]
+affects: [auto-ui-dialect, auto-lang/frontend, auto-parser-api]
 depends_on: [PLAN-799, PLAN-801]
 ---
 
@@ -95,30 +95,39 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 
 ## 8. 执行步骤
 
-2026-10-18 R2 当前状态：仅 T-03/T-04 验证完成；T-01/T-02/T-05/T-06 因 F806-R2-01～03 重开。各行附属的 2026-10-17 work 完成说明保留为历史声明，不代表本轮验收通过；具体反例和独立验证见 [R2复审](attachments/806/review-r2.md)。
+2026-10-18 R3 当前状态：R2 三项原finding已关闭，但新增前瞻端口的失败合同不成立（F806-R3-01）；保留 T-03/T-04，重开 T-01/T-02/T-05/T-06，executing 2/8。附属work完成说明保留为历史声明，当前验收以 [R3复审](attachments/806/review-r3.md) 为准。新增UI导入测试建议补feature门控（F806-R3-02，P3，非单独阻断）。
 
 | 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [x] | T-01 | work | 799/801审查合入、合同确认 | parser.rs三算法/all callsites、801最终端口及pilot，整链可行性/差额/旧臂/默认策略冻结；R2：前瞻等价性未成立 | 01/02/03 |
+| [x] | T-01 | work | 799/801审查合入、合同确认 | parser.rs三算法/all callsites、801最终端口及pilot，整链可行性/差额/旧臂/默认策略冻结；R3：统一新增端口失败消费/幂等合同与旧msg语义 | 01/02/03 |
+| [✅ 2026-10-18 R3 修复, code 50644ad43] 不变量=探测端口合同与实现一致且不改旧 msg 错误语义；受影响路径=probe×{成功 token 族,非推进型失败,推进型失败（非法转义/坏字符字面量）}×{单次/重复}×{后续 advance 记录/游标/续读}；修复=peek_next_kind 更名 probe_next_kind+双路径精确定义（成功=零副作用/幂等；失败=旧回推前瞻失败消费协议，错误丢弃/可能推进/不承诺幂等）；永久用例=r3_probe_* 4 例（oracle=R3 冻结探针日志逐字）；结果=18/18；剩余缺口=无。 |
 | [✅ 2026-10-18 R2 修复, code e2fc6ebf3] 不变量修订=前瞻必须零副作用（不跳注释/不收 docs/不记词法错误/游标不动/不扩文法）；受影响路径=named payload 探测×{注释分隔,doc 相邻,词法错误窗口,位置形态}；修复=端口具名通用能力 `ParseContext::peek_next_kind`（auto-lang `port_peek_next_kind` 原语=旧 lexer.next+push_token 逐字同构）替换 checkpoint+advance/restore；永久用例=plan806 r2_* 7 例（oracle=R2 冻结新旧探针日志）；结果=14/14 绿；剩余缺口=无。 |
 | [✅ 2026-10-17 work] 801 已合入归档（delivery 786c49964，auto-parser-api 在主检出）；决策 D1–D7 冻结（crate/闭包、checkpoint+advance/restore lookahead 等价+微残差登记、expect_ident 逐字复刻、ModelGrammar 单份策略、薄委托+守卫不变、syntax_error 同构、777/792 登记面），§9 work T-01 记录+master 侧只读预检 attachments/806/t01-readonly-prep.md。 |
-| [x] | T-02 | work | T01 | 新crates/auto-ui-dialect及完整msg/model/注解算法，安全lookahead，轻consumer与check/V01；R2：修复F806-R2-01 | 01/02 |
+| [x] | T-02 | work | T01 | 新crates/auto-ui-dialect及完整msg/model/注解算法，安全lookahead，轻consumer与check/V01；R3：修复F806-R3-01新增端口合同 | 01/02 |
+| [✅ 2026-10-18 R3 修复, code 50644ad43] declarations.rs/lib.rs 更名同步；算法主体零变化（R3 已验旧 12 例输出与历史旧臂逐字一致）；轻测 10/10+闭包门 PASS。 |
 | [✅ 2026-10-18 R2 修复, code e2fc6ebf3] declarations.rs 前瞻改 peek_next_kind 形态；轻 consumer 增 peek 语义测试 10/10+verify-deps PASS；cargo check×2 零新警告。 |
 | [✅ 2026-10-17 work, code 970960b4a] 新 crate 三文件（declarations.rs 逐字迁出 master 5d8834bcc parser.rs 14917-15132 基线）；ui-declarations-consumer 轻消费方 9/9 绿 + verify-deps PASS（闭包={lex,parser-api,ui-dialect} 无 auto-lang）；cargo check -p auto-ui-dialect 零警告。 |
 | [x] | T-03 | work | T02 | Parser公开/inner薄委托与UiDialect默认装配、全部widget/component/store及默认import路径接线，V04 | 02/03 |
 | [✅ 2026-10-17 work, code 557e0a176] inner 两方法一行建桥委托、parse_model_field_annotations 删除（parser.rs −213 行）；pub 签名/Stmt 包装、UiDialect 分支与结构守卫、with_session 默认装配不变；check -p auto-lang 0 error 零新增警告（411=801 基线）；冻结旧臂内联 12/12 + 滤面 45/45；V04 plan806 7/7（含真实被导入文件 treeview.at）。 |
 | [x] | T-04 | work | T03 | 801 pilot复用单份model、默认bare反控及显式bare正控；删除原算法，V02/03/05 | 02/03 |
 | [✅ 2026-10-17 work, code 8093301b8] dialect-api-consumer 删第二份字段算法（−65 行）改调 parse_model_block_subset（NotClaimed→Ok(None) 协议保持）；轻测 3/3+闭包门 PASS；上层 driver 48/48（r2_bare_field_boundary 默认反控+pilot 正控 8/8 等）；默认文法零漂移。 |
-| [x] | T-05 | work | T04 | V01–06全矩阵、777精确边/792source闭包与受影响交付控制，实际命令收据；R2：补前瞻副作用反例/三文件format | 01–04 |
+| [x] | T-05 | work | T04 | V01–06全矩阵、777精确边/792source闭包与受影响交付控制，实际命令收据；R3：补会推进输入的词法失败/重复调用/后续消费对照及诊断调整表 | 01–04 |
+| [✅ 2026-10-18 R3 修复, code 50644ad43] 诊断简表（剩余不变量/漏检原因=oracle 依赖失败模式偶然性质/状态路径/设计 oracle 调整/结果）入 t05-receipt R3 节；失败协议 4 例收编；no-UI 编译我方文件 0 错误；重放 18/18+10/10+48/48+12/12+45/45。 |
 | [✅ 2026-10-18 R2 修复, code e2fc6ebf3] 三反例+相邻对照收编 plan806（14/14）；三文件+触及文件 rustfmt --check 全过（parser.rs 无关重排已回退，仅+16 行原语）；重放 light 10/10+driver 48/48+内联 12/12+滤面 45/45。 |
 | [✅ 2026-10-17 work, code 8a86fe323+504ca0e0d] 777 增 lang-core 域+基线重采样（增量恰 2 合法边，strict pass 0 违规）；792 DELIVERY_CRATES 12→13+delivery 单测 10/10+交付 driver 25/25 exit0（fresh 111s/locked 135s/十四态负控/恢复绿，收据入附件）；V05 tu 867/867 零金样更新；命令矩阵全收据 attachments/806/t05-receipt.md。 |
-| [x] | T-06 | work | T05 | 未迁widget/view/on等清单、净删/组合宿主剩余边及SD/SHA收据，提交送审；R2：纠正等价/微残差说明，补交付权威Spec/impact | 04 |
+| [x] | T-06 | work | T05 | 未迁widget/view/on等清单、净删/组合宿主剩余边及SD/SHA收据，提交送审；R3：校准端口失败语义及SD/影响说明，禁止把旧三例闭合当新增API合同已过 | 04 |
+| [✅ 2026-10-18 R3 修复, code 50644ad43] SD-01 双路径校准+auto-parser-api/project.md 端口合同条目/实现方兼容性/陈旧 pilot 位置/闭包 12→13 修正；frontmatter affects 增 auto-parser-api；新冻结 code=50644ad43 送 T-07 四轮审查。 |
 | [✅ 2026-10-18 R2 修复, code e2fc6ebf3] SD-01 lookahead/怪癖适用边界校准（缺块闭括号+EOF=无界怪癖≠已覆盖错误出口；载荷缺 `)`=expect 确定性报错）；generated-ui-distribution.md 12→13+依赖边说明（SD-05 具名+frontmatter supersedes 增补）；t05-receipt 增 R2 更正节（微残差叙事作废+tu 整档时序越权注记）；新冻结 code=e2fc6ebf3 送 T-07 二轮复审。 |
 | [✅ 2026-10-17 work, code af3748db7+f84f405f4+a20fcf6fe] SD-01 新 auto-ui-dialect/project.md+SD-02..04 三处备稿（worktree 待 merge 沉淀）；未迁清单/净删/微残差登记入 t05-receipt；代码链 970960b4a→a20fcf6fe 共 8 提交，送 T-07 同树独立复审，merge 门 pending。 |
 | [ ] | T-07 | review | T06 | 同树独立完整语法/所有调用/恢复/消费/SD审查，merge门pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
 
 ## 9. 复审记录
+
+2026-10-18 / stage: work / PLAN-806 revision: 1 / outcome: pass（R3 两 findings 全修，T-01/T-02/T-05/T-06 R3 要求重勾 6/8）/ worktree_path=D:/autostack/.wt/lang-806/auto-lang / branch=codex/plan-806-dev / base_commit=5d8834bcc / code_commit=50644ad43（修复在 R3 审查基线 e2fc6ebf3 之上单一提交；工作树 clean）/ dependency_revisions=auto-down c39ac7f9 不变 / finding_closure=F-806-R3-01：不变量=探测端口公开合同与实现一致且不得改变旧 msg 错误语义；此前漏检原因=R2 oracle 只覆盖成功路径+恰巧不推进输入的 UnknownCharacter，未枚举会推进输入的字符字面量失败（失败模式的偶然性质被当成了合同）；修复=peek_next_kind 更名 probe_next_kind+双路径精确定义（成功=零副作用/幂等/与首次 advance 一致；失败=旧回推前瞻失败消费协议：推进与否由 Lexer 失败模式决定、错误丢弃、不承诺幂等），auto-lang 原语 port_probe_next_kind 实现不变（=旧 lexer.next+push_token 逐字同构，msg 行为零变化）；永久用例=r3_probe_* 4 例（非推进型 None/None+advance 单份 UnknownCharacter；推进型 '\q' 首 None 次 Some(Ident) 后 advance 得 Ident("q") 零错误；'ab' 变体 Ident("b")；DocComment 探测不收集+advance 恰一份+Ident 幂等），oracle=R3 冻结探针日志逐字；结果=plan806 18/18；剩余缺口=无。F-806-R3-02：修复=import 链测试补 #[cfg(feature="ui-iced")]（与 build_dynamic_component 同条件）；验证=no-UI 定向编译 plan806_ui_declarations 0 错误（剩余红=plan712 等既有模块，R3 已注不归因本计划）；剩余缺口=无。 / evidence=attachments/806/t05-receipt.md R3 节（含按 R3 要求的诊断简表）/ blockers=无（merge 门 pending 不变：冻结裸 t+tv；792 交付 25/25 仍为 R2 历史证据，最终冻结面验收由 merge 门+终审确认影响后补/复用）/ next_responsible_role=review（T-07 四轮 final review，审查基线 50644ad43）
+
+
+2026-10-18 / stage: review / review_scope: final / reviewer_identity: 当前独立Codex检查会话（未参与实施、无额外agent） / plan_id: PLAN-806 / plan_revision: 1 / outcome: needs_fix / worktree_path: D:/autostack/.wt/lang-806/auto-lang / branch: codex/plan-806-dev / reviewed_commit: e2fc6ebf38e576e1cfb9486fd72cf92f47c5738a / base_commit: 5d8834bcc9cb4bde66ca9b610259036b82642227 / previous_reviewed_commit: a20fcf6fe9885102d0059c04c9ac1e0551a3e3dc / dependency_revisions: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；799/801已合入 / spec_inputs: [R3基线](attachments/806/review-r3-baseline.json.txt)；[SD冻结patch](attachments/806/review-r3-spec-delta.patch) SHA256=34d0b3c29970f4e3d256068b6e0552806d5336986c69f0a5d1f2a5cb37090975 / acceptance_results: AC01 pass、AC02 partial、AC03现有验收pass、AC04 partial、AC05 fail、AC06 merge-owned pending / findings: R2-01原msg三反例/文法层CLOSED（12输入输出逐字等于历史旧臂）、R2-02/03 CLOSED；F806-R3-01(P2，新修复接口合同问题，peek非法字符字面量失败消费输入，None→Some(Ident)，后续错误丢失，违反其新零副作用/幂等/后续记错承诺)；F806-R3-02(P3，新增真实import测试缺ui-iced cfg，两处无UI libtest新增E0425；其他模块基线红不归本计划，无UI库构建/解析仍过，此项不单独决定needs_fix) / evidence: [完整R3与重放源码](attachments/806/review-r3.md)，light10/10、driver48/48、plan806 14/14、定向45/45、check及features=[]库构建/12例解析、format/闭包/777严格零违规通过；新peek失败对照不通过 / pending_closeout_gates: 最终pass后裸t+tv/实际触面档、规范ledger/归档guard；历史792-25/25不冒充新SHA重编通过，本轮无整档或交付大scratch重跑 / next: 原树work修复端口失败合同/负控并校准SD，建议补新UI测试cfg；保留T03/T04，重开T01/T02/T05/T06，executing 2/8。R2/R3为两次实际最终审查未通过，下一次ready前须补剩余不变量/漏检原因/适用路径/设计或oracle调整/当前结果简表；R1仅就绪核查，不臆计第三次语义失败。
 
 2026-10-18 / stage: work / PLAN-806 revision: 1 / outcome: pass（R2 三 findings 全修，T-01/T-02/T-05/T-06 R2 要求重勾 6/8）/ worktree_path=D:/autostack/.wt/lang-806/auto-lang / branch=codex/plan-806-dev / base_commit=5d8834bcc / code_commit=e2fc6ebf3（修复在复审冻结基线 a20fcf6fe 之上单一提交；工作树 clean）/ dependency_revisions=auto-down c39ac7f9 不变 / finding_closure=F-806-R2-01：不变量=前瞻零副作用且不扩文法；受影响路径=named payload 探测×{注释分隔伪命名,doc 相邻重复收集,词法错误窗口翻倍,位置形态,comment-before-rparen,FStrStart}；修复=端口具名通用能力 ParseContext::peek_next_kind（Core 含义/幂等/零副作用已文档化+Core 语义永久测试）+auto-lang port_peek_next_kind 原语+declarations.rs 弃 checkpoint+advance/restore；永久用例=plan806 r2_* 7 例（三反例 oracle 逐字=R2 冻结新旧探针日志：Err@25 UnexpectedToken RParen/docs 单份/UnknownCharacter@14 单份）+真实 use-import 链收编（review-r2-import.rs，含 Bad806 负控）；结果=plan806 14/14+light 10/10+driver 48/48+内联 12/12+滤面 45/45；剩余缺口=无（相邻 named/positional/comment/恢复对照保持）。F-806-R2-02：受影响面=权威交付规范+plan impact；修复=generated-ui-distribution.md 12→13+auto-ui-dialect 闭包内依赖边说明+SD-05 具名+frontmatter supersedes 增补；剩余缺口=无。F-806-R2-03：修复=三文件+全部触及文件 rustfmt --check 过（parser.rs 无关重排回退，仅+16 行原语）；剩余缺口=无。 / evidence=attachments/806/t05-receipt.md R2 修复轮更正节（含 tu 整档时序越权注记与作废的原微残差叙事）/ blockers=无（merge 门保持 pending：冻结裸 t+tv；ui_gen/trans 源未改不追加 tu/tt；tf 主检出到期判定）/ next_responsible_role=review（T-07 二轮 final review，审查基线 e2fc6ebf3）
 
