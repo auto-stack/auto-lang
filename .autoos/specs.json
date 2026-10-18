@@ -9544,7 +9544,7 @@
         {
           "id": "P812-R",
           "title": "PLAN-812 Linux 后台最终复审",
-          "content": "r2 final pass；同实现会话复审局限已明示，结论从冻结 diff 与真实验收重建。Windows check、transport 9/9、Linux release、隔离发布包、自动回滚、公网 API 与页面 Run/Trans 均通过；merge-owned bare cargo t 见归档最终收据。无新增债务。",
+          "content": "r2 final pass；同实现会话复审局限已明示，结论从冻结 diff 与真实验收重建。Windows check、transport 9/9、Linux release、隔离发布包、自动回滚、公网 API 与页面 Run/Trans 均通过；merge-owned bare cargo t 见归档最终收据。无新增产品债务；merge 期间观测的测试环境候选 P812-D1/P812-D2 见 KNOWN-DEBT-AND-RISKS。",
           "status": "verified",
           "depends_on": [],
           "related": [],

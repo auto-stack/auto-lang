@@ -12,3 +12,10 @@
 - Browser on https://auto-lang.cn/zh/playground: Run visibly produced Bytecode instruction rows and output 7; Trans visibly produced Rust function/source pane. Screenshot online-trans.png. API checks used public same-origin URLs, not localhost fallback.
 - Omission/defer/workaround audit: no dropped acceptance, no frontend workaround, no new debt. Existing compiler warnings recorded above; not introduced by these declaration changes.
 - Merge-owned daily gate: pending final review, then bare cargo t. No VM/compiler/transpiler/ui_gen/book/aavm implementation touched, so tv/tt/tu/tb/taa not triggered by scope. tf remains batch-only.
+## 最终 merge-owned 门禁
+
+冻结运行源码与 reviewed 7cab6ca2b 相同；后继提交仅规范/投影/证据。最终裸 cargo t：5252/5252 pass、1549 个预配置 skipped、142.261s；仅 NEXTEST_TEST_THREADS=8 限流，无 CARGO_TARGET_DIR 重定向、无删选测试。tv/tt/tb/tu/taa 未触发，tf 批量到期检查归收尾。
+
+前两轮失败保留原始记录：首轮父 CARGO_TARGET_DIR 导致 fixture 输出目录错误（已撤销并清掉本次无效 marker）；第二轮 AC worker 冷编译超时及一次 P765 IAT heap 状态观测。随后独立构建 worker、AC+P4 定向 14/14（P4=87.863s）、P765 1/1 后最终全档通过，未修改测试选择/实现以掩盖失败。环境候选 P812-D1/P812-D2 已追加 KNOWN-DEBT，其他会话 WIP 未包含进该提交。
+
+完整日志与 Linux 归档恢复件：D:/autostack/.recovery/plan-812-20261019/（含三轮 merge-daily*.log、定向日志、程序/归档哈希与 specs v48 字节备份）。该目录不含 sudo 凭据。
