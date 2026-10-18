@@ -83,6 +83,14 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - code editor 22 native 全族（2910..2915/2919..2924/2932/2933/2939/9906/9908..9913）为 editor 批次（PLAN-802）：core shim 经 per-VM `vm::host_capabilities::CodeEditorHostProvider`（19 具名方法）供值，不再直引 ui::code_editor；缺席=21 项 raise feature-disabled 形 VMError + 9913 scroll_to 弹参返 false（唯一值缺席臂）。详见 [code editor native 宿主能力（PLAN-802）](#code-editor-native-宿主能力plan-802)。
 - dialog_open/save 2927/2928 与 dnd_start 2938 为 dialog/dnd 批次（PLAN-804）：core shim 经 per-VM `vm::host_capabilities::DialogHostProvider`/`DndHostProvider` 双独立槽供值，不再直引 rfd/Win32/UI native_dnd；缺席=dialog 弹参前 feature-disabled 形 VMError、dnd 弹参后 false（值降级）。详见 [dialog/dnd native 宿主能力（PLAN-804）](#dialogdnd-native-宿主能力plan-804)。
 - diff 四入口 9915/9916/9917/9921 为文本批次（PLAN-807）：纯路径/目录/窗口面直调 `auto-text-core`（不再经 UI 门面）；`diff_snapshots` 经 per-VM `vm::host_capabilities::EditorSnapshotProvider`（独立槽，802 trait 零改动）供同源 owned 快照（零全文字符串 VM 中转）；缺 provider=无法找到相应 editor→既有 err envelope 值形（missing=key_a 判错优先）；feature off 四 shim 不取参 raise 逐字、a2r `diff_files_window` 为仅 on 导出（off=符号缺席，旧 base 同形）。详见 [diff native 与编辑器快照宿主能力（PLAN-807）](#diff-native-与编辑器快照宿主能力plan-807)。
+- terminal 34 native 全族（2943..2949/2957..2959/2976..2982/2983..2987/
+  2988..2993/2998..3003）为 terminal 批次（PLAN-808）：core shim 仅
+  弹参/push，经 per-VM `auto_terminal_core::TerminalHostProvider` 供值；
+  引擎服务/句柄/采样/背压归 `auto-terminal-core`，不再直引 UI 的
+  terminal 注册表/theme。缺席=回落进程共享 engine service（不是错误/
+  不是空值），保留旧无 UI 驱动行为；UI 宿主安装 adapter 后才有输入/
+  几何/menu/scroll/window/palette 面。详见
+  [terminal native 宿主能力（PLAN-808）](#terminal-native-宿主能力plan-808)。
 
 ## Frame native 宿主能力装配（PLAN-779）
 
@@ -267,6 +275,44 @@ key 与缺 provider 同形——err envelope `编辑器不存在: <key>`（判�
 key_a 先，冻结序；缺 provider 时 missing=key_a）。feature off：四 shim
 不取参即 raise feature-disabled 形 VMError（a2r 三函数 off panic 逐字、
 `diff_files_window` 仅 on 导出=符号缺席，旧 base 同形）。
+
+## terminal native 宿主能力（PLAN-808）
+
+terminal 34 native（`auto.term.*`，ID/签名/canonical 名不变）供值经
+per-VM `auto_terminal_core::TerminalHostProvider`（一 native 一方法，
+owned 值域）。VM shim 只弹参/编码/push；DLL 加载、符号契约、会话句柄
+表、行/样式采样、光标/视口缓存与背压迟滞归 `auto-terminal-core`
+（Cargo 闭包仅 std+libloading，不依赖 auto-lang/UI/man/auto-term）。
+
+装配=779/785/790/794/802/804 同构三级（实例注入 > 构造期进程默认快照 >
+兼容 if-absent），但**默认回落不同**：无 provider 时 shim 使用
+`auto_terminal_core::default_provider()`（进程共享 engine service），
+保留迁移前"无 UI 也能 spawn/rows/backlog"的行为；无 provider ≠ 禁用
+引擎。注入不 bump binding_revision/不撤 proof；NI Clone/VM merge 保
+provider。
+
+缺席/句柄语义（T-01 冻结）：缺 DLL/无效句柄 spawn=0、rows=[]、
+interrupt=-1、is_exited=true、history/backlog=0、cursor/viewport 缓存缺省
+(0,0)；free 后光标/视口保留旧缓存（旧可观察臂）；重复/并发 free no-op
+且 DLL free 恰好一次（每会话 lease + 退役位）；service 末引用 Drop 在
+Library 析构前释放活会话。句柄为**进程全局**命名空间；VM 保留曾安装
+provider 的历史，带 handle 的 shim 先反查原 owner——provider 替换后旧
+句柄仍读/写/释放到原服务，不会误释放新服务的会话。core free 把
+cursor/viewport 纯值发布到**进程级 retired 缓存**（**无界**，R4-02），
+VM shim 另存
+per-VM 表；缓存查询先 per-VM、再活 owner、再 retired owner、再进程级
+retired 缓存，故释放者/其他 VM/直接 core free 的消费者在 owner 剪枝/
+销毁后仍读冻结值，且不强持旧 service。owner 查询/剪枝/槽替换一律在 NI
+锁外执行 provider 方法与析构；**剪枝求值期间可见列表保持完整**，重装/
+会话发布 bump 条目 revival 计数、短写锁内仅 stamp 未变才移除（复活者
+从未离开可见列表，R4-01），锁内不调用 provider。
+config 六项保持空集/空串；window 无 UI=1024×768，UI=thread-local override
+或 theme；`set_app_window_px` 兼容门面转发 `ui::terminal_provider`。
+display_offset 唯一真源仍为引擎，UI 只投影（Mux 契约不变）。
+
+外部 no-UI 宿主可注入自定义 provider；真 no-UI 消费方探针
+（test/fixtures/modularity/terminal-core-consumer，独立 workspace）与
+真实 DLL 生命周期 driver（`AUTOTERM_ENGINE_DLL`）为验收 oracle。
 
 ## 布尔短路求值语义（plan-615）
 

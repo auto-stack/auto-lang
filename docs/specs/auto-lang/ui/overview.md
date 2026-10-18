@@ -57,7 +57,7 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **adapter**：`ui::frame_provider::FrameBenchProvider` 从既有 `frame_bench` 通道读取；捕获开关（`AUTO_FRAME_BENCH` 门控零开销）、时源、renderer note 语义不变。`install_process_default` 统一调用 if-absent——**兼容默认只补空槽，不覆盖调用方显式选择**（优先关系契约见 vm/overview 三层清单）。
 - **自动装配位置**：VmBridge 两构造（`new_with_children`/`new_from_decls`）、`run_file_dynamic_ui_inner`、CLI ui-iced 入口（auto crate main），以及 crate 根组合助手 `install_ui_host_capabilities`。根助手覆盖 run 家族执行漏斗（`execute_autovm_with_deadline`）、test/debug、`create_vm_from_source/abt`、配置求值、REPL、解释器、back_proxy 的宿主创建路径；ui 构建提供兼容默认，no-ui 构建助手为 no-op。**不得**沿用"仅前三点注入、其余库程序轨须自行注册"的早期不完整描述。
 - **调用方保证**：高层入口前设置显式默认，UI 开/关两种构建均保持真实供值；无人注册时 UI 宿主恢复 frame_bench 默认，门开可读真值。原始 AutoVM 仍只按构造时默认快照，UI 实现不接回 vm core。
-- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）、文件/图像剪贴板 2934..2937（PLAN-790）、scroll controller 族 9900..9905/9922/9923（PLAN-794）code editor 22 native 全族（PLAN-802）与 dialog_open/save+dnd_start（PLAN-804）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；term/media 等未迁族按计划清单后续迁移（diff 族 9915..9917/9921 已于 PLAN-807 迁至文本 core 直调+快照端口，见下文 PLAN-807 节与 vm/overview 同名节），不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
+- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）、文件/图像剪贴板 2934..2937（PLAN-790）、scroll controller 族 9900..9905/9922/9923（PLAN-794）code editor 22 native 全族（PLAN-802）与 dialog_open/save+dnd_start（PLAN-804）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；media 等未迁族按计划清单后续迁移（terminal 34 native 全族已于 PLAN-808 迁至 `auto-terminal-core` provider，见下文 PLAN-808 节与 vm/overview 同名节；diff 族 9915..9917/9921 已于 PLAN-807 迁至文本 core 直调+快照端口，见下文 PLAN-807 节与 vm/overview 同名节），不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
 
 ## 现状（2026-10-16）——文本剪贴板 adapter 宿主装配（PLAN-785）
 
@@ -206,6 +206,35 @@ renderer 门，`ui-dialog`-only（无 ui）构建经扩门
 dnd 1 native 生产边清零（rfd/raw-window-handle/Win32 dialog 与
 ui::native_dnd 直引形态由 plan804 core 剪断锚永久钉扎）。不宣称
 term/media 或整体 renderer 已独立。
+
+## 现状（2026-10-18）——terminal 域 adapter 宿主装配（PLAN-808）
+
+> terminal 完整子域批次（VM 侧契约见 vm/overview terminal native 宿主
+> 能力节；domain 合同见 `docs/specs/auto-terminal-core/project.md`）。
+
+UI 侧 `ui::terminal_provider::TerminalUiProvider` 组合
+`auto-terminal-core` 的共享 `EngineService` 与既有 `ui::terminal`
+注册表：输入泵/定向排空、pending 几何、menu 载荷、滚轮回灌与窗口投影、
+window px thread-local、palette 懒装载全部留在 UI adapter；引擎 DLL/
+句柄/采样/背压/颜色位域算法归 core（`TermColor/TermCell` 由 core 单份
+定义并在此 re-export，路径不变）。`set_app_window_px` 保留兼容门面。
+
+宿主接线与 779/785/790/794/802/804 同集：`install_ui_host_capabilities`、
+`run_file_dynamic_ui_inner`、VmBridge 两构造（`new_with_children` /
+`new_from_decls`，全 if-absent）。两构造均先安装 adapter 再构造 AutoVM，
+组件自己的 VM 快照持有 provider，输入/投影由组件 VM 自己消费；显式默认
+恒胜。`ui_gen/rust.rs` terminal 发射与 `aura_view_builder::convert_terminal`
+的 View::Terminal props/事件语义不变；未支持的 a2r 引擎原生绑定如实
+记"不在原支持面"，不新增。
+
+**未迁边界（更新）**：`vm/ffi/term_engine.rs` 旧 UI 直引由 49 → 2
+（仅窗口像素门面的两处 adapter 委托）；`vm/native.rs` 口径剩余
+媒体 image_pipeline
+（`vm/ffi/stdlib.rs`）、i18n（`vm/ffi/stdlib.rs::shim_i18n_t` →
+`ui::i18n_lookup`）及其他既有族——diff 族 9915..9917/9921 已由
+PLAN-807 迁至 `auto-text-core` 直调+快照端口（canonical 2026-10-19
+PLAN-807 节已记），不再列入未迁边界。terminal 34 项清零不等于 R03
+整包完成；媒体/i18n 等仍待各自完整合同。
 
 ## 现状（2026-10-11）——remote-frame 宿主侧远程帧消费元件（PLAN-760）
 

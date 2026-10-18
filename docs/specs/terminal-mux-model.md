@@ -8,6 +8,15 @@ auto-term app/src/back/db.at rects_recompute(BFS,槽序契约
 1..6=pane/7..11=divider)。交互投递上篇:auto-lang
 docs/specs/auto-lang/ui/design/overlay-interaction.md(浮层间归属)。
 
+## 实现 owner（PLAN-808 更新）
+
+display_offset 的唯一真源仍是终端引擎（`autoterm_core.dll`）；
+`auto-terminal-core` 持有引擎服务/句柄/采样，UI `ui::terminal` 注册表
+与 iced scrollable 只做视图投影。UI 与引擎之间的滚动队列、history/
+offset 回写、window anchor、预取窗与回声抑制由
+`ui::terminal_provider::TerminalUiProvider` 转发；§V1.10 的
+display_offset 单源、坐标映射、双臂回声判别与键入贴底语义逐条不变。
+
 ## 虚拟滚动契约(§V1.10)
 
 1. **display_offset 单源**:滚动位置唯一真相在引擎;终端组件与
