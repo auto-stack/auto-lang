@@ -194,8 +194,9 @@ impl SessionMeter {
 pub fn publish_streamed<I>(
     store: &ManagedStore,
     pages: I,
-    layer_key_of: impl Fn(&SemaPage) -> (String, ac_artifact_probe::identity::QueryKey),
+    layer_key_of: impl Fn(&SemaPage) -> (&'static str, ac_artifact_probe::identity::QueryKey),
     project: Option<&str>,
+    mut meter: Option<&mut SessionMeter>,
 ) -> Result<(usize, u64), StreamError>
 where
     I: Iterator<Item = SemaPage>,
@@ -205,29 +206,39 @@ where
     for page in pages {
         let payload = ac_sema_contract::encode_page(&page)?;
         total += payload.len() as u64;
+        // F-796-R6-05: the ONE materialized page is charged while it is
+        // encoded + written — a streamed 32MiB corpus never implies
+        // 32MiB of unaccounted process memory.
+        let mut guard = None;
+        if let Some(m) = meter.as_deref_mut() {
+            guard = Some(m.scratch(payload.len())?);
+        }
         let (layer, key) = layer_key_of(&page);
         let req = PutRequest {
-            layer: leak_layer(layer),
+            layer,
             key,
             kind: crate::store::SEMA_CARRIER,
             payload,
             edges: Vec::new(),
             project: project.map(|s| s.to_string()),
         };
-        store.put_artifact(req)?;
+        let art = store.put_artifact(req)?;
+        drop(guard);
+        if let Some(p) = project {
+            // idempotent republication inserts no root row — register the
+            // current project explicitly (same rule as every reuse path)
+            store.register_root(p, &art, "soft")?;
+        }
         count += 1;
     }
     Ok((count, total))
-}
-
-fn leak_layer(l: String) -> &'static str {
-    Box::leak(l.into_boxed_str())
 }
 
 #[derive(Debug)]
 pub enum StreamError {
     Store(StoreError),
     Codec(ac_sema_contract::CodecError),
+    Budget(BudgetRejected),
 }
 
 impl std::fmt::Display for StreamError {
@@ -235,6 +246,7 @@ impl std::fmt::Display for StreamError {
         match self {
             StreamError::Store(e) => write!(f, "store: {e}"),
             StreamError::Codec(e) => write!(f, "codec: {e}"),
+            StreamError::Budget(e) => write!(f, "{e}"),
         }
     }
 }
@@ -250,6 +262,12 @@ impl From<StoreError> for StreamError {
 impl From<ac_sema_contract::CodecError> for StreamError {
     fn from(e: ac_sema_contract::CodecError) -> Self {
         StreamError::Codec(e)
+    }
+}
+
+impl From<BudgetRejected> for StreamError {
+    fn from(e: BudgetRejected) -> Self {
+        StreamError::Budget(e)
     }
 }
 

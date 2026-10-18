@@ -349,7 +349,10 @@ impl Harness {
         };
         (0..SAMPLES)
             .map(|i| {
-                apply_body_edit(&mut input, "f0", i as u32 + 1);
+                // start at 2: the generated f0 body already contains the
+                // literal 1 (x * 1), so rev 1 would be a NO-OP edit and
+                // the first "edit" sample would be a plain hit
+                apply_body_edit(&mut input, "f0", i as u32 + 2);
                 measure_query(store, &input, &q, "local-body-edit", i)
             })
             .collect()

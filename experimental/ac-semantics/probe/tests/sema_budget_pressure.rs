@@ -6,7 +6,7 @@
 #![cfg(windows)]
 
 use ac_artifact_probe::identity::QueryKey;
-use ac_artifact_probe::store::{run_gc, GcConfig, ManagedStore};
+use ac_artifact_probe::store::{run_gc, GcConfig};
 use ac_sema_contract::{
     ContentVersion, DeclKind, DeclRef, FieldDesc, PackageId, PageHeader, PageKind, RecordMeta,
     RecordShape, SemaPage, TypeDesc, MAX_PAGE_BODY,
@@ -70,12 +70,30 @@ fn filler_page(i: usize, fields: usize) -> SemaPage {
 fn sema_budget_streamed_32mib_under_managed_budget() {
     let root = scratch("budget-32mib");
     let store = open_store(&root.join("store")).unwrap();
-    let meter = SessionMeter::new();
+    let mut meter = SessionMeter::new();
 
     // 256 pages × ~3000 fields ≈ 140 KiB payload each → ≥32 MiB total
     let fields = 3000;
     let pages = (0..256).map(|i| filler_page(i, fields));
     let mem_before = ac_artifact_probe::sysinfo::imp::current_process_memory().private_bytes;
+
+    // F-796-R6-05: sample the OS private bytes DURING the publish window
+    // (a thread at ~2ms), not just before/after — the peak is what the
+    // 64MiB target constrains, and the streamed page must be charged to
+    // the SAME meter that the flow consumes.
+    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let peak = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let sampler = {
+        let stop = stop.clone();
+        let peak = peak.clone();
+        std::thread::spawn(move || {
+            while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                let now = ac_artifact_probe::sysinfo::imp::current_process_memory().private_bytes;
+                peak.fetch_max(now, std::sync::atomic::Ordering::Relaxed);
+                std::thread::sleep(std::time::Duration::from_millis(2));
+            }
+        })
+    };
 
     let (count, total_bytes) = publish_streamed(
         &store,
@@ -86,7 +104,7 @@ fn sema_budget_streamed_32mib_under_managed_budget() {
                 _ => "x".into(),
             };
             (
-                ac_sema_probe::SEMA_LAYER.to_string(),
+                ac_sema_probe::SEMA_LAYER,
                 QueryKey {
                     layer: ac_sema_probe::SEMA_LAYER,
                     components: vec![("page".into(), name)],
@@ -94,10 +112,12 @@ fn sema_budget_streamed_32mib_under_managed_budget() {
             )
         },
         None,
+        Some(&mut meter),
     )
     .unwrap();
+    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    sampler.join().unwrap();
 
-    let mem_after = ac_artifact_probe::sysinfo::imp::current_process_memory().private_bytes;
     assert!(
         total_bytes >= 32 * 1024 * 1024,
         "streamed pages must reach ≥32MiB, got {}",
@@ -109,10 +129,16 @@ fn sema_budget_streamed_32mib_under_managed_budget() {
         "managed ledger must stay ≤16MiB, got {}",
         meter.managed_bytes()
     );
-    let delta = mem_after.saturating_sub(mem_before);
+    assert!(
+        meter.scratch_peak() >= 100 * 1024,
+        "the streamed page must actually be charged (peak {} bytes)",
+        meter.scratch_peak()
+    );
+    let peak_private = peak.load(std::sync::atomic::Ordering::Relaxed);
+    let delta = peak_private.saturating_sub(mem_before);
     assert!(
         delta <= 64 * 1024 * 1024,
-        "private-bytes increment must stay ≤64MiB, got {}",
+        "private-bytes PEAK increment must stay ≤64MiB, got {}",
         delta
     );
     // pages really are on disk
@@ -192,10 +218,28 @@ fn sema_budget_deep_chain_4096_full_path() {
         }
     }
     assert_eq!(depth, 4096, "full chain walked");
-    // publish + read back the head of the chain
+    // publish + read back the head of the chain. F-796-R6 V-06 cost
+    // attribution: publishing a 4096-record DAG must partition the
+    // module graph ONCE — the old per-record miss rebuilt the full SCC
+    // twice per record (O(V^2)), which is what made this case take
+    // ~400s. The counter is the permanent algorithmic control.
     let root = scratch("budget-deep");
     let store = open_store(&root.join("store")).unwrap();
+    let scc_before = ac_sema_probe::SCC_BUILDS.load(std::sync::atomic::Ordering::Relaxed);
+    let t_pub = std::time::Instant::now();
     ac_sema_probe::publish_record_meta(&store, &input, "R0", Some("deep")).unwrap();
+    let publish_ms = t_pub.elapsed().as_millis();
+    let scc_after = ac_sema_probe::SCC_BUILDS.load(std::sync::atomic::Ordering::Relaxed);
+    eprintln!(
+        "deep-chain 4096: publish {publish_ms}ms, scc builds {}, per-record {:.1}ms",
+        scc_after - scc_before,
+        publish_ms as f64 / 4096.0
+    );
+    assert!(
+        scc_after - scc_before <= 2,
+        "4096-chain publication must partition the graph once, saw {} builds",
+        scc_after - scc_before
+    );
     match ac_sema_probe::lookup_only(
         &store,
         &input,

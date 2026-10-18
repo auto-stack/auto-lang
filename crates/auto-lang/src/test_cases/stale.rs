@@ -118,7 +118,10 @@ pub fn current_identities(
                         ),
                     support_lib: check.options.effective_support_lib().is_some(),
                 };
-                out.insert(format!("{}:{}", spec.id, check.id), (identity, applicability));
+                out.insert(
+                    format!("{}:{}", spec.id, check.id),
+                    (identity, applicability),
+                );
             }
         }
     }
@@ -143,10 +146,23 @@ pub fn check_with_native(
     report_json: &serde_json::Value,
     native_axes: Option<BTreeMap<String, String>>,
 ) -> Result<Vec<RowVerdict>, String> {
+    check_with_families(suite_path, report_json, native_axes, None)
+}
+
+/// F-796-R6-04: ac and probe rows carry DIFFERENT worker identities.
+/// One shared lazy map let the first family's identity answer the
+/// other's axes; each family now resolves its own current axes.
+pub fn check_with_families(
+    suite_path: &Path,
+    report_json: &serde_json::Value,
+    ac_axes: Option<BTreeMap<String, String>>,
+    probe_axes: Option<BTreeMap<String, String>>,
+) -> Result<Vec<RowVerdict>, String> {
     let limits = Limits::defaults();
-    // The ACTUAL worker/tool identity is computed lazily: only reports
-    // carrying native rows pay for the discovery.
-    let mut current_native: Option<BTreeMap<String, String>> = native_axes;
+    // The ACTUAL worker/tool identity is computed lazily PER FAMILY:
+    // only reports carrying native rows pay for the discovery.
+    let mut current_ac: Option<BTreeMap<String, String>> = ac_axes;
+    let mut current_probe: Option<BTreeMap<String, String>> = probe_axes;
     let current = current_identities(suite_path, &limits)?;
     let new_toolchain = toolchain_axes(&limits);
     let old_toolchain: BTreeMap<String, String> = report_json
@@ -203,7 +219,7 @@ pub fn check_with_native(
         // rows whose contract actually declares the library pay for it.
         if applicability.support_lib {
             if let Some((k, v)) = crate::test_cases::ac::support_lib_identity() {
-                current_native
+                current_ac
                     .get_or_insert_with(crate::test_cases::ac::current_toolchain_identity)
                     .insert(k, v);
             }
@@ -241,11 +257,10 @@ pub fn check_with_native(
         ) {
             let is_probe = r.get("adapter").and_then(|a| a.as_str()) == Some("probe");
             let current = if is_probe {
-                current_native
+                current_probe
                     .get_or_insert_with(crate::test_cases::sema::current_toolchain_identity)
             } else {
-                current_native
-                    .get_or_insert_with(crate::test_cases::ac::current_toolchain_identity)
+                current_ac.get_or_insert_with(crate::test_cases::ac::current_toolchain_identity)
             };
             let row_axes: BTreeMap<String, String> = r
                 .get("native")
@@ -284,9 +299,15 @@ pub fn check_with_native(
                         })
                         .unwrap_or(false);
                 let mut applicable: Vec<&str> = if is_probe {
-                    // F-796-R4-04: probe rows bind to the sema worker's
-                    // CONTENT identity and the mirrored versions
-                    vec!["sema-worker-exe-sha256", "sema-worker-version"]
+                    // F-796-R4-04 + R6-04: probe rows bind to the sema
+                    // worker's CONTENT identity, the mirrored version AND
+                    // the protocol/recipe axes the report actually writes
+                    vec![
+                        "sema-worker-exe-sha256",
+                        "sema-worker-version",
+                        "sema-protocol",
+                        "recipe",
+                    ]
                 } else {
                     vec!["worker-exe-sha256", "ac-worker-protocol"]
                 };
@@ -313,11 +334,7 @@ pub fn check_with_native(
                                 ));
                             }
                             None => {
-                                drifted.push(format!(
-                                    "native.{} missing (now {})",
-                                    k,
-                                    short(now)
-                                ));
+                                drifted.push(format!("native.{} missing (now {})", k, short(now)));
                             }
                         },
                     }

@@ -60,7 +60,7 @@ fn probe_adapter_corpus_executes_green() {
         &Limits::defaults(),
     )
     .expect("ac-semantics suite runs");
-    for check in ["bindings", "roundtrip", "callee-sig", "stages"] {
+    for check in ["bindings", "roundtrip", "callee-sig", "stages", "parse"] {
         assert_eq!(
             status_of(&report, check),
             Status::Pass,
@@ -274,6 +274,16 @@ fn probe_adapter_v1_pilot_untouched() {
 /// Build a one-case suite where `check_tail` is the full check body
 /// after `id:` (adapter/options/expect). The source embeds verbatim.
 fn run_fault_case(tag: &str, source: &str, check_tail: &str) -> auto_test_case::report::RunReport {
+    run_fault_case_at(tag, source, check_tail).0
+}
+
+/// The same case, also returning the suite path (stale adjudication
+/// re-reads the suite from disk).
+fn run_fault_case_at(
+    tag: &str,
+    source: &str,
+    check_tail: &str,
+) -> (auto_test_case::report::RunReport, PathBuf) {
     let root = temp_root(tag);
     let doc = format!(
         "# fault suite\n```test-suite\nsuite {{ schema: \"autolang.suite/2\", id: \"fault\", include: [\"fault.case.ad\"] }}\n```\n\n```test-case\ncase {{ schema: \"autolang.case/2\", id: \"fault.case\",\n  source: {{ text: \"{src}\", syntax: \"auto\", path: \"main.at\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [ {{ id: \"c\", {tail} }} ] }}\n```\n",
@@ -283,7 +293,9 @@ fn run_fault_case(tag: &str, source: &str, check_tail: &str) -> auto_test_case::
     std::fs::write(root.join("fault.suite.ad"), doc.clone()).unwrap();
     std::fs::write(root.join("fault.case.ad"), doc).unwrap();
     let out = out_of(&root, "out");
-    run_suite(&root.join("fault.suite.ad"), &out, &Limits::defaults()).expect("suite runs")
+    let report =
+        run_suite(&root.join("fault.suite.ad"), &out, &Limits::defaults()).expect("suite runs");
+    (report, root.join("fault.suite.ad"))
 }
 
 const QUERY_C: &str = "adapter: \"probe\", action: \"run\", \
@@ -427,4 +439,262 @@ fn probe_adapter_worker_bad_version_is_infra_error() {
     });
     clear_faults();
     assert_eq!(result.expect("suite ran"), Status::Error);
+}
+
+/// F-796-R6-07: an invalid source is a TYPED language parse negative —
+/// the parent judges it against the declared `parse`/`source.syntax`
+/// completion and PASSES; it is never an infrastructure ERROR.
+#[test]
+fn probe_adapter_parse_error_is_language_negative() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let report = run_fault_case(
+        "parse-neg",
+        "fn main() int { return 3",
+        &format!(
+            "{QUERY_C}, expect: {{ completion: {{ stage: \"parse\", code: \"source.syntax\" }}, probe: [ {{ }} ] }} "
+        ),
+    );
+    assert_eq!(
+        status_of(&report, "c"),
+        Status::Pass,
+        "typed parse diagnostics are language verdicts: {:#?}",
+        report
+            .results
+            .iter()
+            .map(|r| (r.status, r.detail.clone()))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// F-796-R6-03: a correct response followed by a descendant that
+/// INHERITS stdout/stderr and outlives the worker must not wedge the
+/// parent. Worker-side self-containment is DISABLED here — the parent's
+/// own Job containment must reap the tree and return promptly.
+#[test]
+fn probe_adapter_descendant_held_pipes_bounded_by_parent_containment() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_faults(
+        vec![
+            ("SEMA_TEST_SPAWN_LINGER_SECS".into(), "25".into()),
+            ("SEMA_TEST_NO_SELF_CONTAINMENT".into(), "1".into()),
+        ],
+        None,
+    );
+    let started = std::time::Instant::now();
+    let result = std::panic::catch_unwind(|| {
+        let report = run_fault_case(
+            "linger",
+            "fn main() int { return 1 }",
+            &format!(
+                "{QUERY_C}, expect: {{ completion: \"success\", probe: [ {{ cache: \"published\" }} ] }} "
+            ),
+        );
+        status_of(&report, "c")
+    });
+    let elapsed = started.elapsed();
+    clear_faults();
+    assert!(
+        elapsed < std::time::Duration::from_secs(15),
+        "the parent must not wait for the descendant's inherited pipes (took {elapsed:?})"
+    );
+    assert_eq!(
+        result.expect("suite ran"),
+        Status::Pass,
+        "the correct response stays valid once the tree is contained"
+    );
+}
+
+/// F-796-R6-03: the same lifetime with the worker's OWN self-containment
+/// active (the production path) — still bounded and green.
+#[test]
+fn probe_adapter_descendant_reaped_by_worker_self_containment() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_faults(
+        vec![("SEMA_TEST_SPAWN_LINGER_SECS".into(), "25".into())],
+        None,
+    );
+    let started = std::time::Instant::now();
+    let result = std::panic::catch_unwind(|| {
+        let report = run_fault_case(
+            "linger-self",
+            "fn main() int { return 1 }",
+            &format!(
+                "{QUERY_C}, expect: {{ completion: \"success\", probe: [ {{ cache: \"published\" }} ] }} "
+            ),
+        );
+        status_of(&report, "c")
+    });
+    let elapsed = started.elapsed();
+    clear_faults();
+    assert!(
+        elapsed < std::time::Duration::from_secs(15),
+        "worker self-containment must reap the descendant (took {elapsed:?})"
+    );
+    assert_eq!(result.expect("suite ran"), Status::Pass);
+}
+
+/// F-796-R6-04: a REAL, unchanged probe report is FRESH (the previous
+/// implementation was unconditionally STALE: missing worker-version and
+/// two unjustified extra axes). A swapped worker version is STALE.
+#[test]
+fn probe_adapter_stale_unchanged_report_fresh_and_swap_stale() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let (report, suite) = run_fault_case_at(
+        "stale-fresh",
+        "fn main() int { return 1 }",
+        &format!(
+            "{QUERY_C}, expect: {{ completion: \"success\", probe: [ {{ cache: \"published\" }} ] }} "
+        ),
+    );
+    assert_eq!(status_of(&report, "c"), Status::Pass);
+    let json: serde_json::Value = serde_json::from_str(&report.to_json()).expect("report is JSON");
+    let same = crate::test_cases::sema::current_toolchain_identity();
+    let verdicts =
+        crate::test_cases::stale::check_with_families(&suite, &json, None, Some(same.clone()))
+            .expect("stale reads the report");
+    assert!(
+        verdicts
+            .iter()
+            .all(|v| matches!(v, crate::test_cases::stale::RowVerdict::Fresh { .. })),
+        "an unchanged report must be FRESH: {verdicts:?}"
+    );
+    let mut drifted = same;
+    drifted.insert("sema-worker-version".into(), "ac-sema-probe/9.9.9".into());
+    let verdicts =
+        crate::test_cases::stale::check_with_families(&suite, &json, None, Some(drifted))
+            .expect("stale reads the report again");
+    assert!(
+        verdicts.iter().any(|v| matches!(
+            v,
+            crate::test_cases::stale::RowVerdict::Stale { drifted_axes, .. }
+                if drifted_axes.iter().any(|a| a.contains("sema-worker-version"))
+        )),
+        "a swapped worker version must be STALE: {verdicts:?}"
+    );
+}
+
+/// F-796-R6-04: a MIXED ac+probe report resolves each family's axes
+/// against its OWN current identity map (one shared lazy map was the
+/// cross-family contamination risk).
+#[test]
+fn probe_adapter_mixed_report_uses_per_family_toolchain_identity() {
+    use auto_test_case::admission::Limits;
+    let root = temp_root("mixed-stale");
+    std::fs::write(
+        root.join("mixed.suite.ad"),
+        r#"# mixed family suite
+```test-suite
+suite { schema: "autolang.suite/2", id: "mixed", include: ["mixed.case.ad"] }
+```
+"#,
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("mixed.case.ad"),
+        r#"# mixed family case
+```test-case
+case {
+  schema: "autolang.case/2",
+  id: "mixed",
+  source: { text: "fn main() int { return 1 }", syntax: "auto", path: "main.at" },
+  entry: { mode: "program" },
+  checks: [
+    { id: "ac1", adapter: "ac", action: "run", expect: { completion: "success" } },
+    { id: "p1", adapter: "probe", action: "run",
+      options: { recipe: "sema/query-v1",
+        sema: { package: "mixed", module: "m", kind: "infer-body", fn: "main" },
+        steps: [ { op: "query" } ] },
+      expect: { completion: "success", probe: [ { cache: "published" } ] } }
+  ]
+}
+```
+"#,
+    )
+    .unwrap();
+    let suite = root.join("mixed.suite.ad");
+    let limits = Limits::defaults();
+    let idents =
+        crate::test_cases::stale::current_identities(&suite, &limits).expect("identities resolve");
+    let identity_json = |key: &str| {
+        let h = &idents.get(key).expect("check declared").0;
+        serde_json::json!({
+            "suite": h.suite.clone(), "case_file": h.case_file.clone(), "source": h.source.clone(),
+            "oracle": h.oracle.clone(), "contract": h.contract.clone(),
+        })
+    };
+    let ac_axes: std::collections::BTreeMap<String, String> = [
+        ("worker-exe-sha256".to_string(), "ac-hash-1".to_string()),
+        ("ac-worker-protocol".to_string(), "acworker/1".to_string()),
+    ]
+    .into_iter()
+    .collect();
+    let probe_axes: std::collections::BTreeMap<String, String> = [
+        (
+            "sema-worker-exe-sha256".to_string(),
+            "sema-hash-1".to_string(),
+        ),
+        (
+            "sema-worker-version".to_string(),
+            "ac-sema-probe/0.1.0".to_string(),
+        ),
+        ("sema-protocol".to_string(), "semaworker/1".to_string()),
+        ("recipe".to_string(), "sema/query-v1".to_string()),
+    ]
+    .into_iter()
+    .collect();
+    let row = |check: &str, adapter: &str, axes: &[(&str, &str)]| {
+        serde_json::json!({
+            "case": "mixed",
+            "check": check,
+            "adapter": adapter,
+            "identity": identity_json(&format!("mixed:{check}")),
+            "native": { "toolchain": axes },
+        })
+    };
+    let report = serde_json::json!({
+        "toolchain": crate::test_cases::stale::toolchain_axes(&limits),
+        "results": [
+            row("ac1", "ac", &[("worker-exe-sha256", "ac-hash-1"), ("ac-worker-protocol", "acworker/1")]),
+            row("p1", "probe", &[
+                ("sema-worker-exe-sha256", "sema-hash-1"),
+                ("sema-worker-version", "ac-sema-probe/0.1.0"),
+                ("sema-protocol", "semaworker/1"),
+                ("recipe", "sema/query-v1"),
+            ]),
+        ],
+    });
+    let verdicts = crate::test_cases::stale::check_with_families(
+        &suite,
+        &report,
+        Some(ac_axes.clone()),
+        Some(probe_axes.clone()),
+    )
+    .expect("mixed report adjudicates");
+    assert!(
+        verdicts
+            .iter()
+            .all(|v| matches!(v, crate::test_cases::stale::RowVerdict::Fresh { .. })),
+        "both families are fresh with their own identities: {verdicts:?}"
+    );
+    let mut bad_probe = probe_axes;
+    bad_probe.insert("sema-worker-exe-sha256".into(), "sema-hash-DRIFT".into());
+    let verdicts = crate::test_cases::stale::check_with_families(
+        &suite,
+        &report,
+        Some(ac_axes),
+        Some(bad_probe),
+    )
+    .expect("mixed report adjudicates");
+    let stale: Vec<_> = verdicts
+        .iter()
+        .filter(|v| matches!(v, crate::test_cases::stale::RowVerdict::Stale { .. }))
+        .collect();
+    assert_eq!(stale.len(), 1, "only the probe row drifts: {verdicts:?}");
+    assert!(
+        matches!(
+            stale[0],
+            crate::test_cases::stale::RowVerdict::Stale { check, .. } if check == "p1"
+        ),
+        "{verdicts:?}"
+    );
 }

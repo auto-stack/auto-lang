@@ -8,6 +8,7 @@ suite { schema: "autolang.suite/2", id: "ac-semantics", include: [
     "infer-bindings.case.ad",
     "cache-roundtrip.case.ad",
     "callee-sig-change.case.ad",
-    "turnaround.case.ad"
+    "turnaround.case.ad",
+    "parse-error.case.ad"
 ] }
 ```

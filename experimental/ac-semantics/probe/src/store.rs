@@ -40,6 +40,12 @@ pub const SEMA_CARRIER: ChunkKind = ChunkKind::SnapshotRecord;
 /// is owned by the parent side; this bounds library callers).
 pub const FLOW_WALL_MS: u128 = 5_000;
 
+/// Number of full module SCC partitions built in this process. The
+/// publication loop must partition ONCE (a per-record miss rebuilding
+/// the whole graph was the 400s V-06 deep-chain cost); the counter is a
+/// permanent regression control for that invariant.
+pub static SCC_BUILDS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
 fn store_key(k: &SemaQueryKey) -> QueryKey {
     QueryKey {
         layer: SEMA_LAYER,
@@ -100,6 +106,15 @@ pub enum ProbeError {
     CyclicRecordGroup {
         cycle: String,
     },
+    /// F-796-R6-01: a page reached under the CURRENT key carries a
+    /// reference to a definition version that is not the current one.
+    /// Never served, never overwritten — the key/closure invariant is
+    /// broken and the controlled rejection names the stale ref.
+    RefVersionMismatch {
+        name: String,
+        cached: String,
+        current: String,
+    },
     BudgetRejected(crate::budget::BudgetRejected),
 }
 
@@ -132,6 +147,14 @@ impl std::fmt::Display for ProbeError {
                     "cyclic record group needs group publication (unsupported): {cycle}"
                 )
             }
+            ProbeError::RefVersionMismatch {
+                name,
+                cached,
+                current,
+            } => write!(
+                f,
+                "cached ref to `{name}` carries version {cached}, current definition is {current}"
+            ),
             ProbeError::BudgetRejected(e) => write!(f, "{e}"),
         }
     }
@@ -239,18 +262,183 @@ fn admit_summary_ownership(
     }
 }
 
+/// Group page key (F-796-R6-01): membership AND the member content
+/// versions (via `group_content_fp`) plus algorithm/schema/producer.
+/// An edit inside any member is a NEW key, so old pages stay immutable
+/// under old keys and a current-input lookup can never reuse them.
+fn group_key(input: &SemaInput, member_names: &[String]) -> QueryKey {
+    let mut members = member_names.to_vec();
+    members.sort();
+    QueryKey {
+        layer: SEMA_LAYER,
+        components: vec![
+            ("query".into(), "record-group".into()),
+            ("package".into(), input.package.clone()),
+            ("module".into(), input.module.clone()),
+            ("members".into(), members.join("+")),
+            ("algo".into(), "ac796-record-group/1".into()),
+            (
+                "schema".into(),
+                ac_sema_contract::SEMA_PAGE_SCHEMA_V1.into(),
+            ),
+            ("producer".into(), ac_sema_contract::SEMA_PRODUCER_ID.into()),
+            (
+                "group-content-fp".into(),
+                ac_sema_core::query::group_content_fp(input, &members),
+            ),
+        ],
+    }
+}
+
+/// Charge the payload allocation BEFORE decoding (F-796-R6-05) and
+/// decode. The guard covers the window where the raw payload and the
+/// decoded page coexist.
+fn decode_charged(
+    loaded: ac_artifact_probe::store::LoadedArtifact,
+    meter: Option<&mut crate::budget::SessionMeter>,
+) -> Result<(SemaPage, String), ProbeError> {
+    let mut guard = None;
+    if let Some(m) = meter {
+        guard = Some(
+            m.scratch(loaded.payload.len().saturating_mul(2))
+                .map_err(ProbeError::BudgetRejected)?,
+        );
+    }
+    let page = decode_page(&loaded.payload)?;
+    drop(guard);
+    Ok((page, loaded.artifact_id))
+}
+
+/// F-796-R6-01: a served page's embedded nominal refs must carry the
+/// CURRENT definition version. The key now makes a mismatch structurally
+/// unreachable for well-formed pages; this admission catches malformed/
+/// conflicting pages instead of serving a stale ref as current.
+fn admit_ref(input: &SemaInput, decl: &ac_sema_contract::DeclRef) -> Result<(), ProbeError> {
+    decl.verify().map_err(|e| ProbeError::FactsMismatch {
+        detail: format!("nominal ref failed verification: {e}"),
+    })?;
+    let pkg = ac_sema_contract::PackageId::new(&input.package);
+    if decl.package != pkg || decl.module != input.module {
+        return Err(ProbeError::TargetMismatch {
+            found: format!("{}::{}", decl.package.as_str(), decl.module),
+            expected: format!("{}::{}", input.package, input.module),
+        });
+    }
+    let Some(r) = input.lookup_record(&decl.name) else {
+        return Err(ProbeError::RefVersionMismatch {
+            name: decl.name.clone(),
+            cached: decl.content.as_str().to_string(),
+            current: "<record no longer declared>".into(),
+        });
+    };
+    let current =
+        ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::record_canonical(r));
+    if current != decl.content {
+        return Err(ProbeError::RefVersionMismatch {
+            name: decl.name.clone(),
+            cached: decl.content.as_str().to_string(),
+            current: current.as_str().to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn admit_shape_refs(
+    shape: &ac_sema_contract::RecordShape,
+    input: &SemaInput,
+) -> Result<(), ProbeError> {
+    // the shape's OWN declared version is part of the read set — a page
+    // carrying another revision of the same record is never served
+    admit_ref(input, &shape.decl)?;
+    for f in &shape.fields {
+        if let TypeDesc::Record { decl } = &f.ty {
+            admit_ref(input, decl)?;
+        }
+    }
+    Ok(())
+}
+
+/// The complete read-side version admission (F-796-R6-01): page header
+/// target content + every embedded nominal ref must be the CURRENT
+/// definition version. A page reached under the current key that fails
+/// this is a controlled rejection, never a served stale value.
+fn admit_page(
+    page: &SemaPage,
+    input: &SemaInput,
+    query: Option<&QueryKind>,
+) -> Result<(), ProbeError> {
+    match &page.body {
+        PageBody::RecordMeta(m) => admit_shape_refs(&m.shape, input),
+        PageBody::RecGroup(members) => {
+            for m in members {
+                admit_shape_refs(m, input)?;
+            }
+            Ok(())
+        }
+        _ => {
+            let Some(query) = query else {
+                return Ok(());
+            };
+            let current = ac_sema_core::query::target_content(input, query);
+            if page.header.content != current {
+                return Err(ProbeError::RefVersionMismatch {
+                    name: query.as_str().to_string(),
+                    cached: page.header.content.as_str().to_string(),
+                    current: current.as_str().to_string(),
+                });
+            }
+            Ok(())
+        }
+    }
+}
+
 /// Lookup WITHOUT any compute path. Decodes, admits kind/target/facts
-/// ownership, and classifies freshness INCLUDING the
-/// provenance-only-drift case.
+/// ownership and current reference versions, and classifies freshness
+/// INCLUDING the provenance-only-drift case.
 pub fn lookup_only(
     store: &ManagedStore,
     input: &SemaInput,
     query: &QueryKind,
 ) -> Result<FetchOutcome, ProbeError> {
+    lookup_core(store, input, query, None, true)
+}
+
+/// Metered lookup (F-796-R6-05): the payload/decode window is charged to
+/// the SAME session meter as the solve and publish.
+pub fn lookup_only_metered<'m>(
+    store: &ManagedStore,
+    input: &SemaInput,
+    query: &QueryKind,
+    meter: Option<&'m mut crate::budget::SessionMeter>,
+) -> Result<FetchOutcome, ProbeError> {
+    lookup_core(store, input, query, meter, true)
+}
+
+/// Direct lookup (no SCC/group fallback) — the publication loop already
+/// owns the deterministic unit partition, so it never rebuilds the
+/// module graph per record (F-796-R6 V-06 deep-chain attribution).
+fn lookup_direct(
+    store: &ManagedStore,
+    input: &SemaInput,
+    query: &QueryKind,
+) -> Result<FetchOutcome, ProbeError> {
+    lookup_core(store, input, query, None, false)
+}
+
+fn lookup_core(
+    store: &ManagedStore,
+    input: &SemaInput,
+    query: &QueryKind,
+    mut meter: Option<&mut crate::budget::SessionMeter>,
+    allow_group: bool,
+) -> Result<FetchOutcome, ProbeError> {
     let key = SemaQueryKey::build(query, input);
     let loaded = match store.get_artifact(SEMA_LAYER, &store_key(&key))? {
         Some(l) => l,
         None => {
+            if !allow_group {
+                return Ok(FetchOutcome::Miss);
+            }
             // F-796-R5 (F07): a RecordFields miss may be a member of a
             // recursive GROUP page published under the group's canonical
             // key — derive the record's unit from the CURRENT input
@@ -266,33 +454,25 @@ pub fn lookup_only(
                 return Ok(FetchOutcome::Miss);
             };
             let is_group = unit.len() > 1
-                || record_deps(input, record).iter().any(|d| d == record);
+                || ac_sema_core::query::record_dep_names(input, record)
+                    .iter()
+                    .any(|d| d == record);
             if !is_group {
                 return Ok(FetchOutcome::Miss);
             }
-            let mut member_names = unit.clone();
-            member_names.sort();
-            let group_key = QueryKey {
-                layer: SEMA_LAYER,
-                components: vec![
-                    ("query".into(), "record-group".into()),
-                    ("package".into(), input.package.clone()),
-                    ("module".into(), input.module.clone()),
-                    ("members".into(), member_names.join("+")),
-                ],
-            };
-            match store.get_artifact(SEMA_LAYER, &group_key)? {
+            match store.get_artifact(SEMA_LAYER, &group_key(input, &unit))? {
                 Some(l) => l,
                 None => return Ok(FetchOutcome::Miss),
             }
         }
     };
-    let page = decode_page(&loaded.payload)?;
+    let (page, artifact_id) = decode_charged(loaded, meter.as_deref_mut())?;
+    admit_page(&page, input, Some(query))?;
     let expected = expected_kind(query);
     // F-796-R5 (F07): a RecordFields query may be served by the
     // member's recursive GROUP page — admitted below by membership
-    let group_ok_for_fields = page.header.kind == PageKind::RecGroup
-        && matches!(query, QueryKind::RecordFields { .. });
+    let group_ok_for_fields =
+        page.header.kind == PageKind::RecGroup && matches!(query, QueryKind::RecordFields { .. });
     if page.header.kind != expected && !group_ok_for_fields {
         return Err(ProbeError::KindMismatch {
             expected: format!("{expected:?}"),
@@ -300,7 +480,9 @@ pub fn lookup_only(
         });
     }
     if group_ok_for_fields {
-        let QueryKind::RecordFields { record } = query else { unreachable!() };
+        let QueryKind::RecordFields { record } = query else {
+            unreachable!()
+        };
         if let PageBody::RecGroup(members) = &page.body {
             let member_target = ac_sema_contract::logical_id(
                 &ac_sema_contract::PackageId::new(&input.package),
@@ -309,7 +491,7 @@ pub fn lookup_only(
                 record,
             );
             if members.iter().any(|m| m.decl.logical == member_target) {
-                return Ok(FetchOutcome::Hit { page, artifact_id: loaded.artifact_id });
+                return Ok(FetchOutcome::Hit { page, artifact_id });
             }
             return Err(ProbeError::TargetMismatch {
                 found: "a recursive group not containing the queried record".into(),
@@ -342,24 +524,18 @@ pub fn lookup_only(
     if let PageBody::CachedResult(c) = &page.body {
         let current = current_fingerprints(input);
         match freshness_class(&c.manifest, &current) {
-            ac_sema_core::Freshness::Fresh => Ok(FetchOutcome::Hit {
-                page,
-                artifact_id: loaded.artifact_id,
-            }),
+            ac_sema_core::Freshness::Fresh => Ok(FetchOutcome::Hit { page, artifact_id }),
             ac_sema_core::Freshness::ProvenanceStale { reason } => {
                 Ok(FetchOutcome::HitStaleProvenance {
                     page,
-                    artifact_id: loaded.artifact_id,
+                    artifact_id,
                     reason,
                 })
             }
             ac_sema_core::Freshness::Stale { reason } => Ok(FetchOutcome::Stale { reason }),
         }
     } else {
-        Ok(FetchOutcome::Hit {
-            page,
-            artifact_id: loaded.artifact_id,
-        })
+        Ok(FetchOutcome::Hit { page, artifact_id })
     }
 }
 
@@ -470,9 +646,97 @@ fn desc_name(t: &TypeDesc) -> String {
     }
 }
 
+/// Deterministic solver staging estimate from the ACTUAL target body
+/// (F-796-R6-05): charged BEFORE the solve, so an over-budget ledger
+/// rejects before work — never a fixed post-hoc reservation.
+fn solver_estimate(input: &SemaInput, fn_name: &str) -> usize {
+    use ac_sema_core::input::{InputExpr, InputExprKind, InputStmt};
+    let mut nodes = 0usize;
+    let mut exprs: Vec<&InputExpr> = Vec::new();
+    let mut blocks: Vec<&ac_sema_core::input::InputBlock> = Vec::new();
+    if let Some(f) = input.lookup_fn(fn_name) {
+        nodes += f.params.len();
+        blocks.push(&f.body);
+    }
+    while let Some(b) = blocks.pop() {
+        for st in &b.stmts {
+            nodes += 1;
+            match st {
+                InputStmt::Let { value, .. }
+                | InputStmt::Assign { value, .. }
+                | InputStmt::Return { value, .. } => exprs.push(value),
+                InputStmt::If {
+                    cond, then, els, ..
+                } => {
+                    exprs.push(cond);
+                    blocks.push(then);
+                    if let Some(e) = els {
+                        blocks.push(e);
+                    }
+                }
+                InputStmt::While { cond, body, .. } => {
+                    exprs.push(cond);
+                    blocks.push(body);
+                }
+                InputStmt::Loop { body, .. } => blocks.push(body),
+                InputStmt::Break { .. } | InputStmt::Continue { .. } => {}
+            }
+        }
+    }
+    while let Some(e) = exprs.pop() {
+        nodes += 1;
+        match &e.kind {
+            InputExprKind::Call { args, .. } => exprs.extend(args.iter()),
+            InputExprKind::Binary { lhs, rhs, .. } => {
+                exprs.push(lhs);
+                exprs.push(rhs);
+            }
+            InputExprKind::Unary { operand, .. } => exprs.push(operand),
+            _ => {}
+        }
+    }
+    (nodes.saturating_mul(64)).saturating_add(1024)
+}
+
+/// Solve under a scratch reservation derived from the actual body. The
+/// guard is held for the WHOLE solve window, so the meter's peak
+/// includes the real solver staging phase.
+fn solve_charged(
+    input: &SemaInput,
+    fn_name: &str,
+    meter: Option<&mut crate::budget::SessionMeter>,
+) -> Result<InferOutcome, crate::budget::BudgetRejected> {
+    let mut guard = None;
+    if let Some(m) = meter {
+        guard = Some(m.scratch(solver_estimate(input, fn_name))?);
+    }
+    let outcome = run_inference(input, fn_name);
+    drop(guard);
+    Ok(outcome)
+}
+
+fn resource_report(
+    stages: Vec<(&'static str, u128)>,
+    io_bytes: u64,
+    compute_calls: u32,
+    reason: String,
+) -> QueryReport {
+    QueryReport {
+        disposition: Disposition::ResourceExhausted,
+        compute_calls,
+        bindings: Vec::new(),
+        diagnostics: Vec::new(),
+        stages,
+        io_bytes,
+        reason: Some(reason),
+    }
+}
+
 /// The full staged query flow with typed dispositions and per-stage
 /// timing — the ONE implementation behind the library callers, the
-/// bin, the worker and the runner.
+/// bin, the worker and the runner. The SAME session meter covers the
+/// cache read/decode window, the solve, and the publish encode
+/// (F-796-R6-05); a budget rejection is a typed resource state.
 pub fn run_query_flow(
     store: &ManagedStore,
     input: &SemaInput,
@@ -488,12 +752,30 @@ pub fn run_query_flow(
     stages.push(("request", t.elapsed().as_nanos()));
 
     let t = Instant::now();
-    let fetch = lookup_only(store, input, query)?;
+    let fetch = match lookup_only_metered(store, input, query, meter.as_deref_mut()) {
+        Ok(f) => f,
+        Err(ProbeError::BudgetRejected(e)) => {
+            stages.push(("cache-read-validate", t.elapsed().as_nanos()));
+            return Ok(resource_report(stages, io_bytes, 0, format!("{e}")));
+        }
+        Err(e) => return Err(e),
+    };
     stages.push(("cache-read-validate", t.elapsed().as_nanos()));
 
     match fetch {
-        FetchOutcome::Hit { page, .. } => {
-            io_bytes += encode_page(&page).map(|b| b.len() as u64).unwrap_or(0);
+        FetchOutcome::Hit { page, artifact_id } => {
+            // the reused page is REAL DATA for the current project: root
+            // it (F-796-R6-02) — a hit must not be collected later
+            root_reuse(store, project, &artifact_id)?;
+            let encoded = encode_page(&page).map(|b| b.len() as u64).unwrap_or(0);
+            io_bytes += encoded;
+            let mut guard = None;
+            if let Some(m) = meter.as_deref_mut() {
+                match m.scratch(encoded as usize) {
+                    Ok(g) => guard = Some(g),
+                    Err(e) => return Ok(resource_report(stages, io_bytes, 0, format!("{e}"))),
+                }
+            }
             let (bindings, diagnostics) = match &page.body {
                 PageBody::CachedResult(CachedResult {
                     facts: ResultFacts::Infer(f),
@@ -501,6 +783,7 @@ pub fn run_query_flow(
                 }) => (binding_strings(f), diag_strings(f)),
                 _ => (Vec::new(), Vec::new()),
             };
+            drop(guard);
             Ok(QueryReport {
                 disposition: Disposition::Hit,
                 compute_calls: 0,
@@ -511,13 +794,18 @@ pub fn run_query_flow(
                 reason: None,
             })
         }
-        FetchOutcome::HitStaleProvenance { page, reason, .. } => {
+        FetchOutcome::HitStaleProvenance {
+            page,
+            artifact_id,
+            reason,
+        } => {
             // F-796-R4-05: reuse semantic CONTENT, refresh the
             // projection. The refresh re-runs the deterministic solver
             // over the CURRENT source, verifies content equality with
             // the cache, and republishes current positions. A
             // divergence is a controlled error — never served, never
             // overwritten.
+            root_reuse(store, project, &artifact_id)?;
             let cached_sig = match &page.body {
                 PageBody::CachedResult(CachedResult {
                     facts: ResultFacts::Infer(f),
@@ -534,7 +822,13 @@ pub fn run_query_flow(
                 }
             };
             let t = Instant::now();
-            let outcome = run_inference(input, &fn_name);
+            let outcome = match solve_charged(input, &fn_name, meter.as_deref_mut()) {
+                Ok(o) => o,
+                Err(e) => {
+                    stages.push(("infer", t.elapsed().as_nanos()));
+                    return Ok(resource_report(stages, io_bytes, 1, format!("{e}")));
+                }
+            };
             let infer_ns = t.elapsed().as_nanos();
             match outcome {
                 InferOutcome::Ok(summary) | InferOutcome::Diags(summary) => {
@@ -550,7 +844,22 @@ pub fn run_query_flow(
                         });
                     }
                     let t = Instant::now();
-                    let art = publish_infer_result(store, input, query, &summary, project)?;
+                    let published = publish_infer_result_charged(
+                        store,
+                        input,
+                        query,
+                        &summary,
+                        project,
+                        meter.as_deref_mut(),
+                    );
+                    let art = match published {
+                        Ok(a) => a,
+                        Err(ProbeError::BudgetRejected(e)) => {
+                            stages.push(("publish", t.elapsed().as_nanos()));
+                            return Ok(resource_report(stages, io_bytes, 1, format!("{e}")));
+                        }
+                        Err(e) => return Err(e),
+                    };
                     let _ = art;
                     stages.push(("publish", t.elapsed().as_nanos()));
                     Ok(QueryReport {
@@ -563,15 +872,9 @@ pub fn run_query_flow(
                         reason: Some(reason),
                     })
                 }
-                InferOutcome::ResourceExhausted(_) => Ok(QueryReport {
-                    disposition: Disposition::ResourceExhausted,
-                    compute_calls: 1,
-                    bindings: Vec::new(),
-                    diagnostics: Vec::new(),
-                    stages,
-                    io_bytes,
-                    reason: None,
-                }),
+                InferOutcome::ResourceExhausted(e) => {
+                    Ok(resource_report(stages, io_bytes, 1, format!("{e}")))
+                }
                 InferOutcome::Cancelled => Ok(QueryReport {
                     disposition: Disposition::Cancelled,
                     compute_calls: 1,
@@ -604,34 +907,34 @@ pub fn run_query_flow(
                 }
             };
             let t = Instant::now();
-            let outcome = run_inference(input, &fn_name);
+            let outcome = match solve_charged(input, &fn_name, meter.as_deref_mut()) {
+                Ok(o) => o,
+                Err(e) => {
+                    stages.push(("infer", t.elapsed().as_nanos()));
+                    return Ok(resource_report(stages, io_bytes, 1, format!("{e}")));
+                }
+            };
             let infer_ns = t.elapsed().as_nanos();
             match outcome {
                 InferOutcome::Ok(summary) => {
                     stages.push(("infer", infer_ns));
-                    // the publish scratch reservation is part of the
-                    // REAL flow: an over-budget ledger rejects HERE as
-                    // a typed resource state, never a silent skip
-                    let _guard = match meter.as_mut() {
-                        None => None,
-                        Some(m) => match m.scratch(64 * 1024) {
-                            Ok(g) => Some(g),
-                            Err(e) => {
-                                return Ok(QueryReport {
-                                    disposition: Disposition::ResourceExhausted,
-                                    compute_calls: 1,
-                                    bindings: Vec::new(),
-                                    diagnostics: Vec::new(),
-                                    stages,
-                                    io_bytes,
-                                    reason: Some(format!("{e}")),
-                                })
-                            }
-                        },
-                    };
                     let t = Instant::now();
-                    let art = publish_infer_result(store, input, query, &summary, project)?;
-                    drop(_guard);
+                    let published = publish_infer_result_charged(
+                        store,
+                        input,
+                        query,
+                        &summary,
+                        project,
+                        meter.as_deref_mut(),
+                    );
+                    let art = match published {
+                        Ok(a) => a,
+                        Err(ProbeError::BudgetRejected(e)) => {
+                            stages.push(("publish", t.elapsed().as_nanos()));
+                            return Ok(resource_report(stages, io_bytes, 1, format!("{e}")));
+                        }
+                        Err(e) => return Err(e),
+                    };
                     let _ = art;
                     stages.push(("publish", t.elapsed().as_nanos()));
                     Ok(QueryReport {
@@ -663,15 +966,9 @@ pub fn run_query_flow(
                         reason: if missed { None } else { Some(reason) },
                     })
                 }
-                InferOutcome::ResourceExhausted(_) => Ok(QueryReport {
-                    disposition: Disposition::ResourceExhausted,
-                    compute_calls: 1,
-                    bindings: Vec::new(),
-                    diagnostics: Vec::new(),
-                    stages,
-                    io_bytes,
-                    reason: None,
-                }),
+                InferOutcome::ResourceExhausted(e) => {
+                    Ok(resource_report(stages, io_bytes, 1, format!("{e}")))
+                }
                 InferOutcome::Cancelled => Ok(QueryReport {
                     disposition: Disposition::Cancelled,
                     compute_calls: 1,
@@ -694,6 +991,19 @@ pub fn publish_infer_result(
     query: &QueryKind,
     summary: &ac_sema_core::InferSummary,
     project: Option<&str>,
+) -> Result<String, ProbeError> {
+    publish_infer_result_charged(store, input, query, summary, project, None)
+}
+
+/// Charged publish (F-796-R6-05): the encoded payload allocation is
+/// charged to the session meter for the duration of the store write.
+pub fn publish_infer_result_charged(
+    store: &ManagedStore,
+    input: &SemaInput,
+    query: &QueryKind,
+    summary: &ac_sema_core::InferSummary,
+    project: Option<&str>,
+    meter: Option<&mut crate::budget::SessionMeter>,
 ) -> Result<String, ProbeError> {
     let target = ac_sema_core::query::target_logical(input, query);
     admit_summary_ownership(summary, query, &target)?;
@@ -721,7 +1031,7 @@ pub fn publish_infer_result(
         },
         body: PageBody::CachedResult(cached),
     };
-    publish_page(store, input, query, &page, project)
+    publish_page_charged(store, input, query, &page, project, meter)
 }
 
 /// Publish a module index page (declaration candidate sets).
@@ -770,73 +1080,17 @@ pub fn publish_module_index(
     publish_page(store, input, &query, &page, project)
 }
 
-/// Real indirect type reference for a record annotation (F-796-R4-07):
-/// nominal identity via DeclRef — never an opaque name string for a
-/// KNOWN record; unknown names stay descriptive-opaque. The referenced
-/// record's page must ALREADY exist (module-order publishing resolves
-/// the DAG; this function never recurses).
-fn record_typedesc(
-    store: &ManagedStore,
-    input: &SemaInput,
-    name: &str,
-) -> Result<(TypeDesc, Option<String>), ProbeError> {
+/// PURE record shape (no store access): ordered fields with REAL nominal
+/// refs carrying the CURRENT referenced-definition content version
+/// (F-796-R4-07 + F-796-R6-01). Unknown record names stay
+/// descriptive-opaque. Because the refs are current by construction, the
+/// shape content version changes exactly when any read dependency does.
+fn shape_of(input: &SemaInput, name: &str) -> Result<ac_sema_contract::RecordShape, ProbeError> {
     let Some(r) = input.lookup_record(name) else {
-        return Ok((
-            TypeDesc::Opaque {
-                name: format!("record:{name}"),
-            },
-            None,
-        ));
-    };
-    let content =
-        ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::record_canonical(r));
-    let decl = ac_sema_contract::DeclRef::new(
-        &ac_sema_contract::PackageId::new(&input.package),
-        &input.module,
-        ac_sema_contract::DeclKind::Record,
-        name,
-        content,
-    );
-    let dep_query = QueryKind::RecordFields {
-        record: name.to_string(),
-    };
-    let artifact = match lookup_only(store, input, &dep_query)? {
-        FetchOutcome::Hit { artifact_id, .. } => Some(artifact_id),
-        _ => None,
-    };
-    Ok((TypeDesc::Record { decl }, artifact))
-}
-
-/// Records each record references (known record names only).
-fn record_deps(input: &SemaInput, name: &str) -> Vec<String> {
-    let Some(r) = input.lookup_record(name) else {
-        return Vec::new();
-    };
-    let mut out = Vec::new();
-    for (_, a) in &r.fields {
-        if let ac_sema_core::Ann::Record(rec) = a {
-            if input.lookup_record(rec).is_some() && !out.iter().any(|d| d == rec) {
-                out.push((*rec).to_string());
-            }
-        }
-    }
-    out
-}
-
-/// Build one record's shape with REAL indirect refs; `unit` is the set
-/// of records published in the SAME unit (group members or the
-/// singleton itself) — references inside the unit stay plain DeclRefs
-/// (they live in the same page); references outside must already be
-/// published and become required-data edges.
-fn build_shape(
-    store: &ManagedStore,
-    input: &SemaInput,
-    name: &str,
-    unit: &std::collections::BTreeSet<String>,
-    required_edges: &mut Vec<String>,
-) -> Result<ac_sema_contract::RecordShape, ProbeError> {
-    let Some(r) = input.lookup_record(name) else {
-        return Err(ProbeError::UnknownTarget { what: "record", name: name.to_string() });
+        return Err(ProbeError::UnknownTarget {
+            what: "record",
+            name: name.to_string(),
+        });
     };
     let pkg = ac_sema_contract::PackageId::new(&input.package);
     let mut fields: Vec<ac_sema_contract::FieldDesc> = Vec::new();
@@ -844,21 +1098,33 @@ fn build_shape(
         let ty = match a {
             ac_sema_core::Ann::I32 => TypeDesc::I32,
             ac_sema_core::Ann::Bool => TypeDesc::Bool,
-            ac_sema_core::Ann::Record(rec) => {
-                let (inner, artifact) = record_typedesc(store, input, rec)?;
-                if let (TypeDesc::Record { .. }, Some(art)) = (&inner, artifact) {
-                    if !unit.contains::<str>(rec) {
-                        required_edges.push(art);
-                    }
-                }
-                inner
-            }
-            ac_sema_core::Ann::Inferred => TypeDesc::Opaque { name: "?inferred".into() },
-            ac_sema_core::Ann::Unsupported(w) => {
-                TypeDesc::Opaque { name: format!("unsupported:{w}") }
-            }
+            ac_sema_core::Ann::Record(rec) => match input.lookup_record(rec) {
+                Some(dep) => TypeDesc::Record {
+                    decl: ac_sema_contract::DeclRef::new(
+                        &pkg,
+                        &input.module,
+                        ac_sema_contract::DeclKind::Record,
+                        rec,
+                        ac_sema_contract::ContentVersion::of_canonical(
+                            &ac_sema_core::query::record_canonical(dep),
+                        ),
+                    ),
+                },
+                None => TypeDesc::Opaque {
+                    name: format!("record:{rec}"),
+                },
+            },
+            ac_sema_core::Ann::Inferred => TypeDesc::Opaque {
+                name: "?inferred".into(),
+            },
+            ac_sema_core::Ann::Unsupported(w) => TypeDesc::Opaque {
+                name: format!("unsupported:{w}"),
+            },
         };
-        fields.push(ac_sema_contract::FieldDesc { name: n.clone(), ty });
+        fields.push(ac_sema_contract::FieldDesc {
+            name: n.clone(),
+            ty,
+        });
     }
     Ok(ac_sema_contract::RecordShape {
         decl: ac_sema_contract::DeclRef::new(
@@ -866,10 +1132,49 @@ fn build_shape(
             &input.module,
             ac_sema_contract::DeclKind::Record,
             name,
-            ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::record_canonical(r)),
+            ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::record_canonical(
+                r,
+            )),
         ),
         fields,
     })
+}
+
+/// Resolve the required-data artifact of every EXTERNAL referenced
+/// record (outside `unit`) from the already-published dependency pages.
+fn required_edges_of(
+    store: &ManagedStore,
+    input: &SemaInput,
+    name: &str,
+    unit: &std::collections::BTreeSet<String>,
+    published: &BTreeMap<String, String>,
+) -> Result<Vec<String>, ProbeError> {
+    let mut out = Vec::new();
+    for dep in ac_sema_core::query::record_dep_names(input, name) {
+        if unit.contains(&dep) {
+            continue;
+        }
+        // a dependency INSIDE an already-published recursive group has
+        // no singleton page of its own — the publication map is the
+        // authoritative artifact name (F-796-R6 group-of-DAG case)
+        if let Some(art) = published.get(&dep) {
+            out.push(art.clone());
+            continue;
+        }
+        let dep_query = QueryKind::RecordFields {
+            record: dep.clone(),
+        };
+        match lookup_direct(store, input, &dep_query)? {
+            FetchOutcome::Hit { artifact_id, .. } => out.push(artifact_id),
+            _ => {
+                return Err(ProbeError::UnknownTarget {
+                    what: "published record dependency",
+                    name: dep,
+                })
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// SCC partition (iterative Kosaraju) of the record reference graph.
@@ -877,10 +1182,11 @@ fn build_shape(
 /// is a singleton without self-reference or a recursive group.
 fn scc_units(input: &SemaInput) -> Vec<Vec<String>> {
     use std::collections::BTreeSet;
+    SCC_BUILDS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let names: Vec<String> = input.records.iter().map(|r| r.name.clone()).collect();
     let name_set: BTreeSet<&str> = names.iter().map(|s| s.as_str()).collect();
     let adj = |n: &str| -> Vec<String> {
-        record_deps(input, n)
+        ac_sema_core::query::record_dep_names(input, n)
             .into_iter()
             .filter(|d| name_set.contains(d.as_str()))
             .collect()
@@ -920,9 +1226,7 @@ fn scc_units(input: &SemaInput) -> Vec<Vec<String>> {
             reverse.entry(d).or_default().push(n.clone());
         }
     }
-    let radj = |n: &str| -> &[String] {
-        reverse.get(n).map(|v| v.as_slice()).unwrap_or(&[])
-    };
+    let radj = |n: &str| -> &[String] { reverse.get(n).map(|v| v.as_slice()).unwrap_or(&[]) };
     let mut assigned: BTreeSet<String> = BTreeSet::new();
     let mut units: Vec<Vec<String>> = Vec::new();
     for start in order.iter().rev() {
@@ -948,18 +1252,37 @@ fn scc_units(input: &SemaInput) -> Vec<Vec<String>> {
     units
 }
 
+/// Root a REUSED artifact under the current project (F-796-R6-02):
+/// a hit is a real read of the current project — the page must be kept
+/// alive exactly as if this project had published it. `put_artifact`
+/// only roots NEW artifacts, so idempotent republication and pure reuse
+/// need this explicit registration or GC reclaims a live result.
+fn root_reuse(
+    store: &ManagedStore,
+    project: Option<&str>,
+    artifact_id: &str,
+) -> Result<(), ProbeError> {
+    if let Some(p) = project {
+        store.register_root(p, artifact_id, "soft")?;
+    }
+    Ok(())
+}
+
 /// Publish (or reuse) one record's page whose referenced pages ALL
 /// exist already. Non-recursive: the caller resolves the DAG order.
 fn ensure_record_page(
     store: &ManagedStore,
     input: &SemaInput,
     name: &str,
+    unit: &std::collections::BTreeSet<String>,
+    published: &BTreeMap<String, String>,
     project: Option<&str>,
 ) -> Result<String, ProbeError> {
     let query = QueryKind::RecordFields {
         record: name.to_string(),
     };
-    if let FetchOutcome::Hit { artifact_id, .. } = lookup_only(store, input, &query)? {
+    if let FetchOutcome::Hit { artifact_id, .. } = lookup_direct(store, input, &query)? {
+        root_reuse(store, project, &artifact_id)?;
         return Ok(artifact_id);
     }
     let Some(r) = input.lookup_record(name) else {
@@ -969,46 +1292,8 @@ fn ensure_record_page(
         });
     };
     let pkg = ac_sema_contract::PackageId::new(&input.package);
-    let mut required_edges: Vec<String> = Vec::new();
-    let mut shape_fields: Vec<ac_sema_contract::FieldDesc> = Vec::new();
-    for (n, a) in &r.fields {
-        let ty = match a {
-            ac_sema_core::Ann::I32 => TypeDesc::I32,
-            ac_sema_core::Ann::Bool => TypeDesc::Bool,
-            ac_sema_core::Ann::Record(rec) => {
-                let (inner, artifact) = record_typedesc(store, input, rec)?;
-                // the referenced page is REQUIRED DATA for this page: a
-                // retained record keeps its referenced type pages alive
-                // across GC (F-796-R4-07)
-                if let (TypeDesc::Record { .. }, Some(art)) = (&inner, artifact) {
-                    required_edges.push(art);
-                }
-                inner
-            }
-            ac_sema_core::Ann::Inferred => TypeDesc::Opaque {
-                name: "?inferred".into(),
-            },
-            ac_sema_core::Ann::Unsupported(w) => TypeDesc::Opaque {
-                name: format!("unsupported:{w}"),
-            },
-        };
-        shape_fields.push(ac_sema_contract::FieldDesc {
-            name: n.clone(),
-            ty,
-        });
-    }
-    let shape = ac_sema_contract::RecordShape {
-        decl: ac_sema_contract::DeclRef::new(
-            &pkg,
-            &input.module,
-            ac_sema_contract::DeclKind::Record,
-            name,
-            ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::record_canonical(
-                r,
-            )),
-        ),
-        fields: shape_fields,
-    };
+    let shape = shape_of(input, name)?;
+    let required_edges = required_edges_of(store, input, name, unit, published)?;
     let group = ac_sema_contract::RecGroup {
         members: vec![shape.clone()],
     };
@@ -1065,7 +1350,9 @@ fn ensure_record_page(
         edges,
         project: project.map(|s| s.to_string()),
     };
-    Ok(store.put_artifact(req)?)
+    let art = store.put_artifact(req)?;
+    root_reuse(store, project, &art)?;
+    Ok(art)
 }
 
 /// Publish a record metadata page with REAL indirect refs and
@@ -1111,7 +1398,25 @@ fn publish_page(
     page: &SemaPage,
     project: Option<&str>,
 ) -> Result<String, ProbeError> {
+    publish_page_charged(store, input, query, page, project, None)
+}
+
+fn publish_page_charged(
+    store: &ManagedStore,
+    input: &SemaInput,
+    query: &QueryKind,
+    page: &SemaPage,
+    project: Option<&str>,
+    meter: Option<&mut crate::budget::SessionMeter>,
+) -> Result<String, ProbeError> {
     let payload = encode_page(page)?;
+    let mut guard = None;
+    if let Some(m) = meter {
+        guard = Some(
+            m.scratch(payload.len())
+                .map_err(ProbeError::BudgetRejected)?,
+        );
+    }
     let key = SemaQueryKey::build(query, input);
     let req = PutRequest {
         layer: SEMA_LAYER,
@@ -1121,7 +1426,12 @@ fn publish_page(
         edges: Vec::new(),
         project: project.map(|s| s.to_string()),
     };
-    Ok(store.put_artifact(req)?)
+    let art = store.put_artifact(req)?;
+    drop(guard);
+    // idempotent republication returns the existing artifact WITHOUT a
+    // new root row — register it so the current project really holds it
+    root_reuse(store, project, &art)?;
+    Ok(art)
 }
 
 /// Run the REAL inference (the new solver) with the flow wall applied
@@ -1146,9 +1456,11 @@ pub fn open_store(root: &Path) -> Result<ManagedStore, ProbeError> {
 
 /// Map record names to their published page artifacts for a whole
 /// module. Publish order resolves the reference DAG ITERATIVELY
-/// (Kahn): a record publishes when every referenced record's page
-/// already exists; no progress with records remaining = a reference
-/// cycle, which needs group publication and is a controlled rejection.
+/// (Kosaraju SCC units in dependency order, computed ONCE — the old
+/// per-record miss rebuilt the full graph and made the 4096-chain V-06
+/// pressure case take ~400s in debug). A recursive group publishes as
+/// ONE page under its content-versioned group key; every reuse is
+/// rooted under the CURRENT project (F-796-R6-02).
 pub fn publish_module_records(
     store: &ManagedStore,
     input: &SemaInput,
@@ -1157,21 +1469,26 @@ pub fn publish_module_records(
     let mut out = BTreeMap::new();
     for unit in scc_units(input) {
         let unit_set: std::collections::BTreeSet<String> = unit.iter().cloned().collect();
-        let is_group =
-            unit.len() > 1 || unit.iter().any(|n| record_deps(input, n).iter().any(|d| d == n));
+        let is_group = unit.len() > 1
+            || ac_sema_core::query::record_dep_names(input, &unit[0])
+                .iter()
+                .any(|d| *d == unit[0]);
         if !is_group {
             // singleton without self-reference: single page (reused if
             // a page for exactly this record already exists)
             let name = &unit[0];
-            if let Ok(FetchOutcome::Hit { artifact_id, .. }) = lookup_only(
+            if let Ok(FetchOutcome::Hit { artifact_id, .. }) = lookup_direct(
                 store,
                 input,
-                &QueryKind::RecordFields { record: name.clone() },
+                &QueryKind::RecordFields {
+                    record: name.clone(),
+                },
             ) {
+                root_reuse(store, project, &artifact_id)?;
                 out.insert(name.clone(), artifact_id);
                 continue;
             }
-            let art = ensure_record_page(store, input, name, project)?;
+            let art = ensure_record_page(store, input, name, &unit_set, &out, project)?;
             out.insert(name.clone(), art);
             continue;
         }
@@ -1181,9 +1498,27 @@ pub fn publish_module_records(
         let mut required_edges: Vec<String> = Vec::new();
         let mut members: Vec<ac_sema_contract::RecordShape> = Vec::new();
         for name in &unit {
-            members.push(build_shape(store, input, name, &unit_set, &mut required_edges)?);
+            members.push(shape_of(input, name)?);
+            required_edges.extend(required_edges_of(store, input, name, &unit_set, &out)?);
         }
-        let group = ac_sema_contract::RecGroup { members: members.clone() };
+        required_edges.sort();
+        required_edges.dedup();
+        let group = ac_sema_contract::RecGroup {
+            members: members.clone(),
+        };
+        let key = group_key(input, &unit);
+        // an unchanged group under the SAME content-versioned key is
+        // reused (and rooted), never rewritten; an edited member is a
+        // DIFFERENT key, so old immutable versions coexist
+        if let Some(loaded) = store.get_artifact(SEMA_LAYER, &key)? {
+            let page = decode_page(&loaded.payload)?;
+            admit_page(&page, input, None)?;
+            root_reuse(store, project, &loaded.artifact_id)?;
+            for name in &unit {
+                out.insert(name.clone(), loaded.artifact_id.clone());
+            }
+            continue;
+        }
         let page = SemaPage {
             header: PageHeader {
                 schema: SEMA_PAGE_SCHEMA_V1.into(),
@@ -1194,17 +1529,6 @@ pub fn publish_module_records(
             },
             body: PageBody::RecGroup(members),
         };
-        // key: the group's canonical identity (sorted member names)
-        let mut member_names = unit.clone();
-        member_names.sort();
-        let key = ac_sema_core::SemaQueryKey {
-            components: vec![
-                ("query".into(), "record-group".into()),
-                ("package".into(), input.package.clone()),
-                ("module".into(), input.module.clone()),
-                ("members".into(), member_names.join("+")),
-            ],
-        };
         let payload = encode_page(&page)?;
         let edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = required_edges
             .into_iter()
@@ -1212,13 +1536,14 @@ pub fn publish_module_records(
             .collect();
         let req = PutRequest {
             layer: SEMA_LAYER,
-            key: QueryKey { layer: SEMA_LAYER, components: key.components.clone() },
+            key,
             kind: SEMA_CARRIER,
             payload,
             edges,
             project: project.map(|s| s.to_string()),
         };
         let art = store.put_artifact(req)?;
+        root_reuse(store, project, &art)?;
         for name in &unit {
             out.insert(name.clone(), art.clone());
         }

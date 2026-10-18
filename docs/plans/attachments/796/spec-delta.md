@@ -95,6 +95,28 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
 - 依赖 796：797 只读消费（D6 全集+ct-seam schema 冻结可读）。
 - 冻结接口常量全部有 contract-decision 出处（sema_boundary 锁定）。
 
+## R6 修复轮补充（2026-10-18，D16）
+
+以下为上述 delta 在 R6 修复后的**当前事实**，merge 沉淀时以本节为准：
+
+- **SD-02**：record 页/递归组的**读取内容版本完整性**入合同——RecordFields 键含
+  `ref-versions-fp`（直接依赖内容版本），组键含成员内容与引用版本指纹；读取侧
+  同时校验页头目标内容、成员自身 decl 与每个嵌入 DeclRef 的当前版本，不匹配=
+  受控拒绝；旧不可变版本按旧键合法共存。
+- **SD-04**：复用（Hit）即当前项目 soft root（单页/required 链/组页三态；项目
+  A→B 复用后释放 A 仍由 B 保活）；SessionMeter 贯穿 decode/solve/publish 与
+  worker IPC（每步上报 peak）；缓存读写均按实际 payload 计费，固定预留删除；
+  4096 深链发布仅一次 SCC 分区（SCC_BUILDS 计数控制）。
+- **SD-07**：worker 树由父侧 Job Object（suspended→assign→resume）containment，
+  worker 自 containment 纵深；子进程退出即收割继承管道后代，reader/writer 有界
+  grace；请求/响应元数据 4MiB 预分配上限；source parse 失败以 typed
+  `source.syntax`/stage=parse 的 `diags` 步返回并由父侧判定；probe 身份轴为
+  protocol/recipe/exe-sha256/worker-version 四轴，ac/probe identity 分族解析。
+- **SD-08**：expect.probe 的 parse 错误 completion 与 worker meter 计数
+  （`meter_scratch_peak_bytes`/`meter_rejections`）进入报告面；V-07 在报告重写后
+  从 raw 样本独立重算 P95/样本数/状态/阶段；acceptance helper 的必需用例按名称
+  绑定并有四类负控（`-Scope selftest`）。
+
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各

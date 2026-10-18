@@ -200,3 +200,43 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
   页（组内纯 DeclRef/组外 required 边）；RecordFields lookup 单键 Miss 后按当前
   输入推导组键回退+成员准入（非成员不受组页服务）；循环拒绝路径删除——合法间接
   递归组是 §5.1 承诺面，不再拒绝。
+
+## D16 R6 修复轮冻结（2026-10-18）
+
+- **内容版本入键**（F-R6-01）：RecordFields 键增 `ref-versions-fp`（直接依赖
+  定义内容版本）；递归组键增 `algo/schema/producer/group-content-fp`（成员自身
+  canonical + 直接引用版本）。成员/依赖编辑=新键新页；旧页不可变共存；读取侧
+  `admit_page` 校验页头目标内容与每个嵌入 DeclRef（含成员自身 decl）的当前
+  版本，不匹配=受控拒绝（绝不服务旧 ref）。
+- **复用即保活**（F-R6-02）：`publish_*` 的 Hit 复用路径显式
+  `register_root(project,"soft")`（783 `put_artifact` 只给新页登记 root）；
+  单页/required 链/组页三态在项目复用与 GC 下均存活；项目 A→B 复用、释放 A
+  后由 B 保活。
+- **受控执行完成**（F-R6-03）：父侧 Job Object（suspended spawn→assign→resume，
+  KILL_ON_JOB_CLOSE）containment 整个 worker 树；worker 自身
+  `enter_self_containment()` 纵深；子进程退出即关闭 job 收割继承管道后代；
+  reader/writer 均以有界 grace 收割（不再无期限 join）；请求行 4MiB 预分配
+  上限（父侧发送前检查 + worker fill_buf 增量检查）。
+- **身份轴闭合**（F-R6-04）：probe 报告写全 `sema-protocol/recipe/
+  sema-worker-exe-sha256/sema-worker-version`；stale 对 probe 行适用同一四轴；
+  current identity 同四轴；ac/probe 各自独立惰性 identity map（混合报告不串用）。
+- **预算全路径**（F-R6-05）：同一 SessionMeter 贯穿 decode（消费前按 payload
+  计费）/solve（按真实 body 规模预估，求解窗内持有）/publish（实际编码长度）；
+  固定 64KiB 预留删除；worker 每步上报 scratch_peak/hot/rejections，父报告
+  计数器可见；32MiB 流式峰值为分配窗内 OS 采样。
+- **IPC 硬门负载**（F-R6-06）：硬门改为冻结 `gen796-1mi/v1` 参考模块（≥1MiB）
+  上的 `main` body 局部 edit-source→query，经真实 adapter/IPC/父判定；30 原始
+  样本、编辑查询 stage 段、bindings oracle 与 P95<1000ms 同时保留。
+- **parse 语言负例**（F-R6-07）：core adapter 新增 typed `LanguageDiagnostic::
+  Parse{code,message}`；worker 以 `diags` 步（`source.syntax`，stage=parse）
+  返回，父侧按声明 error completion 判定；协议/IO/资源失败仍=ERROR。
+- **验收身份**（F-R6-08）：verify helper 支持 `-Required` 测试名称集合（精确或
+  `::` 后缀），缺失必需用例=FAIL；`-Scope selftest` 覆盖零选择/缺必需/缺目标/
+  真红四类反控；V-07 在 V-04b（重生成库报告）与 V-08c（重写 IPC 报告）之后
+  运行，并从 raw 样本独立重算 P95/样本数/状态/阶段。
+- **深链归因**（V-06）：4096 链成本=每记录一次 store publication
+  （debug 实测 31.8ms/记录），SCC 分区仅 1 次；新增 SCC_BUILDS 计数断言
+  （发布路径 ≤2），禁止回到逐记录重建全图。
+- **格式门**（F-R6-09）：仅对本计划新增/触改文件运行 rustfmt（不使用
+  `cargo fmt --all`——该命令会穿透根 workspace 污染无关文件）；共享文件保持
+  回归基线 + 语义行重放。

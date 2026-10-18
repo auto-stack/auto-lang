@@ -234,6 +234,70 @@ pub fn fn_body_canonical(f: &crate::input::InputFn) -> Vec<u8> {
     out
 }
 
+/// Direct referenced record names of one record, sorted and deduped.
+/// These are the declarations whose CONTENT VERSION is embedded in the
+/// record's published shape (F-796-R6-01: A.next: B carries B's content
+/// version; a B change must change A's key, never serve the old ref).
+pub fn record_dep_names(input: &SemaInput, name: &str) -> Vec<String> {
+    let Some(r) = input.lookup_record(name) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = Vec::new();
+    for (_, a) in &r.fields {
+        if let Ann::Record(rec) = a {
+            if input.lookup_record(rec).is_some() && !out.iter().any(|d| d == rec) {
+                out.push((*rec).to_string());
+            }
+        }
+    }
+    out.sort();
+    out
+}
+
+/// Fingerprint of the DIRECT reference content versions embedded in one
+/// record's published shape. Part of every RecordFields key: a dependency
+/// content change (B: int -> bool) changes A's key instead of serving
+/// A's cached page with B's stale ref version.
+pub fn record_refs_fp(input: &SemaInput, name: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for dep in record_dep_names(input, name) {
+        let content = input
+            .lookup_record(&dep)
+            .map(|r| {
+                ContentVersion::of_canonical(&record_canonical(r))
+                    .as_str()
+                    .to_string()
+            })
+            .unwrap_or_default();
+        parts.push(format!("{dep}={content}"));
+    }
+    fp(parts.join("\u{1}").as_bytes())
+}
+
+/// Canonical identity of the published recursive-group page for `members`
+/// (sorted). Mirrors [`record_canonical`] plus the direct reference
+/// content versions, so an edit inside any member yields a DIFFERENT
+/// group key and a different page (F-796-R6-01).
+pub fn group_content_fp(input: &SemaInput, members: &[String]) -> String {
+    let mut sorted: Vec<String> = members.to_vec();
+    sorted.sort();
+    let mut parts: Vec<String> = Vec::new();
+    for name in sorted {
+        // own definition content AND direct reference versions: any
+        // member edit changes the group key
+        let own = input
+            .lookup_record(&name)
+            .map(|r| {
+                ContentVersion::of_canonical(&record_canonical(r))
+                    .as_str()
+                    .to_string()
+            })
+            .unwrap_or_default();
+        parts.push(format!("{}@{own}@{}", name, record_refs_fp(input, &name)));
+    }
+    fp(parts.join("\u{1}").as_bytes())
+}
+
 /// Canonical content of one record's ordered field set.
 pub fn record_canonical(r: &crate::input::InputRecord) -> Vec<u8> {
     let mut out = Vec::new();
@@ -418,6 +482,11 @@ impl SemaQueryKey {
                     r.map(|r| fp(&record_canonical(r)))
                         .unwrap_or_else(|| "absent".into()),
                 ));
+                // F-796-R6-01: the shape embeds DIRECT dependency content
+                // versions — they are part of the key, so a referenced
+                // record's content change is a new key (never a hit that
+                // serves the old ref version)
+                c.push(("ref-versions-fp".into(), record_refs_fp(input, record)));
             }
             QueryKind::ListCandidates { domain } => {
                 let set = match *domain {

@@ -7,8 +7,19 @@
 //! a `restart` step ENDS the session (the parent continues the
 //! remaining steps in a FRESH process against the same store root —
 //! the real cross-process persistence path).
+//!
+//! F-796-R6 repairs wired here:
+//! * R6-03 — lines are read with a PRE-ALLOCATION bound (never
+//!   `lines()` materializing a hostile line first); the worker also
+//!   self-contains at startup (parent kill reaps its tree).
+//! * R6-05 — the SAME session meter covers decode/solve/publish and is
+//!   reported per step (the previous `meter=None` bypass is gone).
+//! * R6-07 — a language PARSE failure is a typed `diags` outcome judged
+//!   parent-side, never a generic infrastructure error; an edit may fix
+//!   the source (reparse) and clear the diagnostic.
 
 use crate::open_store;
+use ac_sema_core::adapter::{parse_into_input_typed, LanguageDiagnostic};
 use ac_sema_core::query::QueryKind;
 use ac_sema_core::SemaInput;
 use serde::{Deserialize, Serialize};
@@ -18,9 +29,10 @@ pub const SEMAWORKER_SCHEMA: &str = "semaworker/1";
 /// Recipe identity this worker implements.
 pub const RECIPE: &str = "sema/query-v1";
 
-/// Bounded read of one stdin line (the request is source + steps; a
-/// hostile caller cannot wedge the worker on an unbounded line).
-const MAX_LINE: usize = 8 << 20;
+/// Bounded read of one stdin line (the request is source + steps). The
+/// plan freezes request/response METADATA at 4 MiB each; the cap is
+/// enforced while reading, before any allocation of the full line.
+const MAX_LINE: usize = 4 << 20;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -53,6 +65,16 @@ pub struct StepIn {
     pub to: Option<String>,
 }
 
+/// Realized session-meter readings for one step (F-796-R6-05): proof
+/// the worker ran the SAME meter as the flow, not `None`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MeterOut {
+    pub scratch_peak_bytes: u64,
+    pub hot_bytes: u64,
+    pub rejections: u32,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct StepOut {
@@ -69,6 +91,7 @@ pub struct StepOut {
     pub diagnostics: Vec<DiagOut>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub stages: Vec<StageSpan>,
+    pub meter: MeterOut,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -138,11 +161,10 @@ pub const WORKER_VERSION: &str = concat!("ac-sema-probe/", env!("CARGO_PKG_VERSI
 /// panic, never a hang).
 pub fn serve() -> i32 {
     let stdin = std::io::stdin();
-    let mut lines = stdin.lock().lines();
-    let mut line_buf = String::new();
+    let mut lines = stdin.lock();
 
     // begin
-    let begin: SessionBegin = match next_json(&mut lines, &mut line_buf) {
+    let begin: SessionBegin = match next_json(&mut lines) {
         Ok(Some(v)) => v,
         _ => return fail_protocol("begin line missing or malformed"),
     };
@@ -150,9 +172,15 @@ pub fn serve() -> i32 {
         return fail_protocol("bad begin (expected op=begin, schema=semaworker/1)");
     }
     // request — the envelope shape mirrors acworker/1: {"op":"request","request":{…}}
-    let req_owned: String = match next_raw(&mut lines, &mut line_buf) {
-        Some(l) => l.to_string(),
-        None => return fail_protocol("request line missing"),
+    let req_owned: String = match next_raw(&mut lines) {
+        Ok(Some(l)) => l,
+        Ok(None) => return fail_protocol("request line missing"),
+        Err(observed) => {
+            return fail_protocol(&format!(
+                "request line exceeds the {}-byte bound ({} observed)",
+                MAX_LINE, observed
+            ))
+        }
     };
     #[derive(Deserialize)]
     struct Envelope {
@@ -167,9 +195,16 @@ pub fn serve() -> i32 {
         return fail_protocol("expected op=request");
     }
     let req = env.request;
-    // end
-    let mut end_buf = String::new();
-    match next_raw(&mut lines, &mut end_buf) {
+    let end = match next_raw(&mut lines) {
+        Ok(v) => v,
+        Err(observed) => {
+            return fail_protocol(&format!(
+                "end line exceeds the {}-byte bound ({} observed)",
+                MAX_LINE, observed
+            ))
+        }
+    };
+    match end {
         Some(l) if l.contains(r#""op":"end""#) || l.contains(r#""op": "end""#) => {}
         _ => return fail_protocol("end line missing"),
     }
@@ -179,13 +214,25 @@ pub fn serve() -> i32 {
     let line = serde_json::to_string(&resp).unwrap_or_default();
     let _ = writeln!(out, "{line}");
     let _ = out.flush();
-    // TEST-ONLY fault seams (F-796-R4-03/R4-04 process-level controls):
-    // never set by production paths; the runner tests set them through
-    // the child environment to prove the PARENT's lifecycle/admission
-    // actually fires (deadline-after-response, bad exit, bad version).
+    // TEST-ONLY fault seams (F-796-R4-03/R4-04/R6-03 process-level
+    // controls): never set by production paths; the runner tests set
+    // them through the child environment to prove the PARENT's
+    // lifecycle/admission actually fires (deadline-after-response, bad
+    // exit, bad version, inherited-pipe descendant).
     if let Ok(hang) = std::env::var("SEMA_TEST_HANG_AFTER_RESPONSE_SECS") {
         let secs: u64 = hang.parse().unwrap_or(61);
         std::thread::sleep(std::time::Duration::from_secs(secs));
+    }
+    if let Ok(secs) = std::env::var("SEMA_TEST_SPAWN_LINGER_SECS") {
+        // Spawn a descendant that INHERITS our stdout/stderr and outlives
+        // this process. With self-containment the job kills it at exit;
+        // with containment disabled the parent's own job must do so.
+        let secs: u64 = secs.parse().unwrap_or(61);
+        let _ = std::process::Command::new("cmd")
+            .args(["/C", "ping", "-n", &(secs + 1).to_string(), "127.0.0.1"])
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .spawn();
     }
     if let Ok(code) = std::env::var("SEMA_TEST_EXIT_AFTER_RESPONSE") {
         let code: i32 = code.parse().unwrap_or(7);
@@ -214,42 +261,91 @@ fn fail_protocol(msg: &str) -> i32 {
     0
 }
 
-fn next_raw<'a>(
-    lines: &mut impl Iterator<Item = Result<String, std::io::Error>>,
-    buf: &'a mut String,
-) -> Option<&'a str> {
-    buf.clear();
-    for _ in 0..64 {
-        // bounded accumulate across physical lines (a JSON line is one
-        // physical line in this protocol; the cap guards runaway input)
-        match lines.next() {
-            Some(Ok(l)) => {
-                if buf.len() + l.len() > MAX_LINE {
-                    return None;
-                }
-                buf.push_str(&l);
-                if !buf.is_empty() {
-                    return Some(buf);
+/// Read ONE line with a hard PRE-ALLOCATION cap (F-796-R6-03): the
+/// buffer never exceeds `MAX_LINE`, no matter how hostile the input.
+/// Ok(None) = EOF; Err(observed) = the line exceeded the cap.
+fn next_raw<R: BufRead>(r: &mut R) -> Result<Option<String>, usize> {
+    let mut line: Vec<u8> = Vec::new();
+    loop {
+        let available = match r.fill_buf() {
+            Ok(b) => b,
+            Err(_) => {
+                return if line.is_empty() {
+                    Ok(None)
+                } else {
+                    Ok(Some(String::from_utf8_lossy(&line).to_string()))
                 }
             }
-            _ => return None,
+        };
+        if available.is_empty() {
+            return if line.is_empty() {
+                Ok(None)
+            } else {
+                Ok(Some(String::from_utf8_lossy(&line).to_string()))
+            };
+        }
+        match available.iter().position(|&b| b == b'\n') {
+            Some(nl) => {
+                if line.len() + nl > MAX_LINE {
+                    return Err(line.len() + nl);
+                }
+                line.extend_from_slice(&available[..nl]);
+                r.consume(nl + 1);
+                return Ok(Some(String::from_utf8_lossy(&line).to_string()));
+            }
+            None => {
+                if line.len() + available.len() > MAX_LINE {
+                    return Err(line.len() + available.len());
+                }
+                let take = available.len();
+                line.extend_from_slice(available);
+                r.consume(take);
+            }
         }
     }
-    None
 }
 
-fn next_json<T: serde::de::DeserializeOwned>(
-    lines: &mut impl Iterator<Item = Result<String, std::io::Error>>,
-    buf: &mut String,
-) -> Result<Option<T>, ()> {
-    match next_raw(lines, buf) {
-        Some(raw) => serde_json::from_str(raw).map(Some).map_err(|_| ()),
-        None => Err(()),
+fn next_json<T: serde::de::DeserializeOwned, R: BufRead>(r: &mut R) -> Result<Option<T>, ()> {
+    match next_raw(r) {
+        Ok(Some(raw)) => serde_json::from_str(&raw).map(Some).map_err(|_| ()),
+        Ok(None) => Err(()),
+        Err(_) => Err(()),
+    }
+}
+
+fn meter_out(meter: &crate::budget::SessionMeter) -> MeterOut {
+    MeterOut {
+        scratch_peak_bytes: meter.scratch_peak() as u64,
+        hot_bytes: meter.hot.bytes() as u64,
+        rejections: meter.rejections() as u32,
+    }
+}
+
+fn diag_step(
+    op: &'static str,
+    code: &str,
+    message: &str,
+    meter: &crate::budget::SessionMeter,
+) -> StepOut {
+    StepOut {
+        op,
+        outcome: "diags",
+        cache: "parse-rejected".into(),
+        compute_calls: 0,
+        bindings: Vec::new(),
+        diagnostics: vec![DiagOut {
+            code: code.to_string(),
+            message: message.to_string(),
+        }],
+        stages: Vec::new(),
+        meter: meter_out(meter),
     }
 }
 
 /// Execute steps of THIS session (up to and excluding the next
-/// `restart`), mirroring the probe's real query flow per step.
+/// `restart`), mirroring the probe's real query flow per step. A
+/// language parse failure is a TYPED diagnostic outcome (F-796-R6-07);
+/// an `edit-source` that makes the source parseable clears it.
 fn execute(req: &WorkerRequest) -> serde_json::Value {
     if req.recipe != RECIPE {
         return serde_json::to_value(ResponseErr {
@@ -267,39 +363,49 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
         Ok(s) => s,
         Err(e) => return err_req(req, "source", e),
     };
-    let input: SemaInput = match ac_sema_core::adapter::parse_into_input(
-        &source,
-        &req.package,
-        &req.module,
-        auto_ac_prototype::source::SourceProfile::Core,
-    ) {
-        Ok(i) => i,
-        Err(e) => return err_req(req, "parse", e),
-    };
-    // NOTE: source edits mutate a working COPY; each session starts from
-    // the CURRENT declared source the parent sends (the parent chains
-    // edits across sessions and re-sends the current text).
-    let mut source = source;
-    let mut input = input;
     let store = match open_store(std::path::Path::new(&req.store_root)) {
         Ok(s) => s,
         Err(e) => return err_req(req, "store", format!("{e}")),
     };
 
+    let mut source = source;
+    let mut parse_diag: Option<(String, String)> = None;
+    let mut input: Option<SemaInput> = match parse_into_input_typed(
+        &source,
+        &req.package,
+        &req.module,
+        auto_ac_prototype::source::SourceProfile::Core,
+    ) {
+        Ok(i) => Some(i),
+        Err(LanguageDiagnostic::Parse { code, message }) => {
+            parse_diag = Some((code, message));
+            None
+        }
+        Err(LanguageDiagnostic::Projection(e)) => return err_req(req, "parse", e),
+    };
+
+    let mut meter = crate::budget::SessionMeter::new();
     let mut out_steps: Vec<StepOut> = Vec::new();
     let mut restart_pending = false;
     for step in &req.steps {
         match step.op.as_str() {
             "query" => {
+                if let Some((code, message)) = parse_diag.clone() {
+                    out_steps.push(diag_step("query", &code, &message, &meter));
+                    continue;
+                }
+                let Some(current) = input.as_ref() else {
+                    return err_req(req, "query", "no parsed input for query".into());
+                };
                 let query = QueryKind::InferBody {
                     fn_name: req.fn_name.clone(),
                 };
                 let report = match crate::run_query_flow(
                     &store,
-                    &input,
+                    current,
                     &query,
                     Some("autodown-probe"),
-                    None,
+                    Some(&mut meter),
                 ) {
                     Ok(r) => r,
                     Err(e) => {
@@ -313,6 +419,7 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
                             bindings: Vec::new(),
                             diagnostics: Vec::new(),
                             stages: Vec::new(),
+                            meter: meter_out(&meter),
                         });
                         continue;
                     }
@@ -352,6 +459,7 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
                             wall_ns: *ns,
                         })
                         .collect(),
+                    meter: meter_out(&meter),
                 });
             }
             "edit-source" => {
@@ -367,19 +475,23 @@ fn execute(req: &WorkerRequest) -> serde_json::Value {
                         format!("edit literal must match exactly once, found {hits}"),
                     );
                 }
-                // apply the edit to the RUNNING source (edits chain:
-                // later steps see earlier ones), then re-project
-                let edited = source.replacen(from, to, 1);
-                source = edited;
-                input = match ac_sema_core::adapter::parse_into_input(
+                source = source.replacen(from, to, 1);
+                match parse_into_input_typed(
                     &source,
                     &req.package,
                     &req.module,
                     auto_ac_prototype::source::SourceProfile::Core,
                 ) {
-                    Ok(i) => i,
-                    Err(e) => return err_req(req, "reparse", e),
-                };
+                    Ok(i) => {
+                        input = Some(i);
+                        parse_diag = None;
+                    }
+                    Err(LanguageDiagnostic::Parse { code, message }) => {
+                        input = None;
+                        parse_diag = Some((code, message));
+                    }
+                    Err(LanguageDiagnostic::Projection(e)) => return err_req(req, "reparse", e),
+                }
             }
             "restart" => {
                 restart_pending = true;
@@ -419,15 +531,6 @@ fn err_req(req: &WorkerRequest, code: &str, message: String) -> serde_json::Valu
         },
     })
     .unwrap_or_default()
-}
-
-fn desc_name(t: &ac_sema_contract::TypeDesc) -> String {
-    match t {
-        ac_sema_contract::TypeDesc::I32 => "i32".into(),
-        ac_sema_contract::TypeDesc::Bool => "bool".into(),
-        ac_sema_contract::TypeDesc::Opaque { name } => format!("opaque:{name}"),
-        other => format!("{other:?}"),
-    }
 }
 
 fn b64_decode(s: &str) -> Result<String, String> {

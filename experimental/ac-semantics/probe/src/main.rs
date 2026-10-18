@@ -30,7 +30,17 @@ fn main() {
         return bench_turnaround(&args);
     }
     if args.len() == 2 && args[1] == "serve" {
-        // semaworker/1 bounded single-shot session (T-06)
+        // semaworker/1 bounded single-shot session (T-06).
+        // F-796-R6-03: self-containment — process death (including a
+        // parent kill) reaps every descendant via the leaked
+        // kill-on-close job handle. Test-only opt-out proves the PARENT's
+        // own containment still holds for a misbehaving worker tree.
+        if std::env::var("SEMA_TEST_NO_SELF_CONTAINMENT").is_err() {
+            if let Err(e) = auto_ac_prototype::link::enter_self_containment() {
+                eprintln!("sema-probe: self-containment unavailable: {e}");
+                std::process::exit(2);
+            }
+        }
         std::process::exit(ac_sema_probe::ipc::serve());
     }
     if args.len() < 5 {

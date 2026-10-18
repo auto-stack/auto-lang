@@ -18,9 +18,10 @@ pub use budget::{
     MANAGED_BUDGET, SCRATCH_BUDGET,
 };
 pub use store::{
-    lookup_only, open_store, publish_infer_result, publish_module_index, publish_module_records,
+    lookup_only, lookup_only_metered, open_store, publish_infer_result,
+    publish_infer_result_charged, publish_module_index, publish_module_records,
     publish_record_meta, run_inference, run_query_flow, Disposition, FetchOutcome, ProbeError,
-    QueryReport, SEMA_CARRIER, SEMA_LAYER,
+    QueryReport, SCC_BUILDS, SEMA_CARRIER, SEMA_LAYER,
 };
 pub use turnaround::{
     machine_info, stats_of, write_report, Harness, Sample, ScenarioStats, HARD_GATE,

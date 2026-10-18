@@ -41,6 +41,13 @@ use super::avm::Verdict;
 /// the moment it overflows (never a silent partial drain).
 const READ_CAP: usize = (4 << 20) + (64 << 10);
 const STDERR_CAP: usize = 1 << 20;
+/// Request METADATA cap (§5.4: request/response metadata ≤4 MiB). The
+/// pre-spawn check refuses an oversized request before any pipe write;
+/// the worker enforces the same bound while reading.
+const REQUEST_CAP: usize = 4 << 20;
+/// Bounded drain grace after the child exits (the containment job has
+/// already reaped descendants, so this is a backstop, not a wait).
+const READER_GRACE: Duration = Duration::from_secs(2);
 /// Per-SESSION parent wall: spawn + write + response + exit + reap.
 const SESSION_WALL: Duration = Duration::from_secs(60);
 /// Bounded build of the worker from source.
@@ -169,7 +176,27 @@ pub fn current_toolchain_identity() -> std::collections::BTreeMap<String, String
         "sema-worker-version".to_string(),
         EXPECTED_WORKER_VERSION.to_string(),
     );
+    // F-796-R6-04: these two axes ARE part of the probe row's
+    // consumption path (the report carries them); the current identity
+    // must describe them too, or an unchanged report could never be
+    // FRESH.
+    m.insert("sema-protocol".to_string(), "semaworker/1".to_string());
+    m.insert("recipe".to_string(), "sema/query-v1".to_string());
     m
+}
+
+/// The report's probe toolchain axes (F-796-R6-04): the SAME set the
+/// stale checker declares applicable for probe rows.
+fn probe_toolchain_axes(exe_sha: &str) -> Vec<(String, String)> {
+    vec![
+        ("sema-protocol".into(), "semaworker/1".into()),
+        ("recipe".into(), "sema/query-v1".into()),
+        ("sema-worker-exe-sha256".into(), exe_sha.to_string()),
+        (
+            "sema-worker-version".into(),
+            EXPECTED_WORKER_VERSION.to_string(),
+        ),
+    ]
 }
 
 /// Content identity of the worker tool actually spawned (F-796-R4-04):
@@ -227,6 +254,21 @@ struct StepOut {
     diagnostics: Vec<DiagMirror>,
     #[serde(default)]
     stages: Vec<StageSpanMirror>,
+    /// F-796-R6-05: the worker's realized session meter (proof the SAME
+    /// meter ran the flow, never `None`).
+    #[serde(default)]
+    meter: MeterMirror,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct MeterMirror {
+    #[serde(default)]
+    scratch_peak_bytes: u64,
+    #[serde(default)]
+    hot_bytes: u64,
+    #[serde(default)]
+    rejections: u32,
 }
 
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
@@ -271,12 +313,200 @@ fn active_faults() -> Option<(Vec<(String, String)>, Option<u64>)> {
     })
 }
 
+/// Windows Job-Object containment (the PLAN-788 controlled-execution
+/// pattern, completed here — F-796-R6-03): the worker starts SUSPENDED,
+/// is assigned to a kill-on-close job BEFORE its first instruction, and
+/// is resumed; every descendant it spawns inherits the job. Closing the
+/// job (after the child exits, or on a deadline kill) reaps the WHOLE
+/// tree, so a descendant that inherited stdout/stderr can never wedge
+/// the reader joins past the parent wall.
+#[cfg(windows)]
+mod containment {
+    use std::os::windows::io::AsRawHandle;
+    use std::process::Child;
+
+    type Handle = *mut core::ffi::c_void;
+    const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+    const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+    const TH32CS_SNAPTHREAD: u32 = 0x0000_0004;
+    const THREAD_SUSPEND_RESUME: u32 = 0x0002;
+    pub const CREATE_SUSPENDED: u32 = 0x0000_0004;
+
+    #[repr(C)]
+    struct JobBasicLimit {
+        per_process_user_time: i64,
+        per_job_user_time: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    #[repr(C)]
+    struct IoCounters {
+        read_operation_count: u64,
+        write_operation_count: u64,
+        other_operation_count: u64,
+        read_transfer_count: u64,
+        write_transfer_count: u64,
+        other_transfer_count: u64,
+    }
+
+    #[repr(C)]
+    struct JobExtendedLimit {
+        basic: JobBasicLimit,
+        io_info: IoCounters,
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    #[repr(C)]
+    struct ThreadEntry {
+        dw_size: u32,
+        cnt_usage: u32,
+        thread_id: u32,
+        owner_process_id: u32,
+        base_pri: i32,
+        delta_pri: i32,
+        flags: u32,
+    }
+
+    #[link(name = "kernel32")]
+    extern "system" {
+        fn CreateJobObjectW(attrs: *const core::ffi::c_void, name: *const u16) -> Handle;
+        fn SetInformationJobObject(
+            job: Handle,
+            class: i32,
+            info: *const core::ffi::c_void,
+            len: u32,
+        ) -> i32;
+        fn AssignProcessToJobObject(job: Handle, process: Handle) -> i32;
+        fn CloseHandle(handle: Handle) -> i32;
+        fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> Handle;
+        fn Thread32First(snapshot: Handle, entry: *mut ThreadEntry) -> i32;
+        fn Thread32Next(snapshot: Handle, entry: *mut ThreadEntry) -> i32;
+        fn OpenThread(access: u32, inherit: i32, thread_id: u32) -> Handle;
+        fn ResumeThread(thread: Handle) -> u32;
+    }
+
+    pub struct JobGuard(Handle);
+
+    impl JobGuard {
+        /// Assign the (still suspended) child to a kill-on-close job.
+        pub fn for_child(child: &Child) -> Option<JobGuard> {
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return None;
+                }
+                let mut info: JobExtendedLimit = std::mem::zeroed();
+                info.basic.limit_flags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                if SetInformationJobObject(
+                    job,
+                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                    &info as *const _ as *const core::ffi::c_void,
+                    std::mem::size_of::<JobExtendedLimit>() as u32,
+                ) == 0
+                {
+                    CloseHandle(job);
+                    return None;
+                }
+                if AssignProcessToJobObject(job, child.as_raw_handle() as Handle) == 0 {
+                    CloseHandle(job);
+                    return None;
+                }
+                Some(JobGuard(job))
+            }
+        }
+    }
+
+    impl Drop for JobGuard {
+        fn drop(&mut self) {
+            // KILL_ON_JOB_CLOSE: dropping the last handle reaps every
+            // process the job still holds (the whole worker tree).
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+
+    /// Resume the suspended child's main thread (exactly one thread).
+    pub fn resume_suspended_process(child: &Child) -> Result<(), &'static str> {
+        unsafe {
+            let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+            if snapshot as isize == -1 {
+                return Err("thread snapshot failed while resuming the worker");
+            }
+            let mut entry: ThreadEntry = std::mem::zeroed();
+            entry.dw_size = std::mem::size_of::<ThreadEntry>() as u32;
+            if Thread32First(snapshot, &mut entry) == 0 {
+                CloseHandle(snapshot);
+                return Err("thread enumeration failed while resuming the worker");
+            }
+            let mut resumed = false;
+            loop {
+                if entry.owner_process_id == child.id() {
+                    let thread = OpenThread(THREAD_SUSPEND_RESUME, 0, entry.thread_id);
+                    if thread.is_null() {
+                        CloseHandle(snapshot);
+                        return Err("failed to open the worker's main thread");
+                    }
+                    let prev = ResumeThread(thread);
+                    CloseHandle(thread);
+                    if prev == u32::MAX {
+                        CloseHandle(snapshot);
+                        return Err("failed to resume the worker's main thread");
+                    }
+                    resumed = true;
+                }
+                if Thread32Next(snapshot, &mut entry) == 0 {
+                    break;
+                }
+            }
+            CloseHandle(snapshot);
+            if resumed {
+                Ok(())
+            } else {
+                Err("worker main thread not found in the snapshot")
+            }
+        }
+    }
+}
+
+#[cfg(not(windows))]
+mod containment {
+    use std::process::Child;
+    pub const CREATE_SUSPENDED: u32 = 0;
+    pub struct JobGuard;
+    impl JobGuard {
+        pub fn for_child(_child: &Child) -> Option<JobGuard> {
+            None
+        }
+    }
+    pub fn resume_suspended_process(_child: &Child) -> Result<(), &'static str> {
+        Ok(())
+    }
+}
+
 /// One bounded single-shot worker session with a FULL lifecycle
-/// (F-796-R4-03): threaded request write; bounded stdout read; stderr
-/// drained concurrently with an overflow KILL signal; the deadline
-/// covers spawn→response→exit→reap — a worker that responds and then
-/// sleeps is killed at the wall and the session errors, never passes.
+/// (F-796-R4-03 + F-796-R6-03): threaded request write; bounded stdout
+/// read; stderr drained concurrently with an overflow KILL; the deadline
+/// covers spawn→response→exit→reap; the child is Job-contained so a
+/// descendant inheriting the pipes dies with it and the bounded reader
+/// joins can never outlive the wall.
 fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse, String> {
+    if request_json.len() > REQUEST_CAP {
+        return Err(format!(
+            "sema worker request exceeds the {} byte metadata cap ({} bytes)",
+            REQUEST_CAP,
+            request_json.len()
+        ));
+    }
     let exe = worker_binary()?;
     let started = Instant::now();
     let mut cmd = Command::new(&exe);
@@ -294,9 +524,34 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             cmd.env(k, v);
         }
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(containment::CREATE_SUSPENDED);
+    }
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn sema worker ({}): {}", exe.display(), e))?;
+    #[cfg(windows)]
+    let mut job = match containment::JobGuard::for_child(&child) {
+        Some(j) => Some(j),
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(
+                "containment unavailable: refusing an uncontained sema worker tree".to_string(),
+            );
+        }
+    };
+    #[cfg(not(windows))]
+    let mut job: Option<containment::JobGuard> = None;
+    #[cfg(windows)]
+    if let Err(e) = containment::resume_suspended_process(&child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!("containment: {e}"));
+    }
+    let (write_tx, write_rx) = std::sync::mpsc::channel::<()>();
     {
         let mut stdin = child.stdin.take().expect("piped stdin");
         let req = request_json.to_string();
@@ -305,15 +560,14 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             let _ = writeln!(stdin, r#"{{"op":"request","request":{}}}"#, req);
             let _ = writeln!(stdin, r#"{{"op":"end"}}"#);
             let _ = stdin.flush();
+            let _ = write_tx.send(());
         });
     }
     let mut stdout_pipe = child.stdout.take().expect("piped stdout");
     let mut stderr_pipe = child.stderr.take().expect("piped stderr");
-    // stderr overflow signals an immediate kill (F-796-R4-03): a chatty
-    // worker never wedges or smuggles output past the cap.
-    let (err_tx, err_rx) = std::sync::mpsc::channel::<bool>();
+    let (err_tx, err_rx) = std::sync::mpsc::channel::<(bool, Vec<u8>)>();
     let (tx, rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
-    let out_reader = std::thread::spawn(move || {
+    let _out_reader = std::thread::spawn(move || {
         let mut buf = Vec::new();
         let mut chunk = [0u8; 65536];
         let mut done = false;
@@ -335,7 +589,7 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         }
         let _ = tx.send(Ok(buf));
     });
-    let err_reader = std::thread::spawn(move || {
+    let _err_reader = std::thread::spawn(move || {
         let mut buf = Vec::new();
         let mut chunk = [0u8; 16384];
         let mut overflow = false;
@@ -352,16 +606,17 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
                 Err(_) => break,
             }
         }
-        let _ = err_tx.send(overflow);
-        buf
+        let _ = err_tx.send((overflow, buf));
     });
 
     // deadline loop: response AND exit, killing on wall or stderr
-    // overflow, then reaping the child before returning
+    // overflow; a child exit closes the job (descendants reaped) BEFORE
+    // the bounded drains, so inherited pipes cannot outlive the wall
     let mut received: Option<Result<Vec<u8>, usize>> = None;
     let mut stderr_overflow = false;
+    let mut stderr_result: Option<(bool, Vec<u8>)> = None;
     let mut timed_out = false;
-    let mut exited = false;
+    let mut exit_status: Option<std::process::ExitStatus> = None;
     loop {
         if started.elapsed() > wall {
             timed_out = true;
@@ -371,35 +626,53 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             break;
         }
         if received.is_none() {
-            match rx.recv_timeout(Duration::from_millis(5)) {
+            match rx.try_recv() {
                 Ok(v) => received = Some(v),
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-                Err(_) => received = Some(Err(0)),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => received = Some(Err(0)),
             }
         }
-        match err_rx.recv_timeout(Duration::from_millis(1)) {
-            Ok(ov) => stderr_overflow = ov,
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
-            Err(_) => {}
-        }
-        if received.is_some() {
-            // response is in: still require the child to EXIT inside
-            // the wall (the R4-03 relay control)
-            match child.try_wait() {
-                Ok(Some(_)) => {
-                    exited = true;
-                    break;
+        if stderr_result.is_none() {
+            match err_rx.try_recv() {
+                Ok(v) => {
+                    stderr_overflow = v.0;
+                    stderr_result = Some(v);
                 }
-                Ok(None) => continue,
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {}
+            }
+        }
+        if exit_status.is_none() {
+            match child.try_wait() {
+                Ok(st @ Some(_)) => exit_status = st,
+                Ok(None) => {}
                 Err(e) => return Err(format!("poll sema worker: {e}")),
             }
         }
+        if exit_status.is_some() {
+            // child gone: closing the job kills any descendant still
+            // holding the inherited pipes, then the drains are bounded
+            drop(job.take());
+            if received.is_none() {
+                received = match rx.recv_timeout(READER_GRACE) {
+                    Ok(v) => Some(v),
+                    Err(_) => Some(Err(0)),
+                };
+            }
+            if stderr_result.is_none() {
+                stderr_result = err_rx.recv_timeout(READER_GRACE).ok();
+            }
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
     }
     if timed_out || stderr_overflow {
         let _ = child.kill();
+        drop(job.take());
         let _ = child.wait();
-        let _ = out_reader.join();
-        let _ = err_reader.join();
+        let _ = write_rx.recv_timeout(READER_GRACE);
+        let _ = rx.recv_timeout(READER_GRACE);
+        let _ = err_rx.recv_timeout(READER_GRACE);
         return Err(if timed_out {
             "sema worker exceeded the parent wall (response-or-exit deadline)".to_string()
         } else {
@@ -409,12 +682,23 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
             )
         });
     }
-    let _ = exited;
-    let exit = child.wait().map_err(|e| format!("reap sema worker: {e}"))?;
-    let stderr_tail = err_reader.join().unwrap_or_default();
-    let _ = out_reader
-        .join()
-        .map_err(|_| "stdout reader panicked".to_string())?;
+    // normal exit path: the job is already dropped (descendants reaped)
+    drop(job.take());
+    if write_rx.recv_timeout(READER_GRACE).is_err() {
+        return Err("sema worker request writer did not finish within the drain grace".into());
+    }
+    let stderr_tail = match stderr_result {
+        Some((_, buf)) => buf,
+        None => match err_rx.recv_timeout(READER_GRACE) {
+            Ok((_, buf)) => buf,
+            Err(_) => {
+                return Err(
+                    "sema worker stderr reader did not finish within the drain grace".into(),
+                )
+            }
+        },
+    };
+    let exit = exit_status.ok_or("sema worker exit status not observed")?;
     let bytes = received
         .ok_or("sema worker closed without a response")?
         .map_err(|n| format!("sema worker response exceeded the read cap ({n} bytes)"))?;
@@ -450,6 +734,9 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
 /// (resolve for name-resolution failures, typecheck otherwise).
 fn stage_of(code: &str) -> &'static str {
     match code {
+        // F-796-R6-07: typed source-language parse diagnostics keep
+        // their own stage instead of being folded into typecheck
+        "source.syntax" | "source.lex" => "parse",
         "unknown-name" | "ambiguous-candidates" => "resolve",
         _ => "typecheck",
     }
@@ -623,12 +910,26 @@ pub fn run_check(
                         "compute_calls".into(),
                         reported_query_steps.iter().map(|s| s.compute_calls).sum(),
                     ),
+                    // F-796-R6-05: the worker's REAL session meter is
+                    // reported, so a `meter=None` regression is visible
+                    // on the reported path itself
+                    (
+                        "meter_scratch_peak_bytes".into(),
+                        reported_query_steps
+                            .iter()
+                            .map(|s| s.meter.scratch_peak_bytes)
+                            .max()
+                            .unwrap_or(0) as u32,
+                    ),
+                    (
+                        "meter_rejections".into(),
+                        reported_query_steps
+                            .iter()
+                            .map(|s| s.meter.rejections)
+                            .sum(),
+                    ),
                 ],
-                toolchain: vec![
-                    ("sema-protocol".into(), "semaworker/1".into()),
-                    ("recipe".into(), "sema/query-v1".into()),
-                    ("sema-worker-exe-sha256".into(), exe_sha),
-                ],
+                toolchain: probe_toolchain_axes(&exe_sha),
                 gaps: vec![],
             }),
         });
@@ -786,6 +1087,8 @@ pub fn run_check(
         "query_steps": reported_query_steps,
         "store_root": store_root,
         "toolchain": {
+            "sema-protocol": "semaworker/1",
+            "recipe": "sema/query-v1",
             "sema-worker-exe-sha256": exe_sha,
             "sema-worker-version": EXPECTED_WORKER_VERSION,
         },
@@ -818,12 +1121,23 @@ pub fn run_check(
                 "compute_calls".into(),
                 reported_query_steps.iter().map(|s| s.compute_calls).sum(),
             ),
+            (
+                "meter_scratch_peak_bytes".into(),
+                reported_query_steps
+                    .iter()
+                    .map(|s| s.meter.scratch_peak_bytes)
+                    .max()
+                    .unwrap_or(0) as u32,
+            ),
+            (
+                "meter_rejections".into(),
+                reported_query_steps
+                    .iter()
+                    .map(|s| s.meter.rejections)
+                    .sum(),
+            ),
         ],
-        toolchain: vec![
-            ("sema-protocol".into(), "semaworker/1".into()),
-            ("recipe".into(), "sema/query-v1".into()),
-            ("sema-worker-exe-sha256".into(), exe_sha),
-        ],
+        toolchain: probe_toolchain_axes(&exe_sha),
         gaps: vec![],
     };
     let status = if mismatches.is_empty() {

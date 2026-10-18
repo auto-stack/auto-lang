@@ -24,9 +24,40 @@ use auto_ac_prototype::source::ast as core_ast;
 #[cfg(feature = "core-ast")]
 use auto_ac_prototype::source::SourceProfile;
 
+/// Typed language load failure (F-796-R6-07): a PARSE diagnostic is a
+/// language verdict (typed code/message, judged against the case
+/// oracle), never an infrastructure error. Projection failures remain
+/// infrastructure.
+#[cfg(feature = "core-ast")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LanguageDiagnostic {
+    Parse { code: String, message: String },
+    Projection(String),
+}
+
 /// Parse `.at` source under a profile and project it into the neutral
-/// input model. A parse diagnostic is surfaced as `Err` (the probe
-/// never invents a partial program).
+/// input model. A parse diagnostic is surfaced as a TYPED language
+/// error; the probe never invents a partial program.
+#[cfg(feature = "core-ast")]
+pub fn parse_into_input_typed(
+    src: &str,
+    package: &str,
+    module: &str,
+    profile: SourceProfile,
+) -> Result<SemaInput, LanguageDiagnostic> {
+    let prog = auto_ac_prototype::source::parse_program_with(src, profile).map_err(|d| {
+        LanguageDiagnostic::Parse {
+            code: d.code,
+            message: d.message,
+        }
+    })?;
+    let mut input = project(&prog, package, module).map_err(LanguageDiagnostic::Projection)?;
+    input.source_fp =
+        ac_sema_contract::identity::domain_hash("ac796/source-fp/v1", &[src.as_bytes()]);
+    Ok(input)
+}
+
+/// Back-compat string form used by library/bin callers.
 #[cfg(feature = "core-ast")]
 pub fn parse_into_input(
     src: &str,
@@ -34,12 +65,10 @@ pub fn parse_into_input(
     module: &str,
     profile: SourceProfile,
 ) -> Result<SemaInput, String> {
-    let prog = auto_ac_prototype::source::parse_program_with(src, profile)
-        .map_err(|d| format!("parse: {} ({:?})", d.message, d.code))?;
-    let mut input = project(&prog, package, module)?;
-    input.source_fp =
-        ac_sema_contract::identity::domain_hash("ac796/source-fp/v1", &[src.as_bytes()]);
-    Ok(input)
+    parse_into_input_typed(src, package, module, profile).map_err(|e| match e {
+        LanguageDiagnostic::Parse { code, message } => format!("parse: {} ({})", message, code),
+        LanguageDiagnostic::Projection(m) => m,
+    })
 }
 
 /// The old pipeline's verdict for differential cross-checks: accept iff
