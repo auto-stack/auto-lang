@@ -147,6 +147,7 @@ handoff：`D:/autostack/.wt/lang-809/auto-lang`，分支`codex/plan-809-dev`；w
 
 2026-10-18 work T-01 完成：worktree `D:/autostack/.wt/lang-809/auto-lang`（branch `codex/plan-809-dev`，base=master 2046a025b）建立；depends_on 七计划 archived；contract-baseline.md 冻结（读点穷举/归属/兼容/图错误/命令矩阵）。下一 T-02 generation_request 模块。
 2026-10-18 work T-02/T-03 完成：generation_request 模块+consumer（dd4991a7b）；auto-man-core crate+门面委托+probe（bc11055ac）。环境注记：aliyun 镜像索引缺 redox_syscall 0.9.5，重解析经 rsproxy 单次旁路（cargo --config source.aliyun.registry）。
+2026-10-18 work T-04/T-05 完成（5c9eb4fdb/322aa88d1）；T-06a/b 完成（8ee334f90：man-core-consumer 探针 3/3+闭包单证；request_from_pac/apply_evaluated_root 适配器+V-02 完备性 2 测试）。**T-06 未完项（保持 executing，不送审）**：T-06c 生成器读点重接 I-PROJECT（vue/rust_ui/jet/ark from_workspace 签名改造）+ V-05 真实工具 driver（fixtures/plan809 受控三族工程）+ T-07 777/792 登记 + T-08 handoff。下一会话从 T-06c 继续。
 
 ## 10. 待澄清事项
 
