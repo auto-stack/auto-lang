@@ -5,7 +5,7 @@ feature_name: AC 语义元信息与类型推导合同及探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
-updated_at: 2026-10-18
+updated_at: 2026-10-19
 current_step: 7
 total_steps: 9
 supersedes_spec_components:
@@ -165,17 +165,49 @@ work只跑相关定向验收及必要check，不能跑整档。T-06改变crates�
 |---|---|---|---|---|
 | [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/796/contract-decision.md；冻结ref envelope/模型与probe接缝/资源及性能配方；最小语义query首例存盘/重启 | 合法/非法名义ref+一次真实infer/cache；不可行回规划，不能删验收；AC-01–05 |
 | [x] T-02 | work | T-01 | 新contract/src/{identity,metadata,codec}.rs，完整类别矩阵与SCC/typed view | sema_identity_；AC-01 |
-| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | R6 修复：依赖内容版本入键、typed parse 诊断、同 meter 求解计费；见 §9 R6 修复轮 |
-| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R6-01/02/05 闭合：内容版本入键+读侧准入、复用即 root、meter 全路径、SCC 单次分区（136s/1 次） |
-| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | R6-06 闭合：1MiB 参考模块局部编辑经真实 IPC，30 样本 P95 663-690ms；库级报告重生成 |
-| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R6-03/04/07 闭合：Job containment+有界收割、同工具 FRESH/换工具 STALE+混合分族、parse 语言负例正控 |
-| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R6-08/09 闭合：required IDs+selftest 四类负控、报告后置且 raw 重算、触改面 rustfmt clean |
+| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | R7 修复：KeyEnv 有效单元版本 + 保守预算预估；reflect 纳入 scoped fmt；见 §9 R7 修复轮 |
+| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R7-01/02 闭合：有效版本+拓扑入键与读侧闭包准入、唯一入口 root 下当前 required 链存活、前置预留拒绝 20k/30k |
+| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | 修复后重跑：库 P95 21.00ms / 真 IPC P95 758.64ms（1MiB 局部编辑，30 样本）；V-06 8 例含 4096 深链 |
+| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R7-03 闭合：CloseHandle 对齐 isize 声明，警告数回到 411（无新增） |
+| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R7 修复：SD-02/04/07 补有效版本与前置预算断言；R7 永久例绑入 V-03b/V-06；计划新建文件 fmt 全绿 |
 | [ ] T-08 | review | T-07 | 同树独立review，冻结commit/依赖/接口快照，检查遗漏/延期 | AC-07；pass→reviewed=8/9，merge pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交最终门禁，沉淀SD/ledger、归档合入、批量回归到期判定、guard清理；输出D-796消费收据 | AC-08；实际完成9/9 |
 
 D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.ad冒称AutoDown已完成。T-06不自改788在途协议；797不代修796共享接口。范围/预算/类型支持变化回规划修订，旧证据按影响失效。
 
 ## 9. 复审记录
+
+### 2026-10-19 R7 修复轮：work 交接 — execution_done=7/9 复送审
+
+stage:work | plan_id:PLAN-796 | plan_revision:1 | outcome:pass（R7 三项全闭，T-03..T-07 重闭） | worktree_path:D:/autostack/.wt/lang-796/auto-lang | branch:plan-796-dev | base_commit:`d092bca5bb8482596a98c9f7bbc7a068a33e5554` | code_commit:`9b3ddec45701777094f3c3db63a5af45b4b85852`（R7 基线 2e9955635 → 本修复提交） | dependency_revisions: 同 R4–R7 冻结（ac-core `8e01299a…`、783 `d4c37fac…`、syntax `66598596…`、auto-down `c39ac7f9…`） | task_ids:T-03..T-07 | blockers:无 | next_responsible_role:review（T-08 独立复审冻结 `9b3ddec45`）。
+
+**原例闭合 vs 完整不变式闭合（R7 要求的设计/状态矩阵）**
+
+| finding | 原例为何曾闭合 | 完整不变式缺口/根因 | 设计与反控调整 | 本轮结果 |
+|---|---|---|---|---|
+| F-R7-01 依赖闭包 | 直接 B int→bool 变化时 B 的**声明 canonical** 未变但被当作引用版本；键只看到声明层 | 依赖的**有效页身份**（其自身依赖变化、SCC 拓扑变化）未入键；读取只验直接 DeclRef；当前 SCC 仅在 direct key Miss 后计算 | `KeyEnv`：一次 SCC 分区 + 依赖序计算每单元有效版本（成员 canonical + 外部单元有效版本）；RecordFields 键加 `ref-versions-fp`（有效单元版本）与 `unit-topology-fp`；组键=单元有效版本；RecordMeta.group_content/RecGroup.header.content 写同一有效版本；`admit_page` O(1) 比较有效版本+当前成员集；发布循环只建一个 env | 三层叶编辑 A/B/C 全部新 artifact、A 的 required 边指向当前 B；仅 root A 的 GC 后 A/B/C 均当前 Hit；SCC 形成前不复用旧 singleton、形成后返回当前 RecGroup、拆分后返回新 singleton；外部组依赖随族内/族外编辑更新；review graph replay 复现上述结果 |
+| F-R7-02 同时存活内存 | meter 非零、32MiB 小页压力通过 | 64B/节点低估约 10 倍；solve 后立即释放 guard；读后才按 payload 计费；publish 的 facts clone 未计 | solve 前置保守预留（16KiB + 512/语句 + 256/表达式 + 名称字节，全程持有）；publish 在 clone/编码前预留 facts 预估+MAX_PAGE_BODY；cache read 在 `get_artifact` 前预留 3×MAX_PAGE_BODY；超预算=typed ResourceExhausted | review allocator replay：10k 真实 6.58MB / 预留 7.79MB 成功发布；20k（预估 15.59MB）与 30k（23.39MB）在求解/发布前被拒、零发布；新增 10k/20k/长名/读回永久例 |
+| F-R7-03 健康门 | 上一轮仅 touched 文件 fmt 通过 | 计划新建的 reflect.rs/codec.rs 未纳入；CloseHandle 与 stage3 的 isize 声明冲突 | scoped rustfmt 扩大到**本计划所有新建/触改文件**（不整仓）；FFI 声明对齐既有 `isize` 绑定并调整调用点 | 计划文件 `rustfmt --check` 全 0；`cargo check -p auto-lang --features test-cases` 库警告 411（与 R6 相同，无新增）；CLI 构建通过 |
+
+**R7 反例重放（独立复现，证据 [r7-repair](attachments/796/r7-repair/)）**：graph-probes 重链后 `leaf-edit` 当前 A 为新 artifact 且 required 指向当前 B，仅 root A 的 GC 后 B 为当前页；`cycle-forms` GC 前 lookup(A) 返回当前 `RecGroup`（旧 singleton 不再被服务）。memory-probes 表见 README；allocator 仅为复审观测，不作为产品实现。
+
+**验收与回归**：`verify -Scope acceptance` 13 行全 PASS（V-03b 30 执行含 3 项 R7 图闭包例；V-06 8 执行 318.22s 含 4096 深链与 10k/20k/长名/读回；V-07 重算库 P95 21.00ms、真 IPC P95 758.64ms，30 raw + 1MiB 局部编辑）；`-Scope selftest` 5 控制 PASS；`probe_adapter` 17 例、sema workspace 全绿。4096 深链发布 272.09s（debug，66.4ms/记录），SCC 分区 1 次，成本仍归因于 4096 次真实 store publication。**未跑**裸 t/tv/tt/tu/taa/tf（merge-owned）。范围：13 文件提交，全部在计划命名空间/共享语义编辑/报告内，无无关格式化。
+
+**merge-owned pending**（冻结 `9b3ddec45`）：裸 `cargo t`、按最终 diff 的触面档/受影响 788 套件、独立 sema 全套、tf 到期判定、SD 沉淀/ledger/归档/guard。
+
+### 2026-10-19 R7：第三轮完整独立最终复审 — needs_fix
+
+stage:review | review_scope:final | reviewer_identity:Codex，独立于实施、沿用R4/R5/R6历史，无代理 | plan_id:PLAN-796 | plan_revision:1 | outcome:**needs_fix** | worktree_path:D:/autostack/.wt/lang-796/auto-lang | branch:plan-796-dev | reviewed_commit:`2e9955635814a6680ffc531d99aa5339629cb50c` | base_commit:`d092bca5bb8482596a98c9f7bbc7a068a33e5554`。
+
+[完整报告/AC-SD/旧例与完整不变式/重放](attachments/796/review-r7/review.md)；[基线和依赖/Spec输入hash](attachments/796/review-r7/baseline.json.txt)；[冻结delta](attachments/796/review-r7/spec-delta-frozen.md)。入场clean、HEAD/依赖全程不变；验收仅重写三个报告，committed入场与after副本均留存。D-788证据继续有效，未改实施/规范/ledger、未合入。
+
+R6根因及覆盖调整表已交，故本轮完成完整复审。统一acceptance **PASS**，100个不同定向Rust测试（重复不另计）；V06压力5项214.08s完成；1MiB真实IPC 30样本P95 **665.44ms**、库级P95 **6.69ms**。真实负控制：跳过两项必需CT后13passed仍被拒绝，零选择/缺目标/真实断言红均拒绝。未运行整档t/tv/tt/tu/taa/tf。
+
+旧例关闭：组内编辑/直接依赖版本更新、复用root保活、父Job收割继承管道后代（同一relay由61.579s变0.146s）、未变FRESH/换工具STALE及混合分族、typed parse负例、真实1MiB IPC硬门、验收必需身份。不能据此宣称完整不变式全部闭合。
+
+当前开放：**F-796-R7-01(P1)** 三层A→B→C仅C改类型，A仍复用旧required边；仅root A再GC，A Hit而当前B Miss；C改为回指A形成SCC后，当前A查询仍先返回旧singleton。**F-796-R7-02(P1)** 预算虽然接线但少计并提前释放：20k声明查询成功发布，新增Rust活堆峰值13,199,113bytes而meter仅2,561,152；30k达18,583,465而meter3,841,152、零拒绝，末尾才codec超页。**F-796-R7-03(P3)** 本计划新建reflect/codec仍fmt失败，新增CloseHandle FFI声明冲突使警告由411增412。对应R6-01/02/05/09完整不变式仍partial/open，均合同内缺口，不批准延期。
+
+acceptance_results:AC01 partial，AC02 pass（有限profile），AC03 fail，AC04 pass（参考负载），AC05 pass（接线/判定面），AC06 partial，AC07 fail，AC08 pending；SD02/04强断言不批准沉淀，SD07/08修复路径已验证，详见报告。next:原树work修复三项并提交，补齐SCC/有效依赖artifact及内存存活窗的完整不变式设计/反控后复审。保留T01/T02，重开T03..07与依赖证据，**executing 2/9**。merge-owned冻结裸t/适用tv/tt/独立sema及788套件、tf到期判定、规范/ledger/归档/guard全部pending。
 
 ### 2026-10-18 R6：第二轮完整独立最终复审 — needs_fix
 
@@ -353,4 +385,4 @@ next: work 于同树修复 F01–13并提交，附根因/不变式/永久反例/
 
 **最新R5：needs_fix，2/9**。上方R4与work修复轮收据为历史；本轮F06未闭、F07组路径延期未经批准及F13/范围交接缺口见§9 R5，补齐后再进入完整最终复审。
 
-**最新（R6 修复轮）：execution_done，7/9，待 T-08 独立复审冻结 `2e9955635`**。R6 九项 finding 已按上方闭合表修复并重放；根因/覆盖调整表与闭合表见 §9。验收 PASS 只代表 work/review 面（含 V-07 重算硬门与 selftest），merge-owned 裸 t/触面档/独立 sema/788 套件/tf/规范沉淀/归档/guard 全部 pending。不要把历史 R4/R5/R6 needs_fix 收据当作当前状态。
+**最新（R7 修复轮）：execution_done，7/9，待 T-08 独立复审冻结 `9b3ddec45`**。R7 三项（依赖有效版本/SCC 载体、同时存活内存前置预留、健康门）已修复并重放；原例 vs 完整不变式矩阵、review 反例重放见 §9。验收 PASS 只代表 work/review 面（含 V-07 重算硬门与 selftest），merge-owned 裸 t/触面档/独立 sema/788 套件/tf/规范沉淀/归档/guard 全部 pending。不要把历史 R4/R5/R6/R7 needs_fix 收据当作当前状态。
