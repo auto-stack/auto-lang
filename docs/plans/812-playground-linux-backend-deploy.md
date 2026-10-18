@@ -1,9 +1,9 @@
 ---
 plan_id: PLAN-812
-status: drafting               # drafting → executing → execution_done → reviewed → archived
+status: execution_done
 feature_name: playground-linux-backend-deploy
 author: [Codex]
-plan_revision: 1
+plan_revision: 2
 created_at: 2026-10-19
 updated_at: 2026-10-19
 
@@ -13,7 +13,7 @@ new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
-current_step: 0
+current_step: 2
 total_steps: 4
 ---
 
@@ -38,7 +38,7 @@ Rust/Cargo、Axum、Ubuntu 22.04 WSL、Linux x86_64、systemd、HTTPS API 与浏
 ## 4. 需求分析与背景调查
 
 - 规范来源：docs/specs/overview.md、docs/specs/auto-playground/project.md、docs/specs/website/project.md。
-- 用户已授权重新部署后台，并提供现有 sudo 凭据。凭据仅经进程输入使用，不入计划/日志/发布包。尚待确认本计划的两文件源码修复。
+- 用户已授权重新部署后台，并于 2026-10-19 明确确认“修复并继续部署”本计划两文件修复。现有 sudo 凭据仅经进程输入使用，不入计划/日志/发布包。
 - 线上 /api/run 缺 bytecode/meta，/api/trans 返回旧 code；当前 usePlaygroundFull.ts 消费 bytecode/meta 和 files[].code。本地当前源码已验证 stdout=7、bytecode 非空、Rust files=1。scripts/deploy-website.ps1 仅部署静态前端。
 - 生产旧程序与 unit 已备份到 /var/backups/auto-playground/20261019-687efdd35；旧服务持续运行，尚未切换。
 - Linux 原构建 53 个错误：a2r-std 被放在 cfg(windows) 依赖段。独立 fix-playground-linux-build worktree 已做最小试修，未提交/合入/部署；Windows cargo check 在途。
@@ -77,15 +77,17 @@ Rust/Cargo、Axum、Ubuntu 22.04 WSL、Linux x86_64、systemd、HTTPS API 与浏
 
 ## 8. 执行步骤
 
-- [ ] T-01 (work; AC-01): 确认计划后承接工作目录，完成 Cargo.toml/transport.rs 最小修复、双平台定向检查并提交。
-- [ ] T-02 (work; AC-02): Linux release 与资源包冻结，在本地 Linux 启动、smoke，准备失败回滚脚本。
+- [x] T-01 (work; AC-01): 确认计划后承接工作目录，完成 Cargo.toml/transport.rs 最小修复、双平台定向检查并提交。[✅] Windows check pass（409 既有警告）；transport 定向 9/9；Linux release pass（3m44s，268 既有 lib 警告+后台 1 项既有字段警告）；rustfmt 与 diff check pass。实现 e7177e3fa → b2a75c1c2d3f83068b2d262d1448245292326c6c，rebase 仅同步主分支文档簿记，range-diff 1/1 完全等价；依赖 c39ac7f。
+- [x] T-02 (work; AC-02, AC-03): Linux release 与资源包冻结，在本地 Linux 启动、smoke；使用已批准的回滚脚本部署，核验公网与浏览器。[✅] 发布二进制 847132bb...a71b11；最终包 cf13cb38...5fc390；本地隔离包/服务器/公网 HTTPS 均通过（1343 examples、stdout=7、15 条 bytecode/meta、五种 trans、多模块 greet）。线上 Run/Trans 两右窗已实点验证，截图已入证据。首次漏带 stdlib 自动回滚已验证，补齐后成功部署。源码基线 7cab6ca2b7498c5a8ef28e070f8d107267ac18c9；详见 attachments/812/verification.md。
 - [ ] T-03 (review; AC-04): 明确冻结基线，重查差异、验收与 SD-01，记录 merge-owned 门禁 pending。
-- [ ] T-04 (merge/work; AC-03, AC-05): 审查后统一门禁；部署已授权后台并公网/浏览器核验；通过后沉淀、归档、guard 清理。线上失败先恢复旧服务。
+- [ ] T-04 (merge; AC-05): 完成所有 work 验收并最终复审后统一执行 merge-owned 门禁，合入、沉淀、归档和 guard 清理。
 
 ## 9. 复审记录
+
+2026-10-19: 用户明确批准 r1。r2 仅修正任务时序：线上验收 AC-03 属 work，须在最终复审前完成，避免原 T-04 同时承载 work 验收和 review 后收尾的循环依赖。目标、修复范围、门槛及部署授权不变，继承已有授权；实现文件两处，另准备 SD-01 与可重放 smoke/install 证据。
 
 2026-10-19: stage=new; revision=1; outcome=pass (contract ready); next=用户确认源码修复范围后 work。本记录不表示源码修复已获计划确认；旧服务继续运行。
 
 ## 10. 待澄清事项
 
-待用户确认：是否同意先完成上述两处最小 Linux 声明修复，再继续已授权的后台部署？
+用户已确认全部范围，无待决审批。源码修复、双平台验证、部署与验收继续自主执行。
