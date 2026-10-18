@@ -47,6 +47,9 @@ pub enum PageKind {
     ModuleIndex = 4,
     /// Cached query result + dependency manifest ([`CachedResult`]).
     CachedResult = 5,
+    /// A whole RECURSIVE GROUP (SCC) of record shapes published as one
+    /// unit (PLAN-796 §5.1: indirect refs compose verifiable groups).
+    RecGroup = 6,
 }
 
 impl PageKind {
@@ -57,6 +60,7 @@ impl PageKind {
             3 => PageKind::InferBody,
             4 => PageKind::ModuleIndex,
             5 => PageKind::CachedResult,
+            6 => PageKind::RecGroup,
             _ => return Err(CodecError::BadTag("page-kind", v)),
         })
     }
@@ -353,6 +357,10 @@ pub enum PageBody {
     InferBody(InferFacts),
     ModuleIndex(ModuleIndex),
     CachedResult(CachedResult),
+    /// The member shapes of one recursive group, in a canonical
+    /// (sorted-by-logical) order; the header content version is the
+    /// group content version (member-order free).
+    RecGroup(Vec<RecordShape>),
 }
 
 /// Byte-level TypeDesc encode (public seam for tests/tools).
@@ -1070,6 +1078,15 @@ pub fn encode_page(page: &SemaPage) -> Result<Vec<u8>, CodecError> {
             body.push(5);
             encode_cached(&mut body, c)?;
         }
+        PageBody::RecGroup(members) => {
+            body.push(6);
+            let mut sorted = members.clone();
+            sorted.sort_by(|a, b| a.decl.logical.cmp(&b.decl.logical));
+            write_u32(&mut body, sorted.len() as u32);
+            for m in &sorted {
+                encode_shape(&mut body, m)?;
+            }
+        }
     }
     if body.len() > MAX_PAGE_BODY {
         return Err(CodecError::TooLarge {
@@ -1145,6 +1162,14 @@ pub fn decode_page(bytes: &[u8]) -> Result<SemaPage, CodecError> {
         PageKind::InferBody => PageBody::InferBody(decode_inferfacts(&mut bcur)?),
         PageKind::ModuleIndex => PageBody::ModuleIndex(decode_index(&mut bcur)?),
         PageKind::CachedResult => PageBody::CachedResult(decode_cached(&mut bcur)?),
+        PageKind::RecGroup => {
+            let n = bcur.vec_len("members", "recgroup")?;
+            let mut members = Vec::with_capacity(n);
+            for _ in 0..n {
+                members.push(decode_shape(&mut bcur)?);
+            }
+            PageBody::RecGroup(members)
+        }
     };
     bcur.done()?;
     cur.done()?;
@@ -1214,6 +1239,13 @@ impl<'a> PageView<'a> {
                 "page-kind-for-infer",
                 self.page.header.kind as u8,
             )),
+        }
+    }
+
+    pub fn try_as_rec_group(&self) -> Result<&'a [RecordShape], CodecError> {
+        match &self.page.body {
+            PageBody::RecGroup(m) => Ok(m),
+            _ => Err(CodecError::BadTag("page-kind-for-recgroup", self.page.header.kind as u8)),
         }
     }
 

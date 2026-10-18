@@ -176,22 +176,18 @@ mod tests {
     #[test]
     fn test_encode_decode_roundtrip() {
         let cases: Vec<(Vec<ShimType>, ShimType)> = vec![
-            (vec![], ShimType::I64),                             // () → i64
-            (vec![ShimType::CString], ShimType::CString),        // String → String
+            (vec![], ShimType::I64),                          // () → i64
+            (vec![ShimType::CString], ShimType::CString),     // String → String
             (vec![ShimType::I64, ShimType::I64], ShimType::I64), // (i64,i64) → i64
-            (vec![ShimType::CString], ShimType::I32),            // String → i32
-            (vec![], ShimType::Void),                            // () → void
-            (vec![ShimType::Bool], ShimType::Bool),              // bool → bool
+            (vec![ShimType::CString], ShimType::I32),         // String → i32
+            (vec![], ShimType::Void),                          // () → void
+            (vec![ShimType::Bool], ShimType::Bool),           // bool → bool
         ];
 
         for (params, ret) in cases {
             let sig_code = encode_sig(&params, ret);
             let (decoded_params, decoded_ret) = decode_sig(&sig_code);
-            assert_eq!(
-                decoded_params, params,
-                "params mismatch for sig_code: {}",
-                sig_code
-            );
+            assert_eq!(decoded_params, params, "params mismatch for sig_code: {}", sig_code);
             assert_eq!(decoded_ret, ret, "ret mismatch for sig_code: {}", sig_code);
         }
     }

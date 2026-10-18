@@ -42,8 +42,8 @@ pub mod ac;
 mod ac_protocol;
 pub mod avm;
 pub mod materialize;
-pub mod sema;
 pub mod stale;
+pub mod sema;
 
 /// A language failure observed at a production stage boundary (Plan 773
 /// F-08): the stage is derived from the ERROR TYPE (and, for run-stage

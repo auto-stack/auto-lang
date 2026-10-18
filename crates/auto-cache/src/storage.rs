@@ -9,8 +9,8 @@
 // - Automatic directory creation
 
 use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
+use std::io;
 
 /// BlobStore-specific result type
 pub type Result<T> = std::result::Result<T, Error>;
@@ -67,7 +67,10 @@ impl BlobStore {
     /// Hash "f9e8d7c6..." -> "root/blobs/f9/f9e8d7c6..."
     fn hash_to_path(&self, hash: &str) -> PathBuf {
         let prefix = &hash[0..2.min(hash.len())];
-        self.root.join("blobs").join(prefix).join(hash)
+        self.root
+            .join("blobs")
+            .join(prefix)
+            .join(hash)
     }
 
     /// Store blob from source file
@@ -150,11 +153,7 @@ impl BlobStore {
         // Try hard link first (zero-copy)
         match fs::hard_link(&source, target) {
             Ok(_) => {
-                log::debug!(
-                    "Created hard link: {} -> {}",
-                    source.display(),
-                    target.display()
-                );
+                log::debug!("Created hard link: {} -> {}", source.display(), target.display());
                 Ok(())
             }
             Err(e) => {

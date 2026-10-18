@@ -11,10 +11,7 @@
 // This module provides the integration layer between AutoCache
 // and the AutoMan build system (and transpilers).
 
-use crate::{
-    AieBridge, ArtifactMetadata, ArtifactType, AutoCache, CompilationTarget, HashUtils,
-    IntegrityReport,
-};
+use crate::{AutoCache, ArtifactMetadata, ArtifactType, CompilationTarget, AieBridge, IntegrityReport, HashUtils};
 use std::path::{Path, PathBuf};
 
 /// AutoMan cache manager
@@ -140,12 +137,8 @@ impl AutoManCache {
         // Store in cache
         self.cache.put(&cache_key, artifact_path, &metadata)?;
 
-        log::info!(
-            "[Cache Store] {} ({}, {} bytes)",
-            module_name,
-            artifact_type,
-            file_size
-        );
+        log::info!("[Cache Store] {} ({}, {} bytes)",
+                  module_name, artifact_type, file_size);
 
         Ok(())
     }
@@ -182,26 +175,17 @@ impl AutoManCache {
             // Try to create hard link
             match std::fs::hard_link(&blob_path, output_path) {
                 Ok(_) => {
-                    log::info!(
-                        "[Cache Link] {} -> {} (hard link)",
-                        blob_path.display(),
-                        output_path.display()
-                    );
+                    log::info!("[Cache Link] {} -> {} (hard link)",
+                              blob_path.display(), output_path.display());
                     return Ok(true);
                 }
                 Err(_) => {
                     // Cross-device or other error: fall back to copy
-                    log::debug!(
-                        "[Cache Link] Hard link failed, copying: {} -> {}",
-                        blob_path.display(),
-                        output_path.display()
-                    );
+                    log::debug!("[Cache Link] Hard link failed, copying: {} -> {}",
+                               blob_path.display(), output_path.display());
                     std::fs::copy(&blob_path, output_path)?;
-                    log::info!(
-                        "[Cache Link] {} -> {} (copy)",
-                        blob_path.display(),
-                        output_path.display()
-                    );
+                    log::info!("[Cache Link] {} -> {} (copy)",
+                              blob_path.display(), output_path.display());
                     return Ok(true);
                 }
             }
@@ -239,12 +223,7 @@ impl AutoManCache {
         // Combine module name, artifact type, and target hash
         // This ensures the same module can have different cached artifacts
         // for different output types (C, Rust, Bytecode)
-        format!(
-            "{}_{}_{}",
-            safe_module_name,
-            artifact_type,
-            fp.target_hash()
-        )
+        format!("{}_{}_{}", safe_module_name, artifact_type, fp.target_hash())
     }
 
     /// Check if garbage collection is needed
@@ -268,11 +247,7 @@ impl AutoManCache {
     }
 
     /// List all artifacts with optional filtering
-    pub fn list_artifacts(
-        &self,
-        type_filter: Option<ArtifactType>,
-        limit: usize,
-    ) -> Result<Vec<ArtifactMetadata>, CacheError> {
+    pub fn list_artifacts(&self, type_filter: Option<ArtifactType>, limit: usize) -> Result<Vec<ArtifactMetadata>, CacheError> {
         self.cache.list_artifacts(type_filter, limit)
     }
 
@@ -326,17 +301,14 @@ mod tests {
         let interface_hash = [42u8; 32];
         let target = CompilationTarget::current();
 
-        let key1 =
-            cache.generate_cache_key("std:io", interface_hash, ArtifactType::TranspiledC, &target);
-        let key2 =
-            cache.generate_cache_key("std:io", interface_hash, ArtifactType::TranspiledC, &target);
+        let key1 = cache.generate_cache_key("std:io", interface_hash, ArtifactType::TranspiledC, &target);
+        let key2 = cache.generate_cache_key("std:io", interface_hash, ArtifactType::TranspiledC, &target);
 
         // Same inputs should produce same key
         assert_eq!(key1, key2);
 
         // Different module names should produce different keys
-        let key3 =
-            cache.generate_cache_key("std:fs", interface_hash, ArtifactType::TranspiledC, &target);
+        let key3 = cache.generate_cache_key("std:fs", interface_hash, ArtifactType::TranspiledC, &target);
         assert_ne!(key1, key3);
 
         // Cleanup
@@ -355,8 +327,7 @@ mod tests {
         // Create test artifact file
         let artifact_path = temp_dir.join("test_artifact.c");
         let mut file = std::fs::File::create(&artifact_path).unwrap();
-        file.write_all(b"// Generated C code\nint main() { return 0; }")
-            .unwrap();
+        file.write_all(b"// Generated C code\nint main() { return 0; }").unwrap();
 
         // Store artifact
         let result = cache.store_transpiled(
@@ -397,15 +368,13 @@ mod tests {
         file.write_all(b"int test() { return 42; }").unwrap();
 
         // Store artifact
-        cache
-            .store_transpiled(
-                "link_test",
-                interface_hash,
-                &artifact_path,
-                ArtifactType::TranspiledC,
-                &target,
-            )
-            .unwrap();
+        cache.store_transpiled(
+            "link_test",
+            interface_hash,
+            &artifact_path,
+            ArtifactType::TranspiledC,
+            &target,
+        ).unwrap();
 
         // Test get_or_link
         let output_path = temp_dir.join("linked.c");

@@ -184,6 +184,10 @@ impl CtRequest {
 
     /// Admission: reject schema drift, Unknown/unsolved type references
     /// and (structurally) non-portable inputs before any producer runs.
+    /// Admission (F-796-R4-06 complete): reject schema drift and
+    /// Unknown/unsolved markers ANYWHERE in the arguments — including
+    /// inside Mode wrappers and Fn parameter/result positions — before
+    /// any producer runs.
     pub fn admit(&self) -> Result<(), CtAdmission> {
         if self.schema != CT_SEAM_SCHEMA {
             return Err(CtAdmission::WrongSchema {
@@ -192,11 +196,7 @@ impl CtRequest {
             });
         }
         for a in &self.args {
-            if let PortableValue::TypeRef(TypeDesc::Opaque { name }) = a {
-                if name.starts_with('?') {
-                    return Err(CtAdmission::UnknownValue);
-                }
-            }
+            admit_portable_value(a)?;
         }
         Ok(())
     }
@@ -215,6 +215,9 @@ pub enum CtAdmission {
     CyclicRequest {
         chain: Vec<String>,
     },
+    /// F-796-R4-06: a MODEL producer minted a vm_execute marking — the
+    /// real AVM path owns that marking exclusively.
+    VmExecuteFromModel,
 }
 
 impl std::fmt::Display for CtAdmission {
@@ -233,6 +236,9 @@ impl std::fmt::Display for CtAdmission {
             }
             CtAdmission::CyclicRequest { chain } => {
                 write!(f, "cyclic ct request chain: {}", chain.join(" -> "))
+            }
+            CtAdmission::VmExecuteFromModel => {
+                write!(f, "model producer minted a vm_execute marking (AVM path only)")
             }
         }
     }
@@ -296,6 +302,74 @@ impl RuntimeProjectionPolicy {
     }
 }
 
+/// Recursive portable-value admission (F-796-R4-06): Unknown markers
+/// are rejected ANYWHERE in the value — including inside Mode wrappers
+/// and Fn parameter/result positions — never only at the top level.
+pub fn admit_portable_value(v: &PortableValue) -> Result<(), CtAdmission> {
+    match v {
+        PortableValue::Unit
+        | PortableValue::I32(_)
+        | PortableValue::Bool(_)
+        | PortableValue::Text(_) => Ok(()),
+        PortableValue::TypeRef(t) => admit_typedesc(t),
+    }
+}
+
+/// Recursive TypeDesc admission, ITERATIVE (nesting is bounded by the
+/// codec cap, but the walk never recurses natively).
+pub fn admit_typedesc(t: &TypeDesc) -> Result<(), CtAdmission> {
+    let mut stack: Vec<&TypeDesc> = vec![t];
+    while let Some(node) = stack.pop() {
+        match node {
+            TypeDesc::Opaque { name } => {
+                if name.starts_with('?') {
+                    return Err(CtAdmission::UnknownValue);
+                }
+            }
+            TypeDesc::Fn { params, ret } => {
+                stack.push(ret);
+                for p in params {
+                    stack.push(p);
+                }
+            }
+            TypeDesc::Mode { inner, .. } => stack.push(inner),
+            // nominal refs are indirect — the target's own admission
+            // happens at page level; the reference itself is portable
+            TypeDesc::Record { .. }
+            | TypeDesc::Unit
+            | TypeDesc::I32
+            | TypeDesc::U32
+            | TypeDesc::I64
+            | TypeDesc::U64
+            | TypeDesc::F64
+            | TypeDesc::Bool
+            | TypeDesc::Char
+            | TypeDesc::ByteBuffer => {}
+        }
+    }
+    Ok(())
+}
+
+impl CtResult {
+    /// Model-producer RESULT admission (F-796-R4-06): the schema must
+    /// match, every carried value must be portable (recursively — no
+    /// Unknown anywhere), and the marking must be `model_compute` — a
+    /// MODEL producer can never mint `vm_execute`.
+    pub fn admit_as_model(&self) -> Result<(), CtAdmission> {
+        if self.schema != CT_SEAM_SCHEMA {
+            return Err(CtAdmission::WrongSchema {
+                expected: CT_SEAM_SCHEMA,
+                found: self.schema,
+            });
+        }
+        admit_portable_value(&self.value)?;
+        if self.marking != ComputeMarking::ModelCompute {
+            return Err(CtAdmission::VmExecuteFromModel);
+        }
+        Ok(())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // model CT producer (§5.3: 显式模型 producer 测试缓存/依赖环)
 // ---------------------------------------------------------------------------
@@ -336,7 +410,12 @@ impl ModelCt {
         self.chain.push(req.callee.clone());
         let result = body(req, self);
         self.chain.pop();
-        result
+        // F-796-R4-06: the callback's RESULT is admitted like the
+        // request — wrong schema, non-portable/Unknown values and a
+        // vm_execute marking from a MODEL producer are all rejected
+        let result = result?;
+        result.admit_as_model()?;
+        Ok(result)
     }
 
     /// Directly fold i32 constants (the simplest model producer): sums
@@ -415,6 +494,142 @@ mod tests {
             CtResult::model(PortableValue::Unit, vec![]).marking,
             ComputeMarking::ModelCompute
         );
+    }
+
+
+    /// F-796-R4-06: Unknown markers are rejected ANYWHERE in the value
+    /// — nested inside Mode wrappers and Fn parameter/result positions.
+    #[test]
+    fn meta_query_ct_nested_unknown_rejected_everywhere() {
+        use ac_sema_contract::{Mode, TypeDesc};
+        // Mode(View, Opaque("?unsolved"))
+        let nested_mode = CtRequest::new(
+            "tpl/m",
+            vec![PortableValue::TypeRef(
+                TypeDesc::Opaque { name: "?unsolved".into() }.with_mode(Mode::View),
+            )],
+            vec![],
+        );
+        assert!(matches!(nested_mode.admit(), Err(CtAdmission::UnknownValue)));
+
+        // Fn param carrying a Mode-wrapped Unknown
+        let nested_fn_param = CtRequest::new(
+            "tpl/f",
+            vec![PortableValue::TypeRef(TypeDesc::Fn {
+                params: vec![TypeDesc::Opaque { name: "?x".into() }.with_mode(Mode::Mut)],
+                ret: Box::new(TypeDesc::I32),
+            })],
+            vec![],
+        );
+        assert!(matches!(nested_fn_param.admit(), Err(CtAdmission::UnknownValue)));
+
+        // Unknown in the Fn RESULT position
+        let nested_fn_ret = CtRequest::new(
+            "tpl/f",
+            vec![PortableValue::TypeRef(TypeDesc::Fn {
+                params: vec![TypeDesc::I32],
+                ret: Box::new(TypeDesc::Opaque { name: "?r".into() }),
+            })],
+            vec![],
+        );
+        assert!(matches!(nested_fn_ret.admit(), Err(CtAdmission::UnknownValue)));
+
+        // LEGAL nesting still passes: Mode(Owned, Fn(i32) -> Record ref)
+        let legal = CtRequest::new(
+            "tpl/ok",
+            vec![PortableValue::TypeRef(
+                TypeDesc::Fn {
+                    params: vec![TypeDesc::I32],
+                    ret: Box::new(TypeDesc::Record {
+                        decl: ac_sema_contract::DeclRef::new(
+                            &ac_sema_contract::PackageId::new("p"),
+                            "m",
+                            ac_sema_contract::DeclKind::Record,
+                            "T",
+                            ac_sema_contract::ContentVersion::of_canonical(b"c"),
+                        ),
+                    }),
+                }
+                .with_mode(Mode::Owned),
+            )],
+            vec![],
+        );
+        assert!(legal.admit().is_ok());
+    }
+
+    /// F-796-R4-06: the MODEL producer's RESULT is admitted — wrong
+    /// schema, Unknown values and vm_execute markings are all rejected.
+    #[test]
+    fn meta_query_ct_model_result_admission() {
+        use crate::reflect::ComputeMarking as M;
+        use ac_sema_contract::TypeDesc;
+        // wrong schema in the result
+        let bad_schema = CtResult {
+            schema: "ac796/wrong/v9",
+            value: PortableValue::I32(1),
+            marking: M::ModelCompute,
+            deps: vec![],
+        };
+        assert!(matches!(bad_schema.admit_as_model(), Err(CtAdmission::WrongSchema { .. })));
+
+        // Unknown value in the result
+        let unknown_val = CtResult {
+            schema: CT_SEAM_SCHEMA,
+            value: PortableValue::TypeRef(TypeDesc::Opaque { name: "?unsolved".into() }),
+            marking: M::ModelCompute,
+            deps: vec![],
+        };
+        assert!(matches!(unknown_val.admit_as_model(), Err(CtAdmission::UnknownValue)));
+
+        // vm_execute minted by a MODEL producer — reserved for AVM
+        let vm_marked = CtResult {
+            schema: CT_SEAM_SCHEMA,
+            value: PortableValue::I32(2),
+            marking: M::VmExecute,
+            deps: vec![],
+        };
+        assert!(matches!(vm_marked.admit_as_model(), Err(CtAdmission::VmExecuteFromModel)));
+
+        // the legal model result passes
+        let ok = CtResult::model(PortableValue::I32(3), vec![]);
+        assert!(ok.admit_as_model().is_ok());
+
+        // and evaluate() enforces the same on CALLBACK results: each
+        // fault class is rejected at the scheduler boundary
+        for fault in 0..3 {
+            let mut ct = ModelCt::new();
+            let req = CtRequest::new("tpl/c", vec![], vec![]);
+            let out = ct.evaluate(&req, |_r, _| {
+                Ok(match fault {
+                    0 => CtResult {
+                        schema: "ac796/wrong/v9",
+                        value: PortableValue::Unit,
+                        marking: M::ModelCompute,
+                        deps: vec![],
+                    },
+                    1 => CtResult {
+                        schema: CT_SEAM_SCHEMA,
+                        value: PortableValue::TypeRef(TypeDesc::Opaque { name: "?u".into() }),
+                        marking: M::ModelCompute,
+                        deps: vec![],
+                    },
+                    _ => CtResult {
+                        schema: CT_SEAM_SCHEMA,
+                        value: PortableValue::Unit,
+                        marking: M::VmExecute,
+                        deps: vec![],
+                    },
+                })
+            });
+            assert!(out.is_err(), "fault {fault} must be rejected at the model boundary");
+        }
+        // the legal callback result still flows
+        let mut ct = ModelCt::new();
+        let req = CtRequest::new("tpl/ok", vec![PortableValue::I32(4)], vec![]);
+        let out = ct
+            .evaluate(&req, |r, _| ModelCt::fold_i32_sum(r))
+            .unwrap();
+        assert!(matches!(out.value, PortableValue::I32(4)));
     }
 
     #[test]

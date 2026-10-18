@@ -104,8 +104,8 @@ pub fn collect_proposals(
                     )
                 })?;
             // Old side: re-resolve the oracle sidecar through full admission.
-            let oracle =
-                resolve_oracle(&r.case_id, check, &loaded.fixture_base, limits).map_err(|e| {
+            let oracle = resolve_oracle(&r.case_id, check, &loaded.fixture_base, limits)
+                .map_err(|e| {
                     format!(
                         "proposal: oracle resolution for {}/{}: {}",
                         r.case_id, r.check_id, e

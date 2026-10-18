@@ -19,19 +19,19 @@
 // └── locks/           # Process locks
 
 // Plan 092: Rust FFI Sandbox
-pub mod registry;
 pub mod sandbox;
+pub mod registry;
 
 // Plan 212 Phase 3C-v2: sig_code encoding for FFI signatures
-pub mod scanner;
 pub mod sig_code;
+pub mod scanner;
 
 // Plan 430 C2: 三方 crate 方法 shim 包(nightly rustdoc 提取 → 生成 → cdylib 编译)
 pub mod methods_pack;
 
 // Re-export main types for convenience
-pub use registry::{CrateRegistry, RegistryError};
 pub use sandbox::{CrateMetadata, CrateSource, DepSource, Sandbox, SandboxError};
+pub use registry::{CrateRegistry, RegistryError};
 
 use rusqlite::Connection;
 use std::path::{Path, PathBuf};
@@ -45,38 +45,38 @@ use thiserror::Error;
 pub struct AutoCache {
     db: Arc<Mutex<Connection>>,
     blobs: BlobStore,
-    _gc: GarbageCollector, // Stored for future use
+    _gc: GarbageCollector,  // Stored for future use
     max_size_gb: u64,
 }
 
 /// Artifact metadata stored in SQLite
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ArtifactMetadata {
-    pub hash_key: String, // SHA256 hex (primary key)
+    pub hash_key: String,        // SHA256 hex (primary key)
     pub blob_path: PathBuf,
     pub artifact_type: ArtifactType,
     pub file_size: u64,
-    pub created_at: u64,   // UNIX timestamp
-    pub last_used_at: u64, // UNIX timestamp
+    pub created_at: u64,         // UNIX timestamp
+    pub last_used_at: u64,       // UNIX timestamp
     pub access_count: u64,
-    pub source_hash: String,  // AIE interface hash
-    pub project_name: String, // Origin project
-    pub module_name: String,  // Origin module
+    pub source_hash: String,      // AIE interface hash
+    pub project_name: String,    // Origin project
+    pub module_name: String,     // Origin module
 }
 
 /// Type of compiled artifact
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[repr(i32)]
 pub enum ArtifactType {
-    TranspiledC = 0,       // .c files from a2c
-    TranspiledCHeader = 1, // .h files from a2c
-    TranspiledRust = 2,    // .rs files from a2r
-    Bytecode = 3,          // .bc files from AutoVM
-    CompiledObject = 4,    // .o/.obj files from C compilation
+    TranspiledC = 0,        // .c files from a2c
+    TranspiledCHeader = 1,  // .h files from a2c
+    TranspiledRust = 2,     // .rs files from a2r
+    Bytecode = 3,           // .bc files from AutoVM
+    CompiledObject = 4,     // .o/.obj files from C compilation
 
     // Plan 092: Rust FFI Sandbox
-    RustCrateLibrary = 5, // Compiled .so/.dylib/.dll
-    RustCrateSource = 6,  // Source tarball (.crate)
+    RustCrateLibrary = 5,   // Compiled .so/.dylib/.dll
+    RustCrateSource = 6,    // Source tarball (.crate)
 }
 
 /// Cache integrity verification report
@@ -146,9 +146,8 @@ impl AutoCache {
     /// - Blob storage directories
     pub fn new(cache_dir: PathBuf) -> Result<Self> {
         // Ensure cache directory exists
-        std::fs::create_dir_all(&cache_dir).map_err(|e| {
-            CacheError::CacheDir(format!("Failed to create cache directory: {}", e))
-        })?;
+        std::fs::create_dir_all(&cache_dir)
+            .map_err(|e| CacheError::CacheDir(format!("Failed to create cache directory: {}", e)))?;
 
         // Initialize SQLite database
         let db_path = cache_dir.join("index.db");
@@ -205,12 +204,7 @@ impl AutoCache {
     /// * `hash_key` - Cache key (SHA256 hex)
     /// * `source_path` - Path to artifact file to cache
     /// * `metadata` - Artifact metadata
-    pub fn put(
-        &self,
-        hash_key: &str,
-        source_path: &Path,
-        metadata: &ArtifactMetadata,
-    ) -> Result<()> {
+    pub fn put(&self, hash_key: &str, source_path: &Path, metadata: &ArtifactMetadata) -> Result<()> {
         // Store blob in filesystem (atomic write with temp + rename)
         let blob_path = self.blobs.put(hash_key, source_path)?;
 
@@ -236,12 +230,8 @@ impl AutoCache {
             ],
         )?;
 
-        log::info!(
-            "Cached artifact: {} (type: {:?}, size: {} bytes)",
-            hash_key,
-            metadata.artifact_type,
-            metadata.file_size
-        );
+        log::info!("Cached artifact: {} (type: {:?}, size: {} bytes)",
+                   hash_key, metadata.artifact_type, metadata.file_size);
 
         Ok(())
     }
@@ -258,10 +248,7 @@ impl AutoCache {
 
         // Remove metadata
         let conn = self.db.lock().unwrap();
-        conn.execute(
-            "DELETE FROM artifacts WHERE hash_key = ?1",
-            rusqlite::params![hash_key],
-        )?;
+        conn.execute("DELETE FROM artifacts WHERE hash_key = ?1", rusqlite::params![hash_key])?;
 
         log::info!("Removed cached artifact: {}", hash_key);
         Ok(())
@@ -287,9 +274,8 @@ impl AutoCache {
         conn.query_row(
             "SELECT COALESCE(SUM(file_size), 0) FROM artifacts",
             [],
-            |row| row.get(0),
-        )
-        .unwrap_or(0)
+            |row| row.get(0)
+        ).unwrap_or(0)
     }
 
     /// Get current cache size in GB
@@ -304,42 +290,39 @@ impl AutoCache {
         // because they also acquire self.db.lock(), and Rust's Mutex is non-reentrant.
         let conn = self.db.lock().unwrap();
 
-        let count: u64 = conn
-            .query_row("SELECT COUNT(*) FROM artifacts", [], |row| row.get(0))
-            .unwrap_or(0);
+        let count: u64 = conn.query_row(
+            "SELECT COUNT(*) FROM artifacts",
+            [],
+            |row| row.get(0)
+        ).unwrap_or(0);
 
-        let size_bytes: u64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(file_size), 0) FROM artifacts",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let size_bytes: u64 = conn.query_row(
+            "SELECT COALESCE(SUM(file_size), 0) FROM artifacts",
+            [],
+            |row| row.get(0)
+        ).unwrap_or(0);
 
-        let total_accesses: u64 = conn
-            .query_row(
-                "SELECT COALESCE(SUM(access_count), 0) FROM artifacts",
-                [],
-                |row| row.get(0),
-            )
-            .unwrap_or(0);
+        let total_accesses: u64 = conn.query_row(
+            "SELECT COALESCE(SUM(access_count), 0) FROM artifacts",
+            [],
+            |row| row.get(0)
+        ).unwrap_or(0);
 
-        let hit_rate =
-            if total_accesses == 0 {
-                0.0
-            } else {
-                let seven_days_ago = chrono::Utc::now().timestamp() as u64 - (7 * 24 * 60 * 60);
-                let recent_accesses: u64 = conn.query_row(
+        let hit_rate = if total_accesses == 0 {
+            0.0
+        } else {
+            let seven_days_ago = chrono::Utc::now().timestamp() as u64 - (7 * 24 * 60 * 60);
+            let recent_accesses: u64 = conn.query_row(
                 "SELECT COALESCE(SUM(access_count), 0) FROM artifacts WHERE last_used_at > ?1",
                 [&seven_days_ago as &dyn rusqlite::ToSql],
                 |row| row.get(0)
             ).unwrap_or(0);
-                if recent_accesses == 0 {
-                    0.0
-                } else {
-                    (recent_accesses as f64) / (total_accesses as f64)
-                }
-            };
+            if recent_accesses == 0 {
+                0.0
+            } else {
+                (recent_accesses as f64) / (total_accesses as f64)
+            }
+        };
 
         // Lock is dropped here when conn goes out of scope
         CacheStatistics {
@@ -364,8 +347,9 @@ impl AutoCache {
         let conn = self.db.lock().unwrap();
 
         // Query oldest artifacts by last_used_at (LRU)
-        let mut stmt =
-            conn.prepare("SELECT hash_key, file_size FROM artifacts ORDER BY last_used_at ASC")?;
+        let mut stmt = conn.prepare(
+            "SELECT hash_key, file_size FROM artifacts ORDER BY last_used_at ASC"
+        )?;
 
         let mut rows = stmt.query([])?;
         let mut victims = Vec::new();
@@ -399,11 +383,7 @@ impl AutoCache {
                 self.blobs.remove(hash_key)?;
             }
 
-            log::info!(
-                "GC: Freed {} artifacts ({} MB)",
-                victims.len(),
-                freed / (1024 * 1024)
-            );
+            log::info!("GC: Freed {} artifacts ({} MB)", victims.len(), freed / (1024 * 1024));
         }
 
         Ok(freed)
@@ -437,11 +417,7 @@ impl AutoCache {
     }
 
     /// List all artifacts with optional filtering
-    pub fn list_artifacts(
-        &self,
-        type_filter: Option<ArtifactType>,
-        limit: usize,
-    ) -> Result<Vec<ArtifactMetadata>> {
+    pub fn list_artifacts(&self, type_filter: Option<ArtifactType>, limit: usize) -> Result<Vec<ArtifactMetadata>> {
         let conn = self.db.lock().unwrap();
 
         let query = if type_filter.is_some() {
@@ -472,9 +448,7 @@ impl AutoCache {
     pub fn get_metadata(&self, hash_key: &str) -> Option<ArtifactMetadata> {
         let conn = self.db.lock().unwrap();
 
-        let mut stmt = conn
-            .prepare("SELECT * FROM artifacts WHERE hash_key = ?1")
-            .ok()?;
+        let mut stmt = conn.prepare("SELECT * FROM artifacts WHERE hash_key = ?1").ok()?;
 
         let result = stmt.query_row(rusqlite::params![hash_key], |row| {
             Ok(Self::row_to_metadata(row))
@@ -488,8 +462,11 @@ impl AutoCache {
         let conn = self.db.lock().unwrap();
 
         // Count metadata entries
-        let metadata_count: u64 =
-            conn.query_row("SELECT COUNT(*) FROM artifacts", [], |row| row.get(0))?;
+        let metadata_count: u64 = conn.query_row(
+            "SELECT COUNT(*) FROM artifacts",
+            [],
+            |row| row.get(0)
+        )?;
 
         // Count blob files
         let blob_count = self.blobs.count().unwrap_or(0) as u64;
@@ -553,7 +530,11 @@ impl AutoCache {
 
         // Enable WAL mode for better concurrency
         // Note: PRAGMA journal_mode returns a value, so we use query_row
-        conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))?;
+        conn.query_row(
+            "PRAGMA journal_mode=WAL",
+            [],
+            |_| Ok(())
+        )?;
 
         conn.execute("PRAGMA synchronous=NORMAL", [])?;
 
@@ -592,27 +573,27 @@ impl AutoCache {
 /// Cache statistics
 #[derive(Debug, Clone)]
 pub struct CacheStatistics {
-    pub count: u64,       // Total number of artifacts
-    pub size_bytes: u64,  // Total size in bytes
-    pub size_gb: f64,     // Total size in GB
-    pub max_size_gb: u64, // Maximum cache size
-    pub hit_rate: f64,    // Cache hit rate (0.0 - 1.0)
+    pub count: u64,              // Total number of artifacts
+    pub size_bytes: u64,         // Total size in bytes
+    pub size_gb: f64,            // Total size in GB
+    pub max_size_gb: u64,        // Maximum cache size
+    pub hit_rate: f64,           // Cache hit rate (0.0 - 1.0)
 }
 
 // Re-export storage and GC modules
+pub use storage::BlobStore;
+pub use gc::GarbageCollector;
+pub use fingerprint::{Fingerprint, CompilationTarget, TranspilationLang};
 pub use aie_bridge::{AieBridge, HashUtils};
 pub use automan::AutoManCache;
-pub use fingerprint::{CompilationTarget, Fingerprint, TranspilationLang};
-pub use gc::GarbageCollector;
-pub use storage::BlobStore;
-pub use trans::{BytecodeCache, CTranspilationCache, RustTranspilationCache};
+pub use trans::{CTranspilationCache, RustTranspilationCache, BytecodeCache};
 
 // Public modules
+pub mod storage;
+pub mod gc;
+pub mod fingerprint;
 pub mod aie_bridge;
 pub mod automan;
-pub mod fingerprint;
-pub mod gc;
-pub mod storage;
 pub mod trans;
 
 #[cfg(test)]

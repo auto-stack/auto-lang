@@ -10,7 +10,7 @@
 // This module provides bridge functions to connect AutoCache with
 // the existing AIE Database and CompileSession infrastructure.
 
-use crate::fingerprint::{CompilationTarget, Fingerprint};
+use crate::fingerprint::{Fingerprint, CompilationTarget};
 
 /// AIE Bridge for integrating with existing AIE infrastructure
 ///
@@ -56,7 +56,7 @@ impl AieBridge {
         target: &CompilationTarget,
         dependency_hashes: &[[u8; 32]],
     ) -> Fingerprint {
-        let content_hash = interface_hash; // Reuse AIE's L3 hash
+        let content_hash = interface_hash;  // Reuse AIE's L3 hash
         let context_hash = Fingerprint::compute_context_hash(target);
         let dependency_hash = Self::compute_dep_hash_from_aie(dependency_hashes);
 
@@ -81,7 +81,7 @@ impl AieBridge {
 
         // Sort for determinism
         let mut sorted = dep_hashes.to_vec();
-        sorted.sort(); // [u8; 32] implements Ord lexicographically
+        sorted.sort();  // [u8; 32] implements Ord lexicographically
 
         // Hash each dependency
         for dep_hash in sorted {
@@ -183,7 +183,9 @@ impl HashUtils {
 
     /// Convert hash array to hex string
     pub fn array_to_hex(bytes: &[u8; 32]) -> String {
-        bytes.iter().map(|b| format!("{:02x}", b)).collect()
+        bytes.iter()
+            .map(|b| format!("{:02x}", b))
+            .collect()
     }
 }
 
@@ -197,7 +199,11 @@ mod tests {
         let target = CompilationTarget::current();
         let dep_hashes = vec![[1u8; 32], [2u8; 32]];
 
-        let fp = AieBridge::fingerprint_from_aie(interface_hash, &target, &dep_hashes);
+        let fp = AieBridge::fingerprint_from_aie(
+            interface_hash,
+            &target,
+            &dep_hashes,
+        );
 
         assert_eq!(fp.content_hash, interface_hash);
         assert_ne!(fp.context_hash, [0u8; 32]);
@@ -209,7 +215,11 @@ mod tests {
         let interface_hash = [123u8; 32];
         let target = CompilationTarget::current();
 
-        let key = AieBridge::cache_key_from_module("std:io", interface_hash, &target);
+        let key = AieBridge::cache_key_from_module(
+            "std:io",
+            interface_hash,
+            &target,
+        );
 
         assert!(key.starts_with("std:io:"));
         assert!(key.contains("std:io:"));

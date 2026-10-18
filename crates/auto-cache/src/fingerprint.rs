@@ -26,7 +26,11 @@ pub struct Fingerprint {
 
 impl Fingerprint {
     /// Create new fingerprint
-    pub fn new(content_hash: [u8; 32], context_hash: [u8; 32], dependency_hash: [u8; 32]) -> Self {
+    pub fn new(
+        content_hash: [u8; 32],
+        context_hash: [u8; 32],
+        dependency_hash: [u8; 32],
+    ) -> Self {
         Self {
             content_hash,
             context_hash,
@@ -55,7 +59,11 @@ impl Fingerprint {
     /// * `source` - Source code content
     /// * `target` - Compilation target
     /// * `dependencies` - List of dependency fingerprints
-    pub fn compute(source: &str, target: &CompilationTarget, dependencies: &[Fingerprint]) -> Self {
+    pub fn compute(
+        source: &str,
+        target: &CompilationTarget,
+        dependencies: &[Fingerprint],
+    ) -> Self {
         let content_hash = Self::compute_content_hash(source);
         let context_hash = Self::compute_context_hash(target);
         let dependency_hash = Self::compute_dependency_hash(dependencies);
@@ -94,7 +102,7 @@ impl Fingerprint {
 
         // Hash compiler flags (sorted for determinism)
         let mut flags: Vec<&String> = target.flags.iter().collect();
-        flags.sort(); // Sort for consistent hashing
+        flags.sort();  // Sort for consistent hashing
         for flag in flags {
             hasher.update(flag.as_bytes());
         }
@@ -158,14 +166,14 @@ impl CompilationTarget {
     pub fn current() -> Self {
         let arch = std::env::consts::ARCH;
         let os = std::env::consts::OS;
-        let _env = std::env::consts::FAMILY; // Reserved for future use
+        let _env = std::env::consts::FAMILY;  // Reserved for future use
 
         // Construct target triple: arch-vendor-os
         let triple = format!("{}-unknown-{}", arch, os);
 
         Self {
             triple,
-            opt_level: 0, // Default: no optimization
+            opt_level: 0,  // Default: no optimization
             flags: Vec::new(),
         }
     }
@@ -207,7 +215,7 @@ impl CompilationTarget {
 pub enum TranspilationLang {
     C,
     Rust,
-    Bytecode, // AutoVM bytecode
+    Bytecode,  // AutoVM bytecode
 }
 
 impl TranspilationLang {
@@ -238,7 +246,7 @@ fn add(a int, b int) int {
         // Verify fingerprint has all three components
         assert_ne!(fingerprint.content_hash, [0u8; 32]);
         assert_ne!(fingerprint.context_hash, [0u8; 32]);
-        assert_eq!(fingerprint.dependency_hash, [0u8; 32]); // Empty deps
+        assert_eq!(fingerprint.dependency_hash, [0u8; 32]);  // Empty deps
 
         // Verify target hash is deterministic
         let hash1 = fingerprint.target_hash();

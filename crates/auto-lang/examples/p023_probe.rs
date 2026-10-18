@@ -20,10 +20,13 @@ fn layer_a() -> Element<'static, u32> {
 
 // 镜像 renderer.rs build_floating_layer 的 spacer 几何(左偏移 300)。
 fn layer_b() -> Element<'static, u32> {
-    col![space().height(0), row300(),]
-        .width(iced::Length::Shrink)
-        .height(iced::Length::Shrink)
-        .into()
+    col![
+        space().height(0),
+        row300(),
+    ]
+    .width(iced::Length::Shrink)
+    .height(iced::Length::Shrink)
+    .into()
 }
 
 fn row300() -> Element<'static, u32> {
@@ -49,11 +52,7 @@ enum Wrap {
     Raw,
 }
 
-fn push(
-    stk: iced::widget::Stack<'static, u32>,
-    el: Element<'static, u32>,
-    w: &Wrap,
-) -> iced::widget::Stack<'static, u32> {
+fn push(stk: iced::widget::Stack<'static, u32>, el: Element<'static, u32>, w: &Wrap) -> iced::widget::Stack<'static, u32> {
     match w {
         Wrap::Opaque => stk.push(opaque(el)),
         Wrap::Raw => stk.push(el),
@@ -70,64 +69,42 @@ fn main() {
     r8_run();
 
     // V1 镜像 p022:stack![空base, opaque(A层), opaque(B层spacer几何)]
-    run(
-        "V1 镜像p022(空base+opaque双层)",
-        || {
-            let s = stack![empty_base()];
-            let s = push(s, layer_a(), &Wrap::Opaque);
-            let s = push(s, layer_b(), &Wrap::Opaque);
-            s.into()
-        },
-        false,
-    );
+    run("V1 镜像p022(空base+opaque双层)", || {
+        let s = stack![empty_base()];
+        let s = push(s, layer_a(), &Wrap::Opaque);
+        let s = push(s, layer_b(), &Wrap::Opaque);
+        s.into()
+    }, false);
 
     // V2 无 opaque
-    run(
-        "V2 无opaque(空base+裸双层)",
-        || {
-            let s = stack![empty_base()];
-            let s = push(s, layer_a(), &Wrap::Raw);
-            let s = push(s, layer_b(), &Wrap::Raw);
-            s.into()
-        },
-        false,
-    );
+    run("V2 无opaque(空base+裸双层)", || {
+        let s = stack![empty_base()];
+        let s = push(s, layer_a(), &Wrap::Raw);
+        let s = push(s, layer_b(), &Wrap::Raw);
+        s.into()
+    }, false);
 
     // V3 无空 base:stack![opaque(A), opaque(B)]
-    run(
-        "V3 无空base(opaque双层)",
-        || {
-            let s = stack![layer_a()];
-            let s = push(s, layer_b(), &Wrap::Opaque);
-            s.into()
-        },
-        false,
-    );
+    run("V3 无空base(opaque双层)", || {
+        let s = stack![layer_a()];
+        let s = push(s, layer_b(), &Wrap::Opaque);
+        s.into()
+    }, false);
 
     // V4 极简:stack![按钮A, 按钮B](无列无opaque)
-    run(
-        "V4 极简(裸双按钮)",
-        || {
-            stack![
-                button(text("A").width(300).height(300)).on_press(1),
-                button(text("B").width(300).height(300)).on_press(2)
-            ]
+    run("V4 极简(裸双按钮)", || {
+        stack![button(text("A").width(300).height(300)).on_press(1),
+               button(text("B").width(300).height(300)).on_press(2)]
             .into()
-        },
-        false,
-    );
+    }, false);
 
     // V5 同层连击:V1 结构,连点 A 三次(期望 [1,1,1])
-    run(
-        "V5 同层连击AAA(V1结构)",
-        || {
-            let s = stack![empty_base()];
-            let s = push(s, layer_a(), &Wrap::Opaque);
-            let s = push(s, layer_b(), &Wrap::Opaque);
-            s.into()
-        },
-        true,
-    );
+    run("V5 同层连击AAA(V1结构)", || {
+        let s = stack![empty_base()];
+        let s = push(s, layer_a(), &Wrap::Opaque);
+        let s = push(s, layer_b(), &Wrap::Opaque);
+        s.into()
+    }, true);
 }
 
 fn run(name: &str, build: fn() -> Element<'static, u32>, same_layer: bool) {
@@ -230,18 +207,20 @@ fn real_vehicle() {
         .build();
     let dv1 = View::col()
         .style("absolute z-20 top-[0px] left-[300px] w-[8px] h-[300px] bg-[#8899aa]")
-        .child(View::MouseArea {
-            content: Box::new(View::Empty),
-            on_enter: None,
-            on_exit: None,
-            on_double_click: None,
-            on_click: Some(7),
-            on_context_menu: None,
-            on_release: Some(8),
-            on_move: None,
-            logical_extent: None,
-            style: auto_lang::ui::style::Style::parse("w-full h-full").ok(),
-        })
+        .child(
+            View::MouseArea {
+                content: Box::new(View::Empty),
+                on_enter: None,
+                on_exit: None,
+                on_double_click: None,
+                on_click: Some(7),
+                on_context_menu: None,
+                on_release: Some(8),
+                on_move: None,
+                logical_extent: None,
+                style: auto_lang::ui::style::Style::parse("w-full h-full").ok(),
+            },
+        )
         .build();
     let catcher = View::MouseArea {
         content: Box::new(View::Empty),
@@ -255,8 +234,10 @@ fn real_vehicle() {
             move |_x: f32, _y: f32| 9u32,
         )),
         logical_extent: Some((600.0, 300.0)),
-        style: auto_lang::ui::style::Style::parse("absolute z-30 top-0 left-0 w-[0px] h-[0px]")
-            .ok(),
+        style: auto_lang::ui::style::Style::parse(
+            "absolute z-30 top-0 left-0 w-[0px] h-[0px]",
+        )
+        .ok(),
     };
     let root = View::col()
         .style("relative w-[600px] h-[300px] bg-background")
@@ -284,21 +265,11 @@ fn real_vehicle() {
 fn r4_case() {
     let base = View::col()
         .style("w-full h-full")
-        .child(
-            View::button("BASE")
-                .style("w-full h-full")
-                .on_click(|_| 0u32)
-                .build(),
-        )
+        .child(View::button("BASE").style("w-full h-full").on_click(|_| 0u32).build())
         .build();
     let c_layer = View::col()
         .style("absolute top-[100px] left-[100px] w-[100px] h-[100px] bg-[#404040]")
-        .child(
-            View::button("C")
-                .style("w-full h-full")
-                .on_click(|_| 1u32)
-                .build(),
-        )
+        .child(View::button("C").style("w-full h-full").on_click(|_| 1u32).build())
         .build();
     let root = View::col()
         .style("relative w-[600px] h-[300px] bg-background")
@@ -307,11 +278,7 @@ fn r4_case() {
         .build();
     let mut ui = iced_test::simulator::simulator(root.into_iced());
     let mut log = Vec::new();
-    for (name, x, y) in [
-        ("C内(150,150)", 150.0, 150.0),
-        ("空区(50,50)", 50.0, 50.0),
-        ("C内(110,110)", 110.0, 110.0),
-    ] {
+    for (name, x, y) in [("C内(150,150)", 150.0, 150.0), ("空区(50,50)", 50.0, 50.0), ("C内(110,110)", 110.0, 110.0)] {
         ui.point_at(iced::Point::new(x, y));
         let st = ui.simulate(iced_test::simulator::click());
         log.push(format!("{name}={st:?}"));
@@ -323,21 +290,11 @@ fn r4_case() {
 fn r4b_bounds() {
     let base = View::col()
         .style("w-full h-full")
-        .child(
-            View::button("BASE")
-                .style("w-full h-full")
-                .on_click(|_| 0u32)
-                .build(),
-        )
+        .child(View::button("BASE").style("w-full h-full").on_click(|_| 0u32).build())
         .build();
     let c_layer = View::col()
         .style("absolute top-[100px] left-[100px] w-[100px] h-[100px] bg-[#404040]")
-        .child(
-            View::button("C")
-                .style("w-full h-full")
-                .on_click(|_| 1u32)
-                .build(),
-        )
+        .child(View::button("C").style("w-full h-full").on_click(|_| 1u32).build())
         .build();
     let root = View::col()
         .style("relative w-[600px] h-[300px] bg-background")
@@ -347,11 +304,8 @@ fn r4b_bounds() {
     let mut ui = iced_test::simulator::simulator(root.into_iced());
     for label in ["BASE", "C"] {
         match ui.find(label) {
-            Ok(t) => println!(
-                "R4b {label}: bounds={:?} visible={:?}",
-                t.bounds(),
-                t.visible_bounds()
-            ),
+            Ok(t) => println!("R4b {label}: bounds={:?} visible={:?}",
+                t.bounds(), t.visible_bounds()),
             Err(e) => println!("R4b {label}: NOT FOUND ({e:?})"),
         }
     }
@@ -360,20 +314,16 @@ fn r4b_bounds() {
 fn r6_root() -> Element<'static, u32> {
     use iced::Length::Shrink;
     stack![
-        opaque(
-            col![button(text("BASE").width(600).height(300)).on_press(0u32)]
-                .width(600)
-                .height(300)
-        ),
+        opaque(col![button(text("BASE").width(600).height(300)).on_press(0u32)]
+            .width(600)
+            .height(300)),
         col![
             space().width(0).height(100),
             iced::widget::row![
                 space().width(100),
-                opaque(
-                    col![button(text("C").width(100).height(100)).on_press(1u32)]
-                        .width(100)
-                        .height(100)
-                ),
+                opaque(col![button(text("C").width(100).height(100)).on_press(1u32)]
+                    .width(100)
+                    .height(100)),
             ],
         ]
         .width(Shrink)
@@ -385,7 +335,8 @@ fn r6_pure_fixed_geometry() {
     let mut ui = iced_test::simulator::simulator(r6_root());
     for label in ["BASE", "C"] {
         match ui.find(label) {
-            Ok(t) => println!("R6b {label}: bounds={:?}", t.bounds()),
+            Ok(t) => println!("R6b {label}: bounds={:?}",
+                t.bounds()),
             Err(e) => println!("R6b {label}: NOT FOUND ({e:?})"),
         }
     }
@@ -410,20 +361,15 @@ fn r7_style_parse_dump() {
     );
     println!(
         "R7 classes={:?}",
-        s.classes
-            .iter()
-            .map(|c| format!("{c:?}"))
-            .collect::<Vec<_>>()
+        s.classes.iter().map(|c| format!("{c:?}")).collect::<Vec<_>>()
     );
 }
 
 fn r8_space_probe() -> Element<'static, u32> {
     stack![
-        opaque(
-            col![button(text("BASE").width(600).height(300)).on_press(0u32)]
-                .width(600)
-                .height(300)
-        ),
+        opaque(col![button(text("BASE").width(600).height(300)).on_press(0u32)]
+            .width(600)
+            .height(300)),
         col![
             space().width(0).height(100),
             button(text("C1").width(100).height(100)).on_press(1u32),
@@ -436,11 +382,9 @@ fn r8_space_probe() -> Element<'static, u32> {
 
 fn r8_space_probe2() -> Element<'static, u32> {
     stack![
-        opaque(
-            col![button(text("BASE").width(600).height(300)).on_press(0u32)]
-                .width(600)
-                .height(300)
-        ),
+        opaque(col![button(text("BASE").width(600).height(300)).on_press(0u32)]
+            .width(600)
+            .height(300)),
         col![
             space().width(1).height(100),
             button(text("C2").width(100).height(100)).on_press(2u32),

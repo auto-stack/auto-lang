@@ -60,10 +60,7 @@ fn ui_build_writes_self_contained_sfcs() {
 
     // Support files emitted alongside.
     assert!(tmp.join("button/index.ts").exists(), "button index.ts");
-    assert!(
-        tmp.join("button/variants.ts").exists(),
-        "button variants.ts"
-    );
+    assert!(tmp.join("button/variants.ts").exists(), "button variants.ts");
     let idx = fs::read_to_string(tmp.join("button/index.ts")).unwrap();
     assert!(idx.contains("Button"), "index re-exports Button: {idx}");
 }

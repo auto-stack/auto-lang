@@ -118,10 +118,7 @@ pub fn current_identities(
                         ),
                     support_lib: check.options.effective_support_lib().is_some(),
                 };
-                out.insert(
-                    format!("{}:{}", spec.id, check.id),
-                    (identity, applicability),
-                );
+                out.insert(format!("{}:{}", spec.id, check.id), (identity, applicability));
             }
         }
     }
@@ -247,7 +244,8 @@ pub fn check_with_native(
                 current_native
                     .get_or_insert_with(crate::test_cases::sema::current_toolchain_identity)
             } else {
-                current_native.get_or_insert_with(crate::test_cases::ac::current_toolchain_identity)
+                current_native
+                    .get_or_insert_with(crate::test_cases::ac::current_toolchain_identity)
             };
             let row_axes: BTreeMap<String, String> = r
                 .get("native")
@@ -315,7 +313,11 @@ pub fn check_with_native(
                                 ));
                             }
                             None => {
-                                drifted.push(format!("native.{} missing (now {})", k, short(now)));
+                                drifted.push(format!(
+                                    "native.{} missing (now {})",
+                                    k,
+                                    short(now)
+                                ));
                             }
                         },
                     }

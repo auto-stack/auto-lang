@@ -4,7 +4,4 @@
 //! without conditional `use` paths. The real Linux adapters live in
 //! [`crate::linux`] (compiled only on `target_os = "linux"`).
 
-pub use auto_cosmic_ports::mock::{
-    MockClockPort as LinuxClockPort, MockNotificationsPort as LinuxNotificationsPort,
-    MockPowerPort as LinuxPowerPort,
-};
+pub use auto_cosmic_ports::mock::{MockClockPort as LinuxClockPort, MockNotificationsPort as LinuxNotificationsPort, MockPowerPort as LinuxPowerPort};

@@ -3,8 +3,8 @@
 //! Each mock holds a `Mutex`-protected queue of scripted events/states. Tests
 //! and the dev host push fixtures in; the app reads them out.
 
-use crate::{BatteryState, ClockPort, Notification, NotificationsPort, PowerPort, SystemPort};
 use std::sync::Mutex;
+use crate::{BatteryState, ClockPort, Notification, NotificationsPort, PowerPort, SystemPort};
 
 /// A mock power port. Push battery states in; `battery()` returns the latest.
 #[derive(Debug)]

@@ -27,7 +27,9 @@
 // 骨架）。
 
 use auto_lang::ui::desktop_protocol::broker::BROKER_PIPE;
-use auto_lang::ui::desktop_protocol::client_entry::{self, ClientOpts, ClientTarget};
+use auto_lang::ui::desktop_protocol::client_entry::{
+    self, ClientOpts, ClientTarget,
+};
 use auto_lang::ui::desktop_protocol::coverage::{self, RenderMode};
 
 /// Run 分支入口裁决：孵化标记在册 → 协议 client 循环（走完即返回）；
@@ -93,12 +95,7 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
                 use auto_lang::ui::desktop_protocol::message::shell_face;
                 for (id, face_id, w, h) in [
                     ("shell", shell_face::SHELL, g.viewport_w, g.band_h),
-                    (
-                        "desktop",
-                        shell_face::DESKTOP_SURFACE,
-                        g.viewport_w,
-                        g.viewport_h,
-                    ),
+                    ("desktop", shell_face::DESKTOP_SURFACE, g.viewport_w, g.viewport_h),
                     // PLAN-036 T-04：overlay 两面预装（懒装免——首推送即达）。
                     ("switcher", shell_face::SWITCHER, g.viewport_w, g.viewport_h),
                     (
@@ -112,7 +109,9 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
                         .ok_or_else(|| format!("编译壳面（{id}）装载失败（覆盖门拒收）"))?;
                     faces.push((face_id, face));
                 }
-                Ok(auto_lang::ui::desktop_protocol::shell_client::ShellFaces::from_faces(g, faces))
+                Ok(auto_lang::ui::desktop_protocol::shell_client::ShellFaces::from_faces(
+                    g, faces,
+                ))
             },
         );
     }
@@ -124,8 +123,8 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
     let root = std::env::var("AUTO_386_APP_ROOT").unwrap_or_else(|_| "examples/ui".to_string());
     let app_dir = std::path::Path::new(&root).join(&app_name);
     let path = app_dir.join("src/front/app.at");
-    let src =
-        std::fs::read_to_string(&path).map_err(|e| format!("装载 {}: {e}", path.display()))?;
+    let src = std::fs::read_to_string(&path)
+        .map_err(|e| format!("装载 {}: {e}", path.display()))?;
     let component = auto_lang::build_dynamic_component(&src, Some(&path.to_string_lossy()))
         .map_err(|e| format!("编译 {}: {e}", path.display()))?;
 
@@ -133,7 +132,10 @@ fn run_client_entry(args: &[String]) -> Result<(), String> {
     //（与进程形态裁决 adjudicate() 正交——那条链定 Client/Broker/
     // Standalone，本链定帧载荷形态）。
     let manifest = read_manifest_render(&app_dir);
-    let mode = RenderMode::resolve(render_arg.as_deref(), manifest.as_deref());
+    let mode = RenderMode::resolve(
+        render_arg.as_deref(),
+        manifest.as_deref(),
+    );
     if let Some(arg) = render_arg.as_deref() {
         if RenderMode::parse(arg).is_none() {
             eprintln!(

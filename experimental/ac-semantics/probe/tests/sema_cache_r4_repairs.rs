@@ -410,3 +410,117 @@ fn sema_cache_r4_late_publish_never_overwrites() {
         "{err}"
     );
 }
+
+
+/// F-796-R5 (F07): a LEGAL indirect recursive group (A.next: B,
+/// B.prev: A) publishes as ONE group page — both members' RecordFields
+/// queries are served by it, the group survives recovery (a fresh
+/// store handle) and GC while rooted, and external references from the
+/// group keep their required-data edges.
+#[test]
+fn sema_cache_r5_recursive_group_publishes_recovers_survives_gc() {
+    let root = scratch("r5-group");
+    let store = open_store(&root.join("store")).unwrap();
+    let src = "type A { next B }\ntype B { prev A }";
+    let input = parse_into_input(src, "r5", "m", SourceProfile::TextRecord).unwrap();
+    let arts = publish_module_records(&store, &input, Some("grp-root")).unwrap();
+    assert_eq!(arts.len(), 2);
+    // ONE artifact serves both members (the group page)
+    let (a_art, b_art) = (arts.get("A").unwrap(), arts.get("B").unwrap());
+    assert_eq!(a_art, b_art, "a recursive group is ONE page");
+
+    // both member queries hit through the group page
+    for r in ["A", "B"] {
+        match lookup_only(&store, &input, &QueryKind::RecordFields { record: r.into() }).unwrap()
+        {
+            FetchOutcome::Hit { page, .. } => {
+                assert_eq!(page.header.kind, ac_sema_contract::PageKind::RecGroup);
+                if let ac_sema_contract::PageBody::RecGroup(members) = &page.body {
+                    assert_eq!(members.len(), 2, "both members in the group page");
+                }
+            }
+            other => panic!("member {r} must hit the group page, got {other:?}"),
+        }
+    }
+
+    // recovery: a FRESH store handle (process-fresh state) still serves
+    let store2 = open_store(&root.join("store")).unwrap();
+    for r in ["A", "B"] {
+        assert!(matches!(
+            lookup_only(&store2, &input, &QueryKind::RecordFields { record: r.into() }).unwrap(),
+            FetchOutcome::Hit { .. }
+        ));
+    }
+
+    // GC with the group rooted keeps the whole group alive
+    let _ = run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+    for r in ["A", "B"] {
+        assert!(matches!(
+            lookup_only(&store, &input, &QueryKind::RecordFields { record: r.into() }).unwrap(),
+            FetchOutcome::Hit { .. }
+        ));
+    }
+
+    // a group member query for a record NOT in the group is rejected
+    // (the page admits by membership, never by reinterpretation)
+    let input_other = parse_into_input(
+        "type A { next B }\ntype B { prev A }\ntype C { v int }",
+        "r5",
+        "m2",
+        SourceProfile::TextRecord,
+    )
+    .unwrap();
+    let err = lookup_only(
+        &store,
+        &input_other,
+        &QueryKind::RecordFields { record: "C".into() },
+    );
+    // C is not published at all under its own key: Miss or controlled
+    // error both satisfy "never served through the group page"
+    match err {
+        Ok(FetchOutcome::Miss) => {}
+        Ok(FetchOutcome::Hit { page, .. }) => {
+            panic!("C must not be served by the group page: {:?}", page.header.kind)
+        }
+        Ok(other) => panic!("{other:?}"),
+        Err(_) => {}
+    }
+}
+
+/// A mixed module: a recursive group AND a deep DAG referencing it —
+/// external references from the group become required-data edges, so
+/// the DAG page keeps the group alive across GC, and the group keeps
+/// its own external singletons alive.
+#[test]
+fn sema_cache_r5_group_with_external_dag_required_edges() {
+    let root = scratch("r5-mixed");
+    let store = open_store(&root.join("store")).unwrap();
+    // group {A<->B}, external leaf L referenced BY the group, and a
+    // chain W -> A (external consumer referencing the group)
+    let src = "type A { next B; leaf L }\ntype B { prev A }\ntype L { v int }\ntype W { a A }";
+    let input = parse_into_input(src, "r5", "m", SourceProfile::TextRecord).unwrap();
+    let _arts = publish_module_records(&store, &input, Some("mixed-root")).unwrap();
+
+    // everything is servable before GC
+    for r in ["A", "B", "L", "W"] {
+        assert!(
+            matches!(
+                lookup_only(&store, &input, &QueryKind::RecordFields { record: r.into() }).unwrap(),
+                FetchOutcome::Hit { .. }
+            ),
+            "{r} hit before GC"
+        );
+    }
+    // GC: W is the (only) project-rooted page; its required edge keeps
+    // the group alive; the group's required edge keeps L alive
+    let _ = run_gc(&store, GcConfig { high: 1, low: 0 }).unwrap();
+    for r in ["A", "B", "L", "W"] {
+        assert!(
+            matches!(
+                lookup_only(&store, &input, &QueryKind::RecordFields { record: r.into() }).unwrap(),
+                FetchOutcome::Hit { .. }
+            ),
+            "{r} must survive GC through the required-data chain"
+        );
+    }
+}

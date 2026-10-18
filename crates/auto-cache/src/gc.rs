@@ -55,10 +55,7 @@ impl GarbageCollector {
     /// * `max_size_gb` - Maximum cache size in GB
     /// * `water_mark_gb` - Target size after GC (should be < max_size_gb)
     pub fn with_watermark(max_size_gb: u64, water_mark_gb: u64) -> Self {
-        assert!(
-            water_mark_gb < max_size_gb,
-            "Watermark must be less than max size"
-        );
+        assert!(water_mark_gb < max_size_gb, "Watermark must be less than max size");
 
         Self {
             max_size_gb,
@@ -99,26 +96,23 @@ impl GarbageCollector {
         let mut freed_bytes = 0u64;
 
         if current_size_bytes <= target_bytes {
-            log::info!(
-                "GC: Cache size {} GB within limit, no GC needed",
-                current_size_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
-            );
+            log::info!("GC: Cache size {} GB within limit, no GC needed",
+                      current_size_bytes as f64 / (1024.0 * 1024.0 * 1024.0));
             return Ok(0);
         }
 
         let target_free = current_size_bytes.saturating_sub(target_bytes);
         let mut victims = Vec::new();
 
-        log::info!(
-            "GC: Current size: {} GB, Target: {} GB, Need to free: {} MB",
-            current_size_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
-            self.water_mark_gb,
-            target_free / (1024 * 1024)
-        );
+        log::info!("GC: Current size: {} GB, Target: {} GB, Need to free: {} MB",
+                  current_size_bytes as f64 / (1024.0 * 1024.0 * 1024.0),
+                  self.water_mark_gb,
+                  target_free / (1024 * 1024));
 
         // Query oldest artifacts by last_used_at (LRU)
-        let mut stmt =
-            conn.prepare("SELECT hash_key, file_size FROM artifacts ORDER BY last_used_at ASC")?;
+        let mut stmt = conn.prepare(
+            "SELECT hash_key, file_size FROM artifacts ORDER BY last_used_at ASC"
+        )?;
 
         let mut rows = stmt.query([])?;
 
@@ -146,12 +140,10 @@ impl GarbageCollector {
 
             tx.commit()?;
 
-            log::info!(
-                "GC: Freed {} artifacts ({} MB, {} GB)",
-                victims.len(),
-                freed_bytes / (1024 * 1024),
-                freed_bytes as f64 / (1024.0 * 1024.0 * 1024.0)
-            );
+            log::info!("GC: Freed {} artifacts ({} MB, {} GB)",
+                      victims.len(),
+                      freed_bytes / (1024 * 1024),
+                      freed_bytes as f64 / (1024.0 * 1024.0 * 1024.0));
         }
 
         Ok(freed_bytes)
@@ -177,7 +169,7 @@ mod tests {
         let (max, water) = gc.stats();
 
         assert_eq!(max, 10);
-        assert_eq!(water, 8); // 80% of max
+        assert_eq!(water, 8);  // 80% of max
     }
 
     #[test]
@@ -193,9 +185,9 @@ mod tests {
     fn test_should_gc() {
         let gc = GarbageCollector::new(10);
 
-        assert!(!gc.should_gc(8.0)); // 8 GB < 10 GB
+        assert!(!gc.should_gc(8.0));  // 8 GB < 10 GB
         assert!(!gc.should_gc(10.0)); // 10 GB = 10 GB
-        assert!(gc.should_gc(11.0)); // 11 GB > 10 GB
+        assert!(gc.should_gc(11.0));  // 11 GB > 10 GB
     }
 
     #[test]
@@ -221,18 +213,17 @@ mod tests {
                 module_name TEXT NOT NULL
             )",
             [],
-        )
-        .unwrap();
+        ).unwrap();
 
         // Insert test artifacts (last_used_at in seconds)
         // Current timestamp
         let now = chrono::Utc::now().timestamp() as u64;
 
         let artifacts = vec![
-            ("hash1", 100, now - 1000), // Oldest
+            ("hash1", 100, now - 1000),  // Oldest
             ("hash2", 200, now - 500),
             ("hash3", 300, now - 100),
-            ("hash4", 400, now), // Newest
+            ("hash4", 400, now),         // Newest
         ];
 
         for (hash, size, last_used) in &artifacts {
@@ -244,23 +235,22 @@ mod tests {
                 rusqlite::params![
                     hash,
                     format!("/tmp/{}", hash),
-                    0i32, // artifact_type
+                    0i32,  // artifact_type
                     *size as i64,
-                    *last_used as i64, // created_at
-                    *last_used as i64, // last_used_at
-                    1i64,              // access_count
-                    "source_hash",     // source_hash
-                    "test_project",    // project_name
-                    "test_module",     // module_name
+                    *last_used as i64,  // created_at
+                    *last_used as i64,  // last_used_at
+                    1i64,  // access_count
+                    "source_hash",   // source_hash
+                    "test_project",  // project_name
+                    "test_module",   // module_name
                 ],
-            )
-            .unwrap();
+            ).unwrap();
         }
 
         // Total size: 100 + 200 + 300 + 400 = 1000 bytes
         // Watermark: 700 bytes (keep newest artifact hash4: 400 bytes, and part of hash3: 300 bytes)
         // Target: free up to 300 bytes (1000 - 700)
-        let gc = GarbageCollector::with_watermark(1, 0); // Simplified: 0 GB watermark, but we'll pass bytes directly
+        let gc = GarbageCollector::with_watermark(1, 0);  // Simplified: 0 GB watermark, but we'll pass bytes directly
         let current_size = 1000;
 
         // Run GC
@@ -290,6 +280,6 @@ mod tests {
     #[test]
     #[should_panic(expected = "Watermark must be less than max size")]
     fn test_invalid_watermark() {
-        GarbageCollector::with_watermark(10, 15); // watermark > max
+        GarbageCollector::with_watermark(10, 15);  // watermark > max
     }
 }

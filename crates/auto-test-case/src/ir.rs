@@ -308,10 +308,7 @@ pub fn resolve_oracle(
         for st in steps {
             combined.push_str(&format!(
                 "probe\0{:?}\0{:?}\0{}\0{:?}\0",
-                st.cache,
-                st.compute_calls,
-                st.bindings_sha256.clone().unwrap_or_default(),
-                st.stages_include
+                st.cache, st.compute_calls, st.bindings_sha256.clone().unwrap_or_default(), st.stages_include
             ));
         }
     }

@@ -146,10 +146,7 @@ mod tests {
                         params: vec![CTypeDesc::UInt],
                     },
                 },
-                CParam {
-                    name: "add".into(),
-                    ty: CTypeDesc::Int,
-                },
+                CParam { name: "add".into(), ty: CTypeDesc::Int },
             ],
             return_type: CTypeDesc::Int,
             variadic: false,
