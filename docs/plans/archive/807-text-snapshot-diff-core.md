@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-807
-status: execution_done
+status: archived
 feature_name: 文本、分页快照与 diff 基础模块整体抽取
 author: [Codex]
 created_at: 2026-10-18
-updated_at: 2026-10-18
+updated_at: 2026-10-19
 plan_revision: 1
-current_step: 7
+current_step: 10
 total_steps: 10
 supersedes_spec_components: [docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/paged-rope.md, docs/specs/auto-lang/vm/overview.md]
 new_spec_components: [docs/specs/auto-text-core/project.md]
@@ -109,9 +109,9 @@ review独立上下文在同树复核AC/SD及反例；用户未指定具体agent/
 | [x] | T-05 | work | T-04 | `a2r_std.rs`/`ui_gen/rust.rs`及editor实际路径接线，旧公开门面签名、feature/error对照；scoped plan807与生成器定向测 | AC-01,03 |
 | [x] | T-06 | work | T-05 | 建consumer/上层反例，完成V-01..06含必要1GB定向资源测和分页失败/drop观测；777/792并集更新+受影响driver；资源证据列明源码/依赖/配置/输入和实际编译形态 | AC-01..04 |
 | [x] | T-07 | work | T-06 | 去重审计、API/剩余UI边/资源清单及SD草案，附件`attachments/807/handoff.md`（新增）绑定SHA与验证结果；check/相关反例通过，提交后送审 | AC-01..04 |
-| [ ] | T-08 | review | T-07 | 同一工作树独立审查完整AC/SD、实际生产路径、分页测适用性和失败清理；必须保留未完成merge门 | AC-05 |
-| [ ] | T-09 | merge | T-08 pass | 合流master并集，变更则复审影响面，在新冻结提交运行§6最终门及受影响资源重放；门失败归因、不得跳过 | AC-06 |
-| [ ] | T-10 | merge | T-09 | canonical Spec/ledger沉淀、归档与真实交付收据，wt-guard clean再清理；核对最终计数 | AC-06 |
+| [x] | T-08 | review | T-07 | 同一工作树独立审查完整AC/SD、实际生产路径、分页测适用性和失败清理；必须保留未完成merge门 | AC-05 |
+| [x] | T-09 | merge | T-08 pass | 合流master并集，变更则复审影响面，在新冻结提交运行§6最终门及受影响资源重放；门失败归因、不得跳过 | AC-06 |
+| [x] | T-10 | merge | T-09 | canonical Spec/ledger沉淀、归档与真实交付收据，wt-guard clean再清理；核对最终计数 | AC-06 |
 
 T-01 证据（2026-10-18）：[contract-baseline.md](attachments/807/contract-baseline.md) 已冻结（公开面逐项、重导出映射、EditorSnapshotProvider 终名与缺席语义映射、四 native/a2r/发射冻结矩阵、分页资源合同、777/792 登记片段、命令表）。probe PASS：独立 crate 逐字副本（仅 PageConfig/open_file_backed/content_hash_of 三处 pub(crate)→pub）29 单测+1 跨包集成测全绿、std-only（0.33s）。预取强引用闭环已观测确认（drop rope+snapshot 后 strong_count≥2）并冻结 Weak 修复设计（§2）。worktree `D:/autostack/.wt/lang-807/auto-lang` 分支 `codex/plan-807-dev` base `2046a025b`。
 
@@ -144,6 +144,26 @@ R1-02/03 CLOSED；R1-01 旧单线程反例已闭（703+807 15/15），但完整�
 状态回 **executing 5/10**：保留T-01..05，重开T-06/07，T-08不勾。已连续两次final needs_fix，下一轮先提供报告所列根因/覆盖设计调整表，再以原树冻结提交重放全部受影响例与真实并发组合后复审。merge-owned裸t/tv/tu、必要资源影响面、共享片段合流/777、Spec/ledger/归档/wt-guard清理仍pending；本轮未运行整档。
 
 2026-10-18：**R2 修复完成记录（work）**（stage: work | PLAN-807 | rev 1 | pass | worktree 同树 | branch `codex/plan-807-dev` | base `2046a025b` | code `4e3bde4d6`（R2 修复提交；R2 受审 `1eb8434f5`）| findings F807-R2-01/02 全闭合 | 证据见 [handoff §11](attachments/807/handoff.md)：R2-01 全局槽写者改自重执行子进程隔离（P807_SLOT_CHILD 守卫防裸 --ignored 重引污染；实值 oracle 全保留），重放并行 8/16 线程×3+单线程+序交换+更宽组合（703+710+716+807 并行 51 过）全覆盖原失败形态；R2-02 包身份程序化提取绑定（7 files/229,812B/digest 6b7380e5…，对 4e3bde4d6 逐字节有效）+ 根因/覆盖调整表 + 历史/当前身份分离 | blockers 无 | next: review（T-08 三轮，受审提交 `4e3bde4d6`））。merge-owned 门保持 pending。
+
+2026-10-19：**独立 final review R3：pass**（stage: review | review_scope: final | reviewer: 本次独立于实施的Codex审查上下文，延续R1/R2；无可核验model/session ID | PLAN-807 rev 1 | worktree `D:/autostack/.wt/lang-807/auto-lang` | branch `codex/plan-807-dev` | reviewed_commit `4e3bde4d6f837821c15e668688bce4dd7c8e84a9` | base `2046a025b9a445d35a02da2c72a1613259a0cb60` | auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` clean）。[完整报告/全部finding闭合/AC/复用边界](attachments/807/review-r3/REVIEW.md)、[当前冻结身份](attachments/807/review-r3/baseline.json.txt)、[冻结SD及支持矩阵](attachments/807/review-r3/spec-delta-frozen.md)。入场、冻结及最终复核树均clean。
+
+已先核验两连败根因/覆盖调整表。R2-01 CLOSED：默认槽写者整个生命周期改在独立子进程执行，父进程普通reader不再与FakeSnap/clear共享；实值oracle未删。原703+807反例在1/8/16线程各两次全部15过/2子体ignore，更宽703/710/716/728/807组合56过/4显式ignore。两个实际子体exact+守卫分别真实执行1/1；自动提取的原文helper正反控证明成功接受、失败断言正确向上传播（2过/2子例ignore），未以空跑代替验收。R2-02 CLOSED：handoff已分开历史与当前身份；text-core源字节仍精确为7文件/229812B/digest `6b7380e59ec9d797c54f4c46b27fcb933922c744d932231307035aa675b1e8b4`。R1各finding关闭保持，无新增阻塞发现。
+
+本轮唯一代码差异为plan807测试编排；除该文件外全部受审代码、verification_inputs及Spec_inputs均与R2零漂移，指纹已冻结。因此按报告明确复用R1/R2的core/独立consumer/VM-a2r-off及pop反例、777/792行为与当前text-core源manifest、1GB结构3,033,703B≤12MiB/RSS样本16.5MiB证据；没有把历史运行冒称本轮重跑或声称当前binary另测同一RSS值。AC-01..05 pass，AC-06 pending。SD hash `3be9d59612f8a7753d93a33967be480021333040b260fa9bf4a9e1b1ce3c1b67`，contract hash `88403f19beea3672021ad12ea2c1b6c4c9ad2acfcca439990edaedf6bfbd2b04`；影响路径/GOAL-003/007保持，无canonical Spec/ledger写入。
+
+状态改为 **reviewed 8/10**，T-08完成，T-09/10仍未勾。next：merge在同树取master共享片段并集，变更则复审影响面，再在最终冻结提交运行裸 **cargo t + cargo tv + cargo tu** 与必要资源影响面重验，之后777适用基线/Spec与ledger沉淀/归档/wt-guard clean清理。tf仅到期主检出单实例。本轮未跑整档、未修实施、未合入或归档；review pass不等于已交付。
+
+2026-10-19：**merge 完成记录（stage: merge | PLAN-807 | rev 1 | pass）**
+
+| Checkpoint | 证据 |
+|---|---|
+| `prepared` | reviewed `4e3bde4d6`（R3 pass，reviewed 8/10）；canonical Spec 差异=SD-01..04（worktree 提交 `a271635ca`，纯 docs/specs+scripts delta，实现/依赖零变化）；冻结 spec-delta `3be9d596…`/contract `88403f19…`（R3）；delivery 见下 |
+| `landed` | rebase over master(62fdfc6f2，含 806 合入)：映射 bc2fc322c→c2f04ad7c/75f492fc8→09038f918/6a931eb20→439c236c9/d340bd0a8→5e171eb19/7cb1239b4→564cf2245/43c077e0d→1f1b47846/3717b2164→66e5f79f5(!仅并集差量：806 auto-ui-dialect 登记+DELIVERY_CRATES 13→14)/1f5e05141→空提交略除/1eb8434f5→b74654092/4e3bde4d6→574ec78c8/a271635ca→6955e3178；range-diff 10 全等+1 并集差量+1 略除；终态基线重采提交 `63fe29fd9` = **delivery commit**；主检出 `git merge --ff-only codex/plan-807-dev` → master tip=63fe29fd9（无 merge commit） |
+| 门禁（终态 63fe29fd9） | 裸 `cargo t` **5252/5252 exit0**（136→98s）+ `cargo tv` **163/163** + `cargo tu` **867 过/2 ignore**；777 基线终态并集重采（base_revision=6955e3178，declared_edges=63）strict **pass 0 violations/2 窄 grandfather** |
+| 资源重验复用论证 | 1GB 资源证据（结构 3,033,703B≤12MiB/RSS 16.5MiB，绑定 R2）复用：bench 执行路径闭包（plan728_bench 源+auto-text-core+imara-diff+std）字节零变化，rebase 引入的 806 代码（parser/dialect）不在该闭包与 bench 滤串内；无源码/依赖/配置/输入变化触及资源测适用面 |
+| `ledger_refreshed` | `.autoos/specs.json` v47→**v48** guarded offline projection（HTTP store 探测不可达；字节级备份 `bak-v47-807`；外科手术式追加 P807-D1/T/R3/M 四条目，未触 section 逐项校验+回读验证；无关条目计数恰好 +1/触及节） |
+| `archived` | `docs/plans/archive/807-text-snapshot-diff-core.md`（git mv；status: archived；终态 10/10）+ 本收据与 ledger 随 closeout 提交入 master |
+| `cleaned` | wt-guard clean ×2（auto-lang + auto-down 兄弟）→ worktree/分支/组目录移除（收据见收尾提交） |
 
 ## 10. 待澄清事项
 

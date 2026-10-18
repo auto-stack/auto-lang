@@ -2108,6 +2108,18 @@
             "commit:c4158b89e",
             "sha256:7173d389bf72093f"
           ]
+        },
+        {
+          "id": "P807-M",
+          "title": "PLAN-807 merge 沉淀收据（2026-10-19）",
+          "content": "delivery 63fe29fd9 ff-only 合入 master（rebase over 806：映射 bc2fc322c→c2f04ad7c…a271635ca→6955e3178，range-diff 10 全等+T-06c/d/e 并集差量=806 auto-ui-dialect 登记并置+基线空提交略除；两共享写面并集：DELIVERY_CRATES 13→14、777 domains 双条目）；终态冻结门（63fe29fd9）：裸 cargo t 5252/5252 exit0 + cargo tv 163/163 + cargo tu 867过2ignore；canonical Specs SD-01..04（新 auto-text-core/project.md+paged-rope 路径迁移节+vm/ui overview 文本批次节）+INDEX 再生（43 projects）；777 基线终态并集重采 declared_edges=63 strict pass 0 违规；ledger v47→v48 guarded offline projection（无存储写方可达，备份 bak-v47-807，四条目 P807-D1/T/R3/M）。",
+          "status": "active",
+          "file": "docs/plans/attachments/807/handoff.md",
+          "tags": [
+            "plan:807",
+            "commit:63fe29fd9",
+            "sha256:3e099886eac65e61"
+          ]
         }
       ]
     },
@@ -7749,6 +7761,18 @@
             "commit:c4158b89e",
             "sha256:30a7f460f6dccabd"
           ]
+        },
+        {
+          "id": "P807-D1",
+          "title": "文本基础整体外置——auto-text-core crate（PLAN-807）",
+          "content": "持久化 rope/文件后援分页/快照/diff 引擎自 auto-lang ui/code_editor 逐字迁出为 crates/auto-text-core 单一份实现（依赖仅 imara-diff+std，777 lang-core 域，闭包由 text-core-consumer fixture 钉住）；冻结最小公开面（Rope/RopeSnapshot/PageStore/PageState/PageConfig + diff 四入口/envelope/dirs + 纯快照形 DiffSnapshotsPair）；预取所有权闭环清偿（worker 持 Weak，最后外部引用释放→store 析构→sender drop→受控退出；worker_exited_handle 每店观测面）；旧路径薄 re-export 门面（TypeId 同型）+ envelope key→snapshot 查找留 UI adapter；VM 第 8 槽 EditorSnapshotProvider（独立 trait，802 零破坏）供 9916 同源 owned 快照；四 diff shim 与 a2r_std on 臂零 crate::ui、off 臂冻结逐字（a2r diff_files_window 仅 on 导出=符号缺席，旧 base 同形）；ui_gen 发射串零扰动；792 DELIVERY_CRATES 14 成员（806 并集）。canonical 规范见 file。",
+          "status": "active",
+          "file": "docs/specs/auto-text-core/project.md",
+          "tags": [
+            "plan:807",
+            "commit:63fe29fd9",
+            "sha256:f9ca072ec00a4577"
+          ]
         }
       ]
     },
@@ -9437,6 +9461,18 @@
             "plan:806",
             "commit:c4158b89e",
             "sha256:1750f724de230b3c"
+          ]
+        },
+        {
+          "id": "P807-T",
+          "title": "文本基础抽取永久回归与独立消费方资产（PLAN-807）",
+          "content": "crates/auto-lang/src/tests/plan807_text_core.rs（core 剪断锚/TypeId 身份/快照端口装配身份——R2 起全局槽写者用例为自重执行子进程隔离 P807_SLOT_CHILD 守卫，实值 oracle 保留：显式 A/B/C/D 默认/构造式缺席/兼容补缺/真 adapter None；shim 值与缺 provider·key 语义/双 VM 隔离/真编辑器门面==纯形逐字节/Windows 句柄释放+worker 退出）；独立消费方 test/fixtures/modularity/text-core-consumer（独立 workspace 唯依赖 auto-text-core 3 例 + verify-deps.sh 闭包门零语言/UI/VM）；随源迁移 65 单测+3 显式谱位驻 crates/auto-text-core；1GB 定向资源测=plan728_bench 谱（3,033,703B≤12MB）。",
+          "status": "active",
+          "file": "crates/auto-lang/src/tests/plan807_text_core.rs",
+          "tags": [
+            "plan:807",
+            "commit:63fe29fd9",
+            "sha256:beaf8865a99ed6b0"
           ]
         }
       ]
@@ -12642,10 +12678,23 @@
             "reviewed_commit:50644ad43",
             "sha256:69995ef7553f022b"
           ]
+        },
+        {
+          "id": "P807-R3",
+          "title": "PLAN-807 final review R3 — pass",
+          "content": "R3 pass（绑定 4e3bde4d6；merge rebase over 806 后映射 574ec78c8..63fe29fd9，range-diff 10 全等+1 并集差量+1 空提交略除）：R1-01/R2-01（全局默认槽写者污染真实 reader）closed——子进程生命周期隔离+1/8/16 线程各 2 次全 15 过+更宽组合 56 过/4 ignore+子体单独真执行与守卫路径正反控；R1-02 门控、R1-03 off 矩阵、R1-04/R2-02 身份绑定 closed 保持。AC01..05 pass，AC06 merge-owned（本合并收口执行：终态裸 t 5252/5252+tv 163/163+tu 867过2ignore）。",
+          "status": "active",
+          "file": "docs/plans/attachments/807/review-r3/REVIEW.md",
+          "tags": [
+            "plan:807",
+            "stage:review",
+            "reviewed:4e3bde4d6",
+            "commit:63fe29fd9"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 47
+  "version": 48
 }
