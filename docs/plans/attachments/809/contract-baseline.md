@@ -445,3 +445,23 @@ all_incs/exe_path/Target::from/Pac::new/check_links 等）、验证 `use auto_ma
 | CompilerStore P805-D1 已知债 | 不动（越权；KNOWN-DEBT 已登记） |
 | 模板先建后求值窗口（803 遗留） | 不动（计划 §1 明确不顺手修） |
 | 三个 #[ignore] VM codegen 缺陷测试 | 随迁保持 ignore，不修 |
+
+## 13. Recorded Adjustments（T-03 实施记录）
+
+1. **Port::default() 逐字迁 core**（§2.3 修订）：`env::consts::OS/ARCH` 是编译期
+   目标平台常量而非运行期环境观测，逐字保留 = 零行为漂移；不需要
+   `Port::for_platform` 显式注入。
+2. **2 参兼容入口保留直接 FS 探针**（§1.3 细化）：`Target::from`/`get_root_dir`/
+   `Target::merge` 的旧公开签名在 core 内保留原 `Path::is_dir` 探针以冻结签名
+   与行为；纯入口为 `Target::from_with_probe`/`get_root_dir_with_probe`/
+   `merge_with_probe`（观测注入，测试/适配用）。core 的这一处只读 metadata
+   探针与 auto-package-lock codec 的 load/save、project-model 的 parse_file
+   同级（crate 先例），不构成语言/进程/网络依赖。
+3. **collect_srcs 改自由函数**（可见性记录）：原 `Target::collect_srcs` 为
+   pub(crate) 方法；效果半迁出后以 `auto_man::target::collect_target_srcs`
+   自由函数承接（pub），避免 trait 方法对全 pub 面（tabled/FS 效果族）
+   的可见性扩宽。调用点：pac.rs collect_srcs、builder/ninja setup。
+4. **私有辅助降自由函数**：check_dirs/scan_auto/scan_auto_dir/
+   generate_api_server/transpile_rust_project_multi 由 Target 私有方法改为
+   target.rs（auto-man）模块私有自由函数（E0116：跨 crate inherent impl
+   禁止），行为逐字。

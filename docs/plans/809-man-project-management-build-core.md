@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-18
 updated_at: 2026-10-18
 plan_revision: 1
-current_step: 1
+current_step: 3
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/project-model/project.md]
 new_spec_components: [docs/specs/auto-man-core/project.md, docs/specs/project-model/design/generation-request.md]
@@ -128,8 +128,8 @@ review独立上下文同树检查生产委托、双状态、全部Builder/生成
 | 状态 | ID | owner_stage | 依赖 | 文件/动作、可验证交付与命令 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | depends_on均已交付 | [✅ 已完成] `attachments/809/contract-baseline.md`：Pac 30 方法/Target 40 方法/Dir/Port/Group/file_types/scanner 逐项规则/效果归属表（R-01..R-08/E-01..E-08）；关键架构事实=core 输入边界是 Node/Obj（AutoConfig 仅 {code,root,args}，Pac::new 只读 root/args）；两处内嵌 FS 探针（get_root_dir/merge）改注入谓词；9 生成器零 &Pac 参数、读点三层（行扫/重型解析/调用方 env 种植）+ I-PROJECT 字段合同 A-D 组（字段集 ⊃ Pac 字段集：npm_deps/styles/i18n/exe_name/dep-roots/rust_sidecar/front/back.project）；Builder 三实现读点表（Vue 零读取）；图错误合同（环=挂死证实、外部 link 不阻塞、NoProgress+cycle_candidates）；API 兼容=分类迁移+扩展 trait 保方法语法（Rust 跨 crate inherent impl 红线）；CLI→Pac 调用链矩阵+V-05 driver 环境矩阵。depends_on 七计划 archived 核实+主检出零代码 WIP。§12 未决项均已映射归属任务，无阻塞 | AC-01..04 |
-| [ ] | T-02 | work | T-01 | `auto-project-model`新增具名generation_request模块/轻consumer，静态和动态已求值输入投影，unknown/source/root；project-model定向V-02/03 | AC-02,03 |
-| [ ] | T-03 | work | T-02 | 新`auto-man-core`数据/view及Pac/Target纯声明/选择/投影规则，旧门面兼容；core test/check与V-01签名构造pin | AC-01 |
+| [x] | T-02 | work | T-01 | [✅ 已完成] `auto-project-model` 新增具名 `generation_request` 模块（412 行）+ `generation_request_tests.rs`（8 测试）：RequestOrigin 静态准入/动态求值分流（unsupported 不伪造已求值，is_evaluated 诚实判定）、A 组字段投影（复用 Identity/DisplayFields/RuntimeFields/RenderDecl/ToggleFields）+ B 组从 raw 目录回收（npm_deps/styles/i18n/exe_name/front/theme 块→ThemeDeclLite/rust_sidecar 存在性/dep 根）、display_title locale 链（镜像 Pac::display_title_in）、resolve_against_root 纯路径代数（cwd 无关）；外部 consumer fixture `test/fixtures/modularity/project-request-consumer/`（独立 manifest+verify-deps.sh，闭包=auto-project-model→auto-atom→auto-val 单证）；根 Cargo.toml exclude 登记。验证：`cargo test -p auto-project-model` 38/38（含新增 8）、consumer 3/3、closure PASS、`cargo check -p auto-man` 过。worktree 提交 dd4991a7b | AC-02,03 |
+| [x] | T-03 | work | T-02 | [✅ 已完成] 新 `crates/auto-man-core`（闭包 auto-val/auto-atom/auto-toolchain-core/auto-project-model+log）：Scene/BackendName+RenderSelection（from_str/output_dir/from_value 逐字对齐 BackendType/BackendConfig）/Target 纯半（from_with_probe 注入谓词+2 参兼容入口保签名）/Dir 数据半/Port+port_from_node/Group/NodeExt/pac_from_decl→PacDecl/投影自由函数族（all_incs/pac_to_node/exe_path/display_title_in/targets_map/filters）。auto-man：node_ext/group/port 纯 re-export 门面；dir/target 门面+DirEffects/TargetEffects 扩展 trait（效果方法逐字）；Pac::new 生产委托 core（RenderSelection↔BackendConfig、ThemeDeclLite↔ThemeDecl 转换），纯方法逐项委托。plan809_management_core.rs：api_compat_probe（Target 29 字段+Pac 全字段字面量构造+方法 pin）/production_delegation_parity（30+ 字段冻结 oracle）/glob 导入 trait 方法语法/port_from_node 对拍。验证：core 18/18、probe 4/4、pac:: 18/18、project-model 38/38、auto-man lib 344 过（5 失败=master 并行 flake 族，主检出对照全套失败更多）；4 recorded adjustments 入 contract §13。worktree 提交 bc11055ac | AC-01 |
 | [ ] | T-04 | work | T-03 | 依赖/链接闭包/target选择及复用resolver/lock，明确内部环无进展错误；删Pac旧算法，V-03/04 | AC-01,03 |
 | [ ] | T-05 | work | T-04 | Dir/Group/Port纯规则与source/compile/link构建规划迁core，FS/语言/执行留具名adapter；真实Builder三族消费计划，check+V-05定向 | AC-01,04 |
 | [ ] | T-06 | work | T-05 | Pac/Automan默认生产委托，现有UI生成器项目读取接I-PROJECT而非搬算法；建plan809及两consumer/真实工具driver，完整V-01..06，旧读取/规则副本清理 | AC-01..04 |
@@ -146,6 +146,7 @@ handoff：`D:/autostack/.wt/lang-809/auto-lang`，分支`codex/plan-809-dev`；w
 2026-10-18 revision 1 drafting；当前仅合同及预检，未实施/测试或review pass。内部target环受控拒绝是本Plan明示新增合同，正常迁移语义仍冻结；Spec delta须随最终实现接受审查，不能提前写为已交付。
 
 2026-10-18 work T-01 完成：worktree `D:/autostack/.wt/lang-809/auto-lang`（branch `codex/plan-809-dev`，base=master 2046a025b）建立；depends_on 七计划 archived；contract-baseline.md 冻结（读点穷举/归属/兼容/图错误/命令矩阵）。下一 T-02 generation_request 模块。
+2026-10-18 work T-02/T-03 完成：generation_request 模块+consumer（dd4991a7b）；auto-man-core crate+门面委托+probe（bc11055ac）。环境注记：aliyun 镜像索引缺 redox_syscall 0.9.5，重解析经 rsproxy 单次旁路（cargo --config source.aliyun.registry）。
 
 ## 10. 待澄清事项
 
