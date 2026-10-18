@@ -1694,7 +1694,7 @@ impl MediaRuntime {
         self.inner.queue_rendition(path, spec, priority, revision)
     }
 
-    fn queue_path(&self, path: impl Into<PathBuf>, priority: MediaPriority) -> MediaAssetTicket {
+    pub fn queue_path(&self, path: impl Into<PathBuf>, priority: MediaPriority) -> MediaAssetTicket {
         self.inner.queue_path(path.into(), priority)
     }
 

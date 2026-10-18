@@ -35,6 +35,7 @@ mod plan794_scroll_host_provider;
 // 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
 mod plan802_code_editor_provider;
 mod plan807_text_core; // PLAN-807: 文本基础抽取（剪断锚/快照端口/类型身份/真编辑器路径/资源退出）
+mod plan811_media_runtime; // PLAN-811: 媒体宿主域抽取（剪断锚/native 冻结/同一 service/17 shim 真实调用）
                        // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
                        // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
 mod plan804_dialog_dnd_provider;

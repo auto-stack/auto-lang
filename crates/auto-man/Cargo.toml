@@ -77,6 +77,9 @@ tauri = { version = "2", default-features = false, features = ["test"] }
 tempfile = { workspace = true }
 # PLAN-803 V03/V04: 门面↔资源层字节对照与 exporter 测试直接消费资源 crate
 auto-man-assets = { path = "../auto-man-assets" }
+# PLAN-811 V-01: 媒体基础真消费方（与生成应用同形——绕过 auto-lang 闭包直接
+# use auto_media_core::；plan811_media_consumers 的实编实跑面）。
+auto-media-core = { path = "../auto-media-core" }
 
 [lib]
 name = "auto_man"
