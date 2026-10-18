@@ -98,6 +98,13 @@ fn str_list(v: &Value) -> Vec<String> {
                 .then(|| vec![s.to_string()])
                 .unwrap_or_default()
         }
+        // R3-02/R4-01：旧 read_str_list 接受的 Block 列表形态（原支持域）。
+        Value::Block(b) => b
+            .values
+            .iter()
+            .map(|s| s.to_astr().trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
         _ => Vec::new(),
     }
 }
@@ -105,6 +112,7 @@ fn str_list(v: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_val::AutoStr;
 
     fn node_with(module_line: &str, dep_line: &str) -> Node {
         let mut n = Node::new("rust_sidecar");

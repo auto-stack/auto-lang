@@ -549,7 +549,7 @@ render: \"vm\"
                 children: vec![],
                 line: 0,
             });
-        let source = crate::rust_ui::PacSource::from_request_pub(&req);
+        let source = crate::rust_ui::PacSource::from_request(&req);
         let spec = source.sidecar_spec(root);
         assert_eq!(spec.modules.len(), 1, "请求声明驱动（磁盘无 sidecar）");
         assert_eq!(spec.modules[0].0, "extra");

@@ -1515,17 +1515,15 @@ impl Automan {
 
         // PLAN-809 T-06c：本工程生成请求（I-PROJECT）——一次构造多处消费。
         let self_req = {
-            let root_dir = std::env::current_dir()
-                .map_err(|e| format!("Failed to get current directory: {}", e))?;
-            crate::generation_request_adapter::request_of_in(
-                &self.pac,
-                &root_dir.join("pac.at"),
-                auto_project_model::generation_request::RequestMode::Generate,
-                output
-                    .as_ref()
-                    .map(|o| std::path::PathBuf::from(o))
-                    .or_else(|| self.delivery_root.clone()),
-            )
+            // R4：经 gen_request_as（render_override 应用到本次有效后端），
+            // output/delivery 覆盖 output_root。
+            let mut r =
+                self.gen_request_as(auto_project_model::generation_request::RequestMode::Generate)?;
+            r.output_root = output
+                .as_ref()
+                .map(|o| std::path::PathBuf::from(o))
+                .or_else(|| self.delivery_root.clone());
+            r
         };
 
         // Generate for selected backend only

@@ -3181,13 +3181,6 @@ impl<'a> PacSource<'a> {
         Self { req: Some(req) }
     }
 
-    /// 测试/适配探针用公开构造（同 from_request）。
-    pub fn from_request_pub(
-        req: &'a auto_project_model::generation_request::GenerationRequest,
-    ) -> Self {
-        Self::from_request(req)
-    }
-
     #[allow(dead_code)]
     pub fn is_request(&self) -> bool {
         self.req.is_some()
@@ -3290,7 +3283,24 @@ impl<'a> PacSource<'a> {
     pub fn sidecar_spec(&self, project_dir: &Path) -> crate::sidecar::SidecarSpec {
         match self.req {
             Some(r) => {
-                let sidecar_nodes: Vec<auto_val::Node> = r
+                // R4-02：完整支持域=节点形态 + 对象/嵌套 prop 形态
+                // （req.raw 中 key=="rust_sidecar" 的 Value::Obj/Node——
+                // core sidecar_decl_from_root 的 prop 兜底臂同域）。
+                let mut sidecar_nodes: Vec<auto_val::Node> = r
+                    .raw
+                    .iter()
+                    .filter(|p| p.key == "rust_sidecar")
+                    .filter_map(|p| match &p.value {
+                        Some(auto_val::Value::Obj(_)) => {
+                            let mut n = auto_val::Node::new("root");
+                            n.set_prop("rust_sidecar", p.value.clone().unwrap());
+                            Some(n)
+                        }
+                        Some(auto_val::Value::Node(inner)) => Some((**inner).clone()),
+                        _ => None,
+                    })
+                    .collect();
+                let declared: Vec<auto_val::Node> = r
                     .raw_nodes
                     .iter()
                     .filter(|n| n.head == "rust_sidecar")
@@ -3305,6 +3315,8 @@ impl<'a> PacSource<'a> {
                         node
                     })
                     .collect();
+                sidecar_nodes.extend(declared);
+                // prop 形态包进 root 让 core 的兜底臂命中；节点形态直挂
                 let mut root = auto_val::Node::new("root");
                 for n in sidecar_nodes {
                     root.add_kid(n);

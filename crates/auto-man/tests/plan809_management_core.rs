@@ -607,9 +607,7 @@ app(\"main\") { }
             std::fs::create_dir_all(root2.join("apps/main")).unwrap();
             std::fs::write(
                 root2.join("apps/main/main.c"),
-                "#include <stdio.h>
-int main(void){printf(\"ninja-ok\n\");return 0;}
-",
+                "int main(void){return 0;}\n",
             )
             .unwrap();
             std::fs::write(
