@@ -9,4 +9,4 @@
 | 752 | pg-bootstrap-lib | ✅（reviewed→archived） | archive/ | /api/run prepend_lib——AUTO_LIB_FILES（lib-legacy 12 文件依赖序，golden is_bootstrap 同款清单）前置拼接 AAVM v1 自举 lib，vm-bootstrap 组笔记可运行（官方宿主按 note.id 前缀自动开启；走查 105 条 104 成功/80 golden 逐字节一致，余为仓库既有 #[ignore] 态）；默认 false 零影响，project/files 路径不拼接|
 | 754 | pg-unify | ✅（reviewed→archived） | archive/ | standalone App.vue 瘦壳化——宿主逻辑全量迁组件包 PlaygroundIDEApp，零行为漂移（e2e 29 绿+unify 3/3）|
 
-| 812 | playground-linux-backend-deploy | executing | pending | 通用 a2r-std 依赖与非 Windows 常量重导出；前后台响应格式一致的 Linux 后台发布包、运行资产和回滚验收 |
+| 812 | playground-linux-backend-deploy | ✅（reviewed→archived） | archive/ | 通用 a2r-std 依赖与非 Windows 常量重导出；前后台响应格式一致的 Linux 后台发布包、运行资产和回滚验收 |

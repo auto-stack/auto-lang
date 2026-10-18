@@ -4,6 +4,29 @@
       "id": "reports",
       "items": [
         {
+          "id": "P812-M",
+          "title": "PLAN-812 线上后台部署与回滚收据",
+          "content": "线上已替换旧后台，systemd active；binary SHA256=847132bbd1b6d7d2a9f5e434b2f3e379daa9b7260020a2f428b54dd871a71b11；1343 examples、stdout=7/15 bytecode、五种 trans 与 multi-module 通过。首次漏 stdlib 自动回滚经验证，补齐后以实际隔离包复验再上线。备份=/var/backups/auto-playground/20261019-687efdd35。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/archive/812-playground-linux-backend-deploy.md",
+          "milestone": null,
+          "module": "auto-playground",
+          "tags": [
+            "PLAN-812",
+            "reviewed:7cab6ca2b7498c5a8ef28e070f8d107267ac18c9",
+            "source-sha256:8bd7c084e979417dda827a19f1fe36472227024b288287b71c7cccdff06b38c2",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792358930,
+          "modified_at": 1792358930,
+          "completed_at": 1792358930
+        },
+        {
           "id": "P805-M",
           "title": "PLAN-805 合入收据（delivery/沉淀/投影/归档/清理）",
           "content": "delivery=ecf53035e ff-only（rebase over 801/802/804/788 合入线：一次 rebase 唯一冲突基线 json 取 master 侧后merge 期重采样覆盖，二次 rebase over 788 簿记线零冲突；映射 4d1aade5a→29c978be9/66fc9d710→48b4f6651/589e30399→8b951bb8c+merge 预备 4d3e9746d→7d9cdb1dc，range-diff 1/3 提交全等、基线 json 为解决方式差异且已重采样）；冻结门禁裸 cargo t 5265/5265（1 slow，1550 skipped 预配置）+定向门（核心 38+6/parity+身份/ninja-lib 12+1/consumer 5/verify-deps/strict pass 0 违例）跑于 4d3e9746d，二次 rebase 仅 docs/plans 簿记、代码/测试/配置 diff 为空、证据显式复用。沉淀=SD-01/02+plans.md 建表+GROUPS/INDEX 42 项目；ledger v43→v44 guarded offline projection（本条目+D/T/R2 四条，备份 bak-v43-805，范围守卫仅本计划条目）。归档 archive/805+T-08 8/8。",
@@ -6487,15 +6510,30 @@
         },
         {
           "id": "P746-1",
-          "title": "playground /api/run 执行时限与错误面（PLAN-746）",
-          "content": "PLAN-746:r1 交付落账（canonical 唯源=docs/specs/auto-playground/project.md，delivery 95c093001）。timeout_secs（默认 10s，clamp 1..=60）映射 VM 协作式截止；超时 stdout 携 Error: ExecutionTimeout，服务端无失控执行（全量走查净增 +11MB、静置不涨、挂起清零）；官方前端宿主（usePlayground/Full）显式发 60s 保合法慢例（F-746-R1 复审定谳）；执行线程 panic 经 join_execution 返干净 Err（SD-04）。",
+          "title": "playground /api/run 执行时限与错误面（PLAN-746）；Linux 发布契约（PLAN-812）",
+          "content": "PLAN-746:r1 交付落账（canonical 唯源=docs/specs/auto-playground/project.md，delivery 95c093001）。timeout_secs（默认 10s，clamp 1..=60）映射 VM 协作式截止；超时 stdout 携 Error: ExecutionTimeout，服务端无失控执行（全量走查净增 +11MB、静置不涨、挂起清零）；官方前端宿主（usePlayground/Full）显式发 60s 保合法慢例（F-746-R1 复审定谳）；执行线程 panic 经 join_execution 返干净 Err（SD-04）。 PLAN-812：Linux 后台与当前网站响应格式一致（bytecode/meta、files[].code），a2r-std 通用依赖与 stub 常量接口补齐；运行资产必须随包保留编译期路径并实际隔离验收，失败回滚。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/auto-playground/project.md",
+          "milestone": null,
+          "module": "auto-playground",
           "tags": [
             "plan-746",
             "auto-playground",
             "commit:95c093001",
-            "docsha:beb1ac5bf44a"
+            "docsha:beb1ac5bf44a",
+            "PLAN-812",
+            "reviewed:7cab6ca2b7498c5a8ef28e070f8d107267ac18c9",
+            "source-sha256:8bd7c084e979417dda827a19f1fe36472227024b288287b71c7cccdff06b38c2",
+            "guarded-offline-projection"
           ],
-          "file": "docs/specs/auto-playground/project.md"
+          "created_at": 1792358930,
+          "modified_at": 1792358930,
+          "completed_at": 1792358930
         },
         {
           "id": "P746-2",
@@ -7779,6 +7817,29 @@
     {
       "id": "tests",
       "items": [
+        {
+          "id": "P812-T",
+          "title": "Playground 实际发布包与生产接口 smoke",
+          "content": "真实发布包验收：stdlib/assembly-providers.json、Notes manifest、项目、自举库、独立前端；examples>100、stdout=7、bytecode/meta、Rust/C/Python/TypeScript/ABT files[].code、09-multi-module greet。完整源码必须移出编译期运行资源路径，避免包缺资产被本地 checkout 掩盖。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/attachments/812/release-smoke.py",
+          "milestone": null,
+          "module": "auto-playground",
+          "tags": [
+            "PLAN-812",
+            "reviewed:7cab6ca2b7498c5a8ef28e070f8d107267ac18c9",
+            "source-sha256:8bd7c084e979417dda827a19f1fe36472227024b288287b71c7cccdff06b38c2",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792358930,
+          "modified_at": 1792358930,
+          "completed_at": 1792358930
+        },
         {
           "id": "P805-T",
           "title": "工具链规则验证矩阵（golden 对拍/类型同一性/外部闭包/顺序控制）",
@@ -9480,6 +9541,29 @@
     {
       "id": "reviews",
       "items": [
+        {
+          "id": "P812-R",
+          "title": "PLAN-812 Linux 后台最终复审",
+          "content": "r2 final pass；同实现会话复审局限已明示，结论从冻结 diff 与真实验收重建。Windows check、transport 9/9、Linux release、隔离发布包、自动回滚、公网 API 与页面 Run/Trans 均通过；merge-owned bare cargo t 见归档最终收据。无新增债务。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/archive/812-playground-linux-backend-deploy.md",
+          "milestone": null,
+          "module": "auto-playground",
+          "tags": [
+            "PLAN-812",
+            "reviewed:7cab6ca2b7498c5a8ef28e070f8d107267ac18c9",
+            "source-sha256:8bd7c084e979417dda827a19f1fe36472227024b288287b71c7cccdff06b38c2",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792358930,
+          "modified_at": 1792358930,
+          "completed_at": 1792358930
+        },
         {
           "id": "P805-R2",
           "title": "PLAN-805 final review R2 — pass",
@@ -12696,5 +12780,5 @@
     }
   ],
   "project": "auto-lang",
-  "version": 48
+  "version": 49
 }
