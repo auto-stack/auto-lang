@@ -1,5 +1,5 @@
 {
-  "base_revision": "61745b7c723fb3f5d26bf8a0472bb58944187cda",
+  "base_revision": "12bdf0cda5bb80d022cadf316131b21578ae9ce9",
   "config_sha256": "8c4a5e965554f6138613157c10117f324731a17e89bf061c210acac2d93bf6b4",
   "declared_edges": [
     {
@@ -187,7 +187,7 @@
       "from": "auto-lang",
       "kind": "normal",
       "optional": false,
-      "target": "cfg(windows)",
+      "target": null,
       "to": "a2r-std",
       "to_scope": "member"
     },
