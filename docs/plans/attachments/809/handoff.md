@@ -29,6 +29,19 @@ inja.exe exit 1，编译器缺失环境）；成功产物路径以内存模式�
 
 请求字段 → 生成器读取点：identity.name→jet/ark/rust_ui(423,641)/vue(display)；display.title[_zh]→vue(index_title)/rust_ui(title_env 2666)；runtime.window→rust_ui(window_env 2665)；exe_name→rust_ui(pac_bin_block 4420)；runtime.api→rust_ui(api 门 6344)；external_backend→rust_ui(6217)；theme_decl→vue(composed)/rust_ui(apply_theme)；dep_roots→rust_ui(resolve_bps 2874)/vue(collect_dep_front_dirs 输入)；shadcn/default_classes→vue(3323/3329)；npm_deps/styles/i18n→vue(3927/4022)；front_decl→vue(front_rel_path)；has_rust_sidecar→rust_ui(563 门外)。run 侧 env 种植（main.rs AUTO_* 14+）不经请求——R04 统一。
 
+## R2 Findings 修复（ef6f05cf4，2026-10-19）
+
+诊断表（漏检原因→不变量→修复→实跑）：
+
+| finding | 漏检原因 | 完整不变量 | 修复与实跑 |
+|---|---|---|---|
+| R2-01 P1 ninja 实例 | 纯 rename 序无身份——共享 rename 时顶层/内嵌不可区分；我的 V-04 测试无覆盖态 | 规划必须保留首次访问对象的可回查身份 | BuildOrderStep(item_index,from_dep)；三态永久回归（真实 NinjaBuilder 内存字节：app-first override.c 胜且 base.c 不发射/顶层先/内嵌独占）8/8 |
+| R2-02 入口残留 | grep 只查 generate 名，漏 build_* 链与 run 内层分支；vue 主声明二读藏在 collect_dep_front_dirs | 全调用链内层分支经合同；主工程声明不得第二套读取 | ark run_inner 真接线（此前 replace 错位）；build_jet/ark_with_request+分派；VueReads.dep_roots+共享收集体+incremental 穿线；对拍含"请求不变磁盘后改"反控 |
+| R2-03 投影丢失 | request_of 只投 Pac 字段+props；V-02 对拍双字段齐备未测 zh-only/front 节点形 | 无损构造：未知节点/sidecar/来源/调用上下文 | PacDecl/Pac raw_nodes+front_node+has_rust_sidecar；node_to_raw_decl；front 节点形优先；title_zh.or(title)；mode/output_root/input_sources 经 request_of_in+gen_request_run；zh-only/front 形/主声明反控补例全绿 |
+| R2-04 假绿 | which 只拼 .exe（本机 npm.cmd） | 必需验收未执行不得计绿 | PATHEXT 全扩展名发现（npm.cmd 实跑成功+exit3 失败传播 8/8）；缺失→panic |
+| R2-05 围栏/告警 | 围栏钉旧源字符串；新告警未清 | 围栏验实际新合同源；本计划零新告警 | 围栏改验 VueReads::scan 统一入口+禁裸读（13/13 过）；清单告警全清 |
+| R2-06 SD/792 | SD 措辞超前于证据；792 以单测代正式验收 | 陈述与证据一致 | **部分**：本 handoff 已校准为实际状态；SD-02/03 文本与 792 正式 fresh/locked 收据**待下轮补**（生成驱动经 generate_rust_ui_delivery_with_request 真跑 + driver.py 全集），不声称已闭 |
+
 ## 复验命令（work 树）
 
 - `cargo check -p auto-man-core -p auto-project-model -p auto-man`
