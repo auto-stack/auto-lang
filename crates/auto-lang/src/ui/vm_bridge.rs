@@ -647,6 +647,9 @@ impl VmBridge {
         // PLAN-794: scroll host adapter 同点并入（if-absent 兼容默认；
         // controller 注册表接线恢复，9900..9905/9922/9923）。
         crate::ui::scroll_host_provider::install_process_default();
+        // PLAN-808: terminal domain adapter 同点并入（if-absent 兼容默认；
+        // 34 native 全族的输入/投影/menu/scroll/window/palette 接线恢复）。
+        crate::ui::terminal_provider::install_process_default();
         // PLAN-802: code editor host adapter 同点并入（if-absent 兼容默认；
         // editor 注册表接线恢复，22 native 全族）。
         #[cfg(feature = "code-editor")]
@@ -791,6 +794,9 @@ impl VmBridge {
         // PLAN-794: scroll host adapter 同点并入（if-absent 兼容默认；
         // 同 new_with_children）。
         crate::ui::scroll_host_provider::install_process_default();
+        // PLAN-808: terminal domain adapter 同点并入（if-absent 兼容默认；
+        // 同 new_with_children，见 ui/terminal_provider.rs）。
+        crate::ui::terminal_provider::install_process_default();
         // PLAN-802: code editor host adapter 同点并入（if-absent 兼容默认；
         // 同 new_with_children）。
         #[cfg(feature = "code-editor")]

@@ -399,6 +399,14 @@ impl TerminalHostProvider for TerminalUiProvider {
     fn config_spawn_cwd(&self, _profile: &str) -> String {
         String::new()
     }
+
+    fn owns_handle(&self, handle: i64) -> bool {
+        self.service.owns_handle(handle)
+    }
+
+    fn live_handle_count(&self) -> usize {
+        self.service.live_handle_count()
+    }
 }
 
 // ── PLAN-808: window-pixel view state (moved out of the VM FFI glue) ──────

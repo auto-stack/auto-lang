@@ -172,6 +172,13 @@ pub struct NativeInterface {
     /// 的行为。
     terminal_provider:
         std::sync::RwLock<Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>>>,
+    /// PLAN-808 R1: per-VM history of terminal providers ever installed.
+    /// Handles stay bound to the provider that owns them across
+    /// `set_terminal_provider` replacement (owner routing); the strong Arcs
+    /// also keep the original service alive until its last session is freed.
+    /// Pruned when a replaced owner has no live sessions (R1-F04).
+    terminal_owners:
+        std::sync::RwLock<Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>>>,
 }
 
 impl Clone for NativeInterface {
@@ -250,6 +257,14 @@ impl Clone for NativeInterface {
                     .expect("terminal_provider poisoned")
                     .clone(),
             ),
+            // PLAN-808 R1: owner history survives Clone/merge so a handle
+            // exposed before the clone/replace still routes to its origin.
+            terminal_owners: std::sync::RwLock::new(
+                self.terminal_owners
+                    .read()
+                    .expect("terminal_owners poisoned")
+                    .clone(),
+            ),
         }
     }
 }
@@ -274,6 +289,7 @@ impl NativeInterface {
             dnd_host_provider: std::sync::RwLock::new(None),
             editor_snapshot_provider: std::sync::RwLock::new(None),
             terminal_provider: std::sync::RwLock::new(None),
+            terminal_owners: std::sync::RwLock::new(Vec::new()),
         }
     }
 
@@ -456,6 +472,8 @@ impl NativeInterface {
 
     /// PLAN-808: 注入/替换本接口（=本 VM）的 terminal provider。
     /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    /// The provider is also remembered in `terminal_owners`: handles already
+    /// exposed by it stay bound to it after later replacements.
     pub fn set_terminal_provider(
         &self,
         provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
@@ -463,7 +481,55 @@ impl NativeInterface {
         *self
             .terminal_provider
             .write()
-            .expect("terminal_provider poisoned") = Some(provider);
+            .expect("terminal_provider poisoned") = Some(provider.clone());
+        self.remember_terminal_owner(provider);
+    }
+
+    /// Remember a provider for handle-owner routing (deduplicated by Arc
+    /// identity). Called by `set_terminal_provider` and by the spawn shims
+    /// for the fallback shared provider.
+    pub fn remember_terminal_owner(
+        &self,
+        provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
+    ) {
+        let mut owners = self
+            .terminal_owners
+            .write()
+            .expect("terminal_owners poisoned");
+        if !owners
+            .iter()
+            .any(|existing| std::sync::Arc::ptr_eq(existing, &provider))
+        {
+            owners.push(provider);
+        }
+    }
+
+    /// Find the provider that owns `handle` (most recently installed first).
+    /// Returns `None` when no remembered provider owns it — callers then use
+    /// the current provider / shared fallback.
+    pub fn terminal_owner_for(
+        &self,
+        handle: i64,
+    ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
+        self.terminal_owners
+            .read()
+            .expect("terminal_owners poisoned")
+            .iter()
+            .rev()
+            .find(|provider| provider.owns_handle(handle))
+            .cloned()
+    }
+
+    /// Drop remembered owners with no live sessions. The current slot is not
+    /// touched (it stays installed even at zero sessions). This lets a
+    /// replaced isolated service Drop and free any remaining sessions
+    /// (F808-R1-04) without losing owners that still have handles.
+    pub fn prune_terminal_owners(&self) {
+        let mut owners = self
+            .terminal_owners
+            .write()
+            .expect("terminal_owners poisoned");
+        owners.retain(|provider| provider.live_handle_count() > 0);
     }
 
     /// PLAN-808: 当前 terminal provider（None → shim 回落进程共享 engine

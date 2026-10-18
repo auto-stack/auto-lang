@@ -643,7 +643,7 @@ mod plan808_assembly {
 mod plan808_absent {
     use std::sync::Arc;
 
-    use auto_terminal_core::{EngineService, TerminalHostProvider};
+    use auto_terminal_core::EngineService;
 
     use crate::vm::engine::AutoVM;
     use crate::vm::task::AutoTask;
@@ -909,55 +909,309 @@ mod plan808_real_dll {
         reaper.disarm();
     }
 
-    /// V-04: provider replacement routing — a handle belongs to the service
-    /// that created it; another service returns absent values and its free
-    /// must not release the original session.
+    fn shim_rows(vm: &AutoVM, handle: i64) -> Vec<String> {
+        let mut task = AutoTask::new(0, 1024, 0);
+        task.ram.push_nv(auto_val::encode_i32(handle as i32));
+        crate::vm::ffi::term_engine::shim_term_rows(&mut task, vm).unwrap();
+        let id = task.ram.pop_i32() as u64;
+        let obj = vm.get_heap_object(id).expect("heap list");
+        let guard = obj.read().unwrap();
+        let list = guard
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<i32>>()
+            .expect("ListData<i32>");
+        let strings = vm.strings.read().unwrap();
+        (0..list.len())
+            .filter_map(|i| {
+                let v = list.get(i).copied().unwrap_or(0);
+                (v < 0)
+                    .then(|| strings.get((-v - 1) as usize))
+                    .flatten()
+                    .map(|b| String::from_utf8_lossy(b).into_owned())
+            })
+            .collect()
+    }
+
+    fn shim_write_line(vm: &AutoVM, handle: i64, line: &str) {
+        use crate::vm::ffi::VMConvertible;
+        let mut task = AutoTask::new(0, 1024, 0);
+        task.ram.push_nv(auto_val::encode_i32(handle as i32));
+        line.to_string().push_to_stack(&mut task, vm).unwrap();
+        crate::vm::ffi::term_engine::shim_term_write_line(&mut task, vm).unwrap();
+    }
+
+    fn shim_free(vm: &AutoVM, handle: i64) {
+        let mut task = AutoTask::new(0, 1024, 0);
+        task.ram.push_nv(auto_val::encode_i32(handle as i32));
+        crate::vm::ffi::term_engine::shim_term_free(&mut task, vm).unwrap();
+    }
+
+    fn wait_until(mut f: impl FnMut() -> bool, timeout: Duration) -> bool {
+        let end = Instant::now() + timeout;
+        while Instant::now() < end {
+            if f() {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(30));
+        }
+        false
+    }
+
+    #[cfg(windows)]
+    fn pid_alive(pid: u32) -> bool {
+        let out = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
+            .output()
+            .expect("tasklist");
+        if !out.status.success() {
+            return false;
+        }
+        String::from_utf8_lossy(&out.stdout).lines().any(|line| {
+            line.split(',')
+                .nth(1)
+                .map(|field| field.trim_matches('"').trim() == pid.to_string())
+                .unwrap_or(false)
+        })
+    }
+
+    /// F808-R1-01 permanent regression: two services with **live** sessions
+    /// and process-globally unique handles; after the VM switches A→B, a
+    /// handle exposed by A still reads/writes/frees through A. Duplicate free
+    /// does not touch B; a second VM and the shared-engine fallback are
+    /// covered. (The previous test used a DLL-less B, which masked the
+    /// collision.)
     #[test]
-    fn provider_replacement_does_not_reroute_handles() {
+    fn provider_replacement_keeps_old_handle_bound_to_owner() {
         let Some(path) = dll_path() else { return };
-        let vm = AutoVM::new(VirtualFlash::new(0), 1024);
         let svc_a = service_with_dll(&path);
-        let svc_b = Arc::new(EngineService::without_dll());
-        let handle = svc_a.spawn_ex(
+        let svc_b = service_with_dll(&path);
+        let ha = svc_a.spawn_ex(
             "cmd.exe",
-            &["/C".into(), "echo PLAN808_ROUTE".into()],
+            &["/K".into(), "echo PLAN808_OWNER_A".into()],
             "D:/autostack/auto-lang",
             80,
             24,
         );
-        assert_ne!(handle, 0);
-        let reaper = Reaper::new(&svc_a, vec![handle]);
-        let mut task = AutoTask::new(0, 1024, 0);
+        let hb = svc_b.spawn_ex(
+            "cmd.exe",
+            &["/K".into(), "echo PLAN808_OWNER_B".into()],
+            "D:/autostack/auto-lang",
+            80,
+            24,
+        );
+        assert_ne!(ha, 0);
+        assert_ne!(hb, 0);
+        assert_ne!(ha, hb, "handle namespace must be process-globally unique");
+        let mut reaper_a = Reaper::new(&svc_a, vec![ha]);
+        let mut reaper_b = Reaper::new(&svc_b, vec![hb]);
+        assert!(wait_marker(&svc_a, ha, "PLAN808_OWNER_A")
+            .iter()
+            .any(|l| l.contains("PLAN808_OWNER_A")));
+        assert!(wait_marker(&svc_b, hb, "PLAN808_OWNER_B")
+            .iter()
+            .any(|l| l.contains("PLAN808_OWNER_B")));
 
+        let vm = AutoVM::new(VirtualFlash::new(0), 1024);
         vm.set_terminal_provider(svc_a.clone());
-        task.ram.push_nv(auto_val::encode_i32(handle as i32));
-        crate::vm::ffi::term_engine::shim_term_rows(&mut task, &vm).unwrap();
-        let _ = task.ram.pop_nv();
-        assert_eq!(svc_a.live_handle_count(), 1);
-
-        // Route the same handle through B: absent values, no free of A.
         vm.set_terminal_provider(svc_b.clone());
-        let mut task = AutoTask::new(0, 1024, 0);
-        task.ram.push_nv(auto_val::encode_i32(handle as i32));
-        crate::vm::ffi::term_engine::shim_term_rows(&mut task, &vm).unwrap();
-        let _list_id = task.ram.pop_i32();
-        let mut task = AutoTask::new(0, 1024, 0);
-        task.ram.push_nv(auto_val::encode_i32(handle as i32));
-        crate::vm::ffi::term_engine::shim_term_free(&mut task, &vm).unwrap();
+
+        // Read the pre-switch handle: owner A, not the current B.
+        let rows_a = shim_rows(&vm, ha);
+        assert!(rows_a.iter().any(|l| l.contains("PLAN808_OWNER_A")));
+        assert!(!rows_a.iter().any(|l| l.contains("PLAN808_OWNER_B")));
+
+        // Write the pre-switch handle: A receives, B does not.
+        shim_write_line(&vm, ha, "echo PLAN808_OWNER_A2");
+        assert!(wait_marker(&svc_a, ha, "PLAN808_OWNER_A2")
+            .iter()
+            .any(|l| l.contains("PLAN808_OWNER_A2")));
+        assert!(!svc_b
+            .rows(hb)
+            .iter()
+            .any(|l| l.contains("PLAN808_OWNER_A2")));
+
+        // Free the pre-switch handle: A only; duplicate free is a no-op.
+        shim_free(&vm, ha);
+        assert_eq!(svc_a.live_handle_count(), 0, "A's session is freed");
+        assert_eq!(svc_b.live_handle_count(), 1, "B's session is untouched");
+        shim_free(&vm, ha);
         assert_eq!(
-            svc_a.live_handle_count(),
+            svc_b.live_handle_count(),
             1,
-            "free through another service must not release A's session"
+            "duplicate free cannot touch B"
         );
 
-        // Back to A: the session is still alive and readable.
-        vm.set_terminal_provider(svc_a.clone());
-        let rows = wait_marker(&svc_a, handle, "PLAN808_ROUTE");
-        assert!(rows.iter().any(|l| l.contains("PLAN808_ROUTE")));
-        assert!(wait_exited(&svc_a, handle));
-        svc_a.free(handle);
-        assert_eq!(svc_a.live_handle_count(), 0);
-        reaper.disarm();
+        // B's handle routes to B through the same VM and a second VM.
+        assert!(shim_rows(&vm, hb)
+            .iter()
+            .any(|l| l.contains("PLAN808_OWNER_B")));
+        let vm2 = AutoVM::new(VirtualFlash::new(0), 1024);
+        vm2.set_terminal_provider(svc_b.clone());
+        assert!(shim_rows(&vm2, hb)
+            .iter()
+            .any(|l| l.contains("PLAN808_OWNER_B")));
+        shim_free(&vm2, hb);
+        assert_eq!(svc_b.live_handle_count(), 0);
+        reaper_a.disarm();
+        reaper_b.disarm();
+
+        // Default shared-engine fallback still owns and frees its handles.
+        let shared = auto_terminal_core::shared();
+        let hs = shared.spawn_ex(
+            "cmd.exe",
+            &["/C".into(), "echo PLAN808_OWNER_SHARED".into()],
+            "D:/autostack/auto-lang",
+            80,
+            24,
+        );
+        assert_ne!(hs, 0);
+        assert!(wait_marker(&shared, hs, "PLAN808_OWNER_SHARED")
+            .iter()
+            .any(|l| l.contains("PLAN808_OWNER_SHARED")));
+        let bare = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 1024);
+        let rows_s = shim_rows(&bare, hs);
+        assert!(rows_s.iter().any(|l| l.contains("PLAN808_OWNER_SHARED")));
+        shim_free(&bare, hs);
+        assert!(!shared.owns_handle(hs));
+    }
+
+    /// F808-R1-04 permanent regression: dropping the last reference to an
+    /// isolated service frees its live sessions (the real OS child exits).
+    /// The child publishes its own PID; the test waits for the OS process to
+    /// disappear, not merely for the private table to empty.
+    #[cfg(windows)]
+    #[test]
+    fn service_drop_frees_live_session_and_child() {
+        struct ChildGuard(Option<u32>);
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                if let Some(pid) = self.0 {
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/PID", &pid.to_string(), "/F", "/T"])
+                        .output();
+                }
+            }
+        }
+
+        let Some(path) = dll_path() else { return };
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let pid_file =
+            std::env::temp_dir().join(format!("plan808-drop-{}-{stamp}.pid", std::process::id()));
+        let _ = std::fs::remove_file(&pid_file);
+        let script = format!(
+            "[System.IO.File]::WriteAllText('{}', [string]$PID); Start-Sleep -Seconds 60",
+            pid_file.display()
+        );
+        let service = service_with_dll(&path);
+        let h = service.spawn_ex(
+            "powershell.exe",
+            &[
+                "-NoProfile".into(),
+                "-NonInteractive".into(),
+                "-Command".into(),
+                script,
+            ],
+            "D:/autostack/auto-lang",
+            80,
+            24,
+        );
+        assert_ne!(h, 0);
+        assert!(
+            wait_until(|| pid_file.is_file(), DEADLINE),
+            "child must publish its PID"
+        );
+        let pid: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let mut guard = ChildGuard(Some(pid));
+        assert!(pid_alive(pid), "child must be alive before drop");
+        drop(service);
+        let reaped = wait_until(|| !pid_alive(pid), Duration::from_secs(10));
+        if reaped {
+            guard.0 = None;
+        }
+        let _ = std::fs::remove_file(&pid_file);
+        assert!(
+            reaped,
+            "dropping the last service reference must free the session and reap the child"
+        );
+    }
+
+    /// F808-R1-04 (provider replacement last reference): the old service is
+    /// kept alive by the VM owner history while its handle is routed, then
+    /// released (and its sessions freed) when the handle is freed.
+    #[cfg(windows)]
+    #[test]
+    fn provider_replacement_last_reference_releases_old_service() {
+        struct ChildGuard(Option<u32>);
+        impl Drop for ChildGuard {
+            fn drop(&mut self) {
+                if let Some(pid) = self.0 {
+                    let _ = std::process::Command::new("taskkill")
+                        .args(["/PID", &pid.to_string(), "/F", "/T"])
+                        .output();
+                }
+            }
+        }
+
+        let Some(path) = dll_path() else { return };
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let pid_file = std::env::temp_dir().join(format!(
+            "plan808-replace-{}-{stamp}.pid",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_file(&pid_file);
+        let script = format!(
+            "[System.IO.File]::WriteAllText('{}', [string]$PID); Start-Sleep -Seconds 60",
+            pid_file.display()
+        );
+        let service = service_with_dll(&path);
+        let h = service.spawn_ex(
+            "powershell.exe",
+            &[
+                "-NoProfile".into(),
+                "-NonInteractive".into(),
+                "-Command".into(),
+                script,
+            ],
+            "D:/autostack/auto-lang",
+            80,
+            24,
+        );
+        assert_ne!(h, 0);
+        assert!(
+            wait_until(|| pid_file.is_file(), DEADLINE),
+            "child must publish its PID"
+        );
+        let pid: u32 = std::fs::read_to_string(&pid_file)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let mut guard = ChildGuard(Some(pid));
+
+        let vm = AutoVM::new(VirtualFlash::new(0), 1024);
+        vm.set_terminal_provider(service.clone());
+        drop(service); // VM slot + owner history keep the service alive
+        let replacement = Arc::new(EngineService::without_dll());
+        vm.set_terminal_provider(replacement);
+        // The old handle still routes to the original owner while alive.
+        assert!(pid_alive(pid), "old service must still be alive");
+        shim_free(&vm, h); // frees + prunes the last owner reference -> Drop
+        let reaped = wait_until(|| !pid_alive(pid), Duration::from_secs(10));
+        if reaped {
+            guard.0 = None;
+        }
+        let _ = std::fs::remove_file(&pid_file);
+        assert!(reaped, "last owner reference release must reap the child");
     }
 
     /// V-02/V-03: real UI adapter chain — directional input, per-pane rows,
@@ -1003,7 +1257,7 @@ mod plan808_real_dll {
         );
         assert_ne!(ha, 0);
         assert_ne!(hb, 0);
-        let mut reaper = Reaper::new(&service, vec![ha, hb]);
+        let reaper = Reaper::new(&service, vec![ha, hb]);
 
         // Directional input: queue different payloads, pump only A.
         terminal_push_input(core_a, "echo PLAN808_ONLY_A\r");
@@ -1185,5 +1439,143 @@ mod plan808_real_dll {
         terminal_dispose(key_a);
         terminal_dispose(key_b);
         reaper.disarm();
+    }
+}
+
+// ── F808-R1-02: production VmBridge constructors install the adapter ─────
+
+#[cfg(feature = "ui")]
+mod plan808_vm_bridge_assembly {
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    use auto_terminal_core::{EngineService, TerminalHostProvider};
+
+    use crate::ui::terminal::{
+        terminal, terminal_dispose, terminal_drain_inputs_for, terminal_push_input,
+    };
+    use crate::ui::vm_bridge::VmBridge;
+    use crate::vm::host_capabilities as host;
+    use crate::vm::task::AutoTask;
+
+    fn minimal_widget() -> crate::aura::AuraWidget {
+        use crate::aura::{AuraNode, AuraWidget};
+        AuraWidget {
+            name: "Plan808Bridge".into(),
+            named_views: vec![],
+            actions: None,
+            state_vars: vec![],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: Default::default(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            setup: None,
+            tick_interval: None,
+            timers: vec![],
+            handler_params: Default::default(),
+            span_map: Default::default(),
+            key_bindings: Default::default(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: vec![],
+            watchers: vec![],
+            exposes: vec![],
+        }
+    }
+
+    fn pump_queued_input(vm: &crate::vm::engine::AutoVM, key: &str) -> i32 {
+        let core = terminal(key, 80, 24);
+        terminal_push_input(core, "x");
+        let mut task = AutoTask::new(0, 1024, 0);
+        task.ram.push_nv(auto_val::encode_i32(0));
+        crate::vm::ffi::term_engine::shim_term_pump_input(&mut task, vm).unwrap();
+        let pumped = task.ram.pop_i32();
+        assert!(
+            terminal_drain_inputs_for(core).is_empty(),
+            "the component's own VM must drain the input queue"
+        );
+        pumped
+    }
+
+    /// F808-R1-02: both production constructors install the terminal adapter
+    /// before constructing their AutoVM, so the component's own VM snapshot
+    /// consumes input. Not a manual `set_terminal_provider` test.
+    #[test]
+    fn both_bridge_constructors_install_terminal_adapter() {
+        let _slot = host::test_default_slot_lock();
+        let saved = host::process_default_terminal_host_provider();
+        host::clear_process_default_terminal_host_provider();
+        terminal_dispose("p808-bridge-new");
+        terminal_dispose("p808-bridge-decl");
+
+        // VmBridge::new (the wrapper used by production component hosts).
+        let bridge = VmBridge::new(&minimal_widget()).expect("VmBridge::new");
+        assert!(
+            host::process_default_terminal_host_provider().is_some(),
+            "VmBridge::new must install the terminal adapter"
+        );
+        assert!(
+            bridge.vm().terminal_provider().is_some(),
+            "the bridge VM snapshot must contain the adapter"
+        );
+        assert_eq!(
+            pump_queued_input(bridge.vm(), "p808-bridge-new"),
+            1,
+            "the bridge VM consumes input"
+        );
+
+        // Explicit default wins over the compatibility install.
+        host::clear_process_default_terminal_host_provider();
+        let explicit: Arc<dyn TerminalHostProvider> = Arc::new(EngineService::without_dll());
+        host::set_process_default_terminal_host_provider(explicit.clone());
+        let bridge_explicit = VmBridge::new(&minimal_widget()).expect("VmBridge::new explicit");
+        let installed = host::process_default_terminal_host_provider().expect("installed");
+        assert!(
+            Arc::ptr_eq(&installed, &explicit),
+            "compat install must not override an explicit default"
+        );
+        assert!(bridge_explicit.vm().terminal_provider().is_some());
+
+        // VmBridge::new_from_decls (the decl-based production constructor).
+        host::clear_process_default_terminal_host_provider();
+        let at = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("test/ui/terminal_min/src/front/app.at");
+        let src = std::fs::read_to_string(&at).expect("read minimal terminal app");
+        let session = crate::session::CompilerSession::ui();
+        let mut parser = crate::parser::Parser::from(src.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse minimal terminal app");
+        let decl = ast
+            .stmts
+            .iter()
+            .find_map(|stmt| match stmt {
+                crate::ast::Stmt::WidgetDecl(decl) => Some(decl),
+                _ => None,
+            })
+            .expect("widget decl");
+        let bridge_decl = VmBridge::new_from_decls(decl, &[], Vec::new(), &HashMap::new(), false)
+            .expect("VmBridge::new_from_decls");
+        assert!(
+            host::process_default_terminal_host_provider().is_some(),
+            "VmBridge::new_from_decls must install the terminal adapter"
+        );
+        assert!(
+            bridge_decl.vm().terminal_provider().is_some(),
+            "the decl bridge VM snapshot must contain the adapter"
+        );
+        assert_eq!(
+            pump_queued_input(bridge_decl.vm(), "p808-bridge-decl"),
+            1,
+            "the decl bridge VM consumes input"
+        );
+
+        terminal_dispose("p808-bridge-new");
+        terminal_dispose("p808-bridge-decl");
+        match saved {
+            Some(provider) => host::set_process_default_terminal_host_provider(provider),
+            None => host::clear_process_default_terminal_host_provider(),
+        }
     }
 }

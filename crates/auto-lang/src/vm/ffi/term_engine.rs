@@ -30,13 +30,45 @@ fn terminal_provider(vm: &AutoVM) -> Arc<dyn TerminalHostProvider> {
         .unwrap_or_else(auto_terminal_core::default_provider)
 }
 
+/// Resolve the provider that owns `handle` (F808-R1-01). A handle exposed by
+/// an earlier provider must keep routing to that owner after the VM's
+/// current provider is replaced; only an unknown handle falls back to the
+/// current provider / process-shared engine service.
+fn terminal_provider_for(vm: &AutoVM, handle: i64) -> Arc<dyn TerminalHostProvider> {
+    if let Some(owner) = vm.native_interface.terminal_owner_for(handle) {
+        return owner;
+    }
+    let current = terminal_provider(vm);
+    if current.owns_handle(handle) {
+        return current;
+    }
+    let shared = auto_terminal_core::default_provider();
+    if shared.owns_handle(handle) {
+        return shared;
+    }
+    current
+}
+
+/// Release through the original owner, then prune replaced owners with no
+/// live sessions so an isolated service can Drop and free its resources
+/// (F808-R1-04).
+fn free_terminal_handle(vm: &AutoVM, handle: i64) {
+    let owner = terminal_provider_for(vm, handle);
+    owner.free(handle);
+    vm.native_interface.prune_terminal_owners();
+}
+
 // ── spawn / input / harvest ──────────────────────────────────────────────
 
 /// 2943 `spawn(cols int, rows int) -> int`.
 pub fn shim_term_spawn(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let rows = crate::vm::native::pop_arg_i32(task) as i64;
     let cols = crate::vm::native::pop_arg_i32(task) as i64;
-    let handle = terminal_provider(vm).spawn(cols, rows);
+    let provider = terminal_provider(vm);
+    let handle = provider.spawn(cols, rows);
+    if handle != 0 {
+        vm.native_interface.remember_terminal_owner(provider);
+    }
     task.ram.push_nv(auto_val::encode_i32(handle));
     Ok(())
 }
@@ -51,7 +83,11 @@ pub fn shim_term_spawn_ex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let program: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
-    let handle = terminal_provider(vm).spawn_ex(&program, &argv, &cwd, cols, rows);
+    let provider = terminal_provider(vm);
+    let handle = provider.spawn_ex(&program, &argv, &cwd, cols, rows);
+    if handle != 0 {
+        vm.native_interface.remember_terminal_owner(provider);
+    }
     task.ram.push_nv(auto_val::encode_i32(handle));
     Ok(())
 }
@@ -61,7 +97,7 @@ pub fn shim_term_write_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
     let line: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    terminal_provider(vm).write_line(handle, &line);
+    terminal_provider_for(vm, handle).write_line(handle, &line);
     Ok(())
 }
 
@@ -70,14 +106,14 @@ pub fn shim_term_write_raw(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     let vt: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    terminal_provider(vm).write_raw(handle, &vt);
+    terminal_provider_for(vm, handle).write_raw(handle, &vt);
     Ok(())
 }
 
 /// 2945 `rows(handle int) -> []str`.
 pub fn shim_term_rows(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    terminal_provider(vm)
+    terminal_provider_for(vm, handle)
         .rows(handle)
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
@@ -88,7 +124,7 @@ pub fn shim_term_rows_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    terminal_provider(vm)
+    terminal_provider_for(vm, handle)
         .rows_for(handle, &key)
         .push_to_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))
@@ -99,7 +135,7 @@ pub fn shim_term_resize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
     let rows = crate::vm::native::pop_arg_i32(task) as i64;
     let cols = crate::vm::native::pop_arg_i32(task) as i64;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    terminal_provider(vm).resize(handle, cols, rows);
+    terminal_provider_for(vm, handle).resize(handle, cols, rows);
     Ok(())
 }
 
@@ -108,7 +144,7 @@ pub fn shim_term_resize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError>
 /// 2947 `interrupt(handle int) -> int`.
 pub fn shim_term_interrupt(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let result = terminal_provider(vm).interrupt(handle);
+    let result = terminal_provider_for(vm, handle).interrupt(handle);
     task.ram.push_nv(auto_val::encode_i32(result));
     Ok(())
 }
@@ -116,7 +152,7 @@ pub fn shim_term_interrupt(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// 2948 `is_exited(handle int) -> bool`.
 pub fn shim_term_is_exited(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let exited = terminal_provider(vm).is_exited(handle);
+    let exited = terminal_provider_for(vm, handle).is_exited(handle);
     task.ram.push_nv(auto_val::encode_bool(exited));
     Ok(())
 }
@@ -124,7 +160,7 @@ pub fn shim_term_is_exited(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// 2949 `free(handle int)`.
 pub fn shim_term_free(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    terminal_provider(vm).free(handle);
+    free_terminal_handle(vm, handle);
     Ok(())
 }
 
@@ -133,7 +169,7 @@ pub fn shim_term_free(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 /// 2957 `pump_input(handle int) -> int`.
 pub fn shim_term_pump_input(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let count = terminal_provider(vm).pump_input(handle);
+    let count = terminal_provider_for(vm, handle).pump_input(handle);
     task.ram.push_nv(auto_val::encode_i32(count));
     Ok(())
 }
@@ -143,7 +179,7 @@ pub fn shim_term_pump_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let count = terminal_provider(vm).pump_for(handle, &key);
+    let count = terminal_provider_for(vm, handle).pump_for(handle, &key);
     task.ram.push_nv(auto_val::encode_i32(count));
     Ok(())
 }
@@ -151,7 +187,7 @@ pub fn shim_term_pump_for(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// 2976 `apply_resize(handle int) -> int`.
 pub fn shim_term_apply_resize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let applied = terminal_provider(vm).apply_resize(handle);
+    let applied = terminal_provider_for(vm, handle).apply_resize(handle);
     task.ram.push_nv(auto_val::encode_i32(applied));
     Ok(())
 }
@@ -161,7 +197,7 @@ pub fn shim_term_apply_resize_for(task: &mut AutoTask, vm: &AutoVM) -> Result<()
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let applied = terminal_provider(vm).apply_resize_for(handle, &key);
+    let applied = terminal_provider_for(vm, handle).apply_resize_for(handle, &key);
     task.ram.push_nv(auto_val::encode_i32(applied));
     Ok(())
 }
@@ -182,7 +218,7 @@ pub fn shim_term_scroll_pending_for(task: &mut AutoTask, vm: &AutoVM) -> Result<
     let key: String = VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let pending = terminal_provider(vm).scroll_pending_for(handle, &key);
+    let pending = terminal_provider_for(vm, handle).scroll_pending_for(handle, &key);
     task.ram.push_nv(auto_val::encode_i32(pending));
     Ok(())
 }
@@ -199,7 +235,7 @@ pub fn shim_term_menu_take(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
 /// 2958 `cursor_row(handle int) -> int`.
 pub fn shim_term_cursor_row(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let row = terminal_provider(vm).cursor_row(handle);
+    let row = terminal_provider_for(vm, handle).cursor_row(handle);
     task.ram.push_nv(auto_val::encode_i32(row));
     Ok(())
 }
@@ -207,7 +243,7 @@ pub fn shim_term_cursor_row(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// 2959 `cursor_col(handle int) -> int`.
 pub fn shim_term_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let col = terminal_provider(vm).cursor_col(handle);
+    let col = terminal_provider_for(vm, handle).cursor_col(handle);
     task.ram.push_nv(auto_val::encode_i32(col));
     Ok(())
 }
@@ -215,7 +251,7 @@ pub fn shim_term_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
 /// 2977 `viewport_cols(handle int) -> int`.
 pub fn shim_term_viewport_cols(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let cols = terminal_provider(vm).viewport_cols(handle);
+    let cols = terminal_provider_for(vm, handle).viewport_cols(handle);
     task.ram.push_nv(auto_val::encode_i32(cols));
     Ok(())
 }
@@ -223,7 +259,7 @@ pub fn shim_term_viewport_cols(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// 2978 `viewport_rows(handle int) -> int`.
 pub fn shim_term_viewport_rows(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let rows = terminal_provider(vm).viewport_rows(handle);
+    let rows = terminal_provider_for(vm, handle).viewport_rows(handle);
     task.ram.push_nv(auto_val::encode_i32(rows));
     Ok(())
 }
@@ -231,7 +267,7 @@ pub fn shim_term_viewport_rows(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 /// 3003 `history(handle int) -> int`.
 pub fn shim_term_engine_history(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let rows = terminal_provider(vm).history(handle);
+    let rows = terminal_provider_for(vm, handle).history(handle);
     task.ram.push_nv(auto_val::encode_i32(rows));
     Ok(())
 }
@@ -239,7 +275,7 @@ pub fn shim_term_engine_history(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 /// 2979 `backlog_pending_mb(handle int) -> int`.
 pub fn shim_term_backlog_pending_mb(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let mb = terminal_provider(vm).backlog_pending_mb(handle);
+    let mb = terminal_provider_for(vm, handle).backlog_pending_mb(handle);
     task.ram.push_nv(auto_val::encode_i32(mb));
     Ok(())
 }
@@ -247,7 +283,7 @@ pub fn shim_term_backlog_pending_mb(task: &mut AutoTask, vm: &AutoVM) -> Result<
 /// 2980 `backlog_paused(handle int) -> int`.
 pub fn shim_term_backlog_paused(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let paused = terminal_provider(vm).backlog_paused(handle);
+    let paused = terminal_provider_for(vm, handle).backlog_paused(handle);
     task.ram.push_nv(auto_val::encode_i32(paused));
     Ok(())
 }
@@ -255,7 +291,7 @@ pub fn shim_term_backlog_paused(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 /// 2981 `backlog_take_alerts(handle int) -> int`.
 pub fn shim_term_backlog_take_alerts(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let alerts = terminal_provider(vm).backlog_take_alerts(handle);
+    let alerts = terminal_provider_for(vm, handle).backlog_take_alerts(handle);
     task.ram.push_nv(auto_val::encode_i32(alerts));
     Ok(())
 }
@@ -263,7 +299,7 @@ pub fn shim_term_backlog_take_alerts(task: &mut AutoTask, vm: &AutoVM) -> Result
 /// 2982 `backlog_dropped(handle int) -> int`.
 pub fn shim_term_backlog_dropped(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let handle = crate::vm::native::pop_arg_i32(task) as i64;
-    let dropped = terminal_provider(vm).backlog_dropped(handle);
+    let dropped = terminal_provider_for(vm, handle).backlog_dropped(handle);
     task.ram.push_nv(auto_val::encode_i32(dropped));
     Ok(())
 }

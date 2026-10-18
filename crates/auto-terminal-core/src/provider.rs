@@ -89,7 +89,28 @@ pub trait TerminalHostProvider: Send + Sync {
     /// 2992: profile spawn argv (intentionally empty).
     fn config_spawn_argv(&self, profile: &str) -> Vec<String>;
     /// 2993: profile spawn cwd (intentionally empty).
-    fn config_spawn_cwd(&self, profile: &str) -> String;
+    fn config_spawn_cwd(&self, _profile: &str) -> String;
+
+    // ── lifecycle helpers (not natives; no VM stack shape) ────────────────
+    //
+    // The VM keeps a per-VM history of terminal providers and asks each one
+    // whether it owns a handle before routing reads/writes/free. This is what
+    // keeps an old handle bound to its original service across
+    // `set_terminal_provider` replacement (F808-R1-01). Implementations that
+    // cannot report ownership keep the default `false` (the current provider
+    // is used), which is correct for stateless fakes.
+    //
+    /// Whether this provider currently owns `handle` (a live session).
+    fn owns_handle(&self, _handle: i64) -> bool {
+        false
+    }
+
+    /// Number of live sessions owned by this provider. The VM uses it to
+    /// prune replaced owners with no remaining sessions (so a replaced
+    /// isolated service can Drop and free its sessions, F808-R1-04).
+    fn live_handle_count(&self) -> usize {
+        0
+    }
 }
 
 impl TerminalHostProvider for EngineService {
@@ -228,6 +249,14 @@ impl TerminalHostProvider for EngineService {
 
     fn config_spawn_cwd(&self, _profile: &str) -> String {
         String::new()
+    }
+
+    fn owns_handle(&self, handle: i64) -> bool {
+        EngineService::owns_handle(self, handle)
+    }
+
+    fn live_handle_count(&self) -> usize {
+        EngineService::live_handle_count(self)
     }
 }
 
