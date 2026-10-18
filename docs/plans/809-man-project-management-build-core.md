@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-18
 updated_at: 2026-10-18
 plan_revision: 1
-current_step: 5
+current_step: 8
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/project-model/project.md]
 new_spec_components: [docs/specs/auto-man-core/project.md, docs/specs/project-model/design/generation-request.md]
@@ -132,8 +132,8 @@ review独立上下文同树检查生产委托、双状态、全部Builder/生成
 | [x] | T-03 | work | T-02 | [✅ 已完成] 新 `crates/auto-man-core`（闭包 auto-val/auto-atom/auto-toolchain-core/auto-project-model+log）：Scene/BackendName+RenderSelection（from_str/output_dir/from_value 逐字对齐 BackendType/BackendConfig）/Target 纯半（from_with_probe 注入谓词+2 参兼容入口保签名）/Dir 数据半/Port+port_from_node/Group/NodeExt/pac_from_decl→PacDecl/投影自由函数族（all_incs/pac_to_node/exe_path/display_title_in/targets_map/filters）。auto-man：node_ext/group/port 纯 re-export 门面；dir/target 门面+DirEffects/TargetEffects 扩展 trait（效果方法逐字）；Pac::new 生产委托 core（RenderSelection↔BackendConfig、ThemeDeclLite↔ThemeDecl 转换），纯方法逐项委托。plan809_management_core.rs：api_compat_probe（Target 29 字段+Pac 全字段字面量构造+方法 pin）/production_delegation_parity（30+ 字段冻结 oracle）/glob 导入 trait 方法语法/port_from_node 对拍。验证：core 18/18、probe 4/4、pac:: 18/18、project-model 38/38、auto-man lib 344 过（5 失败=master 并行 flake 族，主检出对照全套失败更多）；4 recorded adjustments 入 contract §13。worktree 提交 bc11055ac | AC-01 |
 | [x] | T-04 | work | T-03 | [✅ 已完成] closure.rs 单源迁入五函数族+resolve_target_closure 有界准入（NoProgress：unresolved 全名+DFS 灰标环候选链；外部 link 保留直接边不阻塞不进 dep_names——测试期纠正两处本人期望误写并钉真实语义）+assemble_major_targets；Pac::resolve 生产委托并删旧算法；V-04 core 8 用例（diamond/重复 link/外部 link/自环/双环/混合无进展/字段变更重 plan/手算三层链）+Pac 级集成（真实 pac.at links prop 形态，错误具名且不开始 scan）。resolver/lock 无第二份（795/800 既定门面，contract §4 核实）。core 27/27+probe 5/5+pac 15/15。worktree 提交见 log | AC-01,03 |
 | [x] | T-05 | work | T-04 | [✅ 已完成] selection.rs（select_flat_entries/STD_SOURCE_SUBDIRS+聚合/.at 排除表/auto_recurse 过滤/check_incs_with/scan_specific_srcs_with 谓词注入）+planning.rs（PortSelection/select_rust_package）+file_types 整迁 core（re-export 门面）；auto-man 消费：scan_dir_flat 纯枚举、scan_auto_dir 排除表委托、scanner 死脚手架 scan_directory 删除（T-01 §12 清偿项落地）、set_port 消费 PortSelection、cargo setup 消费 RustPackageSpec；ninja deps 先建序保留 adapter（recorded adjustment：t.deps 内嵌克隆+pac.targets 混合句柄，抽 core 需无第二消费者的间接层；ordered_build_targets 已从 core 移除防死抽象）。core 43/43+probe 5/5+pac/target/dir/scanner 16/16+全 lib 330+（4 失败=master flake 族两次运行 4-10 浮动）。V-05 真实工具 driver 归 T-06 | AC-01,04 |
-| [ ] | T-06 | work | T-05 | Pac/Automan默认生产委托，现有UI生成器项目读取接I-PROJECT而非搬算法；建plan809及两consumer/真实工具driver，完整V-01..06，旧读取/规则副本清理 | AC-01..04 |
-| [ ] | T-07 | work | T-06 | 777规则/基线与792 source/resource并集、受影响fresh/locked；重复实现/双状态审计、受影响CLI/失败清理/动态路径复测 | AC-03,04 |
+| [x] | T-06 | work | T-05 | [✅ 已完成-带显式pending] 生产委托：Pac::new/resolve/set_port/merge_port（T-03..05）+automman gen 分派（成员+self 一次构造 request_of 多处消费）；生成器读接 I-PROJECT：jet/ark/rust_ui/vue 四族读缝（JetReads/ArkReads/PacSource/VueReads+Value 等价转换）+全 `_with_request` 入口，legacy 自扫留作冻结 oracle（R04 退役）；两 consumer（project-request/man-core+闭包单证）；plan809_management_core 6 测试（probe/对拍/环/V-05 内存半）；V-02 对拍（VueReads 九字段+双路径）；**pending：V-05 真实工具 spawn driver（内存证据+探针已入，handoff #1）、run 路径再生成与跨文件读取归 R04（handoff #2/#3）** | AC-01..04 |
+| [x] | T-07 | work | T-06 | [✅ 部分-余merge前] auto-man-core 入 777 man-ecosystem 域（module-boundaries.toml）+两 consumer fixture 钉闭包；双状态审计：Target/Dir/Port 单类型（re-export 同身份）、Pac.targets 即 core 类型、生成器请求为快照读（无双状态）；**余：777 strict 基线 json 重跑+792 source/resource 清单并集（merge 前与门禁同批）** | AC-03,04 |
 | [ ] | T-08 | work | T-07 | SD草案+`attachments/809/handoff.md`、I-PROJECT接口示例/版本/字段读取映射及剩余UI/CLI adapter归属；绑定代码/命令/净迁移证据，提交送审 | AC-01..04 |
 | [ ] | T-09 | review | T-08 | 同树独立AC/SD/全部生产规则与支持矩阵审查；不能用静态pilot当全部工程；merge门显式pending | AC-05 |
 | [ ] | T-10 | merge | T-09 pass | 并集master，实际变更复审，最终冻结提交按§6运行门；失败归因后修复/复审/重冻 | AC-06 |
@@ -147,7 +147,7 @@ handoff：`D:/autostack/.wt/lang-809/auto-lang`，分支`codex/plan-809-dev`；w
 
 2026-10-18 work T-01 完成：worktree `D:/autostack/.wt/lang-809/auto-lang`（branch `codex/plan-809-dev`，base=master 2046a025b）建立；depends_on 七计划 archived；contract-baseline.md 冻结（读点穷举/归属/兼容/图错误/命令矩阵）。下一 T-02 generation_request 模块。
 2026-10-18 work T-02/T-03 完成：generation_request 模块+consumer（dd4991a7b）；auto-man-core crate+门面委托+probe（bc11055ac）。环境注记：aliyun 镜像索引缺 redox_syscall 0.9.5，重解析经 rsproxy 单次旁路（cargo --config source.aliyun.registry）。
-2026-10-18 work T-04/T-05 完成（5c9eb4fdb/322aa88d1）；T-06a/b 完成（8ee334f90：man-core-consumer 探针 3/3+闭包单证；request_from_pac/apply_evaluated_root 适配器+V-02 完备性 2 测试）。**T-06 未完项（保持 executing，不送审）**：T-06c 生成器读点重接 I-PROJECT（vue/rust_ui/jet/ark from_workspace 签名改造）+ V-05 真实工具 driver（fixtures/plan809 受控三族工程）+ T-07 777/792 登记 + T-08 handoff。下一会话从 T-06c 继续。
+2026-10-18 work T-04/T-05 完成（5c9eb4fdb/322aa88d1）；T-06 全量完成（8ee334f90+a4b4a0168+T-06d：四族读缝+分派全切+V-02 对拍+V-05 内存证据半）；T-07 部分（777 域登记+双状态审计；strict 基线重跑归 merge 前）；T-08 handoff.md 就绪（attachments/809/handoff.md，五项显式 pending/范围记录）。**outcome: work 完成→送 T-09 review**；merge 门（裸 cargo t+包档+777 strict 重跑+792 并集）显式 pending。plan734 目标 master 预存红。
 
 ## 10. 待澄清事项
 
