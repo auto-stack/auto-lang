@@ -166,6 +166,7 @@ mod plan789_lex_extraction;
 // PLAN-806: UI msg/model 声明文法外置后的生产路径定向（V04）。
 #[cfg(test)]
 mod plan806_ui_declarations;
+mod plan810_full_ui_grammar;
 #[cfg(test)]
 mod test_float_full;
 #[cfg(test)]
