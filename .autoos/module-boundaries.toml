@@ -84,6 +84,8 @@ schema = "module-boundaries/1"
 # 之下；auto-val+std、禁依赖 auto-lang/auto-man/auto-gen/auto-vm/UI
 # （闭包由 test/fixtures/modularity/toolchain-core-consumer 钉住）。
 "auto-toolchain-core" = "man-ecosystem"
+# PLAN-809: 管理规则核心（声明归一/闭包/选择/规划纯规则；闭包恒轻）
+"auto-man-core" = "man-ecosystem"
 # 顶层装配/工具/CLI（允许依赖任意下层域）。
 "auto" = "cli"
 "auto-lsp" = "tool"
