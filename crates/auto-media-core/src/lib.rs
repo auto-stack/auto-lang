@@ -8,9 +8,9 @@
 //!   priority scheduler, the decode/resize worker pool, host-owned viewer
 //!   sessions, and the transport-neutral HTTP rules for
 //!   `/api/__auto/media/{id}/{revision}`.
-//! * the local media file service (recursive index, blake3 tokens, natural
-//!   ordering, no-symlink traversal, HTTP byte-range semantics) arrives as
-//!   the `media_service` module in a follow-up task of the same plan.
+//! * [`media_service`] — the local media file service: recursive index,
+//!   blake3 tokens, natural ordering, no-symlink traversal, and HTTP
+//!   byte-range (`Range` → `StreamPlan`) semantics.
 //!
 //! The crate is deliberately free of auto-lang/auto-man/auto-ui/auto-vm,
 //! interpreter, and renderer dependencies; codecs (`image`/`kamadak-exif`)
@@ -23,3 +23,8 @@
 /// auto-lang's `ui/image_pipeline.rs` data plane + runtime).
 #[cfg(feature = "image-codec")]
 pub mod image_pipeline;
+
+/// Backend-neutral local media file service (recursive index, blake3 tokens,
+/// natural ordering, no-symlink traversal, HTTP byte-range semantics) —
+/// verbatim migration of auto-lang's `ui/media_service.rs` (Plan 617 origin).
+pub mod media_service;

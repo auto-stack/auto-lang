@@ -66,7 +66,7 @@ ui-headless = ["ui", "ui-interpreter"]
 # asset registry without making the default build pull image dependencies.
 # PLAN-811: the pipeline now lives in auto-media-core (image/exif stay here
 # for photo_service, which decodes thumbnails on its own).
-image-pipeline = ["dep:image", "dep:kamadak-exif", "dep:auto-media-core", "auto-media-core/image-codec"]
+image-pipeline = ["dep:image", "dep:kamadak-exif", "auto-media-core/image-codec"]
 ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "dep:iced_runtime", "dep:iced_tiny_skia", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard", "dep:resvg", "dep:tiny-skia"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
@@ -225,11 +225,10 @@ serde = { workspace = true, features = ["derive"] }
 auto-text-core = { path = "../auto-text-core" }
 # PLAN-811: media foundation (image asset pipeline data plane/runtime + local
 # media file service), extracted verbatim from this crate's ui/
-# {image_pipeline,media_service}; those paths are thin re-exports. The codec
-# lane rides the image-pipeline feature; the always-on slice (media file
-# service) needs no feature, hence default-features = false + optional until
-# the media_service migration lands.
-auto-media-core = { path = "../auto-media-core", default-features = false, optional = true }
+# {image_pipeline,media_service}; those paths are thin re-exports.
+# Unconditional because the media file service (blake3-only) stays ungated;
+# the codec lane rides the image-pipeline feature.
+auto-media-core = { path = "../auto-media-core", default-features = false }
 toml = { workspace = true }      # Plan 342: block spec.md frontmatter
 ecow = { workspace = true }
 normalize-path = { workspace = true }
