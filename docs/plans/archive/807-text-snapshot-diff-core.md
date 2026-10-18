@@ -163,7 +163,7 @@ R1-02/03 CLOSED；R1-01 旧单线程反例已闭（703+807 15/15），但完整�
 | 资源重验复用论证 | 1GB 资源证据（结构 3,033,703B≤12MiB/RSS 16.5MiB，绑定 R2）复用：bench 执行路径闭包（plan728_bench 源+auto-text-core+imara-diff+std）字节零变化，rebase 引入的 806 代码（parser/dialect）不在该闭包与 bench 滤串内；无源码/依赖/配置/输入变化触及资源测适用面 |
 | `ledger_refreshed` | `.autoos/specs.json` v47→**v48** guarded offline projection（HTTP store 探测不可达；字节级备份 `bak-v47-807`；外科手术式追加 P807-D1/T/R3/M 四条目，未触 section 逐项校验+回读验证；无关条目计数恰好 +1/触及节） |
 | `archived` | `docs/plans/archive/807-text-snapshot-diff-core.md`（git mv；status: archived；终态 10/10）+ 本收据与 ledger 随 closeout 提交入 master |
-| `cleaned` | wt-guard clean ×2（auto-lang + auto-down 兄弟）→ worktree/分支/组目录移除（收据见收尾提交） |
+| `cleaned` | **已验证**：wt-guard clean ×2（auto-lang+auto-down 兄弟，无 reparse point）→ `git worktree remove` ×2 + `git branch -d codex/plan-807-dev`（was 63fe29fd9）+ 组目录 `D:/autostack/.wt/lang-807` rmdir 确认消失（.wt 列表仅余他计划组）；批量回归到期判定：**未到期**（807%5=2；last-batch 收据 2026-10-17T05:19Z 距今 ~45.5h<48h；805 后无 divisible-5 计划落地——下一触发位 810） |
 
 ## 10. 待澄清事项
 
