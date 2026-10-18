@@ -12,8 +12,8 @@ merge-owned pending 门。代码/测试均在本计划唯一实施树：
   SHA256 `c17ecca15a84f86cb26ad1f391490afe2e8b7420a369047c4bac3f6b8f0e8f58`
   （auto-term `main` @ `7a0d0e8b718fb260641f0d09ada95a7346771cd3`，clean）
 - code commits: `3c02068ca`（首轮实现+测试）；`c346f1077`（777 首轮基线
-  重绑）；`69961e046`（R1 findings 修复）；**`69337f541`（R2 findings
-  修复，当前冻结代码）**
+  重绑）；`69961e046`（R1 findings 修复）；`69337f541`（R2 findings 修复）；
+  **`9f02a18dc`（R3 findings 修复，当前冻结代码）**
 - root `Cargo.lock`（gitignored）SHA256：
   `9a431eb9e6163c154798db92543028db38a29af70ddac008014cc48ebd6a8fe1`
   （新 member `auto-terminal-core` 已解析；仅 libloading 既有锁条目）
@@ -62,10 +62,10 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | 门 | 命令 | 结果 |
 |---|---|---|
 | core check | `cargo check -p auto-terminal-core` | exit 0 |
-| core tests | `cargo test -p auto-terminal-core` | 6/6 pass（R1：lease/free 并发/隔离/absent） |
+| core tests | `cargo test -p auto-terminal-core` | **7/7 pass**（R3：retired store + lease/free/隔离） |
 | core+lang check | `cargo check -p auto-terminal-core -p auto-lang` | exit 0 |
 | Ui terminal 定向 | `cargo test -p auto-lang --lib ui::terminal -- --test-threads=1` | 41/41 pass |
-| plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | **20/20 pass**（R2：13 原例 + retired 缓存 + 6 重入/并发控制） |
+| plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | **22/22 pass**（R3：20 原例 + 剪枝窗口真实读/free + 跨 VM/直接 free 共享缓存） |
 | 独立 consumer | `cargo test --manifest-path test/fixtures/modularity/terminal-core-consumer/Cargo.toml`（DLL env） | 4/4 pass |
 | consumer 闭包 | `bash test/fixtures/modularity/terminal-core-consumer/verify-deps.sh` | PASS（仅 libloading/windows-link） |
 | no-UI 构建 | `cargo check -p auto-lang --no-default-features` | exit 0（34 shim + core 服务无 UI 依赖；config/window 1024×768 缺席臂保留） |
@@ -76,6 +76,7 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | 复审原反例重放 | `powershell -File attachments/808/review-r1/replay.ps1` | **全部期望值命中**（`r1-replay.log.txt`）：ha=1/hb=2、A_live=0/B_live=1、in-flight free=0、并发 free=1 次、drop free=1 次、VmBridge 装 adapter=true、泵 1/0、真实 child free/drop 均 false（已回收） |
 | R2 重入反例重放 | `powershell -File attachments/808/review-r2/run-callback-probe.ps1` | **8/8 case completed_before_3s=true exit=0**（`r2-callback-replay.log.txt`；owns/count/drop/slot-drop × direct-control/非 control） |
 | R2 缓存反例重放 | `powershell -File attachments/808/review-r2/build-probes.ps1` | **四行全部期望值**（`r2-cache-replay.log.txt`）：free 前后/替换后均 80×24，switch→free 均 90×30 |
+| R3 组合反例重放 | `powershell -File attachments/808/review-r3/run-combinations.ps1` | **全部期望值**（`r3-combination-replay.log.txt`）：剪枝暂停期 owner=true/view=(80,24)/A_live=0；跨 VM 全 91×31；直接 free 全 92×32 |
 | fmt | `rustfmt --check` 触面文件 | 0 diff |
 | 生成 Rust terminal 金样 | `cargo test -p auto-lang --lib terminal_`（3 金样名） | 3/3 pass（该过滤面 25/26；唯一红 `plan705_client_total_deadline_terminal_error` 为并发负载下时序 flake，solo 复跑 1/1 绿、不属 terminal 面） |
 
@@ -110,6 +111,22 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | 设计/oracle 调整 | 查询=快照+generation 重试；剪枝=摘除→锁外求值/析构→合并并发新增；槽替换=换值→锁外析构。缓存：新增 `TerminalRetiredCache` 值拷贝 + per-VM retired 表，缓存 shim 四段解析；oracle 从 live-only 扩为 live/retired/unknown 三态 + 两种顺序 + 重入 provider/并发 set-query-prune |
 | 当前结果 | 复审原 `callback-probe` 8/8 完成、`cache-probe` 四行期望值；plan808 20/20（真实 DLL）；core 6/6；UI 41/41；no-default 0；consumer 4/4；777 strict pass；792 25/25（R2 代码重跑） |
 
+### 4.4 R3 复审 finding 闭合表与诊断（commit `9f02a18dc`）
+
+| Finding | 不变量 | 修复 | 永久正负控制 |
+|---|---|---|---|
+| F808-R3-01 P1 剪枝清空列表导致窗口内真实 free 丢失 | 锁外求值期间可见 owner 列表必须保持可解析；每个真实操作在窗口内都成功 | `prune_terminal_owners` 快照**不摘除**可见列表 → 锁外 `live_handle_count` → 短写锁只移除求值死亡项（锁内零 provider 调用）→ 锁外对移除项复检，复活者重加；generation 仅在实际变更时前进 | plan808 `prune_window_keeps_owner_routable_and_free_releases`：真实 DLL + `PausedCount` 在 `live_handle_count` 暂停；暂停期 owner=true、viewport=80×24、`shim_free` 后 A_live=0；并发 set/query/prune 测试改为**每次查询都必须命中**。复审 `combination-probe`：during_prune true/(80,24)/0 |
+| F808-R3-02 P2 跨 VM/直接 free 的消费者未预读则丢旧缓存 | 冻结 cursor/viewport 值对任何消费者在 owner 剪枝/销毁后仍可读，且不持旧 service | core `free` 在退休前把纯值写入**进程级 retired 缓存**（有界 FIFO，`retired.rs`）；shim free 另存 per-VM 表；缓存 shim 顺序 = per-VM → 活 owner → retired owner → **进程级** → 当前 provider | plan808 `retired_cache_is_shared_across_consumers_and_direct_free`：VM1 free 共享 91×31 / 直接 core free 92×32；另一 VM 未预读、未知柄 free 触发剪枝后仍读 91×31/92×32 + 非零 cursor；含预读正控、重复/未知 free；复审 `combination-probe` 全期望值 |
+
+**第三次失败诊断**：
+
+| 维度 | 内容 |
+|---|---|
+| 漏检根因 1 | R2 并发测试只断言“500 次查询中至少成功一次 + 最终列表恢复”，没有把**窗口内的每次真实读/write/free**作为 oracle。剪枝把列表清空后，窗口内所有操作都误路由，但最终列表恢复使测试通过 |
+| 漏检根因 2 | retired 缓存只写入“执行 free 的 VM”并由“首次查询”懒复制；其他 VM 和 direct core free 从未写入，剪枝删掉 owner 历史后无值可读。测试只覆盖同 VM 的 free→switch 顺序 |
+| 设计/oracle 调整 | 剪枝：快照不摘除 + 锁外求值 + 短锁移除（零 provider 调用）+ 复活重加；缓存：core free 发布进程级纯值，shim 多一段全局回落。oracle 改为“窗口内真实操作逐个成功”与“跨 VM/直接 free/预读正控/重复/未知 free 全矩阵” |
+| 当前结果 | 复审 `combination-probe` 全期望值；plan808 22/22（真实 DLL）；core 7/7；R2 callback/cache 重放仍全过 |
+
 ## 5. 计划/规范交接
 
 - SD 草案：[spec-delta.md](spec-delta.md)（SD-01 add auto-terminal-core/
@@ -119,8 +136,8 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
   **pass**（0 violations / 2 grandfathered，`r1-777-strict.json.txt`）；
   merge 在最终 master 组合上再重绑。
 - 792：`DELIVERY_CRATES` 已加 `auto-terminal-core`（13 项，生成
-  crates=14）；R2 代码上 driver **25/25**（fresh 124s / relocated locked /
-  负控 / dev 路由；`r2-792-driver-receipt.json.txt`）。merge 合流其它新
+  crates=14）；R3 代码上 driver **25/25**（fresh 175s / relocated locked /
+  负控 / dev 路由；`r3-792-driver-receipt.json.txt`）。merge 合流其它新
   成员/闭包变化时按 792 driver 重放受影响 fresh/locked。
 - 收据持久化：原先被 `.gitignore` 的 `*.json` 已改为 `.json.txt`
   （`t07-777-observe.json.txt`、`t07-792-driver-receipt.json.txt`、

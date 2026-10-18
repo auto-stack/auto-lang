@@ -57,11 +57,13 @@
   service 末引用释放不遗留 PTY/子进程。默认 shared service 仍按旧语义
   跨 VM 共享会话，VM drop 不承诺杀死共享会话。
 - 光标/视口缓存保留旧值（旧可观察臂；单调句柄不复用，不串新会话）。
-- **释放后缓存保持（R2 修复）**：`free` 经 VM shim 时，在 owner 被剪枝/
-  销毁前把 cursor/viewport 值复制进 per-VM retired 表；缓存查询顺序 =
-  retired 表 → 活 owner → 仍持有 retired 缓存的旧 owner → 当前 provider。
-  复制的是纯值，不持旧 service、不触已释放 DLL 指针；free→切换与
-  切换→free 两种顺序、重复 free、未知句柄均按冻结语义。
+- **释放后缓存保持（R2/R3）**：`EngineService::free` 在会话退休前把
+  cursor/viewport 纯值发布到**进程级 retired 缓存**（有界 FIFO）；VM shim
+  另在 free 时复制进 per-VM 表。缓存查询顺序 = per-VM retired 表 → 活
+  owner → 仍持有 retired 缓存的旧 owner → **进程级 retired 缓存** → 当前
+  provider。因此释放者 VM、其他 VM、直接 `EngineService::free` 的消费者
+  都可在 owner 被剪枝/销毁后读取冻结值，且不依赖“提前读过一次”；只存
+  纯值，不持旧 service、不触已释放 DLL 指针。
 - `shared()` 是进程单例（旧静态句柄表的等价物）；`new()`/`with_candidates`
   提供隔离实例。跨 service 使用未绑定句柄返回旧缺席值；VM 装配按
   原 owner 路由已暴露句柄（见下节），不会误释放他方会话。
@@ -88,12 +90,14 @@
   切换 provider 后旧句柄仍读/写/释放到原服务，不会误释放新服务的同号
   会话。旧 owner 在最后一个会话释放后被剪枝；若其为本 VM 唯一强引用，
   service Drop 随即释放剩余资源。
-- **锁纪律（R2）**：owner 查询、剪枝、槽位替换**不得在 NI 锁内执行
+- **锁纪律（R2/R3）**：owner 查询、剪枝、槽位替换**不得在 NI 锁内执行
   provider 方法或析构**。查询在锁内只快照 Arc 列表，锁外调用
-  `owns_handle` 并以 generation 重试覆盖并发 set/prune；剪枝锁外执行
-  `live_handle_count`、锁外析构被移除项，并把并发新增合并回列表；槽位
-  替换锁内只换值，旧 provider 锁外析构。四类重入回调/析构与并发
-  set/query/prune 有永久控制。
+  `owns_handle` 并以 generation 重试覆盖并发 set/prune；**剪枝在锁外
+  求值期间保持可见列表完整**（快照不摘除），只把求值判定死亡的项在短
+  写锁内移除（锁内零 provider 调用），求值后新增/复活的 owner 保留或
+  重加；槽位替换锁内只换值，旧 provider 锁外析构。四类重入回调/析构、
+  并发 set/query/prune 的**每次查询**与剪枝窗口内的真实读/free 有永久
+  控制。
 
 ## 不在本域
 
@@ -149,11 +153,13 @@ interrupt=-1、is_exited=true、history/backlog=0、cursor/viewport 缓存缺省
 且 DLL free 恰好一次（每会话 lease + 退役位）；service 末引用 Drop 在
 Library 析构前释放活会话。句柄为**进程全局**命名空间；VM 保留曾安装
 provider 的历史，带 handle 的 shim 先反查原 owner——provider 替换后旧
-句柄仍读/写/释放到原服务，不会误释放新服务的会话。free 经 shim 时把
-cursor/viewport 值复制进 per-VM retired 表；缓存查询先 retired、再活
-owner、再 retired owner，故切换 provider 后旧柄缓存仍为冻结值，且不
-强持旧 service。owner 查询/剪枝/槽替换一律在 NI 锁外执行 provider 方法
-与析构（快照 + generation 重试 + 剪枝并发合并）。
+句柄仍读/写/释放到原服务，不会误释放新服务的会话。core free 把
+cursor/viewport 纯值发布到**进程级 retired 缓存**（有界），VM shim 另存
+per-VM 表；缓存查询先 per-VM、再活 owner、再 retired owner、再进程级
+retired 缓存，故释放者/其他 VM/直接 core free 的消费者在 owner 剪枝/
+销毁后仍读冻结值，且不强持旧 service。owner 查询/剪枝/槽替换一律在 NI
+锁外执行 provider 方法与析构；**剪枝求值期间可见列表保持完整**，短写锁
+只移除求值死亡项且不调用 provider。
 config 六项保持空集/空串；window 无 UI=1024×768，UI=thread-local override
 或 theme；`set_app_window_px` 兼容门面转发 `ui::terminal_provider`。
 display_offset 唯一真源仍为引擎，UI 只投影（Mux 契约不变）。
