@@ -1,6 +1,6 @@
 {
-  "base_revision": "6955e317859b34693ca4f941c07b4957c0459190",
-  "config_sha256": "1c99a5299c728e5947d3a467634888bdd99c8859c1db9124ef87f4b3f3388287",
+  "base_revision": "a3f16177767ef5338a8dd1be046fc4b47e947754",
+  "config_sha256": "8c4a5e965554f6138613157c10117f324731a17e89bf061c210acac2d93bf6b4",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -261,6 +261,15 @@
       "optional": false,
       "target": null,
       "to": "auto-parser-api",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-terminal-core",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-terminal-core",
       "to_scope": "member"
     },
     {
@@ -573,7 +582,7 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 911,
+    "core_to_ui": 870,
     "man_to_language": 575,
     "ui_to_language": 181
   }
