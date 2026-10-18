@@ -1952,9 +1952,8 @@ pub fn shim_diff_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
     let path_a = pop_string_arg(task, vm);
     // PLAN-807: 纯路径面直调文本 core（零 crate::ui 引用；envelope 语义
     // 冻结不变）。
-    let json = auto_text_core::diff::envelope::diff_files_envelope_from_paths(
-        &path_a, &path_b, ctx,
-    );
+    let json =
+        auto_text_core::diff::envelope::diff_files_envelope_from_paths(&path_a, &path_b, ctx);
     let idx = vm.add_string(json.into_bytes());
     vm.rc_push_str_idx(task, idx as usize);
     Ok(())
@@ -1980,15 +1979,11 @@ pub fn shim_diff_snapshots(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErr
     // key_a 先（冻结序）。
     let pair = match vm.native_interface.editor_snapshot_provider() {
         Some(provider) => match (provider.snapshot(&key_a), provider.snapshot(&key_b)) {
-            (Some(sa), Some(sb)) => {
-                auto_text_core::diff::envelope::DiffSnapshotsPair::Both(sa, sb)
+            (Some(sa), Some(sb)) => auto_text_core::diff::envelope::DiffSnapshotsPair::Both(sa, sb),
+            (None, _) => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(key_a.clone()),
+            (Some(_), None) => {
+                auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(key_b.clone())
             }
-            (None, _) => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(
-                key_a.clone(),
-            ),
-            (Some(_), None) => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(
-                key_b.clone(),
-            ),
         },
         None => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(key_a.clone()),
     };
@@ -3156,7 +3151,6 @@ pub fn shim_sys_users(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 // 本处原 feature-off stub 群（text/delta/edit/cursor_line/cursor_col/
 // selection_len/find/set_text/fold_toggle/fold_hidden_count/undo/redo/
 // select_all/cut/copy/paste）并入各 shim 的缺席臂，逐字面值保留。
-
 
 /// `system_status() -> Int` — exit code of the last `system()` call.
 pub fn shim_shell_system_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {

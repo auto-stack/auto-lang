@@ -24,8 +24,7 @@
 // - `VmBridge` 两构造（UI 组件桥）
 
 use crate::vm::host_capabilities::{
-    CodeEditorCursorDto, CodeEditorHostProvider, CodeEditorScrollOffsetDto,
-    EditorSnapshotProvider,
+    CodeEditorCursorDto, CodeEditorHostProvider, CodeEditorScrollOffsetDto, EditorSnapshotProvider,
 };
 use std::sync::Arc;
 
@@ -196,9 +195,9 @@ pub fn install_process_default() {
     );
     // PLAN-807: 同点位补装编辑器快照 adapter（独立槽 if-absent——与 22
     // native 槽互不掩盖；diff_snapshots 9916 经此供值）。
-    crate::vm::host_capabilities::set_process_default_editor_snapshot_provider_if_absent(
-        Arc::new(EditorSnapshotRegistryProvider),
-    );
+    crate::vm::host_capabilities::set_process_default_editor_snapshot_provider_if_absent(Arc::new(
+        EditorSnapshotRegistryProvider,
+    ));
 }
 
 /// PLAN-807: 编辑器快照 adapter——委托 ui::code_editor 既有注册表

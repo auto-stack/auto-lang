@@ -362,8 +362,8 @@ impl PageStore {
         self.prefetched_pages.load(Ordering::Relaxed)
     }
 
-    /// PLAN-807: clone-out handle observing prefetch-worker exit (see
-    /// [`PageStore::worker_exited`]). The handle stays readable after the
+    /// PLAN-807: clone-out handle observing prefetch-worker exit (the
+    /// store's `worker_exited` flag). The handle stays readable after the
     /// caller drops its store Arc — the resource-release oracle for the
     /// ownership-closure fix.
     pub fn worker_exited_handle(&self) -> Arc<AtomicBool> {

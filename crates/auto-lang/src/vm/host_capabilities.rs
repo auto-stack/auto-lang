@@ -663,9 +663,8 @@ pub trait EditorSnapshotProvider: Send + Sync {
 /// 进程级默认 editor snapshot provider（显式注册；None = 未注册 → shim
 /// 走"无法找到相应 editor"err envelope）。替换/快照/if-absent 语义与
 /// frame/…/dnd 族逐条相同。
-static PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER: RwLock<
-    Option<Arc<dyn EditorSnapshotProvider>>,
-> = RwLock::new(None);
+static PROCESS_DEFAULT_EDITOR_SNAPSHOT_PROVIDER: RwLock<Option<Arc<dyn EditorSnapshotProvider>>> =
+    RwLock::new(None);
 
 /// 注册进程默认（显式权威 API：替换现存值，后注册者胜）。
 pub fn set_process_default_editor_snapshot_provider(provider: Arc<dyn EditorSnapshotProvider>) {

@@ -1310,8 +1310,7 @@ pub mod diff {
         // 进程默认端口（a2r 编译轨无 VM 实例句柄；UI 宿主经
         // install_ui_host_capabilities 安装 adapter）。判错优先 key_a 先
         //（冻结序）；缺 provider = 无法找到相应 editor。
-        let pair = match crate::vm::host_capabilities::process_default_editor_snapshot_provider()
-        {
+        let pair = match crate::vm::host_capabilities::process_default_editor_snapshot_provider() {
             Some(provider) => match (provider.snapshot(key_a), provider.snapshot(key_b)) {
                 (Some(sa), Some(sb)) => DiffSnapshotsPair::Both(sa, sb),
                 (None, _) => DiffSnapshotsPair::Missing(key_a.to_string()),

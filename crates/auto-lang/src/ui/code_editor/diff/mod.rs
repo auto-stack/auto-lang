@@ -7,8 +7,8 @@
 // `envelope` keeps the one UI-owned piece: the editor-registry key→snapshot
 // lookup feeding the pure core face.
 pub use auto_text_core::diff::{
-    diff_lines, diff_lines_parallel, diff_lines_windowed, diff_snapshots, refine_inline,
-    DiffOpts, DiffOut, Hunk, Refinement,
+    diff_lines, diff_lines_parallel, diff_lines_windowed, diff_snapshots, refine_inline, DiffOpts,
+    DiffOut, Hunk, Refinement,
 };
 
 pub mod dirs;

@@ -1347,10 +1347,7 @@ impl Rope {
     /// per page through the store's LRU cache). Returns the store handle
     /// (prefetch/baseline probes) alongside the rope. Errors mirror
     /// `read_to_string` semantics (IO / invalid UTF-8).
-    pub fn open_file_backed(
-        path: &Path,
-        cfg: PageConfig,
-    ) -> io::Result<(Rope, Arc<PageStore>)> {
+    pub fn open_file_backed(path: &Path, cfg: PageConfig) -> io::Result<(Rope, Arc<PageStore>)> {
         let store = PageStore::prescan(path, &cfg)?;
         file_backing::spawn_prefetcher(&store);
         let root = build_chunk_tree(&store);
@@ -1981,7 +1978,7 @@ mod tests {
 
         // Family 1 — structural sharing: snapshots and clones of one rope
         // share root Arcs → equal at O(1) (ptr_eq shortcut).
-        let mut r = Rope::from_str(&text);
+        let r = Rope::from_str(&text);
         let s1 = r.snapshot();
         assert!(
             s1.subtree_equal(&r.snapshot()),

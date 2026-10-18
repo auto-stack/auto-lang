@@ -36,8 +36,10 @@ mod plan807_core_cut {
     }
 }
 
-// ── 类型身份（feature 中性） ─────────────────────────────────────────────
+// ── 类型身份（旧门面路径在 code-editor 门内——关门形态下身份由独立
+//    consumer fixture 的 auto-text-core 单源消费钉住，不走 UI 门面） ────
 
+#[cfg(feature = "code-editor")]
 mod plan807_identity {
     /// V-01：旧路径门面与 auto-text-core 是**同一类型**（薄重导出，非包装）
     /// ——同一快照可跨新旧 API 传递。
@@ -78,17 +80,25 @@ mod plan807_snapshot_port {
     use crate::vm::task::AutoTask;
     use crate::vm::virt_memory::VirtualFlash;
 
-    /// fake 快照 provider：键 `"have"` 有快照，其余 None（可区分实例与
-    /// 判错优先）。
-    struct FakeSnap;
+    /// fake 快照 provider：键 `"have"` 返回以构造参数为内容的快照，其余
+    /// None——内容即实例标签，可区分不同默认/覆盖（F807-R1-01）。
+    struct FakeSnap(&'static str);
     impl EditorSnapshotProvider for FakeSnap {
         fn snapshot(&self, key: &str) -> Option<auto_text_core::RopeSnapshot> {
             if key == "have" {
-                Some(auto_text_core::Rope::from_str("a\nb\n").snapshot())
+                Some(auto_text_core::Rope::from_str(self.0).snapshot())
             } else {
                 None
             }
         }
+    }
+
+    /// 读出指定 VM 当前 provider 对 `"have"` 的快照内容（None 保留为
+    /// None——区分"无 provider"与"provider 无此键"）。
+    fn snap_text(vm: &AutoVM) -> Option<String> {
+        vm.editor_snapshot_provider()
+            .and_then(|p| p.snapshot("have"))
+            .map(|s| s.to_string())
     }
 
     fn call_diff_snapshots(vm: &AutoVM, key_a: &str, key_b: &str) -> String {
@@ -106,57 +116,124 @@ mod plan807_snapshot_port {
             .unwrap_or_default()
     }
 
-    /// 装配身份：构造式缺席/构造期快照隔离/实例覆盖只影响本 VM/Clone·merge
-    /// 保留/注入不动 binding_revision（802 同款面，快照槽镜像）。
+    /// 装配身份：构造式缺席/构造期快照隔离（显式 A/B 默认，不假设全局
+    /// 槽初态——F807-R1-01：普通运行入口的 if-absent 安装不取本测试隔离
+    /// 锁，共享进程的默认槽可能已被宿主装配占用，"空槽才成立"的断言在
+    /// 联跑下确定性失败）/实例覆盖只影响本 VM/Clone·merge 保留/注入不动
+    /// binding_revision（802 同款面，快照槽镜像）。
     #[test]
     fn snapshot_port_assembly_identity() {
         let _slot = crate::vm::host_capabilities::test_default_slot_lock();
         let saved = crate::vm::host_capabilities::process_default_editor_snapshot_provider();
 
-        // 构造式缺席：跳过快照=无 provider。
+        // 构造式缺席（构造式路径，不依赖全局槽时序）：跳过快照=无 provider。
         let bare = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 64);
         assert!(bare.editor_snapshot_provider().is_none(), "构造式缺席");
 
-        // 快照隔离：vm1 快照 None；装默认后 vm2 快照在位，vm1 不变。
+        // 快照隔离：两个可区分的**显式非空默认**——vm1 构造期快照 A；
+        // 换显式默认 B 后 vm2 快照 B，vm1 仍 A（后改默认不影响已建实例）。
+        crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
+            FakeSnap("A\n"),
+        ));
         let vm1 = AutoVM::new(VirtualFlash::new(0), 256);
         crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
-            FakeSnap,
+            FakeSnap("B\n"),
         ));
         let vm2 = AutoVM::new(VirtualFlash::new(0), 256);
-        assert!(vm1.editor_snapshot_provider().is_none(), "vm1 保持构造期快照");
-        assert!(vm2.editor_snapshot_provider().is_some(), "vm2 快照替换后默认");
+        assert_eq!(
+            snap_text(&vm1).as_deref(),
+            Some("A\n"),
+            "vm1 保持构造期快照 A"
+        );
+        assert_eq!(
+            snap_text(&vm2).as_deref(),
+            Some("B\n"),
+            "vm2 快照替换后默认 B"
+        );
+        crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
+            FakeSnap("D\n"),
+        ));
+        assert_eq!(
+            snap_text(&vm2).as_deref(),
+            Some("B\n"),
+            "后改进程默认不影响已建实例"
+        );
 
         // 实例覆盖只影响本 VM。
-        vm1.set_editor_snapshot_provider(Arc::new(FakeSnap));
-        assert!(vm1.editor_snapshot_provider().is_some());
+        vm1.set_editor_snapshot_provider(Arc::new(FakeSnap("C\n")));
+        assert_eq!(snap_text(&vm1).as_deref(), Some("C\n"), "实例覆盖生效");
         assert_eq!(
-            vm2.editor_snapshot_provider().map(|p| p.snapshot("have").is_some()),
-            Some(true),
-            "兄弟 VM 走自己的快照"
+            snap_text(&vm2).as_deref(),
+            Some("B\n"),
+            "兄弟 VM 不受覆盖影响"
         );
 
         // 注入不 bump binding_revision；NI Clone 保 provider；VM merge 保。
         let ni = NativeInterface::production();
         let rev0 = ni.binding_revision();
-        ni.set_editor_snapshot_provider(Arc::new(FakeSnap));
+        ni.set_editor_snapshot_provider(Arc::new(FakeSnap("NI\n")));
         assert_eq!(ni.binding_revision(), rev0, "注入不 bump revision");
         assert!(
             ni.clone().editor_snapshot_provider().is_some(),
             "NI Clone 保 provider"
         );
-        let mut vm = AutoVM::new(VirtualFlash::new(0), 64);
-        vm.set_editor_snapshot_provider(Arc::new(FakeSnap));
+        let mut vm = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 64);
+        vm.set_editor_snapshot_provider(Arc::new(FakeSnap("NI\n")));
         let mut carrier = NativeInterface::new();
         carrier.register_dynamic(|_t: &mut AutoTask, _v: &AutoVM| Ok(()));
         vm.merge_native_interface(&carrier);
-        assert!(vm.editor_snapshot_provider().is_some(), "VM merge 保 provider");
+        assert!(
+            vm.editor_snapshot_provider().is_some(),
+            "VM merge 保 provider"
+        );
 
         // 还原全局槽。
         match saved {
-            Some(p) => crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(p),
-            None => {
-                crate::vm::host_capabilities::clear_process_default_editor_snapshot_provider()
+            Some(p) => {
+                crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(p)
             }
+            None => crate::vm::host_capabilities::clear_process_default_editor_snapshot_provider(),
+        }
+    }
+
+    /// 真实宿主先安装的永久控制（F807-R1-01 要求；F779-R2-01 优先关系
+    /// 镜像锚，plan802 同款纪律）：兼容 if-absent 安装**不覆盖**显式默认；
+    /// 空槽补缺装上的是真实 UI adapter（对未注册键诚实返回 None，不伪造
+    /// 快照——真宿主面控制，非 fake 冒充）。
+    #[test]
+    fn compat_install_never_overrides_explicit_default() {
+        let _slot = crate::vm::host_capabilities::test_default_slot_lock();
+        let saved = crate::vm::host_capabilities::process_default_editor_snapshot_provider();
+
+        // 显式默认先在位 → 兼容安装（真实 UI adapter if-absent）不覆盖。
+        crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
+            FakeSnap("EXPLICIT\n"),
+        ));
+        crate::ui::code_editor_provider::install_process_default();
+        assert_eq!(
+            crate::vm::host_capabilities::process_default_editor_snapshot_provider()
+                .and_then(|p| p.snapshot("have"))
+                .map(|s| s.to_string()),
+            Some("EXPLICIT\n".to_string()),
+            "兼容安装不得覆盖显式默认"
+        );
+
+        // 空槽 → 兼容安装补上真实 adapter：在位、对未注册键返回 None。
+        crate::vm::host_capabilities::clear_process_default_editor_snapshot_provider();
+        crate::ui::code_editor_provider::install_process_default();
+        let installed = crate::vm::host_capabilities::process_default_editor_snapshot_provider();
+        assert!(installed.is_some(), "空槽补缺装上真实 adapter");
+        assert!(
+            installed.unwrap().snapshot("p807-unregistered").is_none(),
+            "真实 adapter 对未注册键诚实返回 None（真宿主面）"
+        );
+
+        // 还原全局槽。
+        match saved {
+            Some(p) => {
+                crate::vm::host_capabilities::set_process_default_editor_snapshot_provider(p)
+            }
+            None => crate::vm::host_capabilities::clear_process_default_editor_snapshot_provider(),
         }
     }
 
@@ -176,7 +253,11 @@ mod plan807_snapshot_port {
         assert!(json.contains("\"hunks\":[]"), "{json}");
 
         // 实例注入后：双有效键出 hunk。
-        vm.set_editor_snapshot_provider(Arc::new(FakeSnap));
+        vm.set_editor_snapshot_provider(Arc::new(FakeSnap(
+            "a
+b
+",
+        )));
         let json = call_diff_snapshots(&vm, "have", "have");
         assert!(json.contains("\"err\":\"\""), "同键自 diff 空: {json}");
         assert!(json.contains("\"adds\":0,\"dels\":0"), "{json}");
@@ -200,7 +281,11 @@ mod plan807_snapshot_port {
     fn two_vm_isolation() {
         let a = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 256);
         let b = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 256);
-        a.set_editor_snapshot_provider(Arc::new(FakeSnap));
+        a.set_editor_snapshot_provider(Arc::new(FakeSnap(
+            "a
+b
+",
+        )));
         let json_a = call_diff_snapshots(&a, "have", "have");
         let json_b = call_diff_snapshots(&b, "have", "have");
         assert!(json_a.contains("\"err\":\"\""), "a 走 fake provider");
@@ -220,7 +305,9 @@ mod plan807_real_editor {
     /// 快照（COW 冻结）。
     #[test]
     fn old_facade_envelope_matches_provider_core_path() {
-        use crate::ui::code_editor::{code_editor, code_editor_dispose, core, storage_key, CodeEditorConfig};
+        use crate::ui::code_editor::{
+            code_editor, code_editor_dispose, core, storage_key, CodeEditorConfig,
+        };
         core::ensure_font_system_call();
         let _guard = core::REGISTRY_TEST_LOCK.lock().unwrap();
         let key_a = storage_key("p807-real-a");
@@ -276,15 +363,24 @@ mod plan807_resource_release {
         let p = std::env::temp_dir().join(format!("p807-release-{}.txt", std::process::id()));
         let _ = std::fs::remove_file(&p);
         std::fs::write(&p, "line\n".repeat(400)).unwrap();
-        let (rope, store) =
-            Rope::open_file_backed(&p, PageConfig { page_bytes: 512, cache_budget: 4096, prefetch_radius: 1 })
-                .expect("open");
+        let (rope, store) = Rope::open_file_backed(
+            &p,
+            PageConfig {
+                page_bytes: 512,
+                cache_budget: 4096,
+                prefetch_radius: 1,
+            },
+        )
+        .expect("open");
         let exited = store.worker_exited_handle();
         let snap = rope.snapshot();
 
         drop(rope);
         drop(store);
-        assert!(!exited.load(std::sync::atomic::Ordering::Acquire), "snapshot 存活期间 store/worker 存活");
+        assert!(
+            !exited.load(std::sync::atomic::Ordering::Acquire),
+            "snapshot 存活期间 store/worker 存活"
+        );
         assert_eq!(snap.line_count(), 401);
 
         drop(snap);

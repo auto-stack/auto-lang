@@ -10,10 +10,7 @@ use auto_text_core::{PageConfig, PageState, Rope};
 use std::io::Write as _;
 
 fn temp_file(tag: &str, bytes: &[u8]) -> std::path::PathBuf {
-    let p = std::env::temp_dir().join(format!(
-        "p807-consumer-{tag}-{}.txt",
-        std::process::id()
-    ));
+    let p = std::env::temp_dir().join(format!("p807-consumer-{tag}-{}.txt", std::process::id()));
     let mut f = std::fs::File::create(&p).unwrap();
     f.write_all(bytes).unwrap();
     p
@@ -110,10 +107,8 @@ fn diff_three_entries_single_source() {
 /// V-06 envelope 错误值形：缺文件 = err 字段（非 panic/Result）。
 #[test]
 fn envelope_missing_file_is_err_value() {
-    let ghost = std::env::temp_dir().join(format!(
-        "p807-consumer-ghost-{}.nope",
-        std::process::id()
-    ));
+    let ghost =
+        std::env::temp_dir().join(format!("p807-consumer-ghost-{}.nope", std::process::id()));
     let env = diff_files_envelope_from_paths(ghost.to_str().unwrap(), ghost.to_str().unwrap(), 3);
     assert!(env.contains("\"err\":\"文件不存在"), "{env}");
     assert!(env.contains("\"hunks\":[]"), "{env}");

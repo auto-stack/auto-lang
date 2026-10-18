@@ -30,11 +30,11 @@
 
 use std::path::Path;
 
-use crate::rope::RopeSnapshot;
 use super::dirs::{DirDiffError, DirDiffIter, DirDiffOptions};
 use super::{
     engine_changes, group_hunks_annotated, intern_lines, split_lines_universal, Change, DiffOpts,
 };
+use crate::rope::RopeSnapshot;
 
 /// Entry cap (downstream T-00 定参).
 const DIR_ENTRY_CAP: usize = 5000;
@@ -591,7 +591,7 @@ mod plan704_rows {
         // downstream scattered fixture: 40 lines, far-apart single-line
         // changes at 0-based 4/19/34. Reference semantics: per change, 3
         // leading ctx + pair + 3 trailing ctx (21 rows, zero duplication).
-        let mut a = numbered("L", 40);
+        let a = numbered("L", 40);
         let mut b = a.clone();
         b[4] = "L4-changed".into();
         b[19] = "L19-changed".into();

@@ -694,8 +694,8 @@ pub fn refine_inline(a_line: &str, b_line: &str) -> Refinement {
 
 #[cfg(test)]
 mod tests {
-    use crate::rope::Rope;
     use super::*;
+    use crate::rope::Rope;
 
     #[test]
     fn split_lines_universal_matches_downstream_contract() {
@@ -1091,8 +1091,8 @@ mod p703_dbg {
 
 #[cfg(test)]
 mod diff_bench {
-    use crate::rope::Rope;
     use super::*;
+    use crate::rope::Rope;
     use std::time::Instant;
 
     /// Deterministic pseudo-random filler so the shapes are reproducible.
