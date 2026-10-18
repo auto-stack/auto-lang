@@ -3,9 +3,7 @@
 //! the static scanner (V-03 face: static admission, unsupported honesty).
 
 use crate::descriptor::SourceInfo;
-use crate::generation_request::{
-    GenerationRequest, RequestMode, RequestOrigin, ThemeDeclLite,
-};
+use crate::generation_request::{GenerationRequest, RequestMode, RequestOrigin, ThemeDeclLite};
 use crate::parse_document;
 use crate::UnsupportedKind;
 
@@ -173,7 +171,10 @@ fn t02_v03_unsupported_not_fake_evaluated() {
 #[test]
 fn t02_v03_unknown_render_not_fake_frontend() {
     let req = req_from("name: \"x\"\nbackend: \"rust-tauri\"\n");
-    assert!(req.frontend_names().is_empty(), "unknown backend is not a frontend");
+    assert!(
+        req.frontend_names().is_empty(),
+        "unknown backend is not a frontend"
+    );
     // legacy raw string preserved on the render decl
     assert_eq!(req.render.legacy_backend.as_deref(), Some("rust-tauri"));
 }
@@ -183,8 +184,7 @@ fn t02_v03_unknown_render_not_fake_frontend() {
 #[test]
 fn t02_v02_paths_resolve_against_root() {
     let descriptor =
-        parse_document("name: \"x\"\n", SourceInfo::from_path("proj/ui/pac.at"))
-            .expect("parse ok");
+        parse_document("name: \"x\"\n", SourceInfo::from_path("proj/ui/pac.at")).expect("parse ok");
     let req = GenerationRequest::from_descriptor(&descriptor);
     assert_eq!(req.project_root, Some(std::path::PathBuf::from("proj/ui")));
     assert_eq!(
@@ -220,5 +220,9 @@ fn t02_v02_theme_decl_lite_shape() {
         colors: Vec::new(),
     };
     let req = req_from("name: \"x\"\ntheme: { }\n");
-    assert_eq!(req.theme_decl, Some(lite), "empty block = declaration with no overrides");
+    assert_eq!(
+        req.theme_decl,
+        Some(lite),
+        "empty block = declaration with no overrides"
+    );
 }

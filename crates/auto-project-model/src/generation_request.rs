@@ -171,20 +171,18 @@ impl GenerationRequest {
         GenerationRequest {
             origin: RequestOrigin::StaticAdmitted {
                 source: descriptor.source.clone(),
-                unsupported: descriptor
-                    .unsupported
-                    .iter()
-                    .map(|u| u.kind)
-                    .collect(),
+                unsupported: descriptor.unsupported.iter().map(|u| u.kind).collect(),
             },
-            project_root: descriptor.source.path.as_deref().and_then(Path::parent).map(Path::to_path_buf),
+            project_root: descriptor
+                .source
+                .path
+                .as_deref()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf),
             identity: descriptor.identity.clone(),
             display: descriptor.display.clone(),
             runtime: descriptor.runtime.clone(),
-            scene: descriptor
-                .runtime
-                .scene
-                .unwrap_or_default(),
+            scene: descriptor.runtime.scene.unwrap_or_default(),
             members: descriptor.members.clone().unwrap_or_default(),
             render: descriptor.render.clone(),
             external_backend: descriptor.external_backend.clone(),
@@ -206,7 +204,11 @@ impl GenerationRequest {
     /// Start a dynamically evaluated request (adapter fills final values).
     pub fn dynamic(source: SourceInfo) -> Self {
         Self {
-            project_root: source.path.as_deref().and_then(Path::parent).map(Path::to_path_buf),
+            project_root: source
+                .path
+                .as_deref()
+                .and_then(Path::parent)
+                .map(Path::to_path_buf),
             origin: RequestOrigin::DynamicEvaluated { source },
             identity: Identity::default(),
             display: DisplayFields::default(),

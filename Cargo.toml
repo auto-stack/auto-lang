@@ -38,6 +38,11 @@ members = [
     "crates/auto-macros",
     # Plan 078: AutoMan migration from ../auto-man
     "crates/auto-man",
+    # PLAN-809: management/build-planning rules core — pac.at declaration
+    # normalization, target/link closure, source selection and build planning
+    # as pure rules over auto-val nodes; language execution, Git/FS
+    # observation and Builder execution stay in auto-man adapters.
+    "crates/auto-man-core",
     # PLAN-795: pac.lock core (model/TOML-JSON codec/verify rules), extracted
     # Target-free from auto-man; auto-man keeps the Target→projection, Git
     # observation and compatibility facade over this crate.

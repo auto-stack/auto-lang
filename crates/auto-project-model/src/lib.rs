@@ -26,8 +26,8 @@
 //! [`SourceInfo`].
 
 pub mod descriptor;
-pub mod generation_request;
 mod from_scan;
+pub mod generation_request;
 pub mod scanner;
 
 pub use descriptor::{
@@ -129,6 +129,6 @@ pub fn parse_file(path: &Path) -> ProjectModelResult<ProjectDescriptor> {
 }
 
 #[cfg(test)]
-mod tests;
-#[cfg(test)]
 mod generation_request_tests;
+#[cfg(test)]
+mod tests;

@@ -31,6 +31,12 @@ auto-man-assets = { path = "../auto-man-assets" }
 # this crate; am.at loading (CompilerStore), PATH/disk/process resolution
 # (CompilerResolver) and Ninja execution (NinjaBuilder) stay here.
 auto-toolchain-core = { path = "../auto-toolchain-core" }
+# PLAN-809: management/build-planning rules core — pac.rs/target.rs/dir.rs/
+# port.rs/group.rs/node_ext.rs hold Pac (effect carrier) + extension traits
+# (TargetEffects/DirEffects: transpile/scan/clean/FS) and delegate all pure
+# declaration/selection/projection/closure rules to this crate (re-export
+# keeps type identity).
+auto-man-core = { path = "../auto-man-core" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
 blake3 = { workspace = true }  # Plan 134: File hashing utilities
