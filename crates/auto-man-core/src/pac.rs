@@ -54,6 +54,14 @@ pub struct PacDecl {
     /// 缺省 port builder 选择（lang rust→cargo / ts→noop / 其余 ninja；
     /// `Pac::new` 的 `port.builder = default_builder` 规则半）。
     pub default_port_builder: AutoStr,
+    /// 未建模顶层节点逐字保留（R2-F03：mystery/app(front)/rust_sidecar
+    /// 等——请求投影不丢节点信息；port 与已识别 target 不入此列）。
+    pub raw_nodes: Vec<Node>,
+    /// app("front") 节点形态 → "./front"（R2-F03：vue parse_workspace_path
+    /// 的**节点形态优先**规则镜像；prop 形态在 props 内）。
+    pub front_node: Option<AutoStr>,
+    /// rust_sidecar 节点存在性（声明解析见 sidecar_decl_from_root）。
+    pub has_rust_sidecar: bool,
 }
 
 /// pac 根 Node + args → PacDecl（`Pac::new` 的规则半，逐字迁移）。
@@ -318,6 +326,10 @@ pub fn pac_from_decl_with_probe(
 
     // targets, NOTE: ports are not targets
     let mut targets = vec![];
+    // R2-F03：未建模顶层节点逐字保留 + app("front") 节点形态捕获。
+    let mut raw_nodes: Vec<Node> = Vec::new();
+    let mut front_node: Option<AutoStr> = None;
+    let mut has_rust_sidecar = false;
     // Plan 408 P5-2: flatten the `root { ... }` wrapper so the real target
     // kids are collected.
     let mut target_nodes: Vec<Node> = vec![];
@@ -336,10 +348,20 @@ pub fn pac_from_decl_with_probe(
     }
     for mut n in target_nodes {
         if n.name != "port" {
+            // R2-F03：app("front") 节点形态（合法 target，同时是 vue 的
+            // front 目录声明——优先于 front prop，镜像 parse_workspace_path）。
+            if n.name == "app" && n.main_arg().to_astr() == "front" {
+                front_node = Some("./front".into());
+            }
             // Unknown node kinds are skipped with a warning instead of
             // panicking inside Target::extract_kind.
             if TargetKind::from_str(&n.name).is_err() {
                 log::warn!("Pac::new: skipping unknown target node '{}'", n.name);
+                // R2-F03：跳过 ≠ 丢弃——节点逐字保留供请求投影。
+                if n.name == "rust_sidecar" {
+                    has_rust_sidecar = true;
+                }
+                raw_nodes.push(n);
                 continue;
             }
             // main target should receive target related args from the pac
@@ -395,6 +417,9 @@ pub fn pac_from_decl_with_probe(
         shadcn,
         default_classes,
         default_port_builder: default_builder,
+        raw_nodes,
+        front_node,
+        has_rust_sidecar,
     }
 }
 
@@ -692,6 +717,28 @@ mod tests {
         assert_eq!(decl.targets.len(), 1);
         assert_eq!(decl.targets[0].kind, TargetKind::Dep);
         assert_eq!(decl.targets[0].at, "deps/mydep");
+    }
+
+    #[test]
+    fn decl_raw_nodes_and_front_node_form_kept() {
+        let mut sidecar = Node::new("rust_sidecar");
+        sidecar.args.add_pos(Value::Str("extra.rs".into()));
+        let mut front = Node::new("app");
+        front.args.add_pos(Value::Str("front".into()));
+        let mut mystery = Node::new("mystery_node");
+        mystery.set_prop("k", Value::Str("v".into()));
+        let mut root = Node::new("root");
+        root.set_prop("name", Value::Str("x".into()));
+        for k in [mystery, front, sidecar] {
+            root.add_kid(k);
+        }
+        let decl = pac_from_decl_with_probe(&root, &Obj::new(), |_| false);
+        // app("front") 是合法 target kind，不入 raw_nodes；front_node 形态捕获
+        assert_eq!(decl.front_node.as_deref(), Some("./front"));
+        assert!(decl.has_rust_sidecar);
+        assert!(decl.raw_nodes.iter().any(|n| n.name == "rust_sidecar"));
+        assert!(decl.raw_nodes.iter().any(|n| n.name == "mystery_node"));
+        assert!(!decl.raw_nodes.iter().any(|n| n.name == "app"));
     }
 
     #[test]

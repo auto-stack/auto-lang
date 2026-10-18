@@ -4,7 +4,7 @@ use auto_gen::AutoGen;
 use auto_val::{AutoPath, AutoStr};
 use dialoguer::Select;
 use log::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::path::Path;
 use std::{fs::File, io::Write};
 
@@ -169,8 +169,8 @@ impl NinjaBuilder {
 impl Builder for NinjaBuilder {
     fn build(&mut self, pac: &mut Pac) -> AutoResult<()> {
         self.setup(pac)?;
-        // PLAN-809 R1-F03：deps 先建/rename 去重的规划序单源在
-        // auto_man_core::planning::ordered_build_renames；本方法把
+        // PLAN-809 R1-F03/R2-01：deps 先建/rename 去重的规划序单源在
+        // auto_man_core::planning::ordered_build_steps；本方法把
         // pac.targets（含内嵌 deps 克隆）映射为 BuildOrderItem 抽象，
         // 按返回 rename 序回到首个匹配句柄执行（与旧臂遍历序等价）。
         let items: Vec<auto_man_core::BuildOrderItem> = pac
@@ -181,42 +181,17 @@ impl Builder for NinjaBuilder {
                 dep_renames: t.deps.iter().map(|d| d.rename.clone()).collect(),
             })
             .collect();
-        let order = auto_man_core::ordered_build_renames(&items);
-        for rename in &order {
-            // 首个 rename 匹配：pac.targets 顺序优先，其次各 target 的
-            // 内嵌 deps（旧臂执行句柄语义）。
-            let found = pac
-                .targets
-                .iter()
-                .find(|t| &t.rename == rename)
-                .map(|_| (usize::MAX, rename.clone()))
-                .or_else(|| {
-                    pac.targets.iter().enumerate().find_map(|(ti, t)| {
-                        t.deps
-                            .iter()
-                            .find(|d| &d.rename == rename)
-                            .map(|_| (ti, rename.clone()))
-                    })
-                });
-            if let Some((ti, _)) = found {
-                if ti == usize::MAX {
-                    let idx = pac
-                        .targets
-                        .iter()
-                        .position(|t| &t.rename == rename)
-                        .unwrap();
-                    let t = &pac.targets[idx];
-                    self.target(t, pac)?;
-                } else {
-                    let dep = pac.targets[ti]
-                        .deps
-                        .iter()
-                        .find(|d| &d.rename == rename)
-                        .unwrap();
-                    let dep = dep.clone();
-                    self.target(&dep, pac)?;
-                }
-            }
+        // R2-01 修复：步骤带 (item_index, from_dep) 身份——按首次访问的
+        // 具体对象执行（内嵌 merge_link 覆盖副本优先于同 rename 顶层），
+        // 不做按名字的全局回查。
+        let steps = auto_man_core::ordered_build_steps(&items);
+        for step in &steps {
+            let handle: &Target = match step.from_dep {
+                Some(d) => &pac.targets[step.item_index].deps[d],
+                None => &pac.targets[step.item_index],
+            };
+            let handle = handle.clone();
+            self.target(&handle, pac)?;
         }
         self.finish(pac)?;
         Ok(())

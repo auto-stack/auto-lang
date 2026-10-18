@@ -680,6 +680,21 @@ fn generate_ark_project_with_project(
 
 /// Build ArkTS project (auto build command for ark backend)
 pub fn build_ark_project(root_dir: &Path) -> AutoResult<()> {
+    build_ark_project_inner(root_dir, None)
+}
+
+/// 请求路径（PLAN-809 R2-F02：build 分派同样经合同）。
+pub fn build_ark_project_with_request(
+    root_dir: &Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    build_ark_project_inner(root_dir, Some(req))
+}
+
+fn build_ark_project_inner(
+    root_dir: &Path,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
     println!(
         "{}",
         "Building ArkTS/HarmonyOS project (backend: ark)".bright_cyan()
@@ -688,7 +703,10 @@ pub fn build_ark_project(root_dir: &Path) -> AutoResult<()> {
     // Step 1: Generate code
     println!();
     println!("{}", "▶ Step 1: Generating ArkTS code...".bright_cyan());
-    generate_ark_project(root_dir, None, false)?;
+    match req {
+        Some(r) => generate_ark_project_with_request(root_dir, None, false, r)?,
+        None => generate_ark_project(root_dir, None, false)?,
+    }
 
     let ark_dir = root_dir.join("gen").join("front").join("ark");
 
@@ -770,7 +788,10 @@ fn run_ark_project_inner(
     // Step 1: Generate code
     println!();
     println!("{}", "▶ Step 1: Generating ArkTS code...".bright_cyan());
-    generate_ark_project(root_dir, None, false)?;
+    match req {
+        Some(r) => generate_ark_project_with_request(root_dir, None, false, r)?,
+        None => generate_ark_project(root_dir, None, false)?,
+    }
 
     let ark_dir = root_dir.join("gen").join("front").join("ark");
 

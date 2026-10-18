@@ -334,8 +334,7 @@ fn v05a_ninja_memory_discriminating() {
 
 fn v05b_cargo_real_build_and_failure_paths() {
     if which("cargo").is_none() {
-        eprintln!("V05-PENDING: cargo 不可用，真实执行未完成（记录非通过）");
-        return;
+        panic!("V05-PENDING: cargo 不可用——真实 cargo 验收未执行，不能声称通过");
     }
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -429,8 +428,10 @@ fn v05b_cargo_real_build_and_failure_paths() {
 #[test]
 fn v05_vue_real_build_and_failure() {
     if which("npm").is_none() || which("node").is_none() {
-        eprintln!("V05-PENDING: npm/node 不可用，真实执行未完成（记录非通过）");
-        return;
+        panic!(
+            "V05-PENDING: npm/node 不可用——真实 VueBuilder 验收未执行， \
+             本环境无法声称通过（AC-04 环境缺失=pending，非 pass）"
+        );
     }
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
@@ -469,8 +470,83 @@ fn v05_vue_real_build_and_failure() {
 }
 
 fn which(tool: &str) -> Option<std::path::PathBuf> {
+    // R2-F04：按生产 runner 语义解析——Windows 下 npm/pnpm 等经
+    // .cmd/.bat 入口分发（PATHEXT），只拼 .exe 会漏并造成假跳过。
     let path = std::env::var_os("PATH")?;
-    std::env::split_paths(&path)
-        .map(|dir| dir.join(format!("{tool}.exe")))
-        .find(|p| p.is_file())
+    let exts: Vec<String> = std::env::var("PATHEXT")
+        .unwrap_or_else(|_| ".EXE;.CMD;.BAT".to_string())
+        .split(';')
+        .map(|s| s.trim().to_ascii_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut exts: Vec<String> = exts
+        .iter()
+        .map(|e| e.trim_start_matches('.').to_string())
+        .collect();
+    exts.push("exe".into());
+    exts.push("cmd".into());
+    exts.push("bat".into());
+    exts.push("ps1".into());
+    for dir in std::env::split_paths(&path) {
+        for ext in &exts {
+            let cand = dir.join(format!("{tool}.{ext}"));
+            if cand.is_file() {
+                return Some(cand);
+            }
+        }
+    }
+    None
+}
+
+/// R2-F01 永久回归：Ninja 必须执行**首次访问的具体依赖实例**——
+/// app.deps 内嵌的 merge_link 覆盖副本（override.c）先于同 rename 顶层
+/// 目标（base.c）；顶层在前/内嵌独占两正控排除探针一概报红。
+/// 以真实 NinjaBuilder 内存模式字节为 oracle（无工具可执行依赖）。
+#[test]
+fn r2_f01_ninja_first_encounter_identity() {
+    fn build_memory(targets: Vec<Target>) -> String {
+        let config = auto_lang::config::AutoConfig::new("name: \"p\"\n").unwrap();
+        let mut pac = Pac::new(config);
+        pac.targets = targets;
+        let mut builder = crate::builder::new_builder(crate::builder::BuilderKind::Ninja(
+            auto_val::AutoPath::new("build"),
+        ));
+        builder.enable_memory_output().unwrap();
+        builder.build(&mut pac).unwrap();
+        let outputs = builder.get_memory_output();
+        String::from_utf8_lossy(outputs.values().next().unwrap()).to_string()
+    }
+    let make = |name: &str, src: &str| {
+        let mut t = Target::new(name, crate::TargetKind::App);
+        t.rename = name.into();
+        t.srcs.insert(src.into());
+        t
+    };
+    // 1) app 先 + 其 deps 内嵌覆盖副本：override.c 胜，base.c 不发射
+    let mut app = make("app", "app.c");
+    let mut override_lib = make("lib", "override.c");
+    override_lib.rename = "lib".into();
+    app.deps = vec![override_lib];
+    let top_lib = make("lib", "base.c");
+    let out = build_memory(vec![app, top_lib]);
+    assert!(out.contains("override.c"), "首次访问=内嵌覆盖副本：\n{out}");
+    assert!(
+        !out.contains("base.c"),
+        "顶层同 rename 副本不得发射：\n{out}"
+    );
+    // 2) 顶层在前：base.c 胜
+    let mut app2 = make("app", "app.c");
+    let mut dep2 = make("lib", "override.c");
+    dep2.rename = "lib".into();
+    app2.deps = vec![dep2];
+    let out2 = build_memory(vec![make("lib", "base.c"), app2]);
+    assert!(out2.contains("base.c"), "顶层先访问：\n{out2}");
+    assert!(!out2.contains("override.c"), "内嵌副本被去重：\n{out2}");
+    // 3) 内嵌独占（无顶层同名）：override.c 照常
+    let mut app3 = make("app", "app.c");
+    let mut dep3 = make("lib", "override.c");
+    dep3.rename = "lib".into();
+    app3.deps = vec![dep3];
+    let out3 = build_memory(vec![app3]);
+    assert!(out3.contains("override.c") && out3.contains("app.c"));
 }

@@ -396,7 +396,7 @@ mod tests {
             "src".into(),
             crate::dir::Dir::from_str("src".into(), "libs/libx".into(), TargetKind::Lib),
         );
-        let mut same = Target::new("d", TargetKind::Lib);
+        let same = Target::new("d", TargetKind::Lib);
         let known: HashSet<AutoStr> = ["known".into()].into_iter().collect();
         let admitted: Vec<Target> = admit_new_dep_libs(
             &[lib.clone(), same],

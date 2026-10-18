@@ -13,7 +13,7 @@ use crate::pac::Pac;
 use auto_man_core::BackendName;
 use auto_project_model::descriptor::SourceInfo;
 use auto_project_model::generation_request::{
-    DepRoot, GenerationRequest, PackageAssets, RequestMode, RequestOrigin, ThemeDeclLite,
+    DepRoot, GenerationRequest, PackageAssets, RequestMode, ThemeDeclLite,
 };
 use auto_val::Node;
 
@@ -231,12 +231,76 @@ pub fn apply_evaluated_props(req: &mut GenerationRequest, props: &auto_val::Obj)
     }
 }
 
-/// 单调用便捷：Pac（含求值 props）→ 完整请求（A 组 + B 组）。
+/// 单调用便捷：Pac（含求值 props/raw_nodes）→ 完整请求（A+B 组+节点）。
 /// Automan gen/run 分派的生产构造入口。
 pub fn request_of(pac: &Pac, pac_at_path: &std::path::Path) -> GenerationRequest {
+    request_of_in(pac, pac_at_path, RequestMode::Generate, None)
+}
+
+/// 带调用上下文的构造（R2-F03：mode/output_root 是调用点已知事实，
+/// input_sources 由 front 目录一次枚举——adapter 侧合法观测）。
+pub fn request_of_in(
+    pac: &Pac,
+    pac_at_path: &std::path::Path,
+    mode: RequestMode,
+    output_root: Option<std::path::PathBuf>,
+) -> GenerationRequest {
     let mut req = request_from_pac(pac, SourceInfo::from_path(pac_at_path.to_path_buf()));
     apply_evaluated_props(&mut req, &pac.props);
+    // R2-F03：未建模节点逐字投影（mystery/rust_sidecar 等）+ front 节点
+    // 形态 + sidecar 存在性。
+    req.raw_nodes = pac.raw_nodes.iter().map(node_to_raw_decl).collect();
+    req.front_node_form = pac.front_node.as_ref().map(|s| s.to_string());
+    req.has_rust_sidecar = pac.has_rust_sidecar;
+    // 调用上下文（front 目录 .at 一次枚举；不存在则空）
+    let project_root = pac_at_path.parent().map(|p| p.to_path_buf());
+    if let Some(root) = &project_root {
+        let front = crate::vue::resolve_front_dir_public(root);
+        if front.is_dir() {
+            req.input_sources = std::fs::read_dir(&front)
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .map(|e| e.path())
+                        .filter(|p| p.extension().map(|e| e == "at").unwrap_or(false))
+                        .collect()
+                })
+                .unwrap_or_default();
+        }
+    }
+    req.mode = mode;
+    req.output_root = output_root;
     req
+}
+
+/// auto_val Node → 请求 RawNodeDecl（内容无损投影；行号信息在求值后
+/// 不可得，置 0）。
+fn node_to_raw_decl(n: &auto_val::Node) -> auto_project_model::descriptor::RawNodeDecl {
+    auto_project_model::descriptor::RawNodeDecl {
+        head: n.name.to_string(),
+        name: {
+            let m = n.main_arg();
+            (!m.is_nil()).then(|| m.to_astr().trim().to_string())
+        },
+        raw_args: None,
+        props: n
+            .props_clone()
+            .iter()
+            .map(|(k, v)| auto_project_model::descriptor::NodeProp {
+                key: k.to_string(),
+                value: v.clone(),
+                line: 0,
+            })
+            .collect(),
+        children: n
+            .kids_iter()
+            .filter_map(|(_, kid)| match kid {
+                auto_val::Kid::Node(c) => Some(node_to_raw_decl(c)),
+                _ => None,
+            })
+            .collect(),
+        line: 0,
+    }
 }
 
 fn render_spec_of(pac: &Pac) -> auto_project_model::descriptor::RenderSpec {
@@ -285,6 +349,7 @@ pub fn with_mode(mut req: GenerationRequest, mode: RequestMode) -> GenerationReq
 #[cfg(test)]
 mod tests {
     use super::*;
+    use auto_project_model::generation_request::RequestOrigin;
 
     /// V-02 字段完备性：求值 Pac 的全部 A 组字段无损进入请求。
     #[test]

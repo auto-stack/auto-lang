@@ -3278,6 +3278,36 @@ impl<'a> PacSource<'a> {
         }
     }
 
+    /// rust_sidecar 声明（R2-F02：legacy=load_sidecar 文件读；请求路径=
+    /// req.raw_nodes 中 rust_sidecar 节点经 core 单源解析，不回读 pac.at）。
+    pub fn sidecar_spec(&self, project_dir: &Path) -> crate::sidecar::SidecarSpec {
+        match self.req {
+            Some(r) => {
+                let sidecar_nodes: Vec<auto_val::Node> = r
+                    .raw_nodes
+                    .iter()
+                    .filter(|n| n.head == "rust_sidecar")
+                    .map(|n| {
+                        let mut node = auto_val::Node::new("rust_sidecar");
+                        if let Some(name) = &n.name {
+                            node.args.add_pos(auto_val::Value::Str(name.clone().into()));
+                        }
+                        for prop in &n.props {
+                            node.set_prop(prop.key.as_str(), prop.value.clone());
+                        }
+                        node
+                    })
+                    .collect();
+                let mut root = auto_val::Node::new("root");
+                for n in sidecar_nodes {
+                    root.add_kid(n);
+                }
+                crate::sidecar::from_decl(&auto_man_core::sidecar_decl_from_root(&root))
+            }
+            None => crate::sidecar::load_sidecar(project_dir),
+        }
+    }
+
     /// theme{} 声明激活（compose + set_theme_composed——语言侧效果，
     /// 本方法属 adapter；请求路径从 ThemeDeclLite 还原语言声明）。
     pub fn apply_theme_decl(&self, project_dir: &Path) -> Option<String> {

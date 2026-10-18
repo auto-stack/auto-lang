@@ -222,14 +222,6 @@ pub fn output_dirs(selection: &RenderSelection) -> Vec<(BackendName, AutoStr)> {
 mod tests {
     use super::*;
 
-    fn sel_from(code: &str) -> Option<RenderSelection> {
-        // 直接构造 Value 而不经语言解析：字符串/数组/对象三形态
-        match code {
-            "\"vue\"" => RenderSelection::from_value(&Value::Str("vue".into())),
-            _ => None,
-        }
-    }
-
     #[test]
     fn backend_name_from_str_alignment() {
         assert_eq!(BackendName::from_str("vue"), Some(BackendName::Vue));

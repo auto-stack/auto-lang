@@ -805,9 +805,16 @@ fn display_reader_v05_unified_entry_and_unselected_fields_intact() {
         !vue.contains("fn parse_pac_name"),
         "vue.rs 重复行循环 parse_pac_name 必须删除"
     );
+    // PLAN-809 R2-F05：生产调用点迁移进 VueReads::scan（读取参数为借用
+    // 形态）——围栏改为验证**实际新合同源**：legacy 读取在 VueReads::scan
+    // 内经统一入口，且 vue 不再散落裸 read 调用。
     assert!(
-        vue.contains("project_display_reader::read(&pac_content)"),
-        "生产调用点必须走统一入口"
+        vue.contains("project_display_reader::read(pac_content)"),
+        "生产调用点必须走统一入口（现位于 VueReads::scan）"
+    );
+    assert!(
+        !vue.contains("read_to_string(&pac_path).ok"),
+        "不得散落裸 pac.at 读取"
     );
     // toggle 族/front 路径行扫描（本计划非选字段）保留在 vue.rs
     assert!(

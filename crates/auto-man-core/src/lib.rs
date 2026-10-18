@@ -29,6 +29,7 @@ pub mod planning;
 pub mod port;
 pub mod scene;
 pub mod selection;
+pub mod sidecar;
 pub mod target;
 
 pub use backend::{
@@ -51,8 +52,8 @@ pub use pac::{
     pac_to_node, path_depth, relative_path, targets_map, PacDecl,
 };
 pub use planning::{
-    ordered_build_renames, select_port_binding, select_rust_package, BuildOrderItem, PortSelection,
-    RustPackageSpec,
+    ordered_build_steps, select_port_binding, select_rust_package, BuildOrderItem, BuildOrderStep,
+    PortSelection, RustPackageSpec,
 };
 pub use port::{port_from_node, Port};
 pub use scene::{is_ui, is_workspace, Scene};
@@ -60,6 +61,7 @@ pub use selection::{
     auto_recurse_into, check_incs_with, is_excluded_auto_config, scan_specific_srcs_with,
     scan_std_subdirs_aggregate, select_flat_entries, ScanEntry, STD_SOURCE_SUBDIRS,
 };
+pub use sidecar::{sidecar_decl_from_root, SidecarDecl};
 pub use target::{
     get_root_dir, get_root_dir_with_probe, set_to_vec, Target, TargetKind, TargetOrigin,
 };

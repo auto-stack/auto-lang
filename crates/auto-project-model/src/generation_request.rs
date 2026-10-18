@@ -126,9 +126,11 @@ pub struct GenerationRequest {
     /// `rust_sidecar(…) { … }` node presence (verbatim children preserved
     /// on `raw_nodes`).
     pub has_rust_sidecar: bool,
-    /// `front:` path declaration (`app("front")` node form stays on
-    /// `raw_nodes` — the adapter resolves it).
+    /// `front:` path 声明（prop 形态）。
     pub front_decl: Option<String>,
+    /// `app("front")` 节点形态（R2-F03：vue front 目录声明，**优先于**
+    /// prop 形态——镜像 parse_workspace_path；值为 "./front"）。
+    pub front_node_form: Option<String>,
     /// Actual input source list (evaluated/discovered inputs; static
     /// admission leaves it empty — not guessable without evaluation).
     pub input_sources: Vec<PathBuf>,
@@ -193,6 +195,7 @@ impl GenerationRequest {
             exe_name,
             has_rust_sidecar,
             front_decl,
+            front_node_form: None,
             input_sources: Vec::new(),
             output_root: None,
             mode: RequestMode::Generate,
@@ -228,6 +231,7 @@ impl GenerationRequest {
             exe_name: None,
             has_rust_sidecar: false,
             front_decl: None,
+            front_node_form: None,
             input_sources: Vec::new(),
             output_root: None,
             mode: RequestMode::Generate,

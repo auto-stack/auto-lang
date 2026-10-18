@@ -631,9 +631,26 @@ impl Automan {
     /// PLAN-809 R1-F02：本工程生成请求（I-PROJECT）——run/build/open 等
     /// 生产分派共用构造点（self.pac + cwd pac.at）。
     fn gen_request(&self) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
+        self.gen_request_as(auto_project_model::generation_request::RequestMode::Generate)
+    }
+
+    /// run 侧构造（R2-F03：调用上下文入请求）。
+    fn gen_request_run(
+        &self,
+    ) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
+        self.gen_request_as(auto_project_model::generation_request::RequestMode::Run)
+    }
+
+    fn gen_request_as(
+        &self,
+        mode: auto_project_model::generation_request::RequestMode,
+    ) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
         let pac_at = self.root_dir.join("pac.at");
-        Ok(crate::generation_request_adapter::request_of(
-            &self.pac, &pac_at,
+        Ok(crate::generation_request_adapter::request_of_in(
+            &self.pac,
+            &pac_at,
+            mode,
+            self.delivery_root.clone(),
         ))
     }
 
@@ -1097,14 +1114,20 @@ impl Automan {
     fn build_jet(&mut self) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::jet::build_jet_project(&root_dir)
+        {
+            let req = self.gen_request()?;
+            crate::jet::build_jet_project_with_request(&root_dir, &req)
+        }
     }
 
     /// Build ArkTS/HarmonyOS project (full workflow: generate, hvigor build)
     fn build_ark(&mut self) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::ark::build_ark_project(&root_dir)
+        {
+            let req = self.gen_request()?;
+            crate::ark::build_ark_project_with_request(&root_dir, &req)
+        }
     }
 
     /// Build VSCode extension project (full workflow: generate, webpack build)
@@ -1708,14 +1731,14 @@ impl Automan {
             auto_lang::config::BackendType::Jet => {
                 println!("Running Jetpack Compose project (backend: jet)");
                 {
-                    let req = self.gen_request()?;
+                    let req = self.gen_request_run()?;
                     crate::jet::run_jet_project_with_request(&root_dir, args, &req)
                 }
             }
             auto_lang::config::BackendType::Arkts => {
                 println!("Running ArkTS/HarmonyOS project (backend: ark)");
                 {
-                    let req = self.gen_request()?;
+                    let req = self.gen_request_run()?;
                     crate::ark::run_ark_project_with_request(&root_dir, args, &req)
                 }
             }
@@ -1723,7 +1746,7 @@ impl Automan {
                 // Check if this is a UI project (has front/ dir)
                 if root_dir.join("src").join("front").exists() {
                     {
-                        let req = self.gen_request()?;
+                        let req = self.gen_request_run()?;
                         crate::rust_ui::run_rust_ui_with_request(&root_dir, args, &req)
                     }
                 } else {
@@ -1774,7 +1797,7 @@ impl Automan {
                     }
                 } else {
                     {
-                        let req = self.gen_request()?;
+                        let req = self.gen_request_run()?;
                         crate::rust_ui::run_vm_ui_with_request(&root_dir, args, &req)
                     }
                 }
@@ -1792,7 +1815,7 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         {
-            let req = self.gen_request()?;
+            let req = self.gen_request_run()?;
             crate::vue::run_vue_project_with_request(&root_dir, args, &req)
         }
     }
@@ -1802,7 +1825,7 @@ impl Automan {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         {
-            let req = self.gen_request()?;
+            let req = self.gen_request_run()?;
             crate::tauri::run_tauri_project_with_request(&root_dir, args, &req)
         }
     }

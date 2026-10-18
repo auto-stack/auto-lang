@@ -2553,6 +2553,10 @@ fn write_project_files(
 /// 2. front: "./source/front" - explicit path (legacy)
 /// Resolve the front directory for a workspace root.
 /// Checks src/front, source/front, front — matching VueProject::from_workspace logic.
+pub(crate) fn resolve_front_dir_public(root_dir: &Path) -> std::path::PathBuf {
+    resolve_front_dir(root_dir)
+}
+
 fn resolve_front_dir(root_dir: &Path) -> std::path::PathBuf {
     if root_dir.join("src").join("front").exists() {
         root_dir.join("src").join("front")
@@ -2646,6 +2650,10 @@ pub(crate) struct VueReads {
     pub shadcn: bool,
     pub default_classes: bool,
     pub front_rel_path: Option<String>,
+    /// 本工程本地依赖声明（R2-F02：主声明经合同——legacy 路径由文本
+    /// 扫描收集，请求路径来自 req.dep_roots；物化 deps/ 目录的枚举与
+    /// os-mirror 回退是效果边，两路径共用）。
+    pub dep_roots: Vec<(String, Option<String>)>,
     pub npm_deps: Vec<(String, String)>,
     pub style_files: Vec<String>,
     pub i18n: I18nConfig,
@@ -2692,6 +2700,7 @@ impl VueReads {
             shadcn: parse_shadcn(pac_content),
             default_classes: parse_default_classes(pac_content),
             front_rel_path,
+            dep_roots: parse_dep_roots_text(pac_content),
             npm_deps: parse_npm_deps(pac_content),
             style_files: parse_style_files(pac_content),
             i18n: parse_i18n(pac_content),
@@ -2701,19 +2710,32 @@ impl VueReads {
 
     /// 请求路径（生产）。
     fn from_request(req: &auto_project_model::generation_request::GenerationRequest) -> Self {
-        let front_rel_path = req.front_decl.clone();
+        // R2-F03：app("front") 节点形态优先于 front prop（镜像
+        // parse_workspace_path 的优先序）。
+        let front_rel_path = req
+            .front_node_form
+            .clone()
+            .or_else(|| req.front_decl.clone());
         let name = req
             .identity
             .name
             .clone()
             .unwrap_or_else(|| "aura-app".to_string());
-        // parse_pac_display_title 语义：AUTO_LOCALE（缺省 zh）且 title_zh
-        // 非空取之，否则 title（adapter 侧 env 读一次）。
+        // parse_pac_display_title 语义（R2-F03 校准）：AUTO_LOCALE（缺省
+        // zh）时 title_zh 非空即取——**无须 title 在场**（title_zh.or(title)，
+        // 与 Pac::display_title_in 的 title 先决链不同，以生成器旧臂为准）。
         let prefers_zh = std::env::var("AUTO_LOCALE")
             .unwrap_or_else(|_| "zh".to_string())
             .to_ascii_lowercase()
             .starts_with("zh");
-        let index_title = req.display_title(prefers_zh);
+        let index_title = if prefers_zh {
+            req.display
+                .title_zh
+                .clone()
+                .or_else(|| req.display.title.clone())
+        } else {
+            req.display.title.clone()
+        };
         // theme{} → 合成（语言侧 compose；ThemeDeclLite 还原语言声明）
         let theme = req
             .theme_decl
@@ -2746,6 +2768,11 @@ impl VueReads {
             shadcn: req.shadcn(),
             default_classes: req.default_classes(),
             front_rel_path,
+            dep_roots: req
+                .dep_roots
+                .iter()
+                .map(|d| (d.name.clone(), d.path.clone()))
+                .collect(),
             npm_deps: npm_deps_from_value(req.package_assets.npm_deps.as_ref()),
             style_files: string_list_from_value(req.package_assets.styles.as_ref()),
             i18n: i18n_from_value(req.package_assets.i18n.as_ref()),
@@ -2948,6 +2975,39 @@ fn project_default_classes(root_dir: &Path) -> bool {
 ///    }
 ///    ```
 /// 3. **Single string**: `npm_deps: "@autodown/editor"`
+/// 本工程本地依赖声明的文本形态（legacy 扫描半——与请求 dep_roots 同形：
+/// (name, Some(path))）。R2-F02：主声明经合同后，此函数只服务 legacy 路径。
+fn parse_dep_roots_text(content: &str) -> Vec<(String, Option<String>)> {
+    let lines: Vec<&str> = content.lines().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i].trim();
+        if line.starts_with("dep ") {
+            let dep_name = line["dep ".len()..]
+                .trim()
+                .trim_matches(|c| c == '"' || c == '{' || c == ' ')
+                .trim();
+            if !dep_name.is_empty() && !out.iter().any(|(n, _)| n == dep_name) {
+                for j in (i + 1)..std::cmp::min(i + 10, lines.len()) {
+                    let sub_line = lines[j].trim();
+                    if sub_line.starts_with("path:") {
+                        let p = sub_line["path:".len()..]
+                            .trim()
+                            .trim_matches(|c| c == '"' || c == '\'' || c == ' ');
+                        if !p.is_empty() {
+                            out.push((dep_name.to_string(), Some(p.to_string())));
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        i += 1;
+    }
+    out
+}
+
 fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
     let mut deps = Vec::new();
     let lines: Vec<&str> = content.lines().collect();
@@ -3491,10 +3551,23 @@ export default router
 
     /// Collect front directories for all dependencies under root_dir/deps/
     fn collect_dep_front_dirs(root_dir: &Path) -> Vec<(String, PathBuf, bool)> {
+        // legacy：主 pac.at 文本扫描本地依赖声明（行为冻结）。
+        let pac_path = root_dir.join("pac.at");
+        let roots = fs::read_to_string(&pac_path)
+            .map(|c| parse_dep_roots_text(&c))
+            .unwrap_or_default();
+        Self::collect_dep_front_dirs_with_roots(root_dir, &roots)
+    }
+
+    /// 共享收集体（R2-F02）：物化 deps/ 枚举（效果边）+ 本工程本地依赖
+    /// 声明经 roots（合同数据），不再回读本工程 pac.at 文本。
+    fn collect_dep_front_dirs_with_roots(
+        root_dir: &Path,
+        roots: &[(String, Option<String>)],
+    ) -> Vec<(String, PathBuf, bool)> {
         // 第三个元素 = 库形态旗标（PLAN-645 F-R1）：形状裁定在此处一次做出——
         // 有 src/front 或 front/ 布局的是应用形态 dep（false，strict 门禁不变）；
         // 原目录直推（bps 包库等）是模板源库形态（true，strict 降为告警）。
-        // 此前在编译循环里用 dep_front 再 join 判别，对应用形态恒误判为库。
         let deps_dir = root_dir.join("deps");
         let mut out = Vec::new();
         if let Ok(entries) = fs::read_dir(&deps_dir) {
@@ -3516,64 +3589,36 @@ export default router
                 }
             }
         }
-        // Also scan pac.at for local path dependencies if not already in deps/
-        let pac_path = root_dir.join("pac.at");
-        if let Ok(content) = fs::read_to_string(&pac_path) {
-            let lines: Vec<&str> = content.lines().collect();
-            let mut i = 0;
-            while i < lines.len() {
-                let line = lines[i].trim();
-                if line.starts_with("dep ") {
-                    let dep_name = line["dep ".len()..]
-                        .trim()
-                        .trim_matches(|c| c == '"' || c == '{' || c == ' ')
-                        .trim();
-                    if !dep_name.is_empty() && !out.iter().any(|(n, _, _)| n == dep_name) {
-                        for j in (i + 1)..std::cmp::min(i + 10, lines.len()) {
-                            let sub_line = lines[j].trim();
-                            if sub_line.starts_with("path:") {
-                                let p = sub_line["path:".len()..]
-                                    .trim()
-                                    .trim_matches(|c| c == '"' || c == '\'' || c == ' ');
-                                if !p.is_empty() {
-                                    let local_path = root_dir.join(p);
-                                    let resolved = if local_path.is_dir() {
-                                        Some(local_path)
-                                    } else {
-                                        // PLAN-609 T-B2：584/590 搬迁后 pac.at 的
-                                        // `path:` 死指（如 examples 侧
-                                        // `../common/settings` 七源已迁 auto-os）。
-                                        // 按 resolve_os_top_dir 解析序在 auto-os
-                                        // `apps/` 容器下回退；只读不写、不建链接。
-                                        Self::resolve_dep_os_mirror(root_dir, dep_name, p)
-                                    };
-                                    if let Some(local_path) = resolved {
-                                        if local_path.join("src").join("front").is_dir() {
-                                            out.push((
-                                                dep_name.to_string(),
-                                                local_path.join("src").join("front"),
-                                                false,
-                                            ));
-                                        } else if local_path.join("front").is_dir() {
-                                            out.push((
-                                                dep_name.to_string(),
-                                                local_path.join("front"),
-                                                false,
-                                            ));
-                                        } else {
-                                            out.push((dep_name.to_string(), local_path, true));
-                                        }
-                                    }
-                                }
-                                break;
-                            }
-                            if sub_line == "}" {
-                                break;
-                            }
+        // 本工程本地 path 依赖（声明来自合同 roots；os-mirror 死指回退
+        // 是只读效果边，两路径共用）
+        for (dep_name, path_opt) in roots {
+            if let Some(p) = path_opt {
+                if !p.is_empty() && !out.iter().any(|(n, _, _)| n == dep_name) {
+                    let local_path = root_dir.join(p);
+                    let resolved = if local_path.is_dir() {
+                        Some(local_path)
+                    } else {
+                        // PLAN-609 T-B2：584/590 搬迁后 pac.at 的
+                        // `path:` 死指（如 examples 侧
+                        // `../common/settings` 七源已迁 auto-os）。
+                        // 按 resolve_os_top_dir 解析序在 auto-os
+                        // `apps/` 容器下回退；只读不写、不建链接。
+                        Self::resolve_dep_os_mirror(root_dir, dep_name, p)
+                    };
+                    if let Some(local_path) = resolved {
+                        if local_path.join("src").join("front").is_dir() {
+                            out.push((
+                                dep_name.clone(),
+                                local_path.join("src").join("front"),
+                                false,
+                            ));
+                        } else if local_path.join("front").is_dir() {
+                            out.push((dep_name.clone(), local_path.join("front"), false));
+                        } else {
+                            out.push((dep_name.clone(), local_path, true));
                         }
                     }
                 }
-                i += 1;
             }
         }
         out
@@ -3640,12 +3685,12 @@ export default router
 
     fn from_workspace_reads(
         root_dir: &Path,
-        pac_path: &Path,
-        pac_content: &str,
+        _pac_path: &Path,
+        _pac_content: &str,
         reads: VueReads,
     ) -> AutoResult<Self> {
         let composed_theme = reads.theme;
-        let dep_front_dirs = Self::collect_dep_front_dirs(root_dir);
+        let dep_front_dirs = Self::collect_dep_front_dirs_with_roots(root_dir, &reads.dep_roots);
 
         // Parse workspace paths (Plan 129: app("front") syntax)
         let front_rel_path = reads
@@ -6689,7 +6734,10 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
 /// npm. Parse failures print the same "Warning: Failed to compile ..." line
 /// as the fresh path (see `handle_compile_error`) and fail the build under
 /// `auto build --strict`.
-fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
+fn incremental_compile_changed(
+    root_dir: &Path,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<usize> {
     // Pre-load API function names BEFORE any VueGenerator::new() calls
     let api_fns_path = root_dir.join("dist").join(".api_functions");
     if api_fns_path.exists() {
@@ -6897,7 +6945,19 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
     // 落盘，vite "Failed to resolve import"（601 复审 006/015 实勘）。
     // widget 名并入 sub_widget_names，与 from_workspace 的 Phase-1 扫描
     // （scan_dirs 含 dep fronts）同口径，双路径 App.vue 发射一致。
-    for (dep_name, dep_front, library_dep) in VueProject::collect_dep_front_dirs(root_dir) {
+    let roots: Vec<(String, Option<String>)> = match req {
+        Some(r) => r
+            .dep_roots
+            .iter()
+            .map(|d| (d.name.clone(), d.path.clone()))
+            .collect(),
+        None => fs::read_to_string(root_dir.join("pac.at"))
+            .map(|c| parse_dep_roots_text(&c))
+            .unwrap_or_default(),
+    };
+    for (dep_name, dep_front, library_dep) in
+        VueProject::collect_dep_front_dirs_with_roots(root_dir, &roots)
+    {
         let mut dep_at_files: Vec<PathBuf> = Vec::new();
         VueProject::collect_at_files_recursive(&dep_front, &mut dep_at_files);
         dep_at_files.sort();
@@ -7316,7 +7376,7 @@ fn run_vue_project_inner(
         }
     }
 
-    let changed_count = incremental_compile_changed(root_dir)?;
+    let changed_count = incremental_compile_changed(root_dir, req)?;
 
     // Load project context（R1-F02：请求在场则经合同读取，不再回读 pac.at）
     let project = match req {
@@ -12562,7 +12622,7 @@ store BetaStore {
             .join("stores");
 
         // First incremental pass: everything is dirty, both stores emitted.
-        let changed = incremental_compile_changed(root).expect("first pass must succeed");
+        let changed = incremental_compile_changed(root, None).expect("first pass must succeed");
         assert!(changed > 0);
         assert!(
             stores_dir.join("useAlphaStore.ts").exists(),
@@ -12587,7 +12647,7 @@ store BetaStore {
         )
         .unwrap();
 
-        incremental_compile_changed(root).expect("second pass must succeed");
+        incremental_compile_changed(root, None).expect("second pass must succeed");
         assert!(
             stores_dir.join("useAlphaStore.ts").exists(),
             "alpha composable re-emitted by incremental pass"
@@ -12618,7 +12678,7 @@ store BetaStore {
 
         // Non-strict: warning + build continues.
         auto_lang::ui_gen::validators::set_strict(false);
-        let ok = incremental_compile_changed(root);
+        let ok = incremental_compile_changed(root, None);
         assert!(ok.is_ok(), "non-strict build must continue: {:?}", ok.err());
         let stores_dir = root
             .join("gen")
@@ -12649,7 +12709,7 @@ store BetaStore {
             }
         }
         let _guard = StrictGuard::on();
-        let err = match incremental_compile_changed(root) {
+        let err = match incremental_compile_changed(root, None) {
             Ok(_) => panic!("strict build must fail on parse error"),
             Err(e) => e,
         };
@@ -14529,5 +14589,74 @@ pub fn open_file(path str) str {
             line.contains("search_lc: \"001 hello world 001-helloworld basic text\""),
             "search_lc lowercased concat: {line}"
         );
+    }
+    /// R2-F03 对拍补例：仅 title_zh + app(front) 节点形态 + 主声明不变反控。
+    #[test]
+    fn plan809_r2_parity_zh_only_and_front_node() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let front = root.join("front");
+        let src_front = root.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::create_dir_all(&src_front).unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            "widget W { view { text \"node\" {} } }",
+        )
+        .unwrap();
+        std::fs::write(
+            src_front.join("app.at"),
+            "widget S { view { text \"src\" {} } }",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("pac.at"),
+            "name: \"fp\"
+title_zh: \"Only Chinese\"
+render: \"vue\"
+app(\"front\") { }
+",
+        )
+        .unwrap();
+        let pac_path = root.join("pac.at");
+        let config =
+            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
+        let pac = crate::pac::Pac::new(auto_lang::config::AutoConfig {
+            code: config.code.clone(),
+            root: config.root.clone(),
+            args: config.args.clone(),
+        });
+        let req = crate::generation_request_adapter::request_of(&pac, &pac_path);
+        assert_eq!(req.front_node_form.as_deref(), Some("./front"));
+        let a = VueProject::from_workspace(root).unwrap();
+        let b = VueProject::from_workspace_with_request(root, &req).unwrap();
+        assert_eq!(a.front_dir, b.front_dir, "app(front) 节点形态目录一致");
+        assert!(
+            b.front_dir.ends_with("front"),
+            "选 ./front 而非 src/front：{:?}",
+            b.front_dir
+        );
+        assert_eq!(a.index_title.as_deref(), Some("Only Chinese"));
+        assert_eq!(
+            b.index_title.as_deref(),
+            Some("Only Chinese"),
+            "仅 title_zh 不得 None"
+        );
+
+        // 主声明不变反控：请求不变，磁盘后加 dep 不得改变请求路径产物集
+        let req2 = crate::generation_request_adapter::request_of(&pac, &pac_path);
+        assert_eq!(req2.dep_roots.len(), 0);
+        std::fs::write(
+            root.join("pac.at"),
+            "name: \"fp\"
+title_zh: \"Only Chinese\"
+render: \"vue\"
+app(\"front\") { }
+dep \"late\" { path: \"../late\" }
+",
+        )
+        .unwrap();
+        let c = VueProject::from_workspace_with_request(root, &req2).unwrap();
+        assert!(c.npm_deps.is_empty(), "磁盘后改的声明不得进入请求路径产物");
     }
 }

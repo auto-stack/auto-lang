@@ -164,6 +164,15 @@ pub struct Pac {
     /// HTML element generation for non-shadcn projects.
     pub shadcn: bool,
 
+    /// 未建模顶层节点逐字保留（R2-F03：请求投影不丢节点信息；auto_val
+    /// Node 与 ports 同层，效果无关）。
+    pub raw_nodes: Vec<Node>,
+    /// app("front") 节点形态 → "./front"（vue front 目录声明，优先于
+    /// front prop；R2-F03）。
+    pub front_node: Option<AutoStr>,
+    /// rust_sidecar 节点存在性（声明解析单源 core::sidecar）。
+    pub has_rust_sidecar: bool,
+
     /// Default Tailwind class injection toggle (Plan 014), declared as
     /// `default_classes: off` in pac.at. Default true = current behavior
     /// (doc-theme defaults like `text` → `text-muted-foreground leading-7`).
@@ -256,6 +265,9 @@ impl Pac {
             desktop_render: decl.desktop_render,
             shadcn: decl.shadcn,
             default_classes: decl.default_classes,
+            raw_nodes: decl.raw_nodes,
+            front_node: decl.front_node,
+            has_rust_sidecar: decl.has_rust_sidecar,
             is_update: false,
         }
     }

@@ -44,31 +44,28 @@ impl SidecarSpec {
 /// 从工程根的 pac.at 读取 `rust_sidecar` 节;无 pac.at / 无节点 / 字段
 /// 缺失一律返回空 spec(生成流程不因侧车缺省而分叉)。
 pub fn load_sidecar(project_dir: &Path) -> SidecarSpec {
-    let mut spec = SidecarSpec::default();
     let pac = project_dir.join("pac.at");
     if !pac.is_file() {
-        return spec;
+        return SidecarSpec::default();
     }
     let Ok(config) = auto_lang::config::AutoConfig::from_file(&pac, &Obj::new()) else {
-        return spec;
+        return SidecarSpec::default();
     };
-    // 主形态:`rust_sidecar { … }` 是 root 的具名子节点。
-    let (modules_v, deps_v) = match config.root.get_nodes("rust_sidecar").into_iter().next() {
-        Some(node) => (node.get_prop("modules"), node.get_prop("deps")),
-        None => {
-            // 兜底:obj/嵌套 value 形态。
-            match config.root.get_prop("rust_sidecar") {
-                Value::Obj(obj) => (
-                    obj.get("modules").unwrap_or(Value::Nil),
-                    obj.get("deps").unwrap_or(Value::Nil),
-                ),
-                Value::Node(node) => (node.get_prop("modules"), node.get_prop("deps")),
-                _ => return spec,
-            }
-        }
-    };
-    fill(&mut spec, read_str_list(&modules_v), read_str_list(&deps_v));
-    spec
+    // R2-F02（T01 §6.4）：声明解析单源在 auto_man_core::sidecar；
+    // 本函数只剩语言求值与形态转换（效果 adapter）。
+    from_decl(&auto_man_core::sidecar_decl_from_root(&config.root))
+}
+
+/// core 声明 → 本 crate 形态（PathBuf 转换）。
+pub fn from_decl(decl: &auto_man_core::SidecarDecl) -> SidecarSpec {
+    SidecarSpec {
+        modules: decl
+            .modules
+            .iter()
+            .map(|(n, p)| (n.clone(), PathBuf::from(p)))
+            .collect(),
+        deps: decl.deps.clone(),
+    }
 }
 
 fn fill(spec: &mut SidecarSpec, modules: Vec<String>, deps: Vec<String>) {
@@ -83,7 +80,8 @@ fn fill(spec: &mut SidecarSpec, modules: Vec<String>, deps: Vec<String>) {
                 .unwrap_or(false)
                 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
             if valid_ident && !path.trim().is_empty() {
-                spec.modules.push((name.to_string(), PathBuf::from(path.trim())));
+                spec.modules
+                    .push((name.to_string(), PathBuf::from(path.trim())));
             }
         }
     }
@@ -99,14 +97,13 @@ fn fill(spec: &mut SidecarSpec, modules: Vec<String>, deps: Vec<String>) {
                 if let Some(rel) = version.strip_prefix("path:") {
                     let rel = rel.trim();
                     if !rel.is_empty() {
-                        spec.deps.push((
-                            name.to_string(),
-                            format!("{{ path = \"{rel}\" }}"),
-                        ));
+                        spec.deps
+                            .push((name.to_string(), format!("{{ path = \"{rel}\" }}")));
                         continue;
                     }
                 }
-                spec.deps.push((name.to_string(), version.trim().to_string()));
+                spec.deps
+                    .push((name.to_string(), version.trim().to_string()));
             }
         }
     }
@@ -148,8 +145,14 @@ pub fn apply_sidecar_to_crate(
             .into());
         }
         let dest = src_dir.join(format!("{name}.rs"));
-        std::fs::copy(&source, &dest)
-            .map_err(|e| format!("sidecar: copy {} → {}: {}", source.display(), dest.display(), e))?;
+        std::fs::copy(&source, &dest).map_err(|e| {
+            format!(
+                "sidecar: copy {} → {}: {}",
+                source.display(),
+                dest.display(),
+                e
+            )
+        })?;
     }
 
     // 2) main.rs 追加 mod 声明(幂等)。
@@ -197,7 +200,8 @@ pub fn apply_sidecar_to_crate(
         }
         if !missing.is_empty() {
             if cargo.contains("[dependencies]") {
-                cargo = cargo.replacen("[dependencies]", &format!("[dependencies]\n{}", missing), 1);
+                cargo =
+                    cargo.replacen("[dependencies]", &format!("[dependencies]\n{}", missing), 1);
             } else {
                 cargo.push_str(&format!("\n[dependencies]\n{missing}"));
             }
@@ -234,7 +238,10 @@ rust_sidecar {
         assert_eq!(spec.modules[0].0, "term");
         assert_eq!(spec.modules[0].1, PathBuf::from("term.rs"));
         assert_eq!(spec.modules[1].0, "glue");
-        assert_eq!(spec.deps, vec![("libloading".to_string(), "0.8".to_string())]);
+        assert_eq!(
+            spec.deps,
+            vec![("libloading".to_string(), "0.8".to_string())]
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

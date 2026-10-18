@@ -150,7 +150,7 @@ impl Builder for CargoBuilder {
             "
 [lib]"
         };
-        let base_name = spec.base_name;
+        let _base_name = spec.base_name;
         let pkg_name = spec.pkg_name;
 
         let mut cargo_toml = format!(

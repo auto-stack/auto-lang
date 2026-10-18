@@ -56,24 +56,42 @@ pub struct BuildOrderItem {
     pub dep_renames: Vec<AutoStr>,
 }
 
-/// deps 先建、rename 全局去重的执行序（原 ninja `build` 迭代规则的
-/// 单源迁移：逐 target 先其 deps 再自身，首个 rename 出现者胜）。
-pub fn ordered_build_renames(items: &[BuildOrderItem]) -> Vec<AutoStr> {
-    let mut order = Vec::new();
+/// 规划步骤的可回查身份（R2-01：rename 不携带身份——共享 rename 时
+/// 顶层与内嵌覆盖副本无法区分；步骤必须指回**首次访问的具体对象**）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BuildOrderStep {
+    /// items 中的下标（adapter 的 pac.targets 下标）。
+    pub item_index: usize,
+    /// None = 顶层目标自身；Some(d) = items[item_index].deps[d] 内嵌副本。
+    pub from_dep: Option<usize>,
+}
+
+/// deps 先建、rename 全局去重的执行序（原 ninja `build` 迭代规则）：
+/// 逐 item 先其 deps 再自身，首个 rename 出现的**具体对象**胜出——
+/// 返回带身份的步骤，adapter 按索引取回首次访问实例（含 merge_link
+/// 覆盖态），不做任何按名字的全局猜测。
+pub fn ordered_build_steps(items: &[BuildOrderItem]) -> Vec<BuildOrderStep> {
+    let mut steps = Vec::new();
     let mut done: std::collections::HashSet<AutoStr> = std::collections::HashSet::new();
-    for item in items {
-        for dep in &item.dep_renames {
+    for (i, item) in items.iter().enumerate() {
+        for (d, dep) in item.dep_renames.iter().enumerate() {
             if !done.contains(dep) {
-                order.push(dep.clone());
+                steps.push(BuildOrderStep {
+                    item_index: i,
+                    from_dep: Some(d),
+                });
                 done.insert(dep.clone());
             }
         }
         if !done.contains(&item.rename) {
-            order.push(item.rename.clone());
+            steps.push(BuildOrderStep {
+                item_index: i,
+                from_dep: None,
+            });
             done.insert(item.rename.clone());
         }
     }
-    order
+    steps
 }
 
 /// Cargo 包选择规格（原 builder/cargo.rs `setup` 的选择决策半）：
@@ -149,35 +167,6 @@ mod tests {
         assert!(select_port_binding(&port, &"c".into()).show_headers);
         port.builder = "cmake".into();
         assert!(!select_port_binding(&port, &"c".into()).show_headers);
-    }
-
-    #[test]
-    fn ordered_build_renames_deps_first_dedup() {
-        use crate::planning::BuildOrderItem;
-        let items = vec![
-            BuildOrderItem {
-                rename: AutoStr::from("app"),
-                dep_renames: vec![AutoStr::from("d1"), AutoStr::from("d1")],
-            },
-            BuildOrderItem {
-                rename: AutoStr::from("lib"),
-                dep_renames: vec![AutoStr::from("d1")],
-            },
-        ];
-        assert_eq!(
-            ordered_build_renames(&items),
-            vec![
-                AutoStr::from("d1"),
-                AutoStr::from("app"),
-                AutoStr::from("lib")
-            ]
-        );
-        // 无 deps：自身按序
-        let items2 = vec![BuildOrderItem {
-            rename: AutoStr::from("solo"),
-            dep_renames: vec![],
-        }];
-        assert_eq!(ordered_build_renames(&items2), vec![AutoStr::from("solo")]);
     }
 
     #[test]

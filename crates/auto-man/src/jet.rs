@@ -992,6 +992,21 @@ fn run_jet_project_inner(
 /// 2. Generate project structure if not exists
 /// 3. Run gradlew assembleDebug
 pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
+    build_jet_project_inner(root_dir, None)
+}
+
+/// 请求路径（PLAN-809 R2-F02：build 分派同样经合同）。
+pub fn build_jet_project_with_request(
+    root_dir: &Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    build_jet_project_inner(root_dir, Some(req))
+}
+
+fn build_jet_project_inner(
+    root_dir: &Path,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
     println!(
         "{}",
         "Building Jetpack Compose project (backend: jet)".bright_cyan()
@@ -1000,7 +1015,10 @@ pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
     // Step 1: Generate code (always, incremental)
     println!();
     println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
-    generate_jet_project(root_dir, None, false)?;
+    match req {
+        Some(r) => generate_jet_project_with_request(root_dir, None, false, r)?,
+        None => generate_jet_project(root_dir, None, false)?,
+    }
 
     let jet_dir = root_dir.join("gen").join("front").join("jet");
 
