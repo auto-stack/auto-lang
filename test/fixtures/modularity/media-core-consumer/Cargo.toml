@@ -1,0 +1,26 @@
+# PLAN-811 媒体基础消费方探针（独立 fixture crate；T-02 轻骨架，T-07 补全验收面）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-media-core 的公开面，证明媒体基础
+# （数据面 + 运行时 + 媒体文件服务）可被无 auto-lang/auto-man/auto-ui/
+# auto-vm/解释器栈/renderer 的外部 consumer 编译并运行。
+#
+# 闭包证明 = 本 manifest 的依赖表 + verify-deps.sh（cargo tree 断言
+# normal/build 闭包无 auto-lang/auto-man/auto-ui/auto-vm）。
+#
+# 显式脱离根 workspace：本目录不在根 members 内，且此处空 [workspace] 表
+# 使其成为独立解析单元（根 Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/media-core-consumer/Cargo.toml
+# 依赖闭包断言（V-06 oracle）：
+#   bash test/fixtures/modularity/media-core-consumer/verify-deps.sh
+
+[package]
+name = "media-core-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-media-core = { path = "../../../../crates/auto-media-core" }
+
+# 独立 workspace（见上）；无锁文件、无成员。
+[workspace]

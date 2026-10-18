@@ -183,6 +183,12 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/text-core-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/text-core-consumer/verify-deps.sh
     "test/fixtures/modularity/text-core-consumer",
+    # PLAN-811: 外部媒体基础消费方探针——独立 fixture crate（唯一依赖
+    # auto-media-core，证明图像资产管线/媒体文件服务闭包无 auto-lang/
+    # auto-man/auto-ui/auto-vm/解释器栈/renderer），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/media-core-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/media-core-consumer/verify-deps.sh
+    "test/fixtures/modularity/media-core-consumer",
     # PLAN-800: 外部解析核心消费方探针——独立 fixture crate（仅依赖
     # auto-package-resolver/std，证明依赖视图/路径候选/依赖内模块判定核心
     # 无 auto-lang/auto-man/auto-val/VM/UI 闭包可用），门禁经
