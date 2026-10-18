@@ -66,6 +66,8 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | 10/10 pass |
 | 独立 consumer | `cargo test --manifest-path test/fixtures/modularity/terminal-core-consumer/Cargo.toml`（DLL env） | 4/4 pass |
 | consumer 闭包 | `bash test/fixtures/modularity/terminal-core-consumer/verify-deps.sh` | PASS（仅 libloading/windows-link） |
+| no-UI 构建 | `cargo check -p auto-lang --no-default-features` | exit 0（34 shim + core 服务无 UI 依赖；config/window 1024×768 缺席臂保留） |
+| ui-only 组合 | `cargo check -p auto-lang --no-default-features --features ui` | 预存红（`ui_gen/vue.rs` iced、`sched_diag`/`vm_bridge` session/dynamic 未门控——F-785-P01 既有缺陷，非本计划文件；默认含 ui-iced 档绿） |
 | 真实 DLL 有界探针 | `python docs/plans/attachments/808/t01-dll-probe.py` | 34 checks pass |
 | 777 observe | `python scripts/modularity-audit.py --mode observe --no-cargo-check` | 收据 `t07-777-observe.json`（core_to_ui 860） |
 | 792 delivery driver | `python test/fixtures/modularity/generated-ui-consumer/driver.py` | **25/25 pass**（fresh 141s + relocated locked 120s；收据 `t07-792-driver-receipt.json` / 日志 `t07-792-driver.log.txt`） |
