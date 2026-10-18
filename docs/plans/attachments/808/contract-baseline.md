@@ -147,14 +147,23 @@ spawn 的句柄仍由同一会话表解析（旧跨调用/共享行为保留）�
 4. `snapshots`/`geoms`/`cursor`/`backlog` 各自短临界区；互不嵌套。
 5. UI adapter 顺序固定：**先 service 调用（锁已释放）→ 再 UI 注册表锁**。
    UI 代码（widget/dynamic）从不回调 service；无反向锁序。
-6. **NI owner 锁纪律（R2/R3）**：`terminal_owners` 锁内只做 Arc 列表
-   快照/移除/合并，**不得**调用 `owns_handle`/`live_handle_count`/
+6. **NI owner 锁纪律（R2/R3/R4）**：`terminal_owners` 锁内只做条目
+   （`TerminalOwnerEntry` = provider Arc + revival 计数）列表快照/移除，
+   **不得**调用 `owns_handle`/`live_handle_count`/
    `cached_cursor_viewport` 或析构 provider。查询锁外执行并以 generation
-   变化重试；**剪枝在锁外求值期间保持可见列表完整**（快照不摘除），只
-   把求值判定死亡的项在短写锁内移除（锁内零 provider 调用），求值后
-   新增/复活的 owner 保留或重加；槽位替换锁内只换值、旧 provider 锁外
+   变化重试；**剪枝在锁外求值期间保持可见列表完整**（快照不摘除）；
+   **R4-01 复活协调**：每次重装（`set_terminal_provider`）与每次经 spawn
+   shim 的会话发布都 bump 所在条目的 revival 计数；剪枝对每个条目先读
+   revival stamp 再调 `live_handle_count`，短写锁内**仅当 stamp 未变**才
+   移除（锁内零 provider 调用，只读条目自身原子；bump 与检查都在写锁
+   内互斥）。复活者（重装或真实 spawn）因此**从未离开可见列表**——不
+   再"移除后重加"；判定有效移除后又复活者由发布路径重新入列（shim 在
+   返回新句柄前完成 remember）。锁外协调仅覆盖 NI 可见的发布面：直接
+   `EngineService` spawn 的会话不经 NI，不进入 owner 路由协调（调用方自持
+   service Arc）。槽位替换锁内只换值、旧 provider 锁外
    析构。四类重入、并发 set/query/prune 的**每次查询**、剪枝窗口内的
-   真实读/free 有永久控制。
+   真实读/free、零→活状态转换（stale 零判定 + 重装/真实 spawn 交错）有
+   永久控制。
 7. 不持 service/registry 锁回调 UI 或 DLL（防重入锁死）——旧 glue 已有的
    纪律原样保留。
 8. DLL 内部每柄锁（auto-term `engine_lock`）与 service 门无交叉持有；
@@ -216,13 +225,17 @@ spawn 的句柄仍由同一会话表解析（旧跨调用/共享行为保留）�
   `history/backlog=0`；等待中的 lease 看到退役位后返回缺席值。
 - provider 替换：句柄按 VM 记录的 provider 历史反查原 owner；旧 owner
   保留到最后一个会话释放（R1-F01/F04）。
-- **free 后缓存保持（R2/R3）**：`EngineService::free` 在会话退休前把
-  cursor/viewport 纯值发布到**进程级 retired 缓存**（有界 FIFO）；VM shim
+- **free 后缓存保持（R2/R3/R4）**：`EngineService::free` 在会话退休前把
+  cursor/viewport 纯值发布到**进程级 retired 缓存**（**无界**——句柄进程
+  全局唯一不会别名新会话，旧 `CURSORS`/`VIEWPORTS` 静态表从不淘汰；
+  R4-02 裁定任何上限都是未授权的语义缩减，仍可查询的冻结值不得因无关
+  退休被淘汰，容量即"进程内实际退休会话数"）；VM shim
   另存 per-VM 表。缓存查询序 = per-VM retired → 活 owner → 仍持有 retired
   缓存的旧 owner → **进程级 retired** → 当前 provider。释放者 VM、其他
   VM、直接 core free 的消费者在 owner 剪枝/销毁后都可读冻结值，且不依赖
   预读；复制纯值，不持旧 service、不触已释放 DLL 指针；两种 replace/free
-  顺序、重复/未知 free 均按冻结语义（未知=0）。
+  顺序、重复/未知 free、以及 **4096+ 条无关退休之后**（R3 期 FIFO 边界
+  oracle 转为"永不淘汰"断言）均按冻结语义（未知=0）。
 - service 末引用 Drop：在 Library 析构前逐会话 free（R1-F04）。
 - interrupt 不 free；is_exited 不 free；测试/driver 必须在截止后 kill+free。
 
@@ -347,8 +360,8 @@ crates/auto-lang/src/
 | 句柄命名空间 | **进程全局唯一**（core 静态计数器） | 两隔离 service 不得重号；owner 路由可判定 |
 | 句柄 owner 路由 | per-VM provider 历史 + `owns_handle` 反查 | provider 替换后旧句柄仍归原 owner（R1-F01） |
 | 会话并发/释放 | 每会话门 + 退役位；free 摘除→等待→一次 DLL free | DLL 锁不验证存活；防双 free/在途释放（R1-F03） |
-| NI owner 回调 | 锁内只快照/移除/合并；provider 方法与析构锁外；剪枝求值期列表保持完整 | 四类重入死锁不可接受；窗口内真实 free 不可丢（R2-F01/R3-01） |
-| retired 缓存 | **core free** 发布进程级纯值（有界）；shim 另存 per-VM | 跨 VM/直接 free/未预读仍读冻结值且不持旧 service（R3-02） |
+| NI owner 回调 | 锁内只快照/条目级条件移除；provider 方法与析构锁外；剪枝求值期列表保持完整；重装/会话发布 bump revival 计数，stamp 未变才移除 | 四类重入死锁不可接受；窗口内真实 free 不可丢；复活者全窗口连续可路由（R2-F01/R3-01/R4-01） |
+| retired 缓存 | **core free** 发布进程级纯值（**无界**，R4-02 定案）；shim 另存 per-VM | 跨 VM/直接 free/未预读仍读冻结值且不持旧 service；旧静态表从不淘汰，任何上限=未授权缩减（R3-02/R4-02） |
 | service 末引用 | `Drop` 逐个 free（Library 析构前） | 独立 service 不泄漏 PTY/子进程（R1-F04） |
 | free 后 CURSORS/VIEWPORTS | 保留旧值 | 旧臂可观察值冻结；单调句柄不复用 |
 | backlog 迟滞 | 每 service 全局（默认=进程全局） | 旧静态语义 |

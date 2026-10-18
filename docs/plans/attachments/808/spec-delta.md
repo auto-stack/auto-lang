@@ -57,8 +57,10 @@
   service 末引用释放不遗留 PTY/子进程。默认 shared service 仍按旧语义
   跨 VM 共享会话，VM drop 不承诺杀死共享会话。
 - 光标/视口缓存保留旧值（旧可观察臂；单调句柄不复用，不串新会话）。
-- **释放后缓存保持（R2/R3）**：`EngineService::free` 在会话退休前把
-  cursor/viewport 纯值发布到**进程级 retired 缓存**（有界 FIFO）；VM shim
+- **释放后缓存保持（R2/R3/R4）**：`EngineService::free` 在会话退休前把
+  cursor/viewport 纯值发布到**进程级 retired 缓存**（**无界**——旧
+  `CURSORS`/`VIEWPORTS` 静态表从不淘汰，仍可查询的冻结值不得因无关
+  退休被淘汰，R4-02）；VM shim
   另在 free 时复制进 per-VM 表。缓存查询顺序 = per-VM retired 表 → 活
   owner → 仍持有 retired 缓存的旧 owner → **进程级 retired 缓存** → 当前
   provider。因此释放者 VM、其他 VM、直接 `EngineService::free` 的消费者
@@ -90,20 +92,23 @@
   切换 provider 后旧句柄仍读/写/释放到原服务，不会误释放新服务的同号
   会话。旧 owner 在最后一个会话释放后被剪枝；若其为本 VM 唯一强引用，
   service Drop 随即释放剩余资源。
-- **锁纪律（R2/R3）**：owner 查询、剪枝、槽位替换**不得在 NI 锁内执行
-  provider 方法或析构**。查询在锁内只快照 Arc 列表，锁外调用
+- **锁纪律（R2/R3/R4）**：owner 查询、剪枝、槽位替换**不得在 NI 锁内执行
+  provider 方法或析构**。查询在锁内只快照条目列表，锁外调用
   `owns_handle` 并以 generation 重试覆盖并发 set/prune；**剪枝在锁外
-  求值期间保持可见列表完整**（快照不摘除），只把求值判定死亡的项在短
-  写锁内移除（锁内零 provider 调用），求值后新增/复活的 owner 保留或
-  重加；槽位替换锁内只换值，旧 provider 锁外析构。四类重入回调/析构、
-  并发 set/query/prune 的**每次查询**与剪枝窗口内的真实读/free 有永久
-  控制。
+  求值期间保持可见列表完整**（快照不摘除）；**R4-01 复活协调**：每次
+  重装与每次经 spawn shim 的会话发布 bump 条目 revival 计数，剪枝仅当
+  判定 stamp 未变才在短写锁内移除（锁内零 provider 调用）——复活者
+  从未离开可见列表，无"移除后重加"窗口；槽位替换锁内只换值，旧
+  provider 锁外析构。四类重入回调/析构、
+  并发 set/query/prune 的**每次查询**、剪枝窗口内的真实读/free、零→活
+  状态转换（stale 零判定 + 重装/真实 spawn 交错）有永久控制。
 
 ## 不在本域
 
-media asset/session/http、i18n、diff 9915..9917、terminal renderer/UI
+media asset/session/http、i18n、terminal renderer/UI
 注册表、a2r 原生 engine C-ABI 语料。它们各有 owner；本域完成不宣告
-R03 整包完成。
+R03 整包完成。（diff 族 9915..9917/9921 已由 PLAN-807 迁出，见 SD-03
+与 canonical 2026-10-19 PLAN-807 节，不列本域残边。）
 
 ## 验证入口
 
@@ -154,12 +159,14 @@ interrupt=-1、is_exited=true、history/backlog=0、cursor/viewport 缓存缺省
 Library 析构前释放活会话。句柄为**进程全局**命名空间；VM 保留曾安装
 provider 的历史，带 handle 的 shim 先反查原 owner——provider 替换后旧
 句柄仍读/写/释放到原服务，不会误释放新服务的会话。core free 把
-cursor/viewport 纯值发布到**进程级 retired 缓存**（有界），VM shim 另存
+cursor/viewport 纯值发布到**进程级 retired 缓存**（**无界**，R4-02），
+VM shim 另存
 per-VM 表；缓存查询先 per-VM、再活 owner、再 retired owner、再进程级
 retired 缓存，故释放者/其他 VM/直接 core free 的消费者在 owner 剪枝/
 销毁后仍读冻结值，且不强持旧 service。owner 查询/剪枝/槽替换一律在 NI
-锁外执行 provider 方法与析构；**剪枝求值期间可见列表保持完整**，短写锁
-只移除求值死亡项且不调用 provider。
+锁外执行 provider 方法与析构；**剪枝求值期间可见列表保持完整**，重装/
+会话发布 bump 条目 revival 计数、短写锁内仅 stamp 未变才移除（复活者
+从未离开可见列表，R4-01），锁内不调用 provider。
 config 六项保持空集/空串；window 无 UI=1024×768，UI=thread-local override
 或 theme；`set_app_window_px` 兼容门面转发 `ui::terminal_provider`。
 display_offset 唯一真源仍为引擎，UI 只投影（Mux 契约不变）。
@@ -197,13 +204,22 @@ window px thread-local、palette 懒装载全部留在 UI adapter；引擎 DLL/
 
 **未迁边界（更新）**：`vm/ffi/term_engine.rs` 旧 UI 直引由 49 → 2
 （仅窗口像素门面的两处 adapter 委托）；`vm/native.rs` 口径剩余
-diff 族 9915..9917（PLAN-703/807）、媒体 image_pipeline
+媒体 image_pipeline
 （`vm/ffi/stdlib.rs`）、i18n（`vm/ffi/stdlib.rs::shim_i18n_t` →
-`ui::i18n_lookup`）及其他既有族。terminal 34 项清零不等于 R03 整包完成；
-媒体/i18n 等仍待各自完整合同。
+`ui::i18n_lookup`）及其他既有族——diff 族 9915..9917/9921 已由
+PLAN-807 迁至 `auto-text-core` 直调+快照端口（canonical 2026-10-19
+PLAN-807 节已记），不再列入未迁边界。terminal 34 项清零不等于 R03
+整包完成；媒体/i18n 等仍待各自完整合同。
 ```
 
-同时把原「未迁边界」行中的 `term/media` 改为 `media`（terminal 已迁）。
+合流指令（R4-04 调和）：canonical `ui/overview.md` 的「未迁边界」行在
+PLAN-807 合入后已读作"term/media 等未迁族按计划清单后续迁移（diff 族
+9915..9917/9921 已于 PLAN-807 迁至文本 core 直调+快照端口）"。merge 时
+以**当前 canonical 文本为基底**应用本 delta：把该行 `term/media` 收窄为
+`media`（terminal 34 项已由本计划清零），**保留**其中 807 已迁注记与
+PLAN-807 节；不得以本草案旧残边（含 diff 9915..9917）覆盖当前知识。
+`vm/overview.md` 侧同理：在其 PLAN-807 条目后追加 terminal 条目，不动
+diff 四入口既有行。
 
 ## SD-04 modify: `docs/specs/terminal-mux-model.md`
 

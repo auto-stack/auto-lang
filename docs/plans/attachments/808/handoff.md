@@ -13,7 +13,8 @@ merge-owned pending 门。代码/测试均在本计划唯一实施树：
   （auto-term `main` @ `7a0d0e8b718fb260641f0d09ada95a7346771cd3`，clean）
 - code commits: `3c02068ca`（首轮实现+测试）；`c346f1077`（777 首轮基线
   重绑）；`69961e046`（R1 findings 修复）；`69337f541`（R2 findings 修复）；
-  **`9f02a18dc`（R3 findings 修复，当前冻结代码）**
+  `9f02a18dc`（R3 findings 修复）；
+  **`b561796b5`（R4 findings 修复，当前冻结代码）**
 - root `Cargo.lock`（gitignored）SHA256：
   `9a431eb9e6163c154798db92543028db38a29af70ddac008014cc48ebd6a8fe1`
   （新 member `auto-terminal-core` 已解析；仅 libloading 既有锁条目）
@@ -51,7 +52,7 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 |---|---|---|
 | media asset/image_pipeline | `vm/ffi/stdlib.rs`（30 处） | R03 媒体完整子域（后续独立合同） |
 | i18n | `vm/ffi/stdlib.rs::shim_i18n_t` → `ui::i18n_lookup` | R03 i18n 后续合同 |
-| diff 9915..9917 | `vm/native.rs`/`ui_gen` | PLAN-703/807 |
+| ~~diff 9915..9917/9921~~ | `vm/native.rs`/`ui_gen` | **已由 PLAN-807 迁出**（canonical 2026-10-19 已沉淀"文本 core 直调+快照端口"）；不列残边，merge 只与当前文本合流（R4-04） |
 | a2r direct frame arms | `a2r_std.rs:1231/1237` | ui/overview 既有未迁边界 |
 | terminal UI 注册表/输入/选中/菜单/滚动投影 | `ui/terminal/mod.rs`、`iced/widget.rs`、`ui/dynamic.rs:2587` | UI 视图/输入 owner（本计划只改消费路径） |
 | a2c/a2r 原生 engine C-ABI 语料 | `test/a2c/18_c_interop/004_engine_face`、`test/a2r/27_c_abi/*` | 不在 34 native 支持面；不改 |
@@ -65,7 +66,7 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | core tests | `cargo test -p auto-terminal-core` | **7/7 pass**（R3：retired store + lease/free/隔离） |
 | core+lang check | `cargo check -p auto-terminal-core -p auto-lang` | exit 0 |
 | Ui terminal 定向 | `cargo test -p auto-lang --lib ui::terminal -- --test-threads=1` | 41/41 pass |
-| plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | **22/22 pass**（R3：20 原例 + 剪枝窗口真实读/free + 跨 VM/直接 free 共享缓存） |
+| plan808（真实 DLL） | `AUTOTERM_ENGINE_DLL=... cargo test -p auto-lang --lib plan808 -- --test-threads=1` | **24/24 pass**（R4：22 原例 + 复活路由 `revived_provider_never_leaves_owner_list_during_prune` + 无界 retired `retired_values_survive_unbounded_later_retirements`） |
 | 独立 consumer | `cargo test --manifest-path test/fixtures/modularity/terminal-core-consumer/Cargo.toml`（DLL env） | 4/4 pass |
 | consumer 闭包 | `bash test/fixtures/modularity/terminal-core-consumer/verify-deps.sh` | PASS（仅 libloading/windows-link） |
 | no-UI 构建 | `cargo check -p auto-lang --no-default-features` | exit 0（34 shim + core 服务无 UI 依赖；config/window 1024×768 缺席臂保留） |
@@ -77,6 +78,7 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | R2 重入反例重放 | `powershell -File attachments/808/review-r2/run-callback-probe.ps1` | **8/8 case completed_before_3s=true exit=0**（`r2-callback-replay.log.txt`；owns/count/drop/slot-drop × direct-control/非 control） |
 | R2 缓存反例重放 | `powershell -File attachments/808/review-r2/build-probes.ps1` | **四行全部期望值**（`r2-cache-replay.log.txt`）：free 前后/替换后均 80×24，switch→free 均 90×30 |
 | R3 组合反例重放 | `powershell -File attachments/808/review-r3/run-combinations.ps1` | **全部期望值**（`r3-combination-replay.log.txt`）：剪枝暂停期 owner=true/view=(80,24)/A_live=0；跨 VM 全 91×31；直接 free 全 92×32 |
+| R4 修复路径重放 | `powershell -File attachments/808/r4-repair-replay.ps1` | **全部期望值**（`r4-repair-replay.log.txt`）：stale 零判定+重装/真实 spawn 交错 → after_verdict owner=true/(83,27)/(83,27)、真实 free 后 A_live=0、冻结 (83,27)；4096 条无关退休后 global=Some(94×34)/late=(94,34)/early=(94,34)。R4 代码上 R3 combination（`r4-replay-r3-combination.log.txt`）与 R2 callback/cache（`r4-replay-r2-callback.log.txt`/`r4-replay-r2-cache.log.txt`）重放仍全期望 |
 | fmt | `rustfmt --check` 触面文件 | 0 diff |
 | 生成 Rust terminal 金样 | `cargo test -p auto-lang --lib terminal_`（3 金样名） | 3/3 pass（该过滤面 25/26；唯一红 `plan705_client_total_deadline_terminal_error` 为并发负载下时序 flake，solo 复跑 1/1 绿、不属 terminal 面） |
 
@@ -116,7 +118,7 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | Finding | 不变量 | 修复 | 永久正负控制 |
 |---|---|---|---|
 | F808-R3-01 P1 剪枝清空列表导致窗口内真实 free 丢失 | 锁外求值期间可见 owner 列表必须保持可解析；每个真实操作在窗口内都成功 | `prune_terminal_owners` 快照**不摘除**可见列表 → 锁外 `live_handle_count` → 短写锁只移除求值死亡项（锁内零 provider 调用）→ 锁外对移除项复检，复活者重加；generation 仅在实际变更时前进 | plan808 `prune_window_keeps_owner_routable_and_free_releases`：真实 DLL + `PausedCount` 在 `live_handle_count` 暂停；暂停期 owner=true、viewport=80×24、`shim_free` 后 A_live=0；并发 set/query/prune 测试改为**每次查询都必须命中**。复审 `combination-probe`：during_prune true/(80,24)/0 |
-| F808-R3-02 P2 跨 VM/直接 free 的消费者未预读则丢旧缓存 | 冻结 cursor/viewport 值对任何消费者在 owner 剪枝/销毁后仍可读，且不持旧 service | core `free` 在退休前把纯值写入**进程级 retired 缓存**（有界 FIFO，`retired.rs`）；shim free 另存 per-VM 表；缓存 shim 顺序 = per-VM → 活 owner → retired owner → **进程级** → 当前 provider | plan808 `retired_cache_is_shared_across_consumers_and_direct_free`：VM1 free 共享 91×31 / 直接 core free 92×32；另一 VM 未预读、未知柄 free 触发剪枝后仍读 91×31/92×32 + 非零 cursor；含预读正控、重复/未知 free；复审 `combination-probe` 全期望值 |
+| F808-R3-02 P2 跨 VM/直接 free 的消费者未预读则丢旧缓存 | 冻结 cursor/viewport 值对任何消费者在 owner 剪枝/销毁后仍可读，且不持旧 service | core `free` 在退休前把纯值写入**进程级 retired 缓存**（有界 FIFO，`retired.rs`；**R4-02 裁定该上限未获授权、R4 轮已改无界**，见 §4.5）；shim free 另存 per-VM 表；缓存 shim 顺序 = per-VM → 活 owner → retired owner → **进程级** → 当前 provider | plan808 `retired_cache_is_shared_across_consumers_and_direct_free`：VM1 free 共享 91×31 / 直接 core free 92×32；另一 VM 未预读、未知柄 free 触发剪枝后仍读 91×31/92×32 + 非零 cursor；含预读正控、重复/未知 free；复审 `combination-probe` 全期望值 |
 
 **第三次失败诊断**：
 
@@ -126,6 +128,24 @@ shim 34 个 = provider 34 方法；plan808 `catalog_and_shims_match_34` 永久
 | 漏检根因 2 | retired 缓存只写入“执行 free 的 VM”并由“首次查询”懒复制；其他 VM 和 direct core free 从未写入，剪枝删掉 owner 历史后无值可读。测试只覆盖同 VM 的 free→switch 顺序 |
 | 设计/oracle 调整 | 剪枝：快照不摘除 + 锁外求值 + 短锁移除（零 provider 调用）+ 复活重加；缓存：core free 发布进程级纯值，shim 多一段全局回落。oracle 改为“窗口内真实操作逐个成功”与“跨 VM/直接 free/预读正控/重复/未知 free 全矩阵” |
 | 当前结果 | 复审 `combination-probe` 全期望值；plan808 22/22（真实 DLL）；core 7/7；R2 callback/cache 重放仍全过 |
+
+### 4.5 R4 复审 finding 闭合表与第四次诊断（commit `b561796b5`）
+
+| Finding | 不变量 | 修复 | 永久正负控制 |
+|---|---|---|---|
+| F808-R4-01 P1 合法零值判定后 provider 复活，移除→重加窗口内真实调用不可路由/free 丢失 | 死项判定采样后发生的**重装与经 spawn shim 的会话发布**必须与移除协调：复活者在整个窗口连续可路由；不得以“事后重加/重试/sleep”替代 | owners 列表条目化（`TerminalOwnerEntry` = provider Arc + revival 计数）：`set_terminal_provider` 重装与 spawn shim 成功发布都 bump 所在条目计数；`prune_terminal_owners` 对每条目先读 stamp 再锁外 `live_handle_count`，短写锁内**仅 stamp 未变才移除**（锁内零 provider 调用，只读条目原子；bump 与检查同写锁互斥）。复活者从未离开列表；有效移除后又复活者由发布路径重新入列（shim 返回句柄前 remember）；不再有“移除→复检→重加”窗口 | plan808 `revived_provider_never_leaves_owner_list_during_prune`（真实 DLL）：`PausedCount::new_stale_zero` 采样时 A 真空、暂停期重装+真实 `shim_term_spawn_ex` 83×27+切回 B → 判定返回陈旧 0 → prune 完成：owner=true、VM(槽=B)/另一 VM 视口均 (83,27)、真实 free 后 A_live=0、冻结值保持。复审 `r4-repair-replay`：after_verdict owner=true/(83,27)/(83,27)、after_free A_live=0 |
+| F808-R4-02 P2 进程级 retired 缓存 4096 条 FIFO 淘汰仍可查询的冻结值（未授权语义缩减） | 仍可按句柄查询的冻结 cursor/viewport 值不得因**无关退休**被淘汰；旧 `CURSORS`/`VIEWPORTS` 静态表从不淘汰，任何上限都需授权修订 | `retired.rs` 撤销 FIFO 上限：无界 HashMap（句柄进程全局唯一不别名；条目为小纯值；容量=进程内实际退休会话数）；未经授权不得自加容量策略 | core `retired_store_keeps_all_values_without_eviction`（5000 条后首条仍在，全量断言）；plan808 `retired_values_survive_unbounded_later_retirements`（真实 DLL）：真实 94×34 会话、未预读 late VM、owner 剪枝后 4097 条无关退休（公表面 `set_viewport`+`free`，无额外 PTY）→ late 仍读 (94,34)。复审 `r4-repair-replay`：第 4096 条后 global=Some(94×34)/late=(94,34)/early=(94,34) |
+| F808-R4-03 P3 新测试三条 `unused_mut` | 本计划新增文件零未处理 warning | `:1702/:1754/:1798` 三处 `mut reaper`/`mut reaper2` 去掉 `mut`（`disarm` 按值收参，绑定不需 mut） | test-profile 定向编译 plan808 文件零 warning |
+| F808-R4-04 P2 SD-03/残边表仍把 807 已迁 diff 族列为未迁（并发 canonical 输入更新） | 拟沉淀文本与当前 canonical（PLAN-807 已合入 @`6955e3178`）不得冲突；merge 不得盲写旧残边覆盖当前知识 | spec-delta SD-01/SD-02/SD-03 与「不在本域」去除 diff 残边并注明 807 已迁；SD-03 增**合流指令**（以当前 canonical 为基底、`term/media` 收窄为 `media`、保留 807 注记与 PLAN-807 节）；handoff 残边表 diff 行标已迁；contract-baseline §3.1.6/4.2/8 同步 R4 协议 | 本轮不私改 canonical/ledger；merge 时按合流指令应用 |
+
+**第四次失败诊断**：
+
+| 维度 | 内容 |
+|---|---|
+| 漏检根因 1 | R3 修复的 oracle 只覆盖“锁外求值期列表完整”（求值期暂停）与“求值后重加”，没有覆盖**零值判定合法返回后与重装/新 spawn 的交错**——判定线程被抢占后返回陈旧 0 是合法时序，移除只按 Arc 身份、不校验判定有效性；“移除→复检→重加”的复检期 provider 不在可见列表，窗口内 owner=false/free 误路由丢单 |
+| 漏检根因 2 | R3 引入进程级 retired 缓存时**未经语义对照自加了 4096 FIFO 上限**：旧静态 `CURSORS`/`VIEWPORTS` 从不淘汰，原合同“free 后保留旧值”没有容量边界；边界测试只插 1 条，未断言容量/淘汰行为 |
+| 设计/oracle 调整 | 剪枝协议从“身份移除+事后重加”改为“revival stamp 条件移除”（判定可失效化，复活者从不离列）；retired 缓存恢复无界语义。oracle 补：零→活状态转换（stale 零判定 + 重装/真实 spawn 与剪枝交错）、移除路径全窗口读/free、**无关退休任意条数后冻结值仍在**（含 4096 边界）|
+| 当前结果 | `r4-repair-replay` 全期望（owner=true/(83,27)/(83,27)/A_live=0；4096 条后 Some(94×34)/late=(94,34)）；R3 combination/R2 callback+cache 重放仍全过；plan808 真实 DLL **24/24**；core **7/7**（新 no-eviction）；UI 41/41 |
 
 ## 5. 计划/规范交接
 
