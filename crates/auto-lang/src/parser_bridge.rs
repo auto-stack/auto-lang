@@ -12,7 +12,7 @@
 //! 兜底保证，不依赖方言自律：Ok(None) 后强制 `restore(checkpoint)` 回滚游标；
 //! Err 路径方言注册永不丢失。方言内部投机解析同样可用 checkpoint 自行回滚。
 
-use crate::ast::{Expr, Type};
+use crate::ast::{Body, Expr, OnEvents, Pair, Stmt, Type};
 use crate::error::{pos_to_span, AutoError, AutoResult};
 use crate::session::Scenario;
 use crate::token::{Pos, Token, TokenKind};
@@ -269,5 +269,124 @@ impl<'p, 'a> auto_parser_api::ParseContext for ParserBridge<'p, 'a> {
 
     fn syntax_error(&self, message: String) -> AutoError {
         self.syntax_error(message)
+    }
+}
+
+// ---- PLAN-810：完整 UI 文法端口（auto-ui-dialect `UiParseContext`）----
+//
+// 能力面与事务合同冻结见 docs/plans/attachments/810/contract-baseline.md §2/§3。
+// 全部委托 Parser 既有单一份实现（含私有 helper——同 crate），不复制算法；
+// 文法 crate 侧不接触 Parser/lexer/scope/TypeStore 引用。
+
+impl<'p, 'a> auto_ui_dialect::UiParseContext for ParserBridge<'p, 'a> {
+    fn prev_pos(&mut self) -> Pos {
+        self.parser.port_prev_pos()
+    }
+
+    fn expect_ident(&mut self, expected: &str) -> AutoResult<()> {
+        self.parser.expect_ident(expected)
+    }
+
+    fn cur_is_soft_ident(&mut self) -> bool {
+        self.parser.cur_is_soft_ident()
+    }
+
+    fn probe_next_token(&mut self) -> AutoResult<Token> {
+        self.parser.port_probe_next_token()
+    }
+
+    fn push_back_token(&mut self, tok: Token) {
+        self.parser.port_push_back_token(tok)
+    }
+
+    fn advance_peek_kind(&mut self) -> TokenKind {
+        self.parser.port_advance_peek_kind()
+    }
+
+    fn raw_cursor_save(&mut self) -> auto_parser_api::ParseCheckpoint {
+        self.parser.port_checkpoint()
+    }
+
+    fn raw_cursor_restore(&mut self, cp: auto_parser_api::ParseCheckpoint) -> AutoResult<()> {
+        self.parser.port_restore_raw(cp)
+    }
+
+    fn capture_raw_block(&mut self) -> AutoResult<String> {
+        self.parser.port_capture_raw_block()
+    }
+
+    fn set_skip_check(&mut self, value: bool) -> bool {
+        self.parser.port_set_skip_check(value)
+    }
+
+    fn set_in_on_body(&mut self, value: bool) -> bool {
+        self.parser.port_set_in_on_body(value)
+    }
+
+    fn diagnostics_mark(&self) -> (usize, usize) {
+        self.parser.port_diagnostics_mark()
+    }
+
+    fn diagnostics_truncate(&mut self, mark: (usize, usize)) {
+        self.parser.port_diagnostics_truncate(mark)
+    }
+
+    fn enter_scope(&mut self) {
+        self.parser.enter_scope();
+    }
+
+    fn exit_scope(&mut self) {
+        self.parser.exit_scope();
+    }
+
+    fn bind_var(&mut self, name: &str, ty: Type) {
+        self.parser
+            .infer_ctx
+            .bind_var(crate::ast::Name::from(name), ty);
+    }
+
+    fn define_handler_param(&mut self, name: &str) {
+        self.parser.port_define_handler_param(name);
+    }
+
+    fn parse_body(&mut self) -> AutoResult<crate::ast::Body> {
+        self.parser.body()
+    }
+
+    fn parse_stmt(&mut self) -> AutoResult<Stmt> {
+        self.parser.parse_stmt()
+    }
+
+    fn parse_closure(&mut self) -> AutoResult<Expr> {
+        self.parser.parse_closure()
+    }
+
+    fn parse_object_pairs(&mut self) -> AutoResult<Vec<crate::ast::Pair>> {
+        self.parser.object()
+    }
+
+    fn parse_fstr(&mut self) -> AutoResult<Expr> {
+        self.parser.fstr()
+    }
+
+    fn parse_dot_item(&mut self) -> AutoResult<Expr> {
+        self.parser.dot_item()
+    }
+
+    fn parse_on_events(&mut self) -> AutoResult<crate::ast::OnEvents> {
+        self.parser.parse_on_events()
+    }
+
+    fn take_docs(&mut self) -> Option<String> {
+        self.parser.take_docs().map(|s| s.to_string())
+    }
+
+    fn warn_suspicious_block_keyword(&mut self, found: String, suggestion: String) {
+        self.parser
+            .port_warn_suspicious_block_keyword(found, suggestion)
+    }
+
+    fn register_style_recipe(&mut self, decl: &crate::ast::ui::StyleRecipeDecl) {
+        crate::design_tokens::recipe::register_style_recipe(decl);
     }
 }

@@ -39,7 +39,9 @@
 //!   消息 + `pos_to_span(cur.pos)` 同位）。
 
 pub mod declarations;
+pub mod grammar;
 
 pub use declarations::{
     parse_model_block, parse_model_block_subset, parse_msg_decl, ModelGrammar, ModelSubset,
 };
+pub use grammar::UiParseContext;
