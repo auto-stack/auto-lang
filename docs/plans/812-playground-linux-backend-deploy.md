@@ -8,13 +8,13 @@ created_at: 2026-10-19
 updated_at: 2026-10-19
 
 # /auto-plan:review 结束时填写：
-supersedes_spec_components: []
+supersedes_spec_components: [docs/specs/auto-playground/project.md]
 new_spec_components: []
 touched_goals: []             # 引用 docs/specs/goals.md 的 GOAL-NNN
 
 affects: []                   # 受影响的 specs 路径，如 [auto-lang/vm]
 current_step: 0
-total_steps: 0
+total_steps: 4
 ---
 
 # [PLAN-812] playground-linux-backend-deploy
