@@ -165,6 +165,80 @@ fn scene_kind_of(scene: &crate::Scene) -> auto_project_model::descriptor::SceneK
     }
 }
 
+/// Pac.props（求值后 root 全量顶层 props）追加 B 组键——与
+/// [`apply_evaluated_root`] 同规则，但输入是 Pac 已持有的 props，
+/// run/gen 分派无需保留 AutoConfig。A 组已建模键不入 raw。
+pub fn apply_evaluated_props(req: &mut GenerationRequest, props: &auto_val::Obj) {
+    let mut assets = PackageAssets::default();
+    let mut exe_name = None;
+    let mut front_decl = None;
+    let mut theme_decl = None;
+    for (k, v) in props.iter() {
+        let key = k.to_string();
+        match key.as_str() {
+            "npm_deps" => assets.npm_deps = Some(v.clone()),
+            "styles" => assets.styles = Some(v.clone()),
+            "i18n" => assets.i18n = Some(v.clone()),
+            "exe_name" => exe_name = Some(v.to_astr().trim().to_string()),
+            "front" => front_decl = Some(v.to_astr().trim().to_string()),
+            "theme" => {
+                if let auto_val::Value::Obj(obj) = v {
+                    let colors = match obj.get("colors") {
+                        Some(auto_val::Value::Obj(co)) => co
+                            .iter()
+                            .map(|(ck, cv)| (ck.to_string(), cv.to_astr().trim().to_string()))
+                            .filter(|(_, s)| !s.is_empty())
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    theme_decl = Some(ThemeDeclLite {
+                        name: obj
+                            .get("name")
+                            .map(|v| v.to_astr().trim().to_string())
+                            .filter(|s| !s.is_empty()),
+                        extends: obj
+                            .get("extends")
+                            .map(|v| v.to_astr().trim().to_string())
+                            .filter(|s| !s.is_empty()),
+                        mode: obj
+                            .get("mode")
+                            .map(|v| v.to_astr().trim().to_lowercase())
+                            .filter(|s| !s.is_empty()),
+                        colors,
+                    });
+                }
+            }
+            // A 组已建模键不重复入 raw
+            "name" | "version" | "lang" | "render" | "backend" | "api" | "scene" | "members"
+            | "defines" | "title" | "title_zh" | "icon" | "category" | "theme_scalar"
+            | "accent" | "desktop_render" | "ui_config" | "media_root" | "photo_root"
+            | "window" | "front_port" | "back_port" | "back" | "shadcn" | "default_classes"
+            | "deps" | "ports" => {}
+            _ => {
+                req.raw.push(auto_project_model::descriptor::RawProp {
+                    key,
+                    value: Some(v.clone()),
+                    line: 0,
+                });
+            }
+        }
+    }
+    req.package_assets = assets;
+    req.exe_name = exe_name;
+    req.front_decl = front_decl;
+    if theme_decl.is_some() {
+        req.theme_decl = theme_decl;
+    }
+}
+
+/// 单调用便捷：Pac（含求值 props）→ 完整请求（A 组 + B 组）。
+/// Automan gen/run 分派的生产构造入口。
+pub fn request_of(pac: &Pac, pac_at_path: &std::path::Path) -> GenerationRequest {
+    let mut req = request_from_pac(pac, SourceInfo::from_path(pac_at_path.to_path_buf()));
+    apply_evaluated_props(&mut req, &pac.props);
+    req
+}
+
 fn render_spec_of(pac: &Pac) -> auto_project_model::descriptor::RenderSpec {
     use auto_lang::config::BackendConfig;
     let to_spec_name = |b: &auto_lang::config::BackendType| {

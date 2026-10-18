@@ -10,10 +10,10 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use colored::Colorize;
 use auto_lang::aura::{AuraRoute, AuraWidget};
 use auto_lang::database::{UIArtifact, UIBackend, UICache};
 use auto_lang::ui_gen::{BackendGenerator, VueGenerator};
+use colored::Colorize;
 
 use crate::project_display_reader::{self, DisplayRead};
 use crate::util::hash_string;
@@ -392,11 +392,18 @@ impl VueDependencyUsage {
         let mut pkgs = Vec::new();
         if self.code_editor {
             pkgs.extend([
-                "vue-codemirror", "codemirror", "@codemirror/view", "@codemirror/state",
-                "@codemirror/language", "@codemirror/search", "@codemirror/commands",
+                "vue-codemirror",
+                "codemirror",
+                "@codemirror/view",
+                "@codemirror/state",
+                "@codemirror/language",
+                "@codemirror/search",
+                "@codemirror/commands",
                 "@codemirror/lang-rust",
-                "@codemirror/lang-python", "@codemirror/lang-javascript",
-                "@codemirror/lang-markdown", "@codemirror/lang-json",
+                "@codemirror/lang-python",
+                "@codemirror/lang-javascript",
+                "@codemirror/lang-markdown",
+                "@codemirror/lang-json",
             ]);
         }
         if self.toast {
@@ -457,7 +464,10 @@ fn package_json_deps_drifted(
 /// old-template shell can never byte-match the current template, so the
 /// exact-only check left ash-gui's broken-compiling copy in place.
 fn sync_code_editor_shell(output_path: &Path, usage: &VueDependencyUsage) -> Result<(), String> {
-    let path = output_path.join("src").join("components").join("CodeEditor.vue");
+    let path = output_path
+        .join("src")
+        .join("components")
+        .join("CodeEditor.vue");
     if usage.code_editor {
         if !path.exists() {
             std::fs::create_dir_all(path.parent().unwrap())
@@ -507,8 +517,7 @@ fn ensure_editor_bridge(output_path: &Path, usage: &VueDependencyUsage) -> Resul
     }
     let path = output_path.join("src").join("lib").join("editorBridge.ts");
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Failed to create lib dir: {}", e))?;
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create lib dir: {}", e))?;
     }
     std::fs::write(&path, generate_editor_bridge())
         .map_err(|e| format!("Failed to write editorBridge.ts: {}", e))?;
@@ -648,7 +657,8 @@ fn merge_unknown_devdeps(existing: &str, generated: String) -> String {
     };
     let (Some(old_dev), Some(new_dev)) = (
         old.get("devDependencies").and_then(|v| v.as_object()),
-        new.get_mut("devDependencies").and_then(|v| v.as_object_mut()),
+        new.get_mut("devDependencies")
+            .and_then(|v| v.as_object_mut()),
     ) else {
         return generated;
     };
@@ -742,9 +752,7 @@ fn generate_package_json(
   }}
 }}
 "#,
-        name,
-        build_script,
-        deps_body
+        name, build_script, deps_body
     )
 }
 
@@ -1088,7 +1096,8 @@ fn generate_tsconfig() -> String {
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" }]
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn generate_tsconfig_node() -> String {
@@ -1102,7 +1111,8 @@ fn generate_tsconfig_node() -> String {
   },
   "include": ["vite.config.ts"]
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn generate_tailwind_config() -> String {
@@ -1205,7 +1215,8 @@ module.exports = {
   },
   plugins: [require("tailwindcss-animate")],
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn generate_postcss_config() -> String {
@@ -1215,7 +1226,8 @@ fn generate_postcss_config() -> String {
     autoprefixer: {},
   },
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn generate_index_html(
@@ -1243,12 +1255,12 @@ fn generate_index_html(
     // generated setup reads to seed declared dark_mode/accent_color refs.
     // Both are skipped when the env is unset so a widget's own initial
     // value stands untouched.
-    let theme_env = std::env::var("AUTO_UI_THEME").ok().filter(|t| {
-        auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str())
-    });
-    let accent_env = std::env::var("AUTO_UI_ACCENT").ok().filter(|a| {
-        auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str())
-    });
+    let theme_env = std::env::var("AUTO_UI_THEME")
+        .ok()
+        .filter(|t| auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str()));
+    let accent_env = std::env::var("AUTO_UI_ACCENT")
+        .ok()
+        .filter(|a| auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str()));
     // Plan 672 条目 6 继承链: env 链（CLI > os-config > pac.at）未解析任何
     // theme 值 → OS 系统主题回退（与 iced PLAN-615 T-04 对称）——内联
     // matchMedia 解析脚本实时跟随；dark class 保留 dark 缺省（resolver 立即
@@ -1314,7 +1326,8 @@ fn generate_index_html(
         }
         None => String::new(),
     };
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en"{}>
   <head>
     <meta charset="UTF-8">
@@ -1327,7 +1340,12 @@ fn generate_index_html(
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
-"#, dark_attr, title.unwrap_or(name), accent_bootstrap, theme_bootstrap)
+"#,
+        dark_attr,
+        title.unwrap_or(name),
+        accent_bootstrap,
+        theme_bootstrap
+    )
 }
 
 /// PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。此前 createI18n
@@ -1885,11 +1903,10 @@ fn ensure_vue_type_stubs(output_dir: &Path) {
 fn ensure_natives_layer(output_dir: &Path) {
     let src = output_dir.join("src");
     let lib = src.join("lib");
-    let reg_set: std::collections::HashSet<&str> =
-        auto_lang::vm::codegen::bare_native_intrinsics()
-            .keys()
-            .map(|s| s.as_str())
-            .collect();
+    let reg_set: std::collections::HashSet<&str> = auto_lang::vm::codegen::bare_native_intrinsics()
+        .keys()
+        .map(|s| s.as_str())
+        .collect();
 
     // 1. 裸用面扫描：src/**/*.{ts,vue} 的标识符 token ∩ 注册表。
     let mut used: std::collections::BTreeSet<&str> = Default::default();
@@ -1916,10 +1933,13 @@ fn ensure_natives_layer(output_dir: &Path) {
     }
     for path in &files {
         let fname = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if fname == "auto-sources.ts" || fname == "editorBridge.ts" || fname.starts_with("natives.") {
+        if fname == "auto-sources.ts" || fname == "editorBridge.ts" || fname.starts_with("natives.")
+        {
             continue;
         }
-        let Ok(content) = fs::read_to_string(path) else { continue };
+        let Ok(content) = fs::read_to_string(path) else {
+            continue;
+        };
         for tok in content.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) {
             // 插入注册表的 &'static 名（而非文件内容 token）——used 不借
             // 每文件 content。
@@ -1957,12 +1977,44 @@ fn ensure_natives_layer(output_dir: &Path) {
     // 不能作裸函数声明名（TS1359）；UI 生成面用到此类名会以各自的 TS
     // 报错显式暴露，不在声明层兜底。
     const JS_RESERVED: &[&str] = &[
-        "break", "case", "catch", "class", "const", "continue", "debugger",
-        "default", "delete", "do", "else", "enum", "export", "extends",
-        "false", "finally", "for", "function", "if", "import", "in",
-        "instanceof", "new", "null", "return", "super", "switch", "this",
-        "throw", "true", "try", "typeof", "var", "void", "while", "with",
-        "yield", "await",
+        "break",
+        "case",
+        "catch",
+        "class",
+        "const",
+        "continue",
+        "debugger",
+        "default",
+        "delete",
+        "do",
+        "else",
+        "enum",
+        "export",
+        "extends",
+        "false",
+        "finally",
+        "for",
+        "function",
+        "if",
+        "import",
+        "in",
+        "instanceof",
+        "new",
+        "null",
+        "return",
+        "super",
+        "switch",
+        "this",
+        "throw",
+        "true",
+        "try",
+        "typeof",
+        "var",
+        "void",
+        "while",
+        "with",
+        "yield",
+        "await",
     ];
     used.retain(|n| !JS_RESERVED.contains(n));
 
@@ -1990,7 +2042,12 @@ fn ensure_natives_layer(output_dir: &Path) {
     // PLAN-677 T-04: natives 三层化——R 层（vue/JS 可真实现，语义对齐 vm
     // 实现体）不再进抛错桩名单；S 层维持 fail-fast 桩（PLAN-671 §10-1
     // 裁定不变）；B 层（editorBridge 路由）由 T-05 在此挂靠。
-    const R_TIER: &[&str] = &["file_basename", "console_log", "console_lines", "console_clear"];
+    const R_TIER: &[&str] = &[
+        "file_basename",
+        "console_log",
+        "console_lines",
+        "console_clear",
+    ];
     // PLAN-677 T-05: B 层——code_editor_* 内建经 editorBridge 按 DSL
     // editor key 寻址（vm 按键寻址同构臂），不再抛错。
     const B_TIER: &[&str] = &[
@@ -2084,22 +2141,28 @@ fn ensure_natives_layer(output_dir: &Path) {
     }
     stub.push_str("export {}\n");
     for (path, content) in [(&dts_path, dts), (&stub_path, stub)] {
-        let unchanged = matches!(fs::read_to_string(path), Ok(ref existing) if *existing == content);
+        let unchanged =
+            matches!(fs::read_to_string(path), Ok(ref existing) if *existing == content);
         if !unchanged {
             if let Err(e) = fs::write(path, &content) {
-                println!("{}", format!("⚠ natives layer write failed ({}): {}", path.display(), e).yellow());
+                println!(
+                    "{}",
+                    format!("⚠ natives layer write failed ({}): {}", path.display(), e).yellow()
+                );
             }
         }
     }
     if let Ok(main) = fs::read_to_string(&main_path) {
         if !main.contains("import './lib/natives'") {
             if let Err(e) = fs::write(&main_path, format!("import './lib/natives'\n{}", main)) {
-                println!("{}", format!("⚠ main.ts natives import failed: {}", e).yellow());
+                println!(
+                    "{}",
+                    format!("⚠ main.ts natives import failed: {}", e).yellow()
+                );
             }
         }
     }
 }
-
 
 fn generate_app_vue(vue_code: &str) -> String {
     vue_code.to_string()
@@ -2110,9 +2173,7 @@ fn generate_app_vue(vue_code: &str) -> String {
 /// 原 CSS 继承语义）。sidebar 族块经 extra 槽拼接。
 /// PLAN-601 T-06：pac.at theme{} 声明合成体（Some）替换 scaffold 成双 mode
 /// 块值源——声明面消费点；None = scaffold 缺省（零变化）。
-fn generate_index_css(
-    composed: Option<&auto_lang::design_tokens::decl::ComposedTheme>,
-) -> String {
+fn generate_index_css(composed: Option<&auto_lang::design_tokens::decl::ComposedTheme>) -> String {
     use auto_lang::ui::style::theme::registry;
     let (core_l, sb_l, core_d, sb_d) = match composed {
         Some(t) => (
@@ -2133,28 +2194,37 @@ fn generate_index_css(
         }
     };
     let mut css = String::new();
-    css.push_str(r##"@tailwind base;
+    css.push_str(
+        r##"@tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-"##);
+"##,
+    );
     css.push_str(&core_l);
-    css.push_str(r##"
+    css.push_str(
+        r##"
     --radius: 0.5rem;
 
-"##);
+"##,
+    );
     css.push_str(&sb_l);
-    css.push_str(r##"  }
+    css.push_str(
+        r##"  }
 
   .dark {
-"##);
+"##,
+    );
     css.push_str(&core_d);
-    css.push_str(r##"
-"##);
+    css.push_str(
+        r##"
+"##,
+    );
     css.push_str(&sb_d);
-    css.push_str(r##"  }
+    css.push_str(
+        r##"  }
 }
 
 @layer base {
@@ -2222,7 +2292,8 @@ fn generate_index_css(
 .ash-scroll-fade::-webkit-scrollbar-thumb { background-color: transparent; border-radius: 9999px; }
 .ash-scroll-fade:hover::-webkit-scrollbar-thumb { background-color: hsl(var(--primary) / 0.45); }
 .ash-scroll-fade::-webkit-scrollbar-thumb:hover { background-color: hsl(var(--primary) / 0.7); }
-"##);
+"##,
+    );
     css
 }
 
@@ -2233,7 +2304,8 @@ import { twMerge } from 'tailwind-merge'
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Build approvals for esbuild + vue-demi are declared in the `pnpm` field of
@@ -2342,10 +2414,17 @@ fn write_project_files(
     // pac npm_deps 通常只链接 editor/core——engine 缺声明导致 vite 解析失败
     // （015-notes 全新安装现场）。从 editor 链接路径推导同级 engine 链接。
     let mut extra_deps_owned: Vec<(String, String)> = extra_deps.to_vec();
-    let has_editor_link = extra_deps_owned.iter().any(|(n, _)| n == "@autodown/editor");
-    let has_engine = extra_deps_owned.iter().any(|(n, _)| n == "@autodown/engine");
+    let has_editor_link = extra_deps_owned
+        .iter()
+        .any(|(n, _)| n == "@autodown/editor");
+    let has_engine = extra_deps_owned
+        .iter()
+        .any(|(n, _)| n == "@autodown/engine");
     if has_editor_link && !has_engine {
-        if let Some((_, ver)) = extra_deps_owned.iter().find(|(n, _)| n == "@autodown/editor") {
+        if let Some((_, ver)) = extra_deps_owned
+            .iter()
+            .find(|(n, _)| n == "@autodown/editor")
+        {
             if let Some(engine_ver) = ver.strip_suffix("editor").map(|p| format!("{p}engine")) {
                 extra_deps_owned.push(("@autodown/engine".to_string(), engine_ver));
             }
@@ -2554,12 +2633,242 @@ fn parse_pac_display_title_in(display: &DisplayRead, prefers_zh: bool) -> Option
 /// imports. Bareword `off`/`on` are built-in config globals (auto-lang
 /// `eval_config_with_vm`), so the real AutoConfig parse of pac.at agrees with
 /// this line-level scan.
+/// vue 项目读取缝（PLAN-809 T-06c / I-PROJECT）。
+///
+/// from_workspace 的 pac.at 数据字段统一先收进 `VueReads` 再进入构建：
+/// legacy 路径用既有行扫/AutoConfig 臂（行为冻结），请求路径直接供值
+/// （Automan 生产分派传入 GenerationRequest——生成器不再回读
+/// pac.at/AutoConfig）。dep 自身 pac.at 的 npm_deps/styles 合并是跨文件
+/// 读取，两种路径都在构建内做（合同携带 dep 根清单）。
+pub(crate) struct VueReads {
+    pub name: String,
+    pub index_title: Option<String>,
+    pub shadcn: bool,
+    pub default_classes: bool,
+    pub front_rel_path: Option<String>,
+    pub npm_deps: Vec<(String, String)>,
+    pub style_files: Vec<String>,
+    pub i18n: I18nConfig,
+    pub theme: Option<auto_lang::design_tokens::decl::ComposedTheme>,
+}
+
+impl VueReads {
+    /// legacy 自扫（行为冻结：与原 from_workspace 内联读取逐字段一致）。
+    fn scan(root_dir: &Path, pac_path: &Path, pac_content: &str) -> Self {
+        // theme{} 声明 → 合成（PLAN-601；AutoConfig 臂保留给 legacy 路径）
+        let composed_theme: Option<auto_lang::design_tokens::decl::ComposedTheme> =
+            match auto_lang::config::AutoConfig::from_file(pac_path, &auto_val::Obj::new()) {
+                Ok(config) => {
+                    let mut pac = crate::pac::Pac::new(config);
+                    let _ = pac.resolve();
+                    pac.theme_decl.and_then(|decl| {
+                        match auto_lang::design_tokens::decl::compose(
+                            &decl,
+                            &std::collections::BTreeMap::new(),
+                        ) {
+                            Ok(t) => Some(t),
+                            Err(e) => {
+                                println!(
+                                    "{} theme{{}} 合成失败：{e} —— 回退 scaffold 缺省",
+                                    "Warn:".bright_yellow()
+                                );
+                                None
+                            }
+                        }
+                    })
+                }
+                Err(_) => None,
+            };
+        let front_rel_path = parse_workspace_path(pac_content, "front");
+        let display = project_display_reader::read(pac_content);
+        let name = display
+            .name
+            .clone()
+            .unwrap_or_else(|| "aura-app".to_string());
+        let index_title = parse_pac_display_title(&display);
+        Self {
+            name,
+            index_title,
+            shadcn: parse_shadcn(pac_content),
+            default_classes: parse_default_classes(pac_content),
+            front_rel_path,
+            npm_deps: parse_npm_deps(pac_content),
+            style_files: parse_style_files(pac_content),
+            i18n: parse_i18n(pac_content),
+            theme: composed_theme,
+        }
+    }
+
+    /// 请求路径（生产）。
+    fn from_request(req: &auto_project_model::generation_request::GenerationRequest) -> Self {
+        let front_rel_path = req.front_decl.clone();
+        let name = req
+            .identity
+            .name
+            .clone()
+            .unwrap_or_else(|| "aura-app".to_string());
+        // parse_pac_display_title 语义：AUTO_LOCALE（缺省 zh）且 title_zh
+        // 非空取之，否则 title（adapter 侧 env 读一次）。
+        let prefers_zh = std::env::var("AUTO_LOCALE")
+            .unwrap_or_else(|_| "zh".to_string())
+            .to_ascii_lowercase()
+            .starts_with("zh");
+        let index_title = req.display_title(prefers_zh);
+        // theme{} → 合成（语言侧 compose；ThemeDeclLite 还原语言声明）
+        let theme = req
+            .theme_decl
+            .as_ref()
+            .map(|lite| {
+                let decl = auto_lang::design_tokens::decl::ThemeDecl {
+                    name: lite.name.clone(),
+                    extends: lite.extends.clone(),
+                    mode: lite.mode.clone(),
+                    colors: lite.colors.clone(),
+                };
+                match auto_lang::design_tokens::decl::compose(
+                    &decl,
+                    &std::collections::BTreeMap::new(),
+                ) {
+                    Ok(t) => Some(t),
+                    Err(e) => {
+                        println!(
+                            "{} theme{{}} 合成失败：{e} —— 回退 scaffold 缺省",
+                            "Warn:".bright_yellow()
+                        );
+                        None
+                    }
+                }
+            })
+            .flatten();
+        Self {
+            name,
+            index_title,
+            shadcn: req.shadcn(),
+            default_classes: req.default_classes(),
+            front_rel_path,
+            npm_deps: npm_deps_from_value(req.package_assets.npm_deps.as_ref()),
+            style_files: string_list_from_value(req.package_assets.styles.as_ref()),
+            i18n: i18n_from_value(req.package_assets.i18n.as_ref()),
+            theme,
+        }
+    }
+}
+
+/// 求值 Value → npm_deps 对（name, version/link 形态字符串）。
+/// 与 parse_npm_deps 的三形态语义对齐：数组（"pkg" 或 "pkg@^1"）、
+/// 对象（"pkg": "ver" | "link:path" | {link/file: path}）。
+fn npm_deps_from_value(v: Option<&auto_val::Value>) -> Vec<(String, String)> {
+    let mut deps = Vec::new();
+    match v {
+        Some(auto_val::Value::Array(arr)) => {
+            for item in &arr.values {
+                let s = item.to_astr().trim().to_string();
+                if s.is_empty() {
+                    continue;
+                }
+                if let Some((pkg, ver)) = s.split_once('@') {
+                    if !pkg.is_empty() && !ver.is_empty() {
+                        deps.push((pkg.to_string(), ver.to_string()));
+                        continue;
+                    }
+                }
+                deps.push((s, "latest".to_string()));
+            }
+        }
+        Some(auto_val::Value::Obj(obj)) => {
+            for (k, val) in obj.iter() {
+                let pkg = k.to_string();
+                if pkg.is_empty() {
+                    continue;
+                }
+                match val {
+                    auto_val::Value::Str(s) => {
+                        let ver = s.trim().to_string();
+                        if !ver.is_empty() {
+                            deps.push((pkg, ver));
+                        }
+                    }
+                    auto_val::Value::Obj(spec) => {
+                        // { link: "path" } / { file: "path" } → "link:path"
+                        for (sk, sv) in spec.iter() {
+                            let key = sk.to_string();
+                            let v = sv.to_astr().trim().to_string();
+                            if !v.is_empty() && (key == "link" || key == "file") {
+                                deps.push((pkg.clone(), format!("{}:{}", key, v)));
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+    deps
+}
+
+fn string_list_from_value(v: Option<&auto_val::Value>) -> Vec<String> {
+    match v {
+        Some(auto_val::Value::Array(arr)) => arr
+            .values
+            .iter()
+            .map(|s| s.to_astr().trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect(),
+        Some(auto_val::Value::Str(s)) => {
+            let s = s.trim();
+            (!s.is_empty()).then(|| s.to_string()).into_iter().collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
+/// i18n 求值投影：bool/字符串（目录）→ enabled + locale_files。
+/// 与 parse_i18n 的形态对齐（true → enabled；字符串/数组 → 文件清单）。
+fn i18n_from_value(v: Option<&auto_val::Value>) -> I18nConfig {
+    match v {
+        Some(auto_val::Value::Bool(b)) => I18nConfig {
+            enabled: *b,
+            locale_files: Vec::new(),
+        },
+        Some(auto_val::Value::Str(s)) => {
+            let s = s.trim();
+            I18nConfig {
+                enabled: !s.is_empty(),
+                locale_files: (!s.is_empty())
+                    .then(|| vec![s.to_string()])
+                    .unwrap_or_default(),
+            }
+        }
+        Some(auto_val::Value::Array(_)) => {
+            let files = string_list_from_value(v);
+            I18nConfig {
+                enabled: !files.is_empty(),
+                locale_files: files,
+            }
+        }
+        _ => I18nConfig {
+            enabled: false,
+            locale_files: Vec::new(),
+        },
+    }
+}
+
 fn parse_shadcn(content: &str) -> bool {
     for line in content.lines() {
         let line = line.trim();
-        if line.starts_with("shadcn:") || line.starts_with("shadcn =") || line.starts_with("shadcn=") {
-            let value = line["shadcn".len()..].trim_start().trim_start_matches([':', '=']).trim();
-            let value = value.trim_end_matches(',').trim_matches('"').trim_matches('\'');
+        if line.starts_with("shadcn:")
+            || line.starts_with("shadcn =")
+            || line.starts_with("shadcn=")
+        {
+            let value = line["shadcn".len()..]
+                .trim_start()
+                .trim_start_matches([':', '='])
+                .trim();
+            let value = value
+                .trim_end_matches(',')
+                .trim_matches('"')
+                .trim_matches('\'');
             let value = value.to_lowercase();
             return !matches!(value.as_str(), "off" | "false" | "no" | "0");
         }
@@ -2587,9 +2896,18 @@ fn project_shadcn(root_dir: &Path) -> bool {
 fn parse_default_classes(content: &str) -> bool {
     for line in content.lines() {
         let line = line.trim();
-        if line.starts_with("default_classes:") || line.starts_with("default_classes =") || line.starts_with("default_classes=") {
-            let value = line["default_classes".len()..].trim_start().trim_start_matches([':', '=']).trim();
-            let value = value.trim_end_matches(',').trim_matches('"').trim_matches('\'');
+        if line.starts_with("default_classes:")
+            || line.starts_with("default_classes =")
+            || line.starts_with("default_classes=")
+        {
+            let value = line["default_classes".len()..]
+                .trim_start()
+                .trim_start_matches([':', '='])
+                .trim();
+            let value = value
+                .trim_end_matches(',')
+                .trim_matches('"')
+                .trim_matches('\'');
             let value = value.to_lowercase();
             return !matches!(value.as_str(), "off" | "false" | "no" | "0");
         }
@@ -2667,7 +2985,10 @@ fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
                                 }
                             } else {
                                 // Shorthand string value: "pkg": "^1.0.0" or "pkg": "link:path"
-                                let ver = value_part.trim_end_matches(',').trim_matches('"').trim_matches('\'');
+                                let ver = value_part
+                                    .trim_end_matches(',')
+                                    .trim_matches('"')
+                                    .trim_matches('\'');
                                 if !pkg.is_empty() && !ver.is_empty() {
                                     deps.push((pkg.to_string(), ver.to_string()));
                                 }
@@ -2688,7 +3009,10 @@ fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
                 }
             } else if rest.starts_with('"') || rest.starts_with('\'') {
                 // Single string: "package"
-                let dep = rest.trim_end_matches(',').trim_matches('"').trim_matches('\'');
+                let dep = rest
+                    .trim_end_matches(',')
+                    .trim_matches('"')
+                    .trim_matches('\'');
                 if !dep.is_empty() {
                     let (pkg, ver) = split_pkg_version(dep);
                     deps.push((pkg, ver));
@@ -2698,10 +3022,15 @@ fn parse_npm_deps(content: &str) -> Vec<(String, String)> {
                 let mut j = i + 1;
                 while j < lines.len() {
                     let next = lines[j];
-                    if next.trim().is_empty() || (!next.starts_with(' ') && !next.starts_with('\t')) {
+                    if next.trim().is_empty() || (!next.starts_with(' ') && !next.starts_with('\t'))
+                    {
                         break;
                     }
-                    let dep = next.trim().trim_end_matches(',').trim_matches('"').trim_matches('\'');
+                    let dep = next
+                        .trim()
+                        .trim_end_matches(',')
+                        .trim_matches('"')
+                        .trim_matches('\'');
                     if !dep.is_empty() {
                         let (pkg, ver) = split_pkg_version(dep);
                         deps.push((pkg, ver));
@@ -2741,7 +3070,10 @@ fn parse_style_files(content: &str) -> Vec<String> {
                 }
             } else if rest.starts_with('"') || rest.starts_with('\'') {
                 // Single string: "a.css"
-                let f = rest.trim_end_matches(',').trim_matches('"').trim_matches('\'');
+                let f = rest
+                    .trim_end_matches(',')
+                    .trim_matches('"')
+                    .trim_matches('\'');
                 if !f.is_empty() {
                     files.push(f.to_string());
                 }
@@ -2781,19 +3113,34 @@ fn parse_i18n(content: &str) -> I18nConfig {
         if let Some(rest) = line.strip_prefix("i18n:") {
             let rest = rest.trim().trim_end_matches(',');
             if rest == "true" {
-                return I18nConfig { enabled: true, locale_files: vec![] };
+                return I18nConfig {
+                    enabled: true,
+                    locale_files: vec![],
+                };
             } else if rest.starts_with('[') {
                 let value = rest.trim_start_matches('[').trim_end_matches(']');
                 let files: Vec<String> = value
                     .split(',')
-                    .map(|p| p.trim().trim_matches('"').trim_matches('\'').trim().to_string())
+                    .map(|p| {
+                        p.trim()
+                            .trim_matches('"')
+                            .trim_matches('\'')
+                            .trim()
+                            .to_string()
+                    })
                     .filter(|s| !s.is_empty())
                     .collect();
-                return I18nConfig { enabled: true, locale_files: files };
+                return I18nConfig {
+                    enabled: true,
+                    locale_files: files,
+                };
             } else if rest.starts_with('"') || rest.starts_with('\'') {
                 let f = rest.trim_matches('"').trim_matches('\'').to_string();
                 if !f.is_empty() {
-                    return I18nConfig { enabled: true, locale_files: vec![f] };
+                    return I18nConfig {
+                        enabled: true,
+                        locale_files: vec![f],
+                    };
                 }
             }
             break;
@@ -2879,8 +3226,12 @@ fn expand_at_module_web_imports(root_dir: &Path, ext_set: &mut std::collections:
             continue;
         }
         let path = root_dir.join(&rel);
-        let Ok(resolved) = resolve_at_adapter(&path, "web") else { continue };
-        let Ok(source) = fs::read_to_string(&resolved) else { continue };
+        let Ok(resolved) = resolve_at_adapter(&path, "web") else {
+            continue;
+        };
+        let Ok(source) = fs::read_to_string(&resolved) else {
+            continue;
+        };
         let session = auto_lang::session::CompilerSession::ui();
         let mut parser = auto_lang::parser::Parser::from(source.as_str()).with_session(session);
         let Ok(ast) = parser.parse() else { continue };
@@ -2889,7 +3240,10 @@ fn expand_at_module_web_imports(root_dir: &Path, ext_set: &mut std::collections:
                 for imp in entries {
                     let path = imp.path.as_str();
                     if is_local_ext_path(path) {
-                        let normalized = path.trim_start_matches("./").trim_start_matches('/').to_string();
+                        let normalized = path
+                            .trim_start_matches("./")
+                            .trim_start_matches('/')
+                            .to_string();
                         if ext_set.insert(normalized.clone()) {
                             queue.push(normalized);
                         }
@@ -2934,72 +3288,74 @@ fn split_pkg_version(dep: &str) -> (String, String) {
 
 /// Find the end index of a quoted string at the start of `s`.
 fn find_quoted_string_end(s: &str) -> Option<usize> {
-        let bytes = s.as_bytes();
-        if bytes.is_empty() {
-            return None;
-        }
-        let quote = bytes[0];
-        if quote != b'"' && quote != b'\'' {
-            return None;
-        }
-        for i in 1..bytes.len() {
-            if bytes[i] == quote {
-                return Some(i + 1);
-            }
-        }
-        None
+    let bytes = s.as_bytes();
+    if bytes.is_empty() {
+        return None;
     }
+    let quote = bytes[0];
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+    for i in 1..bytes.len() {
+        if bytes[i] == quote {
+            return Some(i + 1);
+        }
+    }
+    None
+}
 
-    /// Parse a nested dep object like `{ link: "path" }` or `{ file: "path" }`.
-    /// Returns the version spec string (e.g. "link:path" or "file:path").
+/// Parse a nested dep object like `{ link: "path" }` or `{ file: "path" }`.
+/// Returns the version spec string (e.g. "link:path" or "file:path").
 /// Parse a nested dep object like `{ link: "path" }` or `{ file: "path" }`.
 /// Returns the version spec string (e.g. "link:path" or "file:path").
 fn parse_dep_object_spec(lines: &[&str], j: &mut usize, inline: &str) -> String {
-        // Check if the object closes on the same line
-        if inline.contains('}') {
-            // Single-line: { link: "path" }
-            for kind in &["link", "file"] {
-                if let Some(pos) = inline.find(kind) {
-                    let after = &inline[pos + kind.len()..];
-                    // Find the quoted value
-                    let val_start = after.find('"').or_else(|| after.find('\''));
-                    if let Some(start) = val_start {
-                        let q = &after[start..start + 1];
-                        let val = &after[start + 1..];
-                        let end = val.find(q).unwrap_or(val.len());
-                        let path = &val[..end];
-                        return format!("{}:{}", kind, path);
-                    }
+    // Check if the object closes on the same line
+    if inline.contains('}') {
+        // Single-line: { link: "path" }
+        for kind in &["link", "file"] {
+            if let Some(pos) = inline.find(kind) {
+                let after = &inline[pos + kind.len()..];
+                // Find the quoted value
+                let val_start = after.find('"').or_else(|| after.find('\''));
+                if let Some(start) = val_start {
+                    let q = &after[start..start + 1];
+                    let val = &after[start + 1..];
+                    let end = val.find(q).unwrap_or(val.len());
+                    let path = &val[..end];
+                    return format!("{}:{}", kind, path);
                 }
             }
-            return String::new();
         }
-        // Multi-line: scan subsequent lines for link:/file: key
-        let mut k = *j + 1;
-        while k < lines.len() {
-            let next = lines[k].trim();
-            if next.starts_with('}') {
-                *j = k; // consume up to closing brace
-                break;
-            }
-            for kind in &["link", "file"] {
-                if next.starts_with(kind) {
-                    // `link: "path"` — the key-length slice keeps the `:`
-                    // separator; strip it (multi-line nested form was unusable
-                    // without this, emitting `link:: <path>` specs).
-                    let after = next[kind.len()..].trim().trim_start_matches(':').trim();
-                    let val = after.trim_end_matches(',').trim_matches('"').trim_matches('\'');
-                    if !val.is_empty() {
-                        *j = k;
-                        return format!("{}:{}", kind, val);
-                    }
-                }
-            }
-            k += 1;
-        }
-        String::new()
+        return String::new();
     }
-
+    // Multi-line: scan subsequent lines for link:/file: key
+    let mut k = *j + 1;
+    while k < lines.len() {
+        let next = lines[k].trim();
+        if next.starts_with('}') {
+            *j = k; // consume up to closing brace
+            break;
+        }
+        for kind in &["link", "file"] {
+            if next.starts_with(kind) {
+                // `link: "path"` — the key-length slice keeps the `:`
+                // separator; strip it (multi-line nested form was unusable
+                // without this, emitting `link:: <path>` specs).
+                let after = next[kind.len()..].trim().trim_start_matches(':').trim();
+                let val = after
+                    .trim_end_matches(',')
+                    .trim_matches('"')
+                    .trim_matches('\'');
+                if !val.is_empty() {
+                    *j = k;
+                    return format!("{}:{}", kind, val);
+                }
+            }
+        }
+        k += 1;
+    }
+    String::new()
+}
 
 /// Vue project generation context
 pub struct VueProject {
@@ -3082,7 +3438,10 @@ impl VueProject {
         for route in &self.routes {
             let path = &route.path;
             let module = &route.module;
-            let import_path = page_paths.get(module).cloned().unwrap_or_else(|| module.clone());
+            let import_path = page_paths
+                .get(module)
+                .cloned()
+                .unwrap_or_else(|| module.clone());
 
             if route.params.is_empty() {
                 route_defs.push(format!(
@@ -3190,9 +3549,17 @@ export default router
                                     };
                                     if let Some(local_path) = resolved {
                                         if local_path.join("src").join("front").is_dir() {
-                                            out.push((dep_name.to_string(), local_path.join("src").join("front"), false));
+                                            out.push((
+                                                dep_name.to_string(),
+                                                local_path.join("src").join("front"),
+                                                false,
+                                            ));
                                         } else if local_path.join("front").is_dir() {
-                                            out.push((dep_name.to_string(), local_path.join("front"), false));
+                                            out.push((
+                                                dep_name.to_string(),
+                                                local_path.join("front"),
+                                                false,
+                                            ));
                                         } else {
                                             out.push((dep_name.to_string(), local_path, true));
                                         }
@@ -3243,45 +3610,47 @@ export default router
     }
 
     /// Create a new Vue project context from a workspace directory
+    /// （legacy 自扫路径——测试/旧调用；生产走 from_workspace_with_request。）
     pub fn from_workspace(root_dir: &Path) -> AutoResult<Self> {
         let pac_path = root_dir.join("pac.at");
         if !pac_path.exists() {
             return Err("pac.at not found in workspace".into());
         }
+        let pac_content =
+            fs::read_to_string(&pac_path).map_err(|e| format!("Failed to read pac.at: {}", e))?;
+        let reads = VueReads::scan(root_dir, &pac_path, &pac_content);
+        Self::from_workspace_reads(root_dir, &pac_path, &pac_content, reads)
+    }
 
-        // Plan 475: Ensure declared dependencies (including local path deps) are materialized
-        let composed_theme: Option<auto_lang::design_tokens::decl::ComposedTheme> =
-            match auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
-                Ok(config) => {
-                    let mut pac = crate::pac::Pac::new(config);
-                    let _ = pac.resolve();
-                    // PLAN-601 T-06: theme{} 声明 → 合成（extends 仅可引用
-                    // 内置——pac 单块解析无具名声明集）。失败回退 scaffold。
-                    pac.theme_decl.and_then(|decl| {
-                        match auto_lang::design_tokens::decl::compose(
-                            &decl,
-                            &std::collections::BTreeMap::new(),
-                        ) {
-                            Ok(t) => Some(t),
-                            Err(e) => {
-                                println!(
-                                    "{} theme{{}} 合成失败：{e} —— 回退 scaffold 缺省",
-                                    "Warn:".bright_yellow()
-                                );
-                                None
-                            }
-                        }
-                    })
-                }
-                Err(_) => None,
-            };
+    /// 请求路径（PLAN-809 T-06c 生产入口）：pac.at 数据全部来自请求，
+    /// 本方法不读 pac.at 文本（pac_content 仅用于错误信息与既有注释语
+    /// 义位——由调用方持有的求值产物，非生成器回读）。
+    pub fn from_workspace_with_request(
+        root_dir: &Path,
+        req: &auto_project_model::generation_request::GenerationRequest,
+    ) -> AutoResult<Self> {
+        let pac_path = root_dir.join("pac.at");
+        if !pac_path.exists() {
+            return Err("pac.at not found in workspace".into());
+        }
+        let reads = VueReads::from_request(req);
+        // 请求路径无 pac_content；空串占位（reads 已承载全部数据）。
+        Self::from_workspace_reads(root_dir, &pac_path, "", reads)
+    }
+
+    fn from_workspace_reads(
+        root_dir: &Path,
+        pac_path: &Path,
+        pac_content: &str,
+        reads: VueReads,
+    ) -> AutoResult<Self> {
+        let composed_theme = reads.theme;
         let dep_front_dirs = Self::collect_dep_front_dirs(root_dir);
 
-        let pac_content = fs::read_to_string(&pac_path)
-            .map_err(|e| format!("Failed to read pac.at: {}", e))?;
-
         // Parse workspace paths (Plan 129: app("front") syntax)
-        let front_rel_path = parse_workspace_path(&pac_content, "front")
+        let front_rel_path = reads
+            .front_rel_path
+            .clone()
             .unwrap_or_else(|| "src/front".to_string());
 
         // Try the parsed path, then src/front, source/front, front
@@ -3308,29 +3677,21 @@ export default router
             return Err(format!("Entry file '{}' not found", app_at.display()).into());
         }
 
-        // Get project name + display title — PLAN-786: 三字段一次读取收口
-        // 到 project_display_reader（name/title/title_zh；locale 链在下方）。
-        let display = project_display_reader::read(&pac_content);
-        let name = display
-            .name
-            .clone()
-            .unwrap_or_else(|| "aura-app".to_string());
-        // PLAN-063 Phase B T13 (KD 061 D28): 展示名 title 可选透传。
-        // PLAN-015：locale 链——AUTO_LOCALE=zh（缺省）优先 title_zh。
-        let index_title = parse_pac_display_title(&display);
+        let name = reads.name.clone();
+        let index_title = reads.index_title.clone();
 
-        // Plan 013: shadcn-vue mapping toggle (`shadcn: off` in pac.at).
-        let shadcn = parse_shadcn(&pac_content);
-        if !shadcn {
-            println!("{} shadcn: off — native HTML element generation", "Mode:".bright_cyan());
+        // Plan 013/014: toggles（读取已前置到 VueReads；提示语保留）。
+        if !reads.shadcn {
+            println!(
+                "{} shadcn: off — native HTML element generation",
+                "Mode:".bright_cyan()
+            );
         }
-
-        // Plan 014: default Tailwind class injection toggle
-        // (`default_classes: off` in pac.at).
-        let default_classes = parse_default_classes(&pac_content);
-        if !default_classes {
+        if !reads.default_classes {
             println!("{} default_classes: off — no doc-theme default Tailwind classes (layout primitives kept)", "Mode:".bright_cyan());
         }
+        let shadcn = reads.shadcn;
+        let default_classes = reads.default_classes;
 
         // Output directory (Plan 129: vue/ instead of dist/)
         let output_dir = root_dir.join("gen").join("front").join("vue");
@@ -3353,13 +3714,16 @@ export default router
         // Slot outlets declared by each sub-widget (name → outlet names,
         // "" = default). Used to warn when a parent passes slot children a
         // widget cannot render.
-        let mut sub_widget_slot_outlets: std::collections::HashMap<String, Vec<String>> = Default::default();
+        let mut sub_widget_slot_outlets: std::collections::HashMap<String, Vec<String>> =
+            Default::default();
         // PLAN-037 T5: sub-widget model var names (name -> bindable channels)
-        let mut sub_widget_models: std::collections::HashMap<String, Vec<String>> = Default::default();
+        let mut sub_widget_models: std::collections::HashMap<String, Vec<String>> =
+            Default::default();
         // Plan 444 (ash-shell-057 ①b): sub-widget emit rosters (name -> the
         // event names its SFC actually fires) — parents resolve `on_x: .Y`
         // callback bindings against this map.
-        let mut sub_widget_msgs: std::collections::HashMap<String, Vec<String>> = Default::default();
+        let mut sub_widget_msgs: std::collections::HashMap<String, Vec<String>> =
+            Default::default();
         {
             let mut scan_dirs = vec![front_dir.clone()];
             for (_dep_name, dep_front, _library_dep) in &dep_front_dirs {
@@ -3377,12 +3741,20 @@ export default router
                                 continue;
                             }
                             // Quick-scan to collect widget names (lightweight parse)
-                            if let Ok((_code, widgets)) = auto_lang::ui_build_shadcn_with_widgets(path.to_str().unwrap(), None) {
+                            if let Ok((_code, widgets)) = auto_lang::ui_build_shadcn_with_widgets(
+                                path.to_str().unwrap(),
+                                None,
+                            ) {
                                 for widget in &widgets {
-                                    sub_widget_slot_outlets.insert(widget.name.clone(), widget.slot_outlet_names());
+                                    sub_widget_slot_outlets
+                                        .insert(widget.name.clone(), widget.slot_outlet_names());
                                     sub_widget_models.insert(
                                         widget.name.clone(),
-                                        widget.state_vars.iter().map(|sv| sv.name.clone()).collect(),
+                                        widget
+                                            .state_vars
+                                            .iter()
+                                            .map(|sv| sv.name.clone())
+                                            .collect(),
                                     );
                                     sub_widget_msgs.insert(
                                         widget.name.clone(),
@@ -3406,7 +3778,8 @@ export default router
         // `bound_model_channels` (the `v-model:x` emissions its parents
         // produced). The union decides which child model vars downgrade to
         // defineModel; everything else stays `ref` (deep reactivity).
-        let mut bound_model_channels: std::collections::HashMap<String, Vec<String>> = Default::default();
+        let mut bound_model_channels: std::collections::HashMap<String, Vec<String>> =
+            Default::default();
         {
             // Same file set the real pass below compiles: app.at, the direct
             // .at siblings of front_dir, pages/ recursively, and deps.
@@ -3445,9 +3818,7 @@ export default router
                 } else {
                     auto_lang::ui_gen::ComponentGenOptions::default()
                 };
-                if let Ok(result) =
-                    auto_lang::ui_gen::generate_component_from_file(path, opts)
-                {
+                if let Ok(result) = auto_lang::ui_gen::generate_component_from_file(path, opts) {
                     for (k, v) in result.bound_model_channels {
                         let entry = bound_model_channels.entry(k).or_default();
                         for c in v {
@@ -3465,7 +3836,17 @@ export default router
         // 声明提至外层作用域（ViewProject 构造消费）。
         let mut root_widget_name_minis: Option<(String, String)> = None;
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(app_at.to_str().unwrap(), None, sub_widget_names.clone(), Some(sub_widget_models.clone()), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes), Some(bound_model_channels.clone()), Some(sub_widget_msgs.clone())) {
+            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(
+                app_at.to_str().unwrap(),
+                None,
+                sub_widget_names.clone(),
+                Some(sub_widget_models.clone()),
+                Some(root_dir.to_str().unwrap()),
+                Some(shadcn),
+                Some(default_classes),
+                Some(bound_model_channels.clone()),
+                Some(sub_widget_msgs.clone()),
+            ) {
                 Ok((vue_code, widgets, stores, named_view_codes)) => {
                     collect_ext_import_files(&widgets, &mut ext_file_set);
                     // PLAN-024：根 widget 的 mini 面（桌面 dashboard 卡）——
@@ -3494,13 +3875,17 @@ export default router
                         }
                         if i == 0 {
                             // First widget is the App root
-                            all_components.push(("".to_string(), "app".to_string(), vue_code.clone(), widget.name.clone()));
+                            all_components.push((
+                                "".to_string(),
+                                "app".to_string(),
+                                vue_code.clone(),
+                                widget.name.clone(),
+                            ));
                         } else {
                             // Additional widgets in app.at become components
                             // Extract store deps from app.at so these components get store imports
-                            let app_store_deps = auto_lang::extract_store_deps_from_file(
-                                app_at.to_str().unwrap()
-                            );
+                            let app_store_deps =
+                                auto_lang::extract_store_deps_from_file(app_at.to_str().unwrap());
                             let gen = if shadcn {
                                 VueGenerator::new_shadcn()
                             } else {
@@ -3512,7 +3897,10 @@ export default router
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
                                 .with_bound_model_channels(
-                                    bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
+                                    bound_model_channels
+                                        .get(&widget.name)
+                                        .cloned()
+                                        .unwrap_or_default(),
                                 );
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
@@ -3530,10 +3918,20 @@ export default router
                                         &app_at.display().to_string(),
                                         &gen.last_validation_warnings,
                                     );
-                                    all_components.push(("".to_string(), widget.name.to_lowercase(), widget_code, widget.name.clone()));
+                                    all_components.push((
+                                        "".to_string(),
+                                        widget.name.to_lowercase(),
+                                        widget_code,
+                                        widget.name.clone(),
+                                    ));
                                 }
                                 Err(e) => {
-                                    println!("{} Failed to generate widget {}: {}", "Warning:".bright_yellow(), widget.name, e);
+                                    println!(
+                                        "{} Failed to generate widget {}: {}",
+                                        "Warning:".bright_yellow(),
+                                        widget.name,
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -3545,7 +3943,11 @@ export default router
                     if auto_lang::ui_gen::validators::strict_enabled() {
                         return Err(format!("Failed to compile app.at: {}", e).into());
                     }
-                    println!("{} {}", "Warning: Failed to compile app.at:".bright_yellow(), e);
+                    println!(
+                        "{} {}",
+                        "Warning: Failed to compile app.at:".bright_yellow(),
+                        e
+                    );
                 }
             }
         }
@@ -3564,24 +3966,47 @@ export default router
             ext_file_set: &mut std::collections::BTreeSet<String>,
             all_store_files: &mut Vec<(String, String)>,
         ) -> Result<(), String> {
-            for entry in fs::read_dir(dir)
-                .map_err(|e| format!("Failed to read pages directory: {}", e))?
+            for entry in
+                fs::read_dir(dir).map_err(|e| format!("Failed to read pages directory: {}", e))?
             {
                 let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
                 let path = entry.path();
 
                 if path.is_dir() {
-                    scan_pages_dir(&path, front_dir, root_dir, shadcn, default_classes, bound_model_channels, all_components, all_shadcn_components, all_routes, ext_file_set, all_store_files)?;
+                    scan_pages_dir(
+                        &path,
+                        front_dir,
+                        root_dir,
+                        shadcn,
+                        default_classes,
+                        bound_model_channels,
+                        all_components,
+                        all_shadcn_components,
+                        all_routes,
+                        ext_file_set,
+                        all_store_files,
+                    )?;
                 } else if path.extension().map(|e| e == "at").unwrap_or(false) {
-                    let file_stem = path.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("page");
+                    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("page");
 
-                    let rel_path = path.strip_prefix(front_dir)
-                        .map(|p| p.parent().unwrap_or(Path::new("")).to_string_lossy().to_string().replace('\\', "/"))
+                    let rel_path = path
+                        .strip_prefix(front_dir)
+                        .map(|p| {
+                            p.parent()
+                                .unwrap_or(Path::new(""))
+                                .to_string_lossy()
+                                .to_string()
+                                .replace('\\', "/")
+                        })
                         .unwrap_or_else(|_| "pages".to_string());
 
-                    match auto_lang::ui_build_shadcn_all_widget_codes_with_bound(path.to_str().unwrap(), Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes), Some(bound_model_channels.clone())) {
+                    match auto_lang::ui_build_shadcn_all_widget_codes_with_bound(
+                        path.to_str().unwrap(),
+                        Some(root_dir.to_str().unwrap()),
+                        Some(shadcn),
+                        Some(default_classes),
+                        Some(bound_model_channels.clone()),
+                    ) {
                         Ok(result) => {
                             let vue_code = result.vue_code.clone();
                             let widgets = result.widgets.clone();
@@ -3603,8 +4028,16 @@ export default router
                                     all_routes.extend(routes.routes.clone());
                                 }
                             }
-                            let widget_name = widgets.first().map(|w| w.name.as_str()).unwrap_or(file_stem);
-                            all_components.push((rel_path, file_stem.to_string(), vue_code, widget_name.to_string()));
+                            let widget_name = widgets
+                                .first()
+                                .map(|w| w.name.as_str())
+                                .unwrap_or(file_stem);
+                            all_components.push((
+                                rel_path,
+                                file_stem.to_string(),
+                                vue_code,
+                                widget_name.to_string(),
+                            ));
                             // Plan 408 P11 / KNOWN-DEBT: write any additional
                             // component fn SFCs from this pages .at file to
                             // components/ (previously discarded — only the first
@@ -3612,8 +4045,15 @@ export default router
                             // the page widget (already pushed above as a page);
                             // the rest are component fn SFCs.
                             for (i, (cname, ccode)) in result.all_widget_codes.iter().enumerate() {
-                                if i == 0 { continue; }
-                                all_components.push(("".to_string(), cname.clone(), ccode.clone(), cname.clone()));
+                                if i == 0 {
+                                    continue;
+                                }
+                                all_components.push((
+                                    "".to_string(),
+                                    cname.clone(),
+                                    ccode.clone(),
+                                    cname.clone(),
+                                ));
                             }
                             all_store_files.extend(stores);
                         }
@@ -3625,7 +4065,12 @@ export default router
                             if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
                                 return Err(format!("Failed to compile {}: {}", path.display(), e));
                             }
-                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                            println!(
+                                "{} Failed to compile {}: {}",
+                                "Warning:".bright_yellow(),
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -3635,8 +4080,20 @@ export default router
 
         let pages_dir = front_dir.join("pages");
         if pages_dir.exists() {
-            scan_pages_dir(&pages_dir, &front_dir, root_dir, shadcn, default_classes, &bound_model_channels, &mut all_components, &mut all_shadcn_components, &mut all_routes, &mut ext_file_set, &mut all_store_files)
-                .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
+            scan_pages_dir(
+                &pages_dir,
+                &front_dir,
+                root_dir,
+                shadcn,
+                default_classes,
+                &bound_model_channels,
+                &mut all_components,
+                &mut all_shadcn_components,
+                &mut all_routes,
+                &mut ext_file_set,
+                &mut all_store_files,
+            )
+            .map_err(|e| format!("Failed to scan pages directory: {}", e))?;
         }
 
         // Plan 437 Phase 2: components/ 目录(官方/第三方 .at 组件包)接入
@@ -3661,7 +4118,13 @@ export default router
                         if file_name == "package.at" {
                             continue;
                         }
-                        match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
+                        match auto_lang::ui_build_shadcn_with_widgets_and_stores(
+                            path.to_str().unwrap(),
+                            None,
+                            Some(root_dir.to_str().unwrap()),
+                            Some(shadcn),
+                            Some(default_classes),
+                        ) {
                             Ok((_vue_code, widgets, _stores)) => {
                                 // Plan 522: components/ 通道此前用裸 VueGenerator
                                 // 重生成,丢掉了 generate_component_from_file 收集的
@@ -3669,7 +4132,9 @@ export default router
                                 // 重新收集并挂回 —— 与主通道同一收集器。
                                 let comp_code = fs::read_to_string(&path).unwrap_or_default();
                                 let (use_fns, imported_names) =
-                                    auto_lang::ui_gen::api::collect_use_module_fns(&path, &comp_code);
+                                    auto_lang::ui_gen::api::collect_use_module_fns(
+                                        &path, &comp_code,
+                                    );
                                 // PLAN-075 (074-sink-mode G-6 未修面): 同文件模块 fn
                                 // (Plan 367 P2-4) 在本臂同病——逐 widget 裸重生成时
                                 // 文件顶层 fn 定义被丢弃,调用点有 emission 无定义
@@ -3683,23 +4148,42 @@ export default router
                                     };
                                     let mut gen = gen
                                         .with_default_classes(default_classes)
-                                        .with_use_module_fns(use_fns.clone(), imported_names.clone())
+                                        .with_use_module_fns(
+                                            use_fns.clone(),
+                                            imported_names.clone(),
+                                        )
                                         .with_module_fns(comp_module_fns.clone());
                                     match gen.generate(widget) {
                                         Ok(widget_code) => {
-                                            let stem = path.file_stem()
+                                            let stem = path
+                                                .file_stem()
                                                 .and_then(|s| s.to_str())
                                                 .unwrap_or("component");
-                                            all_components.push(("components".to_string(), stem.to_string(), widget_code, widget.name.clone()));
+                                            all_components.push((
+                                                "components".to_string(),
+                                                stem.to_string(),
+                                                widget_code,
+                                                widget.name.clone(),
+                                            ));
                                         }
                                         Err(e) => {
-                                            println!("{} Failed to generate component widget {}: {}", "Warning:".bright_yellow(), widget.name, e);
+                                            println!(
+                                                "{} Failed to generate component widget {}: {}",
+                                                "Warning:".bright_yellow(),
+                                                widget.name,
+                                                e
+                                            );
                                         }
                                     }
                                 }
                             }
                             Err(e) => {
-                                println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                                println!(
+                                    "{} Failed to compile {}: {}",
+                                    "Warning:".bright_yellow(),
+                                    path.display(),
+                                    e
+                                );
                             }
                         }
                     }
@@ -3726,7 +4210,13 @@ export default router
                 if std::env::var_os("AUTO_BUILD_TRACE").is_some() {
                     eprintln!("[BUILD-TRACE] front file: {}", file_name);
                 }
-                match auto_lang::ui_build_shadcn_with_widgets_and_stores(path.to_str().unwrap(), None, Some(root_dir.to_str().unwrap()), Some(shadcn), Some(default_classes)) {
+                match auto_lang::ui_build_shadcn_with_widgets_and_stores(
+                    path.to_str().unwrap(),
+                    None,
+                    Some(root_dir.to_str().unwrap()),
+                    Some(shadcn),
+                    Some(default_classes),
+                ) {
                     Ok((vue_code, widgets, stores)) => {
                         if std::env::var_os("AUTO_BUILD_TRACE").is_some() {
                             eprintln!("[BUILD-TRACE] front file DONE: {}", file_name);
@@ -3739,9 +4229,8 @@ export default router
                         all_store_files.extend(stores);
                         // Extract store deps from this .at file so re-generated
                         // components get their store import + `const store = ...`
-                        let file_store_deps = auto_lang::extract_store_deps_from_file(
-                            path.to_str().unwrap()
-                        );
+                        let file_store_deps =
+                            auto_lang::extract_store_deps_from_file(path.to_str().unwrap());
                         // PLAN-074: src/front 兄弟通道与 components//bps（上方
                         // Plan 522 臂）同病——首遍 vue_code 被丢弃、逐 widget 裸
                         // 重生成丢 fn 池：use 导入池（Plan 522）与同文件模块 fn
@@ -3767,10 +4256,16 @@ export default router
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
-                                .with_use_module_fns(sib_use_fns.clone(), sib_imported_names.clone())
+                                .with_use_module_fns(
+                                    sib_use_fns.clone(),
+                                    sib_imported_names.clone(),
+                                )
                                 .with_module_fns(sib_module_fns.clone())
                                 .with_bound_model_channels(
-                                    bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
+                                    bound_model_channels
+                                        .get(&widget.name)
+                                        .cloned()
+                                        .unwrap_or_default(),
                                 );
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
@@ -3788,13 +4283,24 @@ export default router
                                         &path.display().to_string(),
                                         &gen.last_validation_warnings,
                                     );
-                                    let stem = path.file_stem()
+                                    let stem = path
+                                        .file_stem()
                                         .and_then(|s| s.to_str())
                                         .unwrap_or("component");
-                                    all_components.push(("".to_string(), stem.to_string(), widget_code, widget.name.clone()));
+                                    all_components.push((
+                                        "".to_string(),
+                                        stem.to_string(),
+                                        widget_code,
+                                        widget.name.clone(),
+                                    ));
                                 }
                                 Err(e) => {
-                                    println!("{} Failed to generate widget {}: {}", "Warning:".bright_yellow(), widget.name, e);
+                                    println!(
+                                        "{} Failed to generate widget {}: {}",
+                                        "Warning:".bright_yellow(),
+                                        widget.name,
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -3803,9 +4309,16 @@ export default router
                         // Plan 041a(strict 收口): fn-only 文件同降级(见上)。
                         let fn_only = e.to_string().contains("No widget or store declarations");
                         if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
-                            return Err(format!("Failed to compile {}: {}", path.display(), e).into());
+                            return Err(
+                                format!("Failed to compile {}: {}", path.display(), e).into()
+                            );
                         }
-                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                        println!(
+                            "{} Failed to compile {}: {}",
+                            "Warning:".bright_yellow(),
+                            path.display(),
+                            e
+                        );
                     }
                 }
             }
@@ -3835,17 +4348,15 @@ export default router
                             all_shadcn_components.insert(comp.clone());
                         }
                         all_store_files.extend(stores);
-                        let file_store_deps = auto_lang::extract_store_deps_from_file(
-                            path.to_str().unwrap()
-                        );
+                        let file_store_deps =
+                            auto_lang::extract_store_deps_from_file(path.to_str().unwrap());
                         // PLAN-645 T-02: dep 文件（bp reference 等）自己的跨文件
                         // fn 导入（`use tree_util: flatten_tree` bare/bps 限定）须
                         // 转译进 SFC——否则只有调用无定义（vue-tsc TS2304，
                         // filetree 组合形态 046 断裂复现）。与 components/bps
                         // 通道（上方 Plan 522 臂）同一收集器：首遍编译已在
                         // api.rs 挂过池，但这里逐 widget 重生成，必须重挂。
-                        let dep_comp_code =
-                            fs::read_to_string(&path).unwrap_or_default();
+                        let dep_comp_code = fs::read_to_string(&path).unwrap_or_default();
                         let (dep_use_fns, dep_imported_names) =
                             auto_lang::ui_gen::api::collect_use_module_fns(&path, &dep_comp_code);
                         // PLAN-075 (074-sink-mode G-6 未修面): dep 文件自身的
@@ -3867,10 +4378,16 @@ export default router
                                 .with_sub_widgets(sub_widget_names.clone())
                                 .with_sub_widget_models(sub_widget_models.clone())
                                 .with_sub_widget_msgs(sub_widget_msgs.clone())
-                                .with_use_module_fns(dep_use_fns.clone(), dep_imported_names.clone())
+                                .with_use_module_fns(
+                                    dep_use_fns.clone(),
+                                    dep_imported_names.clone(),
+                                )
                                 .with_module_fns(dep_module_fns.clone())
                                 .with_bound_model_channels(
-                                    bound_model_channels.get(&widget.name).cloned().unwrap_or_default(),
+                                    bound_model_channels
+                                        .get(&widget.name)
+                                        .cloned()
+                                        .unwrap_or_default(),
                                 );
                             if !widget.api_imports.is_empty() {
                                 gen = gen.with_project_api_functions(widget.api_imports.clone());
@@ -3888,13 +4405,25 @@ export default router
                                         &path.display().to_string(),
                                         &gen.last_validation_warnings,
                                     );
-                                    let stem = path.file_stem()
+                                    let stem = path
+                                        .file_stem()
                                         .and_then(|s| s.to_str())
                                         .unwrap_or("component");
-                                    all_components.push(("".to_string(), stem.to_string(), widget_code, widget.name.clone()));
+                                    all_components.push((
+                                        "".to_string(),
+                                        stem.to_string(),
+                                        widget_code,
+                                        widget.name.clone(),
+                                    ));
                                 }
                                 Err(e) => {
-                                    println!("{} Failed to generate dep widget {} from {}: {}", "Warning:".bright_yellow(), widget.name, dep_name, e);
+                                    println!(
+                                        "{} Failed to generate dep widget {} from {}: {}",
+                                        "Warning:".bright_yellow(),
+                                        widget.name,
+                                        dep_name,
+                                        e
+                                    );
                                 }
                             }
                         }
@@ -3915,19 +4444,34 @@ export default router
                             && !fn_only
                             && !library_dep
                         {
-                            return Err(format!("Failed to compile dep file {}: {}", path.display(), e).into());
+                            return Err(format!(
+                                "Failed to compile dep file {}: {}",
+                                path.display(),
+                                e
+                            )
+                            .into());
                         }
-                        println!("{} Failed to compile dep file {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                        println!(
+                            "{} Failed to compile dep file {}: {}",
+                            "Warning:".bright_yellow(),
+                            path.display(),
+                            e
+                        );
                     }
                 }
             }
         }
 
         // Plan 475: Merge npm_deps and styles from deps/*/pac.at
-        let mut npm_deps = parse_npm_deps(&pac_content);
-        let mut style_files = parse_style_files(&pac_content);
+        // （PLAN-809 T-06c：本工程声明来自 VueReads；dep 自身 pac.at 的
+        // 合并是跨文件读取，两路径共用。）
+        let mut npm_deps = reads.npm_deps;
+        let mut style_files = reads.style_files;
         for (_dep_name, dep_front, _library_dep) in &dep_front_dirs {
-            let dep_pac = dep_front.parent().and_then(|p| p.parent()).map(|p| p.join("pac.at"))
+            let dep_pac = dep_front
+                .parent()
+                .and_then(|p| p.parent())
+                .map(|p| p.join("pac.at"))
                 .or_else(|| dep_front.parent().map(|p| p.join("pac.at")));
             if let Some(p) = dep_pac {
                 if let Ok(content) = fs::read_to_string(&p) {
@@ -3948,7 +4492,8 @@ export default router
         let has_routes = !all_routes.is_empty();
 
         // Get App.vue code
-        let app_vue_code = all_components.iter()
+        let app_vue_code = all_components
+            .iter()
             .find(|(_, name, _, _)| name == "app")
             .map(|(_, _, code, _)| code.clone())
             .ok_or_else(|| "app.at not found or failed to compile".to_string())?;
@@ -4019,7 +4564,7 @@ export default router
             routes: all_routes,
             npm_deps,
             style_files,
-            i18n: parse_i18n(&pac_content),
+            i18n: reads.i18n,
             ext_files: ext_file_set.into_iter().collect(),
             store_files: all_store_files,
             theme: composed_theme,
@@ -4044,11 +4589,22 @@ export default router
                     (
                         "src/front/components/StreamingRenderer.vue",
                         "src/platform/markdown.vue",
-                        &[("../composables/useStreamingDocument", "@/ext/src/front/composables/useStreamingDocument")],
+                        &[(
+                            "../composables/useStreamingDocument",
+                            "@/ext/src/front/composables/useStreamingDocument",
+                        )],
                     ),
-                    ("src/front/components/PrismCodeBlock.vue", "src/platform/PrismCodeBlock.vue", &[]),
+                    (
+                        "src/front/components/PrismCodeBlock.vue",
+                        "src/platform/PrismCodeBlock.vue",
+                        &[],
+                    ),
                     // 平台实现的 ext 依赖（增量文档解析 composable）
-                    ("src/front/composables/useStreamingDocument.ts", "src/ext/src/front/composables/useStreamingDocument.ts", &[]),
+                    (
+                        "src/front/composables/useStreamingDocument.ts",
+                        "src/ext/src/front/composables/useStreamingDocument.ts",
+                        &[],
+                    ),
                 ],
             ),
         ];
@@ -4061,24 +4617,28 @@ export default router
             for (src_rel, dst_rel, rewrites) in *entries {
                 let src = self.root_dir.join(src_rel);
                 if !src.exists() {
-                    return Err(format!(
-                        "platform `{}` impl file missing: {}",
-                        name, src_rel
-                    )
-                    .into());
+                    return Err(
+                        format!("platform `{}` impl file missing: {}", name, src_rel).into(),
+                    );
                 }
                 let dst = self.output_dir.join(dst_rel);
                 if let Some(parent) = dst.parent() {
                     fs::create_dir_all(parent)
                         .map_err(|e| format!("Failed to create {}: {}", parent.display(), e))?;
                 }
-                let mut body = fs::read_to_string(&src)
-                    .map_err(|e| format!("Failed to read platform impl {}: {}", src.display(), e))?;
+                let mut body = fs::read_to_string(&src).map_err(|e| {
+                    format!("Failed to read platform impl {}: {}", src.display(), e)
+                })?;
                 for (from, to) in *rewrites {
                     body = body.replace(from, to);
                 }
                 fs::write(&dst, body).map_err(|e| {
-                    format!("Failed to write platform impl {} → {}: {}", src.display(), dst.display(), e)
+                    format!(
+                        "Failed to write platform impl {} → {}: {}",
+                        src.display(),
+                        dst.display(),
+                        e
+                    )
                 })?;
             }
             mounted.push(format!("{} → src/platform/", name));
@@ -4106,9 +4666,8 @@ export default router
                 .and_then(|s| s.to_str())
                 .ok_or_else(|| format!("Invalid styles path in pac.at: {}", rel))?
                 .to_string();
-            fs::copy(&src, styles_dir.join(&file_name)).map_err(|e| {
-                format!("Failed to copy style file {}: {}", src.display(), e)
-            })?;
+            fs::copy(&src, styles_dir.join(&file_name))
+                .map_err(|e| format!("Failed to copy style file {}: {}", src.display(), e))?;
             copied.push(file_name);
         }
         Ok(copied)
@@ -4143,14 +4702,21 @@ export default router
     /// Plan 028 M1: `.at` ext imports are fn modules — transpiled to a TS
     /// module at the same ext path instead of copied verbatim.
     fn transpile_at_fn_module(src: &Path) -> AutoResult<String> {
-        let source = fs::read_to_string(src)
-            .map_err(|e| format!("Failed to read use-block fn module {}: {}", src.display(), e))?;
+        let source = fs::read_to_string(src).map_err(|e| {
+            format!(
+                "Failed to read use-block fn module {}: {}",
+                src.display(),
+                e
+            )
+        })?;
         let session = auto_lang::session::CompilerSession::ui();
         let mut parser = auto_lang::parser::Parser::from(source.as_str()).with_session(session);
         let ast = parser
             .parse()
             .map_err(|e| format!("Failed to parse fn module {}: {}", src.display(), e))?;
-        let fns: Vec<auto_lang::aura::AuraModuleFn> = ast.stmts.iter()
+        let fns: Vec<auto_lang::aura::AuraModuleFn> = ast
+            .stmts
+            .iter()
             .filter_map(|s| match s {
                 auto_lang::ast::Stmt::Fn(f) => auto_lang::aura::extract_module_fn(f),
                 _ => None,
@@ -4159,9 +4725,10 @@ export default router
         // Plan 424: a module with `use.web` entries but no top-level fns is a
         // pure forwarding port (re-exports only) — legitimate. A module with
         // neither fns nor web bindings transpiles to an empty module — error.
-        let has_web_bindings = ast.stmts.iter().any(|s| {
-            matches!(s, auto_lang::ast::Stmt::UseWeb(_))
-        });
+        let has_web_bindings = ast
+            .stmts
+            .iter()
+            .any(|s| matches!(s, auto_lang::ast::Stmt::UseWeb(_)));
         if fns.is_empty() && !has_web_bindings {
             return Err(format!(
                 "use-block fn module {} declares no top-level fns or use.web bindings",
@@ -4174,14 +4741,19 @@ export default router
         // wrapper fns). Plan 424: component/composable kinds are re-exported
         // by the generator (ports symbol forwarding); fn kinds are both
         // imported (wrapper use) and re-exported (forwarding).
-        let web_imports: Vec<auto_lang::ast::ui::ExtImport> = ast.stmts.iter()
+        let web_imports: Vec<auto_lang::ast::ui::ExtImport> = ast
+            .stmts
+            .iter()
             .filter_map(|s| match s {
                 auto_lang::ast::Stmt::UseWeb(entries) => Some(entries.clone()),
                 _ => None,
             })
             .flatten()
             .collect();
-        Ok(auto_lang::ui_gen::VueGenerator::generate_fn_module_full(&fns, &web_imports))
+        Ok(auto_lang::ui_gen::VueGenerator::generate_fn_module_full(
+            &fns,
+            &web_imports,
+        ))
     }
 
     fn copy_ext_files(&self) -> AutoResult<Vec<String>> {
@@ -4254,16 +4826,29 @@ export default router
 
     /// Generate the Vue project structure
     pub fn generate(&self) -> AutoResult<()> {
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
-        println!("{}", "  AURA Workspace → Vue + shadcn-vue".bright_yellow().bold());
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "  AURA Workspace → Vue + shadcn-vue".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
         println!();
 
         println!("{} {}", "Output:".bright_cyan(), self.output_dir.display());
         println!("{} {}", "Name:".bright_cyan(), self.name);
 
         if !self.shadcn_components.is_empty() {
-            println!("{} {}", "shadcn-vue:".bright_cyan(), self.shadcn_components.join(", "));
+            println!(
+                "{} {}",
+                "shadcn-vue:".bright_cyan(),
+                self.shadcn_components.join(", ")
+            );
         }
 
         if self.has_routes {
@@ -4283,8 +4868,7 @@ export default router
 
         fs::create_dir_all(&components_dir)
             .map_err(|e| format!("Failed to create src/components: {}", e))?;
-        fs::create_dir_all(&lib_dir)
-            .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+        fs::create_dir_all(&lib_dir).map_err(|e| format!("Failed to create src/lib: {}", e))?;
         fs::create_dir_all(&assets_dir)
             .map_err(|e| format!("Failed to create src/assets: {}", e))?;
 
@@ -4307,7 +4891,11 @@ export default router
         // 平台能力——按注册表把实现挂载到 src/platform/（从「逃生舱」升格为「平台实现」）。
         let platform_copies = self.mount_platform_impls()?;
         if !platform_copies.is_empty() {
-            println!("{} {}", "Platform:".bright_cyan(), platform_copies.join(", "));
+            println!(
+                "{} {}",
+                "Platform:".bright_cyan(),
+                platform_copies.join(", ")
+            );
         }
 
         // Plan musk-022 Phase 2: copy pac.at `i18n:` locale files into src/locales/.
@@ -4374,7 +4962,9 @@ export default router
                         pages_dir.join(sub_path)
                     }
                 } else if relative_dir.starts_with("components/") {
-                    let sub_path = relative_dir.strip_prefix("components/").unwrap_or(relative_dir);
+                    let sub_path = relative_dir
+                        .strip_prefix("components/")
+                        .unwrap_or(relative_dir);
                     components_dir.join(sub_path)
                 } else {
                     components_dir.join(relative_dir)
@@ -4383,7 +4973,8 @@ export default router
                 fs::create_dir_all(&output_subdir)
                     .map_err(|e| format!("Failed to create {}: {}", output_subdir.display(), e))?;
 
-                let vue_file_name = if relative_dir == "pages" || relative_dir.starts_with("pages/") {
+                let vue_file_name = if relative_dir == "pages" || relative_dir.starts_with("pages/")
+                {
                     name.clone()
                 } else {
                     widget_name.clone()
@@ -4406,7 +4997,11 @@ export default router
                 let path = stores_dir.join(clean_name);
                 fs::write(&path, code)
                     .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
-                println!("  {} Store composable: {}", "✓".bright_green(), path.display());
+                println!(
+                    "  {} Store composable: {}",
+                    "✓".bright_green(),
+                    path.display()
+                );
             }
         }
 
@@ -4473,12 +5068,10 @@ export default router
 
         fs::create_dir_all(output_path)
             .map_err(|e| format!("Failed to create output directory: {}", e))?;
-        fs::create_dir_all(&src_dir)
-            .map_err(|e| format!("Failed to create src: {}", e))?;
+        fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create src: {}", e))?;
         fs::create_dir_all(&components_dir)
             .map_err(|e| format!("Failed to create src/components: {}", e))?;
-        fs::create_dir_all(&lib_dir)
-            .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+        fs::create_dir_all(&lib_dir).map_err(|e| format!("Failed to create src/lib: {}", e))?;
         fs::create_dir_all(&assets_dir)
             .map_err(|e| format!("Failed to create src/assets: {}", e))?;
 
@@ -4529,10 +5122,16 @@ export default router
 
         // Write main.ts
         let uses_autodown = self
-        .npm_deps
-        .iter()
-        .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
-        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
+            .npm_deps
+            .iter()
+            .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
+        let main_ts_content = generate_main_ts(
+            self.has_routes,
+            uses_autodown,
+            &style_copies,
+            &self.i18n,
+            &locale_copies,
+        );
         // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。
         let i18n_instance_content = generate_i18n_instance_ts(&self.i18n, &locale_copies);
         if !i18n_instance_content.is_empty() {
@@ -4561,7 +5160,10 @@ export default router
         // Router file — main.ts imports './router' whenever routes exist.
         self.ensure_router_file()?;
 
-        println!("{}", "✓ Generated scaffolding (preserved incremental components)".bright_green());
+        println!(
+            "{}",
+            "✓ Generated scaffolding (preserved incremental components)".bright_green()
+        );
 
         Ok(())
     }
@@ -4589,10 +5191,16 @@ export default router
         // Plan musk-022 Phase 2: re-copy i18n locale files.
         let locale_copies = self.copy_locale_files()?;
         let uses_autodown = self
-        .npm_deps
-        .iter()
-        .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
-        let main_ts_content = generate_main_ts(self.has_routes, uses_autodown, &style_copies, &self.i18n, &locale_copies);
+            .npm_deps
+            .iter()
+            .any(|(name, _)| name == "@autodown/editor" || name == "@autodown/engine");
+        let main_ts_content = generate_main_ts(
+            self.has_routes,
+            uses_autodown,
+            &style_copies,
+            &self.i18n,
+            &locale_copies,
+        );
         // PLAN-063 Phase B T13b (KD 061 D29): i18n 实例独立模块。
         let i18n_instance_content = generate_i18n_instance_ts(&self.i18n, &locale_copies);
         if !i18n_instance_content.is_empty() {
@@ -4618,7 +5226,10 @@ export default router
         if !vite_env_path.exists() {
             fs::write(&vite_env_path, "/// <reference types=\"vite/client\" />\n")
                 .map_err(|e| format!("Failed to write src/vite-env.d.ts: {}", e))?;
-            println!("{}", "  ✓ Restored src/vite-env.d.ts (P660-D1)".bright_green());
+            println!(
+                "{}",
+                "  ✓ Restored src/vite-env.d.ts (P660-D1)".bright_green()
+            );
         }
 
         // Regenerate src/assets/index.css
@@ -4640,7 +5251,10 @@ export default router
                 .map_err(|e| format!("Failed to create src/lib: {}", e))?;
             fs::write(&utils_path, generate_utils_ts())
                 .map_err(|e| format!("Failed to write src/lib/utils.ts: {}", e))?;
-            println!("{}", "  ✓ Restored src/lib/utils.ts (cold regen self-heal)".bright_green());
+            println!(
+                "{}",
+                "  ✓ Restored src/lib/utils.ts (cold regen self-heal)".bright_green()
+            );
         }
 
         // Regenerate tsconfig.json
@@ -4660,7 +5274,8 @@ export default router
         // PLAN-671 ①：平名内建声明层（注册表 ∩ 裸用面）。
         ensure_natives_layer(&self.output_dir);
         {
-            let front = self.output_dir
+            let front = self
+                .output_dir
                 .ancestors()
                 .skip(2)
                 .find(|d| d.join("src/front").exists() || d.join("pac.at").exists());
@@ -4697,7 +5312,13 @@ export default router
                 // PLAN-063 Phase B T12 (KD 061 D27): 保留既有未知 devDeps。
                 let new_pkg = merge_unknown_devdeps(
                     &existing_pkg,
-                    generate_package_json(&self.name, self.has_routes, self.i18n.enabled, &self.npm_deps, &usage),
+                    generate_package_json(
+                        &self.name,
+                        self.has_routes,
+                        self.i18n.enabled,
+                        &self.npm_deps,
+                        &usage,
+                    ),
                 );
                 fs::write(&pkg_path, &new_pkg)
                     .map_err(|e| format!("Failed to write package.json: {}", e))?;
@@ -4735,7 +5356,9 @@ export default router
                         pages_dir.join(sub_path)
                     }
                 } else if relative_dir.starts_with("components/") {
-                    let sub_path = relative_dir.strip_prefix("components/").unwrap_or(relative_dir);
+                    let sub_path = relative_dir
+                        .strip_prefix("components/")
+                        .unwrap_or(relative_dir);
                     components_dir.join(sub_path)
                 } else {
                     components_dir.join(relative_dir)
@@ -4744,7 +5367,8 @@ export default router
                 fs::create_dir_all(&output_subdir)
                     .map_err(|e| format!("Failed to create {}: {}", output_subdir.display(), e))?;
 
-                let vue_file_name = if relative_dir == "pages" || relative_dir.starts_with("pages/") {
+                let vue_file_name = if relative_dir == "pages" || relative_dir.starts_with("pages/")
+                {
                     pages_count += 1;
                     name.clone()
                 } else {
@@ -4768,15 +5392,25 @@ export default router
                 let path = stores_dir.join(clean_name);
                 fs::write(&path, code)
                     .map_err(|e| format!("Failed to write {}: {}", path.display(), e))?;
-                println!("  {} Store composable: {}", "✓".bright_green(), path.display());
+                println!(
+                    "  {} Store composable: {}",
+                    "✓".bright_green(),
+                    path.display()
+                );
             }
         }
 
         if pages_count > 0 {
-            println!("{}", format!("  ✓ Regenerated {} pages", pages_count).bright_green());
+            println!(
+                "{}",
+                format!("  ✓ Regenerated {} pages", pages_count).bright_green()
+            );
         }
         if components_count > 0 {
-            println!("{}", format!("  ✓ Regenerated {} components", components_count).bright_green());
+            println!(
+                "{}",
+                format!("  ✓ Regenerated {} components", components_count).bright_green()
+            );
         }
 
         Ok(())
@@ -4839,8 +5473,7 @@ export default router
 
         let src_dir = self.output_dir.join("src");
         let apps_src = src_dir.join("apps");
-        fs::create_dir_all(&apps_src)
-            .map_err(|e| format!("Failed to create src/apps: {}", e))?;
+        fs::create_dir_all(&apps_src).map_err(|e| format!("Failed to create src/apps: {}", e))?;
         let components_dir = src_dir.join("components");
         let stores_dir = src_dir.join("stores");
 
@@ -4993,10 +5626,17 @@ export default router
             // PLAN-015：注册表行展示名走 locale 链（zh=title_zh→title…）。
             // PLAN-024：mini 面旗标 + Mini.vue 落盘（根 widget 的 view mini）。
             if let Some((_, mcode)) = &vp.mini_face {
-                fs::write(app_dir.join("Mini.vue"), mcode)
-                    .map_err(|e| format!("Failed to write {}/Mini.vue: {}", app_dir.display(), e))?;
+                fs::write(app_dir.join("Mini.vue"), mcode).map_err(|e| {
+                    format!("Failed to write {}/Mini.vue: {}", app_dir.display(), e)
+                })?;
             }
-            registry_rows.push((e.id.clone(), e.display_title().to_string(), e.icon.clone(), e.category.clone(), vp.mini_face.is_some()));
+            registry_rows.push((
+                e.id.clone(),
+                e.display_title().to_string(),
+                e.icon.clone(),
+                e.category.clone(),
+                vp.mini_face.is_some(),
+            ));
         }
 
         // App-referenced shadcn components are absent from the host's own
@@ -5004,11 +5644,9 @@ export default router
         // existing files).
         if let Some(source) = &api_glue_source {
             let lib_dir = src_dir.join("lib");
-            fs::create_dir_all(&lib_dir)
-                .map_err(|e| format!("Failed to create src/lib: {}", e))?;
+            fs::create_dir_all(&lib_dir).map_err(|e| format!("Failed to create src/lib: {}", e))?;
             let target = lib_dir.join("api.ts");
-            fs::copy(source, &target)
-                .map_err(|e| format!("Failed to install api glue: {}", e))?;
+            fs::copy(source, &target).map_err(|e| format!("Failed to install api glue: {}", e))?;
             println!(
                 "  {} api glue installed ← {}",
                 "✓".bright_green(),
@@ -5100,8 +5738,7 @@ export default router
         if apps_src.exists() {
             let _ = fs::remove_dir_all(&apps_src);
         }
-        fs::create_dir_all(&apps_src)
-            .map_err(|e| format!("Failed to create src/apps: {}", e))?;
+        fs::create_dir_all(&apps_src).map_err(|e| format!("Failed to create src/apps: {}", e))?;
         let components_dir = src_dir.join("components");
         let stores_dir = src_dir.join("stores");
 
@@ -5150,12 +5787,11 @@ export default router
                 // fullstack/routable 消费 api 语料而无源 = 不可内嵌（不发射、
                 // 不翻注册表，维持「独立运行」提示）——否则指向缺失的
                 // lib_api 造成 vite 断链（实测 047-bp-admin）。
-                let fullstack_api_ts: Option<String> =
-                    if is_fullstack_embed || routable_needs_api {
-                        resolve_demo_api_client_ts(&apps_dir, &e.id)
-                    } else {
-                        None
-                    };
+                let fullstack_api_ts: Option<String> = if is_fullstack_embed || routable_needs_api {
+                    resolve_demo_api_client_ts(&apps_dir, &e.id)
+                } else {
+                    None
+                };
                 let embed_this =
                     (!is_fullstack_embed && !routable_needs_api) || fullstack_api_ts.is_some();
                 if is_routable_embed && !embed_this {
@@ -5173,129 +5809,123 @@ export default router
                     );
                 }
                 if embed_this {
-                if is_fullstack_embed {
-                    // TS 注册表翻转（侧栏「可交互」+ AppViewport 放行）；
-                    // registry.at 的 VM 侧语义用 loadable||fullstack 并集，
-                    // 此翻转不改变 VM 行为。
-                    row.loadable = true;
-                }
-                let api_import_target =
-                    format!("@/apps/{}/lib_api", e.id);
-                let rewrite_api_import = |s: String| -> String {
-                    let s = if is_fullstack_embed || routable_needs_api {
-                        s.replace("from '@/lib/api'", &format!("from '{}'", api_import_target))
-                            .replace(
-                                "from \"@/lib/api\"",
-                                &format!("from \"{}\"", api_import_target),
-                            )
-                            // Plan 672 条目 5: SSE 流端点字面量同通道前缀化
-                            // （codegen 注入形态 `new EventSource('/api/..')`，
-                            // ui_gen/vue.rs:17566），经 vite /apps 代理透传到
-                            // proxy 会话流端点。
-                            .replace(
-                                "new EventSource('/api/",
-                                &format!("new EventSource('/apps/{}/api/", e.id),
-                            )
-                    } else {
-                        s
+                    if is_fullstack_embed {
+                        // TS 注册表翻转（侧栏「可交互」+ AppViewport 放行）；
+                        // registry.at 的 VM 侧语义用 loadable||fullstack 并集，
+                        // 此翻转不改变 VM 行为。
+                        row.loadable = true;
+                    }
+                    let api_import_target = format!("@/apps/{}/lib_api", e.id);
+                    let rewrite_api_import = |s: String| -> String {
+                        let s = if is_fullstack_embed || routable_needs_api {
+                            s.replace("from '@/lib/api'", &format!("from '{}'", api_import_target))
+                                .replace(
+                                    "from \"@/lib/api\"",
+                                    &format!("from \"{}\"", api_import_target),
+                                )
+                                // Plan 672 条目 5: SSE 流端点字面量同通道前缀化
+                                // （codegen 注入形态 `new EventSource('/api/..')`，
+                                // ui_gen/vue.rs:17566），经 vite /apps 代理透传到
+                                // proxy 会话流端点。
+                                .replace(
+                                    "new EventSource('/api/",
+                                    &format!("new EventSource('/apps/{}/api/", e.id),
+                                )
+                        } else {
+                            s
+                        };
+                        // PLAN-675 T-08 补遗: 嵌入态裸 fetch 相对 /api/ 字面量
+                        // 前缀化（三档通用，独立于上方 api-import 臂——020
+                        // music-player 是 loadable 档，其 player_store 的
+                        // `Http.get_json("/api/media/scan")` 经转译为
+                        // `fetch('/api/media/scan')` 打到宿主根 404，代理侧
+                        // /apps/<id>/api/media/* 真歌单无人消费；媒体面由 658
+                        // 原生 media 路由供数）。单双引号两形态；已前缀产物不含
+                        // `fetch('/api/` 字面量，天然幂等。
+                        s.replace("fetch('/api/", &format!("fetch('/apps/{}/api/", e.id))
+                            .replace("fetch(\"/api/", &format!("fetch(\"/apps/{}/api/", e.id))
                     };
-                    // PLAN-675 T-08 补遗: 嵌入态裸 fetch 相对 /api/ 字面量
-                    // 前缀化（三档通用，独立于上方 api-import 臂——020
-                    // music-player 是 loadable 档，其 player_store 的
-                    // `Http.get_json("/api/media/scan")` 经转译为
-                    // `fetch('/api/media/scan')` 打到宿主根 404，代理侧
-                    // /apps/<id>/api/media/* 真歌单无人消费；媒体面由 658
-                    // 原生 media 路由供数）。单双引号两形态；已前缀产物不含
-                    // `fetch('/api/` 字面量，天然幂等。
-                    s.replace(
-                        "fetch('/api/",
-                        &format!("fetch('/apps/{}/api/", e.id),
-                    )
-                    .replace(
-                        "fetch(\"/api/",
-                        &format!("fetch(\"/apps/{}/api/", e.id),
-                    )
-                };
-                let rewritten_app_vue = rewrite_api_import(vp.app_vue_code.clone());
-                // Plan 672 条目 6: 嵌入态主题作用域化（016-calendar 劫持宿主
-                // 主题实证）——含主题运行时的语料重定向全局施加到视口容器。
-                let rewritten_app_vue =
-                    gallery_scope_theme_runtime(&rewritten_app_vue);
-                // Plan 672 条目 7: 根净化——剥页面级全幅底色/尺寸（016
-                // bg-muted/30 色带实证），卡片范围 + 窗口内居中。
-                let rewritten_app_vue =
-                    gallery_strip_root_page_chrome(&rewritten_app_vue);
-                let mut corpus = rewritten_app_vue.clone();
-                for (_, _, code, _) in &vp.components {
-                    corpus.push_str(&gallery_scope_theme_runtime(&rewrite_api_import(
-                        code.clone(),
-                    )));
-                }
-                for (_, code) in &vp.store_files {
-                    corpus.push_str(&rewrite_api_import(code.clone()));
-                }
-
-                app_corpus_total.push_str(&corpus);
-
-                for (filename, code) in &vp.store_files {
-                    let _ = fs::create_dir_all(&stores_dir);
-                    let clean_name = filename.strip_prefix("stores/").unwrap_or(filename);
-                    if claimed_stores.insert(clean_name.to_string()) {
-                        let _ = fs::write(stores_dir.join(clean_name), rewrite_api_import(code.clone()));
+                    let rewritten_app_vue = rewrite_api_import(vp.app_vue_code.clone());
+                    // Plan 672 条目 6: 嵌入态主题作用域化（016-calendar 劫持宿主
+                    // 主题实证）——含主题运行时的语料重定向全局施加到视口容器。
+                    let rewritten_app_vue = gallery_scope_theme_runtime(&rewritten_app_vue);
+                    // Plan 672 条目 7: 根净化——剥页面级全幅底色/尺寸（016
+                    // bg-muted/30 色带实证），卡片范围 + 窗口内居中。
+                    let rewritten_app_vue = gallery_strip_root_page_chrome(&rewritten_app_vue);
+                    let mut corpus = rewritten_app_vue.clone();
+                    for (_, _, code, _) in &vp.components {
+                        corpus.push_str(&gallery_scope_theme_runtime(&rewrite_api_import(
+                            code.clone(),
+                        )));
                     }
-                }
+                    for (_, code) in &vp.store_files {
+                        corpus.push_str(&rewrite_api_import(code.clone()));
+                    }
 
-                for (_, _name, code, widget_name) in &vp.components {
-                    if widget_name == "app" {
-                        continue;
+                    app_corpus_total.push_str(&corpus);
+
+                    for (filename, code) in &vp.store_files {
+                        let _ = fs::create_dir_all(&stores_dir);
+                        let clean_name = filename.strip_prefix("stores/").unwrap_or(filename);
+                        if claimed_stores.insert(clean_name.to_string()) {
+                            let _ = fs::write(
+                                stores_dir.join(clean_name),
+                                rewrite_api_import(code.clone()),
+                            );
+                        }
                     }
-                    let _ = fs::create_dir_all(&components_dir);
-                    let file = components_dir.join(format!("{}.vue", widget_name));
-                    if claimed_components.insert(widget_name.clone()) {
-                        let _ = fs::write(
-                            &file,
-                            gallery_scope_theme_runtime(&rewrite_api_import(code.clone())),
-                        );
+
+                    for (_, _name, code, widget_name) in &vp.components {
+                        if widget_name == "app" {
+                            continue;
+                        }
+                        let _ = fs::create_dir_all(&components_dir);
+                        let file = components_dir.join(format!("{}.vue", widget_name));
+                        if claimed_components.insert(widget_name.clone()) {
+                            let _ = fs::write(
+                                &file,
+                                gallery_scope_theme_runtime(&rewrite_api_import(code.clone())),
+                            );
+                        }
+                        for comp in detect_shadcn_components(code) {
+                            if !shadcn_needed.contains(&comp) {
+                                shadcn_needed.push(comp);
+                            }
+                        }
                     }
-                    for comp in detect_shadcn_components(code) {
+                    for comp in detect_shadcn_components(&vp.app_vue_code) {
                         if !shadcn_needed.contains(&comp) {
                             shadcn_needed.push(comp);
                         }
                     }
-                }
-                for comp in detect_shadcn_components(&vp.app_vue_code) {
-                    if !shadcn_needed.contains(&comp) {
-                        shadcn_needed.push(comp);
-                    }
-                }
 
-                for (name, ver) in &vp.npm_deps {
-                    if !npm_merge.iter().any(|(n, _)| n == name) {
-                        npm_merge.push((name.clone(), ver.clone()));
+                    for (name, ver) in &vp.npm_deps {
+                        if !npm_merge.iter().any(|(n, _)| n == name) {
+                            npm_merge.push((name.clone(), ver.clone()));
+                        }
                     }
-                }
 
-                let app_dir = apps_src.join(&e.id);
-                if fs::create_dir_all(&app_dir).is_ok() {
-                    let _ = fs::write(app_dir.join("App.vue"), &rewritten_app_vue);
-                    if let Some(api_ts) = &fullstack_api_ts {
-                        let _ = fs::write(app_dir.join("lib_api.ts"), api_ts);
+                    let app_dir = apps_src.join(&e.id);
+                    if fs::create_dir_all(&app_dir).is_ok() {
+                        let _ = fs::write(app_dir.join("App.vue"), &rewritten_app_vue);
+                        if let Some(api_ts) = &fullstack_api_ts {
+                            let _ = fs::write(app_dir.join("lib_api.ts"), api_ts);
+                        }
+                        // PLAN-675 T-04: 路由面三件套——pages/（vp components 的
+                        // pages 面，per-demo 命名空间防跨 demo 页名撞：019/021/
+                        // 023 三家 pages/home 异容）、router.ts（memory 工厂，
+                        // 每挂载 fresh 路由态）、main.ts（mount/unmount 入口
+                        // 契约，AppViewport 优先消费；export default 兼容旧路）。
+                        if is_routable_embed {
+                            emit_demo_route_face(&app_dir, &vp, &e.id, &rewrite_api_import);
+                        }
                     }
-                    // PLAN-675 T-04: 路由面三件套——pages/（vp components 的
-                    // pages 面，per-demo 命名空间防跨 demo 页名撞：019/021/
-                    // 023 三家 pages/home 异容）、router.ts（memory 工厂，
-                    // 每挂载 fresh 路由态）、main.ts（mount/unmount 入口
-                    // 契约，AppViewport 优先消费；export default 兼容旧路）。
-                    if is_routable_embed {
-                        emit_demo_route_face(&app_dir, &vp, &e.id, &rewrite_api_import);
+                    // PLAN-675: 画廊 package.json 依赖注入（任一 routable 行）——
+                    // standalone 面按 has_routes 注入 scaffold 依赖，画廊宿主
+                    // 走 npm_merge 通道（merge_host_npm_deps 消费）。
+                    if is_routable_embed && !npm_merge.iter().any(|(n, _)| n == "vue-router") {
+                        npm_merge.push(("vue-router".to_string(), "^4.2.0".to_string()));
                     }
-                }
-                // PLAN-675: 画廊 package.json 依赖注入（任一 routable 行）——
-                // standalone 面按 has_routes 注入 scaffold 依赖，画廊宿主
-                // 走 npm_merge 通道（merge_host_npm_deps 消费）。
-                if is_routable_embed && !npm_merge.iter().any(|(n, _)| n == "vue-router") {
-                    npm_merge.push(("vue-router".to_string(), "^4.2.0".to_string()));
-                }
                 }
             }
 
@@ -5331,8 +5961,11 @@ export default router
         // TS 产物同点发射,双产物单一来源(gallery_demo_row)。
         write_registry_at(&self.root_dir.join("src").join("front"), &demo_rows)?;
         // PLAN-625 T-10b: loadable 单文件示例 → 改名子 widget 源 + 视口适配器。
-        let (vm_live, vm_skipped) =
-            emit_gallery_vm_demos(&apps_dir, &demo_rows, &self.root_dir.join("src").join("gallery"))?;
+        let (vm_live, vm_skipped) = emit_gallery_vm_demos(
+            &apps_dir,
+            &demo_rows,
+            &self.root_dir.join("src").join("gallery"),
+        )?;
         if !vm_skipped.is_empty() {
             println!(
                 "  {} Gallery VM demos skipped (multi-file/form): {}",
@@ -5364,7 +5997,10 @@ export default router
         }
 
         if !crate::pkg::command_exists(crate::pkg::install_cmd()) {
-            println!("{}", format!("⚠ {} not found. Please install it or Node.js.", pm).bright_yellow());
+            println!(
+                "{}",
+                format!("⚠ {} not found. Please install it or Node.js.", pm).bright_yellow()
+            );
             return Err(format!("{} not found", pm).into());
         }
 
@@ -5372,11 +6008,18 @@ export default router
         // not package.json. Write the correct list before install so it doesn't
         // exit 1 with ERR_PNPM_IGNORED_BUILDS.
         if pm == "pnpm" && ensure_pnpm_build_approvals(&self.output_dir) {
-            println!("{}", "  ✓ Wrote .npmrc (build approvals for esbuild/vue-demi)".bright_green());
+            println!(
+                "{}",
+                "  ✓ Wrote .npmrc (build approvals for esbuild/vue-demi)".bright_green()
+            );
         }
 
         println!();
-        println!("{} {}", "▶".bright_cyan(), "Installing dependencies...".bright_white());
+        println!(
+            "{} {}",
+            "▶".bright_cyan(),
+            "Installing dependencies...".bright_white()
+        );
         println!("{}", format!("  Running: {} install", pm).bright_black());
 
         match crate::pkg::install(&self.output_dir) {
@@ -5393,7 +6036,10 @@ export default router
                 // wiping node_modules + lockfile so the next install runs the
                 // (now-approved) builds from scratch.
                 if pm == "pnpm" {
-                    println!("{}", "  ⚠ Retrying: rebuilding from clean node_modules...".bright_yellow());
+                    println!(
+                        "{}",
+                        "  ⚠ Retrying: rebuilding from clean node_modules...".bright_yellow()
+                    );
                     let lockfile = self.output_dir.join("pnpm-lock.yaml");
                     if lockfile.exists() {
                         let _ = fs::remove_file(&lockfile);
@@ -5437,7 +6083,11 @@ export default router
                     .replace("TriangleAlertIcon", "AlertTriangle");
                 if fixed != content {
                     let _ = fs::write(&sonner_path, fixed);
-                    println!("{}", "  ✓ Fixed Sonner.vue icon names for lucide-vue-next compatibility".bright_green());
+                    println!(
+                        "{}",
+                        "  ✓ Fixed Sonner.vue icon names for lucide-vue-next compatibility"
+                            .bright_green()
+                    );
                 }
             }
         }
@@ -5474,7 +6124,11 @@ export default router
     /// what is still missing on disk.
     pub fn install_shadcn_components(&self) -> AutoResult<()> {
         if self.shadcn_components.is_empty() {
-            println!("{} {}", "▶".bright_cyan(), "No shadcn-vue components needed".bright_white());
+            println!(
+                "{} {}",
+                "▶".bright_cyan(),
+                "No shadcn-vue components needed".bright_white()
+            );
             return Ok(());
         }
 
@@ -5484,7 +6138,10 @@ export default router
         // PLAN-063 Phase B T14 (KD 061 D12): 移除 CLI 时代嵌套冗余目录。
         let deduped = dedupe_nested_component_dirs(&self.output_dir, &self.shadcn_components);
         if !deduped.is_empty() {
-            println!("{}", format!("  ✓ Removed duplicate nested dirs: {}", deduped.join(", ")).bright_green());
+            println!(
+                "{}",
+                format!("  ✓ Removed duplicate nested dirs: {}", deduped.join(", ")).bright_green()
+            );
         }
 
         // Only names still absent from disk need the registry round trip;
@@ -5497,18 +6154,34 @@ export default router
             .collect();
 
         if remaining.is_empty() {
-            println!("{} {}", "▶".bright_cyan(), "shadcn-vue components already installed (skipping)".bright_white());
+            println!(
+                "{} {}",
+                "▶".bright_cyan(),
+                "shadcn-vue components already installed (skipping)".bright_white()
+            );
             return Ok(());
         }
 
         println!();
-        println!("{} {}", "▶".bright_cyan(), format!("Adding shadcn-vue components ({})...", remaining.join(", ")).bright_white());
+        println!(
+            "{} {}",
+            "▶".bright_cyan(),
+            format!("Adding shadcn-vue components ({})...", remaining.join(", ")).bright_white()
+        );
 
         let mut pkg_args: Vec<&str> = vec!["add"];
         pkg_args.extend(remaining.iter().map(|s| s.as_str()));
-        pkg_args.push("--yes");  // shadcn-vue uses --yes for non-interactive
+        pkg_args.push("--yes"); // shadcn-vue uses --yes for non-interactive
 
-        println!("{}", format!("  Running: {} shadcn-vue@latest add {}", crate::pkg::exec_cmd(), remaining.join(" ")).bright_black());
+        println!(
+            "{}",
+            format!(
+                "  Running: {} shadcn-vue@latest add {}",
+                crate::pkg::exec_cmd(),
+                remaining.join(" ")
+            )
+            .bright_black()
+        );
 
         match crate::pkg::exec("shadcn-vue@latest", &pkg_args, &self.output_dir) {
             Ok(_) => {
@@ -5524,7 +6197,11 @@ export default router
             }
             Err(e) => {
                 println!("  ✗ shadcn-vue add failed: {}", e.to_string().bright_red());
-                println!("  You may need to run '{} shadcn-vue@latest add {} -y' manually.", crate::pkg::exec_cmd(), self.shadcn_components.join(" "));
+                println!(
+                    "  You may need to run '{} shadcn-vue@latest add {} -y' manually.",
+                    crate::pkg::exec_cmd(),
+                    self.shadcn_components.join(" ")
+                );
                 // shadcn-vue add may have partially run pnpm and left a stray
                 // pnpm-workspace.yaml / clobbered .npmrc — re-assert approvals.
                 ensure_pnpm_build_approvals(&self.output_dir);
@@ -5537,18 +6214,30 @@ export default router
     /// Copy public assets
     pub fn copy_public_assets(&self) -> AutoResult<()> {
         if !self.public_dir.exists() || !self.public_dir.is_dir() {
-            println!("{} {}", "▶".bright_cyan(), "No public assets to copy".bright_white());
+            println!(
+                "{} {}",
+                "▶".bright_cyan(),
+                "No public assets to copy".bright_white()
+            );
             return Ok(());
         }
 
         let dest_public = self.output_dir.join("public");
         if dest_public.exists() && dest_public.is_dir() {
-            println!("{} {}", "▶".bright_cyan(), "Public assets already copied (skipping)".bright_white());
+            println!(
+                "{} {}",
+                "▶".bright_cyan(),
+                "Public assets already copied (skipping)".bright_white()
+            );
             return Ok(());
         }
 
         println!();
-        println!("{} {}", "▶".bright_cyan(), "Copying public assets...".bright_white());
+        println!(
+            "{} {}",
+            "▶".bright_cyan(),
+            "Copying public assets...".bright_white()
+        );
 
         copy_dir_all(&self.public_dir, &dest_public)
             .map_err(|e| format!("Failed to copy public folder: {}", e))?;
@@ -5561,20 +6250,25 @@ export default router
     pub fn npm_build(&self) -> AutoResult<()> {
         let pm = crate::pkg::display_name();
         println!();
-        println!("{} {}", "▶".bright_cyan(), "Building Vue project...".bright_white());
+        println!(
+            "{} {}",
+            "▶".bright_cyan(),
+            "Building Vue project...".bright_white()
+        );
         println!("{}", format!("  Running: {} run build", pm).bright_black());
 
         match crate::pkg::run_script("build", &[], &self.output_dir) {
             Ok(_) => {
                 println!();
                 println!("═════════════════════════════════");
-                println!("{}", "  Vue project built successfully!".bright_green().bold());
+                println!(
+                    "{}",
+                    "  Vue project built successfully!".bright_green().bold()
+                );
                 println!("═════════════════════════════════");
                 Ok(())
             }
-            Err(e) => {
-                Err(format!("{} run build failed: {}", pm, e).into())
-            }
+            Err(e) => Err(format!("{} run build failed: {}", pm, e).into()),
         }
     }
 
@@ -5582,7 +6276,11 @@ export default router
     pub fn npm_run_dev(&self, args: Vec<String>) -> AutoResult<()> {
         let pm = crate::pkg::display_name();
         println!();
-        println!("{} {}", "▶".bright_cyan(), "Starting dev server...".bright_white());
+        println!(
+            "{} {}",
+            "▶".bright_cyan(),
+            "Starting dev server...".bright_white()
+        );
         println!();
         println!("═════════════════════════════════");
         println!("{}", "  Starting Vue dev server...".bright_green().bold());
@@ -5593,7 +6291,7 @@ export default router
 
         match crate::pkg::run_script("dev", &args_str, &self.output_dir) {
             Ok(_) => Ok(()),
-            Err(e) => Err(format!("{} run dev failed: {}", pm, e).into())
+            Err(e) => Err(format!("{} run dev failed: {}", pm, e).into()),
         }
     }
 }
@@ -5693,7 +6391,11 @@ pub fn gen_vue_project(root_dir: &Path) -> AutoResult<()> {
                     let p = e.path();
                     if p.is_dir() {
                         walk_collect(&p, needed);
-                    } else if p.extension().map(|x| x == "vue" || x == "ts").unwrap_or(false) {
+                    } else if p
+                        .extension()
+                        .map(|x| x == "vue" || x == "ts")
+                        .unwrap_or(false)
+                    {
                         if let Ok(code) = fs::read_to_string(&p) {
                             for comp in detect_shadcn_components(&code) {
                                 if !needed.contains(&comp) {
@@ -5740,7 +6442,9 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
             let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
             if !fns.is_empty() {
                 // SAFETY: Setting a process-wide env var before VueGenerator::new() reads it
-                unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
+                unsafe {
+                    std::env::set_var("AUTO_API_FUNCTIONS", fns.join(","));
+                }
             }
         }
     }
@@ -5791,14 +6495,26 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
             let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
             if !fns.is_empty() {
                 // SAFETY: Setting a process-wide env var for downstream use
-                unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
+                unsafe {
+                    std::env::set_var("AUTO_API_FUNCTIONS", fns.join(","));
+                }
             }
         }
     }
 
     // Copy handmade theme assets if available
-    let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
-    let gen_css = root_dir.join("gen").join("front").join("vue").join("src").join("assets").join("index.css");
+    let handmade_css = root_dir
+        .join("vue")
+        .join("src")
+        .join("assets")
+        .join("index.css");
+    let gen_css = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("assets")
+        .join("index.css");
     if handmade_css.exists() && gen_css.exists() {
         if let Ok(content) = fs::read_to_string(&handmade_css) {
             fs::write(&gen_css, content)
@@ -5806,8 +6522,17 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
             println!("{}", "  ✓ Copied handmade theme CSS".bright_green());
         }
     }
-    let handmade_theme_toggle = root_dir.join("vue").join("src").join("components").join("ThemeToggle.vue");
-    let gen_components_dir = root_dir.join("gen").join("front").join("vue").join("src").join("components");
+    let handmade_theme_toggle = root_dir
+        .join("vue")
+        .join("src")
+        .join("components")
+        .join("ThemeToggle.vue");
+    let gen_components_dir = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
     if handmade_theme_toggle.exists() {
         let gen_theme_toggle = gen_components_dir.join("ThemeToggle.vue");
         if let Ok(content) = fs::read_to_string(&handmade_theme_toggle) {
@@ -5833,27 +6558,43 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
                 if path.is_dir() {
                     // Copy subdirectories recursively (e.g. a2ui-renderers/)
                     if let Err(e) = copy_dir_all(&path, &dest) {
-                        println!("  ⚠ Failed to copy handmade component dir {}: {}", file_name.to_string_lossy(), e);
+                        println!(
+                            "  ⚠ Failed to copy handmade component dir {}: {}",
+                            file_name.to_string_lossy(),
+                            e
+                        );
                     } else {
                         copied_count += 1;
                     }
                 } else if path.extension().map(|e| e == "vue").unwrap_or(false) {
                     if let Err(e) = fs::copy(&path, &dest) {
-                        println!("  ⚠ Failed to copy handmade component {}: {}", file_name.to_string_lossy(), e);
+                        println!(
+                            "  ⚠ Failed to copy handmade component {}: {}",
+                            file_name.to_string_lossy(),
+                            e
+                        );
                     } else {
                         copied_count += 1;
                     }
                 }
             }
             if copied_count > 0 {
-                println!("{}", format!("  ✓ Copied {} handmade component(s)", copied_count).bright_green());
+                println!(
+                    "{}",
+                    format!("  ✓ Copied {} handmade component(s)", copied_count).bright_green()
+                );
             }
         }
     }
 
     // Plan 234: Copy handmade composables
     let handmade_composables_dir = root_dir.join("vue").join("src").join("composables");
-    let gen_composables_dir = root_dir.join("gen").join("front").join("vue").join("src").join("composables");
+    let gen_composables_dir = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("composables");
     if handmade_composables_dir.exists() && handmade_composables_dir.is_dir() {
         fs::create_dir_all(&gen_composables_dir).ok();
         if let Ok(entries) = fs::read_dir(&handmade_composables_dir) {
@@ -5864,27 +6605,43 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
                 let dest = gen_composables_dir.join(&file_name);
                 if path.is_dir() {
                     if let Err(e) = copy_dir_all(&path, &dest) {
-                        println!("  ⚠ Failed to copy composable dir {}: {}", file_name.to_string_lossy(), e);
+                        println!(
+                            "  ⚠ Failed to copy composable dir {}: {}",
+                            file_name.to_string_lossy(),
+                            e
+                        );
                     } else {
                         copied_count += 1;
                     }
                 } else {
                     if let Err(e) = fs::copy(&path, &dest) {
-                        println!("  ⚠ Failed to copy composable {}: {}", file_name.to_string_lossy(), e);
+                        println!(
+                            "  ⚠ Failed to copy composable {}: {}",
+                            file_name.to_string_lossy(),
+                            e
+                        );
                     } else {
                         copied_count += 1;
                     }
                 }
             }
             if copied_count > 0 {
-                println!("{}", format!("  ✓ Copied {} composable(s)", copied_count).bright_green());
+                println!(
+                    "{}",
+                    format!("  ✓ Copied {} composable(s)", copied_count).bright_green()
+                );
             }
         }
     }
 
     // Plan 234: Copy handmade types
     let handmade_types_dir = root_dir.join("vue").join("src").join("types");
-    let gen_types_dir = root_dir.join("gen").join("front").join("vue").join("src").join("types");
+    let gen_types_dir = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("types");
     if handmade_types_dir.exists() && handmade_types_dir.is_dir() {
         fs::create_dir_all(&gen_types_dir).ok();
         if let Ok(entries) = fs::read_dir(&handmade_types_dir) {
@@ -5895,14 +6652,21 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
                 let dest = gen_types_dir.join(&file_name);
                 if path.is_file() {
                     if let Err(e) = fs::copy(&path, &dest) {
-                        println!("  ⚠ Failed to copy type file {}: {}", file_name.to_string_lossy(), e);
+                        println!(
+                            "  ⚠ Failed to copy type file {}: {}",
+                            file_name.to_string_lossy(),
+                            e
+                        );
                     } else {
                         copied_count += 1;
                     }
                 }
             }
             if copied_count > 0 {
-                println!("{}", format!("  ✓ Copied {} type file(s)", copied_count).bright_green());
+                println!(
+                    "{}",
+                    format!("  ✓ Copied {} type file(s)", copied_count).bright_green()
+                );
             }
         }
     }
@@ -5933,7 +6697,9 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
             let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
             if !fns.is_empty() {
                 // SAFETY: Setting a process-wide env var before VueGenerator::new() reads it
-                unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
+                unsafe {
+                    std::env::set_var("AUTO_API_FUNCTIONS", fns.join(","));
+                }
             }
         }
     }
@@ -5958,14 +6724,17 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 
     // Invalidate cache if .api_functions changed (API imports may be different)
     if cache.invalidate_if_api_functions_changed(&api_fns_path) {
-        println!("  {} (API config changed, regenerating all)", "cache".bright_yellow());
+        println!(
+            "  {} (API config changed, regenerating all)",
+            "cache".bright_yellow()
+        );
     }
 
     let mut changed_files: Vec<(PathBuf, String, String)> = Vec::new(); // (output_path, vue_code, widget_name)
-    // Plan 012 Batch B (gap 9a): store composables are collected explicitly
-    // from every compiled .at file. The STORE_EXTRA_FILES thread-local is
-    // cleared per generate_component_from_file call, so it only ever holds
-    // the LAST compiled file's stores — unusable for multi-store workspaces.
+                                                                        // Plan 012 Batch B (gap 9a): store composables are collected explicitly
+                                                                        // from every compiled .at file. The STORE_EXTRA_FILES thread-local is
+                                                                        // cleared per generate_component_from_file call, so it only ever holds
+                                                                        // the LAST compiled file's stores — unusable for multi-store workspaces.
     let mut store_files: Vec<(String, String)> = Vec::new();
 
     // Phase 1: Scan sub-widget .at files in front_dir (e.g. editor.at, sidebar.at)
@@ -5975,49 +6744,74 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().map(|e| e == "at").unwrap_or(false) {
-                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let file_name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 // Skip app.at, pac.at, types.at, mod.at
-                if file_name == "app.at" || file_name == "pac.at" || file_name == "types.at" || file_name == "mod.at" {
+                if file_name == "app.at"
+                    || file_name == "pac.at"
+                    || file_name == "types.at"
+                    || file_name == "mod.at"
+                {
                     continue;
                 }
-                let file_stem = path.file_stem()
+                let file_stem = path
+                    .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("component");
 
                 if let Ok(content) = fs::read_to_string(&path) {
                     let hash = hash_string(&content);
                     let source_changed = cache.is_dirty(&path, hash);
-                    let widget_output = output_dir.join("src").join("components").join(format!("{}.vue", file_stem));
+                    let widget_output = output_dir
+                        .join("src")
+                        .join("components")
+                        .join(format!("{}.vue", file_stem));
                     let output_missing = !widget_output.exists();
 
                     if source_changed || output_missing {
                         println!("  {} (changed)", file_name.bright_yellow());
-                        match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
+                        match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes)
+                        {
                             Ok((vue_code, widgets, stores)) => {
                                 store_files.extend(stores);
                                 for widget_name in &widgets {
                                     sub_widget_names.push(widget_name.clone());
                                     // Also generate with widget name as fallback
-                                    let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
-                                    changed_files.push((output_path, vue_code.clone(), widget_name.clone()));
+                                    let output_path = output_dir
+                                        .join("src")
+                                        .join("components")
+                                        .join(format!("{}.vue", widget_name));
+                                    changed_files.push((
+                                        output_path,
+                                        vue_code.clone(),
+                                        widget_name.clone(),
+                                    ));
                                 }
-                                let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                                    UIArtifact {
+                                let artifacts: Vec<UIArtifact> = widgets
+                                    .iter()
+                                    .map(|w| UIArtifact {
                                         source_path: path.clone(),
                                         widget_name: w.clone(),
-                                        output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                                        output_path: PathBuf::from(format!(
+                                            "src/components/{}.vue",
+                                            w
+                                        )),
                                         source_hash: hash,
                                         content_hash: hash_string(&vue_code),
                                         backend: UIBackend::Vue,
-                                    }
-                                }).collect();
+                                    })
+                                    .collect();
                                 cache.update(path.clone(), hash, artifacts);
                             }
                             Err(e) => handle_compile_error(&path, &e)?,
                         }
                     } else {
                         // Cached: still need sub-widget names for app.at compilation
-                        match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
+                        match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes)
+                        {
                             Ok((_vue_code, widgets, _stores)) => {
                                 for widget_name in &widgets {
                                     sub_widget_names.push(widget_name.clone());
@@ -6046,7 +6840,11 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                 if !path.extension().map(|e| e == "at").unwrap_or(false) {
                     continue;
                 }
-                let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+                let file_name = path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .to_string();
                 if file_name == "package.at" {
                     continue; // 包清单,非组件
                 }
@@ -6056,19 +6854,20 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                     match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
                         Ok((vue_code, widgets, stores)) => {
                             store_files.extend(stores);
-                            let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                                UIArtifact {
+                            let artifacts: Vec<UIArtifact> = widgets
+                                .iter()
+                                .map(|w| UIArtifact {
                                     source_path: path.clone(),
                                     widget_name: w.clone(),
                                     output_path: PathBuf::from(format!("src/components/{}.vue", w)),
                                     source_hash: hash,
                                     content_hash: hash_string(&vue_code),
                                     backend: UIBackend::Vue,
-                                }
-                            }).collect();
-                            let any_missing = artifacts.iter().any(|a| {
-                                !output_dir.join(&a.output_path).exists()
-                            });
+                                })
+                                .collect();
+                            let any_missing = artifacts
+                                .iter()
+                                .any(|a| !output_dir.join(&a.output_path).exists());
                             if source_changed || any_missing {
                                 if source_changed {
                                     println!("  {} (changed)", file_name.bright_yellow());
@@ -6103,7 +6902,11 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
         VueProject::collect_at_files_recursive(&dep_front, &mut dep_at_files);
         dep_at_files.sort();
         for path in dep_at_files {
-            let file_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let file_name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
             if file_name == "pac.at" || file_name == "package.at" {
                 continue; // 包配置/清单，非组件源（与 from_workspace/1b 同律）
             }
@@ -6118,30 +6921,36 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                     for widget_name in &widgets {
                         sub_widget_names.push(widget_name.clone());
                     }
-                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                        UIArtifact {
+                    let artifacts: Vec<UIArtifact> = widgets
+                        .iter()
+                        .map(|w| UIArtifact {
                             source_path: path.clone(),
                             widget_name: w.clone(),
                             output_path: PathBuf::from(format!("src/components/{}.vue", w)),
                             source_hash: hash,
                             content_hash: hash_string(&vue_code),
                             backend: UIBackend::Vue,
-                        }
-                    }).collect();
-                    let any_missing = artifacts.iter().any(|a| {
-                        !output_dir.join(&a.output_path).exists()
-                    });
+                        })
+                        .collect();
+                    let any_missing = artifacts
+                        .iter()
+                        .any(|a| !output_dir.join(&a.output_path).exists());
                     if source_changed || any_missing {
-                        println!("  deps/{}/{} ({})",
+                        println!(
+                            "  deps/{}/{} ({})",
                             dep_name.bright_yellow(),
                             file_name.bright_yellow(),
-                            if source_changed { "changed" } else { "output missing" });
+                            if source_changed {
+                                "changed"
+                            } else {
+                                "output missing"
+                            }
+                        );
                         for artifact in &artifacts {
                             let out = output_dir.join(&artifact.output_path);
                             fs::create_dir_all(out.parent().unwrap_or(&output_dir)).ok();
-                            fs::write(&out, &vue_code).map_err(|e| {
-                                format!("Failed to write {}: {}", out.display(), e)
-                            })?;
+                            fs::write(&out, &vue_code)
+                                .map_err(|e| format!("Failed to write {}: {}", out.display(), e))?;
                         }
                     }
                     cache.update(path.clone(), hash, artifacts);
@@ -6169,23 +6978,31 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                 } else {
                     println!("  {} (output missing)", "app.at".bright_yellow());
                 }
-                match compile_at_to_vue_with_sub_widgets(&app_at, &content, sub_widget_names.clone(), root_dir, shadcn, default_classes) {
+                match compile_at_to_vue_with_sub_widgets(
+                    &app_at,
+                    &content,
+                    sub_widget_names.clone(),
+                    root_dir,
+                    shadcn,
+                    default_classes,
+                ) {
                     Ok((vue_code, widgets, stores)) => {
                         store_files.extend(stores);
                         let content_hash = hash_string(&vue_code);
                         if let Some(widget_name) = widgets.first() {
                             changed_files.push((app_output_path, vue_code, widget_name.clone()));
                         }
-                        let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                            UIArtifact {
+                        let artifacts: Vec<UIArtifact> = widgets
+                            .iter()
+                            .map(|w| UIArtifact {
                                 source_path: app_at.clone(),
                                 widget_name: w.clone(),
                                 output_path: PathBuf::from(format!("src/App.vue")),
                                 source_hash: hash,
                                 content_hash: content_hash.clone(),
                                 backend: UIBackend::Vue,
-                            }
-                        }).collect();
+                            })
+                            .collect();
                         cache.update(app_at.clone(), hash, artifacts);
                     }
                     Err(e) => handle_compile_error(&app_at, &e)?,
@@ -6212,23 +7029,45 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
 
                         if source_changed {
                             println!("  widgets/{} (changed)", file_name.bright_yellow());
-                            match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
+                            match compile_at_to_vue(
+                                &path,
+                                &content,
+                                root_dir,
+                                shadcn,
+                                default_classes,
+                            ) {
                                 Ok((vue_code, widgets, stores)) => {
                                     store_files.extend(stores);
                                     if let Some(widget_name) = widgets.first() {
-                                        let output_path = output_dir.join("src").join("components").join(format!("{}.vue", widget_name));
-                                        changed_files.push((output_path, vue_code, widget_name.clone()));
+                                        let output_path = output_dir
+                                            .join("src")
+                                            .join("components")
+                                            .join(format!("{}.vue", widget_name));
+                                        changed_files.push((
+                                            output_path,
+                                            vue_code,
+                                            widget_name.clone(),
+                                        ));
                                     }
-                                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                                        UIArtifact {
+                                    let artifacts: Vec<UIArtifact> = widgets
+                                        .iter()
+                                        .map(|w| UIArtifact {
                                             source_path: path.clone(),
                                             widget_name: w.clone(),
-                                            output_path: PathBuf::from(format!("src/components/{}.vue", w)),
+                                            output_path: PathBuf::from(format!(
+                                                "src/components/{}.vue",
+                                                w
+                                            )),
                                             source_hash: hash,
-                                            content_hash: hash_string(&changed_files.last().map(|f| f.1.as_str()).unwrap_or("")),
+                                            content_hash: hash_string(
+                                                &changed_files
+                                                    .last()
+                                                    .map(|f| f.1.as_str())
+                                                    .unwrap_or(""),
+                                            ),
                                             backend: UIBackend::Vue,
-                                        }
-                                    }).collect();
+                                        })
+                                        .collect();
                                     cache.update(path.clone(), hash, artifacts);
                                 }
                                 Err(e) => handle_compile_error(&path, &e)?,
@@ -6251,11 +7090,12 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                 if path.extension().map(|e| e == "at").unwrap_or(false) {
                     let file_name = path.file_name().unwrap().to_string_lossy().to_string();
                     // Use file stem (e.g., "index") as the output file name, matching VueProject::generate behavior
-                    let file_stem = path.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("page");
+                    let file_stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("page");
                     // Pre-compute output path for existence check
-                    let output_path = output_dir.join("src").join("pages").join(format!("{}.vue", file_stem));
+                    let output_path = output_dir
+                        .join("src")
+                        .join("pages")
+                        .join(format!("{}.vue", file_stem));
 
                     if let Ok(content) = fs::read_to_string(&path) {
                         let hash = hash_string(&content);
@@ -6269,22 +7109,44 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
                             } else {
                                 println!("  pages/{} (output missing)", file_name.bright_yellow());
                             }
-                            match compile_at_to_vue(&path, &content, root_dir, shadcn, default_classes) {
+                            match compile_at_to_vue(
+                                &path,
+                                &content,
+                                root_dir,
+                                shadcn,
+                                default_classes,
+                            ) {
                                 Ok((vue_code, widgets, stores)) => {
                                     store_files.extend(stores);
                                     // Use file_stem for output path (matching VueProject::generate behavior)
-                                    let widget_name = widgets.first().cloned().unwrap_or_else(|| file_stem.to_string());
-                                    changed_files.push((output_path, vue_code, widget_name.clone()));
-                                    let artifacts: Vec<UIArtifact> = widgets.iter().map(|w| {
-                                        UIArtifact {
+                                    let widget_name = widgets
+                                        .first()
+                                        .cloned()
+                                        .unwrap_or_else(|| file_stem.to_string());
+                                    changed_files.push((
+                                        output_path,
+                                        vue_code,
+                                        widget_name.clone(),
+                                    ));
+                                    let artifacts: Vec<UIArtifact> = widgets
+                                        .iter()
+                                        .map(|w| UIArtifact {
                                             source_path: path.clone(),
                                             widget_name: w.clone(),
-                                            output_path: PathBuf::from(format!("src/pages/{}.vue", file_stem)),
+                                            output_path: PathBuf::from(format!(
+                                                "src/pages/{}.vue",
+                                                file_stem
+                                            )),
                                             source_hash: hash,
-                                            content_hash: hash_string(&changed_files.last().map(|f| f.1.as_str()).unwrap_or("")),
+                                            content_hash: hash_string(
+                                                &changed_files
+                                                    .last()
+                                                    .map(|f| f.1.as_str())
+                                                    .unwrap_or(""),
+                                            ),
                                             backend: UIBackend::Vue,
-                                        }
-                                    }).collect();
+                                        })
+                                        .collect();
                                     cache.update(path.clone(), hash, artifacts);
                                 }
                                 Err(e) => handle_compile_error(&path, &e)?,
@@ -6310,11 +7172,18 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().map(|e| e == "vue").unwrap_or(false) {
-                    let rel = path.strip_prefix(&output_dir).unwrap_or(&path).to_path_buf();
+                    let rel = path
+                        .strip_prefix(&output_dir)
+                        .unwrap_or(&path)
+                        .to_path_buf();
                     let was_generated = previous_outputs.contains(&rel);
                     if was_generated && !live_outputs.contains(&rel) {
                         match fs::remove_file(&path) {
-                            Ok(()) => println!("  {} removed stale {}", "cache".bright_yellow(), rel.display()),
+                            Ok(()) => println!(
+                                "  {} removed stale {}",
+                                "cache".bright_yellow(),
+                                rel.display()
+                            ),
                             Err(e) => eprintln!(
                                 "{} failed to remove stale {}: {}",
                                 "Warning:".bright_yellow(),
@@ -6334,7 +7203,10 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
     // Write changed files
     let changed_count = changed_files.len();
     if changed_count > 0 {
-        println!("{} files changed, writing...", changed_count.to_string().bright_yellow());
+        println!(
+            "{} files changed, writing...",
+            changed_count.to_string().bright_yellow()
+        );
         for (output_path, vue_code, _widget_name) in changed_files {
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).ok();
@@ -6342,13 +7214,17 @@ fn incremental_compile_changed(root_dir: &Path) -> AutoResult<usize> {
             fs::write(&output_path, &vue_code)
                 .map_err(|e| format!("Failed to write {}: {}", output_path.display(), e))?;
             // Extract file name from output path for logging
-            let file_name = output_path.file_stem()
+            let file_name = output_path
+                .file_stem()
                 .and_then(|s| s.to_str())
                 .unwrap_or("unknown");
             println!("  ✓ Wrote {}.vue", file_name.bright_green());
         }
     } else {
-        println!("{}", "No changes detected, using cached files".bright_green());
+        println!(
+            "{}",
+            "No changes detected, using cached files".bright_green()
+        );
     }
 
     // Plan 012 Batch B (gap 9a): write store composables collected explicitly
@@ -6400,7 +7276,10 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     write_auto_sources_ts(&resolve_front_dir(root_dir), &p646_vue_root);
     // PLAN-646: overlay 资产自愈刷新（旧工程 scaffold 停在旧版 overlay）。
     {
-        let overlay_path = p646_vue_root.join("src").join("auto-select").join("overlay.ts");
+        let overlay_path = p646_vue_root
+            .join("src")
+            .join("auto-select")
+            .join("overlay.ts");
         let overlay_new = generate_select_overlay_ts();
         let stale = match std::fs::read_to_string(&overlay_path) {
             Ok(existing) => existing != overlay_new,
@@ -6434,16 +7313,25 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     println!();
     if !project.exists() && changed_count == 0 {
         // Fresh project: no incremental changes were written, so generate everything
-        println!("▶ Step {}/{}: Generating Vue project...", current_step, total_steps);
+        println!(
+            "▶ Step {}/{}: Generating Vue project...",
+            current_step, total_steps
+        );
         project.generate()?;
     } else if !project.exists() && changed_count > 0 {
         // Project dir was removed but we already wrote files incrementally.
         // Only generate scaffolding (package.json, vite.config, etc), don't
         // overwrite the incrementally-written component .vue files.
-        println!("▶ Step {}/{}: Generating project scaffolding...", current_step, total_steps);
+        println!(
+            "▶ Step {}/{}: Generating project scaffolding...",
+            current_step, total_steps
+        );
         project.generate_scaffolding_only()?;
     } else if changed_count == 0 {
-        println!("▶ Step {}/{}: Checking source files...", current_step, total_steps);
+        println!(
+            "▶ Step {}/{}: Checking source files...",
+            current_step, total_steps
+        );
         // Self-heal router/index.ts — older scaffolding-only runs left it
         // missing, which breaks `import router from './router'` in main.ts.
         project.ensure_router_file()?;
@@ -6479,7 +7367,10 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
                     &usage,
                 );
                 match fs::write(&pkg_path, new_pkg) {
-                    Ok(_) => println!("{}", "  ✓ Updated package.json (npm_deps sync)".bright_green()),
+                    Ok(_) => println!(
+                        "{}",
+                        "  ✓ Updated package.json (npm_deps sync)".bright_green()
+                    ),
                     Err(e) => println!("  ⚠ package.json refresh skipped: {}", e),
                 }
             }
@@ -6516,7 +7407,11 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // nothing changed" fast path forever.
     {
         let index_html_path = project.output_dir.join("index.html");
-        if index_html_path.parent().map(|p| p.exists()).unwrap_or(false) {
+        if index_html_path
+            .parent()
+            .map(|p| p.exists())
+            .unwrap_or(false)
+        {
             let index_html = generate_index_html(
                 &project.name,
                 project.index_title.as_deref(),
@@ -6558,8 +7453,18 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     }
 
     // Copy handmade theme assets if available
-    let handmade_css = root_dir.join("vue").join("src").join("assets").join("index.css");
-    let gen_css = root_dir.join("gen").join("front").join("vue").join("src").join("assets").join("index.css");
+    let handmade_css = root_dir
+        .join("vue")
+        .join("src")
+        .join("assets")
+        .join("index.css");
+    let gen_css = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("assets")
+        .join("index.css");
     if handmade_css.exists() && gen_css.exists() {
         if let Ok(content) = fs::read_to_string(&handmade_css) {
             fs::write(&gen_css, content)
@@ -6567,8 +7472,17 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
             println!("{}", "  ✓ Copied handmade theme CSS".bright_green());
         }
     }
-    let handmade_theme_toggle = root_dir.join("vue").join("src").join("components").join("ThemeToggle.vue");
-    let gen_components_dir = root_dir.join("gen").join("front").join("vue").join("src").join("components");
+    let handmade_theme_toggle = root_dir
+        .join("vue")
+        .join("src")
+        .join("components")
+        .join("ThemeToggle.vue");
+    let gen_components_dir = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
     if handmade_theme_toggle.exists() {
         let gen_theme_toggle = gen_components_dir.join("ThemeToggle.vue");
         if let Ok(content) = fs::read_to_string(&handmade_theme_toggle) {
@@ -6581,7 +7495,10 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Step 2: Generate API client code (if api.at exists)
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Generating API client...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Generating API client...",
+        current_step, total_steps
+    );
     // PLAN-734 T-06：Err 传播（错误不能只 warn 后继续启动旧产物）。
     crate::api_gen::generate_api(root_dir, "vue")?;
 
@@ -6592,7 +7509,9 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
             let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
             if !fns.is_empty() {
                 // SAFETY: Setting a process-wide env var before spawning Vue generation
-                unsafe { std::env::set_var("AUTO_API_FUNCTIONS", fns.join(",")); }
+                unsafe {
+                    std::env::set_var("AUTO_API_FUNCTIONS", fns.join(","));
+                }
             }
         }
     }
@@ -6602,13 +7521,19 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // complete when pnpm resolves — no post-install dependency surgery.
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Materializing UI components...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Materializing UI components...",
+        current_step, total_steps
+    );
     project.materialize_ui_components()?;
 
     // Step 4: npm install
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Installing dependencies...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Installing dependencies...",
+        current_step, total_steps
+    );
     project.npm_install()?;
 
     // Step 5 (fallback): registry add for long-tail components outside the
@@ -6618,7 +7543,10 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Step 5: Copy public assets
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Copying public assets...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Copying public assets...",
+        current_step, total_steps
+    );
     project.copy_public_assets()?;
 
     // Step 5.5: Start API backend server.
@@ -6642,7 +7570,10 @@ pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     // Step 6: npm run dev
     current_step += 1;
     println!();
-    println!("▶ Step {}/{}: Starting dev server...", current_step, total_steps);
+    println!(
+        "▶ Step {}/{}: Starting dev server...",
+        current_step, total_steps
+    );
     project.npm_run_dev(args)?;
 
     // Cleanup: stop API backend server when dev server exits
@@ -6704,9 +7635,7 @@ fn validate_api_imports(imports: &[String], root_dir: &Path) -> Result<(), Strin
 /// project's `back/api.at`, so the store composable can wire type-driven SSE.
 /// (Plan 043 stream phase.) Delegates to the auto-lang regex-based resolver.
 fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_lang::aura::StreamEndpoint> {
-    auto_lang::ui_gen::api::resolve_stream_endpoints_for_project(
-        &root_dir.to_string_lossy(),
-    )
+    auto_lang::ui_gen::api::resolve_stream_endpoints_for_project(&root_dir.to_string_lossy())
 }
 
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
@@ -6718,13 +7647,23 @@ fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_lang::aura::StreamEndpo
 fn handle_compile_error(path: &Path, e: &str) -> Result<(), String> {
     // Plan 041a(strict 收口): fn-only 文件(helpers 等)是正常形态,降级。
     if e.contains("No widget or store declarations") {
-        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+        println!(
+            "{} Failed to compile {}: {}",
+            "Warning:".bright_yellow(),
+            path.display(),
+            e
+        );
         return Ok(());
     }
     if auto_lang::ui_gen::validators::strict_enabled() {
         return Err(format!("Failed to compile {}: {}", path.display(), e));
     }
-    println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+    println!(
+        "{} Failed to compile {}: {}",
+        "Warning:".bright_yellow(),
+        path.display(),
+        e
+    );
     Ok(())
 }
 
@@ -6733,12 +7672,21 @@ fn handle_compile_error(path: &Path, e: &str) -> Result<(), String> {
 /// 可携带消费方契约导入（with_charts `use { package: official from
 /// "components" }` 由消费方供给），standalone strict 编译必然 S003。应用形态
 /// dep（false）与项目自身源（`handle_compile_error`）strict 门禁不变。
-fn handle_compile_error_with_dep_shape(path: &Path, e: &str, library_dep: bool) -> Result<(), String> {
+fn handle_compile_error_with_dep_shape(
+    path: &Path,
+    e: &str,
+    library_dep: bool,
+) -> Result<(), String> {
     let fn_only = e.contains("No widget or store declarations");
     if auto_lang::ui_gen::validators::strict_enabled() && !fn_only && !library_dep {
         return Err(format!("Failed to compile {}: {}", path.display(), e));
     }
-    println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+    println!(
+        "{} Failed to compile {}: {}",
+        "Warning:".bright_yellow(),
+        path.display(),
+        e
+    );
     Ok(())
 }
 
@@ -6753,7 +7701,8 @@ fn same_file_module_fns(code: &str) -> Vec<auto_lang::aura::AuraModuleFn> {
     let Ok(ast) = parser.parse() else {
         return Vec::new();
     };
-    ast.stmts.iter()
+    ast.stmts
+        .iter()
         .filter_map(|s| match s {
             auto_lang::ast::Stmt::Fn(f) => auto_lang::aura::extract_module_fn(f),
             _ => None,
@@ -6768,7 +7717,13 @@ fn same_file_module_fns(code: &str) -> Vec<auto_lang::aura::AuraModuleFn> {
 /// the start of every generate_component_from_file call, so draining it after
 /// compiling several files only ever yields the LAST file's stores
 /// (Plan 012 Batch B, gap 9a).
-fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path, shadcn: bool, default_classes: bool) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
+fn compile_at_to_vue(
+    at_path: &Path,
+    _content: &str,
+    root_dir: &Path,
+    shadcn: bool,
+    default_classes: bool,
+) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
     use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
@@ -6778,8 +7733,7 @@ fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path, shadcn: bo
         default_classes: Some(default_classes),
         ..Default::default()
     };
-    let result = generate_component_from_file(at_path, opts)
-        .map_err(|e| format!("{}", e))?;
+    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
 
     // Plan 012 Batch A: surface codegen validation warnings (deduplicated).
     auto_lang::ui_gen::validators::print_warnings_once(
@@ -6798,7 +7752,14 @@ fn compile_at_to_vue(at_path: &Path, _content: &str, root_dir: &Path, shadcn: bo
 
 /// Compile an .at file to Vue SFC with known sub-widget names (Plan 361 §3: uses generate_component_from_file).
 /// See `compile_at_to_vue` for the return contract.
-fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget_names: Vec<String>, root_dir: &Path, shadcn: bool, default_classes: bool) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
+fn compile_at_to_vue_with_sub_widgets(
+    at_path: &Path,
+    _content: &str,
+    sub_widget_names: Vec<String>,
+    root_dir: &Path,
+    shadcn: bool,
+    default_classes: bool,
+) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
     use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
@@ -6809,8 +7770,7 @@ fn compile_at_to_vue_with_sub_widgets(at_path: &Path, _content: &str, sub_widget
         default_classes: Some(default_classes),
         ..Default::default()
     };
-    let result = generate_component_from_file(at_path, opts)
-        .map_err(|e| format!("{}", e))?;
+    let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
 
     auto_lang::ui_gen::validators::print_warnings_once(
         &at_path.display().to_string(),
@@ -7001,12 +7961,21 @@ fn build_back_client_module(
         let url = format!("{root}/apps/{app_id}{}", path);
         let params: Vec<&auto_lang::api::ApiParam> = ep.params.iter().collect();
         let void = matches!(ep.return_type.as_str(), "void" | "" | "()");
-        let params_sig: Vec<String> = params.iter().map(|p| format!("{} {}", p.name, p.ty)).collect();
-        let ret_ann = if void { String::new() } else { format!(" {}", ep.return_type) };
+        let params_sig: Vec<String> = params
+            .iter()
+            .map(|p| format!("{} {}", p.name, p.ty))
+            .collect();
+        let ret_ann = if void {
+            String::new()
+        } else {
+            format!(" {}", ep.return_type)
+        };
         // 路径参数拼接（{p}/:p 占位）。v1 语料无路径参数形态——命中时保守
         // 走整 URL 字面量（拼参形态留待实装语料出现时补）。
-        let body_params: Vec<&&auto_lang::api::ApiParam> =
-            params.iter().filter(|p| !path.contains(&format!(":{}", p.name))).collect();
+        let body_params: Vec<&&auto_lang::api::ApiParam> = params
+            .iter()
+            .filter(|p| !path.contains(&format!(":{}", p.name)))
+            .collect();
         // POST/PUT/PATCH body：镜像 emit_api_http_call 的既有构造——字面 key +
         // `json.from_value(arg)` 值序列化 + STR_CAT 链（split 模式同款，值经
         // VM 感知序列化不降格）。不用 json.encode 组对象（占位 encode 把堆
@@ -7272,7 +8241,11 @@ fn pac_media_root(pac_text: &str) -> Option<String> {
     let rest = &after[1..];
     let end = rest.find(quote)?;
     let v = &rest[..end];
-    if v.is_empty() { None } else { Some(v.to_string()) }
+    if v.is_empty() {
+        None
+    } else {
+        Some(v.to_string())
+    }
 }
 
 /// PLAN-658 T-03: 画廊 demo 行缓存——start_gallery_back_proxy 与
@@ -7304,7 +8277,7 @@ fn gallery_rows_with_disk_cache(
     apps_dir: &Path,
     fill: bool,
     scan_one: &(dyn Fn(&Path, &auto_lang::ui::app_registry::AppRegistryEntry) -> GalleryDemoRow
-              + Sync),
+          + Sync),
 ) -> Vec<GalleryDemoRow> {
     GALLERY_ROWS_CACHE.with(|c| {
         if let Some((cached_dir, rows)) = c.borrow_mut().take() {
@@ -7452,45 +8425,48 @@ pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
         return None;
     };
     let mut sessions: Vec<auto_lang::back_proxy::SessionSpec> = Vec::new();
-    let native_media: Vec<auto_lang::back_proxy::NativeMediaApp> = gallery_rows_via_cache(&apps_dir, true)
-        .into_iter()
-        .filter_map(|row| {
-            // PLAN-658 T-04/T-05: stream（~Stream）与 native-ns（use auto.*）
-            // 后端 demo 加载为 VM session——#[api] CRUD 在 session 内执行，
-            // 流端点按 proxy 签名特路服务，原生命名空间经进程级注册表可用。
-            let back_api = apps_dir.join(&row.id).join("src").join("back").join("api.at");
-            // PLAN-037 T-02: 谓词迁 auto-lang back_provision（本处改引用）。
-            let needs_session = std::fs::read_to_string(&back_api)
-                .map(|c| auto_lang::ui::back_provision::back_needs_session(&c))
-                .unwrap_or(false);
-            // Plan 672 条目 4: fullstack 档（普通 #[api] CRUD）同样建
-            // session——VM 臂此前靠 inproc 合并编译 CALL 面消费（谓词原
-            // 注释），Vue 臂浏览器 fetch 必须经 proxy /apps/<id>/ 伺服，
-            // 无会话即 404。VM 臂侧多出的空闲 session 无害（demo 语料
-            // 仍走 inproc，不经 proxy 路由）。
-            let fullstack_session = row.fullstack && back_api.is_file();
-            // PLAN-675 T-08: routable 档会话准入——路由 demo 的 back 链同为
-            // 普通 CRUD（needs_session 谓词只认 ~Stream/~Promise/use auto.），
-            // 不补此臂则五家路由 demo 的 API 全数 `404 unknown app`（走查
-            // 数据冻结真身之二，与 N2 死亡窗口叠加）。
-            let routable_session = row.routable && back_api.is_file();
-            if (needs_session || fullstack_session || routable_session)
-                && back_api.is_file()
-            {
-                sessions.push(auto_lang::back_proxy::SessionSpec {
+    let native_media: Vec<auto_lang::back_proxy::NativeMediaApp> =
+        gallery_rows_via_cache(&apps_dir, true)
+            .into_iter()
+            .filter_map(|row| {
+                // PLAN-658 T-04/T-05: stream（~Stream）与 native-ns（use auto.*）
+                // 后端 demo 加载为 VM session——#[api] CRUD 在 session 内执行，
+                // 流端点按 proxy 签名特路服务，原生命名空间经进程级注册表可用。
+                let back_api = apps_dir
+                    .join(&row.id)
+                    .join("src")
+                    .join("back")
+                    .join("api.at");
+                // PLAN-037 T-02: 谓词迁 auto-lang back_provision（本处改引用）。
+                let needs_session = std::fs::read_to_string(&back_api)
+                    .map(|c| auto_lang::ui::back_provision::back_needs_session(&c))
+                    .unwrap_or(false);
+                // Plan 672 条目 4: fullstack 档（普通 #[api] CRUD）同样建
+                // session——VM 臂此前靠 inproc 合并编译 CALL 面消费（谓词原
+                // 注释），Vue 臂浏览器 fetch 必须经 proxy /apps/<id>/ 伺服，
+                // 无会话即 404。VM 臂侧多出的空闲 session 无害（demo 语料
+                // 仍走 inproc，不经 proxy 路由）。
+                let fullstack_session = row.fullstack && back_api.is_file();
+                // PLAN-675 T-08: routable 档会话准入——路由 demo 的 back 链同为
+                // 普通 CRUD（needs_session 谓词只认 ~Stream/~Promise/use auto.），
+                // 不补此臂则五家路由 demo 的 API 全数 `404 unknown app`（走查
+                // 数据冻结真身之二，与 N2 死亡窗口叠加）。
+                let routable_session = row.routable && back_api.is_file();
+                if (needs_session || fullstack_session || routable_session) && back_api.is_file() {
+                    sessions.push(auto_lang::back_proxy::SessionSpec {
+                        app_id: row.id.clone(),
+                        back_entry: back_api,
+                    });
+                }
+                if !(row.loadable || row.fullstack || row.route_stub) {
+                    return None;
+                }
+                Some(auto_lang::back_proxy::NativeMediaApp {
                     app_id: row.id.clone(),
-                    back_entry: back_api,
-                });
-            }
-            if !(row.loadable || row.fullstack || row.route_stub) {
-                return None;
-            }
-            Some(auto_lang::back_proxy::NativeMediaApp {
-                app_id: row.id.clone(),
-                media_root: pac_media_root(&row.pac),
+                    media_root: pac_media_root(&row.pac),
+                })
             })
-        })
-        .collect();
+            .collect();
     if native_media.is_empty() && sessions.is_empty() {
         return None;
     }
@@ -7602,9 +8578,7 @@ pub fn emit_gallery_vm_demos(
             if m.is_empty() {
                 continue;
             }
-            if deps_dir
-                .is_some_and(|d| d.join(m.split('.').next().unwrap_or(m)).is_dir())
-            {
+            if deps_dir.is_some_and(|d| d.join(m.split('.').next().unwrap_or(m)).is_dir()) {
                 continue;
             }
             if collected.contains_key(m) {
@@ -7622,7 +8596,10 @@ pub fn emit_gallery_vm_demos(
                 }
             }
             let Some(p) = found else {
-                println!("  {} gallery module `{m}` not found — tolerated (stub degradation)", "⚠".bright_yellow());
+                println!(
+                    "  {} gallery module `{m}` not found — tolerated (stub degradation)",
+                    "⚠".bright_yellow()
+                );
                 continue;
             };
             let content = fs::read_to_string(&p).unwrap_or_default();
@@ -7713,7 +8690,10 @@ pub fn emit_gallery_vm_demos(
         // `store.X` 泛型接收者要参与本 demo 的真名限定（多 store 合并单元
         // 下未限定即 plan-446 A1 歧义硬错，五 stub 页 A1 实证）。
         if let Some((key, page_src)) = &stub_page {
-            row_modules.insert(key.clone(), inline_stylekit_recipes(page_src, recipes.as_ref()));
+            row_modules.insert(
+                key.clone(),
+                inline_stylekit_recipes(page_src, recipes.as_ref()),
+            );
         }
         // PLAN-642 T-14a 边界：多 store demo（023-realworld：AuthStore +
         // ArticleStore，泛型 store.X 调用语义分属）超出 stub 档的单 store
@@ -7734,11 +8714,9 @@ pub fn emit_gallery_vm_demos(
         for (_, c) in row_modules.iter_mut() {
             *c = inline_stylekit_recipes(c, recipes.as_ref());
         }
-        let modules_conflict = row_modules.iter().any(|(m, c)| {
-            module_files
-                .get(m)
-                .is_some_and(|prev| prev != c)
-        });
+        let modules_conflict = row_modules
+            .iter()
+            .any(|(m, c)| module_files.get(m).is_some_and(|prev| prev != c));
         if widget_decls != 1 || has_at_import || modules_conflict {
             skipped.push(r.id.clone());
             continue;
@@ -7874,7 +8852,11 @@ pub fn emit_gallery_vm_demos(
                 };
                 let root = gallery_proxy_root().unwrap_or_default();
                 let client_stem = format!("{ns}_api_client");
-                let stream_url = format!("{root}/apps/{}/{}", r.id, stream_path.trim_start_matches('/'));
+                let stream_url = format!(
+                    "{root}/apps/{}/{}",
+                    r.id,
+                    stream_path.trim_start_matches('/')
+                );
                 // ① 前端 use 行剔除流项（client 无流 fn——流消费走 Tick 注入）。
                 let sf: Vec<&str> = stream_fns.iter().map(|s| s.as_str()).collect();
                 // ①b 相对 fixtures 字面量锚定（T-05）：`../../tests/` 相对
@@ -7882,10 +8864,8 @@ pub fn emit_gallery_vm_demos(
                 // 路径 demo 的拷贝件改锚到 apps_dir 下绝对路径（语料不动）。
                 let demo_root = apps_dir.join(&r.id);
                 let rel_anchor = "../../tests/";
-                let abs_anchor = format!(
-                    "{}/tests/",
-                    demo_root.to_string_lossy().replace('\\', "/")
-                );
+                let abs_anchor =
+                    format!("{}/tests/", demo_root.to_string_lossy().replace('\\', "/"));
                 let absolutize = |c: &str| {
                     if c.contains(rel_anchor) {
                         c.replace(rel_anchor, &abs_anchor)
@@ -7923,8 +8903,7 @@ pub fn emit_gallery_vm_demos(
                 if !stream_path.is_empty() {
                     source_rw = inject_sse_tick(&source_rw, &stream_url);
                 }
-                let mut ns_modules: std::collections::BTreeMap<String, String> =
-                    Default::default();
+                let mut ns_modules: std::collections::BTreeMap<String, String> = Default::default();
                 for (m, c) in row_ds {
                     ns_modules.insert(
                         renames.get(&m).cloned().unwrap_or_else(|| m.clone()),
@@ -7936,66 +8915,75 @@ pub fn emit_gallery_vm_demos(
                 ns_modules.insert(client_stem, client_src);
                 row_modules = ns_modules;
             } else {
-            // 改写映射：原始模块路径 → `<ns>_<mod>`（`.` 折叠 `_`，与
-            // resolve_module_path 的 rel 同形）；种子别名形式（back.api）
-            // 指向与其 canonical（api）同一目标。
-            // back 链名称集（canonical + 种子别名形式）——item 调用点限定
-            // 仅对 back 链 use 生效。
-            let mut back_names: std::collections::BTreeSet<String> = Default::default();
-            for k in back_modules.keys() {
-                back_names.insert(k.clone());
-            }
-            for k in back_aliases.keys() {
-                back_names.insert(k.clone());
-            }
-            for m in row_modules.keys() {
-                renames.insert(m.clone(), format!("{ns}_{}", m.replace('.', "_")));
-            }
-            for m in back_modules.keys() {
-                renames.insert(m.clone(), format!("{ns}_{}", m.replace('.', "_")));
-            }
-            for (form, canon) in &back_aliases {
-                if let Some(t) = renames.get(canon) {
-                    renames.insert(form.clone(), t.clone());
+                // 改写映射：原始模块路径 → `<ns>_<mod>`（`.` 折叠 `_`，与
+                // resolve_module_path 的 rel 同形）；种子别名形式（back.api）
+                // 指向与其 canonical（api）同一目标。
+                // back 链名称集（canonical + 种子别名形式）——item 调用点限定
+                // 仅对 back 链 use 生效。
+                let mut back_names: std::collections::BTreeSet<String> = Default::default();
+                for k in back_modules.keys() {
+                    back_names.insert(k.clone());
                 }
-            }
-            // back 内容改写 + 解析探针（改写后：防改写损伤/语法坏源上发射面）。
-            let mut rewritten: Vec<(String, String)> = Vec::with_capacity(back_modules.len());
-            for (m, c) in back_modules.iter() {
-                let rc = qualify_native_ns_receivers(&rewrite_use_modules(c, &renames, &back_names));
-                let mut parser = auto_lang::Parser::from(rc.as_str())
-                    .with_session(auto_lang::session::CompilerSession::core());
-                if let Err(e) = parser.parse() {
-                    println!(
-                        "  {} gallery back module `{}` parse failed — demo skipped: {e}",
-                        "⚠".bright_yellow(),
-                        renames.get(m).map(|s| s.as_str()).unwrap_or(m)
+                for k in back_aliases.keys() {
+                    back_names.insert(k.clone());
+                }
+                for m in row_modules.keys() {
+                    renames.insert(m.clone(), format!("{ns}_{}", m.replace('.', "_")));
+                }
+                for m in back_modules.keys() {
+                    renames.insert(m.clone(), format!("{ns}_{}", m.replace('.', "_")));
+                }
+                for (form, canon) in &back_aliases {
+                    if let Some(t) = renames.get(canon) {
+                        renames.insert(form.clone(), t.clone());
+                    }
+                }
+                // back 内容改写 + 解析探针（改写后：防改写损伤/语法坏源上发射面）。
+                let mut rewritten: Vec<(String, String)> = Vec::with_capacity(back_modules.len());
+                for (m, c) in back_modules.iter() {
+                    let rc =
+                        qualify_native_ns_receivers(&rewrite_use_modules(c, &renames, &back_names));
+                    let mut parser = auto_lang::Parser::from(rc.as_str())
+                        .with_session(auto_lang::session::CompilerSession::core());
+                    if let Err(e) = parser.parse() {
+                        println!(
+                            "  {} gallery back module `{}` parse failed — demo skipped: {e}",
+                            "⚠".bright_yellow(),
+                            renames.get(m).map(|s| s.as_str()).unwrap_or(m)
+                        );
+                        back_ok = false;
+                    }
+                    rewritten.push((m.clone(), rc));
+                }
+                for (m, rc) in rewritten {
+                    back_modules.insert(m, rc);
+                }
+                if !back_ok || back_modules.is_empty() {
+                    skipped.push(format!("{}(back 链不可内嵌)", r.id));
+                    continue;
+                }
+                source_rw = qualify_native_ns_receivers(&rewrite_use_modules(
+                    source,
+                    &renames,
+                    &back_names,
+                ));
+                let mut ns_modules: std::collections::BTreeMap<String, String> = Default::default();
+                for (m, c) in row_modules {
+                    ns_modules.insert(
+                        renames.get(&m).cloned().unwrap_or_else(|| m.clone()),
+                        qualify_native_ns_receivers(&rewrite_use_modules(
+                            &c,
+                            &renames,
+                            &back_names,
+                        )),
                     );
-                    back_ok = false;
                 }
-                rewritten.push((m.clone(), rc));
-            }
-            for (m, rc) in rewritten {
-                back_modules.insert(m, rc);
-            }
-            if !back_ok || back_modules.is_empty() {
-                skipped.push(format!("{}(back 链不可内嵌)", r.id));
-                continue;
-            }
-            source_rw = qualify_native_ns_receivers(&rewrite_use_modules(source, &renames, &back_names));
-            let mut ns_modules: std::collections::BTreeMap<String, String> = Default::default();
-            for (m, c) in row_modules {
-                ns_modules.insert(
-                    renames.get(&m).cloned().unwrap_or_else(|| m.clone()),
-                    qualify_native_ns_receivers(&rewrite_use_modules(&c, &renames, &back_names)),
-                );
-            }
-            row_modules = ns_modules;
-            // back 链以改名后的唯一 stem 键入发射面（键=文件 stem=符号限定）
-            for (m, c) in back_modules {
-                let key = renames.get(&m).cloned().unwrap_or_else(|| m.clone());
-                row_modules.insert(key, c);
-            }
+                row_modules = ns_modules;
+                // back 链以改名后的唯一 stem 键入发射面（键=文件 stem=符号限定）
+                for (m, c) in back_modules {
+                    let key = renames.get(&m).cloned().unwrap_or_else(|| m.clone());
+                    row_modules.insert(key, c);
+                }
             }
         }
         // PLAN-633: store 接收者限定——画廊宿主 VM 编译单元汇集全部 demo
@@ -8037,7 +9025,9 @@ pub fn emit_gallery_vm_demos(
             if !(t.starts_with("use { package:") || t.starts_with("use{package:")) {
                 continue;
             }
-            let Some(from_pos) = t.find("from") else { continue };
+            let Some(from_pos) = t.find("from") else {
+                continue;
+            };
             let seg = t[from_pos + 4..].trim();
             let Some(q) = seg.find('"') else { continue };
             let rest = &seg[q + 1..];
@@ -8063,7 +9053,9 @@ pub fn emit_gallery_vm_demos(
                 if p.file_name().map_or(false, |n| n == "package.at") {
                     continue;
                 }
-                let Some(fname) = p.file_name().and_then(|n| n.to_str()) else { continue };
+                let Some(fname) = p.file_name().and_then(|n| n.to_str()) else {
+                    continue;
+                };
                 let target = target_dir.join(fname);
                 if target.exists() {
                     let prev = fs::read_to_string(&target).unwrap_or_default();
@@ -8140,7 +9132,11 @@ pub fn emit_gallery_vm_demos(
             "use.web component {pascal} from \"src/gallery/demos/{fname}\"\n"
         ));
         // if/else-if 链:首分支 if,后续 } else if(分支体不闭合,由链尾统一收口)
-        let kw = if branches.is_empty() { "if" } else { "} else if" };
+        let kw = if branches.is_empty() {
+            "if"
+        } else {
+            "} else if"
+        };
         branches.push_str(&format!(
             "            {} .app == \"{}\" {{\n                {} {{}}\n",
             kw, r.id, pascal
@@ -8346,9 +9342,7 @@ fn rewrite_routes_stub(source: &str) -> Option<(String, String)> {
                             // 页面无路由上下文不可独立渲染。
                             if path == "/" {
                                 home_widget = Some(w);
-                            } else if home_widget.is_none()
-                                && !path.contains(':')
-                                && !w.is_empty()
+                            } else if home_widget.is_none() && !path.contains(':') && !w.is_empty()
                             {
                                 home_widget = Some(w.clone());
                             }
@@ -8426,12 +9420,8 @@ fn relink_store_use_lines(source: &str, app_dir: &Path) -> String {
                         if let Some(stem) = decl_stems.get(name) {
                             if !stem.is_empty() && stem != tok {
                                 if let Some(pos) = l.find(tok) {
-                                    line = format!(
-                                        "{}{}{}",
-                                        &l[..pos],
-                                        stem,
-                                        &l[pos + tok.len()..]
-                                    );
+                                    line =
+                                        format!("{}{}{}", &l[..pos], stem, &l[pos + tok.len()..]);
                                 }
                                 break;
                             }
@@ -8890,7 +9880,11 @@ pub fn gallery_scope_theme_runtime(sfc: &str) -> String {
         "}\n",
     );
     // helper 本身含 document.documentElement 字面量，故在替换之后注入。
-    scoped.replacen("function applyAccent", &format!("{}function applyAccent", helper), 1)
+    scoped.replacen(
+        "function applyAccent",
+        &format!("{}function applyAccent", helper),
+        1,
+    )
 }
 
 /// Plan 672 条目 7: 嵌入态根净化——demo App 根元素（`data-auto-id="aura_0"`）
@@ -8942,33 +9936,79 @@ fn gallery_demo_row(
         .unwrap_or_default();
     let pac = fs::read_to_string(app_root.join("pac.at")).unwrap_or_default();
 
-    let category = if e.id.starts_with("001") || e.id.starts_with("002") || e.id.starts_with("003") || e.id.starts_with("004") || e.id.starts_with("005") || e.id.starts_with("006") {
+    let category = if e.id.starts_with("001")
+        || e.id.starts_with("002")
+        || e.id.starts_with("003")
+        || e.id.starts_with("004")
+        || e.id.starts_with("005")
+        || e.id.starts_with("006")
+    {
         "01-basic".to_string()
-    } else if e.id.starts_with("007") || e.id.starts_with("008") || e.id.starts_with("009") || e.id.starts_with("010") || e.id.starts_with("011") || e.id.starts_with("012") || e.id.starts_with("016") {
+    } else if e.id.starts_with("007")
+        || e.id.starts_with("008")
+        || e.id.starts_with("009")
+        || e.id.starts_with("010")
+        || e.id.starts_with("011")
+        || e.id.starts_with("012")
+        || e.id.starts_with("016")
+    {
         "02-components".to_string()
-    } else if e.id.starts_with("013") || e.id.starts_with("014") || e.id.starts_with("015") || e.id.starts_with("017") || e.id.starts_with("018") || e.id.starts_with("019") || e.id.starts_with("020") || e.id.starts_with("021") || e.id.starts_with("022") || e.id.starts_with("023") || e.id.starts_with("031") {
+    } else if e.id.starts_with("013")
+        || e.id.starts_with("014")
+        || e.id.starts_with("015")
+        || e.id.starts_with("017")
+        || e.id.starts_with("018")
+        || e.id.starts_with("019")
+        || e.id.starts_with("020")
+        || e.id.starts_with("021")
+        || e.id.starts_with("022")
+        || e.id.starts_with("023")
+        || e.id.starts_with("031")
+    {
         "03-apps".to_string()
     } else {
         "04-systems".to_string()
     };
 
     let mut tags: Vec<String> = Vec::new();
-    if e.id.contains("counter") { tags.extend(vec!["Elm".into(), "State".into(), "Lambda".into()]); }
-    else if e.id.contains("todo") { tags.extend(vec!["TodoMVC".into(), "Filter".into(), "CRUD".into()]); }
-    else if e.id.contains("chart") { tags.extend(vec!["Data".into(), "SVG".into(), "Animation".into()]); }
-    else if e.id.contains("calculator") { tags.extend(vec!["Grid".into(), "Math".into()]); }
-    else if e.id.contains("weather") { tags.extend(vec!["Dashboard".into(), "Cards".into()]); }
-    else if e.id.contains("notes") { tags.extend(vec!["Fullstack".into(), "Markdown".into(), "Sidebar".into()]); }
-    else if e.id.contains("chat") { tags.extend(vec!["Chat".into(), "Scroll".into(), "Avatars".into()]); }
-    else if e.id.contains("kanban") { tags.extend(vec!["DnD".into(), "Columns".into(), "Cards".into()]); }
-    else if e.id.contains("photo") { tags.extend(vec!["Images".into(), "Gallery".into(), "Modal".into()]); }
-    else if e.id.contains("mine") { tags.extend(vec!["Game".into(), "Grid".into(), "Timer".into()]); }
-    else if e.id.contains("login") { tags.extend(vec!["Form".into(), "Validation".into()]); }
-    else if e.id.contains("converter") { tags.extend(vec!["Binding".into(), "7GUIs".into()]); }
-    else { tags.push("AutoUI".into()); }
+    if e.id.contains("counter") {
+        tags.extend(vec!["Elm".into(), "State".into(), "Lambda".into()]);
+    } else if e.id.contains("todo") {
+        tags.extend(vec!["TodoMVC".into(), "Filter".into(), "CRUD".into()]);
+    } else if e.id.contains("chart") {
+        tags.extend(vec!["Data".into(), "SVG".into(), "Animation".into()]);
+    } else if e.id.contains("calculator") {
+        tags.extend(vec!["Grid".into(), "Math".into()]);
+    } else if e.id.contains("weather") {
+        tags.extend(vec!["Dashboard".into(), "Cards".into()]);
+    } else if e.id.contains("notes") {
+        tags.extend(vec![
+            "Fullstack".into(),
+            "Markdown".into(),
+            "Sidebar".into(),
+        ]);
+    } else if e.id.contains("chat") {
+        tags.extend(vec!["Chat".into(), "Scroll".into(), "Avatars".into()]);
+    } else if e.id.contains("kanban") {
+        tags.extend(vec!["DnD".into(), "Columns".into(), "Cards".into()]);
+    } else if e.id.contains("photo") {
+        tags.extend(vec!["Images".into(), "Gallery".into(), "Modal".into()]);
+    } else if e.id.contains("mine") {
+        tags.extend(vec!["Game".into(), "Grid".into(), "Timer".into()]);
+    } else if e.id.contains("login") {
+        tags.extend(vec!["Form".into(), "Validation".into()]);
+    } else if e.id.contains("converter") {
+        tags.extend(vec!["Binding".into(), "7GUIs".into()]);
+    } else {
+        tags.push("AutoUI".into());
+    }
 
     // PLAN-015: 展示名走 locale 链。
-    let desc = if !e.title.is_empty() { e.display_title().to_string() } else { e.id.clone() };
+    let desc = if !e.title.is_empty() {
+        e.display_title().to_string()
+    } else {
+        e.id.clone()
+    };
 
     let vp = match VueProject::from_workspace(&app_root) {
         Ok(v) => Some(v),
@@ -8995,8 +10035,7 @@ fn gallery_demo_row(
     }
     let is_vm_only = pac.contains("render: \"vm\"") || pac.contains("render: 'vm'");
     let (loadable, fullstack) = if let Some(vp) = &vp {
-        let has_back_corpus =
-            vp_corpus.contains("@/lib/api") || vp_corpus.contains("from '@/api");
+        let has_back_corpus = vp_corpus.contains("@/lib/api") || vp_corpus.contains("from '@/api");
         let base_ok = !is_vm_only
             && !vp.has_routes
             && !vp_corpus.contains("@/ext/")
@@ -9122,8 +10161,7 @@ fn resolve_demo_api_client_ts(apps_dir: &Path, demo_id: &str) -> Option<String> 
                 .ok()
                 .and_then(|content| crate::api_gen::try_full_parse(&content))
                 .map(|module| {
-                    auto_lang::api::TypeScriptGenerator::new()
-                        .generate_simple_client(&module)
+                    auto_lang::api::TypeScriptGenerator::new().generate_simple_client(&module)
                 })
         }
     };
@@ -9251,7 +10289,8 @@ fn generate_demos_registry(rows: &[GalleryDemoRow]) -> String {
         let doc_json = serde_json::to_string(&r.doc).unwrap_or_else(|_| "\"\"".to_string());
         let source_json = serde_json::to_string(&r.source).unwrap_or_else(|_| "\"\"".to_string());
         let pac_json = serde_json::to_string(&r.pac).unwrap_or_else(|_| "\"\"".to_string());
-        let desc_json = serde_json::to_string(&r.description).unwrap_or_else(|_| "\"\"".to_string());
+        let desc_json =
+            serde_json::to_string(&r.description).unwrap_or_else(|_| "\"\"".to_string());
         let title_json = serde_json::to_string(&r.title).unwrap_or_else(|_| "\"\"".to_string());
         let id_json = serde_json::to_string(&r.id).unwrap_or_else(|_| "\"\"".to_string());
         let cat_json = serde_json::to_string(&r.category).unwrap_or_else(|_| "\"\"".to_string());
@@ -9427,9 +10466,7 @@ fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
         // the 2026-09-07 ruling; registered as extra roots (native mount),
         // vm-track parity with app_registry::manifest_repo_roots. Env
         // override above keeps full-replace semantics (manifest not merged).
-        if let Some(os_root) =
-            auto_lang::ui::app_registry::resolve_os_manifest_root(parent)
-        {
+        if let Some(os_root) = auto_lang::ui::app_registry::resolve_os_manifest_root(parent) {
             for (id, root) in auto_lang::ui::app_registry::manifest_repo_roots(&os_root) {
                 if !out.iter().any(|(existing, _)| existing == &id) {
                     out.push((id, root));
@@ -9442,9 +10479,7 @@ fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
         // full-replace arm above stays this track's gallery off-switch (the
         // desktop.ps1/sh wrappers append the two roots explicitly); no
         // separate storage gate on this track (PLAN-008 §4).
-        for (id, root) in
-            auto_lang::ui::app_registry::gallery_extra_roots_from(None, parent)
-        {
+        for (id, root) in auto_lang::ui::app_registry::gallery_extra_roots_from(None, parent) {
             if !out.iter().any(|(existing, _)| existing == &id) {
                 out.push((id, root));
             }
@@ -9538,7 +10573,10 @@ fn merge_host_npm_deps(output_dir: &Path, deps: &[(String, String)]) -> AutoResu
         added += 1;
     }
     if added > 0 {
-        fs::write(&pkg_path, serde_json::to_string_pretty(&pkg).map_err(|e| e.to_string())?)?;
+        fs::write(
+            &pkg_path,
+            serde_json::to_string_pretty(&pkg).map_err(|e| e.to_string())?,
+        )?;
         println!("  {} App dependencies added: {}", "✓".bright_green(), added);
     }
     Ok(())
@@ -9807,6 +10845,77 @@ onMounted(() => {
 
 #[cfg(test)]
 mod tests {
+
+    /// PLAN-809 T-06c V-02：请求路径与 legacy 自扫的读点对拍——同输入
+    /// pac.at 下 VueReads 双源字段逐一相等 + 完整 from_workspace 双路径
+    /// 项目字段一致（生成器项目读取改轻合同的等价性证据）。
+    #[test]
+    fn plan809_v02_reads_request_vs_legacy_parity() {
+        use auto_project_model::descriptor::SourceInfo;
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let front = root.join("src").join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(front.join("app.at"), "widget W { view { text \"hi\" {} } }").unwrap();
+        std::fs::write(
+            root.join("pac.at"),
+            "name: \"parity-app\"
+title: \"Parity\"
+title_zh: \"对拍\"
+render: \"vue\"
+shadcn: off
+default_classes: on
+front: \"src/front\"
+npm_deps: [\"vue\", \"axios@^1.0.0\"]
+styles: [\"theme.css\"]
+i18n: true
+window: \"800x600\"
+",
+        )
+        .unwrap();
+
+        let pac_path = root.join("pac.at");
+        let pac_content = std::fs::read_to_string(&pac_path).unwrap();
+        let legacy = VueReads::scan(root, &pac_path, &pac_content);
+
+        // 生产请求构造路径（Pac::new → request_of）
+        let config =
+            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
+        let pac = crate::pac::Pac::new(config);
+        let req = crate::generation_request_adapter::request_of(&pac, &pac_path);
+        let from_req = VueReads::from_request(&req);
+
+        assert_eq!(from_req.name, legacy.name, "name");
+        assert_eq!(from_req.shadcn, legacy.shadcn, "shadcn 决策");
+        assert_eq!(
+            from_req.default_classes, legacy.default_classes,
+            "default_classes 决策"
+        );
+        assert_eq!(from_req.front_rel_path, legacy.front_rel_path, "front 声明");
+        assert_eq!(from_req.index_title, legacy.index_title, "locale 链标题");
+        assert_eq!(
+            from_req.npm_deps, legacy.npm_deps,
+            "npm_deps（数组+@ver 形态）"
+        );
+        assert_eq!(from_req.style_files, legacy.style_files, "styles");
+        assert_eq!(from_req.i18n.enabled, legacy.i18n.enabled, "i18n.enabled");
+        assert_eq!(
+            from_req.theme.is_some(),
+            legacy.theme.is_some(),
+            "theme 合成存在性"
+        );
+
+        // 完整双路径：from_workspace（自扫）vs from_workspace_with_request
+        let a = VueProject::from_workspace(root).unwrap();
+        let b = VueProject::from_workspace_with_request(root, &req).unwrap();
+        assert_eq!(a.name, b.name);
+        assert_eq!(a.index_title, b.index_title);
+        assert_eq!(a.npm_deps, b.npm_deps);
+        assert_eq!(a.style_files, b.style_files);
+        assert_eq!(a.i18n.enabled, b.i18n.enabled);
+        assert_eq!(a.theme.is_some(), b.theme.is_some());
+        assert_eq!(a.output_dir, b.output_dir);
+    }
     use super::*;
 
     /// Stage B P-3: apps 容器展开（vue 轨）——`../auto-os/apps` 下每个含
@@ -9899,10 +11008,19 @@ mod tests {
                 }
             }
         }
-        vm_roots.extend(auto_lang::ui::app_registry::gallery_extra_roots_from(None, tmp.path()));
+        vm_roots.extend(auto_lang::ui::app_registry::gallery_extra_roots_from(
+            None,
+            tmp.path(),
+        ));
         assert_eq!(
-            vue_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-            vm_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vue_roots
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
+            vm_roots
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
             "三轨 parity：id 集（含顺序）一致"
         );
         assert_eq!(
@@ -9911,8 +11029,18 @@ mod tests {
             "三轨 parity：根路径一致"
         );
         assert_eq!(
-            vue_roots.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
-            vec!["os-config", "alpha", "beta", "repoapp", "ui-gallery", "widgets-gallery"],
+            vue_roots
+                .iter()
+                .map(|(id, _)| id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "os-config",
+                "alpha",
+                "beta",
+                "repoapp",
+                "ui-gallery",
+                "widgets-gallery"
+            ],
             "四源齐备：单根 + 容器两子 + manifest repo + 顶层画廊两件（PLAN-008）"
         );
     }
@@ -9965,12 +11093,24 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let ui = tmp.path().join("src/components/ui/alert-dialog");
         std::fs::create_dir_all(ui.join("alert-dialog")).unwrap();
-        std::fs::write(ui.join("index.ts"), "export {}
-").unwrap();
-        std::fs::write(ui.join("AlertDialog.vue"), "<template/>
-").unwrap();
-        std::fs::write(ui.join("alert-dialog/AlertDialog.vue"), "<template/>
-").unwrap();
+        std::fs::write(
+            ui.join("index.ts"),
+            "export {}
+",
+        )
+        .unwrap();
+        std::fs::write(
+            ui.join("AlertDialog.vue"),
+            "<template/>
+",
+        )
+        .unwrap();
+        std::fs::write(
+            ui.join("alert-dialog/AlertDialog.vue"),
+            "<template/>
+",
+        )
+        .unwrap();
         let removed = dedupe_nested_component_dirs(tmp.path(), &["alert-dialog".to_string()]);
         assert_eq!(removed, vec!["alert-dialog".to_string()]);
         assert!(!ui.join("alert-dialog").exists());
@@ -9979,8 +11119,12 @@ mod tests {
         assert!(dedupe_nested_component_dirs(tmp.path(), &["alert-dialog".to_string()]).is_empty());
         let cli_only = tmp.path().join("src/components/ui/foo/foo");
         std::fs::create_dir_all(&cli_only).unwrap();
-        std::fs::write(cli_only.join("Foo.vue"), "<template/>
-").unwrap();
+        std::fs::write(
+            cli_only.join("Foo.vue"),
+            "<template/>
+",
+        )
+        .unwrap();
         assert!(dedupe_nested_component_dirs(tmp.path(), &["foo".to_string()]).is_empty());
         assert!(cli_only.exists());
     }
@@ -9992,8 +11136,13 @@ mod tests {
 title: \"Auto Musk\"
 ";
         assert_eq!(parse_pac_title(pac).as_deref(), Some("Auto Musk"));
-        assert_eq!(parse_pac_title("name: \"x\"
-"), None);
+        assert_eq!(
+            parse_pac_title(
+                "name: \"x\"
+"
+            ),
+            None
+        );
         let html = generate_index_html("auto-musk", Some("Auto Musk"), None);
         assert!(html.contains("<title>Auto Musk</title>"));
         let fallback = generate_index_html("auto-musk", None, None);
@@ -10042,7 +11191,8 @@ title: \"Clock\"
         let tmp = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(tmp.path().join("src/front/components")).unwrap();
         std::fs::write(
-            tmp.path().join("src/front/components/DeleteConfirmDialog.vue"),
+            tmp.path()
+                .join("src/front/components/DeleteConfirmDialog.vue"),
             "<script setup>
 import { AlertDialogAction } from '@/components/ui/alert-dialog'
 </script>
@@ -10050,13 +11200,21 @@ import { AlertDialogAction } from '@/components/ui/alert-dialog'
         )
         .unwrap();
         // 无关 ts 不误报;.vue 内空 trigger 家族命中 alert-dialog。
-        std::fs::write(tmp.path().join("src/front/plain.ts"), "export const x = 1
-").unwrap();
+        std::fs::write(
+            tmp.path().join("src/front/plain.ts"),
+            "export const x = 1
+",
+        )
+        .unwrap();
         let mut set = std::collections::BTreeSet::new();
         set.insert("src/front/components/DeleteConfirmDialog.vue".to_string());
         set.insert("src/front/plain.ts".to_string());
         let found = detect_ext_shadcn_components(tmp.path(), &set);
-        assert!(found.contains(&"alert-dialog".to_string()), "found={:?}", found);
+        assert!(
+            found.contains(&"alert-dialog".to_string()),
+            "found={:?}",
+            found
+        );
     }
 
     /// PLAN-063 Phase B T12 (KD 061 D27): 重生成保留会话级 devDeps
@@ -10094,7 +11252,10 @@ import { AlertDialogAction } from '@/components/ui/alert-dialog'
             parse_npm_deps(pac),
             vec![
                 ("cytoscape".to_string(), "^3.34.0".to_string()),
-                ("@autodown/engine".to_string(), "link:D:/p/engine".to_string()),
+                (
+                    "@autodown/engine".to_string(),
+                    "link:D:/p/engine".to_string()
+                ),
             ]
         );
 
@@ -10109,10 +11270,14 @@ import { AlertDialogAction } from '@/components/ui/alert-dialog'
         );
 
         // Nested { link: "path" } with a trailing comma inside the object
-        let pac_nested = "npm_deps: {\n  \"@autodown/engine\": {\n    link: \"D:/p/engine\",\n  }\n}\n";
+        let pac_nested =
+            "npm_deps: {\n  \"@autodown/engine\": {\n    link: \"D:/p/engine\",\n  }\n}\n";
         assert_eq!(
             parse_npm_deps(pac_nested),
-            vec![("@autodown/engine".to_string(), "link:D:/p/engine".to_string())]
+            vec![(
+                "@autodown/engine".to_string(),
+                "link:D:/p/engine".to_string()
+            )]
         );
 
         // Array form unchanged
@@ -10143,7 +11308,14 @@ render: \"vue\"
 ",
         )
         .unwrap();
-        std::fs::write(ui.join("001-alpha").join("src").join("front").join("app.at"), app_at).unwrap();
+        std::fs::write(
+            ui.join("001-alpha")
+                .join("src")
+                .join("front")
+                .join("app.at"),
+            app_at,
+        )
+        .unwrap();
         std::fs::create_dir_all(ui.join("002-beta").join("src").join("front")).unwrap();
         std::fs::write(
             ui.join("002-beta").join("pac.at"),
@@ -10152,7 +11324,11 @@ render: \"vm\"
 ",
         )
         .unwrap();
-        std::fs::write(ui.join("002-beta").join("src").join("front").join("app.at"), app_at).unwrap();
+        std::fs::write(
+            ui.join("002-beta").join("src").join("front").join("app.at"),
+            app_at,
+        )
+        .unwrap();
 
         let entries = auto_lang::ui::app_registry::scan_apps(
             &ui,
@@ -10180,15 +11356,21 @@ render: \"vm\"
             })
             .collect();
         let ts = generate_apps_registry(&rows, &[]);
-        assert!(ts.contains("\"001-alpha\""), "registry maps the vue app:
-{ts}");
+        assert!(
+            ts.contains("\"001-alpha\""),
+            "registry maps the vue app:
+{ts}"
+        );
         assert!(
             ts.contains("import(\"./apps/001-alpha/App.vue\")"),
             "static import literal required:
 {ts}"
         );
-        assert!(!ts.contains("002-beta"), "vm-declared app excluded:
-{ts}");
+        assert!(
+            !ts.contains("002-beta"),
+            "vm-declared app excluded:
+{ts}"
+        );
         std::fs::remove_dir_all(&tmp).ok();
     }
 
@@ -10199,8 +11381,10 @@ render: \"vm\"
         // 无配置：空表断言。
         let ts = generate_apps_registry(&[], &[]);
         assert!(
-            ts.contains("export const REMOTE_APPS: RemoteAppEntry[] = [
-]"),
+            ts.contains(
+                "export const REMOTE_APPS: RemoteAppEntry[] = [
+]"
+            ),
             "no-config REMOTE_APPS must be empty:
 {ts}"
         );
@@ -10254,8 +11438,14 @@ render: \"vm\"
     fn gallery_scope_theme_runtime_redirects_global_apply() {
         let themed = "watch(dark_mode, (v) => {\n  document.documentElement.classList.toggle('dark', v)\n})\nfunction applyAccent(name: string, isDark = false): void {\n  const root = document.documentElement\n  try { localStorage.setItem(ACCENT_STORAGE_KEY, name) } catch {}\n}";
         let out = crate::vue::gallery_scope_theme_runtime(themed);
-        assert!(out.contains("function __autoThemeRoot()"), "helper injected: {out}");
-        assert!(out.contains("__autoThemeRoot().classList.toggle('dark', v)"), "{out}");
+        assert!(
+            out.contains("function __autoThemeRoot()"),
+            "helper injected: {out}"
+        );
+        assert!(
+            out.contains("__autoThemeRoot().classList.toggle('dark', v)"),
+            "{out}"
+        );
         assert!(out.contains("__AUTO_UI_EMBED__"), "{out}");
         assert!(
             out.contains("if (!__autoEmbed) { try { localStorage.setItem"),
@@ -10272,7 +11462,8 @@ render: \"vm\"
         let plain = "const a = 1\n";
         // 无主题运行时的语料：跟随宿主回填仍生效（watch 族无 applyAccent 的
         // 形态），其余原样
-        let init_only = "onMounted(() => {\n  store.Init();\n  dark_mode.value = store.dark_mode;\n})";
+        let init_only =
+            "onMounted(() => {\n  store.Init();\n  dark_mode.value = store.dark_mode;\n})";
         let out2 = crate::vue::gallery_scope_theme_runtime(init_only);
         assert!(
             out2.contains("__AUTO_UI_THEME__") && out2.contains("__hd"),
@@ -10289,7 +11480,9 @@ render: \"vm\"
         let sfc = "<template>\n<div class=\"flex flex-col min-h-screen bg-muted/30 p-4 items-center justify-center\" data-auto-tag=\"col\" data-auto-src=\"app\" data-auto-id=\"aura_0\"><div class=\"w-[448px] p-6 bg-card border rounded-2xl\" data-auto-id=\"aura_1\"></div></div>\n</template>";
         let out = crate::vue::gallery_strip_root_page_chrome(sfc);
         assert!(
-            out.contains("class=\"flex flex-col p-4 items-center justify-center\" data-auto-tag=\"col\""),
+            out.contains(
+                "class=\"flex flex-col p-4 items-center justify-center\" data-auto-tag=\"col\""
+            ),
             "root chrome stripped: {out}"
         );
         assert!(out.contains("bg-card"), "inner card bg untouched: {out}");
@@ -10307,13 +11500,28 @@ render: \"vm\"
     fn package_json_base_deps_only_without_features() {
         let pkg = generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
         for dep in [
-            "vue-codemirror", "codemirror", "@codemirror/view", "@codemirror/state",
-            "@codemirror/language", "@codemirror/search", "@codemirror/lang-rust",
-            "vue-sonner", "reka-ui", "class-variance-authority", "vaul-vue",
-            "vee-validate", "@vee-validate/zod", "zod", "embla-carousel-vue",
+            "vue-codemirror",
+            "codemirror",
+            "@codemirror/view",
+            "@codemirror/state",
+            "@codemirror/language",
+            "@codemirror/search",
+            "@codemirror/lang-rust",
+            "vue-sonner",
+            "reka-ui",
+            "class-variance-authority",
+            "vaul-vue",
+            "vee-validate",
+            "@vee-validate/zod",
+            "zod",
+            "embla-carousel-vue",
             "@vueuse/core",
         ] {
-            assert!(!pkg.contains(&format!("\"{}\"", dep)), "{} leaked: {dep}", pkg);
+            assert!(
+                !pkg.contains(&format!("\"{}\"", dep)),
+                "{} leaked: {dep}",
+                pkg
+            );
         }
         // Base scaffold deps stay.
         assert!(pkg.contains("\"vue\""), "{pkg}");
@@ -10327,7 +11535,10 @@ render: \"vm\"
     /// dep set (matching the CodeEditor.vue shell's actual imports).
     #[test]
     fn package_json_includes_codemirror_deps_when_code_editor() {
-        let usage = VueDependencyUsage { code_editor: true, ..Default::default() };
+        let usage = VueDependencyUsage {
+            code_editor: true,
+            ..Default::default()
+        };
         let pkg = generate_package_json("demo", false, false, &[], &usage);
         assert!(pkg.contains("\"vue-codemirror\""), "{pkg}");
         assert!(pkg.contains("\"codemirror\""), "{pkg}");
@@ -10369,7 +11580,10 @@ render: \"vm\"
         // 生成物依赖中(负断言)。
         assert!(!pkg.contains("unovis"), "{pkg}");
         // A single consumed group doesn't drag the others in.
-        let only_toast = VueDependencyUsage { toast: true, ..Default::default() };
+        let only_toast = VueDependencyUsage {
+            toast: true,
+            ..Default::default()
+        };
         let pkg = generate_package_json("demo", false, false, &[], &only_toast);
         assert!(pkg.contains("\"vue-sonner\""), "{pkg}");
         assert!(!pkg.contains("\"reka-ui\""), "{pkg}");
@@ -10403,15 +11617,44 @@ render: \"vm\"
     #[test]
     fn package_json_drift_detection() {
         let legacy_full = generate_package_json(
-            "demo", false, false, &[],
-            &VueDependencyUsage { code_editor: true, toast: true, button: true, ..Default::default() },
+            "demo",
+            false,
+            false,
+            &[],
+            &VueDependencyUsage {
+                code_editor: true,
+                toast: true,
+                button: true,
+                ..Default::default()
+            },
         );
-        assert!(!package_json_deps_drifted(&legacy_full, &VueDependencyUsage { code_editor: true, toast: true, button: true, ..Default::default() }, &[]));
+        assert!(!package_json_deps_drifted(
+            &legacy_full,
+            &VueDependencyUsage {
+                code_editor: true,
+                toast: true,
+                button: true,
+                ..Default::default()
+            },
+            &[]
+        ));
         // Same pkg, app no longer uses the features → drifted (prune).
-        assert!(package_json_deps_drifted(&legacy_full, &VueDependencyUsage::default(), &[]));
+        assert!(package_json_deps_drifted(
+            &legacy_full,
+            &VueDependencyUsage::default(),
+            &[]
+        ));
         // Minimal pkg, app gained a feature → drifted (add).
-        let minimal = generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
-        assert!(package_json_deps_drifted(&minimal, &VueDependencyUsage { toast: true, ..Default::default() }, &[]));
+        let minimal =
+            generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
+        assert!(package_json_deps_drifted(
+            &minimal,
+            &VueDependencyUsage {
+                toast: true,
+                ..Default::default()
+            },
+            &[]
+        ));
     }
 
     /// Plan 444 (ash-shell-057 ⑥): the progress / scroll-area / table
@@ -10431,20 +11674,19 @@ render: \"vm\"
         );
 
         // The scroll-area marker must not false-positive on a longer path.
-        let usage = VueDependencyUsage::detect(
-            "import { X } from '@/components/ui/scroll-area-shadow'\n",
-        );
+        let usage =
+            VueDependencyUsage::detect("import { X } from '@/components/ui/scroll-area-shadow'\n");
         assert!(!usage.vueuse_scaffold, "{usage:?}");
 
         // Regeneration drift: a pkg that DROPPED @vueuse while the corpus
         // still uses table must be flagged stale.
-        let stale = generate_package_json(
-            "ash", false, false, &[],
-            &VueDependencyUsage::default(),
-        );
+        let stale = generate_package_json("ash", false, false, &[], &VueDependencyUsage::default());
         assert!(package_json_deps_drifted(
             &stale,
-            &VueDependencyUsage { vueuse_scaffold: true, ..Default::default() },
+            &VueDependencyUsage {
+                vueuse_scaffold: true,
+                ..Default::default()
+            },
             &[],
         ));
     }
@@ -10460,8 +11702,7 @@ render: \"vm\"
         const ALLOWED_FALLBACK: &[&str] = &["auto-complete", "input-otp", "native-select"];
         for (_, component) in COMPONENT_PATTERNS {
             assert!(
-                crate::vue_shadcn::is_bundled(component)
-                    || ALLOWED_FALLBACK.contains(component),
+                crate::vue_shadcn::is_bundled(component) || ALLOWED_FALLBACK.contains(component),
                 "component '{component}' is neither bundled nor allowlisted for fallback"
             );
         }
@@ -10521,7 +11762,10 @@ render: \"vm\"
         std::fs::remove_file(comps.join("CodeEditor.vue")).unwrap();
         sync_code_editor_shell(
             &dir,
-            &VueDependencyUsage { code_editor: true, ..Default::default() },
+            &VueDependencyUsage {
+                code_editor: true,
+                ..Default::default()
+            },
         )
         .unwrap();
         assert!(comps.join("CodeEditor.vue").exists());
@@ -10544,7 +11788,10 @@ render: \"vm\"
         // @codemirror/search@6 导出面不存在,见 musk-038 待澄清 #10)。
         assert!(component.contains("setSearchQuery.of("), "{component}");
         assert!(!component.contains("setSearchEffect"), "{component}");
-        assert!(component.contains("searchPanel({ top: true })"), "{component}");
+        assert!(
+            component.contains("searchPanel({ top: true })"),
+            "{component}"
+        );
         assert!(component.contains("emit('cursor',"), "{component}");
         assert!(component.contains("emit('contextmenu',"), "{component}");
         assert!(component.contains("requestAnimationFrame"), "{component}");
@@ -10553,7 +11800,10 @@ render: \"vm\"
         assert!(component.contains("auto: () => autoLang"), "{component}");
         assert!(component.contains("at: () => autoLang"), "{component}");
         // vi 降级声明:prop 声明存在(防 attribute 透传),但无 vim 扩展。
-        assert!(component.contains("vi: { type: Boolean, default: false }"), "{component}");
+        assert!(
+            component.contains("vi: { type: Boolean, default: false }"),
+            "{component}"
+        );
         assert!(!component.contains("codemirror-vim"), "{component}");
         // PLAN-677 T-02: 深色主题走 shadcn CSS 变量(不硬编码调色板)+
         // 折叠 gutter/快捷键。原始串内禁出现 `"#` 终止序列(裸串守卫)。
@@ -10564,10 +11814,19 @@ render: \"vm\"
             component.contains("'&.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground'"),
             "{component}"
         );
-        assert!(component.contains("hsl(var(--foreground) / 0.14)"), "{component}");
-        assert!(component.contains("hsl(var(--muted-foreground))"), "{component}");
+        assert!(
+            component.contains("hsl(var(--foreground) / 0.14)"),
+            "{component}"
+        );
+        assert!(
+            component.contains("hsl(var(--muted-foreground))"),
+            "{component}"
+        );
         assert!(component.contains("hsl(var(--background))"), "{component}");
-        assert!(!component.contains("\"#"), "raw-string terminator in template");
+        assert!(
+            !component.contains("\"#"),
+            "raw-string terminator in template"
+        );
     }
 
     /// PLAN-677 T-02: 使用中的旧版脚手架 shell(可识别为我们但与当前模板
@@ -10589,18 +11848,39 @@ export default {{ }}
             ""
         );
         std::fs::write(comps.join("CodeEditor.vue"), &old_shell).unwrap();
-        sync_code_editor_shell(&dir, &VueDependencyUsage { code_editor: true, ..Default::default() }).unwrap();
+        sync_code_editor_shell(
+            &dir,
+            &VueDependencyUsage {
+                code_editor: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let after = std::fs::read_to_string(comps.join("CodeEditor.vue")).unwrap();
-        assert_eq!(after, generate_code_editor_component(), "stale own scaffold must be overwritten");
+        assert_eq!(
+            after,
+            generate_code_editor_component(),
+            "stale own scaffold must be overwritten"
+        );
 
         // 手写 shell:无 codemirror import → 不覆写。
         let handwritten = "// my own editor
 <template><div/></template>
 ";
         std::fs::write(comps.join("CodeEditor.vue"), handwritten).unwrap();
-        sync_code_editor_shell(&dir, &VueDependencyUsage { code_editor: true, ..Default::default() }).unwrap();
+        sync_code_editor_shell(
+            &dir,
+            &VueDependencyUsage {
+                code_editor: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
         let after2 = std::fs::read_to_string(comps.join("CodeEditor.vue")).unwrap();
-        assert_eq!(after2, handwritten, "hand-written shell must stay untouched");
+        assert_eq!(
+            after2, handwritten,
+            "hand-written shell must stay untouched"
+        );
 
         std::fs::remove_dir_all(&dir).ok();
     }
@@ -10616,16 +11896,30 @@ export default {{ }}
             ..Default::default()
         };
         ensure_editor_bridge(&dir, &usage).unwrap();
-        let bridge = std::fs::read_to_string(dir.join("src").join("lib").join("editorBridge.ts")).unwrap();
-        assert!(bridge.contains("export function registerEditor"), "{bridge}");
-        assert!(bridge.contains("export function unregisterEditor"), "{bridge}");
+        let bridge =
+            std::fs::read_to_string(dir.join("src").join("lib").join("editorBridge.ts")).unwrap();
+        assert!(
+            bridge.contains("export function registerEditor"),
+            "{bridge}"
+        );
+        assert!(
+            bridge.contains("export function unregisterEditor"),
+            "{bridge}"
+        );
         assert!(bridge.contains("codeEditorFoldToggle"), "{bridge}");
-        assert!(bridge.contains("foldable(v.state, l.from, l.to)"), "{bridge}");
+        assert!(
+            bridge.contains("foldable(v.state, l.from, l.to)"),
+            "{bridge}"
+        );
         // 不使用 code_editor：不发。
         let dir2 = std::env::temp_dir().join(format!("plan677_bridge_off_{}", std::process::id()));
         std::fs::create_dir_all(&dir2).unwrap();
         ensure_editor_bridge(&dir2, &VueDependencyUsage::default()).unwrap();
-        assert!(!dir2.join("src").join("lib").join("editorBridge.ts").exists());
+        assert!(!dir2
+            .join("src")
+            .join("lib")
+            .join("editorBridge.ts")
+            .exists());
         std::fs::remove_dir_all(&dir).ok();
         std::fs::remove_dir_all(&dir2).ok();
     }
@@ -10634,10 +11928,23 @@ export default {{ }}
     #[test]
     fn plan677_code_editor_template_registers_bridge() {
         let component = generate_code_editor_component();
-        assert!(component.contains("editorKey: { type: String, default: '' }"), "{component}");
-        assert!(component.contains("from '../lib/editorBridge'"), "{component}");
-        assert!(component.contains("if (props.editorKey) registerEditor(props.editorKey, payload.view)"), "{component}");
-        assert!(component.contains("unregisterEditor(props.editorKey, view.value)"), "{component}");
+        assert!(
+            component.contains("editorKey: { type: String, default: '' }"),
+            "{component}"
+        );
+        assert!(
+            component.contains("from '../lib/editorBridge'"),
+            "{component}"
+        );
+        assert!(
+            component
+                .contains("if (props.editorKey) registerEditor(props.editorKey, payload.view)"),
+            "{component}"
+        );
+        assert!(
+            component.contains("unregisterEditor(props.editorKey, view.value)"),
+            "{component}"
+        );
     }
 
     /// PLAN-677 T-04: natives 三层发射——R 层名（file_basename/console_*）
@@ -10670,13 +11977,26 @@ console_clear()
 
         let stub = std::fs::read_to_string(src.join("lib").join("natives.ts")).unwrap();
         // S 层：dialog_open 仍在抛错桩名单。
-        assert!(stub.contains("  'dialog_open',
-"), "{stub}");
+        assert!(
+            stub.contains(
+                "  'dialog_open',
+"
+            ),
+            "{stub}"
+        );
         // R 层：不进桩名单，有真实现体。
-        for name in ["file_basename", "console_log", "console_lines", "console_clear"] {
+        for name in [
+            "file_basename",
+            "console_log",
+            "console_lines",
+            "console_clear",
+        ] {
             assert!(
-                !stub.contains(&format!("  '{}',
-", name)),
+                !stub.contains(&format!(
+                    "  '{}',
+",
+                    name
+                )),
                 "{} must not be a throwing stub:
 {}",
                 name,
@@ -10690,8 +12010,13 @@ console_clear()
             "{stub}"
         );
         assert!(stub.contains("g['code_editor_set_text']"), "{stub}");
-        assert!(!stub.contains("  'code_editor_set_text',
-"), "{stub}");
+        assert!(
+            !stub.contains(
+                "  'code_editor_set_text',
+"
+            ),
+            "{stub}"
+        );
         assert!(stub.contains("g['console_log']"), "{stub}");
         assert!(stub.contains("g['console_lines']"), "{stub}");
         assert!(stub.contains("g['console_clear']"), "{stub}");
@@ -10770,8 +12095,12 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
         // Default: absent → on
         assert!(parse_default_classes("name: \"demo\"\nrender: \"vue\"\n"));
         // Bareword off/on (built-in config globals)
-        assert!(!parse_default_classes("name: \"demo\"\ndefault_classes: off\n"));
-        assert!(parse_default_classes("name: \"demo\"\ndefault_classes: on\n"));
+        assert!(!parse_default_classes(
+            "name: \"demo\"\ndefault_classes: off\n"
+        ));
+        assert!(parse_default_classes(
+            "name: \"demo\"\ndefault_classes: on\n"
+        ));
         // Boolean literals
         assert!(!parse_default_classes("default_classes: false\n"));
         assert!(parse_default_classes("default_classes: true\n"));
@@ -10788,8 +12117,16 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
     fn test_generate_main_ts_imports_style_files() {
         let styles = vec!["autodown-editor.css".to_string(), "theme.css".to_string()];
         let main_ts = generate_main_ts(false, false, &styles, &I18nConfig::default(), &[]);
-        assert!(main_ts.contains("import './styles/autodown-editor.css'"), "main.ts:\n{}", main_ts);
-        assert!(main_ts.contains("import './styles/theme.css'"), "main.ts:\n{}", main_ts);
+        assert!(
+            main_ts.contains("import './styles/autodown-editor.css'"),
+            "main.ts:\n{}",
+            main_ts
+        );
+        assert!(
+            main_ts.contains("import './styles/theme.css'"),
+            "main.ts:\n{}",
+            main_ts
+        );
 
         // Without styles: no imports, same as before.
         let plain = generate_main_ts(false, false, &[], &I18nConfig::default(), &[]);
@@ -10810,12 +12147,16 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
 
     #[test]
     fn test_parse_i18n_locale_files() {
-        let content = "name: \"demo\"\ni18n: [\"src/i18n/locales/en.json\", \"src/i18n/locales/zh.json\"]\n";
+        let content =
+            "name: \"demo\"\ni18n: [\"src/i18n/locales/en.json\", \"src/i18n/locales/zh.json\"]\n";
         let cfg = parse_i18n(content);
         assert!(cfg.enabled);
         assert_eq!(
             cfg.locale_files,
-            vec!["src/i18n/locales/en.json".to_string(), "src/i18n/locales/zh.json".to_string()]
+            vec![
+                "src/i18n/locales/en.json".to_string(),
+                "src/i18n/locales/zh.json".to_string()
+            ]
         );
     }
 
@@ -10838,20 +12179,43 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
     fn test_generate_main_ts_injects_i18n() {
         let cfg = I18nConfig {
             enabled: true,
-            locale_files: vec!["src/i18n/locales/en.json".to_string(), "src/i18n/locales/zh.json".to_string()],
+            locale_files: vec![
+                "src/i18n/locales/en.json".to_string(),
+                "src/i18n/locales/zh.json".to_string(),
+            ],
         };
         let locales = vec!["en.json".to_string(), "zh.json".to_string()];
         let main_ts = generate_main_ts(false, false, &[], &cfg, &locales);
         // PLAN-063 Phase B T13b (KD 061 D29): 实例移独立模块,main.ts 只 import。
-        assert!(main_ts.contains("import { i18n } from './i18n-instance'"), "main.ts:\n{}", main_ts);
-        assert!(!main_ts.contains("createI18n("), "main.ts 不再内联 createI18n:\n{}", main_ts);
+        assert!(
+            main_ts.contains("import { i18n } from './i18n-instance'"),
+            "main.ts:\n{}",
+            main_ts
+        );
+        assert!(
+            !main_ts.contains("createI18n("),
+            "main.ts 不再内联 createI18n:\n{}",
+            main_ts
+        );
         // app.use(i18n) before mount.
         assert!(main_ts.contains("app.use(i18n)"), "main.ts:\n{}", main_ts);
         // 实例模块:export const i18n + locale imports + 默认 locale=首文件 stem。
         let instance = generate_i18n_instance_ts(&cfg, &locales);
-        assert!(instance.contains("export const i18n = createI18n("), "instance:\n{}", instance);
-        assert!(instance.contains("import en from './locales/en.json'"), "instance:\n{}", instance);
-        assert!(instance.contains("import zh from './locales/zh.json'"), "instance:\n{}", instance);
+        assert!(
+            instance.contains("export const i18n = createI18n("),
+            "instance:\n{}",
+            instance
+        );
+        assert!(
+            instance.contains("import en from './locales/en.json'"),
+            "instance:\n{}",
+            instance
+        );
+        assert!(
+            instance.contains("import zh from './locales/zh.json'"),
+            "instance:\n{}",
+            instance
+        );
         assert!(instance.contains("locale: 'en'"), "instance:\n{}", instance);
         // 未启用 i18n:模块空,main.ts 无 import。
         assert!(generate_i18n_instance_ts(&I18nConfig::default(), &[]).is_empty());
@@ -10862,22 +12226,33 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
     #[test]
     fn test_generate_main_ts_no_i18n_when_disabled() {
         let main_ts = generate_main_ts(false, false, &[], &I18nConfig::default(), &[]);
-        assert!(!main_ts.contains("vue-i18n"), "main.ts should not mention i18n:\n{}", main_ts);
+        assert!(
+            !main_ts.contains("vue-i18n"),
+            "main.ts should not mention i18n:\n{}",
+            main_ts
+        );
         assert!(!main_ts.contains("createI18n"), "main.ts:\n{}", main_ts);
     }
 
     #[test]
     fn test_generate_package_json_includes_vue_i18n() {
         let pkg = generate_package_json("demo", false, true, &[], &VueDependencyUsage::default());
-        assert!(pkg.contains("\"vue-i18n\": \"^9.14.0\""), "package.json:\n{}", pkg);
+        assert!(
+            pkg.contains("\"vue-i18n\": \"^9.14.0\""),
+            "package.json:\n{}",
+            pkg
+        );
     }
 
     #[test]
     fn test_generate_package_json_no_vue_i18n_when_disabled() {
         let pkg = generate_package_json("demo", false, false, &[], &VueDependencyUsage::default());
-        assert!(!pkg.contains("vue-i18n"), "package.json should not mention i18n:\n{}", pkg);
+        assert!(
+            !pkg.contains("vue-i18n"),
+            "package.json should not mention i18n:\n{}",
+            pkg
+        );
     }
-
 
     #[test]
     fn test_copy_style_files_byte_for_byte() {
@@ -10971,7 +12346,11 @@ styles: ["src/front/autodown-editor.css", "src/front/theme.css"]
         let only_port_name = dir.join("solo.at");
         std::fs::write(dir.join("solo.rs.at"), "fn b() {}").unwrap();
         let err = resolve_at_adapter(&only_port_name, "web").unwrap_err();
-        assert!(err.to_string().contains("no source for ext module"), "{}", err);
+        assert!(
+            err.to_string().contains("no source for ext module"),
+            "{}",
+            err
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -11063,7 +12442,10 @@ widget App {
         let copied = project.copy_ext_files().unwrap();
         assert_eq!(copied, vec!["src/front/utils/greet.ts".to_string()]);
         let out = project.output_dir.join("src/ext/src/front/utils/greet.ts");
-        assert_eq!(fs::read_to_string(&out).unwrap(), "export const greet = 1\n");
+        assert_eq!(
+            fs::read_to_string(&out).unwrap(),
+            "export const greet = 1\n"
+        );
     }
 
     #[test]
@@ -11152,7 +12534,12 @@ store BetaStore {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
         make_multi_store_workspace(root);
-        let stores_dir = root.join("gen").join("front").join("vue").join("src").join("stores");
+        let stores_dir = root
+            .join("gen")
+            .join("front")
+            .join("vue")
+            .join("src")
+            .join("stores");
 
         // First incremental pass: everything is dirty, both stores emitted.
         let changed = incremental_compile_changed(root).expect("first pass must succeed");
@@ -11213,7 +12600,12 @@ store BetaStore {
         auto_lang::ui_gen::validators::set_strict(false);
         let ok = incremental_compile_changed(root);
         assert!(ok.is_ok(), "non-strict build must continue: {:?}", ok.err());
-        let stores_dir = root.join("gen").join("front").join("vue").join("src").join("stores");
+        let stores_dir = root
+            .join("gen")
+            .join("front")
+            .join("vue")
+            .join("src")
+            .join("stores");
         assert!(
             stores_dir.join("useAlphaStore.ts").exists(),
             "healthy store still emitted"
@@ -11289,20 +12681,26 @@ fn test_plan443_cross_file_bound_model_channels() {
     fs::write(front.join("panel.at"), PLAN443_PANEL_AT).unwrap();
     fs::write(front.join("board.at"), PLAN443_BOARD_AT).unwrap();
 
-    let project = crate::vue::VueProject::from_workspace(root)
-        .expect("plan443 workspace must load");
+    let project =
+        crate::vue::VueProject::from_workspace(root).expect("plan443 workspace must load");
     project.generate().expect("plan443 generate must succeed");
 
     let components = root
-        .join("gen").join("front").join("vue").join("src").join("components");
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("components");
     let app_vue = fs::read_to_string(
-        root.join("gen").join("front").join("vue").join("src").join("App.vue"),
+        root.join("gen")
+            .join("front")
+            .join("vue")
+            .join("src")
+            .join("App.vue"),
     )
     .expect("App.vue written");
-    let panel_vue =
-        fs::read_to_string(components.join("Panel.vue")).expect("Panel.vue written");
-    let board_vue =
-        fs::read_to_string(components.join("Board.vue")).expect("Board.vue written");
+    let panel_vue = fs::read_to_string(components.join("Panel.vue")).expect("Panel.vue written");
+    let board_vue = fs::read_to_string(components.join("Board.vue")).expect("Board.vue written");
 
     assert!(
         app_vue.contains("v-model:doc=\"doc\""),
@@ -11365,8 +12763,8 @@ widget ExampleHeader(title: str) {
     )
     .unwrap();
 
-    let project = crate::vue::VueProject::from_workspace(root)
-        .expect("plan475 workspace must load");
+    let project =
+        crate::vue::VueProject::from_workspace(root).expect("plan475 workspace must load");
     project.generate().expect("plan475 generate must succeed");
 
     let components = root
@@ -11378,7 +12776,11 @@ widget ExampleHeader(title: str) {
     let header_vue = fs::read_to_string(components.join("ExampleHeader.vue"))
         .expect("ExampleHeader.vue must be generated from deps");
     let app_vue = fs::read_to_string(
-        root.join("gen").join("front").join("vue").join("src").join("App.vue"),
+        root.join("gen")
+            .join("front")
+            .join("vue")
+            .join("src")
+            .join("App.vue"),
     )
     .expect("App.vue must exist");
 
@@ -11391,7 +12793,6 @@ widget ExampleHeader(title: str) {
         "ExampleHeader.vue content:\n{header_vue}"
     );
 }
-
 
 // ---------------------------------------------------------------------------
 // PLAN-609 T-B —— 包组件 SFC 发射链：auto-os 镜像回退 + import/文件一致性守卫。
@@ -11586,14 +12987,11 @@ fn plan609_theme_decl_dual_face_same_source() {
             ("muted-foreground".to_string(), "216 17% 65%".to_string()),
         ],
     };
-    let composed = decl::compose(&decl, &std::collections::BTreeMap::new())
-        .expect("decl compose");
+    let composed = decl::compose(&decl, &std::collections::BTreeMap::new()).expect("decl compose");
 
     // VM 面：合成体上槽（thread-local，nextest 每测独立进程隔离）。
     assert!(
-        auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(
-            composed.clone()
-        )),
+        auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(composed.clone())),
         "合成主题上槽"
     );
 
@@ -11638,7 +13036,6 @@ fn plan609_theme_decl_dual_face_same_source() {
         );
     }
 }
-
 
 // ---------------------------------------------------------------------------
 // Plan 515 G3 —— vue 桌面宿主壁纸层（配置注入三档 + scrim 对齐钉）。
@@ -11685,9 +13082,11 @@ fn p515_host_wallpaper_layer_branches() {
 
     // Wallpaper.vue 资产：scrim 双段（10/35）与 bg-cover 铺图 —— 与 VM 轨
     // desktop_wallpaper_scrim 的 pct 常量（light 10 / dark 35）对齐。
-    let wallpaper_vue =
-        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/wm/Wallpaper.vue"))
-            .expect("Wallpaper.vue 资产");
+    let wallpaper_vue = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/assets/wm/Wallpaper.vue"
+    ))
+    .expect("Wallpaper.vue 资产");
     assert!(
         wallpaper_vue.contains("bg-background/10 dark:bg-background/35"),
         "scrim 双段对齐 VM 轨:\n{wallpaper_vue}"
@@ -11698,197 +13097,210 @@ fn p515_host_wallpaper_layer_branches() {
     );
     // wm 资产清单纳入（materialize 嵌入自动收录）。
     assert!(
-        crate::wm_assets::bundled_files().iter().any(|f| f == "Wallpaper.vue"),
+        crate::wm_assets::bundled_files()
+            .iter()
+            .any(|f| f == "Wallpaper.vue"),
         "Wallpaper.vue 进 wm 资产清单"
     );
 }
 
-    /// PLAN-662 T-01: gallery_apps_dir 解析链四布局——旧仓 examples 内嵌
-    /// (`../ui`)、standalone `examples/ui`、同层 `auto-lang` 兄弟、平铺/
-    /// worktree 组祖父级 `auto-lang`（本计划新增档），以及全无 → Err。
-    /// env 权威档（AUTO_GALLERY_APPS）由既有行为覆盖，不在此重复。
-    #[test]
-    fn test_plan_662_gallery_apps_dir_layouts() {
-        std::env::remove_var("AUTO_GALLERY_APPS");
-        let t = tempfile::tempdir().unwrap();
+/// PLAN-662 T-01: gallery_apps_dir 解析链四布局——旧仓 examples 内嵌
+/// (`../ui`)、standalone `examples/ui`、同层 `auto-lang` 兄弟、平铺/
+/// worktree 组祖父级 `auto-lang`（本计划新增档），以及全无 → Err。
+/// env 权威档（AUTO_GALLERY_APPS）由既有行为覆盖，不在此重复。
+#[test]
+fn test_plan_662_gallery_apps_dir_layouts() {
+    std::env::remove_var("AUTO_GALLERY_APPS");
+    let t = tempfile::tempdir().unwrap();
 
-        // ① 旧仓内嵌：<ws>/examples/ui-gallery + <ws>/examples/ui。
-        let old_ws = t.path().join("old");
-        std::fs::create_dir_all(old_ws.join("examples").join("ui")).unwrap();
-        std::fs::create_dir_all(old_ws.join("examples").join("ui-gallery")).unwrap();
-        assert_eq!(
-            gallery_apps_dir(&old_ws.join("examples").join("ui-gallery")).unwrap(),
-            old_ws.join("examples").join("ui")
-        );
+    // ① 旧仓内嵌：<ws>/examples/ui-gallery + <ws>/examples/ui。
+    let old_ws = t.path().join("old");
+    std::fs::create_dir_all(old_ws.join("examples").join("ui")).unwrap();
+    std::fs::create_dir_all(old_ws.join("examples").join("ui-gallery")).unwrap();
+    assert_eq!(
+        gallery_apps_dir(&old_ws.join("examples").join("ui-gallery")).unwrap(),
+        old_ws.join("examples").join("ui")
+    );
 
-        // ② standalone：<root>/examples/ui。
-        let solo = t.path().join("solo").join("ui-gallery");
-        std::fs::create_dir_all(solo.join("examples").join("ui")).unwrap();
-        assert_eq!(
-            gallery_apps_dir(&solo).unwrap(),
-            solo.join("examples").join("ui")
-        );
+    // ② standalone：<root>/examples/ui。
+    let solo = t.path().join("solo").join("ui-gallery");
+    std::fs::create_dir_all(solo.join("examples").join("ui")).unwrap();
+    assert_eq!(
+        gallery_apps_dir(&solo).unwrap(),
+        solo.join("examples").join("ui")
+    );
 
-        // ③ 同层 auto-lang 兄弟：<root>/ui-gallery + <root>/auto-lang/…。
-        let peer = t.path().join("peer").join("ui-gallery");
-        std::fs::create_dir_all(&peer).unwrap();
-        std::fs::create_dir_all(t.path().join("peer").join("auto-lang").join("examples").join("ui")).unwrap();
-        assert_eq!(
-            gallery_apps_dir(&peer).unwrap(),
-            t.path().join("peer").join("auto-lang").join("examples").join("ui")
-        );
+    // ③ 同层 auto-lang 兄弟：<root>/ui-gallery + <root>/auto-lang/…。
+    let peer = t.path().join("peer").join("ui-gallery");
+    std::fs::create_dir_all(&peer).unwrap();
+    std::fs::create_dir_all(
+        t.path()
+            .join("peer")
+            .join("auto-lang")
+            .join("examples")
+            .join("ui"),
+    )
+    .unwrap();
+    assert_eq!(
+        gallery_apps_dir(&peer).unwrap(),
+        t.path()
+            .join("peer")
+            .join("auto-lang")
+            .join("examples")
+            .join("ui")
+    );
 
-        // ④ 平铺/worktree 组：<g>/auto-os/ui-gallery + <g>/auto-lang/…
-        //    （662 新增祖父级探测——主检出 D:/autostack 与 .wt/lang-NNN 同形）。
-        let group = t.path().join("group");
-        let gallery = group.join("auto-os").join("ui-gallery");
-        std::fs::create_dir_all(&gallery).unwrap();
-        std::fs::create_dir_all(group.join("auto-lang").join("examples").join("ui")).unwrap();
-        assert_eq!(
-            gallery_apps_dir(&gallery).unwrap(),
-            group.join("auto-lang").join("examples").join("ui")
-        );
+    // ④ 平铺/worktree 组：<g>/auto-os/ui-gallery + <g>/auto-lang/…
+    //    （662 新增祖父级探测——主检出 D:/autostack 与 .wt/lang-NNN 同形）。
+    let group = t.path().join("group");
+    let gallery = group.join("auto-os").join("ui-gallery");
+    std::fs::create_dir_all(&gallery).unwrap();
+    std::fs::create_dir_all(group.join("auto-lang").join("examples").join("ui")).unwrap();
+    assert_eq!(
+        gallery_apps_dir(&gallery).unwrap(),
+        group.join("auto-lang").join("examples").join("ui")
+    );
 
-        // ⑤ 全无 → Err（报错文案含 AUTO_GALLERY_APPS 提示）。
-        let none = t.path().join("none").join("ui-gallery");
-        std::fs::create_dir_all(&none).unwrap();
-        let err = gallery_apps_dir(&none).unwrap_err().to_string();
-        assert!(err.contains("AUTO_GALLERY_APPS"), "err: {err}");
+    // ⑤ 全无 → Err（报错文案含 AUTO_GALLERY_APPS 提示）。
+    let none = t.path().join("none").join("ui-gallery");
+    std::fs::create_dir_all(&none).unwrap();
+    let err = gallery_apps_dir(&none).unwrap_err().to_string();
+    assert!(err.contains("AUTO_GALLERY_APPS"), "err: {err}");
+}
+
+/// PLAN-662 T-02 测试辅助：最小 demo（pac.at + src/front/app.at）。
+fn gc662_make_demo(apps_dir: &Path, id: &str, marker: &str) {
+    let root = apps_dir.join(id);
+    std::fs::create_dir_all(root.join("src").join("front")).unwrap();
+    std::fs::write(
+        root.join("pac.at"),
+        format!("name: \"{id}\"\ntitle: \"Demo {id}\"\nicon: \"app-window\"\n"),
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("src").join("front").join("app.at"),
+        format!("// marker {marker}\nwidget W {{ view {{ text \"{id}\" {{}} }} }}\n"),
+    )
+    .unwrap();
+}
+
+/// PLAN-662 T-02 测试辅助：合成行（description 携带 marker 供变更断言）。
+fn gc662_row(id: &str, marker: &str) -> GalleryDemoRow {
+    GalleryDemoRow {
+        id: id.to_string(),
+        title: format!("Demo {id}"),
+        category: "04-systems".to_string(),
+        icon: "app-window".to_string(),
+        description: format!("marker={marker}"),
+        tags: vec!["AutoUI".to_string()],
+        doc: format!("doc of {id}"),
+        source: format!("// marker {marker}"),
+        pac: format!("name: \"{id}\""),
+        loadable: true,
+        fullstack: false,
+        route_stub: false,
+        routable: false,
     }
+}
 
-    /// PLAN-662 T-02 测试辅助：最小 demo（pac.at + src/front/app.at）。
-    fn gc662_make_demo(apps_dir: &Path, id: &str, marker: &str) {
-        let root = apps_dir.join(id);
-        std::fs::create_dir_all(root.join("src").join("front")).unwrap();
-        std::fs::write(
-            root.join("pac.at"),
-            format!("name: \"{id}\"\ntitle: \"Demo {id}\"\nicon: \"app-window\"\n"),
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("src").join("front").join("app.at"),
-            format!("// marker {marker}\nwidget W {{ view {{ text \"{id}\" {{}} }} }}\n"),
-        )
-        .unwrap();
-    }
+/// 读 marker（app.at 首行 `// marker <m>`）→ 合成行。计数走外层闭包。
+fn gc662_scan_one(
+    apps_dir: &Path,
+    e: &auto_lang::ui::app_registry::AppRegistryEntry,
+) -> GalleryDemoRow {
+    let root = apps_dir.join(&e.id);
+    let app_at =
+        std::fs::read_to_string(root.join("src").join("front").join("app.at")).unwrap_or_default();
+    let marker = app_at
+        .lines()
+        .next()
+        .and_then(|l| l.split("marker ").nth(1))
+        .unwrap_or("?")
+        .to_string();
+    gc662_row(&e.id, &marker)
+}
 
-    /// PLAN-662 T-02 测试辅助：合成行（description 携带 marker 供变更断言）。
-    fn gc662_row(id: &str, marker: &str) -> GalleryDemoRow {
-        GalleryDemoRow {
-            id: id.to_string(),
-            title: format!("Demo {id}"),
-            category: "04-systems".to_string(),
-            icon: "app-window".to_string(),
-            description: format!("marker={marker}"),
-            tags: vec!["AutoUI".to_string()],
-            doc: format!("doc of {id}"),
-            source: format!("// marker {marker}"),
-            pac: format!("name: \"{id}\""),
-            loadable: true,
-            fullstack: false,
-            route_stub: false,
-            routable: false,
+/// env 覆写序列化锁（AUTO_GALLERY_CACHE_DIR 为进程级 env，防止并行
+/// 测试互踩；本组测试独占该 env）。
+static GC662_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// PLAN-662 T-02: 磁盘缓存命中/单 demo 失效重扫/损坏回退/行序列化
+/// 往返一致（缓存只重放分析结果——registry.at 确定性守卫）。
+#[test]
+fn test_plan_662_gallery_rows_disk_cache() {
+    let _guard = GC662_ENV_LOCK.lock().unwrap();
+    let t = tempfile::tempdir().unwrap();
+    let cache_dir = t.path().join("cache");
+    std::env::set_var("AUTO_GALLERY_CACHE_DIR", &cache_dir);
+    std::env::remove_var("AUTO_GALLERY_APPS");
+    let apps_dir = t.path().join("apps");
+    std::fs::create_dir_all(&apps_dir).unwrap();
+    gc662_make_demo(&apps_dir, "010-alpha", "a1");
+    gc662_make_demo(&apps_dir, "011-beta", "b1");
+
+    let scans = std::sync::atomic::AtomicUsize::new(0);
+    let counting = |dir: &Path, e: &auto_lang::ui::app_registry::AppRegistryEntry| {
+        scans.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        gc662_scan_one(dir, e)
+    };
+
+    // 冷跑：2 demo 全扫，落盘。
+    let cold = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
+    assert_eq!(cold.len(), 2);
+    let sc = || scans.load(std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(sc(), 2, "冷跑应全量扫描");
+    assert!(cache_dir.is_dir(), "缓存根应已创建");
+
+    // 二跑：全命中，零扫描；行与冷跑逐字段一致（serde 往返=确定性守卫）。
+    let warm = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
+    assert_eq!(sc(), 2, "缓存命中不应触发扫描");
+    let ser = |rows: &[GalleryDemoRow]| {
+        rows.iter()
+            .map(|r| serde_json::to_string(r).unwrap())
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(ser(&cold), ser(&warm), "命中行须与冷跑行一致");
+
+    // 单 demo 变更：仅该 demo 重扫（beta 改 marker）。
+    std::thread::sleep(std::time::Duration::from_millis(30));
+    gc662_make_demo(&apps_dir, "011-beta", "b2");
+    let patched = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
+    assert_eq!(sc(), 3, "仅变更 demo 重扫");
+    let beta = patched.iter().find(|r| r.id == "011-beta").unwrap();
+    assert_eq!(beta.description, "marker=b2", "重扫行应反映新内容");
+
+    // 损坏缓存：fail-open 整体重建，不崩。
+    for f in std::fs::read_dir(&cache_dir).unwrap().flatten() {
+        if f.path().extension().map(|e| e == "json").unwrap_or(false) {
+            std::fs::write(f.path(), "{corrupted").unwrap();
         }
     }
+    let rebuilt = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
+    assert_eq!(sc(), 5, "损坏后全量重建");
+    assert_eq!(rebuilt.len(), 2);
 
-    /// 读 marker（app.at 首行 `// marker <m>`）→ 合成行。计数走外层闭包。
-    fn gc662_scan_one(
-        apps_dir: &Path,
-        e: &auto_lang::ui::app_registry::AppRegistryEntry,
-    ) -> GalleryDemoRow {
-        let root = apps_dir.join(&e.id);
-        let app_at = std::fs::read_to_string(root.join("src").join("front").join("app.at"))
-            .unwrap_or_default();
-        let marker = app_at
-            .lines()
-            .next()
-            .and_then(|l| l.split("marker ").nth(1))
-            .unwrap_or("?")
-            .to_string();
-        gc662_row(&e.id, &marker)
-    }
+    std::env::remove_var("AUTO_GALLERY_CACHE_DIR");
+}
 
-    /// env 覆写序列化锁（AUTO_GALLERY_CACHE_DIR 为进程级 env，防止并行
-    /// 测试互踩；本组测试独占该 env）。
-    static GC662_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    /// PLAN-662 T-02: 磁盘缓存命中/单 demo 失效重扫/损坏回退/行序列化
-    /// 往返一致（缓存只重放分析结果——registry.at 确定性守卫）。
-    #[test]
-    fn test_plan_662_gallery_rows_disk_cache() {
-        let _guard = GC662_ENV_LOCK.lock().unwrap();
-        let t = tempfile::tempdir().unwrap();
-        let cache_dir = t.path().join("cache");
-        std::env::set_var("AUTO_GALLERY_CACHE_DIR", &cache_dir);
-        std::env::remove_var("AUTO_GALLERY_APPS");
-        let apps_dir = t.path().join("apps");
-        std::fs::create_dir_all(&apps_dir).unwrap();
-        gc662_make_demo(&apps_dir, "010-alpha", "a1");
-        gc662_make_demo(&apps_dir, "011-beta", "b1");
-
-        let scans = std::sync::atomic::AtomicUsize::new(0);
-        let counting = |dir: &Path, e: &auto_lang::ui::app_registry::AppRegistryEntry| {
-            scans.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            gc662_scan_one(dir, e)
-        };
-
-        // 冷跑：2 demo 全扫，落盘。
-        let cold = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
-        assert_eq!(cold.len(), 2);
-        let sc = || scans.load(std::sync::atomic::Ordering::SeqCst);
-        assert_eq!(sc(), 2, "冷跑应全量扫描");
-        assert!(cache_dir.is_dir(), "缓存根应已创建");
-
-        // 二跑：全命中，零扫描；行与冷跑逐字段一致（serde 往返=确定性守卫）。
-        let warm = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
-        assert_eq!(sc(), 2, "缓存命中不应触发扫描");
-        let ser = |rows: &[GalleryDemoRow]| {
-            rows.iter()
-                .map(|r| serde_json::to_string(r).unwrap())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(ser(&cold), ser(&warm), "命中行须与冷跑行一致");
-
-        // 单 demo 变更：仅该 demo 重扫（beta 改 marker）。
-        std::thread::sleep(std::time::Duration::from_millis(30));
-        gc662_make_demo(&apps_dir, "011-beta", "b2");
-        let patched = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
-        assert_eq!(sc(), 3, "仅变更 demo 重扫");
-        let beta = patched.iter().find(|r| r.id == "011-beta").unwrap();
-        assert_eq!(beta.description, "marker=b2", "重扫行应反映新内容");
-
-        // 损坏缓存：fail-open 整体重建，不崩。
-        for f in std::fs::read_dir(&cache_dir).unwrap().flatten() {
-            if f.path().extension().map(|e| e == "json").unwrap_or(false) {
-                std::fs::write(f.path(), "{corrupted").unwrap();
-            }
-        }
-        let rebuilt = gallery_rows_with_disk_cache(&apps_dir, false, &counting);
-        assert_eq!(sc(), 5, "损坏后全量重建");
-        assert_eq!(rebuilt.len(), 2);
-
-        std::env::remove_var("AUTO_GALLERY_CACHE_DIR");
-    }
-
-    /// PLAN-662 T-03: AUTO_GALLERY_SCAN_JOBS 解析——合法值生效、非法/缺省
-    /// 回落 available_parallelism。
-    #[test]
-    fn test_plan_662_gallery_scan_jobs_env() {
-        let _guard = GC662_ENV_LOCK.lock().unwrap();
-        let expect_default = std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1);
-        std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "1");
-        assert_eq!(gallery_scan_jobs(), 1);
-        std::env::set_var("AUTO_GALLERY_SCAN_JOBS", " 4 ");
-        assert_eq!(gallery_scan_jobs(), 4);
-        std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "0");
-        assert_eq!(gallery_scan_jobs(), expect_default, "非法值回落缺省");
-        std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "abc");
-        assert_eq!(gallery_scan_jobs(), expect_default);
-        std::env::remove_var("AUTO_GALLERY_SCAN_JOBS");
-        assert_eq!(gallery_scan_jobs(), expect_default);
-    }
+/// PLAN-662 T-03: AUTO_GALLERY_SCAN_JOBS 解析——合法值生效、非法/缺省
+/// 回落 available_parallelism。
+#[test]
+fn test_plan_662_gallery_scan_jobs_env() {
+    let _guard = GC662_ENV_LOCK.lock().unwrap();
+    let expect_default = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+    std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "1");
+    assert_eq!(gallery_scan_jobs(), 1);
+    std::env::set_var("AUTO_GALLERY_SCAN_JOBS", " 4 ");
+    assert_eq!(gallery_scan_jobs(), 4);
+    std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "0");
+    assert_eq!(gallery_scan_jobs(), expect_default, "非法值回落缺省");
+    std::env::set_var("AUTO_GALLERY_SCAN_JOBS", "abc");
+    assert_eq!(gallery_scan_jobs(), expect_default);
+    std::env::remove_var("AUTO_GALLERY_SCAN_JOBS");
+    assert_eq!(gallery_scan_jobs(), expect_default);
+}
 
 #[test]
 fn test_plan_549_ui_gallery_registry_and_package_json() {
@@ -11926,19 +13338,46 @@ fn test_plan_549_ui_gallery_registry_and_package_json() {
     ];
 
     let registry = generate_demos_registry(&rows);
-    assert!(registry.contains("export interface DemoMeta"), "interface:\n{registry}");
-    assert!(registry.contains("export const DEMOS: DemoMeta[] = ["), "array:\n{registry}");
-    assert!(registry.contains("load: () => import('./apps/002-counter/App.vue')"), "002-counter has load:\n{registry}");
-    assert!(!registry.contains("./apps/041-auto-edit/App.vue"), "041-auto-edit load omitted:\n{registry}");
-    assert!(registry.contains(r#""041-auto-edit""#), "041-auto-edit metadata included:\n{registry}");
+    assert!(
+        registry.contains("export interface DemoMeta"),
+        "interface:\n{registry}"
+    );
+    assert!(
+        registry.contains("export const DEMOS: DemoMeta[] = ["),
+        "array:\n{registry}"
+    );
+    assert!(
+        registry.contains("load: () => import('./apps/002-counter/App.vue')"),
+        "002-counter has load:\n{registry}"
+    );
+    assert!(
+        !registry.contains("./apps/041-auto-edit/App.vue"),
+        "041-auto-edit load omitted:\n{registry}"
+    );
+    assert!(
+        registry.contains(r#""041-auto-edit""#),
+        "041-auto-edit metadata included:\n{registry}"
+    );
 
-    let pkg = generate_package_json("ui-gallery", false, false, &[], &VueDependencyUsage::default());
-    assert!(pkg.contains(r#""build": "vite build""#), "ui-gallery uses vite build:\n{pkg}");
+    let pkg = generate_package_json(
+        "ui-gallery",
+        false,
+        false,
+        &[],
+        &VueDependencyUsage::default(),
+    );
+    assert!(
+        pkg.contains(r#""build": "vite build""#),
+        "ui-gallery uses vite build:\n{pkg}"
+    );
 
-    let normal_pkg = generate_package_json("my-app", false, false, &[], &VueDependencyUsage::default());
-    assert!(normal_pkg.contains(r#""build": "vue-tsc && vite build""#), "normal app uses vue-tsc:\n{normal_pkg}");
+    let normal_pkg =
+        generate_package_json("my-app", false, false, &[], &VueDependencyUsage::default());
+    assert!(
+        normal_pkg.contains(r#""build": "vue-tsc && vite build""#),
+        "normal app uses vue-tsc:\n{normal_pkg}"
+    );
 }
-
 
 // ── PLAN-571 T10: css 变量层 --secondary 分档互锁（防"第四源"回潮）────
 #[cfg(test)]
@@ -11971,7 +13410,6 @@ mod plan571_css_secondary_interlock_tests {
     }
 }
 
-
 // ── PLAN-593 立金样 → PLAN-601 T-02 升级 value-pinned ─────────────────
 #[cfg(test)]
 mod plan593_index_css_golden_tests {
@@ -11988,10 +13426,13 @@ mod plan593_index_css_golden_tests {
     fn index_css_values_match_p1_baseline() {
         let css = super::generate_index_css(None);
         let golden = include_str!("../tests/fixtures/plan593_index_css.golden");
-        assert_eq!(var_pairs(golden), var_pairs(&css), "canonical 归一后 index.css 值对漂移");
+        assert_eq!(
+            var_pairs(golden),
+            var_pairs(&css),
+            "canonical 归一后 index.css 值对漂移"
+        );
     }
 }
-
 
 // ── PLAN-601 T-06: theme{} 声明 → vue 生成面消费 ────────────────────────
 #[cfg(test)]
@@ -12004,7 +13445,10 @@ mod plan601_theme_declaration_tests {
             name: name.map(|s| s.to_string()),
             extends: extends.map(|s| s.to_string()),
             mode: None,
-            colors: colors.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect(),
+            colors: colors
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect(),
         }
     }
 
@@ -12023,11 +13467,19 @@ mod plan601_theme_declaration_tests {
         let bg = stella
             .light
             .iter()
-            .find(|(tok, _)| matches!(tok, auto_lang::design_tokens::registry::TokenName::Background))
+            .find(|(tok, _)| {
+                matches!(
+                    tok,
+                    auto_lang::design_tokens::registry::TokenName::Background
+                )
+            })
             .unwrap()
             .1
             .css_str();
-        assert!(css.contains(&format!("--background: {bg};")), "未覆盖键继承基座");
+        assert!(
+            css.contains(&format!("--background: {bg};")),
+            "未覆盖键继承基座"
+        );
         assert!(css.contains("--radius: 0.5rem;"), "非色 token 留脚手架");
     }
 
@@ -12036,7 +13488,10 @@ mod plan601_theme_declaration_tests {
     #[test]
     fn index_css_none_is_scaffold_default() {
         let css = super::generate_index_css(None);
-        assert!(css.contains("--primary: 239 84% 67%;"), "scaffold light primary 指纹");
+        assert!(
+            css.contains("--primary: 239 84% 67%;"),
+            "scaffold light primary 指纹"
+        );
     }
 
     /// index.html 声明种子：`__AUTO_COMPOSED_THEME__` 全局 + write-if-unset
@@ -12046,13 +13501,25 @@ mod plan601_theme_declaration_tests {
         let d = decl(Some("brand"), Some("zinc"), &[("primary", "#ef4444")]);
         let t = compose(&d, &BTreeMap::new()).unwrap();
         let html = super::generate_index_html("demo", None, Some(&t));
-        assert!(html.contains("window.__AUTO_COMPOSED_THEME__ = { name: 'brand',"), "{html}");
-        assert!(html.contains("localStorage.setItem('auto-theme', 'brand')"), "{html}");
+        assert!(
+            html.contains("window.__AUTO_COMPOSED_THEME__ = { name: 'brand',"),
+            "{html}"
+        );
+        assert!(
+            html.contains("localStorage.setItem('auto-theme', 'brand')"),
+            "{html}"
+        );
         let red = normalize_value("#ef4444").unwrap();
-        assert!(html.contains(&format!("'primary': '{red}'")), "种子携带合成值: {html}");
+        assert!(
+            html.contains(&format!("'primary': '{red}'")),
+            "种子携带合成值: {html}"
+        );
 
         let none = super::generate_index_html("demo", None, None);
-        assert!(!none.contains("__AUTO_COMPOSED_THEME__"), "缺省零注入: {none}");
+        assert!(
+            !none.contains("__AUTO_COMPOSED_THEME__"),
+            "缺省零注入: {none}"
+        );
     }
 }
 
@@ -12178,14 +13645,22 @@ mod gallery_registry_at_tests {
     }
 }",
             ),
-            vm_demo_row("024-charts", false, "widget App {
-}"),
+            vm_demo_row(
+                "024-charts",
+                false,
+                "widget App {
+}",
+            ),
         ];
         let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &gallery).unwrap();
         assert_eq!(emitted, 1, "non-loadable must be skipped silently");
-        assert!(skipped.is_empty(), "skipped only tracks loadable-but-malformed");
+        assert!(
+            skipped.is_empty(),
+            "skipped only tracks loadable-but-malformed"
+        );
 
-        let demo_src = std::fs::read_to_string(gallery.join("demos").join("002-counter.at")).unwrap();
+        let demo_src =
+            std::fs::read_to_string(gallery.join("demos").join("002-counter.at")).unwrap();
         assert!(demo_src.contains("widget Demo002Counter {"), "renamed decl");
         assert!(!demo_src.contains("widget App"), "original name replaced");
 
@@ -12211,7 +13686,10 @@ mod gallery_registry_at_tests {
         ] {
             assert!(vm_at.contains(needle), "missing `{needle}`");
         }
-        assert!(!gallery.join("demos").join("024-charts.at").exists(), "non-loadable not emitted");
+        assert!(
+            !gallery.join("demos").join("024-charts.at").exists(),
+            "non-loadable not emitted"
+        );
     }
 
     /// PLAN-675 T-03: routable 档判定——五家 routes 语料 routable=true 且
@@ -12338,9 +13816,15 @@ mod gallery_registry_at_tests {
         assert!(skipped.is_empty(), "skipped: {skipped:?}");
 
         let demo_src = std::fs::read_to_string(gallery.join("demos").join("022-x.at")).unwrap();
-        assert!(!demo_src.contains("routes {"), "routes block removed: {demo_src}");
+        assert!(
+            !demo_src.contains("routes {"),
+            "routes block removed: {demo_src}"
+        );
         assert!(!demo_src.contains("outlet"), "outlet replaced: {demo_src}");
-        assert!(demo_src.contains("board {}"), "outlet → home widget instance: {demo_src}");
+        assert!(
+            demo_src.contains("board {}"),
+            "outlet → home widget instance: {demo_src}"
+        );
         assert!(
             demo_src.contains("use d022x_board_page: board"),
             "namespaced page module use line: {demo_src}"
@@ -12349,7 +13833,10 @@ mod gallery_registry_at_tests {
         // 首页页面文件按 per-demo ns 级联（跨 demo 同名 pages/board.at 不再撞）。
         let page_out =
             std::fs::read_to_string(gallery.join("demos").join("d022x_board_page.at")).unwrap();
-        assert!(page_out.contains("widget board"), "page widget cascaded: {page_out}");
+        assert!(
+            page_out.contains("widget board"),
+            "page widget cascaded: {page_out}"
+        );
 
         // AppViewport 分支接入（stub 档入发射面）。
         let vm_at = std::fs::read_to_string(gallery.join("AppViewport.vm.at")).unwrap();
@@ -12375,7 +13862,8 @@ widget Helper {
     }
 }",
         )];
-        let (emitted, skipped) = emit_gallery_vm_demos(Path::new(""), &rows, &dir.path().join("gallery")).unwrap();
+        let (emitted, skipped) =
+            emit_gallery_vm_demos(Path::new(""), &rows, &dir.path().join("gallery")).unwrap();
         assert_eq!(emitted, 0);
         assert_eq!(skipped, vec!["009-x".to_string()]);
     }
@@ -12474,7 +13962,8 @@ widget Helper {
 
         let store_out = std::fs::read_to_string(gallery.join("demos").join("my_store.at")).unwrap();
         assert!(
-            store_out.contains("var d016x_dark_mode bool = false") && store_out.contains(".d016x_dark_mode = false"),
+            store_out.contains("var d016x_dark_mode bool = false")
+                && store_out.contains(".d016x_dark_mode = false"),
             "own module renamed with same ns: {store_out}"
         );
 
@@ -12611,9 +14100,8 @@ widget Helper {
         assert_eq!(emitted, 1, "demo must be emitted: {skipped:?}");
         let store_src = fs::read_to_string(demos.join("d020x_my_store.at")).unwrap();
         assert!(
-            store_src.contains(
-                "Http.get_json(\"http://127.0.0.1:3358/apps/020-x/api/media/scan\")"
-            ),
+            store_src
+                .contains("Http.get_json(\"http://127.0.0.1:3358/apps/020-x/api/media/scan\")"),
             "call-site literal prefixed: {store_src}"
         );
         assert!(
@@ -12631,7 +14119,8 @@ widget Helper {
         let gallery2 = dir.path().join("src2").join("gallery");
         let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery2).unwrap();
         assert_eq!(emitted, 1, "demo must be emitted: {skipped:?}");
-        let store_src = fs::read_to_string(gallery2.join("demos").join("d020x_my_store.at")).unwrap();
+        let store_src =
+            fs::read_to_string(gallery2.join("demos").join("d020x_my_store.at")).unwrap();
         assert!(
             store_src.contains("Http.get_json(\"/api/media/scan\")"),
             "standalone form untouched: {store_src}"
@@ -12682,15 +14171,19 @@ widget Helper {
         set_gallery_proxy_root(Some("http://127.0.0.1:3358".to_string()));
         let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
         set_gallery_proxy_root(None);
-        assert_eq!(emitted, 1, "stream demo emitted via proxy path: {skipped:?}");
+        assert_eq!(
+            emitted, 1,
+            "stream demo emitted via proxy path: {skipped:?}"
+        );
 
         // client 模块：类型随行 + 绝对 URL + 流 fn 不在。
         let client = fs::read_to_string(demos.join("d017c_api_client.at")).unwrap();
-        assert!(client.contains("pub type Message"), "types copied: {client}");
         assert!(
-            client.contains(
-                "Http.get_json(\"http://127.0.0.1:3358/apps/017-c/api/messages\")"
-            ),
+            client.contains("pub type Message"),
+            "types copied: {client}"
+        );
+        assert!(
+            client.contains("Http.get_json(\"http://127.0.0.1:3358/apps/017-c/api/messages\")"),
             "get url: {client}"
         );
         assert!(
@@ -12707,7 +14200,10 @@ widget Helper {
             store_src.contains("use d017c_api_client: list_messages, send_message"),
             "use rewritten: {store_src}"
         );
-        assert!(!store_src.contains("stream"), "stream item dropped: {store_src}");
+        assert!(
+            !store_src.contains("stream"),
+            "stream item dropped: {store_src}"
+        );
 
         // demo 本体：Tick 注入（惰性 sse_open + sse_poll 排水 + store 分派）。
         let demo_src = fs::read_to_string(demos.join("017-c.at")).unwrap();
@@ -12812,14 +14308,16 @@ pub fn open_file(path str) str {
         set_gallery_proxy_root(Some("http://127.0.0.1:3358".to_string()));
         let (emitted, skipped) = emit_gallery_vm_demos(&apps, &rows, &gallery).unwrap();
         set_gallery_proxy_root(None);
-        assert_eq!(emitted, 1, "native-ns demo emitted via proxy path: {skipped:?}");
+        assert_eq!(
+            emitted, 1,
+            "native-ns demo emitted via proxy path: {skipped:?}"
+        );
 
         // client 模块：GET 字面 + POST from_value body。
         let client = fs::read_to_string(demos.join("d031v_api_client.at")).unwrap();
         assert!(
-            client.contains(
-                "Http.get_json(\"http://127.0.0.1:3358/apps/031-v/api/viewer/health\")"
-            ),
+            client
+                .contains("Http.get_json(\"http://127.0.0.1:3358/apps/031-v/api/viewer/health\")"),
             "health url: {client}"
         );
         assert!(
@@ -12887,10 +14385,7 @@ pub fn open_file(path str) str {
             .find(|e| e.id == "090-fsx")
             .expect("fixture demo scanned");
         let (row, _) = gallery_demo_row(&apps, entry);
-        assert!(
-            !row.loadable,
-            "back corpus must veto the vue loadable tier"
-        );
+        assert!(!row.loadable, "back corpus must veto the vue loadable tier");
         assert!(row.fullstack, "back corpus must flag the fullstack tier");
     }
 
@@ -12904,10 +14399,7 @@ pub fn open_file(path str) str {
         let apps = dir.path().join("apps");
         // 两个 demo：同名 back fn（get_item）、同名 db var（items）、同名
         // front 模块名（my_store），内容不同（种子数据/文案区分）。
-        for (id, seed, text) in [
-            ("013-a", "[1]", "a"),
-            ("015-b", "[2]", "b"),
-        ] {
+        for (id, seed, text) in [("013-a", "[1]", "a"), ("015-b", "[2]", "b")] {
             let front = apps.join(id).join("src").join("front");
             let back = apps.join(id).join("src").join("back");
             fs::create_dir_all(&front).unwrap();

@@ -405,13 +405,13 @@ fn scan_written_props(
 }
 
 /// Regenerate only main.rs (skip Cargo.toml to preserve cargo cache).
-fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
+fn regenerate_code_only(project_dir: &Path, rust_dir: &Path, src_: &PacSource) -> AutoResult<()> {
     let front_dir = find_front_dir(project_dir);
     // PLAN-681 T-05（F2 bps 依赖解析面）：widget 补集进编译集 + fn 模块
     // 内嵌（resolve_bps_dependencies 头注）。
     let (bps_widget_files, bps_fn_code) = {
         let front = collect_at_files(&front_dir).unwrap_or_default();
-        resolve_bps_dependencies(project_dir, &front)
+        resolve_bps_dependencies(project_dir, &front, src_)
     };
     let mut at_files = collect_at_files(&front_dir)?;
     at_files.extend(bps_widget_files);
@@ -421,7 +421,7 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
 
     let pac_path = project_dir.join("pac.at");
     let project_name = if pac_path.exists() {
-        parse_pac_name(&pac_path).unwrap_or_else(|| "MyApp".to_string())
+        src_.name(&pac_path)
     } else {
         "MyApp".to_string()
     };
@@ -490,7 +490,7 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
         all_components.push_str(&bps_fn_code);
     }
 
-    let full_code = wrap_example(&project_name, &all_components, project_dir);
+    let full_code = wrap_example(&project_name, &all_components, project_dir, src_);
     let main_rs = rust_dir.join("src").join("main.rs");
     fs::write(&main_rs, &full_code)
         .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
@@ -500,7 +500,7 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path) -> AutoResult<()> {
     // 侧车源更新后生成 crate 一直吃旧文件,at-app term.rs 泵扩面实测
     // 踩中)。Cargo.toml 也按 pac 现值重写(exe_name 等 014 配置 regen
     // 即生效),随后 apply_sidecar_to_crate 重注依赖 + mod 声明。
-    let cargo_toml = generate_cargo_toml(&project_name, project_dir);
+    let cargo_toml = generate_cargo_toml(&project_name, project_dir, src_);
     fs::write(rust_dir.join("Cargo.toml"), &cargo_toml).map_err(|e| {
         format!(
             "Failed to write {}: {}",
@@ -525,6 +525,27 @@ pub fn generate_rust_ui(
     output_dir: Option<&Path>,
     _project: bool,
 ) -> AutoResult<()> {
+    let source = PacSource::legacy();
+    generate_rust_ui_inner(project_dir, output_dir, _project, &source)
+}
+
+/// 请求路径（PLAN-809 T-06c 生产入口）。
+pub fn generate_rust_ui_with_request(
+    project_dir: &Path,
+    output_dir: Option<&Path>,
+    project: bool,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    let source = PacSource::from_request(req);
+    generate_rust_ui_inner(project_dir, output_dir, project, &source)
+}
+
+fn generate_rust_ui_inner(
+    project_dir: &Path,
+    output_dir: Option<&Path>,
+    _project: bool,
+    source: &PacSource,
+) -> AutoResult<()> {
     println!("{}", "Generating Rust UI code".bright_cyan());
 
     // Determine output directory — use shared workspace at examples/rust-workspace/
@@ -539,7 +560,7 @@ pub fn generate_rust_ui(
 
     // PLAN-792：编译相位抽取为 compile_rust_ui_app（开发/交付共享）；
     // None = 无 .at/无 WidgetDecl（既有早退语义，输出字节与直写路径一致）。
-    let Some(compiled) = compile_rust_ui_app(project_dir)? else {
+    let Some(compiled) = compile_rust_ui_app(project_dir, source)? else {
         return Ok(());
     };
     let project_name = compiled.project_name;
@@ -555,7 +576,7 @@ pub fn generate_rust_ui(
         .map_err(|e| format!("Failed to write {}: {}", main_rs.display(), e))?;
 
     // Generate Cargo.toml with workspace dependencies
-    let cargo_toml = generate_cargo_toml(&project_name, project_dir);
+    let cargo_toml = generate_cargo_toml(&project_name, project_dir, source);
     let cargo_path = output.join("Cargo.toml");
     fs::write(&cargo_path, &cargo_toml)
         .map_err(|e| format!("Failed to write {}: {}", cargo_path.display(), e))?;
@@ -605,7 +626,10 @@ pub(crate) struct CompiledRustUiApp {
 /// "写盘后读回"改为内存内完成，最终落盘字节与抽取前一致。
 ///
 /// 返回 `Ok(None)` = 无 .at 文件或无 WidgetDecl（既有早退语义）。
-pub(crate) fn compile_rust_ui_app(project_dir: &Path) -> AutoResult<Option<CompiledRustUiApp>> {
+pub(crate) fn compile_rust_ui_app(
+    project_dir: &Path,
+    src_: &PacSource,
+) -> AutoResult<Option<CompiledRustUiApp>> {
     let front_dir = find_front_dir(project_dir);
 
     if !front_dir.exists() {
@@ -617,7 +641,7 @@ pub(crate) fn compile_rust_ui_app(project_dir: &Path) -> AutoResult<Option<Compi
     // 内嵌（resolve_bps_dependencies 头注）。
     let (bps_widget_files, bps_fn_code) = {
         let front = collect_at_files(&front_dir)?;
-        resolve_bps_dependencies(project_dir, &front)
+        resolve_bps_dependencies(project_dir, &front, src_)
     };
     let mut at_files = collect_at_files(&front_dir)?;
     at_files.extend(bps_widget_files);
@@ -638,7 +662,7 @@ pub(crate) fn compile_rust_ui_app(project_dir: &Path) -> AutoResult<Option<Compi
     // Get project name from pac.at
     let pac_path = project_dir.join("pac.at");
     let project_name = if pac_path.exists() {
-        parse_pac_name(&pac_path).unwrap_or_else(|| "MyApp".to_string())
+        src_.name(&pac_path)
     } else {
         "MyApp".to_string()
     };
@@ -714,7 +738,7 @@ pub(crate) fn compile_rust_ui_app(project_dir: &Path) -> AutoResult<Option<Compi
 
     // Wrap in main() boilerplate
     let main_widget = extract_main_widget(&all_components);
-    let mut full_code = wrap_example(&project_name, &all_components, project_dir);
+    let mut full_code = wrap_example(&project_name, &all_components, project_dir, src_);
 
     // PLAN-013 T2: __InitLoaded 载荷类型修正——ui_gen 硬编码
     // Vec<serde_json::Value>(JSON API 客户端世界);merged db 吸收时
@@ -2396,7 +2420,12 @@ fn ws_close(handle: i32) {
 }
 
 /// Wrap generated components in a main() function with ICED/GPUI backend selection.
-fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> String {
+fn wrap_example(
+    project_name: &str,
+    components: &str,
+    project_dir: &Path,
+    src_: &PacSource,
+) -> String {
     let main_widget = extract_main_widget(components);
     let main_msg = format!("{}Msg", main_widget);
 
@@ -2662,8 +2691,8 @@ fn wrap_example(project_name: &str, components: &str, project_dir: &Path) -> Str
     );
 
     let pac_path = project_dir.join("pac.at");
-    let pac_window = parse_pac_window(&pac_path);
-    let pac_title = parse_pac_title(&pac_path);
+    let pac_window = src_.window_env(&pac_path);
+    let pac_title = src_.title_env(&pac_path);
 
     let mut env_inits = String::new();
     if let Some(win) = pac_window {
@@ -2869,9 +2898,13 @@ fn collect_dep_fn_imports(
 /// 补进编译集（vue 契约须显式 use、VM 轨宽松——rust 轨按 dep 声明 + 名
 /// 字面命中补源；机制通用，零消费方标识符硬编码）。
 /// 返回 (widget 补集文件, fn 模块内嵌代码)。
-fn resolve_bps_dependencies(project_dir: &Path, at_files: &[PathBuf]) -> (Vec<PathBuf>, String) {
+fn resolve_bps_dependencies(
+    project_dir: &Path,
+    at_files: &[PathBuf],
+    src_: &PacSource,
+) -> (Vec<PathBuf>, String) {
     let pac_path = project_dir.join("pac.at");
-    let deps = parse_pac_dep_roots(&pac_path, project_dir);
+    let deps = src_.dep_roots(&pac_path, project_dir);
     if deps.is_empty() {
         return (Vec::new(), String::new());
     }
@@ -3128,6 +3161,158 @@ fn parse_pac_title(pac_path: &Path) -> Option<String> {
     title_zh.or(title)
 }
 
+/// pac.at 读源缝（PLAN-809 T-06c / I-PROJECT）。
+///
+/// rust_ui 的 pac.at 数据字段读取统一经此类型：legacy 路径懒解析文件
+/// （行为冻结），请求路径直接供值（生产分派传入 Automan 构造的
+/// GenerationRequest——生成器不再回读 pac.at/AutoConfig）。
+pub(crate) struct PacSource<'a> {
+    req: Option<&'a auto_project_model::generation_request::GenerationRequest>,
+}
+
+impl<'a> PacSource<'a> {
+    pub fn legacy() -> Self {
+        Self { req: None }
+    }
+
+    pub fn from_request(
+        req: &'a auto_project_model::generation_request::GenerationRequest,
+    ) -> Self {
+        Self { req: Some(req) }
+    }
+
+    #[allow(dead_code)]
+    pub fn is_request(&self) -> bool {
+        self.req.is_some()
+    }
+
+    pub fn name(&self, pac_path: &Path) -> String {
+        match self.req {
+            Some(r) => r
+                .identity
+                .name
+                .clone()
+                .unwrap_or_else(|| "MyApp".to_string()),
+            None => parse_pac_name(pac_path).unwrap_or_else(|| "MyApp".to_string()),
+        }
+    }
+
+    pub fn exe_name(&self, pac_path: &Path) -> Option<String> {
+        match self.req {
+            Some(r) => r.exe_name.clone(),
+            None => parse_pac_exe_name(pac_path),
+        }
+    }
+
+    pub fn window_env(&self, pac_path: &Path) -> Option<String> {
+        match self.req {
+            Some(r) => match r.runtime.window {
+                Some(auto_project_model::descriptor::WindowSpec::Size(w, h)) => {
+                    Some(format!("{}x{}", w as i64, h as i64))
+                }
+                Some(auto_project_model::descriptor::WindowSpec::Fit) => Some("fit".to_string()),
+                None => None,
+            },
+            None => parse_pac_window(pac_path),
+        }
+    }
+
+    pub fn title_env(&self, pac_path: &Path) -> Option<String> {
+        // parse_pac_title 语义：title_zh 优先于 title（无 locale 门）。
+        match self.req {
+            Some(r) => r
+                .display
+                .title_zh
+                .clone()
+                .or_else(|| r.display.title.clone()),
+            None => parse_pac_title(pac_path),
+        }
+    }
+
+    pub fn dep_roots(&self, pac_path: &Path, project_dir: &Path) -> Vec<(String, PathBuf)> {
+        match self.req {
+            Some(r) => r
+                .dep_roots
+                .iter()
+                .map(|d| {
+                    let path = match &d.path {
+                        Some(p) => {
+                            let rel = std::path::Path::new(p);
+                            if rel.is_absolute() {
+                                rel.to_path_buf()
+                            } else {
+                                project_dir.join(rel)
+                            }
+                        }
+                        None => project_dir.join(format!("deps/{}", d.name)),
+                    };
+                    (d.name.clone(), path)
+                })
+                .collect(),
+            None => parse_pac_dep_roots(pac_path, project_dir),
+        }
+    }
+
+    pub fn api_is_rust(&self, pac_path: &Path) -> bool {
+        match self.req {
+            Some(r) => r.runtime.api.as_deref() == Some("rust"),
+            None => {
+                pac_path.is_file() && {
+                    auto_lang::config::AutoConfig::from_file(pac_path, &auto_val::Obj::new())
+                        .ok()
+                        .map(|c| c.root.get_prop("api").to_astr() == "rust")
+                        .unwrap_or(false)
+                }
+            }
+        }
+    }
+
+    pub fn external_backend(&self, project_dir: &Path) -> AutoResult<Option<auto_val::AutoStr>> {
+        match self.req {
+            Some(r) => Ok(r
+                .external_backend
+                .clone()
+                .map(auto_val::AutoStr::from)
+                .filter(|s| !s.is_empty())),
+            None => external_backend_of(project_dir),
+        }
+    }
+
+    /// theme{} 声明激活（compose + set_theme_composed——语言侧效果，
+    /// 本方法属 adapter；请求路径从 ThemeDeclLite 还原语言声明）。
+    pub fn apply_theme_decl(&self, project_dir: &Path) -> Option<String> {
+        match self.req {
+            Some(r) => {
+                let lite = r.theme_decl.as_ref()?;
+                let decl = auto_lang::design_tokens::decl::ThemeDecl {
+                    name: lite.name.clone(),
+                    extends: lite.extends.clone(),
+                    mode: lite.mode.clone(),
+                    colors: lite.colors.clone(),
+                };
+                match auto_lang::design_tokens::decl::compose(
+                    &decl,
+                    &std::collections::BTreeMap::new(),
+                ) {
+                    Ok(theme) => {
+                        let name = theme.name.clone();
+                        auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(theme));
+                        Some(name)
+                    }
+                    Err(e) => {
+                        println!(
+                            "{} theme{{}} 合成失败：{e} —— 回退内置缺省",
+                            "⚠".bright_yellow()
+                        );
+                        None
+                    }
+                }
+            }
+            None => apply_pac_theme_decl(project_dir),
+        }
+    }
+}
+
 /// Convert CamelCase to snake_case.
 fn to_snake_case(s: &str) -> String {
     let mut result = String::new();
@@ -3149,10 +3334,14 @@ fn to_snake_case(s: &str) -> String {
 /// No `[workspace]` section — this project is a member of the shared workspace
 /// at `examples/rust-workspace/`. Dependencies use `workspace = true` to inherit
 /// from the workspace-level `[workspace.dependencies]`.
-pub(crate) fn generate_cargo_toml(project_name: &str, project_dir: &Path) -> String {
+pub(crate) fn generate_cargo_toml(
+    project_name: &str,
+    project_dir: &Path,
+    src_: &PacSource,
+) -> String {
     let snake_name = to_snake_case(project_name);
     // 014: pac.at `exe_name`（pac_bin_block——交付清单同源复用）。
-    let bin_block = pac_bin_block(project_dir);
+    let bin_block = pac_bin_block(project_dir, src_);
 
     format!(
         r#"[package]
@@ -4354,9 +4543,10 @@ fn generate_delivery_app_manifest(
     project_name: &str,
     project_dir: &Path,
     pins: &[(String, String)],
+    src_: &PacSource,
 ) -> String {
     let snake_name = to_snake_case(project_name);
-    let bin_block = pac_bin_block(project_dir);
+    let bin_block = pac_bin_block(project_dir, src_);
     // 与基础依赖同名的 pin（如 iced——TOML 单键不可重复声明）直接并入基础
     // 行用精确版本；pin 块只列其余家族成员。
     const BASE_KEYS: [&str; 9] = [
@@ -4416,8 +4606,8 @@ iced = {{ version = "{iced_ver}", features = ["tokio", "advanced"] }}
 }
 
 /// pac.at `exe_name` → 显式 `[[bin]]` 块（014；generate_cargo_toml 同源）。
-fn pac_bin_block(project_dir: &Path) -> String {
-    parse_pac_exe_name(&project_dir.join("pac.at"))
+fn pac_bin_block(project_dir: &Path, src_: &PacSource) -> String {
+    src_.exe_name(&project_dir.join("pac.at"))
         .map(|exe| format!("\n[[bin]]\nname = \"{exe}\"\npath = \"src/main.rs\"\n"))
         .unwrap_or_default()
 }
@@ -5119,6 +5309,25 @@ if __name__ == "__main__":
 /// R1-F02：全部生成/校验在独立 staging 完成，成功后整体换装——准备或
 /// 生成失败保留既有交付字节（失败不切换任何旧生产产物）。
 pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> AutoResult<()> {
+    let source = PacSource::legacy();
+    generate_rust_ui_delivery_inner(project_dir, delivery_root, &source)
+}
+
+/// 请求路径（PLAN-809 T-06c 生产入口）。
+pub fn generate_rust_ui_delivery_with_request(
+    project_dir: &Path,
+    delivery_root: &Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    let source = PacSource::from_request(req);
+    generate_rust_ui_delivery_inner(project_dir, delivery_root, &source)
+}
+
+fn generate_rust_ui_delivery_inner(
+    project_dir: &Path,
+    delivery_root: &Path,
+    source: &PacSource,
+) -> AutoResult<()> {
     println!(
         "{}",
         "Generating Rust UI delivery bundle (PLAN-792 explicit delivery mode)".bright_cyan()
@@ -5130,7 +5339,7 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
         return Err(format!("Front directory not found: {}", front_dir.display()).into());
     }
 
-    let Some(compiled) = compile_rust_ui_app(project_dir)? else {
+    let Some(compiled) = compile_rust_ui_app(project_dir, source)? else {
         return Err(
             "delivery: 前端无 .at 组件（受管交付拒绝空应用——受管阶段判红，不静默出空包)".into(),
         );
@@ -5266,7 +5475,8 @@ pub fn generate_rust_ui_delivery(project_dir: &Path, delivery_root: &Path) -> Au
     let app_dir = delivery_root.join("app");
     fs::create_dir_all(app_dir.join("src"))
         .map_err(|e| format!("delivery: 建应用目录失败: {e}"))?;
-    let app_manifest = generate_delivery_app_manifest(&compiled.project_name, project_dir, &pins);
+    let app_manifest =
+        generate_delivery_app_manifest(&compiled.project_name, project_dir, &pins, source);
     fs::write(app_dir.join("Cargo.toml"), &app_manifest)
         .map_err(|e| format!("delivery: 写应用 manifest 失败: {e}"))?;
     fs::write(app_dir.join("src").join("main.rs"), &compiled.main_rs)
@@ -5902,7 +6112,8 @@ pub fn build_rust_ui(project_dir: &Path) -> AutoResult<()> {
             "{}",
             "Regenerating Rust UI code (source changed)...".bright_cyan()
         );
-        regenerate_code_only(project_dir, &rust_dir)?;
+        let __src = PacSource::legacy();
+        regenerate_code_only(project_dir, &rust_dir, &__src)?;
     }
 
     // PLAN-681 R-1（复审 needs_fix 修正）：build 路径补 back crate 刷新。
@@ -5966,7 +6177,8 @@ pub fn run_rust_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
             "{}",
             "Regenerating Rust UI code (source changed)...".bright_cyan()
         );
-        regenerate_code_only(project_dir, &rust_dir)?;
+        let __src = PacSource::legacy();
+        regenerate_code_only(project_dir, &rust_dir, &__src)?;
     }
 
     // Plan 347: In merged mode, skip the backend HTTP server — API functions
@@ -6133,7 +6345,22 @@ fn load_external_backend(
 /// Starts the same API backend server as --render=rust, but runs
 /// the frontend through the in-process interpreter instead of
 /// transpiling to Rust.
-pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
+pub fn run_vm_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    let source = PacSource::legacy();
+    run_vm_ui_inner(project_dir, args, &source)
+}
+
+/// 请求路径（PLAN-809 T-06c 生产入口）。
+pub fn run_vm_ui_with_request(
+    project_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    let source = PacSource::from_request(req);
+    run_vm_ui_inner(project_dir, args, &source)
+}
+
+fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -> AutoResult<()> {
     // Plan 334: vm+vm 同进程合并。前端 widget VM（经 Plan 333）直接链接后端
     // 函数访问数据（list_notes → db.all_notes → notes 全局），不需要独立的 Axum
     // HTTP 后端进程。跳过 start_api_server 可消除冗余 cargo 编译、端口占用、
@@ -6147,12 +6374,7 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // （VM+VM split）或 a2r 转译的 Rust axum server（VM+Rust）。
     // AUTO_BACKEND_IMPL=rust → Rust 后端（start_api_server）
     let pac_path = project_dir.join("pac.at");
-    let has_rust_api = pac_path.is_file() && {
-        auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new())
-            .ok()
-            .map(|c| c.root.get_prop("api").to_astr() == "rust")
-            .unwrap_or(false)
-    };
+    let has_rust_api = source.api_is_rust(&pac_path);
     let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| {
         if has_rust_api {
             "rust".to_string()
@@ -6214,7 +6436,7 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // 无 back.project 配置时零行为变化(本地 back/ 现状)。
     let mut _backend_keepalive: Option<auto_lang::vm::backend_abi::LoadedBackend> = None;
     if !split_mode {
-        match external_backend_of(project_dir) {
+        match source.external_backend(project_dir) {
             Ok(Some(backend_rel)) => {
                 let backend_dir = project_dir
                     .join(backend_rel.as_str())
@@ -6322,7 +6544,7 @@ pub fn run_vm_ui(project_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     // T-06 双端同源）。在 env 种子**之后**执行：声明只换 ACTIVE_THEME 色板
     // 槽,不清写 DARK_MODE/ACCENT_NAME——优先级链
     // CLI env > os-config/宿主 > pac.at 声明 > 内置缺省 语义成文。
-    if let Some(name) = apply_pac_theme_decl(project_dir) {
+    if let Some(name) = source.apply_theme_decl(project_dir) {
         println!(
             "  {} theme declaration activated: {}",
             "✓".bright_green(),
@@ -6788,7 +7010,7 @@ pub fn answer() int { return 42 }
         )
         .unwrap();
         let components = "use auto_lang::ui::{Component, View};\npub struct P031Counter { pub count: i64 }\nimpl Component for P031Counter { type Msg = i64; fn view(&self) -> View<Self::Msg> { View::new() } }\n";
-        let main_rs = wrap_example("p031-app", components, &project);
+        let main_rs = wrap_example("p031-app", components, &project, &PacSource::legacy());
         assert!(main_rs.contains(r##"--autodesk-rqhost""##), "标记解析在场");
         assert!(
             main_rs.contains("ClientTarget::Rqhost"),
@@ -6816,7 +7038,7 @@ pub fn answer() int { return 42 }
         )
         .unwrap();
         let components = "use auto_lang::ui::{Component, View};\npub struct P693App { pub count: i64 }\nimpl Component for P693App { type Msg = i64; fn view(&self) -> View<Self::Msg> { View::new() } }\n";
-        let main_rs = wrap_example("p693-app", components, &project);
+        let main_rs = wrap_example("p693-app", components, &project, &PacSource::legacy());
         // 三模式 CLI 解析 + 优先级链单源调用（CLI > env > pac > 独立轨）。
         assert!(
             main_rs.contains("render_cli::parse_render_cli"),
@@ -7584,7 +7806,11 @@ pub fn create_item(name str) str {
         // Plan 349 步骤 7/8 (W6): generated Cargo.toml must declare the reqwest features
         // the helper relies on (cookies + gzip + brotli), alongside the
         // pre-existing blocking/json/multipart.
-        let toml = generate_cargo_toml("test_proj", std::path::Path::new("/tmp/test"));
+        let toml = generate_cargo_toml(
+            "test_proj",
+            std::path::Path::new("/tmp/test"),
+            &PacSource::legacy(),
+        );
         assert!(
             toml.contains("\"cookies\""),
             "missing cookies feature: [{}]",
@@ -7615,7 +7841,7 @@ pub fn create_item(name str) str {
             "name: \"calc\"\ntitle: \"Calculator\"\ntitle_zh: \"计算器\"\n",
         )
         .unwrap();
-        let toml = generate_cargo_toml("calc", &tmp);
+        let toml = generate_cargo_toml("calc", &tmp, &PacSource::legacy());
         assert!(
             !toml.contains("[[bin]]"),
             "title_zh 不得触发 [[bin]]: [{}]",
@@ -7626,7 +7852,7 @@ pub fn create_item(name str) str {
             "name: \"calc\"\ntitle_zh: \"计算器\"\nexe_name: \"auto-term\"\n",
         )
         .unwrap();
-        let toml = generate_cargo_toml("calc", &tmp);
+        let toml = generate_cargo_toml("calc", &tmp, &PacSource::legacy());
         assert!(
             toml.contains("[[bin]]\nname = \"auto-term\""),
             "exe_name 显式臂不变: [{}]",

@@ -1236,9 +1236,16 @@ impl Automan {
                 println!("{} {}/", "→ Member:".bright_green(), member_path);
 
                 // Load member's pac.at to determine backend type
-                let config = auto_lang::config::AutoConfig::read(&member_pac_path)
+                let member_config_kept = auto_lang::config::AutoConfig::read(&member_pac_path)
                     .map_err(|e| format!("Failed to read {}: {}", member_pac_path.display(), e))?;
-                let member_pac = Pac::new(config);
+                let member_pac = Pac::new(auto_lang::config::AutoConfig {
+                    code: member_config_kept.code.clone(),
+                    root: member_config_kept.root.clone(),
+                    args: member_config_kept.args.clone(),
+                });
+                // PLAN-809 T-06c：成员的生成请求一次构造、多处消费（I-PROJECT）。
+                let member_req =
+                    crate::generation_request_adapter::request_of(&member_pac, &member_pac_path);
 
                 // Get frontend types from member's pac.at
                 let frontends = if member_pac.has_backend_config() {
@@ -1263,7 +1270,10 @@ impl Automan {
                     match backend {
                         BackendType::Vue => {
                             println!("  Generating Vue (backend: vue)");
-                            let project_ctx = crate::vue::VueProject::from_workspace(&member_dir)?;
+                            let project_ctx = crate::vue::VueProject::from_workspace_with_request(
+                                &member_dir,
+                                &member_req,
+                            )?;
                             if project || !project_ctx.exists() {
                                 project_ctx.generate()?;
                             } else {
@@ -1272,7 +1282,10 @@ impl Automan {
                         }
                         BackendType::Tauri => {
                             println!("  Generating Tauri (backend: tauri)");
-                            let project_ctx = crate::vue::VueProject::from_workspace(&member_dir)?;
+                            let project_ctx = crate::vue::VueProject::from_workspace_with_request(
+                                &member_dir,
+                                &member_req,
+                            )?;
                             project_ctx.generate()?;
                         }
                         BackendType::Jet => {
@@ -1293,13 +1306,19 @@ impl Automan {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
                             if let Some(ref out) = output_path {
-                                crate::jet::generate_jet_project(
+                                crate::jet::generate_jet_project_with_request(
                                     &member_dir,
                                     Some(out.as_path()),
                                     project,
+                                    &member_req,
                                 )?;
                             } else {
-                                crate::jet::generate_jet_project(&member_dir, None, project)?;
+                                crate::jet::generate_jet_project_with_request(
+                                    &member_dir,
+                                    None,
+                                    project,
+                                    &member_req,
+                                )?;
                             }
                         }
                         BackendType::Arkts => {
@@ -1320,13 +1339,19 @@ impl Automan {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
                             if let Some(ref out) = output_path {
-                                crate::ark::generate_ark_project(
+                                crate::ark::generate_ark_project_with_request(
                                     &member_dir,
                                     Some(out.as_path()),
                                     project,
+                                    &member_req,
                                 )?;
                             } else {
-                                crate::ark::generate_ark_project(&member_dir, None, project)?;
+                                crate::ark::generate_ark_project_with_request(
+                                    &member_dir,
+                                    None,
+                                    project,
+                                    &member_req,
+                                )?;
                             }
                         }
                         BackendType::Rust => {
@@ -1335,7 +1360,11 @@ impl Automan {
                             // 可搬动 bundle；未设置时开发模式（rust-workspace
                             // 共享工作区）行为不变。
                             if let Some(ref delivery) = self.delivery_root {
-                                crate::rust_ui::generate_rust_ui_delivery(&member_dir, delivery)?;
+                                crate::rust_ui::generate_rust_ui_delivery_with_request(
+                                    &member_dir,
+                                    delivery,
+                                    &member_req,
+                                )?;
                             } else {
                                 let output_path = if frontends.len() > 1 {
                                     output
@@ -1354,13 +1383,19 @@ impl Automan {
                                 };
 
                                 if let Some(ref out) = output_path {
-                                    crate::rust_ui::generate_rust_ui(
+                                    crate::rust_ui::generate_rust_ui_with_request(
                                         &member_dir,
                                         Some(out.as_path()),
                                         project,
+                                        &member_req,
                                     )?;
                                 } else {
-                                    crate::rust_ui::generate_rust_ui(&member_dir, None, project)?;
+                                    crate::rust_ui::generate_rust_ui_with_request(
+                                        &member_dir,
+                                        None,
+                                        project,
+                                        &member_req,
+                                    )?;
                                 }
                             }
                         }
@@ -1406,6 +1441,13 @@ impl Automan {
         let selected_backends = vec![backend];
         let frontends = selected_backends.clone(); // for multi-backend output path check
 
+        // PLAN-809 T-06c：本工程生成请求（I-PROJECT）——一次构造多处消费。
+        let self_req = {
+            let root_dir = std::env::current_dir()
+                .map_err(|e| format!("Failed to get current directory: {}", e))?;
+            crate::generation_request_adapter::request_of(&self.pac, &root_dir.join("pac.at"))
+        };
+
         // Generate for selected backend only
         for backend in &selected_backends {
             match backend {
@@ -1430,9 +1472,16 @@ impl Automan {
                     };
 
                     if let Some(ref out) = output_path {
-                        crate::jet::generate_jet_project(&root_dir, Some(out.as_path()), project)?;
+                        crate::jet::generate_jet_project_with_request(
+                            &root_dir,
+                            Some(out.as_path()),
+                            project,
+                            &self_req,
+                        )?;
                     } else {
-                        crate::jet::generate_jet_project(&root_dir, None, project)?;
+                        crate::jet::generate_jet_project_with_request(
+                            &root_dir, None, project, &self_req,
+                        )?;
                     }
                 }
                 BackendType::Arkts => {
@@ -1456,9 +1505,16 @@ impl Automan {
                     };
 
                     if let Some(ref out) = output_path {
-                        crate::ark::generate_ark_project(&root_dir, Some(out.as_path()), project)?;
+                        crate::ark::generate_ark_project_with_request(
+                            &root_dir,
+                            Some(out.as_path()),
+                            project,
+                            &self_req,
+                        )?;
                     } else {
-                        crate::ark::generate_ark_project(&root_dir, None, project)?;
+                        crate::ark::generate_ark_project_with_request(
+                            &root_dir, None, project, &self_req,
+                        )?;
                     }
                 }
                 BackendType::Vue => {
@@ -1466,7 +1522,8 @@ impl Automan {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                    let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
+                    let project_ctx =
+                        crate::vue::VueProject::from_workspace_with_request(&root_dir, &self_req)?;
 
                     if project || !project_ctx.exists() {
                         project_ctx.generate()?;
@@ -1480,7 +1537,8 @@ impl Automan {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                    let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
+                    let project_ctx =
+                        crate::vue::VueProject::from_workspace_with_request(&root_dir, &self_req)?;
                     project_ctx.generate()?;
                 }
                 BackendType::Rust => {
@@ -1491,7 +1549,9 @@ impl Automan {
                     // PLAN-792：显式交付模式（--delivery-root）——受管可搬动
                     // bundle；未设置时开发模式行为不变。
                     if let Some(ref delivery) = self.delivery_root {
-                        crate::rust_ui::generate_rust_ui_delivery(&root_dir, delivery)?;
+                        crate::rust_ui::generate_rust_ui_delivery_with_request(
+                            &root_dir, delivery, &self_req,
+                        )?;
                     } else {
                         // For multi-backend, create output subdirectory
                         let output_path = if frontends.len() > 1 {
@@ -1509,13 +1569,16 @@ impl Automan {
                         };
 
                         if let Some(ref out) = output_path {
-                            crate::rust_ui::generate_rust_ui(
+                            crate::rust_ui::generate_rust_ui_with_request(
                                 &root_dir,
                                 Some(out.as_path()),
                                 project,
+                                &self_req,
                             )?;
                         } else {
-                            crate::rust_ui::generate_rust_ui(&root_dir, None, project)?;
+                            crate::rust_ui::generate_rust_ui_with_request(
+                                &root_dir, None, project, &self_req,
+                            )?;
                         }
                     }
                 }

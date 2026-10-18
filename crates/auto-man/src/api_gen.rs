@@ -9374,7 +9374,11 @@ pub fn list_items() []str { return [] }
         assert!(rs_api.contains("pub fn queue") && rs_api.contains("pub fn stats"));
         let cargo = crate::api_gen::generate_cargo_toml("image-back", false, false);
         assert!(cargo.contains("auto-lang = { workspace = true"));
-        let ui_cargo = crate::rust_ui::generate_cargo_toml("image-ui", Path::new("."));
+        let ui_cargo = crate::rust_ui::generate_cargo_toml(
+            "image-ui",
+            Path::new("."),
+            &crate::rust_ui::PacSource::legacy(),
+        );
         assert!(ui_cargo.contains("auto-lang/ui-iced"));
     }
 }
