@@ -1,14 +1,14 @@
 ---
 plan_id: PLAN-806
-status: execution_done
+status: reviewed
 feature_name: UI msg 与 model 声明文法正式外置
 author: [Codex]
 created_at: 2026-10-17
 updated_at: 2026-10-18
 plan_revision: 1
-current_step: 6
+current_step: 7
 total_steps: 8
-supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
+supersedes_spec_components: [docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md, docs/specs/repository-boundaries/generated-ui-distribution.md, docs/specs/auto-parser-api/project.md]
 new_spec_components: [docs/specs/auto-ui-dialect/project.md]
 touched_goals: [GOAL-003, GOAL-007]
 affects: [auto-ui-dialect, auto-lang/frontend, auto-parser-api]
@@ -66,6 +66,7 @@ pilot不保第二份model算法：801独立model consumer改为复用新model解
 | SD-03 | modify | docs/specs/auto-lang/frontend/design/dialect-system.md | 声明分派与端口权限/恢复规约、默认与pilot策略区别 | 不改变Core和外部优先级 | AC-02/03 |
 | SD-04 | modify | docs/specs/auto-lang/ui/design/scenario-dialect.md | msg/model正式外置，其他UI grammar仍上层 | 不夸大全UI文法已拆出 | AC-03/04 |
 | SD-05 | modify | docs/specs/repository-boundaries/generated-ui-distribution.md | 交付闭包12 crate→13（+auto-ui-dialect 及其闭包内依赖边说明） | 权威交付规范不漏新包（F806-R2-02） | AC-04 |
+| SD-06 | modify | docs/specs/auto-parser-api/project.md | 无原始token探测合同→probe_next_kind成功回推/失败沿旧lexer消费协议；pilot算法归属及交付13成员同步 | 对齐本计划实际新增端口、实现方兼容性及单源消费事实（R4审查补齐impact导航） | AC-01/02/04 |
 
 ## 6. 测试设计
 
@@ -95,7 +96,7 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 
 ## 8. 执行步骤
 
-2026-10-18 R3 当前状态：R2 三项原finding已关闭，但新增前瞻端口的失败合同不成立（F806-R3-01）；保留 T-03/T-04，重开 T-01/T-02/T-05/T-06，executing 2/8。附属work完成说明保留为历史声明，当前验收以 [R3复审](attachments/806/review-r3.md) 为准。新增UI导入测试建议补feature门控（F806-R3-02，P3，非单独阻断）。
+2026-10-18 R4 当前状态：R1～R3 finding全部关闭，代码/验收/Spec最终复审pass，reviewed 7/8；T-08 merge-owned冻结门禁及沉淀/归档/清理仍pending，尚未合入。当前结论以 [R4复审](attachments/806/review-r4.md) 为准，以下各轮work与复审历史保留。
 
 | 状态 | ID | owner_stage | 依赖 | 路径/交付与验证 | AC |
 |---|---|---|---|---|---|
@@ -119,10 +120,12 @@ work：`cargo check -p auto-ui-dialect`、`cargo check -p auto-lang`，新consum
 | [✅ 2026-10-18 R3 修复, code 50644ad43] SD-01 双路径校准+auto-parser-api/project.md 端口合同条目/实现方兼容性/陈旧 pilot 位置/闭包 12→13 修正；frontmatter affects 增 auto-parser-api；新冻结 code=50644ad43 送 T-07 四轮审查。 |
 | [✅ 2026-10-18 R2 修复, code e2fc6ebf3] SD-01 lookahead/怪癖适用边界校准（缺块闭括号+EOF=无界怪癖≠已覆盖错误出口；载荷缺 `)`=expect 确定性报错）；generated-ui-distribution.md 12→13+依赖边说明（SD-05 具名+frontmatter supersedes 增补）；t05-receipt 增 R2 更正节（微残差叙事作废+tu 整档时序越权注记）；新冻结 code=e2fc6ebf3 送 T-07 二轮复审。 |
 | [✅ 2026-10-17 work, code af3748db7+f84f405f4+a20fcf6fe] SD-01 新 auto-ui-dialect/project.md+SD-02..04 三处备稿（worktree 待 merge 沉淀）；未迁清单/净删/微残差登记入 t05-receipt；代码链 970960b4a→a20fcf6fe 共 8 提交，送 T-07 同树独立复审，merge 门 pending。 |
-| [ ] | T-07 | review | T06 | 同树独立完整语法/所有调用/恢复/消费/SD审查，merge门pending | 05 |
+| [x] | T-07 | review | T06 | R4 pass@50644ad43；原反例及新失败协议/真实import/无UI/消费/Spec与正式交付25项验证通过，merge门pending | 05 |
 | [ ] | T-08 | merge | final pass | 同步master、受影响复审/冻结门、沉淀/归档/wt-guard清理 | 06 |
 
 ## 9. 复审记录
+
+2026-10-18 / stage: review / review_scope: final / reviewer_identity: 当前独立Codex检查会话（未参与实施，无额外agent，不臆造未暴露身份） / plan_id: PLAN-806 / plan_revision: 1 / outcome: pass / worktree_path: D:/autostack/.wt/lang-806/auto-lang / branch: codex/plan-806-dev / reviewed_commit: 50644ad43c89f8ada86214a5f4ac2a7998b8b494 / base_commit: 5d8834bcc9cb4bde66ca9b610259036b82642227 / previous_reviewed_commit: e2fc6ebf38e576e1cfb9486fd72cf92f47c5738a / dependency_revisions: 799/801已合入；auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8；正式交付复验fresh锁见附件（各轮A/B一致，两fresh轮仅redox_syscall版本不同） / spec_inputs: [R4基线](attachments/806/review-r4-baseline.json.txt)；[六SD冻结patch](attachments/806/review-r4-spec-delta.patch) SHA256=d04e9f8b1457f1a1f0c94fa6492755c3418a7001b892630bede35091de45e2f1 / acceptance_results: AC01..05 pass、AC06 merge-owned pending / findings: R1/R2/R3全部CLOSED，无新增阻断；R3诊断简表/失败模式矩阵及oracle调整核实；原probe失败消费语义准确命名/定义且旧msg行为保持，UI测试feature门控闭合 / evidence: [完整R4](attachments/806/review-r4.md)，light10/10、driver48/48、plan806 18/18、定向45/45、生成4/4，独立18组语法输出与历史旧臂及新无UI库全部相同、probe成功/失败/单次重复控制一致；格式/默认check/轻闭包/777严格0违规通过；无UI libtest仍62处其他模块基线红但本计划诊断0，库构建/解析通过；本SHA正式792完整复验25/25 exit0（fresh127s/B锁定重定位116s）。保留首轮V02早退红（stderr未捕获、不臆造根因），原B原锁独立复放136s成功，逐步记录stderr的有界完整复验全过；详见报告锁差异与原始记录，不把首轮改记pass / impact_normalization: review补齐auto-parser-api/project.md实际改动到supersedes+SD06，AC/实现语义未改，revision不变；净删校正=Parser205删25增净-180，pilot65删8增净-57，历史收据口径混用不作最终净删依据 / pending_closeout_gates: 冻结裸cargo t+tv及实际触面档、规范/ledger/归档/guard清理、批量回归到期判断；本轮未执行整档/发布/合入或清实施树 / next: merge，reviewed 7/8，须后置门过后才能合入或宣称交付；如同步/修复引起代码依赖配置输入漂移，重核受影响证据与复审。
 
 2026-10-18 / stage: work / PLAN-806 revision: 1 / outcome: pass（R3 两 findings 全修，T-01/T-02/T-05/T-06 R3 要求重勾 6/8）/ worktree_path=D:/autostack/.wt/lang-806/auto-lang / branch=codex/plan-806-dev / base_commit=5d8834bcc / code_commit=50644ad43（修复在 R3 审查基线 e2fc6ebf3 之上单一提交；工作树 clean）/ dependency_revisions=auto-down c39ac7f9 不变 / finding_closure=F-806-R3-01：不变量=探测端口公开合同与实现一致且不得改变旧 msg 错误语义；此前漏检原因=R2 oracle 只覆盖成功路径+恰巧不推进输入的 UnknownCharacter，未枚举会推进输入的字符字面量失败（失败模式的偶然性质被当成了合同）；修复=peek_next_kind 更名 probe_next_kind+双路径精确定义（成功=零副作用/幂等/与首次 advance 一致；失败=旧回推前瞻失败消费协议：推进与否由 Lexer 失败模式决定、错误丢弃、不承诺幂等），auto-lang 原语 port_probe_next_kind 实现不变（=旧 lexer.next+push_token 逐字同构，msg 行为零变化）；永久用例=r3_probe_* 4 例（非推进型 None/None+advance 单份 UnknownCharacter；推进型 '\q' 首 None 次 Some(Ident) 后 advance 得 Ident("q") 零错误；'ab' 变体 Ident("b")；DocComment 探测不收集+advance 恰一份+Ident 幂等），oracle=R3 冻结探针日志逐字；结果=plan806 18/18；剩余缺口=无。F-806-R3-02：修复=import 链测试补 #[cfg(feature="ui-iced")]（与 build_dynamic_component 同条件）；验证=no-UI 定向编译 plan806_ui_declarations 0 错误（剩余红=plan712 等既有模块，R3 已注不归因本计划）；剩余缺口=无。 / evidence=attachments/806/t05-receipt.md R3 节（含按 R3 要求的诊断简表）/ blockers=无（merge 门 pending 不变：冻结裸 t+tv；792 交付 25/25 仍为 R2 历史证据，最终冻结面验收由 merge 门+终审确认影响后补/复用）/ next_responsible_role=review（T-07 四轮 final review，审查基线 50644ad43）
 
