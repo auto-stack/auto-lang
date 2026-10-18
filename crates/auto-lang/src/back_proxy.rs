@@ -148,7 +148,7 @@ struct NativeMediaState {
     /// 前端无 env 展开机制，§5.3）。
     base: String,
     /// 进程内一次性索引（镜像生成器 OnceLock<MEDIA_INDEX> 语义）。
-    index: std::sync::Mutex<Option<crate::ui::media_service::MediaIndex>>,
+    index: std::sync::Mutex<Option<auto_media_core::media_service::MediaIndex>>,
 }
 
 /// PLAN-043 Part 1: 一个 app 的原生 photo 服务面（语义同 NativeMediaState：
@@ -240,7 +240,7 @@ pub fn start(config: BackProxyConfig) -> std::io::Result<RunningProxy> {
             let base = format!("http://127.0.0.1:{port}");
             let mut map = HashMap::new();
             for app in &config.native_media {
-                let root = crate::ui::media_service::resolve_root(app.media_root.as_deref());
+                let root = auto_media_core::media_service::resolve_root(app.media_root.as_deref());
                 map.insert(
                     app.app_id.clone(),
                     NativeMediaState {
@@ -388,7 +388,7 @@ impl RunningProxy {
     #[cfg(feature = "ui")]
     pub fn add_native_media(&self, app: NativeMediaApp) {
         let base = format!("http://127.0.0.1:{}", self.port);
-        let root = crate::ui::media_service::resolve_root(app.media_root.as_deref());
+        let root = auto_media_core::media_service::resolve_root(app.media_root.as_deref());
         let app_id = app.app_id.clone();
         self.shared.native_media.lock().unwrap().insert(
             app_id,
@@ -821,14 +821,14 @@ impl ProxyShared {
         }
         let mut guard = state.index.lock().unwrap();
         let index = guard.get_or_insert_with(|| {
-            crate::ui::media_service::index_directory(root).unwrap_or_default()
+            auto_media_core::media_service::index_directory(root).unwrap_or_default()
         });
         let mut out = String::from("{\"entries\":[");
         for (i, e) in index.entries.iter().enumerate() {
             if i > 0 {
                 out.push(',');
             }
-            let (artist, song_title) = crate::ui::media_service::parse_artist_and_title(&e.name);
+            let (artist, song_title) = auto_media_core::media_service::parse_artist_and_title(&e.name);
             let album = if e.rel_dir.is_empty() {
                 "本地单曲".to_string()
             } else {
@@ -844,7 +844,7 @@ impl ProxyShared {
                     "id": &e.id,
                     "index": i + 1,
                     "index_str": index_str,
-                    "title": crate::ui::media_service::display_title(&e.name),
+                    "title": auto_media_core::media_service::display_title(&e.name),
                     "song_title": song_title,
                     "artist": artist,
                     "album": album,
@@ -854,7 +854,7 @@ impl ProxyShared {
                     "relative_path": &e.relative_path,
                     "extension": &e.extension,
                     "bytes": e.bytes,
-                    "size_str": crate::ui::media_service::human_size(e.bytes),
+                    "size_str": auto_media_core::media_service::human_size(e.bytes),
                     "url": abs,
                     "audio_url": abs,
                     "video_url": abs,
@@ -874,7 +874,7 @@ impl ProxyShared {
         range: Option<&str>,
         head_only: bool,
     ) -> ProxyReply {
-        use crate::ui::media_service::{
+        use auto_media_core::media_service::{
             content_range, content_type, find, parse_range, StreamPlan,
         };
         let Some(root) = &state.root else {
@@ -882,7 +882,7 @@ impl ProxyShared {
         };
         let mut guard = state.index.lock().unwrap();
         let index = guard.get_or_insert_with(|| {
-            crate::ui::media_service::index_directory(root).unwrap_or_default()
+            auto_media_core::media_service::index_directory(root).unwrap_or_default()
         });
         let Some(entry) = find(index, id) else {
             return ProxyReply::json(404, error_json(&format!("unknown media id `{id}`")));

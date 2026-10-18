@@ -4367,7 +4367,7 @@ pub(crate) fn layout_style_fn(
 /// beyond 128 entries the table is dropped (viewer sessions hold a handful
 /// of renditions; eviction semantics live in the pipeline caches above).
 fn cached_media_handle(
-    asset: crate::ui::image_pipeline::MediaAssetId,
+    asset: auto_media_core::image_pipeline::MediaAssetId,
     width: u32,
     height: u32,
     rgba: std::sync::Arc<[u8]>,
@@ -4379,7 +4379,7 @@ fn cached_media_handle(
     static CACHE: OnceLock<
         Mutex<
             HashMap<
-                crate::ui::image_pipeline::MediaAssetId,
+                auto_media_core::image_pipeline::MediaAssetId,
                 (std::sync::Arc<[u8]>, iced::widget::image::Handle),
             >,
         >,
@@ -4446,7 +4446,7 @@ fn render_image_surface<M: Clone + Debug + 'static>(
     // that a background resize lane has already decoded and cached; this path
     // never opens a file or decodes encoded bytes on the UI thread.
     let pixels = if src.starts_with("/api/__auto/media/") {
-        crate::ui::image_pipeline::resolve_media_render(&src)
+        auto_media_core::image_pipeline::resolve_media_render(&src)
     } else {
         None
     };
@@ -8145,7 +8145,7 @@ pub(crate) fn load_image_bytes(url: &str) -> Option<Vec<u8>> {
     // cache. A pending ticket must be retried on the next frame rather than
     // being cached as a permanent miss.
     if url.starts_with("/api/__auto/media/") {
-        return crate::ui::image_pipeline::resolve_media_uri(url);
+        return auto_media_core::image_pipeline::resolve_media_uri(url);
     }
     // PLAN-099 T-05：相对 URL（`/` 开头）按 `AUTO_HTTP_BASE`/`AUTO_HTTP_PORT`
     // 展开为绝对地址（复用 stdlib 单源助手——与 VM 轨 `Http.get` 同一词汇）。
@@ -10506,7 +10506,7 @@ static MEDIA_WAKE_SEEN: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomic
 static MEDIA_SWEEP_SEEN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 fn poll_media_wake() -> Option<IcedMessage> {
-    let gen = crate::ui::image_pipeline::media_change_generation();
+    let gen = auto_media_core::image_pipeline::media_change_generation();
     let last = MEDIA_WAKE_SEEN.swap(gen, std::sync::atomic::Ordering::AcqRel);
     if gen != last {
         Some(IcedMessage {
@@ -25457,7 +25457,7 @@ fn run_session(
                         .borrow()
                         .iter()
                         .any(crate::ui::session::MediaNotifyEntry::awaiting_notify);
-                    if crate::ui::image_pipeline::pending_media_count() > 0 || media_awaiting {
+                    if auto_media_core::image_pipeline::pending_media_count() > 0 || media_awaiting {
                         subs.push(app_tick(app_id, "__media_tick", 50));
                     }
                 }
@@ -29841,9 +29841,9 @@ fn media_notify_sweep(
     app: &crate::ui::session::AppState,
 ) {
     let table_empty = app.media_notify.borrow().is_empty();
-    let gen = crate::ui::image_pipeline::media_change_generation();
+    let gen = auto_media_core::image_pipeline::media_change_generation();
     if table_empty
-        && crate::ui::image_pipeline::pending_media_count() == 0
+        && auto_media_core::image_pipeline::pending_media_count() == 0
         && MEDIA_SWEEP_SEEN_GEN.load(std::sync::atomic::Ordering::Acquire) == gen
     {
         return;
@@ -29890,15 +29890,15 @@ fn media_notify_sweep(
                     table.last_mut().expect("entry just pushed")
                 }
             };
-            match crate::ui::image_pipeline::media_surface_status(&surf.src) {
-                crate::ui::image_pipeline::MediaSurfaceStatus::Ready => {
+            match auto_media_core::image_pipeline::media_surface_status(&surf.src) {
+                auto_media_core::image_pipeline::MediaSurfaceStatus::Ready => {
                     if !entry.ready_seen {
                         // 第一拍：只记录可消费；渲染帧在两拍之间消费 rendition。
                         entry.ready_seen = true;
                     } else if !entry.loaded_emitted {
                         entry.loaded_emitted = true;
                         if let Some(msg) = surf.on_loaded.clone() {
-                            let (w, h) = crate::ui::image_pipeline::resolve_media_render(&surf.src)
+                            let (w, h) = auto_media_core::image_pipeline::resolve_media_render(&surf.src)
                                 .map(|(_, w, h, _)| (w, h))
                                 .unwrap_or((0, 0));
                             // URI 末段 = 入队时资产 revision（parse_media_path 同形）。
@@ -29917,7 +29917,7 @@ fn media_notify_sweep(
                         }
                     }
                 }
-                crate::ui::image_pipeline::MediaSurfaceStatus::Failed(reason) => {
+                auto_media_core::image_pipeline::MediaSurfaceStatus::Failed(reason) => {
                     if entry.failed_reason.is_none() {
                         entry.failed_reason = Some(reason.clone());
                     }
@@ -33836,15 +33836,15 @@ mod tests {
 
     #[test]
     fn native_media_uri_resolves_registry_before_http_fallback() {
-        let registry = crate::ui::image_pipeline::global_media_registry();
+        let registry = auto_media_core::image_pipeline::global_media_registry();
         let ticket = registry.queue(
-            crate::ui::image_pipeline::MediaAssetKey {
+            auto_media_core::image_pipeline::MediaAssetKey {
                 source_fingerprint: "renderer-fixture".into(),
                 orientation: Default::default(),
-                rendition: crate::ui::image_pipeline::RenditionSpec::original(),
+                rendition: auto_media_core::image_pipeline::RenditionSpec::original(),
                 revision: 1,
             },
-            crate::ui::image_pipeline::MediaMetadata::default(),
+            auto_media_core::image_pipeline::MediaMetadata::default(),
         );
         let uri = format!("/api/__auto/media/{}/{}", ticket.id, ticket.revision);
         assert!(
@@ -33854,19 +33854,19 @@ mod tests {
         registry
             .transition(
                 ticket.id,
-                crate::ui::image_pipeline::MediaAssetState::Reading,
+                auto_media_core::image_pipeline::MediaAssetState::Reading,
             )
             .unwrap();
         registry
             .transition(
                 ticket.id,
-                crate::ui::image_pipeline::MediaAssetState::Decoding,
+                auto_media_core::image_pipeline::MediaAssetState::Decoding,
             )
             .unwrap();
         registry
             .transition(
                 ticket.id,
-                crate::ui::image_pipeline::MediaAssetState::Transforming,
+                auto_media_core::image_pipeline::MediaAssetState::Transforming,
             )
             .unwrap();
         registry

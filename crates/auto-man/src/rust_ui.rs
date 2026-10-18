@@ -1855,35 +1855,35 @@ fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &
                 .join(", ");
             let body = match fn_name.as_str() {
                 "open_file" | "open_directory" | "open_path" => format!(
-                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::open_media_session(path) }}\n\n",
+                    "fn {}({}) -> String {{ auto_media_core::image_pipeline::open_media_session(path) }}\n\n",
                     fn_name, sig
                 ),
                 "snapshot" => format!(
-                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::media_session_snapshot(&session) }}\n\n",
+                    "fn {}({}) -> String {{ auto_media_core::image_pipeline::media_session_snapshot(&session) }}\n\n",
                     fn_name, sig
                 ),
                 "current_uri" => format!(
-                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::media_session_uri(&session) }}\n\n",
+                    "fn {}({}) -> String {{ auto_media_core::image_pipeline::media_session_uri(&session) }}\n\n",
                     fn_name, sig
                 ),
                 "names" => format!(
-                    "fn {}({}) -> Vec<String> {{ auto_lang::ui::image_pipeline::media_session_names(&session) }}\n\n",
+                    "fn {}({}) -> Vec<String> {{ auto_media_core::image_pipeline::media_session_names(&session) }}\n\n",
                     fn_name, sig
                 ),
                 "navigate" => format!(
-                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::navigate_media_session(&session, delta) }}\n\n",
+                    "fn {}({}) -> String {{ auto_media_core::image_pipeline::navigate_media_session(&session, delta) }}\n\n",
                     fn_name, sig
                 ),
                 "request_view" => format!(
-                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::request_media_view(&session, index, viewport_width, viewport_height, quality) }}\n\n",
+                    "fn {}({}) -> String {{ auto_media_core::image_pipeline::request_media_view(&session, index, viewport_width, viewport_height, quality) }}\n\n",
                     fn_name, sig
                 ),
                 "close_session" => format!(
-                    "fn {}({}) -> bool {{ auto_lang::ui::image_pipeline::close_media_session(&session) }}\n\n",
+                    "fn {}({}) -> bool {{ auto_media_core::image_pipeline::close_media_session(&session) }}\n\n",
                     fn_name, sig
                 ),
                 "image_stats" => format!(
-                    "fn {}({}) -> String {{ auto_lang::ui::image_pipeline::media_session_stats(&session) }}\n\n",
+                    "fn {}({}) -> String {{ auto_media_core::image_pipeline::media_session_stats(&session) }}\n\n",
                     fn_name, sig
                 ),
                 _ => String::new(),
@@ -4136,6 +4136,9 @@ pub fn ensure_shared_workspace(project_dir: &Path) -> PathBuf {
     let auto_lang_rel = compute_auto_lang_rel_path(project_dir, &ws_dir);
     // PLAN-668 R-24：a2r-std 与 auto-lang 同根（crates/a2r-std）。
     let a2r_std_rel = auto_lang_rel.replace("crates/auto-lang", "crates/a2r-std");
+    // PLAN-811：媒体基础与 auto-lang 同根（crates/auto-media-core）——生成
+    // 物的 viewer 桥/媒体 HTTP 直接消费 `auto_media_core::` 公开入口。
+    let auto_media_core_rel = auto_lang_rel.replace("crates/auto-lang", "crates/auto-media-core");
     let target_rel = compute_target_rel_path(project_dir, &ws_dir);
 
     let members_toml = members
@@ -4156,6 +4159,9 @@ auto-lang = {{ path = "{auto_lang_rel}" }}
 # PLAN-668 R-24：a2r_std（sys 原生面/StringBuilder 等）随 auto-lang 同源
 # （仓库内 crates/a2r-std）——后端生成物 `a2r_std::sys::*` 调用需此 dep。
 a2r-std = {{ path = "{a2r_std_rel}" }}
+# PLAN-811：媒体基础（图像资产管线/媒体文件服务）——生成后端的
+# `auto_media_core::` 公开入口调用需此 dep。
+auto-media-core = {{ path = "{auto_media_core_rel}" }}
 serde_json = "1"
 ureq = {{ version = "2", features = ["json"] }}
 tokio = {{ version = "1", features = ["rt"] }}
@@ -4244,6 +4250,10 @@ pub const DELIVERY_CRATES: [&str; 15] = [
     // cell/geometry 合同 + DLL 服务 + 34 方法端口；自身闭包仅 libloading，
     // 由 terminal-core-consumer/verify-deps.sh 钉住）。
     "auto-terminal-core",
+    // PLAN-811 落地后 auto-lang 的必需 path 依赖（媒体基础：图像资产
+    // 管线/媒体文件服务；其三方依赖 image/kamadak-exif/blake3/fastrand
+    // 走 registry）——沿 792 合流合同窄接线，不登记则交付根 fresh 解析红。
+    "auto-media-core",
     "auto-cache",
     "shim-metadata",
     "auto-bindgen",
@@ -4644,6 +4654,8 @@ default = ["ui-iced", "auto-lang/default"]
 
 [dependencies]
 auto-lang = {{ path = "../crates/auto-lang" }}
+# PLAN-811：viewer 桥函数直接消费媒体基础公开入口（同交付根内源闭包）。
+auto-media-core = {{ path = "../crates/auto-media-core" }}
 serde_json = "1"
 # PLAN-039 T-13（E-D5-A）：back `pub type` struct 发射的 serde derive 依赖。
 serde = {{ version = "1", features = ["derive"] }}

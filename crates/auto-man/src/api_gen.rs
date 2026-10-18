@@ -1324,6 +1324,8 @@ futures = \"0.3\"";
     // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
     let runtime_deps = "
 auto-lang = { workspace = true, features = [\"ui\", \"image-pipeline\"] }
+# PLAN-811: 生成后端直接消费媒体基础公开入口（auto_media_core::）。
+auto-media-core = { workspace = true }
 a2r-std = { workspace = true }
 # PLAN-736 AC-03/06: 连接驱动同构（hyper-util auto Builder + 准入许可 + 排空）
 hyper = { version = \"1\", features = [\"http1\", \"server\"] }
@@ -3182,13 +3184,13 @@ fn media_json_str(s: &str) -> String {
     o
 }
 
-static MEDIA_INDEX: std::sync::OnceLock<auto_lang::ui::media_service::MediaIndex> =
+static MEDIA_INDEX: std::sync::OnceLock<auto_media_core::media_service::MediaIndex> =
     std::sync::OnceLock::new();
 
-fn media_index() -> Option<&'static auto_lang::ui::media_service::MediaIndex> {
-    let root = auto_lang::ui::media_service::resolve_root(None)?;
+fn media_index() -> Option<&'static auto_media_core::media_service::MediaIndex> {
+    let root = auto_media_core::media_service::resolve_root(None)?;
     Some(MEDIA_INDEX.get_or_init(|| {
-        auto_lang::ui::media_service::index_directory(&root).unwrap_or_default()
+        auto_media_core::media_service::index_directory(&root).unwrap_or_default()
     }))
 }
 
@@ -3196,7 +3198,7 @@ async fn auto_media_scan() -> axum::response::Response {
     // PLAN-617 T-10: 三态如实回传 —— 根目录未配置 / 已配置但不存在 /
     // 正常。`root_missing` 让前端能把「目录不存在」与「目录为空」分开说；
     // 绝对路径本身不出后端（SD-02 安全边界）。
-    let Some(root) = auto_lang::ui::media_service::resolve_root(None) else {
+    let Some(root) = auto_media_core::media_service::resolve_root(None) else {
         // No configured root is an honest empty list, not a 500.
         return axum::response::Response::builder()
             .status(200)
@@ -3212,14 +3214,14 @@ async fn auto_media_scan() -> axum::response::Response {
             .expect("media scan response is valid");
     }
     let index = MEDIA_INDEX.get_or_init(|| {
-        auto_lang::ui::media_service::index_directory(&root).unwrap_or_default()
+        auto_media_core::media_service::index_directory(&root).unwrap_or_default()
     });
     let mut out = String::from("{\"entries\":[");
     for (i, e) in index.entries.iter().enumerate() {
         if i > 0 {
             out.push(',');
         }
-        let (artist, song_title) = auto_lang::ui::media_service::parse_artist_and_title(&e.name);
+        let (artist, song_title) = auto_media_core::media_service::parse_artist_and_title(&e.name);
         let album = if e.rel_dir.is_empty() {
             "本地单曲".to_string()
         } else {
@@ -3231,7 +3233,7 @@ async fn auto_media_scan() -> axum::response::Response {
             media_json_str(&e.id),
             i + 1,
             media_json_str(&index_str),
-            media_json_str(auto_lang::ui::media_service::display_title(&e.name)),
+            media_json_str(auto_media_core::media_service::display_title(&e.name)),
             media_json_str(&song_title),
             media_json_str(&artist),
             media_json_str(&album),
@@ -3240,7 +3242,7 @@ async fn auto_media_scan() -> axum::response::Response {
             media_json_str(&e.relative_path),
             media_json_str(&e.extension),
             e.bytes,
-            media_json_str(&auto_lang::ui::media_service::human_size(e.bytes)),
+            media_json_str(&auto_media_core::media_service::human_size(e.bytes)),
             &e.id,
             &e.id,
             &e.id
@@ -3258,7 +3260,7 @@ async fn auto_media_stream(
     axum::extract::Path(id): axum::extract::Path<String>,
     headers: axum::http::HeaderMap,
 ) -> axum::response::Response {
-    use auto_lang::ui::media_service as ms;
+    use auto_media_core::media_service as ms;
     use tokio::io::{AsyncReadExt, AsyncSeekExt};
 
     let Some(index) = media_index() else {
@@ -3268,7 +3270,7 @@ async fn auto_media_stream(
         return media_plain(404, "unknown media id".to_string());
     };
     // Re-join under the index root: the caller only ever supplied a token.
-    let Some(root) = auto_lang::ui::media_service::resolve_root(None) else {
+    let Some(root) = auto_media_core::media_service::resolve_root(None) else {
         return media_plain(503, "no media root configured".to_string());
     };
     let path = ms::entry_path(&root, entry);
@@ -3509,8 +3511,8 @@ const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
     uri: axum::http::Uri,
     headers: axum::http::HeaderMap,
 ) -> axum::response::Response {
-    let mut response = auto_lang::ui::image_pipeline::media_http_response(
-        auto_lang::ui::image_pipeline::global_media_registry(),
+    let mut response = auto_media_core::image_pipeline::media_http_response(
+        auto_media_core::image_pipeline::global_media_registry(),
         method.as_str(),
         uri.path(),
         headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
@@ -3520,8 +3522,8 @@ const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
     // not turn a transient 503 into a terminal error callback.
     if response.status == 503 {
         tokio::time::sleep(std::time::Duration::from_millis(120)).await;
-        response = auto_lang::ui::image_pipeline::media_http_response(
-            auto_lang::ui::image_pipeline::global_media_registry(),
+        response = auto_media_core::image_pipeline::media_http_response(
+            auto_media_core::image_pipeline::global_media_registry(),
             method.as_str(),
             uri.path(),
             headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
@@ -4403,35 +4405,35 @@ fn generate_api_rs(
         if let Some(image_fn) = extract_image_fn_from_body(endpoint) {
             match image_fn.as_str() {
                 "open_session" => lines.push(
-                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::open_media_session(input.path.clone()))"
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::open_media_session(input.path.clone()))"
                         .to_string(),
                 ),
                 "snapshot" => lines.push(
-                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_snapshot(&query.session))"
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::media_session_snapshot(&query.session))"
                         .to_string(),
                 ),
                 "current_uri" => lines.push(
-                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_uri(&query.session))"
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::media_session_uri(&query.session))"
                         .to_string(),
                 ),
                 "names" => lines.push(
-                    "    JsonResponse::<Vec<String>>(auto_lang::ui::image_pipeline::media_session_names(&query.session))"
+                    "    JsonResponse::<Vec<String>>(auto_media_core::image_pipeline::media_session_names(&query.session))"
                         .to_string(),
                 ),
                 "navigate" => lines.push(
-                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::navigate_media_session(&input.session, input.delta as i32))"
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::navigate_media_session(&input.session, input.delta as i32))"
                         .to_string(),
                 ),
                 "request_view" => lines.push(
-                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::request_media_view(&input.session, input.index as i32, input.viewport_width as i32, input.viewport_height as i32, input.quality as i32))"
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::request_media_view(&input.session, input.index as i32, input.viewport_width as i32, input.viewport_height as i32, input.quality as i32))"
                         .to_string(),
                 ),
                 "close_session" => lines.push(
-                    "    JsonResponse::<bool>(auto_lang::ui::image_pipeline::close_media_session(&input.session))"
+                    "    JsonResponse::<bool>(auto_media_core::image_pipeline::close_media_session(&input.session))"
                         .to_string(),
                 ),
                 "session_stats" => lines.push(
-                    "    JsonResponse::<String>(auto_lang::ui::image_pipeline::media_session_stats(&query.session))"
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::media_session_stats(&query.session))"
                         .to_string(),
                 ),
                 other => {
@@ -7398,6 +7400,7 @@ serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
 hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
+auto-media-core = {{ path = {auto_media_core:?} }}
 a2r-std = {{ path = {a2r_std:?} }}
 
 [[bin]]
@@ -7407,6 +7410,7 @@ path = "src/main.rs"
 [workspace]
 "#,
                     auto_lang = repo_root.join("crates/auto-lang"),
+                    auto_media_core = repo_root.join("crates/auto-media-core"),
                     a2r_std = repo_root.join("crates/a2r-std"),
                 ),
             )
@@ -7652,6 +7656,7 @@ serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
 hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 auto-lang = {{ path = {:?}, features = ["ui", "image-pipeline"] }}
+auto-media-core = {{ path = {:?} }}
 a2r-std = {{ path = {:?} }}
 
 [[bin]]
@@ -7661,6 +7666,7 @@ path = "src/main.rs"
 [workspace]
 "#,
                     repo_root.join("crates/auto-lang"),
+                    repo_root.join("crates/auto-media-core"),
                     repo_root.join("crates/a2r-std"),
                 ),
             )
@@ -7988,6 +7994,7 @@ serde_json = "1"
 tower-http = {{ version = "0.5", features = ["cors"] }}
 hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
 auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
+auto-media-core = {{ path = {auto_media_core:?} }}
 a2r-std = {{ path = {a2r_std:?} }}
 
 [[bin]]
@@ -7997,6 +8004,7 @@ path = "src/main.rs"
 [workspace]
 "#,
                     auto_lang = repo_root.join("crates/auto-lang"),
+                    auto_media_core = repo_root.join("crates/auto-media-core"),
                     a2r_std = repo_root.join("crates/a2r-std"),
                 ),
             )
