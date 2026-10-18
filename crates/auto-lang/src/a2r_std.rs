@@ -1251,8 +1251,11 @@ pub mod frame {
 
 // =============================================================================
 // Diff module for a2r transpiler（PLAN-714 r3 R3-T1——703 imara 引擎包络，
-// VM native 9915/9916/9917 同源；code-editor 门双轨——feature 关=panic
-// 同 shim fallback 形[native.rs 非门控段同文案]）
+// VM native 9915/9916/9917/9921 同源；code-editor 门双轨——feature 关=panic
+// 同 shim fallback 形[native.rs 非门控段同文案]。
+// PLAN-807：直调 auto-text-core 单源（零 crate::ui 引用）——diff_snapshots
+// 经 EditorSnapshotProvider 进程默认端口供值（UI 宿主安装 adapter；缺
+// provider = 无法找到相应 editor → 既有 err envelope，missing=key_a）。
 // =============================================================================
 
 /// AutoLang's diff module — envelope JSON wrappers over the diff engine.
@@ -1260,7 +1263,7 @@ pub mod frame {
 pub mod diff {
     #[cfg(feature = "code-editor")]
     pub fn diff_files(path_a: &str, path_b: &str, ctx: i64) -> String {
-        crate::ui::code_editor::diff::envelope::diff_files_envelope_from_paths(
+        auto_text_core::diff::envelope::diff_files_envelope_from_paths(
             path_a,
             path_b,
             ctx.max(0) as usize,
@@ -1282,7 +1285,7 @@ pub mod diff {
         rows_offset: i64,
         rows_limit: i64,
     ) -> String {
-        crate::ui::code_editor::diff::envelope::diff_files_envelope_from_paths_window(
+        auto_text_core::diff::envelope::diff_files_envelope_from_paths_window(
             path_a,
             path_b,
             ctx.max(0) as usize,
@@ -1293,7 +1296,7 @@ pub mod diff {
 
     #[cfg(feature = "code-editor")]
     pub fn diff_dirs(path_a: &str, path_b: &str) -> String {
-        crate::ui::code_editor::diff::envelope::diff_dirs_envelope(path_a, path_b)
+        auto_text_core::diff::envelope::diff_dirs_envelope(path_a, path_b)
     }
 
     #[cfg(not(feature = "code-editor"))]
@@ -1303,7 +1306,20 @@ pub mod diff {
 
     #[cfg(feature = "code-editor")]
     pub fn diff_snapshots(key_a: &str, key_b: &str) -> String {
-        crate::ui::code_editor::diff::envelope::diff_snapshots_envelope(key_a, key_b)
+        use auto_text_core::diff::envelope::DiffSnapshotsPair;
+        // 进程默认端口（a2r 编译轨无 VM 实例句柄；UI 宿主经
+        // install_ui_host_capabilities 安装 adapter）。判错优先 key_a 先
+        //（冻结序）；缺 provider = 无法找到相应 editor。
+        let pair = match crate::vm::host_capabilities::process_default_editor_snapshot_provider()
+        {
+            Some(provider) => match (provider.snapshot(key_a), provider.snapshot(key_b)) {
+                (Some(sa), Some(sb)) => DiffSnapshotsPair::Both(sa, sb),
+                (None, _) => DiffSnapshotsPair::Missing(key_a.to_string()),
+                (Some(_), None) => DiffSnapshotsPair::Missing(key_b.to_string()),
+            },
+            None => DiffSnapshotsPair::Missing(key_a.to_string()),
+        };
+        auto_text_core::diff::envelope::diff_snapshots_envelope_snapshots(pair)
     }
 
     #[cfg(not(feature = "code-editor"))]
