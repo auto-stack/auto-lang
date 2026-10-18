@@ -22,7 +22,7 @@ use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
@@ -46,7 +46,7 @@ const MIN_PAGE_BYTES: u32 = 256;
 /// Tuning knobs for `Rope::open_file_backed` (test seams included: small
 /// pages exercise multi-page logic on tiny fixtures).
 #[derive(Debug, Clone)]
-pub(crate) struct PageConfig {
+pub struct PageConfig {
     /// Page size in bytes.
     pub page_bytes: u32,
     /// Resident page-cache budget in bytes (LRU eviction above it).
@@ -183,6 +183,12 @@ pub struct PageStore {
     prefetch_tx: Mutex<Option<Sender<PrefetchReq>>>,
     /// Pages materialized by the prefetch worker (observability/probes).
     prefetched_pages: AtomicU64,
+    /// Whether the prefetch worker has exited (PLAN-807 ownership-closure
+    /// fix observability): `false` while the worker thread runs, set on
+    /// every exit path. Cloned out via [`worker_exited_handle`] so callers
+    /// can observe "worker actually exited" AFTER releasing their own store
+    /// Arc (the handle outlives the store).
+    worker_exited: Arc<AtomicBool>,
 }
 
 type PrefetchReq = (u32, u32); // [start, end) page range
@@ -280,6 +286,7 @@ impl PageStore {
             )),
             prefetch_tx: Mutex::new(None),
             prefetched_pages: AtomicU64::new(0),
+            worker_exited: Arc::new(AtomicBool::new(false)),
         });
         Ok(store)
     }
@@ -303,7 +310,10 @@ impl PageStore {
         &self.path
     }
 
-    pub(crate) fn file_len(&self) -> u64 {
+    /// Base file length in bytes (observability face; pairs with the Debug
+    /// output). PLAN-807: `pub` at the crate move — the store type is now
+    /// exported from this crate and this accessor has no in-crate caller.
+    pub fn file_len(&self) -> u64 {
         self.file_len
     }
 
@@ -352,6 +362,14 @@ impl PageStore {
         self.prefetched_pages.load(Ordering::Relaxed)
     }
 
+    /// PLAN-807: clone-out handle observing prefetch-worker exit (see
+    /// [`PageStore::worker_exited`]). The handle stays readable after the
+    /// caller drops its store Arc — the resource-release oracle for the
+    /// ownership-closure fix.
+    pub fn worker_exited_handle(&self) -> Arc<AtomicBool> {
+        self.worker_exited.clone()
+    }
+
     // ── async prefetch (面④) ─────────────────────────────────────────────
 
     /// Post a prefetch around `page` (configured radius, clamped to the
@@ -367,7 +385,7 @@ impl PageStore {
 
     /// Prefetch the page range covering byte range `[start, end)` plus the
     /// configured radius on both sides.
-    pub(crate) fn prefetch_byte_range(&self, start: u64, end: u64) {
+    pub fn prefetch_byte_range(&self, start: u64, end: u64) {
         if self.pages.is_empty() || end <= start {
             return;
         }
@@ -412,16 +430,31 @@ impl PageStore {
     }
 }
 
-/// Spawn the prefetch worker on a fully-constructed store Arc (the worker
-/// holds a clone; channel teardown ends it when the last external Arc
-/// drops). Called by `Rope::open_file_backed` right after `prescan`.
+/// Spawn the prefetch worker on a fully-constructed store Arc. Called by
+/// `Rope::open_file_backed` right after `prescan`.
+///
+/// PLAN-807 ownership-closure fix: the worker holds a **Weak** reference.
+/// The historical strong-`Arc` clone formed a cycle — the worker kept the
+/// store alive, the store kept the sender, so `rx.recv()` never
+/// disconnected and neither the thread nor the base file handle ever
+/// released after the last external reference (rope/snapshot/store handle)
+/// dropped (probe-observed: strong_count ≥ 2 after dropping everything).
+/// With the Weak: the last strong release drops the store → the sender
+/// drops → `recv()` returns `Err` → the worker exits and sets the
+/// `worker_exited` flag. Snapshots keep the store alive through their
+/// chunk nodes' strong `Arc<PageStore>` — a live snapshot legitimately
+/// keeps the worker and file handle until the snapshot itself drops.
 pub(crate) fn spawn_prefetcher(store: &Arc<PageStore>) {
     let (tx, rx): (Sender<PrefetchReq>, Receiver<PrefetchReq>) = std::sync::mpsc::channel();
-    let worker = Arc::clone(store);
+    let worker = Arc::downgrade(store);
+    let exited = Arc::clone(&store.worker_exited);
     let spawned = std::thread::Builder::new()
         .name("p728-prefetch".into())
         .spawn(move || {
             while let Ok((start, end)) = rx.recv() {
+                let Some(worker) = worker.upgrade() else {
+                    break;
+                };
                 for p in start..end {
                     if worker.page_state(p) == PageState::Resident {
                         continue;
@@ -431,12 +464,16 @@ pub(crate) fn spawn_prefetcher(store: &Arc<PageStore>) {
                     }
                 }
             }
+            exited.store(true, Ordering::Release);
         });
     match spawned {
         Ok(_) => {
             *store.prefetch_tx.lock().unwrap() = Some(tx);
         }
         Err(e) => {
+            // No worker exists — nothing can keep running; satisfy the
+            // "worker not alive" oracle immediately.
+            store.worker_exited.store(true, Ordering::Release);
             eprintln!("paged-rope: prefetch worker unavailable (sync fault-in only): {e}");
         }
     }
@@ -460,7 +497,7 @@ impl std::fmt::Debug for PageStore {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::ui::code_editor::core::rope::Rope;
+    use crate::rope::Rope;
 
     /// Small pages + tight budget so tiny fixtures exercise multi-page
     /// tables, sub-page splits, and LRU eviction.
@@ -910,5 +947,48 @@ pub(crate) mod tests {
         );
         let (lo, hi) = (mem.line_start_byte(5), mem.line_start_byte(30));
         assert_eq!(paged.range_hash(lo, hi), mem.range_hash(lo, hi));
+    }
+
+    // ── PLAN-807: 预取所有权闭环清偿的永久回归 ──────────────────────────
+
+    /// Weak-worker 生命周期合同：存活 snapshot 经 chunk 节点继续持强
+    /// `Arc<PageStore>`（store/线程/文件句柄随 snapshot 存活是正确语义）；
+    /// 最后外部引用释放 → sender 随 store 析构 → worker 受控退出。
+    /// 历史 strong-clone 形态下 worker 永不退出（T-01 probe strong_count
+    /// 观测确认），本测试是其永久反例。
+    #[test]
+    fn prefetch_worker_exits_after_last_external_release() {
+        let bytes = fixture(600);
+        let text = std::str::from_utf8(&bytes).unwrap().to_string();
+        let (paged, store, _f) = open(&bytes, "closure");
+        let exited = store.worker_exited_handle();
+        assert!(
+            !exited.load(std::sync::atomic::Ordering::Acquire),
+            "worker alive right after open"
+        );
+
+        // Snapshot 存活期间：drop rope + 本句柄，store 仍被 snapshot 的
+        // chunk 节点持有——worker 不退出、snapshot 继续可读。
+        let snap = paged.snapshot();
+        drop(paged);
+        drop(store);
+        assert!(
+            !exited.load(std::sync::atomic::Ordering::Acquire),
+            "live snapshot keeps the store/worker alive"
+        );
+        assert_eq!(snap.to_string(), text, "snapshot still readable");
+
+        // 最后外部引用释放 → worker 受控退出（有界轮询）。
+        drop(snap);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !exited.load(std::sync::atomic::Ordering::Acquire)
+            && std::time::Instant::now() < deadline
+        {
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(
+            exited.load(std::sync::atomic::Ordering::Acquire),
+            "prefetch worker must exit after the last external release"
+        );
     }
 }

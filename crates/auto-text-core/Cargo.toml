@@ -1,0 +1,18 @@
+[package]
+name = "auto-text-core"
+version = "0.1.0"
+edition = "2021"
+description = "Text foundation: persistent rope, file-backed paging, snapshots and diff engine, extracted verbatim from auto-lang's ui/code_editor (PLAN-807)"
+license = "MIT"
+keywords = ["rope", "diff", "text", "snapshot"]
+
+[dependencies]
+# The diff engine's only third-party dependency (histogram core) — pinned
+# here verbatim from the historical auto-lang implementation. The text core
+# must NOT depend on auto-lang/auto-man/auto-ui/auto-vm or any interpreter
+# stack (pinned by test/fixtures/modularity/text-core-consumer).
+imara-diff = { version = "0.2", default-features = false }
+
+[dev-dependencies]
+# Envelope window tests parse envelopes back for row-by-row comparison.
+serde_json = { workspace = true }

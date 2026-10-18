@@ -207,6 +207,10 @@ serde = { workspace = true, features = ["derive"] }
 # control). unified_diff feature off (we build envelope rows ourselves).
 # License Apache-2.0; deps hashbrown+memchr only (T-00 decision record).
 imara-diff = { version = "0.2", default-features = false }
+# PLAN-807: text foundation (rope/paging/snapshot/diff) — the editor kernel,
+# diff facades and VM/a2r consumers all use this single source; the old
+# ui/code_editor/core/rope + ui/code_editor/diff paths are thin re-exports.
+auto-text-core = { path = "../auto-text-core" }
 toml = { workspace = true }      # Plan 342: block spec.md frontmatter
 ecow = { workspace = true }
 normalize-path = { workspace = true }

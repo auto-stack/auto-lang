@@ -16,6 +16,12 @@ members = [
     # auto-gen stays the Auto executable-template adapter over it.
     "crates/auto-gen-core",
     "crates/auto-lang",
+    # PLAN-807: text foundation crate (persistent rope, file-backed paging,
+    # snapshots, diff engine), extracted verbatim from auto-lang's
+    # ui/code_editor; auto-lang keeps thin re-export facades at the old
+    # paths. No auto-lang/auto-man/auto-ui/auto-vm deps (closure pinned by
+    # test/fixtures/modularity/text-core-consumer).
+    "crates/auto-text-core",
     # PLAN-801: dialect port API crate (light CompilerSession/Scenario +
     # ExternalDialect + object-safe ParseContext; depends only on
     # auto-ast/auto-lex/auto-diagnostics — no Parser/VM/UI/Man implementation
