@@ -36,12 +36,13 @@ pub mod target;
 
 // Phase 2B: Package management (completed - depends on Phase 3 & 4)
 pub mod automan;
+/// PLAN-780: explicit old-vs-new probe adapter — not wired into any
+/// production pac read path (pilot discipline: defaults unchanged).
+pub mod generation_request_adapter;
 pub mod pac;
 /// PLAN-786: 展示字段（name/title/title_zh）统一只读入口——首个生产
 /// project-model 消费者；兼容臂为 vue.rs 原行扫描的唯一冻结副本。
 pub(crate) mod project_display_reader;
-/// PLAN-780: explicit old-vs-new probe adapter — not wired into any
-/// production pac read path (pilot discipline: defaults unchanged).
 pub mod project_model_adapter;
 // PLAN-786 T-04: V01..V05 永久对拍族（冻结旧 oracle 只存于此）。
 #[cfg(test)]

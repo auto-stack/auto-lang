@@ -203,6 +203,12 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/project-request-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/project-request-consumer/verify-deps.sh
     "test/fixtures/modularity/project-request-consumer",
+    # PLAN-809: 管理规则核心消费方探针——独立 fixture crate（唯一依赖
+    # auto-man-core，证明声明归一/链接闭包（含环准入合同）/选择与规划
+    # 规则闭包无 auto-lang/auto-man/auto-vm/UI），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/man-core-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/man-core-consumer/verify-deps.sh
+    "test/fixtures/modularity/man-core-consumer",
 ]
 resolver = "2"
 
