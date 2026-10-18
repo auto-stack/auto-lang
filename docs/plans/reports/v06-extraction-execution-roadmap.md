@@ -1,8 +1,8 @@
 # v0.6 剩余迁移总路线图：按完整模块交付
 
-更新：2026-10-18；路线版本：3。总路线取材基线：auto-lang `2b7fb31ddd20f15e9dda9cbc435642c1293b3642`；807–809立约时已纳入804归档终收据`601954cca`，在途状态与来源hash见各轮附件。
+更新：2026-10-19；路线版本：4。总路线v2取材基线：auto-lang `2b7fb31ddd20f15e9dda9cbc435642c1293b3642`；本轮已纳入806/807实际交付，808/809仍在修复/审查。来源SHA/hash与观察状态见[810–811输入快照](../attachments/grammar-media-batch-20261019/inputs.json)，历史快照不覆盖当前调度。
 
-本文件是剩余迁移工作的统一调度入口，承接[Design 37](../../design/37-v06-modularization-and-repo-boundaries.md)。用户已明确：后续提高模块粒度，先整理交付目标、依赖、并行边界及搬仓验收，**暂不为全部工作包分配Plan号**；本轮按后续请求只为近期三条线建立807–809。R00–R12是路线工作包标识，不是实施计划号，也不改变在途Plan合同或授权执行/切仓。
+本文件是剩余迁移工作的统一调度入口，承接[Design 37](../../design/37-v06-modularization-and-repo-boundaries.md)。用户已明确：后续提高模块粒度，先整理交付目标、依赖、并行边界及搬仓验收，**暂不为全部工作包分配Plan号**；已按滚动请求建立807–809，本轮新增810/811两份近期完整模块合同。R00–R12是路线工作包标识，不是实施计划号，也不改变在途Plan合同或授权执行/切仓。
 
 当前规则以[Specs总览](../../specs/overview.md)及各模块Spec为准；本图描述未来目标，不发布为已实现规范。过去按批次追加的时间线从本文件当前正文退出，保留在Git历史与文末批次报告中，避免多个“当前状态”并存。
 
@@ -11,15 +11,18 @@
 | 范围 | 本轮可核实的交付/状态 | 对后续的意义 |
 |---|---|---|
 | 789/793/799/801 | 词法、诊断、共享兼容AST、轻方言接口已合入；[auto-ast](../../specs/auto-ast/project.md)、[auto-parser-api](../../specs/auto-parser-api/project.md)已有Spec | 无须再次规划AST/端口抽取；AST仍含UI兼容节点，完整UI文法/默认组合未解耦 |
-| 779/785/790/794/802 | frame、文本/媒体剪贴板、scroll及editor22项已交付；[VM宿主合同](../../specs/auto-lang/vm/overview.md) | 不重复迁这些族；diff四项、term/media等其他实现边仍须处理 |
+| 779/785/790/794/802 | frame、文本/媒体剪贴板、scroll及editor22项已交付；[VM宿主合同](../../specs/auto-lang/vm/overview.md) | 不重复迁这些族；diff四项另由807交付，term/media继续808/811 |
 | 780/786/791/795/800/803/805 | 已有project-model有限消费、gen-core、包锁、resolver、Man资源与工具链规则；见[Man Spec](../../specs/auto-man/project.md) | 纯规则地基成立；Target/Pac/管理编排/构建/CLI仍未整体独立 |
 | 803簿记 | delivery `89bb13944`已是当前HEAD祖先，资源与Spec已合入；归档收据存在，活动副本删除等工作区簿记仍由原会话处理 | 按已落地实现取材；本轮不代提交其删除/清理或重新打开计划 |
 | 792 | [选定Rust/Iced交付合同](../../specs/repository-boundaries/generated-ui-distribution.md)已交付 | 是可复用发行地基；受管包仍含语言大库，不等于全部UI/Man独立发行已成立 |
 | 784 | [旧仓保全合同](../../specs/repository-boundaries/project.md)已交付，准备树/恢复载荷有交接 | 搬仓时重新核对源仓状态及恢复能力，不另建auto-ui/auto-man仓，不先清空旧默认分支 |
 | [804](../archive/804-dialog-dnd-host-provider.md) | archived 8/8，合入及清理终收据`601954cca` | 对话框/拖出已交付；后续装配保留其真实接口及语义 |
-| [806](../806-ui-declarations-dialect-extraction.md) | executing 2/8，独立审查后继续修复；旧work声明不作为当前pass | R00剩余收口；R01实施接线等其交付，不由本轮代修/复审 |
+| [806](../archive/806-ui-declarations-dialect-extraction.md) | 实际交付`c4158b89e`，归档/清理收据成立；header仍7/8、尾部收据8/8为原簿记差额，本轮不代改 | R01前置已满足；msg/model不是完整UI文法 |
+| [807](../archive/807-text-snapshot-diff-core.md) | 已交付文本/分页/快照/diff，delivery `63fe29fd9`，归档清理终收据`4880ba708`，10/10 | R02已完成，不再次规划其数据算法；R04消费已合入文本core |
+| [808](../808-terminal-host-domain-extraction.md)／[809](../809-man-project-management-build-core.md) | executing，独立review后继续原合同修复；不把R3修复声称当最终pass | 本轮不代修/复审；其WIP接口不作为810/811依赖 |
+| [810](../810-ui-grammar-compiler-entry-extraction.md)／[811](../811-media-host-runtime-extraction.md) | drafting：完整UI文法／完整媒体宿主域合同 | 两线可现在并行，与808/809公共接线分片协调 |
 
-以上是来源明确的快照，不是本会话重做验收；具体完成范围以Spec/merge收据为准。当前其他AC/AutoDown等在途工作按真实共享写面协调，不作为全局停工条件。来源路径/hash、观察时的Plan header见[本轮输入清单](../attachments/extraction-roadmap-20261018/inputs.json)。
+以上是来源明确的快照，不是本会话重做验收；具体完成范围以Spec/merge收据为准。当前其他AC/AutoDown等在途工作按真实共享写面协调，不作为全局停工条件。当前来源见810–811输入快照；[v2原输入](../attachments/extraction-roadmap-20261018/inputs.json)保留历史。
 
 ## 2. 两个明确里程碑
 
@@ -31,11 +34,11 @@
 
 ### 计划粒度与数量口径
 
-- R00只完成已有804/806合同，不为收口再开新计划，也不重新拼装在途工作。
+- R00的804/806已有实际交付，不为收口再开新计划，也不重新拼装在途工作。
 - M1余下归为R01–R09 **9个完整工作包**，默认每包一份较大的Plan；一个Plan包含生产接线、旧实现清理、资源/测试与独立消费，内部3–5个内聚任务阶段不再各自取号。
 - 新增实施计划预算仍按**约8–12份**：R01/R03/R04若存在真实的独立语法/生命周期/发布边界，可各拆两份；R07发行验收若完全纳入R08/R09合同，可以不单独建Plan。依据可交付/可复审/可回退边界调整，不按文件数、函数数或实现耗时拆。
 - M2归为R10–R12三包，约3–5份Plan。估算是排程预算，不是压低验收标准的数量上限，不预占后续编号。
-- 上一轮“7项待合入”已过时，不能继续累加到今天。按本轮切换点，主要现有实施合同余804/806待最终交付；已有工作量、尚需新增的工作包、仓库最终切换分别计数。
+- 上一轮“7项待合入”及804/806待最终交付均属旧时点；当前808/809修复，810/811已立约。上述九包与8–12份是整段M1编排基准，含已建立/已交付项，不是今天尚需新增的数量；已有工作量、待建合同、仓库切换分别计数。
 
 ## 3. 目标模块及允许依赖
 
@@ -55,7 +58,7 @@ R04必须解决crate DAG与旧根API的组合位置。若旧`auto_lang::ui`等�
 
 | 工作包 | 完整交付目标与退出证据 | 硬前置 | 可并行范围／推荐Plan数 |
 |---|---|---|---|
-| **R00 现有合同收口** | 804真实模态/拖出已完成归档；806完整msg/model继续原AC/SD、冻结门及合流；已有簿记清理有原owner收据 | 各Plan自身合同；806的799/801前置已满足 | 806继续自身收口；与R02/R03/R05不重叠部分并行；**不新增Plan** |
+| **R00 现有合同收口** | 804真实模态/拖出和806完整msg/model均有实际交付/归档/清理收据 | 已交付；806 header簿记差额由原owner处理，不重开合同 | **不新增Plan** |
 | **R01 完整UI文法与编译入口** | widget/component/view/fragment、props/setup/refs、store/computed/on/actions/style等既有支持面全部归UI文法模块；Core expr/type/body由通用端口委托，默认UI入口/递归/导入保持装配，原Parser算法删除。完整正反语料、源位置/恢复与Core view参数/task on/同名变量对照通过 | 806实际合入；799/801作为已交付基础；端口差额有界设计 | 可与R02/R03/R05并行；widget结构与事件/样式相互调用先形成闭合图，不强拆成多个同改Parser的计划；**1–2** |
 | **R02 文本／快照／diff基础模块** | rope/snapshot共享数据与diff算法有最小独立边界；行/文件/快照/目录/窗口四native及真实UI消费者使用单份规则；UI registry/FS观测有明确adapter。保持剪枝、serial/parallel等价、窗口为全量投影、换行/Unicode及错误envelope，纯算法无UI依赖 | 802已交付；盘清RopeSnapshot实际依赖。无需等待R01或804 | 可现在独立推进，不能把纯diff算法盲包成OS provider；与editor运行桥只协调公开面；**1** |
 | **R03 终端／媒体等剩余宿主域** | 对实际目录/调用图穷举剩余能力，迁移term多会话/配置/几何/背压，以及其他实际仍跨界的媒体/窗口等能力；定义/编解码/实现/装配分层，真实VM/a2r消费、线程亲和、队列、水位/句柄、取消/退出/资源清理完整 | 已交付provider模式；具体子域共享类型/生命期先冻结。804仅在共同装配/整体闭包验收中合流，不是所有新族实施前置 | 可与R01/R02/R05并行；同一有状态族只一个owner，独立终端/媒体生命周期才允许分开；**1–2** |
@@ -66,7 +69,7 @@ R04必须解决crate DAG与旧根API的组合位置。若旧`auto_lang::ui`等�
 | **R08 auto-ui旧仓承接与独立交付** | 将已验收UI包组/工具/资产/测试/示例/脚本/CI/许可证导入既有auto-ui迁移分支；来源历史与旧legacy可恢复；独立仓和真正外部工程使用新版本，语言基础无需UI checkout仍可构建 | R04、R06的UI工具协议、R07 UI发行profile；784保全须按当前源状态复核 | 与R09可并行做owner清单/保全/导入准备；涉及语言消费切换的窗口串行；**1** |
 | **R09 auto-man旧仓承接与三仓组合交付** | Man核心/adapter/协议/CLI及资源进入既有auto-man；与固定UI、语言版本完成包管理/构建/运行/生成/服务/watch组合验收，独立manifest/CI/锁与恢复/升级流程可用；语言仓迁出实现删除 | R05/R06、R07 Man profile；最终三仓验收需R08可交付UI版本，准备/非UI命令验收不必等R08全部结束 | 与R08准备并行，最终消费版本接线和默认分支切换有序；**1** |
 
-R01包含完整结构/事件文法的依赖闭包，不能把“搬几个parse函数”当作退出证据。R03以**真实剩余edge清单**为范围输入，不以当前枚举出的几个名字当永久全集；新增能力必须按新边界进入。R04/R05只完成三仓解耦所需的语言/管理拆缝，不顺手重写整个编译器或项目格式。
+R01包含完整结构/事件文法的依赖闭包，不能把“搬几个parse函数”当作退出证据。当前映射：**R01=810、R02=807已交付、R03终端=808/媒体=811、R05=809**。R03以真实剩余edge清单为输入；811完成图像及本地媒体服务，i18n/a2r直接frame等不相关运行桥残边明确交R04合同验收，未清偿前不得宣称所有宿主边清零。R04/R05只完成三仓解耦所需拆缝，不顺手重写整个编译器或项目格式。
 
 **I-PROJECT是R05包内接口交接点，不另占Plan号。** 只有相应合同/实现通过审查并实际合入后，R04才消费；若R05的具体Plan不支持独立阶段验收合流，则等R05整体交付，不能引用未合入WIP。该合同只承载轻项目/生成输入，不含Target行为、AutoConfig、AST、VM或renderer；R06再负责工具版本/进程路由与执行协议。这样UI生成器不会反依赖Man大库，也不产生“R04等R06、R06又等R04”的环。
 
@@ -120,8 +123,8 @@ R10/R12可以与发行/搬仓准备交错；M1允许登记的兼容AST，M2才�
 
 | 阶段 | 可并行的完整工作线 | 串行交接／不可越过的关口 |
 |---|---|---|
-| 现在 | 804已归档；806原合同修复/review；R02=807、R03终端=808、R05=809已立drafting合同，可各自独立推进；R01只读准备完整文法图 | R01生产实现以806合入为基础；新宿主保留804既有装配，与807/808新槽短窗口串行；不改写他线冻结树/收据 |
-| 806交付后 | R01文法、R02数据diff、R03有状态宿主、R05 Man核心四个模块方向 | 同一Parser结构树/同一term会话状态机/同一Target核心只一个owner；不是按文件再开多个小Plan |
+| 现在 | 806/807已交付；808终端、809 Man核心继续原合同修复；810完整文法与811媒体域已立约，可与其不重叠部分并行 | 810/811不依赖808/809 WIP；Parser/终端/媒体/Target各唯一owner，公共manifest/777/792短窗口串行；不改他线冻结树 |
+| 接口交付后 | R04包图/公开出口准备与独立模块收口、R06协议/非UI路径设计、R07清单持续维护 | R04完整接线需810/811/808及809的I-PROJECT实际合入，残边具名接住；不因接口报告存在就消费未合入代码 |
 | 分层与工具期 | R04与Man核心/协议定义/非UI adapter可交错，R07清单/消费driver持续更新 | R04取得文法/宿主及I-PROJECT交接后搬相应实现/Man中UI生成器；R06全部生产验收须实际R04/R05接口，不能只对协议fake判完成 |
 | 搬仓期 | R08与R09清单、legacy刷新、隔离准备树、非UI验收可并行；R10/R12不重叠部分继续 | 同一公共类型/source/manifest/资源迁移及消费方切换一窗口一owner；R09最终组合验收需已交付UI版本 |
 
@@ -160,8 +163,8 @@ work先完成全部实现/修复及相关定向反例、模块测试、必要che
 
 ## 9. 下一步与滚动规划
 
-1. 804已合入归档；原owner继续806独立修复/review/merge；本轮不追加其验收、不复审、不代merge。
-2. 已按R02/R03/R05建立[807文本模块](../807-text-snapshot-diff-core.md)、[808终端完整域](../808-terminal-host-domain-extraction.md)、[809管理构建核心](../809-man-project-management-build-core.md)，三线可并行，见[本批边界与合入顺序](module-migration-batch-807-809.md)。808只完成R03终端，媒体/i18n等残边须由其清单驱动后续完整合同。R01在806交付后按完整文法闭包立约；R04/R06/R07包图/接口/清单可先准备，具体实施仅依真实已交付接口。
+1. 804/806/807已有实际交付；原owner继续808/809修复/review/merge，本轮不追加验收、不代修/复审/merge。
+2. 已建立[810完整UI文法](../810-ui-grammar-compiler-entry-extraction.md)、[811完整媒体宿主域](../811-media-host-runtime-extraction.md)，见[本批并行与合入合同](grammar-media-parallel-order-810-811.md)。两线无相互/808/809业务硬前置；谁先完整验收谁先合入，共享接线串行取并集。R04/R06/R07包图/接口/清单先准备，生产接线仅消费真实已交付接口。
 3. 每次只为下一批前置/owner/oracle明确的2–3个模块取Plan号。已有在途计划继续收口，新规则不追溯拆改它们；未经用户指定不自动创建agent或新chat。
 4. 在R04/R06形成实际SDK/协议后重新核数量和风险，再建立R08/R09跨仓交付合同；旧仓refs/默认分支/远端操作在具体合同中明确，本路线不执行这些操作。
 
@@ -169,6 +172,6 @@ work先完成全部实现/修复及相关定向反例、模块测试、必要che
 
 当前合同来源：[前端Spec](../../specs/auto-lang/frontend/overview.md)、[AST](../../specs/auto-ast/project.md)、[解析端口](../../specs/auto-parser-api/project.md)、[VM宿主](../../specs/auto-lang/vm/overview.md)、[UI](../../specs/auto-lang/ui/overview.md)、[Man](../../specs/auto-man/project.md)、[工具链核心](../../specs/auto-toolchain-core/project.md)、[旧仓治理](../../specs/repository-boundaries/project.md)、[发行地基](../../specs/repository-boundaries/generated-ui-distribution.md)。这些Spec陈述已交付范围，本路线只提出未来目标。
 
-历史批次：[789–792](../attachments/extraction-batch-20261016/inputs.json)、[799–800与792/794合流](model-decoupling-parallel-order-20261016.md)、[801–803](extraction-next-parallel-order-20261017.md)、[804–806](extraction-followup-parallel-order-20261017.md)。历史状态不覆盖本图当前快照，也不反向修订已归档合同；旧A–J工作包映射为：A/B→R01/R04/R10，C→R02/R03，D→R04，E→R05/R06，F→持续发行责任＋R07，G/H→R08/R09，I/J→R10–R12。
+历史批次：[789–792](../attachments/extraction-batch-20261016/inputs.json)、[799–800与792/794合流](model-decoupling-parallel-order-20261016.md)、[801–803](extraction-next-parallel-order-20261017.md)、[804–806](extraction-followup-parallel-order-20261017.md)、[807–809](module-migration-batch-807-809.md)；最新批次为[810–811](grammar-media-parallel-order-810-811.md)。历史状态不覆盖本图当前快照，也不反向修订已归档合同；旧A–J工作包映射为：A/B→R01/R04/R10，C→R02/R03，D→R04，E→R05/R06，F→持续发行责任＋R07，G/H→R08/R09，I/J→R10–R12。
 
-总路线v2轮仅更新路线/Design 37及来源收据，未取号；其编号不变等检查见[原路线预检](../attachments/extraction-roadmap-20261018/preflight.md)。随后用户要求建立下一批，本轮v3仅新增807–809合同、推进.next-id至810并登记并行边界，**不改Rust/测试/canonical规范/ledger，不创建工作树，不搬仓**。Category A不运行Cargo/docs_gen；本批链接、依赖/AC/任务覆盖、编号唯一及来源hash检查见[批次预检](../attachments/module-batch-20261018/preflight.md)。未来验收尚未执行。
+总路线v2仅整理路线未取号，见[原预检](../attachments/extraction-roadmap-20261018/preflight.md)；v3新增807–809并推进.next-id至810，见[原批次预检](../attachments/module-batch-20261018/preflight.md)。本轮v4仅新增810/811、编号推进812及更新调度登记，**不改Rust/测试/canonical规范/ledger，不创建工作树，不搬仓**。Category A不运行Cargo/docs_gen；本轮链接、依赖/AC/任务、编号唯一及来源hash见[810–811预检](../attachments/grammar-media-batch-20261019/preflight.md)，未来验收尚未执行。
