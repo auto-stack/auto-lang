@@ -3,9 +3,8 @@
 
 use super::helpers::parse_string_lit;
 use crate::UiParseContext;
-use auto_parser_api::ast;
 use auto_parser_api::ast::*;
-use auto_parser_api::error::{pos_to_span, AutoResult, SyntaxError};
+use auto_parser_api::error::AutoResult;
 use auto_parser_api::token::TokenKind;
 
     /// Check if the current position is `scene <Ident>` — a scene declaration.

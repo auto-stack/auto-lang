@@ -4,7 +4,6 @@
 use super::helpers::{
     extract_fstr_template_and_bindings, fragment_param_hint_to_type, get_primary_prop,
 };
-use super::actions::parse_actions_string_attr;
 use super::widget::{
     mint_inline_event_handlers, parse_computed_block_inner, parse_on_block,
     parse_setup_block_inner, parse_style_block_inner, parse_watch_block_inner,

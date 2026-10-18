@@ -1,7 +1,7 @@
 //! actions/timer/routes/menubar/toolbar 与顶层 style recipe 声明文法
 //! （PLAN-810 T-03/T-04 迁移）。
 
-use super::helpers::{at_dot, on_handler_event_name};
+use super::helpers::at_dot;
 use super::view::capture_condition_call_args;
 use crate::UiParseContext;
 use auto_parser_api::ast;

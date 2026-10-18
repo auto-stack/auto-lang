@@ -5,14 +5,15 @@
 //! core expr/type / context / diagnostics），不接触 `Parser` 本体、lexer、
 //! scope/符号表或 db/type_store —— 这些不在外部契约中。
 //!
-//! crate 内建方言（如 `dialect::ui::UiDialect`）经 `pub(crate) parser()` 取回
-//! 完整 Parser 复用既有核心解析方法；该出口对外部 crate 不可见。
+//! PLAN-810：内建 UiDialect 曾经的 `pub(crate) parser()` 完整 Parser 逃逸口
+//! 已删除——内建方言与外部方言同样只经端口面消费（ParseContext +
+//! UiParseContext），无第二份 UI 算法留在 Parser。
 //!
 //! 恢复不变量由派发器（`Parser::try_dialect_stmt` / `try_token_dialect_stmt`）
 //! 兜底保证，不依赖方言自律：Ok(None) 后强制 `restore(checkpoint)` 回滚游标；
 //! Err 路径方言注册永不丢失。方言内部投机解析同样可用 checkpoint 自行回滚。
 
-use crate::ast::{Body, Expr, OnEvents, Pair, Stmt, Type};
+use crate::ast::{Expr, Stmt, Type};
 use crate::error::{pos_to_span, AutoError, AutoResult};
 use crate::session::Scenario;
 use crate::token::{Pos, Token, TokenKind};
@@ -45,12 +46,6 @@ pub struct ParserBridge<'p, 'a> {
 impl<'p, 'a> ParserBridge<'p, 'a> {
     pub fn new(parser: &'p mut crate::parser::Parser<'a>) -> Self {
         Self { parser }
-    }
-
-    /// crate 内建方言 escape hatch：取回完整 Parser。`pub(crate)` —— 外部
-    /// crate 不可见，内部面不进入外部契约。
-    pub(crate) fn parser(&mut self) -> &mut crate::parser::Parser<'a> {
-        self.parser
     }
 
     // ---- 游标 ----

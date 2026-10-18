@@ -2,9 +2,9 @@
 //! expose/watch/computed/on/bind 块与内联 handler mint 族。
 
 use super::helpers::{
-    damerau_levenshtein_1, direct_state_value_field, get_primary_prop,
-    hover_card_role, modal_dialog_tag_role, on_handler_event_name,
-    stmt_expr_contains_await, wire_modal_close_recursive,
+    damerau_levenshtein_1, direct_state_value_field, hover_card_role,
+    modal_dialog_tag_role, on_handler_event_name, stmt_expr_contains_await,
+    wire_modal_close_recursive,
 };
 use super::actions::{
     parse_actions_block_inner, parse_routes_block_inner, parse_timer_block_inner,
@@ -13,7 +13,7 @@ use super::view::{parse_handler_params, parse_view_node, parse_view_root_nodes};
 use crate::UiParseContext;
 use auto_parser_api::ast;
 use auto_parser_api::ast::*;
-use auto_parser_api::error::{pos_to_span, AutoResult, SyntaxError, Warning};
+use auto_parser_api::error::{pos_to_span, AutoResult, SyntaxError};
 use auto_parser_api::token::TokenKind;
 
     pub fn parse_widget_decl(cx: &mut dyn UiParseContext) -> AutoResult<Stmt> {
