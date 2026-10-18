@@ -12,6 +12,7 @@
 | auto-diagnostics | active | 0 | [auto-diagnostics/project.md](auto-diagnostics/project.md) |
 | auto-ast | active | 0 | [auto-ast/project.md](auto-ast/project.md) |
 | auto-parser-api | active | 0 | [auto-parser-api/project.md](auto-parser-api/project.md) |
+| auto-text-core | active | 0 | [auto-text-core/project.md](auto-text-core/project.md) |
 | auto-val | active | 7 | [auto-val/project.md](auto-val/project.md) |
 | auto-atom | active | 3 | [auto-atom/project.md](auto-atom/project.md) |
 | auto-test-case | active | 12 | [auto-test-case/project.md](auto-test-case/project.md) |

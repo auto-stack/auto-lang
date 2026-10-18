@@ -57,7 +57,7 @@ Auto 的 UI 子系统，围绕 **AURA**（UI-IR）组织，2026-08 起扩展为*
 - **adapter**：`ui::frame_provider::FrameBenchProvider` 从既有 `frame_bench` 通道读取；捕获开关（`AUTO_FRAME_BENCH` 门控零开销）、时源、renderer note 语义不变。`install_process_default` 统一调用 if-absent——**兼容默认只补空槽，不覆盖调用方显式选择**（优先关系契约见 vm/overview 三层清单）。
 - **自动装配位置**：VmBridge 两构造（`new_with_children`/`new_from_decls`）、`run_file_dynamic_ui_inner`、CLI ui-iced 入口（auto crate main），以及 crate 根组合助手 `install_ui_host_capabilities`。根助手覆盖 run 家族执行漏斗（`execute_autovm_with_deadline`）、test/debug、`create_vm_from_source/abt`、配置求值、REPL、解释器、back_proxy 的宿主创建路径；ui 构建提供兼容默认，no-ui 构建助手为 no-op。**不得**沿用"仅前三点注入、其余库程序轨须自行注册"的早期不完整描述。
 - **调用方保证**：高层入口前设置显式默认，UI 开/关两种构建均保持真实供值；无人注册时 UI 宿主恢复 frame_bench 默认，门开可读真值。原始 AutoVM 仍只按构造时默认快照，UI 实现不接回 vm core。
-- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）、文件/图像剪贴板 2934..2937（PLAN-790）、scroll controller 族 9900..9905/9922/9923（PLAN-794）code editor 22 native 全族（PLAN-802）与 dialog_open/save+dnd_start（PLAN-804）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；term/media、diff 族 9915..9917 等未迁族按计划清单后续迁移，不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
+- **未迁边界**：frame 两函数、文本剪贴板 2925/2926（PLAN-785）、文件/图像剪贴板 2934..2937（PLAN-790）、scroll controller 族 9900..9905/9922/9923（PLAN-794）code editor 22 native 全族（PLAN-802）与 dialog_open/save+dnd_start（PLAN-804）已迁——a2r_std 及生成 handler 的 frame 直接臂保留；term/media 等未迁族按计划清单后续迁移（diff 族 9915..9917/9921 已于 PLAN-807 迁至文本 core 直调+快照端口，见下文 PLAN-807 节与 vm/overview 同名节），不宣称整个 runtime 或 UI 仓已解耦。真实显示性能/呈现吞吐不在本次标量注入验收内。
 
 ## 现状（2026-10-16）——文本剪贴板 adapter 宿主装配（PLAN-785）
 
@@ -152,12 +152,33 @@ scroller 绑进 scroll controller 注册表（`bind_controller(scroll_id,
 scroll_id)`，handle=widget id）——修复 PLAN-629 寄宿化以来 VM 轨漏绑致
 `code_editor_scroll_to` 写端点 intent 被 drain 静默丢弃的预存缺口。
 
-**未迁边界（更新）**：core→ui 生产直引剩余（vm/native.rs 口径）=diff
-族 9915..9917（PLAN-703 面，非目标保留）、dnd_start（2938）、term/
-media/dialog/ffi 族——editor 22 native 生产边清零（`code_editor::
+**未迁边界（802 时点，PLAN-807 后 diff 族已清）**：core→ui 生产直引
+剩余（vm/native.rs 口径，807 后）=dnd_start（2938）、term/media/
+dialog/ffi 族——editor 22 native 生产边清零（`code_editor::
 code_editor_*`/`editor_scroll_handle`/`ClipboardOp`/`ui::scroll` intent
 直引形态由 plan802 core 剪断锚永久钉扎）。不宣称 term/media/dialog/dnd
 或整体 renderer 已独立。
+
+## 现状（2026-10-19）——文本基础抽取与快照 adapter（PLAN-807）
+
+> 文本模块整体迁出（rope/分页/快照/diff 单一来源=`crates/auto-text-core`，
+> 见其 project.md 与 [design/paged-rope.md](design/paged-rope.md) 路径迁移
+> 节）；本节为 UI 侧剩余职责与兼容门面。SD-04。
+
+UI 保留：文档注册表与 editor 交互（单一真源不复制）；`PAGED_LOAD_THRESHOLD`
+（50MB）/`PAGED_WINDOW_BYTES`（2MB）窗口归 core/mod.rs；`diff::envelope`
+门面保留唯一 UI 状态片——key→snapshot 查找（`code_editor_with` →
+`doc_snapshot`）喂 `auto_text_core` 纯快照形 `DiffSnapshotsPair`（判错
+优先 key_a、字节输出与迁移前一致）。旧路径 `core::rope`/`diff::{mod,dirs}`
+为薄 re-export（TypeId 同型，plan807 钉扎）；`ui_gen/rust.rs` 发射串零
+改动（下游金样零扰动）。快照宿主 adapter
+`EditorSnapshotRegistryProvider` 挂 `code_editor_provider::
+install_process_default` 同四点位 if-absent（供 VM 9916；VM 侧契约见
+vm/overview PLAN-807 节）。
+
+**未迁边界（更新）**：core→ui 生产直引剩余（vm/native.rs 口径）=dnd_start
+（2938）、term/media/dialog/ffi 族——diff 族 9915..9917/9921 生产边清零
+（`ui::code_editor::diff` 直引形态由 plan807 剪断锚永久钉扎）。
 
 ## 现状（2026-10-18）——dialog/dnd adapter 宿主装配（PLAN-804）
 

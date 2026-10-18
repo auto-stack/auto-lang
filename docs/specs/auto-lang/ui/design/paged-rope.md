@@ -8,6 +8,24 @@
 > 变体）+ `rope/file_backing.rs`（PageStore）+ `core/mod.rs`（装载/
 > 编辑/保存臂）。
 
+## 路径迁移（PLAN-807 SD-02，2026-10-19）
+
+本契约的实现锚整体迁至 **`crates/auto-text-core`**（`src/rope.rs` +
+`src/rope/file_backing.rs`，自 `ui/code_editor/core/rope*` 逐字迁移）；
+`ui::code_editor::core::rope` 为薄 re-export 门面（类型身份不变）。
+**上表七面语义、全部不变式与基准口径零变化**。归属勘定：
+
+- UI 窗口归 auto-lang UI：50MB 装载阈值（`PAGED_LOAD_THRESHOLD`）、2MB
+  布局窗口（`PAGED_WINDOW_BYTES`）、窗口再物化与提交漏斗仍在
+  `core/mod.rs`；预取触发（`prefetch_byte_range`）为 UI 消费点（公开面）。
+- 寿命补强（PLAN-807 闭环清偿）：预取 worker 持 **Weak**——最后外部强
+  引用释放 → store 析构 → sender drop → worker 受控退出；观测面
+  `PageStore::worker_exited_handle()`（store 释放后仍可读；crate 内永久
+  回归 + Windows 同名重建硬观测）。存活 snapshot 经 chunk 节点强引用
+  继续保活（正确共享寿命）。
+- 摘要契约/digest（`poly_digest`/`PruneSpans` 剪枝跨度）随包私有，供同包
+  diff 引擎消费；`Rope::content_hash_of` 为唯一跨包摘要对照面。
+
 ## 摘要契约
 
 大文件打开=**只读句柄+预扫页表**；文档真源仍是那只 rope——基底页

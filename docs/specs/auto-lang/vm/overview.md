@@ -82,6 +82,7 @@ AutoVM 是 AutoLang 的默认执行后端，也是唯一可用的解释执行后
 - scroll controller 族 9900..9905 与子锚点 9922/9923 为 scroll 批次（PLAN-794）：core shim 经 per-VM `vm::host_capabilities::ScrollHostProvider` 供值，不再直引 ui::scroll；缺席=值降级（controller=Int 0、intent 族=Bool false、state=Float 0.0、to_child="error:unsupported"、anchor_state="unknown"）。详见 [scroll native 宿主能力（PLAN-794）](#scroll-native-宿主能力plan-794)。
 - code editor 22 native 全族（2910..2915/2919..2924/2932/2933/2939/9906/9908..9913）为 editor 批次（PLAN-802）：core shim 经 per-VM `vm::host_capabilities::CodeEditorHostProvider`（19 具名方法）供值，不再直引 ui::code_editor；缺席=21 项 raise feature-disabled 形 VMError + 9913 scroll_to 弹参返 false（唯一值缺席臂）。详见 [code editor native 宿主能力（PLAN-802）](#code-editor-native-宿主能力plan-802)。
 - dialog_open/save 2927/2928 与 dnd_start 2938 为 dialog/dnd 批次（PLAN-804）：core shim 经 per-VM `vm::host_capabilities::DialogHostProvider`/`DndHostProvider` 双独立槽供值，不再直引 rfd/Win32/UI native_dnd；缺席=dialog 弹参前 feature-disabled 形 VMError、dnd 弹参后 false（值降级）。详见 [dialog/dnd native 宿主能力（PLAN-804）](#dialogdnd-native-宿主能力plan-804)。
+- diff 四入口 9915/9916/9917/9921 为文本批次（PLAN-807）：纯路径/目录/窗口面直调 `auto-text-core`（不再经 UI 门面）；`diff_snapshots` 经 per-VM `vm::host_capabilities::EditorSnapshotProvider`（独立槽，802 trait 零改动）供同源 owned 快照（零全文字符串 VM 中转）；缺 provider=无法找到相应 editor→既有 err envelope 值形（missing=key_a 判错优先）；feature off 四 shim 不取参 raise 逐字、a2r `diff_files_window` 为仅 on 导出（off=符号缺席，旧 base 同形）。详见 [diff native 与编辑器快照宿主能力（PLAN-807）](#diff-native-与编辑器快照宿主能力plan-807)。
 
 ## Frame native 宿主能力装配（PLAN-779）
 
@@ -241,6 +242,31 @@ accessor clone Arc 释放槽锁后再调 provider。
 OnceLock 进程缓存）、a2r 门面 unparented（差异保留，V04 正反控钉扎）。
 完成事件按发起者身份代际锚定交付发起方 App（详见 ui/design/
 dialog-dnd-host-capabilities.md）。
+
+## diff native 与编辑器快照宿主能力（PLAN-807）
+
+> 779/785/790/794/802/804 装配模式的文本批次。算法单一来源已迁
+> `auto-text-core`（rope/分页/快照/diff 全量，见其 project.md）；本节为
+> VM 侧消费契约。SD-03。
+
+四 shim 消费面：9915 `auto.diff_files`/9917 `auto.diff_dirs`/9921
+`auto.diff_files_window`（pop 序/负参钳零/envelope 字段序/错误值形全部
+PLAN-703/716 冻结不变）直调 `auto_text_core::diff::envelope` 纯面——
+core 不再引用 `crate::ui`（plan807 剪断锚钉扎）。9916
+`auto.diff_snapshots(key_a,key_b)` 弹参后经实例快照端口解析：
+`EditorSnapshotProvider::snapshot(&str) -> Option<RopeSnapshot>`（文本
+core 类型跨界，非 UI 类型；同源 owned Arc 快照，快照传输不经 VM 全文
+字符串；读取期间编辑器删/换不影响已取得快照——COW 冻结）。
+
+装配：进程默认四件套（set/`set_if_absent`/process_default/clear）+
+`NativeInterface::set_editor_snapshot_provider`/`AutoVM::set_…` 实例覆盖
++ `new_inner` 构造期快照 + Clone/merge 保留 + 注入不动 binding_revision
+——与既有七槽逐条同构；**独立 trait**（不给 802
+`CodeEditorHostProvider` 加必实现方法，外部实现零破坏）。缺席映射：缺
+key 与缺 provider 同形——err envelope `编辑器不存在: <key>`（判错优先
+key_a 先，冻结序；缺 provider 时 missing=key_a）。feature off：四 shim
+不取参即 raise feature-disabled 形 VMError（a2r 三函数 off panic 逐字、
+`diff_files_window` 仅 on 导出=符号缺席，旧 base 同形）。
 
 ## 布尔短路求值语义（plan-615）
 
