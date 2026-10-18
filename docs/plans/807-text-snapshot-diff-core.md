@@ -135,6 +135,16 @@ F807-R1-01（P2）：快照装配测试假定全局槽为空；703 真宿主用�
 
 2026-10-18：**R1 修复完成记录（work）**（stage: work | PLAN-807 | rev 1 | pass | worktree 同树 | branch `codex/plan-807-dev` | base `2046a025b` | code `1eb8434f5`（R1 修复提交，前冻结 `1f5e05141`）| findings F807-R1-01/02/03/04 全闭合 | 证据见 [handoff §10](attachments/807/handoff.md)：F-01 重构显式 A/B 默认+真实宿主先安装永久控制，联跑反例重放 `-- plan703 plan807 --test-threads=1` **15/15**（原 13/1）；F-02 `plan807_identity` 加 code-editor 门，`--no-default-features --no-run` 本文件零错误（余为旧族既有项）；F-03 contract-baseline §3 纯快照形签名更正为 `DiffSnapshotsPair`、§6 a2r 矩阵更正（`diff_files_window` 旧/新均仅 on 导出，off=符号缺席；未新增 fallback）；F-04 触面 rustfmt 全过+doc 零警告+遗传 mut 清偿+handoff 链接/文件数勘定（7 文件/digest aad3fc54…） | plan807 8/8、core 65/3、consumer 3/3 复跑全绿 | blockers 无 | next: review（T-08 二轮，同树独立上下文，受审提交 `1eb8434f5`））。merge-owned 门保持 pending。
 
+2026-10-18：**独立 final review R2：needs_fix**（stage: review | review_scope: final | reviewer: 本次独立于实施的 Codex 审查上下文继续；无可核验 model/session ID | PLAN-807 rev 1 | worktree `D:/autostack/.wt/lang-807/auto-lang` | branch `codex/plan-807-dev` | reviewed_commit `1eb8434f50e104f593914701f30318b9af255a6e` | base `2046a025b9a445d35a02da2c72a1613259a0cb60` | auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` clean）。[完整报告/闭环/下一轮诊断要求](attachments/807/review-r2/REVIEW.md)、[当前基面/依赖/Spec 指纹](attachments/807/review-r2/baseline.json.txt)、[冻结 SD+校准支持矩阵](attachments/807/review-r2/spec-delta-frozen.md)。入场/冻结工作树均 clean，未修实施或合入。
+
+R1-02/03 CLOSED；R1-01 旧单线程反例已闭（703+807 15/15），但完整并发隔离仍 OPEN；R1-04 fmt/doc/mut/文件数/链接子项已闭，身份子项仍 OPEN。F807-R2-01（P2）：默认槽写者锁不保护普通真实 reader，`plan703 plan807 --test-threads=8` 首跑13过2红：已有真实文档的703 VM却读到fake/空默认，返回“编辑器不存在: p703-snap-a”，继而poison注册表锁；另外3个独立进程均exit101。缩小pair组合20次皆绿不覆盖整体调度。须解决全局默认替换测试的生命周期隔离，不得靠强制全档单线程/仅nextest/跳过reader关闭。F807-R2-02（P3）：handoff源摘要末字节与历史实存manifest不符；当前新包实际7文件/229812B/digest `6b7380e59ec9d797c54f4c46b27fcb933922c744d932231307035aa675b1e8b4`，须区分历史和当前提交的真实源身份。
+
+本轮core65（3谱位ignored）、consumer locked3、单线程组合15、fmt/doc和777 strict均通过；no-feature本模块新增4错误已消除，余62旧族错误另列。重新实跑1GB定向：结构3,033,703B≤12MiB、RSS样本峰值16.5MiB（表16），当前源/依赖/配置/输入/编译形态重新绑定；正式gen当前源内容逐文件同包通过，未把R1的792 25项冒称本轮重跑。AC-01/02 pass、AC-03/04 partial、AC-05 fail、AC-06 merge-owned pending。SD冻结hash `3be9d59612f8a7753d93a33967be480021333040b260fa9bf4a9e1b1ce3c1b67`。
+
+状态回 **executing 5/10**：保留T-01..05，重开T-06/07，T-08不勾。已连续两次final needs_fix，下一轮先提供报告所列根因/覆盖设计调整表，再以原树冻结提交重放全部受影响例与真实并发组合后复审。merge-owned裸t/tv/tu、必要资源影响面、共享片段合流/777、Spec/ledger/归档/wt-guard清理仍pending；本轮未运行整档。
+
+2026-10-18：**R2 修复完成记录（work）**（stage: work | PLAN-807 | rev 1 | pass | worktree 同树 | branch `codex/plan-807-dev` | base `2046a025b` | code `4e3bde4d6`（R2 修复提交；R2 受审 `1eb8434f5`）| findings F807-R2-01/02 全闭合 | 证据见 [handoff §11](attachments/807/handoff.md)：R2-01 全局槽写者改自重执行子进程隔离（P807_SLOT_CHILD 守卫防裸 --ignored 重引污染；实值 oracle 全保留），重放并行 8/16 线程×3+单线程+序交换+更宽组合（703+710+716+807 并行 51 过）全覆盖原失败形态；R2-02 包身份程序化提取绑定（7 files/229,812B/digest 6b7380e5…，对 4e3bde4d6 逐字节有效）+ 根因/覆盖调整表 + 历史/当前身份分离 | blockers 无 | next: review（T-08 三轮，受审提交 `4e3bde4d6`））。merge-owned 门保持 pending。
+
 ## 10. 待澄清事项
 
 无须用户现在决定的阻塞项。T-01负责最小分页API与快照端口的有界决策；若需要破坏公开路径、降低1GB/分页支持、改变native/错误合同，回到needs_replan具体提出，不能由实现自行缩小验收。新增core仍留语言仓，真正搬仓由R08/R09负责。

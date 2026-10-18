@@ -7,7 +7,7 @@
 ## 1. 代码身份
 
 - base commit：`2046a025b`（master）
-- 送审冻结提交（R1 修复后二轮）：`1eb8434f5`（R1 首轮受审为 `1f5e05141`；见 §10 修复记录）
+- 送审冻结提交（R2 修复后三轮）：`4e3bde4d6`（R2 受审 `1eb8434f5`、R1 受审`1f5e05141`；见 §10/§11 修复记录）
 - 依赖修订：workspace +`crates/auto-text-core`（imara-diff 0.2 唯一三方；
   dev-deps serde_json）；auto-lang +path dep auto-text-core、−直接 imara-diff
 - 组内兄弟：`D:/autostack/.wt/lang-807/auto-down`（detached @c39ac7f，
@@ -81,10 +81,15 @@
 - driver：`python test/fixtures/modularity/generated-ui-consumer/driver.py
   --scratch D:/p807-scratch-792`（正式入口、真实生成/fresh 解析/locked
   构建/重放/负控全档；cargo 1.98.0）。
-- 结果：**25/25 PASS**（R1 复审独立重跑亦 25/25）——manifest = 13 源 crate
-  （含 auto-text-core 229,843B/**7 文件**，source digest
-  `aad3fc5489bbf03c29b0f697b6256f54431dbbf1c95237831151db0c57cbfa1a`；R1
-  勘定：原稿「44 文件」为笔误）+ 1 patch 条目；V01 fresh resolve（5s，patch 单源 +
+- 结果：**25/25 PASS**——manifest = 13 源 crate + 1 patch 条目；
+  auto-text-core **当前受审包身份（R2 程序化提取自实际 manifest，F807-R2-02
+  勘定——R1 稿手抄 digest 末字节拼错且未随修复后源字节重绑）**：
+  7 files / 229812B / digest `6b7380e59ec9d797c54f4c46b27fcb933922c744d932231307035aa675b1e8b4`
+  （R2 复审对 `1eb8434f5` 正式生成入口实测，逐源文件与包内副本字节相同
+  [review-r2/delivery-content-result.json.txt]；本 R2 修复提交 `4e3bde4d6`
+  仅改 `crates/auto-lang/src/tests/plan807_text_core.rs` 一个文件——
+  auto-text-core 源字节零变化，该身份对 `4e3bde4d6` 仍逐字节有效）。
+  历史身份（R1 轮，仅作过程记录，非当前交接）：229,843B。V01 fresh resolve（5s，patch 单源 +
   pin 全命中）+ 真实 build --locked（214s，产物在位）；V02 重定位 locked
   build（226s）+ metadata 单源/越界 path=无 + 资源字节一致；V03a-j 全部
   负控确定性红（tamper/missing/corrupt/unlisted/missing-patch/bad-pin/
@@ -152,3 +157,31 @@ working-set 峰值 16.5MiB**（RSS 非结构计量阈值）、load 23.77s/save 1
 R1 修复提交：`1eb8434f5`（冻结树 12 文件；修复不触 a2r/native 语义面，
 故 §3 表中 VM/a2r 相关收据绑定 `1f5e05141` 仍有效，fmt/doc/mut/测试面
 绑定 `1eb8434f5`）。
+
+（R2 勘定：本节 R1 资源身份为**历史过程记录**；当前交接的资源/代码指纹
+以 [review-r2/baseline.json.txt]（冻结于 `1eb8434f5`；R2 修复差异=§11 已审单文件，verification_inputs 未变）与 §11 当前记录为准。）
+
+
+## 11. R2 修复记录（2026-10-18，[review-r2](review-r2/REVIEW.md) 全 finding 闭合）
+
+### 剩余不变量根因/覆盖调整表（review"下一轮就绪要求"逐项）
+
+| 剩余不变量 | 之前为什么漏（根因） | 本轮设计/覆盖调整 |
+|---|---|---|
+| 全局默认槽写者不得污染同进程真实宿主 reader | R1 只证明写者自身不依赖空初态（显式 A/B 默认）；写者互斥锁 `test_default_slot_lock` 只覆盖**持锁的测试写者**，普通真实宿主用例（plan703 经 VmBridge 的 if-absent 安装 + VM 构造期快照）是不持锁的 reader/写者——共享 libtest 进程下二者交错，FakeSnap（只认 `have`）或空槽被快照进真实 VM（R2 实录 threads=8 首跑 13/2、三独立进程复现；PoisonError 为首个失败的连带）。pair-only 组合 20 次未触发完整调度，故 R1 重放不足以闭合 | **生命周期级隔离**：两个写者用例改自重执行子进程——wrapper 重执行本测试二进制 `--exact --ignored --test-threads=1` 跑用例体，子进程独享全局槽（写完即进程退出），对同进程任何 reader 零共享窗口；用例体带 `P807_SLOT_CHILD` env 守卫（裸 `--ignored` 全量跑空过——防 bench 类显式调度把污染重引入共享进程）；实值 oracle 全部保留（显式 A/B/C/D 默认替换、构造式缺席、兼容 if-absent 补缺、真 adapter 对未注册键 None、Clone/merge/不动 revision）。**不依赖单线程/nextest/跳过 reader/err envelope 替代有效输出** |
+| handoff 必须准确指向所审实际源码包/资源身份 | R1 稿人工改文件数与 digest 时末字节拼错（`aad3…fa1a` vs 实际 `aad3…fa1c`），且把格式修复视为无需重绑的源字节变化 | 本稿身份**程序化提取**自 R2 复审实际 manifest（§7：7 files/229,812B/`6b7380e5…e8b4`，提取脚本断言 `source_bytes_equal=true`），并区分历史（R1 过程记录）与当前（对 `4e3bde4d6` 逐字节有效——R2 修复仅改 auto-lang 测试文件，auto-text-core 源零变化）；资源/代码指纹：[review-r2/baseline.json.txt] 冻结于 `1eb8434f5`（其 verification_inputs——lock/配置/工具链/兄弟依赖——在 R2 修复前后未变；代码差异=本表所列已审单文件），1GB 资源 R2 已实跑并绑定当前指纹（见 review-r2 §资源/Spec/修订绑定） |
+
+### F807-R2-01 重放证据（原失败形态全覆盖）
+
+- 并行组合 `-- plan703 plan807`：`--test-threads=8` ×3、`--test-threads=16` ×3
+  → **6 连 15/15**（R2 失败形态为该组合首跑 13/2）；
+- 单线程 `--test-threads=1`：15/15；序交换（`plan807 plan703`）：15/15；
+- 更宽组合 `-- plan703 plan710 plan716 plan807 --test-threads=8`：**51 过/2 ignore**；
+- 裸 `--ignored plan807`（守卫路径）：2 用例体空过、共享进程零全局槽写；
+- 真实宿主 reader 族复跑：plan728_supply 5 过。
+
+### 验证复跑
+
+plan807 8 过/2 ignore（含 2 个子进程驱动 wrapper）；core 65/3；consumer 3/3；
+fmt/doc 复验见 R2 复审已关闭项。R2 修复提交：`4e3bde4d6`（单文件
+`crates/auto-lang/src/tests/plan807_text_core.rs`，+68/−29）。
