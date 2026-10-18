@@ -907,15 +907,21 @@ fn scc_units(input: &SemaInput) -> Vec<Vec<String>> {
             }
         }
     }
-    // 2nd pass on the REVERSE graph in reverse finish order
-    let radj = |n: &str| -> Vec<String> {
-        let mut out = Vec::new();
-        for other in &names {
-            if adj(other).iter().any(|d| d == n) {
-                out.push(other.clone());
-            }
+    // 2nd pass on the REVERSE graph in reverse finish order — the
+    // reverse adjacency is BUILT ONCE (a per-node scan is O(V^2) and
+    // made the deep-chain lookups quadratic; this is the fix)
+    let mut reverse: std::collections::BTreeMap<String, Vec<String>> =
+        std::collections::BTreeMap::new();
+    for n in &names {
+        reverse.insert(n.clone(), Vec::new());
+    }
+    for n in &names {
+        for d in adj(n) {
+            reverse.entry(d).or_default().push(n.clone());
         }
-        out
+    }
+    let radj = |n: &str| -> &[String] {
+        reverse.get(n).map(|v| v.as_slice()).unwrap_or(&[])
     };
     let mut assigned: BTreeSet<String> = BTreeSet::new();
     let mut units: Vec<Vec<String>> = Vec::new();
@@ -930,7 +936,7 @@ fn scc_units(input: &SemaInput) -> Vec<Vec<String>> {
             comp.push(node.clone());
             for next in radj(&node) {
                 if assigned.insert(next.clone()) {
-                    stack.push(next);
+                    stack.push(next.clone());
                 }
             }
         }
