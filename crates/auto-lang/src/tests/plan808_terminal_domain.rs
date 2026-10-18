@@ -1530,10 +1530,15 @@ mod plan808_real_dll {
 
     /// Test wrapper that pauses inside `live_handle_count` so a concurrent
     /// prune window can be observed deterministically (R3-F01). All other
-    /// methods delegate to the real service.
+    /// methods delegate to the real service. The `stale_zero` variant
+    /// samples the count **before** the pause and returns that stale value
+    /// afterwards (R4-F01): the sample is legitimate — equivalent to the
+    /// counting thread being preempted right after sampling an empty
+    /// service — while the provider revives during the pause.
     struct PausedCount {
         inner: Arc<EngineService>,
         armed: AtomicBool,
+        stale_zero: bool,
         entered: mpsc::SyncSender<()>,
         release: Mutex<mpsc::Receiver<()>>,
     }
@@ -1547,8 +1552,20 @@ mod plan808_real_dll {
             Self {
                 inner,
                 armed: AtomicBool::new(true),
+                stale_zero: false,
                 entered,
                 release: Mutex::new(release),
+            }
+        }
+
+        fn new_stale_zero(
+            inner: Arc<EngineService>,
+            entered: mpsc::SyncSender<()>,
+            release: mpsc::Receiver<()>,
+        ) -> Self {
+            Self {
+                stale_zero: true,
+                ..Self::new(inner, entered, release)
             }
         }
     }
@@ -1661,12 +1678,16 @@ mod plan808_real_dll {
         }
         fn live_handle_count(&self) -> usize {
             if self.armed.swap(false, Ordering::SeqCst) {
+                let stale = self.stale_zero.then(|| self.inner.live_handle_count());
                 self.entered.send(()).unwrap();
                 let _ = self
                     .release
                     .lock()
                     .unwrap()
                     .recv_timeout(Duration::from_secs(5));
+                if let Some(count) = stale {
+                    return count;
+                }
             }
             self.inner.live_handle_count()
         }
@@ -1699,7 +1720,7 @@ mod plan808_real_dll {
         let svc = service_with_dll(&path);
         let h = svc.spawn_ex("cmd.exe", &["/C".into(), "exit 0".into()], "", 80, 24);
         assert_ne!(h, 0);
-        let mut reaper = Reaper::new(&svc, vec![h]);
+        let reaper = Reaper::new(&svc, vec![h]);
         let (entered_tx, entered_rx) = mpsc::sync_channel(1);
         let (release_tx, release_rx) = mpsc::channel();
         let owner = Arc::new(PausedCount::new(svc.clone(), entered_tx, release_rx));
@@ -1751,7 +1772,7 @@ mod plan808_real_dll {
             31,
         );
         assert_ne!(h, 0);
-        let mut reaper = Reaper::new(&svc, vec![h]);
+        let reaper = Reaper::new(&svc, vec![h]);
         assert!(wait_marker(&svc, h, "PLAN808_SHARED_CACHE")
             .iter()
             .any(|l| l.contains("PLAN808_SHARED_CACHE")));
@@ -1795,7 +1816,7 @@ mod plan808_real_dll {
         let svc2 = service_with_dll(&path);
         let h2 = svc2.spawn_ex("cmd.exe", &["/C".into(), "exit 0".into()], "", 92, 32);
         assert_ne!(h2, 0);
-        let mut reaper2 = Reaper::new(&svc2, vec![h2]);
+        let reaper2 = Reaper::new(&svc2, vec![h2]);
         let vm = AutoVM::new(VirtualFlash::new(0), 1024);
         let control2 = AutoVM::new(VirtualFlash::new(0), 1024);
         vm.set_terminal_provider(svc2.clone());
@@ -1819,6 +1840,129 @@ mod plan808_real_dll {
         assert_eq!(vm_viewport(&control2, h2), (92, 32));
         assert_eq!(vm_cursor(&vm, h2), (0, 0));
         reaper2.disarm();
+    }
+
+    /// F808-R4-01 permanent regression: a zero-session provider that is
+    /// reinstalled — and gains a real session through the production spawn
+    /// shim — while prune holds a legitimately stale zero verdict must stay
+    /// **continuously** routable. The revival invalidates the verdict
+    /// instead of the provider being removed and re-added afterwards, so
+    /// reads and a real free of the already-exposed handle land on the
+    /// original owner and the session is released exactly once.
+    #[test]
+    fn revived_provider_never_leaves_owner_list_during_prune() {
+        let Some(path) = dll_path() else { return };
+        let svc = service_with_dll(&path);
+        let (entered_tx, entered_rx) = mpsc::sync_channel(1);
+        let (release_tx, release_rx) = mpsc::channel();
+        let owner = Arc::new(PausedCount::new_stale_zero(
+            svc.clone(),
+            entered_tx,
+            release_rx,
+        ));
+        let vm = AutoVM::new(VirtualFlash::new(0), 1024);
+        let other = AutoVM::new(VirtualFlash::new(0), 1024);
+        vm.set_terminal_provider(owner.clone());
+        // The second VM keeps the wrapper installed as its current slot for
+        // the whole test — the reviewer's "another VM of the same service"
+        // positive control.
+        other.set_terminal_provider(owner.clone());
+        vm.set_terminal_provider(Arc::new(EngineService::without_dll()));
+        let ni = vm.native_interface.clone();
+        let worker = std::thread::spawn(move || ni.prune_terminal_owners());
+        entered_rx
+            .recv_timeout(Duration::from_secs(3))
+            .expect("prune must sample the empty service");
+
+        // Revival inside the liveness evaluation: reinstall A, publish a
+        // real 83x27 session through the production shim, switch back to B.
+        vm.set_terminal_provider(owner);
+        use crate::vm::ffi::VMConvertible;
+        let mut task = AutoTask::new(0, 1024, 0);
+        "cmd.exe".to_string().push_to_stack(&mut task, &vm).unwrap();
+        vec!["/C".to_string(), "exit 0".to_string()]
+            .push_to_stack(&mut task, &vm)
+            .unwrap();
+        String::new().push_to_stack(&mut task, &vm).unwrap();
+        task.ram.push_nv(auto_val::encode_i32(83));
+        task.ram.push_nv(auto_val::encode_i32(27));
+        crate::vm::ffi::term_engine::shim_term_spawn_ex(&mut task, &vm).unwrap();
+        let h = task.ram.pop_i32() as i64;
+        assert_ne!(h, 0);
+        let reaper = Reaper::new(&svc, vec![h]);
+        vm.set_terminal_provider(Arc::new(EngineService::without_dll()));
+        // The handle is exposed and bound: reading it through the VM whose
+        // current slot is B already resolves the revived owner A.
+        assert_eq!(
+            vm_viewport(&vm, h),
+            (83, 27),
+            "revived owner is routable before the stale verdict returns"
+        );
+        assert_eq!(vm_viewport(&other, h), (83, 27));
+
+        // Release the stale zero verdict and let the prune finish: the
+        // revival (reinstall + real spawn) must have invalidated it.
+        release_tx.send(()).unwrap();
+        worker.join().unwrap();
+        assert!(
+            vm.native_interface.terminal_owner_for(h).is_some(),
+            "a revived provider is never removed from the visible owner list"
+        );
+        assert_eq!(vm_viewport(&vm, h), (83, 27));
+        assert_eq!(vm_viewport(&other, h), (83, 27));
+        shim_free(&vm, h);
+        assert_eq!(
+            svc.live_handle_count(),
+            0,
+            "the real free after the prune must release the revived session"
+        );
+        assert_eq!(vm_viewport(&vm, h), (83, 27));
+        reaper.disarm();
+    }
+
+    /// F808-R4-02 permanent regression: frozen retired values are never
+    /// evicted by later, unrelated retirements. A consumer that never
+    /// pre-read the values, whose owner history was already pruned, still
+    /// reads the frozen viewport after 4096+ other entries retired through
+    /// the public surface (the retired R3-era FIFO dropped exactly this
+    /// still-queryable value at its boundary).
+    #[test]
+    fn retired_values_survive_unbounded_later_retirements() {
+        let Some(path) = dll_path() else { return };
+        let svc = service_with_dll(&path);
+        let h = svc.spawn_ex("cmd.exe", &["/C".into(), "exit 0".into()], "", 94, 34);
+        assert_ne!(h, 0);
+        let reaper = Reaper::new(&svc, vec![h]);
+        let late = AutoVM::new(VirtualFlash::new(0), 1024);
+        late.set_terminal_provider(svc.clone());
+        late.set_terminal_provider(Arc::new(EngineService::without_dll()));
+        // Direct core free publishes (94, 34) process-wide; the unknown-
+        // handle shim free prunes the late VM's owner history.
+        svc.free(h);
+        assert_eq!(svc.live_handle_count(), 0);
+        shim_free(&late, -7777);
+        assert_eq!(
+            vm_viewport(&late, h),
+            (94, 34),
+            "un-pre-read consumer reads the global frozen value"
+        );
+
+        // 4096+ later retirements through the public surface (one
+        // without-DLL service, synthetic globally-unique handles, no extra
+        // PTYs): none of them may drop the still-queryable frozen value.
+        let filler = EngineService::without_dll();
+        for i in 0..4097i64 {
+            let k = -1_000_000 - i;
+            filler.set_viewport(k, 2, 1);
+            filler.free(k);
+        }
+        assert_eq!(
+            vm_viewport(&late, h),
+            (94, 34),
+            "frozen values are never evicted by later retirements"
+        );
+        assert!(auto_terminal_core::retired_cache(h).is_some());
+        reaper.disarm();
     }
 }
 

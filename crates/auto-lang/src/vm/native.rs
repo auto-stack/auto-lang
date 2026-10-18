@@ -85,6 +85,25 @@ pub struct NativeContract {
     pub error_shape: String,
 }
 
+/// PLAN-808 R4: one remembered terminal provider plus its revival counter.
+///
+/// Every reinstallation (`set_terminal_provider`) and every session
+/// publication through the spawn shims bumps `revivals` while the entry is
+/// in the owners list. A prune verdict may remove the entry only if
+/// `revivals` is unchanged since the verdict was taken: a provider that
+/// revived after the liveness sample (reinstalled, or it gained a live
+/// session through a real spawn) must stay **continuously** routable —
+/// removing it first and re-adding it later leaves a window in which reads
+/// and frees of already-exposed handles are lost (R4-F01). All bump and
+/// verdict-check sites hold the owners write lock, so lock exclusion orders
+/// the counter; a revival that has not acquired the lock yet re-inserts the
+/// provider as a fresh entry instead (the spawn shims re-remember before
+/// the new handle is returned to VM code).
+struct TerminalOwnerEntry {
+    provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
+    revivals: std::sync::atomic::AtomicU64,
+}
+
 /// Plan 094: NativeInterface with hybrid lookup support
 ///
 /// Supports two types of native functions:
@@ -176,9 +195,10 @@ pub struct NativeInterface {
     /// Handles stay bound to the provider that owns them across
     /// `set_terminal_provider` replacement (owner routing); the strong Arcs
     /// also keep the original service alive until its last session is freed.
-    /// Pruned when a replaced owner has no live sessions (R1-F04).
-    terminal_owners:
-        std::sync::RwLock<Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>>>,
+    /// Pruned when a replaced owner has no live sessions (R1-F04); each
+    /// entry's revival counter keeps a provider that revived after the
+    /// liveness sample continuously routable during prune (R4-F01).
+    terminal_owners: std::sync::RwLock<Vec<std::sync::Arc<TerminalOwnerEntry>>>,
     /// Generation bumped on every owner-list mutation. Owner queries snapshot
     /// the list and query providers **outside** the lock; a concurrent
     /// set/prune is detected by the generation and retried so a live owner is
@@ -516,7 +536,12 @@ impl NativeInterface {
 
     /// Remember a provider for handle-owner routing (deduplicated by Arc
     /// identity). Called by `set_terminal_provider` and by the spawn shims
-    /// for the fallback shared provider. No provider callback runs under the
+    /// after every successful session publication. An already-remembered
+    /// provider has its entry's **revival counter bumped** instead of the
+    /// call being a no-op: the bump invalidates a concurrently-running prune
+    /// verdict that sampled `live_handle_count == 0` before this
+    /// reinstallation/publication, so a revived provider is never removed
+    /// from the visible list (R4-F01). No provider callback runs under the
     /// owners lock (R2-F01).
     pub fn remember_terminal_owner(
         &self,
@@ -526,16 +551,18 @@ impl NativeInterface {
             .terminal_owners
             .write()
             .expect("terminal_owners poisoned");
-        if owners
-            .iter()
-            .any(|existing| std::sync::Arc::ptr_eq(existing, &provider))
+        if let Some(entry) = owners
+            .iter_mut()
+            .find(|entry| std::sync::Arc::ptr_eq(&entry.provider, &provider))
         {
-            // Dropping the duplicate clone can only release an Arc that the
-            // list still owns; release the lock first anyway.
-            drop(owners);
-            drop(provider);
+            entry
+                .revivals
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         } else {
-            owners.push(provider);
+            owners.push(std::sync::Arc::new(TerminalOwnerEntry {
+                provider,
+                revivals: std::sync::atomic::AtomicU64::new(0),
+            }));
             self.terminal_owners_gen
                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
@@ -555,7 +582,7 @@ impl NativeInterface {
         use std::sync::atomic::Ordering;
         for _ in 0..3 {
             let generation = self.terminal_owners_gen.load(Ordering::Relaxed);
-            let snapshot: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = self
+            let snapshot: Vec<std::sync::Arc<TerminalOwnerEntry>> = self
                 .terminal_owners
                 .read()
                 .expect("terminal_owners poisoned")
@@ -563,8 +590,8 @@ impl NativeInterface {
             if let Some(owner) = snapshot
                 .iter()
                 .rev()
-                .find(|provider| provider.owns_handle(handle))
-                .cloned()
+                .find(|entry| entry.provider.owns_handle(handle))
+                .map(|entry| entry.provider.clone())
             {
                 return Some(owner);
             }
@@ -585,7 +612,7 @@ impl NativeInterface {
         use std::sync::atomic::Ordering;
         for _ in 0..3 {
             let generation = self.terminal_owners_gen.load(Ordering::Relaxed);
-            let snapshot: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = self
+            let snapshot: Vec<std::sync::Arc<TerminalOwnerEntry>> = self
                 .terminal_owners
                 .read()
                 .expect("terminal_owners poisoned")
@@ -593,8 +620,8 @@ impl NativeInterface {
             if let Some(owner) = snapshot
                 .iter()
                 .rev()
-                .find(|provider| provider.cached_cursor_viewport(handle).is_some())
-                .cloned()
+                .find(|entry| entry.provider.cached_cursor_viewport(handle).is_some())
+                .map(|entry| entry.provider.clone())
             {
                 return Some(owner);
             }
@@ -612,60 +639,78 @@ impl NativeInterface {
     ///
     /// Provider methods and removed-provider destructors run **outside** the
     /// owners lock. The visible owner list is **never emptied** while those
-    /// lock-free calls run: it is snapshotted intact, evaluated outside, and
-    /// only the dead entries are removed under a short write lock that calls
-    /// no provider code (R3-F01). A provider that became live during the
-    /// window is re-added after the partition.
+    /// lock-free calls run: it is snapshotted intact and evaluated outside
+    /// (R3-F01). Removal is **conditional on the entry's revival counter**
+    /// (R4-F01): the counter is sampled before each liveness call and every
+    /// reinstallation / session publication through the spawn shims bumps
+    /// it, so a provider that revived after the (legitimately stale-zero)
+    /// liveness sample is never removed from the visible list at all — it
+    /// stays continuously routable instead of being removed and re-added.
+    /// A publication that acquires the write lock only after the removal
+    /// re-inserts the provider as a fresh entry before its handle is
+    /// returned to VM code.
     pub fn prune_terminal_owners(&self) {
-        // 1. Snapshot the live list; no provider call under the lock.
-        let snapshot: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = self
+        // 1. Snapshot the live entries; no provider call under the lock.
+        let snapshot: Vec<std::sync::Arc<TerminalOwnerEntry>> = self
             .terminal_owners
             .read()
             .expect("terminal_owners poisoned")
             .clone();
 
         // 2. Evaluate outside the lock; the visible list stays resolvable.
-        let dead: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = snapshot
+        //    The revival stamp is read BEFORE the liveness call: any bump
+        //    after the stamp (reinstall or real spawn) makes the verdict
+        //    stale, and a bump before the stamp implies the session table
+        //    already held the session, so the count itself returns alive.
+        let dead: Vec<(std::sync::Arc<TerminalOwnerEntry>, u64)> = snapshot
             .into_iter()
-            .filter(|provider| provider.live_handle_count() == 0)
+            .filter_map(|entry| {
+                let stamp = entry.revivals.load(std::sync::atomic::Ordering::Relaxed);
+                (entry.provider.live_handle_count() == 0).then_some((entry, stamp))
+            })
             .collect();
         if dead.is_empty() {
             return;
         }
 
-        // 3. Remove only the evaluated-dead entries under the write lock.
-        //    Concurrent additions are already in the current list and are
-        //    preserved; no provider method runs here.
-        let removed: Vec<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> = {
+        // 3. Remove a dead-verdict entry only if its revival counter still
+        //    equals the verdict stamp — a revival since the verdict keeps
+        //    the provider visible. No provider method runs under this lock;
+        //    only the entry-local atomic is read.
+        let removed: Vec<std::sync::Arc<TerminalOwnerEntry>> = {
             let mut owners = self
                 .terminal_owners
                 .write()
                 .expect("terminal_owners poisoned");
             let mut removed = Vec::new();
-            owners.retain(|provider| {
-                if dead
+            owners.retain(|entry| {
+                match dead
                     .iter()
-                    .any(|dead_provider| std::sync::Arc::ptr_eq(dead_provider, provider))
+                    .position(|(dead_entry, _)| std::sync::Arc::ptr_eq(dead_entry, entry))
                 {
-                    removed.push(provider.clone());
-                    false
-                } else {
-                    true
+                    Some(index)
+                        if entry.revivals.load(std::sync::atomic::Ordering::Relaxed)
+                            == dead[index].1 =>
+                    {
+                        removed.push(entry.clone());
+                        false
+                    }
+                    _ => true,
                 }
             });
-            self.terminal_owners_gen
-                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if !removed.is_empty() {
+                self.terminal_owners_gen
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
             removed
         };
 
-        // 4. A provider may have gained a session while step 2 was running;
-        //    re-add it instead of dropping a live owner. The final Drop of
-        //    truly dead providers happens outside every lock.
-        for provider in removed {
-            if provider.live_handle_count() > 0 {
-                self.remember_terminal_owner(provider);
-            }
-        }
+        // 4. The final Drop of the removed providers (which may reenter the
+        //    interface through their destructors) happens outside every
+        //    lock. No post-hoc re-add is needed: providers that revived were
+        //    never removed (step 3), and one that revives only after removal
+        //    re-inserts itself through remember_terminal_owner.
+        drop(removed);
     }
 
     /// Remember the frozen cursor/viewport cache of a handle freed through

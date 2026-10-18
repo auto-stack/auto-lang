@@ -8,40 +8,31 @@
 //! holds no service/reference and never touches a freed DLL pointer.
 //!
 //! Handles are process-globally unique, so entries cannot alias a new
-//! session. The map is bounded (FIFO) — it is a compatibility projection of
-//! the legacy post-free `CURSORS`/`VIEWPORTS` values, not durable history.
+//! session. The map is deliberately **unbounded**: it is a compatibility
+//! projection of the legacy post-free `CURSORS`/`VIEWPORTS` values, which
+//! were never evicted, and a still-queryable frozen value may not be
+//! dropped because unrelated sessions retired later (R4-F02) — any bound
+//! would be an unauthorized semantic reduction. Growth is bounded by the
+//! sessions actually retired in the process, and each entry is a small
+//! pure value.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
 use crate::types::TerminalRetiredCache;
 
-/// Bound for the process-wide retired-value projection.
-const RETIRED_CACHE_CAP: usize = 4096;
-
 struct Store {
     map: HashMap<i64, TerminalRetiredCache>,
-    order: VecDeque<i64>,
 }
 
 impl Store {
     fn new() -> Self {
         Self {
             map: HashMap::new(),
-            order: VecDeque::new(),
         }
     }
 
     fn insert(&mut self, handle: i64, cache: TerminalRetiredCache) {
-        if !self.map.contains_key(&handle) {
-            while self.map.len() >= RETIRED_CACHE_CAP {
-                let Some(oldest) = self.order.pop_front() else {
-                    break;
-                };
-                self.map.remove(&oldest);
-            }
-            self.order.push_back(handle);
-        }
         self.map.insert(handle, cache);
     }
 
@@ -76,9 +67,11 @@ pub fn retired_cache(handle: i64) -> Option<TerminalRetiredCache> {
 
 #[cfg(test)]
 pub(crate) fn clear_for_test() {
-    let mut store = store().lock().unwrap_or_else(|e| e.into_inner());
-    store.map.clear();
-    store.order.clear();
+    store()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .map
+        .clear();
 }
 
 #[cfg(test)]
@@ -86,7 +79,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retired_store_keeps_values_and_evicts_fifo() {
+    fn retired_store_keeps_all_values_without_eviction() {
         clear_for_test();
         let cache = TerminalRetiredCache {
             cursor_row: 3,
@@ -97,6 +90,28 @@ mod tests {
         remember(41, cache);
         assert_eq!(retired_cache(41), Some(cache));
         assert_eq!(retired_cache(42), None);
+        // Far beyond the retired R3-era FIFO bound (4096): the first value
+        // must still be readable — frozen values are never evicted (R4-F02).
+        let filler: Vec<(i64, TerminalRetiredCache)> = (0..5000i64)
+            .map(|i| {
+                (
+                    1_000_000 + i,
+                    TerminalRetiredCache {
+                        cursor_row: i,
+                        cursor_col: i,
+                        viewport_cols: 2,
+                        viewport_rows: 1,
+                    },
+                )
+            })
+            .collect();
+        for (handle, value) in &filler {
+            remember(*handle, *value);
+        }
+        assert_eq!(retired_cache(41), Some(cache));
+        for (handle, value) in &filler {
+            assert_eq!(retired_cache(*handle), Some(*value));
+        }
         clear_for_test();
     }
 }
