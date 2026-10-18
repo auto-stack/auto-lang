@@ -165,17 +165,49 @@ work只跑相关定向验收及必要check，不能跑整档。T-06改变crates�
 |---|---|---|---|---|
 | [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/796/contract-decision.md；冻结ref envelope/模型与probe接缝/资源及性能配方；最小语义query首例存盘/重启 | 合法/非法名义ref+一次真实infer/cache；不可行回规划，不能删验收；AC-01–05 |
 | [x] T-02 | work | T-01 | 新contract/src/{identity,metadata,codec}.rs，完整类别矩阵与SCC/typed view | sema_identity_；AC-01 |
-| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | R8 修复：record canonical 纳入方法签名；名称多重性预算；见 §9 R8 修复轮 |
-| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R8-01/02 闭合：长名 1k/2k/3k 全 typed resource（页/scratch 前置）、方法签名热/新 store 一致 |
-| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | 修复后重跑：库 P95 12.47ms / 真 IPC P95 718.65ms（30 样本）；V-06 11 例 |
-| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R8 复跑：正式 runner 17 例、worker 资源路径随新预算重验 |
-| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R8 修复：SD-02/04 补方法签名与名称多重性/页 ledger；R8 例绑入 V-03b/V-06（110 项定向测试） |
+| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | R9 修复：Ann 完整编码（record 名称/unsupported 描述）；页预算改按实际 manifest；见 §9 R9 修复轮 |
+| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R9-01/02 闭合：record 返回 A→B 失效且热/新 store 一致；600k 目标名页 ledger typed resource、400k 正控发布 |
+| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | 修复后重跑：库 P95 12.66ms / 真 IPC edit-session P95 274.00ms（30 样本；cold warm-up 单列 total）；V-06 12 例 |
+| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R9 复跑：正式 runner 16 例（IPC 硬门独立 V-08c）；worker 资源/页类别重验 |
+| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R9 修复：SD-02/04 补 Ann 字段清单与 manifest 逐字段预算；V-03b/V-06 绑定 R9 例（112 项定向测试） |
 | [ ] T-08 | review | T-07 | 同树独立review，冻结commit/依赖/接口快照，检查遗漏/延期 | AC-07；pass→reviewed=8/9，merge pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交最终门禁，沉淀SD/ledger、归档合入、批量回归到期判定、guard清理；输出D-796消费收据 | AC-08；实际完成9/9 |
 
 D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.ad冒称AutoDown已完成。T-06不自改788在途协议；797不代修796共享接口。范围/预算/类型支持变化回规划修订，旧证据按影响失效。
 
 ## 9. 复审记录
+
+### 2026-10-19 R9 修复轮：work 交接 — execution_done=7/9 复送审
+
+stage:work | plan_id:PLAN-796 | plan_revision:1 | outcome:pass（R9 两项全闭，T-03..T-07 重闭） | worktree_path:D:/autostack/.wt/lang-796/auto-lang | branch:plan-796-dev | base_commit:`d092bca5bb8482596a98c9f7bbc7a068a33e5554` | code_commit:`a0945653204cbd31622beebd68a61962cf8f2342`（R9 基线 f78491fbe → 本修复提交） | dependency_revisions: 同 R4–R9 冻结（ac-core `8e01299a…`、783 `d4c37fac…`、syntax `66598596…`、auto-down `c39ac7f9…`） | task_ids:T-03..T-07 | blockers:无 | next_responsible_role:review（T-08 独立复审冻结 `a09456532`）。
+
+**原例闭合 vs 完整不变式闭合（R9 设计/状态矩阵）**
+
+| finding | 原例为何曾闭合 | 完整不变式缺口/根因 | 设计与反控调整 | 本轮结果 |
+|---|---|---|---|---|
+| F-R9-01 方法 record 返回 | int/bool 方法签名已入 canonical | `fn_sig_canonical` 的返回类型只写 tag `r`，丢失 record 名称；params 的 `rec:<name>` 与返回不对称；`Unsupported` 也丢描述 | 新增 `write_ann` 统一完整编码：`i32/bool/rec:<name>/?inferred/unsupported:<what>`；`fn_sig_canonical` 与 `record_canonical`（字段+方法）全部经它；方法返回/参数/字段的键、有效版本与读取准入同步 | R9 重放：v2 `ret:record:B` 由 Hit 变 Miss、新 artifact，热 store 与新 store 同一 artifact 且发布 `record:B`；永久例覆盖 A→B、热/新一致、同签名 body-only 正控 |
+| F-R9-02 超长目标名页预算 | 页前端门已覆盖 facts/绑定名 | 估算只看 facts/reads，未覆盖最终 manifest 的 `fn-body.origin = 目标函数名` 与 config/source-map/negative 全字段；600k 名页 600,465 越 512KiB 仍晚到 codec | 发布前先构造**将编码的 manifest**，页估算逐字段覆盖 facts + manifest positives（kind/origin/fp，含目标名）与 negatives（domain/name/set_fp）；超页在 clone/encode 前 typed ResourceExhausted（meter 记录 page） | R9 重放：1,001/400,001 名 PublishedMiss；600,001 名 ResourceExhausted（page 604,428>524,288，rejections=1），无 codec 尾错；永久例 400k/600k 正反控 |
+| IPC 硬门口径（非 finding） | 旧口径为整样本 total（含 cold 查询+两次 parse） | 阈值 1000ms 在机器负载下抖动（实测 617–1674ms），且 cold 查询不是编辑请求 | 1MiB 用例在 `query+restart` 后进入 edit session（`edit-source+query`）；硬门 P95 取 edit session 父侧完整墙钟（spawn+IPC+parse+edit+query+exit）；cold warm-up 单独在 `total_p95_ms` 报告 | 30 样本全 PASS，edit-session P95 274.00ms；总墙钟仍在报告中 |
+
+**R9 反例重放（独立复现，证据 [r9-repair](attachments/796/r9-repair/)）**：method-record-return 与 target-name 日志见 README；allocator 仅为复审观测。
+
+**验收与回归**：`verify -Scope acceptance` 13 行全 PASS（V-03b 32 执行含 record 返回例；V-06 12 执行 496.72s；V-08 16 例、V-08c IPC 30 样本；V-07 重算库 P95 12.66ms、真 IPC edit-session P95 274.00ms）；`-Scope selftest` 5 控制 PASS；共 112 项不同定向 Rust 测试（contract14/core15/parity4/meta7/cache32/pressure12/turnaround5/boundary6/probe16+IPC1）。计划文件 `rustfmt --check` 全 0，无新增警告。**未跑**裸 t/tv/tt/tu/taa/tf（merge-owned）。范围：12 文件提交，全部在计划命名空间/共享语义编辑/报告内。
+
+**merge-owned pending**（冻结 `a09456532`）：裸 `cargo t`、按最终 diff 的触面档/受影响 788 套件、独立 sema 全套、tf 到期判定、SD 沉淀/ledger/归档/guard。
+
+### 2026-10-19 R9：第五轮完整独立最终复审 — needs_fix
+
+stage:review | review_scope:final | reviewer_identity:Codex，独立于实施、沿用R4–R8历史，无代理 | plan_id:PLAN-796 | plan_revision:1 | outcome:**needs_fix** | worktree_path:D:/autostack/.wt/lang-796/auto-lang | branch:plan-796-dev | reviewed_commit:`f78491fbe47747264d414bfef23299c9a63a5a5a` | base_commit:`d092bca5bb8482596a98c9f7bbc7a068a33e5554`。
+
+[完整报告/AC-SD/原例与完整不变式/独立反例](attachments/796/review-r9/review.md)；[基线/依赖与Spec hash](attachments/796/review-r9/baseline.json.txt)；[冻结delta](attachments/796/review-r9/spec-delta-frozen.md)。入场clean，实施和依赖冻结；生成报告前后副本分开保存。R8根因/状态表已交，本轮完成独立代码/定向验收/规范审查。未改实施、规范/ledger或合入。
+
+关闭原例：1000/2000/3000×1000字符let名均typed resource且实际峰值未越8MiB，10k短名正控成功；int/bool方法签名变化正确失效、热/新store一致。此前三层依赖/SCC/单root GC与推导/来源/CT/facts准入重放继续正确。额外4096..20000加法链缓存读回Hit、零重算，实际峰值1.35..6.84MB，小于8MiB；不把固定read reserve当实际测量，也不列这些成功控制为内存超额。
+
+开放 **F-796-R9-01(P2)**：同一get(x A,y B)返回A改B，fn_sig_canonical返回record仅编码r，仍同定义/有效版本；热store返回record:A，新store返回record:B。**F-796-R9-02(P2)**：前置页估算漏真实manifest中的fn-body.origin=target；600001字符合法函数名源600023bytes通过估算，零meter拒绝，最终codec页600465>524288，而不是typed resource；400001名长正控可发布。最大样本实际4.80MB未越8MiB，故不沿用原内存超额P1定性。均为原合同完整字段覆盖剩余缺口，不批准延期/缩面或新增语言长度上限。
+
+统一定向验收 **13行全部PASS/exit0，110个不同Rust测试**；V06十一项363.01s完成。库级30样本P95 **11.61ms**，真实1MiB局部编辑IPC30样本P95 **768.11ms**；完整日志/前后报告副本见本轮报告，不以统一绿测覆盖独立反例。没有整档t/tv/tt/tu/taa/tf。acceptance_results:AC01 partial，AC02 pass（有限profile），AC03 fail，AC04 pass（冻结参考负载），AC05 pass（接线/判定面），AC06 partial，AC07 fail，AC08 pending。SD02/04全返回类型失效/超页一律resource强断言不批准沉淀，其余已核边界保留。
+
+next:原树work提交修复再复审；交接须逐字段列出签名值→canonical、最终页及实际manifest→预算估算的覆盖与正反控，不能仅扩大乘数或重复primitive样本。保留T01/T02，重开T03..07，**executing 2/9**。merge-owned冻结裸t/适用tv/tt/独立sema与788影响套件、tf到期判定、Spec/ledger/归档/guard仍pending。
 
 ### 2026-10-19 R8 修复轮：work 交接 — execution_done=7/9 复送审
 
@@ -416,4 +448,4 @@ next: work 于同树修复 F01–13并提交，附根因/不变式/永久反例/
 
 **最新R5：needs_fix，2/9**。上方R4与work修复轮收据为历史；本轮F06未闭、F07组路径延期未经批准及F13/范围交接缺口见§9 R5，补齐后再进入完整最终复审。
 
-**最新（R8 修复轮）：execution_done，7/9，待 T-08 独立复审冻结 `f78491fbe`**。R8 两项（长名多重性预算+页前端门、方法签名入定义版本）已修复并重放；原例 vs 完整不变式矩阵、review 反例重放见 §9。验收 PASS 只代表 work/review 面（含 V-07 重算硬门与 selftest），merge-owned 裸 t/触面档/独立 sema/788 套件/tf/规范沉淀/归档/guard 全部 pending。不要把历史 R4–R8 needs_fix 收据当作当前状态。
+**最新（R9 修复轮）：execution_done，7/9，待 T-08 独立复审冻结 `a09456532`**。R9 两项（Ann 完整 canonical、manifest 全字段页预算）已修复并重放；原例 vs 完整不变式矩阵、review 反例重放见 §9。验收 PASS 只代表 work/review 面（含 V-07 重算硬门与 selftest），merge-owned 裸 t/触面档/独立 sema/788 套件/tf/规范沉淀/归档/guard 全部 pending。不要把历史 R4–R9 needs_fix 收据当作当前状态。
