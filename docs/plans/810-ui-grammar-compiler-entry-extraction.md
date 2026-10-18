@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-810
-status: drafting
+status: execution_done
 feature_name: 完整 UI 文法与默认编译入口解耦
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-19
 plan_revision: 1
-current_step: 0
+current_step: 8
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-ui-dialect/project.md, docs/specs/auto-parser-api/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md]
 new_spec_components: [docs/specs/auto-ui-dialect/design/full-grammar.md]
@@ -131,14 +131,14 @@ work用`cargo check -p auto-ui-dialect -p auto-parser-api -p auto-lang`、轻包
 
 | 状态 | ID | owner_stage | 依赖 | 实际文件/动作、交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 799/801/806实际交付 | 新`attachments/810/contract-baseline.md`：上述源码完整调用/副作用/语法图、所有现行支持与旧oracle；端口/对象安全/API兼容/事务/raw/scope有界整链probe，冻结命令和SD；未解决可行性不得依赖实施 | AC-01..05 |
-| [ ] | T-02 | work | T-01 | 在auto-ui-dialect/必要通用端口与ParserBridge实现冻结能力，保旧ParseContext消费者；probe/check与V-02/03端口控制 | AC-02 |
-| [ ] | T-03 | work | T-02 | 迁widget/component/store、props/refs/use/setup/expose/watch/computed及依赖helper；声明复用806；保原签名薄委托，V-01/02/03 | AC-01,02 |
-| [ ] | T-04 | work | T-03 | 迁view/fragment/节点/for/if/key/memo/link/style绑定及UI事件/actions/style闭包，Core body/task-on不搬错；所有递归真接线，定向回归 | AC-01,02,04 |
-| [ ] | T-05 | work | T-04 | dialect/ui/default session/import派发接线，删UI escape hatch调用，校验Core对照/外部注册/NotClaimed/Err；V-04 | AC-03 |
-| [ ] | T-06 | work | T-05 | 移除Parser残留UI算法/重复helper，核对API/源码寿命及现有生成/VM消费和完整来源图；scope/error/raw反例补齐 | AC-01..04 |
-| [ ] | T-07 | work | T-06 | 建plan810及轻consumer，V-01..06、777/792并集与受影响fresh/locked；生成/VM代表矩阵及失败反例全收据 | AC-01..05 |
-| [ ] | T-08 | work | T-07 | SD-01..06备稿、迁出/净删/未迁AST与默认组合清单，新增`attachments/810/handoff.md`绑定代码/依赖/输入/结果；提交送审 | AC-05 |
+| [x] | T-01 | work | 799/801/806实际交付 | [✅ 已完成] `attachments/810/contract-baseline.md`：迁移闭包（基面 parser.rs 13223–17909 + 3 自由函数）、逐方法触面→端口映射、事务/前瞻/raw/scope 合同冻结；probe 以全量迁移形态完成（§5 实测结论+勘误：expect_ident 留 Core、probe_next_token 上抛、advance_peek_kind 具名化） | AC-01..05 |
+| [x] | T-02 | work | T-01 | [✅ 已完成] `grammar/mod.rs` UiParseContext（对象安全子 trait，ParseContext 零改动）+ ParserBridge 实现 + Parser 端口后端（raw 投机/诊断事务/probe/peek/raw CSS/scope 绑定）；三包 check 零错误、新增 warning 清零 | AC-02 |
+| [x] | T-03 | work | T-02 | [✅ 已完成] widget/store/scene/props/use/setup/expose/watch/computed 及依赖 helper 迁 `grammar/{widget,store,scene,helpers}.rs`（约 4.9k 行，脚本 `scripts/plan810_migrate.py` 留档）；806 声明经 declarations 单源直调；Parser 留同签名薄委托 | AC-01,02 |
+| [x] | T-04 | work | T-03 | [✅ 已完成] view/fragment/component/节点/for/if/key/memo/link/style 绑定/事件族/actions/style_recipe/timer/routes/menubar/toolbar 迁 `grammar/{view,actions}.rs`；on-events/arrow 事件文法留 Core（共享），Core store 表达式/parse_store_stmt 未搬错 | AC-01,02,04 |
+| [x] | T-05 | work | T-04 | [✅ 已完成] dialect/ui.rs 重写全端口薄 adapter；`ParserBridge::parser()` escape hatch 删除（全仓零调用）；plan778 4 绿（None 回滚/Err 传播/matches 门）、Core 对照（fn view 参数/on 回退）plan810 v04 绿 | AC-03 |
+| [x] | T-06 | work | T-05 | [✅ 已完成] parser.rs 残留 UI 算法/自由函数 grep 清零（仅余薄委托）；反例补齐：computed 事务回滚（errors/warnings 零残留断言）、raw CSS 多字节/括号注释、近失告警、scope（fragment/for/on 参数）、recipe None 回退+docs | AC-01..04 |
+| [x] | T-07 | work | T-06 | [✅ 已完成] `tests/plan810_full_ui_grammar.rs` 13 测 + `test/fixtures/modularity/ui-grammar-consumer/` 7 测（ToyUiContext 全端口）；定向面 17 族全绿（收据见 contract §6）；777 strict pass=0 违规；792 driver 后台执行收据回填 handoff | AC-01..05 |
+| [x] | T-08 | work | T-07 | [✅ 已完成] SD-01..06 备稿（worktree specs，5 文件改 + full-grammar.md 新增）；净删≈4.9k 行迁出/parser.rs 17994 行；`attachments/810/handoff.md` 绑定提交/收据/merge-owned pending；提交送审 | AC-05 |
 | [ ] | T-09 | review | T-08 | 同一树独立按AC/SD复核全集、语义事务/错误怪癖及真实消费者；保留merge-owned门pending | AC-06 |
 | [ ] | T-10 | merge | T-09 pass | 合流master并集、受影响内容复审，最终冻结提交统一§6门；失败修复后重新绑定审查/重冻，不跳过 | AC-07 |
 | [ ] | T-11 | merge | T-10 | canonical Spec/ledger沉淀、归档、已合入接口与发行来源交接，guard clean再清理树/分支/组，核对终态计数 | AC-07 |
@@ -148,6 +148,8 @@ handoff：唯一`D:/autostack/.wt/lang-810/auto-lang`，分支`codex/plan-810-de
 ## 9. 复审记录
 
 2026-10-19 / stage: new / PLAN-810 revision: 1 / outcome: pass（合同起草与文档预检，**非实现/独立验收pass**）/ next: work T-01 / changed: T-01..11、AC-01..07、SD-01..06。仅规划，未执行任何未来fixture或Cargo门；实际来源/hash与合同预检见本批附件。
+
+2026-10-19 / stage: work / PLAN-810 revision: 1 / outcome: pass（work 自有 AC-01..05 完成，送独立 final review）/ worktree: `D:/autostack/.wt/lang-810/auto-lang` / branch: `codex/plan-810-dev` / base: `ab08955c2` / code: `c8183ff73`→`605ed28d1`→T-06/07 提交→T-08 备稿提交（见 git log；review 绑定最终提交） / dependency_revisions: auto-parser-api/auto-ui-dialect 均在本树内，无跨仓 / task_ids: T-01..T-08 / evidence: contract-baseline §5/§6（17 定向族全绿 + plan810 13 + 轻 consumer 7 + verify-deps×2 + 777 strict pass；792 driver 后台收据回填 handoff）/ blockers: 无 / next_responsible_role: review（T-09，同树独立核 AC/SD/反例；merge-owned 裸 t/tv/tu 保持 pending——handoff §5）。执行期勘误已回填 contract §5（expect_ident 留 Core 等 5 项，均在合同授权范围内："Core与UI共享的on/body辅助归通用语义所有者、UI调用端口"）。
 
 ## 10. 待澄清事项
 
