@@ -261,17 +261,17 @@ fn r2_lookahead_fstr_start_stays_positional() {
     assert_eq!(cur, crate::token::TokenKind::FStrStart);
 }
 
-/// 端口原语语义（F806-R2-01 修复的 Core 面）：peek_next_kind 幂等、
-/// 游标不动、不收 docs、不记错误；命中 Colon 后 advance 消费的正是
-/// 被回推的同一 token。
+/// 端口原语语义（F806-R2-01/R3-01 的 Core 面）：probe_next_kind 成功
+/// 路径幂等、游标不动、不收 docs、不记错误；命中 Colon 后 advance 消费的
+/// 正是被回推的同一 token。
 #[test]
-fn r2_port_peek_next_kind_is_side_effect_free() {
+fn r2_port_probe_next_kind_success_path_is_side_effect_free() {
     let session = CompilerSession::new(Scenario::UI);
     let mut p = Parser::from("value : str").with_session(session);
     // cur = value(Ident)；peek 两次结果一致且游标不动。
     let mut b = crate::parser_bridge::ParserBridge::new(&mut p);
-    assert_eq!(b.peek_next_kind(), Some(crate::token::TokenKind::Colon));
-    assert_eq!(b.peek_next_kind(), Some(crate::token::TokenKind::Colon));
+    assert_eq!(b.probe_next_kind(), Some(crate::token::TokenKind::Colon));
+    assert_eq!(b.probe_next_kind(), Some(crate::token::TokenKind::Colon));
     assert_eq!(b.cur_kind(), crate::token::TokenKind::Ident);
     drop(b);
     assert!(p.errors.is_empty());
@@ -281,7 +281,7 @@ fn r2_port_peek_next_kind_is_side_effect_free() {
     let mut p2 = Parser::from("value /*x*/ : str").with_session(CompilerSession::new(Scenario::UI));
     let mut b2 = crate::parser_bridge::ParserBridge::new(&mut p2);
     assert_eq!(
-        b2.peek_next_kind(),
+        b2.probe_next_kind(),
         Some(crate::token::TokenKind::CommentStart)
     );
     assert_eq!(b2.cur_kind(), crate::token::TokenKind::Ident);
@@ -290,10 +290,119 @@ fn r2_port_peek_next_kind_is_side_effect_free() {
     assert!(p2.take_docs().is_none());
 }
 
+/// ---- F806-R3-01 永久回归：probe 失败消费协议（oracle=R3 冻结探针日志
+/// attachments/806/review-r3-peek.log.txt；合同=auto-parser-api
+/// `ParseContext::probe_next_kind` 文档）----
+
+/// 非推进型词法失败（未知单字符 `\`）：probe 返回 None 且可重复（该
+/// 失败模式不消费输入）；probe 不记录错误；随后 advance 恰好记录一次
+/// UnknownCharacter 并落 EOF。
+#[test]
+fn r3_probe_non_advancing_failure_repeatable_and_deferred_error() {
+    let session = CompilerSession::new(Scenario::UI);
+    let mut p = Parser::from("value \\ : int").with_session(session);
+    let mut b = crate::parser_bridge::ParserBridge::new(&mut p);
+    assert_eq!(b.probe_next_kind(), None);
+    assert_eq!(b.probe_next_kind(), None);
+    drop(b);
+    assert!(p.errors.is_empty(), "probe must not record the lexer error");
+    let tok = p.next().clone();
+    assert_eq!(tok.kind, crate::token::TokenKind::EOF);
+    let unknowns: Vec<&crate::error::AutoError> = p
+        .errors
+        .iter()
+        .filter(|e| format!("{:?}", e).contains("UnknownCharacter"))
+        .collect();
+    assert_eq!(
+        unknowns.len(),
+        1,
+        "advance records exactly one: {:?}",
+        p.errors
+    );
+}
+
+/// 推进型词法失败（字符字面量非法转义 `'\q'`——Lexer::char 消费失败
+/// 前缀）：首次 probe None 且错误被丢弃；第二次 probe 从失败模式留下的
+/// 位置继续得到 Some(Ident)；随后 advance 消费 Ident("q")；全程零错误
+/// 记录。失败路径**按合同不承诺幂等**——本测试逐字钉住该协议。
+#[test]
+fn r3_probe_advancing_failure_consumes_and_drops_error() {
+    let session = CompilerSession::new(Scenario::UI);
+    let mut p = Parser::from("value '\u{5c}q' : int").with_session(session);
+    let mut b = crate::parser_bridge::ParserBridge::new(&mut p);
+    assert_eq!(
+        b.probe_next_kind(),
+        None,
+        "first probe hits the lex failure"
+    );
+    assert_eq!(
+        b.probe_next_kind(),
+        Some(crate::token::TokenKind::Ident),
+        "second probe continues from the consumed failure position"
+    );
+    drop(b);
+    assert!(
+        p.errors.is_empty(),
+        "failure error is dropped per legacy protocol"
+    );
+    let tok = p.next().clone();
+    assert_eq!(tok.kind, crate::token::TokenKind::Ident);
+    assert_eq!(tok.text.to_string(), "q");
+}
+
+/// 推进型失败另一形态（`'ab'`）：首 probe None、次 probe Some(Ident)，
+/// advance 得 Ident("b")——与 R3 探针观测逐字一致。
+#[test]
+fn r3_probe_advancing_failure_char_literal_variant() {
+    let session = CompilerSession::new(Scenario::UI);
+    let mut p = Parser::from("value 'ab' : int").with_session(session);
+    let mut b = crate::parser_bridge::ParserBridge::new(&mut p);
+    assert_eq!(b.probe_next_kind(), None);
+    assert_eq!(b.probe_next_kind(), Some(crate::token::TokenKind::Ident));
+    drop(b);
+    let tok = p.next().clone();
+    assert_eq!(tok.kind, crate::token::TokenKind::Ident);
+    assert_eq!(tok.text.to_string(), "b");
+    assert!(p.errors.is_empty());
+}
+
+/// 成功路径对照补全：DocComment token 的探测不收集 pending docs（R2 反例
+/// ②的根因面），随后 advance 恰好收集一份；普通 Ident 探测幂等。
+#[test]
+fn r3_probe_doc_comment_not_collected_and_plain_ident_idempotent() {
+    let session = CompilerSession::new(Scenario::UI);
+    let mut p = Parser::from("value ///doc\n: int").with_session(session);
+    let mut b = crate::parser_bridge::ParserBridge::new(&mut p);
+    assert_eq!(
+        b.probe_next_kind(),
+        Some(crate::token::TokenKind::DocComment)
+    );
+    assert_eq!(
+        b.probe_next_kind(),
+        Some(crate::token::TokenKind::DocComment)
+    );
+    drop(b);
+    assert!(p.take_docs().is_none(), "probe must not collect docs");
+    // advance 走 Parser::next：跳过 doc 区并收集恰好一份。
+    let _ = p.next();
+    let _ = p.next();
+    assert_eq!(p.take_docs().as_deref(), Some("doc"));
+    assert!(p.errors.is_empty());
+
+    let mut p2 = Parser::from("value style {").with_session(CompilerSession::new(Scenario::UI));
+    let mut b2 = crate::parser_bridge::ParserBridge::new(&mut p2);
+    assert_eq!(b2.probe_next_kind(), Some(crate::token::TokenKind::Ident));
+    assert_eq!(b2.probe_next_kind(), Some(crate::token::TokenKind::Ident));
+    assert_eq!(b2.cur_text(), "value");
+}
+
 /// 真实 use-import 链经生产装配消费默认声明文法（收编自复审
-/// review-r2-import.rs 探针）：两文件项目（host `use child: Imported`），
-/// 导入组件的 msg handler 实改 model 状态；再实改被导入文件的注解，
-/// 模块错误表出现 Bad806——证明真实读取并经同一默认实现解析。
+/// review-r2-import.rs 探针；R3-F02 补 feature 门控——本测试消费
+/// `build_dynamic_component`，与该 API 同条件）：两文件项目（host
+/// `use child: Imported`），导入组件的 msg handler 实改 model 状态；
+/// 再实改被导入文件的注解，模块错误表出现 Bad806——证明真实读取并经
+/// 同一默认实现解析。
+#[cfg(feature = "ui-iced")]
 #[test]
 fn r2_real_use_import_chain_uses_default_declarations() {
     let root = std::env::temp_dir().join(format!("plan806-import-{}", std::process::id()));

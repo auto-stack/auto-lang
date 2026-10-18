@@ -10,7 +10,8 @@
 //!   `self.expect(k)` → `ctx.expect(k)`（桥面→`Parser::expect` 同实现）；
 //! - `self.cur.text` → `ctx.cur_text()`（owned String，`.into()` 回 Name）；
 //! - named-payload lookahead `lexer.next()`+`push_token` 单 token 回推 →
-//!   原始单 token 前瞻 `peek_next_kind`（零副作用原语；F806-R2-01 修复：
+//!   原始单 token 探测 `probe_next_kind`（成功路径零副作用/幂等，失败
+//!   路径遵循旧回推前瞻失败消费协议；F806-R2-01 引入、R3-01 定形：
 //!   checkpoint+advance/restore 形态曾引入注释跳过/docs 收集/词法错误
 //!   记录的副作用扩散与文法扩大，已废弃）；
 //! - `parse_type`/`parse_expr` → 端口委托核心文法（不复制）；
@@ -78,17 +79,17 @@ pub fn parse_msg_decl(ctx: &mut dyn ParseContext) -> AutoResult<MsgDecl> {
         // (was single-type only). Empty vec = unit variant.
         // Plan 435 挂账②:support named params `Change(value: str)` —
         // gallery 官方组件在用;名字记入 payload_names(位置形态为 None)。
-        // lookahead 用原始单 token 前瞻 peek_next_kind（F806-R2-01 修复：
-        // 零副作用——不跳注释/不收 docs/不记词法错误/游标不动，与旧
-        // lexer.next()+push_token 逐字同构；Colon 命中后 advance 消费的
-        // 正是被回推的同一 token）。
+        // lookahead 用原始单 token 探测 probe_next_kind（F806-R2-01 引入/
+        // R3-01 定形：成功路径零副作用/幂等，失败路径遵循旧回推前瞻的
+        // 失败消费协议——与旧 lexer.next()+push_token 逐字同构；Colon
+        // 命中后 advance 消费的正是被回推的同一 token）。
         let mut payload = vec![];
         let mut payload_names = vec![];
         if ctx.is_kind(TokenKind::LParen) {
             ctx.advance();
             loop {
                 let name = if ctx.is_kind(TokenKind::Ident) || ctx.is_kind(TokenKind::Str) {
-                    if ctx.peek_next_kind() == Some(TokenKind::Colon) {
+                    if ctx.probe_next_kind() == Some(TokenKind::Colon) {
                         let candidate = ctx.cur_text();
                         ctx.advance(); // cur = 回推的 Colon
                         ctx.expect(TokenKind::Colon)?;

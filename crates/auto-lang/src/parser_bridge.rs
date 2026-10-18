@@ -101,9 +101,10 @@ impl<'p, 'a> ParserBridge<'p, 'a> {
     }
 
     /// 跳过空行（含注释性空行），返回跳过行数。进入块体解析循环时的标准动作。
-    /// 原始单 token 前瞻（PLAN-806；零副作用，见端口 `peek_next_kind` 文档）。
-    pub fn peek_next_kind(&mut self) -> Option<TokenKind> {
-        self.parser.port_peek_next_kind()
+    /// 原始单 token 探测（PLAN-806；成功路径零副作用/幂等，失败路径遵循
+    /// 旧回推前瞻消费协议——见端口 `probe_next_kind` 文档）。
+    pub fn probe_next_kind(&mut self) -> Option<TokenKind> {
+        self.parser.port_probe_next_kind()
     }
 
     pub fn skip_empty_lines(&mut self) -> usize {
@@ -230,8 +231,8 @@ impl<'p, 'a> auto_parser_api::ParseContext for ParserBridge<'p, 'a> {
         self.skip_empty_lines()
     }
 
-    fn peek_next_kind(&mut self) -> Option<TokenKind> {
-        self.peek_next_kind()
+    fn probe_next_kind(&mut self) -> Option<TokenKind> {
+        self.probe_next_kind()
     }
 
     fn checkpoint(&mut self) -> auto_parser_api::ParseCheckpoint {

@@ -57,14 +57,18 @@ normal/build/dev 无 auto-lang/auto-man/auto-vm/auto-ui）即轻闭包证据（V
 - 关键字消费：复刻 `Parser::expect_ident`（纯文本比较、错误文本
   "Expected 'x', got 'y'"、当前 token 位 span）——**不用**桥面
   `expect_keyword`（其文本 "expected 'x'" 与 Ident kind 检查均不等价）。
-- named-payload lookahead：端口零副作用原语 `peek_next_kind`（原始单
-  token 前瞻，F806-R2-01 修复引入的具名通用能力）——与旧
-  `lexer.next()`+`push_token` 单 token 回推逐字同构：不跳过注释 token、
-  不收集 pending_docs、不记录词法错误、游标不动、词法失败返回 None；
-  Colon 命中后 `advance` 消费的正是被回推的同一 token。
-  （曾以 checkpoint+advance/restore 实现，R2 复审证实其经 `Parser::next`
-  引入注释跳过/docs 收集/词法错误记录的副作用扩散与"注释分隔伪命名
-  载荷"文法扩大，已废弃并收编三反例为永久回归。）
+- named-payload lookahead：端口原语 `probe_next_kind`（原始单 token
+  探测，PLAN-806 具名通用能力；F806-R2-01 引入、R3-01 定形）——与旧
+  `lexer.next()`+`push_token` 前瞻**逐字同构**（含词法失败路径）：
+  成功路径零副作用/幂等（不跳注释 token、不收 pending_docs、不记词法
+  错误、游标不动；Colon 命中后 `advance` 消费的正是被回推的同一
+  token）；失败路径遵循旧回推前瞻的失败消费协议（是否推进输入由
+  Lexer 失败模式决定、错误丢弃不记录、不承诺幂等——声明文法依赖该
+  协议保持旧臂错误语义，如字符字面量非法转义在旧臂即为"消费失败
+  前缀+错误丢弃"）。（曾以 checkpoint+advance/restore 实现，R2 复审
+  证实其经 `Parser::next` 引入注释跳过/docs 收集/词法错误记录的副作用
+  扩散与"注释分隔伪命名载荷"文法扩大，已废弃；成功/失败两路径协议
+  均有永久回归钉住。）
 - 错误出口：未知注解经 `ctx.syntax_error`（桥面实现与旧臂逐字同构）；
   `expect` 族经桥面走 `Parser::expect` 同一实现。
 

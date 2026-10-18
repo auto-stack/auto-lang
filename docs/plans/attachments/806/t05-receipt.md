@@ -118,3 +118,33 @@ named-payload lookahead 窗口内 lexer Err：旧码 `if let Ok(tok)` 静默吞�
 None），新实现经 `advance` 提前把同内容 lexer 错误记入 errors（restore 不回滚诊断）。
 该错误在旧臂后续 parse_type 推进时本会记录，差异仅时序/error_limit 提前触发；
 计划 §5 明示 checkpoint+advance/restore 为认可等价形态。
+
+## R3 修复轮（2026-10-18，F806-R3-01/02）
+
+### 诊断简表（按 R3 报告要求：剩余不变量/此前漏检原因/适用状态路径/设计与 oracle 调整/当前结果）
+
+| 项 | 内容 |
+|---|---|
+| 剩余不变量 | 端口探测方法的公开合同与实现必须一致：成功路径零副作用/幂等/与首次 advance 一致；**失败路径**与旧回推前瞻失败消费协议逐字一致（是否推进输入由 Lexer 失败模式决定、错误丢弃不记录、不承诺幂等），且不得为"纯 peek"承诺改变旧 msg 错误语义 |
+| 此前漏检原因 | R2 修复只测了成功路径（Colon/CommentStart/DocComment）与**恰巧不推进输入**的 UnknownCharacter（`\`），未枚举词法失败模式的空间——漏掉会推进输入的字符字面量失败（`'\q'` 非法转义：Lexer::char 消费失败前缀）；oracle 选择依赖了失败模式的偶然性质而非合同 |
+| 适用状态路径 | probe × {成功 token（含注释/doc/Ident）、非推进型失败、推进型失败（非法转义/坏字符字面量）} × {单次、重复调用} × {probe 后 advance 的错误记录/游标/续读} |
+| 设计/oracle 调整 | 端口方法更名 `peek_next_kind`→`probe_next_kind`（名实统一：探测非纯前瞻），合同改为双路径精确定义（成功=零副作用幂等；失败=旧回推前瞻失败消费协议，明示不承诺幂等）；oracle 补齐推进型失败的重复调用/后续消费断言（钉 R3 探针观测：`'\q'` 首 None 次 Some(Ident) 后 advance 得 Ident("q") 零错误；`'ab'` 次 Some(Ident) advance 得 "b"） |
+| 当前结果 | plan806 18/18（新增 r3_probe_* 4 例永久回归）；无-UI 编译我方文件零错误（F3-02 门控后 plan806_ui_declarations 在 --no-default-features 下 0 错误，剩余红均为 plan712 等既有模块，复审已注不归因本计划）；重放 light/driver/内联/滤面见下 |
+
+### 修复内容
+
+- F806-R3-01：`auto-parser-api` `ParseContext` 方法更名 `probe_next_kind` 并按双路径精确定义
+  （见 [auto-parser-api/project.md](../../../../../docs/specs/auto-parser-api/project.md) 端口与快照契约节）；
+  auto-lang 原语同步更名 `port_probe_next_kind`（实现不变=旧 lexer.next+push_token 逐字同构）；
+  declarations.rs/lib.rs/SD-01/auto-parser-api 规范同步校准（含 R3 指出的陈旧 pilot 位置/12 成员闭包文案）。
+  **不改 msg 文法行为**——旧 12 例消费者输出与 R2 历史旧臂逐字一致（R3 复审已验，本轮未动算法主体）。
+- F806-R3-02：`r2_real_use_import_chain_uses_default_declarations` 增 `#[cfg(feature = "ui-iced")]`
+  （与 `build_dynamic_component` 同条件）；不依赖 UI 的基础文法测试保持无门控。
+
+### R3 轮重放（worktree，RUSTC_WRAPPER="" 因机内 sccache 端口冲突在案）
+
+`cargo t plan806` **18/18**；轻 consumer **10/10**+verify-deps PASS；driver **48/48**；
+冻结内联 **12/12**；滤面 `msg model dialect` **45/45**；`cargo check -p auto-ui-dialect` 零警告、
+`cargo check -p auto-lang` 411 既有警告零新增；触及文件 rustfmt --check 过。
+（792 交付 25/25 仍为 R2 历史证据：API/Parser 源已变不冒称新 SHA 重编成功，最终冻结面
+验收由 merge 门+终审确认影响后补/复用。）

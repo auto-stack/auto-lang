@@ -61,19 +61,29 @@ pub trait ParseContext {
     /// 跳过空行（含注释性空行），返回跳过行数。进入块体解析循环时的标准动作。
     fn skip_empty_lines(&mut self) -> usize;
 
-    /// **原始单 token 前瞻（零副作用）**：返回当前 token 之后的下一个
-    /// **原始** token 的 `TokenKind`——不跳过注释 token、不收集 pending
-    /// doc comments、不记录词法错误、游标不动。该 token 原样归还流中，
-    /// 随后的 [`ParseContext::advance`] / [`ParseContext::expect`] 重新
-    /// 读到同一 token 并正常执行其全部副作用（注释跳过 / docs 收集 /
-    /// 错误记录）。词法失败返回 `None`（同样零副作用——不记录该错误）。
+    /// **原始单 token 探测（probe，非纯 peek）**：返回当前 token 之后的
+    /// 下一个**原始** token 的 `TokenKind`（不经注释跳过 / pending docs
+    /// 收集 / 词法错误记录的 token 面上看）。
     ///
-    /// Core 含义（PLAN-806 具名通用能力，F806-R2-01 修复引入）：等价于
-    /// "读下一个原始 token 并立即回推"的投机判定面，供文法在消费前做
-    /// 一次性探测（如 msg named payload 的 `Ident :` 判定）。实现方必须
-    /// 保证：幂等可重入（连续调用结果一致）、与随后首次 `advance` 实际
-    /// 消费的 token 一致、不产生任何诊断或状态副作用。
-    fn peek_next_kind(&mut self) -> Option<TokenKind>;
+    /// - **成功路径（词法成功）**：token 立即回推流中，游标与诊断**零
+    ///   副作用**，连续调用幂等；随后的 [`ParseContext::advance`] /
+    ///   [`ParseContext::expect`] 重新读到同一 token 并正常执行其全部
+    ///   副作用（注释跳过 / docs 收集 / 错误记录）。
+    /// - **失败路径（词法错误）**：**遵循旧回推前瞻的失败消费协议**
+    ///   （F806-R3-01 冻结）——词法失败是否推进输入由 Lexer 各失败
+    ///   模式自身决定（如字符字面量非法转义会消费失败前缀、未知单
+    ///   字符不消费）；该错误**不记录**（返回 `None`）。因此失败路径
+    ///   **不承诺**游标不变或连续调用幂等——重复调用可能得到不同
+    ///   结果，后续消费从失败模式留下的位置继续、该错误已丢弃。
+    ///   这与旧 `lexer.next()`+`push_token` 前瞻的错误语义逐字一致
+    ///   （错误丢弃 + 失败推进），声明文法依赖它保持旧臂行为，不得
+    ///   在此偷偷恢复状态或补记错误。
+    ///
+    /// Core 含义（PLAN-806 具名通用能力，F806-R2-01 引入、R3-01 定形）：
+    /// 消费前的一次性投机探测面（如 msg named payload 的 `Ident :` 判定）。
+    /// 实现方承诺：成功路径零副作用/幂等/与首次 `advance` 消费的 token
+    /// 一致；失败路径如实暴露其失败消费结果（含非幂等性）。
+    fn probe_next_kind(&mut self) -> Option<TokenKind>;
 
     // ---- checkpoint（投机解析 / None 回滚） ----
 

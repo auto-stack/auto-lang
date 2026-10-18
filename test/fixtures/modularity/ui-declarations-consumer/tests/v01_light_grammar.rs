@@ -165,18 +165,18 @@ fn model_subset_bare_field_and_not_claimed() {
     assert!(model("model {\n    #[primary] x int = 1\n}").is_ok());
 }
 
-/// 端口原语 `peek_next_kind` 语义（F806-R2-01 修复的 Core 面）：幂等、
-/// 游标不动——消费方实现同样必须零副作用。
+/// 端口原语 `probe_next_kind` 语义（F806-R2-01/R3-01 的 Core 面）：成功
+/// 路径幂等、游标不动——消费方实现同样必须在成功路径零副作用。
 #[test]
-fn port_peek_next_kind_semantics_light() {
+fn port_probe_next_kind_semantics_light() {
     use auto_parser_api::context::ParseContext;
     let mut ctx = ToyContext::new("value : str");
     assert_eq!(
-        ctx.peek_next_kind(),
+        ctx.probe_next_kind(),
         Some(auto_parser_api::token::TokenKind::Colon)
     );
     assert_eq!(
-        ctx.peek_next_kind(),
+        ctx.probe_next_kind(),
         Some(auto_parser_api::token::TokenKind::Colon)
     );
     assert_eq!(ctx.cur_text(), "value", "cursor must not move");

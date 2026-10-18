@@ -126,8 +126,9 @@ impl ParseContext for ToyContext {
         n
     }
 
-    fn peek_next_kind(&mut self) -> Option<TokenKind> {
-        // 原始单 token 前瞻：预词法向量下标 +1，零副作用（游标不动）。
+    fn probe_next_kind(&mut self) -> Option<TokenKind> {
+        // 原始单 token 探测：预词法向量下标 +1，成功路径零副作用（游标
+        // 不动）；toy 词法在构造期已完成，无失败路径。
         self.tokens.get(self.idx + 1).map(|t| t.kind)
     }
 

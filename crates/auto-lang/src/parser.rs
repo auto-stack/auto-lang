@@ -721,12 +721,13 @@ impl<'a> Parser<'a> {
     /// 槽位复用（复用槽位换新 gen，旧凭据自然失效）；无 unsafe、无
     /// 'static、无全局池（T-01 D3）。调用退出按作用域失效由派发器
     /// `port_release_scope` 负责。
-    /// PLAN-806 端口原语（F806-R2-01 修复）：原始单 token 前瞻——读下一个
-    /// 原始 token 后立即回推。不跳过注释 token、不收集 pending_docs、
-    /// 不记录词法错误、游标不动（与旧 `lexer.next()`+`push_token` 前瞻
-    /// 逐字同构）。词法失败返回 None（零副作用）。
-    /// 见 auto-parser-api `ParseContext::peek_next_kind`。
-    pub(crate) fn port_peek_next_kind(&mut self) -> Option<TokenKind> {
+    /// PLAN-806 端口原语（F806-R2-01 引入/R3-01 定形）：原始单 token 探测
+    /// ——读下一个原始 token，成功则立即回推（零副作用/幂等）；词法失败
+    /// 遵循旧回推前瞻的失败消费协议（是否推进输入由 Lexer 失败模式决定，
+    /// 错误不记录返回 None——与旧 `lexer.next()`+`push_token` 逐字同构，
+    /// 失败路径不承诺幂等）。见 auto-parser-api
+    /// `ParseContext::probe_next_kind`。
+    pub(crate) fn port_probe_next_kind(&mut self) -> Option<TokenKind> {
         match self.lexer.next() {
             Ok(tok) => {
                 let kind = tok.kind;

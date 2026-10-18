@@ -20,7 +20,9 @@ TypeStore/推断/VM/UI/Man 反向边（module-boundaries 域 `lang-core`，规�
 `token`/`error` 模块名与旧 `auto_lang::{ast,token,error}` 对齐，外部方言
 从 auto-lang 迁到本 crate 近似路径改名，类型身份即 799/789/793 单一实现。
 外部消费门：`test/fixtures/modularity/dialect-api-consumer/` 独立 manifest
-（唯一依赖 auto-parser-api；model 子集单份实现在此）构建+测试+
+（PLAN-806 起依赖 auto-parser-api + auto-ui-dialect——model 子集方言包装在此，
+字段算法单一份已委托 auto-ui-dialect `ExternalSubset` 策略，不保第二份）
+构建+测试+
 `verify-deps.sh`（cargo tree normal/build 无 auto-lang/auto-man/auto-vm/
 auto-ui）即依赖倒置证据（V01）。
 
@@ -51,6 +53,16 @@ auto-lang 侧兼容出口：`crate::session`/`crate::dialect::DialectPriority`
   位置语法错误 Err，游标不动）；凭据 move-only 单用；外层存活快照不受
   内层调用退出影响（递归不覆盖外层快照）。无 unsafe 延寿、无源码 'static
   要求、无全局快照池。
+- 原始单 token 探测 `probe_next_kind() -> Option<TokenKind>`（PLAN-806
+  具名通用能力，F806-R2-01 引入/R3-01 定形）：成功路径零副作用/幂等
+  （token 立即回推，游标与诊断不动，随后 `advance` 消费同一 token 并执行
+  其全部副作用）；**失败路径遵循旧回推前瞻的失败消费协议**——是否推进
+  输入由 Lexer 失败模式自身决定，错误不记录（返回 `None`），不承诺游标
+  不变或连续调用幂等。实现方（auto-lang `port_probe_next_kind`）与旧
+  `lexer.next()`+`push_token` 前瞻逐字同构；消费方为 UI 声明文法
+  （auto-ui-dialect msg named-payload 判定）。实现方兼容性：成功路径必须
+  满足零副作用/幂等/与首次 advance 一致；失败路径必须如实暴露失败消费
+  结果，不得偷偷恢复状态或补记错误（那会改变声明文法旧错误语义）。
 - 跨界数据面：只传 owned 文本（`cur_text() -> String`）与现有 AST 值；
   不返回 Parser/lexer/scope/TypeStore 引用。诊断单调追加（checkpoint 不
   回滚 errors/warnings，不承诺符号表级事务回滚）。
@@ -66,7 +78,8 @@ auto-lang 侧兼容出口：`crate::session`/`crate::dialect::DialectPriority`
   widget 体内 model 由内建结构解析器直连，不经语句方言派发。这些边的
   外置属后续"完整 UI 文法按族外置"合同（见 frontend/overview 剩余边）。
 - 792 交付闭包：auto-parser-api 为 auto-lang 必需 path 依赖，
-  `DELIVERY_CRATES` 已纳入（12 成员），受管交付清单/重定位/负控沿既有
+  `DELIVERY_CRATES` 已纳入（PLAN-806 起 13 成员，另含 auto-ui-dialect），
+  受管交付清单/重定位/负控沿既有
   admission/staging 接口重验。
 
 > 来源: docs/plans/801-dialect-api-dependency-inversion.md（SD-01）；
