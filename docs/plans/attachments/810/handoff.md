@@ -110,9 +110,39 @@ native_css 7、plan370 18、plan367 6、plan024 16、scene 9、recipe 19、
 轻 consumer 7/7、verify-deps PASS、777 strict pass+负控 15/15、fmt 净。
 merge-owned 门不变（handoff §5 pending）。
 
-## 8. 下一步
+## 8. R2 修复轮（F810-R2-01..03，2026-10-19）
+
+R2 复审（attachments/810/review-r2/REVIEW.md）后同树修复，代码提交
+`b8b0fc3f5`（R2-01）→ 探针全名修正 → SD 提交；**792 于最终源码重跑**。
+
+### 8.1 根因/覆盖调整表（R2 诊断要求）
+
+| 剩余不变量 | 前次为何漏过 | 实际路径/状态 | 本轮 oracle 调整 |
+|---|---|---|---|
+| 同实例错误状态及旧支持边界 | fresh Parser 无法观察失败实例；错误怪癖仅叙述 | handler 缺 body 的 scope/flag、fragment EOF 及原基面 | `r02_same_parser_success/error` 双测：同一 Parser 成功（源尾 arg 未定义×1）vs 失败（×0——旧臂 enter→body?→exit 未执行泄漏冻结；on 旗标两路均平衡）；EOF 用 `#[ignore]` 测试+子进程 10s 外截止（`eof-quirk-isolated.json`）+基面文本同构（`eof-quirk-baseline-identity.json`：fragment 路径 10 函数冻结映射归一全同） |
+| 发行输入与冻结代码相同 | 用 crate/依赖成员数不变代替包内源 hash，复用旧 25/25 | 新两端口+上层接线进入源文件 | 792 driver 于修复后源码全量重跑：**EXIT=0 / 25/25**；consumer-b 包内 8 个触面源文件 SHA256 与 producer 树逐字节一致（含 grammar/mod.rs=`82DE73A2…`，与 R2 复审记录的受审源 hash 相同） |
+| SD 单一当前事实 | 在旧错误句后插括号，未替换原句 | parser-api 限制条目、full-grammar 失败边界、contract 基线总结 | parser-api 条目整句重写（现行=全端口+UI 伴随端口不入 Core，历史另述）；full-grammar §3 具名三项旧怪癖；contract §5 勘误累计修订（含 R1-04 双原语拆分警示） |
+
+### 8.2 V-01..06 证据映射（work 期，含复用既有测试）
+
+| Case | 真实入口 | 证据（文件::断言 或 定向命令） |
+|---|---|---|
+| V-01 文法全集 | `Parser::from(..).with_session(UI).parse()`（UiDialect builtin 派发+直连段） | plan810 `v01_widget_full_grammar_cross_sample`（props/msg/model/computed×2/watch.immediate/raw CSS/on 带参/view for+key+if 交叉，AST 全块位断言）、`v01_non_widget_declaration_family`（store+timer/actions+menubar+toolbar/component fn 糖化/view fn/routes）；AST/序列化/源位置既有 oracle：plan024（命名 view vue 码）、plan367（viewfn/sidebar 真源）、plan408（component SFC 落盘）、plan340（codegen 改写）、native_css（CSS 字节级） |
+| V-02 事务/前瞻 | 同上 | plan810 `v02_computed_body_fallback_rolls_back_speculative_diagnostics`（errors/warnings 零残留）、`v02_raw_css_multibyte_and_brace_in_comment`、`v02_near_miss_block_keyword_warns`、`v02_style_recipe_none_fallback_keeps_cursor`（真 None 回退）、`v02_style_recipe_takes_docs`、`r01_snapshot_lifecycle_bounded_all_entry_paths`、`r01_nested_release_keeps_outer_credential`、`r04_scene_gate_prev_matches_old_two_push`、`r04_scene_yields/subresource_and_stream`；806 永久反例（probe 三态）由 plan806 18 测复用 |
+| V-03 scope/寿命 | 同上 | `v03_fragment_params_bound_in_scope`、`v03_for_loop_var_and_index_bound`、`v03_raw_credential_rejection`（跨上下文/重复）、`v03_owned_ast_outlives_source`、`v03_shadow_and_error_paths`、**`r02_same_parser_{success,error}_*`（同实例泄漏冻结）**；EOF 隔离收据×2 |
+| V-04 默认派发 | 同上+Core | `v04_core_scenario_untouched`、`v04_scene_decl_any_scenario`、`v04_two_sessions_isolated`（Core=确定性 Err）、`v04_store_contextual_keyword_guard`（on 体让行+fn 体怪癖冻结）、**`v04_import_of_import_chain`（三层 use-import，grandchild 7→8）**；806 r2 真一层 import 复用；plan778 4 测（None 回滚/Err 传播/matches 门） |
+| V-05 真消费者 | Parser→VM/生成器 | VM：plan370 18、plan339/340、plan051 25、vm_bridge inline_lambda 双测；Vue：plan024/367/408、native_css、vue.rs inline/dialog_vmodel；Rust：rust.rs test_simple_counter×2/timer_block/image_surface/inline_lambda；Ark/Jet：generator inline_lambda——命令 `cargo test -p auto-lang --lib test_inline_lambda / test_simple_counter / timer_block_rust / test_dialog_vmodel`（本轮实跑 9/9+2/2+1/1）；全量 tu/tv 归 merge（pending） |
+| V-06 清源/发行 | 独立 manifest | ui-grammar-consumer 7/7（--locked）+ verify-deps×2、777 strict pass+负控 15/15（基线绑 `55ce34200`）、**792 driver EXIT=0 25/25（包内源 hash=受审源）** |
+
+修复后回归：plan810 **22/22**、plan806 18、plan778 4、native_css 7、
+plan370 18、plan367 6、plan024 16、scene 9、recipe 19、轻 consumer 7/7、
+fmt 净。merge-owned 门不变（§5 pending）。
+
+## 9. 下一步
 
 - [x] 792 driver 收据回填（§4：EXIT=0 全绿）
 - [x] R1 needs_fix 六 findings 同树修复（§7）
-- [ ] 独立 final review 第二轮（T-09，同树，绑 R1 修复后提交）
+- [x] R2 needs_fix 三 findings 同树修复（§8：同实例证据/792 最终源重跑
+  25/25+包内 hash 一致/SD 单一事实）
+- [ ] 独立 final review 第三轮（T-09，同树，绑 R2 修复后提交 `b8b0fc3f5`+）
 - [ ] merge：冻结提交统一 §5 门 → 合入 → 沉淀 → 归档（T-10/T-11）

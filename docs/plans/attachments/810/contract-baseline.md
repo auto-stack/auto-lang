@@ -130,9 +130,19 @@ UI 区对 Parser 内部的全部触面（基面实测，区域 13223–17909）�
 `&mut dyn ParseContext` 实测（806 declarations 单源在同一驱动内可用）；
 既有 ParseContext/ExternalDialect consumer 编译零改动（777 strict 复验）。
 
-**实施勘误（相对本文初稿）**：
+**实施勘误（相对本文初稿；R1/R2 复审后累计修订）**：
 - `expect_ident` 留 Core 作具名端口能力（35 调用位经桥委托同一私有实现，
   优于本地复刻）；不随区域迁出。
+- **F810-R1-01**：`raw_cursor_release` 新增（成功出口显式释放，四入口
+  快照生命周期有界）。
+- **F810-R1-04**：初稿把 scene 门/subresource/on stream 三位点写成"共用
+  旧臂形态"**有误**——scene/subresource 是双 push+next 重同步（prev=被
+  观察 token），stream 是手动恢复（prev=advance 前 cur）；已拆分为
+  `advance_peek_kind_resync` 与 `advance_peek_kind` 两个原语（§2 表已
+  更正）。后续维护者勿再合并两者。
+- **F810-R2-01**：on 处理器 Err 路径参数作用域泄漏与未闭合 fragment
+  无界 EOF 为**基线即有怪癖**（具名冻结不修，证据见 full-grammar §3
+  与 attachments/810/eof-quirk-*.json）。
 - `probe_next_token` 失败路径**上抛**（`?` 位点），if-let-Ok 位点 `.ok()`。
 - `advance_peek_kind` 新增为注释跳过前看的具名化（scene/subresource/
   stream 三位点共用旧臂形态）。
