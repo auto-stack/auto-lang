@@ -2172,6 +2172,18 @@
             "stage:merge",
             "delivery:2a284c779"
           ]
+        },
+        {
+          "id": "P796-M",
+          "title": "PLAN-796 merge 沉淀收据（2026-10-19）",
+          "content": "SD-01..08 落盘：auto-semantics 四新规范 + auto-ac A06 受限探针接缝 + auto-hir 语义事实接缝 + auto-test-case probe 通道/期望面；INDEX/overview/GROUPS 登记。门禁：裸 cargo t 全选择面执行（旋转单 flake 均 solo 绿归因：plan707 在案/plan492/p765，均不在计划触面）、独立 sema 全套 0 红、受影响 788 套件 11/11、tv/tt/tu/taa 不适用。ff-only 合入 master b76eca8d2（range-diff 全等重放）。ledger=守卫式离线投影（无 store writer）。",
+          "status": "active",
+          "file": "docs/plans/attachments/796/r14-repair/README.md",
+          "tags": [
+            "PLAN-796",
+            "stage:merge",
+            "delivery:b76eca8d2"
+          ]
         }
       ]
     },
@@ -7880,6 +7892,19 @@
             "delivery:2a284c779",
             "scope:auto-ui-dialect"
           ]
+        },
+        {
+          "id": "P796-D1",
+          "title": "auto-semantics 语义合同/有限推导/查询缓存（PLAN-796）",
+          "content": "AC 语义元信息与类型推导探针：名义身份（方法含 owner，A.get/B.get/顶层 get 三向区分）、页 schema v2/codec 2 + 逐查询语义版本轴（FnSig hdr-sem）、页种类覆盖映射（嵌入 ref 全量当前准入）、有限 i32/bool 推导（不降 Any）、783 store 消费（键覆盖一切实际依赖、manifest 预算、SCC 有效版本/GC）、完整编辑请求窗口周转硬门 P95<1s@1MiB。合同见 semantic-contract.md，缓存见 query-cache.md，推导见 inference-profile.md；D1–D24 冻结决策随归档计划。",
+          "status": "active",
+          "file": "docs/specs/auto-semantics/project.md",
+          "tags": [
+            "PLAN-796",
+            "stage:merge",
+            "delivery:b76eca8d2",
+            "scope:auto-semantics"
+          ]
         }
       ]
     },
@@ -9632,6 +9657,19 @@
             "PLAN-810",
             "stage:merge",
             "delivery:2a284c779",
+            "tier:scoped"
+          ]
+        },
+        {
+          "id": "P796-T",
+          "title": "sema workspace 定向套件 + probe adapter/IPC 门 + verify 脚本（PLAN-796）",
+          "content": "contract16（身份/矩阵/codec）/core15+parity4（差分对照）/meta7/cache38（准入矩阵/键版本隔离/索引全量）/budget12（压力）/turnaround5/boundary6/probe16+IPC2（完整窗口+反控）；统一入口 scripts/verify-ac-semantics-796.ps1。",
+          "status": "active",
+          "file": "scripts/verify-ac-semantics-796.ps1",
+          "tags": [
+            "PLAN-796",
+            "stage:merge",
+            "delivery:b76eca8d2",
             "tier:scoped"
           ]
         }
@@ -12905,10 +12943,23 @@
             "reviewed:6b4963de3",
             "rebased:2a284c779"
           ]
+        },
+        {
+          "id": "P796-R16",
+          "title": "PLAN-796 final review R16 — pass（R1..R15 反例修复清偿后 final pass）",
+          "content": "16 轮独立复审收敛：R14 FnSig 键版本隔离经冻结旧键原例独立关闭（保留旧页 Miss/新页无 Conflict/跨进程恢复）；121 定向测试、13 行验收 exit0、IPC 完整窗口 P95 296ms；所有历史 finding 关闭，无新增阻断；merge-owned 门禁由 merge 收据闭合。",
+          "status": "active",
+          "file": "docs/plans/attachments/796/review-r16/review.md",
+          "tags": [
+            "PLAN-796",
+            "stage:review",
+            "reviewed:52aad1fd2",
+            "rebased:91e9824cf"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 52
+  "version": 53
 }
