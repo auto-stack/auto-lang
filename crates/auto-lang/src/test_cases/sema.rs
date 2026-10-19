@@ -797,11 +797,24 @@ pub fn run_check(
     let mut mismatches: Vec<Mismatch> = Vec::new();
     let mut reported_query_steps: Vec<StepOut> = Vec::new();
     let mut stage_spans: Vec<(String, u64)> = Vec::new();
-    let mut session_walls: Vec<u64> = Vec::new();
+    // session walls kept at µs resolution (ms is derived at emit); the
+    // three segment vectors carry the consecutive prep/worker/admit
+    // spans that tile each wall (F-796-R10-01)
+    let mut session_walls_us: Vec<u64> = Vec::new();
+    let mut session_prep_us: Vec<u64> = Vec::new();
+    let mut session_worker_us: Vec<u64> = Vec::new();
+    let mut session_admit_us: Vec<u64> = Vec::new();
     let mut infra_detail: Option<String> = None;
     let exe_sha = worker_exe_sha256()?;
 
     for (si, session) in sessions.iter().enumerate() {
+        // F-796-R10-01: the session wall covers the COMPLETE edit-request
+        // window — request preparation (steps/nonce/base64/JSON/hash), the
+        // worker call, AND parent-side admission until the response's
+        // current result is available to the parent. The prep/worker/admit
+        // marks below are consecutive, so their segments tile the window
+        // (prep+worker+admit ≈ wall) and no stage can silently escape it.
+        let session_started = Instant::now();
         let steps_json: Vec<serde_json::Value> = session
             .iter()
             .map(|st| match st {
@@ -827,76 +840,88 @@ pub fn run_check(
         });
         let request_hash = hex(&sha256(request.to_string().as_bytes()));
         request["request_hash"] = serde_json::json!(request_hash);
+        let prep_us = session_started.elapsed().as_micros() as u64;
 
-        let session_started = Instant::now();
+        let worker_started = Instant::now();
         let resp_result = call_worker(&request.to_string(), SESSION_WALL);
-        // the FULL parent-side wall of THIS session (spawn + IPC +
-        // worker parse/edit/query + exit): the local-edit gate measures
-        // the edit session, excluding the separate cold warm-up query
-        session_walls.push(session_started.elapsed().as_millis() as u64);
-        let resp = match resp_result {
-            Ok(r) => r,
-            Err(e) => {
-                // infrastructure lifecycle failure — an ERROR outcome,
-                // never a language verdict (F-796-R4-02/03)
-                infra_detail = Some(e);
-                break;
+        let worker_us = worker_started.elapsed().as_micros() as u64;
+
+        let admit_started = Instant::now();
+        'admit: {
+            let resp = match resp_result {
+                Ok(r) => r,
+                Err(e) => {
+                    // infrastructure lifecycle failure — an ERROR outcome,
+                    // never a language verdict (F-796-R4-02/03)
+                    infra_detail = Some(e);
+                    break 'admit;
+                }
+            };
+            if resp.schema != "semaworker/1" {
+                infra_detail = Some(format!("sema worker schema mismatch: {}", resp.schema));
+                break 'admit;
             }
-        };
-        if resp.schema != "semaworker/1" {
-            infra_detail = Some(format!("sema worker schema mismatch: {}", resp.schema));
-            break;
-        }
-        if resp.nonce != nonce || resp.request_hash != request_hash {
-            infra_detail = Some("sema worker nonce/request_hash echo mismatch".to_string());
-            break;
-        }
-        let ok = match resp.ok.clone() {
-            Some(ok) => ok,
-            None => {
-                let e = resp.error.unwrap_or(WorkerError {
-                    code: "missing".into(),
-                    message: "neither ok nor error".into(),
-                });
-                infra_detail = Some(format!("sema worker error {}: {}", e.code, e.message));
-                break;
+            if resp.nonce != nonce || resp.request_hash != request_hash {
+                infra_detail = Some("sema worker nonce/request_hash echo mismatch".to_string());
+                break 'admit;
             }
-        };
-        if ok.recipe != "sema/query-v1" {
-            infra_detail = Some(format!("sema worker recipe mismatch: {}", ok.recipe));
-            break;
-        }
-        // F-796-R4-04: version admission against the mirrored
-        // expectations — a wrong worker build fails loudly
-        if ok.worker_version != EXPECTED_WORKER_VERSION {
-            infra_detail = Some(format!(
-                "sema worker version `{}` does not match the admitted `{}`",
-                ok.worker_version, EXPECTED_WORKER_VERSION
-            ));
-            break;
-        }
-        if ok.sema_core_version != EXPECTED_SEMA_CORE_VERSION {
-            infra_detail = Some(format!(
-                "sema core version `{}` does not match the admitted `{}`",
-                ok.sema_core_version, EXPECTED_SEMA_CORE_VERSION
-            ));
-            break;
-        }
-        for st in session.iter() {
-            if let ProbeStep::EditSource { from, to } = st {
-                source = replace_once(&source, from, to)?;
+            let ok = match resp.ok.clone() {
+                Some(ok) => ok,
+                None => {
+                    let e = resp.error.unwrap_or(WorkerError {
+                        code: "missing".into(),
+                        message: "neither ok nor error".into(),
+                    });
+                    infra_detail = Some(format!("sema worker error {}: {}", e.code, e.message));
+                    break 'admit;
+                }
+            };
+            if ok.recipe != "sema/query-v1" {
+                infra_detail = Some(format!("sema worker recipe mismatch: {}", ok.recipe));
+                break 'admit;
             }
+            // F-796-R4-04: version admission against the mirrored
+            // expectations — a wrong worker build fails loudly
+            if ok.worker_version != EXPECTED_WORKER_VERSION {
+                infra_detail = Some(format!(
+                    "sema worker version `{}` does not match the admitted `{}`",
+                    ok.worker_version, EXPECTED_WORKER_VERSION
+                ));
+                break 'admit;
+            }
+            if ok.sema_core_version != EXPECTED_SEMA_CORE_VERSION {
+                infra_detail = Some(format!(
+                    "sema core version `{}` does not match the admitted `{}`",
+                    ok.sema_core_version, EXPECTED_SEMA_CORE_VERSION
+                ));
+                break 'admit;
+            }
+            for st in session.iter() {
+                if let ProbeStep::EditSource { from, to } = st {
+                    source = replace_once(&source, from, to)?;
+                }
+            }
+            if matches!(session.last(), Some(ProbeStep::Restart)) && !ok.restart_pending {
+                infra_detail = Some("restart step did not end the session as declared".to_string());
+                break 'admit;
+            }
+            for s in ok.steps.iter().filter(|s| s.op == "query") {
+                for sp in &s.stages {
+                    stage_spans.push((sp.name.clone(), (sp.wall_ns / 1_000_000) as u64));
+                }
+            }
+            reported_query_steps.extend(ok.steps.iter().filter(|s| s.op == "query").cloned());
         }
-        if matches!(session.last(), Some(ProbeStep::Restart)) && !ok.restart_pending {
-            infra_detail = Some("restart step did not end the session as declared".to_string());
+        // the wall ends when the response has passed parent-side
+        // admission and its current result is available (F-796-R10-01)
+        let admit_us = admit_started.elapsed().as_micros() as u64;
+        session_walls_us.push(session_started.elapsed().as_micros() as u64);
+        session_prep_us.push(prep_us);
+        session_worker_us.push(worker_us);
+        session_admit_us.push(admit_us);
+        if infra_detail.is_some() {
             break;
         }
-        for s in ok.steps.iter().filter(|s| s.op == "query") {
-            for sp in &s.stages {
-                stage_spans.push((sp.name.clone(), (sp.wall_ns / 1_000_000) as u64));
-            }
-        }
-        reported_query_steps.extend(ok.steps.iter().filter(|s| s.op == "query").cloned());
     }
 
     // ---- infrastructure short-circuit ------------------------------------
@@ -937,12 +962,12 @@ pub fn run_check(
                     ),
                 ]
                 .into_iter()
-                .chain(
-                    session_walls
-                        .iter()
-                        .enumerate()
-                        .map(|(i, ms)| (format!("session_wall_ms_{i}"), *ms as u32)),
-                )
+                .chain(session_wall_counters(
+                    &session_walls_us,
+                    &session_prep_us,
+                    &session_worker_us,
+                    &session_admit_us,
+                ))
                 .collect::<Vec<(String, u32)>>(),
                 toolchain: probe_toolchain_axes(&exe_sha),
                 gaps: vec![],
@@ -1153,12 +1178,12 @@ pub fn run_check(
             ),
         ]
         .into_iter()
-        .chain(
-            session_walls
-                .iter()
-                .enumerate()
-                .map(|(i, ms)| (format!("session_wall_ms_{i}"), *ms as u32)),
-        )
+        .chain(session_wall_counters(
+            &session_walls_us,
+            &session_prep_us,
+            &session_worker_us,
+            &session_admit_us,
+        ))
         .collect::<Vec<(String, u32)>>(),
         toolchain: probe_toolchain_axes(&exe_sha),
         gaps: vec![],
@@ -1178,6 +1203,38 @@ pub fn run_check(
         artifacts,
         native: Some(native),
     })
+}
+
+/// Session wall + consecutive segment counters (F-796-R10-01): the
+/// wall is emitted at ms (gate resolution) AND µs, together with the
+/// prep/worker/admit segments that tile it — `session_wall_us_i ==
+/// session_prep_us_i + session_worker_us_i + session_admit_us_i` up to
+/// µs truncation, so a window that starts after request preparation or
+/// ends before parent-side admission is detectable from the report.
+fn session_wall_counters<'a>(
+    walls_us: &'a [u64],
+    prep_us: &'a [u64],
+    worker_us: &'a [u64],
+    admit_us: &'a [u64],
+) -> impl Iterator<Item = (String, u32)> + 'a {
+    let walls = walls_us.iter().enumerate().flat_map(|(i, us)| {
+        [
+            (format!("session_wall_ms_{i}"), (*us / 1000) as u32),
+            (format!("session_wall_us_{i}"), *us as u32),
+        ]
+    });
+    let segments = [
+        ("prep", prep_us),
+        ("worker", worker_us),
+        ("admit", admit_us),
+    ]
+    .into_iter()
+    .flat_map(|(name, seg)| {
+        seg.iter()
+            .enumerate()
+            .map(move |(i, us)| (format!("session_{name}_us_{i}"), *us as u32))
+    });
+    walls.chain(segments)
 }
 
 fn replace_once(src: &[u8], from: &str, to: &str) -> Result<Vec<u8>, String> {

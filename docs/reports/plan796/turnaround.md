@@ -7,13 +7,13 @@
 
 | 场景 | 样本 | P50 (ms) | P95 (ms) | P99 (ms) | max (ms) | compute | hits | 状态分布 |
 |---|---|---|---|---|---|---|---|---|
-| no-op | 30 | 54.49 | 56.45 | 56.64 | 56.64 | 1 | 29 | published:1, hit:29 |
-| local-body-edit | 30 | 8.86 | 12.66 | 13.63 | 13.63 | 30 | 0 | published:30 |
-| sig-change | 30 | 199.51 | 249.51 | 258.11 | 258.11 | 2 | 28 | published:2, hit:28 |
-| restart-disk-hot | 30 | 214.08 | 232.91 | 239.56 | 239.56 | 0 | 30 | hit:30 |
-| cross-project | 30 | 232.79 | 248.45 | 259.04 | 259.04 | 0 | 30 | hit:30 |
-| gc-concurrent | 30 | 185.90 | 254.83 | 255.73 | 255.73 | 0 | 30 | hit:30 |
-| full-cold | 30 | 123.15 | 133.15 | 140.99 | 140.99 | 1 | 29 | published:1, hit:29 |
-| wide-invalidation | 30 | 16.17 | 132.22 | 133.41 | 133.41 | 20 | 10 | published:20, hit:10 |
+| no-op | 30 | 60.59 | 67.22 | 86.30 | 86.30 | 1 | 29 | published:1, hit:29 |
+| local-body-edit | 30 | 6.75 | 8.07 | 10.23 | 10.23 | 30 | 0 | published:30 |
+| sig-change | 30 | 122.35 | 167.37 | 167.47 | 167.47 | 2 | 28 | published:2, hit:28 |
+| restart-disk-hot | 30 | 193.98 | 230.87 | 244.99 | 244.99 | 0 | 30 | hit:30 |
+| cross-project | 30 | 165.86 | 203.06 | 208.86 | 208.86 | 0 | 30 | hit:30 |
+| gc-concurrent | 30 | 176.93 | 194.21 | 212.10 | 212.10 | 0 | 30 | hit:30 |
+| full-cold | 30 | 154.60 | 172.07 | 173.80 | 173.80 | 1 | 29 | published:1, hit:29 |
+| wide-invalidation | 30 | 18.68 | 147.02 | 155.18 | 155.18 | 20 | 10 | published:20, hit:10 |
 
-硬门判定: local-body-edit P95 = 12.66 ms → PASS
+硬门判定: local-body-edit P95 = 8.07 ms → PASS

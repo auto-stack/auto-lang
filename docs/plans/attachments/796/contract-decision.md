@@ -291,3 +291,24 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
   `restart`）与 edit session（`edit-source`+`query`）；硬门 P95 取 edit session
   的父侧完整墙钟（spawn+IPC+parse+edit+query+exit），cold warm-up 单独在
   `total_ms` 报告。阶段 trace 与 30 原始样本保留；V-08 与 V-08c 分离执行。
+
+## D20 R10 修复轮冻结（2026-10-19）
+
+- **edit-session 计时窗口**（F-R10-01）：session 墙钟为**单一完整窗口**——自
+  请求准备开始（steps/nonce/base64/请求 JSON/request_hash 构造之前起表）至该
+  响应通过父侧准入（schema/nonce/request_hash/recipe/worker+core version、
+  restart 声明、source 镜像更新、query 步收集）且当前结果对父侧可用时停表；
+  `call_worker` 返回只是窗口内的一个分段边界，不再是终点。同时发出**连续可
+  对账分段计数器**：`session_prep_us_N`/`session_worker_us_N`/`session_admit_us_N`
+  与 `session_wall_us_N`（µs）+ `session_wall_ms_N`（门禁分辨率），
+  prep+worker+admit ≈ wall（仅 µs 截断与分段标记差），窗口起于准备之后或止于
+  准入之前都会破坏铺满关系而被反控捕获。冷 warm-up 会话继续单列 total，不并入
+  编辑指标；30 原始样本、1MiB 负载、1000ms 阈值不变。
+- **反控**：`probe_adapter_edit_session_window_tiles_prep_worker_admit`（单真实
+  样本）与硬门测试逐样本断言——三段均>0、早段（prep）与迟段（admit）都在窗口
+  内、分段无缝铺满（gap ≤100µs）、ms/µs 墙钟一致；V-08c Required 按名绑定。
+- **V-07 raw 数值准入**（F-R10-02）：报告门禁对每个样本先做字段准入——存在、
+  非 null、数值、有限、**正值**，任一违规该行 FAIL（绝不默认 0ms），再重算
+  百分位；lib `total_ns` 与 IPC `edit_session_ms` 双源同准。六类变异控制
+  （全缺失/全 null/全 0/全 -1/单样本缺失/1001ms 慢控 + 合法正控）入
+  `-Scope selftest`（`Get-IpcReportOutcome` 纯函数与 acceptance 共用同一逻辑）。

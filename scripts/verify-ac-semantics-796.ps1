@@ -19,7 +19,11 @@
 #   selftest  — F-796-R6-08 negative controls for the acceptance helper
 #     itself: zero selection, missing REQUIRED test identity, missing
 #     target and a real red must all FAIL; a genuine green control must
-#     PASS. Exit 0 only when every control behaves as specified.
+#     PASS. F-796-R10-02 adds the V-07 raw-report admission controls:
+#     missing/null/zero/negative edit-session times (all or one sample)
+#     must FAIL the report gate; a legal report and a slow (1001ms)
+#     report are the positive/high controls. Exit 0 only when every
+#     control behaves as specified.
 #
 # Environment note: sccache's default port can collide with the
 # Hyper-V reserved range on this machine; a fallback port is set when
@@ -118,6 +122,79 @@ function Test-HasStages($Stages) {
     return $true
 }
 
+# F-796-R10-02: raw per-sample admission for report time fields. A
+# missing field, null, non-numeric, non-finite or NON-POSITIVE value is
+# a gate failure on that sample — it must never default to 0ms (which
+# would silently speed up the percentiles). Returns the admitted times
+# (already divided by $Divisor) and the rejection reasons.
+function Get-AdmittedTimes($Samples, [string]$Field, [double]$Divisor) {
+    $items = @($Samples)
+    $times = [System.Collections.Generic.List[double]]::new()
+    $bad = [System.Collections.Generic.List[string]]::new()
+    for ($i = 0; $i -lt $items.Count; $i++) {
+        $s = $items[$i]
+        $prop = $s.PSObject.Properties[$Field]
+        if ($null -eq $prop) { $bad.Add("sample ${i}: $Field missing"); continue }
+        $raw = $prop.Value
+        if ($null -eq $raw) { $bad.Add("sample ${i}: $Field is null"); continue }
+        $v = 0.0
+        if (-not [double]::TryParse([string]$raw, [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$v)) {
+            $bad.Add("sample ${i}: $Field '$raw' is not numeric"); continue
+        }
+        if ([double]::IsNaN($v) -or [double]::IsInfinity($v)) { $bad.Add("sample ${i}: $Field '$raw' is not finite"); continue }
+        if ($v -le 0) { $bad.Add("sample ${i}: $Field must be positive, got '$raw'"); continue }
+        $times.Add($v / $Divisor)
+    }
+    [pscustomobject]@{ Times = @($times); Bad = @($bad) }
+}
+
+# F-796-R10-02: PURE recomputation of the V-07 IPC report gate over a
+# parsed turnaround-ipc.json object — the exact acceptance logic, kept
+# side-effect free so the selftest scope can exercise it on mutated
+# reports.
+function Get-IpcReportOutcome($Ipc) {
+    $samples = @($Ipc.samples)
+    $adm = Get-AdmittedTimes $samples 'edit_session_ms' 1.0
+    $p95 = Get-P95Ms $adm.Times
+    $allPass = @($samples | Where-Object { $_.status -ne 'Pass' }).Count -eq 0
+    $stages = @($samples | Where-Object { -not (Test-HasStages $_.edit_query_stages) }).Count -eq 0
+    $ok = ($adm.Bad.Count -eq 0) -and ($samples.Count -ge 30) -and ($p95 -lt 1000.0) -and $allPass -and $stages `
+        -and ($Ipc.verdict -eq 'PASS') -and ($Ipc.generator -eq 'gen796-1mi/v1') `
+        -and ([int]$Ipc.reference_bytes -ge 1048576) -and ($null -ne $Ipc.total_p95_ms)
+    [pscustomobject]@{ Ok = $ok; P95 = $p95; N = $samples.Count; Bad = $adm.Bad; AllPass = $allPass; Stages = $stages }
+}
+
+# Selftest fixture for Get-IpcReportOutcome: 30 samples whose
+# edit_session_ms values are numbers, or the markers 'NULL' (property
+# present with a null value) / 'MISSING' (property absent).
+function New-IpcControlReport([object[]]$EditMs) {
+    $samples = foreach ($v in $EditMs) {
+        $s = [pscustomobject]@{
+            total_ms           = 123.0
+            status             = 'Pass'
+            edit_query_stages  = @(
+                @('request', 1), @('cache-read-validate', 1),
+                @('infer', 1), @('publish', 1)
+            )
+        }
+        if ($v -is [double] -or $v -is [int]) {
+            $s | Add-Member -NotePropertyName edit_session_ms -NotePropertyValue $v
+        }
+        elseif ($v -eq 'NULL') {
+            $s | Add-Member -NotePropertyName edit_session_ms -NotePropertyValue $null
+        }
+        # 'MISSING' keeps the property deliberately absent
+        $s
+    }
+    [pscustomobject]@{
+        samples         = @($samples)
+        verdict         = 'PASS'
+        generator       = 'gen796-1mi/v1'
+        reference_bytes = 1048577
+        total_p95_ms    = 2055.39
+    }
+}
+
 if ($Scope -eq 'selftest') {
     # F-796-R6-08: the acceptance helper's own negative controls.
     $cases = @(
@@ -137,6 +214,31 @@ if ($Scope -eq 'selftest') {
         else {
             $bad++
             Add-Result "S-$($c.Name)" 'FAIL' "helper verdict $($r.Ok), expected $($c.Expect)"
+        }
+    }
+
+    # F-796-R10-02: V-07 raw-report admission controls — the report gate
+    # must reject missing/null/zero/negative edit times (all-or-one) and
+    # recompute the threshold; a legal report passes, a 1001ms report
+    # fails on the SLOW side (high control).
+    $v07Cases = @(
+        @{ Name = 'v07-legit-report'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 274.0 }); Expect = $true },
+        @{ Name = 'v07-missing-all'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 'MISSING' }); Expect = $false },
+        @{ Name = 'v07-null-all'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 'NULL' }); Expect = $false },
+        @{ Name = 'v07-zero-all'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 0.0 }); Expect = $false },
+        @{ Name = 'v07-negative-all'; Report = New-IpcControlReport @(1..30 | ForEach-Object { -1.0 }); Expect = $false },
+        @{ Name = 'v07-one-missing'; Report = New-IpcControlReport (@(1..29 | ForEach-Object { 274.0 }) + @('MISSING')); Expect = $false },
+        @{ Name = 'v07-slow-1001ms'; Report = New-IpcControlReport @(1..30 | ForEach-Object { 1001.0 }); Expect = $false }
+    )
+    foreach ($c in $v07Cases) {
+        $r = Get-IpcReportOutcome $c.Report
+        if ($r.Ok -eq $c.Expect) {
+            Add-Result "S-$($c.Name)" 'PASS' ("gate verdict {0} as expected (n={1}, p95={2}, bad={3})" -f $r.Ok, $r.N, $r.P95, $r.Bad.Count)
+        }
+        else {
+            $bad++
+            $firstBad = ($r.Bad | Select-Object -First 1)
+            Add-Result "S-$($c.Name)" 'FAIL' ("gate verdict {0}, expected {1} (n={2}, p95={3}, bad={4}: {5})" -f $r.Ok, $c.Expect, $r.N, $r.P95, $r.Bad.Count, $firstBad)
         }
     }
     Write-Host ''
@@ -201,8 +303,12 @@ if ($Scope -eq 'acceptance') {
         'tests::probe_adapter_tests::probe_adapter_stale_unchanged_report_fresh_and_swap_stale',
         'tests::probe_adapter_tests::probe_adapter_mixed_report_uses_per_family_toolchain_identity'
     )
-    # the REAL adapter/IPC turnaround hard gate (F-796-R4-10/R6-06)
-    Run-Suite 'V-08c' @('test', '-p', 'auto-lang', '--features', 'test-cases', '--lib', '--', 'tests::probe_adapter_turnaround_ipc') 'real adapter/IPC path on the 1MiB module (30 samples)' $repoRoot 1 @('tests::probe_adapter_turnaround_ipc::probe_adapter_turnaround_ipc_hard_gate_p95')
+    # the REAL adapter/IPC turnaround hard gate (F-796-R4-10/R6-06);
+    # F-796-R10-01 binds the window-tiling control by name as well
+    Run-Suite 'V-08c' @('test', '-p', 'auto-lang', '--features', 'test-cases', '--lib', '--', 'tests::probe_adapter_turnaround_ipc') 'real adapter/IPC path on the 1MiB module (30 samples)' $repoRoot 2 @(
+        'tests::probe_adapter_turnaround_ipc::probe_adapter_turnaround_ipc_hard_gate_p95',
+        'tests::probe_adapter_turnaround_ipc::probe_adapter_edit_session_window_tiles_prep_worker_admit'
+    )
     $caseFiles = Get-ChildItem (Join-Path $repoRoot 'crates/auto-lang/test/cases/ac-semantics') -Filter '*.case.ad'
     $pending = ($caseFiles | Where-Object { (Get-Content $_.FullName -Raw) -match 'not-executed' }).Count
     if ($pending -gt 0) {
@@ -226,23 +332,23 @@ if ($Scope -eq 'acceptance') {
         $ipc = Get-Content $ipcReport -Raw | ConvertFrom-Json
         $entry = @($json.raw | Where-Object { $_[0] -eq 'local-body-edit' })
         $libSamples = if ($entry.Count -gt 0) { @($entry[0][1]) } else { @() }
-        $libTimes = @($libSamples | ForEach-Object { [double]$_.total_ns / 1e6 })
-        $libP95 = Get-P95Ms $libTimes
+        # F-796-R10-02: per-sample raw admission on BOTH time sources —
+        # a missing/null/non-finite/non-positive value fails the gate
+        # instead of defaulting to 0ms.
+        $libAdm = Get-AdmittedTimes $libSamples 'total_ns' 1e6
+        $libP95 = Get-P95Ms $libAdm.Times
         $libPublished = @($libSamples | Where-Object { $_.status -ne 'published' -or [int]$_.compute_calls -ne 1 }).Count -eq 0
         $genOk = $json.machine.generator -eq 'gen796-1mi/v1'
-        $libOk = ($libSamples.Count -ge 30) -and ($libP95 -lt 1000.0) -and $libPublished -and $genOk
+        $libOk = ($libSamples.Count -ge 30) -and ($libAdm.Bad.Count -eq 0) -and ($libP95 -lt 1000.0) -and $libPublished -and $genOk
 
-        $ipcSamples = @($ipc.samples)
-        $ipcTimes = @($ipcSamples | ForEach-Object { [double]$_.edit_session_ms })
-        $ipcP95 = Get-P95Ms $ipcTimes
-        $ipcAllPass = @($ipcSamples | Where-Object { $_.status -ne 'Pass' }).Count -eq 0
-        $ipcStages = @($ipcSamples | Where-Object { -not (Test-HasStages $_.edit_query_stages) }).Count -eq 0
-        $ipcOk = ($ipcSamples.Count -ge 30) -and ($ipcP95 -lt 1000.0) -and $ipcAllPass -and $ipcStages -and ($ipc.verdict -eq 'PASS') -and ($ipc.generator -eq 'gen796-1mi/v1') -and ([int]$ipc.reference_bytes -ge 1048576) -and ($null -ne $ipc.total_p95_ms)
-        if ($libOk -and $ipcOk) {
-            Add-Result 'V-07' 'PASS' ("recomputed library P95 {0:N2}ms ({1} raw) + REAL IPC edit-session P95 {2:N2}ms ({3} raw, 1MiB local edit); generator {4}" -f $libP95, $libSamples.Count, $ipcP95, $ipcSamples.Count, $json.machine.generator)
+        $ipcOutcome = Get-IpcReportOutcome $ipc
+        if ($libOk -and $ipcOutcome.Ok) {
+            Add-Result 'V-07' 'PASS' ("recomputed library P95 {0:N2}ms ({1} raw) + REAL IPC edit-session P95 {2:N2}ms ({3} raw, full request-to-admission window, 1MiB local edit); generator {4}" -f $libP95, $libSamples.Count, $ipcOutcome.P95, $ipcOutcome.N, $json.machine.generator)
         }
         else {
-            Add-Result 'V-07' 'FAIL' "libOk=$libOk (n=$($libSamples.Count) p95=$libP95 published=$libPublished) ipcOk=$ipcOk (n=$($ipcSamples.Count) p95=$ipcP95 allPass=$ipcAllPass stages=$ipcStages gen=$($ipc.generator) bytes=$($ipc.reference_bytes))"
+            $libBad = ($libAdm.Bad | Select-Object -First 3) -join '; '
+            $ipcBad = ($ipcOutcome.Bad | Select-Object -First 3) -join '; '
+            Add-Result 'V-07' 'FAIL' "libOk=$libOk (n=$($libSamples.Count) p95=$libP95 published=$libPublished) ipcOk=$($ipcOutcome.Ok) (n=$($ipcOutcome.N) p95=$($ipcOutcome.P95) allPass=$($ipcOutcome.AllPass) stages=$($ipcOutcome.Stages) gen=$($ipc.generator) bytes=$($ipc.reference_bytes)) raw-admission: lib[$libBad] ipc[$ipcBad]"
         }
     }
 }

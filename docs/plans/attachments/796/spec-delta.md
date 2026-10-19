@@ -149,6 +149,19 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
 - **SD-07（验证口径）**：IPC 硬门在 restarted edit session 上测量父侧完整
   墙钟（含 spawn/IPC/parse/edit/query/exit），cold warm-up 查询单列 total；
   30 原始样本与阶段 trace 保留。
+## R10 修复轮补充（2026-10-19，D20）
+
+- **SD-07（验证口径修订）**：edit-session 墙钟为**单一完整窗口**——请求准备
+  （steps/nonce/base64/JSON/hash）→ worker 调用（spawn/IPC/parse/edit/query/
+  exit）→ 父侧准入（schema/nonce/hash/recipe/版本/restart 声明/source 镜像/
+  query 收集）至当前结果可用；不再止于 `call_worker` 返回。报告新增连续分段
+  `edit_session_{prep,worker,admit,wall}_us`，分段铺满窗口可对账；单真实样本
+  反控与硬门逐样本断言绑定（V-08c Required）。冷 warm-up 单列、30 原始样本、
+  1MiB 负载与 1000ms 阈值不变。
+- **SD-08（raw 准入）**：V-07 对每个 raw 样本先做数值准入（存在/非 null/
+  数值/有限/正值），违规即 FAIL、绝不默认 0ms，再重算百分位；lib `total_ns`
+  与 IPC `edit_session_ms` 双源同准；六类变异控制（全缺失/全 null/全 0/
+  全 -1/单样本缺失/1001ms 慢控 + 合法正控）进入 `-Scope selftest`。
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各
