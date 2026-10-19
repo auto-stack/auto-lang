@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-813
-status: executing
+status: execution_done
 feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 1
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm]
-current_step: 6
+current_step: 8
 total_steps: 9
 ---
 
@@ -153,12 +153,12 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-03 | work | T-01/02 | website CodeView.vue/AutoFence.vue、prepare-content.js 与执行描述消费者 | ✅ 完成：共享 catalog、同源 API、完整可编辑源/输入/多文件/测试/展示和本地运行模式；最终生产构建 96.38s 通过，`tests/tapl-run.spec.ts` 6/6。 |
 | T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | ✅ 完成：修复 ch00–13 作者源、Listing、预期与页面映射；ch08 按用户确认保留可运行改写并说明差异；ch09 文件内容去除重复末尾换行。 |
 | T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成（闭合 R1/R3）：Base64/Hex 复用现有依赖并可运行；新增 loopback TCP server/client 本地工程及明确范围说明，完成连接、消息往返、断开和优雅关停验收。 |
-| T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ⏳ 复开 PLAN813-R5：执行合同规范必须准确覆盖 local-only / expected-error / stdout_contains；目录审计声称拒绝孤立锚点前，补充孤立 `example-id` 负控并覆盖 54 页。 |
-| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ⏳ 复开：规范与 checker 修订提交后重冻实现树，更新完整 hash/证据，再交最终复审。 |
+| T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R5）：新规范准确列出五种模式和 stdout_contains/expected-error；checker 对 54 页执行 catalog↔page 双向扫描；有效样例通过，错误预期、旧锚点、孤立锚点、错误诊断负控均失败。复核后全量 396/396 通过。 |
+| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：代码新增冻结提交 `110a5cb6f6fbfa59beece490fd815e9fe55f672c`，书稿继续冻结在 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；两个工作树 clean，刷新执行报告与规范哈希。 |
 | T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | AC-07，pass 后 reviewed；merge-owned 全档门禁 pending，不能声称交付完成 |
 | T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | AC-08；每树移除前 wt-guard clean，保留他人 WIP，提供实际收据 |
 
-T-01..T-05 保持完成。T-08 的 R2 复审发现 PLAN813-R5 并退回工作阶段，当前复开 T-06/T-07；修复后需以新冻结提交重新做最终复审。`cargo t`、`cargo tv`、`cargo tb` 仍是复审通过后的 merge-owned 门禁，未在执行阶段提前运行。
+T-01..T-07 已完成，R1..R5 均有修复与验证记录。当前进入第三次 T-08 最终复审；`cargo t`、`cargo tv`、`cargo tb` 仍是最终复审通过后的 merge-owned 门禁，未在执行阶段提前运行。
 
 ## 9. 复审记录
 
@@ -216,6 +216,17 @@ stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_pa
 - required correction：修正规范字段/模式/预期及历史计数表述；将 EOF 行为沉淀到 stdlib Spec；补齐 page→catalog 完整性审计并用真实孤立锚点变异验证失败；对修订后的 54 页目录和代表性执行路径重新回归。此前代码与书稿行为证据只覆盖当前提交，不自动覆盖新 validator/Spec 修订。
 - evidence：直接读取代码冻结 diff、`docs/specs/website/design/book-example-execution.md`、`docs/specs/stdlib/project.md` 与 checker；独立枚举 `book/tapl/*.md` 中 406 个 example-id（当时 406 个唯一目录项全部对应，未变异时无孤立项），确认这证明 valid mapping，但并未证明 validator 对孤立项会拒绝。Spec 输入 hashes沿用本计划上一条 work handoff，修订后重取。
 - outcome: needs_fix；状态回到 `executing`，T-06/T-07 复开，current_step=6；next=work。该次问题是在前两轮 review/findings 后从完整规范契约与验证器反方向覆盖审计中发现；第三次 final review 前要先完成此处提出的 coverage/design adjustment，不以修订文案替代负控证据。
+
+### 2026-10-19 R5 修复收口（work handoff）
+
+- stage: work；本次只修 Spec/验证器并重跑受影响门禁，没有改变实现架构或用户批准范围。auto-lang 新冻结提交 `110a5cb6f6fbfa59beece490fd815e9fe55f672c`，其直接前版 `b8901c4e4de237c53cd89cfa23b844066234fb70`；book 仍为 clean 的 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`。worktree 分别 `D:/autostack/.wt/lang-813/auto-lang` / `plan-813-dev` 与 `D:/autostack/.wt/lang-813/book` / `plan-813-book`；两树冻结时 clean。auto-down 仍 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`，未变更。
+- PLAN813-R5 已闭合：`book-example-execution.md` 列全 run/test/expected-error/local-only/display-only 模式与 stdout/stdout_regex/stdout_contains/tests/diagnostic 预期；删除一次性 401 条统计。`stdlib/project.md` 记录 TcpStream.read_line 对端 EOF 返回空字符串且与 TcpStream.read 合同分开。checker 扫描全部 TAPL author Markdown 的 example-id，与 406 条目录双向核对并拒绝孤立/重复锚点。
+- 验证器变异：有效单条 run 1/1 通过；将 expected stdout 改错、行锚点改旧、增加无目录记录的 AutoFence、expected-error 诊断改错，四种变异均退出 1；expected-error 的真实编译错误诊断通过。54 页全量静态审计 406 条通过、0 错；全量 run/test 重放 396/396 通过、0 失败。一次早期复跑中 13-5 出现无 stdout/stderr 的 CLI exit 1；独立用相同物化路径重跑 10/10 成功，随后全量再次 396/396 成功，未复现。
+- 重新构建生产站点 170.01s 通过；最终 `CI=1 AUTO_WEBSITE_TEST_PORT=4185 npm run test:e2e -- tests/tapl-run.spec.ts` 6/6。此前已针对 Rust 改动运行 `cargo test -p auto-playground routes::test::tests -- --nocapture` 3/3、`cargo test -p auto-lang --lib core_supported_symbols_resolve_and_bind -- --nocapture` 1/1、`cargo check -p auto-lang` 与 `cargo build -p auto`；R5 未改 Rust 或依赖，按原证据复用。loopback chat 端到端输出仍绑定不变的 book commit `2de2fe3`。C compiler unavailable，C 目标代码未编译；网站自定义语法仍提示回退为纯文本。
+- 最终全源报告 `attachments/813/tapl-full-execution.json.txt` SHA-256 `E732684902B6B9C30312A227A566E7691E0A0686547E662DA4B83ED04D0C1D53`；catalog `tapl/examples.json` SHA-256 `ED4E42E87DBEFF12B4E46291A63CAE92333FAFDA5270182C39420ED4CE1817D3`。review Spec inputs SHA-256：learning-reading `6D72CF5DAE547E6DE28F03DB7E522F1DCD4312B7BECE8FCBAE9A45C87C9BF5EA`；book-example-execution `1B753BE438D16216A49F9B198B5D92978343D7807343BD3F212592FF3B88486A`；website/project `3B3F342A81003868949209559155A7B3FDD3AA262D79044059A0AC3D8254EE13`；auto-playground/project `87039E4443AB4A0F5C1178979EB0E5D7A6ACA6F899FE98CFF7362F1B58181ADD`；stdlib/project `5505C717EC4156308D2FB98F91F1F061C9179859FDEFCE3DADB98CC6EEEADB52`。依赖 hashes保持上条 work handoff 记录值。
+- merge_owned_gates: `cargo t` / `cargo tv` / `cargo tb` pending；`tf` 留 T-09 到期裁决。AC-01..06 有新/复用的有效证据；AC-07 重新交 T-08，AC-08 pending。
+
+stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | reviewed_commit: `110a5cb6f6fbfa59beece490fd815e9fe55f672c` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | diff_base: `b8901c4e4de237c53cd89cfa23b844066234fb70` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | task_ids: T-06,T-07 | evidence: this record and `attachments/813/tapl-full-execution.json.txt` | blockers: no work-owned acceptance blocker; disclosed toolchain limits above | next_responsible_role: review
 
 ## 10. 待澄清事项
 
