@@ -1292,7 +1292,8 @@ mod exit_trace_ffi {
             skip: u32,
             count: u32,
             back_trace: *mut *mut core::ffi::c_void,
-        ) -> u32;
+            back_trace_hash: *mut u32,
+        ) -> u16;
     }
 
     /// 原函数指针缓存（IAT 槽位被替换前的值；0=未替换）。
@@ -1340,7 +1341,9 @@ mod exit_trace_ffi {
 
     pub extern "system" fn traced_exit_process(code: u32) -> ! {
         let mut frames: [*mut core::ffi::c_void; 32] = [core::ptr::null_mut(); 32];
-        let n = unsafe { RtlCaptureStackBackTrace(0, 32, frames.as_mut_ptr()) } as usize;
+        let n =
+            unsafe { RtlCaptureStackBackTrace(0, 32, frames.as_mut_ptr(), core::ptr::null_mut()) }
+                as usize;
         unsafe {
             trace_and_forward(
                 "exitproc_trace",
@@ -1394,7 +1397,9 @@ mod exit_trace_ffi {
         code: u32,
     ) -> i32 {
         let mut frames: [*mut core::ffi::c_void; 32] = [core::ptr::null_mut(); 32];
-        let n = unsafe { RtlCaptureStackBackTrace(0, 32, frames.as_mut_ptr()) } as usize;
+        let n =
+            unsafe { RtlCaptureStackBackTrace(0, 32, frames.as_mut_ptr(), core::ptr::null_mut()) }
+                as usize;
         unsafe {
             trace_and_forward(
                 "exitproc_trace",
