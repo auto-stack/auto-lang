@@ -5,13 +5,23 @@
 //! store round) locates the module closure, units load by artifact id, and
 //! every layer re-validates (envelope identity → decode → verify) before
 //! assembly and execution. A restored artifact set is data, never trust.
+//!
+//! F798-R3-02: restore admission is now CLOSURE-IDENTITY-COMPLETE — the
+//! manifest's profile/av_sem, every link's re-derived logical id, its
+//! signature rendered from the DECODED payload, and the persisted sema-ref
+//! envelope's payload binding are all checked against the CURRENT request
+//! (including the caller's live capability authorization) BEFORE anything
+//! executes. A self-consistent envelope over a tampered inner layer is a
+//! controlled rejection, never a green run.
 
 use crate::cache::{
-    assemble_closure, decode_sidecar, get_by_artifact_id, merge_spans, EnvelopeIdentity,
+    assemble_closure, decode_sidecar, get_by_artifact_id, merge_spans, render_unit_sig,
+    EnvelopeIdentity,
 };
 use ac_artifact_probe::store::ManagedStore;
+use auto_av_core::contract::{ExecOutcome, TRACE_CAPABILITY};
 use auto_av_core::mir::OwnerScope;
-use auto_av_core::{abc_verify, decode_abc, execute, CancelFlag, ExecLimits};
+use auto_av_core::{abc_verify, decode_abc, execute, CancelFlag, ExecLimits, ExecTrace};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -23,44 +33,65 @@ pub struct RestoreOutcome {
     pub units_loaded: usize,
     pub units_verified: usize,
     pub steps: Option<u64>,
+    pub av_peak_slot_bytes: u64,
 }
 
 /// Restore a module closure by manifest artifact id and execute its entry.
+///
+/// `caps` is the CURRENT request's capability authorization — persisted
+/// "already granted" bits are never inherited (plan §5.4): a trace-using
+/// module restored without a live trace authorization is rejected before
+/// execution, not executed on the strength of its own claim.
+#[allow(clippy::too_many_arguments)]
 pub fn restore_and_run(
     store_dir: &std::path::Path,
     owner: &str,
     entry: &str,
     manifest_artifact: &str,
     snapshot: u64,
+    caps: &[String],
 ) -> RestoreOutcome {
-    let store = match ManagedStore::open_existing(store_dir) {
-        Ok(s) => s,
-        Err(e) => {
-            return RestoreOutcome {
-                executed_ok: false,
-                value: None,
-                trap: None,
-                error: Some(format!("open store: {}", e)),
-                units_loaded: 0,
-                units_verified: 0,
-                steps: None,
-            }
-        }
-    };
+    match restore_and_run_inner(store_dir, owner, entry, manifest_artifact, snapshot, caps) {
+        Ok(r) => r,
+        Err(e) => fail(e),
+    }
+}
+
+fn restore_and_run_inner(
+    store_dir: &std::path::Path,
+    owner: &str,
+    entry: &str,
+    manifest_artifact: &str,
+    snapshot: u64,
+    caps: &[String],
+) -> Result<RestoreOutcome, String> {
+    let store = ManagedStore::open_existing(store_dir).map_err(|e| format!("open store: {}", e))?;
     // Manifest: envelope (code identity, snapshot 0) → JSON.
     let m_expect = EnvelopeIdentity::manifest(owner, 0);
-    let m_bytes = match get_by_artifact_id(&store, manifest_artifact, &m_expect) {
-        Ok(b) => b,
-        Err(e) => return fail(format!("manifest load: {}", e)),
-    };
-    let manifest: crate::cache::ModuleManifest = match serde_json::from_slice(&m_bytes) {
-        Ok(m) => m,
-        Err(e) => return fail(format!("manifest decode: {}", e)),
-    };
+    let m_bytes = get_by_artifact_id(&store, manifest_artifact, &m_expect)
+        .map_err(|e| format!("manifest load: {}", e))?;
+    let manifest: crate::cache::ModuleManifest =
+        serde_json::from_slice(&m_bytes).map_err(|e| format!("manifest decode: {}", e))?;
     if manifest.owner != owner || manifest.entry != entry {
-        return fail(format!(
+        return Err(format!(
             "manifest identity mismatch: {}/{} vs expected {}/{}",
             manifest.owner, manifest.entry, owner, entry
+        ));
+    }
+    // F798-R3-02: the CURRENT profile/semantics axes — not whatever the
+    // persisted manifest claims.
+    if manifest.profile != auto_av_core::contract::AV_PROFILE {
+        return Err(format!(
+            "manifest profile `{}` is not the current `{}`",
+            manifest.profile,
+            auto_av_core::contract::AV_PROFILE
+        ));
+    }
+    if manifest.av_sem != auto_av_core::contract::AV_SEMANTICS.0 {
+        return Err(format!(
+            "manifest av semantics {} is not the current {}",
+            manifest.av_sem,
+            auto_av_core::contract::AV_SEMANTICS.0
         ));
     }
     // Units: per-artifact envelope + decode + verify; sidecar re-binds spans.
@@ -68,22 +99,62 @@ pub fn restore_and_run(
         schema: auto_av_core::contract::ABC_SCHEMA.to_string(),
         module: owner.to_string(),
     };
+    let package = crate::semrefs::av_package();
     let mut units = Vec::new();
     let mut verified = 0usize;
     for link in &manifest.units {
         let expect = EnvelopeIdentity::abc(owner);
-        let payload = match get_by_artifact_id(&store, &link.artifact, &expect) {
-            Ok(b) => b,
-            Err(e) => return fail(format!("unit `{}` load: {}", link.name, e)),
-        };
-        let decoded = match decode_abc(&payload) {
-            Ok(d) => d,
-            Err(e) => return fail(format!("unit `{}` decode: {}", link.name, e.code())),
-        };
+        let payload = get_by_artifact_id(&store, &link.artifact, &expect)
+            .map_err(|e| format!("unit `{}` load: {}", link.name, e))?;
+        // F798-R3-02: payload binding — the sema-ref envelope must name the
+        // EXACT bytes this restore is about to execute, and the link's
+        // logical id must re-derive from the current owner/name.
+        let payload_fp = crate::cache::payload_fingerprint(&payload);
+        let logical = crate::semrefs::unit_logical_id(&package, owner, &link.name);
+        if link.logical != logical {
+            return Err(format!(
+                "unit `{}` logical id `{}` does not re-derive to `{}` for owner `{}`",
+                link.name, link.logical, logical, owner
+            ));
+        }
+        let sema = link.sema.as_ref().ok_or_else(|| {
+            format!(
+                "unit `{}` carries no sema-ref envelope (legacy/unbound manifest)",
+                link.name
+            )
+        })?;
+        crate::semrefs::admit_restored_unit(sema, &payload_fp)
+            .map_err(|e| format!("unit `{}` sema-ref admission failed: {}", link.name, e))?;
+        if link.payload_fp != payload_fp {
+            return Err(format!(
+                "unit `{}` payload fingerprint `{}` does not match loaded bytes `{}`",
+                link.name, link.payload_fp, payload_fp
+            ));
+        }
+        let decoded = decode_abc(&payload)
+            .map_err(|e| format!("unit `{}` decode: {}", link.name, e.code()))?;
         let mut module = decoded.module;
         module.owner = owner_scope.clone();
         for f in module.funcs.iter_mut() {
             f.owner = owner_scope.clone();
+        }
+        // F798-R3-02: the claimed signature must match the DECODED payload.
+        let actual_sig = render_unit_sig(&module);
+        if link.sig != actual_sig {
+            return Err(format!(
+                "unit `{}` claimed signature `{}` but payload renders `{}`",
+                link.name, link.sig, actual_sig
+            ));
+        }
+        // F798-R3-02: capability re-admission against the CURRENT request —
+        // a trace-requiring unit restores only under a live grant.
+        for c in &module.capabilities {
+            if c == TRACE_CAPABILITY && !caps.iter().any(|x| x == c) {
+                return Err(format!(
+                    "unit `{}` requires capability `{}` not granted by the current request",
+                    link.name, c
+                ));
+            }
         }
         match abc_verify::verify_abc(
             auto_av_core::DecodedAbc {
@@ -94,9 +165,11 @@ pub fn restore_and_run(
             &owner_scope,
         ) {
             Ok(_) => verified += 1,
-            Err(e) => return fail(format!("unit `{}` re-verify: {}", link.name, e)),
+            Err(e) => return Err(format!("unit `{}` re-verify: {}", link.name, e)),
         }
-        // Diagnostics sidecar (best-effort; code content never depends on it).
+        // Diagnostics sidecar (best-effort READ; a PRESENT-but-invalid
+        // sidecar is still only a diagnostics miss — code content never
+        // depends on it).
         let skey = crate::cache::sidecar_key(owner, &link.name, snapshot);
         let sexpect = EnvelopeIdentity::sidecar(owner, snapshot);
         if let Ok(Some(sp)) = crate::cache::get_enveloped_opt(&store, &skey, "A08", &sexpect) {
@@ -107,26 +180,18 @@ pub fn restore_and_run(
         units.push(module);
     }
     let loaded = units.len();
-    let merged = match assemble_closure(&units, owner, entry) {
-        Ok(m) => m,
-        Err(e) => return fail(format!("closure: {}", e)),
-    };
-    let bytes = match auto_av_core::encode_abc(&merged) {
-        Ok(b) => b,
-        Err(e) => return fail(format!("closure encode: {}", e.code())),
-    };
-    let decoded = match decode_abc(&bytes.to_flat()) {
-        Ok(d) => d,
-        Err(e) => return fail(format!("closure decode: {}", e.code())),
-    };
-    let loaded_module = match abc_verify::verify_abc(decoded, &owner_scope) {
-        Ok(l) => l,
-        Err(e) => return fail(format!("closure verify: {}", e)),
-    };
+    let merged = assemble_closure(&units, owner, entry).map_err(|e| format!("closure: {}", e))?;
+    let bytes =
+        auto_av_core::encode_abc(&merged).map_err(|e| format!("closure encode: {}", e.code()))?;
+    let decoded =
+        decode_abc(&bytes.to_flat()).map_err(|e| format!("closure decode: {}", e.code()))?;
+    let loaded_module = abc_verify::verify_abc(decoded, &owner_scope)
+        .map_err(|e| format!("closure verify: {}", e))?;
     let cancel = CancelFlag::new(false);
-    let (outcome, _trace) = execute(&loaded_module, &ExecLimits::default(), &cancel);
+    let (outcome, trace): (ExecOutcome, ExecTrace) =
+        execute(&loaded_module, &ExecLimits::default(), &cancel);
     match outcome {
-        auto_av_core::contract::ExecOutcome::Success { value, steps } => RestoreOutcome {
+        ExecOutcome::Success { value, steps } => Ok(RestoreOutcome {
             executed_ok: true,
             value: value.as_i32(),
             trap: None,
@@ -134,8 +199,9 @@ pub fn restore_and_run(
             units_loaded: loaded,
             units_verified: verified,
             steps: Some(steps),
-        },
-        auto_av_core::contract::ExecOutcome::Trap { kind, span } => RestoreOutcome {
+            av_peak_slot_bytes: trace.peak_slot_bytes,
+        }),
+        ExecOutcome::Trap { kind, span } => Ok(RestoreOutcome {
             executed_ok: true,
             value: None,
             trap: Some(format!(
@@ -147,8 +213,9 @@ pub fn restore_and_run(
             units_loaded: loaded,
             units_verified: verified,
             steps: None,
-        },
-        other => fail(format!("execution state: {:?}", other)),
+            av_peak_slot_bytes: trace.peak_slot_bytes,
+        }),
+        other => Err(format!("execution state: {:?}", other)),
     }
 }
 
@@ -161,5 +228,6 @@ fn fail(msg: String) -> RestoreOutcome {
         units_loaded: 0,
         units_verified: 0,
         steps: None,
+        av_peak_slot_bytes: 0,
     }
 }

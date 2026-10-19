@@ -74,10 +74,20 @@ v2 runner）正式执行；worker `av_probe_worker case-serve`（envelope `avwor
 Job 收容，父侧判定）。**warm-session 编辑会话**步骤模型：`[run(热身), edit-source,
 run]` 共享一个会话 store——终步即"单函数 body 编辑→当前正确 AV 结果"请求。
 
-- 30 样本（冻结负载，逐样本新修订 fn_037 乘子）：**编辑窗 P50/P95/P99 =
-  556/569/574 ms < 1000 ms**（窗口 = 终步驱动墙 ~412ms + spawn/IPC/admit 开销
-  ~148ms；整个会话另含热身 run ~2.3s，如实分列）。
-- 签名冲突路径（正式诊断负例，30 样本）：**P95 = 221 ms < 1000 ms**。
+- **r4（F798-R3-07 修复后）窗口口径**：编辑请求 = 受测调用自身，热身是独立
+  调用；窗口 = 受测 `[edit-source, run]` 调用的 `request_wall_ms`（请求构建 →
+  spawn → 请求写入 → worker 会话（显式 `session` 共享热身 store）→ 编辑+全
+  管线+执行 → 响应读取 → 父侧准入/判定），**连续可观察、无任何扣减**——IPC、
+  spawn、admit 构造性在窗内。步骤序列允许前导 edit（decode 合同 r4：须以 run
+  结尾）。
+- 30 样本（冻结负载，逐样本新修订 fn_037 乘子）：**编辑窗 P50 ≈ 590-617 ms、
+  P95 ≈ 600-640 ms < 1000 ms**（阶段分解：前端整模块重查 ~290ms 如实计入 +
+  spawn/IPC/admit ~120ms + 命中查找/闭包/执行 ~110ms；本机重跑原始 eprintln
+  逐样本 580-646ms，另有并发负载时偶发 ~1.1s 尖峰属环境噪音，失败样本零）。
+- 签名冲突路径（正式诊断负例，30 样本）：**P95 ≈ 210-426 ms < 1000 ms**。
+- worker 合同反控（F798-R3-05/06）：非零退出、尾随协议帧、错 source_hash、
+  墙钟突破（5s 延迟 vs 1.5s 绝对截止）→ 全部 Infra 红
+  （`ac_av_probe_worker_contract_faults_are_infra`；AV798_FAULT 注入口）。
 - 负控：错误 exit 期望必红；decode 准入负例（未知 recipe/跨域步骤词表/跨域
   绑定/缺绑定）全拒；worker 从不读 expected。
 - 复验：`powershell -File scripts/verify-ac-av-798.ps1 -Scope autodown`

@@ -75,6 +75,18 @@ pub const MAX_TRACE_BYTES: usize = 64 * 1024;
 /// Slot cell size used for the live-slot-bytes budget accounting.
 pub const SLOT_CELL_BYTES: usize = std::mem::size_of::<Value>();
 
+/// Upper bound on the verifier's composite analysis allocations (the
+/// definite-initialization bitsets over blocks × slot words, per function),
+/// checked BEFORE those structures are allocated (F798-R3-08: a dense
+/// 16384-slot/8192-block unit previously allocated ~51.7 MiB of matrices
+/// before the work-step budget rejected it). Part of the 16 MiB staging
+/// partition of the managed 32 MiB envelope.
+pub const MAX_VERIFY_ANALYSIS_BYTES: usize = 16 * 1024 * 1024;
+/// Upper bound on one decoded module's structural heap estimate, checked
+/// at admission before deep verification (wire length is not a working-set
+/// proxy; a tiny wire can declare large tables).
+pub const MAX_DECODED_MODULE_BYTES: usize = 16 * 1024 * 1024;
+
 // ---------------------------------------------------------------------------
 // Values and traps
 // ---------------------------------------------------------------------------
@@ -151,6 +163,10 @@ pub enum ResourceKind {
     SlotBytes,
     ExecutionWall,
     TraceBytes,
+    /// Composite analysis allocations (init-dataflow bitsets etc.).
+    VerifyMemory,
+    /// Decoded module structural heap estimate.
+    DecodeMemory,
 }
 
 impl ResourceKind {
@@ -166,6 +182,8 @@ impl ResourceKind {
             ResourceKind::SlotBytes => "av.resource.slot-bytes",
             ResourceKind::ExecutionWall => "av.resource.execution-wall",
             ResourceKind::TraceBytes => "av.resource.trace-bytes",
+            ResourceKind::VerifyMemory => "av.resource.verify-memory",
+            ResourceKind::DecodeMemory => "av.resource.decode-memory",
         }
     }
 }

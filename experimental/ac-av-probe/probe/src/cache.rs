@@ -989,6 +989,39 @@ pub struct UnitLink {
     /// the same ids across process restarts.
     #[serde(default)]
     pub logical: String,
+    /// Content fingerprint of the EXACT payload bytes this link points at
+    /// (F798-R3-02): the persisted sema-ref envelope binds this id, and
+    /// restore re-derives it from the loaded bytes before execution — a
+    /// manifest rewritten onto a foreign/older payload is rejected here,
+    /// not at some later "unresolved" infra branch. Empty = legacy
+    /// manifest without the binding (rejected at restore admission).
+    #[serde(default)]
+    pub payload_fp: String,
+    /// The shared-domain sema-ref envelope for this unit's payload
+    /// (`{producer, schema, payload_id}`); admitted against the real
+    /// ac-sema-contract producer/schema at restore.
+    #[serde(default)]
+    pub sema: Option<SemaRefSer>,
+}
+
+/// Serializable mirror of the 796 `SemaRef` envelope (owner producer,
+/// schema, payload id) persisted in the manifest.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct SemaRefSer {
+    pub producer: String,
+    pub schema: String,
+    pub payload_id: String,
+}
+
+impl SemaRefSer {
+    /// Mint the envelope for one unit payload (driver side).
+    pub fn for_payload(payload_fp: &str) -> SemaRefSer {
+        SemaRefSer {
+            producer: ac_sema_contract::SEMA_PRODUCER_ID.to_string(),
+            schema: ac_sema_contract::SEMA_REF_SCHEMA_V1.to_string(),
+            payload_id: payload_fp.to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -1005,7 +1038,16 @@ impl ModuleManifest {
         let mut parts: Vec<String> = self
             .units
             .iter()
-            .map(|u| format!("{}={}:{}", u.name, u.artifact, u.sig))
+            .map(|u| {
+                let sema = match &u.sema {
+                    Some(s) => format!("{}|{}|{}", s.producer, s.schema, s.payload_id),
+                    None => "-".to_string(),
+                };
+                format!(
+                    "{}={}:{}:{}:{}:{}",
+                    u.name, u.artifact, u.sig, u.logical, u.payload_fp, sema
+                )
+            })
             .collect();
         parts.sort();
         let joined = format!(
@@ -1017,6 +1059,47 @@ impl ModuleManifest {
             parts.join(";")
         );
         format!("{:016x}", fnv1a64_parts(&[joined.as_bytes()]))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cross-layer identity helpers (F798-R3-02)
+// ---------------------------------------------------------------------------
+
+/// Content fingerprint of one persisted unit payload — the binding the
+/// sema-ref envelope carries and restore re-derives from loaded bytes.
+pub fn payload_fingerprint(bytes: &[u8]) -> String {
+    format!("{:016x}", auto_av_core::contract::fnv1a64(bytes))
+}
+
+/// Render a MIR unit's single function signature in the SAME textual shape
+/// the driver derives from HIR (`(i32,bool)->i32`), so a manifest's claimed
+/// signature is checkable against the decoded payload at restore — a
+/// tampered `sig` field is an identity rejection, not a silent mismatch.
+pub fn render_unit_sig(unit: &MirModule) -> String {
+    let shape = |m: &MirModule, idx: u32| -> String {
+        match m.types.get(idx as usize) {
+            Some(MirType::I32) => "i32".to_string(),
+            Some(MirType::Bool) => "bool".to_string(),
+            Some(MirType::Fn(_)) => "fn".to_string(),
+            None => "?".to_string(),
+        }
+    };
+    let Some(f) = unit.funcs.first() else {
+        return "?".to_string();
+    };
+    match unit.sig_of(f.sig) {
+        Some(sig) => {
+            let mut s = String::from("(");
+            for p in &sig.params {
+                s.push_str(&shape(unit, *p));
+                s.push(',');
+            }
+            s.push_str(")->");
+            s.push_str(&shape(unit, sig.result));
+            s
+        }
+        None => "?".to_string(),
     }
 }
 

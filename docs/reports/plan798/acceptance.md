@@ -50,6 +50,17 @@
 | SD-06 | auto-test-case/architecture | ac-av/core-run-v1 recipe 支持表（步骤词表/绑定/exit 通道/run 完成态/stale 分族） |
 | SD-07 | auto-av/cache-and-conformance | AC/AV/AJ 合同边界与 native 产物引用准入（T-08 有限代际模型） |
 
+**r4 更正与实装（F798-R3-09）**：T-07 收据曾把 SD-07 的"有限代际/native 产物
+准入"写成已完成——当时只有非目标声明，无模型/反控（复审判虚假主张）。本轮
+实装 `probe/src/native_admission.rs`：`NativeArtifactRef`（generation/profile/
+capabilities/format/target/abi/backend/flags/recipe + 内容绑定 blake3）+
+`admit_native_ref`（未知 generation/profile/capability/target/abi/backend/
+recipe、非重定位格式、哈希/长度失配、缺 manifest 全拒）+ COFF 结构校验
+（AMD64/有节有符号表/拒绝 MZ-PE 进程映像）。**正例 = landed Cranelift 真实
+COFF**（`mint_and_admit_lowered`）；真 PE 拒绝用 `native_reference` 产出的
+真实 module.exe。反控 `native_admission_tier` 5 测绿。仍不做（非目标不变）：
+AJ、DLL 加载、热替换、发布器、新 native emitter。
+
 touched_goals=[] 说明：798 全程为 experimental/ 探针+测试接缝扩展，不改产品
 目标行为；目标级 goal 映射由 review/merge 判定。
 

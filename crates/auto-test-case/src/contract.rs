@@ -1453,16 +1453,22 @@ fn decode_options(
                     out.push(step);
                 }
                 if recipe == "ac-av/core-run-v1" {
-                    // PLAN-798 T-07 edit-session shape: starts with a run;
-                    // edit-source steps (the seam's discriminating-edit
-                    // oracle) interleave with re-runs, all inside ONE
-                    // worker session with a persistent store — the formal
-                    // warm-session primitive for the hard gate.
-                    if !matches!(out.first(), Some(ProbeStep::Run)) {
+                    // PLAN-798 T-07 edit-session shape (F798-R3-07): runs
+                    // plus discriminating edit-source steps; a sequence
+                    // may LEAD with edits (the measured formal window —
+                    // the request materializes the source, applies leading
+                    // edits, then runs) but must END with the judged run,
+                    // and leading edits require an explicit session only
+                    // for cross-call warmth (single-call shapes are
+                    // unchanged).
+                    if !matches!(out.last(), Some(ProbeStep::Run)) {
                         return Err(err(
                             &f.path_of("steps"),
-                            "ac-av/core-run-v1 step sequences must start with a run step",
+                            "ac-av/core-run-v1 step sequences must end with a run step (the judged step)",
                         ));
+                    }
+                    if out.is_empty() {
+                        return Err(err(&f.path_of("steps"), "steps must not be empty"));
                     }
                 }
                 out
@@ -1565,8 +1571,26 @@ fn decode_options(
                 }
                 let apath = f.path_of("av");
                 let pairs = as_obj(v, &apath)?;
-                let sf = Fields::new(&apath, pairs, &["entry", "caps"])?;
+                let sf = Fields::new(&apath, pairs, &["entry", "caps", "session"])?;
                 let entry = req_str(&sf, "entry")?;
+                let session = match sf.sub("session") {
+                    None => None,
+                    Some(v) => {
+                        let sid = as_str(v, &sf.path_of("session"))?.to_string();
+                        if sid.is_empty()
+                            || sid.len() > 64
+                            || !sid
+                                .chars()
+                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                        {
+                            return Err(err(
+                                &sf.path_of("session"),
+                                "av session id must be 1-64 chars of [A-Za-z0-9_-]",
+                            ));
+                        }
+                        Some(sid)
+                    }
+                };
                 let caps = match sf.sub("caps") {
                     None => Vec::new(),
                     Some(v) => {
@@ -1579,7 +1603,11 @@ fn decode_options(
                         out
                     }
                 };
-                Some(ProbeAvSpec { entry, caps })
+                Some(ProbeAvSpec {
+                    entry,
+                    caps,
+                    session,
+                })
             }
         };
         (Some(recipe), Some(steps), sema, abi, av)
@@ -1649,6 +1677,11 @@ pub enum ProbeStep {
 pub struct ProbeAvSpec {
     pub entry: String,
     pub caps: Vec<String>,
+    /// Optional cross-request SESSION id (F798-R3-07 formal window
+    /// primitive): requests sharing a session id share the worker's
+    /// persistent per-session store across calls; absent = a private
+    /// per-request store (cleaned up by the worker).
+    pub session: Option<String>,
 }
 
 /// sema/query-v1 binding: which semantic query the recipe runs.

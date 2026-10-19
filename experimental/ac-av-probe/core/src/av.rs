@@ -100,7 +100,6 @@ pub fn execute_entry(
     let started = Instant::now();
     let mut steps: u64 = 0;
     let mut slot_bytes: usize = 0;
-    let mut slot_bytes_peak: usize = 0;
 
     let entry_fn = match m.funcs.get(m.entry as usize) {
         Some(f) => f,
@@ -123,6 +122,34 @@ pub fn execute_entry(
         );
     }
     let zero = typed_zero(m);
+    // Root-frame budgets BEFORE allocation (F798-R3-04): a zero frame or
+    // slot budget must reject a program that genuinely uses slots, instead
+    // of executing it and reporting peak 0.
+    if limits.max_frames < 1 {
+        return (
+            ExecOutcome::Resource {
+                kind: ResourceKind::Frames,
+                message: format!(
+                    "guest frames budget {} cannot hold the root frame",
+                    limits.max_frames
+                ),
+            },
+            trace,
+        );
+    }
+    let root_slot_bytes = entry_fn.slots.len() * SLOT_CELL_BYTES;
+    if root_slot_bytes > limits.max_slot_bytes {
+        return (
+            ExecOutcome::Resource {
+                kind: ResourceKind::SlotBytes,
+                message: format!(
+                    "root frame live slot data {} bytes exceeds budget {}",
+                    root_slot_bytes, limits.max_slot_bytes
+                ),
+            },
+            trace,
+        );
+    }
     // Root frame.
     let mut frame = Frame {
         func: m.entry,
@@ -140,7 +167,9 @@ pub fn execute_entry(
         });
     }
     slot_bytes += frame.slots.len() * SLOT_CELL_BYTES;
-    slot_bytes_peak = slot_bytes_peak.max(slot_bytes);
+    // The peak lives ON the returned trace: every exit (success, trap,
+    // resource, cancel) carries the real high-water (F798-R3-04).
+    trace.peak_slot_bytes = trace.peak_slot_bytes.max(slot_bytes as u64);
     let mut frames: Vec<Frame> = Vec::with_capacity(16);
     frames.push(frame);
 
@@ -295,6 +324,21 @@ pub fn execute_entry(
                         );
                     }
                     let callee_fn = &m.funcs[target as usize];
+                    // Slot budget BEFORE the callee frame is allocated
+                    // (F798-R3-04): the check used to run after the push.
+                    let prospective = slot_bytes + callee_fn.slots.len() * SLOT_CELL_BYTES;
+                    if prospective > limits.max_slot_bytes {
+                        return (
+                            ExecOutcome::Resource {
+                                kind: ResourceKind::SlotBytes,
+                                message: format!(
+                                    "live slot data would reach {} bytes, above budget {}",
+                                    prospective, limits.max_slot_bytes
+                                ),
+                            },
+                            trace,
+                        );
+                    }
                     let arg_vals: Vec<Value> = {
                         let fr = frames.last().expect("frame present");
                         args.iter().map(|a| fr.slots[*a as usize]).collect()
@@ -314,20 +358,8 @@ pub fn execute_entry(
                             zero(s.ty)
                         });
                     }
-                    slot_bytes += nf.slots.len() * SLOT_CELL_BYTES;
-                    slot_bytes_peak = slot_bytes_peak.max(slot_bytes);
-                    if slot_bytes > limits.max_slot_bytes {
-                        return (
-                            ExecOutcome::Resource {
-                                kind: ResourceKind::SlotBytes,
-                                message: format!(
-                                    "live slot data exceeded {} bytes",
-                                    limits.max_slot_bytes
-                                ),
-                            },
-                            trace,
-                        );
-                    }
+                    slot_bytes = prospective;
+                    trace.peak_slot_bytes = trace.peak_slot_bytes.max(slot_bytes as u64);
                     frames.push(nf);
                 }
                 MirInstr::Trace { event } => {
@@ -499,5 +531,109 @@ fn eval_un(op: UnOp, v: Value) -> Result<Value, EvalErr> {
             "unary {:?} on wrong-shaped operand (admission violation)",
             op
         ))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::contract::MIR_SCHEMA;
+    use crate::mir::*;
+
+    fn owner() -> OwnerScope {
+        OwnerScope {
+            schema: MIR_SCHEMA.to_string(),
+            module: "m".to_string(),
+        }
+    }
+
+    /// `fn main() -> i32 { let r = 7; return r }` — one local slot.
+    fn loaded() -> LoadedModule {
+        let mut m = MirModule::new(owner());
+        let ti = m.intern_type(MirType::I32);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let c7 = m.intern_const(MirConst::I32(7));
+        m.funcs.push(MirFunction {
+            owner: owner(),
+            name: "main".into(),
+            sig,
+            slots: vec![MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: Some("r".into()),
+            }],
+            blocks: vec![MirBlock {
+                instrs: vec![MirInstr::Const { dst: 0, value: c7 }],
+                term: Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+        m.entry = 0;
+        let bytes = crate::abc::encode_abc(&m).expect("encode");
+        crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owner()).expect("admit")
+    }
+
+    #[test]
+    fn av_zero_frame_budget_rejects_root_frame() {
+        let m = loaded();
+        let cancel = CancelFlag::new(false);
+        let limits = ExecLimits {
+            max_frames: 0,
+            ..ExecLimits::default()
+        };
+        let (out, trace) = execute(&m, &limits, &cancel);
+        assert!(
+            matches!(
+                out,
+                ExecOutcome::Resource {
+                    kind: ResourceKind::Frames,
+                    ..
+                }
+            ),
+            "got {out:?}"
+        );
+        assert_eq!(trace.peak_slot_bytes, 0);
+    }
+
+    #[test]
+    fn av_zero_slot_budget_rejects_root_frame() {
+        let m = loaded();
+        let cancel = CancelFlag::new(false);
+        let limits = ExecLimits {
+            max_slot_bytes: 0,
+            ..ExecLimits::default()
+        };
+        let (out, trace) = execute(&m, &limits, &cancel);
+        assert!(
+            matches!(
+                out,
+                ExecOutcome::Resource {
+                    kind: ResourceKind::SlotBytes,
+                    ..
+                }
+            ),
+            "got {out:?}"
+        );
+        assert_eq!(trace.peak_slot_bytes, 0);
+    }
+
+    #[test]
+    fn av_success_reports_real_peak_slot_bytes() {
+        let m = loaded();
+        let cancel = CancelFlag::new(false);
+        let (out, trace) = execute(&m, &ExecLimits::default(), &cancel);
+        assert!(matches!(out, ExecOutcome::Success { .. }), "got {out:?}");
+        // One live local slot — the reported high-water must be its real
+        // byte size, not the historic always-zero (F798-R3-04).
+        assert_eq!(
+            trace.peak_slot_bytes,
+            1 * SLOT_CELL_BYTES as u64,
+            "peak must cover the root frame's live slot"
+        );
     }
 }

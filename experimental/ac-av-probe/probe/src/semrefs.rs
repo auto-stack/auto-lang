@@ -63,15 +63,51 @@ pub fn unit_sema_ref(logical: &str) -> SemaRef {
 }
 
 /// Admission for a restored av unit ref: the envelope must come from the
-/// sema producer under the v1 schema, and the DECL ref must re-derive its
+/// sema producer under the v1 schema, the DECL ref must re-derive its
 /// own logical id (tampered / foreign-minted refs are rejected, never
-/// trusted — V-01 semantics in the shared domain).
+/// trusted — V-01 semantics in the shared domain), and — F798-R3-02 —
+/// the envelope must name the EXACT payload fingerprint being consumed:
+/// an envelope minted over a different payload does not admit this one.
 pub fn admit_unit_ref(
     envelope: &SemaRef,
     decl: &DeclRef,
+    payload_fp: &str,
 ) -> Result<(), ac_sema_contract::RefError> {
     envelope.admit(SEMA_PRODUCER_ID, SEMA_REF_SCHEMA_V1)?;
-    decl.verify()
+    decl.verify()?;
+    if envelope.payload_id != payload_fp {
+        return Err(ac_sema_contract::RefError::UnknownPayload {
+            schema: envelope.schema.to_string(),
+            payload_id: envelope.payload_id.clone(),
+        });
+    }
+    Ok(())
+}
+
+/// Restore-side association admission (F798-R3-02): the persisted
+/// envelope's producer/schema are checked against the REAL shared-domain
+/// constants, and its payload id must equal the fingerprint of the bytes
+/// this restore is about to decode and execute.
+pub fn admit_restored_unit(ser: &crate::cache::SemaRefSer, payload_fp: &str) -> Result<(), String> {
+    if ser.producer != SEMA_PRODUCER_ID {
+        return Err(format!(
+            "sema-ref producer `{}` is not the shared `{}`",
+            ser.producer, SEMA_PRODUCER_ID
+        ));
+    }
+    if ser.schema != SEMA_REF_SCHEMA_V1 {
+        return Err(format!(
+            "sema-ref schema `{}` is not the shared `{}`",
+            ser.schema, SEMA_REF_SCHEMA_V1
+        ));
+    }
+    if ser.payload_id != payload_fp {
+        return Err(format!(
+            "sema-ref payload `{}` does not bind the loaded payload `{}`",
+            ser.payload_id, payload_fp
+        ));
+    }
+    Ok(())
 }
 
 /// The content-version string for a canonical dump — the cache-key

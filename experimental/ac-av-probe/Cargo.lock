@@ -93,6 +93,7 @@ dependencies = [
  "auto-ac-prototype",
  "auto-av-core",
  "base64",
+ "blake3",
  "rusqlite",
  "serde",
  "serde_json",

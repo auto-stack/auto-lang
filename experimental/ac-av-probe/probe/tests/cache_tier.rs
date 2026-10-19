@@ -295,3 +295,210 @@ fn av_cache_worker_restore_new_process() {
     let _ = fnv1a64;
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F798-R3-03: a position-only drift (same canonical bodies, new snapshot)
+/// must NOT lose the trap's source binding on a cache hit — the unit
+/// re-binds to the CURRENT revision (sidecar miss triggers a bounded,
+/// separately-counted diagnostics re-derive), never a spanless module.
+#[test]
+fn av_cache_position_drift_keeps_trap_span() {
+    let root = tmpdir("span-drift");
+    let mut d = Driver::with_store(&root, "proj-span").unwrap();
+    let src1 = "fn main() int {
+    return 1 / 0
+}
+";
+    let r1 = d.request(src1, "d_main", &[]);
+    use auto_av_core::contract::ExecOutcome;
+    let span1 = match &r1.av {
+        Some(ExecOutcome::Trap {
+            span: Some(s),
+            kind,
+        }) => {
+            assert_eq!(kind.code(), "av.trap.div-by-zero");
+            *s
+        }
+        other => panic!("first request traps with a span: {other:?}"),
+    };
+    // Two prepended lines: same bodies, drifted positions, same entry.
+    let src2 = format!(
+        "
+
+{src1}"
+    );
+    let r2 = d.request(&src2, "d_main", &[]);
+    assert_eq!(
+        *r2.counters.get("cache_hit_abc").unwrap_or(&0),
+        1,
+        "full hit"
+    );
+    assert_eq!(*r2.counters.get("mir_lower_modules").unwrap_or(&0), 0);
+    assert_eq!(
+        *r2.counters
+            .get("sidecar_rebind_lower_modules")
+            .unwrap_or(&0),
+        1,
+        "the span re-bind lower fired exactly once and is counted honestly"
+    );
+    match &r2.av {
+        Some(ExecOutcome::Trap { span: Some(s2), .. }) => {
+            assert_eq!(s2.func, span1.func, "same function binds");
+            assert!(
+                s2.start > span1.start,
+                "span re-bind points at the CURRENT (drifted) position: {s2:?} vs {span1:?}"
+            );
+        }
+        other => panic!("drifted request keeps the trap AND its span: {other:?}"),
+    }
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F798-R3-02: restore admission is closure-identity-complete. Tampering
+/// any single manifest axis — profile, av semantics, unit signature,
+/// logical id, payload binding, or the sema-ref envelope itself — against
+/// an otherwise VALID store is a controlled rejection; the honest control
+/// still restores and executes.
+#[test]
+fn av_cache_restore_identity_negative_controls() {
+    let root = tmpdir("restore-neg");
+    let mut d = Driver::with_store(&root, "p2").unwrap();
+    let r = d.request(BASE, "d_main", &[]);
+    assert!(r.ok());
+    let honest = r.manifest.clone().expect("manifest");
+    let store = open_store(&root).unwrap();
+    let key = cache::manifest_key(&honest.owner, &honest.entry, &honest.fingerprint());
+    let art = store.get_artifact("A09", &key).unwrap().expect("artifact");
+    drop(store);
+    // Honest control first.
+    let ok = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &honest.owner,
+        &honest.entry,
+        &art.artifact_id,
+        0,
+        &[],
+    );
+    assert!(ok.executed_ok, "honest control restores: {:?}", ok.error);
+
+    // Write a tampered manifest into the SAME real store under its own key
+    // (self-consistent envelope, honest payload pointers) and try to
+    // restore THROUGH it.
+    let tamper = |mutate: &dyn Fn(&mut auto_av_probe::cache::ModuleManifest)| {
+        let mut m = honest.clone();
+        mutate(&mut m);
+        let store = open_store(&root).unwrap();
+        let k = cache::manifest_key(&m.owner, &m.entry, &m.fingerprint());
+        let body = serde_json::to_vec(&m).unwrap();
+        put_enveloped(
+            &store,
+            &k,
+            "A09",
+            &EnvelopeIdentity::manifest(&m.owner, 0),
+            &body,
+            vec![],
+            Some("p2"),
+        )
+        .expect("tampered manifest put");
+        let art = store
+            .get_artifact("A09", &k)
+            .unwrap()
+            .expect("tampered artifact");
+        drop(store);
+        auto_av_probe::worker_restore::restore_and_run(
+            &root,
+            &honest.owner,
+            &honest.entry,
+            &art.artifact_id,
+            0,
+            &[],
+        )
+    };
+    let o = tamper(&|m| m.profile = "unknown-profile".to_string());
+    assert!(!o.executed_ok, "profile tamper must reject");
+    assert!(
+        o.error.unwrap().contains("profile"),
+        "profile axis diagnosed"
+    );
+
+    let o = tamper(&|m| m.av_sem = 999);
+    assert!(!o.executed_ok, "av_sem tamper must reject");
+    assert!(o.error.unwrap().contains("semantics"));
+
+    let o = tamper(&|m| m.units[0].sig = "(bool)->bool".to_string());
+    assert!(!o.executed_ok, "signature tamper must reject");
+    assert!(o.error.unwrap().contains("signature"));
+
+    let o = tamper(&|m| m.units[0].logical = "foreign::logical::id".to_string());
+    assert!(!o.executed_ok, "logical tamper must reject");
+    assert!(o.error.unwrap().contains("logical"));
+
+    let o = tamper(&|m| m.units[0].payload_fp = "deadbeefdeadbeef".to_string());
+    assert!(!o.executed_ok, "payload binding tamper must reject");
+    assert!(o.error.unwrap().contains("payload"));
+
+    let o = tamper(&|m| m.units[0].sema = None);
+    assert!(!o.executed_ok, "missing envelope must reject");
+    assert!(o.error.unwrap().contains("sema-ref"));
+
+    let o = tamper(&|m| {
+        m.units[0].sema = Some(auto_av_probe::cache::SemaRefSer {
+            producer: "other/producer".to_string(),
+            schema: "ac796/semaref/v1".to_string(),
+            payload_id: m.units[0].payload_fp.clone(),
+        })
+    });
+    assert!(!o.executed_ok, "foreign producer envelope must reject");
+    assert!(o.error.unwrap().contains("producer"));
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F798-R3-02: capability re-admission on restore — a trace-requiring
+/// module restores ONLY under a live trace grant; persisted capability
+/// claims never inherit authority.
+#[test]
+fn av_cache_restore_requires_current_trace_grant() {
+    let root = tmpdir("restore-caps");
+    let src = "fn main() int {
+    let a = mark_a()
+    return a
+}
+";
+    let caps = vec!["hir.test.trace.v1".to_string()];
+    let mut d = Driver::with_store(&root, "p3").unwrap();
+    let r = d.request(src, "d_main", &caps);
+    assert!(r.ok(), "{:?}", r.diag);
+    let manifest = r.manifest.clone().expect("manifest");
+    let store = open_store(&root).unwrap();
+    let key = cache::manifest_key(&manifest.owner, &manifest.entry, &manifest.fingerprint());
+    let art = store.get_artifact("A09", &key).unwrap().expect("artifact");
+    drop(store);
+
+    let denied = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        r.snapshot,
+        &[],
+    );
+    assert!(!denied.executed_ok, "no live grant → no restore execution");
+    assert!(
+        denied.error.unwrap().contains("capability"),
+        "capability axis diagnosed"
+    );
+
+    let granted = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        r.snapshot,
+        &caps,
+    );
+    assert!(
+        granted.executed_ok,
+        "live grant restores: {:?}",
+        granted.error
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

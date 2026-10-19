@@ -260,7 +260,7 @@ pub fn run_six_scenarios(b: &BenchInputs) -> (Vec<SampleRow>, BenchSummary) {
         d.request(&b.load.source, entry, &[]);
         let stop = root.join("gc-stop.flag");
         let _ = std::fs::remove_file(&stop);
-        let mut child = std::process::Command::new(&b.self_exe)
+        let child = std::process::Command::new(&b.self_exe)
             .args([
                 "gc-loop",
                 "--store",

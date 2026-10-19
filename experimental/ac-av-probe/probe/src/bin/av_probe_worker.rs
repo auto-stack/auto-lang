@@ -40,7 +40,7 @@ fn main() {
 }
 
 fn usage() -> ! {
-    eprintln!("usage: av_probe_worker restore-run --store DIR --owner NAME --entry FN --manifest-artifact ID [--snapshot HEX]");
+    eprintln!("usage: av_probe_worker restore-run --store DIR --owner NAME --entry FN --manifest-artifact ID [--snapshot HEX] [--caps C1,C2]");
     eprintln!("       av_probe_worker request --store DIR --src-file FILE --entry FN [--project P] [--caps C1,C2]");
     eprintln!("       av_probe_worker gc-loop --store DIR --stop-file FILE [--interval-ms N]");
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
@@ -68,6 +68,16 @@ fn restore_run(args: &[String]) -> ! {
     let snapshot = flag(args, "--snapshot")
         .map(|s| u64::from_str_radix(s.trim_start_matches("0x"), 16).expect("snapshot hex"))
         .unwrap_or(0);
+    // The CURRENT request's capability authorization (F798-R3-02): a
+    // trace-requiring module restores only under a live grant.
+    let caps: Vec<String> = flag(args, "--caps")
+        .map(|c| {
+            c.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
 
     let outcome = auto_av_probe::worker_restore::restore_and_run(
         &PathBuf::from(store_dir),
@@ -75,6 +85,7 @@ fn restore_run(args: &[String]) -> ! {
         &entry,
         &manifest_artifact,
         snapshot,
+        &caps,
     );
     let mut line = serde_json::to_string(&outcome).unwrap_or_else(|e| {
         eprintln!("serialize: {}", e);
@@ -207,13 +218,14 @@ fn case_serve() -> ! {
         eprintln!("unknown recipe {recipe}");
         exit(2);
     }
-    // Steps contract (T-07 edit-session): starts with `run`; edit-source
-    // steps (literal must match exactly once) interleave with re-runs,
-    // all inside this ONE session over a persistent per-request store.
+    // Steps contract (T-07 edit-session, F798-R3-07): run + edit-source
+    // steps; a sequence may LEAD with edits (the measured formal window)
+    // but must END with the judged run; edits apply to the materialized
+    // source before any leading run executes.
     let steps_json = match req["steps"].as_array() {
-        Some(a) if !a.is_empty() && a[0]["op"] == "run" => a.clone(),
+        Some(a) if !a.is_empty() && a[a.len() - 1]["op"].as_str() == Some("run") => a.clone(),
         _ => {
-            eprintln!("ac-av/core-run-v1 step sequences must start with a run step");
+            eprintln!("ac-av/core-run-v1 step sequences must end with a run step");
             exit(2);
         }
     };
@@ -248,11 +260,32 @@ fn case_serve() -> ! {
         eprintln!("missing store_root");
         exit(2);
     }
-    // One persistent per-request session store: warm across the session's
-    // steps (the formal warm-edit primitive); removed afterwards.
+    // Session model (F798-R3-07): with an explicit `session` id the store
+    // directory is SHARED across worker calls of that session (the formal
+    // two-call window: warm-up call, then the measured edit+run call over
+    // the warm store) and the PARENT owns cleanup — the worker never
+    // removes it. Without a session the store stays private per request
+    // and is removed on completion.
+    let session = req["session"].as_str().map(String::from);
+    if let Some(s) = &session {
+        if s.is_empty()
+            || s.len() > 64
+            || !s
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            eprintln!("invalid session id");
+            exit(2);
+        }
+    }
     let mut store_dir = std::path::PathBuf::from(&store_root);
-    store_dir.push(format!("case-{}", nonce.get(0..16).unwrap_or("x")));
-    let _ = std::fs::remove_dir_all(&store_dir);
+    match &session {
+        Some(s) => store_dir.push(format!("case-{s}")),
+        None => store_dir.push(format!("case-{}", nonce.get(0..16).unwrap_or("x"))),
+    }
+    if session.is_none() {
+        let _ = std::fs::remove_dir_all(&store_dir);
+    }
     let mut d = auto_av_probe::driver::Driver::with_store(&store_dir, "autodown-case")
         .unwrap_or_else(|e| {
             eprintln!("store: {e}");
@@ -326,6 +359,13 @@ fn case_serve() -> ! {
                 };
                 let counters: std::collections::BTreeMap<String, u64> =
                     r.counters.iter().map(|(k, v)| (k.clone(), *v)).collect();
+                // Stage spans (bounded observability, plan 5.5): each span's
+                // own duration in ms — nested spans never summed.
+                let spans: Vec<(String, f64)> = r
+                    .spans
+                    .iter()
+                    .map(|sp| (sp.name.clone(), sp.dur.as_secs_f64() * 1000.0))
+                    .collect();
                 step_outs.push(serde_json::json!({
                     "op": "run",
                     "outcome": outcome,
@@ -333,6 +373,7 @@ fn case_serve() -> ! {
                     "trap": trap,
                     "diag": diag,
                     "counters": counters,
+                    "spans": spans,
                     "source_hash": r.source_hash,
                     "wall_ms": r.wall_ms,
                     "trace": r.trace.iter().map(|e| match e {
@@ -347,7 +388,62 @@ fn case_serve() -> ! {
             }
         }
     }
-    let _ = std::fs::remove_dir_all(&store_dir);
+    if session.is_none() {
+        let _ = std::fs::remove_dir_all(&store_dir);
+    }
+
+    // Test-only fault injection seam (F798-R3-05/06 counter-controls; the
+    // same pattern the sema worker's FAULT env uses). The parent runner's
+    // formal negatives set AV798_FAULT to verify that worker-contract
+    // violations are INFRA, never green language verdicts. Never set in
+    // production paths.
+    if let Ok(fault) = std::env::var("AV798_FAULT") {
+        match fault.as_str() {
+            "exit9" => {
+                let mut line = serde_json::to_string(&serde_json::json!({
+                    "schema": "avworker/1", "nonce": nonce, "request_hash": request_hash,
+                }))
+                .unwrap_or_default();
+                line.push('\n');
+                use std::io::Write;
+                std::io::stdout().write_all(line.as_bytes()).ok();
+                std::io::stdout().flush().ok();
+                exit(9);
+            }
+            "extra-frame" => {
+                use std::io::Write;
+                let ok_out = serde_json::json!({
+                    "schema": "avworker/1",
+                    "nonce": nonce,
+                    "request_hash": request_hash,
+                    "ok": {
+                        "recipe": recipe,
+                        "steps": step_outs,
+                        "worker_version": EXPECTED_WORKER_VERSION,
+                        "av_core_version": auto_av_core::contract::AV_PROFILE,
+                    },
+                });
+                let mut line = serde_json::to_string(&ok_out).unwrap_or_default();
+                line.push('\n');
+                line.push_str("NOT_A_VALID_PROTOCOL_FRAME\n");
+                std::io::stdout().write_all(line.as_bytes()).ok();
+                std::io::stdout().flush().ok();
+                exit(0);
+            }
+            "wrong-hash" => {
+                for st in step_outs.iter_mut() {
+                    if st["op"] == "run" {
+                        st["source_hash"] = serde_json::json!("ffffffffffffffff");
+                    }
+                }
+            }
+            other if other.starts_with("delay-ms:") => {
+                let ms: u64 = other["delay-ms:".len()..].trim().parse().unwrap_or(0);
+                std::thread::sleep(std::time::Duration::from_millis(ms));
+            }
+            _ => {}
+        }
+    }
 
     echo(serde_json::json!({
         "recipe": recipe,

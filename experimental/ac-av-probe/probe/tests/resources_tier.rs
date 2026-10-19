@@ -188,6 +188,53 @@ fn av_resources_front_door_nesting_boundary() {
     assert_eq!(*r.counters.get("admission_reject").unwrap_or(&0), 1);
 }
 
+/// F798-R3-04: flat operator CHAINS are expression-construction depth —
+/// a `1+1+…` run past the frozen budget is a front-door RESOURCE
+/// rejection, not a `mir.lower.depth` unsupported raised from inside the
+/// recursive parser at its own 512 limit.
+#[test]
+fn av_resources_flat_chain_front_door_boundary() {
+    let chain = |n: usize| {
+        format!(
+            "fn main() int {{
+    var x = 1{}
+    return x
+}}
+",
+            " + 1".repeat(n - 1)
+        )
+    };
+    // Under budget: 100 terms execute.
+    let ok_src = chain(100);
+    assert!(front_door_admit(&ok_src).is_ok(), "100-term chain admits");
+    let mut d = Driver::ephemeral();
+    let r = d.request(&ok_src, "d_main", &[]);
+    assert!(r.ok(), "under-budget chain executes: {:?}", r.diag);
+
+    // Over budget: 200 terms — resource rejection at the door, before the
+    // frontend (and never the parser's own depth error).
+    let over_src = chain(200);
+    let started = Instant::now();
+    let err = front_door_admit(&over_src).unwrap_err();
+    assert_eq!(err.code, "av.resource.frontend-nesting");
+    assert_eq!(err.stage, "admission");
+    assert!(
+        started.elapsed() < Duration::from_millis(500),
+        "door is cheap"
+    );
+    let r = d.request(&over_src, "d_main", &[]);
+    let diag = r.diag.expect("rejected");
+    assert_eq!(diag.stage, "admission");
+    assert_eq!(diag.code, "av.resource.frontend-nesting");
+    // A chain that would have sailed through the parser's 512 limit must
+    // STILL be rejected at the 128 door (the R3 replay shape: 400 terms
+    // used to succeed, 600 hit mir.lower.depth).
+    let r400 = d.request(&chain(400), "d_main", &[]);
+    let diag = r400.diag.expect("400-term chain rejected at the door");
+    assert_eq!(diag.stage, "admission");
+    assert_eq!(diag.code, "av.resource.frontend-nesting");
+}
+
 /// V-09: the recursion-critical ATOM front door — 4096-deep nested lists
 /// are rejected before the recursive document parser runs.
 #[test]

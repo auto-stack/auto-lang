@@ -11,15 +11,15 @@
 
 use crate::cache::{
     abc_unit_key, assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar,
-    get_enveloped_opt, manifest_key, merge_spans, open_store, put_enveloped, sidecar_key,
-    split_units, Counters, EnvelopeIdentity, ModuleManifest, UnitLink,
+    get_enveloped_opt, manifest_key, merge_spans, open_store, payload_fingerprint, put_enveloped,
+    sidecar_key, split_units, Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
 };
 use crate::hir_adapter::{lower_checked, AdapterError};
 use crate::observations::{Obs, SpanRec};
 use auto_ac_prototype::source::compile_scalar_source;
 use auto_ac_prototype::verify::CheckedModule;
 use auto_av_core::contract::{
-    fnv1a64, ExecOutcome, ResourceKind, Value, MAX_FRONTEND_NESTING, MAX_INPUT_BYTES,
+    fnv1a64, ExecOutcome, ResourceKind, SpanInfo, Value, MAX_FRONTEND_NESTING, MAX_INPUT_BYTES,
 };
 use auto_av_core::mir::{MirModule, OwnerScope, TraceEvent};
 use auto_av_core::{
@@ -169,12 +169,20 @@ impl Driver {
         // Function bodies in def order, with canonical fingerprints.
         struct FnInfo {
             name: String,
-            body: auto_ac_prototype::hir::BodyId,
             sig: String,
             fp: String,
             /// Shared-domain logical id (796 identity; V-13 axis).
             logical: String,
+            /// Canonical HIR dump — retained so the manifest round can mint
+            /// the 796 DeclRef and run the REAL association admission over
+            /// the payload this request actually persisted/loaded
+            /// (F798-R3-02).
+            dump: Vec<u8>,
             abc_hit: Option<Vec<u8>>,
+            /// Content fingerprint of the payload bytes this request binds
+            /// to the unit (computed where the bytes are already in hand:
+            /// the ABC hit lookup or the emission), never via a re-read.
+            payload_fp: Option<String>,
         }
         let mut infos: Vec<FnInfo> = Vec::new();
         for d in module.defs.iter() {
@@ -182,7 +190,6 @@ impl Driver {
                 let dump = crate::cache::canonical_hir_function(module, *body);
                 infos.push(FnInfo {
                     name: d.id_text.clone(),
-                    body: *body,
                     sig: sig_string(module, *ty),
                     // T-06: the content axis rides the landed 796
                     // ContentVersion domain (order-independent identity);
@@ -193,7 +200,9 @@ impl Driver {
                         &owner,
                         d.id_text.as_str(),
                     ),
+                    dump,
                     abc_hit: None,
+                    payload_fp: None,
                 });
             }
         }
@@ -203,6 +212,7 @@ impl Driver {
         let mut hits = 0u64;
         let mut staging_now: usize = 0;
         let mut staging_peak: usize = 0;
+        let mut verify_analysis_bytes: usize = 0;
         if let Some(store) = self.store.as_ref() {
             let expect = EnvelopeIdentity::abc(&owner);
             for info in infos.iter_mut() {
@@ -212,6 +222,7 @@ impl Driver {
                         hits += 1;
                         staging_now += payload.len();
                         staging_peak = staging_peak.max(staging_now);
+                        info.payload_fp = Some(payload_fingerprint(&payload));
                         info.abc_hit = Some(payload);
                     }
                     Ok(None) => {}
@@ -282,23 +293,33 @@ impl Driver {
                         for f in unit.funcs.iter_mut() {
                             f.owner = mir_owner.clone();
                         }
+                        // F798-R3-08: the restored MIR unit is a real live
+                        // allocation — the staging ledger carries its heap
+                        // estimate, not just the wire length.
+                        staging_now += unit.heap_estimate();
+                        staging_peak = staging_peak.max(staging_now);
                         // MIR restore MUST re-enter the MIR verifier.
-                        if let Err(e) =
-                            obs.span("mir_restore_verify", Some("request"), |_| verify_mir(&unit))
-                        {
-                            return (
-                                Some(StageDiag {
-                                    stage: "mir-verify".to_string(),
-                                    code: e.code(),
-                                    message: format!(
-                                        "unit `{}` MIR restore re-verification failed",
-                                        info.name
-                                    ),
-                                }),
-                                None,
-                                vec![],
-                                None,
-                            );
+                        let verified =
+                            obs.span("mir_restore_verify", Some("request"), |_| verify_mir(&unit));
+                        match verified {
+                            Err(e) => {
+                                return (
+                                    Some(StageDiag {
+                                        stage: "mir-verify".to_string(),
+                                        code: e.code(),
+                                        message: format!(
+                                            "unit `{}` MIR restore re-verification failed",
+                                            info.name
+                                        ),
+                                    }),
+                                    None,
+                                    vec![],
+                                    None,
+                                )
+                            }
+                            Ok(checked) => {
+                                verify_analysis_bytes += checked.stats().analysis_bytes as usize;
+                            }
                         }
                         mir_restored += 1;
                         mir_units.push((idx, unit));
@@ -326,6 +347,11 @@ impl Driver {
         let mut fresh_units: Vec<MirModule> = Vec::new();
         let mut mir_persisted = 0u64;
         let mut abc_emitted = 0u64;
+        // F798-R3-03: spans of EVERY function of the current revision, from
+        // any lowering this request performed — hit units re-bind their
+        // diagnostics track from here instead of silently going spanless.
+        let mut lowered_spans: std::collections::BTreeMap<String, Vec<(u32, SpanInfo)>> =
+            std::collections::BTreeMap::new();
         if !still_missing.is_empty() {
             // Real whole-module lowering — counted as exactly ONE call per
             // request, never per-unit (review F798-R1-06).
@@ -343,7 +369,7 @@ impl Driver {
                 Err(d) => return (Some(d), None, vec![], None),
             };
             obs.counter("mir_lower_modules", 1);
-            if let Err(d) = obs.span("mir_verify", Some("request"), |o| {
+            match obs.span("mir_verify", Some("request"), |o| {
                 verify_mir(&m).map_err(|e| {
                     o.counter("mir_verify_reject", 1);
                     StageDiag {
@@ -353,7 +379,10 @@ impl Driver {
                     }
                 })
             }) {
-                return (Some(d), None, vec![], None);
+                Ok(checked) => {
+                    verify_analysis_bytes += checked.stats().analysis_bytes as usize;
+                }
+                Err(d) => return (Some(d), None, vec![], None),
             }
             let units = match obs.span("mir_split", Some("request"), |_| {
                 split_units(&m).map_err(|e| StageDiag {
@@ -365,6 +394,54 @@ impl Driver {
                 Ok(u) => u,
                 Err(d) => return (Some(d), None, vec![], None),
             };
+            // The lowered MIR is a live composite allocation (F798-R3-08).
+            staging_now += m.heap_estimate();
+            staging_peak = staging_peak.max(staging_now);
+            // Sidecars under the CURRENT snapshot for the units THIS
+            // request persists (no ABC hit): position drift on a later hit
+            // re-binds instead of losing the source mapping (F798-R3-03).
+            // Units that merely HIT keep binding in-memory from
+            // `lowered_spans` below — no store write per hit (writing
+            // every unit's sidecar here regressed the warm-edit window by
+            // >1s of store puts). Write failures propagate — diagnostics
+            // provenance is not best-effort.
+            {
+                let missing_names: std::collections::BTreeSet<&str> = still_missing
+                    .iter()
+                    .map(|idx| infos[*idx].name.as_str())
+                    .collect();
+                for u in units.iter() {
+                    let name = u.funcs[0].name.clone();
+                    if let Some(store) = self.store.as_ref() {
+                        if missing_names.contains(name.as_str()) {
+                            let skey = sidecar_key(&owner, &name, snapshot);
+                            let sexpect = EnvelopeIdentity::sidecar(&owner, snapshot);
+                            let spayload = encode_sidecar(&u.funcs[0].spans);
+                            if let Err(e) = put_enveloped(
+                                store,
+                                &skey,
+                                "A08",
+                                &sexpect,
+                                &spayload,
+                                vec![],
+                                Some(&self.project),
+                            ) {
+                                return (
+                                    Some(StageDiag {
+                                        stage: "cache".to_string(),
+                                        code: "cache.put".to_string(),
+                                        message: format!("sidecar `{}`: {}", name, e),
+                                    }),
+                                    None,
+                                    vec![],
+                                    None,
+                                );
+                            }
+                        }
+                    }
+                    lowered_spans.insert(name, u.funcs[0].spans.clone());
+                }
+            }
             let by_fp: std::collections::BTreeMap<&str, &MirModule> = units
                 .iter()
                 .map(|u| (u.funcs[0].name.as_str(), u))
@@ -388,9 +465,10 @@ impl Driver {
                     }
                 };
                 // Persist the MIR unit (code content, spans stripped) under
-                // the A08 MirUnit envelope.
+                // the A08 MirUnit envelope. (Sidecars for ALL units under
+                // the current snapshot were written above — F798-R3-03.)
                 let mut spanless = (*unit).clone();
-                let spans = std::mem::take(&mut spanless.funcs[0].spans);
+                std::mem::take(&mut spanless.funcs[0].spans);
                 if let Some(store) = self.store.as_ref() {
                     let mkey = crate::cache::mir_unit_key(&owner, &info.name, &info.fp, &caps_fp);
                     let mbytes = match encode_abc(&spanless) {
@@ -408,7 +486,7 @@ impl Driver {
                             )
                         }
                     };
-                    staging_now += mbytes.total_len;
+                    staging_now += spanless.heap_estimate() + mbytes.total_len;
                     staging_peak = staging_peak.max(staging_now);
                     let mexpect = EnvelopeIdentity::mir(&owner, 0);
                     if let Err(e) = put_enveloped(
@@ -432,19 +510,6 @@ impl Driver {
                         );
                     }
                     mir_persisted += 1;
-                    // Sidecar track (position-bound diagnostics) for this unit.
-                    let skey = sidecar_key(&owner, &info.name, snapshot);
-                    let sexpect = EnvelopeIdentity::sidecar(&owner, snapshot);
-                    let spayload = encode_sidecar(&spans);
-                    let _ = put_enveloped(
-                        store,
-                        &skey,
-                        "A08",
-                        &sexpect,
-                        &spayload,
-                        vec![],
-                        Some(&self.project),
-                    );
                 }
                 fresh_units.push((*unit).clone());
             }
@@ -462,15 +527,16 @@ impl Driver {
                 .collect();
             for idx in abc_misses.iter() {
                 let idx = *idx;
+                let name = infos[idx].name.clone();
                 let info = &infos[idx];
-                let unit = match by_name.get(info.name.as_str()) {
+                let unit = match by_name.get(name.as_str()) {
                     Some(u) => *u,
                     None => {
                         return (
                             Some(StageDiag {
                                 stage: "abc-emit".to_string(),
                                 code: "abc.emit.missing-unit".to_string(),
-                                message: format!("no MIR source for unit `{}`", info.name),
+                                message: format!("no MIR source for unit `{}`", name),
                             }),
                             None,
                             vec![],
@@ -495,11 +561,12 @@ impl Driver {
                         )
                     }
                 };
-                staging_now += bytes.total_len;
+                staging_now += spanless.heap_estimate() + bytes.total_len;
                 staging_peak = staging_peak.max(staging_now);
+                let payload_fp = payload_fingerprint(&bytes.to_flat());
                 abc_emitted += 1;
                 if let Some(store) = self.store.as_ref() {
-                    let key = abc_unit_key(&owner, &info.name, &info.fp, &caps_fp);
+                    let key = abc_unit_key(&owner, &name, &info.fp, &caps_fp);
                     let expect = EnvelopeIdentity::abc(&owner);
                     if let Err(e) = put_enveloped(
                         store,
@@ -514,7 +581,7 @@ impl Driver {
                             Some(StageDiag {
                                 stage: "cache".to_string(),
                                 code: "cache.put".to_string(),
-                                message: format!("unit `{}`: {}", info.name, e),
+                                message: format!("unit `{}`: {}", name, e),
                             }),
                             None,
                             vec![],
@@ -522,6 +589,8 @@ impl Driver {
                         );
                     }
                 }
+                // (the immutable borrow of `infos[idx]` ended above)
+                infos[idx].payload_fp = Some(payload_fp);
             }
         }
         obs.set_counter("mir_units_persisted", mir_persisted);
@@ -558,7 +627,9 @@ impl Driver {
             match obs.span("abc_verify", Some("request"), |_| {
                 abc_verify::verify_abc(decoded_clone(&decoded), &owner_scope)
             }) {
-                Ok(_) => {}
+                Ok(loaded) => {
+                    verify_analysis_bytes += loaded.stats().analysis_bytes as usize;
+                }
                 Err(e) => {
                     return (
                         Some(StageDiag {
@@ -577,20 +648,116 @@ impl Driver {
             for f in modu.funcs.iter_mut() {
                 f.owner = owner_scope.clone();
             }
-            // Re-bind the diagnostics track from the sidecar (position-bound).
-            if let Some(store) = self.store.as_ref() {
-                let skey = sidecar_key(&owner, &info.name, snapshot);
-                let sexpect = EnvelopeIdentity::sidecar(&owner, snapshot);
-                if let Ok(Some(sp)) = get_enveloped_opt(store, &skey, "A08", &sexpect) {
-                    if let Ok(spans) = decode_sidecar(&sp) {
-                        merge_spans(&mut modu, &spans);
-                    }
-                }
-            }
+            staging_now += modu.heap_estimate();
+            staging_peak = staging_peak.max(staging_now);
             decoded_units.push(modu);
         }
         let mut all_units = decoded_units;
         all_units.extend(fresh_units);
+        // ---- F798-R3-03: diagnostics re-binding to the CURRENT revision --
+        // Persisted MIR/ABC units are spanless by design; a unit entering
+        // the closure without spans binds them (sidecar under this
+        // snapshot → this request's lowered spans → ONE bounded
+        // diagnostics re-derive lower, counted separately and honestly as
+        // `sidecar_rebind_lower_modules`). A unit with no derivable source
+        // mapping is a controlled identity rejection — never a silently
+        // spanless executable whose traps would lose their source.
+        {
+            let names: Vec<String> = all_units
+                .iter()
+                .filter(|u| u.funcs[0].spans.is_empty())
+                .map(|u| u.funcs[0].name.clone())
+                .collect();
+            let mut rederived: Option<std::collections::BTreeMap<String, Vec<(u32, SpanInfo)>>> =
+                None;
+            for name in names {
+                let unit = all_units
+                    .iter_mut()
+                    .find(|u| u.funcs[0].name == name && u.funcs[0].spans.is_empty())
+                    .expect("just collected");
+                let mut bound = false;
+                // This request's own lowered spans first: zero IO and by
+                // construction the exact current revision. The sidecar
+                // under the current snapshot serves requests that hit
+                // without lowering; the bounded re-derive covers the rest.
+                if let Some(spans) = lowered_spans.get(&name) {
+                    merge_spans(unit, spans);
+                    bound = true;
+                }
+                if !bound {
+                    if let Some(store) = self.store.as_ref() {
+                        let skey = sidecar_key(&owner, &name, snapshot);
+                        let sexpect = EnvelopeIdentity::sidecar(&owner, snapshot);
+                        match get_enveloped_opt(store, &skey, "A08", &sexpect) {
+                            Ok(Some(sp)) => {
+                                if let Ok(spans) = decode_sidecar(&sp) {
+                                    merge_spans(unit, &spans);
+                                    bound = true;
+                                }
+                                // Present but undecodable: fall through to
+                                // the re-derive, which rewrites the bad
+                                // sidecar.
+                            }
+                            Ok(None) => {}
+                            Err(e) => {
+                                return (
+                                    Some(StageDiag {
+                                        stage: "cache".to_string(),
+                                        code: "cache.identity".to_string(),
+                                        message: format!("sidecar `{}`: {}", name, e),
+                                    }),
+                                    None,
+                                    vec![],
+                                    None,
+                                );
+                            }
+                        }
+                    }
+                }
+                if !bound {
+                    if rederived.is_none() {
+                        match obs.span("sidecar_rebind_lower", Some("request"), |o| {
+                            rederive_spans(
+                                checked,
+                                &owner,
+                                entry,
+                                snapshot,
+                                self.store.as_ref(),
+                                &self.project,
+                                o,
+                            )
+                        }) {
+                            Ok(map) => {
+                                rederived = Some(map);
+                                obs.counter("sidecar_rebind_lower_modules", 1);
+                            }
+                            Err(d) => return (Some(d), None, vec![], None),
+                        }
+                    }
+                    let spans = rederived
+                        .as_ref()
+                        .unwrap()
+                        .get(&name)
+                        .cloned()
+                        .ok_or_else(|| {
+                            StageDiag {
+                                stage: "cache".to_string(),
+                                code: "cache.identity".to_string(),
+                                message: format!(
+                                    "unit `{}` has no sidecar under the current snapshot and is absent from the current revision",
+                                    name
+                                ),
+                            }
+                        });
+                    match spans {
+                        Ok(s) => {
+                            merge_spans(unit, &s);
+                        }
+                        Err(d) => return (Some(d), None, vec![], None),
+                    }
+                }
+            }
+        }
         let merged = match obs.span("closure_assemble", Some("request"), |o| {
             assemble_closure(&all_units, &owner, entry).map_err(|e| {
                 o.counter("closure_reject", 1);
@@ -633,15 +800,21 @@ impl Driver {
             Ok(l) => l,
             Err(d) => return (Some(d), None, vec![], None),
         };
+        verify_analysis_bytes += loaded.stats().analysis_bytes as usize;
         obs.set_counter("verify_load", 1);
         obs.counter("closure_encodes", 1);
-        // Hot partition: the loaded closure retained through execution
-        // (code/data). Staging peak is finalized AFTER the closure codec
-        // roundtrip — the decode/index/assembly staging lives until here
-        // (F798-R2-02).
-        obs.set_counter("peak_hot_bytes", closure_bytes_total as u64);
-        staging_now += closure_bytes_total;
+        // F798-R3-08: partition accounting over REAL working-set estimates.
+        // Hot = the loaded closure retained through execution (wire + the
+        // decoded module structure + the credential's own clone); staging
+        // additionally covers the codec roundtrip buffers and every
+        // verification's composite analysis bound (recorded on the
+        // credential), finalized AFTER the closure codec — decode/index/
+        // assembly staging lives until here (F798-R2-02).
+        let hot_bytes =
+            closure_bytes_total + merged.heap_estimate() + loaded.module().heap_estimate();
+        staging_now += closure_bytes_total + merged.heap_estimate() + verify_analysis_bytes;
         staging_peak = staging_peak.max(staging_now);
+        obs.set_counter("peak_hot_bytes", hot_bytes as u64);
         obs.set_counter("peak_staging_bytes", staging_peak as u64);
 
         // ---- manifest ----------------------------------------------------
@@ -650,12 +823,42 @@ impl Driver {
             let mut links: Vec<UnitLink> = Vec::new();
             for info in infos.iter() {
                 let key = abc_unit_key(&owner, &info.name, &info.fp, &caps_fp);
+                // F798-R3-02: bind the link to the EXACT payload bytes this
+                // request loaded/emitted (fingerprinted where the bytes
+                // were in hand — no per-unit store re-read on the warm
+                // path), and run the REAL shared-domain association
+                // admission (DeclRef re-derivation + envelope + payload
+                // binding) at the point of consumption.
+                let Some(payload_fp) = info.payload_fp.clone() else {
+                    continue;
+                };
+                let decl = crate::semrefs::unit_decl_ref(
+                    &crate::semrefs::av_package(),
+                    &owner,
+                    &info.name,
+                    &info.dump,
+                );
+                let envelope = crate::semrefs::unit_sema_ref(&payload_fp);
+                if let Err(e) = crate::semrefs::admit_unit_ref(&envelope, &decl, &payload_fp) {
+                    return (
+                        Some(StageDiag {
+                            stage: "sema".to_string(),
+                            code: "sema.ref-admission".to_string(),
+                            message: format!("unit `{}`: {:?}", info.name, e),
+                        }),
+                        None,
+                        vec![],
+                        None,
+                    );
+                }
                 if let Ok(Some(art)) = store.get_artifact("A09", &key) {
                     links.push(UnitLink {
                         name: info.name.clone(),
                         artifact: art.artifact_id.clone(),
                         sig: info.sig.clone(),
                         logical: info.logical.clone(),
+                        payload_fp: payload_fp.clone(),
+                        sema: Some(SemaRefSer::for_payload(&payload_fp)),
                     });
                 }
             }
@@ -704,6 +907,57 @@ fn decoded_clone(d: &auto_av_core::DecodedAbc) -> auto_av_core::DecodedAbc {
     }
 }
 
+/// Diagnostics-only span re-derive (F798-R3-03): lower the CURRENT checked
+/// module once and return every function's span map, persisting sidecars
+/// under the current snapshot when a store is attached. Counted separately
+/// from `mir_lower_modules` — this is diagnostics provenance regeneration,
+/// never a code-artifact rebuild (no MIR unit or ABC payload is persisted).
+fn rederive_spans(
+    checked: &CheckedModule,
+    owner: &str,
+    entry: &str,
+    snapshot: u64,
+    store: Option<&ac_artifact_probe::store::ManagedStore>,
+    project: &str,
+    _obs: &mut Obs,
+) -> Result<std::collections::BTreeMap<String, Vec<(u32, SpanInfo)>>, StageDiag> {
+    let m = lower_checked(checked, entry, snapshot).map_err(|e: AdapterError| StageDiag {
+        stage: "mir-lower".to_string(),
+        code: e.code(),
+        message: format!("span re-derive lowering failed: {:?}", e),
+    })?;
+    let units = split_units(&m).map_err(|e| StageDiag {
+        stage: "mir-split".to_string(),
+        code: "mir.split".to_string(),
+        message: format!("span re-derive split failed: {}", e),
+    })?;
+    let mut map = std::collections::BTreeMap::new();
+    for u in units.iter() {
+        let name = u.funcs[0].name.clone();
+        if let Some(store) = store {
+            let skey = sidecar_key(owner, &name, snapshot);
+            let sexpect = EnvelopeIdentity::sidecar(owner, snapshot);
+            let spayload = encode_sidecar(&u.funcs[0].spans);
+            put_enveloped(
+                store,
+                &skey,
+                "A08",
+                &sexpect,
+                &spayload,
+                vec![],
+                Some(project),
+            )
+            .map_err(|e| StageDiag {
+                stage: "cache".to_string(),
+                code: "cache.put".to_string(),
+                message: format!("sidecar re-derive `{}`: {}", name, e),
+            })?;
+        }
+        map.insert(name, u.funcs[0].spans.clone());
+    }
+    Ok(map)
+}
+
 fn sig_string(
     module: &auto_ac_prototype::hir::Module,
     ty: auto_ac_prototype::hir::TypeId,
@@ -742,10 +996,16 @@ fn sig_string(
 /// ALL bracket kinds — measured on the REAL token streams of both landed
 /// frontends (`source::lexer::tokenize`, `atom_text::tokenize`). The source
 /// lexer/parser/resolve/typecheck walks are ITERATIVE (landed R5/R6), so
-/// the only genuine host-recursion path in the old frontends is the Atom
-/// document parser's nested-list recursion — the `[` depth scan in
-/// [`front_door_admit_atom`] guards it BEFORE that parser runs. Breaches
-/// are RESOURCE rejections, never syntax errors.
+/// the genuine host-recursion paths in the old frontends are the Atom
+/// document parser's nested-list recursion (the `[` depth scan in
+/// [`front_door_admit_atom`]) and the recursive `eval_expr` over
+/// left/right-associated operator CHAINS: a flat `a + b + c + …` run
+/// builds one parse-recursion level per operand even at bracket depth 1,
+/// so the front door counts consecutive operator tokens as expression
+/// CONSTRUCTION depth too (F798-R3-04 — a 600-term flat chain must be a
+/// resource rejection HERE, not a `mir.lower.depth` unsupported from
+/// inside the recursive parser at its own 512 limit).
+/// Breaches are RESOURCE rejections, never syntax errors.
 pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
     use auto_ac_prototype::source::lexer::{tokenize, Tok, P};
     if src.len() > MAX_INPUT_BYTES {
@@ -765,25 +1025,63 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
         message: d.message.clone(),
     })?;
     let (mut depth, mut max_depth) = (0u32, 0u32);
+    // Operator-run depth: consecutive binary/unary operator puncts at one
+    // bracket level, reset by ANY other punct (delimiters terminate an
+    // expression) but not by operands (Idents/keywords/literals continue
+    // the same expression construction).
+    let is_chain_op = |p: &P| {
+        matches!(
+            p,
+            P::Plus
+                | P::Star
+                | P::Slash
+                | P::Percent
+                | P::Minus
+                | P::Lt
+                | P::Gt
+                | P::LeEq
+                | P::GeEq
+                | P::EqEq
+                | P::NotEq
+                | P::AmpAmp
+                | P::PipePipe
+        )
+    };
+    let (mut chain_ops, mut max_chain) = (0u32, 0u32);
     for t in &tokens {
-        match t.tok {
-            Tok::Punct(P::LParen | P::LBracket | P::LBrace) => {
+        match &t.tok {
+            Tok::Punct(p) if matches!(p, P::LParen | P::LBracket | P::LBrace) => {
                 depth += 1;
                 max_depth = max_depth.max(depth);
+                chain_ops = 0;
             }
-            Tok::Punct(P::RParen | P::RBracket | P::RBrace) => {
+            Tok::Punct(p) if matches!(p, P::RParen | P::RBracket | P::RBrace) => {
                 depth = depth.saturating_sub(1);
+                chain_ops = 0;
+            }
+            Tok::Punct(p) if is_chain_op(p) => {
+                chain_ops += 1;
+                max_chain = max_chain.max(chain_ops);
+            }
+            Tok::Punct(_) => {
+                // Any other punct (`,` `;` `:` `=` `.` `!`) terminates the
+                // current expression construction.
+                chain_ops = 0;
             }
             _ => {}
         }
     }
-    if max_depth > MAX_FRONTEND_NESTING {
+    // A run of K operators forms a K+1-operand construction — one parse
+    // recursion level per operand.
+    let expr_depth = max_chain + 1;
+    let over = max_depth > MAX_FRONTEND_NESTING || expr_depth > MAX_FRONTEND_NESTING;
+    if over {
         return Err(StageDiag {
             stage: "admission".into(),
             code: "av.resource.frontend-nesting".into(),
             message: format!(
-                "token nesting {} exceeds the frozen front-door budget {}",
-                max_depth, MAX_FRONTEND_NESTING
+                "token nesting {} / expression construction depth {} exceeds the frozen front-door budget {}",
+                max_depth, expr_depth, MAX_FRONTEND_NESTING
             ),
         });
     }

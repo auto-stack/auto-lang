@@ -135,8 +135,13 @@ fn mir_admission_module_tables_over_budget_is_resource() {
 }
 
 /// V-09 r2 counter-control 3/3: the COMBINATION upper bound. Every
-/// per-family table is under budget, but the whole-module closure exceeds
-/// the request-level verify work budget — rejected as VerifySteps.
+/// per-family table is under budget AND the decoded heap estimate stays
+/// inside the staging partition, but the init dataflow's per-visit word
+/// work drives the whole-module closure past the request-level verify
+/// work budget — rejected as VerifySteps (F798-R3-08 reshaping: the fat
+/// instruction-count construction now legitimately hits the DecodeMemory
+/// guard first, so the steps bound is exercised through the memory-lean
+/// wide-slot chain shape).
 #[test]
 fn mir_admission_combination_bound_is_verify_steps() {
     let mut m = MirModule::new(OwnerScope {
@@ -149,11 +154,19 @@ fn mir_admission_combination_bound_is_verify_steps() {
         result: ti,
     }));
     let c = m.intern_const(MirConst::I32(1));
-    // 40 functions x 31k blocks (each family ~62k entries < 65 536); the
-    // closure totals ~1.24M instructions -> beyond the 2M-step budget when
-    // counting typing + init visits.
-    for f in 0..40 {
-        let n = 31_000u32;
+    // 30 functions × 2 000 blocks × 1 instr, each with 4 096 slots:
+    // per-family entries = 8 096 < 65 536; heap ≈ 9.7 MiB < 16 MiB;
+    // analysis ≈ 3 MiB/function < 16 MiB; init steps ≈ 30 × 2 000 × 65
+    // ≈ 3.9 M > 2 M.
+    for f in 0..30 {
+        let n = 2_000u32;
+        let slots: Vec<MirSlot> = (0..4_096)
+            .map(|_| MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: None,
+            })
+            .collect();
         let mut blocks = Vec::with_capacity(n as usize);
         for i in 0..n {
             blocks.push(MirBlock {
@@ -169,11 +182,7 @@ fn mir_admission_combination_bound_is_verify_steps() {
             owner: m.owner.clone(),
             name: format!("d_f{f:02}"),
             sig,
-            slots: vec![MirSlot {
-                kind: SlotKind::Local,
-                ty: ti,
-                name: None,
-            }],
+            slots,
             blocks,
             entry: 0,
             source_snapshot: 0,
@@ -181,6 +190,11 @@ fn mir_admission_combination_bound_is_verify_steps() {
         });
     }
     m.entry = 0;
+    assert!(
+        m.heap_estimate() < auto_av_core::contract::MAX_DECODED_MODULE_BYTES,
+        "lean precondition: heap estimate {} must stay under the decode-memory budget",
+        m.heap_estimate()
+    );
     let err = verify_mir(&m).unwrap_err();
     assert!(
         matches!(

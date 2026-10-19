@@ -102,6 +102,8 @@ ABC 输入不因"由本编译器生成"跳过验证。分页：编码按 ≤256K
 | 表条目（**r2 正式合同**：**每表族**防护——模块表 types+consts+imports+funcs ≤65 536，且**每个函数** slots+blocks+instrs ≤65 536，均在深检前检查） | ≤65 536/表族 | `av.resource.table-entries` |
 | 前门嵌套（token 流，含全部括号种类；Atom 路径守 `[` 深度护递归文档 parser） | ≤128 | `av.resource.frontend-nesting` |
 | MIR/ABC 验证 | ≤2M 工作步、wall ≤5s | `av.resource.verify-steps/-wall` |
+| **r3**：验证组合分析内存（init 数据流 defs/in/out 位图，blocks×words×8×3，**分配前**核算） | ≤16 MiB（staging 分区份额） | `av.resource.verify-memory` |
+| **r3**：解码模块结构堆估算（表项放大守卫，深检前检查） | ≤16 MiB | `av.resource.decode-memory` |
 | AV 执行 | ≤1M 指令步、≤1024 帧、活槽 ≤8 MiB、wall ≤2s | `av.resource.instr-steps/frames/slot-bytes/execution-wall` |
 | 取消 | 每 ≤1024 指令轮询一次 relaxed load | 独立 `Cancelled` 态 |
 | 测试 trace | ≤64 KiB | `av.resource.trace-bytes` |
@@ -123,6 +125,24 @@ div-by-zero、div-overflow(MIN/-1)、rem-overflow(MIN%-1)。
 (1) 单函数超族 → `av.resource.table-entries`；(2) 模块表超族（70k consts）→
 同分类；(3) 组合超界（40×31k 块闭包）→ `av.resource.verify-steps`。
 
+**r3 修订记录**（复审 F798-R3-04/08 判定 → 本轮修复冻结）：
+(a) **验证组合分析内存**进入预算表——dense 单元（16 384 槽 × 8 192 块，
+24 581 条目、155 738 字节 wire，全部单表族内）在 init 数据流位图上分配
+~3×16 MiB 后才被 2M 步拒绝；r3 起位图上界（blocks×words×8×3 + 每块向量
+开销）在**分配前**核算，超 16 MiB（staging 分区份额）即
+`av.resource.verify-memory`（`mir_verify_dense_analysis_memory_pre_rejected`；
+凭证 `VerifyStats.analysis_bytes` 折入驱动 staging 台账）。组合上界的
+verify-steps 语义不变，其反控改用内存精简形态（30×2 000 块×4 096 槽，
+init 访问步数 ~3.9M > 2M）重钉。
+(b) **解码结构堆估算**守卫（`MirModule::heap_estimate`，len 基确定性估算，
+计入 staging/hot 分区台账替代 wire 长度冒充），解码放大超 16 MiB 即
+`av.resource.decode-memory`。
+(c) **前门表达式构造深度**：`a + b + c + …` 平坦运算符链在左结合下每操作
+数一层 parse 递归，与括号同属递归风险路径；前门对连续运算符 run
+（非运算符 punct 重置）计构造深度，K 个运算符 = K+1 操作数构造，超 128 即
+`av.resource.frontend-nesting`（`av_resources_flat_chain_front_door_boundary`：
+400 项在门前拒绝，不再由递归 parser 的 512 内限报 Unsupported）。
+
 ## 7. 前门递归风险核查（§5.5 T-01 义务）
 
 - `source::lexer::tokenize`：迭代；`source/parser.rs`：语句/表达式**全迭代**
@@ -131,9 +151,12 @@ div-by-zero、div-overflow(MIN/-1)、rem-overflow(MIN%-1)。
 - `atom_text::tokenize`：迭代；**唯一真实宿主递归**：Atom 文档 parser 的
   `parse_value`/`parse_field`（嵌套 list 递归下降）。
 - 结论：前门 = 两路 token 流括号深度扫描（`( [ {` 全种类，非仅花括号；Atom 路
-  只认 `[`），>128 在旧递归 parser 之前以 resource 拒绝
-  （`av_resources_front_door_nesting_boundary`、`av_resources_atom_front_door_rejects_before_recursive_parser`）。
-  表达式递归路径已由 landed 迭代实现覆盖——覆盖完整性成立，可行性门不触发。
+  只认 `[`）**加连续运算符链的构造深度扫描**（r3：`eval_expr` 对平坦链每操作
+  数一层递归，属真实宿主递归路径），>128 在旧递归 parser 之前以 resource 拒绝
+  （`av_resources_front_door_nesting_boundary`、
+  `av_resources_flat_chain_front_door_boundary`、
+  `av_resources_atom_front_door_rejects_before_recursive_parser`）。
+  表达式其余递归路径已由 landed 迭代实现覆盖——覆盖完整性成立，可行性门不触发。
 
 ## 8. 合法 carrier 与单元/依赖合同（§5.4）
 

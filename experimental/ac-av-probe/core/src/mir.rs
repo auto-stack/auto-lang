@@ -332,4 +332,67 @@ impl MirModule {
                 .map(|f| f.slots.len() + f.blocks.len() + f.flat_instr_count() as usize)
                 .sum::<usize>()
     }
+
+    /// Deterministic structural heap estimate (bytes) of this module as it
+    /// lives in memory — the staging/hot partition accounting primitive.
+    /// Wire length is NOT a working-set proxy (F798-R3-08): decoded clones,
+    /// slot/block tables and span maps are real allocations the ledger must
+    /// cover. The estimate uses `len()` (not capacity) so it is stable
+    /// across allocator behavior; it deliberately OVER-counts fixed
+    /// per-allocation headers, never under-counts the payload bytes.
+    pub fn heap_estimate(&self) -> usize {
+        const STR: usize = std::mem::size_of::<String>(); // 24
+        const VEC: usize = std::mem::size_of::<usize>() * 3; // 24
+        let mut b = std::mem::size_of::<MirModule>()
+            + self.profile.len()
+            + self.owner.schema.len()
+            + self.owner.module.len()
+            + STR * 3
+            + self
+                .capabilities
+                .iter()
+                .map(|c| c.len() + STR)
+                .sum::<usize>()
+            + VEC * 4;
+        b += self
+            .types
+            .iter()
+            .map(|t| match t {
+                MirType::I32 | MirType::Bool => 0, // inline enum, table vec counted below
+                MirType::Fn(s) => s.params.len() * std::mem::size_of::<TypeIdx>() + VEC,
+            })
+            .sum::<usize>()
+            + self.types.len() * std::mem::size_of::<MirType>()
+            + VEC;
+        b += self.consts.len() * std::mem::size_of::<MirConst>() + VEC;
+        b += self
+            .imports
+            .iter()
+            .map(|i| i.symbol.len() + STR)
+            .sum::<usize>()
+            + self.imports.len() * std::mem::size_of::<MirImport>()
+            + VEC;
+        b += self.funcs.len() * std::mem::size_of::<MirFunction>() + VEC;
+        for f in &self.funcs {
+            b += f.name.len() + STR;
+            b += f
+                .slots
+                .iter()
+                .map(|s| s.name.as_ref().map_or(0, |n| n.len() + STR))
+                .sum::<usize>()
+                + f.slots.len() * std::mem::size_of::<MirSlot>()
+                + VEC;
+            b += f.blocks.len() * std::mem::size_of::<MirBlock>() + VEC;
+            for blk in &f.blocks {
+                for instr in &blk.instrs {
+                    if let MirInstr::Call { args, .. } = instr {
+                        b += args.len() * std::mem::size_of::<SlotId>() + VEC;
+                    }
+                }
+                b += blk.instrs.len() * std::mem::size_of::<MirInstr>() + VEC;
+            }
+            b += f.spans.len() * std::mem::size_of::<(u32, SpanInfo)>() + VEC;
+        }
+        b
+    }
 }

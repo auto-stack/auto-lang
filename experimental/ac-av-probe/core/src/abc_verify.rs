@@ -59,6 +59,23 @@ pub fn verify_abc(
     decoded: DecodedAbc,
     expected_owner: &crate::mir::OwnerScope,
 ) -> Result<LoadedModule, AbcAdmissionError> {
+    // Version/profile re-check on the PUBLIC struct (F798-R3-01): decode
+    // rejects unknown values on the wire, but a hand-constructed
+    // DecodedAbc must not smuggle them past this constructor.
+    if decoded.version != crate::abc::ABC_VERSION {
+        return Err(AbcAdmissionError::Identity(format!(
+            "decoded version {} is not the admitted wire version {}",
+            decoded.version,
+            crate::abc::ABC_VERSION
+        )));
+    }
+    if decoded.profile != crate::abc::ABC_PROFILE_CORE_I32 {
+        return Err(AbcAdmissionError::Identity(format!(
+            "decoded profile id {} is not the admitted profile id {}",
+            decoded.profile,
+            crate::abc::ABC_PROFILE_CORE_I32
+        )));
+    }
     let mut module = decoded.module;
     // Identity re-stamp: the decoded content is admitted under the CALLER's
     // owner scope; wire bytes never carry their own authority.

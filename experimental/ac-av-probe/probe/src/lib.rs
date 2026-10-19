@@ -11,6 +11,7 @@ pub mod driver;
 pub mod hir_adapter;
 pub mod load256;
 pub mod mempeek;
+pub mod native_admission;
 pub mod native_reference;
 pub mod observations;
 pub mod semrefs;

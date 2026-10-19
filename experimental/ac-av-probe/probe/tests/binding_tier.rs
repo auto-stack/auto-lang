@@ -144,8 +144,15 @@ fn av_binding_schema_and_version_mismatch_rejected() {
     let decl = unit_decl_ref(&pkg, "m", "d_main", b"canonical-body");
     let good = unit_sema_ref(decl.logical.as_str());
     assert!(
-        admit_unit_ref(&good, &decl).is_ok(),
+        admit_unit_ref(&good, &decl, &good.payload_id).is_ok(),
         "well-formed ref admits"
+    );
+    // F798-R3-02: the envelope must name the EXACT payload being consumed —
+    // an honest envelope over an unrelated payload does not admit it.
+    let err = admit_unit_ref(&good, &decl, "unrelated-payload-id").unwrap_err();
+    assert!(
+        matches!(err, ac_sema_contract::RefError::UnknownPayload { .. }),
+        "unbound payload rejected: {err:?}"
     );
 
     // Wrong schema.
@@ -154,7 +161,7 @@ fn av_binding_schema_and_version_mismatch_rejected() {
         schema: "ac796/semaref/v999",
         payload_id: decl.logical.as_str().to_string(),
     };
-    let err = admit_unit_ref(&bad_schema, &decl).unwrap_err();
+    let err = admit_unit_ref(&bad_schema, &decl, &bad_schema.payload_id).unwrap_err();
     assert!(
         matches!(err, ac_sema_contract::RefError::WrongSchema { .. }),
         "{err:?}"
@@ -166,7 +173,7 @@ fn av_binding_schema_and_version_mismatch_rejected() {
         schema: SEMA_REF_SCHEMA_V1,
         payload_id: decl.logical.as_str().to_string(),
     };
-    let err = admit_unit_ref(&bad_owner, &decl).unwrap_err();
+    let err = admit_unit_ref(&bad_owner, &decl, &bad_owner.payload_id).unwrap_err();
     assert!(
         matches!(err, ac_sema_contract::RefError::WrongOwner { .. }),
         "{err:?}"
@@ -176,7 +183,7 @@ fn av_binding_schema_and_version_mismatch_rejected() {
     let mut tampered = unit_decl_ref(&pkg, "m", "d_main", b"canonical-body");
     let flipped = format!("{}x", tampered.logical.as_str());
     tampered.logical = ac_sema_contract::LogicalId(flipped);
-    let err = admit_unit_ref(&good, &tampered).unwrap_err();
+    let err = admit_unit_ref(&good, &tampered, &good.payload_id).unwrap_err();
     assert!(
         matches!(err, ac_sema_contract::RefError::TamperedLogical { .. }),
         "tampered logical rejected: {err:?}"
@@ -207,5 +214,5 @@ fn av_binding_consumes_contract_surface_only() {
     let p = av_package();
     let d = unit_decl_ref(&p, "m", "d_x", b"dump");
     let env = unit_sema_ref(d.logical.as_str());
-    assert!(admit_unit_ref(&env, &d).is_ok());
+    assert!(admit_unit_ref(&env, &d, &env.payload_id).is_ok());
 }

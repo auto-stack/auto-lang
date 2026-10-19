@@ -13,8 +13,3 @@ Rust 定向覆盖（`experimental/ac-av-probe/probe/tests/**`）继续并行保�
   与 sema/query-v1 同合同追加，不改共享协议）。
 - oracle 形态：success+`exit`（AV Success 值）、error-run+message（trap code）、
   error-parse/verify+code（诊断拒绝）——均为独立预期，非两后端互证。
-
-
-
-
-

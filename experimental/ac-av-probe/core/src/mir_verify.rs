@@ -15,8 +15,8 @@
 //! accepted. Legal CFG cycles are dataflow, not errors.
 
 use crate::contract::{
-    ResourceKind, SpanInfo, MAX_TABLE_ENTRIES, MAX_VERIFY_WALL, MAX_VERIFY_WORK_STEPS,
-    TRACE_CAPABILITY,
+    ResourceKind, SpanInfo, MAX_DECODED_MODULE_BYTES, MAX_TABLE_ENTRIES, MAX_VERIFY_ANALYSIS_BYTES,
+    MAX_VERIFY_WALL, MAX_VERIFY_WORK_STEPS, TRACE_CAPABILITY,
 };
 use crate::mir::*;
 use std::collections::VecDeque;
@@ -76,6 +76,10 @@ pub struct VerifyStats {
     pub work_steps: u64,
     pub reachable_blocks: usize,
     pub total_blocks: usize,
+    /// Upper bound of the analysis allocations this verification reserved
+    /// (init-dataflow bitsets etc.) — folded into the staging partition
+    /// ledger by consumers (F798-R3-08).
+    pub analysis_bytes: u64,
 }
 
 /// Verified MIR. Constructed only here; the inner module is private so a
@@ -114,6 +118,7 @@ pub fn verify_mir_with_deadline(
         module,
         steps: 0,
         deadline,
+        analysis_bytes: 0,
     };
     v.run()?;
     let stats = v.stats_snapshot();
@@ -127,6 +132,7 @@ struct Verifier<'a> {
     module: &'a MirModule,
     steps: u64,
     deadline: Instant,
+    analysis_bytes: u64,
 }
 
 impl<'a> Verifier<'a> {
@@ -152,6 +158,7 @@ impl<'a> Verifier<'a> {
             work_steps: self.steps,
             reachable_blocks: 0,
             total_blocks: self.module.funcs.iter().map(|f| f.blocks.len()).sum(),
+            analysis_bytes: self.analysis_bytes,
         }
     }
 
@@ -175,6 +182,25 @@ impl<'a> Verifier<'a> {
                     self.module.funcs.len()
                 ),
             ));
+        }
+        // Every function unit must live in the module's owner scope — a
+        // foreign-owner function table entry is an identity violation, not
+        // a shape quirk (F798-R3-01).
+        for (fi, f) in self.module.funcs.iter().enumerate() {
+            if f.owner != self.module.owner {
+                return Err(MirVerifyError::inv(
+                    "mir.owner",
+                    format!(
+                        "function #{} `{}` owner {}/{} differs from module owner {}/{}",
+                        fi,
+                        f.name,
+                        f.owner.schema,
+                        f.owner.module,
+                        self.module.owner.schema,
+                        self.module.owner.module
+                    ),
+                ));
+            }
         }
 
         // ---- budget: table entries BEFORE any deep allocation ----------
@@ -210,12 +236,24 @@ impl<'a> Verifier<'a> {
                 });
             }
         }
+        // Structural heap estimate BEFORE deep verification: wire length is
+        // not a working-set proxy (F798-R3-08).
+        let heap_est = self.module.heap_estimate();
+        if heap_est > MAX_DECODED_MODULE_BYTES {
+            return Err(MirVerifyError::Resource {
+                kind: ResourceKind::DecodeMemory,
+                message: format!(
+                    "decoded module heap estimate {} bytes exceeds the frozen budget {}",
+                    heap_est, MAX_DECODED_MODULE_BYTES
+                ),
+            });
+        }
 
         // ---- shape: type table -----------------------------------------
         for (ti, t) in self.module.types.iter().enumerate() {
             if let MirType::Fn(sig) = t {
                 for p in sig.params.iter().chain(std::iter::once(&sig.result)) {
-                    if *p as usize > self.module.types.len() {
+                    if *p as usize >= self.module.types.len() {
                         return Err(MirVerifyError::inv(
                             "mir.type-ref",
                             format!("type #{ti} references out-of-range type {}", p),
@@ -231,7 +269,26 @@ impl<'a> Verifier<'a> {
             }
         }
         // ---- shape: imports --------------------------------------------
+        // v1 support surface: ONLY the two approved test-trace intrinsics
+        // plus — in single-function UNITS — the internal `fn:<name>`
+        // linkage imports the closure assembler resolves into direct calls
+        // (deferred resolution for recursive/mutual units). Anything else
+        // is an UNSUPPORTED rejection at admission — never a runtime
+        // "unresolved import" infra outcome (F798-R3-01).
         for (ii, imp) in self.module.imports.iter().enumerate() {
+            let known = match imp.symbol.strip_prefix("fn:") {
+                Some(name) => self.module.is_unit && !name.is_empty(),
+                None => matches!(imp.symbol.as_str(), "hir.test.mark_a" | "hir.test.mark_b"),
+            };
+            if !known {
+                return Err(MirVerifyError::uns(
+                    "mir.import-unknown",
+                    format!(
+                        "import #{} `{}` is outside the supported v1 surface (test trace intrinsics; unit-internal fn: linkage)",
+                        ii, imp.symbol
+                    ),
+                ));
+            }
             let Some(sig) = self.module.sig_of(imp.sig) else {
                 return Err(MirVerifyError::inv(
                     "mir.import-sig",
@@ -243,6 +300,22 @@ impl<'a> Verifier<'a> {
             };
             self.check_sig_indices(sig)?;
         }
+        // ---- capability admission (allowlist) ----------------------------
+        // `trace` is the ONLY known capability; anything else — minted by a
+        // future producer or hand-crafted — is unsupported at admission,
+        // not a runtime grant (F798-R3-01).
+        for c in &self.module.capabilities {
+            if c != TRACE_CAPABILITY {
+                return Err(MirVerifyError::uns(
+                    "mir.capability-unknown",
+                    format!(
+                        "capability `{}` is not in the supported set (`{}`)",
+                        c, TRACE_CAPABILITY
+                    ),
+                ));
+            }
+        }
+        // Trace USE still requires the declared capability.
         // ---- capability admission for trace intrinsics ------------------
         let uses_trace = self
             .module
@@ -681,6 +754,32 @@ impl<'a> Verifier<'a> {
         let n = f.slots.len();
         let words = words_for(n);
         let blocks = f.blocks.len();
+        // Composite analysis budget BEFORE allocation (F798-R3-08): the
+        // init dataflow holds defs/in/out bitsets of blocks × words each
+        // (plus per-block successor/predecessor vectors). A dense unit
+        // (16384 slots × 8192 blocks ≈ 3 × 16 MiB) previously allocated
+        // ~51.7 MiB BEFORE the work-step budget rejected it — the guard
+        // must fire first, as a resource classification.
+        let per_matrix = blocks * words * std::mem::size_of::<u64>();
+        let analysis_bound = per_matrix.saturating_mul(3)
+            + blocks
+                * (std::mem::size_of::<Vec<u64>>()
+                    + 2 * std::mem::size_of::<Vec<u32>>()
+                    + 2 * std::mem::size_of::<u32>());
+        self.analysis_bytes = self.analysis_bytes.max(analysis_bound as u64);
+        if analysis_bound > MAX_VERIFY_ANALYSIS_BYTES {
+            return Err(MirVerifyError::Resource {
+                kind: ResourceKind::VerifyMemory,
+                message: format!(
+                    "init analysis for `{}` needs ~{} bytes ({} blocks × {} words × 3 matrices), above the frozen {} budget",
+                    f.name,
+                    analysis_bound,
+                    blocks,
+                    words,
+                    MAX_VERIFY_ANALYSIS_BYTES
+                ),
+            });
+        }
         // Def sets per block (fixed after the typing pass).
         let defs: Vec<Vec<u64>> = f
             .blocks
@@ -1248,5 +1347,218 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    // ---- F798-R3-01 admissions: owner / capability / import identity ----
+
+    #[test]
+    fn mir_admission_foreign_function_owner_rejected() {
+        let mut m = MirModule::new(owner());
+        let fi = entry_fn(&mut m, "main");
+        let t = m.intern_type(MirType::I32);
+        m.funcs[fi as usize].slots = vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: t,
+            name: Some("r".into()),
+        }];
+        let c = m.intern_const(MirConst::I32(7));
+        m.funcs[fi as usize].blocks[0].instrs = vec![MirInstr::Const { dst: 0, value: c }];
+        m.entry = fi;
+        // Tamper: the function claims a foreign owner scope.
+        m.funcs[fi as usize].owner = OwnerScope {
+            schema: MIR_SCHEMA.to_string(),
+            module: "other-module".to_string(),
+        };
+        let err = verify_mir(&m).unwrap_err();
+        assert!(
+            matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.owner"),
+            "got {err:?}"
+        );
+        // Legal control: same owner verifies.
+        m.funcs[fi as usize].owner = owner();
+        verify_mir(&m).expect("same-owner module verifies");
+    }
+
+    #[test]
+    fn mir_admission_type_ref_equal_len_rejected() {
+        let mut m = MirModule::new(owner());
+        let ti = m.intern_type(MirType::I32);
+        // An Fn type whose param points at index == types.len() AFTER the
+        // Fn itself is pushed (out of range by exactly one — the old `>`
+        // check let it through, F798-R3-01).
+        let idx_after_push = (m.types.len() + 1) as u32;
+        let _bad = m.intern_type(MirType::Fn(FnSig {
+            params: vec![ti, idx_after_push],
+            result: ti,
+        }));
+        let err = verify_mir(&m).unwrap_err();
+        assert!(
+            matches!(err, MirVerifyError::Invalid { ref code, .. } if code == "mir.type-ref"),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn mir_admission_unknown_capability_rejected() {
+        let mut m = MirModule::new(owner());
+        let fi = entry_fn(&mut m, "main");
+        let _ = fi;
+        m.capabilities = vec!["unknown.superuser".to_string()];
+        m.entry = 0;
+        let err = verify_mir(&m).unwrap_err();
+        assert!(
+            matches!(err, MirVerifyError::Unsupported { ref code, .. } if code == "mir.capability-unknown"),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn mir_admission_unknown_import_rejected() {
+        let mut m = MirModule::new(owner());
+        let ti = m.intern_type(MirType::I32);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![ti],
+            result: ti,
+        }));
+        let fi = entry_fn(&mut m, "main");
+        let t = m.intern_type(MirType::I32);
+        m.funcs[fi as usize].slots = vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: t,
+            name: Some("r".into()),
+        }];
+        let c7 = m.intern_const(MirConst::I32(7));
+        m.funcs[fi as usize].blocks[0].instrs = vec![MirInstr::Const { dst: 0, value: c7 }];
+        m.imports.push(MirImport {
+            symbol: "unknown.native.ffi".to_string(),
+            effect: Effect::Pure,
+            sig,
+        });
+        m.entry = 0;
+        let err = verify_mir(&m).unwrap_err();
+        assert!(
+            matches!(err, MirVerifyError::Unsupported { ref code, .. } if code == "mir.import-unknown"),
+            "got {err:?}"
+        );
+        // The approved trace intrinsics with the trace capability stay
+        // admissible in a module (unused import is a shape, not a grant).
+        m.imports.clear();
+        m.imports.push(MirImport {
+            symbol: "hir.test.mark_a".to_string(),
+            effect: Effect::Observable,
+            sig,
+        });
+        m.capabilities = vec![TRACE_CAPABILITY.to_string()];
+        verify_mir(&m).expect("trace import with capability verifies");
+    }
+
+    #[test]
+    fn mir_admission_unit_fn_linkage_import_allowed() {
+        let mut m = MirModule::unit(owner());
+        let ti = m.intern_type(MirType::I32);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![ti],
+            result: ti,
+        }));
+        m.imports.push(MirImport {
+            symbol: "fn:helper".to_string(),
+            effect: Effect::Pure,
+            sig,
+        });
+        let f = MirFunction {
+            owner: owner(),
+            name: "caller".into(),
+            sig,
+            slots: vec![MirSlot {
+                kind: SlotKind::Param,
+                ty: ti,
+                name: None,
+            }],
+            blocks: vec![MirBlock {
+                instrs: vec![],
+                term: Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        };
+        m.funcs.push(f);
+        m.entry = 0;
+        verify_mir(&m).expect("unit fn: linkage import verifies");
+        // The same linkage import is NOT admissible in a whole module.
+        m.is_unit = false;
+        let err = verify_mir(&m).unwrap_err();
+        assert!(
+            matches!(err, MirVerifyError::Unsupported { ref code, .. } if code == "mir.import-unknown"),
+            "got {err:?}"
+        );
+    }
+
+    // ---- F798-R3-08: composite analysis memory BEFORE allocation ----
+
+    #[test]
+    fn mir_verify_dense_analysis_memory_pre_rejected() {
+        let mut m = MirModule::new(owner());
+        let ti = m.intern_type(MirType::I32);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        // 16384 slots + 8192 empty blocks: 24581 table entries — under every
+        // per-table budget, but the init bitsets need 3 × 16 MiB.
+        let slots: Vec<MirSlot> = (0..16_384)
+            .map(|_| MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: None,
+            })
+            .collect();
+        let blocks: Vec<MirBlock> = (0..8192)
+            .map(|i| MirBlock {
+                instrs: vec![],
+                term: Terminator::Jump {
+                    target: (i + 1) % 8192,
+                },
+            })
+            .collect();
+        m.funcs.push(MirFunction {
+            owner: owner(),
+            name: "dense".into(),
+            sig,
+            slots,
+            blocks,
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+        m.entry = 0;
+        let err = verify_mir(&m).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                MirVerifyError::Resource {
+                    kind: ResourceKind::VerifyMemory,
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
+    }
+
+    #[test]
+    fn mir_verify_analysis_bytes_recorded_on_credential() {
+        let mut m = MirModule::new(owner());
+        let fi = entry_fn(&mut m, "main");
+        let t = m.intern_type(MirType::I32);
+        m.funcs[fi as usize].slots = vec![MirSlot {
+            kind: SlotKind::Local,
+            ty: t,
+            name: Some("r".into()),
+        }];
+        let c = m.intern_const(MirConst::I32(7));
+        m.funcs[fi as usize].blocks[0].instrs = vec![MirInstr::Const { dst: 0, value: c }];
+        m.entry = fi;
+        let checked = verify_mir(&m).expect("verified");
+        assert!(checked.stats().analysis_bytes > 0);
     }
 }

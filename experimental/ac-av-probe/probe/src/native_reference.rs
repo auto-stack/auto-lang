@@ -56,19 +56,61 @@ impl std::fmt::Display for NativeError {
 
 /// Build + link + run one module's entry natively. `trace_lib` adds the
 /// PLAN-770 trace support object (mark_a/mark_b) for trace parity runs.
+///
+/// F798-R3-11: the run stage uses the landed RAW-BYTES capped executor
+/// (`run_deadlined_captured`) with the frozen 1 MiB-per-stream caps — the
+/// legacy `run_deadlined_split` wrapper is display-only and silently maps
+/// to `CaptureCaps::none()`. The build stages share ONE absolute budget
+/// clock started at entry: each stage is refused when the remaining
+/// budget is already spent (pre-check) and a post-check attributes any
+/// overrun; the run stage's deadline is the REMAINING total budget
+/// (bounded by the per-run budget), so a link stage that consumed the
+/// build clock cannot borrow run time.
 pub fn build_and_run(
     checked: &CheckedModule,
     entry: &str,
     workdir: &Path,
     trace_lib: Option<&Path>,
 ) -> Result<NativeRun, NativeError> {
+    build_and_run_with_caps(
+        checked,
+        entry,
+        workdir,
+        trace_lib,
+        NATIVE_STREAM_CAP,
+        NATIVE_STREAM_CAP,
+    )
+}
+
+/// Frozen per-stream output cap (§3: stdout/stderr each ≤ 1 MiB).
+pub const NATIVE_STREAM_CAP: usize = 1024 * 1024;
+
+/// The budget-carrying core (caps injectable for the failure counter-test).
+#[allow(clippy::too_many_arguments)]
+pub fn build_and_run_with_caps(
+    checked: &CheckedModule,
+    entry: &str,
+    workdir: &Path,
+    trace_lib: Option<&Path>,
+    stdout_cap: usize,
+    stderr_cap: usize,
+) -> Result<NativeRun, NativeError> {
     let started = std::time::Instant::now();
+    let build_deadline = NATIVE_BUILD_BUDGET;
+    let stage_precheck = |stage: &'static str| -> Result<(), NativeError> {
+        if started.elapsed() > build_deadline {
+            Err(NativeError::Budget(stage))
+        } else {
+            Ok(())
+        }
+    };
     std::fs::create_dir_all(workdir).map_err(|e| NativeError::Build(e.to_string()))?;
     let obj = workdir.join("module.obj");
     let tmp_obj = workdir.join(".tmp-module.obj");
     let exe = workdir.join("module.exe");
 
     // Lower to a STAGED object; publish moves it into place transactionally.
+    stage_precheck("lower overran the 60s build budget")?;
     let sel =
         native::find_entry(checked, entry).map_err(|ds| NativeError::Build(format!("{:?}", ds)))?;
     let bytes = native::lower_object(checked, &sel, &native::RuntimeInjection::default())
@@ -76,6 +118,7 @@ pub fn build_and_run(
     std::fs::write(&tmp_obj, &bytes).map_err(|e| NativeError::Build(e.to_string()))?;
 
     // Link (staged + publish, reusing ac-core's transactional machinery).
+    stage_precheck("link start overran the 60s build budget")?;
     let lld = link::find_rust_lld().map_err(|d| NativeError::Toolchain(d.message))?;
     let um = link::find_sdk_um_dir().map_err(|d| NativeError::Toolchain(d.message))?;
     let mut libs: Vec<PathBuf> = Vec::new();
@@ -90,18 +133,41 @@ pub fn build_and_run(
         return Err(NativeError::Budget("build exceeded 60s"));
     }
 
-    // Run with output capture under the contained executor.
+    // Run under the contained executor with RAW capped streams; the
+    // deadline is the REMAINING total budget (≤ the per-run budget).
+    stage_precheck("run start overran the total 70s budget")?;
+    let total_remaining = NATIVE_TOTAL_BUDGET
+        .checked_sub(started.elapsed())
+        .unwrap_or(Duration::ZERO);
+    let run_deadline = NATIVE_RUN_BUDGET.min(total_remaining);
     let mut cmd = std::process::Command::new(&exe);
-    let (code, stdout, stderr) = link::run_deadlined_split(&mut cmd, NATIVE_RUN_BUDGET)
-        .map_err(|e| NativeError::Run(format!("{:?}", e)))?;
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let run = link::run_deadlined_captured(
+        &mut cmd,
+        run_deadline,
+        link::CaptureCaps {
+            stdout_max: stdout_cap,
+            stderr_max: stderr_cap,
+        },
+    )
+    .map_err(|e| NativeError::Run(format!("{:?}", e)))?;
     if started.elapsed() > NATIVE_TOTAL_BUDGET {
         return Err(NativeError::Budget("total exceeded 70s"));
     }
-    let exit_code = code.ok_or_else(|| NativeError::Run("process terminated abnormally".into()))?;
+    let exit_code = run
+        .exit_code
+        .ok_or_else(|| NativeError::Run("process terminated abnormally".into()))?;
+    if run.stdout.len() > stdout_cap || run.stderr.len() > stderr_cap {
+        return Err(NativeError::Run(format!(
+            "native output exceeded the frozen {}-byte per-stream cap",
+            NATIVE_STREAM_CAP
+        )));
+    }
     Ok(NativeRun {
         exit_code,
-        stdout,
-        stderr,
+        stdout: String::from_utf8_lossy(&run.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&run.stderr).to_string(),
         obj_path: obj,
         exe_path: exe,
         receipt: receipt.receipt_path,
