@@ -161,11 +161,11 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成（闭合 R1/R3）：Base64/Hex 复用现有依赖并可运行；新增 loopback TCP server/client 本地工程及明确范围说明，完成连接、消息往返、断开和优雅关停验收。 |
 | T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R5）：新规范准确列出五种模式和 stdout_contains/expected-error；checker 对 54 页执行 catalog↔page 双向扫描；有效样例通过，错误预期、旧锚点、孤立锚点、错误诊断负控均失败。复核后全量 396/396 通过。 |
 | T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：auto-lang 现冻结提交 `5c6daa1439d95dbf2811f4f242895490b6d40d2a`，书稿继续冻结在 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；两个实施工作树 clean，文档复审修订已提交。 |
-| T-08 | review | T-07/T-10 | /auto-plan:review 重审冻结修复 diff、V-09、既有 AC/SD 证据及 debt 归因 | ✅ R10 独立复审 pass，绑定 auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`、book `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`；V-09 pass，无 finding；三项 merge-owned gates pending。 |
-| T-09 | merge | T-08 | /auto-plan:merge：在 review pass 后于最终冻结组合串行跑 `cargo t`、`cargo tv`、`cargo tb`，全绿后再双仓合入与收尾 | pending：R9 的 P765 失败已由 T-10 修复；须在本轮复审通过后的冻结提交重跑三项门禁。此前 PLAN-819 两个 Rust listing 修复目标已通过；未全部绿前不合入/归档/清理。 |
+| T-08 | review | T-07/T-10 | /auto-plan:review 重审冻结修复 diff、V-09、既有 AC/SD 证据及 debt 归因 | ✅ R10 独立复审 pass，绑定 auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`、book `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`；V-09 pass，无 finding；复审后 T-09 三项合并门禁全绿。 |
+| T-09 | merge | T-08 | /auto-plan:merge：在 review pass 后于最终冻结组合串行跑 `cargo t`、`cargo tv`、`cargo tb`，全绿后再双仓合入与收尾 | 门禁 ✅：`cargo t`、`cargo tv`、`cargo tb` 最终轮全部通过；默认并发 `cargo tb` 的已知 Plan 484 flake 经隔离确认后，以 4 线程整档重跑通过。两仓合并、归档和 worktree 清理待用户明确指示。 |
 | T-10 | work | R9 gate failure | 修正 `crates/auto-lang/src/vm/ffi/stdlib.rs` 中 `RtlCaptureStackBackTrace` ABI；按 V-09 在 `test-book` 和日常 feature 下重放 P765，并运行 `cargo check -p auto-lang` | ✅ 完成：缺失可选 hash 参数被补齐并显式传 NULL；两个 feature 配置下各 1/1 通过，`cargo check` 通过。提交 `78e1c31e8be30b2c758d6034f211f48c6731dc87`；日志见 `attachments/813/p765-ffi-fix-r13.log.txt`、`p765-daily-feature-r14.log.txt` 与 `cargo-check-p765-r14.log.txt`。 |
 
-T-01..T-08、T-10 已完成，R10 独立最终复审通过，当前状态为 reviewed（current_step=9/10）。T-10 修复 P765 的 Windows ABI 未定义行为，V-09 定向回归与类型检查通过。`cargo t`、`cargo tv`、`cargo tb` 仍是 merge-owned pending，须在本冻结提交串行执行；在全部通过前不合入、归档或清理。
+T-01..T-08、T-10 已完成，R10 独立最终复审通过，当前状态为 reviewed（current_step=9/10）。T-10 修复 P765 的 Windows ABI 未定义行为，V-09 定向回归与类型检查通过。最终冻结提交上的 `cargo t`、`cargo tv`、`cargo tb` 均已通过；PLAN-813 具备合并条件。两仓合并、计划归档和 worktree 清理尚未执行，等待用户指示。
 
 ## 9. 复审记录
 
@@ -320,6 +320,15 @@ stage: review | review_scope: final | reviewer_identity/limitations: Codex 当�
 - stage: review；review_scope: final；reviewer_identity: 独立子任务 `/root/plan813_final_review`。plan_id/revision: PLAN-813/2；reviewed_commit: auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`，book `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`；base: auto-lang `5a52efa2b960425060d2d4b697904df4504669a2`，book `d05218bff49a52314ce436f78d9df2a69bc3357e`；dependency: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`（保留 12 个既有 WIP 文件）。
 - 接受结果：V-09 pass；reviewer 在 `test-book` 配置下重跑 P765 1/1（6860 skipped），在 `ui-iced,test-cases` 下 1/1（6855 skipped）；两树 clean，`rustfmt` 与 CRLF-aware `diff --check` 通过。确认 FFI 四参数及 `u16` 返回匹配 Windows 文档；审计检查 ExitProcess 路径实际断言 exit 9、trace 与 frames，并静态核对 TerminateProcess 调用点。P812-D2 归因与闭环正确，无新增 finding。
 - 既有 AC-01..06 和 SD-01..06 的 R9 证据仍适用（仅改一处 Windows FFI ABI，不改书稿、前端、API 或 Spec）；T-10 无规范增量。AC-07 pass。pending_closeout_gates: `cargo t`、`cargo tv`、`cargo tb`；本轮复审未运行全档。outcome: pass；Plan status=`reviewed`，current_step=9/10；next=T-09 merge gates。
+
+### 2026-10-20 T-09 最终冻结门禁（全绿）
+
+- 冻结组合：auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`（`plan-813-dev`），book `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`，auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。三项门禁串行运行；书稿 listings 使用 `D:/autostack/.wt/lang-813/book/rust/listings`。
+- `cargo t` exit 0：5321 passed、1549 skipped、1 slow，107.313s；`attachments/813/cargo-t-r10.log.txt` SHA-256 `8D0F73E4257210F55EBC8E9C4B97DAC5A0D628C7A53BCD1B5CC476C69CCFACFE`。
+- `cargo tv` exit 0：163 passed、6693 skipped，3.488s；`attachments/813/cargo-tv-r10.log.txt` SHA-256 `A657806C260563604F260566F4299E395C4328044AEAA0AF579F023D5BA89D47`。
+- 首轮默认并发 `cargo tb` 在 1903/5314 项停止：1902 passed、1 failed、1547 skipped。失败为未改动的 `plan484_024_charts_streaming_recompute`（streaming label `t29`），该既有并行 flake 已列在 `KNOWN-DEBT-AND-RISKS.md` 的 Plan 711 §10 记录中；同一提交的 `cargo t` 运行通过该测试，test-book feature 下隔离重放亦 1/1 pass（6860 skipped）。首轮日志 `attachments/813/cargo-tb-r10.log.txt` SHA-256 `51631C44503E5FB69974D2B5DAE538D423DF7BCC9B307A2C74F62B0EEC9980D6`；隔离日志 `attachments/813/cargo-tb-plan484-isolated-r10.log.txt` SHA-256 `3F02EB80BA0FDDA44372B922FFF971F4E2D68980C77FF3F35B917ED02A302BB4`。
+- 按 PLAN-819 已接受的 4 线程稳定性设置，以 `NEXTEST_TEST_THREADS=4` 完整重跑 `cargo tb`，exit 0：5314 passed、1547 skipped、1 slow，231.628s。最终日志 `attachments/813/cargo-tb-r10-4threads.log.txt` SHA-256 `C14B7582D210AD5616480DA7A055C5364C0B6B84BCE5CDAF63F83929E74225AE`。无代码修改；测试生成的 Plan 796 性能报告数值已还原，813 worktree clean 且仍在冻结提交。
+- outcome: 三项 merge-owned gates pass；独立复审 R10 仍绑定同一代码提交，无新增 finding。Plan status=`reviewed`，current_step=9/10；具备合并条件，等待用户指示后执行双仓合并、归档与清理。
 
 ## 10. 待澄清事项
 
