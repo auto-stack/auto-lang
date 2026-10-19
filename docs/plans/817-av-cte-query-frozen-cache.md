@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-817
-status: drafting
+status: executing
 feature_name: AV驱动的CTE查询与冻结缓存闭环
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-19
-updated_at: 2026-10-19
-current_step: 0
+updated_at: 2026-10-20
+current_step: 1
 total_steps: 10
 supersedes_spec_components:
   - docs/specs/auto-semantics/semantic-contract.md
@@ -173,7 +173,7 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 
 | Task | owner_stage | 前置 | 文件/交付 | 验证/AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 用户实施指令 | 只读D-798接口/CT consumer映射/权限/预算设计，固定recipe Schema、256KiB负载/独立oracle/资源归属，contract-decision.md | 设计与V映射可审；AC-01；不编译在途接口 |
+| [x] T-01 | work | 用户实施指令 | 只读D-798接口/CT consumer映射/权限/预算设计，固定recipe Schema、256KiB负载/独立oracle/资源归属，contract-decision.md | 设计与V映射可审；AC-01；不编译在途接口。[✅ 已完成] 2026-10-20：`experimental/ac-cte-probe/contract-decision.md`（worktree 提交 2c38609eb）冻结 §1 身份/Schema 表（recipe IR `ac817/cte-recipe-ir/v1`、envelope `ac817/cte-executed/v1`、层 `ac817/a05-cte-exec/v1`、producer `plan817/cte-probe`）、§2 D-798 接口只读观察（plan-798-dev@072cb4e14：`execute_entry/LoadedModule/ExecLimits`+全冻结 cap 常量；796/783/ac-core master@08ba8ca2b 实际 API；未编译在途接口）、§5 consumer 双向绑定（let 锚点→InputExpr 字面量→infer；HIR `Constant{v}`/`0<n` bool 子树回填+重verify；全拒绝项清单+首例 sum=42/bool 分支例）、§6 冻结 envelope/依赖 manifest/cache 行为、§7 分区预算（hot8+暂存16+AV槽8≤32MiB；worker 384MiB/树 512MiB；AV/验证 cap ≤D-798）、§8 参考负载 load256cte/闭式 oracle/六场景/编辑配方/GC 冷集≥80MiB、§9 AutoDown 五点注册映射、§10 V-01–11 映射。验证=文档审查（Category A doc-only，无 cargo）；T-02 复验义务已记入 §2 |
 | [ ] T-02 | work | T-01、D-798、公共注册窗口 | 新workspace/lock、实际AV首例/新schema冻结+store恢复+consumer最小回灌+正式AutoDown首例+trace/峰值 | cte_first_/cte_admit_/auto-case；V-01/04/05/10；AC-01/02 |
 | [ ] T-03 | work | T-02 | core/schedule/consumer、CT片段检查/纯调用/Meta参数broker/环与取消 | cte_schedule_、V-01–04；AC-02/03 |
 | [ ] T-04 | work | T-03 | 完整依赖/冻结/恢复/跨工程/坏块/root/lease，model与真结果隔离 | cte_freeze_/cte_cache_、V-04–07；AC-04 |
@@ -188,6 +188,10 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 
 2026-10-19 stage:new；PLAN-817 r1；outcome:pass（规划契约预检，非实现验收）；next:work（需用户实施指令；T-02起等D-798）。新增T-01–10/AC-01–10/V-01–11/SD-01–05；drafting 0/10。未实施/编译/跑性能或创建树；来源及预检见[planning-preflight.md](attachments/817/planning-preflight.md)。预算/支持/接口范围改变应显式revision，不以待绑定或模型绿替代完整验收。
 
+2026-10-20 stage:work；PLAN-817 r1；outcome:blocked（T-01 完成 1/10；T-02 起 blocked 于 D-798，非设计阻塞）| worktree `D:/autostack/.wt/lang-817/auto-lang` | branch `plan-817-dev` | base `08ba8ca2b`（=master HEAD）| code_commit `2c38609eb`（experimental/ac-cte-probe/contract-decision.md，doc-only）| dependency_revisions：796/783/788=master 已交付；798=在途 plan-798-dev@072cb4e14（只读观察，未编译）| task_ids：T-01 | evidence：见 §8 T-01 行内收据与 contract-decision.md §1–11；主检出代码路径零 WIP（preflight 已核）| blockers：D-798（798 final review pass+冻结门禁+实际合入+Spec/merge 收据）+ 公共注册短窗口（797/798 合入、814–816 边界交接后）| next:work（T-02：同步新 master，按 §2 复验义务重取 798 实际 API 映射，建 workspace+首例真实执行/冻结/正式 AutoDown）
+
 ## 10. 待澄清事项
 
 无阻断起草的用户决定。T-01定界的recipe/consumer映射是有限探针接口，不决定Auto最终comptime语法。D-798后T-02先证明整条执行/冻结/推导/runner可行；接口不足、性能/硬内存不达或需要修改在途owner文件时，带证据回规划，不抬预算、不降用例、不复制AV。完整类型生成/泛型/运行期反射及生产接线后续另立Plan。
+
+**当前精确解锁动作（2026-10-20 work 记录）**：T-02 等 798 完成最终 review pass、冻结门禁、实际合入 master 及 Spec/merge 收据（D-798，核验方式=每次开工用实际合入/归档/Spec/提交祖先关系核验，不以历史 blocked 日志当门）；公共注册写面等 797/798 合入与 814–816 边界交接后的短窗口单写。解除后 T-02 从同步新 master 开始，contract-decision.md §2 的接口观察须逐项复验并记录漂移。
