@@ -7,11 +7,11 @@ plan_revision: 1
 created_at: 2026-10-19
 updated_at: 2026-10-19
 
-supersedes_spec_components: [docs/specs/website/design/learning-reading.md, docs/specs/website/project.md, docs/specs/auto-playground/project.md, docs/specs/stdlib/project.md]
+supersedes_spec_components: [docs/specs/website/design/learning-reading.md, docs/specs/website/project.md, docs/specs/auto-playground/project.md, docs/specs/stdlib/project.md, docs/specs/a2r-std/project.md]
 new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
-affects: [website, auto-playground, stdlib, auto-lang/vm]
+affects: [website, auto-playground, stdlib, auto-lang/vm, a2r-std]
 current_step: 9
 total_steps: 9
 ---
@@ -107,6 +107,7 @@ T-01 在批准后的专用树完成，产出决定记录并回写本计划，然
 | SD-03 | modify | docs/specs/auto-playground/project.md | 现有 source/files/deadline → 请求输入/EOF/隔离/测试支持；字段经 T-01 落定 | 网页真运行 | AC-03, AC-04, AC-05 |
 | SD-04 | modify | docs/specs/stdlib/project.md | 现有库边界 → 实际补齐/修复的 API、导入及验证边界；零新增时明确消费更正 | 不凭书稿虚构库 | AC-05, AC-06 |
 | SD-05 | modify | docs/specs/website/project.md | 网站项目缺少 TAPL 执行合同入口 → 链接到规范执行合同 | 让网站规范导航覆盖本次新增合同 | AC-01, AC-02, AC-06 |
+| SD-06 | modify | docs/specs/a2r-std/project.md | a2r-std 未明确浮点 helper 的 f64 API 和 parity harness 边界 → 记录四项函数与名称/元数比对、行为单测范围 | 说明 TAPL Rust transpiler 路径证据 | AC-05, AC-07 |
 
 ## 6. 测试设计
 
@@ -139,7 +140,7 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | AC-04 | work | 测试真执行断言且失败可见；错误诊断/编译期行为符合教学；actor/聊天有有限验证与完整工程边界。V-05/07。 |
 | AC-05 | work | 未定义 API/类型/依赖/错误片段全部闭环，已有库优先复用，新增库有真实声明/装配/正反例；无常量冒充文件/解析/超时。V-04/06/07。 |
 | AC-06 | work | 全有效源定向复验通过，每 Run 有输出/诊断/时限证据；书稿/实际源/Notes 一致，双语缺项补齐；负控能使门禁失败，其他书无新增回归。V-08。 |
-| AC-07 | review | 冻结 diff、AC-01..06、SD-01..05 独立审计，扫描遗漏/未批准延后/workaround；零新增未处理 warnings/debug/格式问题；门禁 pending 明示。 |
+| AC-07 | review | 冻结 diff、AC-01..06、SD-01..06 独立审计，扫描遗漏/未批准延后/workaround；零新增未处理 warnings/debug/格式问题；门禁 pending 明示。 |
 | AC-08 | merge | 分级门禁后双仓合入、规范/账本/索引回写、归档；fresh guard clean 后清理所有实施树/分支，tf 到期裁决及实际收据完整。 |
 
 ## 8. 执行步骤
@@ -154,11 +155,11 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | ✅ 完成：修复 ch00–13 作者源、Listing、预期与页面映射；ch08 按用户确认保留可运行改写并说明差异；ch09 文件内容去除重复末尾换行。 |
 | T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成（闭合 R1/R3）：Base64/Hex 复用现有依赖并可运行；新增 loopback TCP server/client 本地工程及明确范围说明，完成连接、消息往返、断开和优雅关停验收。 |
 | T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R5）：新规范准确列出五种模式和 stdout_contains/expected-error；checker 对 54 页执行 catalog↔page 双向扫描；有效样例通过，错误预期、旧锚点、孤立锚点、错误诊断负控均失败。复核后全量 396/396 通过。 |
-| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：代码新增冻结提交 `110a5cb6f6fbfa59beece490fd815e9fe55f672c`，书稿继续冻结在 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；两个工作树 clean，刷新执行报告与规范哈希。 |
-| T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | ✅ AC-07 pass：R1..R5 闭合，冻结差异/Spec/负控复核完成；`cargo t/tv/tb` 仍 pending，下一步 T-09。 |
-| T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | AC-08；每树移除前 wt-guard clean，保留他人 WIP，提供实际收据 |
+| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：auto-lang 现冻结提交 `5c6daa1439d95dbf2811f4f242895490b6d40d2a`，书稿继续冻结在 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；两个实施工作树 clean，文档复审修订已提交。 |
+| T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | ✅ AC-07 pass：R7 独立复审覆盖内容改动，R8 独立复核最终索引簿记；最终绑定 auto-lang `990ed70b9bf0da82b09596605e71486095060f53`、book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`。 |
+| T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | R9 rebase 复审通过；新冻结提交 `cargo tv` 163/163 通过，`cargo t` 与 `cargo tb` 均被既有 Windows P765 IAT 退出码测试失败阻断。PLAN-819 修复的两个 Rust listings 在 `cargo tb` 中通过。故障归因和范围见 §9 / KNOWN-DEBT；门禁未全绿，不合入、不归档，双仓清理尚未执行。 |
 
-T-01..T-08 已完成，R1..R5 均有修复与复审记录。T-09 负责运行 merge-owned 门禁及双仓合入/规范索引/归档/清理；这些步骤完成前不宣称交付完成。
+T-01..T-08 已完成，R9 独立复审通过，当前状态为 reviewed。R9 冻结提交上的 `cargo tv` 通过；`cargo t` 与 `cargo tb` 因 `p765_iat_trace_writes_audit_and_preserves_exit_code` 返回 `0xC0000374` 而失败。PLAN-819 修复的 `book_ch02_05` 和 `book_ch03_08` 已在本次 `cargo tb` 中通过。T-09 门禁未全部通过，因此双仓合入、归档与工作树清理仍未执行；不宣称交付完成。
 
 ## 9. 复审记录
 
@@ -238,6 +239,68 @@ stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_pa
 - pending_closeout_gates: `cargo t`、VM 触面 `cargo tv`、书测试 `cargo tb`；必须在此最终 pass 后、T-09 合入前执行。`cargo tf` 仅按主检出最近批量收据和 48h/计划号规则裁决。outcome: pass；Plan 状态 `reviewed`，current_step=9；next=T-09。
 
 stage: review | review_scope: final | reviewer_identity/limitations: Codex 当前会话（与实施共用上下文，按最终工件重建） | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | reviewed_commit: `110a5cb6f6fbfa59beece490fd815e9fe55f672c` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | base_commit: `30c1b9a7edc3112cac99089d14169d9f9bdeaeb6` + `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`; Cargo.lock/package-lock hashes above | spec_inputs: §9 R5 repair handoff | acceptance_results: AC-01..07 pass, AC-08 pending | pending_closeout_gates: `cargo t`, `cargo tv`, `cargo tb` | findings: none | evidence: `attachments/813/tapl-full-execution.json.txt` SHA-256 `E732684902B6B9C30312A227A566E7691E0A0686547E662DA4B83ED04D0C1D53`; static audit/negative controls/site build and Playwright listed above | next: T-09 merge
+
+### 2026-10-19 独立最终复审 R4（needs_fix）
+
+- stage: review；review_scope: final；reviewer_identity/limitations: 独立子任务 `/root/plan813_final_review`，相对实现会话使用新上下文；可读取 auto-lang 冻结提交 `380df7a1adad662be2575b4248fef713753eaf45` 的源码和 Plan 记录，但其环境无法直接读取 book worktree，故书稿全量执行/浏览器结果引用已记录收据而非本轮重跑。book commit `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；Plan revision 1；依赖 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。
+- finding PLAN813-R6 | P2 / Spec 证据精度与计划索引缺项 | AC-05/AC-07；T-07/T-08：math Spec 未列四个浮点 API 的返回类型；原描述没有说明签名 parity harness 只比较名称和元数、不比较类型。复审者未找到覆盖这四项的测试，建议校正到可见证据。复核代码时确认 `a2r_std_signature_parity` 的 `pairs()` 包含 `math.rs.at` → `a2r-std::math`，会检查名称和元数；`a2r-std` 另有 f64 行为单测。计划索引缺 `stdlib`、`website`、`auto-playground` 条目，VM 索引亦随 `affects` 范围补录。
+- R6 修复已提交：code worktree `637b2c0c88b22781339abd44768d873acf5de343` 修正 `stdlib/project.md` 为四项 `double` 返回，并准确限定 parity/行为单测覆盖；新增 `a2r-std/project.md` 数学 helper 说明和四个受影响模块的 PLAN-813 索引。执行 `python scripts/spec-index.py` 后生成索引仍为 47 projects；仅有仓库已有的 3 个 ungrouped-project 提示。`git diff --check` 通过。
+- outcome: needs_fix（此轮记录所述修复后等待新最终复审）；Plan 状态退回 `executing`，T-08 reopened，current_step=8；merge-owned `cargo t` / `cargo tv` / `cargo tb` 仍 pending。
+
+### 2026-10-19 独立最终复审 R5（pass）
+
+- stage: review；review_scope: final；reviewer_identity/limitations: 独立子任务 `/root/plan813_final_review`，新上下文复审。最终绑定 auto-lang `5c6daa1439d95dbf2811f4f242895490b6d40d2a`、book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`，Plan revision 1；base 分别为 auto-lang `13367d127584461449ee2f151c0c5987f0740044` 与 book `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a`；依赖 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。书稿工作树本轮仍不可读取，书籍验收依赖冻结提交及已有报告，不声称本轮复跑。
+- acceptance_results：AC-01..06 复用冻结的全书报告和 R5 修复记录（54 页、406 项 catalog、396/396 实际执行通过，浏览器 `tapl-run.spec.ts` 6/6，handler 3/3，loopback chat connect/send/reply/disconnect/graceful shutdown PASS）；AC-07 pass（独立复核差异、SD-01..06、触面元数据、负控/遗漏/未批准延后/Workaround 与健康边界）；AC-08 pending，归 T-09。
+- 规范/索引：`supersedes_spec_components` 与 SD-01..06 对齐；`affects` 包含 website、auto-playground、stdlib、auto-lang/vm、a2r-std；`a2r_std_signature_parity` 覆盖 `math.rs.at` ↔ `a2r-std::math` 名称/元数（不比较类型），返回类型为 double，行为单测范围准确；四个既有模块 plans.md 均链接当前计划并处于 reviewed（merge 门禁待完成）。a2r-std 无既有 plans.md。
+- review input SHA-256：`learning-reading.md` `6D72CF5DAE547E6DE28F03DB7E522F1DCD4312B7BECE8FCBAE9A45C87C9BF5EA`；`book-example-execution.md` `1B753BE438D16216A49F9B198B5D92978343D7807343BD3F212592FF3B88486A`；website `project.md` `3B3F342A81003868949209559155A7B3FDD3AA262D79044059A0AC3D8254EE13`；auto-playground `project.md` `87039E4443AB4A0F5C1178979EB0E5D7A6ACA6F899FE98CFF7362F1B58181ADD`；stdlib `project.md` `4FEB124789EE25E23B57C97A5769C1401895DE8233268CDDE3716204668B517B`；a2r-std `project.md` `7AC4B9586FA97937C6071917ABEAF00766887B04B6F987F0C066130E8B5D6F05`；`Cargo.lock` `4BC409294E0466BAF940AE4B9303DAB92DD1FE8ADE3EFC5777896F8A1E2B4E0F`；website package lock `DC7121A2C03D91D0A20CD8C3CB8DC31B68CA235E8FC2364F0837082434F6FF82`；catalog `ED4E42E87DBEFF12B4E46291A63CAE92333FAFDA5270182C39420ED4CE1817D3`。
+- 限制/健康：C 编译器不可用，C 分支人工核对未编译；全仓 rustfmt 被既有问题阻断，本次涉及 Rust 文件定向格式检查已通过；既有 compiler warnings 已如实记录。没有新发现需登记的债务。此前 `cargo t`/`cargo tb` 曾揭示新增 math 名称缺少 a2r-std 镜像，已由 R6 修复；最终三门禁须在此最终 pass 之后于冻结提交执行。
+- outcome: pass；Plan 状态 `reviewed`，current_step=9；pending merge-owned gates `cargo t`、`cargo tv`、`cargo tb`；next=T-09。
+
+### 2026-10-19 T-09 门禁故障归因与修复（work handoff）
+
+- R5 冻结的 auto-lang `5c6daa1439d95dbf2811f4f242895490b6d40d2a` 上首次 `cargo t` 未通过：4851 passed、3 failed、1 timed out、1549 skipped；失败涉及两个并行负载下的进程收敛用例、PLAN-796 语料和 IPC P95。定向单测分别重跑后，两个进程收敛用例与 IPC P95 均通过。
+- 语料失败可稳定复现：`infer-bindings.case.ad` 与 `cache-roundtrip.case.ad` 引用的两个 `oracle/*.bindings.json` 被根 `.gitignore` 的 `*.json` 规则忽略，因而未入库；该缺陷在 PLAN-813 代码变更之外。新增并跟踪准确的 `x/y/flag` 与 `x` 绑定 oracle，并为两文件加窄范围 ignore 例外。`probe_adapter_corpus_executes_green` 在新夹具上定向通过 1/1。修复提交 `6643ceaeb`。
+- 首轮 `cargo t` 同时生成了标准库矩阵的确定性更新：`read_line_opt` 使 `auto.io` 公共符号数由 10 变为 11；保留更新后的 JSON/Markdown 报告（提交 `01662e818`）。IPC 测试产生的机器相关周转报告已恢复到原提交，不纳入差异。
+- 最新冻结提交：auto-lang `4f813786781ab09d66ae7f10a5cf48e653463a7f`（含上述夹具、矩阵和索引收口），book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；基线 auto-lang `13367d127584461449ee2f151c0c5987f0740044`、book `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a`，auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。T-08 已重新打开后由 R6 通过；R6 handoff 记录此前 cargo t 失败及定向复验，不将失败门禁标为通过。最终 `cargo t`、`cargo tv`、`cargo tb` 仍 pending。
+
+### 2026-10-19 独立最终复审 R6（pass）
+
+- stage: review；review_scope: final；reviewer: 独立子任务 `/root/plan813_final_review`。最终绑定 auto-lang `4f813786781ab09d66ae7f10a5cf48e653463a7f`、book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；基线分别为 `13367d127584461449ee2f151c0c5987f0740044` 与 `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a`；依赖 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。书仓在复审环境不可直接读取，书稿验收沿用冻结提交和先前全量执行收据，未声称本轮重跑。
+- 新增差异复核：两条 `.gitignore` 例外仅涵盖缺失的 PLAN-796 绑定 oracle；`infer-bindings` 的 `x:i32, y:i32, flag:bool` 与 `cache-roundtrip` 的 `x:i32` 顺序和类型匹配语料，runner 按序比较。`read_line_opt` 矩阵行列值为 11 且各后端状态如实；四个模块索引状态与本计划 reviewed 一致。`4f813` 相对通过内容审查的 `9920e7f` 仅改四个索引状态标签，无实现/规范变化。
+- AC-01..06 沿用 R5 绑定的 54 页、406 项目录、396/396 实跑、浏览器 6/6、handler 3/3 和本地 TCP 周期证据；AC-07 pass；AC-08 仍 pending，归 T-09。该复审未运行 cargo 门禁。
+- pending_closeout_gates: `cargo t`、`cargo tv`、`cargo tb`；执行顺序按代码工作树最终冻结 revision 串行运行。outcome: pass；Plan 状态 `reviewed`，current_step=9；next=T-09。
+
+### 2026-10-19 T-09 门禁故障归因与修复（R7 work handoff）
+
+- R6 绑定提交 `4f813786781ab09d66ae7f10a5cf48e653463a7f` 上的 `cargo t` 重跑两次均未通过。第一次由既有 `plan498_bar_group_emphasis` 失败终止（1863 pass / 1 fail / 1549 skipped / 19 canceled）；精确单测重跑 1/1 通过，未复现。第二次在 `plan707_cancel_active_job_aborts_and_frees_permit` 失败（2035 pass / 1 fail / 1549 skipped），精确单测也复现。
+- 定责确认 PLAN-707 实现和测试文件均与 master 一致，失败由测试竞态造成：工作线程发出 entered 信号后，测试线程立即取消并开放 gate；运行时可能尚未处理 abort，job 先继续执行 marker。测试现改为保持 gate 关闭，在 2 秒界限内等待 active 许可回到基线，再断言 marker 未置位及迟到完成被拒绝。定向命令 `cargo test -q -p auto-lang --features ui-iced,test-cases --lib tests::plan707_cancel_tests::plan707_cancel_active_job_aborts_and_frees_permit -- --nocapture` 通过 1/1。
+- 修复提交 `4a708c841`；模块索引随 T-08 重开更新并提交 `2451497f6`。当前 review target auto-lang `2451497f6c269c1cd378715645fa4426679704ea`，book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`，auto-down 依赖 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。T-08 reopened；此前 R6 证据不能替代对新 test diff 的复审；全部 merge-owned gates 待在 R7 pass 后的最终冻结提交上重跑。
+- stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | base_commit: `13367d127584461449ee2f151c0c5987f0740044` + `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a` | code_commit: `2451497f6c269c1cd378715645fa4426679704ea` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | task_ids: T-09 test stabilization; T-08 reopened | evidence: scoped rerun 1/1; two failed full-gate attempts documented above | blockers: none for work repair; `cargo t/tv/tb` pending | next_responsible_role: review
+
+### 2026-10-19 独立最终复审 R7（pass）
+
+- stage: review；review_scope: final；reviewer: 独立子任务 `/root/plan813_final_review`。内容审查绑定 auto-lang `2451497f6c269c1cd378715645fa4426679704ea`、book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；依赖 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。reviewer 不能直接读取两个 worktree；主会话补核 `git status --short` / `git status --porcelain` 均为空，分别位于上述提交与 `plan-813-dev` / `plan-813-book` 分支。
+- 新增测试差异通过：保持 gate 关闭后，取消必须使 wrapper 任务退出并让 active 许可在 2 秒内回归基线；迟到完成仍被拒。reviewer 确认没有弱化取消断言。R6 已审查的全书验收和 SD-01..06 证据继续适用；T-08 pass，AC-08 pending。
+- reviewer 执行 `git -c core.whitespace=cr-at-eol diff --check 13367d1..2451497` 通过；索引状态和主计划当前阶段一致。reviewer 没有运行 `cargo t/tv/tb`，它们仍为 merge-owned pending gates。
+- pending_closeout_gates: `cargo t`、`cargo tv`、`cargo tb`；必须在本复审对应的最终冻结 revision 上串行执行，再合并。outcome: pass；Plan 状态 `reviewed`，current_step=9；next=T-09。
+
+### 2026-10-19 独立复审 R8（状态簿记复核，pass）
+
+- stage: review；review_scope: status-only；reviewer: 独立子任务 `/root/plan813_final_review`。绑定 auto-lang `990ed70b9bf0da82b09596605e71486095060f53`、book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`。独立确认 `990ed70` 只把四个 PLAN-813 模块索引从 executing 改为 `reviewed（merge 门禁待完成）`；主计划状态为 reviewed/current_step=9，T-08 R7 pass，T-09 三项门禁仍 pending。R7 内容复审继续适用。
+
+### 2026-10-19 T-09 merge-owned 门禁结果
+
+- 冻结 auto-lang `990ed70b9bf0da82b09596605e71486095060f53` 上串行执行：`cargo t` 通过 5321/5321（1549 skipped，1 slow）；`cargo tv` 通过 163/163（6693 skipped）。
+- `cargo tb` 首次运行因 `http_upload_service::tests::plan730_raw_receive_commit_conflict_roundtrip` 返回 409 而失败；精确单测复跑 1/1 通过，未复现。第二次运行中 `tests::book_listing_tests::book_ch02_05` 与 `book_ch03_08` 失败，输入在 `book/rust/listings/ch02/listing-02-05/main.at` 与 `book/rust/listings/ch03/listing-03-08/main.at`，解析器要求 `->` 却收到 `=>`。
+- 归属核对：book 分支 `d7a71a7..2de2fe3` 不改任何 `rust/` 路径；auto-lang `13367d1..990ed70` 不改 book listing harness、parser、lexer 或 transpiler。Plan 813 改动位于 `book/tapl`，因此该红是预存且超出“另外七本书”非目标。以 `AUTO_BOOK_LISTINGS` 指向主书仓的定向对照中，两个用例都依现有 dirty-book 守卫因 9 个既有 `.expected.rs` 修改而跳过；未将这个对照写成 `cargo tb` 通过。`cargo nextest list -p auto-lang --lib --features test-book` 确认标准 `cargo tb` 选择 `generate_book_expected`，该测试会写回 `.expected.rs`；因此未让整档生成器指向主书仓，也未触碰其 WIP。
+- 对上述两项 Rust listing 红项，用户明确要求保留 PLAN-813 范围，并将问题和修复作为 PLAN-819 新 phase 记录；PLAN-819:r5 已提交修复并归档。它们在本次 PLAN-813 最终组合的 `cargo tb` 中均通过；见下方 R9 收据。原候选 P813-D1 已解决，当前新门禁阻断是 P812-D2 的 P765 Windows IAT 测试。
+
+### 2026-10-19 R9 rebase 复审与 T-09 门禁重跑
+
+- stage: review / merge；独立复审 reviewer 为 `/root/plan813_final_review`。R9 绑定 auto-lang `5a52efa2b960425060d2d4b697904df4504669a2`、book `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`，两个 worktree 均 clean。rebase range-diff 为 auto-lang 14/14、book 2/2 全部等价（`=`）；两仓相对上游的 PLAN-813 路径均无重叠。Book 基线 `d05218bff49a52314ce436f78d9df2a69bc3357e` 含 PLAN-819 修复，其 `book/rust` 触面与本计划 `book/tapl`、`scripts/sync_tapl_listings.py` 无重叠。CRLF-aware diff-check 通过。review outcome: pass；此前 R7 验收复审继续适用。
+- 冻结提交门禁按序执行：`cargo t` 失败，5062 passed / 1 failed / 1549 skipped，P765 IAT 子进程退出码为 `-1073740940`（Windows `0xC0000374`）；相同日常 feature 配置隔离重跑 0/1 pass。`cargo tv` 通过 163/163（6693 skipped）。`cargo tb` 失败，5046 passed / 1 failed / 1547 skipped；失败仍为同一 P765 测试。`AUTO_BOOK_LISTINGS` 指向 PLAN-813 Book worktree；其中 PLAN-819 修复目标 `book_ch02_05`、`book_ch03_08` 分别通过。`test-book` feature 下隔离重跑亦 0/1 pass，退出码 `-1073741819`（Windows `0xC0000005`）。原始日志及 SHA-256：`merge-cargo-t-r9.log.txt` `6AC8B454805156D4E91520BB037D96983E92D761FC2483AC678A4A4D714CA317`；`cargo-t-isolated-p765-r9.log.txt` `49C7EFDFC39C86ED4F20F5768070780AC2AF20D788169264F77B6C9650F3390A`；`cargo-tv-r9.log.txt` `EFAB529A4954F74AB16814E846F49DC962FCBE7541804D705D49567AF5E3D731`；`cargo-tb-r9.log.txt` `CE87E2056F3AE6B83316675679DD1C74DC919972193A4C83B68C835FC2B4DFD0`；`cargo-tb-isolated-p765-r9.log.txt` `B63417E68A154164187DD007211A7DEC842C4B3925020C287E9A1EE066AFE39B`。
+- 归因边界：P765 测试和 `install_exit_process_trace` IAT 钩逻辑在 PLAN-813 diff 中未修改，已存在的观察登记为 P812-D2；本轮两项整档和两种 feature 配置下的隔离重跑均复现，故更新该债务记录。PLAN-813 虽在同一 `stdlib.rs` 增加 hosted 文件/输入能力，现有证据不能证明二进制变化与该退出码无关，也未证明根因；不将其标成 PLAN-813 引入或已修复。按门禁规则 T-09 仍 pending，禁止双仓合入、归档和清理，待 P812-D2 的根因被解决并在最终冻结组合上重跑门禁。
+- outcome: review pass / merge blocked；Plan remains `reviewed`, current_step=9；`cargo tv` pass，`cargo t` / `cargo tb` fail，T-09 incomplete；next=closeout after P812-D2 resolution. No code changes were made after R9 review.
 
 ## 10. 待澄清事项
 
