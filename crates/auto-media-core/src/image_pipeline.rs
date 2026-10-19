@@ -215,6 +215,10 @@ struct RegistryInner {
     state: Mutex<RegistryState>,
     changed: Condvar,
     ttl: Duration,
+    /// Per-registry mutation counter (bumped wherever the process-global
+    /// media generation bumps). Scoped quiescence oracle: unlike the global
+    /// generation it is immune to unrelated registries in the same process.
+    mutations: AtomicU64,
 }
 
 /// Process-local media asset registry shared by the HTTP adapter, VM, and
@@ -253,6 +257,13 @@ fn bump_media_change_gen() {
     MEDIA_CHANGE_GEN.fetch_add(1, Ordering::AcqRel);
 }
 
+/// Bumps both the process-global media generation and this registry's
+/// scoped mutation counter (same call sites — one semantic event).
+fn bump_registry_mutations(registry: &RegistryInner) {
+    bump_media_change_gen();
+    registry.mutations.fetch_add(1, Ordering::AcqRel);
+}
+
 impl MediaAssetRegistry {
     pub const DEFAULT_TTL: Duration = Duration::from_secs(2);
     pub const MAX_ENTRIES: usize = 512;
@@ -263,6 +274,7 @@ impl MediaAssetRegistry {
                 state: Mutex::new(RegistryState::default()),
                 changed: Condvar::new(),
                 ttl,
+                mutations: AtomicU64::new(0),
             }),
         }
     }
@@ -344,7 +356,7 @@ impl MediaAssetRegistry {
             },
         );
         self.inner.changed.notify_all();
-        bump_media_change_gen();
+        bump_registry_mutations(&self.inner);
         MediaAssetTicket { id, revision }
     }
 
@@ -374,7 +386,7 @@ impl MediaAssetRegistry {
             entry.error = Some(MediaAssetError::Corrupt);
         }
         self.inner.changed.notify_all();
-        bump_media_change_gen();
+        bump_registry_mutations(&self.inner);
         Ok(())
     }
 
@@ -406,7 +418,7 @@ impl MediaAssetRegistry {
         entry.encoded = Some(bytes);
         entry.state = MediaAssetState::Ready;
         self.inner.changed.notify_all();
-        bump_media_change_gen();
+        bump_registry_mutations(&self.inner);
         Ok(())
     }
 
@@ -430,7 +442,7 @@ impl MediaAssetRegistry {
         entry.state = MediaAssetState::Error;
         entry.error = Some(error);
         self.inner.changed.notify_all();
-        bump_media_change_gen();
+        bump_registry_mutations(&self.inner);
         Ok(())
     }
 
@@ -505,6 +517,11 @@ impl MediaAssetRegistry {
         entry.metadata = metadata;
         self.inner.changed.notify_all();
         true
+    }
+
+    /// Scoped mutation generation of THIS registry (quiescence oracle).
+    pub fn mutation_generation(&self) -> u64 {
+        self.inner.mutations.load(Ordering::Acquire)
     }
 
     pub fn stats(&self) -> MediaPipelineStats {
@@ -1741,26 +1758,7 @@ impl MediaRuntime {
     /// are rejected by the state machine — closed resources cannot be
     /// resurrected. Idempotent; no lock is held across a join.
     pub fn shutdown(&self) {
-        // 1. Admit no new producers; live ones observe the latch per item.
-        self.inner.closing.store(true, Ordering::Release);
-        // 2. Reap tracked producers (join outside the lock).
-        let producers = self
-            .inner
-            .producers
-            .lock()
-            .map(|mut handles| std::mem::take(&mut *handles))
-            .unwrap_or_default();
-        for producer in producers {
-            let _ = producer.join();
-        }
-        // 3. Stop the decode/resize lanes and join their threads.
-        self.inner.workers.shutdown();
-        // 4. Terminal-ize every registry entry and close admission.
-        self.inner.registry.shutdown();
-        // 5. Drop the session table: subsequent ops report unknown_session.
-        if let Ok(mut sessions) = self.inner.sessions.lock() {
-            sessions.clear();
-        }
+        shutdown_runtime_inner(&self.inner);
     }
 
     fn queue_rendition(
@@ -1852,7 +1850,20 @@ impl MediaRuntime {
             "image-session-{}",
             MEDIA_SESSION_COUNTER.fetch_add(1, Ordering::Relaxed)
         );
-        if let Ok(mut sessions) = self.inner.sessions.lock() {
+        // The session-table insertion shares ONE synchronization domain with
+        // shutdown's clear (review F811-R2-01): shutdown sets `closing` before
+        // it drains/clears, and this re-check happens under the same mutex it
+        // clears under — so an open that raced past the entry check either
+        // inserts BEFORE the clear (row removed by it) or observes `closing`
+        // here and refuses. No post-shutdown row can survive.
+        {
+            let mut sessions = match self.inner.sessions.lock() {
+                Ok(sessions) => sessions,
+                Err(_) => return String::new(),
+            };
+            if self.inner.closing.load(Ordering::Acquire) {
+                return String::new();
+            }
             if sessions.len() >= MAX_MEDIA_SESSIONS {
                 if let Some(evicted) = sessions.pop_front() {
                     for entry in evicted.entries {
@@ -1869,9 +1880,17 @@ impl MediaRuntime {
             });
         }
         let worker_id = id.clone();
-        spawn_tracked_producer(&self.inner, "media-session-open", move |inner| {
+        if !spawn_tracked_producer(&self.inner, "media-session-open", move |inner| {
             populate_media_session(inner, worker_id, root)
-        });
+        }) {
+            // No populate thread can exist for this row (spawn refused — the
+            // runtime closed underneath us, or the OS refused the thread).
+            // Remove the row so the id never answers as a live session.
+            if let Ok(mut sessions) = self.inner.sessions.lock() {
+                sessions.retain(|session| session.id != id);
+            }
+            return String::new();
+        }
         id
     }
 
@@ -2056,6 +2075,30 @@ impl MediaRuntime {
 impl Drop for MediaRuntime {
     fn drop(&mut self) {
         self.shutdown();
+    }
+}
+
+/// Shutdown body shared by `MediaRuntime::shutdown` and the bounded-test
+/// runner (operates on the shared `Arc<RuntimeInner>`; idempotent).
+fn shutdown_runtime_inner(inner: &RuntimeInner) {
+    // 1. Admit no new producers; live ones observe the latch per item.
+    inner.closing.store(true, Ordering::Release);
+    // 2. Reap tracked producers (join outside the lock).
+    let producers = inner
+        .producers
+        .lock()
+        .map(|mut handles| std::mem::take(&mut *handles))
+        .unwrap_or_default();
+    for producer in producers {
+        let _ = producer.join();
+    }
+    // 3. Stop the decode/resize lanes and join their threads.
+    inner.workers.shutdown();
+    // 4. Terminal-ize every registry entry and close admission.
+    inner.registry.shutdown();
+    // 5. Drop the session table: subsequent ops report unknown_session.
+    if let Ok(mut sessions) = inner.sessions.lock() {
+        sessions.clear();
     }
 }
 
@@ -2591,42 +2634,83 @@ mod tests {
         bytes.into_inner()
     }
 
-    fn shutdown_under_external_deadline(runtime: &super::MediaRuntime, limit: Duration) {
-        // REAL external deadline (review F811-R1-01 oracle gap): shutdown
-        // runs on a scoped thread; the harness fails if it does not report
-        // completion within `limit`. A synchronous deadline assertion after
-        // the call cannot see a stuck teardown.
+    /// Bounded runner for shutdown-style teardown checks (review R2-02):
+    /// the work runs on a DETACHED thread; on timeout the harness fails
+    /// immediately WITHOUT joining or otherwise waiting for the stuck work
+    /// (the thread is leaked into the test process — a failing test may
+    /// leave it running, it must never keep the harness hanging).
+    fn bounded_teardown<F: FnOnce() + Send + 'static>(work: F, limit: Duration) {
         let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
-        std::thread::scope(|scope| {
-            scope.spawn(move || {
-                runtime.shutdown();
-                let _ = done_tx.send(());
-            });
-            if done_rx.recv_timeout(limit).is_err() {
-                panic!(
-                    "shutdown did not converge within the external deadline ({limit:?}) —                      bounded queues/threads must not turn teardown into a deadlock"
-                );
-            }
+        let worker = std::thread::spawn(move || {
+            work();
+            let _ = done_tx.send(());
         });
+        if done_rx.recv_timeout(limit).is_err() {
+            panic!(
+                "teardown did not converge within the external deadline ({limit:?}) —                  this failure intentionally does NOT join the stuck worker"
+            );
+        }
+        let _ = worker.join();
+    }
+
+    /// shutdown_under_external_deadline — on the bounded runner. The
+    /// runtime shares its state through `Arc<RuntimeInner>`, so the
+    /// detached teardown thread operates on a clone while the test keeps
+    /// its single owning `MediaRuntime` (shutdown is idempotent and &self).
+    fn shutdown_under_external_deadline(runtime: &super::MediaRuntime, limit: Duration) {
+        let inner = runtime.inner.clone();
+        bounded_teardown(move || super::shutdown_runtime_inner(&inner), limit);
+    }
+
+    #[test]
+    fn bounded_teardown_negative_control_fails_within_the_deadline() {
+        // Review R2-02 negative control: a task that exceeds the deadline
+        // must turn the harness red WITHIN the deadline (plus scheduling
+        // slack) — not when the stuck task eventually finishes.
+        let started = Instant::now();
+        let result = std::panic::catch_unwind(|| {
+            bounded_teardown(
+                || std::thread::sleep(Duration::from_millis(1500)),
+                Duration::from_millis(100),
+            );
+        });
+        let elapsed = started.elapsed();
+        assert!(result.is_err(), "over-deadline task must fail the harness");
+        assert!(
+            elapsed < Duration::from_millis(800),
+            "failure must arrive within the deadline window, got {elapsed:?}"
+        );
+    }
+
+    #[test]
+    fn bounded_teardown_positive_control_completes() {
+        bounded_teardown(
+            || std::thread::sleep(Duration::from_millis(10)),
+            Duration::from_secs(5),
+        );
     }
 
     #[test]
     fn shutdown_with_real_decode_backlog_completes_within_external_deadline() {
-        // Valid PNG bytes through the whole lane (review F811-R1-01): the
-        // previous variant fed empty bytes that die at metadata inspection,
-        // so the resize channel was never exercised. Here decodes genuinely
-        // reach the resize lane; more accepted works than the 8-slot
-        // ingress queue keeps the pipeline saturated while teardown runs.
+        // Review R2-02: PROVE the resize channel actually fills, not just
+        // that the ingress queue accepted work. Large renditions (decode
+        // 3200x2400, resize to 1920x1440 Lanczos3) make the single resize
+        // lane the bottleneck: items wait in the sync_channel(8) while in
+        // the Decoding state, so the sampled `running` count (Reading+
+        // Decoding+Transforming) exceeding the 2 decode workers + 1 resize
+        // lane by more than the channel capacity proves channel saturation.
         let runtime = super::MediaRuntime::new(Duration::from_secs(60));
         let registry = runtime.registry().clone();
-        let payload: Arc<[u8]> = Arc::from(png_bytes(320, 240).into_boxed_slice());
+        let payload: Arc<[u8]> = Arc::from(png_bytes(3200, 2400).into_boxed_slice());
+        let target = RenditionSpec::viewport(1920, 1440);
         let mut accepted = 0usize;
+        let mut peak_running = 0usize;
         for i in 0..24u64 {
             let ticket = registry.queue(
                 MediaAssetKey {
                     source_fingerprint: format!("saturate-{i}"),
                     orientation: Default::default(),
-                    rendition: RenditionSpec::viewport(160, 120),
+                    rendition: target.clone(),
                     revision: i + 1,
                 },
                 MediaMetadata::default(),
@@ -2634,19 +2718,33 @@ mod tests {
             if runtime.worker_pool().submit_bytes(
                 ticket,
                 payload.clone(),
-                RenditionSpec::viewport(160, 120),
+                target.clone(),
                 MediaPriority::Current,
                 0,
                 i + 1,
             ) {
                 accepted += 1;
             }
+            peak_running = peak_running.max(registry.stats().running);
+        }
+        // Keep sampling while the backlog drains into the resize lane.
+        let drain_deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < drain_deadline {
+            peak_running = peak_running.max(registry.stats().running);
+            if registry.stats().running >= 9 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
         }
         assert!(
             accepted >= 8,
             "ingress queue saturated: {accepted} accepted"
         );
-        shutdown_under_external_deadline(&runtime, Duration::from_secs(30));
+        assert!(
+            peak_running >= 9,
+            "resize channel observed FULL: sampled running peak {peak_running}              (2 active decoders + 1 resizing + >=6 waiting in the channel)"
+        );
+        shutdown_under_external_deadline(&runtime, Duration::from_secs(60));
         assert_eq!(registry.pending_count(), 0);
         assert!(registry.is_shutdown());
     }
@@ -2680,17 +2778,21 @@ mod tests {
         shutdown_under_external_deadline(&runtime, Duration::from_secs(30));
         assert!(runtime.is_closed());
 
-        let first = registry.stats();
         assert_eq!(
             registry.pending_count(),
             0,
             "closed runtime has no pending work"
         );
+        // Quiescence against the media CHANGE GENERATION: it bumps on every
+        // registry mutation (queue/transition/publish/fail/expire), so a
+        // stable generation across an idle window proves no post-shutdown
+        // mutation of any kind (stronger than stats, which lacks counters
+        // for failed/corrupt entries).
+        let gen_at_close = registry.mutation_generation();
         std::thread::sleep(Duration::from_millis(150));
-        let second = registry.stats();
         assert_eq!(
-            format!("{first:?}"),
-            format!("{second:?}"),
+            registry.mutation_generation(),
+            gen_at_close,
             "registry stays quiescent after shutdown returned (producer reaped)"
         );
 
@@ -2844,6 +2946,94 @@ mod tests {
         std::thread::sleep(Duration::from_millis(100));
         assert_eq!(format!("{first:?}"), format!("{:?}", registry.stats()));
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // PLAN-811 R2 F811-R2-01: session admission vs shutdown interleaving.
+
+    use std::path::PathBuf;
+
+    /// Deterministic interleaving gate: the Into<PathBuf> conversion blocks
+    /// inside open_session between the entry check and the table lock —
+    /// exactly the scheduler window the review reproduced. Legal public API
+    /// only (a custom Into impl is a normal caller capability).
+    struct GatedPath {
+        path: PathBuf,
+        entered: std::sync::mpsc::Sender<()>,
+        release: std::sync::mpsc::Receiver<()>,
+    }
+    impl From<GatedPath> for PathBuf {
+        fn from(gated: GatedPath) -> PathBuf {
+            let _ = gated.entered.send(());
+            // Park until the main thread finished a full shutdown().
+            let _ = gated.release.recv_timeout(Duration::from_secs(30));
+            gated.path
+        }
+    }
+
+    #[test]
+    fn open_session_racing_shutdown_never_inserts_a_live_session() {
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let (entered_tx, entered_rx) = std::sync::mpsc::channel::<()>();
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let returned = std::thread::scope(|scope| {
+            let runtime_ref = &runtime;
+            let opener = scope.spawn(move || {
+                let gated = GatedPath {
+                    path: PathBuf::from("."),
+                    entered: entered_tx,
+                    release: release_rx,
+                };
+                runtime_ref.open_session(gated)
+            });
+            // Wait until the racing open is parked INSIDE the conversion
+            // window.
+            entered_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+            // Complete a full shutdown while the open is parked.
+            shutdown_under_external_deadline(runtime_ref, Duration::from_secs(30));
+            assert!(runtime.is_closed());
+            // Release the racing open: it must refuse admission — no live
+            // session may reappear in the cleared table.
+            release_tx.send(()).unwrap();
+            opener.join().unwrap()
+        });
+        assert_eq!(returned, "", "racing open after full shutdown refuses");
+        // The table stays empty: any id answers unknown_session.
+        assert_eq!(
+            runtime.session_snapshot("image-session-1"),
+            "{\"error\":\"unknown_session\"}"
+        );
+        assert!(!runtime.close_session("image-session-1"));
+    }
+
+    #[test]
+    fn open_session_sequential_controls() {
+        // Post-close (sequential): refuses outright.
+        let closed = super::MediaRuntime::new(Duration::from_secs(60));
+        closed.shutdown();
+        assert_eq!(closed.open_session(fixtures_path()), "");
+
+        // Live runtime: a real open produces a queryable session that
+        // populate fills and close retires (positive control).
+        let live = super::MediaRuntime::new(Duration::from_secs(60));
+        let session = live.open_session(fixtures_path());
+        assert!(session.starts_with("image-session-"), "{session}");
+        let deadline = Instant::now() + Duration::from_secs(2);
+        while live.session_names(&session).is_empty() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(
+            live.session_names(&session)
+                .iter()
+                .any(|n| n == "rgb-1x1.png"),
+            "populate filled the live session"
+        );
+        assert!(live.close_session(&session));
+        assert!(!live.close_session(&session));
+    }
+
+    fn fixtures_path() -> PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/ui/031-image-viewer/tests/fixtures")
     }
 
     #[test]

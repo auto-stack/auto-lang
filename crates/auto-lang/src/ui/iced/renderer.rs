@@ -4705,7 +4705,10 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         // 否则并排 diff 行内多段 shrink-0 文本齐抢 Fill 被
                         // 裁成等宽截断（L0 fix 2026-10-11 二阶）。
                         let fill_clip = is.truncate_flag
-                            || matches!(is.width, Some(crate::ui::style::iced_adapter::IcedSize::Full));
+                            || matches!(
+                                is.width,
+                                Some(crate::ui::style::iced_adapter::IcedSize::Full)
+                            );
                         let el: iced::Element<'static, M> = if fill_clip {
                             iced::widget::container(rich)
                                 .width(iced::Length::Fill)
@@ -20701,9 +20704,8 @@ fn run_session(
         // 待 drain 块统一落盘）。
         if msg.event == "__anchor_bounds_collected" {
             if let Some(ref json) = msg.input_value {
-                if let Ok(rects) = serde_json::from_str::<
-                    crate::ui::iced::scroll_anchor::AnchorRectMap,
-                >(json)
+                if let Ok(rects) =
+                    serde_json::from_str::<crate::ui::iced::scroll_anchor::AnchorRectMap>(json)
                 {
                     if std::env::var("P781_DEBUG").is_ok() {
                         eprintln!("[P781] anchor rects collected: {} entries", rects.len());
@@ -21447,7 +21449,9 @@ fn run_session(
                         IcedMessage {
                             widget: String::new(),
                             event: "__bounds_collected".to_string(),
-                            input_value: Some(serde_json::to_string(&bounds_map).unwrap_or_default()),
+                            input_value: Some(
+                                serde_json::to_string(&bounds_map).unwrap_or_default(),
+                            ),
                         }
                     }),
                     iced::advanced::widget::operate(
@@ -21858,7 +21862,9 @@ fn run_session(
         } else if http_backfill {
             // PLAN-765 T-02（纪要一 F-4）：HTTP 消息桥回填——seq 门控派发，
             // handler 零状态写的空回填不置脏（F1 fire_timer 语义延伸）。
-            state.component.on_http_backfill_for(widget_name, &event_name);
+            state
+                .component
+                .on_http_backfill_for(widget_name, &event_name);
         } else {
             state
                 .component
@@ -23717,7 +23723,8 @@ fn run_session(
                                     event: "Advance".to_string(),
                                     input_value: None,
                                 };
-                                return update_inner(state, sw, msg, false).map(move |m| DM::App(sw, m));
+                                return update_inner(state, sw, msg, false)
+                                    .map(move |m| DM::App(sw, m));
                             }
                         }
                         let task = summon_switcher(state);
@@ -23727,7 +23734,8 @@ fn run_session(
                                 event: "Advance".to_string(),
                                 input_value: None,
                             };
-                            let advance = update_inner(state, sw, msg, false).map(move |m| DM::App(sw, m));
+                            let advance =
+                                update_inner(state, sw, msg, false).map(move |m| DM::App(sw, m));
                             return iced::Task::batch([task, advance]);
                         }
                         return task;
@@ -24326,8 +24334,7 @@ fn run_session(
                             // hatched_minis 反查命中才降格（孵化会话无窗时
                             // 不可能进本臂；普通 launch 窗照旧随窗移除 +
                             // 释放后端）。
-                            let demote =
-                                state.desktop.hatched_minis.values().any(|a| *a == app);
+                            let demote = state.desktop.hatched_minis.values().any(|a| *a == app);
                             if demote {
                                 // 仅摘窗（wm_remove_win 已做），会话保留。
                             } else {
@@ -25457,7 +25464,8 @@ fn run_session(
                         .borrow()
                         .iter()
                         .any(crate::ui::session::MediaNotifyEntry::awaiting_notify);
-                    if auto_media_core::image_pipeline::pending_media_count() > 0 || media_awaiting {
+                    if auto_media_core::image_pipeline::pending_media_count() > 0 || media_awaiting
+                    {
                         subs.push(app_tick(app_id, "__media_tick", 50));
                     }
                 }
@@ -29840,19 +29848,27 @@ fn media_notify_sweep(
     component: &mut crate::ui::dynamic::DynamicComponent,
     app: &crate::ui::session::AppState,
 ) {
+    // PLAN-811 R2（静止期注册修复）：视图收集先行——早退门只对「当前视图
+    // 无带回调媒体面」生效。原先表空+pending0+代次未变即返回，会让媒体已
+    // 全部静止后新挂载的 surface（031 的绑定总伴随 request_view 代次扰动，
+    // 但纯静止重挂载是合法用法）永远不入表、事件永不派发。
+    let (view, _, _) = component.view_with_debug_gated(false);
+    let converted = convert_view_messages(view);
+    let mut surfaces: Vec<MediaSurfaceRef> = Vec::new();
+    collect_media_surfaces(&converted, &mut surfaces);
+    let has_handled_surface = surfaces
+        .iter()
+        .any(|s| s.on_loaded.is_some() || s.on_error.is_some());
     let table_empty = app.media_notify.borrow().is_empty();
     let gen = auto_media_core::image_pipeline::media_change_generation();
-    if table_empty
+    if !has_handled_surface
+        && table_empty
         && auto_media_core::image_pipeline::pending_media_count() == 0
         && MEDIA_SWEEP_SEEN_GEN.load(std::sync::atomic::Ordering::Acquire) == gen
     {
         return;
     }
     MEDIA_SWEEP_SEEN_GEN.store(gen, std::sync::atomic::Ordering::Release);
-    let (view, _, _) = component.view_with_debug_gated(false);
-    let converted = convert_view_messages(view);
-    let mut surfaces: Vec<MediaSurfaceRef> = Vec::new();
-    collect_media_surfaces(&converted, &mut surfaces);
 
     enum Fire {
         Loaded {
@@ -29898,9 +29914,10 @@ fn media_notify_sweep(
                     } else if !entry.loaded_emitted {
                         entry.loaded_emitted = true;
                         if let Some(msg) = surf.on_loaded.clone() {
-                            let (w, h) = auto_media_core::image_pipeline::resolve_media_render(&surf.src)
-                                .map(|(_, w, h, _)| (w, h))
-                                .unwrap_or((0, 0));
+                            let (w, h) =
+                                auto_media_core::image_pipeline::resolve_media_render(&surf.src)
+                                    .map(|(_, w, h, _)| (w, h))
+                                    .unwrap_or((0, 0));
                             // URI 末段 = 入队时资产 revision（parse_media_path 同形）。
                             let revision = surf
                                 .src
@@ -32138,6 +32155,9 @@ impl<C: Component + 'static> Debug for WrapperMsg<C> {
 pub struct DevToolsWrapper<C: Component + 'static> {
     inner: C,
     dt: DevToolsState,
+    /// PLAN-811 R2: merged（静态 Component）ImageSurface 通知表——语义镜像
+    /// VM 轨的 session::MediaNotifyEntry（两拍 loaded/单次 error/随视图生死）。
+    media_notify: std::cell::RefCell<Vec<TypedNotifyEntry>>,
 }
 
 impl<C: Component + Default> Default for DevToolsWrapper<C> {
@@ -32145,7 +32165,128 @@ impl<C: Component + Default> Default for DevToolsWrapper<C> {
         DevToolsWrapper {
             inner: C::default(),
             dt: DevToolsState::default(),
+            media_notify: std::cell::RefCell::new(Vec::new()),
         }
+    }
+}
+
+/// PLAN-811 R2: merged 通知表条目（与动态轨同语义字段）。
+#[derive(Debug)]
+struct TypedNotifyEntry {
+    key: String,
+    ready_seen: bool,
+    loaded_emitted: bool,
+    error_emitted: bool,
+    failed_reason: Option<String>,
+}
+
+/// PLAN-811 R2: 从类型化 View 收集带回调的 ImageSurface（src + 两个 handler
+/// 克隆）。遍历经 vnode_converter::extract_children_ref（MCP 寻址同源，覆盖
+/// 全部容器变体）。
+fn typed_media_surfaces<M: Clone + Debug>(
+    view: &AbstractView<M>,
+    out: &mut Vec<(String, Option<M>, Option<M>)>,
+) {
+    if let AbstractView::ImageSurface {
+        src,
+        on_loaded,
+        on_error,
+        ..
+    } = view
+    {
+        out.push((src.clone(), on_loaded.clone(), on_error.clone()));
+    }
+    for child in crate::ui::vnode_converter::extract_children_ref(view) {
+        typed_media_surfaces(child, out);
+    }
+}
+
+/// merged 通知 sweep 的代次门（镜像 MEDIA_SWEEP_SEEN_GEN）。
+static TYPED_SWEEP_SEEN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// PLAN-811 R2: merged（静态 Component）ImageSurface loaded/error 通知——
+/// run_session 尾部动态轨 sweep 的静态组件等价物：两拍 Ready→单发 on_loaded
+/// （resolve 实尺寸）、终态失败单发 on_error、表随视图存在性生死；事件经
+/// `component.on(msg)` 在本 update 周期同步派发（与 MCP 合成事件同通道语义）。
+/// 静止期注册与动态轨同修：当前视图存在带回调面时早退门不生效。
+fn typed_media_notify_sweep<C: Component + 'static>(
+    component: &mut C,
+    table: &mut Vec<TypedNotifyEntry>,
+) where
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    let view = component.view();
+    let mut surfaces: Vec<(String, Option<C::Msg>, Option<C::Msg>)> = Vec::new();
+    typed_media_surfaces(&view, &mut surfaces);
+    drop(view);
+    let has_handled = surfaces
+        .iter()
+        .any(|(_, loaded, error)| loaded.is_some() || error.is_some());
+    let table_empty = table.is_empty();
+    let gen = auto_media_core::image_pipeline::media_change_generation();
+    if !has_handled
+        && table_empty
+        && auto_media_core::image_pipeline::pending_media_count() == 0
+        && TYPED_SWEEP_SEEN_GEN.load(std::sync::atomic::Ordering::Acquire) == gen
+    {
+        return;
+    }
+    TYPED_SWEEP_SEEN_GEN.store(gen, std::sync::atomic::Ordering::Release);
+
+    let mut fire_loaded: Vec<(C::Msg, u32, u32)> = Vec::new();
+    let mut fire_error: Vec<(C::Msg, String)> = Vec::new();
+    let current_keys: Vec<String> = surfaces.iter().map(|(src, _, _)| src.clone()).collect();
+    table.retain(|e| current_keys.iter().any(|k| *k == e.key));
+    for (src, on_loaded, on_error) in &surfaces {
+        if on_loaded.is_none() && on_error.is_none() {
+            continue; // 无回调面：照常渲染，不入表
+        }
+        let entry = match table.iter_mut().find(|e| e.key == *src) {
+            Some(e) => e,
+            None => {
+                table.push(TypedNotifyEntry {
+                    key: src.clone(),
+                    ready_seen: false,
+                    loaded_emitted: false,
+                    error_emitted: false,
+                    failed_reason: None,
+                });
+                table.last_mut().expect("entry just pushed")
+            }
+        };
+        match auto_media_core::image_pipeline::media_surface_status(src) {
+            auto_media_core::image_pipeline::MediaSurfaceStatus::Ready => {
+                if !entry.ready_seen {
+                    entry.ready_seen = true; // 第一拍：下一拍（其间有渲染帧）单发
+                } else if !entry.loaded_emitted {
+                    entry.loaded_emitted = true;
+                    if let Some(msg) = on_loaded.clone() {
+                        let (w, h) = auto_media_core::image_pipeline::resolve_media_render(src)
+                            .map(|(_, w, h, _)| (w, h))
+                            .unwrap_or((0, 0));
+                        fire_loaded.push((msg, w, h));
+                    }
+                }
+            }
+            auto_media_core::image_pipeline::MediaSurfaceStatus::Failed(reason) => {
+                if entry.failed_reason.is_none() {
+                    entry.failed_reason = Some(reason.clone());
+                }
+                if !entry.error_emitted && entry.failed_reason.is_some() {
+                    entry.error_emitted = true;
+                    if let Some(msg) = on_error.clone() {
+                        fire_error.push((msg, reason));
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    for (msg, _, _) in fire_loaded {
+        component.on(msg);
+    }
+    for (msg, _) in fire_error {
+        component.on(msg);
     }
 }
 
@@ -32156,6 +32297,7 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
         DevToolsWrapper {
             inner,
             dt: DevToolsState::default(),
+            media_notify: std::cell::RefCell::new(Vec::new()),
         }
     }
 
@@ -32400,6 +32542,11 @@ where
             }
             apply_debug_event(&mut w.dt, &s);
         }
+    }
+    // PLAN-811 R2: merged 轨 ImageSurface 通知 sweep（run_session 尾部同位）。
+    {
+        let mut table = w.media_notify.borrow_mut();
+        typed_media_notify_sweep(&mut w.inner, &mut *table);
     }
     iced::Task::none()
 }
@@ -35582,10 +35729,7 @@ mod tests {
         // 本机有 D:\Down\stella-os\wallpapers 时档②主题默认图会盖掉
         // SetWallpaper 的 #hex 断言——机器相关红）。断言保持逐字精确。
         let _wall_dir = tempfile::TempDir::new().expect("wallpapers 隔离目录");
-        ds.desktop.config.wallpapers_dir = _wall_dir
-            .path()
-            .to_string_lossy()
-            .to_string();
+        ds.desktop.config.wallpapers_dir = _wall_dir.path().to_string_lossy().to_string();
         ds.open_desktop(iced::window::Id::unique());
         let samples: Vec<(&str, DesktopCommand)> = vec![
             ("shell", DesktopCommand::SetLayout(LayoutMode::Grid)),
@@ -38409,10 +38553,7 @@ mod tests {
         // 空目录挡主题默认图/目录首图两级，#hex 直传恢复确定性；断言保持
         // `bg-[#243b55]` 逐字精确（不设「或任意图片存在」宽松放行）。
         let _wall_dir = tempfile::TempDir::new().expect("wallpapers 隔离目录");
-        ds.desktop.config.wallpapers_dir = _wall_dir
-            .path()
-            .to_string_lossy()
-            .to_string();
+        ds.desktop.config.wallpapers_dir = _wall_dir.path().to_string_lossy().to_string();
         // 真 desktop.at 装载（z 槽面）。
         let comp = crate::ui::shell::build_desktop_surface_component().expect("desktop.at 装载");
         ds.desktop.desktop_app = Some(ds.allocate_app(comp));
