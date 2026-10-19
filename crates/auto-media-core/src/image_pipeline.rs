@@ -1293,6 +1293,12 @@ struct WorkerInner {
     resize_tx: SyncSender<ResizeMessage>,
     caches: Mutex<PipelineCaches>,
     latest: Mutex<HashMap<MediaAssetId, MediaLatestWins>>,
+    /// Resize-lane occupancy gauges (review R3: ACCURATE channel-full
+    /// observation). `resize_enqueued` counts accepted channel sends;
+    /// `resize_handled` counts messages the lane finished handling.
+    /// backlog = enqueued - handled = queued-in-channel + one in-flight.
+    resize_enqueued: AtomicU64,
+    resize_handled: AtomicU64,
 }
 
 static NEXT_MEDIA_WORK_ID: AtomicU64 = AtomicU64::new(1);
@@ -1328,6 +1334,8 @@ impl MediaWorkerPool {
                 decoded: DecodedPixelCache::default(),
             }),
             latest: Mutex::new(HashMap::new()),
+            resize_enqueued: AtomicU64::new(0),
+            resize_handled: AtomicU64::new(0),
         });
         let resize_inner = inner.clone();
         let resize_thread = thread::Builder::new()
@@ -1422,6 +1430,16 @@ impl MediaWorkerPool {
         self.inner.caches.lock().ok()?.decoded.get_rendered(id)
     }
 
+    /// Resize-lane backlog: messages accepted into the channel minus
+    /// messages the lane has RECEIVED (the receive gauge increments before
+    /// processing), so the value is exactly the channel's current
+    /// occupancy. A backlog >= channel capacity (8) proves the bounded
+    /// channel is FULL.
+    pub fn resize_backlog(&self) -> u64 {
+        self.inner.resize_enqueued.load(Ordering::Acquire)
+            - self.inner.resize_handled.load(Ordering::Acquire)
+    }
+
     /// Stops new work, drains the ingress queue, stops the resize lane, and
     /// joins every owned worker thread. Idempotent; safe through `&self`.
     pub fn shutdown(&self) {
@@ -1498,6 +1516,7 @@ fn run_decode_worker(inner: Arc<WorkerInner>) {
                 if inner.resize_tx.send(ResizeMessage::Work(decoded)).is_err() {
                     return;
                 }
+                inner.resize_enqueued.fetch_add(1, Ordering::AcqRel);
             }
             Err(error) => {
                 let _ = inner.registry.fail(item_id, error);
@@ -1548,6 +1567,7 @@ fn render_decoded(
 
 fn run_resize_worker(inner: Arc<WorkerInner>, resize_rx: Receiver<ResizeMessage>) {
     while let Ok(message) = resize_rx.recv() {
+        inner.resize_handled.fetch_add(1, Ordering::AcqRel);
         let ResizeMessage::Work(work) = message else {
             break;
         };
@@ -1648,6 +1668,11 @@ struct RuntimeInner {
     /// mutex shutdown uses for draining, so a producer is either joined or
     /// never spawned (no registration race).
     producers: Mutex<Vec<JoinHandle<()>>>,
+    /// Teardown ownership gate (review R3): the FIRST shutdown call owns the
+    /// whole teardown; every later call (idempotent re-entry, Drop after a
+    /// timed-out attempt) returns immediately instead of re-sending Stop
+    /// into a possibly-full resize channel and blocking behind the backlog.
+    shutdown_started: AtomicBool,
 }
 
 impl RuntimeInner {
@@ -1730,6 +1755,7 @@ impl MediaRuntime {
                 sessions: Mutex::new(VecDeque::new()),
                 closing: AtomicBool::new(false),
                 producers: Mutex::new(Vec::new()),
+                shutdown_started: AtomicBool::new(false),
             }),
         }
     }
@@ -2081,6 +2107,13 @@ impl Drop for MediaRuntime {
 /// Shutdown body shared by `MediaRuntime::shutdown` and the bounded-test
 /// runner (operates on the shared `Arc<RuntimeInner>`; idempotent).
 fn shutdown_runtime_inner(inner: &RuntimeInner) {
+    // Teardown ownership: only the first caller proceeds. A timed-out
+    // attempt keeps running on its own thread; re-entries (repeat calls,
+    // Drop during unwind) must not enqueue another Stop behind a full
+    // resize channel — that would block for the whole backlog drain.
+    if inner.shutdown_started.swap(true, Ordering::AcqRel) {
+        return;
+    }
     // 1. Admit no new producers; live ones observe the latch per item.
     inner.closing.store(true, Ordering::Release);
     // 2. Reap tracked producers (join outside the lock).
@@ -2664,9 +2697,9 @@ mod tests {
 
     #[test]
     fn bounded_teardown_negative_control_fails_within_the_deadline() {
-        // Review R2-02 negative control: a task that exceeds the deadline
-        // must turn the harness red WITHIN the deadline (plus scheduling
-        // slack) — not when the stuck task eventually finishes.
+        // Review R2-02/R3: a task exceeding the deadline must turn the
+        // harness red WITHIN the deadline window (plus scheduling slack) —
+        // not when the stuck task eventually finishes.
         let started = Instant::now();
         let result = std::panic::catch_unwind(|| {
             bounded_teardown(
@@ -2679,6 +2712,136 @@ mod tests {
         assert!(
             elapsed < Duration::from_millis(800),
             "failure must arrive within the deadline window, got {elapsed:?}"
+        );
+    }
+
+    /// Result-returning variant for negative controls (review R3): the
+    /// harness learns about the timeout WITHOUT panicking, so the control
+    /// can then PROVE it reclaimed its own worker and bytes.
+    fn bounded_teardown_result<F: FnOnce() + Send + 'static>(
+        work: F,
+        limit: Duration,
+    ) -> Result<(), Duration> {
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let worker = std::thread::spawn(move || {
+            work();
+            let _ = done_tx.send(());
+        });
+        let started = Instant::now();
+        if done_rx.recv_timeout(limit).is_err() {
+            return Err(started.elapsed());
+        }
+        let _ = worker.join();
+        Ok(())
+    }
+
+    #[test]
+    fn bounded_teardown_cooperative_failure_reclaims_worker_and_bytes() {
+        // Review R3: the timeout exit must RECLAIM the harness's own worker
+        // thread and bytes. A cancellable task times out, reports Err
+        // within budget, is cancelled, and joins with the bytes observed
+        // dead — failure AND cleanup both bounded.
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let cancel = std::sync::Arc::new(AtomicBool::new(false));
+        let bytes = std::sync::Arc::new(vec![7u8; 4096]);
+        let weak = Arc::downgrade(&bytes);
+        let (worker_done_tx, worker_done_rx) = std::sync::mpsc::channel::<()>();
+        let cancel_for_thread = cancel.clone();
+        let bytes_for_thread = bytes.clone();
+        let verdict = bounded_teardown_result(
+            move || {
+                while !cancel_for_thread.load(Ordering::Acquire) {
+                    std::thread::sleep(Duration::from_millis(25));
+                }
+                drop(bytes_for_thread);
+                let _ = worker_done_tx.send(());
+            },
+            Duration::from_millis(100),
+        );
+        assert!(verdict.is_err(), "over-deadline work reports Err");
+        assert!(
+            verdict.clone().unwrap_err() < Duration::from_secs(1),
+            "failure reported within budget"
+        );
+        // Reclaim: cancel, then bounded-join with the worker's own signal.
+        cancel.store(true, Ordering::Release);
+        assert!(
+            worker_done_rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+            "cancelled worker exits within the reclaim window"
+        );
+        drop(bytes);
+        assert!(
+            weak.upgrade().is_none(),
+            "owned bytes reclaimed after failure cleanup"
+        );
+    }
+
+    #[test]
+    fn bounded_teardown_real_owner_failure_still_reclaims() {
+        // Review R3: the failure exit for a REAL MediaRuntime owner. A
+        // large resize backlog makes shutdown take seconds; the bounded
+        // helper reports Err within a short budget WITHOUT waiting. The
+        // owner is then reclaimed deterministically: a second shutdown()
+        // returns promptly (latch set, producers drained, join tables
+        // empty — idempotent) and the runtime reaches a terminal state
+        // within a measured bound even though the first attempt timed out.
+        let runtime = super::MediaRuntime::new(Duration::from_secs(600));
+        let registry = runtime.registry().clone();
+        let payload: Arc<[u8]> = Arc::from(png_bytes(3200, 2400).into_boxed_slice());
+        let target = RenditionSpec::viewport(1920, 1440);
+        let mut accepted = 0usize;
+        for i in 0..12u64 {
+            let ticket = registry.queue(
+                MediaAssetKey {
+                    source_fingerprint: format!("slow-teardown-{i}"),
+                    orientation: Default::default(),
+                    rendition: target.clone(),
+                    revision: i + 1,
+                },
+                MediaMetadata::default(),
+            );
+            if runtime.worker_pool().submit_bytes(
+                ticket,
+                payload.clone(),
+                target.clone(),
+                MediaPriority::Current,
+                0,
+                i + 1,
+            ) {
+                accepted += 1;
+            }
+        }
+        assert!(accepted >= 6, "lane-busy workload accepted: {accepted}");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline && runtime.worker_pool().resize_backlog() < 2 {
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            runtime.worker_pool().resize_backlog() >= 2,
+            "slow teardown precondition: resize lane busy"
+        );
+        let inner = runtime.inner.clone();
+        let verdict = bounded_teardown_result(
+            move || super::shutdown_runtime_inner(&inner),
+            Duration::from_millis(120),
+        );
+        assert!(verdict.is_err(), "slow shutdown exceeds the budget");
+        let reclaim_started = Instant::now();
+        runtime.shutdown();
+        let reclaim_elapsed = reclaim_started.elapsed();
+        assert!(
+            reclaim_elapsed < Duration::from_secs(2),
+            "idempotent second shutdown is cheap: {reclaim_elapsed:?}"
+        );
+        assert!(runtime.is_closed());
+        let quiesce_deadline = Instant::now() + Duration::from_secs(60);
+        while Instant::now() < quiesce_deadline && registry.pending_count() > 0 {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(
+            registry.pending_count(),
+            0,
+            "real owner reaches terminal state after timed-out teardown"
         );
     }
 
@@ -2705,6 +2868,7 @@ mod tests {
         let target = RenditionSpec::viewport(1920, 1440);
         let mut accepted = 0usize;
         let mut peak_running = 0usize;
+        let mut peak_backlog = 0u64;
         for i in 0..24u64 {
             let ticket = registry.queue(
                 MediaAssetKey {
@@ -2726,12 +2890,14 @@ mod tests {
                 accepted += 1;
             }
             peak_running = peak_running.max(registry.stats().running);
+            peak_backlog = peak_backlog.max(runtime.worker_pool().resize_backlog());
         }
         // Keep sampling while the backlog drains into the resize lane.
         let drain_deadline = Instant::now() + Duration::from_secs(5);
         while Instant::now() < drain_deadline {
             peak_running = peak_running.max(registry.stats().running);
-            if registry.stats().running >= 9 {
+            peak_backlog = peak_backlog.max(runtime.worker_pool().resize_backlog());
+            if registry.stats().running >= 9 && peak_backlog >= 8 {
                 break;
             }
             std::thread::sleep(Duration::from_millis(2));
@@ -2742,7 +2908,11 @@ mod tests {
         );
         assert!(
             peak_running >= 9,
-            "resize channel observed FULL: sampled running peak {peak_running}              (2 active decoders + 1 resizing + >=6 waiting in the channel)"
+            "in-flight states observed: sampled running peak {peak_running}              (2 active decoders + 1 resizing + >=6 waiting)"
+        );
+        assert!(
+            peak_backlog >= 8,
+            "resize channel observed FULL via occupancy gauges: sampled              backlog peak {peak_backlog} of capacity 8"
         );
         shutdown_under_external_deadline(&runtime, Duration::from_secs(60));
         assert_eq!(registry.pending_count(), 0);
@@ -2772,9 +2942,20 @@ mod tests {
         let runtime = super::MediaRuntime::new(Duration::from_secs(60));
         let registry = runtime.registry().clone();
         runtime.scan_directory(&dir);
-        // Let the scan get going, then close while it is still in flight
-        // (600 entries cannot finish inside this window).
-        std::thread::sleep(Duration::from_millis(15));
+        // Review R2/R3: gate on OBSERVED producer activity (queued > 0),
+        // not a guessed sleep - the close provably races a scan that has
+        // started. 600 entries cannot finish inside this window.
+        let started = Instant::now();
+        loop {
+            assert!(
+                Instant::now() - started < Duration::from_secs(5),
+                "scan producer never became observable"
+            );
+            if registry.stats().queued > 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
         shutdown_under_external_deadline(&runtime, Duration::from_secs(30));
         assert!(runtime.is_closed());
 

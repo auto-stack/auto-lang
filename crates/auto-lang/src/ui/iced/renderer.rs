@@ -32155,9 +32155,6 @@ impl<C: Component + 'static> Debug for WrapperMsg<C> {
 pub struct DevToolsWrapper<C: Component + 'static> {
     inner: C,
     dt: DevToolsState,
-    /// PLAN-811 R2: merged（静态 Component）ImageSurface 通知表——语义镜像
-    /// VM 轨的 session::MediaNotifyEntry（两拍 loaded/单次 error/随视图生死）。
-    media_notify: std::cell::RefCell<Vec<TypedNotifyEntry>>,
 }
 
 impl<C: Component + Default> Default for DevToolsWrapper<C> {
@@ -32165,24 +32162,59 @@ impl<C: Component + Default> Default for DevToolsWrapper<C> {
         DevToolsWrapper {
             inner: C::default(),
             dt: DevToolsState::default(),
-            media_notify: std::cell::RefCell::new(Vec::new()),
         }
     }
 }
 
-/// PLAN-811 R2: merged 通知表条目（与动态轨同语义字段）。
+/// PLAN-811 R3: merged 通知表条目——订阅身份 = handler 身份 + src（对齐
+/// 动态轨 MediaSurfaceRef::key 的 canonical 规则）。
 #[derive(Debug)]
 struct TypedNotifyEntry {
     key: String,
+    wants_loaded: bool,
+    wants_error: bool,
     ready_seen: bool,
     loaded_emitted: bool,
     error_emitted: bool,
     failed_reason: Option<String>,
 }
 
-/// PLAN-811 R2: 从类型化 View 收集带回调的 ImageSurface（src + 两个 handler
-/// 克隆）。遍历经 vnode_converter::extract_children_ref（MCP 寻址同源，覆盖
-/// 全部容器变体）。
+impl TypedNotifyEntry {
+    /// 与动态轨 MediaNotifyEntry::awaiting_notify 同语义：还有未派发的
+    /// loaded/error 时为真——媒体唤醒订阅的门控条件。
+    fn awaiting_notify(&self) -> bool {
+        (self.ready_seen && self.wants_loaded && !self.loaded_emitted)
+            || (self.failed_reason.is_some() && self.wants_error && !self.error_emitted)
+            // 尚未见到 Ready、也未见失败（资产仍 Pending）的订阅也需心跳，
+            // 直到其状态落定（pending>0 全局门通常先覆盖此况）。
+            || (!self.ready_seen && self.failed_reason.is_none() && (self.wants_loaded || self.wants_error))
+    }
+}
+
+/// merged 轨通知表：进程级单例（run_app_devtools 每进程一个应用，与
+/// 动态轨 AppState::media_notify 的每 app 表同语义作用域）。全局表让
+/// 订阅回调（'static）也能读取唤醒门控。
+static TYPED_NOTIFY_TABLE: std::sync::OnceLock<std::sync::Mutex<Vec<TypedNotifyEntry>>> =
+    std::sync::OnceLock::new();
+
+fn typed_notify_table() -> &'static std::sync::Mutex<Vec<TypedNotifyEntry>> {
+    TYPED_NOTIFY_TABLE.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+/// merged 侧是否有待处理媒体面（唤醒门控）：存在未终态资产，或任一
+/// 订阅仍在等待 loaded/error 派发。
+fn typed_media_active() -> bool {
+    if auto_media_core::image_pipeline::pending_media_count() > 0 {
+        return true;
+    }
+    typed_notify_table()
+        .lock()
+        .map(|table| table.iter().any(TypedNotifyEntry::awaiting_notify))
+        .unwrap_or(false)
+}
+
+/// PLAN-811 R3: 从类型化 View 收集带回调的 ImageSurface。遍历经
+/// vnode_converter::extract_children_ref（MCP 寻址同源，覆盖全部容器变体）。
 fn typed_media_surfaces<M: Clone + Debug>(
     view: &AbstractView<M>,
     out: &mut Vec<(String, Option<M>, Option<M>)>,
@@ -32204,15 +32236,19 @@ fn typed_media_surfaces<M: Clone + Debug>(
 /// merged 通知 sweep 的代次门（镜像 MEDIA_SWEEP_SEEN_GEN）。
 static TYPED_SWEEP_SEEN_GEN: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// PLAN-811 R2: merged（静态 Component）ImageSurface loaded/error 通知——
-/// run_session 尾部动态轨 sweep 的静态组件等价物：两拍 Ready→单发 on_loaded
-/// （resolve 实尺寸）、终态失败单发 on_error、表随视图存在性生死；事件经
-/// `component.on(msg)` 在本 update 周期同步派发（与 MCP 合成事件同通道语义）。
-/// 静止期注册与动态轨同修：当前视图存在带回调面时早退门不生效。
-fn typed_media_notify_sweep<C: Component + 'static>(
-    component: &mut C,
-    table: &mut Vec<TypedNotifyEntry>,
-) where
+/// 订阅身份键：handler Debug 身份 + src（镜像动态轨 key() 形状）。
+fn typed_surface_key<M: Debug>(src: &str, loaded: &Option<M>, error: &Option<M>) -> String {
+    format!("{loaded:?}\u{1}{error:?}\u{1}{src}")
+}
+
+/// PLAN-811 R3: merged（静态 Component）ImageSurface loaded/error 通知。
+/// 动态轨 sweep 的静态组件等价物，订阅身份/两拍/单次/随视图生死对齐
+/// canonical（image-surface-events）：同 src 不同 handler = 不同订阅各
+/// 单发一次；换 handler/换 src = 新订阅；同订阅重绘不重复。事件经
+/// `component.on(msg)` 在本 update 周期同步派发。静止期注册：当前视图
+/// 存在带回调面时早退门不生效。
+fn typed_media_notify_sweep<C: Component + 'static>(component: &mut C)
+where
     C::Msg: Clone + Debug + Send + 'static,
 {
     let view = component.view();
@@ -32222,7 +32258,10 @@ fn typed_media_notify_sweep<C: Component + 'static>(
     let has_handled = surfaces
         .iter()
         .any(|(_, loaded, error)| loaded.is_some() || error.is_some());
-    let table_empty = table.is_empty();
+    let table_empty = typed_notify_table()
+        .lock()
+        .map(|t| t.is_empty())
+        .unwrap_or(true);
     let gen = auto_media_core::image_pipeline::media_change_generation();
     if !has_handled
         && table_empty
@@ -32233,19 +32272,29 @@ fn typed_media_notify_sweep<C: Component + 'static>(
     }
     TYPED_SWEEP_SEEN_GEN.store(gen, std::sync::atomic::Ordering::Release);
 
-    let mut fire_loaded: Vec<(C::Msg, u32, u32)> = Vec::new();
+    let mut fire_loaded: Vec<C::Msg> = Vec::new();
     let mut fire_error: Vec<(C::Msg, String)> = Vec::new();
-    let current_keys: Vec<String> = surfaces.iter().map(|(src, _, _)| src.clone()).collect();
+    let mut table = match typed_notify_table().lock() {
+        Ok(table) => table,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let current_keys: Vec<String> = surfaces
+        .iter()
+        .map(|(src, loaded, error)| typed_surface_key(src, loaded, error))
+        .collect();
     table.retain(|e| current_keys.iter().any(|k| *k == e.key));
     for (src, on_loaded, on_error) in &surfaces {
         if on_loaded.is_none() && on_error.is_none() {
             continue; // 无回调面：照常渲染，不入表
         }
-        let entry = match table.iter_mut().find(|e| e.key == *src) {
+        let key = typed_surface_key(src, on_loaded, on_error);
+        let entry = match table.iter_mut().find(|e| e.key == key) {
             Some(e) => e,
             None => {
                 table.push(TypedNotifyEntry {
-                    key: src.clone(),
+                    key,
+                    wants_loaded: on_loaded.is_some(),
+                    wants_error: on_error.is_some(),
                     ready_seen: false,
                     loaded_emitted: false,
                     error_emitted: false,
@@ -32261,10 +32310,7 @@ fn typed_media_notify_sweep<C: Component + 'static>(
                 } else if !entry.loaded_emitted {
                     entry.loaded_emitted = true;
                     if let Some(msg) = on_loaded.clone() {
-                        let (w, h) = auto_media_core::image_pipeline::resolve_media_render(src)
-                            .map(|(_, w, h, _)| (w, h))
-                            .unwrap_or((0, 0));
-                        fire_loaded.push((msg, w, h));
+                        fire_loaded.push(msg);
                     }
                 }
             }
@@ -32282,10 +32328,11 @@ fn typed_media_notify_sweep<C: Component + 'static>(
             _ => {}
         }
     }
-    for (msg, _, _) in fire_loaded {
+    drop(table);
+    for (msg, _) in fire_error {
         component.on(msg);
     }
-    for (msg, _) in fire_error {
+    for msg in fire_loaded {
         component.on(msg);
     }
 }
@@ -32297,7 +32344,6 @@ impl<C: Component + 'static> DevToolsWrapper<C> {
         DevToolsWrapper {
             inner,
             dt: DevToolsState::default(),
-            media_notify: std::cell::RefCell::new(Vec::new()),
         }
     }
 
@@ -32407,7 +32453,23 @@ fn devtools_view<C: Component + 'static>(
 }
 
 /// iced `update` callback for `run_app_devtools`.
+///
+/// PLAN-811 R3: the notify sweep runs at EVERY exit of the inner handler
+/// (early returns included) — subscription wakes and MCP actions must not
+/// skip registration/unsubscription.
 fn devtools_update<C: Component + 'static>(
+    w: &mut DevToolsWrapper<C>,
+    msg: WrapperMsg<C>,
+) -> iced::Task<WrapperMsg<C>>
+where
+    C::Msg: Clone + Debug + Send + 'static,
+{
+    let task = devtools_update_inner(w, msg);
+    typed_media_notify_sweep(&mut w.inner);
+    task
+}
+
+fn devtools_update_inner<C: Component + 'static>(
     w: &mut DevToolsWrapper<C>,
     msg: WrapperMsg<C>,
 ) -> iced::Task<WrapperMsg<C>>
@@ -32542,11 +32604,6 @@ where
             }
             apply_debug_event(&mut w.dt, &s);
         }
-    }
-    // PLAN-811 R2: merged 轨 ImageSurface 通知 sweep（run_session 尾部同位）。
-    {
-        let mut table = w.media_notify.borrow_mut();
-        typed_media_notify_sweep(&mut w.inner, &mut *table);
     }
     iced::Task::none()
 }
@@ -32800,6 +32857,15 @@ where
                 ms as u64,
             )));
         }
+        // PLAN-811 R3: 媒体独立唤醒（merged 轨，镜像 VM 轨 __media_tick
+        // 泵）：仅当存在未终态媒体资产或任一订阅仍在等待 loaded/error
+        // 派发时吊 50ms 心跳；全部派发完 → 订阅消失（有界，空闲零消息）。
+        // 不能由应用自带 tick 代替——无 timer 的合法组件也必须能收到事件。
+        subs.push(
+            iced::time::every(std::time::Duration::from_millis(50)).filter_map(|_| {
+                typed_media_active().then(|| WrapperMsg::<C>::Debug("__media_wake__".to_string()))
+            }),
+        );
         iced::Subscription::batch(subs)
     })
     .window(iced::window::Settings {
