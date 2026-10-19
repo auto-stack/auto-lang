@@ -8,11 +8,11 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use colored::Colorize;
 use auto_lang::database::{UIArtifact, UIBackend, UICache};
 use auto_lang::ui_gen::jet::{JetGenerator, JetProjectConfig, ProjectGenerator};
 use auto_lang::ui_gen::BackendGenerator;
 use auto_lang::Parser;
+use colored::Colorize;
 
 use crate::util::hash_string;
 use crate::AutoResult;
@@ -51,7 +51,11 @@ fn parse_pac_backend(content: &str) -> Option<String> {
                         .split(',')
                         .filter_map(|s| {
                             let s = s.trim().trim_matches('"').trim_matches('\'');
-                            if !s.is_empty() { Some(s) } else { None }
+                            if !s.is_empty() {
+                                Some(s)
+                            } else {
+                                None
+                            }
                         })
                         .collect();
                     // Return first backend if jet is in the list
@@ -87,7 +91,11 @@ fn has_jet_backend(content: &str) -> bool {
                         .split(',')
                         .filter_map(|s| {
                             let s = s.trim().trim_matches('"').trim_matches('\'');
-                            if !s.is_empty() { Some(s) } else { None }
+                            if !s.is_empty() {
+                                Some(s)
+                            } else {
+                                None
+                            }
                         })
                         .collect();
                     return backends.iter().any(|&b| b == "jet");
@@ -118,25 +126,68 @@ pub struct JetProject {
     pub widget_names: Vec<String>,
 }
 
-impl JetProject {
-    /// Create a new Jet project context from a workspace directory
-    pub fn from_workspace(root_dir: &Path) -> AutoResult<Self> {
+/// jet 项目读取缝（PLAN-809 T-06c / I-PROJECT）：pac.at 数据字段的
+/// 两个来源共享同一构建算法。legacy 自扫路径保留给测试/旧调用；
+/// 生产分派（Automan）走请求路径——生成器不再回读 pac.at/AutoConfig。
+pub(crate) struct JetReads {
+    pub name: String,
+    pub gate_ok: bool,
+}
+
+impl JetReads {
+    /// 旧臂自扫（行为冻结）。
+    fn scan(root_dir: &Path) -> AutoResult<Self> {
         let pac_path = root_dir.join("pac.at");
         if !pac_path.exists() {
             return Err("pac.at not found in workspace".into());
         }
+        let pac_content =
+            fs::read_to_string(&pac_path).map_err(|e| format!("Failed to read pac.at: {}", e))?;
+        Ok(Self {
+            name: parse_pac_name(&pac_content).unwrap_or_else(|| "MyApp".to_string()),
+            gate_ok: has_jet_backend(&pac_content),
+        })
+    }
 
-        let pac_content = fs::read_to_string(&pac_path)
-            .map_err(|e| format!("Failed to read pac.at: {}", e))?;
+    /// 请求路径（生产）：name 与 backend 门禁来自 GenerationRequest。
+    fn from_request(req: &auto_project_model::generation_request::GenerationRequest) -> Self {
+        let gate_ok = req
+            .frontend_names()
+            .iter()
+            .any(|b| b == "jet" || b == "jetpack");
+        Self {
+            name: req
+                .identity
+                .name
+                .clone()
+                .unwrap_or_else(|| "MyApp".to_string()),
+            gate_ok,
+        }
+    }
+}
 
-        // Check if jet is in the backend list (supports multi-backend configuration)
-        if !has_jet_backend(&pac_content) {
+impl JetProject {
+    /// Create a new Jet project context from a workspace directory
+    /// （legacy 自扫路径——测试/旧调用；生产走 from_workspace_with_request。）
+    pub fn from_workspace(root_dir: &Path) -> AutoResult<Self> {
+        let reads = JetReads::scan(root_dir)?;
+        Self::build(root_dir, reads)
+    }
+
+    /// 请求路径（PLAN-809 T-06c 生产入口）：pac.at 数据全部来自请求。
+    pub fn from_workspace_with_request(
+        root_dir: &Path,
+        req: &auto_project_model::generation_request::GenerationRequest,
+    ) -> AutoResult<Self> {
+        Self::build(root_dir, JetReads::from_request(req))
+    }
+
+    fn build(root_dir: &Path, reads: JetReads) -> AutoResult<Self> {
+        if !reads.gate_ok {
             return Err("Backend 'jet' not found in pac.at. Add 'jet' to backend list.".into());
         }
 
-        // Get project name
-        let name = parse_pac_name(&pac_content)
-            .unwrap_or_else(|| "MyApp".to_string());
+        let name = reads.name;
 
         // Determine front directory - check multiple locations
         let front_dir = if root_dir.join("src").join("front").exists() {
@@ -165,7 +216,11 @@ impl JetProject {
                     widget_names.extend(names);
                 }
                 Err(e) => {
-                    println!("{} {}", "Warning: Failed to compile app.at:".bright_yellow(), e);
+                    println!(
+                        "{} {}",
+                        "Warning: Failed to compile app.at:".bright_yellow(),
+                        e
+                    );
                 }
             }
         }
@@ -186,7 +241,12 @@ impl JetProject {
                             widget_names.extend(names);
                         }
                         Err(e) => {
-                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                            println!(
+                                "{} Failed to compile {}: {}",
+                                "Warning:".bright_yellow(),
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -209,7 +269,12 @@ impl JetProject {
                             widget_names.extend(names);
                         }
                         Err(e) => {
-                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                            println!(
+                                "{} Failed to compile {}: {}",
+                                "Warning:".bright_yellow(),
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -232,7 +297,12 @@ impl JetProject {
                             widget_names.extend(names);
                         }
                         Err(e) => {
-                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                            println!(
+                                "{} Failed to compile {}: {}",
+                                "Warning:".bright_yellow(),
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -252,19 +322,24 @@ impl JetProject {
     /// Generate Kotlin files with incremental support
     /// Returns (project, changed_files)
     pub fn from_workspace_incremental(root_dir: &Path) -> AutoResult<(Self, Vec<String>)> {
-        let pac_path = root_dir.join("pac.at");
-        if !pac_path.exists() {
-            return Err("pac.at not found in workspace".into());
-        }
+        let reads = JetReads::scan(root_dir)?;
+        Self::build_incremental(root_dir, reads)
+    }
 
-        let pac_content = fs::read_to_string(&pac_path)
-            .map_err(|e| format!("Failed to read pac.at: {}", e))?;
+    /// 请求路径的增量形态（PLAN-809 T-06c）。
+    pub fn from_workspace_incremental_with_request(
+        root_dir: &Path,
+        req: &auto_project_model::generation_request::GenerationRequest,
+    ) -> AutoResult<(Self, Vec<String>)> {
+        Self::build_incremental(root_dir, JetReads::from_request(req))
+    }
 
-        if !has_jet_backend(&pac_content) {
+    fn build_incremental(root_dir: &Path, reads: JetReads) -> AutoResult<(Self, Vec<String>)> {
+        if !reads.gate_ok {
             return Err("Backend 'jet' not found in pac.at".into());
         }
 
-        let name = parse_pac_name(&pac_content).unwrap_or_else(|| "MyApp".to_string());
+        let name = reads.name;
         let front_dir = root_dir.join("source").join("front");
         let output_dir = root_dir.join("gen").join("front").join("jet");
 
@@ -278,8 +353,8 @@ impl JetProject {
 
         let app_at = front_dir.join("app.at");
         if app_at.exists() {
-            let content = fs::read_to_string(&app_at)
-                .map_err(|e| format!("Failed to read app.at: {}", e))?;
+            let content =
+                fs::read_to_string(&app_at).map_err(|e| format!("Failed to read app.at: {}", e))?;
             let hash = hash_string(&content);
 
             if cache.is_dirty(&app_at, hash) {
@@ -287,16 +362,18 @@ impl JetProject {
                 match Self::compile_at_file(&app_at, &name, true) {
                     Ok((files, names)) => {
                         // Create artifacts for tracking
-                        let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((path, content), widget_name)| {
-                            UIArtifact {
+                        let artifacts: Vec<UIArtifact> = files
+                            .iter()
+                            .zip(names.iter())
+                            .map(|((path, content), widget_name)| UIArtifact {
                                 source_path: app_at.clone(),
                                 widget_name: widget_name.clone(),
                                 output_path: PathBuf::from(path),
                                 source_hash: hash,
                                 content_hash: hash_string(content),
                                 backend: UIBackend::Jet,
-                            }
-                        }).collect();
+                            })
+                            .collect();
 
                         cache.update(app_at.clone(), hash, artifacts);
                         kotlin_files.extend(files);
@@ -304,7 +381,11 @@ impl JetProject {
                         changed_files.push("app.at".to_string());
                     }
                     Err(e) => {
-                        println!("{} {}", "Warning: Failed to compile app.at:".bright_yellow(), e);
+                        println!(
+                            "{} {}",
+                            "Warning: Failed to compile app.at:".bright_yellow(),
+                            e
+                        );
                     }
                 }
             } else {
@@ -329,16 +410,18 @@ impl JetProject {
 
                                 match Self::compile_at_file(&path, &name, false) {
                                     Ok((files, names)) => {
-                                        let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
-                                            UIArtifact {
+                                        let artifacts: Vec<UIArtifact> = files
+                                            .iter()
+                                            .zip(names.iter())
+                                            .map(|((p, c), widget_name)| UIArtifact {
                                                 source_path: path.clone(),
                                                 widget_name: widget_name.clone(),
                                                 output_path: PathBuf::from(p),
                                                 source_hash: hash,
                                                 content_hash: hash_string(c),
                                                 backend: UIBackend::Jet,
-                                            }
-                                        }).collect();
+                                            })
+                                            .collect();
 
                                         cache.update(path.clone(), hash, artifacts);
                                         kotlin_files.extend(files);
@@ -346,7 +429,12 @@ impl JetProject {
                                         changed_files.push(file_name);
                                     }
                                     Err(e) => {
-                                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), file_name, e);
+                                        println!(
+                                            "{} Failed to compile {}: {}",
+                                            "Warning:".bright_yellow(),
+                                            file_name,
+                                            e
+                                        );
                                     }
                                 }
                             } else {
@@ -375,16 +463,18 @@ impl JetProject {
 
                                 match Self::compile_at_file(&path, &name, false) {
                                     Ok((files, names)) => {
-                                        let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
-                                            UIArtifact {
+                                        let artifacts: Vec<UIArtifact> = files
+                                            .iter()
+                                            .zip(names.iter())
+                                            .map(|((p, c), widget_name)| UIArtifact {
                                                 source_path: path.clone(),
                                                 widget_name: widget_name.clone(),
                                                 output_path: PathBuf::from(p),
                                                 source_hash: hash,
                                                 content_hash: hash_string(c),
                                                 backend: UIBackend::Jet,
-                                            }
-                                        }).collect();
+                                            })
+                                            .collect();
 
                                         cache.update(path.clone(), hash, artifacts);
                                         kotlin_files.extend(files);
@@ -392,7 +482,12 @@ impl JetProject {
                                         changed_files.push(file_name);
                                     }
                                     Err(e) => {
-                                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), file_name, e);
+                                        println!(
+                                            "{} Failed to compile {}: {}",
+                                            "Warning:".bright_yellow(),
+                                            file_name,
+                                            e
+                                        );
                                     }
                                 }
                             } else {
@@ -421,16 +516,18 @@ impl JetProject {
 
                                 match Self::compile_at_file(&path, &name, false) {
                                     Ok((files, names)) => {
-                                        let artifacts: Vec<UIArtifact> = files.iter().zip(names.iter()).map(|((p, c), widget_name)| {
-                                            UIArtifact {
+                                        let artifacts: Vec<UIArtifact> = files
+                                            .iter()
+                                            .zip(names.iter())
+                                            .map(|((p, c), widget_name)| UIArtifact {
                                                 source_path: path.clone(),
                                                 widget_name: widget_name.clone(),
                                                 output_path: PathBuf::from(p),
                                                 source_hash: hash,
                                                 content_hash: hash_string(c),
                                                 backend: UIBackend::Jet,
-                                            }
-                                        }).collect();
+                                            })
+                                            .collect();
 
                                         cache.update(path.clone(), hash, artifacts);
                                         kotlin_files.extend(files);
@@ -438,7 +535,12 @@ impl JetProject {
                                         changed_files.push(file_name);
                                     }
                                     Err(e) => {
-                                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), file_name, e);
+                                        println!(
+                                            "{} Failed to compile {}: {}",
+                                            "Warning:".bright_yellow(),
+                                            file_name,
+                                            e
+                                        );
                                     }
                                 }
                             } else {
@@ -453,14 +555,17 @@ impl JetProject {
         // Save cache
         cache.save(root_dir).ok();
 
-        Ok((Self {
-            root_dir: root_dir.to_path_buf(),
-            output_dir,
-            name,
-            front_dir,
-            kotlin_files,
-            widget_names,
-        }, changed_files))
+        Ok((
+            Self {
+                root_dir: root_dir.to_path_buf(),
+                output_dir,
+                name,
+                front_dir,
+                kotlin_files,
+                widget_names,
+            },
+            changed_files,
+        ))
     }
 
     /// Compile a single .at file to Kotlin code
@@ -470,7 +575,11 @@ impl JetProject {
     /// * `at_path` - Path to the .at file
     /// * `project_name` - Project name (used for package name)
     /// * `verbose` - Print progress messages
-    fn compile_at_file(at_path: &Path, project_name: &str, verbose: bool) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+    fn compile_at_file(
+        at_path: &Path,
+        project_name: &str,
+        verbose: bool,
+    ) -> Result<(Vec<(String, String)>, Vec<String>), String> {
         if verbose {
             let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
             println!("  {} {}", "Parsing".bright_cyan(), file_name);
@@ -486,15 +595,15 @@ impl JetProject {
         let session = CompilerSession::ui().with_backend("jet");
         let mut parser = Parser::from(code.as_str());
         parser = parser.with_session(session);
-        let ast = parser.parse().map_err(|e| {
-            format!("Parse error: {:?}", e)
-        })?;
+        let ast = parser
+            .parse()
+            .map_err(|e| format!("Parse error: {:?}", e))?;
 
         // Extract AURA widgets from AST
         let mut widgets = Vec::new();
         for stmt in &ast.stmts {
             if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-                        let aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
+                let aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
                     .map_err(|e| e.to_string())?;
                 widgets.push(aura_widget);
             }
@@ -514,8 +623,7 @@ impl JetProject {
         let mut names = Vec::new();
 
         for widget in &widgets {
-            let kotlin_code = generator.generate(widget)
-                .map_err(|e| e.to_string())?;
+            let kotlin_code = generator.generate(widget).map_err(|e| e.to_string())?;
 
             // Collect widget name
             names.push(widget.name.clone());
@@ -523,7 +631,10 @@ impl JetProject {
             // Generate file path: ui/widgets/{WidgetName}.kt
             let widget_name = &widget.name;
             let file_name = format!("{}.kt", widget_name);
-            let relative_path = format!("app/src/main/java/com/example/{}/ui/widgets/{}", safe_project_name, file_name);
+            let relative_path = format!(
+                "app/src/main/java/com/example/{}/ui/widgets/{}",
+                safe_project_name, file_name
+            );
             files.push((relative_path, kotlin_code));
         }
 
@@ -537,14 +648,27 @@ impl JetProject {
 
     /// Generate the Jetpack Compose project structure
     pub fn generate(&self) -> AutoResult<()> {
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
-        println!("{}", "  AURA Workspace → Jetpack Compose".bright_yellow().bold());
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "  AURA Workspace → Jetpack Compose".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
         println!();
 
         println!("{} {}", "Output:".bright_cyan(), self.output_dir.display());
         println!("{} {}", "Name:".bright_cyan(), self.name);
-        println!("{} {}", "Widgets:".bright_cyan(), self.widget_names.join(", "));
+        println!(
+            "{} {}",
+            "Widgets:".bright_cyan(),
+            self.widget_names.join(", ")
+        );
         println!();
 
         // Create output directory
@@ -553,9 +677,9 @@ impl JetProject {
 
         // Check if any kotlin files use navigation (to add dependency)
         let uses_navigation = self.kotlin_files.iter().any(|(_, content)| {
-            content.contains("NavHostController") ||
-            content.contains("NavHost(") ||
-            content.contains("rememberNavController")
+            content.contains("NavHostController")
+                || content.contains("NavHost(")
+                || content.contains("rememberNavController")
         });
 
         // Generate full project structure using ProjectGenerator
@@ -600,7 +724,10 @@ impl JetProject {
 
         println!();
         println!("═════════════════════════════════");
-        println!("{}", "  Jetpack Compose project generated!".bright_green().bold());
+        println!(
+            "{}",
+            "  Jetpack Compose project generated!".bright_green().bold()
+        );
         println!("═════════════════════════════════");
         println!();
         println!("{} {}", "Next steps:".bright_cyan(), "");
@@ -612,9 +739,18 @@ impl JetProject {
 
     /// Generate only Kotlin files (no full project structure)
     pub fn generate_kotlin_only(&self, output_dir: &Path) -> AutoResult<()> {
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
-        println!("{}", "  AURA → Kotlin Code Generation".bright_yellow().bold());
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "  AURA → Kotlin Code Generation".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
         println!();
 
         println!("{} {}", "Output:".bright_cyan(), output_dir.display());
@@ -651,12 +787,36 @@ impl JetProject {
 /// 2. Compile .at files to Kotlin
 /// 3. Generate full project structure (if project flag)
 /// 4. Copy to output directory
-pub fn generate_jet_project(root_dir: &Path, output_dir: Option<&Path>, full_project: bool) -> AutoResult<()> {
+pub fn generate_jet_project(
+    root_dir: &Path,
+    output_dir: Option<&Path>,
+    full_project: bool,
+) -> AutoResult<()> {
     println!("{}", "Generating Jetpack Compose project".bright_cyan());
 
     // Load project context
     let project = JetProject::from_workspace(root_dir)?;
+    generate_jet_project_with_project(root_dir, output_dir, full_project, project)
+}
 
+/// 请求路径（PLAN-809 T-06c 生产入口）。
+pub fn generate_jet_project_with_request(
+    root_dir: &Path,
+    output_dir: Option<&Path>,
+    full_project: bool,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    println!("{}", "Generating Jetpack Compose project".bright_cyan());
+    let project = JetProject::from_workspace_with_request(root_dir, req)?;
+    generate_jet_project_with_project(root_dir, output_dir, full_project, project)
+}
+
+fn generate_jet_project_with_project(
+    _root_dir: &Path,
+    output_dir: Option<&Path>,
+    full_project: bool,
+    project: JetProject,
+) -> AutoResult<()> {
     // Determine output directory
     let output = output_dir.unwrap_or(&project.output_dir);
 
@@ -678,13 +838,36 @@ pub fn generate_jet_project(root_dir: &Path, output_dir: Option<&Path>, full_pro
 /// 2. Generate project structure if not exists
 /// 3. Build the project
 /// 4. Install and run on connected device/emulator
-pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
-    println!("{}", "Running Jetpack Compose project (backend: jet)".bright_cyan());
+pub fn run_jet_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    run_jet_project_inner(root_dir, args, None)
+}
+
+/// 请求路径（PLAN-809 R1-F02）。
+pub fn run_jet_project_with_request(
+    root_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    run_jet_project_inner(root_dir, args, Some(req))
+}
+
+fn run_jet_project_inner(
+    root_dir: &Path,
+    _args: Vec<String>,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
+    println!(
+        "{}",
+        "Running Jetpack Compose project (backend: jet)".bright_cyan()
+    );
 
     // Step 1: Generate code (always, incremental)
     println!();
     println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
-    generate_jet_project(root_dir, None, false)?;
+    match req {
+        Some(r) => generate_jet_project_with_request(root_dir, None, false, r)?,
+        None => generate_jet_project(root_dir, None, false)?,
+    }
 
     let jet_dir = root_dir.join("gen").join("front").join("jet");
 
@@ -727,7 +910,10 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
 
     // Step 4: Install and run on device/emulator
     println!();
-    println!("{}", "▶ Step 4: Installing on device/emulator...".bright_cyan());
+    println!(
+        "{}",
+        "▶ Step 4: Installing on device/emulator...".bright_cyan()
+    );
 
     // Check for connected devices
     let adb_devices = std::process::Command::new("adb")
@@ -740,7 +926,7 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
             // Check if there's at least one device (excluding header line)
             stdout.lines().any(|line| line.contains("\tdevice"))
         }
-        Err(_) => false
+        Err(_) => false,
     };
 
     if has_device {
@@ -766,8 +952,14 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
 
             println!("  ✓ App installed successfully!");
             println!();
-            println!("{}", "App is now running on your device/emulator.".bright_green());
-            println!("Package: com.example.{}", project_name.to_lowercase().replace("-", "_"));
+            println!(
+                "{}",
+                "App is now running on your device/emulator.".bright_green()
+            );
+            println!(
+                "Package: com.example.{}",
+                project_name.to_lowercase().replace("-", "_")
+            );
         } else {
             println!("  ⚠ Install failed. Try running manually:");
             println!("    cd {} && ./gradlew installDebug", jet_dir.display());
@@ -800,12 +992,33 @@ pub fn run_jet_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
 /// 2. Generate project structure if not exists
 /// 3. Run gradlew assembleDebug
 pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
-    println!("{}", "Building Jetpack Compose project (backend: jet)".bright_cyan());
+    build_jet_project_inner(root_dir, None)
+}
+
+/// 请求路径（PLAN-809 R2-F02：build 分派同样经合同）。
+pub fn build_jet_project_with_request(
+    root_dir: &Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    build_jet_project_inner(root_dir, Some(req))
+}
+
+fn build_jet_project_inner(
+    root_dir: &Path,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
+    println!(
+        "{}",
+        "Building Jetpack Compose project (backend: jet)".bright_cyan()
+    );
 
     // Step 1: Generate code (always, incremental)
     println!();
     println!("{}", "▶ Step 1: Generating Kotlin code...".bright_cyan());
-    generate_jet_project(root_dir, None, false)?;
+    match req {
+        Some(r) => generate_jet_project_with_request(root_dir, None, false, r)?,
+        None => generate_jet_project(root_dir, None, false)?,
+    }
 
     let jet_dir = root_dir.join("gen").join("front").join("jet");
 
@@ -862,7 +1075,14 @@ pub fn build_jet_project(root_dir: &Path) -> AutoResult<()> {
         println!("{}", "✓ Build successful!".bright_green());
         println!();
         println!("APK location:");
-        println!("  {}", jet_dir.join("app/build/outputs/apk/debug/app-debug.apk").display().to_string().bright_cyan());
+        println!(
+            "  {}",
+            jet_dir
+                .join("app/build/outputs/apk/debug/app-debug.apk")
+                .display()
+                .to_string()
+                .bright_cyan()
+        );
     } else {
         println!();
         println!("  ⚠ Build failed. Try running manually:");
@@ -892,8 +1112,7 @@ fn find_gradle() -> Option<std::path::PathBuf> {
     // Structure: .gradle/wrapper/dists/gradle-X.X.X-bin/<hash>/gradle-X.X.X/bin/gradle
     let home_var = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
     if let Ok(home) = std::env::var(home_var) {
-        let gradle_wrapper_dists = std::path::PathBuf::from(&home)
-            .join(".gradle/wrapper/dists");
+        let gradle_wrapper_dists = std::path::PathBuf::from(&home).join(".gradle/wrapper/dists");
 
         if gradle_wrapper_dists.exists() {
             // Look for gradle-*-bin directories (Level 1)

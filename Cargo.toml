@@ -48,6 +48,11 @@ members = [
     "crates/auto-macros",
     # Plan 078: AutoMan migration from ../auto-man
     "crates/auto-man",
+    # PLAN-809: management/build-planning rules core — pac.at declaration
+    # normalization, target/link closure, source selection and build planning
+    # as pure rules over auto-val nodes; language execution, Git/FS
+    # observation and Builder execution stay in auto-man adapters.
+    "crates/auto-man-core",
     # PLAN-795: pac.lock core (model/TOML-JSON codec/verify rules), extracted
     # Target-free from auto-man; auto-man keeps the Target→projection, Git
     # observation and compatibility facade over this crate.
@@ -223,6 +228,19 @@ exclude = [
     # （V01..V04 真实 fresh-lock build/重定位 locked 重放/负控；生成器内容门 =
     # cargo test -p auto-man --lib delivery -- --test-threads=1）
     "test/fixtures/modularity/generated-ui-consumer",
+    # PLAN-809: 生成请求数据合同（I-PROJECT）消费方探针——独立 fixture
+    # crate（唯一依赖 auto-project-model，证明 generation_request 合同
+    # 闭包无 auto-lang/auto-man/auto-vm/UI；静态准入/动态求值双臂），
+    # 门禁经
+    # cargo test --manifest-path test/fixtures/modularity/project-request-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/project-request-consumer/verify-deps.sh
+    "test/fixtures/modularity/project-request-consumer",
+    # PLAN-809: 管理规则核心消费方探针——独立 fixture crate（唯一依赖
+    # auto-man-core，证明声明归一/链接闭包（含环准入合同）/选择与规划
+    # 规则闭包无 auto-lang/auto-man/auto-vm/UI），门禁经
+    # cargo test --manifest-path test/fixtures/modularity/man-core-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/man-core-consumer/verify-deps.sh
+    "test/fixtures/modularity/man-core-consumer",
 ]
 resolver = "2"
 

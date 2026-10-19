@@ -1,4 +1,5 @@
 use crate::asset::Templates;
+use crate::target::TargetEffects;
 use crate::AutoResult;
 use crate::Pac;
 use crate::Port;
@@ -32,10 +33,10 @@ fn locale_prefers_zh() -> bool {
 pub struct Automan {
     pac: Pac,
     index_store: IndexStore,
-    cache: Option<AutoManCache>, // Optional cache for builds
+    cache: Option<AutoManCache>,     // Optional cache for builds
     render_override: Option<String>, // --render CLI override
-    root_dir: PathBuf, // Project root directory (from pac.at location)
-    vm_server_mode: bool, // Plan 317: --server=vm → AutoVM HTTP backend
+    root_dir: PathBuf,               // Project root directory (from pac.at location)
+    vm_server_mode: bool,            // Plan 317: --server=vm → AutoVM HTTP backend
     /// PR-6: --scene CLI override ("core"/"ui"/"shell"). None = use pac.at scene field.
     scene_override: Option<String>,
     /// --gen-only CLI flag: stop after code generation, skip npm/gradle steps.
@@ -73,15 +74,17 @@ impl Automan {
         if path.is_file() {
             return Err(format!("A file named with {} already exists", name).into());
         }
-        if path.is_dir() && path.read_dir().map(|mut d| d.next().is_some()).unwrap_or(false) {
+        if path.is_dir()
+            && path
+                .read_dir()
+                .map(|mut d| d.next().is_some())
+                .unwrap_or(false)
+        {
             return Err(format!("A non-empty directory named with {} already exists", name).into());
         }
 
         // Get project name from path
-        let pac_name = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("MyApp");
+        let pac_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("MyApp");
 
         // Generate project with JetProjectConfig
         let config = JetProjectConfig::new(pac_name);
@@ -99,7 +102,10 @@ impl Automan {
             info!("Created {}", file_path);
         }
 
-        println!("Jetpack Compose project '{}' created successfully!", pac_name);
+        println!(
+            "Jetpack Compose project '{}' created successfully!",
+            pac_name
+        );
         println!("Open with: auto open");
         Ok(())
     }
@@ -235,7 +241,8 @@ impl Automan {
         pac.set_port(port_name.clone())?;
         pac.save_port(port_name.clone())?;
 
-        let root_dir = config_path.parent()
+        let root_dir = config_path
+            .parent()
             .map(|p| p.to_path_buf())
             .unwrap_or_else(|| PathBuf::from("."));
 
@@ -535,9 +542,7 @@ impl Automan {
         println!("Project: {}", project_dir.display());
 
         // Try to open with VSCode
-        let code_result = std::process::Command::new("code")
-            .arg(&project_dir)
-            .spawn();
+        let code_result = std::process::Command::new("code").arg(&project_dir).spawn();
 
         match code_result {
             Ok(_) => {
@@ -623,6 +628,47 @@ impl Automan {
     }
 
     /// Open Jetpack Compose project with Android Studio
+    /// PLAN-809 R1-F02：本工程生成请求（I-PROJECT）——run/build/open 等
+    /// 生产分派共用构造点（self.pac + cwd pac.at）。
+    fn gen_request(&self) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
+        self.gen_request_as(auto_project_model::generation_request::RequestMode::Generate)
+    }
+
+    /// run 侧构造（R2-F03：调用上下文入请求）。
+    fn gen_request_run(
+        &self,
+    ) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
+        self.gen_request_as(auto_project_model::generation_request::RequestMode::Run)
+    }
+
+    fn gen_request_as(
+        &self,
+        mode: auto_project_model::generation_request::RequestMode,
+    ) -> AutoResult<auto_project_model::generation_request::GenerationRequest> {
+        let pac_at = self.root_dir.join("pac.at");
+        let mut req = crate::generation_request_adapter::request_of_in(
+            &self.pac,
+            &pac_at,
+            mode,
+            self.delivery_root.clone(),
+        );
+        // R3-03：CLI --render 覆盖（render_override）应用到请求投影——
+        // 本次有效前端选择进入合同，生成器不再自行重判。
+        if let Some(o) = &self.render_override {
+            use auto_project_model::descriptor::{RenderDecl, RenderSpec};
+            let spec = match auto_man_core::BackendName::from_str(o) {
+                Some(b) => RenderSpec::Single(b.as_str().to_string()),
+                None => RenderSpec::Unknown(o.clone()),
+            };
+            req.render = RenderDecl {
+                render: spec,
+                legacy_backend: Some(o.clone()),
+                effective_backend: Some(o.clone()),
+            };
+        }
+        Ok(req)
+    }
+
     fn open_jet_project(&self) -> AutoResult<()> {
         // Get current directory (project root)
         let root_dir = std::env::current_dir()
@@ -636,7 +682,13 @@ impl Automan {
             println!("Jet project directory not found, generating...");
             // Generate the jet project first
             let output_dir = root_dir.join("gen").join("front").join("jet");
-            crate::jet::generate_jet_project(&root_dir, Some(&output_dir), true)?;
+            let req = self.gen_request()?;
+            crate::jet::generate_jet_project_with_request(
+                &root_dir,
+                Some(&output_dir),
+                true,
+                &req,
+            )?;
         }
 
         println!("Opening Jetpack Compose project with Android Studio...");
@@ -765,7 +817,13 @@ impl Automan {
             println!("Ark project directory not found, generating...");
             // Generate the ark project first
             let output_dir = root_dir.join("gen").join("front").join("ark");
-            crate::ark::generate_ark_project(&root_dir, Some(&output_dir), true)?;
+            let req = self.gen_request()?;
+            crate::ark::generate_ark_project_with_request(
+                &root_dir,
+                Some(&output_dir),
+                true,
+                &req,
+            )?;
         }
 
         println!("Opening ArkTS/HarmonyOS project with DevEco Studio...");
@@ -974,8 +1032,10 @@ impl Automan {
         if self.render_override.is_none() && self.is_native_project() {
             let why = match self.pac.scene {
                 crate::pac::Scene::C => "scene: \"c\"".to_string(),
-                _ => "inferred: ports declared, no render — consider adding `scene: \"c\"` to pac.at"
-                    .to_string(),
+                _ => {
+                    "inferred: ports declared, no render — consider adding `scene: \"c\"` to pac.at"
+                        .to_string()
+                }
             };
             if self.pac.default_frontend().is_some() {
                 warn!("scene \"c\" overrides the render config in pac.at for `auto b`");
@@ -1037,12 +1097,18 @@ impl Automan {
         // `iar`/`ghs`/`cmake` would otherwise silently no-op.
         let builder = self.pac.port.builder.as_str().to_string();
         if matches!(builder.as_str(), "iar" | "ghs" | "cmake") {
-            println!("Building via {} exporter (project file generation)", builder);
+            println!(
+                "Building via {} exporter (project file generation)",
+                builder
+            );
             self.pac.resolve()?;
             let build_path = AutoPath::new(self.pac.build_location.clone());
             if let Some(mut exporter) = crate::exporter::make_exporter(&builder, build_path) {
                 exporter.export(&mut self.pac)?;
-                println!("Export completed successfully at {}", self.pac.build_location);
+                println!(
+                    "Export completed successfully at {}",
+                    self.pac.build_location
+                );
             } else {
                 return Err(format!("Unknown export format: {}", builder).into());
             }
@@ -1063,14 +1129,20 @@ impl Automan {
     fn build_jet(&mut self) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::jet::build_jet_project(&root_dir)
+        {
+            let req = self.gen_request()?;
+            crate::jet::build_jet_project_with_request(&root_dir, &req)
+        }
     }
 
     /// Build ArkTS/HarmonyOS project (full workflow: generate, hvigor build)
     fn build_ark(&mut self) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::ark::build_ark_project(&root_dir)
+        {
+            let req = self.gen_request()?;
+            crate::ark::build_ark_project_with_request(&root_dir, &req)
+        }
     }
 
     /// Build VSCode extension project (full workflow: generate, webpack build)
@@ -1100,7 +1172,10 @@ impl Automan {
                     .map_err(|e| format!("Failed to get current directory: {}", e))?;
                 // Tauri build uses run_tauri_project's build phase (generate +
                 // API gen + install). The actual server launch is deferred to run.
-                crate::tauri::run_tauri_project(&root_dir, vec![])?;
+                {
+                    let req = self.gen_request()?;
+                    crate::tauri::run_tauri_project_with_request(&root_dir, vec![], &req)?;
+                }
             }
             auto_lang::config::BackendType::Jet => {
                 println!("Building Jetpack Compose project (backend: jet)");
@@ -1118,7 +1193,10 @@ impl Automan {
                 let root_dir = std::env::current_dir()
                     .map_err(|e| format!("Failed to get current directory: {}", e))?;
                 if root_dir.join("src").join("front").exists() {
-                    crate::rust_ui::build_rust_ui(&root_dir)?;
+                    {
+                        let req = self.gen_request()?;
+                        crate::rust_ui::build_rust_ui_with_request(&root_dir, &req)?;
+                    }
                 } else {
                     println!("Transpiling Auto code to Rust (backend: rust)");
                     // Plan 531 P523-1: rust target 链补齐——targets 的 autos
@@ -1166,7 +1244,10 @@ impl Automan {
         if let Some(mut exporter) = crate::exporter::make_exporter(&format, build_path) {
             println!("Exporting project to {} format...", format);
             exporter.export(&mut self.pac)?;
-            println!("Export completed successfully at {}", self.pac.build_location);
+            println!(
+                "Export completed successfully at {}",
+                self.pac.build_location
+            );
             Ok(())
         } else {
             Err(format!("Unknown export format: {}", format).into())
@@ -1197,15 +1278,22 @@ impl Automan {
                 return Err("Workspace has no members defined".into());
             }
 
-            println!("{} {}", "Generating for workspace members:".bright_cyan(), members.len());
+            println!(
+                "{} {}",
+                "Generating for workspace members:".bright_cyan(),
+                members.len()
+            );
 
             for member_path in members {
                 let member_dir = root_dir.join(member_path.as_str());
                 let member_pac_path = member_dir.join("pac.at");
 
                 if !member_pac_path.exists() {
-                    println!("{} Skipping {} - pac.at not found",
-                        "Warning:".bright_yellow(), member_path);
+                    println!(
+                        "{} Skipping {} - pac.at not found",
+                        "Warning:".bright_yellow(),
+                        member_path
+                    );
                     continue;
                 }
 
@@ -1213,16 +1301,33 @@ impl Automan {
                 println!("{} {}/", "→ Member:".bright_green(), member_path);
 
                 // Load member's pac.at to determine backend type
-                let config = auto_lang::config::AutoConfig::read(&member_pac_path)
+                let member_config_kept = auto_lang::config::AutoConfig::read(&member_pac_path)
                     .map_err(|e| format!("Failed to read {}: {}", member_pac_path.display(), e))?;
-                let member_pac = Pac::new(config);
+                let member_pac = Pac::new(auto_lang::config::AutoConfig {
+                    code: member_config_kept.code.clone(),
+                    root: member_config_kept.root.clone(),
+                    args: member_config_kept.args.clone(),
+                });
+                // PLAN-809 T-06c：成员的生成请求一次构造、多处消费（I-PROJECT）。
+                let member_req = crate::generation_request_adapter::request_of_in(
+                    &member_pac,
+                    &member_pac_path,
+                    auto_project_model::generation_request::RequestMode::Generate,
+                    output
+                        .as_ref()
+                        .map(|o| std::path::PathBuf::from(o))
+                        .or_else(|| self.delivery_root.clone()),
+                );
 
                 // Get frontend types from member's pac.at
                 let frontends = if member_pac.has_backend_config() {
                     member_pac.frontend_types()
                 } else {
                     // Legacy: parse single backend string
-                    member_pac.backend.as_str().split(',')
+                    member_pac
+                        .backend
+                        .as_str()
+                        .split(',')
                         .filter_map(|s| BackendType::from_str(s.trim()))
                         .collect()
                 };
@@ -1237,7 +1342,10 @@ impl Automan {
                     match backend {
                         BackendType::Vue => {
                             println!("  Generating Vue (backend: vue)");
-                            let project_ctx = crate::vue::VueProject::from_workspace(&member_dir)?;
+                            let project_ctx = crate::vue::VueProject::from_workspace_with_request(
+                                &member_dir,
+                                &member_req,
+                            )?;
                             if project || !project_ctx.exists() {
                                 project_ctx.generate()?;
                             } else {
@@ -1246,37 +1354,76 @@ impl Automan {
                         }
                         BackendType::Tauri => {
                             println!("  Generating Tauri (backend: tauri)");
-                            let project_ctx = crate::vue::VueProject::from_workspace(&member_dir)?;
+                            let project_ctx = crate::vue::VueProject::from_workspace_with_request(
+                                &member_dir,
+                                &member_req,
+                            )?;
                             project_ctx.generate()?;
                         }
                         BackendType::Jet => {
                             println!("  Generating Kotlin (backend: jet)");
                             let output_path = if frontends.len() > 1 {
-                                output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("gen").join("front").join("jet")
-                                }).or_else(|| Some(member_dir.join("gen").join("front").join("jet")))
+                                output
+                                    .as_ref()
+                                    .map(|o| {
+                                        std::path::PathBuf::from(o)
+                                            .join("gen")
+                                            .join("front")
+                                            .join("jet")
+                                    })
+                                    .or_else(|| {
+                                        Some(member_dir.join("gen").join("front").join("jet"))
+                                    })
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
                             if let Some(ref out) = output_path {
-                                crate::jet::generate_jet_project(&member_dir, Some(out.as_path()), project)?;
+                                crate::jet::generate_jet_project_with_request(
+                                    &member_dir,
+                                    Some(out.as_path()),
+                                    project,
+                                    &member_req,
+                                )?;
                             } else {
-                                crate::jet::generate_jet_project(&member_dir, None, project)?;
+                                crate::jet::generate_jet_project_with_request(
+                                    &member_dir,
+                                    None,
+                                    project,
+                                    &member_req,
+                                )?;
                             }
                         }
                         BackendType::Arkts => {
                             println!("  Generating ArkTS (backend: ark)");
                             let output_path = if frontends.len() > 1 {
-                                output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("gen").join("front").join("ark")
-                                }).or_else(|| Some(member_dir.join("gen").join("front").join("ark")))
+                                output
+                                    .as_ref()
+                                    .map(|o| {
+                                        std::path::PathBuf::from(o)
+                                            .join("gen")
+                                            .join("front")
+                                            .join("ark")
+                                    })
+                                    .or_else(|| {
+                                        Some(member_dir.join("gen").join("front").join("ark"))
+                                    })
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
                             if let Some(ref out) = output_path {
-                                crate::ark::generate_ark_project(&member_dir, Some(out.as_path()), project)?;
+                                crate::ark::generate_ark_project_with_request(
+                                    &member_dir,
+                                    Some(out.as_path()),
+                                    project,
+                                    &member_req,
+                                )?;
                             } else {
-                                crate::ark::generate_ark_project(&member_dir, None, project)?;
+                                crate::ark::generate_ark_project_with_request(
+                                    &member_dir,
+                                    None,
+                                    project,
+                                    &member_req,
+                                )?;
                             }
                         }
                         BackendType::Rust => {
@@ -1285,7 +1432,11 @@ impl Automan {
                             // 可搬动 bundle；未设置时开发模式（rust-workspace
                             // 共享工作区）行为不变。
                             if let Some(ref delivery) = self.delivery_root {
-                                crate::rust_ui::generate_rust_ui_delivery(&member_dir, delivery)?;
+                                crate::rust_ui::generate_rust_ui_delivery_with_request(
+                                    &member_dir,
+                                    delivery,
+                                    &member_req,
+                                )?;
                             } else {
                                 let output_path = if frontends.len() > 1 {
                                     output
@@ -1304,27 +1455,45 @@ impl Automan {
                                 };
 
                                 if let Some(ref out) = output_path {
-                                    crate::rust_ui::generate_rust_ui(
+                                    crate::rust_ui::generate_rust_ui_with_request(
                                         &member_dir,
                                         Some(out.as_path()),
                                         project,
+                                        &member_req,
                                     )?;
                                 } else {
-                                    crate::rust_ui::generate_rust_ui(&member_dir, None, project)?;
+                                    crate::rust_ui::generate_rust_ui_with_request(
+                                        &member_dir,
+                                        None,
+                                        project,
+                                        &member_req,
+                                    )?;
                                 }
                             }
                         }
                         BackendType::Vscode => {
                             println!("  Generating VSCode extension (backend: vscode)");
                             let output_path = if frontends.len() > 1 {
-                                output.as_ref().map(|o| {
-                                    std::path::PathBuf::from(o).join("gen").join("front").join("vscode")
-                                }).or_else(|| Some(member_dir.join("gen").join("front").join("vscode")))
+                                output
+                                    .as_ref()
+                                    .map(|o| {
+                                        std::path::PathBuf::from(o)
+                                            .join("gen")
+                                            .join("front")
+                                            .join("vscode")
+                                    })
+                                    .or_else(|| {
+                                        Some(member_dir.join("gen").join("front").join("vscode"))
+                                    })
                             } else {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
                             if let Some(ref out) = output_path {
-                                crate::vscode::generate_vscode_project(&member_dir, Some(out.as_path()), project)?;
+                                crate::vscode::generate_vscode_project(
+                                    &member_dir,
+                                    Some(out.as_path()),
+                                    project,
+                                )?;
                             } else {
                                 crate::vscode::generate_vscode_project(&member_dir, None, project)?;
                             }
@@ -1344,6 +1513,19 @@ impl Automan {
         let selected_backends = vec![backend];
         let frontends = selected_backends.clone(); // for multi-backend output path check
 
+        // PLAN-809 T-06c：本工程生成请求（I-PROJECT）——一次构造多处消费。
+        let self_req = {
+            // R4：经 gen_request_as（render_override 应用到本次有效后端），
+            // output/delivery 覆盖 output_root。
+            let mut r =
+                self.gen_request_as(auto_project_model::generation_request::RequestMode::Generate)?;
+            r.output_root = output
+                .as_ref()
+                .map(|o| std::path::PathBuf::from(o))
+                .or_else(|| self.delivery_root.clone());
+            r
+        };
+
         // Generate for selected backend only
         for backend in &selected_backends {
             match backend {
@@ -1354,17 +1536,30 @@ impl Automan {
 
                     // For multi-backend, create output subdirectory
                     let output_path = if frontends.len() > 1 {
-                        output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("gen").join("front").join("jet")
-                        }).or_else(|| Some(root_dir.join("gen").join("front").join("jet")))
+                        output
+                            .as_ref()
+                            .map(|o| {
+                                std::path::PathBuf::from(o)
+                                    .join("gen")
+                                    .join("front")
+                                    .join("jet")
+                            })
+                            .or_else(|| Some(root_dir.join("gen").join("front").join("jet")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
 
                     if let Some(ref out) = output_path {
-                        crate::jet::generate_jet_project(&root_dir, Some(out.as_path()), project)?;
+                        crate::jet::generate_jet_project_with_request(
+                            &root_dir,
+                            Some(out.as_path()),
+                            project,
+                            &self_req,
+                        )?;
                     } else {
-                        crate::jet::generate_jet_project(&root_dir, None, project)?;
+                        crate::jet::generate_jet_project_with_request(
+                            &root_dir, None, project, &self_req,
+                        )?;
                     }
                 }
                 BackendType::Arkts => {
@@ -1374,17 +1569,30 @@ impl Automan {
 
                     // For multi-backend, create output subdirectory
                     let output_path = if frontends.len() > 1 {
-                        output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("gen").join("front").join("ark")
-                        }).or_else(|| Some(root_dir.join("gen").join("front").join("ark")))
+                        output
+                            .as_ref()
+                            .map(|o| {
+                                std::path::PathBuf::from(o)
+                                    .join("gen")
+                                    .join("front")
+                                    .join("ark")
+                            })
+                            .or_else(|| Some(root_dir.join("gen").join("front").join("ark")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
 
                     if let Some(ref out) = output_path {
-                        crate::ark::generate_ark_project(&root_dir, Some(out.as_path()), project)?;
+                        crate::ark::generate_ark_project_with_request(
+                            &root_dir,
+                            Some(out.as_path()),
+                            project,
+                            &self_req,
+                        )?;
                     } else {
-                        crate::ark::generate_ark_project(&root_dir, None, project)?;
+                        crate::ark::generate_ark_project_with_request(
+                            &root_dir, None, project, &self_req,
+                        )?;
                     }
                 }
                 BackendType::Vue => {
@@ -1392,7 +1600,8 @@ impl Automan {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                    let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
+                    let project_ctx =
+                        crate::vue::VueProject::from_workspace_with_request(&root_dir, &self_req)?;
 
                     if project || !project_ctx.exists() {
                         project_ctx.generate()?;
@@ -1406,7 +1615,8 @@ impl Automan {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                    let project_ctx = crate::vue::VueProject::from_workspace(&root_dir)?;
+                    let project_ctx =
+                        crate::vue::VueProject::from_workspace_with_request(&root_dir, &self_req)?;
                     project_ctx.generate()?;
                 }
                 BackendType::Rust => {
@@ -1417,7 +1627,9 @@ impl Automan {
                     // PLAN-792：显式交付模式（--delivery-root）——受管可搬动
                     // bundle；未设置时开发模式行为不变。
                     if let Some(ref delivery) = self.delivery_root {
-                        crate::rust_ui::generate_rust_ui_delivery(&root_dir, delivery)?;
+                        crate::rust_ui::generate_rust_ui_delivery_with_request(
+                            &root_dir, delivery, &self_req,
+                        )?;
                     } else {
                         // For multi-backend, create output subdirectory
                         let output_path = if frontends.len() > 1 {
@@ -1435,13 +1647,16 @@ impl Automan {
                         };
 
                         if let Some(ref out) = output_path {
-                            crate::rust_ui::generate_rust_ui(
+                            crate::rust_ui::generate_rust_ui_with_request(
                                 &root_dir,
                                 Some(out.as_path()),
                                 project,
+                                &self_req,
                             )?;
                         } else {
-                            crate::rust_ui::generate_rust_ui(&root_dir, None, project)?;
+                            crate::rust_ui::generate_rust_ui_with_request(
+                                &root_dir, None, project, &self_req,
+                            )?;
                         }
                     }
                 }
@@ -1451,15 +1666,25 @@ impl Automan {
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
                     let output_path = if frontends.len() > 1 {
-                        output.as_ref().map(|o| {
-                            std::path::PathBuf::from(o).join("gen").join("front").join("vscode")
-                        }).or_else(|| Some(root_dir.join("gen").join("front").join("vscode")))
+                        output
+                            .as_ref()
+                            .map(|o| {
+                                std::path::PathBuf::from(o)
+                                    .join("gen")
+                                    .join("front")
+                                    .join("vscode")
+                            })
+                            .or_else(|| Some(root_dir.join("gen").join("front").join("vscode")))
                     } else {
                         output.as_ref().map(|o| std::path::PathBuf::from(o))
                     };
 
                     if let Some(ref out) = output_path {
-                        crate::vscode::generate_vscode_project(&root_dir, Some(out.as_path()), project)?;
+                        crate::vscode::generate_vscode_project(
+                            &root_dir,
+                            Some(out.as_path()),
+                            project,
+                        )?;
                     } else {
                         crate::vscode::generate_vscode_project(&root_dir, None, project)?;
                     }
@@ -1488,7 +1713,11 @@ impl Automan {
 
     /// Run with multiple backends - let user select one
     /// Run a specific backend
-    fn run_backend(&mut self, backend: &auto_lang::config::BackendType, args: Vec<String>) -> AutoResult<()> {
+    fn run_backend(
+        &mut self,
+        backend: &auto_lang::config::BackendType,
+        args: Vec<String>,
+    ) -> AutoResult<()> {
         use auto_lang::database::UICache;
 
         let root_dir = std::env::current_dir()
@@ -1509,7 +1738,8 @@ impl Automan {
         let cache = UICache::load(&root_dir);
         if cache.file_count() > 0 {
             println!("{}", "─────────────────────────────────".bright_cyan());
-            println!("{} {} files, {} artifacts cached",
+            println!(
+                "{} {} files, {} artifacts cached",
                 "Cache:".bright_cyan(),
                 cache.file_count(),
                 cache.artifact_count()
@@ -1528,16 +1758,25 @@ impl Automan {
             }
             auto_lang::config::BackendType::Jet => {
                 println!("Running Jetpack Compose project (backend: jet)");
-                crate::jet::run_jet_project(&root_dir, args)
+                {
+                    let req = self.gen_request_run()?;
+                    crate::jet::run_jet_project_with_request(&root_dir, args, &req)
+                }
             }
             auto_lang::config::BackendType::Arkts => {
                 println!("Running ArkTS/HarmonyOS project (backend: ark)");
-                crate::ark::run_ark_project(&root_dir, args)
+                {
+                    let req = self.gen_request_run()?;
+                    crate::ark::run_ark_project_with_request(&root_dir, args, &req)
+                }
             }
             auto_lang::config::BackendType::Rust => {
                 // Check if this is a UI project (has front/ dir)
                 if root_dir.join("src").join("front").exists() {
-                    crate::rust_ui::run_rust_ui(&root_dir, args)
+                    {
+                        let req = self.gen_request_run()?;
+                        crate::rust_ui::run_rust_ui_with_request(&root_dir, args, &req)
+                    }
                 } else {
                     println!("Running Rust project (backend: rust)");
                     let mut cmd = std::process::Command::new("cargo");
@@ -1561,7 +1800,10 @@ impl Automan {
                     let api_path = auto_lang::config::resolve_back_api(&root_dir)
                         .unwrap_or_else(|| root_dir.join("src/back/api.at"));
                     if api_path.exists() {
-                        eprintln!("[AutoVM] Starting HTTP server from {} (module flattening enabled)", api_path.display());
+                        eprintln!(
+                            "[AutoVM] Starting HTTP server from {} (module flattening enabled)",
+                            api_path.display()
+                        );
                         let api_str = api_path.to_string_lossy().to_string();
                         // Run in a large-stack thread (32MB) to avoid main-
                         // thread stack overflow on large flattened code (015-notes
@@ -1582,16 +1824,17 @@ impl Automan {
                         Err("AutoVM server mode requires an api.at contract (local src/back/ or pac.at back.project external backend)".into())
                     }
                 } else {
-                    crate::rust_ui::run_vm_ui(&root_dir, args)
+                    {
+                        let req = self.gen_request_run()?;
+                        crate::rust_ui::run_vm_ui_with_request(&root_dir, args, &req)
+                    }
                 }
             }
             auto_lang::config::BackendType::Vscode => {
                 println!("Running VSCode extension (backend: vscode)");
                 crate::vscode::run_vscode_project(&root_dir, args)
             }
-            _ => {
-                Err(format!("Backend {:?} does not support run command", backend).into())
-            }
+            _ => Err(format!("Backend {:?} does not support run command", backend).into()),
         }
     }
 
@@ -1599,14 +1842,20 @@ impl Automan {
     fn run_vue(&mut self, args: Vec<String>) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::vue::run_vue_project(&root_dir, args)
+        {
+            let req = self.gen_request_run()?;
+            crate::vue::run_vue_project_with_request(&root_dir, args, &req)
+        }
     }
 
     /// Run Tauri dev server using npm run tauri dev (full workflow: generate Vue, generate Tauri, install, run)
     fn run_tauri(&mut self, args: Vec<String>) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::tauri::run_tauri_project(&root_dir, args)
+        {
+            let req = self.gen_request_run()?;
+            crate::tauri::run_tauri_project_with_request(&root_dir, args, &req)
+        }
     }
 
     /// Build all workspace members (Plan 130)
@@ -1619,15 +1868,22 @@ impl Automan {
             return Err("Workspace has no members defined".into());
         }
 
-        println!("{} {}", "Building workspace members:".bright_cyan(), members.len());
+        println!(
+            "{} {}",
+            "Building workspace members:".bright_cyan(),
+            members.len()
+        );
 
         for member_path in members {
             let member_dir = root_dir.join(member_path.as_str());
             let member_pac_path = member_dir.join("pac.at");
 
             if !member_pac_path.exists() {
-                println!("{} Skipping {} - pac.at not found",
-                    "Warning:".bright_yellow(), member_path);
+                println!(
+                    "{} Skipping {} - pac.at not found",
+                    "Warning:".bright_yellow(),
+                    member_path
+                );
                 continue;
             }
 
@@ -1695,13 +1951,18 @@ impl Automan {
     }
 
     /// Run a member's frontend (helper for run_workspace)
-    fn run_member_frontend(frontend: &auto_lang::config::BackendType, root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    fn run_member_frontend(
+        frontend: &auto_lang::config::BackendType,
+        root_dir: &Path,
+        args: Vec<String>,
+        req: &auto_project_model::generation_request::GenerationRequest,
+    ) -> AutoResult<()> {
         use auto_lang::config::BackendType;
 
         match frontend {
             BackendType::Vue => {
                 println!("  Running Vue dev server");
-                crate::vue::run_vue_project(root_dir, args)?;
+                crate::vue::run_vue_project_with_request(root_dir, args, req)?;
             }
             BackendType::Jet => {
                 println!("  Running Jetpack project");
@@ -1709,7 +1970,7 @@ impl Automan {
             }
             BackendType::Tauri => {
                 println!("  Running Tauri project");
-                crate::tauri::run_tauri_project(root_dir, args)?;
+                crate::tauri::run_tauri_project_with_request(root_dir, args, req)?;
             }
             BackendType::Rust => {
                 println!("  Running Rust backend");
@@ -1739,9 +2000,7 @@ impl Automan {
         println!("{} {}", "Workspace members:".bright_cyan(), members.len());
 
         // Convert to owned Strings before mutating self
-        let members: Vec<String> = members.iter()
-            .map(|m| m.as_str().to_string())
-            .collect();
+        let members: Vec<String> = members.iter().map(|m| m.as_str().to_string()).collect();
 
         // Auto build first to ensure everything is up to date
         println!();
@@ -1781,8 +2040,11 @@ impl Automan {
             let member_pac_path = member_dir.join("pac.at");
 
             if !member_pac_path.exists() {
-                println!("{} Skipping {} - pac.at not found",
-                    "Warning:".bright_yellow(), member_path);
+                println!(
+                    "{} Skipping {} - pac.at not found",
+                    "Warning:".bright_yellow(),
+                    member_path
+                );
                 continue;
             }
 
@@ -1791,7 +2053,18 @@ impl Automan {
 
             // Load member's pac.at
             let config = AutoConfig::read(&member_pac_path)?;
-            let member_pac = Pac::new(config);
+            let member_pac = Pac::new(auto_lang::config::AutoConfig {
+                code: config.code.clone(),
+                root: config.root.clone(),
+                args: config.args.clone(),
+            });
+            // PLAN-809 R1-F02：成员请求（run_member_frontend 经合同读取）。
+            let member_req = crate::generation_request_adapter::request_of_in(
+                &member_pac,
+                &member_pac_path,
+                auto_project_model::generation_request::RequestMode::Run,
+                None,
+            );
 
             // Run based on member's frontend types (Plan 132: support array backends)
             let frontends = member_pac.frontend_types();
@@ -1805,16 +2078,15 @@ impl Automan {
                 }
             } else if frontends.len() == 1 {
                 // Single frontend - run directly
-                Self::run_member_frontend(&frontends[0], &root_dir, args.clone())?;
+                Self::run_member_frontend(&frontends[0], &root_dir, args.clone(), &member_req)?;
                 frontend_started = true;
             } else {
                 // Multiple frontends - let user select (or default to first in non-interactive)
                 let selection = if std::io::stdin().is_terminal() {
                     use dialoguer::Select;
 
-                    let frontend_names: Vec<&'static str> = frontends.iter()
-                        .map(|t| t.as_str())
-                        .collect();
+                    let frontend_names: Vec<&'static str> =
+                        frontends.iter().map(|t| t.as_str()).collect();
 
                     Select::new()
                         .with_prompt("Select frontend to run")
@@ -1828,7 +2100,12 @@ impl Automan {
                     0
                 };
 
-                Self::run_member_frontend(&frontends[selection], &root_dir, args.clone())?;
+                Self::run_member_frontend(
+                    &frontends[selection],
+                    &root_dir,
+                    args.clone(),
+                    &member_req,
+                )?;
                 frontend_started = true;
             }
         }
@@ -2489,12 +2766,25 @@ mod index_store_tests {
         };
         assert!(git(&["init", "--quiet"]), "git init");
         assert!(
-            git(&["-c", "user.email=t@t.invalid", "-c", "user.name=t", "add", "."]),
+            git(&[
+                "-c",
+                "user.email=t@t.invalid",
+                "-c",
+                "user.name=t",
+                "add",
+                "."
+            ]),
             "git add"
         );
         assert!(git(&[
-            "-c", "user.email=t@t.invalid", "-c", "user.name=t",
-            "commit", "--quiet", "-m", "init"
+            "-c",
+            "user.email=t@t.invalid",
+            "-c",
+            "user.name=t",
+            "commit",
+            "--quiet",
+            "-m",
+            "init"
         ]));
         origin
     }
@@ -2508,12 +2798,16 @@ mod index_store_tests {
         std::fs::create_dir_all(&broken).unwrap();
         std::fs::write(broken.join("stray.txt"), "not a git repo").unwrap();
         let config = am_config_with(&[("myidx", origin.to_str().unwrap())]);
+        assert!(Automan::index_store_at(&config, vec!["myidx".into()], &tmp_am_path(&tmp)).is_ok());
         assert!(
-            Automan::index_store_at(&config, vec!["myidx".into()], &tmp_am_path(&tmp)).is_ok()
+            broken.join(".git").is_dir(),
+            "must be re-cloned as git repo"
         );
-        assert!(broken.join(".git").is_dir(), "must be re-cloned as git repo");
         assert!(broken.join("index.at").is_file(), "index.at from the clone");
-        assert!(!broken.join("stray.txt").exists(), "broken content discarded");
+        assert!(
+            !broken.join("stray.txt").exists(),
+            "broken content discarded"
+        );
     }
 
     #[test]
@@ -2524,9 +2818,7 @@ mod index_store_tests {
         let broken = tmp.path().join("index").join("myidx");
         std::fs::create_dir_all(broken.join(".git")).unwrap();
         let config = am_config_with(&[("myidx", origin.to_str().unwrap())]);
-        assert!(
-            Automan::index_store_at(&config, vec!["myidx".into()], &tmp_am_path(&tmp)).is_ok()
-        );
+        assert!(Automan::index_store_at(&config, vec!["myidx".into()], &tmp_am_path(&tmp)).is_ok());
         assert!(broken.join("index.at").is_file(), "index.at from the clone");
     }
 
@@ -2535,10 +2827,7 @@ mod index_store_tests {
         // file:// URL to a nonexistent repo fails fast, no network needed
         let tmp = TempDir::new().unwrap();
         let missing = tmp.path().join("no-such-repo");
-        let url = format!(
-            "file:///{}",
-            missing.to_str().unwrap().replace('\\', "/")
-        );
+        let url = format!("file:///{}", missing.to_str().unwrap().replace('\\', "/"));
         let config = am_config_with(&[("broken", url.as_str())]);
         let err = match Automan::index_store_at(&config, vec!["broken".into()], &tmp_am_path(&tmp))
         {
@@ -2642,10 +2931,7 @@ pub fn load_am_config() -> Option<AmConfig> {
             // is discoverable and complete; the old behavior wrote a lossy
             // default with only the `default` index, which broke projects
             // using e.g. `index: ["soutek"]`
-            if let Err(e) = std::fs::write(
-                user_home_config_path.clone(),
-                expand_default_am_at(),
-            ) {
+            if let Err(e) = std::fs::write(user_home_config_path.clone(), expand_default_am_at()) {
                 error!("Failed to write default am.at file: {}", e);
             }
             am_path = Some(user_home_config_path);

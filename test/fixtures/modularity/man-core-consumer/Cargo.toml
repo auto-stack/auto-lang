@@ -1,0 +1,30 @@
+# PLAN-809 T-06 管理规则核心消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-man-core 的公开面（Target/Dir/
+# Port/Scene/RenderSelection/闭包 resolve_target_closure+GraphError/
+# selection/planning 规则），证明管理/构建规划规则可被无
+# auto-lang/auto-man/auto-vm/auto-ui/auto-ast/auto-gen 的外部 consumer
+# 编译并运行（AC-01/V-01）。
+#
+# 闭包证明 = 本 manifest 的依赖表 + verify-deps.sh（cargo tree 断言
+# normal/build 闭包无 auto-lang/auto-man/auto-gen/auto-ui/auto-vm/
+# auto-ast）。
+#
+# 门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/man-core-consumer/Cargo.toml
+# 依赖闭包断言（V-01 oracle）：
+#   bash test/fixtures/modularity/man-core-consumer/verify-deps.sh
+
+[package]
+name = "man-core-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-man-core = { path = "../../../../crates/auto-man-core" }
+# 规则数据层（Node/Obj/AutoStr 同身份直用，与 toolchain-core-consumer 同边界）
+auto-val = { path = "../../../../crates/auto-val" }
+
+# 独立 workspace（根 Cargo.toml exclude 内）；无锁文件、无成员。
+[workspace]

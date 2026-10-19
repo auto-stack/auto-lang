@@ -8,10 +8,10 @@
 use std::fs;
 use std::path::Path;
 
-use colored::Colorize;
 use auto_lang::ui_gen::ark::{ArkGenerator, ArkProjectGenerator};
 use auto_lang::ui_gen::BackendGenerator;
 use auto_lang::Parser;
+use colored::Colorize;
 
 use crate::AutoResult;
 
@@ -47,7 +47,11 @@ fn has_ark_backend(content: &str) -> bool {
                         .split(',')
                         .filter_map(|s| {
                             let s = s.trim().trim_matches('"').trim_matches('\'');
-                            if !s.is_empty() { Some(s) } else { None }
+                            if !s.is_empty() {
+                                Some(s)
+                            } else {
+                                None
+                            }
                         })
                         .collect();
                     // Check for both "ark" and "arkts" variants
@@ -79,25 +83,63 @@ pub struct ArkProject {
     pub widget_names: Vec<String>,
 }
 
-impl ArkProject {
-    /// Create a new Ark project context from a workspace directory
-    pub fn from_workspace(root_dir: &Path) -> AutoResult<Self> {
+/// ark 项目读取缝（PLAN-809 T-06c / I-PROJECT）：同 JetReads 模式。
+pub(crate) struct ArkReads {
+    pub name: String,
+    pub gate_ok: bool,
+}
+
+impl ArkReads {
+    fn scan(root_dir: &Path) -> AutoResult<Self> {
         let pac_path = root_dir.join("pac.at");
         if !pac_path.exists() {
             return Err("pac.at not found in workspace".into());
         }
+        let pac_content =
+            fs::read_to_string(&pac_path).map_err(|e| format!("Failed to read pac.at: {}", e))?;
+        Ok(Self {
+            name: parse_pac_name(&pac_content).unwrap_or_else(|| "MyApp".to_string()),
+            gate_ok: has_ark_backend(&pac_content),
+        })
+    }
 
-        let pac_content = fs::read_to_string(&pac_path)
-            .map_err(|e| format!("Failed to read pac.at: {}", e))?;
+    fn from_request(req: &auto_project_model::generation_request::GenerationRequest) -> Self {
+        let gate_ok = req
+            .frontend_names()
+            .iter()
+            .any(|b| b == "ark" || b == "arkts");
+        Self {
+            name: req
+                .identity
+                .name
+                .clone()
+                .unwrap_or_else(|| "MyApp".to_string()),
+            gate_ok,
+        }
+    }
+}
 
-        // Check if ark is in the backend list
-        if !has_ark_backend(&pac_content) {
+impl ArkProject {
+    /// Create a new Ark project context from a workspace directory
+    pub fn from_workspace(root_dir: &Path) -> AutoResult<Self> {
+        let reads = ArkReads::scan(root_dir)?;
+        Self::build(root_dir, reads)
+    }
+
+    /// 请求路径（PLAN-809 T-06c 生产入口）。
+    pub fn from_workspace_with_request(
+        root_dir: &Path,
+        req: &auto_project_model::generation_request::GenerationRequest,
+    ) -> AutoResult<Self> {
+        Self::build(root_dir, ArkReads::from_request(req))
+    }
+
+    fn build(root_dir: &Path, reads: ArkReads) -> AutoResult<Self> {
+        if !reads.gate_ok {
             return Err("Backend 'ark' not found in pac.at. Add 'ark' to backend list.".into());
         }
 
-        // Get project name
-        let name = parse_pac_name(&pac_content)
-            .unwrap_or_else(|| "MyApp".to_string());
+        let name = reads.name;
 
         // Determine front/source directory
         // Supports multiple directory structures:
@@ -149,7 +191,11 @@ impl ArkProject {
                     widget_names.extend(names);
                 }
                 Err(e) => {
-                    println!("{} {}", "Warning: Failed to compile app.at:".bright_yellow(), e);
+                    println!(
+                        "{} {}",
+                        "Warning: Failed to compile app.at:".bright_yellow(),
+                        e
+                    );
                 }
             }
         }
@@ -170,7 +216,12 @@ impl ArkProject {
                             widget_names.extend(names);
                         }
                         Err(e) => {
-                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                            println!(
+                                "{} Failed to compile {}: {}",
+                                "Warning:".bright_yellow(),
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -193,7 +244,12 @@ impl ArkProject {
                             widget_names.extend(names);
                         }
                         Err(e) => {
-                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                            println!(
+                                "{} Failed to compile {}: {}",
+                                "Warning:".bright_yellow(),
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -216,7 +272,12 @@ impl ArkProject {
                             widget_names.extend(names);
                         }
                         Err(e) => {
-                            println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                            println!(
+                                "{} Failed to compile {}: {}",
+                                "Warning:".bright_yellow(),
+                                path.display(),
+                                e
+                            );
                         }
                     }
                 }
@@ -244,7 +305,12 @@ impl ArkProject {
                         widget_names.extend(names);
                     }
                     Err(e) => {
-                        println!("{} Failed to compile {}: {}", "Warning:".bright_yellow(), path.display(), e);
+                        println!(
+                            "{} Failed to compile {}: {}",
+                            "Warning:".bright_yellow(),
+                            path.display(),
+                            e
+                        );
                     }
                 }
             }
@@ -262,7 +328,11 @@ impl ArkProject {
 
     /// Compile a single .at file to ArkTS code
     /// Returns (arkts_files, widget_names)
-    fn compile_at_file(at_path: &Path, _project_name: &str, verbose: bool) -> Result<(Vec<(String, String)>, Vec<String>), String> {
+    fn compile_at_file(
+        at_path: &Path,
+        _project_name: &str,
+        verbose: bool,
+    ) -> Result<(Vec<(String, String)>, Vec<String>), String> {
         if verbose {
             let file_name = at_path.file_name().unwrap_or_default().to_string_lossy();
             println!("  Parsing {}", file_name);
@@ -276,9 +346,9 @@ impl ArkProject {
         let session = CompilerSession::ui().with_backend("ark");
         let mut parser = Parser::from(code.as_str());
         parser = parser.with_session(session);
-        let ast = parser.parse().map_err(|e| {
-            format!("Parse error: {:?}", e)
-        })?;
+        let ast = parser
+            .parse()
+            .map_err(|e| format!("Parse error: {:?}", e))?;
 
         let mut files = Vec::new();
         let mut names = Vec::new();
@@ -312,8 +382,7 @@ impl ArkProject {
         let mut generator = ArkGenerator::new();
 
         for widget in &widgets {
-            let arkts_code = generator.generate(widget)
-                .map_err(|e| e.to_string())?;
+            let arkts_code = generator.generate(widget).map_err(|e| e.to_string())?;
 
             // Collect widget name
             names.push(widget.name.clone());
@@ -333,7 +402,10 @@ impl ArkProject {
         let name = type_decl.name.as_str();
 
         // Skip if it looks like a built-in type
-        if matches!(name, "NavPathStack" | "string" | "number" | "boolean" | "Object") {
+        if matches!(
+            name,
+            "NavPathStack" | "string" | "number" | "boolean" | "Object"
+        ) {
             return None;
         }
 
@@ -355,7 +427,10 @@ impl ArkProject {
             } else {
                 "''".to_string()
             };
-            lines.push(format!("  {}: {} = {}", field_name, field_type, default_value));
+            lines.push(format!(
+                "  {}: {} = {}",
+                field_name, field_type, default_value
+            ));
         }
         lines.push("}".to_string());
 
@@ -366,7 +441,9 @@ impl ArkProject {
     fn type_to_arkts(ty: &auto_lang::ast::Type) -> String {
         use auto_lang::ast::Type;
         match ty {
-            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => "number".to_string(),
+            Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => {
+                "number".to_string()
+            }
             Type::Bool => "boolean".to_string(),
             Type::StrFixed(_) | Type::CStrLit | Type::StrSlice => "string".to_string(),
             Type::User(type_decl) => {
@@ -377,7 +454,7 @@ impl ArkProject {
                 } else {
                     type_decl.name.to_string()
                 }
-            },
+            }
             Type::Option(inner) => format!("{} | null", Self::type_to_arkts(inner)),
             Type::List(inner) => {
                 let elem_type = Self::type_to_arkts(inner);
@@ -388,7 +465,11 @@ impl ArkProject {
                 }
             }
             Type::Map(k, v) => {
-                format!("HashMap<{}, {}>", Self::type_to_arkts(k), Self::type_to_arkts(v))
+                format!(
+                    "HashMap<{}, {}>",
+                    Self::type_to_arkts(k),
+                    Self::type_to_arkts(v)
+                )
             }
             Type::Slice(slice) => {
                 let elem_type = Self::type_to_arkts(&slice.elem);
@@ -419,14 +500,27 @@ impl ArkProject {
 
     /// Generate the ArkTS project structure
     pub fn generate(&self) -> AutoResult<()> {
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
-        println!("{}", "  AURA Workspace → ArkTS/HarmonyOS".bright_yellow().bold());
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "  AURA Workspace → ArkTS/HarmonyOS".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
         println!();
 
         println!("{} {}", "Output:".bright_cyan(), self.output_dir.display());
         println!("{} {}", "Name:".bright_cyan(), self.name);
-        println!("{} {}", "Widgets:".bright_cyan(), self.widget_names.join(", "));
+        println!(
+            "{} {}",
+            "Widgets:".bright_cyan(),
+            self.widget_names.join(", ")
+        );
         println!();
 
         // Create output directory
@@ -446,7 +540,7 @@ impl ArkProject {
             }
             // Handle binary files (PNG) which are base64 encoded
             if file_path.ends_with(".png") {
-                use base64::{Engine as _, engine::general_purpose};
+                use base64::{engine::general_purpose, Engine as _};
                 let bytes = general_purpose::STANDARD
                     .decode(&content)
                     .map_err(|e| format!("Failed to decode base64 for {}: {}", file_path, e))?;
@@ -474,16 +568,22 @@ impl ArkProject {
 
         // main_pages.json should only contain App - other pages are NavDestinations
         // (handled by Navigation component, not as separate entry pages)
-        let main_pages_path = self.output_dir.join("entry/src/main/resources/base/profile/main_pages.json");
+        let main_pages_path = self
+            .output_dir
+            .join("entry/src/main/resources/base/profile/main_pages.json");
         let main_pages_content = serde_json::json!({
             "src": ["pages/App"]
-        }).to_string();
+        })
+        .to_string();
         fs::write(&main_pages_path, main_pages_content)
             .map_err(|e| format!("Failed to write main_pages.json: {}", e))?;
 
         println!();
         println!("═════════════════════════════════");
-        println!("{}", "  ArkTS/HarmonyOS project generated!".bright_green().bold());
+        println!(
+            "{}",
+            "  ArkTS/HarmonyOS project generated!".bright_green().bold()
+        );
         println!("═════════════════════════════════");
         println!();
         println!("{} {}", "Next steps:".bright_cyan(), "");
@@ -495,9 +595,18 @@ impl ArkProject {
 
     /// Generate only ArkTS files (no full project structure)
     pub fn generate_arkts_only(&self, output_dir: &Path) -> AutoResult<()> {
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
-        println!("{}", "  AURA → ArkTS Code Generation".bright_yellow().bold());
-        println!("{}", "─────────────────────────────────".bright_yellow().bold());
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "  AURA → ArkTS Code Generation".bright_yellow().bold()
+        );
+        println!(
+            "{}",
+            "─────────────────────────────────".bright_yellow().bold()
+        );
         println!();
 
         println!("{} {}", "Output:".bright_cyan(), output_dir.display());
@@ -528,12 +637,33 @@ impl ArkProject {
 }
 
 /// Generate ArkTS code from .at files (auto gen command for ark backend)
-pub fn generate_ark_project(root_dir: &Path, output_dir: Option<&Path>, full_project: bool) -> AutoResult<()> {
+pub fn generate_ark_project(
+    root_dir: &Path,
+    output_dir: Option<&Path>,
+    full_project: bool,
+) -> AutoResult<()> {
     println!("{}", "Generating ArkTS/HarmonyOS project".bright_cyan());
-
-    // Load project context
     let project = ArkProject::from_workspace(root_dir)?;
+    generate_ark_project_with_project(output_dir, full_project, project)
+}
 
+/// 请求路径（PLAN-809 T-06c 生产入口）。
+pub fn generate_ark_project_with_request(
+    root_dir: &Path,
+    output_dir: Option<&Path>,
+    full_project: bool,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    println!("{}", "Generating ArkTS/HarmonyOS project".bright_cyan());
+    let project = ArkProject::from_workspace_with_request(root_dir, req)?;
+    generate_ark_project_with_project(output_dir, full_project, project)
+}
+
+fn generate_ark_project_with_project(
+    output_dir: Option<&Path>,
+    full_project: bool,
+    project: ArkProject,
+) -> AutoResult<()> {
     // Determine output directory
     let output = output_dir.unwrap_or(&project.output_dir);
 
@@ -550,12 +680,33 @@ pub fn generate_ark_project(root_dir: &Path, output_dir: Option<&Path>, full_pro
 
 /// Build ArkTS project (auto build command for ark backend)
 pub fn build_ark_project(root_dir: &Path) -> AutoResult<()> {
-    println!("{}", "Building ArkTS/HarmonyOS project (backend: ark)".bright_cyan());
+    build_ark_project_inner(root_dir, None)
+}
+
+/// 请求路径（PLAN-809 R2-F02：build 分派同样经合同）。
+pub fn build_ark_project_with_request(
+    root_dir: &Path,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    build_ark_project_inner(root_dir, Some(req))
+}
+
+fn build_ark_project_inner(
+    root_dir: &Path,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
+    println!(
+        "{}",
+        "Building ArkTS/HarmonyOS project (backend: ark)".bright_cyan()
+    );
 
     // Step 1: Generate code
     println!();
     println!("{}", "▶ Step 1: Generating ArkTS code...".bright_cyan());
-    generate_ark_project(root_dir, None, false)?;
+    match req {
+        Some(r) => generate_ark_project_with_request(root_dir, None, false, r)?,
+        None => generate_ark_project(root_dir, None, false)?,
+    }
 
     let ark_dir = root_dir.join("gen").join("front").join("ark");
 
@@ -593,7 +744,14 @@ pub fn build_ark_project(root_dir: &Path) -> AutoResult<()> {
         println!("{}", "✓ Build successful!".bright_green());
         println!();
         println!("HAP location:");
-        println!("  {}", ark_dir.join("entry/build/default/outputs/default/entry-default-signed.hap").display().to_string().bright_cyan());
+        println!(
+            "  {}",
+            ark_dir
+                .join("entry/build/default/outputs/default/entry-default-signed.hap")
+                .display()
+                .to_string()
+                .bright_cyan()
+        );
     } else {
         println!();
         println!("  ⚠ Build failed. Try running manually:");
@@ -604,13 +762,36 @@ pub fn build_ark_project(root_dir: &Path) -> AutoResult<()> {
 }
 
 /// Run ArkTS project (auto run command for ark backend)
-pub fn run_ark_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
-    println!("{}", "Running ArkTS/HarmonyOS project (backend: ark)".bright_cyan());
+pub fn run_ark_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
+    run_ark_project_inner(root_dir, args, None)
+}
+
+/// 请求路径（PLAN-809 R1-F02）。
+pub fn run_ark_project_with_request(
+    root_dir: &Path,
+    args: Vec<String>,
+    req: &auto_project_model::generation_request::GenerationRequest,
+) -> AutoResult<()> {
+    run_ark_project_inner(root_dir, args, Some(req))
+}
+
+fn run_ark_project_inner(
+    root_dir: &Path,
+    _args: Vec<String>,
+    req: Option<&auto_project_model::generation_request::GenerationRequest>,
+) -> AutoResult<()> {
+    println!(
+        "{}",
+        "Running ArkTS/HarmonyOS project (backend: ark)".bright_cyan()
+    );
 
     // Step 1: Generate code
     println!();
     println!("{}", "▶ Step 1: Generating ArkTS code...".bright_cyan());
-    generate_ark_project(root_dir, None, false)?;
+    match req {
+        Some(r) => generate_ark_project_with_request(root_dir, None, false, r)?,
+        None => generate_ark_project(root_dir, None, false)?,
+    }
 
     let ark_dir = root_dir.join("gen").join("front").join("ark");
 
@@ -621,7 +802,10 @@ pub fn run_ark_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
     println!();
     println!("To run the app:");
     println!("  1. Open DevEco Studio");
-    println!("  2. Open the project at: {}", ark_dir.display().to_string().bright_cyan());
+    println!(
+        "  2. Open the project at: {}",
+        ark_dir.display().to_string().bright_cyan()
+    );
     println!("  3. Connect a HarmonyOS device or start an emulator");
     println!("  4. Click Run or use: ./hvigorw installHap");
 

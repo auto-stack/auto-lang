@@ -124,48 +124,34 @@ impl Builder for CargoBuilder {
     fn setup(&mut self, pac: &mut Pac) -> AutoResult<()> {
         log::info!("Setting up Cargo builder: {}", self.path);
 
-        // Find the first rust app/lib target to use as the Cargo package
-        let target = pac.targets.iter().find(|t| {
-            t.lang.as_str() == "rust"
-                && (t.kind == TargetKind::App || t.kind == TargetKind::Lib)
-        });
-
-        let Some(target) = target else {
+        // PLAN-809 T-05：rust 包选择规则（首个 rust App/Lib、版本空/latest
+        // 回落 0.1.0、数字前缀包名 app- 化、空名回落 pac 名——Plan 531
+        // P523-1）单源在 auto_man_core::planning::select_rust_package；
+        // 本方法消费规格做 Cargo.toml 合成与物化。
+        let Some(spec) = auto_man_core::select_rust_package(&pac.targets, &pac.name) else {
             return Err(
                 "Cargo builder: no rust target found in pac (nothing was                  transpiled into the build directory)"
                     .into(),
             );
         };
+        let target = pac
+            .targets
+            .iter()
+            .find(|t| {
+                t.lang.as_str() == "rust"
+                    && (t.kind == TargetKind::App || t.kind == TargetKind::Lib)
+            })
+            .expect("select_rust_package found one");
 
-        // Use "0.1.0" as fallback version (cargo doesn't accept "latest")
-        let version = target.version.as_str();
-        let version = if version.is_empty() || version == "latest" {
-            "0.1.0"
-        } else {
-            version
-        };
-
-        // Determine crate type based on target kind
-        let crate_type = if target.kind == TargetKind::App {
+        let version = spec.version;
+        let crate_type = if spec.is_app {
             ""
         } else {
-            "\n[lib]"
+            "
+[lib]"
         };
-
-        // Cargo package names can't start with a digit. Sanitize by prepending
-        // "app-" if the name starts with a digit (e.g. 015-notes → app-015-notes).
-        // Plan 531 P523-1: 无名目标(最小工程 `app { lang: rust }` 形)回落
-        // pac.name——此前空名直落 Cargo.toml `name = ""`,cargo 拒载。
-        let base_name = if target.name.as_str().is_empty() {
-            pac.name.as_str().to_string()
-        } else {
-            target.name.as_str().to_string()
-        };
-        let pkg_name = if base_name.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
-            format!("app-{}", base_name)
-        } else {
-            base_name
-        };
+        let _base_name = spec.base_name;
+        let pkg_name = spec.pkg_name;
 
         let mut cargo_toml = format!(
             r#"[package]
@@ -173,9 +159,7 @@ name = "{}"
 version = "{}"
 edition = "2021"
 {}"#,
-            pkg_name,
-            version,
-            crate_type
+            pkg_name, version, crate_type
         );
 
         // Add dependencies
@@ -184,9 +168,7 @@ edition = "2021"
         // 引用添加——此前无条件注入 `"*"` 兜底,仓外最小工程(注册表无
         // auto-lang)未用 a2r_std 也直接构建失败;纯标准库语料不需要该依赖。
         let src_dir_path = self.path.parent().join("src");
-        if src_dir_path.path().exists()
-            && dir_references_auto_lang(src_dir_path.path())
-        {
+        if src_dir_path.path().exists() && dir_references_auto_lang(src_dir_path.path()) {
             // Try to find auto-lang relative to current workspace
             let auto_lang_path = self.find_auto_lang_path();
             if let Some(path) = auto_lang_path {
@@ -210,13 +192,22 @@ edition = "2021"
         // (e.g. hand-written files using `use serde::{Serialize, Deserialize}`)
         if src_dir_path.path().exists() {
             let mut extra_deps: Vec<String> = Vec::new();
-            let built_in = ["std", "core", "alloc", "proc_macro", "crate", "super", "self",
-                "a2r_std", "auto_lang"];
+            let built_in = [
+                "std",
+                "core",
+                "alloc",
+                "proc_macro",
+                "crate",
+                "super",
+                "self",
+                "a2r_std",
+                "auto_lang",
+            ];
             scan_rs_for_crates(src_dir_path.path(), &mut extra_deps, &built_in);
             for dep in &extra_deps {
                 // Check it's not already in deps (from target.deps or auto-lang)
-                let already = dep == "auto-lang"
-                    || target.deps.iter().any(|d| d.name.as_str() == dep);
+                let already =
+                    dep == "auto-lang" || target.deps.iter().any(|d| d.name.as_str() == dep);
                 if !already {
                     cargo_toml.push_str(&format!("{} = \"*\"\n", dep));
                 }

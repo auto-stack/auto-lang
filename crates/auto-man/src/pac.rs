@@ -4,6 +4,7 @@ use crate::git::check_detached;
 use crate::git::pull;
 use crate::git::switch_to_master;
 use crate::make_builder;
+use crate::target::TargetEffects;
 use crate::AutoResult;
 use crate::Port;
 use crate::TargetOrigin;
@@ -11,11 +12,12 @@ use crate::{Index, PacInfo};
 use crate::{Target, TargetKind, TargetStatus};
 use auto_lang::config::{AutoConfig, BackendConfig, BackendType};
 use auto_lang::Atom;
-use auto_val::{pretty, Arg, Array, AutoPath, AutoStr, Kid, Node, Obj, Value, ValueKey};
-use auto_val::{shared, Shared};
+use auto_man_core as core_;
+use auto_val::pretty;
+use auto_val::shared;
+use auto_val::{Array, AutoPath, AutoStr, Kid, Node, Obj, Shared, Value};
 use log::*;
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::fmt;
 use std::path::Path;
 use tabled::{
@@ -23,31 +25,15 @@ use tabled::{
     Table,
 };
 
-/// 工程场景类型 (Plan 130)
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
-pub enum Scene {
-    /// Workspace 类型 - 包含多个子工程
-    Workspace,
-    /// UI 工程 - AURA 语法
-    Ui,
-    /// C 工程 - 原生 Auto/C 构建管线（pac.at `scene: "c"`）
-    C,
-    /// 未声明 scene 的旧工程 - 由工具推断（声明了 port 且无 render 视同 C）
-    #[default]
-    Default,
+pub use auto_man_core::scene::Scene;
+
+fn select_port(input: Option<String>, ports: &Vec<AutoStr>) -> AutoResult<AutoStr> {
+    crate::util::select_or_default_port(input, ports, "Which port do you want to build?")
 }
 
-impl Scene {
-    pub fn from_str(s: &str) -> Self {
-        match s.to_lowercase().as_str() {
-            "workspace" => Self::Workspace,
-            "ui" => Self::Ui,
-            "c" | "core" => Self::C,
-            _ => Self::Default,
-        }
-    }
-}
-
+/// Pac：效果承载者（builder/index 为效果字段，语言类型 backend_config/
+/// theme_decl 亦留此）；全部纯声明/选择/投影规则单源在
+/// `auto_man_core`（PLAN-809 T-03），本结构体的字段布局冻结不变。
 pub struct Pac {
     pub name: AutoStr,
     /// Legacy backend string (for backwards compatibility with pac.at `backend:` field)
@@ -178,6 +164,15 @@ pub struct Pac {
     /// HTML element generation for non-shadcn projects.
     pub shadcn: bool,
 
+    /// 未建模顶层节点逐字保留（R2-F03：请求投影不丢节点信息；auto_val
+    /// Node 与 ports 同层，效果无关）。
+    pub raw_nodes: Vec<Node>,
+    /// app("front") 节点形态 → "./front"（vue front 目录声明，优先于
+    /// front prop；R2-F03）。
+    pub front_node: Option<AutoStr>,
+    /// rust_sidecar 节点存在性（声明解析单源 core::sidecar）。
+    pub has_rust_sidecar: bool,
+
     /// Default Tailwind class injection toggle (Plan 014), declared as
     /// `default_classes: off` in pac.at. Default true = current behavior
     /// (doc-theme defaults like `text` → `text-muted-foreground leading-7`).
@@ -188,368 +183,98 @@ pub struct Pac {
     is_update: bool,
 }
 
-fn select_port(input: Option<String>, ports: &Vec<AutoStr>) -> AutoResult<AutoStr> {
-    crate::util::select_or_default_port(input, ports, "Which port do you want to build?")
+/// 轻后端名 ↔ 语言 BackendType 的纯枚举映射（PLAN-809 T-03：core 的
+/// RenderSelection 规则单源，本 crate 保留语言类型字段）。
+fn to_lang_backend(b: core_::BackendName) -> BackendType {
+    BackendType::from_str(b.as_str()).expect("BackendName as_str round-trips BackendType")
+}
+
+fn from_lang_backend(t: &BackendType) -> core_::BackendName {
+    core_::BackendName::from_str(t.as_str()).expect("BackendType as_str round-trips BackendName")
 }
 
 impl Pac {
-    pub fn new(mut config: AutoConfig) -> Self {
-        use crate::node_ext::NodeExt;
+    /// Pac 的声明归一单一实现已迁 `auto_man_core::pac::pac_from_decl`
+    /// （PLAN-809 T-03）。本构造器保持旧签名：AutoConfig 的语言求值在
+    /// adapter 完成，`root`/`args` 交给 core 规则，效果字段与语言类型
+    /// （backend_config/theme_decl）在此装配。
+    pub fn new(config: AutoConfig) -> Self {
+        let decl = core_::pac_from_decl(&config.root, &config.args);
 
-        // Plan 408 P5-2 (cont.): in `.am/pac.atom.at` history files all props
-        // live inside the `root { ... }` wrapper kid; hoist them onto the
-        // document root so name/version/render etc. parse like a plain pac.at.
-        if config.root.props_clone().is_empty() {
-            let wrapper_props = config.root.kids_iter().find_map(|(_, kid)| {
-                if let Kid::Node(n) = kid {
-                    if n.name == "root" {
-                        return Some(n.props_clone());
-                    }
-                }
-                None
-            });
-            if let Some(props) = wrapper_props {
-                for (k, v) in props.iter() {
-                    config.root.set_prop(k.clone(), v.clone());
-                }
-            }
-        }
-
-        let pac_name = config.name();
-        let version = config.version();
-        let props = config.root.props_clone();
-
-        // Determine lang from pac.at top-level prop (e.g., lang: "rust")
-        let top_lang = props.get("lang").and_then(|v| match v {
-            Value::Str(s) => Some(s.to_string()),
-            _ => None,
-        }).unwrap_or_else(|| "c".to_string());
-
-        // Parse render field (Plan 276) - falls back to backend for compatibility
-        // Supports three forms:
-        //   1. render: "vue"                          -> Single(BackendType::Vue)
-        //   2. render: { front: "vue", back: "rust" } -> Split { front: [Vue], back: Rust }
-        //   3. render: ["vue", "arkts"]               -> Multi([Vue, Arkts])
-        let render_value = config.root.get_prop("render");
-        let backend_value = config.root.get_prop("backend");
-        // Prefer "render" field, fall back to "backend" for backwards compatibility
-        let (effective_value, _legacy_backend) = if !render_value.to_astr().is_empty() {
-            (render_value.clone(), false)
-        } else {
-            (backend_value.clone(), true)
-        };
-        let backend_config = BackendConfig::from_value(&effective_value);
-
-        // Legacy backend string (for backwards compatibility)
-        // Also consider top-level lang: "rust" as backend "rust", "ts"/"typescript" as backend "ts"
-        let backend_str = effective_value.to_astr();
-        let backend = if backend_str.is_empty() {
-            if top_lang == "rust" { "rust".into() }
-            else if top_lang == "ts" || top_lang == "typescript" { "ts".into() }
-            else { "c".into() }
-        } else {
-            backend_str
+        // render 声明 → 语言 BackendConfig（字段类型冻结）
+        let backend_config = match &decl.render {
+            core_::RenderSelection::Single(b) => Some(BackendConfig::Single(to_lang_backend(*b))),
+            core_::RenderSelection::Multi(v) => Some(BackendConfig::Multi(
+                v.iter().map(|b| to_lang_backend(*b)).collect(),
+            )),
+            core_::RenderSelection::Split { front, back } => Some(BackendConfig::Split {
+                front: front.iter().map(|b| to_lang_backend(*b)).collect(),
+                back: to_lang_backend(*back),
+            }),
+            core_::RenderSelection::Absent => None,
         };
 
-        // ports
-        let ports = config.root.get_nodes("port");
-        let builder = None;
-
-        // defines
-        let defines = config.root.get_str_vec_or("defines");
-
-        // Parse scene field (Plan 130)
-        let scene_str = config.root.get_prop("scene").to_astr();
-        let scene = Scene::from_str(&scene_str);
-
-        // Parse members field (Plan 130)
-        let members = config.root.get_str_vec_or("members");
-
-        // Parse api field (Plan 276): api: "rust" -> API backend technology
-        let api_value = config.root.get_prop("api").to_astr();
-        let api = if api_value.is_empty() {
-            // Also check legacy "api" field as file path (api-example compatibility)
-            // If it's a path like "../back/api.at", don't treat as backend technology
-            None
-        } else {
-            Some(api_value)
-        };
-
-        // Plan 401: per-project dev-server ports (front_port/back_port).
-        // auto run/build use these as defaults for -F/-B (CLI flags win).
-        // None when absent or unparseable -> global default (3000/8080) applies.
-        let front_port = config.root.get_prop("front_port").to_astr();
-        let front_port = front_port.trim().parse::<u16>().ok();
-        let back_port = config.root.get_prop("back_port").to_astr();
-        let back_port = back_port.trim().parse::<u16>().ok();
-
-        // PLAN-617 T-11: media library root (media_service 解析序的 pac 层)。
-        let media_root_raw = config.root.get_prop("media_root").to_astr();
-        let media_root = {
-            let t = media_root_raw.trim().to_string();
-            if t.is_empty() { None } else { Some(t.into()) }
-        };
-
-        // PLAN-043 Part 1: photo library root (photo_service 解析序的 pac 层，
-        // 与 media_root 同形：引号剥、trim、空值 = None)。
-        let photo_root_raw = config.root.get_prop("photo_root").to_astr();
-        let photo_root = {
-            let t = photo_root_raw.trim().to_string();
-            if t.is_empty() { None } else { Some(t.into()) }
-        };
-
-        // Plan 411: VM startup window size, e.g. `window: "1440x900"`.
-        // Accepts "WxH" (or W×H); rejects non-positive/oversized values.
-        // Plan 504: the keyword `window: "fit"` selects content-fit mode
-        // (measured shrink size) instead of a fixed size.
-        let window = config.root.get_prop("window").to_astr();
-        let window_fit = window.trim().eq_ignore_ascii_case("fit");
-        let window = if window_fit {
-            None
-        } else {
-            window
-                .trim()
-                .replace(['x', 'X', '\u{d7}'], "x")
-                .split_once('x')
-                .and_then(|(w, h)| {
-                    let w: f32 = w.trim().parse().ok()?;
-                    let h: f32 = h.trim().parse().ok()?;
-                    (w >= 200.0 && h >= 200.0 && w <= 7680.0 && h <= 4320.0)
-                        .then_some((w, h))
-                })
-        };
-
-        // VM window title, e.g. `title: "AutoEdit"`. Absent/blank → None
-        // (renderer falls back to "Auto - {root widget name}").
-        let title = config.root.get_prop("title").to_astr();
-        let title_trimmed = title.trim().to_string();
-        let title = (!title_trimmed.is_empty()).then(|| AutoStr::from(title_trimmed));
-
-        // PLAN-015: Chinese display title, e.g. `title_zh: "计算器"`.
-        // Absent/blank → None (display_title falls back to `title`).
-        let title_zh = config.root.get_prop("title_zh").to_astr();
-        let title_zh_trimmed = title_zh.trim().to_string();
-        let title_zh = (!title_zh_trimmed.is_empty()).then(|| AutoStr::from(title_zh_trimmed));
-
-        // Plan 463: desktop registry icon/category, e.g. `icon: "calculator"`,
-        // `category: "tool"`. Absent/blank → None (registry falls back to
-        // "app-window" / "app"; see auto-lang ui::app_registry).
-        let icon = config.root.get_prop("icon").to_astr();
-        let icon_trimmed = icon.trim().to_string();
-        let icon = (!icon_trimmed.is_empty()).then(|| AutoStr::from(icon_trimmed));
-        let category = config.root.get_prop("category").to_astr();
-        let category_trimmed = category.trim().to_string();
-        let category = (!category_trimmed.is_empty()).then(|| AutoStr::from(category_trimmed));
-
-        // Plan 458: UI theme + accent preset, e.g. `theme: "light"`,
-        // `accent: "ocean"`. Lowercased for tolerant matching; absent/blank
-        // → None (use sites fall back to the built-in dark/indigo default).
-        let theme = config.root.get_prop("theme").to_astr();
-        let theme_trimmed = theme.trim().to_lowercase();
-        let theme = (!theme_trimmed.is_empty()).then(|| AutoStr::from(theme_trimmed));
-
-        // PLAN-601 T-03：theme{} 块形态（Obj）——extends/mode 标量 + colors
-        // 对象逐键。标量与块同现时块胜（块是超集形态）；解析容错（坏形态
-        // None + 用点告警），词表/值合法性由 compose 层负用例钉死。
-        let theme_decl = match config.root.get_prop("theme") {
-            Value::Obj(obj) => {
-                let extends = obj.get("extends").map(|v| v.to_astr().trim().to_string()).filter(|s| !s.is_empty());
-                let mode = obj.get("mode").map(|v| v.to_astr().trim().to_lowercase()).filter(|s| !s.is_empty());
-                let name = obj.get("name").map(|v| v.to_astr().trim().to_string()).filter(|s| !s.is_empty());
-                let colors = match obj.get("colors") {
-                    Some(Value::Obj(co)) => co
-                        .iter()
-                        .map(|(k, v)| (k.to_string(), v.to_astr().trim().to_string()))
-                        .filter(|(_, v)| !v.is_empty())
-                        .collect::<Vec<_>>(),
-                    _ => Vec::new(),
-                };
-                Some(auto_lang::design_tokens::decl::ThemeDecl { name, extends, mode, colors })
-            }
-            _ => None,
-        };
-        let accent = config.root.get_prop("accent").to_astr();
-        let accent_trimmed = accent.trim().to_lowercase();
-        let accent = (!accent_trimmed.is_empty()).then(|| AutoStr::from(accent_trimmed));
-
-        // Plan 500: desktop protocol render mode, `desktop_render: "queue"`.
-        // Lowercased; absent/blank → None (auto 探测降级)。
-        let desktop_render = config.root.get_prop("desktop_render").to_astr();
-        let desktop_render_trimmed = desktop_render.trim().to_lowercase();
-        let desktop_render =
-            (!desktop_render_trimmed.is_empty()).then(|| AutoStr::from(desktop_render_trimmed));
-
-        // Plan 418: UI action config file, e.g. `ui_config: "auto-edit.at"`.
-        let ui_config = config.root.get_prop("ui_config").to_astr();
-        let ui_config_trimmed = ui_config.trim().to_string();
-        let ui_config = (!ui_config_trimmed.is_empty()).then(|| AutoStr::from(ui_config_trimmed));
-
-        // Plan 061: external backend project, `back: { project: "../ash-server" }`.
-        // 对象形式取 project 子字段;裸字符串形式(`back: "../ash-server"`)同样
-        // 接受,便于简写。空/缺省 = None(本地 back/)。
-        let external_backend = match config.root.get_prop("back") {
-            Value::Obj(obj) => obj
-                .get("project")
-                .map(|v| v.to_astr().trim().to_string())
-                .filter(|s| !s.is_empty())
-                .map(AutoStr::from),
-            v => {
-                let s = v.to_astr().trim().to_string();
-                (!s.is_empty()).then(|| AutoStr::from(s))
-            }
-        };
-
-        // Plan 013: shadcn-vue mapping toggle, `shadcn: off` in pac.at.
-        // Accepts Bool (off/on/false/true), quoted "off"/"false"/"no"/"0".
-        // Absent or unrecognized → true (current shadcn default).
-        let shadcn = if !config.root.has_prop("shadcn") {
-            true
-        } else {
-            match config.root.get_prop("shadcn") {
-                Value::Bool(b) => b,
-                v => {
-                    let s = v.to_astr();
-                    let s = s.trim().to_lowercase();
-                    !matches!(s.as_str(), "off" | "false" | "no" | "0")
-                }
-            }
-        };
-
-        // Plan 014: default Tailwind class injection toggle,
-        // `default_classes: off` in pac.at. Same accepted forms as shadcn;
-        // absent or unrecognized → true (current default).
-        let default_classes = if !config.root.has_prop("default_classes") {
-            true
-        } else {
-            match config.root.get_prop("default_classes") {
-                Value::Bool(b) => b,
-                v => {
-                    let s = v.to_astr();
-                    let s = s.trim().to_lowercase();
-                    !matches!(s.as_str(), "off" | "false" | "no" | "0")
-                }
-            }
-        };
-
-        // target related properties
-        let target_props = vec!["at", "lang"];
-
-        let mut default_builder: AutoStr = "ninja".into();
-        if top_lang == "rust" {
-            default_builder = "cargo".into();
-        } else if top_lang == "ts" || top_lang == "typescript" {
-            default_builder = "noop".into(); // TypeScript only needs transpilation, no compilation
-        }
-
-        // targets, NOTE: ports are not targets
-        let mut targets = vec![];
-        // Plan 408 P5-2: `.am/pac.atom.at` history files wrap everything in a
-        // top-level `root { ... }` node; flatten it so the real target kids are
-        // collected (previously the wrapper itself hit extract_kind's panic on
-        // the unknown "root" kind, breaking `auto clean`).
-        let mut target_nodes: Vec<Node> = vec![];
-        for (_, kid) in config.root.kids_iter() {
-            if let Kid::Node(n) = kid.clone() {
-                if n.name == "root" {
-                    for (_, inner) in n.kids_iter() {
-                        if let Kid::Node(inner_n) = inner.clone() {
-                            target_nodes.push((*inner_n).clone());
-                        }
-                    }
-                } else {
-                    target_nodes.push((*n).clone());
-                }
-            }
-        }
-        for mut n in target_nodes {
-            if n.name != "port" {
-                // Unknown node kinds are skipped with a warning instead of
-                // panicking inside Target::extract_kind.
-                if TargetKind::from_str(&n.name).is_err() {
-                    warn!("Pac::new: skipping unknown target node '{}'", n.name);
-                    continue;
-                }
-                // main target should receive target related args from the pac
-                if n.main_arg().to_astr() == pac_name && n.name == "device" {
-                    for p in &target_props {
-                        if config.args.has(*p) {
-                            let value = config.args.get(*p).unwrap();
-                            // println!("Setting prop: {}: {}", *p, value.clone());
-                            // TODO: find a better way to transfer args to dependencies target
-                            n.set_prop(*p, value);
-                        }
-                    }
-                }
-
-                // Inherit top-level lang into target if not explicitly set
-                if !n.has_prop("lang") && top_lang != "c" {
-                    n.set_prop("lang", top_lang.as_str());
-                }
-
-                let mut target = Target::from(n.clone(), pac_name.clone());
-                target.set_defines(defines.clone());
-                targets.push(target);
-            }
-        }
+        // theme{} 块轻声明 → 语言 ThemeDecl（compose 留语言侧）
+        let theme_decl =
+            decl.theme_decl
+                .as_ref()
+                .map(|d| auto_lang::design_tokens::decl::ThemeDecl {
+                    name: d.name.clone(),
+                    extends: d.extends.clone(),
+                    mode: d.mode.clone(),
+                    colors: d.colors.clone(),
+                });
 
         let mut port = Port::default();
-        port.builder = default_builder;
+        port.builder = decl.default_port_builder;
 
         Self {
-            name: pac_name,
-            backend,
+            name: decl.name,
+            backend: decl.backend,
             backend_config,
-            api,
-            version,
+            api: decl.api,
+            version: decl.version,
             port,
-            ports,
-            builder,
-            targets,
-            props,
+            ports: decl.ports,
+            builder: None,
+            targets: decl.targets,
+            props: decl.props,
             index: shared(Index::default()),
             device_index: shared(Index::default()),
             build_at: ".".into(),
             build_location: "cmake".into(),
             show_headers: false,
-            defines,
-            scene,
-            members,
-            front_port,
-            back_port,
-            media_root,
-            photo_root,
-            window,
-            window_fit,
-            title,
-            title_zh,
-            icon,
-            category,
-            theme,
+            defines: decl.defines,
+            scene: decl.scene,
+            members: decl.members,
+            front_port: decl.front_port,
+            back_port: decl.back_port,
+            media_root: decl.media_root,
+            photo_root: decl.photo_root,
+            window: decl.window,
+            window_fit: decl.window_fit,
+            title: decl.title,
+            title_zh: decl.title_zh,
+            icon: decl.icon,
+            category: decl.category,
+            theme: decl.theme,
             theme_decl,
-            accent,
-            ui_config,
-            external_backend,
-            desktop_render,
-            shadcn,
-            default_classes,
+            accent: decl.accent,
+            ui_config: decl.ui_config,
+            external_backend: decl.external_backend,
+            desktop_render: decl.desktop_render,
+            shadcn: decl.shadcn,
+            default_classes: decl.default_classes,
+            raw_nodes: decl.raw_nodes,
+            front_node: decl.front_node,
+            has_rust_sidecar: decl.has_rust_sidecar,
             is_update: false,
         }
     }
 
-    /// PLAN-015：展示标题纯判定（locale 显式入参，env 包装在
-    /// `Automan::pac_display_title`）——zh 且 `title_zh:` 非空取之，否则
-    /// 回落 `title`；无 title 声明 = None。
+    /// PLAN-015：展示标题纯判定——规则单源在 core（`display_title_in`）。
     pub fn display_title_in(&self, prefers_zh: bool) -> Option<String> {
-        let title = self.title.as_ref().map(|t| t.to_string())?;
-        if prefers_zh {
-            if let Some(zh) = self.title_zh.as_ref() {
-                let zh = zh.trim();
-                if !zh.is_empty() {
-                    return Some(zh.to_string());
-                }
-            }
-        }
-        Some(title)
+        core_::display_title_in(self.title.as_ref(), self.title_zh.as_ref(), prefers_zh)
     }
 
     pub fn transpile_autot(&mut self) -> AutoResult<()> {
@@ -562,6 +287,25 @@ impl Pac {
     }
 
     // ========== Backend Configuration Helpers (Plan 129) ==========
+    // 规则半在 auto_man_core::backend（RenderSelection）；此处做语言类型
+    // 转换并保持旧公开签名。
+
+    fn render_view(&self) -> core_::RenderSelection {
+        match &self.backend_config {
+            Some(BackendConfig::Single(t)) => core_::RenderSelection::Single(from_lang_backend(t)),
+            Some(BackendConfig::Multi(v)) => {
+                core_::RenderSelection::Multi(v.iter().map(from_lang_backend).collect())
+            }
+            Some(BackendConfig::Split { front, back }) => core_::RenderSelection::Split {
+                front: front.iter().map(from_lang_backend).collect(),
+                back: from_lang_backend(back),
+            },
+            None => match core_::BackendName::from_str(self.backend.as_str()) {
+                Some(b) => core_::RenderSelection::Single(b),
+                None => core_::RenderSelection::Absent,
+            },
+        }
+    }
 
     /// Check if using new backend config syntax
     pub fn has_backend_config(&self) -> bool {
@@ -571,68 +315,42 @@ impl Pac {
     /// Get the default frontend type from pac.at render config.
     /// Returns the first configured type, or None if no render is set.
     pub fn default_frontend(&self) -> Option<BackendType> {
-        if let Some(ref config) = self.backend_config {
-            match config {
-                BackendConfig::Single(t) => Some(t.clone()),
-                BackendConfig::Multi(types) => types.first().cloned(),
-                BackendConfig::Split { front, .. } => front.first().cloned(),
-            }
-        } else {
-            BackendType::from_str(&self.backend)
-        }
+        core_::default_frontend_with_legacy(&self.render_view(), &self.backend).map(to_lang_backend)
     }
 
     /// Get frontend backend types
     /// Returns vec of frontend types, or empty vec if not configured
     pub fn frontend_types(&self) -> Vec<BackendType> {
-        if let Some(ref config) = self.backend_config {
-            match config {
-                BackendConfig::Single(t) => vec![t.clone()],
-                BackendConfig::Multi(types) => types.clone(),
-                BackendConfig::Split { front, .. } => front.clone(),
-            }
-        } else {
-            // Legacy: parse from backend string
-            BackendType::from_str(&self.backend)
-                .map(|t| vec![t])
-                .unwrap_or_default()
-        }
+        core_::frontend_types_with_legacy(&self.render_view(), &self.backend)
+            .into_iter()
+            .map(to_lang_backend)
+            .collect()
     }
 
     /// Get backend type (for split mode)
     pub fn backend_type(&self) -> Option<BackendType> {
-        if let Some(ref config) = self.backend_config {
-            match config {
-                BackendConfig::Single(_) => None,
-                BackendConfig::Multi(_) => None,
-                BackendConfig::Split { back, .. } => Some(back.clone()),
-            }
-        } else {
-            None
-        }
+        core_::backend_type_with_legacy(&self.render_view()).map(to_lang_backend)
     }
 
     /// Get output directory for a frontend type
     /// Example: BackendType::Vue -> "vue/"
     pub fn frontend_output_dir(&self, frontend: &BackendType) -> AutoStr {
-        frontend.output_dir().into()
+        from_lang_backend(frontend).output_dir().into()
     }
 
     /// Get all output directories based on backend config
     pub fn output_dirs(&self) -> Vec<(BackendType, AutoStr)> {
-        let mut dirs = Vec::new();
-
-        // Add frontend directories
-        for frontend in self.frontend_types() {
-            dirs.push((frontend.clone(), frontend.output_dir().into()));
-        }
-
-        // Add backend directory (if split mode)
-        if let Some(back) = self.backend_type() {
-            dirs.push((back.clone(), back.output_dir().into()));
-        }
-
-        dirs
+        self.frontend_types()
+            .into_iter()
+            .map(|f| {
+                let d: AutoStr = f.output_dir().into();
+                (f, d)
+            })
+            .chain(self.backend_type().map(|b| {
+                let d: AutoStr = b.output_dir().into();
+                (b, d)
+            }))
+            .collect()
     }
 
     /// Check if backend is a specific type
@@ -646,12 +364,12 @@ impl Pac {
 
     /// Check if this is a workspace
     pub fn is_workspace(&self) -> bool {
-        self.scene == Scene::Workspace
+        core_::pac_is_workspace(&self.scene)
     }
 
     /// Check if this is a UI project
     pub fn is_ui(&self) -> bool {
-        self.scene == Scene::Ui
+        core_::pac_is_ui(&self.scene)
     }
 
     /// Get workspace members as paths
@@ -666,11 +384,7 @@ impl Pac {
 
     /// Check if this project has multiple backend outputs
     pub fn has_multi_backend(&self) -> bool {
-        if let Some(ref config) = self.backend_config {
-            matches!(config, BackendConfig::Split { front, .. } if front.len() > 1)
-        } else {
-            false
-        }
+        self.render_view().has_multi_backend()
     }
 
     // ========== End Workspace Configuration Helpers ==========
@@ -700,32 +414,13 @@ impl Pac {
     }
 
     pub fn has_device_prop(&self, prop: impl Into<AutoStr>) -> bool {
-        let mut has_prop = false;
-        // TODO: too much clone for key
-        let key = ValueKey::Str(prop.into());
-        if self.props.has(key.clone()) {
-            return true;
-        }
-        for target in &self.targets {
-            if target.kind == TargetKind::Device {
-                if target.props.has(key.clone()) {
-                    has_prop = true;
-                    break;
-                }
-            }
-        }
-        has_prop
+        core_::has_device_prop(&self.props, &self.targets, prop)
     }
 
     /// Print atom files to local directory
     pub fn print_atom(&self) -> AutoResult<()> {
         let atom = self.to_atom();
-        // info!("ATOM packed for pac: <{}>", self.name);
-        // println!("{}", atom);
         let atom_pretty = pretty(atom.to_string().as_str(), 3);
-        // info!("ATOM for pac: <{}>", self.name);
-        // write prettified atom to file
-        // write prettified atom to file
         std::fs::write(".am/pac.atom.at", atom_pretty.as_bytes())?;
 
         for app in self.build_targets() {
@@ -746,24 +441,15 @@ impl Pac {
     }
 
     pub fn deps(&self) -> Vec<&Target> {
-        self.targets
-            .iter()
-            .filter(|t| t.kind == TargetKind::Dep)
-            .collect()
+        core_::deps_of(&self.targets)
     }
 
     pub fn libs(&self) -> Vec<&Target> {
-        self.targets
-            .iter()
-            .filter(|t| t.kind == TargetKind::Lib)
-            .collect()
+        core_::libs_of(&self.targets)
     }
 
     pub fn apps(&self) -> Vec<&Target> {
-        self.targets
-            .iter()
-            .filter(|t| t.kind == TargetKind::App)
-            .collect()
+        core_::apps_of(&self.targets)
     }
 
     pub fn build_targets_mut(&mut self) -> Vec<&mut Target> {
@@ -774,14 +460,11 @@ impl Pac {
     }
 
     pub fn build_targets(&self) -> Vec<&Target> {
-        self.targets
-            .iter()
-            .filter(|t| t.kind == TargetKind::App || t.kind == TargetKind::Lib)
-            .collect()
+        core_::build_targets_of(&self.targets)
     }
 
     pub fn list_port_names(&self) -> Vec<AutoStr> {
-        self.ports.iter().map(|p| p.main_arg().to_astr()).collect()
+        core_::list_port_names(&self.ports)
     }
 
     pub fn get_state_file(&self) -> AutoResult<AutoPath> {
@@ -831,29 +514,20 @@ impl Pac {
     pub fn set_port(&mut self, port_name: AutoStr) -> AutoResult<()> {
         self.merge_port(port_name.clone())?;
 
-        // 0. check port
-        let mut at = self.port.at.clone();
-        if at.ends_with("/") {
-            at = at[0..at.len() - 1].into()
-        }
-        self.build_at = at.clone();
-        self.build_location = AutoPath::new(at.clone()).to_astr();
-        // set builder
-        // For rust projects, use "rust" as build dir and cargo builder
-        let builder_name: AutoStr;
-        if self.backend.as_str() == "rust" {
-            builder_name = "cargo".into();
-            self.build_location = "rust".into();
-        } else {
-            builder_name = self.port.builder.clone();
-        }
+        // PLAN-809 T-05：绑定选择规则单源在
+        // auto_man_core::planning::select_port_binding；本方法做状态应用
+        // 与 builder 物化（效果半）。
+        let sel = core_::select_port_binding(&self.port, &self.backend);
+        self.build_at = sel.build_at;
+        self.build_location = sel.build_location.clone();
+        let builder_name = sel.builder_name;
         let build_path = AutoPath::new(self.build_location.clone());
         println!(
             "setting port builder: {} {}, at {}",
             port_name, builder_name, build_path
         );
         self.builder = make_builder(&builder_name, build_path);
-        if self.port.builder == "ghs" || self.port.builder == "ninja" {
+        if sel.show_headers {
             self.set_show_headers();
         }
         // set tool
@@ -875,132 +549,16 @@ impl Pac {
     }
 
     pub fn targets_map(&mut self) -> HashMap<AutoStr, Target> {
-        let mut targets_map = HashMap::new();
-        let targets = std::mem::take(&mut self.targets);
-        for target in targets {
-            targets_map.insert(target.name.clone(), target.clone());
-        }
-        targets_map
+        core_::targets_map(std::mem::take(&mut self.targets))
     }
 
     pub fn get_build_names(targets_map: &HashMap<AutoStr, Target>) -> Vec<AutoStr> {
-        let mut build_names = Vec::new();
-        for target in targets_map.values() {
-            if target.kind == TargetKind::App || target.kind == TargetKind::Lib {
-                build_names.push(target.name.clone());
-            }
-        }
-        build_names
+        core_::get_build_names(targets_map)
     }
 
-    /// Resolve target dependencies by building transitive closure of links
-    ///
-    /// This function iteratively resolves dependencies until all targets have
-    /// their complete dependency tree calculated. Returns true if all targets
-    /// are resolved, false if some targets still have unresolved dependencies.
-    fn resolve_target_deps(targets_map: &mut HashMap<AutoStr, Target>) -> bool {
-        let all_resolved = Self::check_all_resolved(targets_map);
-
-        // Build resolved links map for targets whose dependencies are all resolved
-        let resolved_links = Self::build_resolved_links(targets_map);
-
-        // Apply the resolved links to update target dependency information
-        Self::apply_resolved_links(targets_map, resolved_links);
-
-        all_resolved
-    }
-
-    /// Check if all targets are marked as resolved
-    fn check_all_resolved(targets_map: &HashMap<AutoStr, Target>) -> bool {
-        targets_map.values().all(|t| t.is_resolved)
-    }
-
-    /// Build a map of resolved links for targets whose dependencies are all resolved
-    ///
-    /// For each target, if all its direct and transitive dependencies are resolved,
-    /// collect the complete set of links (transitive closure).
-    fn build_resolved_links(targets_map: &HashMap<AutoStr, Target>) -> HashMap<AutoStr, Vec<Node>> {
-        let mut resolved_links: HashMap<AutoStr, Vec<Node>> = HashMap::new();
-
-        for target in targets_map.values() {
-            if target.links.is_empty() {
-                // Target with no dependencies is trivially resolved
-                resolved_links.insert(target.name.clone(), vec![]);
-                continue;
-            }
-
-            // Check if we can resolve this target's dependencies
-            if let Some(links) = Self::try_resolve_target_links(target, targets_map) {
-                resolved_links.insert(target.name.clone(), links);
-            }
-        }
-
-        resolved_links
-    }
-
-    /// Try to resolve all links for a target
-    ///
-    /// Returns Some(links) if all dependencies are resolved, None otherwise.
-    /// When successful, returns the transitive closure of all links.
-    fn try_resolve_target_links(
-        target: &Target,
-        targets_map: &HashMap<AutoStr, Target>,
-    ) -> Option<Vec<Node>> {
-        let mut all_deps_resolved = true;
-        let mut links = Vec::new();
-
-        // Start with direct links
-        links.extend(target.links.iter().cloned());
-
-        // Transitively collect links from dependencies
-        for link in &target.links {
-            // println!("LINKS TO RESOLVE: {}", link);
-            let Some(dep) = targets_map.get(&link.id()) else {
-                continue;
-            };
-
-            if !dep.is_resolved {
-                all_deps_resolved = false;
-                break;
-            }
-
-            // Add transitive links from this dependency
-            links.extend(dep.links.iter().cloned());
-        }
-
-        if all_deps_resolved {
-            Some(links)
-        } else {
-            None
-        }
-    }
-
-    /// Apply resolved links to update targets in the map
-    ///
-    /// For each target in resolved_links, mark it as resolved and update
-    /// its dependency information (dep_names and all_links).
-    fn apply_resolved_links(
-        targets_map: &mut HashMap<AutoStr, Target>,
-        resolved_links: HashMap<AutoStr, Vec<Node>>,
-    ) {
-        for (target_name, links) in resolved_links {
-            // Extract dependency names from the links
-            let dep_names: Vec<AutoStr> = links
-                .iter()
-                .filter_map(|link| {
-                    let id = link.id();
-                    targets_map.get(&id).map(|dep| dep.name.clone())
-                })
-                .collect();
-
-            // Update the target with resolved information
-            if let Some(target) = targets_map.get_mut(&target_name) {
-                target.is_resolved = true;
-                target.dep_names = dep_names;
-                target.all_links = links;
-            }
-        }
-    }
+    // （PLAN-809 T-04：resolve_target_deps/check_all_resolved/
+    // build_resolved_links/try_resolve_target_links/apply_resolved_links
+    // 五函数族已删——单一实现在 auto_man_core::closure。）
 
     pub fn pull(&mut self) -> AutoResult<()> {
         self.is_update = true;
@@ -1038,65 +596,15 @@ impl Pac {
         self.print_targets();
 
         // 2. link targets with dependencies
+        // （PLAN-809 T-04：闭包与 major 合并单源在 auto_man_core::closure；
+        // 有界图准入——内部 target 环返回具名 NoProgress 错误而非旧臂
+        // while 挂死，且不开始后续 scan。）
         info!("Linking targets with dependencies");
 
-        // let devices: Vec<Target> = self
-        //     .targets
-        //     .iter()
-        //     .filter(|t| t.kind == TargetKind::Device)
-        //     .map(|t| t.clone())
-        //     .collect();
         let mut targets_map = self.targets_map();
-        let mut major_targets = Vec::new();
-        // remained_targets.extend(devices);
-
-        // resolve target's links, expanding indirect dependencies into target.dep_names
-        let mut done = false;
-        while !done {
-            done = Self::resolve_target_deps(&mut targets_map);
-        }
-
-        let major_target_names = targets_map
-            .values()
-            .filter(|t| t.is_major())
-            .map(|t| t.name.clone())
-            .collect::<Vec<AutoStr>>();
-
-        for n in major_target_names {
-            let mut deps = Vec::new();
-            let t = targets_map.get(&n).unwrap();
-            for l in &t.all_links {
-                let Some(dep) = targets_map.get(&l.id()) else {
-                    continue;
-                };
-                let mut merge = dep.clone();
-                merge.merge_link(l);
-                deps.push(merge);
-            }
-            // for dep in &t.dep_names {
-            //     let Some(dep) = targets_map.get(dep) else {
-            //         continue;
-            //     };
-            //     deps.push(dep.clone());
-            // }
-            let Some(t) = targets_map.get_mut(&n) else {
-                continue;
-            };
-            t.deps = deps;
-        }
-
-        // copy dep's target info into major targets
-        targets_map
-            .values()
-            .filter(|t| {
-                t.kind == TargetKind::Device
-                    || t.kind == TargetKind::App
-                    || t.kind == TargetKind::Lib
-                    || t.kind == TargetKind::Test
-            })
-            .for_each(|t| major_targets.push(t.clone()));
-
-        self.targets = major_targets;
+        core_::resolve_target_closure(&mut targets_map)
+            .map_err(|e| auto_val::AutoError::from(e.to_string()))?;
+        self.targets = core_::assemble_major_targets(&mut targets_map);
 
         // 3. scan targets for its local source files
         info!("Scanning targets for srcs and incs, only major targets and their deps are scanned");
@@ -1131,204 +639,9 @@ impl Pac {
                 self.targets.push(target);
             }
         }
-        let mut port = Port::default();
-        port.name = port_node.main_arg().to_astr();
-        
-        // Use "ninja" as default builder if not specified
-        let builder_val = port_node.get_prop("builder").to_astr();
-        port.builder = if builder_val.is_empty() { "ninja".into() } else { builder_val };
-        
-        port.platform = port_node.get_prop("platform").to_astr();
-        port.at = port_node.get_prop("at").to_astr();
 
-        // BPBE Architecture Fields
-        if port_node.has_prop("os") {
-            port.os = Some(port_node.get_prop("os").to_astr());
-        }
-        if port_node.has_prop("arch") {
-            port.arch = Some(port_node.get_prop("arch").to_astr());
-        }
-        if port_node.has_prop("toolchain") {
-            port.toolchain = Some(port_node.get_prop("toolchain").to_astr());
-        }
-        
-        let exports_val = port_node.get_prop_of("exports");
-        if let auto_val::Value::Array(arr) = exports_val {
-            port.exports = arr.values.iter().map(|v| v.to_astr()).collect();
-        }
-        
-        port.sdks = port_node.get_nodes("sdk");
-
-        // 解析完整的编译器配置
-        use crate::builder::ninja::config::{
-            CompilerConfig, CompilerLocation, FlagFormat, FlagMappings,
-        };
-        use crate::node_ext::NodeExt;
-        use auto_val::{Kid, ValueKey};
-
-        if let Some(Kid::Node(compiler_node)) = port_node.get_kid(&ValueKey::Str("compiler".into()))
-        {
-            // 解析编译器类型
-            let kind_str = compiler_node.get_prop("kind").to_astr();
-            if let Some(kind) =
-                crate::builder::ninja::config::CompilerKind::from_str(kind_str.as_str())
-            {
-                // 解析 location
-                let location = if let Some(Kid::Node(location_node)) =
-                    compiler_node.get_kid(&ValueKey::Str("location".into()))
-                {
-                    let location_type = location_node.main_arg().to_astr();
-                    match location_type.as_str() {
-                        "Env" => CompilerLocation::Env,
-                        "Dir" => {
-                            let dir_str = location_node.get_prop("path").to_astr();
-                            CompilerLocation::Dir(auto_val::AutoPath::new(dir_str.as_str()))
-                        }
-                        "Executable" => {
-                            let exec_type_str = location_node.get_prop("type").to_astr();
-                            let exec_type = crate::builder::ninja::config::ExecutableType::from_str(
-                                exec_type_str.as_str(),
-                            );
-                            if let Some(exec_type) = exec_type {
-                                let path = auto_val::AutoPath::new(
-                                    location_node.get_prop("path").to_astr().as_str(),
-                                );
-                                CompilerLocation::Executable(exec_type, path)
-                            } else {
-                                CompilerLocation::Env
-                            }
-                        }
-                        _ => CompilerLocation::Env,
-                    }
-                } else {
-                    CompilerLocation::Env
-                };
-
-                // 解析 executables
-                let mut executables = std::collections::HashMap::new();
-                if let Some(Kid::Node(execs_node)) =
-                    compiler_node.get_kid(&ValueKey::Str("executables".into()))
-                {
-                    if execs_node.has_prop("cc") {
-                        let cc =
-                            auto_val::AutoPath::new(execs_node.get_prop("cc").to_astr().as_str());
-                        executables
-                            .insert(crate::builder::ninja::config::ExecutableType::Compiler, cc);
-                    }
-                    if execs_node.has_prop("ar") {
-                        let ar =
-                            auto_val::AutoPath::new(execs_node.get_prop("ar").to_astr().as_str());
-                        executables
-                            .insert(crate::builder::ninja::config::ExecutableType::Archiver, ar);
-                    }
-                    if execs_node.has_prop("link") {
-                        let link =
-                            auto_val::AutoPath::new(execs_node.get_prop("link").to_astr().as_str());
-                        executables
-                            .insert(crate::builder::ninja::config::ExecutableType::Linker, link);
-                    }
-                    if execs_node.has_prop("as") {
-                        let as_cmd =
-                            auto_val::AutoPath::new(execs_node.get_prop("as").to_astr().as_str());
-                        executables.insert(
-                            crate::builder::ninja::config::ExecutableType::Assembler,
-                            as_cmd,
-                        );
-                    }
-                }
-
-                // 解析 flags
-                let flags = if let Some(Kid::Node(flags_node)) =
-                    compiler_node.get_kid(&ValueKey::Str("flags".into()))
-                {
-                    let parse_flag_format = |flag_name: &str| -> FlagFormat {
-                        let flag_value = flags_node.get_str_or(flag_name, "-");
-                        if flag_value.contains('(') {
-                            let left_paren = flag_value.find('(').unwrap_or(0);
-                            let right_paren = flag_value.find(')').unwrap_or(flag_value.len());
-                            let format_type = &flag_value[0..left_paren];
-                            let format_arg = &flag_value[left_paren + 1..right_paren];
-
-                            match format_type {
-                                "Prefix" => FlagFormat::Prefix(format_arg.to_string()),
-                                "Postfix" => FlagFormat::Postfix(format_arg.to_string()),
-                                "Both" => {
-                                    let args: Vec<&str> = format_arg.split(", ").collect();
-                                    if args.len() == 2 {
-                                        FlagFormat::Both(args[0].to_string(), args[1].to_string())
-                                    } else {
-                                        FlagFormat::Prefix(args[0].to_string())
-                                    }
-                                }
-                                _ => FlagFormat::Prefix(format_arg.to_string()),
-                            }
-                        } else {
-                            FlagFormat::Prefix(flag_value.as_str().to_string())
-                        }
-                    };
-
-                    FlagMappings {
-                        include: parse_flag_format("include"),
-                        define: parse_flag_format("define"),
-                        library: parse_flag_format("library"),
-                        library_path: parse_flag_format("library_path"),
-                        output: parse_flag_format("output"),
-                        compile_only: parse_flag_format("compile_only"),
-                    }
-                } else {
-                    // 使用默认 flags
-                    match kind {
-                        crate::builder::ninja::config::CompilerKind::MSVC => {
-                            FlagMappings::msvc_default()
-                        }
-                        crate::builder::ninja::config::CompilerKind::GCC => {
-                            FlagMappings::gcc_default()
-                        }
-                        crate::builder::ninja::config::CompilerKind::Clang => {
-                            FlagMappings::clang_default()
-                        }
-                        crate::builder::ninja::config::CompilerKind::IAR => {
-                            FlagMappings::iar_default()
-                        }
-                        crate::builder::ninja::config::CompilerKind::GHS => {
-                            FlagMappings::ghs_default()
-                        }
-                        crate::builder::ninja::config::CompilerKind::Targeting => {
-                            FlagMappings::targeting_default()
-                        }
-                        crate::builder::ninja::config::CompilerKind::Hightec => {
-                            FlagMappings::hightec_default()
-                        }
-                        crate::builder::ninja::config::CompilerKind::TICLang => {
-                            FlagMappings::ticlang_default()
-                        }
-                    }
-                };
-
-                // 解析 default_cflags
-                let default_cflags = if let Some(Kid::Node(cflags_node)) =
-                    compiler_node.get_kid(&ValueKey::Str("default_cflags".into()))
-                {
-                    cflags_node.get_str_vec_or("value")
-                } else {
-                    Vec::new()
-                };
-
-                // 创建编译器配置
-                let compiler_config = CompilerConfig {
-                    kind,
-                    name: port.name.clone(),
-                    executables,
-                    flags,
-                    location,
-                    default_cflags,
-                };
-
-                port.compiler = Some(compiler_config);
-            }
-        }
-
-        self.port = port;
+        // port 解析规则单源在 auto_man_core::port::port_from_node
+        self.port = core_::port_from_node(port_node);
         Ok(())
     }
 
@@ -1367,14 +680,20 @@ impl Pac {
 
             match target.kind {
                 TargetKind::Dep | TargetKind::Device => {
-                    // 1. update if exists
-                    if target.exists() {
-                        continue;
+                    // known 视图：旧臂 target_names 为 HashMap<AutoStr,bool>，
+                    // core 决策收 HashSet（键集等价）。
+                    let known: std::collections::HashSet<AutoStr> =
+                        target_names.keys().cloned().collect();
+                    // 1. 动作/版本 pin 决策单源在 core（R1-F03/R-07）；
+                    //    exists 观测在此传入。
+                    let exists_now = target.exists();
+                    match core_::dep_fetch_action(target, exists_now) {
+                        Some(core_::DepAction::Skip) => continue,
+                        Some(core_::DepAction::Fetch) => {}
+                        None => {}
                     }
+                    target.version = core_::pinned_version(&target.version, version);
 
-                    if version == "latest" {
-                        target.version = "latest".into();
-                    }
                     // 2. download or copy the dep target
                     match target.origin {
                         TargetOrigin::Index => {
@@ -1412,34 +731,23 @@ impl Pac {
                         // merge the lib target into current dep target
                         target.merge(lib_target);
                     }
-                    // get other lib targetsm
-                    for lib in pac.libs() {
-                        if lib.name == target.name {
-                            continue;
-                        }
-                        if !target_names.contains_key(&lib.name) {
-                            let mut lib = lib.clone();
-                            // check new root dir
-                            for (_, v) in lib.dirs.iter_mut() {
-                                let path = Path::new(target.at.as_str()).join(v.at.as_str());
-                                if path.is_dir() {
-                                    v.append_root(target.at.clone());
-                                }
-                            }
-
-                            new_deps.insert(lib.name.clone(), lib);
-                        }
+                    // get other lib targetsm（并入决策单源在 core：
+                    // 同名排除/已知不重入/append_root 观测注入）
+                    for lib in core_::admit_new_dep_libs(
+                        &pac.libs().into_iter().cloned().collect::<Vec<_>>(),
+                        &known,
+                        &target.name,
+                        &target.at,
+                        |p| Path::new(p).is_dir(),
+                    ) {
+                        new_deps.insert(lib.name.clone(), lib);
                     }
 
                     // 4. recursively download dep's deps
                     pac.download_deps(&target.parent(), &target.version.clone())?;
-                    // merge dep's dep into current pac if not exists
-                    for dep in pac.deps() {
-                        // if !new_deps.contains_key(&dep.name)
-                        // && !target_names.contains_key(&dep.name)
-                        if !target_names.contains_key(&dep.name) {
-                            new_deps.insert(dep.name.clone(), dep.clone());
-                        }
+                    // merge dep's dep into current pac if not exists（并入决策单源在 core）
+                    for dep in core_::admit_transitive_deps(pac.deps().into_iter(), &known) {
+                        new_deps.insert(dep.name.clone(), dep);
                     }
                 }
                 _ => {}
@@ -1510,13 +818,16 @@ impl Pac {
         let abs_from = from.canonicalize().unwrap_or_else(|_| from.to_path_buf());
 
         // Mode A: If a specific git version is specified (not "latest" / not empty) and from is a git repo, use git worktree
-        if !dep.version.is_empty()
-            && dep.version.as_str() != "latest"
-            && from.join(".git").exists()
+        if !dep.version.is_empty() && dep.version.as_str() != "latest" && from.join(".git").exists()
         {
             let status = std::process::Command::new("git")
                 .current_dir(from)
-                .args(["worktree", "add", target.to_str().unwrap(), dep.version.as_str()])
+                .args([
+                    "worktree",
+                    "add",
+                    target.to_str().unwrap(),
+                    dep.version.as_str(),
+                ])
                 .status();
             if let Ok(st) = status {
                 if st.success() {
@@ -1534,13 +845,7 @@ impl Pac {
             let target_str = target.to_string_lossy().replace('/', "\\");
             let from_str = abs_from.to_string_lossy().replace('/', "\\");
             let output = std::process::Command::new("cmd")
-                .args([
-                    "/C",
-                    "mklink",
-                    "/J",
-                    &target_str,
-                    &from_str,
-                ])
+                .args(["/C", "mklink", "/J", &target_str, &from_str])
                 .output()?;
             if output.status.success() {
                 return Ok(());
@@ -1672,18 +977,7 @@ impl Pac {
     }
 
     pub fn exe_path(&self) -> String {
-        // TODO: check Debug/Release, check exe name
-        let mode = "Debug";
-        // find first exe in targets
-        for target in &self.targets {
-            match target.kind {
-                TargetKind::App => {
-                    return format!("build/{}/{}", mode, target.name);
-                }
-                _ => {}
-            }
-        }
-        format!("build/{}/{}", mode, self.name)
+        core_::exe_path(&self.targets, &self.name)
     }
 
     pub fn build(&mut self) -> AutoResult<()> {
@@ -1702,7 +996,8 @@ impl Pac {
             builder.run(self, args)?;
             self.builder = Some(builder);
         } else {
-            let mut builder = crate::builder::new_builder(crate::builder::BuilderKind::Ninja("build".into()));
+            let mut builder =
+                crate::builder::new_builder(crate::builder::BuilderKind::Ninja("build".into()));
             builder.run(self, args)?;
         }
         Ok(())
@@ -1727,117 +1022,30 @@ impl Pac {
 
     pub(crate) fn collect_srcs(&mut self) -> AutoResult<()> {
         for t in self.targets.iter_mut() {
-            t.collect_srcs()?;
+            crate::target::collect_target_srcs(t)?;
         }
         Ok(())
     }
 }
 
-fn path_depth(path: &AutoStr) -> u32 {
-    if path.is_empty() || path == "." {
-        return 0;
-    }
-    path.split("/").count() as u32
-}
-
 impl Pac {
     pub fn all_incs(&self) -> Vec<AutoStr> {
-        let mut all_incs = HashSet::new();
-        for target in &self.targets {
-            all_incs.extend(target.all_incs());
-        }
-        let mut all_incs = all_incs.into_iter().collect::<Vec<AutoStr>>();
-        all_incs.sort();
-        all_incs
+        core_::all_incs(&self.targets)
     }
 
     pub fn to_node(&self) -> Node {
-        let mut root = Node::new("root");
-        // name prop is the first positional arg
-        root.add_arg(Arg::Pos(Value::Str(self.name.clone())));
-        root.set_prop("version", self.version.clone());
-        let mut all_incs = self.all_incs();
-        // Plan 375: collect each target once, both as kids (preserving the tree
-        // shape) and grouped into plural-named arrays (apps/deps/devices/libs/
-        // bags/tests) so mold templates that do `@ for app in apps { ... }` can
-        // iterate them. Previously these props were only set to *empty* arrays
-        // as a fallback when the kind was absent, leaving eww-style templates
-        // with `UndefinedVariable: apps`.
-        let mut apps = Vec::new();
-        let mut deps = Vec::new();
-        let mut devices = Vec::new();
-        let mut libs = Vec::new();
-        let mut bags = Vec::new();
-        let mut tests = Vec::new();
-        for target in &self.targets {
-            let node = target.to_node();
-            match target.kind {
-                TargetKind::App => apps.push(Value::node(node.clone())),
-                TargetKind::Dep => deps.push(Value::node(node.clone())),
-                TargetKind::Device => devices.push(Value::node(node.clone())),
-                TargetKind::Lib => libs.push(Value::node(node.clone())),
-                TargetKind::Bag => bags.push(Value::node(node.clone())),
-                TargetKind::Test => tests.push(Value::node(node.clone())),
-            }
-            root.add_kid(node);
-        }
-        all_incs.sort();
-        root.set_prop("all_incs", Value::Array(Array::from_vec(all_incs)));
-
-        root.set_prop("deps", Value::Array(Array::from_vec(deps)));
-        root.set_prop("devices", Value::Array(Array::from_vec(devices)));
-        root.set_prop("libs", Value::Array(Array::from_vec(libs)));
-        root.set_prop("apps", Value::Array(Array::from_vec(apps)));
-        root.set_prop("bags", Value::Array(Array::from_vec(bags)));
-        root.set_prop("tests", Value::Array(Array::from_vec(tests)));
-
-        // root.set_prop("files", self.files_list());
-        // root.set_prop("groups", self.group_list());
-        root.set_prop("files", Array::new());
-        // root.set_prop("groups", self.groups().to_xml());
-
-        let props = self.props.clone();
-        for (k, v) in props.iter() {
-            root.set_prop(k.to_string().as_str(), v.clone());
-        }
-
-        // set builder folder
-        root.set_prop("relative_path", self.relative_path());
-        root
+        core_::pac_to_node(
+            &self.name,
+            &self.version,
+            &self.targets,
+            &self.props,
+            &self.build_at,
+        )
     }
 
-    fn relative_path(&self) -> AutoStr {
-        let depth = path_depth(&self.build_at) as usize;
-        "/..".repeat(depth).into()
+    pub fn relative_path(&self) -> AutoStr {
+        core_::relative_path(&self.build_at)
     }
-
-    // fn group_target(&self, g: &mut Group, t: &Target) {
-    //     // set files
-    //     for src in &t.srcs {
-    //         let fpath = format!("$PROJ_DIR${}\\{}", &self.relative_path(), src);
-    //         g.files.push(crate::group::File { name: fpath.into() })
-    //     }
-    //     // set dirs
-    //     for (_n, d) in &t.dirs {
-    //         let dg = g.mut_kid(&d.name);
-    //         self.group_dir(dg, d);
-    //     }
-    //     // set deps
-    //     for dep in &t.deps {
-    //         let dg = g.mut_kid(&dep.name);
-    //         self.group_target(dg, dep);
-    //     }
-    // }
-
-    // fn groups(&self) -> Group {
-    //     let mut group = Group::new("root");
-    //     for t in &self.targets {
-    //         let loc = t.location();
-    //         let g = group.mut_kid_path(&loc);
-    //         self.group_target(g, t);
-    //     }
-    //     group
-    // }
 
     #[allow(dead_code)]
     fn files_list(&self) -> Array {
@@ -1909,10 +1117,9 @@ mod tests {
     /// PLAN-015：pac.at `title_zh:` 中文展示名解析 + 展示标题 locale 链。
     #[test]
     fn test_title_zh_parsing_and_display_chain() {
-        let pac = Pac::new(AutoConfig::new(
-            "name: \"x\"\ntitle: \"Calculator\"\ntitle_zh: \"计算器\"\n",
-        )
-        .unwrap());
+        let pac = Pac::new(
+            AutoConfig::new("name: \"x\"\ntitle: \"Calculator\"\ntitle_zh: \"计算器\"\n").unwrap(),
+        );
         assert_eq!(pac.title_zh.as_deref(), Some("计算器"));
         // zh 链优先 title_zh；en 链恒 title；title_zh 不影响 en 输出。
         assert_eq!(pac.display_title_in(true).as_deref(), Some("计算器"));
@@ -1925,9 +1132,8 @@ mod tests {
         assert_eq!(pac.display_title_in(false).as_deref(), Some("Clock"));
 
         // 空白 title_zh 视同缺席；无 title 声明 = None（渲染器回落根部件名）。
-        let pac = Pac::new(
-            AutoConfig::new("name: \"x\"\ntitle: \"Paint\"\ntitle_zh: \"  \"\n").unwrap(),
-        );
+        let pac =
+            Pac::new(AutoConfig::new("name: \"x\"\ntitle: \"Paint\"\ntitle_zh: \"  \"\n").unwrap());
         assert!(pac.title_zh.is_none(), "空白 = 缺席");
         assert_eq!(pac.display_title_in(true).as_deref(), Some("Paint"));
         let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
@@ -1938,17 +1144,22 @@ mod tests {
     /// 与 Plan 276 `render:` 前端后端字段正交不互踩）。
     #[test]
     fn test_desktop_render_parsing() {
-        let pac = Pac::new(AutoConfig::new(
-            "name: \"x\"\ndesktop_render: \"queue\"\nrender: \"vue\"\n",
-        ).unwrap());
+        let pac = Pac::new(
+            AutoConfig::new("name: \"x\"\ndesktop_render: \"queue\"\nrender: \"vue\"\n").unwrap(),
+        );
         assert_eq!(pac.desktop_render.as_deref(), Some("queue"));
         assert!(
             pac.backend_config.is_some(),
             "render: \"vue\" 仍按前端后端解析（两字段正交）"
         );
 
-        let pac = Pac::new(AutoConfig::new("name: \"x\"\ndesktop_render: \"Independent\"\n").unwrap());
-        assert_eq!(pac.desktop_render.as_deref(), Some("independent"), "大小写宽容");
+        let pac =
+            Pac::new(AutoConfig::new("name: \"x\"\ndesktop_render: \"Independent\"\n").unwrap());
+        assert_eq!(
+            pac.desktop_render.as_deref(),
+            Some("independent"),
+            "大小写宽容"
+        );
 
         let pac = Pac::new(AutoConfig::new("name: \"x\"\ndesktop_render: \"\"\n").unwrap());
         assert!(pac.desktop_render.is_none(), "空串 = 缺省 auto");
@@ -1961,8 +1172,9 @@ mod tests {
     #[test]
     fn test_theme_decl_block_parsing() {
         // 块形态
-        let pac = Pac::new(AutoConfig::new(
-            "name: \"x\"
+        let pac = Pac::new(
+            AutoConfig::new(
+                "name: \"x\"
 theme: {
     extends: \"stella\"
     mode: \"auto\"
@@ -1972,25 +1184,45 @@ theme: {
     }
 }
 ",
-        ).unwrap());
+            )
+            .unwrap(),
+        );
         let d = pac.theme_decl.expect("块形态应解析");
         assert_eq!(d.extends.as_deref(), Some("stella"));
         assert_eq!(d.mode.as_deref(), Some("auto"));
-        assert_eq!(d.colors.len(), 2, "colors 声明两键 primary/muted-foreground（迭代序不作契约）");
-        assert!(d.colors.contains(&("primary".to_string(), "#8b5cf6".to_string())));
-        assert!(d.colors.contains(&("muted-foreground".to_string(), "38 7% 46%".to_string())));
+        assert_eq!(
+            d.colors.len(),
+            2,
+            "colors 声明两键 primary/muted-foreground（迭代序不作契约）"
+        );
+        assert!(d
+            .colors
+            .contains(&("primary".to_string(), "#8b5cf6".to_string())));
+        assert!(d
+            .colors
+            .contains(&("muted-foreground".to_string(), "38 7% 46%".to_string())));
 
         // 标量兼容：块缺席时 theme_decl=None、theme 标量照旧
-        let pac = Pac::new(AutoConfig::new("name: \"x\"
+        let pac = Pac::new(
+            AutoConfig::new(
+                "name: \"x\"
 theme: \"light\"
-").unwrap());
+",
+            )
+            .unwrap(),
+        );
         assert!(pac.theme_decl.is_none());
         assert_eq!(pac.theme.as_deref(), Some("light"));
 
         // 空块 = 声明存在但无覆盖（compose 层落基座）
-        let pac = Pac::new(AutoConfig::new("name: \"x\"
+        let pac = Pac::new(
+            AutoConfig::new(
+                "name: \"x\"
 theme: { }
-").unwrap());
+",
+            )
+            .unwrap(),
+        );
         let d = pac.theme_decl.expect("空块也是声明");
         assert!(d.extends.is_none() && d.colors.is_empty());
     }
@@ -2020,19 +1252,34 @@ theme: { }
     #[test]
     fn test_default_classes_parsing() {
         let pac = Pac::new(AutoConfig::new("name: \"x\"\ndefault_classes: off\n").unwrap());
-        assert!(!pac.default_classes, "default_classes: off must parse to false");
+        assert!(
+            !pac.default_classes,
+            "default_classes: off must parse to false"
+        );
 
         let pac = Pac::new(AutoConfig::new("name: \"x\"\ndefault_classes: on\n").unwrap());
-        assert!(pac.default_classes, "default_classes: on must parse to true");
+        assert!(
+            pac.default_classes,
+            "default_classes: on must parse to true"
+        );
 
         let pac = Pac::new(AutoConfig::new("name: \"x\"\ndefault_classes: false\n").unwrap());
-        assert!(!pac.default_classes, "default_classes: false must parse to false");
+        assert!(
+            !pac.default_classes,
+            "default_classes: false must parse to false"
+        );
 
         let pac = Pac::new(AutoConfig::new("name: \"x\"\ndefault_classes: \"off\"\n").unwrap());
-        assert!(!pac.default_classes, "default_classes: \"off\" must parse to false");
+        assert!(
+            !pac.default_classes,
+            "default_classes: \"off\" must parse to false"
+        );
 
         let pac = Pac::new(AutoConfig::new("name: \"x\"\n").unwrap());
-        assert!(pac.default_classes, "absent default_classes field defaults to true");
+        assert!(
+            pac.default_classes,
+            "absent default_classes field defaults to true"
+        );
     }
 
     /// Plan 504: pac.at `window: "fit"` content-fit mode parsing — sets
@@ -2057,7 +1304,8 @@ theme: { }
     }
 
     #[test]
-    fn test_scene_parsing() {        // explicit kinds
+    fn test_scene_parsing() {
+        // explicit kinds
         assert!(matches!(Scene::from_str("c"), Scene::C));
         assert!(matches!(Scene::from_str("C"), Scene::C));
         assert!(matches!(Scene::from_str("core"), Scene::C));
@@ -2175,28 +1423,31 @@ theme: { }
         "#;
         let config = auto_lang::config::AutoConfig::new(code).expect("failed to parse pac.at");
         let pac = Pac::new(config);
-        
+
         assert_eq!(pac.name, "sensor_hub");
         // Test backend (requires new field `backend` in Pac)
         assert_eq!(pac.backend, "c");
-        
+
         assert_eq!(pac.ports.len(), 1);
         let port_node = &pac.ports[0];
-        
+
         // Test port sub-properties
         assert_eq!(port_node.main_arg().to_astr(), "stm32");
         assert_eq!(port_node.get_prop("mcu").to_astr(), "stm32f407");
         assert_eq!(port_node.get_prop("os").to_astr(), "freertos");
-        assert_eq!(port_node.get_prop("toolchain").to_astr(), "arm-none-eabi-gcc");
-        
+        assert_eq!(
+            port_node.get_prop("toolchain").to_astr(),
+            "arm-none-eabi-gcc"
+        );
+
         // Test nested SDK dependency parsing
         let sdks = port_node.get_nodes("sdk");
         assert_eq!(sdks.len(), 1);
         assert_eq!(sdks[0].main_arg().to_astr(), "stm32f4_hal");
-        
+
         let arg2 = sdks[0].args.get_val(1);
         assert_eq!(arg2.to_astr(), "1.0.5");
-        
+
         assert_eq!(sdks[0].get_prop("series").to_astr(), "f407");
     }
 
@@ -2228,15 +1479,14 @@ theme: { }
 
     #[test]
     fn test_path_depth() {
-        use super::*;
         let path = "project/lse1480".into();
-        assert_eq!(path_depth(&path), 2);
+        assert_eq!(core_::path_depth(&path), 2);
 
         let path = "project".into();
-        assert_eq!(path_depth(&path), 1);
+        assert_eq!(core_::path_depth(&path), 1);
 
         let path = ".".into();
-        assert_eq!(path_depth(&path), 0);
+        assert_eq!(core_::path_depth(&path), 0);
     }
 
     #[test]
@@ -2255,65 +1505,5 @@ theme: { }
         assert_eq!(group.name, "root");
     }
 
-    // Tests for refactored dependency resolution functions
-
-    #[test]
-    fn test_check_all_resolved() {
-        use crate::target::{Target, TargetKind};
-        use std::collections::HashMap;
-
-        let mut targets = HashMap::new();
-
-        // Create two targets, both resolved
-        let mut target1: Target = Target::new("app1", TargetKind::App);
-        target1.is_resolved = true;
-        let mut target2: Target = Target::new("lib1", TargetKind::Lib);
-        target2.is_resolved = true;
-
-        targets.insert(target1.name.clone(), target1);
-        targets.insert(target2.name.clone(), target2);
-
-        // All targets should be resolved
-        assert!(Pac::check_all_resolved(&targets));
-    }
-
-    #[test]
-    fn test_check_all_resolved_unresolved() {
-        use crate::target::{Target, TargetKind};
-        use std::collections::HashMap;
-
-        let mut targets = HashMap::new();
-
-        // Create one resolved, one unresolved
-        let mut target1: Target = Target::new("app1", TargetKind::App);
-        target1.is_resolved = true;
-        let mut target2: Target = Target::new("lib1", TargetKind::Lib);
-        target2.is_resolved = false;
-
-        targets.insert(target1.name.clone(), target1);
-        targets.insert(target2.name.clone(), target2);
-
-        // Not all targets should be resolved
-        assert!(!Pac::check_all_resolved(&targets));
-    }
-
-    #[test]
-    fn test_build_resolved_links_no_links() {
-        use crate::target::{Target, TargetKind};
-        use std::collections::HashMap;
-
-        let mut targets = HashMap::new();
-
-        // Create target with no links
-        let target: Target = Target::new("app1", TargetKind::App);
-        targets.insert(target.name.clone(), target);
-
-        let resolved_links = Pac::build_resolved_links(&targets);
-
-        // Should have one entry with empty links
-        assert_eq!(resolved_links.len(), 1);
-        let key = auto_val::AutoStr::from("app1");
-        assert!(resolved_links.contains_key(&key));
-        assert!(resolved_links.get(&key).unwrap().is_empty());
-    }
+    // 闭包函数族测试已随实现迁 auto_man_core::closure::tests
 }

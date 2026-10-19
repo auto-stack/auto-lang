@@ -1,6 +1,6 @@
 {
-  "base_revision": "12bdf0cda5bb80d022cadf316131b21578ae9ce9",
-  "config_sha256": "8c4a5e965554f6138613157c10117f324731a17e89bf061c210acac2d93bf6b4",
+  "base_revision": "c41a4fe4cc6b87967959521bcb32e8963c9644dc",
+  "config_sha256": "5c57e2ab9be63656c354f0a45c22a603618a61a888a2cc3e3ed25e213583135c",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -187,7 +187,7 @@
       "from": "auto-lang",
       "kind": "normal",
       "optional": false,
-      "target": null,
+      "target": "cfg(windows)",
       "to": "a2r-std",
       "to_scope": "member"
     },
@@ -264,39 +264,12 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-terminal-core",
-      "from": "auto-lang",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-terminal-core",
-      "to_scope": "member"
-    },
-    {
       "dep_key": "auto-test-case",
       "from": "auto-lang",
       "kind": "normal",
       "optional": true,
       "target": null,
       "to": "auto-test-case",
-      "to_scope": "member"
-    },
-    {
-      "dep_key": "auto-text-core",
-      "from": "auto-lang",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-text-core",
-      "to_scope": "member"
-    },
-    {
-      "dep_key": "auto-ui-dialect",
-      "from": "auto-lang",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-ui-dialect",
       "to_scope": "member"
     },
     {
@@ -417,6 +390,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-man-core",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-core",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-package-lock",
       "from": "auto-man",
       "kind": "normal",
@@ -455,6 +437,42 @@
     {
       "dep_key": "auto-val",
       "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-atom",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-project-model",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-toolchain-core",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-toolchain-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-man-core",
       "kind": "normal",
       "optional": false,
       "target": null,
@@ -552,15 +570,6 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-parser-api",
-      "from": "auto-ui-dialect",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-parser-api",
-      "to_scope": "member"
-    },
-    {
       "dep_key": "auto-lang",
       "from": "auto-vm",
       "kind": "normal",
@@ -582,8 +591,8 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 874,
-    "man_to_language": 575,
+    "core_to_ui": 905,
+    "man_to_language": 579,
     "ui_to_language": 181
   }
 }

@@ -27,12 +27,16 @@
 
 pub mod descriptor;
 mod from_scan;
+pub mod generation_request;
 pub mod scanner;
 
 pub use descriptor::{
     DepNameForm, DependencyDecl, DisplayFields, DuplicateKey, Identity, NodeProp,
     ProjectDescriptor, RawNodeDecl, RawProp, RenderDecl, RenderSpec, RuntimeFields, SceneKind,
     SourceInfo, ToggleFields, ToggleValue, UnsupportedConstruct, UnsupportedKind, WindowSpec,
+};
+pub use generation_request::{
+    DepRoot, GenerationRequest, PackageAssets, RequestMode, RequestOrigin, ThemeDeclLite,
 };
 
 use std::fmt;
@@ -124,5 +128,7 @@ pub fn parse_file(path: &Path) -> ProjectModelResult<ProjectDescriptor> {
     parse_document(&text, SourceInfo::from_path(path))
 }
 
+#[cfg(test)]
+mod generation_request_tests;
 #[cfg(test)]
 mod tests;

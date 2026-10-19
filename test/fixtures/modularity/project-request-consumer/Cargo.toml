@@ -1,0 +1,30 @@
+# PLAN-809 T-02 生成请求数据合同消费方探针（独立 fixture crate）
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-project-model 的公开面
+# （GenerationRequest/RequestOrigin/RequestMode/ThemeDeclLite/DepRoot/
+# PackageAssets + descriptor DTO），证明 I-PROJECT 请求数据合同可被无
+# auto-lang/auto-man/auto-vm/auto-ui/auto-ast/auto-gen 的外部 consumer
+# 编译并运行（AC-02/V-02；auto-val 是模型数据层，允许出现在闭包内）。
+#
+# 闭包证明 = 本 manifest 的依赖表 + verify-deps.sh（cargo tree 断言
+# normal/build 闭包无 auto-lang/auto-man/auto-gen/auto-ui/auto-vm/
+# auto-ast）。
+#
+# 显式脱离根 workspace：根 Cargo.toml exclude 内，且此处空 [workspace]
+# 表使其成为独立解析单元。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/project-request-consumer/Cargo.toml
+# 依赖闭包断言（V-02 oracle）：
+#   bash test/fixtures/modularity/project-request-consumer/verify-deps.sh
+
+[package]
+name = "project-request-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-project-model = { path = "../../../../crates/auto-project-model" }
+
+# 独立 workspace（见上）；无锁文件、无成员。测试纯内存数据合同消费，
+# 不做 FS/网络/编译观测（那些留 auto-man 上层 adapter）。
+[workspace]
