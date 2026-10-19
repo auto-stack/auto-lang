@@ -2160,6 +2160,18 @@
           "id": "P809-M",
           "title": "PLAN-809 合入收据（delivery/沉淀/归档）",
           "content": "delivery=b819a602e no-ff union（基线 json 冲突取 master 侧留待并集重采样；Cargo.toml/toml/代码自动并集）；冻结门禁（分支 HEAD 390d02acc）：裸 cargo t 5290/5290+auto-man-core 46/46+auto-project-model 38/38+plan809 probe 8/8（真实 cargo/npm/ninja 三 Builder 成功+失败矩阵）+cargo tu 867/867+777 strict pass（基线 c41a4fe4c 重采样）+792 driver 24/24 正式交付收据（V01 fresh+真实 locked build/V02 重定位 locked 重建/V03 负控/V04 dev 同源，经 809 改造链 auto gen --delivery-root）；合并后 check 零错；并集 777 基线刷新因并发会话脏簿记暂缓（工具拒脏树），树静默后补。I-PROJECT 已合入 SHA=b819a602e（R04 消费面）。"
+        },
+        {
+          "id": "P810-M",
+          "title": "PLAN-810 merge 沉淀收据（2026-10-19）",
+          "content": "delivery 2a284c779（rebase over master 含 808/809 并集，range-diff 12/12 等价；777 并集基线显式重采样 declared_edges=69 绑定交付提交）ff-only 合入；冻结门：裸 cargo t 5300/5301（唯一红 plan484_024_charts_streaming_recompute——主检出同全量同红实证为预存非本计划引入，隔离 3×绿，归批量回归分诊）+ cargo tv 163/163 + cargo tu 867+2 ignored；tt 不适用（trans 零触）；schema_drift_fence 表维度随迁修复（围栏自指引）；792 修复源 25/25 与包内 8 触面源 hash=受审源；六份 Spec 增量（SD-01..06 含新 full-grammar.md）；ledger v51→v52 guarded offline projection（无存储写方可达，备份 bak-v51-810）。",
+          "status": "active",
+          "file": "docs/plans/attachments/810/handoff.md",
+          "tags": [
+            "PLAN-810",
+            "stage:merge",
+            "delivery:2a284c779"
+          ]
         }
       ]
     },
@@ -7855,6 +7867,19 @@
           "id": "P809-D3",
           "title": "SD-03/04 修改语义（project-model 独立消费+auto-man 委托边界）",
           "content": "SD-03：generation_request 为 project-model 具名独立模块，静态准入不扩 786 护栏/语法域，静态 origin 带 unsupported 不伪造已求值；外部消费 project-request-consumer 闭包单证。SD-04：auto-man 委托实况——单源规则在 core，Pac/Builder/Automan 为效果承载者；未迁面（语言执行/Git 索引下载执行/Builder 进程/exporter/UI 生成算法本体/dep pac.at 跨文件资源合并/resolve_back_dir）归 R04+。"
+        },
+        {
+          "id": "P810-D1",
+          "title": "完整 UI 文法单源外置与 UiParseContext 端口（PLAN-810）",
+          "content": "widget/store/component/view/fragment/节点族/on 块/actions/style/timer/routes/menubar/toolbar/scene/use/setup/expose/watch/computed/bind 及全部依赖 helper（约 4.9k 行）自 auto-lang Parser 逐字迁 auto-ui-dialect grammar/{widget,view,scene,store,actions,helpers}，经对象安全子 trait UiParseContext:ParseContext（定义在文法 crate，不入 Core 包，ParseContext 面零改动）驱动；ParserBridge 实现+Parser 端口后端（raw_cursor_save/restore/release 投机生命周期：成功出口显式释放覆盖公开门面/Core 直连/派发/嵌套全入口；probe_next_token 失败上抛协议；advance_peek_kind 与 _resync 区分 stream 手动恢复与 scene/subresource 双 push 重同步两种 prev 终态；computed 局部诊断事务；raw CSS 捕获；bind_var/define_handler_param/register_style_recipe 副作用出口）。ParserBridge::parser() escape hatch 删除，dialect/ui 薄 adapter 全端口派发，Parser 留同签名薄委托门面；on-events/arrow 事件文法留 Core（共享）。具名冻结旧怪癖：on Err 参数作用域泄漏、未闭合 fragment 无界 EOF、fn 体 store 门。canonical 见 file+full-grammar.md。",
+          "status": "active",
+          "file": "docs/specs/auto-ui-dialect/project.md",
+          "tags": [
+            "PLAN-810",
+            "stage:merge",
+            "delivery:2a284c779",
+            "scope:auto-ui-dialect"
+          ]
         }
       ]
     },
@@ -9596,6 +9621,19 @@
           "id": "P809-T",
           "title": "管理核心验证矩阵（probe/对拍/图 oracle/真实工具/交付）",
           "content": "V-01 api_compat_probe（Target 32 字段+Pac 全字段字面量构造 pin+方法 pin）+production_delegation_parity+man-core-consumer 外部全链+闭包单证；V-02 plan809_v02 双源对拍（VueReads 九字段+from_workspace 双路径）+r2_parity（zh-only/front 节点形/主声明不变反控）+adapter 5（sidecar 三形态全链/input_sources 请求 front+干扰排除/来源反转）；V-03/04 closure 8 图 oracle（diamond/重复/外部 link/自环/双环/混合/变更重plan/手算链）+resolve_internal_cycle 真实 pac.at；V-05 probe 8（真实 cargo build+Cargo.toml+无 rust 目标/缺依赖失败、真实 npm build+exit3、真实 ninja（vcvars 自举普通环境 Linking main.exe）+内存区分力+空工程负控+不可写输出）；V-06 delivery 9/9+792 driver 24/24 正式收据+777 strict。"
+        },
+        {
+          "id": "P810-T",
+          "title": "完整 UI 文法外置永久回归与轻消费方资产（PLAN-810）",
+          "content": "crates/auto-lang/src/tests/plan810_full_ui_grammar.rs 23 例（V-01 文法全集交叉×2/V-02 事务与前瞻 7 例/V-03 scope 凭据 owned-AST shadow 6 例/V-04 派发对照与三层 use-import 链/R1 快照生命周期双测含四入口 n×64 存活恒 0 与外层凭据存活/R2 同实例成功-失败对照冻结旧泄漏/EOF 隔离用例 #[ignore] 仅经 scripts/plan810_eof_quirk_probe.py 子进程外截止观察）；scripts/plan810_baseline_identity.py 基面↔迁移 fragment 路径 10 函数冻结映射归一同构证明；轻消费方 test/fixtures/modularity/ui-grammar-consumer（ToyUiContext 全端口 7 例+verify-deps 闭包门）；schema_drift_fence get_primary_prop 表维度随迁 grammar/helpers.rs。",
+          "status": "active",
+          "file": "crates/auto-lang/src/tests/plan810_full_ui_grammar.rs",
+          "tags": [
+            "PLAN-810",
+            "stage:merge",
+            "delivery:2a284c779",
+            "tier:scoped"
+          ]
         }
       ]
     },
@@ -12854,10 +12892,23 @@
           "id": "P809-R10",
           "title": "PLAN-809 final review R10 — pass",
           "content": "R1..R10 十轮：R1 readiness 退回→F01..04 闭合；R2 发现 ninja 实例身份回归（P1）→BuildOrderStep 身份序；R3 sidecar 生产接线/Block/front 清单；R4 core 编译+对象形态+C 输入；R5 对象形态根因（wrapper kid 挂错位置）→root prop 直挂；R6 mut+交付回归收据；R7 vcvars 自举真 Ninja；R8 自举大小写自伤修复（普通环境可复现）；R9 正式独立交付验收 24/24 闭合；R10 终审 pass（A/B 锁定构建/源与锁身份/路径边界/资源正负控独立复验全过）。reviewed 9/11。"
+        },
+        {
+          "id": "P810-R4",
+          "title": "PLAN-810 final review R4 — pass（R1..R4 全 finding 闭环）",
+          "content": "四轮收口：R1 六 findings（快照残留/777 基线/scene prev 双形态/测试 oracle/SD 冲突/格式）→R2 三 findings（同实例错误状态与 EOF 基线证据/792 旧源包收据/规范矛盾句）→R3 一 P3（unused_mut×2）→R4 pass 绑定 6b4963de3。merge rebase over 808/809 后映射 2a284c779，range-diff 12/12 等价（777 基线冲突项按并集显式重采样）。AC-01..06 pass；AC-07 merge-owned（冻结 t/tv/tu+沉淀/归档/清理）。",
+          "status": "active",
+          "file": "docs/plans/attachments/810/review-r4/REVIEW.md",
+          "tags": [
+            "PLAN-810",
+            "stage:review",
+            "reviewed:6b4963de3",
+            "rebased:2a284c779"
+          ]
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 51
+  "version": 52
 }

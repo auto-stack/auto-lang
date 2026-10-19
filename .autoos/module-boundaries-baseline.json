@@ -1,6 +1,6 @@
 {
-  "base_revision": "c41a4fe4cc6b87967959521bcb32e8963c9644dc",
-  "config_sha256": "5c57e2ab9be63656c354f0a45c22a603618a61a888a2cc3e3ed25e213583135c",
+  "base_revision": "2a284c7790efe17fa11927d801cd6db469e1ff5b",
+  "config_sha256": "1452711d4ab262d5f7c5079e8a2de11525197833620561c71f8b442397d9580d",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -187,7 +187,7 @@
       "from": "auto-lang",
       "kind": "normal",
       "optional": false,
-      "target": "cfg(windows)",
+      "target": null,
       "to": "a2r-std",
       "to_scope": "member"
     },
@@ -264,12 +264,39 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-terminal-core",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-terminal-core",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-test-case",
       "from": "auto-lang",
       "kind": "normal",
       "optional": true,
       "target": null,
       "to": "auto-test-case",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-text-core",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-text-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-dialect",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-dialect",
       "to_scope": "member"
     },
     {
@@ -570,6 +597,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-parser-api",
+      "from": "auto-ui-dialect",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-parser-api",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-lang",
       "from": "auto-vm",
       "kind": "normal",
@@ -591,8 +627,8 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 905,
-    "man_to_language": 579,
+    "core_to_ui": 874,
+    "man_to_language": 584,
     "ui_to_language": 181
   }
 }
