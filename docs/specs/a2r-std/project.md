@@ -23,6 +23,10 @@ a2r（Auto→Rust）转译产物的运行时标准库：让转译出的 Rust 代
 | sqlite | 嵌入式 SQL 数据库（rusqlite 0.30 bundled，Plan 415-B1） | active |
 | redis | Redis 客户端（redis 0.27 纯 Rust 同步 API，Plan 415-B2） | active |
 
+## 浮点数学 helper（PLAN-813）
+
+`math` 提供 `abs_f(f64) -> f64`、`powf(f64, f64) -> f64`、`sin(f64) -> f64` 和 `cos(f64) -> f64`。`a2r_std_signature_parity` 检查 `.rs.at` 与 Rust 副本的函数名称和元数；Rust 行为单测核对 helper 对应的标准数学操作，parity harness 不比较类型。
+
 ## http 模块约定（PLAN-724 收口）
 
 - 两条 facade（本 crate `a2r_std::http` 与 `auto_lang::a2r_std::http`）的
