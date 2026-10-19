@@ -734,7 +734,7 @@ arg
         parser.errors
     );
     // 同一实例：on 旗标已恢复（语句位非 on 体）。
-    let mut bridge = ParserBridge::new(&mut parser);
+    let bridge = ParserBridge::new(&mut parser);
     assert!(
         !bridge.in_on_body(),
         "on-body flag must be restored after widget"
@@ -760,7 +760,7 @@ arg
         parser.errors
     );
     // 同一失败实例：on 旗标已由平衡恢复路径复位。
-    let mut bridge = ParserBridge::new(&mut parser);
+    let bridge = ParserBridge::new(&mut parser);
     assert!(
         !bridge.in_on_body(),
         "on-body flag restored even on Err path"
