@@ -1,7 +1,7 @@
 {
   "last_covered_plan_id": 812,
-  "timestamp": "2026-10-18T22:45:45Z",
-  "covered_commit": "67a01025ad7429fa9d11eb87d0dbded00a9821b1",
+  "timestamp": "2026-10-19T08:36:46Z",
+  "covered_commit": "2772c8012d07289ca3d6136a36a5b05fc9d8fcec",
   "legs": [
     "tf",
     "tt",
@@ -9,36 +9,36 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 127.5,
-      "run": 6264,
-      "passed": 6263,
+      "seconds": 105.5,
+      "run": 6286,
+      "passed": 6286,
       "failed": 0,
-      "skipped": 517,
-      "note": "6263 过；唯一红 ffi_dual_019_dep_layout_invariants=KNOWN-DEBT REG-2 在案 tf 批量负载 flake（solo 复过 3.4s）；1M churn/语料族/画廊围栏全过"
+      "skipped": 518,
+      "note": "全绿（1M churn/语料族/画廊围栏全过）"
     },
     "tt": {
-      "seconds": 151.7,
-      "run": 5651,
-      "passed": 5651,
+      "seconds": 152.3,
+      "run": 5673,
+      "passed": 5673,
       "failed": 0,
-      "skipped": 1796,
-      "note": "全绿（11 slow；首轮 2 超时 ac_case syntax_parse/plan738 p4 为冷负载型，热复跑 5651/5651 全过）"
+      "skipped": 1797,
+      "note": "复跑全绿；首轮 2 红（plan484_024_charts_streaming_recompute + plan502_m5_hover_and_labels_e2e）均为负载型 flake——solo 复跑 3×/2× 全绿、tf 全量同测全过、plan484 另在 PLAN-810 merge 门期主检出同全量同红实证为预存（charts_gallery 在案红族，前收据 known_reds_seen 同族在案）"
     },
     "tb": {
-      "seconds": 114.3,
-      "run": 5290,
-      "passed": 5289,
+      "seconds": 67.9,
+      "run": 5312,
+      "passed": 5312,
       "failed": 0,
-      "skipped": 1546,
-      "note": "5289 过；唯一红 plan484_charts_gallery_bare_names_render=charts_gallery 在案预存红族"
+      "skipped": 1547,
+      "note": "全绿"
     }
   },
   "new_reds": [],
   "known_reds_seen": [
-    "ffi_dual_019_dep_layout_invariants (KNOWN-DEBT REG-2 tf 批量负载 flake，solo 绿)",
-    "plan484_charts_gallery_bare_names_render (charts_gallery 预存红族)"
+    "plan484 charts family load flake（charts_gallery 预存红族在案；solo/tf 全绿）",
+    "plan502_m5_hover_and_labels_e2e load flake（solo 3× 绿+复跑全绿；前收据同型冷负载先例）"
   ],
-  "taa": "not_triggered: window b00bd2aa8..67a01025ad7429fa9d11eb87d0dbded00a9821b1 touches zero aavm trigger paths",
-  "environment": "主检出单实例（预检等 plan811 worktree 定向复审门退出后开跑；RUSTC_WRAPPER= 清空）",
-  "window": "b00bd2aa8..67a01025ad7429fa9d11eb87d0dbded00a9821b1 (805 closeout -> 808 closeout: 806/807/812/808 merge 线+簿记)"
+  "taa": "not_triggered: window 67a01025a..HEAD touches zero aavm trigger paths",
+  "environment": "主检出单实例（tf/tt/tb 串行；预检无并发 cargo/nextest 进程）",
+  "window": "67a01025a..HEAD (809 merge + 810 merge 完整 UI 文法外置 + 簿记)"
 }
