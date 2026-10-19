@@ -591,14 +591,23 @@ app(\"main\") { }
     std::env::set_current_dir(cwd).unwrap();
     assert!(err.is_err(), "输出位不可写必须失败：{:?}", err.map(|_| ()));
 
-    // 真实 Ninja：编译器在 PATH 时执行成功产物断言；缺编译器显式 pending
+    // 真实 Ninja（R7：经 vcvars 注入 MSVC 环境后真跑；edition 2021 的
+    // set_var 在本串行测试内安全）。无任何编译器/VS 环境才 panic-pending。
+    let msvc_env = dump_vcvars_env();
+    if let Some(env) = &msvc_env {
+        for (k, v) in env {
+            std::env::set_var(k, v);
+        }
+    }
     let compiler = which("gcc")
         .or_else(|| which("clang"))
-        .or_else(|| which("cl"));
+        .or_else(|| which("cl"))
+        .or_else(|| msvc_env.is_some().then(|| std::path::PathBuf::new()));
     match compiler {
         None => {
-            eprintln!(
-                "V05-PENDING: 无 C 编译器（gcc/clang/cl）——真实 Ninja 成功                  产物验收未执行，保持 pending（AC-04 环境缺失语义）"
+            panic!(
+                "V05-PENDING: 无 C 编译器且无 VS 环境（gcc/clang/cl/vcvars 均 \
+不可用）——真实 Ninja 成功产物验收未执行，不能声称通过"
             );
         }
         Some(_) => {
@@ -636,4 +645,51 @@ app(\"main\") { }
             });
         }
     }
+}
+
+/// 经 vcvars64.bat dump MSVC 环境（PATH/INCLUDE/LIB/LIBPATH）。
+/// 无 VS 安装返回 None（pending 语义由调用方表达）。
+fn dump_vcvars_env() -> Option<Vec<(String, String)>> {
+    let vswhere = std::path::Path::new(
+        r"C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe",
+    );
+    if !vswhere.is_file() {
+        return None;
+    }
+    let out = std::process::Command::new(vswhere)
+        .args(["-latest", "-property", "installationPath"])
+        .output()
+        .ok()?;
+    let inst = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if inst.is_empty() {
+        return None;
+    }
+    let bat = format!("{inst}\\VC\\Auxiliary\\Build\\vcvars64.bat");
+    if !std::path::Path::new(&bat).is_file() {
+        return None;
+    }
+    let tmp = tempfile::tempdir().ok()?;
+    let script = tmp.path().join("vcenv.bat");
+    std::fs::write(
+        &script,
+        format!("@echo off\r\ncall \"{bat}\" >nul 2>&1\r\nset\r\n"),
+    )
+    .ok()?;
+    let out = std::process::Command::new("cmd")
+        .arg("/C")
+        .arg(&script)
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let wanted = ["PATH=", "INCLUDE=", "LIB=", "LIBPATH="];
+    let env: Vec<(String, String)> = text
+        .lines()
+        .filter_map(|l| {
+            wanted
+                .iter()
+                .find(|w| l.starts_with(*w))
+                .map(|w| (w[..w.len() - 1].to_string(), l[w.len()..].to_string()))
+        })
+        .collect();
+    (env.len() >= 2).then_some(env)
 }
