@@ -33,7 +33,8 @@ const EXPECTED_RENDER_TABLES: usize = 1;
 /// vue.rs 的语句级 `match tag {` 表数量(map_tag 原生映射 + PascalCase 归一)。
 /// `match tag_lower.as_str() {` 这类小表刻意不收。
 const EXPECTED_VUE_TABLES: usize = 1;
-/// parser.rs 的语句级 `match tag {` 表数量(get_primary_prop 的 tag 归类)。
+/// get_primary_prop 的 `match tag {` 表数量(tag 归类)。PLAN-810 起随完整
+/// UI 文法迁 auto-ui-dialect `grammar/helpers.rs`(parser.rs 该表已删)。
 const EXPECTED_PARSER_TABLES: usize = 1;
 /// a2ui/export.rs 的语句级 `match tag {` 表数量(tag → A2UIComponentBody)。
 const EXPECTED_A2UI_EXPORT_TABLES: usize = 1;
@@ -1749,7 +1750,9 @@ fn schema_drift_fence() {
     let vue_mt0 = &vue_tables[0];
     let carried_spellings: BTreeSet<String> = scan_aura_at_aliases(&aura_at);
 
-    let parser_rs = read("src/parser.rs");
+    // PLAN-810:get_primary_prop 表随 UI 文法迁 grammar/helpers.rs,维度
+    // 随迁(围栏自身指引:新表属 tag 知识,把维度加进本测试)。
+    let parser_rs = read("../auto-ui-dialect/src/grammar/helpers.rs");
     let parser_tables = scan_match_tables(&parser_rs);
     assert_eq!(
         parser_tables.len(),
