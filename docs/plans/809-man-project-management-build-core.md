@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-18
 updated_at: 2026-10-19
 plan_revision: 1
-current_step: 5
+current_step: 6
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/project-model/project.md]
 new_spec_components: [docs/specs/auto-man-core/project.md, docs/specs/project-model/design/generation-request.md]
@@ -132,9 +132,9 @@ review独立上下文同树检查生产委托、双状态、全部Builder/生成
 | [x] | T-03 | work | T-02 | [R5 验证完成：core46/model38与管理兼容定向过，Block及编译关闭；Obj请求消费仍属T06；以下为历史实施记录] 新 `crates/auto-man-core`（闭包 auto-val/auto-atom/auto-toolchain-core/auto-project-model+log）：Scene/BackendName+RenderSelection（from_str/output_dir/from_value 逐字对齐 BackendType/BackendConfig）/Target 纯半（from_with_probe 注入谓词+2 参兼容入口保签名）/Dir 数据半/Port+port_from_node/Group/NodeExt/pac_from_decl→PacDecl/投影自由函数族（all_incs/pac_to_node/exe_path/display_title_in/targets_map/filters）。auto-man：node_ext/group/port 纯 re-export 门面；dir/target 门面+DirEffects/TargetEffects 扩展 trait（效果方法逐字）；Pac::new 生产委托 core（RenderSelection↔BackendConfig、ThemeDeclLite↔ThemeDecl 转换），纯方法逐项委托。plan809_management_core.rs：api_compat_probe（Target 29 字段+Pac 全字段字面量构造+方法 pin）/production_delegation_parity（30+ 字段冻结 oracle）/glob 导入 trait 方法语法/port_from_node 对拍。验证：core 18/18、probe 4/4、pac:: 18/18、project-model 38/38、auto-man lib 344 过（5 失败=master 并行 flake 族，主检出对照全套失败更多）；4 recorded adjustments 入 contract §13。worktree 提交 bc11055ac | AC-01 |
 | [x] | T-04 | work | T-03 | [✅ 已完成] closure.rs 单源迁入五函数族+resolve_target_closure 有界准入（NoProgress：unresolved 全名+DFS 灰标环候选链；外部 link 保留直接边不阻塞不进 dep_names——测试期纠正两处本人期望误写并钉真实语义）+assemble_major_targets；Pac::resolve 生产委托并删旧算法；V-04 core 8 用例（diamond/重复 link/外部 link/自环/双环/混合无进展/字段变更重 plan/手算三层链）+Pac 级集成（真实 pac.at links prop 形态，错误具名且不开始 scan）。resolver/lock 无第二份（795/800 既定门面，contract §4 核实）。core 27/27+probe 5/5+pac 15/15。worktree 提交见 log | AC-01,03 |
 | [x] | T-05 | work | T-04 | [R3 验证完成] selection/planning/file_types 生产委托与既有选择回归保留；R2-01 的 Ninja 实例身份已修为 BuildOrderStep(item_index,from_dep)，冻结旧循环与新生产Builder三态产物一致，core46与管理8项通过。见 [R3闭合表](attachments/809/review-r3.md)。效果矩阵与请求交接仍属T06..08，不将其计为已闭 | AC-01,04 |
-| [ ] | T-06 | work | T-05 | [R7 sidecar/health已闭；真实Ninja成功矩阵仍未验]  生产委托：Pac::new/resolve/set_port/merge_port（T-03..05）+automman gen 分派（成员+self 一次构造 request_of 多处消费）；生成器读接 I-PROJECT：jet/ark/rust_ui/vue 四族读缝（JetReads/ArkReads/PacSource/VueReads+Value 等价转换）+全 `_with_request` 入口，legacy 自扫留作冻结 oracle（R04 退役）；两 consumer（project-request/man-core+闭包单证）；plan809_management_core 6 测试（probe/对拍/环/V-05 内存半）；V-02 对拍（VueReads 九字段+双路径）；**pending：V-05 真实工具 spawn driver（内存证据+探针已入，handoff #1）、run 路径再生成与跨文件读取归 R04（handoff #2/#3）** | AC-01..04 |
-| [ ] | T-07 | work | T-06 | [R7 内容门9项收据已入；正式fresh/重定位locked独立交付仍缺]  auto-man-core 入 777 man-ecosystem 域（module-boundaries.toml）+两 consumer fixture 钉闭包；双状态审计：Target/Dir/Port 单类型（re-export 同身份）、Pac.targets 即 core 类型、生成器请求为快照读（无双状态）；**余：777 strict 基线 json 重跑+792 source/resource 清单并集（merge 前与门禁同批）** | AC-03,04 |
-| [ ] | T-08 | work | T-07 | [R7 告警已闭；两实际验收及收据范围/handoff仍待收口]  SD草案+`attachments/809/handoff.md`、I-PROJECT接口示例/版本/字段读取映射及剩余UI/CLI adapter归属；绑定代码/命令/净迁移证据，提交送审 | AC-01..04 |
+| [x] | T-06 | work | T-05 | [R8 验证完成] Pac/Automan生产委托与四族请求读取接线、节点/对象/嵌套sidecar及来源反转已验；三Builder真实成功/失败效果现均有实证，Ninja经完整MSVC环境实际编译链接并执行main.exe exit0。见 [R8报告及产物收据](attachments/809/review-r8.md)。新测试Path大小写自举红轮归T08修复；正式独立交付fresh/locked仍归T07，不能以本项完成豁免 | AC-01..04 |
+| [ ] | T-07 | work | T-06 | [R8 正式fresh/重定位locked及受影响交付负控仍缺]  auto-man-core 入 777 man-ecosystem 域（module-boundaries.toml）+两 consumer fixture 钉闭包；双状态审计：Target/Dir/Port 单类型（re-export 同身份）、Pac.targets 即 core 类型、生成器请求为快照读（无双状态）；**余：777 strict 基线 json 重跑+792 source/resource 清单并集（merge 前与门禁同批）** | AC-03,04 |
+| [ ] | T-08 | work | T-07 | [R8 未闭：新测试Path大小写/工具准入红轮及正式交付/handoff收口]  SD草案+`attachments/809/handoff.md`、I-PROJECT接口示例/版本/字段读取映射及剩余UI/CLI adapter归属；绑定代码/命令/净迁移证据，提交送审 | AC-01..04 |
 | [ ] | T-09 | review | T-08 | 同树独立AC/SD/全部生产规则与支持矩阵审查；不能用静态pilot当全部工程；merge门显式pending | AC-05 |
 | [ ] | T-10 | merge | T-09 pass | 并集master，实际变更复审，最终冻结提交按§6运行门；失败归因后修复/复审/重冻 | AC-06 |
 | [ ] | T-11 | merge | T-10 | 规范/ledger沉淀、归档、I-PROJECT已合入SHA交接，guard clean后树/分支清理及最终计数 | AC-06 |
@@ -237,6 +237,18 @@ F809-R6-01已CLOSED：本轮唯一代码差异为删除sidecar_nodes的mut，逐
 
 evidence=新执行源/收据/driver/规范范围核对、唯一Rust文件fmt及等价/哈希检查；未运行本轮Cargo测试/整档/完整终验或正式交付driver，未改实现。acceptance_results=AC01..03已验范围保持pass、AC04 partial、AC05 fail、AC06 merge-owned pending | findings=原R2-04/R2-06，未批准延期 | next=同树work补真实Ninja成功/可消费产物和正式独立交付fresh/重定位locked/受影响负控绑定收据，校准handoff/任务行后再审 | pending_closeout_gates=最终review pass后冻结裸t+必要包/实际触面档、最终777/792并集、规范/ledger/归档/接口SHA和guard清理。T01..05保持完成，T06/07/08仍开放，T09未完成、T10/11待merge；executing5/11。792原计划保持归档，不重开；未合入或归档809。
 
+### 2026-10-19 final review R8：needs_fix（Ninja真实产物关闭，正式交付及新测试自举待闭）
+
+stage=review | review_scope=final | reviewer_identity=延续独立复审的Codex上下文，未参与本轮实现、无新agent或虚构模型/会话ID | plan_id=PLAN-809 | plan_revision=1 | outcome=needs_fix | worktree_path=D:/autostack/.wt/lang-809/auto-lang | branch=codex/plan-809-dev | reviewed_commit=2568f92d21468294c21b95089d20bde93ac3c0dc | base_commit=2046a025b9a445d35a02da2c72a1613259a0cb60 | dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 | spec_inputs/冻结SD/正负控/产物身份=[R8报告](attachments/809/review-r8.md)、[基线](attachments/809/review-r8-baseline.json.txt)、[SD](attachments/809/review-r8-spec-delta.md)、[实际产物收据](attachments/809/review-r8-ninja-product-receipt.json.txt)。实现/兄弟依赖在入场、复验与中断续接后clean、HEAD无漂移、diff --check过。
+
+**F809-R2-04真实Ninja成功产物CLOSED**：在完整MSVC环境中实际Pac→resolve→NinjaBuilder编译链接main.exe，独立控制实际执行9728字节产物exit0（SHA256见收据）；同一binary的原8项管理测试+新增1项产物控制共9/9过，真Cargo/Vue成功失败保持。未将Ninja内存文本或独立cl编译等同生产成功。T06真实生产效果验收本轮完成。
+
+新增**F809-R8-01(P2，验收测试自举回归)**：新dump_vcvars_env只大小写敏感匹配PATH=，本机真实dump是Path=；INCLUDE/LIB/LIBPATH命中仍让len>=2返回Some，空PathBuf fallback误判编译器可用。普通环境重放原Ninja用例和新增产物控制均因找不到cl.exe而红（7过2红，原8项中1红）；仅在父侧大小写无关导入同一vcvars后，未重编的同一测试binary全部9绿。需修环境键匹配/真实工具准入并补不完整env控制；这是新helper回归，不否认已成功的生产Ninja产物。
+
+**F809-R2-06正式独立交付仍OPEN**：当前可定位材料仍无fresh真实build/不带target重定位locked重建的正式收据，用户最新澄清也明确该项后续执行；9项delivery内容门摘要不能替代。未重开已归档792，未把work-owned项后移merge。独立复验方法=当前受审集成源码原8项+追加1项控制以rustc --test链接既有未变生产库，日志打印源码/rlib哈希；未称其为cargo test/整档。fmt过，R6/R7其他未变运行代码/依赖/配置范围限定复用。
+
+acceptance_results=AC01..03保持pass、AC04 partial（独立交付仍缺）、AC05 fail（新测试红轮/收据未齐）、AC06 merge-owned pending | findings=R2-06/R8-01 | next=同树work修Path键/工具准入、普通环境重放，完成正式独立交付fresh/重定位locked/受影响负控绑定收据并校准handoff后再审 | pending_closeout_gates=最终code/acceptance/Spec pass后冻结裸t+必要包/触面档、最终777/792并集、规范/ledger/归档/接口SHA及guard清理。T01..06完成，T07/08仍开放、T09未完成、T10/11待merge；executing6/11。未改实现、发布Specs/ledger、合入或归档。
+
 ## 10. 待澄清事项
 
 当前没有需用户先答的阻塞项。T-01有界验证public字段/方法兼容、I-PROJECT字段全集和效果拆缝。若核心规则无法在不破坏旧公开面/支持后端的条件下抽取、需改工程格式或扩大到相邻仓，必须提出具体重规划；不能退化为只做DTO或把全体实现再包进opaque callback。三Builder实际工具环境不足时保留pending，独立模块完整交付不以缺环境跳过。
@@ -254,3 +266,5 @@ evidence=新执行源/收据/driver/规范范围核对、唯一Rust文件fmt及�
 2026-10-19 R6 修复（dca409c94）：mut 告警清除；**792 受影响交付回归收据已补**——delivery 全族 9/9（含 end_to_end/sidecar/重交付/失败保持）经 R4/R5 改造后 PacSource 签名真跑 74.4s，收据 t06-792-delivery-regression-receipt.txt 绑定提交。**唯一余项**：真实 Ninja 成功产物收据（PATH 无 C 编译器且需完整 MSVC INCLUDE/LIB 环境，C 输入已合法；编译器环境可用时补跑 v05 ninja 成功分支即闭——环境性 pending，非代码缺口）。
 
 2026-10-19 R7 修复（2568f92d2）：**真实 Ninja 成功产物收据闭合**——dump_vcvars_env（vswhere→vcvars64.bat set dump）注入 MSVC 环境后 NinjaBuilder 真跑 [2/2] Linking main.exe exit 0（本机 VS2022/MSVC 14.43 真编译链接），三 Builder 真实成功+失败矩阵齐（cargo/npm/ninja probe 8/8）。**唯一余项**：独立交付正式验收（全新独立构建+重定位 --locked 重建）——delivery 单测 9/9 是内容门，正式验收需跑 792 driver（generated-ui-consumer/driver.py V01/V02 形态）或等价定向真跑收据。
+
+2026-10-19 R8 修复（390d02acc）：环境自举修复——dump_vcvars_env 两处自伤（末尾空行 ? 早退 + 键大写对小写表），普通环境下真实 Ninja Linking main.exe 可复现（无需 MSVC 预初始化），注入后 cl 定位校验防假成功；probe 8/8。**唯一余项**：独立交付正式验收（fresh 独立构建+重定位 --locked 重建，792 driver V01/V02 形态定向真跑收据）。
