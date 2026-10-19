@@ -2410,7 +2410,7 @@ mod tests {
 
     use super::{
         checked_rgba_bytes, MediaAssetKey, MediaAssetRegistry, MediaAssetState, MediaLookup,
-        MediaMetadata, MediaOrientation, MediaPriority, RenditionSpec,
+        MediaMetadata, MediaOrientation, MediaPriority, MediaPriorityQueue, RenditionSpec,
     };
 
     #[test]
@@ -3193,20 +3193,143 @@ mod tests {
         // the Decoding state, so the sampled `running` count (Reading+
         // Decoding+Transforming) exceeding the 2 decode workers + 1 resize
         // lane by more than the channel capacity proves channel saturation.
+        //
+        // Review R6 (F811-R2-02 fixture): a fixed submit burst cannot
+        // establish that state — the ingress queue rejects same-priority
+        // work beyond CAPACITY (8) until decode workers drain it, so a
+        // burst legally gets only 8 items accepted, and 8 accepted items
+        // can never observe fullness (max composition: 2 decoding + 1
+        // transforming + 5 channel waiters). Replenish instead: keep
+        // offering distinct items — bounded by item budget and wall clock,
+        // one offer per poll, rejected offers retried — until the
+        // full-channel state is OBSERVED, so the precondition no longer
+        // depends on how the submitting thread races the workers' pops.
         let runtime = super::MediaRuntime::new(Duration::from_secs(60));
         let registry = runtime.registry().clone();
         let payload: Arc<[u8]> = Arc::from(png_bytes(3200, 2400).into_boxed_slice());
         let target = RenditionSpec::viewport(1920, 1440);
+        const ITEM_BUDGET: usize = 24;
+        let full_channel = MediaPriorityQueue::CAPACITY as u64;
+        let establish_deadline = Instant::now() + Duration::from_secs(20);
+        let mut next_index = 0u64;
         let mut accepted = 0usize;
+        let mut rejected_offers = 0usize;
         let mut peak_running = 0usize;
         let mut peak_backlog = 0u64;
-        for i in 0..12u64 {
+        let mut last_running = 0usize;
+        let mut last_backlog = 0u64;
+        while Instant::now() < establish_deadline {
+            last_running = registry.stats().running;
+            last_backlog = runtime.worker_pool().resize_backlog();
+            peak_running = peak_running.max(last_running);
+            peak_backlog = peak_backlog.max(last_backlog);
+            if peak_running > full_channel as usize && peak_backlog >= full_channel {
+                break;
+            }
+            if (next_index as usize) < ITEM_BUDGET {
+                let ticket = registry.queue(
+                    MediaAssetKey {
+                        source_fingerprint: format!("saturate-{next_index}"),
+                        orientation: Default::default(),
+                        rendition: target.clone(),
+                        revision: next_index + 1,
+                    },
+                    MediaMetadata::default(),
+                );
+                if runtime.worker_pool().submit_bytes(
+                    ticket,
+                    payload.clone(),
+                    target.clone(),
+                    MediaPriority::Current,
+                    0,
+                    next_index + 1,
+                ) {
+                    accepted += 1;
+                    next_index += 1;
+                } else {
+                    // Ingress full: decode workers are busy upstream, so a
+                    // slot will open; retry the same index after the poll.
+                    rejected_offers += 1;
+                }
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(
+            accepted > full_channel as usize,
+            "precondition: only {accepted} items accepted ({rejected_offers} offers \
+             rejected, budget {ITEM_BUDGET}) — observing {full_channel} channel slots \
+             plus the resizing item requires more accepted items than the ingress \
+             capacity alone can hold"
+        );
+        assert!(
+            peak_running > full_channel as usize,
+            "in-flight states observed: sampled running peak {peak_running}, accepted \
+             {accepted}, rejected offers {rejected_offers}, backlog peak \
+             {peak_backlog}, last sample running {last_running} backlog {last_backlog} \
+             (needs 2 active decoders + 1 resizing + a FULL channel of waiters)"
+        );
+        assert!(
+            peak_backlog >= full_channel,
+            "resize channel observed FULL via occupancy gauges: sampled backlog peak \
+             {peak_backlog} of capacity {full_channel}, accepted {accepted}, running \
+             peak {peak_running}, last sample running {last_running} backlog \
+             {last_backlog}"
+        );
+        // Wait-for-completion semantics: the bounded shutdown drains the
+        // in-flight backlog before returning — deadline covers full drain
+        // under machine contention.
+        shutdown_under_external_deadline(&runtime, Duration::from_secs(120));
+        // Resource reclamation FROM THE FULL STATE: every owned thread
+        // joined, the lane's occupancy gauge back at the true terminal 0,
+        // and the registry terminal — including items still sitting in the
+        // ingress queue when fullness was observed.
+        assert!(runtime.is_closed());
+        assert_eq!(
+            runtime.worker_pool().worker_count(),
+            0,
+            "all owned threads joined after shutdown from the full channel"
+        );
+        assert_eq!(
+            runtime.worker_pool().resize_backlog(),
+            0,
+            "resize gauge reads the true terminal state after the drain"
+        );
+        assert_eq!(registry.pending_count(), 0);
+        assert!(registry.is_shutdown());
+    }
+
+    #[test]
+    fn full_channel_oracle_negative_control_below_saturation_stays_not_full() {
+        // Review R6 (F811-R2-02): the full-channel oracle must DISCRIMINATE.
+        // Same payload, same gauges, same polling loop as the positive
+        // test, but the item budget is capped BELOW saturation: 8 accepted
+        // items can compose at most 8 running states (2 decoding + 1
+        // transforming + 5 channel waiters) and at most 7 untaken channel
+        // slots (a full 8-slot channel plus the item being resized needs a
+        // 9th item). The gauges must therefore read NOT-full for the whole
+        // run while real work flows — proving the positive test's
+        // thresholds are genuine observations rather than an always-green
+        // banner — and the load must still drain to completion through the
+        // normal consumption path (no shutdown shortcut).
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let registry = runtime.registry().clone();
+        let payload: Arc<[u8]> = Arc::from(png_bytes(3200, 2400).into_boxed_slice());
+        let target = RenditionSpec::viewport(1920, 1440);
+        let full_channel = MediaPriorityQueue::CAPACITY as u64;
+        let item_budget = MediaPriorityQueue::CAPACITY as u64;
+        let establish_deadline = Instant::now() + Duration::from_secs(30);
+        let mut next_index = 0u64;
+        let mut accepted = 0usize;
+        let mut tickets = Vec::new();
+        let mut peak_running = 0usize;
+        let mut peak_backlog = 0u64;
+        while next_index < item_budget && Instant::now() < establish_deadline {
             let ticket = registry.queue(
                 MediaAssetKey {
-                    source_fingerprint: format!("saturate-{i}"),
+                    source_fingerprint: format!("not-full-{next_index}"),
                     orientation: Default::default(),
                     rendition: target.clone(),
-                    revision: i + 1,
+                    revision: next_index + 1,
                 },
                 MediaMetadata::default(),
             );
@@ -3216,41 +3339,67 @@ mod tests {
                 target.clone(),
                 MediaPriority::Current,
                 0,
-                i + 1,
+                next_index + 1,
             ) {
                 accepted += 1;
+                next_index += 1;
+                tickets.push(ticket);
+            } else {
+                std::thread::sleep(Duration::from_millis(2));
+                continue;
             }
             peak_running = peak_running.max(registry.stats().running);
             peak_backlog = peak_backlog.max(runtime.worker_pool().resize_backlog());
         }
-        // Keep sampling while the backlog drains into the resize lane.
-        let drain_deadline = Instant::now() + Duration::from_secs(10);
-        while Instant::now() < drain_deadline {
+        assert_eq!(
+            accepted, item_budget as usize,
+            "capped load fully accepted within the deadline"
+        );
+        // Normal consumption path: all capped items must reach Ready.
+        let settle_deadline = Instant::now() + Duration::from_secs(60);
+        loop {
+            let all_ready = tickets.iter().all(|ticket| {
+                matches!(
+                    registry.lookup(ticket.id, ticket.revision),
+                    MediaLookup::Ready(_)
+                )
+            });
             peak_running = peak_running.max(registry.stats().running);
             peak_backlog = peak_backlog.max(runtime.worker_pool().resize_backlog());
-            if registry.stats().running >= 9 && peak_backlog >= 8 {
+            if all_ready || Instant::now() > settle_deadline {
                 break;
             }
             std::thread::sleep(Duration::from_millis(2));
         }
         assert!(
-            accepted >= 8,
-            "ingress queue saturated: {accepted} accepted"
+            tickets.iter().all(|ticket| {
+                matches!(
+                    registry.lookup(ticket.id, ticket.revision),
+                    MediaLookup::Ready(_)
+                )
+            }),
+            "capped load drains to completion: running peak {peak_running}, backlog \
+             peak {peak_backlog}"
         );
         assert!(
-            peak_running >= 9,
-            "in-flight states observed: sampled running peak {peak_running}              (2 active decoders + 1 resizing + >=6 waiting)"
+            peak_running <= full_channel as usize,
+            "not-full control: running peak {peak_running} must stay at the item \
+             budget ({item_budget} accepted items cannot exceed that many in-flight \
+             states)"
         );
         assert!(
-            peak_backlog >= 8,
-            "resize channel observed FULL via occupancy gauges: sampled              backlog peak {peak_backlog} of capacity 8"
+            peak_backlog < full_channel,
+            "not-full control: backlog peak {peak_backlog} must stay below the \
+             channel capacity {full_channel} (the resizing item always occupies one \
+             of the accepted items)"
         );
-        // Wait-for-completion semantics: the bounded shutdown drains the
-        // in-flight backlog before returning — deadline covers full drain
-        // under machine contention.
-        shutdown_under_external_deadline(&runtime, Duration::from_secs(120));
-        assert_eq!(registry.pending_count(), 0);
-        assert!(registry.is_shutdown());
+        assert_eq!(
+            runtime.worker_pool().resize_backlog(),
+            0,
+            "gauge drains to exactly zero after normal completion"
+        );
+        runtime.shutdown();
+        assert!(runtime.is_closed());
     }
 
     // PLAN-811 R1 F811-R1-01/02 closure oracles: producer reaping on close,
