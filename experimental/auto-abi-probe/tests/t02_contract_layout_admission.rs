@@ -595,6 +595,125 @@ fn abi_admission_same_width_respell_is_semantic_reject() {
     }
 }
 
+/// F-797-R4-01 (R5): the ORIGINAL R4 attack — payload tampered, label
+/// kept ORIGINAL (the lie rides the payload, not the label). Admission
+/// now RECOMPUTES the content version from the actual payload and
+/// rejects even though the carried label matches the binding.
+#[test]
+fn abi_admission_tampered_payload_original_label_rejected() {
+    let mut d = ModuleDescriptor::probe_module();
+    // tamper the payload only: count i32 -> u32
+    if let Some(rec) = d.records.iter_mut().find(|r| r.name == "RecMix") {
+        if let Some(f) = rec.fields.iter_mut().find(|f| f.name == "count") {
+            f.ty = FieldTyOwned::Scalar(SemScalar::U32);
+        }
+    }
+    // semantic_refs stay EXACTLY the binding's originals (the label lies)
+    // AND the consumer expectation also physically re-spells count —
+    // layout comparison alone would pass; the payload-recompute axis
+    // is the only thing that can catch this.
+    let mut expect = probe_expectation();
+    if let Some(rec) = expect
+        .required_records
+        .iter_mut()
+        .find(|r| r.name == "RecMix")
+    {
+        if let Some(f) = rec.fields.iter_mut().find(|f| f.name == "count") {
+            f.ty = FieldTyOwned::Scalar(SemScalar::U32);
+        }
+    }
+    match admit_descriptor(&d, &expect) {
+        Err(Rejection::SemanticRefMismatch { found_version, .. }) => {
+            assert!(
+                found_version.starts_with("payload-recomputed"),
+                "rejection must come from the PAYLOAD axis, got {found_version}"
+            );
+        }
+        other => panic!("expected payload-bound SemanticRefMismatch, got {other:?}"),
+    }
+}
+
+/// The truthful-label variant (label re-minted for the tampered shape)
+/// must ALSO reject — both attack classes exist as permanent cases.
+#[test]
+fn abi_admission_truthful_label_tampered_payload_also_rejected() {
+    let mut d = ModuleDescriptor::probe_module();
+    if let Some(rec) = d.records.iter_mut().find(|r| r.name == "RecMix") {
+        if let Some(f) = rec.fields.iter_mut().find(|f| f.name == "count") {
+            f.ty = FieldTyOwned::Scalar(SemScalar::U32);
+        }
+    }
+    // recompute the truthful label from the tampered payload
+    if let Some(rec) = d.records.iter().find(|r| r.name == "RecMix") {
+        let fields: Vec<(String, SemScalar)> = rec
+            .fields
+            .iter()
+            .filter_map(|f| match f.ty {
+                FieldTyOwned::Scalar(s) => Some((f.name.clone(), s)),
+                _ => None,
+            })
+            .collect();
+        let v = auto_abi_probe::semref::content_version_of_payload("RecMix", &fields);
+        d.semantic_refs[0].content_version = v;
+    }
+    match admit_descriptor(&d, &probe_expectation()) {
+        Err(Rejection::SemanticRefMismatch { .. }) => {}
+        other => panic!("expected SemanticRefMismatch, got {other:?}"),
+    }
+}
+
+/// F-797-R4-10 (R5): the staging budget is measured in REPRESENTATION
+/// bytes — a tiny-payload record whose flattened FieldLayout vector +
+/// path strings would blow 8MiB is refused BEFORE the vector exists.
+/// Four levels of 16-way branching with 1-byte payload leaves:
+/// 16^4 = 65,536 leaves × (FieldLayout 40B + slack) > 8MiB? — tuned to
+/// cross at level 5 (1,048,576 leaves) while PAYLOAD stays ~1MiB.
+#[test]
+fn abi_admission_staging_gate_counts_representation_bytes() {
+    use auto_abi_probe::layout::{FieldDefOwned, FieldTyOwned, RecordDefOwned, SemScalar};
+    let mut table = BTreeMap::new();
+    let scalar = || FieldDefOwned {
+        name: "b".into(),
+        ty: FieldTyOwned::Scalar(SemScalar::Bool),
+    };
+    table.insert(
+        "Fan0".to_string(),
+        RecordDefOwned {
+            name: "Fan0".into(),
+            fields: vec![scalar()],
+        },
+    );
+    for level in 1..6usize {
+        let fields: Vec<FieldDefOwned> = (0..16)
+            .map(|_| FieldDefOwned {
+                name: format!("f{level}"),
+                ty: FieldTyOwned::Record(format!("Fan{}", level - 1)),
+            })
+            .collect();
+        table.insert(
+            format!("Fan{level}"),
+            RecordDefOwned {
+                name: format!("Fan{level}"),
+                fields,
+            },
+        );
+    }
+    // Fan4: 65,536 leaves, payload 65,536B — REPRESENTATION ~4.9MiB < 8MiB
+    // => materializes (the R5 case that previously slipped through as
+    // 19MB capacity); Fan5: ~78MiB representation => refused pre-vector.
+    let ok = layout::layout_record_owned(&table, "Fan4").expect("Fan4 materializes");
+    assert!(ok.fields.len() == 65_536);
+    match layout::layout_record_owned(&table, "Fan5") {
+        Err(LayoutError::StagingTooLarge { size, .. }) => {
+            assert!(
+                size > 8 * 1024 * 1024,
+                "size={size} must be representation bytes"
+            );
+        }
+        other => panic!("expected StagingTooLarge, got {other:?}"),
+    }
+}
+
 /// F-797-R4-01: a descriptor MISSING the bound semantic ref (the record
 /// vanished) is rejected even when no layout is demanded.
 #[test]
@@ -677,6 +796,29 @@ fn abi_admission_semref_gate_end_to_end() {
 // F-797-R4-02 promised-surface closures
 // ---------------------------------------------------------------------------
 
+/// F-797-R4-02 (R5): the PRODUCTION builder describes record views as
+/// record views — `descriptor_for_defs(&[rec_sum])` must not collapse
+/// the pointer lane to i64.
+#[test]
+fn abi_contract_production_builder_spells_recview() {
+    use auto_abi_probe::decl::{AbiScalar, BodyKind, FnDecl};
+    let defs = [FnDecl {
+        symbol: "p797_rec_sum",
+        params: &[AbiScalar::Ptr],
+        ret: AbiScalar::I64,
+        body: BodyKind::RecSumV1,
+    }];
+    let d = auto_abi_probe::build::descriptor_for_defs(&defs);
+    let sig = d
+        .symbols
+        .iter()
+        .find(|s| s.name == "p797_rec_sum")
+        .unwrap()
+        .form
+        .signature();
+    assert_eq!(sig, "pure(rec:RecMix:const)->i64");
+}
+
 /// The fallible form SPELLS its explicit context parameter — a consumer
 /// compiling against the proposal signature can derive the real machine
 /// shape from the descriptor alone.
@@ -737,7 +879,27 @@ fn abi_contract_c_provider_descriptor_consumable() {
         .unwrap()
         .form
         .signature();
-    assert_eq!(rec_sig, "fallible(rec:RecMix)->status,out i64");
+    assert_eq!(rec_sig, "fallible(rec:RecMix:const)->status,out i64");
+    // F-797-R4-02 (R5): handle/ownership/callback lanes are described
+    let create_sig = d
+        .symbols
+        .iter()
+        .find(|s| s.name == "p797_h_create")
+        .unwrap()
+        .form
+        .signature();
+    assert!(
+        create_sig.contains("->handle:interop-resource"),
+        "{create_sig}"
+    );
+    let fold_sig = d
+        .symbols
+        .iter()
+        .find(|s| s.name == "p797_fold")
+        .unwrap()
+        .form
+        .signature();
+    assert!(fold_sig.contains("callback(i64)->i64"), "{fold_sig}");
 
     // admissible: a consumer requiring exactly these signatures passes
     let mut expect = probe_expectation();

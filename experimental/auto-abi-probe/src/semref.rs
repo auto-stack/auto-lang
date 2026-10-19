@@ -23,6 +23,58 @@ pub fn package() -> PackageId {
     PackageId::new(BINDING_PACKAGE)
 }
 
+/// Map a physical field scalar to its SEMANTIC TypeDesc — the inverse
+/// bridge used by admission to recompute a record's content version
+/// FROM ITS PAYLOAD (F-797-R4-01 R5: labels never substitute for
+/// payload facts).
+pub fn type_desc_of(s: crate::layout::SemScalar) -> TypeDesc {
+    use crate::layout::SemScalar;
+    match s {
+        SemScalar::Bool => TypeDesc::Bool,
+        SemScalar::U8 => TypeDesc::U32, // physical u8 lanes carry no semantic kind of their own
+        SemScalar::I32 => TypeDesc::I32,
+        SemScalar::U32 => TypeDesc::U32,
+        SemScalar::I64 => TypeDesc::I64,
+        SemScalar::U64 => TypeDesc::U64,
+        SemScalar::F64 => TypeDesc::F64,
+        SemScalar::Char => TypeDesc::Char,
+    }
+}
+
+/// Recompute a record's SEMANTIC content version from its payload
+/// (fields as semantic TypeDescs, declaration order) — identical to how
+/// the binding mints versions, so a tampered payload with an original
+/// LABEL still mismatches.
+pub fn content_version_of_payload(
+    name: &str,
+    fields: &[(String, crate::layout::SemScalar)],
+) -> String {
+    let canonical = encode_typedesc_bytes(&TypeDesc::I64).unwrap();
+    let decl = DeclRef::new(
+        &package(),
+        BINDING_MODULE,
+        DeclKind::Record,
+        name,
+        ContentVersion::of_canonical(&canonical),
+    );
+    let shape = RecordShape {
+        decl,
+        fields: fields
+            .iter()
+            .map(|(n, s)| FieldDesc {
+                name: n.clone(),
+                ty: type_desc_of(*s),
+            })
+            .collect(),
+    };
+    RecGroup {
+        members: vec![shape],
+    }
+    .group_content()
+    .as_str()
+    .to_string()
+}
+
 /// blake3, hex-encoded (64 chars) — kept as the probe-local digest form.
 pub fn blake3_hex(bytes: &[u8]) -> String {
     let mut h = blake3::Hasher::new();

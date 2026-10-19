@@ -116,33 +116,65 @@ pub fn c_include_closure(
         let content = std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
         let hash = crate::semref::blake3_hex(&content);
         digest_input.push_str(&format!(
-            "{}|{}\n",
+            "{}|{}
+",
             path.display().to_string().replace('/', "\\"),
             hash
         ));
         seen.push(path.clone());
         for line in String::from_utf8_lossy(&content).lines() {
-            let t = line.trim();
-            if let Some(rest) = t.strip_prefix("#include \"") {
-                if let Some(name) = rest.strip_suffix('"') {
-                    // resolve relative to the INCLUDING file first, then
-                    // the shared include dir (the probe's convention)
-                    let here = path.parent().unwrap_or(include_dir).join(name);
-                    let shared = include_dir.join(name);
-                    let resolved = if here.is_file() {
-                        here
-                    } else if shared.is_file() {
-                        shared
-                    } else {
-                        return Err(format!(
-                            "local include {name:?} of {} not found (the compile is not a \
-                             pure function of the source while a dependency is unresolvable)",
-                            path.display()
-                        ));
-                    };
-                    stack.push(resolved);
-                }
+            let t = line.trim_start();
+            // F-797-R4-07 (R5): recognize the REAL preprocessor spellings
+            // that resolve local files — `#include "x"`, `#  include "x"`,
+            // trailing comments after the include, and `<x>` when the
+            // angle path resolves INSIDE the probe's own include tree
+            // (the MSVC/stdint closure is pinned by the toolchain
+            // fingerprint, not by this walk).
+            let after_hash = t.strip_prefix('#').map(|r| r.trim_start()).unwrap_or("");
+            let Some(rest) = after_hash.strip_prefix("include") else {
+                continue;
+            };
+            let rest = rest.trim_start();
+            // strip a trailing line comment if the quote/bracket already closed
+            let target_quoted = rest
+                .strip_prefix('"')
+                .and_then(|r| r.split_once('"'))
+                .map(|(name, _)| (name, false));
+            let target_angle = rest
+                .strip_prefix('<')
+                .and_then(|r| r.split_once('>'))
+                .map(|(name, _)| (name, true));
+            let Some((name, angle)) = target_quoted.or(target_angle) else {
+                // `#include HDR` (macro form) or a bare token — the
+                // dependency is NOT enumerable from source text alone:
+                // FAIL CLOSED (never cache such a compile as pure).
+                return Err(format!(
+                    "{}: unrecognized include directive {:?} — the compile's dependency closure is not enumerable; refusing to cache as pure",
+                    path.display(),
+                    t
+                ));
+            };
+            if name.is_empty() {
+                continue;
             }
+            let here = path.parent().unwrap_or(include_dir).join(name);
+            let shared = include_dir.join(name);
+            let resolved = if here.is_file() {
+                here
+            } else if shared.is_file() {
+                shared
+            } else if angle {
+                // angle include that does not resolve inside the probe
+                // tree -> system/MSVC header, covered by the toolchain
+                // fingerprint
+                continue;
+            } else {
+                return Err(format!(
+                    "local include {name:?} of {} not found (the compile is not a                      pure function of the source while a dependency is unresolvable)",
+                    path.display()
+                ));
+            };
+            stack.push(resolved);
         }
     }
     Ok(crate::semref::blake3_hex(digest_input.as_bytes()))

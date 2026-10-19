@@ -1,6 +1,8 @@
 # PLAN-797 规范增量提案（spec-delta）
 
-> 状态：**R4 修复后重置稿**。绑定 R4 修复提交 `6294d4bea`（真实 semantic
+> 状态：**R5 修复后重置稿**。绑定 R5 修复轮（载荷绑定准入/ctx·UTF-8·值
+> 校验·handle/callback/mut-out 描述面/include fail-closed/C 腿正式
+> 硬门/表示字节 staging 门/root 替换·GC 可观测/受控降级缓存读）。真实 semantic
 > contract 绑定 / 正式 AutoDown 执行 / 性能复测已按实际通路重写）与
 > T-07 材料提交；canonical Spec 输入 hash 为下方当前实测值（R2 曾警示
 > goals.md 漂移，已按当前树重核）。§5 五行意向表是计划契约，本文件是
@@ -87,7 +89,7 @@ AC-01–06
    double destroy / 错误 provider / 借用逃逸受控拒绝。
 7. **callback**：仅同步 per-call + 显式 ctx；不保存、不跨线程/代际；
    保存/异步能力 = 明确不支持并拒绝（不是 loader 承诺）。
-8. **descriptor**：`autoabi.descriptor/1`，canonical JSON + blake3
+8. **descriptor**：`autoabi.descriptor/2`，canonical JSON + blake3
    接口指纹；含 domain/target/profile/packing/semref/records/symbols/
    runtime services；未知 format 拒绝。
 9. **资源上限**（probe 运行策略）：build≤60s、run≤5s、total≤70s；

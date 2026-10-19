@@ -382,24 +382,26 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         let _ = err_tx.send((overflow, buf));
     });
     let started = Instant::now();
-    let mut response: Result<WorkerResponse, String> = Err("no response".into());
+    let mut response_opt: Option<Result<WorkerResponse, String>> = None;
     loop {
         match rx.try_recv() {
             Ok(Ok(bytes)) => {
-                response = serde_json::from_slice(&bytes)
-                    .map_err(|e| format!("abi worker response malformed: {e}"));
+                response_opt = Some(
+                    serde_json::from_slice(&bytes)
+                        .map_err(|e| format!("abi worker response malformed: {e}")),
+                );
                 break;
             }
             Ok(Err(observed)) => {
-                response = Err(format!(
+                response_opt = Some(Err(format!(
                     "abi worker response exceeds the {} byte cap ({} observed)",
                     READ_CAP, observed
-                ));
+                )));
                 break;
             }
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                response = Err("abi worker response stream ended early".into());
+                response_opt = Some(Err("abi worker response stream ended early".into()));
                 break;
             }
         }
@@ -419,12 +421,28 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
     // exit, and reap. A worker that answered then slept, or that is
     // still exiting, is killed at the SAME wall; there is no unbounded
     // wait after the response.
+    // F-797-R4-03 (R5): the EXIT loop also polls the stderr channel —
+    // an overflow observed while the worker is still running (the
+    // combined fault: echo, then >cap stderr, then keep sleeping)
+    // terminates the tree IMMEDIATELY, not after the wall.
     let deadline_at = started + deadline;
-    let mut exit_status: Option<std::process::ExitStatus> = None;
+    let mut exit_ok = false;
     loop {
+        if let Ok((true, _)) = err_rx.try_recv() {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = job.take();
+            return Err(
+                "abi worker stderr overflowed the 1MiB cap (still running) — tree killed".into(),
+            );
+        }
         match child.try_wait() {
             Ok(Some(st)) => {
-                exit_status = Some(st);
+                if !st.success() {
+                    let _ = job.take();
+                    return Err(format!("abi worker exited abnormally: {st}"));
+                }
+                exit_ok = true;
                 break;
             }
             Ok(None) => {
@@ -446,10 +464,8 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         }
     }
     let _ = job.take();
-    match exit_status {
-        Some(st) if st.success() => {}
-        Some(st) => return Err(format!("abi worker exited abnormally: {st}")),
-        None => return Err("abi worker never exited".into()),
+    if !exit_ok {
+        return Err("abi worker never exited".into());
     }
 
     // F-797-R4-03: the stderr OVERFLOW FLAG is decisive even when it is
@@ -479,6 +495,9 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         );
     }
 
+    let response = response_opt
+        .take()
+        .unwrap_or_else(|| Err("abi worker produced no response".into()));
     // F-797-R4-03: exactly one of `ok` / `error` may be present — a
     // contradictory envelope is a protocol error, never `ok`.
     match response.as_ref() {
@@ -729,6 +748,39 @@ pub fn run_check(
             expected: format!("{} query steps", expects.len()),
             actual: format!("{} query steps", reported_query_steps.len()),
             first_diff: None,
+        });
+    }
+    // F-797-R4-03 (R5): worker-reported infra/resource outcomes are
+    // INFRASTRUCTURE short-circuits — judged before any language
+    // completion, reported as Status::Error, never FAIL.
+    for (i, got) in reported_query_steps.iter().enumerate() {
+        if got.outcome == "infra" || got.outcome == "resource" {
+            infra_detail = Some(format!(
+                "abi worker reported {} on query step {i}: {}",
+                got.outcome,
+                got.diagnostics
+                    .first()
+                    .map(|d| d.message.clone())
+                    .unwrap_or_default()
+            ));
+            break;
+        }
+    }
+    if let Some(detail) = infra_detail {
+        return Ok(Verdict {
+            status: Status::Error,
+            mismatches: vec![],
+            detail: Some(detail),
+            artifacts: vec![],
+            native: Some(NativeRecord {
+                exit_code: None,
+                stage_spans,
+                cache_mode: Some("abi-store".into()),
+                cache_hits: vec![],
+                counters: vec![("query_steps".into(), reported_query_steps.len() as u32)],
+                toolchain: abi_toolchain_axes(&exe_sha),
+                gaps: vec![],
+            }),
         });
     }
     for (i, (got, want)) in reported_query_steps.iter().zip(expects.iter()).enumerate() {

@@ -203,6 +203,39 @@ pub fn admit_descriptor(
     // same-width re-spelling (u32 for i32) mints a different version
     // and dies HERE, before any layout comparison.
     for want_ref in &expect.semantic_refs {
+        // F-797-R4-01 (R5): the LABEL alone proves nothing — recompute
+        // the content version from the descriptor's ACTUAL record
+        // payload (semantic field kinds, declaration order) and require
+        // BOTH the recomputed payload version and the carried label to
+        // match the consumer's binding. A tampered payload wearing an
+        // original label dies here; a truthful label over a tampered
+        // payload dies here too.
+        let recomputed = d.records.iter().find(|r| r.name == "RecMix").map(|r| {
+            let fields: Vec<(String, crate::layout::SemScalar)> = r
+                .fields
+                .iter()
+                .filter_map(|f| match f.ty {
+                    crate::layout::FieldTyOwned::Scalar(s) => Some((f.name.clone(), s)),
+                    _ => None,
+                })
+                .collect();
+            crate::semref::content_version_of_payload(&r.name, &fields)
+        });
+        match recomputed {
+            Some(v) if v == want_ref.content_version => {}
+            Some(v) => {
+                return Err(Rejection::SemanticRefMismatch {
+                    logical: want_ref.logical.clone(),
+                    expected_version: want_ref.content_version.clone(),
+                    found_version: format!("payload-recomputed {v}"),
+                })
+            }
+            None => {
+                return Err(Rejection::MissingSemanticRef {
+                    logical: want_ref.logical.clone(),
+                })
+            }
+        }
         let found = d
             .semantic_refs
             .iter()

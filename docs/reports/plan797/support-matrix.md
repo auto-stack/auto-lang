@@ -15,7 +15,7 @@
 | worker 协议 | `abiworker/1`（信封同 acworker/semaworker：nonce/request_hash 回显、deny_unknown_fields、4MiB 界、Job containment、退出状态/版本镜像、exe-sha256 入 stale 轴） |
 | 可执行语料 | `crates/auto-lang/test/cases/autoabi/`：leg-a（publish→hit→跨进程 restart hit→body-edit republish）、leg-b、leg-c、bad-sig（类型化 deck 诊断负例） |
 | 语义身份 | `ac-sema-contract`（D-796 合同）只读消费；临时快照已退役（收据在案） |
-| 正式复测（R4 统一冷采样） | worker 传输 body-edit P95 699.8ms / reject 87.3ms；父路径 run_suite 端到端 body-edit P95 820.7ms / reject 479.1ms（各 30 样本；mix-alt<seed> 每样本冷生产，冻结 C 消费者恒过；原始 JSONL 在 target/abi-formal-gates） |
+| 正式复测（R5：C 腿单 case 共享 store） | 父路径完整链 body-edit P50/P95/P99=436.0/534.0/569.0ms、reject P50/P95=433.2/468.0ms；compute=31 callee 重编+1 C 编译有断言（消费者复用成立）；原始 JSONL 逐样本保留 |
 
 ## 1. 类型与物理形态
 

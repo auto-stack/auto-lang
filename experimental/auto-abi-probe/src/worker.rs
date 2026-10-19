@@ -291,6 +291,14 @@ fn parse_deck(text: &str) -> Result<Deck, String> {
                 "input {name} must be a FINITE f64 (profile rejects NaN/Inf before any native call): {v}"
             ));
         }
+        // F-797-R4-01 (R5): the recipe's frozen bodies convert f64 -> i64
+        // (truncating); values outside ±2^53 are not convertible without
+        // a native trap — reject at the deck gate, never in native code.
+        if v.abs() > 9_007_199_254_740_992.0 {
+            return Err(format!(
+                "input {name} = {v} is outside the recipe's convertible f64->i64 range (|v| <= 2^53):                  typed rejection before any native call"
+            ));
+        }
         Ok(v)
     };
     let inputs = MixInputs {
@@ -420,6 +428,12 @@ struct Session {
     store_root: std::path::PathBuf,
     step_index: usize,
     rejections: u32,
+    /// F-797-R5-03: degraded store operations (corrupt block, unwritable
+    /// store) — reported in the meter, never a panic.
+    store_rejections: u32,
+    /// F-797-R4-10 (R5): bytes PRODUCED this session (emitted objects +
+    /// compiled C) against the 128MiB per-request budget.
+    produced_bytes: u64,
 }
 
 /// F-797-R4-10: RECURSIVE directory size — the store keeps blobs under
@@ -447,6 +461,11 @@ fn stage_span(name: &str, t0: Instant) -> StageSpan {
 }
 
 fn execute_query(sess: &mut Session) -> StepOut {
+    // F-797-R4-03 (R5) TEST seam: report an infra outcome without doing
+    // any work (drives the PARENT's infrastructure short-circuit).
+    if std::env::var("ABI_TEST_INFRA_STEP").is_ok() {
+        return infra_step("fault seam: simulated infrastructure failure".into(), sess);
+    }
     let mut stages = Vec::new();
     let mut diags = Vec::new();
     let mut compute_calls = 0u32;
@@ -499,11 +518,22 @@ fn execute_query(sess: &mut Session) -> StepOut {
         Err(e) => return infra_step(format!("store open: {e:?}"), sess),
     };
     let computed = layout::layout_record(&REC_MIX).expect("frozen layout");
-    if layout::get_layout(&store, &REC_MIX)
-        .expect("layout get")
-        .is_none()
-    {
-        layout::put_layout(&store, &REC_MIX, &computed).expect("layout put");
+    // F-797-R5-03: the layout cache is a CACHE — a corrupt/missing/
+    // unwritable store entry degrades to recompute-and-continue (or
+    // skip persisting), NEVER a panic on the production path. Store
+    // rejections are counted in the meter for observability.
+    match layout::get_layout(&store, &REC_MIX) {
+        Ok(None) => {
+            if let Err(e) = layout::put_layout(&store, &REC_MIX, &computed) {
+                sess.store_rejections += 1;
+                eprintln!("# abi-worker: layout cache put degraded (continuing uncached): {e:?}");
+            }
+        }
+        Ok(Some(_)) => {}
+        Err(e) => {
+            sess.store_rejections += 1;
+            eprintln!("# abi-worker: layout cache read degraded (recomputing): {e:?}");
+        }
     }
     stages.push(stage_span("layout", t0));
 
@@ -548,9 +578,19 @@ fn execute_query(sess: &mut Session) -> StepOut {
     // callee object through the store (cache tier reported coarsely)
     let t0 = Instant::now();
     let key = autoabi_object_key(&defs, false);
+    // F-797-R4-10 (R5): the 128MiB per-request produced-bytes budget —
+    // checked BEFORE the producer runs, not after.
+    if sess.produced_bytes > 128 * 1024 * 1024 {
+        return resource_step(
+            "session produced-bytes budget (128MiB) exhausted".into(),
+            sess,
+        );
+    }
     let callee_obj = match produce_with_cache(&store, &key, || {
         compute_calls += 1;
-        emit_callee_suite("abi-worker-callee", &defs, false)
+        let obj = emit_callee_suite("abi-worker-callee", &defs, false)?;
+        sess.produced_bytes += obj.len() as u64;
+        Ok(obj)
     }) {
         Ok((obj, hit)) => {
             cache = if hit {
@@ -580,9 +620,6 @@ fn execute_query(sess: &mut Session) -> StepOut {
             .ok()
             .map(|l| (id.clone(), l))
     });
-    if let Some(id) = &callee_art_id {
-        let _ = store.register_root("abi-worker", id, "current");
-    }
 
     // per-leg consumer (the REAL pipeline; scratch per step)
     let t0 = Instant::now();
@@ -658,7 +695,9 @@ fn execute_query(sess: &mut Session) -> StepOut {
                 let obj = scratch.join("consumer-once.obj");
                 crate::ctool::compile_c(&src, &manifest.join("cside"), &obj)
                     .map_err(|e| format!("cl: {e}"))?;
-                std::fs::read(&obj).map_err(|e| format!("read obj: {e}"))
+                let bytes = std::fs::read(&obj).map_err(|e| format!("read obj: {e}"))?;
+                sess.produced_bytes += bytes.len() as u64;
+                Ok(bytes)
             }) {
                 Ok((b, _)) => b,
                 Err(e) => return infra_step(format!("C consumer produce: {e:?}"), sess),
@@ -680,7 +719,9 @@ fn execute_query(sess: &mut Session) -> StepOut {
                 let obj = scratch.join("consumer-once.obj");
                 crate::ctool::compile_c(&src, &manifest.join("cside"), &obj)
                     .map_err(|e| format!("cl: {e}"))?;
-                std::fs::read(&obj).map_err(|e| format!("read obj: {e}"))
+                let bytes = std::fs::read(&obj).map_err(|e| format!("read obj: {e}"))?;
+                sess.produced_bytes += bytes.len() as u64;
+                Ok(bytes)
             }) {
                 Ok((b, _)) => b,
                 Err(e) => return infra_step(format!("C consumer produce: {e:?}"), sess),
@@ -708,20 +749,38 @@ fn execute_query(sess: &mut Session) -> StepOut {
     };
     stages.push(stage_span("link-run", t0));
 
-    // release the query lease (success path) and keep the managed hot
-    // set within the 8MiB budget: roots above protect the current
-    // deliverables, so GC may reclaim older revisions (F-797-R4-10).
+    // release the query lease (success path). F-797-R4-10 (R5): the
+    // `current` root is REPLACED, not accumulated — remove_roots clears
+    // the previous current markers, then the fresh deliverable is
+    // registered; a failed query keeps the OLD current (never pins all
+    // history). GC errors are COUNTED in the meter, never silently
+    // swallowed.
     drop(query_lease);
+    if pe.code == 0 {
+        if let Err(e) = store.remove_roots("abi-worker", "current") {
+            sess.store_rejections += 1;
+            eprintln!("# abi-worker: root replacement remove failed: {e:?}");
+        }
+        if let Some(id) = &callee_art_id {
+            if let Err(e) = store.register_root("abi-worker", id, "current") {
+                sess.store_rejections += 1;
+                eprintln!("# abi-worker: current root registration failed: {e:?}");
+            }
+        }
+    }
     {
         let hot = dir_size(&sess.store_root.join("blocks"));
         if hot > 8 * 1024 * 1024 {
-            let _ = ac_artifact_probe::store::run_gc(
+            if let Err(e) = ac_artifact_probe::store::run_gc(
                 &store,
                 ac_artifact_probe::store::GcConfig {
                     high: 8 * 1024 * 1024,
                     low: 6 * 1024 * 1024,
                 },
-            );
+            ) {
+                sess.store_rejections += 1;
+                eprintln!("# abi-worker: budget GC failed: {e:?}");
+            }
         }
     }
     if pe.code == 0 {
@@ -785,7 +844,26 @@ fn meter(sess: &Session) -> MeterOut {
     MeterOut {
         scratch_peak_bytes: scratch_peak,
         hot_bytes: dir_size(&sess.store_root.join("blocks")),
-        rejections: sess.rejections,
+        rejections: sess.rejections + sess.store_rejections,
+    }
+}
+
+/// F-797-R4-10 (R5): a typed RESOURCE outcome (budgets), distinct from
+/// infra — the parent reports both as infrastructure errors, never as
+/// language verdicts.
+fn resource_step(message: String, sess: &Session) -> StepOut {
+    StepOut {
+        op: "query",
+        outcome: "resource",
+        cache: "-".into(),
+        compute_calls: 0,
+        diagnostics: vec![DiagOut {
+            code: "resource".into(),
+            message,
+        }],
+        stages: vec![],
+        meter: meter(sess),
+        pe_exit: None,
     }
 }
 
@@ -843,6 +921,8 @@ fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         store_root: std::path::PathBuf::from(&req.store_root),
         step_index: 0,
         rejections: 0,
+        store_rejections: 0,
+        produced_bytes: 0,
     };
     std::fs::create_dir_all(&sess.store_root).map_err(|e| DiagOut {
         code: "store".into(),
@@ -1010,6 +1090,19 @@ pub fn serve() -> i32 {
             let _ = sink.write_all(&chunk);
         }
         let _ = sink.flush();
+    }
+    // F-797-R4-03 (R5) combined seam: overflow stderr and KEEP RUNNING
+    // — proves the parent's exit loop polls the overflow while the tree
+    // is still alive (single-fault seams cannot show this).
+    if let Ok(hang) = std::env::var("ABI_TEST_OVERFLOW_THEN_HANG_SECS") {
+        let secs: u64 = hang.parse().unwrap_or(10);
+        let mut sink = std::io::stderr().lock();
+        let chunk = vec![b'x'; 1024];
+        for _ in 0..((MAX_LINE / 1024) + 8) {
+            let _ = sink.write_all(&chunk);
+        }
+        let _ = sink.flush();
+        std::thread::sleep(std::time::Duration::from_secs(secs));
     }
     if let Ok(hang) = std::env::var("ABI_TEST_HANG_AFTER_RESPONSE_SECS") {
         let secs: u64 = hang.parse().unwrap_or(61);

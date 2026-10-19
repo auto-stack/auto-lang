@@ -1,6 +1,13 @@
 /*
  * interop_resource.c — PLAN-797 T-04 provider implementation.
  *
+ * R5 repairs (F-797-R5-01/02):
+ *  - R5-01: a create that cannot find a usable slot fails BEFORE any
+ *    arena/free-list capacity is taken — failed allocations never leak.
+ *  - R5-02: the handle generation is a consistent 16-bit field; a slot
+ *    whose generation would wrap is RETIRED (never reused) instead of
+ *    minting an invalid "success" handle.
+ *
  * R4 repairs (F-797-R4-04/05/06):
  *  - F04: h_set/h_get reject NEGATIVE indices and use checked arithmetic
  *    (no unsigned wrap past the slot bounds).
@@ -28,11 +35,14 @@
 #define R_ARENA_BYTES  (1u << 20)
 #define R_SLOT_COUNT   256
 #define R_MAX_SLOT     16384
+#define R_GEN_MAX      0xFFFFu /* R5-02: 16-bit generation domain; a
+                                * slot at the ceiling is retired. */
 
 static unsigned char g_arena[R_ARENA_BYTES];
 static struct {
     int live;
-    uint32_t gen;   /* bumps on each reuse; 0 = never used */
+    int retired;  /* R5-02: generation exhausted — never reused */
+    uint32_t gen; /* bumps on each reuse; 0 = never used */
     size_t size;
     size_t off;
 } g_slots[R_SLOT_COUNT];
@@ -75,8 +85,11 @@ static uint32_t provider_id(void)
 
 static long long slot_handle(int i)
 {
+    /* R5-02: pack the generation as the SAME 16-bit field R_GEN reads
+     * — provider id in the high 32 bits, generation the middle 16,
+     * index the low 16. */
     return ((long long)(uint32_t)provider_id() << 32)
-         | ((long long)(uint32_t)g_slots[i].gen << 16)
+         | ((long long)(uint32_t)(g_slots[i].gen & R_GEN_MAX) << 16)
          | (long long)(uint32_t)i;
 }
 
@@ -141,6 +154,7 @@ long long p797_h_create(int size)
 {
     int i;
     size_t need, off;
+    int from_freelist;
 
     if (g_fail_nth >= 0) {
         if (g_fail_nth == 1) {
@@ -153,25 +167,42 @@ long long p797_h_create(int size)
         return 0;
     }
     need = (size_t)size;
-    /* F06: reclaimed capacity first, then the bump pointer */
-    if (!freelist_take(need, &off)) {
+
+    /* R5-01: find a usable slot FIRST — a full/retired table fails
+     * before ANY arena or free-list capacity is taken, so a failed
+     * create can never leak. R5-02: slots at the generation ceiling are
+     * retired, never reused (a wrapped generation would mint a handle
+     * whose very first access compares wrong). */
+    for (i = 0; i < R_SLOT_COUNT; i++) {
+        if (!g_slots[i].live) {
+            if (g_slots[i].gen >= R_GEN_MAX) {
+                g_slots[i].retired = 1;
+                continue;
+            }
+            break;
+        }
+    }
+    if (i >= R_SLOT_COUNT) {
+        return 0; /* no capacity consumed */
+    }
+
+    /* capacity is taken only now (slot known usable); on a bump/arena
+     * failure nothing was taken either (freelist_take returned 0). */
+    from_freelist = freelist_take(need, &off);
+    if (!from_freelist) {
         off = (g_bump + 7u) & ~(size_t)7u;
         if (off + need > R_ARENA_BYTES) {
             return 0;
         }
         g_bump = off + need;
     }
-    for (i = 0; i < R_SLOT_COUNT; i++) {
-        if (!g_slots[i].live) {
-            g_slots[i].live = 1;
-            g_slots[i].gen += 1u;
-            g_slots[i].size = need;
-            g_slots[i].off = off;
-            g_allocs += 1u;
-            return slot_handle(i);
-        }
-    }
-    return 0;
+    /* slot could have been taken? single-threaded probe: no. */
+    g_slots[i].live = 1;
+    g_slots[i].gen += 1u;
+    g_slots[i].size = need;
+    g_slots[i].off = off;
+    g_allocs += 1u;
+    return slot_handle(i);
 }
 
 static int slot_valid(long long h)
@@ -186,7 +217,7 @@ static int slot_valid(long long h)
     if (R_PROV(h) != provider_id()) {
         return 0;
     }
-    return R_GEN(h) == (uint32_t)g_slots[i].gen;
+    return R_GEN(h) == (g_slots[i].gen & R_GEN_MAX);
 }
 
 /* F04: checked byte-range math for slot-local indexing. */
@@ -243,6 +274,10 @@ int p797_h_destroy(long long h)
     }
     freelist_insert(g_slots[i].off, g_slots[i].size); /* F06: real reclaim */
     g_slots[i].live = 0;
+    /* R5-02: retire at the ceiling so the next create cannot wrap */
+    if (g_slots[i].gen >= R_GEN_MAX) {
+        g_slots[i].retired = 1;
+    }
     g_frees += 1u;
     return R797_OK;
 }

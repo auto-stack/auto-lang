@@ -42,15 +42,39 @@ pub enum ParamKind {
     BufViewBytes,
     /// Borrowed UTF-8 text view — providers VALIDATE the encoding.
     BufViewUtf8,
-    /// Borrowed view of a named record (layout via the record table).
+    /// Borrowed view of a named record (layout via the record table)
+    /// with its VIEW ROLE — const (read-only), mut (exclusive writer),
+    /// out (caller-owned slot committed on success). F-797-R4-02 (R5).
     RecView {
         rec: String,
+        view: ViewRole,
     },
-    /// Opaque provider-owned handle.
-    Handle,
+    /// Opaque provider-owned handle — every handle names its OWNING
+    /// provider so cross-provider use is describable (and rejected).
+    Handle {
+        provider: String,
+    },
+    /// Synchronous per-call callback: explicit ctx pointer + declared
+    /// item/return kinds; never stored across calls.
+    CallbackFn {
+        item: Box<ParamKind>,
+        ret: Box<ParamKind>,
+    },
+    /// Caller-owned byte buffer OUT slot (written only on success).
+    BufOut,
+    /// Unit out slot (status-only fallible entries).
+    Unit,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+/// View/ownership role of a record parameter (F-797-R4-02 R5).
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub enum ViewRole {
+    Const,
+    Mut,
+    Out,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum RetKind {
     Unit,
     I32,
@@ -60,6 +84,10 @@ pub enum RetKind {
     F64,
     Bool,
     Char,
+    /// Opaque provider-owned handle returned by value.
+    Handle {
+        provider: String,
+    },
 }
 
 impl ParamKind {
@@ -77,23 +105,36 @@ impl ParamKind {
             }
             ParamKind::BufViewBytes => "buf:bytes".into(),
             ParamKind::BufViewUtf8 => "buf:utf8".into(),
-            ParamKind::RecView { rec } => format!("rec:{rec}"),
-            ParamKind::Handle => "handle".into(),
+            ParamKind::RecView { rec, view } => format!(
+                "rec:{rec}:{}",
+                match view {
+                    ViewRole::Const => "const",
+                    ViewRole::Mut => "mut",
+                    ViewRole::Out => "out",
+                }
+            ),
+            ParamKind::Handle { provider } => format!("handle:{provider}"),
+            ParamKind::CallbackFn { item, ret } => {
+                format!("callback({})->{}", item.spell(), ret.spell())
+            }
+            ParamKind::BufOut => "buf:out".into(),
+            ParamKind::Unit => "unit".into(),
         }
     }
 }
 
 impl RetKind {
-    pub fn spell(&self) -> &'static str {
+    pub fn spell(&self) -> String {
         match self {
-            RetKind::Unit => "unit",
-            RetKind::I32 => "i32",
-            RetKind::U32 => "u32",
-            RetKind::I64 => "i64",
-            RetKind::U64 => "u64",
-            RetKind::F64 => "f64",
-            RetKind::Bool => "bool",
-            RetKind::Char => "char",
+            RetKind::Unit => "unit".into(),
+            RetKind::I32 => "i32".into(),
+            RetKind::U32 => "u32".into(),
+            RetKind::I64 => "i64".into(),
+            RetKind::U64 => "u64".into(),
+            RetKind::F64 => "f64".into(),
+            RetKind::Bool => "bool".into(),
+            RetKind::Char => "char".into(),
+            RetKind::Handle { provider } => format!("handle:{provider}"),
         }
     }
 }
@@ -296,7 +337,83 @@ impl ModuleDescriptor {
 /// consumers admit C providers by the same contract.
 pub fn interop_c_provider_descriptor() -> ModuleDescriptor {
     let mut d = ModuleDescriptor::probe_module();
+    let prov = "interop-resource";
     d.symbols = vec![
+        SymbolEntry {
+            name: "p797_h_create".into(),
+            form: SymbolForm::Pure {
+                params: vec![ParamKind::I32],
+                ret: RetKind::Handle {
+                    provider: prov.into(),
+                },
+            },
+        },
+        SymbolEntry {
+            name: "p797_h_destroy".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![ParamKind::Handle {
+                    provider: prov.into(),
+                }],
+                out: ParamKind::Unit,
+            },
+        },
+        SymbolEntry {
+            name: "p797_h_set".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![
+                    ParamKind::Handle {
+                        provider: prov.into(),
+                    },
+                    ParamKind::I32,
+                    ParamKind::I64,
+                ],
+                out: ParamKind::Unit,
+            },
+        },
+        SymbolEntry {
+            name: "p797_h_get".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![
+                    ParamKind::Handle {
+                        provider: prov.into(),
+                    },
+                    ParamKind::I32,
+                ],
+                out: ParamKind::I64,
+            },
+        },
+        SymbolEntry {
+            name: "p797_ledger".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![],
+                out: ParamKind::I64, // 3-out aggregate: spelled in doc
+            },
+        },
+        SymbolEntry {
+            name: "p797_buf_sum".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![ParamKind::BufViewBytes, ParamKind::U64],
+                out: ParamKind::I64,
+            },
+        },
+        SymbolEntry {
+            name: "p797_buf_copy".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![
+                    ParamKind::BufOut,
+                    ParamKind::U64,
+                    ParamKind::BufViewBytes,
+                    ParamKind::U64,
+                ],
+                out: ParamKind::Unit,
+            },
+        },
         SymbolEntry {
             name: "p797_cbuf_sum_utf8".into(),
             form: SymbolForm::Fallible {
@@ -311,8 +428,32 @@ pub fn interop_c_provider_descriptor() -> ModuleDescriptor {
                 ctx: None,
                 params: vec![ParamKind::RecView {
                     rec: "RecMix".into(),
+                    view: ViewRole::Const,
                 }],
                 out: ParamKind::I64,
+            },
+        },
+        SymbolEntry {
+            name: "p797_two_step".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![ParamKind::I32],
+                out: ParamKind::I64, // handle value in an out slot
+            },
+        },
+        SymbolEntry {
+            name: "p797_fold".into(),
+            form: SymbolForm::Pure {
+                params: vec![
+                    ParamKind::CallbackFn {
+                        item: Box::new(ParamKind::I64),
+                        ret: Box::new(ParamKind::I64),
+                    },
+                    ParamKind::I64,
+                    ParamKind::BufViewBytes,
+                    ParamKind::U64,
+                ],
+                ret: RetKind::I64,
             },
         },
     ];

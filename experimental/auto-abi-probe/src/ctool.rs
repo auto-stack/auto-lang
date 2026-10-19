@@ -203,8 +203,21 @@ pub fn compile_c(src: &Path, include_dir: &Path, obj_out: &Path) -> Result<(), C
     cmd.arg(format!("-I{}", msvc_include.display()));
     cmd.arg(src);
     cmd.arg(format!("-Fo:{}", obj_out.display()));
-    let (code, out, err) = auto_ac_prototype::link::run_deadlined_split(&mut cmd, COMPILE_DEADLINE)
-        .map_err(|e| CToolError(format!("cl spawn: {e:?}")))?;
+    // F-797-R4-10 (R5): compile through the merged RAW CAPPED executor
+    // — a cap violation terminates the tree (no truncated-green), raw
+    // bytes for display.
+    let run = auto_ac_prototype::link::run_deadlined_captured(
+        &mut cmd,
+        COMPILE_DEADLINE,
+        auto_ac_prototype::link::CaptureCaps {
+            stdout_max: 1 << 20,
+            stderr_max: 1 << 20,
+        },
+    )
+    .map_err(|e| CToolError(format!("cl spawn: {e:?}")))?;
+    let code = run.exit_code;
+    let out = String::from_utf8_lossy(&run.stdout).into_owned();
+    let err = String::from_utf8_lossy(&run.stderr).into_owned();
     if code != Some(0) {
         return Err(CToolError(format!(
             "cl exited {code:?} for {}:\n{}\n{}",

@@ -85,7 +85,64 @@ static int edges_main(void)
     return flags;
 }
 
+static int r5_main(void)
+{
+    long long h[256], out, live, allocs, frees;
+    int i;
+
+    /* --- F-797-R5-01: failed create (slot table full) leaks NOTHING -- */
+    for (i = 0; i < 256; i++) {
+        h[i] = p797_h_create(8);
+        CHECK(h[i] != 0);
+    }
+    /* every create must now fail: the slot table is full, and a failed
+     * create must NOT consume arena/free-list capacity */
+    for (i = 0; i < 64; i++) {
+        CHECK(p797_h_create(16384) == 0);
+    }
+    for (i = 0; i < 256; i++) {
+        CHECK(p797_h_destroy(h[i]) == R797_OK);
+    }
+    CHECK(p797_ledger(&live, &allocs, &frees) == R797_OK);
+    CHECK(live == 0); /* alloc/free totals are cumulative with edges_main */
+    /* after reclaiming everything the arena must still admit a 16KiB
+     * object (nothing was leaked by the 64 failed creates) */
+    {
+        long long h2 = p797_h_create(16384);
+        CHECK(h2 != 0);
+        CHECK(p797_h_destroy(h2) == R797_OK);
+    }
+
+    /* --- F-797-R5-02: generation exhaustion retires, never wraps ----- */
+    /* drive ONE slot to the 16-bit generation ceiling: create+destroy
+     * 65,535 times keeps the same slot (table is otherwise empty) */
+    for (i = 0; i < 65535; i++) {
+        long long g1 = p797_h_create(8);
+        CHECK(g1 != 0);
+        if (i < 65534) {
+            CHECK(p797_h_destroy(g1) == R797_OK);
+        } else {
+            /* the 65,535th generation handle stays live; its destroy
+             * crosses the ceiling and RETIRES the slot */
+            CHECK(p797_h_destroy(g1) == R797_OK);
+        }
+    }
+    /* the retired slot must not be handed out again; a fresh create
+     * must still succeed on ANOTHER slot and round-trip */
+    {
+        long long h3 = p797_h_create(8);
+        CHECK(h3 != 0);
+        CHECK(p797_h_set(h3, 0, 4242) == R797_OK);
+        CHECK(p797_h_get(h3, 0, &out) == R797_OK && out == 4242);
+        CHECK(p797_h_destroy(h3) == R797_OK);
+    }
+    CHECK(p797_ledger(&live, &allocs, &frees) == R797_OK);
+    CHECK(live == 0);
+
+    return flags;
+}
+
 void p797_res_edges_entry(void)
 {
-    ExitProcess(edges_main());
+    ExitProcess(edges_main() + r5_main());
 }

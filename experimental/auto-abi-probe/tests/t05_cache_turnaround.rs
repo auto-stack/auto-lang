@@ -891,3 +891,85 @@ fn abi_turnaround_six_scenarios_30_samples() {
     std::fs::write(root.join("summary.md"), &summary).unwrap();
     println!("{summary}");
 }
+
+// ---------------------------------------------------------------------------
+// F-797-R4-07 (R5): the include closure recognizes the REAL preprocessor
+// spellings and FAILS CLOSED on unenumerable ones.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn abi_cache_include_closure_spellings_and_fail_closed() {
+    use auto_abi_probe::cache::c_include_closure;
+    let root = std::env::temp_dir().join(format!("abi-inc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let write = |rel: &str, body: &str| {
+        let p = root.join(rel);
+        std::fs::write(&p, body).unwrap();
+        p
+    };
+
+    // header VALUE v1
+    write(
+        "dep.h",
+        "#define DEP_VALUE 17
+",
+    );
+    let mk = |form: &str| {
+        write(
+            "main.c",
+            &format!(
+                "{form}
+int main(void) {{ return DEP_VALUE; }}
+"
+            ),
+        )
+    };
+
+    // 1) plain literal (baseline)
+    let c0 = c_include_closure(&mk("#include \"dep.h\""), &root).expect("literal closure");
+    // Header VALUE change must change the closure for EVERY recognized
+    // form. The source spelling itself legitimately contributes to the
+    // key — the oracle is VALUE tracking per form, not cross-form equality.
+    write(
+        "dep.h",
+        "#define DEP_VALUE 29
+",
+    );
+    let forms = [
+        "#include \"dep.h\"",
+        "#include \"dep.h\" // comment",
+        "#  include \"dep.h\"",
+        "#include <dep.h>",
+    ];
+    let v29: Vec<String> = forms
+        .iter()
+        .map(|f| c_include_closure(&mk(f), &root).unwrap_or_else(|e| panic!("{f}: {e}")))
+        .collect();
+    write(
+        "dep.h",
+        "#define DEP_VALUE 17
+",
+    );
+    for (i, f) in forms.iter().enumerate() {
+        let c = c_include_closure(&mk(f), &root).expect("closure");
+        assert_ne!(c, v29[i], "form {f:?} must track the header VALUE");
+        let c2 = c_include_closure(&mk(f), &root).expect("closure");
+        assert_eq!(c, c2, "form {f:?} must be deterministic");
+    }
+    let c_final = c_include_closure(&mk("#include \"dep.h\""), &root).expect("closure");
+    assert_eq!(c_final, c0);
+
+    // 2) macro include: NOT enumerable -> fail closed (never cached as pure)
+    write(
+        "main.c",
+        "#define HDR \"dep.h\"
+#include HDR
+int main(void) { return DEP_VALUE; }
+",
+    );
+    match c_include_closure(&root.join("main.c"), &root) {
+        Err(e) => assert!(e.contains("refusing to cache as pure"), "{e}"),
+        Ok(_) => panic!("macro include must fail closed"),
+    }
+}

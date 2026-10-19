@@ -68,6 +68,15 @@ fn decl_form(d: &FnDecl) -> crate::descriptor::SymbolForm {
             params: params[1..3].to_vec(),
             out: ParamKind::I64,
         },
+        crate::decl::BodyKind::RecSumV1 => SymbolForm::Pure {
+            // F-797-R4-02 (R5): record views are DESCRIBED as record
+            // views in the production builder — not collapsed to i64.
+            params: vec![ParamKind::RecView {
+                rec: "RecMix".into(),
+                view: crate::descriptor::ViewRole::Const,
+            }],
+            ret: RetKind::I64,
+        },
         _ => SymbolForm::Pure {
             params,
             ret: match d.ret {

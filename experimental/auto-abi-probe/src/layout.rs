@@ -286,17 +286,29 @@ pub fn layout_record_owned(
 ) -> Result<RecordLayout, LayoutError> {
     let mut sizes: std::collections::BTreeMap<String, (u32, u32)> =
         std::collections::BTreeMap::new();
+    // F-797-R4-10 (R5): the staging budget is measured in the bytes the
+    // MATERIALIZED representation will own — every flattened FieldLayout
+    // (struct + its heap path String), not the record's payload size. A
+    // small-payload record with millions of leaves is refused BEFORE
+    // the vector exists.
+    let mut leaves: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     let mut chain: Vec<String> = Vec::new();
-    compute_size(table, name, &mut chain, 0, &mut sizes)?;
+    compute_size(table, name, &mut chain, 0, &mut sizes, &mut leaves)?;
     let (root_size, _) = sizes
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
-    if *root_size as u64 > MAX_STAGING_BYTES {
+    let root_leaves = *leaves
+        .get(name)
+        .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
+    let per_leaf = std::mem::size_of::<FieldLayout>() as u64 + 24; // String header heap slack
+    let staging_bytes = root_leaves.saturating_mul(per_leaf);
+    if staging_bytes > MAX_STAGING_BYTES {
         return Err(LayoutError::StagingTooLarge {
             record: name.to_string(),
-            size: *root_size as u64,
+            size: staging_bytes,
         });
     }
+    let _ = root_size;
     let mut seen = Vec::new();
     flatten(table, name, &mut seen, 0)
 }
@@ -308,6 +320,7 @@ fn compute_size(
     chain: &mut Vec<String>,
     depth: usize,
     memo: &mut std::collections::BTreeMap<String, (u32, u32)>,
+    leaves: &mut std::collections::BTreeMap<String, u64>,
 ) -> Result<(u32, u32), LayoutError> {
     if let Some(hit) = memo.get(name) {
         return Ok(*hit);
@@ -329,7 +342,7 @@ fn compute_size(
     for f in &def.fields {
         let (size, fa) = match &f.ty {
             FieldTyOwned::Scalar(s) => s.size_align(),
-            FieldTyOwned::Record(n) => compute_size(table, n, chain, depth + 1, memo)?,
+            FieldTyOwned::Record(n) => compute_size(table, n, chain, depth + 1, memo, leaves)?,
         };
         offset = offset
             .checked_add(fa - 1)
@@ -367,6 +380,19 @@ fn compute_size(
             size: size as u64,
         });
     }
+    // leaf count for the staging-estimate gate (F-797-R4-10 R5)
+    let mut leaf_n: u64 = 0;
+    for f in &def.fields {
+        match &f.ty {
+            FieldTyOwned::Scalar(_) => leaf_n += 1,
+            FieldTyOwned::Record(n) => {
+                leaf_n += *leaves
+                    .get(n)
+                    .ok_or_else(|| LayoutError::UnknownRecord(n.clone()))?;
+            }
+        }
+    }
+    leaves.insert(name.to_string(), leaf_n);
     memo.insert(name.to_string(), (size, align));
     Ok((size, align))
 }
