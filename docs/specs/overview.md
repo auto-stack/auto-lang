@@ -17,6 +17,7 @@
 |---|---|---|
 | [auto-lang](auto-lang/project.md) | 语言核心：lexer/parser/typeck/infer/ownership/comptime/VM execution/trans/ui/mcp（本快照约 528 个 Rust src 文件，九模块见下；数量后续改由 Generated Catalog 提供） | active |
 | [auto-diagnostics](auto-diagnostics/project.md) | 通用诊断基础（PLAN-793 起）：AutoError 聚合+各族诊断+attach_source/格式化单一实现（同族先例 auto-lex，PLAN-789 词法外置）；闭包零 auto-lang/AST/UI | active |
+| [auto-media-core](auto-media-core/project.md) | renderer-neutral 媒体单源（PLAN-811 起）：image_pipeline（资产/registry/缓存/worker/会话）+ media_service（索引/Range 规则），VM 17 native/HTTP/Vue 生成/Rust merged/Iced 共享同机制；闭包零 auto-lang/VM/UI/Man/iced | active |
 | [auto-val](auto-val/project.md) | 运行时 Value/Node 值体系（含 serde 双向、nano_value） | active |
 | [auto-atom](auto-atom/project.md) | Atom 静态数据结构与解析器 | active |
 | [auto-test-case](auto-test-case/project.md) | TestCase 协议核心（autolang.case/1 合同/身份/比较/报告；adapters 在 auto-lang 侧，Design 35 A pilot） | active |

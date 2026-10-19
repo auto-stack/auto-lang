@@ -39,16 +39,20 @@
 - **镜像布局的硬理由**：auto-lang `build.rs` 以 `../../crates` 与根
   `Cargo.lock` 为编译期输入（缺失即 unwrap 红）；非镜像布局在受管 build
   阶段确定性失败。
-- **交付闭包**（13 crate + 1 patch + 5 根级输入；闭包清单随 auto-lang
+- **交付闭包**（14 crate + 1 patch + 5 根级输入；闭包清单随 auto-lang
   必需 path 依赖演进——PLAN-793 后含 auto-diagnostics、PLAN-799 后含
-  auto-ast、PLAN-801 后含 auto-parser-api、PLAN-806 后含 auto-ui-dialect）：
+  auto-ast、PLAN-801 后含 auto-parser-api、PLAN-806 后含 auto-ui-dialect、
+  PLAN-811 后含 auto-media-core 及其 image codec 依赖闭包）：
   auto-lang（全库，
   含 UI——语言源码尚未拆完，**如实披露的受管包含，不冒称纯 core/独立
   UI 仓**）、auto-val、auto-atom、auto-lex、auto-diagnostics、auto-ast、
   auto-parser-api（方言端口 API；其自身依赖 auto-ast/auto-lex/
   auto-diagnostics 已在闭包）、auto-ui-dialect（UI msg/model 声明文法
   单一份实现，PLAN-806 起为 auto-lang 必需 path 依赖；其自身依赖
-  auto-parser-api 已在闭包，无新增闭包外依赖边）、auto-cache、
+  auto-parser-api 已在闭包，无新增闭包外依赖边）、auto-media-core
+  （renderer-neutral 媒体单源，PLAN-811 起为 auto-lang 必需 path 依赖；
+  其 image codec 为可关闭 feature，闭包按 auto-lang 实际启用形态收编）、
+  auto-cache、
   shim-metadata、auto-bindgen、auto-macros、a2r-std + crates/patches/iced_widget +
   stdlib/assembly-providers.json、stdlib/auto/image.{at,rs.at,vm.at}、
   docs/schema/aura.at。

@@ -28,6 +28,15 @@
 - 不在 view 构建/paint 期重入 handler：派发走 `on_with_input_for`
   合成事件通道（与 __mcp 合成事件同路）。
 
+## 所有权分工（PLAN-811）
+
+- **registry/代次/资产状态由 [auto-media-core](../../../auto-media-core/project.md)
+  拥有**（同一进程默认共享服务）；注册、渲染与事件派发留 UI。上述事件
+  合同（单发门/身份订阅/换源退订/A→B→A、实参投影、50ms 媒体唤醒）
+  在迁移后逐字保持。
+- typed merged 轨使用其消息事件面（无应用 timer 挂载也能被媒体完成唤醒：
+  同步/async 入口共用 50ms 媒体唤醒；回调改写视图后继续注册/退订）。
+
 ## 验收锚
 
 `image_surface_contract`（三轨静态合同）+ auto-musk

@@ -102,6 +102,17 @@ AutoMan 构建器/包管理器：AutoLang 工程的构建调度、依赖解析�
 - 不属本抽取：Target/Pac/构建 DAG、Cargo/Vue 生成器、模板资产
   （PLAN-803 资源与本文的内联命令模板是两个不相交概念）。
 
+## 媒体生成桥消费 auto-media-core（PLAN-811）
+
+api_gen/rust_ui 的媒体生成/HTTP 桥（图像 `/api/__auto/media/{id}/{revision}`
+路由发射、媒体文件 scan/stream 路由、生成 manifest 依赖）直接消费
+[auto-media-core](../auto-media-core/project.md)：生成代码只接 core 公开
+入口，不在生成物内嵌第二份媒体库源（同进程单实例）。与 PLAN-809 已落地的
+auto-man-core 单一管理规则源、语言效果 adapter 与效果承载者分工并存；
+UI 生成算法本体及其他既有未迁面按当前 canonical 保留。真实消费验收：
+`cargo test -p auto-man --test plan811_media_consumers`（生成 HTTP 真实
+TCP 13 项）+ 792 生成工程 fresh/locked/重定位。
+
 ## 依赖解析核心抽取分工（PLAN-800）
 
 已解析依赖视图与模块路径规则的单一定义在 `crates/auto-package-resolver`

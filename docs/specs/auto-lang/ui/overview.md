@@ -180,6 +180,27 @@ vm/overview PLAN-807 节）。
 （2938）、term/media/dialog/ffi 族——diff 族 9915..9917/9921 生产边清零
 （`ui::code_editor::diff` 直引形态由 plan807 剪断锚永久钉扎）。
 
+## 现状（2026-10-20）——媒体核心抽取与薄门面（PLAN-811）
+
+> 媒体机制整体迁出（renderer-neutral 单一来源=`crates/auto-media-core`，
+> 见其 project.md）；本节为 UI 侧剩余职责、兼容门面与非媒体剩余 owner。
+
+- **迁移面**：`ui::{image_pipeline,media_service}` 的全部非 renderer 机制
+  （资产类型/registry/缓存预算/worker 调度/图像会话/媒体索引/Range 规则）
+  实现在 core；旧公开路径为**薄 re-export**（同一类型身份、同一默认进程
+  共享服务，`LazyLock` registry/worker/session 不留第二份）。Man 或 a2r
+  生成代码不嵌第二份库源（同进程单实例）。
+- **渲染消费**：Iced renderer/media notify 对媒体 URI 先查同进程共享
+  registry/decoded pixels（与 VM HTTP 响应共享 Arc bytes），不绕
+  HTTP/base64；Vue 只从实际生成后端取媒体。纹理/事件投影留 UI
+  （事件规则见 [design/image-surface-events.md](design/image-surface-events.md)）。
+- **非媒体剩余 owner（如实列明）**：photo_service、mpv/播放器、i18n、
+  a2r 直接 frame、renderer 及其他 runtime 残边仍在 UI/宿主侧，归后续
+  R04 运行桥——本 Plan 完成不等于所有 UI/宿主依赖已拆完。
+- **未迁边界（更新）**：PLAN-807 列的 core→ui 生产直引剩余中
+  **term/media/dialog/ffi 族的 media 部分已清零**（dnd_start 2938、term/
+  dialog/ffi 族仍留）。
+
 ## 现状（2026-10-18）——dialog/dnd adapter 宿主装配（PLAN-804）
 
 > 779/785/790/794/802 装配模式的 dialog/dnd 批次（VM 侧契约见
@@ -1301,7 +1322,11 @@ widget Counter {
 ### 媒体文件服务（SD-02）
 
 `crates/auto-lang/src/ui/media_service.rs` 提供**平台级**本地媒体索引与字节流，
-生成后端经原始路由（`auto_media` 先例）暴露：
+生成后端经原始路由（`auto_media` 先例）暴露。
+**PLAN-811 起**：索引/Range 值规则的实现迁至
+[auto-media-core](../../auto-media-core/project.md) `media_service` 模块，
+本路径为薄 re-export 同一类型身份；以下契约（token/路径隐藏、递归语义、
+大文件约束、根目录解析序）逐字保持：
 
 - `GET /api/media/scan` → `{entries:[MediaEntry], root_missing}`；
   `GET/HEAD /api/media/stream/:id` → HTTP Range 字节流

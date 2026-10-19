@@ -314,6 +314,28 @@ display_offset 唯一真源仍为引擎，UI 只投影（Mux 契约不变）。
 （test/fixtures/modularity/terminal-core-consumer，独立 workspace）与
 真实 DLL 生命周期 driver（`AUTOTERM_ENGINE_DLL`）为验收 oracle。
 
+## 图像媒体 native 与媒体 HTTP 快路径（PLAN-811）
+
+17 项 `auto.image.*` native（queue/open/scan/request/retain/release/close/
+stats、open_session/snapshot/current_uri/names/navigate/request_view/
+close_session/session_stats/thumb）及图像媒体 HTTP 快路径直接消费
+**auto-media-core**（`vm/ffi/stdlib.rs` 票据映射 + `MediaRuntime` 服务），
+不再直引 UI 类型/registry：
+
+- **ID/语义冻结**：16 项固定 ID 2960..2975；`thumb` 按名注册（不臆分固定
+  ID，不改 native ABI）。参数 pop/返回值域/stub 语义与旧臂一致
+  （`request` 仍只 pop 宽高原样返回 handle，不升级为像素回传）。
+- **feature 开关**：`ui-iced` 注册开关与无 feature 时行为保持；core 能独立
+  编译不等于给原 VM 新增图像能力。
+- **控制面边界**：VM 状态只收**不透明票据/URI 与元数据**——像素、绝对路径
+  不回灌 VM；retain/release/close、会话 cap、坏票/过期 revision/双 close
+  的 owner 与错误 oracle 见 [auto-media-core](../auto-media-core/project.md)
+  生命周期合同（PLAN-811 冻结）。
+- **HTTP 快路径**：`/api/__auto/media/{id}/{revision}` GET/HEAD/ETag/304/
+  404/410/422/503 与错误优先级保持旧口径，仍先于用户路由、仅截获原媒体
+  prefix；响应 bytes 与渲染端 Arc 共享同一 registry 资产（非媒体路由不被
+  抢）。
+
 ## 布尔短路求值语义（plan-615）
 
 `&&`/`||` 为**短路求值**（PLAN-615 T-01 根修；此前 codegen 发射单条急切
