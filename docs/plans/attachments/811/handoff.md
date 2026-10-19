@@ -204,6 +204,24 @@ test-http-e2e feature（OS 临时端口）；792 driver 产物在
 - 全矩阵收据重绑本提交：VM 12/12、Vue 10/10、merged 11/11、
   identity(no-timer) 5/5、生成 HTTP 13/13。
 
+## R4 修复轮增补（2026-10-19，review-r4 needs_fix 后）
+
+修复细节见 [fix-r4.md](attachments/fix-r4.md)；代码基线推进至 **`53f1111a2`**：
+
+- R4-01（仪表下溢）：Work-only 预登记计数（Stop 不计、send 前预留、
+  受控读序）——复审重放 `after_idle_shutdown_panicked=false value=Some(0)`。
+- R4-02（关闭语义）：closing/closed 分离 + 完成等待（首调用独占、后续
+  调用等同一结果；返回即完全关闭）——复审重放 `second_returned→完成/
+  registry_shutdown=true/无新票`；真实 owner 负控改判完成合同。
+- R3-02 余量：typed_media_wake 双入口（sync + run_app_with_task_devtools）
+  + TYPED_RESWEEP 门（回调内换图后续拍）——复审 typed-consumer
+  async-no-timer a=1、cascade a=1 b=1；本仓 async 探针 4/4、identity 6/6。
+- core 42/42；六 harness 全部在**提交后**树实跑并重绑 `53f1111a2`
+  （VM 12/12、Vue 10/10、merged 11/11、identity 6/6、async 4/4、
+  生成 HTTP 13/13）；792 修复树重跑 25/25（driver-792-r4fix.json）。
+- provenance 流程修正：先提交→重建→跑收据（R4 §6 指出的 WIP-hash 问题
+  不再发生）。
+
 ## 8. 下一步
 
 T-09 review（同树独立上下文审 AC-01..06/SD/生命周期/真消费者/旧路径）；

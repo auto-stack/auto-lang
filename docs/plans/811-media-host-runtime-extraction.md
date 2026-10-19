@@ -96,7 +96,7 @@ core normal/build/dev无auto-lang/VM/UI/Man/iced，独立manifest fresh解析+lo
 | SD-02 | modify | docs/specs/auto-lang/vm/overview.md | 17 native及HTTP UI直连→非UI服务/编解码、开关及stub冻结 | VM脱UI类型 | AC-01, AC-02, AC-04 |
 | SD-03 | modify | docs/specs/auto-lang/ui/overview.md | 图像/媒体索引/Range机制迁core、renderer及剩余owner真实列明 | 不虚报全UI独立 | AC-01..05 |
 | SD-04 | modify | docs/specs/auto-lang/ui/design/image-surface-events.md | 规则保持，registry/代次owner改core、事件与渲染拍留UI | 保护loaded/error | AC-04 |
-| SD-05 | modify | docs/specs/auto-man/project.md | 媒体生成/HTTP接线消费新core，项目模型/UI工具搬迁仍未发生 | 分清809/R04边界 | AC-04, AC-05 |
+| SD-05 | modify | docs/specs/auto-man/project.md | 媒体生成/HTTP接线消费新core；保留PLAN-809已落地的auto-man-core规则源与语言效果adapter分工，UI工具等剩余owner如实列明 | 对齐当前canonical的809/R04边界 | AC-04, AC-05 |
 | SD-06 | modify | docs/specs/repository-boundaries/generated-ui-distribution.md | 新core及codec/source闭包进入受影响交付profile | 独立可分发 | AC-05 |
 
 ## 6. 测试设计
@@ -171,6 +171,11 @@ handoff：`D:/autostack/.wt/lang-811/auto-lang`，分支`codex/plan-811-dev`；�
 
 
 2026-10-19 / stage: work / PLAN-811 revision: 1 / outcome: pass（R3 修复完成，**非独立验收pass**）/ worktree: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / base: ab08955c2 / code: 27d3387af（R3 修复单提交；累计 14 实施提交）/ 依赖: auto-down 兄弟 c39ac7f9 / task_ids: T-01/03/06/07/08 三次重开后再闭合 / evidence: [fix-r3.md](attachments/811/fix-r3.md)（R3-01 复审 typed-consumer 四行全绿；R3-02 无 timer 探针 5/5；R2-02 双负控+占用仪表+scan 门；core 40/40；五 harness 全矩阵重绑本提交）/ blockers: 无 / next: review T-09（R4；merge 门 pending：冻结提交裸 cargo t + tv + 777 strict 复核）
+
+2026-10-19 / stage: review / review_scope: final / reviewer_identity: 当前Codex独立复审上下文（未实施；具体模型/会话ID未暴露） / PLAN-811 revision: 1 / outcome: **needs_fix（R4）** / worktree_path: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / reviewed_commit: 27d3387af988fd7f88b3cc392e043fb98bb3026e / base_commit: ab08955c241f6a824091c53d3b02894ca17e193b / dependency_revisions: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / spec_inputs与冻结SD: [baseline](attachments/811/review-r4/baseline.json.txt)、[SD](attachments/811/review-r4/spec-delta-input.md) / acceptance_results: AC01 partial、AC02/03/04 fail、AC05/06 partial、AC07 merge pending / closure: R3-01身份矩阵CLOSED，同步无timer原例、R2-01关闭准入竞态及原scan/Weak继续通过；core40/40、两文件格式过 / findings: F811-R4-01(P2) resize_backlog空闲shutdown后确定性下溢panic，send/recv/Stop计数不能作精确占用；F811-R4-02(P2) shutdown_started令二次关闭0ms返回时registry仍开放，新ticket与转换仍准入；F811-R3-02继续OPEN，with-task无timer仍loaded0，loaded回调改绑Ready B后B0 / evidence: [完整R4/旧例闭合/生产核心与七窗口重放](attachments/811/review-r4/review.md) / spec_delta: SD05已对齐主检出809已迁auto-man-core事实，未改AC/语义revision；原work五收据实际记4a非自述27，需等价绑定说明 / pending_closeout_gates: 最终pass后冻结裸t+tv、最终并集/受影响发行、规范ledger/归档guard清理 / next: executing **3/11**，保留T02/04/05、重开T01/03/06/07/08；原树work按报告诊断修复计数/关闭完成/双入口与回调后调度，提交后复审。未改实施、canonical或合入，不批准延期/缩面。
+
+
+2026-10-19 / stage: work / PLAN-811 revision: 1 / outcome: pass（R4 修复完成，**非独立验收pass**）/ worktree: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / base: ab08955c2 / code: 53f1111a2（R4 修复单提交；累计 15 实施提交）/ 依赖: auto-down 兄弟 c39ac7f9 / task_ids: T-01/03/06/07/08 四次重开后再闭合 / evidence: [fix-r4.md](attachments/811/fix-r4.md)（R4-01/02 复审重放全绿：backlog 不下溢、重复关闭完成语义；R3-02 余量：async-no-timer a=1、cascade a=1 b=1；core 42/42；六 harness 提交后实跑重绑 53f1111a2；792 重跑 25/25）/ blockers: 无 / next: review T-09（R5；merge 门 pending：冻结提交裸 cargo t + tv + 777 strict 复核）
 
 ## 10. 待澄清事项
 
