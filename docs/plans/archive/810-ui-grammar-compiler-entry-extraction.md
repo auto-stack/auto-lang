@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-810
-status: execution_done
+status: archived
 feature_name: 完整 UI 文法与默认编译入口解耦
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-19
 plan_revision: 1
-current_step: 8
+current_step: 11
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-ui-dialect/project.md, docs/specs/auto-parser-api/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/frontend/design/dialect-system.md, docs/specs/auto-lang/ui/design/scenario-dialect.md]
 new_spec_components: [docs/specs/auto-ui-dialect/design/full-grammar.md]
@@ -136,12 +136,12 @@ work用`cargo check -p auto-ui-dialect -p auto-parser-api -p auto-lang`、轻包
 | [x] | T-03 | work | T-02 | [✅ 已完成] widget/store/scene/props/use/setup/expose/watch/computed 及依赖 helper 迁 `grammar/{widget,store,scene,helpers}.rs`（约 4.9k 行，脚本 `scripts/plan810_migrate.py` 留档）；806 声明经 declarations 单源直调；Parser 留同签名薄委托 | AC-01,02 |
 | [x] | T-04 | work | T-03 | [✅ 已完成] view/fragment/component/节点/for/if/key/memo/link/style 绑定/事件族/actions/style_recipe/timer/routes/menubar/toolbar 迁 `grammar/{view,actions}.rs`；on-events/arrow 事件文法留 Core（共享），Core store 表达式/parse_store_stmt 未搬错 | AC-01,02,04 |
 | [x] | T-05 | work | T-04 | [✅ 已完成] dialect/ui.rs 重写全端口薄 adapter；`ParserBridge::parser()` escape hatch 删除（全仓零调用）；plan778 4 绿（None 回滚/Err 传播/matches 门）、Core 对照（fn view 参数/on 回退）plan810 v04 绿 | AC-03 |
-| [ ] | T-06 | work | T-05 | R3：R2-01 同实例/旧边界及 store/object 已核实关闭；仅 F810-R3-01 未闭：新增双测737/763行两处 unused_mut，移除多余mut并定向复验后提交；其余行为和证据维持，见 [R3报告](attachments/810/review-r3/REVIEW.md) | AC-01..04 |
+| [x] | T-06 | work | T-05 | R4已闭合：F810-R3-01两处多余mut已去除，受审6b4963de3；同实例成功/错误双测2/2、目标新增诊断0、fmt通过；R2-01及旧边界证据仍适用，见[R4报告](attachments/810/review-r4/REVIEW.md) | AC-01..04 |
 | [x] | T-07 | work | T-06 | [✅ 已完成] V-01..06 证据映射收口（handoff §8.2，含复用既有 oracle 指向）；**792 于最终修复源码重跑 EXIT=0 25/25，包内 8 触面源 SHA256 与 producer 逐字节一致**（grammar/mod.rs=82DE73A2…）；plan810 22/22、轻 consumer 7/7、777 strict+15/15 维持 | AC-01..05 |
 | [x] | T-08 | work | T-07 | [✅ 已完成] R2-03 闭合：parser-api 限制条目整句重写为单一现行事实（历史另述）、full-grammar §3 具名三项旧怪癖+收据指向、contract §5 勘误累计修订（含 R1-04 双原语警示）；handoff §8 根因/覆盖调整表+V 映射；merge-owned 门 pending 明示 | AC-05 |
-| [ ] | T-09 | review | T-08 | 同一树独立按AC/SD复核全集、语义事务/错误怪癖及真实消费者；保留merge-owned门pending | AC-06 |
-| [ ] | T-10 | merge | T-09 pass | 合流master并集、受影响内容复审，最终冻结提交统一§6门；失败修复后重新绑定审查/重冻，不跳过 | AC-07 |
-| [ ] | T-11 | merge | T-10 | canonical Spec/ledger沉淀、归档、已合入接口与发行来源交接，guard clean再清理树/分支/组，核对终态计数 | AC-07 |
+| [x] | T-09 | review | T-08 | R4独立final pass，绑定6b4963de3及revision1；AC-01..06、SD-01..06通过，既有findings全闭；merge-owned裸t/tv/tu及closeout仍pending，见[R4报告](attachments/810/review-r4/REVIEW.md) | AC-06 |
+| [x] | T-10 | merge | T-09 pass | [✅ 已完成] rebase over 808/809 并集（range-diff 12/12 等价，777 基线冲突按并集重采样 69 边）；ff-only 合入 f0ec8a91f；冻结门：裸 t 5300/5301（plan484_024 预存红主检出同红实证归因+隔离 3×绿）、tv 163/163、tu 867+2、tt 不适用（trans 零触）；schema_drift_fence 表维度随迁修复（围栏自指引） | 合流master并集、受影响内容复审，最终冻结提交统一§6门；失败修复后重新绑定审查/重冻，不跳过 | AC-07 |
+| [x] | T-11 | merge | T-10 | [✅ 已完成] SD-01..06 六份 Spec 落地（含新 full-grammar.md）；ledger v51→v52 四条目（guarded offline projection，备份 bak-v51-810）+spec-index 46 projects；归档+清理收据见 §9 合并记录 | canonical Spec/ledger沉淀、归档、已合入接口与发行来源交接，guard clean再清理树/分支/组，核对终态计数 | AC-07 |
 
 handoff：唯一`D:/autostack/.wt/lang-810/auto-lang`，分支`codex/plan-810-dev`；work确认实际base/组内兄弟依赖，同树顺序用于work/review/merge，不在master改代码、不建junction/symlink。与811无业务硬依赖；与808/809仅公共manifest/777/792/测试/装配精确片段协调，见本批报告。
 
@@ -157,11 +157,23 @@ handoff：唯一`D:/autostack/.wt/lang-810/auto-lang`，分支`codex/plan-810-de
 
 2026-10-19 / stage: work / PLAN-810 revision: 1 / outcome: needs_fix R3 修复轮回送复审（唯一 P3：r02 双测两处 unused_mut）/ code: `6b4963de3`（前轮 R2 链 `b8b0fc3f5`→`e49af4d0d` 见 review-r3 基线）/ evidence: plan810 触面 warning=0、22 通过+1 隔离用例、fmt 净、r02 定向复验绿 / blockers: 无 / next_responsible_role: review（T-09 第四轮）。
 
+2026-10-19 / stage: merge / PLAN-810:r1 / outcome: pass（delivered）：
+- `prepared`：reviewed 6b4963de3（R4 pass）→ merge 门首跑归因（schema_fence 表迁触线，围栏自指引维度更新 13bb1c352；plan484 预存红主检出实证非本计划）；SD 六份已随分支。
+- `landed`：rebase over master（808/809 并集）old→new 全链映射、`git range-diff` 12/12 等价（777 基线冲突项按并集显式重采样：declared_edges=69 绑定交付位）；`git merge --ff-only codex/plan-810-dev` → master tip=**f0ec8a91f**（无 merge 提交）；主检出冒烟 check 0 错+plan810 22/22。
+- 冻结门（绑定 f0ec8a91f 链上 2a284c779，rebase 后重跑）：裸 `cargo t` **5300/5301**（唯一红 plan484_024_charts_streaming_recompute——主检出同全量同红=预存非本计划引入，隔离 3×绿，移交批量回归分诊）；`cargo tv` **163/163**；`cargo tu` **867+2 ignored**；tt 不适用（diff 零触 trans/）。
+- `ledger_refreshed`：guarded offline projection（HTTP 探测无存储写方；备份 specs.json.bak-v51-810）v51→v52，四条目 P810-D1/T/R4/M（file+tags 全带，读回校验 old⊆new、恰 +4）；`python scripts/spec-index.py` 46 projects。
+- `archived`：本提交 git mv → docs/plans/archive/ + status: archived + 11/11 终态（docs 工件全部入默认分支）。
+- `cleaned`：wt-guard clean×2 → 工作树/分支/组清理（收据见下一提交）。
+- 生产工件新鲜度观察项（未即时重建）：release 二进制/生成 web bundle 均先于本次合入，按 PLAN-092 教训记录待重建。
+- 批量回归到期：plan id 810 % 5 == 0 → **due**，移交 /auto-plan:regress 主检出单实例执行。
+
 2026-10-19 / stage: review / review_scope: final / reviewer_identity: 当前 Codex 独立复审上下文（精确模型/会话 ID 未暴露，未创建 agent）/ PLAN-810 revision: 1 / outcome: **needs_fix** / worktree_path: `D:/autostack/.wt/lang-810/auto-lang` / branch: `codex/plan-810-dev` / reviewed_commit: `ccd024d7208caa14fb2f71d71b8d256d2ba74f82` / base_commit: `ab08955c241f6a824091c53d3b02894ca17e193b` / dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`，本树/兄弟 clean，Cargo.lock 与 Spec 指纹见 [baseline](attachments/810/review-r1/baseline.json) / acceptance_results: AC-01/03/04 partial，AC-02/05/06 fail，AC-07 merge-owned pending / findings: **F810-R1-01..06 OPEN**（成功快照残留、777 基线过期实红、强制 oracle 空壳/缺口、scene 前瞻 prev 漂移、SD 冲突、fmt/新增 warning）/ evidence: [完整报告/AC/反例与修复要求](attachments/810/review-r1/REVIEW.md)、[可重放反例](attachments/810/review-r1/probes.rs)、[观测结果](attachments/810/review-r1/probes.log)、[冻结 SD](attachments/810/review-r1/spec-delta.patch) / pending_closeout_gates: 裸 t/tv/tu（触 trans 再 tt）、master 并集影响复核、规范/ledger/归档/wt-guard 清理；本轮未执行整档 / next: **原树 work 修完整 findings 后提交复审**，不合入、不清理。重开 T-02/T-06/T-07/T-08，保留 T-01/T-03/T-04/T-05 既有成果，`executing 4/11`；此前 work pass/777 绿为历史声明，以本轮实测结论为当前状态。
 
 2026-10-19 / stage: review / review_scope: final / reviewer_identity: 当前 Codex 独立复审上下文（同 R1 reviewer，未参与实施，精确模型/session ID 未暴露）/ PLAN-810 revision: 1 / outcome: **needs_fix（R2）** / worktree_path: `D:/autostack/.wt/lang-810/auto-lang` / branch: `codex/plan-810-dev` / reviewed_commit: `9226c8af9365389342bbc63d9c91e9ff0b6fee42` / base_commit: `ab08955c241f6a824091c53d3b02894ca17e193b` / dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` clean，Cargo.lock未变，指纹见 [R2 baseline](attachments/810/review-r2/baseline.json) / acceptance_results: AC-01/02/03 partial，AC-04代表支持面pass，AC-05/06 fail，AC-07 merge-owned pending / findings: **R1-01/02/04/06 CLOSED，R1-03/05 PARTIAL → F810-R2-01..03 OPEN**（同实例错误/旧边界oracle未齐；792旧25/25包内源不含修复端口；SD仍有同段冲突）/ evidence: [R2完整报告/闭环/诊断与修复要求](attachments/810/review-r2/REVIEW.md)、[原反例新结果](attachments/810/review-r2/probes.log)、[同实例额外控制](attachments/810/review-r2/extra-probes.log)、[792旧/新源身份](attachments/810/review-r2/792-source-identity.json)、[冻结SD](attachments/810/review-r2/spec-delta.patch) / pending_closeout_gates: 裸t/tv/tu（触trans再tt）、master并集影响、Spec/ledger/归档/guard；本轮未跑整档、未合入 / next: **原树 work 完成剩余三项并提交复审**；连续第二次最终非通过，下一次送审前须提交报告所列根因/覆盖调整表。T-02已通过，保留T-01..05，共 **executing 5/11**；T-06/07/08未闭，T-09最终pass未达，T-10/11pending。之前work“六项全闭合”及R1 OPEN状态仅为历史，以此R2闭环为当前结论。
 
 2026-10-19 / stage: review / review_scope: final / reviewer_identity: 当前Codex独立复审上下文（同R1/R2 reviewer，未参与实施；精确模型/session ID未暴露）/ PLAN-810 revision: 1 / outcome: **needs_fix（R3，仅一项新增P3）** / worktree_path: `D:/autostack/.wt/lang-810/auto-lang` / branch: `codex/plan-810-dev` / reviewed_commit: `e49af4d0d253db1ed1a406a2e168f515d98eda1e` / base_commit: `ab08955c241f6a824091c53d3b02894ca17e193b` / dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` clean，产品源/锁/依赖配置与R2未变，指纹见 [baseline](attachments/810/review-r3/baseline.json) / acceptance_results: AC-01..05 pass（代表支持面/具名旧边界），AC-06 fail（两处新增unused_mut），AC-07 merge-owned pending / findings: **R2-01..03 CLOSED，R1剩余全闭；仅 F810-R3-01 OPEN** / evidence: [R3报告/闭环/复用边界](attachments/810/review-r3/REVIEW.md)、[22passed+1ignored](attachments/810/review-r3/plan810.log)、[EOF正/零用例/异常控制](attachments/810/review-r3/eof-controls.json)、[完整函数身份与变异控制](attachments/810/review-r3/identity-controls.json)、[792新25/25](attachments/810/review-r3/792-driver-receipt.json)及[源身份适用范围](attachments/810/review-r3/delivery-source-identity.json)、[冻结SD](attachments/810/review-r3/spec-delta.patch) / pending_closeout_gates: 裸t/tv/tu（触trans再tt）、master并集影响、Spec/ledger/归档/guard；本轮未跑整档、未合入 / next: **原树去除新增测试737/763行多余mut，提交后仅作受影响定向复验/复审**。只重开T-06，保留T-01..05/T-07/08成果，**executing 7/11**；T-09未获final pass，T-10/11pending。辅助工具的比较局限已用本轮独立强化证据补验，未只凭工具pass横幅；旧R1/R2 OPEN为历史，以本轮闭环为准。
+
+2026-10-19 / stage: review / review_scope: final / reviewer_identity: 当前Codex独立复审上下文（同R1/R2/R3 reviewer，未参与实施；精确模型/session ID未暴露）/ PLAN-810 revision: 1 / outcome: **pass（R4）** / worktree_path: `D:/autostack/.wt/lang-810/auto-lang` / branch: `codex/plan-810-dev` / reviewed_commit: `6b4963de3ffd99c7f68205fe7e9ffd675e812f14` / base_commit: `ab08955c241f6a824091c53d3b02894ca17e193b` / dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` clean，产品源/锁/配置与R3相同，五份canonical及proposal指纹不变，见[baseline](attachments/810/review-r4/baseline.json) / acceptance_results: **AC-01..06 pass，AC-07 merge-owned pending** / findings: **F810-R3-01 CLOSED，全部契约内findings已闭，无新增阻塞项**；P810-R3-D01仍为已由独立控制补验的非阻塞工具复用候选 / evidence: [R4完整报告与有界复用](attachments/810/review-r4/REVIEW.md)、[双测2/2与目标诊断0](attachments/810/review-r4/r02-tests.log)、[仅两处mut差异](attachments/810/review-r4/reviewed-change.patch)、[冻结SD](attachments/810/review-r4/spec-delta.patch)（SHA256 367CFE062D452C6F31CE7808E60EDA65DBD4A62F3D7B89D1C94799D5ADB76125）/ pending_closeout_gates: 最终冻结裸t/tv/tu（触trans再tt）、master并集影响、Spec/ledger/归档/guard；未跑整档、未合入 / next: **merge阶段在冻结提交统一完成门禁及收尾**；T-06恢复且T-09完成，**reviewed 9/11**，T-10/T-11pending。送审原文frontmatter8/11但T-06仍未勾选，已按实证闭环统一计数；revision1不变，既往needs_fix作为历史保留，pass不等于交付完成。
 
 ## 10. 待澄清事项
 
