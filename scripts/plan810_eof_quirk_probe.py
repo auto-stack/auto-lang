@@ -30,8 +30,9 @@ def main() -> int:
 
     cmd = [
         "cargo", "test", "-p", "auto-lang", "--lib",
-        "plan810_full_ui_grammar::r02_fragment_unterminated_eof_quirk_isolated_only",
+        "r02_fragment_unterminated_eof_quirk_isolated_only",
         "--features", "ui-iced,test-cases", "--", "--ignored", "--exact",
+        "tests::plan810_full_ui_grammar::r02_fragment_unterminated_eof_quirk_isolated_only",
         "--nocapture",
     ]
     t0 = time.monotonic()
