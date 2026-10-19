@@ -98,6 +98,23 @@ def static_audit(book_root: Path, entries: list[dict[str, Any]]) -> tuple[list[d
     errors: list[dict[str, Any]] = []
     ids: set[str] = set()
     modes: Counter[str] = Counter()
+    catalog_ids = {entry.get("id") for entry in entries if isinstance(entry.get("id"), str)}
+    page_markers: dict[str, list[str]] = {}
+
+    for page in sorted((book_root / "tapl").glob("*.md")):
+        page_text = page.read_text(encoding="utf-8")
+        for marker_id in re.findall(r'example-id\s*=\s*["\']([^"\']+)["\']', page_text):
+            page_markers.setdefault(marker_id, []).append(page.relative_to(book_root).as_posix())
+
+    for marker_id, marker_pages in sorted(page_markers.items()):
+        if marker_id not in catalog_ids:
+            errors.append({"id": marker_id, "stage": "catalog", "error": "page marker has no catalog entry"})
+        if len(marker_pages) > 1:
+            errors.append({"id": marker_id, "stage": "catalog", "error": f"page marker occurs {len(marker_pages)} times: {marker_pages}"})
+
+    for catalog_id in sorted(catalog_ids):
+        if catalog_id not in page_markers:
+            errors.append({"id": catalog_id, "stage": "catalog", "error": "catalog entry has no page marker"})
 
     for entry in entries:
         example_id = entry.get("id", "<missing-id>")

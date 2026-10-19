@@ -51,6 +51,7 @@ graph LR
 ## AutoVM 书页示例绑定（PLAN-813）
 
 - `auto.io.read_line_opt() -> Option<str>` 读取一行；空行返回 `Some("")`，有限输入到达 EOF 返回 `None`。它与保留兼容行为的 `auto.io.read_line() -> str` 并存。Playground 为每次 Run/Test 注入独立输入，不替换 CLI 的 OS stdin。
+- `auto.net.TcpStream.read_line(self TcpStream) -> str` 返回一行并移除换行符；对端关闭流并读到 EOF 时返回空字符串。该 EOF 行为由 PLAN-813 本地 loopback TCP 示例验证；不改变 `TcpStream.read` 的缓冲参数/返回栈契约。
 - TAPL 的 VM 路径使用 `auto.regex.replace(text, pattern, replacement, flags)`（`"g"` 表示替换全部匹配）和 `auto.hash.sha256(text)`（小写十六进制摘要）。这些 API 已有真实 VM native 绑定；这条证据只确认本书实际使用的 AutoVM 路径，不承诺其他后端具备相同装配。
 - VM native catalogue 中 `auto.hashset.contains` 的返回类型是 `bool`，shim 必须按布尔值编码；不能将声明/原生返回类型不一致解释成合法的整数结果。
 
