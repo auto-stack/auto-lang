@@ -1,3 +1,14 @@
+# PLAN-809 当前交接（R10 final review pass）
+
+- 受审实现：390d02acc40b2141293730be7eee2b2f95113ec1；revision1；D:/autostack/.wt/lang-809/auto-lang，codex/plan-809-dev；auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8。
+- 当前状态：reviewed 9/11；work-owned验收及全部finding已闭合，T09最终复审通过；T10/11仍待merge。以下早期交接及pending表仅保留历史，不代表当前开放项。
+- [R10独立最终报告](review-r10.md)；[最后正式交付24项原收据](t06-792-formal-driver-receipt.json)及[完整输出](t06-792-formal-delivery-receipt.log)；本轮实际A/B离线锁定构建、源/锁/metadata/资源正负控见报告。
+- 规范沉淀以[R10最终批准增量](review-r10-spec-delta-final.md)为准：保留实例身份的ordered_build_steps、sidecar声明属于core/请求合同、文件效果仍在Man；替代旧候选的历史函数名/sidecar延期措辞。未写canonical Specs或ledger。
+- I-PROJECT接口读取映射保留如下历史详细表，真实数据合同见auto-project-model generation_request。390d02acc仅是受审实现版本；R04须等本Plan实际合入后使用已合入SHA，不能将reviewed视为已发布接口。
+- 下一阶段：merge统一冻结裸cargo t及必要包/实际触面档；刷新最终777/792 source/resource并集并验证；沉淀规范/ledger/overview/ADR/plans，归档，发布已合入接口SHA，wt-guard clean后清理及批量回归到期判定。任何实质代码/依赖/输入变化需受影响复审。
+
+## 历史work→review交接（原文保留）
+
 # PLAN-809 work→review 交接（handoff）
 
 - worktree: `D:/autostack/.wt/lang-809/auto-lang`，branch `codex/plan-809-dev`

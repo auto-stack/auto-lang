@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-809
-status: executing
+status: archived
 feature_name: Man 项目、管理与构建规划核心整体解耦
 author: [Codex]
 created_at: 2026-10-18
 updated_at: 2026-10-19
 plan_revision: 1
-current_step: 6
+current_step: 11
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/project-model/project.md]
 new_spec_components: [docs/specs/auto-man-core/project.md, docs/specs/project-model/design/generation-request.md]
@@ -88,10 +88,12 @@ R04只在本Plan**review+merge整体交付后**消费I-PROJECT，本合同不安
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
-| SD-01 | add | docs/specs/auto-man-core/project.md | 规则散在Pac/Target/Dir/Builder→单份管理/图/扫描选择/构建规划、效果边及图错误合同 | 独立核心 | AC-01..04 |
+| SD-01 | add | docs/specs/auto-man-core/project.md | 规则散在Pac/Target/Dir/Builder→单份管理/图/扫描选择/构建规划、首次实例身份、效果边/图错误和旧只读FS兼容边界 | 独立核心 | AC-01..04 |
 | SD-02 | add | docs/specs/project-model/design/generation-request.md | 无通用生成输入→I-PROJECT字段/来源/覆盖顺序/未知与动态准入/无副作用 | UI工具脱Man前置 | AC-02 |
 | SD-03 | modify | docs/specs/project-model/project.md | 静态pilot不变；新增独立请求数据消费，不扩大静态语法或786护栏 | 避免假等价 | AC-02,03 |
-| SD-04 | modify | docs/specs/auto-man/project.md | 记录实际core委托/旧公开门面/adapter和仍未迁UI/CLI/发行职责 | 不虚报全Man独立 | AC-01..04 |
+| SD-04 | modify | docs/specs/auto-man/project.md | 记录实际core委托/trait显式导入/请求内sidecar声明归属、文件效果adapter和仍未迁UI/CLI职责 | 不虚报全Man独立 | AC-01..04 |
+
+R10最终批准的正文/局部增量与精确所有者边界见 [review-r10-spec-delta-final.md](attachments/809/review-r10-spec-delta-final.md)，作为merge沉淀输入；收到的旧候选另行冻结，不直接整份覆盖当前canonical。此校准仅修正已验证事实（ordered_build_steps与sidecar合同内声明解析等），不改变plan_revision或实施语义。
 
 ## 6. 测试设计
 
@@ -133,9 +135,9 @@ review独立上下文同树检查生产委托、双状态、全部Builder/生成
 | [x] | T-04 | work | T-03 | [✅ 已完成] closure.rs 单源迁入五函数族+resolve_target_closure 有界准入（NoProgress：unresolved 全名+DFS 灰标环候选链；外部 link 保留直接边不阻塞不进 dep_names——测试期纠正两处本人期望误写并钉真实语义）+assemble_major_targets；Pac::resolve 生产委托并删旧算法；V-04 core 8 用例（diamond/重复 link/外部 link/自环/双环/混合无进展/字段变更重 plan/手算三层链）+Pac 级集成（真实 pac.at links prop 形态，错误具名且不开始 scan）。resolver/lock 无第二份（795/800 既定门面，contract §4 核实）。core 27/27+probe 5/5+pac 15/15。worktree 提交见 log | AC-01,03 |
 | [x] | T-05 | work | T-04 | [R3 验证完成] selection/planning/file_types 生产委托与既有选择回归保留；R2-01 的 Ninja 实例身份已修为 BuildOrderStep(item_index,from_dep)，冻结旧循环与新生产Builder三态产物一致，core46与管理8项通过。见 [R3闭合表](attachments/809/review-r3.md)。效果矩阵与请求交接仍属T06..08，不将其计为已闭 | AC-01,04 |
 | [x] | T-06 | work | T-05 | [R8 验证完成] Pac/Automan生产委托与四族请求读取接线、节点/对象/嵌套sidecar及来源反转已验；三Builder真实成功/失败效果现均有实证，Ninja经完整MSVC环境实际编译链接并执行main.exe exit0。见 [R8报告及产物收据](attachments/809/review-r8.md)。新测试Path大小写自举红轮已于R9关闭；正式独立交付fresh/locked仍归T07，不能以本项完成豁免 | AC-01..04 |
-| [ ] | T-07 | work | T-06 | [R9 唯一验收缺口：正式fresh/重定位locked及受影响交付负控]  auto-man-core 入 777 man-ecosystem 域（module-boundaries.toml）+两 consumer fixture 钉闭包；双状态审计：Target/Dir/Port 单类型（re-export 同身份）、Pac.targets 即 core 类型、生成器请求为快照读（无双状态）；**余：777 strict 基线 json 重跑+792 source/resource 清单并集（merge 前与门禁同批）** | AC-03,04 |
-| [ ] | T-08 | work | T-07 | [R9 代码finding已闭；正式交付收据及最终handoff待收口]  SD草案+`attachments/809/handoff.md`、I-PROJECT接口示例/版本/字段读取映射及剩余UI/CLI adapter归属；绑定代码/命令/净迁移证据，提交送审 | AC-01..04 |
-| [ ] | T-09 | review | T-08 | 同树独立AC/SD/全部生产规则与支持矩阵审查；不能用静态pilot当全部工程；merge门显式pending | AC-05 |
+| [x] | T-07 | work | T-06 | [R10 验证完成] 管理核心/请求consumer轻闭包与777既有strict通过证据按未变输入复用；正式独立交付driver 24/24，producer绑定390d02acc，fresh构建及A→B locked重建/负控齐全。本轮A/B离线locked重放及4654源文件/锁/metadata/资源控制独立核对通过。最终主检出并集777/792由merge另行刷新执行 | AC-03,04 |
+| [x] | T-08 | work | T-07 | [R10 收口完成] 全部finding关闭；当前handoff绑定受审SHA及I-PROJECT交接条件，四项最终规范增量已按真实函数/sidecar所有者与trait兼容边界冻结，主检出Spec/ledger尚未发布。见 [R10最终报告](attachments/809/review-r10.md)及final delta | AC-01..04 |
+| [x] | T-09 | review | T-08 | [R10 final pass] 同树独立AC/SD/历史finding/真实生产规则与正式独立交付证据全部通过；受审390d02acc，冻结门禁及最终并集合入收尾明确merge-owned pending，reviewed不代表已交付 | AC-05 |
 | [ ] | T-10 | merge | T-09 pass | 并集master，实际变更复审，最终冻结提交按§6运行门；失败归因后修复/复审/重冻 | AC-06 |
 | [ ] | T-11 | merge | T-10 | 规范/ledger沉淀、归档、I-PROJECT已合入SHA交接，guard clean后树/分支清理及最终计数 | AC-06 |
 
@@ -259,6 +261,16 @@ stage=review | review_scope=final | reviewer_identity=延续独立复审的Codex
 
 acceptance_results=AC01..03保持pass、AC04 partial（独立交付未验）、AC05 partial（修复已验，最终闭合证据待齐）、AC06 merge-owned pending | next=同树work完成正式fresh真实build、不带target重定位locked及受影响负控/身份检查，留绑定代码/输入/依赖/锁和实际命令退出的完整收据，校准handoff后再审 | pending_closeout_gates=最终code/acceptance/Spec pass后冻结裸t+必要包/实际触面档、最终777/792并集、规范/ledger/归档/接口SHA和guard清理。T01..06完成，T07/08仍待正式交付/证据收口，T09未完成、T10/11待merge；executing6/11。无本轮Cargo测试/whole-tier或正式driver执行。
 
+### 2026-10-19 final review R10：pass（全部finding闭合，merge-owned门禁pending）
+
+stage=review | review_scope=final | reviewer_identity=延续独立复审的Codex上下文，未参与实施，无新agent或虚构模型/会话ID | plan_id=PLAN-809 | plan_revision=1 | outcome=pass | worktree_path=D:/autostack/.wt/lang-809/auto-lang | branch=codex/plan-809-dev | reviewed_commit=390d02acc40b2141293730be7eee2b2f95113ec1 | base_commit=2046a025b9a445d35a02da2c72a1613259a0cb60 | dependency_revisions=auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 | spec_inputs/完整闭合矩阵/AC及限制=[R10报告](attachments/809/review-r10.md)、[基线](attachments/809/review-r10-baseline.json.txt)、[收到的SD](attachments/809/review-r10-spec-delta-source.md)、[最终批准SD](attachments/809/review-r10-spec-delta-final.md)。实现/依赖入场和结论前clean、HEAD无漂移、diff --check过；主检出并行推进按输入哈希记录，不归入此pass。
+
+**最后F809-R2-06 CLOSED**：正式driver收据24个不同case全部通过，覆盖CLI请求生成、fresh锁解析/真实构建、A→B不带target重定位locked、V03负控及V04 dev/交付字节同源。24相对旧25仅少可选build-auto-cli记录，未漏V项；实际producer绑定390d02acc且dirty=false，根锁hash与本树一致，附件JSON与实际scratch收据相同。本轮清除开发根/共享target覆盖后，独立A/B cargo build --locked --offline均exit0（9.56s/7.09s）；另核对4654源文件、12项按包名+版本pin、相同A/B独立锁、14本地metadata package全在B、verify资源正控0/0负控1/1、dev/交付main.rs相同。详审查脚本/原始日志，未把warm重放当冷fresh。
+
+R1..R9历史finding全部CLOSED，无新增阻断。R9测试自举普通环境原例1/1及原8+产物控制9/9、R6 sidecar全形态/来源/优先级/缺源、R3 Ninja首次实例三态、core/model/consumer/777等证据在源码/依赖/配置/输入未变范围限定复用，不改记本轮新跑。最终SD仅在Plan/review附件中校准旧ordered_build_renames函数名、sidecar延期和trait导入等文字，符合既定合同、revision不变；未改工作树候选或canonical Specs/ledger。当前handoff已用R10状态覆盖早期pending历史。
+
+acceptance_results=AC01..05 pass；AC06 merge-owned pending | findings=无开放项 | next=merge，T01..09完成、T10/11待执行；status=reviewed/current_step=9/11 | pending_closeout_gates=最终并集冻结裸cargo t+必要包/真实触面档、最终777/792正式并集验收、规范/ledger/overview/ADR/plans沉淀、归档、已合入接口SHA交接、wt-guard clean后树/分支清理及批量回归到期判定。当前受审交付含12源crate+1patch，主检出后续计划扩展闭包须在merge组合重验，不能复用旧收据冒称新并集通过；实质变更需受影响复审。此次pass仅表示代码/验收/Spec审查通过，未跑whole-tier、未合入/归档/发布接口或宣称交付。
+
 ## 10. 待澄清事项
 
 当前没有需用户先答的阻塞项。T-01有界验证public字段/方法兼容、I-PROJECT字段全集和效果拆缝。若核心规则无法在不破坏旧公开面/支持后端的条件下抽取、需改工程格式或扩大到相邻仓，必须提出具体重规划；不能退化为只做DTO或把全体实现再包进opaque callback。三Builder实际工具环境不足时保留pending，独立模块完整交付不以缺环境跳过。
@@ -280,3 +292,5 @@ acceptance_results=AC01..03保持pass、AC04 partial（独立交付未验）、A
 2026-10-19 R8 修复（390d02acc）：环境自举修复——dump_vcvars_env 两处自伤（末尾空行 ? 早退 + 键大写对小写表），普通环境下真实 Ninja Linking main.exe 可复现（无需 MSVC 预初始化），注入后 cl 定位校验防假成功；probe 8/8。**唯一余项**：独立交付正式验收（fresh 独立构建+重定位 --locked 重建，792 driver V01/V02 形态定向真跑收据）。
 
 2026-10-19 R9 收口：**正式独立交付验收闭合**——792 driver 全集真跑 24/24（V01 fresh resolve+真实 cargo build --locked 144s、V02 A→B 重定位不含 target/ 的 --locked 重建、V03 资源缺失/坏 hash/外来目录/他应用存活负控族、V04 dev 路由与 dev/交付 main.rs 逐字节同源），生成入口为 809 改造后的 auto gen --delivery-root 链（generate_rust_ui_delivery_with_request）。收据：t06-792-formal-delivery-receipt.log + t06-792-formal-driver-receipt.json（scratch C:/Temp/plan809-792-receipt，首跑 V02 失败=D 盘满 LNK1318 PDB LIMIT 环境性，日志保留）。**至此 R1..R9 全部 finding 闭合，work 完成**：core 46/46+probe 8/8（真实三 Builder）+delivery 9/9+792 driver 24/24+777 strict pass+全定向绿。送 T-09 终审；merge 门（裸 cargo t+包档+触面档+最终 777/792 并集）pending。
+
+2026-10-19 T-10/T-11 merge 收口：delivery=b819a602e（no-ff union，基线 json 冲突取 master 侧留并集重采样）；冻结门禁全绿（裸 t 5290/5290+core 46/46+model 38/38+probe 8/8+tu 867/867，HEAD 390d02acc）；792 driver 24/24 与 777 pass 收据已入附件；ledger v50→v51（P809-M/D1/D2/D3/T/R10 六条目）+INDEX 重生成（46 projects）；并集 777 基线刷新因并发会话脏簿记暂缓（工具拒脏树，树静默后补）；I-PROJECT 已合入 SHA=b819a602e 交接 R04；终态 11/11 archived。
