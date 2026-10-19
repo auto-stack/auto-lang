@@ -298,12 +298,20 @@ impl<'p, 'a> auto_ui_dialect::UiParseContext for ParserBridge<'p, 'a> {
         self.parser.port_advance_peek_kind()
     }
 
+    fn advance_peek_kind_resync(&mut self) -> TokenKind {
+        self.parser.port_advance_peek_kind_resync()
+    }
+
     fn raw_cursor_save(&mut self) -> auto_parser_api::ParseCheckpoint {
         self.parser.port_checkpoint()
     }
 
     fn raw_cursor_restore(&mut self, cp: auto_parser_api::ParseCheckpoint) -> AutoResult<()> {
         self.parser.port_restore_raw(cp)
+    }
+
+    fn raw_cursor_release(&mut self, cp: auto_parser_api::ParseCheckpoint) {
+        self.parser.port_release_raw(cp)
     }
 
     fn capture_raw_block(&mut self) -> AutoResult<String> {

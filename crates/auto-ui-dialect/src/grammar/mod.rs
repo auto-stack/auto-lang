@@ -69,12 +69,19 @@ pub trait UiParseContext: ParseContext {
     fn push_back_token(&mut self, tok: Token);
 
     /// **注释跳过前看**（旧臂 `save cur → next() → 观察 → push cur 回缓冲 +
-    /// 手动恢复 cur` 模式的具名化，scene 门/typed subresource/on stream
-    /// 三位点共用形态）：执行一次完整 advance（含词法错误记录、EOF 兜底、
-    /// docs 收集、注释跳过），返回结果 token 的 kind，然后把该 token 回推
-    /// 缓冲并将 cur 恢复到 advance 前。prev 保持 advance 后的值（旧臂
-    /// 泄漏形态）。调用后紧接的重消费与旧臂状态一致。
+    /// 手动恢复 cur` 模式的具名化——**on stream 位点形态**）：执行一次完整
+    /// advance（含词法错误记录、EOF 兜底、docs 收集、注释跳过），返回结果
+    /// token 的 kind，然后把该 token 回推缓冲并将 cur 恢复到 advance 前。
+    /// prev 保持 advance 后的值（旧臂泄漏形态：prev=被前看的 token）。
     fn advance_peek_kind(&mut self) -> TokenKind;
+
+    /// **注释跳过前看·双 push 重同步**（旧臂 `save cur → next() → 观察 →
+    /// push observed → push saved → next() 重同步` 模式的具名化——
+    /// **scene 门/typed subresource 位点形态**，F810-R1-04 区分）：与
+    /// [`Self::advance_peek_kind`] 的差异仅在 **prev** 的终值——重同步的
+    /// 第二次 next 使 prev=被观察 token（手动恢复形态则是 prev=advance
+    /// 前的 cur）。cur/缓冲终态两者一致。
+    fn advance_peek_kind_resync(&mut self) -> TokenKind;
 
     // ---- 原始游标投机（无旗标/无诊断回滚；与 checkpoint 的区别见模块文档） ----
 
@@ -86,6 +93,15 @@ pub trait UiParseContext: ParseContext {
     /// 诊断/docs）。凭据校验与 `ParseContext::restore` 同规则（跨上下文/
     /// 过期/重复使用受控拒绝）。
     fn raw_cursor_restore(&mut self, cp: ParseCheckpoint) -> AutoResult<()>;
+
+    /// **释放** raw 快照凭据（F810-R1-01）：投机成功（不再需要回滚）时
+    /// 结束快照生命周期——仅失效句柄表槽位（tombstone），**不**恢复游标
+    /// /旗标、**不**回滚诊断。与 `restore` 同为一次性：已消费/过期/跨
+    /// 上下文的凭据为无操作（Drop 语义）。旧臂局部 `save_state` 在返回
+    /// 时即释放；本方法把同一"出作用域即释放"带到端口形态，覆盖公开
+    /// 门面、Core 直连与 builtin 派发全部入口（不依赖派发器退出清理）。
+    /// 只失效给定凭据（实例 id + 槽位 + 代次校验），不影响外层存活快照。
+    fn raw_cursor_release(&mut self, cp: ParseCheckpoint);
 
     // ---- raw source ----
 

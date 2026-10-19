@@ -316,7 +316,9 @@ pub struct Parser<'a> {
     /// Plan 550 T10: 文件含裸 null/nil 字面量（生产者门控三信号之一；
     /// None/Some 是 Option 构造器，不计入）。
     pub saw_bare_null: bool,
-}impl<'a> Parser<'a> {
+}
+
+impl<'a> Parser<'a> {
     /// Create parser (no Universe needed)
     /// Prefer this for new code.
     pub fn from(code: &'a str) -> Self {
@@ -773,9 +775,9 @@ pub struct Parser<'a> {
         self.lexer.push_token(tok);
     }
 
-    /// 注释跳过前看（PLAN-810；scene 门/subresource/on stream 三位点的
-    /// 旧臂共用形态的具名化）：完整 advance（全部副作用），观察 kind，
-    /// 回推观察到的 token 并恢复 cur（prev 保持泄漏——与旧臂一致）。
+    /// 注释跳过前看（PLAN-810；**on stream 位点形态**——F810-R1-04 区分）：
+    /// 完整 advance（全部副作用），观察 kind，回推观察到的 token 并恢复
+    /// cur；prev 保持 advance 后的值（旧臂手动恢复形态的泄漏）。
     pub(crate) fn port_advance_peek_kind(&mut self) -> TokenKind {
         let saved = self.cur.clone();
         self.next();
@@ -784,6 +786,43 @@ pub struct Parser<'a> {
         self.lexer.push_token(observed);
         self.cur = saved;
         kind
+    }
+
+    /// 注释跳过前看·双 push 重同步（PLAN-810；**scene 门/typed
+    /// subresource 位点形态**）：next → 观察 → push observed → push saved
+    /// → next 重同步。与 `port_advance_peek_kind` 仅 **prev** 终值不同：
+    /// 第二次 next 使 prev=被观察 token（旧臂两 push 形态逐字复刻，
+    /// F810-R1-04）。
+    pub(crate) fn port_advance_peek_kind_resync(&mut self) -> TokenKind {
+        let saved = self.cur.clone();
+        self.next();
+        let kind = self.cur.kind;
+        let observed = self.cur.clone();
+        self.lexer.push_token(observed);
+        self.lexer.push_token(saved);
+        self.next();
+        kind
+    }
+
+    /// 释放 raw 投机快照凭据（F810-R1-01）：仅按（实例 id + 槽位 + 代次）
+    /// 校验后 tombstone 该槽，不动游标/旗标/诊断；失效凭据为无操作
+    ///（Drop 语义）。尾部 tombstone 保守收缩（同 `port_release_scope`，
+    /// 只剥尾不动中部，槽位下标不漂移；tombstone 本身可被复用）。
+    pub(crate) fn port_release_raw(&mut self, cp: auto_parser_api::ParseCheckpoint) {
+        let (parser_id, slot, gen) = cp.parts();
+        if parser_id != self.port_instance_id {
+            return;
+        }
+        let idx = slot as usize;
+        if idx < self.port_snapshots.len()
+            && self.port_snapshots[idx].gen == gen
+            && self.port_snapshots[idx].data.is_some()
+        {
+            self.port_snapshots[idx].data = None;
+        }
+        while matches!(self.port_snapshots.last(), Some(s) if s.data.is_none()) {
+            self.port_snapshots.pop();
+        }
     }
 
     /// raw CSS 块捕获（前置条件：cur 为 LBrace 且 lexer 无缓冲 token）。
@@ -13256,35 +13295,9 @@ impl<'a> Parser<'a> {
     /// ```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     // ========================================================================
     // Plan 306: Godot scene declaration parsing
     // ========================================================================
-
-
-
-
-
-
-
-
-
-
-
 
 
     /// Parse msg declaration (UI scenario only)
@@ -13351,45 +13364,6 @@ impl<'a> Parser<'a> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::scene::looks_like_scene_decl(&mut bridge)
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     /// Helper: expect an identifier with specific text
