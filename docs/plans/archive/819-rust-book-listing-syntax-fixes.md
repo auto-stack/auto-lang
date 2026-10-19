@@ -132,7 +132,7 @@ Auto `.at`、书稿 Markdown、现有 Rust 转译函数 `transpile_rust`、`test
 | T-04 | merge | T-03 | 在最终复审通过后冻结 revision 上执行 merge-owned `cargo tb`；通过后核验生成副作用、只合入计划范围文件、更新 P813-D1 承接记录；按 wt-guard 规程处理本计划工作树 | ⛔ revision 4 门禁失败（4 个 ch08/ch09 红项）；最终门禁转为 T-08，历史收据见 §9 |
 | T-06 | work | T-04 | 将 revision 4 最终 `cargo tb` 的失败登记为 PLAN-819 Phase 3；在隔离树修复 ch08 listing 01/02/04 金样、ch09 listing 02 Auto `=>` 语法及其旧 Option<i32> golden，并同步英文/中文 Auto block；逐项实测更新四份必要金样/正文 | ✅ Book 提交 `41f5dda`（ch09 源/EN/ZH）+ `d05218b`（四份实产 golden）；四项精确测试各 1 passed / 0 failed / 0 ignored，日志已归档至 `docs/plans/attachments/819/phase3-book_ch08_01-final.log.txt` 等；EN/ZH Auto block 与 `.at` 一致，Rust `match =>` 保留；主仓 ch08 WIP 三份哈希与实产完全相同；Book worktree clean、`.wrong.rs` 清零。T-07 revision 5 复审待办 |
 | T-07 | review | T-06 | 对 revision 5 冻结 diff、Phase 3 范围闭包、全部相关定向证据、主仓 WIP 哈希、规范/风险账本进行最终复审 | ✅ 独立只读复审 pass，报告见 §9；AC-06/09 merge-owned `cargo tb` 保持 pending |
-| T-08 | merge | T-07 | 在 revision 5 最终复审通过后，对冻结 code/book 组合执行 `cargo tb`；核对生成副作用与主书仓原 9 项 WIP 哈希并保存可恢复副本；通过后执行合入与 P813-D1 承接 | 门禁 ✅：冻结 code `4c8a28b92dab3ef9ed270cf1a25c5414c002343a` + book `d05218bff49a52314ce436f78d9df2a69bc3357e` + auto-down `c39ac7f`；标准 target（未设置 `CARGO_TARGET_DIR`）、`AUTO_BOOK_LISTINGS=D:/autostack/.wt/lang-819/book/rust/listings`、`RUSTC_WRAPPER=''`、`NEXTEST_TEST_THREADS=4` 下 `cargo tb` exit 0，5312 passed / 1547 skipped / 1 slow，234.627s；日志 `docs/plans/attachments/819/cargo-tb-r5-4threads.log.txt`。Book master 已 fast-forward 到 `d05218b`；auto-lang ledger 已落 master `216c9629d`（投影提交重基到并行更新的 master，range-diff 等价）。P813-D1 已记录由本计划修复承接；归档与 worktree 清理待完成。 |
+| T-08 | merge | T-07 | 在 revision 5 最终复审通过后，对冻结 code/book 组合执行 `cargo tb`；核对生成副作用与主书仓原 9 项 WIP 哈希并保存可恢复副本；通过后执行合入与 P813-D1 承接 | ✅ 门禁：冻结 code `4c8a28b92dab3ef9ed270cf1a25c5414c002343a` + book `d05218bff49a52314ce436f78d9df2a69bc3357e` + auto-down `c39ac7f`；标准 target（未设置 `CARGO_TARGET_DIR`）、`AUTO_BOOK_LISTINGS=D:/autostack/.wt/lang-819/book/rust/listings`、`RUSTC_WRAPPER=''`、`NEXTEST_TEST_THREADS=4` 下 `cargo tb` exit 0，5312 passed / 1547 skipped / 1 slow，234.627s；日志 `docs/plans/attachments/819/cargo-tb-r5-4threads.log.txt`。Book master 已 fast-forward 到 `d05218b`；auto-lang ledger 已落 master `216c9629d`（投影提交重基到并行更新的 master，range-diff 等价）；归档计划、日志和债务回写已提交于 `643871808`。Book `plan-819-book`、auto-lang `plan-819-dev` 与 detached `auto-down` 工作树均经 guard clean 后移除，两个计划分支已删除，`lang-819` 空组目录已删除。P813-D1 已记录由本计划修复承接；其余 PLAN-813 门禁仍按原计划处理。批量回归当前未到期：最新收据覆盖至 812，之后无五的倍数计划落地且未超过 48 小时。 |
 
 ## 9. 复审记录
 
@@ -202,12 +202,15 @@ Auto `.at`、书稿 Markdown、现有 Rust 转译函数 `transpile_rust`、`test
 - 最终门禁：在同一冻结代码、标准 target 和完整测试选择下仅将 nextest 并发限制为 4，`cargo tb` exit 0，5312 passed、1547 skipped、1 slow，耗时 234.627s；日志 `docs/plans/attachments/819/cargo-tb-r5-4threads.log.txt`。这次完整绿档为 AC-06/09 提供门禁证据；不同配置的失败尝试均保留记录，不据以宣称默认并发全绿。
 - 收尾核验（合入前）：Book 计划树仍为 reviewed HEAD 且 clean、无 `.wrong.rs`；主书仓原有 9 个 modified golden 哈希与交付文件一致，门禁未指向主书仓，文件内容未变。最终门禁所需日志均已复制到 `docs/plans/attachments/819/` 并逐文件 SHA-256 核对，工作树删除后证据仍可读。next_responsible_role: merge。
 
-### 2026-10-19 revision 5 merge consolidation（进行中）
+### 2026-10-19 revision 5 merge consolidation（pass）
 
 - prepared：reviewed 基线为 PLAN-819 revision 5、Book `d05218bff49a52314ce436f78d9df2a69bc3357e`、Auto-lang code `4c8a28b92dab3ef9ed270cf1a25c5414c002343a`、auto-down `c39ac7f`；独立最终复审 pass；冻结 `cargo tb` pass（最终日志 SHA-256=`07107603224097f332c325d7602d46ff54d333f207ee70dd3a946e77c2f156e3`）。
 - landed：Book master 从 `fb744f52757b6155e8d7707c43323e3ea8ebd88f` `--ff-only` 到 `d05218bff49a52314ce436f78d9df2a69bc3357e`；交付差异为 23 个书稿文件。主书仓原 9 项 WIP 在合入前逐项哈希与计划输出一致，提交前保存于 Git stash `dd877c9e3fb4cc06aacfec1d0f2c78d5077f5a61`，合入后工作区文件哈希未变。Auto-lang ledger 投影提交原为 `37b5f305fe5bf95fd6c34ba53c5420dccc60ea8f`；并行 master 簿记 `aafdf9bd521a5c9ac6431822179dce27636a9df0` 到达后，重基得到 `216c9629d58cff34bd4e85c6137807ee1b7c503f`，`git range-diff` 显示该单提交补丁完全等价（`=`）；随后 auto-lang master `--ff-only` 到该提交。
 - ledger_refreshed：workspace=`D:/autostack/auto-lang`，tracked `.autoos/specs.json`，通道=`guarded offline projection`（无可用 store writer；`GET http://127.0.0.1:8080/api/specs` 连接拒绝）。准确备份=`%TEMP%/auto-lang-plan819-specs-before.json`；version `53→54`；SHA-256 `964087A9E4FE98CEB8E38F74C3DBFDBD192BDF84E64210FCA2869592DAC816D4` → `0e790ecd79706f9b7cf89cae3b56120b1d126826f224ec2d7d14b39f38e60a0a`；新增 `reviews:P819-R1`、`reports:P819-M`，两项均引用归档计划路径并带 plan/reviewed-commit/gate-log hash。六个 section 与其余全部条目、顶层字段逐结构保持相同；既有重复 ID `P014-1` 原样保留，无新的 ID 冲突。无 module contract 变化，故未增补 `designs` 项或 canonical Spec 文件。
-- evidence retention：target 中 29 个 Phase 1/2/3 测试及历史门禁日志与 5 个 merge gate / 隔离复跑日志共 34 份（8,754,225 bytes）复制到 `docs/plans/attachments/819/`，每个副本与源文件 SHA-256 相同；目录索引见 `docs/plans/attachments/819/README.md`。archive 与 worktree cleanup checkpoints 仍 pending。
+- evidence retention：target 中 29 个 Phase 1/2/3 测试及历史门禁日志与 5 个 merge gate / 隔离复跑日志共 34 份（8,754,225 bytes）复制到 `docs/plans/attachments/819/`，每个副本与源文件 SHA-256 相同；目录索引见 `docs/plans/attachments/819/README.md`。
+- archive_and_cleanup：归档及附件提交=`6438718084361bdf796295b2d91ab6558d581a6a`；Book `plan-819-book` 与 auto-lang `plan-819-dev` 均已删除，auto-down detached sibling 已按其 Git 管理上下文删除；三树在各自删除前均经 `wt-guard.sh` 确认为 clean 且无 reparse point。`git worktree list` 已无 PLAN-819 工作树，`plan-819-book` / `plan-819-dev` 分支已删除；`D:/autostack/.wt/lang-819` 空目录已移除。Book 主仓原 9 项 WIP 的可恢复 stash `dd877c9e3fb4cc06aacfec1d0f2c78d5077f5a61` 保留。
+- batch_regression：最近回归收据 `docs/plans/.last-batch-regression.json` 覆盖至 PLAN-812（`2026-10-19T08:36:46Z`）；其后本轮落地的计划号不满足 `%5 == 0`，且尚未超过 48 小时，故本次收尾不触发批量回归。下一次 merge 收尾继续按到期规则判定。
+- delivery：变更只涉及 Rust Book 代码示例、正文与转译 golden，以及计划/账本记录；没有 Rust 实现或运行时产物需要重建。
 
 ### 2026-10-19 work 收口（execution_done）
 
@@ -222,7 +225,7 @@ Auto `.at`、书稿 Markdown、现有 Rust 转译函数 `transpile_rust`、`test
 
 ## 10. 待澄清事项
 
-无待澄清项。Phase 3 实施、revision 5 独立最终复审、冻结组合 `cargo tb`、Book fast-forward 与账本刷新已通过；计划已交付归档，worktree 清理仍待完成并记录最终收据。
+无待澄清项。Phase 3 问题与修复已按用户要求直接记入 PLAN-819；revision 5 独立复审、冻结组合 `cargo tb`、Book fast-forward、账本刷新、计划归档及全部 PLAN-819 worktree 清理均已完成。门禁与清理证据见 §9。
 
 ## Spec-sync 回写记录
 
