@@ -1,18 +1,18 @@
 ---
 plan_id: PLAN-813
-status: execution_done
+status: executing
 feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 1
 created_at: 2026-10-19
 updated_at: 2026-10-19
 
-supersedes_spec_components: [docs/specs/website/design/learning-reading.md, docs/specs/auto-playground/project.md, docs/specs/stdlib/project.md]
+supersedes_spec_components: [docs/specs/website/design/learning-reading.md, docs/specs/website/project.md, docs/specs/auto-playground/project.md, docs/specs/stdlib/project.md]
 new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm]
-current_step: 7
+current_step: 3
 total_steps: 9
 ---
 
@@ -106,6 +106,7 @@ T-01 在批准后的专用树完成，产出决定记录并回写本计划，然
 | SD-02 | add | docs/specs/website/design/book-example-execution.md | 无全书执行合同 → 作者/完整源/元数据/入口/oracle 对应、Notes 共用和译本映射 | 防漂移假绿 | AC-01, AC-04, AC-06 |
 | SD-03 | modify | docs/specs/auto-playground/project.md | 现有 source/files/deadline → 请求输入/EOF/隔离/测试支持；字段经 T-01 落定 | 网页真运行 | AC-03, AC-04, AC-05 |
 | SD-04 | modify | docs/specs/stdlib/project.md | 现有库边界 → 实际补齐/修复的 API、导入及验证边界；零新增时明确消费更正 | 不凭书稿虚构库 | AC-05, AC-06 |
+| SD-05 | modify | docs/specs/website/project.md | 网站项目缺少 TAPL 执行合同入口 → 链接到规范执行合同 | 让网站规范导航覆盖本次新增合同 | AC-01, AC-02, AC-06 |
 
 ## 6. 测试设计
 
@@ -138,7 +139,7 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | AC-04 | work | 测试真执行断言且失败可见；错误诊断/编译期行为符合教学；actor/聊天有有限验证与完整工程边界。V-05/07。 |
 | AC-05 | work | 未定义 API/类型/依赖/错误片段全部闭环，已有库优先复用，新增库有真实声明/装配/正反例；无常量冒充文件/解析/超时。V-04/06/07。 |
 | AC-06 | work | 全有效源定向复验通过，每 Run 有输出/诊断/时限证据；书稿/实际源/Notes 一致，双语缺项补齐；负控能使门禁失败，其他书无新增回归。V-08。 |
-| AC-07 | review | 冻结 diff、AC-01..06、SD-01..04 独立审计，扫描遗漏/未批准延后/workaround；零新增未处理 warnings/debug/格式问题；门禁 pending 明示。 |
+| AC-07 | review | 冻结 diff、AC-01..06、SD-01..05 独立审计，扫描遗漏/未批准延后/workaround；零新增未处理 warnings/debug/格式问题；门禁 pending 明示。 |
 | AC-08 | merge | 分级门禁后双仓合入、规范/账本/索引回写、归档；fresh guard clean 后清理所有实施树/分支，tf 到期裁决及实际收据完整。 |
 
 ## 8. 执行步骤
@@ -148,16 +149,16 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | ID | owner_stage | 依赖 | 操作/真实路径或符号 | 结果及验证 |
 |---|---|---|---|---|
 | T-01 | work | 用户确认 r1 | 建实施组，核对 prepare-content.js/auto-fence-md.ts 与书稿；公共 CLI/API/test_code 跑 §5.1 探针，设计执行元数据和审计入口 | ✅ 完成：决策与基线探针已回写 §5.1 并记录于 `t01-findings.md`；T-02..06 依赖此合同 |
-| T-02 | work | T-01 | Playground `src/routes/run.rs,vm_runner.rs,project.rs`、auto-lang `src/lib.rs,vm/host_capabilities.rs,vm/ffi/stdlib.rs` 最小相关路径 | ✅ 完成：请求级有限输入/EOF、新 `read_line_opt`、带共享 deadline 的 `/api/test`、独立项目文件物化；`cargo check -p auto-lang`、`plan813_hosted_input` 3/3、`cargo build -p auto-playground --locked` 通过。 |
+| T-02 | work | T-01 | Playground `src/routes/run.rs,vm_runner.rs,project.rs`、auto-lang `src/lib.rs,vm/host_capabilities.rs,vm/ffi/stdlib.rs` 最小相关路径 | ⏳ 复开 PLAN813-R2：为 `/api/test` 补真实 handler/API 负例、共享 deadline 超时后恢复、并发请求输入隔离验收；当前仅有 VM 级输入并发测试和前端 mock 成功响应。 |
 | T-03 | work | T-01/02 | website CodeView.vue/AutoFence.vue、auto-fence-md.ts、prepare-content.js、scripts/build-playground-notes.mjs；必要的包 SnippetRunner.vue/usePlayground.ts/types.ts | ✅ 完成：共享 catalog 与执行描述、同源 API、可编辑完整源/输入/多文件/测试/展示模式；生产构建 97.22s 通过，`tests/tapl-run.spec.ts` 5/5。 |
 | T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | ✅ 完成：修复 ch00–13 作者源、Listing、预期与页面映射；ch08 按用户确认保留可运行改写并说明差异。全量源审计见 T-06。 |
-| T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成：修复 ch14–22、附录、工程/测试示例及受影响目标语言展示；中英书页与 Notes 共用执行合同。无可用 C 编译器，C 等价片段已人工核对但未声称编译通过。 |
-| T-06 | work | T-04/05 | 新增 scripts/check-tapl-examples.py、website/tests/tapl-run.spec.ts；最终清单和可重放证据、SD 草案 | ✅ 完成：最终 401 条（377 run / 14 test / 10 display-only）全部通过，0 失败，52.353s；错误 stdout 与失效锚点负控均能失败；生产构建、定向 Playwright 5/5、Python/Rust/TypeScript 定向示例检查及两仓 diff check 通过。执行报告 `attachments/813/tapl-full-execution.json.txt`，SHA-256 `87E76198D73D3C0A557B67546EB3238FF9DCB1612C239174062C7B7B6C9911D3`。未运行整档 Cargo。 |
-| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：两仓提交与基线、依赖版本、输入哈希、验证命令及边界均记录于 §9；实施提交冻结，转交独立复审。 |
+| T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ⏳ 复开 PLAN813-R1/R3：Base64/Hex 改为复用现有编码依赖的可运行双语源；补齐 ch22 可启动、可完成一次连接/消息往返/断开并干净关闭的本地工程，或在工作阶段提交所需契约调整。 |
+| T-06 | work | T-02/04/05 | 新增 scripts/check-tapl-examples.py、website/tests/tapl-run.spec.ts；最终清单和可重放证据、规范增量 | ⏳ 复开 PLAN813-R1/R2/R3：按修复后作者源和目录重新跑全 401 项审计、负控和涉及的双语页面/Notes 验证；更新全源报告及静态清单。旧报告中的 401/401 不证明错误的 display-only 处置符合语义。 |
+| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ⏳ 复开：修复提交后重新冻结两仓提交，更新输入/依赖/规范哈希和工作收据，再交最终复审。 |
 | T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | AC-07，pass 后 reviewed；merge-owned 全档门禁 pending，不能声称交付完成 |
 | T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | AC-08；每树移除前 wt-guard clean，保留他人 WIP，提供实际收据 |
 
-T-01..07 已完成；T-08 独立复审与 T-09 合并仍待执行。全源验收以最终执行报告为证，不以静态普查或基线探针冒算通过；merge-owned Cargo 门禁保持 pending。
+T-01、T-03、T-04 保持完成；复审已复开 T-02、T-05、T-06、T-07。T-08 本轮 needs_fix，T-09 尚未开始。先闭合 PLAN813-R1..R4，再重冻源与验收报告；merge-owned Cargo 门禁继续 pending。
 
 ## 9. 复审记录
 
@@ -177,6 +178,24 @@ T-01..07 已完成；T-08 独立复审与 T-09 合并仍待执行。全源验收
 - 规范增量候选仍为 SD-01..04（见 §5）；合并前执行的 merge-owned 门禁 `cargo t`、VM 触面 `cargo tv`、book 触面 `cargo tb` 均 pending。AC-08 的双仓落地、规范/ledger/index、归档、fresh guard 与清理属于 T-09，尚未宣称完成。工作树冻结后无 work-owned 待办；依赖树中的他人 WIP 需保留并在复审/合并收据继续注明。
 
 stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | base_commit: `30c1b9a7edc3112cac99089d14169d9f9bdeaeb6` + `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a` | code_commit: `cacb9fcc335b4addc5a0db67e7c64282b30d445e` + `de49ae222da45fd9b33eeb443fdd776658a1750c` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` (12 tracked WIP files preserved) | task_ids: T-01..T-07 | evidence: §9 and `attachments/813/tapl-full-execution.json.txt` | blockers: none for work-owned criteria; C compiler unavailable and full-repository rustfmt blocked by pre-existing issues, both disclosed above | next_responsible_role: review
+
+### 2026-10-19 最终复审 R1（needs_fix）
+
+- stage: review；review_scope: final；reviewer_identity/limitations: Codex 当前会话，与实施共用同一对话上下文；未创建独立任务或代理。结论从冻结提交、作者源、规范差异和测试断言重新构建，不把 work handoff 或测试总数当作验收结论。
+- plan_id/revision: PLAN-813 / 1；code_commit: `cacb9fcc335b4addc5a0db67e7c64282b30d445e`；book_commit: `de49ae222da45fd9b33eeb443fdd776658a1750c`；base_commit: auto-lang `30c1b9a7edc3112cac99089d14169d9f9bdeaeb6`，book `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a`；worktrees/branches: `D:/autostack/.wt/lang-813/auto-lang` / `plan-813-dev`，`D:/autostack/.wt/lang-813/book` / `plan-813-book`。
+- dependency_revisions: `auto-down` `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`；其 12 个既有修改文件未纳入复审改动。
+- spec_inputs（SHA-256，来自 code_commit 工作树）：`website/design/learning-reading.md` `6D72CF5DAE547E6DE28F03DB7E522F1DCD4312B7BECE8FCBAE9A45C87C9BF5EA`；`website/design/book-example-execution.md` `E190527D16F87830F0584844D60FD33B3BBD211C007CEE61D30B48BB184507F1`；`website/project.md` `275EB05793589D1F20875C5BBF4CF8134DD24F068FD2029BCCE7866B73138039`；`auto-playground/project.md` `87039E4443AB4A0F5C1178979EB0E5D7A6ACA6F899FE98CFF7362F1B58181ADD`；`stdlib/project.md` `02CD89AA2C415100ACA8A49F708EBCC7C6B0159973B47A046A0CF7530CB94CAE`。
+- acceptance_results: AC-01 pass（独立计数 54 页 / 1829 个围栏 / 401 个 catalog 项，模式为 377 run、14 test、10 display-only）；AC-02 partial（Playwright 5/5 与生产构建证据，但前端 API 用 mock）；AC-03 partial（VM 级空行/EOF/并发输入覆盖，没有 HTTP handler 并发输入隔离验收）；AC-04 fail（缺失测试断言失败/超时恢复证据，且聊天章没有完整本地服务器工程）；AC-05 fail（Base64/Hex 现有运行时 API 被误判不存在；聊天工程不完整）；AC-06 partial（报告记录 401/401 和负控通过，但 Base64/Hex 的 display-only 分类掩盖了可运行条目）；AC-07 fail（Spec 影响元数据漏掉已修改的 `docs/specs/website/project.md`）；AC-08 pending。
+- evidence: 计数由 `book/tapl` Markdown 与 `examples.json` 独立读取重算；编码 API 可在 `crates/auto-lang/src/vm/native_catalog.rs` 查到 Base64 IDs 2710/2711、Hex IDs 2720/2721，并由 `test/cookbook/encoding/004_base64/base64.at` 展示 `dep` / `use.rs` 形式；`crates/auto-lang/tests/plan813_hosted_input.rs` 仅含输入/HashSet 测试，`website/tests/tapl-run.spec.ts` 的 `/api/test` 用 mock 返回成功；`book/tapl/ch22-chat-server.md` 声称完整服务器，`listings/ch22/listing-22-06/pac.at` 只有空 `app`，对应 Auto 源是有限内存状态演示；code diff 含 `docs/specs/website/project.md`，但 §5 的 SD 表原仅列 SD-01..04。原全量报告 `attachments/813/tapl-full-execution.json.txt`（SHA-256 `87E76198D73D3C0A557B67546EB3238FF9DCB1612C239174062C7B7B6C9911D3`）绑定旧源，需在修复后重跑。
+
+| finding_id | severity / type | affected AC / tasks | finding and required correction |
+|---|---|---|---|
+| PLAN813-R1 | P1 / 原验收缺口 | AC-05/06；T-05/T-06 | EN/ZH 的 Base64 与 Hex 示例在 `examples.json` 中标为 display-only，作者源只输出“不支持”占位；运行时已有可调用依赖。复用现有依赖 API 补齐真实编码/解码示例、预期和双语说明，再全源验证。 |
+| PLAN813-R2 | P1 / 原验收缺口 | AC-03/04/06；T-02/T-06 | `/api/test` 只有 mock 成功 UI 用例；没有实际 handler/API 的正确测试、故意失败断言、超时终止后下一请求成功及并发输入隔离证据。补真实定向用例并检查响应计数、诊断、deadline 与恢复。 |
+| PLAN813-R3 | P1 / 原验收缺口 | AC-04/05/06；T-05/T-06 | ch22 目标要求完整本地工程及 connect/send/reply/disconnect/clean shutdown。现有 22-5/22-6 是有限内存演示，22-6 的 `pac.at` 是空项目；书中运行时注记没有替代本地工程验收。补可启动工程和完整周期验收；若现有语言/运行时边界使其超出已批准设计，先按流程提交契约修订，不得把静态或内存演示记作完成。 |
+| PLAN813-R4 | P2 / 收口缺陷 | AC-07；T-07 | 代码提交修改 `docs/specs/website/project.md` 并增加导航链接，但 frontmatter 与规范增量表遗漏该文件。已补 `supersedes_spec_components` 与 SD-05，后续须随修订后 diff 再核对。 |
+
+merge_owned_gates: `cargo t`、`cargo tv`、`cargo tb` 均 pending；本次没有运行。outcome: needs_fix；Plan 状态回到 `executing`，T-02/T-05/T-06/T-07 复开，current_step=3；next=work，完成 R1..R4 后提交新冻结提交并重新最终复审。
 
 ## 10. 待澄清事项
 
