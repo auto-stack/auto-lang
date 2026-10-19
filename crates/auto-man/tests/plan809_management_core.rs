@@ -681,15 +681,32 @@ fn dump_vcvars_env() -> Option<Vec<(String, String)>> {
         .output()
         .ok()?;
     let text = String::from_utf8_lossy(&out.stdout).to_string();
-    let wanted = ["PATH=", "INCLUDE=", "LIB=", "LIBPATH="];
-    let env: Vec<(String, String)> = text
-        .lines()
-        .filter_map(|l| {
-            wanted
-                .iter()
-                .find(|w| l.starts_with(*w))
-                .map(|w| (w[..w.len() - 1].to_string(), l[w.len()..].to_string()))
-        })
-        .collect();
-    (env.len() >= 2).then_some(env)
+
+    // R8：Windows set dump 的变量名为注册大小写（常见 Path=/Include=）——
+    // 大小写不敏感匹配，键名归一为大写；且注入后必须真能定位 cl（否则
+    // 返回 None 走 pending，不假成功）。
+    let wanted = ["PATH", "INCLUDE", "LIB", "LIBPATH"];
+    let mut env: Vec<(String, String)> = Vec::new();
+    for l in text.lines() {
+        if let Some((k, v)) = l.split_once('=') {
+            let ku = k.trim().to_ascii_uppercase();
+            if wanted.contains(&ku.as_str()) {
+                env.push((ku, v.to_string()));
+            }
+        }
+    }
+
+    if env.len() >= 2 {
+        let saved = std::env::var_os("PATH");
+        for (k, v) in &env {
+            std::env::set_var(k, v);
+        }
+        let ok = which("cl").is_some();
+        if let Some(p) = saved {
+            std::env::set_var("PATH", p);
+        }
+        ok.then_some(env)
+    } else {
+        None
+    }
 }
