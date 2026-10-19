@@ -1293,12 +1293,14 @@ struct WorkerInner {
     resize_tx: SyncSender<ResizeMessage>,
     caches: Mutex<PipelineCaches>,
     latest: Mutex<HashMap<MediaAssetId, MediaLatestWins>>,
-    /// Resize-lane occupancy gauges (review R4: sound Work-message
-    /// occupancy). `resize_enqueued` counts Work messages RESERVED before
-    /// the send (rolled back on the receiver-gone path); `resize_handled`
-    /// counts Work messages the lane received. Stop counts on NEITHER
-    /// side. Invariant: handled <= enqueued at every instant; the public
-    /// getter loads handled FIRST so the difference never underflows.
+    /// Resize-lane Work gauges (review R5 semantics): `resize_enqueued`
+    /// counts Work messages ACCEPTED into the channel (incremented only
+    /// after a successful send — a decode thread blocked mid-send is NOT
+    /// counted); `resize_handled` counts Work messages the lane has TAKEN
+    /// (incremented at receive, before processing; the stopping fast-path
+    /// settles without processing). Stop counts on NEITHER side, and the
+    /// shutdown order guarantees no Work is accepted behind Stop, so after
+    /// shutdown completes enqueued == handled exactly.
     resize_enqueued: AtomicU64,
     resize_handled: AtomicU64,
 }
@@ -1311,8 +1313,13 @@ static NEXT_MEDIA_WORK_ID: AtomicU64 = AtomicU64::new(1);
 pub struct MediaWorkerPool {
     inner: Arc<WorkerInner>,
     // Join handles sit behind a mutex so shutdown/drop can run through &self
-    // (the pool is shared as a process static and by MediaRuntime).
-    workers: Mutex<Vec<JoinHandle<()>>>,
+    // (the pool is shared as a process static and by MediaRuntime). The
+    // resize lane is tracked separately: shutdown joins the DECODE workers
+    // first (all senders gone), THEN sends Stop and joins the lane — no Work
+    // can be accepted behind the stop marker, so the occupancy gauges settle
+    // to the true terminal state (review R5).
+    resize_worker: Mutex<Option<JoinHandle<()>>>,
+    decode_workers: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl MediaWorkerPool {
@@ -1346,10 +1353,10 @@ impl MediaWorkerPool {
                 run_resize_worker(resize_inner, resize_rx);
             })
             .expect("spawn media resize worker");
-        let mut workers = vec![resize_thread];
+        let mut decode_workers = Vec::new();
         for name in ["media-decode-1", "media-decode-2"] {
             let worker_inner = inner.clone();
-            workers.push(
+            decode_workers.push(
                 thread::Builder::new()
                     .name(name.into())
                     .spawn(move || {
@@ -1360,12 +1367,19 @@ impl MediaWorkerPool {
         }
         Self {
             inner,
-            workers: Mutex::new(workers),
+            resize_worker: Mutex::new(Some(resize_thread)),
+            decode_workers: Mutex::new(decode_workers),
         }
     }
 
     pub fn worker_count(&self) -> usize {
-        self.workers.lock().map(|w| w.len()).unwrap_or(0)
+        let decode = self.decode_workers.lock().map(|w| w.len()).unwrap_or(0);
+        let resize = self
+            .resize_worker
+            .lock()
+            .map(|w| w.is_some() as usize)
+            .unwrap_or(0);
+        decode + resize
     }
 
     pub fn submit_path(
@@ -1432,16 +1446,20 @@ impl MediaWorkerPool {
         self.inner.caches.lock().ok()?.decoded.get_rendered(id)
     }
 
-    /// Resize-lane backlog: Work messages reserved into the channel minus
-    /// Work messages the lane received. Loads handled FIRST — since
-    /// handled <= enqueued at every instant, a later enqueued load can only
-    /// keep the difference non-negative (momentary under-report during a
-    /// race, never over-report). A backlog >= channel capacity (8) proves
-    /// the bounded channel FULL; 0 means drained/idle; after shutdown the
-    /// value stays 0 (Stop is not counted).
+    /// Resize-lane in-channel Work backlog: messages ACCEPTED into the
+    /// channel minus messages the lane has TAKEN. Reads enqueued first,
+    /// then handled: a Work taken between the two loads is subtracted
+    /// against an enqueue that may postdate the first load, so the value
+    /// can transiently UNDER-report (never above the true outstanding
+    /// count, never negative — saturating). A decode thread blocked
+    /// mid-send is not counted (not yet in the channel). A backlog >=
+    /// channel capacity (8) therefore proves all 8 slots hold accepted,
+    /// untaken Work — the bounded channel is FULL. 0 == drained/idle;
+    /// after shutdown completes the value is exactly 0 (no Work can be
+    /// accepted behind Stop).
     pub fn resize_backlog(&self) -> u64 {
-        let handled = self.inner.resize_handled.load(Ordering::Acquire);
         let enqueued = self.inner.resize_enqueued.load(Ordering::Acquire);
+        let handled = self.inner.resize_handled.load(Ordering::Acquire);
         enqueued.saturating_sub(handled)
     }
 
@@ -1455,9 +1473,24 @@ impl MediaWorkerPool {
             state.jobs.clear();
             self.inner.wake.notify_all();
         }
+        // Join the DECODE workers (the channel's only senders) first: once
+        // they are gone, no Work can be accepted behind the stop marker.
+        // In-flight decoders finish their current item (bounded) and exit on
+        // `stopping`; a send racing this window either lands ahead of Stop
+        // (the lane settles it below) or fails once the receiver is gone
+        // (sender-side rollback settles it).
+        if let Ok(mut decoders) = self.decode_workers.lock() {
+            for worker in decoders.drain(..) {
+                let _ = worker.join();
+            }
+        }
+        // Now the lane is the only participant: send Stop and join it. The
+        // lane settles every remaining Work (fast-path discard while
+        // stopping), so the occupancy gauges return to the true terminal
+        // state when shutdown completes.
         let _ = self.inner.resize_tx.send(ResizeMessage::Stop);
-        if let Ok(mut workers) = self.workers.lock() {
-            for worker in workers.drain(..) {
+        if let Ok(mut lane) = self.resize_worker.lock() {
+            if let Some(worker) = lane.take() {
                 let _ = worker.join();
             }
         }
@@ -1518,13 +1551,13 @@ fn run_decode_worker(inner: Arc<WorkerInner>) {
         })();
         match result {
             Ok(decoded) => {
-                // Reserve BEFORE the (possibly blocking) send: the receiver
-                // can never handle an uncounted Work.
-                inner.resize_enqueued.fetch_add(1, Ordering::AcqRel);
-                if inner.resize_tx.send(ResizeMessage::Work(decoded)).is_err() {
-                    // Lane gone: settle the reservation.
-                    inner.resize_handled.fetch_add(1, Ordering::AcqRel);
-                    return;
+                if inner.resize_tx.send(ResizeMessage::Work(decoded)).is_ok() {
+                    // Count only ACCEPTED Work (a thread blocked mid-send is
+                    // not in the channel yet); the receiver takes it after
+                    // the send returns, so the take can only be counted later.
+                    inner.resize_enqueued.fetch_add(1, Ordering::AcqRel);
+                } else {
+                    // Receiver gone: nothing was accepted, nothing to settle.
                 }
             }
             Err(error) => {
@@ -1578,10 +1611,27 @@ fn run_resize_worker(inner: Arc<WorkerInner>, resize_rx: Receiver<ResizeMessage>
     while let Ok(message) = resize_rx.recv() {
         let ResizeMessage::Work(work) = message else {
             // Stop is control-plane only — it is not a Work message and
-            // counts on neither occupancy gauge.
+            // counts on neither gauge. The shutdown order (decode workers
+            // joined before Stop is sent) means nothing can be accepted
+            // behind this marker.
             break;
         };
         inner.resize_handled.fetch_add(1, Ordering::AcqRel);
+        {
+            // Stopping fast-path: settle the take and discard without the
+            // heavy transform — the registry is closing anyway and publish
+            // would be rejected; this keeps shutdown bounded by decode,
+            // not by resize, work.
+            let stopping = inner
+                .state
+                .lock()
+                .map(|state| state.stopping)
+                .unwrap_or(true);
+            if stopping {
+                drop(work);
+                continue;
+            }
+        }
         if let Ok(mut latest) = inner.latest.lock() {
             if !latest.get_mut(&work.item.ticket.id).is_some_and(|gate| {
                 gate.accept_publish(work.item.generation, work.item.view_revision)
@@ -2911,7 +2961,6 @@ mod tests {
 
     #[test]
     fn concurrent_duplicate_shutdown_returns_only_when_fully_closed() {
-        use std::sync::atomic::Ordering;
         // Review F811-R4-02 repro as a permanent oracle: real decode work
         // in flight, caller 1 starts shutdown, caller 2 enters AFTER the
         // closing latch is visible. Caller 2's shutdown() must NOT return
@@ -3060,6 +3109,70 @@ mod tests {
         // Repeated reads after close remain stable.
         for _ in 0..10 {
             assert_eq!(runtime.worker_pool().resize_backlog(), 0);
+        }
+    }
+
+    #[test]
+    fn resize_backlog_is_exactly_zero_after_inflight_shutdown() {
+        // Review F811-R5-01 repro as a permanent oracle: real decode work
+        // in flight (first item transforming, second decoding) when
+        // shutdown runs. After shutdown completes — threads joined,
+        // registry terminal — the gauge must read EXACTLY 0, matching the
+        // true terminal state (was: stuck at 1 from a Work accepted behind
+        // Stop that the lane never settled).
+        for trial in 0..3 {
+            let runtime = super::MediaRuntime::new(Duration::from_secs(600));
+            let registry = runtime.registry().clone();
+            let payload: Arc<[u8]> = Arc::from(png_bytes(3200, 2400).into_boxed_slice());
+            let target = RenditionSpec::viewport(1920, 1440);
+            let mut tickets = Vec::new();
+            for i in 0..2u64 {
+                let ticket = registry.queue(
+                    MediaAssetKey {
+                        source_fingerprint: format!("inflight-{trial}-{i}"),
+                        orientation: Default::default(),
+                        rendition: target.clone(),
+                        revision: i + 1,
+                    },
+                    MediaMetadata::default(),
+                );
+                assert!(runtime.worker_pool().submit_bytes(
+                    ticket,
+                    payload.clone(),
+                    target.clone(),
+                    MediaPriority::Current,
+                    0,
+                    i + 1
+                ));
+                tickets.push(ticket);
+            }
+            // Wait until work is genuinely in flight (first item past
+            // decode, second readable/decoding), then shut down mid-flight.
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                let stats = registry.stats();
+                let first_busy = matches!(
+                    registry.lookup(tickets[0].id, tickets[0].revision),
+                    MediaLookup::Pending
+                ) && stats.running >= 1;
+                if first_busy && stats.queued + stats.running >= 2 {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            shutdown_under_external_deadline(&runtime, Duration::from_secs(60));
+            assert!(runtime.is_closed());
+            assert_eq!(registry.pending_count(), 0, "terminal registry");
+            assert_eq!(
+                runtime.worker_pool().worker_count(),
+                0,
+                "trial {trial}: all threads joined"
+            );
+            assert_eq!(
+                runtime.worker_pool().resize_backlog(),
+                0,
+                "trial {trial}: gauge reads the TRUE terminal state (0), not a phantom Work"
+            );
         }
     }
 
