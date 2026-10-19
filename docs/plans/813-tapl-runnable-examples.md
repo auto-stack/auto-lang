@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-813
-status: execution_done
+status: executing
 feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 1
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm]
-current_step: 8
+current_step: 6
 total_steps: 9
 ---
 
@@ -153,12 +153,12 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-03 | work | T-01/02 | website CodeView.vue/AutoFence.vue、prepare-content.js 与执行描述消费者 | ✅ 完成：共享 catalog、同源 API、完整可编辑源/输入/多文件/测试/展示和本地运行模式；最终生产构建 96.38s 通过，`tests/tapl-run.spec.ts` 6/6。 |
 | T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | ✅ 完成：修复 ch00–13 作者源、Listing、预期与页面映射；ch08 按用户确认保留可运行改写并说明差异；ch09 文件内容去除重复末尾换行。 |
 | T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成（闭合 R1/R3）：Base64/Hex 复用现有依赖并可运行；新增 loopback TCP server/client 本地工程及明确范围说明，完成连接、消息往返、断开和优雅关停验收。 |
-| T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R1/R2/R3）：54 页、1831 围栏、406 个目录项（382 run、14 test、6 display-only、4 local-only）；396 个 run/test 项 396/396 通过。目录哈希/行锚点无错；有效样例通过，变异输出和陈旧锚点负控均以退出码 1 失败。 |
-| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：修复后代码与书稿分别冻结为 `b8901c4e4de237c53cd89cfa23b844066234fb70` / `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`，两个实施树 clean；更新收据与源哈希并核对 SD-01..05。 |
+| T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ⏳ 复开 PLAN813-R5：执行合同规范必须准确覆盖 local-only / expected-error / stdout_contains；目录审计声称拒绝孤立锚点前，补充孤立 `example-id` 负控并覆盖 54 页。 |
+| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ⏳ 复开：规范与 checker 修订提交后重冻实现树，更新完整 hash/证据，再交最终复审。 |
 | T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | AC-07，pass 后 reviewed；merge-owned 全档门禁 pending，不能声称交付完成 |
 | T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | AC-08；每树移除前 wt-guard clean，保留他人 WIP，提供实际收据 |
 
-T-01..T-07 已完成；PLAN813-R1..R4 均有对应修复和证据。当前进入 T-08 最终复审；`cargo t`、`cargo tv`、`cargo tb` 仍是复审通过后的 merge-owned 门禁，未在执行阶段提前运行。
+T-01..T-05 保持完成。T-08 的 R2 复审发现 PLAN813-R5 并退回工作阶段，当前复开 T-06/T-07；修复后需以新冻结提交重新做最终复审。`cargo t`、`cargo tv`、`cargo tb` 仍是复审通过后的 merge-owned 门禁，未在执行阶段提前运行。
 
 ## 9. 复审记录
 
@@ -207,6 +207,15 @@ merge_owned_gates: `cargo t`、`cargo tv`、`cargo tb` 均 pending；本次没�
 - merge_owned_gates: `cargo t`、VM 触面 `cargo tv`、书测试触面 `cargo tb` 均 pending；没有在 work/internal review 阶段运行全档。`tf` 由 T-09 主检出按批量回归到期规则裁决。
 
 stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | reviewed_commit: `b8901c4e4de237c53cd89cfa23b844066234fb70` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | diff_base: `cacb9fcc335b4addc5a0db67e7c64282b30d445e` + `de49ae222da45fd9b33eeb443fdd776658a1750c` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | task_ids: T-02,T-05,T-06,T-07 | evidence: this record and `attachments/813/tapl-full-execution.json.txt` | blockers: no work-owned criteria; C compiler unavailable, disclosed above | next_responsible_role: review
+
+### 2026-10-19 最终复审 R2（needs_fix）
+
+- stage: review；review_scope: final；reviewer_identity/limitations: Codex 当前会话，与实施共用上下文；按规范要求未伪称独立任务/代理，重新从当前冻结提交、实际 Spec 与验证器行为核对。Plan revision 1；worktree/branch 为 `D:/autostack/.wt/lang-813/auto-lang` / `plan-813-dev` 与 `D:/autostack/.wt/lang-813/book` / `plan-813-book`；被审提交 auto-lang `b8901c4e4de237c53cd89cfa23b844066234fb70`、book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`，相对 work handoff 基线 `cacb9fcc335b4addc5a0db67e7c64282b30d445e` / `de49ae222da45fd9b33eeb443fdd776658a1750c`，两个树当时 clean。
+- acceptance_results：AC-01..06 依工作记录通过（406 个目录入口与 1831 围栏、396/396 执行、handler 3/3、页面 6/6、chat 本地真实循环）；AC-07 needs_fix；AC-08 pending。Cargo `t/tv/tb` 仍为 merge-owned pending。
+- finding PLAN813-R5 | P1 / Spec 与验证器合同不一致 | AC-01/AC-07；T-06/T-07：新 `book-example-execution.md` 只列 run/test/display-only，遗漏实际使用的 `local-only` 和支持的 `expected-error`；run 预期漏 `stdout_contains`；还把一次性 401 项旧基线写进规范。该 Spec 声称目录审计拒绝孤立锚点，但 checker 只验证 catalog→页面方向，未扫描页面中未入册的 `example-id`。`stdlib/project.md` 未记录本次实际修正的 `TcpStream.read_line` 在 peer EOF 时返回空字符串的行为。
+- required correction：修正规范字段/模式/预期及历史计数表述；将 EOF 行为沉淀到 stdlib Spec；补齐 page→catalog 完整性审计并用真实孤立锚点变异验证失败；对修订后的 54 页目录和代表性执行路径重新回归。此前代码与书稿行为证据只覆盖当前提交，不自动覆盖新 validator/Spec 修订。
+- evidence：直接读取代码冻结 diff、`docs/specs/website/design/book-example-execution.md`、`docs/specs/stdlib/project.md` 与 checker；独立枚举 `book/tapl/*.md` 中 406 个 example-id（当时 406 个唯一目录项全部对应，未变异时无孤立项），确认这证明 valid mapping，但并未证明 validator 对孤立项会拒绝。Spec 输入 hashes沿用本计划上一条 work handoff，修订后重取。
+- outcome: needs_fix；状态回到 `executing`，T-06/T-07 复开，current_step=6；next=work。该次问题是在前两轮 review/findings 后从完整规范契约与验证器反方向覆盖审计中发现；第三次 final review 前要先完成此处提出的 coverage/design adjustment，不以修订文案替代负控证据。
 
 ## 10. 待澄清事项
 
