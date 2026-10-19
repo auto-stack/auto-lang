@@ -32201,16 +32201,37 @@ fn typed_notify_table() -> &'static std::sync::Mutex<Vec<TypedNotifyEntry>> {
     TYPED_NOTIFY_TABLE.get_or_init(|| std::sync::Mutex::new(Vec::new()))
 }
 
-/// merged 侧是否有待处理媒体面（唤醒门控）：存在未终态资产，或任一
-/// 订阅仍在等待 loaded/error 派发。
+/// 级联重扫标志（review R4）：sweep 派发了事件后置位——事件 handler 可能在
+/// 回调内换 src/卸载/重挂载，改后的视图需要至少一次后续 sweep 完成注册/
+/// 退订；该标志让唤醒门在「无 pending、无 awaiting」时也再跳一拍，直到
+/// 事件链静止（无新派发即清零，空闲零消息保持）。
+static TYPED_RESWEEP: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// merged 侧是否有待处理媒体面（唤醒门控）：存在未终态资产、任一订阅仍在
+/// 等待 loaded/error 派发、或上一拍派发过事件（视图可能已被 handler 改写）。
 fn typed_media_active() -> bool {
     if auto_media_core::image_pipeline::pending_media_count() > 0 {
+        return true;
+    }
+    if TYPED_RESWEEP.load(std::sync::atomic::Ordering::Acquire) {
         return true;
     }
     typed_notify_table()
         .lock()
         .map(|table| table.iter().any(TypedNotifyEntry::awaiting_notify))
         .unwrap_or(false)
+}
+
+/// merged 媒体独立唤醒订阅（review R3/R4）：50ms 心跳，仅在
+/// `typed_media_active()` 为真时发消息；全部静止后订阅产出为零（空闲零
+/// 消息）。同步与 async（with-task）启动入口共用同一装配。
+fn typed_media_wake_subscription<C: Component + 'static>() -> iced::Subscription<WrapperMsg<C>>
+where
+    C::Msg: Send + 'static,
+{
+    iced::time::every(std::time::Duration::from_millis(50)).filter_map(|_| {
+        typed_media_active().then(|| WrapperMsg::<C>::Debug("__media_wake__".to_string()))
+    })
 }
 
 /// PLAN-811 R3: 从类型化 View 收集带回调的 ImageSurface。遍历经
@@ -32271,6 +32292,9 @@ where
         return;
     }
     TYPED_SWEEP_SEEN_GEN.store(gen, std::sync::atomic::Ordering::Release);
+    // A fresh pass consumes the reschedule credit; if THIS pass fires, the
+    // credit is re-earned below (handlers may rewrite the view).
+    TYPED_RESWEEP.store(false, std::sync::atomic::Ordering::Release);
 
     let mut fire_loaded: Vec<C::Msg> = Vec::new();
     let mut fire_error: Vec<(C::Msg, String)> = Vec::new();
@@ -32329,11 +32353,18 @@ where
         }
     }
     drop(table);
+    let fired = !fire_loaded.is_empty() || !fire_error.is_empty();
     for (msg, _) in fire_error {
         component.on(msg);
     }
     for msg in fire_loaded {
         component.on(msg);
+    }
+    if fired {
+        // Handlers ran during this pass and may have swapped/unmounted/
+        // remounted surfaces: the rewritten view needs one more sweep to
+        // register/unregister — keep the wake gate alive for it.
+        TYPED_RESWEEP.store(true, std::sync::atomic::Ordering::Release);
     }
 }
 
@@ -32857,15 +32888,9 @@ where
                 ms as u64,
             )));
         }
-        // PLAN-811 R3: 媒体独立唤醒（merged 轨，镜像 VM 轨 __media_tick
-        // 泵）：仅当存在未终态媒体资产或任一订阅仍在等待 loaded/error
-        // 派发时吊 50ms 心跳；全部派发完 → 订阅消失（有界，空闲零消息）。
-        // 不能由应用自带 tick 代替——无 timer 的合法组件也必须能收到事件。
-        subs.push(
-            iced::time::every(std::time::Duration::from_millis(50)).filter_map(|_| {
-                typed_media_active().then(|| WrapperMsg::<C>::Debug("__media_wake__".to_string()))
-            }),
-        );
+        // PLAN-811 R3/R4: 媒体独立唤醒（同步入口装配；与 with-task 入口
+        // 共用 media_wake_subscription——门控/节拍/空闲零消息语义一致）。
+        subs.push(typed_media_wake_subscription::<C>());
         iced::Subscription::batch(subs)
     })
     .window(iced::window::Settings {
@@ -33246,6 +33271,9 @@ where
     )
     .subscription(move |w| {
         let mut subs: Vec<iced::Subscription<WrapperMsg<C>>> = vec![devtools_subscription(w)];
+        // PLAN-811 R4: async（with-task）启动入口与同步入口共用同一媒体
+        // 唤醒装配——async-init 应用同样不依赖应用 timer 收到事件。
+        subs.push(typed_media_wake_subscription::<C>());
         // Plan 407 + 014 直键入:with-task 启动变体也挂 tick 订阅
         // (run_app_devtools 同款;此前 async init 应用无 tick——at-app 的
         // timer 驱动流式刷新/banner 收割全靠它,无按钮后没有别的 tick 源)。

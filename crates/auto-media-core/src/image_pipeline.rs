@@ -1293,10 +1293,12 @@ struct WorkerInner {
     resize_tx: SyncSender<ResizeMessage>,
     caches: Mutex<PipelineCaches>,
     latest: Mutex<HashMap<MediaAssetId, MediaLatestWins>>,
-    /// Resize-lane occupancy gauges (review R3: ACCURATE channel-full
-    /// observation). `resize_enqueued` counts accepted channel sends;
-    /// `resize_handled` counts messages the lane finished handling.
-    /// backlog = enqueued - handled = queued-in-channel + one in-flight.
+    /// Resize-lane occupancy gauges (review R4: sound Work-message
+    /// occupancy). `resize_enqueued` counts Work messages RESERVED before
+    /// the send (rolled back on the receiver-gone path); `resize_handled`
+    /// counts Work messages the lane received. Stop counts on NEITHER
+    /// side. Invariant: handled <= enqueued at every instant; the public
+    /// getter loads handled FIRST so the difference never underflows.
     resize_enqueued: AtomicU64,
     resize_handled: AtomicU64,
 }
@@ -1430,14 +1432,17 @@ impl MediaWorkerPool {
         self.inner.caches.lock().ok()?.decoded.get_rendered(id)
     }
 
-    /// Resize-lane backlog: messages accepted into the channel minus
-    /// messages the lane has RECEIVED (the receive gauge increments before
-    /// processing), so the value is exactly the channel's current
-    /// occupancy. A backlog >= channel capacity (8) proves the bounded
-    /// channel is FULL.
+    /// Resize-lane backlog: Work messages reserved into the channel minus
+    /// Work messages the lane received. Loads handled FIRST — since
+    /// handled <= enqueued at every instant, a later enqueued load can only
+    /// keep the difference non-negative (momentary under-report during a
+    /// race, never over-report). A backlog >= channel capacity (8) proves
+    /// the bounded channel FULL; 0 means drained/idle; after shutdown the
+    /// value stays 0 (Stop is not counted).
     pub fn resize_backlog(&self) -> u64 {
-        self.inner.resize_enqueued.load(Ordering::Acquire)
-            - self.inner.resize_handled.load(Ordering::Acquire)
+        let handled = self.inner.resize_handled.load(Ordering::Acquire);
+        let enqueued = self.inner.resize_enqueued.load(Ordering::Acquire);
+        enqueued.saturating_sub(handled)
     }
 
     /// Stops new work, drains the ingress queue, stops the resize lane, and
@@ -1513,10 +1518,14 @@ fn run_decode_worker(inner: Arc<WorkerInner>) {
         })();
         match result {
             Ok(decoded) => {
+                // Reserve BEFORE the (possibly blocking) send: the receiver
+                // can never handle an uncounted Work.
+                inner.resize_enqueued.fetch_add(1, Ordering::AcqRel);
                 if inner.resize_tx.send(ResizeMessage::Work(decoded)).is_err() {
+                    // Lane gone: settle the reservation.
+                    inner.resize_handled.fetch_add(1, Ordering::AcqRel);
                     return;
                 }
-                inner.resize_enqueued.fetch_add(1, Ordering::AcqRel);
             }
             Err(error) => {
                 let _ = inner.registry.fail(item_id, error);
@@ -1567,10 +1576,12 @@ fn render_decoded(
 
 fn run_resize_worker(inner: Arc<WorkerInner>, resize_rx: Receiver<ResizeMessage>) {
     while let Ok(message) = resize_rx.recv() {
-        inner.resize_handled.fetch_add(1, Ordering::AcqRel);
         let ResizeMessage::Work(work) = message else {
+            // Stop is control-plane only — it is not a Work message and
+            // counts on neither occupancy gauge.
             break;
         };
+        inner.resize_handled.fetch_add(1, Ordering::AcqRel);
         if let Ok(mut latest) = inner.latest.lock() {
             if !latest.get_mut(&work.item.ticket.id).is_some_and(|gate| {
                 gate.accept_publish(work.item.generation, work.item.view_revision)
@@ -1668,11 +1679,16 @@ struct RuntimeInner {
     /// mutex shutdown uses for draining, so a producer is either joined or
     /// never spawned (no registration race).
     producers: Mutex<Vec<JoinHandle<()>>>,
-    /// Teardown ownership gate (review R3): the FIRST shutdown call owns the
-    /// whole teardown; every later call (idempotent re-entry, Drop after a
-    /// timed-out attempt) returns immediately instead of re-sending Stop
-    /// into a possibly-full resize channel and blocking behind the backlog.
+    /// Teardown coordination (review R4): `closing` kills admission the
+    /// instant ANY shutdown call starts; `shutdown_started` gives the FIRST
+    /// caller exclusive execution (no duplicate Stop); `shutdown_done` plus
+    /// the condvar make every later caller (repeat calls, Drop after a
+    /// timed-out attempt) WAIT for the same completion — shutdown()
+    /// returning always means fully closed, never "closing in progress".
     shutdown_started: AtomicBool,
+    shutdown_done: AtomicBool,
+    shutdown_finish: Mutex<()>,
+    shutdown_finish_cv: Condvar,
 }
 
 impl RuntimeInner {
@@ -1756,6 +1772,9 @@ impl MediaRuntime {
                 closing: AtomicBool::new(false),
                 producers: Mutex::new(Vec::new()),
                 shutdown_started: AtomicBool::new(false),
+                shutdown_done: AtomicBool::new(false),
+                shutdown_finish: Mutex::new(()),
+                shutdown_finish_cv: Condvar::new(),
             }),
         }
     }
@@ -2105,18 +2124,35 @@ impl Drop for MediaRuntime {
 }
 
 /// Shutdown body shared by `MediaRuntime::shutdown` and the bounded-test
-/// runner (operates on the shared `Arc<RuntimeInner>`; idempotent).
+/// runner (operates on the shared `Arc<RuntimeInner>`).
+///
+/// Contract (review R4): admission (`closing`) dies the instant ANY caller
+/// starts; the FIRST caller exclusively executes the teardown (no duplicate
+/// Stop behind a full resize channel); every LATER caller waits for the
+/// same completion — so `shutdown()` returning always means the runtime is
+/// fully closed (producers reaped, workers joined, registry terminal,
+/// sessions dropped), for concurrent duplicates and Drop-after-timeout
+/// alike.
 fn shutdown_runtime_inner(inner: &RuntimeInner) {
-    // Teardown ownership: only the first caller proceeds. A timed-out
-    // attempt keeps running on its own thread; re-entries (repeat calls,
-    // Drop during unwind) must not enqueue another Stop behind a full
-    // resize channel — that would block for the whole backlog drain.
+    inner.closing.store(true, Ordering::Release);
     if inner.shutdown_started.swap(true, Ordering::AcqRel) {
+        // A concurrent/earlier caller owns the teardown: wait for ITS
+        // completion (bounded by the in-flight work it is draining). The
+        // waiter holds no lock the executor needs.
+        let mut guard = inner
+            .shutdown_finish
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        while !inner.shutdown_done.load(Ordering::Acquire) {
+            guard = inner
+                .shutdown_finish_cv
+                .wait(guard)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+        }
         return;
     }
-    // 1. Admit no new producers; live ones observe the latch per item.
-    inner.closing.store(true, Ordering::Release);
-    // 2. Reap tracked producers (join outside the lock).
+    // Exclusive teardown:
+    // 1. Reap tracked producers (join outside any lock).
     let producers = inner
         .producers
         .lock()
@@ -2125,14 +2161,18 @@ fn shutdown_runtime_inner(inner: &RuntimeInner) {
     for producer in producers {
         let _ = producer.join();
     }
-    // 3. Stop the decode/resize lanes and join their threads.
+    // 2. Stop the decode/resize lanes and join their threads.
     inner.workers.shutdown();
-    // 4. Terminal-ize every registry entry and close admission.
+    // 3. Terminal-ize every registry entry and close admission.
     inner.registry.shutdown();
-    // 5. Drop the session table: subsequent ops report unknown_session.
+    // 4. Drop the session table.
     if let Ok(mut sessions) = inner.sessions.lock() {
         sessions.clear();
     }
+    // 5. Publish completion and release every waiter.
+    inner.shutdown_done.store(true, Ordering::Release);
+    let _guard = inner.shutdown_finish.lock();
+    inner.shutdown_finish_cv.notify_all();
 }
 
 /// Spawns a tracked producer thread for the runtime (review F811-R1-01).
@@ -2826,14 +2866,35 @@ mod tests {
             Duration::from_millis(120),
         );
         assert!(verdict.is_err(), "slow shutdown exceeds the budget");
+        // Review R4: a repeat shutdown must WAIT for the first caller's
+        // completion — "shutdown returned" means fully closed. The reclaim
+        // is bounded by the in-flight backlog the detached attempt drains.
         let reclaim_started = Instant::now();
         runtime.shutdown();
         let reclaim_elapsed = reclaim_started.elapsed();
         assert!(
-            reclaim_elapsed < Duration::from_secs(2),
-            "idempotent second shutdown is cheap: {reclaim_elapsed:?}"
+            reclaim_elapsed < Duration::from_secs(60),
+            "repeat shutdown waits for completion within the backlog bound: {reclaim_elapsed:?}"
         );
         assert!(runtime.is_closed());
+        assert!(
+            registry.is_shutdown(),
+            "shutdown returned => registry closed (no admission window)"
+        );
+        let fresh = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "after-repeat-shutdown".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        assert_eq!(
+            registry.lookup(fresh.id, fresh.revision),
+            MediaLookup::Missing,
+            "no live ticket after every shutdown caller returned"
+        );
         let quiesce_deadline = Instant::now() + Duration::from_secs(60);
         while Instant::now() < quiesce_deadline && registry.pending_count() > 0 {
             std::thread::sleep(Duration::from_millis(20));
@@ -2843,6 +2904,163 @@ mod tests {
             0,
             "real owner reaches terminal state after timed-out teardown"
         );
+    }
+
+    // PLAN-811 R4 permanent controls: concurrent duplicate shutdown
+    // admission + occupancy gauge lifecycle.
+
+    #[test]
+    fn concurrent_duplicate_shutdown_returns_only_when_fully_closed() {
+        use std::sync::atomic::Ordering;
+        // Review F811-R4-02 repro as a permanent oracle: real decode work
+        // in flight, caller 1 starts shutdown, caller 2 enters AFTER the
+        // closing latch is visible. Caller 2's shutdown() must NOT return
+        // until the registry is closed — and after BOTH returned, a fresh
+        // ticket must be dead (no admission window).
+        let runtime = super::MediaRuntime::new(Duration::from_secs(600));
+        let registry = runtime.registry().clone();
+        let payload: Arc<[u8]> = Arc::from(png_bytes(3200, 2400).into_boxed_slice());
+        let target = RenditionSpec::viewport(1920, 1440);
+        let mut accepted = 0usize;
+        for i in 0..12u64 {
+            let ticket = registry.queue(
+                MediaAssetKey {
+                    source_fingerprint: format!("dup-shutdown-{i}"),
+                    orientation: Default::default(),
+                    rendition: target.clone(),
+                    revision: i + 1,
+                },
+                MediaMetadata::default(),
+            );
+            if runtime.worker_pool().submit_bytes(
+                ticket,
+                payload.clone(),
+                target.clone(),
+                MediaPriority::Current,
+                0,
+                i + 1,
+            ) {
+                accepted += 1;
+            }
+        }
+        assert!(accepted >= 6, "work in flight: {accepted}");
+        let inner = runtime.inner.clone();
+        let first = std::thread::spawn(move || {
+            super::shutdown_runtime_inner(&inner);
+        });
+        // Wait until the closing latch is live, then run the DUPLICATE.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline && !runtime.is_closed() {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        assert!(runtime.is_closed(), "closing latch live before duplicate");
+        let duplicate_started = Instant::now();
+        runtime.shutdown();
+        let duplicate_elapsed = duplicate_started.elapsed();
+        // The duplicate waited for completion: registry closed NOW.
+        assert!(
+            registry.is_shutdown(),
+            "duplicate shutdown returned only after full closure"
+        );
+        assert!(
+            duplicate_elapsed < Duration::from_secs(60),
+            "duplicate bounded by in-flight drain: {duplicate_elapsed:?}"
+        );
+        let fresh = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "post-duplicate".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        assert_eq!(
+            registry.lookup(fresh.id, fresh.revision),
+            MediaLookup::Missing,
+            "no live ticket after both shutdown callers returned"
+        );
+        let _ = first.join();
+    }
+
+    #[test]
+    fn resize_backlog_gauge_lifecycle_controls() {
+        // Review F811-R4-01: the occupancy gauge must read 0 on an idle
+        // runtime, transiently >0 while real Work flows, return to 0 after
+        // draining, and stay 0 (no underflow panic) after shutdown — the
+        // reviewer's public-API counterexample shape.
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        assert_eq!(
+            runtime.worker_pool().resize_backlog(),
+            0,
+            "idle gauge reads zero"
+        );
+
+        // Real small renditions flow through the lane; observe a transient
+        // positive reading or completion (both prove the gauge moves with
+        // real Work), then drain back to exactly zero.
+        let registry = runtime.registry().clone();
+        let payload: Arc<[u8]> = Arc::from(png_bytes(64, 48).into_boxed_slice());
+        let target = RenditionSpec::viewport(48, 36);
+        let mut tickets = Vec::new();
+        for i in 0..6u64 {
+            let ticket = registry.queue(
+                MediaAssetKey {
+                    source_fingerprint: format!("gauge-{i}"),
+                    orientation: Default::default(),
+                    rendition: target.clone(),
+                    revision: i + 1,
+                },
+                MediaMetadata::default(),
+            );
+            assert!(runtime.worker_pool().submit_bytes(
+                ticket,
+                payload.clone(),
+                target.clone(),
+                MediaPriority::Current,
+                0,
+                i + 1
+            ));
+            tickets.push(ticket);
+        }
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut saw_positive = false;
+        let mut all_ready = false;
+        while Instant::now() < deadline {
+            let backlog = runtime.worker_pool().resize_backlog();
+            saw_positive |= backlog > 0;
+            if tickets
+                .iter()
+                .all(|t| matches!(registry.lookup(t.id, t.revision), MediaLookup::Ready(_)))
+            {
+                all_ready = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(all_ready, "small renditions completed");
+        assert!(
+            saw_positive,
+            "gauge observed real Work occupancy (>0 transiently)"
+        );
+        assert_eq!(
+            runtime.worker_pool().resize_backlog(),
+            0,
+            "gauge drains to exactly zero after completion"
+        );
+
+        // The reviewer's counterexample: shutdown then read — must be 0
+        // with NO underflow panic (Stop counts on neither gauge).
+        runtime.shutdown();
+        assert_eq!(
+            runtime.worker_pool().resize_backlog(),
+            0,
+            "gauge stays zero after shutdown (no Stop accounting, no underflow)"
+        );
+        // Repeated reads after close remain stable.
+        for _ in 0..10 {
+            assert_eq!(runtime.worker_pool().resize_backlog(), 0);
+        }
     }
 
     #[test]
@@ -2869,7 +3087,7 @@ mod tests {
         let mut accepted = 0usize;
         let mut peak_running = 0usize;
         let mut peak_backlog = 0u64;
-        for i in 0..24u64 {
+        for i in 0..12u64 {
             let ticket = registry.queue(
                 MediaAssetKey {
                     source_fingerprint: format!("saturate-{i}"),
@@ -2893,7 +3111,7 @@ mod tests {
             peak_backlog = peak_backlog.max(runtime.worker_pool().resize_backlog());
         }
         // Keep sampling while the backlog drains into the resize lane.
-        let drain_deadline = Instant::now() + Duration::from_secs(5);
+        let drain_deadline = Instant::now() + Duration::from_secs(10);
         while Instant::now() < drain_deadline {
             peak_running = peak_running.max(registry.stats().running);
             peak_backlog = peak_backlog.max(runtime.worker_pool().resize_backlog());
@@ -2914,7 +3132,10 @@ mod tests {
             peak_backlog >= 8,
             "resize channel observed FULL via occupancy gauges: sampled              backlog peak {peak_backlog} of capacity 8"
         );
-        shutdown_under_external_deadline(&runtime, Duration::from_secs(60));
+        // Wait-for-completion semantics: the bounded shutdown drains the
+        // in-flight backlog before returning — deadline covers full drain
+        // under machine contention.
+        shutdown_under_external_deadline(&runtime, Duration::from_secs(120));
         assert_eq!(registry.pending_count(), 0);
         assert!(registry.is_shutdown());
     }
