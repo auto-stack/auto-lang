@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-813
-status: reviewed
+status: archived
 feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 2
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm, a2r-std]
-current_step: 9
+current_step: 10
 total_steps: 10
 ---
 
@@ -162,10 +162,10 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R5）：新规范准确列出五种模式和 stdout_contains/expected-error；checker 对 54 页执行 catalog↔page 双向扫描；有效样例通过，错误预期、旧锚点、孤立锚点、错误诊断负控均失败。复核后全量 396/396 通过。 |
 | T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：auto-lang 现冻结提交 `5c6daa1439d95dbf2811f4f242895490b6d40d2a`，书稿继续冻结在 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；两个实施工作树 clean，文档复审修订已提交。 |
 | T-08 | review | T-07/T-10 | /auto-plan:review 重审冻结修复 diff、V-09、既有 AC/SD 证据及 debt 归因 | ✅ R10 独立复审 pass，绑定 auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`、book `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`；V-09 pass，无 finding；复审后 T-09 三项合并门禁全绿。 |
-| T-09 | merge | T-08 | /auto-plan:merge：在 review pass 后于最终冻结组合串行跑 `cargo t`、`cargo tv`、`cargo tb`，全绿后再双仓合入与收尾 | 门禁 ✅：`cargo t`、`cargo tv`、`cargo tb` 最终轮全部通过；默认并发 `cargo tb` 的已知 Plan 484 flake 经隔离确认后，以 4 线程整档重跑通过。两仓合并、归档和 worktree 清理待用户明确指示。 |
+| T-09 | merge | T-08 | /auto-plan:merge：在 review pass 后于最终冻结组合串行跑 `cargo t`、`cargo tv`、`cargo tb`，全绿后再双仓合入与收尾 | ✅ 完成：三项门禁通过；auto-lang 与 book 均按快进方式合入；规范索引与账本已更新；计划归档。实施 worktree/分支已由 fresh guard 验证后清理，详细收据见 §9。 |
 | T-10 | work | R9 gate failure | 修正 `crates/auto-lang/src/vm/ffi/stdlib.rs` 中 `RtlCaptureStackBackTrace` ABI；按 V-09 在 `test-book` 和日常 feature 下重放 P765，并运行 `cargo check -p auto-lang` | ✅ 完成：缺失可选 hash 参数被补齐并显式传 NULL；两个 feature 配置下各 1/1 通过，`cargo check` 通过。提交 `78e1c31e8be30b2c758d6034f211f48c6731dc87`；日志见 `attachments/813/p765-ffi-fix-r13.log.txt`、`p765-daily-feature-r14.log.txt` 与 `cargo-check-p765-r14.log.txt`。 |
 
-T-01..T-08、T-10 已完成，R10 独立最终复审通过，当前状态为 reviewed（current_step=9/10）。T-10 修复 P765 的 Windows ABI 未定义行为，V-09 定向回归与类型检查通过。最终冻结提交上的 `cargo t`、`cargo tv`、`cargo tb` 均已通过；PLAN-813 具备合并条件。两仓合并、计划归档和 worktree 清理尚未执行，等待用户指示。
+PLAN-813 已完成：AC-01..08 均通过，T-01..T-10 均完成；R10 独立复审及 `cargo t`、`cargo tv`、`cargo tb` 门禁通过。双仓已快进合入，计划状态为 archived（current_step=10/10），Spec 台账 v55 和模块索引已更新，实施树与计划分支已清理。主检出原有 WIP 保存在 stash `c1c0fb06fbf4d26482bcc9a84af372d926c338e8`；共享 auto-down 工作树保持原样。
 
 ## 9. 复审记录
 
@@ -182,7 +182,7 @@ T-01..T-08、T-10 已完成，R10 独立最终复审通过，当前状态为 rev
 - 输入/作者源哈希：`Cargo.lock` `1E1E432EEFC4C75981A5B1E788830A6791E911949FD3153B3E22570EFC1BFF9E`；`website/package-lock.json` `DC7121A2C03D91D0A20CD8C3CB8DC31B68CA235E8FC2364F0837082434F6FF82`；`book/tapl/examples.json` `89B64109AA5BB692F6BFC5279A90760E36D6C86043571B25AE8A27CE2C26FF89`。
 - 核心证据：`cargo check -p auto-lang` 通过；`cargo test -p auto-lang --test plan813_hosted_input` 3/3；`cargo build -p auto-playground --locked` 通过；TAPL 401 项最终全量 API 审计 401/401、0 失败，含错误期望与失效锚点负控；生产构建通过；`CI=1 AUTO_WEBSITE_TEST_PORT=4185 npm run test:e2e -- tests/tapl-run.spec.ts` 5/5。目标 Rust 文件定向 rustfmt、两仓 `git diff --check`（按 CRLF 处理）通过。报告见 `attachments/813/tapl-full-execution.json.txt`。
 - 边界如实记录：环境无 `gcc`/`clang`/`cl`，C 等价代码人工核对、未编译；全仓 `cargo fmt ... --check` 被既有 `crates/auto-lang/examples/ui_container.rs:195` 语法错误及其他既有格式差异阻断，所有本次修改 Rust 文件的定向 rustfmt 检查通过；`cargo check` 显示 406 条既有 warning，未将其误报为零 warning。没有在 work 阶段运行整档 Cargo。
-- 规范增量候选仍为 SD-01..04（见 §5）；合并前执行的 merge-owned 门禁 `cargo t`、VM 触面 `cargo tv`、book 触面 `cargo tb` 均 pending。AC-08 的双仓落地、规范/ledger/index、归档、fresh guard 与清理属于 T-09，尚未宣称完成。工作树冻结后无 work-owned 待办；依赖树中的他人 WIP 需保留并在复审/合并收据继续注明。
+- 2026-10-19 work handoff 快照：规范增量候选为 SD-01..04（见 §5）；合并门禁 `cargo t`、VM 触面 `cargo tv`、book 触面 `cargo tb` 当时均 pending。AC-08 的双仓落地、规范/ledger/index、归档、fresh guard 与清理由 T-09 处理；工作树冻结后无 work-owned 待办，依赖树中的既有 WIP 需保留。
 
 stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | base_commit: `30c1b9a7edc3112cac99089d14169d9f9bdeaeb6` + `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a` | code_commit: `cacb9fcc335b4addc5a0db67e7c64282b30d445e` + `de49ae222da45fd9b33eeb443fdd776658a1750c` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` (12 tracked WIP files preserved) | task_ids: T-01..T-07 | evidence: §9 and `attachments/813/tapl-full-execution.json.txt` | blockers: none for work-owned criteria; C compiler unavailable and full-repository rustfmt blocked by pre-existing issues, both disclosed above | next_responsible_role: review
 
@@ -330,14 +330,29 @@ stage: review | review_scope: final | reviewer_identity/limitations: Codex 当�
 - 按 PLAN-819 已接受的 4 线程稳定性设置，以 `NEXTEST_TEST_THREADS=4` 完整重跑 `cargo tb`，exit 0：5314 passed、1547 skipped、1 slow，231.628s。最终日志 `attachments/813/cargo-tb-r10-4threads.log.txt` SHA-256 `C14B7582D210AD5616480DA7A055C5364C0B6B84BCE5CDAF63F83929E74225AE`。无代码修改；测试生成的 Plan 796 性能报告数值已还原，813 worktree clean 且仍在冻结提交。
 - outcome: 三项 merge-owned gates pass；独立复审 R10 仍绑定同一代码提交，无新增 finding。Plan status=`reviewed`，current_step=9/10；具备合并条件，等待用户指示后执行双仓合并、归档与清理。
 
-### 2026-10-20 T-09 落地主检出预检（暂缓合入）
+### 2026-10-20 T-09 落地主检出预检（已解除）
 
 - 按用户授权继续合并后，`plan-813-dev` 已从复审冻结提交 `78e1c31e8be30b2c758d6034f211f48c6731dc87` 重放到最新主线 `7c8a4476afae3d7b7add0ce7941c8b3d428f5275`，新提交 `8c801b5fd3ed3da34724ee7d8d3d84e84d2bd74f`。`git range-diff` 对原公共基线 `310895b8ada67994eb0606ce6afffe48f0b2292f` 的 15/15 提交均为 `=`；基线到主线的 92 个变更路径与计划分支的 53 个变更路径无重叠。新增主线内容仅为计划/报告/附件；Cargo、测试配置、依赖锁文件均未变化，因此复审与三门禁证据可复用。CRLF-aware `git diff --check` 通过，重放后的 auto-lang 工作树 clean。
 - `plan-813-book` 仍 clean，提交 `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`，其基线与 book `master` `d05218bff49a52314ce436f78d9df2a69bc3357e` 相同；未单独落地，避免形成双仓部分交付。
 - 尚未执行落地：auto-lang 主检出当前有 1849 个 dirty status 条目（9 个 tracked 修改/删除，其余为无关未跟踪文件），包括 Plan 797/798/811/814/818 文档、策略/roadmap/债务文档，以及多份既有 specs 备份和附件。为保留这些用户改动，未暂存、提交、stash、还原或清理；按合并流程要求，主检出 clean 前不能将计划分支快进到 `master`。
-- 因此 T-09 仍未完成，Plan 保持 `reviewed`、`current_step: 9`；未合并任一仓库，未归档，也未移除工作树/分支。批量 `cargo tf` 未到期：最近收据覆盖 Plan 812（2026-10-19 08:36 UTC），Plan 813 不是 5 的倍数，且尚未超过 48 小时。
+- 用户随后授权暂存清理主检出。所有 9 个 tracked 修改/删除和 1840 个未跟踪文件保存至 stash `c1c0fb06fbf4d26482bcc9a84af372d926c338e8`（`preserve main WIP before PLAN-813 merge (2026-10-20)`），核对 stash 含 1849 个文件且 master 工作树干净；未把这些内容提交到 Plan 813。
+- 随后 `plan-813-dev` 重放到包含上述计划簿记提交的最新主线 `edf71a9a500ba2f3ac6dbad4a9cf7c93865c695a`，新冻结代码提交为 `f85087fbcf19509cdfaf3f2a6aee3c2161e1539f`。`git range-diff` 15/15 均为 `=`；基线之后主线变更与 PLAN-813 的文件路径无重叠。没有代码、Cargo 配置或依赖变化，R10 与最终三门禁证据复用有效。
+- auto-lang 已由 `edf71a9` 快进至 `f85087f`；book 已由 `d05218bff49a52314ce436f78d9df2a69bc3357e` 快进至 `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`。批量 `cargo tf` 未到期：最近收据覆盖 Plan 812（2026-10-19 08:36 UTC），Plan 813 不是 5 的倍数，且本次裁决时尚未超过 48 小时。
+- final merge closeout: 双仓均已落地；`cargo t`/`cargo tv`/`cargo tb` 见上方 2026-10-20 冻结门禁记录；规范索引与账本完成更新；T-09 完成。
 
-## 10. 待澄清事项
+### 2026-10-20 T-09 fresh guard 与实施树清理收据
+
+- auto-lang 实施树 `D:/autostack/.wt/lang-813/auto-lang` 的 fresh `wt-guard` 两次均为 clean、无 reparse point。首次 `git worktree remove` 注销 Git 注册后，Windows 因两项遗留本地 server 进程未能移除目录。确认 PID 26532/37500 均从该实施树的 `target/debug/auto-playground.exe` 启动、仅监听本机 3130/3131 后，停止这两个进程；复跑 guard 仍为 clean，解析后的目标路径与指定目录完全一致，最终移除残留目录。`plan-813-dev` 已从合并后的 `f85087fbcf19509cdfaf3f2a6aee3c2161e1539f` 安全删除。
+- book 实施树 `D:/autostack/.wt/lang-813/book` fresh `wt-guard` clean；`git worktree remove` 成功，`plan-813-book` 已从合并后的 `50153be9f4e0ac035ca3d0c2bd0da2d876d84875` 安全删除。
+- 共享组内 auto-down 依赖树仍有 12 个既有 tracked WIP，按边界保留；因此没有删除仍承载该依赖树的 `D:/autostack/.wt/lang-813` 组目录。
+
+### 2026-10-20 T-09 规范与 Spec 台账沉淀
+
+- 四个既有模块索引（auto-lang/vm、auto-playground、stdlib、website）已将 PLAN-813 标为 `✅（reviewed→archived）` 并改链 `docs/plans/archive/813-tapl-runnable-examples.md`；a2r-std 原无 `plans.md`，现新增对应归档索引行。`python scripts/spec-index.py` 成功生成 47 个项目；保留其提示的三个既有 ungrouped 项目（auto-man-core、auto-ui-dialect、repository-boundaries），未扩展修复范围。
+- Specs 写服务不可用：127.0.0.1:8080 无监听，当前工具集也没有 `.autoos/specs.json` 写入器。按 guarded offline projection 仅更新 `.autoos/specs.json` 的 version 和 reports/designs/tests/reviews 四段，各追加一个 PLAN-813 条目；版本由 54 增至 55。修改前 exact-byte 备份保存在 `C:/Users/zhaop/AppData/Local/Temp/auto-lang-specs-v54-pre-plan813-20261020.json`，SHA-256 `0e790ecd79706f9b7cf89cae3b56120b1d126826f224ec2d7d14b39f38e60a0a`；条目 ID 为 P813-D1、P813-T、P813-R10、P813-M，均关联 PLAN-813 并携带 source hash 与交付 commit。脚本校验整体 JSON schema、条目唯一性、分段增量、版本递增及未触及段内容保持不变。
+- 最终 status: AC-01..08 pass，T-01..T-10 complete；双仓落地、规范/索引/ledger 写入、计划归档、实施树/分支清理均完成。auto-down 的既有共享 WIP 与主检出 WIP stash 保留，不属于 PLAN-813 交付。
+
+## 10. 范围与关闭说明
 
 必需决策：已由用户确认 r1“两仓全书修复 + 网站 Run/输入/测试/依赖支持”范围。T-01 的实现选择不改变范围或兼容承诺。
 

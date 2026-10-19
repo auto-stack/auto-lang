@@ -2210,6 +2210,32 @@
           "created_at": 1792415910,
           "modified_at": 1792415910,
           "completed_at": 1792415910
+        },
+        {
+          "id": "P813-M",
+          "title": "PLAN-813 双仓落地与关闭收据",
+          "content": "双仓快进合入：auto-lang f85087fbcf19509cdfaf3f2a6aee3c2161e1539f，book 50153be9f4e0ac035ca3d0c2bd0da2d876d84875。冻结代码门禁通过：cargo t 5321 passed/1549 skipped；cargo tv 163 passed/6693 skipped；cargo tb 在已知 Plan484 并行 flake 隔离复验通过后，以 NEXTEST_TEST_THREADS=4 重跑为 5314 passed/1547 skipped。主检出原有 1849 项 WIP 保存在 stash c1c0fb06fbf4d26482bcc9a84af372d926c338e8；批量 cargo tf 按到期规则未触发。PLAN-813 已归档，Spec 索引及账本由 v54 更新至 v55。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-813"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/archive/813-tapl-runnable-examples.md",
+          "milestone": null,
+          "module": "website",
+          "tags": [
+            "PLAN-813",
+            "source-sha256:4c302958c71ec497e3dd7c23cf8befd5f4c59d56eb2b5e23c634921ad45b4e02",
+            "delivery:f85087fbcf19509cdfaf3f2a6aee3c2161e1539f",
+            "delivery-book:50153be9f4e0ac035ca3d0c2bd0da2d876d84875",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792443757,
+          "modified_at": 1792443757,
+          "completed_at": 1792443757
         }
       ]
     },
@@ -7931,6 +7957,32 @@
             "delivery:b76eca8d2",
             "scope:auto-semantics"
           ]
+        },
+        {
+          "id": "P813-D1",
+          "title": "TAPL 示例执行与输入支持契约",
+          "content": "交付设计见 docs/specs/website/design/book-example-execution.md：书中保留可运行改写并记录与原始 TAPL 片段的差异；为网页示例提供 Run、输入/EOF 和执行结果支持，并明确语言/宿主能力边界。设计源 SHA-256=1b753be438d16216a49f9b198b5d92978343d7807343bd3f212592ff3b88486a；auto-lang=f85087fbcf19509cdfaf3f2a6aee3c2161e1539f，book=50153be9f4e0ac035ca3d0c2bd0da2d876d84875。",
+          "status": "published",
+          "depends_on": [],
+          "related": [
+            "PLAN-813"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/specs/website/design/book-example-execution.md",
+          "milestone": null,
+          "module": "website",
+          "tags": [
+            "PLAN-813",
+            "source-sha256:1b753be438d16216a49f9b198b5d92978343d7807343bd3f212592ff3b88486a",
+            "delivery:f85087fbcf19509cdfaf3f2a6aee3c2161e1539f",
+            "delivery-book:50153be9f4e0ac035ca3d0c2bd0da2d876d84875",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792443757,
+          "modified_at": 1792443757,
+          "completed_at": 1792443757
         }
       ]
     },
@@ -9698,6 +9750,34 @@
             "delivery:b76eca8d2",
             "tier:scoped"
           ]
+        },
+        {
+          "id": "P813-T",
+          "title": "TAPL hosted input 与执行门禁",
+          "content": "定向覆盖 crates/auto-lang/tests/plan813_hosted_input.rs（SHA-256=07e0f0a6820eb2f2b771f4a769612e64a084e6e62f3ff2f3708efaafe354a9cd）；冻结提交 78e1c31e8be30b2c758d6034f211f48c6731dc87 的 cargo t、cargo tv、cargo tb 三项 merge 门禁均通过。cargo tb 已知未改动 Plan484 flake 在 4 线程完整重跑中通过。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-813"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": "crates/auto-lang/tests/plan813_hosted_input.rs",
+          "file": "docs/plans/archive/813-tapl-runnable-examples.md",
+          "milestone": null,
+          "module": "auto-lang",
+          "tags": [
+            "PLAN-813",
+            "source-sha256:07e0f0a6820eb2f2b771f4a769612e64a084e6e62f3ff2f3708efaafe354a9cd",
+            "plan-source-sha256:4c302958c71ec497e3dd7c23cf8befd5f4c59d56eb2b5e23c634921ad45b4e02",
+            "reviewed:78e1c31e8be30b2c758d6034f211f48c6731dc87",
+            "delivery:f85087fbcf19509cdfaf3f2a6aee3c2161e1539f",
+            "delivery-book:50153be9f4e0ac035ca3d0c2bd0da2d876d84875",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792443757,
+          "modified_at": 1792443757,
+          "completed_at": 1792443757
         }
       ]
     },
@@ -13008,10 +13088,37 @@
           "created_at": 1792415910,
           "modified_at": 1792415910,
           "completed_at": 1792415910
+        },
+        {
+          "id": "P813-R10",
+          "title": "PLAN-813 独立最终复审 R10",
+          "content": "独立最终复审通过，绑定冻结代码 78e1c31e8be30b2c758d6034f211f48c6731dc87；R10 修复后的最终 cargo t、cargo tv、cargo tb 门禁均通过。主线重放 range-diff 15/15 等价，依赖/配置未变化，证据可复用；双仓交付提交 auto-lang f85087fbcf19509cdfaf3f2a6aee3c2161e1539f、book 50153be9f4e0ac035ca3d0c2bd0da2d876d84875。复审与验收细节见归档计划（SHA-256=4c302958c71ec497e3dd7c23cf8befd5f4c59d56eb2b5e23c634921ad45b4e02）。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-813"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/archive/813-tapl-runnable-examples.md",
+          "milestone": null,
+          "module": "website",
+          "tags": [
+            "PLAN-813",
+            "reviewed:78e1c31e8be30b2c758d6034f211f48c6731dc87",
+            "source-sha256:4c302958c71ec497e3dd7c23cf8befd5f4c59d56eb2b5e23c634921ad45b4e02",
+            "delivery:f85087fbcf19509cdfaf3f2a6aee3c2161e1539f",
+            "delivery-book:50153be9f4e0ac035ca3d0c2bd0da2d876d84875",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792443757,
+          "modified_at": 1792443757,
+          "completed_at": 1792443757
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 54
+  "version": 55
 }
