@@ -149,6 +149,26 @@ test-http-e2e feature（OS 临时端口）；792 driver 产物在
 - 已知非阻塞：global registry TTL=30s 与 DEFAULT_TTL=2s 并存（历史双值，
   合同基线 §2.2 冻结为代码事实）；设计差额 6 项登记未补实现（§8）。
 
+## R1 修复轮增补（2026-10-19，review-r1 needs_fix 后）
+
+修复细节与逐 finding 闭合表见 [fix-r1.md](fix-r1.md)；要点：
+
+- 代码基线推进：`0f2ab56a9` → **`33fc23208`**（`c66ca5a6a` 生命周期/准入/
+  格式 + `33fc23208` 生成面两修复）。
+- §3 表修正：core 单测 30/30 → **34/34**（新增 5 个关闭 oracle，重写 1 个
+  为真 PNG+外截止）；「V-05 pending」**撤销**——四形态真机收据全绿
+  （VM/Iced 9/9、Vue split 7/7、Rust merged 6/6、生成媒体 HTTP 13/13，
+  见 [v05-receipts/](v05-receipts/)）；777/792 收据绑定 `0f2ab56a9`，
+  修复轮未触其判定面（模板两行级修复经 api_gen 50/50 + delivery 9/9 +
+  rust_ui 40 PASS 复验；merge 前在冻结提交复核 strict 一次）。
+- 「shutdown 无复活/满队列有界收敛」等 §5 SD 草案措辞在修复后为真实
+  （dead-ticket 准入语义补入 SD-01/02 草案：关闭后 queue 返回死票据、
+  open_session 返回空串——公开签名不变）。
+- 新增 R04 具名交接：merged 模式 ImageSurface loaded/error 事件分发
+  （sweep 未接 devtools_update，PLAN-095 扩展）；sweep 静止期绑定边界；
+  031 生成后端 types.at companion/`crate::image` 发射破损（master 基线
+  同款，归因收据在 fix-r1）；Man wire 档基线编译红。
+
 ## 8. 下一步
 
 T-09 review（同树独立上下文审 AC-01..06/SD/生命周期/真消费者/旧路径）；

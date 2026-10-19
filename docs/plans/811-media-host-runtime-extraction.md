@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-19
 plan_revision: 1
-current_step: 3
+current_step: 8
 total_steps: 11
 supersedes_spec_components: [docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/ui/design/image-surface-events.md, docs/specs/auto-man/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-media-core/project.md]
@@ -156,6 +156,11 @@ handoff：`D:/autostack/.wt/lang-811/auto-lang`，分支`codex/plan-811-dev`；�
 
 
 2026-10-19 / stage: work / PLAN-811 revision: 1 / outcome: pass（work 完成，**非独立验收pass**）/ worktree: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / base: ab08955c2 / code: 0f2ab56a9（T-02..T-07 十提交）/ 依赖: auto-down 兄弟 detached c39ac7f9（零源改） / task_ids: T-01..T-08 / evidence: [handoff](attachments/811/handoff.md)§3（core 30/30、plan811 7/7、Man 3/3、777 strict pass、792 25/25、back_proxy th 媒体面 4/4、parity PASS；预存红×3 基线重放归因；V-05 浏览器实机=环境 pending 如实登记） / blockers: 无 / next: review T-09（merge 门 pending：冻结提交裸 cargo t + tv）
+
+2026-10-19 / stage: review / review_scope: final / reviewer_identity: 当前 Codex 独立复审上下文（本会话未实施；具体模型/会话 ID 未暴露） / PLAN-811 revision: 1 / outcome: **needs_fix** / worktree_path: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / reviewed_commit: 0f2ab56a991e5c1ca7ac599ba2ca0bd68bf4f488 / base_commit: ab08955c241f6a824091c53d3b02894ca17e193b / dependency_revisions: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / spec_inputs与冻结SD: [baseline](attachments/811/review-r1/baseline.json)、[SD原件](attachments/811/review-r1/spec-delta-input.md) / acceptance_results: AC01 partial、AC02 fail、AC03 fail、AC04 fail、AC05 partial、AC06 fail、AC07 merge pending / findings: F811-R1-01(P1) scan/open线程未纳入shutdown/drop，三次Drop后扫描继续变更registry；F811-R1-02(P2) 已关闭registry新票据仍可发布Ready、session仍准入；F811-R1-03(P2) V05真实三形态/渲染后事件与生成媒体HTTP/流输出未完成，不能移交R04代替验收；F811-R1-04(P3) 六个新增/门面文件格式红 / evidence: [完整R1/反例/AC-SD映射](attachments/811/review-r1/review.md)，独立core构建与30/30测通过仍不覆盖这些缺口，现有792收据已冻结但未冒记本轮实跑 / pending_closeout_gates: 最终审查pass后冻结裸cargo t+tv、最终并集与必要受影响发行验收、规范/ledger/归档/guard清理 / next: 同原树work修复及补必要oracle、提交后复审；executing **3/11**，保留T02/04/05，重开T01/03/06/07/08。未改语义合同、实施源码或合入；当前未就绪，历史work pass不代表现状完成。
+
+
+2026-10-19 / stage: work / PLAN-811 revision: 1 / outcome: pass（R1 修复完成，**非独立验收pass**）/ worktree: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / base: ab08955c2 / code: 33fc23208（R1 修复 c66ca5a6a+33fc23208，冻结实绩 12 提交）/ 依赖: auto-down 兄弟 c39ac7f9 / task_ids: T-01/03/06/07/08 重开后再闭合 / evidence: [fix-r1.md](attachments/811/fix-r1.md)（F01/02 复审探针重放全绿+34/34；F03 四形态真机收据 9/9+7/7+6/6+13/13；F4 复审口径 --check exit 0；预存缺口三项具名 R04：merged 事件分发/sweep 静止边界/031 生成后端破损基线归因）/ blockers: 无 / next: review T-09（R2；merge 门 pending：冻结提交裸 cargo t + tv + 777 strict 复核）
 
 ## 10. 待澄清事项
 
