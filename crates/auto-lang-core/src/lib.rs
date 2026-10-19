@@ -9,6 +9,16 @@
 //! 旧 `auto_lang::*` 公开路径由上层兼容包（auto-lang）经再导出保身份。
 
 pub mod dep_scanner;
+
+// ---- 前端门面组（PLAN-814 T-02 批 2；均为外部轻 crate 的单源 re-export）----
+pub mod ast;
+pub mod error;
+pub mod lexer;
 pub mod mode;
 pub mod os_paths;
+pub mod scope;
+pub mod scope_manager;
+pub mod session;
+pub mod symbols;
+pub mod token;
 pub mod use_scanner;

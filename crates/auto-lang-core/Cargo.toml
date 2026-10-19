@@ -7,8 +7,13 @@ license = "MIT"
 keywords = ["language", "sdk", "parser", "vm", "transpiler"]
 
 [dependencies]
-# PLAN-814 T-01/T-02 probe skeleton: dependencies grow module-by-module with
-# the T-02..T-06 migration (light frontend closure arrives with parser/ast).
-# use_scanner (first migrated module) is std-only.
+# PLAN-814 T-02 前端门面组闭包（ast/token/error/session/lexer 直连外部轻
+# crate；symbols/scope/scope_manager 另需 auto-val/ecow）。
+auto-ast = { path = "../auto-ast" }
+auto-lex = { path = "../auto-lex" }
+auto-diagnostics = { path = "../auto-diagnostics" }
+auto-parser-api = { path = "../auto-parser-api" }
+auto-val = { path = "../auto-val", features = ["serde"] }
+ecow = { workspace = true }
 
 [dev-dependencies]

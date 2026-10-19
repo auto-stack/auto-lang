@@ -12,7 +12,7 @@
 //! ## Usage
 //!
 //! ```rust
-//! use auto_lang::session::{CompilerSession, Scenario};
+//! use auto_lang_core::session::{CompilerSession, Scenario};
 //!
 //! // Create a UI scenario session
 //! let session = CompilerSession::new(Scenario::UI);

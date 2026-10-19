@@ -85,7 +85,7 @@ where
 }
 
 pub mod api;
-pub mod ast;
+pub use auto_lang_core::ast;
 // PLAN-799: 解析便利层（ParserExt 对 Code/Name/Expr/Is/Arrow/OnEvents 的
 // 六类 impl + Parser 耦合测试）——模型已在 auto-ast，解析注入留上层。
 mod ast_parse_ext;
@@ -115,7 +115,7 @@ pub mod compile;
 pub mod config;
 pub mod database;
 pub mod dep;
-pub mod error;
+pub use auto_lang_core::error;
 pub mod host; // Plan 011 (MS3-B): ShellHost bridge for system()/exit()/export()
 pub mod http_file_service; // PLAN-729: 服务端文件响应宿主执行（VM/生成 Rust 共用；无 ui 依赖）
 pub mod http_service_config; // PLAN-736: 服务部署配置与纯策略（版本中立；两轨共用）
@@ -127,7 +127,7 @@ pub mod stdlib_assembly; // PLAN-738: stdlib 装配契约（inventory/manifest/p
                          // Plan 096 Phase 0: Scenario-based compilation
                          // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
                          // orchestration; depends on the dependency-light `auto-test-case` core.
-pub mod session;
+pub use auto_lang_core::session;
 #[cfg(feature = "test-cases")]
 pub mod test_cases;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
@@ -166,7 +166,11 @@ pub mod infer;
 pub use crate::infer::InferenceContext;
 pub use crate::type_registry::SharedTypeRegistry;
 pub mod indexer;
-mod lexer;
+// PLAN-814: 实现随前端门面组迁 auto-lang-core；本 crate 保持私有（Lexer
+// 不是 auto-lang 公开面——PLAN-789 合同），消费方 crate::lexer::X 不变。
+mod lexer {
+    pub use auto_lang_core::lexer::*;
+}
 pub mod libs;
 pub mod macro_;
 pub mod maker;
@@ -190,11 +194,11 @@ pub mod typeck;
 // Plan 078: ModuleResolver trait for dependency resolution
 pub mod resolver;
 pub mod runtime;
-pub mod scope;
-pub mod scope_manager;
-pub mod symbols;
+pub use auto_lang_core::scope;
+pub use auto_lang_core::scope_manager;
+pub use auto_lang_core::symbols;
 pub mod target;
-pub mod token;
+pub use auto_lang_core::token;
 pub mod trait_checker;
 // Plan 087: Type registry for REPL
 pub mod trans;
