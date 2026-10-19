@@ -478,6 +478,7 @@
 | auto-syntax — Atom 语法驱动的增量词法与无损 CST | experimental（PLAN-787 | 2 | [auto-syntax/project.md](auto-syntax/project.md) |
 | auto-ac | experimental | 0 | [auto-ac/project.md](auto-ac/project.md) |
 | auto-acc | planned（目标态合同；AC=首版原生编译器，ACC=Auto | 0 | [auto-acc/project.md](auto-acc/project.md) |
+| auto-semantics 项目卡（AC 语义元信息与类型推导探针） | experimental（PLAN-796 | 3 | [auto-semantics/project.md](auto-semantics/project.md) |
 
 <details><summary>auto-cosmic 模块明细</summary>
 
@@ -497,6 +498,16 @@
 |---|---|---|
 | runtime | snapshot/position/handle/lexer/parse/cst/recovery/edit/outline（词法-解析-CST-增量运行时） |  |
 | adapters/core | 现有 Program 投影对照 + 增量编辑（不替换生产编译入口） |  |
+
+</details>
+
+<details><summary>auto-semantics 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| contract | 身份/元信息/覆盖矩阵/codec | experimental（探针冻结） |
+| core | 有限推导/查询/反射投影 | experimental |
+| probe | store 消费/预算/IPC/周转 | experimental |
 
 </details>
 

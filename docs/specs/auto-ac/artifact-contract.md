@@ -18,7 +18,7 @@
 | A03 CST | **codec**（787 起真实语法生产者;规范形分页） | snapshot+grammar+parser-ver | required/provenance | 不可变子树页;全树驻留永非命中前提 |
 | A04 AST 摘要 | **codec** | profile+schema+snapshot+frontend-ver | provenance | **内容=签名投影（int/i32 归一;无 span）**——body 编辑共享 chunk |
 | A05 宏 | Future | 展开输入+env | required | 副作用不可控即禁共享 |
-| A06 语义/接口 | Future | profile+summary-ids | required | 接口查询不装载函数体 |
+| A06 语义/接口 | **受限探针**（PLAN-796） | 语义查询键全轴（见 auto-semantics/query-cache） | required | 接口查询不装载函数体；仅 796 探针 producer，不冒充旧 producer 扩大 |
 | A07 HIR | **codec** | hir-domain+profile+caps+snapshot+codec-ver | provenance(→A00) | 恢复 Bundle **不带信任**,一律重过真 verifier |
 | A08 pass | Future | hir-artifact+pass-ver | required | 只缓存已实现 pass |
 | A09 对象 | **codec** | **HIR 查询键哈希**+target+backend+entry | provenance(→A07,**非 required**) | 独立可链接;上游 HIR 冷/删不影响 |
@@ -80,3 +80,14 @@
   僵尸行（块已删）允许死行替换,重发布 upsert 回 live。
 - **CAS 读取准入**：每次读取复验框架字节哈希 == 请求地址——自洽异址块整体
   替换被拒绝（R1 F-04/R2 反例实测）。
+
+## 语义产物接入（PLAN-796，A06 受限探针）
+
+A06 的**受限探针 producer** = `experimental/ac-semantics/probe`（PLAN-796；
+[auto-semantics 项目卡](../auto-semantics/project.md)）：语义事实/接口页发布于
+783 统一 store（层 `S796`、载体 `SnapshotRecord`、页 schema
+`ac796/sema-page/v2`、codec 2）。仅此 producer 登记——旧 A06 Future 语义不因
+本探针扩大；A05/A12 接缝维持 Future。消费方（HIR driver、797 ABI probe）按
+[auto-semantics/semantic-contract.md](../auto-semantics/semantic-contract.md)
+的名义身份与页准入只读消费；不绕过 consumer 身份校验，不把 HIR kind 冒充
+语义值。

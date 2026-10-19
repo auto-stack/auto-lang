@@ -21,7 +21,7 @@ GROUPS = {
     "UI/Web 生态": ["auto-playground", "widgets", "forge-ui", "lab-ui",
                     "playground-vue", "website", "blueprint", "autoui-skill"],
     "外围/验证": ["parity", "a2r-actor-tests"],
-    "实验/沙盒": ["auto-cosmic", "auto-hir", "auto-syntax", "auto-ac", "auto-acc"],
+    "实验/沙盒": ["auto-cosmic", "auto-hir", "auto-syntax", "auto-ac", "auto-acc", "auto-semantics"],
 }
 
 STATUS_RE = re.compile(r"^>\s*\*\*Status\*\*:\s*(\S+)", re.M)

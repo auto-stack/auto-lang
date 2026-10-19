@@ -172,6 +172,11 @@ fn sema_boundary_split_route_hotspots_untouched() {
                 || line.starts_with("docs/plans/attachments/796/")
                 || line.starts_with("scripts/verify-ac-semantics-796.ps1")
                 || line.starts_with("docs/plans/796-")
+                // merge-phase SD-01..08 deposit faces (auto-plan:merge):
+                // the canonical spec docs, the generated INDEX, the
+                // overview group row and the spec-index generator
+                || line.starts_with("docs/specs/")
+                || line.starts_with("scripts/spec-index.py")
                 || SANCTIONED_SHARED.iter().any(|s| line.starts_with(s))
                 || line.ends_with(".case.ad"),
             "unexpected changed path `{line}` outside sanctioned namespaces"

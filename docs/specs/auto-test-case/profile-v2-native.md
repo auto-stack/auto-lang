@@ -90,3 +90,15 @@
 
 > 来源：docs/plans/788-autodown-ac-native-turnaround.md（B 阶段）；契约冻结与
 > 十轮复审修订见其 attachments/788/contract-decision.md §1–§17。
+
+## probe 期望面（PLAN-796）
+
+- `expect.probe`：逐 query 步的粗粒度 cache 词表（published-*→published、
+  hit/diags）、compute_calls、stages_include、bindings oracle（边车文件，
+  身份=内容哈希）。
+- completion 准入与既有通道一致：success=ok 零诊断；error 需 stage/code/
+  message 匹配；协议/资源/infra 失败=ERROR，永不满足语言负例。
+- 验收 raw 准入（V-07 口径）：周转报告逐样本数值准入（字段存在/非 null/
+  数值/有限/正值，违规即 FAIL 不默认 0ms）再重算百分位；完整编辑请求窗口
+  （请求准备→worker→父侧准入）P95<1000ms@1MiB（gen796-1mi/v1），连续分段
+  铺满可对账；六类变异控制入 verify 脚本 selftest。

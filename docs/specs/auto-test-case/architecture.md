@@ -66,3 +66,19 @@ crates/auto-lang（adapters/orchestration/CLI）──▶  auto-test-case
   （`vm_file_tests::pilot_aggregate_vm`）/`cargo tt`（`a2r_tests::pilot_aggregate_a2r`）。
 
 > 来源：docs/plans/773-autodown-testcase-protocol-pilot.md §2/§5（Design 35 A）。
+
+## probe 通道（PLAN-796：sema/query-v1 受限 adapter）
+
+- 契约层：`Adapter::Probe × Run`（v2-only）+ 注册配方表（首个
+  `sema/query-v1`；797 按同合同追加 ABI recipe，不改协议）+ 声明式步骤
+  （query / edit-source / restart）+ atom-data 源类别。
+- 执行层：语义 worker 子进程（`semaworker/1`，与 acworker 同形信封/回显/
+  有界 IO/父侧墙钟）；restart = 统一 runner 内真实跨进程持久化；判定全父侧。
+- worker 全生命周期：父侧 Job containment（suspended→assign→resume，子孙
+  收割）、响应后仍待退出、stderr 越限即杀、4MiB 元数据上限；退出状态/版本
+  镜像精确匹配；工具身份四轴（protocol/recipe/exe-sha256/worker-version）
+  入报告与 stale 判定（ac/probe 分族）。
+- 语言负例：parse 失败以 typed `diags`（stage=parse）返回并按声明 error
+  completion 判定，不归 infra ERROR。
+- case 永不携带 shell/任意 exe；worker 工具身份仅可信宿主配置绑定
+  （SEMA_CASE_WORKER）。

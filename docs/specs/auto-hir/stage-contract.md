@@ -131,6 +131,16 @@ X7 后端补做名字解析/typecheck；X8 凭证来自输入标记而非本进�
 - **provenance 非强 pin**：对象与其 HIR 输入哈希的关联是溯源边（图 metadata）,
   不保活上游——HIR 回收后对象仍可链接运行。
 
+## 语义事实接缝（PLAN-796，信任边界）
+
+语义事实页（签名/字段集/绑定/来源投影）是 checked 准入的**下游事实来源**
+（探针面，[auto-semantics](../auto-semantics/project.md)）：HIR verify 不改、
+不创建公共 Checked 构造（唯一 verify 构造保持）；语义库的推导诊断以 typed
+`diags` 步（stage=parse/typecheck/resolve）经 probe 通道回到测试判定，由父
+侧按声明 completion 准入——协议/IO/资源失败仍是 ERROR，不冒充语言负例。
+CT 片段（comptime 输入）只经 CTRequest/CTResult 模型接缝（SchemaOnly，
+拒绝地址/宿主 handle/未检查可执行输入）；本合同不切换任何在途实现。
+
 ## 边界与已知限制
 
 不冻结桥编码/字段编号；Effect 全集、多模块 Bundle 身份、宽度映射待实施计划裁定；
