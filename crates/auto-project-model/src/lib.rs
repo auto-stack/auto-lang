@@ -29,6 +29,12 @@ pub mod descriptor;
 mod from_scan;
 pub mod generation_request;
 pub mod scanner;
+/// Same-source wire codec for [`generation_request::GenerationRequest`]
+/// (PLAN-815 T-03). Feature-gated: the base project model stays JSON-free;
+/// the tool protocol and tool host enable `wire` to serialize requests
+/// without re-declaring the structure.
+#[cfg(feature = "wire")]
+pub mod wire;
 
 pub use descriptor::{
     DepNameForm, DependencyDecl, DisplayFields, DuplicateKey, Identity, NodeProp,
@@ -132,3 +138,5 @@ pub fn parse_file(path: &Path) -> ProjectModelResult<ProjectDescriptor> {
 mod generation_request_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(all(test, feature = "wire"))]
+mod wire_tests;

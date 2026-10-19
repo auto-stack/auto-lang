@@ -1,0 +1,16 @@
+[package]
+name = "auto-tool-protocol"
+version = "0.1.0"
+edition = "2021"
+description = "I-TOOL light tool protocol (PLAN-815 T-03): version/capability/budget/error/framing contract shared by the auto-ui-tool host and its clients"
+license = "MIT"
+
+[dependencies]
+# I-PROJECT 单源请求类型与同源 wire codec(PLAN-809/815):协议不复制请求结构。
+auto-project-model = { path = "../auto-project-model", features = ["wire"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# 测试直接构造包内含 auto_val::Value 的请求(不可 wire 化负控)。
+auto-val = { path = "../auto-val" }
