@@ -10,4 +10,4 @@
 | 754 | pg-unify | ✅（reviewed→archived） | archive/ | standalone App.vue 瘦壳化——宿主逻辑全量迁组件包 PlaygroundIDEApp，零行为漂移（e2e 29 绿+unify 3/3）|
 
 | 812 | playground-linux-backend-deploy | ✅（reviewed→archived） | archive/ | 通用 a2r-std 依赖与非 Windows 常量重导出；前后台响应格式一致的 Linux 后台发布包、运行资产和回滚验收 |
-| 813 | tapl-runnable-examples | executing | [Plan](../../plans/813-tapl-runnable-examples.md) | Playground 每次 Run/Test 输入隔离、多文件执行与真实测试入口修复 |
+| 813 | tapl-runnable-examples | reviewed（merge 门禁待完成） | [Plan](../../plans/813-tapl-runnable-examples.md) | Playground 每次 Run/Test 输入隔离、多文件执行与真实测试入口修复 |
