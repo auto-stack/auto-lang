@@ -1,8 +1,20 @@
 # PLAN-797 有限 profile 支持/拒绝矩阵（support-matrix）
 
-> 状态：**v0.1-candidate 草稿**。绑定 `autoabi.win-x64.v0.1-candidate`。
-> 拒绝面是有限 profile 支持表，不是永久删去战略。T-06 后按正式
-> semantic contract / AutoDown 通路复核；终稿 hash 写入 freeze proposal。
+> 状态：**v0.1-candidate 终稿（T-07）**。绑定 `autoabi.win-x64.v0.1-candidate`。
+> 拒绝面是有限 profile 支持表，不是永久删去战略。T-06 已按正式
+> semantic contract / AutoDown 通路复核（`35794e5ec`）；hash 由
+> freeze-proposal/复审记录绑定。
+
+## 0. 正式通路面（T-06 新增）
+
+| 面 | 值 |
+|---|---|
+| AutoDown recipe | `abi/interop-v1`（REGISTERED_PROBE_RECIPES 追加；绑定互斥解码：sema/abi 绑定挂错配方=admission error） |
+| deck 源类别 | `.atomdata` DATA（非可执行源；case 永不携带 shell/exe） |
+| worker 协议 | `abiworker/1`（信封同 acworker/semaworker：nonce/request_hash 回显、deny_unknown_fields、4MiB 界、Job containment、退出状态/版本镜像、exe-sha256 入 stale 轴） |
+| 可执行语料 | `crates/auto-lang/test/cases/autoabi/`：leg-a（publish→hit→跨进程 restart hit→body-edit republish）、leg-b、leg-c、bad-sig（类型化 deck 诊断负例） |
+| 语义身份 | `ac-sema-contract`（D-796 合同）只读消费；临时快照已退役（收据在案） |
+| 正式复测 | 双硬门过真实 IPC：body-edit P95 500.8ms / reject P95 76.8ms（各 30 样本） |
 
 ## 1. 类型与物理形态
 

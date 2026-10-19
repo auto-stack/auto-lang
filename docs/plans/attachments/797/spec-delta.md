@@ -1,10 +1,11 @@
 # PLAN-797 规范增量提案（spec-delta）
 
-> 状态：**草稿（T-07 可独立准备部分）**。绑定提交以最终
-> `code_commit` 与 canonical Spec 输入 hash 为准。T-06（真实 semantic
-> contract / 正式 AutoDown）完成后必须按实际通路重写对应字段，并重新
-> 冻结本文件 hash。§5 五行意向表是计划契约，本文件是可审阅的规范正文
-> 草稿；**不得**在 review/merge 前把本文发布为 canonical Spec 或改 ledger。
+> 状态：**终稿（T-07）**。绑定 T-06 实施提交 `35794e5ec`（真实 semantic
+> contract 绑定 / 正式 AutoDown 执行 / 性能复测已按实际通路重写）与
+> T-07 材料提交；canonical Spec 输入 hash 为下方当前实测值（R2 曾警示
+> goals.md 漂移，已按当前树重核）。§5 五行意向表是计划契约，本文件是
+> 可审阅的规范正文；**不得**在 review/merge 前把本文发布为 canonical
+> Spec 或改 ledger；本文自身 hash 由 freeze-proposal 与复审记录外置绑定。
 
 | 项 | 值 |
 |---|---|
@@ -15,19 +16,17 @@
 | implementation_tree | `D:/autostack/.wt/lang-797/auto-lang` @ `plan-797-dev` |
 | freeze_state | **candidate**，不是 “ABI v0.1 已发布” |
 
-## Spec inputs（canonical，主检出；hash 以 R1 报告为准）
+## Spec inputs（canonical，worktree 终态实测 SHA256，2026-10-19）
 
-| path | 角色 |
-|---|---|
-| docs/specs/auto-ac/project.md | SD-04 导航补丁的目标 |
-| docs/specs/auto-ac/data-resource-contract.md | SD-05 分域声明的目标 |
-| docs/specs/auto-ac/artifact-contract.md | 产物/链接语境输入 |
-| docs/specs/auto-cache/project.md | cache key/失效语境输入 |
-| docs/specs/auto-test-case/project.md | .case.ad / AutoDown 语境输入 |
-| docs/specs/goals.md | touched_goals 依据（当前 `[]`） |
-
-T-07 终稿须把这些输入的 SHA256 与 `spec-delta.md` 自身 hash 一并写入
-`docs/reports/plan797/` 与 freeze proposal。
+| path | SHA256 | 角色 |
+|---|---|---|
+| docs/specs/auto-ac/project.md | 008D039E7C2897619407C2E3281907847542921750EC40D53397934A72240A9F | SD-04 导航补丁的目标 |
+| docs/specs/auto-ac/data-resource-contract.md | 85B8074B6045F8F1A7DB391D50347182E05E601EC8BEB7D2EB88DAD48161B1C1 | SD-05 分域声明的目标 |
+| docs/specs/auto-ac/artifact-contract.md | 2C5305E7FEE33595CEBFE1CB8399F4318984D38D45A8278A0513C841C2049DFE | 产物/链接语境输入 |
+| docs/specs/auto-cache/project.md | 7A48BA94FDAE6B2A80CF51CBFF9E49A101942C28217D782FAFBB9A81AA4FB30C | cache key/失效语境输入 |
+| docs/specs/auto-test-case/project.md | F2993EC85AA9DF0FD7FFA41D7E159FEA053E592C18D940565A4CD616A8B9AD82 | .case.ad / AutoDown / probe seam 语境输入 |
+| docs/specs/auto-semantics/semantic-contract.md | 8E27FCDB6592B7F44A86A85F6BE1619022C72A88A0EA67B1CBD10AF0B897AC2D | 真实语义绑定依据（T-06 消费面） |
+| docs/specs/goals.md | EC5170B6B769E33F24735E35541A071EE6E499F09D5BD328F47BF64B6F1E2D7D | touched_goals 依据（当前 `[]`） |
 
 ---
 

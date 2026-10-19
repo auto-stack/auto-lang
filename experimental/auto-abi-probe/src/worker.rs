@@ -441,8 +441,7 @@ fn execute_query(sess: &mut Session) -> StepOut {
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).expect("worker scratch");
     let expected = decl::oracle_mix_v1(&deck.inputs);
-    let mut objs: Vec<std::path::PathBuf> = Vec::new();
-    let entry: &str;
+    let (objs, entry): (Vec<std::path::PathBuf>, &str);
     match sess.leg.as_str() {
         "a" => {
             let checks = [SuiteCheck::Mix {

@@ -1,12 +1,14 @@
 # PLAN-797 AutoABI probe verification gate (ASCII only for Windows
 # PowerShell 5.1). Two scopes:
-#   -Scope acceptance  : what work can prove before D-796/D-788 land —
-#                        committed Cargo.lock identity, --locked offline
-#                        resolve, zero-warning health of the probe crate,
-#                        full experimental/auto-abi-probe cargo test suite,
-#                        and presence of independently preparable T-07
-#                        materials. Does NOT claim formal AutoDown execution
-#                        or AC-05/06 closeout.
+#   -Scope acceptance  : post-T-06 work proof — committed Cargo.lock
+#                        identity, --locked offline resolve, zero-warning
+#                        health of the probe crate, the full
+#                        experimental/auto-abi-probe suite (now including
+#                        abi_binding_ real-contract tests and the FORMAL
+#                        turnaround hard gates over the abiworker/1 IPC),
+#                        the unified-runner ABI recipe corpus, and the T-07
+#                        finalized materials. AC-05/06 CLOSEOUT still
+#                        belongs to final review + merge, not this script.
 #   -Scope closeout    : acceptance plus a dry checklist of V-01..V-11 /
 #                        AC-01..AC-06 closeout items, reporting each as
 #                        done|pending (T-06 still depends on D-796/D-788).
@@ -51,12 +53,29 @@ function Invoke-Cargo {
     param([string[]]$ArgList, [string]$RawName, [string]$WorkDir)
     $prev = $ErrorActionPreference
     $ErrorActionPreference = 'Continue'
+    $script:SawSccacheBypass = $false
     try {
         if ($WorkDir) {
             Push-Location $WorkDir
         }
         try {
             $output = & cargo @ArgList 2>&1
+            # Known environment condition (recorded by review R2): the
+            # default sccache wrapper fails to start when its port sits in
+            # a Windows exclusion range (os error 10013). Retry ONCE with
+            # RUSTC_WRAPPER cleared FOR THIS INVOCATION ONLY; the process
+            # environment is restored in finally. Never silently retried
+            # for other failures.
+            if ($LASTEXITCODE -ne 0 -and ($output | Out-String) -match 'sccache.*(10013|port exclusion|Server startup failed)') {
+                $script:SawSccacheBypass = $true
+                $savedWrapper = $env:RUSTC_WRAPPER
+                try {
+                    Remove-Item Env:RUSTC_WRAPPER -ErrorAction SilentlyContinue
+                    $output = & cargo @ArgList 2>&1
+                } finally {
+                    if ($null -ne $savedWrapper) { $env:RUSTC_WRAPPER = $savedWrapper }
+                }
+            }
         } finally {
             if ($WorkDir) {
                 Pop-Location
@@ -66,6 +85,9 @@ function Invoke-Cargo {
         $ErrorActionPreference = $prev
     }
     $text = ($output | Out-String)
+    if ($script:SawSccacheBypass) {
+        $script:ReceiptLines.Add('env-note: sccache port-exclusion bypassed once (RUSTC_WRAPPER cleared for a single retry, restored; same handling as review R2)')
+    }
     if ($null -ne $RawName -and $null -ne $script:RawDir) {
         [System.IO.File]::WriteAllText((Join-Path $script:RawDir $RawName), $text)
     }
@@ -77,9 +99,18 @@ function Invoke-Cargo {
 
 function Test-HasWarningLine {
     param([string]$Text)
+    # Zero-warning applies to THIS plan's crate only; pre-existing
+    # warnings from other crates on the dep path (e.g. shim-metadata's
+    # unused doc comment) are out of scope and recorded, not hidden.
+    $scope = $false
     foreach ($line in ($Text -split "`r?`n")) {
-        if ($line -match '^\s*warning') { return $true }
+        if ($line -match '^(\s*Checking|\s*Compiling) auto-abi-probe') { $scope = $true }
+        if ($line -match '^\s*Checking\s+|^\s*Compiling\s+' -and $line -notmatch 'auto-abi-probe') { $scope = $false }
+        if ($scope -and $line -match '^\s*warning') { return $true }
     }
+    # also catch the crate-level summary the compiler emits
+    if ($Text -match 'warning: `auto-abi-probe`[^
+]*generated') { return $true }
     return $false
 }
 
@@ -171,6 +202,40 @@ try {
         $script:ReceiptLines.Add('cargo-test-locked-offline: ok')
     }
 
+    # --- T-06: real semantic binding + formal AutoDown (D-796/D-788 landed) --
+    Invoke-Step 'abi_binding_ real-contract tests + FORMAL hard gates (probe)' {
+        $text = Invoke-Cargo @('test', '--locked', '--offline', '--test', 't06_binding') 't06-binding.txt' $ProbeDir
+        if ($text -notmatch 'test result: ok') {
+            throw "t06_binding did not report test result: ok`n$text"
+        }
+        $script:ReceiptLines.Add('t06-binding-real-contract+formal-gates: ok')
+    }
+
+    Invoke-Step 'abi/interop-v1 corpus through the unified runner' {
+        $text = Invoke-Cargo @('test', '-p', 'auto-lang', '--features', 'test-cases', '--lib', 'abi_recipe') 'abi-recipe-runner.txt' $RepoRoot
+        if ($text -notmatch 'test result: ok') {
+            throw "abi_recipe runner tests did not report test result: ok`n$text"
+        }
+        $script:ReceiptLines.Add('abi-recipe-unified-runner: ok')
+    }
+
+    Invoke-Step 'retirement receipt + finalized T-07 materials' {
+        $required = @(
+            'docs/plans/attachments/797/semref-retirement-receipt.md',
+            'crates/auto-lang/test/cases/autoabi/autoabi.suite.ad',
+            'crates/auto-lang/test/cases/autoabi/src/p797-mix.atomdata'
+        )
+        $missing = @()
+        foreach ($rel in $required) {
+            $p = Join-Path $RepoRoot ($rel.Replace('/', [char]92))
+            if (-not (Test-Path $p)) { $missing += $rel }
+        }
+        if ($missing.Count -gt 0) {
+            throw ("missing T-06/T-07 artifacts: " + ($missing -join ', '))
+        }
+        $script:ReceiptLines.Add('t06-artifacts: present')
+    }
+
     # --- independently preparable T-07 materials (F-797-R1-02 partial) ------
     Invoke-Step 'T-07 independently-preparable materials present' {
         $required = @(
@@ -205,11 +270,11 @@ try {
             $lines.Add('V-06/AC-04 cache hit/invalidate/restart: PENDING final-review re-cert')
             $lines.Add('V-07/AC-04 admission bad graphs: PENDING final-review re-cert')
             $lines.Add('V-08/AC-04 512 churn/lease/GC: PENDING final-review re-cert')
-            $lines.Add('V-09/AC-05 six-scenario hard gates: PARTIAL (Rust native path historical; formal AutoDown retest = T-06)')
-            $lines.Add('V-10/AC-06 D-796 binding + AutoDown execution: PENDING T-06 (D-796/D-788)')
-            $lines.Add('V-11/AC-06 freeze proposal + support matrix + SD: MATERIALS DRAFTED (final freeze after T-06)')
+            $lines.Add('V-09/AC-05 hard gates: DONE at work level (in-process six scenarios 210/210 + FORMAL IPC retest body-edit P95=500.8ms / reject P95=76.8ms, 30 samples each); final-review re-cert pending')
+            $lines.Add('V-10/AC-06 D-796 binding + AutoDown execution: DONE at work level (real ac-sema-contract binding, retirement receipt, abi/interop-v1 corpus 4 checks green through the unified runner); final-review re-cert pending')
+            $lines.Add('V-11/AC-06 freeze proposal + support matrix + SD: FINALIZED DRAFTS with bound hashes (work level); canonical deposit is merge-owned')
             $lines.Add('F-797-R1-03 Cargo.lock in commit: DONE (see acceptance receipt)')
-            $lines.Add('NOTE: closeout never claims AC-05/06 complete while T-06 is open.')
+            $lines.Add('NOTE: work-level done != final review pass; canonical Spec deposit / archive / merge gates remain merge-owned.')
             $all = ($lines -join "`n")
             $script:ReceiptLines.Add($all)
             if (Test-Path $script:RawDir) {
