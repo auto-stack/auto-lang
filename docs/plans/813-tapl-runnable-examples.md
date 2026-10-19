@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm]
-current_step: 0
+current_step: 1
 total_steps: 9
 ---
 
@@ -78,6 +78,16 @@ T-01 在批准后的专用树完成，产出决定记录并回写本计划，然
 4. 走通三个端到端探针：ch03 前文函数、ch05 读输入退出、ch10 多文件。探明 test_code 的 deadline 缺口并分配 T-02 修复。
 5. 落定执行元数据作者位置/字段/稳定 ID 迁移。若需要改变目标/验收/兼容范围或新增核心架构，先让用户裁定；常规实现选择继承已确认范围。
 
+#### T-01 决定记录（2026-10-19）
+
+- 预处理实际页面为 EN/ZH 各 27 页；生成后可见 303 个 CodeView 与 96 个 AutoFence，共 399 个 Run 入口。与静态 401 的差额是两种语言页各一处 `ch01 Listing 1-2`：作者源是 `auto.toml`，但 `prepare-content.js` 只接受 Auto 源，当前生成 `Listing source not found` 注释。修复为明确 `display-only`，不得计作可执行 Run；其余入口必须由执行描述显式授权。
+- 共用执行合同放在作者仓 `tapl/examples.json`。条目使用不可变 `id`（locale + 页/示例锚点）、`pair_id`（译本对应）、作者页定位、显示块 ID、`mode`（`run`/`test`/`display-only`）、完整项目文件与入口、请求输入、预期类型/值或诊断、超时。Listing 通过 `example-id` 属性绑定；Auto 围栏通过 `example-id` 信息属性绑定。页面转换、AutoFence、CodeView、Notes 和全源门禁均读取同一合同；缺少/重复/孤立绑定均令门禁失败，不再靠 `use/import` 正则猜可运行性。
+- `CodeView` 目前无条件显示 Auto Run 且默认 `localhost:3030`；RunRequest 有 source/files/project_dir/entry/timeout_secs，无输入字段；`/api/test` 不存在。ch03 的完整 Listing 1-1 经 CLI 成功，页面独立调用因 `greet` 未定义而失败；ch05 示例调用未定义的 `input()`，完整 Listing 5-4 还在运行前因 `none` 未定义失败；ch10 Listing 10-5 只有 main/pac，缺 `utils`。已知多文件 Playground demo 经公共 CLI 成功，证明现有模块解析可复用，但 TAPL 必须提供完整文件树。
+- `io.read_line()` 公共 CLI 探针接受文本行并正确移除 CRLF；空行和立即 EOF 都返回 `""`。禁止替换全局 stdin。为 Playground 扩展请求级输入队列并随每次 VM 执行注入；浏览器总是显式提供输入（无输入即有限 EOF），CLI 旧 API 继续读取 OS stdin。新增 `io.read_line_opt() -> Option<str>` 以区分空行 `Some("")` 与 EOF `None`，处理 LF/CRLF/末行无换行。
+- `test_code` 会真实收集并执行 `#[test]`，但构造 VM 时未设置 deadline；Playground 没有测试 endpoint。T-02 增加带截止时间的测试入口/API，并确保超时结果可见、下一次请求不受影响。Run 继续默认 10 秒、后端限幅 1–60 秒；请求输入/文件超出既有预算时返回具体错误，不截断。
+- Playground 项目执行已经为 files 建立独立临时目录并清理，使用文件入口路径参与模块解析；T-02 复用此路径并修正临时目录唯一性/安全检查（按探针需要），不在书稿目录改 cwd 或环境变量。线上 Run 使用同源 `/api/run`（由站点反向代理），不得默认请求读者本机 localhost。
+- 基线探针与页面映射细节见本计划附件 `t01-findings.md`。T-01 已完成；代码执行仍为 T-02 起逐条验证，静态分析不计运行通过。
+
 ### 5.2 修复原则
 
 - 不存在函数先改正确现有命名/use；通用缺口可补最小 stdlib 实现、声明、装配与错误用例，默认不把教程所有裸名注册为全局内建。
@@ -137,7 +147,7 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 
 | ID | owner_stage | 依赖 | 操作/真实路径或符号 | 结果及验证 |
 |---|---|---|---|---|
-| T-01 | work | 用户确认 r1 | 建实施组，核对 prepare-content.js/auto-fence-md.ts 与书稿；公共 CLI/API/test_code 跑 §5.1 探针，设计执行元数据和审计入口 | 决策/基线/API 表入证据并回写合同后再依赖实施；AC-01，V-01/03/05/06 可行性 |
+| T-01 | work | 用户确认 r1 | 建实施组，核对 prepare-content.js/auto-fence-md.ts 与书稿；公共 CLI/API/test_code 跑 §5.1 探针，设计执行元数据和审计入口 | ✅ 完成：决策与基线探针已回写 §5.1 并记录于 `t01-findings.md`；T-02..06 依赖此合同 |
 | T-02 | work | T-01 | Playground `src/routes/run.rs,vm_runner.rs,project.rs`、auto-lang `src/lib.rs,vm/host_capabilities.rs,vm/ffi/stdlib.rs` 最小相关路径 | 输入/测试/fixture 接线，定向 Rust/API 检查及 cargo check；V-03/04/05/07；AC-03/04 |
 | T-03 | work | T-01/02 | website CodeView.vue/AutoFence.vue、auto-fence-md.ts、prepare-content.js、scripts/build-playground-notes.mjs；必要的包 SnippetRunner.vue/usePlayground.ts/types.ts | 共用描述/客户端、完整源/输入界面与配置/错误/服务模式；定向 tapl-run + 原阅读测试；AC-02/03/04 |
 | T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | 每条描述/期望更新、逐块定向验收；V-02/03/06/07；AC-01/02/03/05 |
@@ -147,14 +157,14 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | AC-07，pass 后 reviewed；merge-owned 全档门禁 pending，不能声称交付完成 |
 | T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | AC-08；每树移除前 wt-guard clean，保留他人 WIP，提供实际收据 |
 
-所有任务当前未执行；静态普查是 new 阶段取材，不冒算 work 完成。
+T-01 已完成；T-02..07 尚未执行。静态普查与 T-01 基线探针只界定修复方式，不冒算全源运行验收。
 
 ## 9. 复审记录
 
-2026-10-19：用户确认 PLAN-813 r1 并要求实施；状态转为 executing，下一步为专用工作树内 T-01。起草取材为 54 页/1829 围栏/401 入口，runtime_executions=0；该静态基线不计作运行验收。
+2026-10-19：用户确认 PLAN-813 r1 并要求实施；状态转为 executing。T-01 已在专用工作树完成：将静态清单对上生成页面（实际 399 Run，另两处 TOML 应静态展示）、执行 ch03/ch05/ch10 公共 CLI 探针、确认 stdin 空行/EOF 行为、确认 `/api/test` 缺失及 test VM 无 deadline，并回写元数据/输入/测试/API 决定。书稿静态基线为 54 页/1829 围栏/401 原始位置；逐项真实执行验收仍 pending。
 
 ## 10. 待澄清事项
 
-必需决策：用户确认 r1“两仓全书修复 + 网站 Run/输入/测试/依赖支持”范围。建议按此计划执行。
+必需决策：已由用户确认 r1“两仓全书修复 + 网站 Run/输入/测试/依赖支持”范围。T-01 的实现选择不改变范围或兼容承诺。
 
 T-01 内解决 stdin/EOF 最小接口、真实公共库缺口和执行元数据字段，不另加问卷；仅在必须改变目标/验收/兼容承诺或扩大架构时提交具体裁定。
