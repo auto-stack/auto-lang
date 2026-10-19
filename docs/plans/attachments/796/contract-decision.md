@@ -385,3 +385,19 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
   `sema_cache_r13_fnsig_page_admission_and_body_independence`（当前 HIT、
   真实旧签名版本拒、外包拒、body-only 保持 HIT、签名编辑 Miss）；
   Required 按名绑定 V-03b。
+
+## D24 R14 修复轮冻结（2026-10-19）
+
+- **FnSig 键版本隔离**（F-R14-01，R13 修复回归）：FnSig 查询键增加
+  `hdr-sem=fn-sig/sig-only/v1` 轴——页头内容语义自 R13 起为签名级，语义
+  变更必须移动键（D7/D21 定律的补充执行）。保留的前轮合法页（签名+body
+  头）落在旧键上不可达：当前查询不服务旧值；当前语义页在新键发布无同键
+  Conflict；不改 Decl 逻辑身份、不改 783 冲突策略、不靠清空持久 store。
+- **一般规则重申**：凡改变某查询页的头/载荷语义而不动整体 schema/codec
+  版本，必须为该查询键补显式语义版本轴（ModuleIndex 由 R13 的
+  index-content-fp 换轴天然隔离；FnSig 本轮补齐）。页种类覆盖映射（D23）
+  相应增加"键语义版本轴"列。
+- **永久反控**：`sema_cache_r14_fnsig_key_version_isolates_old_semantics`
+  ——保留旧语义页（旧头=签名+body 真实哈希、旧键=当前键去 hdr-sem）→
+  当前查询 Miss → 当前页发布无 Conflict → store 重开仍 HIT → body-only
+  保持 HIT、签名编辑换键 → fresh store 正控。Required 按名绑定 V-03b。

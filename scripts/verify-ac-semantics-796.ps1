@@ -264,7 +264,8 @@ if ($Scope -eq 'acceptance') {
 
     # --- V-03 / AC-03: queries, deps, cache lifecycle ----------------
     Run-Suite 'V-03' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps') 'meta_query_ dependency faces' $ws 7
-    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + repairs' $ws 37 @(
+    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + repairs' $ws 38 @(
+        'sema_cache_r14_fnsig_key_version_isolates_old_semantics',
         'sema_cache_r13_module_index_tracks_signatures_and_records',
         'sema_cache_r13_fnsig_page_admission_and_body_independence',
         'sema_cache_r12_method_ref_full_admission_matrix',

@@ -200,6 +200,12 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
 - **页种类覆盖映射**：见 D23——RecordMeta/RecGroup/FnMeta/ModuleIndex/
   InferBody·CachedResult 各自 payload 字段→键/版本→读回准入均有显式控制，
   不再以页头哈希等价替代嵌入事实。D22"其余页全量等价"表述由本节修正。
+## R14 修复轮补充（2026-10-19，D24）
+
+- **SD-04（键语义版本轴）**：FnSig 查询键增加 `hdr-sem=fn-sig/sig-only/v1`
+  ——页头内容语义变更必须移动键；保留的前轮合法页落在旧键不可达，当前
+  语义页发布无同键 Conflict（R13 回归闭合）。一般规则：凡改某查询页头/
+  载荷语义而不动整体 schema/codec，必须为该键补显式语义版本轴。
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各

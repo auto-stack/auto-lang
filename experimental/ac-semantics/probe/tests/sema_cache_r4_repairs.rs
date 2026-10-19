@@ -1850,3 +1850,151 @@ fn sema_cache_r13_fnsig_page_admission_and_body_independence() {
         other => panic!("a body-only edit must keep the FnSig hit, got {other:?}"),
     }
 }
+
+// ---------------------------------------------------------------------------
+// F-796-R14-01: the FnSig key isolates the header-semantics version
+// ---------------------------------------------------------------------------
+
+/// F-796-R14-01: the R13 header-semantics change (FnSig header went
+/// from signature+body to signature-only) must MOVE the key — a
+/// retained pre-R13 legal page sits on the OLD key and is never served,
+/// the current-semantics page publishes without a same-key Conflict and
+/// survives a store reopen, and the signature-level reuse axes stay
+/// intact (body-only keeps the hit, a signature edit changes the key).
+#[test]
+fn sema_cache_r14_fnsig_key_version_isolates_old_semantics() {
+    use ac_artifact_probe::identity::QueryKey;
+    use ac_artifact_probe::store::PutRequest;
+    use ac_sema_contract::codec::{
+        encode_page, FnMeta, PageBody, PageHeader, PageKind, SemaPage, TypeDesc,
+        SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V2,
+    };
+
+    let query = QueryKind::FnSig {
+        fn_name: "get".into(),
+    };
+    let v1 = record_input("fn get() int { return 1 }", "fk");
+    let f = v1.lookup_fn("get").unwrap();
+    let cur_sig =
+        ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::fn_sig_canonical(f));
+    // the PRE-R13 header semantics: signature + body in one hash
+    let mut old_bytes = ac_sema_core::query::fn_sig_canonical(f);
+    old_bytes.extend_from_slice(&ac_sema_core::query::fn_body_canonical(f));
+    let old_header = ac_sema_contract::ContentVersion::of_canonical(&old_bytes);
+    assert_ne!(
+        old_header,
+        ac_sema_core::query::target_content(&v1, &query),
+        "the two header semantics differ (the transition is real)"
+    );
+
+    let put_fnmeta = |store: &ManagedStore,
+                      components: Vec<(String, String)>,
+                      header: ac_sema_contract::ContentVersion| {
+        let pkg = ac_sema_contract::PackageId::new("r6");
+        let page = SemaPage {
+            header: PageHeader {
+                schema: SEMA_PAGE_SCHEMA_V2.into(),
+                producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
+                codec_version: SEMA_CODEC_VERSION,
+                kind: PageKind::FnMeta,
+                content: header,
+            },
+            body: PageBody::FnMeta(FnMeta {
+                decl: ac_sema_contract::DeclRef::new(
+                    &pkg,
+                    "fk",
+                    ac_sema_contract::DeclKind::Fn,
+                    "get",
+                    cur_sig.clone(),
+                ),
+                params: vec![],
+                ret: TypeDesc::I32,
+                receiver: "free",
+            }),
+        };
+        store
+            .put_artifact(PutRequest {
+                layer: ac_sema_probe::SEMA_LAYER,
+                key: QueryKey {
+                    layer: ac_sema_probe::SEMA_LAYER,
+                    components,
+                },
+                kind: ac_sema_probe::SEMA_CARRIER,
+                payload: encode_page(&page).unwrap(),
+                edges: vec![],
+                project: None,
+            })
+            .unwrap_or_else(|e| panic!("put must not conflict: {e}"));
+    };
+
+    // the CURRENT key carries the header-semantics axis; the OLD key is
+    // exactly the current key minus that axis (the pre-R14 construction)
+    let current_key = ac_sema_core::SemaQueryKey::build(&query, &v1);
+    assert!(
+        current_key.components.iter().any(|(k, _)| k == "hdr-sem"),
+        "the FnSig key carries the header-semantics axis"
+    );
+    let old_key_components = current_key
+        .components
+        .iter()
+        .filter(|(k, _)| k != "hdr-sem")
+        .cloned()
+        .collect::<Vec<_>>();
+
+    // 1) retain a PRE-R13 legal page under the OLD key
+    let root = scratch("r14-transition");
+    let store = open_store(&root.join("store")).unwrap();
+    put_fnmeta(&store, old_key_components, old_header);
+
+    // 2) the current lookup does not serve the old page (unreachable key)
+    match lookup_only(&store, &v1, &query).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("the retained old-semantics page must not be served: {other:?}"),
+    }
+
+    // 3) the CURRENT-semantics page publishes under the CURRENT key
+    //    without a same-key Conflict
+    put_fnmeta(
+        &store,
+        current_key.components.clone(),
+        ac_sema_core::query::target_content(&v1, &query),
+    );
+    match lookup_only(&store, &v1, &query).unwrap() {
+        FetchOutcome::Hit { .. } => {}
+        other => panic!("the current page must be served after publication: {other:?}"),
+    }
+
+    // 4) restart: reopen the SAME store directory and the page still hits
+    let reopened = open_store(&root.join("store")).unwrap();
+    match lookup_only(&reopened, &v1, &query).unwrap() {
+        FetchOutcome::Hit { .. } => {}
+        other => panic!("the current page must survive a store reopen: {other:?}"),
+    }
+
+    // 5) the signature-level reuse axes stay intact: a body-only edit
+    //    keeps the hit; a signature edit changes the key
+    let v1b = record_input("fn get() int { return 2 }", "fk");
+    match lookup_only(&store, &v1b, &query).unwrap() {
+        FetchOutcome::Hit { .. } => {}
+        other => panic!("a body-only edit must keep the FnSig hit: {other:?}"),
+    }
+    let v2 = record_input("fn get(x int) int { return x }", "fk");
+    match lookup_only(&store, &v2, &query).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("a signature edit must change the key: {other:?}"),
+    }
+
+    // 6) fresh store control: the current page publishes and hits with
+    //    no legacy page around
+    let root2 = scratch("r14-fresh");
+    let store2 = open_store(&root2.join("store")).unwrap();
+    put_fnmeta(
+        &store2,
+        current_key.components.clone(),
+        ac_sema_core::query::target_content(&v1, &query),
+    );
+    match lookup_only(&store2, &v1, &query).unwrap() {
+        FetchOutcome::Hit { .. } => {}
+        other => panic!("the fresh-store control must hit: {other:?}"),
+    }
+}

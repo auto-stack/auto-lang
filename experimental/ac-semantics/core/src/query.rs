@@ -647,6 +647,15 @@ impl SemaQueryKey {
                     f.map(|f| fp(&fn_sig_canonical(f)))
                         .unwrap_or_else(|| "absent".into()),
                 ));
+                // F-796-R14-01: the FnSig page HEADER semantics is
+                // signature-only since the R13 target_content split.
+                // The key carries an explicit header-semantics axis, so
+                // that semantics change MOVED the key: a retained
+                // pre-R13 page (sig+body header) sits on the old key,
+                // unreachable — the current page publishes without a
+                // same-key Conflict, and 783 never sees old/new
+                // payloads under one key.
+                c.push(("hdr-sem".into(), "fn-sig/sig-only/v1".into()));
             }
             QueryKind::RecordFields { record } => {
                 let r = input.lookup_record(record);
