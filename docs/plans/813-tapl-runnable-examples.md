@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-813
-status: executing
+status: reviewed
 feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 2
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm, a2r-std]
-current_step: 8
+current_step: 9
 total_steps: 10
 ---
 
@@ -161,11 +161,11 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成（闭合 R1/R3）：Base64/Hex 复用现有依赖并可运行；新增 loopback TCP server/client 本地工程及明确范围说明，完成连接、消息往返、断开和优雅关停验收。 |
 | T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R5）：新规范准确列出五种模式和 stdout_contains/expected-error；checker 对 54 页执行 catalog↔page 双向扫描；有效样例通过，错误预期、旧锚点、孤立锚点、错误诊断负控均失败。复核后全量 396/396 通过。 |
 | T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：auto-lang 现冻结提交 `5c6daa1439d95dbf2811f4f242895490b6d40d2a`，书稿继续冻结在 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；两个实施工作树 clean，文档复审修订已提交。 |
-| T-08 | review | T-07/T-10 | /auto-plan:review 重审冻结修复 diff、V-09、既有 AC/SD 证据及 debt 归因 | reopened：R9 仅对旧冻结提交有效；待独立复审 `78e1c31e8be30b2c758d6034f211f48c6731dc87`，merge-owned `cargo t/tv/tb` 保持 pending。 |
+| T-08 | review | T-07/T-10 | /auto-plan:review 重审冻结修复 diff、V-09、既有 AC/SD 证据及 debt 归因 | ✅ R10 独立复审 pass，绑定 auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`、book `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`；V-09 pass，无 finding；三项 merge-owned gates pending。 |
 | T-09 | merge | T-08 | /auto-plan:merge：在 review pass 后于最终冻结组合串行跑 `cargo t`、`cargo tv`、`cargo tb`，全绿后再双仓合入与收尾 | pending：R9 的 P765 失败已由 T-10 修复；须在本轮复审通过后的冻结提交重跑三项门禁。此前 PLAN-819 两个 Rust listing 修复目标已通过；未全部绿前不合入/归档/清理。 |
 | T-10 | work | R9 gate failure | 修正 `crates/auto-lang/src/vm/ffi/stdlib.rs` 中 `RtlCaptureStackBackTrace` ABI；按 V-09 在 `test-book` 和日常 feature 下重放 P765，并运行 `cargo check -p auto-lang` | ✅ 完成：缺失可选 hash 参数被补齐并显式传 NULL；两个 feature 配置下各 1/1 通过，`cargo check` 通过。提交 `78e1c31e8be30b2c758d6034f211f48c6731dc87`；日志见 `attachments/813/p765-ffi-fix-r13.log.txt`、`p765-daily-feature-r14.log.txt` 与 `cargo-check-p765-r14.log.txt`。 |
 
-T-01..T-07、T-10 已完成；R9 对旧冻结提交的复审不能覆盖本次 FFI 修改，T-08 已重新打开并等待独立复审。T-10 修复 P765 的 Windows ABI 未定义行为，定向回归与类型检查通过。`cargo t`、`cargo tv`、`cargo tb` 仍是 merge-owned pending，须在 R10 pass 后的冻结提交串行执行；在全部通过前不合入、归档或清理。
+T-01..T-08、T-10 已完成，R10 独立最终复审通过，当前状态为 reviewed（current_step=9/10）。T-10 修复 P765 的 Windows ABI 未定义行为，V-09 定向回归与类型检查通过。`cargo t`、`cargo tv`、`cargo tb` 仍是 merge-owned pending，须在本冻结提交串行执行；在全部通过前不合入、归档或清理。
 
 ## 9. 复审记录
 
@@ -314,6 +314,12 @@ stage: review | review_scope: final | reviewer_identity/limitations: Codex 当�
 - 验收：`cargo nextest run -p auto-lang --lib --features test-book p765_iat_trace_writes_audit_and_preserves_exit_code` 1/1 pass（6860 skipped）；相同过滤器在 `--features ui-iced,test-cases` 下 1/1 pass（6855 skipped）；`cargo check -p auto-lang` exit 0（405 条既有 warning）；`rustfmt --edition 2021 --check` 与 `git diff --check` 通过。临时标记与结果见 `attachments/813/p765-install-markers-r11.log.txt`、`p765-hook-entry-r12.log.txt`、`p765-ffi-fix-r13.log.txt`、`p765-daily-feature-r14.log.txt`、`cargo-check-p765-r14.log.txt`；关键日志 SHA-256：test-book `9250E6BC41E691EBB80D21C606EC169F1A91578212C8308C5E00739AB189F0E1`；daily-feature `E00B63242D29020B5C0ED60AEC8265D90990F9C72BE25B6FE6D454078D64789D`；cargo-check `CFFAFF51458A71B40F7D296DA330EDCA796FF140EC78A8DC24A8BEDEA728F005`。
 - 提交：auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`，base `5a52efa2b960425060d2d4b697904df4504669a2`；worktree `D:/autostack/.wt/lang-813/auto-lang` / `plan-813-dev` clean；book 保持 `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`，auto-down 依赖 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。当前 Plan revision 2、status `executing`、current_step=8/10；T-08 final review 重开，三项全档门禁留待 review pass 后。
 - debt closure：P812-D2 的未归因 P765 观察现已确认是漏传 Windows API 可选参数导致的 ABI 未定义行为，并由本阶段修复；不修改已归档 PLAN-819。
+
+### 2026-10-19 独立最终复审 R10（pass）
+
+- stage: review；review_scope: final；reviewer_identity: 独立子任务 `/root/plan813_final_review`。plan_id/revision: PLAN-813/2；reviewed_commit: auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`，book `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`；base: auto-lang `5a52efa2b960425060d2d4b697904df4504669a2`，book `d05218bff49a52314ce436f78d9df2a69bc3357e`；dependency: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`（保留 12 个既有 WIP 文件）。
+- 接受结果：V-09 pass；reviewer 在 `test-book` 配置下重跑 P765 1/1（6860 skipped），在 `ui-iced,test-cases` 下 1/1（6855 skipped）；两树 clean，`rustfmt` 与 CRLF-aware `diff --check` 通过。确认 FFI 四参数及 `u16` 返回匹配 Windows 文档；审计检查 ExitProcess 路径实际断言 exit 9、trace 与 frames，并静态核对 TerminateProcess 调用点。P812-D2 归因与闭环正确，无新增 finding。
+- 既有 AC-01..06 和 SD-01..06 的 R9 证据仍适用（仅改一处 Windows FFI ABI，不改书稿、前端、API 或 Spec）；T-10 无规范增量。AC-07 pass。pending_closeout_gates: `cargo t`、`cargo tv`、`cargo tb`；本轮复审未运行全档。outcome: pass；Plan status=`reviewed`，current_step=9/10；next=T-09 merge gates。
 
 ## 10. 待澄清事项
 
