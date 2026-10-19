@@ -21,7 +21,7 @@ use ac_artifact_probe::identity::QueryKey;
 use ac_artifact_probe::store::{ManagedStore, PutRequest, StoreError};
 use ac_sema_contract::{
     decode_page, encode_page, CachedResult, InferFacts, ModuleIndex, PageBody, PageHeader,
-    PageKind, RecordMeta, ResultFacts, SemaPage, TypeDesc, SEMA_PAGE_SCHEMA_V1,
+    PageKind, RecordMeta, ResultFacts, SemaPage, TypeDesc, SEMA_PAGE_SCHEMA_V2,
 };
 use ac_sema_core::query::KeyEnv;
 use ac_sema_core::query::{current_fingerprints, freshness_class, QueryKind};
@@ -281,7 +281,7 @@ fn group_key(input: &SemaInput, member_names: &[String], env: &KeyEnv) -> QueryK
             ("algo".into(), "ac796-record-group/1".into()),
             (
                 "schema".into(),
-                ac_sema_contract::SEMA_PAGE_SCHEMA_V1.into(),
+                ac_sema_contract::SEMA_PAGE_SCHEMA_V2.into(),
             ),
             ("producer".into(), ac_sema_contract::SEMA_PRODUCER_ID.into()),
             ("group-content-fp".into(), env.group_eff(&members)),
@@ -369,6 +369,24 @@ fn admit_page(
     match &page.body {
         PageBody::RecordMeta(m) => {
             admit_shape_refs(&m.shape, input)?;
+            // F-796-R11-01: every published method belongs to THIS record —
+            // a method decl that is not Method-kind, or whose owner is
+            // another/absent record, marks a foreign or malformed page
+            for method in &m.methods {
+                if method.decl.kind != ac_sema_contract::DeclKind::Method
+                    || method.decl.owner.as_deref() != Some(m.shape.decl.name.as_str())
+                {
+                    return Err(ProbeError::TargetMismatch {
+                        found: format!(
+                            "method `{}` with owner {:?} and kind `{}`",
+                            method.decl.name,
+                            method.decl.owner,
+                            method.decl.kind.as_str()
+                        ),
+                        expected: format!("a Method decl owned by record `{}`", m.shape.decl.name),
+                    });
+                }
+            }
             let Some(env) = env else {
                 return Ok(());
             };
@@ -1187,7 +1205,7 @@ pub fn publish_infer_result_charged(
     };
     let page = SemaPage {
         header: PageHeader {
-            schema: SEMA_PAGE_SCHEMA_V1.into(),
+            schema: SEMA_PAGE_SCHEMA_V2.into(),
             producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
             codec_version: ac_sema_contract::SEMA_CODEC_VERSION,
             kind: PageKind::CachedResult,
@@ -1233,7 +1251,7 @@ pub fn publish_module_index(
     };
     let page = SemaPage {
         header: PageHeader {
-            schema: SEMA_PAGE_SCHEMA_V1.into(),
+            schema: SEMA_PAGE_SCHEMA_V2.into(),
             producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
             codec_version: ac_sema_contract::SEMA_CODEC_VERSION,
             kind: PageKind::ModuleIndex,
@@ -1413,11 +1431,13 @@ fn ensure_record_page(
                 let content = ac_sema_contract::ContentVersion::of_canonical(
                     &ac_sema_core::query::fn_sig_canonical(m),
                 );
+                // F-796-R11-01: a method's nominal identity includes its
+                // OWNING record — A.get/B.get/top-level get are distinct
                 ac_sema_contract::FnMeta {
-                    decl: ac_sema_contract::DeclRef::new(
+                    decl: ac_sema_contract::DeclRef::new_method(
                         &pkg,
                         &input.module,
-                        ac_sema_contract::DeclKind::Fn,
+                        name,
                         &m.name,
                         content,
                     ),
@@ -1435,7 +1455,7 @@ fn ensure_record_page(
     };
     let page = SemaPage {
         header: PageHeader {
-            schema: SEMA_PAGE_SCHEMA_V1.into(),
+            schema: SEMA_PAGE_SCHEMA_V2.into(),
             producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
             codec_version: ac_sema_contract::SEMA_CODEC_VERSION,
             kind: PageKind::RecordMeta,
@@ -1628,7 +1648,7 @@ pub fn publish_module_records(
         }
         let page = SemaPage {
             header: PageHeader {
-                schema: SEMA_PAGE_SCHEMA_V1.into(),
+                schema: SEMA_PAGE_SCHEMA_V2.into(),
                 producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
                 codec_version: ac_sema_contract::SEMA_CODEC_VERSION,
                 kind: PageKind::RecGroup,

@@ -50,7 +50,7 @@ fn filler_page(i: usize, fields: usize) -> SemaPage {
     };
     SemaPage {
         header: PageHeader {
-            schema: ac_sema_contract::SEMA_PAGE_SCHEMA_V1.into(),
+            schema: ac_sema_contract::SEMA_PAGE_SCHEMA_V2.into(),
             producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
             codec_version: ac_sema_contract::SEMA_CODEC_VERSION,
             kind: PageKind::RecordMeta,

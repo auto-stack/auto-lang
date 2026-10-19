@@ -169,7 +169,7 @@ fn sema_cache_r4_wrong_facts_rejected_at_read() {
     let _ = &mut cached;
     let page = ac_sema_contract::SemaPage {
         header: ac_sema_contract::PageHeader {
-            schema: ac_sema_contract::SEMA_PAGE_SCHEMA_V1.into(),
+            schema: ac_sema_contract::SEMA_PAGE_SCHEMA_V2.into(),
             producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
             codec_version: ac_sema_contract::SEMA_CODEC_VERSION,
             kind: ac_sema_contract::PageKind::CachedResult,
@@ -1131,5 +1131,248 @@ return z } }",
     match lookup_only(&store, &v2b, &qr).unwrap() {
         FetchOutcome::Hit { artifact_id, .. } => assert_eq!(artifact_id, p2["R"]),
         other => panic!("same-signature body edit must hit: {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F-796-R11-01: the method owner is part of the nominal identity
+// ---------------------------------------------------------------------------
+
+/// The R11 counterexample replayed against the REAL publication flow:
+/// same-module `A.get`, `B.get` and top-level `get` publish as THREE
+/// distinct declarations (kind Method + owning record), stable across
+/// restarts and declaration order; a same-owner signature edit keeps
+/// the logical id and changes only the content version; a body-only
+/// edit reuses the page; renaming the owner record mints a new identity.
+#[test]
+fn sema_cache_r11_method_owner_identity_distinguishes_a_get_b_get_and_top_get() {
+    let top_get_logical = || {
+        ac_sema_contract::logical_id(
+            &ac_sema_contract::PackageId::new("r6"),
+            "method-owner",
+            ac_sema_contract::DeclKind::Fn,
+            "get",
+        )
+    };
+    let method_decl_of =
+        |store: &ManagedStore, input: &ac_sema_core::SemaInput, record: &str| match lookup_only(
+            store,
+            input,
+            &QueryKind::RecordFields {
+                record: record.into(),
+            },
+        )
+        .unwrap()
+        {
+            FetchOutcome::Hit { page, .. } => match &page.body {
+                ac_sema_contract::codec::PageBody::RecordMeta(m) => m.methods[0].decl.clone(),
+                other => panic!("{record} page body: {other:?}"),
+            },
+            other => panic!("{record} must hit, got {other:?}"),
+        };
+
+    // the review's exact module (package is the helper's "r6")
+    let src = "type A { value int; fn get() int { return 1 } }\ntype B { value int; fn get() int { return 2 } }\nfn get() int { return 3 }";
+    let root = scratch("r11-method-owner");
+    let store = open_store(&root.join("store")).unwrap();
+    let input = record_input(src, "method-owner");
+    r7_publish(&store, &input);
+
+    let a_get = method_decl_of(&store, &input, "A");
+    let b_get = method_decl_of(&store, &input, "B");
+    assert_eq!(a_get.kind, ac_sema_contract::DeclKind::Method);
+    assert_eq!(b_get.kind, ac_sema_contract::DeclKind::Method);
+    assert_eq!(a_get.owner.as_deref(), Some("A"));
+    assert_eq!(b_get.owner.as_deref(), Some("B"));
+    assert_ne!(a_get.logical, b_get.logical, "A.get != B.get");
+    assert_ne!(a_get.logical, top_get_logical(), "A.get != top-level get");
+    assert_ne!(b_get.logical, top_get_logical(), "B.get != top-level get");
+    assert!(a_get.verify().is_ok() && b_get.verify().is_ok());
+
+    // restart stability: a FRESH store republishes the same identities
+    let root2 = scratch("r11-method-owner-fresh");
+    let store2 = open_store(&root2.join("store")).unwrap();
+    r7_publish(&store2, &input);
+    assert_eq!(method_decl_of(&store2, &input, "A").logical, a_get.logical);
+    assert_eq!(method_decl_of(&store2, &input, "B").logical, b_get.logical);
+
+    // registration/declaration order independence: B declared first
+    // mints exactly the same identities on the hot store
+    let swapped = "type B { value int; fn get() int { return 2 } }\ntype A { value int; fn get() int { return 1 } }\nfn get() int { return 3 }";
+    let input_sw = record_input(swapped, "method-owner");
+    r7_publish(&store, &input_sw);
+    assert_eq!(
+        method_decl_of(&store, &input_sw, "A").logical,
+        a_get.logical
+    );
+    assert_eq!(
+        method_decl_of(&store, &input_sw, "B").logical,
+        b_get.logical
+    );
+
+    // same-owner SIGNATURE edit: the logical id is unchanged (it is the
+    // nominal identity, not the content), the content version changes,
+    // and a new page is published
+    let sig = "type A { value int; fn get(x int) int { return x } }\ntype B { value int; fn get() int { return 2 } }\nfn get() int { return 3 }";
+    let input_sig = record_input(sig, "method-owner");
+    r7_publish(&store, &input_sig);
+    let a_get_sig = method_decl_of(&store, &input_sig, "A");
+    assert_eq!(
+        a_get_sig.logical, a_get.logical,
+        "identity survives a signature edit"
+    );
+    assert_ne!(
+        a_get_sig.content, a_get.content,
+        "a signature edit changes the content version"
+    );
+    let art_sig = match lookup_only(
+        &store,
+        &input_sig,
+        &QueryKind::RecordFields { record: "A".into() },
+    )
+    .unwrap()
+    {
+        FetchOutcome::Hit { artifact_id, .. } => artifact_id,
+        other => panic!("A(sig) must hit, got {other:?}"),
+    };
+
+    // body-only edit with the SAME signature reuses the same page
+    let body = "type A { value int; fn get(x int) int { let z = x\nreturn z } }\ntype B { value int; fn get() int { return 2 } }\nfn get() int { return 3 }";
+    let input_body = record_input(body, "method-owner");
+    match lookup_only(
+        &store,
+        &input_body,
+        &QueryKind::RecordFields { record: "A".into() },
+    )
+    .unwrap()
+    {
+        FetchOutcome::Hit { artifact_id, page } => {
+            assert_eq!(artifact_id, art_sig, "body-only edit reuses the page");
+            let ac_sema_contract::codec::PageBody::RecordMeta(m) = &page.body else {
+                panic!("record meta");
+            };
+            assert_eq!(m.methods[0].decl.logical, a_get.logical);
+        }
+        other => panic!("A(body) must hit, got {other:?}"),
+    }
+
+    // owner rename (A -> C): the method mints a NEW identity owned by C,
+    // and the retired A is no longer served for the renamed module
+    let renamed = "type C { value int; fn get() int { return 1 } }\ntype B { value int; fn get() int { return 2 } }\nfn get() int { return 3 }";
+    let input_ren = record_input(renamed, "method-owner");
+    match lookup_only(
+        &store,
+        &input_ren,
+        &QueryKind::RecordFields { record: "A".into() },
+    )
+    .unwrap()
+    {
+        FetchOutcome::Miss => {}
+        other => panic!("retired A must miss after the rename, got {other:?}"),
+    }
+    r7_publish(&store, &input_ren);
+    let c_get = method_decl_of(&store, &input_ren, "C");
+    assert_eq!(c_get.owner.as_deref(), Some("C"));
+    assert_ne!(c_get.logical, a_get.logical, "C.get is a new declaration");
+    assert_eq!(
+        method_decl_of(&store, &input_ren, "B").logical,
+        b_get.logical
+    );
+}
+
+/// Read-side admission for the method owner: a RecordMeta page for
+/// record A whose method decl is minted for ANOTHER owner (a valid
+/// logical for B, so the codec/verify layer passes) is rejected by the
+/// store-level page admission — never served as a hit.
+#[test]
+fn sema_cache_r11_foreign_owner_method_page_rejected_on_read() {
+    use ac_artifact_probe::identity::QueryKey;
+    use ac_artifact_probe::store::PutRequest;
+    use ac_sema_contract::codec::{
+        encode_page, FieldDesc, FnMeta, PageBody, PageHeader, PageKind, RecordMeta, RecordShape,
+        SemaPage, TypeDesc, SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V2,
+    };
+
+    let root = scratch("r11-foreign-owner");
+    let store = open_store(&root.join("store")).unwrap();
+    let input = record_input("type A { value int; fn get() int { return 1 } }", "foreign");
+    let query = QueryKind::RecordFields { record: "A".into() };
+    let env = ac_sema_core::query::KeyEnv::new(&input);
+    let key = ac_sema_core::SemaQueryKey::build_with_env(&query, &input, Some(&env));
+
+    let pkg = ac_sema_contract::PackageId::new("r6");
+    // the shape decl must carry A's CURRENT content version so the
+    // shape-ref admission passes and the control reaches the method-
+    // owner admission (which is what this test exercises)
+    let record_a = input
+        .lookup_record("A")
+        .expect("A declared in the test input");
+    let current_a = ac_sema_contract::ContentVersion::of_canonical(
+        &ac_sema_core::query::record_canonical(record_a),
+    );
+    let foreign = SemaPage {
+        header: PageHeader {
+            schema: SEMA_PAGE_SCHEMA_V2.into(),
+            producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
+            codec_version: SEMA_CODEC_VERSION,
+            kind: PageKind::RecordMeta,
+            content: current_a.clone(),
+        },
+        body: PageBody::RecordMeta(RecordMeta {
+            shape: RecordShape {
+                decl: ac_sema_contract::DeclRef::new(
+                    &pkg,
+                    "foreign",
+                    ac_sema_contract::DeclKind::Record,
+                    "A",
+                    current_a,
+                ),
+                fields: vec![FieldDesc {
+                    name: "value".into(),
+                    ty: TypeDesc::I32,
+                }],
+            },
+            // a VALID method decl — but owned by B on A's page
+            methods: vec![FnMeta {
+                decl: ac_sema_contract::DeclRef::new_method(
+                    &pkg,
+                    "foreign",
+                    "B",
+                    "get",
+                    ac_sema_contract::ContentVersion::of_canonical(b"fn B.get"),
+                ),
+                params: vec![],
+                ret: TypeDesc::I32,
+                receiver: "view",
+            }],
+            group_content: ac_sema_contract::ContentVersion::of_canonical(b"a"),
+        }),
+    };
+    store
+        .put_artifact(PutRequest {
+            layer: ac_sema_probe::SEMA_LAYER,
+            key: QueryKey {
+                layer: ac_sema_probe::SEMA_LAYER,
+                components: key.components.clone(),
+            },
+            kind: ac_sema_probe::SEMA_CARRIER,
+            payload: encode_page(&foreign).unwrap(),
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+
+    let got = lookup_only(&store, &input, &query);
+    match &got {
+        Err(ProbeError::TargetMismatch { found, .. }) => {
+            assert!(
+                found.contains("B"),
+                "the rejection names the foreign owner: {found}"
+            );
+        }
+        other => panic!(
+            "a foreign-owner method page must be rejected on read, got {:?}",
+            other
+        ),
     }
 }

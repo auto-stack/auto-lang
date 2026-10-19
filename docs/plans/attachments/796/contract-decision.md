@@ -312,3 +312,26 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
   百分位；lib `total_ns` 与 IPC `edit_session_ms` 双源同准。六类变异控制
   （全缺失/全 null/全 0/全 -1/单样本缺失/1001ms 慢控 + 合法正控）入
   `-Scope selftest`（`Get-IpcReportOutcome` 纯函数与 acceptance 共用同一逻辑）。
+
+## D21 R11 修复轮冻结（2026-10-19）
+
+- **方法名义身份含所属 record**（F-R11-01）：`DeclKind` 增 `Method=3`；
+  `DeclRef` 增 `owner: Option<String>`（仅 Method 携带，Fn/Record 带 owner 或
+  Method 缺 owner 均 verify 拒绝）；`method_logical_id(package, module, owner,
+  name)` 把 owner 编入 kind 轴（`method::<owner>`）——4 分量哈希形状不变，
+  既有 Fn/Record logical 字节不变，`A.get`/`B.get`/顶层 `get` 三向不碰撞。
+  RecordMeta.methods 的 decl 经 `DeclRef::new_method` 铸造；读侧 `admit_page`
+  对 RecordMeta 逐方法校验 kind=Method 且 owner=本页 record，外属/无属页
+  TargetMismatch 拒绝（codec 层 verify 拒 ownerless/篡改 owner）。
+- **版本轴同步抬升（避免同键异值）**：页 schema `SEMA_PAGE_SCHEMA_V2` =
+  `ac796/sema-page/v2`（进所有查询键与页头校验，旧 v1 页在新键下不可达，
+  变更 payload 不与旧页同键冲突）；`SEMA_CODEC_VERSION` = 2（DeclRef 方法
+  编码 tag3+owner 串，Fn/Record 字节与 v1 兼容）。V1 常量保留作出处。
+- **永久反控**：contract `sema_identity_r11_method_owner_is_part_of_the_
+  nominal_identity`（三向区分/重铸稳定/篡改 owner、无 owner、Fn 带 owner
+  拒绝）+ `sema_identity_r11_method_declref_codec_roundtrip`（owner 过编解码）；
+  probe `sema_cache_r11_method_owner_identity_distinguishes_a_get_b_get_and_
+  top_get`（review 原例真实发布流 + 新 store 重启稳定 + 声明序互换 +
+  同 owner 签名编辑 logical 不变 content 变 + body-only 复用 + owner 改名
+  迁移）+ `sema_cache_r11_foreign_owner_method_page_rejected_on_read`
+  （外属方法页读侧拒绝，shape 携当前版本越过前置校验直达归属门）。

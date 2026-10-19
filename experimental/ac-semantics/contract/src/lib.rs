@@ -19,9 +19,9 @@ pub use codec::{
     decode_page, encode_page, CachedResult, CodecError, DepFingerprint, DepManifest, FactDiag,
     FieldDesc, FnMeta, InferFacts, Mode, ModuleIndex, NegDep, PageBody, PageHeader, PageKind,
     PageView, RecGroup, RecordMeta, RecordShape, ResultFacts, SemaPage, TypeDesc,
-    MAX_NESTING_DEPTH, MAX_PAGE_BODY, SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V1,
+    MAX_NESTING_DEPTH, MAX_PAGE_BODY, SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V1, SEMA_PAGE_SCHEMA_V2,
 };
 pub use identity::{
-    logical_id, ContentVersion, DeclKind, DeclRef, LogicalId, PackageId, RefError, SemaRef,
-    SEMA_LOGICAL_DOMAIN, SEMA_PRODUCER_ID, SEMA_REF_SCHEMA_V1,
+    logical_id, method_logical_id, ContentVersion, DeclKind, DeclRef, LogicalId, PackageId,
+    RefError, SemaRef, SEMA_LOGICAL_DOMAIN, SEMA_PRODUCER_ID, SEMA_REF_SCHEMA_V1,
 };

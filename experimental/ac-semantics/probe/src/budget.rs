@@ -13,7 +13,7 @@
 //! never a type error).
 
 use ac_artifact_probe::store::{ManagedStore, PutRequest, StoreError};
-use ac_sema_contract::{SemaPage, SEMA_PAGE_SCHEMA_V1};
+use ac_sema_contract::{SemaPage, SEMA_PAGE_SCHEMA_V2};
 
 pub const HOT_BUDGET: usize = 8 * 1024 * 1024;
 pub const SCRATCH_BUDGET: usize = 8 * 1024 * 1024;
@@ -289,4 +289,4 @@ impl From<BudgetRejected> for StreamError {
 }
 
 /// The schema id re-export used by generators building pages.
-pub const PAGE_SCHEMA: &str = SEMA_PAGE_SCHEMA_V1;
+pub const PAGE_SCHEMA: &str = SEMA_PAGE_SCHEMA_V2;

@@ -7,7 +7,7 @@ use ac_sema_contract::codec::{
     decode_page, encode_page, CachedResult, CodecError, DepFingerprint, DepManifest, FieldDesc,
     FnMeta, InferFacts, Mode, ModuleIndex, NegDep, PageBody, PageHeader, PageKind, PageView,
     RecGroup, RecordMeta, RecordShape, ResultFacts, SemaPage, TypeDesc, MAX_NESTING_DEPTH,
-    SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V1,
+    SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V2,
 };
 use ac_sema_contract::{
     logical_id, ContentVersion, DeclKind, DeclRef, PackageId, SEMA_PRODUCER_ID,
@@ -40,7 +40,7 @@ fn fndecl(name: &str) -> DeclRef {
 fn index_page() -> SemaPage {
     SemaPage {
         header: PageHeader {
-            schema: SEMA_PAGE_SCHEMA_V1.into(),
+            schema: SEMA_PAGE_SCHEMA_V2.into(),
             producer: SEMA_PRODUCER_ID.into(),
             codec_version: SEMA_CODEC_VERSION,
             kind: PageKind::ModuleIndex,
@@ -230,7 +230,7 @@ fn sema_identity_page_envelope_admission() {
     ));
     // decode-side codec-version drift: bump the version byte after the
     // two length-prefixed strings
-    page.header.schema = SEMA_PAGE_SCHEMA_V1.into();
+    page.header.schema = SEMA_PAGE_SCHEMA_V2.into();
     let mut bytes = encode_page(&page).unwrap();
     let schema_len = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
     let off = 4 + schema_len;
@@ -342,4 +342,153 @@ fn sema_identity_matrix_invariants_hold() {
             assert_ne!(c.schema, "-");
         }
     }
+}
+
+/// F-796-R11-01: a method's nominal identity includes its OWNING record —
+/// `A.get`, `B.get` and a top-level `get` in the same module are three
+/// DISTINCT declarations; the id is stable across mint order/restarts,
+/// tampered owners are rejected, and an ownerless method cannot verify.
+#[test]
+fn sema_identity_r11_method_owner_is_part_of_the_nominal_identity() {
+    use ac_sema_contract::method_logical_id;
+
+    let a_get = method_logical_id(&pkg(), "m", "A", "get");
+    let b_get = method_logical_id(&pkg(), "m", "B", "get");
+    let top_get = logical_id(&pkg(), "m", DeclKind::Fn, "get");
+    assert_ne!(a_get, b_get, "A.get and B.get must not share a logical id");
+    assert_ne!(
+        a_get, top_get,
+        "A.get and top-level get must not share a logical id"
+    );
+    assert_ne!(
+        b_get, top_get,
+        "B.get and top-level get must not share a logical id"
+    );
+    // the three-way distinctness is not an accident of one name: same
+    // owner, different method names stay distinct too
+    assert_ne!(
+        method_logical_id(&pkg(), "m", "A", "get"),
+        method_logical_id(&pkg(), "m", "A", "set"),
+    );
+
+    // stability: minting is a pure function of the nominal path
+    assert_eq!(a_get, method_logical_id(&pkg(), "m", "A", "get"));
+    // a different module is a different declaration
+    assert_ne!(
+        a_get,
+        method_logical_id(&pkg(), "other", "A", "get"),
+        "module is part of the method identity"
+    );
+
+    let decl = DeclRef::new_method(
+        &pkg(),
+        "m",
+        "A",
+        "get",
+        ContentVersion::of_canonical(b"fn get() i32"),
+    );
+    assert_eq!(decl.kind, DeclKind::Method);
+    assert_eq!(decl.owner.as_deref(), Some("A"));
+    assert_eq!(decl.logical, a_get);
+    assert!(decl.verify().is_ok(), "a minted method ref verifies");
+
+    // tampered owner: the stored logical no longer matches the components
+    let mut tampered = decl.clone();
+    tampered.owner = Some("B".into());
+    assert!(
+        tampered.verify().is_err(),
+        "swapping the owner must break verify"
+    );
+
+    // ownerless method: cannot re-derive at all
+    let mut ownerless = decl.clone();
+    ownerless.owner = None;
+    assert!(
+        ownerless.verify().is_err(),
+        "a method without an owner cannot verify"
+    );
+
+    // a Fn-kind ref with a stray owner is likewise rejected (the owner
+    // only ever belongs to Method)
+    let mut stray = fndecl("get");
+    stray.owner = Some("A".into());
+    assert!(
+        stray.verify().is_err(),
+        "a Fn ref with an owner cannot verify"
+    );
+}
+
+/// F-796-R11-01: the method owner survives the page codec — encode a
+/// RecordMeta carrying methods, decode it back, and the kind/owner/
+/// logical identity is preserved (old v1 payloads with ownerless method
+/// decls are unreachable under the v2 schema/codec axes).
+#[test]
+fn sema_identity_r11_method_declref_codec_roundtrip() {
+    let method = |owner: &str, name: &str| {
+        DeclRef::new_method(
+            &pkg(),
+            "m",
+            owner,
+            name,
+            ContentVersion::of_canonical(format!("fn {owner}.{name}").as_bytes()),
+        )
+    };
+    let page = SemaPage {
+        header: PageHeader {
+            schema: SEMA_PAGE_SCHEMA_V2.into(),
+            producer: SEMA_PRODUCER_ID.into(),
+            codec_version: SEMA_CODEC_VERSION,
+            kind: PageKind::RecordMeta,
+            content: ContentVersion::of_canonical(b"rec"),
+        },
+        body: PageBody::RecordMeta(RecordMeta {
+            shape: RecordShape {
+                decl: decl("A"),
+                fields: vec![FieldDesc {
+                    name: "value".into(),
+                    ty: TypeDesc::I32,
+                }],
+            },
+            methods: vec![
+                FnMeta {
+                    decl: method("A", "get"),
+                    params: vec![],
+                    ret: TypeDesc::I32,
+                    receiver: "view",
+                },
+                FnMeta {
+                    decl: method("A", "set"),
+                    params: vec![("value".into(), TypeDesc::I32, Mode::View)],
+                    ret: TypeDesc::Unit,
+                    receiver: "view",
+                },
+            ],
+            group_content: ContentVersion::of_canonical(b"group"),
+        }),
+    };
+    let bytes = encode_page(&page).expect("encode");
+    let back = decode_page(&bytes).expect("decode");
+    let PageBody::RecordMeta(m) = back.body else {
+        panic!("record meta page decoded into another kind");
+    };
+    assert_eq!(m.methods.len(), 2);
+    for (got, owner, name) in [(&m.methods[0], "A", "get"), (&m.methods[1], "A", "set")] {
+        assert_eq!(got.decl.kind, DeclKind::Method, "{name} kind survives");
+        assert_eq!(
+            got.decl.owner.as_deref(),
+            Some(owner),
+            "{name} owner survives"
+        );
+        assert_eq!(got.decl.name, name);
+        assert!(got.decl.verify().is_ok(), "{name} verifies after roundtrip");
+    }
+    assert_ne!(
+        m.methods[0].decl.logical, m.methods[1].decl.logical,
+        "same-owner methods stay distinct"
+    );
+    assert_ne!(
+        m.methods[0].decl.logical,
+        logical_id(&pkg(), "m", DeclKind::Fn, "get"),
+        "the method is not the top-level fn"
+    );
 }

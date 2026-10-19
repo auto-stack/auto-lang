@@ -162,6 +162,18 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
   数值/有限/正值），违规即 FAIL、绝不默认 0ms，再重算百分位；lib `total_ns`
   与 IPC `edit_session_ms` 双源同准；六类变异控制（全缺失/全 null/全 0/
   全 -1/单样本缺失/1001ms 慢控 + 合法正控）进入 `-Scope selftest`。
+## R11 修复轮补充（2026-10-19，D21）
+
+- **SD-02（名义身份完整性）**：方法声明的 logical id 含所属 record——
+  `DeclKind::Method` + `DeclRef.owner`，`method_logical_id` 把 owner 编入
+  kind 轴；同模块 `A.get`/`B.get`/顶层 `get` 三向不碰撞，既有 Fn/Record
+  id 字节不变。RecordMeta 方法 decl 经 `new_method` 铸造；读侧
+  `admit_page` 校验每方法 kind=Method 且 owner=本页 record（外属页拒绝）；
+  verify 拒 ownerless 方法与带 owner 的 Fn/Record。
+- **SD-04（键与版本轴）**：页 schema 抬至 `ac796/sema-page/v2`、
+  `SEMA_CODEC_VERSION`=2（方法 DeclRef tag3+owner 编码）——payload 变更随
+  版本轴换键，旧 v1 页不可达、不与新 payload 同键冲突。永久反控四例
+  （contract 两例 + probe 两例，见 D21）。
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各

@@ -13,7 +13,7 @@ use crate::infer::Reads;
 use crate::input::{Ann, SemaInput};
 use ac_sema_contract::{
     ContentVersion, DeclKind, DepFingerprint, DepManifest, LogicalId, NegDep, PackageId,
-    SEMA_PAGE_SCHEMA_V1,
+    SEMA_PAGE_SCHEMA_V2,
 };
 use std::collections::BTreeMap;
 
@@ -594,7 +594,7 @@ impl SemaQueryKey {
             ("package".into(), input.package.clone()),
             ("module".into(), input.module.clone()),
             ("algo".into(), INFER_ALGO_ID.into()),
-            ("schema".into(), SEMA_PAGE_SCHEMA_V1.into()),
+            ("schema".into(), SEMA_PAGE_SCHEMA_V2.into()),
             ("producer".into(), QUERY_PRODUCER.into()),
             ("target-sem".into(), TARGET_SEMANTICS.into()),
             ("caps".into(), BUILTIN_CAPABILITIES.into()),

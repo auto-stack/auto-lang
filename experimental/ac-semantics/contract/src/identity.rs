@@ -65,13 +65,17 @@ impl PackageId {
 
 /// The declaration kinds the contract models. Records are the only
 /// nominal type carriers of the current profiles; functions carry
-/// signatures and bodies. Discriminants are the wire tags of the page
-/// codec (`DeclRef`).
+/// signatures and bodies; methods are functions OWNED by a record —
+/// their nominal identity includes the owner's name, so `A.get`,
+/// `B.get` and a top-level `get` in the same module are three
+/// distinct declarations (F-796-R11-01). Discriminants are the wire
+/// tags of the page codec (`DeclRef`).
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 #[repr(u8)]
 pub enum DeclKind {
     Fn = 1,
     Record = 2,
+    Method = 3,
 }
 
 impl DeclKind {
@@ -79,6 +83,7 @@ impl DeclKind {
         match self {
             DeclKind::Fn => "fn",
             DeclKind::Record => "record",
+            DeclKind::Method => "method",
         }
     }
 }
@@ -111,6 +116,23 @@ pub fn logical_id(package: &PackageId, module: &str, kind: DeclKind, name: &str)
     ))
 }
 
+/// Mint the logical id of a record-owned method: the owner rides the
+/// KIND axis (`method::<owner>`), so the 4-component hash shape and
+/// every existing Fn/Record id stay byte-identical while `A.get` and
+/// `B.get` (and a top-level `get`) can never collide (F-796-R11-01).
+pub fn method_logical_id(package: &PackageId, module: &str, owner: &str, name: &str) -> LogicalId {
+    let kind_axis = format!("method::{owner}");
+    LogicalId(domain_hash(
+        SEMA_LOGICAL_DOMAIN,
+        &[
+            package.as_str().as_bytes(),
+            module.as_bytes(),
+            kind_axis.as_bytes(),
+            name.as_bytes(),
+        ],
+    ))
+}
+
 /// Version of a declaration's *definition content* (not its identity):
 /// a hash of the canonical semantic content — signature, parameter
 /// kinds, field set in declaration order, body recipe — with source
@@ -137,6 +159,10 @@ pub struct DeclRef {
     pub module: String,
     pub kind: DeclKind,
     pub name: String,
+    /// Owning record for methods (`Some(record)` iff kind is `Method`):
+    /// the nominal path component that keeps `A.get` and `B.get`
+    /// distinct (F-796-R11-01).
+    pub owner: Option<String>,
     /// Definition content version at publication time.
     pub content: ContentVersion,
 }
@@ -149,21 +175,65 @@ impl DeclRef {
         name: &str,
         content: ContentVersion,
     ) -> Self {
+        debug_assert!(
+            kind != DeclKind::Method,
+            "methods must be minted via DeclRef::new_method so the owner joins the identity"
+        );
         DeclRef {
             logical: logical_id(package, module, kind, name),
             package: package.clone(),
             module: module.to_string(),
             kind,
             name: name.to_string(),
+            owner: None,
+            content,
+        }
+    }
+
+    /// Mint a record-owned method reference: the owner record's name is
+    /// part of the nominal identity (F-796-R11-01).
+    pub fn new_method(
+        package: &PackageId,
+        module: &str,
+        owner: &str,
+        name: &str,
+        content: ContentVersion,
+    ) -> Self {
+        DeclRef {
+            logical: method_logical_id(package, module, owner, name),
+            package: package.clone(),
+            module: module.to_string(),
+            kind: DeclKind::Method,
+            name: name.to_string(),
+            owner: Some(owner.to_string()),
             content,
         }
     }
 
     /// Re-derive the logical id from components and check it matches the
     /// stored one — a tampered or foreign-minted ref is rejected instead
-    /// of trusted (V-01: 坏图不 panic).
+    /// of trusted (V-01: 坏图不 panic). A method without an owner cannot
+    /// re-derive at all and is rejected the same way.
     pub fn verify(&self) -> Result<(), RefError> {
-        let expect = logical_id(&self.package, &self.module, self.kind, &self.name);
+        let expect = match (self.kind, self.owner.as_deref()) {
+            (DeclKind::Method, Some(owner)) => {
+                method_logical_id(&self.package, &self.module, owner, &self.name)
+            }
+            (DeclKind::Method, None) => {
+                return Err(RefError::BadContentVersion(format!(
+                    "method `{}` has no owning record",
+                    self.name
+                )));
+            }
+            (_, Some(_)) => {
+                return Err(RefError::BadContentVersion(format!(
+                    "decl `{}` of kind `{}` carries an owner — only methods are owned",
+                    self.name,
+                    self.kind.as_str()
+                )));
+            }
+            (kind, None) => logical_id(&self.package, &self.module, kind, &self.name),
+        };
         if expect == self.logical {
             Ok(())
         } else {

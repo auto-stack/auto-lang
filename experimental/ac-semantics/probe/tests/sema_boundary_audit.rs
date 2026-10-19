@@ -192,6 +192,7 @@ fn sema_boundary_frozen_versions_have_provenance() {
         ("SEMA_PRODUCER_ID", ac_sema_contract::SEMA_PRODUCER_ID),
         ("SEMA_REF_SCHEMA_V1", ac_sema_contract::SEMA_REF_SCHEMA_V1),
         ("SEMA_PAGE_SCHEMA_V1", ac_sema_contract::SEMA_PAGE_SCHEMA_V1),
+        ("SEMA_PAGE_SCHEMA_V2", ac_sema_contract::SEMA_PAGE_SCHEMA_V2),
         ("SEMA_LOGICAL_DOMAIN", ac_sema_contract::SEMA_LOGICAL_DOMAIN),
     ] {
         assert!(

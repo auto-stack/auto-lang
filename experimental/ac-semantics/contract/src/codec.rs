@@ -21,11 +21,19 @@ use crate::identity::{
     ContentVersion, DeclKind, DeclRef, LogicalId, PackageId, RefError, SEMA_PRODUCER_ID,
 };
 
-/// Schema identity of the page envelope (contract-decision D5).
+/// Schema identity of the page envelope (contract-decision D5; the
+/// historical v1 value is kept below for provenance).
 pub const SEMA_PAGE_SCHEMA_V1: &str = "ac796/sema-page/v1";
+/// Current page schema (contract-decision D21): method `DeclRef`s now
+/// carry `DeclKind::Method` + the owning record, so `A.get`/`B.get`/
+/// top-level `get` no longer share a logical id. The value bump moves
+/// EVERY page key — old payloads miss cleanly instead of colliding
+/// with the changed payload under the same key.
+pub const SEMA_PAGE_SCHEMA_V2: &str = "ac796/sema-page/v2";
 /// Codec revision of the body layouts (bumped on any body layout change;
 /// part of the cache key — old payloads miss, never reinterpret).
-pub const SEMA_CODEC_VERSION: u16 = 1;
+/// v2: `DeclRef` of a method encodes tag 3 + the owner record name.
+pub const SEMA_CODEC_VERSION: u16 = 2;
 
 /// Hard caps (contract-decision D6): bounded decode, never an OOM on a
 /// hostile page.
@@ -672,6 +680,17 @@ fn encode_declref(out: &mut Vec<u8>, d: &DeclRef) -> Result<(), CodecError> {
     encode_str(out, d.package.as_str());
     encode_str(out, &d.module);
     out.push(d.kind as u8);
+    // only a method carries an owner; Fn/Record bytes stay identical to
+    // the pre-v2 layout for those kinds
+    if d.kind == DeclKind::Method {
+        let owner = d.owner.as_deref().ok_or_else(|| {
+            CodecError::BadRef(RefError::BadContentVersion(format!(
+                "method `{}` encoded without an owner",
+                d.name
+            )))
+        })?;
+        encode_str(out, owner);
+    }
     encode_str(out, &d.name);
     encode_str(out, d.content.as_str());
     encode_str(out, d.logical.as_str());
@@ -683,9 +702,10 @@ fn decode_declref(cur: &mut Cur<'_>) -> Result<DeclRef, CodecError> {
     let package = PackageId(cur.str(at)?);
     let module = cur.str(at)?;
     let k = cur.u8(at)?;
-    let kind = match k {
-        1 => DeclKind::Fn,
-        2 => DeclKind::Record,
+    let (kind, owner) = match k {
+        1 => (DeclKind::Fn, None),
+        2 => (DeclKind::Record, None),
+        3 => (DeclKind::Method, Some(cur.str(at)?)),
         _ => return Err(CodecError::BadTag("decl-kind", k)),
     };
     let name = cur.str(at)?;
@@ -697,6 +717,7 @@ fn decode_declref(cur: &mut Cur<'_>) -> Result<DeclRef, CodecError> {
         module,
         kind,
         name,
+        owner,
         content,
     };
     r.verify().map_err(CodecError::BadRef)?;
@@ -1039,9 +1060,9 @@ fn leak_query(s: String) -> &'static str {
 /// Encode a full page (envelope + body). The output is deterministic for
 /// equal inputs — it doubles as canonical content for version hashing.
 pub fn encode_page(page: &SemaPage) -> Result<Vec<u8>, CodecError> {
-    if page.header.schema != SEMA_PAGE_SCHEMA_V1 {
+    if page.header.schema != SEMA_PAGE_SCHEMA_V2 {
         return Err(CodecError::BadSchema {
-            expected: SEMA_PAGE_SCHEMA_V1.into(),
+            expected: SEMA_PAGE_SCHEMA_V2.into(),
             found: page.header.schema.clone(),
         });
     }
@@ -1111,9 +1132,9 @@ pub fn decode_page(bytes: &[u8]) -> Result<SemaPage, CodecError> {
     let mut cur = Cur::new(bytes);
     let at = "page";
     let schema = cur.str(at)?;
-    if schema != SEMA_PAGE_SCHEMA_V1 {
+    if schema != SEMA_PAGE_SCHEMA_V2 {
         return Err(CodecError::BadSchema {
-            expected: SEMA_PAGE_SCHEMA_V1.into(),
+            expected: SEMA_PAGE_SCHEMA_V2.into(),
             found: schema,
         });
     }

@@ -251,7 +251,10 @@ if ($Scope -eq 'selftest') {
 
 if ($Scope -eq 'acceptance') {
     # --- V-01 / AC-01: identity, recursive groups, matrix ------------
-    Run-Suite 'V-01' @('test', '-p', 'ac-sema-contract') 'sema_identity_ + unit (contract)' $ws 14
+    Run-Suite 'V-01' @('test', '-p', 'ac-sema-contract') 'sema_identity_ + unit (contract)' $ws 16 @(
+        'sema_identity_r11_method_owner_is_part_of_the_nominal_identity',
+        'sema_identity_r11_method_declref_codec_roundtrip'
+    )
 
     # --- V-02 / AC-02: real inference vs the old pipeline ------------
     # F-796-R6-08: the CT admission controls are REQUIRED by NAME, not
@@ -261,7 +264,9 @@ if ($Scope -eq 'acceptance') {
 
     # --- V-03 / AC-03: queries, deps, cache lifecycle ----------------
     Run-Suite 'V-03' @('test', '-p', 'ac-sema-probe', '--test', 'meta_query_cache_deps') 'meta_query_ dependency faces' $ws 7
-    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + repairs' $ws 32 @(
+    Run-Suite 'V-03b' @('test', '-p', 'ac-sema-probe', '--test', 'sema_cache_first_case', '--test', 'sema_cache_more', '--test', 'sema_cache_r4_repairs') 'sema_cache_ first case + lifecycle + repairs' $ws 34 @(
+        'sema_cache_r11_method_owner_identity_distinguishes_a_get_b_get_and_top_get',
+        'sema_cache_r11_foreign_owner_method_page_rejected_on_read',
         'sema_cache_r9_method_record_return_is_part_of_the_version',
         'sema_cache_r8_method_signature_is_a_freshness_input',
         'sema_cache_r7_three_level_leaf_edit_republishes_current_closure',
