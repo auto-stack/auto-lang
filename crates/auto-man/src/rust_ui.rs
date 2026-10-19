@@ -3286,7 +3286,7 @@ impl<'a> PacSource<'a> {
                 // R4-02：完整支持域=节点形态 + 对象/嵌套 prop 形态
                 // （req.raw 中 key=="rust_sidecar" 的 Value::Obj/Node——
                 // core sidecar_decl_from_root 的 prop 兜底臂同域）。
-                let mut sidecar_nodes: Vec<auto_val::Node> = r
+                let sidecar_nodes: Vec<auto_val::Node> = r
                     .raw_nodes
                     .iter()
                     .filter(|n| n.head == "rust_sidecar")
