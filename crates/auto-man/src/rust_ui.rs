@@ -4224,7 +4224,7 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
 
 /// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
 /// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
-pub const DELIVERY_CRATES: [&str; 15] = [
+pub const DELIVERY_CRATES: [&str; 16] = [
     "auto-lang",
     "auto-val",
     "auto-atom",

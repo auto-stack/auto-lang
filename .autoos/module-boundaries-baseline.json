@@ -1,6 +1,6 @@
 {
-  "base_revision": "fa89814bb56114e4aa78663ae877fd7dd7406604",
-  "config_sha256": "47ed6c9cc0d9334eba4ccedff26342d40e4170a7521e58083af632f42c194b6e",
+  "base_revision": "67abd6a355f9828ee56164e2c50a3a45ef945e5f",
+  "config_sha256": "3c166ca102479bfaa6b83dd2424493884cbe06bdd6613525d3d76d4b7a04d6c3",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -187,7 +187,7 @@
       "from": "auto-lang",
       "kind": "normal",
       "optional": false,
-      "target": "cfg(windows)",
+      "target": null,
       "to": "a2r-std",
       "to_scope": "member"
     },
@@ -270,6 +270,15 @@
       "optional": false,
       "target": null,
       "to": "auto-parser-api",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-terminal-core",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-terminal-core",
       "to_scope": "member"
     },
     {
@@ -417,6 +426,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-man-core",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-core",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-media-core",
       "from": "auto-man",
       "kind": "dev",
@@ -464,6 +482,42 @@
     {
       "dep_key": "auto-val",
       "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-atom",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-project-model",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-toolchain-core",
+      "from": "auto-man-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-toolchain-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-man-core",
       "kind": "normal",
       "optional": false,
       "target": null,
@@ -591,8 +645,8 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 882,
-    "man_to_language": 544,
+    "core_to_ui": 846,
+    "man_to_language": 553,
     "ui_to_language": 182
   }
 }
