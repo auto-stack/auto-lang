@@ -72,7 +72,7 @@ UI 区对 Parser 内部的全部触面（基面实测，区域 13223–17909）�
 | `self.cur_is_soft_ident()`（1017） | 3 | `cur_is_soft_ident() -> bool` | 委托 |
 | `self.prev.pos`（span 定位/起点算术 16735） | 6 | `prev_pos() -> Pos` | 读 `self.parser.prev.pos` |
 | `self.lexer.next()` + `push_token`（单 token 原始前看，两种失败协议） | 12 | `probe_next_token() -> AutoResult<Token>`（成功即回推；词法错误**上抛**） | `lexer.next()` 成功 push 回、Err 原样传播；既有 `probe_next_kind`（Option，错误丢弃）= 其 kind 投影，806 冻结面不动。if-let-Ok 位点用 `probe_next_token().ok()`；`?` 位点（memo 16056/paren 16293）直接传播 |
-| `self.lexer.save_state/restore_state + cur/prev clone`（**原始游标投机**：无旗标、无诊断回滚；中间 next() 的 docs/诊断副作用保留） | 3（widget 近失 13388、computed 15006、style recipe 15132） | `raw_cursor_save() -> UiCursorSave` / `raw_cursor_restore(UiCursorSave)` | Parser 侧句柄表存 `LexerState+cur+prev`（与 port_snapshots 同构、独立槽表、作用域失效同规则）；**不恢复五旗标、不回滚诊断**——与旧臂逐字等价 |
+| `self.lexer.save_state/restore_state + cur/prev clone`（**原始游标投机**：无旗标、无诊断回滚；中间 next() 的 docs/诊断副作用保留） | 3（widget 近失 13388、computed 15006、style recipe 15132） | `raw_cursor_save() -> ParseCheckpoint` / `raw_cursor_restore` / **`raw_cursor_release`**（F810-R1-01：成功出口显式释放——tombstone 目标槽+尾部保守收缩，Drop 语义，不动游标/旗标/诊断；旧臂局部 save 出作用域即释放的端口等价，覆盖公开门面/Core 直连/派发/嵌套全部入口） | 复用 801 句柄表后端（实例 id+槽位+代次校验）；restore **不恢复五旗标、不回滚诊断**——与旧臂逐字等价 |
 | `self.lexer.push_token(cur/…)`（双 token 回推再 next() 重同步：scene 门 14638、subresource 14875、stream 17628） | 3 | `push_back_token(Token)` | `lexer.push_token` |
 | `self.lexer.capture_raw_block()`（raw CSS 字节 + 收尾 `}` 消费） | 1（14516） | `capture_raw_block() -> AutoResult<String>` | 委托；后继 `next()` 由文法自行调用 |
 | `self.skip_check` 保存/置位/恢复 | 2（computed 15003、style recipe 15199） | `set_skip_check(bool) -> bool`（返回旧值） | 读改写 |

@@ -84,8 +84,35 @@ AC 完成，送独立 final review）`。
   字符串级扫描留语言所有者（未迁）；UI 生成器/Man/renderer 未动
   （R04/R08 范围）。
 
-## 7. 下一步
+## 7. R1 修复轮（F810-R1-01..06，2026-10-19）
+
+复审 needs_fix（attachments/810/review-r1/REVIEW.md）后同树修复，代码提交
+`55ce34200`（F01/03/04/06）→ `0f2995e5f`（F05 SD 重写 + 777 基线刷新）→
+`9226c8af9`（toy consumer 端口面补齐）：
+
+| Finding | 修复与证据 |
+|---|---|
+| F810-R1-01 快照生命周期 | `raw_cursor_release` 端口（Drop 语义 tombstone+尾部收缩）；computed 成功臂/style recipe 承诺后释放。`r01_snapshot_lifecycle_bounded_all_entry_paths`（公开门面 object/body、Core 直连 store、pub style、派发，n=1/8/64 存活恒 0）+ `r01_nested_release_keeps_outer_credential`（外层凭据内层解析后仍兑现） |
+| F810-R1-02 777 基线 | 干净树 `--refresh-baseline`（绑定新 HEAD，declared_edges=63）→ strict `verdict=pass violations=0`；self-test 正反控 **15/15**；docs 提交后复验仍绿 |
+| F810-R1-03 测试 oracle | None 回退真反例（`style = 1`→Bina 表达式+后续 msg 照常+零诊断）；双 session（Core msg=确定性 Err=隔离证据）；store 护栏（on 体让行 + fn 体**基线怪癖**如实断言——gate 只查 in_on_body，不修）；凭据跨上下文/重复拒绝；owned AST 源码释放；shadow；computed 空表达式确定性 Err；**三层 use-import 链**（grandchild 状态 7→8 经传递注册）。V-05 代表矩阵（work 期定向重放，全量 tu 归 merge）：VM=plan370/plan339/plan340/plan051+vm_bridge inline_lambda 双测；Vue=plan024/plan367/plan408/native_css+vue.rs inline/dialog_vmodel；Rust=rust.rs test_simple_counter×2/timer_block/image_surface/inline_lambda；Ark=ark/generator inline_lambda；Jet=jet/generator inline_lambda——全部定向绿。**导入再导入**=v04_import_of_import_chain |
+| F810-R1-04 scene prev | `advance_peek_kind_resync`（scene/subresource 旧臂双 push+next 重同步，prev=被观察 token）与 `advance_peek_kind`（stream 手动恢复，prev=advance 前 cur）**区分**；`r04_scene_gate_prev_matches_old_two_push`（prev==6 + 旧臂手工重放对照）+ scene 让行/subresource/stream 代表对照 |
+| F810-R1-05 SD 冲突 | overview 两处/parser-api/dialect-system/ui-dialect（parse_on_events 归属）/full-grammar（两前瞻形态+release 生命周期）按现行单一事实重写，历史另述 |
+| F810-R1-06 触面卫生 | rustfmt edition 2021（crate 实际 edition；复审的 --edition 2024 无法解析 `gen` 标识符）触面全净；parser.rs `}impl` 拼接与 4+ 连空行残渣修复；新增 warning 清零（仅余 widget.rs `events` 解构 lint——复审已认定旧臂同款迁移，非新增） |
+
+**R1 期间发现的基线怪癖（如实冻结，不修）**：① UI 场景 fn 体内
+`store.x = 1` 确定性 Err（store 直连门只查 in_on_body 不查 in_fn_body，
+gate 未迁出零改动）；② 未闭合 fragment（`if x {` 后 EOF）无界 EOF 栈溢出
+（fail-fast 0xc0000409，verbatim 迁移同文本同行为——806 spec 在案的
+msg-block 同族怪癖；不进进程内测试，需要时按合同隔离进程+外部截止）。
+
+修复后回归：plan810 **20/20**、plan806 18、plan408 20、plan778 4、
+native_css 7、plan370 18、plan367 6、plan024 16、scene 9、recipe 19、
+轻 consumer 7/7、verify-deps PASS、777 strict pass+负控 15/15、fmt 净。
+merge-owned 门不变（handoff §5 pending）。
+
+## 8. 下一步
 
 - [x] 792 driver 收据回填（§4：EXIT=0 全绿）
-- [ ] 独立 final review（T-09，同树，绑当前提交）
+- [x] R1 needs_fix 六 findings 同树修复（§7）
+- [ ] 独立 final review 第二轮（T-09，同树，绑 R1 修复后提交）
 - [ ] merge：冻结提交统一 §5 门 → 合入 → 沉淀 → 归档（T-10/T-11）
