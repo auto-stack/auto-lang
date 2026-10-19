@@ -32,3 +32,7 @@ pub mod semref;
 pub mod trace;
 pub mod validate;
 pub mod worker;
+
+/// Re-export the semantic contract crate so integration tests can mint
+/// refs through the SAME real library the implementation binds to.
+pub use ac_sema_contract;

@@ -9,8 +9,8 @@
 #![cfg(windows)]
 
 use auto_abi_probe::cache::{
-    autoabi_object_key, canonical_decl_set, c_object_key, emitter_identity,
-    produce_with_cache, LAYER_OBJECT_V01,
+    autoabi_object_key, c_object_key, canonical_decl_set, emitter_identity, produce_with_cache,
+    LAYER_OBJECT_V01,
 };
 use auto_abi_probe::decl::{AbiScalar, BodyKind, FnDecl, RecValues, FROZEN_INPUTS};
 use auto_abi_probe::emit::{emit_callee_suite, emit_caller_suite, SuiteCheck};
@@ -23,9 +23,7 @@ use auto_abi_probe::validate::{admit, probe_expectation};
 
 use ac_artifact_probe::identity::QueryKey;
 use ac_artifact_probe::schema::LayerSpec;
-use ac_artifact_probe::store::{
-    gc_config_default, run_gc, ManagedStore, StoreError,
-};
+use ac_artifact_probe::store::{gc_config_default, run_gc, ManagedStore, StoreError};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
@@ -84,7 +82,10 @@ fn abi_cache_object_hit_never_calls_producer() {
     })
     .expect("second produce");
     assert!(hit2, "same inputs must hit");
-    assert_eq!(produced, 1, "producer invoked on a hit — no-producer rule broken");
+    assert_eq!(
+        produced, 1,
+        "producer invoked on a hit — no-producer rule broken"
+    );
     assert_eq!(obj1, obj2, "hit must return the persisted bytes");
 
     // Restart: a NEW store instance on the same root still hits.
@@ -134,22 +135,35 @@ fn abi_cache_invalidation_by_real_inputs() {
     assert_ne!(c_object_key("aaa").hash(), c_object_key("bbb").hash());
     // profile / toolchain / semref dimensions are key inputs by
     // construction — assert two differently-tooled keys cannot collide.
-    let q = |tool: &str| QueryKey::new(&LAYER_OBJECT_V01, vec![
-        ("kind".into(), "autoabi-emit".into()),
-        ("decl-set".into(), canonical_decl_set(&v1)),
-        ("toolchain".into(), tool.into()),
-        ("profile".into(), layout::ABI_PROFILE.into()),
-        ("semref".into(), semref::binding_hash().into()),
-    ]);
+    let q = |tool: &str| {
+        QueryKey::new(
+            &LAYER_OBJECT_V01,
+            vec![
+                ("kind".into(), "autoabi-emit".into()),
+                ("decl-set".into(), canonical_decl_set(&v1)),
+                ("toolchain".into(), tool.into()),
+                ("profile".into(), layout::ABI_PROFILE.into()),
+                ("semref".into(), semref::binding_hash().into()),
+            ],
+        )
+    };
     assert_ne!(q(&emitter_identity()).hash(), q("cl:other|ver:x").hash());
-    let qp = |profile: &str| QueryKey::new(&LAYER_OBJECT_V01, vec![
-        ("kind".into(), "autoabi-emit".into()),
-        ("decl-set".into(), canonical_decl_set(&v1)),
-        ("toolchain".into(), emitter_identity()),
-        ("profile".into(), profile.into()),
-        ("semref".into(), semref::binding_hash().into()),
-    ]);
-    assert_ne!(qp(layout::ABI_PROFILE).hash(), qp("autoabi.win-x64.v0.2-candidate").hash());
+    let qp = |profile: &str| {
+        QueryKey::new(
+            &LAYER_OBJECT_V01,
+            vec![
+                ("kind".into(), "autoabi-emit".into()),
+                ("decl-set".into(), canonical_decl_set(&v1)),
+                ("toolchain".into(), emitter_identity()),
+                ("profile".into(), profile.into()),
+                ("semref".into(), semref::binding_hash().into()),
+            ],
+        )
+    };
+    assert_ne!(
+        qp(layout::ABI_PROFILE).hash(),
+        qp("autoabi.win-x64.v0.2-candidate").hash()
+    );
 }
 
 /// Cross-project sharing: two project labels over ONE store reuse the
@@ -160,10 +174,8 @@ fn abi_cache_cross_project_sharing() {
     let store = fresh_store(&root, "cache-xproj");
     let defs = [mix_def(BodyKind::MixV1)];
     let key = autoabi_object_key(&defs, false);
-    let (_, hit_a) = produce_with_cache(&store, &key, || {
-        emit_callee_suite("cx", &defs, false)
-    })
-    .expect("project A produces");
+    let (_, hit_a) = produce_with_cache(&store, &key, || emit_callee_suite("cx", &defs, false))
+        .expect("project A produces");
     assert!(!hit_a);
     // project B: same store, same content -> hit without producing
     let (_, hit_b) = produce_with_cache(&store, &key, || {
@@ -182,10 +194,8 @@ fn abi_cache_tampered_block_is_controlled_error() {
     let store = fresh_store(&root, "cache-tamper");
     let defs = [mix_def(BodyKind::MixV1)];
     let key = autoabi_object_key(&defs, false);
-    let (obj, _) = produce_with_cache(&store, &key, || {
-        emit_callee_suite("ct", &defs, false)
-    })
-    .expect("produce for tamper test");
+    let (obj, _) = produce_with_cache(&store, &key, || emit_callee_suite("ct", &defs, false))
+        .expect("produce for tamper test");
 
     // Flip one byte in the persisted block payload.
     // Block payloads live under blocks/blobs/<shard>/<chunk> — walk
@@ -239,10 +249,8 @@ fn abi_cache_missing_block_is_miss_then_recompute() {
     let store = fresh_store(&root, "cache-missing");
     let defs = [mix_def(BodyKind::MixV1)];
     let key = autoabi_object_key(&defs, false);
-    let _ = produce_with_cache(&store, &key, || {
-        emit_callee_suite("cm", &defs, false)
-    })
-    .expect("produce");
+    let _ = produce_with_cache(&store, &key, || emit_callee_suite("cm", &defs, false))
+        .expect("produce");
 
     // Delete the persisted block bytes.
     let blobs = store.root.join("blocks/blobs");
@@ -346,8 +354,16 @@ fn abi_cache_512_revision_churn_gc_convergence() {
         low: floor + 64 * 1024, // achievable: live bytes are tiny
     };
     let receipt = run_gc(&store, cfg).expect("gc");
-    assert!(receipt.ran, "GC must run over the watermark: {}", receipt.reason);
-    assert!(receipt.deleted_chunks >= 500, "unreferenced revisions reclaimed (deleted={})", receipt.deleted_chunks);
+    assert!(
+        receipt.ran,
+        "GC must run over the watermark: {}",
+        receipt.reason
+    );
+    assert!(
+        receipt.deleted_chunks >= 500,
+        "unreferenced revisions reclaimed (deleted={})",
+        receipt.deleted_chunks
+    );
 
     // Newest (rooted) and revision 100 (leased) still readable.
     let newest = store
@@ -374,7 +390,11 @@ fn abi_cache_512_revision_churn_gc_convergence() {
         managed_live <= 128 * 1024,
         "block layer must converge to the live set (~2 chunks), got {managed_live}B"
     );
-    assert!(space1.total < total0, "GC reclaimed nothing ({} vs {total0})", space1.total);
+    assert!(
+        space1.total < total0,
+        "GC reclaimed nothing ({} vs {total0})",
+        space1.total
+    );
 
     // User sentinel untouched, byte-identical.
     assert_eq!(std::fs::read(&sentinel_path).unwrap(), sentinel);
@@ -429,7 +449,10 @@ fn probe_request(
     tr.stage("layout", || {
         let computed = layout::layout_record(lay_def).expect("layout");
         if let Some(st) = store {
-            if layout::get_layout(st, lay_def).expect("get layout").is_none() {
+            if layout::get_layout(st, lay_def)
+                .expect("get layout")
+                .is_none()
+            {
                 layout::put_layout(st, lay_def, &computed).expect("put layout");
                 auto_abi_probe::trace::StageMeta::hit(false)
             } else {
@@ -445,10 +468,10 @@ fn probe_request(
     tr.stage("emit-callee", || {
         let key = autoabi_object_key(defs, false);
         let (obj, hit) = match store {
-            Some(st) => produce_with_cache(st, &key, || {
-                emit_callee_suite("t05-callee", defs, false)
-            })
-            .expect("callee produce"),
+            Some(st) => {
+                produce_with_cache(st, &key, || emit_callee_suite("t05-callee", defs, false))
+                    .expect("callee produce")
+            }
             None => (
                 emit_callee_suite("t05-callee", defs, false).expect("emit"),
                 false,
@@ -543,16 +566,18 @@ fn reject_request(
     let mut ok = false;
     let mut descriptor = auto_abi_probe::descriptor::ModuleDescriptor::probe_module();
     descriptor.semref_hash = semref::blake3_hex(b"edited-descriptor");
-    tr.stage("admit", || match admit(&descriptor.encode().unwrap(), &probe_expectation()) {
-        Err(auto_abi_probe::validate::Rejection::SemRefMismatch { .. }) => {
-            ok = true; // the CORRECT diagnosis
-            auto_abi_probe::trace::StageMeta::default()
-        }
-        other => {
-            ok = false;
-            auto_abi_probe::trace::StageMeta {
-                note: Some(format!("wrong diagnosis: {other:?}")),
-                ..Default::default()
+    tr.stage("admit", || {
+        match admit(&descriptor.encode().unwrap(), &probe_expectation()) {
+            Err(auto_abi_probe::validate::Rejection::SemRefMismatch { .. }) => {
+                ok = true; // the CORRECT diagnosis
+                auto_abi_probe::trace::StageMeta::default()
+            }
+            other => {
+                ok = false;
+                auto_abi_probe::trace::StageMeta {
+                    note: Some(format!("wrong diagnosis: {other:?}")),
+                    ..Default::default()
+                }
             }
         }
     });
@@ -572,9 +597,11 @@ fn p95_of(samples: &[f64]) -> f64 {
 fn abi_turnaround_six_scenarios_30_samples() {
     let root = t05_root().join("turnaround");
     std::fs::create_dir_all(&root).unwrap();
-    let mut summary = String::from("# PLAN-797 T-05 turnaround raw summary
+    let mut summary = String::from(
+        "# PLAN-797 T-05 turnaround raw summary
 
-");
+",
+    );
 
     // Prewarm tool discovery OUTSIDE the timed requests (tool prep is
     // reported separately, per contract-decision §9).
@@ -598,13 +625,26 @@ fn abi_turnaround_six_scenarios_30_samples() {
 
     // 1) fresh: a new empty store per sample — everything cold.
     {
-        let mut s = Scen { name: "fresh", totals: Vec::new(), oks: 0 };
+        let mut s = Scen {
+            name: "fresh",
+            totals: Vec::new(),
+            oks: 0,
+        };
         for i in 0..30 {
             let store = ManagedStore::open(&root.join(format!("fresh-{i}"))).unwrap();
             let defs = [mix_def(BodyKind::MixV1)];
-            let (ok, tr) = probe_request(&format!("fresh-{i}"), Some(&store), &defs, &REC_MIX, "fresh", i);
+            let (ok, tr) = probe_request(
+                &format!("fresh-{i}"),
+                Some(&store),
+                &defs,
+                &REC_MIX,
+                "fresh",
+                i,
+            );
             append_jsonl(&root, &tr).unwrap();
-            if ok { s.oks += 1; }
+            if ok {
+                s.oks += 1;
+            }
             s.totals.push(tr.total_ms);
         }
         scenarios.push(s);
@@ -619,13 +659,30 @@ fn abi_turnaround_six_scenarios_30_samples() {
             let defs = [mix_def(BodyKind::MixV1)];
             let _ = probe_request("layout-warm", Some(&store), &defs, &REC_MIX, "warm", 0);
         }
-        let mut s = Scen { name: "layout-hot", totals: Vec::new(), oks: 0 };
+        let mut s = Scen {
+            name: "layout-hot",
+            totals: Vec::new(),
+            oks: 0,
+        };
         for i in 0..30 {
-            let body = if i % 2 == 0 { BodyKind::MixV1Alt } else { BodyKind::MixV1 };
+            let body = if i % 2 == 0 {
+                BodyKind::MixV1Alt
+            } else {
+                BodyKind::MixV1
+            };
             let defs = [mix_def(body)];
-            let (ok, tr) = probe_request(&format!("lh-{i}"), Some(&store), &defs, &REC_MIX, "layout-hot", i);
+            let (ok, tr) = probe_request(
+                &format!("lh-{i}"),
+                Some(&store),
+                &defs,
+                &REC_MIX,
+                "layout-hot",
+                i,
+            );
             append_jsonl(&root, &tr).unwrap();
-            if ok { s.oks += 1; }
+            if ok {
+                s.oks += 1;
+            }
             s.totals.push(tr.total_ms);
         }
         scenarios.push(s);
@@ -636,11 +693,24 @@ fn abi_turnaround_six_scenarios_30_samples() {
         let store = fresh_store(&root, "object-hot-store");
         let defs = [mix_def(BodyKind::MixV1)];
         let _ = probe_request("oh-warm", Some(&store), &defs, &REC_MIX, "warm", 0);
-        let mut s = Scen { name: "object-hot", totals: Vec::new(), oks: 0 };
+        let mut s = Scen {
+            name: "object-hot",
+            totals: Vec::new(),
+            oks: 0,
+        };
         for i in 0..30 {
-            let (ok, tr) = probe_request(&format!("oh-{i}"), Some(&store), &defs, &REC_MIX, "object-hot", i);
+            let (ok, tr) = probe_request(
+                &format!("oh-{i}"),
+                Some(&store),
+                &defs,
+                &REC_MIX,
+                "object-hot",
+                i,
+            );
             append_jsonl(&root, &tr).unwrap();
-            if ok { s.oks += 1; }
+            if ok {
+                s.oks += 1;
+            }
             s.totals.push(tr.total_ms);
         }
         scenarios.push(s);
@@ -655,13 +725,26 @@ fn abi_turnaround_six_scenarios_30_samples() {
             let defs = [mix_def(BodyKind::MixV1)];
             let _ = probe_request("rs-warm", Some(&store), &defs, &REC_MIX, "warm", 0);
         }
-        let mut s = Scen { name: "restart-disk-hot", totals: Vec::new(), oks: 0 };
+        let mut s = Scen {
+            name: "restart-disk-hot",
+            totals: Vec::new(),
+            oks: 0,
+        };
         for i in 0..30 {
             let store = ManagedStore::open(&store_dir).unwrap();
             let defs = [mix_def(BodyKind::MixV1)];
-            let (ok, tr) = probe_request(&format!("rs-{i}"), Some(&store), &defs, &REC_MIX, "restart-disk-hot", i);
+            let (ok, tr) = probe_request(
+                &format!("rs-{i}"),
+                Some(&store),
+                &defs,
+                &REC_MIX,
+                "restart-disk-hot",
+                i,
+            );
             append_jsonl(&root, &tr).unwrap();
-            if ok { s.oks += 1; }
+            if ok {
+                s.oks += 1;
+            }
             s.totals.push(tr.total_ms);
         }
         scenarios.push(s);
@@ -675,13 +758,30 @@ fn abi_turnaround_six_scenarios_30_samples() {
             let defs = [mix_def(BodyKind::MixV1)];
             let _ = probe_request("be-warm", Some(&store), &defs, &REC_MIX, "warm", 0);
         }
-        let mut s = Scen { name: "body-edit", totals: Vec::new(), oks: 0 };
+        let mut s = Scen {
+            name: "body-edit",
+            totals: Vec::new(),
+            oks: 0,
+        };
         for i in 0..30 {
-            let body = if i % 2 == 0 { BodyKind::MixV1Alt } else { BodyKind::MixV1 };
+            let body = if i % 2 == 0 {
+                BodyKind::MixV1Alt
+            } else {
+                BodyKind::MixV1
+            };
             let defs = [mix_def(body)];
-            let (ok, tr) = probe_request(&format!("be-{i}"), Some(&store), &defs, &REC_MIX, "body-edit", i);
+            let (ok, tr) = probe_request(
+                &format!("be-{i}"),
+                Some(&store),
+                &defs,
+                &REC_MIX,
+                "body-edit",
+                i,
+            );
             append_jsonl(&root, &tr).unwrap();
-            if ok { s.oks += 1; }
+            if ok {
+                s.oks += 1;
+            }
             s.totals.push(tr.total_ms);
         }
         scenarios.push(s);
@@ -692,13 +792,30 @@ fn abi_turnaround_six_scenarios_30_samples() {
     //    stays correct; GC observation recorded after the run.
     {
         let store = fresh_store(&root, "abi-edit-store");
-        let mut s = Scen { name: "abi-layout-edit", totals: Vec::new(), oks: 0 };
+        let mut s = Scen {
+            name: "abi-layout-edit",
+            totals: Vec::new(),
+            oks: 0,
+        };
         for i in 0..30 {
-            let lay = if i % 2 == 0 { &REC_MIX } else { &auto_abi_probe::layout::REC_MIX_SWAPPED };
+            let lay = if i % 2 == 0 {
+                &REC_MIX
+            } else {
+                &auto_abi_probe::layout::REC_MIX_SWAPPED
+            };
             let defs = [mix_def(BodyKind::MixV1)];
-            let (ok, tr) = probe_request(&format!("ae-{i}"), Some(&store), &defs, lay, "abi-layout-edit", i);
+            let (ok, tr) = probe_request(
+                &format!("ae-{i}"),
+                Some(&store),
+                &defs,
+                lay,
+                "abi-layout-edit",
+                i,
+            );
             append_jsonl(&root, &tr).unwrap();
-            if ok { s.oks += 1; }
+            if ok {
+                s.oks += 1;
+            }
             s.totals.push(tr.total_ms);
         }
         // GC observation (post-scenario): under this volume the default

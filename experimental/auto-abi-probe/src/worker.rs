@@ -18,7 +18,7 @@ use crate::link::link_pe;
 use crate::run;
 use ac_artifact_probe::store::ManagedStore;
 use serde::{Deserialize, Serialize};
-use std::io::{BufRead, Write};
+use std::io::{Read, Write};
 use std::time::Instant;
 
 pub const WORKER_SCHEMA: &str = "abiworker/1";
@@ -149,7 +149,9 @@ fn parse_deck(text: &str) -> Result<Deck, String> {
                 header = Some(());
                 continue;
             }
-            return Err(format!("deck must start with `deck autoabi/1`, got {line:?}"));
+            return Err(format!(
+                "deck must start with `deck autoabi/1`, got {line:?}"
+            ));
         }
         if line.starts_with("fn ") && fn_line.is_none() {
             fn_line = Some(line);
@@ -166,26 +168,25 @@ fn parse_deck(text: &str) -> Result<Deck, String> {
     let inputs_line = inputs_line.ok_or("deck needs one `inputs` block")?;
 
     // fn <sym>(<n>:<ty>, ...) -> <ty> [body: <id>]
-    let rest = fn_line
-        .strip_prefix("fn ")
-        .ok_or("bad fn line")?;
+    let rest = fn_line.strip_prefix("fn ").ok_or("bad fn line")?;
     let (sig, body_tag) = rest
         .split_once("[body:")
         .ok_or("fn line needs a `[body: ...]` tag")?;
     let body = body_tag.trim_end_matches(']').trim().to_string();
     if !matches!(body.as_str(), "mix-v1" | "mix-v1b") {
-        return Err(format!("unknown body {:?} (v1 freezes mix-v1/mix-v1b)", body));
+        return Err(format!(
+            "unknown body {:?} (v1 freezes mix-v1/mix-v1b)",
+            body
+        ));
     }
     let sig = sig.trim();
-    let (name, sig) = sig
-        .split_once('(')
-        .ok_or("fn line needs `(params)`")?;
+    let (name, sig) = sig.split_once('(').ok_or("fn line needs `(params)`")?;
     if name.trim() != "p797_mix" {
-        return Err(format!("v1 freezes the single function p797_mix, got {name:?}"));
+        return Err(format!(
+            "v1 freezes the single function p797_mix, got {name:?}"
+        ));
     }
-    let (params_paren, ret_txt) = sig
-        .rsplit_once("->")
-        .ok_or("fn line needs `) -> <ty>`")?;
+    let (params_paren, ret_txt) = sig.rsplit_once("->").ok_or("fn line needs `) -> <ty>`")?;
     let params_txt = params_paren
         .trim()
         .strip_suffix(')')
@@ -197,16 +198,37 @@ fn parse_deck(text: &str) -> Result<Deck, String> {
         if p.is_empty() {
             continue;
         }
-        let (n, t) = p.split_once(':').ok_or_else(|| format!("param {p:?} needs `name:ty`"))?;
+        let (n, t) = p
+            .split_once(':')
+            .ok_or_else(|| format!("param {p:?} needs `name:ty`"))?;
         params.push((n.trim().to_string(), t.trim().to_string()));
     }
-    for (n, t) in &params {
-        if !matches!(t.as_str(), "i32" | "u32" | "i64" | "u64" | "f64" | "bool" | "char") {
-            return Err(format!("param {n} has unknown type {t:?}"));
+    // F-797-R4-01: the deck spells LOGICAL types; they must equal the
+    // SEMANTIC fixture signature exactly (per-position kinds minted by
+    // the real contract). Same-width substitutions (u32 for i32) are
+    // typed deviations here, never silently accepted.
+    for (_, t) in &params {
+        if crate::semref::sem_kind_of(t).is_none() {
+            return Err(format!("param type {t:?} is not a semantic kind"));
         }
     }
-    if !matches!(ret.as_str(), "i32" | "u32" | "i64" | "u64" | "f64" | "bool" | "char") {
-        return Err(format!("unknown return type {ret:?}"));
+    let want_kinds: Vec<crate::semref::SemKind> = crate::semref::mix_param_semantics().to_vec();
+    let got: Vec<crate::semref::SemKind> = params
+        .iter()
+        .map(|(_, t)| crate::semref::sem_kind_of(t).expect("checked above"))
+        .collect();
+    if got != want_kinds {
+        let want_s: Vec<String> = want_kinds.iter().map(|k| format!("{k:?}")).collect();
+        let got_s: Vec<String> = got.iter().map(|k| format!("{k:?}")).collect();
+        return Err(format!(
+            "v1 freezes the p797_mix SEMANTIC signature {:?}; deck spells {:?}",
+            want_s, got_s
+        ));
+    }
+    if crate::semref::sem_kind_of(&ret) != Some(crate::semref::SemKind::I64) {
+        return Err(format!(
+            "v1 freezes the i64 return; deck spells {ret:?} (logical kinds, not widths)"
+        ));
     }
 
     // inputs { a: 7, ..., f: 1.5, ... }
@@ -221,40 +243,118 @@ fn parse_deck(text: &str) -> Result<Deck, String> {
         if part.is_empty() {
             continue;
         }
-        let (n, v) = part.split_once(':').ok_or_else(|| format!("input {part:?} needs `name: value`"))?;
+        let (n, v) = part
+            .split_once(':')
+            .ok_or_else(|| format!("input {part:?} needs `name: value`"))?;
         vals.push((n.trim().to_string(), v.trim().to_string()));
     }
-    let get = |name: &str, parse_int: bool| -> Result<String, String> {
+    // F-797-R4-01: every input parses IN RANGE for its SEMANTIC param
+    // kind — an i32 overflow (e.g. 2147483648) or a non-finite f64 is a
+    // typed diagnostic, never a panic and never a native trap.
+    let raw = |name: &str| -> Result<&String, String> {
         vals.iter()
             .find(|(n, _)| n == name)
-            .map(|(_, v)| v.clone())
+            .map(|(_, v)| v)
             .ok_or_else(|| format!("inputs missing {name:?}"))
-            .and_then(|v| {
-                let (ok, kind) = if parse_int {
-                    (v.parse::<i64>().is_ok(), "integer")
-                } else {
-                    (v.parse::<f64>().is_ok(), "float")
-                };
-                if ok {
-                    Ok(v)
-                } else {
-                    Err(format!("input {name} is not a {kind}: {v}"))
-                }
-            })
+    };
+    let i32_of = |name: &str| -> Result<i32, String> {
+        raw(name)?.parse::<i32>().map_err(|_| {
+            format!(
+                "input {name} is not an in-range i32: {}",
+                raw(name).cloned().unwrap_or_default()
+            )
+        })
+    };
+    let i64_of = |name: &str| -> Result<i64, String> {
+        raw(name)?.parse::<i64>().map_err(|_| {
+            format!(
+                "input {name} is not an in-range i64: {}",
+                raw(name).cloned().unwrap_or_default()
+            )
+        })
+    };
+    let finite_f64_of = |name: &str| -> Result<f64, String> {
+        let v: f64 = raw(name)?.parse().map_err(|_| {
+            format!(
+                "input {name} is not an f64: {}",
+                raw(name).cloned().unwrap_or_default()
+            )
+        })?;
+        if !v.is_finite() {
+            return Err(format!(
+                "input {name} must be a FINITE f64 (profile rejects NaN/Inf before any native call): {v}"
+            ));
+        }
+        Ok(v)
     };
     let inputs = MixInputs {
-        a: get("a", true)?.parse().unwrap(),
-        b: get("b", true)?.parse().unwrap(),
-        c: get("c", true)?.parse().unwrap(),
-        d: get("d", true)?.parse().unwrap(),
-        e: get("e", true)?.parse().unwrap(),
-        f: get("f", false)?.parse().unwrap(),
-        g: get("g", true)?.parse().unwrap(),
-        h: get("h", false)?.parse().unwrap(),
+        a: i32_of("a")?,
+        b: i32_of("b")?,
+        c: i32_of("c")?,
+        d: i32_of("d")?,
+        e: i64_of("e")?,
+        f: finite_f64_of("f")?,
+        g: i32_of("g")?,
+        h: finite_f64_of("h")?,
     };
-    let _ = rec_line; // rec is declaration-only in v1 (layout fixture);
-                      // presence/absence does not change the pipeline
-    Ok(Deck { params, ret, body, inputs })
+    // F-797-R4-01: the rec line is CONSUMED — it must spell the frozen
+    // RecMix semantic shape exactly (field order, names, kinds); any
+    // deviation (including same-width re-spellings) is a typed deck
+    // diagnostic.
+    let rec_src =
+        rec_line.ok_or("deck needs the `rec RecMix { ... }` line (semantic shape is consumed)")?;
+    let (rec_name, rec_body) = rec_src
+        .trim()
+        .strip_prefix("rec ")
+        .and_then(|r| r.split_once('{'))
+        .ok_or("bad rec line (expected `rec <Name> { ty name; ... }`)")?;
+    if rec_name.trim() != "RecMix" {
+        return Err(format!(
+            "v1 freezes the RecMix record; deck spells {:?}",
+            rec_name.trim()
+        ));
+    }
+    let rec_inner = rec_body
+        .rsplit_once('}')
+        .map(|(b, _)| b)
+        .ok_or("bad rec line (missing `}`)")?;
+    {
+        let mut fields: Vec<(String, String)> = Vec::new();
+        for part in rec_inner.split(';') {
+            let part = part.trim();
+            if part.is_empty() {
+                continue;
+            }
+            let (t, n) = part
+                .split_once(' ')
+                .ok_or_else(|| format!("rec field {part:?} needs `ty name`"))?;
+            fields.push((t.trim().to_string(), n.trim().to_string()));
+        }
+        let want = crate::semref::rec_mix_semantics();
+        if fields.len() != want.len() {
+            return Err(format!(
+                "RecMix freezes {} semantic fields; deck spells {}",
+                want.len(),
+                fields.len()
+            ));
+        }
+        for (i, ((dt, dn), (wn, wk))) in fields.iter().zip(want.iter()).enumerate() {
+            let dk = crate::semref::sem_kind_of(dt)
+                .ok_or_else(|| format!("rec field {dn} has non-semantic type {dt:?}"))?;
+            if dn != wn || dk != *wk {
+                return Err(format!(
+                    "RecMix field {i} must be `{} {:?}`; deck spells `{} {}`",
+                    wn, wk, dt, dn
+                ));
+            }
+        }
+    }
+    Ok(Deck {
+        params,
+        ret,
+        body,
+        inputs,
+    })
 }
 
 impl Deck {
@@ -274,11 +374,17 @@ impl Deck {
         if got != decl::MIX_PARAMS.to_vec() {
             return Err(format!(
                 "v1 freezes the p797_mix machine signature; deck spells {:?}",
-                self.params.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>()
+                self.params
+                    .iter()
+                    .map(|(_, t)| t.as_str())
+                    .collect::<Vec<_>>()
             ));
         }
         if map(&self.ret) != AbiScalar::I64 {
-            return Err(format!("v1 freezes the i64 return; deck spells {:?}", self.ret));
+            return Err(format!(
+                "v1 freezes the i64 return; deck spells {:?}",
+                self.ret
+            ));
         }
         Ok(FnDecl {
             symbol: "p797_mix",
@@ -305,6 +411,8 @@ struct Session {
     rejections: u32,
 }
 
+/// F-797-R4-10: RECURSIVE directory size — the store keeps blobs under
+/// blocks/blobs/<shard>/, so a top-level-only count constantly read 0.
 fn dir_size(p: &std::path::Path) -> u64 {
     let mut total = 0u64;
     if let Ok(rd) = std::fs::read_dir(p) {
@@ -312,6 +420,8 @@ fn dir_size(p: &std::path::Path) -> u64 {
             let Ok(md) = e.metadata() else { continue };
             if md.is_file() {
                 total += md.len();
+            } else if md.is_dir() {
+                total += dir_size(&e.path());
             }
         }
     }
@@ -341,7 +451,10 @@ fn execute_query(sess: &mut Session) -> StepOut {
                 outcome: "diags",
                 cache,
                 compute_calls: 0,
-                diagnostics: vec![DiagOut { code: "deck".into(), message: e }],
+                diagnostics: vec![DiagOut {
+                    code: "deck".into(),
+                    message: e,
+                }],
                 stages: vec![stage_span("parse", t0)],
                 meter: meter(sess),
                 pe_exit: None,
@@ -356,7 +469,10 @@ fn execute_query(sess: &mut Session) -> StepOut {
                 outcome: "diags",
                 cache,
                 compute_calls: 0,
-                diagnostics: vec![DiagOut { code: "deck".into(), message: e }],
+                diagnostics: vec![DiagOut {
+                    code: "deck".into(),
+                    message: e,
+                }],
                 stages: vec![stage_span("parse", t0)],
                 meter: meter(sess),
                 pe_exit: None,
@@ -382,13 +498,12 @@ fn execute_query(sess: &mut Session) -> StepOut {
 
     // admission: deck fn signature vs the frozen consumer expectation —
     // the descriptor-edit reject path lands HERE (typed diags).
+    // F-797-R4-08: the descriptor is DERIVED, never emitted — admission
+    // cannot secretly run the producer on the cache-hit path.
     let t0 = Instant::now();
     let defs = [fn_decl];
-    let produced = match crate::build::produce_callee_suite("abi-worker-callee", &defs, false) {
-        Ok(p) => p,
-        Err(e) => return infra_step(format!("produce: {e}"), sess),
-    };
-    let descriptor_bytes = match produced.descriptor.encode() {
+    let descriptor = crate::build::descriptor_for_defs(&defs);
+    let descriptor_bytes = match descriptor.encode() {
         Ok(b) => b,
         Err(e) => return infra_step(format!("descriptor encode: {e}"), sess),
     };
@@ -404,13 +519,17 @@ fn execute_query(sess: &mut Session) -> StepOut {
                 cache,
                 compute_calls: 0,
                 diagnostics: vec![DiagOut {
-                    code: format!("admission/{rej:?}").split_whitespace().next().unwrap_or("admission").to_string(),
+                    code: format!("admission/{rej:?}")
+                        .split_whitespace()
+                        .next()
+                        .unwrap_or("admission")
+                        .to_string(),
                     message: format!("{rej}"),
                 }],
                 stages,
                 meter: meter(sess),
                 pe_exit: None,
-            }
+            };
         }
     }
     stages.push(stage_span("admit", t0));
@@ -423,7 +542,11 @@ fn execute_query(sess: &mut Session) -> StepOut {
         emit_callee_suite("abi-worker-callee", &defs, false)
     }) {
         Ok((obj, hit)) => {
-            cache = if hit { "hit".into() } else { "published".into() };
+            cache = if hit {
+                "hit".into()
+            } else {
+                "published".into()
+            };
             obj
         }
         Err(e) => return infra_step(format!("callee produce: {e:?}"), sess),
@@ -433,11 +556,23 @@ fn execute_query(sess: &mut Session) -> StepOut {
     // per-leg consumer (the REAL pipeline; scratch per step)
     let t0 = Instant::now();
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    // scratch is namespaced by the STORE directory (unique per session
+    // owner): concurrent workers over sibling stores must not share or
+    // delete each other's scratch (observed as a cross-test link race).
+    let store_tag = sess
+        .store_root
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("store")
+        .to_string();
     let scratch = sess
         .store_root
         .parent()
         .unwrap_or(&sess.store_root)
-        .join(format!("abi-worker-scratch-{}", sess.step_index));
+        .join(format!(
+            "{store_tag}-abi-worker-scratch-{}",
+            sess.step_index
+        ));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).expect("worker scratch");
     let expected = decl::oracle_mix_v1(&deck.inputs);
@@ -475,8 +610,11 @@ fn execute_query(sess: &mut Session) -> StepOut {
             let cp = scratch.join("caller.obj");
             std::fs::write(&cp, &caller).expect("write caller obj");
             let src = manifest.join("cside/interop_callee.c");
-            let content = std::fs::read(&src).expect("cside source");
-            let key = c_object_key(&crate::semref::blake3_hex(&content));
+            let closure = match crate::cache::c_include_closure(&src, &manifest.join("cside")) {
+                Ok(c) => c,
+                Err(e) => return infra_step(format!("include closure: {e}"), sess),
+            };
+            let key = c_object_key(&closure);
             let c_obj = match produce_with_cache(&store, &key, || {
                 compute_calls += 1;
                 let obj = scratch.join("consumer-once.obj");
@@ -494,8 +632,11 @@ fn execute_query(sess: &mut Session) -> StepOut {
         }
         "c" => {
             let src = manifest.join("cside/caller_main.c");
-            let content = std::fs::read(&src).expect("cside source");
-            let key = c_object_key(&crate::semref::blake3_hex(&content));
+            let closure = match crate::cache::c_include_closure(&src, &manifest.join("cside")) {
+                Ok(c) => c,
+                Err(e) => return infra_step(format!("include closure: {e}"), sess),
+            };
+            let key = c_object_key(&closure);
             let c_obj = match produce_with_cache(&store, &key, || {
                 compute_calls += 1;
                 let obj = scratch.join("consumer-once.obj");
@@ -513,9 +654,7 @@ fn execute_query(sess: &mut Session) -> StepOut {
             objs = vec![cop, clp];
             entry = "p797_c_entry";
         }
-        other => {
-            return infra_step(format!("unknown leg {other:?} (v1 freezes a/b/c)"), sess)
-        }
+        other => return infra_step(format!("unknown leg {other:?} (v1 freezes a/b/c)"), sess),
     }
     stages.push(stage_span("consumer", t0));
 
@@ -542,10 +681,24 @@ fn execute_query(sess: &mut Session) -> StepOut {
             meter: meter(sess),
             pe_exit: Some(pe.code),
         }
+    } else if pe.code < 0 {
+        // F-797-R4-03: a native crash (negative NTSTATUS exit, e.g.
+        // 0xC0000005 access violation) is an INFRASTRUCTURE outcome —
+        // never a language diagnostic and never an expected pass.
+        infra_step(
+            format!(
+                "native PE crashed (exit {:#x}); out={:?} err={:?}",
+                pe.code as u32, pe.stdout, pe.stderr
+            ),
+            sess,
+        )
     } else {
         diags.push(DiagOut {
             code: "pe-exit".into(),
-            message: format!("PE exited {} (out={:?} err={:?})", pe.code, pe.stdout, pe.stderr),
+            message: format!(
+                "PE exited {} (out={:?} err={:?})",
+                pe.code, pe.stdout, pe.stderr
+            ),
         });
         StepOut {
             op: "query",
@@ -560,7 +713,6 @@ fn execute_query(sess: &mut Session) -> StepOut {
     }
 }
 
-
 fn meter(sess: &Session) -> MeterOut {
     let scratch_root = sess.store_root.parent().unwrap_or(&sess.store_root);
     let mut scratch_peak = 0u64;
@@ -569,7 +721,7 @@ fn meter(sess: &Session) -> MeterOut {
             let p = e.path();
             if p.file_name()
                 .and_then(|n| n.to_str())
-                .map(|n| n.starts_with("abi-worker-scratch-"))
+                .map(|n| n.contains("-abi-worker-scratch-"))
                 .unwrap_or(false)
             {
                 scratch_peak = scratch_peak.max(dir_size(&p));
@@ -589,7 +741,10 @@ fn infra_step(message: String, sess: &Session) -> StepOut {
         outcome: "infra",
         cache: "-".into(),
         compute_calls: 0,
-        diagnostics: vec![DiagOut { code: "infra".into(), message }],
+        diagnostics: vec![DiagOut {
+            code: "infra".into(),
+            message,
+        }],
         stages: vec![],
         meter: meter(sess),
         pe_exit: None,
@@ -598,10 +753,14 @@ fn infra_step(message: String, sess: &Session) -> StepOut {
 
 fn replace_once(src: &[u8], from: &str, to: &str) -> Result<Vec<u8>, String> {
     let hay = String::from_utf8_lossy(src).to_string();
-    let first = hay.find(from).ok_or_else(|| format!("edit-source `from` not found: {from:?}"))?;
+    let first = hay
+        .find(from)
+        .ok_or_else(|| format!("edit-source `from` not found: {from:?}"))?;
     let second = hay[first + from.len()..].find(from);
     if second.is_some() {
-        return Err(format!("edit-source `from` matches more than once: {from:?}"));
+        return Err(format!(
+            "edit-source `from` matches more than once: {from:?}"
+        ));
     }
     let mut out = String::with_capacity(hay.len() + to.len());
     out.push_str(&hay[..first]);
@@ -620,7 +779,10 @@ fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
     use base64::Engine as _;
     let deck = base64::engine::general_purpose::STANDARD
         .decode(&req.deck_b64)
-        .map_err(|e| DiagOut { code: "deck-b64".into(), message: format!("{e}") })?;
+        .map_err(|e| DiagOut {
+            code: "deck-b64".into(),
+            message: format!("{e}"),
+        })?;
     let mut sess = Session {
         deck,
         leg: req.leg.clone(),
@@ -628,8 +790,10 @@ fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         step_index: 0,
         rejections: 0,
     };
-    std::fs::create_dir_all(&sess.store_root)
-        .map_err(|e| DiagOut { code: "store".into(), message: format!("{e}") })?;
+    std::fs::create_dir_all(&sess.store_root).map_err(|e| DiagOut {
+        code: "store".into(),
+        message: format!("{e}"),
+    })?;
     let mut steps_out = Vec::new();
     let mut restart_pending = false;
     for st in &req.steps {
@@ -693,10 +857,19 @@ pub fn serve() -> i32 {
     let stdin = std::io::stdin();
     let mut rd = stdin.lock();
 
-    let mut begin_line = String::new();
-    if rd.read_line(&mut begin_line).unwrap_or(0) == 0 {
-        return fail_protocol("begin line missing");
-    }
+    // F-797-R4-10: EVERY session line is read through a capped reader —
+    // the metadata bound is enforced while reading, before the full
+    // line is materialized (never read_line-then-check).
+    let begin_line = match read_capped(&mut rd) {
+        Ok(Some(l)) => l,
+        Ok(None) => return fail_protocol("begin line missing"),
+        Err(observed) => {
+            return fail_protocol(&format!(
+                "begin line exceeds the {}-byte bound ({} observed)",
+                MAX_LINE, observed
+            ))
+        }
+    };
     let begin: SessionBegin = match serde_json::from_str(begin_line.trim()) {
         Ok(b) => b,
         Err(e) => return fail_protocol(&format!("bad begin: {e}")),
@@ -705,14 +878,16 @@ pub fn serve() -> i32 {
         return fail_protocol("bad begin (expected op=begin, schema=abiworker/1)");
     }
 
-    let mut req_line = String::new();
-    let n = rd.read_line(&mut req_line).unwrap_or(0);
-    if n == 0 {
-        return fail_protocol("request line missing");
-    }
-    if req_line.len() > MAX_LINE {
-        return fail_protocol("request line exceeds the 4MiB bound");
-    }
+    let req_line = match read_capped(&mut rd) {
+        Ok(Some(l)) => l,
+        Ok(None) => return fail_protocol("request line missing"),
+        Err(observed) => {
+            return fail_protocol(&format!(
+                "request line exceeds the {}-byte bound ({} observed)",
+                MAX_LINE, observed
+            ))
+        }
+    };
     #[derive(Deserialize)]
     struct Envelope {
         op: String,
@@ -726,10 +901,16 @@ pub fn serve() -> i32 {
         return fail_protocol("expected op=request");
     }
 
-    let mut end_line = String::new();
-    if rd.read_line(&mut end_line).unwrap_or(0) == 0 {
-        return fail_protocol("end line missing");
-    }
+    let end_line = match read_capped(&mut rd) {
+        Ok(Some(l)) => l,
+        Ok(None) => return fail_protocol("end line missing"),
+        Err(observed) => {
+            return fail_protocol(&format!(
+                "end line exceeds the {}-byte bound ({} observed)",
+                MAX_LINE, observed
+            ))
+        }
+    };
     if !end_line.contains(r#""op":"end""#) && !end_line.contains(r#""op": "end""#) {
         return fail_protocol("end line malformed");
     }
@@ -751,11 +932,79 @@ pub fn serve() -> i32 {
             error: Some(err),
         },
     };
+    // F-797-R4-03 TEST-ONLY fault seams: never set by production paths;
+    // the parent's lifecycle/admission tests drive them through the
+    // child environment to prove the PARENT actually enforces the wall,
+    // the stderr cap after the response, and the one-envelope rule.
     let mut out = std::io::stdout().lock();
-    let line = serde_json::to_string(&resp).unwrap_or_default();
+    let line = if std::env::var("ABI_TEST_BOTH_ENVELOPE").is_ok() {
+        // deliberately contradictory envelope (both ok and error)
+        let mut v = serde_json::to_value(&resp).unwrap_or_default();
+        v["error"] = serde_json::json!({"code": "fault", "message": "both"});
+        v.to_string()
+    } else {
+        serde_json::to_string(&resp).unwrap_or_default()
+    };
     let _ = writeln!(out, "{line}");
     let _ = out.flush();
+    if let Ok(secs) = std::env::var("ABI_TEST_LATE_STDERR_OVERFLOW_MS") {
+        let ms: u64 = secs.parse().unwrap_or(150);
+        std::thread::sleep(std::time::Duration::from_millis(ms));
+        let mut sink = std::io::stderr().lock();
+        let chunk = vec![b'x'; 1024];
+        for _ in 0..((MAX_LINE / 1024) + 8) {
+            let _ = sink.write_all(&chunk);
+        }
+        let _ = sink.flush();
+    }
+    if let Ok(hang) = std::env::var("ABI_TEST_HANG_AFTER_RESPONSE_SECS") {
+        let secs: u64 = hang.parse().unwrap_or(61);
+        std::thread::sleep(std::time::Duration::from_secs(secs));
+    }
     0
+}
+
+/// F-797-R4-10: read ONE line with a hard byte cap; Err(observed_len)
+/// reports an oversized line the moment the cap is crossed.
+fn read_capped(rd: &mut std::io::StdinLock) -> Result<Option<String>, usize> {
+    let mut line = Vec::new();
+    let mut byte = [0u8; 1];
+    loop {
+        match rd.read(&mut byte) {
+            Ok(0) => {
+                if line.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+            }
+            Ok(_) => {
+                if byte[0] == b'\n' {
+                    return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+                }
+                line.push(byte[0]);
+                if line.len() > MAX_LINE {
+                    // keep counting to report the observed size, bounded
+                    // by a small overshoot so a hostile stream cannot
+                    // grow the counter unboundedly either
+                    let mut observed = line.len();
+                    while observed <= MAX_LINE + 4096 {
+                        match rd.read(&mut byte) {
+                            Ok(0) => break,
+                            Ok(_) => observed += 1,
+                            Err(_) => break,
+                        }
+                    }
+                    return Err(observed);
+                }
+            }
+            Err(_) => {
+                if line.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(String::from_utf8_lossy(&line).into_owned()));
+            }
+        }
+    }
 }
 
 fn fail_protocol(msg: &str) -> i32 {

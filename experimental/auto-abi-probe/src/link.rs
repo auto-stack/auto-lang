@@ -27,14 +27,8 @@ pub fn link_pe(dir: &Path, objs: &[PathBuf], entry: &str) -> Result<PathBuf, Pro
     let sdk = auto_ac_prototype::link::find_sdk_um_dir()
         .map_err(|e| ProbeError(format!("find_sdk_um_dir: {e:?}")))?;
     let exe = dir.join("probe.exe");
-    let staged = auto_ac_prototype::link::link_object_staged(
-        &lld,
-        &sdk,
-        &objs[0],
-        &exe,
-        entry,
-        &objs[1..],
-    )
-    .map_err(|e| ProbeError(format!("staged link: {e:?}")))?;
+    let staged =
+        auto_ac_prototype::link::link_object_staged(&lld, &sdk, &objs[0], &exe, entry, &objs[1..])
+            .map_err(|e| ProbeError(format!("staged link: {e:?}")))?;
     Ok(staged.tmp_exe)
 }

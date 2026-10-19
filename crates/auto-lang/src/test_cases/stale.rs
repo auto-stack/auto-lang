@@ -162,6 +162,7 @@ pub fn check_with_families(
     // The ACTUAL worker/tool identity is computed lazily PER FAMILY:
     // only reports carrying native rows pay for the discovery.
     let mut current_ac: Option<BTreeMap<String, String>> = ac_axes;
+    let mut current_probe_abi: Option<std::collections::BTreeMap<String, String>> = None;
     let mut current_probe: Option<BTreeMap<String, String>> = probe_axes;
     let current = current_identities(suite_path, &limits)?;
     let new_toolchain = toolchain_axes(&limits);
@@ -269,8 +270,12 @@ pub fn check_with_families(
                         })
                     })
                     .unwrap_or(false);
+            // F-797-R4-11: the two probe recipes have DIFFERENT identity
+            // maps; caching them in ONE slot made mixed suites
+            // order-dependent (first recipe's map served the other's
+            // rows). Separate lazies keep each family exact.
             let current = if abi_probe_row {
-                current_probe
+                current_probe_abi
                     .get_or_insert_with(crate::test_cases::abi::current_toolchain_identity)
             } else if is_probe {
                 current_probe

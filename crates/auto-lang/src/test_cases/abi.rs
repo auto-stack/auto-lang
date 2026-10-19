@@ -67,14 +67,23 @@ fn locate_worker() -> Result<PathBuf, String> {
                 "abi-worker not located: no experimental/auto-abi-probe above the crate and no ABI_CASE_WORKER override".to_string(),
             );
         };
-        let m = d.join("experimental").join("auto-abi-probe").join("Cargo.toml");
+        let m = d
+            .join("experimental")
+            .join("auto-abi-probe")
+            .join("Cargo.toml");
         if m.is_file() {
             break m;
         }
         dir = d.parent();
     };
     let mut child = Command::new("cargo")
-        .args(["build", "--release", "--bin", "abi-worker", "--manifest-path"])
+        .args([
+            "build",
+            "--release",
+            "--bin",
+            "abi-worker",
+            "--manifest-path",
+        ])
         .arg(&manifest)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
@@ -130,7 +139,10 @@ fn locate_worker() -> Result<PathBuf, String> {
     if exe.is_file() {
         Ok(exe)
     } else {
-        Err(format!("abi worker build produced no exe at {}", exe.display()))
+        Err(format!(
+            "abi worker build produced no exe at {}",
+            exe.display()
+        ))
     }
 }
 
@@ -242,6 +254,33 @@ struct StageSpanMirror {
 
 // ---- worker lifecycle (contained, bounded; mirrors the seam) -----------
 
+/// TEST-ONLY fault injection (F-797-R4-03 controls), mirroring sema's
+/// discipline: child env vars + an optional session-wall override,
+/// applied only to spawned worker processes while a test holds the
+/// lock. Cases can never reach this — not part of the contract decode.
+#[doc(hidden)]
+pub struct TestFaults {
+    pub child_envs: Vec<(String, String)>,
+    pub session_wall_ms: Option<u64>,
+}
+
+#[doc(hidden)]
+pub static TEST_FAULTS: std::sync::RwLock<Option<TestFaults>> = std::sync::RwLock::new(None);
+
+fn active_faults() -> Option<(Vec<(String, String)>, Option<u64>)> {
+    TEST_FAULTS
+        .read()
+        .ok()
+        .and_then(|g| {
+            g.as_ref().map(|f| {
+                (
+                    f.child_envs.clone(),
+                    f.session_wall_ms,
+                )
+            })
+        })
+}
+
 fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse, String> {
     if request_json.len() > REQUEST_CAP {
         return Err(format!(
@@ -256,6 +295,16 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    let faults = active_faults();
+    let deadline = match &faults {
+        Some((_, Some(ms))) => Duration::from_millis(*ms),
+        _ => deadline,
+    };
+    if let Some((envs, _)) = &faults {
+        for (k, v) in envs {
+            cmd.env(k, v);
+        }
+    }
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -373,23 +422,85 @@ fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse,
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    // full lifecycle: response alone is not the end — wait for exit.
-    let exit = child.wait();
-    let _ = job.take();
-    match exit {
-        Ok(status) if status.success() => {}
-        Ok(status) => {
-            return Err(format!("abi worker exited abnormally: {status}"));
+    // F-797-R4-03: ONE deadline tiles the WHOLE session — response,
+    // exit, and reap. A worker that answered then slept, or that is
+    // still exiting, is killed at the SAME wall; there is no unbounded
+    // wait after the response.
+    let deadline_at = started + deadline;
+    let mut exit_status: Option<std::process::ExitStatus> = None;
+    loop {
+        match child.try_wait() {
+            Ok(Some(st)) => {
+                exit_status = Some(st);
+                break;
+            }
+            Ok(None) => {
+                if Instant::now() > deadline_at {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    let _ = job.take();
+                    return Err(format!(
+                        "abi worker session exceeded the wall (exit phase; response took {:.0}ms)",
+                        (deadline - started.elapsed().min(deadline)).as_millis()
+                    ));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(e) => {
+                let _ = job.take();
+                return Err(format!("wait abi worker: {e}"));
+            }
         }
-        Err(e) => return Err(format!("wait abi worker: {e}")),
     }
-    // bounded drain grace for the readers.
-    let deadline2 = Instant::now() + READER_GRACE;
-    while Instant::now() < deadline2 {
-        if err_rx.try_recv().is_ok() {
-            break;
+    let _ = job.take();
+    match exit_status {
+        Some(st) if st.success() => {}
+        Some(st) => return Err(format!("abi worker exited abnormally: {st}")),
+        None => return Err("abi worker never exited".into()),
+    }
+
+    // F-797-R4-03: the stderr OVERFLOW FLAG is decisive even when it is
+    // observed AFTER the response — a late >cap write is an
+    // infrastructure error, never a PASS. Bounded drain grace.
+    let drain_until = std::cmp::min(deadline_at, Instant::now() + READER_GRACE);
+    let mut stderr_overflow: Option<bool> = None;
+    loop {
+        match err_rx.try_recv() {
+            Ok((overflow, _)) => {
+                stderr_overflow = Some(overflow);
+                break;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                if Instant::now() > drain_until {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
         }
-        std::thread::sleep(Duration::from_millis(5));
+    }
+    if stderr_overflow == Some(true) {
+        return Err(
+            "abi worker stderr overflowed the 1MiB cap (observed after response) — resource error"
+                .into(),
+        );
+    }
+
+    // F-797-R4-03: exactly one of `ok` / `error` may be present — a
+    // contradictory envelope is a protocol error, never `ok`.
+    match response.as_ref() {
+        Ok(r) => {
+            let both = r.ok.is_some() && r.error.is_some();
+            let neither = r.ok.is_none() && r.error.is_none();
+            if both || neither {
+                return Err(format!(
+                    "abi worker envelope must carry exactly one of ok/error (ok={}, error={})",
+                    r.ok.is_some(),
+                    r.error.is_some()
+                ));
+            }
+        }
+        Err(_) => {}
     }
     response
 }
@@ -404,7 +515,9 @@ fn replace_once(src: &[u8], from: &str, to: &str) -> Result<Vec<u8>, String> {
         return Err(format!("edit-source `from` not found: {from:?}"));
     };
     if hay[first + from.len()..].contains(from) {
-        return Err(format!("edit-source `from` matches more than once: {from:?}"));
+        return Err(format!(
+            "edit-source `from` matches more than once: {from:?}"
+        ));
     }
     let mut out = String::with_capacity(hay.len() + to.len());
     out.push_str(&hay[..first]);
@@ -558,8 +671,7 @@ pub fn run_check(
                 }
             }
             if matches!(session.last(), Some(ProbeStep::Restart)) && !ok.restart_pending {
-                infra_detail =
-                    Some("restart step did not end the session as declared".to_string());
+                infra_detail = Some("restart step did not end the session as declared".to_string());
                 break 'admit;
             }
             for s in ok.steps.iter().filter(|s| s.op == "query") {
@@ -603,7 +715,10 @@ pub fn run_check(
                     ),
                     (
                         "meter_rejections".into(),
-                        reported_query_steps.iter().map(|s| s.meter.rejections).sum(),
+                        reported_query_steps
+                            .iter()
+                            .map(|s| s.meter.rejections)
+                            .sum(),
                     ),
                 ],
                 toolchain: abi_toolchain_axes(&exe_sha),
@@ -634,7 +749,10 @@ pub fn run_check(
                         actual: format!(
                             "ok carrying {} diagnostic(s) [{}]",
                             got.diagnostics.len(),
-                            got.diagnostics.first().map(|d| d.code.as_str()).unwrap_or("?")
+                            got.diagnostics
+                                .first()
+                                .map(|d| d.code.as_str())
+                                .unwrap_or("?")
                         ),
                         first_diff: None,
                     });
@@ -778,7 +896,10 @@ pub fn run_check(
                 ),
                 (
                     "meter_rejections".into(),
-                    reported_query_steps.iter().map(|s| s.meter.rejections).sum(),
+                    reported_query_steps
+                        .iter()
+                        .map(|s| s.meter.rejections)
+                        .sum(),
                 ),
             ],
             toolchain: abi_toolchain_axes(&exe_sha),

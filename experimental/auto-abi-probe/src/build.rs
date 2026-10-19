@@ -19,16 +19,11 @@ pub struct Produced {
     pub descriptor: ModuleDescriptor,
 }
 
-/// Producer recipe: emit the callee-module object from the declaration
-/// IR and derive its descriptor. Pure function of the inputs — cacheable
-/// under a key covering the decls + toolchain + profile (T-05).
-pub fn produce_callee_suite(
-    module_name: &str,
-    defs: &[FnDecl],
-    import_inner: bool,
-) -> Result<Produced, ProbeError> {
-    let obj = emit_callee_suite(module_name, defs, import_inner)
-        .map_err(ProbeError)?;
+/// Derive the module descriptor PURELY from the declaration set —
+/// NO emission happens here (F-797-R4-08): admission must not secretly
+/// run the emitter on the cache-hit path, and `compute_calls` counts
+/// every real producer invocation.
+pub fn descriptor_for_defs(defs: &[FnDecl]) -> ModuleDescriptor {
     let mut descriptor = ModuleDescriptor::probe_module();
     descriptor.symbols = defs
         .iter()
@@ -37,7 +32,21 @@ pub fn produce_callee_suite(
             form: decl_form(d),
         })
         .collect();
-    Ok(Produced { obj, descriptor })
+    descriptor
+}
+
+/// Producer recipe: emit the callee-module object and derive its
+/// descriptor (the descriptor half is [`descriptor_for_defs`]).
+pub fn produce_callee_suite(
+    module_name: &str,
+    defs: &[FnDecl],
+    import_inner: bool,
+) -> Result<Produced, ProbeError> {
+    let obj = emit_callee_suite(module_name, defs, import_inner).map_err(ProbeError)?;
+    Ok(Produced {
+        obj,
+        descriptor: descriptor_for_defs(defs),
+    })
 }
 
 fn decl_form(d: &FnDecl) -> crate::descriptor::SymbolForm {
@@ -78,9 +87,8 @@ pub fn consume_and_build_caller(
     checks: &[SuiteCheck],
 ) -> Result<(Admission, Vec<u8>), ConsumeError> {
     let admission = admit(descriptor_bytes, expect).map_err(ConsumeError::Rejected)?;
-    let obj = emit_caller_suite(module_name, checks).map_err(|e| {
-        ConsumeError::Probe(ProbeError(format!("caller emit: {e}")))
-    })?;
+    let obj = emit_caller_suite(module_name, checks)
+        .map_err(|e| ConsumeError::Probe(ProbeError(format!("caller emit: {e}"))))?;
     Ok((admission, obj))
 }
 

@@ -18,7 +18,7 @@ use crate::layout::{RecordDefOwned, SemScalar};
 use crate::semref;
 use serde::{Deserialize, Serialize};
 
-pub const DESCRIPTOR_FORMAT: &str = "autoabi.descriptor/1";
+pub const DESCRIPTOR_FORMAT: &str = "autoabi.descriptor/2";
 pub const ABI_DOMAIN: &str = "autoabi";
 pub const ABI_VERSION: &str = "0.1";
 /// v0.1 supports exactly one packing rule; anything else is rejected.
@@ -100,12 +100,20 @@ impl SymbolForm {
         match self {
             SymbolForm::Pure { params, ret } => format!(
                 "pure({})->{}",
-                params.iter().map(|p| p.spell()).collect::<Vec<_>>().join(","),
+                params
+                    .iter()
+                    .map(|p| p.spell())
+                    .collect::<Vec<_>>()
+                    .join(","),
                 ret.spell()
             ),
             SymbolForm::Fallible { params, out } => format!(
                 "fallible({})->status,out {}",
-                params.iter().map(|p| p.spell()).collect::<Vec<_>>().join(","),
+                params
+                    .iter()
+                    .map(|p| p.spell())
+                    .collect::<Vec<_>>()
+                    .join(","),
                 out.spell()
             ),
         }
@@ -125,6 +133,17 @@ pub struct RuntimeReqs {
     pub services: Vec<(String, u32)>,
 }
 
+/// A semantic reference the module binds to: the DECL's logical id and
+/// CONTENT VERSION minted through the real semantic contract. Admission
+/// compares these against the consumer's own binding (F-797-R4-01): a
+/// same-width re-spelling of a record mints a DIFFERENT content version
+/// and is rejected even when the physical layout coincides.
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+pub struct SemanticRef {
+    pub logical: String,
+    pub content_version: String,
+}
+
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub struct ModuleDescriptor {
     pub format: String,
@@ -134,8 +153,12 @@ pub struct ModuleDescriptor {
     pub profile: String,
     pub packing: String,
     pub interface_revision: u32,
-    /// Semantic-ref snapshot content hash this module was built against.
+    /// Semantic binding hash this module was built against.
     pub semref_hash: String,
+    /// Per-decl semantic refs (F-797-R4-01): nominal + content-version
+    /// of every record the module's types reference.
+    #[serde(default)]
+    pub semantic_refs: Vec<SemanticRef>,
     pub records: Vec<RecordDefOwned>,
     pub symbols: Vec<SymbolEntry>,
     pub runtime: RuntimeReqs,
@@ -163,6 +186,18 @@ impl ModuleDescriptor {
             packing: PACKING.into(),
             interface_revision: 1,
             semref_hash: semref::binding_hash().into(),
+            semantic_refs: vec![SemanticRef {
+                logical: semref::rec_mix_ref()
+                    .expect("record ref mints")
+                    .logical
+                    .as_str()
+                    .to_string(),
+                content_version: semref::rec_mix_ref()
+                    .expect("record ref mints")
+                    .content
+                    .as_str()
+                    .to_string(),
+            }],
             records: vec![crate::layout::RecordDefOwned::from(&crate::layout::REC_MIX)],
             symbols: vec![SymbolEntry {
                 name: "p797_mix".into(),
@@ -202,9 +237,7 @@ impl ModuleDescriptor {
 
     /// Interface fingerprint: blake3 over the canonical form.
     pub fn fingerprint(&self) -> Result<String, DescriptorError> {
-        Ok(crate::semref::blake3_hex(
-            self.canonical()?.as_bytes(),
-        ))
+        Ok(crate::semref::blake3_hex(self.canonical()?.as_bytes()))
     }
 
     pub fn encode(&self) -> Result<Vec<u8>, DescriptorError> {
@@ -212,8 +245,8 @@ impl ModuleDescriptor {
     }
 
     pub fn decode(bytes: &[u8]) -> Result<ModuleDescriptor, DescriptorError> {
-        let d: ModuleDescriptor = serde_json::from_slice(bytes)
-            .map_err(|e| DescriptorError(format!("decode: {e}")))?;
+        let d: ModuleDescriptor =
+            serde_json::from_slice(bytes).map_err(|e| DescriptorError(format!("decode: {e}")))?;
         if d.format != DESCRIPTOR_FORMAT {
             return Err(DescriptorError(format!(
                 "unknown descriptor format '{}' (known: '{}')",

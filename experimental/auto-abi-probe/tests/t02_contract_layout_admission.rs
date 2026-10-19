@@ -8,18 +8,13 @@
 #![cfg(windows)]
 
 use auto_abi_probe::ctool;
-use auto_abi_probe::descriptor::{
-    ModuleDescriptor, ParamKind, RetKind, SymbolForm, DESCRIPTOR_FORMAT,
-};
+use auto_abi_probe::descriptor::{ModuleDescriptor, ParamKind, RetKind, SymbolForm};
 use auto_abi_probe::layout::{
-    self, FieldDefOwned, FieldTyOwned, LayoutError, RecordDefOwned, SemScalar,
-    MAX_NESTING_DEPTH,
+    self, FieldDefOwned, FieldTyOwned, LayoutError, RecordDefOwned, SemScalar, MAX_NESTING_DEPTH,
 };
 use auto_abi_probe::link::link_pe;
 use auto_abi_probe::run;
-use auto_abi_probe::validate::{
-    admit, admit_descriptor, probe_expectation, ConsumerExpectation, Rejection,
-};
+use auto_abi_probe::validate::{admit, admit_descriptor, probe_expectation, Rejection};
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -54,7 +49,9 @@ fn abi_contract_admission_rejects_each_dimension() {
         ),
         (
             "wrong-profile",
-            Box::new(|d: &mut ModuleDescriptor| d.profile = "autoabi.win-x64.v0.2-candidate".into()),
+            Box::new(|d: &mut ModuleDescriptor| {
+                d.profile = "autoabi.win-x64.v0.2-candidate".into()
+            }),
         ),
         (
             "unsupported-packing",
@@ -157,10 +154,7 @@ fn abi_contract_descriptor_roundtrip_and_fingerprint() {
     });
     assert_ne!(d.fingerprint().unwrap(), d2.fingerprint().unwrap());
     // Signature spellings are exact and form-aware.
-    assert_eq!(
-        d2.symbols[1].form.signature(),
-        "fallible()->status,out i64"
-    );
+    assert_eq!(d2.symbols[1].form.signature(), "fallible()->status,out i64");
     assert_eq!(RetKind::Unit.spell(), "unit");
 }
 
@@ -178,10 +172,22 @@ fn owned_defs() -> Vec<RecordDefOwned> {
     let rec_mix = RecordDefOwned {
         name: "RecMix".into(),
         fields: vec![
-            FieldDefOwned { name: "flag".into(), ty: Scalar(SemScalar::Bool) },
-            FieldDefOwned { name: "count".into(), ty: Scalar(SemScalar::I32) },
-            FieldDefOwned { name: "tag".into(), ty: Scalar(SemScalar::Char) },
-            FieldDefOwned { name: "big".into(), ty: Scalar(SemScalar::I64) },
+            FieldDefOwned {
+                name: "flag".into(),
+                ty: Scalar(SemScalar::Bool),
+            },
+            FieldDefOwned {
+                name: "count".into(),
+                ty: Scalar(SemScalar::I32),
+            },
+            FieldDefOwned {
+                name: "tag".into(),
+                ty: Scalar(SemScalar::Char),
+            },
+            FieldDefOwned {
+                name: "big".into(),
+                ty: Scalar(SemScalar::I64),
+            },
         ],
     };
     vec![
@@ -189,26 +195,56 @@ fn owned_defs() -> Vec<RecordDefOwned> {
         RecordDefOwned {
             name: "RecPad".into(),
             fields: vec![
-                FieldDefOwned { name: "a".into(), ty: Scalar(SemScalar::U8) },
-                FieldDefOwned { name: "b".into(), ty: Scalar(SemScalar::I64) },
-                FieldDefOwned { name: "c".into(), ty: Scalar(SemScalar::U8) },
+                FieldDefOwned {
+                    name: "a".into(),
+                    ty: Scalar(SemScalar::U8),
+                },
+                FieldDefOwned {
+                    name: "b".into(),
+                    ty: Scalar(SemScalar::I64),
+                },
+                FieldDefOwned {
+                    name: "c".into(),
+                    ty: Scalar(SemScalar::U8),
+                },
             ],
         },
         RecordDefOwned {
             name: "RecNested".into(),
             fields: vec![
-                FieldDefOwned { name: "x".into(), ty: Scalar(SemScalar::I32) },
-                FieldDefOwned { name: "m".into(), ty: FieldTyOwned::Record("RecMix".into()) },
-                FieldDefOwned { name: "d".into(), ty: Scalar(SemScalar::F64) },
+                FieldDefOwned {
+                    name: "x".into(),
+                    ty: Scalar(SemScalar::I32),
+                },
+                FieldDefOwned {
+                    name: "m".into(),
+                    ty: FieldTyOwned::Record("RecMix".into()),
+                },
+                FieldDefOwned {
+                    name: "d".into(),
+                    ty: Scalar(SemScalar::F64),
+                },
             ],
         },
         RecordDefOwned {
             name: "RecOrderB".into(),
             fields: vec![
-                FieldDefOwned { name: "big".into(), ty: Scalar(SemScalar::I64) },
-                FieldDefOwned { name: "flag".into(), ty: Scalar(SemScalar::Bool) },
-                FieldDefOwned { name: "count".into(), ty: Scalar(SemScalar::I32) },
-                FieldDefOwned { name: "tag".into(), ty: Scalar(SemScalar::Char) },
+                FieldDefOwned {
+                    name: "big".into(),
+                    ty: Scalar(SemScalar::I64),
+                },
+                FieldDefOwned {
+                    name: "flag".into(),
+                    ty: Scalar(SemScalar::Bool),
+                },
+                FieldDefOwned {
+                    name: "count".into(),
+                    ty: Scalar(SemScalar::I32),
+                },
+                FieldDefOwned {
+                    name: "tag".into(),
+                    ty: Scalar(SemScalar::Char),
+                },
             ],
         },
     ]
@@ -222,14 +258,15 @@ fn run_c_layout_oracle(case: &str) -> CLayout {
     let dir = run::scratch(case);
     let src = manifest.join("cside/layout_probe.c");
     let obj = dir.join("layout_probe.obj");
-    ctool::compile_c(&src, &manifest.join("cside"), &obj)
-        .expect("cl compiles the layout oracle");
-    let exe = link_pe(&dir, &[obj], "p797_layout_entry")
-        .expect("link layout oracle PE");
+    ctool::compile_c(&src, &manifest.join("cside"), &obj).expect("cl compiles the layout oracle");
+    let exe = link_pe(&dir, &[obj], "p797_layout_entry").expect("link layout oracle PE");
     let pe = run::run_pe(&exe).expect("run layout oracle PE");
     assert_eq!(pe.code, 0, "layout oracle exit; stdout:\n{}", pe.stdout);
 
-    let mut c = CLayout { sizes: BTreeMap::new(), fields: BTreeMap::new() };
+    let mut c = CLayout {
+        sizes: BTreeMap::new(),
+        fields: BTreeMap::new(),
+    };
     for line in pe.stdout.lines() {
         let t: Vec<&str> = line.split_whitespace().collect();
         match t.as_slice() {
@@ -250,10 +287,7 @@ fn run_c_layout_oracle(case: &str) -> CLayout {
                 // the field plus the bare subfield name; cross-check the
                 // two agree, then key by the dotted path — the same
                 // shape the Rust layout engine flattens to.
-                assert!(
-                    field.ends_with(sub),
-                    "bad nested oracle line: {line:?}"
-                );
+                assert!(field.ends_with(sub), "bad nested oracle line: {line:?}");
                 c.fields.insert(
                     (rec.to_string(), field.to_string()),
                     (off.parse().unwrap(), w.parse().unwrap()),
@@ -333,7 +367,10 @@ fn abi_layout_field_order_is_load_bearing() {
     let oracle = run_c_layout_oracle("layout_oracle_order");
     let (mix_flag, _) = oracle.fields[&("RecMix".to_string(), "flag".to_string())];
     let (orderb_flag, _) = oracle.fields[&("RecOrderB".to_string(), "flag".to_string())];
-    assert_ne!(mix_flag, orderb_flag, "same field name, different order => different offset");
+    assert_ne!(
+        mix_flag, orderb_flag,
+        "same field name, different order => different offset"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -395,21 +432,184 @@ fn abi_admission_unknown_record_rejected() {
 
 #[test]
 fn abi_admission_oversize_record_is_resource_rejection() {
-    // 9M i64 fields would exceed the 64MiB record budget: build 8.5M
-    // fields (~68MiB) and expect the controlled RecordTooLarge state —
-    // a resource rejection, not an ABI verdict and not a panic.
-    let n = 8_500_000usize;
-    let fields: Vec<FieldDefOwned> = (0..n)
-        .map(|i| FieldDefOwned { name: format!("f{i}"), ty: FieldTyOwned::Scalar(SemScalar::I64) })
-        .collect();
+    // F-797-R4-10: BOUNDED construction — a fan hierarchy (17 defs)
+    // whose flattened size exceeds the 8MiB STAGING budget. The
+    // two-phase engine refuses in the SIZE phase (memoized walk over
+    // the def table), never materializing the ~million-entry flattened
+    // vector, so this test runs in table-space memory, not leaf-space.
     let mut table = BTreeMap::new();
+    let scalar = FieldDefOwned {
+        name: "b".into(),
+        ty: FieldTyOwned::Scalar(SemScalar::I64),
+    };
     table.insert(
-        "RecHuge".to_string(),
-        RecordDefOwned { name: "RecHuge".into(), fields },
+        "Fan0".to_string(),
+        RecordDefOwned {
+            name: "Fan0".into(),
+            fields: vec![scalar],
+        },
     );
-    match layout::layout_record_owned(&table, "RecHuge") {
-        Err(LayoutError::RecordTooLarge { record, .. }) => assert_eq!(record, "RecHuge"),
-        other => panic!("expected RecordTooLarge, got {other:?}"),
+    for level in 1..7usize {
+        let fields: Vec<FieldDefOwned> = (0..16)
+            .map(|_| FieldDefOwned {
+                name: format!("f{level}"),
+                ty: FieldTyOwned::Record(format!("Fan{}", level - 1)),
+            })
+            .collect();
+        table.insert(
+            format!("Fan{level}"),
+            RecordDefOwned {
+                name: format!("Fan{level}"),
+                fields,
+            },
+        );
+    }
+    // Fan6 = 16^6 leaves x 8B = 128MiB > 64MiB absolute ceiling — the
+    // size phase stops at the first record crossing it.
+    match layout::layout_record_owned(&table, "Fan6") {
+        Err(LayoutError::RecordTooLarge { .. } | LayoutError::StagingTooLarge { .. }) => {}
+        other => panic!("expected a budget rejection, got {other:?}"),
+    }
+    // Fan5 = 8MiB of payload — exactly at the staging boundary this is
+    // 8MiB flattened == the budget cap (allowed); one more fan level is
+    // refused before materialization. Build Fan5b with 17 children to
+    // cross the cap while staying under the absolute ceiling:
+    let mut fields: Vec<FieldDefOwned> = (0..17)
+        .map(|_| FieldDefOwned {
+            name: "g".into(),
+            ty: FieldTyOwned::Record("Fan4".into()),
+        })
+        .collect();
+    fields.push(FieldDefOwned {
+        name: "pad".into(),
+        ty: FieldTyOwned::Scalar(SemScalar::Bool),
+    });
+    table.insert(
+        "Fan5b".to_string(),
+        RecordDefOwned {
+            name: "Fan5b".into(),
+            fields,
+        },
+    );
+    match layout::layout_record_owned(&table, "Fan5b") {
+        Err(LayoutError::StagingTooLarge { record, size }) => {
+            assert!(record.contains("Fan"));
+            assert!(size > 8 * 1024 * 1024);
+        }
+        other => panic!("expected StagingTooLarge, got {other:?}"),
+    }
+}
+
+/// F-797-R4-01: a same-width re-spelling is rejected on the SEMANTIC
+/// axis even when producer and consumer agree physically. The attack:
+/// both sides carry a u32 `count` field (layouts still match), and the
+/// descriptor even re-mints its semantic ref through the REAL contract
+/// — but that mint produces a DIFFERENT content version than the
+/// consumer's frozen binding, so admission dies before layout talk.
+#[test]
+fn abi_admission_same_width_respell_is_semantic_reject() {
+    use auto_abi_probe::ac_sema_contract::codec::{
+        encode_typedesc_bytes, FieldDesc, RecGroup, RecordShape, TypeDesc,
+    };
+    use auto_abi_probe::ac_sema_contract::identity::{ContentVersion, DeclKind, DeclRef};
+    use auto_abi_probe::descriptor::{ModuleDescriptor, SemanticRef};
+
+    let mut d = ModuleDescriptor::probe_module();
+    // attacker re-spells count as u32 in the physical record…
+    if let Some(rec) = d.records.iter_mut().find(|r| r.name == "RecMix") {
+        if let Some(f) = rec.fields.iter_mut().find(|f| f.name == "count") {
+            f.ty = FieldTyOwned::Scalar(SemScalar::U32);
+        }
+    }
+    // …and consistently re-mints the semantic ref for the mutated shape
+    let canonical = encode_typedesc_bytes(&TypeDesc::I64).unwrap();
+    let decl = DeclRef::new(
+        &auto_abi_probe::semref::package(),
+        auto_abi_probe::semref::BINDING_MODULE,
+        DeclKind::Record,
+        "RecMix",
+        ContentVersion::of_canonical(&canonical),
+    );
+    let mutated_shape = RecordShape {
+        decl,
+        fields: vec![
+            FieldDesc {
+                name: "flag".into(),
+                ty: TypeDesc::Bool,
+            },
+            FieldDesc {
+                name: "count".into(),
+                ty: TypeDesc::U32,
+            },
+            FieldDesc {
+                name: "tag".into(),
+                ty: TypeDesc::Char,
+            },
+            FieldDesc {
+                name: "big".into(),
+                ty: TypeDesc::I64,
+            },
+        ],
+    };
+    let mutated_version = RecGroup {
+        members: vec![mutated_shape],
+    }
+    .group_content();
+    d.semantic_refs = vec![SemanticRef {
+        logical: auto_abi_probe::semref::rec_mix_ref()
+            .unwrap()
+            .logical
+            .as_str()
+            .into(),
+        content_version: mutated_version.as_str().into(),
+    }];
+    // the consumer expectation also uses the u32 physical record so the
+    // LAYOUT comparison alone would pass…
+    let mut expect = probe_expectation();
+    if let Some(rec) = expect
+        .required_records
+        .iter_mut()
+        .find(|r| r.name == "RecMix")
+    {
+        if let Some(f) = rec.fields.iter_mut().find(|f| f.name == "count") {
+            f.ty = FieldTyOwned::Scalar(SemScalar::U32);
+        }
+    }
+    // …but the SEMANTIC ref axis rejects the mutated content version.
+    let want_logical = auto_abi_probe::semref::rec_mix_ref()
+        .unwrap()
+        .logical
+        .as_str()
+        .to_string();
+    match admit_descriptor(&d, &expect) {
+        Err(Rejection::SemanticRefMismatch {
+            logical,
+            expected_version,
+            found_version,
+        }) => {
+            assert_eq!(logical, want_logical);
+            assert_ne!(expected_version, found_version);
+        }
+        other => panic!("expected SemanticRefMismatch, got {other:?}"),
+    }
+}
+
+/// F-797-R4-01: a descriptor MISSING the bound semantic ref (the record
+/// vanished) is rejected even when no layout is demanded.
+#[test]
+fn abi_admission_missing_semantic_ref_rejected() {
+    let mut d = ModuleDescriptor::probe_module();
+    d.semantic_refs.clear();
+    let want_logical = auto_abi_probe::semref::rec_mix_ref()
+        .unwrap()
+        .logical
+        .as_str()
+        .to_string();
+    match admit_descriptor(&d, &probe_expectation()) {
+        Err(Rejection::MissingSemanticRef { logical }) => {
+            assert_eq!(logical, want_logical);
+        }
+        other => panic!("expected MissingSemanticRef, got {other:?}"),
     }
 }
 
@@ -429,7 +629,10 @@ fn abi_admission_deep_chain_bounded_and_working() {
                 format!("R{i}"),
                 RecordDefOwned {
                     name: format!("R{i}"),
-                    fields: vec![FieldDefOwned { name: "next".into(), ty }],
+                    fields: vec![FieldDefOwned {
+                        name: "next".into(),
+                        ty,
+                    }],
                 },
             );
         }

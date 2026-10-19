@@ -41,11 +41,9 @@ pub fn scratch(case: &str) -> PathBuf {
 /// budget, enforcing the output acceptance caps. A run whose outputs
 /// exceed the cap is an error, not a truncated success.
 pub fn run_pe(exe: &Path) -> Result<PeRun, ProbeError> {
-    let (code, out, err) = auto_ac_prototype::link::run_deadlined_split(
-        &mut Command::new(exe),
-        RUN_DEADLINE,
-    )
-    .map_err(|e| ProbeError(format!("run {}: {e:?}", exe.display())))?;
+    let (code, out, err) =
+        auto_ac_prototype::link::run_deadlined_split(&mut Command::new(exe), RUN_DEADLINE)
+            .map_err(|e| ProbeError(format!("run {}: {e:?}", exe.display())))?;
     let code = code.ok_or_else(|| {
         ProbeError(format!(
             "{} terminated abnormally (deadline/kill); out={} err={}",

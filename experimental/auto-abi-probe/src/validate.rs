@@ -27,26 +27,77 @@ pub struct ConsumerExpectation {
     pub required_records: Vec<RecordDefOwned>,
     /// (service, min version) the consumer's host offers.
     pub offered_services: Vec<(String, u32)>,
-    /// Semantic-ref snapshot hash the consumer built against.
+    /// Semantic binding hash the consumer built against.
     pub semref_hash: String,
+    /// Per-record semantic refs (logical + content version) the
+    /// consumer binds (F-797-R4-01) — minted through the real contract.
+    pub semantic_refs: Vec<crate::descriptor::SemanticRef>,
 }
 
 /// Structured admission rejections — each names the exact dimension.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Rejection {
     Decode(String),
-    UnknownFormat { found: String, known: String },
-    WrongDomain { expected: String, found: String },
-    WrongAbiVersion { expected: String, found: String },
-    WrongTarget { expected: String, found: String },
-    WrongProfile { expected: String, found: String },
-    UnsupportedPacking { found: String },
-    SemRefMismatch { expected: String, found: String },
-    MissingSymbol { symbol: String },
-    SignatureMismatch { symbol: String, expected: String, found: String },
-    UnknownRecord { record: String },
-    LayoutMismatch { record: String, expected: String, found: String },
-    ServiceMissing { service: String, need: u32, offered: u32 },
+    UnknownFormat {
+        found: String,
+        known: String,
+    },
+    WrongDomain {
+        expected: String,
+        found: String,
+    },
+    WrongAbiVersion {
+        expected: String,
+        found: String,
+    },
+    WrongTarget {
+        expected: String,
+        found: String,
+    },
+    WrongProfile {
+        expected: String,
+        found: String,
+    },
+    UnsupportedPacking {
+        found: String,
+    },
+    SemRefMismatch {
+        expected: String,
+        found: String,
+    },
+    /// F-797-R4-01: a required record's SEMANTIC ref (nominal logical +
+    /// content version minted by the real contract) does not match the
+    /// consumer's binding — a same-width re-spelling mints a different
+    /// content version and is rejected even when layouts coincide.
+    SemanticRefMismatch {
+        logical: String,
+        expected_version: String,
+        found_version: String,
+    },
+    MissingSemanticRef {
+        logical: String,
+    },
+    MissingSymbol {
+        symbol: String,
+    },
+    SignatureMismatch {
+        symbol: String,
+        expected: String,
+        found: String,
+    },
+    UnknownRecord {
+        record: String,
+    },
+    LayoutMismatch {
+        record: String,
+        expected: String,
+        found: String,
+    },
+    ServiceMissing {
+        service: String,
+        need: u32,
+        offered: u32,
+    },
 }
 
 impl std::fmt::Display for Rejection {
@@ -74,8 +125,8 @@ pub fn admit(
 }
 
 fn decode_checked(bytes: &[u8]) -> Result<ModuleDescriptor, Rejection> {
-    let d: ModuleDescriptor = serde_json::from_slice(bytes)
-        .map_err(|e| Rejection::Decode(format!("decode: {e}")))?;
+    let d: ModuleDescriptor =
+        serde_json::from_slice(bytes).map_err(|e| Rejection::Decode(format!("decode: {e}")))?;
     if d.format != DESCRIPTOR_FORMAT {
         return Err(Rejection::UnknownFormat {
             found: d.format,
@@ -114,7 +165,9 @@ pub fn admit_descriptor(
         });
     }
     if d.packing != expect.packing {
-        return Err(Rejection::UnsupportedPacking { found: d.packing.clone() });
+        return Err(Rejection::UnsupportedPacking {
+            found: d.packing.clone(),
+        });
     }
     if d.semref_hash != expect.semref_hash {
         return Err(Rejection::SemRefMismatch {
@@ -126,11 +179,13 @@ pub fn admit_descriptor(
     // Symbols: every required symbol exists with the exact signature.
     let mut admitted = Vec::new();
     for (name, want_sig) in &expect.required_symbols {
-        let entry = d
-            .symbols
-            .iter()
-            .find(|s| &s.name == name)
-            .ok_or_else(|| Rejection::MissingSymbol { symbol: name.clone() })?;
+        let entry =
+            d.symbols
+                .iter()
+                .find(|s| &s.name == name)
+                .ok_or_else(|| Rejection::MissingSymbol {
+                    symbol: name.clone(),
+                })?;
         let found_sig = entry.form.signature();
         if &found_sig != want_sig {
             return Err(Rejection::SignatureMismatch {
@@ -142,17 +197,49 @@ pub fn admit_descriptor(
         admitted.push(name.clone());
     }
 
+    // F-797-R4-01: every semantic ref the consumer binds must be
+    // present in the descriptor with the SAME content version. The
+    // consumer's refs come from the real semantic contract, so a
+    // same-width re-spelling (u32 for i32) mints a different version
+    // and dies HERE, before any layout comparison.
+    for want_ref in &expect.semantic_refs {
+        let found = d
+            .semantic_refs
+            .iter()
+            .find(|r| r.logical == want_ref.logical);
+        match found {
+            None => {
+                return Err(Rejection::MissingSemanticRef {
+                    logical: want_ref.logical.clone(),
+                })
+            }
+            Some(found) if found.content_version == want_ref.content_version => {}
+            Some(found) => {
+                return Err(Rejection::SemanticRefMismatch {
+                    logical: want_ref.logical.clone(),
+                    expected_version: want_ref.content_version.clone(),
+                    found_version: found.content_version.clone(),
+                })
+            }
+        }
+    }
+
     // Records: the descriptor's OWN types, laid out under the frozen
     // rules, must match the consumer's independently computed layout.
-    let table: BTreeMap<String, RecordDefOwned> =
-        d.records.iter().map(|r| (r.name.clone(), r.clone())).collect();
+    let table: BTreeMap<String, RecordDefOwned> = d
+        .records
+        .iter()
+        .map(|r| (r.name.clone(), r.clone()))
+        .collect();
     for req in &expect.required_records {
         let found = layout_record_owned(&table, &req.name).map_err(|e| {
             match e {
                 // A required record the descriptor cannot lay out at all
                 // (recursive/unknown/oversize) surfaces as its specific
                 // controlled layout error, not a panic.
-                crate::layout::LayoutError::UnknownRecord(n) => Rejection::UnknownRecord { record: n },
+                crate::layout::LayoutError::UnknownRecord(n) => {
+                    Rejection::UnknownRecord { record: n }
+                }
                 other => Rejection::LayoutMismatch {
                     record: req.name.clone(),
                     expected: "computable layout".into(),
@@ -160,14 +247,18 @@ pub fn admit_descriptor(
                 },
             }
         })?;
-        let consumer_table: BTreeMap<String, RecordDefOwned> =
-            expect.required_records.iter().map(|r| (r.name.clone(), r.clone())).collect();
-        let want = layout_record_owned(&consumer_table, &req.name)
-            .map_err(|e| Rejection::LayoutMismatch {
+        let consumer_table: BTreeMap<String, RecordDefOwned> = expect
+            .required_records
+            .iter()
+            .map(|r| (r.name.clone(), r.clone()))
+            .collect();
+        let want = layout_record_owned(&consumer_table, &req.name).map_err(|e| {
+            Rejection::LayoutMismatch {
                 record: req.name.clone(),
                 expected: "computable layout".into(),
                 found: e.to_string(),
-            })?;
+            }
+        })?;
         if found != want {
             return Err(Rejection::LayoutMismatch {
                 record: req.name.clone(),
@@ -200,9 +291,7 @@ pub fn admit_descriptor(
     }
 
     Ok(Admission {
-        interface_fingerprint: d
-            .fingerprint()
-            .map_err(|e| Rejection::Decode(e.0))?,
+        interface_fingerprint: d.fingerprint().map_err(|e| Rejection::Decode(e.0))?,
         admitted_symbols: admitted,
     })
 }
@@ -229,6 +318,18 @@ pub fn probe_expectation() -> ConsumerExpectation {
             ("handle-registry".into(), 1),
         ],
         semref_hash: crate::semref::binding_hash().into(),
+        semantic_refs: vec![crate::descriptor::SemanticRef {
+            logical: crate::semref::rec_mix_ref()
+                .expect("record ref mints")
+                .logical
+                .as_str()
+                .to_string(),
+            content_version: crate::semref::rec_mix_ref()
+                .expect("record ref mints")
+                .content
+                .as_str()
+                .to_string(),
+        }],
     }
 }
 
@@ -257,7 +358,9 @@ mod tests {
         }
         let r = admit_descriptor(&d, &probe_expectation()).unwrap_err();
         match r {
-            Rejection::SignatureMismatch { symbol, expected, .. } => {
+            Rejection::SignatureMismatch {
+                symbol, expected, ..
+            } => {
                 assert_eq!(symbol, "p797_mix");
                 assert!(expected.starts_with("pure(i32,"));
             }

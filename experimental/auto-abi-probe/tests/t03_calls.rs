@@ -11,7 +11,7 @@
 
 use auto_abi_probe::build::{consume_and_build_caller, produce_callee_suite, suite_expectation};
 use auto_abi_probe::ctool;
-use auto_abi_probe::decl::{self, AbiScalar, FnDecl, BodyKind};
+use auto_abi_probe::decl::{self, AbiScalar, BodyKind, FnDecl};
 use auto_abi_probe::emit::SuiteCheck;
 use auto_abi_probe::link::link_pe;
 use auto_abi_probe::run;
@@ -40,13 +40,48 @@ fn write_obj(dir: &std::path::Path, name: &str, bytes: &[u8]) -> PathBuf {
 /// The AutoABI suite declaration set (mix/inner/facc/outer/div/rec/bump).
 fn suite_defs() -> Vec<FnDecl> {
     vec![
-        FnDecl { symbol: "p797_mix", params: decl::MIX_PARAMS, ret: AbiScalar::I64, body: BodyKind::MixV1 },
-        FnDecl { symbol: "p797_inner", params: &[AbiScalar::I64], ret: AbiScalar::I64, body: BodyKind::InnerV1 },
-        FnDecl { symbol: "p797_facc", params: &[AbiScalar::F64, AbiScalar::F64], ret: AbiScalar::F64, body: BodyKind::FAccV1 },
-        FnDecl { symbol: "p797_outer", params: &[AbiScalar::I32, AbiScalar::F64], ret: AbiScalar::I64, body: BodyKind::OuterV1 },
-        FnDecl { symbol: "p797_div", params: &[AbiScalar::I64, AbiScalar::I64, AbiScalar::Ptr], ret: AbiScalar::I32, body: BodyKind::FallibleDivV1 },
-        FnDecl { symbol: "p797_rec_sum", params: &[AbiScalar::Ptr], ret: AbiScalar::I64, body: BodyKind::RecSumV1 },
-        FnDecl { symbol: "p797_bump", params: &[AbiScalar::I32], ret: AbiScalar::I64, body: BodyKind::BumpV1 },
+        FnDecl {
+            symbol: "p797_mix",
+            params: decl::MIX_PARAMS,
+            ret: AbiScalar::I64,
+            body: BodyKind::MixV1,
+        },
+        FnDecl {
+            symbol: "p797_inner",
+            params: &[AbiScalar::I64],
+            ret: AbiScalar::I64,
+            body: BodyKind::InnerV1,
+        },
+        FnDecl {
+            symbol: "p797_facc",
+            params: &[AbiScalar::F64, AbiScalar::F64],
+            ret: AbiScalar::F64,
+            body: BodyKind::FAccV1,
+        },
+        FnDecl {
+            symbol: "p797_outer",
+            params: &[AbiScalar::I32, AbiScalar::F64],
+            ret: AbiScalar::I64,
+            body: BodyKind::OuterV1,
+        },
+        FnDecl {
+            symbol: "p797_div",
+            params: &[AbiScalar::I64, AbiScalar::I64, AbiScalar::Ptr],
+            ret: AbiScalar::I32,
+            body: BodyKind::FallibleDivV1,
+        },
+        FnDecl {
+            symbol: "p797_rec_sum",
+            params: &[AbiScalar::Ptr],
+            ret: AbiScalar::I64,
+            body: BodyKind::RecSumV1,
+        },
+        FnDecl {
+            symbol: "p797_bump",
+            params: &[AbiScalar::I32],
+            ret: AbiScalar::I64,
+            body: BodyKind::BumpV1,
+        },
     ]
 }
 
@@ -140,7 +175,11 @@ fn abi_calls_leg_a_full_suite() {
     ];
     let exe = link_pe(&dir, &objs, "p797_entry").expect("link");
     let pe = run::run_pe(&exe).expect("run");
-    assert_eq!(pe.code, 0, "leg A suite; out={:?} err={:?}", pe.stdout, pe.stderr);
+    assert_eq!(
+        pe.code, 0,
+        "leg A suite; out={:?} err={:?}",
+        pe.stdout, pe.stderr
+    );
 }
 
 /// Leg B: AutoABI caller -> C callee suite (real cl.exe object).
@@ -152,15 +191,19 @@ fn abi_calls_leg_b_full_suite() {
         .into_iter()
         .filter(|c| !matches!(c, SuiteCheck::Outer { .. }))
         .collect::<Vec<_>>();
-    let caller = auto_abi_probe::emit::emit_caller_suite("p797_b_caller", &checks)
-        .expect("emit caller");
+    let caller =
+        auto_abi_probe::emit::emit_caller_suite("p797_b_caller", &checks).expect("emit caller");
 
     let c_obj = compile_c("interop_callee.c", "abi_calls_leg_b");
     let dir = c_obj.parent().unwrap();
     let objs = vec![write_obj(dir, "caller.obj", &caller), c_obj.clone()];
     let exe = link_pe(dir, &objs, "p797_entry").expect("link");
     let pe = run::run_pe(&exe).expect("run");
-    assert_eq!(pe.code, 0, "leg B suite; out={:?} err={:?}", pe.stdout, pe.stderr);
+    assert_eq!(
+        pe.code, 0,
+        "leg B suite; out={:?} err={:?}",
+        pe.stdout, pe.stderr
+    );
 }
 
 /// Leg C: C caller (own entry, own oracles, defines p797_inner) ->
@@ -180,7 +223,11 @@ fn abi_calls_leg_c_full_suite_nested() {
     let objs = vec![c_obj.clone(), write_obj(dir, "callee.obj", &produced.obj)];
     let exe = link_pe(dir, &objs, "p797_c_suite_entry").expect("link");
     let pe = run::run_pe(&exe).expect("run");
-    assert_eq!(pe.code, 0, "leg C suite; out={:?} err={:?}", pe.stdout, pe.stderr);
+    assert_eq!(
+        pe.code, 0,
+        "leg C suite; out={:?} err={:?}",
+        pe.stdout, pe.stderr
+    );
 }
 
 /// Negative control: swapped f/h inputs to mix must fail the baked

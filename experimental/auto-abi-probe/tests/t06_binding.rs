@@ -55,7 +55,10 @@ fn abi_binding_real_contract_and_retirement_receipt() {
         .join("../../docs/plans/attachments/797/semref-retirement-receipt.md");
     let text = std::fs::read_to_string(&receipt)
         .unwrap_or_else(|e| panic!("retirement receipt readable ({}): {e}", receipt.display()));
-    assert!(text.contains("autoabi-semref-snapshot/0"), "receipt names the retired format");
+    assert!(
+        text.contains("autoabi-semref-snapshot/0"),
+        "receipt names the retired format"
+    );
     assert!(text.contains("15f81fd0"), "receipt names the retired hash");
 }
 
@@ -70,6 +73,80 @@ fn abi_binding_semref_gate_on_real_identity() {
     }
 }
 
+/// F-797-R4-01: the deck's SEMANTIC inputs are consumed — every
+/// reviewer counterexample (same-width re-spelling, out-of-range i32,
+/// non-finite f64, mutated record shape) is a TYPED deck diagnostic
+/// BEFORE any producer/admission/native work, never a panic, never a
+/// crash, never a silently-accepted re-shape.
+#[test]
+fn abi_binding_deck_semantic_counterexamples() {
+    let store = std::env::temp_dir().join(format!("abi-t06-deckneg-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    std::fs::create_dir_all(&store).unwrap();
+
+    let decks: Vec<(String, String)> = vec![
+        (
+            "same_width_unsigned".into(),
+            GOOD_DECK.replace("e:i64", "e:u32"),
+        ),
+        (
+            "i32_overflow".into(),
+            GOOD_DECK.replace("a: 7,", "a: 2147483648,"),
+        ),
+        ("f64_nan".into(), GOOD_DECK.replace("f: 1.5,", "f: NaN,")),
+        (
+            "record_same_width".into(),
+            GOOD_DECK.replace("i32 count;", "u32 count;"),
+        ),
+        (
+            "record_field_order".into(),
+            GOOD_DECK.replace("bool flag; i32 count;", "i32 count; bool flag;"),
+        ),
+        (
+            "unknown_param_ty".into(),
+            GOOD_DECK.replace("b:i32", "b:blorp"),
+        ),
+    ];
+    for (name, deck) in &decks {
+        let (ms, resp) = worker_session(deck, "a", &store, &[("query", "", "")]);
+        let _ = ms;
+        let ok = resp.get("ok").expect("ok envelope");
+        let steps = ok.get("steps").unwrap().as_array().unwrap();
+        let q = steps
+            .iter()
+            .find(|s| s["op"] == "query")
+            .expect("query step");
+        assert_eq!(
+            q["outcome"], "diags",
+            "{name}: semantic deviation must be a typed rejection, got {q}"
+        );
+        assert_eq!(q["diagnostics"][0]["code"], "deck", "{name}: {q}");
+        assert!(
+            q.get("pe_exit").is_none(),
+            "{name}: rejected decks never run native code"
+        );
+        assert_eq!(
+            q["compute_calls"], 0,
+            "{name}: no producer runs for a rejected deck"
+        );
+        assert_eq!(
+            q["meter"]["rejections"], 0,
+            "{name}: admission-level counter, not this"
+        );
+    }
+
+    // legal sibling control: the GOOD deck still passes end to end
+    let (_, resp) = worker_session(GOOD_DECK, "a", &store, &[("query", "", "")]);
+    let q = resp["ok"]["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|s| s["op"] == "query")
+        .unwrap();
+    assert_eq!(q["outcome"], "ok");
+    assert_eq!(q["pe_exit"], 0);
+}
+
 // ---------------------------------------------------------------------------
 // formal worker IPC harness
 // ---------------------------------------------------------------------------
@@ -81,7 +158,12 @@ fn b64(s: &str) -> String {
 
 /// One real worker session over stdin/stdout (the parent adapter's
 /// transport, exercised end to end). Returns (elapsed_ms, response_ok).
-fn worker_session(deck: &str, leg: &str, store_root: &std::path::Path, steps: &[(&str, &str, &str)]) -> (f64, serde_json::Value) {
+fn worker_session(
+    deck: &str,
+    leg: &str,
+    store_root: &std::path::Path,
+    steps: &[(&str, &str, &str)],
+) -> (f64, serde_json::Value) {
     let worker = env!("CARGO_BIN_EXE_abi-worker");
     let steps_json: Vec<serde_json::Value> = steps
         .iter()
@@ -160,14 +242,20 @@ fn abi_turnaround_formal_body_edit_hard_gate() {
         let (ms, resp) = worker_session(&deck, "c", &store, &[("query", "", "")]);
         let ok = resp.get("ok").expect("ok envelope");
         let steps = ok.get("steps").unwrap().as_array().unwrap();
-        let q = steps.iter().find(|s| s["op"] == "query").expect("query step");
+        let q = steps
+            .iter()
+            .find(|s| s["op"] == "query")
+            .expect("query step");
         assert_eq!(q["outcome"], "ok", "sample {i} outcome: {q}");
         assert_eq!(q["pe_exit"], 0, "sample {i} PE exit: {q}");
         times.push(ms);
     }
     let p95 = p95(&mut times);
     println!("formal body-edit P95 = {p95:.1}ms over 30 samples");
-    assert!(p95 < 1000.0, "HARD GATE body-edit (formal IPC) P95={p95:.1}ms >= 1000ms");
+    assert!(
+        p95 < 1000.0,
+        "HARD GATE body-edit (formal IPC) P95={p95:.1}ms >= 1000ms"
+    );
 }
 
 /// §5.5 hard gate 2 over the FORMAL path: a descriptor-edit (signature)
@@ -184,13 +272,25 @@ fn abi_turnaround_formal_reject_hard_gate() {
         let (ms, resp) = worker_session(BAD_SIG_DECK, "a", &store, &[("query", "", "")]);
         let ok = resp.get("ok").expect("ok envelope");
         let steps = ok.get("steps").unwrap().as_array().unwrap();
-        let q = steps.iter().find(|s| s["op"] == "query").expect("query step");
-        assert_eq!(q["outcome"], "diags", "sample {i} must be a typed reject: {q}");
+        let q = steps
+            .iter()
+            .find(|s| s["op"] == "query")
+            .expect("query step");
+        assert_eq!(
+            q["outcome"], "diags",
+            "sample {i} must be a typed reject: {q}"
+        );
         assert_eq!(q["diagnostics"][0]["code"], "deck", "sample {i} code: {q}");
-        assert!(q.get("pe_exit").is_none(), "a rejected request never runs native code");
+        assert!(
+            q.get("pe_exit").is_none(),
+            "a rejected request never runs native code"
+        );
         times.push(ms);
     }
     let p95 = p95(&mut times);
     println!("formal descriptor-reject P95 = {p95:.1}ms over 30 samples");
-    assert!(p95 < 1000.0, "HARD GATE reject (formal IPC) P95={p95:.1}ms >= 1000ms");
+    assert!(
+        p95 < 1000.0,
+        "HARD GATE reject (formal IPC) P95={p95:.1}ms >= 1000ms"
+    );
 }

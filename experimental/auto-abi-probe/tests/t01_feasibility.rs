@@ -11,13 +11,13 @@
 
 #![cfg(windows)]
 
+use ac_artifact_probe::store::ManagedStore;
 use auto_abi_probe::ctool;
 use auto_abi_probe::decl::{self, FROZEN_INPUTS, HAND_COMPUTED_FROZEN_EXPECTED};
 use auto_abi_probe::emit;
 use auto_abi_probe::layout::{self, REC_MIX};
 use auto_abi_probe::link::link_pe;
 use auto_abi_probe::run::{self, PeRun};
-use ac_artifact_probe::store::ManagedStore;
 
 use std::path::PathBuf;
 
@@ -56,7 +56,10 @@ fn expect_exit(pe: PeRun, want: i32, leg: &str) {
 /// broken oracle cannot silently redefine "expected" for every leg below.
 #[test]
 fn t01_oracle_matches_hand_reference() {
-    assert_eq!(decl::oracle_mix_v1(&FROZEN_INPUTS), HAND_COMPUTED_FROZEN_EXPECTED);
+    assert_eq!(
+        decl::oracle_mix_v1(&FROZEN_INPUTS),
+        HAND_COMPUTED_FROZEN_EXPECTED
+    );
     // Permuting two integer inputs changes the result (distinct weights):
     // the fixture is actually distinguishing, not sum-symmetric.
     let swapped = MixInputs {
@@ -155,7 +158,9 @@ fn t01_layout_cache_first_persist() {
     {
         let store = ManagedStore::open(&root).expect("open store");
         assert!(
-            layout::get_layout(&store, &REC_MIX).expect("get on fresh store").is_none(),
+            layout::get_layout(&store, &REC_MIX)
+                .expect("get on fresh store")
+                .is_none(),
             "fresh store must miss"
         );
         let art = layout::put_layout(&store, &REC_MIX, &computed).expect("put layout");

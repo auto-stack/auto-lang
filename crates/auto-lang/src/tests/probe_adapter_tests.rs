@@ -783,3 +783,99 @@ fn abi_recipe_binding_exclusivity() {
     assert!(format!("{err:?}").contains("v1 freezes a/b/c"), "got: {err:?}");
 }
 
+
+// ---------------------------------------------------------------------------
+// PLAN-797 R4 F-797-R4-03: the ABI parent's lifecycle/admission controls,
+// driven through the abi worker's TEST-ONLY fault seams (mirrors the sema
+// discipline; cases can never reach these).
+// ---------------------------------------------------------------------------
+
+const ABI_DECK_TEXT: &str = "deck autoabi/1
+fn p797_mix(a:i32, b:i32, c:i32, d:i32, e:i64, f:f64, g:i32, h:f64) -> i64 [body: mix-v1]
+rec RecMix { bool flag; i32 count; char tag; i64 big }
+inputs { a: 7, b: -3, c: 100, d: 5, e: 1000000007, f: 1.5, g: 11, h: -2.25 }";
+
+const ABI_QUERY_C: &str = "adapter: \"probe\", action: \"run\", options: { recipe: \"abi/interop-v1\", abi: { leg: \"a\" }, steps: [ { op: \"query\" } ] }";
+
+fn set_abi_faults(envs: Vec<(String, String)>, wall_ms: Option<u64>) {
+    crate::test_cases::abi::TEST_FAULTS
+        .write()
+        .unwrap()
+        .replace(crate::test_cases::abi::TestFaults {
+            child_envs: envs,
+            session_wall_ms: wall_ms,
+        });
+}
+
+fn clear_abi_faults() {
+    crate::test_cases::abi::TEST_FAULTS.write().unwrap().take();
+}
+
+fn run_abi_fault_case(tag: &str) -> auto_test_case::report::RunReport {
+    let root = temp_root(tag);
+    let doc = format!(
+        "# abi fault suite
+```test-suite
+suite {{ schema: \"autolang.suite/2\", id: \"afault\", include: [\"fault.case.ad\"] }}
+```
+
+```test-case
+case {{ schema: \"autolang.case/2\", id: \"afault.case\",
+  source: {{ text: \"{src}\", syntax: \"atom-data\", path: \"d.atomdata\" }},
+  entry: {{ mode: \"program\" }},
+  checks: [ {{ id: \"c\", {tail}
+      expect: {{ completion: \"success\", probe: [ {{ }} ] }} }} ] }}
+```
+",
+        src = ABI_DECK_TEXT
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n"),
+        tail = ABI_QUERY_C,
+    );
+    std::fs::write(root.join("fault.suite.ad"), doc.clone()).unwrap();
+    std::fs::write(root.join("fault.case.ad"), doc).unwrap();
+    let out = out_of(&root, "out");
+    run_suite(&root.join("fault.suite.ad"), &out, &Limits::defaults()).expect("abi fault suite runs")
+}
+
+/// F-797-R4-03: a worker that answers correctly and then sleeps past the
+/// (test-shortened) wall is killed IN THE EXIT PHASE — infrastructure
+/// ERROR, never a pass seconds later.
+#[test]
+fn abi_worker_hang_after_response_is_infra_error() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_abi_faults(
+        vec![("ABI_TEST_HANG_AFTER_RESPONSE_SECS".into(), "30".into())],
+        Some(3_000),
+    );
+    let result = std::panic::catch_unwind(|| status_of(&run_abi_fault_case("abihang"), "c"));
+    clear_abi_faults();
+    assert_eq!(result.expect("suite ran"), Status::Error);
+}
+
+/// F-797-R4-03: stderr OVERFLOWING the cap AFTER the response (a late
+/// >1MiB write) is an infrastructure error — the overflow flag is
+/// decisive even when observed post-response.
+#[test]
+fn abi_worker_late_stderr_overflow_is_infra_error() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_abi_faults(
+        vec![("ABI_TEST_LATE_STDERR_OVERFLOW_MS".into(), "150".into())],
+        None,
+    );
+    let result = std::panic::catch_unwind(|| status_of(&run_abi_fault_case("abilate"), "c"));
+    clear_abi_faults();
+    assert_eq!(result.expect("suite ran"), Status::Error);
+}
+
+/// F-797-R4-03: a contradictory envelope (BOTH ok and error present) is
+/// a protocol error — never silently judged as ok.
+#[test]
+fn abi_worker_both_envelope_is_infra_error() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_abi_faults(vec![("ABI_TEST_BOTH_ENVELOPE".into(), "1".into())], None);
+    let result = std::panic::catch_unwind(|| status_of(&run_abi_fault_case("abiboth"), "c"));
+    clear_abi_faults();
+    assert_eq!(result.expect("suite ran"), Status::Error);
+}

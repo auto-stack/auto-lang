@@ -54,7 +54,13 @@ pub fn mix_fn_type() -> TypeDesc {
 pub fn mix_fn_ref() -> Result<DeclRef, String> {
     let canonical = encode_typedesc_bytes(&mix_fn_type()).map_err(|e| format!("codec: {e}"))?;
     let content = ContentVersion::of_canonical(&canonical);
-    let r = DeclRef::new(&package(), BINDING_MODULE, DeclKind::Fn, "p797_mix", content);
+    let r = DeclRef::new(
+        &package(),
+        BINDING_MODULE,
+        DeclKind::Fn,
+        "p797_mix",
+        content,
+    );
     r.verify().map_err(|e| format!("fn ref verify: {e:?}"))?;
     Ok(r)
 }
@@ -74,10 +80,22 @@ pub fn rec_mix_shape() -> RecordShape {
             content,
         ),
         fields: vec![
-            FieldDesc { name: "flag".into(), ty: TypeDesc::Bool },
-            FieldDesc { name: "count".into(), ty: TypeDesc::I32 },
-            FieldDesc { name: "tag".into(), ty: TypeDesc::Char },
-            FieldDesc { name: "big".into(), ty: TypeDesc::I64 },
+            FieldDesc {
+                name: "flag".into(),
+                ty: TypeDesc::Bool,
+            },
+            FieldDesc {
+                name: "count".into(),
+                ty: TypeDesc::I32,
+            },
+            FieldDesc {
+                name: "tag".into(),
+                ty: TypeDesc::Char,
+            },
+            FieldDesc {
+                name: "big".into(),
+                ty: TypeDesc::I64,
+            },
         ],
     }
 }
@@ -86,12 +104,71 @@ pub fn rec_mix_shape() -> RecordShape {
 /// (single-member RecGroup) as its content version.
 pub fn rec_mix_ref() -> Result<DeclRef, String> {
     let mut shape = rec_mix_shape();
-    let group = RecGroup { members: vec![rec_mix_shape()] };
+    let group = RecGroup {
+        members: vec![rec_mix_shape()],
+    };
     let content = group.group_content();
     shape.decl.content = content.clone();
     let r = shape.decl;
-    r.verify().map_err(|e| format!("record ref verify: {e:?}"))?;
+    r.verify()
+        .map_err(|e| format!("record ref verify: {e:?}"))?;
     Ok(r)
+}
+
+/// The SEMANTIC param/return kinds the frozen fixtures spell — the
+/// deck grammar validates against THESE (not machine widths), so a
+/// same-width substitution (u32 for i32) is a typed deviation.
+pub fn mix_param_semantics() -> &'static [SemKind] {
+    &[
+        SemKind::I32,
+        SemKind::I32,
+        SemKind::I32,
+        SemKind::I32,
+        SemKind::I64,
+        SemKind::F64,
+        SemKind::I32,
+        SemKind::F64,
+    ]
+}
+
+/// Semantic scalar kinds (the contract's TypeDesc variants the probe
+/// consumes; records stay indirect through DeclRefs).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum SemKind {
+    Unit,
+    I32,
+    U32,
+    I64,
+    U64,
+    F64,
+    Bool,
+    Char,
+}
+
+/// The frozen RecMix semantic field list (name, kind) in declaration
+/// order — the deck `rec` line must spell EXACTLY this shape.
+pub fn rec_mix_semantics() -> &'static [(&'static str, SemKind)] {
+    &[
+        ("flag", SemKind::Bool),
+        ("count", SemKind::I32),
+        ("tag", SemKind::Char),
+        ("big", SemKind::I64),
+    ]
+}
+
+/// Map a deck type spelling to its semantic kind (None = unknown).
+pub fn sem_kind_of(spelling: &str) -> Option<SemKind> {
+    match spelling {
+        "unit" => Some(SemKind::Unit),
+        "i32" => Some(SemKind::I32),
+        "u32" => Some(SemKind::U32),
+        "i64" => Some(SemKind::I64),
+        "u64" => Some(SemKind::U64),
+        "f64" => Some(SemKind::F64),
+        "bool" => Some(SemKind::Bool),
+        "char" => Some(SemKind::Char),
+        _ => None,
+    }
 }
 
 /// The semantic binding hash the ABI descriptor carries: the frozen

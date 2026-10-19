@@ -62,12 +62,8 @@ fn new_module(name: &str) -> Result<ObjectModule, String> {
         .map_err(|e| format!("isa lookup: {e}"))?
         .finish(flags)
         .map_err(|e| format!("isa finish: {e}"))?;
-    let builder = ObjectBuilder::new(
-        isa,
-        name,
-        cranelift_module::default_libcall_names(),
-    )
-    .map_err(|e| format!("object builder: {e}"))?;
+    let builder = ObjectBuilder::new(isa, name, cranelift_module::default_libcall_names())
+        .map_err(|e| format!("object builder: {e}"))?;
     Ok(ObjectModule::new(builder))
 }
 
@@ -372,10 +368,7 @@ pub enum SuiteCheck {
         src: &'static [u8],
     },
     /// Arm the Nth-allocation failure injection.
-    FailNth {
-        symbol: &'static str,
-        n: i32,
-    },
+    FailNth { symbol: &'static str, n: i32 },
     /// Composite: on success the out handle lands in `dst_reg`; on the
     /// injected failure the out slot keeps its sentinel and the ledger
     /// shows full rollback.
@@ -395,9 +388,7 @@ pub enum SuiteCheck {
         expected: i64,
     },
     /// The provider stores no callbacks — observably 0.
-    StoredCb {
-        symbol: &'static str,
-    },
+    StoredCb { symbol: &'static str },
 }
 
 /// Callback shapes the caller can hand to the provider (both defined
@@ -415,7 +406,10 @@ pub enum CbKind {
 fn helper_sig(params: &[AbiScalar], ret: AbiScalar) -> Signature {
     Signature {
         call_conv: WINCALL,
-        params: params.iter().map(|p| AbiParam::new(cranelift_type(*p))).collect(),
+        params: params
+            .iter()
+            .map(|p| AbiParam::new(cranelift_type(*p)))
+            .collect(),
         returns: vec![AbiParam::new(cranelift_type(ret))],
     }
 }
@@ -456,7 +450,8 @@ pub fn emit_callee_suite(
         let mut dd = DataDescription::new();
         dd.define(vec![0u8; 8].into_boxed_slice());
         dd.set_align(8);
-        om.define_data(id, &dd).map_err(|e| format!("define bump ctr: {e}"))?;
+        om.define_data(id, &dd)
+            .map_err(|e| format!("define bump ctr: {e}"))?;
         bump_ctr = Some(id);
     }
 
@@ -503,13 +498,19 @@ pub fn emit_callee_suite(
         om.define_function(*fid, &mut ctx)
             .map_err(|e| format!("define {}: {e}", d.symbol))?;
     }
-    om.finish().emit().map_err(|e| format!("emit suite callee: {e}"))
+    om.finish()
+        .emit()
+        .map_err(|e| format!("emit suite callee: {e}"))
 }
 
 fn decl_signature(d: &FnDecl) -> Signature {
     Signature {
         call_conv: WINCALL,
-        params: d.params.iter().map(|p| AbiParam::new(cranelift_type(*p))).collect(),
+        params: d
+            .params
+            .iter()
+            .map(|p| AbiParam::new(cranelift_type(*p)))
+            .collect(),
         returns: vec![AbiParam::new(cranelift_type(d.ret))],
     }
 }
@@ -590,7 +591,8 @@ fn lower_body(
             fb.switch_to_block(ok_bb);
             fb.seal_block(ok_bb);
             let q = fb.ins().sdiv(args[0], args[1]);
-            fb.ins().store(cranelift_codegen::ir::MemFlags::new(), q, args[2], 0);
+            fb.ins()
+                .store(cranelift_codegen::ir::MemFlags::new(), q, args[2], 0);
             let ok_status = fb.ins().iconst(types::I32, 0);
             Ok(ok_status)
         }
@@ -653,7 +655,9 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
     let t_i32 = types::I32;
     for c in checks {
         match c {
-            SuiteCheck::Mix { symbol, .. } => need![symbol, crate::decl::MIX_PARAMS, AbiScalar::I64],
+            SuiteCheck::Mix { symbol, .. } => {
+                need![symbol, crate::decl::MIX_PARAMS, AbiScalar::I64]
+            }
             SuiteCheck::Facc { symbol, .. } => {
                 need![symbol, &[AbiScalar::F64, AbiScalar::F64], AbiScalar::F64]
             }
@@ -661,7 +665,11 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                 need![symbol, &[AbiScalar::I32, AbiScalar::F64], AbiScalar::I64]
             }
             SuiteCheck::DivOk { symbol, .. } | SuiteCheck::DivZero { symbol, .. } => {
-                need![symbol, &[AbiScalar::I64, AbiScalar::I64, AbiScalar::Ptr], AbiScalar::I32]
+                need![
+                    symbol,
+                    &[AbiScalar::I64, AbiScalar::I64, AbiScalar::Ptr],
+                    AbiScalar::I32
+                ]
             }
             SuiteCheck::RecSum { symbol, .. } => need![symbol, &[AbiScalar::Ptr], AbiScalar::I64],
             SuiteCheck::BumpSeq { symbol, .. } => {
@@ -671,22 +679,47 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                 need![symbol, &[AbiScalar::I32], AbiScalar::I64]
             }
             SuiteCheck::HSet { symbol, .. } => {
-                need![symbol, &[AbiScalar::I64, AbiScalar::I32, AbiScalar::I64], AbiScalar::I32]
+                need![
+                    symbol,
+                    &[AbiScalar::I64, AbiScalar::I32, AbiScalar::I64],
+                    AbiScalar::I32
+                ]
             }
             SuiteCheck::HGet { symbol, .. } => {
-                need![symbol, &[AbiScalar::I64, AbiScalar::I32, AbiScalar::Ptr], AbiScalar::I32]
+                need![
+                    symbol,
+                    &[AbiScalar::I64, AbiScalar::I32, AbiScalar::Ptr],
+                    AbiScalar::I32
+                ]
             }
             SuiteCheck::HDestroy { symbol, .. } => {
                 need![symbol, &[AbiScalar::I64], AbiScalar::I32]
             }
             SuiteCheck::Ledger { symbol, .. } => {
-                need![symbol, &[AbiScalar::Ptr, AbiScalar::Ptr, AbiScalar::Ptr], AbiScalar::I32]
+                need![
+                    symbol,
+                    &[AbiScalar::Ptr, AbiScalar::Ptr, AbiScalar::Ptr],
+                    AbiScalar::I32
+                ]
             }
             SuiteCheck::BufSumOk { symbol, .. } | SuiteCheck::BufSumNull { symbol, .. } => {
-                need![symbol, &[AbiScalar::Ptr, AbiScalar::I64, AbiScalar::Ptr], AbiScalar::I32]
+                need![
+                    symbol,
+                    &[AbiScalar::Ptr, AbiScalar::I64, AbiScalar::Ptr],
+                    AbiScalar::I32
+                ]
             }
             SuiteCheck::BufCopyOk { symbol, .. } | SuiteCheck::BufCopyCap { symbol, .. } => {
-                need![symbol, &[AbiScalar::Ptr, AbiScalar::I64, AbiScalar::Ptr, AbiScalar::I64], AbiScalar::I32]
+                need![
+                    symbol,
+                    &[
+                        AbiScalar::Ptr,
+                        AbiScalar::I64,
+                        AbiScalar::Ptr,
+                        AbiScalar::I64
+                    ],
+                    AbiScalar::I32
+                ]
             }
             SuiteCheck::FailNth { symbol, .. } => {
                 need_sig(symbol, sig_of(&[t_i32], &[])); // void return
@@ -695,7 +728,16 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                 need![symbol, &[AbiScalar::I32, AbiScalar::Ptr], AbiScalar::I32]
             }
             SuiteCheck::Fold { symbol, .. } => {
-                need![symbol, &[AbiScalar::Ptr, AbiScalar::I64, AbiScalar::Ptr, AbiScalar::I64], AbiScalar::I64]
+                need![
+                    symbol,
+                    &[
+                        AbiScalar::Ptr,
+                        AbiScalar::I64,
+                        AbiScalar::Ptr,
+                        AbiScalar::I64
+                    ],
+                    AbiScalar::I64
+                ]
             }
             SuiteCheck::StoredCb { symbol } => {
                 need![symbol, &[], AbiScalar::I64]
@@ -722,20 +764,30 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
 
     // Data blobs: per-check record bytes and out slots (unique names).
     let mut data_ids: Vec<(String, cranelift_module::DataId)> = Vec::new();
-    let add_data = |om: &mut ObjectModule, name: String, bytes: Vec<u8>, align: u64| -> Result<cranelift_module::DataId, String> {
+    let add_data = |om: &mut ObjectModule,
+                    name: String,
+                    bytes: Vec<u8>,
+                    align: u64|
+     -> Result<cranelift_module::DataId, String> {
         let id = om
             .declare_data(&name, Linkage::Export, true, false)
             .map_err(|e| format!("declare data {name}: {e}"))?;
         let mut dd = DataDescription::new();
         dd.define(bytes.into_boxed_slice());
         dd.set_align(align);
-        om.define_data(id, &dd).map_err(|e| format!("define data {name}: {e}"))?;
+        om.define_data(id, &dd)
+            .map_err(|e| format!("define data {name}: {e}"))?;
         Ok(id)
     };
     for (i, c) in checks.iter().enumerate() {
         match c {
-            SuiteCheck::RecSum { rec, bad_tag_offset, .. } => {
-                let bytes = crate::decl::encode_rec_bytes(rec, if *bad_tag_offset { 12 } else { 8 });
+            SuiteCheck::RecSum {
+                rec,
+                bad_tag_offset,
+                ..
+            } => {
+                let bytes =
+                    crate::decl::encode_rec_bytes(rec, if *bad_tag_offset { 12 } else { 8 });
                 let id = add_data(&mut om, format!("p797_d_rec{i}"), bytes.to_vec(), 8)?;
                 data_ids.push((format!("rec{i}"), id));
             }
@@ -780,8 +832,12 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
             SuiteCheck::BufCopyOk { src, .. } => {
                 let src_id = add_data(&mut om, format!("p797_d_src{i}"), src.to_vec(), 1)?;
                 data_ids.push((format!("src{i}"), src_id));
-                let dst_id =
-                    add_data(&mut om, format!("p797_d_dst{i}"), vec![0u8; src.len().max(1)], 1)?;
+                let dst_id = add_data(
+                    &mut om,
+                    format!("p797_d_dst{i}"),
+                    vec![0u8; src.len().max(1)],
+                    1,
+                )?;
                 data_ids.push((format!("dst{i}"), dst_id));
             }
             SuiteCheck::BufCopyCap { cap, src, .. } => {
@@ -811,7 +867,9 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
     // the CALLER object; their addresses are handed across the boundary
     // per call — the provider must never store them.
     let cb_needed = |k: CbKind| {
-        checks.iter().any(|c| matches!(c, SuiteCheck::Fold { cb, .. } if *cb == k))
+        checks
+            .iter()
+            .any(|c| matches!(c, SuiteCheck::Fold { cb, .. } if *cb == k))
     };
     let cb_sig = Signature {
         call_conv: WINCALL,
@@ -881,19 +939,24 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
             cb_refs.insert(*k, r);
         }
 
-
         let blk = fb.create_block();
         fb.switch_to_block(blk);
         fb.seal_block(blk);
 
         // Handle-flow registers (i64 values crossing checks).
-        let regs_used = checks.iter().filter_map(|c| match c {
-            SuiteCheck::HCreate { dst_reg, .. } => Some(*dst_reg),
-            SuiteCheck::TwoStep { dst_reg, .. } => *dst_reg,
-            _ => None,
-        }).max().map(|m| m + 1).unwrap_or(0);
-        let mut regs: Vec<cranelift_codegen::ir::Value> =
-            (0..regs_used).map(|_| fb.ins().iconst(types::I64, 0)).collect();
+        let regs_used = checks
+            .iter()
+            .filter_map(|c| match c {
+                SuiteCheck::HCreate { dst_reg, .. } => Some(*dst_reg),
+                SuiteCheck::TwoStep { dst_reg, .. } => *dst_reg,
+                _ => None,
+            })
+            .max()
+            .map(|m| m + 1)
+            .unwrap_or(0);
+        let mut regs: Vec<cranelift_codegen::ir::Value> = (0..regs_used)
+            .map(|_| fb.ins().iconst(types::I64, 0))
+            .collect();
 
         let zero = fb.ins().iconst(types::I32, 0);
         let mut flags = zero;
@@ -902,22 +965,33 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
         };
 
         let mf = cranelift_codegen::ir::MemFlags::new();
-        let expect_i64 = |fb: &mut FunctionBuilder, got: cranelift_codegen::ir::Value, want: i64| {
-            let w = fb.ins().iconst(types::I64, want);
-            let ne = fb.ins().icmp(IntCC::NotEqual, got, w);
-            fb.ins().uextend(types::I32, ne)
-        };
-        let expect_i32 = |fb: &mut FunctionBuilder, got: cranelift_codegen::ir::Value, want: i64| {
-            let w = fb.ins().iconst(types::I32, want);
-            let ne = fb.ins().icmp(IntCC::NotEqual, got, w);
-            fb.ins().uextend(types::I32, ne)
-        };
+        let expect_i64 =
+            |fb: &mut FunctionBuilder, got: cranelift_codegen::ir::Value, want: i64| {
+                let w = fb.ins().iconst(types::I64, want);
+                let ne = fb.ins().icmp(IntCC::NotEqual, got, w);
+                fb.ins().uextend(types::I32, ne)
+            };
+        let expect_i32 =
+            |fb: &mut FunctionBuilder, got: cranelift_codegen::ir::Value, want: i64| {
+                let w = fb.ins().iconst(types::I32, want);
+                let ne = fb.ins().icmp(IntCC::NotEqual, got, w);
+                fb.ins().uextend(types::I32, ne)
+            };
 
         for (i, c) in checks.iter().enumerate() {
             match c {
-                SuiteCheck::Mix { symbol, inputs, expected, swap_fh } => {
+                SuiteCheck::Mix {
+                    symbol,
+                    inputs,
+                    expected,
+                    swap_fh,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let (fv, hv) = if *swap_fh { (inputs.h, inputs.f) } else { (inputs.f, inputs.h) };
+                    let (fv, hv) = if *swap_fh {
+                        (inputs.h, inputs.f)
+                    } else {
+                        (inputs.f, inputs.h)
+                    };
                     let a = fb.ins().iconst(types::I32, inputs.a as i64);
                     let b = fb.ins().iconst(types::I32, inputs.b as i64);
                     let cc = fb.ins().iconst(types::I32, inputs.c as i64);
@@ -931,7 +1005,12 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let fl = expect_i64(&mut fb, got, *expected);
                     acc_flag(&mut fb, fl);
                 }
-                SuiteCheck::Facc { symbol, a, b, expected } => {
+                SuiteCheck::Facc {
+                    symbol,
+                    a,
+                    b,
+                    expected,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
                     let av = fb.ins().f64const(*a);
                     let bv = fb.ins().f64const(*b);
@@ -942,7 +1021,12 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let fl = fb.ins().uextend(types::I32, ne);
                     acc_flag(&mut fb, fl);
                 }
-                SuiteCheck::Outer { symbol, a, b, expected } => {
+                SuiteCheck::Outer {
+                    symbol,
+                    a,
+                    b,
+                    expected,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
                     let av = fb.ins().iconst(types::I32, *a as i64);
                     let bv = fb.ins().f64const(*b);
@@ -951,9 +1035,16 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let fl = expect_i64(&mut fb, got, *expected);
                     acc_flag(&mut fb, fl);
                 }
-                SuiteCheck::DivOk { symbol, n, d, expected_q } => {
+                SuiteCheck::DivOk {
+                    symbol,
+                    n,
+                    d,
+                    expected_q,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let qp = fb.ins().global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
                     let nv = fb.ins().iconst(types::I64, *n);
                     let dv = fb.ins().iconst(types::I64, *d);
                     let call = fb.ins().call(f, &[nv, dv, qp]);
@@ -964,9 +1055,15 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let f2 = expect_i64(&mut fb, q, *expected_q);
                     acc_flag(&mut fb, f2);
                 }
-                SuiteCheck::DivZero { symbol, n, sentinel } => {
+                SuiteCheck::DivZero {
+                    symbol,
+                    n,
+                    sentinel,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let qp = fb.ins().global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
                     let nv = fb.ins().iconst(types::I64, *n);
                     let dz = fb.ins().iconst(types::I64, 0);
                     let call = fb.ins().call(f, &[nv, dz, qp]);
@@ -977,16 +1074,27 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let f2 = expect_i64(&mut fb, q, *sentinel);
                     acc_flag(&mut fb, f2);
                 }
-                SuiteCheck::RecSum { symbol, rec, expected, .. } => {
+                SuiteCheck::RecSum {
+                    symbol,
+                    rec,
+                    expected,
+                    ..
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let rp = fb.ins().global_value(types::I64, *drefs.get(&format!("rec{i}")).unwrap());
+                    let rp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("rec{i}")).unwrap());
                     let call = fb.ins().call(f, &[rp]);
                     let got = fb.inst_results(call)[0];
                     let _ = rec;
                     let fl = expect_i64(&mut fb, got, *expected);
                     acc_flag(&mut fb, fl);
                 }
-                SuiteCheck::BumpSeq { symbol, xs, expected_total } => {
+                SuiteCheck::BumpSeq {
+                    symbol,
+                    xs,
+                    expected_total,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
                     let mut last = fb.ins().iconst(types::I64, 0);
                     for x in *xs {
@@ -997,7 +1105,12 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let f1 = expect_i64(&mut fb, last, *expected_total);
                     acc_flag(&mut fb, f1);
                 }
-                SuiteCheck::HCreate { symbol, size, dst_reg, expect_fail } => {
+                SuiteCheck::HCreate {
+                    symbol,
+                    size,
+                    dst_reg,
+                    expect_fail,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
                     let sv = fb.ins().iconst(types::I32, *size as i64);
                     let call = fb.ins().call(f, &[sv]);
@@ -1012,7 +1125,13 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let fl = fb.ins().uextend(types::I32, ne);
                     acc_flag(&mut fb, fl);
                 }
-                SuiteCheck::HSet { symbol, handle_reg, idx, val, expect_status } => {
+                SuiteCheck::HSet {
+                    symbol,
+                    handle_reg,
+                    idx,
+                    val,
+                    expect_status,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
                     let iv = fb.ins().iconst(types::I32, *idx as i64);
                     let vv = fb.ins().iconst(types::I64, *val);
@@ -1021,9 +1140,17 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let f1 = expect_i32(&mut fb, st, *expect_status as i64);
                     acc_flag(&mut fb, f1);
                 }
-                SuiteCheck::HGet { symbol, handle_reg, idx, expected, expect_status } => {
+                SuiteCheck::HGet {
+                    symbol,
+                    handle_reg,
+                    idx,
+                    expected,
+                    expect_status,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let qp = fb.ins().global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
                     let iv = fb.ins().iconst(types::I32, *idx as i64);
                     let call = fb.ins().call(f, &[regs[*handle_reg], iv, qp]);
                     let st = fb.inst_results(call)[0];
@@ -1033,18 +1160,33 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let f2 = expect_i64(&mut fb, q, *expected);
                     acc_flag(&mut fb, f2);
                 }
-                SuiteCheck::HDestroy { symbol, handle_reg, expect_status } => {
+                SuiteCheck::HDestroy {
+                    symbol,
+                    handle_reg,
+                    expect_status,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
                     let call = fb.ins().call(f, &[regs[*handle_reg]]);
                     let st = fb.inst_results(call)[0];
                     let f1 = expect_i32(&mut fb, st, *expect_status as i64);
                     acc_flag(&mut fb, f1);
                 }
-                SuiteCheck::Ledger { symbol, expect_live, expect_allocs, expect_frees } => {
+                SuiteCheck::Ledger {
+                    symbol,
+                    expect_live,
+                    expect_allocs,
+                    expect_frees,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let p0 = fb.ins().global_value(types::I64, *drefs.get(&format!("l{i}_0")).unwrap());
-                    let p1 = fb.ins().global_value(types::I64, *drefs.get(&format!("l{i}_1")).unwrap());
-                    let p2 = fb.ins().global_value(types::I64, *drefs.get(&format!("l{i}_2")).unwrap());
+                    let p0 = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("l{i}_0")).unwrap());
+                    let p1 = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("l{i}_1")).unwrap());
+                    let p2 = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("l{i}_2")).unwrap());
                     let call = fb.ins().call(f, &[p0, p1, p2]);
                     let st = fb.inst_results(call)[0];
                     let f1 = expect_i32(&mut fb, st, 0);
@@ -1059,10 +1201,18 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     acc_flag(&mut fb, f3);
                     acc_flag(&mut fb, f4);
                 }
-                SuiteCheck::BufSumOk { symbol, bytes, expected } => {
+                SuiteCheck::BufSumOk {
+                    symbol,
+                    bytes,
+                    expected,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let bp = fb.ins().global_value(types::I64, *drefs.get(&format!("b{i}")).unwrap());
-                    let qp = fb.ins().global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let bp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("b{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
                     let lv = fb.ins().iconst(types::I64, bytes.len() as i64);
                     let call = fb.ins().call(f, &[bp, lv, qp]);
                     let st = fb.inst_results(call)[0];
@@ -1072,9 +1222,15 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let f2 = expect_i64(&mut fb, q, *expected);
                     acc_flag(&mut fb, f2);
                 }
-                SuiteCheck::BufSumNull { symbol, len, sentinel } => {
+                SuiteCheck::BufSumNull {
+                    symbol,
+                    len,
+                    sentinel,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let qp = fb.ins().global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
                     let null = fb.ins().iconst(types::I64, 0);
                     let lv = fb.ins().iconst(types::I64, *len as i64);
                     let call = fb.ins().call(f, &[null, lv, qp]);
@@ -1085,10 +1241,18 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let f2 = expect_i64(&mut fb, q, *sentinel);
                     acc_flag(&mut fb, f2);
                 }
-                SuiteCheck::BufCopyOk { symbol, src, expect } => {
+                SuiteCheck::BufCopyOk {
+                    symbol,
+                    src,
+                    expect,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let dp = fb.ins().global_value(types::I64, *drefs.get(&format!("dst{i}")).unwrap());
-                    let sp = fb.ins().global_value(types::I64, *drefs.get(&format!("src{i}")).unwrap());
+                    let dp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("dst{i}")).unwrap());
+                    let sp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("src{i}")).unwrap());
                     let cap = fb.ins().iconst(types::I64, expect.len() as i64);
                     let lv = fb.ins().iconst(types::I64, src.len() as i64);
                     let call = fb.ins().call(f, &[dp, cap, sp, lv]);
@@ -1105,8 +1269,12 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                 }
                 SuiteCheck::BufCopyCap { symbol, cap, src } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let dp = fb.ins().global_value(types::I64, *drefs.get(&format!("dst{i}")).unwrap());
-                    let sp = fb.ins().global_value(types::I64, *drefs.get(&format!("src{i}")).unwrap());
+                    let dp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("dst{i}")).unwrap());
+                    let sp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("src{i}")).unwrap());
                     let cv = fb.ins().iconst(types::I64, *cap as i64);
                     let lv = fb.ins().iconst(types::I64, src.len() as i64);
                     let call = fb.ins().call(f, &[dp, cv, sp, lv]);
@@ -1127,9 +1295,17 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let nv = fb.ins().iconst(types::I32, *n as i64);
                     fb.ins().call(f, &[nv]); // void return
                 }
-                SuiteCheck::TwoStep { symbol, x, expect_status, sentinel, dst_reg } => {
+                SuiteCheck::TwoStep {
+                    symbol,
+                    x,
+                    expect_status,
+                    sentinel,
+                    dst_reg,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
-                    let qp = fb.ins().global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
                     let xv = fb.ins().iconst(types::I32, *x as i64);
                     let call = fb.ins().call(f, &[xv, qp]);
                     let st = fb.inst_results(call)[0];
@@ -1149,12 +1325,20 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                         acc_flag(&mut fb, f2);
                     }
                 }
-                SuiteCheck::Fold { symbol, cb, ctx, items, expected } => {
+                SuiteCheck::Fold {
+                    symbol,
+                    cb,
+                    ctx,
+                    items,
+                    expected,
+                } => {
                     let f = *frefs.get(symbol).unwrap();
                     let cbf = *cb_refs.get(cb).expect("callback kind was defined");
                     let cbp = fb.ins().func_addr(types::I64, cbf);
                     let cv = fb.ins().iconst(types::I64, *ctx);
-                    let ip = fb.ins().global_value(types::I64, *drefs.get(&format!("it{i}")).unwrap());
+                    let ip = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("it{i}")).unwrap());
                     let nv = fb.ins().iconst(types::I64, items.len() as i64);
                     let call = fb.ins().call(f, &[cbp, cv, ip, nv]);
                     let got = fb.inst_results(call)[0];
@@ -1203,5 +1387,7 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
     }
     om.define_function(entry_id, &mut ctx)
         .map_err(|e| format!("define {ENTRY_SYMBOL}: {e}"))?;
-    om.finish().emit().map_err(|e| format!("emit suite caller: {e}"))
+    om.finish()
+        .emit()
+        .map_err(|e| format!("emit suite caller: {e}"))
 }

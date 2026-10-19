@@ -74,8 +74,8 @@ fn resolve_cl() -> Result<CToolchain, CToolError> {
     // under the contained executor like every other subprocess.
     let mut cmd = Command::new(&cl);
     cmd.arg("-?");
-    let (code, out, err) = run_deadlined(&mut cmd)
-        .map_err(|e| CToolError(format!("cl -? spawn: {e:?}")))?;
+    let (code, out, err) =
+        run_deadlined(&mut cmd).map_err(|e| CToolError(format!("cl -? spawn: {e:?}")))?;
     if code != Some(0) {
         return Err(CToolError(format!(
             "cl -? exited {code:?}: {}{}",
@@ -108,8 +108,7 @@ fn resolve_cl() -> Result<CToolchain, CToolError> {
         return Err(CToolError("cl banner version line not found".into()));
     }
 
-    let bytes = std::fs::read(&cl)
-        .map_err(|e| CToolError(format!("read cl.exe: {e}")))?;
+    let bytes = std::fs::read(&cl).map_err(|e| CToolError(format!("read cl.exe: {e}")))?;
     let cl_hash = crate::semref::blake3_hex(&bytes);
 
     Ok(CToolchain {
@@ -136,8 +135,8 @@ fn locate_via_vswhere() -> Result<PathBuf, CToolError> {
         "-property",
         "installationPath",
     ]);
-    let (code, out, err) = run_deadlined(&mut cmd)
-        .map_err(|e| CToolError(format!("vswhere spawn: {e:?}")))?;
+    let (code, out, err) =
+        run_deadlined(&mut cmd).map_err(|e| CToolError(format!("vswhere spawn: {e:?}")))?;
     if code != Some(0) {
         return Err(CToolError(format!(
             "vswhere exited {code:?}: {}{}",
@@ -156,9 +155,7 @@ fn locate_via_vswhere() -> Result<PathBuf, CToolError> {
         .map_err(|e| CToolError(format!("read {}: {e}", tools.display())))?
         .flatten()
         .map(|e| e.path())
-        .filter(|p| {
-            p.join("bin/Hostx64/x64/cl.exe").is_file()
-        })
+        .filter(|p| p.join("bin/Hostx64/x64/cl.exe").is_file())
         .collect();
     versions.sort(); // version-named dirs: lexical == numeric for MSVC
     versions

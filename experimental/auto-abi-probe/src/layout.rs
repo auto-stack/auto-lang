@@ -84,10 +84,22 @@ pub struct RecordDef {
 pub const REC_MIX: RecordDef = RecordDef {
     name: "RecMix",
     fields: &[
-        FieldDef { name: "flag", ty: SemScalar::Bool },
-        FieldDef { name: "count", ty: SemScalar::I32 },
-        FieldDef { name: "tag", ty: SemScalar::Char },
-        FieldDef { name: "big", ty: SemScalar::I64 },
+        FieldDef {
+            name: "flag",
+            ty: SemScalar::Bool,
+        },
+        FieldDef {
+            name: "count",
+            ty: SemScalar::I32,
+        },
+        FieldDef {
+            name: "tag",
+            ty: SemScalar::Char,
+        },
+        FieldDef {
+            name: "big",
+            ty: SemScalar::I64,
+        },
     ],
 };
 
@@ -96,10 +108,22 @@ pub const REC_MIX: RecordDef = RecordDef {
 pub const REC_OTHER: RecordDef = RecordDef {
     name: "RecOther",
     fields: &[
-        FieldDef { name: "flag", ty: SemScalar::Bool },
-        FieldDef { name: "count", ty: SemScalar::I32 },
-        FieldDef { name: "tag", ty: SemScalar::Char },
-        FieldDef { name: "big", ty: SemScalar::I64 },
+        FieldDef {
+            name: "flag",
+            ty: SemScalar::Bool,
+        },
+        FieldDef {
+            name: "count",
+            ty: SemScalar::I32,
+        },
+        FieldDef {
+            name: "tag",
+            ty: SemScalar::Char,
+        },
+        FieldDef {
+            name: "big",
+            ty: SemScalar::I64,
+        },
     ],
 };
 
@@ -107,10 +131,22 @@ pub const REC_OTHER: RecordDef = RecordDef {
 pub const REC_MIX_SWAPPED: RecordDef = RecordDef {
     name: "RecMix",
     fields: &[
-        FieldDef { name: "count", ty: SemScalar::I32 },
-        FieldDef { name: "flag", ty: SemScalar::Bool },
-        FieldDef { name: "tag", ty: SemScalar::Char },
-        FieldDef { name: "big", ty: SemScalar::I64 },
+        FieldDef {
+            name: "count",
+            ty: SemScalar::I32,
+        },
+        FieldDef {
+            name: "flag",
+            ty: SemScalar::Bool,
+        },
+        FieldDef {
+            name: "tag",
+            ty: SemScalar::Char,
+        },
+        FieldDef {
+            name: "big",
+            ty: SemScalar::I64,
+        },
     ],
 };
 
@@ -181,8 +217,20 @@ pub enum LayoutError {
     UnknownRecord(String),
     RecursiveRecord(Vec<String>),
     NestingTooDeep(usize),
-    RecordTooLarge { record: String, size: u64 },
-    OffsetOverflow { record: String, field: String },
+    RecordTooLarge {
+        record: String,
+        size: u64,
+    },
+    /// F-797-R4-10: the flattened layout exceeds the staging budget —
+    /// refused before materialization (bounded memory, resource state).
+    StagingTooLarge {
+        record: String,
+        size: u64,
+    },
+    OffsetOverflow {
+        record: String,
+        field: String,
+    },
 }
 
 impl std::fmt::Display for LayoutError {
@@ -193,6 +241,12 @@ impl std::fmt::Display for LayoutError {
             LayoutError::NestingTooDeep(d) => write!(f, "nesting depth {d} exceeds limit"),
             LayoutError::RecordTooLarge { record, size } => {
                 write!(f, "record '{record}' size {size} exceeds budget")
+            }
+            LayoutError::StagingTooLarge { record, size } => {
+                write!(
+                    f,
+                    "record '{record}' flattened size {size} exceeds the staging budget"
+                )
             }
             LayoutError::OffsetOverflow { record, field } => {
                 write!(f, "offset overflow in '{record}' at field '{field}'")
@@ -208,16 +262,118 @@ pub const MAX_RECORD_BYTES: u64 = 64 * 1024 * 1024;
 /// Nested-record chains must stay bounded; >=4096 depth works (plan
 /// §5.5), deeper is a controlled rejection.
 pub const MAX_NESTING_DEPTH: usize = 4096;
+/// F-797-R4-10: the layout STAGING budget (contract-decision §6:
+/// layout/query staging + index <=8MiB). Materializing a flattened
+/// layout whose bytes exceed this is a controlled RESOURCE state — the
+/// engine refuses BEFORE allocating the flattened field vector, so a
+/// huge-but-legal record never becomes a giant staging allocation.
+pub const MAX_STAGING_BYTES: u64 = 8 * 1024 * 1024;
 
-/// Resolved record table (descriptor type set) with full layout: nested
-/// records under the frozen rules, cycle detection, depth and size
-/// ceilings. All arithmetic checked; overflow is `OffsetOverflow`.
-pub fn layout_record_owned(table: &std::collections::BTreeMap<String, RecordDefOwned>, name: &str) -> Result<RecordLayout, LayoutError> {
+/// Resolved record table (descriptor type set) with full layout.
+///
+/// F-797-R4-10 two-phase engine:
+///  1. SIZE phase — memoized (size, align) computation per record with
+///     cycle detection, depth and absolute-size ceilings; no flattened
+///     vector is built here, so a wide/deep table costs TABLE space,
+///     not leaf space;
+///  2. GATE — the ROOT's size must fit the STAGING budget before any
+///     materialization (a huge-but-legal record is refused with
+///     `StagingTooLarge`, never a giant allocation);
+///  3. FLATTEN — only for tables that passed the gate.
+pub fn layout_record_owned(
+    table: &std::collections::BTreeMap<String, RecordDefOwned>,
+    name: &str,
+) -> Result<RecordLayout, LayoutError> {
+    let mut sizes: std::collections::BTreeMap<String, (u32, u32)> =
+        std::collections::BTreeMap::new();
+    let mut chain: Vec<String> = Vec::new();
+    compute_size(table, name, &mut chain, 0, &mut sizes)?;
+    let (root_size, _) = sizes
+        .get(name)
+        .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
+    if *root_size as u64 > MAX_STAGING_BYTES {
+        return Err(LayoutError::StagingTooLarge {
+            record: name.to_string(),
+            size: *root_size as u64,
+        });
+    }
     let mut seen = Vec::new();
-    layout_owned_inner(table, name, &mut seen, 0)
+    flatten(table, name, &mut seen, 0)
 }
 
-fn layout_owned_inner(
+/// Phase 1: memoized (size, align) with cycle/depth/budget ceilings.
+fn compute_size(
+    table: &std::collections::BTreeMap<String, RecordDefOwned>,
+    name: &str,
+    chain: &mut Vec<String>,
+    depth: usize,
+    memo: &mut std::collections::BTreeMap<String, (u32, u32)>,
+) -> Result<(u32, u32), LayoutError> {
+    if let Some(hit) = memo.get(name) {
+        return Ok(*hit);
+    }
+    if depth > MAX_NESTING_DEPTH {
+        return Err(LayoutError::NestingTooDeep(depth));
+    }
+    if chain.iter().any(|s| s == name) {
+        let mut path = chain.clone();
+        path.push(name.to_string());
+        return Err(LayoutError::RecursiveRecord(path));
+    }
+    let def = table
+        .get(name)
+        .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
+    chain.push(name.to_string());
+    let mut offset: u32 = 0;
+    let mut align: u32 = 1;
+    for f in &def.fields {
+        let (size, fa) = match &f.ty {
+            FieldTyOwned::Scalar(s) => s.size_align(),
+            FieldTyOwned::Record(n) => compute_size(table, n, chain, depth + 1, memo)?,
+        };
+        offset = offset
+            .checked_add(fa - 1)
+            .and_then(|v| v.checked_sub(v % fa))
+            .ok_or_else(|| LayoutError::OffsetOverflow {
+                record: name.to_string(),
+                field: f.name.clone(),
+            })?;
+        align = align.max(fa);
+        offset = offset
+            .checked_add(size)
+            .ok_or_else(|| LayoutError::OffsetOverflow {
+                record: name.to_string(),
+                field: f.name.clone(),
+            })?;
+        if offset as u64 > MAX_RECORD_BYTES {
+            chain.pop();
+            return Err(LayoutError::RecordTooLarge {
+                record: name.to_string(),
+                size: offset as u64,
+            });
+        }
+    }
+    chain.pop();
+    let size = offset
+        .checked_add(align - 1)
+        .and_then(|v| v.checked_sub(v % align))
+        .ok_or_else(|| LayoutError::OffsetOverflow {
+            record: name.to_string(),
+            field: "<tail>".into(),
+        })?;
+    if size as u64 > MAX_RECORD_BYTES {
+        return Err(LayoutError::RecordTooLarge {
+            record: name.to_string(),
+            size: size as u64,
+        });
+    }
+    memo.insert(name.to_string(), (size, align));
+    Ok((size, align))
+}
+
+/// Phase 3: flatten (only reached past the gate; every visited record
+/// fits the staging budget, so the flattened vector is bounded).
+fn flatten(
     table: &std::collections::BTreeMap<String, RecordDefOwned>,
     name: &str,
     seen: &mut Vec<String>,
@@ -239,10 +395,10 @@ fn layout_owned_inner(
     let mut offset: u32 = 0;
     let mut align: u32 = 1;
     for f in &def.fields {
-        let (size, fa, flayout) = match &f.ty {
+        let (size, fa, nested) = match &f.ty {
             FieldTyOwned::Scalar(s) => (s.size_align().0, s.size_align().1, None),
             FieldTyOwned::Record(n) => {
-                let l = layout_owned_inner(table, n, seen, depth + 1)?;
+                let l = flatten(table, n, seen, depth + 1)?;
                 (l.size, l.align, Some(l))
             }
         };
@@ -254,8 +410,8 @@ fn layout_owned_inner(
                 field: f.name.clone(),
             })?;
         align = align.max(fa);
-        if let Some(nested) = flayout {
-            for nf in nested.fields {
+        if let Some(nested_layout) = nested {
+            for nf in nested_layout.fields {
                 fields.push(FieldLayout {
                     name: format!("{}.{}", f.name, nf.name),
                     offset: offset + nf.offset,
@@ -275,12 +431,6 @@ fn layout_owned_inner(
                 record: name.to_string(),
                 field: f.name.clone(),
             })?;
-        if offset as u64 > MAX_RECORD_BYTES {
-            return Err(LayoutError::RecordTooLarge {
-                record: name.to_string(),
-                size: offset as u64,
-            });
-        }
     }
     seen.pop();
     let size = offset
@@ -290,12 +440,6 @@ fn layout_owned_inner(
             record: name.to_string(),
             field: "<tail>".into(),
         })?;
-    if size as u64 > MAX_RECORD_BYTES {
-        return Err(LayoutError::RecordTooLarge {
-            record: name.to_string(),
-            size: size as u64,
-        });
-    }
     Ok(RecordLayout {
         record: name.to_string(),
         fields,
@@ -461,6 +605,9 @@ mod tests {
         // Same shape, different nominal name -> different canonical form.
         assert_ne!(canonical_record(&REC_MIX), canonical_record(&REC_OTHER));
         // Field order is part of the form.
-        assert_ne!(canonical_record(&REC_MIX), canonical_record(&REC_MIX_SWAPPED));
+        assert_ne!(
+            canonical_record(&REC_MIX),
+            canonical_record(&REC_MIX_SWAPPED)
+        );
     }
 }
