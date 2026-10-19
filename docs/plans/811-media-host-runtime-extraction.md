@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-811
-status: executing
+status: execution_done
 feature_name: 媒体宿主域、资源生命周期与跨端消费整体解耦
 author: [Codex]
 created_at: 2026-10-19

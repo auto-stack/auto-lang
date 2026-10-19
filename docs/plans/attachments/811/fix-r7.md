@@ -44,3 +44,25 @@ item_budget = CAPACITY = 8，却断言 `peak_backlog < CAPACITY`，理由"正在
 - 复审重放脚本原样执行（挂起范围=自有子进程 PID 的 `media-resize` 线程），仅
   `test-binary.json.txt` 重绑本修复二进制；脚本与断言未复制进测试——永久回归由
   算术化的负控本体承担（任何调度序下 backlog ≤ 7 < 8）。
+
+## 独立复核附记（2026-10-19 22:56，交接会话）
+
+按「先验证再复用」对本提交独立重跑决定性检查（不依赖上表自述）：
+
+- **迟调度重放**（复审自有 negative-schedule.py，二进制重建后重绑 c8d355b3…）：
+  **ok / exit 0 / 52.21s**，`resumed=true`、`child_reaped=true`；收据
+  [reverify-negative-schedule.json.txt](review-r7/reverify-negative-schedule.json.txt)。
+- core 全量：**44/44，0 ignored，62.91s**；`cargo check -p auto-media-core --tests`
+  warning 0；rustfmt clean。
+- 生产等价复核（同方法跨提交）：`2ffb87755`（R6 受审）= `04f7446fd`（R7 受审）=
+  `5df643efa`（本修复）生产段 LF 归一 SHA 全等（`2da8f0df…`，本方法切分点含
+  `#[cfg(test)]` 行故与 R7 冻结值 `ce9cf376e…` 数值不同、覆盖范围等价）——
+  R6/R7 已过生产证据继续按等价复用。
+
+**证据事故（如实登记）**：`negative-schedule.py` 以固定名写
+`negative-schedule.*`——R7 红原件（exit 101）在 21:33 修复会话首次重放时即被
+同 名 覆 盖 （ 该 次 绿 输 出 已 改 名 r7fix-*）， 原 件 原 始 字 节 不 可 恢 复 ； 关 键 事 实
+（命令/失败文本/exit/timing/json 字段/exe hash 899a84b0…）由 review.md §3
+逐字引用保真，红→绿输入（脚本本体 + 前后二进制 hash）完整。详见
+[REPLAY-OUTPUTS-NOTE.txt](review-r7/REPLAY-OUTPUTS-NOTE.txt)。此为流程瑕疵，
+不影响 finding 闭合的有效性（反例复现输入与两次独立绿重放均在案）。
