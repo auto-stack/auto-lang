@@ -189,6 +189,21 @@ test-http-e2e feature（OS 临时端口）；792 driver 产物在
   "cached cgu should have an object file"，清 scratch 后复绿——环境
   工件非代码回归）。
 
+## R3 修复轮增补（2026-10-19，review-r3 needs_fix 后）
+
+修复细节见 [fix-r3.md](fix-r3.md)；代码基线推进至 **`27d3387af`**：
+
+- R3-01（订阅身份）：typed 键 = handler Debug 身份 + src（对齐动态轨）；
+  复审 typed-consumer 四行重放全绿（same/swap/bad-same 修复前后对照见
+  fix-r3）。
+- R3-02（独立唤醒）：merged 门控 50ms 媒体心跳（pending/待派发门，
+  空闲零消息）+ 全出口 sweep + 进程级表；无 timer 探针 5/5 证明。
+- R2-02 余量：双负控（协作回收+真 owner swap 门回收）常驻；resize 占用
+  仪表 backlog≥8=容量满；scan 活动门真落盘（R2 补丁锚点未命中事故已
+  在 fix-r3 如实记录）。core **40/40**。
+- 全矩阵收据重绑本提交：VM 12/12、Vue 10/10、merged 11/11、
+  identity(no-timer) 5/5、生成 HTTP 13/13。
+
 ## 8. 下一步
 
 T-09 review（同树独立上下文审 AC-01..06/SD/生命周期/真消费者/旧路径）；
