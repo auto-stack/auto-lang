@@ -12,6 +12,7 @@ zh/books/
 
 # Playground Notes manifest (Plan 581: build-time generated, deterministic)
 public/playground-data/
+public/tapl-examples.json
 
 # VitePress build output
 .vitepress/dist

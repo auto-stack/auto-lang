@@ -761,6 +761,10 @@ impl NativeInterface {
         crate::vm::interop::register_interop_natives(&mut native_interface);
         // Plan 198: Register #[rust_fn]-annotated shims via inventory
         native_interface.build_from_inventory();
+        // The inventory-generated IO.read_line shim has no VM access and
+        // reads process stdin. Rebind it after inventory so hosted requests
+        // use their isolated input queue; CLI calls still fall back to stdin.
+        crate::vm::ffi::stdlib::register_request_io_shims(&mut native_interface);
         // Override inventory shims with nanbox-aware versions for str methods
         // (inventory shims use String extraction which doesn't work with NanoValue stack)
         {
@@ -913,6 +917,15 @@ impl NativeInterface {
             "UploadReceipt",
         );
         native_interface.declare_contract_identity("auto.json.is_valid", &[], &["str"], "int");
+        native_interface.declare_contract_identity(
+            "auto.io.read_line_opt",
+            &[],
+            &[],
+            "Option<str>",
+        );
+        native_interface.declare_contract_identity("auto.random.rand_int", &[], &["int"], "int");
+        native_interface.declare_contract_identity("auto.random.rand_float", &[], &[], "float");
+        native_interface.declare_contract_identity("auto.random.rand_bool", &[], &[], "bool");
         // 声明级泛型面（§5.3 明确 Generic 身份保留）：encode[T]/decode[T]
         // 的 producer 经 VMConvertible wire 动态取值，契约携带泛型身份。
         native_interface.declare_contract_identity("auto.json.encode", &["T"], &["T"], "str");
@@ -2071,7 +2084,7 @@ pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_text: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2097,7 +2110,7 @@ pub fn shim_code_editor_delta(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_delta: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2125,7 +2138,7 @@ pub fn shim_code_editor_edit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_edit: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     // Args push left-to-right: pop the LAST (replacement) first.
@@ -2150,7 +2163,7 @@ pub fn shim_code_editor_cursor_line(task: &mut AutoTask, vm: &AutoVM) -> Result<
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_cursor_line: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2166,7 +2179,7 @@ pub fn shim_code_editor_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_cursor_col: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2182,7 +2195,7 @@ pub fn shim_code_editor_selection_len(task: &mut AutoTask, vm: &AutoVM) -> Resul
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_selection_len: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2198,7 +2211,7 @@ pub fn shim_code_editor_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_find: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2214,7 +2227,7 @@ pub fn shim_code_editor_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(),
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_set_text: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     // Args push left-to-right: pop the LAST (text) first, then the key.
@@ -2238,7 +2251,7 @@ pub fn shim_code_editor_load_file(task: &mut AutoTask, vm: &AutoVM) -> Result<()
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_load_file: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     // Args push left-to-right: pop the LAST (path) first, then the key.
@@ -2405,7 +2418,7 @@ pub fn shim_code_editor_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_save: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     // Args push left-to-right: pop the LAST (path) first, then the key.
@@ -2427,7 +2440,7 @@ pub fn shim_code_editor_set_cursor(task: &mut AutoTask, vm: &AutoVM) -> Result<(
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_set_cursor: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let col = pop_arg_i32(task).max(0) as usize;
@@ -2452,7 +2465,7 @@ pub fn shim_code_editor_scroll_offset_x(task: &mut AutoTask, vm: &AutoVM) -> Res
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_scroll_offset_x: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2467,7 +2480,7 @@ pub fn shim_code_editor_scroll_offset_y(task: &mut AutoTask, vm: &AutoVM) -> Res
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_scroll_offset_y: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2599,7 +2612,7 @@ pub fn shim_code_editor_fold_toggle(task: &mut AutoTask, vm: &AutoVM) -> Result<
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_fold_toggle: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     // Args push left-to-right: pop the LAST (line) first, then the key.
@@ -2618,7 +2631,7 @@ pub fn shim_code_editor_fold_hidden_count(task: &mut AutoTask, vm: &AutoVM) -> R
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_fold_hidden_count: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2641,7 +2654,7 @@ pub fn shim_code_editor_undo(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_undo: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2657,7 +2670,7 @@ pub fn shim_code_editor_redo(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_redo: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2673,7 +2686,7 @@ pub fn shim_code_editor_select_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_select_all: the `code-editor` feature is disabled".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2689,7 +2702,7 @@ pub fn shim_code_editor_cut(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMEr
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_cut: the `code-editor`+`ui-clipboard` features are required".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2713,7 +2726,7 @@ pub fn shim_code_editor_copy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_copy: the `code-editor`+`ui-clipboard` features are required".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -2735,7 +2748,7 @@ pub fn shim_code_editor_paste(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
         None => {
             return Err(VMError::RuntimeError(
                 "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
-            ))
+            ));
         }
     };
     let key = pop_string_arg(task, vm);
@@ -6131,7 +6144,7 @@ pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
             _ => {
                 return Err(VMError::RuntimeError(
                     "iterator.next: object is not an SSE credential".to_string(),
-                ))
+                ));
             }
         }
     } else {
@@ -7666,7 +7679,7 @@ pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VME
         0
     };
 
-    task.ram.push_i32(result);
+    task.ram.push_nv(auto_val::encode_bool(result != 0));
     Ok(())
 }
 

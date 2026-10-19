@@ -1,0 +1,6 @@
+/// Regular-expression operations available to Auto programs.
+/// The VM backend implements these functions through its native registry.
+pub fn is_match(pattern str, text str) int;
+pub fn find_all(pattern str, text str) str;
+pub fn replace(text str, pattern str, replacement str, flags str) str;
+pub fn test(text str, pattern str) bool;

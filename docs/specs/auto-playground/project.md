@@ -65,6 +65,13 @@ graph LR
 > （官方宿主自动开启；走查 105 条 104 成功/80 条 golden 逐字节一致，余为仓库
 > 既有 #[ignore] 隔离态）。project/files 路径不受影响。
 
+## 书页示例执行（PLAN-813）
+
+- `/api/run` 接受 `source`，可选 `project_dir`、`files`、`entry`、有限 UTF-8 `input`、`timeout_secs` 与 `prepend_lib`。省略 `input` 按空输入处理，因此本次运行的 stdin 立即 EOF；输入属于单次请求，不替换进程级 stdin。Run 的默认截止为 10 秒，并限幅到 1–60 秒。
+- 多文件请求在每次运行的临时目录中物化，入口与相对模块路径一同解析；执行结束后清理目录。书页编辑器提交编辑后的入口源与其余文件，站点读取同源 `/api/run`，不向读者浏览器写入 `localhost` 服务地址。
+- `/api/test` 以 source/files/entry/input 运行 Auto `#[test]`，每套测试共享一个 10 秒默认、1–60 秒限幅的截止时间。响应逐项报告执行数、通过数、失败数、名称、耗时、输出与断言错误；超时和失败必须在调用者可见。
+- 书页字段与预期输出的单一作者合同见 [website book-example-execution](../website/design/book-example-execution.md)。
+
 ## Linux 后台发布契约（PLAN-812）
 
 - 网站静态前端与后台必须采用兼容的响应格式：`/api/run` 包含 `bytecode` 与 `meta` 字段（成功执行验收示例时字节码非空），`/api/trans` 返回 `files[]`（每项含 `path`、`code`）；旧版仅返回 `code` 的后台不能满足当前 IDE。

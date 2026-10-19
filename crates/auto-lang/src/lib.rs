@@ -629,12 +629,27 @@ pub fn run_with_capture_and_bytecode_with_deadline(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
+    run_with_capture_and_bytecode_with_input(code, deadline, None)
+}
+
+/// Like [`run_with_capture_and_bytecode_with_deadline`] with request-local
+/// stdin. `Some("")` means immediate EOF; `None` preserves process stdin.
+pub fn run_with_capture_and_bytecode_with_input(
+    code: &str,
+    deadline: Option<std::time::Instant>,
+    input: Option<String>,
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     let code = code.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
             block_on_autovm_local(async {
-                execute_autovm_with_deadline(&code, true, None, deadline).await
+                execute_autovm_with_deadline_and_input(&code, true, None, deadline, input).await
             })
         })
         .expect("Failed to spawn execution thread");
@@ -674,13 +689,29 @@ pub fn run_with_capture_and_path_and_bytecode_with_deadline(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
+    run_with_capture_and_path_and_bytecode_with_input(code, path, deadline, None)
+}
+
+/// Path-aware execution with a deadline and request-local stdin.
+pub fn run_with_capture_and_path_and_bytecode_with_input(
+    code: &str,
+    path: &str,
+    deadline: Option<std::time::Instant>,
+    input: Option<String>,
+) -> AutoResult<(
+    String,
+    String,
+    Vec<crate::vm::disasm::DisasmLine>,
+    crate::vm::disasm::BytecodeMeta,
+)> {
     let code = code.to_string();
     let path = path.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(vm_thread_stack_size())
         .spawn(move || {
             block_on_autovm_local(async {
-                execute_autovm_with_deadline(&code, true, Some(&path), deadline).await
+                execute_autovm_with_deadline_and_input(&code, true, Some(&path), deadline, input)
+                    .await
             })
         })
         .expect("Failed to spawn execution thread");
@@ -1597,24 +1628,28 @@ async fn execute_autovm_with_path(
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
-    execute_autovm_with_deadline(code, capture, path, None).await
+    execute_autovm_with_deadline_and_input(code, capture, path, None, None).await
 }
 
 /// PLAN-746 (PG-MEM-1): like [`execute_autovm_with_path`] but installs a
 /// cooperative execution deadline on the VM. Once the deadline passes,
 /// run_task_loop terminates all tasks with a synthetic "ExecutionTimeout"
 /// error instead of letting a runaway program spin forever.
-async fn execute_autovm_with_deadline(
+async fn execute_autovm_with_deadline_and_input(
     code: &str,
     capture: bool,
     path: Option<&str>,
     deadline: Option<std::time::Instant>,
+    input: Option<String>,
 ) -> AutoResult<(
     String,
     String,
     Vec<crate::vm::disasm::DisasmLine>,
     crate::vm::disasm::BytecodeMeta,
 )> {
+    let _request_file_root = input
+        .is_some()
+        .then(|| crate::vm::ffi::stdlib::RequestFileRootGuard::for_source_path(path));
     crate::install_ui_host_capabilities();
     // Plan 560 T03: 脚本模式管线激活——`.as` 源经 s2s lowering（糖→桥，
     // W2 规则表自 T05 起逐条入住）后走正常编译管线；`#[rust]` 行首
@@ -2059,6 +2094,7 @@ async fn execute_autovm_with_deadline(
     };
     // PLAN-746 (PG-MEM-1): cooperative execution deadline (None = unlimited).
     vm.set_deadline(deadline);
+    vm.set_request_input(input);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
@@ -2196,6 +2232,38 @@ async fn execute_autovm_with_deadline(
 /// Plan 260: Compile and run all `#[test]` functions in the given code.
 /// Returns a TestResult with pass/fail details for each discovered test.
 pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
+    test_code_with_options(code, None, None, None).await
+}
+
+/// Run all `#[test]` functions with a cooperative deadline and request-local
+/// stdin. The existing `test_code` keeps its unlimited, process-stdin behavior.
+pub async fn test_code_with_deadline_and_input(
+    code: &str,
+    deadline: Option<std::time::Instant>,
+    input: Option<String>,
+) -> AutoResult<test_runner::TestResult> {
+    test_code_with_options(code, None, deadline, input).await
+}
+
+/// Path-aware test execution for isolated files projects.
+pub async fn test_code_with_path_deadline_and_input(
+    code: &str,
+    path: &str,
+    deadline: Option<std::time::Instant>,
+    input: Option<String>,
+) -> AutoResult<test_runner::TestResult> {
+    test_code_with_options(code, Some(path), deadline, input).await
+}
+
+async fn test_code_with_options(
+    code: &str,
+    path: Option<&str>,
+    deadline: Option<std::time::Instant>,
+    input: Option<String>,
+) -> AutoResult<test_runner::TestResult> {
+    let _request_file_root = input
+        .is_some()
+        .then(|| crate::vm::ffi::stdlib::RequestFileRootGuard::for_source_path(path));
     crate::install_ui_host_capabilities();
     use crate::vm::codegen::Codegen;
     use crate::vm::engine::AutoVM;
@@ -2211,6 +2279,11 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
 
     // Compilation pipeline (same as execute_autovm)
     let mut session = compile::CompileSession::new();
+    if let Some(path) = path {
+        if let Some(dir) = std::path::Path::new(path).parent() {
+            session.add_source_dir(dir.to_path_buf());
+        }
+    }
     session.collect_rust_imports(code)?;
     session.collect_py_imports(code)?;
     session.resolve_deps(code)?;
@@ -2298,6 +2371,8 @@ pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
         object_types,
     );
     let (mut vm, _output_buffer) = AutoVM::new_with_capture(flash, 8192);
+    vm.set_deadline(deadline);
+    vm.set_request_input(input);
     vm.load_strings(strings);
     vm.load_generic_registry(generic_registry);
     vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1

@@ -20,7 +20,11 @@ type File {
 
 pub fn say(msg str);
 
-/// Read a line from standard input (strips trailing newline)
-/// Example: let line = io.read_line()
+/// Read one line from standard input (strips trailing newline).
+/// Hosted runs receive a finite request-local input stream; CLI callers use stdin.
 #[vm]
 pub fn read_line() str;
+
+/// Read a line and return None at EOF; a blank line is Some("").
+#[vm]
+pub fn read_line_opt() Option<str>;

@@ -14,7 +14,7 @@ import type MarkdownIt from 'markdown-it'
  * env.relativePath（SSG 注入，见 dist node chunk: env={relativePath,...}）前缀
  * 判定 zh 并改写标题；HTML 在构建期烘焙，客户端不再重渲染 markdown。
  */
-export function autoFencePlugin(md: MarkdownIt) {
+export function autoFencePlugin(md: MarkdownIt, pluginOptions: { modes?: Map<string, string> } = {}) {
   const defaultFence = md.renderer.rules.fence!
   md.renderer.rules.fence = (tokens, idx, options, env, self) => {
     const info = (tokens[idx].info || '').trim()
@@ -25,8 +25,14 @@ export function autoFencePlugin(md: MarkdownIt) {
       /<button title="Copy Code" class="copy">/,
       `<button title="${title}" class="copy">`,
     )
-    if (info === 'auto') {
+    const match = info.match(/^auto(?:\s+example-id="([^"]+)")?$/)
+    if (match) {
       const encoded = encodeURIComponent(tokens[idx].content)
+      const exampleId = match[1]
+      if (exampleId) {
+        const mode = pluginOptions.modes?.get(exampleId) || 'unlisted'
+        return `<AutoFence code="${encoded}" example-id="${exampleId}" mode="${mode}">${localized}</AutoFence>`
+      }
       return `<AutoFence code="${encoded}">${localized}</AutoFence>`
     }
     return localized

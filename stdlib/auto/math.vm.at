@@ -16,3 +16,19 @@ fn max(a i64, b i64) i64
 /// Returns the square root of a number
 #[vm]
 fn sqrt(d double) double
+
+/// Returns the absolute value of a floating-point number
+#[vm]
+fn abs_f(n double) double
+
+/// Raises `x` to the floating-point power `y`
+#[vm]
+fn powf(x double, y double) double
+
+/// Returns the sine of an angle in radians
+#[vm]
+fn sin(x double) double
+
+/// Returns the cosine of an angle in radians
+#[vm]
+fn cos(x double) double

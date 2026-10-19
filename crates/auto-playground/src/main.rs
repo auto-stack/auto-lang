@@ -65,25 +65,52 @@ async fn main() {
         .allow_headers(tower_http::cors::Any);
 
     let app_state = AppState {
-        agent_sessions: std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+        agent_sessions: std::sync::Arc::new(
+            std::sync::Mutex::new(std::collections::HashMap::new()),
+        ),
         notebook_state: notebook::NotebookActor::new(),
     };
 
     let api_routes = Router::new()
         .route("/api/run", post(routes::run::run_handler))
+        .route("/api/test", post(routes::test::test_handler))
         .route("/api/run_abt", post(routes::run_abt::run_abt_handler))
         .route("/api/run_code", post(routes::run_code::run_code_handler))
         .route("/api/trans", post(routes::trans::trans_handler))
         .route("/api/examples", get(routes::examples::examples_handler))
-        .route("/api/notebook/session", post(routes::notebook::create_session_handler))
-        .route("/api/notebook/{sid}/execute", post(routes::notebook::execute_handler))
-        .route("/api/notebook/{sid}/status", get(routes::notebook::status_handler))
-        .route("/api/notebook/{sid}/variables", get(routes::notebook::variables_handler))
-        .route("/api/notebook/{sid}/transpile", post(routes::notebook::transpile_handler))
-        .route("/api/notebook/{sid}", delete(routes::notebook::delete_session_handler))
+        .route(
+            "/api/notebook/session",
+            post(routes::notebook::create_session_handler),
+        )
+        .route(
+            "/api/notebook/{sid}/execute",
+            post(routes::notebook::execute_handler),
+        )
+        .route(
+            "/api/notebook/{sid}/status",
+            get(routes::notebook::status_handler),
+        )
+        .route(
+            "/api/notebook/{sid}/variables",
+            get(routes::notebook::variables_handler),
+        )
+        .route(
+            "/api/notebook/{sid}/transpile",
+            post(routes::notebook::transpile_handler),
+        )
+        .route(
+            "/api/notebook/{sid}",
+            delete(routes::notebook::delete_session_handler),
+        )
         .route("/api/debug/ws", get(debug_ws_handler))
-        .route("/api/agent-debug/start", post(routes::agent_debug::start_handler))
-        .route("/api/agent-debug/sessions", get(routes::agent_debug::sessions_handler))
+        .route(
+            "/api/agent-debug/start",
+            post(routes::agent_debug::start_handler),
+        )
+        .route(
+            "/api/agent-debug/sessions",
+            get(routes::agent_debug::sessions_handler),
+        )
         .route(
             "/api/agent-debug/{id}/breakpoints",
             post(routes::agent_debug::breakpoints_handler),
@@ -92,8 +119,14 @@ async fn main() {
             "/api/agent-debug/{id}/command",
             post(routes::agent_debug::command_handler),
         )
-        .route("/api/agent-debug/{id}/state", get(routes::agent_debug::state_handler))
-        .route("/api/agent-debug/{id}", delete(routes::agent_debug::delete_handler))
+        .route(
+            "/api/agent-debug/{id}/state",
+            get(routes::agent_debug::state_handler),
+        )
+        .route(
+            "/api/agent-debug/{id}",
+            delete(routes::agent_debug::delete_handler),
+        )
         .with_state(app_state);
 
     let mut app = api_routes;
@@ -111,7 +144,12 @@ async fn main() {
     // against fresh assets.
     let app = app.layer(axum::middleware::from_fn(no_cache_html));
 
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], 3030));
+    let port = std::env::var("AUTO_PLAYGROUND_PORT")
+        .ok()
+        .and_then(|value| value.parse::<u16>().ok())
+        .filter(|port| *port != 0)
+        .unwrap_or(3030);
+    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
     tracing::info!("Auto Playground server listening on http://{}", addr);
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();

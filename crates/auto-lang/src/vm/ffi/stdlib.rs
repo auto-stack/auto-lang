@@ -19,6 +19,51 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+thread_local! {
+    static REQUEST_FILE_ROOT: std::cell::RefCell<Option<StdPathBuf>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Scoped relative-file root for hosted project execution. This never changes
+/// the process working directory and is restored when the execution ends.
+pub struct RequestFileRootGuard {
+    previous: Option<StdPathBuf>,
+}
+
+impl RequestFileRootGuard {
+    pub fn for_source_path(path: Option<&str>) -> Self {
+        let root = path
+            .and_then(|path| Path::new(path).parent())
+            .map(Path::to_path_buf);
+        let previous = REQUEST_FILE_ROOT.with(|slot| slot.replace(root));
+        Self { previous }
+    }
+}
+
+impl Drop for RequestFileRootGuard {
+    fn drop(&mut self) {
+        let previous = self.previous.take();
+        REQUEST_FILE_ROOT.with(|slot| {
+            slot.replace(previous);
+        });
+    }
+}
+
+fn resolve_request_file_path(path: &str) -> Result<StdPathBuf, String> {
+    let root = REQUEST_FILE_ROOT.with(|slot| slot.borrow().clone());
+    let Some(root) = root else {
+        return Ok(StdPathBuf::from(path));
+    };
+    let relative = Path::new(path);
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err("request file paths must be relative to the project root".to_string());
+    }
+    Ok(root.join(relative))
+}
+
 /// Debug logging macro - only prints when VM debug mode is enabled
 macro_rules! vm_debug {
     ($($arg:tt)*) => {
@@ -349,7 +394,10 @@ pub const NATIVE_RUST_STDLIB_DISPATCH: u16 = 3000;
 /// File.*→auto.file.* + NATIVE_ID_ENTRIES 固定 id 别名解析到同一 shim 槽。
 #[auto_macros::rust_fn("auto.fs.read_text")]
 pub fn shim_file_read_text(path: String) -> String {
-    fs::read_to_string(&path).unwrap_or_default()
+    resolve_request_file_path(&path)
+        .ok()
+        .and_then(|path| fs::read_to_string(path).ok())
+        .unwrap_or_default()
 }
 
 /// Plan 673 §5 chunked-read envelope — the serde shape shared verbatim with
@@ -395,6 +443,10 @@ pub fn shim_file_read_text_range(path: String, offset: i32, limit: i32) -> Strin
         return err();
     }
     use std::io::{Read, Seek, SeekFrom};
+    let path = match resolve_request_file_path(&path) {
+        Ok(path) => path,
+        Err(_) => return err(),
+    };
     let mut file = match fs::File::open(&path) {
         Ok(f) => f,
         Err(_) => return err(),
@@ -456,14 +508,16 @@ pub fn shim_file_read_text_range(path: String, offset: i32, limit: i32) -> Strin
     "auto.fs.write"
 )]
 pub fn shim_file_write_text(path: String, content: String) -> i32 {
-    let _ = fs::write(&path, &content);
+    if let Ok(path) = resolve_request_file_path(&path) {
+        let _ = fs::write(path, &content);
+    }
     0
 }
 
 /// Check if a file exists
 #[auto_macros::rust_fn("File.exists", "auto.file.exists", "auto.fs.exists")]
 pub fn shim_file_exists(path: String) -> i32 {
-    if fs::metadata(&path).is_ok() {
+    if resolve_request_file_path(&path).is_ok_and(|path| fs::metadata(path).is_ok()) {
         1
     } else {
         0
@@ -473,59 +527,88 @@ pub fn shim_file_exists(path: String) -> i32 {
 /// Delete a file
 #[auto_macros::rust_fn("File.delete", "auto.fs.delete")]
 pub fn shim_file_delete(path: String) -> i32 {
-    let _ = fs::remove_file(&path);
+    if let Ok(path) = resolve_request_file_path(&path) {
+        let _ = fs::remove_file(path);
+    }
     0
 }
 
 /// Create a directory
 #[auto_macros::rust_fn("File.create_dir", "auto.fs.create_dir")]
 pub fn shim_file_create_dir(path: String) -> i32 {
-    let _ = fs::create_dir_all(&path);
+    if let Ok(path) = resolve_request_file_path(&path) {
+        let _ = fs::create_dir_all(path);
+    }
     0
 }
 
 /// Remove an empty directory
 #[auto_macros::rust_fn("File.remove_dir")]
 pub fn shim_file_remove_dir(path: String) -> Result<(), String> {
-    fs::remove_dir(&path).map_err(|e| format!("File.remove_dir failed: {} - {}", path, e))
+    let path = resolve_request_file_path(&path)
+        .map_err(|e| format!("File.remove_dir failed: {} - {}", path, e))?;
+    fs::remove_dir(&path).map_err(|e| format!("File.remove_dir failed: {} - {}", path.display(), e))
 }
 
 /// Remove a directory and all its contents recursively
 #[auto_macros::rust_fn("File.remove_dir_all")]
 pub fn shim_file_remove_dir_all(path: String) -> Result<(), String> {
-    fs::remove_dir_all(&path).map_err(|e| format!("File.remove_dir_all failed: {} - {}", path, e))
+    let path = resolve_request_file_path(&path)
+        .map_err(|e| format!("File.remove_dir_all failed: {} - {}", path, e))?;
+    fs::remove_dir_all(&path)
+        .map_err(|e| format!("File.remove_dir_all failed: {} - {}", path.display(), e))
 }
 
 /// Read file contents as bytes
 #[auto_macros::rust_fn("File.read_bytes")]
 pub fn shim_file_read_bytes(path: String) -> Result<Vec<i32>, String> {
+    let path = resolve_request_file_path(&path)
+        .map_err(|e| format!("File.read_bytes failed: {} - {}", path, e))?;
     match fs::read(&path) {
         Ok(bytes) => Ok(bytes.into_iter().map(|b| b as i32).collect()),
-        Err(e) => Err(format!("File.read_bytes failed: {} - {}", path, e)),
+        Err(e) => Err(format!(
+            "File.read_bytes failed: {} - {}",
+            path.display(),
+            e
+        )),
     }
 }
 
 /// Write bytes to a file
 #[auto_macros::rust_fn("File.write_bytes")]
 pub fn shim_file_write_bytes(path: String, byte_list: Vec<i32>) -> Result<(), String> {
+    let path = resolve_request_file_path(&path)
+        .map_err(|e| format!("File.write_bytes failed: {} - {}", path, e))?;
     let bytes: Vec<u8> = byte_list.into_iter().map(|b| b as u8).collect();
-    fs::write(&path, &bytes).map_err(|e| format!("File.write_bytes failed: {} - {}", path, e))
+    fs::write(&path, &bytes)
+        .map_err(|e| format!("File.write_bytes failed: {} - {}", path.display(), e))
 }
 
 /// Copy a file
 #[auto_macros::rust_fn("File.copy")]
 pub fn shim_file_copy(src: String, dst: String) -> Result<(), String> {
-    fs::copy(&src, &dst)
-        .map(|_| ())
-        .map_err(|e| format!("File.copy failed: {} -> {} - {}", src, dst, e))
+    let src_path = resolve_request_file_path(&src)
+        .map_err(|e| format!("File.copy failed: {} -> {} - {}", src, dst, e))?;
+    let dst_path = resolve_request_file_path(&dst)
+        .map_err(|e| format!("File.copy failed: {} -> {} - {}", src, dst, e))?;
+    fs::copy(&src_path, &dst_path).map(|_| ()).map_err(|e| {
+        format!(
+            "File.copy failed: {} -> {} - {}",
+            src_path.display(),
+            dst_path.display(),
+            e
+        )
+    })
 }
 
 /// Get file size in bytes
 #[auto_macros::rust_fn("File.size")]
 pub fn shim_file_size(path: String) -> Result<i64, String> {
+    let path = resolve_request_file_path(&path)
+        .map_err(|e| format!("File.size failed: {} - {}", path, e))?;
     fs::metadata(&path)
         .map(|meta| meta.len() as i64)
-        .map_err(|e| format!("File.size failed: {} - {}", path, e))
+        .map_err(|e| format!("File.size failed: {} - {}", path.display(), e))
 }
 
 /// Get file modification time as epoch seconds (PLAN-016 T-05).
@@ -533,6 +616,8 @@ pub fn shim_file_size(path: String) -> Result<i64, String> {
 /// 级联 TypeError）——mtime/len/is_dir 各走直连 native。失败/1970 前 = -1。
 #[auto_macros::rust_fn("auto.fs.mtime")]
 pub fn shim_fs_mtime(path: String) -> Result<i64, String> {
+    let path = resolve_request_file_path(&path)
+        .map_err(|e| format!("File.mtime failed: {} - {}", path, e))?;
     let secs = fs::metadata(&path)
         .and_then(|m| m.modified())
         .ok()
@@ -545,20 +630,26 @@ pub fn shim_fs_mtime(path: String) -> Result<i64, String> {
 /// Check if path is a directory
 #[auto_macros::rust_fn("File.is_dir")]
 pub fn shim_file_is_dir(path: String) -> bool {
-    fs::metadata(&path).map(|m| m.is_dir()).unwrap_or(false)
+    resolve_request_file_path(&path)
+        .ok()
+        .and_then(|path| fs::metadata(path).ok())
+        .map(|m| m.is_dir())
+        .unwrap_or(false)
 }
 
 /// Walk a directory tree, returning all file paths as a JSON array.
 #[auto_macros::rust_fn("auto.file.walk")]
 pub fn shim_file_walk(path: String) -> Result<String, String> {
-    let root = Path::new(&path);
+    let path_resolved =
+        resolve_request_file_path(&path).map_err(|e| format!("File.walk failed: {}", e))?;
+    let root = Path::new(&path_resolved);
     if !root.exists() {
         return Err(format!("File.walk failed: path not found: {}", path));
     }
 
     let mut files: Vec<String> = Vec::new();
     if root.is_file() {
-        files.push(path.clone());
+        files.push(path_resolved.to_string_lossy().to_string());
     } else {
         for entry in walkdir::WalkDir::new(root)
             .into_iter()
@@ -578,8 +669,10 @@ pub fn shim_file_walk(path: String) -> Result<String, String> {
 /// Append text content to a file (creates if doesn't exist)
 #[auto_macros::rust_fn("File.append_text")]
 pub fn shim_file_append_text(path: String, content: String) -> Result<(), String> {
+    let path_buf = resolve_request_file_path(&path)
+        .map_err(|e| format!("File.append_text failed: {} - {}", path, e))?;
     // Ensure parent directory exists
-    if let Some(parent) = Path::new(&path).parent() {
+    if let Some(parent) = path_buf.parent() {
         if !parent.exists() {
             fs::create_dir_all(parent)
                 .map_err(|e| format!("File.append_text failed to create dir: {}", e))?;
@@ -588,8 +681,8 @@ pub fn shim_file_append_text(path: String, content: String) -> Result<(), String
     let mut file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&path)
-        .map_err(|e| format!("File.append_text failed: {} - {}", path, e))?;
+        .open(&path_buf)
+        .map_err(|e| format!("File.append_text failed: {} - {}", path_buf.display(), e))?;
     use std::io::Write;
     file.write_all(content.as_bytes())
         .map_err(|e| format!("File.append_text failed: {} - {}", path, e))?;
@@ -599,8 +692,10 @@ pub fn shim_file_append_text(path: String, content: String) -> Result<(), String
 /// Read file contents as an array of lines (JSON string array)
 #[auto_macros::rust_fn("auto.file.read_lines")]
 pub fn shim_file_read_lines(path: String) -> Result<String, String> {
-    let content = fs::read_to_string(&path)
+    let path = resolve_request_file_path(&path)
         .map_err(|e| format!("File.read_lines failed: {} - {}", path, e))?;
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("File.read_lines failed: {} - {}", path.display(), e))?;
     let lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
     serde_json::to_string(&lines).map_err(|e| format!("JSON serialization failed: {}", e))
 }
@@ -608,6 +703,9 @@ pub fn shim_file_read_lines(path: String) -> Result<String, String> {
 /// Check if a file contains null bytes (binary detection). Returns 1 if binary, 0 if text.
 #[auto_macros::rust_fn("auto.fs.is_binary")]
 pub fn shim_fs_is_binary(path: String) -> i32 {
+    let Ok(path) = resolve_request_file_path(&path) else {
+        return 0;
+    };
     let bytes = match fs::read(&path) {
         Ok(b) => b,
         Err(_) => return 0,
@@ -1648,6 +1746,56 @@ pub fn shim_io_read_line() -> String {
     line
 }
 
+/// Read one line from the current request's finite input, falling back to
+/// process stdin for existing CLI callers.
+pub fn shim_io_read_line_request(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::convert::VMConvertible;
+    let line = match vm.read_request_input_line() {
+        Some(Some(line)) => line,
+        Some(None) => String::new(),
+        None => read_process_stdin_line().unwrap_or_default(),
+    };
+    line.push_to_stack(task, vm)
+        .map_err(|error| VMError::RuntimeError(error.to_string()))
+}
+
+/// Read one line while distinguishing a blank line from EOF.
+pub fn shim_io_read_line_opt(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let line = match vm.read_request_input_line() {
+        Some(line) => line,
+        None => read_process_stdin_line(),
+    };
+    let (variant, fields, names) = match line {
+        Some(line) => (
+            "Option.Some",
+            vec![auto_val::Value::Str(auto_val::AutoStr::from(line))],
+            vec!["_0".to_string()],
+        ),
+        None => ("Option.None", Vec::new(), Vec::new()),
+    };
+    let option = GenericInstanceData::new_with_names(variant.to_string(), fields, names);
+    let handle = vm.insert_heap_object(option) as u32;
+    vm.rc_push(task, auto_val::encode_object(handle));
+    Ok(())
+}
+
+fn read_process_stdin_line() -> Option<String> {
+    use std::io::BufRead;
+    let mut line = String::new();
+    let read = std::io::stdin().lock().read_line(&mut line).ok()?;
+    if read == 0 {
+        return None;
+    }
+    if line.ends_with('\n') {
+        line.pop();
+        if line.ends_with('\r') {
+            line.pop();
+        }
+    }
+    Some(line)
+}
+
 // ============================================================================
 // Plan 353: IO stream natives (lines/chunks) + eprint/eprintln
 // ============================================================================
@@ -1657,6 +1805,7 @@ pub fn shim_io_read_line() -> String {
 pub fn shim_io_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
 
     let stream_id = alloc_async_id();
     let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
@@ -1724,6 +1873,7 @@ pub fn shim_io_chunks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let chunk_size: i32 = crate::vm::native::pop_arg_i32(task);
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
     let chunk_size = chunk_size.max(1) as usize;
 
     let stream_id = alloc_async_id();
@@ -1815,6 +1965,7 @@ pub fn shim_eprintln(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
 pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
 
     let stream_id = alloc_async_id();
     let (tx, rx) = tokio::sync::mpsc::channel::<AsyncStreamEvent>(64);
@@ -1888,9 +2039,11 @@ pub fn shim_fs_entries(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> 
 pub fn shim_io_buffered_writer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
 
-    let file = std::fs::File::create(&path)
-        .map_err(|e| VMError::RuntimeError(format!("Failed to create {}: {}", path, e)))?;
+    let file = std::fs::File::create(&path).map_err(|e| {
+        VMError::RuntimeError(format!("Failed to create {}: {}", path.display(), e))
+    })?;
     let writer = std::io::BufWriter::new(file);
     let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
         "BufWriter",
@@ -1906,9 +2059,10 @@ pub fn shim_io_buffered_writer(task: &mut AutoTask, vm: &AutoVM) -> Result<(), V
 pub fn shim_io_buffered_reader(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
 
     let file = std::fs::File::open(&path)
-        .map_err(|e| VMError::RuntimeError(format!("Failed to open {}: {}", path, e)))?;
+        .map_err(|e| VMError::RuntimeError(format!("Failed to open {}: {}", path.display(), e)))?;
     let reader = std::io::BufReader::new(file);
     let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
         "BufReader",
@@ -2017,12 +2171,13 @@ pub fn shim_bufreader_read_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), 
 pub fn shim_io_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let path: String = super::convert::VMConvertible::pop_from_stack(task, vm)
         .map_err(|e| VMError::RuntimeError(e.to_string()))?;
+    let path = resolve_request_file_path(&path).map_err(VMError::RuntimeError)?;
     let file = std::fs::OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .open(&path)
-        .map_err(|e| VMError::RuntimeError(format!("Failed to open {}: {}", path, e)))?;
+        .map_err(|e| VMError::RuntimeError(format!("Failed to open {}: {}", path.display(), e)))?;
     let obj =
         crate::vm::ffi::rust_stdlib::RustStdlibObject::new("File", std::sync::Mutex::new(file));
     let handle = vm.insert_heap_object(obj) as u32;
@@ -2884,7 +3039,10 @@ mod plan781_byte_len_tests {
         let env2 = shim_file_read_text_range(p.to_str().unwrap().to_string(), mid, 6);
         // 回退语义（PLAN-687）：start 回退到前边界、窗尾回退——产出完整
         // 字符（"标题\n"），绝不半字。
-        assert!(env2.contains("标题"), "mid-char 回退到边界产出完整字: {env2}");
+        assert!(
+            env2.contains("标题"),
+            "mid-char 回退到边界产出完整字: {env2}"
+        );
         let _ = std::fs::remove_file(&p);
     }
 }
@@ -10066,6 +10224,13 @@ pub fn shim_sqlite_last_error(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VM
 ///
 /// #[rust_fn]-annotated functions are auto-registered via inventory (build_from_inventory).
 /// This function only registers the ~54 manual shims that need special handling.
+pub fn register_request_io_shims(natives: &mut crate::vm::native::NativeInterface) {
+    natives.register_shim_by_name("auto.io.read_line", shim_io_read_line_request);
+    natives.register_shim_by_name("IO.read_line", shim_io_read_line_request);
+    natives.register_shim_by_name("io.read_line", shim_io_read_line_request);
+    natives.declare_contract_identity("auto.io.read_line", &[], &[], "str");
+}
+
 pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     // File utility functions (walk/read_lines/is_binary now via #[rust_fn] registration)
 
@@ -10554,6 +10719,12 @@ pub fn register_stdlib_ffi(natives: &mut crate::vm::native::NativeInterface) {
     natives.register_shim_by_name("auto.test.run_a2ts_dir", shim_test_run_a2ts_dir);
 
     // Plan 353: IO stream natives
+    natives.register_shim_by_name("auto.io.read_line", shim_io_read_line_request);
+    natives.register_shim_by_name("IO.read_line", shim_io_read_line_request);
+    natives.register_shim_by_name("io.read_line", shim_io_read_line_request);
+    natives.register_shim_by_name("auto.io.read_line_opt", shim_io_read_line_opt);
+    natives.register_shim_by_name("IO.read_line_opt", shim_io_read_line_opt);
+    natives.register_shim_by_name("io.read_line_opt", shim_io_read_line_opt);
     natives.register_shim_by_name("auto.io.lines", shim_io_lines);
     natives.register_shim_by_name("io.lines", shim_io_lines);
     natives.register_shim_by_name("auto.io.chunks", shim_io_chunks);
@@ -12703,9 +12874,7 @@ mod sqlite_vm_tests {
                     auto_val::Value::VmRef(r) => r.id as u64,
                     other => panic!("row element must be a VmRef, got {other:?}"),
                 };
-                let inner_obj = vm
-                    .get_heap_object(row_id)
-                    .expect("inner row list on heap");
+                let inner_obj = vm.get_heap_object(row_id).expect("inner row list on heap");
                 let inner = inner_obj
                     .read()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);

@@ -1,0 +1,23 @@
+/// VM function declarations for cryptographic hashing.
+/// Implementations are registered by the AutoVM native catalogue.
+
+#[vm]
+fn md5(data str) str
+
+#[vm]
+fn sha1(data str) str
+
+#[vm]
+fn sha256(data str) str
+
+#[vm]
+fn sha512(data str) str
+
+#[vm]
+fn hmac_sha256(data str, key str) str
+
+#[vm]
+fn file_md5(path str) str
+
+#[vm]
+fn file_sha256(path str) str

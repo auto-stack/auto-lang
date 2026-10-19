@@ -373,10 +373,43 @@ function collectBooks() {
       .map((e) => e.name)
       .sort((a, b) => a.localeCompare(b))
     const notes = []
+    if (bookName === 'tapl') {
+      const catalogPath = path.join(bookDir, 'examples.json')
+      const catalogText = readIfExists(catalogPath)
+      if (catalogText === null) {
+        throw new Error('TAPL catalog missing after prepare-content; book Notes must use the shared execution manifest.')
+      }
+      const catalog = JSON.parse(catalogText)
+      for (const entry of catalog.entries || []) {
+        if (entry.locale !== 'en') continue
+        const execution = entry.execution
+        if (!execution || !entry.display_code) {
+          throw new Error(`TAPL catalog entry ${entry.id} is not materialized.`)
+        }
+        const expected = execution.expected || {}
+        const pagePath = path.join(bookDir, entry.page)
+        notes.push({
+          id: entry.id,
+          title: `${entry.page.replace(/\.md$/, '')} · ${entry.display.number || entry.id.split('/').at(-1)}`,
+          sourceType: 'book',
+          sourcePath: relRoot(pagePath),
+          kind: execution.files.length > 0 ? 'project' : (entry.display.kind === 'fence' ? 'fence' : 'single'),
+          standalone: ['run', 'test', 'expected-error'].includes(execution.mode),
+          code: execution.source,
+          files: execution.files.length > 0 ? execution.files.map((file) => ({ path: file.path, content: file.source })) : null,
+          expectedOutput: typeof expected.stdout === 'string' ? expected.stdout : (typeof expected.value === 'string' ? expected.value : null),
+          expectedKind: ['stdout', 'result'].includes(expected.kind) ? expected.kind : null,
+          description: entry.reason || null,
+          tags: ['book', 'tapl', execution.mode, ...(entry.risk_tags || [])],
+        })
+      }
+      if (notes.length === 0) throw new Error('TAPL catalog has no English entries for Notes.')
+    }
     for (const fileName of chapterFiles) {
       const md = readIfExists(path.join(bookDir, fileName))
       if (md === null) continue
       const stem = fileName.slice(0, -'.md'.length)
+      if (bookName === 'tapl') continue
       extractAutoFences(md).forEach((code, idx) => {
         if (!code.trim()) return
         notes.push({

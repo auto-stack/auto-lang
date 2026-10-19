@@ -995,7 +995,7 @@ macro_rules! for_each_bigvm_native {
             // === HashSet (129-135) ===
             ("auto.hashset.new", 1293, Void),
             ("auto.hashset.insert", 130, Void),
-            ("auto.hashset.contains", 131, Void),
+            ("auto.hashset.contains", 131, Bool),
             ("auto.hashset.remove", 132, Void),
             ("auto.hashset.size", 133, Void),
             ("auto.hashset.clear", 134, Void),
@@ -1206,6 +1206,10 @@ macro_rules! for_each_bigvm_native {
             ("auto.term.engine_history", 3003, Int),
 
             // === Hash extended (2814-2816) ===
+            ("auto.hash.md5", 2810, String),
+            ("auto.hash.sha1", 2811, String),
+            ("auto.hash.sha256", 2812, String),
+            ("auto.hash.sha512", 2813, String),
             ("auto.hash.hmac_sha256", 2814, String),
             ("auto.hash.file_md5", 2815, String),
             ("auto.hash.file_sha256", 2816, String),
@@ -1216,6 +1220,9 @@ macro_rules! for_each_bigvm_native {
             ("auto.random.int", 2872, Void),
             ("auto.random.float", 2873, Void),
             ("auto.random.bool", 2874, Void),
+            ("auto.random.rand_int", 2780, Int),
+            ("auto.random.rand_float", 2781, Float),
+            ("auto.random.rand_bool", 2782, Bool),
 
             // === Fmt (2752) ===
             ("auto.fmt.f64_debug", 2752, String),
@@ -2899,6 +2906,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.io.read_line", 1150),
     ("IO.read_line", 1150),
     ("io.read_line", 1150),
+    ("auto.io.read_line_opt", 1151),
+    ("IO.read_line_opt", 1151),
+    ("io.read_line_opt", 1151),
     // === FS extended (2860-2866) ===
     // 2026-09-14(PLAN-016 T-05):rename/canonical/ext 补登记（id 2983/2984/2985）。
     ("auto.fs.rename", 2994),
@@ -2977,6 +2987,10 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.image.close_session", 2974),
     ("auto.image.session_stats", 2975),
     // === Hash extended (2814-2816) ===
+    ("auto.hash.md5", 2810),
+    ("auto.hash.sha1", 2811),
+    ("auto.hash.sha256", 2812),
+    ("auto.hash.sha512", 2813),
     ("auto.hash.hmac_sha256", 2814),
     ("auto.hash.file_md5", 2815),
     ("auto.hash.file_sha256", 2816),
@@ -2986,6 +3000,9 @@ pub const NATIVE_ID_ENTRIES: &[(&str, u16)] = &[
     ("auto.random.int", 2872),
     ("auto.random.float", 2873),
     ("auto.random.bool", 2874),
+    ("auto.random.rand_int", 2780),
+    ("auto.random.rand_float", 2781),
+    ("auto.random.rand_bool", 2782),
     // === Fmt (2752) ===
     ("auto.fmt.f64_debug", 2752),
     // === Cmp (2880) ===
@@ -3022,7 +3039,8 @@ mod catalog_integrity_tests {
             assert!(
                 seen_ids.insert(*id),
                 "catalog ID 撞号: {} ({} 与既有条目重复 —— bind_shims 后注册覆盖先注册,native_interface 表派发将错位)",
-                id, name
+                id,
+                name
             );
             assert!(seen_names.insert(*name), "catalog 名字重复登记: {}", name);
         }
@@ -3157,6 +3175,41 @@ mod catalog_integrity_tests {
                 "image native id {} for {} collides with auto.sys.* range",
                 id,
                 name
+            );
+        }
+    }
+
+    #[test]
+    fn hashset_contains_is_typed_as_bool() {
+        assert!(
+            crate::vm::native_catalog::NATIVE_RET_ENTRIES
+                .iter()
+                .any(|(name, ret)| *name == "auto.hashset.contains"
+                    && *ret == crate::vm::native_registry::NativeRetType::Bool),
+            "HashSet.contains returns a boolean encoded as 0/1"
+        );
+    }
+
+    #[test]
+    fn hash_native_ids_are_pinned_and_typed() {
+        let expected = [
+            ("auto.hash.md5", 2810),
+            ("auto.hash.sha1", 2811),
+            ("auto.hash.sha256", 2812),
+            ("auto.hash.sha512", 2813),
+        ];
+        for (name, id) in expected {
+            assert_eq!(
+                crate::vm::native_registry::NATIVE_ID_MAP.get(name),
+                Some(&id),
+                "hash native must use its catalog ID"
+            );
+            assert!(
+                crate::vm::native_catalog::NATIVE_RET_ENTRIES
+                    .iter()
+                    .any(|(entry, ret)| *entry == name
+                        && *ret == crate::vm::native_registry::NativeRetType::String),
+                "hash native return type must be registered as String: {name}"
             );
         }
     }

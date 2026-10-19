@@ -27,10 +27,11 @@ fn meta_to_json(meta: auto_lang::vm::disasm::BytecodeMeta) -> Option<serde_json:
     serde_json::to_value(meta).ok()
 }
 
-pub fn run_source(
+pub fn run_source_with_input(
     source: &str,
     deadline: Option<std::time::Instant>,
     prepend_lib: bool,
+    input: Option<String>,
 ) -> RunResult {
     let start = Instant::now();
 
@@ -40,8 +41,11 @@ pub fn run_source(
     let source = if prepend_lib {
         match auto_lang::bootstrap_lib_source() {
             Some(lib) => {
-                owned = format!("{}
-{}", lib, source);
+                owned = format!(
+                    "{}
+{}",
+                    lib, source
+                );
                 &owned
             }
             None => source,
@@ -50,14 +54,27 @@ pub fn run_source(
         source
     };
 
-    let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_bytecode_with_deadline(source, deadline) {
+    let result = if input.is_some() {
+        match crate::project::prepare_files_temp_dir_with_entry(source, &[], Some("main.at")) {
+            Ok((dir, entry_path)) => {
+                let run = auto_lang::run_with_capture_and_path_and_bytecode_with_input(
+                    source,
+                    &entry_path.to_string_lossy(),
+                    deadline,
+                    input,
+                );
+                let _ = std::fs::remove_dir_all(&dir);
+                run.map_err(|error| error.to_string())
+            }
+            Err(error) => Err(error.to_string()),
+        }
+    } else {
+        auto_lang::run_with_capture_and_bytecode_with_deadline(source, deadline)
+            .map_err(|error| error.to_string())
+    };
+    let (result, stdout, bytecode, meta) = match result {
         Ok((res, out, bc, meta)) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
-        Err(e) => (
-            String::new(),
-            format!("Error: {}", e),
-            Vec::new(),
-            None,
-        ),
+        Err(error) => (String::new(), format!("Error: {error}"), Vec::new(), None),
     };
 
     let time_ms = start.elapsed().as_millis() as u64;
@@ -75,22 +92,26 @@ pub fn run_source(
 /// Plan 582): `files` are materialized at their relative paths in a temp dir,
 /// `source` is written at `entry`, and the entry path drives module resolution
 /// (`use auto.<lib>` resolves via the entry's parent dirs).
-pub fn run_files_project(
+pub fn run_files_project_with_input(
     source: &str,
     files: Vec<crate::project::ProjectFile>,
+    entry: Option<&str>,
     deadline: Option<std::time::Instant>,
+    input: Option<String>,
 ) -> RunResult {
     let start = Instant::now();
 
-    let outcome = crate::project::prepare_files_temp_dir(source, &files).and_then(|(dir, entry_path)| {
-        let run = auto_lang::run_with_capture_and_path_and_bytecode_with_deadline(
-            source,
-            &entry_path.to_string_lossy(),
-            deadline,
-        );
-        let _ = std::fs::remove_dir_all(&dir);
-        Ok::<_, crate::error::AppError>(run)
-    });
+    let outcome = crate::project::prepare_files_temp_dir_with_entry(source, &files, entry)
+        .and_then(|(dir, entry_path)| {
+            let run = auto_lang::run_with_capture_and_path_and_bytecode_with_input(
+                source,
+                &entry_path.to_string_lossy(),
+                deadline,
+                input,
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+            Ok::<_, crate::error::AppError>(run)
+        });
 
     let (result, stdout, bytecode, meta) = match outcome {
         Ok(Ok((res, out, bc, meta))) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
@@ -112,50 +133,51 @@ pub fn run_files_project(
 /// When `files` is provided, the project is first materialized in a temp
 /// directory with those edited contents overlaid, so edits to non-entry files
 /// take effect too.
-pub fn run_project_source(
+pub fn run_project_source_with_input(
     source: &str,
     project_dir: &str,
     files: Option<Vec<crate::project::ProjectFile>>,
     deadline: Option<std::time::Instant>,
+    input: Option<String>,
 ) -> RunResult {
     let start = Instant::now();
 
-    let examples_dir = crate::project::project_examples_dir();
-
-    // With edited files, run from a temp copy; otherwise run in place.
-    let temp_dir = match &files {
-        Some(f) => match crate::project::prepare_project_temp_dir(source, project_dir, Some(f)) {
-            Ok(dir) => Some(dir),
-            Err(e) => {
-                return RunResult {
-                    stdout: format!("Error: {}", e),
-                    result: String::new(),
-                    time_ms: start.elapsed().as_millis() as u64,
-                    bytecode: Vec::new(),
-                    meta: None,
+    // Hosted runs use a fresh copy even when the editor has no overlays, so
+    // relative file IO cannot read or mutate the server's example checkout.
+    let needs_temp = input.is_some() || files.is_some();
+    let temp_dir = match needs_temp {
+        true => {
+            match crate::project::prepare_project_temp_dir(source, project_dir, files.as_deref()) {
+                Ok(dir) => Some(dir),
+                Err(e) => {
+                    return RunResult {
+                        stdout: format!("Error: {}", e),
+                        result: String::new(),
+                        time_ms: start.elapsed().as_millis() as u64,
+                        bytecode: Vec::new(),
+                        meta: None,
+                    }
                 }
             }
-        },
-        None => None,
+        }
+        false => None,
     };
+    let examples_dir = crate::project::project_examples_dir();
     let entry_path = match &temp_dir {
         Some(dir) => dir.join("main.at"),
         None => examples_dir.join(project_dir).join("main.at"),
     };
 
-    let (result, stdout, bytecode, meta) = match auto_lang::run_with_capture_and_path_and_bytecode_with_deadline(
-        source,
-        &entry_path.to_string_lossy(),
-        deadline,
-    ) {
-        Ok((res, out, bc, meta)) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
-        Err(e) => (
-            String::new(),
-            format!("Error: {}", e),
-            Vec::new(),
-            None,
-        ),
-    };
+    let (result, stdout, bytecode, meta) =
+        match auto_lang::run_with_capture_and_path_and_bytecode_with_input(
+            source,
+            &entry_path.to_string_lossy(),
+            deadline,
+            input,
+        ) {
+            Ok((res, out, bc, meta)) => (res, out, disasm_to_json(bc), meta_to_json(meta)),
+            Err(e) => (String::new(), format!("Error: {}", e), Vec::new(), None),
+        };
 
     if let Some(dir) = temp_dir {
         let _ = std::fs::remove_dir_all(&dir);

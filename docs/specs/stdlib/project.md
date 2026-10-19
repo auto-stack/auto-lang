@@ -48,6 +48,12 @@ graph LR
 | may | 协程库绑定 | experimental（.at.skip，未启用） |
 | result | option/result（C 后端） | experimental（.at.skip，未启用） |
 
+## AutoVM 书页示例绑定（PLAN-813）
+
+- `auto.io.read_line_opt() -> Option<str>` 读取一行；空行返回 `Some("")`，有限输入到达 EOF 返回 `None`。它与保留兼容行为的 `auto.io.read_line() -> str` 并存。Playground 为每次 Run/Test 注入独立输入，不替换 CLI 的 OS stdin。
+- TAPL 的 VM 路径使用 `auto.regex.replace(text, pattern, replacement, flags)`（`"g"` 表示替换全部匹配）和 `auto.hash.sha256(text)`（小写十六进制摘要）。这些 API 已有真实 VM native 绑定；这条证据只确认本书实际使用的 AutoVM 路径，不承诺其他后端具备相同装配。
+- VM native catalogue 中 `auto.hashset.contains` 的返回类型是 `bool`，shim 必须按布尔值编码；不能将声明/原生返回类型不一致解释成合法的整数结果。
+
 - 设计：[http-server-files](design/http-server-files.md)（PLAN-729 服务端文件响应：
 - [http-server-uploads](design/http-server-uploads.md)——服务端上传接收
   （multipart/raw 流式 ingress、staging/create-only 提交、预算/期限/取消仲裁；

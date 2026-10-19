@@ -1,8 +1,8 @@
 <template>
-  <div class="auto-fence">
+  <div class="auto-fence" :data-example-id="exampleId">
     <div class="af-toolbar">
       <button
-        v-if="!locked"
+        v-if="canRun"
         ref="toggleBtn"
         type="button"
         class="af-run"
@@ -16,14 +16,14 @@
         <Square v-else :size="13" />
         {{ open ? t.collapse : t.run }}
       </button>
-      <span v-else class="af-lock">
+      <span v-else-if="locked || mode === 'local-only'" class="af-lock">
         <Lock :size="13" />
         {{ t.locked }}
       </span>
     </div>
     <!-- PLAN-718 T-04：模块依赖提示从悬浮工具栏移入独立说明区（可换行、不遮代码），
          Playground 链接按当前 locale。 -->
-    <p v-if="locked" class="af-lock-note">
+    <p v-if="locked || mode === 'local-only'" class="af-lock-note">
       {{ t.lockNote }}
       <a :href="playgroundHref">Playground</a>
     </p>
@@ -33,7 +33,14 @@
            程序运行错误。 -->
       <component
         :is="runnerComp"
-        v-if="runnerState === 'ready' && runnerComp"
+        v-if="exampleId && runnerState === 'ready' && runnerComp"
+        :example-id="exampleId"
+        :display-code="source"
+        :locale="zh ? 'zh' : 'en'"
+      />
+      <component
+        :is="runnerComp"
+        v-else-if="!exampleId && runnerState === 'ready' && runnerComp"
         :code="source"
         autorun
         height="auto"
@@ -63,6 +70,8 @@ import ReaderLoadingState from './ReaderLoadingState.vue'
 const props = defineProps<{
   /** 围栏原文（encodeURIComponent 编码传入；主题层 fence 渲染器注入）。 */
   code: string
+  exampleId?: string
+  mode?: string
 }>()
 
 const open = ref(false)
@@ -109,7 +118,10 @@ const source = computed(() => {
 
 // 启发式 import 检测（与 build-playground-notes.mjs isStandalone 同规则）：
 // 含 use/import 顶层声明的围栏是多文件依赖片段，书页内不可独立运行。
-const locked = computed(() => /^[ \t]*(use|import)[ \t]/m.test(source.value))
+const locked = computed(() => !props.exampleId && /^[ \t]*(use|import)[ \t]/m.test(source.value))
+const canRun = computed(() => props.exampleId
+  ? ['run', 'test', 'expected-error'].includes(props.mode || '')
+  : !locked.value)
 
 // ---------------------------------------------------------------- PLAN-718 T-05
 // runner 异步加载。in-flight promise 去重：快速开合/双击不会并发重复加载，
@@ -135,9 +147,12 @@ function loadRunner(): Promise<void> {
   if (runnerState.value === 'ready') return Promise.resolve()
   if (loadPromise) return loadPromise
   runnerState.value = 'loading'
-  loadPromise = loadAttempt(attempt)
-    .then((m) => {
-      runnerComp.value = m.SnippetRunner
+  const loading = props.exampleId
+    ? import('../../../../packages/auto-playground-vue/src/components/TaplExampleRunner.vue').then((m) => m.default)
+    : loadAttempt(attempt).then((m) => m.SnippetRunner)
+  loadPromise = loading
+    .then((component) => {
+      runnerComp.value = component
       runnerState.value = 'ready'
     })
     .catch(() => {

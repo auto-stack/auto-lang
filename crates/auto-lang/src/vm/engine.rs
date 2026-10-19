@@ -602,6 +602,9 @@ pub struct AutoVM {
     // get a clean error instead of a runaway execution. None = unlimited
     // (default; zero behavior change for existing callers).
     pub deadline: Option<std::time::Instant>,
+    /// Request-scoped stdin for hosted executions. `None` preserves the
+    /// process stdin used by the CLI; `Some(reader)` is isolated to this VM.
+    request_input: std::sync::Mutex<Option<std::io::BufReader<std::io::Cursor<Vec<u8>>>>>,
 }
 
 // Plan 124: Future value for async operations
@@ -979,6 +982,7 @@ impl AutoVM {
             host: None,
             // PLAN-746: no deadline by default (unlimited execution).
             deadline: None,
+            request_input: std::sync::Mutex::new(None),
         }
     }
 
@@ -1028,6 +1032,42 @@ impl AutoVM {
     /// terminated with a synthetic "ExecutionTimeout" last_error.
     pub fn set_deadline(&mut self, deadline: Option<std::time::Instant>) {
         self.deadline = deadline;
+    }
+
+    /// Install finite stdin for one hosted execution. An empty string is an
+    /// immediate EOF; blank lines remain readable lines.
+    pub fn set_request_input(&self, input: Option<String>) {
+        let reader =
+            input.map(|text| std::io::BufReader::new(std::io::Cursor::new(text.into_bytes())));
+        *self
+            .request_input
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = reader;
+    }
+
+    /// Return `None` when this VM uses process stdin, otherwise `Some(line)`
+    /// or `Some(None)` at the request-input EOF.
+    pub fn read_request_input_line(&self) -> Option<Option<String>> {
+        use std::io::BufRead;
+        let mut request_input = self
+            .request_input
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let reader = request_input.as_mut()?;
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => Some(None),
+            Ok(_) => {
+                if line.ends_with('\n') {
+                    line.pop();
+                    if line.ends_with('\r') {
+                        line.pop();
+                    }
+                }
+                Some(Some(line))
+            }
+            Err(_) => Some(None),
+        }
     }
 
     /// Plan 011 (MS3-B): Install a shell host so that `system()` /

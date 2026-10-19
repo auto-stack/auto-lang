@@ -97,7 +97,7 @@ function escapeInInlineCode(content) {
 
 function parseListingAttrs(tag) {
   const attrs = {}
-  const regex = /(\w+)=['"]([^'"]*)['"]/g
+  const regex = /([A-Za-z0-9_-]+)=['"]([^'"]*)['"]/g
   let match
   while ((match = regex.exec(tag)) !== null) {
     attrs[match[1]] = match[2]
@@ -187,6 +187,81 @@ function escapeProp(value) {
   return value.replace(/"/g, '&quot;').replace(/\n/g, '&#10;')
 }
 
+function taplBookRoot(bookDir) {
+  return path.resolve(bookDir, '..')
+}
+
+function resolveTaplReference(bookDir, reference) {
+  if (!reference) return null
+  const bookRoot = taplBookRoot(bookDir)
+  const normalized = reference.replace(/\\/g, '/')
+  const candidates = normalized.startsWith('tapl/')
+    ? [path.join(bookRoot, ...normalized.split('/'))]
+    : [path.join(bookDir, ...normalized.split('/')), path.join(bookRoot, ...normalized.split('/'))]
+  return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0]
+}
+
+function readTaplDisplayCode(bookDir, entry) {
+  const sourcePath = resolveTaplReference(bookDir, entry.display?.source)
+  if (!sourcePath || !fs.existsSync(sourcePath)) {
+    throw new Error(`TAPL example ${entry.id}: display source not found: ${entry.display?.source}`)
+  }
+  if (entry.display?.kind !== 'fence') return fs.readFileSync(sourcePath, 'utf-8').trimEnd()
+  const lines = fs.readFileSync(sourcePath, 'utf-8').split(/\r?\n/)
+  const start = Number(entry.line) - 1
+  const opening = lines[start]?.trim() || ''
+  if (!/^```auto(?:\s|$)/.test(opening)) {
+    throw new Error(`TAPL example ${entry.id}: expected auto fence at ${entry.display.source}:${entry.line}`)
+  }
+  const code = []
+  for (let i = start + 1; i < lines.length && !/^```\s*$/.test(lines[i].trim()); i++) code.push(lines[i])
+  if (start + code.length + 1 >= lines.length) {
+    throw new Error(`TAPL example ${entry.id}: unterminated fence at ${entry.display.source}:${entry.line}`)
+  }
+  return code.join('\n').trimEnd()
+}
+
+function readTaplFileContent(bookDir, sourcePath) {
+  const resolved = resolveTaplReference(bookDir, sourcePath)
+  if (!resolved || !fs.existsSync(resolved)) {
+    throw new Error(`TAPL execution file not found: ${sourcePath}`)
+  }
+  return fs.readFileSync(resolved, 'utf-8').trimEnd()
+}
+
+function resolveTaplExecution(bookDir, exampleId, displayFallback) {
+  const manifestPath = path.join(bookDir, 'examples.json')
+  if (!fs.existsSync(manifestPath)) throw new Error(`TAPL manifest not found: ${manifestPath}`)
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
+  const entry = manifest.entries.find((candidate) => candidate.id === exampleId)
+  if (!entry) throw new Error(`TAPL example-id is not in examples.json: ${exampleId}`)
+  const files = (entry.files || []).map((file) => {
+    if (typeof file === 'string') {
+      const pathValue = file.split('/').at(-1)
+      return { path: pathValue, source: readTaplFileContent(bookDir, file) }
+    }
+    const source = file.content ?? file.source_code ?? (file.file ? readTaplFileContent(bookDir, file.file) : null)
+    if (typeof file.path !== 'string' || typeof source !== 'string') {
+      throw new Error(`TAPL example ${exampleId}: each file needs path and content or file reference`)
+    }
+    return { path: file.path, source: source.trimEnd() }
+  })
+  const main = files.find((file) => file.path === entry.entry)
+  const source = typeof entry.run_source === 'string'
+    ? entry.run_source
+    : (entry.source_file ? readTaplFileContent(bookDir, entry.source_file) : (main?.source || displayFallback))
+  return {
+    id: entry.id,
+    mode: entry.mode,
+    entry: entry.entry || 'main.at',
+    source,
+    files,
+    input: entry.input || '',
+    timeout_secs: Math.min(60, Math.max(1, Number(entry.timeout_secs) || 10)),
+    expected: entry.expected,
+  }
+}
+
 function listingToCodeView(bookDir, tag) {
   const attrs = parseListingAttrs(tag)
   const listingDir = resolveListingDir(bookDir, attrs)
@@ -219,7 +294,15 @@ function listingToCodeView(bookDir, tag) {
   if (files.typescript) props.push(`typescript="${escapeProp(files.typescript)}"`)
   if (files.python) props.push(`python="${escapeProp(files.python)}"`)
   if (attrs.caption) props.push(`caption="${escapeProp(attrs.caption)}"`)
-  props.push(':runnable="true"')
+  if (attrs['example-id']) {
+    const execution = resolveTaplExecution(bookDir, attrs['example-id'], files.auto)
+    props[0] = `auto="${escapeProp(execution.source)}"`
+    props.push(`example-id="${escapeProp(attrs['example-id'])}"`)
+    props.push(`execution="${escapeProp(JSON.stringify(execution))}"`)
+    props.push(`:runnable="${execution.mode !== 'display-only'}"`)
+  } else {
+    props.push(':runnable="true"')
+  }
 
   return `<CodeView ${props.join(' ')} />`
 }
@@ -579,6 +662,24 @@ function prepareBooks() {
     }
 
     console.log(`  ${book}: ${enFiles[book].length} EN, ${zhFiles[book].length} ZH`)
+  }
+
+  const taplSource = path.join(BOOK_ROOT, 'tapl')
+  if (fs.existsSync(path.join(taplSource, 'examples.json'))) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(taplSource, 'examples.json'), 'utf-8'))
+    const entries = manifest.entries.map((entry) => {
+      const displayCode = readTaplDisplayCode(taplSource, entry)
+      const execution = resolveTaplExecution(taplSource, entry.id, displayCode)
+      return { ...entry, display_code: displayCode, execution }
+    })
+    const materialized = { ...manifest, entries }
+    const json = JSON.stringify(materialized, null, 2) + '\n'
+    const generatedBookManifest = path.join(BOOKS_DST_EN, 'tapl', 'examples.json')
+    const generatedPublicManifest = path.join(WEBSITE_ROOT, 'public', 'tapl-examples.json')
+    ensureDir(path.dirname(generatedBookManifest))
+    ensureDir(path.dirname(generatedPublicManifest))
+    fs.writeFileSync(generatedBookManifest, json, 'utf-8')
+    fs.writeFileSync(generatedPublicManifest, json, 'utf-8')
   }
 
   return { en: enFiles, zh: zhFiles }

@@ -1,5 +1,5 @@
 <template>
-  <div class="code-view" :class="{ dark: isDark }">
+  <div class="code-view" :class="{ dark: isDark }" :data-example-id="exampleId">
     <div class="code-view-header">
       <div class="tabs">
         <button
@@ -12,21 +12,29 @@
           {{ lang.label }}
         </button>
       </div>
-      <div class="actions" v-if="isAuto">
+      <div class="actions" v-if="isAuto && canRun">
         <button class="run-btn" @click="runCode" :disabled="isLoading">
           <Play v-if="!isLoading" :size="12" />
           <Loader2 v-else :size="12" class="spin" />
-          {{ isLoading ? (zhLabels ? '运行中…' : 'Running...') : (zhLabels ? '运行' : 'Run') }}
+          {{ isLoading ? (zhLabels ? '运行中…' : 'Running...') : runLabel }}
         </button>
       </div>
     </div>
     <div class="code-view-body">
       <div ref="editorContainer" class="editor-pane"></div>
     </div>
-    <div v-if="showOutput" class="output-pane">
-      <div class="output-header">{{ zhLabels ? '输出' : 'Output' }}</div>
-      <pre class="output-content">{{ stdout || stderr || (zhLabels ? '无输出' : 'No output') }}</pre>
+    <div v-if="execution" class="input-pane">
+      <label class="input-label" for="tapl-example-input">{{ zhLabels ? '程序输入' : 'Program input' }}</label>
+      <textarea id="tapl-example-input" v-model="requestInput" rows="3" spellcheck="false" />
     </div>
+    <div v-if="showOutput" class="output-pane">
+      <div class="output-header">{{ execution?.mode === 'test' ? (zhLabels ? '测试结果' : 'Test results') : (zhLabels ? '输出' : 'Output') }}</div>
+      <pre class="output-content">{{ testSummary || stdout || stderr || (zhLabels ? '无输出' : 'No output') }}</pre>
+    </div>
+    <details v-if="expectedText" class="expected-pane">
+      <summary>{{ zhLabels ? '预期结果' : 'Expected result' }}</summary>
+      <pre>{{ expectedText }}</pre>
+    </details>
     <div v-if="caption" class="code-view-caption">{{ caption }}</div>
   </div>
 </template>
@@ -59,6 +67,8 @@ const props = defineProps<{
   caption?: string
   runnable?: boolean
   apiUrl?: string
+  exampleId?: string
+  execution?: string
 }>()
 
 const activeLang = ref('auto')
@@ -66,6 +76,36 @@ const isLoading = ref(false)
 const showOutput = ref(false)
 const stdout = ref('')
 const stderr = ref('')
+const testSummary = ref('')
+const execution = computed(() => {
+  if (!props.execution) return undefined
+  try {
+    return JSON.parse(props.execution) as {
+      id: string
+      mode: string
+      entry: string
+      source: string
+      files: { path: string; source: string }[]
+      input: string
+      timeout_secs: number
+      expected?: { kind?: string; stdout?: string; value?: string; diagnostic?: string; contains?: string[] }
+    }
+  } catch {
+    return undefined
+  }
+})
+const requestInput = ref(execution.value?.input || '')
+watch(execution, (next) => { requestInput.value = next?.input || '' })
+const expectedText = computed(() => {
+  const expected = execution.value?.expected
+  if (!expected || expected.kind === 'pending') return ''
+  if (expected.kind === 'stdout_contains') return (expected.contains || []).join('\n')
+  return expected.stdout ?? expected.value ?? expected.diagnostic ?? ''
+})
+const canRun = computed(() => execution.value?.mode !== 'display-only' && (props.runnable ?? true))
+const runLabel = computed(() => execution.value?.mode === 'test'
+  ? (zhLabels.value ? '测试' : 'Test')
+  : (zhLabels.value ? '运行' : 'Run'))
 const editorContainer = ref<HTMLDivElement>()
 let editorView: EditorView | null = null
 const isDark = ref(false)
@@ -206,16 +246,38 @@ async function runCode() {
   showOutput.value = true
   stdout.value = ''
   stderr.value = ''
+  testSummary.value = ''
 
   try {
-    const res = await fetch(`${props.apiUrl || 'http://localhost:3030'}/api/run`, {
+    const descriptor = execution.value
+    const files = descriptor?.files.map((file) => ({
+      ...file,
+      source: file.path === descriptor.entry ? code : file.source,
+    })) || []
+    const request: Record<string, unknown> = { source: code }
+    if (descriptor) {
+      request.entry = descriptor.entry
+      request.files = files
+      request.input = requestInput.value
+      request.timeout_secs = descriptor.timeout_secs
+    }
+    const apiBase = (props.apiUrl || '').replace(/\/$/, '')
+    const endpoint = descriptor?.mode === 'test' ? 'test' : 'run'
+    const res = await fetch(`${apiBase}/api/${endpoint}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: code }),
+      body: JSON.stringify(request),
     })
     const data = await res.json()
-    stdout.value = data.stdout || ''
-    stderr.value = data.stderr || ''
+    if (!res.ok) {
+      stderr.value = data.message || data.error || `HTTP ${res.status}`
+    } else if (descriptor?.mode === 'test') {
+      const reports = Array.isArray(data.reports) ? data.reports : []
+      testSummary.value = `${data.passed ?? 0}/${data.executed ?? 0} ${zhLabels.value ? '项通过' : 'tests passed'}${data.failed ? ` · ${data.failed} ${zhLabels.value ? '项失败' : 'failed'}` : ''}${reports.map((report: { qualified_name?: string; error?: string }) => report.error ? `\n${report.qualified_name || ''}: ${report.error}` : '').filter(Boolean).join('')}`
+    } else {
+      stdout.value = data.stdout || ''
+      stderr.value = data.stderr || ''
+    }
   } catch (e) {
     stderr.value = zhLabels.value
       ? '错误：无法连接 Playground 服务。'
@@ -314,6 +376,31 @@ async function runCode() {
   min-height: 120px;
 }
 
+.input-pane {
+  padding: 0.6rem 0.75rem;
+  border-top: 1px solid hsl(var(--border));
+}
+
+.input-label {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.72rem;
+}
+
+.input-pane textarea {
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  padding: 0.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 5px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-size: 0.8rem;
+}
+
 .editor-pane {
   min-height: 120px;
 }
@@ -365,6 +452,17 @@ async function runCode() {
   word-break: break-word;
   max-height: 200px;
   overflow-y: auto;
+}
+
+.expected-pane {
+  padding: 0.5rem 0.75rem;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.78rem;
+}
+
+.expected-pane pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .code-view-caption {

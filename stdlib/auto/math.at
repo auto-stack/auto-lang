@@ -22,6 +22,18 @@ pub fn max(a i64, b i64) i64;
 /// Example: sqrt(25.0)  // returns 5.0
 pub fn sqrt(d double) double;
 
+/// Returns the absolute value of a floating-point number.
+pub fn abs_f(n double) double;
+
+/// Raises `x` to the floating-point power `y`.
+pub fn powf(x double, y double) double;
+
+/// Returns the sine of an angle in radians.
+pub fn sin(x double) double;
+
+/// Returns the cosine of an angle in radians.
+pub fn cos(x double) double;
+
 // ============================================================================
 // Auto-Implemented Functions
 // ============================================================================

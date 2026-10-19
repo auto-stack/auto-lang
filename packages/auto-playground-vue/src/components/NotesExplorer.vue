@@ -40,7 +40,12 @@
             <p>{{ active.note.description }}</p>
           </details>
         </header>
+        <TaplExampleRunner
+          v-if="active.note.tags.includes('tapl')"
+          :example-id="active.note.id"
+        />
         <PlaygroundCard
+          v-else
           ref="card"
           :key="active.note.id"
           :code="cardCode"
@@ -64,6 +69,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { FileCode, ExternalLink, RefreshCw } from 'lucide-vue-next'
 import NotesSidebar from './NotesSidebar.vue'
 import PlaygroundCard from './PlaygroundCard.vue'
+import TaplExampleRunner from './TaplExampleRunner.vue'
 import { useNotes } from '../composables/useNotes'
 import type { NoteGroup } from '../composables/useNotes'
 import type { NoteMeta } from '../types'

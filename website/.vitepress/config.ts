@@ -1,6 +1,11 @@
+import fs from 'node:fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 const __root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../')
+const taplCatalogPath = path.join(__root, 'website', 'books', 'tapl', 'examples.json')
+const taplModes = fs.existsSync(taplCatalogPath)
+  ? new Map((JSON.parse(fs.readFileSync(taplCatalogPath, 'utf-8')).entries || []).map((entry: { id: string; mode: string }) => [entry.id, entry.mode]))
+  : new Map<string, string>()
 import { defineConfig, type Plugin } from 'vitepress'
 import { shared } from './config/shared'
 import { en } from './config/en'
@@ -38,7 +43,7 @@ export default defineConfig({
   markdown: {
     // ```auto 裸围栏后处理 → <AutoFence>（▶ Run 原地展开/收起还原；Plan 582 T15）。
     config(md) {
-      md.use(autoFencePlugin)
+      md.use(autoFencePlugin, { modes: taplModes })
     },
   },
   locales: {

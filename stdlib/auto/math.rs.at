@@ -24,3 +24,27 @@ pub fn max(a i64, b i64) i64 {
 pub fn sqrt(d double) double {
     return d.sqrt()
 }
+
+/// Returns the absolute value of a floating-point number
+#[rs]
+pub fn abs_f(n double) double {
+    return n.abs()
+}
+
+/// Raises `x` to the floating-point power `y`
+#[rs]
+pub fn powf(x double, y double) double {
+    return x.powf(y)
+}
+
+/// Returns the sine of an angle in radians
+#[rs]
+pub fn sin(x double) double {
+    return x.sin()
+}
+
+/// Returns the cosine of an angle in radians
+#[rs]
+pub fn cos(x double) double {
+    return x.cos()
+}
