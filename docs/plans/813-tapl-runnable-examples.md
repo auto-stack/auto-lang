@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-813
-status: executing
+status: execution_done
 feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 1
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm]
-current_step: 3
+current_step: 8
 total_steps: 9
 ---
 
@@ -149,16 +149,16 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | ID | owner_stage | 依赖 | 操作/真实路径或符号 | 结果及验证 |
 |---|---|---|---|---|
 | T-01 | work | 用户确认 r1 | 建实施组，核对 prepare-content.js/auto-fence-md.ts 与书稿；公共 CLI/API/test_code 跑 §5.1 探针，设计执行元数据和审计入口 | ✅ 完成：决策与基线探针已回写 §5.1 并记录于 `t01-findings.md`；T-02..06 依赖此合同 |
-| T-02 | work | T-01 | Playground `src/routes/run.rs,vm_runner.rs,project.rs`、auto-lang `src/lib.rs,vm/host_capabilities.rs,vm/ffi/stdlib.rs` 最小相关路径 | ⏳ 复开 PLAN813-R2：为 `/api/test` 补真实 handler/API 负例、共享 deadline 超时后恢复、并发请求输入隔离验收；当前仅有 VM 级输入并发测试和前端 mock 成功响应。 |
-| T-03 | work | T-01/02 | website CodeView.vue/AutoFence.vue、auto-fence-md.ts、prepare-content.js、scripts/build-playground-notes.mjs；必要的包 SnippetRunner.vue/usePlayground.ts/types.ts | ✅ 完成：共享 catalog 与执行描述、同源 API、可编辑完整源/输入/多文件/测试/展示模式；生产构建 97.22s 通过，`tests/tapl-run.spec.ts` 5/5。 |
-| T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | ✅ 完成：修复 ch00–13 作者源、Listing、预期与页面映射；ch08 按用户确认保留可运行改写并说明差异。全量源审计见 T-06。 |
-| T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ⏳ 复开 PLAN813-R1/R3：Base64/Hex 改为复用现有编码依赖的可运行双语源；补齐 ch22 可启动、可完成一次连接/消息往返/断开并干净关闭的本地工程，或在工作阶段提交所需契约调整。 |
-| T-06 | work | T-02/04/05 | 新增 scripts/check-tapl-examples.py、website/tests/tapl-run.spec.ts；最终清单和可重放证据、规范增量 | ⏳ 复开 PLAN813-R1/R2/R3：按修复后作者源和目录重新跑全 401 项审计、负控和涉及的双语页面/Notes 验证；更新全源报告及静态清单。旧报告中的 401/401 不证明错误的 display-only 处置符合语义。 |
-| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ⏳ 复开：修复提交后重新冻结两仓提交，更新输入/依赖/规范哈希和工作收据，再交最终复审。 |
+| T-02 | work | T-01 | Playground `/api/test` handler、共享 deadline、输入隔离 | ✅ 完成（闭合 R2）：真实 handler 单测覆盖正确/错误断言、超时响应、下一请求恢复、并发请求输入隔离；定向测试 3/3。浏览器测试仍单独验证前端请求形状。 |
+| T-03 | work | T-01/02 | website CodeView.vue/AutoFence.vue、prepare-content.js 与执行描述消费者 | ✅ 完成：共享 catalog、同源 API、完整可编辑源/输入/多文件/测试/展示和本地运行模式；最终生产构建 96.38s 通过，`tests/tapl-run.spec.ts` 6/6。 |
+| T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | ✅ 完成：修复 ch00–13 作者源、Listing、预期与页面映射；ch08 按用户确认保留可运行改写并说明差异；ch09 文件内容去除重复末尾换行。 |
+| T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成（闭合 R1/R3）：Base64/Hex 复用现有依赖并可运行；新增 loopback TCP server/client 本地工程及明确范围说明，完成连接、消息往返、断开和优雅关停验收。 |
+| T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R1/R2/R3）：54 页、1831 围栏、406 个目录项（382 run、14 test、6 display-only、4 local-only）；396 个 run/test 项 396/396 通过。目录哈希/行锚点无错；有效样例通过，变异输出和陈旧锚点负控均以退出码 1 失败。 |
+| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：修复后代码与书稿分别冻结为 `b8901c4e4de237c53cd89cfa23b844066234fb70` / `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`，两个实施树 clean；更新收据与源哈希并核对 SD-01..05。 |
 | T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | AC-07，pass 后 reviewed；merge-owned 全档门禁 pending，不能声称交付完成 |
 | T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | AC-08；每树移除前 wt-guard clean，保留他人 WIP，提供实际收据 |
 
-T-01、T-03、T-04 保持完成；复审已复开 T-02、T-05、T-06、T-07。T-08 本轮 needs_fix，T-09 尚未开始。先闭合 PLAN813-R1..R4，再重冻源与验收报告；merge-owned Cargo 门禁继续 pending。
+T-01..T-07 已完成；PLAN813-R1..R4 均有对应修复和证据。当前进入 T-08 最终复审；`cargo t`、`cargo tv`、`cargo tb` 仍是复审通过后的 merge-owned 门禁，未在执行阶段提前运行。
 
 ## 9. 复审记录
 
@@ -196,6 +196,17 @@ stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_pa
 | PLAN813-R4 | P2 / 收口缺陷 | AC-07；T-07 | 代码提交修改 `docs/specs/website/project.md` 并增加导航链接，但 frontmatter 与规范增量表遗漏该文件。已补 `supersedes_spec_components` 与 SD-05，后续须随修订后 diff 再核对。 |
 
 merge_owned_gates: `cargo t`、`cargo tv`、`cargo tb` 均 pending；本次没有运行。outcome: needs_fix；Plan 状态回到 `executing`，T-02/T-05/T-06/T-07 复开，current_step=3；next=work，完成 R1..R4 后提交新冻结提交并重新最终复审。
+
+### 2026-10-19 复审修复收口（work handoff）
+
+- stage: work；review_scope: final 的 R1 已退回 work，本记录只声明已完成修复，不代替 T-08。复审使用的旧实现基线为 auto-lang `cacb9fcc335b4addc5a0db67e7c64282b30d445e`、book `de49ae222da45fd9b33eeb443fdd776658a1750c`；修复后的冻结提交为 auto-lang `b8901c4e4de237c53cd89cfa23b844066234fb70`、book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`。实施树分别是 `D:/autostack/.wt/lang-813/auto-lang` / `plan-813-dev` 与 `D:/autostack/.wt/lang-813/book` / `plan-813-book`，冻结时均 clean。最初批准基线仍见上方 R1 记录；auto-down 依赖修订仍为 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`，其 12 个既有 WIP 文件未纳入或清理。
+- 修复闭合：R1 为 Base64/Hex 书稿改用现有依赖 API 并恢复双语真实运行；R2 为 `/api/test` 实际 handler 增加成功/失败断言、超时返回、下一次请求恢复和并发输入隔离测试；R3 为 ch22 新增本地 TCP server/client 与说明、端到端检查 connect/send/reply/disconnect、正常进程退出和监听端口关闭；R4 的 SD-05/frontmatter 已在 R1 修复，当前重新核对过。
+- 最终静态清单：54 页、1831 个代码围栏、310 个 Listing 视图、96 个独立 AutoFence，共 406 个 catalog 入口：382 run、14 test、6 display-only、4 local-only。完整执行报告 `attachments/813/tapl-full-execution.json.txt` SHA-256 `FFDBF8863F57C0FB24F967B308CDCB8FB12B4D2B8D6F19D6019FD43DF94D9758`；`tapl/examples.json` SHA-256 `ED4E42E87DBEFF12B4E46291A63CAE92333FAFDA5270182C39420ED4CE1817D3`。静态清单 CSV/MD SHA-256 分别为 `1AFDEA629C16D765D0195CFF0D0A907D0D8E8B0B1B2B56B5DFFE44EFA38B4FA3` / `9334D39D16B808807D53D7E455030EDED638E7F7E261DE714757E3A276DEC760`。
+- 可重放结果：`check-tapl-examples.py --audit-only` 0 错；同工具全量执行 396/396（382 run + 14 test）通过、0 失败；负控在一项有效样例通过后分别将 expected stdout 和 page line 锚点实际变异，均返回退出码 1；最终网站生产构建 96.38s；`CI=1 AUTO_WEBSITE_TEST_PORT=4185 npm run test:e2e -- tests/tapl-run.spec.ts` 6/6；loopback chat verifier 输出 `PASS: connect, send, reply, disconnect, and graceful shutdown`。R2 handler 三测试 3/3；stdlib assembly 定向测试 1/1；`cargo check -p auto-lang` 与 `cargo build -p auto` 在本计划此前验证通过。`git diff --check` 使用 `core.whitespace=cr-at-eol` 在两树通过。
+- AC-01..06 现有工作证据均为 pass；AC-07 交给 T-08 从冻结差异重新审计。C 编译器仍不可用，C 对应代码作了逐段核对但未编译，这是明确环境限制，不冒充运行证据。网站构建仍有既有自定义语法语言回退到纯文本的提示。
+- merge_owned_gates: `cargo t`、VM 触面 `cargo tv`、书测试触面 `cargo tb` 均 pending；没有在 work/internal review 阶段运行全档。`tf` 由 T-09 主检出按批量回归到期规则裁决。
+
+stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | reviewed_commit: `b8901c4e4de237c53cd89cfa23b844066234fb70` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | diff_base: `cacb9fcc335b4addc5a0db67e7c64282b30d445e` + `de49ae222da45fd9b33eeb443fdd776658a1750c` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | task_ids: T-02,T-05,T-06,T-07 | evidence: this record and `attachments/813/tapl-full-execution.json.txt` | blockers: no work-owned criteria; C compiler unavailable, disclosed above | next_responsible_role: review
 
 ## 10. 待澄清事项
 
