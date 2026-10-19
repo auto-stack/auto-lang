@@ -35,8 +35,9 @@
   成功/trap/诊断/能力门/资源负例全 oracle 形态）。
 - 兼容：probe 接缝 17 腿绿（decode 负例/v1 pilot 原样/atom 准入/stale 分族/
   收容/类型负例）；contract_v2 20 测绿。**sema corpus 腿阻断在案**：其
-  bindings oracle JSON 未被 master 跟踪（根 `.gitignore` `*.json`），Plan 813
-  分支 `6643ceaeb` 修复在途未合入——非本计划 diff 引入，登记待 813 合入后重放。
+  bindings oracle JSON 未被 master 跟踪（根 `.gitignore `*.json``）——**r7 已闭合**：
+  Plan 813 已归档合入（master 45fcd09c9/602a13527），两个 oracle JSON 已随本分支
+  同步入库并实际重放（probe_adapter 18/18）。
 
 ## SD 提案（merge 沉淀输入；review 复核后定稿）
 
@@ -76,7 +77,7 @@ touched_goals=[] 说明：798 全程为 experimental/ 探针+测试接缝扩展�
 - 依赖只读：ac-core/ac-artifact-probe/ac-sema-contract 均未修改。
 - 组内 auto-down 兄弟树：`D:/autostack/.wt/lang-798/auto-down`（detached @
   master c39ac7f，根 workspace 路径依赖所需，无本计划改动）。
-- 交叉：Plan 813（未合入）拥有 oracle JSON 跟踪修复；本计划不改其文件。
+- 交叉：Plan 813 已归档合入，其 oracle JSON 已入库；本计划分支同步后兼容 18/18。
 
 ## merge-owned pending
 

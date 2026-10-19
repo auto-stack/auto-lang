@@ -188,6 +188,48 @@ fn av_resources_front_door_nesting_boundary() {
     assert_eq!(*r.counters.get("admission_reject").unwrap_or(&0), 1);
 }
 
+/// F798-R7-02: bool-literal operands and named-argument separators are
+/// expression-internal — `true && true && …` and `idfn(x:1) + idfn(x:1) + …`
+/// accumulate construction depth like any other chain and hit the same
+/// 128 door.
+#[test]
+fn av_resources_bool_and_named_arg_chains_front_door() {
+    let bool_chain = |n: usize| {
+        format!(
+            "fn main() int {{\n    var x = {}\n    return 0\n}}\n",
+            vec!["true"; n].join(" && ")
+        )
+    };
+    let named_chain = |n: usize| {
+        format!(
+            "fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    var x = {}\n    return x\n}}\n",
+            vec!["idfn(x:1)"; n].join(" + ")
+        )
+    };
+    let mut d = Driver::ephemeral();
+    for n in [1usize, 2, 16] {
+        let src = bool_chain(n);
+        assert!(front_door_admit(&src).is_ok(), "bool chain {n} admits");
+        let r = d.request(&src, "d_main", &[]);
+        assert!(r.ok(), "bool chain {n} executes: {:?}", r.diag);
+        let src = named_chain(n);
+        assert!(front_door_admit(&src).is_ok(), "named chain {n} admits");
+        let r = d.request(&src, "d_main", &[]);
+        assert!(r.ok(), "named chain {n} executes: {:?}", r.diag);
+        assert_eq!(r.value_i32(), Some(n as i32), "value proves evaluation");
+    }
+    for n in [129usize, 400, 600] {
+        for (tag, src) in [("bool", bool_chain(n)), ("named", named_chain(n))] {
+            let err = front_door_admit(&src).unwrap_err();
+            assert_eq!(err.code, "av.resource.frontend-nesting", "{tag} n={n}");
+            let r = d.request(&src, "d_main", &[]);
+            let diag = r.diag.clone().expect("rejected");
+            assert_eq!(diag.stage, "admission", "{tag} n={n}: at the door");
+            assert_eq!(diag.code, "av.resource.frontend-nesting", "{tag} n={n}");
+        }
+    }
+}
+
 /// F798-R6-04: BRACKETED operands do not reset the construction run —
 /// `(1) + (1) + …` nests exactly like the unbracketed chain and must hit
 /// the same 128 front door, at the DOOR (never `mir.lower.depth` from

@@ -32,6 +32,8 @@ fn main() {
         "case-serve" => case_serve(),
         "load-revision" => load_revision(&args[1..]),
         "bench-turnaround" => bench_turnaround(&args[1..]),
+        "native-build" => native_build(&args[1..]),
+        "native-run" => native_run(&args[1..]),
         other => {
             eprintln!("unknown subcommand `{}`", other);
             usage();
@@ -46,6 +48,10 @@ fn usage() -> ! {
     eprintln!("       av_probe_worker bench-turnaround --samples N --gate-ms MS --out FILE");
     eprintln!(
         "       av_probe_worker case-serve  (PLAN-798 T-07: AutoDown probe envelope on stdin)"
+    );
+    eprintln!("       av_probe_worker native-build --src-file F --entry FN --workdir DIR [--trace-lib P] [--caps C1,C2]");
+    eprintln!(
+        "       av_probe_worker native-run --exe P --budget-ms N --stdout-cap N --stderr-cap N"
     );
     exit(2)
 }
@@ -566,4 +572,89 @@ fn bench_turnaround(args: &[String]) -> ! {
     line.push('\n');
     std::io::stdout().write_all(line.as_bytes()).ok();
     exit(if failures.is_empty() { 0 } else { 5 })
+}
+
+/// F798-R7-01 helper: the UNSUPERVISED native build stages, run inside this
+/// worker so the PARENT can kill the whole tree (including a stalled
+/// linker) at the remaining-budget deadline. Prints one JSON line.
+fn native_build(args: &[String]) -> ! {
+    let src_file = flag(args, "--src-file").unwrap_or_else(|| usage());
+    let entry = flag(args, "--entry").unwrap_or_else(|| usage());
+    let workdir = flag(args, "--workdir").unwrap_or_else(|| usage());
+    let trace_lib = flag(args, "--trace-lib");
+    let caps: Vec<String> = flag(args, "--caps")
+        .map(|c| {
+            c.split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+    let out = match (|| -> Result<serde_json::Value, String> {
+        let src = std::fs::read_to_string(&src_file).map_err(|e| format!("build: {}", e))?;
+        let compiled = auto_ac_prototype::source::compile_scalar_source(&src, "native.at", &caps)
+            .map_err(|ds| {
+            format!(
+                "build: {:?}",
+                ds.first().map(|d| d.message.clone()).unwrap_or_default()
+            )
+        })?;
+        let (obj, exe, receipt) = auto_av_probe::native_reference::build_stages(
+            &compiled.checked,
+            &entry,
+            std::path::Path::new(&workdir),
+            trace_lib.as_deref().map(std::path::Path::new),
+        )?;
+        Ok(serde_json::json!({
+            "ok": true,
+            "obj": obj.display().to_string(),
+            "exe": exe.display().to_string(),
+            "receipt": receipt.display().to_string(),
+        }))
+    })() {
+        Ok(v) => v,
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    };
+    let mut line = serde_json::to_string(&out).unwrap_or_default();
+    line.push('\n');
+    use std::io::Write;
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(0)
+}
+
+/// F798-R7-01 helper: the contained, capped run stage. Prints one JSON line
+/// (streams base64 — exact bytes, invalid UTF-8 included).
+fn native_run(args: &[String]) -> ! {
+    let exe = flag(args, "--exe").unwrap_or_else(|| usage());
+    let budget_ms: u64 = flag(args, "--budget-ms")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(5000);
+    let stdout_cap: usize = flag(args, "--stdout-cap")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1024 * 1024);
+    let stderr_cap: usize = flag(args, "--stderr-cap")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1024 * 1024);
+    let out = match auto_av_probe::native_reference::run_stage(
+        std::path::Path::new(&exe),
+        std::time::Duration::from_millis(budget_ms),
+        stdout_cap,
+        stderr_cap,
+    ) {
+        Ok((code, so, se)) => {
+            use base64::Engine as _;
+            serde_json::json!({
+                "ok": true,
+                "exit_code": code,
+                "stdout_b64": base64::engine::general_purpose::STANDARD.encode(&so),
+                "stderr_b64": base64::engine::general_purpose::STANDARD.encode(&se),
+            })
+        }
+        Err(e) => serde_json::json!({ "ok": false, "error": e }),
+    };
+    let mut line = serde_json::to_string(&out).unwrap_or_default();
+    line.push('\n');
+    use std::io::Write;
+    std::io::stdout().write_all(line.as_bytes()).ok();
+    exit(0)
 }

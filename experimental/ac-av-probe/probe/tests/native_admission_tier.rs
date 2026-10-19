@@ -161,7 +161,7 @@ fn native_admission_real_pe_rejected() {
     // parity leg uses, without the trace lib).
     let workdir = std::env::temp_dir().join(format!("av798-nadm-pe-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
-    let run = auto_av_probe::native_reference::build_and_run(&checked(), "d_main", &workdir, None)
+    let run = auto_av_probe::native_reference::build_and_run(SRC, &[], "d_main", &workdir, None)
         .expect("native build+run");
     assert_eq!(run.exit_code, 7);
     let pe_bytes = std::fs::read(&run.exe_path).expect("read PE");
@@ -205,7 +205,6 @@ fn native_reference_capped_stream_fails_closed() {
     let _env_guard = NATIVE_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let src = "fn main() int {\n    let a = mark_a()\n    return a\n}\n";
     let caps = vec!["hir.test.trace.v1".to_string()];
-    let compiled = compile_scalar_source(src, "cap.at", &caps).expect("frontend");
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     let support = repo.join("experimental/ac-core/test-support");
     let lib = support.join("target/debug/ac_trace_support.lib");
@@ -225,7 +224,8 @@ fn native_reference_capped_stream_fails_closed() {
     let _ = std::fs::remove_dir_all(&workdir);
     // Uncapped control: real run, stderr carries the mark bytes.
     let ok = auto_av_probe::native_reference::build_and_run_with_caps(
-        &compiled.checked,
+        src,
+        &caps,
         "d_main",
         &workdir,
         Some(&lib),
@@ -237,7 +237,8 @@ fn native_reference_capped_stream_fails_closed() {
     let workdir2 = std::env::temp_dir().join(format!("av798-nadm-cap0-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir2);
     let capped = auto_av_probe::native_reference::build_and_run_with_caps(
-        &compiled.checked,
+        src,
+        &caps,
         "d_main",
         &workdir2,
         Some(&lib),
@@ -294,12 +295,12 @@ fn native_reference_pre_stage_overrun_refuses_to_start_link() {
     return 7
 }
 ";
-    let compiled = compile_scalar_source(src, "budget.at", &[]).expect("frontend");
     let workdir = std::env::temp_dir().join(format!("av798-nadm-budget-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
     std::env::set_var("AV798_NATIVE_FAKE_ELAPSED_MS", "61000");
     let out = auto_av_probe::native_reference::build_and_run_with_caps(
-        &compiled.checked,
+        src,
+        &[],
         "d_main",
         &workdir,
         None,
@@ -314,6 +315,75 @@ fn native_reference_pre_stage_overrun_refuses_to_start_link() {
         ),
         "a pre-link stage over the shared clock refuses to start the link: {:?}",
         out
+    );
+    let _ = std::fs::remove_dir_all(&workdir);
+}
+
+/// F798-R7-04 replay: an 82-byte structured object (full header + section
+/// header + one symbol + closing string table) whose section declares raw
+/// data at an out-of-range pointer — rejected at the section-window check.
+#[test]
+fn native_admission_section_data_out_of_range_rejected() {
+    let mut fake = vec![0u8; 20 + 40 + 18 + 4];
+    fake[0..2].copy_from_slice(&0x8664u16.to_le_bytes()); // AMD64
+    fake[2..4].copy_from_slice(&1u16.to_le_bytes()); // 1 section
+    fake[8..12].copy_from_slice(&(20u32 + 40).to_le_bytes()); // sym ptr after section table
+    fake[12..16].copy_from_slice(&1u32.to_le_bytes()); // 1 symbol
+    let sh = 20;
+    fake[sh + 16..sh + 20].copy_from_slice(&16u32.to_le_bytes()); // SizeOfRawData
+    fake[sh + 20..sh + 24].copy_from_slice(&u32::MAX.to_le_bytes()); // raw ptr
+    let st = 20 + 40 + 18;
+    fake[st..st + 4].copy_from_slice(&4u32.to_le_bytes()); // strtab closes
+    let r = ref_for_coff(&fake);
+    assert!(matches!(
+        admit_native_ref(&r, &fake, &ctx()),
+        Err(NativeAdmissionError::MalformedObject(w)) if w.contains("raw-data window overruns")
+    ));
+}
+
+/// F798-R7-01 replay: an in-flight linker stall past the REMAINING build
+/// budget is killed with its tree — fake 59s pre-stage + a real 12s-stalling
+/// "linker" (AC741_RUST_LLD override) must return Budget within ~2s of the
+/// 1s remaining budget, never run the stall to completion.
+#[cfg(windows)]
+#[test]
+fn native_reference_inflight_linker_stall_killed_at_remaining_budget() {
+    let _env_guard = NATIVE_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let slow = std::env::temp_dir().join(format!("av798-slow-lld-{}.cmd", std::process::id()));
+    std::fs::write(
+        &slow,
+        "@echo off\r\nping -n 13 127.0.0.1 > nul\r\nexit /b 9\r\n",
+    )
+    .unwrap();
+    let workdir = std::env::temp_dir().join(format!("av798-nadm-stall-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&workdir);
+    std::env::set_var("AV798_NATIVE_FAKE_ELAPSED_MS", "59000");
+    std::env::set_var("AC741_RUST_LLD", &slow);
+    let started = std::time::Instant::now();
+    let out = auto_av_probe::native_reference::build_and_run_with_caps(
+        SRC,
+        &[],
+        "d_main",
+        &workdir,
+        None,
+        1024 * 1024,
+        1024 * 1024,
+    );
+    let wall = started.elapsed();
+    std::env::remove_var("AV798_NATIVE_FAKE_ELAPSED_MS");
+    std::env::remove_var("AC741_RUST_LLD");
+    let _ = std::fs::remove_file(&slow);
+    assert!(
+        matches!(
+            out,
+            Err(auto_av_probe::native_reference::NativeError::Budget(_))
+        ),
+        "the stalled build is a Budget kill, not a completed link: {:?}",
+        out
+    );
+    assert!(
+        wall < std::time::Duration::from_secs(6),
+        "killed near the ~1s remaining budget (took {wall:?}), not after the 12s stall"
     );
     let _ = std::fs::remove_dir_all(&workdir);
 }

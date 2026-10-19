@@ -1,14 +1,22 @@
-//! Native cross-check reference (PLAN-798 §5.3).
+//! Native cross-check reference (PLAN-798 §5.3), FULLY SUPERVISED
+//! (F798-R7-01).
 //!
 //! The reference walks the ALREADY-LANDED path — Checked HIR → Cranelift →
-//! COFF → PE — and runs the produced executable under the deadline/job
-//! executor from ac-core. Expected outputs are INDEPENDENT (fixed
-//! fixtures/hand-computed values); comparing AV against native alone is
-//! never sufficient, and native exit 70 is the existing trap contract. The
-//! reference never generates its expectations from the new MIR/ABC.
+//! COFF → PE — and runs the produced executable. Expected outputs are
+//! INDEPENDENT (fixed fixtures/hand-computed values); comparing AV against
+//! native alone is never sufficient, and native exit 70 is the existing
+//! trap contract. The reference never generates its expectations from the
+//! new MIR/ABC.
 //!
-//! Budgets (frozen §3): build ≤60s, run ≤5s, total ≤70s per request —
-//! enforced with the same deadline machinery ac-core uses.
+//! Supervision model (the frozen §3 budgets are ENFORCED, not observed):
+//! each stage runs inside the plan's OWN bounded worker (`av_probe_worker
+//! native-build` / `native-run`), and the parent drives every call through
+//! ac-core's contained executor with a REMAINING-time deadline measured
+//! from the request start — a linker that stalls past the remaining build
+//! budget is KILLED with its whole tree (the in-flight overrun case the
+//! stage-precheck-only scheme could not cover), never left to its own
+//! internal 60s. Budgets: build ≤60s (remaining-time killed), run ≤5s,
+//! total ≤70s — all absolute from request start.
 
 use auto_ac_prototype::link;
 use auto_ac_prototype::native;
@@ -54,26 +62,155 @@ impl std::fmt::Display for NativeError {
     }
 }
 
-/// Build + link + run one module's entry natively. `trace_lib` adds the
-/// PLAN-770 trace support object (mark_a/mark_b) for trace parity runs.
-///
-/// F798-R3-11: the run stage uses the landed RAW-BYTES capped executor
-/// (`run_deadlined_captured`) with the frozen 1 MiB-per-stream caps — the
-/// legacy `run_deadlined_split` wrapper is display-only and silently maps
-/// to `CaptureCaps::none()`. The build stages share ONE absolute budget
-/// clock started at entry: each stage is refused when the remaining
-/// budget is already spent (pre-check) and a post-check attributes any
-/// overrun; the run stage's deadline is the REMAINING total budget
-/// (bounded by the per-run budget), so a link stage that consumed the
-/// build clock cannot borrow run time.
-pub fn build_and_run(
+/// Test-only budget fault seam (F798-R6-07/R7-01 counter-controls):
+/// simulates the pre-build stages having already consumed this much of
+/// the shared clock, so deadline computation refuses deterministically
+/// without a real 60s stall. Never set in production paths.
+fn fake_stage_elapsed() -> Duration {
+    Duration::from_millis(
+        std::env::var("AV798_NATIVE_FAKE_ELAPSED_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0u64),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Stage bodies (shared with the bounded worker's helper subcommands)
+// ---------------------------------------------------------------------------
+
+/// The build stages proper (find entry → lower → link → publish). Runs
+/// UNSUPERVISED — only the worker's `native-build` subcommand (which the
+/// parent kills at the remaining-budget deadline) calls this.
+pub fn build_stages(
     checked: &CheckedModule,
+    entry: &str,
+    workdir: &Path,
+    trace_lib: Option<&Path>,
+) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+    std::fs::create_dir_all(workdir).map_err(|e| format!("build: {}", e))?;
+    let obj = workdir.join("module.obj");
+    let tmp_obj = workdir.join(".tmp-module.obj");
+    let exe = workdir.join("module.exe");
+
+    let sel = native::find_entry(checked, entry).map_err(|ds| format!("build: {:?}", ds))?;
+    let bytes = native::lower_object(checked, &sel, &native::RuntimeInjection::default())
+        .map_err(|ds| format!("build: {:?}", ds))?;
+    std::fs::write(&tmp_obj, &bytes).map_err(|e| format!("build: {}", e))?;
+
+    let lld = link::find_rust_lld().map_err(|d| format!("toolchain: {}", d.message))?;
+    let um = link::find_sdk_um_dir().map_err(|d| format!("toolchain: {}", d.message))?;
+    let mut libs: Vec<PathBuf> = Vec::new();
+    if let Some(t) = trace_lib {
+        libs.push(t.to_path_buf());
+    }
+    let staged = link::link_object_staged(&lld, &um, &tmp_obj, &exe, &sel.symbol, &libs)
+        .map_err(|d| format!("link: {}", d.message))?;
+    let receipt = link::publish_artifacts(&staged, &tmp_obj, &obj)
+        .map_err(|d| format!("link: {}", d.message))?;
+    Ok((obj, exe, receipt.receipt_path))
+}
+
+/// The run stage proper (contained, capped). Only the worker's `native-run`
+/// subcommand — itself under the parent's remaining-total deadline — calls
+/// this with the passed budget and per-stream caps.
+pub fn run_stage(
+    exe: &Path,
+    budget: Duration,
+    stdout_cap: usize,
+    stderr_cap: usize,
+) -> Result<(Option<i32>, Vec<u8>, Vec<u8>), String> {
+    let mut cmd = std::process::Command::new(exe);
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let run = link::run_deadlined_captured(
+        &mut cmd,
+        budget,
+        link::CaptureCaps {
+            stdout_max: stdout_cap,
+            stderr_max: stderr_cap,
+        },
+    )
+    .map_err(|e| format!("run: {:?}", e))?;
+    Ok((run.exit_code, run.stdout, run.stderr))
+}
+
+// ---------------------------------------------------------------------------
+// Supervised entry points
+// ---------------------------------------------------------------------------
+
+/// Locate (and on first use build) the probe worker binary that hosts the
+/// `native-build` / `native-run` helper subcommands. Env override first;
+/// otherwise the probe workspace's release target.
+pub fn native_worker_binary() -> Result<PathBuf, String> {
+    if let Ok(p) = std::env::var("AV798_NATIVE_WORKER") {
+        let p = PathBuf::from(&p);
+        if p.is_file() {
+            return Ok(p);
+        }
+        return Err(format!(
+            "AV798_NATIVE_WORKER points at a missing file: {}",
+            p.display()
+        ));
+    }
+    let root = probe_workspace_root()?;
+    let exe = root.join("target").join("release").join(worker_exe_name());
+    if !exe.is_file() {
+        let out = std::process::Command::new(env!("CARGO"))
+            .args(["build", "--release", "--bin", "av_probe_worker"])
+            .current_dir(&root)
+            .output()
+            .map_err(|e| format!("spawn cargo for the worker: {e}"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "worker build failed:\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            ));
+        }
+    }
+    if exe.is_file() {
+        Ok(exe)
+    } else {
+        Err(format!("worker binary missing at {}", exe.display()))
+    }
+}
+
+fn probe_workspace_root() -> Result<PathBuf, String> {
+    // The workspace root is the ancestor holding both member crates.
+    let mut dir: Option<&Path> = Some(Path::new(env!("CARGO_MANIFEST_DIR")));
+    while let Some(d) = dir {
+        if d.join("core").join("Cargo.toml").is_file()
+            && d.join("probe").join("Cargo.toml").is_file()
+        {
+            return Ok(d.to_path_buf());
+        }
+        dir = d.parent();
+    }
+    Err("probe workspace root not located".to_string())
+}
+
+#[cfg(windows)]
+fn worker_exe_name() -> &'static str {
+    "av_probe_worker.exe"
+}
+#[cfg(not(windows))]
+fn worker_exe_name() -> &'static str {
+    "av_probe_worker"
+}
+
+/// Build + link + run one module's entry natively under the FROZEN budgets,
+/// with every stage inside the contained worker and the parent enforcing
+/// REMAINING-time deadlines from request start (F798-R7-01).
+pub fn build_and_run(
+    src: &str,
+    caps: &[String],
     entry: &str,
     workdir: &Path,
     trace_lib: Option<&Path>,
 ) -> Result<NativeRun, NativeError> {
     build_and_run_with_caps(
-        checked,
+        src,
+        caps,
         entry,
         workdir,
         trace_lib,
@@ -85,10 +222,10 @@ pub fn build_and_run(
 /// Frozen per-stream output cap (§3: stdout/stderr each ≤ 1 MiB).
 pub const NATIVE_STREAM_CAP: usize = 1024 * 1024;
 
-/// The budget-carrying core (caps injectable for the failure counter-test).
 #[allow(clippy::too_many_arguments)]
 pub fn build_and_run_with_caps(
-    checked: &CheckedModule,
+    src: &str,
+    caps: &[String],
     entry: &str,
     workdir: &Path,
     trace_lib: Option<&Path>,
@@ -96,95 +233,141 @@ pub fn build_and_run_with_caps(
     stderr_cap: usize,
 ) -> Result<NativeRun, NativeError> {
     let started = std::time::Instant::now();
-    let build_deadline = NATIVE_BUILD_BUDGET;
-    // Test-only budget fault seam (F798-R6-07 counter-control): simulates
-    // the pre-link stages having already consumed this much of the shared
-    // build clock, so the stage admissions refuse DETERMINISTICALLY
-    // without a real 60s stall. Never set in production paths.
-    let fake_stage_elapsed = || {
-        std::time::Duration::from_millis(
-            std::env::var("AV798_NATIVE_FAKE_ELAPSED_MS")
-                .ok()
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(0u64),
-        )
-    };
     let elapsed = || started.elapsed() + fake_stage_elapsed();
-    let stage_precheck = |stage: &'static str| -> Result<(), NativeError> {
-        if elapsed() > build_deadline {
-            Err(NativeError::Budget(stage))
-        } else {
-            Ok(())
-        }
-    };
+    let worker = native_worker_binary().map_err(NativeError::Toolchain)?;
     std::fs::create_dir_all(workdir).map_err(|e| NativeError::Build(e.to_string()))?;
-    let obj = workdir.join("module.obj");
-    let tmp_obj = workdir.join(".tmp-module.obj");
-    let exe = workdir.join("module.exe");
+    let src_file = workdir.join("native-src.at");
+    std::fs::write(&src_file, src).map_err(|e| NativeError::Build(e.to_string()))?;
 
-    // Lower to a STAGED object; publish moves it into place transactionally.
-    stage_precheck("lower overran the 60s build budget")?;
-    let sel =
-        native::find_entry(checked, entry).map_err(|ds| NativeError::Build(format!("{:?}", ds)))?;
-    let bytes = native::lower_object(checked, &sel, &native::RuntimeInjection::default())
-        .map_err(|ds| NativeError::Build(format!("{:?}", ds)))?;
-    std::fs::write(&tmp_obj, &bytes).map_err(|e| NativeError::Build(e.to_string()))?;
-
-    // Link (staged + publish, reusing ac-core's transactional machinery).
-    stage_precheck("link start overran the 60s build budget")?;
-    let lld = link::find_rust_lld().map_err(|d| NativeError::Toolchain(d.message))?;
-    let um = link::find_sdk_um_dir().map_err(|d| NativeError::Toolchain(d.message))?;
-    let mut libs: Vec<PathBuf> = Vec::new();
-    if let Some(t) = trace_lib {
-        libs.push(t.to_path_buf());
-    }
-    let staged = link::link_object_staged(&lld, &um, &tmp_obj, &exe, &sel.symbol, &libs)
-        .map_err(|d| NativeError::Link(d.message))?;
-    let receipt = link::publish_artifacts(&staged, &tmp_obj, &obj)
-        .map_err(|d| NativeError::Link(d.message))?;
+    // ---- Phase 1: build, inside the worker, killed at the REMAINING
+    // build budget (the frozen 60s measured from request start).
     if elapsed() > NATIVE_BUILD_BUDGET {
-        return Err(NativeError::Budget("build exceeded 60s"));
+        return Err(NativeError::Budget(
+            "build budget already consumed before the build stage",
+        ));
     }
+    let build_remaining = NATIVE_BUILD_BUDGET - elapsed();
+    let mut cmd = std::process::Command::new(&worker);
+    cmd.args(["native-build", "--src-file"])
+        .arg(&src_file)
+        .args(["--entry", entry])
+        .arg("--workdir")
+        .arg(workdir);
+    if let Some(t) = trace_lib {
+        cmd.arg("--trace-lib").arg(t);
+    }
+    if !caps.is_empty() {
+        cmd.arg("--caps").arg(caps.join(","));
+    }
+    let built = supervise(&mut cmd, build_remaining, NATIVE_STREAM_CAP)
+        .map_err(|e| map_deadline(e, "build exceeded the remaining 60s budget (tree killed)"))?;
+    let bj: serde_json::Value = serde_json::from_slice(&built.stdout)
+        .map_err(|e| NativeError::Build(format!("native-build response: {}", e)))?;
+    if !bj["ok"].as_bool().unwrap_or(false) {
+        return Err(map_stage_error(bj["error"].as_str().unwrap_or("unknown")));
+    }
+    let obj_path = PathBuf::from(bj["obj"].as_str().unwrap_or_default());
+    let exe_path = PathBuf::from(bj["exe"].as_str().unwrap_or_default());
+    let receipt = PathBuf::from(bj["receipt"].as_str().unwrap_or_default());
 
-    // Run under the contained executor with RAW capped streams; the
-    // deadline is the REMAINING total budget (≤ the per-run budget).
-    stage_precheck("run start overran the total 70s budget")?;
+    // ---- Phase 2: run, inside the worker, killed at the remaining
+    // total budget (bounded by the per-run 5s).
     let total_remaining = NATIVE_TOTAL_BUDGET
         .checked_sub(elapsed())
         .unwrap_or(Duration::ZERO);
     let run_deadline = NATIVE_RUN_BUDGET.min(total_remaining);
-    let mut cmd = std::process::Command::new(&exe);
-    cmd.stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-    let run = link::run_deadlined_captured(
+    if run_deadline.is_zero() {
+        return Err(NativeError::Budget("no total budget left for the run"));
+    }
+    let mut cmd = std::process::Command::new(&worker);
+    cmd.args(["native-run", "--exe"])
+        .arg(&exe_path)
+        .arg("--budget-ms")
+        .arg(run_deadline.as_millis().to_string())
+        .arg("--stdout-cap")
+        .arg(stdout_cap.to_string())
+        .arg("--stderr-cap")
+        .arg(stderr_cap.to_string());
+    let ran = supervise(
         &mut cmd,
-        run_deadline,
-        link::CaptureCaps {
-            stdout_max: stdout_cap,
-            stderr_max: stderr_cap,
-        },
+        run_deadline + Duration::from_millis(500),
+        NATIVE_STREAM_CAP,
     )
-    .map_err(|e| NativeError::Run(format!("{:?}", e)))?;
-    if elapsed() > NATIVE_TOTAL_BUDGET {
-        return Err(NativeError::Budget("total exceeded 70s"));
+    .map_err(|e| {
+        map_deadline(
+            e,
+            "run exceeded the remaining run/total budget (tree killed)",
+        )
+    })?;
+    let rj: serde_json::Value = serde_json::from_slice(&ran.stdout)
+        .map_err(|e| NativeError::Run(format!("native-run response: {}", e)))?;
+    if !rj["ok"].as_bool().unwrap_or(false) {
+        let m = rj["error"].as_str().unwrap_or("unknown");
+        return Err(NativeError::Run(m.to_string()));
     }
-    let exit_code = run
-        .exit_code
-        .ok_or_else(|| NativeError::Run("process terminated abnormally".into()))?;
-    if run.stdout.len() > stdout_cap || run.stderr.len() > stderr_cap {
-        return Err(NativeError::Run(format!(
-            "native output exceeded the frozen {}-byte per-stream cap",
-            NATIVE_STREAM_CAP
-        )));
-    }
+    let exit_code = rj["exit_code"]
+        .as_i64()
+        .ok_or_else(|| NativeError::Run("process terminated abnormally".to_string()))?
+        as i32;
+    use base64::Engine as _;
+    let stdout = String::from_utf8_lossy(
+        &base64::engine::general_purpose::STANDARD
+            .decode(rj["stdout_b64"].as_str().unwrap_or_default())
+            .unwrap_or_default(),
+    )
+    .to_string();
+    let stderr = String::from_utf8_lossy(
+        &base64::engine::general_purpose::STANDARD
+            .decode(rj["stderr_b64"].as_str().unwrap_or_default())
+            .unwrap_or_default(),
+    )
+    .to_string();
     Ok(NativeRun {
         exit_code,
-        stdout: String::from_utf8_lossy(&run.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&run.stderr).to_string(),
-        obj_path: obj,
-        exe_path: exe,
-        receipt: receipt.receipt_path,
+        stdout,
+        stderr,
+        obj_path,
+        exe_path,
+        receipt,
     })
+}
+
+/// One supervised worker call: contained executor, single absolute
+/// deadline, capped output (the helper prints one JSON line).
+fn supervise(
+    cmd: &mut std::process::Command,
+    deadline: Duration,
+    cap: usize,
+) -> Result<link::CapturedRun, link::SubprocError> {
+    link::run_deadlined_captured(
+        cmd,
+        deadline,
+        link::CaptureCaps {
+            stdout_max: cap,
+            stderr_max: cap,
+        },
+    )
+}
+
+fn map_deadline(e: link::SubprocError, what: &'static str) -> NativeError {
+    match e {
+        link::SubprocError::Deadline | link::SubprocError::DeadlineCollect => {
+            NativeError::Budget(what)
+        }
+        other => NativeError::Toolchain(format!("{:?}", other)),
+    }
+}
+
+fn map_stage_error(m: &str) -> NativeError {
+    if let Some(rest) = m.strip_prefix("toolchain: ") {
+        NativeError::Toolchain(rest.to_string())
+    } else if let Some(rest) = m.strip_prefix("link: ") {
+        NativeError::Link(rest.to_string())
+    } else if let Some(rest) = m.strip_prefix("run: ") {
+        NativeError::Run(rest.to_string())
+    } else {
+        NativeError::Build(m.trim_start_matches("build: ").to_string())
+    }
 }
 
 /// The trace support library shipped with ac-core (built by its test

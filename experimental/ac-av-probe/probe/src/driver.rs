@@ -1082,13 +1082,21 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                 chain_ops += 1;
                 max_chain = max_chain.max(chain_ops);
             }
-            Tok::Punct(p) if matches!(p, P::Semi | P::Assign | P::Colon) => {
+            Tok::Punct(p) if matches!(p, P::Semi | P::Assign) => {
                 chain_ops = 0;
             }
             Tok::Punct(_) => {
-                // Other puncts (`,` `.`) stay INSIDE the current
-                // expression construction.
+                // Other puncts (`,` `.` and the named-argument `:`) stay
+                // INSIDE the current expression construction — a named
+                // argument separator is not a statement boundary
+                // (F798-R7-02).
             }
+            // `true`/`false` are expression OPERANDS, not clause
+            // boundaries — a `true && true && …` chain accumulates like
+            // any other (F798-R7-02). Every other keyword starts a fresh
+            // clause in this newline-terminated grammar.
+            Tok::Kw(auto_ac_prototype::source::lexer::Kw::True)
+            | Tok::Kw(auto_ac_prototype::source::lexer::Kw::False) => {}
             Tok::Kw(_) | Tok::Reserved(_) => {
                 chain_ops = 0;
             }

@@ -233,14 +233,32 @@ fn fn_type_index(
 // Function lowering
 // ---------------------------------------------------------------------------
 
-/// One pending HIR-block segment: lower stmts from `stmt_idx` into
-/// `mir_block`; when the segment completes without its own terminator, jump
-/// to `exit` (after-if join / loop latch / inherited continuation).
+/// Where a segment hands control when it completes without its own
+/// terminator: a concrete block (loop latch / inherited continuation) or
+/// the ON-DEMAND after-if join (F798-R7-05).
+#[derive(Clone, Copy)]
+enum Exit {
+    Block(BlockId),
+    Join(usize),
+}
+
+/// Where a segment starts: a concrete block, or the after-if join
+/// allocated on first need — a join both of whose arms terminated is
+/// never created, so no unreachable unwired block remains.
+#[derive(Clone, Copy)]
+enum Start {
+    Block(BlockId),
+    JoinOnDemand(usize),
+}
+
+/// One pending HIR-block segment: lower stmts from `stmt_idx` into the
+/// start block; when the segment completes without its own terminator,
+/// jump to `exit` (after-if join / loop latch / inherited continuation).
 struct Task {
     hir_block: hir::BlockId,
     stmt_idx: usize,
-    mir_block: BlockId,
-    exit: Option<BlockId>,
+    mir_block: Start,
+    exit: Option<Exit>,
 }
 
 struct FnLower<'a> {
@@ -267,6 +285,10 @@ struct FnLower<'a> {
     spans: Vec<(u32, SpanInfo)>,
     /// Whether block 0 got a real (non-placeholder) terminator.
     root_wired: bool,
+    /// After-if join cells (F798-R7-05): `None` until some arm falls
+    /// through (or a continuation with remaining statements starts) —
+    /// a both-arms-terminated `if` never materializes its join.
+    pending_joins: Vec<Option<BlockId>>,
 }
 
 impl<'a> FnLower<'a> {
@@ -286,6 +308,16 @@ impl<'a> FnLower<'a> {
             self.spans.push((self.flat, sp));
         }
         self.flat += 1;
+    }
+
+    /// Allocate (once) the join block of an on-demand join cell.
+    fn join_block(&mut self, slot: usize) -> BlockId {
+        if let Some(b) = self.pending_joins[slot] {
+            return b;
+        }
+        let b = self.new_block();
+        self.pending_joins[slot] = Some(b);
+        b
     }
 
     fn set_term(&mut self, term: Terminator) {
@@ -625,6 +657,7 @@ fn lower_function(
         flat: 0,
         spans: vec![],
         root_wired: false,
+        pending_joins: vec![],
     };
     let entry_b = lower.new_block();
     debug_assert_eq!(entry_b, 0);
@@ -632,11 +665,29 @@ fn lower_function(
     let mut stack: Vec<Task> = vec![Task {
         hir_block: body.entry,
         stmt_idx: 0,
-        mir_block: 0,
+        mir_block: Start::Block(0),
         exit: None,
     }];
     while let Some(mut task) = stack.pop() {
-        lower.cur = task.mir_block;
+        // F798-R7-05: an after-if continuation whose join was never
+        // allocated (both arms terminated) and that has no remaining
+        // statements is dead bookkeeping — skipping it leaves no
+        // unreachable unwired block.
+        let start_block = match task.mir_block {
+            Start::Block(b) => b,
+            Start::JoinOnDemand(slot) => {
+                let has_stmts = body
+                    .blocks
+                    .get(task.hir_block.0 as usize)
+                    .map(|b| task.stmt_idx < b.stmts.len())
+                    .unwrap_or(false);
+                if lower.pending_joins[slot].is_none() && !has_stmts {
+                    continue;
+                }
+                lower.join_block(slot)
+            }
+        };
+        lower.cur = start_block;
         lower.terminated = false;
         loop {
             let block = body.blocks.get(task.hir_block.0 as usize).ok_or_else(|| {
@@ -684,34 +735,58 @@ fn lower_function(
                 hir::Stmt::If { cond, then, els } => {
                     let c = lower.eval_expr(*cond, 0)?;
                     let then_b = lower.new_block();
-                    let else_b = els.map(|_| lower.new_block());
-                    let join = lower.new_block();
-                    let else_target = else_b.unwrap_or(join);
-                    lower.set_term(Terminator::Branch {
-                        cond: c,
-                        then: then_b,
-                        else_: else_target,
-                    });
-                    // LIFO: continuation processed last.
-                    stack.push(Task {
-                        hir_block: task.hir_block,
-                        stmt_idx: task.stmt_idx,
-                        mir_block: join,
-                        exit: task.exit,
-                    });
-                    if let (Some(eb), Some(eb_hir)) = (else_b, els) {
-                        stack.push(Task {
-                            hir_block: *eb_hir,
-                            stmt_idx: 0,
-                            mir_block: eb,
-                            exit: Some(join),
-                        });
+                    let then_exit;
+                    match els {
+                        Some(else_hir) => {
+                            // F798-R7-05: with both arms present the join
+                            // is ON DEMAND — `if a { return } else { return }`
+                            // never materializes an unreachable join block.
+                            let else_b = lower.new_block();
+                            let slot = lower.pending_joins.len();
+                            lower.pending_joins.push(None);
+                            then_exit = Some(Exit::Join(slot));
+                            lower.set_term(Terminator::Branch {
+                                cond: c,
+                                then: then_b,
+                                else_: else_b,
+                            });
+                            // LIFO: continuation processed last.
+                            stack.push(Task {
+                                hir_block: task.hir_block,
+                                stmt_idx: task.stmt_idx,
+                                mir_block: Start::JoinOnDemand(slot),
+                                exit: task.exit,
+                            });
+                            stack.push(Task {
+                                hir_block: *else_hir,
+                                stmt_idx: 0,
+                                mir_block: Start::Block(else_b),
+                                exit: Some(Exit::Join(slot)),
+                            });
+                        }
+                        None => {
+                            // No else: the branch's false edge targets the
+                            // join, so it is required eagerly.
+                            let join = lower.new_block();
+                            then_exit = Some(Exit::Block(join));
+                            lower.set_term(Terminator::Branch {
+                                cond: c,
+                                then: then_b,
+                                else_: join,
+                            });
+                            stack.push(Task {
+                                hir_block: task.hir_block,
+                                stmt_idx: task.stmt_idx,
+                                mir_block: Start::Block(join),
+                                exit: task.exit,
+                            });
+                        }
                     }
                     stack.push(Task {
                         hir_block: *then,
                         stmt_idx: 0,
-                        mir_block: then_b,
-                        exit: Some(join),
+                        mir_block: Start::Block(then_b),
+                        exit: then_exit,
                     });
                     break;
                 }
@@ -730,14 +805,14 @@ fn lower_function(
                     stack.push(Task {
                         hir_block: task.hir_block,
                         stmt_idx: task.stmt_idx,
-                        mir_block: exit,
+                        mir_block: Start::Block(exit),
                         exit: task.exit,
                     });
                     stack.push(Task {
                         hir_block: *loop_body,
                         stmt_idx: 0,
-                        mir_block: body_b,
-                        exit: Some(header),
+                        mir_block: Start::Block(body_b),
+                        exit: Some(Exit::Block(header)),
                     });
                     break;
                 }
@@ -760,10 +835,17 @@ fn lower_function(
         // Segment completed without its own terminator: hand control to the
         // recorded exit (after-if join / loop latch / inherited).
         if !lower.terminated {
-            if let Some(exit) = task.exit {
-                lower.set_term(Terminator::Jump { target: exit });
+            match task.exit {
+                Some(Exit::Block(b)) => {
+                    lower.set_term(Terminator::Jump { target: b });
+                }
+                Some(Exit::Join(slot)) => {
+                    let j = lower.join_block(slot);
+                    lower.set_term(Terminator::Jump { target: j });
+                }
+                // exit == None (root): the placeholder stays; rejected below.
+                None => {}
             }
-            // exit == None (root): the placeholder stays; rejected below.
         }
     }
 

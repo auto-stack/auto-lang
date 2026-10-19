@@ -7,7 +7,6 @@
 #[cfg(windows)]
 #[test]
 fn av_semantics_native_trace_parity() {
-    use auto_ac_prototype::source::compile_scalar_source;
     let src = "fn side(x int) int {\n    let m = mark_b()\n    return x * m\n}\n\nfn main() int {\n    let a = mark_a()\n    let b = side(3)\n    let c = mark_a()\n    if a + b + c != 10 {\n        return 1\n    }\n    return 0\n}\n";
     let caps = vec!["hir.test.trace.v1".to_string()];
 
@@ -38,16 +37,11 @@ fn av_semantics_native_trace_parity() {
         );
     }
     assert!(lib.is_file(), "support lib missing at {}", lib.display());
-    let compiled = compile_scalar_source(src, "trace.at", &caps).expect("frontend");
     let workdir = std::env::temp_dir().join(format!("av798-trace-parity-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
-    let run = auto_av_probe::native_reference::build_and_run(
-        &compiled.checked,
-        "d_main",
-        &workdir,
-        Some(&lib),
-    )
-    .expect("native trace build+run");
+    let run =
+        auto_av_probe::native_reference::build_and_run(src, &caps, "d_main", &workdir, Some(&lib))
+            .expect("native trace build+run");
     assert_eq!(run.exit_code, 1, "PE mirrors the AV value");
     assert_eq!(run.stderr, "aba", "PE mark bytes in source order");
     let _ = std::fs::remove_dir_all(&workdir);

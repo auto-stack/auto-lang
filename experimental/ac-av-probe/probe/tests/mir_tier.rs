@@ -340,3 +340,131 @@ fn mir_lower_unsupported_domain_rejected() {
     let err = lower_checked(&c.checked, "d_main", 0).unwrap_err();
     assert_eq!(err.code(), "lower.domain");
 }
+
+/// F798-R7-05: legal dual-branch return lowers and executes; adjacent
+/// termination combos (single-arm return + fallthrough, nested branches,
+/// break/continue inside loops) all produce valid MIR and correct values.
+#[test]
+fn mir_lower_branch_termination_combos() {
+    let run = |src: &str, expected: i32| {
+        let mut d = auto_av_probe::driver::Driver::ephemeral();
+        let r = d.request(src, "d_main", &[]);
+        assert!(r.ok(), "lowers + executes: {:?} (source: {src})", r.diag);
+        assert_eq!(r.value_i32(), Some(expected), "source: {src}");
+    };
+    // Dual-branch return (the review's minimal input).
+    run(
+        "fn main() int {
+    if true {
+        return 1
+    } else {
+        return 0
+    }
+}
+",
+        1,
+    );
+    // Dual-branch, condition false.
+    run(
+        "fn main() int {
+    if 1 == 2 {
+        return 1
+    } else {
+        return 0
+    }
+}
+",
+        0,
+    );
+    // Single-arm return + fallthrough return.
+    run(
+        "fn main() int {
+    if true {
+        return 1
+    }
+    return 0
+}
+",
+        1,
+    );
+    run(
+        "fn main() int {
+    if 1 == 2 {
+        return 1
+    }
+    return 0
+}
+",
+        0,
+    );
+    // Nested dual returns inside an arm.
+    run(
+        "fn main() int {
+    if true {
+        if 1 == 1 {
+            return 7
+        } else {
+            return 8
+        }
+    } else {
+        return 0
+    }
+}
+",
+        7,
+    );
+    // Both arms assign, join falls through (join still required).
+    run(
+        "fn main() int {
+    var x = 0
+    if true {
+        x = 5
+    } else {
+        x = 9
+    }
+    return x
+}
+",
+        5,
+    );
+    // Dual return inside a loop body.
+    run(
+        "fn main() int {
+    var i = 0
+    for true {
+        i = i + 1
+        if i > 2 {
+            return i
+        } else {
+            i = i + 1
+        }
+    }
+    return 0
+}
+",
+        3,
+    );
+    // break/continue termination inside loops.
+    run(
+        "fn main() int {
+    var i = 0
+    var acc = 0
+    for i < 4 {
+        i = i + 1
+        if i == 2 {
+            continue
+        }
+        if i == 4 {
+            break
+        }
+        acc = acc + i
+    }
+    return acc
+}
+",
+        4,
+    );
+    // (Statements AFTER a dual-return if cannot occur in checked input:
+    // the HIR verifier requires a connected CFG — `verify.block-structure`
+    // rejects the unreachable continuation before the adapter runs.)
+}

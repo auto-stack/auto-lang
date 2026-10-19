@@ -689,3 +689,101 @@ fn av_cache_restore_missing_sidecar_refused() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F798-R7-03: a DECODABLE but EMPTY (or non-covering) sidecar loses the
+/// trap's source exactly like a missing one — restore refuses unless the
+/// map covers every trap-capable instruction; the honest control's trap
+/// carries its real span content.
+#[test]
+fn av_cache_restore_empty_or_partial_sidecar_refused() {
+    let root = tmpdir("empty-side");
+    let mut d = Driver::with_store(&root, "p").unwrap();
+    let r = d.request("fn main() int { return 1 / 0 }", "d_main", &[]);
+    let manifest = r.manifest.clone().unwrap();
+    let store = open_store(&root).unwrap();
+    let key = cache::manifest_key(&manifest.owner, &manifest.entry, &manifest.fingerprint());
+    let art = store.get_artifact("A09", &key).unwrap().unwrap();
+
+    // Honest control: the trap carries its REAL span (not just a '@').
+    let ok = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        r.snapshot,
+        &[],
+    );
+    assert!(ok.executed_ok, "honest control: {:?}", ok.error);
+    assert_eq!(
+        ok.trap.unwrap(),
+        "av.trap.div-by-zero@func#0:23..28",
+        "real span content, not a source-less trap string"
+    );
+
+    // Empty-but-decodable sidecar under a fresh snapshot: refused.
+    let unit = &manifest.units[0];
+    let snap2 = r.snapshot ^ 1;
+    let skey = cache::sidecar_key(&manifest.owner, &unit.name, snap2);
+    cache::put_enveloped(
+        &store,
+        &skey,
+        "A08",
+        &EnvelopeIdentity::sidecar(&manifest.owner, snap2),
+        &cache::encode_sidecar(&[]),
+        vec![],
+        Some("p"),
+    )
+    .unwrap();
+    let denied = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        snap2,
+        &[],
+    );
+    assert!(!denied.executed_ok, "empty sidecar refuses");
+    assert!(
+        denied
+            .error
+            .unwrap()
+            .contains("does not cover trap-capable instruction"),
+        "coverage diagnosed"
+    );
+
+    // Partial sidecar: covers a bogus index but not the div — refused.
+    let snap3 = r.snapshot ^ 2;
+    let skey3 = cache::sidecar_key(&manifest.owner, &unit.name, snap3);
+    let bogus = vec![(
+        99u32,
+        auto_av_core::contract::SpanInfo {
+            func: 0,
+            start: 1,
+            end: 2,
+        },
+    )];
+    cache::put_enveloped(
+        &store,
+        &skey3,
+        "A08",
+        &EnvelopeIdentity::sidecar(&manifest.owner, snap3),
+        &cache::encode_sidecar(&bogus),
+        vec![],
+        Some("p"),
+    )
+    .unwrap();
+    let denied = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        snap3,
+        &[],
+    );
+    assert!(!denied.executed_ok, "partial sidecar refuses");
+    assert!(
+        denied.error.unwrap().contains("does not cover"),
+        "coverage diagnosed"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

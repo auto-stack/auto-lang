@@ -200,7 +200,41 @@ fn restore_and_run_inner(
         let sexpect = EnvelopeIdentity::sidecar(owner, snapshot);
         match crate::cache::get_enveloped_opt(&store, &skey, "A08", &sexpect) {
             Ok(Some(sp)) => match decode_sidecar(&sp) {
-                Ok(spans) => merge_spans(&mut module, &spans),
+                Ok(spans) => {
+                    merge_spans(&mut module, &spans);
+                    // F798-R7-03: a decodable-but-EMPTY (or non-covering)
+                    // map loses diagnostics provenance exactly like a
+                    // missing one. The restored sidecar must be APPLICABLE:
+                    // structurally valid ranges and a span for every
+                    // trap-capable instruction (every Bin — overflow/div
+                    // traps), so a published trap always carries its source.
+                    let f = &module.funcs[0];
+                    for (_, sp) in f.spans.iter() {
+                        if sp.start > sp.end {
+                            return Err(format!(
+                                "unit `{}` sidecar for snapshot {:016x} has an inverted span {}..{}",
+                                link.name, snapshot, sp.start, sp.end
+                            ));
+                        }
+                    }
+                    let covered: std::collections::BTreeSet<u32> =
+                        f.spans.iter().map(|(i, _)| *i).collect();
+                    let mut flat = 0u32;
+                    for b in f.blocks.iter() {
+                        for (ii, instr) in b.instrs.iter().enumerate() {
+                            if matches!(instr, auto_av_core::mir::MirInstr::Bin { .. })
+                                && !covered.contains(&(flat + ii as u32))
+                            {
+                                return Err(format!(
+                                    "unit `{}` sidecar for snapshot {:016x} does not cover trap-capable instruction {} — diagnostics provenance unavailable; restore refused",
+                                    link.name, snapshot,
+                                    flat + ii as u32
+                                ));
+                            }
+                        }
+                        flat += b.instrs.len() as u32;
+                    }
+                }
                 Err(e) => {
                     return Err(format!(
                         "unit `{}` sidecar for snapshot {:016x} is invalid: {}",

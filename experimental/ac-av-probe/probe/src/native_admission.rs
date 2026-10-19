@@ -271,6 +271,46 @@ pub fn check_coff_relocatable(bytes: &[u8]) -> Result<(), NativeAdmissionError> 
             "symbol table overruns the object",
         ));
     }
+    // F798-R7-04: every section header's claimed raw-data and relocation
+    // windows must fit the offered bytes — a header declaring data at an
+    // out-of-range pointer is not a valid relocatable object, whatever the
+    // outer tables claim.
+    for si in 0..n_sections {
+        let sh = (20 + si * SECTION_HEADER_SIZE) as usize;
+        let u16_at = |o: usize| u16::from_le_bytes([bytes[sh + o], bytes[sh + o + 1]]);
+        let u32_at = |o: usize| {
+            u32::from_le_bytes([
+                bytes[sh + o],
+                bytes[sh + o + 1],
+                bytes[sh + o + 2],
+                bytes[sh + o + 3],
+            ]) as u64
+        };
+        let size_of_raw = u32_at(16);
+        let ptr_raw = u32_at(20);
+        if size_of_raw > 0 {
+            // saturating: a u32::MAX pointer plus a size must reject, not
+            // overflow the checked add.
+            let end = ptr_raw.saturating_add(size_of_raw);
+            if end > len || ptr_raw < sections_end {
+                return Err(NativeAdmissionError::MalformedObject(
+                    "section raw-data window overruns the object",
+                ));
+            }
+        }
+        let n_relocs = u16_at(32) as u64;
+        if n_relocs > 0 {
+            let ptr_rel = u32_at(24);
+            let end = ptr_rel
+                .checked_add(n_relocs.saturating_mul(10))
+                .expect("bounded sizes");
+            if end > len {
+                return Err(NativeAdmissionError::MalformedObject(
+                    "section relocation table overruns the object",
+                ));
+            }
+        }
+    }
     // The string table follows the symbol table: a u32 byte length that
     // must close exactly at the object end (≥4 for the length field).
     if symbols_end + 4 <= len {

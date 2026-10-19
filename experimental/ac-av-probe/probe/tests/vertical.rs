@@ -85,8 +85,6 @@ fn t01_vertical_store_round_and_hit() {
 #[cfg(windows)]
 fn t01_vertical_native_cross_check() {
     use auto_av_probe::native_reference as nr;
-    let compiled = auto_ac_prototype::source::compile_scalar_source(VERTICAL_SRC, "t01.at", &[])
-        .expect("frontend");
     let root = auto_ac_prototype::link::find_rust_lld().ok();
     if root.is_none() {
         eprintln!("infra-blocked: rust-lld unavailable — native cross-check skipped");
@@ -95,7 +93,7 @@ fn t01_vertical_native_cross_check() {
     let workdir = std::env::temp_dir().join(format!("av798-t01-native-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&workdir);
     let run =
-        nr::build_and_run(&compiled.checked, "d_main", &workdir, None).expect("native build+run");
+        nr::build_and_run(VERTICAL_SRC, &[], "d_main", &workdir, None).expect("native build+run");
     assert_eq!(
         run.exit_code, VERTICAL_EXPECTED,
         "native exit must match the independent expected"
