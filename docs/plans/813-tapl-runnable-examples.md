@@ -1,9 +1,9 @@
 ---
 plan_id: PLAN-813
-status: reviewed
+status: executing
 feature_name: tapl-runnable-examples
 author: [Codex]
-plan_revision: 1
+plan_revision: 2
 created_at: 2026-10-19
 updated_at: 2026-10-19
 
@@ -12,8 +12,8 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm, a2r-std]
-current_step: 9
-total_steps: 9
+current_step: 8
+total_steps: 10
 ---
 
 # [PLAN-813] TAPL 全书示例与网站 Run 修复
@@ -109,6 +109,10 @@ T-01 在批准后的专用树完成，产出决定记录并回写本计划，然
 | SD-05 | modify | docs/specs/website/project.md | 网站项目缺少 TAPL 执行合同入口 → 链接到规范执行合同 | 让网站规范导航覆盖本次新增合同 | AC-01, AC-02, AC-06 |
 | SD-06 | modify | docs/specs/a2r-std/project.md | a2r-std 未明确浮点 helper 的 f64 API 和 parity harness 边界 → 记录四项函数与名称/元数比对、行为单测范围 | 说明 TAPL Rust transpiler 路径证据 | AC-05, AC-07 |
 
+### Phase 2：关闭 Windows P765 退出钩门禁回归（T-10）
+
+R9 门禁显示 P765 trampoline 已进入，但其 `RtlCaptureStackBackTrace` FFI 声明漏掉 Windows API 的可选第 4 个 `BackTraceHash` 参数，属于 x64 ABI 未定义行为。修正返回类型为 `u16`、补齐 `*mut u32` 并在两个调用点传 `NULL`；其四参数签名与可选指针见 [Microsoft Learn](https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlcapturestackbacktrace)。不改变书稿范围或退出钩行为。V-09 用既有子进程测试确认退出码 9、审计行和栈帧。
+
 ## 6. 测试设计
 
 T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触发整档。拟新增 `scripts/check-tapl-examples.py`（T-01/T-06 落地，尚不存在），消费真实元数据调用公共 CLI/API，比较输出/具体诊断；不能只扫描字符串或报计数。
@@ -125,6 +129,7 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | V-06 | AC-05 API 真装配 | work：ch05/09/21 公共调用 | 随机端点、解析/编码正反例、时间单位/类型吻合，非固定假值 | 保留 API；不泛称所有后端支持 |
 | V-07 | AC-04/05 错误与长驻 | work：预期错误/死循环/有限 actor/聊天工程 | 诊断吻合，失控按时终止；消息交换完成且关闭，无遗留端口/进程 | 不依赖任意第三方服务在线 |
 | V-08 | AC-06 回归可失败 | work/review：全有效源、Notes/书页、变异缺依赖/错误期望 | 普通条目语义通过，负控使总门禁失败；静态项逐条有理由 | hash 绑定源/配置/依赖/输入 |
+| V-09 | AC-07/08 Windows FFI ABI | work/review：P765 子进程测试分别以 `test-book` 与 `ui-iced,test-cases` feature 运行 | 子进程退出码为 9，审计包含 `exitproc_trace` 与 `frames=[+]`；缺失可选参数的 ABI 回归由用例检出 | 当前 Windows x64 IAT 追踪路径，不覆盖其他平台 FFI |
 
 纯页面/书稿/脚本不运行 cargo t/docs_gen。若改 Rust，最终 review pass 后，merge 在冻结提交统一执行裸 `cargo t`；VM/编译器触面加 tv、书测试触面加 tb、转译触面加 tt，按实际 diff 决定；本范围不触 ui_gen/aavm，不跑 tu/taa。无生成器/Schema/语法参考改动不跑 docs_gen。tf 仅 merge 判到期后主检出单实例按 regress。
 
@@ -156,10 +161,11 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成（闭合 R1/R3）：Base64/Hex 复用现有依赖并可运行；新增 loopback TCP server/client 本地工程及明确范围说明，完成连接、消息往返、断开和优雅关停验收。 |
 | T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R5）：新规范准确列出五种模式和 stdout_contains/expected-error；checker 对 54 页执行 catalog↔page 双向扫描；有效样例通过，错误预期、旧锚点、孤立锚点、错误诊断负控均失败。复核后全量 396/396 通过。 |
 | T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：auto-lang 现冻结提交 `5c6daa1439d95dbf2811f4f242895490b6d40d2a`，书稿继续冻结在 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；两个实施工作树 clean，文档复审修订已提交。 |
-| T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | ✅ AC-07 pass：R7 独立复审覆盖内容改动，R8 独立复核最终索引簿记；最终绑定 auto-lang `990ed70b9bf0da82b09596605e71486095060f53`、book `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`。 |
-| T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | R9 rebase 复审通过；新冻结提交 `cargo tv` 163/163 通过，`cargo t` 与 `cargo tb` 均被既有 Windows P765 IAT 退出码测试失败阻断。PLAN-819 修复的两个 Rust listings 在 `cargo tb` 中通过。故障归因和范围见 §9 / KNOWN-DEBT；门禁未全绿，不合入、不归档，双仓清理尚未执行。 |
+| T-08 | review | T-07/T-10 | /auto-plan:review 重审冻结修复 diff、V-09、既有 AC/SD 证据及 debt 归因 | reopened：R9 仅对旧冻结提交有效；待独立复审 `78e1c31e8be30b2c758d6034f211f48c6731dc87`，merge-owned `cargo t/tv/tb` 保持 pending。 |
+| T-09 | merge | T-08 | /auto-plan:merge：在 review pass 后于最终冻结组合串行跑 `cargo t`、`cargo tv`、`cargo tb`，全绿后再双仓合入与收尾 | pending：R9 的 P765 失败已由 T-10 修复；须在本轮复审通过后的冻结提交重跑三项门禁。此前 PLAN-819 两个 Rust listing 修复目标已通过；未全部绿前不合入/归档/清理。 |
+| T-10 | work | R9 gate failure | 修正 `crates/auto-lang/src/vm/ffi/stdlib.rs` 中 `RtlCaptureStackBackTrace` ABI；按 V-09 在 `test-book` 和日常 feature 下重放 P765，并运行 `cargo check -p auto-lang` | ✅ 完成：缺失可选 hash 参数被补齐并显式传 NULL；两个 feature 配置下各 1/1 通过，`cargo check` 通过。提交 `78e1c31e8be30b2c758d6034f211f48c6731dc87`；日志见 `attachments/813/p765-ffi-fix-r13.log.txt`、`p765-daily-feature-r14.log.txt` 与 `cargo-check-p765-r14.log.txt`。 |
 
-T-01..T-08 已完成，R9 独立复审通过，当前状态为 reviewed。R9 冻结提交上的 `cargo tv` 通过；`cargo t` 与 `cargo tb` 因 `p765_iat_trace_writes_audit_and_preserves_exit_code` 返回 `0xC0000374` 而失败。PLAN-819 修复的 `book_ch02_05` 和 `book_ch03_08` 已在本次 `cargo tb` 中通过。T-09 门禁未全部通过，因此双仓合入、归档与工作树清理仍未执行；不宣称交付完成。
+T-01..T-07、T-10 已完成；R9 对旧冻结提交的复审不能覆盖本次 FFI 修改，T-08 已重新打开并等待独立复审。T-10 修复 P765 的 Windows ABI 未定义行为，定向回归与类型检查通过。`cargo t`、`cargo tv`、`cargo tb` 仍是 merge-owned pending，须在 R10 pass 后的冻结提交串行执行；在全部通过前不合入、归档或清理。
 
 ## 9. 复审记录
 
@@ -301,6 +307,13 @@ stage: review | review_scope: final | reviewer_identity/limitations: Codex 当�
 - 冻结提交门禁按序执行：`cargo t` 失败，5062 passed / 1 failed / 1549 skipped，P765 IAT 子进程退出码为 `-1073740940`（Windows `0xC0000374`）；相同日常 feature 配置隔离重跑 0/1 pass。`cargo tv` 通过 163/163（6693 skipped）。`cargo tb` 失败，5046 passed / 1 failed / 1547 skipped；失败仍为同一 P765 测试。`AUTO_BOOK_LISTINGS` 指向 PLAN-813 Book worktree；其中 PLAN-819 修复目标 `book_ch02_05`、`book_ch03_08` 分别通过。`test-book` feature 下隔离重跑亦 0/1 pass，退出码 `-1073741819`（Windows `0xC0000005`）。原始日志及 SHA-256：`merge-cargo-t-r9.log.txt` `6AC8B454805156D4E91520BB037D96983E92D761FC2483AC678A4A4D714CA317`；`cargo-t-isolated-p765-r9.log.txt` `49C7EFDFC39C86ED4F20F5768070780AC2AF20D788169264F77B6C9650F3390A`；`cargo-tv-r9.log.txt` `EFAB529A4954F74AB16814E846F49DC962FCBE7541804D705D49567AF5E3D731`；`cargo-tb-r9.log.txt` `CE87E2056F3AE6B83316675679DD1C74DC919972193A4C83B68C835FC2B4DFD0`；`cargo-tb-isolated-p765-r9.log.txt` `B63417E68A154164187DD007211A7DEC842C4B3925020C287E9A1EE066AFE39B`。
 - 归因边界：P765 测试和 `install_exit_process_trace` IAT 钩逻辑在 PLAN-813 diff 中未修改，已存在的观察登记为 P812-D2；本轮两项整档和两种 feature 配置下的隔离重跑均复现，故更新该债务记录。PLAN-813 虽在同一 `stdlib.rs` 增加 hosted 文件/输入能力，现有证据不能证明二进制变化与该退出码无关，也未证明根因；不将其标成 PLAN-813 引入或已修复。按门禁规则 T-09 仍 pending，禁止双仓合入、归档和清理，待 P812-D2 的根因被解决并在最终冻结组合上重跑门禁。
 - outcome: review pass / merge blocked；Plan remains `reviewed`, current_step=9；`cargo tv` pass，`cargo t` / `cargo tb` fail，T-09 incomplete；next=closeout after P812-D2 resolution. No code changes were made after R9 review.
+
+### 2026-10-19 Phase 2 P765 FFI ABI 修复（T-10 work handoff）
+
+- R9 两项门禁及隔离重跑曾在 P765 子进程失败。临时探针确认 `install_exit_process_trace` 成功补丁 2 个 IAT 槽并进入 `traced_exit_process`，但未完成栈审计。Windows `RtlCaptureStackBackTrace` 的正式签名包含 4 个参数，第 4 个 `BackTraceHash` 是可选指针；原 FFI 只声明/传入前三个参数。补齐返回类型 `u16` 和 `*mut u32` 参数，并在 ExitProcess 与 TerminateProcess 两条路径均传 `NULL`。
+- 验收：`cargo nextest run -p auto-lang --lib --features test-book p765_iat_trace_writes_audit_and_preserves_exit_code` 1/1 pass（6860 skipped）；相同过滤器在 `--features ui-iced,test-cases` 下 1/1 pass（6855 skipped）；`cargo check -p auto-lang` exit 0（405 条既有 warning）；`rustfmt --edition 2021 --check` 与 `git diff --check` 通过。临时标记与结果见 `attachments/813/p765-install-markers-r11.log.txt`、`p765-hook-entry-r12.log.txt`、`p765-ffi-fix-r13.log.txt`、`p765-daily-feature-r14.log.txt`、`cargo-check-p765-r14.log.txt`；关键日志 SHA-256：test-book `9250E6BC41E691EBB80D21C606EC169F1A91578212C8308C5E00739AB189F0E1`；daily-feature `E00B63242D29020B5C0ED60AEC8265D90990F9C72BE25B6FE6D454078D64789D`；cargo-check `CFFAFF51458A71B40F7D296DA330EDCA796FF140EC78A8DC24A8BEDEA728F005`。
+- 提交：auto-lang `78e1c31e8be30b2c758d6034f211f48c6731dc87`，base `5a52efa2b960425060d2d4b697904df4504669a2`；worktree `D:/autostack/.wt/lang-813/auto-lang` / `plan-813-dev` clean；book 保持 `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`，auto-down 依赖 `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。当前 Plan revision 2、status `executing`、current_step=8/10；T-08 final review 重开，三项全档门禁留待 review pass 后。
+- debt closure：P812-D2 的未归因 P765 观察现已确认是漏传 Windows API 可选参数导致的 ABI 未定义行为，并由本阶段修复；不修改已归档 PLAN-819。
 
 ## 10. 待澄清事项
 
