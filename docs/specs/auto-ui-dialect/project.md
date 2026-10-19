@@ -83,7 +83,7 @@ normal/build/dev 无 auto-lang/auto-man/auto-vm/auto-ui）即轻闭包证据（V
 
 - 顶层：`dialect/ui.rs::UiDialect`（builtin 段，薄注册 adapter）各分支直调
   本 crate（msg/model→declarations，widget/component/actions/style→grammar，
-  view→grammar，on→`ParseContext::parse_on_events` Core 共享文法）——
+  view→grammar，on→`UiParseContext::parse_on_events` Core 共享文法）——
   **不调用也不存在** `ParserBridge::parser()` escape hatch。
 - 兼容门面：Parser 公开 `parse_widget_decl`/`parse_store_decl`/
   `parse_scene_decl`/`parse_actions_decl_stmt`/`parse_style_recipe_decl_stmt`/

@@ -40,12 +40,14 @@
 - 内建声明文法经端口单源化（PLAN-806，`crates/auto-ui-dialect`）：完整
   msg/model/字段注解算法自 Parser 逐字迁出为轻 crate 单一份实现，同样以
   `dyn ParseContext` 驱动（端口不再只是外部方言面——内建文法实现亦走
-  端口，Parser 内 `parse_msg_decl_inner`/`parse_model_block_inner` 一行
-  建桥委托，原算法与 `parse_model_field_annotations` 删除）。分派权限与
-  恢复规约不变：顶层仍经 builtin 段 `UiDialect` 同一分支（fn/on 体护栏
-  前置让行），widget/component/store 结构路径直连 inner 委托（PLAN-810
-  起全部经 UiParseContext 端口消费 auto-ui-dialect 单源文法，
-  `ParserBridge::parser()` escape hatch 已删除），None/Err
+  端口，原算法与 `parse_model_field_annotations` 删除；PLAN-810 起完整
+  UI 文法亦单源迁入同 crate `grammar` 模块，历史中间形态的
+  `parse_msg_decl_inner`/`parse_model_block_inner` 桥接 inner 已随调用方
+  迁出删除）。分派权限与恢复规约不变：顶层仍经 builtin 段 `UiDialect`
+  同一分支（fn/on 体护栏前置让行）——薄注册 adapter 直调 auto-ui-dialect
+  单源实现（经 `UiParseContext` 端口，`ParserBridge::parser()` escape
+  hatch 已删除）；widget/component/store 结构路径经 Parser 同签名薄委托
+  门面消费同一实现，None/Err
   三态与游标/五旗标恢复由派发器兜底不变；778 冻结的外部 model 子集
   （裸字段）仅在 `ModelGrammar::ExternalSubset` 显式策略下提供，默认
   `Builtin` 无裸字段——默认文法零漂移。规范见

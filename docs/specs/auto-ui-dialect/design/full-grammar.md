@@ -33,16 +33,23 @@ auto-parser-api Core 包，既有 `ParseContext` 实现面零改动）。由 aut
 
 - **游标**：801 端口原面 + `prev_pos`/`expect_ident`（Core 私有 helper 的
   端口投影，单一实现）/`cur_is_soft_ident`。
-- **前瞻**：`probe_next_kind`（806 冻结，零副作用/失败消费协议）；
-  `probe_next_token`（全 token 形态，失败**上抛**——memo/paren `?` 位点，
-  if-let-Ok 位点用 `.ok()`）；`advance_peek_kind`（注释跳过前看的具名化：
-  完整 advance 副作用 → 观察 kind → 回推观察 token 并恢复 cur，prev 保持
-  泄漏——scene 门/subresource/on stream 三位点旧臂共用形态）；
-  `push_back_token`（双 token 回推再重同步）。
-- **投机**：`raw_cursor_save/restore`（lexer+cur+prev，**无**五旗标、
-  **不**回滚诊断/docs——与 checkpoint 的区别：object() 投机失败泄漏旗标
-  路径行为保持；凭据复用 801 句柄表，一次性/作用域失效同规则）。
-    checkpoint/restore（含旗标）仍归方言派发器 None 回滚专用。
+- **前瞻**（F810-R1-04 后区分两种注释跳过前看形态，prev 终值不同）：
+  `probe_next_kind`（806 冻结，零副作用/失败消费协议）；`probe_next_token`
+  （全 token 形态，失败**上抛**——memo/paren `?` 位点，if-let-Ok 位点用
+  `.ok()`）；`advance_peek_kind`（**on stream 位点形态**：完整 advance
+  副作用 → 观察 kind → 回推观察 token 并恢复 cur，prev=advance 前的
+  cur）；`advance_peek_kind_resync`（**scene 门/typed subresource 位点
+  形态**：next → 观察 → push observed → push saved → next 重同步，
+  prev=被观察 token——与手动恢复形态的 cur/缓冲终态相同、prev 不同）；
+  `push_back_token`（owned token 回推）。
+- **投机与快照生命周期**：`raw_cursor_save/restore`（lexer+cur+prev，
+  **无**五旗标、**不**回滚诊断/docs——与 checkpoint 的区别：object()
+  投机失败泄漏旗标路径行为保持；凭据复用 801 句柄表，一次性/作用域失效
+  同规则）；`raw_cursor_release`（**成功出口的显式释放**，F810-R1-01：
+  tombstone 目标槽位、不动游标/旗标/诊断、Drop 语义——旧臂局部
+  save_state 出作用域即释放的端口等价，覆盖公开门面/Core 直连/派发/
+  嵌套全部入口，不依赖派发器退出清理）。checkpoint/restore（含旗标）
+  仍归方言派发器 None 回滚专用。
 - **事务**：`diagnostics_mark/truncate`（**仅限** raw 投机回退位点——
   computed object→body；其余路径诊断恒单调）；`set_skip_check`/
   `set_in_on_body`（保存-置位-恢复三段式由文法复刻，Err 平衡恢复保持）。

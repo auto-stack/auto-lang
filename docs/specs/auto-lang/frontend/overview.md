@@ -54,10 +54,12 @@ execution_engine.rs 头注；docs/design/01 §Compilation Pipeline）。
   component/view/fragment/节点族/on 块/actions/style/timer/routes/menubar/
   toolbar/scene/use/setup/expose/watch/computed/bind）亦单源迁入
   auto-ui-dialect `grammar` 模块，经 `UiParseContext` 端口驱动；Parser 上
-  仅余同签名薄委托门面。未迁：on-events/arrow 事件文法（Core 共享归
-  Core）、
-  computed 等结构文法仍在 Parser（见"未迁事实"）。规范见
-  [auto-ui-dialect/project.md](../../auto-ui-dialect/project.md)。
+  仅余同签名薄委托门面。未迁（现行事实）：顶层 on-events/arrow 事件
+  文法（Core 共享——非 UI 回退与 `ast_parse_ext` 同源，归 Core）、
+  View/On TokenKind 兼容基础 AST（R10）与 `scan_use_statements` 字符串
+  级 use 扫描（语言所有者）。规范见
+  [auto-ui-dialect/project.md](../../auto-ui-dialect/project.md) 与
+  [design/full-grammar.md](../../auto-ui-dialect/design/full-grammar.md)。
 - `use` 体系两层：预处理用 `scan_use_statements`（字符串级，免解析）；
   解析后用 `ModulePath`（`pac`/`super` 前缀）+ `ModuleResolver`/`FilesystemResolver` 落盘。
 - AST 序列化三件套 `ToNode`/`ToAtom`/`AtomWriter` 覆盖全部 AST 类型（S 表达式文本）。
@@ -167,9 +169,11 @@ with_header/body_depth 五个上下文旗标。Err 时注册不丢失，恢复�
 
 裸字段支持属于显式注册的外部 pilot，默认内建 model 仍要求类型或初值，行为不变。生产
 入口和导入中新建的 Parser 不自动继承外部注册；需要各入口显式注入。widget 体内 model
-由结构解析器直连内建，不经过语句方言派发（PLAN-810 起全部直连/派发臂经端口消费
-auto-ui-dialect 单源文法）；widget/msg/component/actions/style/view/
-on/store 的完整外部化、生产接线与 UI AST 迁移尚未完成。
+由结构解析器直连内建，不经过语句方言派发——PLAN-810 起 widget/msg/component/
+actions/style/view/on/store 的**完整文法**已单源外置 auto-ui-dialect，全部
+直连/派发臂经 `UiParseContext` 端口消费同一实现（`ParserBridge::parser()`
+escape hatch 已删除）；仍未完成的是 UI AST/关键词所有权迁移（R10）与
+renderer/生成器/Man 搬仓（R04/R08），不属解析文法范围。
 
 ### 方言接口独立与 Parser 依赖倒置（PLAN-801）
 
