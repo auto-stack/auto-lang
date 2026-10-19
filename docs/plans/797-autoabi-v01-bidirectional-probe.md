@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-797
-status: executing
+status: execution_done
 feature_name: 首版 AutoABI 合同与双向互调探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-16
-current_step: 5
+current_step: 7
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -179,8 +179,8 @@ work仅相关反例/模块及必要check；最终review后merge冻结提交执�
 | [x] T-03 | work | T-02 | 新probe/src/{emit,build,link}.rs与C参考源/独立producer/consumer recipes，零改ac-core | abi_calls_三腿/异质控制；AC-02。[✅ 已完成] 三腿全套（含 C→AutoABI→C 嵌套链、fallible out-sentinel、record 冻结 offset、可观察计数器）exit 0；swap/错 offset/漏调用负例各 exit 恰 1；produce/consume 配方 admission 先行；abi_calls_ 7/7、workspace 35/35 绿（commit plan-797-dev T-03） |
 | [x] T-04 | work | T-03 | 新provider资源/错误/callback fixtures与真实账本 | abi_resource_；AC-03。[✅ 已完成] C provider 真 arena/代际账本/原方 destroy/失败注入回滚/buffer 规则/同步 callback；AutoABI 与 C 双消费者全协议 exit 0 + 回滚控制红；abi_resource_ 3/3、workspace 38/38 绿（commit plan-797-dev T-04） |
 | [x] T-05 | work | T-04 | store adapter/阶段trace/六场景/512churn，首批.case.ad与oracle从T-01维护 | abi_cache_、abi_turnaround_；AC-04、05。[✅ 已完成] ABI-O1 对象层（命中禁调 producer、真实输入失效矩阵、tamper=受控 CAS 拒绝、缺块=miss 重算）、512 修订 churn（rooted+leased 存活、块层收敛 live 集、用户哨兵不变、lease 释放翻转）；六场景×30 全绿，硬门 body-edit P95=539.5ms、descriptor-reject P95=0.1ms（<1000ms），210 样本 JSONL 全保留；abi_cache_ 6/6+abi_turnaround_ 1/1、workspace 45/45 绿（commit plan-797-dev T-05） |
-| [ ] T-06 | work | T-05、D-796、D-788 | 绑定796合入contract与受限probe adapter，只追加ABI recipe/worker；退出临时模型，正式AutoDown全执行/性能重测 | abi_binding_、原v1/v2兼容；AC-06 |
-| [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan797/、attachments/797/spec-delta.md与freeze proposal，来源/并行边界审计 | **部分交付（F-797-R1-02 可独立准备面）**：`scripts/verify-autoabi-797.ps1`（acceptance/closeout）、`docs/reports/plan797/{freeze-proposal,support-matrix,r1-repair-baseline}.md`、`attachments/797/{spec-delta,source-parallel-audit}.md` 已入 `635053f74`；verify acceptance 全绿、closeout 清单诚实标 V-09 partial / V-10 pending。**未关闭**：V-01–11 最终收口、SD/支持矩阵/freeze 终稿 hash、正式 AutoDown 与 AC-05 复测（等 T-06）。execution_done 仍等 7/9 |
+| [x] T-06 | work | T-05、D-796、D-788 | 绑定796合入contract与受限probe adapter，只追加ABI recipe/worker；退出临时模型，正式AutoDown全执行/性能重测 | abi_binding_、原v1/v2兼容；AC-06。[✅ 已完成] D-796/D-788 满足（双归档实证）；rebase 到 master+组内 auto-down 兄弟树；semref 退役→ac-sema-contract 真实绑定（收据在案）；contract 追加注册 abi/interop-v1（绑定互斥解码）；abi-worker（abiworker/1）+ 父侧 test_cases/abi.rs + stale 轴族；可执行语料 4 checks 过统一 runner（含跨进程 restart 命中与类型化负例）；probe 51/51（abi_binding_ 4/4）；正式复测双硬门 body-edit P95=500.8ms/reject P95=76.8ms（commit `35794e5ec`） |
+| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan797/、attachments/797/spec-delta.md与freeze proposal，来源/并行边界审计 | [✅ 已完成] 终稿化：freeze-proposal（T-06 交付行+正式硬门数值+spec-delta 终稿 hash `6A6E1B2F..`+当前 canonical 输入 hash 含漂移后的 goals.md 重核）、support-matrix §0 正式通路面、spec-delta 终稿（真实通路字段+实测 SHA256 输入表）、verify 脚本扩面（t06_binding/统一 runner 语料/退役收据工件步、诚实 closeout、sccache 端口排除单次受控重试、零警告限定本 crate）——`-Scope closeout` ALL PASS（10 步，收据 docs/reports/plan797/verify-acceptance-20261019-180106.md）；execution_done=7/9（commit `8679859e4`） |
 | [ ] T-08 | review | T-07 | 同树独立review，绑定native工具/接口版本，核互调/资源/兼容承诺 | AC-07；pass→reviewed=8/9，merge pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交门禁；仅在通过后沉淀有限profile冻结状态、Spec/ledger、归档合入、批量到期判定、guard清理 | AC-08；实际完成9/9 |
 
@@ -210,6 +210,10 @@ T-01–05可与796/787/788并行，不能提前实现依赖其未合入API的T-0
 
 2026-10-16 stage:work（R3 needs_fix 回环）；PLAN-797 r1；outcome:**blocked**（依赖门与 R2 轮完全一致，零代码/零草稿/零材料改动）；code HEAD `635053f74`（未动，树 clean）。R3 接收：F-797-R1-01 OPEN / F-797-R1-02 PARTIAL / F-797-R1-03 CLOSED，无新增 finding。**依赖门核查（R3 后复查，与 R3 报告所录相同）**：796 `d85f89fc7` 与 788 `720df159c` 对 master ancestry 均 exit1，archive 无 788/796——门未动，无重试条件。维持 R2 回环记录的全部约束（不提前实现未合入 API 的 T-06、不翻搅冻结草稿、不重复完整验收）。**unblock 不变**：D-796+D-788 交付后同树（`635053f74` 起）T-06→T-07→T-08 完整验收。next_responsible_role: work（门后恢复）。备注：三轮复核结论与实施提交均未变化，依赖交付前重复就绪复核不会产生新信息；推进 796/788 合入（或由用户裁定缩小 T-06 绑定范围走 needs_replan 修订）是唯一改变状态的路径。
 
+2026-10-19 stage:work（T-06/T-07 收口轮）；PLAN-797 r1；outcome:**pass→execution_done**（work-owned 任务 7/7 完成）；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`（rebase 至 master `13367d127` 线，组内补 auto-down 兄弟 detached 树）；code HEAD `8679859e4`（T-06 `35794e5ec` + T-07 `8679859e4`，树 clean）；deps：D-796+D-788 已合入归档（实证）、ac-sema-contract（真实语义绑定）、MSVC cl 19.44.35222、rust-lld/SDK 10.0.26100.0。
+
+**work-owned AC 终态**：AC-01–04 ✓（T-02..T-05 证据面在树、rebase 后全套复跑绿）；AC-05 ✓（T-05 六场景 210/210 + T-06 正式 IPC 复测双硬门 body-edit P95=500.8ms / descriptor-reject P95=76.8ms，各 30 样本）；AC-06 ✓（真实 ac-sema-contract 绑定+快照退役收据+abi/interop-v1 经统一 runner 全执行 4 checks 绿+v1/v2 兼容：test-cases 家族 26 绿、sema recipe 面未动）。AC-07/08 归 review/merge。**open in-contract findings**：F-797-R1-01 关闭（=T-06 交付）；F-797-R1-02 关闭（终稿 hash 绑定）；F-797-R1-03 已闭。**coverage gaps**：无 work-owned 缺口；merge-owned pending：冻结提交上 ABI 完整套件/真实 C 三腿/受影响 796·788 定向兼容 + 根 cargo t/tv 按最终 diff 定界（2026-10-14 时序）。**预存红（非本分支，需 L0 修复路由）**：master 上 sema 语料 oracle json（ac.sema.infer-bindings/cache-roundtrip.bindings.json）缺失 → `probe_adapter_corpus_executes_green` 在 master 同样红（git ls-tree 实证），本分支未触碰。**边界声明**：emit 源=受限声明 IR 非 Auto parser；v0.1-candidate 冻结登记待 T-08/T-09；774 ABI-A–E 未动。next_responsible_role: review（T-08 同树独立复审，绑定 commit `8679859e4`/工具链/D-796·D-788 修订）。
+
 预检/来源见[planning-preflight.md](attachments/797/planning-preflight.md)。候选v0.1不是现有产品支持声明。
 
 ## 10. 待澄清事项
@@ -220,6 +224,6 @@ R2 当前结论（2026-10-16）：**needs_fix / executing 5/9**。F-797-R1-03 �
 
 2026-10-16 独立就绪核查 R1：**needs_fix**。R1 报告仍为 finding 依据。R1 修复轮后开放项收敛为：**F-797-R1-01（P1，T-06）** —— 真实 semantic contract / 正式 AutoDown / 性能复测，等 D-796/D-788；**F-797-R1-02（P2 部分）** —— T-07 可独立材料已交（commit `635053f74`），V-01–11 终收口与 freeze/SD hash 冻结仍等 T-06。**F-797-R1-03 已关闭**（Cargo.lock 入提交）。历史测试/性能总数在依赖一致性与完整验收前不得充作最终验收。D-796/D-788 满足后续 T-06/T-07，再申请完整 final review。
 
-**阻塞（work 阶段交接，2026-10-16）**：T-06/T-07 等待 D-796（PLAN-796 合入，现 executing 5/9）与 D-788（PLAN-788 合入，现 executing 未终审）。两者均为外部依赖门，非本计划实现缺口；解锁后 T-06 需在同一 worktree（`defcc8eaa` 基）切换真实 semantic contract、追加正式 probe recipe/worker、退出临时 semref 快照（收据）并全重验，T-07 随后产出 freeze proposal。
+**已解除（2026-10-19）**：D-796/D-788 均已合入归档，T-06/T-07 已在同一 worktree 完成（见 §9 execution_done 记录）。**新登记（非阻塞，路由待用户/后续 L0）**：master 预存红——sema 语料 oracle 文件（`crates/auto-lang/test/cases/ac-semantics/oracle/ac.sema.{infer-bindings,cache-roundtrip}.bindings.json`）在 master 缺失致 `probe_adapter_corpus_executes_green` 红；属 796 收尾遗留、非本计划触面，本计划不代修（master ls-tree 实证，2026-10-19）。
 
 T-01 需冻结的实际 C 工具可用性（已冻结：cl 19.44.35222 在机可用）、context/status/out 精确签名、target header/descriptor/错误/资源上限及参考负载（已随 contract-decision.md §1–9 冻结）。工具或 whole-path 不可行留下反例回规划，不能用 Rust 同编译器自测代替 C。正式版本号/冻结范围按最终证据评审，不先保证全部 ABI/未来类型。
