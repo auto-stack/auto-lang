@@ -71,11 +71,12 @@ auto-lang 侧兼容出口：`crate::session`/`crate::dialect::DialectPriority`
 
 - 旧 `auto_lang::dialect::Dialect` + `ParserBridge` 公开面保持不变（PLAN-778
   冻结面零漂移；by-value `BridgeCheckpoint` 与端口凭据是两条独立机制，
-  旧方言投机解析不经端口作用域清理）。内建 `UiDialect` 仍经 `pub(crate)
-  parser()` escape hatch 使用完整 Parser。（现行事实：PLAN-810 起该
-  escape hatch **已删除**——内建 UiDialect 与外部方言同样只经端口面，
-  完整 UI 文法单源在 auto-ui-dialect。）历史：迁移前内建 UI 文法在 Parser 上，
-  不在本 crate。
+  旧方言投机解析不经端口作用域清理）。内建 `UiDialect` 与外部方言同样
+  只经端口面消费——完整 UI 文法单源在 auto-ui-dialect，其 UI 伴随端口
+  `UiParseContext` 定义在该 crate（**不入本 Core 包**），本 crate 的
+  `ParseContext`/凭据/probe 协议面零改动。（历史：PLAN-810 之前内建
+  UiDialect 曾经 `pub(crate) parser()` escape hatch 取回完整 Parser、
+  内建 UI 文法在 Parser 上——该出口与该算法均已于 PLAN-810 删除/迁出。）
 - 生产入口/import 新建 Parser 不自动继承外部注册（沿 778 冻结边界）；
   widget 体内 model 由内建结构解析器直连，不经语句方言派发。（PLAN-810
   起这些边已清偿：完整 UI 文法单源 auto-ui-dialect，经其自定义子 trait

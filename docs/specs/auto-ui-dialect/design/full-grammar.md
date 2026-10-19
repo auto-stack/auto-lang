@@ -70,8 +70,19 @@ auto-parser-api Core 包，既有 `ParseContext` 实现面零改动）。由 aut
   `->`/`=>` 混写、近失告警、`__stream_sse_*` 合成 pattern、outlet 三态、
   quoted event、setup 拒绝 await 等）逐字保持；错误文本/span/顺序/恢复
   进度不变。
-- 已知怪癖基线：msg/model 的无 EOF 守卫块循环（806 spec 在案，适用边界
-  如实）；迁移闭包内未发现新的无界 EOF 形态。
+- 已知怪癖基线（F810-R2-01 具名冻结，行为保持不修）：
+  **① on 处理器 Err 路径的参数作用域泄漏**——基线顺序为 enter_scope →
+  body?（`?` 先返回）→ exit_scope 未执行，失败实例上 handler 参数残留
+  可见（同实例对照：成功路径源尾裸参数引用报未定义×1，失败路径×0；
+  on 体旗标两条路径均平衡恢复）；**② 未闭合 fragment 无界 EOF**——
+  `view fn F(x: int) { if x { text "u" ` 直达 EOF 时条件/节点循环不收敛
+  （隔离进程外部截止观察不收敛，收据
+  `attachments/810/eof-quirk-isolated.json`；基面↔迁移文本同构证明
+  `attachments/810/eof-quirk-baseline-identity.json`——fragment 路径
+  10 函数在冻结端口映射归一化下全同）；**③ UI 场景 fn 体内 `store.x = 1`
+  确定性 Err**——store 直连门只查 in_on_body 不查 in_fn_body（门在
+  Core 未迁出，零改动）。另：msg/model 的无 EOF 守卫块循环（806 spec
+  在案）继续适用。
 - 失败边界（不得冒称）：expr/type/Pratt/作用域/模块解析算法仍归 Core
   （经端口委托）；View/On TokenKind 兼容 AST 未退（R10）；`scan_use_
   statements` 与真实 import 加载归语言所有者；发行闭包含 auto-lang 是
