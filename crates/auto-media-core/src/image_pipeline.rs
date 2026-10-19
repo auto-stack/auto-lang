@@ -3302,21 +3302,37 @@ mod tests {
     fn full_channel_oracle_negative_control_below_saturation_stays_not_full() {
         // Review R6 (F811-R2-02): the full-channel oracle must DISCRIMINATE.
         // Same payload, same gauges, same polling loop as the positive
-        // test, but the item budget is capped BELOW saturation: 8 accepted
-        // items can compose at most 8 running states (2 decoding + 1
-        // transforming + 5 channel waiters) and at most 7 untaken channel
-        // slots (a full 8-slot channel plus the item being resized needs a
-        // 9th item). The gauges must therefore read NOT-full for the whole
-        // run while real work flows — proving the positive test's
-        // thresholds are genuine observations rather than an always-green
-        // banner — and the load must still drain to completion through the
-        // normal consumption path (no shutdown shortcut).
+        // test, but the item budget is capped BELOW saturation. Review R7
+        // (F811-R7-01): the cap must make not-full an ARITHMETIC property,
+        // valid under every schedule — including the receiver
+        // (media-resize) thread not having taken a single item when the
+        // capped load finishes entering. A budget of CAPACITY−1 accepted
+        // items means at most CAPACITY−1 items exist to sit in the
+        // channel (backlog ≤ budget) and to compose in-flight states
+        // (running ≤ budget); no consumer-scheduling premise is involved.
+        // The R6 shape used a CAPACITY-sized budget and leaned on "the
+        // resizing item always occupies one slot" — a premise that only
+        // exists once the receiver has taken an item, and a controlled
+        // 8s receiver stall reproduced its failure. The gauges must read
+        // NOT-full for the whole run while real work flows — proving the
+        // positive test's thresholds are genuine observations rather than
+        // an always-green banner — and the load must still drain to
+        // completion through the normal consumption path (no shutdown
+        // shortcut).
         let runtime = super::MediaRuntime::new(Duration::from_secs(60));
         let registry = runtime.registry().clone();
         let payload: Arc<[u8]> = Arc::from(png_bytes(3200, 2400).into_boxed_slice());
         let target = RenditionSpec::viewport(1920, 1440);
         let full_channel = MediaPriorityQueue::CAPACITY as u64;
-        let item_budget = MediaPriorityQueue::CAPACITY as u64;
+        let item_budget = MediaPriorityQueue::CAPACITY as u64 - 1;
+        // The not-full premise, stated where it is enforced: strictly
+        // fewer items than channel slots, so even a fully-stalled
+        // receiver cannot fill the channel.
+        assert!(
+            item_budget < full_channel,
+            "not-full control premise: budget {item_budget} must be strictly below the \
+             channel capacity {full_channel}"
+        );
         let establish_deadline = Instant::now() + Duration::from_secs(30);
         let mut next_index = 0u64;
         let mut accepted = 0usize;
@@ -3382,16 +3398,22 @@ mod tests {
              peak {peak_backlog}"
         );
         assert!(
-            peak_running <= full_channel as usize,
-            "not-full control: running peak {peak_running} must stay at the item \
-             budget ({item_budget} accepted items cannot exceed that many in-flight \
-             states)"
+            peak_running <= item_budget as usize,
+            "not-full control: running peak {peak_running} must stay within the item \
+             budget ({item_budget} accepted items cannot compose more in-flight states, \
+             regardless of receiver scheduling)"
+        );
+        assert!(
+            peak_backlog <= item_budget,
+            "not-full control: backlog peak {peak_backlog} must stay within the item \
+             budget {item_budget} — at most every accepted item sits in the channel, so a \
+             stalled receiver still cannot reach the capacity {full_channel}"
         );
         assert!(
             peak_backlog < full_channel,
-            "not-full control: backlog peak {peak_backlog} must stay below the \
-             channel capacity {full_channel} (the resizing item always occupies one \
-             of the accepted items)"
+            "not-full control: backlog peak {peak_backlog} stays below the channel \
+             capacity {full_channel} by arithmetic (budget {item_budget} < capacity), not \
+             by a receiver-scheduling premise"
         );
         assert_eq!(
             runtime.worker_pool().resize_backlog(),
