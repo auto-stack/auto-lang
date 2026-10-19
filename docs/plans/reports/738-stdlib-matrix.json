@@ -76,6 +76,13 @@
             "reason": null
           },
           {
+            "symbol": "read_line_opt",
+            "native_name": "auto.io.read_line_opt",
+            "status": "unverified",
+            "verification": "bound",
+            "reason": "callee bound; independent logical producer signature unavailable"
+          },
+          {
             "symbol": "say",
             "native_name": "auto.io.say",
             "status": "declared_stub",
@@ -148,6 +155,13 @@
             "reason": "no browser provider/adapter is registered for this symbol"
           },
           {
+            "symbol": "read_line_opt",
+            "native_name": "auto.io.read_line_opt",
+            "status": "unsupported",
+            "verification": "bound",
+            "reason": "no browser provider/adapter is registered for this symbol"
+          },
+          {
             "symbol": "say",
             "native_name": "auto.io.say",
             "status": "unsupported",
@@ -173,6 +187,7 @@
           "File.read_text",
           "File.write_line",
           "read_line",
+          "read_line_opt",
           "say"
         ],
         "native": [
@@ -234,6 +249,13 @@
           },
           {
             "symbol": "read_line",
+            "source_file": "stdlib/auto/io.at",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "无 io.rs.at 且 a2r_std::io 不存在；发射名称表误路由 auto.io → a2r_std::io 的漂移在案（738-stdlib-decision §1/E1③、§3）"
+          },
+          {
+            "symbol": "read_line_opt",
             "source_file": "stdlib/auto/io.at",
             "status": "unsupported",
             "verification": "declared",
@@ -306,6 +328,13 @@
           },
           {
             "symbol": "read_line",
+            "source_file": "stdlib/auto/io.at",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "no browser host adapter is registered"
+          },
+          {
+            "symbol": "read_line_opt",
             "source_file": "stdlib/auto/io.at",
             "status": "unsupported",
             "verification": "declared",
@@ -337,6 +366,7 @@
           "File.read_text",
           "File.write_line",
           "read_line",
+          "read_line_opt",
           "say"
         ],
         "native": [
@@ -398,6 +428,13 @@
           },
           {
             "symbol": "read_line",
+            "source_file": "stdlib/auto/io.at",
+            "status": "unverified",
+            "verification": "declared",
+            "reason": "independent host producer signature and routing require verification"
+          },
+          {
+            "symbol": "read_line_opt",
             "source_file": "stdlib/auto/io.at",
             "status": "unverified",
             "verification": "declared",
@@ -470,6 +507,13 @@
           },
           {
             "symbol": "read_line",
+            "source_file": "stdlib/auto/io.at",
+            "status": "unsupported",
+            "verification": "declared",
+            "reason": "no browser host adapter is registered"
+          },
+          {
+            "symbol": "read_line_opt",
             "source_file": "stdlib/auto/io.at",
             "status": "unsupported",
             "verification": "declared",
