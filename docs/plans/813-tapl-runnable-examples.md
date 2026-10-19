@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-813
-status: executing
+status: execution_done
 feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 1
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm]
-current_step: 1
+current_step: 7
 total_steps: 9
 ---
 
@@ -148,20 +148,35 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | ID | owner_stage | 依赖 | 操作/真实路径或符号 | 结果及验证 |
 |---|---|---|---|---|
 | T-01 | work | 用户确认 r1 | 建实施组，核对 prepare-content.js/auto-fence-md.ts 与书稿；公共 CLI/API/test_code 跑 §5.1 探针，设计执行元数据和审计入口 | ✅ 完成：决策与基线探针已回写 §5.1 并记录于 `t01-findings.md`；T-02..06 依赖此合同 |
-| T-02 | work | T-01 | Playground `src/routes/run.rs,vm_runner.rs,project.rs`、auto-lang `src/lib.rs,vm/host_capabilities.rs,vm/ffi/stdlib.rs` 最小相关路径 | 输入/测试/fixture 接线，定向 Rust/API 检查及 cargo check；V-03/04/05/07；AC-03/04 |
-| T-03 | work | T-01/02 | website CodeView.vue/AutoFence.vue、auto-fence-md.ts、prepare-content.js、scripts/build-playground-notes.mjs；必要的包 SnippetRunner.vue/usePlayground.ts/types.ts | 共用描述/客户端、完整源/输入界面与配置/错误/服务模式；定向 tapl-run + 原阅读测试；AC-02/03/04 |
-| T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | 每条描述/期望更新、逐块定向验收；V-02/03/06/07；AC-01/02/03/05 |
-| T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | 正反例和完整工程；中英/多目标展示真实，不能静默降标准；V-04/05/06/07；AC-04/05 |
-| T-06 | work | T-04/05 | 新增 scripts/check-tapl-examples.py、website/tests/tapl-run.spec.ts；最终清单和可重放证据、SD 草案 | 全有效源复验、网站生产构建/阅读定向 Playwright、两仓 diff check；AC-01..06 通过，不跑整档 Cargo |
-| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | 无 pending work，实施树冻结，交 review；current_step=7/9 |
+| T-02 | work | T-01 | Playground `src/routes/run.rs,vm_runner.rs,project.rs`、auto-lang `src/lib.rs,vm/host_capabilities.rs,vm/ffi/stdlib.rs` 最小相关路径 | ✅ 完成：请求级有限输入/EOF、新 `read_line_opt`、带共享 deadline 的 `/api/test`、独立项目文件物化；`cargo check -p auto-lang`、`plan813_hosted_input` 3/3、`cargo build -p auto-playground --locked` 通过。 |
+| T-03 | work | T-01/02 | website CodeView.vue/AutoFence.vue、auto-fence-md.ts、prepare-content.js、scripts/build-playground-notes.mjs；必要的包 SnippetRunner.vue/usePlayground.ts/types.ts | ✅ 完成：共享 catalog 与执行描述、同源 API、可编辑完整源/输入/多文件/测试/展示模式；生产构建 97.22s 通过，`tests/tapl-run.spec.ts` 5/5。 |
+| T-04 | work | T-01/02/03 | book/tapl ch00..13 中英、对应 listings；上下文、猜数、模块、错误教学；必要的标准库/绑定局部修正 | ✅ 完成：修复 ch00–13 作者源、Listing、预期与页面映射；ch08 按用户确认保留可运行改写并说明差异。全量源审计见 T-06。 |
+| T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成：修复 ch14–22、附录、工程/测试示例及受影响目标语言展示；中英书页与 Notes 共用执行合同。无可用 C 编译器，C 等价片段已人工核对但未声称编译通过。 |
+| T-06 | work | T-04/05 | 新增 scripts/check-tapl-examples.py、website/tests/tapl-run.spec.ts；最终清单和可重放证据、SD 草案 | ✅ 完成：最终 401 条（377 run / 14 test / 10 display-only）全部通过，0 失败，52.353s；错误 stdout 与失效锚点负控均能失败；生产构建、定向 Playwright 5/5、Python/Rust/TypeScript 定向示例检查及两仓 diff check 通过。执行报告 `attachments/813/tapl-full-execution.json.txt`，SHA-256 `87E76198D73D3C0A557B67546EB3238FF9DCB1612C239174062C7B7B6C9911D3`。未运行整档 Cargo。 |
+| T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：两仓提交与基线、依赖版本、输入哈希、验证命令及边界均记录于 §9；实施提交冻结，转交独立复审。 |
 | T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | AC-07，pass 后 reviewed；merge-owned 全档门禁 pending，不能声称交付完成 |
 | T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | AC-08；每树移除前 wt-guard clean，保留他人 WIP，提供实际收据 |
 
-T-01 已完成；T-02..07 尚未执行。静态普查与 T-01 基线探针只界定修复方式，不冒算全源运行验收。
+T-01..07 已完成；T-08 独立复审与 T-09 合并仍待执行。全源验收以最终执行报告为证，不以静态普查或基线探针冒算通过；merge-owned Cargo 门禁保持 pending。
 
 ## 9. 复审记录
 
-2026-10-19：用户确认 PLAN-813 r1 并要求实施；状态转为 executing。T-01 已在专用工作树完成：将静态清单对上生成页面（实际 399 Run，另两处 TOML 应静态展示）、执行 ch03/ch05/ch10 公共 CLI 探针、确认 stdin 空行/EOF 行为、确认 `/api/test` 缺失及 test VM 无 deadline，并回写元数据/输入/测试/API 决定。书稿静态基线为 54 页/1829 围栏/401 原始位置；逐项真实执行验收仍 pending。
+2026-10-19：用户确认 PLAN-813 r1 并要求实施；状态转为 executing。T-01 已在专用工作树完成：将静态清单对上生成页面（实际 399 Run，另两处 TOML 应静态展示）、执行 ch03/ch05/ch10 公共 CLI 探针、确认 stdin 空行/EOF 行为、确认 `/api/test` 缺失及 test VM 无 deadline，并回写元数据/输入/测试/API 决定。
+
+2026-10-19：T-02..07 完成，work handoff 为 `pass`，下一责任角色为 review。实现身份与证据如下：
+
+| 仓库 | worktree / branch | base commit | 冻结 code commit |
+|---|---|---|---|
+| auto-lang | `D:/autostack/.wt/lang-813/auto-lang` / `plan-813-dev` | `30c1b9a7edc3112cac99089d14169d9f9bdeaeb6` | `cacb9fcc335b4addc5a0db67e7c64282b30d445e` |
+| book | `D:/autostack/.wt/lang-813/book` / `plan-813-book` | `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a` | `de49ae222da45fd9b33eeb443fdd776658a1750c` |
+
+- auto-down 依赖 worktree 为 `D:/autostack/.wt/lang-813/auto-down`，detached HEAD `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。该共享依赖树有 12 个 tracked 文件的既有 WIP（约 +2915/-757 行）；本计划未修改、提交或清理它。实施阶段 cargo 默认依赖树未启用 `autodown-core`（`cargo tree -p auto-lang -e features` 未输出该依赖）。
+- 输入/作者源哈希：`Cargo.lock` `1E1E432EEFC4C75981A5B1E788830A6791E911949FD3153B3E22570EFC1BFF9E`；`website/package-lock.json` `DC7121A2C03D91D0A20CD8C3CB8DC31B68CA235E8FC2364F0837082434F6FF82`；`book/tapl/examples.json` `89B64109AA5BB692F6BFC5279A90760E36D6C86043571B25AE8A27CE2C26FF89`。
+- 核心证据：`cargo check -p auto-lang` 通过；`cargo test -p auto-lang --test plan813_hosted_input` 3/3；`cargo build -p auto-playground --locked` 通过；TAPL 401 项最终全量 API 审计 401/401、0 失败，含错误期望与失效锚点负控；生产构建通过；`CI=1 AUTO_WEBSITE_TEST_PORT=4185 npm run test:e2e -- tests/tapl-run.spec.ts` 5/5。目标 Rust 文件定向 rustfmt、两仓 `git diff --check`（按 CRLF 处理）通过。报告见 `attachments/813/tapl-full-execution.json.txt`。
+- 边界如实记录：环境无 `gcc`/`clang`/`cl`，C 等价代码人工核对、未编译；全仓 `cargo fmt ... --check` 被既有 `crates/auto-lang/examples/ui_container.rs:195` 语法错误及其他既有格式差异阻断，所有本次修改 Rust 文件的定向 rustfmt 检查通过；`cargo check` 显示 406 条既有 warning，未将其误报为零 warning。没有在 work 阶段运行整档 Cargo。
+- 规范增量候选仍为 SD-01..04（见 §5）；合并前执行的 merge-owned 门禁 `cargo t`、VM 触面 `cargo tv`、book 触面 `cargo tb` 均 pending。AC-08 的双仓落地、规范/ledger/index、归档、fresh guard 与清理属于 T-09，尚未宣称完成。工作树冻结后无 work-owned 待办；依赖树中的他人 WIP 需保留并在复审/合并收据继续注明。
+
+stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | base_commit: `30c1b9a7edc3112cac99089d14169d9f9bdeaeb6` + `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a` | code_commit: `cacb9fcc335b4addc5a0db67e7c64282b30d445e` + `de49ae222da45fd9b33eeb443fdd776658a1750c` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` (12 tracked WIP files preserved) | task_ids: T-01..T-07 | evidence: §9 and `attachments/813/tapl-full-execution.json.txt` | blockers: none for work-owned criteria; C compiler unavailable and full-repository rustfmt blocked by pre-existing issues, both disclosed above | next_responsible_role: review
 
 ## 10. 待澄清事项
 
