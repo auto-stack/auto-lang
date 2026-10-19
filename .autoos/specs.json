@@ -2155,6 +2155,11 @@
           ],
           "content": "merge 收据：reviewed b561796b5 rebase over master（range-diff：R3/R4 全等、1/3/4 纯上下文漂移、777 基线并集重生成）→ specs 沉淀 863094781（SD-01 新 auto-terminal-core/project.md、SD-02 vm、SD-03 ui（term/media 收窄 media、保留 807 注记）、SD-04 mux owner 注记、INDEX 45）→ ff-only landed 5833e155e；冻结门：裸 cargo t 5279（5278 过+plan738 p4 负载超时 solo 复过；ac_case 冷缓存超时热复 13/13；charts_gallery/plan707 预存红在案）、cargo tv 163/163、777 strict 0 violations/2 grandfathered（基线显式重采样）、792 driver 25/25；ledger v49→v50 guarded offline projection（备份 bak-v49-808）。",
           "status": "active"
+        },
+        {
+          "id": "P809-M",
+          "title": "PLAN-809 合入收据（delivery/沉淀/归档）",
+          "content": "delivery=b819a602e no-ff union（基线 json 冲突取 master 侧留待并集重采样；Cargo.toml/toml/代码自动并集）；冻结门禁（分支 HEAD 390d02acc）：裸 cargo t 5290/5290+auto-man-core 46/46+auto-project-model 38/38+plan809 probe 8/8（真实 cargo/npm/ninja 三 Builder 成功+失败矩阵）+cargo tu 867/867+777 strict pass（基线 c41a4fe4c 重采样）+792 driver 24/24 正式交付收据（V01 fresh+真实 locked build/V02 重定位 locked 重建/V03 负控/V04 dev 同源，经 809 改造链 auto gen --delivery-root）；合并后 check 零错；并集 777 基线刷新因并发会话脏簿记暂缓（工具拒脏树），树静默后补。I-PROJECT 已合入 SHA=b819a602e（R04 消费面）。"
         }
       ]
     },
@@ -7835,6 +7840,21 @@
           ],
           "content": "终端 34 native 宿主域（引擎服务/句柄/采样/背压 + owned 值域）自 vm/ffi/term_engine.rs 整体迁出为 crates/auto-terminal-core（依赖仅 std+libloading，777 lang-core 域，闭包由 terminal-core-consumer fixture 钉住）；DLL 搜索序/缺件/无效句柄旧值逐项冻结；TerminalHostProvider 34 方法 + 3 生命周期辅助（owns_handle/live_handle_count/cached_cursor_viewport）；会话 lease/退役位（free 恰一次）与 Drop 先于 Library 析构；句柄进程全局命名空间 + per-VM owner 历史（provider 替换后旧句柄归原服务）；NI 锁纪律：provider 调用/析构一律锁外，owner 条目 revival 计数协调剪枝（重装/spawn 发布 bump，stamp 未变才移除——复活者从未离开可见列表，R4-01）；free 后进程级 retired 纯值缓存（无界——旧 CURSORS/VIEWPORTS 语义，冻结值不因无关退休淘汰，R4-02）；VM shim 只编解码、无 provider 回落共享 engine；UI adapter（terminal_provider）承接输入/几何/menu/scroll/window/palette；term_engine 49→2 处 UI 直引；792 DELIVERY_CRATES 15 成员（807 并集）。canonical 规范见 file。",
           "status": "active"
+        },
+        {
+          "id": "P809-D1",
+          "title": "auto-man-core 模块契约（管理/构建规划纯规则单一来源）",
+          "content": "SD-01：Man 管理规则唯一实现——backend（BackendName 轻等价+RenderSelection 三形态）、target（声明归一 from_with_probe 观测注入+2 参兼容入口、投影/merge/link 族）、dir/group/node_ext/file_types 数据半、port（port_from_node 含编译器配置）、pac（pac_from_decl→PacDecl：root wrapper 提升/render-backend 选择/标量族/默认 port builder）、closure（resolve_target_closure 有界图准入：内部环→GraphError::NoProgress 具名+环候选链，外部 link 不阻塞不进 dep_names；assemble_major_targets；下载决策 dep_fetch_action/pinned_version/admit_new_dep_libs/admit_transitive_deps 观测注入）、selection（select_flat_entries/skips glob/头文件/STD 子目录表/.at 排除表/check_incs 解析序）、planning（select_port_binding/select_rust_package/BuildOrderStep+ordered_build_steps 首次访问实例身份）。门面：re-export 保类型身份+TargetEffects/DirEffects 扩展 trait+Pac 纯方法一行委托。闭包恒轻 auto-val/atom/toolchain-core/project-model。"
+        },
+        {
+          "id": "P809-D2",
+          "title": "generation-request（I-PROJECT）数据合同契约",
+          "content": "SD-02：UI 生成所需工程侧数据单合同——origin 静态准入/动态求值分流（is_evaluated 诚实判定，unsupported 不伪造）、A 组字段+props 直投、B 组键（npm_deps/styles/i18n/exe_name/front/theme 块/rust_sidecar 三形态：节点 raw_nodes+对象/嵌套 req.raw→core 兜底臂）、raw_nodes/raw 无损、display_title locale 链（title_zh.or(title)）、路径按 source 根 cwd 无关、mode/output_root/input_sources 调用上下文（请求自身 front 解析+递归 .at）、无副作用。消费接线：jet/ark/rust_ui/vue/tauri 读缝+全 `_with_request` 入口，automan gen/run/build/open 全分派经 request_of/request_of_in（render_override 应用），legacy 自扫留冻结 oracle（R04 退役）。"
+        },
+        {
+          "id": "P809-D3",
+          "title": "SD-03/04 修改语义（project-model 独立消费+auto-man 委托边界）",
+          "content": "SD-03：generation_request 为 project-model 具名独立模块，静态准入不扩 786 护栏/语法域，静态 origin 带 unsupported 不伪造已求值；外部消费 project-request-consumer 闭包单证。SD-04：auto-man 委托实况——单源规则在 core，Pac/Builder/Automan 为效果承载者；未迁面（语言执行/Git 索引下载执行/Builder 进程/exporter/UI 生成算法本体/dep pac.at 跨文件资源合并/resolve_back_dir）归 R04+。"
         }
       ]
     },
@@ -9571,6 +9591,11 @@
           ],
           "content": "plan808_terminal_domain.rs 24 项（真实 DLL）：34 codec 形状/装配身份/缺席矩阵/真实会话生命周期（自然+交互退出、重复 free、双 VM、共享回落）/owner 替换路由/service Drop 子进程 reap/VmBridge 双构造装 adapter/R2 四路重入与并发 set-query-prune 每次必中/R3 剪枝窗口真实读 free 与跨 VM/直接 free 共享缓存/R4 复活路由（stale 零判定+重装+真实 spawn 交错，A_live=0）与无界 retired（4097 条无关退休后未预读消费者仍读冻结值）；auto-terminal-core 内 7 项（lease 序列化/跨会话不互堵/句柄全局唯一/5000 条不淘汰）；独立 fixture terminal-core-consumer（无 auto-lang/UI 源码可消费，verify-deps 钉 libloading 闭包）。",
           "status": "active"
+        },
+        {
+          "id": "P809-T",
+          "title": "管理核心验证矩阵（probe/对拍/图 oracle/真实工具/交付）",
+          "content": "V-01 api_compat_probe（Target 32 字段+Pac 全字段字面量构造 pin+方法 pin）+production_delegation_parity+man-core-consumer 外部全链+闭包单证；V-02 plan809_v02 双源对拍（VueReads 九字段+from_workspace 双路径）+r2_parity（zh-only/front 节点形/主声明不变反控）+adapter 5（sidecar 三形态全链/input_sources 请求 front+干扰排除/来源反转）；V-03/04 closure 8 图 oracle（diamond/重复/外部 link/自环/双环/混合/变更重plan/手算链）+resolve_internal_cycle 真实 pac.at；V-05 probe 8（真实 cargo build+Cargo.toml+无 rust 目标/缺依赖失败、真实 npm build+exit3、真实 ninja（vcvars 自举普通环境 Linking main.exe）+内存区分力+空工程负控+不可写输出）；V-06 delivery 9/9+792 driver 24/24 正式收据+777 strict。"
         }
       ]
     },
@@ -12824,10 +12849,15 @@
           ],
           "content": "第五次独立终审 pass（findings=[]）：R4 四项（复活路由 P1/无界 retired P2/unused_mut P3/807 规范调和 P2）独立闭合，含 spawn-only 补控与两种发布模式边界；AC-01..05 pass、AC-06 merge-owned pending；真实 DLL 24/24、core 7/7、UI 41/41、独立 792 fresh/locked 25/25、交付包源码与冻结实施逐字节一致；merge 门禁由本轮执行（裸 t 5279 归因全过/tv 163/777 strict pass/792 25/25）。",
           "status": "active"
+        },
+        {
+          "id": "P809-R10",
+          "title": "PLAN-809 final review R10 — pass",
+          "content": "R1..R10 十轮：R1 readiness 退回→F01..04 闭合；R2 发现 ninja 实例身份回归（P1）→BuildOrderStep 身份序；R3 sidecar 生产接线/Block/front 清单；R4 core 编译+对象形态+C 输入；R5 对象形态根因（wrapper kid 挂错位置）→root prop 直挂；R6 mut+交付回归收据；R7 vcvars 自举真 Ninja；R8 自举大小写自伤修复（普通环境可复现）；R9 正式独立交付验收 24/24 闭合；R10 终审 pass（A/B 锁定构建/源与锁身份/路径边界/资源正负控独立复验全过）。reviewed 9/11。"
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 50
+  "version": 51
 }
