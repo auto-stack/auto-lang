@@ -166,16 +166,47 @@ work只跑相关定向验收及必要check，不能跑整档。T-06改变crates�
 | [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/796/contract-decision.md；冻结ref envelope/模型与probe接缝/资源及性能配方；最小语义query首例存盘/重启 | 合法/非法名义ref+一次真实infer/cache；不可行回规划，不能删验收；AC-01–05 |
 | [x] T-02 | work | T-01 | 新contract/src/{identity,metadata,codec}.rs，完整类别矩阵与SCC/typed view | R12修复：矩阵十处页载体schema同步v2；matrix_invariants 增页schema一致性不变量；sema_identity 16 例含矩阵检查 |
 | [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | R11修复：方法名义身份含owner（contract `DeclKind::Method`+`DeclRef.owner`+`method_logical_id`，kind 轴编码）；sema_identity 16 例含 R11 三向区分/codec 回环 |
-| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R12修复：admit_method_ref 完整名义准入（包/模块/owner下当前声明/当前签名版本）+准入矩阵五模式永久例；同入口嵌入ref义务复核仅方法原有缺口 |
-| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | R12重验：完整窗口P95 250ms/30样本、库级P95 9.68ms、V-06 12例136.93s，报告重生成入提交 |
-| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R12重验：probe16+IPC2（含窗口反控）在新准入下全过 |
-| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R12修复：7项测试警告清零（断言不弱化）；V-03b绑定准入矩阵例；SD-01/02/04 R12增量+D22；acceptance 13行PASS |
+| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R13修复：模块索引键/头/准入同源 module_index_bytes（签名编辑/record增删=换键无Conflict，body-only幂等）+ModuleIndex字段准入；FnSig target_content 拆签名级+FnMeta decl全量准入；页种类覆盖映射见D23 |
+| [ ] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | R12重验：完整窗口P95 250ms/30样本、库级P95 9.68ms、V-06 12例136.93s，报告重生成入提交 |
+| [ ] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R12重验：probe16+IPC2（含窗口反控）在新准入下全过 |
+| [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R12修复：7项测试警告清零（断言不弱化）；V-03b绑定准入矩阵例；SD-01/02/04 R12增量+D22；acceptance 13行PASS |
 | [ ] T-08 | review | T-07 | 同树独立review，冻结commit/依赖/接口快照，检查遗漏/延期 | AC-07；pass→reviewed=8/9，merge pending |
 | [ ] T-09 | merge | T-08 pass | 冻结提交最终门禁，沉淀SD/ledger、归档合入、批量回归到期判定、guard清理；输出D-796消费收据 | AC-08；实际完成9/9 |
 
 D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.ad冒称AutoDown已完成。T-06不自改788在途协议；797不代修796共享接口。范围/预算/类型支持变化回规划修订，旧证据按影响失效。
 
 ## 9. 复审记录
+
+### 2026-10-19 R13 修复轮：work 交接 — execution_done=7/9 复送审
+
+stage:work | plan_id:PLAN-796 | plan_revision:1 | outcome:pass（R13 两项全闭，T-03..T-07 重闭） | worktree_path:D:/autostack/.wt/lang-796/auto-lang | branch:plan-796-dev | base_commit:`d092bca5bb8482596a98c9f7bbc7a068a33e5554` | code_commit:`1bab7e15e`（R13 基线 `d67901b5b` → 本修复提交） | dependency_revisions: 同 R4–R13 冻结（ac-core `8e01299a…`、783 `d4c37fac…`、syntax `66598596…`、auto-down `c39ac7f9…`） | task_ids:T-03..T-07 | blockers:无 | next_responsible_role:review（T-08 独立复审冻结 `1bab7e15e`）。
+
+**finding → 不变式 → 修复与永久反控 → 结果**
+
+| finding | 不变式 | 修复与永久反控 | 结果 |
+|---|---|---|---|
+| F-R13-01(P2) 索引键/头漏 record 名与 decl 签名版本，旧 HIT+再发布 Conflict | 键覆盖实际发布依赖、命中前完整新鲜、783 不容同键异值（§5.3/§5.4） | `module_index_bytes`/`module_decl_versions` 共享 helper：键 `index-content-fp`、页头 content、读侧 target_content 三者同源全量字段；`admit_page` ModuleIndex 分支逐字段准入（包/模块/两候选集/decl_versions）——当前头+陈旧体页被拒；永久例覆盖签名编辑 Miss+无 Conflict 再发布、record 新增同、body-only 幂等复用、fresh store 稳定、陈旧体注入拒绝 | 五场景全按预期；V-03b 37 例绿 |
+| F-R13-02(P2) FnSig 头混 body（body-only 误拒）+FnMeta 仅查 logical（旧版本 decl 放行） | 未读 body 的签名查询不误失效（§5.4/V-03）；嵌入名义 ref 须当前 | `target_content` 拆分：FnSig=签名 canonical、InferBody=签名+body；`admit_page` FnMeta 分支全量名义准入（verify/当前包模块/顶层 Fn 无 owner/当前声明存在/当前签名版本）；永久例：当前 HIT、真实旧签名版本拒、外包拒、body-only 保持 HIT、签名编辑 Miss | 五模式全按预期；V-03b 37 例绿 |
+
+**页种类覆盖映射（review 路由要求，D23）**：RecordMeta=shape+methods（admit_shape_refs+admit_method_ref）；RecGroup=成员 shapes+组有效版本；FnMeta=decl（全量准入+签名级头）；ModuleIndex=全字段（键/头/准入同源）；InferBody/CachedResult=页头 target_content（签名+body）+manifest 新鲜分类——无一页种再以头哈希等价替代嵌入事实。
+
+**验收**：`verify -Scope acceptance` 13 行全 PASS、exit 0（V-01 16、V-02a 15、V-02b 4、V-03 7、V-03b 37、V-06 12 例 140.59s、V-04 5、V-05 1、V-09 6、V-08 16、V-08c 2、V-07 重算 lib P95 8.11ms + IPC 完整窗口 P95 251.00ms/30 raw）；`-Scope selftest` 12 控制 PASS；共 120 个不同定向 Rust 测试（较 R13 +2）。证据 [r13-repair](attachments/796/r13-repair/)；触改文件 scoped rustfmt 通过。**未跑**整档 t/tv/tt/tb/tu/taa/tf（merge-owned，2026-10-14 裁定）。范围：9 文件提交（core 键/内容轴、store 双页种准入、两永久例、D23/spec-delta、三报告重生成、verify 绑定）。环境备注：本轮中 D: 盘 100% 满（ENOSPC 曾清空 query.rs，git 恢复后完整重放；本树 27G 可再生 target 已清理，最终提交完整）。
+
+**merge-owned pending**（冻结 `1bab7e15e`）：裸 `cargo t`、按最终 diff 的触面档/受影响 788 套件、独立 sema 全套、tf 到期判定、SD 沉淀/ledger/归档/guard。
+
+
+### 2026-10-19 R13：独立最终复审 — needs_fix
+
+stage:review | review_scope:final | reviewer_identity:Codex，独立于实施上下文，无代理 | plan_id:PLAN-796 | plan_revision:1 | outcome:needs_fix | worktree_path:D:/autostack/.wt/lang-796/auto-lang | branch:plan-796-dev | reviewed_commit:`d67901b5bf3585ccd914ffbd90f2e1f1a28a9e2d` | base_commit:`d092bca5bb8482596a98c9f7bbc7a068a33e5554` | dependency_revisions:ac-core `8e01299a76e4e9ad34ac61c8ce5302a84adea400`，783 `d4c37faca3843b4a241f5f0770156a09efc23f65`，syntax `66598596079cfa20bd5148d83401497cdc131b08`，auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | spec_inputs:[冻结hash](attachments/796/review-r13/baseline.json.txt)，现行Spec无漂移 | findings:F-796-R13-01(P2)、F-796-R13-02(P2) | evidence:[完整报告/新反例/闭合/AC-SD](attachments/796/review-r13/review.md) | next:原树work修复提交后受影响面复审。
+
+R12三项独立CLOSED：上轮六模式方法准入反例全部按预期，原合法页仍HIT；7项计划测试warning清零（唯一依赖shim-metadata旧doc警告保持排除）；矩阵十处页schema已v2且一致性门生效。R11身份原例保持区分。scoped fmt/diff与all-targets check通过、selftest12控制通过；没有修改实施、canonical Spec/ledger或合入。
+
+新增此前合同遗漏：R13-01，ModuleIndex真实公开生产流中get签名编辑/新增record都不改查询key，lookup返回旧decl_versions/旧record_names，再正式发布触发783 Conflict；fresh store同输入则正确。键/页头漏其实际payload依赖。R13-02，顶层FnMeta当前key/当前页头配真实旧签名decl.content仍HIT；合法FnSig页仅body编辑却因target_content含body在同key被错误拒绝。D22声称其余页全量等价不成立，须补所有页种类payload→key/版本→准入→依赖→正反控覆盖，不以外层新鲜代替嵌入事实检查。两项均非R12方法修复回归，原合同内不批准延期/缩面。
+
+保留T01/02，重开T03/04及依赖T05..07，executing2/9。AC01 partial、AC02 pass、AC03 fail、AC04/05 pass（118个不同定向测试，acceptance13行全过，压力337.37s、库级P95 7.30ms/完整编辑IPC P95 297ms，各30样本）、AC06 partial、AC07 fail、AC08 pending；SD02/04/D22须随修复重核。原已闭/通过证据按不变面保留，后续按影响复用。
+
+pending_closeout_gates:最终review pass后由merge在新冻结提交执行裸cargo t、适用tv/tt、独立sema全套与受影响788套件；tf仅主检出单实例到期判定。规范沉淀/ledger/index、归档、合入、wt-guard/清理仍pending；本轮无整档，不宣称交付完成。
+
 
 ### 2026-10-19 R12 修复轮：work 交接 — execution_done=7/9 复送审
 
@@ -534,4 +565,4 @@ next: work 于同树修复 F01–13并提交，附根因/不变式/永久反例/
 
 **最新R5：needs_fix，2/9**。上方R4与work修复轮收据为历史；本轮F06未闭、F07组路径延期未经批准及F13/范围交接缺口见§9 R5，补齐后再进入完整最终复审。
 
-**最新（R12 修复轮）：execution_done，7/9，待 T-08 独立复审冻结 `d67901b5b`**。R12 三项已修复：方法 ref 完整名义准入（admit_method_ref + 五模式矩阵永久例）、覆盖矩阵同步 v2+一致性不变量、7 项测试警告清零（§9 R12 修复轮、attachments/796/r12-repair）。R11/R10 已闭证据不变面保持。验收 PASS 只代表 work/review 面，merge-owned 裸 t/触面档/独立 sema/788 套件/tf/规范沉淀/归档/guard 全部 pending。不要把历史 R4–R12 needs_fix 收据当作当前状态。
+**最新（R13 修复轮）：execution_done，7/9，待 T-08 独立复审冻结 `1bab7e15e`**。R13 两项已修复：模块索引全量新鲜性（键/头/准入同源+字段级读回准入，无同键 Conflict）、FnSig 签名级新鲜性+FnMeta 完整准入（body-only 不误失效、旧版本 decl 拒绝）；页种类覆盖映射见 D23（§9 R13 修复轮、attachments/796/r13-repair）。验收 PASS 只代表 work/review 面，merge-owned 裸 t/触面档/独立 sema/788 套件/tf/规范沉淀/归档/guard 全部 pending。不要把历史 R4–R13 needs_fix 收据当作当前状态。
