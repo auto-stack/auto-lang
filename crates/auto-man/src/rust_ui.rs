@@ -3397,6 +3397,8 @@ default = ["ui-iced", "auto-lang/default"]
 
 [dependencies]
 auto-lang.workspace = true
+# PLAN-811：viewer 桥函数直调媒体基础公开入口（auto_media_core::）。
+auto-media-core.workspace = true
 serde_json.workspace = true
 # PLAN-039 T-13（E-D5-A）：back `pub type` struct 发射的 serde derive 依赖。
 serde.workspace = true

@@ -5323,7 +5323,7 @@ fn generate_main_rs(
         s.push_str("    let mut app = app;\n");
         s.push_str("    if media_on {\n");
         s.push_str("        app = app\n");
-        s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
+        s.push_str("        .route(\"/api/__auto/media/:id/:revision\", axum::routing::get(auto_media).head(auto_media))\n");
         s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan));\n");
         s.push_str("        app = app.route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream));\n");
         s.push_str("    }\n");
@@ -5447,7 +5447,7 @@ fn generate_main_rs(
         s.push_str("    let mut app = app;\n");
         s.push_str("    if media_on {\n");
         s.push_str("        app = app\n");
-        s.push_str("        .route(\"/api/__auto/media/{id}/{revision}\", axum::routing::get(auto_media).head(auto_media))\n");
+        s.push_str("        .route(\"/api/__auto/media/:id/:revision\", axum::routing::get(auto_media).head(auto_media))\n");
         s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan));\n");
         s.push_str("        app = app.route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream));\n");
         s.push_str("    }\n");
@@ -9343,7 +9343,7 @@ pub fn list_items() []str { return [] }
         );
         for generated in [&stateful, &full_cover] {
             assert!(
-                generated.contains("/api/__auto/media/{id}/{revision}"),
+                generated.contains("/api/__auto/media/:id/:revision"),
                 "route missing: {generated}"
             );
             assert!(
