@@ -222,6 +222,18 @@ test-http-e2e feature（OS 临时端口）；792 driver 产物在
 - provenance 流程修正：先提交→重建→跑收据（R4 §6 指出的 WIP-hash 问题
   不再发生）。
 
+## R5 修复轮增补（2026-10-19，review-r5 needs_fix 后）
+
+修复细节见 [fix-r5.md](attachments/fix-r5.md)；代码基线推进至 **`2ffb87755`**：
+
+- R4-01 余量（在途关闭 backlog 残留 1）：**关闭顺序重排**（先 join
+  decode 发送方→再 Stop→再 join lane，堵死 Stop 后接受窗口）+ lane
+  stopping 快路径结算；语义诚实化（accepted-after-send、阻塞 send 不计、
+  读序方向修正）。复审 occupancy-r5 探针三试 `after_shutdown=0`。
+- R5-01（P3）：unused import 清除，test cfg 零 warning。
+- core **43/43**（新增在途关闭归零控制）；六 harness 重绑 `2ffb87755`
+  全绿；792 修复树重跑 25/25（driver-792-r5fix.json）。
+
 ## 8. 下一步
 
 T-09 review（同树独立上下文审 AC-01..06/SD/生命周期/真消费者/旧路径）；
