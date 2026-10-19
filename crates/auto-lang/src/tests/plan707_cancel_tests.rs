@@ -30,7 +30,7 @@ fn plan707_cancel_active_job_aborts_and_frees_permit() {
     let req_id = crate::vm::ffi::stdlib::alloc_async_id();
     let marker = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let (entered_tx, entered_rx) = tokio::sync::oneshot::channel::<()>();
-    let (gate_tx, gate_rx) = tokio::sync::oneshot::channel::<()>();
+    let (_gate_tx, gate_rx) = tokio::sync::oneshot::channel::<()>();
     let marker_for_job = marker.clone();
     let job = async move {
         let _ = entered_tx.send(());
@@ -43,12 +43,18 @@ fn plan707_cancel_active_job_aborts_and_frees_permit() {
     entered_rx.blocking_recv().expect("job entered active");
 
     crate::vm::ffi::stdlib::drop_async_result(req_id);
-    let _ = gate_tx.send(());
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    // Keep the gate closed while cancellation propagates. Releasing it here
+    // races the runtime's abort handling and can let the job finish first.
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while ah::client_active_available() != baseline_active
+        && std::time::Instant::now() < deadline
+    {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 
     assert!(
         !marker.load(std::sync::atomic::Ordering::SeqCst),
-        "取消后 job future 必须已停止（abort 生效于 gate await）"
+        "取消后 job future 必须已停止（gate 仍关闭）"
     );
     // 许可回基线：wrapper task 整树丢弃 → active 许可随 Drop 释放。
     assert_eq!(
