@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-818
-status: drafting
+status: executing
 feature_name: AC接入共享Typed MIR与原生一致性闭环
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-19
-updated_at: 2026-10-19
-current_step: 0
+updated_at: 2026-10-20
+current_step: 1
 total_steps: 10
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -175,7 +175,7 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 
 | Task | owner_stage | 前置 | 文件/交付 | 验证/AC |
 |---|---|---|---|---|
-| [ ] T-01 | work | 用户实施指令 | 只读MIR映射/符号/ABI/工具/内存/负载/测试owner设计，contract-decision.md及独立golden | 指令覆盖/资源可审；AC-01，不编译未合入接口 |
+| [x] T-01 | work | 用户实施指令 | 只读MIR映射/符号/ABI/工具/内存/负载/测试owner设计，contract-decision.md及独立golden | 指令覆盖/资源可审；AC-01，不编译未合入接口。[✅ 已完成 2026-10-20：[contract-decision.md](attachments/818/contract-decision.md)（全指令表映射/符号/私有ABI `msvc-x64/priv-i32-bool-v1`/trap70/预算与mn.*错误分类/对象key/层与恢复/工具链与参考机身份/48-512-768MiB分区/测试owner映射）+ [golden.md](attachments/818/golden.md)（首例源冻结+手算：exit 0/stderr "aab"/无trap审计；256KiB/100caller+14leaf+main负载设计、LCG seed 0x818_5eed、K=19、fn_041编辑位/fn_leaf_2签名冲突位、无trap界分析、闭式镜像+手审义务）。全程只读：主检出零代码WIP预检过、未编译在途接口、未造mock、未开树；观察基面=798在途分支072cb4e14（forecast非冻结，D-798后重读） ] |
 | [ ] T-02 | work | T-01、D-798、公共注册窗口 | 新workspace/lock、两函数多obj新codegen→PE、三路径/expected、cache新进程恢复/正式AutoDown/trace/峰值首例 | first-case，V-01/04/10；AC-01 |
 | [ ] T-03 | work | T-02 | 完整有限MIR指令/CFG/槽/调用/数值/trace与负例，精确错误/来源 | mir_native_codegen_/parity_、V-01–03；AC-02/03 |
 | [ ] T-04 | work | T-03 | 函数对象/符号/manifest/版本key，恢复/再生/无MIR命中、事务/失败/反控 | mir_native_cache_/transaction_、V-04–07；AC-04/05 |
@@ -190,6 +190,12 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 
 2026-10-19 stage:new；PLAN-818 r1；outcome:pass（规划契约预检，非实现验收）；next:work（需用户实施指令；T-02起等D-798）。新增T-01–10/AC-01–10/V-01–11/SD-01–05；drafting 0/10，未实施/编译/跑性能/创建树。详细预检见[planning-preflight.md](attachments/818/planning-preflight.md)。实际指令/资源/接口不符时以证据显式revision，不能改成旧native代理来维持pass。
 
+2026-10-20 stage:work | PLAN-818 | plan_revision 1 | outcome:blocked（T-01完成；T-02起阻断于D-798）| worktree:无（T-01只读，主检出完成，产物落docs/plans/attachments/818/；实施树按§6于T-02创建）| branch:—| base_commit:13367d127584461449ee2f151c0c5987f0740044（主检出，未动代码）| code_commit:—（仅计划簿记）| dependency_revisions:798在途分支plan-798-dev@072cb4e14（只读观察，forecast非冻结）；ac-core/ac-artifact-probe主检出交付面（inputs.json hash）| task_ids:T-01（1/10）| evidence:attachments/818/{contract-decision.md,golden.md}；预检=主检出crates/test/experimental/scripts零WIP + 798 status=executing(1/10) | blockers:D-798未满足——798仍executing（最终review/冻结门禁/合入/Spec/merge收据未齐），T-02起禁止实际编译共享MIR/开实施树编译面；另公共注册窗口按并行合同串行 | next_responsible_role:等待D-798后由work继续T-02（新workspace/两函数多obj首例）
+
+T-01要点：入口=用户实施指令（drafting→executing授权）；范围严守只读——冻结合同与golden，不编译未合入接口、不copy在途树代码。观察基面与798预测一致（MirInstr六指令/Terminator三终结器/11 BinOp/2 UnOp/typed slots/is_unit+fn:imports），未发现迫使revision的反例；工具链身份实测入冻（rustc 1.98.0/LLM 22.1.8、rust-lld LLD 22.1.8、SDK 10.0.26100.0、Cranelift 0.126.2、i5-13600KF参考机）。
+
 ## 10. 待澄清事项
 
 无阻断起草的用户决定。T-01固定准确MIR版本/符号/私有ABI/产物与负载；D-798后T-02验证新codegen、多obj链接、缓存及正式runner全路径。若API不足、必须修改公共MIR或hard性能/内存不达，回规划，不抬预算、不缩负载、不改在途798。公开ABI/FFI及真正生产默认切换后续单列；不需要等待817或797全部完成才做本有限profile。
+
+**2026-10-20 在案阻断（work记录）**：T-02..T-08全部等待D-798（798最终review/冻结门禁/实际合入/Spec/merge收据齐全；当前798=executing 1/10）。解除动作：D-798达成后，work以实际合入的798 API/Spec重读contract-decision.md §1/§2/§9（接口/指令/验证规则若变则以证据revision），再开 `D:/autostack/.wt/lang-818/auto-lang`（分支plan-818-dev）执行T-02首例。公共注册窗口在817/814–816先合入时按并行合同同步master后串行追加。
