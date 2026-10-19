@@ -99,7 +99,9 @@ pub mod interpreter;
 // Plan 090: Parser helpers to remove Universe dependency
 pub mod parser_helpers;
 // Plan 085: Use statement scanner for AIE + AutoCache
-pub mod use_scanner;
+// PLAN-814: 单一实现迁 crates/auto-lang-core（纯 SDK 首个机制切片）；
+// 旧路径 auto_lang::use_scanner::* 经再导出保类型身份（同 crate origin）。
+pub use auto_lang_core::use_scanner;
 // Plan 092: Dep statement scanner for Rust FFI
 pub mod dep_scanner;
 // Plan 085 Phase 5: Module cache for incremental compilation

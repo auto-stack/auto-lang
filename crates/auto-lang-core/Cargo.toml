@@ -1,0 +1,14 @@
+[package]
+name = "auto-lang-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure language SDK: the single source for the non-UI language stack (scanner/parser/type/compile/VM/trans core), extracted from auto-lang (PLAN-814). Its normal/build/dev closure must not contain UI implementations (generators/renderer/desktop host) or Man."
+license = "MIT"
+keywords = ["language", "sdk", "parser", "vm", "transpiler"]
+
+[dependencies]
+# PLAN-814 T-01/T-02 probe skeleton: dependencies grow module-by-module with
+# the T-02..T-06 migration (light frontend closure arrives with parser/ast).
+# use_scanner (first migrated module) is std-only.
+
+[dev-dependencies]

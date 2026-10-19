@@ -1,0 +1,13 @@
+[package]
+name = "auto-ui-compiler"
+version = "0.1.0"
+edition = "2021"
+description = "UI compiler: AURA analysis/extraction, design tokens and the vue/jet/ark/rust generators, extracted from auto-lang (PLAN-814). Consumes the pure language SDK; its generated runtime/SDK import paths are a code-output contract owned here."
+license = "MIT"
+keywords = ["ui", "compiler", "codegen", "aura"]
+
+[dependencies]
+# PLAN-814 T-01/T-02 probe skeleton: the UI analysis/generator surface
+# (aura/ui_gen/design_tokens validators + widget registry) migrates in T-03.
+# The compiler may use the SDK; it must NOT be depended on by the SDK.
+auto-lang-core = { path = "../auto-lang-core" }

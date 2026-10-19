@@ -5,7 +5,7 @@
 //! # Example
 //!
 //! ```
-//! use auto_lang::use_scanner::{scan_use_statements, UseStatement};
+//! use auto_lang_core::use_scanner::{scan_use_statements, UseStatement};
 //!
 //! let source = r#"
 //! use std.io
@@ -150,7 +150,7 @@ impl UseStatement {
 /// # Example
 ///
 /// ```
-/// use auto_lang::use_scanner::scan_use_statements;
+/// use auto_lang_core::use_scanner::scan_use_statements;
 ///
 /// let source = "use std.io\nuse std.fs: read";
 /// let uses = scan_use_statements(source);
