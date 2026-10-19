@@ -139,7 +139,7 @@ fn abi_cache_invalidation_by_real_inputs() {
         ("decl-set".into(), canonical_decl_set(&v1)),
         ("toolchain".into(), tool.into()),
         ("profile".into(), layout::ABI_PROFILE.into()),
-        ("semref".into(), semref::snapshot_hash().into()),
+        ("semref".into(), semref::binding_hash().into()),
     ]);
     assert_ne!(q(&emitter_identity()).hash(), q("cl:other|ver:x").hash());
     let qp = |profile: &str| QueryKey::new(&LAYER_OBJECT_V01, vec![
@@ -147,7 +147,7 @@ fn abi_cache_invalidation_by_real_inputs() {
         ("decl-set".into(), canonical_decl_set(&v1)),
         ("toolchain".into(), emitter_identity()),
         ("profile".into(), profile.into()),
-        ("semref".into(), semref::snapshot_hash().into()),
+        ("semref".into(), semref::binding_hash().into()),
     ]);
     assert_ne!(qp(layout::ABI_PROFILE).hash(), qp("autoabi.win-x64.v0.2-candidate").hash());
 }

@@ -179,7 +179,7 @@ fn t01_layout_cache_first_persist() {
     assert_eq!(key1.component("abi-profile"), Some(layout::ABI_PROFILE));
     assert_eq!(
         key1.component("sem-ref"),
-        Some(auto_abi_probe::semref::snapshot_hash())
+        Some(auto_abi_probe::semref::binding_hash())
     );
 }
 
@@ -196,10 +196,11 @@ fn t01_ctool_fingerprint_freezes() {
     println!("toolchain_fingerprint = {fp}");
 }
 
-/// Semantic-ref snapshot stays well-formed and hashable (retirement
-/// precondition at D-796 is that its identity is traceable).
+/// Semantic binding (T-06: REAL ac-sema-contract refs; the local
+/// snapshot adapter is retired with receipt).
 #[test]
-fn t01_semref_snapshot_identity() {
-    auto_abi_probe::semref::verify_snapshot().expect("snapshot well-formed");
-    assert_eq!(auto_abi_probe::semref::snapshot_hash().len(), 64);
+fn t01_semref_binding_identity() {
+    auto_abi_probe::semref::mix_fn_ref().expect("fn ref mints");
+    auto_abi_probe::semref::rec_mix_ref().expect("record ref mints");
+    assert_eq!(auto_abi_probe::semref::binding_hash().len(), 64);
 }

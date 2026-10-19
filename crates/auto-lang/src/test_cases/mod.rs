@@ -43,6 +43,7 @@ mod ac_protocol;
 pub mod avm;
 pub mod materialize;
 pub mod stale;
+pub mod abi;
 pub mod sema;
 
 /// A language failure observed at a production stage boundary (Plan 773
@@ -731,8 +732,22 @@ fn dispatch_check(
             &artifact_dir,
             run_dir,
         ),
-        // PLAN-796 T-06: restricted probe/run seam — the sema worker
-        // executes REGISTERED recipes; judgement is entirely parent-side.
+        // PLAN-796 T-06 restricted probe/run seam — REGISTERED recipes
+        // dispatch to their recipe module; judgement is entirely
+        // parent-side. PLAN-797 T-06 appends abi/interop-v1 under the
+        // same contract (never a second runner).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE) =>
+        {
+            abi::run_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         (Adapter::Probe, auto_test_case::contract::Action::Run) => sema::run_check(
             resolved,
             check,

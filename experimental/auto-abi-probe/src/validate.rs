@@ -228,7 +228,7 @@ pub fn probe_expectation() -> ConsumerExpectation {
             ("free".into(), 1),
             ("handle-registry".into(), 1),
         ],
-        semref_hash: crate::semref::snapshot_hash().into(),
+        semref_hash: crate::semref::binding_hash().into(),
     }
 }
 

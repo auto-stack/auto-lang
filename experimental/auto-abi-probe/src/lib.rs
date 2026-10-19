@@ -31,3 +31,4 @@ pub mod run;
 pub mod semref;
 pub mod trace;
 pub mod validate;
+pub mod worker;

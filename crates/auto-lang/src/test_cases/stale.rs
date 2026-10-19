@@ -256,7 +256,23 @@ pub fn check_with_families(
             Some("ac") | Some("syntax") | Some("probe")
         ) {
             let is_probe = r.get("adapter").and_then(|a| a.as_str()) == Some("probe");
-            let current = if is_probe {
+            // PLAN-797 T-06: probe current identity is RECIPE-SPECIFIC —
+            // an ABI row recomputes against the abi worker's axes.
+            let abi_probe_row = is_probe
+                && r.get("native")
+                    .and_then(|n| n.get("toolchain"))
+                    .and_then(|t| t.as_array())
+                    .map(|arr| {
+                        arr.iter().any(|p| {
+                            p[0].as_str() == Some("recipe")
+                                && p[1].as_str() == Some("abi/interop-v1")
+                        })
+                    })
+                    .unwrap_or(false);
+            let current = if abi_probe_row {
+                current_probe
+                    .get_or_insert_with(crate::test_cases::abi::current_toolchain_identity)
+            } else if is_probe {
                 current_probe
                     .get_or_insert_with(crate::test_cases::sema::current_toolchain_identity)
             } else {
@@ -298,16 +314,30 @@ pub fn check_with_families(
                             })
                         })
                         .unwrap_or(false);
+                // PLAN-797 T-06: probe rows carry a RECIPE-SPECIFIC axis
+                // family — the ABI recipe binds to the abi worker's
+                // identity axes, everything else to the sema worker's.
+                let abi_row = row_axes.get("recipe").map(|r| r == "abi/interop-v1");
                 let mut applicable: Vec<&str> = if is_probe {
-                    // F-796-R4-04 + R6-04: probe rows bind to the sema
-                    // worker's CONTENT identity, the mirrored version AND
-                    // the protocol/recipe axes the report actually writes
-                    vec![
-                        "sema-worker-exe-sha256",
-                        "sema-worker-version",
-                        "sema-protocol",
-                        "recipe",
-                    ]
+                    match abi_row {
+                        Some(true) => vec![
+                            "abi-worker-exe-sha256",
+                            "abi-worker-version",
+                            "abi-protocol",
+                            "recipe",
+                        ],
+                        _ => {
+                            // F-796-R4-04 + R6-04: probe rows bind to the sema
+                            // worker's CONTENT identity, the mirrored version AND
+                            // the protocol/recipe axes the report actually writes
+                            vec![
+                                "sema-worker-exe-sha256",
+                                "sema-worker-version",
+                                "sema-protocol",
+                                "recipe",
+                            ]
+                        }
+                    }
                 } else {
                     vec!["worker-exe-sha256", "ac-worker-protocol"]
                 };

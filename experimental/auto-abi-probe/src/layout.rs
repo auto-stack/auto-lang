@@ -394,7 +394,7 @@ pub fn layout_key(def: &RecordDef) -> QueryKey {
     QueryKey::new(
         &LAYER_LAYOUT_V01,
         vec![
-            ("sem-ref".into(), crate::semref::snapshot_hash().to_string()),
+            ("sem-ref".into(), crate::semref::binding_hash().to_string()),
             ("record".into(), canonical_record(def)),
             ("target".into(), TARGET.into()),
             ("abi-profile".into(), ABI_PROFILE.into()),

@@ -321,7 +321,7 @@ fn active_faults() -> Option<(Vec<(String, String)>, Option<u64>)> {
 /// tree, so a descendant that inherited stdout/stderr can never wedge
 /// the reader joins past the parent wall.
 #[cfg(windows)]
-mod containment {
+pub(super) mod containment {
     use std::os::windows::io::AsRawHandle;
     use std::process::Child;
 
@@ -479,7 +479,7 @@ mod containment {
 }
 
 #[cfg(not(windows))]
-mod containment {
+pub(super) mod containment {
     use std::process::Child;
     pub const CREATE_SUSPENDED: u32 = 0;
     pub struct JobGuard;

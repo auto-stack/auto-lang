@@ -248,6 +248,11 @@ pub struct Options {
     pub probe_steps: Option<Vec<ProbeStep>>,
     /// probe only, sema/query-v1: the semantic query binding.
     pub probe_sema: Option<ProbeSemaSpec>,
+    /// probe only, abi/interop-v1 (PLAN-797 T-06): the ABI interop leg
+    /// binding. The deck itself is the case's `atomdata` source (data,
+    /// never an executable); the binding selects which interop leg the
+    /// frozen pipeline drives.
+    pub probe_abi: Option<ProbeAbiSpec>,
 }
 
 impl Default for Options {
@@ -266,6 +271,7 @@ impl Default for Options {
             probe_recipe: None,
             probe_steps: None,
             probe_sema: None,
+            probe_abi: None,
         }
     }
 }
@@ -1067,7 +1073,7 @@ fn decode_options(
         Adapter::Syntax => &["grammar", "edits"],
         // PLAN-796 T-06 frozen probe options: the registered recipe id,
         // the declarative step sequence, and the sema/query-v1 binding.
-        Adapter::Probe => &["recipe", "steps", "sema"],
+        Adapter::Probe => &["recipe", "steps", "sema", "abi"],
     };
     let f = Fields::new(path, pairs, known)?;
     let module_name = opt_str(&f, "module_name")?;
@@ -1343,7 +1349,7 @@ fn decode_options(
         (None, None)
     };
 
-    let (probe_recipe, probe_steps, probe_sema) = if adapter == Adapter::Probe {
+    let (probe_recipe, probe_steps, probe_sema, probe_abi) = if adapter == Adapter::Probe {
         let recipe = req_str(&f, "recipe")?;
         if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
             return Err(err(
@@ -1400,9 +1406,24 @@ fn decode_options(
                 out
             }
         };
+        // The binding object is RECIPE-SPECIFIC: sema/query-v1 takes
+        // `sema`, abi/interop-v1 takes `abi`; declaring the wrong one
+        // (or none) is an admission error, never a parsed-then-ignored
+        // field.
         let sema = match f.sub("sema") {
-            None => return Err(err(&f.path_of("sema"), "sema/query-v1 requires a sema binding")),
+            None => {
+                if recipe == "sema/query-v1" {
+                    return Err(err(&f.path_of("sema"), "sema/query-v1 requires a sema binding"));
+                }
+                None
+            }
             Some(v) => {
+                if recipe != "sema/query-v1" {
+                    return Err(err(
+                        &f.path_of("sema"),
+                        format!("the sema binding belongs to sema/query-v1, not {:?}", recipe),
+                    ));
+                }
                 let spath = f.path_of("sema");
                 let pairs = as_obj(v, &spath)?;
                 let sf = Fields::new(&spath, pairs, &["package", "module", "kind", "fn"])?;
@@ -1413,17 +1434,44 @@ fn decode_options(
                         format!("unknown sema query kind {:?} (v1 freezes infer-body)", kind),
                     ));
                 }
-                ProbeSemaSpec {
+                Some(ProbeSemaSpec {
                     package: req_str(&sf, "package")?,
                     module: req_str(&sf, "module")?,
                     kind,
                     fn_name: req_str(&sf, "fn")?,
-                }
+                })
             }
         };
-        (Some(recipe), Some(steps), Some(sema))
+        let abi = match f.sub("abi") {
+            None => {
+                if recipe == "abi/interop-v1" {
+                    return Err(err(&f.path_of("abi"), "abi/interop-v1 requires an abi binding"));
+                }
+                None
+            }
+            Some(v) => {
+                if recipe != "abi/interop-v1" {
+                    return Err(err(
+                        &f.path_of("abi"),
+                        format!("the abi binding belongs to abi/interop-v1, not {:?}", recipe),
+                    ));
+                }
+                let apath = f.path_of("abi");
+                let pairs = as_obj(v, &apath)?;
+                let af = Fields::new(&apath, pairs, &["leg"])?;
+                let leg = req_str(&af, "leg")?;
+                if !matches!(leg.as_str(), "a" | "b" | "c") {
+                    return Err(err(
+                        &af.path_of("leg"),
+                        format!("unknown ABI leg {:?} (v1 freezes a/b/c)", leg),
+                    ));
+                }
+                Some(ProbeAbiSpec { leg })
+            }
+        };
+        (Some(recipe), Some(steps), sema, abi)
     } else {
-        (None, None, None)
+        (None, None, None, None)
     };
 
     Ok(Options {
@@ -1440,6 +1488,7 @@ fn decode_options(
         probe_recipe,
         probe_steps,
         probe_sema,
+        probe_abi,
     })
 }
 
@@ -1455,7 +1504,7 @@ pub struct SyntaxEdit {
 /// Registered probe recipes (PLAN-796 T-06 freeze). A case may only name
 /// one of these — never an executable, path or shell. 797 appends its ABI
 /// recipe here under the same contract (single writer per window).
-pub const REGISTERED_PROBE_RECIPES: &[&str] = &["sema/query-v1"];
+pub const REGISTERED_PROBE_RECIPES: &[&str] = &["sema/query-v1", "abi/interop-v1"];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
 /// One declarative probe step. `EditSource` replaces a LITERAL substring
@@ -1480,6 +1529,15 @@ pub struct ProbeSemaSpec {
     /// Query kind; v1 freezes "infer-body" as the only kind.
     pub kind: String,
     pub fn_name: String,
+}
+
+/// abi/interop-v1 binding (PLAN-797 T-06): which interop leg the frozen
+/// ABI pipeline drives. v1 freezes the three legs a/b/c.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeAbiSpec {
+    /// "a" (AutoABI caller -> AutoABI callee), "b" (AutoABI caller ->
+    /// C callee), "c" (C caller -> AutoABI callee).
+    pub leg: String,
 }
 
 /// Per-query-step expectation (judged parent-side; order = the query steps).

@@ -698,3 +698,88 @@ case {
         "{verdicts:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// PLAN-797 T-06: the abi/interop-v1 recipe through the SAME unified
+// runner — real abi worker processes, real PE link/run per query step,
+// real store on disk, real restart boundary; judgement parent-side.
+// ---------------------------------------------------------------------------
+
+/// The committed autoabi corpus runs END TO END through the unified
+/// runner: three interop legs (cold publish -> hit -> cross-process
+/// restart hit -> body-edit republish), plus the typed deck-diagnostic
+/// negative for the signature-edit oracle.
+#[test]
+fn abi_recipe_corpus_executes_green() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    let suite_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/autoabi");
+    let root = temp_root("abicorpus");
+    let out = out_of(&root, "out");
+    let report = run_suite(
+        &suite_dir.join("autoabi.suite.ad"),
+        &out,
+        &Limits::defaults(),
+    )
+    .expect("autoabi suite runs");
+    for check in ["leg-a", "leg-b", "leg-c", "bad-sig"] {
+        assert_eq!(
+            status_of(&report, check),
+            Status::Pass,
+            "check {check} in {:#?}",
+            report.results
+        );
+    }
+}
+
+/// The abi binding is recipe-exclusive: a sema binding on the ABI
+/// recipe (and vice versa) is an ADMISSION error — parsed-then-ignored
+/// fields are forbidden.
+#[test]
+fn abi_recipe_binding_exclusivity() {
+    use auto_test_case::atom::parse_contract;
+    use auto_test_case::contract::decode_case;
+    let decode_case_doc = |doc: &str| -> Result<
+        auto_test_case::contract::CaseSpec,
+        auto_test_case::contract::ContractError,
+    > {
+        let v = parse_contract(doc).unwrap();
+        decode_case(&v, &Limits::defaults())
+    };
+    // Three variants share this skeleton; only the options differ.
+    let mk = |options: &str| {
+        format!(
+            r#"case {{
+  schema: "autolang.case/2",
+  id: "x",
+  source: {{ file: "src/p797-mix.atomdata", syntax: "atom-data", path: "d.atomdata" }},
+  entry: {{ mode: "program" }},
+  checks: [
+    {{ id: "c", adapter: "probe", action: "run",
+      options: {{ {options} }},
+      expect: {{ completion: "success" }} }}
+  ]
+}}
+"#
+        )
+    };
+    // 1. a sema binding on the ABI recipe -> rejected
+    let doc = mk(
+        r#"recipe: "abi/interop-v1", abi: { leg: "a" }, sema: { package: "p", module: "m", kind: "infer-body", fn: "f" }, steps: [ { op: "query" } ]"#,
+    );
+    let err = decode_case_doc(&doc).expect_err("sema binding on abi recipe must fail");
+    assert!(format!("{err:?}").contains("belongs to"), "got: {err:?}");
+
+    // 2. an abi binding on the sema recipe -> rejected
+    let doc = mk(
+        r#"recipe: "sema/query-v1", sema: { package: "p", module: "m", kind: "infer-body", fn: "f" }, abi: { leg: "a" }, steps: [ { op: "query" } ]"#,
+    );
+    let err = decode_case_doc(&doc).expect_err("abi binding on sema recipe must fail");
+    assert!(format!("{err:?}").contains("belongs to"), "got: {err:?}");
+
+    // 3. an unknown leg -> rejected with the frozen vocabulary
+    let doc = mk(r#"recipe: "abi/interop-v1", abi: { leg: "z" }, steps: [ { op: "query" } ]"#);
+    let err = decode_case_doc(&doc).expect_err("unknown leg must fail");
+    assert!(format!("{err:?}").contains("v1 freezes a/b/c"), "got: {err:?}");
+}
+

@@ -462,7 +462,7 @@ fn abi_admission_semref_gate_end_to_end() {
     d.semref_hash = auto_abi_probe::semref::blake3_hex(b"other-snapshot");
     match admit_descriptor(&d, &expect) {
         Err(Rejection::SemRefMismatch { expected, found }) => {
-            assert_eq!(expected, auto_abi_probe::semref::snapshot_hash());
+            assert_eq!(expected, auto_abi_probe::semref::binding_hash());
             assert_ne!(expected, found);
         }
         other => panic!("expected SemRefMismatch, got {other:?}"),

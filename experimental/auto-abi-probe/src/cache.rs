@@ -80,7 +80,7 @@ pub fn autoabi_object_key(defs: &[FnDecl], import_inner: bool) -> QueryKey {
             ("kind".into(), "autoabi-emit".into()),
             ("decl-set".into(), canonical_decl_set(defs)),
             ("import-inner".into(), import_inner.to_string()),
-            ("sem-ref".into(), crate::semref::snapshot_hash().into()),
+            ("sem-ref".into(), crate::semref::binding_hash().into()),
             ("target".into(), crate::layout::TARGET.into()),
             ("abi-profile".into(), crate::layout::ABI_PROFILE.into()),
             ("toolchain".into(), emitter_identity()),

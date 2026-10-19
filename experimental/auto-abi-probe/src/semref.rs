@@ -1,98 +1,166 @@
-//! Read-only semantic-reference snapshot (plan §5.6, parallel-contract
-//! "共同语义与测试接缝").
+//! REAL semantic binding over the merged PLAN-796 contract (T-06;
+//! D-796 satisfied 2026-10-19). The 797-local `autoabi-semref-snapshot/0`
+//! adapter (blake3 `15f81fd0…`, T-01..T-05 stand-in) is RETIRED — receipt:
+//! docs/plans/attachments/797/semref-retirement-receipt.md.
 //!
-//! PLAN-796 owns DeclRef/TypeRef and the canonical semantic contract; at
-//! T-01 it has not landed (still drafting, no frozen schema), so this
-//! module carries a 797-local, content-hashed snapshot of exactly the
-//! semantic references the ABI fixtures need. It is a temporary adapter
-//! by construction:
-//!
-//! * the format id (`autoabi-semref-snapshot/0`) and content hash are
-//!   recorded in contract-decision.md §3 and must not drift silently;
-//! * once D-796 holds (796 merged with its real semantic contract), T-06
-//!   re-binds every fixture to the real codec, deletes the duplicate
-//!   local validation, and records the retirement receipt — two
-//!   authoritative semantic models are not allowed to coexist (§5.6);
-//! * this snapshot never grows into a general type-inference or CT
-//!   library (that is 796's scope, not 797's).
+//! What lives here now is the ONLY semantic identity source: nominal
+//! refs and content versions minted through `ac_sema_contract` (DeclRef
+//! + TypeDesc + ContentVersion), exactly the read-only consumption face
+//! the semantic contract froze for 797 ("797 只读消费：类型描述
+//! codec…；ABI 布局与调用规范归 797 独立拥有"). Target layout, calling
+//! convention, and physical signatures remain 797-owned (layout.rs /
+//! descriptor.rs) — nothing here derives layouts.
 
+use ac_sema_contract::codec::{encode_typedesc_bytes, FieldDesc, RecGroup, RecordShape, TypeDesc};
+use ac_sema_contract::identity::{ContentVersion, DeclKind, DeclRef, PackageId};
 use std::sync::OnceLock;
 
-/// The frozen snapshot document. Types used by T-01/T-02 fixtures only.
-pub const SNAPSHOT_JSON: &str = r##"{
-  "format": "autoabi-semref-snapshot/0",
-  "status": "temporary-797-local",
-  "retire_at": "D-796 (PLAN-796 semantic contract merged); see plan797 T-06",
-  "note": "PLAN-797 read-only fixture-level semantic references. Not the canonical semantic contract; no inference, no CT. Hash recorded in docs/plans/attachments/797/contract-decision.md.",
-  "types": {
-    "RecMix": {
-      "kind": "record",
-      "fields": [
-        ["flag", "bool"],
-        ["count", "i32"],
-        ["tag", "char"],
-        ["big", "i64"]
-      ]
-    }
-  },
-  "funcs": {
-    "p797_mix": {
-      "params": [["a", "i32"], ["b", "i32"], ["c", "i32"], ["d", "i32"],
-                 ["e", "i64"], ["f", "f64"], ["g", "i32"], ["h", "f64"]],
-      "ret": "i64"
-    }
-  }
-}"##;
+/// Fixture package/module identity (logical, not path-bound).
+pub const BINDING_PACKAGE: &str = "probe797";
+pub const BINDING_MODULE: &str = "autoabi";
 
-/// blake3 content hash of the frozen snapshot bytes (64-char hex).
-pub fn snapshot_hash() -> &'static str {
-    static HASH: OnceLock<String> = OnceLock::new();
-    HASH.get_or_init(|| blake3_hex(SNAPSHOT_JSON.as_bytes()))
+pub fn package() -> PackageId {
+    PackageId::new(BINDING_PACKAGE)
 }
 
-/// blake3, hex-encoded (64 chars — full digest).
+/// blake3, hex-encoded (64 chars) — kept as the probe-local digest form.
 pub fn blake3_hex(bytes: &[u8]) -> String {
     let mut h = blake3::Hasher::new();
     h.update(bytes);
     h.finalize().to_hex().to_string()
 }
 
-/// Validate the snapshot is well-formed JSON with the expected top-level
-/// shape. Runs in tests so a hand-edited snapshot cannot drift into
-/// something the hash was frozen against.
-pub fn verify_snapshot() -> Result<(), String> {
-    let v: serde_json::Value = serde_json::from_str(SNAPSHOT_JSON)
-        .map_err(|e| format!("snapshot JSON parse: {e}"))?;
-    if v["format"] != "autoabi-semref-snapshot/0" {
-        return Err("snapshot format id changed".into());
+/// The semantic fn type of `p797_mix` as a REAL contract TypeDesc.
+pub fn mix_fn_type() -> TypeDesc {
+    TypeDesc::Fn {
+        params: vec![
+            TypeDesc::I32,
+            TypeDesc::I32,
+            TypeDesc::I32,
+            TypeDesc::I32,
+            TypeDesc::I64,
+            TypeDesc::F64,
+            TypeDesc::I32,
+            TypeDesc::F64,
+        ],
+        ret: Box::new(TypeDesc::I64),
     }
-    if v["status"] != "temporary-797-local" {
-        return Err("snapshot status changed".into());
+}
+
+/// Nominal ref of `p797_mix` (top-level Fn). The content version is the
+/// contract's own canonical encoding of the fn type — a semantic edit
+/// (any parameter/return change) is a different content version, and
+/// therefore a different ABI descriptor semref input.
+pub fn mix_fn_ref() -> Result<DeclRef, String> {
+    let canonical = encode_typedesc_bytes(&mix_fn_type()).map_err(|e| format!("codec: {e}"))?;
+    let content = ContentVersion::of_canonical(&canonical);
+    let r = DeclRef::new(&package(), BINDING_MODULE, DeclKind::Fn, "p797_mix", content);
+    r.verify().map_err(|e| format!("fn ref verify: {e:?}"))?;
+    Ok(r)
+}
+
+/// Semantic shape of the RecMix record fixture (same field set the
+/// physical layout engine and the C mirror use; TYPES are semantic
+/// TypeDescs — offsets/sizes stay in layout.rs).
+pub fn rec_mix_shape() -> RecordShape {
+    let canonical = encode_typedesc_bytes(&TypeDesc::I64).unwrap();
+    let content = ContentVersion::of_canonical(&canonical);
+    RecordShape {
+        decl: DeclRef::new(
+            &package(),
+            BINDING_MODULE,
+            DeclKind::Record,
+            "RecMix",
+            content,
+        ),
+        fields: vec![
+            FieldDesc { name: "flag".into(), ty: TypeDesc::Bool },
+            FieldDesc { name: "count".into(), ty: TypeDesc::I32 },
+            FieldDesc { name: "tag".into(), ty: TypeDesc::Char },
+            FieldDesc { name: "big".into(), ty: TypeDesc::I64 },
+        ],
     }
-    for key in ["types", "funcs"] {
-        if !v[key].is_object() {
-            return Err(format!("snapshot '{key}' is not an object"));
-        }
-    }
-    Ok(())
+}
+
+/// The RecMix record ref, with the contract's group-content version
+/// (single-member RecGroup) as its content version.
+pub fn rec_mix_ref() -> Result<DeclRef, String> {
+    let mut shape = rec_mix_shape();
+    let group = RecGroup { members: vec![rec_mix_shape()] };
+    let content = group.group_content();
+    shape.decl.content = content.clone();
+    let r = shape.decl;
+    r.verify().map_err(|e| format!("record ref verify: {e:?}"))?;
+    Ok(r)
+}
+
+/// The semantic binding hash the ABI descriptor carries: the frozen
+/// fixture set's semantic identity — both nominal logicals plus their
+/// content versions, digested with the probe's blake3 form. This is
+/// what admission compares (validate.rs `SemRefMismatch`); building it
+/// through the REAL contract means a semantic-side edit (field set,
+/// fn signature) necessarily changes the binding the ABI side demands.
+pub fn binding_hash() -> &'static str {
+    static HASH: OnceLock<String> = OnceLock::new();
+    HASH.get_or_init(|| {
+        let f = mix_fn_ref().expect("fn ref mints");
+        let r = rec_mix_ref().expect("record ref mints");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(f.logical.as_str().as_bytes());
+        buf.extend_from_slice(f.content.as_str().as_bytes());
+        buf.extend_from_slice(r.logical.as_str().as_bytes());
+        buf.extend_from_slice(r.content.as_str().as_bytes());
+        blake3_hex(&buf)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// The real refs mint AND verify through the merged contract.
     #[test]
-    fn snapshot_wellformed() {
-        verify_snapshot().expect("frozen snapshot must stay well-formed");
+    fn refs_mint_and_verify() {
+        let f = mix_fn_ref().expect("fn ref");
+        assert_eq!(f.name, "p797_mix");
+        assert_eq!(f.kind, DeclKind::Fn);
+        assert!(f.owner.is_none());
+        let r = rec_mix_ref().expect("record ref");
+        assert_eq!(r.name, "RecMix");
+        assert_eq!(r.kind, DeclKind::Record);
+        // Logical ids are distinct across kinds.
+        assert_ne!(f.logical.as_str(), r.logical.as_str());
     }
 
+    /// Binding hash is stable and full-length.
     #[test]
-    fn snapshot_hash_stable() {
-        // Deterministic across calls; full 64-hex blake3.
-        let h = snapshot_hash();
+    fn binding_hash_stable() {
+        let h = binding_hash();
         assert_eq!(h.len(), 64);
-        assert!(h.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_eq!(h, snapshot_hash());
-        println!("semref_snapshot_hash = {h}");
+        assert_eq!(h, binding_hash());
+    }
+
+    /// A tampered ref is rejected by the CONTRACT's verify — the ABI
+    /// binding path can never trust a foreign-minted identity.
+    #[test]
+    fn tampered_ref_rejected_by_contract() {
+        let mut f = mix_fn_ref().unwrap();
+        f.name = "p797_other".into();
+        assert!(f.verify().is_err());
+    }
+
+    /// A semantic edit changes the binding hash (the ABI side sees a
+    /// different semref input) — the T-01..T-05 stand-in is gone.
+    #[test]
+    fn semantic_edit_changes_binding() {
+        let base = binding_hash().to_string();
+        // Same digest form over an EDITED fn content version.
+        let edited_content = ContentVersion::of_canonical(b"edited-fn-shape");
+        let mut buf = Vec::new();
+        buf.extend_from_slice(mix_fn_ref().unwrap().logical.as_str().as_bytes());
+        buf.extend_from_slice(edited_content.as_str().as_bytes());
+        buf.extend_from_slice(rec_mix_ref().unwrap().logical.as_str().as_bytes());
+        buf.extend_from_slice(rec_mix_ref().unwrap().content.as_str().as_bytes());
+        assert_ne!(base, blake3_hex(&buf));
     }
 }

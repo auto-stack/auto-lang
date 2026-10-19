@@ -162,7 +162,7 @@ impl ModuleDescriptor {
             profile: crate::layout::ABI_PROFILE.into(),
             packing: PACKING.into(),
             interface_revision: 1,
-            semref_hash: semref::snapshot_hash().into(),
+            semref_hash: semref::binding_hash().into(),
             records: vec![crate::layout::RecordDefOwned::from(&crate::layout::REC_MIX)],
             symbols: vec![SymbolEntry {
                 name: "p797_mix".into(),
