@@ -1,4 +1,4 @@
-# PLAN-798 T-05 周转基准报告（r2.1，六场景 × 30 样本，release，硬门强制执行）
+# PLAN-798 周转基准报告（r2.1 + T-07 正式 AutoDown 硬门）
 
 2026-10-16（r2.1 修复轮：闭合 F798-R1-03/04/05 与 F798-R2-01/02）。负载：`load256::generate()`
 冻结件（100 caller + 14 leaf + main，≈267 KiB，独立闭式期望）；编辑场景每样本
@@ -66,3 +66,19 @@ powershell -File scripts/verify-ac-av-798.ps1 -Scope turnaround -Samples 30
 # 反控（必须失败，exit 5）：
 experimental/ac-av-probe/target/release/av_probe_worker.exe bench-turnaround --samples 1 --gate-ms 0 --out -
 ```
+
+## 正式 AutoDown 端到端硬门（T-07，D-788/D-796 合入后）
+
+recipe `ac-av/core-run-v1` 经统一 probe/run 接缝（796 T-06 接缝 × 788 TestCase
+v2 runner）正式执行；worker `av_probe_worker case-serve`（envelope `avworker/1`，
+Job 收容，父侧判定）。**warm-session 编辑会话**步骤模型：`[run(热身), edit-source,
+run]` 共享一个会话 store——终步即"单函数 body 编辑→当前正确 AV 结果"请求。
+
+- 30 样本（冻结负载，逐样本新修订 fn_037 乘子）：**编辑窗 P50/P95/P99 =
+  556/569/574 ms < 1000 ms**（窗口 = 终步驱动墙 ~412ms + spawn/IPC/admit 开销
+  ~148ms；整个会话另含热身 run ~2.3s，如实分列）。
+- 签名冲突路径（正式诊断负例，30 样本）：**P95 = 221 ms < 1000 ms**。
+- 负控：错误 exit 期望必红；decode 准入负例（未知 recipe/跨域步骤词表/跨域
+  绑定/缺绑定）全拒；worker 从不读 expected。
+- 复验：`powershell -File scripts/verify-ac-av-798.ps1 -Scope autodown`
+  （含正式硬门断言，退出码透传）。

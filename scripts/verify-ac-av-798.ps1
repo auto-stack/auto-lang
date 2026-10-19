@@ -48,18 +48,29 @@ switch ($Scope) {
         Run-Tests "resources_tier" "resources-scale"
     }
     "binding" {
-        # T-06 scope: real 796 semantic-ref binding. BLOCKED on D-796
-        # (PLAN-796 not merged). Fails closed until unblocked.
-        Write-Host "binding: BLOCKED on D-796 (796 independent review + frozen gates + actual merge). No fabricated evidence."
-        exit 3
+        # T-06 (D-796 merged): the landed ac-sema-contract identity domain —
+        # same-name/different-owner separation, restart/ordering stability,
+        # schema/version/tamper rejection, consumption-surface pin.
+        Push-Location $ws
+        & cargo test -p auto-av-probe --test binding_tier 2>&1 | Tee-Object -Variable out | Write-Host
+        $code = $LASTEXITCODE
+        Pop-Location
+        if ($code -ne 0) { Write-Host "FAILED: binding tier"; exit 1 }
+        $out | Out-File (Join-Path $reportDir "binding-tier.log") -Encoding utf8
+        Write-Host "binding: ac-sema-contract identity domain consumed read-only (see binding-tier.log)"
     }
     "autodown" {
-        # T-07 scope: formal AutoDown recipe/worker on the landed probe/run
-        # seam. BLOCKED on D-788 + D-796. Fails closed until unblocked.
-        Write-Host "autodown: BLOCKED on D-788/D-796 (unified runner seam not merged). Rust-directed coverage: test case_binding."
-        Run-Tests "case_binding" "autodown-directed"
-        Write-Host "formal dispatch remains pending (exit 3 to keep the gate honest)"
-        exit 3
+        # T-07 (D-788 + D-796 merged): the formal ac-av/core-run-v1 recipe on
+        # the unified probe/run seam — corpus, negative oracle, decode
+        # admission negatives and the FORMAL warm-edit hard gate (frozen
+        # 30 samples / 1000 ms; AV798_FORMAL_SAMPLES/GATE_MS override).
+        Push-Location $repo
+        & cargo test -p auto-lang --lib --features test-cases ac_av_probe -- --test-threads=1 --nocapture 2>&1 | Tee-Object -Variable out | Write-Host
+        $code = $LASTEXITCODE
+        Pop-Location
+        $out | Out-File (Join-Path $reportDir "autodown-formal.log") -Encoding utf8
+        if ($code -ne 0) { Write-Host "FAILED: formal autodown tier"; exit 1 }
+        Write-Host "autodown: formal recipe green incl. hard gate (see autodown-formal.log)"
     }
     "turnaround" {
         Write-Host "== turnaround release bench: 6 scenarios x $Samples samples, hard gate P95 < $GateMs ms"
@@ -89,6 +100,12 @@ switch ($Scope) {
         Write-Host "turnaround PASS - summary: $summary raw: $raw"
     }
     "acceptance" {
+        Push-Location $repo
+        & cargo test -p auto-lang --lib --features test-cases ac_av_probe -- --test-threads=1 2>&1 | Tee-Object -Variable out2 | Write-Host
+        $code2 = $LASTEXITCODE
+        Pop-Location
+        $out2 | Out-File (Join-Path $reportDir "acceptance-autodown.log") -Encoding utf8
+        if ($code2 -ne 0) { exit 1 }
         Run-Tests "vertical" "acceptance-vertical"
         Run-Tests "mir_tier" "acceptance-mir"
         Run-Tests "abc_semantics_tier" "acceptance-abc"

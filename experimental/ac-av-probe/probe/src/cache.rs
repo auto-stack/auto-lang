@@ -619,10 +619,13 @@ fn sig_content(m: &hir::Module, ty: hir::TypeId) -> String {
     }
 }
 
-/// Body+signature fingerprint for unit keys.
+/// RETIRED (T-06): the plan-local FNV body fingerprint was the temporary
+/// semantic-ref snapshot; unit keys now ride the landed 796
+/// `ContentVersion` domain via [`crate::semrefs::content_version_of`].
+/// Kept only for the churn fixture's per-round edit assertions.
 pub fn unit_body_fingerprint(module: &hir::Module, body_id: hir::BodyId) -> String {
     let dump = canonical_hir_function(module, body_id);
-    format!("{:016x}", fnv1a64_parts(&[&dump]))
+    crate::semrefs::content_version_of(&dump)
 }
 
 /// Capability-affecting configuration fingerprint (sorted, deduped).
@@ -981,6 +984,11 @@ pub struct UnitLink {
     pub artifact: String,
     /// Canonical signature content `(t,t)->t` for closure cross-checks.
     pub sig: String,
+    /// Shared-domain logical id (PLAN-796 identity; T-06 axis) —
+    /// registration-order-independent, so restored manifests re-derive
+    /// the same ids across process restarts.
+    #[serde(default)]
+    pub logical: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]

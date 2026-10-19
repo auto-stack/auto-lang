@@ -163,6 +163,7 @@ pub fn check_with_families(
     // only reports carrying native rows pay for the discovery.
     let mut current_ac: Option<BTreeMap<String, String>> = ac_axes;
     let mut current_probe_abi: Option<std::collections::BTreeMap<String, String>> = None;
+    let mut current_probe_av: Option<BTreeMap<String, String>> = None;
     let mut current_probe: Option<BTreeMap<String, String>> = probe_axes;
     let current = current_identities(suite_path, &limits)?;
     let new_toolchain = toolchain_axes(&limits);
@@ -259,6 +260,18 @@ pub fn check_with_families(
             let is_probe = r.get("adapter").and_then(|a| a.as_str()) == Some("probe");
             // PLAN-797 T-06: probe current identity is RECIPE-SPECIFIC —
             // an ABI row recomputes against the abi worker's axes.
+            let av_probe_row = is_probe
+                && r.get("native")
+                    .and_then(|n| n.get("toolchain"))
+                    .and_then(|t| t.as_array())
+                    .map(|arr| {
+                        arr.iter().any(|p| {
+                            p.get(0).and_then(|v| v.as_str()) == Some("recipe")
+                                && p.get(1).and_then(|v| v.as_str())
+                                    == Some(crate::test_cases::ac_av::AV_RECIPE)
+                        })
+                    })
+                    .unwrap_or(false);
             let abi_probe_row = is_probe
                 && r.get("native")
                     .and_then(|n| n.get("toolchain"))
@@ -277,6 +290,9 @@ pub fn check_with_families(
             let current = if abi_probe_row {
                 current_probe_abi
                     .get_or_insert_with(crate::test_cases::abi::current_toolchain_identity)
+            } else if av_probe_row {
+                current_probe_av
+                    .get_or_insert_with(crate::test_cases::ac_av::current_toolchain_identity)
             } else if is_probe {
                 current_probe
                     .get_or_insert_with(crate::test_cases::sema::current_toolchain_identity)
@@ -329,6 +345,12 @@ pub fn check_with_families(
                             "abi-worker-exe-sha256",
                             "abi-worker-version",
                             "abi-protocol",
+                            "recipe",
+                        ],
+                        Some(false) if av_probe_row => vec![
+                            "av-worker-exe-sha256",
+                            "av-worker-version",
+                            "av-protocol",
                             "recipe",
                         ],
                         _ => {

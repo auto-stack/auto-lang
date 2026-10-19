@@ -8,7 +8,7 @@ use auto_av_probe::driver::Driver;
 fn case_src(rel: &str) -> String {
     std::fs::read_to_string(
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../..")
+            .join("../../../crates/auto-lang")
             .join("test/cases/ac-av")
             .join(rel),
     )

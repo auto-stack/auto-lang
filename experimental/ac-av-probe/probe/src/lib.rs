@@ -13,4 +13,5 @@ pub mod load256;
 pub mod mempeek;
 pub mod native_reference;
 pub mod observations;
+pub mod semrefs;
 pub mod worker_restore;

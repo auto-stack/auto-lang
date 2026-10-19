@@ -38,13 +38,14 @@ use auto_test_case::sha256::{hex, sha256};
 use auto_test_case::suite::apply_defaults;
 
 pub mod a2r;
+pub mod abi;
 pub mod ac;
+pub mod ac_av;
 mod ac_protocol;
 pub mod avm;
 pub mod materialize;
-pub mod stale;
-pub mod abi;
 pub mod sema;
+pub mod stale;
 
 /// A language failure observed at a production stage boundary (Plan 773
 /// F-08): the stage is derived from the ERROR TYPE (and, for run-stage
@@ -736,6 +737,18 @@ fn dispatch_check(
         // dispatch to their recipe module; judgement is entirely
         // parent-side. PLAN-797 T-06 appends abi/interop-v1 under the
         // same contract (never a second runner).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_av::AV_RECIPE) =>
+        {
+            ac_av::run_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
         (Adapter::Probe, auto_test_case::contract::Action::Run)
             if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE) =>
         {

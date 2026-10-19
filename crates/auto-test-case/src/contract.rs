@@ -253,6 +253,8 @@ pub struct Options {
     /// never an executable); the binding selects which interop leg the
     /// frozen pipeline drives.
     pub probe_abi: Option<ProbeAbiSpec>,
+    /// probe only (PLAN-798): ac-av/core-run-v1 binding.
+    pub probe_av: Option<ProbeAvSpec>,
 }
 
 impl Default for Options {
@@ -272,6 +274,7 @@ impl Default for Options {
             probe_steps: None,
             probe_sema: None,
             probe_abi: None,
+            probe_av: None,
         }
     }
 }
@@ -372,7 +375,10 @@ impl Stage {
             // stages only; worker/protocol failures are Infrastructure
             // errors at the runner level and never satisfy language
             // negatives (same boundary as ac).
-            Adapter::Probe => &["parse", "resolve", "typecheck"],
+            // PLAN-798 T-07: value-reporting probe recipes execute the
+            // pipeline, so run-stage completions (language traps) are
+            // declarable alongside the parse/resolve/typecheck faces.
+            Adapter::Probe => &["parse", "resolve", "typecheck", "run"],
         }
     }
 
@@ -1073,7 +1079,7 @@ fn decode_options(
         Adapter::Syntax => &["grammar", "edits"],
         // PLAN-796 T-06 frozen probe options: the registered recipe id,
         // the declarative step sequence, and the sema/query-v1 binding.
-        Adapter::Probe => &["recipe", "steps", "sema", "abi"],
+        Adapter::Probe => &["recipe", "steps", "sema", "abi", "av"],
     };
     let f = Fields::new(path, pairs, known)?;
     let module_name = opt_str(&f, "module_name")?;
@@ -1349,7 +1355,8 @@ fn decode_options(
         (None, None)
     };
 
-    let (probe_recipe, probe_steps, probe_sema, probe_abi) = if adapter == Adapter::Probe {
+    let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av) = if adapter == Adapter::Probe
+    {
         let recipe = req_str(&f, "recipe")?;
         if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
             return Err(err(
@@ -1362,13 +1369,22 @@ fn decode_options(
             ));
         }
         let steps = match f.sub("steps") {
-            None => return Err(err(&f.path_of("steps"), "probe/run requires a non-empty step sequence")),
+            None => {
+                return Err(err(
+                    &f.path_of("steps"),
+                    "probe/run requires a non-empty step sequence",
+                ))
+            }
             Some(v) => {
                 let list = as_list(v, &f.path_of("steps"))?;
                 if list.is_empty() || list.len() > PROBE_MAX_STEPS {
                     return Err(err(
                         &f.path_of("steps"),
-                        format!("probe step sequence must be 1..={} steps, got {}", PROBE_MAX_STEPS, list.len()),
+                        format!(
+                            "probe step sequence must be 1..={} steps, got {}",
+                            PROBE_MAX_STEPS,
+                            list.len()
+                        ),
                     ));
                 }
                 let mut out = Vec::new();
@@ -1377,8 +1393,35 @@ fn decode_options(
                     let pairs = as_obj(item, &ipath)?;
                     let sf = Fields::new(&ipath, pairs, &["op", "from", "to"])?;
                     let op = req_str(&sf, "op")?;
+                    // PLAN-798: `run` joins the known op vocabulary
+                    // (ac-av's only op); recipes never borrow each other's
+                    // ops, and genuinely unknown ops keep the original
+                    // unknown-op error.
+                    let known_op =
+                        matches!(op.as_str(), "query" | "edit-source" | "restart" | "run");
+                    if !known_op {
+                        return Err(err(
+                            &sf.path_of("op"),
+                            format!("unknown probe op {:?} (supported: query, edit-source, restart, run)", op),
+                        ));
+                    }
+                    let allowed = match recipe.as_str() {
+                        // T-07 edit-session: runs + discriminating edits.
+                        "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
+                        _ => op != "run",
+                    };
+                    if !allowed {
+                        return Err(err(
+                            &sf.path_of("op"),
+                            format!(
+                                "probe op {:?} is not valid for recipe {:?} (recipe-specific step vocabulary)",
+                                op, recipe
+                            ),
+                        ));
+                    }
                     let step = match op.as_str() {
                         "query" => ProbeStep::Query,
+                        "run" => ProbeStep::Run,
                         "edit-source" => {
                             let from = req_str(&sf, "from")?;
                             let to = req_str(&sf, "to")?;
@@ -1389,7 +1432,10 @@ fn decode_options(
                                 ));
                             }
                             if from.len() > 64 * 1024 || to.len() > 64 * 1024 {
-                                return Err(err(&sf.path_of("to"), "edit-source literals exceed the 64KiB step cap"));
+                                return Err(err(
+                                    &sf.path_of("to"),
+                                    "edit-source literals exceed the 64KiB step cap",
+                                ));
                             }
                             ProbeStep::EditSource { from, to }
                         }
@@ -1397,11 +1443,27 @@ fn decode_options(
                         other => {
                             return Err(err(
                                 &sf.path_of("op"),
-                                format!("unknown probe op {:?} (supported: query, edit-source, restart)", other),
+                                format!(
+                                "unknown probe op {:?} (supported: query, edit-source, restart)",
+                                other
+                            ),
                             ))
                         }
                     };
                     out.push(step);
+                }
+                if recipe == "ac-av/core-run-v1" {
+                    // PLAN-798 T-07 edit-session shape: starts with a run;
+                    // edit-source steps (the seam's discriminating-edit
+                    // oracle) interleave with re-runs, all inside ONE
+                    // worker session with a persistent store — the formal
+                    // warm-session primitive for the hard gate.
+                    if !matches!(out.first(), Some(ProbeStep::Run)) {
+                        return Err(err(
+                            &f.path_of("steps"),
+                            "ac-av/core-run-v1 step sequences must start with a run step",
+                        ));
+                    }
                 }
                 out
             }
@@ -1413,7 +1475,10 @@ fn decode_options(
         let sema = match f.sub("sema") {
             None => {
                 if recipe == "sema/query-v1" {
-                    return Err(err(&f.path_of("sema"), "sema/query-v1 requires a sema binding"));
+                    return Err(err(
+                        &f.path_of("sema"),
+                        "sema/query-v1 requires a sema binding",
+                    ));
                 }
                 None
             }
@@ -1421,7 +1486,10 @@ fn decode_options(
                 if recipe != "sema/query-v1" {
                     return Err(err(
                         &f.path_of("sema"),
-                        format!("the sema binding belongs to sema/query-v1, not {:?}", recipe),
+                        format!(
+                            "the sema binding belongs to sema/query-v1, not {:?}",
+                            recipe
+                        ),
                     ));
                 }
                 let spath = f.path_of("sema");
@@ -1445,7 +1513,10 @@ fn decode_options(
         let abi = match f.sub("abi") {
             None => {
                 if recipe == "abi/interop-v1" {
-                    return Err(err(&f.path_of("abi"), "abi/interop-v1 requires an abi binding"));
+                    return Err(err(
+                        &f.path_of("abi"),
+                        "abi/interop-v1 requires an abi binding",
+                    ));
                 }
                 None
             }
@@ -1453,7 +1524,10 @@ fn decode_options(
                 if recipe != "abi/interop-v1" {
                     return Err(err(
                         &f.path_of("abi"),
-                        format!("the abi binding belongs to abi/interop-v1, not {:?}", recipe),
+                        format!(
+                            "the abi binding belongs to abi/interop-v1, not {:?}",
+                            recipe
+                        ),
                     ));
                 }
                 let apath = f.path_of("abi");
@@ -1469,9 +1543,48 @@ fn decode_options(
                 Some(ProbeAbiSpec { leg })
             }
         };
-        (Some(recipe), Some(steps), sema, abi)
+        let av = match f.sub("av") {
+            None => {
+                if recipe == "ac-av/core-run-v1" {
+                    return Err(err(
+                        &f.path_of("av"),
+                        "ac-av/core-run-v1 requires an av binding",
+                    ));
+                }
+                None
+            }
+            Some(v) => {
+                if recipe != "ac-av/core-run-v1" {
+                    return Err(err(
+                        &f.path_of("av"),
+                        format!(
+                            "av binding is not valid for recipe {:?} (recipe-specific bindings)",
+                            recipe
+                        ),
+                    ));
+                }
+                let apath = f.path_of("av");
+                let pairs = as_obj(v, &apath)?;
+                let sf = Fields::new(&apath, pairs, &["entry", "caps"])?;
+                let entry = req_str(&sf, "entry")?;
+                let caps = match sf.sub("caps") {
+                    None => Vec::new(),
+                    Some(v) => {
+                        let list = as_list(v, &sf.path_of("caps"))?;
+                        let mut out = Vec::new();
+                        for (i, item) in list.iter().enumerate() {
+                            let cpath = format!("{}.caps[{}]", apath, i);
+                            out.push(as_str(item, &cpath)?.to_string());
+                        }
+                        out
+                    }
+                };
+                Some(ProbeAvSpec { entry, caps })
+            }
+        };
+        (Some(recipe), Some(steps), sema, abi, av)
     } else {
-        (None, None, None, None)
+        (None, None, None, None, None)
     };
 
     Ok(Options {
@@ -1489,6 +1602,7 @@ fn decode_options(
         probe_steps,
         probe_sema,
         probe_abi,
+        probe_av,
     })
 }
 
@@ -1504,7 +1618,8 @@ pub struct SyntaxEdit {
 /// Registered probe recipes (PLAN-796 T-06 freeze). A case may only name
 /// one of these — never an executable, path or shell. 797 appends its ABI
 /// recipe here under the same contract (single writer per window).
-pub const REGISTERED_PROBE_RECIPES: &[&str] = &["sema/query-v1", "abi/interop-v1"];
+pub const REGISTERED_PROBE_RECIPES: &[&str] =
+    &["sema/query-v1", "abi/interop-v1", "ac-av/core-run-v1"];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
 /// One declarative probe step. `EditSource` replaces a LITERAL substring
@@ -1517,8 +1632,23 @@ pub enum ProbeStep {
     /// Run the recipe's full query flow (lookup → miss? compute → publish)
     /// and report the structured result for parent-side judging.
     Query,
-    EditSource { from: String, to: String },
+    EditSource {
+        from: String,
+        to: String,
+    },
     Restart,
+    /// PLAN-798 ac-av/core-run-v1: run the case source through the full
+    /// AV pipeline once and report the observed outcome (value / trap /
+    /// diagnostic + counters) for parent-side judging.
+    Run,
+}
+
+/// ac-av/core-run-v1 binding (PLAN-798 T-07): the AV entry function and
+/// optional capability list — declarative Atom parameters only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeAvSpec {
+    pub entry: String,
+    pub caps: Vec<String>,
 }
 
 /// sema/query-v1 binding: which semantic query the recipe runs.
@@ -1583,6 +1713,9 @@ pub fn channel_supported(adapter: Adapter, channel: &str) -> bool {
         // only (cache outcome / compute counter / bindings oracle /
         // stage trace). It never observes stdout/stderr/result channels.
         (Adapter::Probe, "probe") => true,
+        // PLAN-798 T-07: value-reporting probe recipes (ac-av/core-run-v1
+        // reports the AV Success value) observe the generic `exit` face.
+        (Adapter::Probe, "exit") => true,
         _ => false,
     }
 }
@@ -1612,7 +1745,8 @@ fn decode_expect(
             "perf",
         ]
     } else if probe_channels {
-        &["completion", "probe"]
+        // PLAN-798 T-07: + exit (value-reporting recipes).
+        &["completion", "probe", "exit"]
     } else {
         &["completion", "result", "stdout", "stderr", "artifacts"]
     };
@@ -1624,7 +1758,7 @@ fn decode_expect(
     let channels: &[&str] = if v2_channels {
         &["result", "stdout", "stderr", "artifacts", "exit", "perf"]
     } else if probe_channels {
-        &["probe"]
+        &["probe", "exit"]
     } else {
         &["result", "stdout", "stderr", "artifacts"]
     };
@@ -1793,7 +1927,12 @@ fn decode_expect(
     let exit = match f.sub("exit") {
         None => None,
         Some(CVal::Int(n)) if i32::try_from(*n).is_ok() => {
-            if adapter != Adapter::Ac || action != Action::Run {
+            // PLAN-798 T-07: value-reporting probe recipes (ac-av/core-run-v1
+            // reports the AV Success value) also observe `exit`; the probe
+            // adapter admits it alongside ac/run.
+            let exit_observer =
+                (adapter == Adapter::Ac && action == Action::Run) || adapter == Adapter::Probe;
+            if !exit_observer {
                 return Err(err(
                     &f.path_of("exit"),
                     "`exit` is an ac/run observation — only the native run exposes an exit code",
@@ -1902,7 +2041,11 @@ fn decode_expect(
                 if list.is_empty() || list.len() > PROBE_MAX_STEPS {
                     return Err(err(
                         &f.path_of("probe"),
-                        format!("probe expectations must be 1..={} entries, got {}", PROBE_MAX_STEPS, list.len()),
+                        format!(
+                            "probe expectations must be 1..={} entries, got {}",
+                            PROBE_MAX_STEPS,
+                            list.len()
+                        ),
                     ));
                 }
                 let mut out = Vec::new();
@@ -1942,7 +2085,10 @@ fn decode_expect(
                         Some(other) => {
                             return Err(err(
                                 &pf.path_of("compute_calls"),
-                                format!("compute_calls must be a small non-negative integer, got {}", other.type_name()),
+                                format!(
+                                    "compute_calls must be a small non-negative integer, got {}",
+                                    other.type_name()
+                                ),
                             ))
                         }
                     };
@@ -1975,7 +2121,10 @@ fn decode_expect(
                                     other => {
                                         return Err(err(
                                             &format!("{}.stages_include[{}]", pf.path, j),
-                                            format!("expected non-empty stage name, got {}", other.type_name()),
+                                            format!(
+                                                "expected non-empty stage name, got {}",
+                                                other.type_name()
+                                            ),
                                         ))
                                     }
                                 }
@@ -1983,7 +2132,12 @@ fn decode_expect(
                             out
                         }
                     };
-                    out.push(ProbeStepExpect { cache, compute_calls, bindings_file, stages_include });
+                    out.push(ProbeStepExpect {
+                        cache,
+                        compute_calls,
+                        bindings_file,
+                        stages_include,
+                    });
                 }
                 Some(out)
             }

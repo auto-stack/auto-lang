@@ -12,7 +12,7 @@
 use crate::cache::{
     abc_unit_key, assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar,
     get_enveloped_opt, manifest_key, merge_spans, open_store, put_enveloped, sidecar_key,
-    split_units, unit_body_fingerprint, Counters, EnvelopeIdentity, ModuleManifest, UnitLink,
+    split_units, Counters, EnvelopeIdentity, ModuleManifest, UnitLink,
 };
 use crate::hir_adapter::{lower_checked, AdapterError};
 use crate::observations::{Obs, SpanRec};
@@ -167,22 +167,32 @@ impl Driver {
         let caps_fp = caps_fingerprint(caps);
 
         // Function bodies in def order, with canonical fingerprints.
-        #[allow(dead_code)]
         struct FnInfo {
             name: String,
             body: auto_ac_prototype::hir::BodyId,
             sig: String,
             fp: String,
+            /// Shared-domain logical id (796 identity; V-13 axis).
+            logical: String,
             abc_hit: Option<Vec<u8>>,
         }
         let mut infos: Vec<FnInfo> = Vec::new();
         for d in module.defs.iter() {
             if let auto_ac_prototype::hir::DefKind::Function { ty, body, .. } = &d.kind {
+                let dump = crate::cache::canonical_hir_function(module, *body);
                 infos.push(FnInfo {
                     name: d.id_text.clone(),
                     body: *body,
                     sig: sig_string(module, *ty),
-                    fp: unit_body_fingerprint(module, *body),
+                    // T-06: the content axis rides the landed 796
+                    // ContentVersion domain (order-independent identity);
+                    // the local FNV fingerprint snapshot is retired.
+                    fp: crate::semrefs::content_version_of(&dump),
+                    logical: crate::semrefs::unit_logical_id(
+                        &crate::semrefs::av_package(),
+                        &owner,
+                        d.id_text.as_str(),
+                    ),
                     abc_hit: None,
                 });
             }
@@ -645,6 +655,7 @@ impl Driver {
                         name: info.name.clone(),
                         artifact: art.artifact_id.clone(),
                         sig: info.sig.clone(),
+                        logical: info.logical.clone(),
                     });
                 }
             }

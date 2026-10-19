@@ -321,7 +321,7 @@ fn active_faults() -> Option<(Vec<(String, String)>, Option<u64>)> {
 /// tree, so a descendant that inherited stdout/stderr can never wedge
 /// the reader joins past the parent wall.
 #[cfg(windows)]
-pub(super) mod containment {
+pub(crate) mod containment {
     use std::os::windows::io::AsRawHandle;
     use std::process::Child;
 
@@ -555,7 +555,7 @@ pub(super) mod containment {
 }
 
 #[cfg(not(windows))]
-pub(super) mod containment {
+pub(crate) mod containment {
     use std::process::Child;
     pub const CREATE_SUSPENDED: u32 = 0;
     #[derive(Clone, Copy, Debug, Default)]
@@ -909,6 +909,9 @@ pub fn run_check(
                     serde_json::json!({"op": "edit-source", "from": from, "to": to})
                 }
                 ProbeStep::Restart => serde_json::json!({"op": "restart"}),
+                // Decode restricts `run` to the ac-av recipe; the sema
+                // adapter never receives it (defensive explicit arm).
+                ProbeStep::Run => serde_json::json!({"op": "run"}),
             })
             .collect();
         let nonce = hex(&sha256(
