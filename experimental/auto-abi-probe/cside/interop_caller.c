@@ -56,13 +56,13 @@ static int p797_c_suite_main(void)
 
     /* fallible: success commits out */
     out_q = 0;
-    got_s = p797_div(-100LL, 7LL, &out_q);
+    got_s = p797_div(0, -100LL, 7LL, &out_q);
     CHECK(got_s == 0);
     CHECK(out_q == -100LL / 7LL);
 
     /* fallible: div-by-zero keeps the sentinel AND reports status -1 */
     out_q = 47000LL;
-    got_s = p797_div(12345LL, 0LL, &out_q);
+    got_s = p797_div(0, 12345LL, 0LL, &out_q);
     CHECK(got_s == P797_DIV_ZERO);
     CHECK(out_q == 47000LL);
 

@@ -19,5 +19,7 @@
 #define p797_two_step      b_two_step
 #define p797_fold          b_fold
 #define p797_stored_cb     b_stored_cb
+#define p797_cbuf_sum_utf8 b_cbuf_sum_utf8
+#define p797_crec_valid    b_crec_valid
 
 #include "interop_resource.c"

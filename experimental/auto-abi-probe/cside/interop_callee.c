@@ -30,8 +30,9 @@ double p797_cfacc(double a, double b)
     return a * 2.5 + b * 1.25;
 }
 
-int p797_cdiv(long long n, long long d, long long *q)
+int p797_cdiv(void *ctx, long long n, long long d, long long *q)
 {
+    (void)ctx; /* nullable context (contract §2): never dereferenced */
     if (d == 0) {
         return P797_DIV_ZERO;
     }

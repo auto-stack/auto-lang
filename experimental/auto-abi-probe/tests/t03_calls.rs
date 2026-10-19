@@ -66,7 +66,12 @@ fn suite_defs() -> Vec<FnDecl> {
         },
         FnDecl {
             symbol: "p797_div",
-            params: &[AbiScalar::I64, AbiScalar::I64, AbiScalar::Ptr],
+            params: &[
+                AbiScalar::Ptr,
+                AbiScalar::I64,
+                AbiScalar::I64,
+                AbiScalar::Ptr,
+            ],
             ret: AbiScalar::I32,
             body: BodyKind::FallibleDivV1,
         },

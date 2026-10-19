@@ -308,3 +308,70 @@ fn abi_resource_edges_independent_c_control() {
         pe.stdout, pe.stderr
     );
 }
+
+/// F-797-R4-02 promised-surface native controls from an AUTOABI caller:
+/// UTF-8 view validation (valid multibyte counts; invalid sequence is a
+/// typed -7 with the out slot untouched) and record-view value
+/// validation (illegal bool / non-scalar char are typed -8).
+#[test]
+fn abi_resource_utf8_and_recvalid_autoabi_consumer() {
+    use auto_abi_probe::emit::SuiteCheck;
+    let checks = vec![
+        SuiteCheck::BufUtf8Ok {
+            symbol: "p797_cbuf_sum_utf8",
+            bytes: b"h\xC3\xA9llo\xF0\x9F\x92\xA9", // h e l lo emoji => 6 scalars
+            expected_chars: 6,
+        },
+        SuiteCheck::BufUtf8Invalid {
+            symbol: "p797_cbuf_sum_utf8",
+            bytes: b"abc\xFF\x80xyz", // stray continuation
+            sentinel: 31337,
+        },
+        SuiteCheck::BufUtf8Invalid {
+            symbol: "p797_cbuf_sum_utf8",
+            bytes: b"abc\xED\xA0\x80", // surrogate
+            sentinel: 31337,
+        },
+        SuiteCheck::RecValidOk {
+            symbol: "p797_crec_valid",
+            rec: auto_abi_probe::decl::FROZEN_REC,
+            expected_sum: auto_abi_probe::decl::oracle_rec_sum_v1(
+                &auto_abi_probe::decl::FROZEN_REC,
+            ),
+        },
+        SuiteCheck::RecValidBad {
+            symbol: "p797_crec_valid",
+            bad_flag: Some(7),
+            bad_tag: None,
+            sentinel: 424242,
+        },
+        SuiteCheck::RecValidBad {
+            symbol: "p797_crec_valid",
+            bad_flag: None,
+            bad_tag: Some(0xD800), // surrogate code point
+            sentinel: 424242,
+        },
+        SuiteCheck::RecValidBad {
+            symbol: "p797_crec_valid",
+            bad_flag: None,
+            bad_tag: Some(0x110000), // > U+10FFFF
+            sentinel: 424242,
+        },
+    ];
+    let caller = emit_caller_suite("p797_val_caller", &checks).expect("emit validation caller");
+
+    let dir = run::scratch("abi_resource_values");
+    let src = manifest().join("cside/interop_resource.c");
+    let c_obj = dir.join("provider.obj");
+    ctool::compile_c(&src, &manifest().join("cside"), &c_obj)
+        .expect("cl compiles the resource provider");
+    let caller_obj = dir.join("caller.obj");
+    std::fs::write(&caller_obj, &caller).unwrap();
+    let exe = link_pe(&dir, &[caller_obj, c_obj], "p797_entry").expect("link");
+    let pe = run::run_pe(&exe).expect("run");
+    assert_eq!(
+        pe.code, 0,
+        "validation lanes; out={:?} err={:?}",
+        pe.stdout, pe.stderr
+    );
+}

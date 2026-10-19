@@ -25,7 +25,7 @@ pub const ABI_VERSION: &str = "0.1";
 pub const PACKING: &str = "natural-align";
 
 /// Parameter kinds legal in public signatures (contract-decision.md §2).
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum ParamKind {
     I32,
     U32,
@@ -34,6 +34,20 @@ pub enum ParamKind {
     F64,
     Bool,
     Char,
+    /// Explicit context pointer (fallible form's first parameter).
+    CtxPtr {
+        nullable: bool,
+    },
+    /// Borrowed byte buffer view `{ptr, len}`.
+    BufViewBytes,
+    /// Borrowed UTF-8 text view — providers VALIDATE the encoding.
+    BufViewUtf8,
+    /// Borrowed view of a named record (layout via the record table).
+    RecView {
+        rec: String,
+    },
+    /// Opaque provider-owned handle.
+    Handle,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -49,15 +63,22 @@ pub enum RetKind {
 }
 
 impl ParamKind {
-    pub fn spell(&self) -> &'static str {
+    pub fn spell(&self) -> String {
         match self {
-            ParamKind::I32 => "i32",
-            ParamKind::U32 => "u32",
-            ParamKind::I64 => "i64",
-            ParamKind::U64 => "u64",
-            ParamKind::F64 => "f64",
-            ParamKind::Bool => "bool",
-            ParamKind::Char => "char",
+            ParamKind::I32 => "i32".into(),
+            ParamKind::U32 => "u32".into(),
+            ParamKind::I64 => "i64".into(),
+            ParamKind::U64 => "u64".into(),
+            ParamKind::F64 => "f64".into(),
+            ParamKind::Bool => "bool".into(),
+            ParamKind::Char => "char".into(),
+            ParamKind::CtxPtr { nullable } => {
+                format!("ctx:{}", if *nullable { "nullable" } else { "required" })
+            }
+            ParamKind::BufViewBytes => "buf:bytes".into(),
+            ParamKind::BufViewUtf8 => "buf:utf8".into(),
+            ParamKind::RecView { rec } => format!("rec:{rec}"),
+            ParamKind::Handle => "handle".into(),
         }
     }
 }
@@ -88,6 +109,9 @@ pub enum SymbolForm {
     /// `i32 status f(params..., out*)` — success commits out, failure
     /// leaves caller output untouched.
     Fallible {
+        /// F-797-R4-02: the EXPLICIT CONTEXT first parameter is part of
+        /// the form (contract §2); `None` spells a context-free entry.
+        ctx: Option<bool>, // Some(nullable)
         params: Vec<ParamKind>,
         out: ParamKind,
     },
@@ -107,15 +131,24 @@ impl SymbolForm {
                     .join(","),
                 ret.spell()
             ),
-            SymbolForm::Fallible { params, out } => format!(
-                "fallible({})->status,out {}",
-                params
-                    .iter()
-                    .map(|p| p.spell())
-                    .collect::<Vec<_>>()
-                    .join(","),
-                out.spell()
-            ),
+            SymbolForm::Fallible { ctx, params, out } => {
+                let ctx_s = match ctx {
+                    Some(nullable) => {
+                        format!("ctx:{},", if *nullable { "nullable" } else { "required" })
+                    }
+                    None => String::new(),
+                };
+                format!(
+                    "fallible({}{})->status,out {}",
+                    ctx_s,
+                    params
+                        .iter()
+                        .map(|p| p.spell())
+                        .collect::<Vec<_>>()
+                        .join(","),
+                    out.spell()
+                )
+            }
         }
     }
 }
@@ -255,6 +288,35 @@ impl ModuleDescriptor {
         }
         Ok(d)
     }
+}
+
+/// F-797-R4-02: a CONSUMABLE descriptor for the C interop provider's
+/// promised-surface entries (the validation lanes the support matrix
+/// claims) — the same descriptor/2 language as AutoABI modules, so
+/// consumers admit C providers by the same contract.
+pub fn interop_c_provider_descriptor() -> ModuleDescriptor {
+    let mut d = ModuleDescriptor::probe_module();
+    d.symbols = vec![
+        SymbolEntry {
+            name: "p797_cbuf_sum_utf8".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![ParamKind::BufViewUtf8, ParamKind::U64],
+                out: ParamKind::I64,
+            },
+        },
+        SymbolEntry {
+            name: "p797_crec_valid".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![ParamKind::RecView {
+                    rec: "RecMix".into(),
+                }],
+                out: ParamKind::I64,
+            },
+        },
+    ];
+    d
 }
 
 /// Scalar bridge for record fields shared with layout.

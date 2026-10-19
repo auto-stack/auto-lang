@@ -26,6 +26,21 @@ pub enum AbiScalar {
 pub enum BodyKind {
     /// T-01 heterogeneous weighted sum.
     MixV1,
+    /// Weighted mix body: e*W + a*1 + b*3 + c*7 + d*11 + g*13 +
+    /// trunc(f)*1000 + trunc(h)*17 with W = the carried weight — the
+    /// per-sample REAL body edit family for the formal turnaround gates
+    /// (F-797-R4-09: every sample is a distinct producer input, so no
+    /// sample can ride a hot cache hit).
+    MixW(i64),
+    /// Seed-variant body with EXACTLY MixV1 semantics (same result,
+    /// wrapping arithmetic only — f64 terms are truncated before any
+    /// addition, so reassociation is exact): the seed rotates the
+    /// accumulation order and splits weighted multiplies. Every seed is
+    /// a DISTINCT producer input (distinct canonical body) and therefore
+    /// a cold cache key — the uniform-cold sampler family for the formal
+    /// body-edit hard gate (F-797-R4-09), where the FROZEN C consumer
+    /// must still pass because observable semantics are unchanged.
+    MixAlt(u64),
     /// SAME semantics as MixV1, different lowering (reassociated sum):
     /// the body-edit scenario's implementation change with an unchanged
     /// public interface — same oracle, different object content.
@@ -101,9 +116,17 @@ pub const P797_OUTER: FnDecl = FnDecl {
     body: BodyKind::OuterV1,
 };
 
+/// F-797-R4-02: the fallible form carries an EXPLICIT CONTEXT first
+/// parameter (contract-decision §2); p797_div declares it NULLABLE
+/// (pure-ish probe function — the body never dereferences it).
 pub const P797_DIV: FnDecl = FnDecl {
     symbol: "p797_div",
-    params: &[AbiScalar::I64, AbiScalar::I64, AbiScalar::Ptr],
+    params: &[
+        AbiScalar::Ptr,
+        AbiScalar::I64,
+        AbiScalar::I64,
+        AbiScalar::Ptr,
+    ],
     ret: AbiScalar::I32,
     body: BodyKind::FallibleDivV1,
 };
@@ -155,6 +178,18 @@ pub const FROZEN_INPUTS: MixInputs = MixInputs {
 /// probe callers come from here, so a bug in the emitter body shows up as
 /// an exit-code mismatch, never as a self-consistent pass.
 ///
+pub fn oracle_mix_w(x: &MixInputs, w: i64) -> i64 {
+    let t = |v: f64| v as i64;
+    x.e.wrapping_mul(w)
+        .wrapping_add(x.a as i64)
+        .wrapping_add((x.b as i64) * 3)
+        .wrapping_add((x.c as i64) * 7)
+        .wrapping_add((x.d as i64) * 11)
+        .wrapping_add((x.g as i64) * 13)
+        .wrapping_add(t(x.f) * 1000)
+        .wrapping_add(t(x.h) * 17)
+}
+
 /// f64 -> i64 mirrors the frozen profile rule: truncation toward zero,
 /// inputs frozen in-range (no C UB, no fp->int trap).
 pub fn oracle_mix_v1(x: &MixInputs) -> i64 {

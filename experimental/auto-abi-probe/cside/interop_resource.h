@@ -18,10 +18,14 @@
 
 #include <stdint.h>
 
+#include "autoabi_layout_v01.h" /* RecMix wire type for record views */
+
 #define R797_OK            0
 #define R797_ERR_HANDLE  (-1)
 #define R797_ERR_CAP     (-2)
 #define R797_ERR_BUFNULL (-3)
+#define R797_ERR_UTF8    (-7)   /* F-797-R4-02: invalid UTF-8 in a text view */
+#define R797_ERR_INVALID (-8)   /* F-797-R4-02: illegal bool/char scalar value */
 #define R797_ERR_BOUNDS  (-4)
 
 /* owned-handle lifecycle */
@@ -50,5 +54,12 @@ int p797_two_step(int x, long long *out);
 long long p797_fold(long long (*cb)(long long ctx, long long item),
                     long long ctx, const long long *items, uint64_t n);
 long long p797_stored_cb(void); /* always 0 — persistence is observable */
+
+/* F-797-R4-02 promised-surface entries (each has positive AND negative
+ * native controls): borrowed UTF-8 view validation + record-view value
+ * validation. Both are provider-owned: rejection is a typed status, the
+ * out slot stays untouched on failure. */
+int p797_cbuf_sum_utf8(const unsigned char *p, uint64_t len, long long *chars);
+int p797_crec_valid(const RecMix *r, long long *sum);
 
 #endif /* AUTOABI_INTEROP_RESOURCE_H */

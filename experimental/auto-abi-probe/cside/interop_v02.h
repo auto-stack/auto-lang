@@ -31,14 +31,14 @@
 long long p797_cmix(int a, int b, int c, int d, long long e, double f,
                     int g, double h);
 double p797_cfacc(double a, double b);
-int p797_cdiv(long long n, long long d, long long *q);
+int p797_cdiv(void *ctx, long long n, long long d, long long *q);
 long long p797_crec_sum(const RecMix *r);
 long long p797_cbump(int x);
 
 /* ---- AutoABI suite surface (called by the leg C C caller) ---- */
 double p797_facc(double a, double b);
 long long p797_outer(int a, double b); /* imports p797_inner (C side) */
-int p797_div(long long n, long long d, long long *q);
+int p797_div(void *ctx, long long n, long long d, long long *q);
 long long p797_rec_sum(const RecMix *r);
 long long p797_bump(int x);
 long long p797_inner(long long x); /* defined by the C caller object */

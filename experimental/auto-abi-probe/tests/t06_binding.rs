@@ -226,19 +226,27 @@ fn p95(xs: &mut Vec<f64>) -> f64 {
     xs[((xs.len() as f64 - 1.0) * 0.95).round() as usize]
 }
 
-/// §5.5 hard gate 1 over the FORMAL path: a body edit per request, the
-/// unchanged C consumer reused from the store — request → correct PE
-/// result, P95 < 1000ms across 30 samples.
+/// §5.5 hard gate 1 over the WORKER transport with UNIFORM-COLD
+/// bodies: sample i runs `[body: mix-w{i}]` — every sample is a NEW
+/// producer input (no sample can ride a cache hit), the C consumer is
+/// reused from the store, and the request → correct PE result must be
+/// P95 < 1000ms. (F-797-R4-09: the alternating two-body sampler that
+/// measured hot hits is retired; parent-path end-to-end gates live in
+/// probe_adapter_tests.rs.)
+/// Perf gates are machine-sensitive: serialize them within this test
+/// binary so parallel samples cannot contend each other's walls.
+static GATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn abi_turnaround_formal_body_edit_hard_gate() {
+    let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let store = std::env::temp_dir().join(format!("abi-t06-bodyedit-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&store);
     std::fs::create_dir_all(&store).unwrap();
 
     let mut times = Vec::new();
     for i in 0..30 {
-        let body = if i % 2 == 0 { "mix-v1" } else { "mix-v1b" };
-        let deck = GOOD_DECK.replace("[body: mix-v1]", &format!("[body: {body}]"));
+        let deck = GOOD_DECK.replace("[body: mix-v1]", &format!("[body: mix-alt{}]", i));
         let (ms, resp) = worker_session(&deck, "c", &store, &[("query", "", "")]);
         let ok = resp.get("ok").expect("ok envelope");
         let steps = ok.get("steps").unwrap().as_array().unwrap();
@@ -248,21 +256,35 @@ fn abi_turnaround_formal_body_edit_hard_gate() {
             .expect("query step");
         assert_eq!(q["outcome"], "ok", "sample {i} outcome: {q}");
         assert_eq!(q["pe_exit"], 0, "sample {i} PE exit: {q}");
+        assert_eq!(
+            q["cache"], "published",
+            "sample {i} must be a COLD producer run (distinct seed per sample): {q}"
+        );
+        // the C consumer is compiled ONCE (sample 0: 2 = C compile +
+        // callee emit) and REUSED after — every later sample's only
+        // producer work is the callee re-emit (exactly 1).
+        let want_calls = if i == 0 { 2 } else { 1 };
+        assert_eq!(
+            q["compute_calls"].as_u64().unwrap(),
+            want_calls,
+            "sample {i}: C consumer must be reused after sample 0: {q}"
+        );
         times.push(ms);
     }
-    let p95 = p95(&mut times);
-    println!("formal body-edit P95 = {p95:.1}ms over 30 samples");
+    let p95v = p95(&mut times);
+    println!("formal body-edit (uniform-cold) P95 = {p95v:.1}ms over 30 samples");
     assert!(
-        p95 < 1000.0,
-        "HARD GATE body-edit (formal IPC) P95={p95:.1}ms >= 1000ms"
+        p95v < 1000.0,
+        "HARD GATE body-edit (formal IPC, uniform-cold) P95={p95v:.1}ms >= 1000ms"
     );
 }
 
-/// §5.5 hard gate 2 over the FORMAL path: a descriptor-edit (signature)
-/// request must produce the CORRECT typed diagnosis, P95 < 1000ms
-/// across 30 samples — and never a native call.
+/// §5.5 hard gate 2 over the WORKER transport: a descriptor-edit
+/// (signature) request produces the CORRECT typed diagnosis with no
+/// native call, P95 < 1000ms across 30 samples.
 #[test]
 fn abi_turnaround_formal_reject_hard_gate() {
+    let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let store = std::env::temp_dir().join(format!("abi-t06-reject-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&store);
     std::fs::create_dir_all(&store).unwrap();
@@ -287,10 +309,10 @@ fn abi_turnaround_formal_reject_hard_gate() {
         );
         times.push(ms);
     }
-    let p95 = p95(&mut times);
-    println!("formal descriptor-reject P95 = {p95:.1}ms over 30 samples");
+    let p95v = p95(&mut times);
+    println!("formal descriptor-reject P95 = {p95v:.1}ms over 30 samples");
     assert!(
-        p95 < 1000.0,
-        "HARD GATE reject (formal IPC) P95={p95:.1}ms >= 1000ms"
+        p95v < 1000.0,
+        "HARD GATE reject (formal IPC) P95={p95v:.1}ms >= 1000ms"
     );
 }

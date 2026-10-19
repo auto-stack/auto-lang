@@ -340,3 +340,84 @@ long long p797_stored_cb(void)
 {
     return 0;
 }
+
+/* F-797-R4-02: strict UTF-8 validation (overlongs, surrogates, >U+10FFFF
+ * and truncated sequences are all rejected); on success *chars is the
+ * SCALAR COUNT. The out slot is only written on success. */
+int p797_cbuf_sum_utf8(const unsigned char *p, uint64_t len, long long *chars)
+{
+    uint64_t i = 0, count = 0;
+    if (len > 0u && p == 0) {
+        return R797_ERR_BUFNULL;
+    }
+    while (i < len) {
+        unsigned char b = p[i];
+        if (b < 0x80u) {
+            i += 1u;
+        } else if ((b & 0xE0u) == 0xC0u) {
+            if (b < 0xC2u) {
+                return R797_ERR_UTF8; /* overlong 2-byte */
+            }
+            if (i + 1u >= len || (p[i + 1u] & 0xC0u) != 0x80u) {
+                return R797_ERR_UTF8;
+            }
+            i += 2u;
+        } else if ((b & 0xF0u) == 0xE0u) {
+            if (i + 2u >= len) {
+                return R797_ERR_UTF8;
+            }
+            if ((p[i + 1u] & 0xC0u) != 0x80u || (p[i + 2u] & 0xC0u) != 0x80u) {
+                return R797_ERR_UTF8;
+            }
+            if (b == 0xE0u && p[i + 1u] < 0xA0u) {
+                return R797_ERR_UTF8; /* overlong 3-byte */
+            }
+            if (b == 0xEDu && p[i + 1u] >= 0xA0u) {
+                return R797_ERR_UTF8; /* surrogate */
+            }
+            i += 3u;
+        } else if ((b & 0xF8u) == 0xF0u) {
+            if (b > 0xF4u) {
+                return R797_ERR_UTF8; /* > U+10FFFF */
+            }
+            if (i + 3u >= len) {
+                return R797_ERR_UTF8;
+            }
+            if ((p[i + 1u] & 0xC0u) != 0x80u || (p[i + 2u] & 0xC0u) != 0x80u
+                || (p[i + 3u] & 0xC0u) != 0x80u) {
+                return R797_ERR_UTF8;
+            }
+            if (b == 0xF0u && p[i + 1u] < 0x90u) {
+                return R797_ERR_UTF8; /* overlong 4-byte */
+            }
+            if (b == 0xF4u && p[i + 1u] >= 0x90u) {
+                return R797_ERR_UTF8; /* > U+10FFFF */
+            }
+            i += 4u;
+        } else {
+            return R797_ERR_UTF8; /* stray continuation / invalid lead */
+        }
+        count += 1u;
+    }
+    *chars = (long long)count;
+    return R797_OK;
+}
+
+/* F-797-R4-02: record-view VALUE validation — bool must be 0/1, char
+ * must be a scalar value (<= U+10FFFF, not a surrogate); a valid record
+ * writes the weighted sum. The out slot is only written on success. */
+int p797_crec_valid(const RecMix *r, long long *sum)
+{
+    if (r == 0) {
+        return R797_ERR_BUFNULL;
+    }
+    if (r->flag > 1u) {
+        return R797_ERR_INVALID;
+    }
+    if (r->tag > 0x10FFFFu || (r->tag >= 0xD800u && r->tag <= 0xDFFFu)) {
+        return R797_ERR_INVALID;
+    }
+    *sum = (long long)r->flag * 1000LL + (long long)r->count * 3LL
+         + (long long)r->tag * 5LL + r->big;
+    return R797_OK;
+}

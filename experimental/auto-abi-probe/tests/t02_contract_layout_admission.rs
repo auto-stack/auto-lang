@@ -148,6 +148,7 @@ fn abi_contract_descriptor_roundtrip_and_fingerprint() {
     d2.symbols.push(auto_abi_probe::descriptor::SymbolEntry {
         name: "p797_extra".into(),
         form: SymbolForm::Fallible {
+            ctx: None,
             params: vec![],
             out: ParamKind::I64,
         },
@@ -669,5 +670,98 @@ fn abi_admission_semref_gate_end_to_end() {
             assert_ne!(expected, found);
         }
         other => panic!("expected SemRefMismatch, got {other:?}"),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// F-797-R4-02 promised-surface closures
+// ---------------------------------------------------------------------------
+
+/// The fallible form SPELLS its explicit context parameter — a consumer
+/// compiling against the proposal signature can derive the real machine
+/// shape from the descriptor alone.
+#[test]
+fn abi_contract_fallible_form_spells_ctx() {
+    let defs = [mix_def_div()];
+    let d = auto_abi_probe::build::descriptor_for_defs(&defs);
+    let sig = d
+        .symbols
+        .iter()
+        .find(|s| s.name == "p797_div")
+        .unwrap()
+        .form
+        .signature();
+    assert!(
+        sig.starts_with("fallible(ctx:nullable,i64,i64)->status,out"),
+        "got {sig:?}"
+    );
+}
+
+fn mix_def_div() -> auto_abi_probe::decl::FnDecl {
+    use auto_abi_probe::decl::{AbiScalar, BodyKind, FnDecl};
+    FnDecl {
+        symbol: "p797_div",
+        params: &[
+            AbiScalar::Ptr,
+            AbiScalar::I64,
+            AbiScalar::I64,
+            AbiScalar::Ptr,
+        ],
+        ret: AbiScalar::I32,
+        body: BodyKind::FallibleDivV1,
+    }
+}
+
+/// The C provider's promised-surface entries (UTF-8 view validation,
+/// record-view value validation) are DESCRIBED in the same
+/// descriptor/2 language and ADMITTABLE by a consumer expectation.
+#[test]
+fn abi_contract_c_provider_descriptor_consumable() {
+    use auto_abi_probe::descriptor::{interop_c_provider_descriptor, ModuleDescriptor};
+    let d = interop_c_provider_descriptor();
+    let bytes = d.encode().unwrap();
+    let back = ModuleDescriptor::decode(&bytes).unwrap();
+    assert_eq!(d, back);
+    let utf8_sig = d
+        .symbols
+        .iter()
+        .find(|s| s.name == "p797_cbuf_sum_utf8")
+        .unwrap()
+        .form
+        .signature();
+    assert_eq!(utf8_sig, "fallible(buf:utf8,u64)->status,out i64");
+    let rec_sig = d
+        .symbols
+        .iter()
+        .find(|s| s.name == "p797_crec_valid")
+        .unwrap()
+        .form
+        .signature();
+    assert_eq!(rec_sig, "fallible(rec:RecMix)->status,out i64");
+
+    // admissible: a consumer requiring exactly these signatures passes
+    let mut expect = probe_expectation();
+    expect.required_symbols = d
+        .symbols
+        .iter()
+        .map(|s| (s.name.clone(), s.form.signature()))
+        .collect();
+    admit_descriptor(&d, &expect).expect("C provider descriptor admits");
+}
+
+/// A capability the profile DOES NOT offer (storing callbacks) is not
+/// just undocumented — REQUIRING it is an admission rejection with
+/// native call count 0 (F-797-R4-02: rejecting the capability is an
+/// entrance property, not a doc footnote).
+#[test]
+fn abi_contract_absent_capability_symbol_rejected() {
+    let d = ModuleDescriptor::probe_module();
+    let mut expect = probe_expectation();
+    expect
+        .required_symbols
+        .push(("p797_fold_save".into(), "pure(handle)->i64".into()));
+    match admit_descriptor(&d, &expect) {
+        Err(Rejection::MissingSymbol { symbol }) => assert_eq!(symbol, "p797_fold_save"),
+        other => panic!("expected MissingSymbol, got {other:?}"),
     }
 }

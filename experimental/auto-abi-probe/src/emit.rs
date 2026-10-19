@@ -389,6 +389,32 @@ pub enum SuiteCheck {
     },
     /// The provider stores no callbacks — observably 0.
     StoredCb { symbol: &'static str },
+    /// F-797-R4-02: borrowed UTF-8 buffer — the provider VALIDATES the
+    /// encoding and returns the character count; invalid input is a
+    /// typed status rejection with the out slot untouched.
+    BufUtf8Ok {
+        symbol: &'static str,
+        bytes: &'static [u8],
+        expected_chars: i64,
+    },
+    BufUtf8Invalid {
+        symbol: &'static str,
+        bytes: &'static [u8],
+        sentinel: i64,
+    },
+    /// F-797-R4-02: record-view VALIDATION — illegal bool (not 0/1) or
+    /// non-scalar char are typed rejections; a valid record sums.
+    RecValidOk {
+        symbol: &'static str,
+        rec: RecValues,
+        expected_sum: i64,
+    },
+    RecValidBad {
+        symbol: &'static str,
+        bad_flag: Option<u8>,
+        bad_tag: Option<u32>,
+        sentinel: i64,
+    },
 }
 
 /// Callback shapes the caller can hand to the provider (both defined
@@ -527,6 +553,73 @@ fn lower_body(
 ) -> Result<cranelift_codegen::ir::Value, String> {
     match body {
         BodyKind::MixV1 => Ok(emit_mix_v1_body(fb, args)),
+        BodyKind::MixAlt(seed) => {
+            // Same eight terms as MixV1, but the accumulation START is
+            // rotated by the seed and each weighted multiply is split
+            // (x*k as x*(k-1)+x) on alternating seeds — a distinct
+            // instruction shape per seed with an IDENTICAL wrapping
+            // result. No FP reassociation: f64 lanes are truncated to
+            // i64 before any addition.
+            let a = sext_i32_to_i64(fb, args[0]);
+            let b = sext_i32_to_i64(fb, args[1]);
+            let c = sext_i32_to_i64(fb, args[2]);
+            let d = sext_i32_to_i64(fb, args[3]);
+            let g = sext_i32_to_i64(fb, args[6]);
+            let fi = fb.ins().fcvt_to_sint(types::I64, args[5]);
+            let hi = fb.ins().fcvt_to_sint(types::I64, args[7]);
+            let split = |fb: &mut FunctionBuilder,
+                         v: cranelift_codegen::ir::Value,
+                         k: i64|
+             -> cranelift_codegen::ir::Value {
+                if seed % 2 == 0 {
+                    weighted_i64(fb, v, k)
+                } else {
+                    let lo = weighted_i64(fb, v, k - 1);
+                    fb.ins().iadd(lo, v)
+                }
+            };
+            let terms = [
+                split(fb, args[4], 2),
+                split(fb, a, 1),
+                split(fb, b, 3),
+                split(fb, c, 7),
+                split(fb, d, 11),
+                split(fb, g, 13),
+                split(fb, fi, 1000),
+                split(fb, hi, 17),
+            ];
+            let start = (seed % 8) as usize;
+            let mut acc = terms[start];
+            for k in 1..8 {
+                let idx = (start + k) % 8;
+                acc = fb.ins().iadd(acc, terms[idx]);
+            }
+            Ok(acc)
+        }
+        BodyKind::MixW(w) => {
+            let a = sext_i32_to_i64(fb, args[0]);
+            let b = sext_i32_to_i64(fb, args[1]);
+            let c = sext_i32_to_i64(fb, args[2]);
+            let d = sext_i32_to_i64(fb, args[3]);
+            let g = sext_i32_to_i64(fb, args[6]);
+            let fi = fb.ins().fcvt_to_sint(types::I64, args[5]);
+            let hi = fb.ins().fcvt_to_sint(types::I64, args[7]);
+            let ew = weighted_i64(fb, args[4], w);
+            let a1 = weighted_i64(fb, a, 1);
+            let b3 = weighted_i64(fb, b, 3);
+            let c7 = weighted_i64(fb, c, 7);
+            let d11 = weighted_i64(fb, d, 11);
+            let g13 = weighted_i64(fb, g, 13);
+            let f1000 = weighted_i64(fb, fi, 1000);
+            let h17 = weighted_i64(fb, hi, 17);
+            let acc = fb.ins().iadd(ew, a1);
+            let acc = fb.ins().iadd(acc, b3);
+            let acc = fb.ins().iadd(acc, c7);
+            let acc = fb.ins().iadd(acc, d11);
+            let acc = fb.ins().iadd(acc, g13);
+            let acc = fb.ins().iadd(acc, f1000);
+            Ok(fb.ins().iadd(acc, h17))
+        }
         BodyKind::MixV1Alt => {
             // Same frozen semantics, different instruction shape:
             // pairs first, then fold — wrapping iadd is associative, so
@@ -578,9 +671,10 @@ fn lower_body(
             Ok(fb.ins().iadd(r, a))
         }
         BodyKind::FallibleDivV1 => {
-            // (n, d, q*) -> i32 status; d==0 -> -1 with q untouched.
+            // (ctx, n, d, q*) -> i32 status; d==0 -> -1 with q untouched;
+            // ctx is declared nullable and never dereferenced (F-797-R4-02).
             let zero = fb.ins().iconst(types::I64, 0);
-            let is_zero = fb.ins().icmp(IntCC::Equal, args[1], zero);
+            let is_zero = fb.ins().icmp(IntCC::Equal, args[2], zero);
             let ok_bb = fb.create_block();
             let fail_bb = fb.create_block();
             fb.ins().brif(is_zero, fail_bb, &[], ok_bb, &[]);
@@ -590,9 +684,9 @@ fn lower_body(
             fb.ins().return_(&[neg1]);
             fb.switch_to_block(ok_bb);
             fb.seal_block(ok_bb);
-            let q = fb.ins().sdiv(args[0], args[1]);
+            let q = fb.ins().sdiv(args[1], args[2]);
             fb.ins()
-                .store(cranelift_codegen::ir::MemFlags::new(), q, args[2], 0);
+                .store(cranelift_codegen::ir::MemFlags::new(), q, args[3], 0);
             let ok_status = fb.ins().iconst(types::I32, 0);
             Ok(ok_status)
         }
@@ -665,11 +759,27 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                 need![symbol, &[AbiScalar::I32, AbiScalar::F64], AbiScalar::I64]
             }
             SuiteCheck::DivOk { symbol, .. } | SuiteCheck::DivZero { symbol, .. } => {
+                // ctx-first fallible form (F-797-R4-02)
                 need![
                     symbol,
-                    &[AbiScalar::I64, AbiScalar::I64, AbiScalar::Ptr],
+                    &[
+                        AbiScalar::Ptr,
+                        AbiScalar::I64,
+                        AbiScalar::I64,
+                        AbiScalar::Ptr
+                    ],
                     AbiScalar::I32
                 ]
+            }
+            SuiteCheck::BufUtf8Ok { symbol, .. } | SuiteCheck::BufUtf8Invalid { symbol, .. } => {
+                need![
+                    symbol,
+                    &[AbiScalar::Ptr, AbiScalar::I64, AbiScalar::Ptr],
+                    AbiScalar::I32
+                ]
+            }
+            SuiteCheck::RecValidOk { symbol, .. } | SuiteCheck::RecValidBad { symbol, .. } => {
+                need![symbol, &[AbiScalar::Ptr, AbiScalar::Ptr], AbiScalar::I32]
             }
             SuiteCheck::RecSum { symbol, .. } => need![symbol, &[AbiScalar::Ptr], AbiScalar::I64],
             SuiteCheck::BumpSeq { symbol, .. } => {
@@ -850,6 +960,55 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     1,
                 )?;
                 data_ids.push((format!("dst{i}"), dst_id));
+            }
+            SuiteCheck::BufUtf8Ok { bytes, .. } => {
+                let q = add_data(&mut om, format!("p797_d_q{i}"), vec![0u8; 8], 8)?;
+                data_ids.push((format!("q{i}"), q));
+                let b = add_data(&mut om, format!("p797_d_b{i}"), bytes.to_vec(), 1)?;
+                data_ids.push((format!("b{i}"), b));
+            }
+            SuiteCheck::BufUtf8Invalid {
+                bytes, sentinel, ..
+            } => {
+                let q = add_data(
+                    &mut om,
+                    format!("p797_d_q{i}"),
+                    sentinel.to_le_bytes().to_vec(),
+                    8,
+                )?;
+                data_ids.push((format!("q{i}"), q));
+                let b = add_data(&mut om, format!("p797_d_b{i}"), bytes.to_vec(), 1)?;
+                data_ids.push((format!("b{i}"), b));
+            }
+            SuiteCheck::RecValidOk { rec, .. } => {
+                let bytes = crate::decl::encode_rec_bytes(rec, 8);
+                let r = add_data(&mut om, format!("p797_d_rec{i}"), bytes.to_vec(), 8)?;
+                data_ids.push((format!("rec{i}"), r));
+                let q = add_data(&mut om, format!("p797_d_q{i}"), vec![0u8; 8], 8)?;
+                data_ids.push((format!("q{i}"), q));
+            }
+            SuiteCheck::RecValidBad {
+                bad_flag,
+                bad_tag,
+                sentinel,
+                ..
+            } => {
+                let mut bytes = crate::decl::encode_rec_bytes(&crate::decl::FROZEN_REC, 8);
+                if let Some(f) = bad_flag {
+                    bytes[0] = *f;
+                }
+                if let Some(t) = bad_tag {
+                    bytes[8..12].copy_from_slice(&t.to_le_bytes());
+                }
+                let r = add_data(&mut om, format!("p797_d_rec{i}"), bytes.to_vec(), 8)?;
+                data_ids.push((format!("rec{i}"), r));
+                let q = add_data(
+                    &mut om,
+                    format!("p797_d_q{i}"),
+                    sentinel.to_le_bytes().to_vec(),
+                    8,
+                )?;
+                data_ids.push((format!("q{i}"), q));
             }
             SuiteCheck::Fold { items, .. } => {
                 let mut b = Vec::with_capacity(items.len() * 8);
@@ -1045,9 +1204,10 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let qp = fb
                         .ins()
                         .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let null_ctx = fb.ins().iconst(types::I64, 0); // nullable ctx (§2)
                     let nv = fb.ins().iconst(types::I64, *n);
                     let dv = fb.ins().iconst(types::I64, *d);
-                    let call = fb.ins().call(f, &[nv, dv, qp]);
+                    let call = fb.ins().call(f, &[null_ctx, nv, dv, qp]);
                     let status = fb.inst_results(call)[0];
                     let f1 = expect_i32(&mut fb, status, 0);
                     acc_flag(&mut fb, f1);
@@ -1064,9 +1224,10 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let qp = fb
                         .ins()
                         .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let null_ctx = fb.ins().iconst(types::I64, 0); // nullable ctx (§2)
                     let nv = fb.ins().iconst(types::I64, *n);
                     let dz = fb.ins().iconst(types::I64, 0);
-                    let call = fb.ins().call(f, &[nv, dz, qp]);
+                    let call = fb.ins().call(f, &[null_ctx, nv, dz, qp]);
                     let status = fb.inst_results(call)[0];
                     let f1 = expect_i32(&mut fb, status, crate::decl::status::ERR_DIV_ZERO as i64);
                     acc_flag(&mut fb, f1);
@@ -1344,6 +1505,88 @@ pub fn emit_caller_suite(module_name: &str, checks: &[SuiteCheck]) -> Result<Vec
                     let got = fb.inst_results(call)[0];
                     let f1 = expect_i64(&mut fb, got, *expected);
                     acc_flag(&mut fb, f1);
+                }
+                SuiteCheck::BufUtf8Ok {
+                    symbol,
+                    bytes,
+                    expected_chars,
+                } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let bp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("b{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let lv = fb.ins().iconst(types::I64, bytes.len() as i64);
+                    let call = fb.ins().call(f, &[bp, lv, qp]);
+                    let st = fb.inst_results(call)[0];
+                    let f1 = expect_i32(&mut fb, st, 0);
+                    acc_flag(&mut fb, f1);
+                    let q = fb.ins().load(types::I64, mf, qp, 0);
+                    let f2 = expect_i64(&mut fb, q, *expected_chars);
+                    acc_flag(&mut fb, f2);
+                }
+                SuiteCheck::BufUtf8Invalid {
+                    symbol,
+                    bytes,
+                    sentinel,
+                } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let bp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("b{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let lv = fb.ins().iconst(types::I64, bytes.len() as i64);
+                    let call = fb.ins().call(f, &[bp, lv, qp]);
+                    let st = fb.inst_results(call)[0];
+                    // R797_ERR_UTF8 = -7 (interop_resource.h)
+                    let f1 = expect_i32(&mut fb, st, -7);
+                    acc_flag(&mut fb, f1);
+                    let q = fb.ins().load(types::I64, mf, qp, 0);
+                    let f2 = expect_i64(&mut fb, q, *sentinel);
+                    acc_flag(&mut fb, f2);
+                }
+                SuiteCheck::RecValidOk {
+                    symbol,
+                    expected_sum,
+                    ..
+                } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let rp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("rec{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let call = fb.ins().call(f, &[rp, qp]);
+                    let st = fb.inst_results(call)[0];
+                    let f1 = expect_i32(&mut fb, st, 0);
+                    acc_flag(&mut fb, f1);
+                    let q = fb.ins().load(types::I64, mf, qp, 0);
+                    let f2 = expect_i64(&mut fb, q, *expected_sum);
+                    acc_flag(&mut fb, f2);
+                }
+                SuiteCheck::RecValidBad {
+                    symbol, sentinel, ..
+                } => {
+                    let f = *frefs.get(symbol).unwrap();
+                    let rp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("rec{i}")).unwrap());
+                    let qp = fb
+                        .ins()
+                        .global_value(types::I64, *drefs.get(&format!("q{i}")).unwrap());
+                    let call = fb.ins().call(f, &[rp, qp]);
+                    let st = fb.inst_results(call)[0];
+                    // R797_ERR_INVALID_VAL = -8
+                    let f1 = expect_i32(&mut fb, st, -8);
+                    acc_flag(&mut fb, f1);
+                    let q = fb.ins().load(types::I64, mf, qp, 0);
+                    let f2 = expect_i64(&mut fb, q, *sentinel);
+                    acc_flag(&mut fb, f2);
                 }
                 SuiteCheck::StoredCb { symbol } => {
                     let f = *frefs.get(symbol).unwrap();

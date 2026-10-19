@@ -879,3 +879,124 @@ fn abi_worker_both_envelope_is_infra_error() {
     clear_abi_faults();
     assert_eq!(result.expect("suite ran"), Status::Error);
 }
+
+// ---------------------------------------------------------------------------
+// F-797-R4-09: the §5.5 hard gates measured through the REAL parent path
+// (suite discovery -> contract decode -> abi.rs session/admission ->
+// worker -> parent-side judgement -> report), with per-sample RAW
+// records persisted. Body-edit samples use the mix-alt<seed> family:
+// every sample is a DISTINCT producer input (cold), observable semantics
+// unchanged (the frozen C consumer keeps passing), the C consumer object
+// is reused from the shared store after sample 0.
+// ---------------------------------------------------------------------------
+
+fn run_abi_deck_case(tag: &str, deck: &str, completion: &str) -> (f64, auto_test_case::report::RunReport) {
+    let root = temp_root(tag);
+    let doc = format!(
+        "# abi perf suite
+```test-suite
+suite {{ schema: \"autolang.suite/2\", id: \"aperf\", include: [\"c.case.ad\"] }}
+```
+
+```test-case
+case {{ schema: \"autolang.case/2\", id: \"aperf.case\",
+  source: {{ text: \"{src}\", syntax: \"atom-data\", path: \"d.atomdata\" }},
+  entry: {{ mode: \"program\" }},
+  checks: [ {{ id: \"c\", {tail}
+      expect: {{ completion: {completion}, probe: [ {{ }} ] }} }} ] }}
+```
+",
+        src = deck
+            .replace('\\', "\\\\")
+            .replace('"', "\\\"")
+            .replace('\n', "\\n"),
+        tail = ABI_QUERY_C,
+        completion = completion,
+    );
+    std::fs::write(root.join("c.suite.ad"), doc.clone()).unwrap();
+    std::fs::write(root.join("c.case.ad"), doc).unwrap();
+    let out = out_of(&root, "out");
+    let t0 = std::time::Instant::now();
+    let report = run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults())
+        .expect("abi perf suite runs");
+    (t0.elapsed().as_secs_f64() * 1000.0, report)
+}
+
+fn p95_of(xs: &mut Vec<f64>) -> f64 {
+    xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    xs[((xs.len() as f64 - 1.0) * 0.95).round() as usize]
+}
+
+#[test]
+fn abi_recipe_formal_turnaround_hard_gates() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let raw_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/abi-formal-gates");
+    let _ = std::fs::remove_dir_all(&raw_dir);
+    std::fs::create_dir_all(&raw_dir).unwrap();
+    let mut jsonl = String::new();
+
+    // --- gate 1: body edit (uniform-cold mix-alt seeds), C consumer reused
+    let mut body_times = Vec::new();
+    for i in 0..30u32 {
+        let deck = ABI_DECK_TEXT.replace("[body: mix-v1]", &format!("[body: mix-alt{i}]"));
+        let (ms, report) = run_abi_deck_case(&format!("abiperf-be-{i}"), &deck, "\"success\"");
+        assert_eq!(status_of(&report, "c"), Status::Pass, "body sample {i}");
+        let counters: Vec<(String, u32)> = report
+            .results
+            .iter()
+            .find(|r| r.check_id == "c")
+            .and_then(|r| r.native.clone())
+            .map(|n| n.counters)
+            .unwrap_or_default();
+        let compute: u32 = counters
+            .iter()
+            .find(|(k, _)| k == "compute_calls")
+            .map(|(_, v)| *v)
+            .unwrap_or(0);
+        // parent-path samples run leg A (AutoABI caller -> AutoABI
+        // callee) over a FRESH per-sample store: compute = exactly the
+        // cold callee re-emit (distinct mix-alt seed per sample — no
+        // sample can ride a hit), result judged parent-side.
+        assert_eq!(compute, 1, "sample {i} counters {counters:?}");
+        jsonl.push_str(&format!(
+            "{{\"scenario\":\"body-edit\",\"sample\":{i},\"ok\":true,\"ms\":{ms:.1},\"compute_calls\":{compute}}}
+"
+        ));
+        body_times.push(ms);
+    }
+    let be_p95 = p95_of(&mut body_times);
+
+    // --- gate 2: descriptor-edit reject (typed deck diagnostic, no native)
+    let bad = ABI_DECK_TEXT.replace("e:i64", "e:u32");
+    let mut reject_times = Vec::new();
+    for i in 0..30u32 {
+        let (ms, report) = run_abi_deck_case(&format!("abiperf-rj-{i}"), &bad, "{ stage: \"parse\", code: \"deck\" }");
+        assert_eq!(status_of(&report, "c"), Status::Pass, "reject sample {i} (declared error completion judged)");
+        jsonl.push_str(&format!(
+            "{{\"scenario\":\"descriptor-reject\",\"sample\":{i},\"ok\":true,\"ms\":{ms:.1}}}
+"
+        ));
+        reject_times.push(ms);
+    }
+    let rj_p95 = p95_of(&mut reject_times);
+
+    std::fs::write(raw_dir.join("formal-gates.jsonl"), &jsonl).unwrap();
+    std::fs::write(
+        raw_dir.join("summary.txt"),
+        format!(
+            "body-edit P50/P95 = {:.1}/{:.1} ms; descriptor-reject P50/P95 = {:.1}/{:.1} ms (30 samples each, parent path)",
+            p50_of(&mut body_times.clone()), be_p95,
+            p50_of(&mut reject_times.clone()), rj_p95,
+        ),
+    )
+    .unwrap();
+    println!("parent-path gates: body-edit P95={be_p95:.1}ms reject P95={rj_p95:.1}ms");
+    assert!(be_p95 < 1000.0, "HARD GATE body-edit (parent path) P95={be_p95:.1}ms");
+    assert!(rj_p95 < 1000.0, "HARD GATE reject (parent path) P95={rj_p95:.1}ms");
+}
+
+fn p50_of(xs: &mut Vec<f64>) -> f64 {
+    xs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    xs[xs.len() / 2]
+}

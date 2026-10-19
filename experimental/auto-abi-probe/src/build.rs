@@ -63,7 +63,9 @@ fn decl_form(d: &FnDecl) -> crate::descriptor::SymbolForm {
         .collect();
     match d.body {
         crate::decl::BodyKind::FallibleDivV1 => SymbolForm::Fallible {
-            params: params[..2].to_vec(),
+            // explicit nullable context first (F-797-R4-02 / §2)
+            ctx: Some(true),
+            params: params[1..3].to_vec(),
             out: ParamKind::I64,
         },
         _ => SymbolForm::Pure {

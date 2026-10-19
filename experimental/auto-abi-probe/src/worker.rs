@@ -173,9 +173,15 @@ fn parse_deck(text: &str) -> Result<Deck, String> {
         .split_once("[body:")
         .ok_or("fn line needs a `[body: ...]` tag")?;
     let body = body_tag.trim_end_matches(']').trim().to_string();
-    if !matches!(body.as_str(), "mix-v1" | "mix-v1b") {
+    let weight_tag = body
+        .strip_prefix("mix-w")
+        .and_then(|k| k.parse::<i64>().ok());
+    let alt_tag = body
+        .strip_prefix("mix-alt")
+        .and_then(|k| k.parse::<u64>().ok());
+    if !matches!(body.as_str(), "mix-v1" | "mix-v1b") && weight_tag.is_none() && alt_tag.is_none() {
         return Err(format!(
-            "unknown body {:?} (v1 freezes mix-v1/mix-v1b)",
+            "unknown body {:?} (v1 freezes mix-v1 / mix-v1b / mix-w<weight> / mix-alt<seed>)",
             body
         ));
     }
@@ -386,15 +392,20 @@ impl Deck {
                 self.ret
             ));
         }
+        let body = if let Some(k) = self.body.strip_prefix("mix-w") {
+            BodyKind::MixW(k.parse::<i64>().expect("validated at parse"))
+        } else if let Some(k) = self.body.strip_prefix("mix-alt") {
+            BodyKind::MixAlt(k.parse::<u64>().expect("validated at parse"))
+        } else if self.body == "mix-v1b" {
+            BodyKind::MixV1Alt
+        } else {
+            BodyKind::MixV1
+        };
         Ok(FnDecl {
             symbol: "p797_mix",
             params: decl::MIX_PARAMS,
             ret: AbiScalar::I64,
-            body: if self.body == "mix-v1b" {
-                BodyKind::MixV1Alt
-            } else {
-                BodyKind::MixV1
-            },
+            body,
         })
     }
 }
@@ -553,6 +564,26 @@ fn execute_query(sess: &mut Session) -> StepOut {
     };
     stages.push(stage_span("produce-callee", t0));
 
+    // F-797-R4-10 lifecycle wiring on the REAL path: the current callee
+    // object gets a project ROOT (survives GC as the deliverable) and a
+    // per-query LEASE (held for the duration of the request; released on
+    // BOTH success and failure — a cancelled/failed query frees its
+    // lease and never deletes delivered objects).
+    let callee_art_id = store
+        .get_artifact(crate::cache::LAYER_OBJECT_V01.id, &key)
+        .ok()
+        .flatten()
+        .map(|a| a.artifact_id);
+    let query_lease = callee_art_id.as_ref().and_then(|id| {
+        store
+            .acquire_lease("abi-worker-query", 60, Some(id))
+            .ok()
+            .map(|l| (id.clone(), l))
+    });
+    if let Some(id) = &callee_art_id {
+        let _ = store.register_root("abi-worker", id, "current");
+    }
+
     // per-leg consumer (the REAL pipeline; scratch per step)
     let t0 = Instant::now();
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -575,7 +606,14 @@ fn execute_query(sess: &mut Session) -> StepOut {
         ));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).expect("worker scratch");
-    let expected = decl::oracle_mix_v1(&deck.inputs);
+    // MixAlt carries EXACTLY MixV1 semantics — the frozen oracle holds.
+    let expected = match deck.fn_decl() {
+        Ok(d) => match d.body {
+            BodyKind::MixW(w) => decl::oracle_mix_w(&deck.inputs, w),
+            _ => decl::oracle_mix_v1(&deck.inputs),
+        },
+        Err(_) => decl::oracle_mix_v1(&deck.inputs),
+    };
     let (objs, entry): (Vec<std::path::PathBuf>, &str);
     match sess.leg.as_str() {
         "a" => {
@@ -670,6 +708,22 @@ fn execute_query(sess: &mut Session) -> StepOut {
     };
     stages.push(stage_span("link-run", t0));
 
+    // release the query lease (success path) and keep the managed hot
+    // set within the 8MiB budget: roots above protect the current
+    // deliverables, so GC may reclaim older revisions (F-797-R4-10).
+    drop(query_lease);
+    {
+        let hot = dir_size(&sess.store_root.join("blocks"));
+        if hot > 8 * 1024 * 1024 {
+            let _ = ac_artifact_probe::store::run_gc(
+                &store,
+                ac_artifact_probe::store::GcConfig {
+                    high: 8 * 1024 * 1024,
+                    low: 6 * 1024 * 1024,
+                },
+            );
+        }
+    }
     if pe.code == 0 {
         StepOut {
             op: "query",

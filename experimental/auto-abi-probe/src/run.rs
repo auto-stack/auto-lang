@@ -38,31 +38,31 @@ pub fn scratch(case: &str) -> PathBuf {
 }
 
 /// Run a probe PE under the contained executor with the frozen run
-/// budget, enforcing the output acceptance caps. A run whose outputs
-/// exceed the cap is an error, not a truncated success.
+/// budget. F-797-R4-10: this consumes the merged RAW CAPPED executor
+/// (PLAN-788 T-03) — a cap TERMINATES the tree the moment a reader
+/// passes it (never a truncated success) and the bytes are the exact
+/// raw stream (invalid UTF-8 included); lossy rendering is display-only.
 pub fn run_pe(exe: &Path) -> Result<PeRun, ProbeError> {
-    let (code, out, err) =
-        auto_ac_prototype::link::run_deadlined_split(&mut Command::new(exe), RUN_DEADLINE)
-            .map_err(|e| ProbeError(format!("run {}: {e:?}", exe.display())))?;
-    let code = code.ok_or_else(|| {
+    let run = auto_ac_prototype::link::run_deadlined_captured(
+        &mut Command::new(exe),
+        RUN_DEADLINE,
+        auto_ac_prototype::link::CaptureCaps {
+            stdout_max: OUTPUT_CAP,
+            stderr_max: OUTPUT_CAP,
+        },
+    )
+    .map_err(|e| ProbeError(format!("run {}: {e:?}", exe.display())))?;
+    let code = run.exit_code.ok_or_else(|| {
         ProbeError(format!(
             "{} terminated abnormally (deadline/kill); out={} err={}",
             exe.display(),
-            out.trim(),
-            err.trim()
+            String::from_utf8_lossy(&run.stdout).trim(),
+            String::from_utf8_lossy(&run.stderr).trim()
         ))
     })?;
-    if out.len() > OUTPUT_CAP || err.len() > OUTPUT_CAP {
-        return Err(ProbeError(format!(
-            "output cap exceeded ({} / {} bytes) — probe request fails, \
-             never truncates to green",
-            out.len(),
-            err.len()
-        )));
-    }
     Ok(PeRun {
         code,
-        stdout: out,
-        stderr: err,
+        stdout: String::from_utf8_lossy(&run.stdout).into_owned(),
+        stderr: String::from_utf8_lossy(&run.stderr).into_owned(),
     })
 }
