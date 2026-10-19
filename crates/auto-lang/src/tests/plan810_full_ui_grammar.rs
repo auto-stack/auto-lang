@@ -433,8 +433,17 @@ fn r01_snapshot_lifecycle_bounded_all_entry_paths() {
             .expect("public widget body parse");
         assert_eq!(live_snapshot_count(&mut parser), 0, "public/body n={n}");
 
-        // Core 直连：默认 store 声明（parse_stmt_inner 直连段，无方言作用域）。
-        let src = format!("store S {{ computed {{ {props} }} }}");
+        // Core 直连：默认 store 声明（parse_stmt_inner 直连段，无方言
+        // 作用域）——object 成功臂输入（与公开门面 object 同形态）。
+        let obj_props = (0..n)
+            .map(|i| {
+                format!(
+                    "p{i} => {{ \"k\": 1 }}
+"
+                )
+            })
+            .collect::<String>();
+        let src = format!("store S {{ computed {{ {obj_props} }} }}");
         let session = CompilerSession::new(Scenario::UI);
         let mut parser = Parser::from(&src).with_session(session);
         let ast = parser.parse().expect("default store parse");
@@ -693,4 +702,98 @@ view { col { Child() {} } }
     assert_eq!(before, 7.into());
     assert_eq!(after, 8.into());
     let _ = std::fs::remove_dir_all(&root);
+}
+
+// ---- F810-R2-01：同一 Parser 实例的错误状态/恢复对照（旧臂冻结） ----
+
+/// 同实例对照（F810-R2-01）：on 处理器**成功**解析后参数出作用域——
+/// 同一 Parser 上源尾裸 `arg` 是错误恢复后的**未定义引用**（诊断含
+/// arg；基线 enter→body→exit 正常走完）；对照错误路径见下一测试。
+#[test]
+fn r02_same_parser_success_exits_handler_scope() {
+    let session = CompilerSession::new(Scenario::UI);
+    let src = "widget W { on { .Inc(arg) -> { let p = 1 } } view { col {} } }
+arg
+";
+    let mut parser = Parser::from(src).with_session(session);
+    let _ = parser.parse(); // 尾部 arg 未定义 → Err（恢复后收集）
+    let arg_errors = parser
+        .errors
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                crate::error::AutoError::Name(crate::error::NameError::UndefinedVariable { name, .. })
+                    if name.as_str() == "arg"
+            )
+        })
+        .count();
+    assert_eq!(
+        arg_errors, 1,
+        "tail `arg` undefined after successful scope exit: {:?}",
+        parser.errors
+    );
+    // 同一实例：on 旗标已恢复（语句位非 on 体）。
+    let mut bridge = ParserBridge::new(&mut parser);
+    assert!(
+        !bridge.in_on_body(),
+        "on-body flag must be restored after widget"
+    );
+}
+
+/// 同实例对照（F810-R2-01，**旧臂冻结的已知泄漏**）：on 处理器 body
+/// 解析失败时基线顺序为 enter_scope → body?（`?` 先返回）→ exit_scope
+/// 未执行——handler 参数 `arg` 在**失败实例**的作用域残留可见：同一
+/// Parser 错误恢复后源尾裸 `arg` **不产生**未定义诊断（R2 探针口径：
+/// 成功 tail 红 / 失败 tail 绿）。on 旗标本身仍平衡恢复。具名冻结，不修。
+#[test]
+fn r02_same_parser_error_leaks_handler_scope_baseline() {
+    let session = CompilerSession::new(Scenario::UI);
+    let src = "widget W { on { .Inc(arg) -> nope } view { col {} } }
+arg
+";
+    let mut parser = Parser::from(src).with_session(session);
+    let _ = parser.parse(); // handler body 错误 → Err（恢复后收集）
+    assert!(
+        !parser.errors.is_empty(),
+        "handler body error collected: {:?}",
+        parser.errors
+    );
+    // 同一失败实例：on 旗标已由平衡恢复路径复位。
+    let mut bridge = ParserBridge::new(&mut parser);
+    assert!(
+        !bridge.in_on_body(),
+        "on-body flag restored even on Err path"
+    );
+    // handler 参数 arg 残留在失败实例作用域：错误恢复后源尾裸 `arg`
+    // 不产生未定义变量诊断（旧臂泄漏，冻结）。
+    let arg_errors = parser
+        .errors
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                crate::error::AutoError::Name(crate::error::NameError::UndefinedVariable { name, .. })
+                    if name.as_str() == "arg"
+            )
+        })
+        .count();
+    assert_eq!(
+        arg_errors, 0,
+        "baseline leak: leaked handler param `arg` stays visible on the failed instance: {:?}",
+        parser.errors
+    );
+}
+
+/// 未闭合 fragment 的无界 EOF 怪癖（F810-R2-01，**隔离进程专用**）：
+/// `view fn F(x: int) { if x { text "u" `（if 体内已有元素）后直达 EOF/
+/// 节点循环不收敛，最终栈溢出 fail-fast），verbatim 迁移保持。本测试
+/// `#[ignore]`——进程内测试套件不得触发；由
+/// `scripts/plan810_eof_quirk_probe.py` 以子进程+外部截止观察并记录
+/// 收据（见 handoff §8）。基线身份由 normalize 对拍证明
+///（`scripts/plan810_baseline_identity.py`：基面↔迁移的同构归一 diff）。
+#[test]
+#[ignore = "unbounded EOF quirk: run only via isolated probe with external deadline"]
+fn r02_fragment_unterminated_eof_quirk_isolated_only() {
+    let _ = ui_parse("view fn F(x: int) { if x { text \"u\" ");
 }
