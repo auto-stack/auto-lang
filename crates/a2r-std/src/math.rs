@@ -30,6 +30,35 @@ pub fn sqrt(d: f64) -> f64 {
     d.sqrt()
 }
 
+pub fn abs_f(n: f64) -> f64 {
+    n.abs()
+}
+
+pub fn powf(x: f64, y: f64) -> f64 {
+    x.powf(y)
+}
+
+pub fn sin(x: f64) -> f64 {
+    x.sin()
+}
+
+pub fn cos(x: f64) -> f64 {
+    x.cos()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{abs_f, cos, powf, sin};
+
+    #[test]
+    fn floating_point_helpers_match_rust_math() {
+        assert_eq!(abs_f(-1.5), 1.5);
+        assert_eq!(powf(2.0, 3.0), 8.0);
+        assert_eq!(sin(0.0), 0.0);
+        assert_eq!(cos(0.0), 1.0);
+    }
+}
+
 pub fn square(x: i32) -> i32 {
     x * x
 }
