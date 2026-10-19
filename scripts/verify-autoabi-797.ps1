@@ -202,6 +202,34 @@ try {
         $script:ReceiptLines.Add('cargo-test-locked-offline: ok')
     }
 
+    # --- F-797-R4-12: format gate for this plan's crate -------------------
+    Invoke-Step 'cargo fmt --check (probe crate)' {
+        $text = Invoke-Cargo @('fmt', '-p', 'auto-abi-probe', '--', '--check') 'fmt-check.txt' $ProbeDir
+        $script:ReceiptLines.Add('fmt-check: ok')
+    }
+
+    # --- F-797-R4-12: warnings gate INCLUDING tests ------------------------
+    Invoke-Step 'cargo test builds with zero crate warnings' {
+        $prev = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        $output = & cargo test --manifest-path $ProbeManifest --locked --offline --no-run 2>&1
+        $ErrorActionPreference = $prev
+        $text = ($output | Out-String)
+        # Scope to THIS plan's crate only (R4 F12: dependency warnings —
+        # e.g. shim-metadata's unused doc comment — are recorded, not
+        # hidden, but do not gate this plan).
+        $depWarns = [regex]::Matches($text, 'warning: `[^`]+` .*generated') | ForEach-Object { $_.Value }
+        $ours = [regex]::Matches($text, 'warning: `auto-abi-probe`[^
+]*generated') | ForEach-Object { $_.Value }
+        if ($ours.Count -gt 0) {
+            throw "probe test build emitted crate warnings: $($ours -join '; ')`n$text"
+        }
+        if ($depWarns.Count -gt 0) {
+            $script:ReceiptLines.Add("dependency warnings (not gated): $($depWarns -join '; ')")
+        }
+        $script:ReceiptLines.Add('test-build-zero-warning(auto-abi-probe): ok')
+    }
+
     # --- T-06: real semantic binding + formal AutoDown (D-796/D-788 landed) --
     Invoke-Step 'abi_binding_ real-contract tests + FORMAL hard gates (probe)' {
         $text = Invoke-Cargo @('test', '--locked', '--offline', '--test', 't06_binding') 't06-binding.txt' $ProbeDir
@@ -211,12 +239,12 @@ try {
         $script:ReceiptLines.Add('t06-binding-real-contract+formal-gates: ok')
     }
 
-    Invoke-Step 'abi/interop-v1 corpus through the unified runner' {
-        $text = Invoke-Cargo @('test', '-p', 'auto-lang', '--features', 'test-cases', '--lib', 'abi_recipe') 'abi-recipe-runner.txt' $RepoRoot
+    Invoke-Step 'abi/interop-v1 corpus + lifecycle + parent-path gates (unified runner)' {
+        $text = Invoke-Cargo @('test', '-p', 'auto-lang', '--features', 'test-cases', '--lib', 'abi_recipe', '--', '--test-threads=1') 'abi-recipe-runner.txt' $RepoRoot
         if ($text -notmatch 'test result: ok') {
             throw "abi_recipe runner tests did not report test result: ok`n$text"
         }
-        $script:ReceiptLines.Add('abi-recipe-unified-runner: ok')
+        $script:ReceiptLines.Add('abi-recipe-unified-runner+lifecycle+parent-gates: ok')
     }
 
     Invoke-Step 'retirement receipt + finalized T-07 materials' {
@@ -270,9 +298,9 @@ try {
             $lines.Add('V-06/AC-04 cache hit/invalidate/restart: PENDING final-review re-cert')
             $lines.Add('V-07/AC-04 admission bad graphs: PENDING final-review re-cert')
             $lines.Add('V-08/AC-04 512 churn/lease/GC: PENDING final-review re-cert')
-            $lines.Add('V-09/AC-05 hard gates: DONE at work level (in-process six scenarios 210/210 + FORMAL IPC retest body-edit P95=500.8ms / reject P95=76.8ms, 30 samples each); final-review re-cert pending')
-            $lines.Add('V-10/AC-06 D-796 binding + AutoDown execution: DONE at work level (real ac-sema-contract binding, retirement receipt, abi/interop-v1 corpus 4 checks green through the unified runner); final-review re-cert pending')
-            $lines.Add('V-11/AC-06 freeze proposal + support matrix + SD: FINALIZED DRAFTS with bound hashes (work level); canonical deposit is merge-owned')
+            $lines.Add('V-09/AC-05 hard gates: R4 REDEFINED uniform-cold samplers — worker transport body-edit P95=699.8ms / reject 87.3ms; parent-path end-to-end (run_suite) body-edit 820.7ms / reject 479.1ms (30 samples each, raw JSONL persisted); final-review re-cert pending')
+            $lines.Add('V-10/AC-06 D-796 binding + AutoDown execution: R4 hardened (semantic deck validation incl. same-width/NaN/overflow counterexamples, semantic-ref admission axis, single-deadline parent lifecycle incl. hang/late-stderr/both-envelope counterexamples, per-recipe stale identity); final-review re-cert pending')
+            $lines.Add('V-11/AC-06 freeze proposal + support matrix + SD: R4-reset drafts with claims aligned to implementation and re-bound hashes; canonical deposit is merge-owned')
             $lines.Add('F-797-R1-03 Cargo.lock in commit: DONE (see acceptance receipt)')
             $lines.Add('NOTE: work-level done != final review pass; canonical Spec deposit / archive / merge gates remain merge-owned.')
             $all = ($lines -join "`n")

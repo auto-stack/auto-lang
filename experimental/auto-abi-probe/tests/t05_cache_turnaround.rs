@@ -12,8 +12,8 @@ use auto_abi_probe::cache::{
     autoabi_object_key, c_object_key, canonical_decl_set, emitter_identity, produce_with_cache,
     LAYER_OBJECT_V01,
 };
-use auto_abi_probe::decl::{AbiScalar, BodyKind, FnDecl, RecValues, FROZEN_INPUTS};
-use auto_abi_probe::emit::{emit_callee_suite, emit_caller_suite, SuiteCheck};
+use auto_abi_probe::decl::{AbiScalar, BodyKind, FnDecl};
+use auto_abi_probe::emit::emit_callee_suite;
 use auto_abi_probe::layout::{self, REC_MIX};
 use auto_abi_probe::link::link_pe;
 use auto_abi_probe::run;
@@ -22,7 +22,6 @@ use auto_abi_probe::trace::{append_jsonl, percentiles, Trace};
 use auto_abi_probe::validate::{admit, probe_expectation};
 
 use ac_artifact_probe::identity::QueryKey;
-use ac_artifact_probe::schema::LayerSpec;
 use ac_artifact_probe::store::{gc_config_default, run_gc, ManagedStore, StoreError};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
@@ -40,6 +39,15 @@ fn t05_root() -> PathBuf {
         .join(format!("run-{}", std::process::id()));
     std::fs::create_dir_all(&p).unwrap();
     p
+}
+
+fn mix_alt_def(seed: u64) -> FnDecl {
+    FnDecl {
+        symbol: "p797_mix",
+        params: auto_abi_probe::decl::MIX_PARAMS,
+        ret: AbiScalar::I64,
+        body: BodyKind::MixAlt(seed),
+    }
 }
 
 fn mix_def(body: BodyKind) -> FnDecl {
@@ -62,6 +70,7 @@ fn fresh_store(root: &Path, name: &str) -> ManagedStore {
 /// Hit never invokes the producer; miss persists; bytes are identical.
 #[test]
 fn abi_cache_object_hit_never_calls_producer() {
+    let _scen = SCEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let root = t05_root();
     let store = fresh_store(&root, "cache-hit");
     let defs = [mix_def(BodyKind::MixV1)];
@@ -106,6 +115,7 @@ fn abi_cache_object_hit_never_calls_producer() {
 /// dimensions all produce different hashes — stale reuse is impossible.
 #[test]
 fn abi_cache_invalidation_by_real_inputs() {
+    let _scen = SCEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let v1 = [mix_def(BodyKind::MixV1)];
     let v1b = [mix_def(BodyKind::MixV1Alt)];
     let extra = [FnDecl {
@@ -170,6 +180,7 @@ fn abi_cache_invalidation_by_real_inputs() {
 /// same object (per-project duplication is not the model).
 #[test]
 fn abi_cache_cross_project_sharing() {
+    let _scen = SCEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let root = t05_root();
     let store = fresh_store(&root, "cache-xproj");
     let defs = [mix_def(BodyKind::MixV1)];
@@ -190,6 +201,7 @@ fn abi_cache_cross_project_sharing() {
 /// error, never as wrong bytes.
 #[test]
 fn abi_cache_tampered_block_is_controlled_error() {
+    let _scen = SCEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let root = t05_root();
     let store = fresh_store(&root, "cache-tamper");
     let defs = [mix_def(BodyKind::MixV1)];
@@ -245,6 +257,7 @@ fn abi_cache_tampered_block_is_controlled_error() {
 /// never as an error the caller cannot recover from.
 #[test]
 fn abi_cache_missing_block_is_miss_then_recompute() {
+    let _scen = SCEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let root = t05_root();
     let store = fresh_store(&root, "cache-missing");
     let defs = [mix_def(BodyKind::MixV1)];
@@ -294,6 +307,7 @@ fn abi_cache_missing_block_is_miss_then_recompute() {
 /// namespaces are untouched.
 #[test]
 fn abi_cache_512_revision_churn_gc_convergence() {
+    let _scen = SCEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let root = t05_root();
     let store = fresh_store(&root, "cache-churn");
 
@@ -428,10 +442,7 @@ fn probe_request(
     let mut ok = true;
 
     // descriptor admission (the consumer side gate)
-    let descriptor = {
-        let mut d = auto_abi_probe::descriptor::ModuleDescriptor::probe_module();
-        d
-    };
+    let descriptor = auto_abi_probe::descriptor::ModuleDescriptor::probe_module();
     tr.stage("admit", || {
         match admit(&descriptor.encode().unwrap(), &probe_expectation()) {
             Ok(_) => auto_abi_probe::trace::StageMeta::default(),
@@ -593,8 +604,14 @@ fn p95_of(samples: &[f64]) -> f64 {
 /// body-edit request -> correct PE result P95 < 1000ms; descriptor-only
 /// reject request -> correct diagnosis P95 < 1000ms. Raw JSONL lines
 /// and a summary land under target/autoabi-t05/turnaround/.
+/// R4: the six-scenario run builds 210 PEs — serialize it against the
+/// cache tests in this binary so machine contention cannot flip the
+/// hard-gate P95 (observed flake in full-suite runs).
+static SCEN_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn abi_turnaround_six_scenarios_30_samples() {
+    let _scen = SCEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let root = t05_root().join("turnaround");
     std::fs::create_dir_all(&root).unwrap();
     let mut summary = String::from(
@@ -750,8 +767,11 @@ fn abi_turnaround_six_scenarios_30_samples() {
         scenarios.push(s);
     }
 
-    // 5) body-edit (HARD GATE): body flips between requests; C consumer
-    //    unchanged and reused. P95 of request->correct PE result < 1000ms.
+    // 5) body-edit (HARD GATE, R4 uniform-cold): every sample runs a
+    //    DISTINCT mix-alt seed — an exactly-semantics-preserving body
+    //    whose canonical form differs, so each sample is a COLD producer
+    //    run (no hot-hit majority); the C consumer object is reused from
+    //    the store. P95 of request->correct PE result < 1000ms.
     {
         let store = fresh_store(&root, "body-edit-store");
         {
@@ -764,12 +784,7 @@ fn abi_turnaround_six_scenarios_30_samples() {
             oks: 0,
         };
         for i in 0..30 {
-            let body = if i % 2 == 0 {
-                BodyKind::MixV1Alt
-            } else {
-                BodyKind::MixV1
-            };
-            let defs = [mix_def(body)];
+            let defs = [mix_alt_def(i as u64)];
             let (ok, tr) = probe_request(
                 &format!("be-{i}"),
                 Some(&store),

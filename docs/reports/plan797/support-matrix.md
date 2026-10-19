@@ -1,9 +1,10 @@
 # PLAN-797 有限 profile 支持/拒绝矩阵（support-matrix）
 
-> 状态：**v0.1-candidate 终稿（T-07）**。绑定 `autoabi.win-x64.v0.1-candidate`。
-> 拒绝面是有限 profile 支持表，不是永久删去战略。T-06 已按正式
-> semantic contract / AutoDown 通路复核（`35794e5ec`）；hash 由
-> freeze-proposal/复审记录绑定。
+> 状态：**v0.1-candidate（R4 修复后重置）**。绑定
+> `autoabi.win-x64.v0.1-candidate`。拒绝面是有限 profile 支持表，
+> 不是永久删去战略。R4 指出的支持表缺口已按实现闭合（ctx 首参、
+> UTF-8 校验入口、bool/char 值校验入口、描述符 param 面积）；每一行
+> 均有正反原生 oracle（见 t02/t03/t04 与 §0）。
 
 ## 0. 正式通路面（T-06 新增）
 
@@ -14,7 +15,7 @@
 | worker 协议 | `abiworker/1`（信封同 acworker/semaworker：nonce/request_hash 回显、deny_unknown_fields、4MiB 界、Job containment、退出状态/版本镜像、exe-sha256 入 stale 轴） |
 | 可执行语料 | `crates/auto-lang/test/cases/autoabi/`：leg-a（publish→hit→跨进程 restart hit→body-edit republish）、leg-b、leg-c、bad-sig（类型化 deck 诊断负例） |
 | 语义身份 | `ac-sema-contract`（D-796 合同）只读消费；临时快照已退役（收据在案） |
-| 正式复测 | 双硬门过真实 IPC：body-edit P95 500.8ms / reject P95 76.8ms（各 30 样本） |
+| 正式复测（R4 统一冷采样） | worker 传输 body-edit P95 699.8ms / reject 87.3ms；父路径 run_suite 端到端 body-edit P95 820.7ms / reject 479.1ms（各 30 样本；mix-alt<seed> 每样本冷生产，冻结 C 消费者恒过；原始 JSONL 在 target/abi-formal-gates） |
 
 ## 1. 类型与物理形态
 
@@ -24,10 +25,10 @@
 | i32 / u32 | 支持 | 4B | |
 | i64 / u64 | 支持 | 8B | 跨栈槽 |
 | f64 | 支持 | 8B XMM | 用于 GPR/XMM 混合对拍 |
-| bool | 支持 | u8 仅 0/1 | 非法值受控拒绝 |
-| char | 支持 | u32 合法 Unicode 标量 | 非法标量拒绝 |
+| bool | 支持 | u8 仅 0/1 | 非 0/1 → -8（`p797_crec_valid` + t04 反例 7→拒） |
+| char | 支持 | u32 合法 Unicode 标量 | surrogate / >U+10FFFF → -8（t04 反例 0xD800/0x110000→拒） |
 | 借用 byte buffer | 支持 | `{i64 ptr, u64 len}` | len=0 允许 null |
-| 借用 UTF-8 text buffer | 支持 | 同上 + UTF-8 标记 | 非法 UTF-8 拒绝 |
+| 借用 UTF-8 text buffer | 支持 | 同上 + UTF-8 标记 | 非法 UTF-8（overlong/surrogate/>U+10FFFF/断尾）→ -7，out 不写（`p797_cbuf_sum_utf8` + t04 双向控制） |
 | record const view | 支持 | 显式 pointer | 声明序无环 |
 | record mut view | 支持 | 显式 pointer | 排他规则见合同 |
 | caller-owned out record | 支持 | 显式 out pointer | 成功才提交 |

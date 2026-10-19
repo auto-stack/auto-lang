@@ -1,6 +1,6 @@
 # PLAN-797 规范增量提案（spec-delta）
 
-> 状态：**终稿（T-07）**。绑定 T-06 实施提交 `35794e5ec`（真实 semantic
+> 状态：**R4 修复后重置稿**。绑定 R4 修复提交 `6294d4bea`（真实 semantic
 > contract 绑定 / 正式 AutoDown 执行 / 性能复测已按实际通路重写）与
 > T-07 材料提交；canonical Spec 输入 hash 为下方当前实测值（R2 曾警示
 > goals.md 漂移，已按当前树重核）。§5 五行意向表是计划契约，本文件是

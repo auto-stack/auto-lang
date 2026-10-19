@@ -1,9 +1,13 @@
 # PLAN-797 freeze proposal（候选 v0.1）
 
-> 状态：**提案终稿（T-07）**——T-06 已交付（D-796/D-788 满足：真实
-> semantic contract 绑定、临时 semref 退役收据、正式 AutoDown 执行、
-> 性能复测全过）。本文件仍**不**发布 ABI、不改 canonical Spec/ledger；
-> 冻结登记以 T-08 独立 review 零阻断 + T-09 merge 门禁通过为条件。
+> 状态：**提案（R4 修复后重置）**——R4 就绪复核的 12 项 findings 已
+> 修复并附永久反例（F01 语义消费/F02 ctx 首参+UTF-8+值校验+描述符
+> 面积/F03 单一 deadline+信封准入/F04-06 资源边界与回收/F07 include
+> 闭包/F08 派生与生产分离/F09 统一冷硬门（worker 699.8/87.3ms + 父
+> 路径 820.7/479.1ms）/F10 有界捕获+两阶段布局+lease·root·GC 接线/
+> F11 按配方身份缓存/F12 fmt·告警）。本文件仍**不**发布 ABI、不改
+> canonical Spec/ledger；冻结登记以 T-08 独立 review 零阻断 + T-09
+> merge 门禁通过为条件。
 
 ## 1. 拟冻结对象
 
@@ -33,7 +37,7 @@
 | 验收脚本 | `scripts/verify-autoabi-797.ps1` | 本提案 |
 | 正式 AutoDown 绑定 | `abi/interop-v1` recipe 注册（contract 追加）+ `abi-worker`（abiworker/1）+ 父侧 `test_cases/abi.rs` + 可执行语料 `crates/auto-lang/test/cases/autoabi/`（4 checks 含跨进程 restart 命中与类型化负例） | T-06 `35794e5ec` |
 | 真实语义绑定 | `ac-sema-contract` DeclRef/TypeDesc/ContentVersion；退役收据 `attachments/797/semref-retirement-receipt.md` | T-06 `35794e5ec` |
-| 性能正式复测 | 正式 IPC 通道双硬门：body-edit P95=**500.8ms**、descriptor-reject P95=**76.8ms**（各 30 样本，`abi_turnaround_formal_*`） | T-06 `35794e5ec` |
+| 性能正式复测 | R4 重定义后的**统一冷采样**（mix-alt<seed> 语义等价体族：每样本独立冷生产、冻结 C 消费者恒过）：worker 传输 body-edit P95=**699.8ms**/reject **87.3ms**；父路径端到端（run_suite 全链）body-edit P95=**820.7ms**/reject **479.1ms**（各 30 样本，原始 JSONL 在 target/abi-formal-gates） | R4 `6294d4bea` |
 
 ## 3. 版本与身份分层（拟）
 
@@ -82,10 +86,13 @@ exit 恰 1、tampered descriptor、错 offset 控制、uninjected 与失败期�
 
 ## 7.5 终稿身份绑定
 
-- `spec-delta.md`（终稿）SHA256：`6A6E1B2FFE4AE5F1EE64708D6C7326D1CED620097AD3FBF2A61B24354716C388`
+- `spec-delta.md`（R4 重置稿）SHA256：`2146B51705942ACE997764F068BFD3CD6CF3E8368D84F131B102F5E7580E3829`
 - canonical 输入 hash 明细见 spec-delta.md 输入表（worktree 终态实测）。
-- work 侧 V-01–11 工作面证据：probe workspace 51/51（含 abi_binding_ 4/4、
-  formal 双硬门）+ 统一 runner 语料 4 checks 全绿 + test-cases 家族 26 绿。
+- work 侧 V-01–11 工作面证据（R4 后）：probe workspace 62/62 + 统一
+  runner 语料 4 checks + test-cases 家族 26 绿 + 父生命周期反例 3 项 +
+  资源边界反例（负索引/跨 provider/容量循环）+ 语义反例族。
+- R4 报告：`docs/plans/attachments/797/review-r4/review.md`（reviewed
+  commit `8679859e4`）；修复提交 `89fb5212e`/`6294d4bea`/`854cc157c`。
 
 ## 8. 冻结条件（缺一不可）
 

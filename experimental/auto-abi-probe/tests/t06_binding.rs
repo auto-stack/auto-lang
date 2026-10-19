@@ -9,6 +9,11 @@
 
 #![cfg(windows)]
 
+/// Every test in this binary spawns real worker sessions and PEs —
+/// serialize them all so machine contention cannot flip perf gates
+/// (observed flake in full-suite runs; R4).
+static GATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 use auto_abi_probe::descriptor::ModuleDescriptor;
 use auto_abi_probe::semref;
 use auto_abi_probe::validate::{admit, probe_expectation, Rejection};
@@ -36,6 +41,7 @@ inputs { a: 7, b: -3, c: 100, d: 5, e: 1000000007, f: 1.5, g: 11, h: -2.25 }\n";
 /// the binding now mints REAL contract refs (D-796 delivered).
 #[test]
 fn abi_binding_real_contract_and_retirement_receipt() {
+    let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // Real refs through the merged ac-sema-contract.
     let f = semref::mix_fn_ref().expect("fn ref");
     let r = semref::rec_mix_ref().expect("record ref");
@@ -65,6 +71,7 @@ fn abi_binding_real_contract_and_retirement_receipt() {
 /// The semref gate still rejects a foreign binding on the REAL path.
 #[test]
 fn abi_binding_semref_gate_on_real_identity() {
+    let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let mut d = ModuleDescriptor::probe_module();
     d.semref_hash = semref::blake3_hex(b"foreign-semantic-binding");
     match admit(&d.encode().unwrap(), &probe_expectation()) {
@@ -80,6 +87,7 @@ fn abi_binding_semref_gate_on_real_identity() {
 /// crash, never a silently-accepted re-shape.
 #[test]
 fn abi_binding_deck_semantic_counterexamples() {
+    let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let store = std::env::temp_dir().join(format!("abi-t06-deckneg-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&store);
     std::fs::create_dir_all(&store).unwrap();
@@ -233,10 +241,6 @@ fn p95(xs: &mut Vec<f64>) -> f64 {
 /// P95 < 1000ms. (F-797-R4-09: the alternating two-body sampler that
 /// measured hot hits is retired; parent-path end-to-end gates live in
 /// probe_adapter_tests.rs.)
-/// Perf gates are machine-sensitive: serialize them within this test
-/// binary so parallel samples cannot contend each other's walls.
-static GATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 #[test]
 fn abi_turnaround_formal_body_edit_hard_gate() {
     let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
