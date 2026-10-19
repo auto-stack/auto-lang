@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-813
-status: execution_done
+status: reviewed
 feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 1
@@ -12,7 +12,7 @@ new_spec_components: [docs/specs/website/design/book-example-execution.md]
 touched_goals: [GOAL-014, GOAL-016]
 
 affects: [website, auto-playground, stdlib, auto-lang/vm]
-current_step: 8
+current_step: 9
 total_steps: 9
 ---
 
@@ -155,10 +155,10 @@ T-01..06 只做定向检查/反例和必要 `cargo check -p auto-lang`，不触�
 | T-05 | work | T-01/02/03 | book/tapl ch14..22 中英、附录 A..D、listings/pac/fixture/受影响 expected；文件/测试/标准库/异步/聊天及通用缺口 | ✅ 完成（闭合 R1/R3）：Base64/Hex 复用现有依赖并可运行；新增 loopback TCP server/client 本地工程及明确范围说明，完成连接、消息往返、断开和优雅关停验收。 |
 | T-06 | work | T-02/04/05 | `scripts/check-tapl-examples.py`、`website/tests/tapl-run.spec.ts`；最终清单和可重放证据、规范增量 | ✅ 完成（闭合 R5）：新规范准确列出五种模式和 stdout_contains/expected-error；checker 对 54 页执行 catalog↔page 双向扫描；有效样例通过，错误预期、旧锚点、孤立锚点、错误诊断负控均失败。复核后全量 396/396 通过。 |
 | T-07 | work | T-06 | 两仓提交本计划改动；固定 code/input/dependency hash、结果/命令、债务和规范增量；主计划 execution_done | ✅ 完成：代码新增冻结提交 `110a5cb6f6fbfa59beece490fd815e9fe55f672c`，书稿继续冻结在 `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；两个工作树 clean，刷新执行报告与规范哈希。 |
-| T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | AC-07，pass 后 reviewed；merge-owned 全档门禁 pending，不能声称交付完成 |
+| T-08 | review | T-07 | /auto-plan:review 从冻结源/全清单/AC/SD 重建证据及负控 | ✅ AC-07 pass：R1..R5 闭合，冻结差异/Spec/负控复核完成；`cargo t/tv/tb` 仍 pending，下一步 T-09。 |
 | T-09 | merge | T-08 | /auto-plan:merge：按 diff 分级门禁→双仓合入→SD/ledger/index→docs/plans/archive/→到期裁决→guard 清理 | AC-08；每树移除前 wt-guard clean，保留他人 WIP，提供实际收据 |
 
-T-01..T-07 已完成，R1..R5 均有修复与验证记录。当前进入第三次 T-08 最终复审；`cargo t`、`cargo tv`、`cargo tb` 仍是最终复审通过后的 merge-owned 门禁，未在执行阶段提前运行。
+T-01..T-08 已完成，R1..R5 均有修复与复审记录。T-09 负责运行 merge-owned 门禁及双仓合入/规范索引/归档/清理；这些步骤完成前不宣称交付完成。
 
 ## 9. 复审记录
 
@@ -227,6 +227,17 @@ stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_pa
 - merge_owned_gates: `cargo t` / `cargo tv` / `cargo tb` pending；`tf` 留 T-09 到期裁决。AC-01..06 有新/复用的有效证据；AC-07 重新交 T-08，AC-08 pending。
 
 stage: work | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | reviewed_commit: `110a5cb6f6fbfa59beece490fd815e9fe55f672c` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | diff_base: `b8901c4e4de237c53cd89cfa23b844066234fb70` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | task_ids: T-06,T-07 | evidence: this record and `attachments/813/tapl-full-execution.json.txt` | blockers: no work-owned acceptance blocker; disclosed toolchain limits above | next_responsible_role: review
+
+### 2026-10-19 最终复审 R3（pass）
+
+- stage: review；review_scope: final；reviewer_identity/limitations: Codex 当前会话，与实施共用上下文；未声称有独立会话/代理。按工件重新核对最终冻结树，且对未变实现明确复用同哈希下已重跑证据。Plan revision 1；auto-lang commit `110a5cb6f6fbfa59beece490fd815e9fe55f672c`，book commit `2de2fe3c66ac54e22d98c6b077a92d1dce10e253`；diff base 分别 `30c1b9a7edc3112cac99089d14169d9f9bdeaeb6` 与 `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a`；两个目标树 clean。依赖 auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` 保持不变，其共享 12 个 WIP 文件未进入 diff。
+- acceptance_results：AC-01 pass（54 页/1831 围栏；310 Listing + 96 AutoFence = 406 个唯一 page/catalog 绑定；模式 382 run、14 test、6 display-only、4 local-only；396 可执行项 396/396）；AC-02 pass（同源 API、编辑后的完整源和输入/文件传递，TAPL 浏览器 6/6；ch08 按用户裁定保留可运行改写并解释差异）；AC-03 pass（真实 handler 输入并发隔离/timeout recovery 3/3，VM hosted-input 定向 3/3，源目录每次物化清理）；AC-04 pass（test 入口真执行并能报告失败，预期诊断控制和 local TCP 完整周期均通过）；AC-05 pass（Base64/Hex 复用现有依赖，全 catalog 实跑；TcpStream EOF 返回合同有定向验证）；AC-06 pass（双向目录静态审计 406/406，运行/测试 396/396，负控退出码正确）；AC-07 pass（Plan/SD/frontmatter/hash、遗漏/绕过扫描、差异与健康检查完成）；AC-08 pending（归 T-09）。
+- validator counters：有效示例 1/1 pass；错误 stdout 预期、陈旧锚点、孤立 AutoFence、错误 expected-error diagnostic 四项实际变异各以退出码 1 拒绝。静态审计 post-commit 重跑 406 entries、0 failure；完整 CLI 回放报告绑定冻结书稿与依赖，396 executed、396 pass、0 fail。第 13 章 13-5 在一次完整回放有过无诊断 exit 1，但 exact materialized path 10/10 重跑及随后完整 396/396 均通过，未复现；记录此瞬态，不隐去。
+- 规范增量：SD-01..05 target 均存在、before/after 与实现吻合；SD-02 包含五种模式、所有输出预期和双向锚点审计；SD-04 记录 TcpStream.read_line EOF 空串行为；SD-05 链接网站规范。`touched_goals` GOAL-014/016 已在 `docs/specs/goals.md` 核对有效。review Spec inputs SHA-256：learning-reading `6D72CF5DAE547E6DE28F03DB7E522F1DCD4312B7BECE8FCBAE9A45C87C9BF5EA`；book-example-execution `1B753BE438D16216A49F9B198B5D92978343D7807343BD3F212592FF3B88486A`；website/project `3B3F342A81003868949209559155A7B3FDD3AA262D79044059A0AC3D8254EE13`；auto-playground/project `87039E4443AB4A0F5C1178979EB0E5D7A6ACA6F899FE98CFF7362F1B58181ADD`；stdlib/project `5505C717EC4156308D2FB98F91F1F061C9179859FDEFCE3DADB98CC6EEEADB52`。输入依赖 hash：Cargo.lock `1E1E432EEFC4C75981A5B1E788830A6791E911949FD3153B3E22570EFC1BFF9E`；website/package-lock `DC7121A2C03D91D0A20CD8C3CB8DC31B68CA235E8FC2364F0837082434F6FF82`；examples.json `ED4E42E87DBEFF12B4E46291A63CAE92333FAFDA5270182C39420ED4CE1817D3`。
+- health/debt scan：两树冻结 diff `git diff --check`（Windows CRLF-aware）无 whitespace error；相关 Rust 文件已定向 rustfmt，reviewed diff 无 debug prints/无新增 skip 或 ignore。保留环境限制：无可用 C 编译器，C 对应实现已核对但未编译；全站现有自定义语法高亮回退到纯文本提示。未发现 in-scope 延后/绕过需要登记为新 debt。
+- pending_closeout_gates: `cargo t`、VM 触面 `cargo tv`、书测试 `cargo tb`；必须在此最终 pass 后、T-09 合入前执行。`cargo tf` 仅按主检出最近批量收据和 48h/计划号规则裁决。outcome: pass；Plan 状态 `reviewed`，current_step=9；next=T-09。
+
+stage: review | review_scope: final | reviewer_identity/limitations: Codex 当前会话（与实施共用上下文，按最终工件重建） | plan_id: PLAN-813 | plan_revision: 1 | outcome: pass | worktree_path: `D:/autostack/.wt/lang-813/auto-lang` + `D:/autostack/.wt/lang-813/book` | branch: `plan-813-dev` + `plan-813-book` | reviewed_commit: `110a5cb6f6fbfa59beece490fd815e9fe55f672c` + `2de2fe3c66ac54e22d98c6b077a92d1dce10e253` | base_commit: `30c1b9a7edc3112cac99089d14169d9f9bdeaeb6` + `d7a71a7fb1fa42ddd26d6cec859715ed98161f7a` | dependency_revisions: auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`; Cargo.lock/package-lock hashes above | spec_inputs: §9 R5 repair handoff | acceptance_results: AC-01..07 pass, AC-08 pending | pending_closeout_gates: `cargo t`, `cargo tv`, `cargo tb` | findings: none | evidence: `attachments/813/tapl-full-execution.json.txt` SHA-256 `E732684902B6B9C30312A227A566E7691E0A0686547E662DA4B83ED04D0C1D53`; static audit/negative controls/site build and Playwright listed above | next: T-09 merge
 
 ## 10. 待澄清事项
 
