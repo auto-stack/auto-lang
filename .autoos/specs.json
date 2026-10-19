@@ -2184,6 +2184,32 @@
             "stage:merge",
             "delivery:b76eca8d2"
           ]
+        },
+        {
+          "id": "P819-M",
+          "title": "PLAN-819:r5 合入与沉淀收据",
+          "content": "Book master 已 fast-forward 到 d05218bff49a52314ce436f78d9df2a69bc3357e。冻结 code 4c8a28b92dab3ef9ed270cf1a25c5414c002343a + book d05218bff49a52314ce436f78d9df2a69bc3357e + auto-down c39ac7f 上 cargo tb exit 0：5312 passed、1547 skipped、1 slow、234.627s；NEXTEST_TEST_THREADS=4，标准 Cargo target。主书仓 9 个既有 golden 内容哈希与交付逐字节一致，合入前由可恢复 stash dd877c9e3fb4cc06aacfec1d0f2c78d5077f5a61 保留。无 canonical Spec delta。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-819"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/archive/819-rust-book-listing-syntax-fixes.md",
+          "milestone": null,
+          "module": "auto-lang",
+          "tags": [
+            "PLAN-819",
+            "plan-revision:5",
+            "reviewed-commit:d05218bff49a52314ce436f78d9df2a69bc3357e",
+            "gate-log-sha256:07107603224097f332c325d7602d46ff54d333f207ee70dd3a946e77c2f156e3",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792415910,
+          "modified_at": 1792415910,
+          "completed_at": 1792415910
         }
       ]
     },
@@ -12956,10 +12982,36 @@
             "reviewed:52aad1fd2",
             "rebased:91e9824cf"
           ]
+        },
+        {
+          "id": "P819-R1",
+          "title": "PLAN-819 revision 5 独立最终复审",
+          "content": "PLAN-819:r5 独立最终复审 pass，审查交付书稿提交 d05218bff49a52314ce436f78d9df2a69bc3357e；AC-01..09 全部通过，含冻结组合 cargo tb；无新增 finding。该计划仅修复书内 Auto 示例与实产金样，不改变语言、转译器或测试合同，Spec 增量为 none。",
+          "status": "verified",
+          "depends_on": [],
+          "related": [
+            "PLAN-819"
+          ],
+          "priority": null,
+          "assignee": null,
+          "test_file": null,
+          "file": "docs/plans/archive/819-rust-book-listing-syntax-fixes.md",
+          "milestone": null,
+          "module": "auto-lang",
+          "tags": [
+            "PLAN-819",
+            "plan-revision:5",
+            "reviewed-commit:d05218bff49a52314ce436f78d9df2a69bc3357e",
+            "gate-log-sha256:07107603224097f332c325d7602d46ff54d333f207ee70dd3a946e77c2f156e3",
+            "guarded-offline-projection"
+          ],
+          "created_at": 1792415910,
+          "modified_at": 1792415910,
+          "completed_at": 1792415910
         }
       ]
     }
   ],
   "project": "auto-lang",
-  "version": 53
+  "version": 54
 }
