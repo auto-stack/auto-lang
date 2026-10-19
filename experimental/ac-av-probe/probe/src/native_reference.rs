@@ -156,23 +156,95 @@ pub fn native_worker_binary() -> Result<PathBuf, String> {
     let root = probe_workspace_root()?;
     let exe = root.join("target").join("release").join(worker_exe_name());
     if !exe.is_file() {
-        let out = std::process::Command::new(env!("CARGO"))
-            .args(["build", "--release", "--bin", "av_probe_worker"])
-            .current_dir(&root)
-            .output()
-            .map_err(|e| format!("spawn cargo for the worker: {e}"))?;
-        if !out.status.success() {
-            return Err(format!(
-                "worker build failed:\n{}",
-                String::from_utf8_lossy(&out.stderr)
-            ));
-        }
+        bounded_worker_build(&root, &exe)?;
     }
     if exe.is_file() {
         Ok(exe)
     } else {
         Err(format!("worker binary missing at {}", exe.display()))
     }
+}
+
+/// Preparation wall for the FIRST worker build (F798-R8-03): the plan
+/// forbids unbounded launchers, and cold tool preparation must itself be
+/// bounded and killed on overrun — even though it is metered SEPARATELY
+/// from (and before) the supervised request budgets.
+pub const NATIVE_WORKER_PREP_WALL: Duration = Duration::from_secs(300);
+
+/// The bounded first build (single absolute wall, capped output, killed on
+/// overrun). Test seams: AV798_NATIVE_PREP_WALL_MS shortens the wall and
+/// AV798_NATIVE_PREP_CARGO redirects the build command (fault injection
+/// only — never set in production paths).
+pub fn bounded_worker_build(root: &Path, exe: &Path) -> Result<(), String> {
+    let wall = Duration::from_millis(
+        std::env::var("AV798_NATIVE_PREP_WALL_MS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(NATIVE_WORKER_PREP_WALL.as_millis() as u64),
+    );
+    let cargo =
+        std::env::var("AV798_NATIVE_PREP_CARGO").unwrap_or_else(|_| env!("CARGO").to_string());
+    let mut child = std::process::Command::new(&cargo)
+        .args(["build", "--release", "--bin", "av_probe_worker"])
+        .current_dir(root)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("spawn cargo for the worker: {e}"))?;
+    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
+    {
+        let mut pipe = child.stderr.take().expect("stderr");
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut buf = Vec::new();
+            let mut chunk = [0u8; 16384];
+            loop {
+                match pipe.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        buf.extend_from_slice(&chunk[..n]);
+                        if buf.len() > NATIVE_STREAM_CAP {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            let _ = tx.send(buf);
+        });
+    }
+    let started = std::time::Instant::now();
+    let status = loop {
+        if started.elapsed() > wall {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "native worker preparation exceeded its {:?} wall (killed)",
+                wall
+            ));
+        }
+        match child.try_wait() {
+            Ok(Some(st)) => break st,
+            Ok(None) => {}
+            Err(e) => return Err(format!("poll cargo build: {e}")),
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    let log = rx.recv_timeout(Duration::from_secs(2)).unwrap_or_default();
+    if !status.success() {
+        return Err(format!(
+            "worker build failed:
+{}",
+            String::from_utf8_lossy(&log)
+        ));
+    }
+    if !exe.is_file() {
+        return Err(format!(
+            "worker build produced no binary at {}",
+            exe.display()
+        ));
+    }
+    Ok(())
 }
 
 fn probe_workspace_root() -> Result<PathBuf, String> {
@@ -232,9 +304,12 @@ pub fn build_and_run_with_caps(
     stdout_cap: usize,
     stderr_cap: usize,
 ) -> Result<NativeRun, NativeError> {
+    // F798-R8-03: worker preparation happens BEFORE the request clock,
+    // under its OWN bounded wall — the supervised budgets below measure
+    // only the actual native request, never cold tool preparation.
+    let worker = native_worker_binary().map_err(NativeError::Toolchain)?;
     let started = std::time::Instant::now();
     let elapsed = || started.elapsed() + fake_stage_elapsed();
-    let worker = native_worker_binary().map_err(NativeError::Toolchain)?;
     std::fs::create_dir_all(workdir).map_err(|e| NativeError::Build(e.to_string()))?;
     let src_file = workdir.join("native-src.at");
     std::fs::write(&src_file, src).map_err(|e| NativeError::Build(e.to_string()))?;

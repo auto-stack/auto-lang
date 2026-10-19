@@ -188,6 +188,48 @@ fn av_resources_front_door_nesting_boundary() {
     assert_eq!(*r.counters.get("admission_reject").unwrap_or(&0), 1);
 }
 
+/// F798-R8-01: sibling arguments of ONE call are separate expressions —
+/// a shallow WIDE call (each argument a single add) stays legal at any
+/// arity the wire allows, while serial chains still hit the 128 door.
+#[test]
+fn av_resources_wide_shallow_call_not_depth_rejected() {
+    let wide = |n: usize| {
+        let params = (0..n)
+            .map(|i| format!("a{i} int"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let args = (0..n)
+            .map(|i| format!("a{i}: 1 + 0"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "fn first({params}) int {{\n    return a0\n}}\n\nfn main() int {{\n    return first({args})\n}}\n"
+        )
+    };
+    let mut d = Driver::ephemeral();
+    for n in [16usize, 128, 129, 200] {
+        let src = wide(n);
+        let door = front_door_admit(&src);
+        assert!(
+            door.is_ok(),
+            "{n} shallow args admit at the door: {:?}",
+            door.err()
+        );
+        let r = d.request(&src, "d_main", &[]);
+        assert!(r.ok(), "{n} shallow args execute: {:?}", r.diag);
+        assert_eq!(r.value_i32(), Some(1), "{n} args value");
+    }
+    // The serial-chain rejections from R7 stay.
+    let deep = format!(
+        "fn main() int {{\n    return {}\n}}\n",
+        vec!["(1)"; 129].join(" + ")
+    );
+    assert!(
+        front_door_admit(&deep).is_err(),
+        "serial 129 still rejected"
+    );
+}
+
 /// F798-R7-02: bool-literal operands and named-argument separators are
 /// expression-internal — `true && true && …` and `idfn(x:1) + idfn(x:1) + …`
 /// accumulate construction depth like any other chain and hit the same

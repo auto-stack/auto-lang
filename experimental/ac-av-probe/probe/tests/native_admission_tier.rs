@@ -387,3 +387,55 @@ fn native_reference_inflight_linker_stall_killed_at_remaining_budget() {
     );
     let _ = std::fs::remove_dir_all(&workdir);
 }
+
+/// F798-R8-03: cold worker preparation is BOUNDED — a stalled build
+/// command is killed at its (shortened) preparation wall; a missing
+/// override surfaces a controlled error; the ready path succeeds.
+#[cfg(windows)]
+#[test]
+fn native_worker_preparation_bounded_and_killed_on_stall() {
+    let _env_guard = NATIVE_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let slow = std::env::temp_dir().join(format!("av798-prep-stall-{}.cmd", std::process::id()));
+    std::fs::write(
+        &slow,
+        "@echo off\r\nping -n 20 127.0.0.1 > nul\r\nexit /b 1\r\n",
+    )
+    .unwrap();
+    let root = std::env::temp_dir().join(format!("av798-prep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let exe = root
+        .join("target")
+        .join("release")
+        .join("av_probe_worker.exe");
+    std::env::set_var("AV798_NATIVE_PREP_WALL_MS", "1500");
+    std::env::set_var("AV798_NATIVE_PREP_CARGO", &slow);
+    let started = std::time::Instant::now();
+    let out = auto_av_probe::native_reference::bounded_worker_build(&root, &exe);
+    let wall = started.elapsed();
+    std::env::remove_var("AV798_NATIVE_PREP_WALL_MS");
+    std::env::remove_var("AV798_NATIVE_PREP_CARGO");
+    let _ = std::fs::remove_file(&slow);
+    assert!(
+        out.as_ref()
+            .err()
+            .map(|e| e.contains("preparation exceeded"))
+            .unwrap_or(false),
+        "stalled preparation is killed at its wall: {:?}",
+        out
+    );
+    assert!(
+        wall < std::time::Duration::from_secs(5),
+        "killed near the 1.5s wall (took {wall:?}), not the 20s stall"
+    );
+    // Missing override: controlled error (not a panic, not a hang).
+    std::env::set_var("AV798_NATIVE_WORKER", root.join("definitely-missing.exe"));
+    let miss = auto_av_probe::native_reference::native_worker_binary();
+    std::env::remove_var("AV798_NATIVE_WORKER");
+    assert!(miss.is_err());
+    assert!(miss.unwrap_err().contains("missing file"));
+    // Ready path: the real worker resolves.
+    let ready = auto_av_probe::native_reference::native_worker_binary();
+    assert!(ready.is_ok(), "ready control: {:?}", ready.err());
+    let _ = std::fs::remove_dir_all(&root);
+}

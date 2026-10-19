@@ -275,6 +275,24 @@ pub enum ScalarShape {
     Bool,
 }
 
+impl MirInstr {
+    /// Whether THIS instruction can raise a language trap at runtime
+    /// (F798-R8-02 shared classifier): every Bin (overflow / div / rem
+    /// traps) and the unary MIN negation. Diagnostics-provenance
+    /// requirements (sidecar coverage on restore) key off this set, so it
+    /// must list the full trap-capable instruction family of the frozen
+    /// profile — never just one shape.
+    pub fn can_trap(&self) -> bool {
+        match self {
+            MirInstr::Bin { .. } => true,
+            MirInstr::Un {
+                op: UnOp::NegI32, ..
+            } => true,
+            _ => false,
+        }
+    }
+}
+
 /// Marker consumed by builders to avoid accidentally treating an unchecked
 /// module as verified (the Checked credential lives in
 /// [`crate::mir_verify::CheckedMir`]).

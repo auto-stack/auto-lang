@@ -1055,64 +1055,85 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                 | P::Bang
         )
     };
-    // F798-R6-04: the construction run spans BRACKETED operands and
-    // argument commas — `(1) + (1) + …` and `f(a, b) + g(c, d) + …` nest
-    // exactly like the unbracketed chain, so brackets/commas do NOT reset
-    // the accumulator. Only real statement/clause boundaries reset it:
-    // braces (block structure), `;`, assignment, colon, and KEYWORDS
-    // (`var`/`return`/`if`/… start a fresh clause in this newline-
-    // terminated grammar).
-    let (mut chain_ops, mut max_chain) = (0u32, 0u32);
+    // F798-R8-01: construction depth is measured PER BRACKET LEVEL as the
+    // level's MAX serial chain, accumulated across levels on the max
+    // construction PATH — sibling arguments of one call are separate
+    // expressions, not one deep chain. `(1)+(1)+…` still counts its serial
+    // run at the outer level; `f(a+b, c+d, …)` counts each argument's own
+    // (small) run and the call contributes one level, so a shallow WIDE
+    // call stays legal while deep chains still hit the 128 budget.
+    let mut level_run = 0u32;
+    let mut level_max = 0u32;
+    let mut level_stack: Vec<(u32, u32)> = Vec::new();
+    let mut construction = 0u32;
     for t in &tokens {
         match &t.tok {
-            Tok::Punct(p) if matches!(p, P::LParen | P::LBracket | P::LBrace) => {
+            Tok::Punct(p) if matches!(p, P::LParen | P::LBracket) => {
                 depth += 1;
                 max_depth = max_depth.max(depth);
-                if matches!(p, P::LBrace) {
-                    chain_ops = 0;
+                level_stack.push((level_run, level_max));
+                level_run = 0;
+                level_max = 0;
+            }
+            Tok::Punct(p) if matches!(p, P::RParen | P::RBracket) => {
+                depth = depth.saturating_sub(1);
+                // Close the level: its internal max path joins the total;
+                // a paren level only costs a level of its own when it
+                // actually nests operators (empty operand parens are
+                // grouping, and call nesting is guarded by bracket depth).
+                construction += level_max + u32::from(level_max > 0);
+                if let Some((r, m)) = level_stack.pop() {
+                    level_run = r;
+                    level_max = m;
                 }
             }
-            Tok::Punct(p) if matches!(p, P::RParen | P::RBracket | P::RBrace) => {
+            Tok::Punct(P::LBrace) => {
+                depth += 1;
+                max_depth = max_depth.max(depth);
+                // Block structure is a statement boundary, not an
+                // expression level (bracket depth covers it).
+                level_run = 0;
+            }
+            Tok::Punct(P::RBrace) => {
                 depth = depth.saturating_sub(1);
-                if matches!(p, P::RBrace) {
-                    chain_ops = 0;
-                }
+                level_run = 0;
             }
             Tok::Punct(p) if is_chain_op(p) => {
-                chain_ops += 1;
-                max_chain = max_chain.max(chain_ops);
+                level_run += 1;
+                level_max = level_max.max(level_run);
             }
-            Tok::Punct(p) if matches!(p, P::Semi | P::Assign) => {
-                chain_ops = 0;
+            Tok::Punct(p) if matches!(p, P::Semi | P::Assign | P::Comma | P::Colon) => {
+                // Sibling separators (argument commas, named-argument
+                // colons) and clause boundaries end the CURRENT sibling's
+                // run; the level keeps its max.
+                level_run = 0;
             }
             Tok::Punct(_) => {
-                // Other puncts (`,` `.` and the named-argument `:`) stay
-                // INSIDE the current expression construction — a named
-                // argument separator is not a statement boundary
-                // (F798-R7-02).
+                // Other puncts (`.`) stay inside the current sibling.
             }
             // `true`/`false` are expression OPERANDS, not clause
-            // boundaries — a `true && true && …` chain accumulates like
-            // any other (F798-R7-02). Every other keyword starts a fresh
+            // boundaries (F798-R7-02). Every other keyword starts a fresh
             // clause in this newline-terminated grammar.
             Tok::Kw(auto_ac_prototype::source::lexer::Kw::True)
             | Tok::Kw(auto_ac_prototype::source::lexer::Kw::False) => {}
             Tok::Kw(_) | Tok::Reserved(_) => {
-                chain_ops = 0;
+                level_run = 0;
             }
             _ => {}
         }
     }
-    // A run of K operators forms a K+1-operand construction — one parse
-    // recursion level per operand.
-    let expr_depth = max_chain + 1;
+    // The outermost level's max path closes the total.
+    construction += level_max + 1;
+    // The accumulated per-level max construction PATH is the expression
+    // construction depth.
+    let expr_depth = construction;
     let over = max_depth > MAX_FRONTEND_NESTING || expr_depth > MAX_FRONTEND_NESTING;
     if over {
         return Err(StageDiag {
             stage: "admission".into(),
             code: "av.resource.frontend-nesting".into(),
             message: format!(
-                "token nesting {} / expression construction depth {} exceeds the frozen front-door budget {}",
+                "token nesting {} / expression construction path {} exceeds the frozen front-door budget {}",
                 max_depth, expr_depth, MAX_FRONTEND_NESTING
             ),
         });

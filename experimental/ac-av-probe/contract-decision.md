@@ -135,14 +135,16 @@ verify 侧 heap_estimate 检查保留为手工构造模块的第二层。
 （`(1)+(1)+…` 与 `f(a,b)+g(c,d)+…` 的嵌套与未加括号链相同）；仅语句/子句
 边界（`{`/`}`/`;`/`=`/`:`/关键字）重置；一元 `!` 计入构造。129/400/600 项
 带括号链在门前 resource 拒绝。
-(c) **native build 预算边界（F798-R6-07，有依据的合同澄清）**：ac-core 对本
-计划只读，`link_object_staged` 内部持有 788 合同的 linker 子进程 60s deadline，
-无法从探针侧注入"剩余截止"。可执行的完整语义为：lower/publish/查找等探针
-可控阶段共享 60s 绝对钟（阶段前准入+超时拒绝启动 link+事后归因）；link 子
-进程由 788 内部 deadline 独立有界；run 阶段 deadline=剩余总预算（≤70s 总量
-硬性成立）。"build≤60s"作为单一数字依赖 ac-core 侧剩余截止注入，属其
-owner 的后续合同工作，不在本计划触面；反控：伪钟 seam
-（AV798_NATIVE_FAKE_ELAPSED_MS）确定性证明前阶段超钟拒绝启动 link。
+(c) **native build/total 预算（r8 撤销 r6 轮的降格表述并落实强制语义）**：
+r6 轮曾在此把"build≤60s 单一数字"表述为依赖 ac-core owner 的后续工作——
+该表述**已撤销**：它未经计划修订授权，且与 §3 冻结的 60/5/70 冲突。现行
+实现为全程监督：lower/link/publish 与 run 各阶段在 `av_probe_worker
+native-build`/`native-run` 受限子命令内执行，父侧以请求起算的**剩余截止**
+驱动 contained executor——执行中的迟滞 linker 在剩余 build 预算处连同子树
+被杀（复审复现形状实测 ~1s Budget 杀树），run 截止=min(5s, 剩余总量)，
+60/5/70 全部为强制语义而非观察值。冷态 worker 首次准备另列：在请求钟之外、
+独立 300s 有界墙（超时杀进程+输出帽），不进入受测请求预算。反控：伪钟
+seam（AV798_NATIVE_FAKE_ELAPSED_MS）+ 迟滞 linker 杀树 + 预备墙杀树。
 
 **r3 修订记录**（复审 F798-R3-04/08 判定 → 本轮修复冻结）：
 (a) **验证组合分析内存**进入预算表——dense 单元（16 384 槽 × 8 192 块，

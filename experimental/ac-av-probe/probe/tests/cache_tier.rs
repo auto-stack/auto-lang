@@ -787,3 +787,77 @@ fn av_cache_restore_empty_or_partial_sidecar_refused() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F798-R8-02: the unary MIN negation traps (IntOverflow) — a restored
+/// sidecar must cover it exactly like a Bin. Honest snapshot carries the
+/// real span; an empty sidecar under the unary-only source is refused.
+#[test]
+fn av_cache_restore_unary_trap_requires_span() {
+    let src = "fn main() int { var x = -2147483648\n    return -x\n}\n";
+    let root = tmpdir("unary-trap");
+    let mut d = Driver::with_store(&root, "p").unwrap();
+    let r = d.request(src, "d_main", &[]);
+    use auto_av_core::contract::ExecOutcome;
+    assert!(
+        matches!(&r.av, Some(ExecOutcome::Trap { kind, .. }) if kind.code() == "av.trap.int-overflow"),
+        "the unary negation traps: {:?}",
+        r.av
+    );
+    let manifest = r.manifest.clone().unwrap();
+    let store = open_store(&root).unwrap();
+    let key = cache::manifest_key(&manifest.owner, &manifest.entry, &manifest.fingerprint());
+    let art = store.get_artifact("A09", &key).unwrap().unwrap();
+
+    // Honest control: the unary overflow trap carries its real span.
+    let ok = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        r.snapshot,
+        &[],
+    );
+    assert!(ok.executed_ok, "honest control: {:?}", ok.error);
+    assert_eq!(
+        ok.trap.unwrap(),
+        "av.trap.int-overflow@func#0:48..49",
+        "real unary-negation span content"
+    );
+
+    // Empty (decodable) sidecar under a fresh snapshot: refused — the
+    // unary-only source has NO Bin, so only the shared can_trap set
+    // catches it.
+    let snap2 = r.snapshot ^ 1;
+    let unit = &manifest.units[0];
+    let skey = cache::sidecar_key(&manifest.owner, &unit.name, snap2);
+    cache::put_enveloped(
+        &store,
+        &skey,
+        "A08",
+        &EnvelopeIdentity::sidecar(&manifest.owner, snap2),
+        &cache::encode_sidecar(&[]),
+        vec![],
+        Some("p"),
+    )
+    .unwrap();
+    let denied = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        snap2,
+        &[],
+    );
+    assert!(
+        !denied.executed_ok,
+        "empty sidecar over a unary trap refuses"
+    );
+    assert!(
+        denied
+            .error
+            .unwrap()
+            .contains("does not cover trap-capable instruction"),
+        "the NegI32 coverage fires"
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}

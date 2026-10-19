@@ -222,7 +222,7 @@ fn restore_and_run_inner(
                     let mut flat = 0u32;
                     for b in f.blocks.iter() {
                         for (ii, instr) in b.instrs.iter().enumerate() {
-                            if matches!(instr, auto_av_core::mir::MirInstr::Bin { .. })
+                            if instr.can_trap()
                                 && !covered.contains(&(flat + ii as u32))
                             {
                                 return Err(format!(
