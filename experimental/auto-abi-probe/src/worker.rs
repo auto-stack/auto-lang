@@ -10,7 +10,7 @@
 //! The deck is DATA (the case's `atomdata` source): a frozen, tiny,
 //! worker-owned grammar. A case can never name an executable.
 
-use crate::cache::{autoabi_object_key, c_object_key, produce_with_cache};
+use crate::cache::{autoabi_object_key, c_source_identity, produce_c_object, produce_with_cache};
 use crate::decl::{self, AbiScalar, BodyKind, FnDecl, MixInputs};
 use crate::emit::{emit_callee_suite, emit_caller_suite, SuiteCheck};
 use crate::layout::{self, REC_MIX};
@@ -64,7 +64,11 @@ pub struct StepIn {
 #[derive(Debug, Clone, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeterOut {
-    pub scratch_peak_bytes: u64,
+    /// DISK bytes: the largest scratch directory currently on disk for
+    /// this store's worker (NOT a memory figure — F-797-R4-10 R8: the
+    /// process memory peak / I/O attribution lives parent-side, from
+    /// the contained worker's Job object).
+    pub scratch_peak_disk_bytes: u64,
     pub hot_bytes: u64,
     pub rejections: u32,
 }
@@ -432,8 +436,12 @@ struct Session {
     /// store) — reported in the meter, never a panic.
     store_rejections: u32,
     /// F-797-R4-10 (R5): bytes PRODUCED this session (emitted objects +
-    /// compiled C) against the 128MiB per-request budget.
+    /// compiled C) against the per-request budget (128MiB by contract;
+    /// the TEST seam `ABI_TEST_PRODUCED_BUDGET_BYTES` shrinks it so the
+    /// budget line is exercisable by a real worker — production code
+    /// only READS it; cases can never set child env).
     produced_bytes: u64,
+    budget_cap: u64,
 }
 
 /// F-797-R4-10: RECURSIVE directory size — the store keeps blobs under
@@ -460,11 +468,26 @@ fn stage_span(name: &str, t0: Instant) -> StageSpan {
     }
 }
 
+fn budget_msg(sess: &Session) -> String {
+    format!(
+        "session produced-bytes budget exhausted: {} produced, cap {}",
+        sess.produced_bytes, sess.budget_cap
+    )
+}
+
+fn over_budget(sess: &Session) -> bool {
+    sess.produced_bytes > sess.budget_cap
+}
+
 fn execute_query(sess: &mut Session) -> StepOut {
     // F-797-R4-03 (R5) TEST seam: report an infra outcome without doing
     // any work (drives the PARENT's infrastructure short-circuit).
     if std::env::var("ABI_TEST_INFRA_STEP").is_ok() {
-        return infra_step("fault seam: simulated infrastructure failure".into(), sess);
+        return infra_step(
+            "fault seam: simulated infrastructure failure".into(),
+            0,
+            sess,
+        );
     }
     let mut stages = Vec::new();
     let mut diags = Vec::new();
@@ -515,7 +538,7 @@ fn execute_query(sess: &mut Session) -> StepOut {
     let t0 = Instant::now();
     let store = match ManagedStore::open(&sess.store_root) {
         Ok(s) => s,
-        Err(e) => return infra_step(format!("store open: {e:?}"), sess),
+        Err(e) => return infra_step(format!("store open: {e:?}"), compute_calls, sess),
     };
     let computed = layout::layout_record(&REC_MIX).expect("frozen layout");
     // F-797-R5-03: the layout cache is a CACHE — a corrupt/missing/
@@ -546,7 +569,7 @@ fn execute_query(sess: &mut Session) -> StepOut {
     let descriptor = crate::build::descriptor_for_defs(&defs);
     let descriptor_bytes = match descriptor.encode() {
         Ok(b) => b,
-        Err(e) => return infra_step(format!("descriptor encode: {e}"), sess),
+        Err(e) => return infra_step(format!("descriptor encode: {e}"), compute_calls, sess),
     };
     let expectation = crate::build::suite_expectation(&defs);
     match crate::validate::admit(&descriptor_bytes, &expectation) {
@@ -578,13 +601,13 @@ fn execute_query(sess: &mut Session) -> StepOut {
     // callee object through the store (cache tier reported coarsely)
     let t0 = Instant::now();
     let key = autoabi_object_key(&defs, false);
-    // F-797-R4-10 (R5): the 128MiB per-request produced-bytes budget —
-    // checked BEFORE the producer runs, not after.
-    if sess.produced_bytes > 128 * 1024 * 1024 {
-        return resource_step(
-            "session produced-bytes budget (128MiB) exhausted".into(),
-            sess,
-        );
+    // F-797-R4-10 (R8): the produced-bytes budget is a CUMULATIVE cap,
+    // checked BEFORE every producer AND re-checked after each
+    // production — a production that pushes the session over the cap
+    // ends THIS step as a resource outcome, so no later producer (the
+    // C consumer compile) ever runs on an over-budget session.
+    if over_budget(sess) {
+        return resource_step(budget_msg(sess), compute_calls, sess);
     }
     let callee_obj = match produce_with_cache(&store, &key, || {
         compute_calls += 1;
@@ -600,9 +623,12 @@ fn execute_query(sess: &mut Session) -> StepOut {
             };
             obj
         }
-        Err(e) => return infra_step(format!("callee produce: {e:?}"), sess),
+        Err(e) => return infra_step(format!("callee produce: {e:?}"), compute_calls, sess),
     };
     stages.push(stage_span("produce-callee", t0));
+    if over_budget(sess) {
+        return resource_step(budget_msg(sess), compute_calls, sess);
+    }
 
     // F-797-R4-10 lifecycle wiring on the REAL path: the current callee
     // object gets a project ROOT (survives GC as the deliverable) and a
@@ -624,21 +650,25 @@ fn execute_query(sess: &mut Session) -> StepOut {
     // per-leg consumer (the REAL pipeline; scratch per step)
     let t0 = Instant::now();
     let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    // scratch is namespaced by the STORE directory (unique per session
-    // owner): concurrent workers over sibling stores must not share or
-    // delete each other's scratch (observed as a cross-test link race).
     let store_tag = sess
         .store_root
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("store")
         .to_string();
+    // scratch is namespaced by the STORE directory AND the worker PID:
+    // sibling stores never share, and CONCURRENT workers over the SAME
+    // store (one worker process per request) each own a private scratch
+    // — without the PID, two workers' cl/link collide on the same
+    // `consumer-once.obj` (os error 32, caught by the concurrent-GC
+    // full-chain test).
     let scratch = sess
         .store_root
         .parent()
         .unwrap_or(&sess.store_root)
         .join(format!(
-            "{store_tag}-abi-worker-scratch-{}",
+            "{store_tag}-abi-worker-scratch-{}-{}",
+            std::process::id(),
             sess.step_index
         ));
     let _ = std::fs::remove_dir_all(&scratch);
@@ -662,7 +692,7 @@ fn execute_query(sess: &mut Session) -> StepOut {
             }];
             let caller = match emit_caller_suite("abi-worker-caller", &checks) {
                 Ok(c) => c,
-                Err(e) => return infra_step(format!("caller emit: {e}"), sess),
+                Err(e) => return infra_step(format!("caller emit: {e}"), compute_calls, sess),
             };
             let cp = scratch.join("caller.obj");
             std::fs::write(&cp, &caller).expect("write caller obj");
@@ -680,28 +710,39 @@ fn execute_query(sess: &mut Session) -> StepOut {
             }];
             let caller = match emit_caller_suite("abi-worker-caller", &checks) {
                 Ok(c) => c,
-                Err(e) => return infra_step(format!("caller emit: {e}"), sess),
+                Err(e) => return infra_step(format!("caller emit: {e}"), compute_calls, sess),
             };
             let cp = scratch.join("caller.obj");
             std::fs::write(&cp, &caller).expect("write caller obj");
             let src = manifest.join("cside/interop_callee.c");
-            let closure = match crate::cache::c_include_closure(&src, &manifest.join("cside")) {
-                Ok(c) => c,
-                Err(e) => return infra_step(format!("include closure: {e}"), sess),
+            // F-797-R4-07 (R8): the C object is cached by SOURCE
+            // identity; the REAL dependency closure (observed via
+            // -showIncludes, incl. system headers) is stored beside the
+            // object and re-verified on every hit.
+            let ident = match c_source_identity(&src) {
+                Ok(i) => i,
+                Err(e) => return infra_step(format!("source identity: {e}"), compute_calls, sess),
             };
-            let key = c_object_key(&closure);
-            let c_obj = match produce_with_cache(&store, &key, || {
+            if over_budget(sess) {
+                return resource_step(budget_msg(sess), compute_calls, sess);
+            }
+            let c_obj = match produce_c_object(&store, &ident, || {
                 compute_calls += 1;
                 let obj = scratch.join("consumer-once.obj");
-                crate::ctool::compile_c(&src, &manifest.join("cside"), &obj)
+                let deps = crate::ctool::compile_c_with_deps(&src, &manifest.join("cside"), &obj)
                     .map_err(|e| format!("cl: {e}"))?;
                 let bytes = std::fs::read(&obj).map_err(|e| format!("read obj: {e}"))?;
                 sess.produced_bytes += bytes.len() as u64;
-                Ok(bytes)
+                Ok((bytes, deps))
             }) {
                 Ok((b, _)) => b,
-                Err(e) => return infra_step(format!("C consumer produce: {e:?}"), sess),
+                Err(e) => {
+                    return infra_step(format!("C consumer produce: {e:?}"), compute_calls, sess)
+                }
             };
+            if over_budget(sess) {
+                return resource_step(budget_msg(sess), compute_calls, sess);
+            }
             let cop = scratch.join("consumer.obj");
             std::fs::write(&cop, &c_obj).expect("write consumer obj");
             objs = vec![cp, cop];
@@ -709,23 +750,30 @@ fn execute_query(sess: &mut Session) -> StepOut {
         }
         "c" => {
             let src = manifest.join("cside/caller_main.c");
-            let closure = match crate::cache::c_include_closure(&src, &manifest.join("cside")) {
-                Ok(c) => c,
-                Err(e) => return infra_step(format!("include closure: {e}"), sess),
+            let ident = match c_source_identity(&src) {
+                Ok(i) => i,
+                Err(e) => return infra_step(format!("source identity: {e}"), compute_calls, sess),
             };
-            let key = c_object_key(&closure);
-            let c_obj = match produce_with_cache(&store, &key, || {
+            if over_budget(sess) {
+                return resource_step(budget_msg(sess), compute_calls, sess);
+            }
+            let c_obj = match produce_c_object(&store, &ident, || {
                 compute_calls += 1;
                 let obj = scratch.join("consumer-once.obj");
-                crate::ctool::compile_c(&src, &manifest.join("cside"), &obj)
+                let deps = crate::ctool::compile_c_with_deps(&src, &manifest.join("cside"), &obj)
                     .map_err(|e| format!("cl: {e}"))?;
                 let bytes = std::fs::read(&obj).map_err(|e| format!("read obj: {e}"))?;
                 sess.produced_bytes += bytes.len() as u64;
-                Ok(bytes)
+                Ok((bytes, deps))
             }) {
                 Ok((b, _)) => b,
-                Err(e) => return infra_step(format!("C consumer produce: {e:?}"), sess),
+                Err(e) => {
+                    return infra_step(format!("C consumer produce: {e:?}"), compute_calls, sess)
+                }
             };
+            if over_budget(sess) {
+                return resource_step(budget_msg(sess), compute_calls, sess);
+            }
             let cop = scratch.join("consumer.obj");
             std::fs::write(&cop, &c_obj).expect("write consumer obj");
             let clp = scratch.join("callee.obj");
@@ -733,7 +781,13 @@ fn execute_query(sess: &mut Session) -> StepOut {
             objs = vec![cop, clp];
             entry = "p797_c_entry";
         }
-        other => return infra_step(format!("unknown leg {other:?} (v1 freezes a/b/c)"), sess),
+        other => {
+            return infra_step(
+                format!("unknown leg {other:?} (v1 freezes a/b/c)"),
+                compute_calls,
+                sess,
+            )
+        }
     }
     stages.push(stage_span("consumer", t0));
 
@@ -741,11 +795,11 @@ fn execute_query(sess: &mut Session) -> StepOut {
     let t0 = Instant::now();
     let exe = match link_pe(&scratch, &objs, entry) {
         Ok(e) => e,
-        Err(e) => return infra_step(format!("link: {e}"), sess),
+        Err(e) => return infra_step(format!("link: {e}"), compute_calls, sess),
     };
     let pe = match run::run_pe(&exe) {
         Ok(p) => p,
-        Err(e) => return infra_step(format!("run: {e}"), sess),
+        Err(e) => return infra_step(format!("run: {e}"), compute_calls, sess),
     };
     stages.push(stage_span("link-run", t0));
 
@@ -770,7 +824,11 @@ fn execute_query(sess: &mut Session) -> StepOut {
     }
     {
         let hot = dir_size(&sess.store_root.join("blocks"));
-        if hot > 8 * 1024 * 1024 {
+        // F-797-R4-10 (R8): the hot-set budget GC; the TEST seam
+        // `ABI_TEST_GC_EVERY_STEP` forces a GC pass on every successful
+        // query so concurrent-worker/GC full chains are exercisable by
+        // real workers (production reads the env only).
+        if hot > 8 * 1024 * 1024 || std::env::var("ABI_TEST_GC_EVERY_STEP").is_ok() {
             if let Err(e) = ac_artifact_probe::store::run_gc(
                 &store,
                 ac_artifact_probe::store::GcConfig {
@@ -803,6 +861,7 @@ fn execute_query(sess: &mut Session) -> StepOut {
                 "native PE crashed (exit {:#x}); out={:?} err={:?}",
                 pe.code as u32, pe.stdout, pe.stderr
             ),
+            compute_calls,
             sess,
         )
     } else {
@@ -842,7 +901,7 @@ fn meter(sess: &Session) -> MeterOut {
         }
     }
     MeterOut {
-        scratch_peak_bytes: scratch_peak,
+        scratch_peak_disk_bytes: scratch_peak,
         hot_bytes: dir_size(&sess.store_root.join("blocks")),
         rejections: sess.rejections + sess.store_rejections,
     }
@@ -851,12 +910,12 @@ fn meter(sess: &Session) -> MeterOut {
 /// F-797-R4-10 (R5): a typed RESOURCE outcome (budgets), distinct from
 /// infra — the parent reports both as infrastructure errors, never as
 /// language verdicts.
-fn resource_step(message: String, sess: &Session) -> StepOut {
+fn resource_step(message: String, compute_calls: u32, sess: &Session) -> StepOut {
     StepOut {
         op: "query",
         outcome: "resource",
         cache: "-".into(),
-        compute_calls: 0,
+        compute_calls,
         diagnostics: vec![DiagOut {
             code: "resource".into(),
             message,
@@ -867,12 +926,12 @@ fn resource_step(message: String, sess: &Session) -> StepOut {
     }
 }
 
-fn infra_step(message: String, sess: &Session) -> StepOut {
+fn infra_step(message: String, compute_calls: u32, sess: &Session) -> StepOut {
     StepOut {
         op: "query",
         outcome: "infra",
         cache: "-".into(),
-        compute_calls: 0,
+        compute_calls,
         diagnostics: vec![DiagOut {
             code: "infra".into(),
             message,
@@ -923,6 +982,10 @@ fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         rejections: 0,
         store_rejections: 0,
         produced_bytes: 0,
+        budget_cap: std::env::var("ABI_TEST_PRODUCED_BUDGET_BYTES")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(128 * 1024 * 1024),
     };
     std::fs::create_dir_all(&sess.store_root).map_err(|e| DiagOut {
         code: "store".into(),

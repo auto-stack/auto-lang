@@ -62,4 +62,17 @@ long long p797_stored_cb(void); /* always 0 — persistence is observable */
 int p797_cbuf_sum_utf8(const unsigned char *p, uint64_t len, long long *chars);
 int p797_crec_valid(const RecMix *r, long long *sum);
 
+/* F-797-R4-02 (R8): the record MUT-VIEW and CALLER-OWNED OUT-RECORD
+ * lanes the profile promises — native commit/rollback controls, not
+ * just spellings.
+ *  - crec_mutate: MUT view. On success: count += 1, big ^= seed (flag
+ *    and tag preserved) and *sum = the new weighted sum. A value
+ *    failure (illegal bool/char, null view) returns a typed status and
+ *    leaves EVERY caller byte — record and out slot — untouched.
+ *  - crec_make: caller-owned OUT record. seed in [0,1000] commits
+ *    {flag=1, count=seed, tag=0x41, big=seed*7}; any other seed is a
+ *    typed failure with the caller slot untouched. */
+int p797_crec_mutate(RecMix *r, long long seed, long long *sum);
+int p797_crec_make(int seed, RecMix *out);
+
 #endif /* AUTOABI_INTEROP_RESOURCE_H */

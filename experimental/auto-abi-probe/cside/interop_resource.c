@@ -456,3 +456,43 @@ int p797_crec_valid(const RecMix *r, long long *sum)
          + (long long)r->tag * 5LL + r->big;
     return R797_OK;
 }
+
+/* F-797-R4-02 (R8): record MUT VIEW — the commit/rollback control the
+ * profile promises. Validation happens BEFORE any store to the view:
+ * a value failure returns with every caller byte untouched. Success
+ * mutates in place and commits the weighted sum. */
+int p797_crec_mutate(RecMix *r, long long seed, long long *sum)
+{
+    if (r == 0) {
+        return R797_ERR_BUFNULL;
+    }
+    if (r->flag > 1u) {
+        return R797_ERR_INVALID;
+    }
+    if (r->tag > 0x10FFFFu || (r->tag >= 0xD800u && r->tag <= 0xDFFFu)) {
+        return R797_ERR_INVALID;
+    }
+    r->count += 1;
+    r->big ^= seed;
+    /* the committed sum reflects the MUTATED record */
+    *sum = (long long)r->flag * 1000LL + (long long)r->count * 3LL
+         + (long long)r->tag * 5LL + r->big;
+    return R797_OK;
+}
+
+/* F-797-R4-02 (R8): caller-owned OUT record — committed only on
+ * success; a rejected seed leaves the caller slot byte-identical. */
+int p797_crec_make(int seed, RecMix *out)
+{
+    if (out == 0) {
+        return R797_ERR_BUFNULL;
+    }
+    if (seed < 0 || seed > 1000) {
+        return R797_ERR_INVALID;
+    }
+    out->flag = 1u;
+    out->count = (int32_t)seed;
+    out->tag = 0x41u;
+    out->big = (long long)seed * 7LL;
+    return R797_OK;
+}

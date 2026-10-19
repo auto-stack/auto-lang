@@ -66,7 +66,7 @@ fn decl_form(d: &FnDecl) -> crate::descriptor::SymbolForm {
             // explicit nullable context first (F-797-R4-02 / §2)
             ctx: Some(true),
             params: params[1..3].to_vec(),
-            out: ParamKind::I64,
+            outs: vec![ParamKind::I64],
         },
         crate::decl::BodyKind::RecSumV1 => SymbolForm::Pure {
             // F-797-R4-02 (R5): record views are DESCRIBED as record

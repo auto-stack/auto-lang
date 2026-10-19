@@ -298,9 +298,17 @@ try {
             $lines.Add('V-06/AC-04 cache hit/invalidate/restart: PENDING final-review re-cert')
             $lines.Add('V-07/AC-04 admission bad graphs: PENDING final-review re-cert')
             $lines.Add('V-08/AC-04 512 churn/lease/GC: PENDING final-review re-cert')
-            $lines.Add('V-09/AC-05 hard gates: R4 REDEFINED uniform-cold samplers — worker transport body-edit P95=699.8ms / reject 87.3ms; parent-path end-to-end (run_suite) body-edit 820.7ms / reject 479.1ms (30 samples each, raw JSONL persisted); final-review re-cert pending')
-            $lines.Add('V-10/AC-06 D-796 binding + AutoDown execution: R4 hardened (semantic deck validation incl. same-width/NaN/overflow counterexamples, semantic-ref admission axis, single-deadline parent lifecycle incl. hang/late-stderr/both-envelope counterexamples, per-recipe stale identity); final-review re-cert pending')
-            $lines.Add('V-11/AC-06 freeze proposal + support matrix + SD: R4-reset drafts with claims aligned to implementation and re-bound hashes; canonical deposit is merge-owned')
+            $v09 = 'V-09/AC-05 hard gates: R8 REDEFINED per-request whole-parent-path oracle (each query request CARRIES the edited deck - the product request unit; edits apply parent-side; worker stage sums are attribution only)'
+            $summary = Join-Path $RepoRoot 'crates\auto-lang\target\abi-formal-gates\summary.txt'
+            if (Test-Path $summary) {
+                $v09 = $v09 + ' — latest gate summary: ' + ((Get-Content $summary -Raw).Trim())
+            } else {
+                $v09 = $v09 + ' — run probe_adapter_tests::abi_recipe_formal_turnaround_hard_gates to produce target/abi-formal-gates/summary.txt (numbers are NOT hardcoded here)'
+            }
+            $lines.Add($v09)
+            $lines.Add('V-09 raw samples: per-sample JSONL persisted BEFORE assertions (request walls, stages, cache/compute, Job peak-memory/I-O, worker meter) at crates/auto-lang/target/abi-formal-gates/formal-gates.jsonl')
+            $lines.Add('V-10/AC-06 D-796 binding + AutoDown execution: hardened (semantic deck validation incl. same-width/NaN/overflow counterexamples, semantic-ref admission axis, single-deadline parent lifecycle incl. hang/late-stderr/both-envelope counterexamples, per-recipe stale identity); final-review re-cert pending')
+            $lines.Add('V-11/AC-06 freeze proposal + support matrix + SD: R8-reset drafts with claims aligned to implementation and re-bound hashes; canonical deposit is merge-owned')
             $lines.Add('F-797-R1-03 Cargo.lock in commit: DONE (see acceptance receipt)')
             $lines.Add('NOTE: work-level done != final review pass; canonical Spec deposit / archive / merge gates remain merge-owned.')
             $all = ($lines -join "`n")

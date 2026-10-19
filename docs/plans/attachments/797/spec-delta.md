@@ -1,13 +1,17 @@
 # PLAN-797 规范增量提案（spec-delta）
 
-> 状态：**R5 修复后重置稿**。绑定 R5 修复轮（载荷绑定准入/ctx·UTF-8·值
-> 校验·handle/callback/mut-out 描述面/include fail-closed/C 腿正式
-> 硬门/表示字节 staging 门/root 替换·GC 可观测/受控降级缓存读）。真实 semantic
-> contract 绑定 / 正式 AutoDown 执行 / 性能复测已按实际通路重写）与
-> T-07 材料提交；canonical Spec 输入 hash 为下方当前实测值（R2 曾警示
-> goals.md 漂移，已按当前树重核）。§5 五行意向表是计划契约，本文件是
-> 可审阅的规范正文；**不得**在 review/merge 前把本文发布为 canonical
-> Spec 或改 ledger；本文自身 hash 由 freeze-proposal 与复审记录外置绑定。
+> 状态：**R8 修复后重置稿**。绑定 R8 修复轮（F-R4-02 descriptor
+> 如实化：fallible 出参列表/三出参 ledger/handle 出参/callback ctx
+> 车道/i64 元素视图 + record mut/out 生产面与原生提交/回滚控制；
+> F-R4-07 真实编译器依赖闭包消费与命中重验；F-R4-09 每请求完整父
+> 路径计时与逐样本先落盘（含 Job 对象峰值内存/I/O 归因）；F-R4-10
+> 精确表示字节暂存门 + worker 累计产物预算前后检查 + 并发 GC 全链；
+> F-R4-12 自身告警清零与终稿事实对齐）。真实 semantic contract 绑定 /
+> 正式 AutoDown 执行 / 性能复测已按实际通路重写）与 T-07 材料提交；
+> canonical Spec 输入 hash 为下方当前实测值（R2 曾警示 goals.md 漂移，
+> 已按当前树重核）。§5 五行意向表是计划契约，本文件是可审阅的规范
+> 正文；**不得**在 review/merge 前把本文发布为 canonical Spec 或改
+> ledger；本文自身 hash 由 freeze-proposal 与复审记录外置绑定。
 
 | 项 | 值 |
 |---|---|
@@ -18,7 +22,7 @@
 | implementation_tree | `D:/autostack/.wt/lang-797/auto-lang` @ `plan-797-dev` |
 | freeze_state | **candidate**，不是 “ABI v0.1 已发布” |
 
-## Spec inputs（canonical，worktree 终态实测 SHA256，2026-10-19）
+## Spec inputs（canonical，worktree 终态实测 SHA256，2026-10-20 R8 复核未漂移）
 
 | path | SHA256 | 角色 |
 |---|---|---|
@@ -76,26 +80,41 @@ AC-01–06
 ### after（规则，经实证）
 
 1. **调用约定**：Windows x64；公开 AutoABI 函数 = 规范 C 标识符符号 +
-   显式 context（fallible）+ `i32 status` + 显式 out 指针。
+   显式 context（fallible）+ `i32 status` + 显式 out 指针**列表**。
 2. **纯形态**：`ret(params...)`，标量直传直返；参数/返回 ∈
    `{i32,u32,i64,u64,f64,bool(u8 仅 0/1),char(u32 合法标量)}`。
-3. **可失败形态**：`i32 status f(ctx*, params..., out*)`；status 0=成功；
-   **成功才提交 out**；失败清理本次部分分配，caller 旧输出不变。
+3. **可失败形态**：`i32 status f(ctx*, params..., out*)`；out 是**声明序
+   列表**（`p797_ledger` 三出参、`p797_two_step` 出参携带 provider 拥有
+   的 handle 均为一等形态）；status 0=成功；**成功才提交 out**；失败
+   清理本次部分分配，caller 旧输出不变。
 4. **布局**：声明序 + 自然对齐；checked 算术；nominal 身份（同布局不
    自动互换）；与独立 C `sizeof/_Alignof/offsetof` 对照为 oracle。
 5. **buffer**：`{i64 ptr, u64 len}`；`len=0` 允许 null；文本另标 UTF-8；
+   i64 元素数组视图的长度单位是**元素数**（`buf:i64`，非字节数）；
    越界/溢出/非法 bool/char 受控拒绝。
 6. **handle**：opaque owned handle + 原方 destroy + 可校验身份/代际；
-   double destroy / 错误 provider / 借用逃逸受控拒绝。
-7. **callback**：仅同步 per-call + 显式 ctx；不保存、不跨线程/代际；
-   保存/异步能力 = 明确不支持并拒绝（不是 loader 承诺）。
-8. **descriptor**：`autoabi.descriptor/2`，canonical JSON + blake3
-   接口指纹；含 domain/target/profile/packing/semref/records/symbols/
-   runtime services；未知 format 拒绝。
-9. **资源上限**（probe 运行策略）：build≤60s、run≤5s、total≤70s；
-   stdout/stderr≤1MiB；IPC≤4MiB；单产物≤64MiB/请求合计≤128MiB；
-   受管 cache 热点≤8MiB + 暂存/索引另≤8MiB。超限 = resource 状态，
-   与 ABI 不兼容拒绝分开。
+   double destroy / 错误 provider / 借用逃逸受控拒绝；handle 可经出参
+   槽交付（所有权随 descriptor 声明）。
+7. **callback**：仅同步 per-call + 显式 ctx（callback 自身的 ctx 车道是
+   描述的物理形态的一部分）；不保存、不跨线程/代际；保存/异步能力 =
+   明确不支持并拒绝（不是 loader 承诺）。
+8. **record 视图**：const/mut view 与 caller-owned out record 为一等
+   车道；mut 提交与失败“逐字节不变”、out 只在成功提交，均有独立 C
+   消费者正反原生控制（`p797_crec_mutate`/`p797_crec_make` + 期望翻转
+   负控）。
+9. **descriptor**：`autoabi.descriptor/3`（/2 单出参形态不再解码），
+   canonical JSON + blake3 接口指纹；含 domain/target/profile/packing/
+   semref/records/symbols（每个公开符号的完整物理参数/出参列表/所有权/
+   callback ctx）/runtime services；未知 format 拒绝。C provider 的
+   descriptor 与**独立审定的 header 原型逐项对照**（header 文本机械
+   提取声明集 + 手工物理形态表为 oracle，非自洽性测试）。
+10. **资源上限**（probe 运行策略）：build≤60s、run≤5s、total≤70s；
+   stdout/stderr≤1MiB；IPC≤4MiB；单产物≤64MiB/请求累计产物≤128MiB
+   （生产前预留检查 + 每次生产后累计复查，超限=该请求 resource 终止，
+   不再运行后续生产）；受管 cache 热点≤8MiB + 暂存/索引另≤8MiB
+   （暂存预算按**物化表示的精确字节**计：结构体 + 真实路径串 + 容量
+   余量，超预算在分配前拒绝）。超限 = resource 状态，与 ABI 不兼容
+   拒绝分开。
 
 ### rationale
 
@@ -126,15 +145,23 @@ AC-01–03
    可区分失败（exit 恰 1 或调用前拒绝），且已知不兼容签名不制造 UB。
 4. **cache**：复用 783 ManagedStore，probe 自有层（ABI-L0/ABI-O1…），
    不改 783/787 注册/GC。key 含语义 ref、canonical decl-set（含 body
-   identity）、target/profile、emitter id、C 对象 content hash + cl
-   指纹 + flags。命中**从不**调 producer，**从不**缓存 PASS；每次仍
+   identity）、target/profile、emitter id、C 源名+内容 hash + cl 指纹
+   + flags。命中**从不**调 producer，**从不**缓存 PASS；每次仍
    admission + link + run + 重比较 oracle。
-5. **失效**：body/符号集/链接模式/C 内容/profile/toolchain 任一变化按层
-   失效；tampered block = 受控 CAS 拒绝；缺块 = miss 重算。
+5. **C 依赖闭包**：`#include` 的真实依赖（含注释隐藏、续行拼接、宏
+   include 与系统/MSVC 头）**从编译器自身观测**（`cl -showIncludes`），
+   内容哈希随对象一并存储；命中时**逐一重验**，任一变化/缺失 = 真实
+   miss 重编（文本扫描不作为依赖真相；cl.exe 二进制哈希不等于头文件
+   内容哈希）。tampered block = 受控 CAS 拒；缺块 = miss 重算。
 6. **生命周期**：512 次接口/实现修订后 live 集收敛；rooted+leased 存活；
-   用户 source/exe 哨兵不变；失败/取消释放 lease 且不删交付物。
+   用户 source/exe 哨兵不变；失败/取消释放 lease 且不删交付物；并发
+   worker + 逐查询 GC 的全链有真实 worker 证据。
 7. **性能**：六场景×30；硬门 P95 body-edit <1000ms、descriptor-reject
-   <1000ms；样本 JSONL 全保留（含失败）；工具准备单列。
+   <1000ms。正式口径：**每个 step 都是独立完整发布的父路径请求**
+   （父入口计时：请求构建+IPC+等待+解码+admission；body-edit 样本 =
+   edit+query 请求对），worker 内部阶段仅作归因子 span，不得以其和
+   冒充请求耗时；每样本先落盘（含成功/失败、完整阶段、cache/compute、
+   Job 对象峰值内存与 I/O、worker meter）再断言；工具准备单列。
 8. **正式通路**：D-796/D-788 后经正式 AutoDown/probe adapter 复测；
    当前 Rust 原生测试是临时等价入口，**不能**充作 AC-05 正式复测。
 
@@ -199,9 +226,12 @@ AC-01、06
 探针尚未接入产品消费面，不能提前写成 GOAL 产品能力完成。T-07 终稿若
 796/产品接线改变目标归属，再提案修订元数据。
 
-## 未决（T-06 后必须闭合）
+## 历史未决项状态（已闭合）
 
-- 临时 `autoabi-semref-snapshot/0` 退出收据 → 切换 796 真实 semantic
-  contract 后写入本文件与 freeze proposal。
-- 正式 AutoDown 执行与性能复测数据绑定。
-- 本草稿与最终实现 diff 再对账后才能冻结 hash。
+- ~~临时 `autoabi-semref-snapshot/0` 退出收据~~：已退役并留收据
+  （`attachments/797/semref-retirement-receipt.md`），T-06 起消费
+  `ac-sema-contract` 真实合同。
+- ~~正式 AutoDown 执行与性能复测数据绑定~~：T-06 交付；R8 起性能口径
+  为每请求完整父路径（见 SD-03 §7）。
+- ~~本草稿与最终实现 diff 再对账后才能冻结 hash~~：hash 由
+  freeze-proposal 外置绑定，review/merge 前不发布 canonical。

@@ -1,10 +1,11 @@
 # PLAN-797 有限 profile 支持/拒绝矩阵（support-matrix）
 
-> 状态：**v0.1-candidate（R4 修复后重置）**。绑定
+> 状态：**v0.1-candidate（R8 修复后重置）**。绑定
 > `autoabi.win-x64.v0.1-candidate`。拒绝面是有限 profile 支持表，
-> 不是永久删去战略。R4 指出的支持表缺口已按实现闭合（ctx 首参、
-> UTF-8 校验入口、bool/char 值校验入口、描述符 param 面积）；每一行
-> 均有正反原生 oracle（见 t02/t03/t04 与 §0）。
+> 不是永久删去战略。R8 指出的缺口已按实现闭合（descriptor/3 出参
+> 列表·三出参 ledger·handle 出参·callback ctx·i64 元素视图、record
+> mut/out 原生提交/回滚控制、真实编译器依赖闭包、每请求完整父路径
+> 计时）；每一行均有正反原生 oracle（见 t02/t03/t04/t05 与 §0）。
 
 ## 0. 正式通路面（T-06 新增）
 
@@ -15,7 +16,7 @@
 | worker 协议 | `abiworker/1`（信封同 acworker/semaworker：nonce/request_hash 回显、deny_unknown_fields、4MiB 界、Job containment、退出状态/版本镜像、exe-sha256 入 stale 轴） |
 | 可执行语料 | `crates/auto-lang/test/cases/autoabi/`：leg-a（publish→hit→跨进程 restart hit→body-edit republish）、leg-b、leg-c、bad-sig（类型化 deck 诊断负例） |
 | 语义身份 | `ac-sema-contract`（D-796 合同）只读消费；临时快照已退役（收据在案） |
-| 正式复测（R5：C 腿单 case 共享 store） | 父路径完整链 body-edit P50/P95/P99=436.0/534.0/569.0ms、reject P50/P95=433.2/468.0ms；compute=31 callee 重编+1 C 编译有断言（消费者复用成立）；原始 JSONL 逐样本保留 |
+| 正式复测（R8：C 腿单 case 共享 store，每 step 独立完整父路径请求） | body-edit P50/P95/P99=419.0/663.0/755.0ms、reject P50/P95=77.0/101.0ms（verify closeout 收据时序）；compute=31 callee 重编+1 C 编译逐样本断言（消费者复用成立）；原始 JSONL 逐样本先落盘（含阶段/Job 峰值内存/I-O/meter） |
 
 ## 1. 类型与物理形态
 
@@ -29,9 +30,12 @@
 | char | 支持 | u32 合法 Unicode 标量 | surrogate / >U+10FFFF → -8（t04 反例 0xD800/0x110000→拒） |
 | 借用 byte buffer | 支持 | `{i64 ptr, u64 len}` | len=0 允许 null |
 | 借用 UTF-8 text buffer | 支持 | 同上 + UTF-8 标记 | 非法 UTF-8（overlong/surrogate/>U+10FFFF/断尾）→ -7，out 不写（`p797_cbuf_sum_utf8` + t04 双向控制） |
-| record const view | 支持 | 显式 pointer | 声明序无环 |
-| record mut view | 支持 | 显式 pointer | 排他规则见合同 |
-| caller-owned out record | 支持 | 显式 out pointer | 成功才提交 |
+| record const view | 支持 | 显式 pointer | 声明序无环（`p797_crec_valid`） |
+| record mut view | 支持 | 显式 pointer | 提交/失败逐字节不变有独立 C 消费者正反控制（`p797_crec_mutate` + t04 期望翻转负控） |
+| caller-owned out record | 支持 | 显式 out pointer | 成功才提交，失败槽逐字节不变（`p797_crec_make` + t04） |
+| 借用 i64 元素数组 | 支持 | `{const i64*, u64 元素数}` | 元素数非字节数（`p797_fold` items 车道） |
+| fallible 多出参 | 支持 | 出参列表（声明序） | `p797_ledger` 三出参；status-only=空列表 |
+| 出参携带 owned handle | 支持 | out 槽 → handle | `p797_two_step` 出参 handle 由原方 `p797_h_destroy` 销毁 |
 | opaque owned handle | 支持 | 代际身份 + 原方 destroy | |
 | 同步 per-call callback | 支持 | 函数指针 + 显式 ctx | 不保存 |
 | 按值聚合传参/返回 | **拒绝** | — | 走 pointer/out 协议 |
@@ -69,7 +73,8 @@
 | 缺 runtime 服务能力 | 拒绝 |
 | 递归 record | 拒绝 |
 | 嵌套超深（>4096） | 拒绝 |
-| 超尺寸 record（>64MiB 预算） | resource 拒绝（与 ABI 不兼容分列） |
+| 超尺寸 record（>64MiB 物理预算） | resource 拒绝（与 ABI 不兼容分列） |
+| 物化表示超暂存预算（>8MiB：结构体+真实路径串） | resource 拒绝，分配前（原 R5 长字段名反例为永久测试） |
 | 好 frame 错地址 / 坏图 | 受控错误 / 重算，不 panic |
 
 ## 4. 三腿与负控（oracle 必须可区分）
@@ -95,6 +100,7 @@ uninjected-against-failure-expectations → 必须 exit 恰 1 或调用前拒绝
 ## 6. 状态声明
 
 - 当前：**candidate**，历史证据来自 `experimental/auto-abi-probe` 测试
-  与 `contract-decision.md`；正式 AutoDown 复测归 T-06。
+  与 `contract-decision.md`；正式 AutoDown 复测已由 T-06 交付、R8 起为
+  每请求完整父路径口径（见 §0）。
 - 冻结：仅在 T-08 独立 review 通过 + T-09 merge 门禁后，登记
   “本 target 有限 profile 冻结”。不宣布所有平台/未来类型 ABI 稳定。

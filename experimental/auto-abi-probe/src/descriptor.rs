@@ -18,7 +18,11 @@ use crate::layout::{RecordDefOwned, SemScalar};
 use crate::semref;
 use serde::{Deserialize, Serialize};
 
-pub const DESCRIPTOR_FORMAT: &str = "autoabi.descriptor/2";
+/// F-797-R4-02 (R8): /3 — fallible entries carry an OUT SLOT LIST
+/// (`outs`, status-only = empty), callbacks spell their explicit ctx
+/// lane, and borrowed i64-element views are their own kind. /2
+/// single-out descriptors no longer decode: the canonical form changed.
+pub const DESCRIPTOR_FORMAT: &str = "autoabi.descriptor/3";
 pub const ABI_DOMAIN: &str = "autoabi";
 pub const ABI_VERSION: &str = "0.1";
 /// v0.1 supports exactly one packing rule; anything else is rejected.
@@ -38,10 +42,15 @@ pub enum ParamKind {
     CtxPtr {
         nullable: bool,
     },
-    /// Borrowed byte buffer view `{ptr, len}`.
+    /// Borrowed byte buffer view `{ptr, len}` — len is a BYTE count.
     BufViewBytes,
     /// Borrowed UTF-8 text view — providers VALIDATE the encoding.
     BufViewUtf8,
+    /// F-797-R4-02 (R8): borrowed view of an i64 ELEMENT array
+    /// `{const i64*, u64 n}` — n is an ELEMENT count, not bytes (the
+    /// `p797_fold` items lane; describing it as `buf:bytes` would
+    /// misstate the unit and make consumers pass byte counts).
+    BufViewI64,
     /// Borrowed view of a named record (layout via the record table)
     /// with its VIEW ROLE — const (read-only), mut (exclusive writer),
     /// out (caller-owned slot committed on success). F-797-R4-02 (R5).
@@ -54,16 +63,19 @@ pub enum ParamKind {
     Handle {
         provider: String,
     },
-    /// Synchronous per-call callback: explicit ctx pointer + declared
-    /// item/return kinds; never stored across calls.
+    /// Synchronous per-call callback: the PHYSICAL function-pointer type
+    /// — an explicit ctx lane (declared because the callback receives
+    /// it; None = ctx-less callback), the item kind, and the return
+    /// kind. Never stored across calls. F-797-R4-02 (R8): the ctx lane
+    /// is part of the described physical form (`long long (*)(long
+    /// long ctx, long long item)`), not an implicit convention.
     CallbackFn {
+        ctx: Option<Box<ParamKind>>,
         item: Box<ParamKind>,
         ret: Box<ParamKind>,
     },
     /// Caller-owned byte buffer OUT slot (written only on success).
     BufOut,
-    /// Unit out slot (status-only fallible entries).
-    Unit,
 }
 
 /// View/ownership role of a record parameter (F-797-R4-02 R5).
@@ -105,6 +117,7 @@ impl ParamKind {
             }
             ParamKind::BufViewBytes => "buf:bytes".into(),
             ParamKind::BufViewUtf8 => "buf:utf8".into(),
+            ParamKind::BufViewI64 => "buf:i64".into(),
             ParamKind::RecView { rec, view } => format!(
                 "rec:{rec}:{}",
                 match view {
@@ -114,11 +127,16 @@ impl ParamKind {
                 }
             ),
             ParamKind::Handle { provider } => format!("handle:{provider}"),
-            ParamKind::CallbackFn { item, ret } => {
-                format!("callback({})->{}", item.spell(), ret.spell())
-            }
+            ParamKind::CallbackFn { ctx, item, ret } => match ctx {
+                Some(c) => format!(
+                    "callback(ctx:{},{})->{}",
+                    c.spell(),
+                    item.spell(),
+                    ret.spell()
+                ),
+                None => format!("callback({})->{}", item.spell(), ret.spell()),
+            },
             ParamKind::BufOut => "buf:out".into(),
-            ParamKind::Unit => "unit".into(),
         }
     }
 }
@@ -147,14 +165,17 @@ pub enum SymbolForm {
         params: Vec<ParamKind>,
         ret: RetKind,
     },
-    /// `i32 status f(params..., out*)` — success commits out, failure
-    /// leaves caller output untouched.
+    /// `i32 status f(params..., out*)` — success commits the OUT SLOT
+    /// LIST, failure leaves every caller output untouched.
+    /// F-797-R4-02 (R8): `outs` is the full list of out slots in
+    /// declaration order (`p797_ledger` has THREE i64 outs); status-only
+    /// entries carry an EMPTY list.
     Fallible {
         /// F-797-R4-02: the EXPLICIT CONTEXT first parameter is part of
         /// the form (contract §2); `None` spells a context-free entry.
         ctx: Option<bool>, // Some(nullable)
         params: Vec<ParamKind>,
-        out: ParamKind,
+        outs: Vec<ParamKind>,
     },
 }
 
@@ -172,23 +193,35 @@ impl SymbolForm {
                     .join(","),
                 ret.spell()
             ),
-            SymbolForm::Fallible { ctx, params, out } => {
+            SymbolForm::Fallible { ctx, params, outs } => {
                 let ctx_s = match ctx {
                     Some(nullable) => {
                         format!("ctx:{},", if *nullable { "nullable" } else { "required" })
                     }
                     None => String::new(),
                 };
-                format!(
-                    "fallible({}{})->status,out {}",
-                    ctx_s,
-                    params
-                        .iter()
-                        .map(|p| p.spell())
-                        .collect::<Vec<_>>()
-                        .join(","),
-                    out.spell()
-                )
+                if outs.is_empty() {
+                    format!(
+                        "fallible({}{})->status",
+                        ctx_s,
+                        params
+                            .iter()
+                            .map(|p| p.spell())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    )
+                } else {
+                    format!(
+                        "fallible({}{})->status,out {}",
+                        ctx_s,
+                        params
+                            .iter()
+                            .map(|p| p.spell())
+                            .collect::<Vec<_>>()
+                            .join(","),
+                        outs.iter().map(|p| p.spell()).collect::<Vec<_>>().join(",")
+                    )
+                }
             }
         }
     }
@@ -332,13 +365,27 @@ impl ModuleDescriptor {
 }
 
 /// F-797-R4-02: a CONSUMABLE descriptor for the C interop provider's
-/// promised-surface entries (the validation lanes the support matrix
-/// claims) — the same descriptor/2 language as AutoABI modules, so
-/// consumers admit C providers by the same contract.
+/// public surface — the same descriptor/3 language as AutoABI modules,
+/// so consumers admit C providers by the same contract.
+///
+/// F-797-R4-02 (R8): every entry mirrors the hand-audited
+/// `cside/interop_resource.h` prototype PHYSICALLY, item by item —
+/// multi-out aggregates (`p797_ledger` has THREE out slots), out slots
+/// that carry an OWNED provider handle (`p797_two_step`, destroyed via
+/// `p797_h_destroy`), callback ctx lanes, element-count buffer views,
+/// and the record mut-view / caller-owned out-record entries. The
+/// permanent oracle for this function is
+/// `abi_contract_c_provider_descriptor_matches_independent_header`,
+/// which derives its expectations from the HEADER TEXT — never from
+/// this builder.
 pub fn interop_c_provider_descriptor() -> ModuleDescriptor {
     let mut d = ModuleDescriptor::probe_module();
     let prov = "interop-resource";
+    let handle = || ParamKind::Handle {
+        provider: prov.into(),
+    };
     d.symbols = vec![
+        // long long p797_h_create(int size) — owned handle BY VALUE
         SymbolEntry {
             name: "p797_h_create".into(),
             form: SymbolForm::Pure {
@@ -348,59 +395,55 @@ pub fn interop_c_provider_descriptor() -> ModuleDescriptor {
                 },
             },
         },
-        SymbolEntry {
-            name: "p797_h_destroy".into(),
-            form: SymbolForm::Fallible {
-                ctx: None,
-                params: vec![ParamKind::Handle {
-                    provider: prov.into(),
-                }],
-                out: ParamKind::Unit,
-            },
-        },
+        // int p797_h_set(long long h, int idx, long long v) — status-only
         SymbolEntry {
             name: "p797_h_set".into(),
             form: SymbolForm::Fallible {
                 ctx: None,
-                params: vec![
-                    ParamKind::Handle {
-                        provider: prov.into(),
-                    },
-                    ParamKind::I32,
-                    ParamKind::I64,
-                ],
-                out: ParamKind::Unit,
+                params: vec![handle(), ParamKind::I32, ParamKind::I64],
+                outs: vec![],
             },
         },
+        // int p797_h_get(long long h, int idx, long long *out)
         SymbolEntry {
             name: "p797_h_get".into(),
             form: SymbolForm::Fallible {
                 ctx: None,
-                params: vec![
-                    ParamKind::Handle {
-                        provider: prov.into(),
-                    },
-                    ParamKind::I32,
-                ],
-                out: ParamKind::I64,
+                params: vec![handle(), ParamKind::I32],
+                outs: vec![ParamKind::I64],
             },
         },
+        // int p797_h_destroy(long long h) — status-only
+        SymbolEntry {
+            name: "p797_h_destroy".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![handle()],
+                outs: vec![],
+            },
+        },
+        // int p797_ledger(long long *live, long long *allocs,
+        //                 long long *frees) — THREE out slots
         SymbolEntry {
             name: "p797_ledger".into(),
             form: SymbolForm::Fallible {
                 ctx: None,
                 params: vec![],
-                out: ParamKind::I64, // 3-out aggregate: spelled in doc
+                outs: vec![ParamKind::I64, ParamKind::I64, ParamKind::I64],
             },
         },
+        // int p797_buf_sum(const unsigned char *p, uint64_t len,
+        //                  long long *out)
         SymbolEntry {
             name: "p797_buf_sum".into(),
             form: SymbolForm::Fallible {
                 ctx: None,
                 params: vec![ParamKind::BufViewBytes, ParamKind::U64],
-                out: ParamKind::I64,
+                outs: vec![ParamKind::I64],
             },
         },
+        // int p797_buf_copy(unsigned char *dst, uint64_t cap,
+        //                   const unsigned char *src, uint64_t len)
         SymbolEntry {
             name: "p797_buf_copy".into(),
             form: SymbolForm::Fallible {
@@ -411,17 +454,66 @@ pub fn interop_c_provider_descriptor() -> ModuleDescriptor {
                     ParamKind::BufViewBytes,
                     ParamKind::U64,
                 ],
-                out: ParamKind::Unit,
+                outs: vec![],
             },
         },
+        // void p797_fail_nth_alloc(int n) — provider test control
+        SymbolEntry {
+            name: "p797_fail_nth_alloc".into(),
+            form: SymbolForm::Pure {
+                params: vec![ParamKind::I32],
+                ret: RetKind::Unit,
+            },
+        },
+        // int p797_two_step(int x, long long *out) — the OUT SLOT
+        // carries an OWNED provider handle (destroy via p797_h_destroy)
+        SymbolEntry {
+            name: "p797_two_step".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![ParamKind::I32],
+                outs: vec![handle()],
+            },
+        },
+        // long long p797_fold(long long (*cb)(long long ctx,
+        //   long long item), long long ctx, const long long *items,
+        //   uint64_t n) — the callback's ctx lane is physical; n is an
+        // ELEMENT count
+        SymbolEntry {
+            name: "p797_fold".into(),
+            form: SymbolForm::Pure {
+                params: vec![
+                    ParamKind::CallbackFn {
+                        ctx: Some(Box::new(ParamKind::I64)),
+                        item: Box::new(ParamKind::I64),
+                        ret: Box::new(ParamKind::I64),
+                    },
+                    ParamKind::I64,
+                    ParamKind::BufViewI64,
+                    ParamKind::U64,
+                ],
+                ret: RetKind::I64,
+            },
+        },
+        // long long p797_stored_cb(void) — persistence observable
+        SymbolEntry {
+            name: "p797_stored_cb".into(),
+            form: SymbolForm::Pure {
+                params: vec![],
+                ret: RetKind::I64,
+            },
+        },
+        // int p797_cbuf_sum_utf8(const unsigned char *p, uint64_t len,
+        //                        long long *chars)
         SymbolEntry {
             name: "p797_cbuf_sum_utf8".into(),
             form: SymbolForm::Fallible {
                 ctx: None,
                 params: vec![ParamKind::BufViewUtf8, ParamKind::U64],
-                out: ParamKind::I64,
+                outs: vec![ParamKind::I64],
             },
         },
+        // int p797_crec_valid(const RecMix *r, long long *sum)
         SymbolEntry {
             name: "p797_crec_valid".into(),
             form: SymbolForm::Fallible {
@@ -430,30 +522,37 @@ pub fn interop_c_provider_descriptor() -> ModuleDescriptor {
                     rec: "RecMix".into(),
                     view: ViewRole::Const,
                 }],
-                out: ParamKind::I64,
+                outs: vec![ParamKind::I64],
             },
         },
+        // int p797_crec_mutate(RecMix *r, long long seed,
+        //                      long long *sum) — MUT view: commits only
+        // on success; a value failure leaves every caller byte untouched
         SymbolEntry {
-            name: "p797_two_step".into(),
+            name: "p797_crec_mutate".into(),
+            form: SymbolForm::Fallible {
+                ctx: None,
+                params: vec![
+                    ParamKind::RecView {
+                        rec: "RecMix".into(),
+                        view: ViewRole::Mut,
+                    },
+                    ParamKind::I64,
+                ],
+                outs: vec![ParamKind::I64],
+            },
+        },
+        // int p797_crec_make(int seed, RecMix *out) — CALLER-OWNED out
+        // record slot: committed only on success, untouched on failure
+        SymbolEntry {
+            name: "p797_crec_make".into(),
             form: SymbolForm::Fallible {
                 ctx: None,
                 params: vec![ParamKind::I32],
-                out: ParamKind::I64, // handle value in an out slot
-            },
-        },
-        SymbolEntry {
-            name: "p797_fold".into(),
-            form: SymbolForm::Pure {
-                params: vec![
-                    ParamKind::CallbackFn {
-                        item: Box::new(ParamKind::I64),
-                        ret: Box::new(ParamKind::I64),
-                    },
-                    ParamKind::I64,
-                    ParamKind::BufViewBytes,
-                    ParamKind::U64,
-                ],
-                ret: RetKind::I64,
+                outs: vec![ParamKind::RecView {
+                    rec: "RecMix".into(),
+                    view: ViewRole::Out,
+                }],
             },
         },
     ];

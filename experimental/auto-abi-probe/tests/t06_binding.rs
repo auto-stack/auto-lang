@@ -172,6 +172,17 @@ fn worker_session(
     store_root: &std::path::Path,
     steps: &[(&str, &str, &str)],
 ) -> (f64, serde_json::Value) {
+    worker_session_env(deck, leg, store_root, steps, &[])
+}
+
+/// `worker_session` with EXTRA child environment (TEST seams only).
+fn worker_session_env(
+    deck: &str,
+    leg: &str,
+    store_root: &std::path::Path,
+    steps: &[(&str, &str, &str)],
+    envs: &[(&str, &str)],
+) -> (f64, serde_json::Value) {
     let worker = env!("CARGO_BIN_EXE_abi-worker");
     let steps_json: Vec<serde_json::Value> = steps
         .iter()
@@ -197,13 +208,15 @@ fn worker_session(
         serde_json::json!({"op": "request", "request": request})
     );
     let t0 = Instant::now();
-    let mut child = Command::new(worker)
-        .arg("serve")
+    let mut cmd = Command::new(worker);
+    cmd.arg("serve")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .spawn()
-        .expect("spawn abi-worker");
+        .stderr(Stdio::null());
+    for (k, v) in envs {
+        cmd.env(k, v);
+    }
+    let mut child = cmd.spawn().expect("spawn abi-worker");
     child
         .stdin
         .take()
@@ -319,4 +332,48 @@ fn abi_turnaround_formal_reject_hard_gate() {
         p95v < 1000.0,
         "HARD GATE reject (formal IPC) P95={p95v:.1}ms >= 1000ms"
     );
+}
+
+/// F-797-R4-10 (R8): REAL worker full-chain evidence for the budget GC
+/// under CONCURRENCY — two workers over the SAME store, each forced to
+/// run the hot-set GC after every successful query (TEST seam), each
+/// producing DISTINCT cold bodies (both keep publishing while the other
+/// GCs). Every step must come back ok with a real PE pass; the
+/// managed-store-only 512-churn helper cannot show cross-worker/GC
+/// interleaving, this can.
+#[test]
+fn abi_worker_concurrent_gc_same_store() {
+    let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let store = std::env::temp_dir().join(format!("abi-t06-concgc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    std::fs::create_dir_all(&store).unwrap();
+    fn lane(store: &std::path::Path, tag: u64) {
+        for i in 0..4u32 {
+            let deck = GOOD_DECK.replace(
+                "[body: mix-v1]",
+                &format!("[body: mix-alt{}]", tag + i as u64),
+            );
+            let (_, resp) = worker_session_env(
+                &deck,
+                "c",
+                store,
+                &[("query", "", "")],
+                &[("ABI_TEST_GC_EVERY_STEP", "1")],
+            );
+            let q = resp["ok"]["steps"]
+                .as_array()
+                .expect("steps")
+                .iter()
+                .find(|s| s["op"] == "query")
+                .expect("query step")
+                .clone();
+            assert_eq!(q["outcome"], "ok", "lane {tag} sample {i}: {q}");
+            assert_eq!(q["pe_exit"], 0, "lane {tag} sample {i}: {q}");
+            assert_eq!(q["cache"], "published", "cold body per sample: {q}");
+        }
+    }
+    let store_b = store.clone();
+    let lane_b = std::thread::spawn(move || lane(&store_b, 1000));
+    lane(&store, 2000);
+    lane_b.join().expect("concurrent lane joins");
 }

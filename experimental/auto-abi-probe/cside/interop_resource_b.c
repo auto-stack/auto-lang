@@ -21,5 +21,7 @@
 #define p797_stored_cb     b_stored_cb
 #define p797_cbuf_sum_utf8 b_cbuf_sum_utf8
 #define p797_crec_valid    b_crec_valid
+#define p797_crec_mutate   b_crec_mutate
+#define p797_crec_make     b_crec_make
 
 #include "interop_resource.c"

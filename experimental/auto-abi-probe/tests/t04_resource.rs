@@ -309,6 +309,56 @@ fn abi_resource_edges_independent_c_control() {
     );
 }
 
+/// F-797-R4-02 (R8): the record MUT-VIEW and CALLER-OWNED OUT-RECORD
+/// lanes the profile promises — an independent C consumer (own oracle,
+/// byte-level untouched checks on failure) drives both commit and
+/// rollback; the flipped-expectation control exits NONZERO, proving the
+/// checks are wired to real behavior.
+#[test]
+fn abi_resource_record_mutout_c_control() {
+    let dir = run::scratch("abi_rec_mutout");
+    let cside = manifest().join("cside");
+    let provider_obj = dir.join("provider.obj");
+    ctool::compile_c(&cside.join("interop_resource.c"), &cside, &provider_obj)
+        .expect("cl compiles provider");
+
+    let consumer_obj = dir.join("mutout.obj");
+    ctool::compile_c(
+        &cside.join("interop_record_mutout.c"),
+        &cside,
+        &consumer_obj,
+    )
+    .expect("cl compiles the mut/out consumer");
+    let exe = link_pe(
+        &dir,
+        &[consumer_obj, provider_obj.clone()],
+        "p797_rec_mo_entry",
+    )
+    .expect("link mut/out PE");
+    let pe = run::run_pe(&exe).expect("run mut/out PE");
+    assert_eq!(
+        pe.code, 0,
+        "mut-view commit + failure-untouched + out-record commit/untouched must all hold; out={:?} err={:?}",
+        pe.stdout, pe.stderr
+    );
+
+    // flipped expectation on a VALID record -> the control must FAIL
+    let neg_obj = dir.join("mutout_neg.obj");
+    ctool::compile_c(
+        &cside.join("interop_record_mutout_negctl.c"),
+        &cside,
+        &neg_obj,
+    )
+    .expect("cl compiles the negative control");
+    let neg_exe = link_pe(&dir, &[neg_obj, provider_obj], "p797_rec_mo_neg_entry")
+        .expect("link negative control PE");
+    let neg = run::run_pe(&neg_exe).expect("run negative control PE");
+    assert_ne!(
+        neg.code, 0,
+        "flipped expectations against valid inputs must fail (wired oracle)"
+    );
+}
+
 /// F-797-R4-02 promised-surface native controls from an AUTOABI caller:
 /// UTF-8 view validation (valid multibyte counts; invalid sequence is a
 /// typed -7 with the out slot untouched) and record-view value

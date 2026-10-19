@@ -968,7 +968,7 @@ fn run_abi_deck_case(
     completion: &str,
     leg: &str,
     extra_steps: &str,
-) -> (f64, auto_test_case::report::RunReport) {
+) -> auto_test_case::report::RunReport {
     let root = temp_root(tag);
     let tail = format!(
         "adapter: \"probe\", action: \"run\", \
@@ -987,10 +987,7 @@ steps: [ {extra_steps}{{ op: \"query\" }} ] }}"
     std::fs::write(root.join("c.suite.ad"), doc.clone()).unwrap();
     std::fs::write(root.join("c.case.ad"), doc).unwrap();
     let out = out_of(&root, "out");
-    let t0 = std::time::Instant::now();
-    let report = run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults())
-        .expect("abi perf suite runs");
-    (t0.elapsed().as_secs_f64() * 1000.0, report)
+    run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults()).expect("abi perf suite runs")
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1000,13 +997,13 @@ fn run_abi_deck_case_expect(
     completion: &str,
     leg: &str,
     steps: &str,
-    n_expects: usize,
-) -> (f64, auto_test_case::report::RunReport) {
+    expect_bodies: &[&str],
+) -> auto_test_case::report::RunReport {
     let root = temp_root(tag);
     let tail = format!(
         "adapter: \"probe\", action: \"run\", options: {{ recipe: \"abi/interop-v1\", abi: {{ leg: \"{leg}\" }}, steps: [ {steps}{{ op: \"query\" }} ] }}"
     );
-    let expects: Vec<&str> = (0..n_expects).map(|_| "{ }").collect();
+    let expects = expect_bodies.join(", ");
     let doc = format!(
         "# abi perf suite
 ```test-suite
@@ -1027,15 +1024,12 @@ case {{ schema: \"autolang.case/2\", id: \"aperf.case\",
             .replace('\n', "\\n"),
         tail = tail,
         completion = completion,
-        expects = expects.join(", "),
+        expects = expects,
     );
     std::fs::write(root.join("c.suite.ad"), doc.clone()).unwrap();
     std::fs::write(root.join("c.case.ad"), doc).unwrap();
     let out = out_of(&root, "out");
-    let t0 = std::time::Instant::now();
-    let report = run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults())
-        .expect("abi perf suite runs");
-    (t0.elapsed().as_secs_f64() * 1000.0, report)
+    run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults()).expect("abi perf suite runs")
 }
 
 fn p95_of(xs: &mut Vec<f64>) -> f64 {
@@ -1053,25 +1047,38 @@ fn p99_of(xs: &mut Vec<f64>) -> f64 {
     xs[((xs.len() as f64 - 1.0) * 0.99).round() as usize]
 }
 
-/// §5.5 hard gates on the SPECIFIED scenario (F-797-R4-09 R5): the
+/// §5.5 hard gates on the SPECIFIED scenario (F-797-R4-09 R8): the
 /// formal AutoDown path, the **C-consumer leg**, ONE case whose steps
 /// alternate a REAL body edit (`mix-alt<seed>`, distinct canonical body
 /// per sample = cold producer work) with a query, inside a SINGLE
-/// session/store — the C consumer object is compiled once and REUSED
-/// (the case's step expectations assert the cache/compute transitions).
-/// Per-request walls come from the parent-side stage spans; every raw
-/// sample is appended to the JSONL BEFORE the next sample starts, so a
-/// failure keeps prior evidence.
+/// case/store — the C consumer object is compiled once and REUSED (the
+/// per-step expectations pin compute 2 then 1). Edits are applied
+/// parent-side; each query request CARRIES the edited deck — one request
+/// = the product's "edited source → correct PE result" unit, fully
+/// published through the parent entry (build + IPC + wait + decode +
+/// admission) and timed as `parent-request:query`. Worker stage sums are
+/// attribution only, never the gate. Each raw sample (request wall,
+/// worker sub-spans, cache/compute, Job-object peak memory and I/O,
+/// worker meter) is APPENDED to the JSONL before any assertion.
 #[test]
 fn abi_recipe_formal_turnaround_hard_gates() {
     let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let raw_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/abi-formal-gates");
     let _ = std::fs::remove_dir_all(&raw_dir);
     std::fs::create_dir_all(&raw_dir).unwrap();
-    let mut jsonl = String::new();
+    let mut append_jsonl = |line: &str| {
+        use std::io::Write as _;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(raw_dir.join("formal-gates.jsonl"))
+            .expect("jsonl append");
+        writeln!(f, "{line}").unwrap();
+    };
 
     // --- gate 1: C-leg, shared store, uniform-cold bodies -------------
-    // steps: query(mix-v1 baseline) then 30x [edit->mix-alt<i>, query]
+    // steps: 30x [edit->mix-alt<i>, query] then one final edit + query
+    // (the helper appends the 31st query) = 31 samples.
     let mut steps = String::new();
     for i in 0..30u32 {
         let from = if i == 0 {
@@ -1084,85 +1091,182 @@ fn abi_recipe_formal_turnaround_hard_gates() {
         ));
         steps.push_str("{ op: \"query\" }, ");
     }
-    // the helper appends ONE more query — give it its own distinct body
-    // so it is a COLD sample too (no hot tail in the gate)
     steps.push_str(&format!(
         "{{ op: \"edit-source\", from: \"[body: mix-alt29]\", to: \"[body: mix-alt30]\" }}, "
     ));
-    // 31 query steps need 31 expect slots (step-count oracle)
-    let _ = &steps;
-    let (_ms, report) =
-        run_abi_deck_case_expect("abiperf-be", ABI_DECK_TEXT, "\"success\"", "c", &steps, 31);
-    assert_eq!(status_of(&report, "c"), Status::Pass, "body-edit gate case");
+    // per-step oracle: sample 0 = cold callee emit + the ONE C consumer
+    // compile; samples 1..30 = cold callee emit ONLY (the C consumer is
+    // reused through the shared store).
+    let expect_bodies: Vec<&str> = (0..31)
+        .map(|i| {
+            if i == 0 {
+                "{ cache: \"published\", compute_calls: 2 }"
+            } else {
+                "{ cache: \"published\", compute_calls: 1 }"
+            }
+        })
+        .collect();
+    let report = run_abi_deck_case_expect(
+        "abiperf-be",
+        ABI_DECK_TEXT,
+        "\"success\"",
+        "c",
+        &steps,
+        &expect_bodies,
+    );
+
+    // ---- extract + persist EVERY raw sample BEFORE asserting --------
     let check = report.results.iter().find(|r| r.check_id == "c").unwrap();
+    let check_ok = check.status == Status::Pass;
     let native = check.native.as_ref().expect("native record");
-    // per-request wall = sum of one query's stages (parse..link-run)
-    let mut query_walls: Vec<f64> = Vec::new();
-    let mut cur: f64 = 0.0;
-    for (name, wall) in &native.stage_spans {
-        cur += *wall as f64;
-        if name == "link-run" {
-            query_walls.push(cur);
-            cur = 0.0;
+    let counter = |k: &str| -> u64 {
+        native
+            .counters
+            .iter()
+            .find(|(n, _)| n == k)
+            .map(|(_, v)| *v as u64)
+            .unwrap_or(0)
+    };
+    // walk the span stream: each `parent-request:query` opens a sample;
+    // the spans up to the next parent marker are that query's worker
+    // sub-spans (attribution only, never the gate).
+    struct Sample {
+        request_ms: f64,
+        stages: Vec<(String, u64)>,
+    }
+    let mut samples: Vec<Sample> = Vec::new();
+    let mut cur: Option<Sample> = None;
+    for (name, ms) in &native.stage_spans {
+        if let Some(step) = name.strip_prefix("parent-request:") {
+            if let Some(s) = cur.take() {
+                samples.push(s);
+            }
+            if step == "query" {
+                cur = Some(Sample {
+                    request_ms: *ms as f64,
+                    stages: Vec::new(),
+                });
+            }
+            continue;
+        }
+        if name == "parent-publish" {
+            continue;
+        }
+        if let Some(s) = cur.as_mut() {
+            s.stages.push((name.clone(), *ms));
         }
     }
-    assert_eq!(query_walls.len(), 31, "31 queries in the single case");
-    let counters = &native.counters;
-    let compute: u32 = counters
-        .iter()
-        .find(|(k, _)| k == "compute_calls")
-        .map(|(_, v)| *v)
-        .unwrap_or(0);
-    // 31 queries: each emits a distinct-seed callee (31) + one C
-    // consumer compile on the first query — the C consumer is REUSED
-    // for samples 1..30 (single shared store inside the case).
-    assert_eq!(
-        compute, 32,
-        "compute = 31 callee emits + 1 C compile: {counters:?}"
-    );
-    let mut body_times = query_walls;
-    for (i, w) in body_times.iter().enumerate() {
-        jsonl.push_str(&format!(
-            "{{\"scenario\":\"body-edit\",\"sample\":{i},\"ok\":true,\"request_ms\":{w:.1}}}\n"
+    if let Some(s) = cur.take() {
+        samples.push(s);
+    }
+    for (i, s) in samples.iter().enumerate() {
+        let stages = s
+            .stages
+            .iter()
+            .map(|(n, v)| format!("\"{n}\":{v}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        let cache = native
+            .cache_hits
+            .get(i)
+            .map(|(_, c)| c.as_str())
+            .unwrap_or("-");
+        append_jsonl(&format!(
+            "{{\"scenario\":\"body-edit\",\"sample\":{i},\"ok\":{check_ok},\
+\"request_ms\":{:.1},\
+\"stages\":{{{stages}}},\
+\"cache\":\"{cache}\",\"compute_calls\":{},\
+\"peak_mem_bytes\":{},\"io_read_bytes\":{},\"io_write_bytes\":{},\
+\"hot_bytes\":{},\"scratch_disk_bytes\":{}}}",
+            s.request_ms,
+            counter(&format!("req_q{i}_compute")),
+            counter(&format!("req_q{i}_peak_mem_bytes")),
+            counter(&format!("req_q{i}_io_read_bytes")),
+            counter(&format!("req_q{i}_io_write_bytes")),
+            counter(&format!("req_q{i}_hot_bytes")),
+            counter(&format!("req_q{i}_scratch_disk_bytes")),
         ));
     }
-    std::fs::write(raw_dir.join("formal-gates.jsonl"), &jsonl).unwrap();
+
+    // ---- assertions (evidence is already on disk) --------------------
+    assert_eq!(
+        status_of(&report, "c"),
+        Status::Pass,
+        "body-edit gate case; native counters {:?}",
+        native.counters
+    );
+    assert_eq!(samples.len(), 31, "31 query samples in the single case");
+    let compute: u64 = counter("compute_calls");
+    assert_eq!(
+        compute, 32,
+        "compute = 31 callee emits + 1 C compile: {:?}",
+        native.counters
+    );
+    let mut body_times: Vec<f64> = samples.iter().map(|s| s.request_ms).collect();
+    for (i, w) in body_times.iter().enumerate() {
+        assert!(*w > 0.0, "sample {i} has a real parent-path wall");
+    }
     let be_p95 = p95_of(&mut body_times);
 
     // --- gate 2: descriptor-edit reject through the SAME parent path ---
     let bad = ABI_DECK_TEXT.replace("e:i64", "e:u32");
     let mut reject_times = Vec::new();
     for i in 0..30u32 {
-        let (ms, report) = run_abi_deck_case(
+        let report = run_abi_deck_case(
             &format!("abiperf-rj-{i}"),
             &bad,
             "{ stage: \"parse\", code: \"deck\" }",
             "c",
             "",
         );
+        // persist the sample BEFORE judging it: the request wall is the
+        // check's OWN parent-request:query span (deck parse diag inside
+        // the worker, published through the full parent path)
+        let ck = report.results.iter().find(|r| r.check_id == "c").unwrap();
+        let native = ck.native.as_ref().expect("native record");
+        let req_ms = native
+            .stage_spans
+            .iter()
+            .find(|(n, _)| n == "parent-request:query")
+            .map(|(_, v)| *v as f64)
+            .unwrap_or(0.0);
+        append_jsonl(&format!(
+            "{{\"scenario\":\"descriptor-reject\",\"sample\":{i},\"ok\":{},\"request_ms\":{:.1},\
+\"stages\":{{{}}},\"peak_mem_bytes\":{}}}",
+            ck.status == Status::Pass,
+            req_ms,
+            native
+                .stage_spans
+                .iter()
+                .filter(|(n, _)| !n.starts_with("parent-"))
+                .map(|(n, v)| format!("\"{n}\":{v}"))
+                .collect::<Vec<_>>()
+                .join(","),
+            native
+                .counters
+                .iter()
+                .find(|(n, _)| n == "worker_peak_mem_bytes")
+                .map(|(_, v)| *v)
+                .unwrap_or(0),
+        ));
+        reject_times.push(req_ms);
         assert_eq!(
             status_of(&report, "c"),
             Status::Pass,
             "reject sample {i} (declared error completion judged)"
         );
-        jsonl.push_str(&format!(
-            "{{\"scenario\":\"descriptor-reject\",\"sample\":{i},\"ok\":true,\"ms\":{ms:.1}}}\n"
-        ));
-        reject_times.push(ms);
+        assert!(req_ms > 0.0, "reject sample {i} has a real request wall");
     }
     let rj_p95 = p95_of(&mut reject_times);
 
-    std::fs::write(raw_dir.join("formal-gates.jsonl"), &jsonl).unwrap();
-    let mut bt = body_times.clone();
-    let mut rt = reject_times.clone();
     std::fs::write(
         raw_dir.join("summary.txt"),
         format!(
-            "C-leg single-case body-edit P50/P95/P99 = {:.1}/{:.1}/{:.1} ms; reject P50/P95 = {:.1}/{:.1} ms (parent path, raw JSONL beside)",
-            p50_of(&mut bt),
+            "C-leg per-request parent-path gates (each request carries the edited deck): body-edit P50/P95/P99 = {:.1}/{:.1}/{:.1} ms; reject P50/P95 = {:.1}/{:.1} ms (31/30 samples, raw JSONL with per-sample stages/resources beside)",
+            p50_of(&mut body_times.clone()),
             be_p95,
-            p99_of(&mut bt),
-            p50_of(&mut rt),
+            p99_of(&mut body_times.clone()),
+            p50_of(&mut reject_times.clone()),
             rj_p95,
         ),
     )
@@ -1170,10 +1274,30 @@ fn abi_recipe_formal_turnaround_hard_gates() {
     println!("parent-path gates: C-leg body-edit P95={be_p95:.1}ms reject P95={rj_p95:.1}ms");
     assert!(
         be_p95 < 1000.0,
-        "HARD GATE body-edit (parent path) P95={be_p95:.1}ms"
+        "HARD GATE body-edit (full parent path, per request) P95={be_p95:.1}ms"
     );
     assert!(
         rj_p95 < 1000.0,
-        "HARD GATE reject (parent path) P95={rj_p95:.1}ms"
+        "HARD GATE reject (full parent path, per request) P95={rj_p95:.1}ms"
     );
+}
+
+/// F-797-R4-10 (R8): the worker's cumulative produced-bytes budget,
+/// exercised by a REAL worker through the formal parent path — with the
+/// TEST seam shrinking the cap below one produced object, the query is
+/// a typed RESOURCE outcome (after exactly one producer ran), and the
+/// parent reports Status::Error — never FAIL, never a stale PASS.
+#[test]
+fn abi_worker_budget_exhaustion_is_resource_error() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    set_abi_faults(
+        vec![(
+            "ABI_TEST_PRODUCED_BUDGET_BYTES".into(),
+            "1".into(), // any production exceeds it
+        )],
+        None,
+    );
+    let result = std::panic::catch_unwind(|| status_of(&run_abi_fault_case("abibudget"), "c"));
+    clear_abi_faults();
+    assert_eq!(result.expect("suite ran"), Status::Error);
 }

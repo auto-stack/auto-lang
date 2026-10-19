@@ -150,7 +150,7 @@ fn abi_contract_descriptor_roundtrip_and_fingerprint() {
         form: SymbolForm::Fallible {
             ctx: None,
             params: vec![],
-            out: ParamKind::I64,
+            outs: vec![ParamKind::I64],
         },
     });
     assert_ne!(d.fingerprint().unwrap(), d2.fingerprint().unwrap());
@@ -662,12 +662,12 @@ fn abi_admission_truthful_label_tampered_payload_also_rejected() {
     }
 }
 
-/// F-797-R4-10 (R5): the staging budget is measured in REPRESENTATION
-/// bytes — a tiny-payload record whose flattened FieldLayout vector +
-/// path strings would blow 8MiB is refused BEFORE the vector exists.
-/// Four levels of 16-way branching with 1-byte payload leaves:
-/// 16^4 = 65,536 leaves × (FieldLayout 40B + slack) > 8MiB? — tuned to
-/// cross at level 5 (1,048,576 leaves) while PAYLOAD stays ~1MiB.
+/// F-797-R4-10 (R8): the staging budget is the EXACT representation
+/// bytes the materialized layout will own — struct bytes PLUS the real
+/// path strings. Short-name fan control: 16^4 = 65,536 leaves
+/// materialize well inside 8MiB and the ACTUAL owned bytes (vector
+/// capacity + name capacities) equal the predicted bound; one more
+/// level (~49MB representation) is refused BEFORE the vector exists.
 #[test]
 fn abi_admission_staging_gate_counts_representation_bytes() {
     use auto_abi_probe::layout::{FieldDefOwned, FieldTyOwned, RecordDefOwned, SemScalar};
@@ -698,19 +698,81 @@ fn abi_admission_staging_gate_counts_representation_bytes() {
             },
         );
     }
-    // Fan4: 65,536 leaves, payload 65,536B — REPRESENTATION ~4.9MiB < 8MiB
-    // => materializes (the R5 case that previously slipped through as
-    // 19MB capacity); Fan5: ~78MiB representation => refused pre-vector.
+    // Fan4: 65,536 leaves; path "f4.f3.f2.f1.b" = 13 bytes per leaf.
     let ok = layout::layout_record_owned(&table, "Fan4").expect("Fan4 materializes");
-    assert!(ok.fields.len() == 65_536);
+    assert_eq!(ok.fields.len(), 65_536);
+    let actual = ok.fields.capacity() * std::mem::size_of::<layout::FieldLayout>()
+        + ok.fields.iter().map(|f| f.name.capacity()).sum::<usize>();
+    let predicted = 65_536usize * (std::mem::size_of::<layout::FieldLayout>() + 13);
+    assert!(
+        actual <= predicted,
+        "actual owned {actual} must not exceed the predicted representation {predicted}"
+    );
+    assert!(
+        (actual as u64) < layout::MAX_STAGING_BYTES,
+        "actual owned {actual} within the staging budget"
+    );
+    assert_eq!(ok.fields[0].name, "f4.f3.f2.f1.b");
     match layout::layout_record_owned(&table, "Fan5") {
         Err(LayoutError::StagingTooLarge { size, .. }) => {
             assert!(
-                size > 8 * 1024 * 1024,
+                size > layout::MAX_STAGING_BYTES,
                 "size={size} must be representation bytes"
             );
         }
         other => panic!("expected StagingTooLarge, got {other:?}"),
+    }
+}
+
+/// F-797-R4-10 (R8) — the ORIGINAL R5 counterexample, verbatim: 5
+/// record nodes, 4 levels of 16-way branching, 64-BYTE field names,
+/// 65,536B physical payload. The R5 gate (leaves × (struct+24)) let it
+/// through and the materialized vector+String capacities owned
+/// 19,398,656B > 8MiB. The exact gate must REFUSE it pre-allocation —
+/// path strings are first-class budget items, and the refusal is a
+/// controlled RESOURCE state, not an ABI rejection.
+#[test]
+fn abi_admission_staging_gate_original_long_name_input_refused() {
+    let mut table = BTreeMap::new();
+    table.insert(
+        "F0".to_string(),
+        RecordDefOwned {
+            name: "F0".into(),
+            fields: vec![FieldDefOwned {
+                name: "leaf".into(),
+                ty: FieldTyOwned::Scalar(SemScalar::U8),
+            }],
+        },
+    );
+    for level in 1..=4usize {
+        table.insert(
+            format!("F{level}"),
+            RecordDefOwned {
+                name: format!("F{level}"),
+                fields: (0..16)
+                    .map(|i| FieldDefOwned {
+                        name: format!("f{i:02}_{}", "x".repeat(60)),
+                        ty: FieldTyOwned::Record(format!("F{}", level - 1)),
+                    })
+                    .collect(),
+            },
+        );
+    }
+    match layout::layout_record_owned(&table, "F4") {
+        Ok(l) => panic!(
+            "the original long-name input must be refused pre-allocation; got {} fields",
+            l.fields.len()
+        ),
+        Err(LayoutError::StagingTooLarge { size, .. }) => {
+            // per leaf: 32B struct + 264B path (4 × (64+1) + len("leaf"));
+            // the R8-measured owned lower bound was 19,398,656B
+            assert!(
+                size >= 19_398_656,
+                "predicted representation {size} must cover the measured 19,398,656B lower bound"
+            );
+            assert!(size > layout::MAX_STAGING_BYTES);
+        }
+        other => panic!("expected StagingTooLarge (resource), got {other:?}"),
     }
 }
 
@@ -854,60 +916,168 @@ fn mix_def_div() -> auto_abi_probe::decl::FnDecl {
     }
 }
 
-/// The C provider's promised-surface entries (UTF-8 view validation,
-/// record-view value validation) are DESCRIBED in the same
-/// descriptor/2 language and ADMITTABLE by a consumer expectation.
+/// F-797-R4-02 (R8): the C provider descriptor must mirror the
+/// hand-audited HEADER, item by item. The oracle here is the header
+/// TEXT itself — the declared-prototype NAME SET is parsed
+/// mechanically from `cside/interop_resource.h` (so the descriptor can
+/// neither drop nor invent public entries), and the expected PHYSICAL
+/// signature of each prototype is hand-derived from that header (the
+/// table below cites each line; it is written from the header, never
+/// from `interop_c_provider_descriptor`). A descriptor whose own
+/// signature were fed back as the expectation could not catch a
+/// mis-description; this can and did (ledger 3-out, two_step
+/// handle-out, fold callback ctx / element count).
 #[test]
-fn abi_contract_c_provider_descriptor_consumable() {
+fn abi_contract_c_provider_descriptor_matches_independent_header() {
     use auto_abi_probe::descriptor::{interop_c_provider_descriptor, ModuleDescriptor};
+    let header = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("cside/interop_resource.h"),
+    )
+    .expect("hand-audited header readable");
+
+    // Mechanical half: the declared public-prototype name set.
+    let mut declared: Vec<String> = Vec::new();
+    for line in header.lines() {
+        let t = line.trim();
+        if t.starts_with('*') || t.starts_with("/*") || t.starts_with("//") {
+            continue;
+        }
+        let Some(at) = t.find("p797_") else { continue };
+        let Some(paren) = t[at..].find('(') else {
+            continue;
+        };
+        let name = t[at..at + paren].trim().to_string();
+        if !name.is_empty() && !declared.contains(&name) {
+            declared.push(name);
+        }
+    }
+    declared.sort();
+
+    // Hand-derived half (from the header text, one row per prototype):
+    //   long long p797_h_create(int size)                       — owned handle BY VALUE
+    //   int p797_h_set(long long h, int idx, long long v)       — status-only
+    //   int p797_h_get(long long h, int idx, long long *out)
+    //   int p797_h_destroy(long long h)                         — status-only
+    //   int p797_ledger(long long *live, long long *allocs, long long *frees) — THREE outs
+    //   int p797_buf_sum(const unsigned char *p, uint64_t len, long long *out)
+    //   int p797_buf_copy(unsigned char *dst, uint64_t cap, const unsigned char *src, uint64_t len)
+    //   void p797_fail_nth_alloc(int n)
+    //   int p797_two_step(int x, long long *out)                — out carries an OWNED handle
+    //   long long p797_fold(long long (*cb)(long long ctx, long long item),
+    //                       long long ctx, const long long *items, uint64_t n) — cb ctx + ELEMENT count
+    //   long long p797_stored_cb(void)
+    //   int p797_cbuf_sum_utf8(const unsigned char *p, uint64_t len, long long *chars)
+    //   int p797_crec_valid(const RecMix *r, long long *sum)
+    //   int p797_crec_mutate(RecMix *r, long long seed, long long *sum) — MUT view
+    //   int p797_crec_make(int seed, RecMix *out)               — caller-owned OUT record
+    let expected: &[(&str, &str)] = &[
+        ("p797_h_create", "pure(i32)->handle:interop-resource"),
+        (
+            "p797_h_set",
+            "fallible(handle:interop-resource,i32,i64)->status",
+        ),
+        (
+            "p797_h_get",
+            "fallible(handle:interop-resource,i32)->status,out i64",
+        ),
+        (
+            "p797_h_destroy",
+            "fallible(handle:interop-resource)->status",
+        ),
+        ("p797_ledger", "fallible()->status,out i64,i64,i64"),
+        ("p797_buf_sum", "fallible(buf:bytes,u64)->status,out i64"),
+        (
+            "p797_buf_copy",
+            "fallible(buf:out,u64,buf:bytes,u64)->status",
+        ),
+        ("p797_fail_nth_alloc", "pure(i32)->unit"),
+        (
+            "p797_two_step",
+            "fallible(i32)->status,out handle:interop-resource",
+        ),
+        (
+            "p797_fold",
+            "pure(callback(ctx:i64,i64)->i64,i64,buf:i64,u64)->i64",
+        ),
+        ("p797_stored_cb", "pure()->i64"),
+        (
+            "p797_cbuf_sum_utf8",
+            "fallible(buf:utf8,u64)->status,out i64",
+        ),
+        (
+            "p797_crec_valid",
+            "fallible(rec:RecMix:const)->status,out i64",
+        ),
+        (
+            "p797_crec_mutate",
+            "fallible(rec:RecMix:mut,i64)->status,out i64",
+        ),
+        ("p797_crec_make", "fallible(i32)->status,out rec:RecMix:out"),
+    ];
+    let mut table_names: Vec<&str> = expected.iter().map(|(n, _)| *n).collect();
+    table_names.sort_unstable();
+    assert_eq!(
+        declared, table_names,
+        "hand-derived table and header prototype set must match exactly"
+    );
+
     let d = interop_c_provider_descriptor();
     let bytes = d.encode().unwrap();
     let back = ModuleDescriptor::decode(&bytes).unwrap();
-    assert_eq!(d, back);
-    let utf8_sig = d
-        .symbols
-        .iter()
-        .find(|s| s.name == "p797_cbuf_sum_utf8")
-        .unwrap()
-        .form
-        .signature();
-    assert_eq!(utf8_sig, "fallible(buf:utf8,u64)->status,out i64");
-    let rec_sig = d
-        .symbols
-        .iter()
-        .find(|s| s.name == "p797_crec_valid")
-        .unwrap()
-        .form
-        .signature();
-    assert_eq!(rec_sig, "fallible(rec:RecMix:const)->status,out i64");
-    // F-797-R4-02 (R5): handle/ownership/callback lanes are described
-    let create_sig = d
-        .symbols
-        .iter()
-        .find(|s| s.name == "p797_h_create")
-        .unwrap()
-        .form
-        .signature();
-    assert!(
-        create_sig.contains("->handle:interop-resource"),
-        "{create_sig}"
-    );
-    let fold_sig = d
-        .symbols
-        .iter()
-        .find(|s| s.name == "p797_fold")
-        .unwrap()
-        .form
-        .signature();
-    assert!(fold_sig.contains("callback(i64)->i64"), "{fold_sig}");
-
-    // admissible: a consumer requiring exactly these signatures passes
-    let mut expect = probe_expectation();
-    expect.required_symbols = d
+    assert_eq!(d, back, "descriptor/3 roundtrip");
+    let mut described: Vec<(String, String)> = d
         .symbols
         .iter()
         .map(|s| (s.name.clone(), s.form.signature()))
         .collect();
+    described.sort();
+    let mut expected_sorted: Vec<(String, String)> = expected
+        .iter()
+        .map(|(n, s)| (n.to_string(), s.to_string()))
+        .collect();
+    expected_sorted.sort();
+    assert_eq!(
+        described, expected_sorted,
+        "every descriptor signature must equal the header-derived physical form"
+    );
+
+    // Ownership semantics the signature alone cannot carry (hand audit):
+    // the out-handle of p797_two_step names the SAME provider whose
+    // p797_h_destroy accepts it — the destroy lane a consumer needs.
+    let two_step_out = d
+        .symbols
+        .iter()
+        .find(|s| s.name == "p797_two_step")
+        .and_then(|s| match &s.form {
+            SymbolForm::Fallible { outs, .. } => outs.first().cloned(),
+            _ => None,
+        })
+        .expect("two_step spells an out slot");
+    assert_eq!(
+        two_step_out,
+        ParamKind::Handle {
+            provider: "interop-resource".into()
+        }
+    );
+    let destroys_handle = d.symbols.iter().any(|s| {
+        s.name == "p797_h_destroy"
+            && matches!(
+                &s.form,
+                SymbolForm::Fallible { params, .. }
+                    if params.first() == Some(&ParamKind::Handle {
+                        provider: "interop-resource".into()
+                    })
+            )
+    });
+    assert!(
+        destroys_handle,
+        "the provider of the two_step out-handle must also expose its destroy entry"
+    );
+
+    // Admissible: a consumer requiring EXACTLY these header-derived
+    // signatures passes admission (the consumability half).
+    let mut expect = probe_expectation();
+    expect.required_symbols = described.clone();
     admit_descriptor(&d, &expect).expect("C provider descriptor admits");
 }
 

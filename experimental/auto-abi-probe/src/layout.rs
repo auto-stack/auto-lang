@@ -276,44 +276,92 @@ pub const MAX_STAGING_BYTES: u64 = 8 * 1024 * 1024;
 ///     cycle detection, depth and absolute-size ceilings; no flattened
 ///     vector is built here, so a wide/deep table costs TABLE space,
 ///     not leaf space;
-///  2. GATE — the ROOT's size must fit the STAGING budget before any
-///     materialization (a huge-but-legal record is refused with
-///     `StagingTooLarge`, never a giant allocation);
-///  3. FLATTEN — only for tables that passed the gate.
+///  2. GATE — the EXACT REPRESENTATION bytes the materialized layout
+///     will own are computed BEFORE any allocation: every flattened
+///     FieldLayout struct PLUS the real path strings (`parent.child`
+///     concatenation — path length grows with depth AND field-name
+///     length), plus the shared prefix buffer's doubling slack. A table
+///     whose representation exceeds the staging budget is refused with
+///     `StagingTooLarge` (F-797-R4-10 R8: the R5 gate counted leaves ×
+///     (struct + 24) and let a 64-byte-name fan materialize ~19.4MB of
+///     strings past the 8MiB budget);
+///  3. FLATTEN — only for tables that passed the gate: ONE vector with
+///     exact capacity, names built with exact-capacity Strings against a
+///     shared prefix — actual owned bytes equal the predicted gate, no
+///     nested intermediate vectors.
 pub fn layout_record_owned(
     table: &std::collections::BTreeMap<String, RecordDefOwned>,
     name: &str,
 ) -> Result<RecordLayout, LayoutError> {
     let mut sizes: std::collections::BTreeMap<String, (u32, u32)> =
         std::collections::BTreeMap::new();
-    // F-797-R4-10 (R5): the staging budget is measured in the bytes the
-    // MATERIALIZED representation will own — every flattened FieldLayout
-    // (struct + its heap path String), not the record's payload size. A
-    // small-payload record with millions of leaves is refused BEFORE
-    // the vector exists.
+    // F-797-R4-10 (R8): the staging budget is the EXACT representation
+    // the MATERIALIZED layout will own — struct bytes + REAL path-string
+    // bytes (not a per-leaf constant): leaf counts AND total path bytes
+    // AND the longest path are memoized in the size phase.
     let mut leaves: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    let mut path_bytes: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    let mut max_path: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     let mut chain: Vec<String> = Vec::new();
-    compute_size(table, name, &mut chain, 0, &mut sizes, &mut leaves)?;
-    let (root_size, _) = sizes
+    compute_size(
+        table,
+        name,
+        &mut chain,
+        0,
+        &mut sizes,
+        &mut leaves,
+        &mut path_bytes,
+        &mut max_path,
+    )?;
+    let (root_size, root_align) = sizes
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
     let root_leaves = *leaves
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
-    let per_leaf = std::mem::size_of::<FieldLayout>() as u64 + 24; // String header heap slack
-    let staging_bytes = root_leaves.saturating_mul(per_leaf);
+    let root_paths = *path_bytes
+        .get(name)
+        .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
+    let root_max = *max_path
+        .get(name)
+        .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
+    let per_leaf = std::mem::size_of::<FieldLayout>() as u64;
+    let staging_bytes = root_leaves
+        .saturating_mul(per_leaf)
+        .saturating_add(root_paths)
+        // the shared prefix buffer: worst-case String doubling
+        .saturating_add(root_max.saturating_mul(2));
     if staging_bytes > MAX_STAGING_BYTES {
         return Err(LayoutError::StagingTooLarge {
             record: name.to_string(),
             size: staging_bytes,
         });
     }
-    let _ = root_size;
+    let mut fields = Vec::with_capacity(root_leaves as usize);
+    let mut prefix = String::new();
     let mut seen = Vec::new();
-    flatten(table, name, &mut seen, 0)
+    flatten_into(
+        table,
+        name,
+        &sizes,
+        0,
+        &mut prefix,
+        &mut fields,
+        &mut seen,
+        0,
+    )?;
+    Ok(RecordLayout {
+        record: name.to_string(),
+        fields,
+        size: *root_size,
+        align: *root_align,
+    })
 }
 
-/// Phase 1: memoized (size, align) with cycle/depth/budget ceilings.
+/// Phase 1: memoized (size, align) with cycle/depth/budget ceilings, plus
+/// the representation memos (leaf count, total path bytes, longest path)
+/// the staging gate needs.
+#[allow(clippy::too_many_arguments)]
 fn compute_size(
     table: &std::collections::BTreeMap<String, RecordDefOwned>,
     name: &str,
@@ -321,6 +369,8 @@ fn compute_size(
     depth: usize,
     memo: &mut std::collections::BTreeMap<String, (u32, u32)>,
     leaves: &mut std::collections::BTreeMap<String, u64>,
+    path_bytes: &mut std::collections::BTreeMap<String, u64>,
+    max_path: &mut std::collections::BTreeMap<String, u64>,
 ) -> Result<(u32, u32), LayoutError> {
     if let Some(hit) = memo.get(name) {
         return Ok(*hit);
@@ -342,7 +392,16 @@ fn compute_size(
     for f in &def.fields {
         let (size, fa) = match &f.ty {
             FieldTyOwned::Scalar(s) => s.size_align(),
-            FieldTyOwned::Record(n) => compute_size(table, n, chain, depth + 1, memo, leaves)?,
+            FieldTyOwned::Record(n) => compute_size(
+                table,
+                n,
+                chain,
+                depth + 1,
+                memo,
+                leaves,
+                path_bytes,
+                max_path,
+            )?,
         };
         offset = offset
             .checked_add(fa - 1)
@@ -380,31 +439,59 @@ fn compute_size(
             size: size as u64,
         });
     }
-    // leaf count for the staging-estimate gate (F-797-R4-10 R5)
+    // representation memos (F-797-R4-10 R8): scalar leaves carry their
+    // own name; a record-typed field prefixes EVERY leaf below it with
+    // `<field-name>.` — counted exactly, so long field names are first
+    // class in the gate.
     let mut leaf_n: u64 = 0;
+    let mut path_sum: u64 = 0;
+    let mut path_max: u64 = 0;
     for f in &def.fields {
         match &f.ty {
-            FieldTyOwned::Scalar(_) => leaf_n += 1,
+            FieldTyOwned::Scalar(_) => {
+                leaf_n += 1;
+                let n = f.name.len() as u64;
+                path_sum += n;
+                path_max = path_max.max(n);
+            }
             FieldTyOwned::Record(n) => {
-                leaf_n += *leaves
+                let sub_leaves = *leaves
                     .get(n)
                     .ok_or_else(|| LayoutError::UnknownRecord(n.clone()))?;
+                let sub_paths = *path_bytes
+                    .get(n)
+                    .ok_or_else(|| LayoutError::UnknownRecord(n.clone()))?;
+                let sub_max = *max_path
+                    .get(n)
+                    .ok_or_else(|| LayoutError::UnknownRecord(n.clone()))?;
+                let prefix = f.name.len() as u64 + 1; // '.'
+                leaf_n += sub_leaves;
+                path_sum += sub_paths + sub_leaves.saturating_mul(prefix);
+                path_max = path_max.max(sub_max + prefix);
             }
         }
     }
     leaves.insert(name.to_string(), leaf_n);
+    path_bytes.insert(name.to_string(), path_sum);
+    max_path.insert(name.to_string(), path_max);
     memo.insert(name.to_string(), (size, align));
     Ok((size, align))
 }
 
-/// Phase 3: flatten (only reached past the gate; every visited record
-/// fits the staging budget, so the flattened vector is bounded).
-fn flatten(
+/// Phase 3: flatten into ONE exact-capacity vector (only reached past
+/// the gate). Names build against a shared prefix with exact-capacity
+/// Strings — the materialized representation IS the predicted one; no
+/// nested intermediate vectors exist.
+fn flatten_into(
     table: &std::collections::BTreeMap<String, RecordDefOwned>,
     name: &str,
+    sizes: &std::collections::BTreeMap<String, (u32, u32)>,
+    base: u32,
+    prefix: &mut String,
+    out: &mut Vec<FieldLayout>,
     seen: &mut Vec<String>,
     depth: usize,
-) -> Result<RecordLayout, LayoutError> {
+) -> Result<(), LayoutError> {
     if depth > MAX_NESTING_DEPTH {
         return Err(LayoutError::NestingTooDeep(depth));
     }
@@ -417,16 +504,13 @@ fn flatten(
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
     seen.push(name.to_string());
-    let mut fields = Vec::with_capacity(def.fields.len());
     let mut offset: u32 = 0;
-    let mut align: u32 = 1;
     for f in &def.fields {
-        let (size, fa, nested) = match &f.ty {
-            FieldTyOwned::Scalar(s) => (s.size_align().0, s.size_align().1, None),
-            FieldTyOwned::Record(n) => {
-                let l = flatten(table, n, seen, depth + 1)?;
-                (l.size, l.align, Some(l))
-            }
+        let (size, fa) = match &f.ty {
+            FieldTyOwned::Scalar(s) => s.size_align(),
+            FieldTyOwned::Record(n) => *sizes
+                .get(n)
+                .ok_or_else(|| LayoutError::UnknownRecord(n.clone()))?,
         };
         offset = offset
             .checked_add(fa - 1)
@@ -435,21 +519,24 @@ fn flatten(
                 record: name.to_string(),
                 field: f.name.clone(),
             })?;
-        align = align.max(fa);
-        if let Some(nested_layout) = nested {
-            for nf in nested_layout.fields {
-                fields.push(FieldLayout {
-                    name: format!("{}.{}", f.name, nf.name),
-                    offset: offset + nf.offset,
-                    size: nf.size,
+        match &f.ty {
+            FieldTyOwned::Scalar(_) => {
+                let mut nm = String::with_capacity(prefix.len() + f.name.len());
+                nm.push_str(prefix);
+                nm.push_str(&f.name);
+                out.push(FieldLayout {
+                    name: nm,
+                    offset: base + offset,
+                    size,
                 });
             }
-        } else {
-            fields.push(FieldLayout {
-                name: f.name.clone(),
-                offset,
-                size,
-            });
+            FieldTyOwned::Record(n) => {
+                let mark = prefix.len();
+                prefix.push_str(&f.name);
+                prefix.push('.');
+                flatten_into(table, n, sizes, base + offset, prefix, out, seen, depth + 1)?;
+                prefix.truncate(mark);
+            }
         }
         offset = offset
             .checked_add(size)
@@ -459,19 +546,7 @@ fn flatten(
             })?;
     }
     seen.pop();
-    let size = offset
-        .checked_add(align - 1)
-        .and_then(|v| v.checked_sub(v % align))
-        .ok_or_else(|| LayoutError::OffsetOverflow {
-            record: name.to_string(),
-            field: "<tail>".into(),
-        })?;
-    Ok(RecordLayout {
-        record: name.to_string(),
-        fields,
-        size,
-        align,
-    })
+    Ok(())
 }
 
 /// Canonical textual form of an owned record definition (the key input;

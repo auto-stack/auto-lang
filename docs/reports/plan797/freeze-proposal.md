@@ -1,13 +1,18 @@
 # PLAN-797 freeze proposal（候选 v0.1）
 
-> 状态：**提案（R5 修复后重置）**——R4 就绪复核的 12 项 findings 已
-> 修复并附永久反例（F01 语义消费/F02 ctx 首参+UTF-8+值校验+描述符
-> 面积/F03 单一 deadline+信封准入/F04-06 资源边界与回收/F07 include
-> 闭包/F08 派生与生产分离/F09 统一冷硬门（worker 699.8/87.3ms + 父
-> 路径 820.7/479.1ms）/F10 有界捕获+两阶段布局+lease·root·GC 接线/
-> F11 按配方身份缓存/F12 fmt·告警）。本文件仍**不**发布 ABI、不改
-> canonical Spec/ledger；冻结登记以 T-08 独立 review 零阻断 + T-09
-> merge 门禁通过为条件。
+> 状态：**提案（R8 修复后重置）**——R8 复审的 5 项开放 findings 已
+> 修复并附永久反例（F-R4-02 descriptor 如实化：出参列表/三出参
+> ledger/two_step handle 出参/callback ctx/i64 元素视图 + record
+> mut/out 生产面与原生提交回滚控制，header 文本为独立 oracle；
+> F-R4-07 include 闭包改为消费 `cl -showIncludes` 真实依赖并在命中时
+> 逐一重验（注释隐藏/续行/宏 include 三兄弟反例 + 系统头闭包为永久
+> 测试）；F-R4-09 每 step 独立完整发布父路径请求计时，body-edit 样本
+> =edit+query 请求对，逐样本先落盘（含 Job 峰值内存/I/O/meter）再断
+> 言；F-R4-10 精确表示字节暂存门（原 R5 长字段名输入在分配前拒绝）+
+> worker 累计产物预算前后检查 + 并发 GC 全链；F-R4-12 本计划 crate
+> 自身告警清零、freeze/verify/SD 事实对齐）。本文件仍**不**发布 ABI、
+> 不改 canonical Spec/ledger；冻结登记以 T-08 独立 review 零阻断 +
+> T-09 merge 门禁通过为条件。
 
 ## 1. 拟冻结对象
 
@@ -37,7 +42,7 @@
 | 验收脚本 | `scripts/verify-autoabi-797.ps1` | 本提案 |
 | 正式 AutoDown 绑定 | `abi/interop-v1` recipe 注册（contract 追加）+ `abi-worker`（abiworker/1）+ 父侧 `test_cases/abi.rs` + 可执行语料 `crates/auto-lang/test/cases/autoabi/`（4 checks 含跨进程 restart 命中与类型化负例） | T-06 `35794e5ec` |
 | 真实语义绑定 | `ac-sema-contract` DeclRef/TypeDesc/ContentVersion；退役收据 `attachments/797/semref-retirement-receipt.md` | T-06 `35794e5ec` |
-| 性能正式复测 | R5：C 消费腿·单 case·共享 store·统一冷体（mix-alt<seed>，C consumer 编译一次后复用，compute=31+1 有断言）经完整父路径：body-edit P50/P95/P99=436.0/534.0/569.0ms、reject P50/P95=433.2/468.0ms（30 样本，原始 JSONL 逐样本落 target/abi-formal-gates） | R5 本轮 |
+| 性能正式复测 | R8：C 消费腿·单 case·共享 store·统一冷体（mix-alt<seed>），**每 step 独立完整发布的父路径请求**（父入口计时含请求构建/IPC/等待/解码/admission；body-edit 样本=edit+query 请求对）：body-edit P50/P95/P99=419.0/663.0/755.0ms、reject P50/P95=77.0/101.0ms（31/30 样本，verify closeout 收据时序下实测；数字随采样时段浮动、JSONL 为准，每请求携带编辑后 deck=产品形态"编辑源→正确 PE 结果"单元）；compute=31+1 逐样本断言；原始 JSONL 逐样本**先落盘**（阶段/Job 峰值内存·I/O/meter） | R8 本轮 |
 
 ## 3. 版本与身份分层（拟）
 
@@ -86,13 +91,16 @@ exit 恰 1、tampered descriptor、错 offset 控制、uninjected 与失败期�
 
 ## 7.5 终稿身份绑定
 
-- `spec-delta.md`（R5 重置稿，descriptor/2 同步）SHA256：`06C55078C395EE54C8B766BE2B11BEFC005E6844941C4359A596ADBDA24EC594`
-- canonical 输入 hash 明细见 spec-delta.md 输入表（worktree 终态实测）。
-- work 侧 V-01–11 工作面证据（R4 后）：probe workspace 62/62 + 统一
-  runner 语料 4 checks + test-cases 家族 26 绿 + 父生命周期反例 3 项 +
-  资源边界反例（负索引/跨 provider/容量循环）+ 语义反例族。
-- R4 报告：`docs/plans/attachments/797/review-r4/review.md`（reviewed
-  commit `8679859e4`）；修复提交 `89fb5212e`/`6294d4bea`/`854cc157c`。
+- `spec-delta.md`（R8 重置稿，descriptor/3 同步）SHA256：`023768E8A2514CFD9F71C817E9947525CDB2C10C3437CFDCCFC65C41E7B59463`
+- canonical 输入 hash 明细见 spec-delta.md 输入表（worktree 终态实测，
+  R8 复核未漂移）。
+- work 侧 V-01–11 工作面证据（R8 后）：probe workspace 全绿（t02 20+
+  t03 7 + t04 6 + t05 9 + t06 6，含 R8 新增：header 独立 oracle、
+  mut/out 原生控制+负控、原长字段名暂存反例、三兄弟 include 反例+
+  系统头闭包、并发 GC 全链）+ 统一 runner 语料 + test-cases 家族 +
+  父生命周期/预算反例族 + 语义反例族。
+- R8 报告：`docs/plans/attachments/797/review-r8/review.md`（reviewed
+  commit `bf2455758`）；修复提交见计划 §9 R8 修复轮记录。
 
 ## 8. 冻结条件（缺一不可）
 

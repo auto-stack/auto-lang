@@ -142,7 +142,15 @@ fn abi_cache_invalidation_by_real_inputs() {
         autoabi_object_key(&v1, true).hash()
     );
     // C source content is a key input
-    assert_ne!(c_object_key("aaa").hash(), c_object_key("bbb").hash());
+    assert_ne!(
+        c_object_key("aaa", "c1").hash(),
+        c_object_key("bbb", "c1").hash()
+    );
+    // the OBSERVED closure generation is part of the key
+    assert_ne!(
+        c_object_key("aaa", "c1").hash(),
+        c_object_key("aaa", "c2").hash()
+    );
     // profile / toolchain / semref dimensions are key inputs by
     // construction — assert two differently-tooled keys cannot collide.
     let q = |tool: &str| {
@@ -315,7 +323,7 @@ fn abi_cache_512_revision_churn_gc_convergence() {
     let mut last_art = String::new();
     let mut leased_art = String::new();
     for i in 0..512 {
-        let key = c_object_key(&format!("rev-{i:04}"));
+        let key = c_object_key(&format!("rev-{i:04}"), &format!("closure-{i:04}"));
         // Distinct content per revision: real invalidation behavior
         // needs distinct keys, and distinct payloads keep CAS honest.
         let mut p = payload.clone();
@@ -381,12 +389,18 @@ fn abi_cache_512_revision_churn_gc_convergence() {
 
     // Newest (rooted) and revision 100 (leased) still readable.
     let newest = store
-        .get_artifact(LAYER_OBJECT_V01.id, &c_object_key("rev-0511"))
+        .get_artifact(
+            LAYER_OBJECT_V01.id,
+            &c_object_key("rev-0511", "closure-0511"),
+        )
         .expect("read newest")
         .expect("rooted newest survives GC");
     assert_eq!(newest.payload.len(), 2048);
     let old = store
-        .get_artifact(LAYER_OBJECT_V01.id, &c_object_key("rev-0100"))
+        .get_artifact(
+            LAYER_OBJECT_V01.id,
+            &c_object_key("rev-0100", "closure-0100"),
+        )
         .expect("read leased")
         .expect("leased old revision survives GC");
     assert_eq!(old.payload.len(), 2048);
@@ -502,7 +516,7 @@ fn probe_request(
         let src = manifest().join("cside/caller_main.c");
         let content = std::fs::read(&src).expect("read C consumer");
         let hash = semref::blake3_hex(&content);
-        let key = c_object_key(&hash);
+        let key = c_object_key(&hash, &hash);
         let (obj, hit) = match store {
             Some(st) => produce_with_cache(st, &key, || {
                 let obj = dir.join("consumer-once.obj");
@@ -893,83 +907,187 @@ fn abi_turnaround_six_scenarios_30_samples() {
 }
 
 // ---------------------------------------------------------------------------
-// F-797-R4-07 (R5): the include closure recognizes the REAL preprocessor
-// spellings and FAILS CLOSED on unenumerable ones.
+// F-797-R4-07 (R8): REAL dependency invalidation — the closure is
+// OBSERVED from `cl -showIncludes` (stored beside the object) and
+// RE-VERIFIED on every hit. The old text-derived key could not see
+// comment-hidden / line-spliced / macro includes: those sibling forms
+// kept the same key while the compiled PE changed (R8 counterexample).
 // ---------------------------------------------------------------------------
 
+/// The value-tracking oracle over a REAL compile/link/run per spelling:
+/// with the SOURCE byte-identical throughout, changing the header VALUE
+/// 17→29 must invalidate the hit (recompile) and change the PE exit —
+/// for every legal preprocessor spelling, INCLUDING the three R8
+/// siblings and the macro include.
 #[test]
-fn abi_cache_include_closure_spellings_and_fail_closed() {
-    use auto_abi_probe::cache::c_include_closure;
-    let root = std::env::temp_dir().join(format!("abi-inc-{}", std::process::id()));
+fn abi_cache_include_real_deps_invalidated_and_reused() {
+    let _scen = SCEN_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = t05_root().join("inc-real");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
-    let write = |rel: &str, body: &str| {
-        let p = root.join(rel);
-        std::fs::write(&p, body).unwrap();
-        p
-    };
+    let store = fresh_store(&root, "store");
 
-    // header VALUE v1
-    write(
-        "dep.h",
-        "#define DEP_VALUE 17
-",
-    );
-    let mk = |form: &str| {
-        write(
-            "main.c",
-            &format!(
-                "{form}
-int main(void) {{ return DEP_VALUE; }}
-"
+    let forms: &[(&str, &str)] = &[
+        ("plain", "#include \"dep.h\""),
+        ("trailing_comment", "#include \"dep.h\" // c"),
+        ("spaced", "#  include \"dep.h\""),
+        ("angle_local", "#include <dep.h>"),
+        // R8 siblings: legal preprocessing the R5 text scanner silently
+        // dropped — the header VALUE changed the compiled behavior but
+        // not the text-derived key.
+        (
+            "leading_comment",
+            "/* legal preprocessing whitespace */ #include \"dep.h\"",
+        ),
+        ("hash_comment", "#/**/include \"dep.h\""),
+        ("spliced", "#inc\\\nlude \"dep.h\""),
+        // macro include: unenumerable from text — observable by the
+        // compiler's own preprocessor, so it caches SAFELY now
+        ("macro", "#define HDR \"dep.h\"\n#include HDR"),
+    ];
+
+    for (name, directive) in forms {
+        let dir = root.join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("caller.c");
+        std::fs::write(
+            &src,
+            format!(
+                "{directive}\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) {{ ExitProcess(VALUE); }}\n"
             ),
         )
+        .unwrap();
+        let write_header = |value: u32| {
+            std::fs::write(dir.join("dep.h"), format!("#define VALUE {value}\n")).unwrap()
+        };
+        let obj_path = dir.join("caller.obj");
+        let mut producer_runs = 0u32;
+        // a fresh FnOnce per call (borrowed counter — assertable between
+        // calls); `runs` counts REAL compiler invocations.
+        fn compile_once(
+            src: &Path,
+            dir: &Path,
+            obj_path: &Path,
+            runs: &mut u32,
+        ) -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+            *runs += 1;
+            let deps = auto_abi_probe::ctool::compile_c_with_deps(src, dir, obj_path)
+                .map_err(|e| format!("cl: {e}"))?;
+            let bytes = std::fs::read(obj_path).map_err(|e| format!("read: {e}"))?;
+            Ok((bytes, deps))
+        }
+
+        write_header(17);
+        let ident = auto_abi_probe::cache::c_source_identity(&src).unwrap();
+        let (obj17, hit1) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+            compile_once(&src, &dir, &obj_path, &mut producer_runs)
+        })
+        .expect("compile v17");
+        assert!(!hit1, "{name}: first compile is a miss");
+        std::fs::write(dir.join("linked.obj"), &obj17).unwrap();
+        let pe = run::run_pe(&link_pe(&dir, &[dir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap();
+        assert_eq!(pe.code, 17, "{name}: PE exits with the header VALUE (17)");
+
+        // repeat: hit, ZERO compiler invocations, identical bytes
+        let (obj17b, hit2) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+            compile_once(&src, &dir, &obj_path, &mut producer_runs)
+        })
+        .expect("hit v17");
+        assert!(hit2, "{name}: unchanged deps must hit");
+        assert_eq!(producer_runs, 1, "{name}: a hit never invokes the compiler");
+        assert_eq!(obj17, obj17b);
+
+        // header VALUE change with the SOURCE untouched: MISS + real
+        // recompile + the PE now exits 29 (the R8 counterexample shape)
+        write_header(29);
+        let (obj29, hit3) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+            compile_once(&src, &dir, &obj_path, &mut producer_runs)
+        })
+        .expect("recompile v29");
+        assert!(!hit3, "{name}: a changed dependency must NOT serve a hit");
+        assert_eq!(producer_runs, 2, "{name}: real recompile ran");
+        assert_ne!(obj17, obj29, "{name}: the object itself changed");
+        std::fs::write(dir.join("linked.obj"), &obj29).unwrap();
+        let pe = run::run_pe(&link_pe(&dir, &[dir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap();
+        assert_eq!(pe.code, 29, "{name}: PE exits the NEW header VALUE (29)");
+
+        // a DELETED dependency is also a miss, and the recompile fails
+        // through the real compiler (controlled error, never stale-serve)
+        std::fs::remove_file(dir.join("dep.h")).unwrap();
+        match auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+            compile_once(&src, &dir, &obj_path, &mut producer_runs)
+        }) {
+            Err(_) => {}
+            Ok((_, hit)) => panic!("{name}: deleted dependency must not serve a hit (hit={hit})"),
+        }
+        assert_eq!(producer_runs, 3, "{name}: the miss really invoked cl");
+    }
+}
+
+/// The system/MSVC header closure is RECORDED and hashed, not assumed by
+/// the cl.exe identity: a compile pulling `<stdint.h>` stores deps
+/// OUTSIDE the source directory (the toolchain exe hash is not a header
+/// content hash — F-797-R4-07 R8).
+#[test]
+fn abi_cache_include_records_system_header_closure() {
+    let root = t05_root().join("inc-sys");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let store = fresh_store(&root, "store");
+    let src = root.join("caller.c");
+    std::fs::write(
+        &src,
+        "#include <stdint.h>\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess((unsigned)(uint64_t)7); }\n",
+    )
+    .unwrap();
+    let obj_path = root.join("caller.obj");
+    let ident = auto_abi_probe::cache::c_source_identity(&src).unwrap();
+    let (_, hit) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &root, &obj_path)
+            .map_err(|e| e.to_string())?;
+        Ok((std::fs::read(&obj_path).map_err(|e| e.to_string())?, deps))
+    })
+    .expect("compile with system headers");
+    assert!(!hit);
+    // read the stored generation's manifest through the store's public
+    // db handle (the same read-only discovery produce_c_object uses)
+    let payload = {
+        let db = store.db();
+        // same substring discovery produce_c_object uses (canonical
+        // keys sort fields alphabetically)
+        let needle = format!("%source={},target=%", ident);
+        let art_id: String = db
+            .query_row(
+                "SELECT artifact_id FROM artifacts WHERE layer = ?1 AND key_canonical LIKE ?2",
+                [LAYER_OBJECT_V01.id, needle.as_str()],
+                |row| row.get(0),
+            )
+            .expect("the compiled generation is stored under its source identity");
+        drop(db);
+        store
+            .get_artifact_by_id(&art_id)
+            .expect("artifact readable")
+            .expect("artifact present")
+            .payload
     };
-
-    // 1) plain literal (baseline)
-    let c0 = c_include_closure(&mk("#include \"dep.h\""), &root).expect("literal closure");
-    // Header VALUE change must change the closure for EVERY recognized
-    // form. The source spelling itself legitimately contributes to the
-    // key — the oracle is VALUE tracking per form, not cross-form equality.
-    write(
-        "dep.h",
-        "#define DEP_VALUE 29
-",
+    let entry: serde_json::Value = serde_json::from_slice(&payload).expect("envelope");
+    let deps = entry["deps"].as_array().expect("deps recorded");
+    assert!(!deps.is_empty(), "the closure must be recorded");
+    let outside = deps.iter().any(|d| {
+        d[0].as_str()
+            .is_some_and(|p| !Path::new(p).starts_with(&root))
+    });
+    assert!(
+        outside,
+        "the MSVC/ucrt closure (outside the source dir) must be among the recorded deps: {deps:?}"
     );
-    let forms = [
-        "#include \"dep.h\"",
-        "#include \"dep.h\" // comment",
-        "#  include \"dep.h\"",
-        "#include <dep.h>",
-    ];
-    let v29: Vec<String> = forms
-        .iter()
-        .map(|f| c_include_closure(&mk(f), &root).unwrap_or_else(|e| panic!("{f}: {e}")))
-        .collect();
-    write(
-        "dep.h",
-        "#define DEP_VALUE 17
-",
-    );
-    for (i, f) in forms.iter().enumerate() {
-        let c = c_include_closure(&mk(f), &root).expect("closure");
-        assert_ne!(c, v29[i], "form {f:?} must track the header VALUE");
-        let c2 = c_include_closure(&mk(f), &root).expect("closure");
-        assert_eq!(c, c2, "form {f:?} must be deterministic");
-    }
-    let c_final = c_include_closure(&mk("#include \"dep.h\""), &root).expect("closure");
-    assert_eq!(c_final, c0);
-
-    // 2) macro include: NOT enumerable -> fail closed (never cached as pure)
-    write(
-        "main.c",
-        "#define HDR \"dep.h\"
-#include HDR
-int main(void) { return DEP_VALUE; }
-",
-    );
-    match c_include_closure(&root.join("main.c"), &root) {
-        Err(e) => assert!(e.contains("refusing to cache as pure"), "{e}"),
-        Ok(_) => panic!("macro include must fail closed"),
-    }
+    // and the recorded closure satisfies the re-verification: a second
+    // produce is a HIT (every recorded dep still hashes equal)
+    let (_, hit2) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+        panic!("a verified closure must hit without compiling")
+    })
+    .expect("hit");
+    assert!(hit2);
 }

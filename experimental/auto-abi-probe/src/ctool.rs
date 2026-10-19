@@ -183,6 +183,22 @@ fn run_deadlined(
 /// headers plus freestanding fixed-width types; header closure enters
 /// the cache keys with the T-05 recipe.
 pub fn compile_c(src: &Path, include_dir: &Path, obj_out: &Path) -> Result<(), CToolError> {
+    compile_c_with_deps(src, include_dir, obj_out).map(|_| ())
+}
+
+/// F-797-R4-07 (R8): compile and OBSERVE the real dependency closure.
+/// The compile runs with `-showIncludes` (a reporting-only flag: it does
+/// not affect codegen, so it stays OUT of the frozen CL_FLAGS
+/// fingerprint); every file the preprocessor actually read — probe-local
+/// AND system/MSVC headers — is returned as an absolute path. This is
+/// the dependency truth the cache consumes: text scanning cannot see
+/// comment-hidden includes, line splices, or macro includes, but the
+/// compiler's own preprocessor can.
+pub fn compile_c_with_deps(
+    src: &Path,
+    include_dir: &Path,
+    obj_out: &Path,
+) -> Result<Vec<PathBuf>, CToolError> {
     let tool = find_cl()?;
     // cl.exe = <msvc>/bin/Hostx64/x64/cl.exe -> <msvc>/include
     let msvc_root = tool
@@ -199,6 +215,7 @@ pub fn compile_c(src: &Path, include_dir: &Path, obj_out: &Path) -> Result<(), C
     }
     let mut cmd = Command::new(&tool.cl_exe);
     cmd.args(CL_FLAGS);
+    cmd.arg("-showIncludes");
     cmd.arg(format!("-I{}", include_dir.display()));
     cmd.arg(format!("-I{}", msvc_include.display()));
     cmd.arg(src);
@@ -232,7 +249,45 @@ pub fn compile_c(src: &Path, include_dir: &Path, obj_out: &Path) -> Result<(), C
             obj_out.display()
         )));
     }
-    Ok(())
+    Ok(parse_show_includes(&out, src))
+}
+
+/// Extract the dependency paths from `/showIncludes` output. Each note
+/// line carries an absolute path after a locale-dependent prefix ("Note:
+/// including file:" / "注意: 包含文件:") — scanning for the Windows
+/// drive-letter pattern is prefix-agnostic. Only files that exist are
+/// accepted; the compiled source itself is excluded.
+fn parse_show_includes(stdout: &str, src: &Path) -> Vec<PathBuf> {
+    let mut deps: Vec<PathBuf> = Vec::new();
+    for line in stdout.lines() {
+        let Some(path) = extract_drive_path(line) else {
+            continue;
+        };
+        let p = PathBuf::from(&path);
+        if !p.is_file() || p == src {
+            continue;
+        }
+        if !deps.contains(&p) {
+            deps.push(p);
+        }
+    }
+    deps
+}
+
+fn extract_drive_path(line: &str) -> Option<String> {
+    let bytes = line.as_bytes();
+    for i in 0..bytes.len().saturating_sub(2) {
+        if bytes[i].is_ascii_alphabetic()
+            && bytes[i + 1] == b':'
+            && (bytes[i + 2] == b'\\' || bytes[i + 2] == b'/')
+        {
+            let candidate = line[i..].trim().trim_matches('"');
+            if candidate.contains('\\') || candidate.contains('/') {
+                return Some(candidate.to_string());
+            }
+        }
+    }
+    None
 }
 
 /// Stable toolchain fingerprint for cache keys and receipts (cl identity
