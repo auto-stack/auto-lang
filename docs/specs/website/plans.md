@@ -23,4 +23,4 @@
 | 767 | os-overview-inline-cards | ✅（reviewed→archived） | [archive](../../plans/archive/767-os-overview-inline-cards.md) | 双语 OS 完整融合桌面/窗口/应用/设置；OS/v0.5 六图单列卡片，旧入口兼容，原图与放大保留；本地36项+线上4项/解码2项，备份部署 |
 | 768 | navbar-repository-icons | ✅（reviewed→archived） | [archive](../../plans/archive/768-navbar-repository-icons.md) | 共用顶栏 GitHub/GitCode 指定仓库图标，中英/手机/主题/键盘保留；12回归+24布局访问+4线上校验，备份部署 |
 | 769 | screenshot-webp-delivery | ✅（reviewed→archived） | [archive](../../plans/archive/769-screenshot-webp-delivery.md) | 35原尺寸WebP单图<1MB、合计减82.3%；隐藏放大图按需挂载，原PNG显式下载；62本地+5线上验证，备份部署 |
-| 813 | tapl-runnable-examples | reviewed（merge 门禁待完成） | [Plan](../../plans/813-tapl-runnable-examples.md) | TAPL 目录双向审计、代码块完整源运行与预期验证、网站 Run 输入和测试流程修复 |
+| 813 | tapl-runnable-examples | executing | [Plan](../../plans/813-tapl-runnable-examples.md) | TAPL 目录双向审计、代码块完整源运行与预期验证、网站 Run 输入和测试流程修复 |
