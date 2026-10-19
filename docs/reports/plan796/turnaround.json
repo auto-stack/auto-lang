@@ -12,10 +12,10 @@
     {
       "scenario": "no-op",
       "samples": 30,
-      "p50_ns": 61921300,
-      "p95_ns": 69671500,
-      "p99_ns": 73607000,
-      "max_ns": 73607000,
+      "p50_ns": 53853000,
+      "p95_ns": 60601600,
+      "p99_ns": 60632500,
+      "max_ns": 60632500,
       "compute_calls": 1,
       "cache_hits": 29,
       "statuses": [
@@ -32,10 +32,10 @@
     {
       "scenario": "local-body-edit",
       "samples": 30,
-      "p50_ns": 7620400,
-      "p95_ns": 10086500,
-      "p99_ns": 11225700,
-      "max_ns": 11225700,
+      "p50_ns": 6625900,
+      "p95_ns": 6944700,
+      "p99_ns": 15483200,
+      "max_ns": 15483200,
       "compute_calls": 30,
       "cache_hits": 0,
       "statuses": [
@@ -48,10 +48,10 @@
     {
       "scenario": "sig-change",
       "samples": 30,
-      "p50_ns": 67030500,
-      "p95_ns": 81386300,
-      "p99_ns": 81592400,
-      "max_ns": 81592400,
+      "p50_ns": 53684200,
+      "p95_ns": 62733400,
+      "p99_ns": 67070000,
+      "max_ns": 67070000,
       "compute_calls": 2,
       "cache_hits": 28,
       "statuses": [
@@ -68,10 +68,10 @@
     {
       "scenario": "restart-disk-hot",
       "samples": 30,
-      "p50_ns": 55951100,
-      "p95_ns": 61586500,
-      "p99_ns": 64766500,
-      "max_ns": 64766500,
+      "p50_ns": 55748100,
+      "p95_ns": 71413300,
+      "p99_ns": 77196500,
+      "max_ns": 77196500,
       "compute_calls": 0,
       "cache_hits": 30,
       "statuses": [
@@ -84,10 +84,10 @@
     {
       "scenario": "cross-project",
       "samples": 30,
-      "p50_ns": 56232400,
-      "p95_ns": 62290600,
-      "p99_ns": 74791900,
-      "max_ns": 74791900,
+      "p50_ns": 53156100,
+      "p95_ns": 59333500,
+      "p99_ns": 60143600,
+      "max_ns": 60143600,
       "compute_calls": 0,
       "cache_hits": 30,
       "statuses": [
@@ -100,10 +100,10 @@
     {
       "scenario": "gc-concurrent",
       "samples": 30,
-      "p50_ns": 55337400,
-      "p95_ns": 62977600,
-      "p99_ns": 68773900,
-      "max_ns": 68773900,
+      "p50_ns": 57704100,
+      "p95_ns": 97233600,
+      "p99_ns": 105293500,
+      "max_ns": 105293500,
       "compute_calls": 0,
       "cache_hits": 30,
       "statuses": [
@@ -116,10 +116,10 @@
     {
       "scenario": "full-cold",
       "samples": 30,
-      "p50_ns": 54168000,
-      "p95_ns": 55470800,
-      "p99_ns": 59505600,
-      "max_ns": 59505600,
+      "p50_ns": 58936700,
+      "p95_ns": 82259000,
+      "p99_ns": 82758400,
+      "max_ns": 82758400,
       "compute_calls": 1,
       "cache_hits": 29,
       "statuses": [
@@ -136,10 +136,10 @@
     {
       "scenario": "wide-invalidation",
       "samples": 30,
-      "p50_ns": 7463800,
-      "p95_ns": 63637200,
-      "p99_ns": 74869600,
-      "max_ns": 74869600,
+      "p50_ns": 7939300,
+      "p95_ns": 108388800,
+      "p99_ns": 108533700,
+      "max_ns": 108533700,
       "compute_calls": 20,
       "cache_hits": 10,
       "statuses": [
@@ -164,26 +164,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1676700,
+              "dur_ns": 1674500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1667800,
+              "dur_ns": 1368300,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 276300,
+              "dur_ns": 47900,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 5682000,
+              "dur_ns": 4447300,
               "detail": "published"
             }
           ],
-          "total_ns": 9420700,
+          "total_ns": 7762400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -195,16 +195,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1298900,
+              "dur_ns": 1232100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55069300,
+              "dur_ns": 53016000,
               "detail": "hit"
             }
           ],
-          "total_ns": 56381300,
+          "total_ns": 54258700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -216,16 +216,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1342300,
+              "dur_ns": 1256100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59431100,
+              "dur_ns": 52777500,
               "detail": "hit"
             }
           ],
-          "total_ns": 60786400,
+          "total_ns": 54044700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -237,16 +237,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1306600,
+              "dur_ns": 1286600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 67579800,
+              "dur_ns": 52230000,
               "detail": "hit"
             }
           ],
-          "total_ns": 68898300,
+          "total_ns": 53527700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -258,16 +258,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1326500,
+              "dur_ns": 1239600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 64196700,
+              "dur_ns": 52382400,
               "detail": "hit"
             }
           ],
-          "total_ns": 65536000,
+          "total_ns": 53635200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -279,16 +279,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1322600,
+              "dur_ns": 1249700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54511100,
+              "dur_ns": 56689800,
               "detail": "hit"
             }
           ],
-          "total_ns": 55865200,
+          "total_ns": 57951000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -300,16 +300,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1382800,
+              "dur_ns": 1340300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57843300,
+              "dur_ns": 52694400,
               "detail": "hit"
             }
           ],
-          "total_ns": 59240000,
+          "total_ns": 54044900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -321,16 +321,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1500500,
+              "dur_ns": 1259300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55206500,
+              "dur_ns": 52206800,
               "detail": "hit"
             }
           ],
-          "total_ns": 56732000,
+          "total_ns": 53478700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -342,16 +342,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1302800,
+              "dur_ns": 1269300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 63457200,
+              "dur_ns": 52496200,
               "detail": "hit"
             }
           ],
-          "total_ns": 64772900,
+          "total_ns": 53775900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -363,16 +363,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1498200,
+              "dur_ns": 1211900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 62857400,
+              "dur_ns": 59261400,
               "detail": "hit"
             }
           ],
-          "total_ns": 64370400,
+          "total_ns": 60483900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -384,16 +384,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1332700,
+              "dur_ns": 1231200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 62585400,
+              "dur_ns": 59360400,
               "detail": "hit"
             }
           ],
-          "total_ns": 63931400,
+          "total_ns": 60601600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -405,16 +405,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1302300,
+              "dur_ns": 1260100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59868500,
+              "dur_ns": 52340100,
               "detail": "hit"
             }
           ],
-          "total_ns": 61182400,
+          "total_ns": 53610600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -426,16 +426,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1310900,
+              "dur_ns": 1221900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 64393100,
+              "dur_ns": 54852300,
               "detail": "hit"
             }
           ],
-          "total_ns": 65718100,
+          "total_ns": 56084600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -447,16 +447,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 2256300,
+              "dur_ns": 1264700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 64813500,
+              "dur_ns": 52616500,
               "detail": "hit"
             }
           ],
-          "total_ns": 67092000,
+          "total_ns": 53891600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -468,16 +468,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1419200,
+              "dur_ns": 1232300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59572600,
+              "dur_ns": 52753200,
               "detail": "hit"
             }
           ],
-          "total_ns": 61004300,
+          "total_ns": 53995900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -489,16 +489,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1306500,
+              "dur_ns": 1230000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 68348400,
+              "dur_ns": 52412100,
               "detail": "hit"
             }
           ],
-          "total_ns": 69671500,
+          "total_ns": 53652200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -510,16 +510,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1314300,
+              "dur_ns": 1248900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 62594000,
+              "dur_ns": 52863200,
               "detail": "hit"
             }
           ],
-          "total_ns": 63921600,
+          "total_ns": 54123000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -531,16 +531,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1468600,
+              "dur_ns": 1249400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 60116500,
+              "dur_ns": 52392300,
               "detail": "hit"
             }
           ],
-          "total_ns": 61603200,
+          "total_ns": 53651900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -552,16 +552,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1685400,
+              "dur_ns": 1217600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 61398000,
+              "dur_ns": 53023500,
               "detail": "hit"
             }
           ],
-          "total_ns": 63105500,
+          "total_ns": 54251300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -573,16 +573,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1567400,
+              "dur_ns": 1353200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58916700,
+              "dur_ns": 52488500,
               "detail": "hit"
             }
           ],
-          "total_ns": 60503200,
+          "total_ns": 53853000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -594,16 +594,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1235700,
+              "dur_ns": 1216800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59870000,
+              "dur_ns": 58141700,
               "detail": "hit"
             }
           ],
-          "total_ns": 61119000,
+          "total_ns": 59369300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -615,16 +615,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1636800,
+              "dur_ns": 1240700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54145900,
+              "dur_ns": 52466900,
               "detail": "hit"
             }
           ],
-          "total_ns": 55799700,
+          "total_ns": 53717500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -636,16 +636,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1283400,
+              "dur_ns": 1233500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 72310500,
+              "dur_ns": 52379900,
               "detail": "hit"
             }
           ],
-          "total_ns": 73607000,
+          "total_ns": 53623400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -657,16 +657,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1257100,
+              "dur_ns": 1220100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59380200,
+              "dur_ns": 52413700,
               "detail": "hit"
             }
           ],
-          "total_ns": 60651600,
+          "total_ns": 53645600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -678,16 +678,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1425900,
+              "dur_ns": 1209600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 64791700,
+              "dur_ns": 52260500,
               "detail": "hit"
             }
           ],
-          "total_ns": 66230100,
+          "total_ns": 53480600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -699,16 +699,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1342700,
+              "dur_ns": 1248500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 60564300,
+              "dur_ns": 52365100,
               "detail": "hit"
             }
           ],
-          "total_ns": 61921300,
+          "total_ns": 53625400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -720,16 +720,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1438700,
+              "dur_ns": 1222400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 56196000,
+              "dur_ns": 59399400,
               "detail": "hit"
             }
           ],
-          "total_ns": 57648700,
+          "total_ns": 60632500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -741,16 +741,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1363300,
+              "dur_ns": 1234400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58358300,
+              "dur_ns": 52797200,
               "detail": "hit"
             }
           ],
-          "total_ns": 59740800,
+          "total_ns": 54043500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -762,16 +762,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1308600,
+              "dur_ns": 1378700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 65882900,
+              "dur_ns": 52381400,
               "detail": "hit"
             }
           ],
-          "total_ns": 67205600,
+          "total_ns": 53771400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -783,16 +783,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1251900,
+              "dur_ns": 1223200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 61520500,
+              "dur_ns": 52340400,
               "detail": "hit"
             }
           ],
-          "total_ns": 62785400,
+          "total_ns": 53574200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -809,26 +809,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 2115500,
+              "dur_ns": 1366400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1444900,
+              "dur_ns": 1311600,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 36900,
+              "dur_ns": 24000,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4481100,
+              "dur_ns": 3910100,
               "detail": "published"
             }
           ],
-          "total_ns": 8096800,
+          "total_ns": 6625900,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -840,26 +840,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1246200,
+              "dur_ns": 1201000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1358700,
+              "dur_ns": 1212300,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 30900,
+              "dur_ns": 20800,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 5198600,
+              "dur_ns": 13037200,
               "detail": "published"
             }
           ],
-          "total_ns": 7851800,
+          "total_ns": 15483200,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -871,26 +871,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1435900,
+              "dur_ns": 1261700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1600000,
+              "dur_ns": 1230100,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 49300,
+              "dur_ns": 22800,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 6490000,
+              "dur_ns": 3441500,
               "detail": "published"
             }
           ],
-          "total_ns": 9609800,
+          "total_ns": 5972600,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -902,26 +902,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1963300,
+              "dur_ns": 1225000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1398000,
+              "dur_ns": 1226400,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 29400,
+              "dur_ns": 23300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4926200,
+              "dur_ns": 3955200,
               "detail": "published"
             }
           ],
-          "total_ns": 8336500,
+          "total_ns": 6442800,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -933,26 +933,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1317400,
+              "dur_ns": 1246000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1272300,
+              "dur_ns": 1234600,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 30000,
+              "dur_ns": 22800,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4257400,
+              "dur_ns": 3546100,
               "detail": "published"
             }
           ],
-          "total_ns": 6891700,
+          "total_ns": 6061800,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -964,26 +964,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1296700,
+              "dur_ns": 1206200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1328000,
+              "dur_ns": 1191700,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 29000,
+              "dur_ns": 21400,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 3945500,
+              "dur_ns": 3559200,
               "detail": "published"
             }
           ],
-          "total_ns": 6621300,
+          "total_ns": 5997000,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -995,26 +995,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1444600,
+              "dur_ns": 1224400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1439700,
+              "dur_ns": 1227800,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 28800,
+              "dur_ns": 23200,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4644300,
+              "dur_ns": 3614400,
               "detail": "published"
             }
           ],
-          "total_ns": 7588500,
+          "total_ns": 6103800,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1026,26 +1026,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1629700,
+              "dur_ns": 1218100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1430900,
+              "dur_ns": 1240100,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 33100,
+              "dur_ns": 24400,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4840600,
+              "dur_ns": 3735700,
               "detail": "published"
             }
           ],
-          "total_ns": 7956400,
+          "total_ns": 6231300,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1057,26 +1057,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1756900,
+              "dur_ns": 1238300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1390100,
+              "dur_ns": 1252900,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 26900,
+              "dur_ns": 23600,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4155000,
+              "dur_ns": 3880200,
               "detail": "published"
             }
           ],
-          "total_ns": 7350900,
+          "total_ns": 6411400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1088,26 +1088,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1287900,
+              "dur_ns": 1178900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1359600,
+              "dur_ns": 1204500,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 28200,
+              "dur_ns": 23000,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4962300,
+              "dur_ns": 3553500,
               "detail": "published"
             }
           ],
-          "total_ns": 7654400,
+          "total_ns": 5971300,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1119,26 +1119,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1740500,
+              "dur_ns": 1205800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1418300,
+              "dur_ns": 1202800,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 33700,
+              "dur_ns": 21200,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 3891900,
+              "dur_ns": 3611700,
               "detail": "published"
             }
           ],
-          "total_ns": 7106700,
+          "total_ns": 6053900,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1150,26 +1150,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1223000,
+              "dur_ns": 1257800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1314700,
+              "dur_ns": 1250300,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 28700,
+              "dur_ns": 25300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4482300,
+              "dur_ns": 4310900,
               "detail": "published"
             }
           ],
-          "total_ns": 7065500,
+          "total_ns": 6862100,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1181,26 +1181,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1357700,
+              "dur_ns": 1335500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1391300,
+              "dur_ns": 1249600,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 33300,
+              "dur_ns": 25300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4331700,
+              "dur_ns": 3874800,
               "detail": "published"
             }
           ],
-          "total_ns": 7141100,
+          "total_ns": 6498200,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1212,26 +1212,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1347700,
+              "dur_ns": 1258700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1322300,
+              "dur_ns": 1362000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 30000,
+              "dur_ns": 25200,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4087500,
+              "dur_ns": 4067300,
               "detail": "published"
             }
           ],
-          "total_ns": 6805100,
+          "total_ns": 6734700,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1243,177 +1243,22 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1573400,
+              "dur_ns": 1250900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 2220200,
+              "dur_ns": 1247600,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 44400,
+              "dur_ns": 27000,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 6211500,
-              "detail": "published"
-            }
-          ],
-          "total_ns": 10086500,
-          "compute_calls": 1,
-          "cache_hit": false,
-          "io_bytes": 744,
-          "status": "published"
-        },
-        {
-          "scenario": "local-body-edit",
-          "index": 15,
-          "stages": [
-            {
-              "name": "request",
-              "dur_ns": 1267600,
-              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
-            },
-            {
-              "name": "cache-read-validate",
-              "dur_ns": 1364400,
-              "detail": "miss"
-            },
-            {
-              "name": "infer",
-              "dur_ns": 33600,
-              "detail": "new-solver"
-            },
-            {
-              "name": "publish",
-              "dur_ns": 5082100,
-              "detail": "published"
-            }
-          ],
-          "total_ns": 7765000,
-          "compute_calls": 1,
-          "cache_hit": false,
-          "io_bytes": 744,
-          "status": "published"
-        },
-        {
-          "scenario": "local-body-edit",
-          "index": 16,
-          "stages": [
-            {
-              "name": "request",
-              "dur_ns": 2267600,
-              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
-            },
-            {
-              "name": "cache-read-validate",
-              "dur_ns": 2503400,
-              "detail": "miss"
-            },
-            {
-              "name": "infer",
-              "dur_ns": 60200,
-              "detail": "new-solver"
-            },
-            {
-              "name": "publish",
-              "dur_ns": 6335900,
-              "detail": "published"
-            }
-          ],
-          "total_ns": 11225700,
-          "compute_calls": 1,
-          "cache_hit": false,
-          "io_bytes": 744,
-          "status": "published"
-        },
-        {
-          "scenario": "local-body-edit",
-          "index": 17,
-          "stages": [
-            {
-              "name": "request",
-              "dur_ns": 1999300,
-              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
-            },
-            {
-              "name": "cache-read-validate",
-              "dur_ns": 1637600,
-              "detail": "miss"
-            },
-            {
-              "name": "infer",
-              "dur_ns": 29600,
-              "detail": "new-solver"
-            },
-            {
-              "name": "publish",
-              "dur_ns": 4637900,
-              "detail": "published"
-            }
-          ],
-          "total_ns": 8332800,
-          "compute_calls": 1,
-          "cache_hit": false,
-          "io_bytes": 744,
-          "status": "published"
-        },
-        {
-          "scenario": "local-body-edit",
-          "index": 18,
-          "stages": [
-            {
-              "name": "request",
-              "dur_ns": 1278100,
-              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
-            },
-            {
-              "name": "cache-read-validate",
-              "dur_ns": 1414800,
-              "detail": "miss"
-            },
-            {
-              "name": "infer",
-              "dur_ns": 31100,
-              "detail": "new-solver"
-            },
-            {
-              "name": "publish",
-              "dur_ns": 4078800,
-              "detail": "published"
-            }
-          ],
-          "total_ns": 6824900,
-          "compute_calls": 1,
-          "cache_hit": false,
-          "io_bytes": 744,
-          "status": "published"
-        },
-        {
-          "scenario": "local-body-edit",
-          "index": 19,
-          "stages": [
-            {
-              "name": "request",
-              "dur_ns": 1313200,
-              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
-            },
-            {
-              "name": "cache-read-validate",
-              "dur_ns": 1331200,
-              "detail": "miss"
-            },
-            {
-              "name": "infer",
-              "dur_ns": 29100,
-              "detail": "new-solver"
-            },
-            {
-              "name": "publish",
-              "dur_ns": 4056300,
+              "dur_ns": 4212700,
               "detail": "published"
             }
           ],
@@ -1425,30 +1270,185 @@
         },
         {
           "scenario": "local-body-edit",
-          "index": 20,
+          "index": 15,
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1213000,
+              "dur_ns": 1222100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1382500,
+              "dur_ns": 1255000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 29500,
+              "dur_ns": 23400,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4813000,
+              "dur_ns": 4373900,
               "detail": "published"
             }
           ],
-          "total_ns": 7453300,
+          "total_ns": 6895600,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 16,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1258300,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 1314500,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 28300,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 4007800,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 6622700,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 17,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1307000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 1276700,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 26400,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3928800,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 6559100,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 18,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1268000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 1263000,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 23500,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 4044200,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 6612200,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 19,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1228000,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 1242700,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 33400,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 3901400,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 6419400,
+          "compute_calls": 1,
+          "cache_hit": false,
+          "io_bytes": 744,
+          "status": "published"
+        },
+        {
+          "scenario": "local-body-edit",
+          "index": 20,
+          "stages": [
+            {
+              "name": "request",
+              "dur_ns": 1278500,
+              "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
+            },
+            {
+              "name": "cache-read-validate",
+              "dur_ns": 1247700,
+              "detail": "miss"
+            },
+            {
+              "name": "infer",
+              "dur_ns": 24700,
+              "detail": "new-solver"
+            },
+            {
+              "name": "publish",
+              "dur_ns": 4255200,
+              "detail": "published"
+            }
+          ],
+          "total_ns": 6825400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1460,26 +1460,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1331800,
+              "dur_ns": 1217900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1359500,
+              "dur_ns": 1302500,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 32200,
+              "dur_ns": 25900,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4438700,
+              "dur_ns": 4152900,
               "detail": "published"
             }
           ],
-          "total_ns": 7186100,
+          "total_ns": 6712800,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1491,26 +1491,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1336800,
+              "dur_ns": 1257500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1302600,
+              "dur_ns": 1249200,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 27900,
+              "dur_ns": 25900,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4928300,
+              "dur_ns": 4201400,
               "detail": "published"
             }
           ],
-          "total_ns": 7620400,
+          "total_ns": 6747000,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1522,26 +1522,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1933400,
+              "dur_ns": 1279100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 2190300,
+              "dur_ns": 1272900,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 88200,
+              "dur_ns": 25200,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4547400,
+              "dur_ns": 4256400,
               "detail": "published"
             }
           ],
-          "total_ns": 8798300,
+          "total_ns": 6853400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1553,26 +1553,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1282500,
+              "dur_ns": 1284900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1267400,
+              "dur_ns": 1260100,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 26700,
+              "dur_ns": 25100,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4316500,
+              "dur_ns": 4295600,
               "detail": "published"
             }
           ],
-          "total_ns": 6914700,
+          "total_ns": 6878500,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1584,26 +1584,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1327600,
+              "dur_ns": 1270800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1331700,
+              "dur_ns": 1277000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 31200,
+              "dur_ns": 25500,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4905300,
+              "dur_ns": 4356700,
               "detail": "published"
             }
           ],
-          "total_ns": 7613900,
+          "total_ns": 6944700,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1615,26 +1615,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1371200,
+              "dur_ns": 1276200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1332100,
+              "dur_ns": 1248500,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 30500,
+              "dur_ns": 24300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4297200,
+              "dur_ns": 4172000,
               "detail": "published"
             }
           ],
-          "total_ns": 7054700,
+          "total_ns": 6739200,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1646,26 +1646,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1254100,
+              "dur_ns": 1222000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1262500,
+              "dur_ns": 1284500,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 28800,
+              "dur_ns": 26800,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 5306000,
+              "dur_ns": 4129200,
               "detail": "published"
             }
           ],
-          "total_ns": 7867400,
+          "total_ns": 6675900,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1677,26 +1677,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1937500,
+              "dur_ns": 1220700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1953700,
+              "dur_ns": 1234000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 39400,
+              "dur_ns": 22000,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 5542000,
+              "dur_ns": 4112000,
               "detail": "published"
             }
           ],
-          "total_ns": 9492500,
+          "total_ns": 6602400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1708,26 +1708,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1347800,
+              "dur_ns": 1303000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1459700,
+              "dur_ns": 1209200,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 28300,
+              "dur_ns": 20000,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 5568900,
+              "dur_ns": 4135900,
               "detail": "published"
             }
           ],
-          "total_ns": 8434800,
+          "total_ns": 6684600,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -1744,26 +1744,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1792300,
+              "dur_ns": 1294700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1511400,
+              "dur_ns": 1281200,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 99300,
+              "dur_ns": 65800,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 5022000,
+              "dur_ns": 4197000,
               "detail": "published"
             }
           ],
-          "total_ns": 8452400,
+          "total_ns": 6853400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 824,
@@ -1775,26 +1775,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1255400,
+              "dur_ns": 1207100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1316000,
+              "dur_ns": 1219000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 86900,
+              "dur_ns": 66600,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4474600,
+              "dur_ns": 4254300,
               "detail": "published"
             }
           ],
-          "total_ns": 7147700,
+          "total_ns": 6758300,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 824,
@@ -1806,16 +1806,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1304700,
+              "dur_ns": 1269300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 61541500,
+              "dur_ns": 53003500,
               "detail": "hit"
             }
           ],
-          "total_ns": 62858500,
+          "total_ns": 54282900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -1827,16 +1827,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1406100,
+              "dur_ns": 1246600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 63515100,
+              "dur_ns": 53293400,
               "detail": "hit"
             }
           ],
-          "total_ns": 64932800,
+          "total_ns": 54549800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -1848,16 +1848,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1270700,
+              "dur_ns": 1224300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58366700,
+              "dur_ns": 52742000,
               "detail": "hit"
             }
           ],
-          "total_ns": 59649400,
+          "total_ns": 53976400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -1869,16 +1869,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1466000,
+              "dur_ns": 1240400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 66180600,
+              "dur_ns": 52342000,
               "detail": "hit"
             }
           ],
-          "total_ns": 67664700,
+          "total_ns": 53593200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -1890,16 +1890,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1724500,
+              "dur_ns": 1204000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 60173300,
+              "dur_ns": 55897100,
               "detail": "hit"
             }
           ],
-          "total_ns": 61913300,
+          "total_ns": 57111900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -1911,16 +1911,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1403300,
+              "dur_ns": 2240400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57180400,
+              "dur_ns": 64813800,
               "detail": "hit"
             }
           ],
-          "total_ns": 58597000,
+          "total_ns": 67070000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -1932,16 +1932,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1308300,
+              "dur_ns": 1214400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 69043600,
+              "dur_ns": 52318600,
               "detail": "hit"
             }
           ],
-          "total_ns": 70364200,
+          "total_ns": 53543600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -1953,16 +1953,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1353400,
+              "dur_ns": 1353300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 80020700,
+              "dur_ns": 52216100,
               "detail": "hit"
             }
           ],
-          "total_ns": 81386300,
+          "total_ns": 53579900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -1974,16 +1974,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1246200,
+              "dur_ns": 1234600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 76580700,
+              "dur_ns": 52694200,
               "detail": "hit"
             }
           ],
-          "total_ns": 77838800,
+          "total_ns": 53939300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -1995,16 +1995,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1373100,
+              "dur_ns": 1232200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 67685100,
+              "dur_ns": 61491200,
               "detail": "hit"
             }
           ],
-          "total_ns": 69073400,
+          "total_ns": 62733400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2016,16 +2016,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1317300,
+              "dur_ns": 1355800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 69839100,
+              "dur_ns": 52212800,
               "detail": "hit"
             }
           ],
-          "total_ns": 71167400,
+          "total_ns": 53583000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2037,16 +2037,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1385700,
+              "dur_ns": 1246800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 71561500,
+              "dur_ns": 52134700,
               "detail": "hit"
             }
           ],
-          "total_ns": 72960000,
+          "total_ns": 53391500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2058,16 +2058,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1387800,
+              "dur_ns": 1229600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 65630600,
+              "dur_ns": 52093600,
               "detail": "hit"
             }
           ],
-          "total_ns": 67030500,
+          "total_ns": 53333900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2079,16 +2079,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1568900,
+              "dur_ns": 1269300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 67727900,
+              "dur_ns": 52561600,
               "detail": "hit"
             }
           ],
-          "total_ns": 69317600,
+          "total_ns": 53840800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2100,16 +2100,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 2197500,
+              "dur_ns": 1172300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 60306500,
+              "dur_ns": 52034600,
               "detail": "hit"
             }
           ],
-          "total_ns": 62520200,
+          "total_ns": 53217800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2121,16 +2121,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 2128200,
+              "dur_ns": 1217300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 69877700,
+              "dur_ns": 51967300,
               "detail": "hit"
             }
           ],
-          "total_ns": 72025900,
+          "total_ns": 53194600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2142,16 +2142,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1574100,
+              "dur_ns": 1213800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 80005600,
+              "dur_ns": 51948500,
               "detail": "hit"
             }
           ],
-          "total_ns": 81592400,
+          "total_ns": 53173000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2163,16 +2163,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1501000,
+              "dur_ns": 1240700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 62067900,
+              "dur_ns": 52189500,
               "detail": "hit"
             }
           ],
-          "total_ns": 63588900,
+          "total_ns": 53440100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2184,16 +2184,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1670500,
+              "dur_ns": 1261800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 66419300,
+              "dur_ns": 52411000,
               "detail": "hit"
             }
           ],
-          "total_ns": 68101900,
+          "total_ns": 53684200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2205,16 +2205,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1954900,
+              "dur_ns": 1262400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 65874800,
+              "dur_ns": 52955000,
               "detail": "hit"
             }
           ],
-          "total_ns": 67847900,
+          "total_ns": 54227700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2226,16 +2226,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1697400,
+              "dur_ns": 1208900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 73658500,
+              "dur_ns": 52342400,
               "detail": "hit"
             }
           ],
-          "total_ns": 75367800,
+          "total_ns": 53562500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2247,16 +2247,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1564200,
+              "dur_ns": 1267800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 62813400,
+              "dur_ns": 52585600,
               "detail": "hit"
             }
           ],
-          "total_ns": 64391100,
+          "total_ns": 53864500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2268,16 +2268,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1352600,
+              "dur_ns": 1255100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 67395900,
+              "dur_ns": 52408500,
               "detail": "hit"
             }
           ],
-          "total_ns": 68760800,
+          "total_ns": 53675000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2289,16 +2289,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1571700,
+              "dur_ns": 1258700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 61838200,
+              "dur_ns": 52505800,
               "detail": "hit"
             }
           ],
-          "total_ns": 63422700,
+          "total_ns": 53774500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2310,16 +2310,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1304800,
+              "dur_ns": 1245900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53921400,
+              "dur_ns": 52208800,
               "detail": "hit"
             }
           ],
-          "total_ns": 55236600,
+          "total_ns": 53465000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2331,16 +2331,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1269800,
+              "dur_ns": 1287000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55845900,
+              "dur_ns": 52632100,
               "detail": "hit"
             }
           ],
-          "total_ns": 57127500,
+          "total_ns": 53928700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2352,16 +2352,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1361800,
+              "dur_ns": 1245500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ab26b9334111e49b8341b75f559f79d1bea3981bc2e66cbd"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54223300,
+              "dur_ns": 52923800,
               "detail": "hit"
             }
           ],
-          "total_ns": 55596700,
+          "total_ns": 54180200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 886,
@@ -2373,16 +2373,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1209200,
+              "dur_ns": 1333200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=1c3e550c52d6d34ed1c0ad7d27860606f46d679937100de2"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57565200,
+              "dur_ns": 54289200,
               "detail": "hit"
             }
           ],
-          "total_ns": 58923600,
+          "total_ns": 55634600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 833,
@@ -2399,16 +2399,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1238800,
+              "dur_ns": 1286200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58255200,
+              "dur_ns": 52930400,
               "detail": "hit"
             }
           ],
-          "total_ns": 59513500,
+          "total_ns": 54228400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2420,16 +2420,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1342400,
+              "dur_ns": 1261500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55296100,
+              "dur_ns": 57641200,
               "detail": "hit"
             }
           ],
-          "total_ns": 56650900,
+          "total_ns": 58914400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2441,16 +2441,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1344900,
+              "dur_ns": 1304400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55368300,
+              "dur_ns": 52527600,
               "detail": "hit"
             }
           ],
-          "total_ns": 56729600,
+          "total_ns": 53843100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2462,16 +2462,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1416400,
+              "dur_ns": 1170300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53799400,
+              "dur_ns": 63765600,
               "detail": "hit"
             }
           ],
-          "total_ns": 55228700,
+          "total_ns": 64952500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2483,16 +2483,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1263700,
+              "dur_ns": 1309300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 60200300,
+              "dur_ns": 52236400,
               "detail": "hit"
             }
           ],
-          "total_ns": 61477100,
+          "total_ns": 53557000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2504,16 +2504,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1237000,
+              "dur_ns": 1606100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52917400,
+              "dur_ns": 56088400,
               "detail": "hit"
             }
           ],
-          "total_ns": 54167300,
+          "total_ns": 57712100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2525,16 +2525,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1327900,
+              "dur_ns": 1321500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 60245100,
+              "dur_ns": 56905100,
               "detail": "hit"
             }
           ],
-          "total_ns": 61586500,
+          "total_ns": 58239300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2546,16 +2546,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1251500,
+              "dur_ns": 2213900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53653900,
+              "dur_ns": 74963500,
               "detail": "hit"
             }
           ],
-          "total_ns": 54917800,
+          "total_ns": 77196500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2567,16 +2567,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1224100,
+              "dur_ns": 1303300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54713700,
+              "dur_ns": 70096500,
               "detail": "hit"
             }
           ],
-          "total_ns": 55951100,
+          "total_ns": 71413300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2588,16 +2588,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1390100,
+              "dur_ns": 1334500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54153500,
+              "dur_ns": 62560800,
               "detail": "hit"
             }
           ],
-          "total_ns": 55558300,
+          "total_ns": 63908700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2609,16 +2609,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1322300,
+              "dur_ns": 1272100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52782200,
+              "dur_ns": 52746800,
               "detail": "hit"
             }
           ],
-          "total_ns": 54116800,
+          "total_ns": 54029400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2630,16 +2630,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1200100,
+              "dur_ns": 1288400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52678300,
+              "dur_ns": 61168100,
               "detail": "hit"
             }
           ],
-          "total_ns": 53889700,
+          "total_ns": 62468700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2651,16 +2651,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1422100,
+              "dur_ns": 1372600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57644200,
+              "dur_ns": 53029000,
               "detail": "hit"
             }
           ],
-          "total_ns": 59085600,
+          "total_ns": 54414600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2672,16 +2672,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1323700,
+              "dur_ns": 1262200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 56829200,
+              "dur_ns": 53051100,
               "detail": "hit"
             }
           ],
-          "total_ns": 58166000,
+          "total_ns": 54325100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2693,16 +2693,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 2035000,
+              "dur_ns": 1311900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58059300,
+              "dur_ns": 54019200,
               "detail": "hit"
             }
           ],
-          "total_ns": 60114600,
+          "total_ns": 55344200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2714,16 +2714,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1306400,
+              "dur_ns": 1241000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52262100,
+              "dur_ns": 54491300,
               "detail": "hit"
             }
           ],
-          "total_ns": 53581500,
+          "total_ns": 55748100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2735,16 +2735,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1311900,
+              "dur_ns": 1359000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55559900,
+              "dur_ns": 54585900,
               "detail": "hit"
             }
           ],
-          "total_ns": 56884100,
+          "total_ns": 55956500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2756,16 +2756,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1312400,
+              "dur_ns": 1287300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54547500,
+              "dur_ns": 66528700,
               "detail": "hit"
             }
           ],
-          "total_ns": 55872700,
+          "total_ns": 67829400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2777,16 +2777,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1583900,
+              "dur_ns": 1370300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58954300,
+              "dur_ns": 53151900,
               "detail": "hit"
             }
           ],
-          "total_ns": 60551800,
+          "total_ns": 54540100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2798,16 +2798,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1303400,
+              "dur_ns": 1285300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53538300,
+              "dur_ns": 61936500,
               "detail": "hit"
             }
           ],
-          "total_ns": 54855400,
+          "total_ns": 63234200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2819,16 +2819,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1319700,
+              "dur_ns": 1437600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 56456000,
+              "dur_ns": 53024600,
               "detail": "hit"
             }
           ],
-          "total_ns": 57789100,
+          "total_ns": 54474800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2840,16 +2840,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1415600,
+              "dur_ns": 2135200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52989900,
+              "dur_ns": 56300100,
               "detail": "hit"
             }
           ],
-          "total_ns": 54417400,
+          "total_ns": 58451800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2861,16 +2861,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1266500,
+              "dur_ns": 1267000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53172900,
+              "dur_ns": 53070600,
               "detail": "hit"
             }
           ],
-          "total_ns": 54451200,
+          "total_ns": 54348700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2882,16 +2882,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1951500,
+              "dur_ns": 1227500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53792700,
+              "dur_ns": 52558300,
               "detail": "hit"
             }
           ],
-          "total_ns": 55762000,
+          "total_ns": 53797100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2903,16 +2903,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1265900,
+              "dur_ns": 1281500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54090300,
+              "dur_ns": 53168100,
               "detail": "hit"
             }
           ],
-          "total_ns": 55367900,
+          "total_ns": 54460400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2924,16 +2924,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 2138700,
+              "dur_ns": 1319400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57211200,
+              "dur_ns": 52377500,
               "detail": "hit"
             }
           ],
-          "total_ns": 59366900,
+          "total_ns": 53708400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2945,16 +2945,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1392000,
+              "dur_ns": 1266500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53013100,
+              "dur_ns": 54250400,
               "detail": "hit"
             }
           ],
-          "total_ns": 54418900,
+          "total_ns": 55528200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2966,16 +2966,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1238100,
+              "dur_ns": 2231200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58396000,
+              "dur_ns": 55848600,
               "detail": "hit"
             }
           ],
-          "total_ns": 59646200,
+          "total_ns": 58096200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -2987,16 +2987,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1258200,
+              "dur_ns": 1283600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53251400,
+              "dur_ns": 53118700,
               "detail": "hit"
             }
           ],
-          "total_ns": 54522000,
+          "total_ns": 54414300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3008,16 +3008,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1272900,
+              "dur_ns": 1268800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 63480300,
+              "dur_ns": 55414500,
               "detail": "hit"
             }
           ],
-          "total_ns": 64766500,
+          "total_ns": 56696200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3034,16 +3034,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1299900,
+              "dur_ns": 1321800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53299500,
+              "dur_ns": 53124300,
               "detail": "hit"
             }
           ],
-          "total_ns": 54608800,
+          "total_ns": 54457100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3055,16 +3055,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1190300,
+              "dur_ns": 1218000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 56472000,
+              "dur_ns": 53983500,
               "detail": "hit"
             }
           ],
-          "total_ns": 57673900,
+          "total_ns": 55214900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3076,16 +3076,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1396600,
+              "dur_ns": 1278300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58926800,
+              "dur_ns": 54743400,
               "detail": "hit"
             }
           ],
-          "total_ns": 60335600,
+          "total_ns": 56037800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3097,16 +3097,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1238600,
+              "dur_ns": 1191200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52741400,
+              "dur_ns": 58938500,
               "detail": "hit"
             }
           ],
-          "total_ns": 53992100,
+          "total_ns": 60143600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3118,16 +3118,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1237000,
+              "dur_ns": 1267500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53300600,
+              "dur_ns": 51614500,
               "detail": "hit"
             }
           ],
-          "total_ns": 54549100,
+          "total_ns": 52896700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3139,16 +3139,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1274000,
+              "dur_ns": 1214900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55460600,
+              "dur_ns": 57712500,
               "detail": "hit"
             }
           ],
-          "total_ns": 56747100,
+          "total_ns": 58941300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3160,16 +3160,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1253500,
+              "dur_ns": 1293400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53222100,
+              "dur_ns": 51453000,
               "detail": "hit"
             }
           ],
-          "total_ns": 54487300,
+          "total_ns": 52767800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3181,16 +3181,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1278800,
+              "dur_ns": 1195900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52014700,
+              "dur_ns": 52054200,
               "detail": "hit"
             }
           ],
-          "total_ns": 53306200,
+          "total_ns": 53262800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3202,16 +3202,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1261600,
+              "dur_ns": 1172000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52973300,
+              "dur_ns": 51369300,
               "detail": "hit"
             }
           ],
-          "total_ns": 54246600,
+          "total_ns": 52554600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3223,16 +3223,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1224900,
+              "dur_ns": 1222400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54520600,
+              "dur_ns": 51612000,
               "detail": "hit"
             }
           ],
-          "total_ns": 55757200,
+          "total_ns": 52847400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3244,16 +3244,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1361900,
+              "dur_ns": 1232500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54956700,
+              "dur_ns": 51567700,
               "detail": "hit"
             }
           ],
-          "total_ns": 56332100,
+          "total_ns": 52814000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3265,16 +3265,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1290600,
+              "dur_ns": 1163500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52229600,
+              "dur_ns": 51485700,
               "detail": "hit"
             }
           ],
-          "total_ns": 53532200,
+          "total_ns": 52662500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3286,16 +3286,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1285400,
+              "dur_ns": 1207300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52307400,
+              "dur_ns": 51378400,
               "detail": "hit"
             }
           ],
-          "total_ns": 53604700,
+          "total_ns": 52599400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3307,16 +3307,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1305700,
+              "dur_ns": 1179100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55418600,
+              "dur_ns": 51426900,
               "detail": "hit"
             }
           ],
-          "total_ns": 56737500,
+          "total_ns": 52618300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3328,16 +3328,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 2033100,
+              "dur_ns": 1324300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59757200,
+              "dur_ns": 52046300,
               "detail": "hit"
             }
           ],
-          "total_ns": 61807700,
+          "total_ns": 53384500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3349,16 +3349,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1288700,
+              "dur_ns": 1253400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 73488000,
+              "dur_ns": 51854100,
               "detail": "hit"
             }
           ],
-          "total_ns": 74791900,
+          "total_ns": 53121200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3370,16 +3370,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1310400,
+              "dur_ns": 1196000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52875900,
+              "dur_ns": 56281500,
               "detail": "hit"
             }
           ],
-          "total_ns": 54198700,
+          "total_ns": 57490600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3391,16 +3391,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1268400,
+              "dur_ns": 1237500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55541600,
+              "dur_ns": 51713400,
               "detail": "hit"
             }
           ],
-          "total_ns": 56822600,
+          "total_ns": 52967500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3412,16 +3412,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1285300,
+              "dur_ns": 1247700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52772200,
+              "dur_ns": 52135000,
               "detail": "hit"
             }
           ],
-          "total_ns": 54070200,
+          "total_ns": 53397100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3433,16 +3433,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1285700,
+              "dur_ns": 1283500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57256900,
+              "dur_ns": 58036500,
               "detail": "hit"
             }
           ],
-          "total_ns": 58556400,
+          "total_ns": 59333500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3454,16 +3454,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1267600,
+              "dur_ns": 1321500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55176800,
+              "dur_ns": 51819400,
               "detail": "hit"
             }
           ],
-          "total_ns": 56457000,
+          "total_ns": 53156100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3475,16 +3475,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1332100,
+              "dur_ns": 1198900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55537600,
+              "dur_ns": 52184100,
               "detail": "hit"
             }
           ],
-          "total_ns": 56882000,
+          "total_ns": 53395800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3496,16 +3496,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1201100,
+              "dur_ns": 1263600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55019400,
+              "dur_ns": 51540700,
               "detail": "hit"
             }
           ],
-          "total_ns": 56232400,
+          "total_ns": 52817800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3517,16 +3517,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1260600,
+              "dur_ns": 1219500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58051900,
+              "dur_ns": 51337600,
               "detail": "hit"
             }
           ],
-          "total_ns": 59324700,
+          "total_ns": 52568800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3538,16 +3538,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1197100,
+              "dur_ns": 1226200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54216900,
+              "dur_ns": 51536500,
               "detail": "hit"
             }
           ],
-          "total_ns": 55427000,
+          "total_ns": 52775500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3559,16 +3559,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1384100,
+              "dur_ns": 1274000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59562800,
+              "dur_ns": 53856200,
               "detail": "hit"
             }
           ],
-          "total_ns": 60963600,
+          "total_ns": 55144500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3580,16 +3580,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1385200,
+              "dur_ns": 1877300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53377600,
+              "dur_ns": 52297400,
               "detail": "hit"
             }
           ],
-          "total_ns": 54776800,
+          "total_ns": 54191300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3601,16 +3601,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1253600,
+              "dur_ns": 1335800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54288800,
+              "dur_ns": 51775000,
               "detail": "hit"
             }
           ],
-          "total_ns": 55554600,
+          "total_ns": 53123700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3622,16 +3622,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1416400,
+              "dur_ns": 1215800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53890900,
+              "dur_ns": 51300000,
               "detail": "hit"
             }
           ],
-          "total_ns": 55325100,
+          "total_ns": 52528300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3643,16 +3643,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1253700,
+              "dur_ns": 1197700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 61021500,
+              "dur_ns": 52591700,
               "detail": "hit"
             }
           ],
-          "total_ns": 62290600,
+          "total_ns": 53801100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3669,16 +3669,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1231300,
+              "dur_ns": 1287600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53981900,
+              "dur_ns": 60932300,
               "detail": "hit"
             }
           ],
-          "total_ns": 55225900,
+          "total_ns": 62233100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3690,16 +3690,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1372100,
+              "dur_ns": 1326300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52259600,
+              "dur_ns": 75727300,
               "detail": "hit"
             }
           ],
-          "total_ns": 53648600,
+          "total_ns": 77073700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3711,16 +3711,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1287500,
+              "dur_ns": 1552100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57750900,
+              "dur_ns": 57555900,
               "detail": "hit"
             }
           ],
-          "total_ns": 59051500,
+          "total_ns": 59123900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3732,16 +3732,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1275000,
+              "dur_ns": 1294500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53977000,
+              "dur_ns": 55356600,
               "detail": "hit"
             }
           ],
-          "total_ns": 55267000,
+          "total_ns": 56662900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3753,16 +3753,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1294400,
+              "dur_ns": 1337800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53303300,
+              "dur_ns": 53024200,
               "detail": "hit"
             }
           ],
-          "total_ns": 54614600,
+          "total_ns": 54373800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3774,16 +3774,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1933800,
+              "dur_ns": 1330600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54164500,
+              "dur_ns": 78066200,
               "detail": "hit"
             }
           ],
-          "total_ns": 56113900,
+          "total_ns": 79410000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3795,16 +3795,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1981300,
+              "dur_ns": 1232400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53675500,
+              "dur_ns": 54109400,
               "detail": "hit"
             }
           ],
-          "total_ns": 55670800,
+          "total_ns": 55355200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3816,16 +3816,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1237400,
+              "dur_ns": 1351300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52842100,
+              "dur_ns": 52396500,
               "detail": "hit"
             }
           ],
-          "total_ns": 54094900,
+          "total_ns": 53763000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3837,16 +3837,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1560000,
+              "dur_ns": 1279200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57422700,
+              "dur_ns": 52493700,
               "detail": "hit"
             }
           ],
-          "total_ns": 58994200,
+          "total_ns": 53785800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3858,16 +3858,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1333600,
+              "dur_ns": 2202100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52574000,
+              "dur_ns": 53768700,
               "detail": "hit"
             }
           ],
-          "total_ns": 53924000,
+          "total_ns": 55992100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3879,16 +3879,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1545700,
+              "dur_ns": 1396900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55911200,
+              "dur_ns": 52394400,
               "detail": "hit"
             }
           ],
-          "total_ns": 57470200,
+          "total_ns": 53804700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3900,16 +3900,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1308400,
+              "dur_ns": 1304800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57804000,
+              "dur_ns": 52815700,
               "detail": "hit"
             }
           ],
-          "total_ns": 59125800,
+          "total_ns": 54133000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3921,16 +3921,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1417600,
+              "dur_ns": 1263300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52711300,
+              "dur_ns": 52721100,
               "detail": "hit"
             }
           ],
-          "total_ns": 54143200,
+          "total_ns": 53997000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3942,16 +3942,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1324600,
+              "dur_ns": 1240700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52705100,
+              "dur_ns": 52879100,
               "detail": "hit"
             }
           ],
-          "total_ns": 54043100,
+          "total_ns": 54134500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3963,16 +3963,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1310600,
+              "dur_ns": 1411900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55291900,
+              "dur_ns": 53391600,
               "detail": "hit"
             }
           ],
-          "total_ns": 56613100,
+          "total_ns": 54818200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -3984,16 +3984,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1350500,
+              "dur_ns": 1316800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55532400,
+              "dur_ns": 53103000,
               "detail": "hit"
             }
           ],
-          "total_ns": 56896000,
+          "total_ns": 54431300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4005,16 +4005,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1291200,
+              "dur_ns": 2673200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55912300,
+              "dur_ns": 55923400,
               "detail": "hit"
             }
           ],
-          "total_ns": 57214900,
+          "total_ns": 58621200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4026,16 +4026,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1320300,
+              "dur_ns": 1308500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57086300,
+              "dur_ns": 56383100,
               "detail": "hit"
             }
           ],
-          "total_ns": 58420800,
+          "total_ns": 57704100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4047,16 +4047,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1248000,
+              "dur_ns": 1551900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 57791200,
+              "dur_ns": 53732700,
               "detail": "hit"
             }
           ],
-          "total_ns": 59053400,
+          "total_ns": 55298100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4068,16 +4068,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1375600,
+              "dur_ns": 1299500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54102700,
+              "dur_ns": 52828800,
               "detail": "hit"
             }
           ],
-          "total_ns": 55492800,
+          "total_ns": 54142000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4089,16 +4089,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1296600,
+              "dur_ns": 1328300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53154700,
+              "dur_ns": 56460100,
               "detail": "hit"
             }
           ],
-          "total_ns": 54464200,
+          "total_ns": 57801800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4110,16 +4110,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1300500,
+              "dur_ns": 1312400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 67460700,
+              "dur_ns": 53408200,
               "detail": "hit"
             }
           ],
-          "total_ns": 68773900,
+          "total_ns": 54732100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4131,16 +4131,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1340100,
+              "dur_ns": 2458200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52812000,
+              "dur_ns": 62408800,
               "detail": "hit"
             }
           ],
-          "total_ns": 54166600,
+          "total_ns": 64880600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4152,16 +4152,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1290500,
+              "dur_ns": 2714400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52416800,
+              "dur_ns": 57646600,
               "detail": "hit"
             }
           ],
-          "total_ns": 53720900,
+          "total_ns": 60379100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4173,16 +4173,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1234800,
+              "dur_ns": 2700400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 61729500,
+              "dur_ns": 94520300,
               "detail": "hit"
             }
           ],
-          "total_ns": 62977600,
+          "total_ns": 97233600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4194,16 +4194,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1452600,
+              "dur_ns": 3259500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52863400,
+              "dur_ns": 93606900,
               "detail": "hit"
             }
           ],
-          "total_ns": 54368700,
+          "total_ns": 96889300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4215,16 +4215,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1244800,
+              "dur_ns": 2659100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54079300,
+              "dur_ns": 66839500,
               "detail": "hit"
             }
           ],
-          "total_ns": 55337400,
+          "total_ns": 69518500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4236,16 +4236,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1302900,
+              "dur_ns": 2566500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52998200,
+              "dur_ns": 102702700,
               "detail": "hit"
             }
           ],
-          "total_ns": 54315200,
+          "total_ns": 105293500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4257,16 +4257,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1569900,
+              "dur_ns": 2313000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52789500,
+              "dur_ns": 59873100,
               "detail": "hit"
             }
           ],
-          "total_ns": 54371900,
+          "total_ns": 62208800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4278,16 +4278,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1212300,
+              "dur_ns": 1269600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52488600,
+              "dur_ns": 58786800,
               "detail": "hit"
             }
           ],
-          "total_ns": 53713700,
+          "total_ns": 60070300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4304,26 +4304,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1317800,
+              "dur_ns": 1463800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1278600,
+              "dur_ns": 1369200,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 26500,
+              "dur_ns": 26600,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 3483000,
+              "dur_ns": 3906100,
               "detail": "published"
             }
           ],
-          "total_ns": 6128400,
+          "total_ns": 6783900,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 744,
@@ -4335,16 +4335,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1230300,
+              "dur_ns": 1249100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53399600,
+              "dur_ns": 54004700,
               "detail": "hit"
             }
           ],
-          "total_ns": 54638800,
+          "total_ns": 55264700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4356,16 +4356,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1257700,
+              "dur_ns": 1351700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53188800,
+              "dur_ns": 57340800,
               "detail": "hit"
             }
           ],
-          "total_ns": 54461000,
+          "total_ns": 58703600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4377,16 +4377,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1224400,
+              "dur_ns": 1235200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58269500,
+              "dur_ns": 61027300,
               "detail": "hit"
             }
           ],
-          "total_ns": 59505600,
+          "total_ns": 62274400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4398,16 +4398,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1362500,
+              "dur_ns": 1266700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53138500,
+              "dur_ns": 81479300,
               "detail": "hit"
             }
           ],
-          "total_ns": 54513600,
+          "total_ns": 82758400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4419,16 +4419,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1210400,
+              "dur_ns": 1883500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53379900,
+              "dur_ns": 65519000,
               "detail": "hit"
             }
           ],
-          "total_ns": 54601000,
+          "total_ns": 67421200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4440,16 +4440,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1237100,
+              "dur_ns": 1233100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53075800,
+              "dur_ns": 57935200,
               "detail": "hit"
             }
           ],
-          "total_ns": 54325300,
+          "total_ns": 59182300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4461,16 +4461,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1256700,
+              "dur_ns": 1193100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52959000,
+              "dur_ns": 70983000,
               "detail": "hit"
             }
           ],
-          "total_ns": 54227100,
+          "total_ns": 72187100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4482,16 +4482,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1228200,
+              "dur_ns": 1196800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53013000,
+              "dur_ns": 61153900,
               "detail": "hit"
             }
           ],
-          "total_ns": 54252200,
+          "total_ns": 62365700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4503,16 +4503,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1222600,
+              "dur_ns": 1199300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52987200,
+              "dur_ns": 69875800,
               "detail": "hit"
             }
           ],
-          "total_ns": 54221600,
+          "total_ns": 71086300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4524,16 +4524,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1187100,
+              "dur_ns": 1230300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52626800,
+              "dur_ns": 68911300,
               "detail": "hit"
             }
           ],
-          "total_ns": 53824900,
+          "total_ns": 70152400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4545,16 +4545,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1236100,
+              "dur_ns": 1262000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54223800,
+              "dur_ns": 80985300,
               "detail": "hit"
             }
           ],
-          "total_ns": 55470800,
+          "total_ns": 82259000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4566,16 +4566,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1255200,
+              "dur_ns": 1225800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52354300,
+              "dur_ns": 53626300,
               "detail": "hit"
             }
           ],
-          "total_ns": 53621100,
+          "total_ns": 54864500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4587,16 +4587,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1223500,
+              "dur_ns": 1222500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53126100,
+              "dur_ns": 52999800,
               "detail": "hit"
             }
           ],
-          "total_ns": 54362300,
+          "total_ns": 54233300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4608,16 +4608,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1217600,
+              "dur_ns": 1228700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52129400,
+              "dur_ns": 52842600,
               "detail": "hit"
             }
           ],
-          "total_ns": 53357300,
+          "total_ns": 54081600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4629,16 +4629,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1179800,
+              "dur_ns": 1178200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52976900,
+              "dur_ns": 52807900,
               "detail": "hit"
             }
           ],
-          "total_ns": 54168000,
+          "total_ns": 53998100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4650,16 +4650,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1248700,
+              "dur_ns": 1336500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 53076100,
+              "dur_ns": 53281900,
               "detail": "hit"
             }
           ],
-          "total_ns": 54337500,
+          "total_ns": 54630500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4671,16 +4671,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1217400,
+              "dur_ns": 1241700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52551100,
+              "dur_ns": 60126100,
               "detail": "hit"
             }
           ],
-          "total_ns": 53779900,
+          "total_ns": 61379100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4692,16 +4692,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1214400,
+              "dur_ns": 1242800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54076100,
+              "dur_ns": 52841900,
               "detail": "hit"
             }
           ],
-          "total_ns": 55303100,
+          "total_ns": 54096300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4713,16 +4713,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1221800,
+              "dur_ns": 1197100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 51930400,
+              "dur_ns": 54851000,
               "detail": "hit"
             }
           ],
-          "total_ns": 53163500,
+          "total_ns": 56059500,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4734,16 +4734,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1334000,
+              "dur_ns": 1190600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52706100,
+              "dur_ns": 52581100,
               "detail": "hit"
             }
           ],
-          "total_ns": 54053900,
+          "total_ns": 53786900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4755,16 +4755,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1176900,
+              "dur_ns": 1191500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 54255500,
+              "dur_ns": 70205700,
               "detail": "hit"
             }
           ],
-          "total_ns": 55444100,
+          "total_ns": 71408400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4776,16 +4776,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1222500,
+              "dur_ns": 1190000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52693500,
+              "dur_ns": 55814100,
               "detail": "hit"
             }
           ],
-          "total_ns": 53927100,
+          "total_ns": 57015400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4797,16 +4797,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1207100,
+              "dur_ns": 1229300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 51995800,
+              "dur_ns": 53154000,
               "detail": "hit"
             }
           ],
-          "total_ns": 53213700,
+          "total_ns": 54395600,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4818,16 +4818,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1244800,
+              "dur_ns": 1203200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52303700,
+              "dur_ns": 55682000,
               "detail": "hit"
             }
           ],
-          "total_ns": 53560600,
+          "total_ns": 56896200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4839,16 +4839,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1191500,
+              "dur_ns": 2149200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52045300,
+              "dur_ns": 63742700,
               "detail": "hit"
             }
           ],
-          "total_ns": 53248000,
+          "total_ns": 65905300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4860,16 +4860,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1185900,
+              "dur_ns": 1245100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 51892700,
+              "dur_ns": 65714400,
               "detail": "hit"
             }
           ],
-          "total_ns": 53088800,
+          "total_ns": 66973800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4881,16 +4881,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1219200,
+              "dur_ns": 2106900,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52837600,
+              "dur_ns": 56811100,
               "detail": "hit"
             }
           ],
-          "total_ns": 54068100,
+          "total_ns": 58936700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4902,16 +4902,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1178900,
+              "dur_ns": 1384600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52540100,
+              "dur_ns": 57354800,
               "detail": "hit"
             }
           ],
-          "total_ns": 53729800,
+          "total_ns": 58751400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4923,16 +4923,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1166600,
+              "dur_ns": 2926700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=a2781a99d871f54c2d16714b1b7c7de0397bc0b2e279e528"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 52543100,
+              "dur_ns": 57978400,
               "detail": "hit"
             }
           ],
-          "total_ns": 53720400,
+          "total_ns": 60925200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 731,
@@ -4949,26 +4949,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1443600,
+              "dur_ns": 1453600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1406400,
+              "dur_ns": 1368000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 111000,
+              "dur_ns": 104900,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 5414900,
+              "dur_ns": 6115700,
               "detail": "published"
             }
           ],
-          "total_ns": 8389700,
+          "total_ns": 9056800,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -4980,26 +4980,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1310800,
+              "dur_ns": 1374200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1307400,
+              "dur_ns": 1528000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 102900,
+              "dur_ns": 103200,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4427500,
+              "dur_ns": 4811700,
               "detail": "published"
             }
           ],
-          "total_ns": 7160900,
+          "total_ns": 7830700,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5011,26 +5011,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1407200,
+              "dur_ns": 1395300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1329700,
+              "dur_ns": 1418700,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 106100,
+              "dur_ns": 99300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4554400,
+              "dur_ns": 4461600,
               "detail": "published"
             }
           ],
-          "total_ns": 7410700,
+          "total_ns": 7397000,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5042,26 +5042,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1483100,
+              "dur_ns": 1365000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1298200,
+              "dur_ns": 1379400,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 103600,
+              "dur_ns": 100500,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 5380600,
+              "dur_ns": 5115100,
               "detail": "published"
             }
           ],
-          "total_ns": 8277500,
+          "total_ns": 7972400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5073,26 +5073,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1329900,
+              "dur_ns": 1369500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1329200,
+              "dur_ns": 1508800,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 105500,
+              "dur_ns": 112300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4377100,
+              "dur_ns": 4935000,
               "detail": "published"
             }
           ],
-          "total_ns": 7154000,
+          "total_ns": 7939300,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5104,26 +5104,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1308100,
+              "dur_ns": 1521500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1299700,
+              "dur_ns": 1390200,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 103100,
+              "dur_ns": 117500,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4387800,
+              "dur_ns": 4789600,
               "detail": "published"
             }
           ],
-          "total_ns": 7110500,
+          "total_ns": 7832700,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5135,26 +5135,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1313000,
+              "dur_ns": 1369500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1297900,
+              "dur_ns": 1342100,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 103700,
+              "dur_ns": 106000,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4380100,
+              "dur_ns": 4400100,
               "detail": "published"
             }
           ],
-          "total_ns": 7107000,
+          "total_ns": 7232700,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5166,26 +5166,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1273500,
+              "dur_ns": 1367300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1302800,
+              "dur_ns": 1327800,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 108000,
+              "dur_ns": 101000,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4322900,
+              "dur_ns": 4916100,
               "detail": "published"
             }
           ],
-          "total_ns": 7019000,
+          "total_ns": 7725200,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5197,26 +5197,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1306400,
+              "dur_ns": 1439100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1308400,
+              "dur_ns": 1380100,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 104500,
+              "dur_ns": 118500,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4460800,
+              "dur_ns": 4661500,
               "detail": "published"
             }
           ],
-          "total_ns": 7191700,
+          "total_ns": 7613800,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5228,26 +5228,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1349300,
+              "dur_ns": 1307200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1308100,
+              "dur_ns": 1349900,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 103000,
+              "dur_ns": 100800,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4476900,
+              "dur_ns": 5314800,
               "detail": "published"
             }
           ],
-          "total_ns": 7249600,
+          "total_ns": 8085400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5259,26 +5259,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1339300,
+              "dur_ns": 1596800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1322300,
+              "dur_ns": 1356500,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 104200,
+              "dur_ns": 100700,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4309700,
+              "dur_ns": 4758500,
               "detail": "published"
             }
           ],
-          "total_ns": 7087900,
+          "total_ns": 7825000,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5290,26 +5290,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1343100,
+              "dur_ns": 1376000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1301900,
+              "dur_ns": 1357000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 95200,
+              "dur_ns": 99000,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4278100,
+              "dur_ns": 6196100,
               "detail": "published"
             }
           ],
-          "total_ns": 7029600,
+          "total_ns": 9041700,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5321,26 +5321,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1307100,
+              "dur_ns": 1388500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1317500,
+              "dur_ns": 1308000,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 98100,
+              "dur_ns": 95600,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4399400,
+              "dur_ns": 4856900,
               "detail": "published"
             }
           ],
-          "total_ns": 7134000,
+          "total_ns": 7661800,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5352,26 +5352,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1311300,
+              "dur_ns": 1377000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1349100,
+              "dur_ns": 1415600,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 104800,
+              "dur_ns": 95300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4686400,
+              "dur_ns": 4714300,
               "detail": "published"
             }
           ],
-          "total_ns": 7463800,
+          "total_ns": 7615900,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5383,26 +5383,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1335400,
+              "dur_ns": 1326300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1329300,
+              "dur_ns": 1296400,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 101000,
+              "dur_ns": 94400,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4374900,
+              "dur_ns": 4583400,
               "detail": "published"
             }
           ],
-          "total_ns": 7152900,
+          "total_ns": 7313000,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5414,26 +5414,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1339300,
+              "dur_ns": 1330600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1314500,
+              "dur_ns": 1303700,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 100300,
+              "dur_ns": 95300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4407000,
+              "dur_ns": 4660700,
               "detail": "published"
             }
           ],
-          "total_ns": 7173000,
+          "total_ns": 7402400,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5445,26 +5445,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1273700,
+              "dur_ns": 1293000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1305800,
+              "dur_ns": 1312400,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 96100,
+              "dur_ns": 93800,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4341100,
+              "dur_ns": 4477900,
               "detail": "published"
             }
           ],
-          "total_ns": 7028200,
+          "total_ns": 7189300,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5476,26 +5476,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1512000,
+              "dur_ns": 1316200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1333100,
+              "dur_ns": 1304400,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 112900,
+              "dur_ns": 93100,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4500800,
+              "dur_ns": 4840000,
               "detail": "published"
             }
           ],
-          "total_ns": 7472200,
+          "total_ns": 7565900,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5507,26 +5507,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1292200,
+              "dur_ns": 1321000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1289400,
+              "dur_ns": 1326400,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 95200,
+              "dur_ns": 94300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4427200,
+              "dur_ns": 4718200,
               "detail": "published"
             }
           ],
-          "total_ns": 7115800,
+          "total_ns": 7471800,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5538,26 +5538,26 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1346800,
+              "dur_ns": 1360300,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 1452000,
+              "dur_ns": 1314100,
               "detail": "miss"
             },
             {
               "name": "infer",
-              "dur_ns": 98600,
+              "dur_ns": 97300,
               "detail": "new-solver"
             },
             {
               "name": "publish",
-              "dur_ns": 4756600,
+              "dur_ns": 5075000,
               "detail": "published"
             }
           ],
-          "total_ns": 7666900,
+          "total_ns": 7858600,
           "compute_calls": 1,
           "cache_hit": false,
           "io_bytes": 128,
@@ -5569,16 +5569,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1338300,
+              "dur_ns": 1417600,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 55979200,
+              "dur_ns": 57246700,
               "detail": "hit"
             }
           ],
-          "total_ns": 57326500,
+          "total_ns": 58673200,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 740,
@@ -5590,16 +5590,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1408500,
+              "dur_ns": 1298100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 73450300,
+              "dur_ns": 60575600,
               "detail": "hit"
             }
           ],
-          "total_ns": 74869600,
+          "total_ns": 61887100,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 687,
@@ -5611,16 +5611,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1296900,
+              "dur_ns": 1476800,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 61544300,
+              "dur_ns": 100630600,
               "detail": "hit"
             }
           ],
-          "total_ns": 62851800,
+          "total_ns": 102120000,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 740,
@@ -5632,16 +5632,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1346200,
+              "dur_ns": 2609700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 60364000,
+              "dur_ns": 66975900,
               "detail": "hit"
             }
           ],
-          "total_ns": 61727100,
+          "total_ns": 69599900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 687,
@@ -5653,16 +5653,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1282500,
+              "dur_ns": 1295100,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 58972300,
+              "dur_ns": 63481300,
               "detail": "hit"
             }
           ],
-          "total_ns": 60265600,
+          "total_ns": 64787400,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 740,
@@ -5674,16 +5674,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1425000,
+              "dur_ns": 1296400,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59289900,
+              "dur_ns": 67285300,
               "detail": "hit"
             }
           ],
-          "total_ns": 60726000,
+          "total_ns": 68592900,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 687,
@@ -5695,16 +5695,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1302200,
+              "dur_ns": 1512200,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 59756300,
+              "dur_ns": 60646600,
               "detail": "hit"
             }
           ],
-          "total_ns": 61068900,
+          "total_ns": 62169300,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 740,
@@ -5716,16 +5716,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1440100,
+              "dur_ns": 1361700,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 56945400,
+              "dur_ns": 74715200,
               "detail": "hit"
             }
           ],
-          "total_ns": 58396100,
+          "total_ns": 76087700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 687,
@@ -5737,16 +5737,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1308200,
+              "dur_ns": 2411000,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=ef9e06e5c556a0e8e253f3fb9e1d78612c732519d5943f50"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 56864600,
+              "dur_ns": 105962600,
               "detail": "hit"
             }
           ],
-          "total_ns": 58182900,
+          "total_ns": 108388800,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 740,
@@ -5758,16 +5758,16 @@
           "stages": [
             {
               "name": "request",
-              "dur_ns": 1287300,
+              "dur_ns": 2813500,
               "detail": "S796[algo=ac796-bidir-worklist/1,called-sigs-fp=72a0d4206e531a59768def340345c7d2c95dd2ca6038752f"
             },
             {
               "name": "cache-read-validate",
-              "dur_ns": 62339700,
+              "dur_ns": 105700400,
               "detail": "hit"
             }
           ],
-          "total_ns": 63637200,
+          "total_ns": 108533700,
           "compute_calls": 0,
           "cache_hit": true,
           "io_bytes": 687,
