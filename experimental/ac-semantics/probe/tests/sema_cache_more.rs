@@ -5,7 +5,7 @@
 
 #![cfg(windows)]
 
-use ac_artifact_probe::store::{run_gc, GcConfig, ManagedStore};
+use ac_artifact_probe::store::{run_gc, GcConfig};
 use ac_sema_core::adapter::parse_into_input;
 use ac_sema_core::query::QueryKind;
 use ac_sema_core::{InferOutcome, InferSummary};
@@ -27,7 +27,7 @@ fn input_of(src: &str) -> ac_sema_core::SemaInput {
 
 const SRC: &str = "fn helper(a int) int { return a + 1 }\nfn main() int { return helper(4) }";
 
-fn publish_main(store: &ManagedStore, project: &str) -> InferSummary {
+fn publish_main() -> InferSummary {
     let input = input_of(SRC);
     match run_inference(&input, "main") {
         InferOutcome::Ok(s) | InferOutcome::Diags(s) => s,
@@ -47,7 +47,7 @@ fn sema_cache_cross_project_shared_hit() {
     };
 
     // project A publishes
-    let sum = publish_main(&store, "proj-a");
+    let sum = publish_main();
     publish_infer_result(&store, &input, &q, &sum, Some("proj-a")).unwrap();
 
     // project B (a DIFFERENT root set, same query context) hits — the
@@ -55,7 +55,6 @@ fn sema_cache_cross_project_shared_hit() {
     match lookup_only(&store, &input, &q).unwrap() {
         FetchOutcome::Hit { .. } => {}
         other => panic!("expected cross-project hit, got {other:?}"),
-        FetchOutcome::HitStaleProvenance { .. } => {}
     }
 }
 
@@ -69,7 +68,7 @@ fn sema_cache_idempotent_republication_same_artifact() {
     let q = QueryKind::InferBody {
         fn_name: "main".into(),
     };
-    let sum = publish_main(&store, "proj-a");
+    let sum = publish_main();
     let a1 = publish_infer_result(&store, &input, &q, &sum, Some("proj-a")).unwrap();
     let a2 = publish_infer_result(&store, &input, &q, &sum, Some("proj-b")).unwrap();
     assert_eq!(
@@ -115,7 +114,7 @@ fn sema_cache_corrupted_block_rejected() {
     let q = QueryKind::InferBody {
         fn_name: "main".into(),
     };
-    let sum = publish_main(&store, "proj");
+    let sum = publish_main();
     publish_infer_result(&store, &input, &q, &sum, Some("proj")).unwrap();
 
     // the store holds exactly one block for this artifact: corrupt it
@@ -154,7 +153,6 @@ fn sema_cache_corrupted_block_rejected() {
         }
         Err(other) => panic!("expected store error, got {other:?}"),
         Ok(outcome) => panic!("corrupted payload must not serve: {outcome:?}"),
-        Ok(FetchOutcome::HitStaleProvenance { .. }) => {}
     }
 }
 
@@ -168,7 +166,7 @@ fn sema_cache_lease_pins_against_gc() {
     let q = QueryKind::InferBody {
         fn_name: "main".into(),
     };
-    let sum = publish_main(&store, "proj");
+    let sum = publish_main();
     let art = publish_infer_result(&store, &input, &q, &sum, Some("proj")).unwrap();
 
     // pin via lease (required-data semantics for the retained payload)
@@ -185,7 +183,6 @@ fn sema_cache_lease_pins_against_gc() {
     match lookup_only(&store, &input, &q).unwrap() {
         FetchOutcome::Hit { .. } => {}
         other => panic!("leased artifact must survive GC, got {other:?}"),
-        FetchOutcome::HitStaleProvenance { .. } => {}
     }
 
     // release: the payload becomes reclaimable

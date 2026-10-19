@@ -174,6 +174,19 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
   `SEMA_CODEC_VERSION`=2（方法 DeclRef tag3+owner 编码）——payload 变更随
   版本轴换键，旧 v1 页不可达、不与新 payload 同键冲突。永久反控四例
   （contract 两例 + probe 两例，见 D21）。
+## R12 修复轮补充（2026-10-19，D22）
+
+- **SD-02（读侧完整义务）**：RecordMeta 内每个方法 ref 施加完整名义准入
+  （`admit_method_ref`）——package/module 匹配当前 input、方法在当前 owner
+  下仍声明、content=当前签名 canonical；与 R11 结构门（kind+owner）串联。
+  外包/外模块/除名/旧签名版本的方法 ref 受控拒绝。同入口复核：shape/字段
+  record ref 走 `admit_ref`、RecGroup 成员同、其余页按 target_content 全量
+  等价——仅方法 ref 有缺口，已闭；永久反例为准入矩阵五模式（见 D22）。
+- **SD-01（矩阵一致性）**：CATEGORY_MATRIX 十处页载体 schema 同步 v2；
+  `matrix_invariants` 增不变量——页载体类别必须登记当前页 schema
+  （semaref/CT 独立 schema 与 Future 行不涉）。
+- **健康**：本计划测试文件 7 项警告清零（无效导入/参数、不可达分支），
+  断言不弱化。
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各

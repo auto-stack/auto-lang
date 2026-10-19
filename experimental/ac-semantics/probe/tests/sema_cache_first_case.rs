@@ -11,7 +11,7 @@
 
 use ac_artifact_probe::store::ManagedStore;
 use ac_sema_core::query::QueryKind;
-use ac_sema_core::{InferOutcome, SemaInput};
+use ac_sema_core::InferOutcome;
 use ac_sema_probe::{open_store, publish_infer_result, run_inference, FetchOutcome};
 use std::path::PathBuf;
 use std::process::Command;
@@ -278,7 +278,6 @@ fn sema_cache_first_case_cross_package_no_merge() {
                 );
             }
             _ => panic!("{pkg}: expected hit"),
-            FetchOutcome::HitStaleProvenance { .. } => {}
         }
     }
 }

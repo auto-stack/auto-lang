@@ -1376,3 +1376,203 @@ fn sema_cache_r11_foreign_owner_method_page_rejected_on_read() {
         ),
     }
 }
+
+// ---------------------------------------------------------------------------
+// F-796-R12-01: full nominal admission for embedded method refs
+// ---------------------------------------------------------------------------
+
+/// Inject a RecordMeta page for record A under the CURRENT key, with the
+/// CURRENT shape version and group effective version, varying ONLY the
+/// embedded method decl — the read-side admission must reject a foreign
+/// package/module, a no-longer-declared method, and a stale signature
+/// content version, while the all-current page hits.
+fn r12_inject_and_lookup(
+    input: &ac_sema_core::SemaInput,
+    query: &QueryKind,
+    env: &ac_sema_core::query::KeyEnv,
+    tag: &str,
+    method_decl: ac_sema_contract::DeclRef,
+) -> Result<FetchOutcome, ProbeError> {
+    use ac_artifact_probe::identity::QueryKey;
+    use ac_artifact_probe::store::PutRequest;
+    use ac_sema_contract::codec::{
+        encode_page, FieldDesc, FnMeta, PageBody, PageHeader, PageKind, RecordMeta, RecordShape,
+        SemaPage, TypeDesc, SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V2,
+    };
+
+    let root = scratch(&format!("r12-{tag}"));
+    let store = open_store(&root.join("store")).unwrap();
+    let key = ac_sema_core::SemaQueryKey::build_with_env(query, input, Some(env));
+
+    let pkg = ac_sema_contract::PackageId::new("r6");
+    let record_a = input.lookup_record("A").expect("A declared");
+    let current_a = ac_sema_contract::ContentVersion::of_canonical(
+        &ac_sema_core::query::record_canonical(record_a),
+    );
+    let group_current =
+        ac_sema_contract::ContentVersion(env.effective("A").expect("A effective").to_string());
+    let page = SemaPage {
+        header: PageHeader {
+            schema: SEMA_PAGE_SCHEMA_V2.into(),
+            producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
+            codec_version: SEMA_CODEC_VERSION,
+            kind: PageKind::RecordMeta,
+            content: group_current.clone(),
+        },
+        body: PageBody::RecordMeta(RecordMeta {
+            shape: RecordShape {
+                decl: ac_sema_contract::DeclRef::new(
+                    &pkg,
+                    "adm",
+                    ac_sema_contract::DeclKind::Record,
+                    "A",
+                    current_a,
+                ),
+                fields: vec![FieldDesc {
+                    name: "value".into(),
+                    ty: TypeDesc::I32,
+                }],
+            },
+            methods: vec![FnMeta {
+                decl: method_decl,
+                params: vec![],
+                ret: TypeDesc::I32,
+                receiver: "view",
+            }],
+            group_content: group_current,
+        }),
+    };
+    store
+        .put_artifact(PutRequest {
+            layer: ac_sema_probe::SEMA_LAYER,
+            key: QueryKey {
+                layer: ac_sema_probe::SEMA_LAYER,
+                components: key.components.clone(),
+            },
+            kind: ac_sema_probe::SEMA_CARRIER,
+            payload: encode_page(&page).unwrap(),
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+    lookup_only(&store, input, query)
+}
+
+/// F-796-R12-01: the method ref admission matrix — every axis the
+/// nominal identity binds (package, module, owner, name, current
+/// signature content) is checked on read; only the all-current page is
+/// served. The stale-content variant carries the REAL content version
+/// of an older `get(x int)` signature.
+#[test]
+fn sema_cache_r12_method_ref_full_admission_matrix() {
+    let input = record_input("type A { value int; fn get() int { return 1 } }", "adm");
+    let query = QueryKind::RecordFields { record: "A".into() };
+    let env = ac_sema_core::query::KeyEnv::new(&input);
+
+    // the current and an OLDER (real) signature version of A.get
+    let current_method = input
+        .lookup_record("A")
+        .unwrap()
+        .methods
+        .iter()
+        .find(|m| m.name == "get")
+        .unwrap();
+    let current_content = ac_sema_contract::ContentVersion::of_canonical(
+        &ac_sema_core::query::fn_sig_canonical(current_method),
+    );
+    let old_input = record_input(
+        "type A { value int; fn get(x int) int { return x } }",
+        "adm",
+    );
+    let old_method = old_input
+        .lookup_record("A")
+        .unwrap()
+        .methods
+        .iter()
+        .find(|m| m.name == "get")
+        .unwrap();
+    let old_content = ac_sema_contract::ContentVersion::of_canonical(
+        &ac_sema_core::query::fn_sig_canonical(old_method),
+    );
+    assert_ne!(old_content, current_content, "the old signature differs");
+
+    let pkg = ac_sema_contract::PackageId::new("r6");
+    let decl_of = |p: &ac_sema_contract::PackageId, m: &str, owner: &str, name: &str, c| {
+        ac_sema_contract::DeclRef::new_method(p, m, owner, name, c)
+    };
+
+    // positive control: every axis current → HIT
+    let all_current = decl_of(&pkg, "adm", "A", "get", current_content.clone());
+    let expect_logical = all_current.logical.clone();
+    match r12_inject_and_lookup(&input, &query, &env, "current", all_current).unwrap() {
+        FetchOutcome::Hit { page, .. } => {
+            let ac_sema_contract::codec::PageBody::RecordMeta(m) = &page.body else {
+                panic!("record meta page");
+            };
+            assert_eq!(m.methods[0].decl.logical, expect_logical);
+        }
+        other => panic!("the all-current method ref must hit, got {other:?}"),
+    }
+
+    // foreign package (owner still A) → rejected
+    let foreign_pkg = decl_of(
+        &ac_sema_contract::PackageId::new("foreign"),
+        "adm",
+        "A",
+        "get",
+        current_content.clone(),
+    );
+    match r12_inject_and_lookup(&input, &query, &env, "foreign-pkg", foreign_pkg) {
+        Err(ProbeError::TargetMismatch { found, .. }) => {
+            assert!(
+                found.contains("foreign"),
+                "names the foreign package: {found}"
+            );
+        }
+        other => panic!(
+            "a foreign-package method ref must be rejected, got {:?}",
+            other
+        ),
+    }
+
+    // foreign module (package/owner current) → rejected
+    let foreign_mod = decl_of(&pkg, "elsewhere", "A", "get", current_content.clone());
+    match r12_inject_and_lookup(&input, &query, &env, "foreign-mod", foreign_mod) {
+        Err(ProbeError::TargetMismatch { found, .. }) => {
+            assert!(
+                found.contains("elsewhere"),
+                "names the foreign module: {found}"
+            );
+        }
+        other => panic!(
+            "a foreign-module method ref must be rejected, got {:?}",
+            other
+        ),
+    }
+
+    // method no longer declared under the owner → rejected
+    let removed = decl_of(&pkg, "adm", "A", "removed", current_content.clone());
+    match r12_inject_and_lookup(&input, &query, &env, "removed", removed) {
+        Err(ProbeError::RefVersionMismatch { name, current, .. }) => {
+            assert!(
+                name.contains("removed") && current.contains("no longer declared"),
+                "names the removed method: {name} / {current}"
+            );
+        }
+        other => panic!("a removed method ref must be rejected, got {:?}", other),
+    }
+
+    // stale signature content (the REAL old get(x int) version) → rejected
+    let stale = decl_of(&pkg, "adm", "A", "get", old_content);
+    match r12_inject_and_lookup(&input, &query, &env, "stale-sig", stale) {
+        Err(ProbeError::RefVersionMismatch {
+            cached, current, ..
+        }) => {
+            assert_ne!(cached, current, "the rejection compares real versions");
+        }
+        other => panic!(
+            "a stale-signature method ref must be rejected, got {:?}",
+            other
+        ),
+    }
+}

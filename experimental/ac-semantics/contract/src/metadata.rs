@@ -62,7 +62,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "decl.fn",
         support: MetaSupport::Implemented,
         owner: "sema contract (796)",
-        schema: "ac796/sema-page/v1:FnMeta",
+        schema: "ac796/sema-page/v2:FnMeta",
         consumers: &["HIR driver", "interface queries", "ABI probe (797)"],
         granularity: "per declaration",
         refs: "DeclRef nominal identity + content version; positive dep fn-sig",
@@ -73,7 +73,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "decl.record",
         support: MetaSupport::Implemented,
         owner: "sema contract (796)",
-        schema: "ac796/sema-page/v1:RecordMeta",
+        schema: "ac796/sema-page/v2:RecordMeta",
         consumers: &["HIR driver", "reflection", "ABI probe (797)"],
         granularity: "per declaration / per recursive group",
         refs: "DeclRef + group content version; field-set positive dep",
@@ -84,7 +84,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "decl.scope.import",
         support: MetaSupport::Implemented,
         owner: "sema core (796)",
-        schema: "ac796/sema-page/v1:ModuleIndex",
+        schema: "ac796/sema-page/v2:ModuleIndex",
         consumers: &["name lookup", "negative deps", "LSP (future)"],
         granularity: "per module",
         refs: "candidate-set fingerprint (order-free)",
@@ -95,7 +95,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "type.logical",
         support: MetaSupport::Implemented,
         owner: "sema contract (796)",
-        schema: "ac796/sema-page/v1:TypeDesc",
+        schema: "ac796/sema-page/v2:TypeDesc",
         consumers: &["all semantic stages", "ABI probe (797) read-only"],
         granularity: "per type description",
         refs: "portable description; records indirect by DeclRef",
@@ -106,7 +106,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "type.fields",
         support: MetaSupport::Implemented,
         owner: "sema contract (796)",
-        schema: "ac796/sema-page/v1:RecordMeta.shape",
+        schema: "ac796/sema-page/v2:RecordMeta.shape",
         consumers: &["reflection", "layout (797)", "HIR driver"],
         granularity: "per record (ordered field list)",
         refs: "field-set fingerprint; new-field invalidates",
@@ -117,7 +117,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "fn.body.infer",
         support: MetaSupport::Implemented,
         owner: "sema core (796)",
-        schema: "ac796/sema-page/v1:InferFacts",
+        schema: "ac796/sema-page/v2:InferFacts",
         consumers: &["HIR checked admission", "IDE"],
         granularity: "per function body",
         refs: "body fingerprint + read signatures; never work state",
@@ -153,7 +153,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "visibility.attributes",
         support: MetaSupport::SchemaOnly,
         owner: "sema contract (796)",
-        schema: "ac796/sema-page/v1 (attribute slots in FnMeta/RecordMeta)",
+        schema: "ac796/sema-page/v2 (attribute slots in FnMeta/RecordMeta)",
         consumers: &["reflection admission", "FFI surface (future)"],
         granularity: "per declaration",
         refs: "part of content version",
@@ -164,7 +164,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "source.provenance",
         support: MetaSupport::Implemented,
         owner: "sema core (796)",
-        schema: "ac796/sema-page/v1 (spans in facts)",
+        schema: "ac796/sema-page/v2 (spans in facts)",
         consumers: &["diagnostics", "IDE", "reflection doc/source reads"],
         granularity: "per fact",
         refs: "source-map dep; position-only edits reuse value, update provenance",
@@ -175,7 +175,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "ownership.effect",
         support: MetaSupport::SchemaOnly,
         owner: "sema contract (796)",
-        schema: "ac796/sema-page/v1:Mode annotations",
+        schema: "ac796/sema-page/v2:Mode annotations",
         consumers: &["borrow checking (future)", "ABI ownership (797)"],
         granularity: "per param / per value",
         refs: "mode annotations carried in descriptions",
@@ -219,7 +219,7 @@ pub const CATEGORY_MATRIX: &[CategorySpec] = &[
         id: "ffi.interface",
         support: MetaSupport::SchemaOnly,
         owner: "sema contract (796) — logical side only",
-        schema: "ac796/sema-page/v1:TypeDesc (logical) + 797 owns physical",
+        schema: "ac796/sema-page/v2:TypeDesc (logical) + 797 owns physical",
         consumers: &["ABI probe (797)"],
         granularity: "per foreign interface",
         refs: "logical identity ≠ physical layout; conversion explicit",
@@ -253,6 +253,16 @@ pub fn matrix_invariants() -> Result<(), &'static str> {
                     return Err("non-future category without a schema");
                 }
             }
+        }
+        // F-796-R12-03: a category whose carrier is a sema PAGE must name
+        // the CURRENT page schema — the codec only accepts that version,
+        // so a row advertising an older page schema would direct
+        // consumers at bytes the codec rejects. Independent schemas
+        // (semaref / CT seam) and future rows ("-") are out of scope.
+        if c.schema.starts_with("ac796/sema-page/")
+            && !c.schema.starts_with(crate::codec::SEMA_PAGE_SCHEMA_V2)
+        {
+            return Err("page-carrier category names a non-current page schema");
         }
     }
     Ok(())

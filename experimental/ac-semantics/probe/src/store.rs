@@ -353,6 +353,55 @@ fn admit_shape_refs(
     Ok(())
 }
 
+/// F-796-R12-01: full nominal admission for a method ref — the same
+/// obligations `admit_ref` enforces for record refs, plus the owner:
+/// package/module must match the CURRENT input, the method must be
+/// currently declared under its owning record, and the content version
+/// must equal the CURRENT signature canonical. A foreign/stale method
+/// ref inside an otherwise-current page is a controlled rejection.
+fn admit_method_ref(
+    input: &SemaInput,
+    method: &ac_sema_contract::FnMeta,
+) -> Result<(), ProbeError> {
+    let decl = &method.decl;
+    decl.verify().map_err(|e| ProbeError::FactsMismatch {
+        detail: format!("nominal ref failed verification: {e}"),
+    })?;
+    let pkg = ac_sema_contract::PackageId::new(&input.package);
+    if decl.package != pkg || decl.module != input.module {
+        return Err(ProbeError::TargetMismatch {
+            found: format!("{}::{}", decl.package.as_str(), decl.module),
+            expected: format!("{}::{}", input.package, input.module),
+        });
+    }
+    let owner = decl.owner.as_deref().unwrap_or("<ownerless>");
+    let qualified = format!("{owner}.{}", decl.name);
+    let Some(r) = input.lookup_record(owner) else {
+        return Err(ProbeError::RefVersionMismatch {
+            name: qualified,
+            cached: decl.content.as_str().to_string(),
+            current: "<record no longer declared>".into(),
+        });
+    };
+    let Some(m) = r.methods.iter().find(|m| m.name == decl.name) else {
+        return Err(ProbeError::RefVersionMismatch {
+            name: qualified,
+            cached: decl.content.as_str().to_string(),
+            current: "<method no longer declared>".into(),
+        });
+    };
+    let current =
+        ac_sema_contract::ContentVersion::of_canonical(&ac_sema_core::query::fn_sig_canonical(m));
+    if current != decl.content {
+        return Err(ProbeError::RefVersionMismatch {
+            name: qualified,
+            cached: decl.content.as_str().to_string(),
+            current: current.as_str().to_string(),
+        });
+    }
+    Ok(())
+}
+
 /// The complete read-side version admission (F-796-R6-01 + R7-01):
 /// page content must match the unit's CURRENT EFFECTIVE version (the
 /// transitive dependency closure), the carrier topology must match the
@@ -369,9 +418,10 @@ fn admit_page(
     match &page.body {
         PageBody::RecordMeta(m) => {
             admit_shape_refs(&m.shape, input)?;
-            // F-796-R11-01: every published method belongs to THIS record —
-            // a method decl that is not Method-kind, or whose owner is
-            // another/absent record, marks a foreign or malformed page
+            // F-796-R11-01 + R12-01: every published method belongs to
+            // THIS record (kind + owner), and carries the full nominal
+            // admission — current package/module/owner/name/signature
+            // content. A foreign or stale method ref is rejected.
             for method in &m.methods {
                 if method.decl.kind != ac_sema_contract::DeclKind::Method
                     || method.decl.owner.as_deref() != Some(m.shape.decl.name.as_str())
@@ -386,6 +436,7 @@ fn admit_page(
                         expected: format!("a Method decl owned by record `{}`", m.shape.decl.name),
                     });
                 }
+                admit_method_ref(input, method)?;
             }
             let Some(env) = env else {
                 return Ok(());

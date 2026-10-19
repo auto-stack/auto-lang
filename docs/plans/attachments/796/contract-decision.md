@@ -335,3 +335,25 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
   同 owner 签名编辑 logical 不变 content 变 + body-only 复用 + owner 改名
   迁移）+ `sema_cache_r11_foreign_owner_method_page_rejected_on_read`
   （外属方法页读侧拒绝，shape 携当前版本越过前置校验直达归属门）。
+
+## D22 R12 修复轮冻结（2026-10-19）
+
+- **方法 ref 完整名义准入**（F-R12-01）：`admit_method_ref` 对 RecordMeta 内
+  每个方法 decl 施加与 `admit_ref` 同等的义务——package/module 匹配当前
+  input、方法在当前 owner 下仍声明、content 等于当前签名 canonical；与
+  R11 的 kind+owner 结构检查串联（结构门先行，名义门随后）。外包/外模块/
+  已除名/旧签名版本的方法 ref 一律受控拒绝，只有全当前页可命中。同入口
+  其余嵌入 ref 复核：shape.decl 与字段 record ref 走 `admit_ref`（全量）、
+  RecGroup 成员同、FnMeta/Infer/CachedResult 页按页头 target_content 全量
+  版本等价——仅方法 ref 原有缺口，已闭。
+- **永久反控**：`sema_cache_r12_method_ref_full_admission_matrix`——当前键/
+  当前 shape 版本/当前 group 有效版本的注入页，仅变方法 ref 单轴：全当前
+  HIT 正控；外包/外模块 TargetMismatch、除名/真实旧 `get(x int)` 签名版本
+  RefVersionMismatch。Required 按名绑定 V-03b。
+- **覆盖矩阵同步 v2**（F-R12-03）：CATEGORY_MATRIX 十处页载体 schema 由
+  `ac796/sema-page/v1*` 同步为 v2（六 Implemented + 四 SchemaOnly 说明）；
+  `matrix_invariants` 新增一致性不变量——凡以 `ac796/sema-page/` 为载体的
+  类别必须登记**当前**页 schema（semaref/CT 独立 schema 与 Future 行不涉）。
+- **健康收口**（F-R12-02）：清除本计划两测试文件 7 项警告（未用
+  SemaInput/ManagedStore 导入、publish_main 无效参数、四处兜底后不可达
+  HitStaleProvenance 分支）；不弱化任何断言，行为不变。
