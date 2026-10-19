@@ -31,7 +31,9 @@ pub fn data_plane_smoke() -> bool {
     if media_http_response(&registry, "GET", &uri, None).status != 503 {
         return false;
     }
-    registry.transition(ticket.id, MediaAssetState::Reading).is_ok()
+    registry
+        .transition(ticket.id, MediaAssetState::Reading)
+        .is_ok()
         && registry
             .transition(ticket.id, MediaAssetState::Decoding)
             .is_ok()
@@ -50,8 +52,8 @@ pub fn data_plane_smoke() -> bool {
 pub fn scheduler_cache_smoke() -> bool {
     use auto_media_core::image_pipeline::{
         DecodedPixelCache, EncodedByteLru, MediaAssetKey, MediaAssetRegistry, MediaLatestWins,
-        MediaMetadata, MediaOrientation, MediaPin, MediaPriority, MediaPriorityQueue,
-        MediaWork, RenditionSpec,
+        MediaMetadata, MediaOrientation, MediaPin, MediaPriority, MediaPriorityQueue, MediaWork,
+        RenditionSpec,
     };
     use std::sync::Arc;
     use std::time::Duration;

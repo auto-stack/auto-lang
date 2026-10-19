@@ -522,12 +522,20 @@ mod tests {
         match created {
             Ok(output) if output.status.success() => {
                 let idx = index_directory(&base).unwrap();
-                let names: Vec<_> = idx.entries.iter().map(|e| e.relative_path.clone()).collect();
+                let names: Vec<_> = idx
+                    .entries
+                    .iter()
+                    .map(|e| e.relative_path.clone())
+                    .collect();
                 assert!(
                     !names.iter().any(|n| n.starts_with("loop-link/")),
                     "junction 条目不得进入索引: {names:?}"
                 );
-                assert_eq!(idx.entries.len(), 5, "junction 不改变真实子树集合: {names:?}");
+                assert_eq!(
+                    idx.entries.len(),
+                    5,
+                    "junction 不改变真实子树集合: {names:?}"
+                );
                 let _ = std::fs::remove_dir(&loop_link);
             }
             _ => {

@@ -29,13 +29,12 @@ fn fixtures_root() -> PathBuf {
 
 #[test]
 fn man_consumer_drives_media_service_index_and_range() {
-    let index = auto_media_core::media_service::index_directory(fixtures_root())
-        .expect("fixtures index");
+    let index =
+        auto_media_core::media_service::index_directory(fixtures_root()).expect("fixtures index");
     // 白名单：目录里的 notes/corrupt 家族之外的可播放扩展；图像扩展
     // （png/jpg）不在 media_service 白名单——两套清单不合并（合同基线 §3）。
     assert!(index.entries.iter().all(|e| {
-        auto_media_core::media_service::SUPPORTED_EXTENSIONS
-            .contains(&e.extension.as_str())
+        auto_media_core::media_service::SUPPORTED_EXTENSIONS.contains(&e.extension.as_str())
             || e.extension.is_empty()
     }));
     // token 反查：id 是 blake3 相对路径 token，绝不携带绝对路径。
@@ -64,7 +63,10 @@ fn man_consumer_drives_media_service_index_and_range() {
         parse_range(Some("bytes=1000-"), 1000),
         StreamPlan::Unsatisfiable
     );
-    assert_eq!(parse_range(Some("bytes=0-99999"), 1000).content_length(1000), 1000);
+    assert_eq!(
+        parse_range(Some("bytes=0-99999"), 1000).content_length(1000),
+        1000
+    );
     assert_eq!(
         auto_media_core::media_service::content_type("mp4"),
         "video/mp4"
@@ -76,8 +78,8 @@ fn man_consumer_drives_media_service_index_and_range() {
 #[test]
 fn man_consumer_drives_pipeline_registry_http_and_runtime() {
     use auto_media_core::image_pipeline::{
-        media_http_response, MediaAssetKey, MediaAssetState, MediaMetadata, MediaOrientation,
-        MediaLookup, MediaPriority, MediaRuntime, RenditionSpec,
+        media_http_response, MediaAssetKey, MediaAssetState, MediaLookup, MediaMetadata,
+        MediaOrientation, MediaPriority, MediaRuntime, RenditionSpec,
     };
 
     // 数据面：registry 生命周期 + HTTP 状态 oracle（同一套规则喂生成后端）。
@@ -109,7 +111,10 @@ fn man_consumer_drives_pipeline_registry_http_and_runtime() {
         .unwrap();
     let response = media_http_response(registry, "GET", &uri, None);
     assert_eq!(response.status, 200);
-    assert_eq!(response.headers.get("content-type"), Some(&"image/png".into()));
+    assert_eq!(
+        response.headers.get("content-type"),
+        Some(&"image/png".into())
+    );
     let etag = response.headers["etag"].clone();
     assert_eq!(
         media_http_response(registry, "GET", &uri, Some(&etag)).status,
@@ -119,8 +124,7 @@ fn man_consumer_drives_pipeline_registry_http_and_runtime() {
 
     // 运行时面：真解码（fixtures 真字节）→ Ready + URI 可解析。
     let fixture = fixtures_root().join("rgb-1x1.png");
-    let decode_ticket =
-        runtime.queue_path(fixture.clone(), MediaPriority::Current);
+    let decode_ticket = runtime.queue_path(fixture.clone(), MediaPriority::Current);
     let deadline = Instant::now() + Duration::from_secs(5);
     loop {
         match registry.lookup(decode_ticket.id, decode_ticket.revision) {

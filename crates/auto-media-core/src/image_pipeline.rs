@@ -9,7 +9,7 @@
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::fmt;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::{self, JoinHandle};
@@ -273,6 +273,24 @@ impl MediaAssetRegistry {
             .state
             .lock()
             .expect("media registry lock poisoned");
+        // Closed admission (review F811-R1-02): a shut-down registry accepts
+        // no new assets. Signature compatibility is kept by returning a DEAD
+        // ticket — a fresh opaque id that is never inserted, so every later
+        // operation on it reports Missing/Expired instead of resurrecting
+        // state. The process-default registry never shuts down.
+        if state.shutting_down {
+            let id = loop {
+                let candidate =
+                    MediaAssetId(((fastrand::u64(..) as u128) << 64) | fastrand::u64(..) as u128);
+                if !state.entries.contains_key(&candidate) {
+                    break candidate;
+                }
+            };
+            return MediaAssetTicket {
+                id,
+                revision: key.revision,
+            };
+        }
         if let Some(existing_id) = state.by_key.get(&key).copied() {
             if let Some(existing) = state.entries.get_mut(&existing_id) {
                 if existing.state != MediaAssetState::Expired {
@@ -340,6 +358,11 @@ impl MediaAssetRegistry {
             .state
             .lock()
             .expect("media registry lock poisoned");
+        if state.shutting_down {
+            return Err(MediaAssetError::Rejected(
+                "media registry is shut down".into(),
+            ));
+        }
         let entry = state.entries.get_mut(&id).ok_or(MediaAssetError::Expired)?;
         if !entry.state.can_transition_to(next) {
             return Err(MediaAssetError::Rejected(
@@ -366,6 +389,11 @@ impl MediaAssetRegistry {
             .state
             .lock()
             .expect("media registry lock poisoned");
+        if state.shutting_down {
+            return Err(MediaAssetError::Rejected(
+                "media registry is shut down".into(),
+            ));
+        }
         let entry = state.entries.get_mut(&id).ok_or(MediaAssetError::Expired)?;
         if entry.key.revision != revision {
             return Err(MediaAssetError::Stale);
@@ -388,6 +416,11 @@ impl MediaAssetRegistry {
             .state
             .lock()
             .expect("media registry lock poisoned");
+        if state.shutting_down {
+            return Err(MediaAssetError::Rejected(
+                "media registry is shut down".into(),
+            ));
+        }
         let entry = state.entries.get_mut(&id).ok_or(MediaAssetError::Expired)?;
         if !entry.state.can_transition_to(MediaAssetState::Error) {
             return Err(MediaAssetError::Rejected(
@@ -463,6 +496,9 @@ impl MediaAssetRegistry {
             .state
             .lock()
             .expect("media registry lock poisoned");
+        if state.shutting_down {
+            return false;
+        }
         let Some(entry) = state.entries.get_mut(&id) else {
             return false;
         };
@@ -500,6 +536,9 @@ impl MediaAssetRegistry {
             .state
             .lock()
             .expect("media registry lock poisoned");
+        if state.shutting_down {
+            return false;
+        }
         let Some(entry) = state.entries.get_mut(&id) else {
             return false;
         };
@@ -1581,6 +1620,17 @@ struct RuntimeInner {
     registry: MediaAssetRegistry,
     workers: MediaWorkerPool,
     sessions: Mutex<VecDeque<MediaSession>>,
+    /// Closing latch (review F811-R1-01/02): set by shutdown/drop before
+    /// anything else. Producer threads (directory scan, session populate)
+    /// poll it between items and exit; admission paths check it before
+    /// spawning. Lock-free so producers never block on teardown.
+    closing: AtomicBool,
+    /// Tracked producer threads (scan/populate). Handles are drained and
+    /// joined in shutdown — a detached producer outliving a closed runtime
+    /// would keep mutating its registry. Registration happens under the same
+    /// mutex shutdown uses for draining, so a producer is either joined or
+    /// never spawned (no registration race).
+    producers: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl RuntimeInner {
@@ -1661,6 +1711,8 @@ impl MediaRuntime {
                 registry,
                 workers,
                 sessions: Mutex::new(VecDeque::new()),
+                closing: AtomicBool::new(false),
+                producers: Mutex::new(Vec::new()),
             }),
         }
     }
@@ -1673,15 +1725,39 @@ impl MediaRuntime {
         &self.inner.workers
     }
 
-    /// Terminates this runtime's owned work: no new submissions succeed,
-    /// queued work is dropped without execution, worker threads join, every
-    /// registry entry reaches a terminal state (observable via
-    /// `pending_count() == 0`), and the session table is dropped. Late
-    /// callbacks from in-flight decode/resize lanes are rejected by the
-    /// registry state machine — they cannot resurrect closed resources.
+    /// Whether this runtime has been shut down (producers reaped, workers
+    /// joined, registry closed). The process-default runtime never closes.
+    pub fn is_closed(&self) -> bool {
+        self.inner.closing.load(Ordering::Acquire)
+    }
+
+    /// Terminates this runtime's owned work in a fixed order: the closing
+    /// latch first (scan/open become no-ops), then every tracked producer
+    /// thread (in-flight directory scan / session populate finish at most
+    /// their current item and exit — `shutdown` returning means they are
+    /// reaped), then the decode/resize lanes, then the registry (every
+    /// entry terminal; `pending_count() == 0`; post-close queueing returns
+    /// dead tickets), and finally the session table. Late worker callbacks
+    /// are rejected by the state machine — closed resources cannot be
+    /// resurrected. Idempotent; no lock is held across a join.
     pub fn shutdown(&self) {
+        // 1. Admit no new producers; live ones observe the latch per item.
+        self.inner.closing.store(true, Ordering::Release);
+        // 2. Reap tracked producers (join outside the lock).
+        let producers = self
+            .inner
+            .producers
+            .lock()
+            .map(|mut handles| std::mem::take(&mut *handles))
+            .unwrap_or_default();
+        for producer in producers {
+            let _ = producer.join();
+        }
+        // 3. Stop the decode/resize lanes and join their threads.
         self.inner.workers.shutdown();
+        // 4. Terminal-ize every registry entry and close admission.
         self.inner.registry.shutdown();
+        // 5. Drop the session table: subsequent ops report unknown_session.
         if let Ok(mut sessions) = self.inner.sessions.lock() {
             sessions.clear();
         }
@@ -1697,7 +1773,11 @@ impl MediaRuntime {
         self.inner.queue_rendition(path, spec, priority, revision)
     }
 
-    pub fn queue_path(&self, path: impl Into<PathBuf>, priority: MediaPriority) -> MediaAssetTicket {
+    pub fn queue_path(
+        &self,
+        path: impl Into<PathBuf>,
+        priority: MediaPriority,
+    ) -> MediaAssetTicket {
         self.inner.queue_path(path.into(), priority)
     }
 
@@ -1735,29 +1815,38 @@ impl MediaRuntime {
     /// Starts a directory scan away from VM/UI handler threads. Each
     /// discovered supported file is submitted to the bounded media executor;
     /// the call itself returns immediately and never exposes source paths to
-    /// the control plane.
+    /// the control plane. The scan thread is tracked: shutdown joins it (it
+    /// checks the closing latch between items), and a closed runtime admits
+    /// no new scan.
     pub fn scan_directory(&self, path: impl Into<PathBuf>) {
-        let inner = self.inner.clone();
+        if self.is_closed() {
+            return;
+        }
         let root = path.into();
-        thread::Builder::new()
-            .name("media-directory-scan".into())
-            .spawn(move || {
-                let Ok(entries) = std::fs::read_dir(root) else {
+        spawn_tracked_producer(&self.inner, "media-directory-scan", move |inner| {
+            let Ok(entries) = std::fs::read_dir(root) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                if inner.closing.load(Ordering::Acquire) {
                     return;
-                };
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_file() {
-                        inner.queue_path(path, MediaPriority::Thumbnail);
-                    }
                 }
-            })
-            .ok();
+                let path = entry.path();
+                if path.is_file() {
+                    inner.queue_path(path, MediaPriority::Thumbnail);
+                }
+            }
+        });
     }
 
     /// Open a file or directory without blocking the caller on filesystem
-    /// I/O. The returned id is safe to keep in Auto model state.
+    /// I/O. The returned id is safe to keep in Auto model state. A closed
+    /// runtime admits no new session and returns `""` (callers treat it as
+    /// unknown, matching `close_session`/snapshot semantics for dead ids).
     pub fn open_session(&self, root: impl Into<PathBuf>) -> String {
+        if self.is_closed() {
+            return String::new();
+        }
         let root = root.into();
         let id = format!(
             "image-session-{}",
@@ -1779,12 +1868,10 @@ impl MediaRuntime {
                 generation: 1,
             });
         }
-        let worker_inner = self.inner.clone();
         let worker_id = id.clone();
-        thread::Builder::new()
-            .name("media-session-open".into())
-            .spawn(move || populate_media_session(worker_inner, worker_id, root))
-            .ok();
+        spawn_tracked_producer(&self.inner, "media-session-open", move |inner| {
+            populate_media_session(inner, worker_id, root)
+        });
         id
     }
 
@@ -1898,8 +1985,7 @@ impl MediaRuntime {
             let Ok(mut sessions) = self.inner.sessions.lock() else {
                 return "{\"error\":\"session_lock\"}".into();
             };
-            let Some(session) = sessions.iter_mut().find(|session| session.id == session_id)
-            else {
+            let Some(session) = sessions.iter_mut().find(|session| session.id == session_id) else {
                 return "{\"error\":\"unknown_session\"}".into();
             };
             if session.entries.is_empty() {
@@ -1973,6 +2059,37 @@ impl Drop for MediaRuntime {
     }
 }
 
+/// Spawns a tracked producer thread for the runtime (review F811-R1-01).
+/// Registration and the closing check share the producers mutex shutdown
+/// drains under, so every producer is either joined at close or never
+/// spawned — a registration race cannot leave a live producer unreaped.
+/// The body receives the `Arc<RuntimeInner>` and must poll
+/// `inner.closing` between units of work.
+fn spawn_tracked_producer(
+    inner: &Arc<RuntimeInner>,
+    name: &str,
+    body: impl FnOnce(Arc<RuntimeInner>) + Send + 'static,
+) -> bool {
+    let mut producers = match inner.producers.lock() {
+        Ok(producers) => producers,
+        Err(_) => return false,
+    };
+    if inner.closing.load(Ordering::Acquire) {
+        return false;
+    }
+    let worker = inner.clone();
+    match thread::Builder::new()
+        .name(name.to_string())
+        .spawn(move || body(worker))
+    {
+        Ok(handle) => {
+            producers.push(handle);
+            true
+        }
+        Err(_) => false,
+    }
+}
+
 fn append_session_entry(inner: &Arc<RuntimeInner>, session_id: &str, path: PathBuf) {
     if !supported_media_path(&path) {
         return;
@@ -2007,8 +2124,10 @@ fn append_session_entry(inner: &Arc<RuntimeInner>, session_id: &str, path: PathB
 }
 
 fn populate_media_session(inner: Arc<RuntimeInner>, session_id: String, root: PathBuf) {
-    // All filesystem work happens on this detached worker, never on a VM/UI
+    // All filesystem work happens on this tracked worker, never on a VM/UI
     // handler thread.  Sorting makes directory navigation deterministic.
+    // The closing latch is polled between entries so shutdown can reap an
+    // in-flight populate (review F811-R1-01).
     let mut paths = Vec::new();
     if root.is_file() {
         paths.push(root);
@@ -2024,6 +2143,9 @@ fn populate_media_session(inner: Arc<RuntimeInner>, session_id: String, root: Pa
         }
     }
     for path in paths {
+        if inner.closing.load(Ordering::Acquire) {
+            return;
+        }
         append_session_entry(&inner, &session_id, path);
     }
 }
@@ -2077,8 +2199,7 @@ pub fn request_media_view(
     height: i32,
     quality: i32,
 ) -> String {
-    global_media_runtime()
-        .request_view(session_id, index, width, height, quality)
+    global_media_runtime().request_view(session_id, index, width, height, quality)
 }
 
 pub fn close_media_session(session_id: &str) -> bool {
@@ -2462,43 +2583,303 @@ mod tests {
         runtime.shutdown();
     }
 
+    fn png_bytes(width: u32, height: u32) -> Vec<u8> {
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(image::RgbaImage::new(width, height))
+            .write_to(&mut bytes, image::ImageFormat::Png)
+            .unwrap();
+        bytes.into_inner()
+    }
+
+    fn shutdown_under_external_deadline(runtime: &super::MediaRuntime, limit: Duration) {
+        // REAL external deadline (review F811-R1-01 oracle gap): shutdown
+        // runs on a scoped thread; the harness fails if it does not report
+        // completion within `limit`. A synchronous deadline assertion after
+        // the call cannot see a stuck teardown.
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        std::thread::scope(|scope| {
+            scope.spawn(move || {
+                runtime.shutdown();
+                let _ = done_tx.send(());
+            });
+            if done_rx.recv_timeout(limit).is_err() {
+                panic!(
+                    "shutdown did not converge within the external deadline ({limit:?}) —                      bounded queues/threads must not turn teardown into a deadlock"
+                );
+            }
+        });
+    }
+
     #[test]
-    fn shutdown_with_saturated_ingress_queue_completes_within_deadline() {
-        // Saturate the 8-slot ingress queue with more work than it accepts,
-        // then require shutdown to converge within an external deadline —
-        // a full bounded queue must not turn teardown into a deadlock.
+    fn shutdown_with_real_decode_backlog_completes_within_external_deadline() {
+        // Valid PNG bytes through the whole lane (review F811-R1-01): the
+        // previous variant fed empty bytes that die at metadata inspection,
+        // so the resize channel was never exercised. Here decodes genuinely
+        // reach the resize lane; more accepted works than the 8-slot
+        // ingress queue keeps the pipeline saturated while teardown runs.
         let runtime = super::MediaRuntime::new(Duration::from_secs(60));
         let registry = runtime.registry().clone();
-        let mut accepted = 0;
-        for i in 0..12u64 {
+        let payload: Arc<[u8]> = Arc::from(png_bytes(320, 240).into_boxed_slice());
+        let mut accepted = 0usize;
+        for i in 0..24u64 {
             let ticket = registry.queue(
                 MediaAssetKey {
                     source_fingerprint: format!("saturate-{i}"),
                     orientation: Default::default(),
-                    rendition: RenditionSpec::viewport(4, 4),
+                    rendition: RenditionSpec::viewport(160, 120),
                     revision: i + 1,
                 },
                 MediaMetadata::default(),
             );
             if runtime.worker_pool().submit_bytes(
                 ticket,
-                Arc::from(Vec::new()),
-                RenditionSpec::viewport(4, 4),
-                MediaPriority::Thumbnail,
+                payload.clone(),
+                RenditionSpec::viewport(160, 120),
+                MediaPriority::Current,
                 0,
                 i + 1,
             ) {
                 accepted += 1;
             }
         }
-        assert!(accepted > 0, "at least the first work item is accepted");
-        let deadline = Instant::now() + Duration::from_secs(10);
-        runtime.shutdown();
         assert!(
-            Instant::now() < deadline,
-            "shutdown converged within the external deadline"
+            accepted >= 8,
+            "ingress queue saturated: {accepted} accepted"
         );
+        shutdown_under_external_deadline(&runtime, Duration::from_secs(30));
         assert_eq!(registry.pending_count(), 0);
+        assert!(registry.is_shutdown());
+    }
+
+    // PLAN-811 R1 F811-R1-01/02 closure oracles: producer reaping on close,
+    // admission refusal after close, and byte release on drop.
+
+    #[test]
+    fn scan_shutdown_reaps_producer_and_registry_stays_quiescent() {
+        // Reproduction shape of the review probe: a directory scan in flight
+        // when shutdown runs. shutdown() returning now MEANS the scan thread
+        // exited (tracked + joined), so the registry must be immutable from
+        // that point on - observed as byte-identical stats snapshots across
+        // an idle window - and the temp tree must be deletable immediately
+        // (no lingering file handles on Windows).
+        let dir = std::env::temp_dir().join(format!(
+            "p811_scan_reap_{}_{}",
+            std::process::id(),
+            fastrand::u64(..)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for i in 0..600 {
+            std::fs::write(dir.join(format!("f{i:03}.png")), b"").unwrap();
+        }
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let registry = runtime.registry().clone();
+        runtime.scan_directory(&dir);
+        // Let the scan get going, then close while it is still in flight
+        // (600 entries cannot finish inside this window).
+        std::thread::sleep(Duration::from_millis(15));
+        shutdown_under_external_deadline(&runtime, Duration::from_secs(30));
+        assert!(runtime.is_closed());
+
+        let first = registry.stats();
+        assert_eq!(
+            registry.pending_count(),
+            0,
+            "closed runtime has no pending work"
+        );
+        std::thread::sleep(Duration::from_millis(150));
+        let second = registry.stats();
+        assert_eq!(
+            format!("{first:?}"),
+            format!("{second:?}"),
+            "registry stays quiescent after shutdown returned (producer reaped)"
+        );
+
+        // File-handle release evidence: an open reader inside the reaped
+        // producer would make remove_dir_all fail (Windows sharing mode).
+        std::fs::remove_dir_all(&dir).expect("temp tree deletable right after shutdown");
+    }
+
+    #[test]
+    fn admission_after_close_is_refused_everywhere() {
+        // F811-R1-02: a closed runtime refuses new tickets (dead ticket),
+        // new sessions (""), and new scans (no-op); repeat shutdown is
+        // idempotent; an independent runtime and the process default stay
+        // fully operational (positive controls).
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let registry = runtime.registry().clone();
+        runtime.shutdown();
+
+        // queue after close -> dead ticket: never inserted, every operation
+        // on it reports missing/expired instead of creating state.
+        let dead = registry.queue(
+            MediaAssetKey {
+                source_fingerprint: "after-close".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        assert_eq!(
+            registry.lookup(dead.id, dead.revision),
+            MediaLookup::Missing
+        );
+        assert!(registry
+            .transition(dead.id, MediaAssetState::Reading)
+            .is_err());
+        assert!(registry
+            .publish_ready(dead.id, dead.revision, Arc::<[u8]>::from([1]))
+            .is_err());
+        assert!(registry
+            .wait_for_terminal(dead.id, Duration::from_millis(10))
+            .is_none());
+        assert!(!registry.retain(dead.id));
+        assert!(!registry.update_metadata(dead.id, MediaMetadata::default()));
+        assert_eq!(
+            registry.stats().queued,
+            0,
+            "dead tickets never enter the map"
+        );
+
+        // session/scan admission after close.
+        let dir = std::env::temp_dir().join(format!(
+            "p811_closed_admission_{}_{}",
+            std::process::id(),
+            fastrand::u64(..)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("a.png"), b"").unwrap();
+        let session = runtime.open_session(&dir);
+        assert_eq!(session, "", "closed runtime admits no session");
+        assert_eq!(
+            runtime.session_snapshot("image-session-1"),
+            "{\"error\":\"unknown_session\"}"
+        );
+        runtime.scan_directory(&dir);
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(registry.stats().queued, 0, "closed runtime admits no scan");
+
+        // repeat shutdown idempotent.
+        runtime.shutdown();
+        assert!(runtime.is_closed());
+
+        // positive control: a fresh runtime decodes end to end.
+        let other = super::MediaRuntime::new(Duration::from_secs(60));
+        let ticket = other.queue_path(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png"),
+            MediaPriority::Current,
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match other.registry().lookup(ticket.id, ticket.revision) {
+                MediaLookup::Ready(_) => break,
+                MediaLookup::Failed(e) => panic!("decode failed: {e}"),
+                _ if Instant::now() > deadline => panic!("decode timeout"),
+                _ => std::thread::sleep(Duration::from_millis(5)),
+            }
+        }
+
+        // and the process-default registry never closes.
+        let global = super::global_media_registry();
+        let g = global.queue(
+            MediaAssetKey {
+                source_fingerprint: "default-never-closes".into(),
+                orientation: Default::default(),
+                rendition: RenditionSpec::original(),
+                revision: 1,
+            },
+            MediaMetadata::default(),
+        );
+        assert_eq!(global.lookup(g.id, g.revision), MediaLookup::Pending);
+        global.release(g.id);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn shutdown_interleaved_with_concurrent_submit_and_open() {
+        // Representative close-vs-producer interleaving: submitters and
+        // session openers race shutdown; afterwards the runtime must be
+        // quiescent and immutable (whatever interleaving won, no half-open
+        // producer survives close).
+        let dir = std::env::temp_dir().join(format!(
+            "p811_interleave_{}_{}",
+            std::process::id(),
+            fastrand::u64(..)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        for i in 0..40 {
+            std::fs::write(dir.join(format!("f{i:02}.png")), b"").unwrap();
+        }
+        use std::sync::atomic::Ordering;
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let registry = runtime.registry().clone();
+        let stop = std::sync::atomic::AtomicBool::new(false);
+        let runtime_ref = &runtime;
+        std::thread::scope(|scope| {
+            for t in 0..4u32 {
+                let stop_ref = &stop;
+                let dir = dir.clone();
+                scope.spawn(move || {
+                    let mut n = 0u64;
+                    while !stop_ref.load(Ordering::Relaxed) {
+                        if t % 2 == 0 {
+                            runtime_ref.queue_path(
+                                dir.join(format!("f{:02}.png", n % 40)),
+                                MediaPriority::Thumbnail,
+                            );
+                        } else {
+                            let _ = runtime_ref.open_session(&dir);
+                        }
+                        n += 1;
+                    }
+                });
+            }
+            std::thread::sleep(Duration::from_millis(30));
+            shutdown_under_external_deadline(&runtime, Duration::from_secs(30));
+            stop.store(true, Ordering::Relaxed);
+        });
+        assert_eq!(registry.pending_count(), 0);
+        let first = registry.stats();
+        std::thread::sleep(Duration::from_millis(100));
+        assert_eq!(format!("{first:?}"), format!("{:?}", registry.stats()));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn drop_releases_decoded_pixel_bytes() {
+        // Weak-reference release evidence: after a Ready rendition, the only
+        // strong owner of the decoded RGBA bytes is the runtime pixel cache.
+        // Dropping the runtime (worker lanes joined by Drop) must invalidate
+        // the Weak - bytes are actually freed, not just hidden.
+        let runtime = super::MediaRuntime::new(Duration::from_secs(60));
+        let registry = runtime.registry().clone();
+        let ticket = runtime.queue_path(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/ui/031-image-viewer/tests/fixtures/rgb-1x1.png"),
+            MediaPriority::Current,
+        );
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            match registry.lookup(ticket.id, ticket.revision) {
+                MediaLookup::Ready(_) => break,
+                MediaLookup::Failed(e) => panic!("decode failed: {e}"),
+                _ if Instant::now() > deadline => panic!("decode timeout"),
+                _ => std::thread::sleep(Duration::from_millis(5)),
+            }
+        }
+        let (_, _, bytes) = runtime
+            .worker_pool()
+            .decoded_pixels(ticket.id)
+            .expect("decoded pixels present");
+        let weak = Arc::downgrade(&bytes);
+        drop(bytes);
+        assert!(weak.upgrade().is_some(), "runtime still owns the bytes");
+        drop(runtime);
+        assert!(
+            weak.upgrade().is_none(),
+            "decoded bytes released after runtime drop"
+        );
     }
 
     #[test]

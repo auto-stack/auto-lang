@@ -46,7 +46,8 @@ fn media_consumers_have_no_ui_path_references() {
     );
     let back_proxy_rs = include_str!("../back_proxy.rs");
     assert!(
-        !back_proxy_rs.contains("ui::media_service") && !back_proxy_rs.contains("ui::image_pipeline"),
+        !back_proxy_rs.contains("ui::media_service")
+            && !back_proxy_rs.contains("ui::image_pipeline"),
         "back_proxy.rs 不得再含 ui:: 媒体直引形态（PLAN-811 剪断）"
     );
     let renderer_rs = include_str!("../ui/iced/renderer.rs");
@@ -96,7 +97,11 @@ fn sixteen_fixed_image_native_ids_are_frozen_and_thumb_has_no_fixed_id() {
     let decl = include_str!("../../../../stdlib/auto/image.vm.at");
     let declared: Vec<&str> = decl
         .lines()
-        .filter_map(|l| l.trim().strip_prefix("fn ").map(|f| f.split('(').next().unwrap_or("")))
+        .filter_map(|l| {
+            l.trim()
+                .strip_prefix("fn ")
+                .map(|f| f.split('(').next().unwrap_or(""))
+        })
         .collect();
     assert_eq!(declared.len(), 17, "image.vm.at 声明 17 项: {declared:?}");
     for name in stdlib::IMAGE_NATIVE_NAMES {
@@ -130,7 +135,10 @@ fn facade_types_are_core_types_with_one_shared_service() {
     // 门面自由函数与 core 全局 runtime 命中同一 registry：门面路径入队的
     // 票据，经 core 路径 lookup/HTTP 可见（同一实例、同一票据命名空间）。
     let fixture = fixtures_root().join("rgb-1x1.png");
-    let ticket = crate::ui::image_pipeline::queue_media_path(&fixture, crate::ui::image_pipeline::MediaPriority::Current);
+    let ticket = crate::ui::image_pipeline::queue_media_path(
+        &fixture,
+        crate::ui::image_pipeline::MediaPriority::Current,
+    );
     let core_registry = auto_media_core::image_pipeline::global_media_registry();
     assert!(matches!(
         core_registry.lookup(ticket.id, ticket.revision),
@@ -153,7 +161,10 @@ mod shims {
 
     #[test]
     fn ticket_handle_lifecycle_through_real_shims() {
-        let fixture = fixtures_root().join("rgb-1x1.png").to_string_lossy().into_owned();
+        let fixture = fixtures_root()
+            .join("rgb-1x1.png")
+            .to_string_lossy()
+            .into_owned();
 
         // queue(path) → handle（单调递增、非零）。
         let (mut task, vm) = task_vm();
@@ -194,7 +205,10 @@ mod shims {
 
         // scan(path)→0；stats()→completed 计数（i64）。
         let (mut task, vm) = task_vm();
-        let missing = fixtures_root().join("does-not-exist").to_string_lossy().into_owned();
+        let missing = fixtures_root()
+            .join("does-not-exist")
+            .to_string_lossy()
+            .into_owned();
         missing.push_to_stack(&mut task, &vm).unwrap();
         stdlib::shim_image_scan(&mut task, &vm).unwrap();
         assert_eq!(task.ram.pop_i64(), 0, "scan 返回 0");
@@ -245,7 +259,10 @@ mod shims {
         let nav: String = String::pop_from_stack(&mut task, &vm).unwrap();
         assert!(nav.contains("\"selected\":"), "navigate 返回快照: {nav}");
         let (mut task, vm) = task_vm();
-        "image-session-999998".to_string().push_to_stack(&mut task, &vm).unwrap();
+        "image-session-999998"
+            .to_string()
+            .push_to_stack(&mut task, &vm)
+            .unwrap();
         1i32.push_to_stack(&mut task, &vm).unwrap();
         stdlib::shim_image_navigate(&mut task, &vm).unwrap();
         let unknown: String = String::pop_from_stack(&mut task, &vm).unwrap();
@@ -275,9 +292,15 @@ mod shims {
 
         // close_session：未知会话 false；真会话 true→false（双 close）。
         let (mut task, vm) = task_vm();
-        "image-session-999999".to_string().push_to_stack(&mut task, &vm).unwrap();
+        "image-session-999999"
+            .to_string()
+            .push_to_stack(&mut task, &vm)
+            .unwrap();
         stdlib::shim_image_close_session(&mut task, &vm).unwrap();
-        assert!(!bool::pop_from_stack(&mut task, &vm).unwrap(), "未知会话 close=false");
+        assert!(
+            !bool::pop_from_stack(&mut task, &vm).unwrap(),
+            "未知会话 close=false"
+        );
         let (mut task, vm) = task_vm();
         sid.push_to_stack(&mut task, &vm).unwrap();
         stdlib::shim_image_close_session(&mut task, &vm).unwrap();
@@ -285,12 +308,18 @@ mod shims {
         let (mut task, vm) = task_vm();
         sid.push_to_stack(&mut task, &vm).unwrap();
         stdlib::shim_image_close_session(&mut task, &vm).unwrap();
-        assert!(!bool::pop_from_stack(&mut task, &vm).unwrap(), "双 close=false");
+        assert!(
+            !bool::pop_from_stack(&mut task, &vm).unwrap(),
+            "双 close=false"
+        );
     }
 
     #[test]
     fn thumb_shim_uri_contract() {
-        let fixture = fixtures_root().join("rgb-1x1.png").to_string_lossy().into_owned();
+        let fixture = fixtures_root()
+            .join("rgb-1x1.png")
+            .to_string_lossy()
+            .into_owned();
         let (mut task, vm) = task_vm();
         fixture.push_to_stack(&mut task, &vm).unwrap();
         64i32.push_to_stack(&mut task, &vm).unwrap();
@@ -300,10 +329,17 @@ mod shims {
         assert!(!uri.contains("fixtures"), "thumb 不泄路径");
 
         let (mut task, vm) = task_vm();
-"not-a-file.png".to_string().push_to_stack(&mut task, &vm).unwrap();
+        "not-a-file.png"
+            .to_string()
+            .push_to_stack(&mut task, &vm)
+            .unwrap();
         64i32.push_to_stack(&mut task, &vm).unwrap();
         stdlib::shim_image_thumb(&mut task, &vm).unwrap();
-        assert_eq!(String::pop_from_stack(&mut task, &vm).unwrap(), "", "坏路径→空串");
+        assert_eq!(
+            String::pop_from_stack(&mut task, &vm).unwrap(),
+            "",
+            "坏路径→空串"
+        );
     }
 
     fn snapshot_session_id(snapshot: &str) -> String {
