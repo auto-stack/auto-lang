@@ -258,6 +258,7 @@ function resolveTaplExecution(bookDir, exampleId, displayFallback) {
     files,
     input: entry.input || '',
     timeout_secs: Math.min(60, Math.max(1, Number(entry.timeout_secs) || 10)),
+    local_only_reason: entry.local_only_reason,
     expected: entry.expected,
   }
 }
@@ -299,7 +300,7 @@ function listingToCodeView(bookDir, tag) {
     props[0] = `auto="${escapeProp(execution.source)}"`
     props.push(`example-id="${escapeProp(attrs['example-id'])}"`)
     props.push(`execution="${escapeProp(JSON.stringify(execution))}"`)
-    props.push(`:runnable="${execution.mode !== 'display-only'}"`)
+    props.push(`:runnable="${['run', 'test', 'expected-error'].includes(execution.mode)}"`)
   } else {
     props.push(':runnable="true"')
   }

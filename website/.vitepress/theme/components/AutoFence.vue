@@ -18,15 +18,16 @@
       </button>
       <span v-else-if="locked || mode === 'local-only'" class="af-lock">
         <Lock :size="13" />
-        {{ t.locked }}
+        {{ mode === 'local-only' ? t.localOnly : t.locked }}
       </span>
     </div>
     <!-- PLAN-718 T-04：模块依赖提示从悬浮工具栏移入独立说明区（可换行、不遮代码），
          Playground 链接按当前 locale。 -->
-    <p v-if="locked || mode === 'local-only'" class="af-lock-note">
+    <p v-if="locked" class="af-lock-note">
       {{ t.lockNote }}
       <a :href="playgroundHref">Playground</a>
     </p>
+    <p v-else-if="mode === 'local-only'" class="af-lock-note">{{ t.localOnlyNote }}</p>
     <div v-if="open" :id="panelId" class="af-runner">
       <!-- PLAN-718 T-05：runner（CodeMirror 链）按需异步加载——SSR 静态页只保留
            原始高亮代码；点击运行才拉取 chunk；失败给本地化说明与重试/收起，不冒充
@@ -89,6 +90,8 @@ const t = computed(() => zh.value
       runAria: '运行示例代码',
       collapseAria: '收起示例运行器',
       locked: '依赖模块示例',
+      localOnly: '本地运行',
+      localOnlyNote: '此示例需要本地 TCP 服务，请按本章的本地工程说明运行。',
       lockNote: '此示例依赖多文件模块，不能在书页内运行——请到',
       loading: '运行器加载中…',
       runnerFailed: '运行器未加载（网络或资源错误）。原始代码保持不变，可重试或收起。',
@@ -100,6 +103,8 @@ const t = computed(() => zh.value
       runAria: 'Run example code',
       collapseAria: 'Collapse the example runner',
       locked: 'Needs modules',
+      localOnly: 'Local run required',
+      localOnlyNote: 'This example needs a local TCP service; follow the chapter’s local project instructions.',
       lockNote: 'This example depends on multi-file modules and cannot run inline — open it in the',
       loading: 'Loading the runner…',
       runnerFailed: 'The runner failed to load (network or asset error). The original code is unchanged — retry or collapse.',

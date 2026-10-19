@@ -885,6 +885,7 @@ impl NativeInterface {
         // 须最后落位。声明按 stdlib/auto 公共签名；异步句柄面（Response/
         // HTTPStream/FileTransfer/RequestBuilder）经 push_handle 物化，
         // 返回按公共身份；wire 适配记入 error_shape，不改绑定/shim/次序。
+        native_interface.declare_tcp_method_contracts();
         native_interface.declare_contract_identity("auto.http.get", &[], &["str"], "Response");
         native_interface.declare_contract_identity(
             "auto.http.get_stream",
@@ -1269,6 +1270,23 @@ impl NativeInterface {
 
     pub fn contract(&self, id: u16) -> Option<&NativeContract> {
         self.contracts.get(&id)
+    }
+
+    /// Restore the public receiver identity for the two TCP methods whose
+    /// Rust inventory wrappers receive VM handles as integer arguments.
+    pub(crate) fn declare_tcp_method_contracts(&mut self) {
+        self.declare_method_contract_identity(
+            "auto.net.tcp_listener_local_addr",
+            "TcpListener",
+            &["TcpListener"],
+            "str",
+        );
+        self.declare_method_contract_identity(
+            "auto.net.tcp_stream_read_line",
+            "TcpStream",
+            &["TcpStream"],
+            "str",
+        );
     }
 
     /// PLAN-738 §5.3：既有生产能力面的独立逻辑契约补充——与 shim 绑定

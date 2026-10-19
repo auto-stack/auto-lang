@@ -11,7 +11,7 @@
         <button v-if="runnable" type="button" class="run" :disabled="running" @click="run">
           {{ running ? (zh ? '运行中…' : 'Running…') : (example.execution.mode === 'test' ? (zh ? '运行测试' : 'Run tests') : (zh ? '运行' : 'Run')) }}
         </button>
-        <span v-else class="status">{{ example.reason || (zh ? '仅供阅读' : 'Display only') }}</span>
+        <span v-else class="status">{{ example.execution.local_only_reason || example.reason || (zh ? '仅供阅读' : 'Display only') }}</span>
       </div>
       <div v-if="showOutput" class="result" aria-live="polite">
         <pre>{{ output || (zh ? '无输出' : 'No output') }}</pre>
@@ -38,6 +38,7 @@ type MaterializedExample = {
     files: ExecutionFile[]
     input: string
     timeout_secs: number
+    local_only_reason?: string
     expected?: { kind?: string; stdout?: string; value?: string; diagnostic?: string; contains?: string[] }
   }
 }

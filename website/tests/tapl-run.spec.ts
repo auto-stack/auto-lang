@@ -110,4 +110,19 @@ test.describe('TAPL example runners', () => {
     await expect(listing).toBeVisible()
     await expect(listing.locator('.run-btn')).toHaveCount(0)
   })
+
+  test('local-only TCP listings explain how to run them and have no Run action', async ({ page }) => {
+    for (const [path, locale, reasons] of [
+      ['/books/tapl/ch22-chat-server', 'en', ['loopback', 'server command']],
+      ['/zh/books/tapl/ch22-chat-server', 'zh', ['本地', '本地']],
+    ] as const) {
+      await page.goto(path, { waitUntil: 'domcontentloaded' })
+      for (const [index, number] of ['22-10', '22-11'].entries()) {
+        const listing = page.locator(`.code-view[data-example-id="${locale}/ch22-chat-server/listing-${number}"]`)
+        await expect(listing).toBeVisible()
+        await expect(listing.locator('.run-btn')).toHaveCount(0)
+        await expect(listing.locator('.execution-note')).toContainText(reasons[index])
+      }
+    }
+  })
 })

@@ -43,7 +43,8 @@ pub fn TcpStream.write(self TcpStream, data []byte) int;
 pub fn TcpStream.read_all(self TcpStream) []byte;
 
 /// Read a line (until \n)
-pub fn TcpStream.read_line(self TcpStream) str?;
+/// Returns an empty string when the peer closes the stream.
+pub fn TcpStream.read_line(self TcpStream) str;
 
 /// Write a string to the stream
 pub fn TcpStream.write_str(self TcpStream, s str) int;

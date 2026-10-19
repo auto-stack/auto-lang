@@ -445,6 +445,7 @@ mod t04_core_bindings {
         // VM init 同款：#[rust_fn] inventory 面（json 族 shim 在此绑定——
         // 仅手工面会漏，resolved-but-unbound 恰是本门禁要抓的形态）
         shims.build_from_inventory();
+        shims.declare_tcp_method_contracts();
 
         let inv = crate::stdlib_assembly::loader::scan_inventory(&stdlib_root);
         (
@@ -479,6 +480,26 @@ mod t04_core_bindings {
             tcp_bind.verification,
             crate::stdlib_assembly::model::VerificationLevel::SignatureChecked
         );
+        for (symbol, native_name) in [
+            ("TcpListener.local_addr", "auto.net.tcp_listener_local_addr"),
+            ("TcpStream.read_line", "auto.net.tcp_stream_read_line"),
+        ] {
+            let method = validations
+                .iter()
+                .find(|v| v.public_symbol && v.symbol == symbol)
+                .unwrap_or_else(|| panic!("missing public net symbol {symbol}"));
+            assert_eq!(method.native_name, native_name);
+            assert_eq!(
+                method.status,
+                CoreSymbolStatus::Supported,
+                "{symbol}: {:?}",
+                method.reason
+            );
+            assert_eq!(
+                method.verification,
+                crate::stdlib_assembly::model::VerificationLevel::SignatureChecked
+            );
+        }
         // Every signature-checked claim must come from a producer contract.
         for v in &validations {
             if v.verification == crate::stdlib_assembly::model::VerificationLevel::SignatureChecked

@@ -23,7 +23,10 @@
     <div class="code-view-body">
       <div ref="editorContainer" class="editor-pane"></div>
     </div>
-    <div v-if="execution" class="input-pane">
+    <p v-if="execution?.mode === 'local-only'" class="execution-note">
+      {{ execution.local_only_reason || (zhLabels ? '请按本地工程说明运行此示例。' : 'Run this example using its local project instructions.') }}
+    </p>
+    <div v-if="execution && canRun" class="input-pane">
       <label class="input-label" for="tapl-example-input">{{ zhLabels ? '程序输入' : 'Program input' }}</label>
       <textarea id="tapl-example-input" v-model="requestInput" rows="3" spellcheck="false" />
     </div>
@@ -88,6 +91,7 @@ const execution = computed(() => {
       files: { path: string; source: string }[]
       input: string
       timeout_secs: number
+      local_only_reason?: string
       expected?: { kind?: string; stdout?: string; value?: string; diagnostic?: string; contains?: string[] }
     }
   } catch {
@@ -102,7 +106,7 @@ const expectedText = computed(() => {
   if (expected.kind === 'stdout_contains') return (expected.contains || []).join('\n')
   return expected.stdout ?? expected.value ?? expected.diagnostic ?? ''
 })
-const canRun = computed(() => execution.value?.mode !== 'display-only' && (props.runnable ?? true))
+const canRun = computed(() => ['run', 'test', 'expected-error'].includes(execution.value?.mode || '') && (props.runnable ?? true))
 const runLabel = computed(() => execution.value?.mode === 'test'
   ? (zhLabels.value ? '测试' : 'Test')
   : (zhLabels.value ? '运行' : 'Run'))
@@ -374,6 +378,14 @@ async function runCode() {
 
 .code-view-body {
   min-height: 120px;
+}
+
+.execution-note {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-top: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-size: 0.78rem;
 }
 
 .input-pane {
