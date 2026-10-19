@@ -1,6 +1,6 @@
 ---
 plan_id: PLAN-811
-status: execution_done
+status: executing
 feature_name: 媒体宿主域、资源生命周期与跨端消费整体解耦
 author: [Codex]
 created_at: 2026-10-19
@@ -136,14 +136,14 @@ review同树独立上下文审AC/SD与原始反例，merge在冻结提交统一�
 
 | 状态 | ID | owner_stage | 依赖 | 实际文件/动作、交付与验证 | AC |
 |---|---|---|---|---|---|
-| [x] | T-01 | work | 原provider/支持合同已交付 | 新`attachments/811/contract-baseline.md`：image_pipeline/media_service/17 native/HTTP/生成/renderer完整读写图；旧oracle/预算/实际ID与thumb按名注册、当前设计差额、service owner/scan关闭/shutdown满channel有界probe、真消费者命令矩阵；阻塞点先决策 | AC-01..05 |
+| [x] | T-01 | work | 原provider/支持合同已交付 | [R7重开→r7已闭合：负控前提算术化收据 fix-r7.md] 新`attachments/811/contract-baseline.md`：image_pipeline/media_service/17 native/HTTP/生成/renderer完整读写图；旧oracle/预算/实际ID与thumb按名注册、当前设计差额、service owner/scan关闭/shutdown满channel有界probe、真消费者命令矩阵；阻塞点先决策 | AC-01..05 |
 | [x] | T-02 | work | T-01 | 新`auto-media-core`及轻consumer骨架，迁公共类型/registry/metadata/rendition/HTTP规则，UI路径薄重导出同型同service；check/V-01/04 | AC-01,03 |
 | [x] | T-03 | work | T-02 | 迁cache/queue/latest-wins/worker/scan/session，建立冻结owned runtime及默认共享门面；必要关闭/迟到发布/锁序有界修复不改变支持输入，V-02/03 | AC-02,03 |
 | [x] | T-04 | work | T-03 | media_service全部索引/Range纯规则迁同包，保旧路径/根优先/路径隐藏/链接规则；codec与图像阈值定向V-04 | AC-01,03 |
 | [x] | T-05 | work | T-04 | VM stdlib17项/ticket映射及HTTP适配消费core，移除UI类型与业务规则重复；保持开关/注册和用户路由，真VM/HTTP定向 | AC-01,02,04 |
 | [x] | T-06 | work | T-05 | Iced renderer/notify与Man api_gen/rust_ui媒体生成/HTTP消费同一core；不搬809项目读取/生成算法；真生成编译与事件/渲染/流输出对照 | AC-04 |
-| [x] | T-07 | work | T-06 | 建plan811/Man consumer/独立manifest，V-01..06含真实三形态和资源退出；777/792并集/受影响fresh/locked与负控 | AC-01..05 |
-| [x] | T-08 | work | T-07 | SD-01..06草案、净删/迁出/剩余owner与资源清单，新`attachments/811/handoff.md`绑定修订/环境/输入/原始结果；提交送审 | AC-05 |
+| [x] | T-07 | work | T-06 | [R7重开→r7已闭合：core 44/44+迟调度组合重放 exit 0，见 fix-r7.md] 建plan811/Man consumer/独立manifest，V-01..06含真实三形态和资源退出；777/792并集/受影响fresh/locked与负控 | AC-01..05 |
+| [x] | T-08 | work | T-07 | [R7重开→r7已闭合：单测试提交 5df643efa，生产源码逐字等价收据在 fix-r7.md] SD-01..06草案、净删/迁出/剩余owner与资源清单，新`attachments/811/handoff.md`绑定修订/环境/输入/原始结果；提交送审 | AC-05 |
 | [ ] | T-09 | review | T-08 | 同树独立完整媒体AC/SD/close-vs-scan/满channel/真消费者及旧路径审查，保留merge门pending | AC-06 |
 | [ ] | T-10 | merge | T-09 pass | 公共装配/792/777并集合流后必要复审，最终冻结提交运行§6适用门；失败归因修复再审重冻 | AC-07 |
 | [ ] | T-11 | merge | T-10 | canonical Spec/ledger沉淀、归档/来源接口交接，guard clean再清理唯一树/分支/组，核对终态计数 | AC-07 |
@@ -185,6 +185,10 @@ handoff：`D:/autostack/.wt/lang-811/auto-lang`，分支`codex/plan-811-dev`；�
 2026-10-19 / stage: review / review_scope: final / reviewer_identity: 当前Codex独立复审上下文（本会话未实施；具体模型/会话ID未暴露） / PLAN-811 revision: 1 / outcome: **needs_fix（R6）** / worktree_path: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / reviewed_commit: 2ffb87755e482fb39f01123d28e3f82fa3e373c1 / base_commit: ab08955c241f6a824091c53d3b02894ca17e193b / dependency_revisions: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / spec_inputs与冻结SD: [baseline](attachments/811/review-r6/baseline.json.txt)、[SD](attachments/811/review-r6/spec-delta-input.md) / acceptance_results: AC01/02/04/05 pass、AC03 partial、AC06 fail、AC07 merge pending / closure: F811-R4-01占用残留/下溢CLOSED（原在途反例三次backlog0/worker0/registry终态），F811-R5-01新增warning CLOSED（test cfg check零warning）；原重复关闭/准入/scan/Weak及七窗口继续过 / findings: 仅F811-R2-02(P2)满通道fixture继续OPEN，核心初跑42/43，唯一红peak_running=8；随后单用例3/3绿但源码12次尝试/accepted≥8不能保证running≥9和8槽满的前置条件，不以重跑取绿冒充稳定验收 / evidence: [完整R6/初次红与三次绿原件/源码诊断/闭合表](attachments/811/review-r6/review.md)；plan811七测/Man三测/HTTP13/777 strict/格式过，六work收据当前SHA核对；HTTP现存hash变化已新跑重绑 / pending_closeout_gates: 最终pass后冻结裸t+tv、最终并集/777/受影响发行、canonical/ledger/归档guard清理 / next: executing **5/11**，保留T02/T03/T04/T05/T06，重开T01/T07/T08；原树work仅修有界受控造载/真实满状态与诊断，提交后受影响复审，不重开已闭生产计数/关闭及事件实现。未改实施/canonical/live ledger或合入，未改合同/revision，未批准延期或缩面。
 
 2026-10-19 / stage: work / PLAN-811 revision: 1 / outcome: pass（R6 修复完成，**非独立验收pass**）/ worktree: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / base: ab08955c2 / code: 04f7446fd（R6 修复单提交；累计 17 实施提交）/ 依赖: auto-down 兄弟 c39ac7f9（零源改）/ task_ids: T-01/T-07/T-08 六次重开后再闭合 / evidence: [fix-r6.md](attachments/811/fix-r6.md)（F811-R2-02 fixture 前置条件：正控改有界补入——预算24/墙钟20s/被拒offer重试/观测到满即止/失败报告accepted与双峰值及末采样；新增未满判别负控——8项上限按算术running≤8、backlog≤7且正常收敛Ready归零；满态shutdown增worker_count=0与真终态仪表0断言。验证：正控16绿（单跑+钉核6副本/2核+并行8副本+编译负载下模块面44/44 @74.13s），零warning、rustfmt过；test-only触面lib产物不变，消费者收据维持R6绑定）/ blockers: 无 / next: review T-09（R7；merge 门 pending：冻结提交裸 cargo t + tv + 777 strict 复核）
+
+2026-10-19 / stage: review / review_scope: final / reviewer_identity: 当前Codex独立复审上下文（本会话未实施；具体模型/会话ID未暴露） / PLAN-811 revision: 1 / outcome: **needs_fix（R7）** / worktree_path: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / reviewed_commit: 04f7446fdc1d3aed9c44dba6efcc9f661ea6a31d / base_commit: ab08955c241f6a824091c53d3b02894ca17e193b / dependency_revisions: auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 / spec_inputs与冻结SD: [baseline](attachments/811/review-r7/baseline.json.txt)、[SD](attachments/811/review-r7/spec-delta-input.md) / acceptance_results: AC01/02/04/05 pass、AC03 partial、AC06 fail、AC07 merge pending / closure: F811-R2-02旧正控余量CLOSED（有界补入/阈值保留/从满态回收），模块44/44与独立正控3/3、test cfg零warning及格式过；生产源码/依赖/config等价，R6已过的消费者/原生命周期证据明确复用 / findings: 仅新F811-R7-01(P2，test-only修复回归)，负控预算8并不能保证8槽未满，resize尚未取首项时可排满8槽；对原负控的自有单测子进程仅延迟media-resize调度8秒后恢复，正常Ready收敛后在backlog peak8<8错误断言红，子进程已恢复并回收，未指控新生产故障 / evidence: [完整R7/44项绿与受控原负控红/前提诊断/生产等价及复用](attachments/811/review-r7/review.md) / pending_closeout_gates: 最终pass后冻结裸t+tv、最终并集/777/受影响发行、canonical/ledger/归档guard清理 / next: executing **5/11**，保留T02..T06、重开T01/T07/T08；原树work仅修新负控有效输入（如预算CAPACITY-1，或先受控确证首项已取走），保留正控与生命周期；提交后影响复审。未改实施/canonical/live ledger或合入，未变语义合同/revision，未批准延期或缩面。
+
+2026-10-19 / stage: work / PLAN-811 revision: 1 / outcome: pass（R7 修复完成，**非独立验收pass**）/ worktree: D:/autostack/.wt/lang-811/auto-lang / branch: codex/plan-811-dev / base: ab08955c2 / code: 5df643efa（R7 修复单提交，测试模块内 +39/−17；累计 18 实施提交）/ 依赖: auto-down 兄弟 c39ac7f9（零源改；生产源码 LF 归一 SHA ce9cf376e… 与 R7 冻结值逐字一致——R6/R7 生产证据按等价复用）/ task_ids: T-01/07/08 六次重开后再闭合 / evidence: [fix-r7.md](attachments/811/fix-r7.md)（F811-R7-01 闭合：未满负控 budget CAPACITY→CAPACITY−1 使 not-full 成为算术性质——backlog≤budget<capacity 对任意调度序成立，running 界收紧至 ≤budget，前提守卫 assert 就地钉住；Ready 收敛/gauge 归零/正常 shutdown 保留、正控未动；core 44/44 单线程 66.22s 零 warning；**迟调度组合重放**：复审自有 negative-schedule.py 原样复用仅重绑修复二进制（sha c8d355b3…），挂起 media-resize 8s 后恢复 → ok/exit 0/53.54s（R7 同条件 exit 101）；check+fmt clean；收据 r7fix-negative-schedule.* 于 review-r7/） / blockers: 无 / next: review T-09（R8；merge 门 pending：最终冻结提交裸 cargo t + tv + 777 strict 复核 + 最终并集/777/受影响发行）
 
 ## 10. 待澄清事项
 
