@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-796
-status: execution_done
+status: archived
 feature_name: AC 语义元信息与类型推导合同及探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-19
-current_step: 7
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
@@ -165,17 +165,51 @@ work只跑相关定向验收及必要check，不能跑整档。T-06改变crates�
 |---|---|---|---|---|
 | [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/796/contract-decision.md；冻结ref envelope/模型与probe接缝/资源及性能配方；最小语义query首例存盘/重启 | 合法/非法名义ref+一次真实infer/cache；不可行回规划，不能删验收；AC-01–05 |
 | [x] T-02 | work | T-01 | 新contract/src/{identity,metadata,codec}.rs，完整类别矩阵与SCC/typed view | R12修复：矩阵十处页载体schema同步v2；matrix_invariants 增页schema一致性不变量；sema_identity 16 例含矩阵检查 |
-| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | R11修复：方法名义身份含owner（contract `DeclKind::Method`+`DeclRef.owner`+`method_logical_id`，kind 轴编码）；sema_identity 16 例含 R11 三向区分/codec 回环 |
-| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R13修复：模块索引键/头/准入同源 module_index_bytes（签名编辑/record增删=换键无Conflict，body-only幂等）+ModuleIndex字段准入；FnSig target_content 拆签名级+FnMeta decl全量准入；页种类覆盖映射见D23 |
-| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | R14重验：完整窗口P95 250ms/30样本、库级P95 9.68ms、V-06 12例136.93s，报告重生成入提交 |
-| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R14重验：probe16+IPC2（含窗口反控）在新准入下全过 |
-| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R14修复：7项测试警告清零（断言不弱化）；V-03b绑定准入矩阵例；SD-01/02/04 R12增量+D22；acceptance 13行PASS |
-| [ ] T-08 | review | T-07 | 同树独立review，冻结commit/依赖/接口快照，检查遗漏/延期 | AC-07；pass→reviewed=8/9，merge pending |
-| [ ] T-09 | merge | T-08 pass | 冻结提交最终门禁，沉淀SD/ledger、归档合入、批量回归到期判定、guard清理；输出D-796消费收据 | AC-08；实际完成9/9 |
+| [x] T-03 | work | T-02 | 新core/src/{infer,query,reflect}.rs及core AST adapter；局部求解/集合负依赖/CT等描述 | R16独立通过：有限推导/名义方法owner/签名级FnSig与hdr-sem语义版本轴；原身份保持 |
+| [x] T-04 | work | T-03 | 新probe/src/store.rs及页/依赖/lease消费，零改783/787实现 | R16独立通过：索引/各页准入与完整依赖保持；冻结旧FnSig键页保留，新键无Conflict发布，独立子进程可读 |
+| [x] T-05 | work | T-04 | 原始trace/六场景/参考机器与周转/压力报告，首批.case.ad/oracle从T-01持续维护 | R16实测：完整窗口P95 296ms/30样本、库P95 6.94ms、压力12例165.59s；前后报告副本见review-r16 |
+| [x] T-06 | work | T-05、D-788 | 共享测试协议单写窗口：新probe adapter/Atom数据kind/recipe注册与语义worker，797接入合同明确；不改ac/syntax现有语义 | R16当前正式probe16+IPC2通过；完整计时/raw准入保持，797消费接缝不扩大能力 |
+| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan796/、attachments/796/spec-delta.md；矩阵补齐和依赖/并行审计 | R16：121个不同定向测试/acceptance13行/selftest12控制通过；计划命名空间零warning，SD01..08含D24核验通过 |
+| [x] T-08 | review | T-07 | 同树独立review，冻结commit/依赖/接口快照，检查遗漏/延期 | R16 final pass，reviewed8/9；当前finding全闭，T09 merge-owned门禁pending |
+| [x] T-09 | merge | T-08 pass | 冻结提交最终门禁，沉淀SD/ledger、归档合入、批量回归到期判定、guard清理；输出D-796消费收据 | 门禁全过（flake solo 归因）；SD-01..08 落盘+ledger v53；ff-only b76eca8d2；归档+guard 清理收据见 §9 merge 回执 |
 
 D-788未满足可以继续独立模型/缓存/性能工作，不能用待绑定.ad冒称AutoDown已完成。T-06不自改788在途协议；797不代修796共享接口。范围/预算/类型支持变化回规划修订，旧证据按影响失效。
 
 ## 9. 复审记录
+
+### 2026-10-19 merge 收口（PLAN-796:r1）— delivered 9/9
+
+stage:merge | plan_id:PLAN-796 | plan_revision:1 | outcome:pass | reviewed_commit:`52aad1fd2`（R16 pass）| delivery_commit:`b76eca8d2`（master tip，ff-only）。
+
+| Checkpoint | Evidence |
+|---|---|
+| prepared | R16 pass 基线 `52aad1fd2`；SD-01..08 冻结 delta（spec-delta.md D21–D24 最新规则）；规范落盘提交 `0fe2c1918`（四新 auto-semantics 规范+四修改+INDEX/overview/GROUPS+plans.md；boundary 许可面同步纳入沉淀面） |
+| gates | 裸 `cargo t --no-fail-fast` 全选择面 5319 执行（三轮各 1 旋转单 flake：plan707 在案 4f123a50e/plan492 pkg_canary/p765 iat_trace，均立即 solo 绿、均不在计划触面）；独立 sema 全套 0 红；受影响 788 套件 11/11（首跑 10/11 为 P95 时序门并发抖动，复跑全绿）；tv/tt/tu/taa/docs_gen 不适用（最终 diff 仅 experimental/**、crates test_cases/tests、scripts、docs） |
+| landed | rebase×2 零冲突、range-diff 全等（reviewed `52aad1fd2`→`91e9824cf`→spec 链重放至 `0fe2c1918`；master 增量纯 docs 簿记，代码基面未变）；`git merge --ff-only` master tip=`b76eca8d2`=`plan-796-dev` tip，无 merge commit |
+| ledger_refreshed | Regime B 守卫式离线投影（HTTP 探测无 store writer）：`.autoos/specs.json` v52→53，备份 `.autoos/specs.json.bak-v50-796`；+P796-D1（designs）/P796-R16（reviews）/P796-M（reports）/P796-T（tests），均带 file+tags（delivery:b76eca8d2）；节序保持、goals/architecture 未触；回读校验过 |
+| archived | 本文件 `docs/plans/archive/796-ac-semantic-metadata-inference-probe.md`，status: archived，9/9；规范/证据/收据全部随 master 提交（无未跟踪 docs/ 遗留） |
+| cleaned | wt-guard clean（auto-lang + auto-down 双树扫描）；worktree `D:/autostack/.wt/lang-796/auto-lang` 与分支 `plan-796-dev` 已移除（branch -d @ b76eca8d2）；**auto-down 兄弟树保留**——其带非本计划所有的未提交 WIP（`autodown/packages/engine/rust/src/{artifact_hash,block_model,hljs_scope_map}.rs` @ c39ac7f），已向用户呈报待其所有者路由，组目录因此保留 |
+| tf 到期判定 | **未到期**：`.last-batch-regression.json` 2026-10-19T08:36Z（<48h）tf/tt/tb 全绿、覆盖至 812；796 非 5 倍数且落在已覆盖区间。该收据另实证 plan484_024 为在案预存负载 flake（PLAN-810 merge 门期同红、tf 全量过）——与本计划 cargo t 归因互证 |
+
+**D-796 消费收据（致 797）**：796 已交付归档——delivery `b76eca8d2` ff-only 在 master（R16 pass 链 `52aad1fd2`），auto-semantics 规范四件已落 `docs/specs/auto-semantics/`（含 797 只读消费面：类型描述 codec/名义身份/页准入）。797 可按并行合同绑定合入库消费类型描述与共同探针 IPC 合同快照；语义 ref envelope/规范描述以本计划 D1–D24 为准。
+
+**部署产物核查（auto-lang）**：本仓无运行中生产服务消费产物（无 daemon/web bundle 常驻）；CLI/构建按需再生，无陈旧部署项。
+
+**环境备注**：merge 期间 D: 盘一度 100% 满（已清 27G 可再生 target）；flake 群发与该负载窗口一致。
+
+
+### 2026-10-19 R16：独立最终复审 — pass（reviewed8/9，merge门禁pending）
+
+stage:review | review_scope:final | reviewer_identity:Codex，独立于实施上下文，无代理 | plan_id:PLAN-796 | plan_revision:1 | outcome:pass | worktree_path:D:/autostack/.wt/lang-796/auto-lang | branch:plan-796-dev | reviewed_commit:`52aad1fd205e05e28b8e7d0345906c8d1ad19f6a` | base_commit:`d092bca5bb8482596a98c9f7bbc7a068a33e5554` | dependency_revisions:ac-core `8e01299a76e4e9ad34ac61c8ce5302a84adea400`，783 `d4c37faca3843b4a241f5f0770156a09efc23f65`，syntax `66598596079cfa20bd5148d83401497cdc131b08`，auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8` | spec_inputs:[冻结hash/Plan/D24/SD](attachments/796/review-r16/baseline.json.txt)，起止无漂移 | acceptance_results:AC01..07 pass，AC08 pending | findings:F-796-R14-01 CLOSED，全部历史finding已闭，无新增阻断 | evidence:[完整报告/冻结旧键保留及跨进程恢复/AC-SD/当前验收/最终状态](attachments/796/review-r16/review.md) | next_responsible_role:merge（T09）。
+
+本轮确有新提交。独立探针使用R14原日志冻结的九个旧键组件（不是从受审实现删除轴）：保留同一个旧合法artifact→当前Miss→新键发布/HIT无Conflict→旧页仍存在→关闭父store后独立子进程HIT；body-only HIT/签名编辑Miss，fresh正控同新artifact并再次跨进程可读。FnSig hdr-sem=fn-sig/sig-only/v1隔离成立；不改声明logical/producer、codec或783策略。R15同头未修复状态已由本次新修复覆盖，旧记录保留为历史。
+
+当前统一acceptance13行PASS/exit0，121个不同Rust定向测试；压力12例165.59s、库P95 6.94ms、真实完整编辑IPC P95 296ms，各30原始样本；selftest12控制通过。all-targets check成功，计划命名空间零warning（唯一不变依赖shim-metadata旧doc warning沿前轮归因）；scoped fmt/diff通过。入场clean、结束HEAD/依赖/输入/Specs未变，只有三份自动生成验收报告脏，未改实施。R13/R12/R11及更早不变面历史独立反例限定复用并执行当前对应定向控制，不冒称重跑全部历史独立大探针。未发现遗漏、未经批准延期/缩面/workaround或以debt替代验收。
+
+SD01..08及影响元数据通过：四add/four modify路径正确，D24页语义改变必须移动键与当前代码/反控一致；旧D5/v1、D22等仅历史，merge须沉淀最新规则；touched_goals空值说明保持。无canonical Specs/ledger写入。T01..08完成、reviewed8/9，T09仍pending；此pass为代码/验收/规范审查通过，**不等于交付完成或允许门禁前合入**。
+
+pending_closeout_gates:merge在冻结 `52aad1fd205e05e28b8e7d0345906c8d1ad19f6a`（或经受影响面重核的新头）执行裸cargo t、适用tv/tt、独立sema完整与受影响788套件；tf仅主检出单实例到期判定/批量回归。无aavm/UI/docs生成器触面不额外跑taa/tu/docs_gen。本轮未跑整档。SD正式沉淀/ledger/index、归档、合入、批量到期收据、wt-guard与清理仍待T09；门禁失败须归因，修代码后受影响面复审并在新冻结头执行相关门禁。
+
 
 ### 2026-10-19 R14 修复轮：work 交接 — execution_done=7/9 复送审（R15 核查后实施）
 
@@ -604,4 +638,4 @@ next: work 于同树修复 F01–13并提交，附根因/不变式/永久反例/
 
 **最新R5：needs_fix，2/9**。上方R4与work修复轮收据为历史；本轮F06未闭、F07组路径延期未经批准及F13/范围交接缺口见§9 R5，补齐后再进入完整最终复审。
 
-**最新（R14 修复轮）：execution_done，7/9，待 T-08 独立复审冻结 `52aad1fd2`**。R14 单项（FnSig 键语义版本隔离 hdr-sem 轴）已修复并有原例复刻/无冲突发布/重启可读收据（§9 R14 修复轮、attachments/796/r14-repair）；R15 核查确认修复此前未提交、本轮为首次实现并落树。验收 PASS 只代表 work/review 面，merge-owned 裸 t/触面档/独立 sema/788 套件/tf/规范沉淀/归档/guard 全部 pending。不要把历史 R4–R14 needs_fix 收据当作当前状态。
+**终态（merge）**：PLAN-796 delivered 9/9、已归档。delivery `b76eca8d2`；规范落盘 docs/specs/auto-semantics + 四处修改；ledger v53；门禁与清理收据见 §9 merge 回执。历史 R1–R15 needs_fix 日志为过程证据，不代表开放债。
