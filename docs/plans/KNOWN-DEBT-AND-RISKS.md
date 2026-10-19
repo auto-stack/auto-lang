@@ -274,6 +274,12 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
 
+### Plan 797（2026-10-20，R8 修复轮完成，待 T-08 复审）
+
+R8 复审（受审 `bf2455758`，needs_fix）5 项开放 findings 已全部修复（修复提交 `34db55429`，同树 `D:/autostack/.wt/lang-797/auto-lang`）：F-R4-02 descriptor/3 如实化（ledger 三出参/two_step handle 出参/callback ctx/buf:i64 元素视图 + record mut/out 生产面 `p797_crec_mutate`/`p797_crec_make` 含字节级 untouched oracle 与期望翻转负控；oracle 改为 header 文本独立对照）；F-R4-07 `cl -showIncludes` 观测依赖闭包（本地+系统头）入同源多代闭包键、命中经公共 db 句柄逐一重验零编译调用（R8 三兄弟+宏 include 真编译 PE 17→29 永久反例）；F-R4-09 每请求完整父路径计时（edit 父侧应用，query 请求携带编辑后 deck；Job 对象峰值内存/I-O 入逐样本先落盘 JSONL；门禁 P95=663/101ms，verify closeout 收据绑定）；F-R4-10 物化表示精确字节暂存门（原 R5 长字段名输入 19,398,656B 下界在分配前拒绝）+ worker 预算前后双查 + 并发 GC 全链（该测试抓到并修复同 store 并发 worker scratch 碰撞真缺陷）；F-R4-12 本计划 3 条告警清零 + freeze/verify/SD/支持矩阵按 R8 事实重写。probe 68/68、父侧 abi 家族 12/12、verify closeout ALL PASS；merge-owned 门禁/合入/沉淀/归档 guard 仍 pending。无新增债务延期项。
+
+**跨计划事件登记（2026-10-20，P1，待用户裁定）**：主检出在 PLAN-813 合并前后被 stash 化（`stash@{0}`=`c1c0fb06f`）且未跟踪复审工件目录被清——`docs/plans/attachments/{797,781,785,788,796,798…}/review-r*/` 中**未跟踪**的复审报告/基线/raw 辅助工件已从磁盘消失（tracked 文件在 stash 中保全）。797 的 review-r8/review.md 已按复审会话原文重建；r3–r7 及其他计划的丢失件未恢复，§9/§10 中相应链接为历史指向。各受影响计划复审前须核对其证据链完整性；后续建议复审工件一律入库（tracked）或集中保全，stash/重置操作前先清点未跟踪计划资产。
+
 ### Plan 797（2026-10-19，R6 就绪核查，维持 needs_fix）
 
 R6：原树仍是R5受审 `5897eeb129e657a9d859de6d585434eec3f98f2a`、clean，无新提交/未提交修复；依赖/配置/锁/规范/二进制及R5证据hash全部一致，已知refs未见其他797 R5/R6修复。[R6报告/比对基线](attachments/797/review-r6/review.md)。维持 **executing 2/9**、R4七项与R5三项OPEN，原关闭五项维持；不重跑同一代码的测试，不计第三次完整final失败。已请求修复commit/树位置，实际交接（含根因/覆盖调整）到位后再审；merge-owned门禁/沉淀/归档guard仍pending。以下R5及更早为历史结论。
@@ -2406,3 +2412,11 @@ F810-R2-01（P2）同实例错误oracle仍未齐：fresh Parser成功不能证�
 ### Plan 798 final review R3（2026-10-19，needs_fix）
 
 受审 `b9682967fb177b065ea76e5240048e3321aef8ef`，plan r2；[报告/AC/V/SD/全部独立反例](attachments/798/review-r3/review.md)。D796/D788已满足，旧依赖阻断关闭。开放F798-R3-01..11：owner/越界类型/未知能力及import/Decoded版本信任门漏检；真实manifest profile/sem/签名/logical及当前能力未验、796 ref只分别自检未关联；位置漂移ABC命中丢trap span；根帧预算及始终0的槽高水位/平坦表达式前门预算；父runner对exit9、额外帧和错source_hash均误绿，65.189s响应突破60s会话；正式窗口扣掉父call内IPC，重建冻结worker后30样本编辑P95仍1084.5ms红；156KB wire/24581条目使verifier增量54,239,232bytes后才拒绝，32MiB受管守卫未落实；T08有限代际/native准入仅文本无模型；新增warning/README diff-check和既有语义corpus缺oracle兼容红；native helper仍走无限capture兼容API/事后预算。常规定向35+资源7+合同20+正式正负3通过不覆盖这些不变量，兼容15过1缺件红。全部合同内开放项，登记不批准延期或降格；源自前端的128MiB目标未达归因不替代32MiB硬预算。Plan executing1/10，保留T01最小vertical，重开T02..08；root整档/merge-owned收尾未执行，未改实施或合入。下一轮须不变量闭合与oracle覆盖调整，不只单例补丁。
+
+### Plan 798 修复复审 R7（2026-10-20，needs_fix）
+
+受审`36108624a432d50df65bda0725e66a205f56950b`，plan r2；[报告/旧8项闭合边界/全部反例](attachments/798/review-r7/review.md)。当前F798-R7-01..05：native开始尚未过期时仍不给link剩余截止（本次自身伪钟前耗59秒后helper完整执行12.15秒，非实测71秒）；bool关键字/命名实参冒号仍重置128层计数；可解码空sidecar仍恢复为无来源trap；82字节COFF声明raw data在u32::MAX仍获准；合法if/else双return被lower.unwired-block拒绝，独立native与expected均1、落空对照AV=1。前4项延续R6完整不变量；第5项为原支持面新发现，非本轮修复回归。错键/错型参数/原解码放大/警告与缺oracle行为已修；core20+指定probe57+正式协议4+兼容16+合同20均过，不证明完整矩阵。原预算未批准降格，contract-decision r4(c)不能代替修复；新基线30样本V11本轮pending，不拿旧提交性能授pass。Plan executing3/10，保留T01/03/06、重开T02/04/05/07/08；原树work修复提交。未改实施/规范/ledger或合入；merge-owned全档/沉淀/guard仍pending。R7源码/锁/raw须保留，旧附件缺失不能用work转述当独立证据。
+
+### Plan 798 修复复审 R8（2026-10-20，needs_fix）
+
+受审实际`f9d9821577eefd0ccfb74530b7d1077923ea9c33`，plan r2；[报告/旧5项闭合范围/全部源码与raw](attachments/798/review-r8/review.md)。当前F798-R8-01..03：前门全局操作计数误拒合法128/129/200个浅层命名实参（Checked HIR→真实MIR/ABC/AV均=1）；sidecar只覆盖Bin，MIN一元NegI32在空映射下仍恢复为无来源int-overflow@；新native监督器之前的首次worker构建仍Command.output无deadline/caps/收容，r4(c)旧预算降格文字也未实际撤销。三项分别延续前门、来源、全程有界不变量，不要求新支持面。旧在途linker反例现1013ms即Budget/已回收、双return两端=1、深链/二元空sidecar/COFF节窗口原例均已修。core20+指定probe62+正式协议4+兼容16+合同20均过，fmt/diff-check0；当前提交完整V11本轮pending。Plan executing3/10，保留T01/03/06；原树work修完三项提交，并保留复现资料。未改实施/规范/ledger或合入；merge-owned冻结门禁/沉淀/guard仍pending。
