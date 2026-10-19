@@ -4,10 +4,10 @@ status: drafting
 feature_name: 语言 SDK、UI 编译与运行包组整体分层
 author: [Codex]
 created_at: 2026-10-19
-updated_at: 2026-10-19
-plan_revision: 1
+updated_at: 2026-10-20
+plan_revision: 2
 current_step: 0
-total_steps: 12
+total_steps: 15
 supersedes_spec_components: [docs/specs/auto-lang/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-ui-dialect/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/language-sdk/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md]
 touched_goals: [GOAL-003, GOAL-007]
@@ -22,6 +22,8 @@ depends_on: [PLAN-807, PLAN-808, PLAN-810, PLAN-811]
 完成R04的语言/编译/运行边界：提供不依赖UI实现或Man的语言SDK，把UI编译生成与UI运行/renderer形成独立可消费包组；默认组合和旧`auto_lang::*`兼容明确归上层。迁移实现、公开路径、资源、测试选择、真正消费者及发行闭包一起交付，不止增加几个空crate。
 
 不搬Man的UI工程工具/资源（815），不接完整CLI工具协议（816），不搬Git仓/切旧默认分支，不在本期删除UI兼容AST/TokenKind（R10）。纯SDK不等于原名auto-lang同一包既重导出完整UI又保持纯Core。
+
+本次r2按M814-A真实阶段发布、M814-B完整交付组织，不增加Plan编号、不降低原最终AC。执行与审查修复并行规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)；阶段pass不等于整Plan交付。
 
 ## 1. 目标
 
@@ -42,17 +44,20 @@ UI compiler可使用SDK，runtime可使用SDK与必要UI编译公开面；compil
 
 ## 4. 需求分析与背景调查
 
+用户2026-10-20明确要求修订现有814/815/816，允许阶段交付及接口合入后放行下游、并行审查验证修复，不增加编号。原目标/最终AC/支持面不变；本轮只改主检出规划文档，不改实现树、canonical Specs或远端。 来源与当前hash见[本轮输入](attachments/sdk-tools-r2-20261020/inputs.json)。
+
 授权：用户要求建立下一批较大计划并明确合入前置；本轮仅auto-lang仓内规划，不实施/创建agent或工作树、不写相邻仓/远端。来源：[总路线](reports/v06-extraction-execution-roadmap.md)、[批次调度](reports/sdk-tools-parallel-order-814-816.md)、[输入hash](attachments/sdk-tools-batch-20261019/inputs.json)。
 
-权威输入：[语言现状](../specs/auto-lang/project.md)、[frontend](../specs/auto-lang/frontend/overview.md)、[VM](../specs/auto-lang/vm/overview.md)、[UI](../specs/auto-lang/ui/overview.md)、[方言](../specs/auto-ui-dialect/project.md)、[交付](../specs/repository-boundaries/generated-ui-distribution.md)。808已实际合入5833e155e并归档10/10；810/811本轮起读为execution_done、随后回到executing修复，均未合入，handoff仅作预期接口观察，不能当规范或被生产依赖。811还登记实机环境pending，原owner收口，本Plan不代审；当前header以本批输入快照为准。
+权威输入：[语言现状](../specs/auto-lang/project.md)、[frontend](../specs/auto-lang/frontend/overview.md)、[VM](../specs/auto-lang/vm/overview.md)、[UI](../specs/auto-lang/ui/overview.md)、[方言](../specs/auto-ui-dialect/project.md)、[交付](../specs/repository-boundaries/generated-ui-distribution.md)。807/808/810/811均已归档交付；810=f0ec8a91f，811=d06cdc6f6，实际master祖先已核实。旧r1等待状态保存在Git历史；本轮不重做这些Plan验收。
 
 实际写面：`crates/auto-lang/{Cargo.toml,build.rs,src/lib.rs}`（build输入以T-01存在性/引用核实）、`src/{parser,parser_bridge,compile,config,a2r_std,back_proxy}.rs`、`src/{ui,ui_gen,aura,a2ui,design_tokens,vm,trans}/`、`crates/auto-vm`、根Cargo与`.cargo/config.toml`/`.config/nextest*.toml`。当前默认带ui-iced，`Parser`有pub scope/cur/infer_ctx等，lib全局STORE_EXTRA_FILES/USE_DIAGS及UI辅助也混在旧根；无环拆分必须处理身份/装配/生命周期，不能仅关default-features伪装。
 
-### 开工门
+### r2阶段启动门
 
-- **现在可做T-01只读盘点/兼容方案/测试归属设计**，不以未合入接口编译新生产模块。
-- **T-02起主搬包必须等810与811实际review+merge**；807/808已满足，809不是本Plan前置。T-01若需要代码probe，也等该门后在唯一树运行。
-- 不cherry-pick或叠加810/811送审分支，不创建phase merge；等待期间可以完成本合同只读交付物，不记为整个实施已可完成。
+- 807/808/810/811均已实际交付，T-01整链probe及T-02/T-03可在唯一树开始；不再等待810/811。
+- **M814-A**：T-01→T-02→T-03→T-13→T-14→T-15；真实SDK与UI编译公开面发布后，放行815生成主体与816语言adapter。
+- **M814-B**：T-15后继续T-04..12，完成runtime/renderer与全部原AC；完整runtime调用必须等本阶段实际发布。
+- 依赖未合入的实现不能进入生产闭包，不借上游WIP；任务ID保留历史编号，不表示数字顺序执行。
 
 ## 5. 详细设计
 
@@ -63,6 +68,14 @@ UI compiler可使用SDK，runtime可使用SDK与必要UI编译公开面；compil
 5. **状态/并发**：registry/OnceLock/thread_local/global runtime/VM Rc、provider默认/实例覆盖/owner history、模板/语法session/cache不可跨新包产生第二真源；线程亲和、锁外回调、store额外文件drain、use诊断、终端/媒体生命周期/快照共享保持。移动字节不等于状态单源证据。
 6. **消费者与测试**：旧路径消费者在兼容层继续可编译；至少一个真实非UI消费者（首选auto-vm，若其实际依赖需调整则T-01具名替代）直接切SDK。UI compiler/runtime及后续工具必需的语言adapter（如auto-gen可执行模板层）也要沿实际闭包切SDK，不能经旧auto-lang兼容包把UI实现重新拉回。auto-lsp等UI补全可暂用上层具名adapter，不谎称其整体纯Core。迁出的lib/test/integration/doc/schema测试保单份来源；cargo t/tv/tu/tt/tb实际选择面映射覆盖新包，UI tu保持合适单进程registry复用，不因包名变化丢测试。
 7. **发行**：777精确域边/forbidden、792受管source与manifest/资源/producer/lock/重定位更新至真实包图；新SDK独立fresh/locked无UI checkout，UI实例工程可用新包，不靠父仓隐式path。SDK不含UI实现的证明覆盖normal/build/dev，UI部署profile仍保原功能而非删除默认重后端。
+
+### 5.1 A/B阶段的真实交付边界
+
+**M814-A**不是空crate或接口草图：纯SDK完成Core parse→compile→VM与已有非UI消费者、必要trans出口；normal/build/dev无UI文法实现/编译/运行包或Man。T-02已经清除阻碍此性质的i18n/frame/config等边，不能把纯SDK所必需的去边留到T-06。UI compiler迁实际生成算法/资源与公开入口，真实消费者可生成其声明支持的产物。A中迁出的测试族和资源立即接入实际门/777/792及fresh/locked消费，不留到T-07/08才补。
+
+旧auto-lang上层兼容可继续使用尚未搬迁的现有真实runtime，保原默认UI、Parser pub字段/方法/回调及单份状态；新SDK与compiler不可反依赖该兼容包。生成runtime import仍指向当前真实可用、版本受约束的实现，B再有控制地切换；不得将未完成的新runtime能力列为已支持。原四生成器各自支持面保持，依赖runtime的原完整正控保留给B，A至少验证生成产物和当期真实runtime消费路径。若依赖图不能这样切，T-01交具体needs_replan，不用伪实现凑阶段。
+
+**M814-B**完成新runtime/renderer/宿主adapter、默认组合和全部原验收。A的局部合入不提前勾AC-01..05整体完成；仅新增AC-08..10描述阶段范围。SD-01/02与SD-04..08仅按A已发布事实沉淀，SD-03完整runtime规则等B，不把B目标写成现状。
 
 ### 规范增量
 
@@ -93,6 +106,18 @@ work只定向check/新包测试/相关反例及新consumer；T-01在合入门后
 
 独立final review同树独立上下文验AC/SD与原始反例；未指定agent/model不创建会话。merge最终冻结提交按迁移后的真实门入口统一裸cargo t+tv+tu+tt，若文档/Schema生成实际迁移触面则补docs_gen及tb必要面；开发/复审不跑整档。tf主检出到期单实例。复用绑定源码/依赖/配置/输入，合流变化复审/重放影响面。本轮仅文档Category A，无Cargo/docs_gen。
 
+### r2阶段验证与并行复审
+
+| Case | AC / invariant | 真实入口/设置 | 区分性oracle与边界 |
+|---|---|---|---|
+| V-06 | AC-08 A阶段真实边界 | T-13建立新增SDK/compiler外部consumer；Core无UI源；旧默认UI与A生成产物使用当期真实runtime | 纯SDK禁止边确实消除、非UI消费执行成功；旧API/状态同源、A公开生成出口可用；缺新runtime能力明确拒绝且不伪报B完成 |
+
+上述新增Case与原V项均owner_stage=work，由新增阶段work任务使fixture真正可运行，当前尚未执行。原测试表/最终AC不缩减；A只取其明确范围，B仍逐项验证完整支持面。阶段发布的API/能力/依赖/source/资源和测试选择变化须有同步正反控，不把必需consumer验证全部后置。
+
+实施者先修齐本轮已知findings，定向回放共享反例集/相邻状态组合及必要check，再提交新SHA送审。同Plan同一权威树冻结交接，不能边改边让review读工作区；不同Plan独立scope的读审、定向验证、修复可并行。缺上游的真实集成明确pending，不每轮重复算新finding、不用fake补绿。
+
+A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。阶段和最终的裸t/触面整档均归merge冻结后统一排队，资源独占项串行；tf仅主检出到期单实例。接口修复由owner发布，影响方重放受影响scope，未变且适用证据可复用。具体失效/收据/单写者规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md) §2–5。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察验收 |
@@ -104,31 +129,43 @@ work只定向check/新包测试/相关反例及新consumer；T-01在合入门后
 | AC-05 | work | 测试族迁移选择面、777/792与fresh/locked/资源负控通过，SD/来源/剩余兼容与净迁移清单完整；V-05 |
 | AC-06 | review | 同树独立审查绑定修订，遗漏/规范/警告/格式/debug检查通过，merge门pending明确 |
 | AC-07 | merge | 冻结门、canonical Specs/ledger/归档/接口与资源交接、guard clean后清理有实际收据 |
+| AC-08 | work | M814-A满足§5.1全部阶段性质，V-06及V-01/02/03/05当期范围通过；非B整体pass |
+| AC-09 | review | T-14独立阶段审查绑定r2/M814-A冻结SHA/API与Spec子集，通过且merge门pending |
+| AC-10 | merge | T-15冻结门通过、实际master祖先交付与Spec/ledger增量、版本/来源/consumer读回收据；不归档 |
 
 ## 8. 执行步骤
 
-12项；T-01可立即只读开展，其代码probe及T-02..09必须在810/811合入后。
+15项；保留原任务ID，追加A阶段任务，**按依赖列执行，不按编号排序**。整项depends_on为摘要，阶段启动以§4/5和本表为准；不宣称Runner已支持阶段调度。
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 文件/交付、验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 现在只读；probe等810/811 | 新attachments/814/contract-baseline.md：所有者DAG/旧API构造/状态/测试族/资源/真实消费者清单与候选布局；前置合入后整链编译probe冻结SDK/默认UI兼容方案，不可行先重规划 | AC-01..05 |
-| [ ] | T-02 | work | T-01决策+810/811已合入 | 建真实SDK包/上层兼容骨架，单份Core实现与最小公开出口迁移，V-01/02编译pin | AC-01,02 |
-| [ ] | T-03 | work | T-02 | UI compiler及aura/a2ui/design_tokens/registry按闭合图迁移、无环公开面/生成路径策略；定向V-03 | AC-03 |
-| [ ] | T-04 | work | T-03 | UI runtime/renderer/宿主adapter与资源迁移，VM依轻能力；保持真实编辑器/终端/媒体与跨端 | AC-03,04 |
-| [ ] | T-05 | work | T-04 | 默认Parser/VM/新SDK显式UI装配、旧auto-lang字段/方法/feature/旧路径兼容；真实import及外部consumer V-02 | AC-02 |
-| [ ] | T-06 | work | T-05 | i18n/a2r frame/config等残边、全局/TLS/registry单源和退出验证；必要非UI消费者切SDK，V-01/04 | AC-01,04 |
+| [ ] | T-01 | work | 现在；807/808/810/811已交付 | 新attachments/814/contract-baseline.md：所有者DAG/旧API构造/状态/测试族/资源/真实消费者清单与候选布局；前置合入后整链编译probe冻结SDK/默认UI兼容方案，不可行先重规划 | AC-01..05 |
+| [ ] | T-02 | work | T-01可行性决策 | 真实纯SDK/上层兼容、单份Core/状态与公开出口；立即清除阻碍纯SDK的全部反向边，保旧默认API；迁出测试/资源/非UIconsumer及V-01/02当期证据 | AC-01,02 |
+| [ ] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 |
+| [ ] | T-04 | work | T-15/M814-A已发布 | UI runtime/renderer/宿主adapter与资源迁移，VM依轻能力；保持真实编辑器/终端/媒体与跨端 | AC-03,04 |
+| [ ] | T-05 | work | T-04；补齐B默认组合，A兼容不得先破坏 | 默认Parser/VM/新SDK显式UI装配、旧auto-lang字段/方法/feature/旧路径兼容；真实import及外部consumer V-02 | AC-02 |
+| [ ] | T-06 | work | T-05；A纯SDK禁止边已在T-02清除 | i18n/a2r frame/config等残边、全局/TLS/registry单源和退出验证；必要非UI消费者切SDK，V-01/04 | AC-01,04 |
 | [ ] | T-07 | work | T-06 | 测试源码/别名/nextest选择面按owner迁移，全部旧族逐项映射，移除旧实现；V-05选择清单 | AC-05 |
 | [ ] | T-08 | work | T-07 | 新consumer/上层定向矩阵V-01..05、777/792新闭包、fresh/locked/重定位与负控 | AC-01..05 |
 | [ ] | T-09 | work | T-08 | SD-01..08备稿、真实API/包源/资源/测试归属及compat退出清单，新增attachments/814/handoff.md绑定SHA/结果，提交送审 | AC-05 |
 | [ ] | T-10 | review | T-09 | 同树独立完整DAG/公开兼容/生产/寿命/测试选择与SD审查，merge门pending | AC-06 |
 | [ ] | T-11 | merge | T-10 pass | master并集/变化复审，最终冻结提交统一§6门，失败修复后重审重冻 | AC-07 |
 | [ ] | T-12 | merge | T-11 | 规范/ledger沉淀、归档、已合入SDK/UI出口交815，guard clean后清理、终态计数 | AC-07 |
+| [ ] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 |
+| [ ] | T-14 | review | T-13提交冻结 | 独立阶段AC-08/API/类型状态/资源/Spec审查，绑定r2/M814-A SHA；全Plan未reviewed、merge门pending | AC-09 |
+| [ ] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 | AC-10 |
 
-唯一树`D:/autostack/.wt/lang-814/auto-lang`，分支`codex/plan-814-dev`；work/review/merge同树顺序使用，记录实际base/兄弟依赖，不在master改代码。无phase merge，不提前借810/811分支；与815/816写面及合入见本批报告。
+唯一树`D:/autostack/.wt/lang-814/auto-lang`、分支`codex/plan-814-dev`；work/review顺序交接同树，先核实实际tree/base并读取主检出r2。A发布后保留原树/分支同步master继续B，不创建第二审查树、不归档/清理。A期间Plan保持executing，只有B全部原AC完成后才依标准流程execution_done→reviewed→archived。
+
+阶段发布是用户本轮明确授权的有界例外：按共用合同独立阶段review、冻结门、人工Git合入及非归档Spec/ledger受管增量与收据组织；**不调用会自动归档整Plan的完整merge流程冒充phase支持**。B按原最终review/merge/归档任务完成。无WIP依赖，无junction/symlink，最终清理必须guard clean。跨Plan审查/修复与共享窗口见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)。
 
 ## 9. 复审记录
 
+r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调度指令。
+
 2026-10-19 / stage: new / revision: 1 / outcome: pass（合同预检，非实现/独立验收pass）/ next: work T-01只读；代码probe和T-02起等待810/811实际合入 / changed: T-01..12、AC-01..07、SD-01..08。未执行未来Cargo/fixture、未创建工作树/agent或搬仓。
+
+2026-10-20 / stage: new / revision: 2 / outcome: pass（文档合同预检，非实现/独立验收pass）/ next: 按§4阶段门work；814先确认已登记唯一树并读取本r2。changed: 阶段A/B与新增T/AC/V、Spec分阶段沉淀、并行审查修复；原目标、原T/AC/SD ID保留。r1证据仅历史，不自动覆盖新范围。未执行实现/未来fixture/门禁。见[预检](attachments/sdk-tools-r2-20261020/preflight.md)。
 
 ## 10. 待澄清事项
 

@@ -4,10 +4,10 @@ status: drafting
 feature_name: UI 工程工具、生成入口与专属资源脱离 Man
 author: [Codex]
 created_at: 2026-10-19
-updated_at: 2026-10-19
-plan_revision: 1
+updated_at: 2026-10-20
+plan_revision: 2
 current_step: 0
-total_steps: 11
+total_steps: 14
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/auto-lang/ui/overview.md, docs/specs/project-model/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-ui-tools/project.md, docs/specs/tool-protocol/project.md]
 touched_goals: [GOAL-003, GOAL-007]
@@ -21,7 +21,9 @@ depends_on: [PLAN-809, PLAN-814]
 
 完成R04工程工具半部：Man内Vue/Rust/Jet/Ark/Tauri等实际UI生成/脚手架、gallery/wm/shadcn等专属资产及其调用闭包迁到独立UI工具包，消费已交付I-PROJECT和814公开SDK/UI接口，不反依赖Man管理大库。同步交付轻I-TOOL执行协议与实际UI工具服务入口，供816消费，避免双向等待。包含真生产、旧门面兼容、资源/发行及失败证据。
 
-不搬通用锁/resolver/Builder/模板算法，不把整个api_gen或http_service按文件名盲搬，不迁Git仓。I-TOOL不是另一个小Plan，也不消费809未合入请求类型。
+不搬通用锁/resolver/Builder/模板算法，不把整个api_gen或http_service按文件名盲搬，不迁Git仓。I-TOOL不是另一个小Plan，使用809已交付的单源请求类型。
+
+本次r2按M815-A真实阶段发布、M815-B完整交付组织，不增加Plan编号、不降低原最终AC。执行与审查修复并行规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)；阶段pass不等于整Plan交付。
 
 ## 1. 目标
 
@@ -42,17 +44,20 @@ depends_on: [PLAN-809, PLAN-814]
 
 ## 4. 需求分析与背景调查
 
+用户2026-10-20明确要求修订现有814/815/816，允许阶段交付及接口合入后放行下游、并行审查验证修复，不增加编号。原目标/最终AC/支持面不变；本轮只改主检出规划文档，不改实现树、canonical Specs或远端。 来源与当前hash见[本轮输入](attachments/sdk-tools-r2-20261020/inputs.json)。
+
 用户授权下一批较大模块规划，当前只在auto-lang仓写计划/设计，不实施、不创建agent/树、不写远端。来源：[路线](reports/v06-extraction-execution-roadmap.md)、[批次](reports/sdk-tools-parallel-order-814-816.md)、[输入hash](attachments/sdk-tools-batch-20261019/inputs.json)。
 
-权威：[Man](../specs/auto-man/project.md)、[UI](../specs/auto-lang/ui/overview.md)、[project-model](../specs/project-model/project.md)、[交付](../specs/repository-boundaries/generated-ui-distribution.md)。809 I-PROJECT当前仍review修复，handoff列主声明再读、动态/前端字段、sidecar/依赖根等跨文件差额；以其最终合入Spec为准，不冻结其WIP。814为本批新合同。
+权威：[Man](../specs/auto-man/project.md)、[UI](../specs/auto-lang/ui/overview.md)、[project-model](../specs/project-model/project.md)、[交付](../specs/repository-boundaries/generated-ui-distribution.md)。809/I-PROJECT已归档交付b819a602e，以当前Spec和实际同源类型/codec为准；814按本批r2阶段合同提供SDK/UI出口，不冻结其WIP。
 
 实证：`auto-man/src/{vue,rust_ui,jet,ark,tauri,vue_shadcn,gallery_assets,wm_assets,gallery_cache,image_viewer,api_gen,tauri_backend,vscode,sidecar,http_service}.rs`及`assets/{gallery,wm,shadcn-ui}`；Vue/Rust等当前使用Pac/语言生成API，api_gen同时有非UI服务/媒体适配，http_service承载独立server命令；需逐符号而非整文件武断归属。`rust_ui.rs`还持792发行管线与producer/source表；原资产使用编译期embed和邻仓输入，必须迁完整来源。
 
-### 开工门
+### r2阶段启动门
 
-- T-01可立即只读完成工具/数据/资源/效果映射，研究历史输出与I-TOOL合同。
-- T-02只做独立资产/纯清单的代码可现在在唯一树推进：建立私有资源模块/来源映射与定向测试，不提前搬走仍被旧生产embed使用的文件；中间阶段可只读映射原源，但不称其已可独立发布。不得改809生成器接线、不依赖未合入I-PROJECT/814类型、不创建最终API假实现；本步骤不能单独标整个工具模块完成或阶段合入。
-- **T-03起协议类型/工具生产接线等809和814整体合入**。T-01任何涉及新接口的编译probe同样等门；不cherry-pick审查分支，不用临时镜像DTO绕等待。
+- 809/I-PROJECT已交付，T-01/T-02/T-03及T-12可现在实施；**协议与真实窄端点不依赖814**。
+- **M815-A**：T-01/T-03→T-12→T-13→T-14；实际协议/tool发布后放行816客户端。T-02可与协议工作分scope推进，但不提前搬走旧生产embed源。
+- **M815-B**：T-04生成主体等M814-A+M815-A；T-05中依赖新runtime的真实build/run集成等M814-B，随后T-06..11完整收口。生成主体的独立审查/修复无需等runtime完整发布。
+- 不复制I-PROJECT，不消费814 WIP，不用假backend提前报告生成/运行支持。
 
 ## 5. 详细设计
 
@@ -68,17 +73,25 @@ gallery/wm/shadcn、UI专用模板/样式/i18n/图标等源码与embed/include/�
 
 792受管发布/producer/lock/修剪/failure facility复用并扩至新工具，不能靠扩大allowlist漏资源或依赖父仓；非受管旧模板的既有破坏性失败窗口按已确认语义记录，不突然承诺所有生成文件原子事务。新协议的能力/版本拒绝须发生在副作用之前；真正发布中断的可恢复/保留行为按适用profile精确验证。
 
-### 5.3 I-TOOL接口交接（本Plan整体交付）
+### 5.3 I-TOOL接口交接（A发布协议与窄端点，B补全UI能力）
 
 覆盖协议版本/operation、能力与profile、请求身份/来源、I-PROJECT轻payload、producer版本/指纹、资源根/输出根、产物与诊断/错误、进度/日志/取消/退出及结果与运行进程寿命。请求只承载具名数据，不让AST/VMValue/裸指针/任意callback跨工具边界。若需要wire序列化，优先在数据owner提供同源codec，不复制请求结构再双向丢字段。
 
 T-01冻结适用平台、实际codec/framing、消息/输出/排队预算与单位、版本/未知能力拒绝、超限分类及支持profile，并以正常/未知版本/坏frame/缺能力/取消/输出超限反例区分。日志不得污染control stream；交互stdin/TTY和UI进程输出不能为方便JSON而被吞掉。工具可报告明确LaunchSpec或会话结果；实际交互布局以probe为证，不新增未授权命令语义。
 
-**I-TOOL属于815，不另开Plan，816只在815整体review+merge后消费。** 本合同无phase merge；816可先完成与协议无关的执行设施工作。这样815不等816接口，816不依赖815 WIP，形成有向交接。
+**I-TOOL属于815，不另开Plan；816在M815-A独立审查、冻结门与实际合入/Spec/来源收据齐备后消费已公布窄能力，完整UI消费等M815-B。** 不消费未合入分支。
 
 ### 5.4 真实工具与上层兼容
 
 独立tool能通过实际请求生成/构建/运行受支持UI工程；测试不能仅assert字符串或fake provider。旧Man入口可保投影/调用薄门面，旧返回/错误语义不静默改；兼容包不得被UI工具反向依赖。UI工具的normal/build/dev无auto-man或旧auto-lang大包，公开类型与814/809一致。815最终交816的是已合入协议/工具能力/实际可执行身份及来源清单，而非接口草图。
+
+### 5.5 A/B阶段的真实交付边界
+
+**M815-A**交付轻协议及实际可启动tool的`describe`、`validate_project`（名称/具体wire由T-01冻结）：后者只验证I-PROJECT元数据/路径与请求约束，不冒称语言解析/动态求值/生成/构建已经成功。T-03复用809单源数据/codec，不能由815复制请求结构；若需codec增量，在数据owner同源提供并按公共窗口审查合入。
+
+版本、能力、producer/来源、错误分类、framing/日志分流与输入/输出/排队预算、取消/退出合同必须真实可验证；窄操作支持哪些生命周期语义明确列出。真实外部consumer启动tool验证合法/不合法请求与版本/能力拒绝，未实现UI能力在任何输出目录/发布副作用前明确拒绝。A的tool宿主只依轻协议/项目数据，B再组合实际UI后端；crate布局/feature隔离在T-01冻结，不能靠尚不存在的SDK占位包才能构建A。阶段可独立发布且不依赖SDK/UI实现/Man，不开启默认CLI新路径。资产清单可先准备，但生产asset源切换只在B真实迁移中一次完成。
+
+**M815-B**依已发布M814-A迁真实生成主体，依M814-B完成runtime/build/run支持面。先审协议/请求/生成器/资产和修复，再补真实runtime集成，保留原AC-01..04。SD-02/04和SD-01/06的A范围可先沉淀，UI完整工具/旧Man生产算法退出等规则在B实际成立后沉淀。
 
 ### 规范增量
 
@@ -106,6 +119,18 @@ work在唯一树做check/包测试/协议与上层定向反例及独立consumer�
 
 独立final review同树验AC/SD/字段与实际consumer；merge冻结提交裸cargo t、UI生成触面cargo tu及必要Man/tool包门，实际触Core VM/trans再加tv/tt；开发/送审/复审不跑整档。tf仅主检出到期单实例。未指定agent/model不创建会话，本轮文档无Cargo/docs_gen。
 
+### r2阶段验证与并行复审
+
+| Case | AC / invariant | 真实入口/设置 | 区分性oracle与边界 |
+|---|---|---|---|
+| V-05 | AC-07 A阶段真实端点 | T-12建立新增真实tool进程consumer；describe、合法/缺字段/未知版本/超限metadata请求，codec字段往返 | 复用I-PROJECT不丢字段、无SDK/UI/Man闭包；版本/能力拒绝无副作用，日志不污染control；校验结果不冒称编译/生成成功 |
+
+上述新增Case与原V项均owner_stage=work，由新增阶段work任务使fixture真正可运行，当前尚未执行。原测试表/最终AC不缩减；A只取其明确范围，B仍逐项验证完整支持面。阶段发布的API/能力/依赖/source/资源和测试选择变化须有同步正反控，不把必需consumer验证全部后置。
+
+实施者先修齐本轮已知findings，定向回放共享反例集/相邻状态组合及必要check，再提交新SHA送审。同Plan同一权威树冻结交接，不能边改边让review读工作区；不同Plan独立scope的读审、定向验证、修复可并行。缺上游的真实集成明确pending，不每轮重复算新finding、不用fake补绿。
+
+A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。阶段和最终的裸t/触面整档均归merge冻结后统一排队，资源独占项串行；tf仅主检出到期单实例。接口修复由owner发布，影响方重放受影响scope，未变且适用证据可复用。具体失效/收据/单写者规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md) §2–5。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察验收 |
@@ -116,30 +141,42 @@ work在唯一树做check/包测试/协议与上层定向反例及独立consumer�
 | AC-04 | work | 真消费者/兼容、777/792/独立fresh/locked/资源与失败对照通过，SD/接口来源清单齐全；V-04 |
 | AC-05 | review | 同树独立最终修订审查通过，零新增未处理warning/格式/debug，merge门pending |
 | AC-06 | merge | 冻结门、Spec/ledger/归档、已合入I-TOOL/tool/资源交816及guard clean清理有收据 |
+| AC-07 | work | M815-A轻协议与真实窄tool满足§5.5，V-05与V-02/03当期范围通过；不宣称完整UI工具已迁 |
+| AC-08 | review | T-13独立阶段审查绑定r2/M815-A冻结SHA/能力及Spec子集，通过且merge门pending |
+| AC-09 | merge | T-14冻结门通过、实际master祖先交付/协议版本/Spec与来源consumer收据；不归档 |
 
 ## 8. 执行步骤
 
-11项；T-01现在只读，T-02纯资产可先实施，T-03起等809+814合入；无phase merge。
+14项；保留原任务ID，追加A阶段任务，**按依赖列执行，不按编号排序**。整项depends_on为摘要，阶段启动以§4/5和本表为准；不宣称Runner已支持阶段调度。
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 文件/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 现在只读；新接口probe等门 | attachments/815/contract-baseline.md（新增）：全工具/字段/资产/效果owner、旧oracle、非UI共享分界、I-TOOL/交互预算候选；前置合入后probe冻结完整方案 | AC-01..04 |
+| [ ] | T-01 | work | 现在；809已交付，新SDK probe按M814-A门 | attachments/815/contract-baseline.md（新增）：全工具/字段/资产/效果owner、旧oracle、非UI共享分界、I-TOOL/交互预算候选；前置合入后probe冻结完整方案 | AC-01..04 |
 | [ ] | T-02 | work | T-01只读资源映射；无WIP引用 | 新工具包私有资源模块/独立资产测试、来源/许可证映射；生产asset原源不动，单次迁移及embed切换在T-04完成，不改809数据/接线，不假建最终API | AC-01,04 |
-| [ ] | T-03 | work | T-01方案+809/814已合入 | 新auto-tool-protocol复用I-PROJECT/codec，定义版本/能力/资源/结果/退出，正常负控编译/协议测试 | AC-02,03 |
-| [ ] | T-04 | work | T-03 | Vue/Rust/Jet/Ark/Tauri等完整UI工具及真实请求接线、资产生产迁移/旧源删除；非UI分界具名adapter | AC-01,02 |
-| [ ] | T-05 | work | T-04 | 真auto-ui-tool执行入口/control/日志/交互/取消按协议打通，复用现有执行facility；V-03 | AC-03 |
+| [ ] | T-03 | work | T-01协议决策+809已交付；不等814 | 新auto-tool-protocol复用I-PROJECT/codec，定义版本/能力/资源/结果/退出，正常负控编译/协议测试 | AC-02,03 |
+| [ ] | T-04 | work | T-14/M815-A+M814-A已发布 | Vue/Rust/Jet/Ark/Tauri等完整UI工具及真实请求接线、资产生产迁移/旧源删除；非UI分界具名adapter | AC-01,02 |
+| [ ] | T-05 | work | T-04；完整runtime正控等M814-B | 在A真实tool上接完整UI执行/control/日志/交互/取消，保持已发布窄能力；实际runtime/build/run以M814-B为门；V-03完整范围 | AC-03 |
 | [ ] | T-06 | work | T-05 | 旧Man公开门面兼容承载、真生成/build/run及媒体/sidecar/backend/项目读取全路径，V-01/02/04 | AC-01,02,04 |
 | [ ] | T-07 | work | T-06 | 新consumer/上层plan815、V-01..04、777/792并集/fresh/locked/失败负控与资源审计 | AC-01..04 |
 | [ ] | T-08 | work | T-07 | SD-01..06草案、I-TOOL/tool指纹/来源/支持交接、attachments/815/handoff.md（新增），提交送审 | AC-04 |
 | [ ] | T-09 | review | T-08 | 同树独立AC/SD/真实工具/无第二读取/资源失败审查；merge门pending | AC-05 |
 | [ ] | T-10 | merge | T-09 pass | master并集/变化复审/冻结适用门，失败归因后修复重审 | AC-06 |
 | [ ] | T-11 | merge | T-10 | 规范/ledger/归档、已合入I-TOOL接口交816、guard clean清理唯一树/分支/组及计数 | AC-06 |
+| [ ] | T-12 | work | T-03；与T-02资源准备可独立 | 实际describe/validate_project元数据tool及独立进程consumer，V-05和V-02/03当期正反例、777/适用792来源/发行闭包、版本/能力/Spec候选；新增attachments/815/m815-a-candidate.md | AC-07 |
+| [ ] | T-13 | review | T-12提交冻结 | 独立A协议/同源codec/真实端点/预算/副作用/Spec审查，绑定r2/M815-A SHA，merge门pending | AC-08 |
+| [ ] | T-14 | merge | T-13 pass | 串行冻结门/实际master合入、协议版本与Spec子集/受管ledger增量、consumer来源发布收据；不归档不清树 | AC-09 |
 
-树`D:/autostack/.wt/lang-815/auto-lang`、分支`codex/plan-815-dev`；同树work/review/merge，work记录actual base/兄弟依赖。不得借809/814 WIP提前生产接线，分支不叠加其送审代码；树内禁junction/symlink，遵守guard。
+唯一树`D:/autostack/.wt/lang-815/auto-lang`、分支`codex/plan-815-dev`；work/review顺序交接同树，先核实实际tree/base并读取主检出r2。A发布后保留原树/分支同步master继续B，不创建第二审查树、不归档/清理。A期间Plan保持executing，只有B全部原AC完成后才依标准流程execution_done→reviewed→archived。
+
+阶段发布是用户本轮明确授权的有界例外：按共用合同独立阶段review、冻结门、人工Git合入及非归档Spec/ledger受管增量与收据组织；**不调用会自动归档整Plan的完整merge流程冒充phase支持**。B按原最终review/merge/归档任务完成。无WIP依赖，无junction/symlink，最终清理必须guard clean。跨Plan审查/修复与共享窗口见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)。
 
 ## 9. 复审记录
 
+r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调度指令。
+
 2026-10-19 / stage: new / revision: 1 / outcome: pass（合同预检，非实现/独立验收pass）/ next: work T-01、符合边界的T-02；T-03起等待809/814合入 / changed: T-01..11、AC-01..06、SD-01..06。未实施未来任务/测试，当前仅文档。
+
+2026-10-20 / stage: new / revision: 2 / outcome: pass（文档合同预检，非实现/独立验收pass）/ next: 按§4阶段门work；814先确认已登记唯一树并读取本r2。changed: 阶段A/B与新增T/AC/V、Spec分阶段沉淀、并行审查修复；原目标、原T/AC/SD ID保留。r1证据仅历史，不自动覆盖新范围。未执行实现/未来fixture/门禁。见[预检](attachments/sdk-tools-r2-20261020/preflight.md)。
 
 ## 10. 待澄清事项
 

@@ -4,10 +4,10 @@ status: drafting
 feature_name: 工具执行适配、管理服务与薄 CLI 组合收口
 author: [Codex]
 created_at: 2026-10-19
-updated_at: 2026-10-19
-plan_revision: 1
+updated_at: 2026-10-20
+plan_revision: 2
 current_step: 0
-total_steps: 11
+total_steps: 14
 supersedes_spec_components: [docs/specs/auto-cli/project.md, docs/specs/auto-man/project.md, docs/specs/stdlib/design/http-service-deployment.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/tool-execution/project.md]
 touched_goals: [GOAL-003]
@@ -22,6 +22,8 @@ depends_on: [PLAN-809, PLAN-814, PLAN-815]
 完成R06：消费已合入管理核心、纯语言SDK和I-TOOL/UI工具，整理语言/服务/系统构建adapter与工具执行设施，auto CLI保持命令体验但只做解析/路由/显示，管理正常服务闭包不静态链接UI工具实现。脚本/工程/UI/服务/watch/daemon等真实生产链、stdio/exit/取消/资源与独立发行一起收口。
 
 不再抽一套UI生成器/工具协议（815拥有），不重做809管理算法、814 UI runtime或792发布器；不搬旧Git仓/切默认分支，不将兼容退役R11提前取消旧命令。
+
+本次r2按M816-A真实阶段发布、M816-B完整交付组织，不增加Plan编号、不降低原最终AC。执行与审查修复并行规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)；阶段pass不等于整Plan交付。
 
 ## 1. 目标
 
@@ -42,17 +44,20 @@ depends_on: [PLAN-809, PLAN-814, PLAN-815]
 
 ## 4. 需求分析与背景调查
 
+用户2026-10-20明确要求修订现有814/815/816，允许阶段交付及接口合入后放行下游、并行审查验证修复，不增加编号。原目标/最终AC/支持面不变；本轮只改主检出规划文档，不改实现树、canonical Specs或远端。 来源与当前hash见[本轮输入](attachments/sdk-tools-r2-20261020/inputs.json)。
+
 用户授权本批规划并要求明确合入等待；本轮仅文档，不实施/创建agent或树、不写远端。[路线](reports/v06-extraction-execution-roadmap.md)、[批次调度](reports/sdk-tools-parallel-order-814-816.md)、[输入hash](attachments/sdk-tools-batch-20261019/inputs.json)为来源。
 
 权威：[CLI](../specs/auto-cli/project.md)、[Man](../specs/auto-man/project.md)、[独立HTTP服务](../specs/stdlib/design/http-service-deployment.md)、[发行](../specs/repository-boundaries/generated-ui-distribution.md)。实际入口`crates/auto/src/{main,cmd_watch,cmd_service,cmd_ui,cmd_bp,cmd_stdlib}.rs`、`auto-man/src/{automan,http_service,builder,git,resolver,pac,target}.rs`与UI工具桥；有cmd_vue/cmd_tauri等orphan文件，不能当已挂载命令。`auto service`为独立服务、`auto serve`为daemon，前者不kill占端口进程，配置优先级/ready/exit有现行硬合同。
 
 CLI当前直接依赖auto-lang/auto-man，main含工程路由/运行env以及UI/后端编排；cmd_watch持源扫描/缓存与HMR；http_service有VM进程内与Rust生成/启动等待，其他命令也各有Command/reader/kill逻辑。T-01从真实调用盘点，未调查不能宣称已有完整supervisor或先造平行runner。
 
-### 开工门
+### r2阶段启动门
 
-- T-01只读命令/执行设施/支持矩阵可立即开始，不冻结815/809 WIP API。
-- T-02可在唯一树实施**与新接口无关且不改他线共有文件**的现有执行设施封装/定向正反例；T-01若发现无法分离的共享写面则等对应owner合入后做，不为提前开工造第二runner。不改809 Builder或当前路由、不给未来协议先造替身，不激活新命令路径。
-- **T-03起最终服务/协议/CLI接线须等809、814、815整体合入**；814通常已被815前置覆盖，但显式核对交付。不得cherry-pick、分支堆叠或消费未合入I-TOOL。
+- 809已交付；T-01/T-02现有执行设施可现在实施，不改其他owner热点，不造平行runner。
+- **M816-A**：T-12实际协议客户端等M815-A发布（不等815-B或814）；随后T-13独立审查、T-14实际发布。
+- **M816-B**：T-03管理/语言adapter等M814-A+M816-A（M815-A由后者覆盖）；T-04可先验证已发布窄能力与缺UI能力负控，完整UI正控等M815-B。
+- T-05默认CLI/完整UI路由切换及最终集成必须等M814-B+M815-B；T-06..11完成全部原AC。不消费送审分支或自建镜像协议。
 
 ## 5. 详细设计
 
@@ -80,6 +85,12 @@ CLI只保clap与显示/路由，业务/扫描/增量cache/构建与运行策略�
 
 777精确边、792/安装manifest含新CLI/service/protocol/tool全闭包，Core消费不需UI源；实际CI/脚本调用别名与旧CLI file hash/产物身份有交接。跨仓承接R08/R09以后再做，本Plan先提供真实可分发命令组合，不能fake tool判全链完成。
 
+### 5.5 A/B阶段的真实交付边界
+
+**M816-A**交付现有执行设施合一及真实I-TOOL客户端，独立consumer调用已发布M815-A的实际describe/元数据校验。参数/cwd/env/stdio、版本/缺能力/错误、日志control隔离、超时/取消及owned child/reader退出有正反例。真实窄tool不能代替长运行/孙进程等寿命反例，后者用自带截止的具名测试子进程补充；fake不能替代实际协议正控。不依赖814、未发布UI能力或静态UI库，不切旧默认CLI。
+
+**M816-B**可在M814-A/M816-A发布后开发管理服务/语言adapter和窄能力发现，并行做独立scope审查修复；默认CLI改薄及完整UI正控等M814-B+M815-B。全部原AC-01..04、首次开发bootstrap、安装完整profile、service/watch真实资源退出仍必做。SD-01/05仅A实际执行/协议消费子集先沉淀，CLI路由/管理分层/service搬迁和完整profile在B发布后沉淀。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -105,6 +116,18 @@ work只相关check/包测试/执行设施与CLI定向driver；独立consumer源�
 
 独立final review同树独立上下文验全部AC/SD/命令矩阵及资源；merge冻结提交裸cargo t、实际CLI/Man/协议包门，VM/trans/UI生成触面按最终diff加tv/tt/tu。已有服务真TCP定向也必须有适用证据；开发/送审/复审不整档，tf主检出到期单实例。未指定agent/model不创建会话，本轮文档不跑Cargo/docs_gen。
 
+### r2阶段验证与并行复审
+
+| Case | AC / invariant | 真实入口/设置 | 区分性oracle与边界 |
+|---|---|---|---|
+| V-05 | AC-07 A阶段真实客户端 | T-12建立新增独立consumer→已发布815-A实际进程；实际窄能力与缺能力负控，另加长运行/reader/child测试进程 | 不造UI假正控；实际结果/错误/版本处理正确，超时取消后owned进程与reader实退，Core无UI安装可消费；不切默认CLI |
+
+上述新增Case与原V项均owner_stage=work，由新增阶段work任务使fixture真正可运行，当前尚未执行。原测试表/最终AC不缩减；A只取其明确范围，B仍逐项验证完整支持面。阶段发布的API/能力/依赖/source/资源和测试选择变化须有同步正反控，不把必需consumer验证全部后置。
+
+实施者先修齐本轮已知findings，定向回放共享反例集/相邻状态组合及必要check，再提交新SHA送审。同Plan同一权威树冻结交接，不能边改边让review读工作区；不同Plan独立scope的读审、定向验证、修复可并行。缺上游的真实集成明确pending，不每轮重复算新finding、不用fake补绿。
+
+A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。阶段和最终的裸t/触面整档均归merge冻结后统一排队，资源独占项串行；tf仅主检出到期单实例。接口修复由owner发布，影响方重放受影响scope，未变且适用证据可复用。具体失效/收据/单写者规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md) §2–5。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察验收 |
@@ -115,30 +138,42 @@ work只相关check/包测试/执行设施与CLI定向driver；独立consumer源�
 | AC-04 | work | 真实命令/服务/watch/UI支持及错误矩阵、777/792/fresh/locked/身份与失败证据通过、SD/来源齐全；V-04 |
 | AC-05 | review | 同树独立最终修订审查/遗漏/警告/格式/debug通过，merge门pending明确 |
 | AC-06 | merge | 冻结门、Spec/ledger/归档、CLI/service/tool/profile交接与guard clean后清理有实际收据 |
+| AC-07 | work | M816-A真实执行客户端满足§5.5，V-05及V-02/03当期范围通过；不宣称薄CLI整体交付 |
+| AC-08 | review | T-13独立阶段审查绑定r2/M816-A冻结SHA/实际上游交付及Spec子集，通过且merge门pending |
+| AC-09 | merge | T-14冻结门通过、实际master祖先交付/Spec与执行consumer来源收据；不归档 |
 
 ## 8. 执行步骤
 
-11项；T-01只读可现在，T-02独立执行设施可先，T-03起等809/814/815实际合入。
+14项；保留原任务ID，追加A阶段任务，**按依赖列执行，不按编号排序**。整项depends_on为摘要，阶段启动以§4/5和本表为准；不宣称Runner已支持阶段调度。
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 文件/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 现在只读；新接口probe等门 | attachments/816/contract-baseline.md（新增）：真实clap命令/旧oracle/adapter归属/现有runner与资源、服务和compat DAG、bootstrap/profile/预算候选；门后整链probe定稿 | AC-01..04 |
+| [ ] | T-01 | work | 现在；809已交付；SDK/tool probe按阶段门 | attachments/816/contract-baseline.md（新增）：真实clap命令/旧oracle/adapter归属/现有runner与资源、服务和compat DAG、bootstrap/profile/预算候选；门后整链probe定稿 | AC-01..04 |
 | [ ] | T-02 | work | T-01 facility映射，无WIP引用 | 在唯一树复用/封装现有执行设施及独立argv/stdio/进程退出正反例；不改809 Builder/既有路由，不实现临时协议替身/重复runner | AC-02 |
-| [ ] | T-03 | work | T-01决策+809/814/815已合入 | 管理服务/语言adapter与上层compat真实单源分层、依轻I-TOOL；旧Pac/Target/API保持，check与V-01 | AC-01 |
-| [ ] | T-04 | work | T-03 | 真tool discovery/版本/能力/stdio/cancel与完整profile/developer bootstrap，接815实际tool，V-03 | AC-03 |
-| [ ] | T-05 | work | T-04 | main/clap及管理/语言/UI路由改薄组合、业务迁对应owner，旧命令/argv/JSON/flags矩阵，V-01/04 | AC-01,04 |
+| [ ] | T-03 | work | T-14/M816-A+M814-A已发布 | 管理服务/语言adapter与上层compat真实单源分层、依轻I-TOOL；旧Pac/Target/API保持，check与V-01 | AC-01 |
+| [ ] | T-04 | work | T-03；窄tool已发布；完整UI正控等M815-B | 实际discovery/版本/能力/stdio/cancel；先验M815-A支持面及缺UI能力负控，完整profile/bootstrap正控等M815-B；V-03 | AC-03 |
+| [ ] | T-05 | work | T-04+M814-B/M815-B已发布 | main/clap及管理/语言/UI路由改薄组合、业务迁对应owner，旧命令/argv/JSON/flags矩阵，V-01/04 | AC-01,04 |
 | [ ] | T-06 | work | T-05 | service/serve/req/watch/HMR与子进程/reader/watcher/VM线程归属全链接线，V-02/04 | AC-02,04 |
 | [ ] | T-07 | work | T-06 | 新consumer/真实CLI driver V-01..04、777/792/完整与Core profile独立fresh/locked/重定位及失败负控 | AC-01..04 |
 | [ ] | T-08 | work | T-07 | SD-01..05、命令/ABI/资源/producer/cli hash交接与attachments/816/handoff.md（新增），提交送审 | AC-04 |
 | [ ] | T-09 | review | T-08 | 同树独立完整命令/资源退出/实际tool/profile审查，保留merge门pending | AC-05 |
 | [ ] | T-10 | merge | T-09 pass | master并集/变化复审、冻结统一适用门，失败归因修复后重审 | AC-06 |
 | [ ] | T-11 | merge | T-10 | 规范/ledger/归档、真实CLI/service/tool消费交后续发行/搬仓，guard clean清理与计数 | AC-06 |
+| [ ] | T-12 | work | T-02+M815-A已发布；不等814/815-B | 真实协议client/独立consumer调用M815-A，V-05及V-02/03当期反例；版本来源/777/适用792发行与Spec候选，新增attachments/816/m816-a-candidate.md | AC-07 |
+| [ ] | T-13 | review | T-12提交冻结 | 独立A实际client/进程与reader退出/来源/Spec审查，绑定r2/M816-A SHA，merge门pending | AC-08 |
+| [ ] | T-14 | merge | T-13 pass | 串行冻结门/实际master合入、Spec子集/受管ledger增量与真实consumer读回发布收据；不归档不清树 | AC-09 |
 
-唯一树`D:/autostack/.wt/lang-816/auto-lang`，分支`codex/plan-816-dev`，同树work/review/merge，work确认实际base/兄弟依赖；禁止叠加815送审代码/自建阶段合流，本合同无phase merge，必须整体独立审查/合入。无WIP依赖，不在树内建junction/symlink。
+唯一树`D:/autostack/.wt/lang-816/auto-lang`、分支`codex/plan-816-dev`；work/review顺序交接同树，先核实实际tree/base并读取主检出r2。A发布后保留原树/分支同步master继续B，不创建第二审查树、不归档/清理。A期间Plan保持executing，只有B全部原AC完成后才依标准流程execution_done→reviewed→archived。
+
+阶段发布是用户本轮明确授权的有界例外：按共用合同独立阶段review、冻结门、人工Git合入及非归档Spec/ledger受管增量与收据组织；**不调用会自动归档整Plan的完整merge流程冒充phase支持**。B按原最终review/merge/归档任务完成。无WIP依赖，无junction/symlink，最终清理必须guard clean。跨Plan审查/修复与共享窗口见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)。
 
 ## 9. 复审记录
 
+r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调度指令。
+
 2026-10-19 / stage: new / revision: 1 / outcome: pass（合同预检，非实施/独立验收pass）/ next: work T-01及合边界的T-02，T-03起等809/814/815合入 / changed: T-01..11、AC-01..06、SD-01..05。当前未实施/运行未来测试或创建工作树/agent。
+
+2026-10-20 / stage: new / revision: 2 / outcome: pass（文档合同预检，非实现/独立验收pass）/ next: 按§4阶段门work；814先确认已登记唯一树并读取本r2。changed: 阶段A/B与新增T/AC/V、Spec分阶段沉淀、并行审查修复；原目标、原T/AC/SD ID保留。r1证据仅历史，不自动覆盖新范围。未执行实现/未来fixture/门禁。见[预检](attachments/sdk-tools-r2-20261020/preflight.md)。
 
 ## 10. 待澄清事项
 
