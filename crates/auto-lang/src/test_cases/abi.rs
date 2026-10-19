@@ -268,17 +268,10 @@ pub struct TestFaults {
 pub static TEST_FAULTS: std::sync::RwLock<Option<TestFaults>> = std::sync::RwLock::new(None);
 
 fn active_faults() -> Option<(Vec<(String, String)>, Option<u64>)> {
-    TEST_FAULTS
-        .read()
-        .ok()
-        .and_then(|g| {
-            g.as_ref().map(|f| {
-                (
-                    f.child_envs.clone(),
-                    f.session_wall_ms,
-                )
-            })
-        })
+    TEST_FAULTS.read().ok().and_then(|g| {
+        g.as_ref()
+            .map(|f| (f.child_envs.clone(), f.session_wall_ms))
+    })
 }
 
 fn call_worker(request_json: &str, deadline: Duration) -> Result<WorkerResponse, String> {
