@@ -138,6 +138,8 @@ fn av_cache_wrong_identity_rejected() {
         abc_sem: 1,
         av_sem: 1,
         snapshot: 0,
+        unit: "",
+        body_fp: "",
     };
     let key = abc_unit_key("m", "d_x", "fp", &caps_fingerprint(&[]));
     put_enveloped(&store, &key, "A09", &foreign, &payload, vec![], Some("p")).unwrap();
@@ -221,9 +223,14 @@ fn av_cache_gc_and_lease() {
     // GC under a live lease must not delete the leased artifact's payload.
     let cfg = ac_artifact_probe::store::gc::gc_config_default();
     let _receipt = ac_artifact_probe::store::gc::run_gc(&store, cfg).expect("gc");
-    // The leased unit still loads through the manifest chain.
-    let payload =
-        cache::get_by_artifact_id(&store, &sentinel, &EnvelopeIdentity::abc(&manifest.owner));
+    // The leased unit still loads through the manifest chain (bound to
+    // the manifest link's unit/body-fingerprint identity).
+    let leased_link = &manifest.units[0];
+    let payload = cache::get_by_artifact_id(
+        &store,
+        &sentinel,
+        &EnvelopeIdentity::abc_bound(&manifest.owner, &leased_link.name, &leased_link.body_fp),
+    );
     assert!(
         payload.is_ok(),
         "leased artifact survives GC: {:?}",
@@ -369,13 +376,14 @@ fn av_cache_restore_identity_negative_controls() {
     let key = cache::manifest_key(&honest.owner, &honest.entry, &honest.fingerprint());
     let art = store.get_artifact("A09", &key).unwrap().expect("artifact");
     drop(store);
-    // Honest control first.
+    // Honest control first (the REQUEST's snapshot: sidecars are required
+    // for the current snapshot since F798-R6-03).
     let ok = auto_av_probe::worker_restore::restore_and_run(
         &root,
         &honest.owner,
         &honest.entry,
         &art.artifact_id,
-        0,
+        r.snapshot,
         &[],
     );
     assert!(ok.executed_ok, "honest control restores: {:?}", ok.error);
@@ -409,7 +417,7 @@ fn av_cache_restore_identity_negative_controls() {
             &honest.owner,
             &honest.entry,
             &art.artifact_id,
-            0,
+            r.snapshot,
             &[],
         )
     };
@@ -499,6 +507,185 @@ fn av_cache_restore_requires_current_trace_grant() {
         granted.executed_ok,
         "live grant restores: {:?}",
         granted.error
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F798-R6-01 replay: a VALID payload stored under ANOTHER body's key is
+/// a controlled identity rejection, never a wrong-body hit — on BOTH the
+/// A09 (ABC) and A08 (MIR) layers.
+#[test]
+fn av_cache_valid_payload_under_wrong_body_key_rejected() {
+    let root = tmpdir("wrong-key");
+    let src7 = "fn main() int { return 7 }";
+    let src9 = "fn main() int { return 9 }";
+    let c7 = auto_ac_prototype::source::compile_scalar_source(src7, "probe.at", &[]).unwrap();
+    let c9 = auto_ac_prototype::source::compile_scalar_source(src9, "probe.at", &[]).unwrap();
+    let h9 = &c9.checked.bundle().modules[0];
+    let owner = h9.id_text.clone();
+    let (name, body) = h9
+        .defs
+        .iter()
+        .find_map(|d| match &d.kind {
+            auto_ac_prototype::hir::DefKind::Function { body, .. } => {
+                Some((d.id_text.clone(), *body))
+            }
+            _ => None,
+        })
+        .unwrap();
+    let dump = cache::canonical_hir_function(h9, body);
+    let fp9 = auto_av_probe::semrefs::content_version_of(&dump);
+    let caps_fp = cache::caps_fingerprint(&[]);
+
+    // The `return 7` unit, stored under the ABC key the `return 9` body
+    // requires (legacy UNBOUND envelope — exactly the review's shape).
+    let m7 = auto_av_probe::hir_adapter::lower_checked(&c7.checked, "d_main", 0).unwrap();
+    let mut u7 = cache::split_units(&m7).unwrap().remove(0);
+    u7.funcs[0].spans.clear();
+    u7.funcs[0].source_snapshot = 0;
+    {
+        let store = open_store(&root).unwrap();
+        let bad_key = cache::abc_unit_key(&owner, &name, &fp9, &caps_fp);
+        cache::put_enveloped(
+            &store,
+            &bad_key,
+            "A09",
+            &EnvelopeIdentity::abc(&owner),
+            &auto_av_core::encode_abc(&u7).unwrap().to_flat(),
+            vec![],
+            Some("wrong-key"),
+        )
+        .unwrap();
+        // And the A08 layer under the wrong body's MIR key.
+        let bad_mir = cache::mir_unit_key(&owner, &name, &fp9, &caps_fp);
+        cache::put_enveloped(
+            &store,
+            &bad_mir,
+            "A08",
+            &EnvelopeIdentity::mir(&owner, 0),
+            &auto_av_core::encode_abc(&u7).unwrap().to_flat(),
+            vec![],
+            Some("wrong-key"),
+        )
+        .unwrap();
+    }
+    let mut d = Driver::with_store(&root, "wrong-key").unwrap();
+    let r = d.request(src9, "d_main", &[]);
+    let diag = r
+        .diag
+        .clone()
+        .expect("wrong-body key must be a controlled rejection");
+    assert_eq!(diag.stage, "cache");
+    assert_eq!(diag.code, "cache.identity");
+    assert!(
+        diag.message.contains("unit binding"),
+        "the unit/body-fingerprint binding fires: {}",
+        diag.message
+    );
+    assert_eq!(
+        *r.counters.get("cache_hit_abc").unwrap_or(&0),
+        0,
+        "never counted as a hit"
+    );
+    assert_eq!(r.value_i32(), None, "no wrong value published");
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F798-R6-01 replay: a manifest link renamed onto another declaration —
+/// even with a re-derived self-consistent logical id — is rejected at the
+/// bound envelope / decoded-name admission.
+#[test]
+fn av_cache_restore_renamed_declaration_rejected() {
+    let root = tmpdir("renamed");
+    let mut d = Driver::with_store(&root, "p").unwrap();
+    let r = d.request(BASE, "d_main", &[]);
+    assert!(r.ok());
+    let honest = r.manifest.clone().unwrap();
+    let store = open_store(&root).unwrap();
+    let mut forged = honest.clone();
+    for link in &mut forged.units {
+        link.name = "totally-different-declaration".into();
+        link.logical = auto_av_probe::semrefs::unit_logical_id(
+            &auto_av_probe::semrefs::av_package(),
+            &honest.owner,
+            &link.name,
+        );
+    }
+    let k = cache::manifest_key(&forged.owner, &forged.entry, &forged.fingerprint());
+    let id = cache::put_enveloped(
+        &store,
+        &k,
+        "A09",
+        &EnvelopeIdentity::manifest(&forged.owner, 0),
+        &serde_json::to_vec(&forged).unwrap(),
+        vec![],
+        Some("p"),
+    )
+    .unwrap();
+    drop(store);
+    let out = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &honest.owner,
+        &honest.entry,
+        &id,
+        r.snapshot,
+        &[],
+    );
+    assert!(
+        !out.executed_ok,
+        "renamed link never restores: {:?}",
+        out.error
+    );
+    let err = out.error.unwrap();
+    assert!(
+        err.contains("unit binding") || err.contains("declaration/payload mismatch"),
+        "name/payload binding diagnosed: {}",
+        err
+    );
+    let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F798-R6-03 replay: restore under a snapshot with NO sidecar is a
+/// controlled unavailable rejection — never a source-less success.
+#[test]
+fn av_cache_restore_missing_sidecar_refused() {
+    let root = tmpdir("noside");
+    let mut d = Driver::with_store(&root, "p").unwrap();
+    let r = d.request("fn main() int { return 1 / 0 }", "d_main", &[]);
+    assert!(!r.ok() || r.value_i32().is_none(), "trap source");
+    let manifest = r.manifest.clone().unwrap();
+    let store = open_store(&root).unwrap();
+    let key = cache::manifest_key(&manifest.owner, &manifest.entry, &manifest.fingerprint());
+    let art = store.get_artifact("A09", &key).unwrap().unwrap();
+    drop(store);
+    // Current snapshot restores WITH its span-bound trap.
+    let ok = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        r.snapshot,
+        &[],
+    );
+    assert!(ok.executed_ok, "honest snapshot restores: {:?}", ok.error);
+    assert!(
+        ok.trap.as_deref().unwrap_or("").contains('@'),
+        "trap carries its source span: {:?}",
+        ok.trap
+    );
+    // A snapshot with no sidecar: refused, never a source-less trap.
+    let denied = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &art.artifact_id,
+        r.snapshot.wrapping_add(1),
+        &[],
+    );
+    assert!(!denied.executed_ok, "missing sidecar refuses");
+    assert!(
+        denied.error.unwrap().contains("no source sidecar"),
+        "unavailable diagnosed"
     );
     let _ = std::fs::remove_dir_all(&root);
 }

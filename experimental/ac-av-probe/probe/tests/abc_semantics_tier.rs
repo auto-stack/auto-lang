@@ -4,7 +4,7 @@
 use auto_av_core::contract::{ExecOutcome, ResourceKind, TrapKind, Value};
 use auto_av_core::mir::*;
 use auto_av_core::{
-    decode_abc, encode_abc, execute, verify_abc, verify_mir, CancelFlag, ExecLimits, LoadedModule,
+    decode_abc, encode_abc, execute, verify_abc, verify_mir, CancelFlag, ExecLimits,
 };
 use auto_av_probe::driver::Driver;
 use auto_av_probe::hir_adapter::lower_checked;

@@ -214,8 +214,12 @@ impl Driver {
         let mut staging_peak: usize = 0;
         let mut verify_analysis_bytes: usize = 0;
         if let Some(store) = self.store.as_ref() {
-            let expect = EnvelopeIdentity::abc(&owner);
             for info in infos.iter_mut() {
+                // F798-R6-01: the hit expects the artifact's envelope to
+                // declare THIS unit's body fingerprint — a good payload
+                // stored under another body's key fails identity admission
+                // (controlled rejection), never a wrong-body hit.
+                let expect = EnvelopeIdentity::abc_bound(&owner, &info.name, &info.fp);
                 let key = abc_unit_key(&owner, &info.name, &info.fp, &caps_fp);
                 match get_enveloped_opt(store, &key, "A09", &expect) {
                     Ok(Some(payload)) => {
@@ -263,11 +267,12 @@ impl Driver {
         let mut mir_units: Vec<(usize, MirModule)> = Vec::new();
         let mut still_missing: Vec<usize> = abc_misses.clone();
         if let Some(store) = self.store.as_ref() {
-            let expect = EnvelopeIdentity::mir(&owner, 0);
             let mut remaining: Vec<usize> = Vec::new();
             for idx in abc_misses.iter() {
                 let idx = *idx;
                 let info = &infos[idx];
+                // F798-R6-01: unit/body-fp bound envelope on the A08 layer.
+                let expect = EnvelopeIdentity::mir_bound(&owner, &info.name, &info.fp);
                 let key = crate::cache::mir_unit_key(&owner, &info.name, &info.fp, &caps_fp);
                 match get_enveloped_opt(store, &key, "A08", &expect) {
                     Ok(Some(payload)) => {
@@ -488,7 +493,7 @@ impl Driver {
                     };
                     staging_now += spanless.heap_estimate() + mbytes.total_len;
                     staging_peak = staging_peak.max(staging_now);
-                    let mexpect = EnvelopeIdentity::mir(&owner, 0);
+                    let mexpect = EnvelopeIdentity::mir_bound(&owner, &info.name, &info.fp);
                     if let Err(e) = put_enveloped(
                         store,
                         &mkey,
@@ -567,7 +572,7 @@ impl Driver {
                 abc_emitted += 1;
                 if let Some(store) = self.store.as_ref() {
                     let key = abc_unit_key(&owner, &name, &info.fp, &caps_fp);
-                    let expect = EnvelopeIdentity::abc(&owner);
+                    let expect = EnvelopeIdentity::abc_bound(&owner, &name, &info.fp);
                     if let Err(e) = put_enveloped(
                         store,
                         &key,
@@ -857,6 +862,7 @@ impl Driver {
                         artifact: art.artifact_id.clone(),
                         sig: info.sig.clone(),
                         logical: info.logical.clone(),
+                        body_fp: info.fp.clone(),
                         payload_fp: payload_fp.clone(),
                         sema: Some(SemaRefSer::for_payload(&payload_fp)),
                     });
@@ -1045,27 +1051,45 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                 | P::NotEq
                 | P::AmpAmp
                 | P::PipePipe
+                // Unary chains nest one parse level per operator too.
+                | P::Bang
         )
     };
+    // F798-R6-04: the construction run spans BRACKETED operands and
+    // argument commas — `(1) + (1) + …` and `f(a, b) + g(c, d) + …` nest
+    // exactly like the unbracketed chain, so brackets/commas do NOT reset
+    // the accumulator. Only real statement/clause boundaries reset it:
+    // braces (block structure), `;`, assignment, colon, and KEYWORDS
+    // (`var`/`return`/`if`/… start a fresh clause in this newline-
+    // terminated grammar).
     let (mut chain_ops, mut max_chain) = (0u32, 0u32);
     for t in &tokens {
         match &t.tok {
             Tok::Punct(p) if matches!(p, P::LParen | P::LBracket | P::LBrace) => {
                 depth += 1;
                 max_depth = max_depth.max(depth);
-                chain_ops = 0;
+                if matches!(p, P::LBrace) {
+                    chain_ops = 0;
+                }
             }
             Tok::Punct(p) if matches!(p, P::RParen | P::RBracket | P::RBrace) => {
                 depth = depth.saturating_sub(1);
-                chain_ops = 0;
+                if matches!(p, P::RBrace) {
+                    chain_ops = 0;
+                }
             }
             Tok::Punct(p) if is_chain_op(p) => {
                 chain_ops += 1;
                 max_chain = max_chain.max(chain_ops);
             }
+            Tok::Punct(p) if matches!(p, P::Semi | P::Assign | P::Colon) => {
+                chain_ops = 0;
+            }
             Tok::Punct(_) => {
-                // Any other punct (`,` `;` `:` `=` `.` `!`) terminates the
-                // current expression construction.
+                // Other puncts (`,` `.`) stay INSIDE the current
+                // expression construction.
+            }
+            Tok::Kw(_) | Tok::Reserved(_) => {
                 chain_ops = 0;
             }
             _ => {}

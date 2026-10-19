@@ -22,7 +22,7 @@ use crate::test_cases::sema::containment;
 use auto_test_case::compare::Mismatch;
 use auto_test_case::contract::{CheckSpec, Completion, MessageMatcher, Stage};
 use auto_test_case::ir::{ResolvedCase, ResolvedOracle};
-use auto_test_case::report::{ArtifactRef, NativeRecord, Status};
+use auto_test_case::report::{NativeRecord, Status};
 use auto_test_case::sha256::{hex, sha256};
 use base64::Engine as _;
 
@@ -31,8 +31,6 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
-
-use base64::Engine;
 
 const READ_CAP: usize = (4 << 20) + (64 << 10);
 const STDERR_CAP: usize = 1 << 20;
@@ -166,16 +164,15 @@ fn locate_worker() -> Result<PathBuf, String> {
             let _ = out_tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
         });
     }
-    let mut status: Option<std::process::ExitStatus> = None;
-    let build_log = loop {
+    let (status, build_log) = loop {
         if build_started.elapsed() > BUILD_WALL {
             let _ = child.kill();
             return Err("av worker build exceeded the BUILD_WALL budget".to_string());
         }
         match child.try_wait() {
             Ok(st @ Some(_)) => {
-                status = st;
-                break out_rx.recv_timeout(READER_GRACE).unwrap_or(Ok(Vec::new()));
+                let log = out_rx.recv_timeout(READER_GRACE).unwrap_or(Ok(Vec::new()));
+                break (st, log);
             }
             Ok(None) => {}
             Err(e) => return Err(format!("poll cargo build: {e}")),
@@ -781,6 +778,7 @@ pub fn run_check(
             "source_hash": step.source_hash,
             "wall_ms": step.wall_ms,
             "spans": step.spans,
+            "trace": step.trace,
         },
         "worker_us": worker_us,
         "request_wall_ms": request_wall_ms,

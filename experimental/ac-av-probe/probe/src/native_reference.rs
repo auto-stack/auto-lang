@@ -97,8 +97,21 @@ pub fn build_and_run_with_caps(
 ) -> Result<NativeRun, NativeError> {
     let started = std::time::Instant::now();
     let build_deadline = NATIVE_BUILD_BUDGET;
+    // Test-only budget fault seam (F798-R6-07 counter-control): simulates
+    // the pre-link stages having already consumed this much of the shared
+    // build clock, so the stage admissions refuse DETERMINISTICALLY
+    // without a real 60s stall. Never set in production paths.
+    let fake_stage_elapsed = || {
+        std::time::Duration::from_millis(
+            std::env::var("AV798_NATIVE_FAKE_ELAPSED_MS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0u64),
+        )
+    };
+    let elapsed = || started.elapsed() + fake_stage_elapsed();
     let stage_precheck = |stage: &'static str| -> Result<(), NativeError> {
-        if started.elapsed() > build_deadline {
+        if elapsed() > build_deadline {
             Err(NativeError::Budget(stage))
         } else {
             Ok(())
@@ -129,7 +142,7 @@ pub fn build_and_run_with_caps(
         .map_err(|d| NativeError::Link(d.message))?;
     let receipt = link::publish_artifacts(&staged, &tmp_obj, &obj)
         .map_err(|d| NativeError::Link(d.message))?;
-    if started.elapsed() > NATIVE_BUILD_BUDGET {
+    if elapsed() > NATIVE_BUILD_BUDGET {
         return Err(NativeError::Budget("build exceeded 60s"));
     }
 
@@ -137,7 +150,7 @@ pub fn build_and_run_with_caps(
     // deadline is the REMAINING total budget (≤ the per-run budget).
     stage_precheck("run start overran the total 70s budget")?;
     let total_remaining = NATIVE_TOTAL_BUDGET
-        .checked_sub(started.elapsed())
+        .checked_sub(elapsed())
         .unwrap_or(Duration::ZERO);
     let run_deadline = NATIVE_RUN_BUDGET.min(total_remaining);
     let mut cmd = std::process::Command::new(&exe);
@@ -152,7 +165,7 @@ pub fn build_and_run_with_caps(
         },
     )
     .map_err(|e| NativeError::Run(format!("{:?}", e)))?;
-    if started.elapsed() > NATIVE_TOTAL_BUDGET {
+    if elapsed() > NATIVE_TOTAL_BUDGET {
         return Err(NativeError::Budget("total exceeded 70s"));
     }
     let exit_code = run

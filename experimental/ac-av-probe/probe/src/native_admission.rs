@@ -207,12 +207,17 @@ pub fn admit_native_ref(
     }
 }
 
-/// Structural COFF object validation (little-endian COFF header):
-/// machine = AMD64 (0x8664), ≥1 section, a symbol table pointer, and NOT
-/// a linked image (no `MZ`/PE signature prefix — a PE carries resolved
-/// addresses, which a portable artifact reference must not).
+/// Structural COFF object validation (little-endian COFF header + the
+/// table RANGES the header claims): machine = AMD64 (0x8664), ≥1 section,
+/// no optional header (objects), a symbol table with ≥1 record, and NOT a
+/// linked image (no `MZ`/PE signature prefix). F798-R6-06: the header's
+/// claimed structures must actually FIT the offered bytes — section
+/// headers, the symbol table and the string table length are range
+/// checked, so a 20-byte stub with out-of-range pointers never admits.
 pub fn check_coff_relocatable(bytes: &[u8]) -> Result<(), NativeAdmissionError> {
-    if bytes.len() < 20 {
+    const SYM_SIZE: u64 = 18;
+    const SECTION_HEADER_SIZE: u64 = 40;
+    if (bytes.len() as u64) < 20 {
         return Err(NativeAdmissionError::MalformedObject(
             "shorter than a COFF header",
         ));
@@ -228,14 +233,61 @@ pub fn check_coff_relocatable(bytes: &[u8]) -> Result<(), NativeAdmissionError> 
             "machine is not AMD64",
         ));
     }
-    let n_sections = u16::from_le_bytes([bytes[2], bytes[3]]);
+    let n_sections = u16::from_le_bytes([bytes[2], bytes[3]]) as u64;
     if n_sections == 0 {
         return Err(NativeAdmissionError::MalformedObject("no sections"));
     }
-    let sym_ptr = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+    let n_symbols = u32::from_le_bytes([bytes[12], bytes[13], bytes[14], bytes[15]]) as u64;
+    if n_symbols == 0 {
+        return Err(NativeAdmissionError::MalformedObject(
+            "no symbol table records — not a linkable object",
+        ));
+    }
+    let size_of_optional = u16::from_le_bytes([bytes[16], bytes[17]]) as u64;
+    if size_of_optional != 0 {
+        return Err(NativeAdmissionError::MalformedObject(
+            "optional header present — object form required for a relocatable reference",
+        ));
+    }
+    let len = bytes.len() as u64;
+    // Section headers must fit between the COFF header and the end.
+    let sections_end = 20 + n_sections * SECTION_HEADER_SIZE;
+    if sections_end > len {
+        return Err(NativeAdmissionError::MalformedObject(
+            "section table overruns the object",
+        ));
+    }
+    let sym_ptr = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]) as u64;
     if sym_ptr == 0 {
         return Err(NativeAdmissionError::MalformedObject(
             "no symbol table — not a linkable object",
+        ));
+    }
+    let symbols_end = sym_ptr
+        .checked_add(n_symbols.checked_mul(SYM_SIZE).expect("bounded sizes"))
+        .expect("bounded offsets");
+    if symbols_end > len {
+        return Err(NativeAdmissionError::MalformedObject(
+            "symbol table overruns the object",
+        ));
+    }
+    // The string table follows the symbol table: a u32 byte length that
+    // must close exactly at the object end (≥4 for the length field).
+    if symbols_end + 4 <= len {
+        let str_len = u32::from_le_bytes([
+            bytes[symbols_end as usize],
+            bytes[symbols_end as usize + 1],
+            bytes[symbols_end as usize + 2],
+            bytes[symbols_end as usize + 3],
+        ]) as u64;
+        if str_len < 4 || symbols_end + str_len != len {
+            return Err(NativeAdmissionError::MalformedObject(
+                "string table length does not close the object",
+            ));
+        }
+    } else if symbols_end != len {
+        return Err(NativeAdmissionError::MalformedObject(
+            "symbol table does not close the object",
         ));
     }
     Ok(())

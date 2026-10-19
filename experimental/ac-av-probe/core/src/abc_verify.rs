@@ -30,13 +30,17 @@ impl std::fmt::Display for AbcAdmissionError {
     }
 }
 
-/// Verified, executable module closure. AV accepts ONLY this handle. The
-/// AV semantics version is carried on the credential: a store restore that
-/// re-verifies under a different runtime version is a mismatch, not a hit.
+/// Verified module credential. `executable` distinguishes a RE-VERIFIABLE
+/// UNIT from an EXECUTABLE CLOSURE (F798-R6-02): any `Call` targeting an
+/// import (pending unit linkage, or an intrinsically host-side symbol)
+/// means the module still needs closure assembly/resolution — the
+/// executor refuses it instead of running into "unresolved import" infra
+/// mid-dispatch. AV executes ONLY executable closures.
 #[derive(Clone, Debug)]
 pub struct LoadedModule {
     checked: CheckedMir,
     av_semantics: AvSemanticsVersion,
+    executable: bool,
 }
 
 impl LoadedModule {
@@ -50,6 +54,11 @@ impl LoadedModule {
 
     pub fn stats(&self) -> &crate::mir_verify::VerifyStats {
         self.checked.stats()
+    }
+
+    /// Whether this credential admits EXECUTION (a fully resolved closure).
+    pub fn executable(&self) -> bool {
+        self.executable
     }
 }
 
@@ -85,9 +94,26 @@ pub fn verify_abc(
     }
     let checked =
         verify_mir_with_deadline(&module, deadline()).map_err(AbcAdmissionError::Verify)?;
+    // Executable-closure credential (F798-R6-02): a Call on ANY import —
+    // pending `fn:` unit linkage or a host-side symbol — marks the module
+    // as a re-verifiable unit, not an executable closure.
+    let executable = !module.funcs.iter().any(|f| {
+        f.blocks.iter().any(|b| {
+            b.instrs.iter().any(|i| {
+                matches!(
+                    i,
+                    crate::mir::MirInstr::Call {
+                        callee: crate::mir::CalleeRef::Import(_),
+                        ..
+                    }
+                )
+            })
+        })
+    });
     Ok(LoadedModule {
         checked,
         av_semantics: AV_SEMANTICS,
+        executable,
     })
 }
 

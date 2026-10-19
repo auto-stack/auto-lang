@@ -103,7 +103,16 @@ fn restore_and_run_inner(
     let mut units = Vec::new();
     let mut verified = 0usize;
     for link in &manifest.units {
-        let expect = EnvelopeIdentity::abc(owner);
+        if link.body_fp.is_empty() {
+            return Err(format!(
+                "unit `{}` carries no body-fingerprint binding (legacy/unbound manifest)",
+                link.name
+            ));
+        }
+        // F798-R6-01: the artifact's envelope must declare the link's
+        // (owner, unit, body fingerprint) — a self-consistent manifest
+        // pointing at ANOTHER declaration's artifact fails here.
+        let expect = EnvelopeIdentity::abc_bound(owner, &link.name, &link.body_fp);
         let payload = get_by_artifact_id(&store, &link.artifact, &expect)
             .map_err(|e| format!("unit `{}` load: {}", link.name, e))?;
         // F798-R3-02: payload binding — the sema-ref envelope must name the
@@ -133,6 +142,21 @@ fn restore_and_run_inner(
         }
         let decoded = decode_abc(&payload)
             .map_err(|e| format!("unit `{}` decode: {}", link.name, e.code()))?;
+        // F798-R6-01: the decoded payload's actual function must BE the
+        // declaration the link names — a renamed link over another unit's
+        // artifact is rejected, not executed under the wrong name.
+        let actual_name = decoded
+            .module
+            .funcs
+            .first()
+            .map(|f| f.name.clone())
+            .unwrap_or_default();
+        if actual_name != link.name {
+            return Err(format!(
+                "unit `{}` payload actually contains function `{}` — declaration/payload mismatch",
+                link.name, actual_name
+            ));
+        }
         let mut module = decoded.module;
         module.owner = owner_scope.clone();
         for f in module.funcs.iter_mut() {
@@ -167,14 +191,34 @@ fn restore_and_run_inner(
             Ok(_) => verified += 1,
             Err(e) => return Err(format!("unit `{}` re-verify: {}", link.name, e)),
         }
-        // Diagnostics sidecar (best-effort READ; a PRESENT-but-invalid
-        // sidecar is still only a diagnostics miss — code content never
-        // depends on it).
+        // Diagnostics sidecar is REQUIRED for the current snapshot
+        // (F798-R6-03): a source-less restore cannot re-derive the source
+        // mapping, so a missing/undecodable sidecar is a controlled
+        // UNAVAILABLE rejection — never a successful restore that publishes
+        // source-less traps.
         let skey = crate::cache::sidecar_key(owner, &link.name, snapshot);
         let sexpect = EnvelopeIdentity::sidecar(owner, snapshot);
-        if let Ok(Some(sp)) = crate::cache::get_enveloped_opt(&store, &skey, "A08", &sexpect) {
-            if let Ok(spans) = decode_sidecar(&sp) {
-                merge_spans(&mut module, &spans);
+        match crate::cache::get_enveloped_opt(&store, &skey, "A08", &sexpect) {
+            Ok(Some(sp)) => match decode_sidecar(&sp) {
+                Ok(spans) => merge_spans(&mut module, &spans),
+                Err(e) => {
+                    return Err(format!(
+                        "unit `{}` sidecar for snapshot {:016x} is invalid: {}",
+                        link.name, snapshot, e
+                    ))
+                }
+            },
+            Ok(None) => {
+                return Err(format!(
+                    "unit `{}` has no source sidecar for the current snapshot {:016x} (diagnostics provenance unavailable; restore refused)",
+                    link.name, snapshot
+                ))
+            }
+            Err(e) => {
+                return Err(format!(
+                    "unit `{}` sidecar for snapshot {:016x}: {}",
+                    link.name, snapshot, e
+                ))
             }
         }
         units.push(module);

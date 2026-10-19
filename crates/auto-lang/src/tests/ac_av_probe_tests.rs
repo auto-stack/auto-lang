@@ -50,9 +50,6 @@ fn ac_av_probe_corpus_executes_green() {
     let out = out_of(&root, "out");
     let report = run_suite(&suite_dir.join("ac-av.suite.ad"), &out, &Limits::defaults())
         .expect("ac-av suite runs");
-    for check in ["run", "run", "run", "run", "run"] {
-        // check ids are all "run" per case; assert every result passed
-    }
     let failing: Vec<String> = report
         .results
         .iter()

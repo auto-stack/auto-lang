@@ -620,6 +620,59 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             ),
         });
     }
+    // F798-R6-05: cumulative decode-memory guard, checked BEFORE each
+    // table's allocation. The whole-module heap estimate accumulates as
+    // tables decode (module tables, per-function slot/block/instruction
+    // tables, strings, spans); crossing the frozen decode partition budget
+    // rejects as `av.resource.decode-memory` — decode itself must never
+    // finish (let alone hand out) an over-budget object. Per-element
+    // estimates mirror `MirModule::heap_estimate` semantics.
+    let mut decoded_est: usize = 0usize;
+    {
+        let est_vec_overhead = std::mem::size_of::<usize>() * 3;
+        decoded_est += std::mem::size_of::<MirModule>()
+            + std::mem::size_of::<String>() * 3
+            + capabilities
+                .iter()
+                .map(|c| c.len() + std::mem::size_of::<String>())
+                .sum::<usize>()
+            + est_vec_overhead * 5
+            + n_types * (std::mem::size_of::<MirType>() + 4)
+            + n_consts * std::mem::size_of::<MirConst>()
+            + n_imports
+                .saturating_mul(std::mem::size_of::<MirImport>() + std::mem::size_of::<String>())
+            + n_funcs.saturating_mul(
+                std::mem::size_of::<MirFunction>()
+                    + std::mem::size_of::<String>()
+                    + est_vec_overhead,
+            );
+    }
+    if decoded_est > crate::contract::MAX_DECODED_MODULE_BYTES {
+        return Err(AbcDecodeError::Resource {
+            kind: ResourceKind::DecodeMemory,
+            message: format!(
+                "header alone estimates {} decoded bytes, above the frozen {} budget",
+                decoded_est,
+                crate::contract::MAX_DECODED_MODULE_BYTES
+            ),
+        });
+    }
+    macro_rules! decode_mem {
+        ($add:expr, $what:expr) => {{
+            decoded_est = decoded_est.saturating_add($add);
+            if decoded_est > crate::contract::MAX_DECODED_MODULE_BYTES {
+                return Err(AbcDecodeError::Resource {
+                    kind: ResourceKind::DecodeMemory,
+                    message: format!(
+                        "decoding {} pushes the decoded-heap estimate to {} bytes, above the frozen {} budget",
+                        $what,
+                        decoded_est,
+                        crate::contract::MAX_DECODED_MODULE_BYTES
+                    ),
+                });
+            }
+        }};
+    }
 
     let mut module = MirModule {
         profile: crate::contract::AV_PROFILE.to_string(),
@@ -652,6 +705,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                         format!("signature arity {} exceeds wire width", n),
                     ));
                 }
+                decode_mem!(n * 4 + 24, "a signature parameter table");
                 let mut params = Vec::with_capacity(n);
                 for _ in 0..n {
                     params.push(c.u32()?);
@@ -693,6 +747,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
     // Imports.
     for _ in 0..n_imports {
         let n = c.u16()? as usize;
+        decode_mem!(n + 24, "an import symbol");
         let sym_bytes = c.take(n)?.to_vec();
         let symbol = String::from_utf8(sym_bytes).map_err(|_| {
             AbcDecodeError::fmt_err(
@@ -736,8 +791,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
                 "function name is not UTF-8".to_string(),
             )
         })?;
+        decode_mem!(name.len() + 24, "a function name");
         let nslots = c.u32()? as usize;
         fn_probe = nslots;
+        decode_mem!(nslots * std::mem::size_of::<MirSlot>() + 24, "a slot table");
         let mut slots = Vec::with_capacity(nslots.min(4096));
         for _ in 0..nslots {
             let k = c.u8()?;
@@ -762,10 +819,18 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         let entry_block = c.u32()?;
         let nblocks = c.u32()? as usize;
         fn_probe += nblocks;
+        decode_mem!(
+            nblocks * (std::mem::size_of::<MirBlock>() + 24),
+            "a block table"
+        );
         let mut blocks = Vec::with_capacity(nblocks.min(4096));
         for _ in 0..nblocks {
             let ninstrs = c.u32()? as usize;
             fn_probe += ninstrs;
+            decode_mem!(
+                ninstrs * std::mem::size_of::<MirInstr>() + 24,
+                "an instruction table"
+            );
             if fn_probe > crate::contract::MAX_TABLE_ENTRIES {
                 return Err(AbcDecodeError::Resource {
                     kind: ResourceKind::TableEntries,
@@ -911,6 +976,10 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         for _ in 0..n_funcs {
             let snap = sc_cur.u64()?;
             let nspans = sc_cur.u32()? as usize;
+            decode_mem!(
+                nspans * std::mem::size_of::<(u32, crate::contract::SpanInfo)>() + 24,
+                "a span table"
+            );
             let mut spans = Vec::with_capacity(nspans.min(4096));
             for _ in 0..nspans {
                 let instr = sc_cur.u32()?;
@@ -962,4 +1031,65 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         profile,
         module,
     })
+}
+
+#[cfg(test)]
+mod decode_budget_tests {
+    use super::*;
+    use crate::contract::MIR_SCHEMA;
+    use crate::mir::*;
+
+    fn owner() -> OwnerScope {
+        OwnerScope {
+            schema: MIR_SCHEMA.to_string(),
+            module: "m".to_string(),
+        }
+    }
+
+    /// F798-R6-05 replay: a compact wire (≪ 4 MiB) of 60 functions × 6000
+    /// empty blocks decodes to >16 MiB of structure — decode itself must
+    /// refuse (cumulative pre-allocation guard), never hand out the
+    /// over-budget object.
+    #[test]
+    fn abc_decode_expansion_rejected_before_allocation() {
+        let mut m = MirModule::new(owner());
+        let ti = m.intern_type(MirType::I32);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        for i in 0..60 {
+            m.funcs.push(MirFunction {
+                owner: owner(),
+                name: format!("f{i}"),
+                sig,
+                slots: vec![],
+                blocks: vec![
+                    MirBlock {
+                        instrs: vec![],
+                        term: Terminator::Jump { target: 0 },
+                    };
+                    6000
+                ],
+                entry: 0,
+                source_snapshot: 0,
+                spans: vec![],
+            });
+        }
+        m.entry = 0;
+        let wire = encode_abc(&m).expect("encode");
+        let flat = wire.to_flat();
+        assert!(
+            flat.len() < 4 * 1024 * 1024,
+            "the adversarial wire stays under the input cap ({} bytes)",
+            flat.len()
+        );
+        let err = decode_abc(&flat).expect_err("decode must refuse the over-budget object");
+        assert_eq!(
+            err.code(),
+            "av.resource.decode-memory",
+            "got {:?}",
+            err.code()
+        );
+    }
 }

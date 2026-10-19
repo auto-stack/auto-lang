@@ -125,6 +125,25 @@ div-by-zero、div-overflow(MIN/-1)、rem-overflow(MIN%-1)。
 (1) 单函数超族 → `av.resource.table-entries`；(2) 模块表超族（70k consts）→
 同分类；(3) 组合超界（40×31k 块闭包）→ `av.resource.verify-steps`。
 
+**r4 修订记录**（复审 F798-R6-04/05/07 判定 → 本轮修复冻结）：
+(a) **decode 分配预算前置到 decode 自身**：解码器在类型/常量/导入/函数名/
+槽/块/指令/span 各表分配**前**累计结构堆估算（元素口径同 heap_estimate），
+超 16 MiB 即 `av.resource.decode-memory`——独立 ABC 输入在 decode 内被拒，
+不再先完成 >16 MiB 分配后由 verifier 兜底（R6 反例：3.2MB wire → 23MB 结构）。
+verify 侧 heap_estimate 检查保留为手工构造模块的第二层。
+(b) **前门构造深度跨括号累计**：运算符 run 不再被 `(`/`)`/`[`/`]`/`,` 重置
+（`(1)+(1)+…` 与 `f(a,b)+g(c,d)+…` 的嵌套与未加括号链相同）；仅语句/子句
+边界（`{`/`}`/`;`/`=`/`:`/关键字）重置；一元 `!` 计入构造。129/400/600 项
+带括号链在门前 resource 拒绝。
+(c) **native build 预算边界（F798-R6-07，有依据的合同澄清）**：ac-core 对本
+计划只读，`link_object_staged` 内部持有 788 合同的 linker 子进程 60s deadline，
+无法从探针侧注入"剩余截止"。可执行的完整语义为：lower/publish/查找等探针
+可控阶段共享 60s 绝对钟（阶段前准入+超时拒绝启动 link+事后归因）；link 子
+进程由 788 内部 deadline 独立有界；run 阶段 deadline=剩余总预算（≤70s 总量
+硬性成立）。"build≤60s"作为单一数字依赖 ac-core 侧剩余截止注入，属其
+owner 的后续合同工作，不在本计划触面；反控：伪钟 seam
+（AV798_NATIVE_FAKE_ELAPSED_MS）确定性证明前阶段超钟拒绝启动 link。
+
 **r3 修订记录**（复审 F798-R3-04/08 判定 → 本轮修复冻结）：
 (a) **验证组合分析内存**进入预算表——dense 单元（16 384 槽 × 8 192 块，
 24 581 条目、155 738 字节 wire，全部单表族内）在 init 数据流位图上分配

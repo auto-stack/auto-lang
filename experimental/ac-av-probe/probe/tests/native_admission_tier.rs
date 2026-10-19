@@ -6,12 +6,16 @@
 
 use auto_ac_prototype::source::compile_scalar_source;
 use auto_av_probe::native_admission::{
-    admit_native_ref, check_coff_relocatable, content_hash, mint_and_admit_lowered,
+    admit_native_ref, check_coff_relocatable, content_hash, mint_and_admit_lowered, ref_for_coff,
     NativeAdmissionCtx, NativeAdmissionError, NativeArtifactRef, ObjectFormat, ADMITTED_ABI,
     ADMITTED_BACKEND, ADMITTED_NATIVE_PROFILE, ADMITTED_RECIPE, ADMITTED_TARGET,
 };
 
 const SRC: &str = "fn main() int {\n    return 7\n}\n";
+
+/// Serializes tests that mutate process env (the budget fault seam)
+/// against tests that run real builds reading the same env.
+static NATIVE_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn checked() -> auto_ac_prototype::verify::CheckedModule {
     compile_scalar_source(SRC, "adm.at", &[])
@@ -152,6 +156,7 @@ fn native_admission_relocatability_and_binding() {
 #[cfg(windows)]
 #[test]
 fn native_admission_real_pe_rejected() {
+    let _env_guard = NATIVE_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     // Build a tiny PE through the landed pipeline (same shape the trace
     // parity leg uses, without the trace lib).
     let workdir = std::env::temp_dir().join(format!("av798-nadm-pe-{}", std::process::id()));
@@ -197,6 +202,7 @@ fn native_admission_real_pe_rejected() {
 #[cfg(windows)]
 #[test]
 fn native_reference_capped_stream_fails_closed() {
+    let _env_guard = NATIVE_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let src = "fn main() int {\n    let a = mark_a()\n    return a\n}\n";
     let caps = vec!["hir.test.trace.v1".to_string()];
     let compiled = compile_scalar_source(src, "cap.at", &caps).expect("frontend");
@@ -245,4 +251,69 @@ fn native_reference_capped_stream_fails_closed() {
     );
     let _ = std::fs::remove_dir_all(&workdir);
     let _ = std::fs::remove_dir_all(&workdir2);
+}
+
+/// F798-R6-06 replay: a 20-byte COFF header stub claiming sections and an
+/// out-of-range symbol pointer never admits — the header's claimed table
+/// ranges must fit the offered bytes.
+#[test]
+fn native_admission_truncated_coff_header_rejected() {
+    let mut fake = vec![0u8; 20];
+    fake[0..2].copy_from_slice(&0x8664u16.to_le_bytes()); // AMD64
+    fake[2..4].copy_from_slice(&1u16.to_le_bytes()); // 1 section
+    fake[8..12].copy_from_slice(&u32::MAX.to_le_bytes()); // symbol pointer
+    fake[12..16].copy_from_slice(&1u32.to_le_bytes()); // 1 symbol record
+    let r = ref_for_coff(&fake);
+    assert!(matches!(
+        admit_native_ref(&r, &fake, &ctx()),
+        Err(NativeAdmissionError::MalformedObject(_))
+    ));
+    assert!(matches!(
+        check_coff_relocatable(&fake),
+        Err(NativeAdmissionError::MalformedObject(w)) if w.contains("section table overruns")
+    ));
+    // A zero-symbol-count header is rejected too (linkable objects carry
+    // at least one symbol record).
+    let mut nosym = vec![0u8; 20];
+    nosym[0..2].copy_from_slice(&0x8664u16.to_le_bytes());
+    nosym[2..4].copy_from_slice(&1u16.to_le_bytes());
+    assert!(matches!(
+        check_coff_relocatable(&nosym),
+        Err(NativeAdmissionError::MalformedObject(w)) if w.contains("symbol")
+    ));
+}
+
+/// F798-R6-07 counter-control: a pre-link stage that already consumed the
+/// shared build clock makes the stage admission REFUSE to start the link
+/// (deterministic fake-clock seam — no real 60s stall).
+#[cfg(windows)]
+#[test]
+fn native_reference_pre_stage_overrun_refuses_to_start_link() {
+    let _env_guard = NATIVE_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let src = "fn main() int {
+    return 7
+}
+";
+    let compiled = compile_scalar_source(src, "budget.at", &[]).expect("frontend");
+    let workdir = std::env::temp_dir().join(format!("av798-nadm-budget-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&workdir);
+    std::env::set_var("AV798_NATIVE_FAKE_ELAPSED_MS", "61000");
+    let out = auto_av_probe::native_reference::build_and_run_with_caps(
+        &compiled.checked,
+        "d_main",
+        &workdir,
+        None,
+        1024 * 1024,
+        1024 * 1024,
+    );
+    std::env::remove_var("AV798_NATIVE_FAKE_ELAPSED_MS");
+    assert!(
+        matches!(
+            out,
+            Err(auto_av_probe::native_reference::NativeError::Budget(_))
+        ),
+        "a pre-link stage over the shared clock refuses to start the link: {:?}",
+        out
+    );
+    let _ = std::fs::remove_dir_all(&workdir);
 }

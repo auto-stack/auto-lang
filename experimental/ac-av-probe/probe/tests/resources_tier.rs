@@ -188,6 +188,51 @@ fn av_resources_front_door_nesting_boundary() {
     assert_eq!(*r.counters.get("admission_reject").unwrap_or(&0), 1);
 }
 
+/// F798-R6-04: BRACKETED operands do not reset the construction run —
+/// `(1) + (1) + …` nests exactly like the unbracketed chain and must hit
+/// the same 128 front door, at the DOOR (never `mir.lower.depth` from
+/// inside the recursive parser).
+#[test]
+fn av_resources_parenthesized_flat_chain_front_door_boundary() {
+    let chain = |n: usize| {
+        format!(
+            "fn main() int {{
+    var x = {}
+    return x
+}}
+",
+            vec!["(1)"; n].join(" + ")
+        )
+    };
+    // Under budget: 100 bracketed terms execute.
+    let ok_src = chain(100);
+    assert!(
+        front_door_admit(&ok_src).is_ok(),
+        "100-term bracketed chain admits"
+    );
+    let mut d = Driver::ephemeral();
+    let r = d.request(&ok_src, "d_main", &[]);
+    assert!(
+        r.ok(),
+        "under-budget bracketed chain executes: {:?}",
+        r.diag
+    );
+    assert_eq!(r.value_i32(), Some(100), "value proves full evaluation");
+
+    // Over budget: the R6 replay numbers — 129/400/600 all rejected AT THE
+    // DOOR as resource (600 previously slipped through to mir.lower.depth).
+    for n in [129usize, 400, 600] {
+        let over = chain(n);
+        let err = front_door_admit(&over).unwrap_err();
+        assert_eq!(err.code, "av.resource.frontend-nesting", "n={n}");
+        assert_eq!(err.stage, "admission");
+        let r = d.request(&over, "d_main", &[]);
+        let diag = r.diag.clone().expect("rejected");
+        assert_eq!(diag.stage, "admission", "n={n}");
+        assert_eq!(diag.code, "av.resource.frontend-nesting", "n={n}");
+    }
+}
+
 /// F798-R3-04: flat operator CHAINS are expression-construction depth —
 /// a `1+1+…` run past the frozen budget is a front-door RESOURCE
 /// rejection, not a `mir.lower.depth` unsupported raised from inside the
@@ -562,11 +607,8 @@ fn av_resources_peak_sampler_distinguishes_transient_spike() {
 fn av_turnaround_six_scenarios_smoke() {
     let root = std::env::temp_dir().join(format!("av798-turn-smoke-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
-    let load = auto_av_probe::load256::generate();
-    // Scaled: shrink the generator's target via a truncated source (the
+    // Scaled: the debug smoke shrinks the generator's target directly
     // frozen full-size run belongs to the release script).
-    let small: String = load.source.lines().take(160).collect::<Vec<_>>().join("\n");
-    let small = format!("{}\nfn main() int {{\n    return 0\n}}\n", small);
     let small = auto_av_probe::load256::generate_with_sized(0, 24 * 1024);
     let conflicted = auto_av_probe::load256::edit_signature_conflict(&small.source);
     let bench = auto_av_probe::bench::BenchInputs {

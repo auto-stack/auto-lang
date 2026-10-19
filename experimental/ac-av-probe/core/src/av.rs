@@ -101,6 +101,19 @@ pub fn execute_entry(
     let mut steps: u64 = 0;
     let mut slot_bytes: usize = 0;
 
+    // Executable-closure gate (F798-R6-02): a re-verifiable UNIT (any Call
+    // on an import — pending linkage or a host-side symbol) is never run;
+    // closure assembly resolves those callees first.
+    if !module.executable() {
+        return (
+            ExecOutcome::Infra(
+                "admission violation: credential is a re-verifiable unit, not an                  executable closure (unresolved import call)"
+                    .to_string(),
+            ),
+            trace,
+        );
+    }
+
     let entry_fn = match m.funcs.get(m.entry as usize) {
         Some(f) => f,
         None => {
@@ -120,6 +133,29 @@ pub fn execute_entry(
             )),
             trace,
         );
+    }
+    // Entry-argument admission against the VERIFIED signature
+    // (F798-R6-02): each Value must match its param slot's type shape —
+    // a Bool handed to an i32 slot (or vice versa, or an Fn-typed slot)
+    // is an admission violation, never a silently executing coercion.
+    for (i, &arg) in args.iter().enumerate() {
+        let slot_ty = entry_fn.slots[entry_fn.param_slots()[i] as usize].ty;
+        let ok = match m.types.get(slot_ty as usize) {
+            Some(MirType::I32) => matches!(arg, Value::I32(_)),
+            Some(MirType::Bool) => matches!(arg, Value::Bool(_)),
+            _ => false,
+        };
+        if !ok {
+            return (
+                ExecOutcome::Infra(format!(
+                    "entry argument #{} has kind {}, param slot type {} — admission violation",
+                    i,
+                    arg.type_name(),
+                    slot_ty
+                )),
+                trace,
+            );
+        }
     }
     let zero = typed_zero(m);
     // Root-frame budgets BEFORE allocation (F798-R3-04): a zero frame or
@@ -620,6 +656,107 @@ mod tests {
             "got {out:?}"
         );
         assert_eq!(trace.peak_slot_bytes, 0);
+    }
+
+    /// F798-R6-02: a unit whose entry carries typed params and NO import
+    /// calls is an executable closure — but entry arguments are admitted
+    /// against the VERIFIED signature (kind must match the slot type).
+    #[test]
+    fn av_entry_argument_kind_mismatch_rejected() {
+        let mut m = MirModule::unit(owner());
+        let ti = m.intern_type(MirType::I32);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![ti],
+            result: ti,
+        }));
+        m.funcs.push(MirFunction {
+            owner: owner(),
+            name: "main".into(),
+            sig,
+            slots: vec![MirSlot {
+                kind: SlotKind::Param,
+                ty: ti,
+                name: None,
+            }],
+            blocks: vec![MirBlock {
+                instrs: vec![],
+                term: Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+        m.entry = 0;
+        let bytes = crate::abc::encode_abc(&m).expect("encode");
+        let l = crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owner()).expect("admit");
+        let cancel = CancelFlag::new(false);
+        // Correct kind: executes.
+        let (out, _) = execute_entry(&l, &ExecLimits::default(), &cancel, &[Value::I32(5)]);
+        assert!(matches!(out, ExecOutcome::Success { .. }), "got {out:?}");
+        // Bool into an i32 slot: admission violation, never a coerced run.
+        let (out, _) = execute_entry(&l, &ExecLimits::default(), &cancel, &[Value::Bool(true)]);
+        assert!(
+            matches!(&out, ExecOutcome::Infra(msg) if msg.contains("admission violation")),
+            "got {out:?}"
+        );
+    }
+
+    /// F798-R6-02: a Call on ANY import yields a RE-VERIFIABLE UNIT
+    /// credential — the executor refuses it up front instead of running
+    /// into "unresolved import" infra mid-dispatch.
+    #[test]
+    fn av_unit_with_import_call_is_not_executable() {
+        let mut m = MirModule::new(owner());
+        let ti = m.intern_type(MirType::I32);
+        let sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        let fi_t = m.intern_type(MirType::I32);
+        let _ = fi_t;
+        let imp_sig = m.intern_type(MirType::Fn(FnSig {
+            params: vec![],
+            result: ti,
+        }));
+        m.imports.push(MirImport {
+            symbol: "hir.test.mark_a".to_string(),
+            effect: Effect::Observable,
+            sig: imp_sig,
+        });
+        m.capabilities = vec![crate::contract::TRACE_CAPABILITY.to_string()];
+        m.funcs.push(MirFunction {
+            owner: owner(),
+            name: "main".into(),
+            sig,
+            slots: vec![MirSlot {
+                kind: SlotKind::Local,
+                ty: ti,
+                name: Some("r".into()),
+            }],
+            blocks: vec![MirBlock {
+                instrs: vec![MirInstr::Call {
+                    callee: CalleeRef::Import(0),
+                    dst: 0,
+                    args: vec![],
+                }],
+                term: Terminator::Return { value: 0 },
+            }],
+            entry: 0,
+            source_snapshot: 0,
+            spans: vec![],
+        });
+        m.entry = 0;
+        let bytes = crate::abc::encode_abc(&m).expect("encode");
+        let l = crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owner()).expect("admit");
+        assert!(
+            !l.executable(),
+            "an import-calling module admits only as a unit"
+        );
+        let (out, _) = execute(&l, &ExecLimits::default(), &CancelFlag::new(false));
+        assert!(
+            matches!(&out, ExecOutcome::Infra(msg) if msg.contains("re-verifiable unit")),
+            "credential gate fires before any dispatch: {out:?}"
+        );
     }
 
     #[test]

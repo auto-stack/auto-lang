@@ -157,7 +157,11 @@ pub fn sidecar_key(owner: &str, unit: &str, snapshot: u64) -> QueryKey {
 // ---------------------------------------------------------------------------
 
 pub const ENVELOPE_MAGIC: &[u8; 4] = b"AVEN";
-pub const ENVELOPE_VERSION: u16 = 1;
+/// v2 (F798-R6-01): unit/body-fp identity fields joined the envelope —
+/// code-content artifacts bind the exact (owner, unit, body fingerprint)
+/// they claim to be, so a valid payload stored under ANOTHER body's key
+/// fails identity admission instead of hitting.
+pub const ENVELOPE_VERSION: u16 = 2;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EnvelopeKind {
@@ -183,6 +187,13 @@ pub struct EnvelopeIdentity<'a> {
     pub abc_sem: u32,
     pub av_sem: u32,
     pub snapshot: u64,
+    /// v2 unit binding (F798-R6-01): the unit name and body fingerprint
+    /// this code-content artifact claims. EMPTY on the legacy constructors
+    /// (self-check paths); every PRODUCTION write/read of a MirUnit or
+    /// AbcUnit uses the `_bound` constructors so a good payload under a
+    /// wrong body key fails admission.
+    pub unit: &'a str,
+    pub body_fp: &'a str,
 }
 
 impl EnvelopeIdentity<'_> {
@@ -197,6 +208,18 @@ impl EnvelopeIdentity<'_> {
             abc_sem: 1,
             av_sem: 1,
             snapshot,
+            unit: "",
+            body_fp: "",
+        }
+    }
+
+    /// Production MIR-unit identity: bound to the exact unit + body
+    /// fingerprint (F798-R6-01).
+    pub fn mir_bound<'a>(owner: &'a str, unit: &'a str, body_fp: &'a str) -> EnvelopeIdentity<'a> {
+        EnvelopeIdentity {
+            unit,
+            body_fp,
+            ..Self::mir(owner, 0)
         }
     }
 
@@ -211,6 +234,18 @@ impl EnvelopeIdentity<'_> {
             abc_sem: 1,
             av_sem: 1,
             snapshot,
+            unit: "",
+            body_fp: "",
+        }
+    }
+
+    /// Production ABC-unit identity: bound to the exact unit + body
+    /// fingerprint (F798-R6-01).
+    pub fn abc_bound<'a>(owner: &'a str, unit: &'a str, body_fp: &'a str) -> EnvelopeIdentity<'a> {
+        EnvelopeIdentity {
+            unit,
+            body_fp,
+            ..Self::abc_raw(owner, 0)
         }
     }
 
@@ -231,6 +266,8 @@ impl EnvelopeIdentity<'_> {
             abc_sem: 1,
             av_sem: 1,
             snapshot,
+            unit: "",
+            body_fp: "",
         }
     }
 
@@ -246,6 +283,8 @@ impl EnvelopeIdentity<'_> {
             abc_sem: 1,
             av_sem: 1,
             snapshot,
+            unit: "",
+            body_fp: "",
         }
     }
 }
@@ -285,7 +324,7 @@ pub fn envelope_wrap(payload: &[u8], id: &EnvelopeIdentity) -> Vec<u8> {
     out.extend_from_slice(&id.abc_sem.to_le_bytes());
     out.extend_from_slice(&id.av_sem.to_le_bytes());
     out.extend_from_slice(&id.snapshot.to_le_bytes());
-    for s in [id.producer, id.schema, id.owner_module] {
+    for s in [id.producer, id.schema, id.owner_module, id.unit, id.body_fp] {
         out.extend_from_slice(&(s.len() as u16).to_le_bytes());
         out.extend_from_slice(s.as_bytes());
     }
@@ -333,8 +372,8 @@ pub fn envelope_unwrap(bytes: &[u8], expect: &EnvelopeIdentity) -> Result<Vec<u8
     p += 4;
     let snapshot = u64::from_le_bytes(bytes[p..p + 8].try_into().unwrap());
     p += 8;
-    let mut strs = Vec::with_capacity(3);
-    for _ in 0..3 {
+    let mut strs = Vec::with_capacity(5);
+    for _ in 0..5 {
         let n = u16::from_le_bytes(bytes[p..p + 2].try_into().unwrap()) as usize;
         p += 2;
         if p + n > body_end {
@@ -373,6 +412,15 @@ pub fn envelope_unwrap(bytes: &[u8], expect: &EnvelopeIdentity) -> Result<Vec<u8
         return bad(format!(
             "envelope schema `{}` is not `{}`",
             strs[1], expect.schema
+        ));
+    }
+    // v2 unit binding (F798-R6-01): the artifact must declare the exact
+    // unit + body fingerprint the consumer expects — a good payload under
+    // another body's key fails here, at the real consumption entry.
+    if strs[3] != expect.unit || strs[4] != expect.body_fp {
+        return bad(format!(
+            "envelope unit binding `{}`/`{}` is not the expected `{}`/`{}`",
+            strs[3], strs[4], expect.unit, expect.body_fp
         ));
     }
     if strs[2] != expect.owner_module {
@@ -989,6 +1037,11 @@ pub struct UnitLink {
     /// the same ids across process restarts.
     #[serde(default)]
     pub logical: String,
+    /// Body fingerprint (canonical-HIR content version) the link's unit
+    /// was keyed under — restore cross-checks it against the artifact's
+    /// envelope binding (F798-R6-01). Empty = legacy/unbound (rejected).
+    #[serde(default)]
+    pub body_fp: String,
     /// Content fingerprint of the EXACT payload bytes this link points at
     /// (F798-R3-02): the persisted sema-ref envelope binds this id, and
     /// restore re-derives it from the loaded bytes before execution — a
@@ -1044,8 +1097,8 @@ impl ModuleManifest {
                     None => "-".to_string(),
                 };
                 format!(
-                    "{}={}:{}:{}:{}:{}",
-                    u.name, u.artifact, u.sig, u.logical, u.payload_fp, sema
+                    "{}={}:{}:{}:{}:{}:{}",
+                    u.name, u.artifact, u.sig, u.logical, u.body_fp, u.payload_fp, sema
                 )
             })
             .collect();
