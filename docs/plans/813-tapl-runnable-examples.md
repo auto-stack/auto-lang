@@ -5,7 +5,7 @@ feature_name: tapl-runnable-examples
 author: [Codex]
 plan_revision: 2
 created_at: 2026-10-19
-updated_at: 2026-10-19
+updated_at: 2026-10-20
 
 supersedes_spec_components: [docs/specs/website/design/learning-reading.md, docs/specs/website/project.md, docs/specs/auto-playground/project.md, docs/specs/stdlib/project.md, docs/specs/a2r-std/project.md]
 new_spec_components: [docs/specs/website/design/book-example-execution.md]
@@ -329,6 +329,13 @@ stage: review | review_scope: final | reviewer_identity/limitations: Codex 当�
 - 首轮默认并发 `cargo tb` 在 1903/5314 项停止：1902 passed、1 failed、1547 skipped。失败为未改动的 `plan484_024_charts_streaming_recompute`（streaming label `t29`），该既有并行 flake 已列在 `KNOWN-DEBT-AND-RISKS.md` 的 Plan 711 §10 记录中；同一提交的 `cargo t` 运行通过该测试，test-book feature 下隔离重放亦 1/1 pass（6860 skipped）。首轮日志 `attachments/813/cargo-tb-r10.log.txt` SHA-256 `51631C44503E5FB69974D2B5DAE538D423DF7BCC9B307A2C74F62B0EEC9980D6`；隔离日志 `attachments/813/cargo-tb-plan484-isolated-r10.log.txt` SHA-256 `3F02EB80BA0FDDA44372B922FFF971F4E2D68980C77FF3F35B917ED02A302BB4`。
 - 按 PLAN-819 已接受的 4 线程稳定性设置，以 `NEXTEST_TEST_THREADS=4` 完整重跑 `cargo tb`，exit 0：5314 passed、1547 skipped、1 slow，231.628s。最终日志 `attachments/813/cargo-tb-r10-4threads.log.txt` SHA-256 `C14B7582D210AD5616480DA7A055C5364C0B6B84BCE5CDAF63F83929E74225AE`。无代码修改；测试生成的 Plan 796 性能报告数值已还原，813 worktree clean 且仍在冻结提交。
 - outcome: 三项 merge-owned gates pass；独立复审 R10 仍绑定同一代码提交，无新增 finding。Plan status=`reviewed`，current_step=9/10；具备合并条件，等待用户指示后执行双仓合并、归档与清理。
+
+### 2026-10-20 T-09 落地主检出预检（暂缓合入）
+
+- 按用户授权继续合并后，`plan-813-dev` 已从复审冻结提交 `78e1c31e8be30b2c758d6034f211f48c6731dc87` 重放到最新主线 `7c8a4476afae3d7b7add0ce7941c8b3d428f5275`，新提交 `8c801b5fd3ed3da34724ee7d8d3d84e84d2bd74f`。`git range-diff` 对原公共基线 `310895b8ada67994eb0606ce6afffe48f0b2292f` 的 15/15 提交均为 `=`；基线到主线的 92 个变更路径与计划分支的 53 个变更路径无重叠。新增主线内容仅为计划/报告/附件；Cargo、测试配置、依赖锁文件均未变化，因此复审与三门禁证据可复用。CRLF-aware `git diff --check` 通过，重放后的 auto-lang 工作树 clean。
+- `plan-813-book` 仍 clean，提交 `50153be9f4e0ac035ca3d0c2bd0da2d876d84875`，其基线与 book `master` `d05218bff49a52314ce436f78d9df2a69bc3357e` 相同；未单独落地，避免形成双仓部分交付。
+- 尚未执行落地：auto-lang 主检出当前有 1849 个 dirty status 条目（9 个 tracked 修改/删除，其余为无关未跟踪文件），包括 Plan 797/798/811/814/818 文档、策略/roadmap/债务文档，以及多份既有 specs 备份和附件。为保留这些用户改动，未暂存、提交、stash、还原或清理；按合并流程要求，主检出 clean 前不能将计划分支快进到 `master`。
+- 因此 T-09 仍未完成，Plan 保持 `reviewed`、`current_step: 9`；未合并任一仓库，未归档，也未移除工作树/分支。批量 `cargo tf` 未到期：最近收据覆盖 Plan 812（2026-10-19 08:36 UTC），Plan 813 不是 5 的倍数，且尚未超过 48 小时。
 
 ## 10. 待澄清事项
 
