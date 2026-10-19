@@ -144,5 +144,7 @@ fmt 净。merge-owned 门不变（§5 pending）。
 - [x] R1 needs_fix 六 findings 同树修复（§7）
 - [x] R2 needs_fix 三 findings 同树修复（§8：同实例证据/792 最终源重跑
   25/25+包内 hash 一致/SD 单一事实）
-- [ ] 独立 final review 第三轮（T-09，同树，绑 R2 修复后提交 `b8b0fc3f5`+）
+- [x] R3 唯一 P3 修复：r02 双测去除两处多余 `mut`（`6b4963de3`；plan810
+  触面 warning=0，22+1 保持）
+- [ ] 独立 final review 第四轮（T-09，同树，绑 `6b4963de3`）
 - [ ] merge：冻结提交统一 §5 门 → 合入 → 沉淀 → 归档（T-10/T-11）
