@@ -169,6 +169,26 @@ test-http-e2e feature（OS 临时端口）；792 driver 产物在
   031 生成后端 types.at companion/`crate::image` 发射破损（master 基线
   同款，归因收据在 fix-r1）；Man wire 档基线编译红。
 
+## R2 修复轮增补（2026-10-19，review-r2 needs_fix 后）
+
+修复细节见 [fix-r2.md](fix-r2.md)；代码基线推进至 **`4a1d8fcf3`**：
+
+- R2-01（关闭竞态）：open_session 锁内复查 closing（与清表同 mutex）+
+  spawn 结果消费；复审 R2 探针重放 `returned_session=""`/unknown/close=false。
+- R2-02（oracle）：bounded_teardown（超时红不 join，负控 <800ms 红常驻）；
+  resize 通道满以采样 running 峰值 ≥9 实证；scan 活动门 + 新 per-registry
+  mutation_generation 静止断言。core 34→**38/38**。
+- R1-03（事件合同）：sweep 早退门重排（静止期注册修复，VM 真机
+  quiescent-Late 反例）；**merged 类型化 sweep 接线**（devtools_update，
+  两拍/单发/随视图生死）；四 harness 全矩阵收据（VM 12/12 含形参投影/
+  卸载，Vue 8/8 含真 `<img>` error 事件+恢复，merged 11/11 含静止期/
+  卸载/恢复，生成 HTTP 13/13），全部嵌 provenance（commit/源码/二进制
+  hash），探针源冻结于 v05-harness/probe-sources/。
+- 792 driver 在修复树上重跑 **25/25**（收据 v05-receipts/
+  driver-792-r2fix.json；一次 V02 红为 scratch 增量缓存损坏
+  "cached cgu should have an object file"，清 scratch 后复绿——环境
+  工件非代码回归）。
+
 ## 8. 下一步
 
 T-09 review（同树独立上下文审 AC-01..06/SD/生命周期/真消费者/旧路径）；
