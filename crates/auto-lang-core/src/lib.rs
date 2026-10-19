@@ -8,4 +8,7 @@
 //! 宿主能力一律经 `vm::host_capabilities` provider 端口，不反向链接 UI。
 //! 旧 `auto_lang::*` 公开路径由上层兼容包（auto-lang）经再导出保身份。
 
+pub mod dep_scanner;
+pub mod mode;
+pub mod os_paths;
 pub mod use_scanner;

@@ -103,7 +103,7 @@ pub mod parser_helpers;
 // 旧路径 auto_lang::use_scanner::* 经再导出保类型身份（同 crate origin）。
 pub use auto_lang_core::use_scanner;
 // Plan 092: Dep statement scanner for Rust FFI
-pub mod dep_scanner;
+pub use auto_lang_core::dep_scanner;
 // Plan 085 Phase 5: Module cache for incremental compilation
 pub mod atom_error;
 pub mod autovm_client; // Plan 269: AutoVM client for req command
@@ -139,7 +139,7 @@ pub mod design_tokens;
 pub mod ui_gen;
 // Stage B P-5（PLAN-590）：跨仓解析序定位 auto-os 侧资产（无 feature 门——
 // ui_gen/docs 管线与 CLI 的无 ui 构建形态也要消费）。
-pub mod os_paths;
+pub use auto_lang_core::os_paths;
 // PLAN-044：用户级状态文件写安全（原子替换 + 跨进程锁；键级合并写在
 // vm::ffi::stdlib::storage_persist，锁路径跨仓约定单源在模块头）。
 pub mod state_file;
@@ -148,7 +148,7 @@ pub mod sse;
 // Plan 114: Hybrid Routing (Convention + Config)
 pub mod route;
 // Plan 081 Phase 2: Execution mode selection (autovm, evaluator, c, rust)
-pub mod mode;
+pub use auto_lang_core::mode;
 // Plan 081 Phase 4: Multi-mode compilation pipeline
 pub mod multi_mode;
 // Plan 081 Phase 5: FFI layer for cross-mode function calls

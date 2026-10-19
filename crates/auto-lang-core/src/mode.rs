@@ -33,7 +33,7 @@ impl ExecutionMode {
     /// # Examples
     ///
     /// ```
-    /// use auto_lang::mode::ExecutionMode;
+    /// use auto_lang_core::mode::ExecutionMode;
     ///
     /// assert_eq!(ExecutionMode::from_str("autovm"), Some(ExecutionMode::AutoVM));
     /// assert_eq!(ExecutionMode::from_str("vm"), Some(ExecutionMode::AutoVM));
@@ -57,7 +57,7 @@ impl ExecutionMode {
     /// # Examples
     ///
     /// ```
-    /// use auto_lang::mode::ExecutionMode;
+    /// use auto_lang_core::mode::ExecutionMode;
     ///
     /// assert_eq!(ExecutionMode::AutoVM.as_str(), "autovm");
     /// assert_eq!(ExecutionMode::Evaluator.as_str(), "evaluator");

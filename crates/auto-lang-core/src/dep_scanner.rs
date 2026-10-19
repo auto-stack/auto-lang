@@ -8,7 +8,7 @@
 // # Example
 //
 // ```
-// use auto_lang::dep_scanner::{scan_dep_statements, DepStatement};
+// use auto_lang_core::dep_scanner::{scan_dep_statements, DepStatement};
 //
 // let source = r#"
 // dep serde(version: "1.0", features: ["derive"])
