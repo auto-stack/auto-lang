@@ -1576,3 +1576,277 @@ fn sema_cache_r12_method_ref_full_admission_matrix() {
         ),
     }
 }
+
+// ---------------------------------------------------------------------------
+// F-796-R13-01/02: module index full-payload freshness; FnSig
+// signature-level freshness and full fn-decl admission
+// ---------------------------------------------------------------------------
+
+/// F-796-R13-01: the module index key/header/read admission cover the
+/// FULL published payload — a signature edit or a record addition is a
+/// KEY change (republication never conflicts; the stale index is not
+/// served), a body-only edit reuses the same artifact, and a page with
+/// a current header but stale body fields is rejected on read.
+#[test]
+fn sema_cache_r13_module_index_tracks_signatures_and_records() {
+    use ac_sema_probe::publish_module_index;
+
+    let idx = QueryKind::ListCandidates { domain: "fn" };
+    let index_page = |store: &ManagedStore, input: &ac_sema_core::SemaInput| match lookup_only(
+        store, input, &idx,
+    )
+    .unwrap()
+    {
+        FetchOutcome::Hit { page, .. } => match &page.body {
+            ac_sema_contract::codec::PageBody::ModuleIndex(m) => m.clone(),
+            other => panic!("index page body: {other:?}"),
+        },
+        other => panic!("index must hit, got {other:?}"),
+    };
+
+    let root = scratch("r13-index");
+    let store = open_store(&root.join("store")).unwrap();
+    let v1 = record_input("fn get() int { return 1 }", "mi");
+    publish_module_index(&store, &v1, None).unwrap();
+    let p1 = index_page(&store, &v1);
+    assert_eq!(p1.fn_names, vec!["get".to_string()]);
+    assert_eq!(p1.record_names, Vec::<String>::new());
+    let v1_version = p1.decl_versions[0].1.clone();
+
+    // signature edit: candidate names unchanged, but decl versions are
+    // part of the key — old index misses, republication succeeds (no
+    // same-key Conflict), and the served index carries the NEW version
+    let v2 = record_input("fn get(x int) int { return x }", "mi");
+    match lookup_only(&store, &v2, &idx).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("signature edit must not serve the old index: {other:?}"),
+    }
+    publish_module_index(&store, &v2, None)
+        .unwrap_or_else(|e| panic!("republication after a signature edit must not conflict: {e}"));
+    let p2 = index_page(&store, &v2);
+    assert_eq!(p2.fn_names, vec!["get".to_string()]);
+    assert_ne!(
+        p2.decl_versions[0].1, v1_version,
+        "new signature version served"
+    );
+
+    // record addition: record_names are part of the key/payload too
+    let v3 = record_input(
+        "fn get(x int) int { return x }\ntype Added { value int }",
+        "mi",
+    );
+    match lookup_only(&store, &v3, &idx).unwrap() {
+        FetchOutcome::Miss => {}
+        other => panic!("record addition must not serve the old index: {other:?}"),
+    }
+    publish_module_index(&store, &v3, None)
+        .unwrap_or_else(|e| panic!("republication after a record addition must not conflict: {e}"));
+    let p3 = index_page(&store, &v3);
+    assert_eq!(p3.record_names, vec!["Added".to_string()]);
+
+    // body-only edit: same key and same content — idempotent reuse of
+    // the SAME artifact (the index never read the body)
+    let v3b = record_input(
+        "fn get(x int) int { let z = x\nreturn z }\ntype Added { value int }",
+        "mi",
+    );
+    match lookup_only(&store, &v3b, &idx).unwrap() {
+        FetchOutcome::Hit { artifact_id, .. } => {
+            let fresh = publish_module_index(&store, &v3b, None).unwrap();
+            assert_eq!(artifact_id, fresh, "body-only republication is idempotent");
+        }
+        other => panic!("body-only edit must reuse the index: {other:?}"),
+    }
+
+    // restart stability: a fresh store publishes the same fields
+    let root2 = scratch("r13-index-fresh");
+    let store2 = open_store(&root2.join("store")).unwrap();
+    publish_module_index(&store2, &v3, None).unwrap();
+    let pf = index_page(&store2, &v3);
+    assert_eq!(pf.decl_versions, p3.decl_versions);
+    assert_eq!(pf.record_names, p3.record_names);
+
+    // read-side admission: a page under the CURRENT key with a CURRENT
+    // header but STALE body fields is rejected (field admission, not
+    // just the header hash)
+    {
+        use ac_artifact_probe::identity::QueryKey;
+        use ac_artifact_probe::store::PutRequest;
+        use ac_sema_contract::codec::{
+            encode_page, PageBody, PageHeader, PageKind, SemaPage, SEMA_CODEC_VERSION,
+            SEMA_PAGE_SCHEMA_V2,
+        };
+        let root3 = scratch("r13-index-stale-body");
+        let store3 = open_store(&root3.join("store")).unwrap();
+        let key = ac_sema_core::SemaQueryKey::build(&idx, &v3);
+        let mut stale = p1.clone();
+        stale.record_names = p3.record_names.clone();
+        stale.fn_names = p3.fn_names.clone();
+        let page = SemaPage {
+            header: PageHeader {
+                schema: SEMA_PAGE_SCHEMA_V2.into(),
+                producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
+                codec_version: SEMA_CODEC_VERSION,
+                kind: PageKind::ModuleIndex,
+                content: ac_sema_contract::ContentVersion::of_canonical(
+                    &ac_sema_core::query::module_index_bytes(&v3),
+                ),
+            },
+            body: PageBody::ModuleIndex(stale),
+        };
+        store3
+            .put_artifact(PutRequest {
+                layer: ac_sema_probe::SEMA_LAYER,
+                key: QueryKey {
+                    layer: ac_sema_probe::SEMA_LAYER,
+                    components: key.components.clone(),
+                },
+                kind: ac_sema_probe::SEMA_CARRIER,
+                payload: encode_page(&page).unwrap(),
+                edges: vec![],
+                project: None,
+            })
+            .unwrap();
+        match lookup_only(&store3, &v3, &idx) {
+            Err(ProbeError::RefVersionMismatch { name, .. }) => {
+                assert!(
+                    name.contains("decl_versions"),
+                    "names the stale fields: {name}"
+                );
+            }
+            other => panic!("a stale-body index page must be rejected, got {:?}", other),
+        }
+    }
+}
+
+/// Inject a FnMeta page for `fn get` under the FnSig key derived from
+/// `inject_input`, then look it up with `lookup_input` — the durable
+/// harness for the F-796-R13-02 admission matrix.
+fn r13_inject_fnmeta(
+    inject_input: &ac_sema_core::SemaInput,
+    lookup_input: &ac_sema_core::SemaInput,
+    tag: &str,
+    decl: ac_sema_contract::DeclRef,
+) -> Result<FetchOutcome, ProbeError> {
+    use ac_artifact_probe::identity::QueryKey;
+    use ac_artifact_probe::store::PutRequest;
+    use ac_sema_contract::codec::{
+        encode_page, FnMeta, PageBody, PageHeader, PageKind, SemaPage, TypeDesc,
+        SEMA_CODEC_VERSION, SEMA_PAGE_SCHEMA_V2,
+    };
+    let root = scratch(&format!("r13-{tag}"));
+    let store = open_store(&root.join("store")).unwrap();
+    let query = QueryKind::FnSig {
+        fn_name: "get".into(),
+    };
+    let key = ac_sema_core::SemaQueryKey::build(&query, inject_input);
+    let page = SemaPage {
+        header: PageHeader {
+            schema: SEMA_PAGE_SCHEMA_V2.into(),
+            producer: ac_sema_contract::SEMA_PRODUCER_ID.into(),
+            codec_version: SEMA_CODEC_VERSION,
+            kind: PageKind::FnMeta,
+            content: ac_sema_core::query::target_content(inject_input, &query),
+        },
+        body: PageBody::FnMeta(FnMeta {
+            decl,
+            params: vec![],
+            ret: TypeDesc::I32,
+            receiver: "free",
+        }),
+    };
+    store
+        .put_artifact(PutRequest {
+            layer: ac_sema_probe::SEMA_LAYER,
+            key: QueryKey {
+                layer: ac_sema_probe::SEMA_LAYER,
+                components: key.components.clone(),
+            },
+            kind: ac_sema_probe::SEMA_CARRIER,
+            payload: encode_page(&page).unwrap(),
+            edges: vec![],
+            project: None,
+        })
+        .unwrap();
+    lookup_only(&store, lookup_input, &query)
+}
+
+/// F-796-R13-02: the FnSig freshness is signature-level and the embedded
+/// fn decl carries full nominal admission — a current page hits, a stale
+/// decl content or a foreign package is rejected, a BODY-ONLY edit of
+/// the input keeps the hit (no false invalidation), and a signature edit
+/// misses (new key).
+#[test]
+fn sema_cache_r13_fnsig_page_admission_and_body_independence() {
+    let v1 = record_input("fn get() int { return 1 }", "fs");
+    let cur_sig = ac_sema_contract::ContentVersion::of_canonical(
+        &ac_sema_core::query::fn_sig_canonical(v1.lookup_fn("get").unwrap()),
+    );
+    let v_old = record_input("fn get(x int) int { return x }", "fs");
+    let old_sig = ac_sema_contract::ContentVersion::of_canonical(
+        &ac_sema_core::query::fn_sig_canonical(v_old.lookup_fn("get").unwrap()),
+    );
+    assert_ne!(old_sig, cur_sig);
+    let pkg = ac_sema_contract::PackageId::new("r6");
+    let fn_decl = |p: &ac_sema_contract::PackageId, c| {
+        ac_sema_contract::DeclRef::new(p, "fs", ac_sema_contract::DeclKind::Fn, "get", c)
+    };
+
+    // positive control: current decl → HIT
+    match r13_inject_fnmeta(&v1, &v1, "fnsig-current", fn_decl(&pkg, cur_sig.clone())).unwrap() {
+        FetchOutcome::Hit { page, .. } => {
+            let ac_sema_contract::codec::PageBody::FnMeta(m) = &page.body else {
+                panic!("fnmeta page");
+            };
+            assert_eq!(
+                m.decl.logical,
+                ac_sema_core::query::target_logical(
+                    &v1,
+                    &QueryKind::FnSig {
+                        fn_name: "get".into()
+                    }
+                )
+            );
+        }
+        other => panic!("a current FnMeta page must hit, got {other:?}"),
+    }
+
+    // stale decl content (real old signature version) → rejected
+    match r13_inject_fnmeta(&v1, &v1, "fnsig-stale", fn_decl(&pkg, old_sig)) {
+        Err(ProbeError::RefVersionMismatch {
+            cached, current, ..
+        }) => {
+            assert_ne!(cached, current, "real versions compared");
+        }
+        other => panic!(
+            "a stale-signature fn decl must be rejected, got {:?}",
+            other
+        ),
+    }
+
+    // foreign package decl → rejected
+    match r13_inject_fnmeta(
+        &v1,
+        &v1,
+        "fnsig-foreign",
+        fn_decl(
+            &ac_sema_contract::PackageId::new("foreign"),
+            cur_sig.clone(),
+        ),
+    ) {
+        Err(ProbeError::TargetMismatch { .. }) => {}
+        other => panic!(
+            "a foreign-package fn decl must be rejected, got {:?}",
+            other
+        ),
+    }
+
+    // BODY-ONLY edit: same signature → same key AND same (signature
+    // level) target content → the page still hits — the signature query
+    // never read the body, so it must not falsely invalidate (§5.4/V-03)
+    let v1b = record_input("fn get() int { return 2 }", "fs");
+    match r13_inject_fnmeta(&v1, &v1b, "fnsig-body-only", fn_decl(&pkg, cur_sig)).unwrap() {
+        FetchOutcome::Hit { .. } => {}
+        other => panic!("a body-only edit must keep the FnSig hit, got {other:?}"),
+    }
+}

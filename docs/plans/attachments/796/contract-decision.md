@@ -357,3 +357,31 @@ target body 变 → 键变 → Miss。callee body 变且调用者未读其 body 
 - **健康收口**（F-R12-02）：清除本计划两测试文件 7 项警告（未用
   SemaInput/ManagedStore 导入、publish_main 无效参数、四处兜底后不可达
   HitStaleProvenance 分支）；不弱化任何断言，行为不变。
+
+## D23 R13 修复轮冻结（2026-10-19）
+
+- **模块索引全量新鲜性**（F-R13-01）：`module_index_bytes(input)` 冻结为索引
+  页全部实际发布字段的规范字节（fn 候选 + record 候选 + 按 logical 排序的
+  decl 签名版本表，`module_decl_versions` 共享helper）；查询键
+  （`index-content-fp`，替代旧 `candidate-set-fp` 域名集）、页头 content 与
+  读侧 `target_content` 三者同源。签名编辑/record 增删=键变化（再发布不
+  Conflict、旧索不命中）；body-only 编辑=同键同内容（幂等复用同 artifact）。
+  `admit_page` 增 ModuleIndex 字段准入：package/module、fn/record 候选集与
+  decl_versions 逐字段对当前 input 比对——当前头+陈旧体的页被拒。
+- **FnSig 签名级新鲜性与 FnMeta 完整准入**（F-R13-02）：`target_content` 拆
+  分——FnSig=签名 canonical（不混 body；§5.4/V-03"未读body的签名查询不误
+  失效"），InferBody 保持签名+body。`admit_page` 增 FnMeta 分支：嵌入 fn
+  decl 全量名义准入（verify、当前包/模块、顶层 Fn 无 owner、当前声明存在、
+  content=当前签名 canonical）——头哈希等价不能替代嵌入事实。
+- **页种类覆盖映射（payload 字段→键/版本→读回准入→依赖→反控）**：
+  RecordMeta=shape+methods（admit_shape_refs+admit_method_ref，R11/R12）；
+  RecGroup=成员 shapes+组版本（admit_shape_refs+env，R6/R7）；FnMeta=decl
+  （本轮全量准入+签名级头）；ModuleIndex=全字段（本轮键/头/准入同源）；
+  InferBody/CachedResult=页头 target_content（签名+body）+manifest 新鲜分类。
+  无一页种再依赖"外层哈希等价替代未检查的嵌入事实"。
+- **永久反控**：`sema_cache_r13_module_index_tracks_signatures_and_records`
+  （签名编辑 Miss+无 Conflict 再发布、record 新增同、body-only 幂等复用、
+  fresh store 稳定、当前头+陈旧体注入被拒）与
+  `sema_cache_r13_fnsig_page_admission_and_body_independence`（当前 HIT、
+  真实旧签名版本拒、外包拒、body-only 保持 HIT、签名编辑 Miss）；
+  Required 按名绑定 V-03b。

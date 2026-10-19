@@ -664,13 +664,13 @@ impl SemaQueryKey {
                 c.push(("ref-versions-fp".into(), record_refs_fp(input, env, record)));
                 c.push(("unit-topology-fp".into(), env.topology_fp(record)));
             }
-            QueryKind::ListCandidates { domain } => {
-                let set = match *domain {
-                    "fn" => input.fn_candidates(),
-                    "type" => input.record_candidates(),
-                    _ => Vec::new(),
-                };
-                c.push(("candidate-set-fp".into(), fp(set.join("\u{1}").as_bytes())));
+            QueryKind::ListCandidates { .. } => {
+                // F-796-R13-01: the index page publishes names, records
+                // AND decl signature versions — the key covers that FULL
+                // payload (a signature edit or record addition is a key
+                // change, never a same-key conflict; body-only edits keep
+                // the key)
+                c.push(("index-content-fp".into(), fp(&module_index_bytes(input))));
             }
         }
         c.sort_by(|a, b| a.0.cmp(&b.0));
@@ -900,10 +900,61 @@ pub fn target_logical(input: &SemaInput, query: &QueryKind) -> LogicalId {
     ac_sema_contract::logical_id(&PackageId::new(&input.package), &input.module, kind, &name)
 }
 
+/// F-796-R13-01: every decl-version entry the module index page
+/// PUBLISHES — each top-level fn's logical id paired with its CURRENT
+/// signature content version, order-stable (sorted by logical id).
+pub fn module_decl_versions(
+    input: &SemaInput,
+) -> Vec<(ac_sema_contract::LogicalId, ContentVersion)> {
+    let mut v: Vec<(ac_sema_contract::LogicalId, ContentVersion)> = input
+        .fns
+        .iter()
+        .map(|f| {
+            (
+                ac_sema_contract::logical_id(
+                    &PackageId::new(&input.package),
+                    &input.module,
+                    DeclKind::Fn,
+                    &f.name,
+                ),
+                ContentVersion::of_canonical(&fn_sig_canonical(f)),
+            )
+        })
+        .collect();
+    v.sort_by(|a, b| a.0.cmp(&b.0));
+    v
+}
+
+/// F-796-R13-01: canonical bytes over EVERYTHING the module index page
+/// publishes — fn candidates, record candidates, and the sorted
+/// decl-version entries. The query KEY, the page header content and the
+/// read-side target content all derive from these bytes, so a signature
+/// edit or a record addition changes the key (never a same-key
+/// Conflict) and a stale index is detected on read, while a body-only
+/// edit keeps key and content (reuse).
+pub fn module_index_bytes(input: &SemaInput) -> Vec<u8> {
+    let mut b = input.fn_candidates().join("\u{1}").into_bytes();
+    b.push(0x1E);
+    b.extend_from_slice(&input.record_candidates().join("\u{1}").into_bytes());
+    b.push(0x1E);
+    for (logical, version) in module_decl_versions(input) {
+        b.extend_from_slice(logical.as_str().as_bytes());
+        b.push(0x1F);
+        b.extend_from_slice(version.as_str().as_bytes());
+        b.push(0x1E);
+    }
+    b
+}
+
 /// Content version of a query target's definition (page header field).
+/// F-796-R13-02: FnSig freshness is SIGNATURE-level — a body-only edit
+/// keeps the same key AND the same target content (the signature query
+/// never reads the body, so it must not falsely invalidate). InferBody
+/// still binds signature + body. ListCandidates covers the FULL module
+/// index payload (names + records + decl versions).
 pub fn target_content(input: &SemaInput, query: &QueryKind) -> ContentVersion {
     let bytes = match query {
-        QueryKind::InferBody { fn_name } | QueryKind::FnSig { fn_name } => input
+        QueryKind::InferBody { fn_name } => input
             .lookup_fn(fn_name)
             .map(|f| {
                 let mut b = fn_sig_canonical(f);
@@ -911,18 +962,17 @@ pub fn target_content(input: &SemaInput, query: &QueryKind) -> ContentVersion {
                 b
             })
             .unwrap_or_default(),
+        QueryKind::FnSig { fn_name } => input
+            .lookup_fn(fn_name)
+            .map(fn_sig_canonical)
+            .unwrap_or_default(),
         QueryKind::RecordFields { record } => input
             .lookup_record(record)
             .map(record_canonical)
             .unwrap_or_default(),
-        QueryKind::ListCandidates { domain } => {
-            let set = match *domain {
-                "fn" => input.fn_candidates(),
-                "type" => input.record_candidates(),
-                _ => Vec::new(),
-            };
-            set.join("\u{1}").into_bytes()
-        }
+        // the index page publishes the FULL module payload for every
+        // domain — freshness is payload-wide, not per-domain names
+        QueryKind::ListCandidates { .. } => module_index_bytes(input),
     };
     ContentVersion::of_canonical(&bytes)
 }

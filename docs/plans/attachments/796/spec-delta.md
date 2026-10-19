@@ -187,6 +187,19 @@ bindings 边车内容 hash 入 oracle 身份；v1 接受/拒绝集字节不变
   （semaref/CT 独立 schema 与 Future 行不涉）。
 - **健康**：本计划测试文件 7 项警告清零（无效导入/参数、不可达分支），
   断言不弱化。
+## R13 修复轮补充（2026-10-19，D23）
+
+- **SD-04（索引全量新鲜性）**：模块索引键/页头/读侧准入同源于
+  `module_index_bytes`（fn 候选+record 候选+decl 签名版本）；签名编辑或
+  record 增删=键变化（再发布无 Conflict）；body-only=幂等复用；读侧对
+  全部发布字段逐项准入（当前头+陈旧体页被拒）。
+- **SD-02（FnSig 签名级新鲜性）**：`target_content` 拆分——FnSig 只绑签名
+  canonical（body-only 编辑不误失效），InferBody 保持签名+body；FnMeta 页
+  嵌入 fn decl 全量名义准入（verify/当前包模块/顶层 Fn/当前声明/当前签名
+  版本）。
+- **页种类覆盖映射**：见 D23——RecordMeta/RecGroup/FnMeta/ModuleIndex/
+  InferBody·CachedResult 各自 payload 字段→键/版本→读回准入均有显式控制，
+  不再以页头哈希等价替代嵌入事实。D22"其余页全量等价"表述由本节修正。
 ## touched_goals 说明
 
 frontmatter `touched_goals: []`：本仓 specs 现行目标索引（docs/specs 各

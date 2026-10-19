@@ -499,21 +499,115 @@ fn admit_page(
             }
             Ok(())
         }
-        _ => {
-            let Some(query) = query else {
-                return Ok(());
-            };
-            let current = ac_sema_core::query::target_content(input, query);
-            if page.header.content != current {
+        PageBody::FnMeta(m) => {
+            // F-796-R13-02: full nominal admission for the embedded fn
+            // decl — verify, current package/module, a top-level Fn decl
+            // for a currently declared function, and the CURRENT
+            // signature content version. Header equivalence cannot stand
+            // in for the embedded fact.
+            m.decl.verify().map_err(|e| ProbeError::FactsMismatch {
+                detail: format!("nominal ref failed verification: {e}"),
+            })?;
+            let pkg = ac_sema_contract::PackageId::new(&input.package);
+            if m.decl.package != pkg || m.decl.module != input.module {
+                return Err(ProbeError::TargetMismatch {
+                    found: format!("{}::{}", m.decl.package.as_str(), m.decl.module),
+                    expected: format!("{}::{}", input.package, input.module),
+                });
+            }
+            if m.decl.kind != ac_sema_contract::DeclKind::Fn || m.decl.owner.is_some() {
+                return Err(ProbeError::TargetMismatch {
+                    found: format!("{} `{}`", m.decl.kind.as_str(), m.decl.name),
+                    expected: "a top-level Fn decl".into(),
+                });
+            }
+            let Some(f) = input.lookup_fn(&m.decl.name) else {
                 return Err(ProbeError::RefVersionMismatch {
-                    name: query.as_str().to_string(),
-                    cached: page.header.content.as_str().to_string(),
+                    name: m.decl.name.clone(),
+                    cached: m.decl.content.as_str().to_string(),
+                    current: "<fn no longer declared>".into(),
+                });
+            };
+            let current = ac_sema_contract::ContentVersion::of_canonical(
+                &ac_sema_core::query::fn_sig_canonical(f),
+            );
+            if current != m.decl.content {
+                return Err(ProbeError::RefVersionMismatch {
+                    name: m.decl.name.clone(),
+                    cached: m.decl.content.as_str().to_string(),
                     current: current.as_str().to_string(),
                 });
             }
-            Ok(())
+            admit_header_content(page, input, query)
         }
+        PageBody::ModuleIndex(ix) => {
+            // F-796-R13-01: every published field is admitted against
+            // the CURRENT input — package/module, fn candidates, record
+            // candidates and each decl's signature version — not just
+            // the header hash.
+            let pkg = ac_sema_contract::PackageId::new(&input.package);
+            if ix.package != pkg || ix.module != input.module {
+                return Err(ProbeError::TargetMismatch {
+                    found: format!("{}::{}", ix.package.as_str(), ix.module),
+                    expected: format!("{}::{}", input.package, input.module),
+                });
+            }
+            if ix.fn_names != input.fn_candidates() {
+                return Err(ProbeError::RefVersionMismatch {
+                    name: "module-index.fn_names".into(),
+                    cached: ix.fn_names.join("\u{1}"),
+                    current: input.fn_candidates().join("\u{1}"),
+                });
+            }
+            if ix.record_names != input.record_candidates() {
+                return Err(ProbeError::RefVersionMismatch {
+                    name: "module-index.record_names".into(),
+                    cached: ix.record_names.join("\u{1}"),
+                    current: input.record_candidates().join("\u{1}"),
+                });
+            }
+            let want = ac_sema_core::query::module_decl_versions(input);
+            if ix.decl_versions != want {
+                let join = |v: &[(
+                    ac_sema_contract::LogicalId,
+                    ac_sema_contract::ContentVersion,
+                )]| {
+                    v.iter()
+                        .map(|(_, ver)| ver.as_str().to_string())
+                        .collect::<Vec<_>>()
+                        .join(",")
+                };
+                return Err(ProbeError::RefVersionMismatch {
+                    name: "module-index.decl_versions".into(),
+                    cached: join(&ix.decl_versions),
+                    current: join(&want),
+                });
+            }
+            admit_header_content(page, input, query)
+        }
+        _ => admit_header_content(page, input, query),
     }
+}
+
+/// The generic page-level freshness check: the header content must
+/// equal the query target's CURRENT content version.
+fn admit_header_content(
+    page: &SemaPage,
+    input: &SemaInput,
+    query: Option<&QueryKind>,
+) -> Result<(), ProbeError> {
+    let Some(query) = query else {
+        return Ok(());
+    };
+    let current = ac_sema_core::query::target_content(input, query);
+    if page.header.content != current {
+        return Err(ProbeError::RefVersionMismatch {
+            name: query.as_str().to_string(),
+            cached: page.header.content.as_str().to_string(),
+            current: current.as_str().to_string(),
+        });
+    }
+    Ok(())
 }
 
 /// Lookup WITHOUT any compute path. Decodes, admits kind/target/facts
@@ -1276,29 +1370,17 @@ pub fn publish_module_index(
     project: Option<&str>,
 ) -> Result<String, ProbeError> {
     let query = QueryKind::ListCandidates { domain: "fn" };
+    // F-796-R13-01: header content and decl versions derive from the
+    // SAME full-payload bytes the key and the read-side target content
+    // use — a signature edit or a record addition republishes under a
+    // NEW key (never a same-key Conflict), and a body-only edit is an
+    // idempotent republication of the same artifact.
     let index = ModuleIndex {
         package: ac_sema_contract::PackageId::new(&input.package),
         module: input.module.clone(),
         fn_names: input.fn_candidates(),
         record_names: input.record_candidates(),
-        decl_versions: {
-            let mut v = Vec::new();
-            for f in &input.fns {
-                v.push((
-                    ac_sema_contract::logical_id(
-                        &ac_sema_contract::PackageId::new(&input.package),
-                        &input.module,
-                        ac_sema_contract::DeclKind::Fn,
-                        &f.name,
-                    ),
-                    ac_sema_contract::ContentVersion::of_canonical(
-                        &ac_sema_core::query::fn_sig_canonical(f),
-                    ),
-                ));
-            }
-            v.sort_by(|a, b| a.0.cmp(&b.0));
-            v
-        },
+        decl_versions: ac_sema_core::query::module_decl_versions(input),
     };
     let page = SemaPage {
         header: PageHeader {
@@ -1307,7 +1389,7 @@ pub fn publish_module_index(
             codec_version: ac_sema_contract::SEMA_CODEC_VERSION,
             kind: PageKind::ModuleIndex,
             content: ac_sema_contract::ContentVersion::of_canonical(
-                &index.fn_names.join("\u{1}").into_bytes(),
+                &ac_sema_core::query::module_index_bytes(input),
             ),
         },
         body: PageBody::ModuleIndex(index),
