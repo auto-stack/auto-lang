@@ -73,7 +73,12 @@ impl ToyUiContext {
                 Err(_) => {
                     tokens.push(Token {
                         kind: TokenKind::EOF,
-                        pos: Pos { line: 0, at: 0, pos: 0, len: 0 },
+                        pos: Pos {
+                            line: 0,
+                            at: 0,
+                            pos: 0,
+                            len: 0,
+                        },
                         text: "".into(),
                     });
                     break;
@@ -332,7 +337,19 @@ impl UiParseContext for ToyUiContext {
     }
 
     fn advance_peek_kind(&mut self) -> TokenKind {
-        self.tokens.get(self.idx + 1).map(|t| t.kind).unwrap_or(TokenKind::EOF)
+        self.tokens
+            .get(self.idx + 1)
+            .map(|t| t.kind)
+            .unwrap_or(TokenKind::EOF)
+    }
+
+    fn advance_peek_kind_resync(&mut self) -> TokenKind {
+        // 预词法向量形态：与 advance_peek_kind 同观察（cur/缓冲终态一致；
+        // toy 无 prev 语义差异——该差异由真 Parser 侧 r04 测试钉住）。
+        self.tokens
+            .get(self.idx + 1)
+            .map(|t| t.kind)
+            .unwrap_or(TokenKind::EOF)
     }
 
     fn raw_cursor_save(&mut self) -> ParseCheckpoint {
@@ -348,6 +365,11 @@ impl UiParseContext for ToyUiContext {
         let s = self.take_snap(cp)?;
         self.idx = s.idx;
         Ok(())
+    }
+
+    fn raw_cursor_release(&mut self, cp: ParseCheckpoint) {
+        // Drop 语义释放：仅失效目标凭据（F810-R1-01 端口合同）。
+        let _ = self.take_snap(cp);
     }
 
     fn capture_raw_block(&mut self) -> AutoResult<String> {
@@ -407,7 +429,9 @@ impl UiParseContext for ToyUiContext {
     fn exit_scope(&mut self) {}
 
     fn bind_var(&mut self, name: &str, ty: Type) {
-        self.binds.borrow_mut().push((name.to_string(), format!("{:?}", ty)));
+        self.binds
+            .borrow_mut()
+            .push((name.to_string(), format!("{:?}", ty)));
     }
 
     fn define_handler_param(&mut self, name: &str) {
@@ -476,7 +500,9 @@ impl UiParseContext for ToyUiContext {
         while !matches!(self.cur().kind, TokenKind::Newline | TokenKind::EOF) {
             self.advance();
         }
-        Ok(OnEvents { branches: Vec::new() })
+        Ok(OnEvents {
+            branches: Vec::new(),
+        })
     }
 
     fn take_docs(&mut self) -> Option<String> {
@@ -487,7 +513,9 @@ impl UiParseContext for ToyUiContext {
     }
 
     fn warn_suspicious_block_keyword(&mut self, found: String, suggestion: String) {
-        self.warnings.borrow_mut().push(format!("{}~{}", found, suggestion));
+        self.warnings
+            .borrow_mut()
+            .push(format!("{}~{}", found, suggestion));
     }
 
     fn register_style_recipe(&mut self, decl: &StyleRecipeDecl) {
