@@ -1,5 +1,27 @@
 # PLAN-798 验收/覆盖/并行审计（T-08，work-owned 收口）
 
+## r6 当前验收边界（2026-10-20，优先于历史摘要）
+
+代码基线 `8e78502ba`，受测证据提交 `dbae2e634`；本次仅文档收口，实际冻结提交以随后commit为准。R15六项修复仍须最终独立review，不以work自检代替。原V/K14和安全/资源/正式门不削弱，merge-owned整档保持pending。
+
+| 阶段 | 本计划实际实现 | 尚未实现 / 后续owner |
+|---|---|---|
+| source/HIR | 每请求整模块前端/Atom render-bind/verify | 函数级语法、语义、HIR驻留与依赖查询：828 |
+| MIR | 缺一个函数单元仍whole-module lower/verify/split | lower_function及未改Checked MIR对象复用：828 |
+| ABC缓存 | 函数产物独立身份/持久化/恢复；body编辑1 emit、114 hit | 热态内存命中不读盘、不重解码其他函数：828 |
+| 装载 | 命中单元重decode/verify，再完整closure编解码/准入 | 常驻已验证函数代码、稳定绑定、局部受检装载：828 |
+| 安装/寿命 | store root/required-edge/lease/GC；有限native代际准入 | 在线函数安装、新旧snapshot可见性/活代码保活回收：828 |
+| 周转 | 已实现warm Driver链路与跨进程formal技术门分别记录 | 稳定会话完整函数增量结构+P95双门：828 |
+
+798完成不表示全链路函数增量或真实在线替换完成。warm bench 874.5993ms不是单函数编译成本；sig51.1369ms是前端参数不匹配的诊断早退。最近formal edit980.1/sig1200.4ms，含逐请求启动/store-open/父侧校验，不能用于判定用户稳定会话目标失败；它在798原合同中仍是独立开放技术门，不能以bench替代或删失败样本。
+
+SD-08拟沉淀到 `docs/specs/auto-av/cache-and-conformance.md`：逐阶段说明上表，禁止“cache hit/1 emit/时间绿”冒领完整增量。原SD-02历史v1字样以r5 wire/schema/semantics /2、kind/module-unit规则为准，保留公开输入/恢复重验；实际代码没有由本次说明改变。
+
+798主计划部分早期r1/r2/r3/r6附件路径在主检出缺失，列于 `docs/plans/attachments/798/function-incremental-audit-20261020/preflight-result.json.txt`。这些是不可复用的历史证据，不伪造文件或据其授pass；最终验收使用当前可重放测试/当前来源与R15以后在库证据。
+
+T-08本次范围：更新acceptance/coverage/contract-decision/turnaround的实际交付声明；不增加完整增量实现。T-07正式技术门仍待受测冻结提交实证，最终review/merge后才能声明本计划完成。
+
+
 2026-10-19。代码基线：`plan-798-dev`（本 worktree，T-06..T-08 修复+续作后）；
 依赖：master `13367d127`（796 已归档合入，交付 b76eca8d2；788 已归档合入）。
 本文件是 work 自检产物，最终验收归 review；canonical Spec 沉淀归 merge。
@@ -18,7 +40,7 @@
 | V-08 | 错身份/并发/回收 | envelope 错 producer/schema/stage+Conflict 保旧+lease/GC | 绿 |
 | V-09 | 规模/内存 | 4096 链+33.5MiB 冷产物+512 真实 churn+分区反控三件 | 绿 |
 | V-10 | 有界执行 | fuel/取消/1024 帧两侧/trace 预算 | 绿 |
-| V-11 | 亚秒 | 六场景 30 样本（Rust 定向）+ **正式 AutoDown warm-edit 门**（T-07） | 绿 |
+| V-11 | 亚秒 | 六场景30样本bench与正式跨进程门分列；bench不能代formal | formal待新冻结实证，非绿 |
 | V-12 | AutoDown 真实执行 | corpus 6 checks+负 oracle+decode 负例，统一 runner | 绿 |
 | V-13 | 绑定/边界 | binding_tier 4（同名异 owner/重启稳定/schema/tamper） | 绿 |
 

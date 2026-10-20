@@ -92,3 +92,10 @@ run]` 共享一个会话 store——终步即"单函数 body 编辑→当前正�
   绑定/缺绑定）全拒；worker 从不读 expected。
 - 复验：`powershell -File scripts/verify-ac-av-798.ps1 -Scope autodown`
   （含正式硬门断言，退出码透传）。
+
+
+## 2026-10-20 Plan r6交付边界更正
+
+以主计划§5.10和受管acceptance.md的r6阶段矩阵为准：本实现有函数持久产物复用，但每请求仍整模块前端，miss时whole MIR lower/verify/split，hit单元重decode/verify后完整closure装载。没有常驻函数代码在线替换。798通过只交付有限执行/缓存基础；真正源码至AV安装的函数级增量由828承接，执行优先级为798完成后828。旧计量不能证明未改函数IR/代码保持不动。sig为前端错误早退，不代表成功签名更新。
+
+旧formal含逐请求初始化，保留原技术门事实与失败样本，不据此判用户稳定会话目标失败；本次不改测试阈值、入口或以bench替代formal。r5双线内存政策和/2 wire/kind准入仍有效；历史摘要旧版本/旧资源目标不作为当前合同。798仍待正式门、最终review及merge-owned冻结门禁。
