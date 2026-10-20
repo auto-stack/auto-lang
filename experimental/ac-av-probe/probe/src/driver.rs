@@ -1102,6 +1102,11 @@ struct LevelChain {
     /// The top of `vals` is a bare identifier — `(`/`:` may retract it as
     /// a callee/parameter NAME (names are not construction levels).
     ident_top: bool,
+    /// Prefix unary levels folded into the `ident_top` value
+    /// (F798-R13-01): the `(`-retract of a callee name RESTORES them so
+    /// they bind to the full CALL expression (`Unary(Call(..))`), never
+    /// vanish with the discarded name.
+    ident_unary: u32,
     /// Folded max path of COMPLETED siblings (argument-list commas).
     sib_done: u32,
     /// This level is a sibling list (argument commas / named colons).
@@ -1129,9 +1134,9 @@ impl LevelChain {
         self.vals.iter().copied().max().unwrap_or(0)
     }
 
-    /// A completed operand — literal/ident, `true`/`false`, or a closed
-    /// paren group of path `depth` — joins the current chain; pending
-    /// prefix unary operators nest around it.
+    /// A completed operand — literal, `true`/`false`, or a closed paren
+    /// group of path `depth` — joins the current chain; pending prefix
+    /// unary operators nest around it.
     fn operand(&mut self, depth: u32) {
         let depth = depth + std::mem::take(&mut self.unary);
         if self.after_operand {
@@ -1142,8 +1147,34 @@ impl LevelChain {
                 self.vals.push(depth);
             }
             self.ident_top = false;
+            self.ident_unary = 0;
         } else {
             self.vals.push(depth);
+        }
+        self.after_operand = true;
+    }
+
+    /// A bare IDENTIFIER operand. When it is a FRESH value it becomes the
+    /// callee/name candidate (`ident_top`), and the prefix unary levels
+    /// folded into it are recorded (`ident_unary`) — the `(`-retract then
+    /// RESTORES them onto the full CALL expression instead of letting them
+    /// vanish with the discarded name (F798-R13-01: `-f(..)`/`!f(..)` are
+    /// `Unary(Call(..))`, one level per prefix, on the construction path).
+    fn ident_operand(&mut self) {
+        let prefix = std::mem::take(&mut self.unary);
+        if self.after_operand {
+            // Adjacent identifiers with no operator: one node, not a name.
+            if let Some(top) = self.vals.last_mut() {
+                *top = (*top).max(1 + prefix);
+            } else {
+                self.vals.push(1 + prefix);
+            }
+            self.ident_top = false;
+            self.ident_unary = 0;
+        } else {
+            self.vals.push(1 + prefix);
+            self.ident_top = true;
+            self.ident_unary = prefix;
         }
         self.after_operand = true;
     }
@@ -1153,12 +1184,14 @@ impl LevelChain {
         self.ops.push(prec);
         self.after_operand = false;
         self.ident_top = false;
+        self.ident_unary = 0;
     }
 
     fn prefix_unary(&mut self) {
         self.unary += 1;
         self.after_operand = false;
         self.ident_top = false;
+        self.ident_unary = 0;
     }
 
     /// A comma ends the current sibling: its COMPOSED path folds by MAX
@@ -1172,6 +1205,7 @@ impl LevelChain {
         self.unary = 0;
         self.after_operand = false;
         self.ident_top = false;
+        self.ident_unary = 0;
         self.had_comma = true;
         v
     }
@@ -1196,6 +1230,7 @@ impl LevelChain {
         self.unary = 0;
         self.after_operand = false;
         self.ident_top = false;
+        self.ident_unary = 0;
         self.sib_done = 0;
         self.had_comma = false;
     }
@@ -1245,9 +1280,15 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                 depth += 1;
                 max_depth = max_depth.max(depth);
                 // A callee identifier directly before `(` is a NAME, not
-                // an operand of the enclosing chain.
+                // an operand of the enclosing chain. The prefix unary
+                // levels folded into it are RESTORED here — they bind to
+                // the full CALL expression (`-f(..)`/`!f(..)` are
+                // `Unary(Call(..))`), never vanish with the name
+                // (F798-R13-01).
                 if cur.ident_top {
                     cur.vals.pop();
+                    cur.unary += cur.ident_unary;
+                    cur.ident_unary = 0;
                     cur.after_operand = false;
                     cur.ident_top = false;
                 }
@@ -1323,10 +1364,7 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
             Tok::Kw(auto_ac_prototype::source::lexer::Kw::True)
             | Tok::Kw(auto_ac_prototype::source::lexer::Kw::False) => cur.operand(1),
             Tok::Kw(_) | Tok::Reserved(_) => cur.clause_boundary(&mut peak),
-            Tok::Ident(_) => {
-                cur.operand(1);
-                cur.ident_top = true;
-            }
+            Tok::Ident(_) => cur.ident_operand(),
             Tok::Int(_) | Tok::Raw { .. } => cur.operand(1),
             _ => {}
         }

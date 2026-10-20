@@ -607,6 +607,81 @@ fn av_resources_tail_operand_deep_call_not_concatenated() {
     assert!(front_door_admit(&ok).is_ok());
 }
 
+/// F798-R13-01: prefix unary binds to the FULL CALL expression. The
+/// callee-name retract at `(` must RESTORE the prefix levels folded into
+/// the name — `-f(..)`/`!f(..)` are `Unary(Call(..))`, one path level per
+/// prefix. Discriminators: low-depth prefixes execute (value proves
+/// evaluation); the 20-prefix + 110-call shape (true path 131) rejects
+/// with AND without an extra grouping pair (132); prefixes on a plain
+/// literal operand count as before; the bool `!` family behaves the same.
+#[test]
+fn av_resources_prefix_unary_binds_to_full_call() {
+    let calls = |n: usize| format!("{}1{}", "idfn(x: ".repeat(n), ")".repeat(n));
+    let src = |prefixes: usize, depth: usize| {
+        format!(
+            "fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return {}{}\n}}\n",
+            "-".repeat(prefixes),
+            calls(depth)
+        )
+    };
+    let mut d = Driver::ephemeral();
+    // Low-depth controls (true paths 116 / 24): legal and execute.
+    for (p, n, want) in [(5usize, 110usize, -1i32), (20, 3, 1)] {
+        let s = src(p, n);
+        assert!(
+            front_door_admit(&s).is_ok(),
+            "{p} prefixes + {n}-call admits: {:?}",
+            front_door_admit(&s).err()
+        );
+        let r = d.request(&s, "d_main", &[]);
+        assert!(r.ok(), "{p}+{n} executes: {:?}", r.diag);
+        assert_eq!(r.value_i32(), Some(want), "{p} prefixes value");
+    }
+    // The R13 shape: 20 prefixes + 110-call — true path 131 — rejects at
+    // the door (was admitted before the retract restored the prefixes).
+    let over = src(20, 110);
+    let err = front_door_admit(&over).unwrap_err();
+    assert_eq!(err.code, "av.resource.frontend-nesting");
+    let r = d.request(&over, "d_main", &[]);
+    assert_eq!(r.diag.expect("rejected").stage, "admission");
+    // The SAME shape with one extra grouping pair (path 132) stays
+    // rejected — grouping never lowers the path.
+    let grouped = format!(
+        "fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return ({}{})\n}}\n",
+        "-".repeat(20),
+        calls(110)
+    );
+    assert!(
+        front_door_admit(&grouped).is_err(),
+        "grouped 132-path still rejects"
+    );
+    // Prefixes on a PLAIN literal operand (no callee retract involved):
+    // 20 negations of 1 = path 21, legal, value 1.
+    let plain = format!("fn main() int {{\n    return {}1\n}}\n", "-".repeat(20));
+    assert!(front_door_admit(&plain).is_ok(), "plain prefixes admit");
+    let r = d.request(&plain, "d_main", &[]);
+    assert!(r.ok(), "{:?}", r.diag);
+    assert_eq!(r.value_i32(), Some(1), "even negation count");
+    // Bool family: 20 `!` + 110-call chain (true path ≥131) rejects; the
+    // low-depth bool control stays legal and evaluates.
+    let bsrc = |n: usize| {
+        format!(
+            "fn bfn(b bool) bool {{\n    return b\n}}\n\nfn main() int {{\n    if {}{} {{\n        return 1\n    }}\n    return 0\n}}\n",
+            "!".repeat(20),
+            format!("{}true{}", "bfn(b: ".repeat(n), ")".repeat(n))
+        )
+    };
+    let err = front_door_admit(&bsrc(110)).unwrap_err();
+    assert_eq!(
+        err.code, "av.resource.frontend-nesting",
+        "bool 20!+110-call"
+    );
+    assert!(front_door_admit(&bsrc(3)).is_ok(), "bool low-depth control");
+    let r = d.request(&bsrc(3), "d_main", &[]);
+    assert!(r.ok(), "{:?}", r.diag);
+    assert_eq!(r.value_i32(), Some(1), "20 negations of true = true");
+}
+
 /// V-09: the recursion-critical ATOM front door — 4096-deep nested lists
 /// are rejected before the recursive document parser runs.
 #[test]
