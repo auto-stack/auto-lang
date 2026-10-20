@@ -1,3 +1,19 @@
+### Plan 814 M814-A 发布遗留跟进（2026-10-20，T-15 收据）
+
+master `f6e07acee` 发布后两项跟进：①交付投影不感知 .gitignore——master 树
+ffi_dual `build_a2r/` 忽略态生成残留（含绝对 path 的生成 Cargo.toml）曾使
+792 driver 首轮判红（外部 path 守卫），清理后 25/25 复绿；投影应在 staging
+时跳过 ignore 态路径或在守卫前过滤生成物（owner=auto-man 交付域，B 阶段
+或独立修复）。②777 master 侧基线重采样被并发会话脏文档阻塞（拒绝脏树
+刷新），树静后补（strict 当前 2 violations=stale baseline，非真实违边）。
+
+### Plan 816（2026-10-20，M816-A独立阶段审查R1，needs_fix）
+
+受审 `6b4bf9c2fcf3e872b33f6cc8505cf9fa09aa550f`，r2/M816-A/T-13；[完整报告/冻结SD/可重放反例](attachments/816/review-r1/review.md)。当前六项OPEN：F-816-R1-01(P1) 250ms deadline不覆盖stdin/协议阻塞写，约1800ms断管才返回；02(P1) 根先退出后代持管道导致run/shutdown越过期限约1800ms仍Success；03(P2) 合法响应与坏前缀粘包误报Timeout，拆分正确StreamViolation；04(P1) Windows先spawn后assign Job有早派生逃树窗口（源码证明）；05(P3) 新client/fixture格式未过、execution文档3条新warning；06(P2) reader/read/join/cancel错误被吞（分支核查，未声称内核错误实测）。均为阶段合同内缺口，登记不授权延期/降级。29个不同原定向测试、真实consumer fresh/locked与闭包、777 strict、CLI/Man check及新包clippy通过，不覆盖五个新增失败观察；反例回放exit1含三个对照。executing1/14，保留T01、重开T02/T12，T13未过；原树work修齐并补永久控制后提交再审。B依赖/发行保持原门，SD05-A候选处置需对齐。merge-owned冻结裸t/触面/实际合入/Spec/ledger/来源仍pending；未改实现/整档/合入/归档/清树。
+
+### Plan 828（2026-10-20，修复复审R2，就绪/原例与相邻控制，needs_fix）
+
+受审 `791c62ab251b5d0f36d3d5610fade600760d2f52`，r2；[R2关闭表/11项重放/诊断与AC-V-SD](attachments/828/review-r2/review.md)。**R1-03/07/13 CLOSED**（递归与互递归/旧snapshot、恢复后未改代码Arc、脚本参数/workspace/零选择与错误传播）。**05/06/08/09/14 PARTIAL**：跨会话原例修好但取消/关闭未做；凭证自证原例修好但Scalar凭证仍获Core环境接受；trace启动修好但trace在未改callee时caller合法体编辑被拒；冷启4MiB原例修好但完整资源门未做；fmt修好但文档/SD和新增context_revision dead_code待清。**01/02/04/10/11/12仍OPEN**：真实函数前端/执行payload、未改trap位置、A07/实际依赖及GC、持久全unit重写、正式IPC/双线内存和真实反控缺口。永久修复6/6、原17/17绿；独立原7例6过1失败，新增4控制2过2失败（总11例8过3失败）；不以重复scope凑覆盖。work自己仍列in_progress/必需OPEN，故仅就绪/有界复验，不能授最终pass。executing0/11保持，下一次就绪须先补原树实现及诊断/覆盖调整；记债不批准延期。未改实施/跑整档/合入，merge-owned冻结t+tv/consumer与沉淀/归档/guard仍pending。下方R1为历史，已闭子项不复活。
 ### Plan 828（2026-10-20，独立送审就绪/有界反例复审R1，needs_fix）
 
 受审 `940445bf57674780bc6ff6c68928c0c7148a0dbf`，r2；[R1报告/AC-V-SD/7项可重放反例](attachments/828/review-r1/review.md)。**F-828-R1-01..12(P1) OPEN**：热前端仍整Program resolve/typecheck/Atom中转；snapshot重建全体执行payload；递归体热更新被unit准入拒绝；未改函数trap来源陈旧；跨会话PreparedEdit错误安装；凭证未核真实环境；restore后未改代码身份切换；旧trace支持丢失；4MiB输入cap绕过；A07/实际依赖及GC释放证据缺失；持久热编辑重编解码/写入全部unit；正式worker/IPC/双线内存和真实反伪造门未交付。**R1-13(P2)/14(P2，fmt子项P3) OPEN**：脚本参数/非成员workspace/零选择保护缺陷，交接及SD与现状不符、新模块fmt红。已有828测试17/17及scalar差分6/6绿，独立7例7失败可复现；记债不批准延期/缩面，正式/内存不得转batch或后继。Plan回executing0/11，所有work任务完成断言重开，现有实现和正控历史保留；原树一次修齐后提交复审。未改实施/跑整档/合入/归档/清树；独立pass后的merge-owned裸t+tv、必要workspace/consumer门及Spec/ledger/guard仍pending。
