@@ -1,3 +1,7 @@
+### Plan 814（2026-10-20，修复复审R2就绪核查，needs_fix）
+
+受审 `edb78b2efbdcadb1994d4065b9cb341b3d71497f`，r2；[R2报告/原始check/覆盖边界](attachments/814/review-r2/review.md)。独立locked/offline SDK+兼容包check退出0，R1-01不可编译子项CLOSED；**F814-R1-01整体仍OPEN**：auto-vm/frame provider、compiler实际迁移与A候选/consumer/发行未交付，frame无效feature门导致固定0且报unexpected_cfgs。**F814-R1-02仍OPEN**：UI文法normal边和默认装配未改，基线§10.3的解释不能覆盖r2明确禁止边。Plan executing1/15保持，T-01保留；原树work修齐并提交完整候选及根因/覆盖调整后复审。未整档/修实施/合入；后续独立pass后的merge-owned冻结门/沉淀/guard仍pending。
+
 ### Plan 814（2026-10-20，独立复审R1就绪核查，needs_fix）
 
 受审 `03d983ae9a654d06963b2ad56a04a3adb3bf8e6e`，r2；[报告/AC矩阵/冻结SD](attachments/814/review-r1/review.md)。**F814-R1-01(P1) OPEN**：当前交接明确不可编译WIP，SDK根项级联未完、compiler/runtime只有文档骨架、auto-vm未切SDK、A候选及消费者/资源验证未交付。**F814-R1-02(P1) OPEN**：SDK无条件normal依赖auto-ui-dialect并直接调用完整UI grammar，违反AC-01/08。均属合同内未完成项，不因记债降格；无需重复整套最终验收。Plan保持executing1/15，T-01保留；原树work完成T-02/T-03/T-13及定向证据并提交后申请具名阶段复审，完整最终审查还需B原任务。未修改实施或跑Cargo/整档/实机/合入；后续pass后的merge-owned冻结门与沉淀/guard仍pending。
@@ -293,6 +297,16 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 受审 `d2b0ec99ba579547a1506a2babc40b232c3dcda3`；[R5报告/旧例闭环/新反例](attachments/787/review-r5/REVIEW.md)。R1 7/7、R2 18/18、R3 8/8、R4 3/3全部绿（集合重叠）；当前 **needs_fix / executing 5/9**，不批准延期，下方旧轮开放结论保留历史。
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
+
+### Plan 797（2026-10-20，R12 修复轮完成，待 T-08 复审）
+
+R12 复审（受审 `634d4d0ab`，needs_fix）2 项组合残项已全部修复（修复提交 `ae51fea21`，同树）：F-R4-07 搜索域清单统一递归（传递头子路径遮蔽 17→29 反例；R11 顶层妥协的前提"命中回归"经实测推翻——依赖父目录集实为 cside 0.1ms）；F-R4-10 第 5 memo 记忆化最长 flatten 路径成本（共享子图完整展开入终门；1300 变体走查过终门拒、900 控制）。probe 82/82、父侧 13/13、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
+
+### Plan 797（2026-10-20，R12 完整复审，needs_fix）
+
+受审 `634d4d0abed97846f2e1c212104eba3581b47ca8`，revision1；[R12完整报告/AC映射/原始反例](attachments/797/review-r12/review.md)。上轮3项 **F-R4-09 CLOSED**（发布完成后span/门禁消费及失败分类、写失败传播）；**F-R4-07/10 PARTIAL/OPEN**：07原传递头遮蔽已修，但common/outer.h→sub/dep.h新增common/sub/dep.h后仍cache PE17而fresh29；10原1700名直链已拒、小图控制正常，但同1024节点1700名共享后缀DAG接受并实际新增堆峰8,993,472B>8MiB，size memo命中截短链峰不能代表flatten路径。无新增finding ID/规模要求，登记不批准原合同内延期/缩面。
+
+181定向测试pass+1既有ignored，正式完成后硬门P95 body-edit745/reject104ms；自身改动文件无warning、scoped格式/空白过。**executing3/9**，原树work修两项及完整组合oracle后再审。第七次完整final未过；未改实现/整档/合入/canonical Spec/live ledger；merge-owned冻结门禁、规范沉淀/归档/guard清理pending。下列为历史工作交接/审查。
 
 ### Plan 797（2026-10-20，R11 修复轮完成，待 T-08 复审）
 
