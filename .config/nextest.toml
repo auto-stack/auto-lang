@@ -28,8 +28,16 @@
 #   OnceLock 缓存失效;实测日常档 6250/7900 测试秒在此族),tu 用单进程
 #   libtest 使 setup 全档只付一次。tf 面(nextest-full.toml)不动=批量
 #   回归仍全覆盖;ui::(iced 运行时,均摊 0.28s/测)留日常档。
+# PLAN-797 merge(2026-10-20): abi_recipe_formal_turnaround_hard_gates 是
+#   计时硬门(P95<1000ms 断言),参考条件=串行执行——门的所有者是
+#   scripts/verify-autoabi-797.ps1 的串行 parent-gates 步与复审受控复测
+#   (R17 即以受控串行复测认证 657/106ms)。nextest 并行池跨二进制进程
+#   争载(ui stage3 stress/ac-native worker 族同池)使 worker 进程派生
+#   延迟尖峰、P95 不可复现(9% 空载下全档仍红,单跑同提交 31.4s PASS,
+#   归因实录见计划 §9 merge 收据)——镜像 churn/画廊围栏待遇移出日常档;
+#   断言本身零改动,tf(nextest-full.toml)不排除=批量回归仍可见。
 [profile.default]
-default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::) and not test(widgets_gallery_all_front_pages_compile) and not test(ui_gen::)"
+default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::) and not test(widgets_gallery_all_front_pages_compile) and not test(ui_gen::) and not test(abi_recipe_formal_turnaround_hard_gates)"
 
 [profile.default.slow-timeout]
 period = "60s"
