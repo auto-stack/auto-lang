@@ -1,6 +1,17 @@
 # PLAN-815 M815-L T-15 恢复方案、候选数据与反例验证
 
-## 0. L1 复审修复轮(2026-10-20,[review-l1](../review-l1/review.md) 六项全部闭合)
+## 0. L2 复审修复轮(2026-10-20,[review-l2](../review-l2/review.md) 四项全部闭合)
+
+| Finding | 修复与验证 |
+|---|---|
+| F-L1-02(续开,P1) 部分写残文件 | `_write_step` 持锁写路径包 try:write/truncate/flush 失败→**同锁内恢复写入前内容**(WriteFailed(restored));恢复失败如实报"本运行部分写残留,需按 CAS 备份人工恢复",绝不误称外部更新;rollback_to_original(ours_residue=…) 归属准确。自检用真实 fd 故障句柄(写 257 字节 flush 后 OSError)断言 exit 1 + 原件逐字恢复 |
+| F-L1-03(续开,P2) 前像/声明 | ①status 存在性在赋值**前**冻结(213 条真缺失现记 `<missing>`,与显式 null 区分);②legacy `created`/`last_modified` 的删除**按键存在性**全量记行(值可 null——P786 五条显式 null 也记 removed→ 行;store 字段已存在时旧名副本删除记 →sidecar 行),撤销 protections 的无条件豁免;③section 声明值核对:候选 section 字段必须等于声明行新值(未声明突变/改值/删除/新增全拒)。区分性控制:缺失/null/有值三态 + X3(store 字段+legacy 重名)+ section 突变负控 |
+| F-L2-01(新增,P2) 最终指纹不符仍成功 | apply 尾部把最终读回 hash 设为**实际成功门**:与 checkpoint-B 不符(探针后外部更新)→ exit 4、外部内容保留、不发布 applied 收据。自检:wrapper 探针(先打合法摘要再改 title)→ exit 4 + "externally-mutated" 保留 + stdout 无 applied;干净正控仍 exit 0 |
+| F-L1-05 残留(P3) 收据旧规则 | 本 §7 第 6 项已改写为双 checkpoint 实际规则(57→58→59),旧"恢复不递增/幂等跳过"表述删除;全文按此规则交叉核对 |
+
+转换表因新增行变化:**conversions=`c0a4aac04c95eed2965f83eee2ee60a3f55645d72bce52c67bb2f92eaecf2949`**(12187 行);候选 A/B **字节不变**(A=`d571dbe3f87289c1…`/B=`33830b65bd58aebe…`,内容零变化——本轮只补审计行)。自检新增六组永久反例(status 三态/legacy 重名行/section 值守卫/无豁免/部分写恢复/最终指纹门)全绿;真探针全链彩排 57→58→59、1098 项、四增量唯一、改名在场、生产零接触,P789-M1 原值=`<missing>`/P786-M created 行在场抽查确认。
+
+## 0b. L1 复审修复轮(2026-10-20,[review-l1](../review-l1/review.md) 六项全部闭合)
 
 | Finding | 修复 |
 |---|---|
@@ -59,7 +70,7 @@
 | source(v57) | `c24b174ee3c0eba25555c0a31f0c988a0a465af880c99388bf0f537925b03038` |
 | **checkpoint A(结构恢复+裁定改名,v58)** | `d571dbe3f87289c180f7e0d8cbfbe519409162ec860ad8d069ccf9b71bef8f43` |
 | **checkpoint B(+四条增量,v59)** | `33830b65bd58aebe8a15f94fb71906f64b56883d89140697e6496f32d8475063` |
-| **conversions(全部,sort_keys 规范化)** | `0a1e1cbba1eb7d01ce3904d1da742d48bff961cfa2b107aba01dee41980cb961`(12163 条:A 12135 + B 28;每行含 checkpoint 标记/真实原值/依据) |
+| **conversions(全部,sort_keys 规范化)** | `c0a4aac04c95eed2965f83eee2ee60a3f55645d72bce52c67bb2f92eaecf2949`(12187 条:A 12159 + B 28;每行含 checkpoint 标记/真实原值(`<missing>` 哨兵区分缺失与 null)/依据) |
 | 状态 | **READY**(blocked=0/schema A·B=0/protection A·B=0);不带 `--ruling` 时正确 BLOCKED 于 P014-1 |
 
 产物:[convert-final/](convert-final/)(candidate-a-recovery.json / candidate-b-final.json / conversions.json / sidecar / convert-summary.json)。
@@ -82,8 +93,8 @@ probe=[t15-recovery/probe](probe/)(`musk` path 依赖,只读;`SpecsStore::load/s
 recover apply(源/A/B/转换四 hash 绑定 + 必填真实探针,A/B 各自写后身份核验)→ 最终 loader version **59**、6 sections/**1098 items** ✓ → 四条 P815-A 恰好各 1(status=verified/created_at=1792467247)✓ → P014-1-R 改名在场 ✓ → 生产文件 hash 不变 ✓;自检(V-L3)含真实 CLI 退出码族、checkpoint 间外部写入 exit 4 逐字保留、写后外部更新不被回滚覆盖、探针失败精确回滚、未声明删除拒绝、schema 负控(version=-1/bool/tags=[7]/u64 越界/缺区)。**T-17 实际命令**:
 
 ```bash
-python scripts/plan815_ledger_recover.py apply   --ledger .autoos/specs.json   --expected-source-sha256 c24b174ee3c0eba25555c0a31f0c988a0a465af880c99388bf0f537925b03038   --expected-conversions-sha256 0a1e1cbba1eb7d01ce3904d1da742d48bff961cfa2b107aba01dee41980cb961   --expected-candidate-a-sha256 d571dbe3f87289c180f7e0d8cbfbe519409162ec860ad8d069ccf9b71bef8f43   --expected-candidate-b-sha256 33830b65bd58aebe8a15f94fb71906f64b56883d89140697e6496f32d8475063   --stage-increments docs/plans/attachments/815/t15-recovery/stage-increments.json   --ruling "reviews/P014-1=P014-1-R"   --loader-probe target/plan815-t15-probe/release/plan815-ledger-loader-probe.exe
-```
+python scripts/plan815_ledger_recover.py apply   --ledger .autoos/specs.json   --expected-source-sha256 c24b174ee3c0eba25555c0a31f0c988a0a465af880c99388bf0f537925b03038   --expected-conversions-sha256 c0a4aac04c95eed2965f83eee2ee60a3f55645d72bce52c67bb2f92eaecf2949   --expected-candidate-a-sha256 d571dbe3f87289c180f7e0d8cbfbe519409162ec860ad8d069ccf9b71bef8f43   --expected-candidate-b-sha256 33830b65bd58aebe8a15f94fb71906f64b56883d89140697e6496f32d8475063   --stage-increments docs/plans/attachments/815/t15-recovery/stage-increments.json   --ruling "reviews/P014-1=P014-1-R"   --loader-probe target/plan815-t15-probe/release/plan815-ledger-loader-probe.exe
+``````
 
 ## 7. 待 T-16 裁定/核准清单
 
@@ -92,7 +103,7 @@ python scripts/plan815_ledger_recover.py apply   --ledger .autoos/specs.json   -
 3. **时间表示**:ISO 日期→UTC 纪元秒(日精度,86400s 粒度);无旧值→0 哨兵;completed_at→null。
 4. **未知字段处置**:store 无槽位且真实 load/save 必丢弃 → 仅 sidecar 保留(canonical_section/provenance/superseded_by/source_sha256/残留 created-last_modified)。
 5. **PascalCase section_type**(§3)为 store 真实线格式;候选据此生成。
-6. 版本策略:恢复**不递增** version(结构投影,非知识变更);T-17 后如需 upsert 语义递增由 deposit 负责(彩排中为幂等跳过)。
+6. 版本/检查点规则(已按代码与彩排实施):恢复与四条增量是**两个 checkpoint,各递增一次**——v57→58(结构恢复+裁定改名)→59(四条增量);每步独立写入并经真实探针身份核验;最终读回指纹不符=exit 4 不放行。
 
 ## 8. 边界声明
 
