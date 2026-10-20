@@ -207,6 +207,76 @@ fn hash_dep(path: &str) -> Result<String, String> {
     Ok(crate::semref::blake3_hex(&bytes))
 }
 
+/// Lexical relative path FROM a directory TO a file (leading `..`
+/// segments allowed; same-drive only). `None` when not derivable.
+fn rel_spec(from_dir: &str, to_file: &str) -> Option<String> {
+    let norm_from = split_norm(from_dir);
+    let norm_to = split_norm(to_file);
+    if norm_from.is_empty() || norm_to.is_empty() {
+        return None;
+    }
+    if norm_from[0].len() < 2 || norm_to[0].len() < 2 {
+        return None; // not absolute (or no drive letter)
+    }
+    if norm_from[0].to_ascii_uppercase() != norm_to[0].to_ascii_uppercase() {
+        return None; // cross-drive
+    }
+    let mut i = 1;
+    while i < norm_from.len() && i < norm_to.len() && eq_ci(&norm_from[i], &norm_to[i]) {
+        i += 1;
+    }
+    let mut parts: Vec<String> = Vec::new();
+    for _ in i..norm_from.len() {
+        parts.push("..".into());
+    }
+    for seg in &norm_to[i..] {
+        parts.push(seg.clone());
+    }
+    if parts.is_empty() {
+        None // the file IS the dir anchor itself
+    } else {
+        Some(parts.join("/"))
+    }
+}
+
+/// Lexically join a relative spec onto a directory and normalize `.`
+/// and `..` segments WITHOUT touching the filesystem.
+fn join_lex(dir: &str, spec: &str) -> String {
+    let mut out: Vec<String> = split_norm(dir);
+    for seg in spec
+        .split(['/', '\\'])
+        .filter(|s| !s.is_empty() && *s != ".")
+    {
+        if seg == ".." {
+            // never pop the drive root
+            if out.len() > 1 {
+                out.pop();
+            }
+        } else {
+            out.push(seg.to_string());
+        }
+    }
+    out.join("\\")
+}
+
+fn parent_of(path: &str) -> String {
+    match std::path::Path::new(path).parent() {
+        Some(p) => p.display().to_string(),
+        None => path.to_string(),
+    }
+}
+
+fn split_norm(p: &str) -> Vec<String> {
+    p.split(['/', '\\'])
+        .filter(|s| !s.is_empty() && *s != ".")
+        .map(|s| s.to_string())
+        .collect()
+}
+
+fn eq_ci(a: &str, b: &str) -> bool {
+    a.eq_ignore_ascii_case(b)
+}
+
 fn like_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('%', "\\%")
@@ -351,17 +421,44 @@ where
     // a NEW key (the old generation stays for its own environment and is
     // reclaimed by GC) instead of colliding with the content-bound old
     // entry; same-input repeats hit and never put at all.
-    // F-797-R4-07 (R11): the SEARCH-DOMAIN DIRS — the source dir, the
-    // include dir, AND the parent dir of every recorded dependency (the
-    // preprocessor searches the including file's directory, so a
-    // transitive header puts its own dir on the search path even when
-    // it lies outside the two explicit roots).
-    let mut dirs: Vec<String> = vec![src_dir.clone(), inc_dir_s.clone()];
+    // F-797-R4-07 (R11/R12/R13): the SEARCH-DOMAIN DIRS — the source
+    // dir, the include dir, the parent dir of every recorded dependency
+    // (the preprocessor searches the including file's directory), AND
+    // the CANDIDATE positions for relative specs: the spec that
+    // resolved dependency P from its resolution dir D1 is necessarily
+    // rel(P, D1), so for EVERY (P, D1, D2) triple the position
+    // normalize(D2 + rel(P, D1)) is a place where a NEW file could
+    // preempt the resolution — including parent-path escapes
+    // (`../shared/dep.h`) whose candidates lie OUTSIDE every recorded
+    // dir's subtree (R13's counterexample). Unbounded derivation over
+    // all triples is complete for every spec that actually resolved;
+    // the set is capped and oversized derivations fail closed (the
+    // compile is simply not cached).
+    let mut chain_dirs: Vec<String> = vec![src_dir.clone(), inc_dir_s.clone()];
     for (p, _) in &hashed {
         if let Some(parent) = std::path::Path::new(p).parent() {
             let ps = parent.display().to_string();
-            if !dirs.contains(&ps) {
-                dirs.push(ps);
+            if !chain_dirs.contains(&ps) {
+                chain_dirs.push(ps);
+            }
+        }
+    }
+    let mut dirs: Vec<String> = chain_dirs.clone();
+    for (p, _) in &hashed {
+        for d1 in &chain_dirs {
+            if let Some(spec) = rel_spec(d1, p) {
+                for d2 in &chain_dirs {
+                    let cand = join_lex(d2, &spec);
+                    let parent = parent_of(&cand);
+                    if !dirs.contains(&parent) {
+                        dirs.push(parent);
+                    }
+                    if dirs.len() > 1024 {
+                        // unprovable applicability at sane cost: do not
+                        // cache this compile (conservative miss)
+                        return Ok((obj, false));
+                    }
+                }
             }
         }
     }

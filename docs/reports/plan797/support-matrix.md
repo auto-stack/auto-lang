@@ -16,7 +16,7 @@
 | worker 协议 | `abiworker/1`（信封同 acworker/semaworker：nonce/request_hash 回显、deny_unknown_fields、4MiB 界、Job containment、退出状态/版本镜像、exe-sha256 入 stale 轴） |
 | 可执行语料 | `crates/auto-lang/test/cases/autoabi/`：leg-a（publish→hit→跨进程 restart hit→body-edit republish）、leg-b、leg-c、bad-sig（类型化 deck 诊断负例） |
 | 语义身份 | `ac-sema-contract`（D-796 合同）只读消费；临时快照已退役（收据在案） |
-| 正式复测（R9：C 腿单 case 共享 store，每请求携带编辑后 deck，判定+落盘边界） | body-edit(edit+request) P50/P95/P99=592.0/767.0/774.0ms、reject P50/P95=87.0/121.0ms（判定+落盘边界；原始行由适配器逐请求先落盘）；compute=31 callee 重编+1 C 编译逐样本断言（消费者复用成立）；原始 JSONL 逐样本先落盘（含阶段/Job 峰值内存/I-O/meter） |
+| 正式复测（R9：C 腿单 case 共享 store，每请求携带编辑后 deck，判定+落盘边界） | body-edit(edit+request) P50/P95/P99=548.0/652.0/689.0ms、reject P50/P95=67.0/79.0ms（判定+落盘边界；原始行由适配器逐请求先落盘）；compute=31 callee 重编+1 C 编译逐样本断言（消费者复用成立）；原始 JSONL 逐样本先落盘（含阶段/Job 峰值内存/I-O/meter） |
 
 ## 1. 类型与物理形态
 
