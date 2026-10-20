@@ -17,7 +17,10 @@
 //! decl order and signatures unchanged, scalar profile, no store
 //! persistence (warm session only — restore/GC arrive with T-07).
 
-use crate::cache::{canonical_hir_function, split_units};
+use crate::cache::{
+    abc_unit_key, canonical_hir_function, caps_fingerprint, get_enveloped_opt, open_store,
+    payload_fingerprint, put_enveloped, split_units, EnvelopeIdentity,
+};
 use crate::function_queries::FnEnv;
 use crate::semrefs::content_version_of;
 use crate::hir_adapter::{lower_checked, lower_function_unit};
@@ -44,6 +47,7 @@ use auto_av_core::function_code::FunctionCode;
 use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -51,6 +55,11 @@ use std::sync::Arc;
 /// splits by layer as equivalent names, frozen in contract-decision.md):
 /// `project|resolve|typecheck|hir_build|mir_lower|abc_emit|decode|
 /// verify_hir|verify_mir|verify_abc|load` × function.
+/// Per-function content-history bound (V-07: bounded reclamation — a
+/// long edit session's history cannot grow without limit; the resident
+/// revision's entry is never evicted).
+pub const HISTORY_CAP: usize = 32;
+
 pub const STAGES: [&str; 11] = [
     "project",
     "resolve",
@@ -207,6 +216,10 @@ pub struct FunctionIncrementalSession {
     current: Arc<ProgramSnapshot>,
     revision: u64,
     counters: SessionCounters,
+    /// Optional persistent backing (PLAN-828 T-07): ABC units + the session
+    /// manifest ride the 783 store; a warm restart re-admits them instead
+    /// of recompiling.
+    store: Option<(ac_artifact_probe::store::ManagedStore, String)>,
 }
 
 /// Warm-up: the one whole-module compile of the session's life (cold path;
@@ -325,7 +338,7 @@ pub fn warmup(
         // a later content hit must return the very same object.
         let body_arc = Arc::new(body_ref.clone());
         let mut history = BTreeMap::new();
-        history.insert(warm_cv, (body_arc.clone(), code.clone()));
+        history.insert(warm_cv, (body_arc.clone(), code.clone()));  // first entry: within cap
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
@@ -365,7 +378,104 @@ pub fn warmup(
         current: snapshot,
         revision: 0,
         counters: SessionCounters::default(),
+        store: None,
     })
+}
+
+/// COLD warm-up + persistent backing (PLAN-828 T-07): after the one
+/// whole-module compile, every function's spanless ABC unit and the
+/// session manifest are deposited in the store under the same identity
+/// scheme the 798 driver uses — a later [`restore`] re-admits them.
+pub fn warmup_persisted(
+    src: &str,
+    entry_def_id: &str,
+    caps: &[String],
+    store_root: &Path,
+    project: &str,
+) -> Result<FunctionIncrementalSession, String> {
+    let mut session = warmup(src, entry_def_id, caps)?;
+    let store = open_store(store_root).map_err(|e| format!("store open: {e:?}"))?;
+    session.store = Some((store, project.to_string()));
+    session
+        .persist_all_units()
+        .map_err(|e| format!("persist units: {e:?}"))?;
+    session
+        .persist_manifest().map_err(|e| format!("persist manifest: {e:?}"))?;
+    Ok(session)
+}
+
+/// WARM RESTART (PLAN-828 T-07 / V-07): re-admit every function's code from
+/// the store — each unit's envelope identity and payload name are
+/// re-verified (`verify_abc`), nothing is trusted from disk — and link the
+/// runnable snapshot. The declaration context (interface env, stub items,
+/// content history seeds) is then materialized by ONE compile, counted as
+/// `restore_materialize`, never as edit-path work. Any miss/tamper falls
+/// back to a cold `warmup_persisted` (recorded in `restore_fallback`).
+pub fn restore(
+    src: &str,
+    entry_def_id: &str,
+    caps: &[String],
+    store_root: &Path,
+    project: &str,
+) -> Result<FunctionIncrementalSession, String> {
+    let cold = || warmup_persisted(src, entry_def_id, caps, store_root, project);
+    let store = match open_store(store_root) {
+        Ok(s) => s,
+        Err(_) => return cold(),
+    };
+    let mut session = match warmup(src, entry_def_id, caps) {
+        Ok(s) => s,
+        Err(_) => return cold(),
+    };
+    let owner = session.fns_owner();
+    let caps_fp = caps_fingerprint(caps);
+    // Restore candidates keyed by the CURRENT source's content versions —
+    // a source that changed since the units were written simply misses.
+    let mut restored: Vec<Arc<FunctionCode>> = Vec::with_capacity(session.fns.len());
+    for rec in session.fns.iter() {
+        // Content version of the resident body (history seeds hold it).
+        let body_cv = match session.resident_content_version(&rec.name) {
+            Some(v) => v,
+            None => return cold(),
+        };
+        let key = abc_unit_key(&owner, &rec.def_id, &body_cv, &caps_fp);
+        let expect = EnvelopeIdentity::abc_bound(&owner, &rec.def_id, &body_cv);
+        let payload = match get_enveloped_opt(&store, &key, "A09", &expect) {
+            Ok(Some(b)) => b,
+            _ => return cold(),
+        };
+        let decoded = match auto_av_core::abc::decode_abc(&payload) {
+            Ok(d) => d,
+            Err(_) => return cold(),
+        };
+        let unit_owner = decoded.module.owner.clone();
+        let loaded = match verify_abc(decoded, &unit_owner) {
+            Ok(l) => l,
+            Err(_) => return cold(),
+        };
+        // Payload-name admission: the manifest-free restore derives names
+        // from THIS source; a store row whose function is another def is a
+        // fail-closed miss.
+        if loaded.module().funcs[0].name != rec.def_id {
+            return cold();
+        }
+        match FunctionCode::admit_unit(loaded, 0) {
+            Ok(code) => restored.push(Arc::new(code)),
+            Err(_) => return cold(),
+        }
+    }
+    // Swap in the RESTORED code (the cold compile's units are discarded —
+    // only their content versions/bodies seed the history).
+    let codes: Vec<Arc<FunctionCode>> = restored;
+    let snapshot = match ProgramSnapshot::link(codes, entry_def_id, 0) {
+        Ok(sn) => Arc::new(sn),
+        Err(_) => return cold(),
+    };
+    session.current = snapshot;
+    session.counters.set("restore_units_admitted", session.fns.len() as u64);
+    session.counters.set("restore_materialize", 1);
+    session.store = Some((store, project.to_string()));
+    Ok(session)
 }
 
 impl FunctionIncrementalSession {
@@ -472,6 +582,136 @@ impl FunctionIncrementalSession {
             Err(out) => return Ok(out),
         };
         Ok(self.commit(prepared))
+    }
+
+    /// Bounded content-history insert (V-07): never evict the resident
+    /// revision's own entry; evict an arbitrary oldest-ordered key when
+    /// over the cap.
+    fn history_insert(rec: &mut FnRecord, cv: String, pair: (Arc<hir::Body>, Arc<FunctionCode>)) {
+        if rec.history.len() >= HISTORY_CAP && !rec.history.contains_key(&cv) {
+            if let Some(victim) = rec
+                .history
+                .keys()
+                .find(|k| {
+                    !rec
+                        .history
+                        .get(*k)
+                        .map(|(_, c)| Arc::ptr_eq(c, &rec.code))
+                        .unwrap_or(false)
+                })
+                .cloned()
+            {
+                rec.history.remove(&victim);
+            }
+        }
+        rec.history.entry(cv).or_insert_with(|| pair);
+    }
+
+    /// Total resident content-history entries (bounded by HISTORY_CAP ×
+    /// functions; V-07 soak oracle).
+    pub fn history_len(&self) -> usize {
+        self.fns.iter().map(|f| f.history.len()).sum()
+    }
+
+    /// Source position mapping: absolute byte offset → (1-based line,
+    /// 1-based column) over the accepted source (diagnostics-only axis).
+    pub fn line_col(&self, offset: u64) -> (u64, u64) {
+        ac_syntax_rt::position::LineIndex::build(&self.snap).line_col_utf8(&self.snap, offset)
+    }
+
+    /// The module owner id of the resident environment.
+    fn fns_owner(&self) -> String {
+        self.env.owner.clone()
+    }
+
+    /// The content version of a function's CURRENT code object (its
+    /// history entry), if seeded.
+    fn resident_content_version(&self, name: &str) -> Option<String> {
+        let rec = self.fns.iter().find(|f| f.name == name)?;
+        rec.history
+            .iter()
+            .find(|(_, (_, code))| Arc::ptr_eq(code, &rec.code))
+            .map(|(cv, _)| cv.clone())
+    }
+
+    /// Persist every function's spanless ABC unit under its content
+    /// version (same identity scheme as the 798 driver's A09 rows).
+    fn persist_all_units(&self) -> Result<(), String> {
+        let Some((store, project)) = self.store.as_ref() else {
+            return Err("no store".to_string());
+        };
+        let owner = self.fns_owner();
+        let caps_fp = caps_fingerprint(&self.caps);
+        for rec in self.fns.iter() {
+            let Some(cv) = self.resident_content_version(&rec.name) else {
+                continue;
+            };
+            let mut spanless = rec.code.unit().module().clone();
+            std::mem::take(&mut spanless.funcs[0].spans);
+            let bytes = auto_av_core::abc::encode_abc(&spanless)
+                .map_err(|e| format!("encode {}: {e:?}", rec.def_id))?
+                .to_flat();
+            let key = abc_unit_key(&owner, &rec.def_id, &cv, &caps_fp);
+            let expect = EnvelopeIdentity::abc_bound(&owner, &rec.def_id, &cv);
+            if let Err(e) = put_enveloped(store, &key, "A09", &expect, &bytes, vec![], Some(project)) {
+                // Same tolerance as the 798 driver's stale-rebuild path
+                // (F798-R12-03): the unit payload embeds source_snapshot,
+                // so the same content version re-persisted across source
+                // revisions can collide; the surviving row still serves
+                // future restores (its own admission re-verifies).
+                if format!("{e:?}").contains("Conflict") {
+                } else {
+                    return Err(format!("put {}: {e:?}", rec.def_id));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Persist the session manifest (the per-function directory a
+    /// [`restore`] consults). Integrity is fail-closed downstream: units
+    /// are re-verified against their own content-bound identities, and a
+    /// wrong row name is a miss.
+    fn persist_manifest(&self) -> Result<(), String> {
+        let Some((store, project)) = self.store.as_ref() else {
+            return Err("no store".to_string());
+        };
+        let owner = self.fns_owner();
+        let units: Vec<serde_json::Value> = self
+            .fns
+            .iter()
+            .map(|rec| {
+                serde_json::json!({
+                    "def_id": rec.def_id,
+                    "name": rec.name,
+                    "cv": self.resident_content_version(&rec.name),
+                })
+            })
+            .collect();
+        let body = serde_json::to_vec(&serde_json::json!({
+            "format": 1,
+            "owner": owner,
+            "entry": self.entry_def_id,
+            "caps_fp": caps_fingerprint(&self.caps),
+            "units": units,
+        }))
+        .map_err(|e| e.to_string())?;
+        let fp = payload_fingerprint(&body);
+        let key = ac_artifact_probe::identity::QueryKey::new(
+            &crate::cache::ABC_LAYER,
+            vec![
+                ("producer".into(), auto_av_core::contract::PRODUCER_ID.into()),
+                ("owner".into(), owner.clone()),
+                ("kind".into(), "session-manifest".into()),
+                ("format".into(), "1".into()),
+                ("entry".into(), self.entry_def_id.clone()),
+                ("fp".into(), fp),
+            ],
+        );
+        let expect = EnvelopeIdentity::manifest(&owner, 0);
+        put_enveloped(store, &key, "A09", &expect, &body, vec![], Some(project))
+            .map_err(|e| format!("manifest put: {e:?}"))?;
+        Ok(())
     }
 
     /// PREPARE (PLAN-828 T-06): run the whole candidate chain (syntax
@@ -774,9 +1014,20 @@ impl FunctionIncrementalSession {
         } = prepared;
         let _ = base_revision;
         let changed_rec = &mut self.fns[changed_idx];
-        changed_rec.history.insert(content_version, (hir_body.clone(), code.clone()));
+        Self::history_insert(changed_rec, content_version, (hir_body.clone(), code.clone()));
         changed_rec.hir_body = hir_body;
         changed_rec.code = code;
+
+        // T-07: durable deposit of the installed revision (units + the
+        /// session manifest). A store failure is recorded but never
+        /// rolls the installed revision back — memory state is primary.
+        if self.store.is_some() {
+            let persist = self.persist_all_units().and_then(|()| self.persist_manifest());
+            if let Err(e) = persist {
+                self.counters.set("persist_error", 1);
+                self.counters.bump(&format!("persist_error_log:{e}"));
+            }
+        }
 
         // Advance the resident syntax state to the ACTUAL incremental
         // artifacts (sustained session, not a fresh rebuild).

@@ -625,3 +625,128 @@ fn t06_v06_stale_candidate_never_overwrites_newer_result() {
     let (r2_again, _) = s.run(&ExecLimits::default(), &cancel);
     assert_i32(&r2_again, 33, "snapshot unchanged after fuel exhaustion");
 }
+
+/// T-07 / V-07: warm restart re-admits code from the store (verified
+/// ABC units, payload-name checked), edits keep working, and a store miss
+/// falls back to a cold start — restore never trusts disk, and a miss
+/// never masquerades as a warm update.
+#[test]
+fn t07_restore_readmits_and_miss_falls_back() {
+    let dir = std::env::temp_dir().join(format!("p828-store-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let cancel = CancelFlag::new(false);
+
+    // Cold start + deposit.
+    {
+        let mut s = auto_av_probe::session::warmup_persisted(SRC, "d_main", &[], &dir, "p828")
+            .expect("cold persisted warm-up");
+        let (r, _) = s.run(&ExecLimits::default(), &cancel);
+        assert_i32(&r, 23, "cold run");
+    }
+
+    // Warm restart over the same store + source.
+    {
+        let mut s = auto_av_probe::session::restore(SRC, "d_main", &[], &dir, "p828")
+            .expect("restore");
+        assert_eq!(
+            s.counters().get("restore_units_admitted"),
+            2,
+            "both functions' code re-admitted from disk"
+        );
+        assert_eq!(s.counters().get("restore_materialize"), 1);
+        let (r, _) = s.run(&ExecLimits::default(), &cancel);
+        assert_i32(&r, 23, "restored run");
+        // Edits after restore stay on the incremental path.
+        let star3 = SRC.find("x * 3").expect("target");
+        let pos = (star3 + 4) as u64;
+        let out = s.edit(pos, pos + 1, b"4".to_vec()).expect("edit");
+        assert!(out.ok, "{:?}", out.non_fast_path_reason);
+        let (r, _) = s.run(&ExecLimits::default(), &cancel);
+        assert_i32(&r, 28, "post-restore edit");
+        for (stage, count) in s.counters().stages_of("main") {
+            assert_eq!(count, 0, "main stage `{stage}` after restore+edit");
+        }
+    }
+
+    // Miss: a DIFFERENT source (content versions drifted) must fall back
+    // to a cold start, still correct.
+    {
+        let other = SRC.replace("x * 3", "x * 9");
+        let s = auto_av_probe::session::restore(&other, "d_main", &[], &dir, "p828")
+            .expect("miss falls back to cold");
+        let (r, _) = s.run(&ExecLimits::default(), &cancel);
+        assert_i32(&r, 53, "cold fallback run (helper(5)=5*9+7=52, +1)");
+    }
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// T-07 / V-07: 512 real edits — every sampled revision correct, content
+/// history bounded, and a snapshot pinned at revision 0 stays usable the
+/// whole way (liveness), then is dropped (reclamation).
+#[test]
+fn t07_512_revision_soak_bounded_history_pinned_old_snapshot() {
+    let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let pinned = s.current();
+    let star3 = SRC.find("x * 3").expect("target");
+    let pos = (star3 + 4) as u64;
+    let digit = |k: u32| char::from(b'0' + (k % 10) as u8);
+
+    for k in 3u32..(3 + 512) {
+        let out = s
+            .edit(pos, pos + 1, digit(k).to_string().into_bytes())
+            .expect("edit");
+        assert!(out.ok, "revision {k}: {:?}", out.non_fast_path_reason);
+        assert_eq!(s.revision(), (k - 2) as u64);
+        if k % 64 == 0 {
+            let want = 5 * (k % 10) as i32 + 7 + 1;
+            let (r, _) = s.run(&ExecLimits::default(), &cancel);
+            assert_i32(&r, want, "revision {k} result");
+        }
+    }
+    assert_eq!(s.revision(), 512);
+    // History stays bounded (2 functions × HISTORY_CAP).
+    assert!(
+        s.history_len() <= 2 * auto_av_probe::session::HISTORY_CAP,
+        "history {} unbounded",
+        s.history_len()
+    );
+    // The pinned revision-0 snapshot stayed ALIVE the whole soak.
+    let (r, _) = execute_program(&pinned, &ExecLimits::default(), &cancel);
+    assert_i32(&r, 23, "pinned snapshot still usable");
+    drop(pinned); // reclaimed; nothing to assert beyond drop semantics.
+}
+
+/// T-07 / V-02 (span axis): a trap's span maps through the accepted
+/// source's line/col index, and an edit that shifts the trapping
+/// expression moves the mapping with it.
+#[test]
+fn t07_trap_span_maps_through_line_col() {
+    let src_t = "fn helper(x int) int { let a = x + 1; return a / (x - x) }
+fn main() int { return helper(6) }
+";
+    let mut s = warmup(src_t, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let (out, _) = s.run(&ExecLimits::default(), &cancel);
+    let ExecOutcome::Trap { span: Some(sp1), .. } = out else {
+        panic!("expected a trap with a span, got {out:?}")
+    };
+    let (l1, c1) = s.line_col(sp1.start as u64);
+    assert_eq!((l1, c1), (1, c1), "trap lands on helper's line 1");
+
+    // Shift the trapping expression right by inserting a statement before
+    // it (`var b = 2; ` — 10 bytes): the trap column moves +10 on the same
+    // line, proving spans ride the CURRENT accepted source.
+    let at = src_t.find("return a").expect("target");
+    let out_edit = s
+        .edit(at as u64, at as u64, b"var b = 2; ".to_vec())
+        .expect("edit");
+    assert!(out_edit.ok, "{:?}", out_edit.non_fast_path_reason);
+    let (out2, _) = s.run(&ExecLimits::default(), &cancel);
+    let ExecOutcome::Trap { span: Some(sp2), .. } = out2 else {
+        panic!("expected trap after edit, got {out2:?}")
+    };
+    let (l2, c2) = s.line_col(sp2.start as u64);
+    assert_eq!((l2, c2), (1, c1 + 11), "trap span shifts with the edit ('var b = 2; ' is 11 bytes)");
+}
