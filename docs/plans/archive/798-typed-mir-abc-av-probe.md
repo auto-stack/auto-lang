@@ -7,7 +7,7 @@ plan_revision: 7
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-20
-current_step: 10
+current_step: 11
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
@@ -276,7 +276,7 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 
 ## 8. 执行步骤
 
-**r7当前状态**：archived **10/11**，实际交付已落地，清理pending。R19最终代码/AC/V/K14/SD审查pass，绑定83086e76f；R15/R16/R18正确性finding闭合、R17 warm阻断按用户r7裁定关闭，历史全部保留。当前cache20/resources17/formal7以及新同轮180样本/内存均通过，正式P95=872.5/387.7ms，warm946.69ms；旧687.4/234.9ms PASS亦保留。唯一开放T-10：merge-owned根裸t/tv、独立workspace/native/共享合同，沉淀/ff-only/归档/guard清理；通过前不称交付。
+**r7当前状态**：archived **11/11**，completion_kind=delivered。R19完整最终审查、R20导入清理和R21实际主检出依赖复核pass；当前正式30样本P95=814.6/671.4ms。冻结合入四档5320/163/105/30全部通过（root并行度8，不缩小筛选/断言/阈值）；规范与v61账本实际ff-only落地、归档及两树guard/分支/空组清理均完成，AC10 pass。全部旧失败和PASS各按原身份保留，完整函数增量仍归优先828。
 
 | Task | owner_stage | 前置 | 文件/产物与可验成果 | 验证及AC |
 |---|---|---|---|---|
@@ -289,7 +289,7 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 | [x] T-07 | work | T-06、D-788 | 基于796已合入probe/run仅追加本recipe/worker/suite，正式AutoDown语义/cache/资源/周转与负控/兼容 | [r6当前闭合：SHA256全文件重读加速、797混合stale独立身份；d1357870a正式30样本edit P95=867.8/sig385.8ms；正确性6/6，受控失败与负oracle均真实执行。T-05独立warm门失败不能据此豁免]  [R15重开：K14消费及准备失败生命周期F02/F05；旧完成描述为历史，当前以R15报告为准]  [R3重开→r4 已闭合：F798-R3-05（exit 码/恰一协议行/步骤回显/父侧 fnv source_hash 逐 run 绑定）+F798-R3-06（call_worker 受限执行器重写：writer 线程/帽定读者/单一绝对截止/杀树/READER_GRACE/BUILD_WALL 有界 cargo）+F798-R3-07（两调用显式 session 模型，窗口=受测 [edit,run] 调用 request_wall_ms 连续含 IPC，30 样本编辑窗 P95≈600-640ms<1000ms，前端 290ms 如实计入；decode 合同 r4：前导 edit 放行+须 run 结尾+av.session 绑定）+F798-R3-10（locate_worker 恒构建绑定二进制）。永久测试：ac_av_probe_worker_contract_faults_are_infra（exit9/extra-frame/wrong-hash/delay 四故障全 Infra）、formal gates（hits/misses 形状+当前修订值断言）；5 测全绿] [✅ 已完成] b9682967f：D-788 门满足（788 归档合入）；recipe `ac-av/core-run-v1` 注册（配方专属步骤词表 run/edit-source+av 绑定+probe exit 通道/run 完成态）；共享侧 `ac_av.rs`（Job 收容+resume/envelope+nonce+hash+recipe+双版本镜像准入/stale 按配方族路由/父侧判定/receipt）；worker `case-serve`（会话步骤模型+warm store+逐步墙钟）与 `load-revision`（冻结负载单一来源，免产品依赖）；`crates/auto-lang/test/cases/ac-av/` 6 checks 全 oracle 形态；**正式硬门 PASS**：warm-edit 窗 P50/P95/P99=556/569/574ms<1000ms（30 样本，终步驱动 ~412ms+spawn/IPC/admit ~148ms，热身 run 如实分列），sig 冲突 P95=221ms；负控：错 exit 必红+decode 负例全拒（未知 recipe/跨域词表/跨域绑定/缺绑定）；兼容：接缝 17 腿绿（sema corpus 阻断=Plan 813 oracle 跟踪在途，非本 diff 引入，登记复放）；AC-06/07；r4本步按§5.8负责K14类别/版本的对应冻结/实现/恢复/runner/汇总，旧记录不授新pass [R14 已闭合 @79b31f5dc：正式 AutoDown 周转门（V-11 formal）静置窗口**连续 PASS×2**——edit P95 961.7/948.9ms<1000、sig 598.9/599.6、各 30 样本（第二次 tee 落盘 autodown-formal-r5.log）；K14 正式腿 7-check 语料+负 oracle/decode 负例/故障注入/兼容 18/18；逐样本分解 step~410-430ms+spawn/IPC~240-300ms，白天劣化=共享负载 spawn 侧膨胀] |
 | [x] T-08 | work | T-07 | r6 §5.10/SD-08边界及828 owner写入acceptance/coverage/contract-decision/拟Spec；verify脚本全Scope、docs/reports/plan798、SD提案/coverage/并行审计，native产物/代际合同准入 | [R15重开：F01..06及coverage/SD收口；旧完成描述为历史，当前以R15报告为准]  [R3重开→r4 已闭合：F798-R3-09（native_admission.rs 实装：NativeArtifactRef 全轴准入+COFF 结构校验+真实 Cranelift COFF 正例+真 PE 拒绝+legacy generation 显式兼容轴；native_admission_tier 5 测绿；acceptance.md 虚假主张更正并记录）+F798-R3-10（probe 零 warning/README 尾空行清除）+F798-R3-11（native_reference 改 788 run_deadlined_captured 1MiB 帽+共享预算钟+run 剩余预算，零 stderr 帽失败反控）。契约 r3 修订入 contract-decision §6/§7（verify-memory/decode-memory/前门构造深度）] [r5已完成历史；r6待更新] b9682967f：脚本 binding/autodown/acceptance 实接（binding_tier/ac_av_probe 真跑，退出码透传）；`docs/reports/plan798/turnaround.md` 补正式 AutoDown 硬门节+`acceptance.md`（V-01..13 覆盖矩阵实际入口/SD-01..07 提案/并行审计含 813 交叉与共享接缝最小扩展清单）；native 产物引用/代际=合同模型（contract-decision §11+SD-07 提案，未宣称热重载）；定向验证：probe 54+contract 20+ac_av 4+接缝 17 全绿，计划内文件 rustfmt 过检（根 examples 预存损坏非本计划面，未动）；AC-01–08；**execution_done=8/10**；r4本步按§5.8负责K14类别/版本的对应冻结/实现/恢复/runner/汇总，旧记录不授新pass [R14 已闭合 @79b31f5dc：acceptance.md K14 完整矩阵+R14 修复节（同轮证据+正式门 PASS×2 记录）；turnaround-summary.json 同轮刷新；**execution_done=9/11**（T-09 review/T-10 merge 待）] |
 | [x] T-09 | review | T-08、冻结提交 | 同树独立验收/规范/遗漏和workaround扫描，受影响证据复验，绑定commit+依赖 | AC-09；pass后reviewed=10/11，merge gates pending |
-| [ ] T-10 | merge | T-09 pass | 冻结提交门禁、实际SD/ledger、归档合入、批量到期判定和wt-guard后清理 | AC-10，实际完成11/11；门禁红则归因、改代码后复审相关面 |
+| [x] T-10 | merge | T-09 pass | 冻结提交门禁、实际SD/ledger、归档合入、批量到期判定和wt-guard后清理 | AC-10，实际完成11/11；门禁红则归因、改代码后复审相关面 |
 | [x] T-11 | work | 用户裁定（2026-10-20 方案 C，§5.9） | r5 资源政策落地：双线预算实现+当前证据收口 R12-04 | [已完成 @06114f431：bench `validate_and_gate` 两线硬门（A 前端瞬态≤224MiB/B 探针残差≤128MiB，缺归因保守整峰计入 B 线）+ worker 汇总 `frontend_transient_target_met`/残差版 `worker_private_bytes_target_met` + contract-decision r7 冻结；永久测试 `av_turnaround_two_line_memory_gate` 四态；当前证据 release bench-turnaround 冻结负载：A=211 869 696B(202.1MiB) ✓/B=3 637 248B(≈3.5MiB) ✓/hard_gate_failures=[] exit 0；probe workspace 100 测全绿；30 样本正式门含两线门归 T-07/merge 复验] |
 
 T-01–05不等796/797/788全部合入；T-06/07是真依赖，不搬其在途代码、不自造第二语义库/runner。没有正式AutoDown或796真绑定仍属executing，不以早期模型/文件存在标execution_done。范围/预算/支持或公共IPC需扩张时回规划修订，保留完成进度/旧证据并标失效。
@@ -472,6 +472,8 @@ stage: new；outcome: pass（文档合同预检，非实现验收）。用户明
 
 2026-10-20 stage:merge | PLAN-798:r7 | checkpoint:prepared/landed/ledger_refreshed | outcome:delivered；cleanup pending | delivery_commit:7e192b264f4093855bbfe410a0c8147555c6275f；main_before:de4ee5e19e2c29b446d4d3ae3276f33e4800dc8a；ff-only且tip相等 | canonical:11新增/3修改与索引；ledger:v60→v61，P798-MIR/AV/T/R19/MERGE五项，owner Rust读回通过、非相关字节保留；guarded offline projection，store连接拒绝 | [准备与冻结门禁](../attachments/798/merge-r7/merge.md)、[实际落地](../attachments/798/merge-r7/landing-receipt.json.txt) | archive:docs/plans/archive/798-typed-mir-abc-av-probe.md，completion_kind:delivered；T10待实际清理后才勾11/11。
 
+2026-10-20 stage:merge | PLAN-798:r7 | outcome:pass | checkpoints:prepared/landed/ledger_refreshed/archived/cleaned全部实际验证 | delivery_commit:7e192b264f4093855bbfe410a0c8147555c6275f；可达代码提交96578c0b0、归档d58a77a56、导航7eab99af2；原冻结216d139ab与其代码/锁/配置等价证明齐全 | AC10/T10已闭合，archived11/11，completion_kind:delivered | [清理原件](../attachments/798/merge-r7/cleanup-receipt.json.txt)、[产物观察与批量到期判定](../attachments/798/merge-r7/artifact-and-batch-observation.json.txt) | 既有缺失历史附件11处保持缺失并明确登记，未虚构其证据；当前R18/R19/R20/R21与merge链接有效 | 非部署；完整增量归优先828。其他会话WIP在本次干净提交检查后原样恢复，独立收据记录。
+
 ## 10. 待澄清事项
 
 **最新周转口径已澄清**：用户保留P95<1s；798按现有真实入口/冻结负载先达标，未来热重载新增工作以成本清单辅助预估，实际接入后重测。早期必须保留相关身份/依赖/安装/生命周期接缝，但本轮不新增完整热重载交付项。见[决策记录](../attachments/798/turnaround-policy-20261020/decision.md)及Design43 §6.3。当前sig门未通过的事实与T07状态不变；没有将其改为均值门或用估算授PASS。
@@ -485,4 +487,4 @@ stage: new；outcome: pass（文档合同预检，非实现验收）。用户明
 - 未发布Spec/ledger，未合入/归档/清理实施树。
 
 
-**r7最新边界与状态（优先于本节旧记录）**：最终审查与冻结合入门禁通过，代码/规范/派生账本已实际ff-only落地；archived10/11，仅T10最后guard/工作树与分支清理pending。完整函数增量归优先828。
+**r7最新边界与状态（优先于本节旧记录）**：PLAN-798:r7已完成，archived11/11。最终审查、正式30样本门及冻结合入四档通过；代码/规范/v61派生账本已ff-only合入master，计划已归档，798两树/分支/空组经guard后实际移除，tf未到期。生产默认VM/部署未改变，相关构建产物观察已单列。后续顺序为优先828，再进行受D828和增量保持合同约束的其他ACE扩展。
