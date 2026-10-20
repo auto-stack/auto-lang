@@ -22,7 +22,7 @@ default = ["with-file-history", "ui-iced"]
 test-trans = []
 # Plan 768: AutoDown TestCase protocol adapters + auto-case bin (empty
 # feature gating the optional auto-test-case dependency).
-test-cases = ["dep:auto-test-case"]
+test-cases = ["dep:auto-test-case", "auto-lang-core/test-cases"]
 test-book = []
 # Plan 568: AAVM/AA2R 自举测试独立档。aavm 专属档 = cargo taa（触发条件与
 # 作用域映射见 AGENTS.md）。PLAN-700: 原 implies 的语料门随语料三族常驻化
@@ -32,7 +32,7 @@ test-aavm = []
 # Plan 565 P0: feature-gated counting global allocator (memory attribution).
 # Zero cost when off — the System allocator stays in place; when on, lib.rs
 # installs CountingAlloc as #[global_allocator] (lock-free AtomicU64 stats).
-mem-profile = []
+mem-profile = ["auto-lang-core/mem-profile"]
 # Plan 317 §11 Phase 11: HTTP e2e tests (start real TCP servers; run serially).
 # Off by default — enables `plan326_tests::http_e2e` submodule (the 7 former
 # `#[ignore]` e2e tests). CI runs them in `.github/workflows/http-e2e-ci.yml`.
@@ -48,10 +48,10 @@ use-bigvm = []
 # Fallback to TreeWalker evaluator (for debugging/comparison)
 use-evaluator = []
 # Plan 152: SSE parsing + advanced streaming support (futures now unconditional per Plan 341)
-streaming-http = ["tokio-util"]
+streaming-http = ["tokio-util", "auto-lang-core/streaming-http"]
 
 # Plan 214: Python FFI (embed CPython via PyO3)
-python = ["pyo3"]
+python = ["pyo3", "auto-lang-core/python"]
 
 # Plan 015: UI Features (AutoUI Core)
 ui = []

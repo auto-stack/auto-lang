@@ -1359,7 +1359,7 @@ fn fast() str {
 fn plan705_gate_default_callgraph_no_busy_wait() {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let src =
-        std::fs::read_to_string(std::path::Path::new(manifest).join("src/vm/ffi/http_server.rs"))
+        std::fs::read_to_string(std::path::Path::new(manifest).join("../auto-lang-core/src/vm/ffi/http_server.rs"))
             .expect("read http_server.rs");
     let mut unmarked: Vec<String> = Vec::new();
     let mut legacy = 0usize;

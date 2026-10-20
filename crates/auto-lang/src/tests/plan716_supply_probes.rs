@@ -443,7 +443,7 @@ widget App {{
     #[test]
     fn diff_files_window_faces_registered() {
         // catalog: 9921 canonical 归一（native_catalog.rs for_each_native 表）。
-        let src = include_str!("../vm/native_catalog.rs");
+        let src = include_str!("../../../auto-lang-core/src/vm/native_catalog.rs");
         assert!(
             src.contains("(9921, NATIVE_DIFF_FILES_WINDOW, shim_diff_files_window, \"auto.diff_files_window\")"),
             "catalog 9921 条目在册（供⑧ 改签位）"
@@ -453,7 +453,7 @@ widget App {{
             "9920 撞号残留（ui.focus 独占位）"
         );
         // trans 裸名臂（a2r 轨）。
-        let tr = include_str!("../trans/rust.rs");
+        let tr = include_str!("../../../auto-lang-core/src/trans/rust.rs");
         assert!(tr.contains("diff_files_window"), "trans 裸名臂在册");
         // ui_gen handler 直调臂。
         let ug = include_str!("../ui_gen/rust.rs");

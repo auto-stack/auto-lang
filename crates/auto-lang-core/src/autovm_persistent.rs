@@ -1,0 +1,1795 @@
+// AutoVM Persistent Session (Revised - Efficient)
+//
+// **Plan 068 Phase 9.6**: Persistent AutoVM REPL with state management
+// **Plan 094**: Use statement resolution for FFI shims
+//
+// **Architecture**:
+// - Keep a single AutoVM instance across inputs (preserves heap_objects, arrays, etc.)
+// - Keep a single main task across inputs (preserves stack state)
+// - Reuse the same Codegen object (preserves locals, exports, strings, etc.)
+
+use crate::error::{AutoError, AutoResult};
+use crate::type_registry;
+use crate::use_scanner::{scan_use_statements, UseStatement};
+use crate::vm::codegen::Codegen;
+use crate::vm::engine::AutoVM;
+use crate::vm::native_registry::BIGVM_NATIVES;
+use crate::vm::opcode::OpCode;
+use crate::vm::task::TaskId;
+use crate::vm::virt_memory::VirtualFlash;
+use crate::Parser;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+/// Debug logging macro - only prints when VM debug mode is enabled
+macro_rules! vm_debug {
+    ($($arg:tt)*) => {
+        if crate::is_vm_debug() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
+/// Persistent AutoVM REPL session
+///
+/// **Efficient Implementation**: Reuses Codegen to avoid allocations
+pub struct AutovmReplSession {
+    /// Single VM instance (persistent across inputs)
+    pub vm: AutoVM,
+
+    /// Main task ID (persistent across inputs)
+    main_task_id: TaskId,
+
+    /// Reusable Codegen (contains locals, exports, strings, etc.)
+    /// Option allows moving it out during run() and moving it back
+    codegen: Option<Codegen>,
+
+    /// Type registry for REPL (Plan 087)
+    /// Persists type definitions across REPL inputs
+    type_registry: type_registry::SharedTypeRegistry,
+
+    /// All bytecode compiled so far (for flash updates)
+    bytecode: Vec<u8>,
+
+    /// Object keys metadata
+    object_keys: Vec<Vec<auto_val::ValueKey>>,
+
+    /// Object types metadata
+    object_types: Vec<Vec<crate::vm::codegen::ObjectType>>,
+
+    /// Last result from the previous REPL input (Plan 080)
+    /// Plan 036 workaround-5: Store as NanoValue (u64) to preserve type tags.
+    /// Previously Option<i32> lost the nanbox tag, so string results displayed
+    /// as raw i32 payload (e.g., empty string as -7).
+    last_result: Option<auto_val::NanoValue>,
+    /// Plan 378: full 64-bit value of the last result when it occupied two
+    /// stack slots (u64/i64 from to_uint(), or f64). `last_result` (a single
+    /// NanoValue) cannot represent a full i64 (nanbox reserves the high 16
+    /// bits for a type tag), so we keep the complete value here and let the
+    /// accessors prefer it. None for 1-slot results.
+    last_result_64: Option<i64>,
+
+    /// Plan 300 Phase 2: Persistent Python FFI bridge for REPL.
+    /// Lazily created on first `use.py`, persists across inputs.
+    #[cfg(feature = "python")]
+    py_bridge: Option<crate::py_ffi::PyFfiBridge>,
+
+    /// PLAN-738 T-05（§5.5）：已装载 stdlib 模块指纹台账
+    /// (module, 合并源 FNV 指纹, stdlib root)。同内容重载幂等放行；
+    /// 内容或根变化 = 活 VM 下热换 stdlib ABI → SessionTargetMismatch
+    /// 明确错误要求重建（不让旧堆资源混跑新实现）。pub(crate) 供测试注入。
+    pub module_fingerprints: Vec<(String, u64, String)>,
+    assembly_selections: Vec<crate::stdlib_assembly::model::LayerSelection>,
+    pub assembly_manifest: Option<crate::stdlib_assembly::manifest::AssemblyManifest>,
+}
+
+impl AutovmReplSession {
+    /// Create a new persistent AutoVM REPL session
+    pub fn new() -> Self {
+        crate::install_ui_host_capabilities();
+        // Initialize VM modules (registers HashMap, HashSet, List, etc.)
+        // This MUST be called before creating Codegen or VM
+        crate::vm::init_io_module();
+        crate::vm::init_collections_module();
+        crate::vm::init_builder_module();
+        crate::vm::init_storage_module();
+
+        // Create initial Codegen
+        let codegen = Codegen::new();
+
+        // Start with HALT opcode
+        let bytecode = vec![OpCode::HALT as u8];
+        let flash = VirtualFlash::new_with_code(bytecode.clone());
+
+        // Create VM
+        let mut vm = AutoVM::new(flash, 1024);
+        vm.load_strings(Vec::new());
+
+        // Spawn main task
+        let task_id = vm.spawn_task(0, 1024);
+
+        // Plan 080: Set bp=1 to reserve space for return address
+        // This ensures local variables start at bp+1, not bp+0
+        let task_arc = vm.tasks.get(&task_id).unwrap().clone();
+        let mut task = task_arc.blocking_lock();
+        task.bp = 1;
+        task.num_locals = 0; // Initialize with no locals
+        drop(task);
+
+        Self {
+            vm,
+            main_task_id: task_id,
+            codegen: Some(codegen), // Store Codegen for reuse
+            type_registry: type_registry::new_type_registry(), // Plan 087: Type registry for REPL
+            bytecode,
+            object_keys: Vec::new(),
+            object_types: Vec::new(),
+            last_result: None,    // Plan 080: Initialize last_result
+            last_result_64: None, // Plan 378: 2-slot result value
+            #[cfg(feature = "python")]
+            py_bridge: None, // Plan 300 Phase 2: Lazy init on first use.py
+            module_fingerprints: Vec::new(), // PLAN-738 T-05: stdlib 热换守卫台账
+            assembly_selections: Vec::new(),
+            assembly_manifest: None,
+        }
+    }
+
+    /// Plan 094: Resolve use statements and register imported functions
+    ///
+    /// This scans for `use` statements, loads the corresponding module files,
+    /// and registers the imported functions in BIGVM_NATIVES.
+    fn resolve_use_statements(&mut self, code: &str) -> AutoResult<()> {
+        let use_statements = scan_use_statements(code);
+
+        for use_stmt in &use_statements {
+            // Skip C imports - they're handled differently
+            if use_stmt.is_c_import {
+                continue;
+            }
+
+            // Skip Python imports - handled by resolve_py_imports()
+            if use_stmt.is_python_import {
+                continue;
+            }
+
+            vm_debug!(
+                "DEBUG: Processing use statement: module={}, items={:?}",
+                use_stmt.module,
+                use_stmt.items
+            );
+
+            // Load module and register functions
+            self.load_and_register_module(use_stmt)?;
+        }
+
+        Ok(())
+    }
+
+    /// Plan 300 Phase 2: Resolve Python FFI imports for REPL.
+    ///
+    /// Lazily creates a PyFfiBridge on first `use.py`, imports modules,
+    /// registers Python functions as native shims, and merges them into the VM.
+    #[cfg(feature = "python")]
+    fn resolve_py_imports(&mut self, code: &str) -> AutoResult<()> {
+        let use_stmts = scan_use_statements(code);
+        let py_stmts: Vec<_> = use_stmts.iter().filter(|u| u.is_python_import).collect();
+        if py_stmts.is_empty() {
+            return Ok(());
+        }
+
+        // Lazy init: create bridge on first use.py
+        if self.py_bridge.is_none() {
+            self.py_bridge = Some(
+                crate::py_ffi::PyFfiBridge::new()
+                    .map_err(|e| AutoError::Msg(format!("PyFfiBridge init failed: {:?}", e)))?,
+            );
+        }
+        let bridge = self.py_bridge.as_mut().unwrap();
+
+        for stmt in &py_stmts {
+            if bridge.import_module(&stmt.module).is_err() {
+                continue; // module already imported or not found — skip gracefully
+            }
+
+            if stmt.items.is_empty() {
+                // Bare module: discover all callables, register with module-qualified name
+                let discovered = bridge.discover_module_callables(&stmt.module);
+                for (func_name, param_count) in discovered {
+                    // Plan 567 T17 补（复审遗漏 B）：REPL 路径同法灌注定
+                    // 预言机知识（与 lib.rs init_py_ffi 对齐）。
+                    let ret_anno = bridge.inspect_return_annotation(&stmt.module, &func_name);
+                    let sig = {
+                        let mut sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                        if let Some(t) = &ret_anno {
+                            sig.returns = t.clone();
+                        }
+                        sig
+                    };
+                    if let Some(t) = &ret_anno {
+                        crate::py_ffi_types::record_return_annotation(&func_name, t.clone());
+                    }
+                    if let Ok(native_id) = bridge.register_function(&stmt.module, &func_name, sig) {
+                        let qualified = format!("py.{}.{}", stmt.module, func_name);
+                        if let Ok(mut reg) = BIGVM_NATIVES.lock() {
+                            reg.register_with_id(&qualified, native_id);
+                        }
+                    }
+                }
+            } else {
+                // Named imports: register callables with short name; constants
+                // (non-callable attributes) as zero-arg natives (Plan 369 Task 11).
+                for func_name in &stmt.items {
+                    // Plan 369 Task 11: constants are non-callable module attributes.
+                    if !bridge.is_callable(&stmt.module, func_name) {
+                        if let Ok(native_id) = bridge.register_constant(&stmt.module, func_name) {
+                            let qualified = format!("py.{}", func_name);
+                            if let Ok(mut reg) = BIGVM_NATIVES.lock() {
+                                reg.register_with_id(&qualified, native_id);
+                            }
+                        }
+                        continue;
+                    }
+                    let param_count = bridge.inspect_param_count(&stmt.module, func_name, 1);
+                    // Plan 567 T17 补（复审遗漏 B）：同 lib.rs——注解签名 + 知识表。
+                    let ret_anno = bridge.inspect_return_annotation(&stmt.module, func_name);
+                    let sig = {
+                        let mut sig = crate::py_ffi_types::PySignature::all_auto(param_count);
+                        if let Some(t) = &ret_anno {
+                            sig.returns = t.clone();
+                        }
+                        sig
+                    };
+                    if let Some(t) = &ret_anno {
+                        crate::py_ffi_types::record_return_annotation(func_name, t.clone());
+                    }
+                    if let Ok(native_id) = bridge.register_function(&stmt.module, func_name, sig) {
+                        let qualified = format!("py.{}", func_name);
+                        if let Ok(mut reg) = BIGVM_NATIVES.lock() {
+                            reg.register_with_id(&qualified, native_id);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Merge Python native shims into the VM
+        if let Some(ref bridge) = self.py_bridge {
+            self.vm.merge_native_interface(bridge.native_interface());
+        }
+
+        Ok(())
+    }
+
+    #[cfg(not(feature = "python"))]
+    fn resolve_py_imports(&mut self, _code: &str) -> AutoResult<()> {
+        Ok(())
+    }
+
+    /// Load a module and register its #[vm] functions in BIGVM_NATIVES
+    fn load_and_register_module(&mut self, use_stmt: &UseStatement) -> AutoResult<()> {
+        // Convert module path to file path
+        let module_path = use_stmt.module.replace(".", "/");
+
+        // For "auto.io", module_path is "auto/io", but stdlib file is "stdlib/auto/io.at"
+        // Strip the "auto/" prefix when building stdlib path
+        let stdlib_relative = if module_path.starts_with("auto/") {
+            &module_path[5..] // strip "auto/"
+        } else {
+            &module_path
+        };
+
+        // Find the module root file (.at)
+        // Use CARGO_MANIFEST_DIR to find project root for stdlib lookup
+        let stdlib_path = crate::stdlib_assembly::loader::repo_stdlib_root()?;
+        let root_file = stdlib_path.join(stdlib_relative).with_extension("at");
+
+        if !root_file.exists() {
+            return Err(AutoError::Msg(format!(
+                "Module not found: {} (looked for {})",
+                use_stmt.module,
+                root_file.display()
+            )));
+        }
+
+        let assembly_plan = crate::stdlib_assembly::plan::AssemblyPlan::from_resolved(
+            &use_stmt.module,
+            &root_file,
+            Default::default(),
+        )?;
+        let module_source = assembly_plan.source.clone();
+
+        // PLAN-738 T-05（§5.5）：persistent 活 VM 的 stdlib ABI 热换守卫。
+        // 已装载模块的内容/根指纹台账：同内容重载幂等放行（REPL 重复 use
+        // 合法）；内容或 stdlib root 变化 → SessionTargetMismatch 明确错误
+        // 要求重建 session，不让旧堆资源混跑新实现。
+        {
+            let fingerprint = assembly_plan.fingerprint;
+            let root_key = stdlib_path.to_string_lossy().to_string();
+            match self
+                .module_fingerprints
+                .iter()
+                .find(|(m, _, _)| m == &use_stmt.module)
+            {
+                Some((_, fp, root)) if *fp != fingerprint || *root != root_key => {
+                    return Err(AutoError::Msg(format!(
+                        "session_target_mismatch: stdlib module `{}` changed under an active persistent VM — rebuild the session (hot-swapping stdlib ABI is not allowed)",
+                        use_stmt.module
+                    )));
+                }
+                Some(_) => {} // 同内容同根重载：幂等
+                None => {}
+            }
+        }
+
+        // Parse the combined module source
+        let mut parser = Parser::from(&module_source);
+        let ast = parser.parse().map_err(|e| assembly_plan.map_error(e))?;
+        if !self
+            .module_fingerprints
+            .iter()
+            .any(|(module, _, _)| module == &use_stmt.module)
+        {
+            self.module_fingerprints.push((
+                use_stmt.module.clone(),
+                assembly_plan.fingerprint,
+                stdlib_path.to_string_lossy().to_string(),
+            ));
+            self.assembly_selections.push(assembly_plan.selection());
+        }
+
+        vm_debug!(
+            "DEBUG: Parsed module {} with {} statements",
+            use_stmt.module,
+            ast.stmts.len()
+        );
+
+        // Extract #[vm] function declarations and register them
+        for stmt in &ast.stmts {
+            // PLAN-738 T-03: (fn, canonical full_path)——full_path 形状与
+            // register_vm_declarations 对齐（顶层=auto.<module>.<fn>；
+            // ext 方法=auto.<module>.<target>.<fn>，原实现缺 target 段，
+            // 查 ID 恒 miss，短别名永不注册）。
+            let vm_fns: Vec<(&crate::ast::Fn, String)> = match stmt {
+                crate::ast::Stmt::Fn(fn_decl) => {
+                    if matches!(fn_decl.kind, crate::ast::FnKind::VmFunction) {
+                        vec![(fn_decl, format!("{}.{}", use_stmt.module, fn_decl.name))]
+                    } else {
+                        vec![]
+                    }
+                }
+                crate::ast::Stmt::Ext(ext) => {
+                    // Extract #[vm] methods from ext blocks (e.g., ext str { #[vm] fn split ... })
+                    // PLAN-738 T-03: canonical=auto.<module_stem>.<target>.<fn>
+                    //（扫描侧 module 名是文件基名 "io"，而 use_stmt.module 是
+                    // "auto.io"——须剥前缀，否则拼出 auto.auto.io.*）。
+                    let module_stem = use_stmt
+                        .module
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(&use_stmt.module);
+                    let target_lower = ext.target.to_string().to_lowercase();
+                    ext.methods
+                        .iter()
+                        .filter(|m| matches!(m.kind, crate::ast::FnKind::VmFunction))
+                        .map(|m| {
+                            (
+                                m,
+                                format!("auto.{}.{}.{}", module_stem, target_lower, m.name),
+                            )
+                        })
+                        .collect()
+                }
+                crate::ast::Stmt::TypeDecl(t) => {
+                    // PLAN-738 T-03: 合并源里公共 type 在前、目标层 ext 在后时，
+                    // parser 把 ext 方法并入 TypeDecl.methods（契约+补全两阶段
+                    // 合一——实勘 io.at+io.vm.at：ext_vm=0、TYPEDECL File
+                    // vm_methods=8）。ext 臂只接住"无前置 type 声明"的 ext 块；
+                    // 并入型走这里，canonical 同形状。
+                    let module_stem = use_stmt
+                        .module
+                        .rsplit('.')
+                        .next()
+                        .unwrap_or(&use_stmt.module);
+                    let target_lower = t.name.to_string().to_lowercase();
+                    t.methods
+                        .iter()
+                        .filter(|m| matches!(m.kind, crate::ast::FnKind::VmFunction))
+                        .map(|m| {
+                            (
+                                m,
+                                format!("auto.{}.{}.{}", module_stem, target_lower, m.name),
+                            )
+                        })
+                        .collect()
+                }
+                _ => vec![],
+            };
+
+            for (fn_decl, full_path) in vm_fns {
+                let fn_name: &str = fn_decl.name.as_str();
+
+                // Check if this function is in the import list (if selective import)
+                // Plan 545: bare `use auto.str` = namespace-only — short-name
+                // aliases register under wildcard (explicit flat opt-in) or
+                // named items only. Qualified `str.split(...)` calls resolve
+                // via the full-path native (`auto.str.split`) regardless.
+                let should_import = if use_stmt.is_wildcard {
+                    true
+                } else if use_stmt.items.is_empty() {
+                    false
+                } else {
+                    use_stmt.items.iter().any(|item| item == fn_name)
+                };
+
+                if should_import {
+                    // PLAN-738 T-03: hoist the ID lookup out of the if-let
+                    // scrutinee — edition 2021 keeps the MutexGuard alive for
+                    // the whole if-let body, and the register_with_id re-lock
+                    // below DEADLOCKS now that the context fix makes lookups
+                    // actually succeed (latent since the original two-lock
+                    // form; unreachable before because lookups always missed).
+                    let native_id = BIGVM_NATIVES.lock().unwrap().get_id(&full_path);
+                    if let Some(native_id) = native_id {
+                        // Register with short name for easy access
+                        BIGVM_NATIVES
+                            .lock()
+                            .unwrap()
+                            .register_with_id(fn_name, native_id);
+                        vm_debug!(
+                            "DEBUG: Registered '{}' -> {} (ID: {})",
+                            fn_name,
+                            full_path,
+                            native_id
+                        );
+                    } else {
+                        vm_debug!(
+                            "DEBUG: Warning: '{}' not found in native registry (path: {})",
+                            fn_name,
+                            full_path
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Execute code with persistent state
+    ///
+    /// **Efficient**: Reuses Codegen and TypeRegistry to avoid allocations
+    pub fn run(&mut self, code: &str) -> AutoResult<String> {
+        // Plan 355: Run on a dedicated thread with 8MB stack to prevent
+        // stack overflow when parsing fn bodies with compound statements
+        // (if/for/while) after previous session.run calls consumed stack
+        // via tokio::runtime::Runtime::new() + block_on().
+        //
+        // Root cause: each session.run creates a tokio runtime (line ~733)
+        // which consumes ~2MB of main thread stack for worker thread metadata.
+        // After a few calls, the remaining stack is insufficient for the
+        // recursive descent parser. Fix: run the entire parse+compile+execute
+        // cycle on a fresh thread with guaranteed 8MB stack.
+        let code_owned = code.to_string();
+        let self_ptr: usize = self as *mut Self as usize;
+
+        let handle = std::thread::Builder::new()
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                // SAFETY: self is &mut, borrowed for the duration of this thread.
+                // The caller (run) blocks on join() so the borrow is valid.
+                let session: &mut Self = unsafe { &mut *(self_ptr as *mut Self) };
+                session.run_inner(&code_owned)
+            })
+            .map_err(|e| AutoError::Msg(format!("Failed to spawn session thread: {}", e)))?;
+
+        match handle.join() {
+            Ok(result) => result,
+            Err(e) => Err(AutoError::Msg(format!("Session thread panicked: {:?}", e))),
+        }
+    }
+
+    fn run_inner(&mut self, code: &str) -> AutoResult<String> {
+        let stdlib = crate::stdlib_assembly::loader::repo_stdlib_root()?;
+        for (module, fingerprint, root) in &self.module_fingerprints {
+            let relative = module
+                .strip_prefix("auto.")
+                .unwrap_or(module)
+                .replace('.', "/");
+            let plan = crate::stdlib_assembly::plan::AssemblyPlan::from_resolved(
+                module,
+                &stdlib.join(relative).with_extension("at"),
+                Default::default(),
+            )?;
+            if plan.fingerprint != *fingerprint || stdlib.to_string_lossy().as_ref() != root {
+                return Err(AutoError::Msg(format!("session_target_mismatch: loaded stdlib {module} changed; rebuild the persistent session")));
+            }
+        }
+        // 0. Plan 094: Resolve use statements first (loads modules, registers functions)
+        self.resolve_use_statements(code)?;
+
+        // Plan 300 Phase 2: Resolve Python FFI imports
+        self.resolve_py_imports(code)?;
+
+        // 1. Parse the code
+        let mut parser = Parser::from(code);
+
+        // Plan 087: Set type registry for REPL support
+        // This allows parser to recognize types defined in previous REPL inputs
+        parser.set_type_registry(self.type_registry.clone());
+
+        // Plan 080: Enable skip_check for REPL mode
+        // This allows using undefined variables (e.g., "x" as a statement)
+        // Variables will be checked at runtime by the VM
+        parser = parser.skip_check();
+
+        let ast = parser.parse()?;
+
+        // Debug: Print AST
+        vm_debug!(
+            "DEBUG: Parsed {} statements from: '{}'",
+            ast.stmts.len(),
+            code
+        );
+        for (i, stmt) in ast.stmts.iter().enumerate() {
+            vm_debug!("DEBUG:   Stmt {}: {:?}", i, stmt);
+        }
+
+        if ast.stmts.is_empty() {
+            return Ok(String::new());
+        }
+
+        // 2. Take Codegen (move out for efficient reuse)
+        let mut codegen = self.codegen.take().unwrap();
+
+        // Plan 355 follow-up: snapshot export names that existed BEFORE this
+        // compilation. Their addresses are already absolute (adjusted in a
+        // previous run); only newly-defined exports need address adjustment.
+        let pre_existing_exports: std::collections::HashSet<String> =
+            codegen.exports.keys().cloned().collect();
+
+        // Debug: Print scope_stack before compilation
+        vm_debug!(
+            "DEBUG: Before compilation, scope_stack = {:?}",
+            codegen.scope_stack
+        );
+
+        // Clear previous bytecode (IMPORTANT: don't accumulate!)
+        codegen.code.clear();
+
+        // Clear previous relocations (otherwise old relocations get applied to new code!)
+        codegen.relocs.clear();
+
+        // Plan 355: Clear jump_placeholders to prevent cross-call accumulation
+        codegen.jump_placeholders.clear();
+        codegen.jump_targets.clear();
+
+        // Plan 118 Phase 7: Emit FN_PROLOG and RESERVE_STACK for proper local variable support
+        // Record the starting position of codegen.code (should be 0 after clear).
+        // We compile statements first, then prepend FN_PROLOG + optional RESERVE_STACK
+        // so that relocs offsets remain valid.
+        let code_start = codegen.code.len(); // 0 after clear
+
+        // 3. Compile new statements (reuses locals, exports, strings, etc.)
+        // Plan 080: Ensure codegen is returned even on compilation failure
+        let compile_result: AutoResult<()> = (|| {
+            for stmt in &ast.stmts {
+                codegen.compile_stmt(stmt)?;
+            }
+            Ok(())
+        })();
+
+        // If compilation failed, put codegen back and return error
+        if let Err(e) = compile_result {
+            self.codegen = Some(codegen);
+            return Err(e);
+        }
+
+        // 3b. Prepend FN_PROLOG + optional RESERVE_STACK before the compiled code.
+        // After compilation, max_locals reflects the true high-water mark of variable slots.
+        let actual_n_locals = codegen.max_locals as u8;
+
+        // Build prologue bytes
+        let mut prologue = vec![
+            OpCode::FN_PROLOG as u8,
+            0,               // n_args
+            actual_n_locals, // n_locals
+        ];
+        if actual_n_locals > 0 {
+            prologue.push(OpCode::RESERVE_STACK as u8);
+            prologue.push(actual_n_locals);
+        }
+
+        // Adjust relocs: shift all offsets by prologue length
+        let shift = prologue.len() as u32;
+        for reloc in &mut codegen.relocs {
+            reloc.offset += shift;
+        }
+
+        // Adjust export addresses: shift by prologue length.
+        // Plan 355 follow-up: only shift exports defined IN THIS compilation
+        // (pre-existing exports were already shifted in a previous run and are
+        // already absolute — shifting them again corrupts function addresses).
+        for (name, addr) in codegen.exports.iter_mut() {
+            if !pre_existing_exports.contains(name) {
+                *addr += shift;
+            }
+        }
+
+        // Prepend prologue before compiled code
+        let compiled = codegen.code.split_off(code_start);
+        codegen.code.extend_from_slice(&prologue);
+        codegen.code.extend_from_slice(&compiled);
+
+        // 4. Add HALT at the end
+        codegen.code.push(OpCode::HALT as u8);
+
+        // Debug: Print generated bytecode (hex dump)
+        vm_debug!("DEBUG: Generated {} bytes of bytecode", codegen.code.len());
+
+        // Only print bytecode dump if debug mode is enabled
+        if crate::is_vm_debug() {
+            let mut i = 0;
+            // Track if we're inside NEW_INSTANCE data bytes (Plan 087 Phase 2)
+            let mut new_instance_data_bytes_remaining = 0usize;
+            while i < codegen.code.len() {
+                // If we're in NEW_INSTANCE data bytes, just print them as data
+                if new_instance_data_bytes_remaining > 0 {
+                    eprintln!(
+                        "DEBUG:   [{:04x}] {:02x} <NEW_INSTANCE data: '{}'>",
+                        i, codegen.code[i], codegen.code[i] as char
+                    );
+                    new_instance_data_bytes_remaining -= 1;
+                    i += 1;
+                    continue;
+                }
+
+                // Safe conversion: catch invalid opcodes
+                let opcode: Result<OpCode, _> = codegen.code[i].try_into();
+                let opcode = match opcode {
+                    Ok(op) => op,
+                    Err(_) => {
+                        eprintln!(
+                            "DEBUG:   [{:04x}] {:02x} <invalid opcode>",
+                            i, codegen.code[i]
+                        );
+                        i += 1;
+                        continue;
+                    }
+                };
+                eprint!("DEBUG:   [{:04x}] {:02x} {:?}", i, codegen.code[i], opcode);
+                i += 1;
+                // Print immediate values based on opcode
+
+                // Special handling for NEW_INSTANCE (Plan 087 Phase 2)
+                // NEW_INSTANCE is followed by type name bytes (data, not instructions)
+                if opcode == OpCode::NEW_INSTANCE {
+                    // Read the name length from previous CONST_I32
+                    // We need to look backward to find it
+                    if i >= 5 && codegen.code[i - 5] == OpCode::CONST_I32 as u8 {
+                        // Extract the length (4-byte little-endian)
+                        let name_len = u32::from_le_bytes([
+                            codegen.code[i - 4],
+                            codegen.code[i - 3],
+                            codegen.code[i - 2],
+                            codegen.code[i - 1],
+                        ]) as usize;
+
+                        // Print the name length
+                        if i + 1 < codegen.code.len() {
+                            eprint!(
+                                "DEBUG:   [{:04x}] {:02x} <name_len: {}>",
+                                i + 1,
+                                codegen.code[i + 1],
+                                name_len
+                            );
+                            i += 1;
+                        }
+
+                        // Print each name byte as data
+                        for j in 0..name_len {
+                            if i + 2 + j < codegen.code.len() {
+                                eprintln!(
+                                    "DEBUG:   [{:04x}] {:02x} <name_byte: '{}'>",
+                                    i + 2 + j,
+                                    codegen.code[i + 2 + j],
+                                    codegen.code[i + 2 + j] as char
+                                );
+                                i += 1;
+                            }
+                        }
+                        // Now i points to the byte after the name bytes
+                        continue;
+                    }
+                }
+
+                // Special handling for CONST_STR (followed by string bytes)
+                match opcode {
+                    // FN_PROLOG: 2 bytes (n_args, n_locals)
+                    OpCode::FN_PROLOG => {
+                        if i + 1 < codegen.code.len() {
+                            let n_args = codegen.code[i];
+                            let n_locals = codegen.code[i + 1];
+                            eprint!(" (n_args: {}, n_locals: {})", n_args, n_locals);
+                            i += 2;
+                        }
+                    }
+                    // RESERVE_STACK: 1 byte (n_locals)
+                    OpCode::RESERVE_STACK => {
+                        if i < codegen.code.len() {
+                            let n = codegen.code[i];
+                            eprint!(" (n: {})", n);
+                            i += 1;
+                        }
+                    }
+                    // 1-byte immediates
+                    OpCode::CONST_U8
+                    | OpCode::LOAD_LOCAL
+                    | OpCode::STORE_LOCAL
+                    | OpCode::CALL_CLOSURE => {
+                        if i < codegen.code.len() {
+                            eprint!(" (imm: {:02x})", codegen.code[i]);
+                            i += 1;
+                        }
+                    }
+                    // 2-byte immediates (i16 for jumps, u16 for native ID)
+                    OpCode::JMP
+                    | OpCode::JMP_IF_Z
+                    | OpCode::JMP_IF_NZ
+                    | OpCode::JMP_L
+                    | OpCode::CALL_NAT => {
+                        if i + 1 < codegen.code.len() {
+                            let val = u16::from_le_bytes([codegen.code[i], codegen.code[i + 1]]);
+                            eprint!(" (imm: {:04x})", val);
+                            i += 2;
+                        }
+                    }
+                    // 4-byte immediates (u32 for addresses)
+                    OpCode::CALL => {
+                        if i + 3 < codegen.code.len() {
+                            let val = u32::from_le_bytes([
+                                codegen.code[i],
+                                codegen.code[i + 1],
+                                codegen.code[i + 2],
+                                codegen.code[i + 3],
+                            ]);
+                            eprint!(" (imm: {:08x})", val);
+                            i += 4;
+                        }
+                    }
+                    // SPAWN: 4-byte address + 1-byte arg_count
+                    OpCode::SPAWN => {
+                        if i + 4 < codegen.code.len() {
+                            let addr = u32::from_le_bytes([
+                                codegen.code[i],
+                                codegen.code[i + 1],
+                                codegen.code[i + 2],
+                                codegen.code[i + 3],
+                            ]);
+                            let arg_count = codegen.code[i + 4];
+                            eprint!(" (addr: {:08x}, arg_count: {})", addr, arg_count);
+                            i += 5;
+                        }
+                    }
+                    // 4-byte immediates (i32 for constants)
+                    OpCode::CONST_I32 => {
+                        if i + 3 < codegen.code.len() {
+                            let val = i32::from_le_bytes([
+                                codegen.code[i],
+                                codegen.code[i + 1],
+                                codegen.code[i + 2],
+                                codegen.code[i + 3],
+                            ]);
+                            eprint!(" (imm: {})", val);
+                            i += 4;
+                        }
+                    }
+                    _ => {}
+                }
+                eprintln!();
+            }
+        }
+
+        // 5. Check if all relocations can be resolved (before modifying code)
+        // Collect symbols to check first
+        let undefined_symbols: Vec<String> = codegen
+            .relocs
+            .iter()
+            .filter(|reloc| !codegen.exports.contains_key(&reloc.symbol_name))
+            .map(|reloc| reloc.symbol_name.clone())
+            .collect();
+
+        if !undefined_symbols.is_empty() {
+            // Put Codegen back before returning error
+            self.codegen = Some(codegen);
+            return Err(AutoError::Msg(format!(
+                "Undefined function: {}",
+                undefined_symbols[0]
+            )));
+        }
+
+        // 6. Resolve relocations using existing symbols
+        // Note: We need to clone the code to avoid moving from codegen
+        let new_code = codegen.code.clone();
+
+        // Calculate new_code_start BEFORE popping HALT (we need the current bytecode length)
+        let new_code_start = if self.bytecode.len() > 0 {
+            self.bytecode.len() - 1 // -1 because we'll pop the HALT
+        } else {
+            0
+        };
+
+        // Adjust export addresses: exports from THIS compilation have addresses
+        // < new_code.len() and need to be adjusted to be absolute in the
+        // accumulated bytecode. Pre-existing exports (from previous runs) are
+        // already absolute — skip them (Plan 355 follow-up: previously they
+        // were wrongly re-adjusted, corrupting function call addresses).
+        let new_code_len = new_code.len() as u32;
+        for (name, addr) in codegen.exports.iter_mut() {
+            if !pre_existing_exports.contains(name) && *addr < new_code_len {
+                *addr += new_code_start as u32;
+            }
+        }
+
+        for reloc in &codegen.relocs {
+            if let Some(&addr) = codegen.exports.get(&reloc.symbol_name) {
+                let bytes = addr.to_le_bytes();
+                let offset = reloc.offset as usize;
+                for (i, b) in bytes.iter().enumerate() {
+                    unsafe {
+                        let code_ptr = new_code.as_ptr() as *mut u8;
+                        code_ptr.add(offset + i).write(*b);
+                    }
+                }
+            }
+        }
+
+        // 7. Update bytecode
+        vm_debug!(
+            "DEBUG: Before bytecode update - bytecode.len()={}",
+            self.bytecode.len()
+        );
+        self.bytecode.pop();
+        // Note: new_code_start was already calculated above before adjusting exports
+        self.bytecode.extend_from_slice(&new_code);
+        vm_debug!(
+            "DEBUG: After bytecode update - bytecode.len()={}, new_code_start={}",
+            self.bytecode.len(),
+            new_code_start
+        );
+
+        // 7. Update metadata (clone to avoid move)
+        self.object_keys.extend(codegen.object_keys.clone());
+        self.object_types.extend(codegen.object_types.clone());
+
+        // 8. Update flash and strings
+        let mut flash = VirtualFlash::new_with_code(self.bytecode.clone());
+        flash.object_keys = self.object_keys.clone();
+        flash.object_types = self.object_types.clone();
+
+        let entry = new_code_start;
+        let proofs = match crate::stdlib_assembly::reference::verify_linked_native_closure(
+            &flash,
+            entry,
+            &self.vm.native_interface,
+            &codegen.strings,
+        ) {
+            Ok(proofs) => proofs,
+            Err(error) => {
+                self.codegen = Some(codegen);
+                return Err(AutoError::Msg(error));
+            }
+        };
+        self.assembly_manifest = Some(
+            crate::stdlib_assembly::manifest::AssemblyManifest::freeze(
+                Default::default(),
+                "vm-persistent",
+                std::path::Path::new("."),
+                &stdlib,
+                &self.assembly_selections,
+                proofs,
+            )
+            .with_consumer_input("project/snippet", code),
+        );
+
+        // Update VM's flash and strings
+        self.vm.flash = Arc::new(flash);
+        // Plan 585: 池替换必须走 load_strings——重建 pool_state 并把 flash 常量区
+        // [0, n) 标记 pinned（rc.rs §Phase 2 不变量:字节码立即数只引用 pinned 条
+        // 目）。此前裸赋值绕过 pinned,常量被 rc 计数,首轮 ADD 释放即墓碑+槽位
+        // 复用,次轮 LOAD_STR 立即数读到跨代内容（下游 ash stale-copy 数据损坏,
+        // examples_parity::positional_arg_passes_to_system 红,池日志实锤）。
+        self.vm.load_strings(codegen.strings.clone());
+
+        // Plan 197 Task 9: Sync generic registry to VM for runtime field name lookup
+        self.vm.generic_registry = codegen.generic_registry.clone();
+
+        // 9. Put Codegen back (preserves locals, exports, strings, etc.)
+        self.codegen = Some(codegen);
+
+        // 10. Reuse the same task (DO NOT create new task - preserves stack!)
+        let task_arc = self
+            .vm
+            .tasks
+            .get(&self.main_task_id)
+            .ok_or_else(|| AutoError::Msg("Main task not found".to_string()))?
+            .clone();
+
+        let mut task = task_arc.blocking_lock();
+
+        // 11. Reset task status to Ready (it may be Terminated from previous execution)
+        task.status = crate::vm::task::TaskStatus::Ready;
+
+        // Plan 080: Reset stack pointer to (bp + 1 + num_locals)
+        // Stack frame layout: [unused, local0, local1, ..., temps...]
+        //                     bp-1     bp     bp+1
+        // Local variables occupy bp+1 to bp+num_locals
+        // Stack temps MUST start AFTER all locals: at bp + 1 + num_locals
+        // NOT at bp + num_locals (which would overlap with the last variable!)
+        // IMPORTANT: Use max_locals (high-water mark of variable slots), not scope.len().
+        // When `let a` shadows a previous `let a`, the scope map has 1 entry but
+        // the new variable might be at slot 1, not slot 0. max_locals tracks the
+        // actual highest slot used.
+        let num_locals = self.codegen.as_ref().map(|c| c.max_locals).unwrap_or(0);
+        task.num_locals = num_locals; // Store on task for native shims to access
+        task.ram.sp = task.bp + 1 + num_locals;
+
+        // Debug: Print state BEFORE execution
+        vm_debug!(
+            "DEBUG: BEFORE execution - bp={}, sp={}, ip={}, num_locals={}, raw[0..5]={:?}",
+            task.bp,
+            task.ram.sp,
+            task.ip,
+            num_locals,
+            &task.ram.raw[0..5]
+        );
+
+        // 12. Update IP to point to new code, but KEEP STACK (bp, sp, ram unchanged)
+        task.ip = new_code_start;
+
+        // 12. Execute the code
+        drop(task); // Release lock before execution
+        let rt = tokio::runtime::Runtime::new()?;
+        rt.block_on(async {
+            self.vm.run_task_loop().await;
+        });
+
+        // 13. Get result from the task (re-acquire lock after execution)
+        let task_arc = self
+            .vm
+            .tasks
+            .get(&self.main_task_id)
+            .ok_or_else(|| AutoError::Msg("Main task not found after execution".to_string()))?
+            .clone();
+
+        let mut task = task_arc.blocking_lock();
+
+        // Debug: Print stack state AFTER execution
+        vm_debug!(
+            "DEBUG: AFTER execution - bp={}, sp={}, ip={}, raw[0..5]={:?}",
+            task.bp,
+            task.ram.sp,
+            task.ip,
+            &task.ram.raw[0..5]
+        );
+
+        // Plan 080: Get number of local variables
+        // IMPORTANT: Use max_locals (high-water mark of variable slots), not scope.len().
+        // When `let a` shadows a previous `let a`, the scope map has 1 entry but
+        // the new variable is at a higher slot. max_locals tracks the actual highest slot.
+        let num_locals = self.codegen.as_ref().map(|c| c.max_locals).unwrap_or(0);
+
+        // Calculate target stack pointer (bp + 1 + num_locals)
+        // Stack frame layout: [unused, local0, local1, ..., localN, temps...]
+        //                     bp-1    bp     bp+1    bp+2   bp+N+1
+        // Local variables occupy bp+1 to bp+num_locals
+        // Stack temps start at bp + 1 + num_locals (NOT bp + num_locals!)
+        let target_sp = task.bp + 1 + num_locals;
+
+        vm_debug!(
+            "DEBUG: num_locals={}, bp={}, target_sp={}, current_sp={}",
+            num_locals,
+            task.bp,
+            target_sp,
+            task.ram.sp
+        );
+
+        // Check if there's a temporary result on stack (sp > target_sp)
+        if task.ram.sp > target_sp {
+            // Save the result to last_result (Plan 080)
+            // Plan 036 workaround-5: Use pop_nv() to preserve nanbox type tag.
+            // Plan 377: 全值单槽化后，每个结果恒为单个 NanoValue（含 i64/u64/f64），
+            // 无需 Plan 378 的 2-slot 拼接。直接 pop_nv 存为 last_result。
+            let result = task.ram.pop_nv();
+            // last_result_64 仅在结果是 64 位整数（I64/U64/BIGINT）时填充，
+            // 供访问器返回完整 64 位值；f64/string/bool/object 等保持 None，
+            // 让 format_last_result 走 decode_nv_value 路径正确格式化。
+            let full_64 = match auto_val::tag_of(result) {
+                t if t == 8 => Some(auto_val::decode_i64(result)),
+                t if t == 9 => Some(auto_val::decode_u64(result) as i64),
+                t if t == 0xA => Some(auto_val::decode_bigint_handle(result) as i64),
+                _ => None,
+            };
+            self.last_result = Some(result);
+            self.last_result_64 = full_64;
+            vm_debug!(
+                "DEBUG: Saved result to last_result: {} (full_64={:?})",
+                result,
+                full_64
+            );
+        } else {
+            // No result produced (e.g., let statement without expression)
+            // Clear last_result to avoid printing stale value
+            self.last_result = None;
+            self.last_result_64 = None;
+        }
+
+        // Reset stack pointer to target_sp (clear all temporary values)
+        task.ram.sp = target_sp;
+
+        vm_debug!(
+            "DEBUG: After stack cleanup - sp={}, raw[0..5]={:?}",
+            task.ram.sp,
+            &task.ram.raw[0..5]
+        );
+
+        // Return empty string (REPL will display last_result)
+        Ok(String::new())
+    }
+
+    /// Get session statistics
+    pub fn stats(&self) -> AutovmReplStats {
+        let total_locals = self.codegen.as_ref().map(|c| c.locals.len()).unwrap_or(0);
+        let total_exports = self.codegen.as_ref().map(|c| c.exports.len()).unwrap_or(0);
+        let total_strings = self.codegen.as_ref().map(|c| c.strings.len()).unwrap_or(0);
+
+        AutovmReplStats {
+            total_functions: total_exports,
+            total_locals,
+            bytecode_size: self.bytecode.len(),
+            total_strings,
+            heap_objects: self.vm.heap_objects.len(),
+            // Plan 390 §15 H3b: array literals are ListData<Value> in
+            // heap_objects now (legacy arrays registry is gone).
+            arrays: self
+                .vm
+                .heap_objects
+                .iter()
+                .filter(|e| {
+                    e.value().read().unwrap().type_tag()
+                        == crate::vm::heap_object::TypeTag::ListValue
+                })
+                .count(),
+        }
+    }
+
+    /// Clear all state (start fresh)
+    pub fn reset(&mut self) {
+        // Reset bytecode
+        self.bytecode = vec![OpCode::HALT as u8];
+        self.object_keys.clear();
+        self.object_types.clear();
+
+        // Reset Codegen (recreate fresh one)
+        self.codegen = Some(Codegen::new());
+
+        // Clear VM registries
+        self.vm.closures.clear();
+        self.vm.iterators.clear();
+        self.vm.channels.clear();
+        self.vm.heap_objects.clear();
+        // Plan 390 §15 H3a: nodes registry deleted (nodes live in heap_objects,
+        // cleared above). Plan 390 §15 H3b: arrays/objects registries deleted
+        // (array literals are ListData<Value>, obj literals are ObjectData —
+        // both in heap_objects).
+
+        // Plan 300 Phase 2: Clear Python FFI bridge
+        #[cfg(feature = "python")]
+        {
+            self.py_bridge = None;
+        }
+    }
+
+    /// Get list of defined functions
+    pub fn functions(&self) -> Vec<String> {
+        self.codegen
+            .as_ref()
+            .map(|c| c.exports.keys().cloned().collect())
+            .unwrap_or_default()
+    }
+
+    /// Get list of local variable names
+    pub fn locals(&self) -> Vec<String> {
+        self.codegen
+            .as_ref()
+            .map(|c| {
+                c.scope_stack
+                    .iter()
+                    .flat_map(|scope| scope.keys().cloned())
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    // -----------------------------------------------------------------------
+    // Plan 303 Step 3: Variable export for ASH shell-command interpolation
+    // -----------------------------------------------------------------------
+
+    /// Get a string representation of a local variable's value.
+    ///
+    /// Used by ASH to interpolate `$var` in `>` shell-command lines.
+    /// Reads the NaN-boxed value from `raw_nv` (the VM's primary stack).
+    pub fn get_var_string(&self, name: &str) -> Option<String> {
+        let codegen = self.codegen.as_ref()?;
+
+        // Variables live in scope_stack (not the `locals` field).
+        // Search from innermost scope to outermost (same as codegen's lookup_var).
+        let mut local_idx: Option<usize> = None;
+        for scope in codegen.scope_stack.iter().rev() {
+            if let Some(&idx) = scope.get(name) {
+                local_idx = Some(idx);
+                break;
+            }
+        }
+
+        if let Some(local_idx) = local_idx {
+            // Read NaN-boxed value from raw_nv at bp + 1 + local_idx
+            let task_arc = self.vm.tasks.get(&self.main_task_id)?;
+            let task = task_arc.blocking_lock();
+
+            let bp = task.bp;
+            let stack_pos = bp + 1 + local_idx;
+
+            if stack_pos >= task.ram.raw_nv.len() {
+                return None;
+            }
+
+            let nv = task.ram.raw_nv[stack_pos];
+            drop(task); // Release lock before further lookups
+
+            return Some(self.decode_nv_value(nv));
+        }
+
+        // Fallback: top-level `var`/`const` are stored via STORE_GLOBAL into
+        // vm.globals (not the local stack). In script/REPL mode
+        // (current_module == "") the global key equals the raw variable name.
+        // Without this, `$name` interpolation in `>` shell lines can't read
+        // top-level `var` declarations (the script-var-persistence bug).
+        if let Some(kv) = self.vm.globals.get(name) {
+            return Some(self.decode_nv_value(*kv.value()));
+        }
+
+        None
+    }
+
+    /// Get all local variable names and their string values.
+    pub fn get_all_vars(&self) -> HashMap<String, String> {
+        let Some(codegen) = &self.codegen else {
+            return HashMap::new();
+        };
+        let Some(task_arc) = self.vm.tasks.get(&self.main_task_id) else {
+            return HashMap::new();
+        };
+        let task = task_arc.blocking_lock();
+
+        let bp = task.bp;
+        let mut vars = HashMap::new();
+
+        for scope in &codegen.scope_stack {
+            for (name, &idx) in scope {
+                let pos = bp + 1 + idx;
+                if pos < task.ram.raw_nv.len() {
+                    let nv = task.ram.raw_nv[pos];
+                    vars.insert(name.clone(), self.decode_nv_value(nv));
+                }
+            }
+        }
+        drop(task);
+
+        // Also include top-level `var`/`const` globals (STORE_GLOBAL path).
+        for kv in &self.vm.globals {
+            vars.insert(kv.key().clone(), self.decode_nv_value(*kv.value()));
+        }
+
+        vars
+    }
+
+    /// Decode a NaN-boxed NanoValue from the VM stack into a display string.
+    ///
+    /// Uses the same tagging convention as the VM engine's `decode_tagged_nv`.
+    fn decode_nv_value(&self, nv: auto_val::NanoValue) -> String {
+        if auto_val::is_string(nv) {
+            let str_idx = auto_val::decode_string(nv) as usize;
+            let strings = self.vm.strings.read().unwrap();
+            if let Some(bytes) = strings.get(str_idx) {
+                return String::from_utf8_lossy(bytes).to_string();
+            }
+            return format!("<str#{}>", str_idx);
+        }
+
+        if auto_val::is_i32(nv) {
+            let i = auto_val::decode_i32(nv);
+
+            // Heap object / array reference (Plan 390 §15 H3b: arrays are
+            // ListData<Value> in heap_objects; probe instead of id ranges).
+            if i >= 0 {
+                let id = i as u64;
+                if let Some(arc) = self.vm.heap_objects.get(&id) {
+                    let guard = arc.read().unwrap();
+                    if let Some(list) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                    {
+                        let elems: Vec<String> = list
+                            .elems
+                            .iter()
+                            .map(|v| match v {
+                                auto_val::Value::Int(n) => n.to_string(),
+                                auto_val::Value::Str(s) => s.as_str().to_string(),
+                                auto_val::Value::Bool(b) => b.to_string(),
+                                auto_val::Value::Nil => "nil".to_string(),
+                                _ => "?".to_string(),
+                            })
+                            .collect();
+                        return format!("[{}]", elems.join(", "));
+                    }
+                }
+            }
+
+            return i.to_string();
+        }
+
+        if auto_val::is_bool(nv) {
+            return auto_val::decode_bool(nv).to_string();
+        }
+
+        if auto_val::is_f64(nv) {
+            return auto_val::decode_f64(nv).to_string();
+        }
+
+        // List / object references
+        if auto_val::is_list(nv) {
+            return format!("<list#{}>", auto_val::decode_list(nv));
+        }
+        if auto_val::is_object(nv) {
+            return format!("<obj#{}>", auto_val::decode_object(nv));
+        }
+
+        "<unknown>".to_string()
+    }
+
+    /// Get the last result (Plan 080)
+    ///
+    /// Returns the result from the previous REPL input, if any.
+    /// Plan 036 workaround-5: Decodes NanoValue → i32 for backward compat.
+    /// Prefer `format_last_result()` for type-aware display.
+    ///
+    /// Plan 378: for 2-slot results (u64/i64), the full 64-bit value is held
+    /// in `last_result_64`; this accessor returns its low 32 bits as i32 to
+    /// preserve the historical i32-shaped API. Use `get_last_result_i64()` for
+    /// the full value.
+    pub fn get_last_result(&self) -> Option<i32> {
+        if let Some(full) = self.last_result_64 {
+            return Some(full as i32);
+        }
+        self.last_result.map(|nv| auto_val::decode_i32(nv))
+    }
+
+    /// Plan 378: full 64-bit last result (for u64/i64), or None for 1-slot
+    /// results. Falls back to the i32 NanoValue widened to i64 when no 64-bit
+    /// value was captured.
+    pub fn get_last_result_i64(&self) -> Option<i64> {
+        if let Some(full) = self.last_result_64 {
+            return Some(full);
+        }
+        self.last_result.map(|nv| auto_val::decode_i32(nv) as i64)
+    }
+
+    /// Get the raw last result as NanoValue (Plan 036 workaround-5).
+    /// Preserves the nanbox type tag for type-aware formatting.
+    pub fn get_last_result_nv(&self) -> Option<auto_val::NanoValue> {
+        self.last_result
+    }
+
+    /// Format the last result for display
+    ///
+    /// Plan 036 workaround-5: Uses nanbox type tags (via `decode_nv_value`)
+    /// instead of i32-range heuristics. Strings, bools, floats, lists, and
+    /// heap objects are now correctly distinguished from plain integers.
+    pub fn format_last_result(&self) -> Option<String> {
+        // Plan 378: if a full 64-bit value was captured, format it directly so
+        // large u64/i64 results are not truncated to the low 32 bits.
+        if let Some(full) = self.last_result_64 {
+            // Distinguish by the recorded last_expr_type: Double -> f64, else i64.
+            let is_double = self
+                .codegen
+                .as_ref()
+                .map(|c| matches!(c.last_expr_type, crate::vm::codegen::ObjectType::Double))
+                .unwrap_or(false);
+            if is_double {
+                return Some(format!("{}", f64::from_bits(full as u64)));
+            }
+            return Some(format!("{}", full));
+        }
+        self.last_result.map(|nv| self.decode_nv_value(nv))
+    }
+}
+
+/// REPL session statistics
+#[derive(Debug, Clone)]
+pub struct AutovmReplStats {
+    pub total_functions: usize,
+    pub total_locals: usize,
+    pub bytecode_size: usize,
+    pub total_strings: usize,
+    pub heap_objects: usize,
+    pub arrays: usize,
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ========================================================================
+    // Plan 585: persistent session 字符串池 pinned 不变量。
+    //
+    // 真因:run_inner 步骤 8 裸赋值 vm.strings 绕过 load_strings,flash 常量区
+    // [0, n) 未标 pinned——常量被 rc 计数,首轮 ADD 释放即墓碑+槽位复用,次轮
+    // LOAD_STR 立即数读到跨代内容(下游 ash stale-copy 数据损坏,
+    // examples_parity::positional_arg_passes_to_system 红,池日志
+    // scratch/p585/ashrun/pool.log 实证交叉污染链)。
+    // ========================================================================
+
+    /// 测试 ShellHost:按命令内容返回固定结果(模拟 ash 的 PowerShell 桥)。
+    struct ParityHost;
+
+    impl crate::host::ShellHost for ParityHost {
+        fn system(&self, cmd: &str) -> String {
+            if cmd.contains("*.tmp") {
+                "./x.tmp\n".to_string()
+            } else if cmd.contains("*.bak") {
+                "./y.bak\n".to_string()
+            } else {
+                String::new()
+            }
+        }
+        fn system_status(&self) -> i32 {
+            0
+        }
+        fn export(&self, _key: &str, _val: &str) {}
+        fn exit(&self, _code: i32) {}
+        fn exit_requested(&self) -> bool {
+            false
+        }
+        fn requested_exit_code(&self) -> i32 {
+            0
+        }
+    }
+
+    /// T1 会话级 repro(下游 examples_parity 同形):循环内 system() + 拼接链 +
+    /// trim + found 累加,每轮内容必须完整——修复前第 2 轮起命令串被上一代
+    /// 内容污染,产出丢失。
+    #[test]
+    fn plan585_loop_concat_system_strings_repl_parity() {
+        let mut session = AutovmReplSession::new();
+        session.vm.set_host(std::sync::Arc::new(ParityHost));
+        let script = r#"fn main() {
+    var d = system("echo dir").trim()
+    if d.len() == 0 { d = "." }
+    var patterns = ["*.tmp", "*.bak", "*.log"]
+    var found = ""
+    for p in patterns {
+        var r = system("find " + d + " -maxdepth 1 -name " + p + " -type f")
+        if r.trim().len() > 0 { found = found + r.trim() + "\n" }
+    }
+    found
+}
+main()
+"#;
+        let result = session.run(script);
+        assert!(result.is_ok(), "script should run: {:?}", result.err());
+        assert_eq!(
+            session.format_last_result().as_deref(),
+            Some("./x.tmp\n./y.bak\n"),
+            "每轮 system() 结果必须完整进入 found——污染即丢轮"
+        );
+    }
+
+    /// T2 pin 不变量配平(583 风格):跑过含常量 + 循环拼接 churn 的脚本后,
+    /// flash 常量区每个条目必须恒 pinned(pool_count==u32::MAX)、非墓碑、
+    /// 内容不变,且池记账无多扣款。
+    #[test]
+    fn plan585_repl_constants_pinned_after_run() {
+        let mut session = AutovmReplSession::new();
+        let script = r#"var patterns = ["*.tmp", "*.bak", "*.log"]
+var found = ""
+for p in patterns {
+    var r = "res " + p + " \n "
+    if r.trim().len() > 0 { found = found + r.trim() + "|" }
+}
+found
+"#;
+        let result = session.run(script);
+        assert!(result.is_ok(), "script should run: {:?}", result.err());
+
+        let n_constants = session
+            .codegen
+            .as_ref()
+            .map(|c| c.strings.len())
+            .unwrap_or(0);
+        assert!(n_constants > 0, "script must contribute flash constants");
+        for i in 0..n_constants {
+            assert_eq!(
+                session.vm.pool_count(i),
+                u32::MAX,
+                "flash 常量 idx {} 必须 pinned(计为 u32::MAX)——unpinned 即裸换池回归",
+                i
+            );
+            assert!(
+                !session.vm.pool_is_tombstone(i),
+                "flash 常量 idx {} 不得被墓碑化(释放+槽位复用 = stale-copy 源)",
+                i
+            );
+        }
+        let health = session.vm.pool_health();
+        assert_eq!(health.underflow_events, 0, "池记账必须自持(无多扣款下溢)");
+    }
+
+    #[test]
+    fn test_autovm_session_create() {
+        let session = AutovmReplSession::new();
+        assert!(session.codegen.is_some());
+        assert_eq!(session.bytecode.len(), 1); // Just HALT
+    }
+
+    #[test]
+    fn test_autovm_session_stats() {
+        let session = AutovmReplSession::new();
+        let stats = session.stats();
+        assert_eq!(stats.total_functions, 0);
+        assert_eq!(stats.total_locals, 0);
+        assert_eq!(stats.bytecode_size, 1);
+    }
+
+    #[test]
+    fn test_autovm_session_reset() {
+        let mut session = AutovmReplSession::new();
+        session.bytecode.push(OpCode::ADD as u8);
+        assert_eq!(session.bytecode.len(), 2);
+
+        session.reset();
+        assert_eq!(session.bytecode.len(), 1); // Just HALT
+        assert!(session.codegen.is_some()); // Codegen recreated
+    }
+
+    #[test]
+    fn test_autovm_session_functions() {
+        let session = AutovmReplSession::new();
+        let funcs = session.functions();
+        assert_eq!(funcs.len(), 0);
+
+        let locals = session.locals();
+        assert_eq!(locals.len(), 0);
+    }
+
+    #[test]
+    fn test_autovm_session_simple_arithmetic() {
+        let mut session = AutovmReplSession::new();
+
+        // Simple arithmetic
+        let result = session.run("1 + 2");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_debug_to_int_native_id() {
+        let mut session = AutovmReplSession::new();
+        let result = session.run("\"42\".to_int()");
+        eprintln!("[DEBUG to_int test] result = {:?}", result);
+        eprintln!(
+            "[DEBUG to_int test] last_result = {:?}",
+            session.get_last_result()
+        );
+        assert_eq!(
+            session.get_last_result(),
+            Some(42),
+            "to_int should return 42"
+        );
+    }
+
+    #[test]
+    fn test_debug_to_uint_native_id() {
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("\"42\".to_uint()");
+        eprintln!(
+            "[DEBUG to_uint test] last_result = {:?}",
+            session.get_last_result()
+        );
+        assert_eq!(
+            session.get_last_result(),
+            Some(42),
+            "to_uint should return 42"
+        );
+    }
+
+    #[test]
+    fn test_plan378_to_uint_large_value_not_truncated() {
+        // Plan 378: a u64 result > 2^31 must round-trip through the REPL
+        // last_result without being truncated to its low 32 bits (705032704).
+        // This guards against a "store only the low slot" regression.
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("\"5000000000\".to_uint()");
+        assert_eq!(
+            session.get_last_result_i64(),
+            Some(5_000_000_000),
+            "to_uint REPL result must keep full 64-bit value"
+        );
+        assert_eq!(
+            session.format_last_result().as_deref(),
+            Some("5000000000"),
+            "format_last_result must not truncate large u64"
+        );
+    }
+
+    #[test]
+    fn test_to_int_arithmetic() {
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("\"42\".to_int() + 8");
+        assert_eq!(
+            session.get_last_result(),
+            Some(50),
+            "to_int()+8 should be 50"
+        );
+    }
+
+    #[test]
+    fn test_hashmap_get_str_missing_key() {
+        // Plan 036 workaround-5: get_str should return empty string for missing keys.
+        // The return type in native_catalog.rs was Void → now String.
+        // The last_result now preserves the nanbox tag (NanoValue, not i32).
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("var m = HashMap.new()");
+        let _ = session.run("m.insert_str(\"a\", \"1\")");
+        let _ = session.run("m.get_str(\"missing\")");
+        let nv = session.get_last_result_nv();
+        eprintln!(
+            "[DEBUG get_str missing] last_result_nv = {:?}, is_string={}",
+            nv,
+            nv.map(|v| auto_val::is_string(v)).unwrap_or(false)
+        );
+        // After fix: get_str returns empty string (TAG_STRING nanbox), not null.
+        assert!(nv.is_some(), "get_str should return a value");
+        let nv = nv.unwrap();
+        assert!(
+            auto_val::is_string(nv),
+            "get_str should return string type, got tag={}",
+            auto_val::tag_of(nv)
+        );
+        // Empty string: decode_string gives the string pool index (0 or higher)
+        let _idx = auto_val::decode_string(nv);
+        // Verify formatting produces empty string
+        let formatted = session.format_last_result();
+        eprintln!("[DEBUG get_str missing] formatted = {:?}", formatted);
+        assert_eq!(
+            formatted,
+            Some("".to_string()),
+            "get_str on missing key should format as empty string"
+        );
+    }
+
+    #[test]
+    fn test_autovm_task_reuse_variable_persistence() {
+        let mut session = AutovmReplSession::new();
+
+        // Define variable
+        let result = session.run("let x = 10");
+        assert!(result.is_ok());
+
+        // Access variable in next input (should return 11 if task reuse works)
+        let result = session.run("x + 1");
+        assert!(result.is_ok());
+
+        // Debug: Print result to see actual value
+        if let Ok(s) = &result {
+            println!("x + 1 = {}", s);
+            // Currently expected to be "1" (bug), should be "11" (fixed)
+        }
+
+        // Note: This test currently expected to fail until we implement
+        // proper stack frame management or global variables
+        // After fix, result should be "11" instead of "1"
+    }
+
+    #[test]
+    fn test_autovm_task_stack_state() {
+        let mut session = AutovmReplSession::new();
+
+        // Define two variables
+        let _ = session.run("let a = 5");
+        let _ = session.run("let b = 10");
+
+        // Access both variables
+        let result1 = session.run("a + b");
+        assert!(result1.is_ok());
+
+        if let Ok(s) = &result1 {
+            println!("a + b = {} (expected: 15)", s);
+        }
+
+        // Define third variable using first variable
+        let _ = session.run("let c = a * 2");
+        let result2 = session.run("c");
+        assert!(result2.is_ok());
+
+        if let Ok(s) = &result2 {
+            println!("c = {} (expected: 10)", s);
+        }
+    }
+
+    #[test]
+    #[ignore = "Variable persistence across REPL inputs not yet implemented (stack-based VM limitation)"]
+    fn test_autovm_simple_persistence_check() {
+        let mut session = AutovmReplSession::new();
+
+        // Define x
+        let r1 = session.run("let x = 10");
+        assert!(r1.is_ok(), "let x = 10 should succeed");
+
+        // Try to access x
+        let r2 = session.run("x + 1");
+        assert!(r2.is_ok(), "x + 1 should succeed");
+
+        // Check the result
+        match r2 {
+            Ok(s) => {
+                // If this is "11", variable persistence works!
+                // If this is "1", variable is not persisted (current bug)
+                assert_eq!(
+                    s, "11",
+                    "Variable x should persist with value 10, so x+1=11"
+                );
+            }
+            Err(e) => {
+                panic!("x + 1 failed: {:?}", e);
+            }
+        }
+    }
+
+    #[test]
+    fn test_autovm_undefined_variable_error() {
+        let mut session = AutovmReplSession::new();
+
+        // Define x
+        let r1 = session.run("let x = 5");
+        assert!(r1.is_ok(), "let x = 5 should succeed");
+
+        // Try to access undefined variable y (should error)
+        let r2 = session.run("y + 1");
+        assert!(r2.is_err(), "y + 1 should fail (undefined variable)");
+
+        // Verify error message contains "Undefined variable"
+        if let Err(e) = r2 {
+            let error_msg = e.to_string();
+            assert!(
+                error_msg.contains("Undefined variable"),
+                "Error should mention undefined variable"
+            );
+            assert!(
+                error_msg.contains("y"),
+                "Error should mention variable name 'y'"
+            );
+        }
+
+        // Plan 080: After error, session should still be usable (codegen was returned)
+        // This test verifies the fix for the panic bug
+        let r3 = session.run("x + 2");
+        assert!(r3.is_ok(), "After error, session should still work: x + 2");
+
+        // Verify result is correct
+        if let Some(result) = session.get_last_result() {
+            assert_eq!(result, 7, "x + 2 should be 7 (x is still 5)");
+        } else {
+            panic!("Expected last_result to be Some(7)");
+        }
+    }
+
+    #[test]
+    fn test_autovm_repl_list_type_preservation() {
+        let mut session = AutovmReplSession::new();
+        let r1 = session.run("let l = List.new(1,2,3)");
+        assert!(r1.is_ok());
+        println!(
+            "DEBUG: var_types after l = {:?}",
+            session.codegen.as_ref().unwrap().var_types
+        );
+
+        let r2 = session.run("l.get(2)");
+        if let Err(e) = &r2 {
+            println!("DEBUG: Error on get: {}", e);
+        }
+        assert!(r2.is_ok());
+    }
+
+    /// Regression test: `let a = 1` then `let a = 3` then `a` should return 3, not 0.
+    /// Bug: RESERVE_STACK(16) was hardcoded and overwrote stored variable values.
+    /// Also scope.len() was used instead of max_locals for SP reset.
+    #[test]
+    fn test_autovm_repl_let_rebinding() {
+        let mut session = AutovmReplSession::new();
+
+        let r1 = session.run("let a = 1");
+        assert!(r1.is_ok(), "let a = 1 should succeed: {:?}", r1);
+
+        // Verify a is 1
+        let r1a = session.run("a");
+        assert!(r1a.is_ok(), "a should succeed: {:?}", r1a);
+        println!(
+            "DEBUG: after 'a', last_result={:?}",
+            session.get_last_result()
+        );
+
+        let r2 = session.run("let a = 3");
+        assert!(r2.is_ok(), "let a = 3 should succeed: {:?}", r2);
+
+        // After rebinding, a should be 3
+        let r3 = session.run("a");
+        assert!(r3.is_ok(), "a should succeed after rebinding: {:?}", r3);
+        println!(
+            "DEBUG: after second 'a', last_result={:?}",
+            session.get_last_result()
+        );
+        let val = session
+            .get_last_result()
+            .expect("a should produce a result");
+        assert_eq!(val, 3, "a should be 3 after let rebinding");
+    }
+
+    #[test]
+    fn test_get_var_string_reads_toplevel_var() {
+        // Top-level `var` goes through STORE_GLOBAL (vm.globals), not the
+        // local stack. get_var_string must fall back to globals to read it.
+        // This is the fix for the script-var-persistence bug ($name
+        // interpolation in `>` shell lines couldn't read top-level `var`).
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("var name = \"alice\"");
+        assert_eq!(
+            session.get_var_string("name").as_deref(),
+            Some("alice"),
+            "get_var_string must read top-level var via globals fallback"
+        );
+    }
+
+    #[test]
+    fn test_get_var_string_reads_toplevel_let() {
+        // `let` uses the local stack path; ensure it still works after the
+        // globals-fallback change (no regression).
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("let count = 42");
+        assert_eq!(
+            session.get_var_string("count").as_deref(),
+            Some("42"),
+            "get_var_string must still read top-level let via scope_stack"
+        );
+    }
+
+    #[test]
+    fn test_get_all_vars_includes_toplevel_var() {
+        let mut session = AutovmReplSession::new();
+        let _ = session.run("var g = \"x\"");
+        let _ = session.run("let l = 7");
+        let all = session.get_all_vars();
+        assert_eq!(
+            all.get("g").map(String::as_str),
+            Some("x"),
+            "globals var in get_all_vars"
+        );
+        assert_eq!(
+            all.get("l").map(String::as_str),
+            Some("7"),
+            "local let in get_all_vars"
+        );
+    }
+}

@@ -56,7 +56,7 @@ mod plan808_core_cut {
 
     #[test]
     fn terminal_glue_is_codec_only() {
-        let src = include_str!("../vm/ffi/term_engine.rs");
+        let src = include_str!("../../../auto-lang-core/src/vm/ffi/term_engine.rs");
         for shim in SHIMS {
             assert!(src.contains(shim), "missing shim {shim}");
         }
@@ -79,16 +79,17 @@ mod plan808_core_cut {
                 "vm/ffi/term_engine.rs must be codec-only; found {forbidden:?}"
             );
         }
-        // The only UI references are the two window-pixel compatibility
-        // facade delegations to the named view adapter.
+        // PLAN-814: set_app_window_px 兼容门面已迁上层（调用方直连
+        // ui::terminal_provider），term_engine 仅余 1 个 cfg(test) 的窗口
+        // 投影读 helper——合法面 2 → 1。
         let ui_refs: Vec<&str> = src.lines().filter(|l| l.contains("crate::ui::")).collect();
-        assert_eq!(ui_refs.len(), 2, "facade-only UI refs: {ui_refs:?}");
+        assert_eq!(ui_refs.len(), 1, "facade-only UI refs: {ui_refs:?}");
         assert!(ui_refs.iter().all(|l| l.contains("terminal_provider")));
     }
 
     #[test]
     fn catalog_and_shims_match_34() {
-        let catalog = include_str!("../vm/native_catalog.rs");
+        let catalog = include_str!("../../../auto-lang-core/src/vm/native_catalog.rs");
         for canonical in [
             "auto.term.engine_spawn",
             "auto.term.engine_write_line",

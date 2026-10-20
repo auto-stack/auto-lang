@@ -22,13 +22,13 @@ mod plan807_core_cut {
     /// `code_editor::diff::envelope::` 是迁移前四 shim 的唯一 UI 直引面。
     #[test]
     fn diff_shims_have_no_ui_direct_reference() {
-        let native_rs = include_str!("../vm/native.rs");
+        let native_rs = include_str!("../../../auto-lang-core/src/vm/native.rs");
         assert!(
             !native_rs.contains("ui::code_editor::diff::"),
             "vm/native.rs 不得再含 ui::code_editor::diff:: 直引形态（PLAN-807 \
              剪断；纯面直调 auto-text-core，快照经 EditorSnapshotProvider）"
         );
-        let a2r = include_str!("../a2r_std.rs");
+        let a2r = include_str!("../../../auto-lang-core/src/a2r_std.rs");
         assert!(
             !a2r.contains("ui::code_editor::diff::"),
             "a2r_std.rs 不得再含 ui::code_editor::diff:: 直引形态（PLAN-807）"

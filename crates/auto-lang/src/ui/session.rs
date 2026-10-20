@@ -3883,7 +3883,7 @@ impl DesktopSession {
         let rect = crate::ui::layout::cascade_rect(index, size, usable);
         {
             let sz = crate::ui::iced::virtual_window::vwin_content_size(rect);
-            crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+            crate::ui::terminal_provider::set_app_window_px(sz.width, sz.height);
         }
         let comp = crate::build_dynamic_component(&provisioned_code, spec.source_path.as_deref())
             .map_err(|e| {
@@ -5767,7 +5767,7 @@ impl DesktopSession {
             // 字段语义(Plan 409 响应式布局)不动。
             {
                 let sz = crate::ui::iced::virtual_window::vwin_content_size(*v.rect.borrow());
-                crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+                crate::ui::terminal_provider::set_app_window_px(sz.width, sz.height);
             }
             return Some(SessionViewMut {
                 app_id: id,
@@ -5817,7 +5817,7 @@ impl DesktopSession {
             // desktop 分支——view/订阅闭包侧入口)。
             {
                 let sz = crate::ui::iced::virtual_window::vwin_content_size(*v.rect.borrow());
-                crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+                crate::ui::terminal_provider::set_app_window_px(sz.width, sz.height);
             }
             return Some(SessionViewRef {
                 app_id: id,
@@ -6809,18 +6809,18 @@ mod tests {
     #[test]
     fn p024_app_window_px_setter_semantics() {
         assert_eq!(
-            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            crate::ui::terminal_provider::app_window_px_for_test(),
             (0.0, 0.0)
         );
-        crate::vm::ffi::term_engine::set_app_window_px(0.0, 500.0);
+        crate::ui::terminal_provider::set_app_window_px(0.0, 500.0);
         assert_eq!(
-            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            crate::ui::terminal_provider::app_window_px_for_test(),
             (0.0, 0.0),
             "退化拒收保号"
         );
-        crate::vm::ffi::term_engine::set_app_window_px(777.0, 555.0);
+        crate::ui::terminal_provider::set_app_window_px(777.0, 555.0);
         assert_eq!(
-            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            crate::ui::terminal_provider::app_window_px_for_test(),
             (777.0, 555.0)
         );
     }

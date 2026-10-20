@@ -25,7 +25,7 @@ mod plan804_dialog_dnd {
     /// 零 `ui::` 引用。
     #[test]
     fn core_shims_have_no_dialog_dnd_os_reference() {
-        let native_rs = include_str!("../vm/native.rs");
+        let native_rs = include_str!("../../../auto-lang-core/src/vm/native.rs");
         // 针含尾随 `::` 或模块声明形——注释提及不误伤（785/790 同款纪律）。
         for needle in [
             "rfd::",
@@ -39,7 +39,7 @@ mod plan804_dialog_dnd {
                 "vm/native.rs 不得含 {needle}（PLAN-804 剪断；供值经 host_capabilities provider）"
             );
         }
-        let host_caps_rs = include_str!("../vm/host_capabilities.rs");
+        let host_caps_rs = include_str!("../../../auto-lang-core/src/vm/host_capabilities.rs");
         assert!(
             !host_caps_rs.contains("ui::"),
             "vm/host_capabilities.rs 是 core 能力接口，不得引用 ui"
