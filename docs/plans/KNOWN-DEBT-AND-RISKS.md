@@ -2,6 +2,14 @@
 
 受审 `03d983ae9a654d06963b2ad56a04a3adb3bf8e6e`，r2；[报告/AC矩阵/冻结SD](attachments/814/review-r1/review.md)。**F814-R1-01(P1) OPEN**：当前交接明确不可编译WIP，SDK根项级联未完、compiler/runtime只有文档骨架、auto-vm未切SDK、A候选及消费者/资源验证未交付。**F814-R1-02(P1) OPEN**：SDK无条件normal依赖auto-ui-dialect并直接调用完整UI grammar，违反AC-01/08。均属合同内未完成项，不因记债降格；无需重复整套最终验收。Plan保持executing1/15，T-01保留；原树work完成T-02/T-03/T-13及定向证据并提交后申请具名阶段复审，完整最终审查还需B原任务。未修改实施或跑Cargo/整档/实机/合入；后续pass后的merge-owned冻结门与沉淀/guard仍pending。
 
+### Plan 815（2026-10-20，M815-A独立阶段复审R4，pass；当前finding全闭）
+
+受审 `7045e20fa71ba437bc80075f17d9aace755f5abd`，revision2、scope=M815-A/T-13。[R4阶段报告/限定复审与复用清单](attachments/815/review-r4/review.md)。F-815-R3-01独立CLOSED：正确wire直接解码，两条helper构造路径合法控制须成功，六个负控须命中value/value.t并具名规则；14项wire测试及model all-targets零warning/fmt本轮通过。唯一变更wire_tests.rs，生产代码/依赖/配置/其余测试/Spec输入及真实tool二进制与R3相同，复用已核对的其余81项定向及进程/路径/深度/资源/777/闭包证据。R1六项和R2一项保持CLOSED，无新增或延期/缩面。Plan executing5/14，T01/02/03/12/13完成；仅A阶段pass，不代表整Plan reviewed或实际发布。T14 merge-owned冻结裸t/新包协议consumer门、实际合入/精确A规范/受管ledger/祖先与来源收据仍pending，未整档/合入/归档/清树。下方R1-R3为历史，当前无开放finding。
+
+### Plan 815（2026-10-20，M815-A独立阶段复审R3，needs_fix；旧代码finding全闭）
+
+受审 `bc61501c58d45dde28ee2c739425dbc3c911b38c`，revision2，scope=M815-A/T-13。[R3关闭表/原例与相邻控制](attachments/815/review-r3/review.md)。上轮四项F-R1-02/04/05和F-R2-01已独立CLOSED，F-R1-01/03/06保持；精确wire120/frame122、两reader、7组路径双cwd、三位置坏payload后流继续及诊断双侧准入均通过。唯一OPEN=F-815-R3-01(P2测试缺陷)：wire_tests.rs:469/477将helper已返回的完整wire再包入request，六个负控和raw负控均在unknown request key wire处提前失败，换成合法Value也满足任意Shape拒绝断言；须修fixture构造、同路径合法控制和目标分支断言。95个现有定向测试reported pass、健康/777/闭包通过，不能将这条伪覆盖当完成；无已闭实现问题复活。executing2/14，T01/02完成保留，T03/12只待该测试修复；实现/依赖/配置/输入未变时下轮可复用R3代码/规范证据并限定复审，不重启整档。阶段冻结门/SD/ledger/实际发布来源仍pending；未合入/归档/清树。下方R1/R2为历史，当前只此测试项开放，不授权将它转债延期。
+
 ### Plan 815（2026-10-20，M815-A独立阶段复审R2，needs_fix）
 
 受审 `faea8c9d727df1ab2b16d45fed95c0f345c48180`，revision2，scope=M815-A/T-13。[R2关闭表/原例与相邻反控/冻结候选](attachments/815/review-r2/review.md)。F-R1-01/03/06独立CLOSED（诊断payload原例与非Unicode路径具名拒绝、数值/版本/真实分数窗口、fmt/零warning）；02/04/05原例修复但完整不变量仍OPEN：缺Value.t在assets/raw/node-props均panic exit101；Windows C:相对路径input/output/front/dep四臂仍依cwd；深度120限制未含完整协议封装且两reader未接线，wire119可编码/完整信封121写拒而真实读端接受。新增F-815-R2-01(P2修复回归)：重复type-mismatch前缀被trim全部删除而误接受，编码端又成功产出自身解码拒绝的未知field。当前四项均合同内P2，不以登记批准延期/缩面。87个不同现有定向测试、fmt/all-targets健康/777 strict及闭包通过，不能覆盖反例；executing1/14，重开T-01预算部分/T-03/T-12，保留T-02和已闭证据。原树work修齐、提交新SHA后复审；merge-owned冻结门/SD/ledger/实际发布及来源收据仍pending，未整档/合入/归档/清树。下方R1为历史，当前状态以R2关闭表为准。
@@ -285,6 +293,16 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 受审 `d2b0ec99ba579547a1506a2babc40b232c3dcda3`；[R5报告/旧例闭环/新反例](attachments/787/review-r5/REVIEW.md)。R1 7/7、R2 18/18、R3 8/8、R4 3/3全部绿（集合重叠）；当前 **needs_fix / executing 5/9**，不批准延期，下方旧轮开放结论保留历史。
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
+
+### Plan 797（2026-10-20，R11 修复轮完成，待 T-08 复审）
+
+R11 复审（受审 `26e307386`，needs_fix）3 项残项已全部修复（修复提交 `634d4d0ab`，同树）：F-R4-07 搜索域全集清单（传递头父目录顶层清单；17→29 遮蔽反例；工具链目录顶层化修复命中性能回归）；F-R4-10 两阶段峰值预算（flatten 阶段全量 memo+seen 显式入终门；1700 字节名链拒绝+800 控制）；F-R4-09 落盘完成后关闭 span（门禁消费 post-persist span；592/641/644 与 90/121ms 收据绑定）。probe 80/80、父侧 13/13、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
+
+### Plan 797（2026-10-20，R11 完整复审，needs_fix）
+
+受审 `26e307386661498d821af7fffba3a243cc218d79`，revision1；[R11完整报告/AC映射/原始反例](attachments/797/review-r11/review.md)。上轮4项 **R10-01 CLOSED**；**R4-07/09/10 PARTIAL/OPEN**（无新增ID）：07旧嵌套/无扩展名修复，但common传递头新增近端dep.h后仍cache PE17而fresh29；10旧超限链和小图修复，但1700字节名1024节点合法链被接受，新增堆峰9,018,591B>8MiB（输入/栈不计）；09失败分类false/true和写失败ERROR均已闭合，既有发布计时残项P2仍在——span/request_ms在append前取值，未覆盖收据声称的落盘完成，不冒称已测超1s。
+
+179定向测试pass+1既有ignored；自身改动文件无warning/scoped格式/空白过。**executing3/9**，T-01/T-03/T-04完成，原树work修三残项及完整不变式oracle后再审。第六次完整final未过，登记不批准合同内延期/缩面；未改实现/整档/合入/canonical Spec/live ledger，merge-owned冻结门禁/沉淀/归档/guard清理pending。下列为历史工作交接/审查，不能覆盖本轮独立结论。
 
 ### Plan 797（2026-10-20，R10 修复轮完成，待 T-08 复审）
 
@@ -2460,3 +2478,11 @@ F810-R2-01（P2）同实例错误oracle仍未齐：fresh Parser成功不能证�
 ### Plan 798 修复复审 R10（2026-10-20，needs_fix）
 
 受审`f24bd46a6f84286c30c90b156d9b4e7d72ad1358`，plan r2；[报告/精确程序/源码与raw](attachments/798/review-r10/review.md)。当前F798-R10-01 P2开放：不同兄弟实参分别有60层括号与70项加法链，前门把独立最大值相加为131层误拒；源码nesting62，直接Checked HIR→MIR→ABC→AV=1/143步，交换表达式=70/143步。两轴单独均通过；真正同路径60层调用+70项链仍正确拒绝。属于原最大构造路径不变量未闭，非新增规模/语法要求。原连续浅语句16/63/64/65/100均已通过；**R9-02关闭**：双流帽、排空、超时整树清理与非零退出/缺产物均独立通过（后代heartbeat15→15且OS进程不存在）。core20+probe72+正式协议4+兼容16+contract20=132定向测试通过，fmt/diff-check0；完整新基线V11未跑，不据work旧摘要授最终pass。保留T01/03/04/06，T02/05/08待修、T07完整验收pending，executing4/10；原树work补sibling路径关联及异路径/同路径/顺序/语句组合oracle与多轮诊断后提交再审。登记不授权延期/缩围；未改实施/发布规范/ledger/合入，merge-owned门禁和收尾pending。
+
+### Plan 798 修复定向复审及r3 readiness R11（2026-10-20，needs_fix）
+
+受审`5def3af48689487a212b518df276e737cb62d8bd`，当前plan r3；[报告/精确输入/HIR层数/源码与raw](attachments/798/review-r11/review.md)。F798-R11-01 P2：R10修复使同一个命名实参内部嵌套调用与外层左结合链不再组合，真实Checked HIR最长131层仍前门放行且Driver返回70；位置实参同131层却resource。原7组异路径误拒及5档连续浅语句已闭，不等于完整预算成立。F798-R11-02 P2为r3已列明未完成的V-14缺口：单函数完整module含未执行直接自调用、另一分支42；编码前is_unit=false且公开手工DecodedAbc授信后执行42/6步，decode后变true导致mir.unit-callee，实际Driver fresh同拒。非这两文件的新回归，r3要求未被r2 work93测覆盖。三个精确定向测试各1/1、fmt/diff-check0；因readiness未满足未跑完整最终门或整档。T01/03/04维持r3重开、T07/08待完成，重开T02/05，仅T06完成，executing1/10。原树work需补每sibling完整组合路径及kind/版本/缓存/多入口oracle；登记不授权延期/缩围。R9-02关闭记录保留；未改实施/发布canonical规范/ledger/合入，最终pass后merge门禁和收尾pending。
+
+### Plan 798 修复复审及r4 readiness R12（2026-10-20，needs_fix）
+
+受审`bf7e44f8ef18d9f6b9c03467986f5b91cadc58c3`，plan r4；[报告/反例/命令/当前资源数据与raw](attachments/798/review-r12/review.md)。开放四项P2：F798-R12-01真实Checked HIR仅71层的尾操作数深调用被前门估成192层误拒（直接管线=70/262步）；R12-02 raw unit仍获executable凭证并直接执行（零参=7/2步、带参=42/1步，未走闭包装配/完整entry门）；R12-03新增kind位而wire/schema/producer/sem/key未隔离旧语义，旧无kind单元raw误作module且真实store hit1/miss0/emitted0成功7；R12-04冻结273575bytes当前release请求值正确2665，但private-bytes空载761856/峰值211918848/增量211156992（约201.4MiB）>128MiB，r4明确历史前端归因/债务不是豁免。资源若只读ac-core不可行按T01给owner阻断及有界修订回new，不扩大上限/扣前端/抢写依赖。R11原131层漏准入和module42往返具体例已验证修复；四个精确定向测试各1/1、fmt/diff-check0，不证明完整K14/资源。仅T06完成，executing1/10；未跑完整最终门或整档，未改实施/发布canonical规范/ledger/合入。登记不授权延期/缩围；最终pass后merge门禁/归档/guard仍pending。
