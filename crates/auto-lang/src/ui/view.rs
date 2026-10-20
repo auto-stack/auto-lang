@@ -1141,10 +1141,7 @@ pub enum View<M: Clone + Debug> {
     /// process-level `remote_frame_registry` latest-frame slot directly.
     /// url change = drop old client, dial new (identity is the url string).
     /// **convert_view_messages 显式臂随行**——PLAN-002 A1 教训。
-    RemoteFrame {
-        url: String,
-        style: Option<Style>,
-    },
+    RemoteFrame { url: String, style: Option<Style> },
 
     /// CSS-Grid-like layout: `cols` equal-width columns. Decomposed into a
     /// column-of-rows at render time by the shared generic `build_grid`

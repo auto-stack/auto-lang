@@ -23,12 +23,12 @@ mod plan785_provider {
     /// host_capabilities 零 `ui::` 引用（能力接口与装配层分离）。
     #[test]
     fn core_clipboard_shims_have_no_ui_clipboard_reference() {
-        let native_rs = include_str!("../vm/native.rs");
+        let native_rs = include_str!("../../../auto-lang-core/src/vm/native.rs");
         assert!(
             !native_rs.contains("ui::clipboard::"),
             "vm/native.rs 不得直引 ui::clipboard（PLAN-785 剪断；供值经 host_capabilities provider）"
         );
-        let host_caps_rs = include_str!("../vm/host_capabilities.rs");
+        let host_caps_rs = include_str!("../../../auto-lang-core/src/vm/host_capabilities.rs");
         assert!(
             !host_caps_rs.contains("ui::"),
             "vm/host_capabilities.rs 是 core 能力接口，不得引用 ui"

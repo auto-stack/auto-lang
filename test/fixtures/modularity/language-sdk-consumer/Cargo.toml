@@ -1,0 +1,26 @@
+# PLAN-814 M814-A 纯语言 SDK 消费方探针（独立 fixture crate，V-01/AC-08）。
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-lang-core 默认特性（**不含**
+# ui-dialect/UI 编译/运行包/Man），证明纯 SDK 可独立完成 Core
+# parse→compile→VM 与 trans 出口。本 fixture 的成功构建/测试即闭包证据：
+# normal 闭包无 auto-ui-dialect/auto-ui-compiler/auto-ui-runtime/auto-lang。
+#
+# 显式脱离根 workspace：空 [workspace] 使其成为独立解析单元（根
+# Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/language-sdk-consumer/Cargo.toml
+# （--locked 需先生成 Cargo.lock；fresh/locked 消费按 T-13 候选流程）
+
+[package]
+name = "language-sdk-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+
+[dev-dependencies]
+# 手工 VM 管线测试的异步运行时（auto-vm 同款）。
+tokio = { version = "1", features = ["full"] }

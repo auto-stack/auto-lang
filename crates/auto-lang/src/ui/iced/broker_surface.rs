@@ -890,8 +890,7 @@ mod tests {
         for w in [400u16, 500, 600, 700] {
             let f = wire_font(w, false);
             assert_eq!(
-                f.family,
-                INTER_FONT.family,
+                f.family, INTER_FONT.family,
                 "w={w} 须钉 app 字体栈 family（Inter）"
             );
         }

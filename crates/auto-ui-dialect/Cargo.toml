@@ -21,3 +21,10 @@ description = "AutoLang UI declaration grammar (msg/model) single-source impleme
 
 [dependencies]
 auto-parser-api = { path = "../auto-parser-api" }
+
+# PLAN-814 R3-03b：UI 文法依赖回归测试（86 项随迁自 auto-lang-core 的
+# `ui-dialect` 门控测试）——真 Parser/方言派发/转译语料驱动。dev 边不进
+# normal/build 闭包（PLAN-806 轻闭包钉住不变；777 规则只审 normal/build）。
+[dev-dependencies]
+auto-lang-core = { path = "../auto-lang-core" }
+tempfile = { workspace = true }

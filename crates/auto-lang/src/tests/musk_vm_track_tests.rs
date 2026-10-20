@@ -2165,7 +2165,7 @@ mod musk_vm_track_p054_t4_style_probe {
                 eprintln!("[P054-T4] {name}: PARSE FAIL");
                 continue;
             };
-            let is = crate::ui::style::iced_adapter::IcedStyle::from_style(&s);
+            let is = crate::ui::style_iced_adapter::IcedStyle::from_style(&s);
             eprintln!(
                 "[P054-T4] {name}: border={} width={:?} color={:?} bg={:?}",
                 is.border, is.border_width, is.border_color, is.background_color
@@ -2177,7 +2177,7 @@ mod musk_vm_track_p054_t4_style_probe {
 /// PLAN-054 T4 (A6/A9/A11) 回归锁：会话卡片/消息行样式链。
 #[cfg(all(test, feature = "ui-iced"))]
 mod musk_vm_track_p054_t4_styles {
-    use crate::ui::style::iced_adapter::IcedStyle;
+    use crate::ui::style_iced_adapter::IcedStyle;
     use crate::ui::style::{Style, StyleClass};
 
     /// A9 锁①：border-primary/25 带解析（选中卡片淡描边）。
@@ -2287,14 +2287,14 @@ mod musk_vm_track_p054_t4_styles {
         assert!(
             matches!(
                 is.align_self,
-                Some(crate::ui::style::iced_adapter::IcedAlign::End)
+                Some(crate::ui::style_iced_adapter::IcedAlign::End)
             ),
             "self-end 必须进 align_self(此前仅降级告警)"
         );
         assert!(
             matches!(
                 is.align_items,
-                Some(crate::ui::style::iced_adapter::IcedAlign::End)
+                Some(crate::ui::style_iced_adapter::IcedAlign::End)
             ),
             "items-end 必须进 align_items"
         );
@@ -3263,7 +3263,7 @@ mod musk_vm_track_p055_pre_code_arm {
             }
             _ => unreachable!(),
         };
-        use crate::ui::style::iced_adapter::IcedStyle;
+        use crate::ui::style_iced_adapter::IcedStyle;
         use crate::ui::style::StyleClass;
         // 类串解析面：border-top 类 + padding/max-h 适配值三键齐备。
         assert!(

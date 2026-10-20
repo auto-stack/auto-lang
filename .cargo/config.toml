@@ -65,7 +65,10 @@ jobs = 12
 # cargo nextest run -p auto-lang --test schema_drift queue_coverage --success-output immediate
 # (2026-09-22 注:ui-iced 已入 auto-lang default feature——本行显式 flag 冗余
 # 但保留作文档;全部档位见 tf 注的新裁定。)
-t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --features ui-iced,test-cases"
+# PLAN-814: 迁包选择面机制——别名扩多 -p（包前缀 feature：裸 --features 在
+# 多 -p 下要求所选包都有该 feature，会红；前缀式已实证可单调用混选）。
+# auto-lang-core 的迁移族（首例 use_scanner::tests 27 测）由此保持日常档选中。
+t = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --test schema_drift --test docs_gen --test component_registry_test --features auto-lang/ui-iced,auto-lang/test-cases"
 # Plan 466: full 档 = 全部测试含 1M 大档 churn(批量回归专用——fix-test-tiering
 # 2026-09-30 起不再作 per-plan review 门禁,由 auto-plan-regress 技能主检出
 # 单实例触发;复审门禁=裸 cargo t + 触面档,见 AGENTS.md Category B)
@@ -75,7 +78,7 @@ t = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test c
 # 作废,desktop_protocol 面进 tf;复审清单不再须另跑 ui-iced 补档。)
 # (Plan 531 注:tf 亦不含 test-trans(tt 档)——a2r/cookbook 文本金样 28 件曾
 # 因此脱离门禁烂了一年(444/514/523 三期累积);复审清单同样须另跑 cargo tt)
-tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"
+tf = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"
 # Plan 568: tv = 纯 .at 语料 golden 档(改 VM/编译器后的回归)。AAVM/AA2R
 # 自举测试已迁出(test-aavm feature)——"改 VM/编译器的回归"与"AAVM 展示"
 # 不是同一概念,aavm 无实用面,反射性 tv 不再触发三重解释/现场 cargo build
@@ -85,8 +88,8 @@ tf = "nextest run -p auto-lang --lib --test schema_drift --test docs_gen --test 
 # 二进制——三档切换零重编。不用 -E 内联表达式:cargo 在 Windows 下对
 # alias 实参不做引号剥离,带空格的 filterset 传不进去(实测两形态皆败)。
 tv = "nextest run -p auto-lang --lib --profile tv --features test-cases"
-tt = "nextest run -p auto-lang --lib --features test-trans,test-cases"
-tb = "nextest run -p auto-lang --lib --features test-book"
+tt = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --features auto-lang/test-trans,auto-lang/test-cases"
+tb = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --features auto-lang/test-book"
 # fix-ui-tier(2026-09-30): UI 代码生成档(vue/jet/ark/rust 四生成器内联测试,
 # ~854 例)。刻意用裸 cargo test(单进程 libtest 线程并行)而非 nextest:
 # 本族几乎每例都走 VueGenerator::new_shadcn() → WidgetRegistry::with_defaults()
@@ -94,15 +97,15 @@ tb = "nextest run -p auto-lang --lib --features test-book"
 # 6250 测试秒几乎全在此);单进程下 setup 全档只付一次。纯函数代码生成测试
 # 无进程级全局态/重内存,单进程安全(重内存测试全在 taa 档,heavy_gate 亦
 # 不在本族)。日常档(default-filter)已排除 ui_gen::,tf 批量档仍全覆盖。
-tu = "test -p auto-lang --lib --features ui-iced ui_gen::"
+tu = "test -p auto-ui-compiler -p auto-lang --lib --features auto-lang/ui-iced ui_gen::"
 # Plan 568: AAVM/AA2R 专属档(独立空 feature,PLAN-700 起不再 imply 语料档;
 # full 配置含 1M churn 与
 # 全部重测试,无 XL 排除——裸跑=aavm 全集兜底,附带日常面)。仅当改动触及
 # aavm 代码时使用(触发条件与作用域映射见 AGENTS.md);追加滤串缩小作用域
 # (同 cargo t <module> 习惯),如 cargo taa aavm2_m5 只跑 M5。刻意不带固定
 # 尾滤串:nextest 位置滤串是 OR 语义,固定串会废掉作用域缩小。
-taa = "nextest run -p auto-lang --lib --features test-aavm --config-file .config/nextest-full.toml"
-ta = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book --config-file .config/nextest-full.toml"
+taa = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --features auto-lang/test-aavm --config-file .config/nextest-full.toml"
+ta = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --features auto-lang/test-aavm,auto-lang/test-trans,auto-lang/test-book --config-file .config/nextest-full.toml"
 # Plan 317 §11 Phase 11: HTTP e2e tests (real TCP servers; serial only).
 # nextest runs each test in its own process, which is ideal here — each test's
 # detached server thread is reaped on process exit, giving full isolation.
@@ -112,7 +115,7 @@ th = "nextest run -p auto-lang --lib --features test-http-e2e http_e2e"
 # 自守门(T3_MILESTONE=1 才真正运行,否则秒退),default/full 两档
 # filter 亦显式排除——三重防误触发。运行形态(大版本时人工执行):
 #   T3_MILESTONE=1 cargo t3
-t3 = "nextest run -p auto-lang --lib --features test-aavm,test-trans,test-book --config-file .config/nextest-t3.toml"
+t3 = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --features auto-lang/test-aavm,auto-lang/test-trans,auto-lang/test-book --config-file .config/nextest-t3.toml"
 
 # Plan 423 P5: VM 行为测试(015-notes 组件 build/dispatch 等)的 Rust 递归
 # 深度超过 libtest 默认 2MB 线程栈(STATUS_STACK_OVERFLOW)。仓库级抬高

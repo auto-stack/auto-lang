@@ -34,7 +34,7 @@ mod plan794_scroll {
     /// host_capabilities 零 `ui::` 引用（能力接口与装配层分离）。
     #[test]
     fn core_scroll_shims_have_no_ui_reference() {
-        let native_rs = include_str!("../vm/native.rs");
+        let native_rs = include_str!("../../../auto-lang-core/src/vm/native.rs");
         let start = native_rs
             .find("// PLAN-656 T-03: scroll-pane controller natives")
             .expect("scroll natives 节头存在");
@@ -48,7 +48,7 @@ mod plan794_scroll {
             "scroll 八 shim 节区段不得直引 ui::（PLAN-794 剪断；供值经 \
              host_capabilities::ScrollHostProvider 装配）"
         );
-        let host_caps_rs = include_str!("../vm/host_capabilities.rs");
+        let host_caps_rs = include_str!("../../../auto-lang-core/src/vm/host_capabilities.rs");
         assert!(
             !host_caps_rs.contains("ui::"),
             "vm/host_capabilities.rs 是 core 能力接口，不得引用 ui"

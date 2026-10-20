@@ -4946,7 +4946,9 @@ fn aura_vtree_node(
         }
         // PLAN-043 T6：scroll offset 绑定值进 AURA 快照（滚动联动可观测
         // 口；无绑定的 scrollable 不输出该行）。
-        VNodeProps::Scrollable { offset_y: Some(y), .. } => {
+        VNodeProps::Scrollable {
+            offset_y: Some(y), ..
+        } => {
             out.push_str(&format!("{}offset_y: {:.1}\n", "  ".repeat(indent + 1), y));
         }
         // Plan 423 P3: disabled 标记进 AURA 快照(禁用项点击无消息的断言面)。
@@ -5043,7 +5045,12 @@ impl Rect4 {
         let x2 = (self.x + self.w).min(o.x + o.w);
         let y2 = (self.y + self.h).min(o.y + o.h);
         if x2 > x1 && y2 > y1 {
-            Some(Rect4 { x: x1, y: y1, w: x2 - x1, h: y2 - y1 })
+            Some(Rect4 {
+                x: x1,
+                y: y1,
+                w: x2 - x1,
+                h: y2 - y1,
+            })
         } else {
             None
         }
@@ -5081,7 +5088,12 @@ fn compute_visibility(
             }
         }
     }
-    let win = Rect4 { x: 0.0, y: 0.0, w: window.0, h: window.1 };
+    let win = Rect4 {
+        x: 0.0,
+        y: 0.0,
+        w: window.0,
+        h: window.1,
+    };
     match r.intersect(&win) {
         Some(i) => (Some(i), flags),
         None => {
@@ -5113,11 +5125,14 @@ fn resolve_pane_chain_structural(
     vtree: &crate::ui::vnode::VTree,
     panes: &HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
 ) -> Vec<(String, Rect4AndViewport)> {
-    let step_of = |e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry| {
-        Rect4AndViewport {
-            viewport: Rect4 { x: e.viewport[0], y: e.viewport[1], w: e.viewport[2], h: e.viewport[3] },
-            offset: e.offset,
-        }
+    let step_of = |e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry| Rect4AndViewport {
+        viewport: Rect4 {
+            x: e.viewport[0],
+            y: e.viewport[1],
+            w: e.viewport[2],
+            h: e.viewport[3],
+        },
+        offset: e.offset,
     };
     let mut chain = Vec::new();
     let mut cur = vtree.get(vnode_id);
@@ -5182,11 +5197,14 @@ fn resolve_pane_chain(
     target: Rect4,
     panes: &HashMap<String, crate::ui::iced::scroll_state_reader::ScrollStateEntry>,
 ) -> Vec<(String, Rect4AndViewport)> {
-    let step_of = |e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry| {
-        Rect4AndViewport {
-            viewport: Rect4 { x: e.viewport[0], y: e.viewport[1], w: e.viewport[2], h: e.viewport[3] },
-            offset: e.offset,
-        }
+    let step_of = |e: &crate::ui::iced::scroll_state_reader::ScrollStateEntry| Rect4AndViewport {
+        viewport: Rect4 {
+            x: e.viewport[0],
+            y: e.viewport[1],
+            w: e.viewport[2],
+            h: e.viewport[3],
+        },
+        offset: e.offset,
     };
     // 第一步：owner 判定（发布公式逆运算）。
     let owner = panes
@@ -5268,8 +5286,10 @@ fn tool_scroll_state(shared: &SharedStateHandle, args: serde_json::Value) -> ser
         )
     };
     let filter = args.get("pane").and_then(|v| v.as_str());
-    let mut items: Vec<(&String, &crate::ui::iced::scroll_state_reader::ScrollStateEntry)> =
-        panes.iter().collect();
+    let mut items: Vec<(
+        &String,
+        &crate::ui::iced::scroll_state_reader::ScrollStateEntry,
+    )> = panes.iter().collect();
     if let Some(f) = filter {
         items.retain(|(k, _)| {
             k.as_str() == f || k.as_str() == format!("scroll_ctl_{}", f) || k.contains(f)
@@ -5295,7 +5315,10 @@ fn tool_visibility(shared: &SharedStateHandle, args: serde_json::Value) -> serde
         Some(e) => e.to_string(),
         None => return error_result("missing required param: element_id"),
     };
-    let pane_pin = args.get("pane").and_then(|v| v.as_str()).map(str::to_string);
+    let pane_pin = args
+        .get("pane")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
     let g = shared.lock().unwrap();
     let frame = g.get_layout_frame();
     let tick = g.get_scroll_tick();
@@ -5306,16 +5329,21 @@ fn tool_visibility(shared: &SharedStateHandle, args: serde_json::Value) -> serde
 
     let Some((tx, ty, tw, th)) = target else {
         let payload = json!({
-        "backend": backend,
-        "frame": frame,
-        "scroll_tick": tick,
-        "element_id": element_id,
-        "resolved": false, "intersection": null, "visible": false,
-        "flags": ["unmeasured"],
-    });
+            "backend": backend,
+            "frame": frame,
+            "scroll_tick": tick,
+            "element_id": element_id,
+            "resolved": false, "intersection": null, "visible": false,
+            "flags": ["unmeasured"],
+        });
         return text_result(serde_json::to_string_pretty(&payload).unwrap_or_default());
     };
-    let target_rect = Rect4 { x: tx, y: ty, w: tw, h: th };
+    let target_rect = Rect4 {
+        x: tx,
+        y: ty,
+        w: tw,
+        h: th,
+    };
 
     let chain: Vec<(String, Rect4AndViewport)> = if let Some(pin) = &pane_pin {
         let key = if panes.contains_key(pin) {
@@ -5327,7 +5355,12 @@ fn tool_visibility(shared: &SharedStateHandle, args: serde_json::Value) -> serde
             Some(e) => vec![(
                 key,
                 Rect4AndViewport {
-                    viewport: Rect4 { x: e.viewport[0], y: e.viewport[1], w: e.viewport[2], h: e.viewport[3] },
+                    viewport: Rect4 {
+                        x: e.viewport[0],
+                        y: e.viewport[1],
+                        w: e.viewport[2],
+                        h: e.viewport[3],
+                    },
                     offset: e.offset,
                 },
             )],
@@ -6212,10 +6245,16 @@ mod tests_plan623 {
 mod tests_plan781_t11 {
     use super::*;
 
-    fn entry(viewport: [f32; 4], offset: [f32; 2], content: [f32; 2]) ->
-        crate::ui::iced::scroll_state_reader::ScrollStateEntry
-    {
-        crate::ui::iced::scroll_state_reader::ScrollStateEntry { viewport, offset, content }
+    fn entry(
+        viewport: [f32; 4],
+        offset: [f32; 2],
+        content: [f32; 2],
+    ) -> crate::ui::iced::scroll_state_reader::ScrollStateEntry {
+        crate::ui::iced::scroll_state_reader::ScrollStateEntry {
+            viewport,
+            offset,
+            content,
+        }
     }
 
     fn chain_item(viewport: Rect4, offset: [f32; 2]) -> Rect4AndViewport {
@@ -6236,8 +6275,21 @@ mod tests_plan781_t11 {
     fn plan781_visibility_translates_once_and_intersects() {
         // pane viewport (100,50,400,300)，向下滚 500：内容坐标 y=600 的目标
         // 落入窗口 y = 600 - 500 + 50 = 150。
-        let target = Rect4 { x: 120.0, y: 600.0, w: 200.0, h: 40.0 };
-        let chain = [chain_item(Rect4 { x: 100.0, y: 50.0, w: 400.0, h: 300.0 }, [0.0, 500.0])];
+        let target = Rect4 {
+            x: 120.0,
+            y: 600.0,
+            w: 200.0,
+            h: 40.0,
+        };
+        let chain = [chain_item(
+            Rect4 {
+                x: 100.0,
+                y: 50.0,
+                w: 400.0,
+                h: 300.0,
+            },
+            [0.0, 500.0],
+        )];
         let (inter, flags) = compute_visibility(target, &chain, (800.0, 600.0));
         assert!(flags.is_empty());
         let i = inter.expect("positive intersection");
@@ -6250,8 +6302,21 @@ mod tests_plan781_t11 {
     #[test]
     fn plan781_visibility_clipped_out_when_target_beyond_viewport() {
         // 目标在 content y=2000，滚动 500 后仍在 viewport(50..350) 之外。
-        let target = Rect4 { x: 120.0, y: 2000.0, w: 100.0, h: 30.0 };
-        let chain = [chain_item(Rect4 { x: 100.0, y: 50.0, w: 400.0, h: 300.0 }, [0.0, 500.0])];
+        let target = Rect4 {
+            x: 120.0,
+            y: 2000.0,
+            w: 100.0,
+            h: 30.0,
+        };
+        let chain = [chain_item(
+            Rect4 {
+                x: 100.0,
+                y: 50.0,
+                w: 400.0,
+                h: 300.0,
+            },
+            [0.0, 500.0],
+        )];
         let (inter, flags) = compute_visibility(target, &chain, (800.0, 600.0));
         assert!(inter.is_none());
         assert!(flags.contains(&"clipped_out"));
@@ -6263,18 +6328,38 @@ mod tests_plan781_t11 {
         // 空间 (50,200,700,350) 滚 400。目标在内 content y=900：内层转换
         // y = 900-400+200 = 700 > 550（内 viewport 上缘）→ 内层即裁掉。
         // 目标 y=700：内层 → 500（∈[200,550]），外层 → 500-100 = 400，可见。
-        let outer_vp = Rect4 { x: 0.0, y: 0.0, w: 800.0, h: 600.0 };
-        let inner_vp = Rect4 { x: 50.0, y: 200.0, w: 700.0, h: 350.0 };
+        let outer_vp = Rect4 {
+            x: 0.0,
+            y: 0.0,
+            w: 800.0,
+            h: 600.0,
+        };
+        let inner_vp = Rect4 {
+            x: 50.0,
+            y: 200.0,
+            w: 700.0,
+            h: 350.0,
+        };
         let chain = [
             chain_item(inner_vp, [0.0, 400.0]),
             chain_item(outer_vp, [0.0, 100.0]),
         ];
         // 内层换算（不再 +viewport 原点）：y=980 → 980−400=580 > 550 出界。
-        let t_edge = Rect4 { x: 60.0, y: 980.0, w: 100.0, h: 20.0 };
+        let t_edge = Rect4 {
+            x: 60.0,
+            y: 980.0,
+            w: 100.0,
+            h: 20.0,
+        };
         let (inter, flags) = compute_visibility(t_edge, &chain, (800.0, 600.0));
         assert!(inter.is_none() && flags.contains(&"clipped_out"));
 
-        let t_ok = Rect4 { x: 60.0, y: 700.0, w: 100.0, h: 20.0 };
+        let t_ok = Rect4 {
+            x: 60.0,
+            y: 700.0,
+            w: 100.0,
+            h: 20.0,
+        };
         let (inter, flags) = compute_visibility(t_ok, &chain, (800.0, 600.0));
         assert!(flags.is_empty());
         let i = inter.expect("visible through both panes");
@@ -6284,12 +6369,22 @@ mod tests_plan781_t11 {
     #[test]
     fn plan781_visibility_no_pane_window_content() {
         // 无 pane：纯窗口内容与窗口正面积相交即可见。
-        let target = Rect4 { x: 10.0, y: 10.0, w: 50.0, h: 50.0 };
+        let target = Rect4 {
+            x: 10.0,
+            y: 10.0,
+            w: 50.0,
+            h: 50.0,
+        };
         let (inter, flags) = compute_visibility(target, &[], (800.0, 600.0));
         assert!(flags.is_empty());
         assert!(inter.unwrap().positive());
 
-        let outside = Rect4 { x: -100.0, y: -100.0, w: 50.0, h: 50.0 };
+        let outside = Rect4 {
+            x: -100.0,
+            y: -100.0,
+            w: 50.0,
+            h: 50.0,
+        };
         let (inter, flags) = compute_visibility(outside, &[], (800.0, 600.0));
         assert!(inter.is_none() && flags.contains(&"outside_window"));
     }
@@ -6297,14 +6392,23 @@ mod tests_plan781_t11 {
     #[test]
     fn plan781_resolve_chain_inner_then_outer_by_geometry() {
         let mut panes = HashMap::new();
-        panes.insert("scroll_ctl_reading-pane".to_string(),
-                    entry([100.0, 50.0, 400.0, 300.0], [0.0, 500.0], [400.0, 5000.0]));
-        panes.insert("vnode_outer".to_string(),
-                    entry([0.0, 0.0, 800.0, 600.0], [0.0, 0.0], [800.0, 5000.0]));
+        panes.insert(
+            "scroll_ctl_reading-pane".to_string(),
+            entry([100.0, 50.0, 400.0, 300.0], [0.0, 500.0], [400.0, 5000.0]),
+        );
+        panes.insert(
+            "vnode_outer".to_string(),
+            entry([0.0, 0.0, 800.0, 600.0], [0.0, 0.0], [800.0, 5000.0]),
+        );
         // 目标（pane 锚定含 viewport 原点）content y 650..750，滚 500 后
         // win y 150..250 ⊆ viewport(50..350)；内 pane viewport 面积更小
         // → 先内后外。
-        let target = Rect4 { x: 150.0, y: 700.0, w: 100.0, h: 100.0 };
+        let target = Rect4 {
+            x: 150.0,
+            y: 700.0,
+            w: 100.0,
+            h: 100.0,
+        };
         let chain = resolve_pane_chain(target, &panes);
         assert_eq!(chain.len(), 2, "inner + outer");
         assert_eq!(chain[0].0, "scroll_ctl_reading-pane");
@@ -6312,7 +6416,12 @@ mod tests_plan781_t11 {
         // F-781-R08：滚出视口的目标**保留归属**（content 包含即归属，
         // 相交判定移交消费端）——链在位后 compute_visibility 判
         // clipped_out，而非退化为仅窗口判定的假 visible。
-        let scrolled_out = Rect4 { x: 150.0, y: 1450.0, w: 100.0, h: 100.0 };
+        let scrolled_out = Rect4 {
+            x: 150.0,
+            y: 1450.0,
+            w: 100.0,
+            h: 100.0,
+        };
         let chain = resolve_pane_chain(scrolled_out, &panes);
         assert_eq!(chain.len(), 2, "滚出视口 → 归属保留（内+外）");
         let (inter, flags) = compute_visibility(
@@ -6322,7 +6431,12 @@ mod tests_plan781_t11 {
         );
         assert!(inter.is_none() && flags.contains(&"clipped_out"));
         // 真非 pane 节点（content 还原出界）→ 无归属 no_pane 语义保持。
-        let foreign = Rect4 { x: 700.0, y: 5900.0, w: 100.0, h: 50.0 };
+        let foreign = Rect4 {
+            x: 700.0,
+            y: 5900.0,
+            w: 100.0,
+            h: 50.0,
+        };
         let chain = resolve_pane_chain(foreign, &panes);
         assert!(chain.is_empty(), "content 出界 → 无归属");
     }
@@ -6336,49 +6450,99 @@ mod tests_plan781_t11 {
         let mut tree = VTree::new();
         // root Column(0) → Scrollable(controller=ag-pane)(1) → 行 Text(2)/(3)
         // → 兄弟 Button(4)（不在任何 pane 内）。
-        let root = VNode::new(VNodeId::new(0), VNodeKind::Column,
-                              VNodeProps::Layout { spacing: 0, padding: 0 });
+        let root = VNode::new(
+            VNodeId::new(0),
+            VNodeKind::Column,
+            VNodeProps::Layout {
+                spacing: 0,
+                padding: 0,
+            },
+        );
         tree.set_root(root);
         // 注：add_child 不回填 parent——链构建须 with_parent（结构解析
         // 沿 parent 上溯）。
-        let pane = VNode::new(VNodeId::new(1), VNodeKind::Scrollable,
-                              VNodeProps::Scrollable { offset_y: Some(0.0), controller: Some("ag-pane".into()) })
-            .with_parent(VNodeId::new(0));
+        let pane = VNode::new(
+            VNodeId::new(1),
+            VNodeKind::Scrollable,
+            VNodeProps::Scrollable {
+                offset_y: Some(0.0),
+                controller: Some("ag-pane".into()),
+            },
+        )
+        .with_parent(VNodeId::new(0));
         tree.add_node(pane);
-        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
+        tree.get_mut(VNodeId::new(0))
+            .unwrap()
+            .add_child(VNodeId::new(1));
         for id in [2u64, 3u64] {
-            let n = VNode::new(VNodeId::new(id), VNodeKind::Text,
-                               VNodeProps::Text { content: "row".into(), selectable: false })
-                .with_parent(VNodeId::new(1));
+            let n = VNode::new(
+                VNodeId::new(id),
+                VNodeKind::Text,
+                VNodeProps::Text {
+                    content: "row".into(),
+                    selectable: false,
+                },
+            )
+            .with_parent(VNodeId::new(1));
             tree.add_node(n);
-            tree.get_mut(VNodeId::new(1)).unwrap().add_child(VNodeId::new(id));
+            tree.get_mut(VNodeId::new(1))
+                .unwrap()
+                .add_child(VNodeId::new(id));
         }
-        let btn = VNode::new(VNodeId::new(4), VNodeKind::Button,
-                             VNodeProps::Button { label: "outside".into(), disabled: false })
-            .with_parent(VNodeId::new(0));
+        let btn = VNode::new(
+            VNodeId::new(4),
+            VNodeKind::Button,
+            VNodeProps::Button {
+                label: "outside".into(),
+                disabled: false,
+            },
+        )
+        .with_parent(VNodeId::new(0));
         tree.add_node(btn);
-        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(4));
+        tree.get_mut(VNodeId::new(0))
+            .unwrap()
+            .add_child(VNodeId::new(4));
 
         let mut panes = HashMap::new();
         // 复审反例几何：短 pane viewport (0,49,1280,128)，offset 0。
-        panes.insert("scroll_ctl_ag-pane".to_string(),
-                    entry([0.0, 49.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 5000.0]));
+        panes.insert(
+            "scroll_ctl_ag-pane".to_string(),
+            entry([0.0, 49.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 5000.0]),
+        );
 
         // 控制①：pane 内可见（行 0：y=60 在 viewport 49..177 内）。
-        let row0 = Rect4 { x: 8.0, y: 60.0, w: 200.0, h: 44.8 };
+        let row0 = Rect4 {
+            x: 8.0,
+            y: 60.0,
+            w: 200.0,
+            h: 44.8,
+        };
         let chain = resolve_pane_chain_structural(VNodeId::new(2), &tree, &panes);
         assert_eq!(chain.len(), 1, "行节点的结构链");
-        let (inter, flags) = compute_visibility(row0,
-            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
+        let (inter, flags) = compute_visibility(
+            row0,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+            (1280.0, 800.0),
+        );
         assert!(flags.is_empty() && inter.unwrap().positive(), "pane 内可见");
 
         // 控制②：pane 内被裁且仍在窗口内（复审反例：行 6 y=363.8）——
         // 隐式（结构）与显式（pin）同判 clipped_out。
-        let row6 = Rect4 { x: 8.0, y: 363.8, w: 200.0, h: 44.8 };
-        let (inter, flags) = compute_visibility(row6,
-            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
-        assert!(inter.is_none() && flags.contains(&"clipped_out"),
-                "被裁且仍在窗口内 → clipped_out（非假 visible）: {flags:?}");
+        let row6 = Rect4 {
+            x: 8.0,
+            y: 363.8,
+            w: 200.0,
+            h: 44.8,
+        };
+        let (inter, flags) = compute_visibility(
+            row6,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+            (1280.0, 800.0),
+        );
+        assert!(
+            inter.is_none() && flags.contains(&"clipped_out"),
+            "被裁且仍在窗口内 → clipped_out（非假 visible）: {flags:?}"
+        );
         // 几何内容盒也含该行（363.8−49=314.8 ≤ 5000）——几何回退同样保留
         // 归属（相交判定已移出 owner 过滤）。
         let chain_g = resolve_pane_chain(row6, &panes);
@@ -6386,10 +6550,21 @@ mod tests_plan781_t11 {
 
         // 控制③：窗口外（行 100：y=1200 > 800）——保留链判 clipped_out，
         // 不与 no_pane 混同。
-        let row100 = Rect4 { x: 8.0, y: 1200.0, w: 200.0, h: 44.8 };
-        let (inter, flags) = compute_visibility(row100,
-            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
-        assert!(inter.is_none() && flags.contains(&"clipped_out"), "窗口外走 clip 链");
+        let row100 = Rect4 {
+            x: 8.0,
+            y: 1200.0,
+            w: 200.0,
+            h: 44.8,
+        };
+        let (inter, flags) = compute_visibility(
+            row100,
+            &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+            (1280.0, 800.0),
+        );
+        assert!(
+            inter.is_none() && flags.contains(&"clipped_out"),
+            "窗口外走 clip 链"
+        );
 
         // 控制④：真非 pane 节点（Button 无 Scrollable 祖先）→ 空链
         // no_pane——即使其几何坐标落在大 content 盒投影内（y=363.8 与
@@ -6400,33 +6575,63 @@ mod tests_plan781_t11 {
         // 混合嵌套（F-781-R09 P1）：内层**无 controller** pane（经
         // vnode 路径哈希键入链）+ 外层 controller pane——内层被裁的行
         // 不再只按外层裁剪（假 visible）。
-        let plain_inner = VNode::new(VNodeId::new(8), VNodeKind::Scrollable,
-                                     VNodeProps::Scrollable { offset_y: None, controller: None })
-            .with_parent(VNodeId::new(0))
-            .with_path(vec![1u16]);
+        let plain_inner = VNode::new(
+            VNodeId::new(8),
+            VNodeKind::Scrollable,
+            VNodeProps::Scrollable {
+                offset_y: None,
+                controller: None,
+            },
+        )
+        .with_parent(VNodeId::new(0))
+        .with_path(vec![1u16]);
         tree.add_node(plain_inner);
-        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(8));
-        let row8 = VNode::new(VNodeId::new(9), VNodeKind::Text,
-                              VNodeProps::Text { content: "r8".into(), selectable: false })
-            .with_parent(VNodeId::new(8));
+        tree.get_mut(VNodeId::new(0))
+            .unwrap()
+            .add_child(VNodeId::new(8));
+        let row8 = VNode::new(
+            VNodeId::new(9),
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "r8".into(),
+                selectable: false,
+            },
+        )
+        .with_parent(VNodeId::new(8));
         tree.add_node(row8);
-        tree.get_mut(VNodeId::new(8)).unwrap().add_child(VNodeId::new(9));
+        tree.get_mut(VNodeId::new(8))
+            .unwrap()
+            .add_child(VNodeId::new(9));
         // 路径哈希键：node(8).path = [1]（renderer 对无 controller
         // Scrollable 的 iced id 即 `vnode_{id_from_path(path)}`）。
-        let plain_key = format!("vnode_{}",
-                                crate::ui::vnode::id_from_path(&tree.get(VNodeId::new(8)).unwrap().path));
-        panes.insert(plain_key.clone(),
-                    entry([0.0, 49.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 5000.0]));
+        let plain_key = format!(
+            "vnode_{}",
+            crate::ui::vnode::id_from_path(&tree.get(VNodeId::new(8)).unwrap().path)
+        );
+        panes.insert(
+            plain_key.clone(),
+            entry([0.0, 49.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 5000.0]),
+        );
         let chain3 = resolve_pane_chain_structural(VNodeId::new(9), &tree, &panes);
         assert_eq!(chain3.len(), 1, "无 controller 内层 pane 经 vnode 键入链");
         assert_eq!(chain3[0].0, plain_key);
         // 复审 r9 反例：行 y=363.8 在内 pane 底 177 外、窗口内——沿该
         // 链判 clipped_out（此前内层被跳过 → 只剩外层大 viewport → visible）。
-        let r9_row = Rect4 { x: 8.0, y: 363.8, w: 200.0, h: 44.8 };
-        let (inter, flags) = compute_visibility(r9_row,
-            &chain3.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
-        assert!(inter.is_none() && flags.contains(&"clipped_out"),
-                "无 controller 内层被裁 → clipped_out: {flags:?}");
+        let r9_row = Rect4 {
+            x: 8.0,
+            y: 363.8,
+            w: 200.0,
+            h: 44.8,
+        };
+        let (inter, flags) = compute_visibility(
+            r9_row,
+            &chain3.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+            (1280.0, 800.0),
+        );
+        assert!(
+            inter.is_none() && flags.contains(&"clipped_out"),
+            "无 controller 内层被裁 → clipped_out: {flags:?}"
+        );
 
         // 根级无 controller pane（F-781-R08-C）：根 path=[] 是合法身份
         //（键=FNV 种子 vnode_14695981039346656037，复审实证 renderer 已
@@ -6434,59 +6639,128 @@ mod tests_plan781_t11 {
         {
             let mut rt = VTree::new();
             // 根即 Scrollable（无 controller、path=[]）。
-            rt.set_root(VNode::new(VNodeId::new(0), VNodeKind::Scrollable,
-                                   VNodeProps::Scrollable { offset_y: None, controller: None })
-                .with_path(vec![]));
-            let row = VNode::new(VNodeId::new(1), VNodeKind::Text,
-                                 VNodeProps::Text { content: "r".into(), selectable: false })
-                .with_parent(VNodeId::new(0)).with_path(vec![0u16]);
+            rt.set_root(
+                VNode::new(
+                    VNodeId::new(0),
+                    VNodeKind::Scrollable,
+                    VNodeProps::Scrollable {
+                        offset_y: None,
+                        controller: None,
+                    },
+                )
+                .with_path(vec![]),
+            );
+            let row = VNode::new(
+                VNodeId::new(1),
+                VNodeKind::Text,
+                VNodeProps::Text {
+                    content: "r".into(),
+                    selectable: false,
+                },
+            )
+            .with_parent(VNodeId::new(0))
+            .with_path(vec![0u16]);
             rt.add_node(row);
-            rt.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
+            rt.get_mut(VNodeId::new(0))
+                .unwrap()
+                .add_child(VNodeId::new(1));
             let mut rp = HashMap::new();
-            let root_key = format!("vnode_{}",
-                                   crate::ui::vnode::id_from_path(&[]));
-            assert_eq!(root_key, "vnode_14695981039346656037",
-                       "根键=FNV 种子（复审已发布键）");
+            let root_key = format!("vnode_{}", crate::ui::vnode::id_from_path(&[]));
+            assert_eq!(
+                root_key, "vnode_14695981039346656037",
+                "根键=FNV 种子（复审已发布键）"
+            );
             // 复审 fixture 几何：viewport=(0,0,1280,128) content 高 1028.8。
-            rp.insert(root_key.clone(),
-                      entry([0.0, 0.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 1028.8]));
+            rp.insert(
+                root_key.clone(),
+                entry([0.0, 0.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 1028.8]),
+            );
             let chain = resolve_pane_chain_structural(VNodeId::new(1), &rt, &rp);
             assert_eq!(chain.len(), 1, "根级无 controller pane 入链");
             assert_eq!(chain[0].0, root_key);
             // 复审反例：第 6 行 y=333.6 在 128px 视口外、窗口 1280×800
             // 内——沿链 clipped_out（修复前空链→仅窗口判定假 visible）。
-            let r10_row = Rect4 { x: 16.0, y: 333.6, w: 102.3, h: 44.8 };
-            let (inter, flags) = compute_visibility(r10_row,
-                &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
-            assert!(inter.is_none() && flags.contains(&"clipped_out"),
-                    "根级被裁行 clipped_out: {flags:?}");
+            let r10_row = Rect4 {
+                x: 16.0,
+                y: 333.6,
+                w: 102.3,
+                h: 44.8,
+            };
+            let (inter, flags) = compute_visibility(
+                r10_row,
+                &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+                (1280.0, 800.0),
+            );
+            assert!(
+                inter.is_none() && flags.contains(&"clipped_out"),
+                "根级被裁行 clipped_out: {flags:?}"
+            );
             // 正对照：第 0 行 y=16 在视口内 → visible。
-            let (inter, flags) = compute_visibility(Rect4 { x: 16.0, y: 16.0, w: 102.3, h: 44.8 },
-                &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(), (1280.0, 800.0));
-            assert!(flags.is_empty() && inter.unwrap().positive(), "根级视口内行可见");
+            let (inter, flags) = compute_visibility(
+                Rect4 {
+                    x: 16.0,
+                    y: 16.0,
+                    w: 102.3,
+                    h: 44.8,
+                },
+                &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
+                (1280.0, 800.0),
+            );
+            assert!(
+                flags.is_empty() && inter.unwrap().positive(),
+                "根级视口内行可见"
+            );
         }
 
         // 嵌套链序：Scrollable(outer,5) 包含 Scrollable(inner,6) 包含
         // Text(7)——链内→外。
-        let outer = VNode::new(VNodeId::new(5), VNodeKind::Scrollable,
-                               VNodeProps::Scrollable { offset_y: None, controller: Some("outer".into()) })
-            .with_parent(VNodeId::new(0));
+        let outer = VNode::new(
+            VNodeId::new(5),
+            VNodeKind::Scrollable,
+            VNodeProps::Scrollable {
+                offset_y: None,
+                controller: Some("outer".into()),
+            },
+        )
+        .with_parent(VNodeId::new(0));
         tree.add_node(outer);
-        tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(5));
-        let inner = VNode::new(VNodeId::new(6), VNodeKind::Scrollable,
-                               VNodeProps::Scrollable { offset_y: None, controller: Some("inner".into()) })
-            .with_parent(VNodeId::new(5));
+        tree.get_mut(VNodeId::new(0))
+            .unwrap()
+            .add_child(VNodeId::new(5));
+        let inner = VNode::new(
+            VNodeId::new(6),
+            VNodeKind::Scrollable,
+            VNodeProps::Scrollable {
+                offset_y: None,
+                controller: Some("inner".into()),
+            },
+        )
+        .with_parent(VNodeId::new(5));
         tree.add_node(inner);
-        tree.get_mut(VNodeId::new(5)).unwrap().add_child(VNodeId::new(6));
-        let leaf = VNode::new(VNodeId::new(7), VNodeKind::Text,
-                              VNodeProps::Text { content: "x".into(), selectable: false })
-            .with_parent(VNodeId::new(6));
+        tree.get_mut(VNodeId::new(5))
+            .unwrap()
+            .add_child(VNodeId::new(6));
+        let leaf = VNode::new(
+            VNodeId::new(7),
+            VNodeKind::Text,
+            VNodeProps::Text {
+                content: "x".into(),
+                selectable: false,
+            },
+        )
+        .with_parent(VNodeId::new(6));
         tree.add_node(leaf);
-        tree.get_mut(VNodeId::new(6)).unwrap().add_child(VNodeId::new(7));
-        panes.insert("scroll_ctl_inner".to_string(),
-                    entry([10.0, 60.0, 500.0, 300.0], [0.0, 0.0], [500.0, 2000.0]));
-        panes.insert("scroll_ctl_outer".to_string(),
-                    entry([0.0, 0.0, 1280.0, 800.0], [0.0, 0.0], [1280.0, 5000.0]));
+        tree.get_mut(VNodeId::new(6))
+            .unwrap()
+            .add_child(VNodeId::new(7));
+        panes.insert(
+            "scroll_ctl_inner".to_string(),
+            entry([10.0, 60.0, 500.0, 300.0], [0.0, 0.0], [500.0, 2000.0]),
+        );
+        panes.insert(
+            "scroll_ctl_outer".to_string(),
+            entry([0.0, 0.0, 1280.0, 800.0], [0.0, 0.0], [1280.0, 5000.0]),
+        );
         let chain2 = resolve_pane_chain_structural(VNodeId::new(7), &tree, &panes);
         assert_eq!(chain2.len(), 2, "嵌套双 pane 链");
         assert_eq!(chain2[0].0, "scroll_ctl_inner");
@@ -6502,12 +6776,25 @@ mod tests_plan781_t11 {
         let mut panes = HashMap::new();
         // w01 实测几何：std pane viewport [0,125,1280,128] content 293.4，
         // 锚点滚动 165；main pane 大 content（曾吞掉错位目标）。
-        panes.insert("scroll_ctl_@scrollctl:1".to_string(),
-                    entry([0.0, 125.0, 1280.0, 128.0], [0.0, 165.0], [1280.0, 293.4]));
-        panes.insert("scroll_ctl_main-pane".to_string(),
-                    entry([28.0, 253.0, 1024.0, 535.0], [0.0, 3234.0], [1024.0, 9288.0]));
+        panes.insert(
+            "scroll_ctl_@scrollctl:1".to_string(),
+            entry([0.0, 125.0, 1280.0, 128.0], [0.0, 165.0], [1280.0, 293.4]),
+        );
+        panes.insert(
+            "scroll_ctl_main-pane".to_string(),
+            entry(
+                [28.0, 253.0, 1024.0, 535.0],
+                [0.0, 3234.0],
+                [1024.0, 9288.0],
+            ),
+        );
         // 末行发布 rect（含 viewport 原点）：content y 260.8+125=385.8。
-        let target = Rect4 { x: 8.0, y: 385.8, w: 198.8, h: 31.6 };
+        let target = Rect4 {
+            x: 8.0,
+            y: 385.8,
+            w: 198.8,
+            h: 31.6,
+        };
         let chain = resolve_pane_chain(target, &panes);
         assert_eq!(chain.len(), 1, "owner=std，无嵌套祖先");
         assert_eq!(chain[0].0, "scroll_ctl_@scrollctl:1");
@@ -6520,8 +6807,10 @@ mod tests_plan781_t11 {
         assert!(inter.expect("intersection").positive());
         // F-781-R08：滚动前（offset 0）末行在视口外——**归属保留**，
         // 消费端判 clipped_out（短 pane 复审反例：隐式查询曾假 visible）。
-        panes.insert("scroll_ctl_@scrollctl:1".to_string(),
-                    entry([0.0, 125.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 293.4]));
+        panes.insert(
+            "scroll_ctl_@scrollctl:1".to_string(),
+            entry([0.0, 125.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 293.4]),
+        );
         let chain = resolve_pane_chain(target, &panes);
         assert_eq!(chain.len(), 1, "未滚动 → 末行归属保留");
         assert_eq!(chain[0].0, "scroll_ctl_@scrollctl:1");
@@ -6530,15 +6819,16 @@ mod tests_plan781_t11 {
             &chain.iter().map(|(_, s)| *s).collect::<Vec<_>>(),
             (1280.0, 800.0),
         );
-        assert!(inter.is_none() && flags.contains(&"clipped_out"),
-                "被裁且仍在窗口内 → clipped_out: {flags:?}");
+        assert!(
+            inter.is_none() && flags.contains(&"clipped_out"),
+            "被裁且仍在窗口内 → clipped_out: {flags:?}"
+        );
     }
 
     #[test]
     fn plan781_tool_visibility_unmeasured_never_visible() {
-        let shared: SharedStateHandle = std::sync::Arc::new(std::sync::Mutex::new(
-            SharedState::new("demo".into()),
-        ));
+        let shared: SharedStateHandle =
+            std::sync::Arc::new(std::sync::Mutex::new(SharedState::new("demo".into())));
         shared.lock().unwrap().set_window_size(800.0, 600.0);
         let res = tool_visibility(&shared, json!({"element_id": "aura_9"}));
         let text = res["content"][0]["text"].as_str().unwrap();
@@ -6554,41 +6844,80 @@ mod tests_plan781_t11 {
     /// 回退误认领后误报 clipped_out。
     #[test]
     fn plan781_tool_visibility_valid_empty_structural_chain_not_overridden() {
-        let shared: SharedStateHandle = std::sync::Arc::new(std::sync::Mutex::new(
-            SharedState::new("demo".into()),
-        ));
+        let shared: SharedStateHandle =
+            std::sync::Arc::new(std::sync::Mutex::new(SharedState::new("demo".into())));
         {
             let mut g = shared.lock().unwrap();
             g.set_backend_kind(BackendKind::Vm);
             g.set_window_size(1280.0, 800.0);
             // 按钮：pane 下方真实可见（y 363.8 在窗口内；与被裁行同坐标
             // ——几何对大 content 盒投影不可分）。
-            g.set_layout_bounds(HashMap::from([
-                ("vnode_4".to_string(), (8.0, 363.8, 200.0, 44.8)),
-            ]));
+            g.set_layout_bounds(HashMap::from([(
+                "vnode_4".to_string(),
+                (8.0, 363.8, 200.0, 44.8),
+            )]));
             // 短 pane：大 content（投影覆盖按钮坐标）——几何回退会误认领。
-            g.set_scroll_states(HashMap::from([
-                ("scroll_ctl_ag-pane".to_string(),
-                 entry([0.0, 49.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 5000.0])),
-            ]));
+            g.set_scroll_states(HashMap::from([(
+                "scroll_ctl_ag-pane".to_string(),
+                entry([0.0, 49.0, 1280.0, 128.0], [0.0, 0.0], [1280.0, 5000.0]),
+            )]));
             // 树：root Column(0) + Scrollable(1,controller) + rows(2,3) +
             // Button(4)（无 Scrollable 祖先）——快照在位使结构法可用。
             use crate::ui::vnode::{VNode, VNodeKind, VNodeProps};
             let mut tree = VTree::new();
-            tree.set_root(VNode::new(VNodeId::new(0), VNodeKind::Column,
-                                     VNodeProps::Layout { spacing: 0, padding: 0 }));
-            tree.add_node(VNode::new(VNodeId::new(1), VNodeKind::Scrollable,
-                                     VNodeProps::Scrollable { offset_y: None, controller: Some("ag-pane".into()) })
-                .with_parent(VNodeId::new(0)).with_path(vec![0u16]));
-            tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(1));
-            tree.add_node(VNode::new(VNodeId::new(2), VNodeKind::Text,
-                                     VNodeProps::Text { content: "r".into(), selectable: false })
-                .with_parent(VNodeId::new(1)).with_path(vec![0u16, 0u16]));
-            tree.get_mut(VNodeId::new(1)).unwrap().add_child(VNodeId::new(2));
-            tree.add_node(VNode::new(VNodeId::new(4), VNodeKind::Button,
-                                     VNodeProps::Button { label: "out".into(), disabled: false })
-                .with_parent(VNodeId::new(0)).with_path(vec![1u16]));
-            tree.get_mut(VNodeId::new(0)).unwrap().add_child(VNodeId::new(4));
+            tree.set_root(VNode::new(
+                VNodeId::new(0),
+                VNodeKind::Column,
+                VNodeProps::Layout {
+                    spacing: 0,
+                    padding: 0,
+                },
+            ));
+            tree.add_node(
+                VNode::new(
+                    VNodeId::new(1),
+                    VNodeKind::Scrollable,
+                    VNodeProps::Scrollable {
+                        offset_y: None,
+                        controller: Some("ag-pane".into()),
+                    },
+                )
+                .with_parent(VNodeId::new(0))
+                .with_path(vec![0u16]),
+            );
+            tree.get_mut(VNodeId::new(0))
+                .unwrap()
+                .add_child(VNodeId::new(1));
+            tree.add_node(
+                VNode::new(
+                    VNodeId::new(2),
+                    VNodeKind::Text,
+                    VNodeProps::Text {
+                        content: "r".into(),
+                        selectable: false,
+                    },
+                )
+                .with_parent(VNodeId::new(1))
+                .with_path(vec![0u16, 0u16]),
+            );
+            tree.get_mut(VNodeId::new(1))
+                .unwrap()
+                .add_child(VNodeId::new(2));
+            tree.add_node(
+                VNode::new(
+                    VNodeId::new(4),
+                    VNodeKind::Button,
+                    VNodeProps::Button {
+                        label: "out".into(),
+                        disabled: false,
+                    },
+                )
+                .with_parent(VNodeId::new(0))
+                .with_path(vec![1u16]),
+            );
+            tree.get_mut(VNodeId::new(0))
+                .unwrap()
+                .add_child(VNodeId::new(4));
             let snap = StyledNodeSnapshot {
                 widget_name: "demo".into(),
                 vtree: tree,
@@ -6599,8 +6928,11 @@ mod tests_plan781_t11 {
         let res = tool_visibility(&shared, json!({"element_id": "vnode_4"}));
         let text = res["content"][0]["text"].as_str().unwrap();
         let payload: serde_json::Value = serde_json::from_str(text).unwrap();
-        assert_eq!(payload["pane_chain"].as_array().map(Vec::len), Some(0),
-                   "空结构链保持（no_pane），不被几何回退覆盖");
+        assert_eq!(
+            payload["pane_chain"].as_array().map(Vec::len),
+            Some(0),
+            "空结构链保持（no_pane），不被几何回退覆盖"
+        );
         assert_eq!(payload["visible"], true, "pane 外真实可见节点不误报不可见");
         // 既有语义：no_pane 标志仅对「链空且不可见」追加（§5.3）；可见
         // 的链空节点 flags 为空——关键断言是 visible=true 且链空（上方）。
@@ -6610,38 +6942,46 @@ mod tests_plan781_t11 {
         // 对照：行 2（结构链非空）沿 pane 裁剪——y 363.8 被裁 → false。
         {
             let mut g = shared.lock().unwrap();
-            g.set_layout_bounds(HashMap::from([
-                ("vnode_2".to_string(), (8.0, 363.8, 200.0, 44.8)),
-            ]));
+            g.set_layout_bounds(HashMap::from([(
+                "vnode_2".to_string(),
+                (8.0, 363.8, 200.0, 44.8),
+            )]));
         }
         let res = tool_visibility(&shared, json!({"element_id": "vnode_2"}));
         let text = res["content"][0]["text"].as_str().unwrap();
         let payload: serde_json::Value = serde_json::from_str(text).unwrap();
-        assert_eq!(payload["visible"], false, "同坐标被裁行走结构链 → clipped_out");
+        assert_eq!(
+            payload["visible"], false,
+            "同坐标被裁行走结构链 → clipped_out"
+        );
         let flags = payload["flags"].as_array().unwrap();
         assert!(flags.iter().any(|f| f == "clipped_out"), "flags={flags:?}");
     }
 
     #[test]
     fn plan781_tool_visibility_end_to_end_with_pane_pin() {
-        let shared: SharedStateHandle = std::sync::Arc::new(std::sync::Mutex::new(
-            SharedState::new("demo".into()),
-        ));
+        let shared: SharedStateHandle =
+            std::sync::Arc::new(std::sync::Mutex::new(SharedState::new("demo".into())));
         {
             let mut g = shared.lock().unwrap();
             g.set_backend_kind(BackendKind::Vm);
             g.set_window_size(800.0, 600.0);
-            g.set_layout_bounds(HashMap::from([
-                ("vnode_t1".to_string(), (120.0, 600.0, 200.0, 40.0)),
-            ]));
-            g.set_scroll_states(HashMap::from([
-                ("scroll_ctl_p".to_string(), entry([100.0, 50.0, 400.0, 300.0], [0.0, 500.0], [400.0, 5000.0])),
-            ]));
+            g.set_layout_bounds(HashMap::from([(
+                "vnode_t1".to_string(),
+                (120.0, 600.0, 200.0, 40.0),
+            )]));
+            g.set_scroll_states(HashMap::from([(
+                "scroll_ctl_p".to_string(),
+                entry([100.0, 50.0, 400.0, 300.0], [0.0, 500.0], [400.0, 5000.0]),
+            )]));
         }
         // pane 钉定支持 controller 名（scroll_ctl_ 前缀展开）。
-        let res = tool_visibility(&shared, json!({
-            "element_id": "vnode_t1", "pane": "p"
-        }));
+        let res = tool_visibility(
+            &shared,
+            json!({
+                "element_id": "vnode_t1", "pane": "p"
+            }),
+        );
         let text = res["content"][0]["text"].as_str().unwrap();
         let payload: serde_json::Value = serde_json::from_str(text).unwrap();
         assert_eq!(payload["visible"], true);
@@ -6650,9 +6990,12 @@ mod tests_plan781_t11 {
         assert_eq!(payload["pane_chain"][0]["key"], "scroll_ctl_p");
 
         // 未知 pane → isError。
-        let res = tool_visibility(&shared, json!({
-            "element_id": "vnode_t1", "pane": "nope"
-        }));
+        let res = tool_visibility(
+            &shared,
+            json!({
+                "element_id": "vnode_t1", "pane": "nope"
+            }),
+        );
         assert_eq!(res["isError"], true);
     }
 }

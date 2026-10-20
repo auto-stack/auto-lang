@@ -47,7 +47,9 @@ pub mod icon_file;
 
 /// PLAN-617 后续：lucide 全量字形表（由 scripts/gen-lucide-table.mjs 生成，勿手改）。
 /// PLAN-706: pub(crate) — vue 生成器用 `is_known` 校验字面量图标名，防非法 import。
-pub(crate) mod lucide_generated;
+// PLAN-814 T-03：lucide 全量表迁 auto-ui-compiler（vue 生成器同源消费），
+// 本地路径经再导出保持。
+pub(crate) use auto_ui_compiler::lucide_generated;
 
 /// PLAN-748 T-02：lucide 名集成员资格（kebab 名二分查全量表）。图标组件/
 /// 网页生态组件的判别真值源——`Plus`/`Info` 等 PascalCase lucide 名命中
