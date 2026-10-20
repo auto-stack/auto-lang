@@ -151,3 +151,20 @@ ui-iced）实际覆盖了后来迁出的全部 inline 测试**。本修订把映
   （tier_diff.py/exact_diff.py）。
 - R3-03b 批原始采集（d905e796c 中途基线的 86 项门控提取）沿上一版方法
   存档于 closeout 目录。
+
+## R5 修订：健全验证器 + 持久原始工件 + 删除负控
+
+R5 判定"原验证器同名碰撞盲区（删除负控仍假绿）、原始清单随临时树删除"
+成立。R5 修复批交付：
+
+- **持久原始工件**：[r5-closeout/lists/](r5-closeout/lists/)——九档
+  （含 tu）迁前（203e2ce91，原别名命令重采）与迁后完整
+  `(package, full_test_path)` 清单各一份，共 18 文件入库。
+- **健全验证器**：[verify_selection.py](r5-closeout/verify_selection.py)
+  ——显式三段映射（同路径→已记录重写→**唯一叶名**；多候选=UNRESOLVED
+  逐条报出）、new 侧每 ID 至多消费一次（无重复计数）、旧 ID 未核销
+  逐条 MISSING、tu 覆盖、清单去重。
+- **删除负控**：`--selftest` 逐档移除一个已核销 new ID 重跑——九档全部
+  `missing=1 DETECTS`（[收据](r5-closeout/verify-receipt.log)）。
+- 结果：九档 old 全核销（t 5303/tf 6270/tv 163/tt 5675/tb 5296/
+  tu 867 去重后/taa 6266/ta 6720/t3 6721），missing=0、unresolved=0。

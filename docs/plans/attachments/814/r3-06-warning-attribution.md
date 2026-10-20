@@ -63,3 +63,22 @@ T-02/T-03 迁移残留且已在册（aavm 退役/B 清偿域），R3-03b 与 R4 
 相对其各自受审基线零新增（前节双基线差集 0）。R4 要求整理的 fmt 项
 （ui_cache.rs:371、auto-macros tests 导入序、macros src/lib.rs）已全部
 rustfmt 过（见 R4 修复批提交）。
+
+## R5 修订：净新增警告已全部清偿（非延期）
+
+R5 判定"归因≠清偿、延期 B 未获批"成立。R5 修复批实际清偿（对照
+203e2ce91 基线复测，**净新增 0**、净消失 7）：
+
+| 原净新增项 | 清偿方式 |
+|---|---|
+| SDK AUTO_LIB_FILES_V2/aavm2_lib_source 死副本 | 删除（SDK 无消费方） |
+| 上层 AUTO_LIB_FILES/V2/aavm2_lib_source 默认构建假死信号 | `#[cfg(feature = "test-aavm")]` 随消费方条件声明（taa 档消费保持） |
+| 上层 lib.rs 未用 import 族（AutoError/ast_parse_ext/lexer/Array,Node,Value/atomics） | 移除；ast_parse_ext/lexer 私有 shim 改 `#[cfg(test)]`（crate 内测试消费面，非死代码） |
+| SDK lib.rs PathBuf/doc comment | 移除/改普通注释 |
+| stdlib.rs `field prev is never read` | **实质 bug 修复**：HttpBaseEnvGuard 的 Drop 原被 `#[cfg(test)]` 门住——上层跨 crate 测试（plan606）经 SDK rlib 消费时恢复语义失效；Drop 改无条件编译 |
+| http_server 可见性三连+级联 | ApiBody/ParkStage/DispatchCtx/FileReplySeed/PendingUpload/TransportConfig 提 pub（公开枚举字段类型的可见性一致性） |
+
+净消失（顺带清偿的预存项）：AUTO_LIB_FILES_V2@lib、request_id/started_at
+未读、WARNED_API_NOOP、TransportConfig 私有性、autodown key 未读。
+复测命令与判据：203e2ce91 worktree `cargo check -p auto-lang` vs 当前
+五 crate check，按（文本, 文件名）归一集合差=（0 新增, 7 消失）。
