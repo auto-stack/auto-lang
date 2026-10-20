@@ -10,9 +10,9 @@
 //! hit STILL executes AV — nothing here caches PASS or run results.
 
 use crate::cache::{
-    abc_unit_key, assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar,
-    get_enveloped_opt, manifest_key, merge_spans, open_store, payload_fingerprint, put_enveloped,
-    sidecar_key, split_units, Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
+    abc_unit_key, assemble_closure, caps_fingerprint, decode_sidecar, encode_sidecar, manifest_key,
+    merge_spans, open_store, payload_fingerprint, put_enveloped, sidecar_key, split_units,
+    Counters, EnvelopeIdentity, ModuleManifest, SemaRefSer, UnitLink,
 };
 use crate::hir_adapter::{lower_checked, AdapterError};
 use crate::observations::{Obs, SpanRec};
