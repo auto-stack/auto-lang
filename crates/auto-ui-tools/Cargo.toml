@@ -1,0 +1,21 @@
+[package]
+name = "auto-ui-tools"
+version = "0.1.0"
+edition = "2021"
+description = "UI engineering tool package (PLAN-815): M815-A hosts the real auto-ui-tool process (describe/validate_project) over the light I-TOOL protocol; generation/build/run closure lands with M815-B"
+license = "MIT"
+
+[dependencies]
+# 唯一协议来源(版本/能力/预算/错误/信封/framing),工具与客户端共享。
+auto-tool-protocol = { path = "../auto-tool-protocol" }
+# I-PROJECT 单源请求类型 + wire 解码(动态求值仍归 auto-man adapter,不在此复制)。
+auto-project-model = { path = "../auto-project-model", features = ["wire"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+# 工具可执行入口(Design 37:cli -.子进程协议.-> auto-ui tool;CLI 不静态链接本实现)。
+[[bin]]
+name = "auto-ui-tool"
+path = "src/bin/auto_ui_tool.rs"

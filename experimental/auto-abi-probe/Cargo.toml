@@ -1,0 +1,44 @@
+[package]
+name = "auto-abi-probe"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-797 first bounded AutoABI candidate profile + bidirectional native interop probe (AutoABI<->AutoABI, AutoABI->C, C->AutoABI)"
+publish = false
+
+# Standalone workspace on purpose (plan §1/§2): the probe owns its own
+# Cargo.lock and must not enter the auto-lang product build graph, the
+# ac-core workspace, or any production crate's dependency set. It consumes
+# the already-merged ac-core link/executor entries and the 783 managed
+# store via path deps (same pattern as probes/data-resources and
+# ac-artifact-probe). It is NOT an Auto-source compiler front end: modules
+# are emitted from a frozen, bounded declaration IR (plan §0/§5.2).
+[workspace]
+
+[dependencies]
+# REAL ac-core entries reused verbatim (plan §3): find_rust_lld /
+# find_sdk_um_dir / link_object_staged / run_deadlined_split.
+auto-ac-prototype = { path = "../ac-core" }
+# 783 managed store for the first layout/object cache (plan §5.4):
+# probe-owned layers, zero modification of the 783/787 layer registry.
+ac-artifact-probe = { path = "../ac-artifact-probe" }
+# REAL semantic contract (D-796 delivered): 797 consumes the merged
+# PLAN-796 contract read-only for nominal refs/content versions/type
+# descriptions (T-06; the local semref snapshot adapter is retired).
+ac-sema-contract = { path = "../ac-semantics/contract" }
+# Cranelift stack pinned to the same versions as ac-core (plan §3).
+cranelift-codegen = "0.126"
+cranelift-frontend = "0.126"
+cranelift-module = "0.126"
+cranelift-object = "0.126"
+target-lexicon = "0.13"
+blake3 = "1.5"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[[bin]]
+name = "abi-worker"
+path = "src/bin/abi-worker.rs"
+
+[profile.release]
+debug = false

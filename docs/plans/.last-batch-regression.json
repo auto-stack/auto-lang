@@ -1,7 +1,7 @@
 {
-  "last_covered_plan_id": 812,
-  "timestamp": "2026-10-19T08:36:46Z",
-  "covered_commit": "2772c8012d07289ca3d6136a36a5b05fc9d8fcec",
+  "last_covered_plan_id": 817,
+  "timestamp": "2026-10-20T09:20:00Z",
+  "covered_commit": "5594158a4791caeae2079d7f7a8668133316efaa",
   "legs": [
     "tf",
     "tt",
@@ -9,36 +9,38 @@
   ],
   "leg_results": {
     "tf": {
-      "seconds": 105.5,
-      "run": 6286,
-      "passed": 6286,
-      "failed": 0,
+      "seconds": 111.3,
+      "run": 6270,
+      "passed": 6267,
+      "failed": 3,
       "skipped": 518,
-      "note": "全绿（1M churn/语料族/画廊围栏全过）"
+      "note": "完整轮（--no-fail-fast）。3 红=2×state_file 并发负载 flake（solo 3 轮全绿、模块窗口零提交、PLAN-044 远古无归属，本批新登记观察名单）+1×ffi_dual_019（REG-2/THR-D4 在案已知 flake，池红 2.98s/solo 3.56s 绿同签名）；abi_recipe_formal_turnaround_hard_gates 本轮在池内通过（797 移出日常档后 tf 首次批量面，串行参考 966/98ms 收据另在 797 对账）。1M churn/语料族/画廊围栏全过（6270 面内）。"
     },
     "tt": {
-      "seconds": 152.3,
-      "run": 5673,
-      "passed": 5673,
+      "seconds": 156.0,
+      "run": 5685,
+      "passed": 5685,
       "failed": 0,
-      "skipped": 1797,
-      "note": "复跑全绿；首轮 2 红（plan484_024_charts_streaming_recompute + plan502_m5_hover_and_labels_e2e）均为负载型 flake——solo 复跑 3×/2× 全绿、tf 全量同测全过、plan484 另在 PLAN-810 merge 门期主检出同全量同红实证为预存（charts_gallery 在案红族，前收据 known_reds_seen 同族在案）"
+      "skipped": 1798,
+      "note": "完整轮全绿（--no-fail-fast）。首 fail-fast 轮被已知 plan484 charts flake 截断于 2237/5685（solo 3× 绿，812 收据同族在案）；815 批遗留 3 失败/1 超时（plan498_bar_group_emphasis/probe_adapter×2/plan776_r7）在本轮全部通过，负载 flake 归因就此闭合"
     },
     "tb": {
-      "seconds": 67.9,
-      "run": 5312,
-      "passed": 5312,
+      "seconds": 110.6,
+      "run": 5296,
+      "passed": 5296,
       "failed": 0,
       "skipped": 1547,
-      "note": "全绿"
+      "note": "全绿；815 批中断腿补完"
     }
   },
   "new_reds": [],
   "known_reds_seen": [
-    "plan484 charts family load flake（charts_gallery 预存红族在案；solo/tf 全绿）",
-    "plan502_m5_hover_and_labels_e2e load flake（solo 3× 绿+复跑全绿；前收据同型冷负载先例）"
+    "ffi_dual_019_dep_layout_invariants（REG-2/THR-D4 在案并行负载 flake，本批复现一次同签名）",
+    "plan484_024_charts_streaming_recompute（812 收据同族 charts 负载 flake；tt 首轮红 solo 3× 绿，完整轮全过）",
+    "state_file concurrent_atomic_writes_never_tear / lock_serializes_critical_sections（本批新登记：tf 池红 solo 3 轮绿、state_file.rs 窗口 2772c8012..5594158a4 零提交、PLAN-044 远古模块无计划归属——KNOWN-DEBT 2026-10-20 批量登记节观察名单）"
   ],
-  "taa": "not_triggered: window 67a01025a..HEAD touches zero aavm trigger paths",
-  "environment": "主检出单实例（tf/tt/tb 串行；预检无并发 cargo/nextest 进程）",
-  "window": "67a01025a..HEAD (809 merge + 810 merge 完整 UI 文法外置 + 簿记)"
+  "taa": "not_triggered: window 2772c8012..5594158a4 touches zero aavm trigger paths",
+  "environment": "主检出单实例（tt/tb/tf 串行 + solo 复核；预检无并发 cargo/nextest/cl 进程；批量期间他 PLAN-814 会话落 3 个 docs-only 簿记提交 3bc8fc659/e52f3003f/5594158a4，crates 零漂移不影响测试面）",
+  "window": "2772c8012..5594158a4（813/814 簿记/815-A e609caf1a/816/817/797 1799f86ca + 收尾对账 docs 提交；814 未整计划交付）",
+  "continuation_of": "815 批（docs/plans/attachments/815/t14-closeout/batch-status.md）：tf 前轮 6270/6270 已绿、tt 3 失败/1 超时归因与 tb 补完由本批闭合（batch-20261020-cont/）"
 }

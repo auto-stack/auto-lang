@@ -1,0 +1,22 @@
+# ac-av probe: short-circuit keeps unexecuted-RHS traps latent (V-03).
+# `false && 1/0 > 0` never evaluates the RHS -> main returns 0.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.core.shortcircuit-latent"
+  tags: ["ac-av", "probe", "semantics"]
+  links: ["PLAN-798"]
+  source: { file: "av/core/shortcircuit_latent_trap.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-shortcircuit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```

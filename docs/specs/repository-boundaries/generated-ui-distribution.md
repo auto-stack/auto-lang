@@ -119,3 +119,17 @@
 - 生成器内容门（不跑 cargo）：`cargo test -p auto-man --lib delivery -- --test-threads=1`
 - 真实交付门（V01 fresh 解析+真实 build / V02 重定位 locked 重放 /
   V03 负控 / V04 开发模式保持）：`python test/fixtures/modularity/generated-ui-consumer/driver.py`
+
+## M815-A:独立窄 tool/协议来源边界(PLAN-815 SD-06-A)
+
+A 阶段新增独立 tool/protocol 及 data-owner codec 来源
+(crates/auto-ui-tools、crates/auto-tool-protocol、auto-project-model wire
+feature + auto-ui-tool 二进制),**不改变 `rust_ui.rs` 的 792 DELIVERY 表或现行
+UI 生成发行资源**。发布收据绑定已审代码、协议/API 版本、真实实现/资源输入指纹
+(`docs/plans/attachments/815/m815-a-release.md`)、精确 Spec 补丁与依赖来源;
+delivery commit 须为 master 祖先且 consumer 实际解析验证。阶段 review pass 本身
+不是发布收据。
+
+阶段不归档 Plan、不清理唯一树。冻结门及实际发布/Spec/ledger 来源收据齐备后,
+才可放行 816 消费 A 能力;完整 UI 能力继续依 M815-B(生成主体迁移时 DELIVERY
+表增补 auto-tool-protocol/auto-ui-tools)。

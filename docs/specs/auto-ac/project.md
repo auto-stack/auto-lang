@@ -181,6 +181,15 @@ AC（计算核心 profile）首个原生 AOT 闭环：Checked HIR → Windows x6
 
 见 [plans.md](plans.md)。
 
+## ABI probe 导航（PLAN-797）
+
+- 公共 AutoABI 候选 profile 的域/版本/支持边界见
+  [auto-abi/](../auto-abi/)（candidate 状态、Windows x64 有限面、
+  conformance 与缓存基准）；生产 Auto 前端与旧内部 profile **仍原状**，
+  本导航不扩大源码支持面。774 内部 ABI-A–E 与 `autoabi` 公共候选
+  profile 分属不同兼容域，见
+  [data-resource-contract.md](data-resource-contract.md)。
+
 ## AutoDown TestCase 入口（PLAN-788 引用式导入）
 
 - AutoDown 用例可声明 ac 源码或原始 HIR 经 `auto-case` v2 检查/构建/执行：引用

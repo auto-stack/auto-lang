@@ -1,5 +1,13 @@
 # PLAN-818 contract-decision.md — T-01 只读设计冻结（MIR→新 native）
 
+> **r1.1 注记（2026-10-20，D-798达成后的重读义务履行）**：以实际合入master的798面
+> （archive 11/11）重读本文件§1——MIR核心表面未变（指令/终结器/类型/槽/verify规则，
+> 仅新增`MirInstr::can_trap()`分类器，与本文件§2 trap家族完全一致）；`contract.rs`的
+> ABC wire schema 升 `auto.abc.av-probe/2`、ABC语义升2（unit/module kind位入wire）——
+> **不触及本合同A09'的key轴**（其只绑MIR schema `auto.mir.av-probe/1` + MIR语义1，
+> 两者均未变）；hir_adapter变化为语义保持的on-demand join优化（F798-R7-05），golden
+> 绑定的observable行为不受影响。无迫使revision的反例；T-02实现即基于此合并面。
+
 2026-10-20，work stage T-01。本文件在**已观察支持面**内冻结新 `MIR-native` 后端的
 指令表映射、逻辑符号、私有测试 ABI、entry wrapper、trap 发射、source sidecar、
 预算/负载/错误分类、对象 key、缓存层/载体/恢复、工具链与参考机器身份、内存分区

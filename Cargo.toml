@@ -113,6 +113,15 @@ members = [
     # Plan 509 route B: Smithay compositor host (Linux-gated smithay dep;
     # non-Linux compiles a cfg stub — Windows dev flow unaffected).
     "crates/auto-cosmic/host-smithay",
+    # PLAN-815 T-03: I-TOOL light tool protocol (version/capability/budget/
+    # error/framing over stdio; pure data — reuses the one-source
+    # auto-project-model request + wire codec, no AST/VM/renderer/Man).
+    "crates/auto-tool-protocol",
+    # PLAN-815 T-12: UI engineering tool package (lib + `auto-ui-tool` bin).
+    # M815-A scope: describe/validate_project host over the light protocol;
+    # generation/build/run closure lands with M815-B. No Man/legacy big-lib
+    # deps (closure pinned by test/fixtures/modularity/ui-tool-consumer).
+    "crates/auto-ui-tools",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [
@@ -264,6 +273,13 @@ exclude = [
     # cargo test --manifest-path test/fixtures/modularity/man-core-consumer/Cargo.toml
     # 依赖闭包断言：bash test/fixtures/modularity/man-core-consumer/verify-deps.sh
     "test/fixtures/modularity/man-core-consumer",
+    # PLAN-815: 外部 UI 工具消费方探针——独立 fixture crate（依赖仅
+    # auto-ui-tools/auto-tool-protocol/auto-project-model，证明 M815-A 工具
+    # 闭包无 auto-man/auto-lang/auto-vm/auto-gen；并经 AUTO_UI_TOOL_BIN 以
+    # 真实子进程消费 auto-ui-tool 二进制），门禁经
+    # cargo build -p auto-ui-tools && AUTO_UI_TOOL_BIN=... cargo test --manifest-path test/fixtures/modularity/ui-tool-consumer/Cargo.toml
+    # 依赖闭包断言：bash test/fixtures/modularity/ui-tool-consumer/verify-deps.sh
+    "test/fixtures/modularity/ui-tool-consumer",
 ]
 resolver = "2"
 

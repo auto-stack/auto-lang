@@ -8,3 +8,10 @@ license = "MIT"
 [dependencies]
 auto-atom = { path = "../auto-atom" }
 auto-val = { path = "../auto-val" }
+# PLAN-815 T-03: same-source wire codec for GenerationRequest, provided at
+# the data owner so the tool protocol / tool host / clients never re-declare
+# a parallel request structure (feature-gated: the base model stays JSON-free).
+serde_json = { workspace = true, optional = true }
+
+[features]
+wire = ["dep:serde_json"]

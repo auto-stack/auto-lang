@@ -9,6 +9,7 @@ mod test_cases_tests;
 mod ac_case_tests;
 // PLAN-796: probe adapter integration (real sema worker + restart boundary)
 #[cfg(feature = "test-cases")]
+mod ac_av_probe_tests;
 mod probe_adapter_tests;
 // PLAN-796 R4: turnaround hard gate over the REAL adapter/IPC path
 #[cfg(feature = "test-cases")]

@@ -24,12 +24,24 @@ schema = "module-boundaries/1"
 # 根外已知实现包（Design 37 §2：语言域禁依赖 auto-ui/auto-man；本表映射使
 # 域限定跨根规则能命中按包名出现的根外目标）。
 "auto-ui" = "ui"
+# PLAN-815 T-12：UI 工程工具包（M815-A 起 lib+auto-ui-tool bin）——ui 域，
+# ui-no-man-big-lib 规则即 AC-01 的机制化（normal/build 闭包禁 auto-man）；
+# 客户端（816 CLI）经子进程协议消费，不静态链接本实现。
+"auto-ui-tools" = "ui"
 # 语言巨 crate：core+UI 五目录混居（已知债；终态拆分 R4/R8，见 ownership 焊点表）。
 # 不把它写成纯 lang-core——文本层候选单独观察（text_scan.core_to_ui）。
 "auto-lang" = "lang-monolith"
 # 数据域（Atom/Value 基础表示）——Design 37：数据域只依赖更低层。
 "auto-atom" = "data"
 "auto-val" = "data"
+# PLAN-815 补登记：I-PROJECT 轻项目模型（809 交付时未分类）——纯 pac.at
+# 静态子集 + 生成请求 DTO + wire codec，依赖仅 auto-atom/auto-val（data→data），
+# 属共享数据契约层；此前 unclassified 使域规则无法保护其闭包。
+"auto-project-model" = "data"
+# PLAN-815 T-03：I-TOOL 轻工具协议（版本/能力/预算/错误/信封/framing 纯数据，
+# 复用 I-PROJECT 单源类型与 codec；Design 37 §2 "man --> pm / ut --> pm" 的
+# 中立契约层）——data 域禁向使其天然无 AST/VM/renderer/Man 依赖。
+"auto-tool-protocol" = "data"
 # 语言核心域（Design 37 §2"语言"行的已拆出部分）——PLAN-789 首个成员
 # auto-lex（Token/Lexer/词法错误单一来源，自 auto-lang 逐字抽取交付）；
 # PLAN-793 增 auto-diagnostics（AutoError 聚合 + 各族诊断单一来源，

@@ -321,13 +321,14 @@ fn active_faults() -> Option<(Vec<(String, String)>, Option<u64>)> {
 /// tree, so a descendant that inherited stdout/stderr can never wedge
 /// the reader joins past the parent wall.
 #[cfg(windows)]
-mod containment {
+pub(crate) mod containment {
     use std::os::windows::io::AsRawHandle;
     use std::process::Child;
 
     type Handle = *mut core::ffi::c_void;
     const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
     const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION: i32 = 9;
+    const JOB_OBJECT_BASIC_AND_IO_ACCOUNTING_INFORMATION: i32 = 8;
     const TH32CS_SNAPTHREAD: u32 = 0x0000_0004;
     const THREAD_SUSPEND_RESUME: u32 = 0x0002;
     pub const CREATE_SUSPENDED: u32 = 0x0000_0004;
@@ -365,6 +366,27 @@ mod containment {
         peak_job_memory_used: usize,
     }
 
+    /// Class 8 (JOBOBJECT_BASIC_AND_IO_ACCOUNTING_INFORMATION) — the
+    /// reliable way to read a job's I/O transfer counters (the class-9
+    /// extended-limit query fills the peak-memory fields but its io
+    /// block reads zero on current Windows builds).
+    #[repr(C)]
+    struct JobBasicAccounting {
+        total_user_time: i64,
+        total_kernel_time: i64,
+        this_period_total_user_time: i64,
+        this_period_total_kernel_time: i64,
+        total_page_fault_count: i32,
+        total_processes: u32,
+        active_processes: u32,
+        total_terminated_processes: u32,
+    }
+    #[repr(C)]
+    struct JobBasicAndIoAccounting {
+        basic: JobBasicAccounting,
+        io_info: IoCounters,
+    }
+
     #[repr(C)]
     struct ThreadEntry {
         dw_size: u32,
@@ -385,6 +407,13 @@ mod containment {
             info: *const core::ffi::c_void,
             len: u32,
         ) -> i32;
+        fn QueryInformationJobObject(
+            job: Handle,
+            class: i32,
+            info: *mut core::ffi::c_void,
+            len: u32,
+            return_len: *mut u32,
+        ) -> i32;
         fn AssignProcessToJobObject(job: Handle, process: Handle) -> i32;
         fn CloseHandle(hObject: isize) -> i32;
         fn CreateToolhelp32Snapshot(flags: u32, process_id: u32) -> Handle;
@@ -392,6 +421,18 @@ mod containment {
         fn Thread32Next(snapshot: Handle, entry: *mut ThreadEntry) -> i32;
         fn OpenThread(access: u32, inherit: i32, thread_id: u32) -> Handle;
         fn ResumeThread(thread: Handle) -> u32;
+    }
+
+    /// Post-exit resource facts of a contained worker tree, read from
+    /// the Job object (F-797-R4-10 R8): the REAL process peak memory
+    /// and the accumulated I/O transfer bytes — the per-request
+    /// resource attribution the formal turnaround samples publish.
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct JobStats {
+        pub peak_process_memory_used: u64,
+        pub peak_job_memory_used: u64,
+        pub read_transfer_bytes: u64,
+        pub write_transfer_bytes: u64,
     }
 
     pub struct JobGuard(Handle);
@@ -421,6 +462,41 @@ mod containment {
                     return None;
                 }
                 Some(JobGuard(job))
+            }
+        }
+
+        /// Read the job's peak-memory and I/O counters. Must be called
+        /// while the job handle is still open (before the guard drops).
+        pub fn stats(&self) -> Option<JobStats> {
+            unsafe {
+                let mut info: JobExtendedLimit = std::mem::zeroed();
+                if QueryInformationJobObject(
+                    self.0,
+                    JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+                    &mut info as *mut _ as *mut core::ffi::c_void,
+                    std::mem::size_of::<JobExtendedLimit>() as u32,
+                    std::ptr::null_mut(),
+                ) == 0
+                {
+                    return None;
+                }
+                let mut io: JobBasicAndIoAccounting = std::mem::zeroed();
+                if QueryInformationJobObject(
+                    self.0,
+                    JOB_OBJECT_BASIC_AND_IO_ACCOUNTING_INFORMATION,
+                    &mut io as *mut _ as *mut core::ffi::c_void,
+                    std::mem::size_of::<JobBasicAndIoAccounting>() as u32,
+                    std::ptr::null_mut(),
+                ) == 0
+                {
+                    return None;
+                }
+                Some(JobStats {
+                    peak_process_memory_used: info.peak_process_memory_used as u64,
+                    peak_job_memory_used: info.peak_job_memory_used as u64,
+                    read_transfer_bytes: io.io_info.read_transfer_count,
+                    write_transfer_bytes: io.io_info.write_transfer_count,
+                })
             }
         }
     }
@@ -479,12 +555,22 @@ mod containment {
 }
 
 #[cfg(not(windows))]
-mod containment {
+pub(crate) mod containment {
     use std::process::Child;
     pub const CREATE_SUSPENDED: u32 = 0;
+    #[derive(Clone, Copy, Debug, Default)]
+    pub struct JobStats {
+        pub peak_process_memory_used: u64,
+        pub peak_job_memory_used: u64,
+        pub read_transfer_bytes: u64,
+        pub write_transfer_bytes: u64,
+    }
     pub struct JobGuard;
     impl JobGuard {
         pub fn for_child(_child: &Child) -> Option<JobGuard> {
+            None
+        }
+        pub fn stats(&self) -> Option<JobStats> {
             None
         }
     }
@@ -823,6 +909,9 @@ pub fn run_check(
                     serde_json::json!({"op": "edit-source", "from": from, "to": to})
                 }
                 ProbeStep::Restart => serde_json::json!({"op": "restart"}),
+                // Decode restricts `run` to the ac-av recipe; the sema
+                // adapter never receives it (defensive explicit arm).
+                ProbeStep::Run => serde_json::json!({"op": "run"}),
             })
             .collect();
         let nonce = hex(&sha256(

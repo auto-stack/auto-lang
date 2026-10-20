@@ -2,13 +2,14 @@
 plan_id: PLAN-818
 status: executing
 feature_name: AC接入共享Typed MIR与原生一致性闭环
-plan_revision: 1
+plan_revision: 2
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
 current_step: 1
-total_steps: 10
+total_steps: 11
 supersedes_spec_components:
+  - docs/specs/auto-av/resident-function-install.md
   - docs/specs/auto-ac/project.md
   - docs/specs/auto-ac/artifact-contract.md
   - docs/specs/auto-hir/stage-contract.md
@@ -68,6 +69,8 @@ Rust独立workspace，跟踪lock并复用ac-core锁定Cranelift 0.126栈/ObjectM
 
 ## 4. 需求分析与背景调查
 
+用户2026-10-20确认798完成后优先828，所有ACE扩展保留全链路增量。D828为共享核心实施/集成排期门；只读准备可先，既有准备/进度保留。原其他依赖仍有效，无对798/828的反向依赖。旧revision/排期记录仅为历史，当前以本轮§5–8为准。
+
 用户授权本轮草拟817/818、明确797/798及拆分并行、首例cache/AutoDown/亚秒/内存；未授权实施/开树/代理/工具安装或生产切换。只在auto-lang主检出写计划，不修改旧VM/前端/产品SDK。
 
 依据[overview](../specs/overview.md)、[AC现状](../specs/auto-ac/project.md)、[HIR阶段](../specs/auto-hir/stage-contract.md)、[产物/cache](../specs/auto-ac/artifact-contract.md)、[测试架构](../specs/auto-test-case/architecture.md)、[v2](../specs/auto-test-case/profile-v2-native.md)；主检出调查 `13367d127584461449ee2f151c0c5987f0740044`，来源hash/在途分支blob见[inputs.json](attachments/ac-execution-batch-20261019/inputs.json)。
@@ -124,6 +127,18 @@ T-01固定参考Windows机器/CPU/SDK/工具、256KiB/100有意义函数的输�
 
 **内存/磁盘硬门**：按§3实时峰值和分区，包含编码/输出收集/Cranelift及子进程；以瞬态分配spike反控采样器。至少32MiB真实不同COFF/manifest冷集（不是重复复制同一个块）、随机只读一个函数对象，512次真实编辑/重键/结果+同store水位GC；按继承783策略无live超额时物理收敛、用户哨兵不变。测试须用真实不同产物推动同store超过高水位，确保至少一次物理删除并在活集低于低水位时实测收敛；不以未触发GC的低占用算通过。大型MIR块/循环/分支混合在798预算两侧通过或resource，不扩host栈掩盖不安全路径。raw中零/缺失/NaN/失败样本不能按0ms或0bytes默认通过；阈值=0的时间/内存反控必须使聚合gate非0。
 
+### 全链路增量兼容与828优先排期（r2）
+
+798实际交付后优先828，本计划在原依赖和D828均满足后取得共享写窗口。D828=当前revision最终review/冻结门禁/实际合入/Spec与merge收据齐全，不消费WIP；只读调研/合同准备可先，已有准备保留。共同合同见[ACE顺序与兼容](reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)与[828](828-av-function-incremental-session.md)。
+
+专项：消费828函数MIR/变更集，未改函数不重新lower/codegen；AV代码驻留。native最终链接/PE运行沿原合同另计，不冒称原生在线重载。
+
+T-11 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳定函数身份、私有凭证与实际依赖。纯body编辑、签名/实际依赖/profile/配置/授权不变时，未改HIR/MIR/代码对象和代际不变，未改生产阶段及读盘/decode/verify/load为0。元数据更新单列，不能用全source hash/总revision使所有函数失效。新工件仍走适用准入，恢复不可信。
+
+四必需子case：1)D828真实source edit基线273575B/115函数，至少30不同修订，结构与稳定会话P95<1s双门；2)本计划新增能力真实支持入口两函数局部body更新，未改单元保留且语义/清理正确；3)实际接口/layout/helper body/授权事实变化的精确失效/拒绝正反控；4)强制whole前端/lower/重装载或只保hash却换对象/代际，正式gate必非零。仅手工HIR/MIR支持的新类型不能冒领该类型完整源码能力，但scalar全链仍须重放。由T-11 建立真实入口计数/身份/IO/反控，当前未有新增证据，review不得豁免或推给merge。
+
+原支持面/资源/原生等性能门不放宽；cold/restart/版本迁移或真实广泛失效另报，不掩盖正常body退化。旧帧/值/drop引用期间代码与布局保活，失败/取消/迟到不安装，退出后回收；不兼容布局按实际支持策略拒绝/扩大失效，不擅自迁移活值。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -133,6 +148,7 @@ T-01固定参考Windows机器/CPU/SDK/工具、256KiB/100有意义函数的输�
 | SD-03 | modify | docs/specs/auto-ac/project.md、artifact-contract.md | 追加818 consumer/producer面，旧profile/producer不扩 | 不回溯宣布生产默认迁移 | AC-01/04/08 |
 | SD-04 | modify | docs/specs/auto-hir/stage-contract.md | 追加共享MIR的native消费门，旧S0–S6事实保留 | 不泄露CLIF到HIR/MIR | AC-02/08 |
 | SD-05 | modify | docs/specs/auto-test-case/architecture.md | 追加正式recipe/worker/actual/stale/观测支持面 | 单一runner | AC-07 |
+| SD-06 | modify | docs/specs/auto-av/resident-function-install.md | 继承D828函数IR/代码复用、受检安装/依赖/寿命；新增能力不退回整模块热重编/装载 | 用户明确的顺序与增量机制保留 | AC-11 |
 
 ## 6. 测试设计
 
@@ -156,6 +172,12 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 
 预定唯一树 `D:/autostack/.wt/lang-818/auto-lang`、分支 `plan-818-dev`，本轮未创建。实现/自检后同树独立review、冻结commit/依赖，暂停写入；未指定模型/人员，不创建代理。work定向测试/check，最终review pass后merge在冻结提交跑独立workspace完整套件/三路径/native及相关runner定向兼容；若改root Rust则按实际触面补裸t及tv/tt，未触及aavm/UI/生成器不跑taa/tu/docs_gen，tf仅主检出到期单实例。
 
+### 本轮新增的增量兼容验收（work-owned）
+
+| Case ID | AC / owner | 输入 | 实际入口 | 区分性断言 | 边界 |
+|---|---|---|---|---|---|
+| V-12 | AC-11 / T-11 | D828 source30修订+新增能力两函数+依赖变化+强制退化四子case | 本计划真实consumer/正式recipe与D828 edit接口，由T-11 接线 | 未改对象/代际相同、未改函数生产阶段/产物IO=0，结果/清理正确，P95<1s；强制退化非零 | 当前profile真实起点，不冒领未交付源码/迁移能力，四子case无skip |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可验证结果 |
@@ -170,23 +192,29 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 | AC-08 | work | 依赖/并行边界/coverage/SD齐，非公开ABI/JIT/发布器；V-11 |
 | AC-09 | review | 同树独立逐AC/V/SD审查，绑定冻结提交，in-contract finding全闭 |
 | AC-10 | merge | 冻结门禁、Spec/ledger、归档合入/guard清理实际完成，10/10 |
+| AC-11 | work | D828与新增能力保持全链路增量，V-12 四子case及结构/身份/资源/时间/反控raw齐全；未改函数不重编/重装载，时间绿不替代粒度绿 |
 
 ## 8. 执行步骤
 
 | Task | owner_stage | 前置 | 文件/交付 | 验证/AC |
 |---|---|---|---|---|
 | [x] T-01 | work | 用户实施指令 | 只读MIR映射/符号/ABI/工具/内存/负载/测试owner设计，contract-decision.md及独立golden | 指令覆盖/资源可审；AC-01，不编译未合入接口。[✅ 已完成 2026-10-20：[contract-decision.md](attachments/818/contract-decision.md)（全指令表映射/符号/私有ABI `msvc-x64/priv-i32-bool-v1`/trap70/预算与mn.*错误分类/对象key/层与恢复/工具链与参考机身份/48-512-768MiB分区/测试owner映射）+ [golden.md](attachments/818/golden.md)（首例源冻结+手算：exit 0/stderr "aab"/无trap审计；256KiB/100caller+14leaf+main负载设计、LCG seed 0x818_5eed、K=19、fn_041编辑位/fn_leaf_2签名冲突位、无trap界分析、闭式镜像+手审义务）。全程只读：主检出零代码WIP预检过、未编译在途接口、未造mock、未开树；观察基面=798在途分支072cb4e14（forecast非冻结，D-798后重读） ] |
-| [ ] T-02 | work | T-01、D-798、公共注册窗口 | 新workspace/lock、两函数多obj新codegen→PE、三路径/expected、cache新进程恢复/正式AutoDown/trace/峰值首例 | first-case，V-01/04/10；AC-01 |
+| [ ] T-02 | work | T-01、D-798、公共注册窗口、D828排期门 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； 新workspace/lock、两函数多obj新codegen→PE、三路径/expected、cache新进程恢复/正式AutoDown/trace/峰值首例 | first-case，V-01/04/10；AC-01。[⏳ 执行完成+验证绿，pass记条件化待裁定 2026-10-20：本会话以用户聊天指令"798已经提交，请继续"为解锁依据执行（会话开始时r2尚未入目）；完工后发现计划已于同日修订r2新增D828排期门（T-02前置），而828在途（仅其T-01落地）。已实现并验证（worktree `D:/autostack/.wt/lang-818/auto-lang`@plan-818-dev 提交21b95c0e8，28文件含Cargo.lock）：首例3/3绿（新路径真PE=golden exit0/stderr"aab"；三路径对拍一致；真store put→新进程mn-worker恢复codegen=0仍真link/run→进程内命中forbid_codegen反控）；正式AutoDown首例3测绿（语料3 case过真实runner：trace首例exit0/值7位精确/除溢出真PE exit70；负oracle红；解码负控4例）；recipe ac/mir-native-scalar-v1已注册（**触及公共写面**：contract.rs/suite.rs/mod.rs——828分支后续注册须按并行合同串行解决）。条件：①D828落地后须按本行前置刷新T-01接口/版本/预算合同并重放本验证（旧证据不冒领新依赖pass）②共享写面注册的合并次序裁定。裁定前T-03+不启动 ] |
 | [ ] T-03 | work | T-02 | 完整有限MIR指令/CFG/槽/调用/数值/trace与负例，精确错误/来源 | mir_native_codegen_/parity_、V-01–03；AC-02/03 |
 | [ ] T-04 | work | T-03 | 函数对象/符号/manifest/版本key，恢复/再生/无MIR命中、事务/失败/反控 | mir_native_cache_/transaction_、V-04–07；AC-04/05 |
 | [ ] T-05 | work | T-04 | 32MiB冷对象/512真实编辑/GC、内存分区/树峰值/深CFG/超限清理 | resources、V-06–08；AC-05 |
 | [ ] T-06 | work | T-05、公共单写窗口 | 正式AutoDown完整suite及兼容/坏actual/身份/stale | adapter、V-10；AC-07 |
 | [ ] T-07 | work | T-06 | 真实runner六场景、两编辑P95门、raw报告及反控 | turnaround、V-09；AC-06 |
 | [ ] T-08 | work | T-07 | verify全Scope、docs/reports/plan818、边界/coverage/SD提案 | acceptance V-01–11；AC-01–08；execution_done=8/10 |
-| [ ] T-09 | review | T-08冻结提交 | 同树独立验收/规范/遗漏审查及反控重放 | AC-09；reviewed=9/10，merge门禁pending |
-| [ ] T-10 | merge | T-09 pass | 冻结门禁、Spec/ledger、归档合入、批量判定/wt-guard后清理 | AC-10；实际10/10 |
+| [ ] T-11 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-11；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
+| [ ] T-09 | review | T-08冻结提交、T-11 完成 | 同树独立验收/规范/遗漏审查及反控重放 | AC-09；reviewed=10/11，merge门禁pending |
+| [ ] T-10 | merge | T-09 pass | 冻结门禁、Spec/ledger、归档合入、批量判定/wt-guard后清理 | AC-10；实际11/11 |
 
 ## 9. 复审记录
+
+2026-10-20 stage:work | PLAN-818 | plan_revision 2 | outcome:blocked（T-02实现+验证完成；r2 D828排期门冲突在案待用户裁定）| worktree:`D:/autostack/.wt/lang-818/auto-lang`（组内补auto-down兄弟detached@master）| branch:plan-818-dev | base_commit:f79b1b835（master）| code_commit:21b95c0e8 | dependency_revisions:798已合入面（archive 11/11，D-798重读义务已履行——MIR核心未变、ABC wire升/2不触A09'key轴，记contract-decision r1.1注记）；828在途（其T-01=lang-828@f81b5eaf4，D828未满足）| task_ids:T-02（实现/验证完成，checkbox条件化未勾）| evidence:§8 T-02行全录（首例3/3绿/正式AutoDown 3测绿/提交28文件）| blockers:用户裁定①聊天指令优先 vs ②r2 D828门严格（§10在案两选项）；裁定前T-03+暂停，worktree/提交保留（r2"既有准备/进度保留"条款）| next_responsible_role:用户裁定→work（选项①继续T-03或②D828后刷新重放再继续）
+
+2026-10-20 stage:new | PLAN-818 r1→r2 | outcome:pass（规划修订，非实现通过） | authority: 用户指定798→828优先/后继保留全链路增量 | delta: AC-11 / V-12四子case / SD-06 / T-11；review依赖新work项，D828排期/集成门，原D门不减 | 原进度保留，total 10→11，新证据pending | next:只读准备可先，D828后串行实施；无代码/测试/Spec发布/合入。
 
 2026-10-19 stage:new；PLAN-818 r1；outcome:pass（规划契约预检，非实现验收）；next:work（需用户实施指令；T-02起等D-798）。新增T-01–10/AC-01–10/V-01–11/SD-01–05；drafting 0/10，未实施/编译/跑性能/创建树。详细预检见[planning-preflight.md](attachments/818/planning-preflight.md)。实际指令/资源/接口不符时以证据显式revision，不能改成旧native代理来维持pass。
 
@@ -199,3 +227,8 @@ T-01要点：入口=用户实施指令（drafting→executing授权）；范围�
 无阻断起草的用户决定。T-01固定准确MIR版本/符号/私有ABI/产物与负载；D-798后T-02验证新codegen、多obj链接、缓存及正式runner全路径。若API不足、必须修改公共MIR或hard性能/内存不达，回规划，不抬预算、不缩负载、不改在途798。公开ABI/FFI及真正生产默认切换后续单列；不需要等待817或797全部完成才做本有限profile。
 
 **2026-10-20 在案阻断（work记录）**：T-02..T-08全部等待D-798（798最终review/冻结门禁/实际合入/Spec/merge收据齐全；当前798=executing 1/10）。解除动作：D-798达成后，work以实际合入的798 API/Spec重读contract-decision.md §1/§2/§9（接口/指令/验证规则若变则以证据revision），再开 `D:/autostack/.wt/lang-818/auto-lang`（分支plan-818-dev）执行T-02首例。公共注册窗口在817/814–816先合入时按并行合同同步master后串行追加。
+
+**2026-10-20 D-798已满足；T-02执行完成但发现r2 D828排期门冲突（在案，待用户裁定）**：本会话依用户聊天指令"798已经提交，请继续"执行T-02并全绿（证据见§8 T-02行，提交21b95c0e8）；完工核对时发现计划已修订r2（同日另一会话，用户授权"798→828优先"），T-02前置新增D828排期门而828在途（其T-01已落地、ac-av-probe为其独占写面）。冲突面：(a) 本计划分支已触及公共写面（recipe注册 contract.rs/suite.rs/mod.rs）与r2"原依赖和D828均满足后取得共享写窗口"的字面冲突；(b) 828交付后T-09函数级接口可能替代本驱动消费的整模块前端路径（刷新义务）。保留裁定（r2自身条款"既有准备/进度保留"）：worktree与提交保留不动、T-03+暂停。用户选项：①确认聊天指令优先——T-02翻[x]（补D828后刷新+重放义务到T-11/复审），继续T-03；②确认r2门严格——冻结在树，D828后刷新合同/重放验证再翻T-02。两选项下本计划代码零浪费（重放为定向测试）。
+
+
+**当前排期与验收**：798→828→本计划（原前置仍需满足）；T-11 / AC-11 / V-12 未完成，旧revision/测试总数不覆盖新增义务。用户已确认该顺序/目标，不重复请求同范围授权。

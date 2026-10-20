@@ -1,0 +1,6 @@
+# PLAN-797 T-06 ABI interop deck (data, not source): the frozen p797
+# fixture set consumed by the abi/interop-v1 recipe worker.
+deck autoabi/1
+fn p797_mix(a:i32, b:i32, c:i32, d:i32, e:i64, f:f64, g:i32, h:f64) -> i64 [body: mix-v1]
+rec RecMix { bool flag; i32 count; char tag; i64 big }
+inputs { a: 7, b: -3, c: 100, d: 5, e: 1000000007, f: 1.5, g: 11, h: -2.25 }

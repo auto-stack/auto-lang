@@ -1,0 +1,14 @@
+fn side(x int) int {
+    let m = mark_b()
+    return x * m
+}
+
+fn main() int {
+    let a = mark_a()
+    let b = side(3)
+    let c = mark_a()
+    if a + b + c != 10 {
+        return 1
+    }
+    return 0
+}

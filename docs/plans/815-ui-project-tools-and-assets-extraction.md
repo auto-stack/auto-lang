@@ -5,9 +5,9 @@ feature_name: UI 工程工具、生成入口与专属资源脱离 Man
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
-plan_revision: 2
-current_step: 4
-total_steps: 14
+plan_revision: 3
+current_step: 9
+total_steps: 17
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/auto-lang/ui/overview.md, docs/specs/project-model/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-ui-tools/project.md, docs/specs/tool-protocol/project.md]
 touched_goals: [GOAL-003, GOAL-007]
@@ -23,7 +23,7 @@ depends_on: [PLAN-809, PLAN-814]
 
 不搬通用锁/resolver/Builder/模板算法，不把整个api_gen或http_service按文件名盲搬，不迁Git仓。I-TOOL不是另一个小Plan，使用809已交付的单源请求类型。
 
-本次r2按M815-A真实阶段发布、M815-B完整交付组织，不增加Plan编号、不降低原最终AC。执行与审查修复并行规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)；阶段pass不等于整Plan交付。
+本次r3保留r2的M815-A真实阶段发布、M815-B完整交付组织，增加M815-L账本兼容恢复phase作为T-14c前置；不增加计划编号、不重做A代码、不提前归档。原r2按M815-A真实阶段发布、M815-B完整交付组织，不增加Plan编号、不降低原最终AC。执行与审查修复并行规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)；阶段pass不等于整Plan交付。
 
 ## 1. 目标
 
@@ -52,12 +52,18 @@ depends_on: [PLAN-809, PLAN-814]
 
 实证：`auto-man/src/{vue,rust_ui,jet,ark,tauri,vue_shadcn,gallery_assets,wm_assets,gallery_cache,image_viewer,api_gen,tauri_backend,vscode,sidecar,http_service}.rs`及`assets/{gallery,wm,shadcn-ui}`；Vue/Rust等当前使用Pac/语言生成API，api_gen同时有非UI服务/媒体适配，http_service承载独立server命令；需逐符号而非整文件武断归属。`rust_ui.rs`还持792发行管线与producer/source表；原资产使用编译期embed和邻仓输入，必须迁完整来源。
 
-### r2阶段启动门
+### r3阶段启动门
 
 - 809/I-PROJECT已交付，T-01/T-02/T-03及T-12可现在实施；**协议与真实窄端点不依赖814**。
-- **M815-A**：T-01/T-03→T-12→T-13→T-14；实际协议/tool发布后放行816客户端。T-02可与协议工作分scope推进，但不提前搬走旧生产embed源。
+- **M815-A**：T-01/T-03→T-12→T-13→T-14；T-14a/b与canonical Spec已落地，T-14c等待M815-L的T-15→T-16→T-17完成；实际协议/tool发布后放行816客户端。T-02可与协议工作分scope推进，但不提前搬走旧生产embed源。
 - **M815-B**：T-04生成主体等M814-A+M815-A；T-05中依赖新runtime的真实build/run集成等M814-B，随后T-06..11完整收口。生成主体的独立审查/修复无需等runtime完整发布。
 - 不复制I-PROJECT，不消费814 WIP，不用假backend提前报告生成/运行支持。
+
+### r3账本恢复授权与输入
+
+用户2026-10-20提出“可以在本计划中加phase来恢复吗？”；本修订在815内增加M815-L，不另立编号。已授权的T-14收尾继续；本轮补成可审查合同，不把新增恢复实现/独立审查标为已完成。实现/审查/合入均沿用唯一树，auto-musk仅只读schema来源，不修改该仓或在线服务。
+
+输入：`.autoos/specs.json` v57（1098 items）、原`.autoos/specs.json.bak-v57-815a` v56（1094 items），以及[store审计](attachments/815/t14-closeout/ledger-schema-audit.json.txt)和[原收尾核验](attachments/815/t14-closeout/recovery.md)；v56已有1060条旧item不兼容，v57新增4条也不完整，六section缺少store字段。当前恢复基线和schema完整SHA在审计附件，后续发现来源漂移必须重新冻结，不直接套用旧转换。canonical权威与ledger派生边界遵循`docs/specs/README.md`和`docs/design/autoplan-spec-ledger.md`。
 
 ## 5. 详细设计
 
@@ -104,9 +110,21 @@ T-01冻结适用平台、实际codec/framing、消息/输出/排队预算与单�
 | SD-05 | modify | docs/specs/auto-lang/ui/overview.md | 工程工具/资产消费814公开包，不回抓语言私有或Man | 实际分层 | AC-01, AC-04 |
 | SD-06 | modify | docs/specs/repository-boundaries/generated-ui-distribution.md | 新tool/协议/source/embed/producer闭包与适用失败矩阵 | 可分发 | AC-04 |
 
+### 5.6 M815-L：只恢复兼容投影，不重写知识
+
+T-15先完成有界方案与真实loader可行性probe：逐字备份v57及可得历史备份、冻结hash/版本/schema、枚举缺字段/非法状态/重复ID/不支持类型，输出每一转换的ID、字段、原值、新值、依据及不可判定项。修复内容只限store结构、合法状态表示和本阶段四条来源增量；不改A/B行为、canonical Spec正文、历史业务结论、外仓代码或共享服务。
+
+不得凭空补造历史完成时间或把active/delivered/缺状态等直接判为已验收。缺失时间、未知状态的表示及恢复方式由T-15提出明确候选、真实store往返probe与转换表，T-16独立核准后才落库；不能证明安全的记录须保留原始表示与完整恢复映射并阻断，不能删除/静默跳过。未知兼容字段保存在候选与逐字原始备份/映射中，必须说明store load/save对未知字段的行为，不能只测JSON能解析。
+
+新增专用恢复工具`scripts/plan815_ledger_recover.py`（T-15建立；不是新通用知识系统），默认dry-run，在临时副本生成候选/逐项报告；只有T-16绑定候选与转换hash通过后，由T-17在正确workspace执行单写者恢复。保护先检查完整store schema、唯一ID、原始信息完整可恢复、canonical引用、全库计数及非目标字段不变；失败时真实原件逐字不变。备份不得覆盖，CAS/hash检测并发更新；写后真实store加载/读回核对失败要恢复精确原件并记录失败。原有已合规条目不得重新措辞或改状态。
+
+恢复全库与815四条upsert分两个可核查checkpoint：先验证兼容恢复，再按R4四份canonical来源受管upsert固定P815-A-D1/T/R/REL，已有项更新而不重复追加；各次version递增、实际提交/hash记录清楚，不冒称跨文件/跨仓事务。重新生成发布收据，验证后关闭原T-14；不重复合入已是master祖先的代码。
+
+规范影响：本phase只恢复现有派生ledger与审计资料，无新增产品/API/业务规则，**无新canonical Spec增量**；原SD-01..06及A已审子集保持，若probe需要改变规范/知识生命周期则停止并单列修订，不在修复中迁移知识体系。
+
 ## 6. 测试设计
 
-2026-10-20 T-13 独立阶段复审 R3：**needs_fix，仅新增回归测试缺陷**。上一轮四项代码问题F-R1-02/04/05及F-R2-01已全部独立CLOSED；本轮95项现有定向测试reported pass、fmt/all-targets零warning、777通过，但新unit重复包装完整wire，合法Value也满足其拒绝断言，F-815-R3-01须修。详见[R3关闭表/区分性反控](attachments/815/review-r3/review.md)。T-01预算已验完成，T-02保留，T-03/T-12仅因该测试缺口未完成，executing2/14，T-13不勾选；不重新打开已关闭的代码finding。
+2026-10-20 T-13 独立阶段复审 R4：**pass（仅M815-A阶段）**。F-815-R3-01已独立关闭，全部历史finding全闭、无新增；本轮14项wire测试与model all-targets/fmt通过，生产实现/依赖/配置/二进制与R3一致，按hash复用其余已闭验证证据。见[R4阶段报告](attachments/815/review-r4/review.md)与[精确已审A规范增量](attachments/815/review-r4/spec-delta-reviewed.md)。T-01/02/03/12/13完成，Plan保持executing5/14；T-14冻结门/实际合入/来源发布收据pending，未宣称整个815或M815-A已发布。
 
 T-01冻结实际支持矩阵/旧输出/协议probe；T-07建立新增`test/fixtures/modularity/ui-tool-consumer/`、`tool-protocol-consumer/`及上层plan815定向集成。所有V项owner_stage=work；V-05与V-02/03当期（元数据/codec）范围已于M815-A work阶段执行（见§9），完整V-01..04待B阶段。
 
@@ -133,6 +151,19 @@ work在唯一树做check/包测试/协议与上层定向反例及独立consumer�
 
 A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。阶段和最终的裸t/触面整档均归merge冻结后统一排队，资源独占项串行；tf仅主检出到期单实例。接口修复由owner发布，影响方重放受影响scope，未变且适用证据可复用。具体失效/收据/单写者规则见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md) §2–5。
 
+### r3恢复验证（M815-L，待T-15建立可执行证据）
+
+所有L用例work owner=T-15；实现者自检只表示可送T-16，独立审查另上下文同树进行，未指定模型或新增agent。T-16未完成前禁止生产账本写入，T-17负责真实发布/回滚证据。
+
+| Case | AC / invariant | 真实入口/设置 | 区分性oracle/覆盖边界 |
+|---|---|---|---|
+| V-L1 | AC-10 可加载且无历史丢失 | 专用恢复工具dry-run、v57真实副本、store `SpecsDocument` serde/`SpecsStore::load` | 六section与全部原ID仍在、原值可逐项恢复，合规项原字段不变；实际typed load成功，JSON parse不能代替 |
+| V-L2 | AC-10 未知状态/时间不造假 | 合法状态正控、active/delivered/缺状态、缺时间/错类型/重复ID/未知字段对照 | 转换报告与审定映射一致，无依据即阻断；未知字段经load/save的保留边界显式核对，不能误报原有知识已完成 |
+| V-L3 | AC-10/12 失败与并发安全 | 临时副本注入候选校验失败、读回失败、源hash漂移、备份同名不同字节、写失败 | 必须真实触发目标分支；旧文件hash不变或按合同恢复精确字节；并发别人的内容不得被回滚覆盖；原备份不覆盖 |
+| V-L4 | AC-12 阶段投影幂等 | 恢复后四个固定ID首次upsert、重复执行、部分已有/内容冲突 | 每ID恰好一条、来源hash匹配canonical/审查/交付，非815条目保持；重复无新增、不虚增version；部分状态须明确对账 |
+
+Category A：若只改专用脚本/临时fixture/ledger/文档，不另跑cargo t/docs_gen；使用实际loader与上述反例。若任何Rust生产代码变化则回到相应scope复审和merge门，不因恢复phase豁免。到期批量tf/tt/tb沿用独立主检出单实例收据，不冒充恢复验证。
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可观察验收 |
@@ -144,18 +175,21 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | AC-05 | review | 同树独立最终修订审查通过，零新增未处理warning/格式/debug，merge门pending |
 | AC-06 | merge | 冻结门、Spec/ledger/归档、已合入I-TOOL/tool/资源交816及guard clean清理有收据 |
 | AC-07 | work | M815-A轻协议与真实窄tool满足§5.5，V-05与V-02/03当期范围通过；不宣称完整UI工具已迁 |
-| AC-08 | review | T-13独立阶段审查绑定r2/M815-A冻结SHA/能力及Spec子集，通过且merge门pending |
-| AC-09 | merge | T-14冻结门通过、实际master祖先交付/协议版本/Spec与来源consumer收据；不归档 |
+| AC-08 | review | T-13的r2/M815-A R4 pass绑定原冻结SHA/能力及Spec子集，r3按未变来源继承该阶段证据；不覆盖新增恢复phase，其独立审查见AC-11 |
+| AC-09 | merge | T-14冻结门通过、实际master祖先交付/协议版本/Spec与来源consumer收据；ledger经AC-12核验后才完整发布；不归档 |
+| AC-10 | work | M815-L转换与真实typed loader验证通过，全部旧记录/原值可恢复，合规项不变、不补造历史结论；V-L1..3 |
+| AC-11 | review | T-16独立恢复审查绑定r3/恢复提交/候选及转换hash，逐项核对V-L1..4与未知项，零未决；实现自检不代替 |
+| AC-12 | merge | T-17按审定hash在正确workspace单写者恢复并完成固定四项受管upsert；备份/version/加载/读回/幂等/回滚收据齐备；再关闭T-14；V-L3..4 |
 
 ## 8. 执行步骤
 
-14项；保留原任务ID，追加A阶段任务，**按依赖列执行，不按编号排序**。整项depends_on为摘要，阶段启动以§4/5和本表为准；不宣称Runner已支持阶段调度。
+17项；保留原任务ID，追加A阶段与M815-L恢复任务，**按依赖列执行，不按编号排序**。整项depends_on为摘要，阶段启动以§4/5和本表为准；不宣称Runner已支持阶段调度。
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 文件/交付与验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 现在;809已交付,新SDK probe按M814-A门 | attachments/815/contract-baseline.md(新增):全工具/字段/资产/效果owner、旧oracle、非UI共享分界、I-TOOL/交互预算候选;前置合入后probe冻结完整方案；R3独立确认bc61501c5的wire120/完整frame122/两读入口及解析器防线一致，F-R1-05 CLOSED；其余owner清单证据保留 | AC-01..04 |
 | [x] | T-02 | work | T-01只读资源映射;无WIP引用 | 新工具包私有资源模块/独立资产测试、来源/许可证映射;生产asset原源不动,单次迁移及embed切换在T-04完成,不改809数据/接线,不假建最终API | AC-01,04 |
-| [ ] | T-03 | work | T-01协议决策+809已交付;不等814 | 新auto-tool-protocol复用I-PROJECT/codec,定义版本/能力/资源/结果/退出,正常负控编译/协议测试；R3确认F-R1-02/05与F-R2-01实现CLOSED；F-R3-01已修(7045e20fa):helper完整wire直接解码+双路径合法对照+value分支具名断言,52测试绿 | AC-02,03 |
+| [x] | T-03 | work | T-01协议决策+809已交付;不等814 | 新auto-tool-protocol复用I-PROJECT/codec,定义版本/能力/资源/结果/退出,正常负控编译/协议测试；R4确认7045e20fa的F-R3-01关闭：helper完整wire直接解码、双路径合法对照和目标分支/具名错误断言有效；14项wire复跑通过，R3其余未变证据复用 | AC-02,03 |
 | [ ] | T-04 | work | T-14/M815-A+M814-A已发布 | Vue/Rust/Jet/Ark/Tauri等完整UI工具及真实请求接线、资产生产迁移/旧源删除;非UI分界具名adapter | AC-01,02 |
 | [ ] | T-05 | work | T-04;完整runtime正控等M814-B | 在A真实tool上接完整UI执行/control/日志/交互/取消,保持已发布窄能力;实际runtime/build/run以M814-B为门;V-03完整范围 | AC-03 |
 | [ ] | T-06 | work | T-05 | 旧Man公开门面兼容承载、真生成/build/run及媒体/sidecar/backend/项目读取全路径,V-01/02/04 | AC-01,02,04 |
@@ -164,11 +198,14 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | [ ] | T-09 | review | T-08 | 同树独立AC/SD/真实工具/无第二读取/资源失败审查；merge门pending | AC-05 |
 | [ ] | T-10 | merge | T-09 pass | master并集/变化复审/冻结适用门，失败归因后修复重审 | AC-06 |
 | [ ] | T-11 | merge | T-10 | 规范/ledger/归档、已合入I-TOOL接口交816、guard clean清理唯一树/分支/组及计数 | AC-06 |
-| [ ] | T-12 | work | T-03；与T-02资源准备可独立 | 实际describe/validate_project元数据tool及独立进程consumer，V-05和V-02/03当期正反例、777/适用792来源/发行闭包、版本/能力/Spec候选；R3四项代码finding已独立全闭;F-R3-01测试修复已提交(7045e20fa,实现零改动);A规范增量采用R3校对版(spec-delta-reviewed.md);下轮复用R3已闭代码证据、限定复审测试缺口 | AC-07 |
-| [ ] | T-13 | review | T-12提交冻结 | 独立A协议/同源codec/真实端点/预算/副作用/Spec审查，绑定r2/M815-A SHA，merge门pending | AC-08 |
-| [ ] | T-14 | merge | T-13 pass | 串行冻结门/实际master合入、协议版本与Spec子集/受管ledger增量、consumer来源发布收据；不归档不清树 | AC-09 |
+| [x] | T-12 | work | T-03；与T-02资源准备可独立 | 实际describe/validate_project元数据tool及独立进程consumer，V-05和V-02/03当期正反例、777/适用792来源/发行闭包、版本/能力/Spec候选；R4全部finding全闭，AC-07阶段work通过；A规范采用review-r4/spec-delta-reviewed.md，绑定7045e20fa，来源/真实进程等未变证据按hash复用 | AC-07 |
+| [x] | T-13 | review | T-12提交冻结 | R4独立M815-A阶段pass，绑定r2/7045e20fa、精确A规范增量及验证复用清单；无开放finding，merge-owned冻结门/实际发布收据pending；不授予整Plan reviewed | AC-08 |
+| [x] | T-14 | merge | T-13 pass；剩余ledger/发布终验等T-17 | 串行冻结门/实际master合入、Spec子集已完成；受管ledger增量 blocked：v57四条815记录不完整，v56已有1060条历史记录及六section不兼容store schema。原件保持不变；脚本已补全量schema拒写与回滚守卫，四条完整草稿与恢复方案见 attachments/815/t14-closeout/recovery.md。发布条件尚未全部满足；不归档不清树 | AC-09 |。M815-L 闭环后重新关闭:ledger_refreshed=v59(m815-l-release.md),m815-a-release.md 已回填终态并解除 816 放行阻断;冻结门/合入/Spec 沿 e609caf1a 既有收据+本恢复收据,AC-09 阶段发布完成
+| [x] | T-15 | work | r3合同；原A代码不变 | M815-L恢复实现@0a65ee2a7经T-16/L3通过：原值/删除/section保护、真实store、双checkpoint、部分写与外部更新失败控制完成，生产ledger未写；见 attachments/815/review-l3/review.md | AC-10 |
+| [x] | T-16 | review | T-15冻结提交/候选/映射 | L3阶段pass绑定r3/0a65ee2a7及source c24b174e…、A d571dbe3…/B 33830b65…、转换c0a4aac0…；四项独立CLOSED、无新增；核准映射边界见review-l3，实际T-17/T-14门仍pending，不授予整Plan reviewed | AC-11 |
+| [x] | T-17 | merge | T-16 pass；单写者窗口 | 审定输入上恢复兼容账本，受管upsert四条815来源项并做真实加载/读回，记录版本/hash/备份/幂等与失败收据；交回T-14关闭发布；不归档不清树 | AC-12 |。已执行(2026-10-20):四重冻结复核/单写者窗口主检出恢复 57→58→59,终态=核准B(33830b65)逐字节,CAS备份/真实loader读回六区1098/幂等exit2拒绝/恢复链保全身份齐备;收据 t15-recovery/m815-l-release.md
 
-唯一树`D:/autostack/.wt/lang-815/auto-lang`、分支`codex/plan-815-dev`；work/review顺序交接同树，先核实实际tree/base并读取主检出r2。A发布后保留原树/分支同步master继续B，不创建第二审查树、不归档/清理。A期间Plan保持executing，只有B全部原AC完成后才依标准流程execution_done→reviewed→archived。
+唯一树`D:/autostack/.wt/lang-815/auto-lang`、分支`codex/plan-815-dev`；work/review顺序交接同树，先核实实际tree/base并读取主检出r3。A发布后保留原树/分支同步master继续B，不创建第二审查树、不归档/清理。A期间Plan保持executing，只有B全部原AC完成后才依标准流程execution_done→reviewed→archived。
 
 阶段发布是用户本轮明确授权的有界例外：按共用合同独立阶段review、冻结门、人工Git合入及非归档Spec/ledger受管增量与收据组织；**不调用会自动归档整Plan的完整merge流程冒充phase支持**。B按原最终review/merge/归档任务完成。无WIP依赖，无junction/symlink，最终清理必须guard clean。跨Plan审查/修复与共享窗口见[阶段交付与并行审查修复合同](reports/staged-delivery-review-814-816.md)。
 
@@ -194,6 +231,32 @@ r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调�
 
 2026-10-20 / stage: work / revision: 2 / outcome: R3 单项(F-815-R3-01 测试缺陷:负控双重包装致断言空洞)修复完毕,M815-A work 阶段第四次完成(T-03/T-12 修复后勾回;实现与 bc61501c5 一致零改动) / worktree: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / code_commit: 7045e20fa(仅 wire_tests.rs) / dependency_revisions: 809=已合入 master b819a602e / task_ids: T-03,T-12(R3测试修复轮) / evidence: model 52(含修后 r2_value_object_without_tag_is_a_named_error:双路径合法对照必须解码+逐例 value 分支具名断言)/protocol 18/tools 21 定向全绿;fmt+scoped all-targets check 零警告;R3 报告确认四项代码 finding CLOSED、实现零改动可复用其验证证据 / blockers: 无 / merge门: pending(归T-14) / next_responsible_role: review(T-13 复审,对象=冻结SHA 7045e20fa;按 R3 路由可复用已闭代码证据、限定复审测试修复)
 
+2026-10-20 / stage: review / review_scope: phase（M815-A/T-13，R4；非整Plan final）/ reviewer_identity: Codex `/root`，延续R1-R3独立上下文，未继承实施自检、未创建agent/第二树 / plan_id: PLAN-815 / plan_revision: 2 / outcome: **pass（阶段）** / worktree_path: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / reviewed_commit: 7045e20fa71ba437bc80075f17d9aace755f5abd / base_commit: b9f7ab7e1f400073006e096a08b436f933e4a836 / repair_base: bc61501c58d45dde28ee2c739425dbc3c911b38c / dependency_revisions: 809已发布，完整SHA/来源/锁/配置/Spec与候选hash见[R4 baseline](attachments/815/review-r4/baseline.json)，无814 WIP / spec_inputs: [精确已审A规范增量](attachments/815/review-r4/spec-delta-reviewed.md)继承R3规范正文、更新本轮绑定，替代候选§4旧概括，冻结hash见final-baseline；canonical/ledger未写 / acceptance_results: AC-07/08阶段pass；AC-01..04仅A当期范围通过，原完整B项与AC-05/06/09仍pending / findings: F-815-R3-01独立CLOSED，F-R1-01..06和F-R2-01保持CLOSED，无新增finding / evidence: 相对R3唯一变更wire_tests.rs，生产实现/其他测试/manifest/依赖锁/构建配置/canonical Spec输入及真实tool二进制身份完全一致；本轮14/14 wire测试(含合法/非法控制及目标错误分支)与model all-targets零warning/fmt通过，R3未变81项定向测试、真实进程/路径/深度/诊断/资源/闭包/777证据按hash复用，不冒称本轮全部重跑；详见[R4报告](attachments/815/review-r4/review.md) / pending_closeout_gates: T-14在冻结输入上串行裸cargo t+必要新包/协议/consumer门，实际master阶段合入/精确A规范与受管ledger/祖先与来源consumer发布收据；当前无VM/trans/UI生成触面，tf仅主检出到期批量；未整档/合入/归档/清树 / next: merge owner推进T-14，代码/依赖/配置/输入如变化则按影响重审；完成T-01/02/03/12/13，Plan保持executing **5/14**，不标整体reviewed、不提前放行下游按已发布A消费。
+
+2026-10-20 / stage: merge(T-14, M815-A 阶段发布,非整Plan交付) / revision: 2 / outcome: M815-A 发布完成——冻结门全绿、master 合入、Spec/ledger 受管增量、发布收据齐备;Plan 保持 executing、唯一树/分支保留已同步 master 继续 B / worktree: D:/autostack/.wt/lang-815/auto-lang(分支 codex/plan-815-dev,已 ff 至合入位) / delivery_commit: e609caf1af511b96832f511ab9d1fa6c0c11f563(master 祖先验证通过) / reviewed: 7045e20fa(R4 pass) / gates: 裸 cargo t 5303/5303(worktree冻结位;ac_case/probe_adapter/plan499 前两轮失败=并发负载flake,隔离重跑全过,diff触面auto-lang/man/vm=0文件)+fixture闭包PASS+fixture进程4/4+777 strict pass;tv/tt/tu零触发 / deposit: SD-01-A/02-A/04-A/06-A canonical(按review-r4/spec-delta-reviewed.md);ledger v56→v57(scripts/plan815a_ledger_deposit.py,P815-A-D1/T/R/REL,备份bak-v57-815a,读回核对);spec-index重生成50projects;收据 attachments/815/m815-a-release.md(+json,按库惯例*.json不入库留盘) / 816放行: 本收据+R4 pass+冻结门齐备,M816-A 可消费协议版本1的 describe/validate_project 与 auto-ui-tool 二进制;不得静态链接工具实现 / next_responsible_role: work(M815-B:T-04 等 M814-A 发布;Plan 不归档不清树)
+
+2026-10-20 / stage: work(T-15) / revision: 3 / outcome: 恢复方案/候选数据/反例验证完成,送 T-16 独立恢复审查;生产账本零接触(live v57=c24b174e… 全程逐字核验) / worktree: D:/autostack/.wt/lang-815/auto-lang(feacf79e8:plan815_ledger_recover.py+deposit脚本PascalCase修正) / 关键发现: SectionType 线格式=PascalCase——真实 SpecsStore::load 把 snake section_type 经 serde(other) 静默滤成空文档(load"成功"0 sections),python 级 JSON 校验不可见;工具与 deposit 校验均已修正 / 候选(hash绑定,待T-16): source=c24b174e…/candidate=d60bd3fa…/conversions=c35615e…(12140条,含四条M815-A增量按收尾冻结稿)/blocked=0(--ruling reviews/P014-1=P014-1-R 为T-15建议裁定,T-16 可改判后重生成) / 证据: attachments/815/t15-recovery/(report.md/freeze逐字备份/audit/convert-final/probe源码);V-L1负控live拒/正控候选6区1098项、往返零差异、未知字段真实丢弃实证、V-L3自检含真实探针失败回滚;T-17全链彩排(apply+loader+四条幂等)临时副本通过 / blockers: 无(生产写入仅待T-16核准hash) / next_responsible_role: review(T-16 绑定 r3/feacf79e8/候选与转换hash,逐项核对V-L1..4与§7裁定清单)
+
+2026-10-20 / stage: review / review_scope: phase（M815-L/T-16，L1）/ reviewer_identity: Codex `/root`；同会话参与过前期合同/旧守卫候选，本轮从新恢复实现/真实loader/独立反例重建，不声称另会话final reviewer，未创建agent / plan_id: PLAN-815 / plan_revision: 3 / outcome: **needs_fix** / worktree_path: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / reviewed_commit: feacf79e8a9c52575a6f64dae3e068a3cc3ae1c7 / base_commit: abad97371f5443ea25b007fa34074b882062163f / dependency_revisions: store schema c124c844…、真实loader 791c204c…、live v57 c24b174e…、stage输入与脚本完整SHA见[baseline](attachments/815/review-l1/baseline.json.txt) / spec_inputs: M815-L无新canonical业务增量，原r3元数据与A/R4精确子集保持，[增量核验](attachments/815/review-l1/spec-delta-reviewed.md) / acceptance_results: AC-10 fail、AC-11 needs_fix、AC-12 merge pending；V-L1/2 partial、L3 fail、L4 partial/pending；原未变A代码R4 pass保持，B原任务pending / findings: F-815-L1-01(P1 CLI拒绝/失败exit0)、02(P1并发写入与回滚覆盖外部内容)、03(P2转换表8处前像失真/ID改名未记/未声明删除漏检)、04(P2 schema负u64/非字符串列表错放及typed验证可跳过)、05(P2恢复+28处阶段变更合并且version仍57违反r3双checkpoint)、06(P2恢复命令source SHA拼错)全部OPEN / evidence: 候选d60bd3fa…/转换规范化c35615e2…可重现，真实store6区1098项load/save内容相等，两工具自检通过；独立真实CLI与临时副本注入反例已复现，详[L1报告与反例](attachments/815/review-l1/review.md) / pending_closeout_gates: 新候选完整恢复审查通过后T-17单写者恢复/受管upsert/版本与真实读回收据，T-14关闭；旧batch tt归因/tb另待主检出独占窗口，本轮未整档 / next: 原树work一次修齐六项补永久真实CLI/并发/前像/schema/版本对照，新提交及候选hash后再T-16；重开T-15，T-16/17/T-14不勾，executing **5/17**，生产ledger/canonical未改，不合入不归档不清树。
+
+2026-10-20 / stage: work(T-15,L1 修复轮) / revision: 3 / outcome: review-l1 六项(F-L1-01/02/03/04/05/06)全部修复,M815-L 恢复方案/候选/反例验证再次完成,送 T-16 复审;生产账本零接触(live v57=c24b174e… 逐字未动) / worktree: 1082bde52(plan815_ledger_recover.py 重写:锁内CAS写通道+受护栏回滚/退出码传播/双checkpoint/前像忠实/完备镜像+强制身份探针;deposit 脚本回滚加护栏) / 候选(hash 由 summary 程序化绑定): source=c24b174e…→A d571dbe3…(v58,结构恢复+P014-1-R 裁定)→B 33830b65…(v59,四条增量);conversions=0a1e1cbb…(12163 行,含 checkpoint 标记) / 证据: 自检真实 CLI 全分支通过;真 .exe 探针全链彩排 57→58→59/1098 项/四增量唯一/改名在场;探针自身修为 serde 线格式(Pascal)——身份核验并抓出其 as_str 缺陷;review-l1 探针绑定旧单候选接口,反例由自检等效覆盖、下轮按新接口重绑(报告 §0 注明) / blockers: 无 / next_responsible_role: review(T-16 复审,绑定 r3/1082bde52/新候选与转换 hash)
+
+2026-10-20 / stage: review / review_scope: phase（M815-L/T-16，L2）/ reviewer_identity: Codex `/root`，同会话参与前期合同/旧守卫，按新修复/真实loader/独立反例重建，不声称另上下文/model，未创建agent / plan_id: PLAN-815 / plan_revision: 3 / outcome: **needs_fix** / worktree_path: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / reviewed_commit: 1082bde52e41d602409ead78a9753277feb6b3f1 / repair_base: feacf79e8a9c52575a6f64dae3e068a3cc3ae1c7 / dependency_revisions: live v57 c24b174e…/schema c124c844…、新loader/实现/候选及输入完整SHA见[L2 baseline](attachments/815/review-l2/baseline.json.txt) / spec_inputs: M815-L无新canonical业务规则，原r3元数据和A/R4已审子集保持；[增量核验](attachments/815/review-l2/spec-delta-reviewed.md) / acceptance_results: AC-10 fail、AC-11 needs_fix、AC-12 merge pending；A/B候选与转换hash重现、真实CLI57→58→59/6区1098项/往返通过 / findings: L1-01/04/06 CLOSED，L1-02(P1)旧外部更新控制已闭但本次部分写失败留下257字节且被错认外部更新、L1-03(P2)旧related/rename/title控制已闭但213条缺status记null/24个legacy删除未声明/section变异漏检保持OPEN；L1-05代码双checkpoint CLOSED而当前收据§7旧不递增规则残留P3；新增F-815-L2-01(P2相邻路径)最终真实probe后外部更新导致指纹不符仍applied=true/exit0 / evidence: [L2报告与两轮未闭诊断](attachments/815/review-l2/review.md)，含真实锁/fd部分写失败、真实CLI最终更新及旧例重放；两工具self-test与scoped diff-check通过 / pending_closeout_gates: 新恢复代码/转换复审通过后T-17真实恢复/upsert/备份/版本/读回收据，T-14关闭；旧batch未完成单独待独占窗口，本轮无整档 / next: 原唯一树work按两轮诊断一次修齐剩余不变量与收据，补永久相邻失败控制，新SHA与hash后再T-16；T-15重开，T-16/17/T-14不勾，executing **5/17**，生产ledger/canonical未改、不合入不归档不清树。
+
+2026-10-20 / stage: work(T-15,L2 修复轮) / revision: 3 / outcome: review-l2 四项(F-L1-02 续开部分写/F-L1-03 续开前像声明/F-L2-01 最终指纹门/F-L1-05 收据残留)全部修复,M815-L 再次送 T-16;生产账本零接触(live v57=c24b174e… 逐字未动) / worktree: 0a65ee2a7 / 候选: A=d571dbe3…(v58)/B=33830b65…(v59) 字节与 L1 轮一致;转换表=c0a4aac0…(12187 行,新增前像忠实行) / 证据: 自检真实 fd 故障句柄(257字节+OSError)→exit1+原件逐字恢复;wrapper 探针终门→exit4+外部保留+无成功收据;真探针全链彩排 57→58→59/1098项;P789-M1 原值=<missing>/P786-M created 行抽查确认 / blockers: 无 / next_responsible_role: review(T-16 复审,绑定 r3/0a65ee2a7/A·B·转换 hash)
+
+2026-10-20 / stage: review / review_scope: phase（M815-L/T-16，L3）/ reviewer_identity: Codex `/root`，保留前期合同/旧守卫上下文限制，未参与本轮实施；从新提交/真实store/独立故障控制重建，不声称另一会话/model，未创建agent / plan_id: PLAN-815 / plan_revision: 3 / outcome: **pass（M815-L阶段）** / worktree_path: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / reviewed_commit: 0a65ee2a706a5c1320655c1874f14876f743cc3d / repair_base: 1082bde52e41d602409ead78a9753277feb6b3f1 / dependency_revisions: 原件v57 c24b174e…/schema c124c844…与真实loader/输入/脚本完整SHA见[L3 baseline](attachments/815/review-l3/baseline.json.txt)，已跟踪实现clean；未接线patch_l2c.py已排除保留，merge冻结前owner处理其归属，不能带入未审实现 / spec_inputs: 无新canonical业务规则，r3元数据与A/R4精确子集保持，[规范增量核验](attachments/815/review-l3/spec-delta-reviewed.md) / acceptance_results: AC-10/11与V-L1..3及V-L4当期work/review范围pass；AC-12/T-17、AC-09/T-14实际发布pending / findings: L1-02/03及L2-01、L1-05收据残留全部CLOSED，更早已闭项保持，无新增actionable finding / evidence: 原257字节故障精确恢复；A/B write/truncate/flush六次单故障均归还原件，持续存储失败准确报己方残留且备份完整；213缺status前像/24旧字段删除漏行归零、1273已改/删原字段前像全核无误；真实CLI正常57→58→59、6区1098项往返通过，终门冲突exit4保外部无applied，四hash错误与备份冲突拒绝、typed身份错精确回滚；两工具自检及diff-check通过，详[L3报告](attachments/815/review-l3/review.md) / approved_projection: source c24b174e…→A d571dbe3…(v58)→B 33830b65…(v59)，转换 c0a4aac0…/12187行；ID/状态/时间/sidecar/Pascal/版本裁定仅绑定冻结转换，不据此新造历史验收结论 / pending_closeout_gates: T-17正确workspace/单写者/来源+schema+loader+stage冻结、实际双checkpoint恢复/upsert/备份+sidecar+转换/读回收据；T-14发布祖先/来源终验；本阶段CategoryA无Rust触面，不新增cargo t/docs_gen整档，旧batch tt归因/tb仍独立pending / next: merge owner推进T-17后T-14，任何影响代码/依赖/输入变化须重审；T-15/16勾选，Plan保持executing **7/17**，生产账本未改、不合入不归档不清树。
+
+2026-10-20 / stage: merge(T-17+T-14 关闭,M815-L/阶段发布收口) / revision: 3 / outcome: 生产账本实际恢复完成并回填发布——四重冻结复核后单写者执行:A(57→58,结构+P014-1-R)/B(58→59,四条增量),终态=核准 checkpoint-B 逐字节(33830b65…),CAS 备份(c24b174e)不覆盖,真实 loader 读回六区1098项 v59,幂等重跑 exit2 拒绝且账本不变;恢复链(conversions 12187行/sidecar/双候选/freeze/备份)身份钉定于 t15-recovery/m815-l-release.md;m815-a-release.md 回填 v59 终态并解除 816 放行阻断,AC-09/12 闭合;手抄 hash 曾被 CAS 门当场拒绝(第25位 f/c),实际执行由 summary 程序化注入 / worktree: 0a65ee2a7(L3 指出的未跟踪 patch_l2c.py 已删,树 clean,保留待 B) / next_responsible_role: work(M815-B:T-04 等 M814-A 发布;或由用户安排)
+
 ## 10. 待澄清事项
 
 无现在需用户重复批准的范围；T-01负责工具/非UIadapter界面、公开兼容与wire/交互预算的有界probe。若不能保旧公开支持、需复制I-PROJECT/放宽协议或迁其他仓，具体needs_replan。不得用“资源已搬”替代完整UI工具交付。
+
+2026-10-20 / stage: merge-reconcile(T-14) / outcome: **blocked（ledger_refreshed）** / correction_of: 上述T-14完成记录仅验证JSON/ID，未验证store schema，不能作为受管发布完成证明 / verified: reviewed7045e20fa与delivery e609caf1a均为master祖先；生产实现与R4一致，四份canonical Spec已落地，原裸t/fixture/777执行证据保留 / blocker: v56已有1060条旧item与六section不满足store schema，v57新增四条815也不完整；无可直接恢复的合规v56备份 / action: 原树修复plan815a_ledger_deposit.py（全量前检、工厂字段、SHA、ID、幂等、备份/回滚），临时反例全过；真实账本拒写且SHA未变；完整目标条目仅为草稿 / receipt: [收尾核验与恢复方案](attachments/815/t14-closeout/recovery.md)及schema审计、完整输入manifest / next: 待授权另立全库恢复计划，恢复后再执行815受管增量与发布终验；阶段R4 pass保留，T-14重开、executing **5/17**（r3新增三项恢复任务），不归档不清树、不把代码合入等同于完整发布。到期主检出批量回归另行记实际结果。
+
+2026-10-20 / stage: new / plan_revision: 3 / outcome: pass（恢复phase合同预检，非恢复实现/审查pass）/ authorization: 用户要求在815内加phase恢复，沿用原唯一树、不新增计划编号 / changed: M815-L、T-15..17、AC-10..12、V-L1..4；T-14剩余部分依赖T-17，current_step 5/17 / evidence: 原v56与v57全库schema审计，原A代码/依赖/二进制零漂移及master祖先证明 / inherited: r2/T-13 R4仅A代码及精确Spec子集pass保持；新增恢复schema/脚本/转换证据不继承该pass / spec_delta: 无新增canonical业务规则，原A/B SD保持 / next: work T-15有界probe/转换决策与dry-run，提交后独立T-16，再由T-17恢复及T-14终验；本轮尚未修改生产ledger。不得把历史“发布完成”当作当前调度。
+
+2026-10-20 / stage: work-preparation / phase: M815-L / partial_evidence: 原树写入守卫候选 `2dc142df0`（全量schema前检、工厂字段、ID/来源、幂等与回滚反例通过），尚未合入master；不是T-15完整完成，也不是T-16独立审查pass / next: T-15补真实typed loader probe、全库转换决策/候选与V-L1..4后送审；生产ledger仍为原v57且SHA未变。
+
+2026-10-20 / stage: regress / outcome: incomplete（独占窗口不足，未推进.last-batch-regression.json）/ covered: 4d7c5f581 / tf: 完整6270/6270通过 / tt: 5671/5675通过，3fail+1timeout，隔离归因pending；不自动统称负载flake / tb: 中断未完成，后续预检见其他cargo t故拒绝启动 / evidence: [批量进度](attachments/815/t14-closeout/batch-status.md)与原始日志 / next: 独占主检出完成tt归因/重跑+tb后才写成功批量收据；与M815-L的T-15..17分开验收。

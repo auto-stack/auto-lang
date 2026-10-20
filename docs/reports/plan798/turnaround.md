@@ -1,0 +1,108 @@
+# PLAN-798 周转基准报告（r2.1 + T-07 正式 AutoDown 硬门）
+
+2026-10-16（r2.1 修复轮：闭合 F798-R1-03/04/05 与 F798-R2-01/02）。负载：`load256::generate()`
+冻结件（100 caller + 14 leaf + main，≈267 KiB，独立闭式期望）；编辑场景每样本
+请求**当轮新修订**（fn_037 首乘子 +1..+30，各有独立期望）。原始样本
+`turnaround-raw.jsonl`（180 行，逐样本 wall/输入 hash/计数/失败态）；汇总
+`turnaround-summary.json` 由 worker 生成（真实结构，含 gate 断言结果）。
+
+## 硬门（§5.5 r2：由正式入口强制执行）
+
+**PASS（exit 0）**。单函数 body 编辑：请求→当前正确 AV 结果
+P95 = **422.1 ms < 1000 ms**（30/30，每样本独立输入 hash 与独立期望）；签名冲突
+编辑：请求→目标诊断 P95 = **20.9 ms < 1000 ms**（30/30，全部命中
+`frontend:source.argument`，不接受任意诊断）。**反控**：`--gate-ms 0` 故障注入
+实测 exit 5（失败原因逐条列于汇总）——门真实接线。
+
+| 场景 | P50 (ms) | P95 (ms) | P99 (ms) | 失败 | 场景条件（r2 强制） |
+|---|---|---|---|---|---|
+| fresh | 3752.6 | 4424.5 | 4523.0 | 0 | 每样本独立冷 store |
+| same-process-hot | 435.2 | 582.2 | 587.4 | 0 | 同进程同 store |
+| restart-disk-hot | 515.3 | 743.6 | 791.9 | 0 | 每样本新进程（跨工程交替） |
+| **single-body-edit** | — | **422.1** | — | **0** | 每样本当轮新修订 |
+| **signature-conflict** | — | **20.9** | — | **0** | 仅目标 frontend 诊断计 ok |
+| gc-concurrent | 431.2 | 814.8 | 816.8 | 0 | GC 进程与请求真并发 |
+
+## 内存峰值证据与归因（F798-R2-02 闭合）
+
+- **峰值采样**（非端点差值）：worker 全程 5ms 轮询 PrivateUsage 峰值 =
+  **215.7 MB**；request 子进程各自采样上报，折入最大 **211.6 MB**。
+- **归因测量**：隔离运行已着陆 scalar 前端（compile_scalar_source，冻结负载）
+  单相峰值 = **211.8 MB**——占 worker 峰值 ~98%。探针自身各层（MIR/ABC/AV/
+  cache/装配）合计个位数 MB；分区实测：staging 峰值 2.4 MB（≤16 MiB 硬门）、
+  hot 闭包 1.1 MB（≤8 MiB）、AV 活槽 0（≤8 MiB）。
+- **§3 128 MiB worker 目标：未达（target_met=false，如实上报于汇总）**。根因
+  为已着陆前端在 267 KiB 冻结负载上的瞬态峰值（~180-211 MB），ac-core 是本
+  计划**只读面**（并行合同），不能在本计划内修改——已记入
+  KNOWN-DEBT-AND-RISKS 并路由前端 owner。硬内存守卫 = 受管 32 MiB 分区
+  （16/8/8，逐样本入 validate_and_gate）+ P95 门；目标 miss 不静默、不误归于
+  AV 管线。
+- **反控**：`av_resources_peak_sampler_distinguishes_transient_spike`——~96 MiB
+  瞬态分配被采样器捕获（峰值），而端点差值保持低位：证明峰值证据能区分
+  "端点低而过程峰值高"。
+
+## 命中/重算事实（r2 计数分离）
+
+- 编辑场景每样本：`mir_lower_modules=1`（整模块 lowering 恰一次，如实）、
+  `mir_units_persisted=1`、`abc_units_emitted=1`（仅被改单元链重键）、其余 114
+  单元命中复用；`closure_encodes=1`（闭包 codec 如实计入请求墙）。
+- 命中请求：lowering/持久化/发射全部为 0，`av_execute=1`（仍执行并重新比较）。
+- fresh（真冷）P95 4.4s 如实另报：冷 store 下 115 单元全 miss + 首次前端；
+  不在硬门定义内（§5.5 硬门仅 body 编辑/签名冲突两路径）。
+
+## 边界与如实计量
+
+- gc-concurrent P95 814.8ms：真并发 GC（独立 `gc-loop` 进程，20ms 间隔）与请求
+  重叠的开销，不在硬门内，如实报告。
+- 本 tier 为 Rust 定向 runner；正式 AutoDown adapter 端到端（T-07 后按同负载
+  重测）仍 pending，不以本报告冒充。
+- debug 档冒烟（3 样本/场景，INF 门只验场景/样本/诊断校验）：
+  `av_turnaround_six_scenarios_smoke`。
+
+## 复验
+
+```
+powershell -File scripts/verify-ac-av-798.ps1 -Scope turnaround -Samples 30
+# 反控（必须失败，exit 5）：
+experimental/ac-av-probe/target/release/av_probe_worker.exe bench-turnaround --samples 1 --gate-ms 0 --out -
+```
+
+## 正式 AutoDown 端到端硬门（T-07，D-788/D-796 合入后）
+
+recipe `ac-av/core-run-v1` 经统一 probe/run 接缝（796 T-06 接缝 × 788 TestCase
+v2 runner）正式执行；worker `av_probe_worker case-serve`（envelope `avworker/1`，
+Job 收容，父侧判定）。**warm-session 编辑会话**步骤模型：`[run(热身), edit-source,
+run]` 共享一个会话 store——终步即"单函数 body 编辑→当前正确 AV 结果"请求。
+
+- **r4（F798-R3-07 修复后）窗口口径**：编辑请求 = 受测调用自身，热身是独立
+  调用；窗口 = 受测 `[edit-source, run]` 调用的 `request_wall_ms`（请求构建 →
+  spawn → 请求写入 → worker 会话（显式 `session` 共享热身 store）→ 编辑+全
+  管线+执行 → 响应读取 → 父侧准入/判定），**连续可观察、无任何扣减**——IPC、
+  spawn、admit 构造性在窗内。步骤序列允许前导 edit（decode 合同 r4：须以 run
+  结尾）。
+- 30 样本（冻结负载，逐样本新修订 fn_037 乘子）：**编辑窗 P50 ≈ 590-617 ms、
+  P95 ≈ 600-640 ms < 1000 ms**（阶段分解：前端整模块重查 ~290ms 如实计入 +
+  spawn/IPC/admit ~120ms + 命中查找/闭包/执行 ~110ms；本机重跑原始 eprintln
+  逐样本 580-646ms，另有并发负载时偶发 ~1.1s 尖峰属环境噪音，失败样本零）。
+- 签名冲突路径（正式诊断负例，30 样本）：**P95 ≈ 210-426 ms < 1000 ms**。
+- worker 合同反控（F798-R3-05/06）：非零退出、尾随协议帧、错 source_hash、
+  墙钟突破（5s 延迟 vs 1.5s 绝对截止）→ 全部 Infra 红
+  （`ac_av_probe_worker_contract_faults_are_infra`；AV798_FAULT 注入口）。
+- 负控：错误 exit 期望必红；decode 准入负例（未知 recipe/跨域步骤词表/跨域
+  绑定/缺绑定）全拒；worker 从不读 expected。
+- 复验：`powershell -File scripts/verify-ac-av-798.ps1 -Scope autodown`
+  （含正式硬门断言，退出码透传）。
+
+
+## 2026-10-20 Plan r6交付边界更正
+
+以主计划§5.10和受管acceptance.md的r6阶段矩阵为准：本实现有函数持久产物复用，但每请求仍整模块前端，miss时whole MIR lower/verify/split，hit单元重decode/verify后完整closure装载。没有常驻函数代码在线替换。798通过只交付有限执行/缓存基础；真正源码至AV安装的函数级增量由828承接，执行优先级为798完成后828。旧计量不能证明未改函数IR/代码保持不动。sig为前端错误早退，不代表成功签名更新。
+
+旧formal含逐请求初始化，保留原技术门事实与失败样本，不据此判用户稳定会话目标失败；本次不改测试阈值、入口或以bench替代formal。r5双线内存政策和/2 wire/kind准入仍有效；历史摘要旧版本/旧资源目标不作为当前合同。798仍待正式门、最终review及merge-owned冻结门禁。
+
+
+## 2026-10-20 R17收口（当前，覆盖历史完成声明）
+
+生命周期补齐代码d1357870a（A08/A09逐消费unit lease，无源恢复manifest lease）；正式30样本门867.8/385.8ms通过，但六场景30×6两次warm edit P95=1026.9766/1465.4601ms失败，各180条正确、双线内存及受管分区均通过。失败原始样本保留于`docs/plans/attachments/798/closeout-r6-20261020/lease-turnaround-*`及`bench-controlled-*`，独立重算见bench-independent-audit.json.txt。起始CPU低不证明全程环境稳定，也不证明代码无关。保持1秒门，不将798已有性能任务转移828。
+
+Plan executing8/11，T05开放、T07闭合；最终review/merge门禁、Spec/ledger发布与合入归档清理均pending。下次先计量warm持久消费各阶段，优化时保留新补齐的安全/来源/GC保护，再在新冻结提交同合同复验；不继续无新信息重跑。

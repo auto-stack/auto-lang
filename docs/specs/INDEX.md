@@ -479,6 +479,9 @@
 | auto-ac | experimental | 0 | [auto-ac/project.md](auto-ac/project.md) |
 | auto-acc | planned（目标态合同；AC=首版原生编译器，ACC=Auto | 0 | [auto-acc/project.md](auto-acc/project.md) |
 | auto-semantics 项目卡（AC 语义元信息与类型推导探针） | experimental（PLAN-796 | 3 | [auto-semantics/project.md](auto-semantics/project.md) |
+| auto-abi | candidate（`autoabi.win-x64.v0.1-candidate`，PLAN-797 | 10 | [auto-abi/project.md](auto-abi/project.md) |
+| auto-mir | experimental | 0 | [auto-mir/project.md](auto-mir/project.md) |
+| auto-av | experimental | 0 | [auto-av/project.md](auto-av/project.md) |
 
 <details><summary>auto-cosmic 模块明细</summary>
 
@@ -511,9 +514,30 @@
 
 </details>
 
+<details><summary>auto-abi 模块明细</summary>
+
+| 模块 | 职责 | 状态 |
+|---|---|---|
+| 面 | 值 |  |
+| 声明源 | 受限 declaration IR（**非** Auto 源码 parser 支持面） |  |
+| 拒绝面 | 按值聚合、variadic、bitfield、任意 union、C++ ABI、异常/unwind 穿界、跨线程持久 callback、热重载/DLL 事务、跨域自动转发 | 拒绝面是有限 profile 支持表，不是永久删去战略。
+
+## 模块清单 |
+| descriptor | 机器可读调用前边界（`autoabi.descriptor/3`，canonical JSON + blake3 指纹；出参列表/handle 归属/callback ctx/record mut-out 一等形态；C provider 描述与独立 header 原型逐项对照） | active |
+| layout | 两阶段布局引擎（size 记忆化 + 精确表示字节/索引/递归态预算门 + 单向量物化）；ABI-L0 缓存 | active |
+| validate | 调用前 admission（12 维拒绝矩阵，native 计数 0） | active |
+| emit/build/link | Cranelift 声明 IR→COFF；ac-core link 工具复用 | active |
+| cache | ABI-O1 对象层：观测依赖闭包 + 候选位置全集适用域 + 代际键 | active |
+| worker | `abiworker/1` 受限执行半体（Job containment、收据化 GC、产物预算） | active |
+| cside | 独立审定的 C 参考 provider/consumer（真实 cl 编译对拍） | active |
+
+</details>
+
 ## 未分组
 
 - [auto-man-core](auto-man-core/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-media-core](auto-media-core/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-ui-dialect](auto-ui-dialect/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
+- [auto-ui-tools](auto-ui-tools/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [repository-boundaries](repository-boundaries/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
+- [tool-protocol](tool-protocol/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）

@@ -1,0 +1,23 @@
+# ac-av probe: two-function arithmetic/branch vertical (PLAN-798 T-01
+# frozen source). Independent oracle: score(17,29)=12, score(40,13)=27,
+# 12+27=39 -> main returns 0.
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.core.vertical"
+  tags: ["ac-av", "probe"]
+  links: ["PLAN-798"]
+  source: { file: "av/core/vertical_two_fn.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-vertical", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```

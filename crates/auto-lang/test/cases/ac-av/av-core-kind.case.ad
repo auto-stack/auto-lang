@@ -1,0 +1,33 @@
+# ac-av probe: KIND semantics through the formal runner (PLAN-798 V-14,
+# K14-01/K14-05 formal legs). A single-function COMPLETE module with a
+# direct self-call on the dead branch must keep its module kind across the
+# session store: the second `run` step re-requests the SAME source over
+# the warm store (cache-hit path) — judged on the LAST run, proving the
+# hit path still re-verifies and executes 42 (never a mir.unit-callee
+# misclassification, never a cached PASS).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.core.kind-selfcall-module"
+  tags: ["ac-av", "probe", "kind"]
+  links: ["PLAN-798"]
+  source: { text: "fn main() int {
+    if false {
+        return main()
+    } else {
+        return 42
+    }
+}", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-kind-fresh-then-hit", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" }, { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 42 } }
+  ]
+}
+```
