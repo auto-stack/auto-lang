@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-798
-status: executing
+status: execution_done
 feature_name: Typed MIR 与 ABC/AV 执行合同及首个全路径探针
-plan_revision: 6
+plan_revision: 7
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-20
-current_step: 8
+current_step: 9
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
@@ -34,7 +34,7 @@ affects: [auto-mir, auto-av, auto-ac, auto-semantics, auto-test-case]
 
 承接[Design43](../design/43-ac-av-typed-mir-and-abc.md)及[后端战略](../design/strategy/auto-native-backend-evolution.md)，在独立实验workspace建立可验证的 `Checked HIR → Typed MIR → ABC → Rust AV`，以已交付core/scalar native路径和独立预期对拍。第一例即有受管cache、AutoDown用例及阶段/端到端计量；完成后为AV驱动CTE和未来AJ共用编译服务提供真实基础。
 
-本计划交付有限执行profile及其信任/持久化合同，不把格式说明、CT模型或旧AVM调用冒称新引擎。与796/797并行的写面及依赖见[并行合同](attachments/798/parallel-contract.md)。只起草，未授权本轮实施。
+本计划交付有限执行profile及其信任/持久化合同，不把格式说明、CT模型或旧AVM调用冒称新引擎。与796/797并行的写面及依赖见[并行合同](attachments/798/parallel-contract.md)。初稿仅起草；现已按用户授权实施与收口，当前验收口径以r7 §5.10及唯一任务表为准。
 
 ## 1. 目标
 
@@ -42,7 +42,7 @@ affects: [auto-mir, auto-av, auto-ac, auto-semantics, auto-test-case]
 2. 定义独立版本化ABC模块、紧凑二进制codec和验证装载，Rust AV真实执行有限i32/bool、控制流/调用及精确trap。
 3. 保持短路、源码实参求值顺序、初始化、调用/返回和诊断来源；旧native作为独立后端对拍，不迁移其生产路径。
 4. 从首例按函数/实例逻辑单元记录身份/依赖，真实持久MIR/ABC、验证恢复、跨进程/工程共享及有界GC；不缓存PASS或AV运行结果代替执行。
-5. 接入796实际合入的语义ref和统一probe/run，正式AutoDown执行；本探针正常局部编辑“请求→当前正确AV结果/诊断”P95<1000ms。r6明确该门与完整函数增量结构验收不同，798通过不授全链路增量或在线替换通过，见§5.10及828。
+5. 接入796实际合入的语义ref和统一probe/run，正式AutoDown执行；本探针正式技术门两路径“请求→当前正确AV结果/诊断”P95<1000ms；warm六场景按r7裁定如实计量与保留历史PASS/失败。r6明确该门与完整函数增量结构验收不同，798通过不授全链路增量或在线替换通过，见§5.10及828。
 6. 明确AC/AV/AJ共同服务、跨层调用/代际、target/ABI/profile、可重定位原生产物和增量发布的接缝；只做合同/有限准入控制，不实现完整AJ或发布器。
 
 范围：新 `experimental/ac-av-probe/` 独立workspace及lock、新 `test/cases/ac-av/`、本计划脚本/报告/附件；D-796/D-788后按已合入合同新增recipe/worker绑定。规范沉淀归merge，不在起草阶段写canonical Spec。
@@ -84,7 +84,7 @@ native参考每请求build≤60s/run≤5s/total≤70s，沿788合入的有界byt
 
 r6授权补记（2026-10-20）：用户进一步明确全链路函数级增量目标，并要求检查架构/计划及必要修订。本轮只完成设计/计划，保留已有基础实现；新增828草案承接完整目标，未授权直接实施828，不把其新增写面暗加到798。
 
-授权：用户明确要求起草本计划、与796/797并行、首例cache/AutoDown/亚秒指标、暂不实现完整AJ或发布器。继承本仓设计/Plan/worktree规约；仅在auto-lang主检出写设计取材及计划簿记，不创建实施树/代理、不安装工具、不联系其他会话或开始编码。未指定实现人/模型/时间预算。
+初稿授权（历史，后续实施授权与r7裁定见§9）：用户明确要求起草本计划、与796/797并行、首例cache/AutoDown/亚秒指标、暂不实现完整AJ或发布器。继承本仓设计/Plan/worktree规约；仅在auto-lang主检出写设计取材及计划簿记，不创建实施树/代理、不安装工具、不联系其他会话或开始编码。未指定实现人/模型/时间预算。
 
 事实源：[overview](../specs/overview.md)、[HIR现状](../specs/auto-hir/project.md)、[阶段合同](../specs/auto-hir/stage-contract.md)、[产物合同](../specs/auto-ac/artifact-contract.md)、[cache](../specs/auto-cache/project.md)、[TestCase](../specs/auto-test-case/project.md)。起始调查HEAD `3e5aa91f65eca89dab97d652f3782c72c5435526`，并行合入后来源采集HEAD为`f59de89d0d5480c52faaac0f74ba8a9e30b3c5cb`；源码与工作区设计SHA-256见[planning-inputs.tsv](attachments/798/planning-inputs.tsv)。Design40–43是目标态，尚无auto-mir/auto-av当前Spec；它们列为SD新增。788的profile-v2 Spec尚未合入/不存在，不能以计划文本当实现。
 
@@ -152,7 +152,7 @@ T-05使用至少32MiB真实MIR/ABC产物（多个各≤4MiB模块，流式生成
 
 T-01固定参考Windows机器/工具、256KiB core/scalar输入（由100个有意义函数body组成，非纯空白填充）、局部编辑位置及独立expected；key规模/负载不能随结果缩小。六场景各≥30样本（r2 语义收紧，防"标签与条件不符"）：**fresh**=每样本独立冷store（真实冷态，不得共用已热根）；**同进程hot**=同进程同store重复请求；**restart磁盘热**=每样本**新进程**（子进程入口）冷内存热磁盘，跨工程样本交替项目标签；**单body编辑**=每样本产生**当轮新修订**（逐样本不同的编辑内容与随之变化的独立expected），不得重复同一源码；**callee签名变更**=校验**目标诊断 stage+code**（frontend 绑定诊断），不接受任意 diag/resource/infra 错误；**GC并发**=GC与请求**真实并发**（独立GC进程/线程与请求重叠），不得串行完成后计量。每样本绑定输入 hash 与独立 expected，值/诊断全量校验。报告P50/P95/P99、真实重算/命中、I/O/内存、全部失败样本（不得删失败样本）。
 
-**硬门**（r2 强制接线语义）：warm session的单函数body编辑，或造成调用签名冲突的编辑，从实际请求入队至当前正确AV结果/诊断发布P95<1000ms；**正式入口必须执行该门**——worker 以 gate 阈值断言两路径 P95 与全部样本成功并以非零退出码传递失败，`--gate-ms 0` 故障注入必须失败（反控）；脚本透传退出码并生成真实汇总结构（非 raw 复写）；含当次必要前端/verify/依赖/cache/MIR/ABC/AV及比较。前端可整模块重查，但如实计量，不谎称前端细粒度增量已完成。native参考冷构建、全冷/广泛失效、超过预算的压力另报；不可扣实际IPC/等待，不能只加阶段P95。T-07正式AutoDown接入后按同负载重测；不能以Rust定向结果代替runner端到端。
+**当前交付与测量规则（r7用户裁定，取代r2的warm独立阻断语义）**：798正式probe/run的单函数body编辑和调用签名冲突，从实际请求到当前正确AV结果/诊断发布P95<1000ms，30样本、当前值/诊断全正确；真实门保留`--gate-ms 0`必须非零的反控。该技术门含当次必要前端/verify/依赖/cache/MIR/ABC/AV、启动/IPC/等待与比较，不扣成本、不相加阶段P95。warm六场景每类至少30样本负责如实记录与保留原始失败、历史PASS和内存/正确性证据，整模块重查的完整增量优化归828，不再将其计时miss单独当作798阻断。bench/turnaround脚本仍可按严格诊断目标返回非零，须从结构化结果区分计时miss和资源/错误/缺样本；后者继续阻断。前端可整模块重查，不能谎称完整函数增量已完成。native参考冷构建、全冷/广泛失效、压力分列；T-07正式入口不能以Rust定向结果冒领。
 
 ### 5.6 796/797绑定与AutoDown
 
@@ -172,7 +172,7 @@ AutoDown源/oracle从T-01进入 `test/cases/ac-av/*.case.ad` 和suite；D-796/D-
 
 R10异路径兄弟误拒的具体反例已在R11关闭；R11新发现F798-R11-01同一命名实参内部路径漏检，F798-R11-02实证类别往返。当前以R11和§5.8为准，T-02/05继续重开，不把R10原例关闭当完整资源不变量通过。T-01/03/04及T-07/08仍pending，T-06证据保留，接口变化再复核。
 
-**不作为798新增交付门槛**：ABC-A02/A08–10由820–824随数据profile落实；A03–05/A11由[825](825-av-loaded-program-runtime-efficiency.md)落实装载表示、PC及帧策略/测量；A06–07由[826](826-av-compact-abc-format-and-size.md)落实紧凑wire/section。当前安全MIR解释允许交付；不要求798本轮重写LoadedProgram、ULEB、slot复用或JIT，不新增WASM/V8速度承诺。现有预算、正确性和编辑P95合同保持。
+**不作为798新增交付门槛**：ABC-A02/A08–10由820–824随数据profile落实；A03–05/A11由[825](825-av-loaded-program-runtime-efficiency.md)落实装载表示、PC及帧策略/测量；A06–07由[826](826-av-compact-abc-format-and-size.md)落实紧凑wire/section。当前安全MIR解释允许交付；不要求798本轮重写LoadedProgram、ULEB、slot复用或JIT，不新增WASM/V8速度承诺。现有预算、正确性和正式编辑P95门保持；warm测量义务以r7 §5.10为准。
 
 ### 5.8 r4文档复审：类别验收与资源证据责任
 
@@ -202,17 +202,17 @@ T-08统一维护V-01..14及K14-01..06实际入口/Scope/phase/code/oracle清单�
 | A：前端编译瞬态 | ≤224 MiB | 冻结负载隔离采样 `frontend_peak_bytes`（bench 归因测量） | ac-core owner；`validate_and_gate` 硬门；锚定实测 ~200-212MiB，ac-core 收敛后**预期收紧**（非增长许可） |
 | B：探针自有残差 | ≤128 MiB | 总采样峰值（worker+子进程 max）−A 线 | 本计划；`validate_and_gate` 硬门；**缺归因测量时整峰保守计入 B 线**（无分解即无豁免） |
 
-受管分区 32MiB（16/8/8）硬门与 §5.5 六场景/P95 合同不变；单一 128MiB 目标字样由本双线取代（§3 已同步）。永久测试 `av_turnaround_two_line_memory_gate`（A 越/B 越/双过/无归因保守四态）。当前证据（release `bench-turnaround` 冻结 273 575B 负载，2026-10-20，@`06114f431`）：**A 线 211 869 696B=202.1MiB ✓ / B 线 3 637 248B≈3.5MiB ✓ / `hard_gate_failures=[]` exit 0**。R12-04 依据本节闭合。
+受管分区 32MiB（16/8/8）硬门保持，六场景/P95交付解释按r7 §5.5/5.10；单一 128MiB 目标字样由本双线取代（§3 已同步）。永久测试 `av_turnaround_two_line_memory_gate`（A 越/B 越/双过/无归因保守四态）。当前证据（release `bench-turnaround` 冻结 273 575B 负载，2026-10-20，@`06114f431`）：**A 线 211 869 696B=202.1MiB ✓ / B 线 3 637 248B≈3.5MiB ✓ / `hard_gate_failures=[]` exit 0**。R12-04 依据本节闭合。
 
-### 5.10 r6：函数缓存与全链路增量的交付边界
+### 5.10 r7：函数缓存、计量与全链路增量的交付边界
 
 2026-10-20用户明确要求“签名/依赖不变时，只重新编译并替换修改函数，其他HIR/MIR和已加载代码不动”。[实际架构核查](attachments/798/function-incremental-audit-20261020/report.md)确认现有Driver整模块前端、Atom render/bind/verify，缺一个单元仍整模块lower/verify/split；114 hit不代表未改函数不动，命中单元仍读回decode/verify并完整组装/装载。这些是798已允许的实现边界，不是完整目标已完成。
 
-本计划保留已有AC-01..10、V-01..14/K14、资源和正式技术性能门，不删除失败样本或借新Plan豁免原finding；前端可整模块检查的原合同也不伪改成已交付细粒度实现。完整目标由[828 r1](828-av-function-incremental-session.md)承接：source→函数语义/HIR→MIR→ABC→局部受检装载/安装→实际结果的一个完整切片，构建/实施等D798实际交付，798不等828。825/827没有覆盖该端到端范围。
+本计划保留AC-01..10、V-01..14/K14、资源和正式技术性能门；按下述用户r7裁定，798 warm六场景负责真实计量与失败/PASS历史保留，正式门仍须冻结30样本P95<1000ms，完整常驻增量结构与热态达标归828。不删除失败样本或借新Plan豁免正确性finding；前端可整模块检查的原合同也不伪改成已交付细粒度实现。完整目标由[828 r1](828-av-function-incremental-session.md)承接：source→函数语义/HIR→MIR→ABC→局部受检装载/安装→实际结果的一个完整切片，构建/实施等D798实际交付，798不等828。825/827没有覆盖该端到端范围。
 
 798 r6增加的是准确的交付边界与SD-08/AC-08说明责任，**不在本轮新增全链路代码实施任务**。T-08重开：更新受管acceptance/coverage、contract-decision及拟Spec的支持矩阵，逐项标明函数持久产物复用已实现、细粒度前端/单函数lower/驻留已加载代码/在线安装未实现且owner=828；不得只写“函数增量已完成”。其他已完成基础工作保留，独立关闭仍以新revision最终review为准。
 
-最近formal含逐请求进程启动/store-open/外围校验，不能直接判定用户稳定会话目标失败；旧结果只保留其真实跨进程技术门意义。warm bench 874.5993ms也不证明单函数编译成本或结构门通过。828正式门必须首个结果后开始计编辑入队至当前结果发布，包含当次必要IPC/编译/安装等，启动单列；不得把独立bench静默替换798原formal入口。原T-07仍开放，现有技术门若需改生命周期/语义必须显式修订，不凭本段自动解锁。
+最近formal含逐请求进程启动/store-open/外围校验，不能直接判定用户稳定会话目标失败；旧结果只保留其真实跨进程技术门意义。warm bench 874.5993ms也不证明单函数编译成本或结构门通过。828正式门必须首个结果后开始计编辑入队至当前结果发布，包含当次必要IPC/编译/安装等，启动单列；不得把独立bench静默替换798原formal入口。T-07以新提交正式门PASS证据收口。798不实现常驻函数替换；后续执行严格按本r7裁定及828的结构/时间双门。
 
 
 **2026-10-20 用户交付归因裁定（补记）**：warm 编辑 P95 复验未达（1027.0/1465.5ms 及当日系列）归因于**整模块重查——其他阶段未实现真增量编译**；真增量优化归 **PLAN-828**（排期合同：798 完成交付 → 优先 828 → 其他 ACE 扩展）。798 的义务＝如实计量＋PASS 证据保留，**已满足**：暖路径优化（sidecar 工件 id 复用 rebind 级联已有读取，消除 warm 命中每单元额外读）@worktree `9316512c8` 后，正式周转门最终提交静置窗 **PASS——edit P50/P95/P99=646.9/687.4/690.9ms、sig 234.9ms**（30 样本，`docs/reports/plan798/autodown-formal-final.log`，全天最佳）；R15 探针 manifest-live required_edges=2/GC 后恢复带 span 不变（acceptance.md 已补记）。据此若无其他 open finding，798 具备完成交付条件。
@@ -222,7 +222,7 @@ T-08统一维护V-01..14及K14-01..06实际入口/Scope/phase/code/oracle清单�
 |---|---|---|---|---|---|
 | SD-01 | add | docs/specs/auto-mir/project.md、core-i32.md | 无实现→有限Typed MIR、slot/CFG/初始化和Checked门 | 正确性共同层 | AC-01/02 |
 | SD-02 | add | docs/specs/auto-av/project.md、abc-core-i32.md | 无新版AV→有限ABC wire/验证/装载/执行及unsupported；r3 kind/entry/imports往返与准入（V-14）；r4 §5.8/K14-01..06的类别正反控、完整恢复及资源证据政策 | 不混旧AVM和新引擎 | AC-01/03/04 |
-| SD-03 | add | docs/specs/auto-av/cache-and-conformance.md | 无→MIR/ABC producer身份、恢复/依赖/root/lease/资源/计量；r3 kind/版本绑定及歧义旧缓存失效（V-14）；r4 §5.8/K14-01..06的类别正反控、完整恢复及资源证据政策 | 跨工程复用可信 | AC-05/06 |
+| SD-03 | add | docs/specs/auto-av/cache-and-conformance.md | 无→MIR/ABC producer身份、恢复/依赖/root/lease/资源/计量；r3 kind/版本绑定及歧义旧缓存失效（V-14）；r4 §5.8/K14-01..06的类别正反控、完整恢复及资源证据政策；恢复manifest格式2绑定诊断快照/required闭包，unit身份不变；r7计量裁定 | 跨工程复用可信 | AC-05/06 |
 | SD-04 | modify | docs/specs/auto-ac/artifact-contract.md | 783 A08 Future不改历史→追加798 producer的实际实现范围与carrier/引用/准入 | 不给旧producer冒领覆盖 | AC-05/08 |
 | SD-05 | modify | docs/specs/auto-hir/stage-contract.md | 旧S0–S6保留→追加HIR到新MIR的消费前门/资源支持表 | 不扩大旧Checked保证 | AC-02/08 |
 | SD-06 | modify | docs/specs/auto-test-case/architecture.md | 在D-796后probe/run支持表追加本recipe、worker身份/失败/观测 | 使用正式runner | AC-07 |
@@ -247,7 +247,7 @@ Spec导航/ledger只在merge按实际增量登记；796语义及797ABI的权威S
 | V-08 | AC-05 错身份/并发/回收 | 自洽异址frame、错owner/key、同键异内容、GC与lease、写失败 | T-04/05、av_cache_ | 真消费拒绝或miss；冲突不覆盖旧提交、lease期间保活、哨兵不变 | 含失败释放/再生缺失unavailable |
 | V-09 | AC-06 规模/内存 | ≥32MiB冷产物、512churn、4096块CFG、文本嵌套128边界/4096前拒及坏ref | T-05、av_resources_ | 真字节/OS峰值、32MiB受管和水位收敛；全路径无宿主栈溢出 | 形状/步数和资源边界先冻结 |
 | V-10 | AC-04/06 有界执行 | 无限循环、递归1024帧两侧、燃料/取消/trace边界 | T-03/05、AV实际执行入口 | 完成或预定resource/cancel；trap/timeout/infra分开，释放帧/lease | 不用宿主递归/进程杀死冒充fuel |
-| V-11 | AC-06 亚秒 | 六场景≥30样本、局部body和签名错编辑 | T-05/07、av_turnaround_/正式runner | raw trace/结果绑定当前输入，硬门两路径P95<1000ms，不删失败样本 | 工具准备/全冷/native分列 |
+| V-11 | AC-06计量/正式亚秒 | 六场景各≥30真实样本、body和签名错编辑 | T-05/07、bench/正式runner | warm如实保留raw/失败及PASS历史；正式两路径P95<1000ms、零门反控非零；正确性/内存不豁免 | 完整常驻增量目标归828；工具准备/全冷/native分列 |
 | V-12 | AC-07 AutoDown真实执行 | 本recipe正/负、未知recipe/字段、错误actual且expected正确 | T-07、auto-case run及实际worker | 真实dispatch、actual身份、gate0/1/2符合合同；篡改必红，旧支持面不变 | D-796/D-788后才执行 |
 | V-13 | AC-08 绑定及并行 | 796同名异owner/版本、core依赖闭包、797未合入、不支持native地址产物/代际 | T-06/08、av_binding_/av_boundary_ | 真codec校验；临时模型退出，无旧VM/产品依赖和伪AJ安装；未知代际拒绝 | 仅合同模型不称热重载 |
 | V-14 | AC-01/03/04/05/07；T-01/03/04/07/08 | §5.8的K14-01..06：unit/单函数完整module/entry/imports、手工及真实driver、旧缓存和kind正反控 | 公开MIR/ABC verifier/loader、driver fresh/hit、store新worker及正式AutoDown | 合法module返回42且类别保真；unit不直接执行；可信上下文不一致/坏entry/imports拒绝且dispatch=0；合法kind声明不因翻位误拒；旧缓存按版本策略重建/拒绝 | R11已实证原类别bug，完整子case仍须逐入口work验收；本轮未运行 |
@@ -267,7 +267,7 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 | AC-03 | work | ABC codec/验证与Rust AV实际执行，全标量语义/顺序与native及独立expected一致；V-03–05及V-14：单函数完整module不被误判unit，分类与entry/imports规则在各消费路径保真 |
 | AC-04 | work | 无trusted绕过，坏输入/未知能力拒绝，fuel/帧/取消有效且分态；V-01/05/10/14（伪造kind/旧歧义版本执行前拒绝） |
 | AC-05 | work | 真单元cache/依赖/恢复/跨工程及坏地址/冲突/GC正确，命中仍执行；V-06–08；V-14/K14-05/06的kind/producer绑定、当前授权与跨进程恢复闭合 |
-| AC-06 | work | 资源/规模和六场景计量、两路径含正式adapter的P95<1s，原始样本可复验；V-09–11；worker 内存按 **r5 §5.9 双线**（A 前端瞬态≤224MiB/B 探针残差≤128MiB）实测硬门收口——当前证据 A=202.1MiB ✓/B≈3.5MiB ✓，不以归因/债务豁免 |
+| AC-06 | work | 资源/规模和六场景真实计量（包含所有失败）、正式adapter两路径P95<1s及PASS证据保留，原始样本可复验；完整常驻函数增量/热编辑目标归828；V-09–11；worker 内存按 **r5 §5.9 双线**（A 前端瞬态≤224MiB/B 探针残差≤128MiB）实测硬门收口——当前证据 A=202.1MiB ✓/B≈3.5MiB ✓，不以归因/债务豁免 |
 | AC-07 | work | D-796/D-788后正式AutoDown真实dispatch/比较/反控及旧协议兼容，无required gap；V-12；V-14/K14-01..06正式runner适用路径真实执行与负控 |
 | AC-08 | work | 真796合同绑定、临时快照退出、AJ/native/797边界、SD/来源/coverage表完整；V-13；r6 §5.10/SD-08逐阶段交付边界与828责任准确，不以函数cache命中冒领全链路增量 |
 | AC-09 | review | 同树独立审查逐AC/V/SD并绑定revision，所有in-contract finding闭合；merge门禁pending明示 |
@@ -275,7 +275,7 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 
 ## 8. 执行步骤
 
-**r6当前状态**：executing **8/11**。T-07正式30样本门在修复代码d1357870a通过（edit867.8/sig385.8ms）；T-05因新代码六场景body-edit P95=1026.9766ms而重开。R16漏接lease已修复，cache18/resources17/正式正确性6通过；受控六场景复验仍失败（body-edit P95=1465.4601ms）。T-01..04、T-06..08、T-11已勾，T-05/09/10开放。798不是全链路函数增量，完整目标由828承接；旧轮收据保留为历史，不作当前执行指令。
+**r7当前状态**：execution_done **9/11**。用户交付裁定已统一；R18位置修订GC来源漏接由83086e76f修复。cache20/20、资源17/17（含512真实修订/33.5MiB）、正式族7/7通过，正式30样本edit P95=872.5/sig387.7ms；当前六场景180条全正确，warm edit P95=946.69ms，A/B双线及分区均通过、exit0。旧01dc正式687.4/234.9ms PASS与所有失败历史均保留。T-01..08/T-11已勾，T-09最终review/T-10合入收尾待；完整函数增量仍归优先828。
 
 | Task | owner_stage | 前置 | 文件/产物与可验成果 | 验证及AC |
 |---|---|---|---|---|
@@ -283,7 +283,7 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 | [x] T-02 | work | T-01 | core/mir与mir_verify、HIR adapter、scalar控制/调用/来源，补V-02–04 | [R13 已闭合 @a7850407e：一元前缀绑定完整调用表达式——callee 名字在 `(` 撤回时归还折叠前缀（新增 ident_unary 跟踪，`-f(..)`/`!f(..)`=Unary(Call) 每前缀一层入路径）；R13 prefix-call-probes 重放：20 负号+110 层命名调用真路径 131 不分组/带分组两态均拒且诊断数值与真实 HIR 对齐（131/132）、5+110=116 返回 -1 与 20+3=24 返回 1 低深控制过、20×!+110 bool 链两态均拒、普通字面量前缀（----1）不变；永久测试 av_resources_prefix_unary_binds_to_full_call 七态判别；resources 16+1 全过、workspace 101 测全绿] [R12 已闭合 @00bd25ddf：前门计深改真实结合最长构造路径（shunting-yard 深度求值器镜像 parser 优先级/左结合），尾操作数深调用 71 合法执行返回 70、首操作数 131 拒、R7-R11 边界/判别 15/15 不回归；永久测试 av_resources_tail_operand_deep_call_not_concatenated] [r3保留：R10修复work收据5def3af48补充本步；最终独立验收pending，V-14由受影响步骤负责] [R3重开→r4 已闭合：F798-R3-01（owner 核对/类型表 ==len/import allowlist+单元 fn: 链接/能力 allowlist）+F798-R3-04（前门平坦链 128 构造深度）+F798-R3-03（span 重绑定）。永久测试：mir_admission_foreign_function_owner_rejected/_type_ref_equal_len_rejected/_unknown_capability_rejected/_unknown_import_rejected/_unit_fn_linkage_import_allowed、av_resources_flat_chain_front_door_boundary] [✅ 已完成] `core/src/{mir,mir_verify}.rs`+`probe/src/hir_adapter.rs`；mir_admission_/mir_lower_ 10 测绿：变异矩阵（悬空目标/越界槽/非法分支类型+哈希证明实际改动）、半初始化合流拒绝、合法循环/合流不误杀、landed p-binop-args/p-gcd-euclid 降级验证、迭代语句栈（200 连续 if）、text 域 unsupported 拒绝；AC-02；r4本步按§5.8负责R11同实参路径漏检及相邻合法组合，旧记录不授新pass |
 | [x] T-03 | work | T-02 | ABC codec/verifier/LoadedModule、AV显式帧/槽及全有限profile、预算/取消/测试能力；r3新增§5.7/V-14：修复codec/各公开授信入口的kind往返 | [R15重开：类别消费F02及新增告警F06；旧完成描述为历史，当前以R15报告为准]  [R12 已闭合 @00bd25ddf：executable 凭证=类别+imports 闭合（unit 任何公开入口 dispatch=0 Infra unit kind；完整模块正控执行；带参 module 声明 mir.entry-sig 拒；原带参 unit 可执行 oracle 更正；av.rs×2+abc_semantics×1 新测试）] [r3重开：本行旧完成证据仅属历史，受影响触面须重验] [R3重开→r4 已闭合：F798-R3-01（verify_abc 复核手工 DecodedAbc 版本/profile）+F798-R3-04（根帧/调用帧预算分配前生效+peak_slot_bytes 全退出真值）。永久测试：abc 手工版本反例（core lib）、av_zero_frame_budget_rejects_root_frame/_zero_slot_budget/_success_reports_real_peak_slot_bytes] [✅ 已完成] `core/src/{abc,abc_verify,av}.rs`；abc_codec_/abc_admission_/av_semantics_ 13+1 测绿：字节稳定往返/截断/尾随/校验和/未知版本-opcode（手工字节流）/bool 合法性；仅 verify_abc 产生可执行句柄、篡改内层必拒；trap 全矩阵（MAX+1/MIN负/除0/MIN÷-1/MIN%-1）结构化分态；未走 RHS trap 潜伏；trace 顺序+能力门（无能力执行前拒绝）；命名实参源序求值；fib(15) 燃料递归；燃料/取消/1024帧两侧；wire 携带 capabilities；AC-03/04；r4本步按§5.8负责K14类别/版本的对应冻结/实现/恢复/runner/汇总，旧记录不授新pass |
 | [x] T-04 | work | T-03 | probe/cache、函数单元/依赖manifest/恢复准入及root/lease，错身份/版本/并发反控；r3新增§5.7/V-14：缓存键/恢复/新进程版本失效 | [R15重开：当前grant/类别/sidecar/required与lease F01..04；旧完成描述为历史，当前以R15报告为准]  [R12 已闭合 @00bd25ddf：wire 升代 ABC_VERSION 2/SCHEMA /2/SEMANTICS 2/A09 v2 + A09/A08 键 codec/语义版本轴（MIR 键新增 abc-codec）；异代载荷 O(1) 版本门确定性陈旧 miss 重建+重建写冲突容忍；raw /1 受控拒；av_cache_kindless_v1_wire_isolated 双请求确定性] [r3重开：本行旧完成证据仅属历史，受影响触面须重验] [R3重开→r4 已闭合：F798-R3-02（UnitLink payload_fp+SemaRefSer 信封、manifest fingerprint 全字段、恢复侧 profile/av_sem/sig/logical/payload/信封/当前 caps 七轴准入、driver manifest 轮实调 admit_unit_ref）+F798-R3-03（span 重绑定级联+sidecar 写失败传播）。永久测试：av_cache_restore_identity_negative_controls（七轴）、av_cache_restore_requires_current_trace_grant、av_cache_position_drift_keeps_trap_span、binding_tier UnknownPayload 负控] [✅ r2 已闭合 31628c5d7：A08 MIR 单元真持久化+恢复重入 verify_mir（driver 两层查找 ABC→MIR→lower）；计数分离落地（mir_lower_modules=整模块真实调用/mir_units_persisted/restored/abc_units_emitted/closure_encodes/peak_staging_bytes），cache_tier/vertical 断言改钉新计数。F04/06 的缓存腿闭合。历史收据] `probe/src/{cache,worker_restore}.rs`+bin；av_cache_ 7 测绿：fresh→hot→restart/跨工程共享（命中 mir_build=0/abc_emit=0 且 av_execute>0 每次重比较）；body-only 单单元重键+caller 复用、签名变更全 caller 重键+正确 frontend 诊断；错 producer/schema/stage 信封受控拒绝（非 miss 非覆盖）；坏帧坏内层拒绝；同键异内容 Conflict 且旧提交原样存活；lease 保活过 GC、stale sweep；跨进程 worker 恢复（manifest→artifact id→重验→执行，值一致）；AC-05；r4本步按§5.8负责K14类别/版本的对应冻结/实现/恢复/runner/汇总，旧记录不授新pass |
-| [ ] T-05 | work | T-04 | 规模/预算/GC/深链、六场景trace与周转脚本/raw报告 | [R16/r6重开：d1357870a同轮180样本正确/双线内存过，但body-edit P95=1026.9766ms、exit5；受控重测P95=1465.4601ms仍失败。原完成说明均历史]  [R15重开：实际闭包保活F04；旧完成描述为历史，当前以R15报告为准]  [r3保留：R10修复work收据5def3af48补充本步；最终独立验收pending，V-14由受影响步骤负责] [R3重开→r4 已闭合：F798-R3-08（heap_estimate 真实台账替代 wire 冒充+init 位图分配前 16MiB 守卫 av.resource.verify-memory+decode 放大守卫，dense 24581 条目反例分配前拒绝；组合上界反控内存精简形态重钉）+F798-R3-04（平坦链前门）。永久测试：mir_verify_dense_analysis_memory_pre_rejected/_analysis_bytes_recorded_on_credential、mir_admission_combination_bound_is_verify_steps（r4 形态）。bench 30 样本 gates []（edit P95 418ms）] [R2复审重开 F798-R2-01/02 → r2.1 已闭合 d72269f54：脚本 benchOut 空管道截断移除+成功/失败双路汇总可解析校验（实测）；峰值采样器（5ms 轮询）+request/gc 子进程自采样折入+前端隔离归因（worker 215.7MB 中前端 211.8MB≈98%，target_met=false 如实上报+债务路由 KNOWN-DEBT）；受管分区硬门 staging≤16/hot≤8/exec≤8MiB 逐样本入 validate_and_gate，staging 计数后移至闭包 codec 完成后，AV peak_slot_bytes 高水位；瞬态峰值区分性反控测试。历史收据] [✅ r2 已闭合 31628c5d7：六场景 r2 语义重做（fresh 每样本冷 store/restart 每样本新进程 request 子命令/edit 每样本当轮新修订 30 不同 hash/签名冲突仅认 frontend:source.*/gc-loop 进程真并发）；churn 512 轮真实编辑（逐轮 hash 变化+独立期望+重键数断言）+同 store 水位回收+哨兵存活+受管暂存峰值断言；worker private-bytes 增量 8.6MiB 计入 gate；硬门真接线（gate-ms 0 反控 exit 5；正式跑 PASS：edit P95 506.5ms/冲突 21.3ms/零失败，docs/reports/plan798 r2 版）。F03/04/05 闭合。历史收据] av_resources_/av_turnaround_ 6+6 测绿：4096 直链+菱形+合法循环预算内验证（修 block_base O(n²)：31k 块 verify 419ms→11ms release）；超表预算=resource 分类；128 嵌套两侧+4096 前拒（door 在旧递归 parser 前、resource 态）；atom `[` 深度前拒；33.5MiB 冷 ABC 产物（64 模块分页合规）随机只读重验+512 修订+GC 水位有界；六场景×30 release 样本+**硬门 PASS**（body-edit P95 829.4ms/签名冲突 41.4ms/零失败，raw 180 行可复验 `docs/reports/plan798/turnaround-{raw.jsonl,summary.json,md}`+`scripts/verify-ac-av-798.ps1`）；AC-06（正式 runner 重测留 T-07）；r4本步按§5.8负责R11前门/资源证据与128MiB口径，旧记录不授新pass [r5 已闭合 @c8c598f0a：R12/R13 前门收口（71/131 判别+一元前缀绑定）+ 六场景×30 硬门 PASS（release exit 0：edit P95 888.8ms/sig 41.4ms/180 样本/双线内存门 A=201.8MiB ✓ B≈3.8MiB ✓，raw turnaround-r5-30sample*.jsonl 入库）] [R14 已闭合 @79b31f5dc：F798-R14-01 同轮证据——受控单一 30 样本运行完整保留 summary+raw（exit 0/门全过：edit P95 414.7ms/sig 20.7ms/180 样本/**A 线 201.3MiB ✓/B 残差 4.2MiB ✓ 均 met=true**；turnaround-summary.json 刷新为同轮真实 BenchSummary 含命令/退出码/提交绑定，sha-256 三件 r5b-evidence-hashes.txt；旧两轮拼接引用作废保留] |
+| [x] T-05 | work | T-04 | 规模/预算/GC/深链、六场景trace与周转脚本/raw报告 | [R16/r6重开：d1357870a同轮180样本正确/双线内存过，但body-edit P95=1026.9766ms、exit5；受控重测P95=1465.4601ms仍失败。原完成说明均历史]  [R15重开：实际闭包保活F04；旧完成描述为历史，当前以R15报告为准]  [r3保留：R10修复work收据5def3af48补充本步；最终独立验收pending，V-14由受影响步骤负责] [R3重开→r4 已闭合：F798-R3-08（heap_estimate 真实台账替代 wire 冒充+init 位图分配前 16MiB 守卫 av.resource.verify-memory+decode 放大守卫，dense 24581 条目反例分配前拒绝；组合上界反控内存精简形态重钉）+F798-R3-04（平坦链前门）。永久测试：mir_verify_dense_analysis_memory_pre_rejected/_analysis_bytes_recorded_on_credential、mir_admission_combination_bound_is_verify_steps（r4 形态）。bench 30 样本 gates []（edit P95 418ms）] [R2复审重开 F798-R2-01/02 → r2.1 已闭合 d72269f54：脚本 benchOut 空管道截断移除+成功/失败双路汇总可解析校验（实测）；峰值采样器（5ms 轮询）+request/gc 子进程自采样折入+前端隔离归因（worker 215.7MB 中前端 211.8MB≈98%，target_met=false 如实上报+债务路由 KNOWN-DEBT）；受管分区硬门 staging≤16/hot≤8/exec≤8MiB 逐样本入 validate_and_gate，staging 计数后移至闭包 codec 完成后，AV peak_slot_bytes 高水位；瞬态峰值区分性反控测试。历史收据] [✅ r2 已闭合 31628c5d7：六场景 r2 语义重做（fresh 每样本冷 store/restart 每样本新进程 request 子命令/edit 每样本当轮新修订 30 不同 hash/签名冲突仅认 frontend:source.*/gc-loop 进程真并发）；churn 512 轮真实编辑（逐轮 hash 变化+独立期望+重键数断言）+同 store 水位回收+哨兵存活+受管暂存峰值断言；worker private-bytes 增量 8.6MiB 计入 gate；硬门真接线（gate-ms 0 反控 exit 5；正式跑 PASS：edit P95 506.5ms/冲突 21.3ms/零失败，docs/reports/plan798 r2 版）。F03/04/05 闭合。历史收据] av_resources_/av_turnaround_ 6+6 测绿：4096 直链+菱形+合法循环预算内验证（修 block_base O(n²)：31k 块 verify 419ms→11ms release）；超表预算=resource 分类；128 嵌套两侧+4096 前拒（door 在旧递归 parser 前、resource 态）；atom `[` 深度前拒；33.5MiB 冷 ABC 产物（64 模块分页合规）随机只读重验+512 修订+GC 水位有界；六场景×30 release 样本+**硬门 PASS**（body-edit P95 829.4ms/签名冲突 41.4ms/零失败，raw 180 行可复验 `docs/reports/plan798/turnaround-{raw.jsonl,summary.json,md}`+`scripts/verify-ac-av-798.ps1`）；AC-06（正式 runner 重测留 T-07）；r4本步按§5.8负责R11前门/资源证据与128MiB口径，旧记录不授新pass [r5 已闭合 @c8c598f0a：R12/R13 前门收口（71/131 判别+一元前缀绑定）+ 六场景×30 硬门 PASS（release exit 0：edit P95 888.8ms/sig 41.4ms/180 样本/双线内存门 A=201.8MiB ✓ B≈3.8MiB ✓，raw turnaround-r5-30sample*.jsonl 入库）] [R14 已闭合 @79b31f5dc：F798-R14-01 同轮证据——受控单一 30 样本运行完整保留 summary+raw（exit 0/门全过：edit P95 414.7ms/sig 20.7ms/180 样本/**A 线 201.3MiB ✓/B 残差 4.2MiB ✓ 均 met=true**；turnaround-summary.json 刷新为同轮真实 BenchSummary 含命令/退出码/提交绑定，sha-256 三件 r5b-evidence-hashes.txt；旧两轮拼接引用作废保留] |
 | [x] T-06 | work | T-05、D-796 | 绑定合入语义ref/codec，退临时语义快照，冻结消费hash | [R3重开→r4 已闭合：F798-R3-02（admit_unit_ref 增 payload 绑定参数并在 driver manifest 轮实调；restore 侧 admit_restored_unit 字节级比对）+R3 反例重放闭合。binding_tier 4 测绿+UnknownPayload 负控] [✅ 已完成] b9682967f（rebase master 13367d127 后）：D-796 门满足（796 归档合入+Spec/收据齐全）；只读消费 ac-sema-contract（`probe/src/semrefs.rs`：logical_id/DeclRef/ContentVersion/SemaRef::admit）；驱动内容轴从 FNV 快照切换到 796 ContentVersion 域（canonical dump 同源）；manifest 单元携带 logical ids；av_binding_ 4 测绿（同名异 owner 三作用域分离+缓存不串、重启序稳定+跨进程命中、schema/owner/tamper/内容版本/种类轴拒绝、消费面钉扎）；未触碰 796 推导/CT 库；AC-08 |
 | [x] T-07 | work | T-06、D-788 | 基于796已合入probe/run仅追加本recipe/worker/suite，正式AutoDown语义/cache/资源/周转与负控/兼容 | [r6当前闭合：SHA256全文件重读加速、797混合stale独立身份；d1357870a正式30样本edit P95=867.8/sig385.8ms；正确性6/6，受控失败与负oracle均真实执行。T-05独立warm门失败不能据此豁免]  [R15重开：K14消费及准备失败生命周期F02/F05；旧完成描述为历史，当前以R15报告为准]  [R3重开→r4 已闭合：F798-R3-05（exit 码/恰一协议行/步骤回显/父侧 fnv source_hash 逐 run 绑定）+F798-R3-06（call_worker 受限执行器重写：writer 线程/帽定读者/单一绝对截止/杀树/READER_GRACE/BUILD_WALL 有界 cargo）+F798-R3-07（两调用显式 session 模型，窗口=受测 [edit,run] 调用 request_wall_ms 连续含 IPC，30 样本编辑窗 P95≈600-640ms<1000ms，前端 290ms 如实计入；decode 合同 r4：前导 edit 放行+须 run 结尾+av.session 绑定）+F798-R3-10（locate_worker 恒构建绑定二进制）。永久测试：ac_av_probe_worker_contract_faults_are_infra（exit9/extra-frame/wrong-hash/delay 四故障全 Infra）、formal gates（hits/misses 形状+当前修订值断言）；5 测全绿] [✅ 已完成] b9682967f：D-788 门满足（788 归档合入）；recipe `ac-av/core-run-v1` 注册（配方专属步骤词表 run/edit-source+av 绑定+probe exit 通道/run 完成态）；共享侧 `ac_av.rs`（Job 收容+resume/envelope+nonce+hash+recipe+双版本镜像准入/stale 按配方族路由/父侧判定/receipt）；worker `case-serve`（会话步骤模型+warm store+逐步墙钟）与 `load-revision`（冻结负载单一来源，免产品依赖）；`crates/auto-lang/test/cases/ac-av/` 6 checks 全 oracle 形态；**正式硬门 PASS**：warm-edit 窗 P50/P95/P99=556/569/574ms<1000ms（30 样本，终步驱动 ~412ms+spawn/IPC/admit ~148ms，热身 run 如实分列），sig 冲突 P95=221ms；负控：错 exit 必红+decode 负例全拒（未知 recipe/跨域词表/跨域绑定/缺绑定）；兼容：接缝 17 腿绿（sema corpus 阻断=Plan 813 oracle 跟踪在途，非本 diff 引入，登记复放）；AC-06/07；r4本步按§5.8负责K14类别/版本的对应冻结/实现/恢复/runner/汇总，旧记录不授新pass [R14 已闭合 @79b31f5dc：正式 AutoDown 周转门（V-11 formal）静置窗口**连续 PASS×2**——edit P95 961.7/948.9ms<1000、sig 598.9/599.6、各 30 样本（第二次 tee 落盘 autodown-formal-r5.log）；K14 正式腿 7-check 语料+负 oracle/decode 负例/故障注入/兼容 18/18；逐样本分解 step~410-430ms+spawn/IPC~240-300ms，白天劣化=共享负载 spawn 侧膨胀] |
 | [x] T-08 | work | T-07 | r6 §5.10/SD-08边界及828 owner写入acceptance/coverage/contract-decision/拟Spec；verify脚本全Scope、docs/reports/plan798、SD提案/coverage/并行审计，native产物/代际合同准入 | [R15重开：F01..06及coverage/SD收口；旧完成描述为历史，当前以R15报告为准]  [R3重开→r4 已闭合：F798-R3-09（native_admission.rs 实装：NativeArtifactRef 全轴准入+COFF 结构校验+真实 Cranelift COFF 正例+真 PE 拒绝+legacy generation 显式兼容轴；native_admission_tier 5 测绿；acceptance.md 虚假主张更正并记录）+F798-R3-10（probe 零 warning/README 尾空行清除）+F798-R3-11（native_reference 改 788 run_deadlined_captured 1MiB 帽+共享预算钟+run 剩余预算，零 stderr 帽失败反控）。契约 r3 修订入 contract-decision §6/§7（verify-memory/decode-memory/前门构造深度）] [r5已完成历史；r6待更新] b9682967f：脚本 binding/autodown/acceptance 实接（binding_tier/ac_av_probe 真跑，退出码透传）；`docs/reports/plan798/turnaround.md` 补正式 AutoDown 硬门节+`acceptance.md`（V-01..13 覆盖矩阵实际入口/SD-01..07 提案/并行审计含 813 交叉与共享接缝最小扩展清单）；native 产物引用/代际=合同模型（contract-decision §11+SD-07 提案，未宣称热重载）；定向验证：probe 54+contract 20+ac_av 4+接缝 17 全绿，计划内文件 rustfmt 过检（根 examples 预存损坏非本计划面，未动）；AC-01–08；**execution_done=8/10**；r4本步按§5.8负责K14类别/版本的对应冻结/实现/恢复/runner/汇总，旧记录不授新pass [R14 已闭合 @79b31f5dc：acceptance.md K14 完整矩阵+R14 修复节（同轮证据+正式门 PASS×2 记录）；turnaround-summary.json 同轮刷新；**execution_done=9/11**（T-09 review/T-10 merge 待）] |
@@ -457,6 +457,12 @@ stage: new；outcome: pass（文档合同预检，非实现验收）。用户明
 
 2026-10-20 stage:review | review_scope:final/readiness | PLAN-798:r6 | outcome:needs_fix（R17；已知work-owned开放项，未签完整final pass） | reviewed_commit:d72b2559653f9023ac6af653f3f9a4b215cf0f40；实际代码d1357870a | reviewer_identity:实施会话Codex，从代码/旧独立反例/新实测重建，非独立上下文，无代理 | F798-R16-01闭合；新增F798-R17-01 P2 AC06/V11/T05：两轮warm body-edit P95=1026.9766/1465.4601ms均失败；每轮180条正确、双线内存通过，formal30样本867.8/385.8ms通过。cache18/resources17/formal正确性6通过；两包fmt/diff-check通过，--all只读auto-down生成格式差异另存。不凭起始低负载或sig正常宣称代码无关，不把安全lease退回只保护第一单元。 | evidence:[R17记录/逐AC/V/K14/SD与下一步](attachments/798/closeout-r6-20261020/review-r17.md)，原始两轮/独立重算均同目录 | executing8/11（T05/09/10开放） | next:同树work定位warm持久消费路径的阶段成本并优化，保持R15/R16不变量，再按原合同复验。未执行裸t/tv等merge-owned整档、规范/ledger发布、合入/归档/guard清理；798未完成，不自动启动828。
 
+2026-10-20 stage:new | PLAN-798 r6→r7 | authority:本轮用户明确warm未达归因整模块重查、完整增量归828，798负责真实计量+正式门PASS保留，并授权继续收尾 | delta:§5.10/AC06/V11/T05显式统一，原失败完整保留，不再构成warm阻断；正式P95<1s、所有正确性/内存/K14/生命周期不变。未新建Plan、无需重复确认；r6记录均保留。
+
+2026-10-20 stage:review | final/readiness R18 | PLAN-798:r7 | baseline:01dc7c40fcf551b948414c397b1aacc88cd7ba88；代码9316512c8 | outcome:needs_fix | actual reviewer:当前Codex实施会话，公开同会话限制，独立选位置修订×manifest-lease GC组合反例 | F798-R18-01 P2 AC05/V08/K14-06/T04：source前缀加两个换行后同unit/同manifest指纹，正常恢复trap25..30；只lease manifest并移除本scratch项目软根、0水位GC删新sidecar，再恢复报no source sidecar。旧snapshot-only required_edges=2正例不覆盖新snapshot闭包。 | evidence:attachments/798/review-r18/snapshot-gc.log.txt及probes/src/main.rs | next:同树work把diagnostics快照纳入恢复manifest身份/required闭包，保持unit代码身份/缓存命中不变；补位置修订GC正控及错误快照/旧manifest反控，提交后复验。用户warm裁定已接受，T05关闭；T04/T08重开，executing7/11。禁止归为828真增量延期。
+
+2026-10-20 stage:work | PLAN-798:r7 | code:83086e76f62f6a79b902c9c52784d28cc359258a clean | F798-R18-01闭合：恢复manifest format2/diagnostics_snapshot必需、指纹/QueryKey绑定诊断快照；函数unit仍同身份命中，新旧map隔离。旧格式/错误快照拒绝，旧sidecar负控改显式绑定manifest以免被前门遮蔽；真实GC只lease新manifest，删旧产物后仍恢复25..30；释放后可回收。cache20/20、资源17/17、正式7/7及R15原12控制重放通过，零门反控按预期101；新正式30样本P95=872.5/387.7ms。新六场景30×6全正确、warm946.69/sig38.2213ms、A211697664B/B5746688B、分区无超、hard_gate_failures=[]、exit0；30不同source hash，2不同结果值但逐样本独立expected一致。 | evidence:attachments/798/review-r18/（source/spec哈希、诊断、raw/summary/audit、正式原日志和01dc旧PASS各自绑定） | execution_done9/11，T04/T08复勾；T09/10未完成 | next:auto-plan-review，merge-owned整档依规pending。
+
 ## 10. 待澄清事项
 
 **最新周转口径已澄清**：用户保留P95<1s；798按现有真实入口/冻结负载先达标，未来热重载新增工作以成本清单辅助预估，实际接入后重测。早期必须保留相关身份/依赖/安装/生命周期接缝，但本轮不新增完整热重载交付项。见[决策记录](attachments/798/turnaround-policy-20261020/decision.md)及Design43 §6.3。当前sig门未通过的事实与T07状态不变；没有将其改为均值门或用估算授PASS。
@@ -470,4 +476,4 @@ stage: new；outcome: pass（文档合同预检，非实现验收）。用户明
 - 未发布Spec/ledger，未合入/归档/清理实施树。
 
 
-**r6最新边界与状态（优先于本节旧记录）**：798当前executing8/11，T-07正式门已闭、T-05新代码warm门开放；R16lease修复d1357870a，最后仅文档后继d72b25596。最终review和merge-owned整档pending，未合入/发布规范/清理树。用户指定798实际完成后优先828，再做817/818、820–827；后继已有强制全链路增量兼容任务，顺序合同提交3cbc4f97b/导航494f373ef。828未启动编码。
+**r7最新边界与状态（优先于本节旧记录）**：execution_done9/11；R18修复83086e76f及当前所有work验收已通过，详见§8及最后work收据。旧warm失败按用户裁定不再单独阻断且全部保留，本轮新warm/正式也实测通过；最终review和合入门禁/沉淀/归档/guard清理待。798实际交付后优先828，不启动其代码。
