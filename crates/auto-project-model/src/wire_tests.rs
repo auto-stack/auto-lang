@@ -454,30 +454,62 @@ fn deeply_nested_json(depth: usize) -> serde_json::Value {
 
 /// R1-02: a tag object without 't' is a named Shape error — never a Map
 /// indexing panic that kills the tool (exit 101).
+///
+/// Construction note (review R3, F-815-R3-01): the helpers return the
+/// complete `{"wire":1,"request":…}` document — decode them DIRECTLY. The
+/// first version wrapped the helper result again, so every negative failed
+/// at the request level ("unknown request key 'wire'") before reaching the
+/// value-tag branch, and even a legal value satisfied the loose assertion.
+/// Legal controls on the exact same construction path now pin that the
+/// negatives below fail in the value branch for the named reason.
 #[test]
 fn r2_value_object_without_tag_is_a_named_error() {
-    for bad in [
-        serde_json::json!({"v": 1, "extra": 2}),
-        serde_json::json!({"v": 1}),
-        serde_json::json!({"t": 7, "v": 1}),
-        serde_json::json!({"t": "int", "v": 1, "extra": 3}),
-        serde_json::json!({"t": "obj", "v": []}),
-        serde_json::json!({"t": "pair", "v": 1}),
-    ] {
-        let err = request_from_wire(&serde_json::json!({
-            "wire": 1,
-            "request": minimal_request_with_npm(&bad),
-        }))
-        .unwrap_err();
-        assert!(matches!(err, WireError::Shape { .. }), "{bad} -> {err}");
+    // legal controls first: a well-formed tag object in each position must
+    // decode — the negatives must fail in the value branch, not structurally
+    request_from_wire(&minimal_request_with_npm(
+        &serde_json::json!({"t": "int", "v": 1}),
+    ))
+    .expect("legal control (npm_deps) must decode");
+    request_from_wire(&minimal_request_with_raw_value(
+        &serde_json::json!({"t": "str", "v": "x"}),
+    ))
+    .expect("legal control (raw value) must decode");
+
+    // (payload, expected error fragment naming the violated rule)
+    let cases = [
+        (serde_json::json!({"v": 1, "extra": 2}), "'t'"),
+        (serde_json::json!({"v": 1}), "'t'"),
+        (serde_json::json!({"t": 7, "v": 1}), "'t'"),
+        (
+            serde_json::json!({"t": "int", "v": 1, "extra": 3}),
+            "'extra'",
+        ),
+        (serde_json::json!({"t": "obj", "v": []}), "'e'"),
+        (serde_json::json!({"t": "pair", "v": 1}), "'k'"),
+    ];
+    for (bad, fragment) in cases {
+        let err = request_from_wire(&minimal_request_with_npm(&bad)).unwrap_err();
+        assert!(
+            matches!(&err, WireError::Shape { field, .. }
+                if *field == "value" || *field == "value.t"),
+            "{bad} failed outside the value-tag branch: {err}"
+        );
+        assert!(
+            err.to_string().contains(fragment),
+            "{bad} -> {err} (expected the named fragment {fragment})"
+        );
     }
-    // the same payload placed in raw props / raw node props stays controlled
-    let err = request_from_wire(&serde_json::json!({
-        "wire": 1,
-        "request": minimal_request_with_raw_value(&serde_json::json!({"v": 1, "extra": 2})),
-    }))
+    // the same payload placed in raw props stays controlled, in the same
+    // branch, with the same named reason
+    let err = request_from_wire(&minimal_request_with_raw_value(
+        &serde_json::json!({"v": 1, "extra": 2}),
+    ))
     .unwrap_err();
-    assert!(matches!(err, WireError::Shape { .. }), "{err:?}");
+    assert!(
+        matches!(&err, WireError::Shape { field, .. } if *field == "value.t")
+            && err.to_string().contains("'t'"),
+        "{err}"
+    );
 }
 
 fn base_request_json() -> serde_json::Value {
