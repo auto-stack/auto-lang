@@ -480,6 +480,8 @@
 | auto-acc | planned（目标态合同；AC=首版原生编译器，ACC=Auto | 0 | [auto-acc/project.md](auto-acc/project.md) |
 | auto-semantics 项目卡（AC 语义元信息与类型推导探针） | experimental（PLAN-796 | 3 | [auto-semantics/project.md](auto-semantics/project.md) |
 | auto-abi | candidate（`autoabi.win-x64.v0.1-candidate`，PLAN-797 | 10 | [auto-abi/project.md](auto-abi/project.md) |
+| auto-mir | experimental（PLAN-798）；逻辑模块位于 | 0 | [auto-mir/project.md](auto-mir/project.md) |
+| auto-av | experimental（PLAN-798）。实际Rust包：`experimental/ac-av-probe/core` | 0 | [auto-av/project.md](auto-av/project.md) |
 
 <details><summary>auto-cosmic 模块明细</summary>
 
