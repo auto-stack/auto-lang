@@ -1,3 +1,15 @@
+### Plan 814（2026-10-20，R6三项未闭复验，needs_replan；仅余合同授权）
+
+受审 `256613936b6a5e9baea450e5c545899ee7a661dc`，r2/M814-A；[R6报告/显式九档证明/警告复核/精确合同草案](attachments/814/review-r6/review.md)。R3-05 CLOSED：18件清单持久化，工作验证器原删除盲区已修；review另将四条实际迁移固定为显式映射、禁用叶名推断，九档旧ID全部核销且删除/同名替换负控检出，逐ID证据冻结。工作脚本的唯一叶名泛化不单独获“健全”认证；当前映射通过依据为独立strict proof。当前tu 869描述符/867唯一ID与原重复保持，taa编译/list6270与冻结新集合完全相同，未整档。R3-06 CLOSED：五包check过、完整路径/重复数对照原基线新增0/减少7，Drop两单测及跨crate四控制过、fmt/diff check过；不要求清仓旧warning、不延期B。R4-01事实纠正/提案准备CLOSED，但用户批准及正式合同生效仍OPEN：实现保留inventory和trait迁位、主计划仍r2，本次审核不代批。已备具名r3精确草案（上层启动注册轻表、只登记不执行UI业务/I/O；UiParseContext/UiGrammar入轻端口，SDK零UI与旧API/状态保持），未修改canonical/ledger或实际AC。executing1/15保持，T02/T03/T13未勾；用户决定→new正式修订→受影响验收，维持原合同则继续兼容方案，不推定砍API。阶段pass后的merge-owned冻结门/A实际发布/规范来源收据仍pending。未改实施/整档/合入/归档/清树，下方814旧记录为历史。
+
+### Plan 814（2026-10-20，R5未闭问题与inventory合同对账，needs_fix）
+
+受审 `16cc4f14a732f593244f4b60377dd6f1f01bef35`，r2/M814-A；[R5闭合表/合同逐项对账/验证器实测负控/冻结SD](attachments/814/review-r5/review.md)。R3-02身份升级/晚装配旧条目失效、R3-03 SDK实际输入428项禁止项0/无UI源码fresh+locked5/5均CLOSED；host/autodown行为保持CLOSED。R3-05别名包选择与三个代表项遗漏已修且3/3，完整映射证明余项仍OPEN：迁前原始清单随临时树删除，现存exact checker负控删除同名测试仍八档unmatched=0；不声称又发现实际漏测。R3-06 fmt/cfg子项CLOSED，原master基面新增≈14迁移warning未经批准转B，余项OPEN。R4-01(P2)仍OPEN：显式装配有进展，inventory直达兜底与未变r2 AC-02冲突；锁定inventory0.3.25实际用Windows启动构造器注册，提案“无静态构造器”须纠正；旧host行为关闭未授权机制。UiParseContext归属变更已有具名SD，但需正式合同/规范批准，不由复审默批或要求砍旧API。executing1/15，重开T02/T03/T13、保留T01与已修证据；原树work修健康/完整映射，保留语义变化则先new修订批准。记债不授权延期/缩面；阶段pass后merge-owned冻结门、A实际发布/规范ledger/来源收据仍pending。未整档/改实施/合入/归档/清树。下方814旧条目为历史，按本条认当前闭合状态。
+
+### Plan 814（2026-10-20，R4重点复验六项，needs_fix）
+
+受审 `6418f99efe0af2432a652212e98d39b973515cd9`，r2/M814-A；[R4闭合表/原例与相邻组合/独立源码消费](attachments/814/review-r4/review.md)。原host/cache/autodown三探针全过，无UI源码快照新锁+locked SDK5/5；R3-01/04原行为CLOSED，显式默认/快照及autodown往返/错误正控也通过。R3-02仍OPEN：None占位拒升级、晚装配保存误给旧条目改盖新身份；R3-03清单/源码执行子项CLOSED，SDK实际BUILD_INPUTS含UI/Man余项OPEN(P2)；R3-05的86名称与tt已修，但tb等原档选择漏项未闭；R3-06门面/cfg已修，新修复cache/macro片段fmt仍红。新增F814-R4-01(P2)：inventory隐式装配违反未变r2合同、trait迁位/缓存Spec子集未对账。Plan executing1/15，重开T02/T03/T13、保留T01与已修证据；原树work修齐具名边界提交再审。未整档/修实施/合入，后续阶段pass后的merge-owned冻结门/实际发布/规范/ledger收据仍pending。
+
 ### Plan 814（2026-10-20，M814-A独立阶段复审R3，needs_fix）
 
 受审 `abe9c99002fe7bafb49a9f86c5867f68d796d65a`，r2；[R3报告/可回放反例与正控/冻结SD](attachments/814/review-r3/review.md)。SDK独立5/5、compiler独立4/4；早期WIP/空包/默认编译UI文法原例已修，不复活。当前 **F814-R3-01..04(P1) OPEN**：旧VM创建再导出入口不再自动装宿主；缓存load后才注入指纹，生成保存null失去升级失效保护；无UI源码快照仍需macros→旧包dev清单及optional文法清单；旧autodown特性build成功但native永久fallback。**R3-05(P2)/06(P3) OPEN**：tt/tb原inline选择漏SDK、新增门面fmt/迁移无效feature告警。均原A合同内回归/未闭不变量，记债不批准延期B。Plan executing1/15，重开T02/T03/T13、保留T01；原树work一次修齐并回放正反控/相邻组合后提交再审。未整档/修实施/合入；阶段pass后的merge-owned冻结门/实际发布/Spec子集/ledger收据仍pending，A不归档不清树。
@@ -2601,6 +2613,7 @@ T-16/L3阶段pass @0a65ee2a7：D-815-L1/L2涉及的CLI/schema/并发/部分写/�
 ### Plan 798 独立最终验收 R15（2026-10-20，needs_fix）
 
 受审 `79b31f5dcb99b2b95e1c79a5ae58299c0139f8f6`，r5；[完整报告/AC-V-K14-SD/原始反例与输入](attachments/798/review-r15/review.md)。R14-01 CLOSED：同轮180raw/summary/hash齐全，edit P95 414.7482ms、A201.3MiB/B4.2MiB、正式30样本保存日志948.9ms PASS；此前关闭原例保留。新增五项P2合同内遗漏：F798-R15-01 A08/A09缓存命中不对当前grants复核，caps=[]仍Success7+MarkA；02 单元信封接完整module载荷，可信producer-kind冲突仍执行；03 Driver空可解码sidecar被当bound，A08/A09命中trap span=None（正常重推导正控23..28）；04 manifest required边0且生产无lease，只有manifest lease移除scratch项目根后GC删除3块，后续恢复unit missing；05 正式runner locate_worker构建准备器stdout不排空/无Job，原函数提取体300ms加速反控超时后自建后代仍STILL_ACTIVE（已定点清理）。新增P3 F06 core/src/abc.rs:1063 unused import（实验验收实际warning，非根既有566条）。实验101/正式正确性4/共享probe兼容16通过不覆盖新失败；原树work同批修复并补入口/状态闭合矩阵再提交送审。T01/03/04/05/07/08重开，保留T02/06/11，executing3/11；登记不授权延期/缩面，不要求825/826未来优化。未改实施或canonical Spec/live ledger、未跑根整档/合入；最终pass后的merge-owned冻结门禁/沉淀/归档/guard仍pending。
+
 
 ### Plan 798 r7 最终复审 R19收口（2026-10-20）
 
