@@ -192,3 +192,9 @@ V-14 行（并入上文 V 矩阵口径）：unit/完整 module/entry/imports/旧
   ~410-430ms（含前端 ~285-297ms）+ spawn/IPC/admit ~240-300ms；白天劣化
   为共享负载下 spawn 侧膨胀（基线 A/B 同红在案），静置后回落。
 - T-05 同轮证据闭合、T-07/T-08 正式门解锁复勾。
+
+### R15 修复轮收口（2026-10-20，最终提交 `9316512c8`）
+
+- **暖路径优化**：sidecar 工件 id 改从 rebind 级联已有读取捕获，manifest 边循环消除 warm 命中请求每单元一次额外 sqlite 读（不变量保持：manifest-live edges=2/GC 后恢复带 span 复验过）。
+- **正式周转门 PASS（最终提交，静置窗）**：edit P50/P95/P99 = 646.9/**687.4**/690.9 ms、sig P95 = 234.9 ms（30 样本，日志 `autodown-formal-final.log`）——全天最佳，远低于 1000ms 门。
+- **2026-10-20 用户交付归因裁定**：此前 warm 编辑 P95 复验未达（1027.0/1465.5ms 等）归因于**整模块重查（其他阶段未实现真增量编译）**——真增量优化归 PLAN-828（排期合同 ace-execution-order-and-incremental-compatibility-2026-10-20.md：798 完成交付 → 优先 828 → 其他 ACE 扩展）；798 的义务为如实计量（§5.5 原文"前端可整模块重查，但如实计量"）+ PASS 证据保留，已满足。
