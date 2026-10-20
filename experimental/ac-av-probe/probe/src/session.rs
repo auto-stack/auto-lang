@@ -1140,7 +1140,7 @@ impl FunctionIncrementalSession {
                 // Compose the edit's region (inverse-mapped into MINT
                 // coordinates by the core helper) into this function's
                 // map; all regions share one mint axis.
-                ProgramSnapshot::compose_region(&mut rec.span_map, c, old_len, new_len);
+                ProgramSnapshot::compose_region(&mut rec.span_map, c, c + old_len, new_len);
             }
             // EVERY stored code object of this function (history entries)
             // experiences the same source change: compose the edit into
@@ -1148,7 +1148,7 @@ impl FunctionIncrementalSession {
             // is current as of THIS revision (the deposited current entry
             // is overwritten below with the post-compose map).
             for e in rec.history.values_mut() {
-                ProgramSnapshot::compose_region(&mut e.3, c, old_len, new_len);
+                ProgramSnapshot::compose_region(&mut e.3, c, c + old_len, new_len);
             }
         }
         span_maps = self.fns.iter().map(|r| r.span_map.clone()).collect();

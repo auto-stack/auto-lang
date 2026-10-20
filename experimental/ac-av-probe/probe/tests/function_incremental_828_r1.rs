@@ -652,3 +652,96 @@ fn r5a_editing_inside_prior_inserted_whitespace_keeps_nearby_anchor() {
         "inserted text must inverse-map to its original insertion anchor"
     );
 }
+
+const R6A_SRC: &str = "fn helper() int { return 1 }
+fn main() int { var x = helper(); return 1 / 0 }
+fn tail() int { return 9 }
+";
+
+/// F-828-R1-04/R6a: insert-then-undo restores IDENTITY mapping (the
+/// deleted insertion leaves no region); a pinned pre-undo snapshot keeps
+/// its own map.
+#[test]
+fn r6a_undo_and_paused_snapshot_keep_their_distinct_source_maps() {
+    use auto_av_core::av::{execute_program_steps, resume_program, SteppedOutcome};
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("return 1 / 0").unwrap();
+    let out = s.edit(at as u64, at as u64, vec![b' '; 32]).unwrap();
+    assert!(out.ok, "{out:?}");
+    let expected_pinned = trap_span(&s);
+    let pinned = s.current();
+    let paused =
+        match execute_program_steps(&pinned, &ExecLimits::default(), &CancelFlag::new(false), 1) {
+            SteppedOutcome::Paused(p) => p,
+            SteppedOutcome::Finished(out, _) => panic!("expected an in-flight chain: {out:?}"),
+        };
+    let out = s.edit(at as u64, (at + 32) as u64, Vec::new()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), R6A_SRC, "real undo restored source bytes");
+    let cold = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold), "undo control");
+    match resume_program(paused, &CancelFlag::new(false), None) {
+        SteppedOutcome::Finished(
+            ExecOutcome::Trap {
+                span: Some(actual), ..
+            },
+            _,
+        ) => {
+            assert_eq!(actual, expected_pinned)
+        }
+        _ => panic!("expected pinned old revision trap"),
+    }
+}
+
+/// F-828-R1-04/R6a: deleting PART of previously inserted whitespace
+/// records a mint-length-0 trim (the current length is not the mint
+/// length).
+#[test]
+fn r6a_deleting_part_of_inserted_whitespace_does_not_delete_mint_tokens() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("return 1 / 0").unwrap();
+    let out = s.edit(at as u64, at as u64, vec![b' '; 32]).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold), "insertion control");
+    let out = s
+        .edit((at + 8) as u64, (at + 24) as u64, Vec::new())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "removing inserted bytes must not treat old_len as mint length"
+    );
+}
+
+/// F-828-R1-04/R6a: editing inside a REPLACEMENT's expanded output must
+/// not back-map into an unrelated EARLIER function's span.
+#[test]
+fn r6a_expanded_whitespace_replacement_cannot_move_an_unmodified_earlier_trap() {
+    let src = "fn helper() int { return 1 / 0 }
+fn main() int { return helper() }
+fn tail() int { return 9 }
+";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let original = trap_span(&s);
+    let at = s.src().find("return helper()").unwrap() - 1;
+    assert_eq!(&s.src()[at..at + 1], " ");
+    let out = s.edit(at as u64, (at + 1) as u64, vec![b' '; 64]).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&cold), original, "edit is after helper");
+    assert_eq!(trap_span(&s), original, "expanded replacement control");
+    let out = s
+        .edit((at + 32) as u64, (at + 48) as u64, Vec::new())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&cold), original);
+    assert_eq!(
+        trap_span(&s),
+        original,
+        "editing inside replacement output must not back-map into an earlier function"
+    );
+}

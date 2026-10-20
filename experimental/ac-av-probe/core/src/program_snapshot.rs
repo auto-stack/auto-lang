@@ -221,12 +221,12 @@ impl ProgramSnapshot {
         ((s as i64 + ds) as u64, (e as i64 + de) as u64)
     }
 
-    /// Inverse map for COMPOSITION (F-828-R1-04/R5a): a current-coordinate
-    /// edit point back into mint coordinates, region-aware: a point inside
-    /// a previously INSERTED region collapses to that insertion's anchor
-    /// (editing inserted whitespace extends the original insertion); a
-    /// point after a deletion resolves past the deleted block (the
-    /// preimage can be LARGER than the current offset).
+    /// Inverse map for COMPOSITION (F-828-R1-04/R6a): a current-coordinate
+    /// point back into mint coordinates, region-aware: a point inside a
+    /// previously INSERTED region collapses to that insertion's anchor;
+    /// a point inside a REPLACEMENT's output collapses to the replaced
+    /// block's mint start; a point after a deletion resolves past the
+    /// deleted block (the preimage can exceed the current offset).
     pub fn unmap_pos(regions: &[(u64, u64, i64)], c: u64) -> u64 {
         let mut acc = 0i64;
         for &(p, len, d) in regions {
@@ -234,27 +234,65 @@ impl ProgramSnapshot {
             if c < img_start {
                 return (c as i64 - acc) as u64;
             }
-            if d > 0 && len == 0 && c < img_start + d as u64 {
-                return p; // inside the inserted text: the insertion anchor
+            let img_end = img_start + ((len as i64 + d).max(0) as u64);
+            if c < img_end {
+                // Inside an insertion's or a replacement's stretched
+                // output: the edit rewrites NEW text — the mint anchor.
+                return p;
             }
             acc += d;
         }
         (c as i64 - acc) as u64
     }
 
-    /// Compose one edit (CURRENT-coordinate start `c`, replaced
-    /// `old_len`, inserted `new_len`) into a MINT-coordinate region list:
-    /// the edit point is inverse-mapped into mint coordinates first, so
-    /// all regions share one axis regardless of which revision each edit
-    /// arrived in (F-828-R1-04/R4a).
-    pub fn compose_region(regions: &mut Vec<(u64, u64, i64)>, c: u64, old_len: u64, new_len: u64) {
-        let delta = new_len as i64 - old_len as i64;
-        if delta == 0 {
-            return;
+    /// Compose one edit — current-coordinate range [c0, c1) replaced by
+    /// `new_len` bytes — into a MINT-coordinate region list
+    /// (F-828-R1-04/R6a). BOTH ends are inverse-mapped (the mint length
+    /// of the replaced text is `unmap(c1) - unmap(c0)`, NOT the current
+    /// length: deleting previously-inserted bytes replaces ZERO mint
+    /// bytes), and regions fully re-edited by this edit are dropped:
+    /// an insertion deleted end-to-end leaves NO trace (undo = identity),
+    /// while a partial deletion keeps the insertion and records the trim.
+    pub fn compose_region(regions: &mut Vec<(u64, u64, i64)>, c0: u64, c1: u64, new_len: u64) {
+        let m0 = Self::unmap_pos(regions, c0);
+        let m1 = Self::unmap_pos(regions, c1);
+        let mint_len = m1.saturating_sub(m0);
+        // Drop regions this edit fully re-writes. Pure insertions are
+        // points in mint coordinates — containment is decided in CURRENT
+        // coordinates (their image); replaced blocks in MINT coordinates.
+        let cur_len = c1 - c0;
+        let mut acc = 0i64;
+        let mut dropped_img_len: u64 = 0;
+        let mut kept: Vec<(u64, u64, i64)> = Vec::with_capacity(regions.len() + 1);
+        for &r @ (p, len, d) in regions.iter() {
+            let img_start = (p as i64 + acc) as u64;
+            let img_len = (len as i64 + d).max(0) as u64;
+            let fully_rewritten = if len == 0 && d > 0 {
+                c0 <= img_start && img_start + d as u64 <= c1
+            } else {
+                m0 <= p && p + len <= m1
+            };
+            if fully_rewritten {
+                dropped_img_len += img_len;
+            } else {
+                kept.push(r);
+            }
+            acc += d;
         }
-        let c_mint = Self::unmap_pos(regions, c);
-        regions.push((c_mint, old_len, delta));
-        regions.sort();
+        // The recorded delta is the CURRENT-length change (deleting
+        // previously-inserted bytes removes current bytes but ZERO mint
+        // bytes). When the edit's whole current range came from dropped
+        // regions and touched no mint text, it leaves no trace (undo).
+        let erased_only_rewritten_output =
+            cur_len > 0 && mint_len == 0 && dropped_img_len >= cur_len;
+        if !erased_only_rewritten_output {
+            let delta = new_len as i64 - cur_len as i64;
+            if delta != 0 || mint_len != 0 {
+                kept.push((m0, mint_len, delta));
+            }
+        }
+        kept.sort();
+        *regions = kept;
     }
 
     /// This snapshot's revision counter.
