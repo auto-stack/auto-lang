@@ -118,7 +118,13 @@ def schema_errors(doc: dict) -> list[str]:
         sid = section.get("id", "?")
         if SECTION_FIELDS - section.keys():
             errors.append(f"section {sid}: missing {sorted(SECTION_FIELDS - section.keys())}")
-        if section.get("section_type") != sid or section.get("status") not in VALID_STATUSES:
+        # SectionType serde wire format is PASCAL CASE (real-loader
+        # verified in M815-L T-15): snake_case values fall into
+        # #[serde(other)] Unknown and SpecsStore::load silently drops the
+        # whole section. Section *id* stays snake_case.
+        wire_type = {"reports": "Reports", "goals": "Goals", "architecture": "Architecture",
+                     "designs": "Designs", "tests": "Tests", "reviews": "Reviews"}[sid]
+        if section.get("section_type") != wire_type or section.get("status") not in VALID_STATUSES:
             errors.append(f"section {sid}: type/status")
         for field in ("title", "content"):
             if not isinstance(section.get(field), str):
@@ -229,8 +235,10 @@ def self_test() -> None:
     # Tests protect the failure paths which previously allowed corrupt writes.
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "specs.json"
+        wire = {"reports": "Reports", "goals": "Goals", "architecture": "Architecture",
+                "designs": "Designs", "tests": "Tests", "reviews": "Reviews"}
         doc = {"project": "fixture", "version": 0, "sections": [
-            dict(id=sid, section_type=sid, title=sid, items=[], status="empty",
+            dict(id=sid, section_type=wire[sid], title=sid, items=[], status="empty",
                  content="", depends_on=[], last_modified=0, last_verified=None)
             for sid in EXPECTED_SECTIONS]}
         items = proposed_items(ROOT)
