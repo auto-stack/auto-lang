@@ -66,6 +66,11 @@ fn restore_and_run_inner(
     caps: &[String],
 ) -> Result<RestoreOutcome, String> {
     let store = ManagedStore::open_existing(store_dir).map_err(|e| format!("open store: {}", e))?;
+    // Pin the manifest BEFORE reading: its required-data edges retain every
+    // unit and current snapshot sidecar through validation and execution.
+    let _manifest_lease = store
+        .acquire_lease("plan798-restore-manifest", 300, Some(manifest_artifact))
+        .map_err(|e| format!("lease manifest: {}", e))?;
     // Manifest: envelope (code identity, snapshot 0) → JSON.
     let m_expect = EnvelopeIdentity::manifest(owner, 0);
     let m_bytes = get_by_artifact_id(&store, manifest_artifact, &m_expect)

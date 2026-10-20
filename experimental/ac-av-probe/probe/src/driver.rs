@@ -276,13 +276,10 @@ impl Driver {
                         staging_peak = staging_peak.max(staging_now);
                         info.payload_fp = Some(payload_fingerprint(&payload));
                         info.abc_hit = Some(payload);
-                        // F798-R15-04: hold ONE consumption lease per
-                        // request (the first consumed artifact anchors
-                        // the window; the closure's cross-artifact
-                        // liveness rides the manifest's required-data
-                        // edges — per-unit leases would tax the warm path
-                        // with a file+row write per unit).
-                        if held_leases.is_empty() {
+                        // Pin every cached artifact consumed by this request. A
+                        // first-unit lease does not retain its siblings: required
+                        // edges point from the manifest to units, never backwards.
+                        {
                             match store.acquire_lease(
                                 "plan798-request-consume",
                                 300,
@@ -349,8 +346,23 @@ impl Driver {
                 // F798-R6-01: unit/body-fp bound envelope on the A08 layer.
                 let expect = EnvelopeIdentity::mir_bound(&owner, &info.name, &info.fp);
                 let key = crate::cache::mir_unit_key(&owner, &info.name, &info.fp, &caps_fp);
-                match get_enveloped_opt(store, &key, "A08", &expect) {
-                    Ok(Some(payload)) => {
+                match crate::cache::get_enveloped_with_id(store, &key, "A08", &expect) {
+                    Ok(Some((artifact_id, payload))) => {
+                        match store.acquire_lease("plan798-request-mir", 300, Some(&artifact_id)) {
+                            Ok(l) => held_leases.push(l),
+                            Err(e) => {
+                                return (
+                                    Some(StageDiag {
+                                        stage: "cache".into(),
+                                        code: "cache.lease".into(),
+                                        message: e.to_string(),
+                                    }),
+                                    None,
+                                    vec![],
+                                    None,
+                                )
+                            }
+                        }
                         staging_now += payload.len();
                         staging_peak = staging_peak.max(staging_now);
                         if !payload_is_current_generation(&payload) {

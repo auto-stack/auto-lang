@@ -1143,3 +1143,90 @@ fn av_cache_r15_consumption_invariants() {
         let _ = std::fs::remove_dir_all(&r3);
     }
 }
+
+/// Each consumed sibling is pinned; a first-unit lease cannot reach other
+/// units through reverse manifest edges. Manifest restore must pin its own
+/// required-data closure, and every success/failure return releases locks.
+#[test]
+fn av_cache_consumption_leases_cover_siblings_and_release() {
+    let root = tmpdir("consume-leases");
+    let mut driver = Driver::with_store(&root, "lease-project").unwrap();
+    assert!(driver.request(BASE, "d_main", &[]).ok());
+    let store = open_store(&root).unwrap();
+    let hot = driver.request(BASE, "d_main", &[]);
+    assert!(hot.ok(), "{:?}", hot.diag);
+    let manifest = hot.manifest.unwrap();
+    let pins: Vec<String> = store
+        .db()
+        .prepare("SELECT artifact FROM leases WHERE purpose='plan798-request-consume'")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(pins.len(), manifest.units.len());
+    for unit in &manifest.units {
+        assert!(pins.contains(&unit.artifact));
+    }
+    let key = cache::manifest_key(&manifest.owner, &manifest.entry, &manifest.fingerprint());
+    let artifact = store
+        .get_artifact("A09", &key)
+        .unwrap()
+        .unwrap()
+        .artifact_id;
+    let restored = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &artifact,
+        hot.snapshot,
+        &[],
+    );
+    assert!(restored.executed_ok, "{:?}", restored.error);
+    let count: i64 = store
+        .db()
+        .query_row(
+            "SELECT COUNT(*) FROM leases WHERE purpose='plan798-restore-manifest' AND artifact=?1",
+            [&artifact],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1, "real restore entrance pins the manifest");
+    let refused = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        "wrong-owner",
+        &manifest.entry,
+        &artifact,
+        hot.snapshot,
+        &[],
+    );
+    assert!(!refused.executed_ok);
+    // Removing ABC rows drives the A08 restore path; its pins must cover both
+    // consumed MIR artifacts too, not only the ordinary A09 path.
+    store.purge_layer("A09").unwrap();
+    let mir = driver.request(BASE, "d_main", &[]);
+    assert!(mir.ok(), "{:?}", mir.diag);
+    let count: i64 = store
+        .db()
+        .query_row(
+            "SELECT COUNT(DISTINCT artifact) FROM leases WHERE purpose='plan798-request-mir'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count as usize, manifest.units.len());
+    let ids: Vec<String> = store
+        .db()
+        .prepare("SELECT lease_id FROM leases")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    for id in ids {
+        assert!(!store.lease_live(&id).unwrap(), "leaked {id}");
+    }
+    drop(driver);
+    drop(store);
+    let _ = std::fs::remove_dir_all(root);
+}
