@@ -14,9 +14,9 @@
 //! object, in-flight executions keep the old one alive, and a failed
 //! candidate never becomes one (the caller simply keeps the previous root).
 
+use crate::contract::MIR_SCHEMA;
 use crate::function_code::FunctionCode;
 use crate::mir::{CalleeRef, FnSig, MirImport, MirInstr, MirModule, MirType};
-use crate::contract::MIR_SCHEMA;
 use std::sync::Arc;
 
 /// One immutable program revision: resident code set + linked dispatch view.
@@ -155,15 +155,14 @@ impl ProgramSnapshot {
                     t.sig
                 ));
             }
-            merged.funcs[fi].blocks[bi].instrs[ii] =
-                match &merged.funcs[fi].blocks[bi].instrs[ii] {
-                    MirInstr::Call { dst, args, .. } => MirInstr::Call {
-                        callee: CalleeRef::Func(t.idx),
-                        dst: *dst,
-                        args: args.clone(),
-                    },
-                    other => unreachable!("patch site is a call: {other:?}"),
-                };
+            merged.funcs[fi].blocks[bi].instrs[ii] = match &merged.funcs[fi].blocks[bi].instrs[ii] {
+                MirInstr::Call { dst, args, .. } => MirInstr::Call {
+                    callee: CalleeRef::Func(t.idx),
+                    dst: *dst,
+                    args: args.clone(),
+                },
+                other => unreachable!("patch site is a call: {other:?}"),
+            };
         }
         let entry_idx = merged
             .funcs

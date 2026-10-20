@@ -11,7 +11,7 @@
 //! at the session layer.
 
 use auto_ac_prototype::hir::{self, HirDomain};
-use auto_ac_prototype::verify::CheckedFunction;
+use auto_ac_prototype::verify::{declaration_context_fingerprint, CheckedFunction};
 use std::collections::BTreeMap;
 
 /// One function's interface facts (what a caller may depend on).
@@ -42,6 +42,11 @@ pub struct FnEnv {
     /// Content revision over all def ids + signatures; two envs with equal
     /// revisions provide identical cross-function facts.
     revision: String,
+    /// The ac-core declaration-context fingerprint derived from THIS
+    /// environment's own bundle (never a caller-supplied string). Body
+    /// credentials are current only while this value equals the
+    /// credential's bound revision.
+    context_revision: String,
     fns: Vec<FnInterface>,
     by_name: BTreeMap<String, usize>,
 }
@@ -94,11 +99,18 @@ impl FnEnv {
             mix_revision(&mut revision, &f.sig);
         }
         Ok(FnEnv {
+            context_revision: declaration_context_fingerprint(m),
             owner,
             revision,
             fns,
             by_name,
         })
+    }
+
+    /// THIS environment's declaration-context fingerprint (self-derived
+    /// from the bundle the env was built on).
+    pub fn context_revision(&self) -> &str {
+        &self.context_revision
     }
 
     pub fn revision(&self) -> &str {
@@ -121,29 +133,29 @@ impl FnEnv {
         self.interface_of(source_name).map(|f| f.def_id.as_str())
     }
 
-    /// Whether a body credential minted under `context_revision` (the
-    /// ac-core fingerprint of the bundle it was verified against) may still
-    /// be consumed under THIS environment: the def must be present here
-    /// with the same id AND the caller's context revision must still be the
-    /// current one (the session threads the minted revision; a changed
-    /// declaration context invalidates every outstanding body credential —
-    /// re-verify, never re-stamp).
-    pub fn credential_current(
-        &self,
-        credential: &CheckedFunction,
-        context_revision: &str,
-    ) -> bool {
+    /// Whether a body credential may still be consumed under THIS
+    /// environment (F-828-R1-06): the def must exist here under the same
+    /// def id, the credential's OWNER must be this environment's owner,
+    /// and the credential's context revision must equal the fingerprint
+    /// THIS environment derived from its own bundle. No caller-supplied
+    /// string participates — a changed declaration context invalidates
+    /// every outstanding credential (re-verify, never re-stamp).
+    pub fn credential_current(&self, credential: &CheckedFunction) -> bool {
         self.fns
             .iter()
             .any(|f| f.def_id == credential.def_id_text())
-            && credential.context_revision() == context_revision
+            && credential.owner() == self.owner
+            && credential.context_revision() == self.context_revision
     }
 
     /// Fast-path gate for one edit: the changed function's interface in the
     /// candidate bundle must equal the resident environment's. Any drift
     /// (signature change, rename, def-set change) is a non-fast-path edit.
     pub fn interface_unchanged(&self, candidate: &FnEnv, source_name: &str) -> bool {
-        match (self.interface_of(source_name), candidate.interface_of(source_name)) {
+        match (
+            self.interface_of(source_name),
+            candidate.interface_of(source_name),
+        ) {
             (Some(a), Some(b)) => a.same_interface(b) && self.revision == candidate.revision,
             _ => false,
         }

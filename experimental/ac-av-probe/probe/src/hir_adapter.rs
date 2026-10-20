@@ -225,7 +225,18 @@ pub fn lower_function_unit(
         match &d.kind {
             hir::DefKind::Function { ty, body, .. } => {
                 if d.id_text == def_id_text {
-                    def_map.insert(di as u32, CalleeRef::Func(0));
+                    // Self-recursion also rides the unit's import
+                    // convention (F-828-R1-03): a unit is verifiable only
+                    // when EVERY callee — itself included — is an import;
+                    // the snapshot link resolves `fn:<self>` back to this
+                    // unit with a signature check.
+                    let self_sig = fn_type_index(*ty, module, &mut out)?;
+                    let imp = out.intern_import(MirImport {
+                        symbol: format!("fn:{}", d.id_text),
+                        effect: Effect::Pure,
+                        sig: self_sig,
+                    });
+                    def_map.insert(di as u32, CalleeRef::Import(imp));
                     target = Some((di as u32, *ty, *body));
                 } else {
                     let sig = fn_type_index(*ty, module, &mut out)?;

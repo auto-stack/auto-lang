@@ -21,9 +21,10 @@ use crate::cache::{
     abc_unit_key, canonical_hir_function, caps_fingerprint, get_enveloped_opt, open_store,
     payload_fingerprint, put_enveloped, split_units, EnvelopeIdentity,
 };
+use crate::driver::front_door_admit;
 use crate::function_queries::FnEnv;
-use crate::semrefs::content_version_of;
 use crate::hir_adapter::{lower_checked, lower_function_unit};
+use crate::semrefs::content_version_of;
 use ac_syntax_core_adapter::{project_decl_strict, project_strict, CoreKinds};
 use ac_syntax_grammar::compile as compile_grammar;
 use ac_syntax_rt::edit::incremental_reparse;
@@ -35,9 +36,7 @@ use ac_syntax_rt::snapshot::{Edit, EditRequest, PageStore, Snapshot};
 use auto_ac_prototype::atom_text::{Diagnostic, Span};
 use auto_ac_prototype::hir;
 use auto_ac_prototype::source::ast::{Block, FnItem, Item, Program as AstProgram};
-use auto_ac_prototype::source::{
-    compile_program_parts, compile_scalar_source, SourceProfile,
-};
+use auto_ac_prototype::source::{compile_program_parts, compile_scalar_source, SourceProfile};
 use auto_ac_prototype::verify::{verify_function, CheckedFunction};
 use auto_av_core::abc::{decode_abc, encode_abc};
 use auto_av_core::abc_verify::verify_abc;
@@ -189,6 +188,9 @@ impl EditOutcome {
 /// verified artifacts plus the session-state advance, held OUT of the
 /// session until [`FunctionIncrementalSession::commit`] accepts it.
 pub struct PreparedEdit {
+    /// MINTING session's identity — a candidate handed to another session
+    /// is refused even at equal revision numbers (F-828-R1-05).
+    session_id: u64,
     base_revision: u64,
     changed_idx: usize,
     changed_name: String,
@@ -199,6 +201,11 @@ pub struct PreparedEdit {
     new_snap: Snapshot,
     new_parse: ParseOutput,
 }
+
+/// Process-wide session counter for unforgeable cross-session candidate
+/// binding (F-828-R1-05): a `PreparedEdit` minted by one session is
+/// refused by another even at equal revision numbers.
+static NEXT_SESSION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
 
 /// The resident session. Single-threaded (ac-syntax state is `Rc`).
 pub struct FunctionIncrementalSession {
@@ -221,6 +228,8 @@ pub struct FunctionIncrementalSession {
     context_revision: String,
     current: Arc<ProgramSnapshot>,
     revision: u64,
+    /// Unique session identity bound into every prepared candidate.
+    session_id: u64,
     counters: SessionCounters,
     /// Optional persistent backing (PLAN-828 T-07): ABC units + the session
     /// manifest ride the 783 store; a warm restart re-admits them instead
@@ -236,6 +245,9 @@ pub fn warmup(
     entry_def_id: &str,
     caps: &[String],
 ) -> Result<FunctionIncrementalSession, String> {
+    // Input admission BEFORE any allocation (F-828-R1-09): the same frozen
+    // size/nesting front door the 798 driver runs, not a session exemption.
+    front_door_admit(src).map_err(|d| d.message)?;
     let compiled =
         compile_scalar_source(src, "probe.at", caps).map_err(|ds| render_diags(src, &ds))?;
     let checked = &compiled.checked;
@@ -255,7 +267,8 @@ pub fn warmup(
 
     // Whole-module lower + per-unit admission (cold; mirrors the 798 path).
     let snapshot_hash = fnv64(src.as_bytes());
-    let mir = lower_checked(&checked, &entry_def_id, snapshot_hash).map_err(|e| format!("{e:?}"))?;
+    let mir =
+        lower_checked(&checked, &entry_def_id, snapshot_hash).map_err(|e| format!("{e:?}"))?;
     let units = split_units(&mir).map_err(|e| e)?;
 
     // ac-syntax resident state over the same source, under the versioned
@@ -288,12 +301,11 @@ pub fn warmup(
             .iter()
             .position(|d| d.id_text == entry_def_id)
             .ok_or_else(|| format!("entry def `{entry_def_id}` not found"))?;
-        let cf = verify_function(bundle.clone(), entry_idx)
-            .map_err(|ds| render_diags(src, &ds))?;
+        let cf = verify_function(bundle.clone(), entry_idx).map_err(|ds| render_diags(src, &ds))?;
         cf.context_revision().to_string()
     };
-    let projected =
-        project_strict(&grammar, &kinds, &parse.tree, &snap).map_err(|e| format!("project: {e:?}"))?;
+    let projected = project_strict(&grammar, &kinds, &parse.tree, &snap)
+        .map_err(|e| format!("project: {e:?}"))?;
     let ast_fns: Vec<(String, FnItem)> = projected
         .items
         .into_iter()
@@ -307,7 +319,13 @@ pub fn warmup(
     let mut codes: Vec<Arc<FunctionCode>> = Vec::new();
     let mut ast_i = 0usize;
     for (di, d) in m.defs.iter().enumerate() {
+        // Intrinsic declarations (trace marks) are part of the preserved
+        // support surface (F-828-R1-08): they ride the unit/lower import
+        // convention and hold no function record of their own.
         let hir::DefKind::Function { body, .. } = &d.kind else {
+            if matches!(&d.kind, hir::DefKind::Intrinsic { .. }) {
+                continue;
+            }
             return Err(format!("def `{}` is not a plain function", d.id_text));
         };
         // Function defs and AST fn items share source order; the record's
@@ -344,7 +362,7 @@ pub fn warmup(
         // a later content hit must return the very same object.
         let body_arc = Arc::new(body_ref.clone());
         let mut history = BTreeMap::new();
-        history.insert(warm_cv, (body_arc.clone(), code.clone()));  // first entry: within cap
+        history.insert(warm_cv, (body_arc.clone(), code.clone())); // first entry: within cap
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
@@ -369,6 +387,7 @@ pub fn warmup(
         ProgramSnapshot::link(codes, &entry_def_id, 0).map_err(|e| format!("warm-up link: {e}"))?,
     );
 
+    let session_id = NEXT_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     Ok(FunctionIncrementalSession {
         kinds,
         entry_def_id: entry_def_id.to_string(),
@@ -383,6 +402,7 @@ pub fn warmup(
         context_revision,
         current: snapshot,
         revision: 0,
+        session_id,
         counters: SessionCounters::default(),
         store: None,
     })
@@ -406,7 +426,8 @@ pub fn warmup_persisted(
         .persist_all_units()
         .map_err(|e| format!("persist units: {e:?}"))?;
     session
-        .persist_manifest().map_err(|e| format!("persist manifest: {e:?}"))?;
+        .persist_manifest()
+        .map_err(|e| format!("persist manifest: {e:?}"))?;
     Ok(session)
 }
 
@@ -473,12 +494,26 @@ pub fn restore(
     // Swap in the RESTORED code (the cold compile's units are discarded —
     // only their content versions/bodies seed the history).
     let codes: Vec<Arc<FunctionCode>> = restored;
-    let snapshot = match ProgramSnapshot::link(codes, entry_def_id, 0) {
+    let snapshot = match ProgramSnapshot::link(codes.clone(), entry_def_id, 0) {
         Ok(sn) => Arc::new(sn),
         Err(_) => return cold(),
     };
+    // F-828-R1-07: the RESTORED code objects become the resident ones —
+    // records AND the content-history entries — so a later commit keeps
+    // every unchanged function's restored object identity instead of
+    // swapping back to the cold-compiled ones.
+    for (i, code) in codes.iter().enumerate() {
+        let rec = &mut session.fns[i];
+        let body = rec.hir_body.clone();
+        if let Some(entry) = rec.history.iter_mut().next() {
+            *entry.1 = (body.clone(), code.clone());
+        }
+        rec.code = code.clone();
+    }
     session.current = snapshot;
-    session.counters.set("restore_units_admitted", session.fns.len() as u64);
+    session
+        .counters
+        .set("restore_units_admitted", session.fns.len() as u64);
     session.counters.set("restore_materialize", 1);
     session.store = Some((store, project.to_string()));
     Ok(session)
@@ -546,10 +581,7 @@ impl FunctionIncrementalSession {
         // declaration context as the outstanding ones — a drift here means
         // the interface gate above missed a context change (defense in
         // depth; reject rather than re-stamp).
-        if !self
-            .env
-            .credential_current(&checked_fn, &self.context_revision)
-        {
+        if !self.env.credential_current(&checked_fn) {
             return Ok(Err(vec![
                 "body credential minted under a different declaration context".to_string(),
             ]));
@@ -599,8 +631,7 @@ impl FunctionIncrementalSession {
                 .history
                 .keys()
                 .find(|k| {
-                    !rec
-                        .history
+                    !rec.history
                         .get(*k)
                         .map(|(_, c)| Arc::ptr_eq(c, &rec.code))
                         .unwrap_or(false)
@@ -664,7 +695,9 @@ impl FunctionIncrementalSession {
                 .to_flat();
             let key = abc_unit_key(&owner, &rec.def_id, &cv, &caps_fp);
             let expect = EnvelopeIdentity::abc_bound(&owner, &rec.def_id, &cv);
-            if let Err(e) = put_enveloped(store, &key, "A09", &expect, &bytes, vec![], Some(project)) {
+            if let Err(e) =
+                put_enveloped(store, &key, "A09", &expect, &bytes, vec![], Some(project))
+            {
                 // Same tolerance as the 798 driver's stale-rebuild path
                 // (F798-R12-03): the unit payload embeds source_snapshot,
                 // so the same content version re-persisted across source
@@ -711,7 +744,10 @@ impl FunctionIncrementalSession {
         let key = ac_artifact_probe::identity::QueryKey::new(
             &crate::cache::ABC_LAYER,
             vec![
-                ("producer".into(), auto_av_core::contract::PRODUCER_ID.into()),
+                (
+                    "producer".into(),
+                    auto_av_core::contract::PRODUCER_ID.into(),
+                ),
                 ("owner".into(), owner.clone()),
                 ("kind".into(), "session-manifest".into()),
                 ("format".into(), "1".into()),
@@ -723,6 +759,11 @@ impl FunctionIncrementalSession {
         put_enveloped(store, &key, "A09", &expect, &body, vec![], Some(project))
             .map_err(|e| format!("manifest put: {e:?}"))?;
         Ok(())
+    }
+
+    /// This session's identity token.
+    pub fn session_id(&self) -> u64 {
+        self.session_id
     }
 
     /// PREPARE (PLAN-828 T-06): run the whole candidate chain (syntax
@@ -828,6 +869,9 @@ impl FunctionIncrementalSession {
                 .map_err(|e| format!("new source read: {e:?}"))?,
         )
         .map_err(|e| format!("utf8: {e:?}"))?;
+        // The edited source must pass the same front door (a growing edit
+        // cannot push the program past the frozen input budget).
+        front_door_admit(&new_src).map_err(|d| d.message)?;
 
         // Project ONLY the changed declaration (PLAN-828 T-02): the
         // incremental CST is the source of truth and unchanged declarations
@@ -873,8 +917,13 @@ impl FunctionIncrementalSession {
         // Per-function frontend over the synth program: the REAL resolve /
         // typecheck / emit+bind entries, carrying real work only for the
         // changed function.
-        let parts = match compile_program_parts(&synth, &new_src, "probe.at", &self.caps, SourceProfile::Scalar)
-        {
+        let parts = match compile_program_parts(
+            &synth,
+            &new_src,
+            "probe.at",
+            &self.caps,
+            SourceProfile::Scalar,
+        ) {
             Ok(p) => p,
             Err(ds) => {
                 return Ok(Err(EditOutcome::rejected(
@@ -898,17 +947,17 @@ impl FunctionIncrementalSession {
             .iter()
             .position(|d| d.id_text == self.fns[changed_idx].def_id)
             .ok_or_else(|| {
-                format!("def {} missing in synth bundle", self.fns[changed_idx].def_id)
+                format!(
+                    "def {} missing in synth bundle",
+                    self.fns[changed_idx].def_id
+                )
             })?;
 
         // Fast-path gate through the interface environment (T-03): the
         // changed function's interface AND the whole declaration context
         // must be identical to the resident environment.
         let candidate_env = FnEnv::from_bundle(&parts.bundle)?;
-        if !self
-            .env
-            .interface_unchanged(&candidate_env, &changed_name)
-        {
+        if !self.env.interface_unchanged(&candidate_env, &changed_name) {
             return Ok(Err(EditOutcome::rejected(
                 self.revision,
                 "non-fast-path: interface or declaration context changed".to_string(),
@@ -960,6 +1009,7 @@ impl FunctionIncrementalSession {
             };
 
         Ok(Ok(PreparedEdit {
+            session_id: self.session_id,
             base_revision: self.revision,
             changed_idx,
             changed_name,
@@ -982,6 +1032,13 @@ impl FunctionIncrementalSession {
     /// current is refused — a late/slow candidate never overwrites a newer
     /// committed result (its diagnostics carry the refusal reason).
     pub fn commit(&mut self, prepared: PreparedEdit) -> EditOutcome {
+        if prepared.session_id != self.session_id {
+            return EditOutcome::rejected(
+                self.revision,
+                "cross-session candidate refused: prepared by a different session".to_string(),
+                Vec::new(),
+            );
+        }
         if prepared.base_revision != self.revision {
             return EditOutcome::rejected(
                 self.revision,
@@ -1013,6 +1070,7 @@ impl FunctionIncrementalSession {
             }
         };
         let PreparedEdit {
+            session_id,
             base_revision,
             changed_name,
             content_version,
@@ -1023,9 +1081,13 @@ impl FunctionIncrementalSession {
             new_parse,
             ..
         } = prepared;
-        let _ = base_revision;
+        let _ = (session_id, base_revision);
         let changed_rec = &mut self.fns[changed_idx];
-        Self::history_insert(changed_rec, content_version, (hir_body.clone(), code.clone()));
+        Self::history_insert(
+            changed_rec,
+            content_version,
+            (hir_body.clone(), code.clone()),
+        );
         changed_rec.hir_body = hir_body;
         changed_rec.code = code;
 
@@ -1033,7 +1095,9 @@ impl FunctionIncrementalSession {
         // session manifest). A store failure is recorded but never
         // rolls the installed revision back — memory state is primary.
         if self.store.is_some() {
-            let persist = self.persist_all_units().and_then(|()| self.persist_manifest());
+            let persist = self
+                .persist_all_units()
+                .and_then(|()| self.persist_manifest());
             if let Err(e) = persist {
                 self.counters.set("persist_error", 1);
                 self.counters.bump(&format!("persist_error_log:{e}"));

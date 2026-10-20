@@ -105,7 +105,8 @@ pub fn run_formal_series(revisions: u32) -> Result<FormalReport, String> {
         peak_slot_bytes = peak_slot_bytes.max(trace.peak_slot_bytes);
         let got = match exec {
             ExecOutcome::Success {
-                value: Value::I32(v), ..
+                value: Value::I32(v),
+                ..
             } => v,
             other => return Err(format!("revision {n}: non-success {other:?}")),
         };
@@ -159,10 +160,7 @@ fn stage_totals(session: &FunctionIncrementalSession) -> Totals {
         total += counters.stage_of("reuse_hit", &name);
         per_fn.insert(name, total);
     }
-    let whole_module = counters
-        .whole_module()
-        .values()
-        .sum::<u64>();
+    let whole_module = counters.whole_module().values().sum::<u64>();
     Totals {
         per_fn,
         whole_module,
@@ -171,11 +169,7 @@ fn stage_totals(session: &FunctionIncrementalSession) -> Totals {
     }
 }
 
-fn delta_structural(
-    prev: &Totals,
-    now: &Totals,
-    revision: u32,
-) -> StructuralSnapshot {
+fn delta_structural(prev: &Totals, now: &Totals, revision: u32) -> StructuralSnapshot {
     let mut unaffected = 0u64;
     for (name, total) in &now.per_fn {
         if name == "fn_037" {
@@ -204,11 +198,7 @@ impl StructuralSnapshot {
 
 /// The structural + timing gate. Every axis can fail independently
 /// (V-09 anti-fakes): see `validate_and_gate`.
-pub fn validate_and_gate(
-    report: &FormalReport,
-    gate_ms: f64,
-    min_samples: usize,
-) -> Vec<String> {
+pub fn validate_and_gate(report: &FormalReport, gate_ms: f64, min_samples: usize) -> Vec<String> {
     let mut failures = Vec::new();
     if gate_ms <= 0.0 {
         // A zero threshold must fail by construction (the 798 formal

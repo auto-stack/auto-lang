@@ -322,10 +322,12 @@ fn main() int { return helper(1, 2) }";
         let cf = verify_function(bundle.clone(), idx).expect("verify");
         (env, cf.context_revision().to_string())
     };
-    let (env_a, rev_a) = mint(a);
-    let (env_b, rev_b) = mint(b);
-    assert_ne!(rev_a, rev_b, "different declaration contexts");
-    // A credential minted under context A is current in env A only.
+    let (env_a, _rev_a) = mint(a);
+    let (env_b, _rev_b) = mint(b);
+    assert_ne!(_rev_a, _rev_b, "different declaration contexts");
+    // A credential minted under context A is current in env A only — the
+    // ENVIRONMENT decides from its own bundle (F-828-R1-06), no
+    // caller-supplied revision string participates.
     let cf_a = {
         let compiled = compile_scalar_source(a, "probe.at", &[]).expect("compiles");
         let bundle = compiled.checked.bundle();
@@ -336,8 +338,8 @@ fn main() int { return helper(1, 2) }";
             .unwrap();
         verify_function(bundle.clone(), idx).expect("verify")
     };
-    assert!(env_a.credential_current(&cf_a, &rev_a));
-    assert!(!env_b.credential_current(&cf_a, &rev_b));
+    assert!(env_a.credential_current(&cf_a));
+    assert!(!env_b.credential_current(&cf_a));
     // Interface queries are owner-scoped: unknown names are absent.
     assert!(env_a.interface_of("nope").is_none());
     assert_eq!(env_a.def_id_of("helper"), Some("d_helper"));

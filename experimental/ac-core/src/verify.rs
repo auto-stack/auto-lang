@@ -111,6 +111,8 @@ impl CheckedModule {
 pub struct CheckedFunction {
     body: hir::Body,
     def: hir::Def,
+    /// Owning module id (the 796 owner axis at the credential level).
+    owner: String,
     context_revision: String,
     domain: HirDomain,
 }
@@ -130,6 +132,11 @@ impl CheckedFunction {
 
     pub fn def_id_text(&self) -> &str {
         &self.def.id_text
+    }
+
+    /// The owning module id this credential was verified within.
+    pub fn owner(&self) -> &str {
+        &self.owner
     }
 
     pub fn context_revision(&self) -> &str {
@@ -221,10 +228,7 @@ pub fn verify_function(
             _ => {
                 v.error(
                     "verify.callee-type",
-                    format!(
-                        "declaration `{}` does not have a function type",
-                        d.id_text
-                    ),
+                    format!("declaration `{}` does not have a function type", d.id_text),
                     d.span,
                 );
             }
@@ -255,7 +259,10 @@ pub fn verify_function(
             return Err(vec![Diagnostic::new(
                 Stage::Verify,
                 "verify.def-kind",
-                format!("def `{}` is an intrinsic and has no body to verify", def.id_text),
+                format!(
+                    "def `{}` is an intrinsic and has no body to verify",
+                    def.id_text
+                ),
                 def.span,
             )]);
         }
@@ -294,6 +301,7 @@ pub fn verify_function(
         Ok(CheckedFunction {
             body: body.clone(),
             def: def.clone(),
+            owner: m.id_text.clone(),
             context_revision: context_fingerprint(m),
             domain: bundle.domain,
         })
@@ -307,6 +315,14 @@ pub fn verify_function(
 /// signatures recursively) and every def (id + kind + signature type). Two
 /// contexts with equal fingerprints provide identical cross-function facts
 /// for body verification.
+/// The declaration-context fingerprint of a module (the SAME function
+/// [`verify_function`] binds into `CheckedFunction`s). Exposed so consumer
+/// environments derive their identity from their own bundle instead of
+/// trusting a caller-supplied string (F-828-R1-06).
+pub fn declaration_context_fingerprint(m: &hir::Module) -> String {
+    context_fingerprint(m)
+}
+
 fn context_fingerprint(m: &hir::Module) -> String {
     fn mix(h: &mut u64, part: &str) {
         for b in part.bytes() {
