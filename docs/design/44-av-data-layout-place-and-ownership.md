@@ -19,7 +19,7 @@ planned_by: [PLAN-820, PLAN-821, PLAN-822, PLAN-823, PLAN-824, PLAN-825, PLAN-82
 
 | 事实源 | 当前事实与采用边界 |
 |---|---|
-| [798](../plans/798-typed-mir-abc-av-probe.md)及其唯一工作树 | 文档合同executing r4（历史起草观察r2/r3）；探针有i32/bool、typed mutable slots、MIR/ABC验证、显式帧；尚非复合数据引擎，分支不是已交付依赖 |
+| [798](../plans/archive/798-typed-mir-abc-av-probe.md)与[当前Spec](../specs/auto-av/project.md) | r7已交付有限i32/bool、typed mutable slots、MIR/ABC验证/执行与受管恢复；尚非复合数据引擎。D798收据齐全，完整函数增量归优先828 |
 | [HIR阶段合同](../specs/auto-hir/stage-contract.md) | Checked凭证由对应域verify创建；HIR保留语义和来源，不泄漏native布局 |
 | [774数据资源合同](../specs/auto-ac/data-resource-contract.md)、[782组合域](../specs/auto-ac/source-text-record.md) | AC已有借/拥有文本、char、嵌套record、根move/clone及有限所有权；不能从旧AVM另取冲突语义 |
 | [796](../specs/auto-semantics/project.md) | 名义身份/签名/meta是语义事实；AV执行布局是下游投影，不另建推导权威 |
