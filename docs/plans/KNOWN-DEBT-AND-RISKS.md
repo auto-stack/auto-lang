@@ -298,6 +298,12 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
 
+### Plan 797（2026-10-20，R13 完整复审，needs_fix）
+
+受审 `ae51fea21171ef14ae0630498fab3203318edbce`，revision1；[R13完整报告/AC映射/原始反例](attachments/797/review-r13/review.md)。**F-R4-10 CLOSED**：五表+完整flatten路径成本，原1700名直链/共享DAG均超8MiB前拒、1300名终门拒、900名及小图合法控制通过；T-02闭合。**唯一OPEN/P1仍F-R4-07**：传递头引用 `../shared/dep.h`，新增更近文件不在source/-I/已成功解析依赖父目录的后代树里，仍hit PE17而fresh29。已知依赖目录递归不是全部候选搜索位置；无新增finding ID/规模承诺，登记不批准延期/缩面。
+
+**executing4/9**，T01–04完成；184定向测试pass+1既有ignored，210周转样本全保留、正式完成后硬门P95=683/84ms，F-R4-09及其他旧finding维持关闭。原树work修缓存适用域后提交再审。第八次完整final未过；未改实现/整档/合入/canonical Spec/live ledger；merge-owned门禁/沉淀/归档/guard仍pending。以下为历史交接/审查。
+
 ### Plan 797（2026-10-20，R12 修复轮完成，待 T-08 复审）
 
 R12 复审（受审 `634d4d0ab`，needs_fix）2 项组合残项已全部修复（修复提交 `ae51fea21`，同树）：F-R4-07 搜索域清单统一递归（传递头子路径遮蔽 17→29 反例；R11 顶层妥协的前提"命中回归"经实测推翻——依赖父目录集实为 cside 0.1ms）；F-R4-10 第 5 memo 记忆化最长 flatten 路径成本（共享子图完整展开入终门；1300 变体走查过终门拒、900 控制）。probe 82/82、父侧 13/13、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
@@ -2336,7 +2342,7 @@ put 次数进一步上升（64MiB 构建 366s，仍为 probe 边界）；D-787-0
 
 受审 `31628c5d7e11e92d92e0d931f89700d8a34eba91`，plan r2；[报告/证据](attachments/798/review-r2.md)。R1预算revision、锁入库及worker阈值旧例有实证进展（0ms反控worker exit5）；R1-F01持续开放，T06..08仍未完成，binding子进程exit3。R1-F03/F05未全闭：F798-R2-01 P2正式脚本在写summary后又用未赋值benchOut覆盖，独立反控29bytes→0；F798-R2-02 P1私有内存仅bench前后端点差，暂存计数在closure重分配前记录，不能证明OS峰值/8+16+8分区上界（未声称实测已超限）。正规化丢失T01/04/05行首的任务表、重开T05，executing4/10；其余work声明保留但未授完整独立pass。已知未交付使本轮仍止于readiness/定向检查，完整最终验收pending；原树先闭合所有finding及必验项。登记不批准延期，未改实施/合入；merge-owned全档与收尾pending。
 
-### Plan 798 R2 修复轮新债务候选：已着陆 scalar 前端瞬态内存峰值（2026-10-16，F798-R2-02 归因）
+### Plan 798 R2 修复轮新债务候选：已着陆 scalar 前端瞬态内存峰值（2026-10-16，F798-R2-02 归因；2026-10-20 R12 精确归属更新）
 
 PLAN-798 T-05 峰值采样（worktree 修复轮）实测：`auto_ac_prototype::source::
 compile_scalar_source` 在 267 KiB 冻结参考负载上的**单相瞬态峰值 ≈180-211 MB
@@ -2350,6 +2356,19 @@ compile_scalar_source 的瞬态分配做剖析与收敛（或由 798 后续修�
 后重定目标语义）。证据：docs/reports/plan798/turnaround.md（r2.1 内存章节）
 + turnaround-summary.json（frontend_peak_bytes/target_met 字段）+
 av_resources_peak_sampler_distinguishes_transient_spike（采样器区分性反控）。
+
+**2026-10-20 R12-04 精确归属（T-01 义务交付，分阶段测量，常驻工具
+`experimental/ac-av-probe/probe/src/bin/mem_stage_probe.rs`，release 独立进程
+2ms 采样）**：冻结 273 575 B 负载上，parse+resolve+typecheck（公共 seam 逐段、
+值全持有）合计 ≤ ~20 MiB；Emitter 渲染 atom_text 4 719 087 B；
+**`descriptor::bind(scalar_descriptor, atom_text)` 单独运行峰值
+166 649 856 B ≈ 158.9 MiB——即 ac-core 公开缝 `compile_parts_with` 强制的
+"源码→atom 渲染→atom 整体重解析+重绑定"架构内部、单一公共 API 调用内即超
+128 MiB**；compile_parts_with 整体 209 444 864 B、完整 driver 请求 ≈207 MiB。
+线性缩放（~765 B 峰值/源字节）：49/103/167/209 MiB @ 60/136/197/274 KiB。
+798 侧（探针管线全层）个位数 MB，无授权内收敛路径；PLAN-798 按 §5.8 以
+needs_replan 路由 r5 资源政策修订（选项：ac-core owner 收敛 bind 瞬态 / 重定
+worker 预算口径 / 拆分前端瞬态为独立预算线），在此之前 798 资源 AC 保持未闭。
 
 - 2026-10-16 PLAN-800 review R1：F800-R1-01（SD声称未实现的找包错误映射）、F800-R1-02（新核心格式门失败）为本合同待修候选，**不作可延期债务豁免**；见 [审核收据](attachments/800/review-r1/REVIEW.md)。当前 executing，T06/07待修复复审。
 
