@@ -745,3 +745,169 @@ fn tail() int { return 9 }
         "editing inside replacement output must not back-map into an earlier function"
     );
 }
+
+/// r7a-check: named combination controls + the 186-cell interval matrix,
+/// verbatim from the review replay (cold compilation is the oracle).
+fn r7a_edit_and_compare(
+    s: &mut auto_av_probe::session::FunctionIncrementalSession,
+    a: usize,
+    b: usize,
+    n: usize,
+    label: &str,
+) {
+    let out = s.edit(a as u64, b as u64, vec![b' '; n]).unwrap();
+    assert!(out.ok, "{label}: {out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(s),
+        trap_span(&cold),
+        "{label}: edit=({a},{b},{n})"
+    );
+}
+
+#[test]
+fn r7a_replacing_entire_insertion_with_nonempty_output_keeps_new_output() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("return 1 / 0").unwrap();
+    r7a_edit_and_compare(&mut s, at, at, 32, "insert 32");
+    r7a_edit_and_compare(&mut s, at, at + 32, 16, "replace all inserted bytes");
+}
+
+#[test]
+fn r7a_spanning_replacement_restores_original_source() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap() - 1;
+    r7a_edit_and_compare(&mut s, at, at, 32, "insert before original separator");
+    let out = s.edit(at as u64, (at + 33) as u64, b" ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), R6A_SRC, "33-to-1 restores exact original bytes");
+    let cold = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "delta discarded with the insertion"
+    );
+}
+
+#[test]
+fn r7a_partial_delete_then_delete_rest_recovers_identity() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("return 1 / 0").unwrap();
+    r7a_edit_and_compare(&mut s, at, at, 32, "insert 32");
+    r7a_edit_and_compare(&mut s, at + 8, at + 24, 0, "delete middle 16");
+    let out = s.edit(at as u64, (at + 16) as u64, Vec::new()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), R6A_SRC);
+    let cold = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold), "undo remaining insertion");
+}
+
+#[test]
+fn r7a_replacing_expansion_output_recovers_identity() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap() - 1;
+    r7a_edit_and_compare(&mut s, at, at + 1, 64, "expand original separator");
+    let out = s.edit(at as u64, (at + 64) as u64, b" ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), R6A_SRC);
+    let cold = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "undo whitespace replacement"
+    );
+}
+
+fn r7a_edge_delete_then_insert(a: usize, b: usize) {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    r7a_edit_and_compare(&mut s, at, at, 32, "insert at token boundary");
+    r7a_edit_and_compare(&mut s, at + a, at + b, 0, "delete edge of insertion");
+    let at2 = s.src().find("1 / 0").unwrap();
+    r7a_edit_and_compare(&mut s, at2, at2, 8, "insert again at current token start");
+}
+
+#[test]
+fn r7a_insertion_prefix_deletion_then_insertion() {
+    r7a_edge_delete_then_insert(0, 16);
+}
+
+#[test]
+fn r7a_insertion_suffix_deletion_then_insertion() {
+    r7a_edge_delete_then_insert(16, 32);
+}
+
+#[test]
+fn r7a_replacement_internal_delete_then_reinsert() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap() - 1;
+    r7a_edit_and_compare(&mut s, at, at + 1, 64, "expand before trap");
+    r7a_edit_and_compare(&mut s, at + 32, at + 48, 0, "delete inside output");
+    r7a_edit_and_compare(&mut s, at + 12, at + 12, 7, "insert inside trimmed output");
+}
+
+#[test]
+fn r7a_disjoint_insertions_then_covering_replacement() {
+    let source = R6A_SRC.replacen("return 1 / 0", "return    1 / 0", 1);
+    let mut s = warmup(&source, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap() - 4;
+    r7a_edit_and_compare(&mut s, at, at, 8, "insert before four mint spaces");
+    r7a_edit_and_compare(&mut s, at + 12, at + 12, 8, "second disjoint insertion");
+    let out = s
+        .edit(at as u64, (at + 20) as u64, b"    ".to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), source);
+    let cold = warmup(&source, "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold), "covering replacement");
+}
+
+#[test]
+fn r7a_bounded_whitespace_interval_composition_matrix() {
+    let source = R6A_SRC.replacen("return 1 / 0", "return    1 / 0", 1);
+    let gap = source.find("1 / 0").unwrap() - 4;
+    let mut cases = 0usize;
+    let mut failures = Vec::new();
+    for (first_a, first_b, first_n) in [(0usize, 0usize, 8usize), (4, 4, 8), (0, 4, 12)] {
+        let boundaries = [0usize, 1, 4, 6, 11, 12];
+        for (i, &a) in boundaries.iter().enumerate() {
+            for &b in &boundaries[i..] {
+                for n in [0usize, 1, 8] {
+                    if 12 - (b - a) + n == 0 {
+                        continue;
+                    }
+                    cases += 1;
+                    let mut s = warmup(&source, "d_main", &[]).unwrap();
+                    let out = s
+                        .edit(
+                            (gap + first_a) as u64,
+                            (gap + first_b) as u64,
+                            vec![b' '; first_n],
+                        )
+                        .unwrap();
+                    assert!(out.ok, "first {out:?}");
+                    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+                    assert_eq!(trap_span(&s), trap_span(&cold), "matrix initial control");
+                    let out = s
+                        .edit((gap + a) as u64, (gap + b) as u64, vec![b' '; n])
+                        .unwrap();
+                    assert!(out.ok, "second {out:?}");
+                    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+                    let (actual, expected) = (trap_span(&s), trap_span(&cold));
+                    if actual != expected {
+                        failures.push(format!(
+                            "first=({first_a},{first_b},{first_n}) second=({a},{b},{n}) actual={actual:?} expected={expected:?}"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    eprintln!("interval_matrix cases={cases} failed={}", failures.len());
+    assert!(
+        failures.is_empty(),
+        "{} / {cases} interval compositions disagree with cold compilation: {:#?}",
+        failures.len(),
+        failures
+    );
+}

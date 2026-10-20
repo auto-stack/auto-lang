@@ -35,7 +35,7 @@ pub struct ProgramSnapshot {
     /// position x maps to x + Σ delta of regions with `start < x`.
     /// Executor span-bearing outcomes map through this immutable
     /// snapshot-owned view (F-828-R1-04/R3a).
-    span_maps: Vec<Vec<(u64, u64, i64)>>,
+    span_maps: Vec<crate::span_map::SpanSegments>,
 }
 
 impl ProgramSnapshot {
@@ -48,7 +48,9 @@ impl ProgramSnapshot {
         entry: &str,
         revision: u64,
     ) -> Result<ProgramSnapshot, String> {
-        let span_maps = vec![Vec::new(); code.len()];
+        let span_maps = (0..code.len())
+            .map(|_| crate::span_map::SpanSegments::default())
+            .collect();
         Self::link_with_maps(code, entry, revision, span_maps)
     }
 
@@ -57,7 +59,7 @@ impl ProgramSnapshot {
         code: Vec<Arc<FunctionCode>>,
         entry: &str,
         revision: u64,
-        span_maps: Vec<Vec<(u64, u64, i64)>>,
+        span_maps: Vec<crate::span_map::SpanSegments>,
     ) -> Result<ProgramSnapshot, String> {
         let mut merged = MirModule::new(crate::mir::OwnerScope {
             schema: MIR_SCHEMA.to_string(),
@@ -197,102 +199,8 @@ impl ProgramSnapshot {
     }
 
     /// The per-slot source maps this snapshot maps through.
-    pub fn span_maps(&self) -> &[Vec<(u64, u64, i64)>] {
+    pub fn span_maps(&self) -> &[crate::span_map::SpanSegments] {
         &self.span_maps
-    }
-
-    /// Map a half-open span [s, e) through the region list with TOKEN
-    /// boundary semantics (F-828-R1-04/R5a): a token START moves when the
-    /// edit is entirely before it (p + len <= s) or when a pure insertion
-    /// sits exactly at it (p == s, len 0, d > 0 — inserting whitespace
-    /// directly before a token pushes the token right); a token END moves
-    /// when the edit starts strictly before it (p < e — an insertion
-    /// exactly at the end does not extend the token).
-    pub fn map_span(regions: &[(u64, u64, i64)], s: u64, e: u64) -> (u64, u64) {
-        let (mut ds, mut de) = (0i64, 0i64);
-        for &(p, len, d) in regions {
-            if p + len <= s || (p == s && len == 0 && d > 0) {
-                ds += d;
-            }
-            if p < e {
-                de += d;
-            }
-        }
-        ((s as i64 + ds) as u64, (e as i64 + de) as u64)
-    }
-
-    /// Inverse map for COMPOSITION (F-828-R1-04/R6a): a current-coordinate
-    /// point back into mint coordinates, region-aware: a point inside a
-    /// previously INSERTED region collapses to that insertion's anchor;
-    /// a point inside a REPLACEMENT's output collapses to the replaced
-    /// block's mint start; a point after a deletion resolves past the
-    /// deleted block (the preimage can exceed the current offset).
-    pub fn unmap_pos(regions: &[(u64, u64, i64)], c: u64) -> u64 {
-        let mut acc = 0i64;
-        for &(p, len, d) in regions {
-            let img_start = (p as i64 + acc) as u64;
-            if c < img_start {
-                return (c as i64 - acc) as u64;
-            }
-            let img_end = img_start + ((len as i64 + d).max(0) as u64);
-            if c < img_end {
-                // Inside an insertion's or a replacement's stretched
-                // output: the edit rewrites NEW text — the mint anchor.
-                return p;
-            }
-            acc += d;
-        }
-        (c as i64 - acc) as u64
-    }
-
-    /// Compose one edit — current-coordinate range [c0, c1) replaced by
-    /// `new_len` bytes — into a MINT-coordinate region list
-    /// (F-828-R1-04/R6a). BOTH ends are inverse-mapped (the mint length
-    /// of the replaced text is `unmap(c1) - unmap(c0)`, NOT the current
-    /// length: deleting previously-inserted bytes replaces ZERO mint
-    /// bytes), and regions fully re-edited by this edit are dropped:
-    /// an insertion deleted end-to-end leaves NO trace (undo = identity),
-    /// while a partial deletion keeps the insertion and records the trim.
-    pub fn compose_region(regions: &mut Vec<(u64, u64, i64)>, c0: u64, c1: u64, new_len: u64) {
-        let m0 = Self::unmap_pos(regions, c0);
-        let m1 = Self::unmap_pos(regions, c1);
-        let mint_len = m1.saturating_sub(m0);
-        // Drop regions this edit fully re-writes. Pure insertions are
-        // points in mint coordinates — containment is decided in CURRENT
-        // coordinates (their image); replaced blocks in MINT coordinates.
-        let cur_len = c1 - c0;
-        let mut acc = 0i64;
-        let mut dropped_img_len: u64 = 0;
-        let mut kept: Vec<(u64, u64, i64)> = Vec::with_capacity(regions.len() + 1);
-        for &r @ (p, len, d) in regions.iter() {
-            let img_start = (p as i64 + acc) as u64;
-            let img_len = (len as i64 + d).max(0) as u64;
-            let fully_rewritten = if len == 0 && d > 0 {
-                c0 <= img_start && img_start + d as u64 <= c1
-            } else {
-                m0 <= p && p + len <= m1
-            };
-            if fully_rewritten {
-                dropped_img_len += img_len;
-            } else {
-                kept.push(r);
-            }
-            acc += d;
-        }
-        // The recorded delta is the CURRENT-length change (deleting
-        // previously-inserted bytes removes current bytes but ZERO mint
-        // bytes). When the edit's whole current range came from dropped
-        // regions and touched no mint text, it leaves no trace (undo).
-        let erased_only_rewritten_output =
-            cur_len > 0 && mint_len == 0 && dropped_img_len >= cur_len;
-        if !erased_only_rewritten_output {
-            let delta = new_len as i64 - cur_len as i64;
-            if delta != 0 || mint_len != 0 {
-                kept.push((m0, mint_len, delta));
-            }
-        }
-        kept.sort();
-        *regions = kept;
     }
 
     /// This snapshot's revision counter.

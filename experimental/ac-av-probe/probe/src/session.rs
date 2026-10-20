@@ -153,18 +153,25 @@ struct FnRecord {
     /// `origin - mint_origin` (F-828-R1-04/R2: unchanged functions' trap
     /// spans must track the CURRENT source without touching code payloads).
     mint_origin: u64,
-    /// Composable source map for this function's REUSED code: edit
-    /// regions `(start, len, delta)` in CURRENT-source coordinates;
-    /// position x maps to x + Σ delta where region.start < x. A re-minted
-    /// function resets to empty (fresh code matches the source); reused
-    /// code accumulates regions across edits (F-828-R1-04/R3a).
-    span_map: Vec<(u64, u64, i64)>,
+    /// Piecewise alignment map for this function's code: mint bytes →
+    /// current offsets (F-828-R1-04/R8a). Decl-LOCAL coordinates; the
+    /// absolute view adds the function's origins. A re-minted function
+    /// resets to identity; reused code accumulates edits.
+    span_map: auto_av_core::span_map::SpanSegments,
     /// In-session content-addressed reuse (PLAN-828 T-04): content version
     /// → (verified body, code, mint origin, the code's OWN accumulated
     /// span map). A body edited back to prior content reuses the SAME
     /// objects and their OWN mint baseline AND source map
     /// (F-828-R1-04/R3a).
-    history: BTreeMap<String, (Arc<hir::Body>, Arc<FunctionCode>, u64, Vec<(u64, u64, i64)>)>,
+    history: BTreeMap<
+        String,
+        (
+            Arc<hir::Body>,
+            Arc<FunctionCode>,
+            u64,
+            auto_av_core::span_map::SpanSegments,
+        ),
+    >,
 }
 
 /// Outcome of one edit request.
@@ -216,7 +223,7 @@ pub struct PreparedEdit {
     edit_region: (u64, u64, u64),
     /// The changed function's code-object span map (history entry's own on
     /// a hit; empty on a miss).
-    span_map: Vec<(u64, u64, i64)>,
+    span_map: auto_av_core::span_map::SpanSegments,
     base_revision: u64,
     changed_idx: usize,
     changed_name: String,
@@ -388,7 +395,15 @@ pub fn warmup(
         // a later content hit must return the very same object.
         let body_arc = Arc::new(body_ref.clone());
         let mut history = BTreeMap::new();
-        history.insert(warm_cv, (body_arc.clone(), code.clone(), 0, Vec::new()));
+        history.insert(
+            warm_cv,
+            (
+                body_arc.clone(),
+                code.clone(),
+                0,
+                auto_av_core::span_map::SpanSegments::default(),
+            ),
+        );
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
@@ -397,7 +412,7 @@ pub fn warmup(
             code: code.clone(),
             origin: 0,
             mint_origin: 0,
-            span_map: Vec::new(),
+            span_map: auto_av_core::span_map::SpanSegments::default(),
             history,
         });
         codes.push(code);
@@ -415,11 +430,14 @@ pub fn warmup(
     // Per-function declaration origins of the accepted source (span
     // mapping baseline; decl order == fn order was asserted above).
     for (i, d) in parse.tree.decls.iter().enumerate() {
-        let o = parse.tree.abs_range(d.node).0;
-        fns[i].origin = o;
-        fns[i].mint_origin = o;
+        let (d0, d1) = parse.tree.abs_range(d.node);
+        fns[i].origin = d0;
+        fns[i].mint_origin = d0;
+        let fresh_map = auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0);
+        fns[i].span_map = fresh_map.clone();
         if let Some(e) = fns[i].history.values_mut().next() {
-            e.2 = o;
+            e.2 = d0;
+            e.3 = fresh_map;
         }
     }
 
@@ -548,7 +566,12 @@ pub fn restore(
         if let Some(entry) = rec.history.iter_mut().next() {
             // Restored objects' own mint baseline is fixed with the origin
             // pass below (single-source alignment).
-            *entry.1 = (body.clone(), code.clone(), 0, Vec::new());
+            *entry.1 = (
+                body.clone(),
+                code.clone(),
+                0,
+                auto_av_core::span_map::SpanSegments::default(),
+            );
         }
         rec.code = code.clone();
     }
@@ -619,7 +642,12 @@ impl FunctionIncrementalSession {
     fn history_insert(
         rec: &mut FnRecord,
         cv: String,
-        entry: (Arc<hir::Body>, Arc<FunctionCode>, u64, Vec<(u64, u64, i64)>),
+        entry: (
+            Arc<hir::Body>,
+            Arc<FunctionCode>,
+            u64,
+            auto_av_core::span_map::SpanSegments,
+        ),
     ) {
         if rec.history.len() >= HISTORY_CAP && !rec.history.contains_key(&cv) {
             if let Some(victim) = rec
@@ -1035,7 +1063,7 @@ impl FunctionIncrementalSession {
         let cv = content_version_of(&canonical_hir_function(synth_m, def_body));
         let mut was_hit = false;
         let mut candidate_mint_origin: u64 = 0;
-        let mut candidate_span_map: Vec<(u64, u64, i64)> = Vec::new();
+        let mut candidate_span_map = auto_av_core::span_map::SpanSegments::default();
         let (new_hir_body, new_code): (Arc<hir::Body>, Arc<FunctionCode>) =
             match self.fns[changed_idx].history.get(&cv) {
                 Some((body, code, mint_o, map)) => {
@@ -1122,33 +1150,34 @@ impl FunctionIncrementalSession {
         // original mint baseline and gains a body-region refinement when
         // its body text moved internally (F-828-R1-04/R2a F04-b/c).
         let old_src = self.src.clone();
-        let mut span_maps: Vec<Vec<(u64, u64, i64)>> = Vec::with_capacity(self.fns.len());
+        let mut span_maps: Vec<auto_av_core::span_map::SpanSegments> =
+            Vec::with_capacity(self.fns.len());
         for (i, d) in prepared.new_parse.tree.decls.iter().enumerate() {
             let o = prepared.new_parse.tree.abs_range(d.node).0;
             let rec = &mut self.fns[i];
             rec.origin = o;
-            span_maps.push(Vec::new()); // filled after the per-fn loop
+            span_maps.push(auto_av_core::span_map::SpanSegments::default()); // replaced below
             if i == changed_idx {
                 rec.mint_origin = prepared.mint_origin;
                 rec.span_map = prepared.span_map.clone();
             }
             let (c, old_len, new_len) = prepared.edit_region;
             if reminted && i == changed_idx {
-                // Fresh code matches the current source exactly.
-                rec.span_map.clear();
+                // Fresh code mints against the NEW source: identity over
+                // its own decl range.
+                let (d0, d1) = prepared
+                    .new_parse
+                    .tree
+                    .abs_range(prepared.new_parse.tree.decls[i].node);
+                rec.span_map = auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0);
             } else {
-                // Compose the edit's region (inverse-mapped into MINT
-                // coordinates by the core helper) into this function's
-                // map; all regions share one mint axis.
-                ProgramSnapshot::compose_region(&mut rec.span_map, c, c + old_len, new_len);
+                rec.span_map.apply(c, c + old_len, new_len);
             }
             // EVERY stored code object of this function (history entries)
-            // experiences the same source change: compose the edit into
-            // their maps too, so a later content hit restores a map that
-            // is current as of THIS revision (the deposited current entry
-            // is overwritten below with the post-compose map).
+            // experiences the same source change; the deposited current
+            // entry is overwritten below with the post-edit map.
             for e in rec.history.values_mut() {
-                ProgramSnapshot::compose_region(&mut e.3, c, c + old_len, new_len);
+                e.3.apply(c, c + old_len, new_len);
             }
         }
         span_maps = self.fns.iter().map(|r| r.span_map.clone()).collect();

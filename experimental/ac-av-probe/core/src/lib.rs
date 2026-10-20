@@ -24,6 +24,7 @@ pub mod function_code;
 pub mod mir;
 pub mod mir_verify;
 pub mod program_snapshot;
+pub mod span_map;
 
 pub use abc::{decode_abc, encode_abc, AbcDecodeError, DecodedAbc};
 pub use abc_verify::{verify_abc, verify_abc_bytes, AbcAdmissionError, LoadedModule};
@@ -39,3 +40,4 @@ pub use function_code::{FunctionCode, SharedFunctionCode};
 pub use mir::{MirModule, MirModuleUncheckedMarker, TraceEvent};
 pub use mir_verify::{verify_mir, verify_mir_with_deadline, CheckedMir, MirVerifyError};
 pub use program_snapshot::ProgramSnapshot;
+pub use span_map::SpanSegments;
