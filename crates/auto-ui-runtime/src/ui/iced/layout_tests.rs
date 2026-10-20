@@ -213,7 +213,8 @@ fn w2_anchor_variant_diagnosis() {
                 _ => None,
             })
             .expect("decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::new(&widget).unwrap();
         let (view, _ids, _probe) = comp.view_with_debug_gated(false);
         let mut ui = simulator(view.into_iced());
@@ -3101,14 +3102,15 @@ fn p642_t12_overflow_frame_scrolls_and_centers() {
                 if d.name == "Host" {
                     host_decl = Some(d.clone());
                 } else {
-                    let w =
-                        auto_ui_compiler::aura::extract::extract_widget_from_decl(d).expect("child extract");
+                    let w = auto_ui_compiler::aura::extract::extract_widget_from_decl(d)
+                        .expect("child extract");
                     registry.register(w);
                 }
             }
         }
         let decl = host_decl.expect("host decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(&decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(&decl).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry(&widget, registry).unwrap();
         let (view, _ids, _probe) = comp.view_with_debug_gated(false);
         iced_test::Simulator::with_size(

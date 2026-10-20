@@ -364,7 +364,8 @@ pub(crate) fn load_ext_imports_for_vm(
                                     None,
                                 );
                                 if let Ok(pc) = std::fs::read_to_string(&p) {
-                                    for us in auto_lang_core::use_scanner::scan_use_statements(&pc) {
+                                    for us in auto_lang_core::use_scanner::scan_use_statements(&pc)
+                                    {
                                         let qualifier =
                                             us.module.split('.').last().unwrap_or(&us.module);
                                         for item in &us.items {
@@ -430,7 +431,9 @@ pub(crate) fn load_ext_imports_for_vm(
 /// StoreDecl → view-less child WidgetDecl（store-as-child：store 与子件
 /// 同构、仅缺视图——统一根态模型并入 + handler 编译进单 VM 都走 child
 /// 通道）。PLAN-632 F1 抽出公共转换体，供 ext 装载后的补转换位使用。
-fn store_decl_as_widget_decl(store_decl: &auto_lang_core::ast::ui::StoreDecl) -> auto_lang_core::ast::ui::WidgetDecl {
+fn store_decl_as_widget_decl(
+    store_decl: &auto_lang_core::ast::ui::StoreDecl,
+) -> auto_lang_core::ast::ui::WidgetDecl {
     auto_lang_core::ast::ui::WidgetDecl {
         name: store_decl.name.clone(),
         messages: store_decl.messages.clone(),
@@ -493,7 +496,12 @@ pub fn ui_module_parse_failures() -> &'static std::sync::Mutex<Vec<String>> {
 /// 给出字节偏移。MultipleErrors 递归展开(上限 20 条,与 parser 恢复上限一致)。
 fn positioned_parse_errors(e: &auto_lang_core::error::AutoError, source: &str) -> String {
     use miette::Diagnostic;
-    fn walk(e: &auto_lang_core::error::AutoError, source: &str, out: &mut Vec<String>, depth: usize) {
+    fn walk(
+        e: &auto_lang_core::error::AutoError,
+        source: &str,
+        out: &mut Vec<String>,
+        depth: usize,
+    ) {
         if out.len() >= 20 || depth > 4 {
             return;
         }
@@ -831,7 +839,8 @@ fn register_transitive_widgets_inner(
         if let Ok(sub_ast) = mod_parser.parse() {
             for stmt in &sub_ast.stmts {
                 if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
-                    if let Ok(child_widget) = auto_ui_compiler::aura::extract_widget_from_decl(decl) {
+                    if let Ok(child_widget) = auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                    {
                         // 只注册 use 子句明确要的(或通配/裸装载的),且 registry
                         // 还没有的。PLAN-545 回归修复（069 收口转介收回）：
                         // bare `use mod` 的组件发现语义恢复（items.is_empty()
@@ -873,9 +882,9 @@ fn build_dynamic_component_inner(
     path: Option<&str>,
     override_scenario: Option<&auto_lang_core::session::CompilerSession>,
 ) -> AutoResult<crate::ui::dynamic::DynamicComponent> {
-    use auto_lang_core::session::CompilerSession;
     use crate::ui::dynamic::DynamicComponent;
     use crate::ui::widget_registry::WidgetRegistry;
+    use auto_lang_core::session::CompilerSession;
 
     // PLAN-635: pre-register use-imported recipes BEFORE the parse — the
     // parser's symbol checker accepts `style: <name>` idents only when the
@@ -926,8 +935,10 @@ fn build_dynamic_component_inner(
         if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
             if root_decl.is_none() {
                 root_decl = Some(decl.clone());
-                widget =
-                    Some(auto_ui_compiler::aura::extract_widget_from_decl(decl).map_err(|e| e.to_string())?);
+                widget = Some(
+                    auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())?,
+                );
             } else {
                 sibling_decls.push(decl.clone());
             }
@@ -966,7 +977,8 @@ fn build_dynamic_component_inner(
     // PLAN-095 T-07 (G-11): 同文件兄弟 widget 注册进 registry + child_decls
     //（handler 编入单 VM，与 use 导入子件同面）。
     for decl in &sibling_decls {
-        let aura = auto_ui_compiler::aura::extract_widget_from_decl(decl).map_err(|e| e.to_string())?;
+        let aura =
+            auto_ui_compiler::aura::extract_widget_from_decl(decl).map_err(|e| e.to_string())?;
         registry.register(aura);
         child_decls.push(decl.clone());
     }
@@ -1158,7 +1170,9 @@ fn build_dynamic_component_inner(
                     }
                     for stmt in &mod_ast.stmts {
                         if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
-                            if let Ok(child_widget) = auto_ui_compiler::aura::extract_widget_from_decl(decl) {
+                            if let Ok(child_widget) =
+                                auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                            {
                                 // PLAN-545 回归修复（069 收口转介收回）：bare
                                 // use 的**组件发现**语义恢复——`use custom_scrollbar`
                                 //（无 items 无通配）装载该模块的子件。545 的
@@ -1525,7 +1539,9 @@ fn build_dynamic_component_inner(
                                         None,
                                     );
                                     if let Ok(code) = std::fs::read_to_string(&p) {
-                                        for us in auto_lang_core::use_scanner::scan_use_statements(&code) {
+                                        for us in
+                                            auto_lang_core::use_scanner::scan_use_statements(&code)
+                                        {
                                             let qualifier =
                                                 us.module.split('.').last().unwrap_or(&us.module);
                                             for item in &us.items {
@@ -1681,7 +1697,10 @@ fn build_dynamic_component_inner(
                     }
                     candidates.push(base_dir.join(&dir));
                     let mut loaded: Option<(
-                        Vec<(auto_lang_core::ast::ui::WidgetDecl, auto_ui_compiler::aura::AuraWidget)>,
+                        Vec<(
+                            auto_lang_core::ast::ui::WidgetDecl,
+                            auto_ui_compiler::aura::AuraWidget,
+                        )>,
                         std::path::PathBuf,
                     )> = None;
                     for cand in &candidates {
@@ -1715,7 +1734,9 @@ fn build_dynamic_component_inner(
                                         None,
                                     );
                                     if let Ok(code) = std::fs::read_to_string(&p) {
-                                        for us in auto_lang_core::use_scanner::scan_use_statements(&code) {
+                                        for us in
+                                            auto_lang_core::use_scanner::scan_use_statements(&code)
+                                        {
                                             let qualifier =
                                                 us.module.split('.').last().unwrap_or(&us.module);
                                             for item in &us.items {

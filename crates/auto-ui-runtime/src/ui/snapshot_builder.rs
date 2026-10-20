@@ -18,11 +18,11 @@
 
 use std::collections::HashMap;
 
-use auto_ui_compiler::aura::AuraNodeId;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::mcp_types::{format_value, type_hint, UiAction, UiNode, UiSnapshot};
 use crate::ui::view::View;
+use auto_ui_compiler::aura::AuraNodeId;
 
 /// Builder that traverses a View tree and produces a UiSnapshot.
 pub struct SnapshotBuilder;

@@ -184,8 +184,8 @@ fn build_syntax_system() -> SyntaxSystem {
     // switching themes re-keys without re-synthesis; composed (declared)
     // themes register lazily via register_theme.
     for &theme_id in auto_lang_core::design_tokens::registry::BUILTIN_NAMES.iter() {
-        let spec =
-            auto_lang_core::design_tokens::registry::builtin(theme_id).expect("BUILTIN_NAMES 与表互锁");
+        let spec = auto_lang_core::design_tokens::registry::builtin(theme_id)
+            .expect("BUILTIN_NAMES 与表互锁");
         for &accent in KNOWN_ACCENTS.iter() {
             for &dark in [true, false].iter() {
                 let theme =

@@ -8,10 +8,10 @@
 
 #![cfg(test)]
 
-use auto_lang_core::ast::Stmt;
-use auto_lang_core::session::CompilerSession;
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::widget_registry::WidgetRegistry;
+use auto_lang_core::ast::Stmt;
+use auto_lang_core::session::CompilerSession;
 use auto_lang_core::use_scanner::scan_use_statements;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -27,7 +27,10 @@ pub(crate) fn locate_app_at() -> Option<PathBuf> {
 /// checkout) or the file is absent — callers degrade to SKIPPED as before.
 pub(crate) fn locate_gallery_file(gallery: &str, rel: &str) -> Option<PathBuf> {
     let base = std::env::var("CARGO_MANIFEST_DIR").ok()?;
-    let g = auto_lang_core::os_paths::resolve_os_top_dir(&PathBuf::from(base).join("../../.."), gallery)?;
+    let g = auto_lang_core::os_paths::resolve_os_top_dir(
+        &PathBuf::from(base).join("../../.."),
+        gallery,
+    )?;
     let p = g.join(rel);
     p.exists().then_some(p)
 }
@@ -57,7 +60,10 @@ pub(crate) fn locate_example_app_at(example: &str) -> Option<PathBuf> {
         std::env::var("CARGO_MANIFEST_DIR")
             .ok()
             .and_then(|d| {
-                auto_lang_core::os_paths::resolve_os_top_dir(&PathBuf::from(d).join("../../.."), example)
+                auto_lang_core::os_paths::resolve_os_top_dir(
+                    &PathBuf::from(d).join("../../.."),
+                    example,
+                )
             })
             .map(|g| g.join("src/front/app.at")),
     ];
@@ -189,7 +195,9 @@ pub(crate) fn build_component_from_app_mode(
             if let Ok(mod_ast) = mod_parser.parse() {
                 for stmt in &mod_ast.stmts {
                     if let Stmt::WidgetDecl(decl) = stmt {
-                        if let Ok(child_widget) = auto_ui_compiler::aura::extract_widget_from_decl(decl) {
+                        if let Ok(child_widget) =
+                            auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                        {
                             if use_stmt.is_wildcard
                                 || use_stmt.items.is_empty()
                                 || use_stmt.items.iter().any(|s| s == &child_widget.name)

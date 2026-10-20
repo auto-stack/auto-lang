@@ -126,9 +126,9 @@ fn to_ui_axis(axis: ScrollAxisDto) -> crate::ui::scroll::Axis {
 /// 3. 实例级 `AutoVM::set_scroll_host_provider` 在 1/2 之上按 VM 独立
 ///    生效（构造期快照 + 实例覆盖，不受后续进程默认变化影响）。
 pub fn install_process_default() {
-    auto_lang_core::vm::host_capabilities::set_process_default_scroll_host_provider_if_absent(Arc::new(
-        ScrollControllerProvider,
-    ));
+    auto_lang_core::vm::host_capabilities::set_process_default_scroll_host_provider_if_absent(
+        Arc::new(ScrollControllerProvider),
+    );
 }
 
 #[cfg(test)]
@@ -180,11 +180,12 @@ mod tests {
         );
 
         // 显式默认 → 兼容安装不覆盖（哨兵句柄可区分）。
-        auto_lang_core::vm::host_capabilities::set_process_default_scroll_host_provider(Arc::new(Fake(
-            "@plan794-explicit:哨兵-🎉",
-        )));
+        auto_lang_core::vm::host_capabilities::set_process_default_scroll_host_provider(Arc::new(
+            Fake("@plan794-explicit:哨兵-🎉"),
+        ));
         install_process_default();
-        let cur = auto_lang_core::vm::host_capabilities::process_default_scroll_host_provider().unwrap();
+        let cur =
+            auto_lang_core::vm::host_capabilities::process_default_scroll_host_provider().unwrap();
         assert_eq!(
             ScrollHostProvider::next_controller_handle(&*cur),
             "@plan794-explicit:哨兵-🎉",
@@ -193,8 +194,12 @@ mod tests {
 
         // 还原。
         match saved {
-            Some(p) => auto_lang_core::vm::host_capabilities::set_process_default_scroll_host_provider(p),
-            None => auto_lang_core::vm::host_capabilities::clear_process_default_scroll_host_provider(),
+            Some(p) => {
+                auto_lang_core::vm::host_capabilities::set_process_default_scroll_host_provider(p)
+            }
+            None => {
+                auto_lang_core::vm::host_capabilities::clear_process_default_scroll_host_provider()
+            }
         }
     }
 

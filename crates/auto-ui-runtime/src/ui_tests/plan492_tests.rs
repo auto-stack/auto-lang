@@ -66,7 +66,8 @@ widget W {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract_widget_from_decl(decl).expect("extract widget");
+        let widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(decl).expect("extract widget");
         let mut gen = auto_ui_compiler::ui_gen::VueGenerator::new_shadcn();
         use auto_ui_compiler::ui_gen::BackendGenerator;
         let sfc = match gen.generate(&widget) {

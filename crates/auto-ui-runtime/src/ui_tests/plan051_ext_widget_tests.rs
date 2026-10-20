@@ -90,8 +90,8 @@ mod plan051_ext_widget_tests {
     fn plan051_useweb_dotted_kind_parses() {
         use auto_lang_core::ast::ui::ExtImportKind;
         fn parse_first_kind(src: &str) -> ExtImportKind {
-            let mut parser =
-                crate::Parser::from(src).with_session(auto_lang_core::session::CompilerSession::ui());
+            let mut parser = crate::Parser::from(src)
+                .with_session(auto_lang_core::session::CompilerSession::ui());
             let ast = parser.parse().expect("parse");
             for stmt in &ast.stmts {
                 if let auto_lang_core::ast::Stmt::UseWeb(entries) = stmt {

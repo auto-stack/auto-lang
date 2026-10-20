@@ -130,7 +130,8 @@ widget Clock {
     #[cfg(feature = "ui")]
     #[test]
     fn plan051_timer_vue_emits_interval_and_cleanup() {
-        let path = locate_corpus("../auto-lang/test/ui/plan051_timer/src/front/app.at").expect("corpus app.at");
+        let path = locate_corpus("../auto-lang/test/ui/plan051_timer/src/front/app.at")
+            .expect("corpus app.at");
         let code = std::fs::read_to_string(&path).unwrap();
         let session = auto_lang_core::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
@@ -143,7 +144,8 @@ widget Clock {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(&decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(&decl).expect("extract");
         assert_eq!(widget.timers.len(), 1, "root timer extracted");
         let mut gen = auto_ui_compiler::ui_gen::vue::VueGenerator::new();
         let sfc = gen.generate_sfc(&widget).expect("generate SFC");
@@ -183,7 +185,8 @@ widget App {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(&decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(&decl).expect("extract");
         assert!(!widget.timers.is_empty(), "timer block ⇒ timers 臂");
         assert!(
             widget.tick_interval.is_some(),
@@ -207,8 +210,8 @@ widget App {
     #[cfg(feature = "ui")]
     #[test]
     fn plan051_timer_vue_store_composable_emits_interval() {
-        let path =
-            locate_corpus("../auto-lang/test/ui/plan051_timer/src/front/ticker_store.at").expect("corpus store");
+        let path = locate_corpus("../auto-lang/test/ui/plan051_timer/src/front/ticker_store.at")
+            .expect("corpus store");
         let code = std::fs::read_to_string(&path).unwrap();
         let session = auto_lang_core::session::CompilerSession::ui();
         let mut parser = crate::Parser::from(code.as_str()).with_session(session);
@@ -221,7 +224,8 @@ widget App {
                 _ => None,
             })
             .expect("store decl");
-        let store = auto_ui_compiler::aura::extract::extract_store_from_decl(&decl).expect("extract store");
+        let store =
+            auto_ui_compiler::aura::extract::extract_store_from_decl(&decl).expect("extract store");
         assert_eq!(store.timers.len(), 1, "store timer extracted");
         assert_eq!(store.timers[0].every_ms, 50);
         let out = auto_ui_compiler::ui_gen::vue::VueGenerator::generate_store_composable(&store);
@@ -235,7 +239,8 @@ widget App {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn plan051_timer_vm_collects_entries() {
-        let corpus = locate_corpus("../auto-lang/test/ui/plan051_timer/pac.at").expect("corpus pac.at");
+        let corpus =
+            locate_corpus("../auto-lang/test/ui/plan051_timer/pac.at").expect("corpus pac.at");
         let dc = match crate::plan370_test_support::build_component_from_app(&corpus) {
             Some(c) => c,
             None => {
@@ -263,7 +268,8 @@ widget App {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn plan051_timer_vm_dispatch_fires_handlers() {
-        let corpus = locate_corpus("../auto-lang/test/ui/plan051_timer/pac.at").expect("corpus pac.at");
+        let corpus =
+            locate_corpus("../auto-lang/test/ui/plan051_timer/pac.at").expect("corpus pac.at");
         let mut dc = match crate::plan370_test_support::build_component_from_app(&corpus) {
             Some(c) => c,
             None => {
@@ -285,7 +291,8 @@ widget App {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn plan051_timer_vm_when_guard_blocks_and_passes() {
-        let corpus = locate_corpus("../auto-lang/test/ui/plan051_timer/pac.at").expect("corpus pac.at");
+        let corpus =
+            locate_corpus("../auto-lang/test/ui/plan051_timer/pac.at").expect("corpus pac.at");
         let mut dc = match crate::plan370_test_support::build_component_from_app(&corpus) {
             Some(c) => c,
             None => {

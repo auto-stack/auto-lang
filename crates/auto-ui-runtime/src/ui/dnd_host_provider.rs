@@ -80,11 +80,12 @@ mod tests {
         );
 
         // 显式默认 → 兼容安装不覆盖（哨兵布尔可区分）。
-        auto_lang_core::vm::host_capabilities::set_process_default_dnd_host_provider(std::sync::Arc::new(
-            Fake(true),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_dnd_host_provider(
+            std::sync::Arc::new(Fake(true)),
+        );
         install_process_default();
-        let cur = auto_lang_core::vm::host_capabilities::process_default_dnd_host_provider().unwrap();
+        let cur =
+            auto_lang_core::vm::host_capabilities::process_default_dnd_host_provider().unwrap();
         assert!(
             DndHostProvider::start(&*cur, "{}".to_string()),
             "兼容安装不得覆盖显式默认（空对象载荷应返回哨兵 true 而非走真 adapter 的 false）"
@@ -92,8 +93,12 @@ mod tests {
 
         // 还原。
         match saved {
-            Some(p) => auto_lang_core::vm::host_capabilities::set_process_default_dnd_host_provider(p),
-            None => auto_lang_core::vm::host_capabilities::clear_process_default_dnd_host_provider(),
+            Some(p) => {
+                auto_lang_core::vm::host_capabilities::set_process_default_dnd_host_provider(p)
+            }
+            None => {
+                auto_lang_core::vm::host_capabilities::clear_process_default_dnd_host_provider()
+            }
         }
     }
 }

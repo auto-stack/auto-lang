@@ -23,13 +23,13 @@ use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
-use auto_ui_compiler::aura::AuraNodeId;
 use crate::ui::dynamic::DynamicComponent;
 use crate::ui::iced::renderer::{
     DebugElementInfo, DebugTreeNode, DevToolsTab, IcedMessage, InspectorSections, InspectorSubTab,
     ToastReq, TodoItem,
 };
 use crate::ui::layout::{LayoutMode, ReservedEdges};
+use auto_ui_compiler::aura::AuraNodeId;
 
 /// 进程内 App 的稳定标识。459 起 boot 经 `allocate_app` 递增分配、一 App
 /// 一 OS 窗口；454 引入 VirtualWindow 后一个 DesktopSession 内可含多个 AppId。

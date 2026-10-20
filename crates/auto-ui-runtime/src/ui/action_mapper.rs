@@ -15,10 +15,10 @@
 
 use std::collections::HashMap;
 
-use auto_ui_compiler::aura::AuraNodeId;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::mcp_types::{format_value, ActionResult, UiActionType, UiNode};
 use crate::ui::view::View;
+use auto_ui_compiler::aura::AuraNodeId;
 
 /// Error returned when an action cannot be performed.
 #[derive(Debug)]

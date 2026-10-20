@@ -36,8 +36,6 @@ use std::time::SystemTime;
 
 use std::collections::HashMap;
 
-use auto_ui_compiler::aura::AuraWidget;
-use auto_ui_compiler::aura::{AuraNodeId, SpanInfo};
 use crate::ui::aura_view_builder::AuraViewBuilder;
 use crate::ui::component::Component;
 use crate::ui::debug_id_map::DebugIdMap;
@@ -45,6 +43,8 @@ use crate::ui::interpreter::DynamicMessage;
 use crate::ui::state_migration::{self, MigrationReport};
 use crate::ui::view::View;
 use crate::ui::vm_bridge::VmBridge;
+use auto_ui_compiler::aura::AuraWidget;
+use auto_ui_compiler::aura::{AuraNodeId, SpanInfo};
 
 // ============================================================================
 // DynamicComponent
@@ -797,7 +797,10 @@ impl DynamicComponent {
     ///
     /// * `vm` - Pre-configured AutoVM instance
     /// * `widget` - The AuraWidget to create a component for
-    pub fn new_with_vm(vm: auto_lang_core::vm::engine::AutoVM, widget: &AuraWidget) -> Result<Self, String> {
+    pub fn new_with_vm(
+        vm: auto_lang_core::vm::engine::AutoVM,
+        widget: &AuraWidget,
+    ) -> Result<Self, String> {
         let bridge = VmBridge::new_with_vm(vm, widget)
             .map_err(|e| format!("VmBridge init failed for '{}': {}", widget.name, e))?;
 
@@ -3228,7 +3231,9 @@ fn clean_handler_name(pattern: &str) -> String {
 
 /// Scan the view tree for `input` elements with `value` from StateRef and an
 /// `oninput`/`onchange` event. Returns a map of event_name -> state_field_name.
-fn extract_input_state_map(view_tree: &auto_ui_compiler::aura::AuraNode) -> HashMap<String, String> {
+fn extract_input_state_map(
+    view_tree: &auto_ui_compiler::aura::AuraNode,
+) -> HashMap<String, String> {
     let mut map = HashMap::new();
     scan_node_for_inputs(view_tree, &mut map);
     map
@@ -3377,7 +3382,10 @@ fn scan_node_for_onkeydown(
     }
 }
 
-fn scan_node_for_inputs(node: &auto_ui_compiler::aura::AuraNode, map: &mut HashMap<String, String>) {
+fn scan_node_for_inputs(
+    node: &auto_ui_compiler::aura::AuraNode,
+    map: &mut HashMap<String, String>,
+) {
     use auto_lang_core::ast::Expr;
     use auto_ui_compiler::aura::{AuraNode, AuraPropValue};
     match node {
@@ -3420,9 +3428,12 @@ fn scan_node_for_inputs(node: &auto_ui_compiler::aura::AuraNode, map: &mut HashM
                 // reads it (the on_change lookup above only keeps the first
                 // found event, which for PromptBar is oninput → OnInput).
                 if let Some(field) = state_field {
-                    if let Some(event) = auto_ui_compiler::aura::aura_events_get_base(events, "onenter")
-                        .or_else(|| auto_ui_compiler::aura::aura_events_get_base(events, "enter"))
-                        .map(|e| clean_handler_name(&e.handler))
+                    if let Some(event) =
+                        auto_ui_compiler::aura::aura_events_get_base(events, "onenter")
+                            .or_else(|| {
+                                auto_ui_compiler::aura::aura_events_get_base(events, "enter")
+                            })
+                            .map(|e| clean_handler_name(&e.handler))
                     {
                         map.entry(event).or_insert(field);
                     }
@@ -3540,7 +3551,9 @@ mod tests {
     use super::*;
     use auto_lang_core::ast::Expr;
     use auto_lang_core::ast::Type;
-    use auto_ui_compiler::aura::{AuraEvent, AuraNode, AuraPropValue, AuraStateDef, AuraTextContent};
+    use auto_ui_compiler::aura::{
+        AuraEvent, AuraNode, AuraPropValue, AuraStateDef, AuraTextContent,
+    };
     use std::collections::HashMap;
 
     /// PLAN-725 T-02：on_change 载荷静态消费判定——三消费点逐点断言 +
@@ -3599,11 +3612,12 @@ mod tests {
             }
         }
         assert!(!decls.is_empty(), "至少一个 widget 声明");
-        let root_widget =
-            auto_ui_compiler::aura::extract::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(&decls[0])
+            .expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
         for d in &decls[1..] {
-            let w = auto_ui_compiler::aura::extract::extract_widget_from_decl(d).expect("extract child");
+            let w = auto_ui_compiler::aura::extract::extract_widget_from_decl(d)
+                .expect("extract child");
             registry.register(w);
         }
         (decls, root_widget, registry)
@@ -3956,11 +3970,11 @@ mod tests {
             }
         }
         assert_eq!(decls.len(), 2, "root + child");
-        let root_widget =
-            auto_ui_compiler::aura::extract::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(&decls[0])
+            .expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget =
-            auto_ui_compiler::aura::extract::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(&decls[1])
+            .expect("extract child");
         registry.register(child_widget);
 
         let mut comp = DynamicComponent::with_registry_and_imports_from_decls(
@@ -4534,7 +4548,9 @@ mod tests {
                         tag: "button".to_string(),
                         props: HashMap::from([(
                             "text".to_string(),
-                            auto_ui_compiler::aura::AuraPropValue::Expr(Expr::Str("Increment".into())),
+                            auto_ui_compiler::aura::AuraPropValue::Expr(Expr::Str(
+                                "Increment".into(),
+                            )),
                         )]),
                         events: HashMap::from([(
                             "onclick".to_string(),
@@ -5443,8 +5459,8 @@ mod tests {
 
 #[cfg(test)]
 mod p625_t10_spike {
-    use auto_lang_core::parser::Parser;
     use crate::ui::view::View;
+    use auto_lang_core::parser::Parser;
 
     const HOST: &str = r#"
 widget GalleryHost {
@@ -5513,9 +5529,10 @@ widget Demo002Counter {
         }
         let root_decl = root_decl.expect("GalleryHost decl");
         assert_eq!(child_decls.len(), 1, "renamed demo decl collected");
-        let widget = auto_ui_compiler::aura::extract_widget_from_decl(&root_decl).expect("extract host");
-        let child_widget =
-            auto_ui_compiler::aura::extract_widget_from_decl(&child_decls[0]).expect("extract demo child");
+        let widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&root_decl).expect("extract host");
+        let child_widget = auto_ui_compiler::aura::extract_widget_from_decl(&child_decls[0])
+            .expect("extract demo child");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
         registry.register(child_widget);
 
@@ -5674,7 +5691,8 @@ widget TimerChild652 {
             }
         }
         assert!(decls.len() >= 2, "host + at least one child");
-        let root = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
         for d in &decls[1..] {
             let w = auto_ui_compiler::aura::extract_widget_from_decl(d).expect("extract child");
@@ -5958,7 +5976,8 @@ widget IfHost654 {
             }
         }
         assert!(decls.len() >= 2, "host + at least one child");
-        let root = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
         for d in &decls[1..] {
             let w = auto_ui_compiler::aura::extract_widget_from_decl(d).expect("extract child");

@@ -55,7 +55,8 @@ mod plan051_p2_tests {
     #[cfg(feature = "ui-interpreter")]
     #[test]
     fn plan051_p2_module_level_useweb_component_registers_icons() {
-        let corpus = locate_corpus("../auto-lang/test/ui/plan051_p2_modules/pac.at").expect("corpus");
+        let corpus =
+            locate_corpus("../auto-lang/test/ui/plan051_p2_modules/pac.at").expect("corpus");
         let dc = match crate::plan370_test_support::build_component_from_app(&corpus) {
             Some(c) => c,
             None => {

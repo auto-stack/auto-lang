@@ -575,7 +575,8 @@ pub fn save(cfg: &DesktopConfig) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let result = auto_lang_core::state_file::atomic_write(&path, serialize_config(&merged).as_bytes());
+    let result =
+        auto_lang_core::state_file::atomic_write(&path, serialize_config(&merged).as_bytes());
     if result.is_ok() {
         *LAST_SNAPSHOT.lock().unwrap() = Some(merged);
     }

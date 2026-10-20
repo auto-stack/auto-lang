@@ -44,7 +44,9 @@ use std::collections::HashSet;
 use auto_val::{Op, Value};
 
 use auto_lang_core::ast::Expr;
-use auto_ui_compiler::aura::{aura_events_get_base, AuraEvent, AuraNode, AuraPropValue, AuraTextContent};
+use auto_ui_compiler::aura::{
+    aura_events_get_base, AuraEvent, AuraNode, AuraPropValue, AuraTextContent,
+};
 
 /// Loop variable bindings: variable name → current Value.
 /// Passed through the conversion call chain to resolve `FieldAccess`
@@ -2999,24 +3001,28 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "carousel_previous" | "carousel-previous" => {
                 let mut p = props.clone();
-                p.entry("text".to_string())
-                    .or_insert_with(|| AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("‹".into())));
+                p.entry("text".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("‹".into()))
+                });
                 p.entry("variant".to_string()).or_insert_with(|| {
                     AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("outline".into()))
                 });
-                p.entry("size".to_string())
-                    .or_insert_with(|| AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("icon".into())));
+                p.entry("size".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("icon".into()))
+                });
                 self.convert_button(&p, events, children, bindings)
             }
             "carousel_next" | "carousel-next" => {
                 let mut p = props.clone();
-                p.entry("text".to_string())
-                    .or_insert_with(|| AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("›".into())));
+                p.entry("text".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("›".into()))
+                });
                 p.entry("variant".to_string()).or_insert_with(|| {
                     AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("outline".into()))
                 });
-                p.entry("size".to_string())
-                    .or_insert_with(|| AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("icon".into())));
+                p.entry("size".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("icon".into()))
+                });
                 self.convert_button(&p, events, children, bindings)
             }
 
@@ -4989,24 +4995,28 @@ impl<'a> AuraViewBuilder<'a> {
             }
             "carousel_previous" | "carousel-previous" => {
                 let mut p = props.clone();
-                p.entry("text".to_string())
-                    .or_insert_with(|| AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("‹".into())));
+                p.entry("text".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("‹".into()))
+                });
                 p.entry("variant".to_string()).or_insert_with(|| {
                     AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("outline".into()))
                 });
-                p.entry("size".to_string())
-                    .or_insert_with(|| AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("icon".into())));
+                p.entry("size".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("icon".into()))
+                });
                 self.convert_button(&p, events, children, bindings)
             }
             "carousel_next" | "carousel-next" => {
                 let mut p = props.clone();
-                p.entry("text".to_string())
-                    .or_insert_with(|| AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("›".into())));
+                p.entry("text".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("›".into()))
+                });
                 p.entry("variant".to_string()).or_insert_with(|| {
                     AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("outline".into()))
                 });
-                p.entry("size".to_string())
-                    .or_insert_with(|| AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("icon".into())));
+                p.entry("size".to_string()).or_insert_with(|| {
+                    AuraPropValue::Expr(auto_lang_core::ast::Expr::Str("icon".into()))
+                });
                 self.convert_button(&p, events, children, bindings)
             }
 
@@ -9974,7 +9984,9 @@ impl<'a> AuraViewBuilder<'a> {
         };
         let node_text = |n: &AuraNode| -> Option<String> {
             match n {
-                AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Literal(s)) => Some(s.clone()),
+                AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Literal(s)) => {
+                    Some(s.clone())
+                }
                 _ => None,
             }
         };
@@ -10817,7 +10829,8 @@ impl<'a> AuraViewBuilder<'a> {
         widget: &str,
         props: &HashMap<String, AuraPropValue>,
     ) -> Option<DynamicMessage> {
-        let AuraPropValue::Expr(auto_lang_core::ast::Expr::Dot(obj, field)) = props.get("open")? else {
+        let AuraPropValue::Expr(auto_lang_core::ast::Expr::Dot(obj, field)) = props.get("open")?
+        else {
             return None;
         };
         if !matches!(
@@ -12359,7 +12372,9 @@ impl<'a> AuraViewBuilder<'a> {
                 classes.push_str("rounded-md");
             }
             let mut merged = classes;
-            if let Some(AuraPropValue::Expr(auto_lang_core::ast::Expr::Str(s))) = item_props.get("class") {
+            if let Some(AuraPropValue::Expr(auto_lang_core::ast::Expr::Str(s))) =
+                item_props.get("class")
+            {
                 merged.push_str(s.as_str());
             }
             let mut new_props = item_props.clone();
@@ -16101,7 +16116,9 @@ fn t_call_params(
     call: &auto_lang_core::ast::Call,
 ) -> Vec<(String, String)> {
     let mut out = Vec::new();
-    if let Some(auto_lang_core::ast::Arg::Pos(auto_lang_core::ast::Expr::Object(pairs))) = call.args.args.get(1) {
+    if let Some(auto_lang_core::ast::Arg::Pos(auto_lang_core::ast::Expr::Object(pairs))) =
+        call.args.args.get(1)
+    {
         for pair in pairs {
             if let Some(v) = build(&pair.value) {
                 out.push((pair.key.to_astr().to_string(), v));
@@ -17002,8 +17019,14 @@ mod tests {
         let node = AuraNode::element("slider")
             .with_prop("min", auto_lang_core::ast::Expr::Int(0))
             .with_prop("max", auto_lang_core::ast::Expr::Int(100))
-            .with_prop("step", auto_lang_core::ast::Expr::Float(1.0, Default::default()))
-            .with_prop("value", auto_lang_core::ast::Expr::Float(30.0, Default::default()))
+            .with_prop(
+                "step",
+                auto_lang_core::ast::Expr::Float(1.0, Default::default()),
+            )
+            .with_prop(
+                "value",
+                auto_lang_core::ast::Expr::Float(30.0, Default::default()),
+            )
             .with_event("onchange", ".SetVol");
         let (props, events, _children) = match &node {
             AuraNode::Element {
@@ -17046,8 +17069,10 @@ mod tests {
         }
 
         // 无 onchange：无动作面（handler None——a2r/旧占位闭合形态退役）。
-        let bare = AuraNode::element("slider")
-            .with_prop("value", auto_lang_core::ast::Expr::Float(7.0, Default::default()));
+        let bare = AuraNode::element("slider").with_prop(
+            "value",
+            auto_lang_core::ast::Expr::Float(7.0, Default::default()),
+        );
         let (props2, events2, _) = match &bare {
             AuraNode::Element {
                 props,
@@ -17133,7 +17158,10 @@ mod tests {
         // variant: enclosed 生效；非法值回退 Default（AC-01 兜底）。
         match p641_run_fold(
             &builder,
-            mk(vec![("variant", auto_lang_core::ast::Expr::Str("enclosed".into()))]),
+            mk(vec![(
+                "variant",
+                auto_lang_core::ast::Expr::Str("enclosed".into()),
+            )]),
         ) {
             View::Tabs { variant, .. } => {
                 assert_eq!(variant, crate::ui::view::TabsVariant::Enclosed)
@@ -17142,7 +17170,10 @@ mod tests {
         }
         match p641_run_fold(
             &builder,
-            mk(vec![("variant", auto_lang_core::ast::Expr::Str("bogus".into()))]),
+            mk(vec![(
+                "variant",
+                auto_lang_core::ast::Expr::Str("bogus".into()),
+            )]),
         ) {
             View::Tabs { variant, .. } => {
                 assert_eq!(variant, crate::ui::view::TabsVariant::Default)
@@ -17158,18 +17189,27 @@ mod tests {
             View::Tabs { selected, .. } => assert_eq!(selected, 1),
             other => panic!("Expected View::Tabs, got {:?}", other),
         }
-        match p641_run_fold(&builder, mk(vec![("active", auto_lang_core::ast::Expr::Int(1))])) {
+        match p641_run_fold(
+            &builder,
+            mk(vec![("active", auto_lang_core::ast::Expr::Int(1))]),
+        ) {
             View::Tabs { selected, .. } => assert_eq!(selected, 1),
             other => panic!("Expected View::Tabs, got {:?}", other),
         }
         match p641_run_fold(
             &builder,
-            mk(vec![("defaultvalue", auto_lang_core::ast::Expr::Str("b".into()))]),
+            mk(vec![(
+                "defaultvalue",
+                auto_lang_core::ast::Expr::Str("b".into()),
+            )]),
         ) {
             View::Tabs { selected, .. } => assert_eq!(selected, 1),
             other => panic!("Expected View::Tabs, got {:?}", other),
         }
-        match p641_run_fold(&builder, mk(vec![("active", auto_lang_core::ast::Expr::Int(9))])) {
+        match p641_run_fold(
+            &builder,
+            mk(vec![("active", auto_lang_core::ast::Expr::Int(9))]),
+        ) {
             View::Tabs { selected, .. } => assert_eq!(selected, 1),
             other => panic!("Expected View::Tabs, got {:?}", other),
         }
@@ -17298,7 +17338,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         // Hidden fn synthesized and exported (invocable through the public
         // bridge API).
@@ -17361,7 +17402,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         // PLAN-668 A-06：PLAN-633 起「无任何 store 工程时字面 `store` 别名
         // 不展平」（view_store_alias_real_name 空快照语义）——裸装载单测
         // 须镜像合成期的 set_store_context 落别名快照（真身语料 041
@@ -17401,7 +17443,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
         let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
@@ -17456,7 +17499,8 @@ mod tests {
             false,
         )
         .unwrap();
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(app_decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(app_decl).expect("extract");
         let builder = AuraViewBuilder::new(&bridge, "App");
         let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
         assert!(
@@ -17517,7 +17561,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
         let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
@@ -17625,7 +17670,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
         let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
@@ -17775,7 +17821,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
         let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
@@ -17911,7 +17958,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         fn find_popovers<'a>(
             v: &'a View<DynamicMessage>,
@@ -18079,7 +18127,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let bridge = VmBridge::new(&widget).unwrap();
         let builder = AuraViewBuilder::new(&bridge, "App");
         let (view, _id_map, _probe) = builder.build_with_debug(&widget.view_tree);
@@ -18254,11 +18303,14 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let children = vec![AuraNode::Text(AuraTextContent::Literal("x".into()))];
-        let dyn_cols =
-            auto_lang_core::ast::Expr::Dot(Box::new(auto_lang_core::ast::Expr::Ident("self".into())), "n".into());
+        let dyn_cols = auto_lang_core::ast::Expr::Dot(
+            Box::new(auto_lang_core::ast::Expr::Ident("self".into())),
+            "n".into(),
+        );
 
         let mut props: HashMap<String, AuraPropValue> = HashMap::new();
         props.insert("cols".to_string(), AuraPropValue::Expr(dyn_cols.clone()));
@@ -18332,7 +18384,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         // Collect the three row style exprs in view order.
         fn collect_rows(node: &AuraNode, out: &mut Vec<auto_lang_core::ast::Expr>) {
@@ -18344,7 +18397,9 @@ mod tests {
                     ..
                 } => {
                     if tag == "row" {
-                        if let Some(auto_ui_compiler::aura::AuraPropValue::Expr(e)) = props.get("style") {
+                        if let Some(auto_ui_compiler::aura::AuraPropValue::Expr(e)) =
+                            props.get("style")
+                        {
                             out.push(e.clone());
                         }
                     }
@@ -21958,7 +22013,8 @@ mod tests {
                 _ => None,
             })
             .expect("widget decl");
-        let child = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let child =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut parent = make_test_widget("Parent", vec![]);
         parent.view_tree = AuraNode::Component {
@@ -22342,8 +22398,8 @@ mod tests {
         // 声明序：Item51d 先、List51d 后 —— 根 = List51d（末声明）。
         let root_widget =
             auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract List51d");
-        let child_widget =
-            auto_ui_compiler::aura::extract::extract_widget_from_decl(&decls[0]).expect("extract Item51d");
+        let child_widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(&decls[0])
+            .expect("extract Item51d");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
         registry.register(child_widget);
         let bridge = VmBridge::new(&root_widget).unwrap();
@@ -23626,8 +23682,8 @@ mod plan055_strip_html_tests {
 #[cfg(test)]
 mod plan571_button_default_variant_tests {
     use super::*;
-    use auto_ui_compiler::aura::AuraWidget;
     use crate::ui::style::Color;
+    use auto_ui_compiler::aura::AuraWidget;
 
     fn make_test_widget(name: &str) -> AuraWidget {
         AuraWidget {
@@ -24105,8 +24161,8 @@ mod plan534_side_panel_tests {
 #[cfg(test)]
 mod plan080_rowclass_probe_tests {
     use super::*;
-    use auto_ui_compiler::aura::AuraWidget;
     use crate::ui::style::StyleClass;
+    use auto_ui_compiler::aura::AuraWidget;
 
     fn widget() -> AuraWidget {
         AuraWidget {
@@ -25967,10 +26023,12 @@ mod plan045_memo_tests {
 
         let interp_item = AuraNode::element("menubar-item")
             .with_prop("title", Expr::Str("Dyn".into()))
-            .with_child(AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Interpolated {
-                template: "n=${.unrelated}".to_string(),
-                bindings: vec!["unrelated".to_string()],
-            }));
+            .with_child(AuraNode::Text(
+                auto_ui_compiler::aura::AuraTextContent::Interpolated {
+                    template: "n=${.unrelated}".to_string(),
+                    bindings: vec!["unrelated".to_string()],
+                },
+            ));
         let content = AuraNode::element("menubar-content").with_child(interp_item);
         let trigger = AuraNode::element("menubar-trigger").with_prop("text", Expr::Str("F".into()));
         let menu = AuraNode::element("menubar-menu")

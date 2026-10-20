@@ -40,13 +40,13 @@ use std::collections::HashMap;
 
 use auto_lang_core::ast::Expr;
 use auto_lang_core::ast::Stmt;
-#[allow(unused_imports)] // AuraStateDef/AuraNode used in #[cfg(test)] below
-use auto_ui_compiler::aura::{AuraNode, AuraStateDef, AuraWidget};
 use auto_lang_core::vm::engine::{AutoVM, ParkedSegment, ParkedWait, SegmentOutcome};
 use auto_lang_core::vm::generic_registry::GenericInstanceData;
 use auto_lang_core::vm::loader::Linker;
 use auto_lang_core::vm::task::AutoTask;
 use auto_lang_core::vm::virt_memory::VirtualFlash;
+#[allow(unused_imports)] // AuraStateDef/AuraNode used in #[cfg(test)] below
+use auto_ui_compiler::aura::{AuraNode, AuraStateDef, AuraWidget};
 use auto_val::{Op, Value};
 
 // ============================================================================
@@ -1727,10 +1727,12 @@ impl VmBridge {
                     // Convert Array props to heap-stored ListData here.
                     let storable = match val {
                         auto_val::Value::Array(arr) => {
-                            let id = self.vm.insert_heap_object(auto_lang_core::vm::types::ListData {
-                                elems: arr.values.clone(),
-                                storage: None,
-                            });
+                            let id =
+                                self.vm
+                                    .insert_heap_object(auto_lang_core::vm::types::ListData {
+                                        elems: arr.values.clone(),
+                                        storage: None,
+                                    });
                             // Plan 419: 字段持有列表引用。
                             self.vm.rc_retain_id(id);
                             auto_val::Value::Int(id as i32)
@@ -2014,7 +2016,9 @@ impl VmBridge {
                 .vm
                 .futures
                 .get(fid)
-                .map(|f| f.read().unwrap().state != auto_lang_core::vm::engine::FutureState::Pending)
+                .map(|f| {
+                    f.read().unwrap().state != auto_lang_core::vm::engine::FutureState::Pending
+                })
                 .unwrap_or(true), // future gone → wake (engine wake-source-6 parity)
             // PLAN-707 T-05: HTTP/SSE stream — queued item or terminal state.
             ParkedWait::HttpStream(stream_id) => {
@@ -2180,7 +2184,10 @@ impl VmBridge {
     ///   原样放回下一轮继续。
     /// - 片间消费至多一条排队写事件（同 App 写序纪律：写事件只在泵上下文
     ///   串行落堆，不与在途 continuation 交错）；轮末兜底清剩余队列。
-    pub fn resume_cpu_slices(&self, budget: auto_lang_core::vm::engine::CpuSliceBudget) -> CpuPumpReport {
+    pub fn resume_cpu_slices(
+        &self,
+        budget: auto_lang_core::vm::engine::CpuSliceBudget,
+    ) -> CpuPumpReport {
         let round_start = std::time::Instant::now();
         let mut report = CpuPumpReport::default();
         let mut ready: Vec<ParkedTask> = {
@@ -3290,7 +3297,9 @@ impl VmBridge {
         let mut fired = 0usize;
         for (_id, callback) in due {
             let result = match callback {
-                auto_lang_core::vm::engine::TimerCallback::Event(event) => self.call_handler(&event, &[]),
+                auto_lang_core::vm::engine::TimerCallback::Event(event) => {
+                    self.call_handler(&event, &[])
+                }
                 auto_lang_core::vm::engine::TimerCallback::Closure(closure_id) => {
                     let mut task = AutoTask::new(0, 4096, 0);
                     // call_closure pops closure_id + arg_count args off the stack.
@@ -3783,7 +3792,9 @@ fn materialize_type_literal(node: &auto_lang_core::ast::Node, vm: &mut AutoVM) -
     let mut field_exprs: Vec<&auto_lang_core::ast::Expr> = Vec::new();
     for arg in &node.args.args {
         match arg {
-            auto_lang_core::ast::Arg::Pos(e) | auto_lang_core::ast::Arg::Pair(_, e) => field_exprs.push(e),
+            auto_lang_core::ast::Arg::Pos(e) | auto_lang_core::ast::Arg::Pair(_, e) => {
+                field_exprs.push(e)
+            }
             auto_lang_core::ast::Arg::Name(_) => {} // skip; will be filled with default below
         }
     }
@@ -3888,9 +3899,9 @@ mod tests {
     /// (041 ActNew 实测,rc.rs:378)。此测试在修复前会 panic。
     #[test]
     fn plan423_p5_state_literal_refs_survive_chained_write() {
-        use auto_ui_compiler::aura::LogicPayload;
         use auto_lang_core::parser::Parser;
         use auto_lang_core::session::CompilerSession;
+        use auto_ui_compiler::aura::LogicPayload;
         let mut widget = make_test_widget("RcRootTest", vec![]);
         let model_src = r#"
             var tabs list = [{a: 1, b: 2}, {a: 3, b: 4}]
@@ -3948,9 +3959,9 @@ mod tests {
     /// 续行；字面量键与 var 键同形（078 isolation A/D 两形态）。
     #[test]
     fn plan661_t01_map_bracket_write_roundtrip() {
-        use auto_ui_compiler::aura::LogicPayload;
         use auto_lang_core::parser::Parser;
         use auto_lang_core::session::CompilerSession;
+        use auto_ui_compiler::aura::LogicPayload;
         let mut widget = make_test_widget("MapWrite", vec![]);
         let model_src = r#"
             var m map = { a: 1 }
@@ -4041,9 +4052,9 @@ mod tests {
     /// 导出），未声明的必须 miss——渲染器关窗臂据此决定拦截还是默认关窗。
     #[test]
     fn plan626_has_handler_close_request_lifecycle() {
-        use auto_ui_compiler::aura::LogicPayload;
         use auto_lang_core::parser::Parser;
         use auto_lang_core::session::CompilerSession;
+        use auto_ui_compiler::aura::LogicPayload;
         let mut widget = make_test_widget("CloseProbe", vec![]);
         let handler_src = r#"
             console_log("close requested")
@@ -4078,9 +4089,9 @@ mod tests {
     #[test]
     fn plan702_handler_park_reentry_resume_roundtrip() {
         use auto_lang_core::ast::Stmt;
-        use auto_ui_compiler::aura::{AuraStateDef, LogicPayload};
         use auto_lang_core::parser::Parser;
         use auto_lang_core::session::CompilerSession;
+        use auto_ui_compiler::aura::{AuraStateDef, LogicPayload};
 
         let body_for_server = "seeded-body".to_string();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
@@ -4197,9 +4208,9 @@ mod tests {
 
     #[test]
     fn plan423_p5_runaway_guard_halts_unbounded_growth() {
-        use auto_ui_compiler::aura::LogicPayload;
         use auto_lang_core::parser::Parser;
         use auto_lang_core::session::CompilerSession;
+        use auto_ui_compiler::aura::LogicPayload;
         let mut widget = make_test_widget("RunawayTest", vec![]);
         // 载体演进:①无副作用的读取会被编译器省略;②Plan 419 的字符串池
         // RC+freelist 让"重复串/拼接串"的活池有界(str_churn_bounded)——
@@ -4314,9 +4325,9 @@ widget SlideTest {
     /// 曾冻窗，需以本测试钉死单线程可复现性）。
     #[test]
     fn plan445_m3_svgdoc_dynamic_props() {
+        use crate::ui::aura_view_builder::AuraViewBuilder;
         use auto_lang_core::parser::Parser;
         use auto_lang_core::session::CompilerSession;
-        use crate::ui::aura_view_builder::AuraViewBuilder;
         let app_src = r##"
 widget SvgProbe {
     msg Msg { Init }
@@ -4391,9 +4402,9 @@ widget SvgProbe {
     /// （VM 实测带 fill-opacity 的 path 整根不渲染；变体探针锁定）。
     #[test]
     fn plan445_diag_fill_opacity_serialization() {
+        use crate::ui::aura_view_builder::AuraViewBuilder;
         use auto_lang_core::parser::Parser;
         use auto_lang_core::session::CompilerSession;
-        use crate::ui::aura_view_builder::AuraViewBuilder;
         let app_src = r##"
 widget OpProbe {
     msg Msg { Init }
@@ -4773,9 +4784,9 @@ widget OpProbeOrig {
 
     /// 解析 handler 源并挂到 widget（plan423 同款通道）。
     fn plan047_attach_handler(widget: &mut AuraWidget, event: &str, src: &str) {
-        use auto_ui_compiler::aura::LogicPayload;
         use auto_lang_core::parser::Parser;
         use auto_lang_core::session::CompilerSession;
+        use auto_ui_compiler::aura::LogicPayload;
         let ast = Parser::from(src)
             .with_session(CompilerSession::ui())
             .parse()
@@ -4899,16 +4910,20 @@ widget OpProbeOrig {
         let widget = make_test_widget("AttrMap", vec![]);
         let bridge = VmBridge::new(&widget).expect("bridge");
         let seq0 = bridge.state_mutation_seq();
-        let map_id = bridge
-            .vm
-            .insert_heap_object(auto_lang_core::vm::collections::SpecializedHashMap::new("str"));
+        let map_id =
+            bridge
+                .vm
+                .insert_heap_object(auto_lang_core::vm::collections::SpecializedHashMap::new(
+                    "str",
+                ));
         let mut task = auto_lang_core::vm::task::AutoTask::new(0, 4096, 0);
         // 栈序（shim pop 序 value→key→map）：先 map_id、再 key、后 value。
         task.ram.push_i32(map_id as i32);
         let key_idx = bridge.vm.add_string(b"k".to_vec());
         task.ram.push_string(key_idx as u32);
         task.ram.push_i32(42);
-        auto_lang_core::vm::native::shim_hashmap_insert_str(&mut task, &bridge.vm).expect("shim insert");
+        auto_lang_core::vm::native::shim_hashmap_insert_str(&mut task, &bridge.vm)
+            .expect("shim insert");
         // 全局 seq 补齐（原盲区）+ 定点归因（A-able 按键名，exact+wildcard）。
         assert!(bridge.state_mutation_seq() > seq0, "全局 seq 补 bump");
         assert_eq!(bridge.vm.path_version(map_id, "k"), 1, "按键名 exact");
@@ -5573,7 +5588,8 @@ widget OpProbeOrig {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut bridge = VmBridge::new(&widget).unwrap();
         assert!(
@@ -5614,7 +5630,8 @@ widget OpProbeOrig {
                 _ => None,
             })
             .expect("widget decl");
-        let widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
 
         let mut bridge = VmBridge::new(&widget).unwrap();
         println!("handlers: {:?}", bridge.handler_names());
@@ -5855,7 +5872,9 @@ widget Store {
         let mut import_stmts: Vec<Stmt> = Vec::new();
         for s in ast.stmts {
             match s {
-                Stmt::WidgetDecl(d) => widget = auto_ui_compiler::aura::extract_widget_from_decl(&d).ok(),
+                Stmt::WidgetDecl(d) => {
+                    widget = auto_ui_compiler::aura::extract_widget_from_decl(&d).ok()
+                }
                 Stmt::Fn(_) | Stmt::TypeDecl(_) | Stmt::Store(_) => import_stmts.push(s),
                 _ => {}
             }
@@ -6043,7 +6062,9 @@ widget Store {
             .stmts
             .iter()
             .find_map(|s| match s {
-                auto_lang_core::ast::Stmt::WidgetDecl(d) => auto_ui_compiler::aura::extract_widget_from_decl(d).ok(),
+                auto_lang_core::ast::Stmt::WidgetDecl(d) => {
+                    auto_ui_compiler::aura::extract_widget_from_decl(d).ok()
+                }
                 _ => None,
             })
             .expect("002-counter must declare a widget");

@@ -195,9 +195,9 @@ pub fn install_process_default() {
     );
     // PLAN-807: 同点位补装编辑器快照 adapter（独立槽 if-absent——与 22
     // native 槽互不掩盖；diff_snapshots 9916 经此供值）。
-    auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider_if_absent(Arc::new(
-        EditorSnapshotRegistryProvider,
-    ));
+    auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider_if_absent(
+        Arc::new(EditorSnapshotRegistryProvider),
+    );
 }
 
 /// PLAN-807: 编辑器快照 adapter——委托 ui::code_editor 既有注册表
@@ -286,23 +286,26 @@ mod tests {
         }
 
         let _slot = auto_lang_core::vm::host_capabilities::test_default_slot_lock();
-        let saved = auto_lang_core::vm::host_capabilities::process_default_code_editor_host_provider();
+        let saved =
+            auto_lang_core::vm::host_capabilities::process_default_code_editor_host_provider();
 
         // 空槽 → 补缺成功（仅入槽，不触注册表）。
         auto_lang_core::vm::host_capabilities::clear_process_default_code_editor_host_provider();
         install_process_default();
         assert!(
-            auto_lang_core::vm::host_capabilities::process_default_code_editor_host_provider().is_some(),
+            auto_lang_core::vm::host_capabilities::process_default_code_editor_host_provider()
+                .is_some(),
             "空槽时兼容默认须补缺"
         );
 
         // 显式默认 → 兼容安装不覆盖（哨兵文本可区分）。
-        auto_lang_core::vm::host_capabilities::set_process_default_code_editor_host_provider(Arc::new(
-            Fake("@plan802-explicit:哨兵-🎉"),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_code_editor_host_provider(
+            Arc::new(Fake("@plan802-explicit:哨兵-🎉")),
+        );
         install_process_default();
         let cur =
-            auto_lang_core::vm::host_capabilities::process_default_code_editor_host_provider().unwrap();
+            auto_lang_core::vm::host_capabilities::process_default_code_editor_host_provider()
+                .unwrap();
         assert_eq!(
             CodeEditorHostProvider::text(&*cur, "任意键"),
             Some("@plan802-explicit:哨兵-🎉".to_string()),

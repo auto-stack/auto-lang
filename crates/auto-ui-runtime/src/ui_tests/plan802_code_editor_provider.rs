@@ -138,20 +138,21 @@ mod plan802_assembly {
     #[test]
     fn snapshot_instance_override_clone_merge_identity() {
         let _slot = auto_lang_core::vm::host_capabilities::test_default_slot_lock();
-        let saved = auto_lang_core::vm::host_capabilities::process_default_code_editor_host_provider();
+        let saved =
+            auto_lang_core::vm::host_capabilities::process_default_code_editor_host_provider();
 
         // 构造式缺席：跳过快照=无 provider（不依赖全局槽时序）。
         let bare = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 64);
         assert!(bare.code_editor_provider().is_none(), "构造式缺席");
 
         // 快照隔离：vm1 快照 A；换默认 B 后 vm1 仍 A，vm2 快照 B。
-        auto_lang_core::vm::host_capabilities::set_process_default_code_editor_host_provider(Arc::new(
-            Fake("@A"),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_code_editor_host_provider(
+            Arc::new(Fake("@A")),
+        );
         let vm1 = AutoVM::new(VirtualFlash::new(0), 256);
-        auto_lang_core::vm::host_capabilities::set_process_default_code_editor_host_provider(Arc::new(
-            Fake("@B"),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_code_editor_host_provider(
+            Arc::new(Fake("@B")),
+        );
         let vm2 = AutoVM::new(VirtualFlash::new(0), 256);
         let mut t1 = AutoTask::new(0, 256, 0);
         assert_eq!(read_text_lane(&vm1, &mut t1), "@A", "vm1 保持构造期快照 A");
@@ -165,9 +166,9 @@ mod plan802_assembly {
         let mut t2 = AutoTask::new(0, 256, 0);
         assert_eq!(read_text_lane(&vm2, &mut t2), "@B", "兄弟 VM 不受覆盖影响");
         // 后改进程默认不影响已建实例（vm2 换默认 D 后仍 B）。
-        auto_lang_core::vm::host_capabilities::set_process_default_code_editor_host_provider(Arc::new(
-            Fake("@D"),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_code_editor_host_provider(
+            Arc::new(Fake("@D")),
+        );
         let mut t2 = AutoTask::new(0, 256, 0);
         assert_eq!(read_text_lane(&vm2, &mut t2), "@B", "后改默认不影响旧 VM");
 

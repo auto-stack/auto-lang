@@ -23,7 +23,7 @@ mod probe_adapter_turnaround_ipc;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
 mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSONL 入 docs/reports）
-                           // PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影
+                   // PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影
 mod plan716_supply_probes;
 // PLAN-779: frame native host provider 注入——core 剪断/UI 装配/merge 保 provider 回归锚
 mod plan779_frame_provider;
@@ -38,10 +38,10 @@ mod plan790_clipboard_media_provider;
 mod plan485_clipboard_natives; // PLAN-814 T-02 上移：clipboard natives 四件套实剪贴板往返（SDK 死门勘误）
 #[cfg(feature = "ui-iced")]
 mod plan712_back_prefix_route_fetch; // PLAN-814 T-02 上移：routes 页前缀化端到端（SDK 死门勘误）
-// PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
-// 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
-                       // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
-                       // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
+                                     // PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
+                                     // 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
+                                     // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
+                                     // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
 mod plan804_dialog_dnd_provider;
 // PLAN-808: terminal 34 native host-domain extraction——codec 剪断/34 形状/
 // 装配身份/缺席矩阵/真实 DLL 会话生命周期与 UI 投影回归锚
@@ -155,13 +155,13 @@ mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验�
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in test/parity/
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 pub use auto_lang_core::heavy_gate;
-mod plan814_recipe_extraction_tests;
-mod plan569_py_dispatch_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）// ============================================================
-                               // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
-                               // 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
-                               // 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
-                               // test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
-                               // ============================================================
+mod plan569_py_dispatch_tests;
+mod plan814_recipe_extraction_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）// ============================================================
+                                     // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
+                                     // 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
+                                     // 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
+                                     // test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
+                                     // ============================================================
 
 #[cfg(test)]
 mod test_util; // Plan 266 Phase 4: Differential testing utilities

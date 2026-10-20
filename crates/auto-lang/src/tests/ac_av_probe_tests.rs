@@ -714,7 +714,8 @@ fn ac_av_probe_mixed_recipe_stale_identity_is_order_independent() {
     )
     .unwrap();
     let deck = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../auto-lang/test/cases/autoabi/src/p797-mix.atomdata"),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../auto-lang/test/cases/autoabi/src/p797-mix.atomdata"),
     )
     .unwrap();
     let cases = [

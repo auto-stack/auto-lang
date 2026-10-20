@@ -1864,14 +1864,14 @@ mod tests {
     /// 节点存在(几何/键入 prop 可见)。
     #[test]
     fn minimal_at_example_mounts_terminal_placeholder() {
-        use auto_lang_core::ast::Stmt;
-        use auto_ui_compiler::aura::extract::extract_widget_from_decl;
-        use auto_lang_core::parser::Parser;
-        use auto_lang_core::session::CompilerSession;
         use crate::ui::aura_view_builder::AuraViewBuilder;
         use crate::ui::vm_bridge::VmBridge;
         use crate::ui::vnode_converter::view_to_vtree;
         use crate::ui::View;
+        use auto_lang_core::ast::Stmt;
+        use auto_lang_core::parser::Parser;
+        use auto_lang_core::session::CompilerSession;
+        use auto_ui_compiler::aura::extract::extract_widget_from_decl;
 
         // PLAN-814 T-04：语料单源留 crates/auto-lang/test/ui（auto-lang 侧
         // plan808 测试同源消费；测试源码 owner 迁移=T-07，届时随迁归位）。

@@ -461,7 +461,8 @@ mod plan794_scroll {
             "vm1 快照 A 与旧默认 B 不串线收参"
         );
         // 进程默认不被实例覆盖改写。
-        let cur = auto_lang_core::vm::host_capabilities::process_default_scroll_host_provider().unwrap();
+        let cur =
+            auto_lang_core::vm::host_capabilities::process_default_scroll_host_provider().unwrap();
         ScrollHostProvider::enqueue_intent(
             &*cur,
             "@scrollctl:默认",
@@ -501,8 +502,12 @@ mod plan794_scroll {
 
         // 还原进程默认。
         match saved {
-            Some(p) => auto_lang_core::vm::host_capabilities::set_process_default_scroll_host_provider(p),
-            None => auto_lang_core::vm::host_capabilities::clear_process_default_scroll_host_provider(),
+            Some(p) => {
+                auto_lang_core::vm::host_capabilities::set_process_default_scroll_host_provider(p)
+            }
+            None => {
+                auto_lang_core::vm::host_capabilities::clear_process_default_scroll_host_provider()
+            }
         }
     }
 

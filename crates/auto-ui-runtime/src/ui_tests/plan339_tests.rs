@@ -321,7 +321,9 @@ pub fn create_note(title str, body str) Note {
             if use_stmt.is_c_import || use_stmt.is_rust_import {
                 continue;
             }
-            let Some(module_path) = auto_lang_core::resolve_module_path(&base_dir, &use_stmt.module) else {
+            let Some(module_path) =
+                auto_lang_core::resolve_module_path(&base_dir, &use_stmt.module)
+            else {
                 continue;
             };
             collect_imports(
@@ -417,7 +419,9 @@ pub fn create_note(title str, body str) Note {
             if use_stmt.is_c_import || use_stmt.is_rust_import {
                 continue;
             }
-            let Some(module_path) = auto_lang_core::resolve_module_path(&base_dir, &use_stmt.module) else {
+            let Some(module_path) =
+                auto_lang_core::resolve_module_path(&base_dir, &use_stmt.module)
+            else {
                 continue;
             };
             collect_imports(

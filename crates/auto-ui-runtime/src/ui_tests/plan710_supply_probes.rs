@@ -92,7 +92,8 @@ widget App {{
                 _ => None,
             })
             .expect("widget decl");
-        let mut widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let mut gen = auto_ui_compiler::ui_gen::rust::RustGenerator::new();
         gen.generate_rust(&widget).expect("generate rust")
     }
@@ -390,7 +391,8 @@ widget App {{
                 _ => None,
             })
             .expect("widget decl");
-        let mut widget = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
+        let mut widget =
+            auto_ui_compiler::aura::extract::extract_widget_from_decl(decl).expect("extract");
         let mut gen = auto_ui_compiler::ui_gen::rust::RustGenerator::new();
         gen.generate_rust(&widget).expect("generate rust")
     }
@@ -558,8 +560,8 @@ fn plan714_back_try_arm_catch_unwind_fsys_shape() {
     }
 }
 ";
-    let mut rcode =
-        auto_lang_core::trans::rust::transpile_rust("find_in_files", src).expect("transpile failed");
+    let mut rcode = auto_lang_core::trans::rust::transpile_rust("find_in_files", src)
+        .expect("transpile failed");
     let rs_bytes = rcode.done().expect("done failed");
     let rs = String::from_utf8_lossy(rs_bytes);
     assert!(
@@ -583,7 +585,8 @@ fn plan714_back_try_arm_catch_binding_panic_message() {
     }
 }
 ";
-    let mut rcode = auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let mut rcode =
+        auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
     let rs_bytes = rcode.done().expect("done failed");
     let rs = String::from_utf8_lossy(rs_bytes);
     assert!(
@@ -604,7 +607,8 @@ fn plan714_back_try_arm_finally_follows_match() {
     }
 }
 ";
-    let mut rcode = auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let mut rcode =
+        auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
     let rs_bytes = rcode.done().expect("done failed");
     let rs = String::from_utf8_lossy(rs_bytes);
     assert!(
@@ -628,7 +632,8 @@ fn plan714_back_try_arm_return_propagation() {
     }
 }
 ";
-    let mut rcode = auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let mut rcode =
+        auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
     let rs_bytes = rcode.done().expect("done failed");
     let rs = String::from_utf8_lossy(rs_bytes);
     assert!(
@@ -656,7 +661,8 @@ fn plan714_back_try_unit_fn_unchanged() {
     }
 }
 ";
-    let mut rcode = auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let mut rcode =
+        auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
     let rs_bytes = rcode.done().expect("done failed");
     let rs = String::from_utf8_lossy(rs_bytes);
     assert!(!rs.contains("-> Option<"), "unit fn 不传播: {rs}");
@@ -678,7 +684,8 @@ fn plan714_back_try_borrow_iter_clone() {
     }
 }
 ";
-    let mut rcode = auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
+    let mut rcode =
+        auto_lang_core::trans::rust::transpile_rust("probe", src).expect("transpile failed");
     let rs_bytes = rcode.done().expect("done failed");
     let rs = String::from_utf8_lossy(rs_bytes);
     assert!(
@@ -698,8 +705,8 @@ fn plan714_r3_fsys_at_full_transpile_qualified() {
         println!("SKIP: corpus fixture absent ({path})");
         return;
     };
-    let mut rcode =
-        auto_lang_core::trans::rust::transpile_rust("fsys", &src).expect("fsys.at transpile failed");
+    let mut rcode = auto_lang_core::trans::rust::transpile_rust("fsys", &src)
+        .expect("fsys.at transpile failed");
     let rs_bytes = rcode.done().expect("done failed");
     let rs = String::from_utf8_lossy(rs_bytes);
     std::fs::write(

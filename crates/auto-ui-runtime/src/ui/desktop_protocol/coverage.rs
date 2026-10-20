@@ -1389,7 +1389,10 @@ mod tests {
             coverage.kinds.contains(&kind) || coverage.layouts.contains(&kind)
         };
         for (tag, status) in auto_ui_compiler::aura::element_coverage::element_table() {
-            if matches!(status, auto_ui_compiler::aura::element_coverage::QueueStatus::Covered) {
+            if matches!(
+                status,
+                auto_ui_compiler::aura::element_coverage::QueueStatus::Covered
+            ) {
                 assert!(
                     projectable(tag),
                     "登记 covered 但 target_set 不可投影: {tag}（能力表/投影器臂缺失）"
@@ -1947,7 +1950,8 @@ mod tests {
                     eprintln!("[p674-not-yet] {name}: no-widget（仪器桶）");
                     continue;
                 };
-                let Ok(widget) = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl) else {
+                let Ok(widget) = auto_ui_compiler::aura::extract::extract_widget_from_decl(decl)
+                else {
                     eprintln!("[p674-not-yet] {name}: extract-fail（仪器桶）");
                     continue;
                 };

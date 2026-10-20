@@ -828,7 +828,8 @@ impl ProxyShared {
             if i > 0 {
                 out.push(',');
             }
-            let (artist, song_title) = auto_media_core::media_service::parse_artist_and_title(&e.name);
+            let (artist, song_title) =
+                auto_media_core::media_service::parse_artist_and_title(&e.name);
             let album = if e.rel_dir.is_empty() {
                 "本地单曲".to_string()
             } else {
@@ -1191,7 +1192,10 @@ impl SessionBus {
 
 /// PLAN-658 T-06: 测试面——`sys.panic_hard(msg)` 触发真 Rust panic（隔离
 /// 边界驱动；见 load_back_session 注册点注释）。
-fn shim_sys_panic_hard(task: &mut AutoTask, vm: &AutoVM) -> Result<(), auto_lang_core::vm::engine::VMError> {
+fn shim_sys_panic_hard(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), auto_lang_core::vm::engine::VMError> {
     let nv = auto_lang_core::vm::native::pop_arg_nv(task);
     let msg = if auto_val::is_string(nv) {
         vm.get_string(auto_val::decode_string(nv) as u32)
@@ -1784,7 +1788,8 @@ impl SessionRuntime {
                     .find(|(k, _)| k == "authorization")
                     .map(|(_, v)| v.clone())
                     .unwrap_or_default();
-                let meta_json = auto_lang_core::vm::ffi::http_server::build_meta_json(&cookie, &auth);
+                let meta_json =
+                    auto_lang_core::vm::ffi::http_server::build_meta_json(&cookie, &auth);
                 bound.push(serde_json::Value::String(meta_json.clone()));
                 arg_srcs.push(ArgSrc::TypedString(sig.clone(), meta_json));
                 continue;
@@ -1804,18 +1809,22 @@ impl SessionRuntime {
         let pre_args_sp = task.ram.sp;
         for src in &arg_srcs {
             let pushed: Result<(), ApiArgBindError> = match src {
-                ArgSrc::Json(v) => auto_lang_core::vm::ffi::stdlib::json_to_vm_value(
-                    &mut task, &self.vm, v, 0,
-                )
-                .map_err(|e| ApiArgBindError::Internal(format!("arg marshal failed: {e:?}"))),
-                ArgSrc::TypedString(sig, s) => auto_lang_core::vm::ffi::http_server::push_typed_string_arg(
-                    &self.vm,
-                    &mut task,
-                    sig,
-                    s,
-                    &req.method,
-                    &req.path,
-                ),
+                ArgSrc::Json(v) => {
+                    auto_lang_core::vm::ffi::stdlib::json_to_vm_value(&mut task, &self.vm, v, 0)
+                        .map_err(|e| {
+                            ApiArgBindError::Internal(format!("arg marshal failed: {e:?}"))
+                        })
+                }
+                ArgSrc::TypedString(sig, s) => {
+                    auto_lang_core::vm::ffi::http_server::push_typed_string_arg(
+                        &self.vm,
+                        &mut task,
+                        sig,
+                        s,
+                        &req.method,
+                        &req.path,
+                    )
+                }
             };
             if let Err(e) = pushed {
                 let (status, detail) = match e {

@@ -445,9 +445,9 @@ pub(crate) fn app_window_px_for_test() -> (f32, f32) {
 /// Install the UI adapter as the process-default terminal provider (only when
 /// the slot is empty — explicit registration wins, 779 discipline).
 pub fn install_process_default() {
-    auto_lang_core::vm::host_capabilities::set_process_default_terminal_host_provider_if_absent(Arc::new(
-        TerminalUiProvider::new(auto_terminal_core::shared()),
-    ));
+    auto_lang_core::vm::host_capabilities::set_process_default_terminal_host_provider_if_absent(
+        Arc::new(TerminalUiProvider::new(auto_terminal_core::shared())),
+    );
 }
 
 #[cfg(test)]
@@ -532,13 +532,19 @@ mod tests {
         auto_lang_core::vm::host_capabilities::clear_process_default_terminal_host_provider();
         install_process_default();
         assert!(
-            auto_lang_core::vm::host_capabilities::process_default_terminal_host_provider().is_some(),
+            auto_lang_core::vm::host_capabilities::process_default_terminal_host_provider()
+                .is_some(),
             "empty slot gets the compat adapter"
         );
         auto_lang_core::vm::host_capabilities::clear_process_default_terminal_host_provider();
         match saved {
-            Some(p) => auto_lang_core::vm::host_capabilities::set_process_default_terminal_host_provider(p),
-            None => auto_lang_core::vm::host_capabilities::clear_process_default_terminal_host_provider(),
+            Some(p) => {
+                auto_lang_core::vm::host_capabilities::set_process_default_terminal_host_provider(p)
+            }
+            None => {
+                auto_lang_core::vm::host_capabilities::clear_process_default_terminal_host_provider(
+                )
+            }
         }
     }
 

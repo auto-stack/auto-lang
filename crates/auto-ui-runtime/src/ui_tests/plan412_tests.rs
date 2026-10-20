@@ -576,7 +576,8 @@ fn plan412_routes_registered() {
     let mut paths: Vec<String> = Vec::new();
     for stmt in &ast.stmts {
         if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
-            let widget = auto_ui_compiler::aura::extract_widget_from_decl(decl).expect("extract App widget");
+            let widget =
+                auto_ui_compiler::aura::extract_widget_from_decl(decl).expect("extract App widget");
             if let Some(routes) = widget.routes {
                 paths.extend(routes.routes.iter().map(|r| r.path.clone()));
             }

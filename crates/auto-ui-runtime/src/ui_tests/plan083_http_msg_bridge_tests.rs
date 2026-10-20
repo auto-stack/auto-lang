@@ -14,7 +14,9 @@
 //! 发起段"不阻塞"为结构性事实（shim 不置 task Waiting、无忙等段），实机
 //! 可响应性由 PLAN-083 T-05 V-1 验收（musk 切 workspace 实测）。
 
-use auto_lang_core::vm::ffi::stdlib::{http_msg_poll_one, http_msg_queue_clear, http_msg_split_target};
+use auto_lang_core::vm::ffi::stdlib::{
+    http_msg_poll_one, http_msg_queue_clear, http_msg_split_target,
+};
 
 /// 进程级队列是共享态——两个 spawn 测试互斥串行（并行跑会互洗队列/互取
 /// 对方完成项，首跑实测 2 红复跑全绿的竞态即此）。

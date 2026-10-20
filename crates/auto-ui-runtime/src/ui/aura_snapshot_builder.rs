@@ -9,10 +9,10 @@
 
 use std::collections::HashMap;
 
-use auto_lang_core::ast::Expr;
-use auto_ui_compiler::aura::{AuraNode, AuraPropValue, AuraTextContent};
 use crate::ui::render_support::{self, SupportLevel};
 use crate::ui::style::BoxLayout;
+use auto_lang_core::ast::Expr;
+use auto_ui_compiler::aura::{AuraNode, AuraPropValue, AuraTextContent};
 
 /// Type alias for layout bounds map: widget ID → (x, y, width, height).
 type LayoutBoundsMap = HashMap<String, (f32, f32, f32, f32)>;

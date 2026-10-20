@@ -93,7 +93,9 @@ mod tests {
         );
 
         // 显式默认 → 兼容安装不覆盖。
-        auto_lang_core::vm::host_capabilities::set_process_default_frame_provider(Arc::new(Fake(17)));
+        auto_lang_core::vm::host_capabilities::set_process_default_frame_provider(Arc::new(Fake(
+            17,
+        )));
         install_process_default();
         let cur = auto_lang_core::vm::host_capabilities::process_default_frame_provider().unwrap();
         assert_eq!(

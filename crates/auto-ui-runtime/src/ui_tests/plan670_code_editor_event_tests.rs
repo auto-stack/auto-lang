@@ -23,7 +23,8 @@ fn build_view(src: &str) -> View<DynamicMessage> {
             _ => None,
         })
         .collect();
-    let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+    let root_widget =
+        auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
     let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
         &decls[0],
         &decls[1..],

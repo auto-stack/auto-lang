@@ -176,7 +176,9 @@ impl InterpreterBridge {
                     .iter()
                     .map(|n| auto_lang_core::ast::Expr::Ident(n.as_str().into()))
                     .collect();
-                stmts.push(auto_lang_core::ast::Stmt::Expr(auto_lang_core::ast::Expr::Array(idents)));
+                stmts.push(auto_lang_core::ast::Stmt::Expr(
+                    auto_lang_core::ast::Expr::Array(idents),
+                ));
             }
             let result = self.interpreter.eval_stmts(stmts).map_err(|e| {
                 BridgeError::AutoLang(format!("widget `{}` setup preamble: {}", name, e))

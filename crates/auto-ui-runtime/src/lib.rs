@@ -62,13 +62,13 @@ pub use ui::{
 pub use ui::iced::{ComponentIced, IntoIcedElement};
 
 // dynamic_build 管线公开面（原 auto-lang lib.rs 根项，cfg 门原样）
-#[cfg(feature = "ui-iced")]
-pub use dynamic_build::{build_dynamic_component, has_ui_keywords, run_file_dynamic_ui};
+#[cfg(feature = "ui")]
+pub(crate) use dynamic_build::load_ext_imports_for_vm;
 #[cfg(feature = "ui-iced")]
 pub use dynamic_build::run_file_dynamic_ui_with_scenario;
 pub use dynamic_build::ui_module_parse_failures;
-#[cfg(feature = "ui")]
-pub(crate) use dynamic_build::load_ext_imports_for_vm;
+#[cfg(feature = "ui-iced")]
+pub use dynamic_build::{build_dynamic_component, has_ui_keywords, run_file_dynamic_ui};
 pub(crate) use dynamic_build::{collect_module_imports, stmt_symbol_name};
 
 // ── 宿主能力装配单点（原 auto-lang 实装随迁；文法装配留旧兼容包） ──

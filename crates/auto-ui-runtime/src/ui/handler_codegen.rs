@@ -22,9 +22,9 @@ use auto_lang_core::ast::{
     Arg, Body, Branch, Expr, Fn, FnKind, If, Member, Name, Param, Stmt, Try, Type, TypeDecl,
     TypeDeclKind,
 };
-use auto_ui_compiler::aura::{AuraWidget, LogicPayload};
 use auto_lang_core::vm::codegen::Codegen;
 use auto_lang_core::vm::loader::Module;
+use auto_ui_compiler::aura::{AuraWidget, LogicPayload};
 
 // Plan 370 D-GAP-4: thread-local store context for rewrite.
 // Set during synthesize_from_decl when processing root widget handlers.
@@ -405,9 +405,8 @@ fn rewrite_stmt_with_locals(
                                 .args
                                 .first()
                                 .and_then(|a| match a {
-                                    auto_lang_core::ast::Arg::Pos(e) | auto_lang_core::ast::Arg::Pair(_, e) => {
-                                        Some(e.clone())
-                                    }
+                                    auto_lang_core::ast::Arg::Pos(e)
+                                    | auto_lang_core::ast::Arg::Pair(_, e) => Some(e.clone()),
                                     auto_lang_core::ast::Arg::Name(_) => None,
                                 })
                                 .unwrap_or(Expr::Str(auto_val::AutoStr::from(""))),
@@ -711,13 +710,15 @@ fn rewrite_expr_with_locals(
                     };
                     let store_name = store_name.unwrap_or_default();
                     let handler_fn = format!("handler_{}_{}", store_name, method);
-                    let mut new_args =
-                        vec![auto_lang_core::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                    let mut new_args = vec![auto_lang_core::ast::Arg::Pos(Expr::Ident(
+                        Name::from(STATE_PARAM),
+                    ))];
                     // Clone and rewrite each original arg before adding
                     for arg in &call.args.args {
                         let mut cloned = arg.clone();
                         match &mut cloned {
-                            auto_lang_core::ast::Arg::Pos(ex) | auto_lang_core::ast::Arg::Pair(_, ex) => {
+                            auto_lang_core::ast::Arg::Pos(ex)
+                            | auto_lang_core::ast::Arg::Pair(_, ex) => {
                                 rewrite_expr_with_locals(ex, state_fields, locals);
                             }
                             auto_lang_core::ast::Arg::Name(_) => {}
@@ -827,12 +828,14 @@ fn rewrite_expr_with_locals(
                 let widget_name = CURRENT_WIDGET_NAME.with(|s| s.borrow().clone());
                 if !widget_name.is_empty() {
                     let handler_fn = format!("handler_{}_{}", widget_name, method);
-                    let mut new_args =
-                        vec![auto_lang_core::ast::Arg::Pos(Expr::Ident(Name::from(STATE_PARAM)))];
+                    let mut new_args = vec![auto_lang_core::ast::Arg::Pos(Expr::Ident(
+                        Name::from(STATE_PARAM),
+                    ))];
                     for arg in &call.args.args {
                         let mut cloned = arg.clone();
                         match &mut cloned {
-                            auto_lang_core::ast::Arg::Pos(ex) | auto_lang_core::ast::Arg::Pair(_, ex) => {
+                            auto_lang_core::ast::Arg::Pos(ex)
+                            | auto_lang_core::ast::Arg::Pair(_, ex) => {
                                 rewrite_expr_with_locals(ex, state_fields, locals);
                             }
                             auto_lang_core::ast::Arg::Name(_) => {}
@@ -1434,7 +1437,10 @@ pub fn synthesize_widget_module(
     import_stmts: Vec<Stmt>,
     import_aliases: &std::collections::HashMap<String, String>,
     api_over_http: bool,
-) -> SynthResult<(Module, auto_lang_core::vm::generic_registry::GenericRegistry)> {
+) -> SynthResult<(
+    Module,
+    auto_lang_core::vm::generic_registry::GenericRegistry,
+)> {
     // PR-3: 此函数只依赖 widget 的【逻辑部分】（state_vars/handlers/lifecycle/
     // messages/handler_params）。view_tree/span_map 等视图部分在本函数中不使用。
     // 辅助函数（synthesize_state_type 等）暂仍接受 &AuraWidget 以避免大面积签名
@@ -1910,7 +1916,10 @@ fn synthesize_state_type_from_decl(
 /// PR-3b: reads `decl.messages` directly. Returns `Type::StrSlice` as a
 /// permissive default when the payload type is absent/unresolvable (same
 /// behavior as the AuraWidget `handler_param_type`).
-fn handler_param_type_from_decl(decl: &auto_lang_core::ast::WidgetDecl, handler_bare: &str) -> Type {
+fn handler_param_type_from_decl(
+    decl: &auto_lang_core::ast::WidgetDecl,
+    handler_bare: &str,
+) -> Type {
     for msg in &decl.messages {
         if let Some(v) = msg
             .variants
@@ -2192,7 +2201,10 @@ pub fn synthesize_from_decl(
     import_stmts: Vec<Stmt>,
     import_aliases: &std::collections::HashMap<String, String>,
     api_over_http: bool,
-) -> SynthResult<(Module, auto_lang_core::vm::generic_registry::GenericRegistry)> {
+) -> SynthResult<(
+    Module,
+    auto_lang_core::vm::generic_registry::GenericRegistry,
+)> {
     let mut codegen = Codegen::new();
     codegen.api_over_http = api_over_http;
 

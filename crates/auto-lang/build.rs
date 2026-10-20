@@ -12,7 +12,6 @@
 use std::fs;
 use std::path::Path;
 
-
 fn main() {
     // Capture the producer/compiler build closure. Cargo.lock identifies
     // external dependency versions/checksums; local crate source changes must

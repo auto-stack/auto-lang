@@ -40,9 +40,9 @@ impl auto_lang_core::vm::host_capabilities::ClipboardTextProvider for ArboardCli
 /// 3. 实例级 `AutoVM::set_clipboard_text_provider` 在 1/2 之上按 VM 独立
 ///    生效（构造期快照 + 实例覆盖，不受后续进程默认变化影响）。
 pub fn install_process_default() {
-    auto_lang_core::vm::host_capabilities::set_process_default_clipboard_text_provider_if_absent(Arc::new(
-        ArboardClipboardProvider,
-    ));
+    auto_lang_core::vm::host_capabilities::set_process_default_clipboard_text_provider_if_absent(
+        Arc::new(ArboardClipboardProvider),
+    );
 }
 
 #[cfg(test)]
@@ -67,23 +67,25 @@ mod tests {
             }
         }
         let _slot = auto_lang_core::vm::host_capabilities::test_default_slot_lock();
-        let saved = auto_lang_core::vm::host_capabilities::process_default_clipboard_text_provider();
+        let saved =
+            auto_lang_core::vm::host_capabilities::process_default_clipboard_text_provider();
 
         // 空槽 → 补缺成功（装的是真 arboard adapter——仅入槽，不触 OS）。
         auto_lang_core::vm::host_capabilities::clear_process_default_clipboard_text_provider();
         install_process_default();
         assert!(
-            auto_lang_core::vm::host_capabilities::process_default_clipboard_text_provider().is_some(),
+            auto_lang_core::vm::host_capabilities::process_default_clipboard_text_provider()
+                .is_some(),
             "空槽时兼容默认须补缺"
         );
 
         // 显式默认 → 兼容安装不覆盖。
-        auto_lang_core::vm::host_capabilities::set_process_default_clipboard_text_provider(Arc::new(Fake(
-            Some("explicit-α"),
-            false,
-        )));
+        auto_lang_core::vm::host_capabilities::set_process_default_clipboard_text_provider(
+            Arc::new(Fake(Some("explicit-α"), false)),
+        );
         install_process_default();
-        let cur = auto_lang_core::vm::host_capabilities::process_default_clipboard_text_provider().unwrap();
+        let cur = auto_lang_core::vm::host_capabilities::process_default_clipboard_text_provider()
+            .unwrap();
         assert_eq!(
             auto_lang_core::vm::host_capabilities::ClipboardTextProvider::text(&*cur).as_deref(),
             Some("explicit-α"),
@@ -92,8 +94,15 @@ mod tests {
 
         // 还原。
         match saved {
-            Some(p) => auto_lang_core::vm::host_capabilities::set_process_default_clipboard_text_provider(p),
-            None => auto_lang_core::vm::host_capabilities::clear_process_default_clipboard_text_provider(),
+            Some(p) => {
+                auto_lang_core::vm::host_capabilities::set_process_default_clipboard_text_provider(
+                    p,
+                )
+            }
+            None => {
+                auto_lang_core::vm::host_capabilities::clear_process_default_clipboard_text_provider(
+                )
+            }
         }
     }
 }

@@ -27,7 +27,9 @@ use std::sync::Arc;
 /// 现实现一致）。
 pub struct NativeClipboardMediaProvider;
 
-impl auto_lang_core::vm::host_capabilities::ClipboardMediaProvider for NativeClipboardMediaProvider {
+impl auto_lang_core::vm::host_capabilities::ClipboardMediaProvider
+    for NativeClipboardMediaProvider
+{
     fn files_get(&self) -> Vec<std::path::PathBuf> {
         crate::ui::clipboard_native::clipboard_files_get()
             .into_iter()
@@ -61,9 +63,9 @@ impl auto_lang_core::vm::host_capabilities::ClipboardMediaProvider for NativeCli
 /// 3. 实例级 `AutoVM::set_clipboard_media_provider` 在 1/2 之上按 VM 独立
 ///    生效（构造期快照 + 实例覆盖，不受后续进程默认变化影响）。
 pub fn install_process_default() {
-    auto_lang_core::vm::host_capabilities::set_process_default_clipboard_media_provider_if_absent(Arc::new(
-        NativeClipboardMediaProvider,
-    ));
+    auto_lang_core::vm::host_capabilities::set_process_default_clipboard_media_provider_if_absent(
+        Arc::new(NativeClipboardMediaProvider),
+    );
 }
 
 #[cfg(test)]
@@ -101,26 +103,29 @@ mod tests {
         }
 
         let _slot = auto_lang_core::vm::host_capabilities::test_default_slot_lock();
-        let saved = auto_lang_core::vm::host_capabilities::process_default_clipboard_media_provider();
+        let saved =
+            auto_lang_core::vm::host_capabilities::process_default_clipboard_media_provider();
 
         // 空槽 → 补缺成功（仅入槽，不触 OS）。
         auto_lang_core::vm::host_capabilities::clear_process_default_clipboard_media_provider();
         install_process_default();
         assert!(
-            auto_lang_core::vm::host_capabilities::process_default_clipboard_media_provider().is_some(),
+            auto_lang_core::vm::host_capabilities::process_default_clipboard_media_provider()
+                .is_some(),
             "空槽时兼容默认须补缺"
         );
 
         // 显式默认 → 兼容安装不覆盖（sentinel 路径可区分）。
         let sentinel = std::path::PathBuf::from("C:\\plan790-explicit\\哨兵 🎉.png");
-        auto_lang_core::vm::host_capabilities::set_process_default_clipboard_media_provider(Arc::new(
-            Fake {
+        auto_lang_core::vm::host_capabilities::set_process_default_clipboard_media_provider(
+            Arc::new(Fake {
                 files: vec![sentinel.clone()],
                 received: Mutex::new(Vec::new()),
-            },
-        ));
+            }),
+        );
         install_process_default();
-        let cur = auto_lang_core::vm::host_capabilities::process_default_clipboard_media_provider().unwrap();
+        let cur = auto_lang_core::vm::host_capabilities::process_default_clipboard_media_provider()
+            .unwrap();
         assert_eq!(
             ClipboardMediaProvider::files_get(&*cur),
             vec![sentinel],

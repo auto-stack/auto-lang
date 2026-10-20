@@ -23,12 +23,12 @@ use std::fmt::Debug;
 use crate::ui::dynamic::DynamicComponent;
 // PLAN-042 T-02：诊断家族双写（eprintln 载重站点 → `crate::syslog!` 宏，
 // stderr 归档层保留 + 环实时层入环）。
-use auto_ui_compiler::aura::{AuraNodeId, SpanInfo};
-use auto_lang_core::parser::Parser;
-use auto_lang_core::session::CompilerSession;
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::syslog::SyslogLevel;
+use auto_lang_core::parser::Parser;
+use auto_lang_core::session::CompilerSession;
+use auto_ui_compiler::aura::{AuraNodeId, SpanInfo};
 
 // Thread-local storage for the last input text value.
 // Used by the static code path to pass input text from on_input callbacks
@@ -7058,14 +7058,20 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         //    背景 → 与下方内容面板无边框区直接连通；
                         // ③ 内容面板自带边框（左/右/下，顶部开口）→ 边框的
                         //    连接可见。
-                        let bg = token_rgb(auto_lang_core::design_tokens::registry::TokenName::Background);
-                        let strip_bg = token_rgb(auto_lang_core::design_tokens::registry::TokenName::Muted);
-                        let cell_bg =
-                            token_rgb(auto_lang_core::design_tokens::registry::TokenName::Secondary);
-                        let active_fg =
-                            token_rgb(auto_lang_core::design_tokens::registry::TokenName::Foreground);
-                        let inactive_fg =
-                            token_rgb(auto_lang_core::design_tokens::registry::TokenName::MutedForeground);
+                        let bg = token_rgb(
+                            auto_lang_core::design_tokens::registry::TokenName::Background,
+                        );
+                        let strip_bg =
+                            token_rgb(auto_lang_core::design_tokens::registry::TokenName::Muted);
+                        let cell_bg = token_rgb(
+                            auto_lang_core::design_tokens::registry::TokenName::Secondary,
+                        );
+                        let active_fg = token_rgb(
+                            auto_lang_core::design_tokens::registry::TokenName::Foreground,
+                        );
+                        let inactive_fg = token_rgb(
+                            auto_lang_core::design_tokens::registry::TokenName::MutedForeground,
+                        );
                         // 边框色：Border token，缺省走 iced adapter 的边框解析。
                         let frame_rgb = crate::ui::style::theme::active_theme_rgb(
                             auto_lang_core::design_tokens::registry::TokenName::Border,
@@ -11160,7 +11166,10 @@ async fn merged_exec_loop(
         // Plan 060(M2):Result 变体 —— shell.at 对 builtin(ls/cd/pwd)已在
         // .at 侧算好完整 command_result payload,直接回流(不 spawn)。
         // 语义在提交侧(api.at 契约内),传输层零语义。
-        if matches!(pending.kind, auto_lang_core::vm::shell_bridge::ShellExecKind::Result) {
+        if matches!(
+            pending.kind,
+            auto_lang_core::vm::shell_bridge::ShellExecKind::Result
+        ) {
             let _ = tx.send(ShellStreamEvent {
                 event: "command_result".to_string(),
                 payload_json: pending.result_json,
@@ -12921,7 +12930,10 @@ fn persist_notes(state: &crate::ui::session::DesktopSession) {
                 .to_string()
             })
             .unwrap_or_default();
-        auto_lang_core::vm::ffi::stdlib::storage_host_publish(&format!("shell.notes.{slot}"), value);
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+            &format!("shell.notes.{slot}"),
+            value,
+        );
     }
 }
 
@@ -12932,7 +12944,8 @@ fn persist_notes(state: &crate::ui::session::DesktopSession) {
 pub(crate) fn restore_notifications(state: &mut crate::ui::session::DesktopSession) {
     let mut restored: Vec<crate::ui::session::NotificationEntry> = Vec::new();
     for slot in 0..10usize {
-        let Some(raw) = auto_lang_core::vm::ffi::stdlib::storage_host_read(&format!("shell.notes.{slot}"))
+        let Some(raw) =
+            auto_lang_core::vm::ffi::stdlib::storage_host_read(&format!("shell.notes.{slot}"))
         else {
             break;
         };
@@ -13997,13 +14010,12 @@ fn dashboard_enabled_list() -> Option<Vec<String>> {
 /// 存储覆写面（PLAN-035 SD-02：合法域 {2,3}——"3"→3；"1"/"2"→2 旧值
 /// 迁移；坏值/缺席 = None，由消费臂回落声明与缺省）。
 fn dashboard_span_from_storage(id: &str) -> Option<usize> {
-    auto_lang_core::vm::ffi::stdlib::storage_host_read(&format!("shell.dashboard.span.{id}")).and_then(|v| {
-        match v.trim() {
+    auto_lang_core::vm::ffi::stdlib::storage_host_read(&format!("shell.dashboard.span.{id}"))
+        .and_then(|v| match v.trim() {
             "3" => Some(3usize),
             "1" | "2" => Some(2usize),
             _ => None,
-        }
-    })
+        })
 }
 
 /// PLAN-035 SD-02：app 源 span 声明探测——源内唯一标记
@@ -14460,7 +14472,10 @@ fn dashboard_set_pinned(state: &mut crate::ui::session::DesktopSession, id: &str
     } else {
         list.retain(|s| s != id);
     }
-    auto_lang_core::vm::ffi::stdlib::storage_host_publish("shell.dashboard.enabled", list.join(","));
+    auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+        "shell.dashboard.enabled",
+        list.join(","),
+    );
     refresh_dashboard_panel(state);
 }
 
@@ -15177,7 +15192,10 @@ fn execute_set_wallpaper(state: &mut crate::ui::session::DesktopSession, path: &
         let old_key = current_wallpaper_layout_key(state);
         if let Some(old_key) = old_key {
             let snapshot = load_desktop_positions_for(Some(&old_key));
-            auto_lang_core::vm::ffi::stdlib::storage_host_publish(&old_key, serialize_positions(&snapshot));
+            auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+                &old_key,
+                serialize_positions(&snapshot),
+            );
         }
     }
     state.desktop.config.wallpaper_path = path.to_string();
@@ -17081,13 +17099,15 @@ pub(crate) fn desktop_dock_edges(
 /// Plan 494：真洞模式 boot 读入（storage `shell.native.hole`，"true" 开；
 /// 缺席/坏值 = off——坏配置不炸桌面，472 dock 配置同型）。
 fn load_native_hole_mode() -> bool {
-    auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.native.hole").as_deref() == Some("true")
+    auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.native.hole").as_deref()
+        == Some("true")
 }
 
 /// Plan 508 G4：远程 WS token 读入（storage `shell.remote.token`；空值/
 /// 缺席 = None 不监听——缺省拒绝，远程面零暴露）。
 fn load_remote_token() -> Option<String> {
-    auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.remote.token").filter(|t| !t.trim().is_empty())
+    auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.remote.token")
+        .filter(|t| !t.trim().is_empty())
 }
 
 /// Plan 540 T2：dock pinned 消费点唯一化——boot 期直接取
@@ -17618,7 +17638,10 @@ fn desktop_icon_apply_drop(
         .collect();
     let write_key = current_wallpaper_layout_key(state)
         .unwrap_or_else(|| "shell.desktop.positions".to_string());
-    auto_lang_core::vm::ffi::stdlib::storage_host_publish(&write_key, serialize_positions(&positions));
+    auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+        &write_key,
+        serialize_positions(&positions),
+    );
     true
 }
 
@@ -21487,7 +21510,8 @@ fn run_session(
                         if let Ok(ast) = parser.parse() {
                             for stmt in &ast.stmts {
                                 if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
-                                    if let Ok(widget) = auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                                    if let Ok(widget) =
+                                        auto_ui_compiler::aura::extract_widget_from_decl(decl)
                                     {
                                         let _ = state.component.reload(&widget);
                                         // Invalidate caches since view_template changed
@@ -36353,7 +36377,10 @@ mod tests {
         ];
         let _guard = t2_isolate_storage("w5-cells");
         let raw = "b=3:0,d=1:1,";
-        auto_lang_core::vm::ffi::stdlib::storage_host_publish("shell.desktop.positions", raw.to_string());
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.positions",
+            raw.to_string(),
+        );
         let pos = load_desktop_positions();
         // 2026-09-15：未定位图标改**列主序**填充（rows=8；纵向优先——左列
         // 自上而下占满再排下一列）。
@@ -36642,7 +36669,8 @@ mod tests {
             push_notification(&mut ds, "success", &format!("m{i}"));
         }
         // 槽位形态：slot0 = 最新，仅 10 槽落盘。
-        let slot0 = auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.notes.0").expect("slot0 已写");
+        let slot0 = auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.notes.0")
+            .expect("slot0 已写");
         assert!(
             slot0.contains("\"msg\":\"m11\""),
             "slot0=MRU front: {slot0}"
@@ -36653,7 +36681,8 @@ mod tests {
             slot11.is_none() || slot11.as_deref() == Some(""),
             "仅 10 槽，无 slot11"
         );
-        let slot9 = auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.notes.9").expect("slot9 已写");
+        let slot9 = auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.notes.9")
+            .expect("slot9 已写");
         assert!(
             slot9.contains("\"msg\":\"m2\""),
             "最旧落盘到 slot9: {slot9}"
@@ -37496,8 +37525,14 @@ mod tests {
         let key_a = wallpaper_layout_key("D:/wp/a.jpg");
         let key_b = wallpaper_layout_key("D:/wp/b.jpg");
         // A：calc 摆 (0,0)；B：calc 摆 (3,3)。
-        auto_lang_core::vm::ffi::stdlib::storage_host_publish(&key_a, "011-calculator=0:0,".to_string());
-        auto_lang_core::vm::ffi::stdlib::storage_host_publish(&key_b, "011-calculator=3:3,".to_string());
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+            &key_a,
+            "011-calculator=0:0,".to_string(),
+        );
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+            &key_b,
+            "011-calculator=3:3,".to_string(),
+        );
         // 键控读各自命中。
         let la = load_desktop_positions_for(Some(&key_a));
         let lb = load_desktop_positions_for(Some(&key_b));
@@ -37517,7 +37552,10 @@ mod tests {
         );
         // 迁移快照语义：effective 布局写回键（即使缺席键也固化当前摆布）。
         let snapshot = load_desktop_positions_for(Some(&key_c));
-        auto_lang_core::vm::ffi::stdlib::storage_host_publish(&key_c, serialize_positions(&snapshot));
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+            &key_c,
+            serialize_positions(&snapshot),
+        );
         assert_eq!(load_desktop_positions_for(Some(&key_c)), lc, "快照幂等固化");
     }
 
@@ -38622,7 +38660,10 @@ mod tests {
             "未知 builtin 项"
         );
         // 图标/排除键逗号解析（空段剔除）。
-        auto_lang_core::vm::ffi::stdlib::storage_host_publish("shell.desktop.icons", " a , b,,c ".into());
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.icons",
+            " a , b,,c ".into(),
+        );
         auto_lang_core::vm::ffi::stdlib::storage_host_publish("shell.desktop.hidden", " b ".into());
         assert_eq!(
             load_desktop_id_list("shell.desktop.icons"),
@@ -38698,7 +38739,10 @@ mod tests {
             "shell.desktop.icons",
             "014-weather,011-calculator".into(),
         );
-        auto_lang_core::vm::ffi::stdlib::storage_host_publish("shell.desktop.hidden", "013-todo".into());
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.hidden",
+            "013-todo".into(),
+        );
         ds.desktop.config.wallpaper_path = "#243b55".to_string();
         ds.desktop.desktop_wallpaper = load_desktop_wallpaper(&ds.desktop.config);
         inject_desktop_surface(&mut ds);
@@ -40316,13 +40360,15 @@ mod tests {
         {
             // Plan 060:提交走 vm::shell_bridge(与 shell.at 的
             // auto.shell.exec_submit native 同一队列)。
-            auto_lang_core::vm::shell_bridge::submit(auto_lang_core::vm::shell_bridge::ShellExecRequest {
-                kind: auto_lang_core::vm::shell_bridge::ShellExecKind::Process,
-                block_id: 42,
-                cmd: "echo hello_m1_bridge".to_string(),
-                cwd: ".".to_string(),
-                result_json: String::new(),
-            });
+            auto_lang_core::vm::shell_bridge::submit(
+                auto_lang_core::vm::shell_bridge::ShellExecRequest {
+                    kind: auto_lang_core::vm::shell_bridge::ShellExecKind::Process,
+                    block_id: 42,
+                    cmd: "echo hello_m1_bridge".to_string(),
+                    cwd: ".".to_string(),
+                    result_json: String::new(),
+                },
+            );
         }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
         let mut got_success = false;
@@ -40351,13 +40397,15 @@ mod tests {
 
         // ── 失败路径:nonexistent command ──
         {
-            auto_lang_core::vm::shell_bridge::submit(auto_lang_core::vm::shell_bridge::ShellExecRequest {
-                kind: auto_lang_core::vm::shell_bridge::ShellExecKind::Process,
-                block_id: 7,
-                cmd: "nonexistent_cmd_xyz_m1_test".to_string(),
-                cwd: ".".to_string(),
-                result_json: String::new(),
-            });
+            auto_lang_core::vm::shell_bridge::submit(
+                auto_lang_core::vm::shell_bridge::ShellExecRequest {
+                    kind: auto_lang_core::vm::shell_bridge::ShellExecKind::Process,
+                    block_id: 7,
+                    cmd: "nonexistent_cmd_xyz_m1_test".to_string(),
+                    cwd: ".".to_string(),
+                    result_json: String::new(),
+                },
+            );
         }
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
         let mut got_failed = false;

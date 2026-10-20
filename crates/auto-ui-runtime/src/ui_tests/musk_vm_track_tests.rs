@@ -349,9 +349,11 @@ mod musk_vm_track_p053_6_widget_content {
                 _ => {}
             }
         }
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
         registry.register(child_widget);
 
         let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
@@ -424,9 +426,11 @@ mod musk_vm_track_p053_6_widget_content {
                 _ => {}
             }
         }
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
         registry.register(child_widget);
 
         let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
@@ -586,9 +590,11 @@ mod musk_vm_track_p053_1_widget_computed {
             }
         }
         assert_eq!(decls.len(), 2, "root + child");
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
         registry.register(child_widget);
 
         let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
@@ -658,9 +664,11 @@ mod musk_vm_track_p053_1_widget_computed {
                 _ => {}
             }
         }
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let child_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
+        let child_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[1]).expect("extract child");
         registry.register(child_widget);
 
         let mut comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
@@ -701,7 +709,12 @@ mod musk_vm_track_p053_1_widget_computed {
 mod musk_vm_track_p053_4_merged_api_call {
     use auto_lang_core::parser::Parser;
 
-    fn parse_src(src: &str) -> (Vec<auto_lang_core::ast::WidgetDecl>, Vec<auto_lang_core::ast::Stmt>) {
+    fn parse_src(
+        src: &str,
+    ) -> (
+        Vec<auto_lang_core::ast::WidgetDecl>,
+        Vec<auto_lang_core::ast::Stmt>,
+    ) {
         let session = auto_lang_core::session::CompilerSession::ui();
         let mut parser = Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
@@ -746,7 +759,8 @@ mod musk_vm_track_p053_4_merged_api_call {
             "测试进程 host 桥须为空（PLAN-060 M3 分支①隔离）"
         );
         let (decls, import_stmts) = parse_src(IMPL_SRC);
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
 
         // 模块级：实现体随 imports 编入 → 导出在场，守卫放行直调。
         let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
@@ -949,7 +963,8 @@ mod musk_vm_track_p053_7_sibling_handler_calls {
                 decls.push(d.clone());
             }
         }
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
 
         let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
             &root_widget,
@@ -1025,8 +1040,8 @@ if guard {
 /// renderer Button 臂剥 EE03 包 iced tooltip；snapshot 侧剥离为独立 title prop。
 #[cfg(all(test, feature = "ui-iced"))]
 mod musk_vm_track_p053_b4_title_tooltip {
-    use auto_lang_core::parser::Parser;
     use crate::ui::view::View;
+    use auto_lang_core::parser::Parser;
 
     fn build_root() -> crate::ui::dynamic::DynamicComponent {
         let src = concat!(
@@ -1055,7 +1070,8 @@ mod musk_vm_track_p053_b4_title_tooltip {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -1246,8 +1262,8 @@ mod musk_vm_track_p053_b4_title_tooltip {
 /// EE03 只留在 Button.label 走 renderer tooltip 通道。
 #[cfg(all(test, feature = "ui-iced"))]
 mod musk_vm_track_p054_t1_title_content_subtree {
-    use auto_lang_core::parser::Parser;
     use crate::ui::view::View;
+    use auto_lang_core::parser::Parser;
 
     fn build_root() -> crate::ui::dynamic::DynamicComponent {
         let src = concat!(
@@ -1275,7 +1291,8 @@ mod musk_vm_track_p054_t1_title_content_subtree {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -1492,7 +1509,8 @@ mod musk_vm_track_p053_8_click_arg_drift {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -1843,7 +1861,8 @@ mod musk_vm_track_p054_t3_interp_i18n {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -2214,8 +2233,8 @@ mod musk_vm_track_p054_t4_styles {
     /// size 像素保持。
     #[test]
     fn icon_component_class_prop_carries_ml_auto_and_tint() {
-        use auto_lang_core::parser::Parser;
         use crate::ui::view::View;
+        use auto_lang_core::parser::Parser;
         let src = concat!(
             "widget Root54t4 {\n",
             "    view {\n",
@@ -2239,7 +2258,8 @@ mod musk_vm_track_p054_t4_styles {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -2409,8 +2429,8 @@ mod musk_vm_track_p055_dump {
     #[test]
     #[ignore = "manual probe"]
     fn p055_chat_hierarchy_style_dump() {
-        use auto_lang_core::parser::Parser;
         use crate::ui::view::View;
+        use auto_lang_core::parser::Parser;
         let src = concat!(
             "widget P55Root {\n",
             "    computed {\n",
@@ -2453,7 +2473,8 @@ mod musk_vm_track_p055_dump {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -2543,8 +2564,8 @@ mod musk_vm_track_p055_dump2 {
     #[test]
     #[ignore = "manual probe"]
     fn p055_html_branch_fallback() {
-        use auto_lang_core::parser::Parser;
         use crate::ui::view::View;
+        use auto_lang_core::parser::Parser;
         let src = concat!(
             "widget P55BRoot {
 ",
@@ -2604,7 +2625,8 @@ mod musk_vm_track_p055_dump2 {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -2968,8 +2990,8 @@ mod musk_vm_track_p055_dump2 {
 /// PLAN-055 勘察探针③：if 分支兜底 bisect——条件求值 vs 分支体失败。
 #[cfg(all(test, feature = "ui-iced"))]
 mod musk_vm_track_p055_dump3 {
-    use auto_lang_core::parser::Parser;
     use crate::ui::view::View;
+    use auto_lang_core::parser::Parser;
 
     fn render(src: &str) -> String {
         let session = auto_lang_core::session::CompilerSession::ui();
@@ -2983,7 +3005,8 @@ mod musk_vm_track_p055_dump3 {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -3162,7 +3185,8 @@ mod musk_vm_track_p055_input_event_text {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let mut dc = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -3198,8 +3222,8 @@ mod musk_vm_track_p055_input_event_text {
 /// （py-[9px]/px-[12px]/my-0/border-t/max-h-[240px]）应完整解析进 View 样式。
 #[cfg(all(test, feature = "ui-iced"))]
 mod musk_vm_track_p055_pre_code_arm {
-    use auto_lang_core::parser::Parser;
     use crate::ui::view::View;
+    use auto_lang_core::parser::Parser;
 
     fn build_view(src: &str) -> View<crate::ui::interpreter::DynamicMessage> {
         let session = auto_lang_core::session::CompilerSession::ui();
@@ -3213,7 +3237,8 @@ mod musk_vm_track_p055_pre_code_arm {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],
@@ -3296,8 +3321,8 @@ mod musk_vm_track_p055_pre_code_arm {
 /// 拼进按钮类串。
 #[cfg(all(test, feature = "ui-iced"))]
 mod musk_vm_track_p055_nav_active {
-    use auto_lang_core::parser::Parser;
     use crate::ui::view::View;
+    use auto_lang_core::parser::Parser;
 
     fn build_nav(src: &str) -> View<crate::ui::interpreter::DynamicMessage> {
         let session = auto_lang_core::session::CompilerSession::ui();
@@ -3311,7 +3336,8 @@ mod musk_vm_track_p055_nav_active {
                 _ => None,
             })
             .collect();
-        let root_widget = auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
+        let root_widget =
+            auto_ui_compiler::aura::extract_widget_from_decl(&decls[0]).expect("extract root");
         let comp = crate::ui::dynamic::DynamicComponent::with_registry_and_imports_from_decls(
             &decls[0],
             &decls[1..],

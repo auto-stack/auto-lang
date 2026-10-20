@@ -594,7 +594,9 @@ fn scan_item_node(
         } => {
             for (_k, prop) in props.iter() {
                 match prop {
-                    auto_ui_compiler::aura::AuraPropValue::Expr(e) => scan_item_expr(e, slots, loop_vars)?,
+                    auto_ui_compiler::aura::AuraPropValue::Expr(e) => {
+                        scan_item_expr(e, slots, loop_vars)?
+                    }
                     auto_ui_compiler::aura::AuraPropValue::StyleBinding(_) => {
                         return Err("style_binding");
                     }
@@ -606,7 +608,9 @@ fn scan_item_node(
             Ok(())
         }
         AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Literal(_)) => Ok(()),
-        AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Interpolated { bindings, .. }) => {
+        AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Interpolated {
+            bindings, ..
+        }) => {
             // 插值名根段（`r.rowcls` → `r`）∈ 循环变量 → 项值指纹已覆盖；
             // 外部名（`.count` → `count`）其读面不在项值内 → 降级（v1 保守）。
             for b in bindings {
@@ -1075,7 +1079,9 @@ fn scan_block_node(
             Ok(())
         }
         AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Literal(_)) => Ok(()),
-        AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Interpolated { bindings, .. }) => {
+        AuraNode::Text(auto_ui_compiler::aura::AuraTextContent::Interpolated {
+            bindings, ..
+        }) => {
             // 块内插值名 = 状态/计算读——逐名入槽（resolve_expr_to_value 是
             // 实际读通道的可靠上界：多失效只变慢，绝不陈旧）。
             for b in bindings {

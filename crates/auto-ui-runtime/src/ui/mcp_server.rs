@@ -26,7 +26,6 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 
-use auto_ui_compiler::aura::{AuraNode, AuraNodeId};
 use crate::ui::debug::{BoxModel, ComputedNode, InspectorCache};
 use crate::ui::debug_id_map::DebugIdMap;
 use crate::ui::interpreter::DynamicMessage;
@@ -35,6 +34,7 @@ use crate::ui::snapshot_builder::SnapshotBuilder;
 use crate::ui::view::View;
 use crate::ui::vnode::{VNode, VNodeId, VNodeProps, VTree};
 use crate::ui::vtree_atom::{VTreeAtomBuilder, VTreeAtomOptions};
+use auto_ui_compiler::aura::{AuraNode, AuraNodeId};
 
 // ============================================================================
 // Real-time styled VTree snapshot (Plan 314)
@@ -2435,8 +2435,8 @@ fn tool_press_sequence(
 // ── Tool: autoui_check ──
 
 fn tool_check(shared: &SharedStateHandle, _args: serde_json::Value) -> serde_json::Value {
-    use auto_ui_compiler::aura::{AuraNode, AuraNodeId};
     use crate::ui::render_support::{self, SupportLevel};
+    use auto_ui_compiler::aura::{AuraNode, AuraNodeId};
 
     let shared = shared.lock().unwrap();
 

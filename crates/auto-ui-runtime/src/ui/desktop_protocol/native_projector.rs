@@ -5614,7 +5614,8 @@ mod tests {
     /// 像素臂在册。
     #[test]
     fn native_queue_golden_003_shape() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../auto-lang/test/parity/native");
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../auto-lang/test/parity/native");
         std::fs::create_dir_all(&dir).expect("mkdir test/parity/native");
         let mut p = proj_center_off(
             Converter {

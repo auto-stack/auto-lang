@@ -24,9 +24,9 @@ use std::sync::OnceLock;
 use auto_val::Value;
 
 use super::aura_view_builder::AuraViewBuilder;
-use auto_ui_compiler::aura::{AuraEvent, AuraNode, AuraPropValue};
 use crate::ui::interpreter::DynamicMessage;
 use crate::ui::view::View;
+use auto_ui_compiler::aura::{AuraEvent, AuraNode, AuraPropValue};
 
 /// 派发期上下文：builder 侧解析助手 + 当前节点的原始面。
 ///

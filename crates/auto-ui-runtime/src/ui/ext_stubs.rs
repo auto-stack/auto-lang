@@ -191,7 +191,8 @@ pub(crate) fn load_at_ext_imports(
                                 crate::Parser::from(code.as_str()).with_session(session);
                             if let Ok(ast) = parser.parse() {
                                 for nested_imp in collect_useweb_imports(&ast.stmts) {
-                                    if nested_imp.kind == auto_lang_core::ast::ExtImportKind::Component
+                                    if nested_imp.kind
+                                        == auto_lang_core::ast::ExtImportKind::Component
                                         && nested_imp.path.ends_with(".at")
                                     {
                                         if let Some(resolved_nested) =
@@ -293,7 +294,11 @@ pub(crate) fn scan_decl_arities(
     }
 }
 
-fn note_call(call: &auto_lang_core::ast::Call, targets: &HashSet<String>, out: &mut HashMap<String, usize>) {
+fn note_call(
+    call: &auto_lang_core::ast::Call,
+    targets: &HashSet<String>,
+    out: &mut HashMap<String, usize>,
+) {
     if let Some(name) = call.get_name_text_safe() {
         let name = name.to_string();
         if targets.contains(&name) {

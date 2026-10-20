@@ -175,13 +175,13 @@ mod plan807_snapshot_port {
 
         // 快照隔离：两个可区分的**显式非空默认**——vm1 构造期快照 A；
         // 换显式默认 B 后 vm2 快照 B，vm1 仍 A（后改默认不影响已建实例）。
-        auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
-            FakeSnap("A\n"),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider(
+            Arc::new(FakeSnap("A\n")),
+        );
         let vm1 = AutoVM::new(VirtualFlash::new(0), 256);
-        auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
-            FakeSnap("B\n"),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider(
+            Arc::new(FakeSnap("B\n")),
+        );
         let vm2 = AutoVM::new(VirtualFlash::new(0), 256);
         assert_eq!(
             snap_text(&vm1).as_deref(),
@@ -193,9 +193,9 @@ mod plan807_snapshot_port {
             Some("B\n"),
             "vm2 快照替换后默认 B"
         );
-        auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
-            FakeSnap("D\n"),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider(
+            Arc::new(FakeSnap("D\n")),
+        );
         assert_eq!(
             snap_text(&vm2).as_deref(),
             Some("B\n"),
@@ -253,9 +253,9 @@ mod plan807_snapshot_port {
         }
 
         // 显式默认先在位 → 兼容安装（真实 UI adapter if-absent）不覆盖。
-        auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider(Arc::new(
-            FakeSnap("EXPLICIT\n"),
-        ));
+        auto_lang_core::vm::host_capabilities::set_process_default_editor_snapshot_provider(
+            Arc::new(FakeSnap("EXPLICIT\n")),
+        );
         crate::ui::code_editor_provider::install_process_default();
         assert_eq!(
             auto_lang_core::vm::host_capabilities::process_default_editor_snapshot_provider()
@@ -268,7 +268,8 @@ mod plan807_snapshot_port {
         // 空槽 → 兼容安装补上真实 adapter：在位、对未注册键返回 None。
         auto_lang_core::vm::host_capabilities::clear_process_default_editor_snapshot_provider();
         crate::ui::code_editor_provider::install_process_default();
-        let installed = auto_lang_core::vm::host_capabilities::process_default_editor_snapshot_provider();
+        let installed =
+            auto_lang_core::vm::host_capabilities::process_default_editor_snapshot_provider();
         assert!(installed.is_some(), "空槽补缺装上真实 adapter");
         assert!(
             installed.unwrap().snapshot("p807-unregistered").is_none(),

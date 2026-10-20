@@ -12,8 +12,6 @@
 
 use std::collections::HashMap;
 
-use auto_lang_core::ast::Expr;
-use auto_ui_compiler::aura::{aura_events_get_base, AuraNode, AuraPropValue, AuraTextContent};
 use crate::ui::desktop_protocol::endpoint::{AppEndpoint, AppState, FrameSource};
 use crate::ui::desktop_protocol::message::{
     ControlMsg, DrawList, DrawOp, FrameMsg, ImageFit, InputMsg, MouseButton, ProtocolMsg, Rgba8,
@@ -22,6 +20,8 @@ use crate::ui::desktop_protocol::message::{
 use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
 use crate::ui::desktop_protocol::transport::{self, Transport};
 use crate::ui::dynamic::DynamicComponent;
+use auto_lang_core::ast::Expr;
+use auto_ui_compiler::aura::{aura_events_get_base, AuraNode, AuraPropValue, AuraTextContent};
 
 // ---------------------------------------------------------------------------
 // AppProjector：AuraNode → DrawList 投影器 v1.3（Plan 500 步骤 7 爬坡）
