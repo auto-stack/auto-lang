@@ -298,6 +298,16 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
 
+### Plan 797（2026-10-20，R15 修复轮完成，待 T-08 复审）
+
+R15 复审（受审 `e00133e62`，needs_fix）三项已全部修复（修复提交 `cf9e4c7cd`，同树）：F-R4-07 产物排除按完整路径+路径级 tmp- 前缀（同名异径头 17→29 反例；顺带修复字面/canonical 大小写漂移）；F-R15-01 裸源路径空 parent 回退 cwd（不再误拒，CWD 锁串行化两个改目录测试）；F-R15-02 信封版本入代际键（同材料旧 v3 永不占 v4 键，升级重编必发布）。probe 87/87、父侧 13/13、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
+
+### Plan 797（2026-10-20，R15 完整复审，needs_fix）
+
+受审 `e00133e626a3d8a7857fcd0bff21c4b5b101658c`，revision1；[R15完整报告/AC映射/反例](attachments/797/review-r15/review.md)。R14三个旧输入已修，F-R9-01身份错用关闭；**F-R4-07 PARTIAL/OPEN/P1**：产物白名单仅按basename过滤，声明src/value.obj后，src/sub/value.obj合法文本头也被忽略，cache17/fresh29。**新增R15-01/P2修复回归**：直接Path("same.c")空parent导致canonicalize失败、producer0，fresh17；**新增R15-02/P1修复回归**：v4拒旧却不将版本纳入generation，合法旧v3与新v4域相同占同key，实际重编后Internal Conflict。必须分别核对实际产物路径、合法相对锚点和版本发布身份，登记不批准延期/缩面。
+
+**executing4/9**，T01–04完成；188定向测试pass+1既有ignored，210周转样本/正式61行保全，正式P95=642/98ms。F10内存、F09计时/原始行/错误传播及其余旧具体项保持关闭；原树work修三项后再审。第十次完整final未过；未改实现/整档/合入/canonical Spec/live ledger，merge-owned门禁/沉淀/归档/guard仍pending。以下为历史记录。
+
 ### Plan 797（2026-10-20，R14 修复轮完成，待 T-08 复审）
 
 R14 复审（受审 `e1088b0ad`，needs_fix）两项 P1 已全部修复（修复提交 `e00133e62`，同树）：F-R4-07 产物过滤精确化（调用方声明排除集+staged-link 命名空间，config.tmp 遮蔽 17→29 反例）+ 信封版本化 v4（旧窄域 v3 永不服务，合法旧形态信封反例）；F-R9-01 重开项以 canonicalize 目录锚点绑定实际解析位置与 cwd（相对字面量跨工程 17/29 反例+每工程 hit 控制）；配套修复 canonical 前缀混用导致的派生漏配。probe 86/86、父侧 13/13、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
@@ -2551,3 +2561,7 @@ T-16/L2 needs_fix @1082bde52：L1-01/04/06已独立闭合，双checkpoint57→58
 ## D-815-L3：恢复审查缺口已闭，实际恢复待T-17（2026-10-20）
 
 T-16/L3阶段pass @0a65ee2a7：D-815-L1/L2涉及的CLI/schema/并发/部分写/前像/终门/收据finding均独立关闭，无新增。真实CLI57→58→59/1098项往返、A/B六种写失败与持续存储失败的准确残留/完整备份已验证。获准身份与映射边界见 docs/plans/attachments/815/review-l3/review.md。该结论只清偿审查缺口，**D-815-L的生产账本恢复尚未完成**：live仍v57原件未动，T-17真实恢复/upsert/sidecar与版本/读回收据及T-14终验仍pending；不得以review pass宣称阶段发布完成。
+
+### Plan 798 修复重放及 readiness R14（2026-10-20，needs_fix）
+
+受审 `c8c598f0aa67f79d8b083346b5c552a655353d1d`，plan r5；[报告/冻结身份/反例/正式门/raw审计](attachments/798/review-r14/review.md)。R13-01 已独立关闭（131/132层门前拒绝、116/24合法控制执行），新增 self-call 正式 runner 末步 hit1/emitted0/execute1/value42，正确性4/4。正式30样本门一次运行 edit P95=1195.8ms/sig540.3ms、exit101；共享CPU启动62%/期间43%且有并行构建，未重跑A/B，不断言无码回归，不反复取绿。新 F798-R14-01 P2 为合同内验收证据缺口：提交两份180行raw无双线内存字段，旧summary不能对应r5；pass raw重算edit P95=897.3352ms（仍过，摘要888.8ms不符）。需找回同轮真实BenchSummary/退出码/raw哈希和提交身份并更正摘要，无法恢复才受控重测；不得手填或混轮。T05重开、T07/08仍开放，保留T01/02/03/04/06/11，executing6/11；登记不构成豁免。未修改实施或canonical规范/ledger、合入或清树，最终pass后的merge门禁与收尾仍pending。
