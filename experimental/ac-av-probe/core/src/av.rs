@@ -152,9 +152,12 @@ fn map_span(prog: &crate::program_snapshot::ProgramSnapshot, out: ExecOutcome) -
             .get(sp.func as usize)
             .map(|v| v.as_slice())
             .unwrap_or(&[]);
-        let start =
-            crate::program_snapshot::ProgramSnapshot::map_pos(regions, sp.start as u64) as u32;
-        let end = crate::program_snapshot::ProgramSnapshot::map_pos(regions, sp.end as u64) as u32;
+        let (start, end) = crate::program_snapshot::ProgramSnapshot::map_span(
+            regions,
+            sp.start as u64,
+            sp.end as u64,
+        );
+        let (start, end) = (start as u32, end as u32);
         return ExecOutcome::Trap {
             kind,
             span: Some(SpanInfo {

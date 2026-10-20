@@ -201,34 +201,45 @@ impl ProgramSnapshot {
         &self.span_maps
     }
 
-    /// Map one MINT-source position through the region list (regions are
-    /// stored in MINT coordinates; a position x maps to
-    /// x + SUM(delta) over regions with `start < x`).
-    pub fn map_pos(regions: &[(u64, u64, i64)], x: u64) -> u64 {
-        let mut d = 0i64;
-        for &(st, _, delta) in regions {
-            if st < x {
-                d += delta;
+    /// Map a half-open span [s, e) through the region list with TOKEN
+    /// boundary semantics (F-828-R1-04/R5a): a token START moves when the
+    /// edit is entirely before it (p + len <= s) or when a pure insertion
+    /// sits exactly at it (p == s, len 0, d > 0 — inserting whitespace
+    /// directly before a token pushes the token right); a token END moves
+    /// when the edit starts strictly before it (p < e — an insertion
+    /// exactly at the end does not extend the token).
+    pub fn map_span(regions: &[(u64, u64, i64)], s: u64, e: u64) -> (u64, u64) {
+        let (mut ds, mut de) = (0i64, 0i64);
+        for &(p, len, d) in regions {
+            if p + len <= s || (p == s && len == 0 && d > 0) {
+                ds += d;
+            }
+            if p < e {
+                de += d;
             }
         }
-        (x as i64 + d) as u64
+        ((s as i64 + ds) as u64, (e as i64 + de) as u64)
     }
 
-    /// Inverse map: the mint position whose image is `c` (for a `c` that
-    /// falls inside an inserted/stretched region, resolves to the
-    /// insertion point). Binary search over the monotone forward map.
+    /// Inverse map for COMPOSITION (F-828-R1-04/R5a): a current-coordinate
+    /// edit point back into mint coordinates, region-aware: a point inside
+    /// a previously INSERTED region collapses to that insertion's anchor
+    /// (editing inserted whitespace extends the original insertion); a
+    /// point after a deletion resolves past the deleted block (the
+    /// preimage can be LARGER than the current offset).
     pub fn unmap_pos(regions: &[(u64, u64, i64)], c: u64) -> u64 {
-        let mut lo = 0u64;
-        let mut hi = c; // map_pos(x) >= x, so the preimage of c is <= c
-        while lo < hi {
-            let mid = lo + (hi - lo) / 2;
-            if Self::map_pos(regions, mid) < c {
-                lo = mid + 1;
-            } else {
-                hi = mid;
+        let mut acc = 0i64;
+        for &(p, len, d) in regions {
+            let img_start = (p as i64 + acc) as u64;
+            if c < img_start {
+                return (c as i64 - acc) as u64;
             }
+            if d > 0 && len == 0 && c < img_start + d as u64 {
+                return p; // inside the inserted text: the insertion anchor
+            }
+            acc += d;
         }
-        lo
+        (c as i64 - acc) as u64
     }
 
     /// Compose one edit (CURRENT-coordinate start `c`, replaced

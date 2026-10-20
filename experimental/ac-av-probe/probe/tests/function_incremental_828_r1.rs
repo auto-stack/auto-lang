@@ -579,3 +579,76 @@ fn tail() int { return 9 }
     );
     assert_eq!(value(&s), value(&warmup(s.src(), "d_main", &caps).unwrap()));
 }
+
+/// F-828-R1-04/R5a: whitespace inserted EXACTLY at the span start pushes
+/// the token right.
+#[test]
+fn r5a_whitespace_inserted_exactly_at_span_start_tracks_token_start() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    let out = s.edit(at as u64, at as u64, b" ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "the token moves right when whitespace is inserted exactly before it"
+    );
+}
+
+/// F-828-R1-04/R5a: after a DELETION, an edit strictly after the
+/// expression leaves the earlier span intact (the inverse's mint preimage
+/// can exceed the current offset).
+#[test]
+fn r5a_deletion_then_edit_after_trap_does_not_move_earlier_span() {
+    let src = R2A_SRC.replace(
+        "var x = helper()",
+        &(format!("{}var x = helper()", " ".repeat(32))),
+    );
+    let mut s = warmup(&src, "d_main", &[]).unwrap();
+    let at = s.src().find(&" ".repeat(32)).unwrap();
+    let out = s.edit(at as u64, (at + 32) as u64, Vec::new()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "deletion-only accepted control"
+    );
+    let expected = trap_span(&cold);
+    let at = s.src().find("1 / 0").unwrap() + "1 / 0".len();
+    let out = s.edit(at as u64, at as u64, b" ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&cold),
+        expected,
+        "edit strictly after the expression leaves its token span intact"
+    );
+    assert_eq!(trap_span(&s), expected);
+}
+
+/// F-828-R1-04/R5a: editing INSIDE previously inserted whitespace
+/// inverse-maps to the original insertion anchor.
+#[test]
+fn r5a_editing_inside_prior_inserted_whitespace_keeps_nearby_anchor() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let start = s.src().find("1 / 0").unwrap() - 1;
+    let out = s.edit(start as u64, start as u64, vec![b' '; 32]).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "first insertion accepted control"
+    );
+    let inside = start + 16;
+    let out = s.edit(inside as u64, inside as u64, b" ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "inserted text must inverse-map to its original insertion anchor"
+    );
+}
