@@ -1,5 +1,5 @@
 {
-  "base_revision": "ac2882a0db2e1873ea85a6b4b84071ffc3d82021",
+  "base_revision": "59b9c767360fec675b1646e4b7e74e603329342a",
   "config_sha256": "3c166ca102479bfaa6b83dd2424493884cbe06bdd6613525d3d76d4b7a04d6c3",
   "declared_edges": [
     {
@@ -786,12 +786,30 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-atom",
+      "from": "auto-ui-compiler",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-lang-core",
       "from": "auto-ui-compiler",
       "kind": "normal",
       "optional": false,
       "target": null,
       "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-ui-compiler",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
       "to_scope": "member"
     },
     {
@@ -822,12 +840,12 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-lang-core",
       "from": "auto-vm",
       "kind": "normal",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
@@ -843,8 +861,8 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 825,
+    "core_to_ui": 841,
     "man_to_language": 553,
-    "ui_to_language": 182
+    "ui_to_language": 23
   }
 }
