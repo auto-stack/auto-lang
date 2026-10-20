@@ -272,7 +272,11 @@ impl<'p, 'a> auto_parser_api::ParseContext for ParserBridge<'p, 'a> {
 // 能力面与事务合同冻结见 docs/plans/attachments/810/contract-baseline.md §2/§3。
 // 全部委托 Parser 既有单一份实现（含私有 helper——同 crate），不复制算法；
 // 文法 crate 侧不接触 Parser/lexer/scope/TypeStore 引用。
+//
+// PLAN-814 F02：本端口 impl 随 `ui-dialect` 显式组合编译；纯 SDK 闭包
+// 不含 auto-ui-dialect（ParserBridge 其余端口面不变）。
 
+#[cfg(feature = "ui-dialect")]
 impl<'p, 'a> auto_ui_dialect::UiParseContext for ParserBridge<'p, 'a> {
     fn prev_pos(&mut self) -> Pos {
         self.parser.port_prev_pos()

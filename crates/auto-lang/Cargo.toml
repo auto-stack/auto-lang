@@ -17,7 +17,10 @@ keywords = ["automation", "language", "scripting"]
 # 统一同源 feature 集，消除档间切换的整库冷重编（Plan 507"tf 不带 ui-iced"
 # 保守残留随之作废）。python 维持可选（auto bin default 仍自带）。拆仓
 # （Design 32）落地后按新 crate 边界重新分档。
-default = ["with-file-history", "ui-iced"]
+# PLAN-814 F02：default 增转发 `ui-dialect`——SDK 的 UI 文法实现改为显式
+# 组合（纯 SDK 默认闭包零 UI 文法）；本包 default 保持旧"UI 文法恒可用"
+# 行为，Scenario::UI 默认装配与旧 Parser 公开 UI 门面不变。
+default = ["with-file-history", "ui-iced", "ui-dialect"]
 # Plan 289: Feature-gated test groups for faster daily development
 test-trans = []
 # Plan 768: AutoDown TestCase protocol adapters + auto-case bin (empty
@@ -33,6 +36,9 @@ test-aavm = []
 # Zero cost when off — the System allocator stays in place; when on, lib.rs
 # installs CountingAlloc as #[global_allocator] (lock-free AtomicU64 stats).
 mem-profile = ["auto-lang-core/mem-profile"]
+# PLAN-814 F02：显式 UI 方言组合转发（拉入 auto-ui-dialect 文法实现并装配
+# 内建 UiDialect）；default 已含，保旧默认 UI 行为。
+ui-dialect = ["auto-lang-core/ui-dialect"]
 # Plan 317 §11 Phase 11: HTTP e2e tests (start real TCP servers; run serially).
 # Off by default — enables `plan326_tests::http_e2e` submodule (the 7 former
 # `#[ignore]` e2e tests). CI runs them in `.github/workflows/http-e2e-ci.yml`.

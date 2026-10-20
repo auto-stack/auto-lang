@@ -880,6 +880,9 @@ impl<'a> Parser<'a> {
         session: &crate::session::CompilerSession,
     ) -> Vec<std::sync::Arc<dyn crate::dialect::Dialect>> {
         let mut v: Vec<std::sync::Arc<dyn crate::dialect::Dialect>> = Vec::new();
+        // PLAN-814 F02：内建 UiDialect 仅在显式 `ui-dialect` 组合下装配；
+        // 纯 SDK（feature off）Scenario::UI 方言表为空，语句回退非 UI 路径。
+        #[cfg(feature = "ui-dialect")]
         if session.scenario == crate::session::Scenario::UI {
             v.push(std::sync::Arc::new(crate::dialect::ui::UiDialect));
         }
@@ -5704,7 +5707,7 @@ impl<'a> Parser<'a> {
                 } else {
                     let ident = self.cur.text.to_string();
                     // Plan 351: store decl handled directly (not yet in dialect table)
-                    if ident == "store" && self.is_ui_scenario() && !self.in_on_body {
+                    if self.store_decl_branch(&ident) {
                         self.parse_store_decl()?
                     } else if let Some(stmt) = self.try_dialect_stmt(&ident)? {
                         stmt
@@ -13301,69 +13304,170 @@ impl<'a> Parser<'a> {
     // Plan 306: Godot scene declaration parsing
     // ========================================================================
 
+    // ========================================================================
+    // PLAN-814 F02：以下 UI 文法公开门面按 `ui-dialect` 显式组合提供——
+    // feature on：薄委托 auto-ui-dialect 单源文法（PLAN-806/810 合同不变）；
+    // feature off：签名保持（旧 API 编译面），执行返回显式诊断错误，不做
+    // 静默降级。旧默认行为经上层 auto-lang（default 转发 ui-dialect）保持。
+    // ========================================================================
+
+    /// 纯 SDK（未启用 `ui-dialect`）的统一拒绝诊断。
+    #[cfg(not(feature = "ui-dialect"))]
+    fn ui_grammar_unavailable(&self, api: &str) -> AutoError {
+        SyntaxError::Generic {
+            message: format!(
+                "UI dialect grammar is not enabled in this build: `{}` requires the \
+                 auto-lang-core `ui-dialect` feature (explicit UI composition)",
+                api
+            ),
+            span: pos_to_span(self.cur.pos),
+        }
+        .into()
+    }
+
     /// Parse msg declaration (UI scenario only)
     ///（PLAN-806 单源迁 auto-ui-dialect；PLAN-810 起经端口薄委托。）
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_msg_decl(&mut self) -> AutoResult<Stmt> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         let msg = auto_ui_dialect::parse_msg_decl(&mut bridge)?;
         Ok(Stmt::MsgDecl(msg))
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_msg_decl(&mut self) -> AutoResult<Stmt> {
+        Err(self.ui_grammar_unavailable("parse_msg_decl"))
+    }
+
     /// Parse model block (UI scenario only)
     ///（PLAN-806 单源迁 auto-ui-dialect；PLAN-810 起经端口薄委托。）
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_model_block(&mut self) -> AutoResult<Stmt> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         let model = auto_ui_dialect::parse_model_block(&mut bridge)?;
         Ok(Stmt::ModelBlock(model))
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_model_block(&mut self) -> AutoResult<Stmt> {
+        Err(self.ui_grammar_unavailable("parse_model_block"))
+    }
+
     /// PLAN-810：以下公开 parse_* 为薄委托门面——完整 UI 文法已迁
     /// auto-ui-dialect::grammar（单一份实现），经 ParserBridge 的
     /// UiParseContext 端口驱动。
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_widget_decl(&mut self) -> AutoResult<Stmt> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::widget::parse_widget_decl(&mut bridge)
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_widget_decl(&mut self) -> AutoResult<Stmt> {
+        Err(self.ui_grammar_unavailable("parse_widget_decl"))
+    }
+
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_store_decl(&mut self) -> AutoResult<Stmt> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::store::parse_store_decl(&mut bridge)
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_store_decl(&mut self) -> AutoResult<Stmt> {
+        Err(self.ui_grammar_unavailable("parse_store_decl"))
+    }
+
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_scene_decl(&mut self) -> AutoResult<Stmt> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::scene::parse_scene_decl(&mut bridge)
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_scene_decl(&mut self) -> AutoResult<Stmt> {
+        Err(self.ui_grammar_unavailable("parse_scene_decl"))
+    }
+
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_actions_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::actions::parse_actions_decl_stmt(&mut bridge)
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_actions_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
+        Err(self.ui_grammar_unavailable("parse_actions_decl_stmt"))
+    }
+
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_style_recipe_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::actions::parse_style_recipe_decl_stmt(&mut bridge)
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_style_recipe_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
+        Err(self.ui_grammar_unavailable("parse_style_recipe_decl_stmt"))
+    }
+
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_view_block(&mut self) -> AutoResult<Stmt> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::view::parse_view_block(&mut bridge)
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_view_block(&mut self) -> AutoResult<Stmt> {
+        Err(self.ui_grammar_unavailable("parse_view_block"))
+    }
+
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_view_block_or_fragment(&mut self) -> AutoResult<Stmt> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::view::parse_view_block_or_fragment(&mut bridge)
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_view_block_or_fragment(&mut self) -> AutoResult<Stmt> {
+        Err(self.ui_grammar_unavailable("parse_view_block_or_fragment"))
+    }
+
+    #[cfg(feature = "ui-dialect")]
     pub fn parse_component_fn_decl(&mut self) -> AutoResult<Stmt> {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::view::parse_component_fn_decl(&mut bridge)
     }
 
+    #[cfg(not(feature = "ui-dialect"))]
+    pub fn parse_component_fn_decl(&mut self) -> AutoResult<Stmt> {
+        Err(self.ui_grammar_unavailable("parse_component_fn_decl"))
+    }
+
     /// scene 门（Plan 306；任意 scenario）——文法侧 lookahead 经端口。
+    #[cfg(feature = "ui-dialect")]
     fn looks_like_scene_decl(&mut self) -> bool {
         let mut bridge = crate::parser_bridge::ParserBridge::new(self);
         auto_ui_dialect::grammar::scene::looks_like_scene_decl(&mut bridge)
+    }
+
+    /// PLAN-814 F02：纯 SDK 无 UI 文法——scene 门恒 false，标识符回退
+    /// 普通节点/调用路径（与方言表为空的回退语义一致）。
+    #[cfg(not(feature = "ui-dialect"))]
+    fn looks_like_scene_decl(&mut self) -> bool {
+        false
+    }
+
+    /// Plan 351 store 分支门——仅显式 UI 方言组合下接管（PLAN-814 F02：
+    /// feature off 时 `store` 回退普通 ident 路径，不进文法）。
+    #[cfg(feature = "ui-dialect")]
+    fn store_decl_branch(&self, ident: &str) -> bool {
+        ident == "store" && self.is_ui_scenario() && !self.in_on_body
+    }
+
+    #[cfg(not(feature = "ui-dialect"))]
+    fn store_decl_branch(&self, _ident: &str) -> bool {
+        false
     }
 
     /// Helper: expect an identifier with specific text
@@ -13449,6 +13553,7 @@ mod tests {
     }
 
     /// Plan 451: actions 块解析——注册表/menubar/toolbar 全字段。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_actions_block_parse() {
         let session = crate::session::CompilerSession::ui();
@@ -13522,6 +13627,7 @@ mod tests {
 
     /// Plan 451 P3: 顶层 `actions {}` 声明（模块级形态）；非声明用法的
     /// `actions`（表达式/调用）不受方言接管。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_top_level_actions_decl() {
         let session = crate::session::CompilerSession::ui();
@@ -13568,6 +13674,7 @@ widget App { view { col { text \"hi\" {} } } }
     }
 
     /// Plan 451 P2: enabled_if/checked_if 的裸表达式拼写与引号串等价。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_actions_cond_bare_expression() {
         let session = crate::session::CompilerSession::ui();
@@ -13595,6 +13702,7 @@ widget App { view { col { text \"hi\" {} } } }
 
     /// Plan 425 复审债务修复:块关键字拼写近失(如 `veiw {}`)在 view 可选化
     /// 后会静默解析为视图元素——现在告警提示正确拼写;合法元素不误报。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_widget_block_keyword_near_miss_warning() {
         let session = crate::session::CompilerSession::ui();
@@ -13670,6 +13778,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert!(!ast.stmts.is_empty());
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_with_session_registers_ui_dialect() {
         // PR-2: UI session 注册 UiDialect；Core session 方言表为空。
@@ -13718,6 +13827,7 @@ widget App { view { col { text \"hi\" {} } } }
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan778_err_keeps_dialect_registration() {
         let mut parser = Parser::from("model 123")
@@ -13755,6 +13865,7 @@ widget App { view { col { text \"hi\" {} } } }
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan778_none_rolls_back_cursor_for_next_dialect() {
         let ast = Parser::from("model { count int = 1 }")
@@ -13812,6 +13923,7 @@ widget App { view { col { text \"hi\" {} } } }
         );
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan778_with_session_preserves_external_registration() {
         // 先注册、后 with_session：pre 段保留，builtin 段按新 session 重建。
@@ -13829,6 +13941,7 @@ widget App { view { col { text \"hi\" {} } } }
         );
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_top_level_view_block_now_parses_in_ui_scenario() {
         // PR-2 修复：UI 场景下顶层 `view { }` 块现在可正确解析（原先落到 expr_stmt）。
@@ -13849,6 +13962,7 @@ widget App { view { col { text \"hi\" {} } } }
     /// (c) 括号表达式作 text 简写 `text (.row.idx + 1).to_string()`
     ///     ——`(` 后首 token 为 Dot 时按 primary-prop 表达式消歧
     ///     (props key 永不以 . 开头)。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_041a_event_binding_forms() {
         // (b) 事件绑定多参 + 嵌套 fn 调用 + $event
@@ -13888,6 +14002,7 @@ widget App { view { col { text \"hi\" {} } } }
 
     /// Plan 041a⑥: 语句级 `.` 消息派发不得并入前一语句(对象字面量赋值后
     /// 换行 + 句首 .msg(...) 曾被 glue 成方法链)。最小复现守护。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_leading_dot_stmt_not_glued_to_previous() {
         let code = concat!(
@@ -13971,6 +14086,7 @@ widget App { view { col { text \"hi\" {} } } }
         );
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_widget_parses_via_dialect_in_ui_scenario() {
         // PR-2: widget 经 UiDialect 派发，UI 场景下解析为 WidgetDecl。
@@ -13981,6 +14097,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert!(matches!(last, Stmt::WidgetDecl(_)));
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_view_event_modifiers_and_event_object() {
         // Generic DOM events: dot-modifier chains (onkeydown.up.prevent,
@@ -14030,6 +14147,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert_eq!(col_events[0].params, vec!["$event.key".to_string()]);
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_view_event_arg_nested_self_dot() {
         // Plan 043 M5 B-5: `.c.name` inside an event arg must parse as
@@ -14070,6 +14188,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert_eq!(btn_events[0].params, vec!["this.c.name".to_string()]);
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_view_quoted_custom_event_names() {
         // Custom event names containing ':'/'-' (CustomEvent dispatched by
@@ -14121,6 +14240,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert_eq!(col_events[0].params, vec!["$event.detail".to_string()]);
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_view_style_obj_binding() {
         // style_obj: { css_prop: expr } parses to a StyleBinding prop named
@@ -14164,6 +14284,7 @@ widget App { view { col { text \"hi\" {} } } }
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_view_dyn_component_parens() {
         // dyn (expr) { props } — the parenthesized expression becomes the
@@ -14223,6 +14344,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert!(props.iter().any(|p| p.name == "class"));
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_stmt_after_try_catch_parses() {
         // Plan 029 T15 回归锁:try/catch 的 finally 前瞻曾无条件吞掉换行,
@@ -14276,6 +14398,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert_eq!(on.handlers[0].body.stmts.len(), 2, "try + assignment after");
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_try_catch_finally_parses() {
         // Plan 012 P2 (gap 4): optional `finally { }` after catch, in an
@@ -14323,6 +14446,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert_eq!(try_stmt.finally_body.as_ref().unwrap().stmts.len(), 1);
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_try_catch_without_finally_unchanged() {
         // Regression lock: the Plan 010 form (no finally) still parses with
@@ -14363,6 +14487,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert!(try_stmt.finally_body.is_none(), "no finally clause");
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_try_catch_param_resolves_in_catch_body() {
         // Regression: the `catch (e)` binding must be visible inside the
@@ -14447,6 +14572,7 @@ widget App { view { col { text \"hi\" {} } } }
         );
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_widget_watch_block() {
         // watch { .a -> {...}  .b, .c.immediate -> {...}  .d.deep -> {...} }
@@ -14488,6 +14614,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert!(widget.watch[2].deep);
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_widget_expose_block() {
         // expose { .a, .b  .c } — dot-prefixed member names, comma-separated
@@ -14739,6 +14866,7 @@ widget App { view { col { text \"hi\" {} } } }
         assert_eq!(call.to_string(), "(call (name add) (args (int 1) (int 2)))");
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_struct_literal_fields_become_node_args() {
         // Plan 043 M5: `var block = Block{ id: 1, command: "hi" }` in a store
@@ -14814,6 +14942,7 @@ widget App { view { col { text \"hi\" {} } } }
         );
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_dot_rhs_field_access_not_struct_construction() {
         // Plan 043 M5: `text cell.Text { }` in a view fn — the PascalCase
@@ -15581,6 +15710,7 @@ exe hello {
         assert!(true);
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_event_inline_lambda_parses() {
         // Plan 448 B1: `onclick: () => { ... }` — inline lambda event value.
@@ -15686,6 +15816,7 @@ exe hello {
         assert!(variants.contains(&"__evt_onclick_2"));
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_bare_value_input_mints_oninput_sync() {
         // Plan 448 C: `input { value: .x }` with no oninput/onchange mints an
@@ -15831,6 +15962,7 @@ exe hello {
     /// alert-dialog/dialog 根（vue 风格内建开合——gallery dialog 页形态）
     /// 铸造 state + toggle/close 双 handler + open 绑定，三轨同源。
     /// 显式 `open` 绑定不铸造（负例）。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_modal_dialog_mints_self_managed_open() {
         let code = concat!(
@@ -16007,6 +16139,7 @@ exe hello {
     /// 的 hovercard 根铸造同一 `__dlg_open_<n>` state + open 绑定,但
     /// trigger 无显式事件时补 onmouseenter/onmouseleave（体:置 true/false）
     /// 而非 onclick toggle;显式绑定不覆盖（负例）。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_hover_card_mints_hover_enter_leave() {
         let code = concat!(
@@ -16171,6 +16304,7 @@ exe hello {
         );
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_msg_decl_unnamed_and_legacy_name() {
         // Plan 448 A: canonical `msg { ... }` (no type name — the name was
@@ -16218,6 +16352,7 @@ exe hello {
         assert_eq!(w2.messages[0].variants[0].name.as_str(), "Inc");
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_widget_parsing_pipeline() {
         // Test the full widget parsing pipeline
@@ -16276,6 +16411,7 @@ widget Counter {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_view_top_level_bare_siblings_with_param_events() {
         // Plan 015 (auto-down 批次, docs/plans/DEBTS.md 015 🟡): bare top-level sibling
@@ -16334,6 +16470,7 @@ widget W {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_view_single_root_stays_unwrapped() {
         // Plan 015: a single top-level node must NOT gain a wrapper —
@@ -16375,6 +16512,7 @@ widget W {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_widget_with_routes() {
         // Test widget with routes block (Plan 105)
@@ -16432,6 +16570,7 @@ widget App {
     }
 
     #[test]
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_msg_variant_named_payload() {
         // Plan 435 挂账②:命名参数形态 `Change(value: str)`(gallery 官方组件在用)
@@ -16470,6 +16609,7 @@ widget T {
         assert!(variants[3].payload_names.is_empty());
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_hyphenated_tag_names() {
         // Test that hyphenated tag names parse correctly in view blocks (Task 3)
@@ -16516,6 +16656,7 @@ widget Test {
     // String literal as primary property shorthand tests
     // tag "value" → tag (primary_prop: "value")
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_string_as_primary_prop_h1() {
         // h1 "Title" → h1 (text: "Title")
@@ -16542,6 +16683,7 @@ widget Test {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_string_as_primary_prop_text() {
         // text "content" creates a text element with primary prop
@@ -16569,6 +16711,7 @@ widget Test {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_string_with_special_chars() {
         // String with em dash and other special characters should work
@@ -16579,6 +16722,7 @@ widget Test {
         assert!(result.is_ok());
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_string_as_primary_prop_with_additional_props() {
         // button "Click" (class: "btn") { onclick: .Test }
@@ -16612,6 +16756,7 @@ widget Test {
     // Task 5: Regression test - Old greater-than syntax should NOT work as text shorthand
     // The `>` is treated as an element tag (which will fail validation downstream)
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_gt_syntax_not_text_shorthand() {
         // Test: `> "text"` should be parsed as element with tag ">" and no primary prop
@@ -16645,6 +16790,7 @@ widget Test {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_pipe_syntax_works_for_text() {
         // Verify the correct pipe syntax works for text
@@ -16660,6 +16806,7 @@ widget Test {
     // - model member references use .count instead of count
     // - model fields require var keyword for mutability
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_aura_dot_prefixed_handler_syntax() {
         // Test: on { .Inc => { .count = .count + 1 } }
@@ -16731,6 +16878,7 @@ widget Counter {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_aura_model_var_keyword() {
         // Test: model { var count int = 0 } creates mutable field
@@ -17001,6 +17149,7 @@ widget Test {
     /// Plan 043 M5 #1: msg variants with multiple payload params must parse.
     /// Previously `Complete(str, int)` failed with "Expected term, got RBrace"
     /// because the payload parser consumed only a single type.
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_msg_multi_param_payload() {
         let code = r#"
@@ -17059,6 +17208,7 @@ widget Shell {
     /// (15 variants, mixing unit / single-param user-type / multi-param with
     /// []str) must parse end-to-end. This is the exact form that failed at
     /// `ClearScreen }` in the real shell_store.at.
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_msg_full_shellstore_declaration() {
         let code = r#"
@@ -17106,6 +17256,7 @@ store S {
     /// (e.g. `if .block.output != None`). parse_condition_expr previously had
     /// no NoneKW/Nil branch, so the `None` was left unconsumed and the parser
     /// desynced, surfacing as "Expected term, got RBrace" at the arm's brace.
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_view_condition_none_comparison() {
         let code = r#"
@@ -17140,6 +17291,7 @@ widget W {
     /// on `is_type` (lookup_ident_type), which returns None for unresolved
     /// imports. Now widened for PascalCase idents (UI scenario only) so
     /// `PromptContext{ git_branch: "", git_status: None }` parses.
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_struct_literal_construction_unresolved_type() {
         // Undeclared PascalCase type — must construct.
@@ -17175,6 +17327,7 @@ widget W {
     /// Previously the param parser kept only even-indexed tokens (assuming
     /// `name type` pairs), which dropped every other bare name — so
     /// `.RunSmart(block_id, name, args)` lost `name`.
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_on_handler_multi_param_binding() {
         fn handler_params(code: &str) -> Vec<String> {
@@ -17246,6 +17399,7 @@ store S {
     /// Plan 043 M5 #2: a computed property with a multi-statement block body
     /// must parse. Previously only single expressions parsed (`x => .foo`);
     /// `x => { var y = ...; return y }` failed with "Expected term, got RBrace".
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_computed_multiline_body() {
         let code = r#"
@@ -17567,6 +17721,7 @@ fn main() {
     }
 
     /// PLAN-607 T-01: Style Recipe declaration parsing tests (constant, parametric, composite, pub, doc, and fallback).
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_style_recipe_parse() {
         let code = r#"
@@ -17667,6 +17822,7 @@ style = 123
     }
 
     /// `for x in .items key: x.id { }` → key_expr = Dot(Ident(x), id).
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_keyed_for_item_field_chain() {
         let root =
@@ -17688,6 +17844,7 @@ style = 123
     }
 
     /// `key: .id` → self-rooted state chain (same shape as expression position).
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_keyed_for_state_chain() {
         let root =
@@ -17704,6 +17861,7 @@ style = 123
     }
 
     /// Str literal key (`key: "abc"`) and Int literal key (`key: 5`).
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_keyed_for_scalar_literals() {
         let root =
@@ -17726,6 +17884,7 @@ style = 123
     }
 
     /// Index form composes: `for i, x in .items key: x.id`.
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_keyed_for_with_index_var() {
         let root =
@@ -17742,6 +17901,7 @@ style = 123
     }
 
     /// Keyless loop is byte-identical modulo the new None field (AC-01 前提).
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_keyless_for_has_no_key_expr() {
         let root = plan046_parse_root_for("    for x in .items {\n      text \"r\"\n    }");
@@ -17805,6 +17965,7 @@ style = 123
     }
 
     /// `memo (deps: .a, .b) { … }` → deps 拍平为两个表达式、exact=false。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_memo_block_parses_deps_and_body() {
         let root = plan046_parse_root_memo(
@@ -17827,6 +17988,7 @@ style = 123
     }
 
     /// `exact: true` 旗标与 `deps: .x, exact: true` 混排。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_memo_block_exact_and_mixed_params() {
         let root = plan046_parse_root_memo(
@@ -17882,6 +18044,7 @@ style = 123
 
     /// PLAN-046 T-05：`outlet (memo: true)` 语料 prop 解析；裸 outlet 兼容；
     /// 非 `memo: true` 头参指名报错。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_outlet_prop_parsing() {
         let code = concat!(
@@ -17972,6 +18135,7 @@ style = 123
     }
 
     /// 嵌套形态：memo 块体内 for/if 照常解析。
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn plan046_memo_block_body_nodes() {
         let root = plan046_parse_root_memo(

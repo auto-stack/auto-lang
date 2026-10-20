@@ -1010,6 +1010,7 @@ mod tests {
     use crate::parser::Parser;
     use crate::session::CompilerSession;
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_style_recipe_semantic_validation() {
         clear_style_recipes();
@@ -1081,6 +1082,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_style_recipe_desugar_engine() {
         clear_style_recipes();
@@ -1174,6 +1176,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_style_recipe_lint_palette_warnings() {
         clear_style_recipes();
@@ -1234,6 +1237,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan635_named_import_registers_and_desugars() {
         let dir = tempfile::tempdir().unwrap();
@@ -1273,6 +1277,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan635_named_import_non_pub_is_error() {
         let dir = tempfile::tempdir().unwrap();
@@ -1289,6 +1294,7 @@ mod tests {
         assert!(err.to_string().contains("not pub"), "got: {}", err);
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan635_name_collision_is_error() {
         let dir = tempfile::tempdir().unwrap();
@@ -1312,6 +1318,7 @@ mod tests {
         assert!(err.to_string().contains("defined in both"), "got: {}", err);
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan635_wildcard_imports_pub_only() {
         let dir = tempfile::tempdir().unwrap();
@@ -1336,6 +1343,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan635_transitive_import() {
         let dir = tempfile::tempdir().unwrap();
@@ -1380,6 +1388,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_plan635_cross_package_deps_layout() {
         let dir = tempfile::tempdir().unwrap();

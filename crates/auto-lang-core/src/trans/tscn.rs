@@ -591,52 +591,62 @@ mod tests {
             .unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_tscn_001_hello() {
         test_a2tscn("001_hello").unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_tscn_002_player() {
         test_a2tscn("002_player").unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_tscn_003_timers() {
         test_a2tscn("003_timers").unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_tscn_004_nested() {
         test_a2tscn("004_nested").unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_tscn_005_subresource() {
         test_a2tscn("005_subresource").unwrap();
     }
 
     // Plan 308: reverse-translated Godot demo scenes.
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_godot_demo_instancing_ball_scene() {
         test_a2tscn("godot_demos/instancing/001_ball").unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_godot_demo_hexagonal_troll_scene() {
         test_a2tscn("godot_demos/hexagonal_map/001_troll").unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_godot_demo_kinematic_player_scene() {
         test_a2tscn("godot_demos/kinematic_character/001_player").unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_godot_demo_dodge_mob_scene() {
         test_a2tscn("godot_demos/dodge_the_creeps/001_mob").unwrap();
     }
 
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_godot_demo_dodge_player_scene() {
         // Deep-stack: deep scene-tree recursion (see test_a2tscn_deep).
@@ -646,6 +656,7 @@ mod tests {
     /// Plan 306 Phase 2b: one .at file carries both a `scene` (→ .tscn) and
     /// functions (→ .gd). The .tscn comes from the scene; the GDScript pass
     /// must skip the SceneDecl without erroring and keep the functions.
+    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
     #[test]
     fn test_tscn_006_combined_with_gd() {
         let src = r#"

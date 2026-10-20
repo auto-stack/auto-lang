@@ -75,4 +75,8 @@ pub use auto_parser_api::DialectPriority;
 pub use auto_parser_api::ExternalDialect;
 
 pub mod external;
+// PLAN-814 F02：UI 文法实现（UiDialect adapter → auto-ui-dialect 单源文法）
+// 按显式组合提供——`ui-dialect` feature off 时本模块不编译，Scenario::UI
+// 方言表为空，UI 语句回退非 UI 路径；外部方言体系（external）不受影响。
+#[cfg(feature = "ui-dialect")]
 pub mod ui;
