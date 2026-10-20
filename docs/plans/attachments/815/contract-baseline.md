@@ -14,7 +14,8 @@
 | framing | stdio 上 4 字节大端长度前缀 + JSON 帧;双向共享 `auto_tool_protocol::framing` 单一实现 | §3"实际 codec/framing 在 T-01 probe 后冻结" |
 | 控制流/日志分离 | stdout=纯控制流(帧化 JSON:request/response/event);stderr=人类可读日志。交互 stdin:A 阶段不读(interactive=false) | §5.3"日志不得污染 control stream" |
 | A 阶段操作 | `describe`(能力/版本/生命周期)、`validate_project`(I-PROJECT 元数据/路径/请求约束校验);`cancel` 已定义,对 A 操作显式 `not_cancellable` | §5.5 |
-| 路径校验锚定(R1-F04) | 相对路径一律锚定请求内**绝对** `project_root`(I-PROJECT 规则),禁用进程 cwd;根缺失/相对→显式 finding(`project-root-not-absolute`/`relative-path-without-root`),不静默回落;路径按角色检查(project_root/front/dep=目录,input_sources=文件,output_root 存在时须为目录) | §5.1 |
+| 路径校验锚定(R1-F04→R2 修订) | 相对路径一律锚定请求内**绝对** `project_root`(I-PROJECT 规则),禁用进程 cwd;**Windows 盘符相对(`C:dir`)/无盘根(`\dir`)形态不可锚定**(`root.join` 保持盘符相对,探测必用该盘 cwd)→ 显式 `cwd-qualified-path` finding,绝不探测;根缺失/相对→显式 finding(`project-root-not-absolute`/`relative-path-without-root`),不静默回落;路径按角色检查(project_root/front/dep=目录,input_sources=文件,output_root 存在时须为目录) | §5.1 |
+| Value 标签受控解析(R2,R1-F02 收口) | tag 对象缺 `t`/tag 非字符串/键集不符均具名 `Shape` 拒绝(受控访问,零 Map 索引 panic);诊断标签前缀仅消费一次(`strip_prefix`),编解码共享封闭字段集准入 | §5.3 |
 | 版本策略 | `PROTOCOL_VERSION=1`;请求带版本,未知版本→错误响应、零副作用;`describe` 永远可答 | §5.3 |
 | 预算 | `MAX_FRAME_BYTES=8MiB`(帧级,双向强制);`MAX_PROGRESS_BYTES_PER_OP=1MiB`;`MAX_QUEUE_DEPTH=128`(A 操作同步,结构性满足) | §5.3"消息/输出/排队预算与单位" |
 | 退出码 | 0=EOF 正常关停;1=内部错误;2=流级致命(坏帧/超限帧,失步后不可恢复) | T-01 冻结 |
@@ -82,9 +83,10 @@
 | max_frame_bytes | 8 MiB | 单帧**载荷字节数**(不含 4 字节长度前缀;与 framing 常量语义一致),双向 | 输入帧超限→流致命(exit 2);输出帧超限→写失败(工具侧 Internal/exit 1) |
 | max_progress_bytes_per_op | 1 MiB | 单操作累计 progress 载荷字节 | BudgetExceeded 错误响应 |
 | max_queue_depth | 128 | 客户端待消费通知条数(816 执行器侧强制) | 客户端侧 backpressure;A 工具同步无队列 |
-| max_wire_json_depth | 120 | wire/帧 JSON 树深度(对象/数组自根计层数,R1-F05 冻结) | 生产端(codec `request_to_wire`/`write_frame`)具名拒绝(`DepthExceeded`/framing "envelope" reason);消费端 `read_frame`/`parse_frame` 超出 JSON 解析器递归限(128)以 Malformed 流致命分类 |
+| max_wire_json_depth | 120 | **wire 请求文档** JSON 树深度(codec `request_to_wire`/`request_from_wire` 双向强制) | 生产端/消费端具名 `DepthExceeded` |
+| max_frame_json_depth | 122 | **完整帧消息** JSON 树深度 = wire 120 + 真实信封开销 2(envelope obj + body obj;R2 复审冻结) | `write_frame` 具名拒绝("envelope");`read_frame`/`parse_frame` 解析后同限具名拒绝("beyond the transmittable envelope");>128 由 JSON 解析器递归限拒绝(同 Malformed 分类) |
 
-**可传输包络合同(R1-F05)**:codec 编码、codec 解码、write_frame、read_frame/parse_frame 四处共享同一深度上限——任何合规生产端发出的帧,保证可被共享读帧器解析;超包络的树在生产端即获具名错误,不再表现为对端"坏 JSON"。手工构造的超深帧(>128 JSON 层)在读取端为 Malformed 流致命(帧长前缀完好也无法结构化应答,归入既有的坏帧分类)。
+**可传输包络合同(R1-F05→R2 修订)**:四级链一致——wire 请求文档(codec,120)⊂ 完整帧(信封+2=122,写/读/缓冲读三入口同限)⊂ JSON 解析器递归限(128,最后防线)。任何 codec 接受的请求经真实 `ClientEnvelope` 封装后必可写可读(57 层 wire 119/信封 121 实测);超包络在生产端即具名拒绝,消费端对可解析但超限(123..128)的帧同样具名拒绝,不再有 121..128 的隐性准入缝隙。手工构造的超深帧按上述分类流致命。
 
 ## 5. B 阶段执行序(依赖门复核)
 

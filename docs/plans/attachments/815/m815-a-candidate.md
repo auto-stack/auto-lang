@@ -1,8 +1,20 @@
 # PLAN-815 M815-A 候选交付记录(T-12)
 
-状态:R1 审查(needs_fix,6 findings)已修复完毕,再送 T-13 复审。本文件是 M815-A 的候选收据(非最终发布收据;`delivery_commit` 须待 T-14 实际合入 master 后由 merge owner 回填方为发布)。
+状态:R1 六项中四项关闭、两项部分关闭;R2 复审就剩余不变量(F-815-R1-02/04/05 部分 + 新增 R2-01)再开四项,本轮已全部修复,再送 T-13 复审。本文件是 M815-A 的候选收据(非最终发布收据;`delivery_commit` 须待 T-14 实际合入 master 后由 merge owner 回填方为发布)。
 
-## 0. R1 修复轮(2026-10-20,[review-r1](review-r1/review.md) 全部 6 findings 闭合)
+## 0. 修复轮记录
+
+### R2 轮(2026-10-20,[review-r2](review-r2/review.md) 四项全部闭合;受审=faea8c9d7)
+
+| 项 | 修复与验证 |
+|---|---|
+| F-815-R1-02(续开) | value tag 对象受控解析:缺 `t`/tag 非字符串/按 tag 精确键集全部具名 `Shape` 拒绝,零 Map 索引。探针:npm_deps/raw value/raw node prop 三位置 `{"v":1,"extra":2}` → invalid_field 错误响应、describe 继续、exit 0(原 exit 101/panic)。永久测试 `r2_value_object_without_tag_is_a_named_error` + `r2_tagless_value_payload_is_controlled_not_fatal` |
+| F-815-R1-04(续开) | Windows 路径种类判定:`Component::Prefix/RootDir` 存在即非纯相对 → `cwd-qualified-path` finding,绝不探测(原 `root.join("C:dir")` 保持盘符相对、探测用该盘 cwd)。探针:input/output/front/dep × 同盘 project/elsewhere 双 cwd 十行全部一致(`cwd-qualified-path`,ok=true);普通相对对照两 cwd 均 ok。永久测试 `r2_drive_relative_paths_are_cwd_qualified_not_cwd_probed` |
+| F-815-R1-05(续开) | 深度链四级统一:wire 120(codec 双向)⊂ frame 122(=120+真实信封开销 2;`write_frame`/`read_frame`/`parse_frame` 三入口同限、解析后具名拒绝)⊂ 解析器 128(最后防线)。探针:57 层(wire 119/信封 121)codec+写+读全通(原被 writer 拒);58/64 层 codec 具名拒;手工帧 123 层 → "beyond the transmittable envelope 122" 具名拒;129 层 → 解析器递归限。耦合由 `r2_frame_budget_covers_the_wire_budget_plus_envelope` 钉住 |
+| F-815-R2-01(新回归) | 诊断前缀 `strip_prefix` 仅消费一次:`type-mismatch:type-mismatch:members` → payload 不在封闭集,具名拒绝(原被规范化为 members);编码侧同域校验:`TypeMismatch{field:"future"}` 编码即拒(原可产出不可回读 wire)。永久测试 `r2_diagnostic_tag_admission_is_exact` |
+| 回放 | R2 codec probe:depth-envelope 56/57 通、58/64 拒;framing-limit 119..121 通、126 具名拒、129 解析器拒;unsupported-type-mismatch encode=false;probe 对新拒绝语义的 unwrap panic 属预期(不变量由永久测试覆盖)。R2 process probe 四案例全闭合(上表) |
+
+### R1 轮(2026-10-20,[review-r1](review-r1/review.md) 六项;其中 F-02/04/05 经 R2 复审部分续开、已于 R2 轮收口,F-01/03/06 经 R2 复审确认 CLOSED)
 
 | 项 | 值 |
 |---|---|
@@ -22,8 +34,8 @@
 |---|---|
 | 唯一树 | `D:/autostack/.wt/lang-815/auto-lang`(分支 `codex/plan-815-dev`) |
 | 基面 | master `b9f7ab7e1` |
-| R1 审查对象 | `9f27d54f0`(needs_fix) |
-| 代码提交 | `c7bbc9681`(初版)→ `faea8c9d7`(R1 修复;**当前冻结候选 SHA,T-13 复审对象**) |
+| R1 审查对象 | `9f27d54f0`(needs_fix)→ R2 受审 `faea8c9d7`(needs_fix) |
+| 代码提交 | `c7bbc9681`(初版)→ `faea8c9d7`(R1 修复)→ `bc61501c5`(R2 修复;**当前冻结候选 SHA,T-13 复审对象**) |
 | 依赖交付 | 809/I-PROJECT `b819a602e`(已归档,master 祖先);不依赖 M814-A/814 任何 WIP |
 
 ## 2. 交付范围(M815-A,§5.5)
@@ -60,18 +72,19 @@
 2. 支持面:请求全字段 + 静态子集可产生的 Value 族(标量/Array/Block/Obj/Pair,CStr);拒绝面:不可表示 Value 变体(具名)、非 Unicode 路径、非有限浮点、超 120 JSON 深度、未知/缺失键(各层)、编造的 type-mismatch 字段。
 3. 静态扫描器支持域不变;wire 不新增 pac.at 语法解释。
 
-## 5. 测试与门禁证据(R1 修复轮,冻结 SHA `faea8c9d7` 上)
+## 5. 测试与门禁证据(R2 修复轮,冻结 SHA `bc61501c5` 上)
 
 | 面 | 命令 | 结果 |
 |---|---|---|
-| 协议 | `cargo test -p auto-tool-protocol` | 15/15 通过 |
-| codec | `cargo test -p auto-project-model --features wire --lib` | 49/49(含 11 wire 往返/漂移/数值/深度) |
-| 工具+进程 | `cargo test -p auto-ui-tools` | 19/19(15 真实进程含 3 组 cwd 对照 + 4 资产清单) |
+| 协议 | `cargo test -p auto-tool-protocol` | 18/18 通过 |
+| codec | `cargo test -p auto-project-model --features wire --lib` | 52/52(含 14 wire 往返/漂移/数值/深度/标签准入) |
+| 工具+进程 | `cargo test -p auto-ui-tools` | 21/21(17 真实进程含 cwd 对照/盘符相对/受控 payload + 4 资产清单) |
 | fixture 闭包 | `bash test/fixtures/modularity/ui-tool-consumer/verify-deps.sh` | PASS(闭包无 man/lang/vm/gen) |
 | fixture 进程 | `AUTO_UI_TOOL_BIN=... cargo test --manifest-path .../ui-tool-consumer/Cargo.toml` | 4/4 |
 | 检查面 | `cargo check -p auto-ui-tools -p auto-tool-protocol -p auto-project-model --features auto-project-model/wire --all-targets` | 通过,零警告(F-06 闭合) |
 | 格式 | `cargo fmt --check -p auto-project-model -p auto-tool-protocol -p auto-ui-tools`(+ fixture fmt) | 通过(F-06 闭合) |
 | 777 | `python scripts/modularity-audit.py --mode strict` | verdict=pass violations=0 grandfathered=2 |
+| R2 回放 | review-r2 codec probe + adjacent_process_probes.py | 四项全闭合(详 §0 R2 表) |
 | R1 回放 | review-r1 codec probe + process_probes.py | C01..C06/C08..C11/C13 闭合;C07/C13 codec 臂=新具名拒绝(详 §0) |
 
 merge-owned 门禁**pending**(按 2026-10-14 时序裁定,归 T-14 冻结后统一执行):裸 `cargo t` + 新包/协议进程控制档;本轮未触 VM/编译器/trans/UI 生成,预计无需 tv/tt/tu(以 T-13/T-14 实际 diff 复核为准)。
@@ -90,4 +103,4 @@ merge-owned 门禁**pending**(按 2026-10-14 时序裁定,归 T-14 冻结后统�
 
 ## 8. 下一步
 
-T-13 复审:同树独立阶段审查(对象=冻结 SHA `faea8c9d7` + 本候选(含 §0 修复轮与 §4 SD-02/SD-04 A 子集)+ contract-baseline.md §1/§3/§4),通过后 T-14 串行冻结门与实际 master 合入(不归档、不清树,收据回填 delivery_commit)。
+T-13 复审:同树独立阶段审查(对象=冻结 SHA `bc61501c5` + 本候选(含 §0 两轮修复记录与 §4 SD-02/SD-04 A 子集)+ contract-baseline.md §1/§3/§4),通过后 T-14 串行冻结门与实际 master 合入(不归档、不清树,收据回填 delivery_commit)。

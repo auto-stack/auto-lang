@@ -106,7 +106,7 @@ T-01冻结适用平台、实际codec/framing、消息/输出/排队预算与单�
 
 ## 6. 测试设计
 
-2026-10-20 T-13 独立阶段审查 R1：**needs_fix**。现有76项定向测试通过，但独立反例确认无损codec、嵌套shape、数值、路径与framing包络缺口及健康门问题；见[R1报告/共享回放集](attachments/815/review-r1/review.md)。T-01（预算包络部分）、T-03、T-12重开，T-02完成证据保留；M815-A尚未获得阶段pass，以下历史work验证不代替反例闭合。
+2026-10-20 T-13 独立阶段复审 R2：**needs_fix**。87项现有定向测试、fmt/all-targets健康门与777通过；F-R1-01/03/06已独立关闭，F-R1-02/04/05原例虽修但完整不变量仍OPEN，另有修复回归F-R2-01；详见[R2关闭表/共享反例](attachments/815/review-r2/review.md)。T-01（预算包络部分）、T-03、T-12重开，T-02及已闭合证据保留，M815-A尚未获阶段pass；历史work声称不代替当前反例闭合。
 
 T-01冻结实际支持矩阵/旧输出/协议probe；T-07建立新增`test/fixtures/modularity/ui-tool-consumer/`、`tool-protocol-consumer/`及上层plan815定向集成。所有V项owner_stage=work；V-05与V-02/03当期（元数据/codec）范围已于M815-A work阶段执行（见§9），完整V-01..04待B阶段。
 
@@ -153,9 +153,9 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 文件/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [x] | T-01 | work | 现在;809已交付,新SDK probe按M814-A门 | attachments/815/contract-baseline.md(新增):全工具/字段/资产/效果owner、旧oracle、非UI共享分界、I-TOOL/交互预算候选;前置合入后probe冻结完整方案；R1-05重开可传输嵌套包络/分类冻结(§4:MAX_WIRE_JSON_DEPTH=120+payload bytes措辞),其余owner清单证据保留;R1修复faea8c9d7 | AC-01..04 |
+| [ ] | T-01 | work | 现在;809已交付,新SDK probe按M814-A门 | attachments/815/contract-baseline.md(新增):全工具/字段/资产/效果owner、旧oracle、非UI共享分界、I-TOOL/交互预算候选;前置合入后probe冻结完整方案；R2修复bc61501c5:F-R1-05收口为四级深度链(wire120⊂frame122=120+信封2,三入口同限具名拒绝)⊂解析器128,合同§4同步修订;其余owner清单证据保留 | AC-01..04 |
 | [x] | T-02 | work | T-01只读资源映射;无WIP引用 | 新工具包私有资源模块/独立资产测试、来源/许可证映射;生产asset原源不动,单次迁移及embed切换在T-04完成,不改809数据/接线,不假建最终API | AC-01,04 |
-| [x] | T-03 | work | T-01协议决策+809已交付;不等814 | 新auto-tool-protocol复用I-PROJECT/codec,定义版本/能力/资源/结果/退出,正常负控编译/协议测试；R1-01/02/03/05修复并补同族反例(诊断payload无损/嵌套严格schema/窄化校验/深度包络对称,15+49测试);R1修复faea8c9d7 | AC-02,03 |
+| [ ] | T-03 | work | T-01协议决策+809已交付;不等814 | 新auto-tool-protocol复用I-PROJECT/codec,定义版本/能力/资源/结果/退出,正常负控编译/协议测试；R2修复bc61501c5:F-R1-02受控tag解析(缺t/键集具名拒,零panic)、F-R1-05四级深度链、F-R2-01诊断前缀strip一次+编码同域;18+52测试含同族反例 | AC-02,03 |
 | [ ] | T-04 | work | T-14/M815-A+M814-A已发布 | Vue/Rust/Jet/Ark/Tauri等完整UI工具及真实请求接线、资产生产迁移/旧源删除;非UI分界具名adapter | AC-01,02 |
 | [ ] | T-05 | work | T-04;完整runtime正控等M814-B | 在A真实tool上接完整UI执行/control/日志/交互/取消,保持已发布窄能力;实际runtime/build/run以M814-B为门;V-03完整范围 | AC-03 |
 | [ ] | T-06 | work | T-05 | 旧Man公开门面兼容承载、真生成/build/run及媒体/sidecar/backend/项目读取全路径,V-01/02/04 | AC-01,02,04 |
@@ -164,7 +164,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | [ ] | T-09 | review | T-08 | 同树独立AC/SD/真实工具/无第二读取/资源失败审查；merge门pending | AC-05 |
 | [ ] | T-10 | merge | T-09 pass | master并集/变化复审/冻结适用门，失败归因后修复重审 | AC-06 |
 | [ ] | T-11 | merge | T-10 | 规范/ledger/归档、已合入I-TOOL接口交816、guard clean清理唯一树/分支/组及计数 | AC-06 |
-| [x] | T-12 | work | T-03；与T-02资源准备可独立 | 实际describe/validate_project元数据tool及独立进程consumer，V-05和V-02/03当期正反例、777/适用792来源/发行闭包、版本/能力/Spec候选；新增attachments/815/m815-a-candidate.md；R1-01..06闭合(F-04路径锚定/角色+cwd对照、F-06健康门)、A规范子集(SD-02/04)已列,新冻结SHA faea8c9d7再送审 | AC-07 |
+| [ ] | T-12 | work | T-03；与T-02资源准备可独立 | 实际describe/validate_project元数据tool及独立进程consumer，V-05和V-02/03当期正反例、777/适用792来源/发行闭包、版本/能力/Spec候选；新增attachments/815/m815-a-candidate.md；R2修复bc61501c5:F-R1-02(三位置受控应答exit0)/F-R1-04(盘符相对→cwd-qualified-path,双cwd一致)/F-R1-05/R-R2-01四项闭合,探针全绿;新SHA bc61501c5再送审 | AC-07 |
 | [ ] | T-13 | review | T-12提交冻结 | 独立A协议/同源codec/真实端点/预算/副作用/Spec审查，绑定r2/M815-A SHA，merge门pending | AC-08 |
 | [ ] | T-14 | merge | T-13 pass | 串行冻结门/实际master合入、协议版本与Spec子集/受管ledger增量、consumer来源发布收据；不归档不清树 | AC-09 |
 
@@ -185,6 +185,10 @@ r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调�
 2026-10-20 / stage: review / review_scope: phase（M815-A，T-13；非整Plan final）/ reviewer_identity: Codex `/root` 独立审查会话，从合同/提交/反例重建结论；未继承实施上下文、未创建agent，不声称未暴露的模型或会话ID / plan_id: PLAN-815 / plan_revision: 2 / outcome: **needs_fix** / worktree_path: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / reviewed_commit: 9f27d54f013119a93ca832a2c43d83413592cb69 / base_commit: b9f7ab7e1f400073006e096a08b436f933e4a836 / dependency_revisions: 809=b819a602e已交付（完整SHA/锁/配置/二进制身份见[baseline](attachments/815/review-r1/baseline.json)，无814 WIP依赖）/ spec_inputs: 四份canonical Spec当前版本/hash、r2阶段合同及候选冻结见baseline；规范候选冻结SHA256=5f7760775e85fa79c3141b19e05f5c7564093280c866ff7288437f9006cda700 / acceptance_results: AC-07 fail、AC-08 needs_fix；AC-01..04仅A当期部分有证据，B原标准继续pending；AC-05/06/09未到对应阶段 / findings: F-815-R1-01(P2无损payload/路径)、02(P2嵌套shape吞漂移)、03(P2数值截断/非有限响应)、04(P2路径cwd/角色)、05(P2同源读写framing嵌套包络不一致)、06(P3两warning/12文件格式)，全部OPEN / evidence: 本轮72包内+4外部consumer=76项定向测试通过，777 strict pass(0 violations/2 grandfathered/75边)，依赖闭包/零副作用/流错误/输出超限对照通过；独立codec和真进程反例、完整AC/SD矩阵见[R1报告](attachments/815/review-r1/review.md) / pending_closeout_gates: T-14阶段pass后串行冻结裸cargo t+必要新包/协议门、实际合入/Spec与ledger/来源consumer收据；本轮无VM/trans/UI生成触面，tf仅主检出到期批量；未整档/合入/归档/清树 / next: 原树work一次修齐六项并补永久反例，更新A规范子集、提交新SHA后T-13复审；重开T-01（预算包络部分）/T-03/T-12，保留T-02及未受影响证据，executing **1/14**，T-13不勾选。
 
 2026-10-20 / stage: work / revision: 2 / outcome: R1 needs_fix 六项(F-01..06)全部修复,M815-A work 阶段再次完成(T-01/T-03/T-12 修复后勾回;非整Plan execution_done) / worktree: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / base: b9f7ab7e1 / code_commit: faea8c9d7(修复,基于R1审查对象9f27d54f0) / dependency_revisions: 809=已合入 master b819a602e / task_ids: T-01,T-03,T-12(修复轮) / evidence: 定向83(model 49/protocol 15/tools 19)+fixture 4 全绿;fmt --check 12文件+fixture通过;scoped all-targets check零警告;777 strict pass;R1回放探针C01..C06/C08..C11/C13闭合(C07/C13 codec臂=新具名拒绝语义,探针旧unwrap panic属预期,不变量由r1_*/r2_*/r3_*/r5_*永久测试覆盖);修复明细与SD-02/SD-04 A子集见 m815-a-candidate.md §0/§4 / blockers: 无 / merge门: pending(仍归T-14冻结后) / next_responsible_role: review(T-13 复审,对象=冻结SHA faea8c9d7+候选收据)
+
+2026-10-20 / stage: review / review_scope: phase（M815-A/T-13，R2；非整Plan final）/ reviewer_identity: Codex `/root`，延续R1独立审查会话，不继承实施会话自检、不创建agent/第二树 / plan_id: PLAN-815 / plan_revision: 2 / outcome: **needs_fix** / worktree_path: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / reviewed_commit: faea8c9d727df1ab2b16d45fed95c0f345c48180 / base_commit: b9f7ab7e1f400073006e096a08b436f933e4a836 / repair_base: 9f27d54f013119a93ca832a2c43d83413592cb69 / dependency_revisions: 809已交付b819a602e，完整SHA/依赖锁/配置/二进制/当前Spec版本见[R2 baseline](attachments/815/review-r2/baseline.json)，无814 WIP / spec_inputs: A候选冻结SHA256=b29522ef7ddc56ec66200c66e59e9181a3f07abea276791b758d68741625f332，contract-baseline冻结SHA256=8005782326da55e9d85f80d6e78dcef906cbfd52ca9bbb35cdd05b5a226a0ed3；SD-02/04已补但四项开放行为仍阻断事实认可 / acceptance_results: AC-07 fail、AC-08 needs_fix，AC-01..04仅A已验证部分保留，B原项及AC-05/06/09继续pending / findings: F-R1-01/03/06独立CLOSED；F-R1-02(P2，缺Value标签在资产/raw/node-props三个位置均panic exit101)、04(P2，Windows盘符相对路径四分支仍受cwd影响)、05(P2，完整信封119→121及读端120门缺接线)保持OPEN/partial；新增F-815-R2-01(P2，诊断tag重复前缀被接受、编解码payload域不一致，修复回归) / evidence: 83包内+4外部consumer=87个不同定向测试全绿，fmt与scoped all-targets零warning、777 strict pass(0/2/75)、闭包通过；原例与新相邻反控见[R2报告/关闭表](attachments/815/review-r2/review.md)；原codec旧探针在C07具名拒绝处unwrap停止并非全量pass，已用新四路径角色控制补齐 / pending_closeout_gates: T-14阶段pass后串行冻结裸cargo t+必要新包/协议/consumer门、实际合入/SD/ledger/来源发布收据；未整档、合入、归档或清树，当前无VM/trans/UI生成触面、tf仅主检出到期批量 / next: 原树work一次修齐3旧不变量+1修复回归，补共享helper各入口永久反例、更新A候选后新SHA再送T-13；重开T-01（预算包络）/T-03/T-12，T-02及已闭证据保留，executing **1/14**。
+
+2026-10-20 / stage: work / revision: 2 / outcome: R2 needs_fix 四项(F-815-R1-02/04/05 续开 + F-815-R2-01 新回归)全部修复,M815-A work 阶段第三次完成(T-01/T-03/T-12 修复后勾回) / worktree: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / code_commit: bc61501c5(基于R2受审faea8c9d7) / dependency_revisions: 809=已合入 master b819a602e / task_ids: T-01,T-03,T-12(R2修复轮) / evidence: 定向91(model 52/protocol 18/tools 21)+fixture 4 全绿;fmt+scoped all-targets check零警告;777 strict pass;R2探针四项全闭合(depth-envelope 56/57通/58拒、framing-limit 123具名拒、windows-path-anchor 十行双cwd一致、missing-value-tag 三位置exit0、repeated-diagnostic-tag拒绝);详表 m815-a-candidate.md §0 R2轮 / blockers: 无 / merge门: pending(归T-14) / next_responsible_role: review(T-13 复审,对象=冻结SHA bc61501c5)
 
 ## 10. 待澄清事项
 
