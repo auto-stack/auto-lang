@@ -32,7 +32,7 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 
 | 定性 | 判据 | 去向 |
 |---|---|---|
-| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **44**——39–43 为编译器语法、cache、ABI、语义与AC/AV域章），在本索引登记 |
+| **域级章** | 覆盖一个大的技术域、长期伞形视图（如类型系统、UI 架构、知识生命周期） | 根级拿号（下一可用章号 **45**——39–44 为编译器语法、cache、ABI、语义与AC/AV及数据域章），在本索引登记 |
 | **需求级/专题设计** | 服务于某条需求线或专题（特性、轨道、规范、研究输入） | 进对应模块子目录（`autoui/`、`blueprints/`、`strategy/`…），**slug 命名不带号** |
 | **流程体系类** | 开发范式、知识体系、流程设计 | 根级不拿号（与 `plan-spec-hybrid-model.md`、`autoplan-spec-ledger.md` 同列） |
 
@@ -153,7 +153,8 @@ plans 记录过程并在收尾时经 `/auto-plan:merge` 把知识沉淀回 specs
 | [40-compiler-artifacts-and-cache-lifecycle](40-compiler-artifacts-and-cache-lifecycle.md) | 编译全阶段产物目录、Atom/Batom+Schema、query/content/local/external身份、强数据与失效依赖、共享store/lease/预算及自动GC健康治理 | 📝 目标态合同草案（2026-10-15；格式/策略参数未冻结，未实施） |
 | [41-interface-metadata-and-foreign-abi](41-interface-metadata-and-foreign-abi.md) | AutoABI与C/Rust等foreign ABI分层；共用接口元信息/Foreign IR、use.c自动绑定与resolver、双向插件、target语义与cache/lease接线 | 📝 讨论整合与架构草案（2026-10-15；语法/Schema/ABI支持面未冻结，未实施） |
 | [42-semantic-metadata-inference-and-comptime](42-semantic-metadata-inference-and-comptime.md) | v0.6语义meta/类型推导/泛型与AV驱动CTE；双期反射、runtime保留、统一查询/依赖及可缓存冻结结果 | 📝 目标态设计（2026-10-16；支持矩阵/Schema/API/预算待Plan冻结，未实施） |
-| [43-ac-av-typed-mir-and-abc](43-ac-av-typed-mir-and-abc.md) | AC/AV/AJ共同服务、Typed MIR/ABC/CTE、解释/快速JIT/优化JIT、增量发布；近期/后续能力与796/797边界 | 📝 路线方向已确认（2026-10-16；最小profile/Schema/字节码待Plan探针，未实施） |
+| [43-ac-av-typed-mir-and-abc](43-ac-av-typed-mir-and-abc.md) | ACE的AC/AV/AJ、Typed MIR/ABC/CTE与函数增量 | 📝 §6.4/6.5：798完成后优先828；817/818、820–827扩展须保持全链路函数增量 |
+| [44-av-data-layout-place-and-ownership](44-av-data-layout-place-and-ownership.md) | AV布局、Place/owned、集合/闭包/Dyn；820–824扩面与825/826性能分工 | 📝 先798交付→优先828→其余ACE扩展；各Plan强制保留全链路增量，实际能力查Spec |
 | [autoplan-spec-ledger](autoplan-spec-ledger.md)（原 26） | auto-plan 四技能范式 + 6 段账本 + 路径映射 | ✅ **现行**（开发范式权威描述） |
 | [plan-spec-hybrid-model](plan-spec-hybrid-model.md) | Plan+Spec v1 五环流程（2026-07-23） | ⚠️ 已被取代（诊断与反模式清单仍有效） |
 
