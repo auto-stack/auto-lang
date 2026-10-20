@@ -4,6 +4,7 @@
 
 | Plan | 标题 | 状态 | 归档 | 一句话沉淀 |
 |---|---|---|---|---|
+| 797 | autoabi-v01-bidirectional-probe | ✅（delivered，r17；R1–R17 十七轮复审链收敛） | [archive/797-autoabi-v01-bidirectional-probe.md](../../plans/archive/797-autoabi-v01-bidirectional-probe.md) | 公共 AutoABI 候选 profile `autoabi.win-x64.v0.1-candidate`：descriptor/3 调用前边界（出参列表/handle 归属/callback ctx/record mut-out 一等形态+独立 header oracle）、三腿真实互调、cl 观测依赖+候选位置全集适用域缓存（信封版本入代际键）、两阶段精确内存预算门、正式父路径 P95 硬门与一请求一原始行；canonical [auto-abi/](../auto-abi/)（project/windows-x64-v01/conformance-cache）+ 本 project ABI 导航与 data-resource 分域 |
 | 788 | autodown-ac-native-turnaround | ✅（delivered，r10） | [archive/788-autodown-ac-native-turnaround.md](../../plans/archive/788-autodown-ac-native-turnaround.md) | AutoDown v2 引用式导入：ac 源码/HIR 检查构建执行 + trace-marks 支持库（p15/p16）+ 产品腿字节保真；语料 42 case 对账；通道合同属 auto-test-case profile-v2-native |
 | 741 | ac-hir-native-core | ✅（delivered，r8；r1..r8均已交付） | [741-ac-hir-native-core.md](../../plans/archive/741-ac-hir-native-core.md) | 首个原生 AOT 闭环：Cranelift 0.126.2 → COFF → rust-lld/MSVC 双链路 → PE 真实执行（add=5/1、count=3/0/0、溢出 trap=70、调用顺序 b→a 结果 12）；capability 显式门（hir.test.trace.v1 + no_std 支持库）；ac-probe check/build（退出码 0/1/2、原子制品替换不覆盖、收据）；工具链发现（KitsRoot10 注册表/env 覆盖）收据 toolchain.md；verify-ac-741.ps1 一键复现 |
 | 745 | ac-source-checked-hir-native | ✅（delivered，r1；第七轮最终复审pass） | [745-ac-source-checked-hir-native.md](../../plans/archive/745-ac-source-checked-hir-native.md) | 单模块Auto计算源码→Checked→Windows PE；精确I32/Bool、求值序/runtime trap、事务发布与迭代深块正反验收 |

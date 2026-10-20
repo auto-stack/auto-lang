@@ -168,6 +168,15 @@ record 布局：字段按声明序、各字段自对齐；`align(R)=max(字段�
   `requires: ["ac.runtime.text.v1"]`（纯 copyable 模块零需求；caller 声明
   不可绕过——双触发门沿 770）。
 
+## 公共 AutoABI profile 分域（PLAN-797）
+
+774 内部 ABI-A–E 与 `autoabi` 公共候选 profile（
+[auto-abi/](../auto-abi/)）分属**不同兼容域**：禁止用内部 ABI 的兼容
+承诺描述公共 profile（或反向）。资源 representation
+（buffer/handle/callback）在公共 profile 中按
+[auto-abi/windows-x64-v01.md](../auto-abi/windows-x64-v01.md) 执行，
+不复用旧 text 内部 12/8 布局。
+
 ## 探针实证状态
 
 crate `experimental/ac-core/probes/data-resources/`（独立 workspace + no_std
