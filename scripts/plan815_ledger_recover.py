@@ -292,11 +292,15 @@ def convert(
         for it in s.get("items", []):
             iid = it.get("id", "?")
             status = it.get("status")
-            if "status" not in it or status is None:
+            # existence frozen BEFORE the assignment (review L2 F-L1-03:
+            # evaluating `"status" not in it` after writing it recorded the
+            # 213 truly-missing originals as null)
+            status_was_missing = "status" not in it
+            if status_was_missing or status is None:
                 it["status"] = STATUS_MISSING[0]
-                record(sid, iid, "status", MISSING if "status" not in it else None,
+                record(sid, iid, "status", MISSING if status_was_missing else None,
                        it["status"], STATUS_MISSING[1],
-                       note="原值缺失" if "status" not in it else "原值显式 null=无记录，非已验收")
+                       note="原值缺失" if status_was_missing else "原值显式 null=无记录，非已验收")
             elif not (isinstance(status, str) and status in SPEC_STATUSES):
                 if isinstance(status, str) and status in STATUS_MAP:
                     mapped, basis = STATUS_MAP[status]
@@ -319,27 +323,38 @@ def convert(
                     it[field] = None
                     record(sid, iid, field, MISSING, None, "Option 工厂默认")
             # timestamps: legacy names move with exact day-preserving parse
+            created_key_existed = "created" in it
             legacy_created = it.pop("created", None)
             if "created_at" not in it:
+                created_existed = False
                 value, basis = parse_legacy_time(legacy_created)
                 it["created_at"] = value
-                if legacy_created is not None:
+                if created_key_existed:
                     record(sid, iid, "created", legacy_created, f"removed→created_at={value}", TIMESTAMP_MOVED_BASIS)
                 record(sid, iid, "created_at", legacy_created if legacy_created is not None else MISSING, value, basis,
                        note="旧字段 created 搬移" if legacy_created is not None else "无旧值")
-            elif legacy_created is not None:
+            elif created_key_existed:
+                # store field already present: the legacy name is a DUPLICATE
+                # — removed to the sidecar WITH a declared conversion row,
+                # whether its value was a real value or an explicit null
+                # (review L2 F-L1-03: legacy removals must all be declared)
                 unknown.setdefault(f"{sid}/{iid}", {})["created"] = legacy_created
+                record(sid, iid, "created", legacy_created, "→sidecar",
+                       "store 字段已存在，旧名副本删除；值逐字保留于 sidecar", note="unknown-field sidecar")
+            modified_key_existed = "last_modified" in it
             legacy_modified = it.pop("last_modified", None)
             if "modified_at" not in it:
                 fallback = legacy_modified if legacy_modified is not None else legacy_created
                 value, basis = parse_legacy_time(fallback)
                 it["modified_at"] = value
-                if legacy_modified is not None:
+                if modified_key_existed:
                     record(sid, iid, "last_modified", legacy_modified, f"removed→modified_at={value}", TIMESTAMP_MOVED_BASIS)
                 record(sid, iid, "modified_at", fallback if fallback is not None else MISSING, value, basis,
                        note="旧字段 last_modified/created 搬移" if fallback is not None else "无旧值")
-            elif legacy_modified is not None:
+            elif modified_key_existed:
                 unknown.setdefault(f"{sid}/{iid}", {})["last_modified"] = legacy_modified
+                record(sid, iid, "last_modified", legacy_modified, "→sidecar",
+                       "store 字段已存在，旧名副本删除；值逐字保留于 sidecar", note="unknown-field sidecar")
             if "completed_at" not in it:
                 it["completed_at"] = None
                 record(sid, iid, "completed_at", MISSING, None, "不发明完成时间")
@@ -448,6 +463,40 @@ def protections(source: dict, candidate: dict, conversions: list[dict]) -> list[
         errors.append("protection: root project 改变")
     if [x.get("id") for x in source.get("sections", [])] != [x.get("id") for x in candidate.get("sections", [])]:
         errors.append("protection: section 身份/顺序改变")
+    # section-level declared-VALUE protection (review L2 F-L1-03: a mutated
+    # reports.title passed because only ids were compared). Section
+    # conversion rows carry id=None and live outside `declared` (which is
+    # item-keyed), so compare them separately.
+    section_rows = {(c["section"], c["field"]) for c in conversions if c.get("id") is None}
+    # declared VALUE check: a section field produced by a conversion row
+    # must equal the declared new value (mutating it to anything else is
+    # an undeclared change — review L2 F-L1-03)
+    section_declared = {}
+    for c in conversions:
+        if c.get("id") is None:
+            section_declared[(c["section"], c["field"])] = c["new"]
+    for s_src in source.get("sections", []):
+        sid = s_src.get("id")
+        s_dst = next((x for x in candidate.get("sections", []) if x.get("id") == sid), None)
+        if s_dst is None:
+            continue
+        for key, value in s_src.items():
+            if key == "items":
+                continue
+            if key not in s_dst:
+                if (sid, key) not in section_rows:
+                    errors.append(f"protection: section {sid}.{key} 被删除且无转换声明")
+            elif s_dst[key] != value and (sid, key) not in section_rows:
+                errors.append(f"protection: section {sid}.{key} 未经转换声明被改变")
+        for key in s_dst:
+            if key != "items" and key not in s_src and (sid, key) not in section_rows:
+                errors.append(f"protection: section {sid}.{key} 新增且无转换声明")
+        for (row_sid, row_field), declared_value in section_declared.items():
+            if row_sid == sid and row_field in s_dst and s_dst[row_field] != declared_value:
+                errors.append(
+                    f"protection: section {sid}.{row_field} 与声明转换值不符"
+                    f"（候选 {s_dst[row_field]!r} != 声明 {declared_value!r}）"
+                )
     renames: dict[tuple[str, str], str] = {}  # section-scoped (review L1 F-03)
     declared: set[tuple[str, str, str]] = set()
     removed_keys: set[tuple[str, str, str]] = set()
@@ -484,7 +533,7 @@ def protections(source: dict, candidate: dict, conversions: list[dict]) -> list[
             errors.append(f"protection: {sid}/{iid} 在候选中消失")
             continue
         if key not in dst:
-            if row not in removed_keys and key not in ("created", "last_modified"):
+            if row not in removed_keys:
                 errors.append(f"protection: {sid}/{iid}.{key} 被删除且无转换声明")
         elif dst[key] != value and row not in declared:
             errors.append(f"protection: {sid}/{iid}.{key} 未经转换声明被改变")
@@ -594,6 +643,15 @@ class ExternalUpdate(RuntimeError):
     """Another writer touched the ledger inside our write window."""
 
 
+class WriteFailed(RuntimeError):
+    """OUR write failed mid-stream; `restored` says whether the exact
+    prior content was recovered under the lock (review L2 F-L1-02)."""
+
+    def __init__(self, message: str, restored: bool):
+        super().__init__(message)
+        self.restored = restored
+
+
 def _probe_identity(probe: str, ledger: Path, expect: dict) -> None:
     """Run the REAL typed loader and verify document identity — exit code
     alone is not enough (review L1 F-04)."""
@@ -674,9 +732,29 @@ def _write_step(ledger: Path, payload: bytes, ours_before: bytes, label: str) ->
         if current != ours_before:
             raise ExternalUpdate(f"{label}: 写入前发现外部更新（拒绝写入，外部内容保留）")
         handle.seek(0)
-        handle.write(payload)
-        handle.truncate()
-        handle.flush()
+        try:
+            handle.write(payload)
+            handle.truncate()
+            handle.flush()
+        except OSError as exc:
+            # OUR partial write failed mid-stream (review L2 F-L1-02): the
+            # residue is ours, never "external" — restore the exact prior
+            # content under the same lock, then report ownership honestly
+            try:
+                handle.seek(0)
+                handle.write(ours_before)
+                handle.truncate()
+                handle.flush()
+                raise WriteFailed(
+                    f"{label}: 写入失败({exc})，已在本锁内恢复写入前内容", restored=True
+                ) from exc
+            except WriteFailed:
+                raise
+            except OSError as restore_exc:
+                raise WriteFailed(
+                    f"{label}: 写入失败({exc})且恢复失败({restore_exc})；"
+                    f"文件含本运行部分写残留，需人工按备份恢复", restored=False
+                ) from restore_exc
 
 
 def cmd_apply(args) -> int:
@@ -737,9 +815,11 @@ def cmd_apply(args) -> int:
     else:
         backup.write_bytes(raw)
 
-    def rollback_to_original() -> str:
+    def rollback_to_original(ours_residue: bool = False) -> str:
         """Restore original bytes ONLY from content this run wrote; an
-        external update is preserved and reported (never clobbered)."""
+        external update is preserved and reported (never clobbered). With
+        `ours_residue` the un-restorable content is OUR partial write —
+        reported as such, never mislabeled external."""
         current = ledger.read_bytes()
         if current == raw:
             return "rollback: 目标已是原件（无写入残留）"
@@ -753,6 +833,9 @@ def cmd_apply(args) -> int:
                     handle.truncate()
                     handle.flush()
                     return "rollback: 已恢复精确原件"
+        if ours_residue:
+            return ("rollback-failed: 目标含本运行部分写残留（恢复已失败），"
+                    "外部内容未受影响；请按 CAS 备份人工恢复")
         return "rollback-skipped: 目标含外部更新（非本运行产物），外部内容已保留"
         return "rollback-skipped: 目标含外部更新（非本运行产物），外部内容已保留"
 
@@ -764,6 +847,13 @@ def cmd_apply(args) -> int:
         _write_step(ledger, b_bytes, a_bytes, "checkpoint-B")
         wrote.append("B")
         _probe_identity(args.loader_probe, ledger, expect_identity(cps["B"]["candidate"]))
+    except WriteFailed as exc:
+        # ownership is OURS (partial write): the in-lock restore already
+        # ran; verify/re-attribute honestly — a failed restore reports OUR
+        # residue, never "external"
+        note = rollback_to_original(ours_residue=not exc.restored)
+        print(f"FAILED(1)（本运行部分写）: {exc}; {note}", file=sys.stderr)
+        return 1
     except ExternalUpdate as exc:
         note = rollback_to_original()
         print(f"CONFLICT(4)（外部更新优先，不覆盖）: {exc}; {note}", file=sys.stderr)
@@ -773,6 +863,15 @@ def cmd_apply(args) -> int:
         print(f"FAILED(1)（checkpoints {wrote}）: {exc}; {note}", file=sys.stderr)
         return 1
     after = sha256_bytes(ledger.read_bytes())
+    if after != sha256_bytes(b_bytes):
+        # we OBSERVED a post-verification fingerprint mismatch (review L2
+        # F-L2-01): an external update happened after the final probe —
+        # preserve it, report accurately, never emit a success receipt
+        print(
+            f"CONFLICT(4): 最终读回指纹与 checkpoint-B 不符（外部更新，内容已保留，未发布成功收据）",
+            file=sys.stderr,
+        )
+        return 4
     print(json.dumps({
         "applied": True,
         "ledger": str(ledger),
@@ -782,7 +881,7 @@ def cmd_apply(args) -> int:
         "final_version": cps["B"]["candidate"]["version"],
         "backup": backup.name,
         "after_sha256": after,
-        "after_matches_checkpoint_b": after == sha256_bytes(b_bytes),
+        "after_matches_checkpoint_b": True,
     }, ensure_ascii=False, indent=2))
     return 0
 
@@ -805,6 +904,9 @@ def self_test() -> None:
             {"id": "reports", "items": [
                 {"id": "X1", "title": "t", "content": "c", "status": "active",
                  "created": "2026-10-01", "note": "extra"},
+                {"id": "X2", "title": "no-status", "content": "c"},
+                {"id": "X3", "title": "null-status", "content": "c", "status": None,
+                 "created_at": 1700000000, "created": "2026-01-05"},
             ]},
             {"id": "goals", "items": []}, {"id": "architecture", "items": []},
             {"id": "designs", "items": []}, {"id": "tests", "items": []},
@@ -936,7 +1038,7 @@ def self_test() -> None:
             "import sys, json, pathlib\n"
             "doc = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding='utf-8'))\n"
             "n = sum(len(s['items']) for s in doc['sections'])\n"
-            "assert doc['project'] == 'fixture' and n == 2 and len(doc['sections']) == 6, doc\n"
+            "assert doc['project'] == 'fixture' and n == 4 and len(doc['sections']) == 6, doc\n"
             "print(json.dumps({'project': doc['project'], 'version': doc['version'],\n"
             "  'total_items': n, 'sections': [(s['id'], {'reports':'Reports','goals':'Goals',\n"
             "  'architecture':'Architecture','designs':'Designs','tests':'Tests',\n"
@@ -963,9 +1065,128 @@ def self_test() -> None:
         assert r.returncode == 2
         assert sha256_bytes(backup.read_bytes()) == summary["source_sha256"]
 
+        # ---- review L2 regressions ------------------------------------
+        convs = json.loads((td / "out" / "conversions.json").read_text(encoding="utf-8"))
+        # status three-state originals (F-L1-03): missing vs null vs value
+        x2 = [c for c in convs if c["id"] == "X2" and c["field"] == "status"]
+        x3 = [c for c in convs if c["id"] == "X3" and c["field"] == "status"]
+        x1 = [c for c in convs if c["id"] == "X1" and c["field"] == "status"]
+        assert x2 and x2[0]["original"] == "<missing>", x2
+        assert x3 and x3[0]["original"] is None, x3
+        assert x1 and x1[0]["original"] == "active", x1
+        # legacy duplicate WITH store field present: declared removal row
+        dup = [c for c in convs if c["id"] == "X3" and c["field"] == "created"]
+        assert dup and dup[0]["new"] == chr(8594) + "sidecar" and dup[0]["original"] == "2026-01-05", dup
+        sidecar2 = json.loads((td / "out" / "unknown-fields-sidecar.json").read_text(encoding="utf-8"))
+        assert sidecar2.get("reports/X3", {}).get("created") == "2026-01-05"
+        # section-value mutation must fail protections (F-L1-03)
+        bad_sec = copy.deepcopy(cand_a)
+        bad_sec["sections"][0]["title"] = "mutated"
+        assert any("reports.title" in e for e in protections(src, bad_sec, build_checkpoints(src, None, ("reviews", "X1", "X1-R"))["A"]["conversions"]))
+        # legacy-name deletion is no longer unconditionally exempt: strip a
+        # legacy key from the candidate without a row -> protection error
+        noex = copy.deepcopy(cand_a)
+        for s_ in noex["sections"]:
+            for i_ in s_.get("items", []):
+                i_.pop("note", None)
+        base = build_checkpoints(src, None, ("reviews", "X1", "X1-R"))["A"]["conversions"]
+        # WITHOUT the note removal row, the same deletion must be flagged
+        base_no_note = [c for c in base if not (c["id"] == "X1" and c["field"] == "note")]
+        assert any("被删除" in e for e in protections(src, noex, base_no_note)), "legacy 删除无行必须被拒"
+        # WITH the row, the identical deletion is declared and passes
+        assert not any("note" in e and "被删除" in e for e in protections(src, noex, base))
+
+        # F-L1-02 partial write: REAL fd via a faulting handle wrapper —
+        # the first large write lands 257 bytes, flushes, then raises; the
+        # in-lock restore must bring back the exact original bytes
+        ledger.write_bytes(raw)
+
+        class FaultingHandle:
+            def __init__(self, inner, cut):
+                self._inner = inner
+                self._cut = cut
+                self._armed = True
+
+            def write(self, data):
+                if self._armed and len(data) > self._cut:
+                    self._armed = False
+                    self._inner.write(data[: self._cut])
+                    self._inner.flush()
+                    raise OSError("injected partial write failure")
+                return self._inner.write(data)
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+        real_open = open
+
+        def faulting_open(file, *a, **k):
+            handle = real_open(file, *a, **k)
+            mode = (a[0] if a else k.get("mode", "r"))
+            if "b" in mode and "+" in mode and str(file).endswith("specs.json"):
+                return FaultingHandle(handle, 257)
+            return handle
+
+        args = _parse_args_apply(str(ledger), summary["source_sha256"],
+                                 summary["conversions_sha256"],
+                                 summary["candidate_a_sha256"], summary["candidate_b_sha256"],
+                                 probe=str(good_probe))
+        args.ruling = "reviews/X1=X1-R"
+        with mock.patch("builtins.open", faulting_open):
+            code = cmd_apply(args)
+        assert code == 1, code
+        assert ledger.read_bytes() == raw, "部分写后必须恢复精确原件（不是残文件）"
+
+        # F-L2-01 final-probe external update: wrapper probe verifies B via
+        # the real document, THEN mutates a title — apply must observe the
+        # fingerprint mismatch, exit nonzero, preserve the external content,
+        # and never emit a success receipt
+        ledger.write_bytes(raw)
+        sneaky = td / "sneaky_probe.py"
+        # a wrapper probe: prints a VALID summary for whatever is on disk,
+        # THEN mutates a title — the final fingerprint gate must catch it
+        sneaky_lines = [
+            "import sys, json, pathlib",
+            "p = pathlib.Path(sys.argv[1])",
+            "d = json.loads(p.read_text(encoding='utf-8'))",
+            "n = sum(len(s['items']) for s in d['sections'])",
+            "T = {'reports':'Reports','goals':'Goals','architecture':'Architecture',",
+            "     'designs':'Designs','tests':'Tests','reviews':'Reviews'}",
+            "sec = [(s['id'], T[s['id']]) for s in d['sections']]",
+            "print(json.dumps({'project':'fixture','version':d['version'],",
+            "                  'total_items':n,'sections':sec}))",
+            "d['sections'][0]['items'][0]['title'] = 'externally-mutated'",
+            "p.write_text(json.dumps(d, ensure_ascii=False, indent=2), encoding='utf-8')",
+        ]
+        sneaky.write_text(chr(10).join(sneaky_lines) + chr(10), encoding="utf-8")
+        r = run("apply", "--ledger", str(ledger),
+                "--expected-source-sha256", summary["source_sha256"],
+                "--expected-conversions-sha256", summary["conversions_sha256"],
+                "--expected-candidate-a-sha256", summary["candidate_a_sha256"],
+                "--expected-candidate-b-sha256", summary["candidate_b_sha256"],
+                "--ruling", "reviews/X1=X1-R",
+                "--loader-probe", str(sneaky))
+        assert r.returncode == 4, (r.returncode, r.stdout, r.stderr)
+        assert "applied" not in r.stdout, "指纹不符不得发布成功收据"
+        after_sneaky = json.loads(ledger.read_text(encoding="utf-8"))
+        assert after_sneaky["sections"][0]["items"][0]["title"] == "externally-mutated", "外部更新必须保留"
+
+        # happy path once more on a clean copy (final gate green)
+        ledger.write_bytes(raw)
+        r = run("apply", "--ledger", str(ledger),
+                "--expected-source-sha256", summary["source_sha256"],
+                "--expected-conversions-sha256", summary["conversions_sha256"],
+                "--expected-candidate-a-sha256", summary["candidate_a_sha256"],
+                "--expected-candidate-b-sha256", summary["candidate_b_sha256"],
+                "--ruling", "reviews/X1=X1-R",
+                "--loader-probe", str(good_probe))
+        assert r.returncode == 0 and "applied" in r.stdout, (r.returncode, r.stderr)
+
     print("PASS: exit-codes/blocked-3/ready-0/two-checkpoint-versions/rename-recorded/"
           "original-values/undeclared-delete/schema-negatives/cas-prewrite-external-wins/"
-          "postwrite-external-not-clobbered/exact-rollback/happy-path/cas-backup")
+          "postwrite-external-not-clobbered/exact-rollback/happy-path/cas-backup/"
+          "l2:status-three-state/legacy-dup-row/section-value-guard/no-legacy-exemption/"
+          "partial-write-restore/final-fingerprint-gate")
 
 
 # ---------------------------------------------------------------------------
