@@ -31,7 +31,9 @@ pub mod builder;
 pub mod cache;
 pub mod dir;
 pub mod scanner;
-pub mod sidecar;
+// PLAN-815 T-04: rust_sidecar effect adapter moved to auto-api-gen (declaration
+// single source stays auto-man-core); module re-export keeps historic paths.
+pub use auto_api_gen::sidecar;
 pub mod target;
 
 // Phase 2B: Package management (completed - depends on Phase 3 & 4)
@@ -77,7 +79,9 @@ pub mod ark;
 pub mod rust_ui;
 
 // Phase 9: API code generation (Plan 130)
-pub mod api_gen;
+// PLAN-815 T-04: api_gen moved to auto-api-gen (single algorithm; owner
+// lang-service-adapter); module re-export keeps crate::api_gen paths alive.
+pub use auto_api_gen::api_gen;
 
 // PLAN-736: 工程级 HTTP 服务独立启动（`auto serve`；vm/rust 双轨）
 pub mod http_service;

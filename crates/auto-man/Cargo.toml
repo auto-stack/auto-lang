@@ -6,7 +6,7 @@ edition = "2021"
 [features]
 # PLAN-729 T-06: 生成文件 handler 的实编 wire e2e（串行真 TCP；与 auto-lang
 # 同名 feature 同语义）。
-test-http-e2e = []
+test-http-e2e = ["auto-api-gen/test-http-e2e"]
 
 [dependencies]
 auto-lang = { path = "../auto-lang", features = ["ui-iced"] }
@@ -37,6 +37,10 @@ auto-toolchain-core = { path = "../auto-toolchain-core" }
 # declaration/selection/projection/closure rules to this crate (re-export
 # keeps type identity).
 auto-man-core = { path = "../auto-man-core" }
+# PLAN-815 T-04: API generation core (api_gen + sidecar + shared rust
+# workspace layout) moved out of this crate — facade re-export keeps the
+# historic auto_man::api_gen / ::sidecar / ::rust_ui paths alive.
+auto-api-gen = { path = "../auto-api-gen" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
 blake3 = { workspace = true }  # Plan 134: File hashing utilities

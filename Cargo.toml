@@ -126,6 +126,10 @@ members = [
     # generation/build/run closure lands with M815-B. No Man/legacy big-lib
     # deps (closure pinned by test/fixtures/modularity/ui-tool-consumer).
     "crates/auto-ui-tools",
+    # PLAN-815 T-04: API generation core — single-algorithm api_gen +
+    # rust_sidecar effect adapter + shared rust workspace layout, extracted
+    # from auto-man (owner: lang-service-adapter; man/ui域双消费).
+    "crates/auto-api-gen",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [

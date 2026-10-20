@@ -19,9 +19,9 @@
 
 use std::path::Path;
 
-use crate::AutoResult;
+use auto_val::AutoResult;
 
-use auto_lang::api::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
+use auto_lang_core::api::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
 
 /// Generate API code for the project
 ///
@@ -32,7 +32,7 @@ use auto_lang::api::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiTy
 
 /// PLAN-734 T-04：32 位 FNV-1a（generation.json 的内容指纹——与
 /// ui_cache invalidate_if_api_functions_changed 同族）。
-pub(crate) fn fnv1a(bytes: &[u8]) -> u32 {
+pub fn fnv1a(bytes: &[u8]) -> u32 {
     let mut h: u32 = 0x811c9dc5;
     for b in bytes {
         h ^= *b as u32;
@@ -44,7 +44,7 @@ pub(crate) fn fnv1a(bytes: &[u8]) -> u32 {
 pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
     // Plan 061:统一契约定位 —— 本地 src/back/ | back/,或 pac.at
     // `back: { project }` 指向的外部后端项目(前端可无本地 back/)。
-    let api_file = match auto_lang::config::resolve_back_api(root_dir) {
+    let api_file = match auto_lang_core::config::resolve_back_api(root_dir) {
         Some(f) => f,
         // No backend contract found anywhere, skip generation
         None => return Ok(()),
@@ -187,11 +187,127 @@ pub fn install_project_api_glue(root_dir: &Path) -> bool {
     installed
 }
 
+/// PLAN-734 T-04：复用路径的 ready 新鲜度校验——在跑 bundle 的
+/// generation.json 源指纹与当前 api.at（+db.at）内容一致才允许复用。
+pub fn backend_generation_is_fresh(project_dir: &Path) -> bool {
+    let Some(api_file) = auto_lang_core::config::resolve_back_api(project_dir) else {
+        return true; // 无契约项目：无新鲜度可校验，维持旧行为
+    };
+    let ws_dir = crate::rust_workspace::resolve_rust_workspace_dir(project_dir);
+    let back_name = crate::rust_workspace::back_member_name(project_dir);
+    let record_path = ws_dir.join(&back_name).join("generation.json");
+    let Ok(record_text) = std::fs::read_to_string(&record_path) else {
+        return false; // 无 ready 记录（旧产物）——不复用
+    };
+    let Ok(mut record) = serde_json::from_str::<serde_json::Value>(&record_text) else {
+        return false;
+    };
+    let Some(hashes) = record.get("source_hashes").and_then(|h| h.as_array()) else {
+        return false;
+    };
+    for entry in hashes {
+        let Some(name) = entry.get(0).and_then(|v| v.as_str()) else {
+            return false;
+        };
+        let Some(recorded) = entry.get(1).and_then(|v| v.as_str()) else {
+            return false;
+        };
+        let source_path = match name {
+            "api.at" => api_file.clone(),
+            "db.at" => api_file
+                .parent()
+                .map(|d| d.join("db.at"))
+                .unwrap_or_default(),
+            _ => return false,
+        };
+        let Ok(text) = std::fs::read_to_string(&source_path) else {
+            return false;
+        };
+        if format!("{:x}", fnv1a(text.as_bytes())) != recorded {
+            return false;
+        }
+    }
+    // PLAN-738 T-06（AC-06/07，SD-05）：装配新鲜度——收据的 assembly 指纹
+    // 与当前 stdlib 装配身份必须一致（「改 stdlib 但 api.at 不变」在此失效
+    // 复用 → 走再生臂）。
+    let recorded_assembly = record
+        .get("assembly")
+        .and_then(|a| a.get("consumer_fingerprint"))
+        .and_then(|f| f.as_str());
+    let current_assembly = crate::api_gen::current_generated_api_assembly(project_dir)
+        .ok()
+        .map(|manifest| manifest.consumer_fingerprint().to_string());
+    if !assembly_freshness(recorded_assembly, current_assembly.as_deref()) {
+        return false;
+    }
+    // PLAN-738 T-12：生成 workspace lock 身份对拍——生成产物运行时依赖
+    // 输入变化（lock 出现/更新）即陈旧；旧收据无此字段=不可核验，保守再生。
+    let recorded_lock = record.get("workspace_lock").and_then(|v| v.as_str());
+    // P738-R9-01 fail-closed + R11-01 身份单点：absent 仅指 NotFound；成功
+    // 读取（含零字节空文件）一律实际内容指纹（空文件=811c9dc5，与生成端
+    // 收据同口径）；**其它读取错误（权限/IO）不冒充 absent**——归 None
+    // （不可核验=保守陈旧），防止 recorded="absent" × 读错误 → 假新鲜。
+    let current_lock: Option<String> = crate::rust_workspace::workspace_lock_identity(std::fs::read(
+        crate::rust_workspace::ensure_shared_workspace(project_dir).join("Cargo.lock"),
+    ))
+    .map(|identity| identity.unwrap_or_else(|| "absent".to_string()))
+    .ok();
+    // PLAN-738 R5-01：一次绑定状态机。生成时未建 lock（收据记 absent）
+    // → 首次出现实际 lock 时判新鲜**并把实际 lock 身份写回收据**（一次性
+    // 物化绑定，收据升级）——此后严格比较：依赖版本漂移/lock 删除/读取
+    // 失败均陈旧。旧收据缺字段=不可核验，保守再生（一次再生写入后收敛）。
+    match (recorded_lock, current_lock.as_deref()) {
+        (Some("absent"), Some(materialized)) if materialized != "absent" => {
+            // R6-02：绑定写回收据失败=无法建立可核验身份，保守判陈旧
+            // （下一次成功写回收敛），不以未绑定状态放行。
+            bind_workspace_lock(&record_path, &mut record, materialized)
+        }
+        (recorded, current) => lock_freshness(recorded, current),
+    }
+}
+
+/// 首次物化绑定：把实际 lock 身份写回收据的 workspace_lock 字段（保持
+/// 其余字段逐字不动——serde_json 值级更新，时间戳等不重写）。
+pub fn bind_workspace_lock(record_path: &Path, record: &mut serde_json::Value, lock: &str) -> bool {
+    let Some(value) = record.get_mut("workspace_lock") else {
+        return false;
+    };
+    if value.as_str() == Some(lock) {
+        return true;
+    }
+    *value = serde_json::Value::String(lock.to_string());
+    std::fs::write(record_path, record.to_string()).is_ok()
+}
+
+/// workspace lock 新鲜度（PLAN-738 T-12/R5-01）：双方一致才新鲜；首次
+/// 物化（absent→实际值）由调用方在绑定收据后判新鲜；absent/absent=
+/// 尚无 lock 物化，新鲜；其余（值漂移/lock 消失/读取失败→None 不可
+/// 核验/收据缺字段）一律陈旧。
+pub fn lock_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
+    match (recorded, current) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// 装配新鲜度判定（PLAN-738 T-06；纯函数便于单测）。
+/// - 双 None：不能核验装配身份，必须重新生成；
+/// - 单侧缺失：陈旧——旧产物无该字段而当前可算=门升级后首查（再生一次
+///   写入新字段收敛）；收据有而当前不可算=无法核验，保守再生；
+/// - 双方在：十六进制指纹串相等才新鲜。
+pub fn assembly_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
+    match (recorded, current) {
+        (None, None) => false,
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
 /// Try to parse API file with full AST parsing
 pub fn try_full_parse(api_content: &str) -> Option<ApiModule> {
-    use auto_lang::api::ApiExtractor;
+    use auto_lang_core::api::ApiExtractor;
 
-    let mut parser = auto_lang::Parser::from(api_content);
+    let mut parser = auto_lang_core::Parser::from(api_content);
     let ast = parser.parse().ok()?;
 
     let extractor = ApiExtractor::new();
@@ -206,8 +322,8 @@ pub fn try_full_parse(api_content: &str) -> Option<ApiModule> {
 }
 
 /// Generate Tauri API code
-fn generate_tauri_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
-    use auto_lang::api::Target;
+fn generate_tauri_api(api_module: &auto_lang_core::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+    use auto_lang_core::api::Target;
 
     let vue_dir = root_dir.join("gen").join("front").join("vue");
     let tauri_src_dir = vue_dir.join("src-tauri").join("src");
@@ -246,7 +362,7 @@ fn generate_tauri_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -
 }
 
 /// Generate a Tauri IPC TypeScript client using `invoke`
-fn generate_tauri_ts_client(api_module: &auto_lang::api::ApiModule) -> String {
+fn generate_tauri_ts_client(api_module: &auto_lang_core::api::ApiModule) -> String {
     let mut lines = vec![
         "import { invoke } from '@tauri-apps/api/core';".to_string(),
         "".to_string(),
@@ -344,8 +460,8 @@ fn auto_type_to_ts(auto_type: &str) -> String {
 }
 
 /// Generate Vue + HTTP API code
-fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
-    use auto_lang::api::TypeScriptGenerator;
+fn generate_vue_api(api_module: &auto_lang_core::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+    use auto_lang_core::api::TypeScriptGenerator;
 
     // For workspace projects, output to dist/src/lib/
     let dist_dir = root_dir.join("dist");
@@ -415,14 +531,14 @@ fn generate_vue_api(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> 
 /// Generate Rust server code (Axum-based)
 /// Plan musk-022 CRUD 智能扩展: transpile db.at to a db.rs module via a2r.
 /// Reuses the Tauri-backend precedent (tauri_backend::transpile_at_to_rust).
-pub(crate) fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
+pub fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
     transpile_back_module_to_rs_with_proofs("db", content).map(|(code, _)| code)
 }
 
 /// PLAN-681 T-01: transpile a `src/back/*.at` module to Rust (companion
 /// modules like fsys.at share db.at's 16MB-stack transpile pipeline; the
 /// module name feeds the transpiler's module-id slot and error strings).
-pub(crate) fn transpile_back_module_to_rs(module_name: &str, content: &str) -> AutoResult<String> {
+pub fn transpile_back_module_to_rs(module_name: &str, content: &str) -> AutoResult<String> {
     transpile_back_module_to_rs_with_proofs(module_name, content).map(|(code, _)| code)
 }
 
@@ -434,7 +550,7 @@ pub(crate) fn transpile_back_module_to_rs_with_proofs(
     content: &str,
 ) -> AutoResult<(
     String,
-    Vec<auto_lang::stdlib_assembly::reference::ReferenceProof>,
+    Vec<auto_lang_core::stdlib_assembly::reference::ReferenceProof>,
 )> {
     use auto_val::AutoStr;
     // Plan 399 §7: parse + transpile on a 16MB stack. db.at with deep nesting
@@ -447,13 +563,13 @@ pub(crate) fn transpile_back_module_to_rs_with_proofs(
     let module = module_name.to_string();
     let handle = std::thread::Builder::new()
         .stack_size(16 * 1024 * 1024)
-        .spawn(move || -> Result<(String, Vec<auto_lang::stdlib_assembly::reference::ReferenceProof>), String> {
-            let (mut sink, references) = auto_lang::trans::rust::transpile_rust_full_with_options(
+        .spawn(move || -> Result<(String, Vec<auto_lang_core::stdlib_assembly::reference::ReferenceProof>), String> {
+            let (mut sink, references) = auto_lang_core::trans::rust::transpile_rust_full_with_options(
                 AutoStr::from(module.as_str()),
                 &content,
                 None,
                 None,
-                Some(auto_lang::stdlib_assembly::host::RustRuntime::Embedded),
+                Some(auto_lang_core::stdlib_assembly::host::RustRuntime::Embedded),
                 true,
             )
             .map_err(|e| format!("Failed to transpile {}.at: {}", module, e))?;
@@ -504,7 +620,7 @@ fn qualify_a2r_std(code: String) -> String {
             if !l.contains("a2r_std") {
                 return l.to_string();
             }
-            let mask = auto_lang::trans::rust::RustTrans::code_region_mask(l);
+            let mask = auto_lang_core::trans::rust::RustTrans::code_region_mask(l);
             let is_use_line = l.trim_start().starts_with("use ");
             let bytes = l.as_bytes();
             // Plan 742 R4 (F-742-R4-01): code-region identity is NOT module
@@ -567,6 +683,9 @@ fn qualify_a2r_std(code: String) -> String {
 /// regions of each line — strings/chars/comments keep their payload bytes.
 /// Line-oriented (split on '\n' keeps the trailing newline shape); the
 /// needle must not span lines (all current callers are single-line forms).
+// PLAN-815 T-04 迁移归因：在 auto-man 即已无调用方（历史后处理族残员），
+// 按单算法保真随迁，不在移动提交中裁剪冻结面。
+#[allow(dead_code)]
 fn replace_in_code_regions(code: &str, from: &str, to: &str) -> String {
     if !code.contains(from) {
         return code.to_string();
@@ -576,7 +695,7 @@ fn replace_in_code_regions(code: &str, from: &str, to: &str) -> String {
             if !l.contains(from) {
                 return l.to_string();
             }
-            let mask = auto_lang::trans::rust::RustTrans::code_region_mask(l);
+            let mask = auto_lang_core::trans::rust::RustTrans::code_region_mask(l);
             let bytes = l.as_bytes();
             let mut out = String::with_capacity(l.len());
             let mut i = 0;
@@ -603,7 +722,7 @@ fn replace_in_code_regions(code: &str, from: &str, to: &str) -> String {
 fn code_region_mask_text(text: &str) -> Vec<bool> {
     text.split('\n')
         .flat_map(|l| {
-            let mut m = auto_lang::trans::rust::RustTrans::code_region_mask(l);
+            let mut m = auto_lang_core::trans::rust::RustTrans::code_region_mask(l);
             m.push(false); // the '\n' separator itself
             m
         })
@@ -616,14 +735,14 @@ fn code_region_mask_text(text: &str) -> Vec<bool> {
 /// `List<T>.new` stripping. The db-only heuristics in [`post_process_db_rs`]
 /// (MutexGuard deref, borrowed-iterator clones, id widening) target CRUD
 /// state shapes a companion module does not have — deliberately NOT applied.
-pub(crate) fn post_process_companion_rs(code: String) -> String {
+pub fn post_process_companion_rs(code: String) -> String {
     let mut code = qualify_a2r_std(code);
     code = code.replace("use crate::api::", "use crate::types::");
     code = strip_collection_new(&code);
     code
 }
 
-pub(crate) fn post_process_db_rs(mut code: String) -> String {
+pub fn post_process_db_rs(mut code: String) -> String {
     code = qualify_a2r_std(code);
     code = code.replace("use crate::api::", "use crate::types::");
     // Strip `List<T>.new(EXPR)` -> `EXPR` (a2r leaves the wrapper; List=Vec, the
@@ -708,6 +827,9 @@ fn append_clone_for_borrowed_fields(code: &str) -> String {
 /// Plan 399 §3: add `mut` to `let NAME = vec![...]` / `let NAME: Vec<...> = ...`
 /// when the binding is later mutated (a2r omits `mut`). Conservative: only
 /// prefixes `let ` → `let mut ` for lines that look like a fresh Vec binding.
+// PLAN-815 T-04 迁移归因：在 auto-man 即已无调用方（历史后处理族残员），
+// 按单算法保真随迁，不在移动提交中裁剪冻结面。
+#[allow(dead_code)]
 fn add_mut_to_let_collections(code: &str) -> String {
     use regex::Regex;
     let re = match Regex::new(r"(?m)^(\s*)let (\w+)(:\s*Vec<| =\s*vec!\[)") {
@@ -885,6 +1007,9 @@ fn balance_paren(code: &str, open: usize) -> Option<usize> {
 /// `pub fn f() -> &[T] { return *G.lock().unwrap(); }` -> `pub fn f() -> Vec<T>
 /// { return G.lock().unwrap().clone(); }`. The borrowed-slice-over-guard form
 /// doesn't compile; return an owned clone instead.
+// PLAN-815 T-04 迁移归因：在 auto-man 即已无调用方（历史后处理族残员），
+// 按单算法保真随迁，不在移动提交中裁剪冻结面。
+#[allow(dead_code)]
 fn fix_borrowed_slice_returns(code: &str) -> String {
     let mut out = code.to_string();
     // Return type: `&[T]` -> `Vec<T>`
@@ -914,15 +1039,15 @@ fn fix_borrowed_slice_returns(code: &str) -> String {
     out
 }
 
-fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+fn generate_rust_server(api_module: &auto_lang_core::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
     let frozen_sources = generation_source_snapshot(root_dir)?;
     let parsed = try_full_parse(&frozen_sources[0].1);
     let api_module = parsed.as_ref().unwrap_or(api_module);
     // Freeze actual selections and emitted body references before creating artifacts.
     let assembly = generated_api_assembly(root_dir, api_module)?;
     // Output to shared workspace at D:/.auto/rust-workspace/{name}-back/
-    let ws_dir = crate::rust_ui::ensure_shared_workspace(root_dir);
-    let back_name = crate::rust_ui::back_member_name(root_dir);
+    let ws_dir = crate::rust_workspace::ensure_shared_workspace(root_dir);
+    let back_name = crate::rust_workspace::back_member_name(root_dir);
     let rust_dir = ws_dir.join(&back_name);
     let receipt_path = rust_dir.join("generation.json");
     if receipt_path.exists() {
@@ -1229,7 +1354,7 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
 
     // Update workspace members. MUST run after main.rs is written: ensure_shared_workspace
     // skips members with no src/main.rs (has_cargo_targets guard). Plan musk-022.
-    let _ = crate::rust_ui::ensure_shared_workspace(root_dir);
+    let _ = crate::rust_workspace::ensure_shared_workspace(root_dir);
 
     println!("  ✓ Generated Rust server: {}/", back_name);
 
@@ -1260,8 +1385,8 @@ fn generate_rust_server(api_module: &auto_lang::api::ApiModule, root_dir: &Path)
         // 拒绝写收据（收据不得携带不可核验的 lock 身份）。P738-R11-01：
         // 分类/指纹与复用门共用 workspace_lock_identity 单点——空文件
         // =实际内容身份 811c9dc5，两端不再漂移。
-        let workspace_lock = match crate::rust_ui::workspace_lock_identity(std::fs::read(
-            crate::rust_ui::ensure_shared_workspace(root_dir).join("Cargo.lock"),
+        let workspace_lock = match crate::rust_workspace::workspace_lock_identity(std::fs::read(
+            crate::rust_workspace::ensure_shared_workspace(root_dir).join("Cargo.lock"),
         )) {
             Ok(Some(fingerprint)) => fingerprint,
             Ok(None) => "absent".into(),
@@ -1391,7 +1516,7 @@ fn rust_field_ident(name: &str) -> String {
 }
 
 /// Generate types.rs with serde structs
-fn generate_types_rs(api_module: &auto_lang::api::ApiModule) -> String {
+fn generate_types_rs(api_module: &auto_lang_core::api::ApiModule) -> String {
     let mut lines = vec![
         "use serde::{Serialize, Deserialize};".to_string(),
         "".to_string(),
@@ -1491,7 +1616,7 @@ fn has_path_param(path: &str) -> bool {
 }
 
 /// Determine the primary type from an ApiModule (first defined type)
-pub fn primary_type_name_pub(api_module: &auto_lang::api::ApiModule) -> Option<String> {
+pub fn primary_type_name_pub(api_module: &auto_lang_core::api::ApiModule) -> Option<String> {
     api_module.types.first().map(|t| t.name.clone())
 }
 
@@ -1521,7 +1646,7 @@ fn endpoint_body_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
             }
             // PLAN-730 T-06 / 734 R1 F-1: UploadRequest 是宿主注入参数（Request
             // 提取器），不进 JSON body 结构/绑定（契约身份判定）。
-            if auto_lang::api::contract::is_upload_param(&p.ty) {
+            if auto_lang_core::api::contract::is_upload_param(&p.ty) {
                 return false;
             }
             let is_path = path.contains(&format!(":{}", p.name));
@@ -1578,7 +1703,7 @@ fn endpoint_has_body(endpoint: &ApiEndpoint) -> bool {
 /// Extract the set of `pub fn NAME` names from a transpiled db.rs source.
 /// Used to decide whether an HTTP handler can delegate to `db::NAME(...)`
 /// instead of the `State<Db>` CRUD template.
-pub(crate) fn extract_db_fn_names(db_rs: &str) -> std::collections::HashSet<String> {
+pub fn extract_db_fn_names(db_rs: &str) -> std::collections::HashSet<String> {
     use regex::Regex;
     let mut set = std::collections::HashSet::new();
     // Match `pub fn name(` at the start of a line (a2r emits this form).
@@ -1673,7 +1798,7 @@ fn extract_db_fn_from_body(
     endpoint: &ApiEndpoint,
     db_fns: &std::collections::HashSet<String>,
 ) -> Option<String> {
-    use auto_lang::ast::{Expr, Stmt};
+    use auto_lang_core::ast::{Expr, Stmt};
     let body = endpoint.body.as_ref()?;
     // Scan statements for `return db.FN(...)` (the whole-body convention).
     for stmt in &body.stmts {
@@ -1696,7 +1821,7 @@ fn extract_db_fn_from_body(
 /// the 031 image viewer.  These calls are host runtime primitives rather than
 /// CRUD/db functions, so they must bypass the generic Default-return scaffold.
 fn extract_image_fn_from_body(endpoint: &ApiEndpoint) -> Option<String> {
-    use auto_lang::ast::{Expr, Stmt};
+    use auto_lang_core::ast::{Expr, Stmt};
     let body = endpoint.body.as_ref()?;
     for stmt in &body.stmts {
         if let Stmt::Return(expr) = stmt {
@@ -1799,7 +1924,7 @@ fn resolve_db_call(
 /// Used to decide whether main.rs can drop `State<Db>` entirely (full db.rs
 /// coverage) vs. keep it for template-fallback endpoints (mixed state).
 fn all_endpoints_covered(
-    api_module: &auto_lang::api::ApiModule,
+    api_module: &auto_lang_core::api::ApiModule,
     db_fns: Option<&std::collections::HashSet<String>>,
 ) -> bool {
     let db_fns = match db_fns {
@@ -1873,8 +1998,8 @@ fn is_thin_delegation(endpoint: &ApiEndpoint) -> bool {
 /// A nested call changes argument semantics and cannot be lowered by the db
 /// delegation's parameter-name mapping (for example,
 /// `db.current_user(bearer_token(meta))`). Keep it on the body transpiler path.
-fn stmt_has_nested_call_argument(stmt: &auto_lang::ast::Stmt) -> bool {
-    use auto_lang::ast::{Expr, Stmt};
+fn stmt_has_nested_call_argument(stmt: &auto_lang_core::ast::Stmt) -> bool {
+    use auto_lang_core::ast::{Expr, Stmt};
     let expr = match stmt {
         Stmt::Return(expr) => expr.as_ref(),
         Stmt::Expr(expr) => expr,
@@ -1889,8 +2014,8 @@ fn stmt_has_nested_call_argument(stmt: &auto_lang::ast::Stmt) -> bool {
 
 /// A statement that makes a handler body "non-thin": control flow whose
 /// transpilation only the a2r path can handle. Blocks are recursed into.
-fn stmt_is_control_flow(stmt: &auto_lang::ast::Stmt) -> bool {
-    use auto_lang::ast::Stmt;
+fn stmt_is_control_flow(stmt: &auto_lang_core::ast::Stmt) -> bool {
+    use auto_lang_core::ast::Stmt;
     match stmt {
         Stmt::If(_) | Stmt::For(_) | Stmt::Is(_) | Stmt::Try(_) => true,
         Stmt::Block(b) => b.stmts.iter().any(stmt_is_control_flow),
@@ -1900,30 +2025,30 @@ fn stmt_is_control_flow(stmt: &auto_lang::ast::Stmt) -> bool {
 
 /// Plan 400 Phase 2: transpile body statements via a2r into indented Rust lines.
 fn try_transpile_body(
-    body: &auto_lang::ast::Body,
+    body: &auto_lang_core::ast::Body,
     endpoint: &ApiEndpoint,
-    api_module: &auto_lang::api::ApiModule,
+    api_module: &auto_lang_core::api::ApiModule,
 ) -> Result<Vec<String>, String> {
     try_transpile_body_with_proofs(body, endpoint, api_module).map(|(lines, _)| lines)
 }
 
 fn try_transpile_body_with_proofs(
-    body: &auto_lang::ast::Body,
+    body: &auto_lang_core::ast::Body,
     endpoint: &ApiEndpoint,
-    api_module: &auto_lang::api::ApiModule,
+    api_module: &auto_lang_core::api::ApiModule,
 ) -> Result<
     (
         Vec<String>,
-        Vec<auto_lang::stdlib_assembly::reference::ReferenceProof>,
+        Vec<auto_lang_core::stdlib_assembly::reference::ReferenceProof>,
     ),
     String,
 > {
-    use auto_lang::ast::Type;
-    use auto_lang::trans::rust::RustTrans;
+    use auto_lang_core::ast::Type;
+    use auto_lang_core::trans::rust::RustTrans;
     use auto_val::AutoStr;
 
     let mut trans = RustTrans::new(AutoStr::from("api_handler"));
-    trans.assembly_runtime = auto_lang::stdlib_assembly::host::RustRuntime::Embedded;
+    trans.assembly_runtime = auto_lang_core::stdlib_assembly::host::RustRuntime::Embedded;
     // PLAN-730 T-06: `~T`（Future<T>）handler 的内联体在 async fn 内执行
     // ——await 点（upload_receive/commit/reject）合法。
     if endpoint.return_type.contains("Future<") {
@@ -1957,10 +2082,10 @@ fn try_transpile_body_with_proofs(
 }
 
 /// The startup freshness gate rebuilds the same dry assembly contract as generation.
-pub(crate) fn current_generated_api_assembly(
+pub fn current_generated_api_assembly(
     root: &Path,
-) -> AutoResult<auto_lang::stdlib_assembly::manifest::AssemblyManifest> {
-    let api_file = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+) -> AutoResult<auto_lang_core::stdlib_assembly::manifest::AssemblyManifest> {
+    let api_file = auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
     let source = std::fs::read_to_string(api_file)?;
     let module = try_full_parse(&source).ok_or("API contract parse failed")?;
     generated_api_assembly(root, &module)
@@ -1968,12 +2093,12 @@ pub(crate) fn current_generated_api_assembly(
 
 fn generated_api_assembly(
     root: &Path,
-    module: &auto_lang::api::ApiModule,
-) -> AutoResult<auto_lang::stdlib_assembly::manifest::AssemblyManifest> {
-    let api_file = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    module: &auto_lang_core::api::ApiModule,
+) -> AutoResult<auto_lang_core::stdlib_assembly::manifest::AssemblyManifest> {
+    let api_file = auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
     let source = std::fs::read_to_string(&api_file)?;
-    let mut session = auto_lang::compile::CompileSession::new();
-    session.set_assembly_target(auto_lang::stdlib_assembly::model::AssemblyTarget::Rust)?;
+    let mut session = auto_lang_core::compile::CompileSession::new();
+    session.set_assembly_target(auto_lang_core::stdlib_assembly::model::AssemblyTarget::Rust)?;
     if let Some(parent) = api_file.parent() {
         session.add_source_dir(parent.to_path_buf());
     }
@@ -2019,8 +2144,8 @@ fn generated_api_assembly(
             .map_err(|e| format!("API assembly rejected back module {name}: {e}"))?;
         references.extend(proofs);
     }
-    let stdlib = auto_lang::stdlib_assembly::loader::repo_stdlib_root()?;
-    let mut manifest = auto_lang::stdlib_assembly::manifest::AssemblyManifest::freeze(
+    let stdlib = auto_lang_core::stdlib_assembly::loader::repo_stdlib_root()?;
+    let mut manifest = auto_lang_core::stdlib_assembly::manifest::AssemblyManifest::freeze(
         session.assembly,
         "api-generation",
         root,
@@ -2048,7 +2173,7 @@ fn generated_api_assembly(
 }
 
 fn generation_source_snapshot(root: &Path) -> AutoResult<Vec<(String, String)>> {
-    let api = auto_lang::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let api = auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
     let mut sources = vec![("api.at".into(), std::fs::read_to_string(&api)?)];
     let db = api
         .parent()
@@ -2873,7 +2998,7 @@ fn qualify_module_dot_calls(
     {
         return line.to_string();
     }
-    let mask = auto_lang::trans::rust::RustTrans::code_region_mask(line);
+    let mask = auto_lang_core::trans::rust::RustTrans::code_region_mask(line);
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
@@ -2963,7 +3088,7 @@ impl BodyQualifyScope {
     ) -> (String, usize) {
         let depth_at_start = self.frames.len();
         let out = qualify_module_dot_calls(line, modules, &self.visible(), referenced);
-        let mask = auto_lang::trans::rust::RustTrans::code_region_mask(line);
+        let mask = auto_lang_core::trans::rust::RustTrans::code_region_mask(line);
         let bytes = line.as_bytes();
         let t = line.trim_start();
         // Head bindings: plain `let` joins the current frame; `for NAME` /
@@ -3545,7 +3670,7 @@ const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
 /// only) keep the skeleton TODO stub.
 fn push_delegating_scalar_handlers(
     lines: &mut Vec<String>,
-    api_module: &auto_lang::api::ApiModule,
+    api_module: &auto_lang_core::api::ApiModule,
     gate: &dyn Fn(&str) -> bool,
     target: &str,
 ) {
@@ -3623,8 +3748,8 @@ fn push_delegating_scalar_handlers(
         let ret = endpoint.return_type.trim();
         // PLAN-729 T-05 / 734 R1 F-1：委派路径（route A/db 覆盖）的文件端点——
         // 同样生成真实文件 adapter（契约身份判定）。
-        if auto_lang::api::contract::ResponseKind::from_return_identity(ret, &api_module.types)
-            == auto_lang::api::contract::ResponseKind::File
+        if auto_lang_core::api::contract::ResponseKind::from_return_identity(ret, &api_module.types)
+            == auto_lang_core::api::contract::ResponseKind::File
         {
             // 路径参数：委派路径此前只覆盖 query/body——文件端点的典型
             // 形态是 `:name` 路径参数，这里补 Path 提取（首个路径参数，
@@ -3720,7 +3845,7 @@ fn push_delegating_scalar_handlers(
 }
 
 fn generate_api_rs(
-    api_module: &auto_lang::api::ApiModule,
+    api_module: &auto_lang_core::api::ApiModule,
     db_fns: Option<&std::collections::HashSet<String>>,
     api_impl_active: bool,
     crate_modules: &[String],
@@ -3744,7 +3869,7 @@ fn generate_api_rs(
     if api_module
         .endpoints
         .iter()
-        .any(|e| e.response == auto_lang::api::contract::ResponseKind::File)
+        .any(|e| e.response == auto_lang_core::api::contract::ResponseKind::File)
     {
         lines.extend(FILE_RESPONSE_GLUE.lines().map(|l| l.to_string()));
         lines.push("".to_string());
@@ -3755,8 +3880,8 @@ fn generate_api_rs(
     if api_module.endpoints.iter().any(|e| {
         e.params
             .iter()
-            .any(|p| auto_lang::api::contract::is_upload_param(&p.ty))
-            || e.response == auto_lang::api::contract::ResponseKind::Upload
+            .any(|p| auto_lang_core::api::contract::is_upload_param(&p.ty))
+            || e.response == auto_lang_core::api::contract::ResponseKind::Upload
     }) {
         lines.extend(UPLOAD_GLUE.lines().map(|l| l.to_string()));
         lines.push("".to_string());
@@ -4118,7 +4243,7 @@ fn generate_api_rs(
         // PLAN-729 T-05 / 734 R1 F-1: 文件端点——返回 `FileResponse`/
         // `Future<FileResponse>` 的 #[api] handler 生成真实文件 adapter
         // （契约身份判定；不经 JsonResponse，转译失败 = 诊断 500）。
-        if endpoint.response == auto_lang::api::contract::ResponseKind::File {
+        if endpoint.response == auto_lang_core::api::contract::ResponseKind::File {
             // 文件端点仅 GET/HEAD：生成期诊断 + 405 handler（与 VM 腿同语义）。
             if !matches!(method.as_str(), "GET" | "HEAD") {
                 eprintln!(
@@ -4235,7 +4360,7 @@ fn generate_api_rs(
         let upload_param = endpoint
             .params
             .iter()
-            .find(|p| auto_lang::api::contract::is_upload_param(&p.ty))
+            .find(|p| auto_lang_core::api::contract::is_upload_param(&p.ty))
             .cloned();
         if let Some(up_param) = upload_param {
             if !matches!(method.as_str(), "POST" | "PUT") {
@@ -4266,7 +4391,7 @@ fn generate_api_rs(
                 "headers: axum::http::HeaderMap".to_string(),
             ];
             for p in &endpoint.params {
-                if auto_lang::api::contract::is_upload_param(&p.ty) || is_meta_param(p) {
+                if auto_lang_core::api::contract::is_upload_param(&p.ty) || is_meta_param(p) {
                     continue;
                 }
                 if endpoint.path().contains(&format!(":{}", p.name)) {
@@ -4293,7 +4418,7 @@ fn generate_api_rs(
             // 与 729 文件臂 name.as_str() 同义），否则 upload_commit 等消费点
             // E0277（deployment fixture 实测）。
             for p in &endpoint.params {
-                if auto_lang::api::contract::is_upload_param(&p.ty) || is_meta_param(p) {
+                if auto_lang_core::api::contract::is_upload_param(&p.ty) || is_meta_param(p) {
                     continue;
                 }
                 if endpoint.path().contains(&format!(":{}", p.name)) {
@@ -4888,7 +5013,7 @@ fn generate_api_rs(
 /// `var notes List<Note>.new([...])` declarations. Fall back to
 /// generating 3 default sample items.
 pub fn generate_initial_data_pub(
-    api_module: &auto_lang::api::ApiModule,
+    api_module: &auto_lang_core::api::ApiModule,
     db_at_content: Option<&str>,
 ) -> String {
     // Try to extract seed data from db.at first
@@ -4904,7 +5029,7 @@ pub fn generate_initial_data_pub(
 
 /// Extract seed data from db.at's `var notes List<Note>.new([...])` declaration.
 /// Parses the Note { ... } struct literals and converts to Rust.
-fn extract_seed_data(db_content: &str, api_module: &auto_lang::api::ApiModule) -> Option<String> {
+fn extract_seed_data(db_content: &str, api_module: &auto_lang_core::api::ApiModule) -> Option<String> {
     let primary_type = primary_type_name_pub(api_module)?;
     let api_type = api_module.types.iter().find(|t| t.name == primary_type)?;
 
@@ -4985,7 +5110,7 @@ fn extract_seed_data(db_content: &str, api_module: &auto_lang::api::ApiModule) -
 ///       `pinned: true` → `pinned: true`
 ///       `tags: ["intro"]` → `tags: vec!["intro".into()]`
 ///       `folder: ""` → `folder: "".into()`
-fn convert_at_fields_to_rust(fields_str: &str, api_type: &auto_lang::api::ApiType) -> String {
+fn convert_at_fields_to_rust(fields_str: &str, api_type: &auto_lang_core::api::ApiType) -> String {
     let mut rust_fields = Vec::new();
 
     // Parse field: value pairs (comma-separated at top level)
@@ -5054,7 +5179,7 @@ fn convert_at_fields_to_rust(fields_str: &str, api_type: &auto_lang::api::ApiTyp
 }
 
 /// Generate 3 default sample items (fallback when no db.at seed data)
-fn generate_default_seed_data(api_module: &auto_lang::api::ApiModule) -> String {
+fn generate_default_seed_data(api_module: &auto_lang_core::api::ApiModule) -> String {
     let primary_type = match primary_type_name_pub(api_module) {
         Some(t) => t,
         None => return "Vec::new()".to_string(),
@@ -5132,7 +5257,7 @@ fn generate_default_seed_data(api_module: &auto_lang::api::ApiModule) -> String 
 /// produced E0432 in the generated project (auto-edit rust track). Such
 /// contracts take the stateless shape below.
 fn generate_main_rs(
-    api_module: &auto_lang::api::ApiModule,
+    api_module: &auto_lang_core::api::ApiModule,
     db_at_content: Option<&str>,
     db_full_cover: bool,
     companion_mods: &[String],
@@ -5146,7 +5271,7 @@ fn generate_main_rs(
             let method = e.method().to_lowercase();
             // PLAN-729 T-05: GET 文件端点自动具备 HEAD（显式 HEAD 路由不存在
             // 时；handler 从 Method 提取器区分）。
-            if e.response == auto_lang::api::contract::ResponseKind::File
+            if e.response == auto_lang_core::api::contract::ResponseKind::File
                 && method == "get"
                 && !api_module.endpoints.iter().any(|other| {
                     other.method().eq_ignore_ascii_case("HEAD") && other.path() == path
@@ -5677,9 +5802,9 @@ mod tests {
     /// CLI↔会话三角）。
     #[test]
     fn generation_consumer_identity_matches_cli_actual() {
-        use auto_lang::compile::CompileSession;
-        use auto_lang::stdlib_assembly::manifest::AssemblyManifest;
-        use auto_lang::stdlib_assembly::model::AssemblyTarget;
+        use auto_lang_core::compile::CompileSession;
+        use auto_lang_core::stdlib_assembly::manifest::AssemblyManifest;
+        use auto_lang_core::stdlib_assembly::model::AssemblyTarget;
         // Plan 742 R1: this test pins AUTO_RUST_WORKSPACE process-globally —
         // serialize against every other env-sensitive generate_api test or
         // the pin lands mid-flight and their backends vanish with this
@@ -5716,14 +5841,14 @@ pub fn answer() int { let d = json.parse(\"{}\")
             generation.references().iter().any(|p| p.symbol == "parse"),
             "生成装配必须携带 endpoint body 的核心引用证明"
         );
-        let root = auto_lang::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let root = auto_lang_core::stdlib_assembly::loader::repo_stdlib_root().unwrap();
         let api_path = project.join("src/back/api.at");
         let mut cli = CompileSession::new();
         cli.set_assembly_target(AssemblyTarget::Rust).unwrap();
         cli.add_source_dir(api_path.parent().unwrap().to_path_buf());
         cli.resolve_uses(api).unwrap();
         let references =
-            auto_lang::stdlib_assembly::reference::compile_actual_references(&cli, api, &api_path)
+            auto_lang_core::stdlib_assembly::reference::compile_actual_references(&cli, api, &api_path)
                 .unwrap();
         let cli_manifest = AssemblyManifest::freeze(
             cli.assembly,
@@ -7075,11 +7200,11 @@ pub fn echo(n int, tag str) Echo {
 }
 "#;
         let module = try_full_parse(api).expect("parse");
-        use auto_lang::api::TargetGenerator as _;
-        let generated = auto_lang::api::TauriGenerator::new().generate(&module);
+        use auto_lang_core::api::TargetGenerator as _;
+        let generated = auto_lang_core::api::TauriGenerator::new().generate(&module);
         let fixture = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/tests/plan734_commands_fixture.rs"
+            "/../auto-man/tests/plan734_commands_fixture.rs"
         ))
         .expect("fixture readable");
         assert_eq!(
@@ -7171,9 +7296,9 @@ pub fn up(req UploadRequest) ~UploadReceipt {
     /// 真实 FileResponse 保持文件 glue。
     #[test]
     fn plan776_generation_consumes_source_identity() {
-        use auto_lang::api::contract::ResponseKind;
-        use auto_lang::api::ApiExtractor;
-        use auto_lang::api::TypeScriptGenerator;
+        use auto_lang_core::api::contract::ResponseKind;
+        use auto_lang_core::api::ApiExtractor;
+        use auto_lang_core::api::TypeScriptGenerator;
         let api = r#"
 pub type FileResponse = { name: str }
 
@@ -7208,8 +7333,8 @@ pub fn real_file() FileResponse2 {
     /// 注入参数删除、收据 JSON 返回。
     #[test]
     fn test_plan730_upload_ts_formdata() {
-        use auto_lang::api::ApiExtractor;
-        use auto_lang::api::TypeScriptGenerator;
+        use auto_lang_core::api::ApiExtractor;
+        use auto_lang_core::api::TypeScriptGenerator;
         let api = r#"
 pub type UploadMeta = { name: str }
 
@@ -7235,7 +7360,7 @@ pub fn upload(req UploadRequest) ~UploadReceipt {
     /// Tauri IPC：上传端点 Unsupported 诊断（生成串锁）。
     #[test]
     fn test_plan730_tauri_upload_unsupported() {
-        use auto_lang::api::TauriGenerator;
+        use auto_lang_core::api::TauriGenerator;
         let api = r#"
 pub type UploadMeta = { name: str }
 
@@ -7246,7 +7371,7 @@ pub fn upload(req UploadRequest) ~UploadReceipt {
 "#;
         let module = try_full_parse(api).expect("full parse");
         let gen = TauriGenerator::new();
-        use auto_lang::api::TargetGenerator as _;
+        use auto_lang_core::api::TargetGenerator as _;
         let cmds = gen.generate(&module);
         assert!(
             cmds.contains("PLAN-730: upload endpoint `upload` requires HTTP transport"),
@@ -9124,8 +9249,8 @@ pub fn duplicate(id int) Note { return db.clone_note(id) }
         // stage B: full generate (transpile_db_to_rs has its own 16MB stack).
         generate_api(&project, "rust").expect("generate_api 015 ok");
 
-        let ws = crate::rust_ui::ensure_shared_workspace(&project);
-        let back = crate::rust_ui::back_member_name(&project);
+        let ws = crate::rust_workspace::ensure_shared_workspace(&project);
+        let back = crate::rust_workspace::back_member_name(&project);
         let api_rs = std::fs::read_to_string(ws.join(&back).join("src").join("api.rs"))
             .expect("api.rs exists");
         let main_rs = std::fs::read_to_string(ws.join(&back).join("src").join("main.rs"))
@@ -9382,12 +9507,6 @@ pub fn list_items() []str { return [] }
         assert!(rs_api.contains("pub fn queue") && rs_api.contains("pub fn stats"));
         let cargo = crate::api_gen::generate_cargo_toml("image-back", false, false);
         assert!(cargo.contains("auto-lang = { workspace = true"));
-        let ui_cargo = crate::rust_ui::generate_cargo_toml(
-            "image-ui",
-            Path::new("."),
-            &crate::rust_ui::PacSource::legacy(),
-        );
-        assert!(ui_cargo.contains("auto-lang/ui-iced"));
     }
 }
 
@@ -9434,7 +9553,7 @@ mod plan738_generated_service {
         .unwrap();
         let api = "#[api(method = \"GET\", path = \"/api/answer\")]\npub fn answer() int { let d = json.parse(\"{}\")\n return 42 }\n";
         std::fs::write(root.join("src/back/api.at"), api).unwrap();
-        let original_stdlib = auto_lang::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let original_stdlib = auto_lang_core::stdlib_assembly::loader::repo_stdlib_root().unwrap();
         let local_stdlib = root.join("stdlib");
         std::fs::create_dir_all(&local_stdlib).unwrap();
         std::fs::copy(
@@ -9455,8 +9574,8 @@ mod plan738_generated_service {
         let _restore = Restore(previous);
         std::env::set_var("AUTO_STDLIB_ROOT", &local_stdlib);
         generate_api(&root, "rust").expect("production generate_api");
-        let workspace = crate::rust_ui::ensure_shared_workspace(&root);
-        let name = crate::rust_ui::back_member_name(&root);
+        let workspace = crate::rust_workspace::ensure_shared_workspace(&root);
+        let name = crate::rust_workspace::back_member_name(&root);
         let member = workspace.join(&name);
         let read_receipt = || {
             serde_json::from_str::<serde_json::Value>(
@@ -9471,7 +9590,7 @@ mod plan738_generated_service {
             .unwrap()
             .iter()
             .any(|proof| proof["symbol"] == "parse"));
-        assert!(crate::rust_ui::backend_generation_is_fresh(&root));
+        assert!(backend_generation_is_fresh(&root));
         let target = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../target")
             .canonicalize()
@@ -9545,7 +9664,7 @@ mod plan738_generated_service {
             api
         );
         assert!(
-            !crate::rust_ui::backend_generation_is_fresh(&root),
+            !backend_generation_is_fresh(&root),
             "unchanged API must not reuse changed assembly"
         );
         generate_api(&root, "rust").unwrap();
@@ -9554,7 +9673,7 @@ mod plan738_generated_service {
             receipt["assembly"]["fingerprint"],
             regenerated["assembly"]["fingerprint"]
         );
-        assert!(crate::rust_ui::backend_generation_is_fresh(&root));
+        assert!(backend_generation_is_fresh(&root));
         build();
         let server = start(&regenerated["assembly"]["consumer_fingerprint"]); // 同身份（T-12）
         drop(server);
