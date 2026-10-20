@@ -282,6 +282,10 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
 
+### Plan 797（2026-10-20，R9 修复轮完成，待 T-08 复审）
+
+R9 复审（受审 `34db55429`，needs_fix）5 项开放已全部修复（修复提交 `3bcc41954`，同树）：F-R9-01 缓存适用域信封 v2（源/include 目录·target·工具链·flags·负依赖清单逐项重验；跨工程错对象 PE17→29 与异工具链合法代反例+同输入复用控制）；F-R4-07 遮蔽三态（新增近端头 17→29 miss、新内容 31 miss、删除=环境复原正确复用历史代）；F-R4-09 计时边界到 typed 判定+原始行落盘（一请求一行、失败/infra 含、edit_ms 入样本、Job 进程+树峰值与 I/O；门 536/608/609 与 65/91ms 收据绑定）；F-R4-10 memo/索引/递归态入 8MiB 门（R9 长记录名链反例分配前拒绝）+ GC 收据入 meter 且真实回收有 rooted 存活反例；F-R4-12 自身告警清零。probe 73/73、父侧 12/12、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
+
 ### Plan 797（2026-10-20，R9 完整复审，needs_fix）
 
 受审 `34db55429c134fe0fd8cfaf502f606b956ef65c7`，revision1；[R9完整报告/AC映射/真实PE及实际分配反例](attachments/797/review-r9/review.md)。R4-02本轮CLOSED（descriptor/3多out/handle/callback/header独立oracle及record mut/out原生控制）。**仍OPEN四项**：R4-07/P1新近端header遮蔽未失效（cache PE17，fresh29）；R4-09/P1父IPC计时改善但仍排除最终typed判断/发布，31body全返后才落盘、失败/资源行不齐；R4-10/P1原长字段名例已拒，但合法1024节点链memo/index新增堆峰值10,298,591B>8MiB仍被接受，force-GC测试缺实际ran/deleted/live断言；R4-12/P2旧三warning清除，本轮新增sema.rs peak_job_memory_used dead_code与append_jsonl unused_mut仍未处理。**新增F-797-R9-01/P1修复回归**：C generation发现忽略源码目录及当前target/toolchain/flags，跨工程同名同内容不同头实际hit错对象（17应29），合法foreign-target/toolchain key也被接受。共5项合同内OPEN，登记不批准延期/缩面。
