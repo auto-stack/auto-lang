@@ -21,7 +21,9 @@ impl Component for ProbeCounter {
     }
 
     fn view(&self) -> View<Self::Msg> {
-        View::col().child(View::text(format!("count:{}", self.count))).build()
+        View::col()
+            .child(View::text(format!("count:{}", self.count)))
+            .build()
     }
 }
 
