@@ -2,13 +2,13 @@
 //!
 //! 来源:2026-08-23 漂移审计(scratch/schema_drift_audit.py,Plan 435 §1.1)的
 //! Rust 化,常驻测试套。比对内置组件的全部事实表:
-//!   1. `src/aura/schema.rs`                 验证声明(elements.insert)
-//!   2. `src/ui_gen/vue.rs`                  Web 路径(components.insert + match tag 表)
-//!   3. `src/ui/aura_view_builder.rs`        桌面路径(两张 match tag 派发表)
-//!   4. `src/ui/render_support.rs`           iced 支持级(单张 match tag 表)
+//!   1. `auto-ui-compiler/src/aura/schema.rs`  验证声明(elements.insert)
+//!   2. `auto-ui-compiler/src/ui_gen/vue.rs`   Web 路径(components.insert + match tag 表)
+//!   3. `auto-ui-runtime/src/ui/aura_view_builder.rs` 桌面路径(两张 match tag 派发表)
+//!   4. `auto-ui-runtime/src/ui/render_support.rs` iced 支持级(单张 match tag 表)
 //!   5. `src/parser.rs`                      tag 特判(get_primary_prop 归类表)
-//!   6. `src/a2ui/export.rs`                 tag → A2UI 互操作映射
-//!   7. `src/a2ui/import.rs`                 A2UI → tag 反向映射(tag: "..." 字面量)
+//!   6. `auto-ui-compiler/src/a2ui/export.rs`  tag → A2UI 互操作映射
+//!   7. `auto-ui-compiler/src/a2ui/import.rs`  A2UI → tag 反向映射(tag: "..." 字面量)
 //! 另带 `docs/schema/aura.at`(Plan 098 冻结孤儿,P1 重建)的对照维度。
 //!
 //! 围栏语义:**只拦新增漂移**。审计当日已知漂移冻结在
@@ -1790,8 +1790,8 @@ fn schema_drift_fence() {
     }
     let schema_rs = read("../auto-ui-compiler/src/aura/schema.rs");
     let vue_rs = read("../auto-ui-compiler/src/ui_gen/vue.rs");
-    let vb_rs = read("src/ui/aura_view_builder.rs");
-    let render_rs = read("src/ui/render_support.rs");
+    let vb_rs = read("../auto-ui-runtime/src/ui/aura_view_builder.rs");
+    let render_rs = read("../auto-ui-runtime/src/ui/render_support.rs");
     let aura_at = read("../../docs/schema/aura.at");
 
     // ---- 提取四表 + 结构断言 ----
@@ -1830,8 +1830,13 @@ fn schema_drift_fence() {
     // register_element 注册名）与臂式注册同属桌面派发表面——注册表式注册
     // 并入 vb 并集，外部组件（含 autodown_editor 首迁）不再触发臂表孤儿误
     // 报；后续经 SPI 注册的新组件天然受同一围栏覆盖。
-    let native_registered = scan_native_registrations(&read("src/ui/native_widget.rs"));
-    let vb_union: BTreeSet<String> = vb0.union(vb1).cloned().chain(native_registered).collect();
+    let native_registered =
+        scan_native_registrations(&read("../auto-ui-runtime/src/ui/native_widget.rs"));
+    let vb_union: BTreeSet<String> = vb0
+        .union(vb1)
+        .cloned()
+        .chain(native_registered)
+        .collect();
 
     let render_tables = scan_match_tables(&render_rs);
     assert_eq!(

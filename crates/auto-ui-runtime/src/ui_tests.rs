@@ -1,8 +1,6 @@
 // PLAN-814 T-04：随 ui/ 迁入的 UI 域测试树（原 auto-lang src/tests/ 中
 // 引用 runtime 私有测试钩子的子集；挂载门与原 tests.rs 逐项一致，
 // crate:: 路径经 runtime 根再导出面保持。
-#[cfg(feature = "test-cases")]
-mod ac_av_probe_tests;
 mod plan051_ext_widget_tests;
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan066_native_widget_tests;

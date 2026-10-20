@@ -7,6 +7,9 @@
 
 #[test]
 fn p656_scroll_controller_natives_end_to_end() {
+    // PLAN-814 T-04：随迁后测试进程不再链接 auto-lang 漏斗——provider 槽
+    // 显式装配（r3 §5.3 显式优先；原 run 漏斗隐式安装面）。
+    crate::install_ui_host_capabilities();
     crate::ui::scroll::controller::reset_for_test();
     // 裸名调用经完整 Codegen → VM → shim 管线（F-3 回归锁：id 9900 高段
     // + COUNTED 发射——register_stdlib_ffi 动态分配器曾覆写 29xx 带静态表）。

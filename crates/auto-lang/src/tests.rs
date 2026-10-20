@@ -7,10 +7,14 @@ mod test_cases_tests;
 // PLAN-788: ac native adapter integration (real ac-case-worker process)
 #[cfg(feature = "test-cases")]
 mod ac_case_tests;
+// PLAN-796: ac-av probe (AC shared mir native；无 ui 依赖——留本包与 probe
+// adapter 同族，PLAN-814 T-04 归属勘误)。
+#[cfg(feature = "test-cases")]
+mod ac_av_probe_tests;
 // PLAN-796: probe adapter integration (real sema worker + restart boundary)
-// PLAN-815 T-04 合并门归因修复：probe_adapter_tests 消费 test-cases
-// feature 门内的 auto_test_case（兄弟模块同款门控），裸 ui-iced 面
-// （cargo tu）此前 44 编译错=master 预存（M814-A 合入前即缺门）。
+// probe_adapter_tests 门控（815 T-04/814 T-04 两计划同款修复，两侧独立
+// 落地）：消费 test-cases feature 门内的 auto_test_case（兄弟模块同款
+// 门控），裸 ui-iced 面（cargo tu）/裸 check --tests 形态不再编译红。
 #[cfg(feature = "test-cases")]
 mod probe_adapter_tests;
 // PLAN-796 R4: turnaround hard gate over the REAL adapter/IPC path

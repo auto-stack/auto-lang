@@ -9,6 +9,9 @@ use super::*;
 
 #[test]
 fn vm_code_editor_natives_end_to_end() {
+    // PLAN-814 T-04：随迁后测试进程不再链接 auto-lang 漏斗——provider 槽
+    // 显式装配（r3 §5.3 显式优先；原 run 漏斗隐式安装面）。
+    crate::install_ui_host_capabilities();
     use crate::ui::code_editor as ce;
     use std::sync::{OnceLock, RwLock};
 
@@ -92,6 +95,9 @@ print(hidden2)
 /// JSON shape (`{"revision":N,"deltas":[...]}`, empty → `"deltas":[]`).
 #[test]
 fn vm_code_editor_delta_end_to_end() {
+    // PLAN-814 T-04：随迁后测试进程不再链接 auto-lang 漏斗——provider 槽
+    // 显式装配（r3 §5.3 显式优先；原 run 漏斗隐式安装面）。
+    crate::install_ui_host_capabilities();
     use crate::ui::code_editor as ce;
     use std::sync::{OnceLock, RwLock};
 
@@ -140,6 +146,9 @@ print(d2)
 /// the exact caller interval in the same stream as set_text.
 #[test]
 fn vm_code_editor_edit_end_to_end() {
+    // PLAN-814 T-04：随迁后测试进程不再链接 auto-lang 漏斗——provider 槽
+    // 显式装配（r3 §5.3 显式优先；原 run 漏斗隐式安装面）。
+    crate::install_ui_host_capabilities();
     use crate::ui::code_editor as ce;
     use std::sync::{OnceLock, RwLock};
 
