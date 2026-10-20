@@ -1,9 +1,10 @@
 # PLAN-816 M816-A 阶段候选（T-12 交付，待 T-13 独立阶段审查冻结）
 
-> 状态：**R2 修复后候选**（T-13 R1 六项全闭 @4372d56d9；R2 判 01/02/04
-> CLOSED、03/05/06 残项已修复 @`aa2edc8fb`，见 §9。R1+R2 双 replay 全过。
-> T-13 R3 审查绑定 `aa2edc8fb`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，
-> Plan 保持 `executing`。
+> 状态：**R3 修复后候选**（R3 判 01/02/04 无回归、03/05/06 主面闭合，
+> 两项新 finding F-R3-01/02 已修复 @`6e03f5f26`，见 §10。R1+R2 双
+> replay 保持全过、fixture 全套 15 连跑 0 红。T-13 R4 审查绑定
+> `6e03f5f26`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，Plan 保持
+> `executing`。
 
 ## 1. 身份
 
@@ -108,3 +109,14 @@ R2（reviewed 4372d56d9）判定 01/02/04 CLOSED；三残项修复（+1166/−26
 | F-05 fixture warning | `shutdown_bounds_pipe_holding_descendants` 的冗余 `mut` 清零 | fixture 15 测 0 告警 |
 
 验证矩阵（@aa2edc8fb）：设施 8 单测+17 集测、client 10 单测、fixture 15/15；clippy/rustdoc 0 告警、fmt+fixture rustfmt 过；R1 replay 5/5 + R2 replay 全过（FAILED_CONTROLS=0）；verify-deps PASS、777 strict pass（78 边/0 违规）、`cargo check -p auto -p auto-man` exit 0。
+
+## 10. R3 修复轮记录（T-13 R3 needs_fix 两项 → work 修复，@6e03f5f26）
+
+| Finding | 修复 | 验证 |
+|---|---|---|
+| F-816-R3-01 stop 先停后排空丢已到达数据 | stop 语义改为**先排空已可读内容再退出**：设施 `drain_readable`（DRAIN_CAP 500ms 防御）；client `parse_drain` 提取为可复用函数（stop 路径=排空 OS 管道→重解析→退出）；`stderr_session` 提取（stop 就地排空进 sink，日志不缺字） | 确定性注入单测×3（预置数据+先行 stop→帧/字节不丢，无 sleep）；fixture 全套连跑 15 次 0 红（R3 实机间歇场景清零） |
+| F-816-R3-02 错误返回路径不停自有线程 | 设施 `finish_early`（覆盖 wait×3/terminate-after-root-exit 四处早退）+ 三 finish 顺序化（任一错误返回时三线程均已终结）；client `stop_all` + shutdown 错误分支先停后传播 + `drain_until_done` 改全收集后传播（坏帧记下不中断 drain） | 源码路径全覆盖；三面测试全绿保持 |
+
+顺带修两处**测试侧**时序缺陷（非产品回归）：`shutdown_bounds` 的 heartbeat 观察移到 shutdown 之前（否则树终止可能先于后代首跳，观察不确定）；`consumer_describes` 的 stderr 断言移至 shutdown drain 完成后（stdout 回帧与 stderr 读取是异步流，即时快照必输竞争）。
+
+验证矩阵（@6e03f5f26）：设施 9 单测+17 集测、client 12 单测、fixture 15/15（连跑 15 次全绿）；R1 replay 5/5 + R2 replay 全 contract_pass；clippy/rustdoc 0、fmt 过、verify-deps PASS、777 strict pass、`cargo check -p auto -p auto-man` exit 0。
