@@ -1,10 +1,9 @@
 # PLAN-816 M816-A 阶段候选（T-12 交付，待 T-13 独立阶段审查冻结）
 
-> 状态：**R1 修复后候选**（T-13 R1 needs_fix 六项 findings 已全部修复；
-> 冻结 SHA = 修复提交 `4372d56d9`，见 §8）。T-13 审查绑定该 SHA 复审后
-> 本文件 §1–§7 即事实清单；§7 为 merge-owned pending。
-> 本阶段 ≠ 整 Plan 交付：T-03..T-11 未开（门见 §8 任务行），Plan 保持
-> `executing`。
+> 状态：**R2 修复后候选**（T-13 R1 六项全闭 @4372d56d9；R2 判 01/02/04
+> CLOSED、03/05/06 残项已修复 @`aa2edc8fb`，见 §9。R1+R2 双 replay 全过。
+> T-13 R3 审查绑定 `aa2edc8fb`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，
+> Plan 保持 `executing`。
 
 ## 1. 身份
 
@@ -13,7 +12,7 @@
 | plan / revision / phase | PLAN-816 / r2 / M816-A（T-12） |
 | worktree / branch | `D:/autostack/.wt/lang-816/auto-lang` / `codex/plan-816-dev` |
 | sync base（master 合入点） | `b65d0e963`（含 M815-A 交付 `e609caf1af`，祖先关系验证通过） |
-| code_commit（R1 修复后冻结候选） | `4372d56d9`（R1 前历史：`0373cfa38` 实现 + `6b4bf9c2f` 777 基线） |
+| code_commit（R2 修复后冻结候选） | `aa2edc8fb`（历史链：`0373cfa38` 实现 → `6b4bf9c2f` 基线 → `4372d56d9` R1 修复） |
 | 消费的上游交付 | **M815-A**（master `e609caf1af`）：`git diff e609caf1af..b65d0e963 -- crates/auto-ui-tools crates/auto-tool-protocol crates/auto-project-model` 为空（发布源零漂移） |
 | 上游工具二进制（本树构建） | `target/debug/auto-ui-tool.exe` SHA256 `a7c070596a74bfc56586e522b89e5cc68240803adc68c9e33117515847faaa6c`（debug 构建含路径信息，逐字节 hash 随构建环境变；源身份以上行 commit 钉定，消费合同见 §2） |
 | 依赖修订 | 无 814 依赖（未消费其未发布面）；未切任何默认 CLI 路由 |
@@ -97,3 +96,15 @@ T-13 R1（reviewed 6b4bf9c2f）六项 findings 全部修复，修复提交 `4372
 （C01/C02/C03 对照保持，`REVIEW_PROBE_FAILED_CONTROLS=0`）；clippy 两
 crate 0 警告、rustdoc 0、fmt 过；verify-deps PASS、777 strict pass（78
 边/0 违规/2 grandfathered）、`cargo check -p auto -p auto-man` exit 0。
+
+## 9. R2 修复轮记录（T-13 R2 needs_fix 残项 → work 修复，@aa2edc8fb）
+
+R2（reviewed 4372d56d9）判定 01/02/04 CLOSED；三残项修复（+1166/−263，5 文件）：
+
+| 残项 | 修复 | 验证 |
+|---|---|---|
+| F-03 关闭阶段坏帧仍 Success | reader 新增 `TruncatedEof` 变体：自然 EOF 夹半帧（宿主之责）在关闭路径定性为 `StreamViolation(Malformed mid-frame)`；我方 kill 截断在途回复（超时/取消路径）为拆除噪声。`drain_until_done(natural_exit)` 不再吞缓冲的 TooLarge/Malformed 类坏帧 | R2 replay close-bad=`Err(StreamViolation(TooLarge{4294967295}))`、close-clean 对照 Success；fixture `close_phase_bad_frame_is_not_swallowed`/`close_phase_clean_eof_control`（te-child proto-close 模式，确定性无 sleep） |
+| F-06 超时 6.3s/own reader 存活/错误被吞 | **可停止线程结构**：Windows `PeekNamedPipe` 就绪轮询（同步管道句柄对 WaitForSingleObject 恒 signaled，无法作读就绪——实测弃用）+ `stop`/`owned_closed` 双标志 + 有界 join（仅在收到完成消息后，杜绝悬挂）；writer 16KiB 分片写；client stderr 结束方式具名（读错→`Io{stderr reader}`）；`Timeout` 仅在取消成功+三线程确认真停后返回；elapsed/after 取实际返回时刻；超时路径 reader Io 具名传播、writer BrokenPipe/WriteZero/NotConnected 为拆除噪声（不改 Timeout 分类，R1 F01a 合同保持） | R2 replay timeout-held-readers：**251ms 返回（原 6268ms）、线程数 4→4 零悬留、非拥有后代 heartbeat 继续推进（scope 合同保持）**；fixture `abort_stops_own_threads_despite_unowned_holders`（DirectChildOnly+orphan，<1.5s）；设施真实管道停止性单测（std::io::pipe：held 写端下 stop_and_join→Stopped） |
+| F-05 fixture warning | `shutdown_bounds_pipe_holding_descendants` 的冗余 `mut` 清零 | fixture 15 测 0 告警 |
+
+验证矩阵（@aa2edc8fb）：设施 8 单测+17 集测、client 10 单测、fixture 15/15；clippy/rustdoc 0 告警、fmt+fixture rustfmt 过；R1 replay 5/5 + R2 replay 全过（FAILED_CONTROLS=0）；verify-deps PASS、777 strict pass（78 边/0 违规）、`cargo check -p auto -p auto-man` exit 0。
