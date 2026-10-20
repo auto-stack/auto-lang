@@ -15,4 +15,5 @@ pub mod native_admission;
 pub mod native_reference;
 pub mod observations;
 pub mod semrefs;
+pub mod session;
 pub mod worker_restore;

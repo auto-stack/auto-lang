@@ -99,6 +99,259 @@ impl CheckedModule {
     }
 }
 
+/// ONE function body verified against its module's declaration context
+/// (PLAN-828 function-level increment). Constructed only by
+/// [`verify_function`]: the credential binds the verified body, the owning
+/// def and a `context_revision` fingerprint of exactly the context the
+/// verification consumed (the module's type table and every def's
+/// signature) — a later edit that changes any of those invalidates this
+/// credential by fingerprint comparison, not by re-slicing a stale
+/// [`CheckedModule`].
+#[derive(Clone, Debug)]
+pub struct CheckedFunction {
+    body: hir::Body,
+    def: hir::Def,
+    context_revision: String,
+    domain: HirDomain,
+}
+
+impl CheckedFunction {
+    pub fn body(&self) -> &hir::Body {
+        &self.body
+    }
+
+    pub fn into_body(self) -> hir::Body {
+        self.body
+    }
+
+    pub fn def(&self) -> &hir::Def {
+        &self.def
+    }
+
+    pub fn def_id_text(&self) -> &str {
+        &self.def.id_text
+    }
+
+    pub fn context_revision(&self) -> &str {
+        &self.context_revision
+    }
+
+    pub fn domain(&self) -> HirDomain {
+        self.domain
+    }
+}
+
+/// Verify exactly one function body of a bound bundle against the module's
+/// declaration context (PLAN-828 T-01). The bundle may carry placeholder
+/// bodies for other functions — only `def_index`'s body is checked — but
+/// every def's SIGNATURE participates in the context, so cross-function
+/// facts still come from a fully bound declaration set. Scalar/Core
+/// domains only: the text/record domains own cross-body fixpoints and keep
+/// whole-module [`CheckedModule`] credentials.
+pub fn verify_function(
+    bundle: hir::Bundle,
+    def_index: usize,
+) -> Result<CheckedFunction, Vec<Diagnostic>> {
+    if !matches!(bundle.domain, HirDomain::Scalar | HirDomain::Core) {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.domain",
+            format!(
+                "function-level verification is available for the scalar/core domains, not `{}`; use the whole-module verifier of the document's own profile",
+                bundle.domain.as_str()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    if bundle.modules.len() != 1 {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.modules",
+            format!(
+                "function-level verification expects exactly one module, found {}",
+                bundle.modules.len()
+            ),
+            Span { start: 0, end: 0 },
+        )]);
+    }
+    let m = &bundle.modules[0];
+    let mut v = Verifier {
+        diags: Vec::new(),
+        domain: bundle.domain,
+    };
+    // Context construction mirrors `check_module`: type bounds first, then
+    // the text-kind isolation gate, the type map, and the signature table
+    // over ALL defs (the context the body is verified against).
+    if !v.check_module_type_bounds(m) {
+        return Err(v.diags);
+    }
+    for t in &m.types {
+        if matches!(
+            t.kind,
+            hir::TypeKind::Str | hir::TypeKind::StrOwned | hir::TypeKind::Char
+        ) {
+            v.error(
+                "verify.local-type",
+                format!(
+                    "type `{}` has text kind `{:?}`; text types exist only in the text-i32-draft profile",
+                    t.id_text, t.kind
+                ),
+                t.span,
+            );
+        }
+    }
+    let type_map = Verifier::build_type_map(m);
+    let mut sigs: SigTable = BTreeMap::new();
+    for (i, d) in m.defs.iter().enumerate() {
+        let ty_id = match &d.kind {
+            hir::DefKind::Function { ty, .. }
+            | hir::DefKind::Method { ty, .. }
+            | hir::DefKind::Intrinsic { ty, .. } => *ty,
+        };
+        match m.types.get(ty_id.0 as usize).map(|t| &t.kind) {
+            Some(hir::TypeKind::Function(sig)) => {
+                let params: Vec<ValueType> = sig
+                    .params
+                    .iter()
+                    .map(|p| v.value_of(p, &type_map))
+                    .collect();
+                let result = v.value_of(&sig.result, &type_map);
+                sigs.insert(i as u32, (params, result));
+            }
+            _ => {
+                v.error(
+                    "verify.callee-type",
+                    format!(
+                        "declaration `{}` does not have a function type",
+                        d.id_text
+                    ),
+                    d.span,
+                );
+            }
+        }
+    }
+    let Some(def) = m.defs.get(def_index) else {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.def-index",
+            format!("def index {def_index} out of range ({} defs)", m.defs.len()),
+            Span { start: 0, end: 0 },
+        )]);
+    };
+    let (body_id, name) = match &def.kind {
+        hir::DefKind::Function { name, body, .. } => (*body, name.clone()),
+        hir::DefKind::Method { .. } => {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.domain",
+                format!(
+                    "def `{}` is a type-bound method; methods belong to the record domain and are outside function-level scalar verification",
+                    def.id_text
+                ),
+                def.span,
+            )]);
+        }
+        hir::DefKind::Intrinsic { .. } => {
+            return Err(vec![Diagnostic::new(
+                Stage::Verify,
+                "verify.def-kind",
+                format!("def `{}` is an intrinsic and has no body to verify", def.id_text),
+                def.span,
+            )]);
+        }
+    };
+    let Some(body) = m.bodies.get(body_id.0 as usize) else {
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.body-ref",
+            format!(
+                "function `{name}` declares body `{}` which is out of range",
+                body_id.0
+            ),
+            def.span,
+        )]);
+    };
+    // def↔body ownership for THIS def (same rule as the module walk).
+    if body.owner.0 as usize != def_index {
+        let owner = m
+            .defs
+            .get(body.owner.0 as usize)
+            .map(|o| o.id_text.as_str())
+            .unwrap_or("<unknown>");
+        return Err(vec![Diagnostic::new(
+            Stage::Verify,
+            "verify.owner-mismatch",
+            format!(
+                "function `{name}` declares body `{}` but that body is owned by `{owner}`; every body must belong to exactly one function",
+                body.id_text
+            ),
+            def.span,
+        )]);
+    }
+    v.check_profile_ops(m, body);
+    v.check_body(m, body_id, body, &type_map, &sigs);
+    if v.diags.is_empty() {
+        Ok(CheckedFunction {
+            body: body.clone(),
+            def: def.clone(),
+            context_revision: context_fingerprint(m),
+            domain: bundle.domain,
+        })
+    } else {
+        Err(v.diags)
+    }
+}
+
+/// Deterministic FNV-1a fingerprint of the declaration context a function
+/// body is verified against: every type (id + kind shape, function
+/// signatures recursively) and every def (id + kind + signature type). Two
+/// contexts with equal fingerprints provide identical cross-function facts
+/// for body verification.
+fn context_fingerprint(m: &hir::Module) -> String {
+    fn mix(h: &mut u64, part: &str) {
+        for b in part.bytes() {
+            *h ^= b as u64;
+            *h = h.wrapping_mul(0x100000001b3);
+        }
+    }
+    fn mix_use(h: &mut u64, u: &hir::TypeUse) {
+        match u {
+            hir::TypeUse::Builtin(b) => mix(h, &format!("b:{b:?}")),
+            hir::TypeUse::Ref(tid) => mix(h, &format!("r:{}", tid.0)),
+        }
+    }
+    let mut h: u64 = 0xcbf29ce484222325;
+    mix(&mut h, "types:");
+    for t in &m.types {
+        mix(&mut h, &t.id_text);
+        match &t.kind {
+            hir::TypeKind::Function(sig) => {
+                mix(&mut h, "fn(");
+                for p in &sig.params {
+                    mix_use(&mut h, p);
+                }
+                mix(&mut h, ")→");
+                mix_use(&mut h, &sig.result);
+            }
+            other => mix(&mut h, &format!("{other:?}")),
+        }
+        mix(&mut h, ";");
+    }
+    mix(&mut h, "defs:");
+    for d in &m.defs {
+        mix(&mut h, &d.id_text);
+        match &d.kind {
+            hir::DefKind::Function { ty, .. } => mix(&mut h, &format!("f:{}", ty.0)),
+            hir::DefKind::Method { ty, .. } => mix(&mut h, &format!("m:{}", ty.0)),
+            hir::DefKind::Intrinsic { symbol, ty, .. } => {
+                mix(&mut h, &format!("i:{symbol}:{}", ty.0))
+            }
+        }
+        mix(&mut h, ";");
+    }
+    format!("{h:016x}")
+}
+
 /// Verify a bound core-domain bundle (historical entry; compatibility
 /// semantics limited to `core-i32-draft`). Collects all verifier diagnostics.
 pub fn verify(bundle: hir::Bundle) -> Result<CheckedModule, Vec<Diagnostic>> {

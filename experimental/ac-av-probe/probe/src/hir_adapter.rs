@@ -173,6 +173,119 @@ pub fn lower_checked(
     Ok(out)
 }
 
+/// Lower ONE function of a bound bundle directly into a self-contained
+/// single-function MIR unit (PLAN-828 T-01). Cross-function callees become
+/// `fn:<name>` unit imports with the callee's signature (the same shape
+/// `split_units` produces from a whole-module lower); intrinsics map to
+/// imports exactly as in [`lower_checked`]. The bundle's OTHER bodies are
+/// never read — the caller passes a per-function bundle where only
+/// `def_id_text`'s body is real — and the result must still pass
+/// `verify_mir`; this adapter grants nothing.
+pub fn lower_function_unit(
+    bundle: &hir::Bundle,
+    def_id_text: &str,
+    capabilities: &[String],
+    source_snapshot: u64,
+) -> Result<MirModule, AdapterError> {
+    match bundle.domain {
+        hir::HirDomain::Scalar | hir::HirDomain::Core => {}
+        other => {
+            return Err(AdapterError::uns(
+                "lower.domain",
+                format!(
+                    "HIR domain `{}` is outside the av.core-i32/1 profile",
+                    other.as_str()
+                ),
+            ));
+        }
+    }
+    if bundle.modules.len() != 1 {
+        return Err(AdapterError::uns(
+            "lower.modules",
+            format!(
+                "expected exactly one module, found {}",
+                bundle.modules.len()
+            ),
+        ));
+    }
+    let module = &bundle.modules[0];
+    let owner = OwnerScope {
+        schema: auto_av_core::contract::MIR_SCHEMA.to_string(),
+        module: module.id_text.clone(),
+    };
+    let mut out = MirModule::unit(owner);
+    out.capabilities = capabilities.to_vec();
+
+    // Def map: the target lowers into the unit's own func 0; every other
+    // function def is an unresolved `fn:<name>` import with its signature,
+    // and intrinsics import as in the whole-module path.
+    let mut def_map: BTreeMap<u32, CalleeRef> = BTreeMap::new();
+    let mut target: Option<(u32, hir::TypeId, hir::BodyId)> = None;
+    for (di, d) in module.defs.iter().enumerate() {
+        match &d.kind {
+            hir::DefKind::Function { ty, body, .. } => {
+                if d.id_text == def_id_text {
+                    def_map.insert(di as u32, CalleeRef::Func(0));
+                    target = Some((di as u32, *ty, *body));
+                } else {
+                    let sig = fn_type_index(*ty, module, &mut out)?;
+                    let idx = out.intern_import(MirImport {
+                        symbol: format!("fn:{}", d.id_text),
+                        effect: Effect::Pure,
+                        sig,
+                    });
+                    def_map.insert(di as u32, CalleeRef::Import(idx));
+                }
+            }
+            hir::DefKind::Method { .. } => {
+                return Err(AdapterError::uns(
+                    "lower.method",
+                    "type-bound methods belong to the record domain, outside the av profile"
+                        .to_string(),
+                ));
+            }
+            hir::DefKind::Intrinsic { symbol, effect, ty } => {
+                if symbol != "hir.test.mark_a" && symbol != "hir.test.mark_b" {
+                    return Err(AdapterError::uns(
+                        "lower.intrinsic",
+                        format!("intrinsic `{symbol}` is not in the av profile"),
+                    ));
+                }
+                let sig = fn_type_index(*ty, module, &mut out)?;
+                let idx = out.intern_import(MirImport {
+                    symbol: symbol.clone(),
+                    effect: match effect {
+                        hir::Effect::Observable => Effect::Observable,
+                        hir::Effect::Pure => Effect::Pure,
+                    },
+                    sig,
+                });
+                def_map.insert(di as u32, CalleeRef::Import(idx));
+            }
+        }
+    }
+    let (di, ty, body_id) = target.ok_or_else(|| {
+        AdapterError::inv(
+            "lower.target",
+            format!("no function def `{def_id_text}` in module"),
+        )
+    })?;
+    let sig = fn_type_index(ty, module, &mut out)?;
+    let mir_fn = lower_function(
+        module,
+        &mut out,
+        di,
+        body_id,
+        sig,
+        source_snapshot,
+        &def_map,
+        def_id_text.to_string(),
+    )?;
+    out.funcs.push(mir_fn);
+    out.entry = 0;
+    Ok(out)
+}
+
 fn scalar_shape_of_use(u: &hir::TypeUse, m: &hir::Module) -> Result<ScalarShape, AdapterError> {
     let s = match u {
         hir::TypeUse::Builtin(b) => match b {

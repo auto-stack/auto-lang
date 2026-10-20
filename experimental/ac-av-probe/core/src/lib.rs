@@ -20,15 +20,19 @@ pub mod abc;
 pub mod abc_verify;
 pub mod av;
 pub mod contract;
+pub mod function_code;
 pub mod mir;
 pub mod mir_verify;
+pub mod program_snapshot;
 
 pub use abc::{decode_abc, encode_abc, AbcDecodeError, DecodedAbc};
 pub use abc_verify::{verify_abc, verify_abc_bytes, AbcAdmissionError, LoadedModule};
-pub use av::{execute, execute_entry, CancelCheck, CancelFlag, ExecLimits, ExecTrace};
+pub use av::{execute, execute_entry, execute_program, CancelCheck, CancelFlag, ExecLimits, ExecTrace};
 pub use contract::{
     AvSemanticsVersion, ExecOutcome, MirSemanticsVersion, ResourceKind, SpanInfo, TrapKind, Value,
     ABC_SCHEMA, AV_PROFILE, MIR_SCHEMA, PRODUCER_ID,
 };
+pub use function_code::{FunctionCode, SharedFunctionCode};
 pub use mir::{MirModule, MirModuleUncheckedMarker, TraceEvent};
 pub use mir_verify::{verify_mir, verify_mir_with_deadline, CheckedMir, MirVerifyError};
+pub use program_snapshot::ProgramSnapshot;

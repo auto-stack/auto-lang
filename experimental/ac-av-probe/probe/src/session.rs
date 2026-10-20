@@ -1,0 +1,626 @@
+//! Resident function-incremental session (PLAN-828 T-01 first case).
+//!
+//! The bounded full-path slice over the D798 pipeline: one resident session
+//! holds the source snapshot (ac-syntax), the per-function declaration
+//! records, and the current [`ProgramSnapshot`]. A single body edit goes
+//! local-rescan/graft (ac-syntax) → changed-decl detection → per-function
+//! frontend (real parser over the changed decl, unchanged decls carry only
+//! their O(1) signature stubs) → [`auto_ac_prototype::verify::verify_function`]
+//! → [`crate::hir_adapter::lower_function_unit`] → unit `verify_mir` → ABC
+//! encode/decode/`verify_abc` → [`FunctionCode`] → snapshot re-link. Every
+//! stage bump is a per-function counter; unchanged functions keep their
+//! `Arc` HIR bodies and `Arc<FunctionCode>` — no re-read, re-decode,
+//! re-verify or re-load runs for them.
+//!
+//! First-case bounds frozen by `docs/plans/attachments/828/contract-decision.md`:
+//! single-edit-per-request body edits inside one existing top-level `fn`,
+//! decl order and signatures unchanged, scalar profile, no store
+//! persistence (warm session only — restore/GC arrive with T-07).
+
+use crate::cache::split_units;
+use crate::hir_adapter::{lower_checked, lower_function_unit};
+use ac_syntax_grammar::compile as compile_grammar;
+use ac_syntax_rt::edit::incremental_reparse;
+use ac_syntax_rt::lexer::CompiledScanner;
+use ac_syntax_rt::outline::outline;
+use ac_syntax_rt::parse::{parse_snapshot, ParseOutput};
+use ac_syntax_rt::program::{Budget, GrammarProgram};
+use ac_syntax_rt::snapshot::{Edit, EditRequest, PageStore, Snapshot};
+use auto_ac_prototype::atom_text::Diagnostic;
+use auto_ac_prototype::hir;
+use auto_ac_prototype::source::ast::Item;
+use auto_ac_prototype::source::{
+    compile_parts_with, compile_scalar_source, parse_program_with, SourceProfile,
+};
+use auto_ac_prototype::verify::{verify_function, CheckedFunction};
+use auto_av_core::abc::{decode_abc, encode_abc};
+use auto_av_core::abc_verify::verify_abc;
+use auto_av_core::av::{execute_program, CancelFlag, ExecLimits, ExecTrace};
+use auto_av_core::contract::ExecOutcome;
+use auto_av_core::function_code::FunctionCode;
+use auto_av_core::mir_verify::verify_mir;
+use auto_av_core::program_snapshot::ProgramSnapshot;
+use std::collections::BTreeMap;
+use std::rc::Rc;
+use std::sync::Arc;
+
+/// Per-stage counter axes (PLAN-828 §5.5 names; the single `verify` axis
+/// splits by layer as equivalent names, frozen in contract-decision.md):
+/// `project|resolve|typecheck|hir_build|mir_lower|abc_emit|decode|
+/// verify_hir|verify_mir|verify_abc|load` × function.
+pub const STAGES: [&str; 11] = [
+    "project",
+    "resolve",
+    "typecheck",
+    "hir_build",
+    "mir_lower",
+    "abc_emit",
+    "decode",
+    "verify_hir",
+    "verify_mir",
+    "verify_abc",
+    "load",
+];
+
+/// Real per-request counters. Every bump happens at the actual call site of
+/// the corresponding entry; nothing is pre-filled.
+#[derive(Clone, Debug, Default)]
+pub struct SessionCounters {
+    map: BTreeMap<String, u64>,
+}
+
+impl SessionCounters {
+    fn bump(&mut self, key: &str) {
+        *self.map.entry(key.to_string()).or_insert(0) += 1;
+    }
+
+    fn set(&mut self, key: &str, value: u64) {
+        self.map.insert(key.to_string(), value);
+    }
+
+    pub fn get(&self, key: &str) -> u64 {
+        self.map.get(key).copied().unwrap_or(0)
+    }
+
+    /// A stage's count for one function (0 = untouched).
+    pub fn stage_of(&self, stage: &str, function: &str) -> u64 {
+        self.get(&format!("{stage}:{function}"))
+    }
+
+    /// The structural gate view for one function: every stage's count. For
+    /// an unchanged function on the pure body fast path this map must be
+    /// all-zero (`unaffected_* == 0`).
+    pub fn stages_of(&self, function: &str) -> BTreeMap<String, u64> {
+        STAGES
+            .iter()
+            .map(|s| (s.to_string(), self.stage_of(s, function)))
+            .collect()
+    }
+
+    /// Whole-module stage zeros: the session structurally never calls a
+    /// whole-module frontend/lower/closure-roundtrip on the edit path, and
+    /// these counters prove it (they only ever move off zero if that
+    /// invariant is broken by a future change).
+    pub fn whole_module(&self) -> BTreeMap<String, u64> {
+        [
+            "whole_module_frontend",
+            "whole_module_lower",
+            "whole_module_closure_roundtrip",
+        ]
+        .iter()
+        .map(|k| (k.to_string(), self.get(k)))
+        .collect()
+    }
+}
+
+/// One function's resident record across revisions.
+struct FnRecord {
+    /// The def id text (bundle def identity, e.g. `d_main`).
+    def_id: String,
+    /// The source-level function name (e.g. `main`).
+    name: String,
+    /// Signature text `[fn keyword .. body '{')` — identical bytes across
+    /// body-only edits of this function.
+    sig_prefix: String,
+    /// Debug-canonical snapshot of the def's function signature in the
+    /// warm-up module context; any edit whose synth context disagrees is a
+    /// signature change (rejected fast path).
+    sig_debug: String,
+    /// The verified HIR body object — same `Arc` across revisions unless
+    /// this function itself changed.
+    hir_body: Arc<hir::Body>,
+    /// Admitted execution code — same `Arc` across revisions unless this
+    /// function itself changed.
+    code: Arc<FunctionCode>,
+}
+
+/// Outcome of one edit request.
+#[derive(Clone, Debug)]
+pub struct EditOutcome {
+    /// Whether the edit installed a new program snapshot revision.
+    pub ok: bool,
+    /// The session's current (post-decision) revision.
+    pub revision: u64,
+    /// Source name of the single changed function when the fast path ran.
+    pub changed_fn: Option<String>,
+    /// Exactly the def ids whose code was installed this edit.
+    pub install_set: Vec<String>,
+    /// Rendered diagnostics for rejected candidates.
+    pub diagnostics: Vec<String>,
+    /// Why a non-fast-path edit was refused (recorded, never silently
+    /// degraded to a whole-module recompute).
+    pub non_fast_path_reason: Option<String>,
+}
+
+impl EditOutcome {
+    fn rejected(revision: u64, reason: String, diagnostics: Vec<String>) -> Self {
+        EditOutcome {
+            ok: false,
+            revision,
+            changed_fn: None,
+            install_set: Vec::new(),
+            diagnostics,
+            non_fast_path_reason: Some(reason),
+        }
+    }
+}
+
+/// The resident session. Single-threaded (ac-syntax state is `Rc`).
+pub struct FunctionIncrementalSession {
+    /// The entry function's def id text (e.g. `d_main`) — def-order identity
+    /// used by lower/link.
+    entry_def_id: String,
+    caps: Vec<String>,
+    src: String,
+    grammar: GrammarProgram,
+    scanner: CompiledScanner,
+    snap: Snapshot,
+    parse: ParseOutput,
+    fns: Vec<FnRecord>,
+    current: Arc<ProgramSnapshot>,
+    revision: u64,
+    counters: SessionCounters,
+}
+
+/// Warm-up: the one whole-module compile of the session's life (cold path;
+/// NOT part of any edit's hot-path counters). `entry` follows the pipeline's
+/// def-id convention (`"d_main"`), same as `Driver::request`.
+pub fn warmup(
+    src: &str,
+    entry_def_id: &str,
+    caps: &[String],
+) -> Result<FunctionIncrementalSession, String> {
+    let compiled =
+        compile_scalar_source(src, "probe.at", caps).map_err(|ds| render_diags(src, &ds))?;
+    let checked = &compiled.checked;
+    let bundle = checked.bundle();
+    let m = bundle
+        .modules
+        .first()
+        .ok_or_else(|| "bundle has no module".to_string())?;
+
+    // The whole-module lower + link entries key on the def id text
+    // (`d_<name>`); `DefKind::Function::name` is the emitter's internal
+    // symbol (`sf_<name>`), not the source name.
+    m.defs
+        .iter()
+        .find(|d| d.id_text == entry_def_id)
+        .ok_or_else(|| format!("entry def `{entry_def_id}` not found"))?;
+    let entry = entry_def_id.to_string();
+
+    // Whole-module lower + per-unit admission (cold; mirrors the 798 path).
+    let snapshot_hash = fnv64(src.as_bytes());
+    let mir = lower_checked(&checked, &entry_def_id, snapshot_hash).map_err(|e| format!("{e:?}"))?;
+    let units = split_units(&mir).map_err(|e| e)?;
+
+    // Per-fn records: Function defs in module order, matched to AST items
+    // by name for the signature prefix slices.
+    let ast = parse_program_with(src, SourceProfile::Scalar).map_err(|d| d.render("probe.at", src))?;
+    let mut ast_fns: Vec<(String, usize, usize)> = Vec::new(); // (name, item start, body brace)
+    for item in &ast.items {
+        if let Item::Fn(f) = item {
+            ast_fns.push((f.name.name.clone(), f.span.start, f.body.span.start));
+        }
+    }
+
+    let mut fns: Vec<FnRecord> = Vec::new();
+    let mut codes: Vec<Arc<FunctionCode>> = Vec::new();
+    let mut ast_i = 0usize;
+    for (di, d) in m.defs.iter().enumerate() {
+        let hir::DefKind::Function { body, .. } = &d.kind else {
+            return Err(format!("def `{}` is not a plain function", d.id_text));
+        };
+        // Function defs and AST fn items share source order; the record's
+        // source name comes from the AST item.
+        let (name, item_start, body_brace) = ast_fns
+            .get(ast_i)
+            .cloned()
+            .ok_or_else(|| format!("fewer AST items than function defs (def {})", d.id_text))?;
+        ast_i += 1;
+        let _ = di;
+        let unit = units
+            .iter()
+            .find(|u| u.funcs[0].name == d.id_text.as_str())
+            .ok_or_else(|| format!("no MIR unit for def `{}`", d.id_text))?;
+        // Unit admission is real even at warm-up: encode→decode→verify_abc.
+        let flat = encode_abc(unit)
+            .map_err(|e| format!("warm-up encode: {e:?}"))?
+            .to_flat();
+        let decoded = decode_abc(&flat).map_err(|e| format!("warm-up decode: {e:?}"))?;
+        let loaded =
+            verify_abc(decoded, &unit.owner).map_err(|e| format!("warm-up admit: {e:?}"))?;
+        let code = Arc::new(
+            FunctionCode::admit_unit(loaded)
+                .map_err(|e| format!("warm-up function code: {e}"))?,
+        );
+        let body_ref = m
+            .bodies
+            .get(body.0 as usize)
+            .ok_or_else(|| format!("body {} out of range", body.0))?;
+        fns.push(FnRecord {
+            def_id: d.id_text.clone(),
+            name: name.clone(),
+            sig_prefix: src[item_start..body_brace].to_string(),
+            sig_debug: sig_debug_of(m, di),
+            hir_body: Arc::new(body_ref.clone()),
+            code: code.clone(),
+        });
+        codes.push(code);
+    }
+
+    // Def order must agree with the source decl order (first-case contract).
+    let def_order: Vec<&str> = fns.iter().map(|f| f.name.as_str()).collect();
+    let ast_order: Vec<&str> = ast_fns.iter().map(|(n, _, _)| n.as_str()).collect();
+    if def_order != ast_order {
+        return Err(format!(
+            "first-case contract: def order {def_order:?} != source decl order {ast_order:?}"
+        ));
+    }
+
+    let snapshot = Arc::new(
+        ProgramSnapshot::link(codes, &entry_def_id, 0).map_err(|e| format!("warm-up link: {e}"))?,
+    );
+
+    // ac-syntax resident state over the same source.
+    let grammar_src = std::fs::read_to_string(format!(
+        "{}/../../ac-syntax/grammars/auto-core.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .map_err(|e| format!("read auto-core grammar: {e}"))?;
+    let grammar = compile_grammar(&grammar_src).map_err(|e| format!("compile grammar: {e:?}"))?;
+    let scanner = CompiledScanner::compile(&grammar).map_err(|e| format!("scanner: {e:?}"))?;
+    let store = Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&store, src);
+    let parse = parse_snapshot(&grammar, &scanner, &snap, &Budget::default())
+        .map_err(|e| format!("syntax parse: {e:?}"))?;
+    if !parse.tree.diags.is_empty() {
+        return Err(format!("syntax diags: {:?}", parse.tree.diags));
+    }
+
+    Ok(FunctionIncrementalSession {
+        entry_def_id: entry_def_id.to_string(),
+        caps: caps.to_vec(),
+        src: src.to_string(),
+        grammar,
+        scanner,
+        snap,
+        parse,
+        fns,
+        current: snapshot,
+        revision: 0,
+        counters: SessionCounters::default(),
+    })
+}
+
+impl FunctionIncrementalSession {
+    /// The current program snapshot (clone the `Arc` to pin a revision for
+    /// a top-level run).
+    pub fn current(&self) -> Arc<ProgramSnapshot> {
+        self.current.clone()
+    }
+
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    pub fn counters(&self) -> &SessionCounters {
+        &self.counters
+    }
+
+    /// The resident source text at the accepted revision.
+    pub fn src(&self) -> &str {
+        &self.src
+    }
+
+    /// Resident per-function views for identity checks: (name, HIR body
+    /// Arc, code Arc).
+    pub fn resident(&self, name: &str) -> Option<(String, Arc<hir::Body>, Arc<FunctionCode>)> {
+        self.fns
+            .iter()
+            .find(|f| f.name == name)
+            .map(|f| (f.name.clone(), f.hir_body.clone(), f.code.clone()))
+    }
+
+    /// Run the CURRENT snapshot's entry.
+    pub fn run(&self, limits: &ExecLimits, cancel: &CancelFlag) -> (ExecOutcome, ExecTrace) {
+        execute_program(&self.current, limits, cancel)
+    }
+
+    /// Apply one source edit (old-source byte coordinates) and, if it is a
+    /// pure single-function body edit, install the next program revision.
+    /// A rejected edit leaves the session at its last accepted revision.
+    pub fn edit(&mut self, start: u64, end: u64, insert: Vec<u8>) -> Result<EditOutcome, String> {
+        let edit = Edit { start, end, insert };
+        let new_snap = self
+            .snap
+            .edit(&EditRequest {
+                base_revision: self.snap.revision(),
+                edits: vec![edit.clone()],
+            })
+            .map_err(|e| format!("snapshot edit: {e:?}"))?;
+
+        // Local rescan + declaration graft. A recorded fallback is an
+        // explicit non-fast-path edit: refused (recorded), never silently
+        // degraded to whole-module recompute.
+        let inc = incremental_reparse(
+            &self.grammar,
+            &self.scanner,
+            &self.parse,
+            &self.snap,
+            &new_snap,
+            &[edit.clone()],
+            &Budget::default(),
+        )
+        .map_err(|e| format!("incremental reparse: {e:?}"))?;
+        self.counters.set("syntax_rescan_bytes", inc.rescan_bytes);
+        self.counters
+            .set("syntax_reparsed_decls", inc.reparsed_decls as u64);
+        self.counters
+            .set("syntax_reused_decls", inc.reused_decls as u64);
+        if let Some(reason) = &inc.fallback {
+            return Ok(EditOutcome::rejected(
+                self.revision,
+                format!("non-fast-path: syntax fallback {reason:?}"),
+                Vec::new(),
+            ));
+        }
+
+        // Changed-decl detection: the (single) decl whose old span meets the
+        // edit interval. Anything else — zero, multiple, or a decl-count or
+        // name-sequence change — is out of the first-case fast path.
+        let lo = start.min(end);
+        let hi = (start.max(end)).max(lo + 1);
+        let mut changed: Vec<usize> = Vec::new();
+        for (i, d) in self.parse.tree.decls.iter().enumerate() {
+            let (dlo, dhi) = self.parse.tree.abs_range(d.node);
+            if dlo < hi && lo < dhi {
+                changed.push(i);
+            }
+        }
+        if changed.len() != 1 {
+            return Ok(EditOutcome::rejected(
+                self.revision,
+                format!(
+                    "non-fast-path: edit meets {} declarations (single body edit supported)",
+                    changed.len()
+                ),
+                Vec::new(),
+            ));
+        }
+        let changed_idx = changed[0];
+        let old_outline = outline(&self.grammar, &self.parse.tree, &self.snap)
+            .map_err(|e| format!("old outline: {e:?}"))?;
+        let new_outline = outline(&self.grammar, &inc.tree, &new_snap)
+            .map_err(|e| format!("new outline: {e:?}"))?;
+        let old_names: Vec<&str> = old_outline.iter().map(|o| o.name.as_str()).collect();
+        let new_names: Vec<&str> = new_outline.iter().map(|o| o.name.as_str()).collect();
+        if old_names != new_names {
+            return Ok(EditOutcome::rejected(
+                self.revision,
+                "non-fast-path: declaration set changed (add/remove/rename)".to_string(),
+                Vec::new(),
+            ));
+        }
+        if changed_idx >= inc.tree.decls.len() {
+            return Ok(EditOutcome::rejected(
+                self.revision,
+                "non-fast-path: changed decl missing in new tree".to_string(),
+                Vec::new(),
+            ));
+        }
+        let (decl_lo, decl_hi) = inc.tree.abs_range(inc.tree.decls[changed_idx].node);
+        let changed_name = new_outline[changed_idx].name.clone();
+        if changed_name != self.fns[changed_idx].name {
+            return Err(format!(
+                "internal: decl {} name `{changed_name}` != record `{}`",
+                changed_idx, self.fns[changed_idx].name
+            ));
+        }
+        let decl_text = new_snap
+            .read_str(decl_lo, decl_hi)
+            .map_err(|e| format!("decl read: {e:?}"))?;
+
+        // Synth source: unchanged fns contribute their signature text plus
+        // an O(1) empty body stub; the changed fn's real decl text is
+        // space-padded to its true new-source offset so its spans (and only
+        // its — stub spans are never consumed) carry new-source coordinates.
+        let mut synth = String::new();
+        for (i, rec) in self.fns.iter().enumerate() {
+            if i == changed_idx {
+                if (synth.len() as u64) > decl_lo {
+                    return Err(format!(
+                        "internal: synth length {} already past changed decl offset {decl_lo}",
+                        synth.len()
+                    ));
+                }
+                let pad = decl_lo - synth.len() as u64;
+                synth.push_str(&" ".repeat(pad as usize));
+                synth.push_str(&decl_text);
+            } else {
+                synth.push_str(&rec.sig_prefix);
+                synth.push_str("{ }");
+                synth.push(' ');
+            }
+        }
+
+        // Per-function frontend over the synth source: the REAL parse /
+        // resolve / typecheck / emit+bind entries, carrying real work only
+        // for the changed function.
+        let parts = match compile_parts_with(&synth, "probe.at", &self.caps, SourceProfile::Scalar)
+        {
+            Ok(p) => p,
+            Err(ds) => {
+                return Ok(EditOutcome::rejected(
+                    self.revision,
+                    "candidate rejected: frontend diagnostics".to_string(),
+                    ds.iter().map(|d| d.render("probe.at", &synth)).collect(),
+                ));
+            }
+        };
+        for stage in ["project", "resolve", "typecheck", "hir_build"] {
+            self.counters.bump(&format!("{stage}:{changed_name}"));
+        }
+        self.counters.bump("synth_stub_walks");
+
+        let synth_m = parts
+            .bundle
+            .modules
+            .first()
+            .ok_or_else(|| "synth bundle has no module".to_string())?;
+        let def_idx = synth_m
+            .defs
+            .iter()
+            .position(|d| d.id_text == self.fns[changed_idx].def_id)
+            .ok_or_else(|| {
+                format!("def {} missing in synth bundle", self.fns[changed_idx].def_id)
+            })?;
+
+        // Fast-path invariant: the changed function's signature (and the
+        // whole declaration context) is unchanged.
+        if self.fns[changed_idx].sig_debug != sig_debug_of(synth_m, def_idx) {
+            return Ok(EditOutcome::rejected(
+                self.revision,
+                "non-fast-path: signature of the edited function changed".to_string(),
+                Vec::new(),
+            ));
+        }
+
+        // Per-function HIR credential (verifier-constructed).
+        let checked_fn: CheckedFunction = match verify_function(parts.bundle.clone(), def_idx) {
+            Ok(c) => c,
+            Err(ds) => {
+                return Ok(EditOutcome::rejected(
+                    self.revision,
+                    "candidate rejected: HIR verification diagnostics".to_string(),
+                    ds.iter().map(|d| d.render("probe.at", &synth)).collect(),
+                ));
+            }
+        };
+        self.counters.bump(&format!("verify_hir:{changed_name}"));
+
+        // Per-function MIR unit + admission.
+        let new_src_hash = {
+            let whole = new_snap
+                .read_bytes(0, new_snap.len())
+                .map_err(|e| format!("new source read: {e:?}"))?;
+            fnv64(&whole)
+        };
+        let unit = lower_function_unit(
+            &parts.bundle,
+            &self.fns[changed_idx].def_id,
+            &self.caps,
+            new_src_hash,
+        )
+        .map_err(|e| format!("lower: {e:?}"))?;
+        self.counters.bump(&format!("mir_lower:{changed_name}"));
+        let _verified = verify_mir(&unit).map_err(|e| format!("mir verify: {e:?}"))?;
+        self.counters.bump(&format!("verify_mir:{changed_name}"));
+        let flat = encode_abc(&unit)
+            .map_err(|e| format!("abc encode: {e:?}"))?
+            .to_flat();
+        self.counters.bump(&format!("abc_emit:{changed_name}"));
+        let decoded = decode_abc(&flat).map_err(|e| format!("abc decode: {e:?}"))?;
+        self.counters.bump(&format!("decode:{changed_name}"));
+        let loaded = verify_abc(decoded, &unit.owner).map_err(|e| format!("abc verify: {e:?}"))?;
+        self.counters.bump(&format!("verify_abc:{changed_name}"));
+        let new_code = Arc::new(
+            FunctionCode::admit_unit(loaded).map_err(|e| format!("function code: {e}"))?,
+        );
+        self.counters.bump(&format!("load:{changed_name}"));
+
+        // Commit: swap the changed record, Arc-keep every other, link the
+        // next snapshot. Link failure = candidate rejected, old root stays.
+        let next_revision = self.revision + 1;
+        let mut codes: Vec<Arc<FunctionCode>> = Vec::with_capacity(self.fns.len());
+        for (i, rec) in self.fns.iter().enumerate() {
+            if i == changed_idx {
+                codes.push(new_code.clone());
+            } else {
+                codes.push(rec.code.clone());
+            }
+        }
+        let next = match ProgramSnapshot::link(codes, &self.entry_def_id, next_revision) {
+            Ok(s) => Arc::new(s),
+            Err(e) => {
+                return Ok(EditOutcome::rejected(
+                    self.revision,
+                    format!("candidate rejected: link failure `{e}`"),
+                    Vec::new(),
+                ));
+            }
+        };
+        let changed_rec = &mut self.fns[changed_idx];
+        changed_rec.hir_body = Arc::new(checked_fn.into_body());
+        changed_rec.code = new_code;
+
+        // Advance the resident syntax state to the ACTUAL incremental
+        // artifacts (sustained session, not a fresh rebuild).
+        let new_src_vec = new_snap
+            .read_bytes(0, new_snap.len())
+            .map_err(|e| format!("new source read: {e:?}"))?;
+        self.src = String::from_utf8(new_src_vec).map_err(|e| format!("utf8: {e:?}"))?;
+        self.parse = ParseOutput {
+            tree: inc.tree,
+            tokens: inc.tokens,
+            lex_diags: inc.lex_diags,
+            grafted_decls: inc.reused_decls as usize,
+        };
+        self.snap = new_snap;
+        self.current = next;
+        self.revision = next_revision;
+
+        Ok(EditOutcome {
+            ok: true,
+            revision: next_revision,
+            changed_fn: Some(changed_name),
+            install_set: vec![self.fns[changed_idx].def_id.clone()],
+            diagnostics: Vec::new(),
+            non_fast_path_reason: None,
+        })
+    }
+}
+
+fn sig_debug_of(m: &hir::Module, def_idx: usize) -> String {
+    let d = &m.defs[def_idx];
+    let ty = d.kind.fn_type().map(|t| t.0).unwrap_or(u32::MAX);
+    match m.types.get(ty as usize).map(|t| &t.kind) {
+        Some(hir::TypeKind::Function(sig)) => format!("{sig:?}"),
+        other => format!("{other:?}"),
+    }
+}
+
+fn render_diags(src: &str, ds: &[Diagnostic]) -> String {
+    ds.iter()
+        .map(|d| d.render("probe.at", src))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn fnv64(bytes: &[u8]) -> u64 {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in bytes {
+        h ^= *b as u64;
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    h
+}

@@ -10,6 +10,8 @@ auto-av-core = { path = "../core" }
 ac-sema-contract = { path = "../../ac-semantics/contract" }
 auto-ac-prototype = { path = "../../ac-core" }
 ac-artifact-probe = { path = "../../ac-artifact-probe" }
+ac-syntax-rt = { path = "../../ac-syntax/runtime" }
+ac-syntax-grammar = { path = "../../ac-syntax/grammar" }
 rusqlite = { version = "0.30", features = ["bundled"] }
 base64 = "0.22"
 blake3 = "1"

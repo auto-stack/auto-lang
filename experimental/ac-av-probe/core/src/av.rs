@@ -96,17 +96,13 @@ pub fn execute_entry(
     args: &[Value],
 ) -> (ExecOutcome, ExecTrace) {
     let m = module.module();
-    let mut trace = ExecTrace::default();
-    let started = Instant::now();
-    let mut steps: u64 = 0;
-    let mut slot_bytes: usize = 0;
 
     // Executable-closure gate (F798-R6-02 + F798-R12-02): a re-verifiable
     // UNIT — by kind or by an unresolved import call — is never run;
     // closure assembly resolves those callees and re-verifies the whole
     // module first. Zero dispatch steps: an admission refusal, not a run.
     if !module.executable() {
-        let unit_kind = module.module().is_unit;
+        let unit_kind = m.is_unit;
         return (
             ExecOutcome::Infra(format!(
                 "admission violation: credential is a re-verifiable unit ({}), not an executable closure — close it into a whole module first",
@@ -116,9 +112,37 @@ pub fn execute_entry(
                     "unresolved import call"
                 }
             )),
-            trace,
+            ExecTrace::default(),
         );
     }
+    dispatch(m, limits, cancel, args)
+}
+
+/// Execute a linked [`ProgramSnapshot`]'s entry (PLAN-828 T-01): the
+/// snapshot's merged view is dispatchable BY CONSTRUCTION — it was linked
+/// from ABC-admitted single-function units with signature-checked call
+/// bindings, so no whole-closure credential exists or is needed here. A new
+/// top-level call captures the snapshot it wants to see; the immutable
+/// snapshot keeps in-flight chains on their own revision.
+pub fn execute_program(
+    prog: &crate::program_snapshot::ProgramSnapshot,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+) -> (ExecOutcome, ExecTrace) {
+    dispatch(prog.merged(), limits, cancel, &[])
+}
+
+/// The shared flat dispatch loop: explicit frames, budgets and traps.
+fn dispatch(
+    m: &MirModule,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    args: &[Value],
+) -> (ExecOutcome, ExecTrace) {
+    let mut trace = ExecTrace::default();
+    let started = Instant::now();
+    let mut steps: u64 = 0;
+    let mut slot_bytes: usize = 0;
 
     let entry_fn = match m.funcs.get(m.entry as usize) {
         Some(f) => f,
