@@ -8,8 +8,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ErrorKind {
-    /// The request's protocol version is not spoken by this host.
-    UnknownProtocolVersion { client: u32, server: u32 },
+    /// The request's protocol version is not spoken by this host. `client`
+    /// carries the **actual** number the client sent (u64: it is arbitrary
+    /// input, never truncated — review R1 F-03 reported `4294967297`
+    /// collapsing to `1`).
+    UnknownProtocolVersion { client: u64, server: u32 },
     /// The operation name is not in the host's capability list.
     UnknownOperation { operation: String },
     /// A required field is absent from the request payload.
@@ -45,7 +48,7 @@ impl ToolError {
         }
     }
 
-    pub fn unknown_protocol_version(client: u32, server: u32) -> Self {
+    pub fn unknown_protocol_version(client: u64, server: u32) -> Self {
         Self::new(
             ErrorKind::UnknownProtocolVersion { client, server },
             format!("protocol version {client} is not spoken by this host (server: {server})"),
@@ -55,7 +58,9 @@ impl ToolError {
     pub fn unknown_operation(operation: impl Into<String>) -> Self {
         let operation = operation.into();
         Self::new(
-            ErrorKind::UnknownOperation { operation: operation.clone() },
+            ErrorKind::UnknownOperation {
+                operation: operation.clone(),
+            },
             format!("operation '{operation}' is not offered by this tool"),
         )
     }
@@ -63,7 +68,9 @@ impl ToolError {
     pub fn missing_field(field: impl Into<String>) -> Self {
         let field = field.into();
         Self::new(
-            ErrorKind::MissingField { field: field.clone() },
+            ErrorKind::MissingField {
+                field: field.clone(),
+            },
             format!("required field '{field}' is missing"),
         )
     }
@@ -94,7 +101,9 @@ impl ToolError {
     pub fn not_cancellable(operation: impl Into<String>) -> Self {
         let operation = operation.into();
         Self::new(
-            ErrorKind::NotCancellable { operation: operation.clone() },
+            ErrorKind::NotCancellable {
+                operation: operation.clone(),
+            },
             format!("operation '{operation}' is not cancellable"),
         )
     }

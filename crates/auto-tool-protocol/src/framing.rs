@@ -39,7 +39,10 @@ impl From<std::io::Error> for FrameError {
     }
 }
 
-/// Serialize and write one frame, enforcing the frame budget on output.
+/// Serialize and write one frame, enforcing the frame budget on output and
+/// the transmittable nesting envelope in both writer and reader (review R1
+/// F-05): a frame this writer emits is always parseable by the shared
+/// reader's recursion limit.
 pub fn write_frame<W: Write>(
     writer: &mut W,
     message: &Json,
@@ -54,11 +57,42 @@ pub fn write_frame<W: Write>(
             observed: payload.len() as u64,
         });
     }
+    if json_depth(message) > MAX_FRAME_JSON_DEPTH {
+        return Err(FrameError::Malformed {
+            reason: format!(
+                "message nests deeper than the transmittable envelope ({MAX_FRAME_JSON_DEPTH} JSON levels)"
+            ),
+        });
+    }
     let prefix = (payload.len() as u32).to_be_bytes();
     writer.write_all(&prefix)?;
     writer.write_all(&payload)?;
     writer.flush()?;
     Ok(())
+}
+
+/// Transmittable nesting envelope shared by writer and readers (review R1
+/// F-05): strictly below the JSON text deserializer's recursion limit (128)
+/// so any frame one side accepts is readable by the other.
+pub const MAX_FRAME_JSON_DEPTH: usize = 120;
+
+fn json_depth(json: &Json) -> usize {
+    fn depth_of(json: &Json, level: usize) -> usize {
+        match json {
+            Json::Array(items) => items
+                .iter()
+                .map(|item| depth_of(item, level + 1))
+                .max()
+                .unwrap_or(level),
+            Json::Object(map) => map
+                .values()
+                .map(|value| depth_of(value, level + 1))
+                .max()
+                .unwrap_or(level),
+            _ => level,
+        }
+    }
+    depth_of(json, 1)
 }
 
 /// Read one frame. `Ok(None)` = clean EOF before any prefix byte.
@@ -142,7 +176,10 @@ pub fn parse_frame(buffer: &[u8], max_frame_bytes: usize) -> FrameParse {
         }
     };
     match serde_json::from_str(text) {
-        Ok(message) => FrameParse::Complete { message, consumed: total },
+        Ok(message) => FrameParse::Complete {
+            message,
+            consumed: total,
+        },
         Err(e) => FrameParse::Malformed {
             reason: format!("frame payload is not JSON: {e}"),
         },

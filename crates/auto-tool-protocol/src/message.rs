@@ -21,7 +21,9 @@ impl Serialize for WireRequest {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match auto_project_model::wire::request_to_wire(&self.0) {
             Ok(json) => json.serialize(serializer),
-            Err(e) => Err(serde::ser::Error::custom(format!("request not wireable: {e}"))),
+            Err(e) => Err(serde::ser::Error::custom(format!(
+                "request not wireable: {e}"
+            ))),
         }
     }
 }

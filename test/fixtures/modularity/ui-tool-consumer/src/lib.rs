@@ -134,7 +134,11 @@ fn consumer_describes_real_process() {
         ServerBody::DescribeOk { descriptor } => {
             assert_eq!(descriptor.tool_name, "auto-ui-tool");
             assert_eq!(
-                descriptor.capabilities.iter().map(|c| c.operation.as_str()).collect::<Vec<_>>(),
+                descriptor
+                    .capabilities
+                    .iter()
+                    .map(|c| c.operation.as_str())
+                    .collect::<Vec<_>>(),
                 vec!["describe", "validate_project"]
             );
         }
@@ -170,7 +174,10 @@ fn consumer_validates_real_request() {
         ServerBody::ValidateOk { report } => {
             assert!(report.ok, "findings: {:?}", report.findings);
             assert_eq!(report.summary.name.as_deref(), Some("外部 demo"));
-            assert!(report.summary.not_checked.contains(&"generation".to_string()));
+            assert!(report
+                .summary
+                .not_checked
+                .contains(&"generation".to_string()));
         }
         other => panic!("expected ValidateOk, got {other:?}"),
     }
@@ -200,7 +207,10 @@ fn consumer_sees_version_rejection_without_side_effects() {
     match response.body {
         ServerBody::Error { error } => assert_eq!(
             error.kind,
-            ErrorKind::UnknownProtocolVersion { client: 4242, server: 1 }
+            ErrorKind::UnknownProtocolVersion {
+                client: 4242,
+                server: 1
+            }
         ),
         other => panic!("expected Error, got {other:?}"),
     }

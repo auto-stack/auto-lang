@@ -54,7 +54,10 @@ impl LifecyclePolicy {
             exit_codes: vec![
                 (EXIT_CODE_OK, "clean EOF shutdown".into()),
                 (EXIT_CODE_INTERNAL, "internal failure".into()),
-                (EXIT_CODE_FATAL_STREAM, "fatal stream/protocol violation".into()),
+                (
+                    EXIT_CODE_FATAL_STREAM,
+                    "fatal stream/protocol violation".into(),
+                ),
             ],
         }
     }

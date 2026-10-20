@@ -18,9 +18,7 @@
 pub mod resources;
 pub mod validate;
 
-use auto_tool_protocol::message::{
-    ClientBody, ClientEnvelope, ServerBody, ServerEnvelope,
-};
+use auto_tool_protocol::message::{ClientBody, ClientEnvelope, ServerBody, ServerEnvelope};
 use auto_tool_protocol::{
     Capability, LifecyclePolicy, ToolDescriptor, ToolError, EXIT_CODE_FATAL_STREAM,
     EXIT_CODE_INTERNAL, EXIT_CODE_OK, PROTOCOL_VERSION,
@@ -79,9 +77,12 @@ pub fn run_tool<R: Read, W: Write, L: Write>(
             Ok(parsed) => parsed,
             Err(error) => {
                 let id = frame.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
-                if let Err(e) =
-                    respond(&mut control, &ServerEnvelope::error(id, error), max_frame_bytes, &mut log)
-                {
+                if let Err(e) = respond(
+                    &mut control,
+                    &ServerEnvelope::error(id, error),
+                    max_frame_bytes,
+                    &mut log,
+                ) {
                     return e;
                 }
                 continue;
@@ -146,7 +147,10 @@ fn classify_and_parse(
             log,
             "rejected request: protocol version {version} (server: {PROTOCOL_VERSION})"
         );
-        return Err(ToolError::unknown_protocol_version(version as u32, PROTOCOL_VERSION));
+        return Err(ToolError::unknown_protocol_version(
+            version,
+            PROTOCOL_VERSION,
+        ));
     }
     let body = frame["body"]
         .as_object()
@@ -166,7 +170,10 @@ fn classify_and_parse(
         return Err(ToolError::unknown_operation(op));
     }
     let envelope: ClientEnvelope = serde_json::from_value(frame.clone()).map_err(|e| {
-        ToolError::invalid_field("envelope", format!("payload does not match the protocol: {e}"))
+        ToolError::invalid_field(
+            "envelope",
+            format!("payload does not match the protocol: {e}"),
+        )
     })?;
     Ok((envelope.id, envelope.body))
 }
@@ -177,11 +184,10 @@ fn respond(
     max_frame_bytes: usize,
     log: &mut impl Write,
 ) -> Result<(), i32> {
-    let json = serde_json::to_value(envelope)
-        .map_err(|e| {
-            let _ = writeln!(log, "fatal: response serialization failed: {e}");
-            EXIT_CODE_INTERNAL
-        })?;
+    let json = serde_json::to_value(envelope).map_err(|e| {
+        let _ = writeln!(log, "fatal: response serialization failed: {e}");
+        EXIT_CODE_INTERNAL
+    })?;
     auto_tool_protocol::framing::write_frame(control, &json, max_frame_bytes).map_err(|e| {
         let _ = writeln!(log, "fatal: control stream write failed: {e}");
         EXIT_CODE_INTERNAL

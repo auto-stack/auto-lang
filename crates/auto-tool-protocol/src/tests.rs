@@ -10,7 +10,7 @@ use crate::report::{Finding, RequestSummary, Severity, ValidateProjectReport};
 use crate::{Capability, LifecyclePolicy, ToolDescriptor, PROTOCOL_VERSION};
 use auto_project_model::descriptor::SourceInfo;
 use auto_project_model::{parse_document, GenerationRequest};
-use serde_json::json;
+use serde_json::{json, Value as Json};
 use std::io::Cursor;
 
 fn sample_request() -> GenerationRequest {
@@ -75,7 +75,10 @@ fn buffered_parse_reports_incomplete_not_error() {
     // budget applies to the declared length before payload exists
     let over = (7000u32).to_be_bytes();
     match parse_frame(&over, 1024) {
-        FrameParse::TooLarge { limit: 1024, observed: 7000 } => {}
+        FrameParse::TooLarge {
+            limit: 1024,
+            observed: 7000,
+        } => {}
         other => panic!("expected TooLarge, got {other:?}"),
     }
 }
@@ -95,7 +98,10 @@ fn oversize_frame_is_rejected_in_both_directions() {
     let mut reader = Cursor::new(stream);
     assert!(matches!(
         read_frame(&mut reader, 64).unwrap_err(),
-        FrameError::TooLarge { limit: 64, observed: 1_000_000 }
+        FrameError::TooLarge {
+            limit: 64,
+            observed: 1_000_000
+        }
     ));
 }
 
@@ -174,13 +180,19 @@ fn server_envelope_error_round_trip_keeps_kind() {
     let envelope = ServerEnvelope::error(9, ToolError::unknown_protocol_version(99, 1));
     let json = serde_json::to_value(&envelope).expect("serialize");
     assert_eq!(json["body"]["type"], "error");
-    assert_eq!(json["body"]["error"]["kind"]["kind"], "unknown_protocol_version");
+    assert_eq!(
+        json["body"]["error"]["kind"]["kind"],
+        "unknown_protocol_version"
+    );
     let back: ServerEnvelope = serde_json::from_value(json).expect("deserialize");
     assert_eq!(
         back.body,
         ServerBody::Error {
             error: ToolError::new(
-                ErrorKind::UnknownProtocolVersion { client: 99, server: 1 },
+                ErrorKind::UnknownProtocolVersion {
+                    client: 99,
+                    server: 1
+                },
                 "protocol version 99 is not spoken by this host (server: 1)"
             )
         }
@@ -289,6 +301,52 @@ fn error_display_is_stable() {
             budget: "max_frame_bytes".into(),
             limit: 8,
             observed: 9
+        }
+    );
+}
+
+/// Review R1 F-05: the writer enforces the same nesting envelope the shared
+/// reader can parse — a frame this writer emits is always readable.
+#[test]
+fn r1_writer_enforces_the_transmittable_nesting_envelope() {
+    fn nested_arrays(depth: usize) -> Json {
+        let mut value = json!(1);
+        for _ in 0..depth {
+            value = json!([value]);
+        }
+        value
+    }
+    let limit = crate::framing::MAX_FRAME_JSON_DEPTH;
+    // within: write + read round-trip
+    let mut buffer = Vec::new();
+    write_frame(&mut buffer, &nested_arrays(limit - 5), 1024).expect("within envelope");
+    let mut reader = Cursor::new(buffer);
+    let back = read_frame(&mut reader, 1024)
+        .expect("readable")
+        .expect("frame");
+    assert_eq!(back, nested_arrays(limit - 5));
+    // beyond: the writer refuses with a named reason
+    let mut buffer = Vec::new();
+    let err = write_frame(&mut buffer, &nested_arrays(limit + 5), 1024).unwrap_err();
+    assert!(
+        matches!(err, FrameError::Malformed { ref reason } if reason.contains("envelope")),
+        "{err}"
+    );
+}
+
+/// Review R1 F-03: the version-rejection payload carries the actual client
+/// number — u64, never truncated.
+#[test]
+fn r1_unknown_version_error_carries_the_actual_number() {
+    let error = ToolError::unknown_protocol_version(4294967297, 1);
+    let json = serde_json::to_value(&error).expect("serialize");
+    assert_eq!(json["kind"]["client"], 4294967297u64);
+    let back: ToolError = serde_json::from_value(json).expect("deserialize");
+    assert_eq!(
+        back.kind,
+        ErrorKind::UnknownProtocolVersion {
+            client: 4294967297,
+            server: 1
         }
     );
 }

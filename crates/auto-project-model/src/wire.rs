@@ -40,6 +40,14 @@ pub enum WireError {
     UnsupportedKey { variant: &'static str },
     /// A float that JSON cannot carry (NaN / Infinity).
     NonFiniteFloat,
+    /// A path that is not valid Unicode on this platform (e.g. unpaired
+    /// UTF-16 on Windows). Transporting it would silently alter it —
+    /// rejected instead of round-tripping into a different path.
+    UnsupportedPath { role: &'static str },
+    /// The wire tree nests deeper than the transmittable envelope
+    /// (see [`MAX_WIRE_JSON_DEPTH`]). Encode and decode share the limit so
+    /// a codec-accepted payload is always frame-readable.
+    DepthExceeded { limit: usize },
     /// A JSON node with the wrong type or an unknown/missing key.
     Shape { field: &'static str, reason: String },
     /// A tag-encoded node whose tag this codec version does not know.
@@ -56,6 +64,13 @@ impl std::fmt::Display for WireError {
                 write!(f, "object key variant '{variant}' has no wire representation")
             }
             WireError::NonFiniteFloat => write!(f, "non-finite float cannot cross the wire"),
+            WireError::UnsupportedPath { role } => write!(
+                f,
+                "path in '{role}' is not valid Unicode on this platform; refusing to alter it silently"
+            ),
+            WireError::DepthExceeded { limit } => {
+                write!(f, "wire tree nests deeper than the transmittable envelope ({limit} JSON levels)")
+            }
             WireError::Shape { field, reason } => write!(f, "field '{field}': {reason}"),
             WireError::UnknownTag { tag } => write!(f, "unknown wire tag '{tag}'"),
         }
@@ -63,6 +78,14 @@ impl std::fmt::Display for WireError {
 }
 
 impl std::error::Error for WireError {}
+
+/// Maximum JSON tree depth (objects + arrays counted from the wire root) of
+/// a transmittable request. The JSON text reader used by the framing layer
+/// enforces its own recursion limit (128); this codec keeps every accepted
+/// payload strictly below it in *both* directions, so anything the codec
+/// (or `write_frame`) accepts is guaranteed readable by the shared frame
+/// reader. Review R1 F-05 froze this envelope.
+pub const MAX_WIRE_JSON_DEPTH: usize = 120;
 
 // ---------------------------------------------------------------------------
 // Value / ValueKey
@@ -81,7 +104,11 @@ fn value_to_wire(value: &Value) -> Result<Json, WireError> {
         Value::U8(v) => Ok(json!({"t": "u8", "v": v})),
         Value::I64(v) => Ok(json!({"t": "i64", "v": v})),
         Value::Float(v) | Value::Double(v) => {
-            let tag = if matches!(value, Value::Float(_)) { "float" } else { "double" };
+            let tag = if matches!(value, Value::Float(_)) {
+                "float"
+            } else {
+                "double"
+            };
             if v.is_finite() {
                 Ok(json!({"t": tag, "v": v}))
             } else {
@@ -198,16 +225,40 @@ fn value_from_wire(json: &Json) -> Result<Value, WireError> {
         "nil" => Ok(Value::Nil),
         "null" => Ok(Value::Null),
         "bool" => Ok(Value::Bool(payload_bool(obj)?)),
-        "byte" => Ok(Value::Byte(payload_u64(obj)? as u8)),
-        "int" => Ok(Value::Int(payload_i64(obj)?.try_into().map_err(|_| payload_range("int"))?)),
-        "uint" => Ok(Value::Uint(payload_u64(obj)?.try_into().map_err(|_| payload_range("uint"))?)),
-        "usize" => Ok(Value::USize(payload_u64(obj)? as usize)),
-        "i8" => Ok(Value::I8(payload_i64(obj)?.try_into().map_err(|_| payload_range("i8"))?)),
-        "u8" => Ok(Value::U8(payload_u64(obj)?.try_into().map_err(|_| payload_range("u8"))?)),
+        "byte" => Ok(Value::Byte(
+            u8::try_from(payload_u64(obj)?).map_err(|_| payload_range("byte"))?,
+        )),
+        "int" => Ok(Value::Int(
+            payload_i64(obj)?
+                .try_into()
+                .map_err(|_| payload_range("int"))?,
+        )),
+        "uint" => Ok(Value::Uint(
+            payload_u64(obj)?
+                .try_into()
+                .map_err(|_| payload_range("uint"))?,
+        )),
+        "usize" => Ok(Value::USize(
+            usize::try_from(payload_u64(obj)?).map_err(|_| payload_range("usize"))?,
+        )),
+        "i8" => Ok(Value::I8(
+            payload_i64(obj)?
+                .try_into()
+                .map_err(|_| payload_range("i8"))?,
+        )),
+        "u8" => Ok(Value::U8(
+            payload_u64(obj)?
+                .try_into()
+                .map_err(|_| payload_range("u8"))?,
+        )),
         "i64" => Ok(Value::I64(payload_i64(obj)?)),
         "float" | "double" => {
             let n = payload_f64(obj)?;
-            Ok(if tag == "float" { Value::Float(n) } else { Value::Double(n) })
+            Ok(if tag == "float" {
+                Value::Float(n)
+            } else {
+                Value::Double(n)
+            })
         }
         "char" => {
             let s = payload_str(obj)?;
@@ -234,7 +285,11 @@ fn value_from_wire(json: &Json) -> Result<Value, WireError> {
                 values.push(value_from_wire(item)?);
             }
             let array = auto_val::Array { values };
-            Ok(if tag == "array" { Value::Array(array) } else { Value::Block(array) })
+            Ok(if tag == "array" {
+                Value::Array(array)
+            } else {
+                Value::Block(array)
+            })
         }
         "obj" => {
             let entries = arr_key(obj, "e")?;
@@ -265,9 +320,14 @@ fn value_from_wire(json: &Json) -> Result<Value, WireError> {
                 field: "value",
                 reason: "pair tag requires 'v'".into(),
             })?;
-            Ok(Value::Pair(key_from_wire(key)?, Box::new(value_from_wire(value)?)))
+            Ok(Value::Pair(
+                key_from_wire(key)?,
+                Box::new(value_from_wire(value)?),
+            ))
         }
-        other => Err(WireError::UnknownTag { tag: other.to_string() }),
+        other => Err(WireError::UnknownTag {
+            tag: other.to_string(),
+        }),
     }
 }
 
@@ -284,14 +344,16 @@ fn key_from_wire(json: &Json) -> Result<ValueKey, WireError> {
     }
     match obj["k"].as_str() {
         Some("str") => Ok(ValueKey::Str(payload_str(obj)?.into())),
-        Some("int") => Ok(ValueKey::Int(
-            payload_i64(obj)?.try_into().map_err(|_| WireError::Shape {
+        Some("int") => Ok(ValueKey::Int(payload_i64(obj)?.try_into().map_err(
+            |_| WireError::Shape {
                 field: "value-key",
                 reason: "int key out of range".into(),
-            })?,
-        )),
+            },
+        )?)),
         Some("bool") => Ok(ValueKey::Bool(payload_bool(obj)?)),
-        Some(other) => Err(WireError::UnknownTag { tag: other.to_string() }),
+        Some(other) => Err(WireError::UnknownTag {
+            tag: other.to_string(),
+        }),
         None => Err(WireError::Shape {
             field: "value-key.k",
             reason: "key tag must be a string".into(),
@@ -316,52 +378,71 @@ fn payload_range(tag: &str) -> WireError {
 }
 
 fn payload_bool(obj: &Map<String, Json>) -> Result<bool, WireError> {
-    payload(obj)?
-        .as_bool()
-        .ok_or_else(|| WireError::Shape { field: "value", reason: "'v' must be a bool".into() })
+    payload(obj)?.as_bool().ok_or_else(|| WireError::Shape {
+        field: "value",
+        reason: "'v' must be a bool".into(),
+    })
 }
 
 fn payload_str<'a>(obj: &'a Map<String, Json>) -> Result<&'a str, WireError> {
-    payload(obj)?
-        .as_str()
-        .ok_or_else(|| WireError::Shape { field: "value", reason: "'v' must be a string".into() })
+    payload(obj)?.as_str().ok_or_else(|| WireError::Shape {
+        field: "value",
+        reason: "'v' must be a string".into(),
+    })
 }
 
 fn payload_u64(obj: &Map<String, Json>) -> Result<u64, WireError> {
-    payload(obj)?
-        .as_u64()
-        .ok_or_else(|| WireError::Shape {
-            field: "value",
-            reason: "'v' must be a non-negative integer".into(),
-        })
+    payload(obj)?.as_u64().ok_or_else(|| WireError::Shape {
+        field: "value",
+        reason: "'v' must be a non-negative integer".into(),
+    })
 }
 
 fn payload_i64(obj: &Map<String, Json>) -> Result<i64, WireError> {
-    payload(obj)?
-        .as_i64()
-        .ok_or_else(|| WireError::Shape { field: "value", reason: "'v' must be an integer".into() })
+    payload(obj)?.as_i64().ok_or_else(|| WireError::Shape {
+        field: "value",
+        reason: "'v' must be an integer".into(),
+    })
 }
 
 fn payload_f64(obj: &Map<String, Json>) -> Result<f64, WireError> {
-    payload(obj)?
-        .as_f64()
-        .ok_or_else(|| WireError::Shape { field: "value", reason: "'v' must be a number".into() })
+    payload(obj)?.as_f64().ok_or_else(|| WireError::Shape {
+        field: "value",
+        reason: "'v' must be a number".into(),
+    })
 }
 
 // ---------------------------------------------------------------------------
 // Request <-> JSON
 // ---------------------------------------------------------------------------
 
-/// Serialize a request to its wire form.
+/// Serialize a request to its wire form. Rejects (never silently rewrites)
+/// non-Unicode paths, non-finite window sizes, and trees nested deeper than
+/// the transmittable envelope.
 pub fn request_to_wire(request: &GenerationRequest) -> Result<Json, WireError> {
     let mut root = Map::new();
     root.insert("wire".into(), json!(WIRE_FORMAT_VERSION));
     root.insert("request".into(), request_fields_to_wire(request)?);
-    Ok(Json::Object(root))
+    let wire = Json::Object(root);
+    let depth = json_depth(&wire);
+    if depth > MAX_WIRE_JSON_DEPTH {
+        return Err(WireError::DepthExceeded {
+            limit: MAX_WIRE_JSON_DEPTH,
+        });
+    }
+    Ok(wire)
 }
 
-/// Deserialize a request from its wire form. Unknown keys are rejected.
+/// Deserialize a request from its wire form. Unknown or missing keys are
+/// rejected at **every** level (review R1 F-02), and the input tree must
+/// respect the same transmittable depth envelope as encoded output.
 pub fn request_from_wire(json: &Json) -> Result<GenerationRequest, WireError> {
+    let depth = json_depth(json);
+    if depth > MAX_WIRE_JSON_DEPTH {
+        return Err(WireError::DepthExceeded {
+            limit: MAX_WIRE_JSON_DEPTH,
+        });
+    }
     let obj = json.as_object().ok_or_else(|| WireError::Shape {
         field: "root",
         reason: format!("expected object, got {}", json_type(json)),
@@ -382,32 +463,37 @@ pub fn request_from_wire(json: &Json) -> Result<GenerationRequest, WireError> {
     if version != WIRE_FORMAT_VERSION as u64 {
         return Err(WireError::Shape {
             field: "wire",
-            reason: format!("unsupported wire version {version} (codec speaks {WIRE_FORMAT_VERSION})"),
+            reason: format!(
+                "unsupported wire version {version} (codec speaks {WIRE_FORMAT_VERSION})"
+            ),
         });
     }
-    request_fields_from_wire(
-        obj.get("request")
-            .ok_or_else(|| WireError::Shape { field: "request", reason: "missing".into() })?,
-    )
+    request_fields_from_wire(obj.get("request").ok_or_else(|| WireError::Shape {
+        field: "request",
+        reason: "missing".into(),
+    })?)
 }
 
 fn request_fields_to_wire(request: &GenerationRequest) -> Result<Json, WireError> {
     let origin = match &request.origin {
-        RequestOrigin::StaticAdmitted { source, unsupported } => json!({
+        RequestOrigin::StaticAdmitted {
+            source,
+            unsupported,
+        } => json!({
             "kind": "static",
-            "source": source_to_wire(source),
-            "unsupported": unsupported.iter().map(|k| unsupported_kind_tag(*k)).collect::<Vec<_>>(),
+            "source": source_to_wire(source)?,
+            "unsupported": unsupported.iter().map(|k| unsupported_kind_tag(k)).collect::<Vec<_>>(),
         }),
         RequestOrigin::DynamicEvaluated { source } => json!({
             "kind": "dynamic",
-            "source": source_to_wire(source),
+            "source": source_to_wire(source)?,
         }),
     };
     let raw = raw_props_to_wire(&request.raw)?;
     let raw_nodes = raw_nodes_to_wire(&request.raw_nodes)?;
     Ok(json!({
         "origin": origin,
-        "project_root": opt_path(&request.project_root),
+        "project_root": opt_path(&request.project_root, "project_root")?,
         "identity": {
             "name": opt_str(&request.identity.name),
             "version": opt_str(&request.identity.version),
@@ -434,7 +520,7 @@ fn request_fields_to_wire(request: &GenerationRequest) -> Result<Json, WireError
             "back_port": request.runtime.back_port,
             "media_root": opt_str(&request.runtime.media_root),
             "photo_root": opt_str(&request.runtime.photo_root),
-            "window": window_to_wire(&request.runtime.window),
+            "window": window_to_wire(&request.runtime.window)?,
         },
         "scene": scene_tag(request.scene),
         "members": request.members,
@@ -473,9 +559,9 @@ fn request_fields_to_wire(request: &GenerationRequest) -> Result<Json, WireError
         "front_decl": opt_str(&request.front_decl),
         "front_node_form": opt_str(&request.front_node_form),
         "input_sources": request.input_sources.iter()
-            .map(|p| json!(path_str(p)))
-            .collect::<Vec<_>>(),
-        "output_root": opt_path(&request.output_root),
+            .map(|p| Ok(json!(path_str(p, "input_sources")?)))
+            .collect::<Result<Vec<_>, WireError>>()?,
+        "output_root": opt_path(&request.output_root, "output_root")?,
         "mode": match request.mode {
             RequestMode::Generate => "generate",
             RequestMode::Run => "run",
@@ -510,35 +596,85 @@ fn request_fields_from_wire(json: &Json) -> Result<GenerationRequest, WireError>
 
     let origin_obj = field_obj(obj, "origin")?;
     let origin = match str_field(origin_obj, "origin.kind")? {
-        "static" => RequestOrigin::StaticAdmitted {
-            source: source_from_wire(field_obj(origin_obj, "origin.source")?, "origin.source")?,
-            unsupported: field_arr(origin_obj, "origin.unsupported")?
-                .iter()
-                .map(|t| unsupported_kind_from_tag(str_of(t, "origin.unsupported")?))
-                .collect::<Result<Vec<_>, _>>()?,
-        },
-        "dynamic" => RequestOrigin::DynamicEvaluated {
-            source: source_from_wire(field_obj(origin_obj, "origin.source")?, "origin.source")?,
-        },
+        "static" => {
+            require_exact_keys(origin_obj, "origin", &["kind", "source", "unsupported"])?;
+            RequestOrigin::StaticAdmitted {
+                source: source_from_wire(field_obj(origin_obj, "origin.source")?, "origin.source")?,
+                unsupported: field_arr(origin_obj, "origin.unsupported")?
+                    .iter()
+                    .map(|t| unsupported_kind_from_tag(str_of(t, "origin.unsupported")?))
+                    .collect::<Result<Vec<_>, _>>()?,
+            }
+        }
+        "dynamic" => {
+            require_exact_keys(origin_obj, "origin", &["kind", "source"])?;
+            RequestOrigin::DynamicEvaluated {
+                source: source_from_wire(field_obj(origin_obj, "origin.source")?, "origin.source")?,
+            }
+        }
         other => {
-            return Err(WireError::UnknownTag { tag: other.to_string() });
+            return Err(WireError::UnknownTag {
+                tag: other.to_string(),
+            });
         }
     };
 
-    let identity_obj = field_obj(obj, "identity")?;
-    let display_obj = field_obj(obj, "display")?;
-    let runtime_obj = field_obj(obj, "runtime")?;
-    let render_obj = field_obj(obj, "render")?;
-    let toggles_obj = field_obj(obj, "toggles")?;
-    let assets_obj = field_obj(obj, "package_assets")?;
+    let identity_obj = strict_obj(
+        field_json(obj, "identity")?,
+        "identity",
+        &["name", "version", "lang"],
+    )?;
+    let display_obj = strict_obj(
+        field_json(obj, "display")?,
+        "display",
+        &[
+            "title",
+            "title_zh",
+            "icon",
+            "category",
+            "opens",
+            "theme",
+            "accent",
+            "desktop_render",
+            "daemon",
+            "desktop",
+            "desktop_exe",
+            "ui_config",
+        ],
+    )?;
+    let runtime_obj = strict_obj(
+        field_json(obj, "runtime")?,
+        "runtime",
+        &[
+            "api",
+            "scene",
+            "front_port",
+            "back_port",
+            "media_root",
+            "photo_root",
+            "window",
+        ],
+    )?;
+    let render_obj = strict_obj(
+        field_json(obj, "render")?,
+        "render",
+        &["render", "legacy_backend", "effective_backend"],
+    )?;
+    let toggles_obj = strict_obj(
+        field_json(obj, "toggles")?,
+        "toggles",
+        &["shadcn", "default_classes"],
+    )?;
+    let assets_obj = strict_obj(
+        field_json(obj, "package_assets")?,
+        "package_assets",
+        &["npm_deps", "styles", "i18n"],
+    )?;
 
     let theme_decl = match obj.get("theme_decl") {
         Some(Json::Null) | None => None,
         Some(t) => {
-            let t = t.as_object().ok_or_else(|| WireError::Shape {
-                field: "theme_decl",
-                reason: "expected object or null".into(),
-            })?;
+            let t = strict_obj(t, "theme_decl", &["name", "extends", "mode", "colors"])?;
             let colors = field_arr(t, "theme_decl.colors")?
                 .iter()
                 .map(|pair| -> Result<(String, String), WireError> {
@@ -619,10 +755,7 @@ fn request_fields_from_wire(json: &Json) -> Result<GenerationRequest, WireError>
         dep_roots: field_arr(obj, "dep_roots")?
             .iter()
             .map(|d| -> Result<DepRoot, WireError> {
-                let d = d.as_object().ok_or_else(|| WireError::Shape {
-                    field: "dep_roots",
-                    reason: "expected objects".into(),
-                })?;
+                let d = strict_obj(d, "dep_roots", &["name", "path"])?;
                 Ok(DepRoot {
                     name: str_field(d, "dep_roots.name")?.to_string(),
                     path: opt_str_field(d, "path")?,
@@ -646,7 +779,11 @@ fn request_fields_from_wire(json: &Json) -> Result<GenerationRequest, WireError>
         mode: match str_of(obj.get("mode").unwrap_or(&Json::Null), "mode")? {
             "generate" => RequestMode::Generate,
             "run" => RequestMode::Run,
-            other => return Err(WireError::UnknownTag { tag: other.to_string() }),
+            other => {
+                return Err(WireError::UnknownTag {
+                    tag: other.to_string(),
+                })
+            }
         },
         raw: raw_props_from_wire(field_arr(obj, "raw")?)?,
         raw_nodes: raw_nodes_from_wire(field_arr(obj, "raw_nodes")?)?,
@@ -695,10 +832,7 @@ fn raw_props_to_wire(props: &[RawProp]) -> Result<Json, WireError> {
 fn raw_props_from_wire(json: &[Json]) -> Result<Vec<RawProp>, WireError> {
     json.iter()
         .map(|p| {
-            let obj = p.as_object().ok_or_else(|| WireError::Shape {
-                field: "raw",
-                reason: "expected objects".into(),
-            })?;
+            let obj = strict_obj(p, "raw", &["key", "value", "line"])?;
             Ok(RawProp {
                 key: str_field(obj, "raw.key")?.to_string(),
                 value: opt_value_field(obj, "value")?,
@@ -739,17 +873,15 @@ fn raw_nodes_to_wire(nodes: &[RawNodeDecl]) -> Result<Json, WireError> {
 fn raw_nodes_from_wire(json: &[Json]) -> Result<Vec<RawNodeDecl>, WireError> {
     json.iter()
         .map(|n| {
-            let obj = n.as_object().ok_or_else(|| WireError::Shape {
-                field: "raw_nodes",
-                reason: "expected objects".into(),
-            })?;
+            let obj = strict_obj(
+                n,
+                "raw_nodes",
+                &["head", "name", "raw_args", "props", "children", "line"],
+            )?;
             let props = field_arr(obj, "raw_nodes.props")?
                 .iter()
                 .map(|p| -> Result<crate::descriptor::NodeProp, WireError> {
-                    let p = p.as_object().ok_or_else(|| WireError::Shape {
-                        field: "raw_nodes.props",
-                        reason: "expected objects".into(),
-                    })?;
+                    let p = strict_obj(p, "raw_nodes.props", &["key", "value", "line"])?;
                     Ok(crate::descriptor::NodeProp {
                         key: str_field(p, "props.key")?.to_string(),
                         value: value_from_wire(field_json(p, "props.value")?)?,
@@ -769,19 +901,39 @@ fn raw_nodes_from_wire(json: &[Json]) -> Result<Vec<RawNodeDecl>, WireError> {
         .collect()
 }
 
-fn unsupported_kind_tag(kind: UnsupportedKind) -> &'static str {
+/// Wire form of an unsupported-construct kind. Every arm is lossless:
+/// `TypeMismatch` carries its diagnostic payload as `type-mismatch:<field>`
+/// (review R1 F-01: the bare `type-mismatch` tag lost the field).
+fn unsupported_kind_tag(kind: &UnsupportedKind) -> String {
     match kind {
-        UnsupportedKind::Interpolation => "interpolation",
-        UnsupportedKind::FString => "f-string",
-        UnsupportedKind::BareIdentValue => "bare-ident-value",
-        UnsupportedKind::Assignment => "assignment",
-        UnsupportedKind::Call => "call",
-        UnsupportedKind::OnOffOutsideToggle => "on-off-outside-toggle",
-        UnsupportedKind::SingleQuotedString => "single-quoted-string",
-        UnsupportedKind::DepNameUnrepresentable => "dep-name-unrepresentable",
-        UnsupportedKind::RootWrapper => "root-wrapper",
-        UnsupportedKind::ValueSyntax => "value-syntax",
-        UnsupportedKind::TypeMismatch { .. } => "type-mismatch",
+        UnsupportedKind::Interpolation => "interpolation".into(),
+        UnsupportedKind::FString => "f-string".into(),
+        UnsupportedKind::BareIdentValue => "bare-ident-value".into(),
+        UnsupportedKind::Assignment => "assignment".into(),
+        UnsupportedKind::Call => "call".into(),
+        UnsupportedKind::OnOffOutsideToggle => "on-off-outside-toggle".into(),
+        UnsupportedKind::SingleQuotedString => "single-quoted-string".into(),
+        UnsupportedKind::DepNameUnrepresentable => "dep-name-unrepresentable".into(),
+        UnsupportedKind::RootWrapper => "root-wrapper".into(),
+        UnsupportedKind::ValueSyntax => "value-syntax".into(),
+        UnsupportedKind::TypeMismatch { field } => format!("type-mismatch:{field}"),
+    }
+}
+
+/// The closed set of fields the scanner classifies as
+/// [`UnsupportedKind::TypeMismatch`] — the single source
+/// (`from_scan.rs`) constructs only these. Decoding maps a wire payload
+/// back to the canonical `&'static str`; a payload outside the set is
+/// drift and rejected loudly (the DTO keeps `&'static str`, so invented
+/// fields cannot be materialized).
+fn type_mismatch_field(payload: &str) -> Result<&'static str, WireError> {
+    match payload {
+        "members" => Ok("members"),
+        "defines" => Ok("defines"),
+        other => Err(WireError::Shape {
+            field: "origin.unsupported",
+            reason: format!("type-mismatch field '{other}' is not produced by the scanner"),
+        }),
     }
 }
 
@@ -797,8 +949,12 @@ fn unsupported_kind_from_tag(tag: &str) -> Result<UnsupportedKind, WireError> {
         "dep-name-unrepresentable" => Ok(UnsupportedKind::DepNameUnrepresentable),
         "root-wrapper" => Ok(UnsupportedKind::RootWrapper),
         "value-syntax" => Ok(UnsupportedKind::ValueSyntax),
-        "type-mismatch" => Ok(UnsupportedKind::TypeMismatch { field: "?" }),
-        other => Err(WireError::UnknownTag { tag: other.to_string() }),
+        other if other.starts_with("type-mismatch:") => Ok(UnsupportedKind::TypeMismatch {
+            field: type_mismatch_field(other.trim_start_matches("type-mismatch:"))?,
+        }),
+        other => Err(WireError::UnknownTag {
+            tag: other.to_string(),
+        }),
     }
 }
 
@@ -826,14 +982,19 @@ fn opt_str(value: &Option<String>) -> Json {
     }
 }
 
-fn path_str(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
+/// Exact-Unicode path transport (review R1 F-01): `to_string_lossy` would
+/// silently rewrite unpaired UTF-16 (Windows) into U+FFFD — a *different*
+/// path. Non-Unicode paths are rejected by name instead.
+fn path_str(path: &Path, role: &'static str) -> Result<String, WireError> {
+    path.to_str()
+        .map(|s| s.to_string())
+        .ok_or(WireError::UnsupportedPath { role })
 }
 
-fn opt_path(path: &Option<PathBuf>) -> Json {
+fn opt_path(path: &Option<PathBuf>, role: &'static str) -> Result<Json, WireError> {
     match path {
-        Some(p) => Json::String(path_str(p)),
-        None => Json::Null,
+        Some(p) => Ok(Json::String(path_str(p, role)?)),
+        None => Ok(Json::Null),
     }
 }
 
@@ -844,17 +1005,12 @@ fn opt_value(value: &Option<Value>) -> Result<Json, WireError> {
     }
 }
 
-fn source_to_wire(source: &SourceInfo) -> Json {
-    json!({ "path": opt_path(&source.path) })
+fn source_to_wire(source: &SourceInfo) -> Result<Json, WireError> {
+    Ok(json!({ "path": opt_path(&source.path, "origin.source.path")? }))
 }
 
 fn source_from_wire(obj: &Map<String, Json>, field: &'static str) -> Result<SourceInfo, WireError> {
-    if obj.len() != 1 || !obj.contains_key("path") {
-        return Err(WireError::Shape {
-            field,
-            reason: "expected exactly {'path'}".into(),
-        });
-    }
+    require_exact_keys(obj, field, &["path"])?;
     Ok(SourceInfo {
         path: opt_path_field(obj, "path")?,
     })
@@ -875,15 +1031,58 @@ fn scene_from_tag(tag: &str) -> Result<SceneKind, WireError> {
         "ui" => Ok(SceneKind::Ui),
         "c" => Ok(SceneKind::C),
         "default" => Ok(SceneKind::Default),
-        other => Err(WireError::UnknownTag { tag: other.to_string() }),
+        other => Err(WireError::UnknownTag {
+            tag: other.to_string(),
+        }),
     }
 }
 
-fn window_to_wire(window: &Option<WindowSpec>) -> Json {
+/// Window component bounds mirrored from `descriptor::parse_window`
+/// (w 200..=7680, h 200..=4320) — the closed producible set of
+/// `WindowSpec::Size`. Encode and decode share them (review R1 F-03:
+/// `1e300` used to narrow into `f32::INFINITY`, and NaN serialized as a
+/// JSON null that no typed consumer could read back).
+fn window_component(value: f64, field: &'static str) -> Result<f32, WireError> {
+    if !value.is_finite() {
+        return Err(WireError::Shape {
+            field,
+            reason: "window component must be finite".into(),
+        });
+    }
+    let (lo, hi) = if field.ends_with('w') {
+        (200.0, 7680.0)
+    } else {
+        (200.0, 4320.0)
+    };
+    if !(lo..=hi).contains(&value) {
+        return Err(WireError::Shape {
+            field,
+            reason: format!("window component out of the Pac {lo}..={hi} bound: {value}"),
+        });
+    }
+    // exact f32 representability: a wire f64 with sub-f32 precision would
+    // be silently distorted by narrowing — reject instead
+    let narrowed = value as f32;
+    if (narrowed as f64) != value {
+        return Err(WireError::Shape {
+            field,
+            reason: format!("window component {value} is not exactly f32-representable"),
+        });
+    }
+    Ok(narrowed)
+}
+
+fn window_to_wire(window: &Option<WindowSpec>) -> Result<Json, WireError> {
     match window {
-        None => Json::Null,
-        Some(WindowSpec::Fit) => json!({"kind": "fit"}),
-        Some(WindowSpec::Size(w, h)) => json!({"kind": "size", "w": w, "h": h}),
+        None => Ok(Json::Null),
+        Some(WindowSpec::Fit) => Ok(json!({"kind": "fit"})),
+        Some(WindowSpec::Size(w, h)) => {
+            // f32 -> f64 widening is exact; the checks keep the encoded
+            // set identical to what decode accepts.
+            window_component(*w as f64, "runtime.window.w")?;
+            window_component(*h as f64, "runtime.window.h")?;
+            Ok(json!({"kind": "size", "w": w, "h": h}))
+        }
     }
 }
 
@@ -893,12 +1092,26 @@ fn window_from_wire(json: &Json) -> Result<WindowSpec, WireError> {
         reason: format!("expected object, got {}", json_type(json)),
     })?;
     match str_field(obj, "runtime.window.kind")? {
-        "fit" => Ok(WindowSpec::Fit),
-        "size" => Ok(WindowSpec::Size(
-            f32_of(field_json(obj, "w")?, "runtime.window.w")? as f32,
-            f32_of(field_json(obj, "h")?, "runtime.window.h")? as f32,
-        )),
-        other => Err(WireError::UnknownTag { tag: other.to_string() }),
+        "fit" => {
+            require_exact_keys(obj, "runtime.window", &["kind"])?;
+            Ok(WindowSpec::Fit)
+        }
+        "size" => {
+            require_exact_keys(obj, "runtime.window", &["kind", "w", "h"])?;
+            Ok(WindowSpec::Size(
+                window_component(
+                    f64_of(field_json(obj, "w")?, "runtime.window.w")?,
+                    "runtime.window.w",
+                )?,
+                window_component(
+                    f64_of(field_json(obj, "h")?, "runtime.window.h")?,
+                    "runtime.window.h",
+                )?,
+            ))
+        }
+        other => Err(WireError::UnknownTag {
+            tag: other.to_string(),
+        }),
     }
 }
 
@@ -918,15 +1131,36 @@ fn render_spec_from_wire(json: &Json) -> Result<RenderSpec, WireError> {
         reason: format!("expected object, got {}", json_type(json)),
     })?;
     match str_field(obj, "render.render.kind")? {
-        "absent" => Ok(RenderSpec::Absent),
-        "single" => Ok(RenderSpec::Single(str_field(obj, "render.render.name")?.to_string())),
-        "multi" => Ok(RenderSpec::Multi(str_list(obj, "render.render.names")?)),
-        "split" => Ok(RenderSpec::Split {
-            front: str_list(obj, "render.render.front")?,
-            back: str_field(obj, "render.render.back")?.to_string(),
+        "absent" => {
+            require_exact_keys(obj, "render.render", &["kind"])?;
+            Ok(RenderSpec::Absent)
+        }
+        "single" => {
+            require_exact_keys(obj, "render.render", &["kind", "name"])?;
+            Ok(RenderSpec::Single(
+                str_field(obj, "render.render.name")?.to_string(),
+            ))
+        }
+        "multi" => {
+            require_exact_keys(obj, "render.render", &["kind", "names"])?;
+            Ok(RenderSpec::Multi(str_list(obj, "render.render.names")?))
+        }
+        "split" => {
+            require_exact_keys(obj, "render.render", &["kind", "front", "back"])?;
+            Ok(RenderSpec::Split {
+                front: str_list(obj, "render.render.front")?,
+                back: str_field(obj, "render.render.back")?.to_string(),
+            })
+        }
+        "unknown" => {
+            require_exact_keys(obj, "render.render", &["kind", "raw"])?;
+            Ok(RenderSpec::Unknown(
+                str_field(obj, "render.render.raw")?.to_string(),
+            ))
+        }
+        other => Err(WireError::UnknownTag {
+            tag: other.to_string(),
         }),
-        "unknown" => Ok(RenderSpec::Unknown(str_field(obj, "render.render.raw")?.to_string())),
-        other => Err(WireError::UnknownTag { tag: other.to_string() }),
     }
 }
 
@@ -944,14 +1178,93 @@ fn toggle_from_wire(json: &Json) -> Result<ToggleValue, WireError> {
         reason: format!("expected object, got {}", json_type(json)),
     })?;
     match str_field(obj, "toggles.kind")? {
-        "unset" => Ok(ToggleValue::Unset),
-        "bool" => Ok(ToggleValue::Bool(bool_field(obj, "toggles.v")?)),
-        "str" => Ok(ToggleValue::Str(str_field(obj, "toggles.v")?.to_string())),
-        other => Err(WireError::UnknownTag { tag: other.to_string() }),
+        "unset" => {
+            require_exact_keys(obj, "toggles", &["kind"])?;
+            Ok(ToggleValue::Unset)
+        }
+        "bool" => {
+            require_exact_keys(obj, "toggles", &["kind", "v"])?;
+            Ok(ToggleValue::Bool(bool_field(obj, "toggles.v")?))
+        }
+        "str" => {
+            require_exact_keys(obj, "toggles", &["kind", "v"])?;
+            Ok(ToggleValue::Str(str_field(obj, "toggles.v")?.to_string()))
+        }
+        other => Err(WireError::UnknownTag {
+            tag: other.to_string(),
+        }),
     }
 }
 
-fn field_obj<'a>(obj: &'a Map<String, Json>, field: &'static str) -> Result<&'a Map<String, Json>, WireError> {
+/// Strict key-set check (review R1 F-02): every listed key must be present
+/// (explicit null is a value) and no unlisted key may appear, at every
+/// nesting level — codec drift fails loudly instead of masquerading as a
+/// defaulted field.
+fn require_exact_keys(
+    obj: &Map<String, Json>,
+    field: &'static str,
+    keys: &[&str],
+) -> Result<(), WireError> {
+    for key in keys {
+        if !obj.contains_key(*key) {
+            return Err(WireError::Shape {
+                field,
+                reason: format!(
+                    "missing key '{key}' (explicit null is required for an absent value)"
+                ),
+            });
+        }
+    }
+    for key in obj.keys() {
+        if !keys.contains(&key.as_str()) {
+            return Err(WireError::Shape {
+                field,
+                reason: format!("unknown key '{key}'"),
+            });
+        }
+    }
+    Ok(())
+}
+
+/// Object accessor with an exact key-set contract.
+fn strict_obj<'a>(
+    json: &'a Json,
+    field: &'static str,
+    keys: &[&str],
+) -> Result<&'a Map<String, Json>, WireError> {
+    let obj = json.as_object().ok_or_else(|| WireError::Shape {
+        field,
+        reason: format!("expected object, got {}", json_type(json)),
+    })?;
+    require_exact_keys(obj, field, keys)?;
+    Ok(obj)
+}
+
+/// JSON tree depth (nesting of objects/arrays from the root) — the shared
+/// transmittable-envelope measure (review R1 F-05).
+fn json_depth(json: &Json) -> usize {
+    fn depth_of(json: &Json, level: usize) -> usize {
+        match json {
+            Json::Array(items) => items
+                .iter()
+                .map(|item| depth_of(item, level + 1))
+                .max()
+                .unwrap_or(level),
+            Json::Object(map) => map
+                .values()
+                .map(|value| depth_of(value, level + 1))
+                .max()
+                .unwrap_or(level),
+            _ => level,
+        }
+    }
+    depth_of(json, 1)
+}
+
+fn field_obj<'a>(
+    obj: &'a Map<String, Json>,
+    field: &'static str,
+) -> Result<&'a Map<String, Json>, WireError> {
     obj.get(field.rsplit('.').next().unwrap_or(field))
         .and_then(Json::as_object)
         .ok_or_else(|| WireError::Shape {
@@ -1001,24 +1314,21 @@ fn str_field<'a>(obj: &'a Map<String, Json>, field: &'static str) -> Result<&'a 
     str_of(field_json(obj, field)?, field)
 }
 
-fn opt_str_field(
-    obj: &Map<String, Json>,
-    key: &str,
-) -> Result<Option<String>, WireError> {
+fn opt_str_field(obj: &Map<String, Json>, key: &str) -> Result<Option<String>, WireError> {
     match obj.get(key) {
         Some(Json::Null) | None => Ok(None),
         Some(Json::String(s)) => Ok(Some(s.clone())),
         Some(other) => Err(WireError::Shape {
             field: "request",
-            reason: format!("key '{key}': expected string or null, got {}", json_type(other)),
+            reason: format!(
+                "key '{key}': expected string or null, got {}",
+                json_type(other)
+            ),
         }),
     }
 }
 
-fn opt_path_field(
-    obj: &Map<String, Json>,
-    key: &str,
-) -> Result<Option<PathBuf>, WireError> {
+fn opt_path_field(obj: &Map<String, Json>, key: &str) -> Result<Option<PathBuf>, WireError> {
     Ok(opt_str_field(obj, key)?.map(PathBuf::from))
 }
 
@@ -1043,7 +1353,10 @@ fn opt_u16_field(obj: &Map<String, Json>, key: &str) -> Result<Option<u16>, Wire
         }),
         Some(other) => Err(WireError::Shape {
             field: "request",
-            reason: format!("key '{key}': expected number or null, got {}", json_type(other)),
+            reason: format!(
+                "key '{key}': expected number or null, got {}",
+                json_type(other)
+            ),
         }),
     }
 }
@@ -1079,10 +1392,6 @@ fn f64_of(json: &Json, field: &'static str) -> Result<f64, WireError> {
         field,
         reason: "expected a number".into(),
     })
-}
-
-fn f32_of(json: &Json, field: &'static str) -> Result<f32, WireError> {
-    f64_of(json, field).map(|v| v as f32)
 }
 
 // Keep Number construction referenced (unused-warning guard for json! paths

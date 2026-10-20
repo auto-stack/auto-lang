@@ -1,6 +1,14 @@
 //! `validate_project` — I-PROJECT metadata / path / request-constraint
-//! checks (PLAN-815 §5.5). Read-only: existence probes via `std::fs`
+//! checks (PLAN-815 §5.5). Read-only: existence/role probes via `std::fs`
 //! metadata, no writes, no evaluation, no side effects.
+//!
+//! Path discipline (review R1 F-04): relative paths in the request resolve
+//! against the request's own `project_root` — never the tool process's
+//! cwd. A relative path that cannot be anchored (no project root, or the
+//! root itself is relative) is reported as unverifiable instead of being
+//! silently probed against whatever directory the tool happens to start
+//! in; role mismatches (file where a directory is declared, and vice
+//! versa) are findings, not accidents.
 //!
 //! Honesty contract: a passing report says the *request* is well-formed and
 //! its declared paths exist — nothing more. [`NOT_CHECKED_SCOPES`] is echoed
@@ -10,7 +18,7 @@
 use auto_project_model::generation_request::RequestOrigin;
 use auto_project_model::GenerationRequest;
 use auto_tool_protocol::report::{Finding, RequestSummary, Severity, ValidateProjectReport};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// What validation actually covers.
 pub const CHECKED_SCOPES: &[&str] = &["metadata", "paths", "request-constraints"];
@@ -21,6 +29,28 @@ pub const NOT_CHECKED_SCOPES: &[&str] = &[
     "generation",
     "build",
 ];
+
+/// How a declared path was anchored for probing.
+enum Anchored {
+    /// Absolute, or relative joined onto the request's absolute project root.
+    Resolved(PathBuf),
+    /// Cannot be anchored: the request carries no project root, or the root
+    /// itself is relative (reported separately). Never probed against the
+    /// tool process's working directory.
+    NoAnchor { raw: PathBuf },
+}
+
+fn anchor(request: &GenerationRequest, raw: &Path) -> Anchored {
+    if raw.is_absolute() {
+        return Anchored::Resolved(raw.to_path_buf());
+    }
+    match &request.project_root {
+        Some(root) if root.is_absolute() => Anchored::Resolved(root.join(raw)),
+        _ => Anchored::NoAnchor {
+            raw: raw.to_path_buf(),
+        },
+    }
+}
 
 /// Validate one request.
 pub fn validate_request(request: &GenerationRequest) -> ValidateProjectReport {
@@ -36,18 +66,6 @@ pub fn validate_request(request: &GenerationRequest) -> ValidateProjectReport {
             )
             .with_field("output_root"),
         );
-    }
-    if let Some(output_root) = &request.output_root {
-        if output_root.is_file() {
-            findings.push(
-                Finding::new(
-                    Severity::Error,
-                    "output-root-is-file",
-                    "output_root exists but is a regular file, not a directory",
-                )
-                .with_field("output_root"),
-            );
-        }
     }
 
     // --- origin honesty ------------------------------------------------------
@@ -68,49 +86,177 @@ pub fn validate_request(request: &GenerationRequest) -> ValidateProjectReport {
         }
     }
 
-    // --- path existence (read-only probes) -----------------------------------
-    if let Some(root) = &request.project_root {
-        if !root.exists() {
+    // --- project root: the anchor for every other relative path ---------------
+    let root_usable = match &request.project_root {
+        None => None,
+        Some(root) if !root.is_absolute() => {
             findings.push(
                 Finding::new(
                     Severity::Error,
-                    "project-root-missing",
-                    format!("declared project root does not exist: {}", root.display()),
+                    "project-root-not-absolute",
+                    format!(
+                        "project_root '{}' is relative; relative paths resolve against the \
+                         request's project root, so the root itself must be absolute",
+                        root.display()
+                    ),
                 )
                 .with_field("project_root"),
             );
+            None
         }
-    }
-    for source in &request.input_sources {
-        if !source.exists() {
-            findings.push(
-                Finding::new(
-                    Severity::Error,
-                    "input-source-missing",
-                    format!("declared evaluated input source does not exist: {}", source.display()),
-                )
-                .with_field("input_sources"),
-            );
-        }
-    }
-    for dep in &request.dep_roots {
-        if let Some(path) = &dep.path {
-            let resolved = request
-                .resolve_against_root(path)
-                .unwrap_or_else(|| Path::new(path).to_path_buf());
-            if !resolved.exists() {
+        Some(root) => {
+            if !root.exists() {
                 findings.push(
                     Finding::new(
-                        Severity::Warning,
-                        "dep-root-missing",
+                        Severity::Error,
+                        "project-root-missing",
+                        format!("declared project root does not exist: {}", root.display()),
+                    )
+                    .with_field("project_root"),
+                );
+                None
+            } else if root.is_file() {
+                findings.push(
+                    Finding::new(
+                        Severity::Error,
+                        "project-root-is-file",
                         format!(
-                            "declared dependency root '{}' resolves to a missing path: {}",
-                            dep.name,
-                            resolved.display()
+                            "declared project root exists but is a regular file: {}",
+                            root.display()
+                        ),
+                    )
+                    .with_field("project_root"),
+                );
+                None
+            } else {
+                Some(root.as_path())
+            }
+        }
+    };
+
+    // --- evaluated input sources (load-bearing: error severity) ---------------
+    for source in &request.input_sources {
+        match anchor(request, source) {
+            Anchored::Resolved(path) => {
+                if !path.exists() {
+                    findings.push(
+                        Finding::new(
+                            Severity::Error,
+                            "input-source-missing",
+                            format!(
+                                "declared evaluated input source does not exist: {}",
+                                path.display()
+                            ),
+                        )
+                        .with_field("input_sources"),
+                    );
+                } else if path.is_dir() {
+                    findings.push(
+                        Finding::new(
+                            Severity::Error,
+                            "input-source-is-directory",
+                            format!(
+                                "declared evaluated input source is a directory, expected a file: {}",
+                                path.display()
+                            ),
+                        )
+                        .with_field("input_sources"),
+                    );
+                }
+            }
+            Anchored::NoAnchor { raw } => findings.push(
+                Finding::new(
+                    Severity::Warning,
+                    "relative-path-without-root",
+                    format!(
+                        "relative input source '{}' cannot be verified: the request carries no \
+                         project root (never probed against the tool's working directory)",
+                        raw.display()
+                    ),
+                )
+                .with_field("input_sources"),
+            ),
+        }
+    }
+
+    // --- output root (delivery target; only role errors are findings) ---------
+    if let Some(output_root) = &request.output_root {
+        match anchor(request, output_root) {
+            Anchored::Resolved(path) => {
+                if path.is_file() {
+                    findings.push(
+                        Finding::new(
+                            Severity::Error,
+                            "output-root-is-file",
+                            format!(
+                                "output_root exists but is a regular file, not a directory: {}",
+                                path.display()
+                            ),
+                        )
+                        .with_field("output_root"),
+                    );
+                }
+            }
+            Anchored::NoAnchor { raw } => findings.push(
+                Finding::new(
+                    Severity::Warning,
+                    "relative-path-without-root",
+                    format!(
+                        "relative output_root '{}' cannot be verified: the request carries no \
+                         project root (never probed against the tool's working directory)",
+                        raw.display()
+                    ),
+                )
+                .with_field("output_root"),
+            ),
+        }
+    }
+
+    // --- dependency roots / front directory (advisory: warning severity) ------
+    for dep in &request.dep_roots {
+        if let Some(path) = &dep.path {
+            match anchor(request, Path::new(path)) {
+                Anchored::Resolved(resolved) => {
+                    if !resolved.exists() {
+                        findings.push(
+                            Finding::new(
+                                Severity::Warning,
+                                "dep-root-missing",
+                                format!(
+                                    "declared dependency root '{}' resolves to a missing path: {}",
+                                    dep.name,
+                                    resolved.display()
+                                ),
+                            )
+                            .with_field("dep_roots"),
+                        );
+                    } else if resolved.is_file() {
+                        findings.push(
+                            Finding::new(
+                                Severity::Warning,
+                                "dep-root-is-file",
+                                format!(
+                                    "declared dependency root '{}' resolves to a regular file: {}",
+                                    dep.name,
+                                    resolved.display()
+                                ),
+                            )
+                            .with_field("dep_roots"),
+                        );
+                    }
+                }
+                Anchored::NoAnchor { raw } => findings.push(
+                    Finding::new(
+                        Severity::Warning,
+                        "relative-path-without-root",
+                        format!(
+                            "relative dependency root '{}' cannot be verified: the request \
+                             carries no project root",
+                            raw.display()
                         ),
                     )
                     .with_field("dep_roots"),
-                );
+                ),
             }
         }
     }
@@ -119,22 +265,49 @@ pub fn validate_request(request: &GenerationRequest) -> ValidateProjectReport {
         .as_deref()
         .or(request.front_decl.as_deref());
     if let Some(front) = front {
-        if let Some(resolved) = request.resolve_against_root(front) {
-            if !resolved.exists() {
-                findings.push(
-                    Finding::new(
-                        Severity::Warning,
-                        "front-directory-missing",
-                        format!(
-                            "declared front directory does not exist: {}",
-                            resolved.display()
-                        ),
-                    )
-                    .with_field("front"),
-                );
+        match anchor(request, Path::new(front)) {
+            Anchored::Resolved(resolved) => {
+                if !resolved.exists() {
+                    findings.push(
+                        Finding::new(
+                            Severity::Warning,
+                            "front-directory-missing",
+                            format!(
+                                "declared front directory does not exist: {}",
+                                resolved.display()
+                            ),
+                        )
+                        .with_field("front"),
+                    );
+                } else if resolved.is_file() {
+                    findings.push(
+                        Finding::new(
+                            Severity::Warning,
+                            "front-is-file",
+                            format!(
+                                "declared front directory exists but is a regular file: {}",
+                                resolved.display()
+                            ),
+                        )
+                        .with_field("front"),
+                    );
+                }
             }
+            Anchored::NoAnchor { raw } => findings.push(
+                Finding::new(
+                    Severity::Warning,
+                    "relative-path-without-root",
+                    format!(
+                        "relative front directory '{}' cannot be verified: the request carries \
+                         no project root",
+                        raw.display()
+                    ),
+                )
+                .with_field("front"),
+            ),
         }
     }
+    let _ = root_usable; // root usability is folded into the findings above
 
     let ok = !findings.iter().any(|f| f.severity == Severity::Error);
     ValidateProjectReport {

@@ -10,7 +10,11 @@ use std::path::{Path, PathBuf};
 
 fn repo_root() -> PathBuf {
     // crates/auto-ui-tools -> repo root
-    Path::new(env!("CARGO_MANIFEST_DIR")).ancestors().nth(2).unwrap().to_path_buf()
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .unwrap()
+        .to_path_buf()
 }
 
 fn count_files(dir: &Path) -> usize {
@@ -39,7 +43,10 @@ fn manifest_groups_are_registered_once_with_licenses() {
     unique.dedup();
     assert_eq!(targets.len(), unique.len(), "distinct relocation targets");
     for group in ASSET_GROUPS {
-        assert!(matches!(group.license, License::InHouse | License::Mit { .. }));
+        assert!(matches!(
+            group.license,
+            License::InHouse | License::Mit { .. }
+        ));
     }
     assert!(matches!(
         group("shadcn-ui").unwrap().license,
@@ -52,7 +59,12 @@ fn production_sources_exist_and_are_non_empty() {
     let root = repo_root();
     for group in ASSET_GROUPS {
         let source = root.join(group.current_source);
-        assert!(source.is_dir(), "{} source missing: {}", group.id, source.display());
+        assert!(
+            source.is_dir(),
+            "{} source missing: {}",
+            group.id,
+            source.display()
+        );
         let files = count_files(&source);
         assert!(files > 0, "{} source is empty", group.id);
     }
@@ -62,17 +74,28 @@ fn production_sources_exist_and_are_non_empty() {
 fn known_source_anchors_are_present() {
     let root = repo_root();
     // gallery: single viewport host file
-    assert!(root.join("crates/auto-man/assets/gallery/AppViewport.vue").is_file());
+    assert!(root
+        .join("crates/auto-man/assets/gallery/AppViewport.vue")
+        .is_file());
     // wm: window manager hosts + remote renderer external input
-    assert!(root.join("crates/auto-man/assets/wm/VirtualWindow.vue").is_file());
+    assert!(root
+        .join("crates/auto-man/assets/wm/VirtualWindow.vue")
+        .is_file());
     assert!(root.join("packages/drawlist-renderer/src").is_dir());
     let wm = group("wm").unwrap();
-    assert!(wm.external_inputs.contains(&"packages/drawlist-renderer/src"));
+    assert!(wm
+        .external_inputs
+        .contains(&"packages/drawlist-renderer/src"));
     // shadcn: snapshot provenance record travels with the group
-    assert!(root.join("crates/auto-man/assets/shadcn-ui/SNAPSHOT.md").is_file());
+    assert!(root
+        .join("crates/auto-man/assets/shadcn-ui/SNAPSHOT.md")
+        .is_file());
     // file-count anchors (coarse; catches wholesale source removal)
     let shadcn = count_files(&root.join("crates/auto-man/assets/shadcn-ui"));
-    assert!(shadcn > 300, "shadcn snapshot unexpectedly small: {shadcn} files");
+    assert!(
+        shadcn > 300,
+        "shadcn snapshot unexpectedly small: {shadcn} files"
+    );
 }
 
 #[test]
