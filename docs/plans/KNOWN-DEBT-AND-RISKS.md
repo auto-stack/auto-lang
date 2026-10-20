@@ -1,3 +1,11 @@
+### Plan 814（2026-10-20，独立复审R1就绪核查，needs_fix）
+
+受审 `03d983ae9a654d06963b2ad56a04a3adb3bf8e6e`，r2；[报告/AC矩阵/冻结SD](attachments/814/review-r1/review.md)。**F814-R1-01(P1) OPEN**：当前交接明确不可编译WIP，SDK根项级联未完、compiler/runtime只有文档骨架、auto-vm未切SDK、A候选及消费者/资源验证未交付。**F814-R1-02(P1) OPEN**：SDK无条件normal依赖auto-ui-dialect并直接调用完整UI grammar，违反AC-01/08。均属合同内未完成项，不因记债降格；无需重复整套最终验收。Plan保持executing1/15，T-01保留；原树work完成T-02/T-03/T-13及定向证据并提交后申请具名阶段复审，完整最终审查还需B原任务。未修改实施或跑Cargo/整档/实机/合入；后续pass后的merge-owned冻结门与沉淀/guard仍pending。
+
+### Plan 815（2026-10-20，M815-A独立阶段审查R1，needs_fix）
+
+受审 `9f27d54f013119a93ca832a2c43d83413592cb69`，revision2、scope=M815-A/T-13，非整Plan final。[完整R1/冻结规范候选/共享反例](attachments/815/review-r1/review.md)。F-815-R1-01(P2)：wire丢失TypeMismatch.field、Windows不可表示路径被lossy改写；02(P2)：嵌套未知/缺失键仍成功，codec drift被吞；03(P2)：byte256→0、f64→f32溢出→inf→报告null、NaN编码成功但解码失败，版本诊断亦截断；04(P2)：input/output相对路径依tool cwd，普通文件工程根仍ok；05(P2)：同源writer写出的64层合法标签数组仅2233字节，reader默认recursion limit拒绝，实际tool exit2；06(P3)：新增测试两条warning、12个新增Rust文件fmt不通过。均为当前合同内OPEN项，登记不授权延期/缩面。现有76定向测试、777 strict/闭包/资源登记及流错误/输出超限对照通过，不能覆盖新反例；T-01（预算部分）/03/12重开，T-02完成保留，executing1/14。原树work修齐、提交后重放再审；B原依赖/能力仍pending，不把它们再造finding。merge-owned裸t/新包协议门、Spec/ledger/实际发布与来源收据仍pending；未整档/合入/归档/清树。
+
 ### Plan 796（2026-10-19，独立最终复审R16，pass；当前finding全闭）
 
 受审 `52aad1fd205e05e28b8e7d0345906c8d1ad19f6a`，revision1；[完整R16/冻结旧键迁移及跨进程反控/AC-SD/最终状态](attachments/796/review-r16/review.md)。F-796-R14-01 CLOSED：FnSig新增hdr-sem语义轴，独立使用R14冻结旧键/同旧artifact保留→当前Miss→新键发布/HIT无Conflict→旧页仍在→独立子进程HIT；body-only/签名编辑/fresh对照正确。R13/R12/R11及更早已闭项保持，无新增阻断/延期/缩面。121个不同定向测试、acceptance13行、selftest12控制全通过；压力165.59s、库P95 6.94ms、完整IPC P95 296ms/30样本；fmt/all-targets check通过，计划命名空间零warning。Plan reviewed8/9，T01..08完成，T09 merge-owned冻结裸t/适用tv·tt/独立sema·788影响套件、tf主检出到期判定、SD/ledger/index/归档/合入/guard清理仍pending；未整档/合入，不宣称交付完成。下方796 R15/R14及更早needs_fix条目保留为历史，当前无开放代码finding；后续代码变化不自动继承pass。
@@ -274,7 +282,13 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
 
-### Plan 797（2026-10-20，R8 修复轮完成，待 T-08 复审）
+### Plan 797（2026-10-20，R9 完整复审，needs_fix）
+
+受审 `34db55429c134fe0fd8cfaf502f606b956ef65c7`，revision1；[R9完整报告/AC映射/真实PE及实际分配反例](attachments/797/review-r9/review.md)。R4-02本轮CLOSED（descriptor/3多out/handle/callback/header独立oracle及record mut/out原生控制）。**仍OPEN四项**：R4-07/P1新近端header遮蔽未失效（cache PE17，fresh29）；R4-09/P1父IPC计时改善但仍排除最终typed判断/发布，31body全返后才落盘、失败/资源行不齐；R4-10/P1原长字段名例已拒，但合法1024节点链memo/index新增堆峰值10,298,591B>8MiB仍被接受，force-GC测试缺实际ran/deleted/live断言；R4-12/P2旧三warning清除，本轮新增sema.rs peak_job_memory_used dead_code与append_jsonl unused_mut仍未处理。**新增F-797-R9-01/P1修复回归**：C generation发现忽略源码目录及当前target/toolchain/flags，跨工程同名同内容不同头实际hit错对象（17应29），合法foreign-target/toolchain key也被接受。共5项合同内OPEN，登记不批准延期/缩面。
+
+170定向测试pass+1既有ignored（root abi_包含2个已有FFI测试，非新覆盖）；实际错误PE与超预算独立反例不可由总数抵销。**executing3/9**，T-01/T-03保留、T-04完成，T-02/T-05/T-06/T-07仍OPEN，next work同树修5项/完整不变式oracle后再审。第四次完整final未过；未改实现/整档/合入/canonical Spec/live ledger，merge-owned冻结门禁、规范沉淀/归档/guard清理仍pending。旧R8工件丢失事件已知，本轮重新构造实跑并保存R9，不虚称复用丢失日志。以下R8及更早为历史。
+
+#### R8 修复轮（历史交接）
 
 R8 复审（受审 `bf2455758`，needs_fix）5 项开放 findings 已全部修复（修复提交 `34db55429`，同树 `D:/autostack/.wt/lang-797/auto-lang`）：F-R4-02 descriptor/3 如实化（ledger 三出参/two_step handle 出参/callback ctx/buf:i64 元素视图 + record mut/out 生产面 `p797_crec_mutate`/`p797_crec_make` 含字节级 untouched oracle 与期望翻转负控；oracle 改为 header 文本独立对照）；F-R4-07 `cl -showIncludes` 观测依赖闭包（本地+系统头）入同源多代闭包键、命中经公共 db 句柄逐一重验零编译调用（R8 三兄弟+宏 include 真编译 PE 17→29 永久反例）；F-R4-09 每请求完整父路径计时（edit 父侧应用，query 请求携带编辑后 deck；Job 对象峰值内存/I-O 入逐样本先落盘 JSONL；门禁 P95=663/101ms，verify closeout 收据绑定）；F-R4-10 物化表示精确字节暂存门（原 R5 长字段名输入 19,398,656B 下界在分配前拒绝）+ worker 预算前后双查 + 并发 GC 全链（该测试抓到并修复同 store 并发 worker scratch 碰撞真缺陷）；F-R4-12 本计划 3 条告警清零 + freeze/verify/SD/支持矩阵按 R8 事实重写。probe 68/68、父侧 abi 家族 12/12、verify closeout ALL PASS；merge-owned 门禁/合入/沉淀/归档 guard 仍 pending。无新增债务延期项。
 
@@ -2420,3 +2434,7 @@ F810-R2-01（P2）同实例错误oracle仍未齐：fresh Parser成功不能证�
 ### Plan 798 修复复审 R8（2026-10-20，needs_fix）
 
 受审实际`f9d9821577eefd0ccfb74530b7d1077923ea9c33`，plan r2；[报告/旧5项闭合范围/全部源码与raw](attachments/798/review-r8/review.md)。当前F798-R8-01..03：前门全局操作计数误拒合法128/129/200个浅层命名实参（Checked HIR→真实MIR/ABC/AV均=1）；sidecar只覆盖Bin，MIN一元NegI32在空映射下仍恢复为无来源int-overflow@；新native监督器之前的首次worker构建仍Command.output无deadline/caps/收容，r4(c)旧预算降格文字也未实际撤销。三项分别延续前门、来源、全程有界不变量，不要求新支持面。旧在途linker反例现1013ms即Budget/已回收、双return两端=1、深链/二元空sidecar/COFF节窗口原例均已修。core20+指定probe62+正式协议4+兼容16+合同20均过，fmt/diff-check0；当前提交完整V11本轮pending。Plan executing3/10，保留T01/03/06；原树work修完三项提交，并保留复现资料。未改实施/规范/ledger或合入；merge-owned冻结门禁/沉淀/guard仍pending。
+
+### Plan 798 修复复审 R9（2026-10-20，needs_fix）
+
+受审`e00340842fdca15417c3195041ca909b1fcb8bb1`，plan r2；[报告/闭合范围/源码及原始输出](attachments/798/review-r9/review.md)。当前F798-R9-01/02（均P2，合同内必修）：闭括号时construction全局相加，64条独立`let vI=(1+1)`误拒为129层，同一Checked HIR→MIR→ABC→AV正确=2；新首次准备器不读stdout、stderr超帽不传播失败、仅kill父进程——2MiB stderr仍Ok、128KiB stdout堵塞误超时、1.5s截止返回后后代heartbeat继续15→19，review已清理本次辅助子树。原宽实参例、NegI32诚实来源/空映射拒绝、旧r4(c)降格文字已验证修复；R8-02关闭，T04恢复。core20+probe70+正式协议4+兼容16+contract20均通过，两package fmt/diff-check0；完整新基线V11未跑，不能用work旧摘要授pass。保留T01/03/04/06，T02/05/07/08待完成，executing4/10；原树work需补最大路径组合及双流/超帽/持管后代实际回收oracle与诊断。登记不授权延期/缩围；未改实施/发布规范/ledger/合入。最终pass后的merge-owned冻结门禁/沉淀/guard清理仍pending。

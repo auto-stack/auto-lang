@@ -6,7 +6,7 @@ plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-20
-current_step: 2
+current_step: 3
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -177,7 +177,7 @@ work仅相关反例/模块及必要check；最终review后merge冻结提交执�
 | [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/797/contract-decision.md，冻结候选原型/语义ref快照/资源/工具/perf；最小layout缓存与三腿探针 | [✅ 已完成] 历史 13/13 与原生可行性记录保留（T-01 `b00100cbd`）。R1 锁子项 **F-797-R1-03 已关闭**（commit `635053f74`）：`experimental/auto-abi-probe/Cargo.lock` 强制入提交（对抗 `.gitignore:8`），blob `598833812a`==worktree `git hash-object`，SHA256 `C7EC8DD5…`，size 27959；`cargo metadata/check/test --locked --offline` 全绿。锁一致性核对后允许引用未变依赖上的历史定向证据；后续依赖/锁变化须重跑受影响面。 |
 | [ ] T-02 | work | T-01 | 新contract/src/{descriptor,layout,validate}.rs、独立审定C header/oracle | abi_contract_、abi_layout_、abi_admission_；AC-01。[历史实施声明；R8 仍未通过，见最新复审] descriptor/1+fingerprint、12 维 admission 拒绝矩阵（native 0 调）、layout 引擎==C 编译器 sizeof/offsetof（padding/序/嵌套+错 offset 反控红）、递归/超深/超预算受控拒绝；workspace 28/28 绿（commit plan-797-dev T-02） |
 | [x] T-03 | work | T-02 | 新probe/src/{emit,build,link}.rs与C参考源/独立producer/consumer recipes，零改ac-core | abi_calls_三腿/异质控制；AC-02。[✅ 已完成] 三腿全套（含 C→AutoABI→C 嵌套链、fallible out-sentinel、record 冻结 offset、可观察计数器）exit 0；swap/错 offset/漏调用负例各 exit 恰 1；produce/consume 配方 admission 先行；abi_calls_ 7/7、workspace 35/35 绿（commit plan-797-dev T-03） |
-| [ ] T-04 | work | T-03 | 新provider资源/错误/callback fixtures与真实账本 | abi_resource_；AC-03。[历史实施声明；R8 仍未通过，见最新复审] C provider 真 arena/代际账本/原方 destroy/失败注入回滚/buffer 规则/同步 callback；AutoABI 与 C 双消费者全协议 exit 0 + 回滚控制红；abi_resource_ 3/3、workspace 38/38 绿（commit plan-797-dev T-04） |
+| [x] T-04 | work | T-03 | provider资源/错误/callback fixtures、真实账本及record mut/out | [✅ R9已核验] 原方destroy/代际/槽满回滚/UTF-8与bool-char值校验，descriptor/3如实描述ledger三out、two_step owned handle、callback ctx；新增record mut/out独立C正反原生控制通过。本轮t04 6/6，F-R4-02 CLOSED；T-02/T-05的索引/GC预算不由本行冒称完成。 |
 | [ ] T-05 | work | T-04 | store adapter/阶段trace/六场景/512churn，首批.case.ad与oracle从T-01维护 | abi_cache_、abi_turnaround_；AC-04、05。[历史实施声明；R8 仍未通过，见最新复审] ABI-O1 对象层（命中禁调 producer、真实输入失效矩阵、tamper=受控 CAS 拒绝、缺块=miss 重算）、512 修订 churn（rooted+leased 存活、块层收敛 live 集、用户哨兵不变、lease 释放翻转）；六场景×30 全绿，硬门 body-edit P95=539.5ms、descriptor-reject P95=0.1ms（<1000ms），210 样本 JSONL 全保留；abi_cache_ 6/6+abi_turnaround_ 1/1、workspace 45/45 绿（commit plan-797-dev T-05） |
 | [ ] T-06 | work | T-05、D-796、D-788 | 绑定796合入contract与受限probe adapter，只追加ABI recipe/worker；退出临时模型，正式AutoDown全执行/性能重测 | abi_binding_、原v1/v2兼容；AC-06。[历史实施声明；R8 仍未通过，见最新复审] D-796/D-788 满足（双归档实证）；rebase 到 master+组内 auto-down 兄弟树；semref 退役→ac-sema-contract 真实绑定（收据在案）；contract 追加注册 abi/interop-v1（绑定互斥解码）；abi-worker（abiworker/1）+ 父侧 test_cases/abi.rs + stale 轴族；可执行语料 4 checks 过统一 runner（含跨进程 restart 命中与类型化负例）；probe 51/51（abi_binding_ 4/4）；正式复测双硬门 body-edit P95=500.8ms/reject P95=76.8ms（commit `35794e5ec`） |
 | [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan797/、attachments/797/spec-delta.md与freeze proposal，来源/并行边界审计 | [历史实施声明；R8 仍未通过，见最新复审] 终稿化：freeze-proposal（T-06 交付行+正式硬门数值+spec-delta 终稿 hash `6A6E1B2F..`+当前 canonical 输入 hash 含漂移后的 goals.md 重核）、support-matrix §0 正式通路面、spec-delta 终稿（真实通路字段+实测 SHA256 输入表）、verify 脚本扩面（t06_binding/统一 runner 语料/退役收据工件步、诚实 closeout、sccache 端口排除单次受控重试、零警告限定本 crate）——`-Scope closeout` ALL PASS（10 步，收据 docs/reports/plan797/verify-acceptance-20261019-180106.md）；execution_done=7/9（commit `8679859e4`） |
@@ -264,11 +264,30 @@ status:executing；current_step:2/9，保留T-01/T-03，重开T-02/T-04/T-05/T-0
 
 **簿记事件（2026-10-20，非本计划造成）**：主检出在 PLAN-813 合并前后被 stash 化（`stash@{0}`/`c1c0fb06f`），797 计划文件 R8 簿记一度从工作树消失（本轮自 stash 恢复），`attachments/797/review-r3..r8` 未跟踪复审工件目录被清（review-r8/review.md 已按复审会话原文重建；其余 r3–r7 辅助工件不可恢复，§9/§10 中的旧链接为历史指向）。同批受影响还有 781/785/788/796 等计划的未跟踪复审目录，归各自计划/用户路由，本计划不代恢复。
 
+2026-10-20 stage:review；review_scope:final（R9，R8修复后的完整独立复审）；reviewer_identity/limitations: 当前Codex复审上下文，未实施本分支、未创建代理，具体模型/session ID未暴露；PLAN-797 r1；outcome:**needs_fix**；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`；reviewed_commit `34db55429c134fe0fd8cfaf502f606b956ef65c7`；base `13367d127584461449ee2f151c0c5987f0740044`；入审/收尾HEAD不变、实现树clean、受审输入无漂移。依赖/锁/工具/二进制与输入见 [R9基线](attachments/797/review-r9/baseline.json.txt)、[收尾基线](attachments/797/review-r9/end-baseline.json.txt)。SD SHA256 `023768e8a2514cfd9f71c817e9947525cdb2c10c3437cfdccfc65c41e7b59463`，冻结副本/完整AC映射/原始反例见 [R9报告](attachments/797/review-r9/review.md)。主Spec仅goals较树内新增811条目，已协调核对、touched_goals仍[]；其余模块输入一致。旧R8辅助工件丢失已知，本轮重新构造/执行反例，不虚称复用丢失日志。
+
+**finding closure**：上轮5项中 **F-R4-02 CLOSED**（多out/handle归属/callback ctx/header独立oracle、真实record mut/out正反控制）；**R4-07/09/10/12四项PARTIAL/OPEN**：07旧8拼写闭合，但新近端header遮蔽旧依赖仍hit，PE17而fresh29；09父IPC计时改善但门仍排除最终typed判断/发布、31body请求全返后才落盘，失败/资源原始行不齐；10原长字段名例已拒，但1024节点合法链的memo/index新增堆峰值10,298,591B>8MiB仍接受，所谓force-GC仅调用run_gc、无实际回收断言/收据；12旧3条自身warning消除，本轮新增sema.rs peak_job_memory_used与append_jsonl unused_mut仍未处理。**新增 F-797-R9-01/P1（repair regression）**：C generation发现忽略源码目录和当前target/toolchain/flags，真实跨工程同名同内容不同头，第二工程hit错误PE17（应29）；合法错target/toolchain key也被hit。共5项OPEN，登记不批准延期/缩面。
+
+**acceptance_results**：AC-01 partial/fail、AC-02代表三腿pass、AC-03有限资源协议pass、AC-04/05 fail、AC-06 partial/fail、AC-07 fail、AC-08 merge pending。本轮 **170定向测试pass+1既有ignored**（t02/03/04=33、cache8、binding3、同store并发1、root abi_12〔含2个已有FFI测试，非本计划新覆盖〕、contract87、runner26）；旧准入/资源永久反例与独立C缓存/实际分配探针另列证据。正式父数字断言body-edit P95=657ms/reject86ms，但尚不能认证合同whole-path口径。scoped格式/空白pass；未整档、未完整verify、未改实现/canonical Spec/live ledger。
+
+status:executing；current_step:3/9，保留T-01/T-03并完成T-04；T-02/T-05/T-06/T-07仍OPEN，T-08/T-09 pending。**next:work**，原树修4项遗留+R9-01，按实际输入适用性/索引峰值/发布边界/真实回收收据完善设计与oracle后提交再审。第四次完整final未过；绿色总数不能覆盖错误PE或超预算。**pending_closeout_gates**：最终代码/验收/Spec pass后merge在新冻结提交统一跑ABI完整套件/真实C三腿、796/788受影响兼容、根裸cargo t及真实触面档；tf仅主检出到期批量。规范/ledger沉淀、归档、wt-guard和清理均pending，未合入、不宣称交付。
+
+
+2026-10-20 stage:work（R9 needs_fix 修复轮）；PLAN-797 r1；outcome:**pass→execution_done**（R9 4 项遗留 + 新增 F-R9-01 全部修复并附永久反例）；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`；修复基 reviewed_commit `34db55429`，修复提交 `3bcc41954`（树 clean）；deps/锁同 R9 基线未动。
+
+**finding 闭环（5/5）**：F-R9-01 ✅ 缓存**适用域**入信封 v2 并逐项重验——源解析目录、include 搜索目录、target、工具链+flags（发现 needle 含当前 target+toolchain 的 canonical 子串预筛）+**负依赖快照**（两搜索目录源/头文件名清单）；永久反例：跨工程同名同内容不同头（B 必须 miss、PE=29，A 复用控制仍 hit）、异 target/toolchain 合法代（公共 API 存入、永不服务）；F-R4-07 ✅ 遮蔽三态永久测试：新增近端头（解析翻转 17→29=miss）、**新内容**遮蔽（31=miss，任何历史代不适用）、删除遮蔽（环境复原=正确复用历史 17 代，判据=被服务代适用域与当前环境完全一致）；F-R4-09 ✅ 计时边界=**父入口→该请求 typed 判定完成→原始行落盘**（每请求即时判定，span 在判定后关闭；edit 父侧耗时入样本 edit_ms）；**一请求一结果一原始行**由适配器在下一请求运行前持久化（成功/失败/infra 均有行，含阶段/cache/compute/Job 进程+树双峰值内存·I-O/meter 含 GC 收据）；硬门重证 body-edit(edit+request) P50/P95/P99=536/608/609ms、reject 65/91ms（verify closeout 收据绑定）；F-R4-10 ✅ 暂存门计入 **memo/索引与递归工作态**（4 表×记录名副本+链/seen 深度界）——R9 反例（1024 节点 1950 字节记录名合法链、输入 ~4MiB、单字段输出、memo 峰值 >8MiB）分配前拒绝为永久测试+短名控制通过；GC 水位 seam（ABI_TEST_GC_{HIGH,LOW}_BYTES）+ **GcReceipt(ran/deleted/freed) 累计入 meter**，真实 worker 测试断言超水位实际删除>0 且 rooted 当前交付物回收后仍命中（compute=0）；F-R4-12 ✅ 复审两条告警（peak_job_memory_used 入 counters/原始行、append_jsonl unused_mut）及本轮新增 3 条（m_before/死存储）全部清零，本计划文件零告警。
+
+**验证**：probe workspace **73/73**（t02 21 含索引预算反例、t03 7、t04 6、t05 12 含跨工程/异工具链/遮蔽三态、t06 7 含 GC 真实回收）；父侧 abi_ 家族 **12/12**（重写后硬门消费适配器原始行）；test_cases_tests 26+1 既有 ignored；auto-test-case 87；双侧 fmt 与本计划文件零告警；`verify -Scope closeout` **ALL PASS**（收据 `docs/reports/plan797/verify-acceptance-20261020-091355.md`）。SD 重绑 `8F89D804DAE9EA644EC2C487DDF0456433FFC1C59D98E3D6B6CD1E043E525AB5`（适用域/判定边界/索引入预算/GC 收据规则同步）。**预存红（非本分支）**：sema oracle json 缺失照旧在案。merge-owned pending 不变。next_responsible_role: **review**（T-08，绑定 `3bcc41954`）。
+
 预检/来源见[planning-preflight.md](attachments/797/planning-preflight.md)。候选v0.1不是现有产品支持声明。
 
 ## 10. 待澄清事项
 
-当前结论（2026-10-20 R8 修复轮）：**work 完成 / executing 2/9，待 T-08 独立复审**；R8 5 项开放 findings（F-R4-02/07/09/10/12）已全部修复（修复提交 `34db55429`，同树同分支），每项附永久反例/新 oracle（header 独立 oracle、8 形态真编译 include 反例、每请求完整父路径计时+逐样本先落盘、原长字段名输入分配前拒绝、3 条自身告警清零）；probe 68/68 + 父侧 abi 家族 12/12 + verify closeout ALL PASS。merge 门禁（裸 cargo t/ABI 完整套件/真实 C 三腿/796·788 兼容/触面档）仍 merge-owned pending，未合入不宣称交付。R8 报告本轮因主检出未跟踪工件被清事件按原文重建于 [review-r8/review.md](attachments/797/review-r8/review.md)（r3–r7 辅助工件丢失见 §9 簿记事件记录，待用户裁定是否补救）。
+当前结论（2026-10-20 R9 修复轮）：**work 完成 / executing 3/9，待 T-08 独立复审**；R9 的 5 项开放 findings（F-R4-07/09/10/12 + 新增 F-R9-01）已全部修复（修复提交 `3bcc41954`，同树同分支），每项附永久反例/新 oracle（缓存适用域信封 v2+跨工程/异工具链反例、遮蔽三态、判定+落盘边界与一请求一行原始行、memo/索引入 8MiB 门+R9 长记录名链反例、GC 收据断言+真实回收+rooted 存活、本计划文件零告警）；probe 73/73 + 父侧 12/12 + verify closeout ALL PASS。merge 门禁仍 merge-owned pending，未合入不宣称交付。
+
+历史结论（2026-10-20 R9 复审）：**needs_fix / executing 3/9**。已审 `34db55429`，R4-02关闭；R4-07/09/10/12仍PARTIAL/OPEN，新增R9-01缓存身份回归，共5项OPEN。实际错误PE及索引超预算均已独立复现；170定向测试绿不抵销。见 [R9完整报告](attachments/797/review-r9/review.md)。原树完成修复/完整不变式反例与准确readiness后再审；merge门禁/合入/沉淀/归档/guard清理仍pending。
+
+历史结论（2026-10-20 R8 修复轮）：**work 完成 / executing 2/9，待 T-08 独立复审**；R8 5 项开放 findings（F-R4-02/07/09/10/12）已全部修复（修复提交 `34db55429`，同树同分支），每项附永久反例/新 oracle（header 独立 oracle、8 形态真编译 include 反例、每请求完整父路径计时+逐样本先落盘、原长字段名输入分配前拒绝、3 条自身告警清零）；probe 68/68 + 父侧 abi 家族 12/12 + verify closeout ALL PASS。merge 门禁（裸 cargo t/ABI 完整套件/真实 C 三腿/796·788 兼容/触面档）仍 merge-owned pending，未合入不宣称交付。R8 报告本轮因主检出未跟踪工件被清事件按原文重建于 [review-r8/review.md](attachments/797/review-r8/review.md)（r3–r7 辅助工件丢失见 §9 簿记事件记录，待用户裁定是否补救）。
 
 历史结论（2026-10-20 R8 复审）：**needs_fix / executing 2/9**；已审新提交 `bf2455758`，原10项关闭5项，另5项仍OPEN/PARTIAL。具体为C descriptor/支持域、include闭包、正式whole-path性能、暂存/资源预算、自身warning与终稿事实。见 [R8完整报告](attachments/797/review-r8/review.md)。原树修复全部开放项及其不变式/原始反例后再审，merge门禁/合入/沉淀/归档/清理仍pending。
 
