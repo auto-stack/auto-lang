@@ -257,6 +257,8 @@ pub struct Options {
     pub probe_av: Option<ProbeAvSpec>,
     /// probe only (PLAN-817): cte/scalar-query-v1 binding.
     pub probe_cte: Option<ProbeCteSpec>,
+    /// probe only (PLAN-818): ac/mir-native-scalar-v1 binding.
+    pub probe_mn: Option<ProbeMnSpec>,
 }
 
 impl Default for Options {
@@ -278,6 +280,7 @@ impl Default for Options {
             probe_abi: None,
             probe_av: None,
             probe_cte: None,
+            probe_mn: None,
         }
     }
 }
@@ -1082,7 +1085,7 @@ fn decode_options(
         Adapter::Syntax => &["grammar", "edits"],
         // PLAN-796 T-06 frozen probe options: the registered recipe id,
         // the declarative step sequence, and the sema/query-v1 binding.
-        Adapter::Probe => &["recipe", "steps", "sema", "abi", "av", "cte"],
+        Adapter::Probe => &["recipe", "steps", "sema", "abi", "av", "cte", "mn"],
     };
     let f = Fields::new(path, pairs, known)?;
     let module_name = opt_str(&f, "module_name")?;
@@ -1358,7 +1361,7 @@ fn decode_options(
         (None, None)
     };
 
-    let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av, probe_cte) =
+    let (probe_recipe, probe_steps, probe_sema, probe_abi, probe_av, probe_cte, probe_mn) =
         if adapter == Adapter::Probe {
         let recipe = req_str(&f, "recipe")?;
         if !REGISTERED_PROBE_RECIPES.contains(&recipe.as_str()) {
@@ -1411,6 +1414,9 @@ fn decode_options(
                     let allowed = match recipe.as_str() {
                         // T-07 edit-session: runs + discriminating edits.
                         "ac-av/core-run-v1" => matches!(op.as_str(), "run" | "edit-source"),
+                        // PLAN-818 T-02: the judged single run (the formal
+                        // first case); edit-source/restart join in T-06.
+                        "ac/mir-native-scalar-v1" => op == "run",
                         _ => op != "run",
                     };
                     if !allowed {
@@ -1621,73 +1627,113 @@ fn decode_options(
                 })
             }
         };
-        // PLAN-817: the cte binding (entry/caps/session — the query and
-        // binding tables live in the atom-data deck the worker owns).
-        let cte = match f.sub("cte") {
-            None => {
-                if recipe == "cte/scalar-query-v1" {
-                    return Err(err(
-                        &f.path_of("cte"),
-                        "cte/scalar-query-v1 requires a cte binding",
-                    ));
-                }
-                None
-            }
-            Some(v) => {
-                if recipe != "cte/scalar-query-v1" {
-                    return Err(err(
-                        &f.path_of("cte"),
-                        format!(
-                            "the cte binding belongs to cte/scalar-query-v1; it is not valid for recipe {:?}",
-                            recipe
-                        ),
-                    ));
-                }
-                let cpath = f.path_of("cte");
-                let pairs = as_obj(v, &cpath)?;
-                let sf = Fields::new(&cpath, pairs, &["entry", "caps", "session"])?;
-                let entry = req_str(&sf, "entry")?;
-                let session = match sf.sub("session") {
-                    None => None,
-                    Some(v) => {
-                        let sid = as_str(v, &sf.path_of("session"))?.to_string();
-                        if sid.is_empty()
-                            || sid.len() > 64
-                            || !sid
-                                .chars()
-                                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-                        {
-                            return Err(err(
-                                &sf.path_of("session"),
-                                "cte session id must be 1-64 chars of [A-Za-z0-9_-]",
-                            ));
-                        }
-                        Some(sid)
+            // PLAN-817: the cte binding (entry/caps/session — the query and
+            // binding tables live in the atom-data deck the worker owns).
+            let cte = match f.sub("cte") {
+                None => {
+                    if recipe == "cte/scalar-query-v1" {
+                        return Err(err(
+                            &f.path_of("cte"),
+                            "cte/scalar-query-v1 requires a cte binding",
+                        ));
                     }
-                };
-                let caps = match sf.sub("caps") {
-                    None => Vec::new(),
-                    Some(v) => {
-                        let list = as_list(v, &sf.path_of("caps"))?;
-                        let mut out = Vec::new();
-                        for (i, item) in list.iter().enumerate() {
-                            let cpath = format!("{}.caps[{}]", cpath, i);
-                            out.push(as_str(item, &cpath)?.to_string());
-                        }
-                        out
+                    None
+                }
+                Some(v) => {
+                    if recipe != "cte/scalar-query-v1" {
+                        return Err(err(
+                            &f.path_of("cte"),
+                            format!(
+                                "the cte binding belongs to cte/scalar-query-v1; it is not valid for recipe {:?}",
+                                recipe
+                            ),
+                        ));
                     }
-                };
-                Some(ProbeCteSpec {
-                    entry,
-                    caps,
-                    session,
-                })
-            }
+                    let cpath = f.path_of("cte");
+                    let pairs = as_obj(v, &cpath)?;
+                    let sf = Fields::new(&cpath, pairs, &["entry", "caps", "session"])?;
+                    let entry = req_str(&sf, "entry")?;
+                    let session = match sf.sub("session") {
+                        None => None,
+                        Some(v) => {
+                            let sid = as_str(v, &sf.path_of("session"))?.to_string();
+                            if sid.is_empty()
+                                || sid.len() > 64
+                                || !sid
+                                    .chars()
+                                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+                            {
+                                return Err(err(
+                                    &sf.path_of("session"),
+                                    "cte session id must be 1-64 chars of [A-Za-z0-9_-]",
+                                ));
+                            }
+                            Some(sid)
+                        }
+                    };
+                    let caps = match sf.sub("caps") {
+                        None => Vec::new(),
+                        Some(v) => {
+                            let list = as_list(v, &sf.path_of("caps"))?;
+                            let mut out = Vec::new();
+                            for (i, item) in list.iter().enumerate() {
+                                let cpath = format!("{}.caps[{}]", cpath, i);
+                                out.push(as_str(item, &cpath)?.to_string());
+                            }
+                            out
+                        }
+                    };
+                    Some(ProbeCteSpec {
+                        entry,
+                        caps,
+                        session,
+                    })
+                }
+            };
+            // PLAN-818: the mn binding (entry/caps).
+            let mn = match f.sub("mn") {
+                None => {
+                    if recipe == "ac/mir-native-scalar-v1" {
+                        return Err(err(
+                            &f.path_of("mn"),
+                            "ac/mir-native-scalar-v1 requires an mn binding",
+                        ));
+                    }
+                    None
+                }
+                Some(v) => {
+                    if recipe != "ac/mir-native-scalar-v1" {
+                        return Err(err(
+                            &f.path_of("mn"),
+                            format!(
+                                "the mn binding belongs to ac/mir-native-scalar-v1; it is not valid for recipe {:?}",
+                                recipe
+                            ),
+                        ));
+                    }
+                    let mpath = f.path_of("mn");
+                    let pairs = as_obj(v, &mpath)?;
+                    let mf = Fields::new(&mpath, pairs, &["entry", "caps"])?;
+                    let entry = req_str(&mf, "entry")?;
+                    let caps = match mf.sub("caps") {
+                        None => Vec::new(),
+                        Some(v) => {
+                            let list = as_list(v, &mf.path_of("caps"))?;
+                            let mut out = Vec::new();
+                            for (i, item) in list.iter().enumerate() {
+                                let cpath = format!("{}.caps[{}]", mpath, i);
+                                out.push(as_str(item, &cpath)?.to_string());
+                            }
+                            out
+                        }
+                    };
+                    Some(ProbeMnSpec { entry, caps })
+                }
+            };
+            (Some(recipe), Some(steps), sema, abi, av, cte, mn)
+        } else {
+            (None, None, None, None, None, None, None)
         };
-        (Some(recipe), Some(steps), sema, abi, av, cte)
-    } else {
-        (None, None, None, None, None, None)
-    };
 
     Ok(Options {
         module_name,
@@ -1705,7 +1751,8 @@ fn decode_options(
         probe_sema,
         probe_abi,
         probe_av,
-        probe_cte,
+probe_cte,
+        probe_mn,
     })
 }
 
@@ -1720,7 +1767,8 @@ pub struct SyntaxEdit {
 
 /// Registered probe recipes (PLAN-796 T-06 freeze). A case may only name
 /// one of these — never an executable, path or shell. 797 appends its ABI
-/// recipe here under the same contract (single writer per window).
+/// recipe here under the same contract (single writer per window); 817
+/// appends the CTE recipe and 818 the MIR-native recipe likewise.
 pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     "sema/query-v1",
     "abi/interop-v1",
@@ -1728,6 +1776,8 @@ pub const REGISTERED_PROBE_RECIPES: &[&str] = &[
     // PLAN-817: AV-driven CTE query + frozen cache. Appended in the
     // post-797/798 single-writer window; same seam contract.
     "cte/scalar-query-v1",
+    // PLAN-818: the MIR-native experimental recipe, same seam contract.
+    "ac/mir-native-scalar-v1",
 ];
 /// Probe step-count cap (frozen with the seam; mirrors the syntax edit cap).
 pub const PROBE_MAX_STEPS: usize = 64;
@@ -1773,6 +1823,16 @@ pub struct ProbeCteSpec {
     pub entry: String,
     pub caps: Vec<String>,
     pub session: Option<String>,
+}
+
+/// ac/mir-native-scalar-v1 binding (PLAN-818 T-02): the MIR-native entry
+/// function and optional capability list — declarative Atom parameters
+/// only. The worker performs the full `Checked HIR → MIR → per-function
+/// COFF → multi-object PE` request under the parent's admission.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeMnSpec {
+    pub entry: String,
+    pub caps: Vec<String>,
 }
 
 /// sema/query-v1 binding: which semantic query the recipe runs.

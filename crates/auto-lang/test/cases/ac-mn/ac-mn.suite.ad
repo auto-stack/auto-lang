@@ -1,0 +1,15 @@
+# PLAN-818 ac-mn probe suite — formal AutoDown execution (T-02 first case)
+#
+# Recipe ac/mir-native-scalar-v1 on the unified probe/run seam (PLAN-796
+# T-06 seam; PLAN-788 TestCase v2 runner). Worker: mn-worker case-run
+# (mnworker/1) — the full Checked HIR -> MIR -> per-function COFF ->
+# multi-object PE -> real execute pipeline on a real per-check store.
+# All judgement parent-side; independent oracles (golden.md).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "ac-mn", include: [
+  "mn-first-trace.case.ad",
+  "mn-value.case.ad",
+  "mn-div-trap.case.ad",
+] }
+```

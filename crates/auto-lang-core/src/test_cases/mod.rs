@@ -42,6 +42,7 @@ pub mod abi;
 pub mod ac;
 pub mod ac_av;
 pub mod ac_cte;
+pub mod ac_mn;
 mod ac_protocol;
 pub mod avm;
 pub mod materialize;
@@ -767,6 +768,20 @@ fn dispatch_check(
             if check.options.probe_recipe.as_deref() == Some(abi::ABI_RECIPE) =>
         {
             abi::run_check(
+                resolved,
+                check,
+                oracle,
+                &project_dir,
+                &artifact_dir,
+                run_dir,
+            )
+        }
+        // PLAN-818 T-02: the MIR-native recipe appends under the same
+        // contract (single writer per window; never a second runner).
+        (Adapter::Probe, auto_test_case::contract::Action::Run)
+            if check.options.probe_recipe.as_deref() == Some(ac_mn::MN_RECIPE) =>
+        {
+            ac_mn::run_check(
                 resolved,
                 check,
                 oracle,

@@ -661,6 +661,7 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     probe_abi: None,
                     probe_av: None,
                 probe_cte: None,
+                    probe_mn: None,
                 };
                 // Preserve the DECLARED-vs-default distinction: only
                 // store what the merged object actually carries; the rest
@@ -705,6 +706,7 @@ pub fn apply_defaults(check: &CheckSpec, defaults: &Defaults) -> (CheckSpec, Vec
                     probe_abi: None,
                     probe_av: None,
                 probe_cte: None,
+                    probe_mn: None,
                 };
             }
             if had_module {

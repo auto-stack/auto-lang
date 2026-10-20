@@ -1,0 +1,26 @@
+# ac-mn probe: the PLAN-818 T-02 frozen first case (golden.md §1). Two
+# functions, direct call, both marks, both branch arms per invocation.
+# Independent hand-audited oracle: gate(9): a=1, t=28, arm false ->
+# 29; gate(15): a=1, t=46, arm true, b=2 -> 44; 29+44=73 -> exit 0;
+# stderr bytes "aab" (judged byte-exact in the workspace parity tier;
+# the exit already folds the mark values 1/2 through the arithmetic).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "mn.first.trace"
+  tags: ["ac-mn", "probe", "trace"]
+  links: ["PLAN-818"]
+  source: { file: "mn/first_case.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-first", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac/mir-native-scalar-v1",
+        mn: { entry: "d_main", caps: ["hir.test.trace.v1"] },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 0 } }
+  ]
+}
+```

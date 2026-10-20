@@ -19,6 +19,9 @@ mod ac_cte_probe_tests;
 // 落地）：消费 test-cases feature 门内的 auto_test_case（兄弟模块同款
 // 门控），裸 ui-iced 面（cargo tu）/裸 check --tests 形态不再编译红。
 #[cfg(feature = "test-cases")]
+// PLAN-818: MIR-native probe recipe integration (real mn-worker process)
+#[cfg(feature = "test-cases")]
+mod ac_mn_probe_tests;
 mod probe_adapter_tests;
 // PLAN-796 R4: turnaround hard gate over the REAL adapter/IPC path
 #[cfg(feature = "test-cases")]

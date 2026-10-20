@@ -1,0 +1,6 @@
+fn main() int {
+    var m = 0 - 2147483647
+    m = m - 1
+    var d = 0 - 1
+    return m / d
+}
