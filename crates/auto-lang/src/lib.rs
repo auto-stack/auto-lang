@@ -66,10 +66,20 @@ pub use auto_lang_core::api;
 pub use auto_lang_core::ast;
 // PLAN-799: 解析便利层（ParserExt 对 Code/Name/Expr/Is/Arrow/OnEvents 的
 // 六类 impl + Parser 耦合测试）——模型已在 auto-ast，解析注入留上层。
+// PLAN-814 R3-06/R5：crate 内测试消费面（cfg(test) 门——非测试构建下的
+// 未用 import 告警为假信号，R5 口径按消费方条件声明）。
+#[cfg(test)]
 mod ast_parse_ext {
     pub use auto_lang_core::ast_parse_ext::*;
 }
 pub use auto_lang_core::atom;
+// PLAN-814: 实现随前端门面组迁 auto-lang-core；本 crate 保持私有（Lexer
+// 不是 auto-lang 公开面——PLAN-789 合同），消费方 crate::lexer::X 不变
+// （cfg(test) 门同上）。
+#[cfg(test)]
+mod lexer {
+    pub use auto_lang_core::lexer::*;
+}
 // a2r Standard Library - Rust implementations of AutoLang standard types
 pub use auto_lang_core::a2r_std;
 // Plan 084: Unified TypeStore for type declaration management
@@ -151,11 +161,6 @@ pub use auto_lang_core::hash;
 pub use auto_lang_core::implicit_union; // Plan 125 Phase 3.3: Implicit union generator
 pub use auto_lang_core::indexer;
 pub use auto_lang_core::infer;
-// PLAN-814: 实现随前端门面组迁 auto-lang-core；本 crate 保持私有（Lexer
-// 不是 auto-lang 公开面——PLAN-789 合同），消费方 crate::lexer::X 不变。
-mod lexer {
-    pub use auto_lang_core::lexer::*;
-}
 pub use auto_lang_core::libs;
 pub use auto_lang_core::macro_;
 pub use auto_lang_core::maker;
@@ -210,13 +215,12 @@ use crate::compile::CompileSession;
 pub use crate::symbols::SymbolLocation;
 use crate::trans::c::CTrans;
 use crate::{trans::Sink, trans::Trans};
-use auto_val::{Array, AutoPath, Node, Obj, Value};
+use auto_val::{AutoPath, Obj};
 use std::cell::RefCell;
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
-use crate::error::{AutoError, AutoResult};
+use crate::error::AutoResult;
 
 /// Run AutoLang code using the default execution engine
 ///
@@ -549,6 +553,7 @@ pub fn test_file(path: &str) -> AutoResult<test_runner::TestResult> {
     rt.block_on(test_code(&code))
 }
 
+#[cfg(feature = "test-aavm")]
 /// Auto library files to prepend for AAVM bootstrap tests.
 /// Single source of truth — vm_file_tests.rs reuses this list (plan-429 A3).
 pub(crate) const AUTO_LIB_FILES: &[&str] = &[
@@ -567,6 +572,7 @@ pub(crate) const AUTO_LIB_FILES: &[&str] = &[
     "packages/aavm/lib-legacy/eval.at",
 ];
 
+#[cfg(feature = "test-aavm")]
 /// Plan 431 E2:AAVM v2(packages/aavm/lib/,纯 Rust 模式)前置拼接清单——单一事实源。
 /// v2 文件由 plan-432 按依赖 topo 序逐个写入,写一个登记一个
 /// (token → lexer → ast → parser → typeinfo → opcode → codegen → engine)。
@@ -582,6 +588,7 @@ pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
     "packages/aavm/lib/a2r.at",
 ];
 
+#[cfg(feature = "test-aavm")]
 /// Plan 517 W2 双轨剥离:读 AUTO_LIB_FILES_V2 拼接并剥除 `use auto.lib.*`
 /// 行(拼接消费面专用——行为与模块化前逐字节等价:符号同居一程序;真 use
 /// 解析只走 auto.exe 直跑/auto build 模块路径。剥离规则单一事实源,

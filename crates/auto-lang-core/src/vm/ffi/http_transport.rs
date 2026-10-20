@@ -44,7 +44,7 @@ use super::http_server::{ApiBody, ApiReply, ApiRequest};
 /// only where operators need them. Invalid or zero env values fall back to
 /// the documented default — there is no implicit unbounded mode.
 #[derive(Debug, Clone)]
-pub(crate) struct TransportConfig {
+pub struct TransportConfig {
     /// `max_buf_size` on hyper's http1 connection: bounds the request head.
     pub max_header_buf: usize,
     /// Idle timeout for reading the request head (hyper closes on expiry).

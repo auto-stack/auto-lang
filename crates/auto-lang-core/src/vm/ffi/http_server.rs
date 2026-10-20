@@ -4084,7 +4084,7 @@ impl ApiRequest {
 
 /// Reply body payload: plain bytes, SSE frames streamed from a producer
 /// task on the VM owner thread, or a file response descriptor (PLAN-729).
-pub(crate) enum ApiBody {
+pub enum ApiBody {
     Text(Vec<u8>),
     Sse(tokio::sync::mpsc::Receiver<String>),
     /// PLAN-729 T-04：文件响应描述符（编组单次取出；打开/协议决策/发送
@@ -4094,7 +4094,7 @@ pub(crate) enum ApiBody {
 }
 
 /// [`ApiBody::File`] 载荷：owned 描述符 + 请求 id（日志/CORS 追加用）。
-pub(crate) struct FileReplySeed {
+pub struct FileReplySeed {
     pub descriptor: a2r_std::http::FileResponse,
     pub request_id: String,
 }
@@ -4673,7 +4673,7 @@ fn cancel_all_parked(vm: &std::rc::Rc<AutoVM>, parked: &mut Vec<ParkedRequest>) 
 use crate::vm::engine::{AutoVM, ParkedSegment, ParkedWait, SegmentOutcome};
 
 /// 编组延续所需的全部请求上下文（park 后恢复重建 reply 的最小集）。
-pub(crate) struct DispatchCtx {
+pub struct DispatchCtx {
     pub req_method: String,
     pub req_path: String,
     pub request_id: String,
@@ -4709,14 +4709,14 @@ pub(crate) struct DispatchCtx {
 }
 
 /// PLAN-730 T-05：bridge→handler 的上传 body 能力（未授权不解析/不落盘）。
-pub(crate) struct PendingUpload {
+pub struct PendingUpload {
     pub body: axum::body::Body,
     pub headers: Vec<(String, String)>,
 }
 
 /// park 的延续点。
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum ParkStage {
+pub enum ParkStage {
     /// `middleware_names[index]` 的段挂起中。
     Middleware { index: usize },
     /// handler 段挂起中。

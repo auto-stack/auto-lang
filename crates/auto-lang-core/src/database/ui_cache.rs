@@ -414,9 +414,10 @@ mod tests {
     }
 
     // --- PLAN-814 R3-02/R4：身份槽升级与晚装配失效（reviewer 反例回放） ---
-    // 槽是进程级全局——两条用例各自开专属测试进程跑（libtest 每测试一
-    // 进程，nextest 同；裸 cargo test 单进程下两用例先后执行也互不冲突：
-    // 升级用例先 None 后 Some，晚装用例的 set(Some) 首装即生效）。
+    // 槽是进程级全局。nextest 每测试一进程天然隔离；裸 cargo test
+    // （libtest 单进程多线程）下用例并发执行，故两用例均先
+    // reset_fingerprint_slot_for_test() 自定序（R5 复核勘误：libtest 并非
+    // 每测试一进程）。
 
     #[test]
     fn plan814_none_to_some_identity_upgrade() {

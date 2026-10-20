@@ -12743,7 +12743,9 @@ impl HttpBaseEnvGuard {
     }
 }
 
-#[cfg(test)]
+// PLAN-814 R3-06/R5：Drop 不设 cfg(test)——HttpBaseEnvGuard 是跨 crate
+// 测试支持面（上层 plan606 等经 SDK rlib 消费），门内 Drop 使依赖方
+// 测试拿不到恢复语义且非测试构建 `prev` 未读告警。
 impl Drop for HttpBaseEnvGuard {
     fn drop(&mut self) {
         match self.prev.take() {

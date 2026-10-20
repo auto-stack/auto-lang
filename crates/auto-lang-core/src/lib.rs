@@ -11,7 +11,6 @@
 //! 兼容包（auto-lang）再导出保类型身份。
 
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock};
 
@@ -320,10 +319,10 @@ impl std::fmt::Display for StagedRunFailure {
 
 impl std::error::Error for StagedRunFailure {}
 
-/// Plan 773 F-08: relay for the typed trap code between the result
-/// extraction (deep inside the pipeline, where the task object lives) and
-/// the staged wrapper below. Every public execution API runs its pipeline
-/// on a DEDICATED thread, so the cell is call-scoped: set on the failing
+// Plan 773 F-08: relay for the typed trap code between the result
+// extraction (deep inside the pipeline, where the task object lives) and
+// the staged wrapper below. Every public execution API runs its pipeline
+// on a DEDICATED thread, so the cell is call-scoped: set on the failing
 /// extraction, taken by the wrapper on the same thread before join returns.
 thread_local! {
     static LAST_RUN_TRAP_CODE: std::cell::RefCell<Option<&'static str>> =
@@ -1343,17 +1342,20 @@ pub fn set_ui_grammar(g: auto_parser_api::UiGrammar) -> bool {
     UI_GRAMMAR.set(g).is_ok()
 }
 
-/// 上层自注册的 UI 文法表来源。语义边界（与 [`UiCompatInstaller`] 同构，
-/// R4-01 对账见 docs/plans/attachments/814/r4-01-assembly-contract.md）：
+/// 上层自注册的 UI 文法表来源。语义边界（与 [`UiCompatInstaller`] 同构；
+/// R4-01/R5 对账见 docs/plans/attachments/814/r4-01-assembly-contract.md）：
 /// SDK **不提交**任何来源——纯 SDK 消费者零 submit、表缺席=空方言回退/
-/// 公开门面显式拒绝（与原 feature off 语义逐位一致）；上层兼容包/
-/// compiler 的**显式 `inventory::submit!` 语句**在其被链接时生效（可
-/// 审计的确定性注册，非 linker 偶然拉入——无静态构造器副作用、无 Core
-/// 硬编码 UI factory），仅覆盖不经装配入口的直达
-/// `Parser::from(..).with_session(UI)` 构造；全部具名装配入口（run 族
-/// 漏斗/旧公开入口包装/compiler 生成入口）以 [`set_ui_grammar`] 显式
-/// 装配为第一来源。多来源共存时首个收集生效——各来源均自
-/// auto-ui-dialect 单源构造，内容等价。
+/// 公开门面显式拒绝（与原 feature off 语义逐位一致）、无 Core 硬编码
+/// UI factory。上层兼容包/compiler 经**源码中显式可见的
+/// `inventory::submit!` 语句**注册；其生效机制**是启动期构造器**——
+/// inventory 0.3.25 的 submit 宏生成 `__ctor` 并经 `.CRT$XCU`（Windows）
+/// 在进程启动时登记节点（R5 复核实录），属 r2 AC-02"无隐式链接装配"
+/// 约束下的**待批准合同修订项**（提案见对账附件；未获批前本兜底不得
+/// 视为已对账的最终形态）。全部具名装配入口（run 族漏斗/旧公开入口
+/// 包装/compiler 生成入口）以 [`set_ui_grammar`] 显式装配为第一来源，
+/// 本收集点仅覆盖不经装配入口的直达 `Parser::from(..).with_session(UI)`
+/// 构造。多来源共存时首个收集生效——各来源均自 auto-ui-dialect 单源
+/// 构造，内容等价。
 pub struct UiGrammarSource(pub fn() -> auto_parser_api::UiGrammar);
 inventory::collect!(UiGrammarSource);
 
@@ -3539,40 +3541,6 @@ pub(crate) const AUTO_LIB_FILES: &[&str] = &[
     "packages/aavm/lib-legacy/generics.at",
     "packages/aavm/lib-legacy/eval.at",
 ];
-
-/// Plan 431 E2:AAVM v2(packages/aavm/lib/,纯 Rust 模式)前置拼接清单——单一事实源。
-/// v2 文件由 plan-432 按依赖 topo 序逐个写入,写一个登记一个
-/// (token → lexer → ast → parser → typeinfo → opcode → codegen → engine)。
-pub(crate) const AUTO_LIB_FILES_V2: &[&str] = &[
-    // plan-432 S1/S2: token → lexer → parser(依赖序,见 docs/specs/aavm/file-mapping.md)
-    "packages/aavm/lib/token.at",
-    "packages/aavm/lib/lexer.at",
-    "packages/aavm/lib/parser.at",
-    "packages/aavm/lib/typeinfo.at",
-    "packages/aavm/lib/codegen.at",
-    "packages/aavm/lib/engine.at",
-    // plan-434: AA2R(Auto 版 a2r 核心子集;含 434 扩展后的 parser/lexer 见 D38)
-    "packages/aavm/lib/a2r.at",
-];
-
-/// Plan 517 W2 双轨剥离:读 AUTO_LIB_FILES_V2 拼接并剥除 `use auto.lib.*`
-/// 行(拼接消费面专用——行为与模块化前逐字节等价:符号同居一程序;真 use
-/// 解析只走 auto.exe 直跑/auto build 模块路径。剥离规则单一事实源,
-/// scripts/gen-aavm2-unit.py 镜像之)。
-pub(crate) fn aavm2_lib_source(project_root: &std::path::Path) -> AutoResult<String> {
-    let mut out = String::new();
-    for file in AUTO_LIB_FILES_V2 {
-        let content = std::fs::read_to_string(project_root.join(file))?;
-        for line in content.lines() {
-            if line.trim_start().starts_with("use auto.lib.") {
-                continue;
-            }
-            out.push_str(line);
-            out.push('\n');
-        }
-    }
-    Ok(out)
-}
 
 /// 链接器重映射共用的操作数跨度模型(2026-08-22 池 u32 化重写)。
 /// 返回 (操作数字节长度, [(池索引偏移, 索引空间)])。
