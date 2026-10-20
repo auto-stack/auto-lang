@@ -22,3 +22,10 @@ pub mod ui_gen;
 pub fn generator_fingerprint() -> Option<String> {
     option_env!("AUTO_UI_GEN_FINGERPRINT").map(|s| s.to_string())
 }
+
+// PLAN-814 R3-03b：UI 文法函数表装配自注册（SDK 收集点 UiGrammarSource
+// ——本 crate 被链接即生效；auto-ui-dialect 依赖为本 crate 直接清单边）。
+// SDK 清单不再引用 auto-ui-dialect 后，UI 解析（`Parser::from(..)
+// .with_session(UI)` 等路径）经该表派发文法单源实现。编译器消费方
+// 闭包因此无需经旧 auto-lang 兼容包间接拉入文法。
+inventory::submit!(auto_lang_core::UiGrammarSource(auto_ui_dialect::ui_grammar));

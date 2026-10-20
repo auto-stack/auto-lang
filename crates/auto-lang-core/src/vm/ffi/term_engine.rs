@@ -423,14 +423,7 @@ pub fn shim_term_config_spawn_cwd(task: &mut AutoTask, vm: &AutoVM) -> Result<()
 }
 
 // ── window-pixel compatibility facade (view state owner = UI adapter) ────
-
-/// PLAN-024 T-01 desktop-track injection. Compat facade forwarding to the
-/// named UI view adapter; the state is a thread-local view projection, not
-/// engine state. No-UI builds have no window and keep the legacy "function
-/// absent" surface.
-
-/// Test read face (injection semantics assertions).
-#[cfg(all(test, feature = "ui"))]
-pub(crate) fn app_window_px_for_test() -> (f32, f32) {
-    crate::ui::terminal_provider::app_window_px_for_test()
-}
+// PLAN-024 T-01 desktop-track injection 的 compat facade 与测试读面随 UI
+// 实现整体迁上层 auto-lang（PLAN-814 R3-06 清偿 T-02 迁移残留死门：本
+// crate 无 ui 模块，原 `all(test, feature = "ui")` 副本恒不编译；真测试面
+// =auto-lang ui::terminal_provider::app_window_px_for_test，含同断言测试）。

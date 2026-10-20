@@ -1324,6 +1324,43 @@ pub fn install_ui_host_capabilities() {
     }
 }
 
+// ---- PLAN-814 R3-03b：UI 文法函数表端口（替代原 `ui-dialect` feature） ----
+// SDK 清单不再引用 auto-ui-dialect：内置 UiDialect 派发与 Parser 公开 UI
+// 门面经 auto_parser_api::UiGrammar 函数表间接调用文法单源实现（构造器
+// = auto-ui-dialect::ui_grammar()，装配方为上层组合点）。表缺席（纯 SDK）
+// 语义与原 feature off 逐位一致：Scenario::UI 方言表为空、UI 语句回退非
+// UI 路径、公开门面显式拒绝诊断。
+//
+// 装配通道与 UiCompatInstaller 同机制（R3-01 已验证形态）：SDK 不提交
+// 任何来源——纯 SDK 消费者零 submit、表缺席=拒绝/回退语义不变；上层
+// （旧 auto-lang 兼容包 / auto-ui-compiler）被链接即其 submit 生效，
+// 首次方言装配/公开门面调用时惰性收集——不经 run 族漏斗的直达
+// `Parser::from(..).with_session(UI)` 构造同样覆盖。
+static UI_GRAMMAR: OnceLock<auto_parser_api::UiGrammar> = OnceLock::new();
+
+/// 显式装配 UI 文法函数表（上层组合点调用；重复装配首个生效）。
+pub fn set_ui_grammar(g: auto_parser_api::UiGrammar) -> bool {
+    UI_GRAMMAR.set(g).is_ok()
+}
+
+/// 上层自注册的 UI 文法表来源（与 [`UiCompatInstaller`] 同型机制）。
+/// 多来源共存时首个收集生效——各来源均自 auto-ui-dialect 单源构造，
+/// 内容等价。
+pub struct UiGrammarSource(pub fn() -> auto_parser_api::UiGrammar);
+inventory::collect!(UiGrammarSource);
+
+/// UI 文法表是否可用（显式装配或上层 inventory 来源）。
+pub fn ui_grammar() -> Option<&'static auto_parser_api::UiGrammar> {
+    if let Some(g) = UI_GRAMMAR.get() {
+        return Some(g);
+    }
+    for source in inventory::iter::<UiGrammarSource> {
+        let _ = UI_GRAMMAR.set((source.0)());
+        break;
+    }
+    UI_GRAMMAR.get()
+}
+
 pub mod heavy_gate;
 
 // ---- PLAN-814：i18n lookup 钩子（原 shim_i18n_t 直连 crate::ui 的残边收口） ----

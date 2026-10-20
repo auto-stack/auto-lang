@@ -310,6 +310,13 @@ fn plan814_ui_compat_install() {
 }
 inventory::submit!(auto_lang_core::UiCompatInstaller(plan814_ui_compat_install));
 
+// PLAN-814 R3-03b：UI 文法函数表装配（SDK 收集点 UiGrammarSource——与
+// UiCompatInstaller 同机制，本 crate 被链接即生效）。SDK 清单不再引用
+// auto-ui-dialect 后，Scenario::UI 内建方言与旧 Parser 公开 UI 门面经该
+// 表派发；本提交使旧默认"UI 文法恒可用"行为（含不经 run 族漏斗的直达
+// `Parser::from(..).with_session(UI)` 构造）保持不变。
+inventory::submit!(auto_lang_core::UiGrammarSource(auto_ui_dialect::ui_grammar));
+
 // ---- PLAN-814 R3-01：旧公开高层入口的兼容装配包装 ----
 // 这四个入口在 SDK 侧经钩子回调本包安装器；包装确保消费者首次直达调用
 // （未经 run 家族漏斗）也先注册钩子再进 SDK 实现。签名与旧行为逐位一致。

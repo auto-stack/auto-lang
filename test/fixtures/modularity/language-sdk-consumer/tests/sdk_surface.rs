@@ -96,12 +96,16 @@ fn trans_rust_exit_produces_source() {
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    assert!(generated.contains("fn main"), "summary={rust:?} generated={generated:?}");
+    assert!(
+        generated.contains("fn main"),
+        "summary={rust:?} generated={generated:?}"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 行为负控（AC-01/02 边界）：纯 SDK（未启用 `ui-dialect`）中 UI 文法
-/// 公开门面签名恒在但显式拒绝——不静默降级、不 panic。
+/// 行为负控（AC-01/02 边界）：纯 SDK（UI 文法表未装配——R3-03b 起经
+/// 函数表端口，SDK 清单零 auto-ui-dialect）中 UI 文法公开门面签名恒在但
+/// 显式拒绝——不静默降级、不 panic。
 #[test]
 fn ui_grammar_explicitly_refused() {
     let mut parser = Parser::from("msg M { A }");
@@ -110,7 +114,7 @@ fn ui_grammar_explicitly_refused() {
         .expect_err("pure SDK must refuse UI grammar");
     let msg = format!("{err}");
     assert!(
-        msg.contains("ui-dialect") && msg.contains("not enabled"),
+        msg.contains("UI dialect grammar") && msg.contains("not assembled"),
         "unexpected refusal diagnostic: {msg}"
     );
 }
@@ -119,8 +123,9 @@ fn ui_grammar_explicitly_refused() {
 /// Scenario 核心语义不受 UI 组合影响。
 #[test]
 fn core_session_parses_plain_program() {
-    let mut parser = Parser::from("fn main() {\n    var x int = 1\n}\n")
-        .with_session(CompilerSession::new(auto_lang_core::session::Scenario::Core));
+    let mut parser = Parser::from("fn main() {\n    var x int = 1\n}\n").with_session(
+        CompilerSession::new(auto_lang_core::session::Scenario::Core),
+    );
     let ast = parser.parse().expect("core parse");
     assert!(!ast.stmts.is_empty());
 }

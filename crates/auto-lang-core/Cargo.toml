@@ -10,11 +10,11 @@ keywords = ["language", "sdk", "parser", "vm", "transpiler"]
 # 镜像 auto-lang 的非 UI 特性（PLAN-814 T-02；UI 特性族留上层兼容包转发）
 default = ["with-file-history"]
 with-file-history = []
-# PLAN-814 F02：显式 UI 方言组合——拉入 auto-ui-dialect 文法实现并装配
-# 内建 UiDialect（build_dialects/dialect::ui 公开门面均在本 feature 后）。
-# 旧 auto-lang 兼容包 default 转发本 feature，Scenario::UI 默认装配不变；
-# 纯 SDK（feature off）方言表为空，UI 语句回退非 UI 路径。
-ui-dialect = ["dep:auto-ui-dialect"]
+# PLAN-814 R3-03b：原 `ui-dialect` 显式组合 feature 已删除——SDK 清单
+# （含 optional path）不再引用 auto-ui-dialect（无 UI checkout 的源码快照
+# 消费要求）。UI 文法经函数表端口装配：上层组合点注入
+# auto_parser_api::UiGrammar（auto-ui-dialect 单源构造），表缺席=原
+# feature off 语义（方言表为空/公开门面显式拒绝）。
 # PLAN-814 T-02 迁移勘误：a2r_std::diff 双轨门（真 diff=auto-text-core
 # 直调 / 关=panic 同 shim fallback 形）在 SDK 侧的对应 feature；上层
 # auto-lang 的 code-editor feature 转发至此。空 feature——实现依赖
@@ -38,10 +38,6 @@ ecow = { workspace = true }
 # ---- PLAN-814 T-02 大迁移：非 UI 依赖全集（镜像 auto-lang，剔除 iced/OS-native/跨仓 autodown/UI 三包）----
 a2r-std = { path = "../a2r-std" }
 auto-atom = { path = "../auto-atom" }
-# PLAN-814 F02（R2 复审口径）：UI 文法实现按显式组合进 SDK——非默认
-# feature `ui-dialect`；纯 SDK normal/build/dev 闭包零 UI 文法实现。旧默认
-# UI 行为由上层 auto-lang（default 转发 ui-dialect）保持。
-auto-ui-dialect = { path = "../auto-ui-dialect", optional = true }
 auto-cache = { path = "../auto-cache" }
 shim-metadata = { path = "../shim-metadata" }
 auto-test-case = { path = "../auto-test-case", optional = true }

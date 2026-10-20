@@ -2005,13 +2005,6 @@ mod tests {
         test_a2gd("17_godot_types/004_tool").unwrap();
     }
 
-    // Plan 306: signal declarations inside a scene → `signal name(p: T)` in .gd.
-    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
-    #[test]
-    fn test_godot_signals() {
-        test_a2gd("17_godot_types/005_signal").unwrap();
-    }
-
     // Plan 306 Phase 5a: typed collections Array[T]/Dictionary[K,V].
     #[test]
     fn test_godot_typed_collections() {
@@ -2163,39 +2156,6 @@ mod tests {
     #[test]
     fn test_cb_return_value() {
         test_a2gd("cookbook/07_functions/001_return_value").unwrap();
-    }
-
-    // Plan 308: reverse-translated Godot demo scripts.
-    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
-    #[test]
-    fn test_godot_demo_instancing_ball_factory() {
-        test_a2gd("tscn/godot_demos/instancing/002_ball_factory").unwrap();
-    }
-
-    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
-    #[test]
-    fn test_godot_demo_hexagonal_troll() {
-        test_a2gd("tscn/godot_demos/hexagonal_map/001_troll").unwrap();
-    }
-
-    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
-    #[test]
-    fn test_godot_demo_kinematic_player() {
-        test_a2gd("tscn/godot_demos/kinematic_character/001_player").unwrap();
-    }
-
-    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
-    #[test]
-    fn test_godot_demo_dodge_mob() {
-        test_a2gd("tscn/godot_demos/dodge_the_creeps/001_mob").unwrap();
-    }
-
-    #[cfg(feature = "ui-dialect")] // PLAN-814 F02：UI 文法测试——显式组合（feature on）下运行
-    #[test]
-    fn test_godot_demo_dodge_player() {
-        // Deep-stack: 002_player drives deep recursion in the transpiler hot
-        // path (see test_a2gd_deep). Stack-budget, not a regression.
-        test_a2gd_deep("tscn/godot_demos/dodge_the_creeps/002_player");
     }
 
     #[test]

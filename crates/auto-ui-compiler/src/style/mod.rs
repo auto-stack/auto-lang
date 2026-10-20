@@ -158,10 +158,10 @@ pub mod theme;
 /// PLAN-571: button variant/size preset 单一事实源（default 一等化）。
 pub mod variants;
 
-#[cfg(feature = "ui-iced")]
 // PLAN-814 T-03：iced 后端适配器留 auto-lang（ui/style_iced_adapter.rs），
-// 经本 crate 公开 style 类型面消费；headless 适配随分析侧在本 crate。
-#[cfg(feature = "ui-iced")]
+// 经本 crate 公开 style 类型面消费；headless 适配随分析侧在本 crate
+// （PLAN-814 R3-06：`ui-headless` 在本 crate 声明为空门——原 auto-lang
+// feature 的组件面，上层转发恢复恒开语义）。
 #[cfg(feature = "ui-headless")]
 pub mod headless_adapter;
 
