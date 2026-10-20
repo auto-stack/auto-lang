@@ -427,7 +427,10 @@ current_step=4/15（T-02/T-03/T-13 复勾）。
 - **next_responsible_role: review（T-14 具名 M814-A 阶段审查）**——绑定分支头
   `6418f99ef` + r2 §5.1 阶段性质 + [m814-a-candidate.md](attachments/814/m814-a-candidate.md)
   （§3 证据矩阵需按本轮更新重核：777 基线 SHA/no-ui 探针/映射表/告警表为新增
-  绑定）。merge-owned 冻结门（裸 t+tv/tu/tt）照旧 pending。
+  绑定；§6 增量附录已补）。**792 driver 复跑 25/25（EXIT=0，收据
+  worktree scratch-consumer/driver-receipt.json）**——SDK/compiler 清单变化
+  （feature 删除/dev 边新增）下交付闭包/投影/指纹合同保持。merge-owned
+  冻结门（裸 t+tv/tu/tt）照旧 pending。
 
 ## 10. 待澄清事项
 
