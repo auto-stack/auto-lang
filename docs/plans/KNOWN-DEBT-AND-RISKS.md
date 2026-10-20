@@ -298,6 +298,16 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
 
+### Plan 797（2026-10-20，R14 修复轮完成，待 T-08 复审）
+
+R14 复审（受审 `e1088b0ad`，needs_fix）两项 P1 已全部修复（修复提交 `e00133e62`，同树）：F-R4-07 产物过滤精确化（调用方声明排除集+staged-link 命名空间，config.tmp 遮蔽 17→29 反例）+ 信封版本化 v4（旧窄域 v3 永不服务，合法旧形态信封反例）；F-R9-01 重开项以 canonicalize 目录锚点绑定实际解析位置与 cwd（相对字面量跨工程 17/29 反例+每工程 hit 控制）；配套修复 canonical 前缀混用导致的派生漏配。probe 86/86、父侧 13/13、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
+
+### Plan 797（2026-10-20，R14 完整复审，needs_fix）
+
+受审 `e1088b0adf56906bee7c6ce854347830d429c66e`，revision1；[R14完整报告/AC映射/原始反例](attachments/797/review-r14/review.md)。父路径新建store例修复、1025目录include超过派生上限时不缓存分支通过。**F-R4-07 PARTIAL/OPEN**：实际include的config.tmp文本头因后缀被过滤，新增近端29仍cache17/fresh29；合法旧v3域（按R13算法/原generation恢复）未被升级失效，父路径遮蔽后仍hit17/fresh29。**F-R9-01/P1 REOPEN**：两个cwd使用相同相对src/same.c和include，共享store时B命中A对象17、fresh B29，原绝对路径控制仍通过。无新增ID/规模承诺，登记不批准原合同内延期/缩面；相对路径是原身份不变式遗漏，不声称本提交新引入。
+
+**executing4/9**，T01–04完成；185定向测试pass+1既有ignored，210周转样本/正式61行保全，正式完成后P95=739/114ms。F-R4-10内存、F-R4-09计时/原始行/错误传播及其余旧项保持关闭；原树work修两个缓存不变式后再审。第九次完整final未过；未改实现/整档/合入/canonical Spec/live ledger，merge-owned门禁/沉淀/归档/guard仍pending。以下为历史记录。
+
 ### Plan 797（2026-10-20，R13 修复轮完成，待 T-08 复审）
 
 R13 复审（受审 `ae51fea21`，needs_fix，F-R4-10 关闭、进度 4/9）唯一开放项 F-R4-07 已修复（修复提交 `e1088b0ad`，同树）：候选位置全集派生——对全部 (依赖, 解析目录, 链目录) 三元组记录 normalize(D2+rel(P,D1)) 父目录，覆盖父路径逃逸候选（R13 构造 17→29 反例+同输入 hit 控制为永久测试）；派生完备性=真实 spec 必在枚举内；上限 1024 超限保守不缓存；实测真实 consumer 成本可忽略。probe 83/83、父侧 13/13、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
@@ -2533,3 +2543,7 @@ T-16/L1 needs_fix，feacf79e8：六项F-815-L1-01..06开放，涉及CLI假成功
 ## D-815-L2：恢复复审剩余失败不变量（2026-10-20）
 
 T-16/L2 needs_fix @1082bde52：L1-01/04/06已独立闭合，双checkpoint57→58→59/1098项真实往返通过；L1-02部分写失败留下本运行257字节残留、L1-03存在性/legacy删除/section声明保护仍开；L1-05代码闭但当前收据旧版本策略残留P3；新增L2-01最终SHA已不符仍成功退出。T-15重开，production v57原件未动；这些是r3合同内阻断，不能以debt豁免。原树按两轮未闭诊断修复后新SHA复审；证据 docs/plans/attachments/815/review-l2/review.md。
+
+### Plan 798 修复复审及r5 readiness R13（2026-10-20，needs_fix）
+
+受审`06114f4316468030f1b160bb028046b9e5beab71`，plan r5；[报告/原反例闭合/新prefix输入/双线raw与身份](attachments/798/review-r13/review.md)。R12四项在当前范围关闭：71层尾表达式合法、unit不可执行、wire2隔离旧1、内存按用户批准r5方案C双线门（A224/B128）本轮release六场景×1实测A201.6MiB/B3.6MiB且四态门控通过；历史r4单线失败不改写。新F798-R13-01 P2：前缀unary在callee标识符operand时被消费，随后遇'('撤回名字把prefix一起丢掉；20个-/!加110层调用真实HIR131/132仍放行并返回1，同语义仅加括号则正确resource。116/24层合法控制通过。53项不同定向测试绿、fmt/diff-check0，不覆盖此新组合或完整最终验收。T03/04/06/11保留，T02重开，T01/05/07/08完整K14/正式30样本readiness原已pending，executing4/11。原树work补prefix绑定整个调用的状态与-/!/分组/普通operand区别性oracle后提交再审；未修实施/发布canonical规范/ledger/合入，最终pass后merge门禁和收尾pending。登记不授权延期/缩围。
