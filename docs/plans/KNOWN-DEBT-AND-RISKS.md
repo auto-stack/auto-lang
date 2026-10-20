@@ -1043,6 +1043,11 @@ tt 首跑 plan730 target matrix 409≠403，完整5649项复跑与定向复跑�
 - **book_listing 外部书仓敏感性（登记观察）**：`tests/book_listing_tests::*`（tb 档，ch02_05/ch03_08/ch06_05/ch06_06/ch06_08/ch06_09/ch09_02）输入源为外部兄弟仓 `D:/autostack/book/rust/listings` 的实时内容——该书仓在途编辑（d7a71a7 重生成金样 + ch06 金样未提交 WIP）期间这批测试确定性红，随书仓落定自然收敛。本仓窗口对该路径零改动；book 仓编辑会话应在落定后复跑 `cargo tb book_listing` 确认。
 - 既有基线沿用：712 §10② master 14 红族（p053×4/p054×2/plan606/desktop_protocol/iced renderer/e4/plan707/app_registry×2）本轮复现一致（native_gate 本轮未现=成员漂移）；a2vue_desktop 金样=4f123a50e 在案；plan484 streaming=711 §10 在案。
 
+## 批量回归登记（2026-10-20，收据 covered 817，续 815 批）
+
+- **state_file 并发对并行负载 flake ×2（新登记，观察名单）**：`state_file::tests::concurrent_atomic_writes_never_tear` / `lock_serializes_critical_sections`——tf 批量并行池红（0.207s/0.330s），solo 3 轮全绿（0.7-0.9s）；`state_file.rs` 在覆盖窗口 `2772c8012..5594158a4` 零提交（PLAN-044 远古模块，无计划归属）。与 REG-2/THR-D4（ffi_dual_019、plan502_m3）同类并行负载序敏感；处置=批量档观察名单，频率上升再立项。本批 ffi_dual_019 复现一次（同签名：池红 2.98s/solo 绿 3.56s，REG-2 在案）。
+- **tt 首 fail-fast 截断注记**：nextest 现行为默认 fail-fast，`cargo tt` 首轮被已知 plan484 charts flake（812 收据 known_reds_seen 同族，solo 3× 绿）在 2237/5685 截断；完整轮须 `--no-fail-fast`（本批 tf/tt 完整轮均带）。后续批量跑建议直接带该旗。
+
 
 ### PLAN-721 批（2026-10-01，用户裁定「app 修改到此为止」余题登记）
 
