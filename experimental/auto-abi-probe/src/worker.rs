@@ -734,7 +734,7 @@ fn execute_query(sess: &mut Session) -> StepOut {
             if over_budget(sess) {
                 return resource_step(budget_msg(sess), compute_calls, sess);
             }
-            let c_obj = match produce_c_object(&store, &src, &manifest.join("cside"), || {
+            let c_obj = match produce_c_object(&store, &src, &manifest.join("cside"), &[], || {
                 compute_calls += 1;
                 let obj = scratch.join("consumer-once.obj");
                 let deps = crate::ctool::compile_c_with_deps(&src, &manifest.join("cside"), &obj)
@@ -761,7 +761,7 @@ fn execute_query(sess: &mut Session) -> StepOut {
             if over_budget(sess) {
                 return resource_step(budget_msg(sess), compute_calls, sess);
             }
-            let c_obj = match produce_c_object(&store, &src, &manifest.join("cside"), || {
+            let c_obj = match produce_c_object(&store, &src, &manifest.join("cside"), &[], || {
                 compute_calls += 1;
                 let obj = scratch.join("consumer-once.obj");
                 let deps = crate::ctool::compile_c_with_deps(&src, &manifest.join("cside"), &obj)

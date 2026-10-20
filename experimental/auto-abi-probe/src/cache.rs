@@ -161,21 +161,17 @@ struct CObjectEntry {
 /// COMPILE/LINK ARTIFACTS are excluded (a build must not invalidate
 /// itself); anything else — extension-less files included — is a
 /// potential include candidate and part of the environment.
-fn search_listing(dir: &std::path::Path) -> Vec<String> {
-    fn is_artifact(name: &str) -> bool {
-        let l = name.to_ascii_lowercase();
-        l.ends_with(".obj")
-            || l.ends_with(".exe")
-            || l.ends_with(".lib")
-            || l.ends_with(".pdb")
-            || l.ends_with(".ilk")
-            || l.ends_with(".exp")
-            || l.ends_with(".dll")
-            || l.ends_with(".tmp")
-            // staged-link temporaries: <exe>.tmp-<txn> beside the output
-            || l.contains(".tmp-")
+fn search_listing(dir: &std::path::Path, artifact_names: &[String]) -> Vec<String> {
+    // ONLY files this pipeline actually creates are excluded from the
+    // environment: the caller-declared compile/link outputs, and our
+    // staged-link temporaries (`<exe>.tmp-<txn>`). A header named
+    // `config.tmp` is a REAL include candidate (F-797-R4-07 R14) —
+    // suffix-based filtering is not sound.
+    fn is_artifact(name: &str, artifact_names: &[String]) -> bool {
+        artifact_names.iter().any(|a| a.eq_ignore_ascii_case(name))
+            || name.starts_with("probe.exe.tmp-")
     }
-    fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>) {
+    fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>, arts: &[String]) {
         let Ok(rd) = std::fs::read_dir(dir) else {
             return;
         };
@@ -191,14 +187,14 @@ fn search_listing(dir: &std::path::Path) -> Vec<String> {
                 format!("{prefix}/{name}")
             };
             if e.file_type().is_ok_and(|t| t.is_dir()) {
-                walk(&e.path(), &rel, out);
-            } else if !is_artifact(&name) {
+                walk(&e.path(), &rel, out, arts);
+            } else if !is_artifact(&name, arts) {
                 out.push(rel);
             }
         }
     }
     let mut names = Vec::new();
-    walk(dir, "", &mut names);
+    walk(dir, "", &mut names, artifact_names);
     names
 }
 
@@ -267,6 +263,16 @@ fn parent_of(path: &str) -> String {
 }
 
 fn split_norm(p: &str) -> Vec<String> {
+    // strip the canonical-form prefix so `\\?\D:\...` and `D:\...`
+    // compare and join uniformly (canonicalized anchors must mix with
+    // plain showIncludes paths in the derivation)
+    let stripped;
+    let p = if let Some(rest) = p.strip_prefix("\\\\?\\") {
+        stripped = rest;
+        &stripped
+    } else {
+        p
+    };
     p.split(['/', '\\'])
         .filter(|s| !s.is_empty() && *s != ".")
         .map(|s| s.to_string())
@@ -313,6 +319,7 @@ pub fn produce_c_object<F>(
     store: &ManagedStore,
     src: &std::path::Path,
     include_dir: &std::path::Path,
+    artifact_names: &[&str],
     produce: F,
 ) -> Result<(Vec<u8>, bool), StoreError>
 where
@@ -321,11 +328,19 @@ where
     use base64::Engine as _;
     let source_identity =
         c_source_identity(src).map_err(|e| StoreError::Internal(format!("{e}")))?;
-    let src_dir = src
-        .parent()
-        .map(|p| p.display().to_string())
-        .unwrap_or_default();
-    let inc_dir_s = include_dir.display().to_string();
+    // F-797-R9-01 (R14): bind the applicability domain to the RESOLVED
+    // directories, not the path LITERALS — canonicalize both anchors so
+    // relative spellings resolve against the CURRENT working directory
+    // and two projects sharing the same literals never alias.
+    let src_dir = std::fs::canonicalize(src.parent().unwrap_or(std::path::Path::new(".")))
+        .map_err(|e| StoreError::Internal(format!("canonicalize src dir: {e}")))?
+        .display()
+        .to_string();
+    let inc_dir_s = std::fs::canonicalize(include_dir)
+        .map_err(|e| StoreError::Internal(format!("canonicalize include dir: {e}")))?
+        .display()
+        .to_string();
+    let artifact_names: Vec<String> = artifact_names.iter().map(|a| a.to_string()).collect();
     let target = crate::layout::TARGET.to_string();
     let toolchain = current_toolchain();
     // DISCOVERY (+ verification). Canonical keys sort fields
@@ -363,7 +378,12 @@ where
                 let verified = serde_json::from_slice::<CObjectEntry>(&payload)
                     .ok()
                     .filter(|e| {
-                        e.v == 3
+                        // F-797-R4-07 (R14): v4 only — legacy envelopes
+                        // computed under a NARROWER applicability rule
+                        // (fewer derived candidate dirs, suffix-filtered
+                        // listings) are never served; they miss and are
+                        // re-proven under the current rule
+                        e.v == 4
                             && e.source == source_identity
                             && e.src_dir == src_dir
                             && e.include_dir == inc_dir_s
@@ -375,7 +395,7 @@ where
                             // dirs) must still offer exactly the
                             // recorded file set
                             && e.dir_listings.iter().all(|(d, l)| {
-                                search_listing(std::path::Path::new(d)) == *l
+                                search_listing(std::path::Path::new(d), &artifact_names) == *l
                             })
                     })
                     .and_then(|e| {
@@ -434,10 +454,17 @@ where
     // all triples is complete for every spec that actually resolved;
     // the set is capped and oversized derivations fail closed (the
     // compile is simply not cached).
+    // every chain dir is CANONICALIZED so rel_spec/join_lex see a
+    // uniform prefix (showIncludes paths are plain absolute; canonical
+    // forms are \?-prefixed — mixing them breaks the lexical
+    // common-prefix derivation)
     let mut chain_dirs: Vec<String> = vec![src_dir.clone(), inc_dir_s.clone()];
     for (p, _) in &hashed {
         if let Some(parent) = std::path::Path::new(p).parent() {
-            let ps = parent.display().to_string();
+            let Ok(pc) = std::fs::canonicalize(parent) else {
+                continue;
+            };
+            let ps = pc.display().to_string();
             if !chain_dirs.contains(&ps) {
                 chain_dirs.push(ps);
             }
@@ -466,13 +493,21 @@ where
     dirs.dedup();
     let dir_listings: Vec<(String, Vec<String>)> = dirs
         .iter()
-        .map(|d| (d.clone(), search_listing(std::path::Path::new(d))))
+        .map(|d| {
+            (
+                d.clone(),
+                search_listing(std::path::Path::new(d), &artifact_names),
+            )
+        })
         .collect();
     let mut gen_lines: Vec<String> = hashed.iter().map(|(p, h)| format!("dep|{p}|{h}")).collect();
     gen_lines.push(format!("src_dir|{src_dir}"));
     gen_lines.push(format!("inc_dir|{inc_dir_s}"));
     gen_lines.push(format!("target|{target}"));
     gen_lines.push(format!("toolchain|{toolchain}"));
+    for a in &artifact_names {
+        gen_lines.push(format!("art|{a}"));
+    }
     for (d, l) in &dir_listings {
         gen_lines.push(format!("dir|{d}"));
         for n in l {
@@ -483,7 +518,7 @@ where
     gen_lines.dedup();
     let generation_hash = crate::semref::blake3_hex(gen_lines.join("\n").as_bytes());
     let entry = CObjectEntry {
-        v: 3,
+        v: 4,
         source: source_identity.clone(),
         src_dir: src_dir.clone(),
         include_dir: inc_dir_s.clone(),
