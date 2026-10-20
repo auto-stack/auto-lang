@@ -17,8 +17,9 @@
 //! decl order and signatures unchanged, scalar profile, no store
 //! persistence (warm session only — restore/GC arrive with T-07).
 
-use crate::cache::split_units;
+use crate::cache::{canonical_hir_function, split_units};
 use crate::function_queries::FnEnv;
+use crate::semrefs::content_version_of;
 use crate::hir_adapter::{lower_checked, lower_function_unit};
 use ac_syntax_core_adapter::{project_decl_strict, project_strict, CoreKinds};
 use ac_syntax_grammar::compile as compile_grammar;
@@ -131,6 +132,11 @@ struct FnRecord {
     /// Admitted execution code — same `Arc` across revisions unless this
     /// function itself changed.
     code: Arc<FunctionCode>,
+    /// In-session content-addressed reuse (PLAN-828 T-04): canonical-HIR
+    /// content version → the immutable verified (body, code) pair. A body
+    /// edited back to a prior content reuses the SAME objects — no
+    /// re-verify, re-lower or re-admission (disk layers arrive with T-07).
+    history: BTreeMap<String, (Arc<hir::Body>, Arc<FunctionCode>)>,
 }
 
 /// Outcome of one edit request.
@@ -298,12 +304,20 @@ pub fn warmup(
             .bodies
             .get(body.0 as usize)
             .ok_or_else(|| format!("body {} out of range", body.0))?;
+        let warm_dump = canonical_hir_function(m, *body);
+        let warm_cv = content_version_of(&warm_dump);
+        // ONE Arc shared by the resident record and the content history —
+        // a later content hit must return the very same object.
+        let body_arc = Arc::new(body_ref.clone());
+        let mut history = BTreeMap::new();
+        history.insert(warm_cv, (body_arc.clone(), code.clone()));
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
             stub_item: Item::Fn(stubify(item.1)),
-            hir_body: Arc::new(body_ref.clone()),
+            hir_body: body_arc,
             code: code.clone(),
+            history,
         });
         codes.push(code);
     }
@@ -371,6 +385,65 @@ impl FunctionIncrementalSession {
     /// Run the CURRENT snapshot's entry.
     pub fn run(&self, limits: &ExecLimits, cancel: &CancelFlag) -> (ExecOutcome, ExecTrace) {
         execute_program(&self.current, limits, cancel)
+    }
+
+    /// The miss path of the content cache: verify the changed body
+    /// (verifier-constructed credential, currency-checked), lower the
+    /// single-function unit, admit it through the ABC admission and wrap
+    /// the resident code handle. Counters bump at each real entry.
+    /// Inner `Err` = candidate rejection (diagnostics); outer `Err` =
+    /// infrastructure failure.
+    #[allow(clippy::type_complexity)]
+    fn compile_and_admit_changed(
+        &mut self,
+        bundle: &hir::Bundle,
+        def_idx: usize,
+        changed_name: &str,
+        new_src: &str,
+        new_src_hash: u64,
+    ) -> Result<Result<(Arc<hir::Body>, Arc<FunctionCode>), Vec<String>>, String> {
+        let checked_fn: CheckedFunction = match verify_function(bundle.clone(), def_idx) {
+            Ok(c) => c,
+            Err(ds) => {
+                return Ok(Err(ds
+                    .iter()
+                    .map(|d| d.render("probe.at", new_src))
+                    .collect()));
+            }
+        };
+        // Credential currency: the body was verified under the SAME
+        // declaration context as the outstanding ones — a drift here means
+        // the interface gate above missed a context change (defense in
+        // depth; reject rather than re-stamp).
+        if !self
+            .env
+            .credential_current(&checked_fn, &self.context_revision)
+        {
+            return Ok(Err(vec![
+                "body credential minted under a different declaration context".to_string(),
+            ]));
+        }
+        self.counters.bump(&format!("verify_hir:{changed_name}"));
+
+        let def_id = bundle.modules[0].defs[def_idx].id_text.clone();
+        let unit = lower_function_unit(bundle, &def_id, &self.caps, new_src_hash)
+            .map_err(|e| format!("lower: {e:?}"))?;
+        self.counters.bump(&format!("mir_lower:{changed_name}"));
+        let _verified = verify_mir(&unit).map_err(|e| format!("mir verify: {e:?}"))?;
+        self.counters.bump(&format!("verify_mir:{changed_name}"));
+        let flat = encode_abc(&unit)
+            .map_err(|e| format!("abc encode: {e:?}"))?
+            .to_flat();
+        self.counters.bump(&format!("abc_emit:{changed_name}"));
+        let decoded = decode_abc(&flat).map_err(|e| format!("abc decode: {e:?}"))?;
+        self.counters.bump(&format!("decode:{changed_name}"));
+        let loaded = verify_abc(decoded, &unit.owner).map_err(|e| format!("abc verify: {e:?}"))?;
+        self.counters.bump(&format!("verify_abc:{changed_name}"));
+        let code = Arc::new(
+            FunctionCode::admit_unit(loaded).map_err(|e| format!("function code: {e}"))?,
+        );
+        self.counters.bump(&format!("load:{changed_name}"));
+        Ok(Ok((Arc::new(checked_fn.into_body()), code)))
     }
 
     /// Apply one source edit (old-source byte coordinates) and, if it is a
@@ -556,57 +629,51 @@ impl FunctionIncrementalSession {
             ));
         }
 
-        // Per-function HIR credential (verifier-constructed).
-        let checked_fn: CheckedFunction = match verify_function(parts.bundle.clone(), def_idx) {
-            Ok(c) => c,
-            Err(ds) => {
-                return Ok(EditOutcome::rejected(
-                    self.revision,
-                    "candidate rejected: HIR verification diagnostics".to_string(),
-                    ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
-                ));
-            }
+        // In-session content-addressed reuse (T-04): the candidate body's
+        // canonical-HIR content version decides. A hit reuses the stored
+        // VERIFIED (body, code) pair — the interface/context gates above
+        // already bound it to this exact declaration context — with zero
+        // re-verification, re-lowering or re-admission. A miss runs the
+        // full per-function chain and deposits the new immutable pair.
+        let synth_m = parts
+            .bundle
+            .modules
+            .first()
+            .ok_or_else(|| "synth bundle has no module".to_string())?;
+        let def_body = match &synth_m.defs[def_idx].kind {
+            hir::DefKind::Function { body, .. } => *body,
+            _ => return Err("internal: changed def is not a function".to_string()),
         };
-        // Credential currency: the body was verified under the SAME
-        // declaration context as the outstanding ones — a drift here means
-        // the interface gate above missed a context change (defense in
-        // depth; reject rather than re-stamp).
-        if !self
-            .env
-            .credential_current(&checked_fn, &self.context_revision)
-        {
-            return Ok(EditOutcome::rejected(
-                self.revision,
-                "candidate rejected: body credential minted under a different declaration context".to_string(),
-                Vec::new(),
-            ));
-        }
-        self.counters.bump(&format!("verify_hir:{changed_name}"));
-
-        // Per-function MIR unit + admission.
-        let new_src_hash = fnv64(new_src.as_bytes());
-        let unit = lower_function_unit(
-            &parts.bundle,
-            &self.fns[changed_idx].def_id,
-            &self.caps,
-            new_src_hash,
-        )
-        .map_err(|e| format!("lower: {e:?}"))?;
-        self.counters.bump(&format!("mir_lower:{changed_name}"));
-        let _verified = verify_mir(&unit).map_err(|e| format!("mir verify: {e:?}"))?;
-        self.counters.bump(&format!("verify_mir:{changed_name}"));
-        let flat = encode_abc(&unit)
-            .map_err(|e| format!("abc encode: {e:?}"))?
-            .to_flat();
-        self.counters.bump(&format!("abc_emit:{changed_name}"));
-        let decoded = decode_abc(&flat).map_err(|e| format!("abc decode: {e:?}"))?;
-        self.counters.bump(&format!("decode:{changed_name}"));
-        let loaded = verify_abc(decoded, &unit.owner).map_err(|e| format!("abc verify: {e:?}"))?;
-        self.counters.bump(&format!("verify_abc:{changed_name}"));
-        let new_code = Arc::new(
-            FunctionCode::admit_unit(loaded).map_err(|e| format!("function code: {e}"))?,
-        );
-        self.counters.bump(&format!("load:{changed_name}"));
+        let cv = content_version_of(&canonical_hir_function(synth_m, def_body));
+        let (new_hir_body, new_code): (Arc<hir::Body>, Arc<FunctionCode>) =
+            match self.fns[changed_idx].history.get(&cv) {
+                Some((body, code)) => {
+                    self.counters.bump(&format!("reuse_hit:{changed_name}"));
+                    (body.clone(), code.clone())
+                }
+                None => {
+                    let new_src_hash = fnv64(new_src.as_bytes());
+                    match self.compile_and_admit_changed(
+                        &parts.bundle,
+                        def_idx,
+                        &changed_name,
+                        &new_src,
+                        new_src_hash,
+                    )? {
+                        Ok(pair) => {
+                            self.fns[changed_idx].history.insert(cv, pair.clone());
+                            pair
+                        }
+                        Err(diags) => {
+                            return Ok(EditOutcome::rejected(
+                                self.revision,
+                                "candidate rejected: verification diagnostics".to_string(),
+                                diags,
+                            ));
+                        }
+                    }
+                }
+            };
 
         // Commit: swap the changed record, Arc-keep every other, link the
         // next snapshot. Link failure = candidate rejected, old root stays.
@@ -630,7 +697,7 @@ impl FunctionIncrementalSession {
             }
         };
         let changed_rec = &mut self.fns[changed_idx];
-        changed_rec.hir_body = Arc::new(checked_fn.into_body());
+        changed_rec.hir_body = new_hir_body;
         changed_rec.code = new_code;
 
         // Advance the resident syntax state to the ACTUAL incremental

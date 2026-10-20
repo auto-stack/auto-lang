@@ -310,7 +310,7 @@ fn t03_body_credentials_are_context_bound() {
 fn main() int { return helper(1) }";
     let b = "fn helper(x int, y int) int { return x + y }
 fn main() int { return helper(1, 2) }";
-    let mut mint = |src: &str| -> (FnEnv, String) {
+    let mint = |src: &str| -> (FnEnv, String) {
         let compiled = compile_scalar_source(src, "probe.at", &[]).expect("compiles");
         let bundle = compiled.checked.bundle();
         let env = FnEnv::from_bundle(bundle).expect("env");
@@ -341,4 +341,166 @@ fn main() int { return helper(1, 2) }";
     // Interface queries are owner-scoped: unknown names are absent.
     assert!(env_a.interface_of("nope").is_none());
     assert_eq!(env_a.def_id_of("helper"), Some("d_helper"));
+}
+
+/// T-04: in-session content-addressed reuse — editing a function BACK to a
+/// prior content reuses the stored verified objects (identity!) with zero
+/// re-verification / re-lowering / re-admission.
+#[test]
+fn t04_content_addressed_reuse_hits_previous_revision() {
+    let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let (out, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&out, 23, "warm-up run");
+    let (_, hir_a, code_a) = s.resident("helper").expect("helper resident");
+
+    // A -> B (`3` -> `4`): full chain for the new content.
+    let star3 = SRC.find("x * 3").expect("target");
+    let pos = (star3 + 4) as u64;
+    let out1 = s.edit(pos, pos + 1, b"4".to_vec()).expect("edit A->B");
+    assert!(out1.ok);
+    let (r1, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&r1, 28, "A->B run");
+
+    // B -> A (revert; same byte position): content hit — the warm-up
+    // objects come back by IDENTITY.
+    let out2 = s.edit(pos, pos + 1, b"3".to_vec()).expect("edit B->A");
+    assert!(out2.ok, "{:?}", out2.non_fast_path_reason);
+    let (r2, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&r2, 23, "B->A run");
+    let (_, hir_now, code_now) = s.resident("helper").expect("helper resident");
+    assert!(
+        Arc::ptr_eq(&hir_a, &hir_now),
+        "reverted content reuses the warm-up HIR body object"
+    );
+    assert!(
+        Arc::ptr_eq(&code_a, &code_now),
+        "reverted content reuses the warm-up FunctionCode"
+    );
+
+    // Counters: exactly ONE lower/emit/verify chain ran (for B); the revert
+    // was a content hit; main untouched throughout.
+    assert_eq!(s.counters().stage_of("reuse_hit", "helper"), 1);
+    assert_eq!(s.counters().stage_of("mir_lower", "helper"), 1);
+    assert_eq!(s.counters().stage_of("verify_hir", "helper"), 1);
+    assert_eq!(s.counters().stage_of("abc_emit", "helper"), 1);
+    assert_eq!(s.counters().stage_of("load", "helper"), 1);
+    for (stage, count) in s.counters().stages_of("main") {
+        assert_eq!(count, 0, "main stage `{stage}`");
+    }
+}
+
+/// T-04 admission negatives: an executable closure can never become
+/// resident function code, and the snapshot link refuses signature-mismatched
+/// call bindings (V-04 trust share).
+#[test]
+fn t04_unit_admission_negatives() {
+    use auto_av_core::abc::encode_abc;
+    use auto_av_core::abc_verify::verify_abc_bytes;
+    use auto_av_core::contract::MIR_SCHEMA;
+    use auto_av_core::function_code::FunctionCode;
+    use auto_av_core::mir::{
+        FnSig, MirBlock, MirConst, MirFunction, MirInstr, MirModule, MirSlot, MirType, Terminator,
+    };
+    use auto_av_core::program_snapshot::ProgramSnapshot;
+
+    let owner = auto_av_core::mir::OwnerScope {
+        schema: MIR_SCHEMA.to_string(),
+        module: "m828".to_string(),
+    };
+    // A COMPLETE (non-unit) module admits as an executable closure — which
+    // FunctionCode must refuse.
+    let mut whole = MirModule::new(owner.clone());
+    let ti = whole.intern_type(MirType::I32);
+    let sig = whole.intern_type(MirType::Fn(FnSig { params: vec![], result: ti }));
+    let c7 = whole.intern_const(MirConst::I32(7));
+    whole.funcs.push(MirFunction {
+        owner: owner.clone(),
+        name: "d_main".into(),
+        sig,
+        slots: vec![MirSlot { kind: auto_av_core::mir::SlotKind::Local, ty: ti, name: None }],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Const { dst: 0, value: c7 }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    whole.entry = 0;
+    let bytes = encode_abc(&whole).unwrap().to_flat();
+    let loaded = verify_abc_bytes(&bytes, &owner).unwrap();
+    assert!(loaded.executable());
+    assert!(
+        FunctionCode::admit_unit(loaded).is_err(),
+        "executable closures are not resident function code"
+    );
+
+    // Signature-mismatched link: unit A imports `fn:d_b` as ()->i32 while
+    // unit B (the only d_b) exports (i32)->i32 — link must refuse.
+    let mut unit_a = MirModule::unit(owner.clone());
+    let ti_a = unit_a.intern_type(MirType::I32);
+    let wrong_sig = unit_a.intern_type(MirType::Fn(FnSig { params: vec![], result: ti_a }));
+    let call_sig = unit_a.intern_type(MirType::Fn(FnSig { params: vec![], result: ti_a }));
+    let imp = unit_a.intern_import(auto_av_core::mir::MirImport {
+        symbol: "fn:d_b".to_string(),
+        effect: auto_av_core::mir::Effect::Pure,
+        sig: wrong_sig,
+    });
+    let _ = call_sig;
+    let sig_a = unit_a.intern_type(MirType::Fn(FnSig { params: vec![], result: ti_a }));
+    unit_a.funcs.push(MirFunction {
+        owner: owner.clone(),
+        name: "d_main".into(),
+        sig: sig_a,
+        slots: vec![MirSlot { kind: auto_av_core::mir::SlotKind::Local, ty: ti_a, name: None }],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Call { callee: auto_av_core::mir::CalleeRef::Import(imp), dst: 0, args: vec![] }],
+            term: Terminator::Return { value: 0 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    unit_a.entry = 0;
+    let mut unit_b = MirModule::unit(owner.clone());
+    let ti_b = unit_b.intern_type(MirType::I32);
+    let sig_b = unit_b.intern_type(MirType::Fn(FnSig { params: vec![ti_b], result: ti_b }));
+    let cb = unit_b.intern_const(MirConst::I32(1));
+    unit_b.funcs.push(MirFunction {
+        owner: owner.clone(),
+        name: "d_b".into(),
+        sig: sig_b,
+        slots: vec![
+            MirSlot { kind: auto_av_core::mir::SlotKind::Param, ty: ti_b, name: None },
+            MirSlot { kind: auto_av_core::mir::SlotKind::Local, ty: ti_b, name: None },
+        ],
+        blocks: vec![MirBlock {
+            instrs: vec![MirInstr::Copy { dst: 1, src: 0 }, MirInstr::Const { dst: 1, value: cb }],
+            term: Terminator::Return { value: 1 },
+        }],
+        entry: 0,
+        source_snapshot: 0,
+        spans: vec![],
+    });
+    unit_b.entry = 0;
+    for u in [&unit_a, &unit_b] {
+        let b = encode_abc(u).unwrap().to_flat();
+        let d = auto_av_core::abc::decode_abc(&b).unwrap();
+        let loaded = auto_av_core::abc_verify::verify_abc(d, &u.owner).unwrap();
+        assert!(!loaded.executable(), "units admit as non-executable");
+    }
+    let code_a = FunctionCode::admit_unit(
+        verify_abc_bytes(&encode_abc(&unit_a).unwrap().to_flat(), &owner).unwrap(),
+    )
+    .unwrap();
+    let code_b = FunctionCode::admit_unit(
+        verify_abc_bytes(&encode_abc(&unit_b).unwrap().to_flat(), &owner).unwrap(),
+    )
+    .unwrap();
+    let err = ProgramSnapshot::link(vec![code_a.into(), code_b.into()], "d_main", 1).unwrap_err();
+    assert!(
+        err.contains("signature mismatch"),
+        "link refuses mismatched call bindings: {err}"
+    );
 }
