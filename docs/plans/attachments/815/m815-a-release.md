@@ -2,7 +2,8 @@
 
 2026-10-20。**收尾核验更正：T-14c ledger_refreshed blocked，阶段发布条件尚未全部满足。**
 详见 [收尾核验与恢复方案](t14-closeout/recovery.md)。代码/Spec已合入，原冻结门结果保留；
-原机器可读JSON仅是历史执行副本，不能覆盖本更正。
+机器可读副本已补closeout_reconciliation阻断状态；Git跟踪的当前副本见
+[release-state.json.txt](t14-closeout/release-state.json.txt)，不能只读历史冻结门结果推断发布完成。
 
 2026-10-20。本收据是 **M815-A 阶段发布**(非整 Plan 交付):Plan 保持 `executing`,
 唯一树/分支保留并同步 master 继续 B;不归档、不清理。机器可读副本:
