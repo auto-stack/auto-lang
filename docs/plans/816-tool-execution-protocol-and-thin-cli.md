@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-816
-status: drafting
+status: executing
 feature_name: 工具执行适配、管理服务与薄 CLI 组合收口
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
 plan_revision: 2
-current_step: 0
+current_step: 2
 total_steps: 14
 supersedes_spec_components: [docs/specs/auto-cli/project.md, docs/specs/auto-man/project.md, docs/specs/stdlib/design/http-service-deployment.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/tool-execution/project.md]
@@ -148,8 +148,8 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 
 | 状态 | ID | owner_stage | 依赖/启动门 | 文件/交付与验证 | AC |
 |---|---|---|---|---|---|
-| [ ] | T-01 | work | 现在；809已交付；SDK/tool probe按阶段门 | attachments/816/contract-baseline.md（新增）：真实clap命令/旧oracle/adapter归属/现有runner与资源、服务和compat DAG、bootstrap/profile/预算候选；门后整链probe定稿 | AC-01..04 |
-| [ ] | T-02 | work | T-01 facility映射，无WIP引用 | 在唯一树复用/封装现有执行设施及独立argv/stdio/进程退出正反例；不改809 Builder/既有路由，不实现临时协议替身/重复runner | AC-02 |
+| [x] | T-01 | work | 现在；809已交付；SDK/tool probe按阶段门 | attachments/816/contract-baseline.md（新增）：真实clap命令/旧oracle/adapter归属/现有runner与资源、服务和compat DAG、bootstrap/profile/预算候选；门后整链probe定稿。[✅ 已完成] 基线@master 9e80ae0fb：33 命令矩阵+全局旗标+orphan 裁定（cmd_vue/cmd_tauri 未挂载）、执行设施 12 站点映射、auto-man-runtime probe=需要（auto-man 硬链 ui-iced 证据）、T-02 合同与预算入口/单位冻结、legacy 端口清场隔离；bootstrap/profile 候选待门后整链 probe（§7 记录，门未开非债） | AC-01..04 |
+| [x] | T-02 | work | T-01 facility映射，无WIP引用 | 在唯一树复用/封装现有执行设施及独立argv/stdio/进程退出正反例；不改809 Builder/既有路由，不实现临时协议替身/重复runner。[✅ 已完成] worktree codex/plan-816-dev @5fcdabe14：新 crate `auto-tool-execution`（std-only，777 域 man-ecosystem）+具名测试子进程 te-child；15 测全绿（bare cargo test 与 nextest 默认档同过，3.7s）：argv 精确透传（空格/Unicode/空串）/cwd/env（增量+覆盖）/exit 分类/派生失败具名/流分离捕获/512KiB 无死锁/stdin 往返/deadline 杀+收尸/树取消杀孙进程（heartbeat 停止=真停观察）/DirectChildOnly 反证/cmd /C shim；clippy 零警告，cargo check -p auto -p auto-man 过；零既有路由改动，分散站点迁移映射在基线 §3 | AC-02 |
 | [ ] | T-03 | work | T-14/M816-A+M814-A已发布 | 管理服务/语言adapter与上层compat真实单源分层、依轻I-TOOL；旧Pac/Target/API保持，check与V-01 | AC-01 |
 | [ ] | T-04 | work | T-03；窄tool已发布；完整UI正控等M815-B | 实际discovery/版本/能力/stdio/cancel；先验M815-A支持面及缺UI能力负控，完整profile/bootstrap正控等M815-B；V-03 | AC-03 |
 | [ ] | T-05 | work | T-04+M814-B/M815-B已发布 | main/clap及管理/语言/UI路由改薄组合、业务迁对应owner，旧命令/argv/JSON/flags矩阵，V-01/04 | AC-01,04 |
@@ -174,6 +174,8 @@ r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调�
 2026-10-19 / stage: new / revision: 1 / outcome: pass（合同预检，非实施/独立验收pass）/ next: work T-01及合边界的T-02，T-03起等809/814/815合入 / changed: T-01..11、AC-01..06、SD-01..05。当前未实施/运行未来测试或创建工作树/agent。
 
 2026-10-20 / stage: new / revision: 2 / outcome: pass（文档合同预检，非实现/独立验收pass）/ next: 按§4阶段门work；814先确认已登记唯一树并读取本r2。changed: 阶段A/B与新增T/AC/V、Spec分阶段沉淀、并行审查修复；原目标、原T/AC/SD ID保留。r1证据仅历史，不自动覆盖新范围。未执行实现/未来fixture/门禁。见[预检](attachments/sdk-tools-r2-20261020/preflight.md)。
+
+2026-10-20 / stage: work / plan_id: PLAN-816 / revision: 2 / outcome: 当期可执行面完成（T-01/T-02 pass；非整 Plan execution_done——T-03..T-11/T-12..T-14 阶段门未开） / worktree_path: D:/autostack/.wt/lang-816/auto-lang / branch: codex/plan-816-dev / base_commit: 9e80ae0fb（master） / code_commit: 5fcdabe14 / dependency_revisions: 组内 auto-down 兄弟 worktree @c39ac7f9（detached，跨仓 path 解析）；无 WIP 接口引用（未消费 814/815 未发布面） / task_ids: T-01, T-02 / evidence: 基线 attachments/816/contract-baseline.md（命令矩阵/设施映射/DAG probe/预算冻结）；auto-tool-execution 15 测全绿（bare cargo test + nextest 默认档 .config/nextest.toml，3.7s）；clippy 零警告；cargo check -p auto -p auto-man 过 / blockers: 无缺陷性阻塞——阶段门：T-12 等 M815-A 发布（815 现处 T-13 阶段复审，未合入）；T-03 等 M814-A+M816-A；T-05+ 等 M814-B+M815-B / next_responsible_role: work（阶段门开后续 T-12；或按合同 §4 并行规则做独立只读面）
 
 ## 10. 待澄清事项
 
