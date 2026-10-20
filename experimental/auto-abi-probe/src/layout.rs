@@ -302,6 +302,11 @@ pub fn layout_record_owned(
     let mut leaves: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     let mut path_bytes: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     let mut max_path: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
+    // F-797-R4-10 (R12): longest FLATTEN path name cost per record —
+    // unlike the size-walk chain peak, this is memoized per RECORD, so
+    // a SHARED subgraph's full flatten path is counted even though the
+    // size walk hits the memo and never walks it again
+    let mut fpath: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     let mut chain: Vec<String> = Vec::new();
     // F-797-R4-10 (R10): the memo/index working state is budgeted
     // INCREMENTALLY, charged BEFORE each allocation it covers (record
@@ -326,6 +331,7 @@ pub fn layout_record_owned(
         &mut leaves,
         &mut path_bytes,
         &mut max_path,
+        &mut fpath,
         &mut budget_used,
         &mut chain_acc,
     )?;
@@ -342,17 +348,23 @@ pub fn layout_record_owned(
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
     let per_leaf = std::mem::size_of::<FieldLayout>() as u64;
-    // representation + the FLATTEN-phase live set: all four memo maps
+    let root_fpath = *fpath
+        .get(name)
+        .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
+    // representation + the FLATTEN-phase live set: all FIVE memo maps
     // (budget_used after the walk = maps only, chain credited) PLUS the
-    // `seen` name copies re-spent along the deepest path (Vec-doubling
-    // worst case 2x) PLUS the materialized representation and prefix
+    // `seen` name copies along the LONGEST FLATTEN PATH — the memoized
+    // per-record path cost, NOT the size-walk chain peak (a shared
+    // subgraph truncates the walk via memo hits but flatten still
+    // unfolds the full path) — Vec-doubling worst case 2x, PLUS the
+    // materialized representation and prefix
     let staging_bytes = root_leaves
         .saturating_mul(per_leaf)
         .saturating_add(root_paths)
         // the shared prefix buffer: worst-case String doubling
         .saturating_add(root_max.saturating_mul(2))
         .saturating_add(budget_used)
-        .saturating_add(chain_acc.1);
+        .saturating_add(root_fpath.saturating_mul(2));
     if staging_bytes > MAX_STAGING_BYTES {
         return Err(LayoutError::StagingTooLarge {
             record: name.to_string(),
@@ -396,6 +408,7 @@ fn compute_size(
     leaves: &mut std::collections::BTreeMap<String, u64>,
     path_bytes: &mut std::collections::BTreeMap<String, u64>,
     max_path: &mut std::collections::BTreeMap<String, u64>,
+    fpath: &mut std::collections::BTreeMap<String, u64>,
     budget_used: &mut u64,
     chain_acc: &mut (u64, u64),
 ) -> Result<(u32, u32), LayoutError> {
@@ -441,6 +454,7 @@ fn compute_size(
                 leaves,
                 path_bytes,
                 max_path,
+                fpath,
                 budget_used,
                 chain_acc,
             )?,
@@ -512,9 +526,25 @@ fn compute_size(
             }
         }
     }
-    // the four memo maps duplicate the RECORD name — charge BEFORE the
+    // F-797-R4-10 (R12): longest FLATTEN path cost — the `seen` vector
+    // during flatten re-copies every RECORD name along the recursion
+    // path; for a DAG this is the per-record memoized maximum (own name
+    // + deepest child path), so a shared subgraph's full unfold is
+    // budgeted even when the size walk memo-hits and skips it
+    let own = name_len + 24; // String header + heap name
+    let mut best_child: u64 = 0;
+    for f in &def.fields {
+        if let FieldTyOwned::Record(n) = &f.ty {
+            let sub = *fpath
+                .get(n)
+                .ok_or_else(|| LayoutError::UnknownRecord(n.clone()))?;
+            best_child = best_child.max(sub);
+        }
+    }
+    let fpath_v = own.saturating_add(best_child);
+    // the five memo maps duplicate the RECORD name — charge BEFORE the
     // inserts allocate them (permanent for this walk)
-    let map_charge = 4u64.saturating_mul(name_len + 24 + 96);
+    let map_charge = 5u64.saturating_mul(name_len + 24 + 96);
     if budget_used.saturating_add(map_charge) > MAX_STAGING_BYTES {
         return Err(LayoutError::StagingTooLarge {
             record: name.to_string(),
@@ -525,6 +555,7 @@ fn compute_size(
     leaves.insert(name.to_string(), leaf_n);
     path_bytes.insert(name.to_string(), path_sum);
     max_path.insert(name.to_string(), path_max);
+    fpath.insert(name.to_string(), fpath_v);
     memo.insert(name.to_string(), (size, align));
     // the transient chain copies are gone with the pop — credit back
     chain.pop();

@@ -1273,3 +1273,87 @@ fn abi_admission_flatten_phase_peak_budgeted() {
         other => panic!("expected StagingTooLarge (resource), got {other:?}"),
     }
 }
+
+/// F-797-R4-10 (R12): a SHARED SUBGRAPH truncates the size walk via
+/// memo hits (the chain peak only covers ~one segment) while flatten
+/// still unfolds the FULL path — the reviewer's construction: 1024
+/// records in a chain, the root referencing 8 segment heads so every
+/// later segment reuses the already-computed suffix. The per-record
+/// memoized FLATTEN-path cost (fpath) budgets the real unfold:
+/// the 1700-byte-name shared graph is refused, a 1300-byte variant that
+/// passes the walk is refused AT THE FINAL GATE (isolating the flatten
+/// bound), and a 900-byte control computes.
+#[test]
+fn abi_admission_shared_subgraph_flatten_path_budgeted() {
+    fn shared_table(name_len: usize) -> BTreeMap<String, RecordDefOwned> {
+        let mk_name = |i: usize| -> String {
+            let base = format!("S{i}-");
+            format!("{base}{}", "x".repeat(name_len.saturating_sub(base.len())))
+        };
+        let mut t = BTreeMap::new();
+        for i in 0..1024usize {
+            let ty = if i + 1 < 1024 {
+                FieldTyOwned::Record(mk_name(i + 1))
+            } else {
+                FieldTyOwned::Scalar(SemScalar::U8)
+            };
+            t.insert(
+                mk_name(i),
+                RecordDefOwned {
+                    name: mk_name(i),
+                    fields: vec![FieldDefOwned {
+                        name: "next".into(),
+                        ty,
+                    }],
+                },
+            );
+        }
+        // the root references 8 segment heads (0, 128, ..., 896): the
+        // first dive computes the suffix, later segments memo-hit
+        let root_fields: Vec<FieldDefOwned> = (0..8)
+            .map(|seg| FieldDefOwned {
+                name: format!("f{seg}"),
+                ty: FieldTyOwned::Record(mk_name(seg * 128)),
+            })
+            .collect();
+        t.insert(
+            "Root".into(),
+            RecordDefOwned {
+                name: "Root".into(),
+                fields: root_fields,
+            },
+        );
+        t
+    }
+    // control: 900-byte names — both phases inside budget
+    let ok_table = shared_table(900);
+    let ok =
+        layout::layout_record_owned(&ok_table, "Root").expect("900-byte shared subgraph computes");
+    assert_eq!(ok.fields.len(), 8, "eight segment heads");
+    // walk-passing but flatten-exceeding: 1300-byte names — the five
+    // memo maps fit the walk, the full flatten path does not
+    let mid_table = shared_table(1300);
+    match layout::layout_record_owned(&mid_table, "Root") {
+        Ok(l) => panic!(
+            "the 1300-byte shared graph must be refused at the flatten-path budget; got {} fields",
+            l.fields.len()
+        ),
+        Err(LayoutError::StagingTooLarge { size, .. }) => {
+            assert!(size > layout::MAX_STAGING_BYTES);
+        }
+        other => panic!("expected StagingTooLarge (resource), got {other:?}"),
+    }
+    // the reviewer's exact input: 1700-byte names (refused — earlier,
+    // during the walk, by the map charge)
+    let big_table = shared_table(1700);
+    match layout::layout_record_owned(&big_table, "Root") {
+        Ok(l) => panic!(
+            "1700-byte shared graph must be refused; got {} fields",
+            l.fields.len()
+        ),
+        Err(LayoutError::StagingTooLarge { size, .. }) => {
+            assert!(size > layout::MAX_STAGING_BYTES);
+        }
+        other => panic!("expected StagingTooLarge (resource), got {other:?}"),
+    }
+}

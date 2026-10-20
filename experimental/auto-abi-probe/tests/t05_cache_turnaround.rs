@@ -1584,3 +1584,71 @@ fn abi_cache_transitive_header_dir_shadow_invalidates() {
     assert_eq!(runs.get(), 2);
     assert_eq!(link_run(&obj29), 29, "the transitive shadow wins (29)");
 }
+
+/// F-797-R4-07 (R12): TRANSITIVE + SUB-PATH shadow — outer.h includes
+/// "sub/dep.h" resolving via -I include/sub (17); a NEW common/sub/dep.h
+/// (29) sits in the INCLUDING header's subdirectory, outside the two
+/// explicit roots. The dependency-parent dir (common, from outer.h)
+/// gets a RECURSIVE listing, so the new file under common/sub is
+/// visible and the lookup is a miss.
+#[test]
+fn abi_cache_transitive_subpath_shadow_invalidates() {
+    let root = t05_root().join("transub");
+    let _ = std::fs::remove_dir_all(&root);
+    let srcdir = root.join("project/src");
+    let common = root.join("project/common");
+    let include = root.join("project/include");
+    for d in [&srcdir, &common, &include] {
+        std::fs::create_dir_all(d).unwrap();
+    }
+    std::fs::create_dir_all(common.join("sub")).unwrap();
+    std::fs::create_dir_all(include.join("sub")).unwrap();
+    std::fs::write(
+        srcdir.join("value.c"),
+        "#include \"../common/outer.h\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n",
+    )
+    .unwrap();
+    std::fs::write(common.join("outer.h"), "#include \"sub/dep.h\"\n").unwrap();
+    std::fs::write(include.join("sub/dep.h"), "#define VALUE 17\n").unwrap();
+    let src = srcdir.join("value.c");
+    let store = fresh_store(&t05_root(), "transub-store");
+    let runs = std::cell::Cell::new(0u32);
+    let link_run = |obj: &[u8]| -> i32 {
+        std::fs::write(srcdir.join("linked.obj"), obj).unwrap();
+        run::run_pe(&link_pe(&srcdir, &[srcdir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap()
+            .code
+    };
+    let produce = || -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+        runs.set(runs.get() + 1);
+        let obj = srcdir.join("caller.obj");
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &include, &obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+    };
+
+    let (obj, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &include, produce)
+        .expect("initial compile");
+    assert!(!hit);
+    assert_eq!(link_run(&obj), 17, "sub/dep.h resolves via the -I dir (17)");
+    let (_, hit_again) =
+        auto_abi_probe::cache::produce_c_object(&store, &src, &include, produce).expect("repeat");
+    assert!(hit_again, "unchanged environment hits");
+    assert_eq!(runs.get(), 1);
+
+    // the R12 counterexample: a NEW header in the transitive header's
+    // SUBDIRECTORY (outside both explicit roots) shadows sub/dep.h
+    std::fs::write(common.join("sub/dep.h"), "#define VALUE 29\n").unwrap();
+    let (obj29, hit29) = auto_abi_probe::cache::produce_c_object(&store, &src, &include, produce)
+        .expect("transitive sub-path shadow compile");
+    assert!(
+        !hit29,
+        "a new header in a transitive dependency's SUBDIRECTORY must invalidate"
+    );
+    assert_eq!(runs.get(), 2);
+    assert_eq!(
+        link_run(&obj29),
+        29,
+        "the transitive sub-path shadow wins (29)"
+    );
+}
