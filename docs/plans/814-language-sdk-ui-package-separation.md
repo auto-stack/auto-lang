@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
 plan_revision: 3
-current_step: 5
+current_step: 6
 total_steps: 15
 supersedes_spec_components: [docs/specs/auto-lang/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-lang/runtime/overview.md, docs/specs/auto-parser-api/project.md, docs/specs/auto-ui-dialect/project.md, docs/specs/auto-ui-dialect/design/full-grammar.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/language-sdk/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md]
@@ -170,7 +170,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | [ ] | T-12 | merge | T-11 | 规范/ledger沉淀、归档、已合入SDK/UI出口交815，guard clean后清理、终态计数 | AC-07 |
 | [x] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [✅ 已完成 2026-10-20：候选冻结 @ `abe9c9900`（[m814-a-candidate.md](attachments/814/m814-a-candidate.md)——§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双绿（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免，基线 `d91948ee1`）；fresh+`--locked` 消费跑通；**792 driver 25/25（EXIT=0）**——首轮受管红暴露新包图三接缝（投影 test-cases 新形态/ui_gen 源根/auto-ui-runtime 未 vendored），SD-08 修复于 `abe9c9900`（DELIVERY_CRATES 19、投影分 spec、指纹路径）；auto-man delivery 单测 9/9。**AC-08 判定归 T-14 独立审查**（本勾选=work 交付完成，非审查 pass）] [✅ R3 全 findings 修齐 2026-10-20：批 3 `6f9daa680`+`6418f99ef` 关闭 R3-03b/05/06（映射表全文 [r3-05](attachments/814/r3-05-test-selection-mapping.md)、告警归因 [r3-06](attachments/814/r3-06-warning-attribution.md)、探针复跑 [收口证据](attachments/814/r3-03b-closeout/)）；R3-01..04 批 1/2 已关（§9 前录）；候选 SHA 待 T-14 重冻=分支头] [✅ R4 批 2026-10-20：R3-05 档位选择面 203e2ce91 基面全量回溯——九档（t/tf/tv/tt/tb/tu/taa/ta/t3）未匹配 0/选择缺口 0（[映射表 R4 修订](attachments/814/r3-05-test-selection-mapping.md)）；别名 tb/taa/ta/t3 扩四包、tt 补 compiler；告警归因 [203e2ce91 口径](attachments/814/r3-06-warning-attribution.md)（净新增≈14 条全归因 T-02/T-03 残留+B 清偿域）；候选 SHA=分支头 `16cc4f14a`（R4 批+追修）] | AC-08 |
 | [x] | T-14 | review | T-13提交冻结 | 独立阶段AC-08/API/类型状态/资源/Spec审查，绑定r3/M814-A SHA；全Plan未reviewed、merge门pending [✅ R7 phase pass：256613936，见§9及review-r7；仅A阶段，T-15实际发布仍pending] | AC-09 |
-| [ ] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 | AC-10 |
+| [x] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 [✅ M814-A 发布完成 2026-10-20：冻结门（分支 e47d85c7b）=裸 t 5307/5307（plan808 term_engine UI 引用计数 1→0 + schema_drift 六路径两围栏随迁修复，生产零改动）+tv 163+tu 867+tt 5679/5679（plan485 剪贴板并行 flake 归因复跑绿）；taa 用户裁定豁免（aavm 拟退役，两红仅记录）。master 合入 `f6e07acee`（合并解析：master 侧 test_cases/{abi,ac_av} 新增跟随目录迁移至 SDK 新路径；plan796 指标工件清道提交）+分支同步（B 继续）。Spec 子集落库：新 language-sdk/auto-ui-compiler project.md + auto-lang project/frontend/vm/ui overview A 子集 + r3 两处 canonical（parser-api/full-grammar）；ledger v62（P814-A 收据）+spec-index 55 projects。consumer 读回（合入后 master）：language-sdk-consumer 5/5 + ui-package-consumer 4/4 + no-ui 源码快照 fresh+locked + **792 driver 25/25**（首轮红=master 树 ffi_dual build_a2r 忽略态生成残留触发交付外部 path 守卫——环境清理后复跑绿，投影 ignore 感知缺失记 KNOWN-DEBT）。777 master 重采样被并发会话脏文档阻塞（后续跟进项）。证据=[t15-closeout/](attachments/814/t15-closeout/)] | AC-10 |
 
 唯一树`D:/autostack/.wt/lang-814/auto-lang`、分支`codex/plan-814-dev`；work/review顺序交接同树，先核实实际tree/base并读取主检出r2。A发布后保留原树/分支同步master继续B，不创建第二审查树、不归档/清理。A期间Plan保持executing，只有B全部原AC完成后才依标准流程execution_done→reviewed→archived。
 
@@ -675,6 +675,39 @@ taa，不将R6 list视为运行；tf仅主检出到期单实例。门红须归�
 新SHA重冻门；门通过前不得实际合入。随后A规范/ledger/index、实际master祖先、
 版本/来源/consumer读回收据仍pending；SD-03完整runtime留B。未改实施/规范/ledger，
 未整档/合入/实际发布/归档/清树，A尚未交付，保原树继续B。
+
+
+2026-10-20（续 8，T-15 阶段发布）/ stage: merge / revision: 3 / outcome: **M814-A 实际发布完成**
+（非整 Plan 交付——B 阶段 T-04..12 继续，Plan 保持 executing 6/15）/
+冻结门@分支 `e47d85c7b`（=256613936+两围栏测试修复）→ master 合入
+`f6e07acee` → 分支同步继续 B。
+
+- **门禁**：裸 t 5307/5307（--no-fail-fast 全量；两处围栏随迁修复：
+  plan808 term_engine UI 引用计数 1→0（R5 死副本清理后 codec-only 性质
+  只强不弱）、schema_drift 六处读取路径随 T-03 迁 compiler——均测试侧
+  修正，生产零改动）；tv 163/163；tu 867 过；tt 5679/5679（plan485
+  剪贴板 OS 资源并行竞争 flake——t 档两次全绿+隔离绿归因后复跑绿）；
+  taa 用户裁定豁免（"aavm 拟退役不保证"；aavm2_a2r goldens/
+  compile_corpus 两红仅记录不阻断）。
+- **tf 到期检查**：.last-batch-regression.json=817@2026-10-20T09:20Z、
+  814%5≠0 且 <48h 无新合并计划号——未到期，未跑。
+- **合并**：master `f6e07acee`（plan796 指标工件清道 `c06fb9917` 先行；
+  AU 冲突=test_cases/{abi,ac_av}.rs——master 侧 PLAN 系新增于旧路径、
+  分支整目录迁移，按迁移语义恢复至新路径并入 mod.rs 引用一致）。
+- **Spec 子集受管沉淀**（A 事实，SD-03 不发布）：新
+  [language-sdk](../specs/language-sdk/project.md)、
+  [auto-ui-compiler](../specs/auto-ui-compiler/project.md)；auto-lang
+  project/frontend/vm/ui overview A 子集；r3 两处 canonical（auto-parser-api
+  project"允许 UI opt-in 轻端口"、auto-ui-dialect full-grammar"定义归
+  parser-api+ui_grammar 构造器"）。ledger v62（P814-A 发布收据）+
+  spec-index 55 projects。
+- **consumer 读回（合入后 master，AC-10 收据）**：language-sdk-consumer
+  5/5、ui-package-consumer 4/4、no-ui 源码快照 fresh+locked PASS、
+  **792 driver 25/25 EXIT=0**（首轮红=ffi_dual `build_a2r/` 忽略态生成
+  残留（含绝对 path 的生成 Cargo.toml）触发交付外部 path 守卫——非
+  814 引入；清理后复跑绿；投影的 ignore 感知缺失登记 KNOWN-DEBT 跟进）。
+- **遗留跟进项**：777 master 重采样（被并发会话脏文档阻塞，树静后
+  补）；ta 阶段 pass 后 B 继续按 T-04..12。
 
 ## 10. 待澄清事项
 

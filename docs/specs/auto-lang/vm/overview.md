@@ -463,3 +463,12 @@ auto serve / auto req                           # 守护进程 + 跨进程会话
 - `docs/plan-indices/07-vm-runtime.md`
 - `docs/conformance/`（README + 01/02/03/04/10）
 - 代码核对：`crates/auto-lang/src/vm.rs`、`vm/`（engine/codegen/opcode/task/scheduler/heap_object/generic*/ffi/abt/debugger/virt_memory）、`autovm_*.rs`、`execution_engine.rs`、`crates/auto-val/src/nano_value.rs`
+
+## PLAN-814 A 子集事实（M814-A）
+
+VM/引擎单源已迁 `auto-lang-core`（纯 SDK；a2r frame 经 PLAN-779
+FrameProvider 进程默认端口单源；autodown natives=进程端口+上层
+`ui/autodown_engine.rs` 实装三级回落，feature 同 owner）。本 crate 保持
+VM 再导出与旧公开入口兼容包装（create_vm_from_source 等先装配宿主能力
+再委托 SDK，PLAN-779 合同）。B 阶段迁移 renderer 相关生命周期至
+auto-ui-runtime。
