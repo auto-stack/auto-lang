@@ -574,12 +574,16 @@ def main() -> int:
     member = dev_proj / "rust-workspace" / "dev-run"
     member_cargo = member / "Cargo.toml"
     ws_cargo = dev_proj / "rust-workspace" / "Cargo.toml"
+    # PLAN-814 T-05：canonical 双直依赖（import_policy.rs）——成员
+    # runtime/core workspace 继承 + workspace path 注入。
     dev_shape = (
         r.returncode == 0
         and member_cargo.is_file()
-        and "auto-lang.workspace = true" in member_cargo.read_text(encoding="utf-8")
+        and "auto-ui-runtime.workspace = true" in member_cargo.read_text(encoding="utf-8")
+        and "auto-lang-core.workspace = true" in member_cargo.read_text(encoding="utf-8")
         and ws_cargo.is_file()
-        and 'auto-lang = { path = "' in ws_cargo.read_text(encoding="utf-8")
+        and 'auto-ui-runtime = { path = "' in ws_cargo.read_text(encoding="utf-8")
+        and 'auto-lang-core = { path = "' in ws_cargo.read_text(encoding="utf-8")
     )
     record(
         "V04-dev-mode-preserved",
