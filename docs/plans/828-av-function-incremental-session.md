@@ -193,6 +193,10 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r8a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(av-core): piecewise segment alignment maps replace region composition" | r7a-check三类P1+186格矩阵全部闭合并收编回归(r1回归套件36/36=27前+9r7a含完整interval矩阵)：
+F-04→结构重造（core/src/span_map.rs SpanSegments）：每代码对象持mint字节的不相交分段表(mint区间→当前偏移，绝对坐标)；插入内容为无背衬blob居于当前间隙。编辑=区间手术：区间内分段丢弃/跨骑分段分裂/后方分段平移/替换文本为blob；映射=查表——token语义（插入在token前推右start、恰在end不延长、跨骑只动end）由分段与blob相对位置自然得出，被替换位置塌缩到存活边界。r7a三类失败（整体替换插入为非空产物/跨插入与原文的编辑/修剪后续编或撤销）成为结构必然而非特判。跨函数编辑由绝对坐标同一轴线覆盖；重铸造=自身声明区间恒等；历史条目自带分段表
+回归面：r1套件36/36（含186格矩阵对冷编oracle全绿）、core 22、主17、scalar差分6、vertical/cache/binding绿；r7a-check材料自C盘复制入分支(attachments/828/r7a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r7a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): full interval surgery for source-map composition" | r6a-check三例span反例全部闭合并收编回归(r1回归套件27/27=24前+3r6a)：
 F-04→复合改为完整区间手术：编辑的当前范围双端逆映射（被替换文本的mint长度=unmap(c1)-unmap(c0)——删除先前插入的字节=替换0个mint字节）；被本次编辑完全重写的区域移除（插入被整体删除不留痕迹：撤销=恒等映射，pin的撤销前快照保留自身map）；记录的delta为当前长度变化（部分修剪已插入空白记录为mint长度0的trim）；整段当前范围均来自被移除区域时不补记（cur_len>0守卫防纯插入误判）。逆映射对插入/替换输出内部塌缩到区域mint锚点，净当前像长（删除的像是一个点），删除后前像可超当前offset。
 r6a-check材料自C盘目录复制入分支(attachments/828/r6a-check/；D盘副本不完整)。回归面：主17、r1套件27、scalar差分6、vertical/cache/binding绿 | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
