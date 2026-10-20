@@ -73,7 +73,9 @@ macro_rules! vm_debug {
     };
 }
 
-#[cfg(all(test, feature = "ui-iced"))]
+// PLAN-814 T-02 迁移勘误：本组测试仅依赖 SDK 面（auto_media_core +
+// ffi stdlib 内部），原 ui-iced 门为旧 crate feature 残留——拆除恢复选择。
+#[cfg(test)]
 mod image_pipeline_vm_http_tests {
     use super::*;
     use auto_media_core::image_pipeline::{

@@ -9746,10 +9746,9 @@ impl Codegen {
                             // PLAN-066 T-12（F-W1）：i18n.t VM 查表路由——
                             // 合成作用域无 i18n 绑定，不路由则接收者编译报
                             // Undefined variable 毒化导出（shim 接
-                            // i18n_lookup 查表，PLAN-050 C7）。ui 门控：
-                            // i18n_lookup 随 ui 模块裁剪，非 ui 构建保持
-                            // 旧行为（Undefined variable → 毒化）。
-                            #[cfg(feature = "ui-iced")]
+                            // i18n_lookup 查表，PLAN-050 C7）。PLAN-814 T-02
+                            // 起 i18n_lookup 注册表随 SDK（hook 供值），shim
+                            // 与路由不再随 ui 裁剪——查表 miss 回落 key 本身。
                             ("i18n", "t") => Some("auto.i18n.t".to_string()),
                             // URL module → opaque heap object shims
                             ("url", "parse") => Some("auto.url_opaque.parse".to_string()),

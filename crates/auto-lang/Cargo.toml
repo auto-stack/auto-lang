@@ -76,8 +76,10 @@ image-pipeline = ["dep:image", "dep:kamadak-exif", "auto-media-core/image-codec"
 ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "dep:iced_runtime", "dep:iced_tiny_skia", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard", "dep:resvg", "dep:tiny-skia"]
 # Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
 # syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
-# backend brings the editor along.
-code-editor = ["ui", "dep:cosmic-text", "dep:syntect"]
+# backend brings the editor along. PLAN-814 T-02 迁移勘误：转发
+# auto-lang-core/code-editor——a2r_std::diff 双轨门随本 feature 切臂
+# （旧行为：本 crate feature 直控同 crate 内门）。
+code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "auto-lang-core/code-editor"]
 # PLAN-716 组A (714 契约 T-1): tree-sitter 双轨高亮 runtime。feature 关=零语义
 # （syntect 基线逐字节等价——ts 代码面全量 cfg 门控）；开启后按 lang 路由表
 # 分流（tail 语言仍走 syntect，路由纪律见 core/treesitter.rs）。

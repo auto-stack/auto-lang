@@ -1,8 +1,8 @@
-use auto_lang::parser::Parser as AutoParser;
-use auto_lang::vm::codegen::Codegen;
-use auto_lang::vm::engine::AutoVM;
-use auto_lang::vm::native_registry::register_builtin_natives;
-use auto_lang::vm::virt_memory::VirtualFlash;
+use auto_lang_core::parser::Parser as AutoParser;
+use auto_lang_core::vm::codegen::Codegen;
+use auto_lang_core::vm::engine::AutoVM;
+use auto_lang_core::vm::native_registry::register_builtin_natives;
+use auto_lang_core::vm::virt_memory::VirtualFlash;
 use clap::Parser;
 use std::fs;
 use std::path::PathBuf;
@@ -56,7 +56,7 @@ async fn async_main() -> anyhow::Result<()> {
     if !codegen.relocs.is_empty() {
         for reloc in codegen.relocs.iter() {
             match reloc.reloc_type {
-                auto_lang::vm::loader::RelocType::FuncCall => {
+                auto_lang_core::vm::loader::RelocType::FuncCall => {
                     let name = &reloc.symbol_name;
                     if let Some(&addr) = codegen.exports.get(name) {
                         let bytes = addr.to_le_bytes();

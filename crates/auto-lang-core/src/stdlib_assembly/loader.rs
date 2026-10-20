@@ -116,8 +116,12 @@ pub fn stdlib_assembly_fingerprint(
         mix(fnv1a64(&std::fs::read_to_string(catalog)?));
     }
     mix(fnv1a64(&format!(
-        "ui-iced={};streaming-http={};python={}",
-        cfg!(feature = "ui-iced"),
+        // PLAN-814 T-02 迁移勘误：指纹只含 SDK 自有 feature——ui-iced 是
+        // 上层 renderer feature，不改变 SDK stdlib 装配面（旧键在受支持档
+        // 中恒为 true，常量不区分变体）；code-editor 改变 a2r_std::diff
+        // 行为（真 diff vs panic），是 SDK 侧真实装配输入。
+        "code-editor={};streaming-http={};python={}",
+        cfg!(feature = "code-editor"),
         cfg!(feature = "streaming-http"),
         cfg!(feature = "python")
     )));

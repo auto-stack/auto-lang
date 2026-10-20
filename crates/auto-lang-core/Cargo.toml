@@ -15,6 +15,11 @@ with-file-history = []
 # 旧 auto-lang 兼容包 default 转发本 feature，Scenario::UI 默认装配不变；
 # 纯 SDK（feature off）方言表为空，UI 语句回退非 UI 路径。
 ui-dialect = ["dep:auto-ui-dialect"]
+# PLAN-814 T-02 迁移勘误：a2r_std::diff 双轨门（真 diff=auto-text-core
+# 直调 / 关=panic 同 shim fallback 形）在 SDK 侧的对应 feature；上层
+# auto-lang 的 code-editor feature 转发至此。空 feature——实现依赖
+# （auto-text-core）恒在，只切行为臂。
+code-editor = []
 python = ["dep:pyo3"]
 streaming-http = ["dep:tokio-util"]
 mem-profile = []

@@ -1,14 +1,10 @@
 // Plan 485 T3: VM natives 层四件套——直接驱动 shim 验证栈协议
 // （pop 实参 / push 返回值的 NV 形态）。
-// Windows 实剪贴板环境一次串行跑通四步（剪贴板是进程全局资源，单测试
-// 函数串行消除 cargo test 同进程并行的竞态；nextest 进程隔离下同样成立）；
-// 打不开剪贴板（CI 服务会话）时第一步 set 返回 false 即整组静默跳过
-//（418 headless guard 同款语义）。非 Windows / 未开 native-clipboard 的
-// 降级臂由 cfg 对称排除——本测试仅覆盖真实臂，降级臂的返回值约定在
-// `ui/clipboard_native.rs` 模块头与 catalog 注释中文档化（G3）。
-// PLAN-790：shim 供值改经 ClipboardMediaProvider 装配——本测试在实例上
-// 注入真实 Win32 adapter（实例级注入不动全局默认槽，无隔离锁义务；
-// headless guard 语义原样）。
+// PLAN-814 T-02 迁移上移：本测试消费上层 UI 面（ui::clipboard_media_
+// provider 真实 Win32 adapter / GlobalClipboardTestLock），原居
+// auto-lang-core vm/ 的 `native-clipboard` 门在 SDK 无定义——迁移后死门、
+// 选择丢失（V-05）；按真实所有者上移本包恢复选择（crate::vm::* 经 SDK
+// 再导出，路径不变）。
 
 use crate::vm::engine::AutoVM;
 use crate::vm::native::{

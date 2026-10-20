@@ -31,6 +31,13 @@ mod plan790_clipboard_media_provider;
 // PLAN-794: scroll controller/子锚点 9900..9905+9922/9923 host provider——
 // core 剪断/降级契约/装配身份/真实 UI adapter 接线回归锚
 mod plan794_scroll_host_provider;
+mod plan656_scroll_controller_pipeline; // PLAN-814 T-02 上移：scroll natives 全管线（SDK 死门勘误）
+#[cfg(feature = "native-clipboard")]
+mod plan485_clipboard_natives; // PLAN-814 T-02 上移：clipboard natives 四件套实剪贴板往返（SDK 死门勘误）
+#[cfg(feature = "ui-iced")]
+mod plan712_back_prefix_route_fetch; // PLAN-814 T-02 上移：routes 页前缀化端到端（SDK 死门勘误）
+#[cfg(feature = "code-editor")]
+mod plan413_code_editor_natives; // PLAN-814 T-02 上移：code editor payload natives 端到端（SDK 死门勘误）
 // PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
 // 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
 mod plan802_code_editor_provider;

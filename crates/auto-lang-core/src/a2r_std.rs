@@ -1226,26 +1226,29 @@ pub mod frame {
     }
 
     /// 帧开始时间戳（桌面 update 入口到达时刻）。
-    #[cfg(feature = "ui")]
+    ///
+    /// PLAN-814 frame 清边：SDK 不含 UI 实现，经 PLAN-779 进程默认
+    /// FrameProvider 端口单源供值（VM native 9918/9919 同端口同源）——
+    /// 桌面帧泵由上层 UI 宿主安装 FrameBenchProvider
+    /// （auto-lang ui::frame_provider，优先级合同见其文档）。缺 provider
+    /// （无泵进程/纯 SDK）按通道语义"未捕获=0"。
     pub fn begin_ms() -> i32 {
-        narrow_i32(crate::ui::frame_bench::frame_begin_ms())
+        narrow_i32(
+            crate::vm::host_capabilities::process_default_frame_provider()
+                .map(|p| p.begin_ms())
+                .unwrap_or(0),
+        )
     }
 
     /// 呈现完成时间戳（711 帧泵消费时刻，≥ present 返回）。
-    #[cfg(feature = "ui")]
+    ///
+    /// 供值端口同 [`begin_ms`]（PLAN-814 frame 清边后单源）。
     pub fn present_ms() -> i32 {
-        narrow_i32(crate::ui::frame_bench::frame_present_ms())
-    }
-
-    /// no-`ui` 构建（headless 档）：无帧泵即无捕获，按通道语义"未捕获=0"。
-    #[cfg(not(feature = "ui"))]
-    pub fn begin_ms() -> i32 {
-        0
-    }
-
-    #[cfg(not(feature = "ui"))]
-    pub fn present_ms() -> i32 {
-        0
+        narrow_i32(
+            crate::vm::host_capabilities::process_default_frame_provider()
+                .map(|p| p.present_ms())
+                .unwrap_or(0),
+        )
     }
 }
 

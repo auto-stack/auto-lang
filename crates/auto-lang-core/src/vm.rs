@@ -106,10 +106,10 @@ mod tests_chart_geometry;
 #[cfg(test)]
 mod tests_collections;
 
-// Plan 485 T3: clipboard natives 四件套 VM 层栈协议（实剪贴板往返；
-// 门控 native-clipboard——测试用 image crate 造合成 PNG）。
-#[cfg(all(test, feature = "native-clipboard"))]
-mod tests_clipboard_natives;
+// Plan 485 T3: clipboard natives 四件套 VM 层栈协议（实剪贴板往返）。
+// PLAN-814 T-02 迁移上移：测试消费上层 UI 面，已迁 auto-lang
+// src/tests/plan485_clipboard_natives.rs（原 `native-clipboard` 门在 SDK
+// 无定义——死门、选择丢失，V-05 勘误）。
 
 // TODO: Create tests_bigvm.rs file
 // #[cfg(test)]
