@@ -193,6 +193,11 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r6a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): token-boundary span mapping and region-aware inverse" | r5a-check三例span反例全部闭合并收编回归(r1回归套件24/24=21前+3r5a)：
+F-04→半开区间token语义：start 仅当编辑整体在其前(p+len<=s)或纯插入恰在起点(p==s,len0,d>0)时移动；end 仅当编辑严格在其前(p<e)移动；逆映射改为区域感知下降（替代假设map(x)>=x的二分）：插入区内部塌缩到该插入锚点、删除区之后解析越过被删块（mint前像可大于当前offset——旧搜索上界c截断导致删除后编辑被误放到前方span之前）
+另记：复审报告的进程内正式档首跑超阈/复跑通过的时延波动——归因与样本协议（预热排除、样本数、计时窗口）归 T-08 正式档工作面，不在本span修复中处理
+回归面：主17、r1套件24、scalar差分6、vertical/cache/binding绿；r5a-check材料随分支保存(attachments/828/r5a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含上述时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r5a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): mint-coordinate map composition and id-text intrinsic identity" | r4a-check三例反例全部闭合并收编回归(r1回归套件21/21=6r1+3r2+4r2a+5r3a+3r4a)：
 F-04→区域表统一到代码MINT源坐标单轴：每次编辑的当前坐标起点先经单调前向映射的逆映射（二分；插入内部位置塌缩到插入点）折算为mint坐标后入表，替换旧"按当前delta平移已有区域"的坐标系混用——同点两次32空格插入正确复合(+64)，先后/内前编辑序都保留两侧端点位移
 F-06→按引用身份=intrinsic def的ID TEXT（synth丢弃他函数intrinsic时def序号移动而id text不变）+symbol/effect/shape四事实：混合mark_a/mark_b的caller合法编辑不再被synth表序号漂移误拒；symbol交换/effect翻转在同id处事实不一致仍失效
