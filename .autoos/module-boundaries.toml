@@ -53,6 +53,15 @@ schema = "module-boundaries/1"
 #（闭包由 test/fixtures/modularity/ui-declarations-consumer 钉住），
 # auto-lang 单向依赖之——UI 声明文法脱离语言实现包。
 "auto-ui-dialect" = "lang-core"
+# PLAN-814 T-02/T-03：语言核心 SDK 本体（非 UI 语言栈单源；对 auto-ui-dialect
+# 的文法组合为 optional 显式 feature 边——normal/build 默认闭包零 UI 文法，
+# 闭包钉 test/fixtures/modularity/language-sdk-consumer）。
+"auto-lang-core" = "lang-core"
+# PLAN-814 T-03：UI 编译域（style/aura/a2ui/四生成器/registry/route 分析；
+# 依赖 lang-core 合法单向，禁被 lang-core 反向依赖；闭包钉
+# test/fixtures/modularity/ui-package-consumer）。runtime 同域（T-04 迁入）。
+"auto-ui-compiler" = "ui"
+"auto-ui-runtime" = "ui"
 # PLAN-807：文本基础 crate（持久化 rope/文件后援分页/快照/diff 引擎，
 # 自 auto-lang ui/code_editor 逐字抽取；依赖闭包 = imara-diff+std，闭包由
 # test/fixtures/modularity/text-core-consumer 钉住）。auto-lang 单向依赖之
@@ -596,6 +605,26 @@ to = "auto-lang"
 kind = "normal"
 owner = "man-core"
 exit_phase = "R5"
+status = "active"
+
+# PLAN-814：SDK（auto-lang-core=lang-core）对 runtime 域轻能力的存量消费——
+# a2r-std（stdlib 装配/转译支撑）与 auto-terminal-core（轻宿主 terminal
+# capability，plan §3 语义）。规则 lang-core-no-monolith... 书写时仅覆盖
+# 轻词法层成员；SDK 抽取后这两条为设计内边，终态域规则随 R8 拆分复核。
+[[baseline.edge_notes]]
+from = "auto-lang-core"
+to = "a2r-std"
+kind = "normal"
+owner = "PLAN-814"
+exit_phase = "R8"
+status = "active"
+
+[[baseline.edge_notes]]
+from = "auto-lang-core"
+to = "auto-terminal-core"
+kind = "normal"
+owner = "PLAN-814"
+exit_phase = "R8"
 status = "active"
 note = "man→完整语言栈（含 VM）；调研 §5.1/Design 37 §5——包管理核心与语言/服务构建 adapter 分层后退出"
 

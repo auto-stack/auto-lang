@@ -134,6 +134,12 @@ exclude = [
     # [workspace]，模拟 crate 边界外的真实消费者），门禁经
     # cargo test --manifest-path test/fixtures/modularity/ui-dialect-consumer/Cargo.toml
     "test/fixtures/modularity/ui-dialect-consumer",
+    # PLAN-814 M814-A 纯 SDK 消费方探针（V-01/AC-08；闭包钉：
+    # cargo test --manifest-path test/fixtures/modularity/language-sdk-consumer/Cargo.toml）
+    "test/fixtures/modularity/language-sdk-consumer",
+    # PLAN-814 M814-A UI 编译包消费方探针（V-03/AC-08；闭包钉：
+    # cargo test --manifest-path test/fixtures/modularity/ui-package-consumer/Cargo.toml）
+    "test/fixtures/modularity/ui-package-consumer",
     # PLAN-801: 外部方言 API 消费方探针——独立 fixture crate（唯一依赖
     # auto-parser-api，证明外部文法实现闭包无 auto-lang/Parser/VM/UI；
     # model 单份实现迁此，解析集成测试在上层 ui-dialect-consumer
