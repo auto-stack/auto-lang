@@ -118,6 +118,17 @@ schema = "module-boundaries/1"
 "auto-toolchain-core" = "man-ecosystem"
 # PLAN-809: 管理规则核心（声明归一/闭包/选择/规划纯规则；闭包恒轻）
 "auto-man-core" = "man-ecosystem"
+# PLAN-816 T-02：统一 owned 子进程执行设施（argv/cwd/env/stdio 策略/
+# 退出分类/deadline/cancel+收尸/reader 真终止/子进程树退出）——man 生态
+# 的纯设施层；仅 std、禁依赖 auto-lang/auto-man/auto-val/serde 三方
+# （闭包将由 test/fixtures/modularity/tool-execution-consumer（T-07）钉住）。
+"auto-tool-execution" = "man-ecosystem"
+# PLAN-816 T-12（M816-A）：I-TOOL 真实客户端——经 auto-tool-execution
+# spawn 真实工具宿主进程、以 auto-tool-protocol 单源帧通信；闭包 =
+# data（protocol/project-model）+ man-ecosystem（execution），禁依赖
+# auto-ui-tools 静态链接/auto-man/auto-lang/UI；工具发现归 T-04
+# （闭包由 test/fixtures/modularity/tool-client-consumer 钉住）。
+"auto-tool-client" = "man-ecosystem"
 # 顶层装配/工具/CLI（允许依赖任意下层域）。
 "auto" = "cli"
 "auto-lsp" = "tool"

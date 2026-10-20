@@ -60,14 +60,20 @@ fn main() {
             Err(_) => std::process::exit(3),
         },
         // ARG1 = KiB 数;stdout 写满该量(大输出不死锁反例)。
+        // ARG2 = 写完后小睡秒数(默认 0;供上层客户端流污染反例保持进程
+        // 存活,使请求写入先于进程退出完成、时序确定)。
         "stdout-kib" => {
             let kib: usize = arg1().trim().parse().unwrap_or(1).min(8192);
+            let nap: u64 = arg2().trim().parse().unwrap_or(0).min(30);
             let chunk = [b'x'; 1024];
             let mut out = std::io::stdout();
             for _ in 0..kib {
                 out.write_all(&chunk).unwrap();
             }
             out.flush().unwrap();
+            if nap > 0 {
+                std::thread::sleep(std::time::Duration::from_secs(nap));
+            }
         }
         // ARG1 = 一行文本打到 stderr;stdout 保持空(流分离断言)。
         "stderr-line" => {
@@ -78,6 +84,24 @@ fn main() {
             let mut data = Vec::new();
             std::io::stdin().read_to_end(&mut data).unwrap();
             std::io::stdout().write_all(&data).unwrap();
+        }
+        // ARG1 = 环境变量名。两行打到 stderr 后小睡 300ms 再退出:
+        //   cwd <当前目录>
+        //   env <name>=<value>
+        // 供上层客户端验证 cwd/env 经其 spec 真实到达子进程(816 T-12);
+        // stdout 保持空(控制流不被污染),小睡让请求写入先行完成,稳定
+        // 观察到 EOF(StreamClosed)而非 broken-pipe 竞态。
+        "probe" => {
+            let name = arg1();
+            let value = std::env::var(&name).unwrap_or_else(|_| "<missing>".into());
+            eprintln!(
+                "cwd {}",
+                std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| "<cwd-err>".into())
+            );
+            eprintln!("env {name}={value}");
+            std::thread::sleep(std::time::Duration::from_millis(300));
         }
         // ARG1 = 孙进程存活秒数;ARG2 = heartbeat 文件路径。
         // 孙进程 = 自身 re-exec(heartbeat 模式),每 100ms 追加

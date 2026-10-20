@@ -417,6 +417,23 @@ impl OwnedProcess {
         self.child.stderr.as_mut()
     }
 
+    /// 移交 stdin 管道所有权(取出后 drop 即向子进程发 EOF;shutdown 语义
+    /// 由消费方拥有)。T-12 客户端消费:长运行协议宿主的生命期归调用方。
+    pub fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.child.stdin.take()
+    }
+
+    /// 移交 stdout 管道所有权(消费方自带 reader 线程时;设施 `run` 的
+    /// 内置 reader 不会重复存在——spawn 路径不创建线程)。
+    pub fn take_stdout(&mut self) -> Option<ChildStdout> {
+        self.child.stdout.take()
+    }
+
+    /// 移交 stderr 管道所有权(同 [`OwnedProcess::take_stdout`])。
+    pub fn take_stderr(&mut self) -> Option<ChildStderr> {
+        self.child.stderr.take()
+    }
+
     /// 终止 owned 进程(树):Windows job 树 / Unix 进程组 / 直接 kill。
     /// 只发出终止,不收尸(收尸见 [`OwnedProcess::wait`])。
     pub fn terminate(&mut self) -> io::Result<()> {
