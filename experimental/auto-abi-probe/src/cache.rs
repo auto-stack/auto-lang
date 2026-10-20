@@ -176,21 +176,18 @@ fn search_listing(dir: &std::path::Path, artifact_paths: &[String]) -> Vec<Strin
                     .starts_with(&format!("{a}.tmp-").to_ascii_lowercase())
         })
     }
-    fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>, arts: &[String]) {
+    fn walk(
+        dir: &std::path::Path,
+        root_base: &str,
+        prefix: &str,
+        out: &mut Vec<String>,
+        arts: &[String],
+    ) {
         let Ok(rd) = std::fs::read_dir(dir) else {
             return;
         };
         let mut entries: Vec<_> = rd.flatten().collect();
         entries.sort_by_key(|e| e.file_name());
-        let dir_s = dir.display().to_string();
-        let base = {
-            let b = dir_s.as_bytes();
-            if b.len() > 4 && b.starts_with(b"\\\\?\\") {
-                dir_s[4..].to_string()
-            } else {
-                dir_s.clone()
-            }
-        };
         for e in entries {
             let Ok(name) = e.file_name().into_string() else {
                 continue;
@@ -201,17 +198,31 @@ fn search_listing(dir: &std::path::Path, artifact_paths: &[String]) -> Vec<Strin
                 format!("{prefix}/{name}")
             };
             if e.file_type().is_ok_and(|t| t.is_dir()) {
-                walk(&e.path(), &rel, out, arts);
+                walk(&e.path(), root_base, &rel, out, arts);
             } else {
-                let full = format!("{base}\\{}", rel.replace('/', "\\"));
+                // full path = SCAN ROOT + accumulated relative path —
+                // the current dir already contains the descended prefix
+                // (F-797-R16-01: using the current dir here doubled the
+                // relative part, so a declared nested output never
+                // matched and its cleanup caused a spurious miss)
+                let full = format!("{root_base}\\{}", rel.replace('/', "\\"));
                 if !is_artifact(&full, arts) {
                     out.push(rel);
                 }
             }
         }
     }
+    let dir_s = dir.display().to_string();
+    let root_base = {
+        let b = dir_s.as_bytes();
+        if b.len() > 4 && b.starts_with(b"\\\\?\\") {
+            dir_s[4..].to_string()
+        } else {
+            dir_s
+        }
+    };
     let mut names = Vec::new();
-    walk(dir, "", &mut names, artifact_paths);
+    walk(dir, &root_base, "", &mut names, artifact_paths);
     names
 }
 

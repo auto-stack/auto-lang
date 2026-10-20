@@ -2334,3 +2334,83 @@ fn abi_cache_v3_same_materials_upgrade_publishes() {
     assert!(hit3);
     assert_eq!(runs.get(), 2);
 }
+
+/// F-797-R16-01: a declared NESTED artifact must be excluded by its full
+/// path — the recursive walk previously built `current-dir + accumulated
+/// prefix`, doubling the relative part, so `src/sub/sub/value.obj` was
+/// compared as `src/sub/sub/sub/sub/value.obj` and never matched the
+/// declaration. Cleaning the declared output then changed the listing
+/// and caused a spurious miss + extra compile. The full path is now
+/// SCAN ROOT + accumulated rel; cleanup of a declared artifact must
+/// not invalidate, and a REAL header change still must.
+#[test]
+fn abi_cache_nested_artifact_cleanup_reuses() {
+    let root = t05_root().join("nestart");
+    let _ = std::fs::remove_dir_all(&root);
+    let srcdir = root.join("src");
+    let include = root.join("include");
+    std::fs::create_dir_all(srcdir.join("sub/sub")).unwrap();
+    std::fs::create_dir_all(&include).unwrap();
+    std::fs::write(
+        srcdir.join("same.c"),
+        "#include \"dep.h\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n",
+    )
+    .unwrap();
+    std::fs::write(include.join("dep.h"), "#define VALUE 17\n").unwrap();
+    let src = srcdir.join("same.c");
+    let store = fresh_store(&t05_root(), "nestart-store");
+    let runs = std::cell::Cell::new(0u32);
+    let link_run = |obj: &[u8]| -> i32 {
+        std::fs::write(srcdir.join("linked.obj"), obj).unwrap();
+        run::run_pe(&link_pe(&srcdir, &[srcdir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap()
+            .code
+    };
+    // the compile output lives NESTED under src/sub/sub and is declared
+    // by full path
+    let nested_obj = srcdir.join("sub/sub/value.obj");
+    let artifacts = vec![
+        nested_obj.clone(),
+        srcdir.join("linked.obj"),
+        srcdir.join("probe.exe"),
+    ];
+    let produce = || -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+        runs.set(runs.get() + 1);
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &include, &nested_obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&nested_obj).map_err(|e| e.to_string())?, deps))
+    };
+
+    let (obj, hit) =
+        auto_abi_probe::cache::produce_c_object(&store, &src, &include, &artifacts, produce)
+            .expect("initial compile");
+    assert!(!hit);
+    assert_eq!(link_run(&obj), 17);
+    let (_, hit_again) =
+        auto_abi_probe::cache::produce_c_object(&store, &src, &include, &artifacts, produce)
+            .expect("repeat with artifact present");
+    assert!(
+        hit_again,
+        "same-input hit with the declared artifact present"
+    );
+    assert_eq!(runs.get(), 1);
+
+    // the R16 counterexample: DELETE the declared nested artifact — the
+    // exclusion must keep the listing UNCHANGED (hit, no extra compile)
+    std::fs::remove_file(&nested_obj).unwrap();
+    let (_, hit3) =
+        auto_abi_probe::cache::produce_c_object(&store, &src, &include, &artifacts, produce)
+            .expect("repeat after artifact cleanup");
+    assert!(hit3, "cleaning a DECLARED artifact must not invalidate");
+    assert_eq!(runs.get(), 1, "no extra producer call");
+
+    // a REAL header change still invalidates (same-basename file under
+    // the nested dir is a genuine candidate)
+    std::fs::write(srcdir.join("sub/sub/dep.h"), "#define VALUE 29\n").unwrap();
+    let (obj29, hit4) =
+        auto_abi_probe::cache::produce_c_object(&store, &src, &include, &artifacts, produce)
+            .expect("real header change compile");
+    assert!(!hit4, "a real header change must invalidate");
+    assert_eq!(runs.get(), 2);
+    assert_eq!(link_run(&obj29), 17, "dep.h still resolves via -I (17)");
+}
