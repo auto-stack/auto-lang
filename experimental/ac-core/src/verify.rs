@@ -115,6 +115,11 @@ pub struct CheckedFunction {
     owner: String,
     context_revision: String,
     domain: HirDomain,
+    /// Intrinsic declarations this body ACTUALLY references (symbol +
+    /// content-canonical signature shape) — body-read facts the credential
+    /// binds even though the global context identity excludes unused
+    /// intrinsics (F-828-R1-06/R2a).
+    intrinsics: Vec<(String, String)>,
 }
 
 impl CheckedFunction {
@@ -137,6 +142,11 @@ impl CheckedFunction {
     /// The owning module id this credential was verified within.
     pub fn owner(&self) -> &str {
         &self.owner
+    }
+
+    /// The (symbol, signature-shape) pairs this body actually references.
+    pub fn referenced_intrinsics(&self) -> &[(String, String)] {
+        &self.intrinsics
     }
 
     pub fn context_revision(&self) -> &str {
@@ -298,12 +308,48 @@ pub fn verify_function(
     v.check_profile_ops(m, body);
     v.check_body(m, body_id, body, &type_map, &sigs);
     if v.diags.is_empty() {
+        // Collect the intrinsics THIS body actually calls (body-read
+        // facts; content-canonical shapes).
+        let mut intrinsics: Vec<(String, String)> = Vec::new();
+        for e in &body.exprs {
+            if let hir::ExprKind::Call { callee, .. } = &e.kind {
+                if let Some(d) = m.defs.get(callee.0 as usize) {
+                    if let hir::DefKind::Intrinsic { symbol, .. } = &d.kind {
+                        let shape = d
+                            .kind
+                            .fn_type()
+                            .and_then(|t| m.types.get(t.0 as usize).cloned())
+                            .map(|td| match &td.kind {
+                                hir::TypeKind::Function(sig) => {
+                                    let params: Vec<String> = sig
+                                        .params
+                                        .iter()
+                                        .map(|p| hir::TypeUse::shape(p, m))
+                                        .collect();
+                                    format!(
+                                        "fn({})->{}",
+                                        params.join(","),
+                                        hir::TypeUse::shape(&sig.result, m)
+                                    )
+                                }
+                                other => format!("{other:?}"),
+                            })
+                            .unwrap_or_else(|| "?".to_string());
+                        let entry = (symbol.clone(), shape);
+                        if !intrinsics.contains(&entry) {
+                            intrinsics.push(entry);
+                        }
+                    }
+                }
+            }
+        }
         Ok(CheckedFunction {
             body: body.clone(),
             def: def.clone(),
             owner: m.id_text.clone(),
             context_revision: context_fingerprint(m),
             domain: bundle.domain,
+            intrinsics,
         })
     } else {
         Err(v.diags)
@@ -4359,6 +4405,21 @@ impl Verifier {
                     }
                 }
             }
+        }
+    }
+}
+
+impl hir::TypeUse {
+    /// Content-canonical shape of a type use (public helper for
+    /// body-read intrinsic binding facts).
+    pub fn shape(u: &hir::TypeUse, m: &hir::Module) -> String {
+        match u {
+            hir::TypeUse::Builtin(b) => format!("{b:?}"),
+            hir::TypeUse::Ref(tid) => match m.types.get(tid.0 as usize).map(|t| &t.kind) {
+                Some(hir::TypeKind::I32) => "i32".to_string(),
+                Some(hir::TypeKind::Bool) => "bool".to_string(),
+                _ => "ty".to_string(),
+            },
         }
     }
 }

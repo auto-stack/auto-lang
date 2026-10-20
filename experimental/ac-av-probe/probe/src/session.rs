@@ -153,11 +153,16 @@ struct FnRecord {
     /// `origin - mint_origin` (F-828-R1-04/R2: unchanged functions' trap
     /// spans must track the CURRENT source without touching code payloads).
     mint_origin: u64,
+    /// Content-hit refinement (F-828-R1-04/R2a F04-c): reused code whose
+    /// body text shifted internally — spans at/after `threshold` move by
+    /// `delta`. `None` = identity.
+    body_shift: Option<(u32, i64)>,
     /// In-session content-addressed reuse (PLAN-828 T-04): canonical-HIR
-    /// content version → the immutable verified (body, code) pair. A body
-    /// edited back to a prior content reuses the SAME objects — no
-    /// re-verify, re-lower or re-admission (disk layers arrive with T-07).
-    history: BTreeMap<String, (Arc<hir::Body>, Arc<FunctionCode>)>,
+    /// content version → (verified body, code, MINT ORIGIN of the source
+    /// revision that code's spans were lowered from). A body edited back
+    /// to a prior content reuses the SAME objects and their OWN mint
+    /// baseline (F-828-R1-04/R2a F04-b).
+    history: BTreeMap<String, (Arc<hir::Body>, Arc<FunctionCode>, u64)>,
 }
 
 /// Outcome of one edit request.
@@ -198,6 +203,12 @@ pub struct PreparedEdit {
     /// MINTING session's identity — a candidate handed to another session
     /// is refused even at equal revision numbers (F-828-R1-05).
     session_id: u64,
+    /// Re-minted (miss) vs reused-from-history (content hit): span
+    /// baselines reset only on a mint (F-828-R1-04/R2a F04-b).
+    reminted: bool,
+    /// The origin baseline of the candidate's code object (its own mint
+    /// source, whether fresh or from history).
+    mint_origin: u64,
     base_revision: u64,
     changed_idx: usize,
     changed_name: String,
@@ -369,7 +380,7 @@ pub fn warmup(
         // a later content hit must return the very same object.
         let body_arc = Arc::new(body_ref.clone());
         let mut history = BTreeMap::new();
-        history.insert(warm_cv, (body_arc.clone(), code.clone())); // first entry: within cap
+        history.insert(warm_cv, (body_arc.clone(), code.clone(), 0)); // origins set below
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
@@ -378,6 +389,7 @@ pub fn warmup(
             code: code.clone(),
             origin: 0,
             mint_origin: 0,
+            body_shift: None,
             history,
         });
         codes.push(code);
@@ -398,6 +410,9 @@ pub fn warmup(
         let o = parse.tree.abs_range(d.node).0;
         fns[i].origin = o;
         fns[i].mint_origin = o;
+        if let Some(e) = fns[i].history.values_mut().next() {
+            e.2 = o;
+        }
     }
 
     let snapshot = Arc::new(
@@ -523,7 +538,9 @@ pub fn restore(
         let rec = &mut session.fns[i];
         let body = rec.hir_body.clone();
         if let Some(entry) = rec.history.iter_mut().next() {
-            *entry.1 = (body.clone(), code.clone());
+            // Restored objects' own mint baseline is fixed with the origin
+            // pass below (single-source alignment).
+            *entry.1 = (body.clone(), code.clone(), 0);
         }
         rec.code = code.clone();
     }
@@ -572,93 +589,31 @@ impl FunctionIncrementalSession {
     /// payloads are never touched. Runs against a PINNED older snapshot
     /// keep that revision's coordinates (its own source view).
     pub fn run(&self, limits: &ExecLimits, cancel: &CancelFlag) -> (ExecOutcome, ExecTrace) {
+        // The snapshot's own shifts map origin movement on every public
+        // path; the session only refines CONTENT-HIT functions' intra-body
+        // shifts (F-828-R1-04/R2a).
         let (mut out, trace) = execute_program(&self.current, limits, cancel);
         if let ExecOutcome::Trap {
             span: Some(sp),
             kind,
         } = out
         {
-            let mapped = self.map_span_to_current(sp);
-            out = ExecOutcome::Trap {
-                kind,
-                span: Some(mapped),
-            };
-        }
-        (out, trace)
-    }
-
-    /// Map one dispatch-view span into current-source coordinates via the
-    /// owning function's origin delta.
-    fn map_span_to_current(&self, sp: SpanInfo) -> SpanInfo {
-        let idx = sp.func as usize;
-        match self.fns.get(idx) {
-            Some(rec) => {
-                let delta = (rec.origin as i64 - rec.mint_origin as i64) as i32;
-                SpanInfo {
-                    func: sp.func,
-                    start: (sp.start as i64 + delta as i64) as u32,
-                    end: (sp.end as i64 + delta as i64) as u32,
+            if let Some((threshold, delta)) =
+                self.fns.get(sp.func as usize).and_then(|r| r.body_shift)
+            {
+                if sp.start >= threshold {
+                    out = ExecOutcome::Trap {
+                        kind,
+                        span: Some(SpanInfo {
+                            func: sp.func,
+                            start: (sp.start as i64 + delta) as u32,
+                            end: (sp.end as i64 + delta) as u32,
+                        }),
+                    };
                 }
             }
-            None => sp,
         }
-    }
-
-    /// The miss path of the content cache: verify the changed body
-    /// (verifier-constructed credential, currency-checked), lower the
-    /// single-function unit, admit it through the ABC admission and wrap
-    /// the resident code handle. Counters bump at each real entry.
-    /// Inner `Err` = candidate rejection (diagnostics); outer `Err` =
-    /// infrastructure failure.
-    #[allow(clippy::type_complexity)]
-    fn compile_and_admit_changed(
-        &mut self,
-        bundle: &hir::Bundle,
-        def_idx: usize,
-        changed_name: &str,
-        new_src: &str,
-        new_src_hash: u64,
-    ) -> Result<Result<(Arc<hir::Body>, Arc<FunctionCode>), Vec<String>>, String> {
-        let checked_fn: CheckedFunction = match verify_function(bundle.clone(), def_idx) {
-            Ok(c) => c,
-            Err(ds) => {
-                return Ok(Err(ds
-                    .iter()
-                    .map(|d| d.render("probe.at", new_src))
-                    .collect()));
-            }
-        };
-        // Credential currency: the body was verified under the SAME
-        // declaration context as the outstanding ones — a drift here means
-        // the interface gate above missed a context change (defense in
-        // depth; reject rather than re-stamp).
-        if !self.env.credential_current(&checked_fn) {
-            return Ok(Err(vec![
-                "body credential minted under a different declaration context".to_string(),
-            ]));
-        }
-        self.counters.bump(&format!("verify_hir:{changed_name}"));
-
-        let def_id = bundle.modules[0].defs[def_idx].id_text.clone();
-        let unit = lower_function_unit(bundle, &def_id, &self.caps, new_src_hash)
-            .map_err(|e| format!("lower: {e:?}"))?;
-        self.counters.bump(&format!("mir_lower:{changed_name}"));
-        let _verified = verify_mir(&unit).map_err(|e| format!("mir verify: {e:?}"))?;
-        self.counters.bump(&format!("verify_mir:{changed_name}"));
-        let flat = encode_abc(&unit)
-            .map_err(|e| format!("abc encode: {e:?}"))?
-            .to_flat();
-        self.counters.bump(&format!("abc_emit:{changed_name}"));
-        let decoded = decode_abc(&flat).map_err(|e| format!("abc decode: {e:?}"))?;
-        self.counters.bump(&format!("decode:{changed_name}"));
-        let loaded = verify_abc(decoded, &unit.owner).map_err(|e| format!("abc verify: {e:?}"))?;
-        self.counters.bump(&format!("verify_abc:{changed_name}"));
-        let code = Arc::new(
-            FunctionCode::admit_unit(loaded, self.revision + 1)
-                .map_err(|e| format!("function code: {e}"))?,
-        );
-        self.counters.bump(&format!("load:{changed_name}"));
-        Ok(Ok((Arc::new(checked_fn.into_body()), code)))
+        (out, trace)
     }
 
     /// Apply one source edit (old-source byte coordinates) and, if it is a
@@ -676,7 +631,11 @@ impl FunctionIncrementalSession {
     /// Bounded content-history insert (V-07): never evict the resident
     /// revision's own entry; evict an arbitrary oldest-ordered key when
     /// over the cap.
-    fn history_insert(rec: &mut FnRecord, cv: String, pair: (Arc<hir::Body>, Arc<FunctionCode>)) {
+    fn history_insert(
+        rec: &mut FnRecord,
+        cv: String,
+        triple: (Arc<hir::Body>, Arc<FunctionCode>, u64),
+    ) {
         if rec.history.len() >= HISTORY_CAP && !rec.history.contains_key(&cv) {
             if let Some(victim) = rec
                 .history
@@ -684,7 +643,7 @@ impl FunctionIncrementalSession {
                 .find(|k| {
                     !rec.history
                         .get(*k)
-                        .map(|(_, c)| Arc::ptr_eq(c, &rec.code))
+                        .map(|v| Arc::ptr_eq(&v.1, &rec.code))
                         .unwrap_or(false)
                 })
                 .cloned()
@@ -692,7 +651,7 @@ impl FunctionIncrementalSession {
                 rec.history.remove(&victim);
             }
         }
-        rec.history.entry(cv).or_insert_with(|| pair);
+        rec.history.entry(cv).or_insert(triple);
     }
 
     /// Resident function source-names in declaration order.
@@ -723,7 +682,7 @@ impl FunctionIncrementalSession {
         let rec = self.fns.iter().find(|f| f.name == name)?;
         rec.history
             .iter()
-            .find(|(_, (_, code))| Arc::ptr_eq(code, &rec.code))
+            .find(|(_, v)| Arc::ptr_eq(&v.1, &rec.code))
             .map(|(cv, _)| cv.clone())
     }
 
@@ -815,6 +774,63 @@ impl FunctionIncrementalSession {
     /// This session's identity token.
     pub fn session_id(&self) -> u64 {
         self.session_id
+    }
+
+    /// The miss path of the content cache: verify the changed body
+    /// (verifier-constructed credential, currency-checked), lower the
+    /// single-function unit, admit it through the ABC admission and wrap
+    /// the resident code handle. Counters bump at each real entry.
+    /// Inner `Err` = candidate rejection (diagnostics); outer `Err` =
+    /// infrastructure failure.
+    #[allow(clippy::type_complexity)]
+    fn compile_and_admit_changed(
+        &mut self,
+        bundle: &hir::Bundle,
+        def_idx: usize,
+        changed_name: &str,
+        new_src: &str,
+        new_src_hash: u64,
+    ) -> Result<Result<(Arc<hir::Body>, Arc<FunctionCode>), Vec<String>>, String> {
+        let checked_fn: CheckedFunction = match verify_function(bundle.clone(), def_idx) {
+            Ok(c) => c,
+            Err(ds) => {
+                return Ok(Err(ds
+                    .iter()
+                    .map(|d| d.render("probe.at", new_src))
+                    .collect()));
+            }
+        };
+        // Credential currency: the body was verified under the SAME
+        // declaration context as the outstanding ones — a drift here means
+        // the interface gate above missed a context change (defense in
+        // depth; reject rather than re-stamp).
+        if !self.env.credential_current(&checked_fn) {
+            return Ok(Err(vec![
+                "body credential minted under a different declaration context".to_string(),
+            ]));
+        }
+        self.counters.bump(&format!("verify_hir:{changed_name}"));
+
+        let def_id = bundle.modules[0].defs[def_idx].id_text.clone();
+        let unit = lower_function_unit(bundle, &def_id, &self.caps, new_src_hash)
+            .map_err(|e| format!("lower: {e:?}"))?;
+        self.counters.bump(&format!("mir_lower:{changed_name}"));
+        let _verified = verify_mir(&unit).map_err(|e| format!("mir verify: {e:?}"))?;
+        self.counters.bump(&format!("verify_mir:{changed_name}"));
+        let flat = encode_abc(&unit)
+            .map_err(|e| format!("abc encode: {e:?}"))?
+            .to_flat();
+        self.counters.bump(&format!("abc_emit:{changed_name}"));
+        let decoded = decode_abc(&flat).map_err(|e| format!("abc decode: {e:?}"))?;
+        self.counters.bump(&format!("decode:{changed_name}"));
+        let loaded = verify_abc(decoded, &unit.owner).map_err(|e| format!("abc verify: {e:?}"))?;
+        self.counters.bump(&format!("verify_abc:{changed_name}"));
+        let code = Arc::new(
+            FunctionCode::admit_unit(loaded, self.revision + 1)
+                .map_err(|e| format!("function code: {e}"))?,
+        );
+        self.counters.bump(&format!("load:{changed_name}"));
+        Ok(Ok((Arc::new(checked_fn.into_body()), code)))
     }
 
     /// PREPARE (PLAN-828 T-06): run the whole candidate chain (syntax
@@ -1032,10 +1048,14 @@ impl FunctionIncrementalSession {
             _ => return Err("internal: changed def is not a function".to_string()),
         };
         let cv = content_version_of(&canonical_hir_function(synth_m, def_body));
+        let mut was_hit = false;
+        let mut candidate_mint_origin: u64 = 0;
         let (new_hir_body, new_code): (Arc<hir::Body>, Arc<FunctionCode>) =
             match self.fns[changed_idx].history.get(&cv) {
-                Some((body, code)) => {
+                Some((body, code, mint_o)) => {
                     self.counters.bump(&format!("reuse_hit:{changed_name}"));
+                    was_hit = true;
+                    candidate_mint_origin = *mint_o;
                     (body.clone(), code.clone())
                 }
                 None => {
@@ -1059,8 +1079,13 @@ impl FunctionIncrementalSession {
                 }
             };
 
+        if !was_hit {
+            candidate_mint_origin = inc.tree.abs_range(inc.tree.decls[changed_idx].node).0;
+        }
         Ok(Ok(PreparedEdit {
             session_id: self.session_id,
+            reminted: !was_hit,
+            mint_origin: candidate_mint_origin,
             base_revision: self.revision,
             changed_idx,
             changed_name,
@@ -1102,6 +1127,27 @@ impl FunctionIncrementalSession {
         }
         let next_revision = self.revision + 1;
         let changed_idx = prepared.changed_idx;
+        let reminted = prepared.reminted;
+        // Refresh per-function origins BEFORE linking: only a RE-MINTED
+        // function resets its span baseline; a content hit keeps the
+        // original mint baseline and gains a body-region refinement when
+        // its body text moved internally (F-828-R1-04/R2a F04-b/c).
+        let old_src = self.src.clone();
+        let mut shifts: Vec<i64> = Vec::with_capacity(self.fns.len());
+        for (i, d) in prepared.new_parse.tree.decls.iter().enumerate() {
+            let o = prepared.new_parse.tree.abs_range(d.node).0;
+            let rec = &mut self.fns[i];
+            rec.origin = o;
+            if i == changed_idx {
+                rec.mint_origin = prepared.mint_origin;
+                rec.body_shift = if reminted {
+                    None
+                } else {
+                    diff_region(&old_src, &prepared.new_src)
+                };
+            }
+            shifts.push(rec.origin as i64 - rec.mint_origin as i64);
+        }
         let mut codes: Vec<Arc<FunctionCode>> = Vec::with_capacity(self.fns.len());
         for (i, rec) in self.fns.iter().enumerate() {
             if i == changed_idx {
@@ -1110,7 +1156,12 @@ impl FunctionIncrementalSession {
                 codes.push(rec.code.clone());
             }
         }
-        let next = match ProgramSnapshot::link(codes, &self.entry_def_id, next_revision) {
+        let next = match ProgramSnapshot::link_with_shifts(
+            codes,
+            &self.entry_def_id,
+            next_revision,
+            shifts,
+        ) {
             Ok(s) => Arc::new(s),
             Err(e) => {
                 return EditOutcome::rejected(
@@ -1137,7 +1188,7 @@ impl FunctionIncrementalSession {
         Self::history_insert(
             changed_rec,
             content_version,
-            (hir_body.clone(), code.clone()),
+            (hir_body.clone(), code.clone(), prepared.mint_origin),
         );
         changed_rec.hir_body = hir_body;
         changed_rec.code = code;
@@ -1156,18 +1207,7 @@ impl FunctionIncrementalSession {
         }
 
         // Advance the resident syntax state to the ACTUAL incremental
-        // artifacts (sustained session, not a fresh rebuild), and refresh
-        // per-function origins: the changed function REMINTS its span
-        // baseline (its unit was just lowered against the new source);
-        // unchanged functions keep their mint baseline and only move.
-        for (i, d) in new_parse.tree.decls.iter().enumerate() {
-            let o = new_parse.tree.abs_range(d.node).0;
-            let rec = &mut self.fns[i];
-            rec.origin = o;
-            if i == changed_idx {
-                rec.mint_origin = o;
-            }
-        }
+        // artifacts (sustained session, not a fresh rebuild).
         self.src = new_src;
         self.parse = new_parse;
         self.snap = new_snap;
@@ -1219,4 +1259,19 @@ fn fnv64(bytes: &[u8]) -> u64 {
         h = h.wrapping_mul(0x100000001b3);
     }
     h
+}
+
+/// Single-edit region diff: spans at/after the first differing byte move
+/// by the length delta; same-length edits are identity (None).
+fn diff_region(old: &str, new: &str) -> Option<(u32, i64)> {
+    let (a, b) = (old.as_bytes(), new.as_bytes());
+    let mut start = 0usize;
+    while start < a.len() && start < b.len() && a[start] == b[start] {
+        start += 1;
+    }
+    let delta = b.len() as i64 - a.len() as i64;
+    if delta == 0 {
+        return None;
+    }
+    Some((start as u32, delta))
 }

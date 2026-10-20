@@ -13,7 +13,8 @@ fn value(s: &auto_av_probe::session::FunctionIncrementalSession) -> i32 {
     let (out, _) = s.run(&ExecLimits::default(), &CancelFlag::new(false));
     match out {
         ExecOutcome::Success {
-            value: Value::I32(v), ..
+            value: Value::I32(v),
+            ..
         } => v,
         other => panic!("expected i32 success, got {other:?}"),
     }
@@ -227,4 +228,142 @@ fn tail() int { return 9 }
         "editing the caller of an intrinsic-using unchanged fn must install: {out:?}"
     );
     assert_eq!(value(&s), 3, "mark_a() = 1, +2");
+}
+
+const R2A_SRC: &str = "fn helper() int { return 1 }
+fn main() int { var x = helper(); return 1 / 0 }
+fn tail() int { return 9 }
+";
+
+fn trap_span(
+    s: &auto_av_probe::session::FunctionIncrementalSession,
+) -> auto_av_core::contract::SpanInfo {
+    let (out, _) = s.run(&ExecLimits::default(), &CancelFlag::new(false));
+    match out {
+        ExecOutcome::Trap { span: Some(sp), .. } => sp,
+        other => panic!("expected trap, got {other:?}"),
+    }
+}
+
+/// F-828-R1-04/R2a F04-a: the PUBLIC snapshot execution path maps spans
+/// through the snapshot's own immutable shifts.
+#[test]
+fn r2a_current_snapshot_public_execution_uses_its_source_revision() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let at = R2A_SRC.find("return 1").unwrap();
+    let insert = "var pad = 2;
+";
+    let out = s
+        .edit(at as u64, at as u64, insert.as_bytes().to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    let expected = trap_span(&cold);
+    assert_eq!(expected.start, 83);
+    let snap = s.current();
+    let (pub_out, _) =
+        auto_av_core::av::execute_program(&snap, &ExecLimits::default(), &CancelFlag::new(false));
+    match pub_out {
+        ExecOutcome::Trap { span: Some(sp), .. } => assert_eq!(
+            (sp.start, sp.end),
+            (expected.start, expected.end),
+            "public snapshot path"
+        ),
+        other => panic!("expected trap, got {other:?}"),
+    }
+}
+
+/// F-828-R1-04/R2a F04-b: content hits keep the ORIGINAL mint baseline.
+#[test]
+fn r2a_history_hit_preserves_mint_source_for_span_mapping() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let at = R2A_SRC.find("return 1").unwrap();
+    let out = s
+        .edit(
+            at as u64,
+            at as u64,
+            b"var pad = 2;
+"
+            .to_vec(),
+        )
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    // Content churn in the TRAPPING function: 1/0 -> 2/0 -> 1/0.
+    let div = R2A_SRC.find("1 / 0").unwrap() + 13 + 0;
+    let o1 = s.edit(div as u64, (div + 1) as u64, b"2".to_vec()).unwrap();
+    assert!(o1.ok, "{o1:?}");
+    let o2 = s.edit(div as u64, (div + 1) as u64, b"1".to_vec()).unwrap();
+    assert!(o2.ok, "{o2:?}");
+    assert!(
+        s.counters().stage_of("reuse_hit", "main") >= 1,
+        "real content hit"
+    );
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold), "hit keeps mint mapping");
+}
+
+/// F-828-R1-04/R2a F04-c: a semantic no-op newline insert INSIDE the
+/// trapping function is a content hit whose body map still updates.
+#[test]
+fn r2a_semantic_noop_edit_inside_trapping_function_updates_source_map() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let at = R2A_SRC.find("return 1 / 0").unwrap();
+    let out = s
+        .edit(
+            at as u64,
+            at as u64,
+            b"
+"
+            .to_vec(),
+        )
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    assert!(
+        s.counters().stage_of("reuse_hit", "main") >= 1,
+        "newline-only edit is a content hit"
+    );
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "body map follows the insert"
+    );
+}
+
+/// F-828-R1-06/R2a: a credential whose body READS an intrinsic binds that
+/// binding; changing the referenced intrinsic invalidates it (unread
+/// intrinsics stay excluded from global identity).
+#[test]
+fn r2a_credential_invalidates_when_referenced_intrinsic_changes() {
+    use auto_ac_prototype::source::compile_scalar_source;
+    use auto_ac_prototype::verify::verify_function;
+    use auto_av_probe::function_queries::FnEnv;
+    let caps = vec!["hir.test.trace.v1".to_string()];
+    let a = compile_scalar_source(
+        "fn helper() int { return mark_a() }
+fn main() int { return helper() }",
+        "t.at",
+        &caps,
+    )
+    .unwrap();
+    let b = compile_scalar_source(
+        "fn helper() int { return mark_b() }
+fn main() int { return helper() }",
+        "t.at",
+        &caps,
+    )
+    .unwrap();
+    let idx = a.checked.bundle().modules[0]
+        .defs
+        .iter()
+        .position(|d| d.id_text == "d_helper")
+        .unwrap();
+    let cf = verify_function(a.checked.bundle().clone(), idx).unwrap();
+    let env_a = FnEnv::from_bundle(a.checked.bundle()).unwrap();
+    let env_b = FnEnv::from_bundle(b.checked.bundle()).unwrap();
+    assert!(env_a.credential_current(&cf), "same-binding control");
+    assert!(
+        !env_b.credential_current(&cf),
+        "the read intrinsic binding changed - the credential must invalidate"
+    );
 }

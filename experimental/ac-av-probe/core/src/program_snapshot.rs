@@ -30,6 +30,10 @@ pub struct ProgramSnapshot {
     /// admitted units with signature-checked bindings — never re-verified as
     /// a whole, never exposed mutable.
     merged: MirModule,
+    /// Per-code-slot diagnostics-only span shifts (current-source minus
+    /// mint-source decl origins); executor span-bearing outcomes map
+    /// through this immutable snapshot-owned view (F-828-R1-04/R2a).
+    span_shifts: Vec<i64>,
 }
 
 impl ProgramSnapshot {
@@ -41,6 +45,17 @@ impl ProgramSnapshot {
         code: Vec<Arc<FunctionCode>>,
         entry: &str,
         revision: u64,
+    ) -> Result<ProgramSnapshot, String> {
+        let span_shifts = vec![0i64; code.len()];
+        Self::link_with_shifts(code, entry, revision, span_shifts)
+    }
+
+    /// Link with per-code-slot span shifts (see the field docs).
+    pub fn link_with_shifts(
+        code: Vec<Arc<FunctionCode>>,
+        entry: &str,
+        revision: u64,
+        span_shifts: Vec<i64>,
     ) -> Result<ProgramSnapshot, String> {
         let mut merged = MirModule::new(crate::mir::OwnerScope {
             schema: MIR_SCHEMA.to_string(),
@@ -175,7 +190,13 @@ impl ProgramSnapshot {
             entry: entry.to_string(),
             code,
             merged,
+            span_shifts,
         })
+    }
+
+    /// The per-slot diagnostics span shifts this snapshot maps through.
+    pub fn span_shifts(&self) -> &[i64] {
+        &self.span_shifts
     }
 
     /// This snapshot's revision counter.

@@ -135,7 +135,33 @@ pub fn execute_program(
     let mut st = LoopState::default();
     let out = dispatch(prog.merged(), limits, cancel, &[], &mut st, None)
         .expect("no budget: the loop always terminates with an outcome");
-    (out, st.trace)
+    (map_span(prog, out), st.trace)
+}
+
+/// Map a span-bearing outcome through the SNAPSHOT's own immutable span
+/// shifts (F-828-R1-04/R2a F04-a: every public execution path maps, not
+/// only the session wrapper).
+fn map_span(prog: &crate::program_snapshot::ProgramSnapshot, out: ExecOutcome) -> ExecOutcome {
+    if let ExecOutcome::Trap {
+        kind,
+        span: Some(sp),
+    } = out
+    {
+        let shift = prog
+            .span_shifts()
+            .get(sp.func as usize)
+            .copied()
+            .unwrap_or(0);
+        return ExecOutcome::Trap {
+            kind,
+            span: Some(SpanInfo {
+                func: sp.func,
+                start: (sp.start as i64 + shift) as u32,
+                end: (sp.end as i64 + shift) as u32,
+            }),
+        };
+    }
+    out
 }
 
 /// A paused in-flight execution (PLAN-828 T-06): the live call chain plus
@@ -166,7 +192,7 @@ pub fn execute_program_steps(
 ) -> SteppedOutcome {
     let mut st = LoopState::default();
     match dispatch(prog.merged(), limits, cancel, &[], &mut st, Some(max_steps)) {
-        Some(out) => SteppedOutcome::Finished(out, st.trace),
+        Some(out) => SteppedOutcome::Finished(map_span(prog, out), st.trace),
         None => SteppedOutcome::Paused(PausedRun {
             prog: prog.clone(),
             limits: *limits,
@@ -187,8 +213,9 @@ pub fn resume_program(
         limits,
         mut state,
     } = paused;
+    let prog_for_map = prog.clone();
     match dispatch(prog.merged(), &limits, cancel, &[], &mut state, max_steps) {
-        Some(out) => SteppedOutcome::Finished(out, state.trace),
+        Some(out) => SteppedOutcome::Finished(map_span(&prog_for_map, out), state.trace),
         None => SteppedOutcome::Paused(PausedRun {
             prog,
             limits,
@@ -422,10 +449,7 @@ fn dispatch(
                         CalleeRef::Func(idx) => match m.funcs.get(*idx as usize) {
                             Some(_) => *idx,
                             None => {
-                                return Some(ExecOutcome::Infra(format!(
-                                    "callee #{} missing",
-                                    idx
-                                )))
+                                return Some(ExecOutcome::Infra(format!("callee #{} missing", idx)))
                             }
                         },
                         CalleeRef::Import(idx) => {
@@ -447,8 +471,7 @@ fn dispatch(
                     let callee_fn = &m.funcs[target as usize];
                     // Slot budget BEFORE the callee frame is allocated
                     // (F798-R3-04): the check used to run after the push.
-                    let prospective =
-                        st.slot_bytes + callee_fn.slots.len() * SLOT_CELL_BYTES;
+                    let prospective = st.slot_bytes + callee_fn.slots.len() * SLOT_CELL_BYTES;
                     if prospective > limits.max_slot_bytes {
                         return Some(ExecOutcome::Resource {
                             kind: ResourceKind::SlotBytes,
@@ -478,8 +501,7 @@ fn dispatch(
                         });
                     }
                     st.slot_bytes = prospective;
-                    st.trace.peak_slot_bytes =
-                        st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                    st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
                     st.frames.push(nf);
                 }
                 MirInstr::Trace { event } => {

@@ -54,6 +54,10 @@ pub struct FnEnv {
     domain: HirDomain,
     fns: Vec<FnInterface>,
     by_name: BTreeMap<String, usize>,
+    /// Intrinsic declaration table of THIS environment's bundle:
+    /// symbol → content-canonical signature shape (the binding facts a
+    /// body-read credential must still find intact).
+    intrinsics: BTreeMap<String, String>,
 }
 
 impl FnEnv {
@@ -91,6 +95,31 @@ impl FnEnv {
                 sig: sig_debug_of(m, d),
             });
         }
+        let mut intrinsics = BTreeMap::new();
+        for d in &m.defs {
+            if let hir::DefKind::Intrinsic { symbol, ty, .. } = &d.kind {
+                let shape = m
+                    .types
+                    .get(ty.0 as usize)
+                    .map(|t| match &t.kind {
+                        hir::TypeKind::Function(sig) => {
+                            let params: Vec<String> = sig
+                                .params
+                                .iter()
+                                .map(|p| hir::TypeUse::shape(p, m))
+                                .collect();
+                            format!(
+                                "fn({})->{}",
+                                params.join(","),
+                                hir::TypeUse::shape(&sig.result, m)
+                            )
+                        }
+                        other => format!("{other:?}"),
+                    })
+                    .unwrap_or_else(|| "?".to_string());
+                intrinsics.insert(symbol.clone(), shape);
+            }
+        }
         let mut by_name = BTreeMap::new();
         for (i, f) in fns.iter().enumerate() {
             if by_name.insert(f.source_name.clone(), i).is_some() {
@@ -110,6 +139,7 @@ impl FnEnv {
             revision,
             fns,
             by_name,
+            intrinsics,
         })
     }
 
@@ -158,6 +188,13 @@ impl FnEnv {
             && credential.owner() == self.owner
             && credential.domain() == self.domain
             && credential.context_revision() == self.context_revision
+            // Body-READ intrinsic facts: every intrinsic this credential's
+            // body actually references must still be declared HERE with
+            // the identical binding shape (F-828-R1-06/R2a).
+            && credential
+                .referenced_intrinsics()
+                .iter()
+                .all(|(sym, shape)| self.intrinsics.get(sym) == Some(shape))
     }
 
     /// Fast-path gate for one edit: the changed function's interface in the
