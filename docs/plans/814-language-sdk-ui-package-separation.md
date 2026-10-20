@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
 plan_revision: 2
-current_step: 1
+current_step: 4
 total_steps: 15
 supersedes_spec_components: [docs/specs/auto-lang/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-ui-dialect/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/language-sdk/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md]
@@ -140,8 +140,8 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | 状态 | ID | owner_stage | 依赖/启动门 | 文件/交付、验证 | AC |
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 现在；807/808/810/811已交付 | 新attachments/814/contract-baseline.md：所有者DAG/旧API构造/状态/测试族/资源/真实消费者清单与候选布局；前置合入后整链编译probe冻结SDK/默认UI兼容方案，不可行先重规划。[✅ 已完成 2026-10-20：基线 14 节 + probe 记录 §15；切片 `be10024ab`（唯一树，基面 `203e2ce91`）冻结包名 `auto-lang-core`/`auto-ui-compiler`/`auto-ui-runtime`+DAG+再导出机制+别名多 -p 机制；全部消费者编译/日常档 5303 绿/777 pass；无 needs_replan] | AC-01..05 |
-| [ ] | T-02 | work | T-01可行性决策 | 真实纯SDK/上层兼容、单份Core/状态与公开出口；立即清除阻碍纯SDK的全部反向边，保旧默认API；迁出测试/资源/非UIconsumer及V-01/02当期证据 | AC-01,02 [✅ 已完成 2026-10-20 R3 会话：主迁移 `edb78b2ef`（soft-reset 吸收 WIP）+ 残项收口 `43366c989`——auto-vm 切 SDK（V-01 真实非 UI 消费者，闭包零旧包/UI，冒烟执行过）+ a2r frame 经 PLAN-779 FrameProvider 进程默认端口单源（plan716 帧探针全过）+ F814-R1-02 整改 `ac2882a0d`（SDK auto-ui-dialect 改非默认 `ui-dialect` 显式组合 feature；上层 default 转发保旧行为；normal/build/dev 三边闭包验证无 UI 文法；86 UI 文法测试按 feature 门控选择面不变）+ 迁移死门清偿（i18n 路由/diff code-editor 转发/4 组滞留 UI 测试上移 plan656/485/712/413）；SDK off 1627/1627、on 1713/1713；777 strict pass ×2] | AC-01,02 |
-| [ ] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 [✅ 已完成 2026-10-20 R3（B1 `b907a89eb` + B2 `59b9c7673` + 消费批 `b02a10772` + SD-08 `abe9c9900`）：style/action_config/lucide/aura/a2ui/ui_gen 四生成器/registry/bp/route ≈11.3 万行迁 auto-ui-compiler 单源+旧路径全再导出；ui-package-consumer 独立 fixture 真实生成 4/4；语料资产随 owner 迁；指纹机制迁 compiler build.rs；交付合同更新至新包图（792 driver 25/25）；SD-02 事实底稿=m814-a-candidate §2（正文随 T-14/T-15 受管沉淀）] | AC-03 |
+| [x] | T-02 | work | T-01可行性决策 | 真实纯SDK/上层兼容、单份Core/状态与公开出口；立即清除阻碍纯SDK的全部反向边，保旧默认API；迁出测试/资源/非UIconsumer及V-01/02当期证据 | AC-01,02 [✅ 已完成 2026-10-20 R3 会话：主迁移 `edb78b2ef`（soft-reset 吸收 WIP）+ 残项收口 `43366c989`——auto-vm 切 SDK（V-01 真实非 UI 消费者，闭包零旧包/UI，冒烟执行过）+ a2r frame 经 PLAN-779 FrameProvider 进程默认端口单源（plan716 帧探针全过）+ F814-R1-02 整改 `ac2882a0d`（SDK auto-ui-dialect 改非默认 `ui-dialect` 显式组合 feature；上层 default 转发保旧行为；normal/build/dev 三边闭包验证无 UI 文法；86 UI 文法测试按 feature 门控选择面不变）+ 迁移死门清偿（i18n 路由/diff code-editor 转发/4 组滞留 UI 测试上移 plan656/485/712/413）；SDK off 1627/1627、on 1713/1713；777 strict pass ×2] [✅ R3-03b 收口 2026-10-20：SDK 删 `ui-dialect` feature 与 optional auto-ui-dialect 清单边（R3-03 唯一余 P1 关闭）——UiParseContext 迁 auto-parser-api（re-export 保旧路径/类型身份）+ SDK UiGrammar 函数表端口 + UiGrammarSource inventory 装配（与 R3-01 同机制）；no-UI 源码快照 cargo metadata exit 0（reviewer 探针口径适配复跑 PROBE PASS）；86 文法测试随迁 auto-ui-dialect（86/86 绿）；777 strict pass（基线 `6418f99ef`）] | AC-01,02 |
+| [x] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 [✅ 已完成 2026-10-20 R3（B1 `b907a89eb` + B2 `59b9c7673` + 消费批 `b02a10772` + SD-08 `abe9c9900`）：style/action_config/lucide/aura/a2ui/ui_gen 四生成器/registry/bp/route ≈11.3 万行迁 auto-ui-compiler 单源+旧路径全再导出；ui-package-consumer 独立 fixture 真实生成 4/4；语料资产随 owner 迁；指纹机制迁 compiler build.rs；交付合同更新至新包图（792 driver 25/25）；SD-02 事实底稿=m814-a-candidate §2（正文随 T-14/T-15 受管沉淀）] [✅ R3-06 收口 2026-10-20：T-03 迁移残留 cfg 门归位——compiler 声明 `ui`/`ui-headless` 空 feature + 旧包转发，pac.at ui_config 装载实臂与 plan571 生成器测试选择面恢复（T-03 起静默丢失，[归因表](attachments/814/r3-06-warning-attribution.md)）；unexpected_cfgs=0] | AC-03 |
 | [ ] | T-04 | work | T-15/M814-A已发布 | UI runtime/renderer/宿主adapter与资源迁移，VM依轻能力；保持真实编辑器/终端/媒体与跨端 | AC-03,04 |
 | [ ] | T-05 | work | T-04；补齐B默认组合，A兼容不得先破坏 | 默认Parser/VM/新SDK显式UI装配、旧auto-lang字段/方法/feature/旧路径兼容；真实import及外部consumer V-02 | AC-02 |
 | [ ] | T-06 | work | T-05；A纯SDK禁止边已在T-02清除 | i18n/a2r frame/config等残边、全局/TLS/registry单源和退出验证；必要非UI消费者切SDK，V-01/04 | AC-01,04 |
@@ -151,7 +151,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | [ ] | T-10 | review | T-09 | 同树独立完整DAG/公开兼容/生产/寿命/测试选择与SD审查，merge门pending | AC-06 |
 | [ ] | T-11 | merge | T-10 pass | master并集/变化复审，最终冻结提交统一§6门，失败修复后重审重冻 | AC-07 |
 | [ ] | T-12 | merge | T-11 | 规范/ledger沉淀、归档、已合入SDK/UI出口交815，guard clean后清理、终态计数 | AC-07 |
-| [ ] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [✅ 已完成 2026-10-20：候选冻结 @ `abe9c9900`（[m814-a-candidate.md](attachments/814/m814-a-candidate.md)——§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双绿（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免，基线 `d91948ee1`）；fresh+`--locked` 消费跑通；**792 driver 25/25（EXIT=0）**——首轮受管红暴露新包图三接缝（投影 test-cases 新形态/ui_gen 源根/auto-ui-runtime 未 vendored），SD-08 修复于 `abe9c9900`（DELIVERY_CRATES 19、投影分 spec、指纹路径）；auto-man delivery 单测 9/9。**AC-08 判定归 T-14 独立审查**（本勾选=work 交付完成，非审查 pass）] | AC-08 |
+| [x] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [✅ 已完成 2026-10-20：候选冻结 @ `abe9c9900`（[m814-a-candidate.md](attachments/814/m814-a-candidate.md)——§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双绿（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免，基线 `d91948ee1`）；fresh+`--locked` 消费跑通；**792 driver 25/25（EXIT=0）**——首轮受管红暴露新包图三接缝（投影 test-cases 新形态/ui_gen 源根/auto-ui-runtime 未 vendored），SD-08 修复于 `abe9c9900`（DELIVERY_CRATES 19、投影分 spec、指纹路径）；auto-man delivery 单测 9/9。**AC-08 判定归 T-14 独立审查**（本勾选=work 交付完成，非审查 pass）] [✅ R3 全 findings 修齐 2026-10-20：批 3 `6f9daa680`+`6418f99ef` 关闭 R3-03b/05/06（映射表全文 [r3-05](attachments/814/r3-05-test-selection-mapping.md)、告警归因 [r3-06](attachments/814/r3-06-warning-attribution.md)、探针复跑 [收口证据](attachments/814/r3-03b-closeout/)）；R3-01..04 批 1/2 已关（§9 前录）；候选 SHA 待 T-14 重冻=分支头] | AC-08 |
 | [ ] | T-14 | review | T-13提交冻结 | 独立阶段AC-08/API/类型状态/资源/Spec审查，绑定r2/M814-A SHA；全Plan未reviewed、merge门pending | AC-09 |
 | [ ] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 | AC-10 |
 
@@ -380,6 +380,54 @@ next: 同树work一次修齐R3-01..06，回放共享反例/正控及相邻入口
 - **续作**：①R3-03b 实施（上述设计）；②R3-05 映射表全文（nextest list 迁前/迁后
   对比）；③R3-06 告警全量归因清偿；④全探针复跑后提交申请新一轮 M814-A 阶段审查。
   merge-owned 门禁照旧 pending。
+
+2026-10-20（续 4，R3-03b 批）/ stage: work / revision: 2 / outcome: **R3 findings 全数修齐**（R3-03b 唯一
+余 P1 关闭 + R3-05/06 收口；非 review pass——T-14 重审待申请）/ worktree:
+`D:/autostack/.wt/lang-814/auto-lang` | branch: `codex/plan-814-dev` | 受审基线:
+`d905e796c` | code: `6f9daa680`（批 3 主体）→ `6418f99ef`（777 基线）| 依赖: auto-down `c39ac7f`（未变）。
+current_step=4/15（T-02/T-03/T-13 复勾）。
+
+- **R3-03b 关闭（设计落地含一项孤儿规则必要调整）**：SDK 删 `ui-dialect` feature
+  与 optional auto-ui-dialect 清单边。落地形态：①`UiParseContext` trait 自
+  auto-ui-dialect **迁 auto-parser-api**（记录调整：原设计"impl 上移上层"在
+  孤儿规则下不合法——foreign trait × foreign type 的 impl 只能落在 trait 或
+  类型所属 crate；迁至双侧共同依赖的轻端口 crate 是唯一合法位置。PLAN-810
+  §2"不在 auto-parser-api"裁定理据保持——仍是独立 opt-in 子 trait，
+  ParseContext 实现方零强加；auto-ui-dialect 经 re-export 保旧路径与类型
+  身份，ui-grammar/ui-declarations-consumer fixtures 7/7+10/10 零改动过）；
+  ②SDK 定义 `UiGrammar` 函数表端口（auto-parser-api，11 项 fn 指针，msg/model
+  走 ParseContext 轻面与真实签名一致）+ `dialect::ui::UiDialect`/Parser 十个
+  公开 UI 门面/build_dialects/scene·store 门全部改表派发（表缺席=原 feature
+  off 语义逐位一致：方言表空/显式拒绝诊断/门恒 false）；③装配复用 R3-01
+  机制：SDK 收集点 `UiGrammarSource`（inventory，SDK 零 submit）+ 显式
+  `set_ui_grammar`；上层 auto-lang 与 auto-ui-compiler 各一行 submit
+  （auto-ui-dialect::ui_grammar() 单源构造器）——直达
+  `Parser::from(..).with_session(UI)` 构造不经漏斗也覆盖；④86 文法测试随迁
+  auto-ui-dialect `src/regression/`（dev-dep auto-lang-core 驱动真 Parser，
+  `setup()` 注入表；语料路径 `../auto-lang/test/a2gd` 同深成立；本地 helper
+  5 组与 plan778 双 dialect struct 随迁/复制，SDK 侧死代码清除）。
+- **R3-05 关闭**：[映射表全文](attachments/814/r3-05-test-selection-mapping.md)
+  ——86/86 逐项映射无丢失无新增；t/tf/tt 别名扩 `-p auto-ui-dialect`；档位
+  对照与计数核对（原始清单随附 closeout 目录）。
+- **R3-06 关闭**：[告警归因表](attachments/814/r3-06-warning-attribution.md)
+  ——基线 296 == 迁后 296（0 新增）；迁移残留 cfg 门清偿四点（含**附带行为
+  修复**：compiler `ui` feature 缺声明致 pac.at ui_config 装载自 T-03 静默走
+  None 桩 + plan571 生成器测试从 tu 档静默丢失——均恢复并实录验证）；
+  unexpected_cfgs 0；SDK term_engine 死测试面删除（真面=上层 terminal_provider）。
+- **验证汇总**：auto-ui-dialect 86/86（0.35s）；SDK 1632/1632（表缺席形态）；
+  上层定向 UI 面 107/107 + plan716/ui_cache 54 项；ui_gen 862/862；plan571
+  恢复运行（单包 4/4、tu 形态 3 过）；四 modularity fixtures 5/5+4/4+7/7+10/10；
+  language-sdk-consumer 负控随新拒绝文案更新（"not assembled"显式拒绝不变量
+  保持）；reviewer 三探针（host/cache/autodown）+ no-ui 源码快照探针
+  （[收口证据](attachments/814/r3-03b-closeout/)）全 PASS；777 strict pass
+  violations=0（ownership 焊点路径 10 处随迁移归位；基线重采样
+  `6418f99ef`）；`git diff --check` 0；触面文件 fmt 过。
+- **预存不动**：auto-cache/shim-metadata 测试红（基线同在，非本 Plan 迁移面）；
+  296 告警集合内既有项按归因表存档。
+- **next_responsible_role: review（T-14 具名 M814-A 阶段审查）**——绑定分支头
+  `6418f99ef` + r2 §5.1 阶段性质 + [m814-a-candidate.md](attachments/814/m814-a-candidate.md)
+  （§3 证据矩阵需按本轮更新重核：777 基线 SHA/no-ui 探针/映射表/告警表为新增
+  绑定）。merge-owned 冻结门（裸 t+tv/tu/tt）照旧 pending。
 
 ## 10. 待澄清事项
 
