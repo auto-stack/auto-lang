@@ -1060,7 +1060,6 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
 mod decode_budget_tests {
     use super::*;
     use crate::contract::MIR_SCHEMA;
-    use crate::mir::*;
 
     fn owner() -> OwnerScope {
         OwnerScope {

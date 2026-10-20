@@ -124,26 +124,69 @@ fn locate_worker() -> Result<PathBuf, String> {
     // F798-R3-10: ALWAYS build (a no-op incremental build is sub-second)
     // under the BUILD_WALL deadline — testing a stale binary that happens
     // to exist at the target path silently unbinds evidence from source.
-    // The build output is collected bounded (kill on wall), never read
-    // unbounded.
+    // F798-R15-05: the build runs under the SAME contained-executor
+    // discipline as `call_worker`: suspend→Job→resume (dropping the job
+    // reaps the whole tree), BOTH output streams drained by capped reader
+    // threads (a full stdout pipe must surface as a stream-cap error, not
+    // a backpressure wall timeout), ONE absolute deadline, and on breach
+    // the TREE is killed and reaped — never a bare child.kill that leaves
+    // linker/compiler descendants behind.
+    // F798-R15-05 control seams (test-only, mirroring AV798_NATIVE_*):
+    // an injectable cargo launcher + wall, so the stdout-cap/timeout/
+    // kill-tree failure shapes are testable without a real build.
+    let cargo = std::env::var("AV798_BUILD_CARGO").unwrap_or_else(|_| env!("CARGO").to_string());
+    let build_wall = Duration::from_millis(
+        std::env::var("AV798_BUILD_WALL_MS")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(BUILD_WALL.as_millis() as u64),
+    );
     let build_started = Instant::now();
-    let mut child = Command::new(env!("CARGO"))
-        .args([
-            "build",
-            "--release",
-            "-p",
-            "auto-av-probe",
-            "--bin",
-            "av_probe_worker",
-        ])
-        .current_dir(ws_root)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
+    let mut cmd = Command::new(&cargo);
+    cmd.args([
+        "build",
+        "--release",
+        "-p",
+        "auto-av-probe",
+        "--bin",
+        "av_probe_worker",
+    ])
+    .current_dir(ws_root)
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(containment::CREATE_SUSPENDED);
+    }
+    let mut child = cmd
         .spawn()
         .map_err(|e| format!("spawn cargo for the av worker: {e}"))?;
-    let (out_tx, out_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
-    {
-        let mut pipe = child.stderr.take().expect("stderr");
+    #[cfg(windows)]
+    let mut job = match containment::JobGuard::for_child(&child) {
+        Some(j) => Some(j),
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(
+                "containment unavailable: refusing an uncontained av worker build tree".to_string(),
+            );
+        }
+    };
+    #[cfg(windows)]
+    if let Err(e) = containment::resume_suspended_process(&child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(format!("resume cargo build: {e}"));
+    }
+    #[cfg(not(windows))]
+    let mut job: Option<containment::JobGuard> = None;
+    // Capped reader threads for BOTH streams — a capped-out stream fails
+    // the build as a REPORTED stream error, never a silently blocked pipe.
+    fn capped_reader<R: std::io::Read + Send + 'static>(
+        mut pipe: R,
+        tx: std::sync::mpsc::Sender<Result<Vec<u8>, usize>>,
+    ) -> std::thread::JoinHandle<()> {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
             let mut chunk = [0u8; 16384];
@@ -161,28 +204,84 @@ fn locate_worker() -> Result<PathBuf, String> {
                     Err(_) => break,
                 }
             }
-            let _ = out_tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
-        });
+            let _ = tx.send(if exceeded { Err(buf.len()) } else { Ok(buf) });
+        })
     }
-    let (status, build_log) = loop {
-        if build_started.elapsed() > BUILD_WALL {
-            let _ = child.kill();
-            return Err("av worker build exceeded the BUILD_WALL budget".to_string());
+    let (out_tx, out_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
+    let (err_tx, err_rx) = std::sync::mpsc::channel::<Result<Vec<u8>, usize>>();
+    let out_reader = capped_reader(child.stdout.take().expect("stdout"), out_tx);
+    let err_reader = capped_reader(child.stderr.take().expect("stderr"), err_tx);
+    let deadline_at = build_started + build_wall;
+    let mut timed_out = false;
+    let mut status: Option<std::process::ExitStatus> = None;
+    let mut stdout_res: Option<Result<Vec<u8>, usize>> = None;
+    let mut stderr_res: Option<Result<Vec<u8>, usize>> = None;
+    fn stream_capped(
+        out: &Option<Result<Vec<u8>, usize>>,
+        err: &Option<Result<Vec<u8>, usize>>,
+    ) -> bool {
+        matches!(out, Some(Err(_))) || matches!(err, Some(Err(_)))
+    }
+    loop {
+        if Instant::now() > deadline_at {
+            timed_out = true;
+            break;
+        }
+        if stdout_res.is_none() {
+            stdout_res = out_rx.try_recv().ok();
+        }
+        if stderr_res.is_none() {
+            stderr_res = err_rx.try_recv().ok();
         }
         match child.try_wait() {
             Ok(st @ Some(_)) => {
-                let log = out_rx.recv_timeout(READER_GRACE).unwrap_or(Ok(Vec::new()));
-                break (st, log);
+                status = st;
+                break;
             }
             Ok(None) => {}
             Err(e) => return Err(format!("poll cargo build: {e}")),
         }
+        if stream_capped(&stdout_res, &stderr_res) {
+            break;
+        }
         std::thread::sleep(Duration::from_millis(5));
+    }
+    if timed_out || stream_capped(&stdout_res, &stderr_res) || status.is_none() {
+        // Kill the whole TREE (closing the job reaps every descendant),
+        // reap the direct child, then drain the bounded readers.
+        let _ = child.kill();
+        drop(job.take());
+        let _ = child.wait();
+        let _ = out_rx.recv_timeout(READER_GRACE);
+        let _ = err_rx.recv_timeout(READER_GRACE);
+        let _ = out_reader.join();
+        let _ = err_reader.join();
+        if timed_out {
+            return Err("av worker build exceeded the BUILD_WALL budget".to_string());
+        }
+        if let Some(Err(n)) = &stdout_res {
+            return Err(format!("av worker build stdout exceeded the cap ({n})"));
+        }
+        if let Some(Err(n)) = &stderr_res {
+            return Err(format!("av worker build stderr exceeded the cap ({n})"));
+        }
+        return Err("av worker build ended without an exit status".to_string());
+    }
+    // Child exited inside the wall: close the job (reaps descendants
+    // holding the inherited pipes), then drain both bounded readers.
+    drop(job.take());
+    let mut log = match out_rx.recv_timeout(READER_GRACE) {
+        Ok(Ok(b)) => b,
+        Ok(Err(n)) => return Err(format!("av worker build stdout exceeded the cap ({n})")),
+        Err(_) => Vec::new(),
     };
-    let log = match build_log {
-        Ok(b) => b,
-        Err(n) => return Err(format!("av worker build log exceeded the stderr cap ({n})")),
-    };
+    if let Ok(Ok(e)) = err_rx.recv_timeout(READER_GRACE) {
+        log.extend_from_slice(&e);
+    } else if let Ok(Err(n)) = err_rx.recv_timeout(READER_GRACE) {
+        return Err(format!("av worker build stderr exceeded the cap ({n})"));
+    }
+    let _ = out_reader.join();
+    let _ = err_reader.join();
     if !status.expect("set on exit").success() {
         return Err(format!(
             "av worker build failed:\n{}",
@@ -996,4 +1095,11 @@ fn fnv1a64_hex(bytes: &[u8]) -> String {
         h = h.wrapping_mul(0x0000_0100_0000_01b3);
     }
     format!("{h:016x}")
+}
+
+/// Test-only seam for the prep-executor controls (F798-R15-05).
+pub(crate) mod tests_seam {
+    pub(crate) fn locate_worker_for_test() -> Result<std::path::PathBuf, String> {
+        super::locate_worker()
+    }
 }

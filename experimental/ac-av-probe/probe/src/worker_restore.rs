@@ -101,6 +101,11 @@ fn restore_and_run_inner(
     };
     let package = crate::semrefs::av_package();
     let mut units = Vec::new();
+    // F798-R15-04: consumption leases — every unit artifact (and the
+    // manifest itself) is held live for the whole restore+execute window;
+    // dropped (released) at return, so concurrent GC cannot delete the
+    // closure mid-consumption.
+    let mut _held_leases: Vec<ac_artifact_probe::store::Lease> = Vec::new();
     let mut verified = 0usize;
     for link in &manifest.units {
         if link.body_fp.is_empty() {
@@ -113,6 +118,10 @@ fn restore_and_run_inner(
         // (owner, unit, body fingerprint) — a self-consistent manifest
         // pointing at ANOTHER declaration's artifact fails here.
         let expect = EnvelopeIdentity::abc_bound(owner, &link.name, &link.body_fp);
+        match store.acquire_lease("plan798-restore-run", 300, Some(&link.artifact)) {
+            Ok(l) => _held_leases.push(l),
+            Err(e) => return Err(format!("lease unit `{}`: {}", link.name, e)),
+        }
         let payload = get_by_artifact_id(&store, &link.artifact, &expect)
             .map_err(|e| format!("unit `{}` load: {}", link.name, e))?;
         // F798-R3-02: payload binding — the sema-ref envelope must name the
@@ -142,6 +151,15 @@ fn restore_and_run_inner(
         }
         let decoded = decode_abc(&payload)
             .map_err(|e| format!("unit `{}` decode: {}", link.name, e.code()))?;
+        // F798-R15-02: the manifest's unit link (and the unit envelope it
+        // was published under) declares a UNIT — a complete-module payload
+        // is a producer/payload category conflict, refused here too.
+        if !decoded.module.is_unit {
+            return Err(format!(
+                "unit `{}` payload declares complete-module kind under a unit link — category conflict",
+                link.name
+            ));
+        }
         // F798-R6-01: the decoded payload's actual function must BE the
         // declaration the link names — a renamed link over another unit's
         // artifact is rejected, not executed under the wrong name.
@@ -202,37 +220,16 @@ fn restore_and_run_inner(
             Ok(Some(sp)) => match decode_sidecar(&sp) {
                 Ok(spans) => {
                     merge_spans(&mut module, &spans);
-                    // F798-R7-03: a decodable-but-EMPTY (or non-covering)
-                    // map loses diagnostics provenance exactly like a
-                    // missing one. The restored sidecar must be APPLICABLE:
-                    // structurally valid ranges and a span for every
-                    // trap-capable instruction (every Bin — overflow/div
-                    // traps), so a published trap always carries its source.
-                    let f = &module.funcs[0];
-                    for (_, sp) in f.spans.iter() {
-                        if sp.start > sp.end {
-                            return Err(format!(
-                                "unit `{}` sidecar for snapshot {:016x} has an inverted span {}..{}",
-                                link.name, snapshot, sp.start, sp.end
-                            ));
-                        }
-                    }
-                    let covered: std::collections::BTreeSet<u32> =
-                        f.spans.iter().map(|(i, _)| *i).collect();
-                    let mut flat = 0u32;
-                    for b in f.blocks.iter() {
-                        for (ii, instr) in b.instrs.iter().enumerate() {
-                            if instr.can_trap()
-                                && !covered.contains(&(flat + ii as u32))
-                            {
-                                return Err(format!(
-                                    "unit `{}` sidecar for snapshot {:016x} does not cover trap-capable instruction {} — diagnostics provenance unavailable; restore refused",
-                                    link.name, snapshot,
-                                    flat + ii as u32
-                                ));
-                            }
-                        }
-                        flat += b.instrs.len() as u32;
+                    // F798-R7-03/F798-R15-03: decodable is not APPLICABLE —
+                    // the shared trap-coverage check (inverted spans and a
+                    // span for every trap-capable instruction) decides; a
+                    // non-covering map is refused exactly like a missing
+                    // one (source-less restore cannot re-derive).
+                    if let Err(e) = crate::cache::sidecar_applicable(&module.funcs[0]) {
+                        return Err(format!(
+                            "unit `{}` sidecar for snapshot {:016x} {} — diagnostics provenance unavailable; restore refused",
+                            link.name, snapshot, e
+                        ));
                     }
                 }
                 Err(e) => {

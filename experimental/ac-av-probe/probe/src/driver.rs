@@ -243,6 +243,11 @@ impl Driver {
         // stale row may Conflict — tolerated, never a request failure.
         let mut stale_rebuilds: std::collections::BTreeSet<String> =
             std::collections::BTreeSet::new();
+        // F798-R15-04: consumption leases — every A09 unit artifact this
+        // request loads or emits is held live for the request window
+        // (dropped at request end); the manifest's required-data edges
+        // extend the same protection to future restores.
+        let mut held_leases: Vec<ac_artifact_probe::store::Lease> = Vec::new();
         if let Some(store) = self.store.as_ref() {
             for info in infos.iter_mut() {
                 // F798-R6-01: the hit expects the artifact's envelope to
@@ -251,8 +256,8 @@ impl Driver {
                 // (controlled rejection), never a wrong-body hit.
                 let expect = EnvelopeIdentity::abc_bound(&owner, &info.name, &info.fp);
                 let key = abc_unit_key(&owner, &info.name, &info.fp, &caps_fp);
-                match get_enveloped_opt(store, &key, "A09", &expect) {
-                    Ok(Some(payload)) => {
+                match crate::cache::get_enveloped_with_id(store, &key, "A09", &expect) {
+                    Ok(Some((artifact_id, payload))) => {
                         // F798-R12-03 (K14-06): a payload of a DIFFERENT
                         // wire generation (e.g. a kind-less /1 artifact
                         // under a /2 key) is a deterministic STALE MISS —
@@ -271,6 +276,33 @@ impl Driver {
                         staging_peak = staging_peak.max(staging_now);
                         info.payload_fp = Some(payload_fingerprint(&payload));
                         info.abc_hit = Some(payload);
+                        // F798-R15-04: hold ONE consumption lease per
+                        // request (the first consumed artifact anchors
+                        // the window; the closure's cross-artifact
+                        // liveness rides the manifest's required-data
+                        // edges — per-unit leases would tax the warm path
+                        // with a file+row write per unit).
+                        if held_leases.is_empty() {
+                            match store.acquire_lease(
+                                "plan798-request-consume",
+                                300,
+                                Some(&artifact_id),
+                            ) {
+                                Ok(l) => held_leases.push(l),
+                                Err(e) => {
+                                    return (
+                                        Some(StageDiag {
+                                            stage: "cache".to_string(),
+                                            code: "cache.lease".to_string(),
+                                            message: format!("unit `{}`: {}", info.name, e),
+                                        }),
+                                        None,
+                                        vec![],
+                                        None,
+                                    )
+                                }
+                            }
+                        }
                     }
                     Ok(None) => {}
                     Err(e) => {
@@ -347,6 +379,44 @@ impl Driver {
                                 )
                             }
                         };
+                        // F798-R15-02: the A08 envelope declares a UNIT —
+                        // a complete-module payload under a unit envelope
+                        // is a producer/payload category conflict.
+                        if !decoded.module.is_unit {
+                            return (
+                                Some(StageDiag {
+                                    stage: "cache".to_string(),
+                                    code: "cache.identity".to_string(),
+                                    message: format!(
+                                        "unit `{}` envelope carries a complete-module payload — category conflict",
+                                        info.name
+                                    ),
+                                }),
+                                None,
+                                vec![],
+                                None,
+                            );
+                        }
+                        // F798-R15-01: capability re-admission against the
+                        // CURRENT request grants (the key's caps axis is
+                        // the request's, never the payload's needs).
+                        for c in decoded.module.capabilities.iter() {
+                            if !caps.iter().any(|x| x == c) {
+                                return (
+                                    Some(StageDiag {
+                                        stage: "cache".to_string(),
+                                        code: "cache.grant".to_string(),
+                                        message: format!(
+                                            "unit `{}` requires capability `{}` not granted by the current request",
+                                            info.name, c
+                                        ),
+                                    }),
+                                    None,
+                                    vec![],
+                                    None,
+                                );
+                            }
+                        }
                         let mut unit = decoded.module;
                         unit.owner = mir_owner.clone();
                         for f in unit.funcs.iter_mut() {
@@ -699,6 +769,43 @@ impl Driver {
                     )
                 }
             };
+            // F798-R15-02: the A09 envelope declares a UNIT — a
+            // complete-module payload under a unit envelope is a
+            // producer/payload category conflict.
+            if !decoded.module.is_unit {
+                return (
+                    Some(StageDiag {
+                        stage: "cache".to_string(),
+                        code: "cache.identity".to_string(),
+                        message: format!(
+                            "unit `{}` envelope carries a complete-module payload — category conflict",
+                            info.name
+                        ),
+                    }),
+                    None,
+                    vec![],
+                    None,
+                );
+            }
+            // F798-R15-01: capability re-admission against the CURRENT
+            // request grants.
+            for c in decoded.module.capabilities.iter() {
+                if !caps.iter().any(|x| x == c) {
+                    return (
+                        Some(StageDiag {
+                            stage: "cache".to_string(),
+                            code: "cache.grant".to_string(),
+                            message: format!(
+                                "unit `{}` requires capability `{}` not granted by the current request",
+                                info.name, c
+                            ),
+                        }),
+                        None,
+                        vec![],
+                        None,
+                    );
+                }
+            }
             match obs.span("abc_verify", Some("request"), |_| {
                 abc_verify::verify_abc(decoded_clone(&decoded), &owner_scope)
             }) {
@@ -767,7 +874,16 @@ impl Driver {
                             Ok(Some(sp)) => {
                                 if let Ok(spans) = decode_sidecar(&sp) {
                                     merge_spans(unit, &spans);
-                                    bound = true;
+                                    // F798-R15-03: decodable is not
+                                    // APPLICABLE — empty/non-covering maps
+                                    // fall through to the re-derive (which
+                                    // rewrites the bad sidecar) instead of
+                                    // publishing source-less traps.
+                                    if crate::cache::sidecar_applicable(&unit.funcs[0]).is_err() {
+                                        unit.funcs[0].spans.clear();
+                                    } else {
+                                        bound = true;
+                                    }
                                 }
                                 // Present but undecodable: fall through to
                                 // the re-derive, which rewrites the bad
@@ -846,6 +962,28 @@ impl Driver {
             Ok(m) => m,
             Err(d) => return (Some(d), None, vec![], None),
         };
+        // F798-R15-01 (central): the assembled closure's required
+        // capabilities must be a subset of the CURRENT request grants —
+        // dispatch refuses before encoding when a cached/restored payload
+        // needs a capability this request never granted (the per-unit
+        // checks above attribute it; this is the invariant backstop).
+        for c in merged.capabilities.iter() {
+            if !caps.iter().any(|x| x == c) {
+                return (
+                    Some(StageDiag {
+                        stage: "closure".to_string(),
+                        code: "closure.grant".to_string(),
+                        message: format!(
+                            "closure requires capability `{}` not granted by the current request",
+                            c
+                        ),
+                    }),
+                    None,
+                    vec![],
+                    None,
+                );
+            }
+        }
         // Whole-closure admission through the REAL codec + verifier (the
         // executor accepts only this credential).
         let mut closure_bytes_total: usize = 0;
@@ -948,15 +1086,59 @@ impl Driver {
             let key = manifest_key(&owner, entry, &manifest.fingerprint());
             let expect = EnvelopeIdentity::manifest(&owner, 0);
             let body = serde_json::to_vec(&manifest).unwrap_or_default();
-            let _ = put_enveloped(
+            // F798-R15-04: the manifest carries REQUIRED-DATA edges to
+            // every unit artifact it names — reachability from a
+            // rooted/leased manifest now keeps the closure alive; a
+            // failed publish is OBSERVABLE, never swallowed.
+            let mut edges: Vec<(String, ac_artifact_probe::identity::RefKind)> = manifest
+                .units
+                .iter()
+                .map(|l| {
+                    (
+                        l.artifact.clone(),
+                        ac_artifact_probe::identity::RefKind::RequiredData,
+                    )
+                })
+                .collect();
+            // F798-R15-04: the closure's diagnostics provenance is REQUIRED
+            // too — edge the current snapshot's sidecar artifacts so a
+            // rooted/leased manifest keeps the whole closure restorable.
+            for u in infos.iter() {
+                let skey = sidecar_key(&owner, &u.name, snapshot);
+                if let Ok(Some(art)) = store.get_artifact("A08", &skey) {
+                    edges.push((
+                        art.artifact_id.clone(),
+                        ac_artifact_probe::identity::RefKind::RequiredData,
+                    ));
+                }
+            }
+            if let Err(e) = put_enveloped(
                 store,
                 &key,
                 "A09",
                 &expect,
                 &body,
-                vec![],
+                edges,
                 Some(&self.project),
-            );
+            ) {
+                // The manifest key IS its fingerprint: a same-key CONFLICT
+                // means another writer already published this logical
+                // manifest — the store keeps the old row (never
+                // overwritten) and it serves future restores identically.
+                // Tolerated and counted; every other failure propagates.
+                if !is_store_conflict(&e) {
+                    return (
+                        Some(StageDiag {
+                            stage: "cache".to_string(),
+                            code: "cache.put".to_string(),
+                            message: format!("manifest publish: {}", e),
+                        }),
+                        None,
+                        vec![],
+                        None,
+                    );
+                }
+            }
             manifest_out = Some(manifest);
         }
 
@@ -1014,7 +1196,7 @@ fn rederive_spans(
             let skey = sidecar_key(owner, &name, snapshot);
             let sexpect = EnvelopeIdentity::sidecar(owner, snapshot);
             let spayload = encode_sidecar(&u.funcs[0].spans);
-            put_enveloped(
+            if let Err(e) = put_enveloped(
                 store,
                 &skey,
                 "A08",
@@ -1022,12 +1204,20 @@ fn rederive_spans(
                 &spayload,
                 vec![],
                 Some(project),
-            )
-            .map_err(|e| StageDiag {
-                stage: "cache".to_string(),
-                code: "cache.put".to_string(),
-                message: format!("sidecar re-derive `{}`: {}", name, e),
-            })?;
+            ) {
+                // F798-R15-03: rewriting a BAD sidecar row can conflict
+                // (the store never overwrites — e.g. an inapplicable map
+                // we just rejected). The in-memory rederived spans still
+                // serve THIS request: tolerated, row survives untouched.
+                // Every other write failure propagates (F798-R3-03).
+                if !is_store_conflict(&e) {
+                    return Err(StageDiag {
+                        stage: "cache".to_string(),
+                        code: "cache.put".to_string(),
+                        message: format!("sidecar re-derive `{}`: {}", name, e),
+                    });
+                }
+            }
         }
         map.insert(name, u.funcs[0].spans.clone());
     }

@@ -604,3 +604,85 @@ fn ac_av_probe_worker_contract_faults_are_infra() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F798-R15-05: the formal runner's build PREPARER is a contained
+/// executor — stdout backpressure surfaces as a stream-cap error (not a
+/// wall timeout), the wall breach kills the whole TREE (descendants do
+/// not survive), and the happy path still locates the real worker.
+/// Driven through the AV798_BUILD_CARGO/AV798_BUILD_WALL_MS seams with a
+/// fake launcher that reproduces the R15 probe shapes.
+#[test]
+fn ac_av_probe_prep_executor_contained_failure_shapes() {
+    fn locate_with(seam_cargo: &str, wall_ms: u64) -> Result<std::path::PathBuf, String> {
+        std::env::set_var("AV798_BUILD_CARGO", seam_cargo);
+        std::env::set_var("AV798_BUILD_WALL_MS", wall_ms.to_string());
+        let r = crate::test_cases::ac_av::tests_seam::locate_worker_for_test();
+        std::env::remove_var("AV798_BUILD_CARGO");
+        std::env::remove_var("AV798_BUILD_WALL_MS");
+        r
+    }
+    let dir = std::env::temp_dir().join(format!("av798-prep-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    // Shape 1: 2 MiB stdout (over the 1 MiB cap) — must be a stream-cap
+    // error, never a backpressure wall timeout.
+    let flood = dir.join("flood.cmd");
+    std::fs::write(
+        &flood,
+        "@echo off\r\npowershell -NoProfile -Command \"$s='x'*4096; 1..600 | ForEach-Object { [Console]::Out.Write($s) }\"\r\n",
+    )
+    .unwrap();
+    let wall = 60_000u64;
+    match locate_with(flood.to_str().unwrap(), wall) {
+        Err(e) => assert!(
+            e.contains("stdout exceeded the cap"),
+            "stdout cap error, got: {e}"
+        ),
+        Ok(_) => panic!("2MiB stdout must fail the cap"),
+    }
+    // Shape 2: a launcher that spawns a long-lived DESCENDANT then idles —
+    // the wall breach must kill the whole tree; the descendant is gone.
+    let marker = dir.join("descendant.pid");
+    let _ = std::fs::remove_file(&marker);
+    let spawner = dir.join("spawner.cmd");
+    std::fs::write(
+        &spawner,
+        &format!(
+            "@echo off\r\npowershell -NoProfile -Command \"$p = Start-Process powershell -ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 60' -PassThru; Set-Content -Path '{}' -Value $p.Id; Start-Sleep -Seconds 60\"\r\n",
+            marker.display()
+        ),
+    )
+    .unwrap();
+    let started = std::time::Instant::now();
+    match locate_with(spawner.to_str().unwrap(), 700) {
+        Err(e) => assert!(e.contains("BUILD_WALL"), "wall error, got: {e}"),
+        Ok(_) => panic!("idle launcher must hit the wall"),
+    }
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(20),
+        "wall enforced promptly"
+    );
+    // The descendant must NOT survive the tree kill.
+    if let Ok(pid) = std::fs::read_to_string(&marker) {
+        let pid: u32 = pid.trim().parse().unwrap_or(0);
+        if pid > 0 {
+            let alive = std::process::Command::new("powershell")
+                .args([
+                    "-NoProfile",
+                    "-Command",
+                    &format!("if (Get-Process -Id {pid} -ErrorAction SilentlyContinue) {{ 'alive' }} else {{ 'dead' }}"),
+                ])
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .unwrap_or_default();
+            assert_eq!(alive, "dead", "descendant {pid} reaped with the tree");
+        }
+    }
+    // Shape 3 (control): the REAL happy path still builds/locates.
+    std::env::remove_var("AV798_BUILD_CARGO");
+    std::env::remove_var("AV798_BUILD_WALL_MS");
+    let exe = crate::test_cases::ac_av::tests_seam::locate_worker_for_test()
+        .expect("real locate still works");
+    assert!(exe.is_file(), "worker binary at {:?}", exe);
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -355,7 +355,10 @@ fn av_cache_position_drift_keeps_trap_span() {
                 "span re-bind points at the CURRENT (drifted) position: {s2:?} vs {span1:?}"
             );
         }
-        other => panic!("drifted request keeps the trap AND its span: {other:?}"),
+        other => panic!(
+            "drifted request keeps the trap AND its span: {other:?} diag={:?}",
+            r2.diag
+        ),
     }
     let _ = std::fs::remove_dir_all(&root);
 }
@@ -946,4 +949,197 @@ fn av_cache_kindless_v1_wire_isolated() {
     assert_eq!(*r2.counters.get("cache_stale_abc_miss").unwrap_or(&0), 1);
     drop(d);
     let _ = std::fs::remove_dir_all(&root);
+}
+
+/// F798-R15-01..03: cache-consumption invariants at the ordinary Driver
+/// entrance — grant re-admission vs the CURRENT request, unit-envelope
+/// category conflict, and sidecar APPLICABILITY (an empty map re-derives
+/// from the current source; the trap keeps its span).
+#[test]
+fn av_cache_r15_consumption_invariants() {
+    // F798-R15-01: the REQUEST source is trace-free (the frontend cannot
+    // reject it); the cached payload is a hand-built, semantically legal
+    // unit that DECLARES the trace capability and contains MarkA. A hit
+    // under caps=[] must refuse (cache.grant); under the grant it
+    // executes with the trace event.
+    let plain_src = "fn main() int { return 7 }";
+    let trace_caps = vec!["hir.test.trace.v1".to_string()];
+    let root = tmpdir("r15-invariants");
+    {
+        let plain =
+            auto_ac_prototype::source::compile_scalar_source(plain_src, "p.at", &[]).unwrap();
+        let h = &plain.checked.bundle().modules[0];
+        let (name, body) = h
+            .defs
+            .iter()
+            .find_map(|d| match &d.kind {
+                auto_ac_prototype::hir::DefKind::Function { body, .. } => {
+                    Some((d.id_text.clone(), *body))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let owner = h.id_text.clone();
+        let fp =
+            auto_av_probe::semrefs::content_version_of(&cache::canonical_hir_function(h, body));
+        let tc = auto_ac_prototype::source::compile_scalar_source(
+            "fn main() int {
+    var t = mark_a()
+    return 7
+}
+",
+            "t.at",
+            &trace_caps,
+        )
+        .unwrap();
+        let m = auto_av_probe::hir_adapter::lower_checked(&tc.checked, "d_main", 0).unwrap();
+        let mut u = cache::split_units(&m).unwrap().remove(0);
+        u.funcs[0].spans.clear();
+        u.funcs[0].source_snapshot = 0;
+        let bytes = auto_av_core::encode_abc(&u).unwrap().to_flat();
+        let store = open_store(&root).unwrap();
+        let key = abc_unit_key(&owner, &name, &fp, &caps_fingerprint(&[]));
+        let expect = EnvelopeIdentity::abc_bound(&owner, &name, &fp);
+        put_enveloped(&store, &key, "A09", &expect, &bytes, vec![], Some("p")).unwrap();
+        drop(store);
+        let mut d = Driver::with_store(&root, "p").unwrap();
+        let r = d.request(plain_src, "d_main", &[]);
+        // The hit WAS taken (the lookup axis is the request's own caps)
+        // and the payload's required grant is re-admitted at consumption.
+        assert_eq!(*r.counters.get("cache_hit_abc").unwrap_or(&0), 1);
+        let diag = r.diag.expect("refused without the current grant");
+        assert_eq!(diag.code, "cache.grant");
+        // Positive control (the R15 probe shape): the SAME payload seeded
+        // under the GRANTED key executes WITH the trace event.
+        {
+            let store = open_store(&root).unwrap();
+            let key = abc_unit_key(&owner, &name, &fp, &caps_fingerprint(&trace_caps));
+            let expect = EnvelopeIdentity::abc_bound(&owner, &name, &fp);
+            put_enveloped(&store, &key, "A09", &expect, &bytes, vec![], Some("p")).unwrap();
+            drop(store);
+        }
+        let r = d.request(plain_src, "d_main", &trace_caps);
+        assert!(r.ok(), "{:?}", r.diag);
+        assert_eq!(*r.counters.get("cache_hit_abc").unwrap_or(&0), 1);
+        assert!(r
+            .trace
+            .iter()
+            .any(|e| matches!(e, auto_av_core::mir::TraceEvent::MarkA)));
+    }
+    let _ = std::fs::remove_dir_all(&root);
+
+    // F798-R15-02: a complete-MODULE payload under a UNIT envelope/key is
+    // a category conflict on both layers.
+    let (owner, name, fp) = {
+        let c = auto_ac_prototype::source::compile_scalar_source(plain_src, "t.at", &trace_caps)
+            .unwrap();
+        let h = &c.checked.bundle().modules[0];
+        let (name, body) = h
+            .defs
+            .iter()
+            .find_map(|d| match &d.kind {
+                auto_ac_prototype::hir::DefKind::Function { body, .. } => {
+                    Some((d.id_text.clone(), *body))
+                }
+                _ => None,
+            })
+            .unwrap();
+        (
+            h.id_text.clone(),
+            name,
+            auto_av_probe::semrefs::content_version_of(&cache::canonical_hir_function(h, body)),
+        )
+    };
+    for layer in ["A09", "A08"] {
+        let r2 = tmpdir(&format!("r15-kind-{layer}"));
+        let c = auto_ac_prototype::source::compile_scalar_source(plain_src, "t.at", &trace_caps)
+            .unwrap();
+        let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+        let mut u = cache::split_units(&m).unwrap().remove(0);
+        u.funcs[0].spans.clear();
+        u.funcs[0].source_snapshot = 0;
+        u.is_unit = false;
+        let bytes = auto_av_core::encode_abc(&u).unwrap().to_flat();
+        let store = open_store(&r2).unwrap();
+        let (key, expect) = if layer == "A09" {
+            (
+                abc_unit_key(&owner, &name, &fp, &caps_fingerprint(&trace_caps)),
+                EnvelopeIdentity::abc_bound(&owner, &name, &fp),
+            )
+        } else {
+            (
+                cache::mir_unit_key(&owner, &name, &fp, &caps_fingerprint(&trace_caps)),
+                EnvelopeIdentity::mir_bound(&owner, &name, &fp),
+            )
+        };
+        put_enveloped(&store, &key, layer, &expect, &bytes, vec![], Some("p")).unwrap();
+        drop(store);
+        let mut d = Driver::with_store(&r2, "p").unwrap();
+        let r = d.request(plain_src, "d_main", &trace_caps);
+        let diag = r.diag.expect("category conflict refused");
+        assert_eq!(diag.code, "cache.identity", "{layer}");
+        assert!(diag.message.contains("complete-module payload"), "{layer}");
+        let _ = std::fs::remove_dir_all(&r2);
+    }
+
+    // F798-R15-03: a hand-seeded hit + EMPTY sidecar — the driver
+    // re-derives from the current source; the trap keeps its span.
+    {
+        let r3 = tmpdir("r15-sidecar");
+        let div_src = "fn main() int {
+    return 1 / 0
+}
+";
+        let c = auto_ac_prototype::source::compile_scalar_source(div_src, "d.at", &[]).unwrap();
+        let h = &c.checked.bundle().modules[0];
+        let (nm, body) = h
+            .defs
+            .iter()
+            .find_map(|d| match &d.kind {
+                auto_ac_prototype::hir::DefKind::Function { body, .. } => {
+                    Some((d.id_text.clone(), *body))
+                }
+                _ => None,
+            })
+            .unwrap();
+        let owner2 = h.id_text.clone();
+        let fp2 =
+            auto_av_probe::semrefs::content_version_of(&cache::canonical_hir_function(h, body));
+        let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+        let mut u = cache::split_units(&m).unwrap().remove(0);
+        u.funcs[0].spans.clear();
+        u.funcs[0].source_snapshot = 0;
+        let bytes = auto_av_core::encode_abc(&u).unwrap().to_flat();
+        let store = open_store(&r3).unwrap();
+        let key = abc_unit_key(&owner2, &nm, &fp2, &caps_fingerprint(&[]));
+        let expect = EnvelopeIdentity::abc_bound(&owner2, &nm, &fp2);
+        put_enveloped(&store, &key, "A09", &expect, &bytes, vec![], Some("p")).unwrap();
+        let skey = cache::sidecar_key(&owner2, &nm, 0);
+        let sexpect = EnvelopeIdentity::sidecar(&owner2, 0);
+        put_enveloped(
+            &store,
+            &skey,
+            "A08",
+            &sexpect,
+            &cache::encode_sidecar(&[]),
+            vec![],
+            Some("p"),
+        )
+        .unwrap();
+        drop(store);
+        let mut d = Driver::with_store(&r3, "p").unwrap();
+        let r = d.request(div_src, "d_main", &[]);
+        assert!(r.diag.is_none(), "empty sidecar re-derives: {:#?}", r.diag);
+        assert_eq!(
+            *r.counters.get("sidecar_rebind_lower_modules").unwrap_or(&0),
+            1
+        );
+        let trap = format!("{:?}", r.av);
+        assert!(trap.contains("DivByZero"), "{trap}");
+        assert!(
+            trap.contains("start:"),
+            "trap carries its source span: {trap}"
+        );
+        let _ = std::fs::remove_dir_all(&r3);
+    }
 }

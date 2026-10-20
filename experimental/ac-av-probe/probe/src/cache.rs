@@ -1267,6 +1267,58 @@ pub fn get_enveloped_opt(
     }
 }
 
+/// F798-R15-03: sidecar APPLICABILITY — structurally valid ranges and a
+/// span for EVERY trap-capable instruction (`can_trap`: Bin family +
+/// NegI32). A decodable-but-empty or non-covering map loses diagnostics
+/// provenance exactly like a missing one (F798-R7-03); shared by the
+/// driver's hit path (which can re-derive from the current source) and
+/// the source-less restore (which refuses).
+pub fn sidecar_applicable(f: &MirFunction) -> Result<(), String> {
+    for (_, sp) in f.spans.iter() {
+        if sp.start > sp.end {
+            return Err(format!("inverted span {}..{}", sp.start, sp.end));
+        }
+    }
+    let covered: std::collections::BTreeSet<u32> = f.spans.iter().map(|(i, _)| *i).collect();
+    let mut flat = 0u32;
+    for b in f.blocks.iter() {
+        for (ii, instr) in b.instrs.iter().enumerate() {
+            if instr.can_trap() && !covered.contains(&(flat + ii as u32)) {
+                return Err(format!(
+                    "does not cover trap-capable instruction {}",
+                    flat + ii as u32
+                ));
+            }
+        }
+        flat += b.instrs.len() as u32;
+    }
+    Ok(())
+}
+
+/// F798-R15-04: get + validate one enveloped payload, ALSO returning the
+/// artifact id — the request-consumption lease (and manifest required
+/// edges) bind to the concrete artifact, not the key.
+pub fn get_enveloped_with_id(
+    store: &ManagedStore,
+    key: &QueryKey,
+    layer: &str,
+    expect: &EnvelopeIdentity,
+) -> Result<Option<(String, Vec<u8>)>, CacheError> {
+    match store.get_artifact(layer, key)? {
+        None => Ok(None),
+        Some(loaded) => {
+            if loaded.kind != ChunkKind::LayoutData {
+                return Err(CacheError::Envelope(format!(
+                    "artifact {} carries kind {:?}, expected the LayoutData carrier",
+                    loaded.artifact_id, loaded.kind
+                )));
+            }
+            let payload = envelope_unwrap(&loaded.payload, expect)?;
+            Ok(Some((loaded.artifact_id.clone(), payload)))
+        }
+    }
+}
+
 /// Load an artifact payload by ARTIFACT ID (restore path: the manifest holds
 /// unit artifact ids; the store's address-admission still guards the read).
 pub fn get_by_artifact_id(
