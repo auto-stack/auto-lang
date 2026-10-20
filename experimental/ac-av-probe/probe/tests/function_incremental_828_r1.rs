@@ -367,3 +367,150 @@ fn main() int { return helper() }",
         "the read intrinsic binding changed - the credential must invalidate"
     );
 }
+
+/// F-828-R1-04/R3a a: body-local refinement available on the PUBLIC
+/// snapshot path (insert inside main before the trap).
+#[test]
+fn r3a_public_snapshot_preserves_body_local_source_refinement() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let at = R2A_SRC.find("helper();").unwrap() + "helper();".len(); // inside main, before the div
+    let out = s
+        .edit(at as u64, at as u64, b"var q = 1; ".to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    let expected = trap_span(&cold);
+    let snap = s.current();
+    let (o, _) =
+        auto_av_core::av::execute_program(&snap, &ExecLimits::default(), &CancelFlag::new(false));
+    match o {
+        ExecOutcome::Trap { span: Some(sp), .. } => {
+            assert_eq!(
+                (sp.start, sp.end),
+                (expected.start, expected.end),
+                "public path body-local map"
+            )
+        }
+        other => panic!("expected trap, got {other:?}"),
+    }
+}
+
+/// F-828-R1-04/R3a b: successive body-local edits COMPOSE.
+#[test]
+fn r3a_successive_body_local_edits_compose_source_mapping() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let at = R2A_SRC.find("helper();").unwrap() + "helper();".len();
+    let o1 = s
+        .edit(at as u64, at as u64, b"var q = 1; ".to_vec())
+        .unwrap();
+    assert!(o1.ok);
+    let o2 = s
+        .edit(at as u64, at as u64, b"var w = 2; ".to_vec())
+        .unwrap();
+    assert!(o2.ok);
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold), "composed body-local maps");
+}
+
+/// F-828-R1-04/R3a c: an edit INSIDE the trap range moves the END only.
+#[test]
+fn r3a_whitespace_inside_trap_range_updates_end_independently() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let before = trap_span(&s);
+    let mid = before.start as usize + 2; // inside "1 / 0"
+    let out = s.edit(mid as u64, mid as u64, b" ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    let expected = trap_span(&cold);
+    assert_eq!(
+        expected.start, before.start,
+        "start before the insert point"
+    );
+    assert_eq!(expected.end, before.end + 1, "end after it shifts");
+    assert_eq!(trap_span(&s), expected);
+}
+
+/// F-828-R1-06/R3a d: per-REFERENCE identity — swapping two intrinsic
+/// symbols between defs keeps the symbol SET intact but must invalidate
+/// the credential.
+#[test]
+fn r3a_credential_tracks_each_intrinsic_reference_not_just_symbol_set() {
+    use auto_ac_prototype::hir::DefKind;
+    use auto_ac_prototype::source::compile_scalar_source;
+    use auto_ac_prototype::verify::verify_function;
+    use auto_av_probe::function_queries::FnEnv;
+    let caps = vec!["hir.test.trace.v1".to_string()];
+    let src = "fn helper() int { return mark_a() + mark_b() }
+fn main() int { return helper() }
+";
+    let compiled = compile_scalar_source(src, "t.at", &caps).unwrap();
+    let bundle = compiled.checked.bundle();
+    let idx = bundle.modules[0]
+        .defs
+        .iter()
+        .position(|d| d.id_text == "d_helper")
+        .unwrap();
+    let cf = verify_function(bundle.clone(), idx).unwrap();
+    assert!(FnEnv::from_bundle(&bundle).unwrap().credential_current(&cf));
+    // Swap the two intrinsic symbols between the def slots.
+    let mut swapped = bundle.clone();
+    let mut mutations = 0;
+    for d in swapped.modules[0].defs.iter_mut() {
+        if let DefKind::Intrinsic { symbol, .. } = &mut d.kind {
+            if symbol == "hir.test.mark_a" {
+                *symbol = "hir.test.mark_b".into();
+                mutations += 1;
+            } else if symbol == "hir.test.mark_b" {
+                *symbol = "hir.test.mark_a".into();
+                mutations += 1;
+            }
+        }
+    }
+    assert_eq!(mutations, 2);
+    assert!(
+        !FnEnv::from_bundle(&swapped)
+            .unwrap()
+            .credential_current(&cf),
+        "swapped per-reference bindings must invalidate the credential"
+    );
+}
+
+/// F-828-R1-06/R3a e: the consulted intrinsic's EFFECT fact binds too.
+#[test]
+fn r3a_credential_tracks_effect_fact_of_consulted_intrinsic() {
+    use auto_ac_prototype::hir::{DefKind, Effect};
+    use auto_ac_prototype::source::compile_scalar_source;
+    use auto_ac_prototype::verify::verify_function;
+    use auto_av_probe::function_queries::FnEnv;
+    let caps = vec!["hir.test.trace.v1".to_string()];
+    let compiled = compile_scalar_source(
+        "fn helper() int { return mark_a() }
+fn main() int { return helper() }",
+        "t.at",
+        &caps,
+    )
+    .unwrap();
+    let bundle = compiled.checked.bundle();
+    let idx = bundle.modules[0]
+        .defs
+        .iter()
+        .position(|d| d.id_text == "d_helper")
+        .unwrap();
+    let cf = verify_function(bundle.clone(), idx).unwrap();
+    assert!(FnEnv::from_bundle(&bundle).unwrap().credential_current(&cf));
+    let mut flipped = bundle.clone();
+    for d in flipped.modules[0].defs.iter_mut() {
+        if let DefKind::Intrinsic { effect, .. } = &mut d.kind {
+            *effect = match *effect {
+                Effect::Observable => Effect::Pure,
+                Effect::Pure => Effect::Observable,
+            };
+        }
+    }
+    assert!(
+        !FnEnv::from_bundle(&flipped)
+            .unwrap()
+            .credential_current(&cf),
+        "consulted effect fact changed - the credential must invalidate"
+    );
+}

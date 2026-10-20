@@ -147,17 +147,20 @@ fn map_span(prog: &crate::program_snapshot::ProgramSnapshot, out: ExecOutcome) -
         span: Some(sp),
     } = out
     {
-        let shift = prog
-            .span_shifts()
+        let regions = prog
+            .span_maps()
             .get(sp.func as usize)
-            .copied()
-            .unwrap_or(0);
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
+        let start =
+            crate::program_snapshot::ProgramSnapshot::map_pos(regions, sp.start as u64) as u32;
+        let end = crate::program_snapshot::ProgramSnapshot::map_pos(regions, sp.end as u64) as u32;
         return ExecOutcome::Trap {
             kind,
             span: Some(SpanInfo {
                 func: sp.func,
-                start: (sp.start as i64 + shift) as u32,
-                end: (sp.end as i64 + shift) as u32,
+                start,
+                end,
             }),
         };
     }

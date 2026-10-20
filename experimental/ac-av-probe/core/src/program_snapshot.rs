@@ -30,10 +30,12 @@ pub struct ProgramSnapshot {
     /// admitted units with signature-checked bindings — never re-verified as
     /// a whole, never exposed mutable.
     merged: MirModule,
-    /// Per-code-slot diagnostics-only span shifts (current-source minus
-    /// mint-source decl origins); executor span-bearing outcomes map
-    /// through this immutable snapshot-owned view (F-828-R1-04/R2a).
-    span_shifts: Vec<i64>,
+    /// Per-code-slot diagnostics-only source maps: sorted edit regions
+    /// `(start, len, delta)` in the CURRENT source's coordinates; a
+    /// position x maps to x + Σ delta of regions with `start < x`.
+    /// Executor span-bearing outcomes map through this immutable
+    /// snapshot-owned view (F-828-R1-04/R3a).
+    span_maps: Vec<Vec<(u64, u64, i64)>>,
 }
 
 impl ProgramSnapshot {
@@ -46,16 +48,16 @@ impl ProgramSnapshot {
         entry: &str,
         revision: u64,
     ) -> Result<ProgramSnapshot, String> {
-        let span_shifts = vec![0i64; code.len()];
-        Self::link_with_shifts(code, entry, revision, span_shifts)
+        let span_maps = vec![Vec::new(); code.len()];
+        Self::link_with_maps(code, entry, revision, span_maps)
     }
 
-    /// Link with per-code-slot span shifts (see the field docs).
-    pub fn link_with_shifts(
+    /// Link with per-code-slot source maps (see the field docs).
+    pub fn link_with_maps(
         code: Vec<Arc<FunctionCode>>,
         entry: &str,
         revision: u64,
-        span_shifts: Vec<i64>,
+        span_maps: Vec<Vec<(u64, u64, i64)>>,
     ) -> Result<ProgramSnapshot, String> {
         let mut merged = MirModule::new(crate::mir::OwnerScope {
             schema: MIR_SCHEMA.to_string(),
@@ -190,13 +192,24 @@ impl ProgramSnapshot {
             entry: entry.to_string(),
             code,
             merged,
-            span_shifts,
+            span_maps,
         })
     }
 
-    /// The per-slot diagnostics span shifts this snapshot maps through.
-    pub fn span_shifts(&self) -> &[i64] {
-        &self.span_shifts
+    /// The per-slot source maps this snapshot maps through.
+    pub fn span_maps(&self) -> &[Vec<(u64, u64, i64)>] {
+        &self.span_maps
+    }
+
+    /// Map one position through one function's region list.
+    pub fn map_pos(regions: &[(u64, u64, i64)], x: u64) -> u64 {
+        let mut d = 0i64;
+        for &(st, _, delta) in regions {
+            if st < x {
+                d += delta;
+            }
+        }
+        (x as i64 + d) as u64
     }
 
     /// This snapshot's revision counter.

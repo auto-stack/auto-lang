@@ -153,16 +153,18 @@ struct FnRecord {
     /// `origin - mint_origin` (F-828-R1-04/R2: unchanged functions' trap
     /// spans must track the CURRENT source without touching code payloads).
     mint_origin: u64,
-    /// Content-hit refinement (F-828-R1-04/R2a F04-c): reused code whose
-    /// body text shifted internally — spans at/after `threshold` move by
-    /// `delta`. `None` = identity.
-    body_shift: Option<(u32, i64)>,
-    /// In-session content-addressed reuse (PLAN-828 T-04): canonical-HIR
-    /// content version → (verified body, code, MINT ORIGIN of the source
-    /// revision that code's spans were lowered from). A body edited back
-    /// to a prior content reuses the SAME objects and their OWN mint
-    /// baseline (F-828-R1-04/R2a F04-b).
-    history: BTreeMap<String, (Arc<hir::Body>, Arc<FunctionCode>, u64)>,
+    /// Composable source map for this function's REUSED code: edit
+    /// regions `(start, len, delta)` in CURRENT-source coordinates;
+    /// position x maps to x + Σ delta where region.start < x. A re-minted
+    /// function resets to empty (fresh code matches the source); reused
+    /// code accumulates regions across edits (F-828-R1-04/R3a).
+    span_map: Vec<(u64, u64, i64)>,
+    /// In-session content-addressed reuse (PLAN-828 T-04): content version
+    /// → (verified body, code, mint origin, the code's OWN accumulated
+    /// span map). A body edited back to prior content reuses the SAME
+    /// objects and their OWN mint baseline AND source map
+    /// (F-828-R1-04/R3a).
+    history: BTreeMap<String, (Arc<hir::Body>, Arc<FunctionCode>, u64, Vec<(u64, u64, i64)>)>,
 }
 
 /// Outcome of one edit request.
@@ -209,6 +211,12 @@ pub struct PreparedEdit {
     /// The origin baseline of the candidate's code object (its own mint
     /// source, whether fresh or from history).
     mint_origin: u64,
+    /// The edit's own region (old-source start, replaced length, inserted
+    /// length) — the source-map delta every non-reminted function applies.
+    edit_region: (u64, u64, u64),
+    /// The changed function's code-object span map (history entry's own on
+    /// a hit; empty on a miss).
+    span_map: Vec<(u64, u64, i64)>,
     base_revision: u64,
     changed_idx: usize,
     changed_name: String,
@@ -380,7 +388,7 @@ pub fn warmup(
         // a later content hit must return the very same object.
         let body_arc = Arc::new(body_ref.clone());
         let mut history = BTreeMap::new();
-        history.insert(warm_cv, (body_arc.clone(), code.clone(), 0)); // origins set below
+        history.insert(warm_cv, (body_arc.clone(), code.clone(), 0, Vec::new()));
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
@@ -389,7 +397,7 @@ pub fn warmup(
             code: code.clone(),
             origin: 0,
             mint_origin: 0,
-            body_shift: None,
+            span_map: Vec::new(),
             history,
         });
         codes.push(code);
@@ -540,7 +548,7 @@ pub fn restore(
         if let Some(entry) = rec.history.iter_mut().next() {
             // Restored objects' own mint baseline is fixed with the origin
             // pass below (single-source alignment).
-            *entry.1 = (body.clone(), code.clone(), 0);
+            *entry.1 = (body.clone(), code.clone(), 0, Vec::new());
         }
         rec.code = code.clone();
     }
@@ -589,31 +597,7 @@ impl FunctionIncrementalSession {
     /// payloads are never touched. Runs against a PINNED older snapshot
     /// keep that revision's coordinates (its own source view).
     pub fn run(&self, limits: &ExecLimits, cancel: &CancelFlag) -> (ExecOutcome, ExecTrace) {
-        // The snapshot's own shifts map origin movement on every public
-        // path; the session only refines CONTENT-HIT functions' intra-body
-        // shifts (F-828-R1-04/R2a).
-        let (mut out, trace) = execute_program(&self.current, limits, cancel);
-        if let ExecOutcome::Trap {
-            span: Some(sp),
-            kind,
-        } = out
-        {
-            if let Some((threshold, delta)) =
-                self.fns.get(sp.func as usize).and_then(|r| r.body_shift)
-            {
-                if sp.start >= threshold {
-                    out = ExecOutcome::Trap {
-                        kind,
-                        span: Some(SpanInfo {
-                            func: sp.func,
-                            start: (sp.start as i64 + delta) as u32,
-                            end: (sp.end as i64 + delta) as u32,
-                        }),
-                    };
-                }
-            }
-        }
-        (out, trace)
+        execute_program(&self.current, limits, cancel)
     }
 
     /// Apply one source edit (old-source byte coordinates) and, if it is a
@@ -631,10 +615,11 @@ impl FunctionIncrementalSession {
     /// Bounded content-history insert (V-07): never evict the resident
     /// revision's own entry; evict an arbitrary oldest-ordered key when
     /// over the cap.
+    #[allow(clippy::type_complexity)]
     fn history_insert(
         rec: &mut FnRecord,
         cv: String,
-        triple: (Arc<hir::Body>, Arc<FunctionCode>, u64),
+        entry: (Arc<hir::Body>, Arc<FunctionCode>, u64, Vec<(u64, u64, i64)>),
     ) {
         if rec.history.len() >= HISTORY_CAP && !rec.history.contains_key(&cv) {
             if let Some(victim) = rec
@@ -651,7 +636,7 @@ impl FunctionIncrementalSession {
                 rec.history.remove(&victim);
             }
         }
-        rec.history.entry(cv).or_insert(triple);
+        rec.history.entry(cv).or_insert(entry);
     }
 
     /// Resident function source-names in declaration order.
@@ -1050,12 +1035,14 @@ impl FunctionIncrementalSession {
         let cv = content_version_of(&canonical_hir_function(synth_m, def_body));
         let mut was_hit = false;
         let mut candidate_mint_origin: u64 = 0;
+        let mut candidate_span_map: Vec<(u64, u64, i64)> = Vec::new();
         let (new_hir_body, new_code): (Arc<hir::Body>, Arc<FunctionCode>) =
             match self.fns[changed_idx].history.get(&cv) {
-                Some((body, code, mint_o)) => {
+                Some((body, code, mint_o, map)) => {
                     self.counters.bump(&format!("reuse_hit:{changed_name}"));
                     was_hit = true;
                     candidate_mint_origin = *mint_o;
+                    candidate_span_map = map.clone();
                     (body.clone(), code.clone())
                 }
                 None => {
@@ -1083,9 +1070,11 @@ impl FunctionIncrementalSession {
             candidate_mint_origin = inc.tree.abs_range(inc.tree.decls[changed_idx].node).0;
         }
         Ok(Ok(PreparedEdit {
+            edit_region: (start, end.saturating_sub(start), edit.insert.len() as u64),
             session_id: self.session_id,
             reminted: !was_hit,
             mint_origin: candidate_mint_origin,
+            span_map: candidate_span_map,
             base_revision: self.revision,
             changed_idx,
             changed_name,
@@ -1133,21 +1122,50 @@ impl FunctionIncrementalSession {
         // original mint baseline and gains a body-region refinement when
         // its body text moved internally (F-828-R1-04/R2a F04-b/c).
         let old_src = self.src.clone();
-        let mut shifts: Vec<i64> = Vec::with_capacity(self.fns.len());
+        let mut span_maps: Vec<Vec<(u64, u64, i64)>> = Vec::with_capacity(self.fns.len());
         for (i, d) in prepared.new_parse.tree.decls.iter().enumerate() {
             let o = prepared.new_parse.tree.abs_range(d.node).0;
             let rec = &mut self.fns[i];
             rec.origin = o;
+            span_maps.push(Vec::new()); // filled after the per-fn loop
             if i == changed_idx {
                 rec.mint_origin = prepared.mint_origin;
-                rec.body_shift = if reminted {
-                    None
-                } else {
-                    diff_region(&old_src, &prepared.new_src)
-                };
+                rec.span_map = prepared.span_map.clone();
             }
-            shifts.push(rec.origin as i64 - rec.mint_origin as i64);
+            let (st, old_len, new_len) = prepared.edit_region;
+            let delta = new_len as i64 - old_len as i64;
+            if reminted && i == changed_idx {
+                // Fresh code matches the current source exactly.
+                rec.span_map.clear();
+            } else {
+                // Every other function (and content hits) compose the
+                // edit's region into their maps (regions after the edit
+                // point shift; the new region appends; sorted order
+                // keeps the map_pos scan deterministic).
+                for r in &mut rec.span_map {
+                    if r.0 >= st {
+                        r.0 = (r.0 as i64 + delta) as u64;
+                    }
+                }
+                rec.span_map.push((st, old_len, delta));
+                rec.span_map.sort();
+            }
+            // EVERY stored code object of this function (history entries)
+            // experiences the same source change: compose the edit into
+            // their maps too, so a later content hit restores a map that
+            // is current as of THIS revision (the deposited current entry
+            // is overwritten below with the post-compose map).
+            for e in rec.history.values_mut() {
+                for r in &mut e.3 {
+                    if r.0 >= st {
+                        r.0 = (r.0 as i64 + delta) as u64;
+                    }
+                }
+                e.3.push((st, old_len, delta));
+                e.3.sort();
+            }
         }
+        span_maps = self.fns.iter().map(|r| r.span_map.clone()).collect();
         let mut codes: Vec<Arc<FunctionCode>> = Vec::with_capacity(self.fns.len());
         for (i, rec) in self.fns.iter().enumerate() {
             if i == changed_idx {
@@ -1156,11 +1174,11 @@ impl FunctionIncrementalSession {
                 codes.push(rec.code.clone());
             }
         }
-        let next = match ProgramSnapshot::link_with_shifts(
+        let next = match ProgramSnapshot::link_with_maps(
             codes,
             &self.entry_def_id,
             next_revision,
-            shifts,
+            span_maps,
         ) {
             Ok(s) => Arc::new(s),
             Err(e) => {
@@ -1185,10 +1203,18 @@ impl FunctionIncrementalSession {
         } = prepared;
         let _ = (session_id, base_revision);
         let changed_rec = &mut self.fns[changed_idx];
+        // The deposited map is the POST-commit one (installed baseline
+        // composed with this edit) — captured after the origin loop.
+        let deposit_map = changed_rec.span_map.clone();
         Self::history_insert(
             changed_rec,
             content_version,
-            (hir_body.clone(), code.clone(), prepared.mint_origin),
+            (
+                hir_body.clone(),
+                code.clone(),
+                prepared.mint_origin,
+                deposit_map,
+            ),
         );
         changed_rec.hir_body = hir_body;
         changed_rec.code = code;
@@ -1259,19 +1285,4 @@ fn fnv64(bytes: &[u8]) -> u64 {
         h = h.wrapping_mul(0x100000001b3);
     }
     h
-}
-
-/// Single-edit region diff: spans at/after the first differing byte move
-/// by the length delta; same-length edits are identity (None).
-fn diff_region(old: &str, new: &str) -> Option<(u32, i64)> {
-    let (a, b) = (old.as_bytes(), new.as_bytes());
-    let mut start = 0usize;
-    while start < a.len() && start < b.len() && a[start] == b[start] {
-        start += 1;
-    }
-    let delta = b.len() as i64 - a.len() as i64;
-    if delta == 0 {
-        return None;
-    }
-    Some((start as u32, delta))
 }

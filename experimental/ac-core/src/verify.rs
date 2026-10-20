@@ -115,11 +115,13 @@ pub struct CheckedFunction {
     owner: String,
     context_revision: String,
     domain: HirDomain,
-    /// Intrinsic declarations this body ACTUALLY references (symbol +
-    /// content-canonical signature shape) — body-read facts the credential
-    /// binds even though the global context identity excludes unused
-    /// intrinsics (F-828-R1-06/R2a).
-    intrinsics: Vec<(String, String)>,
+    /// Intrinsic bindings this body ACTUALLY references — per-REFERENCE
+    /// identity: (def index, symbol, observable-effect, content-canonical
+    /// signature shape). Body-read facts the credential binds even though
+    /// the global context identity excludes unused intrinsics
+    /// (F-828-R1-06/R3a: symbol-set or shape-only comparison misses
+    /// swapped bindings and effect flips).
+    intrinsics: Vec<(u32, String, bool, String)>,
 }
 
 impl CheckedFunction {
@@ -144,8 +146,8 @@ impl CheckedFunction {
         &self.owner
     }
 
-    /// The (symbol, signature-shape) pairs this body actually references.
-    pub fn referenced_intrinsics(&self) -> &[(String, String)] {
+    /// The per-reference intrinsic bindings this body actually reads.
+    pub fn referenced_intrinsics(&self) -> &[(u32, String, bool, String)] {
         &self.intrinsics
     }
 
@@ -310,11 +312,11 @@ pub fn verify_function(
     if v.diags.is_empty() {
         // Collect the intrinsics THIS body actually calls (body-read
         // facts; content-canonical shapes).
-        let mut intrinsics: Vec<(String, String)> = Vec::new();
+        let mut intrinsics: Vec<(u32, String, bool, String)> = Vec::new();
         for e in &body.exprs {
             if let hir::ExprKind::Call { callee, .. } = &e.kind {
                 if let Some(d) = m.defs.get(callee.0 as usize) {
-                    if let hir::DefKind::Intrinsic { symbol, .. } = &d.kind {
+                    if let hir::DefKind::Intrinsic { symbol, effect, .. } = &d.kind {
                         let shape = d
                             .kind
                             .fn_type()
@@ -335,7 +337,12 @@ pub fn verify_function(
                                 other => format!("{other:?}"),
                             })
                             .unwrap_or_else(|| "?".to_string());
-                        let entry = (symbol.clone(), shape);
+                        let entry = (
+                            callee.0,
+                            symbol.clone(),
+                            matches!(effect, hir::Effect::Observable),
+                            shape,
+                        );
                         if !intrinsics.contains(&entry) {
                             intrinsics.push(entry);
                         }
