@@ -112,3 +112,26 @@ R4 复验 needs_fix 后修复批（`81c8a5743`+`189ca0f77`）对本文件的更�
   条目 + 双负控测试）——§2 的 SDK 事实清单相应更新。
 - 缓存身份语义（SD/PLAN-698 精确化）：None→Some 升级、首装优先、
   save 按出生身份落盘、load 比对失效。
+
+## 8. T-14 当前审定绑定（R7，r3；2026-10-20）
+
+本节与主计划 r3 §5.3、[R7 复审记录](review-r7/review.md)共同确定当前 A 候选；
+§1–7 保留早批历史，旧 SHA、SDK ui-dialect feature、旧计数及“B 清偿警告”
+等叙述以历次复审闭合和本节为准，不作为当前发布事实。
+
+- 冻结实现：`256613936b6a5e9baea450e5c545899ee7a661dc`，唯一树/分支不变；
+  当前合同为 **PLAN-814:r3:M814-A**，两项具名修订已经用户批准。
+- SDK `auto-lang-core 0.1.0`：normal/build/dev 无 UI 文法实现/compiler/runtime/
+  Man/旧包清单边；无 `ui-dialect` feature。保留 `code-editor` 非 UI 行为开关与
+ 其他非 UI features；文法经轻 `auto-parser-api::{UiParseContext,UiGrammar}`
+ 端口，纯 SDK 缺席/显式拒绝保持。构建输入为具名 SDK 闭包，非全 crates 扫描。
+- UI compiler `auto-ui-compiler 0.1.0`：真实四生成器/分析/资源及旧路径兼容；
+  三个具名生成入口显式装配，直达路径可使用 r3 允许的轻表登记兜底。启动登记
+  只改 inventory 自身表，不调用 UI 工厂/I/O 或初始化 UI/VM 业务状态。
+- 当前 runtime 仍为上层真实实现；`auto-ui-runtime 0.1.0` 只有骨架，B 能力未发布。
+- R3-01..06 与 R4-01 当前全部闭合；R6 严格九档逐 ID 映射、净新增警告 0/减少 7
+  按已核实边界复用。r6-closeout 重验收据已核对，R7 另独立通过显式宿主/直达
+  Parser/显式默认与快照/autodown、无 UI 源码 fresh+locked SDK 5/5、compiler 消费 4/4。
+- T-14 只给 **A 阶段 pass**。规范子集绑定 r3 SD-01/02/04..08 及两份端口 Spec
+  目标；SD-03 完整 runtime 留 B。T-15 冻结回归、实际 A 合入/规范与 ledger、版本/
+  来源/consumer 读回收据仍 pending；A 未实际发布，原树保留继续 B，不归档。
