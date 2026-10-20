@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-798
-status: execution_done
+status: executing
 feature_name: Typed MIR 与 ABC/AV 执行合同及首个全路径探针
 plan_revision: 6
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-20
-current_step: 9
+current_step: 8
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
@@ -214,10 +214,6 @@ T-08统一维护V-01..14及K14-01..06实际入口/Scope/phase/code/oracle清单�
 
 最近formal含逐请求进程启动/store-open/外围校验，不能直接判定用户稳定会话目标失败；旧结果只保留其真实跨进程技术门意义。warm bench 874.5993ms也不证明单函数编译成本或结构门通过。828正式门必须首个结果后开始计编辑入队至当前结果发布，包含当次必要IPC/编译/安装等，启动单列；不得把独立bench静默替换798原formal入口。原T-07仍开放，现有技术门若需改生命周期/语义必须显式修订，不凭本段自动解锁。
 
-### 5.10 交付归因裁定（2026-10-20，用户）
-
-**裁定**：warm 编辑 P95 此前复验未达（1027.0/1465.5ms 及当日 1008.9-1465.5ms 系列）归因于**整模块重查——其他阶段未实现真增量编译**；真增量优化归 **PLAN-828**（排期合同 `docs/plans/reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md`：798 完成交付 → 优先 828 → 其他 ACE 扩展）。798 的义务＝如实计量（§5.5"前端可整模块重查，但如实计量，不谎称前端细粒度增量已完成"）+ PASS 证据保留。**已满足**：R15 修复轮暖路径优化后，正式周转门于最终提交 `9316512c8` 静置窗 PASS——edit P50/P95/P99=646.9/**687.4**/690.9ms、sig 234.9ms（30 样本，`docs/reports/plan798/autodown-formal-final.log`），全天最佳。817/818、820–827 的强制增量验收（复用未改函数 IR/精确失效/整模块重编反例）由排期合同承接，不构成 798 门槛。
-
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -276,7 +272,6 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 | AC-10 | merge | 冻结门禁、Spec/ledger沉淀、归档合入/实际计数/guard清理齐全；最终11/11；仅授本计划基础合同交付，完整函数增量另验828 |
 
 ## 8. 执行步骤
-**R15 收口 work 收据（2026-10-20，code `9316512c8`+`01dc7c40f`）**：暖路径优化（sidecar 工件 id 复用 rebind 级联已有读取，manifest 边循环消除 warm 命中每单元额外 sqlite 读；R15 探针 manifest-live edges=2/GC 后恢复带 span 不变）；**正式周转门最终提交 PASS：edit P95 687.4ms/sig 234.9ms**（全天最佳，日志 `autodown-formal-final.log`）；**用户交付归因裁定入 §5.10**（此前未达归因整模块重查/非真增量，真增量优化归 828 排期合同；798 义务=如实计量+PASS 保留已满足）。T-07 复勾——**execution_done=9/11**（T-01..08、T-11），**next: R16 独立最终验收**（AC-09/V 全矩阵/K14；merge-owned 门禁由 review 列明）。
 
 **r6当前状态**：executing **8/11**。T-07正式30样本门在修复代码d1357870a通过（edit867.8/sig385.8ms）；T-05因新代码六场景body-edit P95=1026.9766ms而重开。R16漏接lease已修复，cache18/resources17/正式正确性6通过；受控六场景复验仍失败（body-edit P95=1465.4601ms）。T-01..04、T-06..08、T-11已勾，T-05/09/10开放。798不是全链路函数增量，完整目标由828承接；旧轮收据保留为历史，不作当前执行指令。
 
@@ -466,7 +461,7 @@ stage: new；outcome: pass（文档合同预检，非实现验收）。用户明
 
 无阻断草拟的用户决策。T-01仅在既定范围内冻结准确opcode/表字段/计步、现有store合法carrier、参考机/256KiB负载、初始公共快照与AutoDown recipe输入。预算为拟议实验政策，若全路径不可行须带数据回规划，不能临时降低负载/提高阈值/改语义。D-796/D-788已由旧收据满足，启动时核实际依赖身份，不再把初稿依赖未交付当当前阻断；最终公开CLI/全部Auto语言、CTE/AJ/发布器仍后续Plan。
 
-**当前状态（r5，R15 收口 execution_done）**：R15 六项闭合+暖路径优化 @`9316512c8`；正式周转门最终提交 **PASS（edit P95 687.4ms/sig 234.9ms，全天最佳）**；§5.10 用户交付归因裁定（此前未达=整模块重查/非真增量，归 828）。§8 唯一任务表 **9/11**（T-01..08、T-11；T-09 review、T-10 merge 待）。**已就绪送 R16 独立最终验收**；merge-owned 门禁另列 pending；825/826 不阻塞 798。
+**当前状态（r5，T-07正式门尚未解锁）**：R15六项修复的work提交为 `8e78502ba`，独立关闭仍待最终review；本轮受测 `09be7a85b`，edit P95=980.1ms通过，但sig P95=1200.4ms未过，exit101。唯一任务表 **8/11**（T-01..06、T-08、T-11已勾；T-07开放，T-09/10未完成），frontmatter保持`executing`。证据提交 `dbae2e634`；[本轮结果/负载及边界](attachments/798/unlock-r16-20261020/receipt.md)。新提交两条正式性能门均通过后才送R16，不把旧提交PASS或单条路径PASS作为解锁；未实施/合入，merge-owned整档和收尾pending。
 
 **初始化边界核查与热态重测（2026-10-20 16:56，优先解释上述性能数字）**：用户要求首个结果之后、稳定环境中的编辑周转，保留P95<1s。已确认最近formal计时含逐请求worker启动、store-open及父端校验，不能直接判定用户热态目标失败，也不能只凭sig尾延迟归因为环境。冻结`dbae2e634`前后clean，现有release同进程bench先打开store、完成base请求再测；六场景各30，共180行全正确，exit0。**编辑30个不同revision P50/P95/P99=834.647/874.5993/899.9341ms；签名冲突重复30次P95=51.1369ms**；A=201.6133MiB/B=6.3203MiB均在r5预算内，raw独立重算一致。这证明当前已实现热态请求链路在该负载的本轮达标，不证明完整常驻VM在线安装或编辑器到屏幕端到端达标。r5 AC/V/T合同本轮未改，T07仍开放；后续须按用户澄清统一正式性能门生命周期/边界，将启动指标单列，不能用独立bench静默替代正式runner。[测量收据及完整原始证据](attachments/798/warm-remeasure-20261020/receipt.md)。未运行根整档；最终review/merge-owned门禁pending。
 - 根examples/ui_container.rs预存语法损坏、已着陆scalar前端约211MB瞬态峰值的既有归因保留，不冒称本计划已修。
