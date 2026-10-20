@@ -39,6 +39,8 @@ pub fn transpile_file(
 /// This is the preferred method for transpiling UI components.
 /// It uses the new AURA-based architecture without DSL preprocessing.
 pub fn transpile_aura(source: &str, output_path: Option<&str>) -> Result<String, String> {
+    // PLAN-814 R4-01：显式文法组合（入口首选；幂等）。
+    crate::assemble_ui_grammar();
     // Parse with UI scenario
     let session = CompilerSession::ui();
     let mut parser = Parser::from(source).with_session(session);
@@ -72,6 +74,8 @@ pub fn transpile_aura(source: &str, output_path: Option<&str>) -> Result<String,
 
 /// Transpile UI source code to Vue3 SFC using AURA pipeline (Plan 096)
 pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<String, String> {
+    // PLAN-814 R4-01：显式文法组合（入口首选；幂等）。
+    crate::assemble_ui_grammar();
     // Parse with UI scenario
     let session = CompilerSession::ui();
     let mut parser = Parser::from(source).with_session(session);
@@ -634,9 +638,11 @@ pub fn generate_component_from_file(
     at_path: &std::path::Path,
     opts: ComponentGenOptions,
 ) -> Result<GeneratedComponent, String> {
-    // PLAN-814 T-03：UICache 失效语义装配——生成器源指纹（本 crate
-    // build.rs）注入 SDK 缓存（幂等 OnceLock；缺 build.rs 环境=None）。
+    // PLAN-814 T-03/R4-01：UICache 失效语义装配——生成器源指纹（本
+    // crate build.rs）注入 SDK 缓存（缺 build.rs 环境=None；None 不阻断
+    // 后续真实身份升级）；显式文法组合（入口首选；幂等）。
     auto_lang_core::database::set_generator_fingerprint(crate::generator_fingerprint());
+    crate::assemble_ui_grammar();
     use crate::aura::extract_store_from_decl;
     use crate::aura::extract_widget_from_decl;
     use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};

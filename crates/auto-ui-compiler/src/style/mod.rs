@@ -1042,4 +1042,85 @@ mod plan095_tests {
             matches!(Color::from_css("rgba(59,130,246,0.12)"), Ok(Color::Rgba { a, .. } ) if a > 0 && a < 40)
         );
     }
+    use auto_lang_core::ast::Expr;
+    use auto_lang_core::parser::Parser;
+    use auto_lang_core::session::CompilerSession;
+
+    /// PLAN-814 R3-05：T-02 大迁移时被丢的回归（203e2ce91 在册，V-05
+    /// 勘误——测 design_tokens 配方注册与 aura 提取集成，归属
+    /// compiler（aura owner）；语义逐字保持，仅路径改写 + 文法表
+    /// 显式装配）。
+    #[test]
+    fn test_style_recipe_in_widget_extraction() {
+        crate::assemble_ui_grammar();
+        clear_style_recipes();
+
+        let code = r#"
+            style card_base = "bg-card rounded-xl shadow-sm"
+            style btn(bg: str = "bg-primary") = "{bg} px-4 py-2 rounded-md"
+
+            widget TestCard {
+                view {
+                    col {
+                        style: card_base
+                        button "Click" {
+                            style: btn(bg: "bg-destructive")
+                        }
+                    }
+                }
+            }
+        "#;
+        let mut p = Parser::from(code).with_session(CompilerSession::ui());
+        let ast = p.parse().unwrap();
+        load_and_validate_style_recipes(&ast.stmts).unwrap();
+
+        let widget_decl = ast
+            .stmts
+            .iter()
+            .find_map(|s| {
+                if let auto_lang_core::ast::Stmt::WidgetDecl(d) = s {
+                    Some(d)
+                } else {
+                    None
+                }
+            })
+            .unwrap();
+
+        let aura_widget = crate::aura::extract_widget_from_decl(widget_decl).unwrap();
+        if let crate::aura::AuraNode::Element {
+            props, children, ..
+        } = &aura_widget.view_tree
+        {
+            // The root col should have desugared style
+            let root_style = props.get("style").unwrap();
+            if let crate::aura::AuraPropValue::Expr(Expr::Str(s)) = root_style {
+                assert_eq!(s.as_str(), "bg-card rounded-xl shadow-sm");
+            } else {
+                panic!("Expected Expr::Str for col style, got: {:?}", root_style);
+            }
+
+            // The button child should have desugared style
+            if let crate::aura::AuraNode::Element {
+                props: btn_props, ..
+            } = &children[0]
+            {
+                let btn_style = btn_props.get("style").unwrap();
+                if let crate::aura::AuraPropValue::Expr(Expr::Str(s)) = btn_style {
+                    assert_eq!(s.as_str(), "bg-destructive px-4 py-2 rounded-md");
+                } else {
+                    panic!("Expected Expr::Str for button style, got: {:?}", btn_style);
+                }
+            } else {
+                panic!(
+                    "Expected AuraNode::Element for child, got: {:?}",
+                    children[0]
+                );
+            }
+        } else {
+            panic!(
+                "Expected AuraNode::Element for root view_tree, got: {:?}",
+                aura_widget.view_tree
+            );
+        }
+    }
 }

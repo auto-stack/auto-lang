@@ -1343,9 +1343,17 @@ pub fn set_ui_grammar(g: auto_parser_api::UiGrammar) -> bool {
     UI_GRAMMAR.set(g).is_ok()
 }
 
-/// 上层自注册的 UI 文法表来源（与 [`UiCompatInstaller`] 同型机制）。
-/// 多来源共存时首个收集生效——各来源均自 auto-ui-dialect 单源构造，
-/// 内容等价。
+/// 上层自注册的 UI 文法表来源。语义边界（与 [`UiCompatInstaller`] 同构，
+/// R4-01 对账见 docs/plans/attachments/814/r4-01-assembly-contract.md）：
+/// SDK **不提交**任何来源——纯 SDK 消费者零 submit、表缺席=空方言回退/
+/// 公开门面显式拒绝（与原 feature off 语义逐位一致）；上层兼容包/
+/// compiler 的**显式 `inventory::submit!` 语句**在其被链接时生效（可
+/// 审计的确定性注册，非 linker 偶然拉入——无静态构造器副作用、无 Core
+/// 硬编码 UI factory），仅覆盖不经装配入口的直达
+/// `Parser::from(..).with_session(UI)` 构造；全部具名装配入口（run 族
+/// 漏斗/旧公开入口包装/compiler 生成入口）以 [`set_ui_grammar`] 显式
+/// 装配为第一来源。多来源共存时首个收集生效——各来源均自
+/// auto-ui-dialect 单源构造，内容等价。
 pub struct UiGrammarSource(pub fn() -> auto_parser_api::UiGrammar);
 inventory::collect!(UiGrammarSource);
 
@@ -2883,7 +2891,9 @@ pub(crate) fn remap_obj_indices(code: &mut Vec<u8>, obj_remap: &[u32]) {
 
 /// Plan 355: dep 模块字符串池并入主池后,重写字节码中的池索引。
 /// remap 为 u32(池 u32 化);跨度模型与 remap_obj_indices 共享。
-pub(crate) fn remap_string_indices(code: &mut Vec<u8>, remap: &[u32]) {
+/// PLAN-814 R4/R3-05：随 VM 迁入 SDK 的 codegen 工具（原 auto-lang
+/// pub(crate)）；aavm 上层测试（aavm2_m4）跨 crate 引用需要 pub 面。
+pub fn remap_string_indices(code: &mut Vec<u8>, remap: &[u32]) {
     use crate::vm::opcode::OpCode;
     let mut last_const_i32: i32 = 0;
     let mut i = 0;

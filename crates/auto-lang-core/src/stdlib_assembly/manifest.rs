@@ -326,6 +326,72 @@ fn portable_source_id(path: &Path, project: &Path, stdlib: &Path, module: &str) 
     )
 }
 
+// ---- PLAN-814 R3-03/R4：SDK build 输入 owner 闭包负控 ----
+// 身份源=build.rs 具名清单（IDENTITY_SOURCE_CRATES=SDK 编译闭包内 workspace
+// path 依赖）；UI/Man/旧包/生成器源码不得进入 SDK assembly 身份，直接
+// path 依赖不得缺席（防清单与 Cargo.toml 漂移——新增依赖时该断言强制
+// 同步 build.rs 清单）。
+#[cfg(test)]
+mod plan814_build_input_boundary {
+    use super::BUILD_INPUTS;
+
+    /// 禁入：不进 SDK rlib 的 crate 源码（UI/Man 实现、旧兼容包、生成器）。
+    #[test]
+    fn ui_man_sources_never_enter_sdk_identity() {
+        let forbidden = [
+            "crates/auto-lang/",
+            "crates/auto-man/",
+            "crates/auto-ui-compiler/",
+            "crates/auto-ui-runtime/",
+            "crates/auto-ui-dialect/",
+            "crates/a2r-actor-tests/",
+            "dependency/auto-down/",
+        ];
+        let offenders: Vec<&str> = BUILD_INPUTS
+            .iter()
+            .filter(|(id, _)| forbidden.iter().any(|p| id.starts_with(p)))
+            .map(|(id, _)| *id)
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "SDK assembly identity must not include non-SDK sources: {offenders:?}"
+        );
+    }
+
+    /// 覆盖：SDK Cargo.toml 声明的每个 workspace path 依赖（normal/build）
+    /// 都在身份清单内（经 build.rs 的 AUTO_IDENTITY_SOURCE_CRATES 注入；
+    /// 传递闭包由清单维护时的同源计算保证，本断言钉直接面）。
+    #[test]
+    fn declared_path_deps_all_in_identity_sources() {
+        let identity: Vec<&str> = env!("AUTO_IDENTITY_SOURCE_CRATES").split(',').collect();
+        let manifest = include_str!("../../Cargo.toml");
+        let mut in_deps = false;
+        let mut missing = Vec::new();
+        for line in manifest.lines() {
+            let s = line.trim();
+            if s.starts_with('[') {
+                in_deps = s == "[dependencies]" || s == "[build-dependencies]";
+                continue;
+            }
+            if !in_deps {
+                continue;
+            }
+            if let Some((name, rest)) = s.split_once('=') {
+                if rest.contains("path") {
+                    let name = name.trim();
+                    if !identity.contains(&name) {
+                        missing.push(name.to_string());
+                    }
+                }
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "path deps missing from IDENTITY_SOURCE_CRATES (update build.rs): {missing:?}"
+        );
+    }
+}
+
 #[cfg(test)]
 mod plan738_manifest {
     use super::*;

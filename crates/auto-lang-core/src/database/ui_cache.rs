@@ -13,12 +13,28 @@ use super::ui_artifact::UIArtifact;
 /// PLAN-814 T-03：生成器指纹注入槽（生成器源在 auto-ui-compiler，SDK 不
 /// 反依赖——compiler UI 构建入口经 [`set_generator_fingerprint`] 装配；
 /// 未装配 = None，语义同原 option_env! 的 foreign build 缺省）。
-static GENERATOR_FINGERPRINT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+static GENERATOR_FINGERPRINT: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
 
-/// 注入生成器源指纹（幂等：首调生效，后续调用不覆盖——与 779 显式默认
-/// 优先合同同形）。
+/// 注入生成器源指纹（PLAN-814 R3-02/R4 语义）：
+///
+/// - **None → Some = 升级**：晚装配不阻断真实身份（R3-02 反例：OnceLock
+///   首 None 永久遮蔽后续装配——auto-man/compiler 的 load 前注入是正序，
+///   但 None 首装后必须仍可升级）。
+/// - **已装配身份 = 首装优先**（与 779 显式默认优先合同同形）：后续
+///   `Some(x)`（含异值——同进程混装两个 compiler 版本无正当场景）或
+///   显式 `None` 不覆盖首个已知身份。
 pub fn set_generator_fingerprint(fp: Option<String>) {
-    let _ = GENERATOR_FINGERPRINT.set(fp);
+    let mut slot = GENERATOR_FINGERPRINT.write().unwrap();
+    if slot.is_none() {
+        *slot = fp;
+    }
+}
+
+/// 仅供本 crate 单元测试重置进程级身份槽（无公开面）。nextest 每测试一
+/// 进程下不必要；裸单进程测试序不敏感性由它保证。
+#[cfg(test)]
+fn reset_fingerprint_slot_for_test() {
+    *GENERATOR_FINGERPRINT.write().unwrap() = None;
 }
 
 /// Persistent cache for UI incremental compilation
@@ -50,7 +66,7 @@ impl UICache {
     /// [`set_generator_fingerprint`] 自装配。未装配/foreign build = None
     /// （原 option_env! 缺省语义保持）。
     pub fn generator_fingerprint() -> Option<String> {
-        GENERATOR_FINGERPRINT.get().cloned().flatten()
+        GENERATOR_FINGERPRINT.read().unwrap().clone()
     }
 
     /// A cached fingerprint mismatches the current one when they differ, or
@@ -131,23 +147,20 @@ impl UICache {
     }
 
     /// Save cache to project root
-    /// PLAN-814 R3-02：保存前**重盖当前**生成器指纹——缓存对象可能早于
-    /// 指纹注入创建（auto-man load 先于生成的真实时序）；失效判定在
-    /// load_with 的 cached-vs-current 比较侧，重盖不影响其语义（Plan 698
-    /// SD-01：生成器升级后下一进程 load 比对旧存值即判失效）。
+    ///
+    /// PLAN-814 R3-02/R4：身份字段按缓存对象**自身出生身份**原样落盘——
+    /// save 不做"当前身份重盖"。晚装配（None→Some 升级）后保存旧缓存，
+    /// 必须让下一次 load 经 cached(None)-vs-current(Some) 比对判整缓存
+    /// 失效（Plan 698"一侧缺席也整缓存失效"），不得把未知身份时代的
+    /// 条目重签为当前身份（R3-02 晚注入反例）。真实身份消费方（auto-man
+    /// vue/jet、compiler ui_gen::api）均在 load **前**注入——出生身份即
+    /// 真实身份，无重盖需求。
     pub fn save(&self, project_root: &Path) -> std::io::Result<()> {
         let path = Self::cache_path(project_root);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let mut value = serde_json::to_value(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
-        // 重盖仅在当前确知真实身份时（Some）；None（未装配/foreign build）
-        // 保留既有字段——不把已知值抹成未知。
-        if let Some(current) = Self::generator_fingerprint() {
-            value["generator_fingerprint"] = serde_json::json!(current);
-        }
-        let content = serde_json::to_string_pretty(&value)
+        let content = serde_json::to_string_pretty(self)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         fs::write(&path, content)
     }
@@ -359,10 +372,10 @@ mod tests {
     #[test]
     fn test_fingerprint_appeared_or_disappeared_invalidates() {
         let temp_dir = TempDir::new().unwrap();
-        // Cache written without a fingerprint, binary now has one.（R3-02
-        // 起 save() 重盖当前指纹——None 形态经直接写 JSON 构造，等同
-        // foreign build 的真实落盘形；被测语义：持久化 None vs 当前
-        // Some → 判失效。）
+        // Cache written without a fingerprint, binary now has one.
+        // （R3-02/R4 起 save 按出生身份原样落盘——None 形态经直接写
+        // JSON 构造，等同 foreign build 的真实落盘形；被测语义：持久化
+        // None vs 当前 Some → 判失效。）
         let none_fp = r#"{
   "file_hashes": {"x.at": 1},
   "artifacts": {},
@@ -371,11 +384,7 @@ mod tests {
   "generator_fingerprint": null
 }"#;
         std::fs::create_dir_all(temp_dir.path().join(".auto")).unwrap();
-        std::fs::write(
-            UICache::cache_path(temp_dir.path()),
-            none_fp,
-        )
-        .unwrap();
+        std::fs::write(UICache::cache_path(temp_dir.path()), none_fp).unwrap();
         let loaded = UICache::load_with(temp_dir.path(), Some("F1".into()));
         assert_eq!(loaded.file_count(), 0);
 
@@ -402,5 +411,54 @@ mod tests {
         let loaded = UICache::load_with(temp_dir.path(), Some("F1".into()));
         assert_eq!(loaded.version, 2, "v1 cache migrates by being discarded");
         assert_eq!(loaded.generator_fingerprint, Some("F1".into()));
+    }
+
+    // --- PLAN-814 R3-02/R4：身份槽升级与晚装配失效（reviewer 反例回放） ---
+    // 槽是进程级全局——两条用例各自开专属测试进程跑（libtest 每测试一
+    // 进程，nextest 同；裸 cargo test 单进程下两用例先后执行也互不冲突：
+    // 升级用例先 None 后 Some，晚装用例的 set(Some) 首装即生效）。
+
+    #[test]
+    fn plan814_none_to_some_identity_upgrade() {
+        // 反例回放：None 首装不得阻断后续真实身份装配。
+        reset_fingerprint_slot_for_test();
+        set_generator_fingerprint(None);
+        set_generator_fingerprint(Some("real-fp".into()));
+        assert_eq!(
+            UICache::generator_fingerprint(),
+            Some("real-fp".into()),
+            "None must not block later real generator identity"
+        );
+    }
+
+    #[test]
+    fn plan814_late_identity_invalidates_old_entries() {
+        // 反例回放：未知身份下持久化的条目，晚装配后 save 不得重签为当前
+        // 身份——出生身份原样落盘，下一 load 经 None-vs-Some 比对判失效。
+        let temp_dir = TempDir::new().unwrap();
+        reset_fingerprint_slot_for_test();
+        let mut early = UICache::new(); // 槽此刻为 None（未装配）
+        early.update(PathBuf::from("unchanged.at"), 7, vec![]);
+        early.save(temp_dir.path()).unwrap();
+
+        let loaded = UICache::load(temp_dir.path());
+        assert!(!loaded.is_dirty(Path::new("unchanged.at"), 7));
+
+        // 晚装配（None→Some 升级）后保存旧缓存对象。
+        set_generator_fingerprint(Some("F2".into()));
+        loaded.save(temp_dir.path()).unwrap();
+
+        let current = UICache::load(temp_dir.path());
+        assert_eq!(
+            UICache::generator_fingerprint(),
+            Some("F2".into()),
+            "upgrade took effect"
+        );
+        assert_eq!(current.file_count(), 0, "old entries must be dropped");
+        assert!(
+            current.is_dirty(Path::new("unchanged.at"), 7),
+            "None-to-Some identity transition must invalidate old artifacts, \
+             not restamp them as fresh"
+        );
     }
 }

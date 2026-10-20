@@ -255,6 +255,13 @@ use crate::error::{AutoError, AutoResult};
 /// 在 ui 门内=三分），缺席槽=false/VMError 同旧。
 #[cfg(any(feature = "ui", feature = "ui-dialog"))]
 fn install_ui_host_capabilities() {
+    // PLAN-814 R4-01：**显式文法装配优先**——本包全部装配入口（run 族
+    // 漏斗/旧公开入口包装/本安装器经 SDK 钩子的回调）首先显式注入
+    // UI 文法函数表（auto-ui-dialect 单源构造；幂等，首装优先）。
+    // inventory 自注册（下方 submit）仅为不经任何装配入口的直达
+    // `Parser::from(..).with_session(UI)` 构造兜底——语义边界与
+    // UiCompatInstaller 同（见 SDK lib.rs 对账注记/R4-01 附件）。
+    let _ = auto_lang_core::set_ui_grammar(auto_ui_dialect::ui_grammar());
     // PLAN-814 R3-01：本安装器同时注册进 SDK 钩子——SDK 侧旧公开入口
     // （create_vm_from_source/abt、eval_config、execute 族等）经
     // auto_lang_core::install_ui_host_capabilities() 回调本包真实装配
@@ -296,6 +303,10 @@ fn install_ui_host_capabilities() {
 
 #[cfg(not(any(feature = "ui", feature = "ui-dialog")))]
 fn install_ui_host_capabilities() {
+    // PLAN-814 R4-01：无 renderer 构建同样显式装配文法表——旧包
+    // `ui-dialect` 默认组合时代（Scenario::UI 内建方言恒可用）与 renderer
+    // feature 无关；文法属语言面，宿主能力属 renderer 面。
+    let _ = auto_lang_core::set_ui_grammar(auto_ui_dialect::ui_grammar());
     // PLAN-814 R3-01：无 UI 构建同注册（no-op 安装器）——SDK 钩子语义
     // 与纯 SDK 形态一致（无 UI 默认实现）。
     auto_lang_core::set_ui_host_install_hook(install_ui_host_capabilities);

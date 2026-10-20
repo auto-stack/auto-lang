@@ -23,9 +23,15 @@ pub fn generator_fingerprint() -> Option<String> {
     option_env!("AUTO_UI_GEN_FINGERPRINT").map(|s| s.to_string())
 }
 
-// PLAN-814 R3-03b：UI 文法函数表装配自注册（SDK 收集点 UiGrammarSource
-// ——本 crate 被链接即生效；auto-ui-dialect 依赖为本 crate 直接清单边）。
-// SDK 清单不再引用 auto-ui-dialect 后，UI 解析（`Parser::from(..)
-// .with_session(UI)` 等路径）经该表派发文法单源实现。编译器消费方
-// 闭包因此无需经旧 auto-lang 兼容包间接拉入文法。
+// PLAN-814 R3-03b/R4-01：UI 文法函数表装配。显式优先：公开生成入口
+// （ui_gen::api 的 transpile_aura/transpile_vue_aura/
+// generate_component_from_file）经 [`assemble_ui_grammar`] 首选显式组合；
+// 下方 inventory 自注册（SDK 收集点 UiGrammarSource）仅为本 crate 被链接
+// 即覆盖不经入口的直达 `Parser::from(..).with_session(UI)` 构造兜底——
+// 语义边界与 auto-lang 侧 UiCompatInstaller 同（SDK lib.rs 对账注记）。
 inventory::submit!(auto_lang_core::UiGrammarSource(auto_ui_dialect::ui_grammar));
+
+/// 显式装配 UI 文法函数表（PLAN-814 R4-01；幂等，首装优先）。
+pub fn assemble_ui_grammar() {
+    let _ = auto_lang_core::set_ui_grammar(auto_ui_dialect::ui_grammar());
+}

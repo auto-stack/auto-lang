@@ -13643,7 +13643,10 @@ mod tests {
 
     /// Plan 547 Task 22: Rust generator preserves ImageSurface props and all
     /// five typed event hooks, including state-backed values.
-    #[cfg(feature = "ui-iced")]
+    /// （PLAN-814 R3-05：原 `ui-iced` 门随 T-03 迁移失效——compiler 无该
+    /// feature；改 `ui`（旧包 default 链 ui-iced→ui→compiler/ui 转发，
+    /// 各档选择面恢复）。）
+    #[cfg(feature = "ui")]
     #[test]
     fn image_surface_rust_codegen() {
         let msg = |name: &str| AuraMsgVariant {

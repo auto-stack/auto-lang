@@ -1,9 +1,34 @@
 // PLAN-814: 随 stdlib_assembly/database 迁入 auto-lang-core 的 build 输入契约。
-// 与 auto-lang/build.rs 同源（闭包=../../crates + 根锁 + AUTO_DOWN_ROOT）。
-// PLAN-814 T-03：ui_gen 指纹随生成器源码迁 auto-ui-compiler/build.rs（本
-// crate 不再扫兄弟 UI 目录——SDK 闭包零 UI 实现的 build 边同样成立）；
-// UICache 失效语义改为运行时注入（database/ui_cache.rs），None=foreign
-// build 语义保持。
+// PLAN-814 T-03：ui_gen 指纹随生成器源码迁 auto-ui-compiler/build.rs；UICache
+// 失效语义改为运行时注入（database/ui_cache.rs），None=foreign build 语义保持。
+// PLAN-814 R3-03/R4（build 输入 owner 闭包收窄）：身份源=**具名清单**——
+// SDK 编译闭包内的 workspace path 依赖 crate（SDK rlib 真正包含的源码）。
+// 旧的全 crates/ 扫描把 auto-lang/auto-man/auto-ui-{compiler,runtime,
+// dialect} 源码纳入 BUILD_INPUTS——它们不进 SDK 产物，其变化不应改变
+// SDK assembly 身份（负控=manifest.rs 测试断言禁入清单 + Cargo.toml
+// 直接 path 依赖全覆盖断言；清单随依赖演进由该断言强制同步）。
+const IDENTITY_SOURCE_CRATES: &[&str] = &[
+    "a2r-std",
+    "auto-ast",
+    "auto-atom",
+    "auto-bindgen",
+    "auto-cache",
+    "auto-diagnostics",
+    "auto-lang-core",
+    "auto-lex",
+    "auto-macros",
+    "auto-media-core",
+    "auto-parser-api",
+    "auto-terminal-core",
+    "auto-test-case",
+    "auto-text-core",
+    "auto-val",
+    "shim-metadata",
+];
+// 具名清单中不在 crates/ 下的成员：vendor/ 路径（相对仓库根）。
+const IDENTITY_SOURCE_OUT_OF_TREE: &[(&str, &str)] =
+    &[("vendor/autodown-test-parser", "vendor/autodown-test-parser")];
+
 use std::fs;
 use std::path::Path;
 
@@ -38,7 +63,16 @@ fn main() {
     }
     let root = Path::new("../..");
     let mut inputs = Vec::new();
-    collect(&root.join("crates"), "crates", &mut inputs);
+    for crate_name in IDENTITY_SOURCE_CRATES {
+        collect(
+            &root.join("crates").join(crate_name),
+            &format!("crates/{crate_name}"),
+            &mut inputs,
+        );
+    }
+    for (dir, prefix) in IDENTITY_SOURCE_OUT_OF_TREE {
+        collect(&root.join(dir), prefix, &mut inputs);
+    }
     for name in ["Cargo.toml", "Cargo.lock"] {
         let path = root.join(name);
         println!("cargo:rerun-if-changed={}", path.display());
@@ -48,10 +82,12 @@ fn main() {
         }
         inputs.push((name.into(), hash));
     }
+    // 具名外部输入（可选）：跨仓 auto-down 源——仅显式 AUTO_DOWN_ROOT
+    // 指定时纳入（交付 vendoring 身份；本地默认缺席）。
     let down = std::env::var_os("AUTO_DOWN_ROOT")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| root.join("../auto-down"));
-    if down.join("Cargo.toml").is_file() {
+    if down.join("Cargo.toml").is_file() && std::env::var_os("AUTO_DOWN_ROOT").is_some() {
         collect(&down, "dependency/auto-down", &mut inputs);
     }
     inputs.sort();
@@ -66,6 +102,10 @@ fn main() {
         format!("const BUILD_INPUTS: &[(&str, u64)] = &[\n{serialized}\n];"),
     )
     .unwrap();
+    println!(
+        "cargo:rustc-env=AUTO_IDENTITY_SOURCE_CRATES={}",
+        IDENTITY_SOURCE_CRATES.join(",")
+    );
     let mut features: Vec<_> = std::env::vars()
         .filter_map(|(name, _)| {
             name.strip_prefix("CARGO_FEATURE_")
