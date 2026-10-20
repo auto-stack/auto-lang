@@ -911,3 +911,110 @@ fn r7a_bounded_whitespace_interval_composition_matrix() {
         failures
     );
 }
+
+/// F-828-R1-04/R8a-check: an equivalent expression rewritten with new
+/// surrounding trivia keeps its mint anchor at the re-embedded position.
+#[test]
+fn r8a_equivalent_expression_replacement_tracks_new_token_coordinates() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    let pinned = s.current();
+    let before = trap_span(&s);
+    let out = s
+        .edit(at as u64, (at + 5) as u64, b"  1 / 0  ".to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    assert!(
+        s.counters().stage_of("reuse_hit", "main") > 0,
+        "same semantic content reuses code"
+    );
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    let (old, _) =
+        auto_av_core::av::execute_program(&pinned, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(old, ExecOutcome::Trap { span: Some(sp), .. } if sp == before),
+        "pinned source control"
+    );
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "equal-expression replacement may change internal token positions"
+    );
+}
+
+/// F-828-R1-04/R8a-check: a byte-identical token rewrite keeps the anchor,
+/// and a later insert before the just-replaced token still maps.
+#[test]
+fn r8a_identical_token_replacement_then_whitespace_insert() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    let out = s.edit(at as u64, (at + 1) as u64, b"1".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), R6A_SRC);
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(R6A_SRC, "d_main", &[]).unwrap()),
+        "byte-identical edit control"
+    );
+    r7a_edit_and_compare(&mut s, at, at, 8, "insert before just-replaced token");
+}
+
+/// F-828-R1-04/R8a-check: returning to history content with new trivia
+/// keeps token correspondence for the reintroduced bytes.
+#[test]
+fn r8a_content_history_return_with_new_trivia() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    let out = s.edit(at as u64, (at + 1) as u64, b"2".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(&s), trap_span(&cold), "new code control");
+    let out = s
+        .edit(at as u64, (at + 1) as u64, b"   1".to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    assert!(
+        s.counters().stage_of("reuse_hit", "main") > 0,
+        "A-B-A history path exercised"
+    );
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "history hit needs token correspondence for reintroduced bytes"
+    );
+}
+
+/// F-828-R1-04/R8a-check: a restored session's first edit produces a
+/// NON-empty public alignment table (tested directly against the table,
+/// independent of the known spanless-payload gap).
+#[test]
+fn r8a_restored_history_seed_map_tracks_first_equivalent_edit() {
+    let dir = std::env::temp_dir().join(format!("plan828-r8a-restore-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let seed = warmup_persisted(R6A_SRC, "d_main", &[], &dir, "r8a-map").unwrap();
+    drop(seed);
+    let mut s = restore(R6A_SRC, "d_main", &[], &dir, "r8a-map").unwrap();
+    assert!(
+        s.counters().get("restore_units_admitted") > 0,
+        "actual disk restore"
+    );
+    let baseline = trap_span(&warmup(R6A_SRC, "d_main", &[]).unwrap());
+    let at = s.src().find("return 1 / 0").unwrap();
+    let out = s.edit(at as u64, at as u64, vec![b' '; 32]).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert!(s.counters().stage_of("reuse_hit", "main") > 0);
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    let expected = trap_span(&cold);
+    let snapshot = s.current();
+    let actual = snapshot.span_maps()[baseline.func as usize]
+        .map_span(baseline.start as u64, baseline.end as u64);
+    drop(s);
+    drop(snapshot);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        actual,
+        (expected.start as u64, expected.end as u64),
+        "restored history-hit alignment tracks the first edit"
+    );
+}

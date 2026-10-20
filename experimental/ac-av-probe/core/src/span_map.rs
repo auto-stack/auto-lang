@@ -27,6 +27,46 @@ impl SpanSegments {
         }
     }
 
+    /// Build the alignment between two TEXTS over the same mint range
+    /// (a content hit's code re-anchoring to a rewritten fn text):
+    /// prefix/suffix anchoring plus substring re-embedding of the
+    /// differing middle, falling back to a blob when nothing matches.
+    pub fn from_texts(m0: u64, m1: u64, c_base: u64, old: &[u8], new: &[u8]) -> Option<Self> {
+        let mut p = 0usize;
+        while p < old.len() && p < new.len() && old[p] == new[p] {
+            p += 1;
+        }
+        let mut q = 0usize;
+        while q < old.len() - p
+            && q < new.len() - p
+            && old[old.len() - 1 - q] == new[new.len() - 1 - q]
+        {
+            q += 1;
+        }
+        let mid_old = &old[p..old.len() - q];
+        let mid_new = &new[p..new.len() - q];
+        let mid_m0 = m0 + p as u64;
+        let mid_m1 = m1 - q as u64;
+        let mut segs: Vec<(u64, u64, u64)> = Vec::new();
+        if mid_m0 > m0 {
+            segs.push((m0, mid_m0, c_base));
+        }
+        match (mid_old.is_empty(), find_subslice(mid_new, mid_old)) {
+            (true, _) => {}
+            (false, Some(k)) => {
+                segs.push((mid_m0, mid_m1, c_base + p as u64 + k as u64));
+            }
+            // The middle has no correspondence with the new text: a
+            // full-text rebuild would collapse it — the caller should
+            // keep its accumulated geometric map instead.
+            (false, None) => return None,
+        }
+        if m1 > mid_m1 {
+            segs.push((mid_m1, m1, c_base + p as u64 + mid_new.len() as u64));
+        }
+        Some(SpanSegments { segs })
+    }
+
     /// An identity map for one ABSOLUTE mint range `[m0, m1)` whose
     /// current position is `c0` (usually the same absolute offset).
     pub fn identity_range(m0: u64, m1: u64, c0: u64) -> Self {
@@ -120,6 +160,74 @@ impl SpanSegments {
         self.map(x)
     }
 
+    /// Content-aware composition (F-828-R1-04/R8a-check): like [`apply`],
+    /// but when the replaced bytes reappear INSIDE the replacement (an
+    /// equivalent token rewritten with different surrounding trivia — a
+    /// content hit), the mint bytes keep their anchor at the re-embedded
+    /// position instead of collapsing into an unbacked blob. Falls back
+    /// to geometric surgery when no re-embedding exists.
+    pub fn apply_aligned(&mut self, c0: u64, c1: u64, old: &[u8], new: &[u8]) {
+        // Trim the common prefix/suffix: those bytes never moved.
+        let mut p = 0usize;
+        while p < old.len() && p < new.len() && old[p] == new[p] {
+            p += 1;
+        }
+        let mut q = 0usize;
+        while q < old.len() - p
+            && q < new.len() - p
+            && old[old.len() - 1 - q] == new[new.len() - 1 - q]
+        {
+            q += 1;
+        }
+        let mid_old = &old[p..old.len() - q];
+        let mid_new = &new[p..new.len() - q];
+        let mid_c0 = c0 + p as u64;
+        let mid_c1 = c1 - q as u64;
+        if mid_old.is_empty() {
+            // Pure insertion in the middle.
+            self.apply(mid_c0, mid_c1, mid_new.len() as u64);
+            return;
+        }
+        if let Some(k) = find_subslice(mid_new, mid_old) {
+            // The replaced mint bytes re-appear at offset k inside the
+            // replacement: keep them anchored at the re-embedded position
+            // when the middle covers ONE contiguous mint run.
+            if let Some((m0, m1)) = self.contiguous_mint_range(mid_c0, mid_c1) {
+                let shift = (mid_c0 + k as u64) as i64 - mid_c0 as i64;
+                let delta = new.len() as i64 - old.len() as i64;
+                let mut out: Vec<(u64, u64, u64)> = Vec::with_capacity(self.segs.len() + 2);
+                for &(s0_m, s1_m, s_pos) in self.segs.iter() {
+                    let s_end = s_pos + (s1_m - s0_m);
+                    if s_end <= mid_c0 || s_pos >= mid_c1 {
+                        let mv = if s_pos >= mid_c1 { delta } else { 0 };
+                        out.push((s0_m, s1_m, (s_pos as i64 + mv) as u64));
+                    } else if s0_m < m0 {
+                        out.push((s0_m, m0, s_pos));
+                    } else if s1_m > m1 {
+                        out.push((m1, s1_m, (mid_c0 + k as u64 + mid_old.len() as u64)));
+                    }
+                }
+                out.push((m0, m1, mid_c0 + k as u64));
+                out.sort();
+                self.segs = out;
+                return;
+            }
+        }
+        self.apply(mid_c0, mid_c1, mid_new.len() as u64);
+    }
+
+    /// The mint range covered by current [c0, c1) when it lies inside ONE
+    /// segment (None when it spans segments or blobs).
+    fn contiguous_mint_range(&self, c0: u64, c1: u64) -> Option<(u64, u64)> {
+        for &(m0, m1, s0) in self.segs.iter() {
+            let s1 = s0 + (m1 - m0);
+            if s0 <= c0 && c1 <= s1 {
+                return Some((m0 + (c0 - s0), m0 + (c1 - s0)));
+            }
+        }
+        None
+    }
+
     /// The count of surviving segments (diagnostics).
     pub fn segment_count(&self) -> usize {
         self.segs.len()
@@ -173,4 +281,11 @@ mod tests {
         assert_eq!(s2.map(10), 12);
         assert_eq!(s2.map(12), 14);
     }
+}
+
+fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    if needle.is_empty() || needle.len() > hay.len() {
+        return None;
+    }
+    hay.windows(needle.len()).position(|w| w == needle)
 }

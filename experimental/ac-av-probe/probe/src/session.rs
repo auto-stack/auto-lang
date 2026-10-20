@@ -170,6 +170,7 @@ struct FnRecord {
             Arc<FunctionCode>,
             u64,
             auto_av_core::span_map::SpanSegments,
+            String,
         ),
     >,
 }
@@ -221,6 +222,7 @@ pub struct PreparedEdit {
     /// The edit's own region (old-source start, replaced length, inserted
     /// length) — the source-map delta every non-reminted function applies.
     edit_region: (u64, u64, u64),
+    edit_bytes: Vec<u8>,
     /// The changed function's code-object span map (history entry's own on
     /// a hit; empty on a miss).
     span_map: auto_av_core::span_map::SpanSegments,
@@ -395,15 +397,7 @@ pub fn warmup(
         // a later content hit must return the very same object.
         let body_arc = Arc::new(body_ref.clone());
         let mut history = BTreeMap::new();
-        history.insert(
-            warm_cv,
-            (
-                body_arc.clone(),
-                code.clone(),
-                0,
-                auto_av_core::span_map::SpanSegments::default(),
-            ),
-        );
+        history.insert(warm_cv, history_entry(body_arc.clone(), code.clone()));
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
@@ -434,10 +428,12 @@ pub fn warmup(
         fns[i].origin = d0;
         fns[i].mint_origin = d0;
         let fresh_map = auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0);
+        let text = src[d0 as usize..d1 as usize].to_string();
         fns[i].span_map = fresh_map.clone();
         if let Some(e) = fns[i].history.values_mut().next() {
             e.2 = d0;
             e.3 = fresh_map;
+            e.4 = text;
         }
     }
 
@@ -561,17 +557,21 @@ pub fn restore(
     // every unchanged function's restored object identity instead of
     // swapping back to the cold-compiled ones.
     for (i, code) in codes.iter().enumerate() {
+        // Restored code aligns to the CURRENT source (its content version
+        // keys match it): identity over the decl range — never an empty
+        // map (F-828-R1-04/R8a-check).
+        let (d0, d1) = session
+            .parse
+            .tree
+            .abs_range(session.parse.tree.decls[i].node);
+        let ident = auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0);
         let rec = &mut session.fns[i];
         let body = rec.hir_body.clone();
+        rec.span_map = ident.clone();
         if let Some(entry) = rec.history.iter_mut().next() {
-            // Restored objects' own mint baseline is fixed with the origin
-            // pass below (single-source alignment).
-            *entry.1 = (
-                body.clone(),
-                code.clone(),
-                0,
-                auto_av_core::span_map::SpanSegments::default(),
-            );
+            let text = src[d0 as usize..d1 as usize].to_string();
+            *entry.1 = (body.clone(), code.clone(), d0, ident, text.clone());
+            let _ = text;
         }
         rec.code = code.clone();
     }
@@ -639,6 +639,26 @@ impl FunctionIncrementalSession {
     /// revision's own entry; evict an arbitrary oldest-ordered key when
     /// over the cap.
     #[allow(clippy::type_complexity)]
+    fn history_entry(
+        body: Arc<hir::Body>,
+        code: Arc<FunctionCode>,
+    ) -> (
+        Arc<hir::Body>,
+        Arc<FunctionCode>,
+        u64,
+        auto_av_core::span_map::SpanSegments,
+        String,
+    ) {
+        (
+            body,
+            code,
+            0,
+            auto_av_core::span_map::SpanSegments::default(),
+            String::new(),
+        )
+    }
+
+    #[allow(clippy::type_complexity)]
     fn history_insert(
         rec: &mut FnRecord,
         cv: String,
@@ -647,6 +667,7 @@ impl FunctionIncrementalSession {
             Arc<FunctionCode>,
             u64,
             auto_av_core::span_map::SpanSegments,
+            String,
         ),
     ) {
         if rec.history.len() >= HISTORY_CAP && !rec.history.contains_key(&cv) {
@@ -1066,11 +1087,34 @@ impl FunctionIncrementalSession {
         let mut candidate_span_map = auto_av_core::span_map::SpanSegments::default();
         let (new_hir_body, new_code): (Arc<hir::Body>, Arc<FunctionCode>) =
             match self.fns[changed_idx].history.get(&cv) {
-                Some((body, code, mint_o, map)) => {
+                Some((body, code, mint_o, map, mint_text)) => {
                     self.counters.bump(&format!("reuse_hit:{changed_name}"));
                     was_hit = true;
                     candidate_mint_origin = *mint_o;
-                    candidate_span_map = map.clone();
+                    // Prefer a full-text re-anchoring when the entry's
+                    // mint text re-embeds in the new text (recovers
+                    // rewritten anchors a geometric chain cannot);
+                    // otherwise keep the accumulated map and compose this
+                    // edit into it.
+                    let (nd0, nd1) = inc.tree.abs_range(inc.tree.decls[changed_idx].node);
+                    let new_text = &new_src[nd0 as usize..nd1 as usize];
+                    candidate_span_map = match auto_av_core::span_map::SpanSegments::from_texts(
+                        *mint_o,
+                        *mint_o + mint_text.len() as u64,
+                        nd0,
+                        mint_text.as_bytes(),
+                        new_text.as_bytes(),
+                    ) {
+                        Some(m) => m,
+                        None => {
+                            let mut m = map.clone();
+                            let old_bytes = self.src[edit.start as usize..edit.end as usize]
+                                .as_bytes()
+                                .to_vec();
+                            m.apply_aligned(edit.start, edit.end, &old_bytes, &edit.insert);
+                            m
+                        }
+                    };
                     (body.clone(), code.clone())
                 }
                 None => {
@@ -1099,6 +1143,7 @@ impl FunctionIncrementalSession {
         }
         Ok(Ok(PreparedEdit {
             edit_region: (start, end.saturating_sub(start), edit.insert.len() as u64),
+            edit_bytes: edit.insert.clone(),
             session_id: self.session_id,
             reminted: !was_hit,
             mint_origin: candidate_mint_origin,
@@ -1161,6 +1206,7 @@ impl FunctionIncrementalSession {
                 rec.mint_origin = prepared.mint_origin;
                 rec.span_map = prepared.span_map.clone();
             }
+            let changed_hit = !reminted && i == changed_idx;
             let (c, old_len, new_len) = prepared.edit_region;
             if reminted && i == changed_idx {
                 // Fresh code mints against the NEW source: identity over
@@ -1170,14 +1216,26 @@ impl FunctionIncrementalSession {
                     .tree
                     .abs_range(prepared.new_parse.tree.decls[i].node);
                 rec.span_map = auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0);
+            } else if changed_hit {
+                // A content hit's map was re-anchored to the NEW text at
+                // prepare time — applying the edit again would double it.
             } else {
-                rec.span_map.apply(c, c + old_len, new_len);
+                // Content-aware: equivalent rewrites keep their mint
+                // anchors (F-828-R1-04/R8a-check).
+                let old_bytes = old_src.as_bytes()[c as usize..(c + old_len) as usize].to_vec();
+                rec.span_map
+                    .apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
+                for e in rec.history.values_mut() {
+                    e.3.apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
+                }
+                continue;
             }
             // EVERY stored code object of this function (history entries)
             // experiences the same source change; the deposited current
             // entry is overwritten below with the post-edit map.
             for e in rec.history.values_mut() {
-                e.3.apply(c, c + old_len, new_len);
+                let old_bytes = old_src.as_bytes()[c as usize..(c + old_len) as usize].to_vec();
+                e.3.apply_aligned(c, c + old_len, &old_bytes, &prepared.edit_bytes);
             }
         }
         span_maps = self.fns.iter().map(|r| r.span_map.clone()).collect();
@@ -1221,6 +1279,11 @@ impl FunctionIncrementalSession {
         // The deposited map is the POST-commit one (installed baseline
         // composed with this edit) — captured after the origin loop.
         let deposit_map = changed_rec.span_map.clone();
+        let (td0, td1) = self
+            .parse
+            .tree
+            .abs_range(self.parse.tree.decls[changed_idx].node);
+        let mint_text = self.src[td0 as usize..td1 as usize].to_string();
         Self::history_insert(
             changed_rec,
             content_version,
@@ -1229,6 +1292,7 @@ impl FunctionIncrementalSession {
                 code.clone(),
                 prepared.mint_origin,
                 deposit_map,
+                mint_text,
             ),
         );
         changed_rec.hir_body = hir_body;
@@ -1291,6 +1355,25 @@ fn render_diags(src: &str, ds: &[Diagnostic]) -> String {
         .map(|d| d.render("probe.at", src))
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn history_entry(
+    body: Arc<hir::Body>,
+    code: Arc<FunctionCode>,
+) -> (
+    Arc<hir::Body>,
+    Arc<FunctionCode>,
+    u64,
+    auto_av_core::span_map::SpanSegments,
+    String,
+) {
+    (
+        body,
+        code,
+        0,
+        auto_av_core::span_map::SpanSegments::default(),
+        String::new(),
+    )
 }
 
 fn fnv64(bytes: &[u8]) -> u64 {
