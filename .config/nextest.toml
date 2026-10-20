@@ -36,8 +36,10 @@
 #   延迟尖峰、P95 不可复现(9% 空载下全档仍红,单跑同提交 31.4s PASS,
 #   归因实录见计划 §9 merge 收据)——镜像 churn/画廊围栏待遇移出日常档;
 #   断言本身零改动,tf(nextest-full.toml)不排除=批量回归仍可见。
+# PLAN-798: ac_av_probe_formal_turnaround_gates 同属独立串行计时硬门。
+# 30 样本门单独执行并保存冻结证据；日常并行池排除，tf 保留。
 [profile.default]
-default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::) and not test(widgets_gallery_all_front_pages_compile) and not test(ui_gen::) and not test(abi_recipe_formal_turnaround_hard_gates)"
+default-filter = "not test(str_churn_bounded_large) and not test(aavm2_t3_tower_milestone) and not test(vm_file_tests::) and not test(cookbook_vm_tests::) and not test(conformance_tests::) and not test(widgets_gallery_all_front_pages_compile) and not test(ui_gen::) and not test(abi_recipe_formal_turnaround_hard_gates) and not test(ac_av_probe_formal_turnaround_gates)"
 
 [profile.default.slow-timeout]
 period = "60s"
