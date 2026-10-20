@@ -193,6 +193,11 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r5a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): mint-coordinate map composition and id-text intrinsic identity" | r4a-check三例反例全部闭合并收编回归(r1回归套件21/21=6r1+3r2+4r2a+5r3a+3r4a)：
+F-04→区域表统一到代码MINT源坐标单轴：每次编辑的当前坐标起点先经单调前向映射的逆映射（二分；插入内部位置塌缩到插入点）折算为mint坐标后入表，替换旧"按当前delta平移已有区域"的坐标系混用——同点两次32空格插入正确复合(+64)，先后/内前编辑序都保留两侧端点位移
+F-06→按引用身份=intrinsic def的ID TEXT（synth丢弃他函数intrinsic时def序号移动而id text不变）+symbol/effect/shape四事实：混合mark_a/mark_b的caller合法编辑不再被synth表序号漂移误拒；symbol交换/effect翻转在同id处事实不一致仍失效
+回归面：主17、r1套件21、scalar差分6、vertical/cache/binding绿；r4a-check材料随分支保存(attachments/828/r4a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r4a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): composable snapshot source maps and per-reference intrinsic bindings" | r3a-check五例相邻反例全部闭合并收编回归(r1回归套件18/18=6×r1+3×r2+4×r2a+5×r3a-check)：
 F-04统一→可组合快照source map：ProgramSnapshot自持per-slot区域表(start,len,delta; x→x+Σ delta where start<x)，所有公开执行路径映射；每次编辑复合进每个函数的map与每个内容历史条目的map（全部存储代码对象经历同一源时间线），重铸造清空——体级细化公开可用(a)、跨编辑复合(b)、跨骑编辑只动end(c)、命中恢复条目自身累计map（历轮回归仍绿）
 F-06统一→按实际引用身份的依赖：CheckedFunction记录(def序号,symbol,effect,shape)四元组；FnEnv按def序号持表；credential_current要求每个已咨询引用槽位四事实全同——def间symbol交换(d)与effect翻转(e)均失效；未读intrinsic仍排除于全局身份
