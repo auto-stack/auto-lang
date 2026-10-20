@@ -1,6 +1,6 @@
 {
-  "base_revision": "b02a10772bb429f76097352edc12a35425d3f5c0",
-  "config_sha256": "809331d1cfd8b1e3e264a79edbcbaf753f8db19f4e97f9036fc4c3bc4eb8a3da",
+  "base_revision": "6f9daa6800515d3174ed5b83d8b9f7527e93c874",
+  "config_sha256": "5e7219cef01f846a01d21dbf3ffa517984f035ae1238d3b9fab124ed459a149e",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -480,15 +480,6 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-ui-dialect",
-      "from": "auto-lang-core",
-      "kind": "normal",
-      "optional": true,
-      "target": null,
-      "to": "auto-ui-dialect",
-      "to_scope": "member"
-    },
-    {
       "dep_key": "auto-val",
       "from": "auto-lang-core",
       "kind": "normal",
@@ -534,12 +525,12 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-lang-core",
       "from": "auto-macros",
       "kind": "dev",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
@@ -804,12 +795,30 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-ui-dialect",
+      "from": "auto-ui-compiler",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-dialect",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-val",
       "from": "auto-ui-compiler",
       "kind": "normal",
       "optional": false,
       "target": null,
       "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-ui-dialect",
+      "kind": "dev",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
@@ -861,8 +870,8 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 841,
-    "man_to_language": 553,
+    "core_to_ui": 842,
+    "man_to_language": 555,
     "ui_to_language": 23
   }
 }
