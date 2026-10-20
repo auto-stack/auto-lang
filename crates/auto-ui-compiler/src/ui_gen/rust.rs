@@ -5237,7 +5237,20 @@ impl RustGenerator {
                     for (event, handler) in events_sorted.clone() {
                         builder = self.add_event_to_builder(&builder, tag, event, handler);
                     }
-                    if !events.iter().any(|(e, _)| e == "onclick" || e == "onClick") {
+                    // PLAN-814 T-08：点击族任一消息承载事件在场（含
+                    // oncontextmenu[.prevent]→on_right_click 映射）时按钮 M
+                    // 已定型——单元 on_click 兜底会产 E0308，跳过。
+                    if !events.iter().any(|(e, _)| {
+                        matches!(
+                            e.as_str(),
+                            "onclick"
+                                | "onClick"
+                                | "oncontextmenu"
+                                | "oncontextmenu.prevent"
+                                | "ondoubleclick"
+                                | "onDoubleClick"
+                        )
+                    }) {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
                     return self
@@ -6837,7 +6850,17 @@ impl RustGenerator {
 
                     // Button without onclick — add no-op handler to prevent panic
                     if tag == "button"
-                        && !events.iter().any(|(e, _)| e == "onclick" || e == "onClick")
+                        && !events.iter().any(|(e, _)| {
+                            matches!(
+                                e.as_str(),
+                                "onclick"
+                                    | "onClick"
+                                    | "oncontextmenu"
+                                    | "oncontextmenu.prevent"
+                                    | "ondoubleclick"
+                                    | "onDoubleClick"
+                            )
+                        })
                     {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
@@ -6906,7 +6929,17 @@ impl RustGenerator {
 
                     // Button without onclick — add no-op handler to prevent panic
                     if tag == "button"
-                        && !events.iter().any(|(e, _)| e == "onclick" || e == "onClick")
+                        && !events.iter().any(|(e, _)| {
+                            matches!(
+                                e.as_str(),
+                                "onclick"
+                                    | "onClick"
+                                    | "oncontextmenu"
+                                    | "oncontextmenu.prevent"
+                                    | "ondoubleclick"
+                                    | "onDoubleClick"
+                            )
+                        })
                     {
                         builder = format!("{}.on_click(|_| ())", builder);
                     }
@@ -8596,9 +8629,48 @@ impl RustGenerator {
         }
     }
 
+    /// PLAN-814 T-08（792 再生暴露的 PLAN-710 D-6 过投射修复）：dot 访问
+    /// 后随比较运算符（LHS 位）或前导比较运算符（RHS 位）时属**值比较位**
+    /// 而非纯条件位——truthy 包裹会产出 `bool == "1"` 型错；改走
+    /// as_str().unwrap_or_default() 值投影（保迁移前比较语义）。
+    fn comparison_context(bytes: &[u8], ident_start: usize, field_end: usize) -> bool {
+        // LHS：后随比较运算符。
+        let mut j = field_end;
+        while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+            j += 1;
+        }
+        if j + 1 < bytes.len() && bytes[j] == b'=' && bytes[j + 1] == b'=' {
+            return true;
+        }
+        if j + 1 < bytes.len() && bytes[j] == b'!' && bytes[j + 1] == b'=' {
+            return true;
+        }
+        if j < bytes.len() && (bytes[j] == b'<' || bytes[j] == b'>') {
+            return true;
+        }
+        // RHS：前导比较运算符。
+        let mut k = ident_start;
+        while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
+            k -= 1;
+        }
+        if k >= 2 && bytes[k - 1] == b'=' && bytes[k - 2] != b'=' && bytes[k - 2] != b'!' {
+            // `x >=`/`<=` 形（前导符为 < 或 >）与 `==`（前导 =）皆命中
+            return true;
+        }
+        if k >= 2
+            && (bytes[k - 1] == b'=')
+            && (bytes[k - 2] == b'=' || bytes[k - 2] == b'!' || bytes[k - 2] == b'<' || bytes[k - 2] == b'>')
+        {
+            return true;
+        }
+        if k >= 1 && (bytes[k - 1] == b'<' || bytes[k - 1] == b'>') {
+            return true;
+        }
+        false
+    }
+
     /// Convert AURA condition to Rust expression
-    fn convert_condition(&self, condition: &str) -> String {
-        let result = condition.trim().to_string();
+    fn convert_condition(&self, condition: &str) -> String {        let result = condition.trim().to_string();
 
         // Replace state-ref dots like ".notes" → "self.notes", but NOT method call dots
         // like ".len()" or ".to_string()". A state-ref dot is one where the previous
@@ -8662,16 +8734,29 @@ impl RustGenerator {
                             // as_str → 条件位 E0308「expected bool found
                             // String」株——auto-edit diff 视图 ix_*/e_*/sx_*
                             // 字段族，018 普查误并档「类型推断塌方」）。
-                            let bracket_access = match elem_shape.as_ref() {
-                                Some(shape) => self.value_field_access_shaped(
-                                    &output_var_name,
-                                    field_name,
-                                    Some(shape),
-                                ),
-                                None => format!(
-                                    "auto_lang_core::a2r_std::json::truthy(&({}[\"{}\"]))",
+                            // PLAN-814 T-08：值比较位（前导/后随比较运算符）
+                            // 改走 as_str 值投影，纯条件位保持 truthy。
+                            let bracket_access = if Self::comparison_context(
+                                &bytes,
+                                ident_start,
+                                field_end,
+                            ) {
+                                format!(
+                                    "{}[\"{}\"].as_str().unwrap_or_default()",
                                     output_var_name, field_name
-                                ),
+                                )
+                            } else {
+                                match elem_shape.as_ref() {
+                                    Some(shape) => self.value_field_access_shaped(
+                                        &output_var_name,
+                                        field_name,
+                                        Some(shape),
+                                    ),
+                                    None => format!(
+                                        "auto_lang_core::a2r_std::json::truthy(&({}[\"{}\"]))",
+                                        output_var_name, field_name
+                                    ),
+                                }
                             };
                             // Remove the already-pushed var name and replace with bracket access
                             output.truncate(output.len() - var_name.len());
@@ -8694,11 +8779,19 @@ impl RustGenerator {
                             let field_name = &result[i + 1..field_end];
                             output.truncate(output.len() - var_name.len());
                             // PLAN-710 D-6：条件位 truthy 投影（同上——形状
-                            // 表外字段不再落 as_str 猜型）。
-                            output.push_str(&format!(
-                                "auto_lang_core::a2r_std::json::truthy(&(self.{}[\"{}\"]))",
-                                var_name, field_name
-                            ));
+                            // 表外字段不再落 as_str 猜型）。PLAN-814 T-08：值
+                            // 比较位改走 as_str（比较语义保持）。
+                            if Self::comparison_context(&bytes, ident_start, field_end) {
+                                output.push_str(&format!(
+                                    "self.{}[\"{}\"].as_str().unwrap_or_default()",
+                                    var_name, field_name
+                                ));
+                            } else {
+                                output.push_str(&format!(
+                                    "auto_lang_core::a2r_std::json::truthy(&(self.{}[\"{}\"]))",
+                                    var_name, field_name
+                                ));
+                            }
                             i = field_end;
                             continue;
                         }
