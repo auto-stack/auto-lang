@@ -122,7 +122,7 @@ test-native-dock = ["ui-iced", "native-dock", "auto-ui-runtime/test-native-dock"
 # 再导出保类型身份；UI compiler/runtime 迁移面见 T-03/T-04）。
 auto-lang-core = { path = "../auto-lang-core" }
 auto-ui-compiler = { path = "../auto-ui-compiler" }
-auto-ui-runtime = { path = "../auto-ui-runtime" }
+auto-ui-runtime = { path = "../auto-ui-runtime", default-features = false }
 # Plan 673 T-03：read_text_range 分块读 VM/a2r-std 双轨逐字节对拍
 # （P670-D1 纪律：两侧 serde 形状一致，测试断言 byte-identical）。
 # PLAN-681：升为正式依赖——迷你库 a2r_std::fs 的 tree/basename re-export

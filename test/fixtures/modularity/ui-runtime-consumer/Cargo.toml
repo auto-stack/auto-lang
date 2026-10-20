@@ -1,0 +1,27 @@
+# PLAN-814 T-08：UI runtime 外部消费方探针（独立 fixture crate）
+#
+# 角色：镜像"canonical 生成工程"依赖形态——仅依赖 auto-ui-runtime
+# （ui-iced）+ auto-lang-core 双直依赖（import_policy.rs 路径策略的消费
+# 侧证明；零 auto-lang 旧包依赖=旧包对 UI 消费可缺席）：
+# - V-03 canonical 类型/装配：Component/View 与 install_ui_host_
+#   capabilities 单点真实生效（provider 槽+VM stdout）
+# - V-02 再导出身份：runtime 根再导出面（Parser/AutoResult）与 SDK 同一
+#   类型（旧包缺席形态）
+# - 动态管线：runtime 自有资产（assets/desktop.at）经 build_dynamic_
+#   component 真实装载（include_str 同源）
+#
+# 独立 workspace（同 scroll-provider-consumer 形态）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/ui-runtime-consumer/Cargo.toml
+
+[package]
+name = "ui-runtime-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+auto-ui-runtime = { path = "../../../../crates/auto-ui-runtime" }
+auto-lang-core = { path = "../../../../crates/auto-lang-core" }
+auto-val = { path = "../../../../crates/auto-val" }
+
+[workspace]
