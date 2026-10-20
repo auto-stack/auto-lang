@@ -201,7 +201,9 @@ impl ProgramSnapshot {
         &self.span_maps
     }
 
-    /// Map one position through one function's region list.
+    /// Map one MINT-source position through the region list (regions are
+    /// stored in MINT coordinates; a position x maps to
+    /// x + SUM(delta) over regions with `start < x`).
     pub fn map_pos(regions: &[(u64, u64, i64)], x: u64) -> u64 {
         let mut d = 0i64;
         for &(st, _, delta) in regions {
@@ -210,6 +212,38 @@ impl ProgramSnapshot {
             }
         }
         (x as i64 + d) as u64
+    }
+
+    /// Inverse map: the mint position whose image is `c` (for a `c` that
+    /// falls inside an inserted/stretched region, resolves to the
+    /// insertion point). Binary search over the monotone forward map.
+    pub fn unmap_pos(regions: &[(u64, u64, i64)], c: u64) -> u64 {
+        let mut lo = 0u64;
+        let mut hi = c; // map_pos(x) >= x, so the preimage of c is <= c
+        while lo < hi {
+            let mid = lo + (hi - lo) / 2;
+            if Self::map_pos(regions, mid) < c {
+                lo = mid + 1;
+            } else {
+                hi = mid;
+            }
+        }
+        lo
+    }
+
+    /// Compose one edit (CURRENT-coordinate start `c`, replaced
+    /// `old_len`, inserted `new_len`) into a MINT-coordinate region list:
+    /// the edit point is inverse-mapped into mint coordinates first, so
+    /// all regions share one axis regardless of which revision each edit
+    /// arrived in (F-828-R1-04/R4a).
+    pub fn compose_region(regions: &mut Vec<(u64, u64, i64)>, c: u64, old_len: u64, new_len: u64) {
+        let delta = new_len as i64 - old_len as i64;
+        if delta == 0 {
+            return;
+        }
+        let c_mint = Self::unmap_pos(regions, c);
+        regions.push((c_mint, old_len, delta));
+        regions.sort();
     }
 
     /// This snapshot's revision counter.

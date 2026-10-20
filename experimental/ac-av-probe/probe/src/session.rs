@@ -1132,23 +1132,15 @@ impl FunctionIncrementalSession {
                 rec.mint_origin = prepared.mint_origin;
                 rec.span_map = prepared.span_map.clone();
             }
-            let (st, old_len, new_len) = prepared.edit_region;
-            let delta = new_len as i64 - old_len as i64;
+            let (c, old_len, new_len) = prepared.edit_region;
             if reminted && i == changed_idx {
                 // Fresh code matches the current source exactly.
                 rec.span_map.clear();
             } else {
-                // Every other function (and content hits) compose the
-                // edit's region into their maps (regions after the edit
-                // point shift; the new region appends; sorted order
-                // keeps the map_pos scan deterministic).
-                for r in &mut rec.span_map {
-                    if r.0 >= st {
-                        r.0 = (r.0 as i64 + delta) as u64;
-                    }
-                }
-                rec.span_map.push((st, old_len, delta));
-                rec.span_map.sort();
+                // Compose the edit's region (inverse-mapped into MINT
+                // coordinates by the core helper) into this function's
+                // map; all regions share one mint axis.
+                ProgramSnapshot::compose_region(&mut rec.span_map, c, old_len, new_len);
             }
             // EVERY stored code object of this function (history entries)
             // experiences the same source change: compose the edit into
@@ -1156,13 +1148,7 @@ impl FunctionIncrementalSession {
             // is current as of THIS revision (the deposited current entry
             // is overwritten below with the post-compose map).
             for e in rec.history.values_mut() {
-                for r in &mut e.3 {
-                    if r.0 >= st {
-                        r.0 = (r.0 as i64 + delta) as u64;
-                    }
-                }
-                e.3.push((st, old_len, delta));
-                e.3.sort();
+                ProgramSnapshot::compose_region(&mut e.3, c, old_len, new_len);
             }
         }
         span_maps = self.fns.iter().map(|r| r.span_map.clone()).collect();

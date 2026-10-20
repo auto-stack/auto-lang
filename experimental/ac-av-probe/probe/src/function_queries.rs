@@ -54,11 +54,12 @@ pub struct FnEnv {
     domain: HirDomain,
     fns: Vec<FnInterface>,
     by_name: BTreeMap<String, usize>,
-    /// Intrinsic declaration table of THIS environment's bundle, keyed by
-    /// def index: (symbol, observable-effect, shape) — the per-reference
-    /// facts a body-read credential must still find intact at the SAME def
-    /// slot (F-828-R1-06/R3a).
-    intrinsics: BTreeMap<u32, (String, bool, String)>,
+    /// Intrinsic declaration table keyed by def ID TEXT: (symbol,
+    /// observable-effect, shape) — the stable per-reference facts a
+    /// body-read credential must still find intact at the same def
+    /// identity (F-828-R1-06/R4a: def indices shift across synth
+    /// programs; id texts do not).
+    intrinsics: BTreeMap<String, (String, bool, String)>,
 }
 
 impl FnEnv {
@@ -97,7 +98,7 @@ impl FnEnv {
             });
         }
         let mut intrinsics = BTreeMap::new();
-        for (di, d) in m.defs.iter().enumerate() {
+        for d in m.defs.iter() {
             if let hir::DefKind::Intrinsic {
                 symbol, effect, ty, ..
             } = &d.kind
@@ -122,7 +123,7 @@ impl FnEnv {
                     })
                     .unwrap_or_else(|| "?".to_string());
                 intrinsics.insert(
-                    di as u32,
+                    d.id_text.clone(),
                     (
                         symbol.clone(),
                         matches!(effect, hir::Effect::Observable),

@@ -116,12 +116,11 @@ pub struct CheckedFunction {
     context_revision: String,
     domain: HirDomain,
     /// Intrinsic bindings this body ACTUALLY references — per-REFERENCE
-    /// identity: (def index, symbol, observable-effect, content-canonical
-    /// signature shape). Body-read facts the credential binds even though
-    /// the global context identity excludes unused intrinsics
-    /// (F-828-R1-06/R3a: symbol-set or shape-only comparison misses
-    /// swapped bindings and effect flips).
-    intrinsics: Vec<(u32, String, bool, String)>,
+    /// identity: (def ID TEXT, symbol, observable-effect, shape). The id
+    /// TEXT is the stable cross-revision identity — indices shift when a
+    /// synth program drops other functions' intrinsics; id texts do not
+    /// (F-828-R1-06/R4a).
+    intrinsics: Vec<(String, String, bool, String)>,
 }
 
 impl CheckedFunction {
@@ -147,7 +146,7 @@ impl CheckedFunction {
     }
 
     /// The per-reference intrinsic bindings this body actually reads.
-    pub fn referenced_intrinsics(&self) -> &[(u32, String, bool, String)] {
+    pub fn referenced_intrinsics(&self) -> &[(String, String, bool, String)] {
         &self.intrinsics
     }
 
@@ -312,7 +311,7 @@ pub fn verify_function(
     if v.diags.is_empty() {
         // Collect the intrinsics THIS body actually calls (body-read
         // facts; content-canonical shapes).
-        let mut intrinsics: Vec<(u32, String, bool, String)> = Vec::new();
+        let mut intrinsics: Vec<(String, String, bool, String)> = Vec::new();
         for e in &body.exprs {
             if let hir::ExprKind::Call { callee, .. } = &e.kind {
                 if let Some(d) = m.defs.get(callee.0 as usize) {
@@ -338,7 +337,7 @@ pub fn verify_function(
                             })
                             .unwrap_or_else(|| "?".to_string());
                         let entry = (
-                            callee.0,
+                            d.id_text.clone(),
                             symbol.clone(),
                             matches!(effect, hir::Effect::Observable),
                             shape,

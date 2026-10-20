@@ -514,3 +514,68 @@ fn main() int { return helper() }",
         "consulted effect fact changed - the credential must invalidate"
     );
 }
+
+/// F-828-R1-04/R4a: two consecutive 32-space inserts at the (moving)
+/// "return 1 / 0" position compose in MINT coordinates.
+#[test]
+fn r4a_two_long_whitespace_edits_compose_in_code_source_coordinates() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    for revision in 1..=2 {
+        let at = s.src().find("return 1 / 0").unwrap();
+        let out = s.edit(at as u64, at as u64, vec![b' '; 32]).unwrap();
+        assert!(out.ok, "{out:?}");
+        let cold = warmup(s.src(), "d_main", &[]).unwrap();
+        assert_eq!(
+            trap_span(&s),
+            trap_span(&cold),
+            "revision {revision}: current edit offset is not a mint-source offset"
+        );
+    }
+}
+
+/// F-828-R1-04/R4a: a LATER-in-range edit then an EARLIER edit keep BOTH
+/// range-end mappings.
+#[test]
+fn r4a_later_then_earlier_edits_preserve_both_range_end_mappings() {
+    let mut s = warmup(R2A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find(" / 0").unwrap();
+    let out = s.edit(at as u64, at as u64, b" ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "first intra-range edit control"
+    );
+    let at = s.src().find("return 1").unwrap();
+    let out = s.edit(at as u64, at as u64, vec![b' '; 32]).unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "second earlier edit must not erase the first range-end change"
+    );
+}
+
+/// F-828-R1-06/R4a: binding identity is the def ID TEXT — a caller edit
+/// stays installable even when the synth program drops another function's
+/// intrinsic (def indices shift, id texts do not).
+#[test]
+fn r4a_mixed_intrinsics_keep_binding_across_synth_def_index_shift() {
+    let caps = vec!["hir.test.trace.v1".to_string()];
+    let src = "fn helper() int { return mark_a() }
+fn main() int { return helper() + mark_b() + 1 }
+fn tail() int { return 9 }
+";
+    let mut s = warmup(src, "d_main", &caps).expect("trace warm-up");
+    let cold = warmup(src, "d_main", &caps).unwrap();
+    assert_eq!(value(&cold), value(&s), "cold parity control");
+    let at = s.src().find("+ 1").unwrap() + 2;
+    let out = s.edit(at as u64, (at + 1) as u64, b"2".to_vec()).unwrap();
+    assert!(
+        out.ok,
+        "binding unchanged while synth-table index moved: {out:?}"
+    );
+    assert_eq!(value(&s), value(&warmup(s.src(), "d_main", &caps).unwrap()));
+}
