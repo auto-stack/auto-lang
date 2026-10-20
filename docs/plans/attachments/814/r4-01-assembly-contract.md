@@ -1,7 +1,9 @@
 # F814-R4-01/R5 对账：UI 文法/宿主装配来源与合同边界（PLAN-814；R5 修订版）
 
-> **状态（R5 修订）**：本提案是**待批准的合同修订案**，不是已对账的最终
-> 形态。R5 复审纠正了本文件前版两处不实：①inventory 0.3.25 的 submit
+> **状态更新（2026-10-20）**：本提案两项增量已经**用户批准**并落文为
+> 主计划 **r3 §5.3**（草案=review-r6/contract-r3-draft.md）；受影响
+> 正反控已按新合同在冻结实现 `256613936` 上重验通过
+> （[r6-closeout/](r6-closeout/)）。以下正文保留为对账背景与论证记录。R5 复审纠正了本文件前版两处不实：①inventory 0.3.25 的 submit
 > 宏实际生成 `unsafe extern "C" fn __ctor()` 并经 `.CRT$XCU`（Windows）
 > 在启动期登记节点（[R5 源码摘录](review-r5/inventory-implementation.log.txt)）
 > ——前版"无静态构造器副作用"的说法错误；②R3-01 UiCompatInstaller 的
