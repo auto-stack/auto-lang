@@ -77,6 +77,12 @@ members = [
     # (config.rs/mapper.rs/templates.rs); auto-man keeps the am.at loading,
     # PATH/disk/process resolution and Ninja execution as upper layers.
     "crates/auto-toolchain-core",
+    # PLAN-816 T-02: unified owned subprocess execution facility (argv/cwd/env/
+    # stdio policy/exit classification/deadline/cancel with owned reaping/
+    # reader termination/child-tree exit). std-only closure; the scattered
+    # spawn sites (main.rs run_command_live, pkg.rs run_script_live, git.rs,
+    # http_service.rs serve_rust) migrate onto it in T-03/T-05/T-06.
+    "crates/auto-tool-execution",
     # PLAN-808: terminal host-domain core (owned cell/color/geometry contract,
     # runtime autoterm_core.dll engine service + 34-method terminal capability
     # port); auto-lang keeps the VM codec, UI view/input adapter and assembly.
