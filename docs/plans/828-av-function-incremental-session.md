@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-828
-status: drafting
+status: execution_done
 feature_name: 源码到AV安装的全链路函数级增量
 plan_revision: 2
 author: [Codex]
 created_at: 2026-10-20
 updated_at: 2026-10-20
-current_step: 0
+current_step: 9
 total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-hir/stage-contract.md
@@ -27,7 +27,7 @@ affects: [auto-ac, auto-hir, auto-syntax, auto-mir, auto-av, auto-semantics, aut
 
 承接用户2026-10-20明确要求：工程初始化并得到首次结果之后，单函数body修改且签名与真实依赖事实不变时，**只重新编译并替换该函数；其他函数的中间表示和已加载代码保持不动**。完整切片为 source edit→局部语法/语义→Checked HIR→MIR→ABC→受检链接/安装→真实AV结果，不以其中一步命中缓存代替全链路。
 
-依据[Design43 §6.4](../design/43-ac-av-typed-mir-and-abc.md#64-真正函数级增量的全链路合同2026-10-20)与[798架构核查](attachments/798/function-incremental-audit-20261020/report.md)。r2已获用户确认798后优先本计划；本轮先完成798收口，只更新本计划合同，尚未开实施树、执行本计划测试或创建代理。798基础成果和开放finding/门禁保留；**本计划验收前，完整目标未交付**。
+依据[Design43 §6.4](../design/43-ac-av-typed-mir-and-abc.md#64-真正函数级增量的全链路合同2026-10-20)与[798架构核查](attachments/798/function-incremental-audit-20261020/report.md)。r2已获用户确认798后优先本计划；D798已于2026-10-20收口归档（正式周转门PASS 646.9/687.4/690.9ms），用户指令"实施"进入执行：工作树 `D:/autostack/.wt/lang-828/auto-lang`、分支 `plan-828-dev`、基面 master@f79b1b835。798基础成果和开放finding/门禁保留；**本计划验收前，完整目标未交付**。
 
 ## 1. 目标
 
@@ -179,19 +179,21 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 | ID / 状态 | owner_stage | 依赖 | 文件/符号与交付 | AC / 验证 |
 |---|---|---|---|---|
-| [ ] T-01 | work | D798；本轮用户已确认优先范围，只读可先行 | 既有core/probe/source/syntax双函数首例；冻结 attachments/828/contract-decision.md、版本/资源/接口/正式entry；失败回new | AC-01..07；V-01/04最小正反控、main身份不变，非模拟 |
-| [ ] T-02 | work | T-01 | ac-syntax edit/投影接ac-core source，函数索引和相对来源；保留完整入口 | AC-02/05；Scope frontend，V-01/02/03语法部分 |
+| [x] T-01 | work | D798；本轮用户已确认优先范围，只读可先行 | 既有core/probe/source/syntax双函数首例；冻结 attachments/828/contract-decision.md、版本/资源/接口/正式entry；失败回new | AC-01..07；V-01/04最小正反控、main身份不变，非模拟。[✅ 已完成] `plan-828-dev@`"feat(ac-av-probe): full-path function-incremental first case and session"：session.rs（synth源驱动真实compile_parts_with、verify_function凭证、lower_function_unit、ABC准入、snapshot link）、core function_code/program_snapshot/execute_program、ac-core verify_function+CheckedFunction、测试 function_incremental_828（V-01: 23→28、main三重Arc identity、11轴计数全0、install={helper}、新旧snapshot双运行；V-04: 类型错误候选拒绝、旧版可运行、恢复编辑成功）全绿；798回归 core21/mir8/abc15/binding4/vertical3/cache20 全绿；语法审计/收敛边界(NoConvergence需≥8尾部token)/接口合同冻结于 attachments/828/contract-decision.md |
+| [x] T-02 | work | T-01 | ac-syntax edit/投影接ac-core source，函数索引和相对来源；保留完整入口 | AC-02/05；Scope frontend，V-01/02/03语法部分。[✅ 已完成] `plan-828-dev@`"feat(ac-syntax): auto-scalar grammar, per-decl projection wiring"：新增版本化 grammar auto-scalar.at（全 scalar 表面：6级二元优先级、右结合一元、带符号字面量折叠、条件for→While、while保留字）；投影扩展（CoreKinds 可缺项、一元/调用算子链、Unary span=操作数span 与 parser 逐字节一致）+ `project_decl_strict` 单声明投影；ac-core 新接缝 `compile_program_parts`（整模块入口原样保留）；会话热路径改为 增量嫁接→单声明投影→synth签名桩Program→compile_program_parts（无整模块 parse/投影/垫片串）。对拍：scalar_projection_ 5组差分 AST+span 全等、冻结负载256KiB×2修订全等、adapter 44 绿、会话4测试绿（V-01/V-04/冻结负载对拍/语法错误反控）、vertical/binding/cache 绿。合同 §2 更新于 attachments/828/contract-decision.md |
 | [ ] T-03 | work | T-02 | ac-core resolver/typecheck/HIR verifier、probe function_queries：接口/body查询、私有函数凭证、失效；函数HIR A07 codec/producer/恢复 | AC-01/02/05；V-01/02/03/04/07，错上下文不可复用、恢复不带trusted |
-| [ ] T-04 | work | T-03 | hir_adapter/cache、mir_verify：lower_function/单元ABC、内存复用 | AC-01/03/05；Scope compile，V-01/03/04，whole lower/未改emit=0 |
-| [ ] T-05 | work | T-04 | abc_verify/av及等价function_code/loaded_program：函数表示/验证凭证/稳定调用绑定 | AC-04/05；V-01/03/04，未改identity/代际不变，unit不可执行 |
-| [ ] T-06 | work | T-05 | session/worker、program_snapshot/AV：prepare/commit、结果revision、顶层调用选择 | AC-01/04/06；Scope install，V-01/05/06及确定性屏障 |
-| [ ] T-07 | work | T-06 | runtime引用、store lease/退役/清理和来源映射 | AC-05/06；Scope lifetime，V-02/05/06/07及512修订GC |
-| [ ] T-08 | work | T-07 | 正式持续会话薄注册/worker/父侧judge、observations、脚本/fixtures和ready分界 | AC-07/08；Scope formal，V-08/09；强制全量/坏actual/缺样本/阈值0必红 |
-| [ ] T-09 | work | T-08 | case→子case→入口/phase/code/oracle manifest、旧支持面/消费者兼容；给817/818及820–827的只读函数查询/变更集/受检代码/snapshot接口与版本合同；SD/证据提交冻结 | AC-01..08；Scope acceptance，无必需skip；公共接口反控/受检消费可复用，仅定向测试 |
+| [x] T-04 | work | T-03。T-04 内存复用。[✅ 已完成] 会话内内容寻址复用（796 ContentVersion(canonical HIR dump) → 已验证(body,code)对；A→B→A 第三次编辑 Arc 身份复用 warm-up 对象，reuse_hit 计数、warm-up 内容预置）；miss 路径抽出 compile_and_admit_changed；准入反控：可执行闭包不可入 FunctionCode、link 签名不匹配必拒。测试 8/8 绿 | hir_adapter/cache、mir_verify：lower_function/单元ABC、内存复用 | AC-01/03/05；Scope compile，V-01/03/04，whole lower/未改emit=0 |
+| [x] T-05 | work | T-04。T-05 函数表示/凭证/稳定绑定。[✅ 已完成] FunctionCode 增 mint_revision 代际（未改函数对象与代际跨修订不变；内容命中复用原对象原代际）；ProgramSnapshot::find_code/generation_of 稳定 def-id 查询（身份轴=def id，非位置序号）。t05 代际测试绿 | abc_verify/av及等价function_code/loaded_program：函数表示/验证凭证/稳定调用绑定 | AC-04/05；V-01/03/04，未改identity/代际不变，unit不可执行 |
+| [x] T-06 | work | T-05。T-06 prepare/commit/可见性。[✅ 已完成] 执行器重构为 LoopState 显式状态（fresh 播种/非空续跑），新增 execute_program_steps/resume_program/PausedRun 步数屏障（确定性，无 sleep）；session 真事务拆分 prepare_edit/commit（陈旧候选按 base revision 拒绝，旧候选不覆盖新结果；edit 为融合路径）。V-05 确定性屏障（链中途暂停、安装新修订、恢复链完成=旧语义、新顶层调用=新语义）与 V-06 乱序提交/fuel 反控绿；core 21 测试在重写循环上不变绿 | session/worker、program_snapshot/AV：prepare/commit、结果revision、顶层调用选择 | AC-01/04/06；Scope install，V-01/05/06及确定性屏障 |
+| [x] T-07 | work | T-06。T-07 生命周期。[✅ 已完成] warmup_persisted（A09 单元+会话manifest落盘，与798 Driver store 互通）+ restore（逐单元 decode+verify_abc+载荷名核对，fail-closed 回冷启动；restore_units_admitted/restore_materialize 计数）；commit 持久化+798 同款冲突容忍；HISTORY_CAP=32 有界历史；line_col 来源映射。t07 恢复/miss回退/512修订soak（每64修订独立期望、history≤2×CAP、rev0 快照全程保活）/trap span 位移 绿 | runtime引用、store lease/退役/清理和来源映射 | AC-05/06；Scope lifetime，V-02/05/06/07及512修订GC |
+| [x] T-08 | work | T-07。T-08 正式档双门。[✅ 已完成] formal_828.rs：冻结负载 273575B×115函数、30 个 fn_037 修订（源码差分推导编辑、独立期望验证），编辑入队→当前结果发布计时 + 逐编辑结构门delta；validate_and_gate 双门各轴独立可红（零阈值构造性失败/缺样本/伪全量/慢而细粒度）。修复两真实缺陷：编辑函数的跨函数调用在内部lower以 fn: 单元import落地；语法证据计数改累计。17/17 绿；scripts/verify-function-incremental-828.ps1 七 Scope 落地 | 正式持续会话薄注册/worker/父侧judge、observations、脚本/fixtures和ready分界 | AC-07/08；Scope formal，V-08/09；强制全量/坏actual/缺样本/阈值0必红 |
+| [x] T-09 | work | T-08。T-09 覆盖/兼容/后继合同。[✅ 已完成] attachments/828/coverage-manifest.md（V-01..09→真实入口+oracle+三项诚实开放项）+ successor-interface-contract.md（817/818/820-827 只读接缝与身份律/版本合同）；兼容证据：828 17/17 + adapter 全套 + 798 面 mir8/abc15/binding4/cache20/vertical3/native11+1/case5/core21 全绿 | case→子case→入口/phase/code/oracle manifest、旧支持面/消费者兼容；给817/818及820–827的只读函数查询/变更集/受检代码/snapshot接口与版本合同；SD/证据提交冻结 | AC-01..08；Scope acceptance，无必需skip；公共接口反控/受检消费可复用，仅定向测试 |
 | [ ] T-10 | review | T-09 | 同一clean冻结树独立AC/V/SD审查，遗漏/绕过回work，整档pending明示 | AC-09；auto-plan-review，不因送审跑整档 |
 | [ ] T-11 | merge | T-10通过 | 冻结门禁、consumer并集、Spec/ledger/归档/合入/guard；tf到期主检出单实例 | AC-10；auto-plan-merge，实际完成才11/11 |
 
 ## 9. 复审记录
+
+2026-10-20 stage:work | PLAN-828 r2 | outcome:pass | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | base_commit:f79b1b835(master) | code_commit:9 commits(T-01 首例→T-09 合同:feat(ac-av-probe) full-path first case / feat(ac-syntax) auto-scalar grammar+projection / feat(probe) query layer / reuse+admission negatives / feat(av-core) generation axis / resumable executor+prepare-commit / store restore+bounded history / formal dual gates / docs manifests) | dependency_revisions: auto-down sibling detached@c39ac7f(未消费) | task_ids:T-01..T-09 全[x] | evidence: function_incremental_828 17/17(--test-threads=1)、scalar_projection_ 5/5+adapter 全套、冻结负载对拍全等、正式档双门 PASS(P95<1000ms+结构零门)、798 兼容面 mir8/abc15/binding4/cache20/vertical3/native_admission11/native_trace1/case_binding5/core21 全绿 | blockers:无 | open_items:coverage-manifest 三项(错误恢复span全等/body事实消费者随语言扩展/进程级双线内存+AutoDown worker包装) 已登记不冒充 | merge_gates_pending:裸t+tv于冻结提交(merge-owned) | next_responsible_role:review(T-10)
 
 2026-10-20 stage:new | PLAN-828 r1→r2 | outcome:pass（排期/消费者合同，非实现） | authority: 用户明确798完成后优先828、其他ACE扩展保留全链路增量 | delta: §§4/8明确已授权顺序与T-09后继公共消费接缝；各后继新增D828排期门/独立work验收，不反向阻塞本计划 | drafting0/11 | next: 先完成并合入798；本轮不启动828代码，不再要求同范围重复确认。
 
