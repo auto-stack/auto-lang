@@ -1,8 +1,14 @@
 # PLAN-815 M815-A 候选交付记录(T-12)
 
-状态:R1 六项中四项关闭、两项部分关闭;R2 复审就剩余不变量(F-815-R1-02/04/05 部分 + 新增 R2-01)再开四项,本轮已全部修复,再送 T-13 复审。本文件是 M815-A 的候选收据(非最终发布收据;`delivery_commit` 须待 T-14 实际合入 master 后由 merge owner 回填方为发布)。
+状态:R3 确认 R2 四项代码 finding 全部 CLOSED,仅剩一项新增测试缺陷(F-815-R3-01:wire_tests 负控双重包装,断言空洞)——已修复;实现零改动,再送 T-13 复审(可复用 R3 代码验证证据,限定复审该测试修复)。本文件是 M815-A 的候选收据(非最终发布收据;`delivery_commit` 须待 T-14 实际合入 master 后由 merge owner 回填方为发布)。
 
 ## 0. 修复轮记录
+
+### R3 轮(2026-10-20,[review-r3](review-r3/review.md) 单项;受审=bc61501c5)
+
+| 项 | 修复与验证 |
+|---|---|
+| F-815-R3-01(P2,测试缺陷) | `r2_value_object_without_tag_is_a_named_error` 此前把 helper 返回的完整 wire 再包一层,六个负控全部提前死在请求层("unknown request key 'wire'"),any-Shape 断言连合法输入也会通过。修复:helper 完整返回值直接交 `request_from_wire`;两条构造路径(npm_deps/raw value)各加合法对照必须解码成功;每个负控断言错误落在 value/value.t 分支**且**具名指出违反规则('t'/'extra'/'e'/'k')。实现零改动;52 model 测试全绿 |
 
 ### R2 轮(2026-10-20,[review-r2](review-r2/review.md) 四项全部闭合;受审=faea8c9d7)
 
@@ -34,8 +40,8 @@
 |---|---|
 | 唯一树 | `D:/autostack/.wt/lang-815/auto-lang`(分支 `codex/plan-815-dev`) |
 | 基面 | master `b9f7ab7e1` |
-| R1 审查对象 | `9f27d54f0`(needs_fix)→ R2 受审 `faea8c9d7`(needs_fix) |
-| 代码提交 | `c7bbc9681`(初版)→ `faea8c9d7`(R1 修复)→ `bc61501c5`(R2 修复;**当前冻结候选 SHA,T-13 复审对象**) |
+| R1 审查对象 | `9f27d54f0`(needs_fix)→ R2 受审 `faea8c9d7`(needs_fix)→ R3 受审 `bc61501c5`(代码全闭/测试缺陷) |
+| 代码提交 | `c7bbc9681`(初版)→ `faea8c9d7`(R1)→ `bc61501c5`(R2)→ `7045e20fa`(R3 测试修复;**当前冻结候选 SHA,T-13 复审对象,实现与 bc61501c5 一致**) |
 | 依赖交付 | 809/I-PROJECT `b819a602e`(已归档,master 祖先);不依赖 M814-A/814 任何 WIP |
 
 ## 2. 交付范围(M815-A,§5.5)
@@ -72,7 +78,7 @@
 2. 支持面:请求全字段 + 静态子集可产生的 Value 族(标量/Array/Block/Obj/Pair,CStr);拒绝面:不可表示 Value 变体(具名)、非 Unicode 路径、非有限浮点、超 120 JSON 深度、未知/缺失键(各层)、编造的 type-mismatch 字段。
 3. 静态扫描器支持域不变;wire 不新增 pac.at 语法解释。
 
-## 5. 测试与门禁证据(R2 修复轮,冻结 SHA `bc61501c5` 上)
+## 5. 测试与门禁证据(R3 修复轮,冻结 SHA `7045e20fa` 上;除 wire_tests 单测外与 R2 受审位实现一致,R3 已验证代码面可复用)
 
 | 面 | 命令 | 结果 |
 |---|---|---|
@@ -103,4 +109,4 @@ merge-owned 门禁**pending**(按 2026-10-14 时序裁定,归 T-14 冻结后统�
 
 ## 8. 下一步
 
-T-13 复审:同树独立阶段审查(对象=冻结 SHA `bc61501c5` + 本候选(含 §0 两轮修复记录与 §4 SD-02/SD-04 A 子集)+ contract-baseline.md §1/§3/§4),通过后 T-14 串行冻结门与实际 master 合入(不归档、不清树,收据回填 delivery_commit)。
+T-13 复审:同树独立阶段审查(对象=冻结 SHA `7045e20fa` + 本候选(含 §0 两轮修复记录与 §4 SD-02/SD-04 A 子集)+ contract-baseline.md §1/§3/§4),通过后 T-14 串行冻结门与实际 master 合入(不归档、不清树,收据回填 delivery_commit)。
