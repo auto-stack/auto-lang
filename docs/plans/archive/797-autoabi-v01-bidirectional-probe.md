@@ -413,6 +413,8 @@ status:executing；current_step:4/9，T01–04完成、T05/T06/T07仍OPEN、T08/
 
 遗留（跨计划，非 797 门禁）：815 触发的批量回归续办（tf 已绿 6270/6270；tt 3 失败/1 超时待归因、tb 未完、新合并窗口覆盖后写成功收据），归 /auto-plan:regress 主检出单实例。台账 tracked HEAD=v57 / live 投影 v60 的滞后为 813–817 合入期既有事实（本仓 README 定义为兼容期本地投影）；本次修复的是真实读取的 live 文档，不改变其提交策略。归档终态维持，不重开。
 
+2026-10-20 复核补正（post-merge-recheck）：独立复核确认 PM-01/02/04 与 PM-03 执行/配置审查（正式双门自入库 61 行 JSONL 独立重算 P95=966/98ms；concurrent-GC 历史失败以原构建二进制具名重放 2× 通过，历史失败样本保留、根因不作严格断言）。复核检出 `pm03-closeout-rerun/` 4 份执行日志初版以 `.log` 扩展名被 `.gitignore *.log` 排除未随对账提交——已改名 `.log.txt` 入库并同步 README 引用，内容未变、门禁未重跑（输入未变）。四项至此终态 CLOSED；批量收口 `a93e4b922`（812→817）同批复核认可。[复核报告](../attachments/797/post-merge-recheck-20261020/report.md)。
+
 预检/来源见[planning-preflight.md](../attachments/797/planning-preflight.md)。候选v0.1不是现有产品支持声明。
 
 ## 10. 待澄清事项
