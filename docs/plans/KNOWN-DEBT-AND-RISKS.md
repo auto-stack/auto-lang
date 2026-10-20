@@ -2370,9 +2370,7 @@ av_resources_peak_sampler_distinguishes_transient_spike（采样器区分性反�
 "源码→atom 渲染→atom 整体重解析+重绑定"架构内部、单一公共 API 调用内即超
 128 MiB**；compile_parts_with 整体 209 444 864 B、完整 driver 请求 ≈207 MiB。
 线性缩放（~765 B 峰值/源字节）：49/103/167/209 MiB @ 60/136/197/274 KiB。
-798 侧（探针管线全层）个位数 MB，无授权内收敛路径；PLAN-798 按 §5.8 以
-needs_replan 路由 r5 资源政策修订（选项：ac-core owner 收敛 bind 瞬态 / 重定
-worker 预算口径 / 拆分前端瞬态为独立预算线），在此之前 798 资源 AC 保持未闭。
+798 侧（探针管线全层）个位数 MB，无授权内收敛路径；**2026-10-20 用户裁定方案 C 已落地**：PLAN-798 r5 §5.9 双线预算（A 前端瞬态≤224MiB ac-core owner / B 探针残差≤128MiB，均实测均硬门；T-11 @`06114f431`，当前证据 A=202.1MiB ✓/B≈3.5MiB ✓）——本条目转为改进机会记录：A 线收紧（ac-core 收敛 atom 渲染→重绑定架构）仍属 ac-core owner，非 798 阻塞项。
 
 - 2026-10-16 PLAN-800 review R1：F800-R1-01（SD声称未实现的找包错误映射）、F800-R1-02（新核心格式门失败）为本合同待修候选，**不作可延期债务豁免**；见 [审核收据](attachments/800/review-r1/REVIEW.md)。当前 executing，T06/07待修复复审。
 

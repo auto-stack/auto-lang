@@ -2,12 +2,12 @@
 plan_id: PLAN-798
 status: executing
 feature_name: Typed MIR 与 ABC/AV 执行合同及首个全路径探针
-plan_revision: 4
+plan_revision: 5
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-20
-current_step: 4
-total_steps: 10
+current_step: 5
+total_steps: 11
 supersedes_spec_components:
   - docs/specs/auto-ac/artifact-contract.md
   - docs/specs/auto-hir/stage-contract.md
@@ -70,7 +70,7 @@ Rust独立workspace、锁定依赖；复用ac-core公开API、783 `ManagedStore`
 
 拟议探针策略（非用户给定值、非语言永久语法上限）：单source/HIR/ABC输入≤4MiB，单次codec页≤256KiB；条目预算为**每持久/准入工件的分配上界**（r2 修订，替代 r1 的"全部表合计"字面读法）：模块级表（类型+常量+导入+函数计数）≤65536 且**每个函数单元**（槽+块+指令）≤65536，均按实际分配前检查；整模块/闭包**组合上界**由请求级预算约束——单输入≤4MiB、MIR/ABC验证每请求≤200万工作步且wall≤5s。修订动因：r1 冻结负载（256KiB/100 函数，§5.5 同为冻结项不得缩小）整模块展开 72k 条目，与"合计≤65536"不可同时成立；按工件族划分后单表分配守卫不变，组合规模仍有显式上界（步数/墙钟/输入），不构成无界放宽。旧source/HIR文本前端探针递归预算为128层（含括号/块及连续表达式构造路径，按现有token流作有界前置准入，不能只数花括号），超出在旧递归parser前报resource；不改变旧独立CLI支持面。MIR/ABC验证每请求≤200万工作步、wall≤5s；AV每执行≤100万指令步、≤1024帧、活槽数据≤8MiB、wall≤2s，取消每≤1024指令检查。大于表预算是resource拒绝，不是非法语法/unknown opcode。条目计数和指令fuel定义在T-01钉死，不能通过不计验证/分配规避。
 
-总受管热点/暂存/VM工作集≤32MiB（代码/数据热点8MiB、解码/索引/编译暂存16MiB、执行帧/槽8MiB），worker private-bytes相对空载增量目标≤128MiB；外部native构建/工具进程单报，不冒称受管预算覆盖其内存。请求/响应元数据各≤4MiB、stdout/stderr各≤1MiB、测试trace≤64KiB；溢出报resource不截断成成功。
+总受管热点/暂存/VM工作集≤32MiB（代码/数据热点8MiB、解码/索引/编译暂存16MiB、执行帧/槽8MiB）；worker 进程内存按 **r5 §5.9 双线预算**（A 线前端编译瞬态≤224MiB 归 ac-core owner、B 线探针自有残差≤128MiB 归本计划，均实测均硬门）；外部native构建/工具进程单报，不冒称受管预算覆盖其内存。请求/响应元数据各≤4MiB、stdout/stderr各≤1MiB、测试trace≤64KiB；溢出报resource不截断成成功。
 
 native参考每请求build≤60s/run≤5s/total≤70s，沿788合入的有界bytes/Job清理；D-788前只能用已有contained能力并在隔离wrapper补齐本计划所需cap，失败就阻断该用例，不能裸跑。反例/资源极限不得成为OS栈溢出或宿主panic，进程timeout不冒充语言trap。
 
@@ -181,9 +181,20 @@ R10异路径兄弟误拒的具体反例已在R11关闭；R11新发现F798-R11-01
 
 R11的F798-R11-01（同一命名实参内部组合深度漏检）和F798-R11-02（类别往返实证）由原owner在唯一798树修复；T-02/05保持重开，R10异路径误拒具体例已闭不代表完整不变量闭合。T-01/03/04和T-07/08仍pending，T-06未受影响证据保留。r4只澄清责任/反例，不重写R11证据、不授实现pass。
 
-资源责任由T-01/05完整冻结和验证：模块级类型+常量+imports+functions合计≤65536，每函数slots+blocks+instructions合计≤65536；编码数值可表达不等于对应ref可准入。32MiB受管分区与worker相对空载增量128MiB分别报告同口径峰值，source/HIR/索引/allocator/temporary不得扣掉。§3的“目标”字样、§5.5和历史约211MiB前端未达记录不能形成未记载的豁免：128MiB是否满足必须有当前证据，资源AC不能靠归因/登记债务勾完成。若当前只读ac-core使既定政策不可行，T-01给具体输入/owner阻断及有界修订提案再回new，不抢改其源码、不默许扩大数字；未解决前D798未成立。
+资源责任由T-01/05完整冻结和验证：模块级类型+常量+imports+functions合计≤65536，每函数slots+blocks+instructions合计≤65536；编码数值可表达不等于对应ref可准入。32MiB受管分区与worker相对空载增量128MiB分别报告同口径峰值，source/HIR/索引/allocator/temporary不得扣掉。§3的”目标”字样、§5.5和历史约211MiB前端未达记录不能形成未记载的豁免：128MiB是否满足必须有当前证据，资源AC不能靠归因/登记债务勾完成。若当前只读ac-core使既定政策不可行，T-01给具体输入/owner阻断及有界修订提案再回new，不抢改其源码、不默许扩大数字；未解决前D798未成立。**（r5 注：本段”单一 128MiB worker 线”已由 §5.9 双线预算取代——T-01 交付即本段要求的修订提案，用户裁定方案 C；32MiB 受管分区与”不得无证据豁免”原则不变。）**
 
 T-08统一维护V-01..14及K14-01..06实际入口/Scope/phase/code/oracle清单；AC-01/03/04/05/07分别承担类别冻结、codec/准入、恢复和正式runner，不以单条原例或测试总数替代。根资源/周转V-09..11也仍归work；merge只运行最终独立review之后的冻结门禁和收尾。
+
+### 5.9 r5 资源政策修订：worker 内存双线预算（2026-10-20 用户裁定方案 C）
+
+**修订授权**：R12-04 实测（T-01 交付）证明冻结负载下 `descriptor::bind`（ac-core 只读公开缝 `compile_parts_with` 内部的"atom 渲染→整体重绑定"架构）单独峰值即 ≈158.9MiB，单一"worker 相对空载增量≤128MiB 且不得扣除前端"在授权实现内不可达；§5.8 规定该情形回规划做有界修订。用户裁定（2026-10-20）：**不新建计划，方案 C——拆两条归属明确、均实测、均硬门的预算线**，作为本计划新 phase（T-11）落地。这不是豁免也不是暗扩数字：B 线保持 128MiB 数字不变，A 线为新增的、锚定实测的、有 owner 的独立门。
+
+| 线 | 预算 | 测量 | owner/门 |
+|---|---|---|---|
+| A：前端编译瞬态 | ≤224 MiB | 冻结负载隔离采样 `frontend_peak_bytes`（bench 归因测量） | ac-core owner；`validate_and_gate` 硬门；锚定实测 ~200-212MiB，ac-core 收敛后**预期收紧**（非增长许可） |
+| B：探针自有残差 | ≤128 MiB | 总采样峰值（worker+子进程 max）−A 线 | 本计划；`validate_and_gate` 硬门；**缺归因测量时整峰保守计入 B 线**（无分解即无豁免） |
+
+受管分区 32MiB（16/8/8）硬门与 §5.5 六场景/P95 合同不变；单一 128MiB 目标字样由本双线取代（§3 已同步）。永久测试 `av_turnaround_two_line_memory_gate`（A 越/B 越/双过/无归因保守四态）。当前证据（release `bench-turnaround` 冻结 273 575B 负载，2026-10-20，@`06114f431`）：**A 线 211 869 696B=202.1MiB ✓ / B 线 3 637 248B≈3.5MiB ✓ / `hard_gate_failures=[]` exit 0**。R12-04 依据本节闭合。
 
 ### 规范增量
 
@@ -235,14 +246,14 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 | AC-03 | work | ABC codec/验证与Rust AV实际执行，全标量语义/顺序与native及独立expected一致；V-03–05及V-14：单函数完整module不被误判unit，分类与entry/imports规则在各消费路径保真 |
 | AC-04 | work | 无trusted绕过，坏输入/未知能力拒绝，fuel/帧/取消有效且分态；V-01/05/10/14（伪造kind/旧歧义版本执行前拒绝） |
 | AC-05 | work | 真单元cache/依赖/恢复/跨工程及坏地址/冲突/GC正确，命中仍执行；V-06–08；V-14/K14-05/06的kind/producer绑定、当前授权与跨进程恢复闭合 |
-| AC-06 | work | 资源/规模和六场景计量、两路径含正式adapter的P95<1s，原始样本可复验；V-09–11；§5.8的32MiB/128MiB分别计量与当前未达证据必须明确收口，不以归因/债务豁免 |
+| AC-06 | work | 资源/规模和六场景计量、两路径含正式adapter的P95<1s，原始样本可复验；V-09–11；worker 内存按 **r5 §5.9 双线**（A 前端瞬态≤224MiB/B 探针残差≤128MiB）实测硬门收口——当前证据 A=202.1MiB ✓/B≈3.5MiB ✓，不以归因/债务豁免 |
 | AC-07 | work | D-796/D-788后正式AutoDown真实dispatch/比较/反控及旧协议兼容，无required gap；V-12；V-14/K14-01..06正式runner适用路径真实执行与负控 |
 | AC-08 | work | 真796合同绑定、临时快照退出、AJ/native/797边界、SD/来源/coverage表完整；V-13 |
 | AC-09 | review | 同树独立审查逐AC/V/SD并绑定revision，所有in-contract finding闭合；merge门禁pending明示 |
 | AC-10 | merge | 冻结门禁、Spec/ledger沉淀、归档合入/实际计数/guard清理齐全；最终10/10 |
 
 ## 8. 执行步骤
-**R12 修复轮 work 收据（2026-10-20，code `00bd25ddf`，合同 r4+r6 随码入库）**：F798-R12-01/02/03 闭合，R12-04 完成 T-01 归属交付并按 §5.8 路由回 new（needs_replan，资源政策 r5 修订）。01→前门计深改为**真实结合的最长构造路径**（前门内建 shunting-yard 深度求值器，镜像 parser `scalar_prec_of` 优先级/左结合，`a OP b→1+max(a,b)`，逐括号层操作数路径栈+名字/调用层/兄弟分账）：R12 tail-chain 探针重放 60×70 尾操作数真路径 71 **合法执行返回 70**（旧法 192 误拒）、首操作数 131 拒（hir_levels 实测对齐）、3×70=74/60×1=62 控制过；R7-R11 全部边界/判别测试 15/15 不回归。02→`LoadedModule.executable` 由**类别+imports 闭合**共同决定：unit 类别在任何公开入口不执行（dispatch=0，Infra `unit kind`）；unit-admission 探针重放零参/带参 unit 全拒、完整模块正控执行 7、带参 module 声明 mir.entry-sig 拒；原"带参 unit 可执行"测试 oracle 更正。03→**wire 升代**：ABC_VERSION 2/ABC_SCHEMA /2/ABC_SEMANTICS 2/A09 v2 + A09/A08 键携带 codec/语义版本轴（MIR 键新增 abc-codec 轴）；当前键下异代载荷=O(1) 版本门**确定性陈旧 miss 重建**（`cache_stale_abc/mir_miss`，重建重持久化冲突容忍 `cache_stale_rebuild_conflict`，store 旧行保留）；raw /1 → `abc.decode.version` 拒；永久测试 `av_cache_kindless_v1_wire_isolated`（伪造真实 /1：hit=0/miss=1/emit=1/conflict=1/值 7 双请求确定性）。04→分阶段内存测量（常驻工具 `probe/src/bin/mem_stage_probe.rs`）：冻结 273575B 负载 **`descriptor::bind` 单独峰值 166649856B≈158.9MiB**（compile_parts_with 强制的 atom 渲染→重绑定架构内部、单一只读公开 API 调用内即超 128MiB）、compile_parts 209.4MB、完整请求 ≈207MB、线性 ~765B/源字节（49/103/167/209MB@60/136/197/274KiB）——probe 侧不可收敛，**needs_replan 回 new**（提案三选项见 KNOWN-DEBT R12 段）。证据：probe workspace **99 测全绿**（+4 新）、兼容 18/18、contract-decision **r6** 冻结；正式门本机边界抖动（978.9ms PASS / 1001.0/1028.4 FAIL，**基线 bf7e44f8e 同时刻 1041.2ms FAIL=A/B 证无码回归**；本机整体比历史慢 ~350ms 环境敏感在案，静置复验待环境恢复）。
+**R12 修复轮 work 收据（2026-10-20，code `00bd25ddf`，合同 r4+r6 随码入库）**：F798-R12-01/02/03 闭合，R12-04 完成 T-01 归属交付并按 §5.8 路由回 new（needs_replan，资源政策 r5 修订）。01→前门计深改为**真实结合的最长构造路径**（前门内建 shunting-yard 深度求值器，镜像 parser `scalar_prec_of` 优先级/左结合，`a OP b→1+max(a,b)`，逐括号层操作数路径栈+名字/调用层/兄弟分账）：R12 tail-chain 探针重放 60×70 尾操作数真路径 71 **合法执行返回 70**（旧法 192 误拒）、首操作数 131 拒（hir_levels 实测对齐）、3×70=74/60×1=62 控制过；R7-R11 全部边界/判别测试 15/15 不回归。02→`LoadedModule.executable` 由**类别+imports 闭合**共同决定：unit 类别在任何公开入口不执行（dispatch=0，Infra `unit kind`）；unit-admission 探针重放零参/带参 unit 全拒、完整模块正控执行 7、带参 module 声明 mir.entry-sig 拒；原"带参 unit 可执行"测试 oracle 更正。03→**wire 升代**：ABC_VERSION 2/ABC_SCHEMA /2/ABC_SEMANTICS 2/A09 v2 + A09/A08 键携带 codec/语义版本轴（MIR 键新增 abc-codec 轴）；当前键下异代载荷=O(1) 版本门**确定性陈旧 miss 重建**（`cache_stale_abc/mir_miss`，重建重持久化冲突容忍 `cache_stale_rebuild_conflict`，store 旧行保留）；raw /1 → `abc.decode.version` 拒；永久测试 `av_cache_kindless_v1_wire_isolated`（伪造真实 /1：hit=0/miss=1/emit=1/conflict=1/值 7 双请求确定性）。04→分阶段内存测量（常驻工具 `probe/src/bin/mem_stage_probe.rs`）：冻结 273575B 负载 **`descriptor::bind` 单独峰值 166649856B≈158.9MiB**（compile_parts_with 强制的 atom 渲染→重绑定架构内部、单一只读公开 API 调用内即超 128MiB）、compile_parts 209.4MB、完整请求 ≈207MB、线性 ~765B/源字节（49/103/167/209MB@60/136/197/274KiB）——probe 侧不可收敛，**needs_replan 回 new**（提案三选项见 KNOWN-DEBT R12 段）。证据：probe workspace **99 测全绿**（+4 新）、兼容 18/18、contract-decision **r6** 冻结；正式门本机边界抖动（978.9ms PASS / 1001.0/1028.4 FAIL，**基线 bf7e44f8e 同时刻 1041.2ms FAIL=A/B 证无码回归**；本机整体比历史慢 ~350ms 环境敏感在案，静置复验待环境恢复）。（R12-04 的 needs_replan 路由已由同日 r5 §5.9 就地修订取代——用户裁定方案 C，T-11 已落地闭合，见 §9 r5 记录。）
 **最新复审（R12，2026-10-20，`bf7e44f8e`，当前合同r4）**：needs_fix，四项P2开放F798-R12-01..04。R11两条具体旧例已通过；但合法尾操作数深调用真实71层被前门估为192层误拒，零参/带参unit仍由公开loader授可执行凭证并实际dispatch，旧无kind单元仍以原版本/生产信封真实cache hit不重建，冻结267KiB输入当前release private-bytes增量211156992bytes（约201.4MiB）超过128MiB。[报告/精确反例/当前资源数据/命令与身份](attachments/798/review-r12/review.md)。完整V11/K14矩阵尚未收口，work摘要95测/30样本不覆盖这些义务。按唯一任务表保持仅T06完成，executing **1/10**，不是frontmatter旧8/10。
 **r4文档复审交接（历史，2026-10-20）**：executing **1/10**，仅T-06完成；原R11 needs_fix与F798-R11-01/02保留。r4按§5.8补充K14-01..06、AC/任务映射及资源证据责任，不改变R11测试结论，不授实现pass。[R11原报告](attachments/798/review-r11/review.md)与[本次文档复审](reports/av-architecture-contract-review-2026-10-20.md)分别保留。T-01/02/03/04/05/07/08归work，T-09/10仍pending。
 **r3文档修订时交接（历史，2026-10-20）**：executing **3/10**。T-01/03/04按§5.7/V-14重开，T-07/08完整r3验收待完成，T-09/10未完成。并发新增r2 work收据`5def3af48`声称修复R10-01，保留其原文并恢复T-02/05，T-06维持完成；该候选仍待独立复审，不能覆盖r3新增类别/版本验收。V-14本轮仅静态建议，未复现或修复；825/826不阻塞798。
@@ -262,10 +273,15 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 | [ ] T-08 | work | T-07 | verify脚本全Scope、docs/reports/plan798、SD提案/coverage/并行审计，native产物/代际合同准入 | [R3重开→r4 已闭合：F798-R3-09（native_admission.rs 实装：NativeArtifactRef 全轴准入+COFF 结构校验+真实 Cranelift COFF 正例+真 PE 拒绝+legacy generation 显式兼容轴；native_admission_tier 5 测绿；acceptance.md 虚假主张更正并记录）+F798-R3-10（probe 零 warning/README 尾空行清除）+F798-R3-11（native_reference 改 788 run_deadlined_captured 1MiB 帽+共享预算钟+run 剩余预算，零 stderr 帽失败反控）。契约 r3 修订入 contract-decision §6/§7（verify-memory/decode-memory/前门构造深度）] [✅ 已完成] b9682967f：脚本 binding/autodown/acceptance 实接（binding_tier/ac_av_probe 真跑，退出码透传）；`docs/reports/plan798/turnaround.md` 补正式 AutoDown 硬门节+`acceptance.md`（V-01..13 覆盖矩阵实际入口/SD-01..07 提案/并行审计含 813 交叉与共享接缝最小扩展清单）；native 产物引用/代际=合同模型（contract-decision §11+SD-07 提案，未宣称热重载）；定向验证：probe 54+contract 20+ac_av 4+接缝 17 全绿，计划内文件 rustfmt 过检（根 examples 预存损坏非本计划面，未动）；AC-01–08；**execution_done=8/10**；r4本步按§5.8负责K14类别/版本的对应冻结/实现/恢复/runner/汇总，旧记录不授新pass |
 | [ ] T-09 | review | T-08、冻结提交 | 同树独立验收/规范/遗漏和workaround扫描，受影响证据复验，绑定commit+依赖 | AC-09；pass后reviewed=9/10，merge gates pending |
 | [ ] T-10 | merge | T-09 pass | 冻结提交门禁、实际SD/ledger、归档合入、批量到期判定和wt-guard后清理 | AC-10，实际完成10/10；门禁红则归因、改代码后复审相关面 |
+| [x] T-11 | work | 用户裁定（2026-10-20 方案 C，§5.9） | r5 资源政策落地：双线预算实现+当前证据收口 R12-04 | [已完成 @06114f431：bench `validate_and_gate` 两线硬门（A 前端瞬态≤224MiB/B 探针残差≤128MiB，缺归因保守整峰计入 B 线）+ worker 汇总 `frontend_transient_target_met`/残差版 `worker_private_bytes_target_met` + contract-decision r7 冻结；永久测试 `av_turnaround_two_line_memory_gate` 四态；当前证据 release bench-turnaround 冻结负载：A=211 869 696B(202.1MiB) ✓/B=3 637 248B(≈3.5MiB) ✓/hard_gate_failures=[] exit 0；probe workspace 100 测全绿；30 样本正式门含两线门归 T-07/merge 复验] |
 
 T-01–05不等796/797/788全部合入；T-06/07是真依赖，不搬其在途代码、不自造第二语义库/runner。没有正式AutoDown或796真绑定仍属executing，不以早期模型/文件存在标execution_done。范围/预算/支持或公共IPC需扩张时回规划修订，保留完成进度/旧证据并标失效。
 
 ## 9. 复审记录
+
+### r5 资源政策修订与新 phase（2026-10-20，用户裁定，不新建计划）
+
+stage:new（就地修订，用户指示"直接在计划798添加新的phase"）；plan_revision 4→5。修订动因：R12 修复轮 needs_replan 路由（R12-04 单一 128MiB worker 线在只读 ac-core 公开缝内不可达，T-01 交付归属证据）；用户裁定方案 C。r5 内容：新 §5.9 双线预算（A 前端瞬态≤224MiB ac-core owner / B 探针残差≤128MiB 本计划，均实测均硬门、缺归因保守整峰计入 B 线）+ §3/AC-06 同步 + 新任务 **T-11**（total 10→11）。T-11 同轮执行完成 @`06114f431`（bench 两线硬门+worker 汇总+contract-decision r7+永久测试四态+当前证据 A=202.1MiB ✓/B≈3.5MiB ✓/exit 0；probe 100 测全绿）——R12-04 闭合，前一轮 §9 收据中"next:new"由本就地修订取代。注意：AC-06 的 30 样本正式门（含两线门）与 K14 正式矩阵仍归 T-07 完整验收；正式门当前本机环境敏感（A/B 已证无码回归），静置复验 pending。
 
 ### r4 修复轮（R12 findings）work 收据（2026-10-20）
 
@@ -360,7 +376,7 @@ stage: new；outcome: pass（文档合同预检，非实现验收）。用户明
 
 无阻断草拟的用户决策。T-01仅在既定范围内冻结准确opcode/表字段/计步、现有store合法carrier、参考机/256KiB负载、初始公共快照与AutoDown recipe输入。预算为拟议实验政策，若全路径不可行须带数据回规划，不能临时降低负载/提高阈值/改语义。D-796/D-788已由旧收据满足，启动时核实际依赖身份，不再把初稿依赖未交付当当前阻断；最终公开CLI/全部Auto语言、CTE/AJ/发布器仍后续Plan。
 
-**当前状态（r4，R12 修复轮后）**：R12-01/02/03 已闭合 @`00bd25ddf`（code），待独立复审；**R12-04 needs_replan**——`descriptor::bind`（ac-core 只读公开缝内部）单独峰值 158.9MiB>128MiB，probe 侧不可收敛，按 §5.8 回 new 做 r5 资源政策修订（提案在 KNOWN-DEBT R12 段）；未修订前资源 AC 保持未闭、execution_done 不成立。§8 唯一任务表 4/10（T-02/03/04/06）；T-01/05/07/08 待 r5 后收口；正式门当前本机环境敏感（A/B 证无码回归），静置复验 pending。merge-owned 门禁另列 pending。825/826 不阻塞 798。
+**当前状态（r5，R12 修复轮+T-11 后）**：R12 四项全部闭合——R12-01/02/03 @`00bd25ddf`（前门真实结合最长构造路径/unit 执行凭证/wire v2 升代+缓存隔离），**R12-04 @`06114f431`** 以 r5 §5.9 双线预算硬门收口（A 前端瞬态 202.1MiB≤224 ✓/B 探针残差 ≈3.5MiB≤128 ✓，用户裁定方案 C，contract-decision r7）。§8 唯一任务表 **5/11**（T-02/03/04/06/11）；T-01/05/07/08 待完整 readiness（含 K14 全矩阵、30 样本正式门含两线门——当前本机环境敏感 A/B 已证无码回归，静置复验 pending）。待独立最终 review（R13）。merge-owned 门禁另列 pending。825/826 不阻塞 798。
 
 - 根examples/ui_container.rs预存语法损坏、已着陆scalar前端约211MB瞬态峰值的既有归因保留，不冒称本计划已修。
 - 未发布Spec/ledger，未合入/归档/清理实施树。
