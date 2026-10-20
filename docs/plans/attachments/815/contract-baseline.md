@@ -10,10 +10,11 @@
 | 工具包 crate | `crates/auto-ui-tools`(lib + bin,bin 名 `auto-ui-tool`) | §2 架构方案;777 域登记 `ui` |
 | 协议 crate | `crates/auto-tool-protocol`(纯数据:版本/能力/预算/错误/framing) | 777 域登记 `data` |
 | I-PROJECT payload | 唯一类型 `auto_project_model::GenerationRequest`;wire codec 在数据 owner(auto-project-model 新 `wire` 模块,feature `wire`)同源提供,协议/工具/客户端零复制 | §5.5"T-03 复用 809 单源数据/codec" |
-| wire 形态 | JSON;`auto_val::Value` 用带标签编码(`{"t":"str","v":…}` 族),不支持变体(Fn/Widget/… )显式 `UnsupportedValue` 报错,不静默丢字段 | "有界、具名、版本化数据" |
+| wire 形态 | JSON;`auto_val::Value` 用带标签编码(`{"t":"str","v":…}` 族),不支持变体(Fn/Widget/… )显式 `UnsupportedValue` 报错,不静默丢字段;**R1-F01/02/03 加固:诊断 payload 无损(`type-mismatch:<field>`)、非 Unicode 路径显式 `UnsupportedPath` 拒绝、各层固定键集严格校验(缺槽须显式 null)、全部窄化数值转换范围校验、窗口分量有限+Pac 边界+f32 精确可表示(双向一致)** | "有界、具名、版本化数据" |
 | framing | stdio 上 4 字节大端长度前缀 + JSON 帧;双向共享 `auto_tool_protocol::framing` 单一实现 | §3"实际 codec/framing 在 T-01 probe 后冻结" |
 | 控制流/日志分离 | stdout=纯控制流(帧化 JSON:request/response/event);stderr=人类可读日志。交互 stdin:A 阶段不读(interactive=false) | §5.3"日志不得污染 control stream" |
 | A 阶段操作 | `describe`(能力/版本/生命周期)、`validate_project`(I-PROJECT 元数据/路径/请求约束校验);`cancel` 已定义,对 A 操作显式 `not_cancellable` | §5.5 |
+| 路径校验锚定(R1-F04) | 相对路径一律锚定请求内**绝对** `project_root`(I-PROJECT 规则),禁用进程 cwd;根缺失/相对→显式 finding(`project-root-not-absolute`/`relative-path-without-root`),不静默回落;路径按角色检查(project_root/front/dep=目录,input_sources=文件,output_root 存在时须为目录) | §5.1 |
 | 版本策略 | `PROTOCOL_VERSION=1`;请求带版本,未知版本→错误响应、零副作用;`describe` 永远可答 | §5.3 |
 | 预算 | `MAX_FRAME_BYTES=8MiB`(帧级,双向强制);`MAX_PROGRESS_BYTES_PER_OP=1MiB`;`MAX_QUEUE_DEPTH=128`(A 操作同步,结构性满足) | §5.3"消息/输出/排队预算与单位" |
 | 退出码 | 0=EOF 正常关停;1=内部错误;2=流级致命(坏帧/超限帧,失步后不可恢复) | T-01 冻结 |
@@ -74,13 +75,16 @@
 - **validate_project 诚实边界**:只检 I-PROJECT 元数据/路径存在性/请求约束;report.summary 显式列 `checked`(metadata/paths/request-constraints)与 `not_checked`(language-parse/evaluation/generation/build);StaticAdmitted 含 unsupported 构造→warning finding(不算已求值)。
 - **消费合同**:816 客户端在 M815-A 合入后只依赖 `auto-tool-protocol` + `auto-project-model`;不得静态链接 auto-ui-tools 实现进 CLI(Design 37 `cli -.子进程协议.-> ut`)。
 
-## 4. 预算与单位(T-03 落地为常量,工具/客户端共享)
+## 4. 预算与单位(T-03 落地为常量,工具/客户端共享;R1 复审后措辞统一)
 
 | 预算 | 值 | 单位/语义 | 违反分类 |
 |---|---|---|---|
-| max_frame_bytes | 8 MiB | 单帧字节数(含前缀后载荷),双向 | 输入帧超限→流致命(exit 2);输出帧超限→写失败(工具侧 Internal) |
+| max_frame_bytes | 8 MiB | 单帧**载荷字节数**(不含 4 字节长度前缀;与 framing 常量语义一致),双向 | 输入帧超限→流致命(exit 2);输出帧超限→写失败(工具侧 Internal/exit 1) |
 | max_progress_bytes_per_op | 1 MiB | 单操作累计 progress 载荷字节 | BudgetExceeded 错误响应 |
 | max_queue_depth | 128 | 客户端待消费通知条数(816 执行器侧强制) | 客户端侧 backpressure;A 工具同步无队列 |
+| max_wire_json_depth | 120 | wire/帧 JSON 树深度(对象/数组自根计层数,R1-F05 冻结) | 生产端(codec `request_to_wire`/`write_frame`)具名拒绝(`DepthExceeded`/framing "envelope" reason);消费端 `read_frame`/`parse_frame` 超出 JSON 解析器递归限(128)以 Malformed 流致命分类 |
+
+**可传输包络合同(R1-F05)**:codec 编码、codec 解码、write_frame、read_frame/parse_frame 四处共享同一深度上限——任何合规生产端发出的帧,保证可被共享读帧器解析;超包络的树在生产端即获具名错误,不再表现为对端"坏 JSON"。手工构造的超深帧(>128 JSON 层)在读取端为 Malformed 流致命(帧长前缀完好也无法结构化应答,归入既有的坏帧分类)。
 
 ## 5. B 阶段执行序(依赖门复核)
 
