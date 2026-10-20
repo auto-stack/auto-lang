@@ -83,3 +83,64 @@ touched_goals=[] 说明：798 全程为 experimental/ 探针+测试接缝扩展�
 
 冻结提交统一门禁（根档按最终 diff）、native/796/788 实际触面兼容整档、tf 到期
 批量、Spec/ledger 沉淀与归档清理——最终 review pass 后由 merge 执行。
+
+## r5 增补（R12/R13 修复轮 + readiness，2026-10-20；基线 `a7850407e`）
+
+V-01..13 矩阵（上文）仍绿；本节补 V-14/K14 完整矩阵、双线内存门与 r5 合同增量。
+
+### V-14 与 K14-01..06 完整矩阵（实际入口）
+
+| K | 子case（§5.8 输入/阶段） | 实际入口与证据 | 状态 |
+|---|---|---|---|
+| K14-01 | 完整单函数 module：false 分支直接自调用、else 42；多函数合法对照 | `abc_kind_survives_roundtrip`（MIR is_unit=false → wire v2 FLAG 翻转排除 → 公开 loader 执行 Success{42}；driver fresh 42）；多函数对照 = `av_semantics_` p-binop-args/p-gcd-euclid；**正式 runner 腿 = 语料 `av.core.kind-selfcall-module`** | 绿 |
+| K14-02 | 零参/带参 unit、module 合法 entry：unit 可验证/缓存不可执行；module 执行 | `abc_unit_credential_split_at_public_loader`（零参 unit：Infra "unit kind" dispatch=0；同载荷翻位 module：执行 7）；core `av_unit_kind_param_credential_not_executable`（带参 unit `execute_entry` Infra）；`av_unit_kind_zero_param_credential_not_executable`（零参 unit Infra + module 正控 7） | 绿 |
+| K14-03 | module entry 带参/错返回/越界、未闭合 imports → 准入拒、dispatch=0 | 带参 module → `mir.entry-sig`（mir_verify:363 完整模块零参/i32 合同；R12 探针 parameter-complete-module-negative + core lib entry-sig 断言）；未闭合 imports → 任何 Call→Import 即 executable=false（`av_unit_with_import_call_is_not_executable`，dispatch=0） | 绿 |
+| K14-04 | 可信 kind 冲突受控拒；**仅翻位且完整规则满足的正控按完整语义判定** | 冲突轴 = 未知 flag 位 decode 拒（`abc_codec_rejects_unknown_version_opcode_and_illegal_bool`）+ 手工版本/profile 复核（verify_abc Identity）；翻位正控 = `av_unit_kind_zero_param_credential_not_executable` 正控臂（is_unit=false 同体执行 7）+ kindless 测试的 v2 翻位形态（R13 复审验证：不把 v2 合法翻位当旧版本错误） | 绿 |
+| K14-05 | 手工 DecodedAbc/raw bytes/driver fresh/hit/新 worker restart 每入口重验 | manual+raw+fresh = `abc_kind_survives_roundtrip`；hit/restart/跨工程 = `av_cache_hit_lifecycle`（命中跳产仍执行、逐次重比较）；新进程恢复 = `av_cache_worker_restore_new_process`（manifest→artifact id→重验→执行）；**正式 runner 腿 = `av.core.kind-selfcall-module`（两 run 步：fresh 后命中路径仍重验执行 42，末步判定）** | 绿 |
+| K14-06 | 无 kind/歧义旧缓存：raw 受控拒、受管 miss 重建/拒绝、不恢复 trusted | raw v1 → `abc.decode.version`（`av_cache_kindless_v1_wire_isolated`：真实 /1 伪造=版本字段+FNV 重算）；受管当前键陈旧载荷 → 确定性 miss 重建（hit0/miss1/emit1、重建写 Conflict 容忍旧行保留、双请求确定性）；旧键结构性隔离 = A09/A08 键 abc-codec/abc-sem/av-sem 代际轴 + envelope ABC_SCHEMA /2 | 绿 |
+
+V-14 行（并入上文 V 矩阵口径）：unit/完整 module/entry/imports/旧缓存在
+公开 verifier/loader、driver fresh/hit、store 新 worker、正式 AutoDown 各入口
+保真——上表六行为其展开。
+
+### r5 双线内存门（§5.9，用户裁定方案 C；contract-decision r7）
+
+- A 线（ac-core owner）前端编译瞬态 ≤224MiB、B 线（798）探针残差 ≤128MiB，
+  均为 `bench::validate_and_gate` **硬门**；缺归因测量整峰保守计入 B 线。
+- 永久测试 `av_turnaround_two_line_memory_gate` 四态（A 越/B 越/双过/保守）。
+- R13 复审独立证据（六场景×1 冒烟）：A=211,423,232B(201.6MiB) ✓、
+  B=3,731,456B(3.6MiB) ✓、`hard_gate_failures=[]` exit 0。
+- 30 样本形态：见下方正式门记录（本轮 r5 增补执行）。
+
+### r4→r5 合同增量（历史矩阵行更新）
+
+- wire **v2**（ABC_VERSION 2 / ABC_SCHEMA "/2" / ABC_SEMANTICS 2 / A09 v2；
+  FLAG_IS_UNIT 类别位）：SD-02 行的 "wire v1 布局" 以 contract-decision §4
+  （v2，r6/r7 修订记录）为准。
+- unit→闭包执行凭证（类别+imports 闭合，F798-R12-02）：SD-02 的
+  LoadedModule 行补"unit 凭证不可执行、闭包装配为唯一转换"。
+- 前门计深 = 真实结合最长构造路径（R12/R13：shunting-yard 求值器 + 一元前缀
+  绑定完整调用表达式）：SD-05 的前门行以此为准；判别测试
+  `av_resources_tail_operand_deep_call_not_concatenated`（71/131）与
+  `av_resources_prefix_unary_binds_to_full_call`（131/132 七态）。
+- 语料 6→**7 checks**（新增 `av.core.kind-selfcall-module`）。
+
+### r5 正式 30 样本验收记录（2026-10-20，@`a7850407e` + 语料增补）
+
+- **T-05 六场景×30 硬门 PASS**（release `bench-turnaround --samples 30
+  --gate-ms 1000`，exit 0 全门通过）：edit P50/P95/P99=827.3/**888.8**/910.0ms、
+  sig P95=41.4ms、180/180 样本成功、受管分区无越界、**双线内存门 30 样本
+  通过**（A=211 656 704B=201.8MiB≤224 ✓/B=3 985 408B≈3.8MiB≤128 ✓，另见
+  首跑显式数字）。raw：`turnaround-r5-30sample-pass.jsonl`（180 行）与
+  `turnaround-r5-30sample.jsonl`（含显式内存字段的首跑）。
+- **T-07 正式 AutoDown 门：环境受阻 pending**——当日多次 edit P95
+  978.9(过)/1001/1018.9/1028/1041/1076/1157ms 于 1000ms 边界抖动；本机共享
+  负载周期性尖峰（当日观测 8%↔93% 波动，多会话并行构建）；**A/B 对照：基线
+  `bf7e44f8e` 同时刻 1041.2ms 同样 FAIL**（无码回归）；同语义 30 样本 bench
+  于当前代码 PASS（888.8ms）。其余正式腿全绿：语料 **7 checks**（新增
+  `av.core.kind-selfcall-module` fresh+hit 两 run 42）、负 oracle、decode
+  负例、worker 故障注入 Infra、probe_adapter 兼容 18/18。
+- 解锁动作：静置机单测重放
+  `cargo test -p auto-lang --lib --features test-cases
+  tests::ac_av_probe_tests::ac_av_probe_formal_turnaround_gates -- --exact
+  --test-threads=1`，pass 后 T-07/T-08 复勾、execution_done 送审。

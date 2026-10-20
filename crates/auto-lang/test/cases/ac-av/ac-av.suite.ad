@@ -10,6 +10,7 @@ suite { schema: "autolang.suite/2", id: "ac-av", include: [
   "av-core-semantics.case.ad",
   "av-core-traps.case.ad",
   "av-core-trace.case.ad",
+  "av-core-kind.case.ad",
   "av-resources-front-door.case.ad",
 ] }
 ```
