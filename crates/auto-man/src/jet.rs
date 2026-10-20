@@ -344,6 +344,9 @@ impl JetProject {
         let output_dir = root_dir.join("gen").join("front").join("jet");
 
         // Load cache
+        // PLAN-814 R3-02：生成器指纹在 cache load/dirty 判定前注入（compiler
+        // build.rs 单源经 SDK 槽；未注入则每次误判失效——Plan 698 SD-01 时序）。
+        auto_lang::database::set_generator_fingerprint(auto_lang::generator_fingerprint());
         let mut cache = UICache::load(root_dir);
         let mut changed_files = Vec::new();
 

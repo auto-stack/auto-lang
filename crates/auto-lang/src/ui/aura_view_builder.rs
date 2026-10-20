@@ -4696,14 +4696,10 @@ impl<'a> AuraViewBuilder<'a> {
         }
     }
 
-
     /// PLAN-781 T-03: 后置注入 pane 归属——把本 pane 子树内**未限定**的
     /// ScrollAnchorMark 填上 controller key。遇嵌套 Scrollable 停（内层
     /// convert_scroll 已注入其自己的归属，外层不得覆盖）。
-    fn inject_anchor_pane(
-        view: View<DynamicMessage>,
-        pane_key: &str,
-    ) -> View<DynamicMessage> {
+    fn inject_anchor_pane(view: View<DynamicMessage>, pane_key: &str) -> View<DynamicMessage> {
         match view {
             View::ScrollAnchorMark { pane, key, child } => {
                 let pane = if pane.is_empty() {
@@ -4717,24 +4713,42 @@ impl<'a> AuraViewBuilder<'a> {
                     child: Box::new(Self::inject_anchor_pane(*child, pane_key)),
                 }
             }
-            View::Row { children, spacing, padding, style, onclick, on_right_click } => {
-                View::Row {
-                    children: children
-                        .into_iter()
-                        .map(|c| Self::inject_anchor_pane(c, pane_key))
-                        .collect(),
-                    spacing, padding, style, onclick, on_right_click,
-                }
-            }
-            View::Column { children, spacing, padding, style, onclick, on_right_click } => {
-                View::Column {
-                    children: children
-                        .into_iter()
-                        .map(|c| Self::inject_anchor_pane(c, pane_key))
-                        .collect(),
-                    spacing, padding, style, onclick, on_right_click,
-                }
-            }
+            View::Row {
+                children,
+                spacing,
+                padding,
+                style,
+                onclick,
+                on_right_click,
+            } => View::Row {
+                children: children
+                    .into_iter()
+                    .map(|c| Self::inject_anchor_pane(c, pane_key))
+                    .collect(),
+                spacing,
+                padding,
+                style,
+                onclick,
+                on_right_click,
+            },
+            View::Column {
+                children,
+                spacing,
+                padding,
+                style,
+                onclick,
+                on_right_click,
+            } => View::Column {
+                children: children
+                    .into_iter()
+                    .map(|c| Self::inject_anchor_pane(c, pane_key))
+                    .collect(),
+                spacing,
+                padding,
+                style,
+                onclick,
+                on_right_click,
+            },
             // 嵌套 pane / 叶子：停。
             other => other,
         }
@@ -16785,16 +16799,14 @@ mod tests {
         let widget = make_test_widget("Test", vec![]);
         let bridge = VmBridge::new(&widget).unwrap();
         let registry = crate::ui::widget_registry::WidgetRegistry::new();
-        let builder =
-            AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &[]);
+        let builder = AuraViewBuilder::with_registry_and_imports(&bridge, "Test", &registry, &[]);
         let node = AuraNode::element("icon")
             .with_prop("name", Expr::Str("copy".into()))
             .with_prop("size", Expr::Ident(crate::ast::Name::from("size")));
         let AuraNode::Element { props, .. } = &node else {
             panic!("期望 Element 节点")
         };
-        let bindings: Bindings =
-            HashMap::from([("size".to_string(), auto_val::Value::Int(12))]);
+        let bindings: Bindings = HashMap::from([("size".to_string(), auto_val::Value::Int(12))]);
         let style = builder
             .with_icon_size(None, props, &bindings)
             .expect("绑定 size 应产出样式");
@@ -22493,8 +22505,6 @@ mod tests {
             other => panic!("期望 View::Image（lucide glyph）,得到 {other:?}"),
         }
 
-
-
         // 含 "icon" 的 tag 保持 glyph 路径（625 向后兼容面）。
         let node_i = AuraNode::element("Folder_icon").with_prop("size", Expr::Int(14));
         let view_i = builder.build(&node_i);
@@ -23805,9 +23815,8 @@ mod plan534_side_panel_tests {
         let keys = find_anchor(&anchored);
         assert_eq!(keys, vec!["p40".to_string()], "anchored child wrapped once");
 
-        let plain = build_view(
-            "widget T { view { col { scroll-pane { col { text \"row\" {} } } } } }",
-        );
+        let plain =
+            build_view("widget T { view { col { scroll-pane { col { text \"row\" {} } } } } }");
         assert!(find_anchor(&plain).is_empty(), "no attr -> no wrapper");
     }
 
@@ -27921,13 +27930,19 @@ mod plan047_convergence_tests {
         let heightish = |c: &StyleClass| {
             matches!(
                 c,
-                StyleClass::Height(_) | StyleClass::HeightPercent(_) | StyleClass::MinHeight(_) | StyleClass::MaxHeight(_)
+                StyleClass::Height(_)
+                    | StyleClass::HeightPercent(_)
+                    | StyleClass::MinHeight(_)
+                    | StyleClass::MaxHeight(_)
             )
         };
         let widthish = |c: &StyleClass| {
             matches!(
                 c,
-                StyleClass::Width(_) | StyleClass::WidthPercent(_) | StyleClass::MinWidth(_) | StyleClass::MaxWidth(_)
+                StyleClass::Width(_)
+                    | StyleClass::WidthPercent(_)
+                    | StyleClass::MinWidth(_)
+                    | StyleClass::MaxWidth(_)
             )
         };
 
@@ -27936,10 +27951,22 @@ mod plan047_convergence_tests {
         let pane = Style::parse("border rounded h-32 px-2 w-full hover:h-64").unwrap();
         let content = AuraViewBuilder::scroll_content_style(pane, ScrollAxes::Y);
         assert!(!has(&content, &heightish), "Y 轴 pane：Height 族须剥除");
-        assert!(has(&content, &|c| matches!(c, StyleClass::Border)), "视觉类 border 保留");
-        assert!(has(&content, &|c| matches!(c, StyleClass::Rounded)), "视觉类 rounded 保留");
-        assert!(has(&content, &|c| matches!(c, StyleClass::PaddingX(_))), "padding 保留");
-        assert!(has(&content, &widthish), "Y 轴 pane：跨轴 Width（w-full 铺宽）保留");
+        assert!(
+            has(&content, &|c| matches!(c, StyleClass::Border)),
+            "视觉类 border 保留"
+        );
+        assert!(
+            has(&content, &|c| matches!(c, StyleClass::Rounded)),
+            "视觉类 rounded 保留"
+        );
+        assert!(
+            has(&content, &|c| matches!(c, StyleClass::PaddingX(_))),
+            "padding 保留"
+        );
+        assert!(
+            has(&content, &widthish),
+            "Y 轴 pane：跨轴 Width（w-full 铺宽）保留"
+        );
 
         // X 轴 pane："w-96 h-32"——Width 剥、Height 保留。
         let pane = Style::parse("w-96 h-32").unwrap();
@@ -27950,6 +27977,9 @@ mod plan047_convergence_tests {
         // 双轴：两族都剥。
         let pane = Style::parse("h-[400px] max-h-[600px] w-1/2").unwrap();
         let content = AuraViewBuilder::scroll_content_style(pane, ScrollAxes::BOTH);
-        assert!(!has(&content, &heightish) && !has(&content, &widthish), "双轴 pane：两族都剥");
+        assert!(
+            !has(&content, &heightish) && !has(&content, &widthish),
+            "双轴 pane：两族都剥"
+        );
     }
 }

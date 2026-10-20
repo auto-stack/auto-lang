@@ -1056,17 +1056,15 @@ impl McpHeadlessSource {
         let component = &self.surface.component;
         let (view, id_map, probe) = component.view_with_debug_gated(true);
         let span_map = component.span_map().clone();
-        let vtree = crate::ui::vnode_converter::view_to_vtree_with_paths(
-            view.clone(),
-            |path: &[u16]| {
+        let vtree =
+            crate::ui::vnode_converter::view_to_vtree_with_paths(view.clone(), |path: &[u16]| {
                 let p: Vec<usize> = path.iter().map(|&x| x as usize).collect();
                 id_map
                     .get(&p)
                     .and_then(|aura_id| span_map.get(&aura_id))
                     .and_then(|info| info.span)
                     .map(|(offset, len)| crate::ui::debug::SourceSpan { offset, len })
-            },
-        );
+            });
         let mut computed: HashMap<crate::ui::vnode::VNodeId, ComputedNodeLite> = HashMap::new();
         for (path_u16, entry) in probe.snapshot() {
             let vid = crate::ui::vnode::VNodeId::new(crate::ui::vnode::id_from_path(path_u16));

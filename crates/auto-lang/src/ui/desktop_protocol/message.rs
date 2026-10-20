@@ -351,7 +351,8 @@ pub fn rf_textdump(tag: &str, list: &DisplayList) {
     if DUMPS.fetch_add(1, Ordering::Relaxed) >= 8 {
         return;
     }
-    let (mut q, mut t, mut s, mut sp, mut tr, mut trp, mut im) = (0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32);
+    let (mut q, mut t, mut s, mut sp, mut tr, mut trp, mut im) =
+        (0u32, 0u32, 0u32, 0u32, 0u32, 0u32, 0u32);
     for op in &list.ops {
         match op {
             DisplayOp::Quad { .. } => q += 1,
@@ -370,7 +371,14 @@ pub fn rf_textdump(tag: &str, list: &DisplayList) {
     );
     for (n, op) in list.ops.iter().enumerate() {
         if let DisplayOp::TextStyled {
-            x, y, size, line_height, color, weight, italic, text,
+            x,
+            y,
+            size,
+            line_height,
+            color,
+            weight,
+            italic,
+            text,
         } = op
         {
             let head: String = text.chars().take(24).collect();

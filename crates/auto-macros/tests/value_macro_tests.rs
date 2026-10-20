@@ -1,4 +1,6 @@
-use auto_lang::{value, atom};
+// PLAN-814 R3-03：dev 依 SDK——宏展开内 auto_lang:: 路径经别名解析。
+use auto_lang_core as auto_lang;
+use auto_macros::{atom, value};
 use auto_val::Value;
 
 // 测试 value! 宏 - 节点

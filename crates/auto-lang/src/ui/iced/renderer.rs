@@ -7,11 +7,11 @@
 
 use crate::ui::app::AppResult;
 use crate::ui::component::Component;
+use crate::ui::style::{Color, SizeValue, Style, StyleClass};
 use crate::ui::style_iced_adapter::{
     IcedAlign, IcedFontSize, IcedFontWeight, IcedJustify, IcedOverflow, IcedShadowSize, IcedSize,
     IcedStyle,
 };
-use crate::ui::style::{Color, SizeValue, Style, StyleClass};
 use crate::ui::view::View as AbstractView;
 use iced::widget::{
     button, checkbox, column, container, mouse_area, pick_list, row, scrollable, svg, text,
@@ -34268,24 +34268,20 @@ mod tests {
         .unwrap();
         let base = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::from_style(&s));
         // hover:变体色覆盖 base(既有先例)
-        let hover = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(
-            &s,
-            Variant::Hover,
-        ));
+        let hover = build_button_style(
+            &crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(&s, Variant::Hover),
+        );
         assert!(hover.background.is_some());
         // focus/active/disabled:同构合并,各自底色生效
-        let focus = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(
-            &s,
-            Variant::Focus,
-        ));
-        let active = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(
-            &s,
-            Variant::Active,
-        ));
-        let disabled = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(
-            &s,
-            Variant::Disabled,
-        ));
+        let focus = build_button_style(
+            &crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(&s, Variant::Focus),
+        );
+        let active = build_button_style(
+            &crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(&s, Variant::Active),
+        );
+        let disabled = build_button_style(
+            &crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(&s, Variant::Disabled),
+        );
         let bg_of = |st: &iced::widget::button::Style| {
             st.background.map(|b| match b {
                 iced::Background::Color(c) => (c.r, c.g, c.b),

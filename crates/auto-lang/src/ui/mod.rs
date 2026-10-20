@@ -226,7 +226,14 @@ pub mod autodown_render;
 
 // PLAN-041 T1: 块家族注册表——chrome/样式单源，只读臂与编辑壳共同消费。
 #[cfg(feature = "autodown")]
+// PLAN-814 R3-04：autodown 文档引擎实装（跨仓 autodown-core 依赖与
+// `autodown` feature 同 owner 在本包）——经 SDK 端口注册。
+#[cfg(feature = "autodown")]
 pub mod autodown_blocks;
+// PLAN-814 R3-04：autodown 文档引擎实装（跨仓 autodown-core 依赖与
+// `autodown` feature 同 owner 在本包）——经 SDK 端口注册。
+#[cfg(feature = "autodown")]
+pub mod autodown_engine;
 
 // PLAN-084 T-01b: VM 轨 LaTeX→Unicode 数学符号转换（真渲染 bounded 子集）。
 #[cfg(feature = "autodown")]

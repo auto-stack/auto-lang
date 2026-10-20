@@ -1,4 +1,6 @@
 // 测试宏展开并打印生成的字符串
+// PLAN-814 R3-03：dev 依 SDK——宏展开内 auto_lang:: 路径经别名解析。
+use auto_lang_core as auto_lang;
 use auto_lang::atom::AtomReader;
 
 fn main() {

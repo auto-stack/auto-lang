@@ -1305,9 +1305,22 @@ pub fn set_ui_host_install_hook(install: fn()) {
     let _ = UI_HOST_INSTALL_HOOK.set(install);
 }
 
+/// PLAN-814 R3-01/R3-04：上层兼容装配的进程期自注册收集点。语义边界
+/// （对照 r2 §2 "不靠 linker inventory 偶然拉入初始化"）：SDK **不提交**
+/// 任何安装器——纯 SDK 消费者零 submit、钩子缺席=显式拒绝/回退语义不
+/// 变；上层 auto-lang 被链接即其 submit 生效（确定性自注册，覆盖不经
+/// run 族漏斗的直达调用——native dispatch/旧公开入口）。
+pub struct UiCompatInstaller(pub fn());
+inventory::collect!(UiCompatInstaller);
+
 pub fn install_ui_host_capabilities() {
     if let Some(install) = UI_HOST_INSTALL_HOOK.get() {
         install();
+        return;
+    }
+    // 钩子未注册：尝试上层自注册安装器（无 submit 时为空——纯 SDK 形态）。
+    for installer in inventory::iter::<UiCompatInstaller> {
+        (installer.0)();
     }
 }
 

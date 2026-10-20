@@ -131,12 +131,23 @@ impl UICache {
     }
 
     /// Save cache to project root
+    /// PLAN-814 R3-02：保存前**重盖当前**生成器指纹——缓存对象可能早于
+    /// 指纹注入创建（auto-man load 先于生成的真实时序）；失效判定在
+    /// load_with 的 cached-vs-current 比较侧，重盖不影响其语义（Plan 698
+    /// SD-01：生成器升级后下一进程 load 比对旧存值即判失效）。
     pub fn save(&self, project_root: &Path) -> std::io::Result<()> {
         let path = Self::cache_path(project_root);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
-        let content = serde_json::to_string_pretty(self)
+        let mut value = serde_json::to_value(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+        // 重盖仅在当前确知真实身份时（Some）；None（未装配/foreign build）
+        // 保留既有字段——不把已知值抹成未知。
+        if let Some(current) = Self::generator_fingerprint() {
+            value["generator_fingerprint"] = serde_json::json!(current);
+        }
+        let content = serde_json::to_string_pretty(&value)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         fs::write(&path, content)
     }
@@ -348,8 +359,23 @@ mod tests {
     #[test]
     fn test_fingerprint_appeared_or_disappeared_invalidates() {
         let temp_dir = TempDir::new().unwrap();
-        // Cache written without a fingerprint, binary now has one.
-        seeded_cache(None).save(temp_dir.path()).unwrap();
+        // Cache written without a fingerprint, binary now has one.（R3-02
+        // 起 save() 重盖当前指纹——None 形态经直接写 JSON 构造，等同
+        // foreign build 的真实落盘形；被测语义：持久化 None vs 当前
+        // Some → 判失效。）
+        let none_fp = r#"{
+  "file_hashes": {"x.at": 1},
+  "artifacts": {},
+  "version": 2,
+  "api_functions_hash": null,
+  "generator_fingerprint": null
+}"#;
+        std::fs::create_dir_all(temp_dir.path().join(".auto")).unwrap();
+        std::fs::write(
+            UICache::cache_path(temp_dir.path()),
+            none_fp,
+        )
+        .unwrap();
         let loaded = UICache::load_with(temp_dir.path(), Some("F1".into()));
         assert_eq!(loaded.file_count(), 0);
 

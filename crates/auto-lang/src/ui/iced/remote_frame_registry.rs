@@ -727,14 +727,21 @@ mod tests {
         // dy=(735-558)/2=88.4。点 (41.5, 131.5) → 远端 (50.5, 54.7)
         //（拉伸映射得 (50.2, 121.6)——错位复现锚）。
         let bounds = Rectangle::new(iced::Point::ORIGIN, iced::Size::new(397.0, 735.0));
-        let live = LiveInfo { wid: 2, w: 480.0, h: 680.0 };
+        let live = LiveInfo {
+            wid: 2,
+            w: 480.0,
+            h: 680.0,
+        };
         let (rx, ry) = RemoteFramePainter::<()>::to_remote((41.5, 131.5), &bounds, &live);
         assert!((rx - 50.2).abs() < 0.2, "x={rx}");
         assert!((ry - 54.7).abs() < 0.2, "y={ry}（拉伸映射得 121.6——错位）");
         // 1:1 恒等（760 e2e 形态）不变。
         let sq = Rectangle::new(iced::Point::ORIGIN, iced::Size::new(480.0, 680.0));
         let (ix, iy) = RemoteFramePainter::<()>::to_remote((240.0, 340.0), &sq, &live);
-        assert!((ix - 240.0).abs() < 0.01 && (iy - 340.0).abs() < 0.01, "1:1 恒等破坏");
+        assert!(
+            (ix - 240.0).abs() < 0.01 && (iy - 340.0).abs() < 0.01,
+            "1:1 恒等破坏"
+        );
     }
 
     fn welcome(wid: u64, w: f32, h: f32) -> ProtocolMsg {

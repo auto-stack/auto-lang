@@ -1,6 +1,6 @@
 // Plan 249: unified native catalog macro expansion needs higher recursion limit
 #![recursion_limit = "512"]
-pub use auto_lang_core::{resolve_module_path, bootstrap_lib_source, pac_dep_version_violation, pac_workspace_member_dir, pac_declares_dep,  create_vm_from_source, create_vm_from_abt, run_abt, validate_rust_output, trans_c, trans_rust, trans_c_with_session, trans_rust_with_session, UseModuleResolution, resolve_use_module, init_rust_ffi, init_py_ffi, find_use_symbol_span, extract_undefined_symbol, read_auto_lib, execute_autovm_with_path, execute_autovm_with_deadline_and_input, store_name_snake, find_store_decl_files, get_global_runtime, block_on_autovm_local, set_script_args, script_args, set_error_limit, get_error_limit, set_vm_debug, is_vm_debug, is_vm_trace_ops, is_vm_hot_trace, pool_trace_idx, pool_log_all, pool_log_seq, p510_audit, vm_thread_stack_size, run_with_capture_and_bytecode, run_with_capture_and_bytecode_with_meta, run_with_capture_and_bytecode_with_deadline, run_with_capture_and_bytecode_with_input, run_with_capture_and_path_and_bytecode, run_with_capture_and_path_and_bytecode_with_meta, run_with_capture_and_path_and_bytecode_with_deadline, run_with_capture_and_path_and_bytecode_with_input, join_execution, execute_autovm, parse, parse_preserve_error, set_external_back_root, find_project_root, eval_config_with_vm, set_ui_host_install_hook};
+pub use auto_lang_core::{resolve_module_path, bootstrap_lib_source, pac_dep_version_violation, pac_workspace_member_dir, pac_declares_dep,  run_abt, validate_rust_output, trans_c, trans_rust, trans_c_with_session, trans_rust_with_session, UseModuleResolution, resolve_use_module, init_rust_ffi, init_py_ffi, find_use_symbol_span, extract_undefined_symbol, read_auto_lib, execute_autovm_with_path, execute_autovm_with_deadline_and_input, store_name_snake, find_store_decl_files, get_global_runtime, block_on_autovm_local, set_script_args, script_args, set_error_limit, get_error_limit, set_vm_debug, is_vm_debug, is_vm_trace_ops, is_vm_hot_trace, pool_trace_idx, pool_log_all, pool_log_seq, p510_audit, vm_thread_stack_size, run_with_capture_and_bytecode, run_with_capture_and_bytecode_with_meta, run_with_capture_and_bytecode_with_deadline, run_with_capture_and_bytecode_with_input, run_with_capture_and_path_and_bytecode, run_with_capture_and_path_and_bytecode_with_meta, run_with_capture_and_path_and_bytecode_with_deadline, run_with_capture_and_path_and_bytecode_with_input, join_execution, execute_autovm, parse, parse_preserve_error, set_external_back_root, find_project_root, set_ui_host_install_hook};
 
 // Plan 565 P0: counting global allocator for memory attribution — installed
 // only with `--features mem-profile`; without the feature the System
@@ -100,6 +100,9 @@ pub use auto_lang_core::test_cases;
 // Plan 096 Phase 0: AURA (Auto UI Representation Abstract)
 // PLAN-814 T-03 Batch 2：UI 分析/生成域迁 auto-ui-compiler；旧路径经再导出保持。
 pub use auto_ui_compiler::aura;
+// PLAN-814 R3-02：生成器源指纹公开面（auto-man 管线在 UICache::load 前
+// 注入——Plan 698 SD-01 失效合同时序）。
+pub use auto_ui_compiler::generator_fingerprint;
 // Plan 217: A2UI Protocol Bridge (AURA ↔ A2UI JSON)
 pub use auto_ui_compiler::a2ui;
 // Plan 096 Phase 2: UI Backend Generators (Vue, Rust)
@@ -239,12 +242,21 @@ use crate::error::{AutoError, AutoResult};
 /// 在 ui 门内=三分），缺席槽=false/VMError 同旧。
 #[cfg(any(feature = "ui", feature = "ui-dialog"))]
 fn install_ui_host_capabilities() {
+    // PLAN-814 R3-01：本安装器同时注册进 SDK 钩子——SDK 侧旧公开入口
+    // （create_vm_from_source/abt、eval_config、execute 族等）经
+    // auto_lang_core::install_ui_host_capabilities() 回调本包真实装配
+    // （PLAN-779 装配合同保持；首次直达调用由下方入口包装保证先注册）。
+    auto_lang_core::set_ui_host_install_hook(install_ui_host_capabilities);
     // PLAN-814: i18n lookup 钩子注册（原 shim_i18n_t 的 crate::ui 直连边收口）
     #[cfg(feature = "ui")]
     auto_lang_core::set_i18n_lookup_hook(crate::ui::i18n_lookup::lookup);
     #[cfg(feature = "ui")]
     {
         crate::ui::frame_provider::install_process_default();
+        // PLAN-814 R3-04：autodown 文档引擎（feature 同 owner；SDK 侧
+        // natives dispatch 槽未设时经宿主钩子回调至此注册）。
+        #[cfg(feature = "autodown")]
+        crate::ui::autodown_engine::install();
         #[cfg(feature = "ui-clipboard")]
         crate::ui::clipboard_provider::install_process_default();
         #[cfg(all(windows, feature = "native-clipboard"))]
@@ -270,7 +282,59 @@ fn install_ui_host_capabilities() {
 }
 
 #[cfg(not(any(feature = "ui", feature = "ui-dialog")))]
-fn install_ui_host_capabilities() {}
+fn install_ui_host_capabilities() {
+    // PLAN-814 R3-01：无 UI 构建同注册（no-op 安装器）——SDK 钩子语义
+    // 与纯 SDK 形态一致（无 UI 默认实现）。
+    auto_lang_core::set_ui_host_install_hook(install_ui_host_capabilities);
+}
+
+// PLAN-814 R3-01/R3-04：上层装配的进程期自注册（SDK 收集点
+// UiCompatInstaller——本 crate 被链接即生效；覆盖不经漏斗的直达调用：
+// 旧公开入口/native dispatch 的槽未设路径）。非 inventory 依赖添加：
+// SDK 侧已依赖，本 crate 经 re-export 面使用。
+fn plan814_ui_compat_install() {
+    install_ui_host_capabilities();
+}
+inventory::submit!(auto_lang_core::UiCompatInstaller(plan814_ui_compat_install));
+
+
+// ---- PLAN-814 R3-01：旧公开高层入口的兼容装配包装 ----
+// 这四个入口在 SDK 侧经钩子回调本包安装器；包装确保消费者首次直达调用
+// （未经 run 家族漏斗）也先注册钩子再进 SDK 实现。签名与旧行为逐位一致。
+
+/// 兼容包装：装配 UI 宿主能力后委托 SDK 实现（PLAN-779 装配合同）。
+pub fn create_vm_from_source(
+    source: &str,
+) -> AutoResult<(
+    auto_lang_core::vm::engine::AutoVM,
+    std::sync::Arc<std::sync::RwLock<String>>,
+    usize,
+    auto_lang_core::vm::codegen::ObjectType,
+)> {
+    install_ui_host_capabilities();
+    auto_lang_core::create_vm_from_source(source)
+}
+
+/// 兼容包装：装配 UI 宿主能力后委托 SDK 实现（PLAN-779 装配合同）。
+pub fn create_vm_from_abt(
+    abt_text: &str,
+) -> AutoResult<(
+    auto_lang_core::vm::engine::AutoVM,
+    std::sync::Arc<std::sync::RwLock<String>>,
+    usize,
+)> {
+    install_ui_host_capabilities();
+    auto_lang_core::create_vm_from_abt(abt_text)
+}
+
+/// 兼容包装：装配 UI 宿主能力后委托 SDK 实现（PLAN-779 装配合同）。
+pub fn eval_config_with_vm(
+    code: &str,
+    args: &auto_val::Obj,
+) -> AutoResult<auto_val::Value> {
+    install_ui_host_capabilities();
+    auto_lang_core::eval_config_with_vm(code, args)
+}
 
 
 /// Plan 327: execute_autovm with an optional source file path.

@@ -289,13 +289,16 @@ pub fn resolve_anchor_requests(
         };
         let ty = pane_y - vy;
         // nearest（决策报告 §3 冻结公式）——x 轴不动（v1 单轴 Y）。
-        let y_axis = snapshot.to_scroll_state().y.unwrap_or(crate::ui::scroll::state::ScrollAxisState {
-            offset: 0.0,
-            viewport_extent: 0.0,
-            content_extent: 0.0,
-        });
-        let nearest_y =
-            crate::ui::scroll::geometry::nearest_child_offset(&y_axis, ty, th);
+        let y_axis =
+            snapshot
+                .to_scroll_state()
+                .y
+                .unwrap_or(crate::ui::scroll::state::ScrollAxisState {
+                    offset: 0.0,
+                    viewport_extent: 0.0,
+                    content_extent: 0.0,
+                });
+        let nearest_y = crate::ui::scroll::geometry::nearest_child_offset(&y_axis, ty, th);
         let x = snapshot.offset_x;
         let widget_id = snapshot.widget_id.clone();
         if let Some(req) = reg.anchor_requests.get_mut(&(handle.clone(), key.clone())) {
@@ -463,15 +466,15 @@ pub fn pending_intent_count() -> usize {
     REGISTRY.lock().unwrap().intents.len()
 }
 
-    /// 测试面：清空注册表（测试隔离用）。
-    #[cfg(test)]
-    pub fn reset_for_test() {
-        let mut reg = REGISTRY.lock().unwrap();
-        reg.panes.clear();
-        reg.intents.clear();
-        reg.generations.clear();
-        reg.anchor_requests.clear();
-    }
+/// 测试面：清空注册表（测试隔离用）。
+#[cfg(test)]
+pub fn reset_for_test() {
+    let mut reg = REGISTRY.lock().unwrap();
+    reg.panes.clear();
+    reg.intents.clear();
+    reg.generations.clear();
+    reg.anchor_requests.clear();
+}
 
 #[cfg(test)]
 mod tests {
@@ -580,8 +583,11 @@ mod tests {
     // ---------------- PLAN-781 T-02: 锚点请求生命周期 ----------------
 
     fn assert_state(handle: &str, key: &str, expected: AnchorRequestState) {
-        assert_eq!(anchor_request_state(handle, key).as_ref(), Some(&expected),
-                   "state mismatch for {handle}/{key}");
+        assert_eq!(
+            anchor_request_state(handle, key).as_ref(),
+            Some(&expected),
+            "state mismatch for {handle}/{key}"
+        );
     }
 
     #[test]
@@ -665,7 +671,10 @@ mod tests {
         let bounds = HashMap::from([((h.clone(), "p10".to_string()), (50.0_f64, 40.0_f64))]);
         let origins = HashMap::from([("pane_c2".to_string(), (0.0_f64, 0.0_f64))]);
         let finals = resolve_anchor_requests(&bounds, &origins, true);
-        assert!(finals.is_empty(), "stale request must not land on new content");
+        assert!(
+            finals.is_empty(),
+            "stale request must not land on new content"
+        );
         assert_state(&h, "p10", AnchorRequestState::Invalid("not_bound".into()));
         // 重新入队（新代际）正常解析。
         enqueue_anchor_request(&h, "p10").unwrap();

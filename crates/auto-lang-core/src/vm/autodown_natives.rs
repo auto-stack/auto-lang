@@ -57,10 +57,14 @@ pub fn shim_autodown_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMErro
 /// on_change 回环 payload 口；key 未注册 / 双 feature 缺失时返回空串）。
 pub fn shim_autodown_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
     let key = pop_string_arg(task, vm);
-    #[cfg(all(feature = "autodown", feature = "code-editor"))]
-    let text = crate::ui::autodown_editor::autodown_editor_text(&key).unwrap_or_default();
-    #[cfg(not(all(feature = "autodown", feature = "code-editor")))]
-    let text = String::new();
+    // PLAN-814 R3-04：编辑壳全文经引擎端口（上层 code-editor+autodown 面；
+    // 缺席=空串语义保持）。
+    if autodown_engine().is_none() {
+        crate::install_ui_host_capabilities();
+    }
+    let text = autodown_engine()
+        .and_then(|engine| engine.editor_text(&key))
+        .unwrap_or_default();
     push_string(task, vm, &text)
 }
 
@@ -115,307 +119,62 @@ fn push_string(task: &mut AutoTask, vm: &AutoVM, s: &str) -> Result<(), VMError>
 
 // ------------------------------------------------- 实现（feature 门控）
 
-#[cfg(feature = "autodown")]
-mod impls {
-    use autodown_core::block_model::{
-        applyOp, blockFull, collapsedSel, findBlock, rng, spansText, Attr, BlockNode, BlockType,
-        InlineSpan, Mark, Value,
-    };
-    use autodown_core::markdown_parser::parse_blocks;
-    use autodown_core::serializer::serialize;
-    use serde_json::{json, Value as J};
+// ------------------------------------------------- 实现端口（PLAN-814 R3-04）
+// 真实实现（autodown-core 跨仓 crate）按 owner 留上层 auto-lang（其
+// `autodown` feature 持依赖与装配）；SDK 经进程默认引擎端口供值——槽未
+// 设时先触发 UI 宿主装配钩子（上层安装器注册真实引擎；纯 SDK 无钩子=
+// 原构建错误语义保持，catalog 表恒稳定）。
 
-    pub fn parse_to_json(src: &str, is_final: bool) -> Result<String, String> {
-        let root = parse_blocks(src, is_final);
-        serde_json::to_string(&block_to_json(&root)).map_err(|e| e.to_string())
-    }
-
-    pub fn serialize_from_json(doc: &str, emit_ids: bool) -> Result<String, String> {
-        let root = block_from_doc(doc)?;
-        Ok(serialize(root, emit_ids))
-    }
-
-    pub fn text_from_json(doc: &str, block_id: &str) -> Result<String, String> {
-        let root = block_from_doc(doc)?;
-        match findBlock(root, block_id) {
-            Some(b) => Ok(spansText(b.inlines)),
-            None => Err(format!("autodown_text: block '{block_id}' not found")),
-        }
-    }
-
-    pub fn find_in_json(doc: &str, block_id: &str) -> Result<bool, String> {
-        let root = block_from_doc(doc)?;
-        Ok(findBlock(root, block_id).is_some())
-    }
-
-    pub fn insert_text_json(
+/// autodown 文档引擎端口（对象安全；方法面 = 原实现 mod 的 fn 面）。
+pub trait AutodownEngine: Send + Sync {
+    fn parse_to_json(&self, src: &str, is_final: bool) -> Result<String, String>;
+    fn serialize_from_json(&self, doc: &str, emit_ids: bool) -> Result<String, String>;
+    fn text_from_json(&self, doc: &str, block_id: &str) -> Result<String, String>;
+    fn find_in_json(&self, doc: &str, block_id: &str) -> Result<bool, String>;
+    fn insert_text_json(
+        &self,
         doc: &str,
         block_id: &str,
         offset: i64,
         text: &str,
-    ) -> Result<String, String> {
-        let root = block_from_doc(doc)?;
-        if findBlock(root.clone(), block_id).is_none() {
-            return Err(format!(
-                "autodown_insert_text: block '{block_id}' not found"
-            ));
-        }
-        let op =
-            autodown_core::block_model::Op::InsertText(autodown_core::block_model::InsertTextOp {
-                pos: autodown_core::block_model::BlockPos {
-                    blockId: block_id.to_string(),
-                    offset,
-                },
-                text: text.to_string(),
-            });
-        let result = applyOp(root, collapsedSel(block_id, offset), op);
-        serde_json::to_string(&block_to_json(&result.tree)).map_err(|e| e.to_string())
-    }
-
-    pub fn insert_template_json(
+    ) -> Result<String, String>;
+    fn insert_template_json(
+        &self,
         doc: &str,
         md: &str,
         parent_id: &str,
         index: i64,
-    ) -> Result<String, String> {
-        let mut root = block_from_doc(doc)?;
-        let frags = parse_blocks(md, true).children;
-        if frags.is_empty() {
-            return Err("autodown_insert_template: template parsed to no blocks".into());
-        }
-        let parent = if parent_id.is_empty() {
-            &mut root
-        } else {
-            find_mut(&mut root, parent_id).ok_or_else(|| {
-                format!("autodown_insert_template: parent '{parent_id}' not found")
-            })?
-        };
-        let idx = if index < 0 {
-            parent.children.len()
-        } else {
-            (index as usize).min(parent.children.len())
-        };
-        for (i, f) in frags.into_iter().enumerate() {
-            parent.children.insert(idx + i, f);
-        }
-        serde_json::to_string(&block_to_json(&root)).map_err(|e| e.to_string())
-    }
-
-    fn find_mut<'a>(node: &'a mut BlockNode, id: &str) -> Option<&'a mut BlockNode> {
-        if node.id == id {
-            return Some(node);
-        }
-        for c in node.children.iter_mut() {
-            if let Some(found) = find_mut(c, id) {
-                return Some(found);
-            }
-        }
-        None
-    }
-
-    fn block_from_doc(doc: &str) -> Result<BlockNode, String> {
-        let j: J =
-            serde_json::from_str(doc).map_err(|e| format!("autodown: bad document json: {e}"))?;
-        block_from_json(&j)
-            .ok_or_else(|| "autodown: malformed document json (block shape)".to_string())
-    }
-
-    fn parse_json(doc: &str) -> Result<J, String> {
-        serde_json::from_str(doc).map_err(|e| format!("autodown: bad document json: {e}"))
-    }
-
-    // ---------------------------------------------------------- 封送
-
-    fn kind_name(k: &BlockType) -> String {
-        k.to_string()
-    }
-
-    fn kind_from_name(s: &str) -> Option<BlockType> {
-        Some(match s {
-            "Heading" => BlockType::Heading,
-            "Paragraph" => BlockType::Paragraph,
-            "Fence" => BlockType::Fence,
-            "Blockquote" => BlockType::Blockquote,
-            "ListBlock" => BlockType::ListBlock,
-            "ListItem" => BlockType::ListItem,
-            "Table" => BlockType::Table,
-            "TableRow" => BlockType::TableRow,
-            "TableCell" => BlockType::TableCell,
-            "ThematicBreak" => BlockType::ThematicBreak,
-            "Callout" => BlockType::Callout,
-            "Details" => BlockType::Details,
-            "WikilinkBlock" => BlockType::WikilinkBlock,
-            "QueryBlock" => BlockType::QueryBlock,
-            "BlockEmbed" => BlockType::BlockEmbed,
-            "Mermaid" => BlockType::Mermaid,
-            "MathBlock" => BlockType::MathBlock,
-            _ => return None,
-        })
-    }
-
-    fn mark_name(m: &Mark) -> &'static str {
-        match m {
-            Mark::Strong => "Strong",
-            Mark::Em => "Em",
-            Mark::Code => "Code",
-            Mark::Link => "Link",
-            Mark::Image => "Image",
-            Mark::Del => "Del",
-            Mark::Underline => "Underline",
-        }
-    }
-
-    fn mark_from_name(s: &str) -> Option<Mark> {
-        Some(match s {
-            "Strong" => Mark::Strong,
-            "Em" => Mark::Em,
-            "Code" => Mark::Code,
-            "Link" => Mark::Link,
-            "Image" => Mark::Image,
-            "Del" => Mark::Del,
-            "Underline" => Mark::Underline,
-            _ => return None,
-        })
-    }
-
-    fn value_to_json(v: &Value) -> J {
-        match v {
-            Value::Null => J::Null,
-            Value::Str(s) => json!({"Str": s}),
-            Value::Int(i) => json!({"Int": i}),
-            Value::Bool(b) => json!({"Bool": b}),
-            Value::ListV(l) => {
-                json!({"List": l.iter().map(value_to_json).collect::<Vec<_>>()})
-            }
-            Value::AttrsV(a) => json!({"Attrs": attrs_to_json(a)}),
-        }
-    }
-
-    fn value_from_json(j: &J) -> Option<Value> {
-        match j {
-            J::Null => Some(Value::Null),
-            J::Object(m) => match m.iter().next() {
-                Some((k, v)) => match k.as_str() {
-                    "Str" => v.as_str().map(|s| Value::Str(s.to_string())),
-                    "Int" => v.as_i64().map(Value::Int),
-                    "Bool" => v.as_bool().map(Value::Bool),
-                    "List" => {
-                        let mut out = Vec::new();
-                        for e in v.as_array()? {
-                            out.push(value_from_json(e)?);
-                        }
-                        Some(Value::ListV(out))
-                    }
-                    "Attrs" => match attrs_from_json(v)? {
-                        Value::AttrsV(a) => Some(Value::AttrsV(a)),
-                        _ => None,
-                    },
-                    _ => None,
-                },
-                None => Some(Value::Null),
-            },
-            _ => None,
-        }
-    }
-
-    fn attrs_to_json(attrs: &[Attr]) -> J {
-        J::Array(
-            attrs
-                .iter()
-                .map(|a| json!([a.key, value_to_json(&a.value)]))
-                .collect(),
-        )
-    }
-
-    fn attrs_from_json(j: &J) -> Option<Value> {
-        let mut out = Vec::new();
-        for pair in j.as_array()? {
-            let p = pair.as_array()?;
-            let key = p.first()?.as_str()?.to_string();
-            let value = value_from_json(p.get(1)?)?;
-            out.push(Attr { key, value });
-        }
-        Some(Value::AttrsV(out))
-    }
-
-    fn attrs_vec_from_json(j: &J) -> Option<Vec<Attr>> {
-        match attrs_from_json(j)? {
-            Value::AttrsV(a) => Some(a),
-            _ => None,
-        }
-    }
-
-    fn span_to_json(s: &InlineSpan) -> J {
-        json!({
-            "text": s.text,
-            "marks": s.marks.iter().map(|m| mark_name(m)).collect::<Vec<_>>(),
-            "attrs": attrs_to_json(&s.attrs),
-        })
-    }
-
-    fn span_from_json(j: &J) -> Option<InlineSpan> {
-        let o = j.as_object()?;
-        let text = o.get("text")?.as_str()?.to_string();
-        let mut marks = Vec::new();
-        for m in o.get("marks").and_then(|v| v.as_array()).unwrap_or(&vec![]) {
-            marks.push(mark_from_name(m.as_str()?)?);
-        }
-        let attrs = o
-            .get("attrs")
-            .and_then(attrs_vec_from_json)
-            .unwrap_or_default();
-        Some(InlineSpan { text, marks, attrs })
-    }
-
-    fn block_to_json(b: &BlockNode) -> J {
-        json!({
-            "id": b.id,
-            "kind": kind_name(&b.kind),
-            "attrs": attrs_to_json(&b.attrs),
-            "inlines": b.inlines.iter().map(span_to_json).collect::<Vec<_>>(),
-            "children": b.children.iter().map(block_to_json).collect::<Vec<_>>(),
-        })
-    }
-
-    fn block_from_json(j: &J) -> Option<BlockNode> {
-        let o = j.as_object()?;
-        let id = o.get("id")?.as_str()?.to_string();
-        let kind = kind_from_name(o.get("kind")?.as_str()?)?;
-        let attrs = o
-            .get("attrs")
-            .and_then(attrs_vec_from_json)
-            .unwrap_or_default();
-        let mut inlines = Vec::new();
-        if let Some(arr) = o.get("inlines").and_then(|v| v.as_array()) {
-            for s in arr {
-                inlines.push(span_from_json(s)?);
-            }
-        }
-        let mut children = Vec::new();
-        if let Some(arr) = o.get("children").and_then(|v| v.as_array()) {
-            for c in arr {
-                children.push(block_from_json(c)?);
-            }
-        }
-        // SourceRange 零占位（parser 不产位置信息，与 crate 发射物同构）。
-        Some(blockFull(&id, kind, attrs, children, inlines, rng(0, 0)))
-    }
+    ) -> Result<String, String>;
+    /// 编辑壳当前全文（key 未注册/引擎无编辑面 → None=空串语义保持）。
+    fn editor_text(&self, key: &str) -> Option<String>;
 }
 
-// 桩/实现切换：无 feature 时返回构建错误（natives 始终在表中可解析）。
+static AUTODOWN_ENGINE: std::sync::RwLock<Option<std::sync::Arc<dyn AutodownEngine>>> =
+    std::sync::RwLock::new(None);
+
+/// 注册 autodown 引擎（显式注册权威——上层 autodown feature 装配点调用；
+/// 纯 SDK 不注册，natives 保持构建错误回退）。
+pub fn set_autodown_engine(engine: std::sync::Arc<dyn AutodownEngine>) {
+    *AUTODOWN_ENGINE.write().unwrap() = Some(engine);
+}
+
+fn autodown_engine() -> Option<std::sync::Arc<dyn AutodownEngine>> {
+    AUTODOWN_ENGINE.read().unwrap().clone()
+}
+
+// 桩/实现切换：引擎端口供值；槽未设先触发 UI 宿主装配钩子（上层真实
+// 引擎经其 autodown feature 注册——直达 native 调用亦成立，R3-04 探针
+// 形态），仍缺席则返回构建错误（natives 始终在表中可解析）。
 macro_rules! dispatch {
     ($fname:ident($($arg:ident: $ty:ty),*) -> $retty:ty, $label:expr) => {
-        #[cfg(feature = "autodown")]
         pub fn $fname($($arg: $ty),*) -> Result<$retty, String> {
-            impls::$fname($($arg),*)
-        }
-        #[cfg(not(feature = "autodown"))]
-        pub fn $fname($($arg: $ty),*) -> Result<$retty, String> {
-            #[allow(unused_variables)]
-            fn inner($($arg: $ty),*) -> Result<$retty, String> {
-                Err($label.to_string())
+            if autodown_engine().is_none() {
+                crate::install_ui_host_capabilities();
             }
-            inner($($arg),*)
+            match autodown_engine() {
+                Some(engine) => engine.$fname($($arg),*),
+                None => Err($label.to_string()),
+            }
         }
     };
 }
@@ -433,58 +192,5 @@ dispatch!(insert_text_json(doc: &str, block_id: &str, offset: i64, text: &str) -
 dispatch!(insert_template_json(doc: &str, md: &str, parent_id: &str, index: i64) -> String,
     "built without the `autodown` feature: autodown_insert_template unavailable");
 
-#[cfg(all(test, feature = "autodown"))]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_serialize_roundtrip_via_json() {
-        let src = "# 标题\n\n段落 **粗** 与 `码`\n\n- 甲\n- 乙\n";
-        let doc = parse_to_json(src, true).unwrap();
-        // JSON → BlockNode → serialize 与 crate 直接 parse+serialize 逐字节一致
-        let out = serialize_from_json(&doc, false).unwrap();
-        let direct = {
-            use autodown_core::serializer::serialize;
-            serialize(
-                autodown_core::markdown_parser::parse_blocks(src, true),
-                false,
-            )
-        };
-        assert_eq!(out, direct);
-        assert_eq!(out, src);
-    }
-
-    #[test]
-    fn text_and_find_block() {
-        let doc = parse_to_json("# Hello\n\nworld\n", true).unwrap();
-        assert!(find_in_json(&doc, "block-0").unwrap());
-        assert!(!find_in_json(&doc, "no-such").unwrap());
-        assert_eq!(text_from_json(&doc, "block-0").unwrap(), "Hello");
-        assert!(text_from_json(&doc, "no-such").is_err());
-    }
-
-    #[test]
-    fn insert_text_applies_op() {
-        let doc = parse_to_json("abc\n", true).unwrap();
-        let out = insert_text_json(&doc, "block-0", 1, "X").unwrap();
-        assert_eq!(text_from_json(&out, "block-0").unwrap(), "aXbc");
-        assert_eq!(serialize_from_json(&out, false).unwrap(), "aXbc\n");
-        // 块不存在 → 错误
-        assert!(insert_text_json(&doc, "nope", 0, "x").is_err());
-    }
-
-    #[test]
-    fn insert_template_splices_children() {
-        let doc = parse_to_json("# 头\n\n尾\n", true).unwrap();
-        // 顶层 index 1 插入两个块
-        let out = insert_template_json(&doc, "## 中甲\n\n## 中乙\n", "", 1).unwrap();
-        let ser = serialize_from_json(&out, false).unwrap();
-        assert_eq!(ser, "# 头\n\n## 中甲\n\n## 中乙\n\n尾\n");
-        // 追加（index = -1）+ 不存在父块报错
-        let out2 = insert_template_json(&out, "尾二\n", "", -1).unwrap();
-        assert!(serialize_from_json(&out2, false)
-            .unwrap()
-            .ends_with("尾二\n"));
-        assert!(insert_template_json(&out, "x\n", "nope", 0).is_err());
-    }
-}
+// PLAN-814 R3-04：引擎实装往返测试随实现迁上层 auto-lang
+// （ui/autodown_engine.rs——feature 门与依赖同 owner）。
