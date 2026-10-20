@@ -99,3 +99,10 @@ run]` 共享一个会话 store——终步即"单函数 body 编辑→当前正�
 以主计划§5.10和受管acceptance.md的r6阶段矩阵为准：本实现有函数持久产物复用，但每请求仍整模块前端，miss时whole MIR lower/verify/split，hit单元重decode/verify后完整closure装载。没有常驻函数代码在线替换。798通过只交付有限执行/缓存基础；真正源码至AV安装的函数级增量由828承接，执行优先级为798完成后828。旧计量不能证明未改函数IR/代码保持不动。sig为前端错误早退，不代表成功签名更新。
 
 旧formal含逐请求初始化，保留原技术门事实与失败样本，不据此判用户稳定会话目标失败；本次不改测试阈值、入口或以bench替代formal。r5双线内存政策和/2 wire/kind准入仍有效；历史摘要旧版本/旧资源目标不作为当前合同。798仍待正式门、最终review及merge-owned冻结门禁。
+
+
+## 2026-10-20 R17收口（当前，覆盖历史完成声明）
+
+生命周期补齐代码d1357870a（A08/A09逐消费unit lease，无源恢复manifest lease）；正式30样本门867.8/385.8ms通过，但六场景30×6两次warm edit P95=1026.9766/1465.4601ms失败，各180条正确、双线内存及受管分区均通过。失败原始样本保留于`docs/plans/attachments/798/closeout-r6-20261020/lease-turnaround-*`及`bench-controlled-*`，独立重算见bench-independent-audit.json.txt。起始CPU低不证明全程环境稳定，也不证明代码无关。保持1秒门，不将798已有性能任务转移828。
+
+Plan executing8/11，T05开放、T07闭合；最终review/merge门禁、Spec/ledger发布与合入归档清理均pending。下次先计量warm持久消费各阶段，优化时保留新补齐的安全/来源/GC保护，再在新冻结提交同合同复验；不继续无新信息重跑。
