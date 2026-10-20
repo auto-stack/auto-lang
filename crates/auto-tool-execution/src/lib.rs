@@ -501,6 +501,26 @@ impl PipePoll for std::io::PipeWriter {
     }
 }
 
+/// 排空当前已可读的内容（F-816-R3-01：stop/收尾语义=先排空再退出）。
+/// 有界：管道空即止；DRAIN_CAP 防御仍活跃的写入方无限供数（stop 仅在
+/// owned 树终止后的收尾语境使用,正常情况下数据有限）。
+fn drain_readable<R: io::Read + PipePoll>(r: &mut R, bytes: &mut Vec<u8>, chunk: &mut [u8]) {
+    let cap = Instant::now() + DRAIN_CAP;
+    while Instant::now() < cap {
+        if !r.poll_ready(Duration::from_millis(0)) {
+            break;
+        }
+        match r.read(chunk) {
+            Ok(0) => break,
+            Ok(n) => bytes.extend_from_slice(&chunk[..n]),
+            Err(_) => break,
+        }
+    }
+}
+
+/// 排空上限（防御性;owned 树已终止时数据有限,远用不满）。
+const DRAIN_CAP: Duration = Duration::from_millis(500);
+
 /// 一条捕获 reader 线程的控制器。
 ///
 /// 两个停止性标志（F-816-R2-06）：
@@ -533,6 +553,9 @@ impl CaptureWorker {
             let mut chunk = [0u8; 16 * 1024];
             loop {
                 if flag.load(Ordering::Relaxed) {
+                    // F-816-R3-01: stop 不丢弃已到达数据——先排空可读
+                    // 内容再以 Stopped 结束(捕获字节截至真正排空点)。
+                    drain_readable(&mut r, &mut bytes, &mut chunk);
                     end = ReaderEnd::Stopped;
                     break;
                 }
@@ -773,6 +796,32 @@ fn finish_writer(worker: &mut Option<WriterWorker>, grace: Duration) -> Result<(
     }
 }
 
+/// 错误返回前的统一收尾（F-816-R3-02）：先停止自有 reader/writer（有界
+/// join，结果不覆盖原始错误），再让调用方传播原错误——任何返回路径都
+/// 不带活的自有线程。
+fn finish_early(
+    err: ExecutionError,
+    stdout_w: &mut Option<CaptureWorker>,
+    stderr_w: &mut Option<CaptureWorker>,
+    writer_w: &mut Option<WriterWorker>,
+) -> ExecutionError {
+    if let Some(w) = stdout_w.as_mut() {
+        w.request_stop();
+        w.mark_owned_closed();
+        let _ = w.stop_and_join(TEARDOWN_GRACE);
+    }
+    if let Some(w) = stderr_w.as_mut() {
+        w.request_stop();
+        w.mark_owned_closed();
+        let _ = w.stop_and_join(TEARDOWN_GRACE);
+    }
+    if let Some(w) = writer_w.as_mut() {
+        w.request_stop();
+        let _ = w.stop_and_join(TEARDOWN_GRACE);
+    }
+    err
+}
+
 /// 拆分超时路径的捕获结果：I/O 结束具名传播（不被 Timeout 吞掉，
 /// F-816-R2-06），其余结束保留字节。
 fn take_capture_bytes(
@@ -838,23 +887,51 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
                     timed_out = true;
                     // 终止 owned 树;收尸与失败传播在停止自有线程之后统一进行。
                     let _ = proc.terminate();
-                    proc.child.wait().map_err(|source| ExecutionError::Io {
-                        stage: "wait",
-                        source,
-                    })?
+                    match proc.child.wait() {
+                        Ok(status) => status,
+                        Err(source) => {
+                            let err = ExecutionError::Io {
+                                stage: "wait",
+                                source,
+                            };
+                            return Err(finish_early(
+                                err,
+                                &mut stdout_w,
+                                &mut stderr_w,
+                                &mut writer_w,
+                            ));
+                        }
+                    }
                 }
                 Err(source) => {
-                    return Err(ExecutionError::Io {
+                    let err = ExecutionError::Io {
                         stage: "wait",
                         source,
-                    })
+                    };
+                    return Err(finish_early(
+                        err,
+                        &mut stdout_w,
+                        &mut stderr_w,
+                        &mut writer_w,
+                    ));
                 }
             }
         }
-        None => proc.child.wait().map_err(|source| ExecutionError::Io {
-            stage: "wait",
-            source,
-        })?,
+        None => match proc.child.wait() {
+            Ok(status) => status,
+            Err(source) => {
+                let err = ExecutionError::Io {
+                    stage: "wait",
+                    source,
+                };
+                return Err(finish_early(
+                    err,
+                    &mut stdout_w,
+                    &mut stderr_w,
+                    &mut writer_w,
+                ));
+            }
+        },
     };
     proc.reaped = true;
 
@@ -925,10 +1002,18 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
     // 持有输出管道使 reader 等 EOF(F-816-R1-02);Unix 下组空(ESRCH)
     // 视为无事可做。
     if proc.tree_scope == TreeScope::ProcessTree {
-        proc.terminate().map_err(|source| ExecutionError::Io {
-            stage: "terminate after root exit",
-            source,
-        })?;
+        if let Err(source) = proc.terminate() {
+            let err = ExecutionError::Io {
+                stage: "terminate after root exit",
+                source,
+            };
+            return Err(finish_early(
+                err,
+                &mut stdout_w,
+                &mut stderr_w,
+                &mut writer_w,
+            ));
+        }
     }
     // 根已退出(+树已终止):owned 写端全部关闭——reader 的 EOF 判定依据。
     if let Some(w) = &stdout_w {
@@ -940,9 +1025,14 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
     let grace = deadline_at
         .map(|at| at.saturating_duration_since(Instant::now()))
         .unwrap_or(POST_EXIT_COLLECT_GRACE);
-    let stdout = finish_capture(&mut stdout_w, grace)?;
-    let stderr = finish_capture(&mut stderr_w, grace)?;
-    finish_writer(&mut writer_w, grace)?;
+    // 全部收尾完成后才传播任一失败（各 finish 内部已停自身线程,
+    // 顺序化保证错误返回时三线程都不再存活——F-816-R3-02）。
+    let stdout = finish_capture(&mut stdout_w, grace);
+    let stderr = finish_capture(&mut stderr_w, grace);
+    let writer = finish_writer(&mut writer_w, grace);
+    let stdout = stdout?;
+    let stderr = stderr?;
+    writer?;
 
     Ok(ExecutionResult {
         kind: ExitKind::from_status(&status),
@@ -1177,6 +1267,30 @@ mod tests {
         ));
         let err = finish_capture(&mut w, Duration::from_millis(150)).unwrap_err();
         assert!(matches!(err, ExecutionError::PipesHeld { .. }), "{err:?}");
+    }
+
+    /// F-816-R3-01：stop 语义=先排空已可读内容——预置数据+先行置 stop，
+    /// 字节不得丢弃（确定性，无 sleep/无负载依赖）。
+    #[test]
+    fn stop_drains_readable_bytes_before_stopping() {
+        let payload = b"arrived-before-stop".to_vec();
+        let mut w = Some(CaptureWorker::spawn(
+            "stdout",
+            Scripted {
+                chunks: vec![payload.clone()],
+                tail: Tail::Eof,
+            },
+        ));
+        let cap = w
+            .as_mut()
+            .unwrap()
+            .stop_and_join(Duration::from_secs(2))
+            .expect("worker stops");
+        assert!(matches!(cap.end, ReaderEnd::Stopped), "{:?}", cap.end);
+        assert_eq!(
+            cap.bytes, payload,
+            "arrived bytes must not be dropped on stop"
+        );
     }
 
     /// 干净 EOF 对照:字节完整保留。

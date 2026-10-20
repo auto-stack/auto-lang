@@ -102,11 +102,15 @@ fn consumer_describes_real_tool_via_client() {
             .collect::<Vec<_>>(),
         vec!["describe", "validate_project"]
     );
-    let logs = client.logs();
-    assert!(logs.contains("accepted request"), "stderr: {logs}");
+    // stderr 与 stdout 是两条异步流:describe 返回不保证 stderr 快照已
+    // 含日志行——以 shutdown 后（drain 完成）的日志断言为准。
     let shutdown = client.shutdown().expect("clean EOF shutdown");
     assert_eq!(shutdown.kind, ExitKind::Success);
-    assert!(shutdown.logs.contains("accepted request"));
+    assert!(
+        shutdown.logs.contains("accepted request"),
+        "stderr: {:?}",
+        shutdown.logs
+    );
     // 控制帧（DescribeOk 载荷）绝不出现在日志流。
     assert!(!shutdown.logs.contains("DescribeOk"));
     assert!(!shutdown.logs.contains("capabilities"));
@@ -395,6 +399,13 @@ fn shutdown_bounds_pipe_holding_descendants() {
     ];
     spec.shutdown_timeout = Duration::from_millis(800);
     let client = ToolClient::spawn(spec).expect("spawn te-child");
+    // 先证后代确已存活并持有管道(heartbeat 首跳),再走 shutdown——
+    // 否则 shutdown 的树终止可能先于后代首跳,观察时序不确定。
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0) == 0 {
+        assert!(Instant::now() < deadline, "descendant never started");
+        std::thread::sleep(Duration::from_millis(50));
+    }
     // 不发请求：直接走 shutdown——根秒退（真实分类 Success）后，
     // 持管道的 owned 后代先终止，宽限内完成收尾。
     let started = Instant::now();
@@ -406,11 +417,6 @@ fn shutdown_bounds_pipe_holding_descendants() {
         "shutdown must bound pipe-holding descendants (elapsed={elapsed:?})"
     );
     // 后代确已随树终止：heartbeat 停止推进。
-    let deadline = Instant::now() + Duration::from_secs(2);
-    while std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0) == 0 {
-        assert!(Instant::now() < deadline, "descendant never started");
-        std::thread::sleep(Duration::from_millis(50));
-    }
     let stopped_at = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
     std::thread::sleep(Duration::from_millis(600));
     let after = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
