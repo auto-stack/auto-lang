@@ -2523,3 +2523,7 @@ F810-R2-01（P2）同实例错误oracle仍未齐：fresh Parser成功不能证�
 ## D-815-L：派生账本无法按store schema加载（2026-10-20）
 
 PLAN-815 T-14收尾发现：v56备份已有1060条历史item与六section不满足store schema，v57四条815投影亦不完整。JSON/ID校验不等于store成功。原件/备份保留；修后815脚本在schema前检拒写。记录恢复责任在PLAN-815 r3/M815-L（T-15 work→T-16独立审查→T-17受管恢复及815 upsert→关闭T-14），不新增编号、不回滚已合入A代码；R4仅未变代码阶段pass保持。审计与原件SHA、恢复方案见`docs/plans/attachments/815/t14-closeout/`。未完成前不宣称完整阶段发布，不归档不清树。
+
+## D-815-L1：恢复工具失败路径尚未通过审查（2026-10-20）
+
+T-16/L1 needs_fix，feacf79e8：六项F-815-L1-01..06开放，涉及CLI假成功、并发写入/回滚丢失外部内容、原值/ID转换与删除保护、schema负控、双checkpoint/version及命令冻结SHA。均为r3合同内阻断，不能以既有账本缺陷或记录为债务豁免。原候选可被真实store加载/往返的正控不等于安全发布。T-15重开，T-17与T-14继续pending；原树修复并新SHA复审，生产账本未改。反例及完整证据：docs/plans/attachments/815/review-l1/review.md。

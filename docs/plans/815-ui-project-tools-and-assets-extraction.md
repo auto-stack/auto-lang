@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
 plan_revision: 3
-current_step: 6
+current_step: 5
 total_steps: 17
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/auto-lang/ui/overview.md, docs/specs/project-model/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-ui-tools/project.md, docs/specs/tool-protocol/project.md]
@@ -201,7 +201,7 @@ Category A：若只改专用脚本/临时fixture/ledger/文档，不另跑cargo 
 | [x] | T-12 | work | T-03；与T-02资源准备可独立 | 实际describe/validate_project元数据tool及独立进程consumer，V-05和V-02/03当期正反例、777/适用792来源/发行闭包、版本/能力/Spec候选；R4全部finding全闭，AC-07阶段work通过；A规范采用review-r4/spec-delta-reviewed.md，绑定7045e20fa，来源/真实进程等未变证据按hash复用 | AC-07 |
 | [x] | T-13 | review | T-12提交冻结 | R4独立M815-A阶段pass，绑定r2/7045e20fa、精确A规范增量及验证复用清单；无开放finding，merge-owned冻结门/实际发布收据pending；不授予整Plan reviewed | AC-08 |
 | [ ] | T-14 | merge | T-13 pass；剩余ledger/发布终验等T-17 | 串行冻结门/实际master合入、Spec子集已完成；受管ledger增量 blocked：v57四条815记录不完整，v56已有1060条历史记录及六section不兼容store schema。原件保持不变；脚本已补全量schema拒写与回滚守卫，四条完整草稿与恢复方案见 attachments/815/t14-closeout/recovery.md。发布条件尚未全部满足；不归档不清树 | AC-09 |
-| [x] | T-15 | work | r3合同；原A代码不变 | 原树新增专用恢复工具与有界probe、逐字备份/hash、转换决策表、真实typed loader和V-L1..4；只dry-run，不写生产账本；完整提交送审 | AC-10 |。已执行(2026-10-20,worktree feacf79e8+主检出证据):冻结指纹/全库普查(12140转换逐项表)/真实loader probe(PascalCase section_type关键发现——snake被serde(other)吞成Unknown静默滤空,JSON级校验不可见)/V-L1..3全绿/候选READY d60bd3fa…+转换 c35615e2…绑定,唯一待裁定P014-1已实现--ruling建议;详attachments/815/t15-recovery/report.md
+| [ ] | T-15 | work | r3合同；原A代码不变 | T-16/L1复审needs_fix（feacf79e8）：CLI失败退出码、并发写入/回滚、转换前像与删除保护、schema负控、两checkpoint/version、恢复命令source指纹六项OPEN。真实候选loader/6区1098项往返正控保留；修齐后新候选/hash提交送审，见 attachments/815/review-l1/review.md | AC-10 |
 | [ ] | T-16 | review | T-15冻结提交/候选/映射 | 同树独立审查新增恢复phase（不重做未变A代码R4），逐项批准安全转换与加载/保留/失败反例，merge真实写入pending | AC-11 |
 | [ ] | T-17 | merge | T-16 pass；单写者窗口 | 审定输入上恢复兼容账本，受管upsert四条815来源项并做真实加载/读回，记录版本/hash/备份/幂等与失败收据；交回T-14关闭发布；不归档不清树 | AC-12 |
 
@@ -236,6 +236,8 @@ r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调�
 2026-10-20 / stage: merge(T-14, M815-A 阶段发布,非整Plan交付) / revision: 2 / outcome: M815-A 发布完成——冻结门全绿、master 合入、Spec/ledger 受管增量、发布收据齐备;Plan 保持 executing、唯一树/分支保留已同步 master 继续 B / worktree: D:/autostack/.wt/lang-815/auto-lang(分支 codex/plan-815-dev,已 ff 至合入位) / delivery_commit: e609caf1af511b96832f511ab9d1fa6c0c11f563(master 祖先验证通过) / reviewed: 7045e20fa(R4 pass) / gates: 裸 cargo t 5303/5303(worktree冻结位;ac_case/probe_adapter/plan499 前两轮失败=并发负载flake,隔离重跑全过,diff触面auto-lang/man/vm=0文件)+fixture闭包PASS+fixture进程4/4+777 strict pass;tv/tt/tu零触发 / deposit: SD-01-A/02-A/04-A/06-A canonical(按review-r4/spec-delta-reviewed.md);ledger v56→v57(scripts/plan815a_ledger_deposit.py,P815-A-D1/T/R/REL,备份bak-v57-815a,读回核对);spec-index重生成50projects;收据 attachments/815/m815-a-release.md(+json,按库惯例*.json不入库留盘) / 816放行: 本收据+R4 pass+冻结门齐备,M816-A 可消费协议版本1的 describe/validate_project 与 auto-ui-tool 二进制;不得静态链接工具实现 / next_responsible_role: work(M815-B:T-04 等 M814-A 发布;Plan 不归档不清树)
 
 2026-10-20 / stage: work(T-15) / revision: 3 / outcome: 恢复方案/候选数据/反例验证完成,送 T-16 独立恢复审查;生产账本零接触(live v57=c24b174e… 全程逐字核验) / worktree: D:/autostack/.wt/lang-815/auto-lang(feacf79e8:plan815_ledger_recover.py+deposit脚本PascalCase修正) / 关键发现: SectionType 线格式=PascalCase——真实 SpecsStore::load 把 snake section_type 经 serde(other) 静默滤成空文档(load"成功"0 sections),python 级 JSON 校验不可见;工具与 deposit 校验均已修正 / 候选(hash绑定,待T-16): source=c24b174e…/candidate=d60bd3fa…/conversions=c35615e…(12140条,含四条M815-A增量按收尾冻结稿)/blocked=0(--ruling reviews/P014-1=P014-1-R 为T-15建议裁定,T-16 可改判后重生成) / 证据: attachments/815/t15-recovery/(report.md/freeze逐字备份/audit/convert-final/probe源码);V-L1负控live拒/正控候选6区1098项、往返零差异、未知字段真实丢弃实证、V-L3自检含真实探针失败回滚;T-17全链彩排(apply+loader+四条幂等)临时副本通过 / blockers: 无(生产写入仅待T-16核准hash) / next_responsible_role: review(T-16 绑定 r3/feacf79e8/候选与转换hash,逐项核对V-L1..4与§7裁定清单)
+
+2026-10-20 / stage: review / review_scope: phase（M815-L/T-16，L1）/ reviewer_identity: Codex `/root`；同会话参与过前期合同/旧守卫候选，本轮从新恢复实现/真实loader/独立反例重建，不声称另会话final reviewer，未创建agent / plan_id: PLAN-815 / plan_revision: 3 / outcome: **needs_fix** / worktree_path: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / reviewed_commit: feacf79e8a9c52575a6f64dae3e068a3cc3ae1c7 / base_commit: abad97371f5443ea25b007fa34074b882062163f / dependency_revisions: store schema c124c844…、真实loader 791c204c…、live v57 c24b174e…、stage输入与脚本完整SHA见[baseline](attachments/815/review-l1/baseline.json.txt) / spec_inputs: M815-L无新canonical业务增量，原r3元数据与A/R4精确子集保持，[增量核验](attachments/815/review-l1/spec-delta-reviewed.md) / acceptance_results: AC-10 fail、AC-11 needs_fix、AC-12 merge pending；V-L1/2 partial、L3 fail、L4 partial/pending；原未变A代码R4 pass保持，B原任务pending / findings: F-815-L1-01(P1 CLI拒绝/失败exit0)、02(P1并发写入与回滚覆盖外部内容)、03(P2转换表8处前像失真/ID改名未记/未声明删除漏检)、04(P2 schema负u64/非字符串列表错放及typed验证可跳过)、05(P2恢复+28处阶段变更合并且version仍57违反r3双checkpoint)、06(P2恢复命令source SHA拼错)全部OPEN / evidence: 候选d60bd3fa…/转换规范化c35615e2…可重现，真实store6区1098项load/save内容相等，两工具自检通过；独立真实CLI与临时副本注入反例已复现，详[L1报告与反例](attachments/815/review-l1/review.md) / pending_closeout_gates: 新候选完整恢复审查通过后T-17单写者恢复/受管upsert/版本与真实读回收据，T-14关闭；旧batch tt归因/tb另待主检出独占窗口，本轮未整档 / next: 原树work一次修齐六项补永久真实CLI/并发/前像/schema/版本对照，新提交及候选hash后再T-16；重开T-15，T-16/17/T-14不勾，executing **5/17**，生产ledger/canonical未改，不合入不归档不清树。
 
 ## 10. 待澄清事项
 
