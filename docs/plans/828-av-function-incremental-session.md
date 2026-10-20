@@ -193,6 +193,13 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r3a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): close r2a-check adjacent failures - snapshot-owned span shifts, per-entry mint origins, body-read intrinsic binding" | r2a-check四例相邻反例全部闭合并收编回归(r1回归套件13/13=6×r1+3×r2+4×r2a-check)：
+F04-a→公开快照执行路径映射→ProgramSnapshot自持per-code span shifts，execute_program/steps/resume经快照不可变视图映射→r2a_current_snapshot_public_execution PASS→闭合
+F04-b→命中条目携带自身铸造origin→history值(body,code,mint_origin)；命中恢复该基面而非继承上次铸造→r2a_history_hit_preserves_mint_source PASS→闭合
+F04-c→命中函数体级source map→单编辑区域diff(threshold,delta)叠加于origin位移之上，代码payload不动→r2a_semantic_noop_edit PASS→闭合
+F06/R2a→凭证绑定实际读取的intrinsic事实→CheckedFunction记录body实际引用的(symbol,内容规范化签名)；FnEnv自持intrinsic声明表；credential_current要求全部已读绑定仍在且形状一致（未读intrinsic仍排除于全局身份）→r2a_credential_invalidates_when_referenced_intrinsic_changes PASS（含同绑定正控）→闭合
+回归面：主17/13、scalar差分6、vertical/cache绿；r2a-check核验材料已随分支保存(attachments/828/r2a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门；F-14文档重整+SD文本+dead_code告警 | next_responsible_role:work(继续，同一树)
+
 2026-10-20 stage:work(repair r2a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): close review-r2 replay failures - span mapping, domain axis, unchanged-callee intrinsics" | R2三例失败反例全部闭合并收编回归(function_incremental_828_r1 9/9=6×r1+3×r2)：
 F-04/R2→未改函数诊断位置随当前源映射→FnRecord origin/mint_origin+run()陷阱span按所属函数origin位移映射（代码payload不动；固定旧snapshot运行保持其自身源坐标）→r2_unchanged_trap_location PASS→闭合
 F-06/R2→凭证绑定HIR域→FnEnv自持bundle域+credential_current比domain（同域正控/跨域拒绝）→r2_credential_cannot_cross_hir_domains PASS→闭合（完整语义上下文=域+owner+指纹三轴现均由环境自证）
