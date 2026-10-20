@@ -1,0 +1,10 @@
+{
+  "tested_commit": "09be7a85b2fdf19c47564666051c586d777eab3c",
+  "started_utc": "2026-10-20T08:11:02.1031958Z",
+  "finished_utc": "2026-10-20T08:14:06.4401058Z",
+  "exit_code": 101,
+  "samples": 30,
+  "gate_ms": 1000,
+  "head_after": "09be7a85b2fdf19c47564666051c586d777eab3c",
+  "status_after": []
+}
