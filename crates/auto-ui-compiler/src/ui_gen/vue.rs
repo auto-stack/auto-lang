@@ -32761,11 +32761,11 @@ widget NullProbe {
     #[test]
     fn test_a2vue_desktop_surface_asset() {
         // PLAN-814 T-03：desktop.at 属 shell 资产家族（runtime 消费面），整族归
-        // 属随 T-04 迁 auto-ui-runtime 定夺；此处经 MANIFEST_DIR 相对路径引同仓
-        // 单源副本（工作区兄弟布局），不复制。
+        // PLAN-814 T-04：资产 owner=auto-ui-runtime（assets/ 随 ui/ 迁）；经 MANIFEST_DIR
+        // 相对路径引同仓单源副本（工作区兄弟布局），不复制。
         const DESKTOP_SURFACE_AT: &str = include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
-            "/../auto-lang/assets/desktop.at"
+            "/../auto-ui-runtime/assets/desktop.at"
         ));
         let session = auto_lang_core::session::CompilerSession::ui();
         let mut parser =

@@ -1,0 +1,1148 @@
+//! Plan 340: VM+VM split mode (HTTP) — JSON natives + codegen API rewriting tests.
+//!
+//! These verify the three layers added in Plan 340:
+//!   1. `auto.json.to_value` / `auto.json.from_value` round-trip.
+//!   2. codegen rewrites a bare `#[api]` call into HTTP native calls when
+//!      `api_over_http=true` (and leaves it as a CALL reloc when false).
+//!   3. Regression: merge mode (api_over_http=false) still links for 015-notes.
+
+#[cfg(test)]
+mod plan340_tests {
+    use auto_lang_core::run_with_capture;
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Layer 1: JSON ↔ VM value native round-trip
+    // ──────────────────────────────────────────────────────────────────────
+
+    /// `auto.json.from_value` should serialize a string into a JSON string
+    /// (quoted). This is the simplest smoke test that the native is registered
+    /// and callable from VM code.
+    #[test]
+    fn test_json_from_value_string() {
+        // Note: auto.json.from_value takes a NanoValue. For a string literal,
+        // we pass it directly; the native wraps it in quotes.
+        let code = r#"
+let s = "hello"
+let js = Json.from_value(s)
+print(js)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok(), "from_value should run: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        // A JSON-encoded "hello" is "\"hello\""
+        eprintln!("plan340 from_value(string) = [{}]", stdout);
+        assert!(
+            stdout.contains("\"hello\""),
+            "expected quoted JSON string, got: [{}]",
+            stdout
+        );
+    }
+
+    /// `auto.json.from_value` on an int yields the bare number.
+    #[test]
+    fn test_json_from_value_int() {
+        let code = r#"
+let n = 42
+print(Json.from_value(n))
+"#;
+        let result = run_with_capture(code);
+        assert!(
+            result.is_ok(),
+            "from_value(int) should run: {:?}",
+            result.err()
+        );
+        let (_, stdout) = result.unwrap();
+        eprintln!("plan340 from_value(int) = [{}]", stdout);
+        assert!(stdout.contains("42"), "expected 42, got: [{}]", stdout);
+    }
+
+    /// `auto.json.from_value` on a bool yields "true"/"false".
+    #[test]
+    fn test_json_from_value_bool() {
+        let code = r#"
+let b = true
+print(Json.from_value(b))
+"#;
+        let result = run_with_capture(code);
+        assert!(
+            result.is_ok(),
+            "from_value(bool) should run: {:?}",
+            result.err()
+        );
+        let (_, stdout) = result.unwrap();
+        eprintln!("plan340 from_value(bool) = [{}]", stdout);
+        assert!(stdout.contains("true"), "expected true, got: [{}]", stdout);
+    }
+
+    /// `auto.json.to_value` parses a JSON array string, then `from_value`
+    /// re-serializes it — a round-trip that should yield the same array.
+    /// This avoids depending on `.len()` interop on the resulting heap object.
+    #[test]
+    fn test_json_to_value_array_roundtrip() {
+        let code = r#"
+let js = "[1,2,3,4,5]"
+let arr = Json.to_value(js)
+let back = Json.from_value(arr)
+print(back)
+"#;
+        let result = run_with_capture(code);
+        assert!(
+            result.is_ok(),
+            "to_value roundtrip should run: {:?}",
+            result.err()
+        );
+        let (_, stdout) = result.unwrap();
+        eprintln!("plan340 to_value(array) roundtrip = [{}]", stdout);
+        assert!(
+            stdout.contains("[1,2,3,4,5]") || stdout.contains("[1, 2, 3, 4, 5]"),
+            "expected JSON array [1,2,3,4,5], got: [{}]",
+            stdout
+        );
+    }
+
+    /// `auto.json.to_value` on an object: build a struct-like object, then
+    /// access a field by name (GET_FIELD via field_names).
+    #[test]
+    fn test_json_to_value_object_field() {
+        // The object built by to_value uses GenericInstanceData with field_names
+        // = JSON keys, so GET_FIELD by name should work.
+        let code = r#"
+let js = "{\"id\":7,\"title\":\"hello\"}"
+let obj = Json.to_value(js)
+print(obj.title)
+"#;
+        let result = run_with_capture(code);
+        assert!(
+            result.is_ok(),
+            "to_value(object) should run: {:?}",
+            result.err()
+        );
+        let (_, stdout) = result.unwrap();
+        eprintln!("plan340 to_value(object).title = [{}]", stdout);
+        assert!(
+            stdout.contains("hello"),
+            "expected field title=hello, got: [{}]",
+            stdout
+        );
+    }
+
+    // ──────────────────────────────────────────────────────────────────────
+    // Layer 2 & 3: codegen API rewriting + merge-mode regression
+    // (These need the UI feature for synthesize_widget_module + VmBridge.)
+    // ──────────────────────────────────────────────────────────────────────
+
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_rewrites_api_call_to_http_when_split() {
+        use auto_lang_core::compile::CompileSession;
+        use auto_lang_core::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+        use std::path::PathBuf;
+
+        // Build a tiny two-module project in a temp dir: back/api.at (with an
+        // #[api] fn) + front/app.at (a widget calling that fn).
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type Note = { id int, title str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note {
+    return []
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: list_notes
+
+widget App {
+    msg Msg { Load }
+
+    model {
+        var notes = []
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Load -> {
+            .notes = list_notes()
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        // Replicate collect_module_imports + alias build + synthesize, with
+        // api_over_http=true. Then check the module's relocs do NOT contain
+        // a CALL reloc for "list_notes" (it was rewritten to HTTP natives).
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        // collect imports
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<auto_lang_core::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = auto_lang_core::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        // SPLIT mode (api_over_http=true): rewrite to HTTP.
+        let (module_split, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget,
+            &[],
+            import_stmts.clone(),
+            &aliases,
+            true,
+        )
+        .expect("synthesize split");
+
+        // The list_notes call must NOT appear as a FuncCall reloc in split mode.
+        let has_list_notes_reloc = module_split.relocs.iter().any(|r| {
+            r.reloc_type == auto_lang_core::vm::loader::RelocType::FuncCall
+                && (r.symbol_name == "list_notes" || r.symbol_name.ends_with(".list_notes"))
+        });
+        eprintln!(
+            "plan340 split-mode relocs: {:?}",
+            module_split
+                .relocs
+                .iter()
+                .map(|r| &r.symbol_name)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            !has_list_notes_reloc,
+            "split mode: list_notes should be rewritten to HTTP, not a CALL reloc"
+        );
+
+        // MERGE mode (api_over_http=false): list_notes stays a CALL reloc.
+        let (module_merge, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            false,
+        )
+        .expect("synthesize merge");
+        let has_list_notes_reloc_merge = module_merge
+            .relocs
+            .iter()
+            .any(|r| r.symbol_name == "list_notes" || r.symbol_name.ends_with(".list_notes"));
+        eprintln!(
+            "plan340 merge-mode relocs: {:?}",
+            module_merge
+                .relocs
+                .iter()
+                .map(|r| &r.symbol_name)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            has_list_notes_reloc_merge,
+            "merge mode: list_notes should remain a CALL reloc"
+        );
+    }
+
+    /// PLAN-648 T-01（T-10 定因收口）：split 模式的 api-over-HTTP 改写必须
+    /// 覆盖**模块别名限定调用**（`api.list_notes()`，Expr::Dot(Ident, fn)），
+    /// 不得只认裸名。修复前限定调用绕过改写、静默回落 back 链扁平体进程内
+    /// 执行——auto-term dev 跑法（`auto run -r vm`）宿主进程引擎缺席 →
+    /// api 全空返回 → Tab 无标签/面板空白（vm-delegation-break.log 定因）。
+    /// 断言面与 test_codegen_rewrites_api_call_to_http_when_split 同构：
+    /// split = 无 CALL reloc（已改写 HTTP）；merge = 保留 CALL reloc。
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_rewrites_qualified_api_call_to_http_when_split() {
+        use auto_lang_core::compile::CompileSession;
+        use auto_lang_core::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+        use std::path::PathBuf;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type Note = { id int, title str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note {
+    return []
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        // 调用点 = 限定名 api.list_notes()（镜像 auto-term 前台 `use back.api`
+        // + `api.*` 全限定调用惯例）。
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api
+
+widget App {
+    msg Msg { Load }
+
+    model {
+        var notes = []
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Load -> {
+            .notes = api.list_notes()
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<auto_lang_core::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = auto_lang_core::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        // SPLIT: 限定名调用同样改写为 HTTP（无 list_notes CALL reloc）。
+        let (module_split, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget,
+            &[],
+            import_stmts.clone(),
+            &aliases,
+            true,
+        )
+        .expect("synthesize split");
+        let has_list_notes_reloc = module_split.relocs.iter().any(|r| {
+            r.reloc_type == auto_lang_core::vm::loader::RelocType::FuncCall
+                && (r.symbol_name == "list_notes" || r.symbol_name.ends_with(".list_notes"))
+        });
+        eprintln!(
+            "plan648 qualified split-mode relocs: {:?}",
+            module_split
+                .relocs
+                .iter()
+                .map(|r| &r.symbol_name)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            !has_list_notes_reloc,
+            "split mode: qualified api.list_notes() should be rewritten to HTTP, not a CALL reloc"
+        );
+
+        // MERGE: 限定名调用保留进程内 CALL reloc（back 链扁平体直调）。
+        let (module_merge, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            false,
+        )
+        .expect("synthesize merge");
+        let has_list_notes_reloc_merge = module_merge.relocs.iter().any(|r| {
+            r.reloc_type == auto_lang_core::vm::loader::RelocType::FuncCall
+                && (r.symbol_name == "list_notes" || r.symbol_name.ends_with(".list_notes"))
+        });
+        assert!(
+            has_list_notes_reloc_merge,
+            "merge mode: qualified api.list_notes() should remain a CALL reloc"
+        );
+    }
+
+    /// PLAN-048 T2 (musk VM 数据桥): `emit_api_http_call` 必须支持 `{param}`
+    /// 花括号路径模板（musk back/api.at 与 vue 轨 client 的约定，如
+    /// `/api/chats/session/{id}`）。修复前只认 `:param`，花括号路径整段落入
+    /// URL 常量（字面 `{id}` 发往后端必 404），且路径参数被错并入 body。
+    ///
+    /// 断言面（split 模式合成模块）：
+    ///   1. GET `{id}`：无 CALL reloc（改写发生）且字符串池无字面 `{id}`
+    ///      （前缀/后缀分段拼接替代整段 URL 常量）；
+    ///   2. POST `{id}` + 额外参数：路径参数不进 body（池内无 `"id":` 片段）、
+    ///      其余参数进 body（池内有 `"profession_id":` 片段）。
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_brace_path_params_in_api_http_rewrite() {
+        use auto_lang_core::compile::CompileSession;
+        use auto_lang_core::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type SessionDetail = { id str, name str }
+
+#[api(method = "GET", path = "/api/chats/session/{id}")]
+pub fn chats_get_session(id str) SessionDetail {
+    return None
+}
+
+#[api(method = "POST", path = "/api/chats/session/{id}/message")]
+pub fn chats_send_message(id str, content str, profession_id str) {
+    return None
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: chats_get_session, chats_send_message
+
+widget App {
+    model {
+        var sid = ""
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Open -> {
+            .sid = chats_get_session("abc").id
+        }
+        .Send -> {
+            chats_send_message("abc", "hi", "prof1")
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<auto_lang_core::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = auto_lang_core::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            true,
+        )
+        .expect("synthesize split");
+
+        // 1. 改写发生：两个契约 fn 都不再是 CALL reloc。
+        for bare in ["chats_get_session", "chats_send_message"] {
+            let has_reloc = module.relocs.iter().any(|r| {
+                r.reloc_type == auto_lang_core::vm::loader::RelocType::FuncCall
+                    && (r.symbol_name == bare || r.symbol_name.ends_with(bare))
+            });
+            assert!(
+                !has_reloc,
+                "split mode: {} should be rewritten to HTTP, not a CALL reloc",
+                bare
+            );
+        }
+
+        // 字符串池汇集（UTF-8 lossy 便于子串断言）。
+        let pool: Vec<String> = module
+            .strings
+            .iter()
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .collect();
+
+        // 2. 花括号占位符不得整段落入 URL 常量。
+        let brace_hits: Vec<&String> = pool.iter().filter(|s| s.contains("{id}")).collect();
+        assert!(
+            brace_hits.is_empty(),
+            "brace placeholder must be spliced, found literal in consts: {:?}",
+            brace_hits
+        );
+        // 前缀分段存在（URL 已按 {id} 切开拼接）。
+        assert!(
+            pool.iter().any(|s| s.contains("/api/chats/session/")),
+            "expected URL prefix segment in string pool: {:?}",
+            pool
+        );
+
+        // 3. POST 路径参数不进 body；其余参数进 body。
+        assert!(
+            !pool.iter().any(|s| s == "\"id\":"),
+            "path param must be excluded from body, found \"id\": piece: {:?}",
+            pool
+        );
+        assert!(
+            pool.iter().any(|s| s.contains("\"profession_id\":")),
+            "expected body key piece for non-path arg: {:?}",
+            pool
+        );
+    }
+
+    /// plan-022 Phase 4 slice 3 (auto-down jade): `{*param}` wildcard path
+    /// templates (axum `{*path}` convention, e.g. `GET /api/wiki/{*path}`)
+    /// must splice the positional arg like `{param}` does. Before the fix
+    /// the `{*path}` placeholder matched nothing: the URL kept the literal
+    /// `{*path}` (404 on any backend) and the arg fell through to the body
+    /// bucket (silently dropped for GET).
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_wildcard_path_param_in_api_http_rewrite() {
+        use auto_lang_core::compile::CompileSession;
+        use auto_lang_core::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type WikiDoc = { frontmatter str, body str }
+
+#[api(method = "GET", path = "/api/wiki/{*path}")]
+pub fn read_wiki(path str) WikiDoc {
+    return None
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: read_wiki
+
+widget App {
+    model {
+        var doc = ""
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Open -> {
+            .doc = read_wiki("notes/hello.ad").body
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<auto_lang_core::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = auto_lang_core::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            true,
+        )
+        .expect("synthesize split");
+
+        let pool: Vec<String> = module
+            .strings
+            .iter()
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .collect();
+
+        // 通配占位符必须被 splice，不得整段落入 URL 常量。
+        let wild_hits: Vec<&String> = pool.iter().filter(|s| s.contains("{*path}")).collect();
+        assert!(
+            wild_hits.is_empty(),
+            "wildcard placeholder must be spliced, found literal in consts: {:?}",
+            wild_hits
+        );
+        // URL 前缀分段存在（按 {*path} 切开拼接）。
+        assert!(
+            pool.iter().any(|s| s.contains("/api/wiki/")),
+            "expected URL prefix segment in string pool: {:?}",
+            pool
+        );
+        // 且不存在 CALL reloc（改写发生）。
+        let has_reloc = module.relocs.iter().any(|r| {
+            r.reloc_type == auto_lang_core::vm::loader::RelocType::FuncCall
+                && (r.symbol_name == "read_wiki" || r.symbol_name.ends_with("read_wiki"))
+        });
+        assert!(
+            !has_reloc,
+            "split mode: read_wiki should be rewritten to HTTP, not a CALL reloc"
+        );
+    }
+
+    /// plan-022 Phase 4 slice 3 (auto-down jade): bodyless methods (GET/
+    /// DELETE) must turn non-path args into a query string (`?q=…&limit=…`).
+    /// Before the fix non-path args were collected for the JSON body and
+    /// then silently dropped for GET — `/api/search?q=x&limit=5` style
+    /// endpoints were unreachable from the VM front.
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_codegen_get_query_params_in_api_http_rewrite() {
+        use auto_lang_core::compile::CompileSession;
+        use auto_lang_core::use_scanner::scan_use_statements;
+        use std::collections::{HashMap, HashSet};
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+pub type SearchResponse = { query str }
+
+#[api(method = "GET", path = "/api/search")]
+pub fn search(q str, limit int) SearchResponse {
+    return None
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: search
+
+widget App {
+    model {
+        var hits = ""
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Search -> {
+            .hits = search("hello world", 5).query
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<auto_lang_core::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = auto_lang_core::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            true,
+        )
+        .expect("synthesize split");
+
+        let pool: Vec<String> = module
+            .strings
+            .iter()
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .collect();
+
+        assert!(
+            pool.iter().any(|s| s.contains("?q=")),
+            "expected query lead-in `?q=` in string pool: {:?}",
+            pool
+        );
+        assert!(
+            pool.iter().any(|s| s.contains("&limit=")),
+            "expected query continuation `&limit=` in string pool: {:?}",
+            pool
+        );
+        // 参数值不得被静默丢弃：既不进 query 也不进 body（GET 无 body 键）。
+        assert!(
+            !pool.iter().any(|s| s.contains("\"q\":")),
+            "GET args must become query params, not a JSON body: {:?}",
+            pool
+        );
+    }
+
+    /// plan-022 Phase 4 slice 3: `auto.url.encode_path` native — percent-
+    /// encode each `/`-separated segment, preserving the separators (axum
+    /// `{*path}` wildcard client parity: the browser fetch keeps `/` raw so
+    /// the server-side per-segment percent-decode reconstructs the path).
+    #[test]
+    fn test_url_encode_path_native() {
+        let code = r#"
+let p = Url.encode_path("notes/Hello World.ad")
+print(p)
+"#;
+        let result = run_with_capture(code);
+        assert!(result.is_ok(), "encode_path should run: {:?}", result.err());
+        let (_, stdout) = result.unwrap();
+        eprintln!("plan340 encode_path = [{}]", stdout);
+        assert!(
+            stdout.contains("notes/Hello%20World.ad"),
+            "expected slash-preserving encode, got: [{}]",
+            stdout
+        );
+    }
+
+    /// Regression: a `#[api]` fn returning a 1-slot scalar (uint/int) and
+    /// called as a bare statement must NOT emit POP_N(2). The HTTP rewrite
+    /// pushes a single NanoValue (from `auto.json.to_value`), but before the
+    /// fix `emit_api_http_call` set `last_expr_type = Uint` for uint-returning
+    /// APIs, which made `Stmt::Expr` emit `POP_N(2)` — popping 2 slots when
+    /// only 1 was pushed, corrupting the stack.
+    ///
+    /// We scan the synthesized module's bytecode for a POP_N opcode (0x02
+    /// followed by its count byte) and assert none appears.
+    #[cfg(feature = "ui")]
+    #[test]
+    fn test_api_http_call_scalar_return_uses_single_pop() {
+        use auto_lang_core::compile::CompileSession;
+        use auto_lang_core::use_scanner::scan_use_statements;
+        use auto_lang_core::vm::opcode::OpCode;
+        use std::collections::{HashMap, HashSet};
+        use std::path::PathBuf;
+
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let root = tmp.path();
+        let back = root.join("back");
+        std::fs::create_dir_all(&back).unwrap();
+        std::fs::write(
+            back.join("api.at"),
+            r#"
+#[api(method = "GET", path = "/api/count")]
+pub fn count_notes() uint {
+    return 42
+}
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []int {
+    return []
+}
+"#,
+        )
+        .unwrap();
+        let front = root.join("front");
+        std::fs::create_dir_all(&front).unwrap();
+        // Two call sites exercising the hazard:
+        //   - `count_notes()` as a bare statement (Stmt::Expr) returning uint
+        //   - `count_notes()` as a store RHS into an int var
+        std::fs::write(
+            front.join("app.at"),
+            r#"
+use back.api: count_notes, list_notes
+
+widget App {
+    msg Msg { Load }
+
+    model {
+        var n int = 0
+    }
+
+    view {
+        text "hello"
+    }
+
+    on {
+        .Load -> {
+            count_notes()
+            .n = count_notes()
+            list_notes()
+        }
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let code = std::fs::read_to_string(front.join("app.at")).unwrap();
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser = crate::Parser::from(code.as_str()).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut widget = None;
+        for stmt in &ast.stmts {
+            if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
+                widget = Some(
+                    auto_ui_compiler::aura::extract_widget_from_decl(decl)
+                        .map_err(|e| e.to_string())
+                        .expect("extract"),
+                );
+                break;
+            }
+        }
+        let widget = widget.expect("widget");
+
+        // collect imports
+        let mut visited = HashSet::new();
+        let mut import_stmts: Vec<auto_lang_core::ast::Stmt> = Vec::new();
+        let mut seen = HashSet::new();
+        let mut import_session = CompileSession::new();
+        let mut aliases: HashMap<String, String> = HashMap::new();
+        let use_stmts = scan_use_statements(&code);
+        for us in &use_stmts {
+            if us.is_c_import || us.is_rust_import {
+                continue;
+            }
+            let Some(mp) = auto_lang_core::resolve_module_path(&front, &us.module) else {
+                continue;
+            };
+            collect_imports_test(
+                &mp,
+                &mut visited,
+                &mut import_stmts,
+                &mut seen,
+                &mut import_session,
+            );
+            let qualifier = us.module.split('.').last().unwrap_or(&us.module);
+            for item in &us.items {
+                aliases.insert(item.clone(), format!("{}.{}", qualifier, item));
+            }
+        }
+
+        let (module, _) = crate::ui::handler_codegen::synthesize_widget_module(
+            &widget,
+            &[],
+            import_stmts,
+            &aliases,
+            true,
+        )
+        .expect("synthesize split");
+
+        // Disassemble: find POP_N (0x02) opcodes and report their count byte.
+        let pop_n: Vec<(usize, u8)> = module
+            .code
+            .iter()
+            .enumerate()
+            .filter(|(_, &b)| b == OpCode::POP_N as u8)
+            .map(|(i, _)| (i, *module.code.get(i + 1).unwrap_or(&0)))
+            .collect();
+        // For each POP_N, print a window of preceding raw bytes to locate the
+        // call site. (We deliberately avoid transmuting operand bytes to OpCode
+        // — only opcode positions are meaningful, and naive byte-walking hits
+        // operands that happen to be valid-but-wrong opcode values.)
+        for &(idx, cnt) in &pop_n {
+            let start = idx.saturating_sub(16);
+            let trace: Vec<String> = (start..=idx)
+                .map(|j| format!("[{}]=0x{:02x}", j, module.code.get(j).copied().unwrap_or(0)))
+                .collect();
+            eprintln!(
+                "plan340 POP_N@{} cnt={} bytes: {}",
+                idx,
+                cnt,
+                trace.join(" ")
+            );
+        }
+        eprintln!(
+            "plan340 scalar-return: POP_N sites = {:?}, code len = {}",
+            pop_n,
+            module.code.len()
+        );
+        // The hazard is POP_N with count >= 1: a single 1-slot NanoValue was
+        // pushed but 2+ slots would be popped, corrupting the stack. POP_N(0)
+        // is harmless (it's emitted as a no-op after some SET_FIELD sites).
+        // Before the Uint fix, the bare `count_notes()` statement emitted
+        // POP_N(2) because emit_api_http_call set last_expr_type=Uint.
+        let over_pops: Vec<(usize, u8)> = pop_n.iter().filter(|(_, c)| *c >= 1).copied().collect();
+        assert!(
+            over_pops.is_empty(),
+            "HTTP-rewritten #[api] calls push a single 1-slot NanoValue; \
+             POP_N(count>=1) must never be emitted for them (found {:?}, all sites {:?})",
+            over_pops,
+            pop_n
+        );
+    }
+
+    /// Local copy of collect_module_imports (private in lib.rs) for the test.
+    fn collect_imports_test(
+        module_path: &std::path::Path,
+        visited: &mut std::collections::HashSet<std::path::PathBuf>,
+        out: &mut Vec<auto_lang_core::ast::Stmt>,
+        seen: &mut std::collections::HashSet<String>,
+        session: &mut auto_lang_core::compile::CompileSession,
+    ) {
+        let canon = module_path
+            .canonicalize()
+            .unwrap_or_else(|_| module_path.to_path_buf());
+        if !visited.insert(canon) {
+            return;
+        }
+        let code = match std::fs::read_to_string(module_path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        if let Some(dir) = module_path.parent() {
+            let abs = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+            session.add_source_dir(abs);
+            if let Some(parent) = dir.parent() {
+                let abs_p = std::fs::canonicalize(parent).unwrap_or_else(|_| parent.to_path_buf());
+                session.add_source_dir(abs_p);
+            }
+        }
+        let _ = session.resolve_uses(&code);
+        let parser_session = if module_path.components().any(|c| c.as_os_str() == "back") {
+            auto_lang_core::session::CompilerSession::core()
+        } else {
+            auto_lang_core::session::CompilerSession::ui()
+        };
+        let mut parser = crate::Parser::new_with_type_store(code.as_str(), session.type_store())
+            .with_session(parser_session);
+        let ast = match parser.parse() {
+            Ok(a) => a,
+            Err(_) => return,
+        };
+        let module_name = module_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+        for stmt in &ast.stmts {
+            match stmt {
+                auto_lang_core::ast::Stmt::Fn(_) => {
+                    if let Some(name) = crate::stmt_symbol_name(stmt) {
+                        let qualified = format!("{}.{}", module_name, name);
+                        if seen.insert(qualified.clone()) {
+                            let mut s = stmt.clone();
+                            if let auto_lang_core::ast::Stmt::Fn(ref mut f) = s {
+                                f.name = auto_lang_core::ast::Name::from(qualified.as_str());
+                            }
+                            out.push(s);
+                        }
+                    }
+                }
+                auto_lang_core::ast::Stmt::TypeDecl(_)
+                | auto_lang_core::ast::Stmt::EnumDecl(_)
+                | auto_lang_core::ast::Stmt::Ext(_) => {
+                    if let Some(name) = crate::stmt_symbol_name(stmt) {
+                        if seen.insert(name.clone()) {
+                            out.push(stmt.clone());
+                        }
+                    }
+                }
+                auto_lang_core::ast::Stmt::Use(_) => {
+                    out.push(stmt.clone());
+                }
+                auto_lang_core::ast::Stmt::Store(s) => {
+                    let key = format!("__store:{}", s.name);
+                    if seen.insert(key) {
+                        out.push(stmt.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        let module_dir = module_path.parent().unwrap_or(std::path::Path::new("."));
+        for dep in auto_lang_core::use_scanner::scan_use_statements(&code) {
+            if dep.is_c_import || dep.is_rust_import {
+                continue;
+            }
+            if let Some(dep_path) = auto_lang_core::resolve_module_path(module_dir, &dep.module) {
+                collect_imports_test(&dep_path, visited, out, seen, session);
+            }
+        }
+    }
+}

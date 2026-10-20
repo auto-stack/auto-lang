@@ -137,11 +137,16 @@ mod tests {
 
     #[test]
     fn plan050_i18n_lookup_loads_flat_json_and_misses_gracefully() {
+        // PLAN-814 T-04：语料单源留 crates/auto-lang/test/ui（auto-lang 侧
+        // plan442 测试同源消费；测试源码 owner 迁移=T-07，届时随迁归位）。
         let dir = std::env::var("CARGO_MANIFEST_DIR")
             .map(std::path::PathBuf::from)
             .expect("manifest")
+<<<<<<<< HEAD:crates/auto-ui-compiler/src/i18n_lookup.rs
             // PLAN-815 T-04：夹具单源留在 auto-lang 测试树（plan442 族共
             // 用），本 crate 经相对路径跨包读取。
+========
+>>>>>>>> 4949c1a45 (feat(runtime): PLAN-814 T-04 主体迁移 — ui/ 运行域整体迁 auto-ui-runtime（iced renderer/desktop_protocol/editor/terminal/媒体/宿主 adapter+back_proxy+assets+UI 动态构建管线 dynamic_build；装配扇入收敛 runtime 单点；旧 auto-lang 全 feature 转发+路径再导出；61 个 UI 域测试树随 owner 迁入 ui_tests；t/tf 别名扩包防丢面）(Plan 814 T-04)):crates/auto-ui-runtime/src/ui/i18n_lookup.rs
             .join("../auto-lang/test/ui/plan050_stub_nil/src/front");
         load_from_dir(&dir);
         assert_eq!(lookup("settings.title").as_deref(), Some("设置"));

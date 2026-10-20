@@ -1,0 +1,563 @@
+// Plan 413 §3.1 ① highlight — syntax system singleton + theme registration.
+//
+// One leaked `SyntaxSystem` per process: two-face's full syntax set (with
+// the AutoLang `.at` definition appended) + a theme set that starts from
+// two-face and grows with synthesized AutoUI themes registered under
+// stable names. Themes are inserted, never replaced, so the `&Theme`
+// references SyntaxEditor holds stay valid.
+//
+// License: MIT. Architecture inspired by cosmic-edit (GPL-3.0, System76);
+// original implementation.
+
+use std::sync::{Mutex, OnceLock};
+
+use cosmic_text::{FontSystem, SyntaxSystem};
+use syntect::highlighting::Theme as SynTheme;
+
+/// AutoLang grammar for `lang: "auto"` — keyword set mirrors the VM
+/// renderer's AUTO_KEYWORDS (renderer.rs) so both surfaces agree.
+const AUTO_SYNTAX_YAML: &str = r#"
+%YAML 1.2
+---
+name: AutoLang
+file_extensions: [at]
+scope: source.auto
+contexts:
+  main:
+    - match: \b(fn|let|var|const|if|else|for|loop|in|break|return|type|enum|use|pub|mut|static|true|false|is|Some|None|Ok|Err|match|where|col|row|text|button|input|container|scroll|checkbox|radio|select|slider|image|link|list|tab|tabs|sidebar|accordion|nav|textarea|progress|code_editor)\b
+      scope: keyword.control.auto
+    - match: \b[A-Z][A-Za-z0-9_]*\b
+      scope: support.class.auto
+    - match: \b[0-9]+(\.[0-9]+)?\b
+      scope: constant.numeric.auto
+    - match: '"([^"\\]|\\.)*"'
+      scope: string.quoted.double.auto
+    - match: '\b(f")(.*?)"'
+      scope: string.quoted.double.auto
+    - match: '//.*$'
+      scope: comment.line.double-slash.auto
+    - match: '#.*$'
+      scope: comment.line.number-sign.auto
+"#;
+
+/// TOML grammar for the reduced default set (PLAN-716 T-06: syntect defaults
+/// lack TOML — the editor face keeps it; the readonly face routes toml to
+/// tree-sitter). Mirrors the `.at` in-tree definition pattern.
+const TOML_SYNTAX_YAML: &str = r#"
+%YAML 1.2
+---
+name: TOML
+file_extensions: [toml]
+scope: source.toml
+contexts:
+  main:
+    - match: '#.*$'
+      scope: comment.line.number-sign.toml
+    - match: '^\s*\[.*\]\s*$'
+      scope: entity.name.section.toml
+    - match: '\b(true|false)\b'
+      scope: constant.language.toml
+    - match: '\b\d+(\.\d+)?\b'
+      scope: constant.numeric.toml
+    - match: '"([^"\\]|\\.)*"'
+      scope: string.quoted.double.toml
+    - match: '^\s*[A-Za-z0-9_.-]+(?=\s*=)'
+      scope: variable.other.toml
+    - match: '='
+      scope: keyword.operator.toml
+"#;
+
+/// Map a DSL `lang` token to a syntect file extension.
+pub fn lang_to_extension(lang: &str) -> Option<&'static str> {
+    let ext = match lang.to_ascii_lowercase().as_str() {
+        "auto" | "at" | "autolang" => "at",
+        "rust" | "rs" => "rs",
+        "python" | "py" => "py",
+        "javascript" | "js" => "js",
+        "typescript" | "ts" => "ts",
+        "json" => "json",
+        "toml" => "toml",
+        "yaml" | "yml" => "yaml",
+        "markdown" | "md" => "md",
+        "html" => "html",
+        "css" => "css",
+        "c" => "c",
+        "cpp" | "c++" => "cpp",
+        "go" => "go",
+        "java" => "java",
+        "shell" | "sh" | "bash" => "sh",
+        "xml" => "xml",
+        "sql" => "sql",
+        "none" | "plain" | "plaintext" | "" => return None,
+        other => {
+            // Unknown language: try the token itself as an extension so new
+            // languages work when the syntax set knows them.
+            return Some(Box::leak(other.to_owned().into_boxed_str()));
+        }
+    };
+    Some(ext)
+}
+
+struct SyntaxRegistry {
+    system: &'static SyntaxSystem,
+}
+
+fn registry() -> &'static Mutex<SyntaxRegistry> {
+    static REGISTRY: OnceLock<Mutex<SyntaxRegistry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| {
+        let system: &'static SyntaxSystem = Box::leak(Box::new(build_syntax_system()));
+        Mutex::new(SyntaxRegistry { system })
+    })
+}
+
+/// Fire-and-forget background warm-up: run one highlight pass per common
+/// language so the first real use doesn't pay the regex compilation cost
+/// (seconds with the onig backend in debug builds). `SyntaxSet` is
+/// `Sync`; compiled-regex caches are shared, so work done here carries
+/// over to the UI thread. Best effort — the thread races the first frames
+/// and loses nothing if it loses the race.
+fn spawn_syntax_warm_up(extensions: Vec<&'static str>) {
+    std::thread::spawn(move || {
+        let system = syntax_system();
+        let Some(theme) = system.theme_set.themes.get("base16-eighties.dark") else {
+            return;
+        };
+        for ext in extensions {
+            let Some(syntax) = system.syntax_set.find_syntax_by_extension(ext) else {
+                continue;
+            };
+            let mut hl = syntect::easy::HighlightLines::new(syntax, theme);
+            let _ = hl.highlight_line(
+                "fn warm(x: int) { let s = \"txt\"; } // comment
+",
+                &system.syntax_set,
+            );
+        }
+    });
+}
+
+/// Warm the highlighter for one language in the background (called from
+/// editor creation with the configured language).
+pub fn warm_language(lang: &str) {
+    let ext = lang_to_extension(lang).unwrap_or("txt");
+    let ext: &'static str = Box::leak(ext.to_owned().into_boxed_str());
+    spawn_syntax_warm_up(vec![ext]);
+}
+
+/// Known accent names (mirrors the AutoUI accent palettes). The theme set
+/// is built once and immutable afterwards, so all synthesized themes are
+/// pre-registered; unknown accents snap to the indigo palette.
+pub(crate) const KNOWN_ACCENTS: [&str; 5] = ["indigo", "coral", "ocean", "sage", "amber"];
+
+fn normalize_accent(accent: &str) -> &str {
+    if KNOWN_ACCENTS.contains(&accent) {
+        accent
+    } else {
+        "indigo"
+    }
+}
+
+fn build_syntax_system() -> SyntaxSystem {
+    // PLAN-716 T-06: two-face 退役（714 §4 定案——.rdata 12.4MB 主项清偿）。
+    // 语法底座= syntect default-syntaxes（Sublime 默认包 ~90 语法，含 rust/
+    // python/js/ts/json/toml/yaml/md/html/css/c/cpp/go/java/sql/xml/bash/c#/
+    // powershell/batch/ini 等编辑面 fallback；20 首批语言只读面已路由 ts，
+    // tail（.at/mermaid/vue/console）+未知透传臂由本缩减集承载）。onig 保留：
+    // cosmic-text 0.15 fontconfig(default) 以 default-onig 拉 syntect（特性
+    // 统一强制在场，iced 0.14 钉 cosmic-text 0.15——外部契约，摘除另档）。
+    let syntax_set = {
+        let mut builder = syntect::parsing::SyntaxSet::load_defaults_newlines().into_builder();
+        for def in [AUTO_SYNTAX_YAML, TOML_SYNTAX_YAML] {
+            if let Ok(parsed) = syntect::parsing::SyntaxDefinition::load_from_str(def, false, None)
+            {
+                builder.add(parsed);
+            }
+        }
+        builder.build()
+    };
+    // 主题底座= syntect default-themes（含 base16-eighties.dark——SyntaxEditor
+    // bootstrap 键与 warm-up 依赖）；AutoUI 合成主题照旧预烘焙覆盖其上。
+    let mut theme_set: syntect::highlighting::ThemeSet =
+        syntect::highlighting::ThemeSet::load_defaults();
+    // Pre-register the synthesized AutoUI themes (builtin themes × dark/light
+    // × accents). PLAN-601 T-10: every named builtin joins the baked set so
+    // switching themes re-keys without re-synthesis; composed (declared)
+    // themes register lazily via register_theme.
+    for &theme_id in auto_lang_core::design_tokens::registry::BUILTIN_NAMES.iter() {
+        let spec =
+            auto_lang_core::design_tokens::registry::builtin(theme_id).expect("BUILTIN_NAMES 与表互锁");
+        for &accent in KNOWN_ACCENTS.iter() {
+            for &dark in [true, false].iter() {
+                let theme =
+                    crate::ui::code_editor::theme::CodeEditorTheme::for_builtin(spec, dark, accent);
+                let name = theme_name_inner(theme_id, dark, accent);
+                theme_set.themes.insert(name, theme.syntax_theme());
+            }
+        }
+    }
+    // PLAN-601 T-10: a composed (theme{} declared) theme active at first
+    // editor use joins the baked set under its own name. Declarations apply
+    // at boot — before any editor exists — so this covers the composed
+    // surface; runtime hot-switching is builtin-vocabulary only (T-05).
+    if let Some(composed) = crate::ui::style::theme::active_composed() {
+        for &accent in KNOWN_ACCENTS.iter() {
+            for &dark in [true, false].iter() {
+                let theme = crate::ui::code_editor::theme::CodeEditorTheme::for_composed(
+                    &composed, dark, accent,
+                );
+                let name = theme_name_inner(&composed.name, dark, accent);
+                theme_set.themes.insert(name, theme.syntax_theme());
+            }
+        }
+    }
+    // PLAN-041 T4: autodown fence 家族 hljs 主题——autodown-core 的跨轨
+    // token 映射表（scope→.hljs-* 类→色板，rust 单源）烘焙为 syntect 主题。
+    // VM fence（编辑态 ViEditor / 只读态共享 buffer 实例）着色与 vue 侧
+    // lowlight 观感对齐：tokenize 仍是 syntect，仅色板跨轨共享。
+    #[cfg(feature = "autodown")]
+    for &dark in [true, false].iter() {
+        theme_set
+            .themes
+            .insert(hljs_theme_name_inner(dark), hljs_syntax_theme(dark));
+    }
+    SyntaxSystem {
+        syntax_set,
+        theme_set,
+    }
+}
+
+/// PLAN-601 T-10: the theme key carries the ACTIVE theme id (named builtin
+/// or composed declaration) — a theme switch produces a new key and the
+/// editor re-applies. Non-key-safe characters in composed names are
+/// flattened (key-only sanitization; the palette itself is exact).
+fn theme_name_inner(theme: &str, dark: bool, accent: &str) -> String {
+    let safe: String = theme
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!(
+        "autoui-{}-{}-{}",
+        safe,
+        if dark { "dark" } else { "light" },
+        normalize_accent(accent)
+    )
+}
+
+/// The process-wide syntax system (leaked, shared by every editor).
+pub fn syntax_system() -> &'static SyntaxSystem {
+    registry().lock().unwrap().system
+}
+
+/// Resolve the pre-registered theme by name. All AutoUI themes (builtins +
+/// the boot-time composed theme) are baked into the (immutable, leaked)
+/// theme set at first use; unknown names fall back to the stella dark
+/// indigo theme.
+pub fn register_theme(name: &str, _theme: SynTheme) -> String {
+    let reg = registry().lock().unwrap();
+    if reg.system.theme_set.themes.contains_key(name) {
+        name.to_owned()
+    } else {
+        theme_name_inner("stella", true, "indigo")
+    }
+}
+
+/// Stable theme name for a (theme, dark, accent) triple — the
+/// pre-registered key for builtins, the lazy key for composed themes.
+pub fn theme_name(theme: &str, dark: bool, accent: &str) -> String {
+    theme_name_inner(theme, dark, accent)
+}
+
+// ── PLAN-041 T4：autodown fence 家族 hljs 主题（跨轨 token 映射表消费）──
+
+#[cfg(feature = "autodown")]
+fn hljs_theme_name_inner(dark: bool) -> String {
+    format!("autodown-hljs-{}", if dark { "dark" } else { "light" })
+}
+
+/// autodown fence 家族主题名（暗/明两态预烘焙键）。
+#[cfg(feature = "autodown")]
+pub fn hljs_theme_name(dark: bool) -> String {
+    hljs_theme_name_inner(dark)
+}
+
+/// 由映射表（scope→类→色板）构造 syntect 主题：每行 scope 一条
+/// ThemeItem（theme.rs CodeEditorTheme::syntax_theme 同款模式）；
+/// syntect 选择器的原子前缀 + 特异度排序天然实现
+/// 「constant.character.escape（String 组）压过 constant（Number 组）」。
+#[cfg(feature = "autodown")]
+fn hljs_syntax_theme(dark: bool) -> SynTheme {
+    use autodown_core::hljs_scope_map::{hljs_group_for_class, hljs_group_rgb, SCOPE_CLASS_TABLE};
+    use syntect::highlighting::{Color, ScopeSelectors, StyleModifier, ThemeItem, ThemeSettings};
+
+    let fg = if dark { (250, 250, 250) } else { (9, 9, 11) };
+    let mut theme = SynTheme::default();
+    theme.settings = ThemeSettings {
+        foreground: Some(Color {
+            r: fg.0,
+            g: fg.1,
+            b: fg.2,
+            a: 0xFF,
+        }),
+        ..Default::default()
+    };
+    for row in SCOPE_CLASS_TABLE.iter() {
+        let Some(group) = hljs_group_for_class(row.hljs) else {
+            continue;
+        };
+        let (r, g, b) = hljs_group_rgb(group, dark);
+        let Ok(selector) = row.scope.parse::<ScopeSelectors>() else {
+            continue;
+        };
+        theme.scopes.push(ThemeItem {
+            scope: selector,
+            style: StyleModifier {
+                foreground: Some(Color { r, g, b, a: 0xFF }),
+                background: None,
+                font_style: None,
+            },
+        });
+    }
+    theme
+}
+
+/// Plan 442 A6: highlight-only API for read-only code rendering — the
+/// consumer is the VM render target's markdown `code_block` (musk-038 T16
+/// decision (a): syntect-native highlighting; the vue track keeps
+/// prismjs, visual near-parity per the 038 T15 matrix). No cosmic-text
+/// buffer, no editor registry entry — plain syntect spans over the
+/// shared singleton, so it is callable from any render path.
+///
+/// Returns consecutive text segments merged by color: `None` = the
+/// theme's base foreground (render with the surrounding text color),
+/// `Some((r, g, b))` = token color from the pre-registered `autoui-*`
+/// theme for (dark, accent). Unknown languages and `lang: "none"`
+/// degrade to a single unstyled segment.
+pub fn highlight_segments(
+    lang: &str,
+    text: &str,
+    dark: bool,
+    accent: &str,
+) -> Vec<(String, Option<(u8, u8, u8)>)> {
+    use syntect::easy::HighlightLines;
+    use syntect::util::LinesWithEndings;
+
+    let fallback = || vec![(text.to_string(), None)];
+    let Some(ext) = lang_to_extension(lang) else {
+        return fallback();
+    };
+    // PLAN-716 组A: tree-sitter 路由面（feature 门控）——表内语言走 ts，
+    // 表外（含全部 tail 语言）None 回落 syntect 基线；plain 旁路已在上方
+    // lang_to_extension 处生效（013 硬边界先于任何引擎路由）。
+    #[cfg(feature = "highlight-treesitter")]
+    if let Some(segs) =
+        crate::ui::code_editor::core::treesitter::highlight_segments(lang, text, dark, accent)
+    {
+        return segs;
+    }
+    highlight_segments_syntect(lang, text, dark, accent)
+}
+
+/// syntect 双轨基线内核（PLAN-716 组A 折出——双轨类别级对照测试与 ts 回落
+/// 共用同一路径；语义与折出前逐字节等价）。
+pub(crate) fn highlight_segments_syntect(
+    lang: &str,
+    text: &str,
+    dark: bool,
+    accent: &str,
+) -> Vec<(String, Option<(u8, u8, u8)>)> {
+    use syntect::easy::HighlightLines;
+    use syntect::util::LinesWithEndings;
+
+    let fallback = || vec![(text.to_string(), None)];
+    let Some(ext) = lang_to_extension(lang) else {
+        return fallback();
+    };
+    let system = syntax_system();
+    let theme_id = crate::ui::style::theme::theme_name();
+    let Some(theme) = system
+        .theme_set
+        .themes
+        .get(&theme_name(&theme_id, dark, accent))
+    else {
+        return fallback();
+    };
+    let Some(syntax) = system.syntax_set.find_syntax_by_extension(ext) else {
+        return fallback();
+    };
+    let base_fg = theme.settings.foreground.map(|fg| (fg.r, fg.g, fg.b));
+
+    let mut hl = HighlightLines::new(syntax, theme);
+    let mut out: Vec<(String, Option<(u8, u8, u8)>)> = Vec::new();
+    for line in LinesWithEndings::from(text) {
+        let Ok(regions) = hl.highlight_line(line, &system.syntax_set) else {
+            continue;
+        };
+        for (style, seg) in regions {
+            let rgb = (style.foreground.r, style.foreground.g, style.foreground.b);
+            let color = if base_fg == Some(rgb) {
+                None
+            } else {
+                Some(rgb)
+            };
+            match out.last_mut() {
+                Some((prev, prev_color)) if *prev_color == color => prev.push_str(seg),
+                _ => out.push((seg.to_string(), color)),
+            }
+        }
+    }
+    if out.is_empty() {
+        return fallback();
+    }
+    out
+}
+
+/// Reset all buffers' syntax after the syntax set changed (not currently
+/// needed — the set is static after boot).
+#[allow(dead_code)]
+pub fn warm_up(font_system: &mut FontSystem) {
+    // Touch the lazy system once so the first editor doesn't pay the cost.
+    let _ = syntax_system();
+    let _ = font_system;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// PLAN-716 T-06 装载计时探针：语法系统单例构建墙钟（two-face 退役后
+    /// 底座=syntect defaults——数字随 --nocapture 在档；断言 CI 安全上界）。
+    #[test]
+    fn syntax_system_build_wall_clock() {
+        let t0 = std::time::Instant::now();
+        let system = syntax_system();
+        let elapsed = t0.elapsed();
+        eprintln!(
+            "[P716 装载] syntax_system 首建 {:?}（syntaxes={} themes={}）",
+            elapsed,
+            system.syntax_set.syntaxes().len(),
+            system.theme_set.themes.len()
+        );
+        assert!(elapsed.as_millis() < 5000, "单例构建超 CI 上界 {elapsed:?}");
+        // 缩减集功能面守卫：.at 在册+常见 tail/fallback 扩展名仍可解析。
+        for ext in [
+            "at", "rs", "py", "js", "json", "toml", "yaml", "md", "sh", "c", "cpp", "html", "css",
+            "go", "java", "sql", "xml",
+        ] {
+            assert!(
+                system.syntax_set.find_syntax_by_extension(ext).is_some(),
+                "缩减集缺扩展名 {ext}"
+            );
+        }
+    }
+
+    #[test]
+    fn auto_syntax_is_available() {
+        let system = syntax_system();
+        assert!(
+            system.syntax_set.find_syntax_by_extension("at").is_some(),
+            "AutoLang .at syntax must be registered"
+        );
+        assert!(system.syntax_set.find_syntax_by_extension("rs").is_some());
+    }
+
+    #[test]
+    fn theme_registration_is_stable() {
+        // Pre-registered names resolve to themselves (all five builtins are
+        // baked per (theme, mode, accent) — PLAN-601 T-10).
+        let dark = theme_name("stella", true, "indigo");
+        assert_eq!(
+            register_theme(&dark, cosmic_text::SyntaxTheme::default()),
+            dark
+        );
+        for theme_id in auto_lang_core::design_tokens::registry::BUILTIN_NAMES {
+            assert!(syntax_system()
+                .theme_set
+                .themes
+                .contains_key(&theme_name(theme_id, true, "indigo")));
+        }
+        // Unknown names snap to the stella dark indigo fallback.
+        assert_eq!(
+            register_theme("no-such-theme", cosmic_text::SyntaxTheme::default()),
+            theme_name("stella", true, "indigo")
+        );
+        // Unknown accents normalize when building names.
+        assert_eq!(
+            theme_name("stella", true, "purple"),
+            theme_name("stella", true, "indigo")
+        );
+        assert_ne!(
+            theme_name("stella", true, "coral"),
+            theme_name("stella", false, "coral")
+        );
+        assert!(syntax_system().theme_set.themes.contains_key(&dark));
+    }
+
+    #[test]
+    fn lang_mapping() {
+        assert_eq!(lang_to_extension("rust"), Some("rs"));
+        assert_eq!(lang_to_extension("Rust"), Some("rs"));
+        assert_eq!(lang_to_extension("auto"), Some("at"));
+        assert_eq!(lang_to_extension("none"), None);
+        assert_eq!(lang_to_extension("python"), Some("py"));
+    }
+
+    /// Plan 442 A6: the highlight-only contract — segments concatenated
+    /// reproduce the input, keywords/strings get non-base colors, unknown
+    /// langs and `none` degrade to a single unstyled segment, and adjacent
+    /// same-color regions merge (grammars split comment punctuation from
+    /// the comment body and string quotes from the body — exact token
+    /// boundaries are grammar-defined, the contract is color runs).
+    #[test]
+    fn highlight_segments_roundtrip_and_colors() {
+        let code = "fn main() { let s = \"hi\"; }";
+        let segs = highlight_segments("rust", code, true, "indigo");
+        let joined: String = segs.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(joined, code);
+
+        // Keywords (`fn`/`let`) and string bodies must carry non-base colors.
+        // String quotes are separate grammar regions — match by content.
+        let fn_seg = segs.iter().find(|(s, _)| s == "fn").expect("fn segment");
+        assert!(fn_seg.1.is_some(), "keyword must be colored: {segs:?}");
+        let str_seg = segs
+            .iter()
+            .find(|(s, _)| s.contains("hi"))
+            .expect("string segment");
+        assert!(str_seg.1.is_some(), "string must be colored: {segs:?}");
+        // Base-fg runs are None and merge across ident+space boundaries
+        // (e.g. " x " between `let` and `=` arrives as one unstyled run).
+        assert!(
+            segs.iter().any(|(_, c)| c.is_none()),
+            "base-fg runs are None: {segs:?}"
+        );
+
+        // Degradations: unknown language token, explicit none, empty text.
+        assert_eq!(
+            highlight_segments("none", code, true, "indigo"),
+            vec![(code.to_string(), None)]
+        );
+        assert_eq!(
+            highlight_segments("", code, true, "indigo"),
+            vec![(code.to_string(), None)]
+        );
+        assert_eq!(
+            highlight_segments("no-such-lang", code, true, "indigo").len(),
+            1
+        );
+        assert_eq!(
+            highlight_segments("rust", "", true, "indigo"),
+            vec![("".to_string(), None)]
+        );
+
+        // Multi-line input roundtrips with the trailing newline preserved.
+        let multi = "let x = 1;\nfn f() {}\n";
+        let segs = highlight_segments("rust", multi, true, "indigo");
+        let joined: String = segs.iter().map(|(s, _)| s.as_str()).collect();
+        assert_eq!(joined, multi);
+    }
+}

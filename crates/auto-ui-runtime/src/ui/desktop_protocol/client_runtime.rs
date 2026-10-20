@@ -1,0 +1,1344 @@
+// Plan 480 S1 —— 通用 client 运行时（child 进程侧；Stage 2
+// `dual_mode::dual_mode_child_body` 的产品化）。
+//
+// 两件套：
+// - [`AppProjector`]：[`DynamicComponent`] 的 AuraNode view → [`DrawList`]
+//   投影器 v1.3（Plan 500 步骤 7 爬坡：§1.3.1 清单全集 + 块流布局 +
+//   widget 交互区表输入闭环）。
+// - [`ClientPump`] / [`run_client`]：协议主循环——握手 → Active →
+//   （输入 → handler → shm 产帧 → L2 处理）；host 断连（EOF）按
+//   [`ReconnectPolicy`] 等待重连（S7 弹性：VM 状态在 projector 内原地
+//   保持，revision 不归零）。
+
+use std::collections::HashMap;
+
+use auto_lang_core::ast::Expr;
+use auto_ui_compiler::aura::{aura_events_get_base, AuraNode, AuraPropValue, AuraTextContent};
+use crate::ui::desktop_protocol::endpoint::{AppEndpoint, AppState, FrameSource};
+use crate::ui::desktop_protocol::message::{
+    ControlMsg, DrawList, DrawOp, FrameMsg, ImageFit, InputMsg, MouseButton, ProtocolMsg, Rgba8,
+    WRect,
+};
+use crate::ui::desktop_protocol::shm::SharedFrameBuffer;
+use crate::ui::desktop_protocol::transport::{self, Transport};
+use crate::ui::dynamic::DynamicComponent;
+
+// ---------------------------------------------------------------------------
+// AppProjector：AuraNode → DrawList 投影器 v1.3（Plan 500 步骤 7 爬坡）
+// ---------------------------------------------------------------------------
+
+// PLAN-679：缺省调色板 = theme 语义 token（Design 22 §3/PLAN-571 单源）。
+// 历史：本块曾为硬编码暗色 RGB 常量（"深灰暗色基调"）——绕过 theme 体系,
+// 与 VM iced 轨（resolve_semantic_rgb + 变体 preset 注入）同源 View 渲染出
+// 两套观感（RQHost"iced 原生控件感"的根因）。现全部回退走
+// `theme::resolve_semantic_rgb`（stella registry 单源，dark/accent 感知）,
+// 与 VM 轨同构；语义映射逐点对表 Design 22 §3 行值。
+//
+// 形态注记：const → fn——theme 值是运行时态（dark_mode thread-local +
+// accent 名），编译期常量承载不了。DISABLED_ALPHA 保留 const（行为系数
+// 非色值）。
+
+use crate::ui::style::theme as style_theme;
+use crate::ui::style::Color;
+
+/// 语义 token → Rgba8（resolve 失败兜底黑——registry 内建表由
+/// themes_core_complete 钉死，实战不可达）。
+pub(crate) fn semantic_rgb(c: Color) -> Rgba8 {
+    let (r, g, b) = style_theme::resolve_semantic_rgb(&c).unwrap_or((0, 0, 0));
+    Rgba8::new(r, g, b, 255)
+}
+
+/// 主题 Border 槽（resolve_border_rgb 直达——divider/边框回退同源）。
+pub(crate) fn border_slot() -> Rgba8 {
+    let (r, g, b) = style_theme::resolve_border_rgb();
+    Rgba8::new(r, g, b, 255)
+}
+
+/// 背景 clears 色（= VM iced 窗底 `Color::Background`）。
+pub(crate) fn bg() -> Rgba8 {
+    semantic_rgb(Color::Background)
+}
+/// 按钮底色回退（无类时 = Design 22 §3 default 变体 `bg-muted`）。
+pub(crate) fn button_bg() -> Rgba8 {
+    semantic_rgb(Color::Muted)
+}
+/// 常规文本色（= `Color::OnBackground`，即 shadcn foreground）。
+pub(crate) fn text_fg() -> Rgba8 {
+    semantic_rgb(Color::OnBackground)
+}
+/// 交互填充色（slider 已填轨/progress 已填/tabs 选中/badge——iced 语义
+/// = Primary accent 驱动）。
+pub(crate) fn primary_fill() -> Rgba8 {
+    semantic_rgb(Color::Primary)
+}
+/// 交互高亮面（= `Color::Accent`，PLAN-601 shadcn accent 槽——select
+/// 选中项等）。
+pub(crate) fn accent_fill() -> Rgba8 {
+    semantic_rgb(Color::Accent)
+}
+/// 输入框边框色（= `resolve_border_rgb()`，§3 border-input 行）。
+pub(crate) fn input_border() -> Rgba8 {
+    border_slot()
+}
+/// placeholder 前景（= `Color::OnSurface`，shadcn muted-foreground 槽）。
+pub(crate) fn placeholder_fg() -> Rgba8 {
+    semantic_rgb(Color::OnSurface)
+}
+/// 输入框底色（§3 input 行 `bg-background`）。
+pub(crate) fn input_bg() -> Rgba8 {
+    semantic_rgb(Color::Background)
+}
+/// image 占位底色（PLAN-028 起转**降级兜底语义**：src 在场即发 Image op
+/// 真图，本占位 = src 缺/空投影容差 + 宿主侧未解析降级同色）。
+pub(crate) fn image_placeholder() -> Rgba8 {
+    semantic_rgb(Color::Muted)
+}
+/// progress 轨道底（muted 槽）。
+pub(crate) fn progress_track() -> Rgba8 {
+    semantic_rgb(Color::Muted)
+}
+/// 禁用态前景（前景/底色统一乘暗系数的近似——命令差分见 form 族）。
+pub(crate) const DISABLED_ALPHA: u8 = 110;
+
+/// 页边距（根内容盒）。
+pub(crate) const MARGIN: f32 = 10.0;
+/// 缺省块间距（未声明 gap- 时）。
+pub(crate) const GAP: f32 = 8.0;
+/// 按钮几何（固定高，宽随标签 + 内边距）。
+pub(crate) const BUTTON_H: f32 = 36.0;
+pub(crate) const BUTTON_PAD: f32 = 16.0;
+pub(crate) const BUTTON_MIN_W: f32 = 120.0;
+/// 输入框几何。
+const INPUT_H: f32 = 32.0;
+const INPUT_PAD: f32 = 10.0;
+/// 正文字号 / 行高系数。
+pub(crate) const TEXT_SIZE: f32 = 16.0;
+pub(crate) const LINE_H_FACTOR: f32 = 1.35;
+
+/// 节点样式参数（`ui/style::BoxLayout` 同源 + 装饰/对齐/字体扩展）。
+/// `pub(crate)`：native 投影器（`native_projector::RqProjector`）的
+/// StyleClass 适配器复用同一参数面（Plan 020 T-04——typed 源直接填字段,
+/// 不复刻字符串解析）。
+#[derive(Default, Clone)]
+pub(crate) struct NodeStyle {
+    /// 盒模（p/m/gap/w/h/max_w——`ui/style::layout_extract` 同源解析）。
+    pub(crate) box_layout: crate::ui::style::BoxLayout,
+    /// P679-D1②：flex 伸缩因子（flex-1/flex-auto → 1.0；其余 None）——
+    /// Horizontal 行的宽度份额分配消费（iced 行为对齐：flex 子级均分
+    /// 扣除非伸缩子级与 gap 后的剩余宽）。Vertical 列暂不消费（登记边界）。
+    pub(crate) flex: Option<f32>,
+    /// PLAN-679 Phase 2：圆角半径 px（rounded-lg=8 等；RoundedFull =
+    /// 9999.0 哨兵，发射端解析 min(w,h)/2）。None = 直角。
+    pub(crate) radius: Option<f32>,
+    /// PLAN-679 Phase 2：线性渐变（bg-gradient-to-* + from-*/to-*）——
+    /// (垂直方向?, 起色, 止色)。发射端 N 条带近似（wire 无渐变 op）。
+    pub(crate) grad_dir: Option<bool>,
+    pub(crate) grad_from: Option<Rgba8>,
+    pub(crate) grad_to: Option<Rgba8>,
+    /// 背景底色（bg-*/渐变 from 端）。
+    pub(crate) bg: Option<Rgba8>,
+    /// 边框（border/border-<color>）。
+    pub(crate) border: Option<Rgba8>,
+    /// 前景文本色（text-<color>）。
+    pub(crate) fg: Option<Rgba8>,
+    /// 字号档（text-xs/sm/.../4xl → px）。
+    pub(crate) font_size: Option<f32>,
+    pub(crate) font_bold: bool,
+    /// 斜体档（`italic` 类——Plan 515 G2 差分通道）。
+    pub(crate) font_italic: bool,
+    /// 子项居中（items-center/justify-center/mx-auto/text-center）。
+    pub(crate) center_children: bool,
+    /// 文本水平居中（text-center）。
+    pub(crate) text_center: bool,
+    /// PLAN-032 T-02（D3）：hidden（display:none）——native 投影器布局
+    /// 单一 choke 消费（子树整体跳过零占位）。display 族类在场清位
+    /// （"hidden md:flex" 响应式覆盖——见 native_projector::
+    /// apply_style_class）。解释态 queue 臂 parse 不设置（I4 分表恒
+    /// false，零行为差）。
+    pub(crate) hidden: bool,
+    /// PLAN-032 T-04（D4）：样式版 grid（display:grid/grid-cols-N/
+    /// grid-rows-N）——native 投影器 layout_view_block 入口分岔消费
+    ///（复用 Grid walker）。解释态 queue 臂 parse 不设置（I4 分表）。
+    pub(crate) grid_cols: Option<usize>,
+    pub(crate) grid_rows: Option<usize>,
+    /// PLAN-032 T-05（D1 分层）：定位族。absolute = 真渲（脱离流，
+    /// 覆盖序锚定父内容盒——layout_view_block 延迟放置）；offsets =
+    /// top/left/right/bottom px（left/top 优先，right/bottom 按父盒
+    /// 尺寸反算）；z = 同层 absolutes 相对层级（完整栈序 out of
+    /// scope——I3 随注）。fixed/sticky = 降级放行（in-flow no-op 渲
+    /// 染——视口锚定真渲债另立 §10-④；记档仅供防御/随注）。
+    pub(crate) absolute: bool,
+    pub(crate) position_degraded: bool,
+    pub(crate) offset_top: Option<f32>,
+    pub(crate) offset_left: Option<f32>,
+    pub(crate) offset_right: Option<f32>,
+    pub(crate) offset_bottom: Option<f32>,
+    pub(crate) z_index: Option<i16>,
+    /// PLAN-036 T-02：truncate（单行 + 溢出省略号）——native 投影器
+    /// Text 发射臂真渲（measure 逐字收缩 + `…` 尾接，avail_w 内截断；
+    /// 018 真渲债清偿面）。解释态 queue 臂 parse 不设置（I4 分表）。
+    pub(crate) truncate: bool,
+}
+
+impl NodeStyle {
+    pub(crate) fn pad_top(&self) -> f32 {
+        self.box_layout.padding_top.unwrap_or(0.0)
+    }
+    pub(crate) fn pad_bottom(&self) -> f32 {
+        self.box_layout.padding_bottom.unwrap_or(0.0)
+    }
+    pub(crate) fn pad_left(&self) -> f32 {
+        self.box_layout.padding_left.unwrap_or(0.0)
+    }
+    pub(crate) fn pad_right(&self) -> f32 {
+        self.box_layout.padding_right.unwrap_or(0.0)
+    }
+    pub(crate) fn gap(&self) -> f32 {
+        self.box_layout.gap.unwrap_or(GAP)
+    }
+    pub(crate) fn fixed_w(&self) -> Option<f32> {
+        size_to_px(self.box_layout.width)
+    }
+    pub(crate) fn fixed_h(&self) -> Option<f32> {
+        size_to_px(self.box_layout.height)
+    }
+    pub(crate) fn margin_y(&self) -> f32 {
+        self.box_layout.margin_top.unwrap_or(0.0)
+    }
+}
+/// `ui/style::layout_extract` 同源：尺寸值 → px（None 透传——auto 档）。
+pub(crate) fn size_to_px(v: Option<crate::ui::style::SizeValue>) -> Option<f32> {
+    match v {
+        Some(crate::ui::style::SizeValue::Fixed(units)) => Some(units as f32 * 4.0),
+        Some(crate::ui::style::SizeValue::Pixels(px)) => Some(px),
+        _ => None,
+    }
+}
+
+/// 禁用态调暗（native 投影器共享——`dim_if` 同语义）。
+pub(crate) fn dim_if(disabled: bool, color: Rgba8) -> Rgba8 {
+    if disabled {
+        Rgba8::new(color.r, color.g, color.b, color.a.min(DISABLED_ALPHA))
+    } else {
+        color
+    }
+}
+
+/// 具名 handler token 化（`.Inc` / `Module::Go` → 裸名；带参/空 → None）。
+fn handler_token(pattern: &str) -> Option<String> {
+    let name = pattern.trim_start_matches('.');
+    let name = match name.rfind("::") {
+        Some(pos) => &name[pos + 2..],
+        None => name,
+    };
+    if name.is_empty() || name.contains('(') {
+        return None;
+    }
+    Some(name.to_string())
+}
+
+/// FStr → (插值模板, 绑定名表)——与 parser
+/// `extract_fstr_template_and_bindings` 同构（该函数私有，投影器本地
+/// 复刻；`${.field}` / `${field}` 占位同形）。
+fn fstr_template_and_bindings(expr: &Expr) -> (String, Vec<String>) {
+    let Expr::FStr(fstr) = expr else {
+        return (String::new(), Vec::new());
+    };
+    let mut template = String::new();
+    let mut bindings = Vec::new();
+    for part in &fstr.parts {
+        match part {
+            Expr::Str(s) => template.push_str(s),
+            Expr::Ident(name) => {
+                let n = name.as_str();
+                if let Some(rest) = n.strip_prefix('.') {
+                    bindings.push(rest.to_string());
+                    template.push_str(&format!("${{{}}}", format!(".{rest}")));
+                } else {
+                    bindings.push(n.to_string());
+                    template.push_str(&format!("${{{n}}}"));
+                }
+            }
+            Expr::Dot(obj, field) => {
+                if let Expr::Ident(obj_name) = obj.as_ref() {
+                    let on = obj_name.as_str();
+                    if on == "." || on == "self" {
+                        bindings.push(field.as_str().to_string());
+                        template.push_str(&format!("${{{}}}", format!(".{}", field.as_str())));
+                    } else {
+                        let binding = format!("{on}.{}", field.as_str());
+                        template.push_str(&format!("${{{binding}}}"));
+                        bindings.push(binding);
+                    }
+                }
+            }
+            _ => template.push_str("${...}"),
+        }
+    }
+    (template, bindings)
+}
+/// 模板插值代入：逐 binding 以 VM 状态替换 `${.b}` 与 `${b}` 两种占位。
+fn interpolate(comp: &DynamicComponent, template: &str, bindings: &[String]) -> String {
+    let mut result = template.to_string();
+    for binding in bindings {
+        let field = binding.trim_start_matches('.');
+        if let Ok(value) = comp.read_state(field) {
+            let rendered = format_value(&value);
+            result = result.replace(&format!("${{{field}}}"), &rendered);
+            result = result.replace(&format!("${{.{field}}}"), &rendered);
+        }
+    }
+    result
+}
+
+/// Value → 显示串（与 AuraViewBuilder `value_to_display_string` 同口径）。
+fn format_value(value: &auto_val::Value) -> String {
+    match value {
+        auto_val::Value::Int(i) => i.to_string(),
+        auto_val::Value::Float(f) => f.to_string(),
+        auto_val::Value::Double(f) => f.to_string(),
+        auto_val::Value::Bool(b) => b.to_string(),
+        auto_val::Value::Str(s) => s.to_string(),
+        auto_val::Value::String(s) => s.as_str().to_string(),
+        auto_val::Value::Nil => String::new(),
+        other => other.to_string(),
+    }
+}
+
+/// 粗略文本测宽：全角（CJK 类）按字号计，半角按 0.6 倍。
+pub(crate) fn measure_text(text: &str, size: f32) -> f32 {
+    text.chars()
+        .map(|c| if is_wide(c) { size } else { size * 0.6 })
+        .sum()
+}
+
+fn is_wide(c: char) -> bool {
+    let u = c as u32;
+    matches!(u,
+        0x1100..=0x115F
+        | 0x2E80..=0xA4CF
+        | 0xAC00..=0xD7A3
+        | 0xF900..=0xFAFF
+        | 0xFE30..=0xFE4F
+        | 0xFF00..=0xFF60
+        | 0xFFE0..=0xFFE6
+        | 0x20000..=0x3FFFD)
+}
+
+// ---------------------------------------------------------------------------
+// L3 v2a 快照载荷编码（S9）
+// ---------------------------------------------------------------------------
+
+/// 快照字段值的线格式种类：1 Int / 2 Double / 3 Bool / 4 Str；其余
+/// 类型 v2a 不迁移（count 类原始状态为界，见计划待澄清边界）。
+pub fn encode_state_snapshot(revision: u64, fields: &[(String, auto_val::Value)]) -> Vec<u8> {
+    use crate::ui::desktop_protocol::codec::{put_string, put_u32, put_u64, put_u8};
+    let mut out = Vec::new();
+    put_u64(&mut out, revision);
+    put_u32(&mut out, fields.len() as u32);
+    for (name, value) in fields {
+        put_string(&mut out, name);
+        match value {
+            auto_val::Value::Int(i) => {
+                put_u8(&mut out, 1);
+                put_u64(&mut out, *i as i64 as u64);
+            }
+            auto_val::Value::Double(d) => {
+                put_u8(&mut out, 2);
+                put_u64(&mut out, d.to_bits());
+            }
+            auto_val::Value::Bool(b) => {
+                put_u8(&mut out, 3);
+                put_u8(&mut out, u8::from(*b));
+            }
+            auto_val::Value::Str(st) => {
+                put_u8(&mut out, 4);
+                put_string(&mut out, st);
+            }
+            auto_val::Value::String(st) => {
+                put_u8(&mut out, 4);
+                put_string(&mut out, st.as_str());
+            }
+            _ => {
+                // 不可迁移字段：占位 Nil（值域外类型不静默丢失语义——
+                // 记 Nil 并由调用方 read_state 校验承担）。
+                put_u8(&mut out, 0);
+            }
+        }
+    }
+    out
+}
+
+/// 解码快照载荷 → (revision, 字段表)。未知种类 = Nil 占位。
+pub fn decode_state_snapshot(
+    payload: &[u8],
+) -> Result<(u64, Vec<(String, auto_val::Value)>), String> {
+    use crate::ui::desktop_protocol::codec::Reader;
+    let mut r = Reader::new(payload);
+    let revision = r.u64().map_err(|e| format!("{e:?}"))?;
+    let count = r.u32().map_err(|e| format!("{e:?}"))?;
+    let mut fields = Vec::with_capacity(count as usize);
+    for _ in 0..count {
+        let name = r.string().map_err(|e| format!("{e:?}"))?;
+        let kind = r.u8().map_err(|e| format!("{e:?}"))?;
+        let value = match kind {
+            1 => auto_val::Value::Int(r.u64().map_err(|e| format!("{e:?}"))? as i32),
+            2 => {
+                let bits = r.u64().map_err(|e| format!("{e:?}"))?;
+                auto_val::Value::Double(f64::from_bits(bits))
+            }
+            3 => auto_val::Value::Bool(r.u8().map_err(|e| format!("{e:?}"))? != 0),
+            4 => auto_val::Value::Str(r.string().map_err(|e| format!("{e:?}"))?.into()),
+            _ => auto_val::Value::Nil,
+        };
+        fields.push((name, value));
+    }
+    Ok((revision, fields))
+}
+
+// ---------------------------------------------------------------------------
+// ClientPump：协议主循环
+// ---------------------------------------------------------------------------
+
+/// child 会话的握手材料（Hello + 重连重建端点共用）。
+#[derive(Debug, Clone)]
+pub struct ClientConfig {
+    pub app_name: String,
+    pub title: String,
+    pub width: f32,
+    pub height: f32,
+}
+
+/// 主循环出口。
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClientExit {
+    /// L2Detach 已确认（L2Detached 发出），Standalone——状态保持在
+    /// projector 内。
+    L2Detached,
+    /// 宿主 Close → ExitRequest → BufferRelease 生命周期走完（正常收尾）。
+    Closed,
+    /// host 断连且无重连策略（或重连超时）。
+    HostLost,
+}
+
+/// S7 弹性重连策略：EOF 后按间隔重试连回同一 per-app 管道，预算内
+/// 成功则以同一 projector（VM 状态原地）重建端点续跑。
+#[derive(Debug, Clone)]
+pub struct ReconnectPolicy {
+    /// per-app 管道名（孵化应答 / spawn 标记注入）。
+    pub pipe: String,
+    /// 总预算（毫秒），超时放弃 → [`ClientExit::HostLost`]。
+    pub budget_ms: u32,
+    /// 重试间隔（毫秒）。
+    pub interval_ms: u32,
+}
+
+/// 协议 client 的可步进泵：一个实例 = 一条 child 会话生命周期的全部
+/// 状态（端点 + 共享内存段 + 重连现场）。
+///
+/// [`ClientPump::step`] 非阻塞处理所有已到达消息（同进程测试与桌面
+/// 泵协同驱动）；[`ClientPump::run`] 是产品路径的阻塞主循环——真实
+/// child 进程（`auto --autodesk-client`，S2）主线程独占运行。动态组
+/// 件持 AST（Rc）非 Send，二者均不跨线程。
+///
+/// 会话参数 `S: FrameSource`（Plan 020 T-04）：解释态 = [`AppProjector`]
+/// （缺省类型参数，既有调用点零改动）；native = [`super::native_projector::RqProjector`]
+/// （a2r 编译 Component 的 queue 臂）。消息处理与 Stage 2
+/// `dual_mode_child_body` 一致：Input → 端点派发（on_with_input）→ shm
+/// 产帧回发；BufferAlloc → 开段 + Active 首帧；L2Detach → Standalone
+/// 确认退出；host EOF → 断连（重连策略在册则原地等待重连，状态/revision
+/// 不动）。
+pub struct ClientPump<S: FrameSource> {
+    app_end: Box<dyn Transport + Send>,
+    /// None = 断连待重连（projector 已回 [`Self::projector`] 暂存）。
+    endpoint: Option<AppEndpoint<S>>,
+    shm: Option<SharedFrameBuffer>,
+    /// PLAN-034（D3）：位图段（BufferAlloc.bm 协商开段；None = 宿主
+    /// v1.14 前/开段失败——位图通道缺席，帧照常）。
+    bm_shm: Option<SharedFrameBuffer>,
+    projector: Option<S>,
+    config: ClientConfig,
+    reconnect: Option<ReconnectPolicy>,
+    /// 首次断连时刻（重连预算起点）。
+    disconnected_at: Option<std::time::Instant>,
+    /// 出口已交付（projector 已交还调用方，step 短路防二次取用）。
+    spent: bool,
+    /// PLAN-683（remote 模式）：v2 产线帧（DisplayList 载荷——shm 槽
+    /// 载荷种类 tag 2 / 内嵌 = FrameReadyV2）。缺省 false = v1 既有行为。
+    v2: bool,
+}
+
+/// 进程级泵起点（诊断时间戳基准）。
+static PUMP_T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+
+fn t0() -> std::time::Instant {
+    *PUMP_T0.get_or_init(std::time::Instant::now)
+}
+
+impl<S: FrameSource> ClientPump<S> {
+    /// 建泵即发 Hello（Detached → Handshaking）。
+    pub fn new(
+        app_end: Box<dyn Transport + Send>,
+        projector: S,
+        config: ClientConfig,
+        reconnect: Option<ReconnectPolicy>,
+    ) -> Self {
+        let mut pump = Self {
+            app_end,
+            endpoint: None,
+            shm: None,
+            bm_shm: None,
+            projector: None,
+            config,
+            reconnect,
+            disconnected_at: None,
+            spent: false,
+            v2: false,
+        };
+        pump.attach(projector);
+        pump
+    }
+
+    /// PLAN-683（remote 模式）：翻 v2 产线帧（建泵后、run 前调用）。
+    pub fn set_v2(&mut self, v2: bool) {
+        self.v2 = v2;
+    }
+
+    /// 以给定 projector 建端点并发 Hello（首连 / 重连共用）。
+    fn attach(&mut self, projector: S) {
+        let mut app = AppEndpoint::new(
+            projector,
+            &self.config.app_name,
+            &self.config.title,
+            self.config.width,
+            self.config.height,
+        );
+        let hello = match app.connect() {
+            Ok(h) => h,
+            Err(_) => {
+                // Detached 之外 connect 才会失败——保守处理为断连现场。
+                self.projector = Some(app.session);
+                return;
+            }
+        };
+        if self.app_end.send(&hello).is_err() {
+            self.projector = Some(app.session);
+            self.on_disconnect();
+            return;
+        }
+        self.endpoint = Some(app);
+    }
+
+    /// 非阻塞推进一轮：处理全部已到达消息。返回 `Some((出口, projector))`
+    /// = 循环到出口（所有权交还调用方，仅此一次）；`None` = 仍在运行。
+    pub fn step(&mut self) -> Option<(ClientExit, S)> {
+        if self.spent {
+            return None;
+        }
+        // 断连现场：先走重连，无端点可泵。
+        if self.endpoint.is_none() {
+            return self.try_reconnect();
+        }
+        loop {
+            match self.app_end.try_recv() {
+                Some(Ok(msg)) => {
+                    if let Some(done) = self.dispatch(msg) {
+                        return Some(done);
+                    }
+                }
+                Some(Err(e)) => {
+                    return self.on_disconnect();
+                }
+                None => {
+                    if self.app_end.is_eof() {
+                        return self.on_disconnect();
+                    }
+                    // 空拍：周期拍机会（Plan 020 T-04——native tick 源；
+                    // 解释态缺省空实现零变化）。
+                    self.poll_session_tick();
+                    return None;
+                }
+            }
+        }
+    }
+
+    /// 产品路径：阻塞主循环（真实 child 进程主线程）。
+    ///
+    /// 空闲等待用 `recv_wait` 阻塞——但 recv_wait 是**消费性弹出**，
+    /// 等到的消息必须派发（不能丢弃）：此前 `let _ = recv_wait(..)` 把
+    /// 握手 Welcome 弹掉，child 以 Handshaking 状态收到 BufferAlloc 被
+    /// 状态机拒绝（S2 smoke 现场根因）。
+    pub fn run(mut self) -> (ClientExit, S) {
+        loop {
+            if let Some(done) = self.step() {
+                return done;
+            }
+            if self.endpoint.is_none() {
+                // 断连重连等待：连接尝试在 step/try_reconnect 内带间隔。
+                std::thread::sleep(std::time::Duration::from_millis(
+                    self.reconnect
+                        .as_ref()
+                        .map(|p| p.interval_ms)
+                        .unwrap_or(5)
+                        .max(1) as u64,
+                ));
+                continue;
+            }
+            match self.app_end.recv_wait(25) {
+                Some(Ok(msg)) => {
+                    if let Some(done) = self.dispatch(msg) {
+                        return done;
+                    }
+                }
+                Some(Err(_codec)) => {
+                    if let Some(done) = self.on_disconnect() {
+                        return done;
+                    }
+                }
+                None => {
+                    if self.app_end.is_eof() {
+                        if let Some(done) = self.on_disconnect() {
+                            return done;
+                        }
+                    }
+                    // recv_wait 超时空拍 → 下一轮 step 的空拍臂对账周期拍。
+                }
+            }
+        }
+    }
+
+    /// 周期拍对账（Plan 020 T-04）：`FrameSource::poll_tick` 每轮一调；
+    /// revision 前进 = 状态变化 → 产帧同步宿主（Active 才可）。
+    fn poll_session_tick(&mut self) {
+        let Some(app) = self.endpoint.as_mut() else {
+            return;
+        };
+        if app.state != AppState::Active {
+            return;
+        }
+        let before = app.session.revision();
+        app.session.poll_tick();
+        let advanced = app.session.revision() != before;
+        // PLAN-034（D3）：位图上传排水在产帧前（管道 FIFO——宿主先
+        // BitmapReady 入缓存，后合成引用帧）。
+        self.drain_bitmap_uploads();
+        if advanced {
+            self.push_frame();
+        }
+        // PLAN-033 T-03③（D3）：timer 拍的 handler 可能写 `__desktop_cmd`
+        // ——周期拍后读走上行。
+        self.drain_desktop_bus();
+        // PLAN-690：产帧/拍可能截获新 IME/光标态——控制下行同点读走。
+        self.drain_window_controls();
+    }
+
+    /// PLAN-034 T-05（D3）：位图上传排水（drain_desktop_bus 同点位）——
+    /// 会话产出 [`BitmapUpload`] 批 → 写位图段槽 → BitmapReady 上行。
+    /// 无段（宿主 v1.14 前/开段失败）= 观测弃置；超槽 = 观测弃置
+    /// （v1 边界：高频流背压 not-yet，canvas 快照级低频）。
+    fn drain_bitmap_uploads(&mut self) {
+        let Some(app) = self.endpoint.as_mut() else {
+            return;
+        };
+        if app.state != AppState::Active {
+            return;
+        }
+        let uploads = app.session.drain_bitmap_uploads();
+        if uploads.is_empty() {
+            return;
+        }
+        let Some(shm) = self.bm_shm.as_ref() else {
+            eprintln!(
+                "[rq-client] bitmap upload 无段（{}/{}）——通道缺席弃置",
+                uploads.len(),
+                self.config.app_name
+            );
+            return;
+        };
+        for up in uploads {
+            match app.produce_bitmap(shm, &up) {
+                Ok(msg) => {
+                    let _ = self.app_end.send(&msg);
+                }
+                Err(e) => eprintln!(
+                    "[rq-client] bitmap upload 弃置（{}）：{e:?}（v1 边界：超槽/非 Active）",
+                    up.id
+                ),
+            }
+        }
+    }
+
+    /// PLAN-033 T-03③（D3）：`__desktop_cmd` 读走上行——输入派发与周期
+    /// 拍后各读走一次（shell_client.rs:404-448 同款语义泛化到任意 VM -q
+    /// client）。宿主消费 = 控制上行收件箱（DesktopBus 与既有
+    /// DesktopCommand 解析互通，host.rs）。
+    fn drain_desktop_bus(&mut self) {
+        let (wid, records) = {
+            let Some(app) = self.endpoint.as_mut() else {
+                return;
+            };
+            if app.state != AppState::Active {
+                return;
+            }
+            let records = app.session.drain_desktop_commands();
+            if records.is_empty() {
+                return;
+            }
+            let wid = app.wid.unwrap_or(0);
+            (wid, records)
+        };
+        for record in records {
+            let _ = self
+                .app_end
+                .send(&ProtocolMsg::Control(ControlMsg::DesktopBus {
+                    wid,
+                    record,
+                }));
+        }
+    }
+
+    /// PLAN-690 T-02/T-05：App 派生窗口控制上行（ImeRequest/SetCursor——
+    /// headless `State::Updated` 截获产物；产帧后读走——截获发生在
+    /// render 内，FIFO 序保证 daemon 见帧后见控制）。
+    fn drain_window_controls(&mut self) {
+        let Some(app) = self.endpoint.as_mut() else {
+            return;
+        };
+        if app.state != AppState::Active {
+            return;
+        }
+        let wid = app.wid.unwrap_or(0);
+        let controls = app.session.drain_window_controls();
+        for mut control in controls {
+            // 连接级哨兵 → 真实 wid（headless 装配期不知，路由靠它）。
+            if control.wid() == 0 {
+                control.set_wid(wid);
+            }
+            let _ = self.app_end.send(&ProtocolMsg::Control(control));
+        }
+    }
+
+    /// 单条消息派发；到出口时返回 `Some((出口, projector))`。
+    fn dispatch(&mut self, msg: ProtocolMsg) -> Option<(ClientExit, S)> {
+        match msg {
+            ProtocolMsg::Input(_) => {
+                let app = self.endpoint.as_mut()?;
+                if app.on_message(msg).is_err() {
+                    return self.on_disconnect();
+                }
+                let active = app.state == AppState::Active;
+                // PLAN-034（D3）：输入驱动的内容变化先排水位图再产帧。
+                self.drain_bitmap_uploads();
+                if active {
+                    self.push_frame();
+                }
+                // PLAN-033 T-03③（D3）：输入可能写命令（按钮 handler）——
+                // 读走 + 上行。
+                self.drain_desktop_bus();
+                // PLAN-690：产帧内截获的 IME/光标下行同点读走。
+                self.drain_window_controls();
+                None
+            }
+            ProtocolMsg::Frame(FrameMsg::BufferAlloc {
+                shm: Some(ref name),
+                bm: ref bm_decl,
+                ..
+            }) => {
+                let shm_name = name.clone();
+                let bm_decl = bm_decl.clone();
+                let app = self.endpoint.as_mut()?;
+                if app.on_message(msg).is_err() {
+                    return self.on_disconnect();
+                }
+                match SharedFrameBuffer::open(&shm_name, 2, 16384) {
+                    Ok(segment) => self.shm = Some(segment),
+                    Err(_) => return self.on_disconnect(),
+                }
+                // PLAN-034（D3）：位图段开段——wire 三元组定档（缺省/
+                // 失败 = 通道缺席降级，非致命——帧照常）。
+                if let Some(bm) = bm_decl {
+                    match SharedFrameBuffer::open(&bm.shm, bm.slots, bm.slot_size) {
+                        Ok(segment) => self.bm_shm = Some(segment),
+                        Err(e) => eprintln!("[rq-client] 位图段开段失败（通道降级）: {e:?}"),
+                    }
+                }
+                // Active 首帧：让宿主握手后立刻有内容可合成。
+                if app.state == AppState::Active {
+                    self.push_frame();
+                }
+                None
+            }
+            ProtocolMsg::Control(ControlMsg::L2Detach { .. }) => {
+                let replies = match self.endpoint.as_mut()?.on_message(msg) {
+                    Ok(r) => r,
+                    Err(_) => return self.on_disconnect(),
+                };
+                for reply in replies {
+                    let _ = self.app_end.send(&reply);
+                }
+                self.finish(ClientExit::L2Detached)
+            }
+            ProtocolMsg::Control(ControlMsg::StateSnapshot { .. }) => {
+                let app = self.endpoint.as_mut()?;
+                if app.on_message(msg).is_err() {
+                    return self.on_disconnect();
+                }
+                // 快照已应用：状态跳变 → 产帧同步宿主。
+                if app.state == AppState::Active {
+                    self.push_frame();
+                }
+                None
+            }
+            ProtocolMsg::Control(ControlMsg::Close { .. }) => {
+                let replies = match self.endpoint.as_mut()?.on_message(msg) {
+                    Ok(r) => r,
+                    Err(_) => return self.on_disconnect(),
+                };
+                for reply in replies {
+                    let _ = self.app_end.send(&reply);
+                }
+                None // 等 BufferRelease 落地（dispatch 通用臂）转 Detached。
+            }
+            other => {
+                let app = self.endpoint.as_mut()?;
+                let result = app.on_message(other);
+                let detached = matches!(&result, Ok(_) if app.state == AppState::Detached);
+                if result.is_err() {
+                    return self.on_disconnect();
+                }
+                if detached {
+                    // BufferRelease 等回收确认 = Close 生命周期走完。
+                    return self.finish(ClientExit::Closed);
+                }
+                None
+            }
+        }
+    }
+
+    /// 产一帧并回发；发送失败不断连（下一轮 EOF 收敛）。PLAN-031 T-07
+    /// e2e 暴露的既有缝：载荷超 shm 槽（16KiB Commands 档）时
+    /// `produce_frame_shared` Err → 此前 `if let Ok` 静默弃帧 = 冻结
+    /// （真实 003-converter 首帧即超）。修复 = 回退管道内联 FrameReady
+    ///（v1 合法变体，宿主 ComposeFrame 臂现成）——大帧降档不丢帧，
+    /// 桌面 broker / rqhost 共享路径同益。
+    fn push_frame(&mut self) {
+        if self.shm.is_none() {
+            return;
+        }
+        let Some(app) = self.endpoint.as_mut() else {
+            return;
+        };
+        let shm = self.shm.as_ref().expect("上方已核");
+        // PLAN-683（remote 模式）：v2 位分派——同 shm 槽纪律，载荷种类
+        // tag 区分（宿主按槽内首字节分派）；无 shm 段回退内嵌
+        //（FrameReadyV2 / FrameReady）。
+        let frame = if self.v2 {
+            match app.produce_frame_shared_v2(shm, None) {
+                Ok(f) => Some(f),
+                Err(super::endpoint::ProtocolError::Shm(_)) => app.produce_frame_v2(None).ok(),
+                Err(_) => None,
+            }
+        } else {
+            match app.produce_frame_shared(shm, None) {
+                Ok(f) => Some(f),
+                Err(super::endpoint::ProtocolError::Shm(_)) => app.produce_frame(None).ok(),
+                Err(_) => None,
+            }
+        };
+        if let Some(frame) = frame {
+            let _ = self.app_end.send(&frame);
+        }
+    }
+
+    /// host 端消失：端点废、projector 原地暂存、旧 shm 段弃用；有重连
+    /// 策略则留在重连现场（None = 仍活），否则出口 HostLost。
+    fn on_disconnect(&mut self) -> Option<(ClientExit, S)> {
+        if let Some(app) = self.endpoint.take() {
+            self.projector = Some(app.session);
+        }
+        self.shm = None;
+        self.bm_shm = None;
+        if self.disconnected_at.is_none() {
+            self.disconnected_at = Some(std::time::Instant::now());
+        }
+        if self.reconnect.is_some() {
+            None
+        } else {
+            self.finish(ClientExit::HostLost)
+        }
+    }
+
+    /// 重连尝试一步：预算内连回 → 重建端点（同一 projector，revision
+    /// 连续）续跑；超预算 → HostLost。
+    fn try_reconnect(&mut self) -> Option<(ClientExit, S)> {
+        let Some(policy) = self.reconnect.clone() else {
+            return self.finish(ClientExit::HostLost);
+        };
+        let started = self.disconnected_at.expect("on_disconnect 已记录");
+        if started.elapsed() >= std::time::Duration::from_millis(policy.budget_ms as u64) {
+            return self.finish(ClientExit::HostLost);
+        }
+        match transport::connect(&policy.pipe, policy.interval_ms.max(1)) {
+            Ok(fresh) => {
+                self.app_end = fresh;
+                self.disconnected_at = None;
+                let projector = self.projector.take().expect("断连现场必有 projector");
+                self.attach(projector);
+                if self.endpoint.is_none() {
+                    // 重连即断（对端又没了）：下一轮 step 再入重连现场。
+                    return None;
+                }
+                None
+            }
+            Err(_) => None, // 预算内未连回：保持等待，下次 step 重试。
+        }
+    }
+
+    /// 会话所有权交还调用方（出口路径；出口只交付一次）。
+    fn finish(&mut self, exit: ClientExit) -> Option<(ClientExit, S)> {
+        self.spent = true;
+        Some((exit, self.take_projector()))
+    }
+
+    /// 会话所有权交还调用方（出口路径）。
+    fn take_projector(&mut self) -> S {
+        if let Some(app) = self.endpoint.take() {
+            self.projector = Some(app.session);
+        }
+        self.projector.take().expect("projector 必在端点或暂存")
+    }
+}
+
+/// 泛型会话主循环（Plan 020 T-04）：[`run_client`] 的 FrameSource 泛型
+/// 形——native queue 臂（[`super::native_projector::RqProjector`]）经此驱动；[`run_client`]
+/// 公签名不动（解释态既有消费面零改动）。
+pub fn run_client_session<S: FrameSource>(
+    app_end: Box<dyn Transport + Send>,
+    projector: S,
+    config: ClientConfig,
+    reconnect: Option<ReconnectPolicy>,
+) -> (ClientExit, S) {
+    ClientPump::new(app_end, projector, config, reconnect).run()
+}
+
+/// PLAN-683（remote 模式）：v2 产线帧会话（泵 v2 位开——shm 槽载荷
+/// 种类 tag 2 / 内嵌 FrameReadyV2）。会话循环/重连/排水纪律与 v1
+/// [`run_client_session`] 同源。
+pub fn run_client_session_v2<S: FrameSource>(
+    app_end: Box<dyn Transport + Send>,
+    source: S,
+    config: ClientConfig,
+    reconnect: Option<ReconnectPolicy>,
+) -> (ClientExit, S) {
+    let mut pump = ClientPump::new(app_end, source, config, reconnect);
+    pump.set_v2(true);
+    pump.run()
+}
+
+// ---------------------------------------------------------------------------
+// 测试：投影快照 + 命中派发 + 管道全循环
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use crate::ui::desktop_protocol::endpoint::FrameSource;
+    use crate::ui::desktop_protocol::host::ProtocolHost;
+    use crate::ui::desktop_protocol::native_projector::RqProjector;
+    use crate::ui::session::DesktopSession;
+
+    /// PLAN-033 T-04 迁移：VM 计数器 → native 投影器（原 AppProjector
+    /// 形——run_client_full_cycle/client 布局两测试的装配底座）。
+    fn counter_projector() -> RqProjector<crate::ui::dynamic::DynamicComponent> {
+        let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
+        // PLAN-678：管道环/几何钉测试钉预居中坐标——关根缺省居中。
+        let mut p = RqProjector::new(component, 480.0, 320.0);
+        p.proj_autocenter_off();
+        p
+    }
+
+    const COUNTER_SRC: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
+
+    /// PLAN-759 T-04：显式 default variant（PLAN-571 UA 基线含 border 类）
+    /// ——描边投影覆盖（5-Quad）用源形态。
+    const COUNTER_SRC_VARIANT: &str = "widget SpawnCounter {\n    model { var count int = 0 }\n    view {\n        button \"+\" (variant: \"default\") { onclick: () => {.count += 1} }\n        text `count: ${.count}`\n    }\n}\n";
+
+    /// 确定性文本形态（clear + 算子序列；坐标/颜色全精度锁）——parity
+    /// 金样共用序列化（001 + 507 矩阵）。
+    pub(crate) fn drawlist_to_text(frame: &DrawList) -> String {
+        let mut out = String::new();
+        match frame.clear {
+            Some(c) => out.push_str(&format!("clear {},{},{},{}\n", c.r, c.g, c.b, c.a)),
+            None => out.push_str("clear -\n"),
+        }
+        for op in &frame.ops {
+            match op {
+                DrawOp::Quad { rect, color } => out.push_str(&format!(
+                    "quad {:.1},{:.1} {:.1}x{:.1} {},{},{},{}\n",
+                    rect.x, rect.y, rect.w, rect.h, color.r, color.g, color.b, color.a
+                )),
+                DrawOp::Text {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    text,
+                } => out.push_str(&format!(
+                    "text {:.1},{:.1} size={:.1} lh={:.1} {},{},{},{} {:?}\n",
+                    x, y, size, line_height, color.r, color.g, color.b, color.a, text
+                )),
+                DrawOp::TextStyled {
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    color,
+                    weight,
+                    italic,
+                    text,
+                } => out.push_str(&format!(
+                    "text-styled {:.1},{:.1} size={:.1} lh={:.1} w={} it={} {},{},{},{} {:?}\n",
+                    x,
+                    y,
+                    size,
+                    line_height,
+                    weight,
+                    italic,
+                    color.r,
+                    color.g,
+                    color.b,
+                    color.a,
+                    text
+                )),
+                DrawOp::Scissor { rect } => out.push_str(&format!(
+                    "scissor {:.1},{:.1} {:.1}x{:.1}\n",
+                    rect.x, rect.y, rect.w, rect.h
+                )),
+                DrawOp::ScissorPop => out.push_str("scissor-pop\n"),
+                DrawOp::Image { rect, src, fit } => out.push_str(&format!(
+                    "image {:.1},{:.1} {:.1}x{:.1} fit={} {:?}\n",
+                    rect.x,
+                    rect.y,
+                    rect.w,
+                    rect.h,
+                    fit.as_u8(),
+                    src
+                )),
+                DrawOp::QuadR {
+                    rect,
+                    color,
+                    radius,
+                } => out.push_str(&format!(
+                    "quad-r {:.1},{:.1} {:.1}x{:.1} r={:.1} {},{},{},{}\n",
+                    rect.x, rect.y, rect.w, rect.h, radius, color.r, color.g, color.b, color.a
+                )),
+            }
+        }
+        out
+    }
+
+    /// PLAN-033 T-04 测试迁移（D5）：VM 源计数器经 RqProjector 装配的
+    /// 布局/命中对账（AppProjector 版语义平移——几何按 native 布局重录）。
+    /// PLAN-759 T-04 双形态之一：显式 `variant: "default"`（PLAN-571 UA
+    /// 基线，含 border 类）保「底盒 + 四边描边」5-Quad 投影覆盖——裸按钮
+    /// 自 PLAN-080 T-03（b4c2dc38b）起缺省 chromeless 无描边，另由
+    /// `projector_bare_button_chromeless_single_quad` 锁 1-Quad 契约。
+    #[test]
+    fn projector_counter_layout_and_hits() {
+        let component = crate::build_dynamic_component(COUNTER_SRC_VARIANT, None).expect("build");
+        let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
+            component, 480.0, 320.0,
+        );
+        // PLAN-678 同款：几何钉测试钉预居中坐标——variant 档按钮内宽收缩会
+        // 触发根缺省居中，关掉保 MARGIN 基准。
+        p.proj_autocenter_off();
+        let frame = p.render_frame();
+
+        assert_eq!(frame.clear, Some(bg()));
+        // native 重录：按钮 = 底盒（default 档 rounded-md → QuadR）+ 四边
+        // 描边 Quad = 5 面——AppProjector 块流的单 Quad 形退役；按钮盒 =
+        // 最大面积面。
+        let quads: Vec<&WRect> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(quads.len(), 5, "variant=default：按钮 = 底盒 + 四边描边");
+        let texts: Vec<&str> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Text { text, .. } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            texts,
+            vec!["+", "count: 0"],
+            "prop 标签 + 插值模板已代入状态"
+        );
+        let quad = quads
+            .iter()
+            .max_by(|a, b| (a.w * a.h).total_cmp(&(b.w * b.h)))
+            .expect("按钮底盒");
+        assert_eq!((quad.x, quad.y), (MARGIN, MARGIN), "首块从页边距起");
+        let count_text_y = frame
+            .ops
+            .iter()
+            .find_map(|op| match op {
+                DrawOp::Text { y, text, .. } if text.starts_with("count:") => Some(*y),
+                _ => None,
+            })
+            .expect("count 文本");
+        assert!(
+            count_text_y >= quad.y + quad.h,
+            "文本块排在按钮块之后: text_y={count_text_y} button_bottom={}",
+            quad.y + quad.h
+        );
+        // 命中区（VM 字符串形）：button:<内联 lambda handler>。
+        let regions = p.hit_regions();
+        assert_eq!(regions.len(), 1, "一个交互区: {regions:?}");
+        assert_eq!(regions[0].0, **quad, "命中区即绘制矩形");
+        assert_eq!(
+            regions[0].1, "button:__evt_onclick_1",
+            "内联 lambda 的解析 handler"
+        );
+    }
+
+    /// PLAN-759 T-04 双形态之二：裸按钮（无 variant）自 PLAN-080 T-03
+    /// （b4c2dc38b）起缺省 chromeless——投影帧只有底盒 1 Quad，零描边。
+    /// 与 `projector_counter_layout_and_hits`（variant=default 5-Quad）互为
+    /// 双向锁，防两种缺省语义再漂。
+    #[test]
+    fn projector_bare_button_chromeless_single_quad() {
+        let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
+        let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
+            component, 480.0, 320.0,
+        );
+        let frame = p.render_frame();
+        let quads: Vec<&WRect> = frame
+            .ops
+            .iter()
+            .filter_map(|op| match op {
+                DrawOp::Quad { rect, .. } | DrawOp::QuadR { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            quads.len(),
+            1,
+            "PLAN-080 T-03：裸按钮 chromeless——底盒 1 面、无四边描边"
+        );
+    }
+
+    /// PLAN-033 T-04 测试迁移（D5）：命中派发——点击 → on() → VM handler
+    /// → 状态/revision 前进。
+    #[test]
+    fn projector_click_dispatches_vm_handler() {
+        let component = crate::build_dynamic_component(COUNTER_SRC, None).expect("build");
+        let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
+            component, 480.0, 320.0,
+        );
+        p.render_frame();
+        let (rect, _) = p.hit_regions()[0].clone();
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: rect.x + rect.w / 2.0,
+            y: rect.y + rect.h / 2.0,
+            modifiers: 0,
+        });
+        assert_eq!(
+            p.component().read_state("count").unwrap(),
+            auto_val::Value::Int(1)
+        );
+        let frame = p.render_frame();
+        assert!(frame.ops.iter().any(|op| matches!(op,
+            DrawOp::Text { text, .. } if text == "count: 1")));
+        p.on_input(&InputMsg::PointerPressed {
+            wid: 1,
+            button: MouseButton::Left,
+            x: 400.0,
+            y: 300.0,
+            modifiers: 0,
+        });
+        assert_eq!(
+            p.component().read_state("count").unwrap(),
+            auto_val::Value::Int(1),
+            "无效点击不动状态"
+        );
+    }
+
+    /// 具名 handler（`.Inc` 风格）与带参 handler 的取舍。
+    #[test]
+    fn handler_token_rules() {
+        assert_eq!(
+            handler_token(".__evt_onclick_1").as_deref(),
+            Some("__evt_onclick_1")
+        );
+        assert_eq!(handler_token(".Inc").as_deref(), Some("Inc"));
+        assert_eq!(handler_token("Module::Nested::Go").as_deref(), Some("Go"));
+        assert_eq!(
+            handler_token(".Delete(todo.id)"),
+            None,
+            "带参 handler v1 不投影"
+        );
+        assert_eq!(handler_token("."), None);
+    }
+
+    /// FStr 模板/绑定抽取与 parser 同构：`count: ${.count}` 经
+    /// fstr_template_and_bindings + interpolate 得到与投影器一致的串。
+    #[test]
+    fn fstr_template_matches_parser_shape() {
+        let comp = counter_projector();
+        let template = comp.component().view_template();
+        // 从 view 树收集首个 FStr prop 表达式。
+        fn find_fstr(node: &AuraNode) -> Option<Expr> {
+            match node {
+                AuraNode::Element {
+                    props, children, ..
+                } => {
+                    for value in props.values() {
+                        if let AuraPropValue::Expr(e @ Expr::FStr(_)) = value {
+                            return Some(e.clone());
+                        }
+                    }
+                    return children.iter().find_map(find_fstr);
+                }
+                _ => None,
+            }
+        }
+        let expr = find_fstr(template).expect("count 文本承载 FStr");
+        let (tpl, bindings) = fstr_template_and_bindings(&expr);
+        assert_eq!(tpl, "count: ${.count}");
+        assert_eq!(bindings, vec!["count".to_string()]);
+        assert_eq!(interpolate(comp.component(), &tpl, &bindings), "count: 0");
+    }
+
+    /// 全循环（真实命名管道，同线程协同泵）：握手 → shm 产帧 → 协议
+    /// 点击 → L2Detach 出口；projector 状态交还调用方（count/revision
+    /// 连续）。
+    #[test]
+    fn run_client_full_cycle_over_pipe() {
+        let pipe = format!("autodesk-client-rt-{}", std::process::id());
+        let listener = transport::listen(&pipe).expect("listen");
+        let config = ClientConfig {
+            app_name: "counter".into(),
+            title: "计数器".into(),
+            width: 480.0,
+            height: 320.0,
+        };
+
+        // child 泵（同线程：DynamicComponent 持 Rc 非 Send，不跨线程）。
+        let app_end = transport::connect(&pipe, 2000).expect("connect");
+        let mut client = ClientPump::new(app_end, counter_projector(), config, None);
+        let mut server_end = listener.wait_connect().expect("server connect");
+
+        // 桌面侧：真实 462 会话 + ProtocolHost 泵。
+        let mut session = DesktopSession::__test_session();
+        session.open_desktop(iced::window::Id::unique());
+        let src = COUNTER_SRC;
+        let mut ph = ProtocolHost::new(&mut session, move |name: &str| {
+            if name == "counter" {
+                crate::build_dynamic_component(src, None).map_err(|e| format!("{e}"))
+            } else {
+                Err(format!("unknown app {name}"))
+            }
+        });
+
+        fn pump(server_end: &mut Box<dyn Transport + Send>, ph: &mut ProtocolHost<'_>) {
+            while let Some(loaded) = server_end.try_recv() {
+                let msg = loaded.expect("解码");
+                ph.handle(&msg).expect("host 状态机");
+                for reply in std::mem::take(&mut ph.to_app) {
+                    let _ = server_end.send(&reply);
+                }
+            }
+        }
+
+        // 协同驱动：host 非阻塞泵 + client 非阻塞泵交替；出口透传。
+        fn drive(
+            server_end: &mut Box<dyn Transport + Send>,
+            ph: &mut ProtocolHost<'_>,
+            client: &mut ClientPump<RqProjector<crate::ui::dynamic::DynamicComponent>>,
+        ) -> Option<(
+            ClientExit,
+            RqProjector<crate::ui::dynamic::DynamicComponent>,
+        )> {
+            pump(server_end, ph);
+            client.step()
+        }
+
+        // 泵到 Active（Hello → Welcome/BufferAlloc → Ready；child 另发首帧）。
+        //（等待上限按并行负载放宽：成功即早退，不影响绿跑耗时。）
+        let mut wid = None;
+        for _ in 0..1000 {
+            if let Some((exit, _)) = drive(&mut server_end, &mut ph, &mut client) {
+                panic!("Active 前意外出口 {exit:?}");
+            }
+            if !ph.session.apps.is_empty() {
+                wid = ph.active().1;
+                if ph.composed(wid.expect("wid").0).is_some() {
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        let wid = wid.expect("child 已孵化");
+        assert!(ph.composed(wid.0).is_some(), "Active 首帧已合成");
+
+        // 协议点击 → shm 帧 count 递增。
+        let injected = ph
+            .pointer_down(60.0, 40.0, MouseButton::Left)
+            .expect("窗内命中");
+        server_end.send(&injected).unwrap();
+        let mut count_seen = 0;
+        for _ in 0..1000 {
+            if let Some((exit, _)) = drive(&mut server_end, &mut ph, &mut client) {
+                panic!("点击阶段意外出口 {exit:?}");
+            }
+            if let Some(list) = ph.composed(wid.0) {
+                let hit = list
+                    .ops
+                    .iter()
+                    .any(|op| matches!(op, DrawOp::Text { text, .. } if text == "count: 1"));
+                if hit {
+                    count_seen = 1;
+                    break;
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert_eq!(count_seen, 1, "协议点击经 client 循环产帧递增");
+
+        // L2Detach → child 出口 L2Detached；projector 状态交还。
+        let detach = ph.endpoint.l2_detach().expect("Active 才可 l2_detach");
+        server_end.send(&detach).unwrap();
+        let (exit, projector) = loop {
+            if let Some(done) = drive(&mut server_end, &mut ph, &mut client) {
+                break done;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+        assert_eq!(exit, ClientExit::L2Detached);
+        assert_eq!(
+            projector.component().read_state("count").unwrap(),
+            auto_val::Value::Int(1),
+            "VM 状态随 projector 交还"
+        );
+        assert_eq!(projector.revision(), 2, "revision 连续");
+        // L2Detached 管道异步交付：泵到宿主回收收敛。
+        for _ in 0..200 {
+            pump(&mut server_end, &mut ph);
+            if ph.session.apps.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+        assert!(ph.session.apps.is_empty(), "L2Detached 后宿主回收");
+    }
+}

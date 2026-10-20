@@ -61,121 +61,60 @@ streaming-http = ["tokio-util", "auto-lang-core/streaming-http"]
 python = ["pyo3", "auto-lang-core/python"]
 
 # Plan 015: UI Features (AutoUI Core)
-# PLAN-814 R3-06：转发 auto-ui-compiler/ui（T-03 迁移代码的 cfg 门归位——
-# pac.at ui_config 装载实臂/生成器测试门随本 feature 恢复旧恒开语义）。
-ui = ["auto-ui-compiler/ui"]
-# PLAN-699: dep:axum dropped — axum is an unconditional dependency now (the
-# VM #[api] server transport); ui-interpreter keeps its own ureq requirement.
-ui-interpreter = ["ui", "dep:ureq"]
-ui-headless = ["ui", "ui-interpreter", "auto-ui-compiler/ui-headless"]
+# PLAN-814 T-04：ui/ 运行域整体迁 auto-ui-runtime——本 crate 同名 feature
+# 全部转为 auto-ui-runtime 转发器（旧 feature 语义/组合面不变；实装与
+# optional 依赖随迁）。ui 同时转发 auto-ui-compiler/ui（T-03 迁移代码的
+# cfg 门——pac.at ui_config 装载实臂/生成器测试门）。
+ui = ["auto-ui-compiler/ui", "auto-ui-runtime/ui"]
+# PLAN-699: ui-interpreter 的 ureq 依赖随迁 runtime（MCP streamable HTTP
+# 客户端臂）。
+ui-interpreter = ["ui", "auto-ui-runtime/ui-interpreter"]
+ui-headless = ["ui", "ui-interpreter", "auto-ui-compiler/ui-headless", "auto-ui-runtime/ui-headless"]
 # ui-gpui（Zed GPUI 后端）2026-09-22 用户裁定移除——全仓零启用者，休眠 feature 与
 # 模块一并删除（PLAN-691）；未来 auto-ui 拆分后如需要再独立加。
 # Shared asynchronous media loading, decoding, rendition, and cache runtime.
-# Kept independent of a renderer so services and native renderers share one
-# asset registry without making the default build pull image dependencies.
-# PLAN-811: the pipeline now lives in auto-media-core (image/exif stay here
-# for photo_service, which decodes thumbnails on its own).
-image-pipeline = ["dep:image", "dep:kamadak-exif", "auto-media-core/image-codec"]
-ui-iced = ["ui", "dep:iced", "dep:iced_widget", "dep:iced_futures", "dep:iced_runtime", "dep:iced_tiny_skia", "ui-interpreter", "image-pipeline", "dep:arboard", "code-editor", "ui-clipboard", "ui-dialog", "native-dock", "native-clipboard", "dep:resvg", "dep:tiny-skia"]
-# Plan 413: cross-platform code editor widget (cosmic-text ViEditor engine,
-# syntect/two-face highlighting). Mounted under ui-iced — enabling the iced
-# backend brings the editor along. PLAN-814 T-02 迁移勘误：转发
-# auto-lang-core/code-editor——a2r_std::diff 双轨门随本 feature 切臂
-# （旧行为：本 crate feature 直控同 crate 内门）。
-code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "auto-lang-core/code-editor"]
-# PLAN-716 组A (714 契约 T-1): tree-sitter 双轨高亮 runtime。feature 关=零语义
-# （syntect 基线逐字节等价——ts 代码面全量 cfg 门控）；开启后按 lang 路由表
-# 分流（tail 语言仍走 syntect，路由纪律见 core/treesitter.rs）。
-highlight-treesitter = [
+# PLAN-811: pipeline 在 auto-media-core；PLAN-814 T-04 起 photo_service 等
+# 消费面随 ui/ 迁 auto-ui-runtime，本 feature 转发。
+image-pipeline = ["auto-ui-runtime/image-pipeline"]
+ui-iced = [
+    "ui",
+    "ui-interpreter",
+    "image-pipeline",
     "code-editor",
-    "dep:tree-sitter",
-    "dep:tree-sitter-highlight",
-    # P0 10 语言（T-02）
-    "dep:tree-sitter-rust",
-    "dep:tree-sitter-python",
-    "dep:tree-sitter-javascript",
-    "dep:tree-sitter-typescript",
-    "dep:tree-sitter-json",
-    "dep:tree-sitter-toml-ng",
-    "dep:tree-sitter-yaml",
-    "dep:tree-sitter-md",
-    "dep:tree-sitter-bash",
-    "dep:tree-sitter-c",
-    # P1 8 语言（T-04）
-    "dep:tree-sitter-html",
-    "dep:tree-sitter-css",
-    "dep:tree-sitter-cpp",
-    "dep:tree-sitter-c-sharp",
-    "dep:tree-sitter-go",
-    "dep:tree-sitter-java",
-    "dep:tree-sitter-sequel",
-    "dep:tree-sitter-xml",
-    # P2 3 语言（T-05；ini=Apache-2.0 许可注记见依赖节）
-    "dep:tree-sitter-batch",
-    "dep:tree-sitter-powershell",
-    "dep:tree-sitter-ini",
+    "ui-clipboard",
+    "ui-dialog",
+    "native-dock",
+    "native-clipboard",
+    "auto-ui-runtime/ui-iced",
 ]
+# Plan 413: code editor widget（cosmic-text/syntect 依赖随迁 runtime）。
+# 双 owner 保持：SDK a2r diff 双轨（auto-lang-core/code-editor）+ runtime
+# editor 注册表/provider（auto-ui-runtime/code-editor）。
+code-editor = ["ui", "auto-lang-core/code-editor", "auto-ui-runtime/code-editor"]
+# PLAN-716 组A (714 契约 T-1): tree-sitter 双轨高亮 runtime（依赖随迁 runtime）。
+highlight-treesitter = ["code-editor", "auto-ui-runtime/highlight-treesitter"]
 # Plan 418: OS clipboard natives (arboard) + native file dialogs (rfd).
-# Both mount under ui-iced; each can also be enabled standalone.
-ui-clipboard = ["dep:arboard"]
-# raw-window-handle: rfd::FileDialog::set_parent takes HasWindowHandle +
-# HasDisplayHandle (rwh 0.6 — same instance iced already locks) — used to
-# parent the blocking dialogs to the app's main window (Plan 428 debt fix).
-ui-dialog = ["dep:rfd", "dep:raw-window-handle"]
-# Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test) —
-# offline bounds assertions for the VM Row/layout bug matrix.
-iced-layout-tests = ["ui-iced", "dep:iced_test"]
-# PLAN-617 T-16: VM/iced 端原生播放引擎（libmpv DLL 运行时加载 + SW render）。
-# **零构建期原生依赖**——`libloading` 本就是本 crate 的常规依赖，DLL 只在运行时
-# 由 `AUTO_MPV_LIB` / exe 同目录解析；没装 mpv 的机器照常编译、照常过 CI，
-# 只是走降级（AC-20）。故这里只挂 `ui`（廉价 marker），不牵 iced。
-# 渲染层对接（帧上屏）见 T-17；`video` 元素支持级别提升见 T-19。
-mpv-native = ["ui"]
-# PLAN-617 T-17: **帧 → GPU 纹理** 的通道（持久纹理 + staging 环 + 全屏 blit 管线）。
-# 与 `mpv-native` 分开：引擎本身不碰 GPU（只有 libmpv + libloading），因此
-# `mpv-native` 能在没有 GPU/无窗口的环境里独立编译与测试。
-# 经 iced_wgpu 取 wgpu，而不是直接依赖 wgpu —— 保证与 iced 渲染器用的是**同一个**
-# wgpu 版本实例（本仓既有做法：iced_widget/iced_futures 同理，见其依赖处注释）。
-# 帧上屏**不能**走 iced 的图像通道：`Handle::from_rgba` 每帧 mint 新的
-# `Id::unique()`（`Id` 构造器私有，仓外无法复用同一 id），同 id 命中缓存即不再上传
-# （只会显示陈旧帧），且真实帧尺寸全部超过 `MAX_SYNC_SIZE`(2MB) 必走异步 worker、
-# 4K 更超过 atlas 的 2048 上限——那条路正是 renderer.rs:2889 记录的闪烁机理。
-mpv-gpu = ["mpv-native", "dep:iced_wgpu"]
-# PLAN-617 T-19: `video` 元素的 iced 渲染面（自定义 shader widget：自持持久纹理，
-# 绕开 Handle/atlas 通道）。比 `mpv-gpu` 高一档，因为要 iced 的 widget/Element 层。
-mpv-widget = ["mpv-gpu", "ui-iced"]
-# PLAN-617 T-15: 门控 spike 探针（可跑，需本机 libmpv + GPU + 视频样本）。
-# 默认档与 CI 均不编译（见其 `[[example]] required-features`）。
-mpv-spike = ["mpv-gpu", "ui-iced"]
-# Plan 019 批次七: autodown-core crate 消费（VM markdown/autodown widget 真渲染
-# —— parse_blocks → 面板树 → iced View）。跨仓 path 依赖指向 auto-down 主检出的
-# crate（两仓 plan-019 分支已互联合入：auto-down bd8d16e / auto-lang 1c80b8cf5）。
-# ui-iced: 面板适配落在 aura_view_builder（ui-interpreter 门控），其测试
-# 与 mcp 链路依赖 iced 后端（iced_adapter/编码）。
-autodown = ["ui-iced", "dep:autodown-core"]
+ui-clipboard = ["auto-ui-runtime/ui-clipboard"]
+ui-dialog = ["auto-ui-runtime/ui-dialog"]
+# Plan 414 §8.2 follow-up: headless iced layout testbench (iced_test)。
+iced-layout-tests = ["ui-iced", "auto-ui-runtime/iced-layout-tests"]
+# PLAN-617 T-16..T-19: mpv 播放引擎/帧上屏/spike 门（依赖随迁 runtime）。
+mpv-native = ["auto-ui-runtime/mpv-native"]
+mpv-gpu = ["mpv-native", "auto-ui-runtime/mpv-gpu"]
+mpv-widget = ["mpv-gpu", "auto-ui-runtime/mpv-widget"]
+mpv-spike = ["mpv-gpu", "auto-ui-runtime/mpv-spike"]
+# Plan 019 批次七: autodown-core crate 消费（跨仓 path 依赖随迁 runtime；
+# VM natives dispatch 槽/编辑壳实装在 auto-ui-runtime::ui）。
+autodown = ["ui-iced", "auto-ui-runtime/autodown"]
 
-# Plan 473: 原生窗口 dock（假洞 Phase 1）——Win32 适配层。windows dep 为
-# optional + target 门控：仅 Windows × ui-iced（隐含 native-dock）时实际编译，
-# 默认档构建零开销；非 Windows 走同名 no-op 模块。
-native-dock = ["dep:windows"]
-# Plan 485: 原生剪贴板 Phase 2——文件(CF_HDROP)/图片(CF_DIBV5+"PNG")桥，
-# Win32 调用仅出现在 ui/clipboard_native.rs。与 native-dock 同型双门控
-# （optional dep + cfg(windows)；ui-iced 隐含启用）。windows dep 的 features
-# 列表与 native-dock 共用一条目——Cargo feature 合并语义下扩列即两 feature
-# 共用（Plan 485 待澄清#4 定稿：合并扩列，编译最小扰动）。
-native-clipboard = ["dep:windows", "dep:image"]
-# Plan 488: 原生互操作 Phase 3——OLE 拖放双向（IDataObject/IDropSource/
-# IDropTarget 自实现 + DoDragDrop STA 线程 + 虚拟文件 FILEDESCRIPTOR/
-# FILECONTENTS）。Win32/COM 调用仅出现在 ui/native_dnd.rs，与 native-dock
-# 同型双门控（optional dep + cfg(windows)）；不隐含 ui-iced（G5：未开
-# feature 时 natives 降级返 false）。
-# windows-core 直接依赖：#[implement] 宏展开引用 ::windows_core:: 绝对路径，
-# 传递依赖不可见（488 步骤 2 spike 发现）。image：拖入 CF_DIB/PNG → 临时
-# PNG 落盘转换（485 同源用法，零新增版本）。
-native-dnd = ["dep:windows", "dep:windows-core", "dep:image"]
-# Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控（对齐 test-* 测试
-# 门命名法）；隐含 ui-iced + native-dock，`cargo t` 日常档不含。
-test-native-dock = ["ui-iced", "native-dock"]
+# Plan 473/485/488: 原生 dock/剪贴板/OLE 拖放（windows/windows-core/image
+# optional 依赖随迁 runtime，同名转发）。
+native-dock = ["auto-ui-runtime/native-dock"]
+native-clipboard = ["auto-ui-runtime/native-clipboard"]
+native-dnd = ["auto-ui-runtime/native-dnd"]
+# Plan 473: T2/T3 真窗口 Win32 集成 / fixture E2E 测试门控；隐含
+# ui-iced + native-dock，`cargo t` 日常档不含。
+test-native-dock = ["ui-iced", "native-dock", "auto-ui-runtime/test-native-dock"]
 
 [dependencies]
 # PLAN-814: SDK/UI 包组拆分——旧 auto-lang 转为上层兼容/默认组合层，依赖
@@ -210,9 +149,6 @@ auto-ui-dialect = { path = "../auto-ui-dialect" }
 auto-cache = { path = "../auto-cache" }
 # Plan 430 C2: dep 管线进程内调用 shim 包生成器 + manifest 结构
 shim-metadata = { path = "../shim-metadata" }
-# Plan 019 批次七: autodown-core（markdown parser/serializer/块模型 a2r 发射，
-# 见特性 autodown 注释——跨仓 path 指向 auto-down 主检出 crate）。
-autodown-core = { path = "../../../auto-down/autodown/packages/engine/rust", optional = true }
 # Plan 768: TestCase protocol core (adapters live here; dependency direction
 # auto-lang -> auto-test-case only). Gated behind the empty `test-cases`
 # feature so no-default/GUI-free builds can opt in.
@@ -301,87 +237,6 @@ ansi_term = "0.12"
 tokio-util = { version = "0.7", features = ["io"], optional = true }
 futures = "0.3"
 
-# Plan 015: UI Backend dependencies (optional)
-# （gpui-lib/gpui-component/anyhow 三 optional deps 随 ui-gpui feature 移除——PLAN-691）
-# PLAN-041 T-14：unconditional-rendering——iced_winit 缺省只在 widget 主动
-# 请求 NextFrame 时 present（AboutToWait 臂），纯订阅 tick（桌面帧泵）驱动
-# 的 update 不落帧 → 空闲期 OS 表面滞留旧帧（时钟停走/分区残影/通知滞后
-# 四象同根因，双实例实证）。开其后每消息周期强制一帧；空闲无消息早退
-# 零成本。
-iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas", "unconditional-rendering"], optional = true }
-# Plan 057 (ash-gui 光标可见): text_editor 的 highlighter 类型(PlainText/Format)
-# 未经 iced facade 公开导出,直接依赖 iced_widget(与 iced 0.14 同版本系)。
-iced_widget = { version = "0.14", optional = true }
-# Plan 459: 自定义 Recipe/per-App 订阅需要 subscription::filter_map 的可捕获闭包
-# （iced facade 未 re-export subscription 自由函数）。与 iced 同版本系。
-iced_futures = { version = "0.14", optional = true }
-# Plan 414 §8.2: headless layout testbench — normal optional dep (Cargo
-# forbids optional dev-deps); only linked when `iced-layout-tests` is on.
-iced_test = { version = "0.14", optional = true }
-# PLAN-617 T-15: 门控 spike 需要直接持有 wgpu 纹理（video 帧流不能走 iced 的
-# Handle/atlas 通道，理由见 feature `mpv-spike` 处注释）。iced_wgpu 本就是 iced
-# 默认渲染器的依赖，此直接边仅为拿到其 `pub use wgpu` 与 primitive::Pipeline。
-iced_wgpu = { version = "0.14", optional = true }
-# PLAN-683（方案 2 远程 Renderer）：headless 宿主直驱 iced_runtime 的公开
-# `UserInterface`（view → layout → draw 三步，iced_test 同一驱动方式）。
-iced_runtime = { version = "0.14", optional = true }
-# PLAN-683（方案 2 远程 Renderer）：`iced::Renderer` 在本 feature 集下 =
-# fallback::Renderer<wgpu, tiny_skia> 公开枚举——Secondary 臂持
-# iced_tiny_skia::Renderer（纯 CPU 构造，零 wgpu/窗口），draw 后其
-# `layers()` 即延迟栅格化的原语记录层（本计划的截获面）。同版本系直接边。
-iced_tiny_skia = { version = "0.14", optional = true }
-# Plan 411: preview-card copy button (clipboard) — gated behind ui-iced with the renderer.
-arboard = { version = "3", optional = true }
-# Plan 418: native open/save file dialogs (sync API) behind `ui-dialog`.
-rfd = { version = "0.15", optional = true }
-# Plan 428 debt fix: parent those dialogs to the main window (rwh 0.6 —
-# version-locked with rfd/iced so the handle traits line up).
-raw-window-handle = { version = "0.6", optional = true }
-image = { version = "0.25", optional = true }
-resvg = { version = "0.45", optional = true }
-tiny-skia = { version = "0.11", optional = true }
-kamadak-exif = { version = "0.6", optional = true }
-# Plan 413: code editor engine. cosmic-text MUST stay on the same minor as
-# iced 0.14.0's pin (0.15) — a second copy would duplicate the font/shaping
-# stack that iced and the editor share (the old Weak<Buffer>→fill_raw
-# rationale was removed with that handoff in Plan 428). syntect/two-face
-# unify to a single 5.x instance.
-cosmic-text = { version = "0.15", optional = true, features = ["vi", "syntect"] }
-syntect = { version = "5", optional = true }
-# two-face 已退役（PLAN-716 T-06：.rdata 12.4MB 主项——语法底座改 syntect
-# default-syntaxes 缩减集+AutoUI 合成主题；onig 经 cosmic-text default-onig
-# 特性统一保留，摘除受 iced 0.14/cosmic-text 0.15 外部契约阻断）
-# PLAN-716 组A: tree-sitter 0.27 runtime（714 spike 实证 ABI v15 兼容 v13+，
-# 0.23-0.26 grammar 混搭零障碍）。grammar 子 crate 随语言批次在 T-02+ 续挂。
-tree-sitter = { version = "0.27", optional = true }
-tree-sitter-highlight = { version = "0.27", optional = true }
-# P0 10 语言（714 §2.2 表，crates.io 实勘 2026-09-30；T-02 批）。
-tree-sitter-rust = { version = "0.24", optional = true }
-tree-sitter-python = { version = "0.25", optional = true }
-tree-sitter-javascript = { version = "0.25", optional = true }
-tree-sitter-typescript = { version = "0.23", optional = true }
-tree-sitter-json = { version = "0.24", optional = true }
-tree-sitter-toml-ng = { version = "0.7", optional = true }
-tree-sitter-yaml = { version = "0.7", optional = true }
-tree-sitter-md = { version = "0.5", optional = true }
-tree-sitter-bash = { version = "0.25", optional = true }
-tree-sitter-c = { version = "0.24", optional = true }
-# P1 8 语言（714 §2.2 表，T-04 批）。
-tree-sitter-html = { version = "0.23", optional = true }
-tree-sitter-css = { version = "0.25", optional = true }
-tree-sitter-cpp = { version = "0.23", optional = true }
-tree-sitter-c-sharp = { version = "0.23", optional = true }
-tree-sitter-go = { version = "0.25", optional = true }
-tree-sitter-java = { version = "0.23", optional = true }
-tree-sitter-sequel = { version = "0.3", optional = true }
-tree-sitter-xml = { version = "0.7", optional = true }
-# P2 3 语言（714 §2.2 表，T-05 批）。tree-sitter-ini=Apache-2.0（714 §2.2
-# 许可面唯一例外，合规相容——714 契约注记继承）。
-tree-sitter-batch = { version = "0.11", optional = true }
-tree-sitter-powershell = { version = "0.26", optional = true }
-tree-sitter-ini = { version = "1.4", optional = true }
-notify = { workspace = true }
-ureq = { version = "2", features = ["json"], optional = true }
 # Plan 299: Streamable HTTP transport for AutoUI MCP server.
 # PLAN-699 T-03: no longer optional — the VM `#[api]` server's HTTP/1.1
 # transport is Axum/Hyper now (network layer), so it must compile in every
@@ -414,7 +269,13 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 # Plan 485 T9: 增 Security——CreateMutexW 签名引用 SECURITY_ATTRIBUTES
 # (跨进程命名互斥,串行化剪贴板集成测试防 nextest 多进程并行互清)。
 [target.'cfg(windows)'.dependencies]
-windows = { version = "0.58", optional = true, features = [
+
+
+# PLAN-814 T-04：windows/windows-core 依赖随 ui/ 迁 runtime；本 crate 残留
+# UI 测试（plan804_os_e2e/native_dnd_e2e 等）直引 windows:: —— 测试期依赖
+# 形态保持编译（测试源码 owner 迁移=T-07）。
+[target.'cfg(windows)'.dev-dependencies]
+windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Graphics_Dwm",
     # Plan 515 D1：HICON 真图标提取（GetIconInfo + GetDIBits 位图 → RGBA）。
@@ -449,10 +310,6 @@ windows = { version = "0.58", optional = true, features = [
     "Win32_System_Com_Marshal",
     "implement",
 ] }
-# Plan 488: #[implement] 宏的展开物引用 ::windows_core:: 绝对路径——需直接
-# 依赖（版本与 windows 0.58 配套）。仅在 Windows 目标编译。
-windows-core = { version = "0.58", optional = true }
-
 
 [dev-dependencies]
 
@@ -463,6 +320,14 @@ tiny-skia = "0.11"
 criterion = "0.5"
 tempfile = "3"
 insta = { version = "1", features = ["yaml"] }
+# PLAN-814 T-04：残留 UI 测试（plan536/732/765/739/446b5/osconfig 等）直引
+# iced::/image::/arboard::/rfd::/cosmic_text::——依赖迁 runtime 后以 dev-deps
+# 兜住（与 runtime 同版本同 feature 集，同锁实例）；测试源码 owner 迁移=T-07。
+iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas", "unconditional-rendering"] }
+image = "0.25"
+arboard = "3"
+rfd = "0.15"
+cosmic-text = { version = "0.15", features = ["vi", "syntect"] }
 
 # PLAN-634 T-01：terminal 像素金样稳健比对（容差像素差分）。版本随
 # iced_test（其 matches_image 即用 png 落盘/读盘），不新增编译单元。

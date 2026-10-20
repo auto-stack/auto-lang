@@ -1,0 +1,227 @@
+//! Plan 446 批五：渲染层（§P/U1-U7）回归。
+//!
+//! U7（§P 标注最大清偿项）：loop 字段 Dot 表达式的链路求值一致性——
+//! 现场矩阵四链中 button class:/style: prop 与 text/label children 折叠
+//! 两链失效。corpus: test/ui/plan446_u7_loop_props/。
+
+#![cfg(all(test, feature = "ui-iced"))]
+
+#[cfg(feature = "ui-interpreter")]
+mod plan446_batch5_u7 {
+    fn build() -> crate::ui::dynamic::DynamicComponent {
+        let rel = "../auto-lang/test/ui/plan446_u7_loop_props/src/front/app.at";
+        let candidates = [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ];
+        let path = candidates
+            .into_iter()
+            .flatten()
+            .find(|p| p.exists())
+            .expect("U7 corpus not found");
+        crate::plan370_test_support::build_component_from_app(&path).expect("U7 corpus must build")
+    }
+
+    /// §P 四链矩阵：条件位(对照✓) / text prop 直取(对照✓) /
+    /// button class:(现场✗) / label children 折叠(现场✗,U7 修复靶)。
+    #[test]
+    fn u7_consumer_chain_matrix() {
+        let dc = build();
+        let (view, _, _) = dc.view_with_debug();
+        let g = format!("{:?}", view);
+
+        // 链1(对照): 条件位 —— active_id=="b" → 仅 beta 行出条件 text。
+        assert!(
+            g.contains("content: \"beta\""),
+            "cond chain: beta text missing"
+        );
+        assert!(
+            !g.contains("content: \"alpha\""),
+            "cond chain: alpha (inactive) must not render cond text"
+        );
+
+        // 链2(对照): input value 直取。
+        assert!(
+            g.contains("value: \"va\"") && g.contains("value: \"vb\""),
+            "text-prop chain broken"
+        );
+
+        // 链3(U7): button class: m.nav_class —— 用户 tailwind 类并入
+        // （Red(500)/Blue(500)），不得回退纯 preset。
+        assert!(
+            g.contains("Red(500)"),
+            "button class chain: user classes lost (preset fallback)"
+        );
+        assert!(
+            g.contains("Blue(500)"),
+            "button class chain: second row user class lost"
+        );
+
+        // 链4(U7 修复靶): label { text (text: m.label) {} } —— 子元素折叠。
+        assert!(
+            g.contains("\"la\""),
+            "children fold: label text 'la' missing"
+        );
+        assert!(
+            g.contains("\"lb\""),
+            "children fold: label text 'lb' missing"
+        );
+    }
+}
+
+#[cfg(feature = "ui-interpreter")]
+mod plan446_batch5_u1 {
+    fn build() -> crate::ui::dynamic::DynamicComponent {
+        let rel = "../auto-lang/test/ui/plan446_u1_event_freeze/src/front/app.at";
+        let candidates = [
+            std::env::var("CARGO_MANIFEST_DIR")
+                .ok()
+                .map(|d| std::path::PathBuf::from(d).join(rel)),
+            Some(std::path::PathBuf::from(rel)),
+            Some(std::path::PathBuf::from(format!("../../{}", rel))),
+        ];
+        let path = candidates
+            .into_iter()
+            .flatten()
+            .find(|p| p.exists())
+            .expect("U1 corpus not found");
+        crate::plan370_test_support::build_component_from_app(&path).expect("U1 corpus must build")
+    }
+
+    fn active_view(dc: &crate::ui::dynamic::DynamicComponent) -> String {
+        let (view, _, _) = dc.view_with_debug();
+        format!("{:?}", view)
+    }
+
+    /// U1(P0): 循环构建的侧栏 press 后 active_id 不得冻结——
+    /// 连续两次导航后视图条件必须翻转(现场: press 被接受但全局死导航)。
+    #[test]
+    fn u1_press_after_loop_build_updates_active_id() {
+        let mut dc = build();
+        // fire_init 已由 build 执行: 循环侧栏构建完成,active=home。
+        let v0 = active_view(&dc);
+        assert!(
+            v0.contains("HOME-VIEW"),
+            "initial home view missing:\n{}",
+            &v0[..v0.len().min(600)]
+        );
+
+        // press #1: Nav("roles") —— payload 编码与渲染层同构。
+        dc.on_with_input_for("App", "Nav\u{1F}s\u{1F}roles", None);
+        let v1 = active_view(&dc);
+        assert!(
+            v1.contains("ROLES-VIEW") && !v1.contains("HOME-VIEW"),
+            "U1 FREEZE: first press did not flip the view (active_id frozen?):\n{}",
+            &v1[..v1.len().min(800)]
+        );
+
+        // press #2: 连续导航(U1 现场=第二次起冻结)。
+        dc.on_with_input_for("App", "Nav\u{1F}s\u{1F}daemon", None);
+        let v2 = active_view(&dc);
+        assert!(
+            v2.contains("DAEMON-VIEW") && !v2.contains("ROLES-VIEW"),
+            "U1 FREEZE: second press did not flip the view:\n{}",
+            &v2[..v2.len().min(800)]
+        );
+
+        // handler 侧对照: root .current 与 store .active_id 同步正确。
+        let cur = dc.read_state("current").expect("current readable");
+        assert!(
+            matches!(&cur, auto_val::Value::Str(s) if s.as_str() == "daemon"),
+            "root .current not updated, got {:?}",
+            cur
+        );
+    }
+
+    /// U4: select 控件 VM 端渲染——View::Select 产出（options/选中态/
+    /// onselect payload 通道）。此前 view-builder 无 select 路由（§P/U4
+    /// "快照结构在、渲染丢"）。
+    #[test]
+    fn u4_select_renders_and_dispatches() {
+        let mut dc = build();
+        let (view, _, _) = dc.view_with_debug();
+        let g = format!("{:?}", view);
+        assert!(
+            g.contains("Select {"),
+            "U4: View::Select not produced, view: {}",
+            &g[..g.len().min(600)]
+        );
+        assert!(
+            g.contains("\"roles\"") && g.contains("\"daemon\""),
+            "U4: select options missing"
+        );
+        // payload 分发: 模拟渲染层 SelectCallback 产出的编码事件。
+        dc.on_with_input_for("App", "Nav\u{1F}s\u{1F}roles", None);
+        let cur = dc.read_state("current").expect("current readable");
+        assert!(
+            matches!(&cur, auto_val::Value::Str(s) if s.as_str() == "roles"),
+            "U4: select payload dispatch failed, got {:?}",
+            cur
+        );
+    }
+
+    /// U2: `$event` 标记实参替换。内联 `onchange: .Cell(1, $event.target.value)`
+    /// 在视图构建期把 $event 冻结成字面量串随 payload 往返——dispatch 时
+    /// 须用真实输入替换（现场"文本不落盘"根因）。事件串模拟渲染层
+    /// encode_payload 形态（name + 类型标签实参序列）。
+    #[test]
+    fn u2_event_marker_arg_replaced_with_typed_text() {
+        let mut dc = build();
+        let encoded = "Cell\u{1F}i\u{1F}1\u{1F}s\u{1F}$event.target.value";
+        dc.on_with_input_for("App", encoded, Some("typed-text".to_string()));
+        let cur = dc.read_state("current").expect("current readable");
+        assert!(
+            matches!(&cur, auto_val::Value::Str(s) if s.as_str() == "typed-text"),
+            "U2: $event marker not replaced with typed text, got {:?}",
+            cur
+        );
+        // 非 $event 实参保持原值（字面量 1 → idx）。
+        let probe = dc.read_state("probe").expect("probe readable");
+        assert!(
+            matches!(&probe, auto_val::Value::Str(s) if s.as_str() == "1")
+                || matches!(&probe, auto_val::Value::Int(i) if *i == 1),
+            "U2: non-marker arg corrupted, got {:?}",
+            probe
+        );
+    }
+}
+
+#[cfg(feature = "ui-iced")]
+mod plan446_batch5_u3_textarea_wedge {
+    use crate::ui::iced::renderer::{oversized_textarea_preview, textarea_needs_preview};
+
+    /// U3 降级门槛:64KB 为界,小值走编辑器,超大值降级只读预览。
+    /// 现场机理:cosmic-text 对 `-`/`\` 等字形的整形 ≈60µs/字符(线性,
+    /// corpus 实测),1.3MB 损坏 sidecar 令 text_editor 每帧分钟级、
+    /// iced 事件循环整体冻结 —— 截图通道 10s 超时是最显眼症状。
+    #[test]
+    fn u3_textarea_preview_gate_boundaries() {
+        assert!(!textarea_needs_preview(""), "empty stays editable");
+        assert!(!textarea_needs_preview("hello"), "small stays editable");
+        assert!(
+            !textarea_needs_preview(&"x".repeat(64 * 1024)),
+            "exactly at cap stays editable"
+        );
+        assert!(
+            textarea_needs_preview(&"x".repeat(64 * 1024 + 1)),
+            "cap+1 degrades to preview"
+        );
+        // 现场形态:655K / 1.31M 连续反斜杠(转义翻倍损坏数据)。
+        assert!(textarea_needs_preview(&"\\".repeat(655_000)));
+        let pathological = "B:{".to_string() + &"\\".repeat(1_310_850);
+        assert!(textarea_needs_preview(&pathological));
+    }
+
+    /// 预览构造冒烟:1.31M 病态值上构建不 panic、不触碰 text_editor 整形
+    /// (函数体只做 chars 截断;渲染代价由 corpus 探针端到端锁定:
+    /// test/ui/plan446_u3_text_wedge + tmp/u3u6/probe-wedge.py,全形态 ALIVE)。
+    #[test]
+    fn u3_oversized_preview_builds_on_pathological_input() {
+        let pathological = "B:{".to_string() + &"\\".repeat(1_310_850);
+        let _el: iced::Element<'static, ()> = oversized_textarea_preview(&pathological);
+        let _el2: iced::Element<'static, ()> = oversized_textarea_preview("正常小文本");
+    }
+}

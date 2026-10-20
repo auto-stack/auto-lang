@@ -1,0 +1,1070 @@
+//! # Plan 540 M1：桌面单源配置（`~/.config/autoos/apps/desktop/config.at`）
+//!
+//! 路径约定沿用 Plan 504（osconfig_apps 同根）：桌面 boot 读、设置窗经宿主
+//! `__desktop_cmd` 臂收口写、auto-os-config 通用编辑器（daemon :17701，模块
+//! 注册见其 registry 基线）三方操作**同一份文件**（config-plugin-architecture
+//! 单源承诺）。
+//!
+//! 形态：顶层块 + 叶子平铺（`parse_flat_fields` 行读——外壳行无冒号自然
+//! 跳过；行内 `#` 仅引号外剥注释（壁纸 `#hex` 色值安全）；空值行读侧丢弃
+//! = 回退默认，序列化侧仍写出以便通用编辑器展示全字段）：
+//!
+//! ```text
+//! desktop {
+//!     dock_position : "bottom"
+//!     dock_enabled : true
+//!     dock_pinned : "011-calculator,013-todo"
+//!     wallpaper_path : ""
+//!     wallpapers_dir : ""
+//!     dark_theme : true
+//!     transparency : "off"
+//!     notes_enabled : true
+//! }
+//! ```
+//!
+//! `load()` 回退链（D4）：config.at 逐字段采纳（坏值/缺席回退默认）→ 文件
+//! 缺席时旧 6 散布 storage 键迁移检查（任一存在 → 搬运 + 立即 save 一次）→
+//! 内置默认。旧键迁移后保留只读回退一个版本（本期不删，下版本退役）。
+
+use std::path::PathBuf;
+
+/// 旧散布 storage 键（迁移源；迁移后仅存只读回退，下版本退役）。
+pub const LEGACY_STORAGE_KEYS: [&str; 8] = [
+    "shell.dock.position",
+    "shell.dock.enabled",
+    "shell.dock.pinned",
+    "shell.desktop.wallpaper",
+    "shell.desktop.wallpapers_dir",
+    "shell.appearance.theme",
+    "shell.desktop.transparency",
+    "shell.notes.enabled",
+];
+
+/// dock pinned 内置缺省。PLAN-012 W4 裁定：缺省**空**（用户裁定默认不放
+/// calc/todo/notes；"空表回退缺省三枚"语义退役——缺键 = 显式空 = 空表）。
+/// 保留常量供执行臂序列化与测试引用单源。
+pub const DEFAULT_DOCK_PINNED: [&str; 0] = [];
+
+/// 桌面单源配置（字段语义见模块头 schema）。
+#[derive(Debug, Clone, PartialEq)]
+pub struct DesktopConfig {
+    /// dock 位置：`"bottom"` | `"top"`（坏值回退 bottom）。
+    pub dock_position: String,
+    pub dock_enabled: bool,
+    /// dock 固定 app id 表（逗号串序列化。PLAN-012 W4：缺省空；缺键 =
+    /// 显式空 = 空表，不再回退三枚）。
+    pub dock_pinned: Vec<String>,
+    /// 壁纸原始配置值（"" = 未配置；`#hex` | `builtin:` | 图片路径——
+    /// 有效性验证与目录首图回退链在 boot 壁纸解析，本层不验）。
+    pub wallpaper_path: String,
+    /// PLAN-043 Phase 3：分主题壁纸槽（深）——深色主题下设置的壁纸记忆。
+    /// `wallpaper_path` 仍是**活跃值**（boot 解析/渲染层读它）；槽 = 记忆
+    /// 面：`set_wallpaper` 写当前主题槽，`set_theme` 切主题时目标槽非空
+    /// 即应用。空串 = 该主题未单独设置（切换时维持当前壁纸）。
+    pub wallpaper_path_dark: String,
+    /// PLAN-043 Phase 3：分主题壁纸槽（浅）——语义同上，浅色主题侧。
+    pub wallpaper_path_light: String,
+    /// 壁纸目录（"" = 未配置；env/探测回退链在 boot 侧）。
+    pub wallpapers_dir: String,
+    /// PLAN-019-FU8：壁纸 picker 外部请求通道——os-config 设置面「切换壁纸」
+    /// 按钮写本字段（每次点击值递变，"1"/"2" 交替），宿主 config 轮询差分臂
+    /// 只认**值变化**：变化即触发一次 `wallpaper_pick` 组合（show_desktop +
+    /// picker 开 + return_on_close）。宿主不清该值（config.at 单写方仍是
+    /// daemon/设置面），交替保证相邻两次点击恒为变化。
+    pub wallpaper_request: String,
+    pub dark_theme: bool,
+    /// PLAN-615 T-06：主题来源——`"system"`（缺省）= 每次 load 从 OS 系统主题
+    /// 派生 `dark_theme`（设置面板 set_theme 切换即置 `"manual"` 并持久化，
+    /// 此后 OS 变化不再覆盖）；坏值回退 `"system"`。存量配置文件缺键亦按
+    /// `"system"` 处理——现机即时获得 OS 跟随语义。
+    pub theme_source: String,
+    /// PLAN-601 T-05：命名主题（registry 内置名）。与 dark_theme 正交——
+    /// mode 选主题对内 light/dark，theme_name 选色板套。
+    ///
+    /// PLAN-619 T-03（用户裁决）：**缺省写 `Some("stella")`**。轨缺省主题已
+    /// 改为 `scaffold`（与 scaffold 类应用的 Vue index.css 同源），所以
+    /// 「宿主 = stella」必须在此显式声明；`None` 会让桌面 shell 静默跟随
+    /// scaffold，blast radius = 全 gallery + 桌面观感。存量 config 缺键时
+    /// 解析保留本缺省 → 老机子不受影响。
+    pub theme_name: Option<String>,
+    /// 虚拟窗底色透明度三档：`off` | `low` | `high`（518 G6；坏值回退 off）。
+    pub transparency: String,
+    pub notes_enabled: bool,
+}
+
+impl Default for DesktopConfig {
+    fn default() -> Self {
+        Self {
+            dock_position: "bottom".to_string(),
+            dock_enabled: true,
+            dock_pinned: DEFAULT_DOCK_PINNED.iter().map(|s| s.to_string()).collect(),
+            wallpaper_path: String::new(),
+            wallpaper_path_dark: String::new(),
+            wallpaper_path_light: String::new(),
+            wallpapers_dir: String::new(),
+            wallpaper_request: String::new(),
+            dark_theme: true,
+            theme_source: "system".to_string(),
+            // PLAN-619 T-03：宿主显式持有 stella（轨缺省已改为 scaffold）。
+            theme_name: Some("stella".to_string()),
+            transparency: "off".to_string(),
+            notes_enabled: true,
+        }
+    }
+}
+
+/// 配置文件路径：`~/.config/autoos/apps/desktop/config.at`。env
+/// `AUTOOS_DESKTOP_CONFIG` 覆盖（便携/测试隔离用——t2_isolate_storage
+/// 同型）。home 目录缺席（异常环境）且无 env → None。
+pub fn desktop_config_path() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("AUTOOS_DESKTOP_CONFIG") {
+        if !p.trim().is_empty() {
+            return Some(PathBuf::from(p));
+        }
+    }
+    Some(
+        dirs::home_dir()?
+            .join(".config")
+            .join("autoos")
+            .join("apps")
+            .join("desktop")
+            .join("config.at"),
+    )
+}
+
+/// Plan 551 T6:config.at mtime 采样——外写热应用轮询锚(宿主 ServiceTick
+/// 400ms stat 一次;路径缺席/不可 stat = None)。宿主自写路径 save() 后
+/// mtime 变化 → 下次 poll 读回内容相等即早退,无回环。
+pub fn config_mtime() -> Option<std::time::SystemTime> {
+    let path = desktop_config_path()?;
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// `parse_pac_fields` 平铺行读 → 逐字段强类型（坏值/缺席回退默认）。
+pub fn parse_config(src: &str) -> DesktopConfig {
+    let f = parse_flat_fields(src);
+    let mut cfg = DesktopConfig::default();
+    if let Some(v) = f.get("dock_position") {
+        if v == "bottom" || v == "top" {
+            cfg.dock_position = v.clone();
+        }
+    }
+    if let Some(v) = f.get("dock_enabled").and_then(|v| parse_bool(v)) {
+        cfg.dock_enabled = v;
+    }
+    if let Some(v) = f.get("dock_pinned") {
+        // PLAN-012 W4：显式值即事实（含纯逗号/空白 = 空表；缺键 = 默认空）
+        // ——不再有"空表回退缺省三枚"分支。
+        cfg.dock_pinned = v
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+    }
+    if let Some(v) = f.get("wallpaper_path") {
+        cfg.wallpaper_path = v.clone();
+    }
+    // PLAN-043 Phase 3：分主题壁纸槽（缺键 = 空 = 未单独设置）。
+    if let Some(v) = f.get("wallpaper_path_dark") {
+        cfg.wallpaper_path_dark = v.clone();
+    }
+    if let Some(v) = f.get("wallpaper_path_light") {
+        cfg.wallpaper_path_light = v.clone();
+    }
+    if let Some(v) = f.get("wallpapers_dir") {
+        cfg.wallpapers_dir = v.clone();
+    }
+    if let Some(v) = f.get("wallpaper_request") {
+        cfg.wallpaper_request = v.clone();
+    }
+    if let Some(v) = f.get("dark_theme").and_then(|v| parse_bool(v)) {
+        cfg.dark_theme = v;
+    }
+    // PLAN-615 T-06：主题来源（仅收 "system"/"manual"，坏值/缺席回退 system）。
+    if let Some(v) = f.get("theme_source") {
+        let t = v.trim();
+        if t == "system" || t == "manual" {
+            cfg.theme_source = t.to_string();
+        }
+    }
+    // PLAN-601 T-05：命名主题（非空串才收；词表校验在应用侧 set_theme）。
+    if let Some(v) = f.get("theme_name") {
+        let t = v.trim();
+        if !t.is_empty() {
+            cfg.theme_name = Some(t.to_string());
+        }
+    }
+    if let Some(v) = f.get("transparency") {
+        if v == "off" || v == "low" || v == "high" {
+            cfg.transparency = v.clone();
+        }
+    }
+    if let Some(v) = f.get("notes_enabled").and_then(|v| parse_bool(v)) {
+        cfg.notes_enabled = v;
+    }
+    cfg
+}
+
+/// `"true"`/`"false"` → bool（其余 None = 坏值）。
+fn parse_bool(v: &str) -> Option<bool> {
+    match v.trim() {
+        "true" => Some(true),
+        "false" => Some(false),
+        _ => None,
+    }
+}
+
+/// 平铺键值行读（`parse_pac_fields` 的引号感知变体）：行内 `#` 仅在引号
+/// 外视为注释起点——壁纸 `#hex` 色值含 `#`，`parse_pac_fields` 的先剥注释
+/// 会把它截断（Plan 540 T1 实测），故本模块自带此变体，不动共享读。
+fn parse_flat_fields(src: &str) -> std::collections::HashMap<String, String> {
+    let mut out = std::collections::HashMap::new();
+    for line in src.lines() {
+        // 剥行内注释：扫描首对成对引号外的第一个 `#`。
+        let mut code = String::new();
+        let mut in_quote: Option<char> = None;
+        for ch in line.chars() {
+            match in_quote {
+                Some(q) => {
+                    code.push(ch);
+                    if ch == q {
+                        in_quote = None;
+                    }
+                }
+                None => {
+                    if ch == '#' {
+                        break;
+                    }
+                    if ch == '"' || ch == '\'' {
+                        in_quote = Some(ch);
+                    }
+                    code.push(ch);
+                }
+            }
+        }
+        let Some((key, value)) = code.split_once(':') else {
+            continue;
+        };
+        let key = key.trim().to_string();
+        let mut value = value.trim().to_string();
+        if value.len() >= 2
+            && (value.starts_with('"') && value.ends_with('"')
+                || value.starts_with('\'') && value.ends_with('\''))
+        {
+            value = value[1..value.len() - 1].to_string();
+        }
+        if key.is_empty() || value.is_empty() {
+            continue;
+        }
+        out.insert(key, value);
+    }
+    out
+}
+
+/// 规范序列化（顶层块 + 叶子；空串字段仍写出，通用编辑器展示全字段）。
+pub fn serialize_config(cfg: &DesktopConfig) -> String {
+    let mut out = String::from("desktop {\n");
+    out.push_str(&format!("    dock_position : \"{}\"\n", cfg.dock_position));
+    out.push_str(&format!(
+        "    dock_enabled : {}\n",
+        if cfg.dock_enabled { "true" } else { "false" }
+    ));
+    out.push_str(&format!(
+        "    dock_pinned : \"{}\"\n",
+        cfg.dock_pinned.join(",")
+    ));
+    out.push_str(&format!(
+        "    wallpaper_path : \"{}\"\n",
+        cfg.wallpaper_path
+    ));
+    // PLAN-043 Phase 3：分主题壁纸槽恒落盘（通用编辑器展示全字段约定）。
+    out.push_str(&format!(
+        "    wallpaper_path_dark : \"{}\"\n",
+        cfg.wallpaper_path_dark
+    ));
+    out.push_str(&format!(
+        "    wallpaper_path_light : \"{}\"\n",
+        cfg.wallpaper_path_light
+    ));
+    out.push_str(&format!(
+        "    wallpapers_dir : \"{}\"\n",
+        cfg.wallpapers_dir
+    ));
+    out.push_str(&format!(
+        "    wallpaper_request : \"{}\"\n",
+        cfg.wallpaper_request
+    ));
+    out.push_str(&format!(
+        "    dark_theme : {}\n",
+        if cfg.dark_theme { "true" } else { "false" }
+    ));
+    // PLAN-615 T-06：主题来源恒落盘（通用编辑器展示全字段约定同先例）。
+    out.push_str(&format!("    theme_source : \"{}\"\n", cfg.theme_source));
+    // PLAN-601 T-05：命名主题（None 不落盘——文件面稳定，轨缺省 stella）。
+    if let Some(t) = &cfg.theme_name {
+        out.push_str(&format!("    theme_name : \"{t}\"\n"));
+    }
+    out.push_str(&format!("    transparency : \"{}\"\n", cfg.transparency));
+    out.push_str(&format!(
+        "    notes_enabled : {}\n",
+        if cfg.notes_enabled { "true" } else { "false" }
+    ));
+    out.push_str("}\n");
+    out
+}
+
+/// 装载纯逻辑：config.at 文本（None = 文件缺席）+ 旧键读取闭包 →
+/// (config, 是否发生迁移)。迁移语义（D4）：文件缺席 && 任一旧键存在 →
+/// 按旧键拼装（调用方负责落盘——见 [`load`]）；文件在则旧键一律不看。
+pub fn load_from(
+    src: Option<&str>,
+    legacy: &mut dyn FnMut(&str) -> Option<String>,
+) -> (DesktopConfig, bool) {
+    let Some(src) = src else {
+        // 文件缺席：旧键迁移检查。
+        let reads: Vec<Option<String>> = LEGACY_STORAGE_KEYS.iter().map(|k| legacy(k)).collect();
+        let any = reads.iter().any(|r| r.is_some());
+        if !any {
+            return (DesktopConfig::default(), false);
+        }
+        let mut cfg = DesktopConfig::default();
+        if let Some(v) = reads[0].as_deref().map(str::trim) {
+            if v == "top" || v == "bottom" {
+                cfg.dock_position = v.to_string();
+            }
+        }
+        if let Some(v) = reads[1].as_deref().and_then(parse_bool) {
+            cfg.dock_enabled = v;
+        }
+        if let Some(v) = reads[2]
+            .as_deref()
+            .map(|raw| csv_pinned(raw))
+            .filter(|l| !l.is_empty())
+        {
+            cfg.dock_pinned = v;
+        }
+        if let Some(v) = reads[3].as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+            cfg.wallpaper_path = v.to_string();
+        }
+        if let Some(v) = reads[4].as_deref().map(str::trim).filter(|v| !v.is_empty()) {
+            cfg.wallpapers_dir = v.to_string();
+        }
+        if let Some(v) = reads[5].as_deref() {
+            if v.trim() == "light" {
+                cfg.dark_theme = false;
+            } else if v.trim() == "dark" {
+                cfg.dark_theme = true;
+            }
+        }
+        if let Some(v) = reads[6].as_deref() {
+            if v.trim() == "low" || v.trim() == "high" {
+                cfg.transparency = v.trim().to_string();
+            }
+        }
+        if let Some(v) = reads[7].as_deref().and_then(parse_bool) {
+            cfg.notes_enabled = v;
+        }
+        return (cfg, true);
+    };
+    (parse_config(src), false)
+}
+
+/// 旧键 pinned 逗号串 → 去空白去空项 id 表。
+fn csv_pinned(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// PLAN-044 T-04：桌面快捷方式预置集——PLAN-018 一次性预置进 storage 的
+/// 11 id 实况单源化（此前只存在于盘上 JSON，一次空库覆盖即永久缩水且无
+/// 自愈）。跨仓 id（jade-garden/auto-musk）注册缺失只影响图标回退、不
+/// 影响条目存在（renderer 桌面投影对未登记 id 回退 lucide 的既有语义）。
+pub const DEFAULT_DESKTOP_ICONS: [&str; 11] = [
+    "011-calculator",
+    "012-clock",
+    "013-todo",
+    "014-weather",
+    "015-notes",
+    "020-music-player",
+    "028-launcher",
+    "029-photo-gallery",
+    "030-video-player",
+    "jade-garden",
+    "auto-musk",
+];
+
+/// boot 自愈：storage `shell.desktop.icons` **缺键或空串** → 播种
+/// [`DEFAULT_DESKTOP_ICONS`] 并经安全写路径落盘（T-02 合并写，后续重启
+/// 不再触发）。有键非空 = 用户/预置态，no-op。`shell.desktop.hidden`
+/// 空串是合法用户态（PLAN-012 W4 缺省空），**不**播种。
+pub fn ensure_desktop_icons_seeded() {
+    use auto_lang_core::vm::ffi::stdlib::{storage_host_publish, storage_host_read};
+    if let Some(v) = storage_host_read("shell.desktop.icons") {
+        if !v.trim().is_empty() {
+            return;
+        }
+    }
+    storage_host_publish("shell.desktop.icons", DEFAULT_DESKTOP_ICONS.join(","));
+}
+
+/// PLAN-043 Phase 3：分主题壁纸槽纯逻辑（[`load`] 尾部调用，可单测）。
+/// ① 存量单值迁移：当前生效主题槽**空**且单值非空 → 播种到该槽（幂等
+/// ——槽被 `set_wallpaper` 持久化后不再触发）。② boot 按生效主题取槽：
+/// 槽非空且 ≠ 单值 → 单值跟随槽值（内存生效不回写——`theme_source =
+/// "system"` 派生同款先例，每次 load 一致重推导）。槽空 = 未设分主题
+/// 壁纸，单值语义原样。
+fn apply_per_theme_wallpaper_slots(cfg: &mut DesktopConfig) {
+    let slot_empty = if cfg.dark_theme {
+        cfg.wallpaper_path_dark.is_empty()
+    } else {
+        cfg.wallpaper_path_light.is_empty()
+    };
+    if slot_empty && !cfg.wallpaper_path.is_empty() {
+        let v = cfg.wallpaper_path.clone();
+        if cfg.dark_theme {
+            cfg.wallpaper_path_dark = v;
+        } else {
+            cfg.wallpaper_path_light = v;
+        }
+    }
+    let slot = if cfg.dark_theme {
+        cfg.wallpaper_path_dark.clone()
+    } else {
+        cfg.wallpaper_path_light.clone()
+    };
+    if !slot.is_empty() && slot != cfg.wallpaper_path {
+        cfg.wallpaper_path = slot;
+    }
+}
+
+/// boot 装载：config.at 读（缺席 → 旧键迁移 + 立即落盘一次）。
+/// PLAN-615 T-06：`theme_source = "system"`（缺省，含存量文件缺键）时
+/// `dark_theme` 从 OS 系统主题派生（[`crate::ui::system_theme::
+/// system_prefers_dark`]，OS 读取失败回退文件值/内置 dark）；`"manual"`
+/// （用户经设置面板 set_theme 切过）以文件值为准。派生不回写文件——
+/// 每次 load 一致重推导，用户切换即置 manual 终结跟随。
+pub fn load() -> DesktopConfig {
+    let src = desktop_config_path().and_then(|p| std::fs::read_to_string(p).ok());
+    let (mut cfg, migrated) = load_from(src.as_deref(), &mut |k| {
+        auto_lang_core::vm::ffi::stdlib::storage_host_read(k)
+    });
+    if migrated {
+        let _ = save(&cfg);
+    }
+    if cfg.theme_source == "system" {
+        if let Some(dark) = crate::ui::system_theme::system_prefers_dark() {
+            cfg.dark_theme = dark;
+        }
+    }
+    // PLAN-043 Phase 3：分主题壁纸——存量单值迁移 + 按生效主题取槽。
+    apply_per_theme_wallpaper_slots(&mut cfg);
+    // PLAN-044 T-03：boot 装载即首帧快照——后续 save 的字段级 diff 基线。
+    *LAST_SNAPSHOT.lock().unwrap() = Some(cfg.clone());
+    cfg
+}
+
+/// 宿主上次写/装载的内存快照——[`save`] 字段级 diff 合并的基线。boot
+/// [`load`] 与每次成功 save 后刷新；外部热应用（renderer 400ms 轮询）不
+/// 刷新是**有意**的：热应用把盘上新值搬进调用方内存后，diff 会把它算成
+/// 「调用方变过的字段」，但锁内合并的 base 本就是盘上现值，同值覆盖无害
+/// （详见 save 注释）。
+static LAST_SNAPSHOT: std::sync::Mutex<Option<DesktopConfig>> = std::sync::Mutex::new(None);
+
+/// 逐字段比较（11 字段，返回发生变化的字段名）——save 合并的 delta 源。
+fn changed_fields(a: &DesktopConfig, b: &DesktopConfig) -> Vec<&'static str> {
+    let mut out = Vec::new();
+    if a.dock_position != b.dock_position {
+        out.push("dock_position");
+    }
+    if a.dock_enabled != b.dock_enabled {
+        out.push("dock_enabled");
+    }
+    if a.dock_pinned != b.dock_pinned {
+        out.push("dock_pinned");
+    }
+    if a.wallpaper_path != b.wallpaper_path {
+        out.push("wallpaper_path");
+    }
+    if a.wallpaper_path_dark != b.wallpaper_path_dark {
+        out.push("wallpaper_path_dark");
+    }
+    if a.wallpaper_path_light != b.wallpaper_path_light {
+        out.push("wallpaper_path_light");
+    }
+    if a.wallpapers_dir != b.wallpapers_dir {
+        out.push("wallpapers_dir");
+    }
+    if a.wallpaper_request != b.wallpaper_request {
+        out.push("wallpaper_request");
+    }
+    if a.dark_theme != b.dark_theme {
+        out.push("dark_theme");
+    }
+    if a.theme_source != b.theme_source {
+        out.push("theme_source");
+    }
+    if a.theme_name != b.theme_name {
+        out.push("theme_name");
+    }
+    if a.transparency != b.transparency {
+        out.push("transparency");
+    }
+    if a.notes_enabled != b.notes_enabled {
+        out.push("notes_enabled");
+    }
+    out
+}
+
+/// 把 `from` 的单个字段抄进 `cfg`（[`changed_fields`] 的逆映射）。
+fn apply_field(cfg: &mut DesktopConfig, name: &str, from: &DesktopConfig) {
+    match name {
+        "dock_position" => cfg.dock_position = from.dock_position.clone(),
+        "dock_enabled" => cfg.dock_enabled = from.dock_enabled,
+        "dock_pinned" => cfg.dock_pinned = from.dock_pinned.clone(),
+        "wallpaper_path" => cfg.wallpaper_path = from.wallpaper_path.clone(),
+        // PLAN-043 Phase 3：分主题壁纸槽参与字段级合并（外部写方——os-config
+        // 设置面/手编 config.at——写槽不再被陈旧快照冲掉）。
+        "wallpaper_path_dark" => cfg.wallpaper_path_dark = from.wallpaper_path_dark.clone(),
+        "wallpaper_path_light" => cfg.wallpaper_path_light = from.wallpaper_path_light.clone(),
+        "wallpapers_dir" => cfg.wallpapers_dir = from.wallpapers_dir.clone(),
+        "wallpaper_request" => cfg.wallpaper_request = from.wallpaper_request.clone(),
+        "dark_theme" => cfg.dark_theme = from.dark_theme,
+        "theme_source" => cfg.theme_source = from.theme_source.clone(),
+        "theme_name" => cfg.theme_name = from.theme_name.clone(),
+        "transparency" => cfg.transparency = from.transparency.clone(),
+        "notes_enabled" => cfg.notes_enabled = from.notes_enabled,
+        _ => {}
+    }
+}
+
+/// 落盘（PLAN-044 T-03 双写者护栏）：`<config.at>.lock` 互斥（os-config
+/// daemon 的 put/delete 同一把锁，锁路径约定单源 =
+/// `auto_lang::state_file` 模块头）→ 锁内重读盘上最新值做**字段级合并**
+/// （仅调用方内存相对快照变过的字段采纳调用方值，其余字段取盘上现值
+/// ——daemon 在两次轮询间刚写的字段不再被陈旧快照整体冲掉）→
+/// [`auto_lang_core::state_file::atomic_write`] 原子替换。锁超时 best-effort 降级
+/// 放行但合并照做。无快照基线（boot 迁移首写）或盘上无文件 → 调用方
+/// 整份为准（历史行为）。
+pub fn save(cfg: &DesktopConfig) -> std::io::Result<()> {
+    let path = desktop_config_path().ok_or_else(|| {
+        std::io::Error::new(std::io::ErrorKind::NotFound, "home directory unavailable")
+    })?;
+    let merged = auto_lang_core::state_file::with_lock(
+        &path,
+        auto_lang_core::state_file::LOCK_TIMEOUT,
+        || -> DesktopConfig {
+            let disk = std::fs::read_to_string(&path)
+                .ok()
+                .map(|src| parse_config(&src));
+            let snapshot = LAST_SNAPSHOT.lock().unwrap().clone();
+            match (disk, snapshot) {
+                (Some(base), Some(snap)) => {
+                    let mut m = base;
+                    for f in changed_fields(cfg, &snap) {
+                        apply_field(&mut m, f, cfg);
+                    }
+                    m
+                }
+                _ => cfg.clone(),
+            }
+        },
+    )
+    .into_inner();
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let result = auto_lang_core::state_file::atomic_write(&path, serialize_config(&merged).as_bytes());
+    if result.is_ok() {
+        *LAST_SNAPSHOT.lock().unwrap() = Some(merged);
+    }
+    result
+}
+
+/// 落盘到指定路径（单测隔离用；无锁无合并——隔离路径无并发写方），
+/// PLAN-044 起同为原子替换。
+pub fn save_to(path: &std::path::Path, cfg: &DesktopConfig) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    auto_lang_core::state_file::atomic_write(path, serialize_config(cfg).as_bytes())
+}
+
+/// bool → "1"/"0"（.at 控件选中态判定约定）。
+
+#[cfg(test)]
+mod tests {
+
+    /// PLAN-601 T-05：theme_name 序列化/解析往返（None 不落盘稳定面）。
+    /// PLAN-619 T-03：缺省改为 `Some("stella")`——轨缺省主题已是 scaffold，
+    /// 宿主必须显式持有 stella，所以缺省值本身就是要落盘的稳定面。
+    #[test]
+    fn theme_name_roundtrip() {
+        let mut cfg = DesktopConfig::default();
+        assert_eq!(
+            cfg.theme_name.as_deref(),
+            Some("stella"),
+            "PLAN-619 T-03：宿主缺省显式 stella"
+        );
+        let ser = serialize_config(&cfg);
+        assert!(ser.contains("theme_name : \"stella\""), "{ser}");
+
+        // None：显式空槽 → 不落盘（保留给「跟随轨缺省」的调用方）
+        cfg.theme_name = None;
+        let ser = serialize_config(&cfg);
+        assert!(
+            !ser.contains("theme_name"),
+            "None 不落盘:
+{ser}"
+        );
+
+        // Some：落盘且往返
+        cfg.theme_name = Some("zinc".to_string());
+        let ser = serialize_config(&cfg);
+        assert!(ser.contains("theme_name : \"zinc\""), "{ser}");
+        let (back, migrated) = load_from(Some(&ser), &mut |_| None);
+        assert!(!migrated);
+        assert_eq!(back.theme_name.as_deref(), Some("zinc"));
+
+        // 空串 = 未配置（解析宽容）→ 保留结构体缺省（宿主 stella）
+        let src_bad = ser.replace("theme_name : \"zinc\"", "theme_name : \"\"");
+        let (back2, _) = load_from(Some(&src_bad), &mut |_| None);
+        assert_eq!(back2.theme_name.as_deref(), Some("stella"));
+
+        // 存量 config 缺键（None 传入）→ 同样是宿主缺省 stella，老机子不变色
+        let (back3, _) = load_from(None, &mut |_| None);
+        assert_eq!(back3.theme_name.as_deref(), Some("stella"));
+    }
+
+    use super::*;
+
+    /// PLAN-044 T-04：桌面快捷方式缺键自愈——缺键/空串播种预置集，
+    /// 有键（用户自定义面）no-op。
+    #[test]
+    fn desktop_icons_seed_only_when_missing() {
+        use auto_lang_core::vm::ffi::stdlib::{lock_storage_for_test, storage_host_read};
+        let _ser = lock_storage_for_test();
+        let dir = std::env::temp_dir().join(format!("auto-t04-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("storage.json");
+        std::env::set_var("AUTO_VM_STORAGE_FILE", &path);
+
+        // 缺键 → 播种预置集
+        ensure_desktop_icons_seeded();
+        assert_eq!(
+            storage_host_read("shell.desktop.icons").as_deref(),
+            Some(DEFAULT_DESKTOP_ICONS.join(",").as_str())
+        );
+
+        // 有键（用户自定义面）→ no-op
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish(
+            "shell.desktop.icons",
+            "011-calculator,auto-term".into(),
+        );
+        ensure_desktop_icons_seeded();
+        assert_eq!(
+            storage_host_read("shell.desktop.icons").as_deref(),
+            Some("011-calculator,auto-term")
+        );
+
+        // 空串（损坏态）→ 重新播种
+        auto_lang_core::vm::ffi::stdlib::storage_host_publish("shell.desktop.icons", String::new());
+        ensure_desktop_icons_seeded();
+        assert_eq!(
+            storage_host_read("shell.desktop.icons").as_deref(),
+            Some(DEFAULT_DESKTOP_ICONS.join(",").as_str())
+        );
+
+        std::env::remove_var("AUTO_VM_STORAGE_FILE");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PLAN-044 T-03：save 字段级合并——daemon 在轮询间隙外写的字段不被
+    /// 宿主陈旧快照冲掉；宿主真正改过的字段照常落盘。
+    #[test]
+    fn save_merges_external_field_changes() {
+        let dir = std::env::temp_dir().join(format!("auto-t03-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.at");
+        std::env::set_var("AUTOOS_DESKTOP_CONFIG", &path);
+        *LAST_SNAPSHOT.lock().unwrap() = None;
+
+        // 1) 宿主首写：壁纸=图片路径
+        let mut cfg = DesktopConfig::default();
+        cfg.wallpaper_path = "D:/wallpapers/room.jpg".into();
+        save(&cfg).unwrap();
+        assert!(std::fs::read_to_string(&path).unwrap().contains("room.jpg"));
+
+        // 2) 模拟 daemon 外写：绕过 save 直接改盘上壁纸=纯色
+        let external = std::fs::read_to_string(&path)
+            .unwrap()
+            .replace("room.jpg", "#101014");
+        std::fs::write(&path, external).unwrap();
+
+        // 3) 宿主陈旧快照（内存仍 room.jpg）只改 notes 开关 → save
+        let mut stale = DesktopConfig::default();
+        stale.wallpaper_path = "D:/wallpapers/room.jpg".into();
+        stale.notes_enabled = false;
+        save(&stale).unwrap();
+
+        // 4) daemon 的壁纸保住，宿主的开关落盘
+        let disk = std::fs::read_to_string(&path).unwrap();
+        assert!(disk.contains("#101014"), "daemon 外写字段被冲掉: {disk}");
+        assert!(
+            disk.contains("notes_enabled : false"),
+            "宿主字段未落盘: {disk}"
+        );
+        assert!(!disk.contains("room.jpg"), "陈旧壁纸值被写回: {disk}");
+
+        std::env::remove_var("AUTOOS_DESKTOP_CONFIG");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// PLAN-712 T-05/AC-04：**首写无例外**——`load()` 即快照，进程首次
+    /// save 前落在盘上的手编/外写字段在「内存不变 save」后存活。
+    ///
+    /// E-7 实录（2026-09-30 旧实例退出 save 把手编壁纸冲回 `#101014`）的
+    /// 回归锚：若 load 不写快照（历史缺陷假设），首写 save 无基线走整份
+    /// 覆盖，步骤 4 会把 transparency 冲回 high——本测钉死该通道。
+    #[test]
+    fn save_after_external_edit_preserves_fields() {
+        let dir = std::env::temp_dir().join(format!("auto-712-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.at");
+        std::env::set_var("AUTOOS_DESKTOP_CONFIG", &path);
+        *LAST_SNAPSHOT.lock().unwrap() = None;
+
+        // 1) 手编/外写方先落一份自定义字段（不经 save，theme_source=manual
+        //    避免 load 走 OS 主题派生子进程，测试保持纯内存语义）。
+        std::fs::write(
+            &path,
+            "desktop {\n    wallpaper_path : \"#ABCDEF\"\n    transparency : \"high\"\n    theme_source : \"manual\"\n}\n",
+        )
+        .unwrap();
+
+        // 2) 进程 boot：load()——快照应即刻建立（PLAN-044 T-03 语义，
+        //    PLAN-712 复核确认在位）。
+        let cfg = load();
+        assert_eq!(cfg.wallpaper_path, "#ABCDEF", "盘上手编值应被装载");
+        assert_eq!(cfg.transparency, "high");
+
+        // 3) 外写方改盘：transparency → low（壁纸不动）。
+        let external = std::fs::read_to_string(&path)
+            .unwrap()
+            .replace("transparency : \"high\"", "transparency : \"low\"");
+        std::fs::write(&path, external).unwrap();
+
+        // 4) 进程内存对 transparency 仍是陈旧 high，只改 notes 开关 →
+        //    本次是进程**首次** save。
+        let mut memory = cfg.clone();
+        memory.notes_enabled = false;
+        save(&memory).unwrap();
+
+        // 5) 外写字段存活 + 宿主字段落盘（首写走字段级合并，非整份覆盖）。
+        let disk = std::fs::read_to_string(&path).unwrap();
+        assert!(
+            disk.contains("transparency : \"low\""),
+            "首写 save 冲掉外写字段: {disk}"
+        );
+        assert!(
+            disk.contains("wallpaper_path : \"#ABCDEF\""),
+            "手编壁纸被冲回: {disk}"
+        );
+        assert!(
+            disk.contains("notes_enabled : false"),
+            "宿主字段未落盘: {disk}"
+        );
+
+        std::env::remove_var("AUTOOS_DESKTOP_CONFIG");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 全字段好值：逐字段命中（含引号剥除与 CSV 拆分）。
+    #[test]
+    fn parse_full_config_all_fields() {
+        let src = "desktop {\n    dock_position : \"top\"\n    dock_enabled : false\n    dock_pinned : \"011-calculator, 013-todo\"\n    wallpaper_path : \"#123456\"\n    wallpapers_dir : \"D:/wallpapers\"\n    dark_theme : false\n    transparency : \"low\"\n    notes_enabled : false\n}\n";
+        let cfg = parse_config(src);
+        assert_eq!(cfg.dock_position, "top");
+        assert!(!cfg.dock_enabled);
+        assert_eq!(cfg.dock_pinned, vec!["011-calculator", "013-todo"]);
+        assert_eq!(cfg.wallpaper_path, "#123456");
+        assert_eq!(cfg.wallpapers_dir, "D:/wallpapers");
+        assert!(!cfg.dark_theme);
+        assert_eq!(cfg.transparency, "low");
+        assert!(!cfg.notes_enabled);
+    }
+
+    /// 坏值逐字段回退默认（坏位置档/坏布尔/坏透明档/纯逗号 pinned）。
+    #[test]
+    fn parse_bad_values_fall_back_to_defaults() {
+        let src = "desktop {\n    dock_position : \"left\"\n    dock_enabled : maybe\n    dock_pinned : \" , , \"\n    dark_theme : 1\n    transparency : \"extreme\"\n    notes_enabled : yes\n}\n";
+        let cfg = parse_config(src);
+        assert_eq!(cfg, DesktopConfig::default());
+    }
+
+    /// 空文本/无块文本 = 全默认。
+    #[test]
+    fn parse_empty_is_default() {
+        assert_eq!(parse_config(""), DesktopConfig::default());
+        assert_eq!(parse_config("nothing here"), DesktopConfig::default());
+    }
+
+    /// 行内注释仅在引号外剥（`#hex` 值不被截断；行尾注释仍剥离）。
+    #[test]
+    fn hash_in_quotes_survives_comment_strip() {
+        let src = "desktop {\n    wallpaper_path : \"#ff8800\" # 主题色\n}\n";
+        let cfg = parse_config(src);
+        assert_eq!(cfg.wallpaper_path, "#ff8800");
+    }
+
+    /// serialize → parse round-trip 恒等。
+    #[test]
+    fn serialize_round_trip() {
+        let cfg = DesktopConfig {
+            dock_position: "top".to_string(),
+            dock_enabled: false,
+            dock_pinned: vec!["011-calculator".to_string(), "015-notes".to_string()],
+            wallpaper_path: "builtin:inkwash".to_string(),
+            // PLAN-043 Phase 3：分主题壁纸槽参与往返。
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_light: "C:/pics/light.png".to_string(),
+            wallpapers_dir: String::new(),
+            // PLAN-019-FU8：请求字段参与往返（空串往返 = 空串）。
+            wallpaper_request: String::new(),
+            dark_theme: false,
+            theme_source: "manual".to_string(),
+            // PLAN-619 T-03：`None` 不是可持久状态下——存盘省略键、读回落到
+            // 宿主缺省（stella），故往返用例取显式值。None 的归一化语义由
+            // `theme_name_roundtrip` 覆盖。
+            theme_name: Some("stella".to_string()),
+            transparency: "high".to_string(),
+            notes_enabled: false,
+        };
+        assert_eq!(parse_config(&serialize_config(&cfg)), cfg);
+    }
+
+    /// 迁移：文件缺席 + 8 旧键全在 → 按旧键拼装 + migrated=true（含
+    /// theme "dark"/"light" → bool、transparency 档位、notes "false"）。
+    #[test]
+    fn migration_from_legacy_keys_one_shot() {
+        let keys = LEGACY_STORAGE_KEYS;
+        let mut legacy = |k: &str| -> Option<String> {
+            match k {
+                k if k == keys[0] => Some("top".to_string()),
+                k if k == keys[1] => Some("false".to_string()),
+                k if k == keys[2] => Some("013-todo,015-notes".to_string()),
+                k if k == keys[3] => Some("#abc123".to_string()),
+                k if k == keys[4] => Some("D:/wp".to_string()),
+                k if k == keys[5] => Some("light".to_string()),
+                k if k == keys[6] => Some("high".to_string()),
+                k if k == keys[7] => Some("false".to_string()),
+                _ => None,
+            }
+        };
+        let (cfg, migrated) = load_from(None, &mut legacy);
+        assert!(migrated);
+        assert_eq!(cfg.dock_position, "top");
+        assert!(!cfg.dock_enabled);
+        assert_eq!(cfg.dock_pinned, vec!["013-todo", "015-notes"]);
+        assert_eq!(cfg.wallpaper_path, "#abc123");
+        assert_eq!(cfg.wallpapers_dir, "D:/wp");
+        assert!(!cfg.dark_theme, "theme light → dark_theme=false");
+        assert_eq!(cfg.transparency, "high");
+        assert!(!cfg.notes_enabled);
+    }
+
+    /// 文件缺席 + 旧键全缺 → 全默认、不迁移。
+    #[test]
+    fn no_file_no_legacy_is_default() {
+        let mut legacy = |_: &str| -> Option<String> { None };
+        let (cfg, migrated) = load_from(None, &mut legacy);
+        assert!(!migrated);
+        assert_eq!(cfg, DesktopConfig::default());
+    }
+
+    /// 文件在场则旧键一律不看（config.at 为单源，迁移不回跑）。
+    #[test]
+    fn file_present_legacy_ignored() {
+        let src = "desktop {\n    dock_position : \"top\"\n}\n";
+        let mut legacy = |_: &str| -> Option<String> { Some("garbage".to_string()) };
+        let (cfg, migrated) = load_from(Some(src), &mut legacy);
+        assert!(!migrated);
+        assert_eq!(cfg.dock_position, "top");
+        assert_eq!(cfg.dock_pinned, DesktopConfig::default().dock_pinned);
+    }
+
+    /// PLAN-012 W4：pinned 空表语义三态——缺键 = 空（不再回退缺省三枚）、
+    /// 显式空/纯逗号 = 空、非空 csv = 逐项采纳。
+    #[test]
+    fn dock_pinned_empty_table_semantics() {
+        // 缺键 → 空（Default 缺省已置空）。
+        let (cfg, _) = load_from(Some("desktop {\n    dock_enabled : true\n}\n"), &mut |_| {
+            None
+        });
+        assert!(cfg.dock_pinned.is_empty(), "缺键 = 空");
+        // 显式空串（行读侧剥引号后空值跳过 = 缺键同型）与纯逗号 → 空。
+        let (cfg2, _) = load_from(Some("desktop {\n    dock_pinned : \"\"\n}\n"), &mut |_| {
+            None
+        });
+        assert!(cfg2.dock_pinned.is_empty(), "显式空串 = 空");
+        let (cfg3, _) = load_from(
+            Some("desktop {\n    dock_pinned : \" , ,\"\n}\n"),
+            &mut |_| None,
+        );
+        assert!(cfg3.dock_pinned.is_empty(), "纯逗号 = 空");
+        // 非空 csv 逐项采纳（带空白容错）。
+        let (cfg4, _) = load_from(
+            Some("desktop {\n    dock_pinned : \"011-calculator, 015-notes\"\n}\n"),
+            &mut |_| None,
+        );
+        assert_eq!(cfg4.dock_pinned, vec!["011-calculator", "015-notes"]);
+        // 缺省常量已置空（单源）。
+        assert!(DEFAULT_DOCK_PINNED.is_empty());
+    }
+
+    /// PLAN-615 T-06：theme_source 解析/序列化往返——缺席回退 system（存量
+    /// 配置文件缺键即时获得 OS 跟随语义）；坏值回退 system；manual 往返稳定。
+    #[test]
+    fn theme_source_parse_serialize_roundtrip() {
+        // 缺席 → system
+        let (back, _) = load_from(
+            Some(
+                "desktop {
+    dark_theme : false
+}
+",
+            ),
+            &mut |_| None,
+        );
+        assert_eq!(back.theme_source, "system");
+        // 坏值 → system
+        let src_bad = "desktop {
+    theme_source : \"auto\"
+}
+";
+        let (back_bad, _) = load_from(Some(src_bad), &mut |_| None);
+        assert_eq!(back_bad.theme_source, "system");
+        // manual 落盘且往返
+        let mut cfg = DesktopConfig::default();
+        cfg.theme_source = "manual".to_string();
+        let ser = serialize_config(&cfg);
+        assert!(ser.contains("theme_source : \"manual\""), "{ser}");
+        let (back_m, _) = load_from(Some(&ser), &mut |_| None);
+        assert_eq!(back_m.theme_source, "manual");
+    }
+
+    /// PLAN-019-FU8：wallpaper_request 请求字段——缺席 = 空（宿主差分臂
+    /// 不触发），有值原样保留，serialize 往返不丢（设置面每次点击交替
+    /// 值，宿主只认变化）。
+    #[test]
+    fn wallpaper_request_parse_serialize_roundtrip() {
+        // 缺席 → 空
+        let (back, _) = load_from(
+            Some(
+                "desktop {
+    dark_theme : false
+}
+",
+            ),
+            &mut |_| None,
+        );
+        assert_eq!(back.wallpaper_request, "");
+        // 有值解析 + 序列化往返
+        let mut cfg = DesktopConfig::default();
+        cfg.wallpaper_request = "2".to_string();
+        let ser = serialize_config(&cfg);
+        assert!(ser.contains("wallpaper_request : \"2\""), "{ser}");
+        let (back_2, _) = load_from(Some(&ser), &mut |_| None);
+        assert_eq!(back_2.wallpaper_request, "2");
+    }
+
+    /// save_to → read → parse round-trip 走真文件系统（临时目录隔离）。
+    #[test]
+    fn save_to_round_trip() {
+        let dir = std::env::temp_dir().join(format!("plan540-t1-{}", std::process::id()));
+        let path = dir.join("apps").join("desktop").join("config.at");
+        let cfg = DesktopConfig {
+            transparency: "low".to_string(),
+            ..DesktopConfig::default()
+        };
+        save_to(&path, &cfg).expect("save");
+        let src = std::fs::read_to_string(&path).expect("read back");
+        assert_eq!(parse_config(&src), cfg);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// PLAN-043 Phase 3：分主题壁纸槽序列化往返。
+    #[test]
+    fn per_theme_wallpaper_slots_round_trip() {
+        let cfg = DesktopConfig {
+            wallpaper_path: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_light: "C:/pics/light.png".to_string(),
+            ..DesktopConfig::default()
+        };
+        let src = serialize_config(&cfg);
+        assert!(src.contains("wallpaper_path_dark : \"C:/pics/dark.jpg\""));
+        assert!(src.contains("wallpaper_path_light : \"C:/pics/light.png\""));
+        assert_eq!(parse_config(&src), cfg);
+    }
+
+    /// PLAN-043 Phase 3：存量单值迁移——当前主题槽空且单值非空 → 播种。
+    #[test]
+    fn per_theme_migration_seeds_current_theme_slot() {
+        let mut cfg = DesktopConfig {
+            dark_theme: true,
+            wallpaper_path: "C:/pics/dark.jpg".to_string(),
+            ..DesktopConfig::default()
+        };
+        apply_per_theme_wallpaper_slots(&mut cfg);
+        assert_eq!(cfg.wallpaper_path_dark, "C:/pics/dark.jpg");
+        assert!(cfg.wallpaper_path_light.is_empty());
+        // 幂等：再跑一遍不翻值。
+        apply_per_theme_wallpaper_slots(&mut cfg);
+        assert_eq!(cfg.wallpaper_path_dark, "C:/pics/dark.jpg");
+    }
+
+    /// PLAN-043 Phase 3：boot 按生效主题取槽——槽非空且 ≠ 单值 → 单值
+    /// 跟随槽值（dark 取 dark 槽，light 取 light 槽）。
+    #[test]
+    fn per_theme_boot_applies_matching_slot() {
+        let mut dark = DesktopConfig {
+            dark_theme: true,
+            wallpaper_path: "C:/pics/stale.jpg".to_string(),
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_light: "C:/pics/light.png".to_string(),
+            ..DesktopConfig::default()
+        };
+        apply_per_theme_wallpaper_slots(&mut dark);
+        assert_eq!(dark.wallpaper_path, "C:/pics/dark.jpg");
+        let mut light = DesktopConfig {
+            dark_theme: false,
+            wallpaper_path: "C:/pics/stale.jpg".to_string(),
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            wallpaper_path_light: "C:/pics/light.png".to_string(),
+            ..DesktopConfig::default()
+        };
+        apply_per_theme_wallpaper_slots(&mut light);
+        assert_eq!(light.wallpaper_path, "C:/pics/light.png");
+    }
+
+    /// PLAN-043 Phase 3：目标槽空 = 该主题未单独设置 → 单值语义原样
+    /// （不迁移**另一**主题的槽，迁移只看当前生效主题）。
+    #[test]
+    fn per_theme_empty_current_slot_seeds_from_single_value() {
+        let mut cfg = DesktopConfig {
+            dark_theme: false,
+            wallpaper_path: "C:/pics/light.png".to_string(),
+            wallpaper_path_dark: "C:/pics/dark.jpg".to_string(),
+            ..DesktopConfig::default()
+        };
+        apply_per_theme_wallpaper_slots(&mut cfg);
+        // light 槽被播种；dark 槽（非当前主题）不被触碰。
+        assert_eq!(cfg.wallpaper_path_light, "C:/pics/light.png");
+        assert_eq!(cfg.wallpaper_path_dark, "C:/pics/dark.jpg");
+    }
+}

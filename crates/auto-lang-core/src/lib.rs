@@ -4654,3 +4654,24 @@ pub fn drain_store_extra_files() -> Vec<(String, String)> {
     let result = STORE_EXTRA_FILES.with(|cell| std::mem::take(&mut *cell.borrow_mut()));
     result
 }
+
+// PLAN-664 U-4：use 导入两类静默死面的编译期诊断汇聚点（P-15 模块解析
+// 失败 / P-16 导入符号与 model 字段撞名）。双出口：stderr 即时可见，
+// thread_local 汇聚供测试断言。PLAN-814 T-04：随 UI 动态构建管线迁入
+// auto-ui-runtime 而下沉 SDK 单源（与 STORE_EXTRA_FILES 同族带外通道）；
+// auto-lang 旧路径经再导出保持。
+thread_local! {
+    static USE_DIAGS: std::cell::RefCell<Vec<String>> = std::cell::RefCell::new(Vec::new());
+}
+
+/// Emit a use-import compile-time diagnostic (PLAN-664 P-15/P-16): stderr +
+/// thread-local sink for test assertions.
+pub fn use_diag(msg: String) {
+    USE_DIAGS.with(|cell| cell.borrow_mut().push(msg.clone()));
+    eprintln!("{}", msg);
+}
+
+/// Take (drain) accumulated use-import diagnostics — test entry.
+pub fn take_use_diags() -> Vec<String> {
+    USE_DIAGS.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
+}

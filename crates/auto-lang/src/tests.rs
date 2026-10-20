@@ -8,8 +8,6 @@ mod test_cases_tests;
 #[cfg(feature = "test-cases")]
 mod ac_case_tests;
 // PLAN-796: probe adapter integration (real sema worker + restart boundary)
-#[cfg(feature = "test-cases")]
-mod ac_av_probe_tests;
 // PLAN-815 T-04 合并门归因修复：probe_adapter_tests 消费 test-cases
 // feature 门内的 auto_test_case（兄弟模块同款门控），裸 ui-iced 面
 // （cargo tu）此前 44 编译错=master 预存（M814-A 合入前即缺门）。
@@ -20,10 +18,7 @@ mod probe_adapter_tests;
 mod probe_adapter_turnaround_ipc;
 // PLAN-701 供④/供⑥: time 族三面对拍 + shell_recent 签名冒烟
 mod plan701_supply_probes;
-mod plan703_supply_probes;
-mod plan710_supply_probes;
 mod plan728_bench; // PLAN-728 T-08: 阶梯基准谱（#[ignore] 显式跑，JSONL 入 docs/reports）
-mod plan728_supply_probes; // PLAN-728: 文件后援分页 rope 探针族（710 形态）
                            // PLAN-716 供料包: 组B 帧时间戳通道（VM/a2r 双轨+门控+开销两态）+组C 窗口投影
 mod plan716_supply_probes;
 // PLAN-779: frame native host provider 注入——core 剪断/UI 装配/merge 保 provider 回归锚
@@ -35,21 +30,14 @@ mod plan785_clipboard_provider;
 mod plan790_clipboard_media_provider;
 // PLAN-794: scroll controller/子锚点 9900..9905+9922/9923 host provider——
 // core 剪断/降级契约/装配身份/真实 UI adapter 接线回归锚
-#[cfg(feature = "code-editor")]
-mod plan413_code_editor_natives;
 #[cfg(feature = "native-clipboard")]
 mod plan485_clipboard_natives; // PLAN-814 T-02 上移：clipboard natives 四件套实剪贴板往返（SDK 死门勘误）
-mod plan656_scroll_controller_pipeline; // PLAN-814 T-02 上移：scroll natives 全管线（SDK 死门勘误）
 #[cfg(feature = "ui-iced")]
 mod plan712_back_prefix_route_fetch; // PLAN-814 T-02 上移：routes 页前缀化端到端（SDK 死门勘误）
-mod plan794_scroll_host_provider; // PLAN-814 T-02 上移：code editor payload natives 端到端（SDK 死门勘误）
-                                  // PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
-                                  // 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
-mod plan802_code_editor_provider;
-mod plan807_text_core; // PLAN-807: 文本基础抽取（剪断锚/快照端口/类型身份/真编辑器路径/资源退出）
-mod plan811_media_runtime; // PLAN-811: 媒体宿主域抽取（剪断锚/native 冻结/同一 service/17 shim 真实调用）
-                           // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
-                           // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
+// PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
+// 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
+                       // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
+                       // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
 mod plan804_dialog_dnd_provider;
 // PLAN-808: terminal 34 native host-domain extraction——codec 剪断/34 形状/
 // 装配身份/缺席矩阵/真实 DLL 会话生命周期与 UI 投影回归锚
@@ -163,13 +151,13 @@ mod aavm_at_mode_tests; // Plan 531: aavm.at a2r 模式入口(位置参数)验�
 mod conformance_tests; // AutoVM output regression tests (golden-file); VM↔a2r parity is in test/parity/
 mod cookbook_vm_tests; // Plan 240: Cookbook VM output comparison tests
 pub use auto_lang_core::heavy_gate;
-mod plan569_py_dispatch_tests;
-mod plan814_recipe_extraction_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）// ============================================================
-                                     // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
-                                     // 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
-                                     // 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
-                                     // test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
-                                     // ============================================================
+mod plan814_recipe_extraction_tests;
+mod plan569_py_dispatch_tests; // Plan 569 D2: py 返回值方法分派动态化——codegen 决策核单测（无 pyo3 依赖）// ============================================================
+                               // PLAN-691 T-04: 顶层散测试文件归位（src/*_tests.rs → src/tests/，2026-09-22）。
+                               // 以下 mod 声明自 lib.rs 迁入，cfg 门与溯源注释原样保留；
+                               // 文件本体对应 git mv 至 src/tests/<name>.rs（rename 纯 move）。
+                               // test_runner 例外留在 lib.rs——VM native auto.test.* 生产依赖（Plan 263）。
+                               // ============================================================
 
 #[cfg(test)]
 mod test_util; // Plan 266 Phase 4: Differential testing utilities
@@ -222,10 +210,6 @@ mod error_spans_tests;
 #[cfg(test)]
 mod plan320_tests;
 #[cfg(test)]
-mod plan339_tests;
-#[cfg(test)]
-mod plan340_tests;
-#[cfg(test)]
 mod plan341_tests;
 #[cfg(test)]
 mod plan349_tests;
@@ -233,42 +217,20 @@ mod plan349_tests;
 #[cfg(test)]
 mod plan446_batch2_tests;
 // Plan 446 批二 B1: store 列表循环字段访问事件实参回归（corpus 驱动）。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan446_b1_tests;
 // Plan 446 批三: 动态值管线语义统一回归（D1/D2/D3/D6 探针）。
-#[cfg(test)]
-mod plan446_batch3_tests;
 // Plan 446 批四: 打磨项回归（F3/D4/D5/E3 探针）。
-#[cfg(test)]
-mod plan446_batch4_tests;
 // Plan 446 C1: popover 形态渲染回归锁（复审转常驻）。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan446_c1_popover_tests;
 // Plan 446 批五: 渲染层（§P/U1-U7）回归。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan370_store_vm_tests;
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan446_batch5_tests;
 // Plan 442 A2: legacy `use store: X` facade regression corpus.
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan442_store_facade_tests;
 // PLAN-622: named-store facade consumption-gap red corpus (a-e).
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan622_store_facade_gap_tests;
 // PLAN-667: 内存安全底线探针矩阵（捕获/RC/a2r，VM 生产路径）。
 #[cfg(test)]
 mod plan667_memory_safety_tests;
 // PLAN-624: merged single-state cross-state resolution red corpus.
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan624_cross_state_tests;
 // PLAN-066: 原生组件外部注册 SPI 语料（autodown_editor 迁移等价 + Element
 // 通道 View::Custom + 未注册名保形）。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan066_native_widget_tests;
 // PLAN-066 T-06（auto-musk）: 055-4⑥ 过滤投影（computed 内 VmRef 域读取）
 // + P536-D2 跨模块调用帧 SET_FIELD 达根态 red corpus。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan066_filter_projection_tests;
 // PLAN-627: qualified api-module-call corpus（模块形态 use back.api +
 // 限定名 api.X()：抽取/vue 发射/rust 发射三面）。
 #[cfg(test)]
@@ -281,64 +243,39 @@ mod plan634_block_tail_semi_tests;
 #[cfg(test)]
 mod plan024_named_view_tests;
 // Plan 442 A3: `use.web` ext link regression corpus.
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan442_ext_link_tests;
-// PLAN-019 T-06: own-module bare-call binding (vm merged link) corpus.
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan019_vm_own_module_link_tests;
 // PLAN-732: autodown 编辑壳 wikilink 激活供给六环贯通 corpus。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan732_wikilink_tests;
 // PLAN-739: 编辑回声→换页视面跟随回归（F-037-R1——input_values 键入条目
 // 永生 × patch_input_values ADE 覆写钉死视面）。
-mod plan051_ext_widget_tests;
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan739_input_pin_tests;
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。
-mod plan051_timer_tests;
 // Plan 051 Phase 2: 会话壳视觉五缺陷（子模块 use.web 注册表/容器 min-h/i18n 参数）。
-mod plan051_p2_tests;
 // Plan 442 A5: one-shot scheduler primitives regression corpus.
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan442_sched_tests;
 // Plan 442 B-support: web-platform global bridges regression corpus.
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan442_webcompat_tests;
 // Plan 442 C2: parser regressions for the Bug A family (method chains on
 // use.rs-imported fn calls in argument position).
 #[cfg(test)]
 mod plan442_parser_regress_tests;
 // Plan 442 Phase B gate: headless link probe against the real auto-musk
 // corpus (sibling checkout). #[ignore] — manual-only, never in CI.
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan442_musk_probe_tests;
 // Plan 442 Phase C1 probe: VM-direct run of the auto-musk backend corpus
 // (a2r sources). #[ignore] — manual-only, never in CI.
 #[cfg(test)]
 mod plan442_musk_backend_probe_tests;
 // PLAN-059 T9 探针（musk DeleteConfirmDialog 端口链实机复现）：零参父
 // handler 的子→父声明式路由帧对齐契约。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan059_child_emit_probe_tests;
 // PLAN-536 探针套件（timer 失效/Init 挂载/absolute 悬浮/modal 绑定）。
 // PLAN-536 T10 复挂载：声明原随 T1 落 lib.rs（6189f679f），被 b4d1ced7b
 // （539 折叠前同步合并）冲突解决时静默丢弃——全套 17+ 探针自此在 master
 // 为死代码未编译，复审遗漏扫描立案；本行恢复挂载。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan536_t1_reactive_probe_tests;
 // PLAN-536 T12 探针（musk 发送链最小同形）：一参回调链帧对齐复验（KD-493①
 // 在 aa92a821e 后的组件层面）+ PollStream 兜底链活性（streaming 置位先于
 // Sse.open 抛点）。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan536_t12_send_chain_probe_tests;
 // PLAN-083 T-01：异步 HTTP 消息桥（Http.get_msg）——派生线程完成项入队、
 // 载荷协议 {"ok","status","body"}、␟s␟ 载荷编码经 decode_payload 回填
 // handler 的字符串实参往返（decode_payload 在 ui::dynamic，随 ui-iced 门）。
 mod auto_down_vm_server_probe_tests;
 mod autodown_codegen_debts_tests;
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan083_http_msg_bridge_tests;
-mod plan765_active_session_stability_tests;
 // Plan 049 (auto-musk) style-parity: class.rs 支持度探针 + 对拍 dump（手动门,
 // 跨仓 sibling 布局;T1 映射草案逐类断言见模块头注）。
 #[cfg(all(test, feature = "ui-iced"))]
@@ -350,8 +287,6 @@ mod plan449_style_parity_tests;
 #[cfg(all(test, feature = "ui"))]
 mod plan593_theme_registry_tests;
 // Plan 606: Photo gallery thumbnails and fit parity test.
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan606_gallery_tests;
 // PLAN-615 T-07: calc 011 Programmer HEX 首光回归（VM 侧逻辑锚）。
 #[cfg(all(test, feature = "ui-iced"))]
 mod plan615_calc_prog_tests;
@@ -372,68 +307,37 @@ mod plan367_viewfn_tests;
 // Plan 408: component fn → independent Vue SFC synthesis (P2 residuals).
 #[cfg(test)]
 mod native_css_tests;
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan370_015_behavior_tests;
 #[cfg(test)]
 mod plan408_tests;
 // Plan 409 §6: link 子组件 VM 渲染缺口 regression tests (needs the gallery
 // sources + the ui-iced interpreter path).
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan409_tests;
 // Plan 412: Layout Gallery + VM 布局引擎对齐 integration tests(12 页构建 +
 // grid 重派生 + col-span 元数据 + 路由登记)。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan412_tests;
-#[cfg(test)]
-mod plan446_j1_repro_tests;
 // Plan 437 Phase 2: VM 轨子组件 Init 生命周期钉子(渲染期 props→Init→build)。
 #[cfg(test)]
 mod plan352_tests;
 #[cfg(test)]
 mod plan353_tests;
-#[cfg(test)]
-mod plan437_child_init_tests;
 // Plan 359 Phase 5 (G1/G2/G3): Concurrency bug fixes (spawn, generic types, channels)
 #[cfg(test)]
 mod plan348_concurrency_tests;
-#[cfg(test)]
-mod plan484_chart_component_tests;
 // Plan 498: chart 交互状态机——M0 mouse-area on_click 引擎臂冒烟 +
 // M1-M4 悬停态/legend 点击显隐断言(484 冒烟扩展)。
-#[cfg(test)]
-mod plan498_chart_interaction_tests;
 // Plan 492: 引擎正确性专项——f-string 括号插值/primary-shorthand `[` 后缀/
 // vue 文本内容表达式臂/包组件单 VM 编译链三族修复。
-#[cfg(test)]
-mod plan492_tests;
 // Plan 499 M2: 指针移动限频流管道 e2e——pipe-payload 全链送达逻辑坐标。
 #[cfg(test)]
 mod plan499_engine_float_to_int_tests;
-#[cfg(test)]
-mod plan499_pointer_stream_tests;
 // Plan 503: 桌面视觉刷新——style 串循环成员插值（VM/vue 双端）回归。
 #[cfg(test)]
 mod plan503_tests;
-// PLAN-058（auto-down）：转介单②三件引擎缺口探针/回归锁——nanbox 整值
-// float 保真（043 T6 债）+ use 子件 handler 体 computed 解析 + 引号 emit
-// 计算实参派发路由（语料 test/ui/plan058_child_emit_computed）。
-// 门与 musk p053_8 语料同款：探针走 DynamicComponent/VM 解释器，需
-// ui-iced（tv/tt 等 feature 贫集档不编译本模块）。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan058_engine_gap_tests;
 // PLAN-063（auto-down）：handler 参数槽 float 算术/比较坍缩回归锁（T-04b）——
 // call_handler_for/push_value 派发路（demo 同构），与 058 on_with_input 路互补。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan063_handler_float_tests;
 // PLAN-670 F-W3：code_editor 事件参数绑定（oninput/oncursor 循环变量/字面量/
 // 点路径三类实参，062 T9 input 同款语义镜像）回归锁。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan670_code_editor_event_tests;
 // PLAN-089(musk T-07①)：mouse-area press 链回归锁——wrapper=Container+
 // content 入树+path 对齐（builder push(0) ↔ extractor 下探），MCP press
 // 仪器面经 styled_vtree→path→extract 全链可达 on_click。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan089_mouse_area_press_tests;
 // Plan 502 M1: diagram 标签发射——svg <text> 直通(vue 上下文分流 + VM
 // svgdoc 内容序列化)与 overlay 动态 arbitrary 值双轨对照回归。
 #[cfg(test)]
@@ -445,15 +349,9 @@ mod plan492_m2_tests;
 #[cfg(test)]
 mod plan492_m3_tests;
 // Plan 492 M4 (族 C): 包组件单 VM 编译链分叉定位与修复。
-#[cfg(test)]
-mod plan492_m4_tests;
 // Plan 492 M5: 包组件编译失败显式诊断(装载层+合成层)。
-#[cfg(test)]
-mod plan492_m5_tests;
 // PLAN-053: auto-musk VM 轨上游缺陷跟踪伞回归锚(null 家族等值 /
 // computed+helper 链)。
-#[cfg(test)]
-mod musk_vm_track_tests;
 // PLAN-639: 跨包 blueprint .at 解析双轨消费门（VM 渲染结构 + vue 发射面）。
 #[cfg(test)]
 mod plan639_bp_tests;
@@ -478,8 +376,6 @@ mod plan647_bp_version_tests;
 mod plan649_bp_tests;
 // PLAN-657: L1 组装样板（047-bp-admin）——四包五变体直连全量 VM/vue 双轨
 // 回归锚 + 参数化语料面（palette 零漂移 + dep 探测）。
-#[cfg(test)]
-mod plan657_bp_admin_tests;
 // PLAN-082: 脚本与 `>` 命令的结构化互操作——shell_query/run native 数据面
 // （T-01 spike 三前提 + T-02 mock host 契约）。
 #[cfg(test)]

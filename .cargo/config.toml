@@ -68,7 +68,9 @@ jobs = 12
 # PLAN-814: 迁包选择面机制——别名扩多 -p（包前缀 feature：裸 --features 在
 # 多 -p 下要求所选包都有该 feature，会红；前缀式已实证可单调用混选）。
 # auto-lang-core 的迁移族（首例 use_scanner::tests 27 测）由此保持日常档选中。
-t = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --test schema_drift --test docs_gen --test component_registry_test --features auto-lang/ui-iced,auto-lang/test-cases"
+# PLAN-814 T-04：ui/ 运行族（iced ~2000 测）随迁 auto-ui-runtime——别名同步
+# 扩包防静默丢面（九档完整映射文档=T-07；feature 经 auto-lang 默认转发统一）。
+t = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect -p auto-ui-runtime --lib --test schema_drift --test docs_gen --test component_registry_test --features auto-lang/ui-iced,auto-lang/test-cases"
 # Plan 466: full 档 = 全部测试含 1M 大档 churn(批量回归专用——fix-test-tiering
 # 2026-09-30 起不再作 per-plan review 门禁,由 auto-plan-regress 技能主检出
 # 单实例触发;复审门禁=裸 cargo t + 触面档,见 AGENTS.md Category B)
@@ -78,7 +80,7 @@ t = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-d
 # 作废,desktop_protocol 面进 tf;复审清单不再须另跑 ui-iced 补档。)
 # (Plan 531 注:tf 亦不含 test-trans(tt 档)——a2r/cookbook 文本金样 28 件曾
 # 因此脱离门禁烂了一年(444/514/523 三期累积);复审清单同样须另跑 cargo tt)
-tf = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"
+tf = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect -p auto-ui-runtime --lib --test schema_drift --test docs_gen --test component_registry_test --config-file .config/nextest-full.toml"
 # Plan 568: tv = 纯 .at 语料 golden 档(改 VM/编译器后的回归)。AAVM/AA2R
 # 自举测试已迁出(test-aavm feature)——"改 VM/编译器的回归"与"AAVM 展示"
 # 不是同一概念,aavm 无实用面,反射性 tv 不再触发三重解释/现场 cargo build

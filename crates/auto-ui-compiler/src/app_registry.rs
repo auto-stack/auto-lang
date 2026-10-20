@@ -549,7 +549,7 @@ pub fn resolve_os_manifest_root(parent: &Path) -> Option<PathBuf> {
 }
 
 /// Stage B P-5：解析序定位 auto-os 顶层随迁资产目录（画廊两件等 590 批
-/// 迁入 auto-os 顶层/`apps/` 的资产）。实现在 [`crate::os_paths`]（无
+/// 迁入 auto-os 顶层/`apps/` 的资产）。实现在 [`auto_lang_core::os_paths`]（无
 /// feature 门——`ui_gen` docs 管线与 CLI 的无 `ui` 构建形态同源消费），
 /// 此处 re-export 维持注册表家族聚合（与 `resolve_os_manifest_root` 同址）。
 pub use auto_lang_core::os_paths::resolve_os_top_dir;

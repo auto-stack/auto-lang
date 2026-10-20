@@ -6,8 +6,189 @@ description = "UI runtime: the VM rendering track / desktop host stack (iced ren
 license = "MIT"
 keywords = ["ui", "runtime", "renderer", "desktop"]
 
+# PLAN-814 T-04：features/依赖自 auto-lang 随 ui/ 整体迁入（同名同语义）；
+# 旧 auto-lang 侧同名 feature 转发本包。default 维持旧默认重后端形态
+# （原 auto-lang default 含 ui-iced——"UI 部署 profile 仍保原功能而非删除
+# 默认重后端"，§5.7）。
+[features]
+default = ["ui-iced"]
+ui = ["auto-ui-compiler/ui"]
+ui-interpreter = ["ui", "dep:ureq"]
+ui-headless = ["ui", "ui-interpreter", "auto-ui-compiler/ui-headless"]
+image-pipeline = ["dep:image", "dep:kamadak-exif", "auto-media-core/image-codec"]
+# PLAN-041 T-14 unconditional-rendering 等 iced 门面注释随迁自 auto-lang
+# （完整依据见 ui/iced 模块头）。
+ui-iced = [
+    "ui",
+    "dep:iced",
+    "dep:iced_widget",
+    "dep:iced_futures",
+    "dep:iced_runtime",
+    "dep:iced_tiny_skia",
+    "ui-interpreter",
+    "image-pipeline",
+    "dep:arboard",
+    "code-editor",
+    "ui-clipboard",
+    "ui-dialog",
+    "native-dock",
+    "native-clipboard",
+    "dep:resvg",
+    "dep:tiny-skia",
+]
+# code-editor 双 owner 语义保持：SDK 侧 a2r diff 双轨（auto-lang-core/
+# code-editor）+ 本包 editor 注册表/provider（ui/code_editor）。
+code-editor = ["ui", "dep:cosmic-text", "dep:syntect", "auto-lang-core/code-editor"]
+highlight-treesitter = [
+    "code-editor",
+    "dep:tree-sitter",
+    "dep:tree-sitter-highlight",
+    # P0 10 语言（T-02）
+    "dep:tree-sitter-rust",
+    "dep:tree-sitter-python",
+    "dep:tree-sitter-javascript",
+    "dep:tree-sitter-typescript",
+    "dep:tree-sitter-json",
+    "dep:tree-sitter-toml-ng",
+    "dep:tree-sitter-yaml",
+    "dep:tree-sitter-md",
+    "dep:tree-sitter-bash",
+    "dep:tree-sitter-c",
+    # P1 8 语言（T-04）
+    "dep:tree-sitter-html",
+    "dep:tree-sitter-css",
+    "dep:tree-sitter-cpp",
+    "dep:tree-sitter-c-sharp",
+    "dep:tree-sitter-go",
+    "dep:tree-sitter-java",
+    "dep:tree-sitter-sequel",
+    "dep:tree-sitter-xml",
+    # P2 3 语言（T-05；ini=Apache-2.0 许可注记见 auto-lang 依赖节）
+    "dep:tree-sitter-batch",
+    "dep:tree-sitter-powershell",
+    "dep:tree-sitter-ini",
+]
+ui-clipboard = ["dep:arboard"]
+ui-dialog = ["dep:rfd", "dep:raw-window-handle"]
+iced-layout-tests = ["ui-iced", "dep:iced_test"]
+mpv-native = ["ui"]
+mpv-gpu = ["mpv-native", "dep:iced_wgpu"]
+mpv-widget = ["mpv-gpu", "ui-iced"]
+mpv-spike = ["mpv-gpu", "ui-iced"]
+# 跨仓 autodown-core（不进 SDK；解析序 env/组内/主检出——见 AGENTS）。
+autodown = ["ui-iced", "dep:autodown-core"]
+native-dock = ["dep:windows"]
+native-clipboard = ["dep:windows", "dep:image"]
+native-dnd = ["dep:windows", "dep:windows-core", "dep:image"]
+test-native-dock = ["ui-iced", "native-dock"]
+
 [dependencies]
-# PLAN-814 T-01/T-02 probe skeleton: the ui/ tree migrates in T-04; the VM
-# keeps only light capabilities via the SDK host-capability provider ports.
 auto-lang-core = { path = "../auto-lang-core" }
 auto-ui-compiler = { path = "../auto-ui-compiler" }
+auto-val = { path = "../auto-val", features = ["serde"] }
+# PLAN-811: media foundation（image_pipeline/photo_service 门面语义随迁——
+# blake3-only 服务恒在，codec 走 image-pipeline feature）。
+auto-media-core = { path = "../auto-media-core", default-features = false }
+# PLAN-807: text foundation（code_editor/diff 门面消费）。
+auto-text-core = { path = "../auto-text-core" }
+# PLAN-808: terminal host-domain core（TerminalHostProvider 端口）。
+auto-terminal-core = { path = "../auto-terminal-core" }
+# a2r-std：frame_bench 帧时间戳通道同源（PLAN-716 组B 契约）。
+a2r-std = { path = "../a2r-std" }
+# Plan 019 批次七: autodown-core（跨仓 path 指向 auto-down 主检出 crate）。
+autodown-core = { path = "../../../auto-down/autodown/packages/engine/rust", optional = true }
+
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+regex = { workspace = true }
+notify = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+blake3 = { workspace = true }
+chrono = { workspace = true }
+lazy_static = "1.4"
+futures = "0.3"
+base64 = "0.22"
+log = { workspace = true }
+miette = { workspace = true }
+dirs = { workspace = true }
+urlencoding = { workspace = true }
+# Plan 299/699: MCP streamable HTTP 服务面（mcp_server——axum HTTP/1.1 传输）。
+axum = { version = "0.8", features = ["json"] }
+# Plan 350: WebSocket client（mcp/桌面协议同步桥，专用线程同步形态）。
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "handshake"] }
+# Plan 154/341: HTTP client（renderer 图片/SVG 拉取阻塞臂等）。
+reqwest = { version = "0.12", features = ["blocking", "json", "stream", "multipart", "cookies", "gzip", "brotli"] }
+
+# ── iced 后端（Plan 015/041/414/459/617/683 门面注释随迁自 auto-lang） ──
+iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas", "unconditional-rendering"], optional = true }
+iced_widget = { version = "0.14", optional = true }
+iced_futures = { version = "0.14", optional = true }
+iced_test = { version = "0.14", optional = true }
+iced_wgpu = { version = "0.14", optional = true }
+iced_runtime = { version = "0.14", optional = true }
+iced_tiny_skia = { version = "0.14", optional = true }
+arboard = { version = "3", optional = true }
+rfd = { version = "0.15", optional = true }
+raw-window-handle = { version = "0.6", optional = true }
+image = { version = "0.25", optional = true }
+resvg = { version = "0.45", optional = true }
+tiny-skia = { version = "0.11", optional = true }
+kamadak-exif = { version = "0.6", optional = true }
+cosmic-text = { version = "0.15", optional = true, features = ["vi", "syntect"] }
+syntect = { version = "5", optional = true }
+tree-sitter = { version = "0.27", optional = true }
+tree-sitter-highlight = { version = "0.27", optional = true }
+tree-sitter-rust = { version = "0.24", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
+tree-sitter-javascript = { version = "0.25", optional = true }
+tree-sitter-typescript = { version = "0.23", optional = true }
+tree-sitter-json = { version = "0.24", optional = true }
+tree-sitter-toml-ng = { version = "0.7", optional = true }
+tree-sitter-yaml = { version = "0.7", optional = true }
+tree-sitter-md = { version = "0.5", optional = true }
+tree-sitter-bash = { version = "0.25", optional = true }
+tree-sitter-c = { version = "0.24", optional = true }
+tree-sitter-html = { version = "0.23", optional = true }
+tree-sitter-css = { version = "0.25", optional = true }
+tree-sitter-cpp = { version = "0.23", optional = true }
+tree-sitter-c-sharp = { version = "0.23", optional = true }
+tree-sitter-go = { version = "0.25", optional = true }
+tree-sitter-java = { version = "0.23", optional = true }
+tree-sitter-sequel = { version = "0.3", optional = true }
+tree-sitter-xml = { version = "0.7", optional = true }
+tree-sitter-batch = { version = "0.11", optional = true }
+tree-sitter-powershell = { version = "0.26", optional = true }
+tree-sitter-ini = { version = "1.4", optional = true }
+ureq = { version = "2", features = ["json"], optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dwm",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Accessibility",
+    "Win32_UI_HiDpi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Threading",
+    "Win32_System_DataExchange",
+    "Win32_UI_Shell",
+    "Win32_System_Memory",
+    "Win32_Security",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Input_Ime",
+    "Win32_System_Com",
+    "Win32_System_Ole",
+    "Win32_System_SystemServices",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Com_Marshal",
+    "implement",
+] }
+windows-core = { version = "0.58", optional = true }
+
+[dev-dependencies]
+resvg = "0.45"
+tiny-skia = "0.11"
+tempfile = "3"
+png = "0.18"
