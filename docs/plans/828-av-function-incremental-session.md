@@ -193,6 +193,11 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r4a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): composable snapshot source maps and per-reference intrinsic bindings" | r3a-check五例相邻反例全部闭合并收编回归(r1回归套件18/18=6×r1+3×r2+4×r2a+5×r3a-check)：
+F-04统一→可组合快照source map：ProgramSnapshot自持per-slot区域表(start,len,delta; x→x+Σ delta where start<x)，所有公开执行路径映射；每次编辑复合进每个函数的map与每个内容历史条目的map（全部存储代码对象经历同一源时间线），重铸造清空——体级细化公开可用(a)、跨编辑复合(b)、跨骑编辑只动end(c)、命中恢复条目自身累计map（历轮回归仍绿）
+F-06统一→按实际引用身份的依赖：CheckedFunction记录(def序号,symbol,effect,shape)四元组；FnEnv按def序号持表；credential_current要求每个已咨询引用槽位四事实全同——def间symbol交换(d)与effect翻转(e)均失效；未读intrinsic仍排除于全局身份
+回归面：主17、r1套件18、scalar差分6、vertical/cache/binding绿；r3a-check材料随分支保存(attachments/828/r3a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r3a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): close r2a-check adjacent failures - snapshot-owned span shifts, per-entry mint origins, body-read intrinsic binding" | r2a-check四例相邻反例全部闭合并收编回归(r1回归套件13/13=6×r1+3×r2+4×r2a-check)：
 F04-a→公开快照执行路径映射→ProgramSnapshot自持per-code span shifts，execute_program/steps/resume经快照不可变视图映射→r2a_current_snapshot_public_execution PASS→闭合
 F04-b→命中条目携带自身铸造origin→history值(body,code,mint_origin)；命中恢复该基面而非继承上次铸造→r2a_history_hit_preserves_mint_source PASS→闭合
