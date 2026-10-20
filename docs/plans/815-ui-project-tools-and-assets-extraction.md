@@ -4,9 +4,9 @@ status: executing
 feature_name: UI 工程工具、生成入口与专属资源脱离 Man
 author: [Codex]
 created_at: 2026-10-19
-updated_at: 2026-10-20
+updated_at: 2026-10-21
 plan_revision: 3
-current_step: 9
+current_step: 10
 total_steps: 17
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/auto-lang/ui/overview.md, docs/specs/project-model/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-ui-tools/project.md, docs/specs/tool-protocol/project.md]
@@ -190,7 +190,7 @@ Category A：若只改专用脚本/临时fixture/ledger/文档，不另跑cargo 
 | [x] | T-01 | work | 现在;809已交付,新SDK probe按M814-A门 | attachments/815/contract-baseline.md(新增):全工具/字段/资产/效果owner、旧oracle、非UI共享分界、I-TOOL/交互预算候选;前置合入后probe冻结完整方案；R3独立确认bc61501c5的wire120/完整frame122/两读入口及解析器防线一致，F-R1-05 CLOSED；其余owner清单证据保留 | AC-01..04 |
 | [x] | T-02 | work | T-01只读资源映射;无WIP引用 | 新工具包私有资源模块/独立资产测试、来源/许可证映射;生产asset原源不动,单次迁移及embed切换在T-04完成,不改809数据/接线,不假建最终API | AC-01,04 |
 | [x] | T-03 | work | T-01协议决策+809已交付;不等814 | 新auto-tool-protocol复用I-PROJECT/codec,定义版本/能力/资源/结果/退出,正常负控编译/协议测试；R4确认7045e20fa的F-R3-01关闭：helper完整wire直接解码、双路径合法对照和目标分支/具名错误断言有效；14项wire复跑通过，R3其余未变证据复用 | AC-02,03 |
-| [ ] | T-04 | work | T-14/M815-A+M814-A已发布 | Vue/Rust/Jet/Ark/Tauri等完整UI工具及真实请求接线、资产生产迁移/旧源删除;非UI分界具名adapter | AC-01,02 |
+| [x] | T-04 | work | T-14/M815-A+M814-A已发布 | Vue/Rust/Jet/Ark/Tauri等完整UI工具及真实请求接线、资产生产迁移/旧源删除;非UI分界具名adapter。[✅ 2026-10-21 主体完成 @ b6aa3c21e+90aed7fc7（唯一树）：vue/rust_ui/jet/ark/tauri/tauri_backend/vscode/vue_shadcn/gallery/wm/gallery_cache/image_viewer/pkg/util(4fn)/project_display_reader+plan075+内联测试迁 auto-ui-tools（auto_lang→compiler/core 重写，生成物模板串不动）；资产一次性切换（gallery/wm/shadcn-ui→assets/+drawlist+wm-test 随组迁+MIT 文本+清单翻转 4 锚定）；api_gen/sidecar/rust_workspace 成 auto-api-gen 单算法 crate（owner=lang-service-adapter，Man/ui域双消费门面）；DELIVERY_CRATES 19→23；M814-B 门残留=vue_run_compat+rust_ui_vm_compat（run 面，行为冻结）。验证：nextest 163/166（3 红 stash 对照=HEAD 预存）+tool_process 17/17+protocol 18/18+fixture 真进程 4/4+闭包门 PASS+777 strict pass（基线 90aed7fc7）+六 crate check 零错。偏差与预存红归因全录 §9 2026-10-21 work 记录；T-05 的 run/交互/取消等 M814-B 发布 | AC-01,02 |
 | [ ] | T-05 | work | T-04;完整runtime正控等M814-B | 在A真实tool上接完整UI执行/control/日志/交互/取消,保持已发布窄能力;实际runtime/build/run以M814-B为门;V-03完整范围 | AC-03 |
 | [ ] | T-06 | work | T-05 | 旧Man公开门面兼容承载、真生成/build/run及媒体/sidecar/backend/项目读取全路径,V-01/02/04 | AC-01,02,04 |
 | [ ] | T-07 | work | T-06 | 新consumer/上层plan815、V-01..04、777/792并集/fresh/locked/失败负控与资源审计 | AC-01..04 |
@@ -260,3 +260,18 @@ r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调�
 2026-10-20 / stage: work-preparation / phase: M815-L / partial_evidence: 原树写入守卫候选 `2dc142df0`（全量schema前检、工厂字段、ID/来源、幂等与回滚反例通过），尚未合入master；不是T-15完整完成，也不是T-16独立审查pass / next: T-15补真实typed loader probe、全库转换决策/候选与V-L1..4后送审；生产ledger仍为原v57且SHA未变。
 
 2026-10-20 / stage: regress / outcome: incomplete（独占窗口不足，未推进.last-batch-regression.json）/ covered: 4d7c5f581 / tf: 完整6270/6270通过 / tt: 5671/5675通过，3fail+1timeout，隔离归因pending；不自动统称负载flake / tb: 中断未完成，后续预检见其他cargo t故拒绝启动 / evidence: [批量进度](attachments/815/t14-closeout/batch-status.md)与原始日志 / next: 独占主检出完成tt归因/重跑+tb后才写成功批量收据；与M815-L的T-15..17分开验收。
+
+2026-10-21 / stage: work / revision: 3 / outcome: T-04 生成主体迁移完成（非整 Plan execution_done——T-05..11 未做；run 面 M814-B 门残留）/ worktree: D:/autostack/.wt/lang-815/auto-lang / branch: codex/plan-815-dev / base: 7ffa2d88d（=master 2cb0ffe30 合入位） / code_commits: 45d61df7c(T-04a auto-api-gen)+b6aa3c21e(T-04 主体)+90aed7fc7(777 基线) / dependency_revisions: M814-A=f6e07acee 已合入 master；M814-B 未发布（T-04 启动门只要求 A ✓）/ task_ids: T-04 / evidence: 见 T-04 行内证据 + 偏差记录如下 / blockers: 无（T-05 等 M814-B 属计划内门，非 blocker）/ merge门: pending（裸 t+UI 触面 tu 归 merge 冻结后；本轮未整档——按 2026-10-14 测试时序裁定） / next_responsible_role: work（T-05 门=M814-B 发布；等待期可由用户安排 T-04 生成主体提前定向审查——staged 合同允许）
+
+**T-04 契约偏差记录**（对 T-01 contract-baseline §2 的有界偏离，逐项供 T-09 终审裁量）：
+1. api_gen UI 桥（PHOTO_SERVICE_HANDLERS/media/viewer 模板）**未随生成器搬入 auto-ui-tools**——三者嵌在 generate_rust_server/generate_vue_api/generate_tauri_api 的共享发射点（同一 assembly 指纹算法体），拆模板串即拆算法。裁定：单算法优先，整文件落 auto-api-gen（owner=lang-service-adapter），桥段以 816 交接面标注；AC-01/02 不受影响。
+2. sidecar 效果 adapter+rust 工作区布局簇（ensure_shared_workspace/back_member_name/lock 身份/新鲜度纯函数）**随 api_gen 落 auto-api-gen**——其消费方（api_gen/http_service/rust_ui）三方跨 man/ui 域，留 Man 则 ui 域反依赖；"消费 Man 公开声明读取"分支不可行（ui-no-man-big-lib），按"迁纯规则"分支执行，声明单源仍 auto-man-core 未动。
+3. pkg（bun/npm 执行）与 util 四函数（hash_string/http_port/http_base_url/kill_process_on_port）**迁 auto-ui-tools、Man 再导出**——"留 Man/共享包"的共享分支以 man→ui-tools 门面方向承载单份（builder/vue.rs 经 crate::pkg 原路径消费）；无第二份实现。
+4. app_registry+i18n_lookup（1829+173 行）与 store_deps 提取族**自旧 auto-lang 根/ui 迁 auto-ui-compiler**——vue 画廊闭包（合同 §2.1 明迁项）的硬依赖且被旧包运行时消费；旧包再导出保持 auto_lang::ui::app_registry 等路径（session/icon_file 消费者零改动）；814-B 迁移面相应缩小（协调注记）。
+5. ui_build_shadcn_* 组合胶水**平移 auto-ui-tools::shadcn_build**（单算法=compiler ui_gen 不变；旧 auto-lang 根包装器保留为兼容公开面——两处胶水仅选项组装+写盘，无第二算法）。
+6. DELIVERY_CRATES 19→23：合同点名 auto-tool-protocol/auto-ui-tools + 工具生成闭包新增 auto-api-gen/auto-man-core（缺一则交付根无法复算 UI 生成物）。
+7. ui-tool-consumer 闭包门禁列演进：auto-media-core 出禁列（经 M814-A SDK auto-lang-core 合法入闭包）；auto-man/auto-lang/auto-vm/auto-gen 保持禁。
+8. V-02 语义：PacSource/VueReads legacy 臂改读 auto_man_core::pac_from_decl（Pac::new 对 external_backend/theme_decl 是 decl 字段直拷/直映；Pac::resolve 只动 props/targets/依赖下载不触及两字段——已逐行核验并注释在码）；legacy 臂 pac.resolve() 的依赖下载副作用不再发生（读值语义不变）。
+9. libtest 单进程下 plan609 族/env 全局态测试串扰（本 crate 测试种群变化致交错不同）——nextest 进程隔离下全绿；属 plan646 已裁定家族，非新缺陷。
+10. 预存红随迁清单（stash 对照确证 HEAD 同红，非本次引入）：plan593_index_css 金样（scaffold 扩展色基线未再冻结）、rust_ui test_shell_pack_lib_freshness、merged_api_client_crud_fallback、plan734_commands_fixture 独立编译 5 错、auto-playground 3 错（extract_autovm_result 814-T-02 根项级联未完）。
+
