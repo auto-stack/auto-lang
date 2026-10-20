@@ -1034,7 +1034,10 @@ fn abi_cache_include_records_system_header_closure() {
     let root = t05_root().join("inc-sys");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
-    let store = fresh_store(&root, "store");
+    // the store lives OUTSIDE the search dir: the recursive listing is
+    // the include environment, and a mutating store inside it would
+    // (correctly) invalidate every lookup
+    let store = fresh_store(&t05_root(), "inc-sys-store");
     let src = root.join("caller.c");
     std::fs::write(
         &src,
@@ -1182,7 +1185,7 @@ fn abi_cache_foreign_toolchain_generation_not_served() {
     let root = t05_root().join("foreigntc");
     let _ = std::fs::remove_dir_all(&root);
     std::fs::create_dir_all(&root).unwrap();
-    let store = fresh_store(&root, "store");
+    let store = fresh_store(&t05_root(), "foreigntc-store");
     let src = root.join("caller.c");
     std::fs::write(
         &src,
@@ -1323,4 +1326,195 @@ fn abi_cache_nearby_shadow_invalidates() {
         "a novel shadow content must miss every earlier generation"
     );
     assert_eq!(link_run(&obj31), 31);
+}
+
+// ---------------------------------------------------------------------------
+// F-797-R4-07 (R10): nested-path and extension-less includes are part of
+// the search environment; both shadowing forms must invalidate.
+// ---------------------------------------------------------------------------
+
+/// `#include "sub/dep.h"` — the search dirs' sub/ exists on BOTH sides;
+/// the source-side sub/ is initially empty (17 resolves via the include
+/// dir). Adding source-side sub/dep.h (29) changes resolution without
+/// touching the source or any recorded dep — the recursive listing
+/// snapshot must force a miss.
+#[test]
+fn abi_cache_nested_subpath_shadow_invalidates() {
+    let root = t05_root().join("nested");
+    let _ = std::fs::remove_dir_all(&root);
+    let shared = root.join("shared");
+    let srcdir = root.join("src");
+    std::fs::create_dir_all(shared.join("sub")).unwrap();
+    std::fs::create_dir_all(srcdir.join("sub")).unwrap();
+    std::fs::write(shared.join("sub/dep.h"), "#define VALUE 17\n").unwrap();
+    let src = srcdir.join("same.c");
+    std::fs::write(
+        &src,
+        "#include \"sub/dep.h\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n",
+    )
+    .unwrap();
+    let store = fresh_store(&root, "store");
+    let runs = std::cell::Cell::new(0u32);
+    let link_run = |obj: &[u8]| -> i32 {
+        std::fs::write(srcdir.join("linked.obj"), obj).unwrap();
+        run::run_pe(&link_pe(&srcdir, &[srcdir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap()
+            .code
+    };
+    let produce = || -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+        runs.set(runs.get() + 1);
+        let obj = srcdir.join("caller.obj");
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &shared, &obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+    };
+
+    let (obj, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("initial compile");
+    assert!(!hit);
+    assert_eq!(link_run(&obj), 17, "resolves via the include dir (17)");
+
+    std::fs::write(srcdir.join("sub/dep.h"), "#define VALUE 29\n").unwrap();
+    let (obj29, hit29) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("nested shadow compile");
+    assert!(!hit29, "a NEW nested nearby header must invalidate");
+    assert_eq!(runs.get(), 2);
+    assert_eq!(link_run(&obj29), 29, "the nested shadow wins (29)");
+}
+
+/// `#include "settings"` — extension-less headers resolve exactly like
+/// named ones; the listing must not filter them out.
+#[test]
+fn abi_cache_extensionless_header_shadow_invalidates() {
+    let root = t05_root().join("extless");
+    let _ = std::fs::remove_dir_all(&root);
+    let shared = root.join("shared");
+    let srcdir = root.join("src");
+    std::fs::create_dir_all(&shared).unwrap();
+    std::fs::create_dir_all(&srcdir).unwrap();
+    std::fs::write(shared.join("settings"), "#define VALUE 17\n").unwrap();
+    let src = srcdir.join("same.c");
+    std::fs::write(
+        &src,
+        "#include \"settings\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n",
+    )
+    .unwrap();
+    let store = fresh_store(&root, "store");
+    let runs = std::cell::Cell::new(0u32);
+    let link_run = |obj: &[u8]| -> i32 {
+        std::fs::write(srcdir.join("linked.obj"), obj).unwrap();
+        run::run_pe(&link_pe(&srcdir, &[srcdir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap()
+            .code
+    };
+    let produce = || -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+        runs.set(runs.get() + 1);
+        let obj = srcdir.join("caller.obj");
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &shared, &obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+    };
+
+    let (obj, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("initial compile");
+    assert!(!hit);
+    assert_eq!(link_run(&obj), 17);
+
+    std::fs::write(srcdir.join("settings"), "#define VALUE 29\n").unwrap();
+    let (obj29, hit29) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("extension-less shadow compile");
+    assert!(!hit29, "a NEW extension-less nearby header must invalidate");
+    assert_eq!(runs.get(), 2);
+    assert_eq!(link_run(&obj29), 29);
+}
+
+// ---------------------------------------------------------------------------
+// F-797-R10-01: the applicability domain is part of the GENERATION KEY —
+// a legal recompile after a listing-only change must SUCCEED (its own new
+// key), never collide with the old content-bound entry.
+// ---------------------------------------------------------------------------
+
+/// Adding a completely UNUSED nearby header changes only the listing:
+/// the recompile must succeed and still run 17 (the R10 counterexample
+/// previously dead-ended in a permanent Conflict/Internal).
+#[test]
+fn abi_cache_unused_nearby_file_legal_recompile() {
+    let root = t05_root().join("unused");
+    let _ = std::fs::remove_dir_all(&root);
+    let dir = root.join("src");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("dep.h"), "#define VALUE 17\n").unwrap();
+    let src = dir.join("value.c");
+    std::fs::write(
+        &src,
+        "#include \"dep.h\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n",
+    )
+    .unwrap();
+    let store = fresh_store(&root, "store");
+    let runs = std::cell::Cell::new(0u32);
+    let link_run = |obj: &[u8]| -> i32 {
+        std::fs::write(dir.join("linked.obj"), obj).unwrap();
+        run::run_pe(&link_pe(&dir, &[dir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap()
+            .code
+    };
+    let produce = || -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+        runs.set(runs.get() + 1);
+        let obj = dir.join("caller.obj");
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &dir, &obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+    };
+
+    let (obj, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &dir, produce)
+        .expect("initial compile");
+    assert!(!hit);
+    assert_eq!(link_run(&obj), 17);
+
+    // listing-only change: an unused file appears; deps and source are
+    // unchanged — the recompile must SUCCEED under its own key
+    std::fs::write(dir.join("unused.h"), "// never included\n").unwrap();
+    let (obj2, hit2) = auto_abi_probe::cache::produce_c_object(&store, &src, &dir, produce)
+        .expect("legal recompile after a listing change must succeed");
+    assert!(!hit2, "listing change invalidates the old generation");
+    assert_eq!(runs.get(), 2);
+    assert_eq!(link_run(&obj2), 17, "still compiles and runs 17");
+    // stable now: repeat hits
+    let (_, hit3) =
+        auto_abi_probe::cache::produce_c_object(&store, &src, &dir, produce).expect("repeat");
+    assert!(hit3);
+    assert_eq!(runs.get(), 2);
+}
+
+/// Two projects with byte-identical include-FREE sources over one store:
+/// both compilations must succeed (the R10 counterexample dead-ended B
+/// in a permanent Conflict because the empty closure collided).
+#[test]
+fn abi_cache_no_include_cross_project_both_succeed() {
+    let root = t05_root().join("noincl");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let store = fresh_store(&root, "store");
+    let body = "__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(17); }\n";
+    let runs = std::cell::Cell::new(0u32);
+    for proj in ["projA", "projB"] {
+        let dir = root.join(proj);
+        std::fs::create_dir_all(&dir).unwrap();
+        let src = dir.join("same.c");
+        std::fs::write(&src, body).unwrap();
+        let (obj, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &dir, || {
+            runs.set(runs.get() + 1);
+            let obj = dir.join("caller.obj");
+            let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &dir, &obj)
+                .map_err(|e| format!("cl: {e}"))?;
+            Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+        })
+        .expect("each project's legal domain compiles successfully");
+        assert!(!hit, "{proj}: distinct src dirs are distinct generations");
+        std::fs::write(dir.join("linked.obj"), &obj).unwrap();
+        let pe = run::run_pe(&link_pe(&dir, &[dir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap();
+        assert_eq!(pe.code, 17, "{proj}");
+    }
+    assert_eq!(runs.get(), 2, "both projects really compiled");
 }

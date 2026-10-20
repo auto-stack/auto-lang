@@ -148,27 +148,52 @@ struct CObjectEntry {
     inc_listing: Vec<String>,
 }
 
-/// Snapshot the source/header file names a search dir currently offers
-/// (negative dependencies). Compile artifacts (.obj/.exe) are excluded
-/// so a build does not invalidate itself.
+/// Snapshot EVERY file the search tree currently offers (negative
+/// dependencies): a RECURSIVE walk of the directory — C includes may
+/// carry sub-paths (`#include "sub/dep.h"`) and need no extension
+/// (`#include "settings"`), so a top-level/extension whitelist would
+/// silently miss resolution changes (F-797-R4-07 R10). Only known
+/// COMPILE/LINK ARTIFACTS are excluded (a build must not invalidate
+/// itself); anything else — extension-less files included — is a
+/// potential include candidate and part of the environment.
 fn search_listing(dir: &std::path::Path) -> Vec<String> {
-    let mut names: Vec<String> = std::fs::read_dir(dir)
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter(|e| e.file_type().is_ok_and(|t| t.is_file()))
-        .filter_map(|e| e.file_name().into_string().ok())
-        .filter(|n| {
-            let l = n.to_ascii_lowercase();
-            l.ends_with(".c")
-                || l.ends_with(".h")
-                || l.ends_with(".hpp")
-                || l.ends_with(".hh")
-                || l.ends_with(".inc")
-                || l.ends_with(".inl")
-        })
-        .collect();
-    names.sort();
+    fn is_artifact(name: &str) -> bool {
+        let l = name.to_ascii_lowercase();
+        l.ends_with(".obj")
+            || l.ends_with(".exe")
+            || l.ends_with(".lib")
+            || l.ends_with(".pdb")
+            || l.ends_with(".ilk")
+            || l.ends_with(".exp")
+            || l.ends_with(".dll")
+            || l.ends_with(".tmp")
+            // staged-link temporaries: <exe>.tmp-<txn> beside the output
+            || l.contains(".tmp-")
+    }
+    fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        let mut entries: Vec<_> = rd.flatten().collect();
+        entries.sort_by_key(|e| e.file_name());
+        for e in entries {
+            let Ok(name) = e.file_name().into_string() else {
+                continue;
+            };
+            let rel = if prefix.is_empty() {
+                name.clone()
+            } else {
+                format!("{prefix}/{name}")
+            };
+            if e.file_type().is_ok_and(|t| t.is_dir()) {
+                walk(&e.path(), &rel, out);
+            } else if !is_artifact(&name) {
+                out.push(rel);
+            }
+        }
+    }
+    let mut names = Vec::new();
+    walk(dir, "", &mut names);
     names
 }
 
@@ -307,10 +332,29 @@ where
         let ps = p.display().to_string();
         hashed.push((ps.clone(), hash_dep(&ps).map_err(StoreError::Internal)?));
     }
-    // closure digest: order-independent (sorted path|hash lines)
-    let mut lines: Vec<String> = hashed.iter().map(|(p, h)| format!("{p}|{h}")).collect();
-    lines.sort();
-    let closure_hash = crate::semref::blake3_hex(lines.join("\n").as_bytes());
+    // F-797-R10-01: the GENERATION identity — everything that decides
+    // whether a stored envelope APPLIES (observed closure + source dir +
+    // include dir + target + toolchain/flags + both search listings) is
+    // folded into the key's generation hash. A legal recompile after a
+    // listing/directory change with an UNCHANGED closure therefore gets
+    // a NEW key (the old generation stays for its own environment and is
+    // reclaimed by GC) instead of colliding with the content-bound old
+    // entry; same-input repeats hit and never put at all.
+    let src_listing = search_listing(std::path::Path::new(&src_dir));
+    let inc_listing = search_listing(include_dir);
+    let mut gen_lines: Vec<String> = hashed.iter().map(|(p, h)| format!("dep|{p}|{h}")).collect();
+    gen_lines.push(format!("src_dir|{src_dir}"));
+    gen_lines.push(format!("inc_dir|{inc_dir_s}"));
+    gen_lines.push(format!("target|{target}"));
+    gen_lines.push(format!("toolchain|{toolchain}"));
+    for n in &src_listing {
+        gen_lines.push(format!("srcl|{n}"));
+    }
+    for n in &inc_listing {
+        gen_lines.push(format!("incl|{n}"));
+    }
+    gen_lines.sort();
+    let generation_hash = crate::semref::blake3_hex(gen_lines.join("\n").as_bytes());
     let entry = CObjectEntry {
         v: 2,
         source: source_identity.clone(),
@@ -320,13 +364,13 @@ where
         toolchain: toolchain.clone(),
         obj_b64: base64::engine::general_purpose::STANDARD.encode(&obj),
         deps: hashed,
-        src_listing: search_listing(std::path::Path::new(&src_dir)),
-        inc_listing: search_listing(include_dir),
+        src_listing,
+        inc_listing,
     };
     let payload = serde_json::to_vec(&entry).map_err(|e| StoreError::Internal(e.to_string()))?;
     match store.put_artifact(PutRequest {
         layer: LAYER_OBJECT_V01.id,
-        key: c_object_key(&source_identity, &closure_hash),
+        key: c_object_key(&source_identity, &generation_hash),
         kind: ChunkKind::Object,
         payload,
         edges: vec![],
@@ -334,18 +378,18 @@ where
     }) {
         Ok(_) => Ok((obj, false)),
         Err(StoreError::Conflict { .. }) => {
-            // cl objects embed a compile timestamp: recompiling the
-            // SAME inputs yields different bytes, and the store's keys
-            // are content-bound. The STORED generation is the canonical
-            // one for this closure — re-discover (the snapshot may be
-            // stale, e.g. a concurrent compile won the race) and serve
-            // it when it still verifies (the producer really ran; the
-            // downstream link+run+oracle compare still checks
+            // Same generation identity, different bytes: cl objects
+            // embed a compile timestamp, so this is a CONCURRENT compile
+            // race (a legal recompile after an applicability change now
+            // hashes to a different key and cannot reach this arm). The
+            // STORED generation is the canonical one — re-discover and
+            // serve it when it still verifies (the producer really ran;
+            // the downstream link+run+oracle compare still checks
             // behavior).
             match discover()? {
                 Some(stored) => Ok((stored, false)),
                 None => Err(StoreError::Internal(format!(
-                    "closure key occupied by a foreign entry for source {source_identity}"
+                    "generation key occupied by an unverifiable entry for source {source_identity}"
                 ))),
             }
         }
@@ -353,11 +397,14 @@ where
     }
 }
 
-/// Key for a cl.exe-compiled C source object (F-797-R4-07 R8): source
-/// identity (name + content hash) + the OBSERVED closure digest +
-/// resolved cl identity + frozen flags. Fields are ordered so the
-/// kind+source prefix is stable for generation discovery.
-pub fn c_object_key(source_identity: &str, closure_hash: &str) -> QueryKey {
+/// Key for a cl.exe-compiled C source object (F-797-R4-07 R8/R10):
+/// source identity (name + content hash) + target + resolved cl
+/// identity/flags + the GENERATION digest (observed closure AND the
+/// full applicability domain: src/include dirs and both search
+/// listings — F-797-R10-01). A legal recompile after an applicability
+/// change hashes to a different key and never conflicts with the old
+/// generation.
+pub fn c_object_key(source_identity: &str, generation_hash: &str) -> QueryKey {
     QueryKey::new(
         &LAYER_OBJECT_V01,
         vec![
@@ -368,7 +415,7 @@ pub fn c_object_key(source_identity: &str, closure_hash: &str) -> QueryKey {
                 "toolchain".into(),
                 crate::ctool::toolchain_fingerprint().unwrap_or_else(|_| "ctool-unresolved".into()),
             ),
-            ("closure".into(), closure_hash.into()),
+            ("generation".into(), generation_hash.into()),
         ],
     )
 }

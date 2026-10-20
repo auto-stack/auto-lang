@@ -303,6 +303,14 @@ pub fn layout_record_owned(
     let mut path_bytes: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     let mut max_path: std::collections::BTreeMap<String, u64> = std::collections::BTreeMap::new();
     let mut chain: Vec<String> = Vec::new();
+    // F-797-R4-10 (R10): the memo/index working state is budgeted
+    // INCREMENTALLY, charged BEFORE each allocation it covers (record
+    // name copies in the four maps; chain/seen name copies while live),
+    // so a table that would exceed 8MiB of staging is refused AT the
+    // crossing record — never after the whole memo was built — and a
+    // tiny table with one long name is charged only what it actually
+    // uses (no fictional max-depth/max-name multiplication).
+    let mut budget_used: u64 = 0;
     compute_size(
         table,
         name,
@@ -312,6 +320,7 @@ pub fn layout_record_owned(
         &mut leaves,
         &mut path_bytes,
         &mut max_path,
+        &mut budget_used,
     )?;
     let (root_size, root_align) = sizes
         .get(name)
@@ -326,32 +335,15 @@ pub fn layout_record_owned(
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
     let per_leaf = std::mem::size_of::<FieldLayout>() as u64;
-    let representation = root_leaves
+    // representation + the already-charged index state (maps remain
+    // live through flatten; `seen` re-spends at most what `chain` was
+    // charged at its peak, inside the same budget)
+    let staging_bytes = root_leaves
         .saturating_mul(per_leaf)
         .saturating_add(root_paths)
         // the shared prefix buffer: worst-case String doubling
-        .saturating_add(root_max.saturating_mul(2));
-    // F-797-R4-10 (R9): the INDEX and recursion working state are budget
-    // items too — the four memo maps duplicate every RECORD name, and
-    // the chain/seen vectors carry up to MAX_NESTING_DEPTH+1 name
-    // copies. A legal small-output table whose names are long enough
-    // blows the 8MiB staging budget in the memo state alone (R9
-    // counterexample: a 1024-node chain of 1950-byte record names —
-    // 4MB of input, a single-field output, >8MiB of live memo state).
-    // The caller's own `table` is the caller's input and is excluded,
-    // matching the counterexample's accounting.
-    let entries = sizes.len() as u64;
-    let max_name = sizes.keys().map(|k| k.len() as u64).max().unwrap_or(0);
-    // String (24B header + heap name) + BTreeMap node slack per entry,
-    // across the four maps
-    let map_entry = max_name.saturating_add(24 + 96);
-    let index_bytes = 4u64
-        .saturating_mul(entries.saturating_mul(map_entry))
-        // chain + seen at the depth bound
-        .saturating_add(
-            2u64.saturating_mul((MAX_NESTING_DEPTH as u64 + 1).saturating_mul(max_name + 24)),
-        );
-    let staging_bytes = representation.saturating_add(index_bytes);
+        .saturating_add(root_max.saturating_mul(2))
+        .saturating_add(budget_used);
     if staging_bytes > MAX_STAGING_BYTES {
         return Err(LayoutError::StagingTooLarge {
             record: name.to_string(),
@@ -381,7 +373,10 @@ pub fn layout_record_owned(
 
 /// Phase 1: memoized (size, align) with cycle/depth/budget ceilings, plus
 /// the representation memos (leaf count, total path bytes, longest path)
-/// the staging gate needs.
+/// the staging gate needs. `budget_used` carries the INCREMENTAL staging
+/// charge (F-797-R4-10 R10): every name copy the engine is about to
+/// allocate is charged before it exists, and the walk refuses at the
+/// crossing record.
 #[allow(clippy::too_many_arguments)]
 fn compute_size(
     table: &std::collections::BTreeMap<String, RecordDefOwned>,
@@ -392,6 +387,7 @@ fn compute_size(
     leaves: &mut std::collections::BTreeMap<String, u64>,
     path_bytes: &mut std::collections::BTreeMap<String, u64>,
     max_path: &mut std::collections::BTreeMap<String, u64>,
+    budget_used: &mut u64,
 ) -> Result<(u32, u32), LayoutError> {
     if let Some(hit) = memo.get(name) {
         return Ok(*hit);
@@ -407,6 +403,17 @@ fn compute_size(
     let def = table
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
+    // charge the chain/seen name copies BEFORE the push allocates them
+    // (credited back on pop — they are transient)
+    let name_len = name.len() as u64;
+    let chain_charge = 2u64.saturating_mul(name_len + 24);
+    if budget_used.saturating_add(chain_charge) > MAX_STAGING_BYTES {
+        return Err(LayoutError::StagingTooLarge {
+            record: name.to_string(),
+            size: budget_used.saturating_add(chain_charge),
+        });
+    }
+    *budget_used += chain_charge;
     chain.push(name.to_string());
     let mut offset: u32 = 0;
     let mut align: u32 = 1;
@@ -422,6 +429,7 @@ fn compute_size(
                 leaves,
                 path_bytes,
                 max_path,
+                budget_used,
             )?,
         };
         offset = offset
@@ -446,7 +454,6 @@ fn compute_size(
             });
         }
     }
-    chain.pop();
     let size = offset
         .checked_add(align - 1)
         .and_then(|v| v.checked_sub(v % align))
@@ -492,10 +499,23 @@ fn compute_size(
             }
         }
     }
+    // the four memo maps duplicate the RECORD name — charge BEFORE the
+    // inserts allocate them (permanent for this walk)
+    let map_charge = 4u64.saturating_mul(name_len + 24 + 96);
+    if budget_used.saturating_add(map_charge) > MAX_STAGING_BYTES {
+        return Err(LayoutError::StagingTooLarge {
+            record: name.to_string(),
+            size: budget_used.saturating_add(map_charge),
+        });
+    }
+    *budget_used += map_charge;
     leaves.insert(name.to_string(), leaf_n);
     path_bytes.insert(name.to_string(), path_sum);
     max_path.insert(name.to_string(), path_max);
     memo.insert(name.to_string(), (size, align));
+    // the transient chain copies are gone with the pop — credit back
+    chain.pop();
+    *budget_used = budget_used.saturating_sub(chain_charge);
     Ok((size, align))
 }
 

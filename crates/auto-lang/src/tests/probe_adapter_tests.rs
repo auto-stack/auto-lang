@@ -1287,3 +1287,74 @@ fn abi_worker_budget_exhaustion_is_resource_error() {
     clear_abi_faults();
     assert_eq!(result.expect("suite ran"), Status::Error);
 }
+
+/// F-797-R4-09 (R10): the per-request RAW ROW must tell the truth about
+/// its own judged outcome. Control: the same legal case judged with a
+/// WRONG first expectation (compute_calls 2 instead of the actual 1)
+/// FAILS the check, and the failing request's raw row carries
+/// ok=false with the mismatch text while the (correct) second request's
+/// row stays ok=true — the legal control with correct expectations has
+/// both rows ok=true and passes.
+#[test]
+fn abi_recipe_raw_rows_reflect_per_request_judgement() {
+    let _guard = FAULT_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+
+    let run = |tag: &str, first_expect: &str| -> (auto_test_case::report::RunReport, PathBuf) {
+        let root = temp_root(tag);
+        let tail = format!(
+            "adapter: \"probe\", action: \"run\", options: {{ recipe: \"abi/interop-v1\", abi: {{ leg: \"a\" }}, steps: [ {{ op: \"query\" }}, {{ op: \"restart\" }}, {{ op: \"query\" }} ] }}"
+        );
+        let doc = format!(
+            "# abi row-ok suite\n```test-suite\nsuite {{ schema: \"autolang.suite/2\", id: \"arow\", include: [\"c.case.ad\"] }}\n```\n\n```test-case\ncase {{ schema: \"autolang.case/2\", id: \"arow.case\",\n  source: {{ text: \"{src}\", syntax: \"atom-data\", path: \"d.atomdata\" }},\n  entry: {{ mode: \"program\" }},\n  checks: [ {{ id: \"c\", {tail}\n      expect: {{ completion: \"success\", probe: [ {first_expect}, {{ }} ] }} }} ] }}\n```\n",
+            src = ABI_DECK_TEXT
+                .replace('\\', "\\\\")
+                .replace('"', "\\\"")
+                .replace('\n', "\\n"),
+            tail = tail,
+            first_expect = first_expect,
+        );
+        std::fs::write(root.join("c.suite.ad"), doc.clone()).unwrap();
+        std::fs::write(root.join("c.case.ad"), doc).unwrap();
+        let out = out_of(&root, "out");
+        let report =
+            run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults()).expect("suite runs");
+        (report, out)
+    };
+
+    // legal control: correct expectations -> PASS, both query rows ok
+    let (report, out) = run("abirowok-a", "{ }");
+    assert_eq!(status_of(&report, "c"), Status::Pass);
+    let rows = collect_request_rows(&out);
+    let query_rows: Vec<_> = rows.iter().filter(|r| r["op"] == "query").collect();
+    assert_eq!(query_rows.len(), 2);
+    for (i, r) in query_rows.iter().enumerate() {
+        assert!(r["ok"].as_bool().unwrap_or(false), "control row {i}: {r}");
+    }
+
+    // negative control: WRONG first expectation (compute 2, actual 1) —
+    // the check FAILS and ONLY the first request's row is marked failed
+    let (report, out) = run("abirowok-b", "{ compute_calls: 2 }");
+    assert_eq!(
+        status_of(&report, "c"),
+        Status::Fail,
+        "the wrong expectation must fail the check"
+    );
+    let rows = collect_request_rows(&out);
+    let query_rows: Vec<_> = rows.iter().filter(|r| r["op"] == "query").collect();
+    assert_eq!(query_rows.len(), 2, "both requests ran and were persisted");
+    assert!(
+        !query_rows[0]["ok"].as_bool().unwrap_or(true),
+        "the failing request's row must record ok=false: {}",
+        query_rows[0]
+    );
+    let err = query_rows[0]["error"].as_str().unwrap_or_default();
+    assert!(
+        err.contains("compute_calls") && err.contains("expected 2"),
+        "the row's error carries the actual mismatch: {err}"
+    );
+    assert!(
+        query_rows[1]["ok"].as_bool().unwrap_or(false),
+        "the independently-correct second request stays ok=true: {}",
+        query_rows[1]
+    );
+}

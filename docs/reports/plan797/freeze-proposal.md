@@ -45,7 +45,7 @@
 | 验收脚本 | `scripts/verify-autoabi-797.ps1` | 本提案 |
 | 正式 AutoDown 绑定 | `abi/interop-v1` recipe 注册（contract 追加）+ `abi-worker`（abiworker/1）+ 父侧 `test_cases/abi.rs` + 可执行语料 `crates/auto-lang/test/cases/autoabi/`（4 checks 含跨进程 restart 命中与类型化负例） | T-06 `35794e5ec` |
 | 真实语义绑定 | `ac-sema-contract` DeclRef/TypeDesc/ContentVersion；退役收据 `attachments/797/semref-retirement-receipt.md` | T-06 `35794e5ec` |
-| 性能正式复测 | R9：C 消费腿·单 case·共享 store·统一冷体（mix-alt<seed>），**每个 query 请求携带编辑后 deck**（计时边界=父入口→该请求 typed 判定完成→原始行落盘；edit 为父侧本地替换、耗时入样本 edit_ms）：body-edit(edit+request) P50/P95/P99=536.0/608.0/609.0ms、reject P50/P95=65.0/91.0ms（31/30 样本；数字随采样时段浮动、原始行为准）；compute=31+1 逐样本断言；**一请求一结果一原始行**（成功/失败/infra 均有；阶段/cache/compute/Job 进程+树峰值内存·I-O/meter 含 GC 收据）由适配器在下一请求运行前持久化 | R9 本轮 |
+| 性能正式复测 | R9：C 消费腿·单 case·共享 store·统一冷体（mix-alt<seed>），**每个 query 请求携带编辑后 deck**（计时边界=父入口→该请求 typed 判定完成→原始行落盘；edit 为父侧本地替换、耗时入样本 edit_ms）：body-edit(edit+request) P50/P95/P99=479.0/541.0/841.0ms、reject P50/P95=41.0/49.0ms（31/30 样本；数字随采样时段浮动、原始行为准）；compute=31+1 逐样本断言；**一请求一结果一原始行**（成功/失败/infra 均有；阶段/cache/compute/Job 进程+树峰值内存·I-O/meter 含 GC 收据）由适配器在下一请求运行前持久化 | R9 本轮 |
 
 ## 3. 版本与身份分层（拟）
 
@@ -94,7 +94,7 @@ exit 恰 1、tampered descriptor、错 offset 控制、uninjected 与失败期�
 
 ## 7.5 终稿身份绑定
 
-- `spec-delta.md`（R8 重置稿，descriptor/3 同步）SHA256：`8F89D804DAE9EA644EC2C487DDF0456433FFC1C59D98E3D6B6CD1E043E525AB5`
+- `spec-delta.md`（R8 重置稿，descriptor/3 同步）SHA256：`AA8C61397B8CA708DD72A0D71750FB6850480106560366382A2A5BAE9B8B18F7`
 - canonical 输入 hash 明细见 spec-delta.md 输入表（worktree 终态实测，
   R8 复核未漂移）。
 - work 侧 V-01–11 工作面证据（R8 后）：probe workspace 全绿（t02 20+

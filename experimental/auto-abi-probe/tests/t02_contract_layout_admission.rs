@@ -1160,3 +1160,60 @@ fn abi_admission_index_budget_counts_memo_state() {
         other => panic!("expected StagingTooLarge (resource), got {other:?}"),
     }
 }
+
+/// F-797-R4-10 (R10): a TINY table with one long record name must NOT be
+/// refused — the R9 post-hoc estimate charged every map entry at the
+/// maximum name length times the maximum depth, rejecting a one-record
+/// 2000-byte-name graph whose actual peak is ~11KB. The incremental
+/// accounting charges only what the walk actually uses.
+#[test]
+fn abi_admission_tiny_graph_with_long_name_computes() {
+    let name = format!("S-{}", "x".repeat(1990));
+    let mut table = BTreeMap::new();
+    table.insert(
+        name.clone(),
+        RecordDefOwned {
+            name: name.clone(),
+            fields: vec![FieldDefOwned {
+                name: "leaf".into(),
+                ty: FieldTyOwned::Scalar(SemScalar::U8),
+            }],
+        },
+    );
+    let l = layout::layout_record_owned(&table, &name)
+        .expect("a one-record graph with a long name computes (actual cost ~KBs)");
+    assert_eq!(l.fields.len(), 1);
+    assert_eq!(l.fields[0].name, "leaf");
+    // a mixed table — many short names plus one long name — also pays
+    // only its actual usage
+    let mut mixed = BTreeMap::new();
+    mixed.insert(
+        name.clone(),
+        RecordDefOwned {
+            name: name.clone(),
+            fields: vec![FieldDefOwned {
+                name: "next".into(),
+                ty: FieldTyOwned::Record("S0".into()),
+            }],
+        },
+    );
+    for i in 0..1000usize {
+        let ty = if i + 1 < 1000 {
+            FieldTyOwned::Record(format!("S{}", i + 1))
+        } else {
+            FieldTyOwned::Scalar(SemScalar::I64)
+        };
+        mixed.insert(
+            format!("S{i}"),
+            RecordDefOwned {
+                name: format!("S{i}"),
+                fields: vec![FieldDefOwned {
+                    name: "next".into(),
+                    ty,
+                }],
+            },
+        );
+    }
+    let ok = layout::layout_record_owned(&mixed, &name).expect("mixed table computes");
+    assert_eq!(ok.fields.len(), 1, "single-field chain: one leaf");
+}

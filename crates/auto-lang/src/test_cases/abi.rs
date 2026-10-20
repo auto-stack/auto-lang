@@ -696,14 +696,15 @@ fn append_request_row(
     path: &Path,
     seq: usize,
     op: &str,
+    judged_ok: bool,
     edit_ms: u64,
     request_ms: u64,
     step: Option<&StepOut>,
     stats: Option<&containment::JobStats>,
     error: Option<&str>,
-) {
+) -> Result<(), String> {
     use std::io::Write as _;
-    let ok = error.is_none();
+    let ok = judged_ok && error.is_none();
     let row = serde_json::json!({
         "seq": seq,
         "op": op,
@@ -734,15 +735,16 @@ fn append_request_row(
         "error": error,
     });
     if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("request-evidence dir {}: {e}", parent.display()))?;
     }
-    if let Ok(mut f) = std::fs::OpenOptions::new()
+    let mut f = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
         .open(path)
-    {
-        let _ = writeln!(f, "{row}");
-    }
+        .map_err(|e| format!("request-evidence {}: {e}", path.display()))?;
+    writeln!(f, "{row}").map_err(|e| format!("request-evidence {}: {e}", path.display()))?;
+    Ok(())
 }
 
 /// Map an ABI diagnostic code to a completion stage (the declared error
@@ -887,17 +889,21 @@ pub fn run_check(
                     format!("parent-request:{step_tag}"),
                     t_step.elapsed().as_millis() as u64,
                 ));
-                append_request_row(
+                let persist = append_request_row(
                     &samples_path,
                     sample_seq,
                     step_tag,
+                    false,
                     pending_edit_ms,
                     t_step.elapsed().as_millis() as u64,
                     None,
                     None,
                     Some(&e),
                 );
-                infra_detail = Some(e);
+                infra_detail = Some(match persist {
+                    Err(pe) => pe,
+                    Ok(()) => e,
+                });
                 break 'steps;
             }
         };
@@ -936,17 +942,21 @@ pub fn run_check(
                     format!("parent-request:{step_tag}"),
                     t_step.elapsed().as_millis() as u64,
                 ));
-                append_request_row(
+                let persist = append_request_row(
                     &samples_path,
                     sample_seq,
                     step_tag,
+                    false,
                     pending_edit_ms,
                     t_step.elapsed().as_millis() as u64,
                     None,
                     None,
                     Some(&e),
                 );
-                infra_detail = Some(e);
+                infra_detail = Some(match persist {
+                    Err(pe) => pe,
+                    Ok(()) => e,
+                });
                 break 'steps;
             }
         };
@@ -956,10 +966,11 @@ pub fn run_check(
                 format!("parent-request:{step_tag}"),
                 t_step.elapsed().as_millis() as u64,
             ));
-            append_request_row(
+            let persist = append_request_row(
                 &samples_path,
                 sample_seq,
                 step_tag,
+                ok_row,
                 pending_edit_ms,
                 t_step.elapsed().as_millis() as u64,
                 None,
@@ -972,6 +983,10 @@ pub fn run_check(
             );
             sample_seq += 1;
             pending_edit_ms = 0;
+            if let Err(pe) = persist {
+                infra_detail = Some(pe);
+                break 'steps;
+            }
             if !ok_row {
                 infra_detail = Some("restart step did not end the session as declared".into());
                 break 'steps;
@@ -981,6 +996,11 @@ pub fn run_check(
         // query step: judge IMMEDIATELY so the request span closes at
         // the acceptance boundary (admission + typed judgement + row)
         let qi = reported.len();
+        // F-797-R4-09 (R10): the row's ok is THIS request's own judged
+        // outcome — a typed/cache/compute/stage acceptance mismatch
+        // marks the row failed while later requests stay independently
+        // classified
+        let m_before = mismatches.len();
         let mut query_step: Option<&StepOut> = None;
         for s in ok.steps.iter().filter(|s| s.op == "query") {
             query_step = Some(s);
@@ -1000,17 +1020,21 @@ pub fn run_check(
                     format!("parent-request:{step_tag}"),
                     t_step.elapsed().as_millis() as u64,
                 ));
-                append_request_row(
+                let persist = append_request_row(
                     &samples_path,
                     sample_seq,
                     step_tag,
+                    false,
                     pending_edit_ms,
                     t_step.elapsed().as_millis() as u64,
                     Some(s),
                     job_stats.as_ref(),
                     Some(&detail),
                 );
-                infra_detail = Some(detail);
+                infra_detail = Some(match persist {
+                    Err(pe) => pe,
+                    Ok(()) => detail,
+                });
                 break 'steps;
             }
             match expects.get(qi) {
@@ -1030,6 +1054,23 @@ pub fn run_check(
                 stats: job_stats.clone(),
             });
         }
+        let judged_ok = mismatches.len() == m_before;
+        let judged_error: Option<String> = if judged_ok {
+            None
+        } else {
+            Some(
+                mismatches[m_before..]
+                    .iter()
+                    .map(|m| {
+                        format!(
+                            "{}: expected {}, actual {}",
+                            m.observation, m.expected, m.actual
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; "),
+            )
+        };
         // the FULL parent path for THIS request closes HERE: build +
         // IPC + wait + decode + admission + typed judgement
         stage_spans.push((
@@ -1041,16 +1082,19 @@ pub fn run_check(
                 stage_spans.push((sp.name.clone(), (sp.wall_ns / 1_000_000) as u64));
             }
         }
+        // evidence persistence failure is an INFRASTRUCTURE error — the
+        // raw-row chain must never silently break
         append_request_row(
             &samples_path,
             sample_seq,
             step_tag,
+            judged_ok,
             pending_edit_ms,
             t_step.elapsed().as_millis() as u64,
             query_step,
             job_stats.as_ref(),
-            None,
-        );
+            judged_error.as_deref(),
+        )?;
         sample_seq += 1;
         pending_edit_ms = 0;
     }
