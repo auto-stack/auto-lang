@@ -1,6 +1,22 @@
 // Plan 249: unified native catalog macro expansion needs higher recursion limit
 #![recursion_limit = "512"]
-pub use auto_lang_core::{resolve_module_path, bootstrap_lib_source, pac_dep_version_violation, pac_workspace_member_dir, pac_declares_dep,  run_abt, validate_rust_output, trans_c, trans_rust, trans_c_with_session, trans_rust_with_session, UseModuleResolution, resolve_use_module, init_rust_ffi, init_py_ffi, find_use_symbol_span, extract_undefined_symbol, read_auto_lib, execute_autovm_with_path, execute_autovm_with_deadline_and_input, store_name_snake, find_store_decl_files, get_global_runtime, block_on_autovm_local, set_script_args, script_args, set_error_limit, get_error_limit, set_vm_debug, is_vm_debug, is_vm_trace_ops, is_vm_hot_trace, pool_trace_idx, pool_log_all, pool_log_seq, p510_audit, vm_thread_stack_size, run_with_capture_and_bytecode, run_with_capture_and_bytecode_with_meta, run_with_capture_and_bytecode_with_deadline, run_with_capture_and_bytecode_with_input, run_with_capture_and_path_and_bytecode, run_with_capture_and_path_and_bytecode_with_meta, run_with_capture_and_path_and_bytecode_with_deadline, run_with_capture_and_path_and_bytecode_with_input, join_execution, execute_autovm, parse, parse_preserve_error, set_external_back_root, find_project_root, set_ui_host_install_hook};
+pub use auto_lang_core::{
+    block_on_autovm_local, bootstrap_lib_source, execute_autovm,
+    execute_autovm_with_deadline_and_input, execute_autovm_with_path, extract_undefined_symbol,
+    find_project_root, find_store_decl_files, find_use_symbol_span, get_error_limit,
+    get_global_runtime, init_py_ffi, init_rust_ffi, is_vm_debug, is_vm_hot_trace, is_vm_trace_ops,
+    join_execution, p510_audit, pac_declares_dep, pac_dep_version_violation,
+    pac_workspace_member_dir, parse, parse_preserve_error, pool_log_all, pool_log_seq,
+    pool_trace_idx, read_auto_lib, resolve_module_path, resolve_use_module, run_abt,
+    run_with_capture_and_bytecode, run_with_capture_and_bytecode_with_deadline,
+    run_with_capture_and_bytecode_with_input, run_with_capture_and_bytecode_with_meta,
+    run_with_capture_and_path_and_bytecode, run_with_capture_and_path_and_bytecode_with_deadline,
+    run_with_capture_and_path_and_bytecode_with_input,
+    run_with_capture_and_path_and_bytecode_with_meta, script_args, set_error_limit,
+    set_external_back_root, set_script_args, set_ui_host_install_hook, set_vm_debug,
+    store_name_snake, trans_c, trans_c_with_session, trans_rust, trans_rust_with_session,
+    validate_rust_output, vm_thread_stack_size, UseModuleResolution,
+};
 
 // Plan 565 P0: counting global allocator for memory attribution — installed
 // only with `--features mem-profile`; without the feature the System
@@ -8,7 +24,6 @@ pub use auto_lang_core::{resolve_module_path, bootstrap_lib_source, pac_dep_vers
 #[cfg(feature = "mem-profile")]
 #[global_allocator]
 static MEM_PROFILE_ALLOC: mem_profile::CountingAlloc = mem_profile::CountingAlloc;
-
 
 // Plan 351: store composable files 越带外传递（ui_build_* 返回型不变）——
 // PLAN-814 T-03：thread_local 与 drain 单源下沉 SDK（UI 编译器消费），
@@ -46,7 +61,6 @@ pub fn take_use_diags() -> Vec<String> {
 fn is_non_fs_module_use(u: &crate::use_scanner::UseStatement) -> bool {
     u.is_python_import || u.module.starts_with("auto.") || u.module.starts_with(".web")
 }
-
 
 pub use auto_lang_core::api;
 pub use auto_lang_core::ast;
@@ -90,9 +104,9 @@ pub use auto_lang_core::http_upload_service; // PLAN-730: 服务端上传宿主 
 pub use auto_lang_core::mcp; // Plan 265: MCP server for AI agent interaction
 pub use auto_lang_core::module_cache;
 pub use auto_lang_core::stdlib_assembly; // PLAN-738: stdlib 装配契约（inventory/manifest/provider 目录纯模型层）
-                         // Plan 096 Phase 0: Scenario-based compilation
-                         // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
-                         // orchestration; depends on the dependency-light `auto-test-case` core.
+                                         // Plan 096 Phase 0: Scenario-based compilation
+                                         // Plan 768: AutoDown TestCase adapters (avm/run, a2r/emit) + runner
+                                         // orchestration; depends on the dependency-light `auto-test-case` core.
 pub use auto_lang_core::session;
 #[cfg(feature = "test-cases")]
 #[cfg(feature = "test-cases")]
@@ -130,13 +144,13 @@ pub use auto_lang_core::py_ffi_types;
 #[cfg(feature = "python")]
 pub use auto_lang_core::py_ffi;
 // Plan 073 Phase 9.3: Execution engine selection (AutoVM vs Evaluator)
+pub use crate::infer::InferenceContext;
+pub use crate::type_registry::SharedTypeRegistry;
 pub use auto_lang_core::execution_engine;
 pub use auto_lang_core::hash;
 pub use auto_lang_core::implicit_union; // Plan 125 Phase 3.3: Implicit union generator
-pub use auto_lang_core::infer;
-pub use crate::infer::InferenceContext;
-pub use crate::type_registry::SharedTypeRegistry;
 pub use auto_lang_core::indexer;
+pub use auto_lang_core::infer;
 // PLAN-814: 实现随前端门面组迁 auto-lang-core；本 crate 保持私有（Lexer
 // 不是 auto-lang 公开面——PLAN-789 合同），消费方 crate::lexer::X 不变。
 mod lexer {
@@ -148,12 +162,12 @@ pub use auto_lang_core::maker;
 // Plan 565 P0: counting allocator + stats (only with mem-profile feature)
 #[cfg(feature = "mem-profile")]
 pub mod mem_profile;
+pub use auto_lang_core::dialect;
 pub use auto_lang_core::ownership;
 pub use auto_lang_core::parser;
 pub use auto_lang_core::query;
-pub use parser::Parser;
-pub use auto_lang_core::dialect; // 方言扩展体系（PR-1 基建）
-                 // PLAN-778: 方言外部化最小桥面 —— 外部 crate 实现 Dialect 时的唯一解析入口。
+pub use parser::Parser; // 方言扩展体系（PR-1 基建）
+                        // PLAN-778: 方言外部化最小桥面 —— 外部 crate 实现 Dialect 时的唯一解析入口。
 pub use auto_lang_core::parser_bridge;
 pub use dialect::DialectPriority;
 pub use parser_bridge::ParserBridge;
@@ -203,7 +217,6 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use crate::error::{AutoError, AutoResult};
-
 
 /// Run AutoLang code using the default execution engine
 ///
@@ -297,7 +310,6 @@ fn plan814_ui_compat_install() {
 }
 inventory::submit!(auto_lang_core::UiCompatInstaller(plan814_ui_compat_install));
 
-
 // ---- PLAN-814 R3-01：旧公开高层入口的兼容装配包装 ----
 // 这四个入口在 SDK 侧经钩子回调本包安装器；包装确保消费者首次直达调用
 // （未经 run 家族漏斗）也先注册钩子再进 SDK 实现。签名与旧行为逐位一致。
@@ -328,14 +340,10 @@ pub fn create_vm_from_abt(
 }
 
 /// 兼容包装：装配 UI 宿主能力后委托 SDK 实现（PLAN-779 装配合同）。
-pub fn eval_config_with_vm(
-    code: &str,
-    args: &auto_val::Obj,
-) -> AutoResult<auto_val::Value> {
+pub fn eval_config_with_vm(code: &str, args: &auto_val::Obj) -> AutoResult<auto_val::Value> {
     install_ui_host_capabilities();
     auto_lang_core::eval_config_with_vm(code, args)
 }
-
 
 /// Plan 327: execute_autovm with an optional source file path.
 /// When provided, the source directory is added to CompileSession.source_dirs
@@ -517,7 +525,6 @@ async fn test_code_with_options(
 /// Plan 260: Run all `#[test]` functions in an Auto source file.
 /// Synchronous wrapper around test_code.
 pub fn test_file(path: &str) -> AutoResult<test_runner::TestResult> {
-
     let code = std::fs::read_to_string(path)
         .map_err(|e| crate::error::AutoError::Msg(format!("Failed to read file: {}", e)))?;
     let rt = get_global_runtime();
@@ -575,7 +582,6 @@ pub(crate) fn aavm2_lib_source(project_root: &std::path::Path) -> AutoResult<Str
     }
     Ok(out)
 }
-
 
 /// Run code with a custom scope
 ///
@@ -2888,12 +2894,8 @@ async fn debug_autovm_agent(code: &str) -> AutoResult<String> {
     Ok(String::new())
 }
 
-
 /// Transpile AutoLang file to C (legacy implementation)
-#[deprecated(
-    since = "0.1.0",
-    note = "use trans_c instead"
-)]
+#[deprecated(since = "0.1.0", note = "use trans_c instead")]
 pub fn trans_c_legacy(path: &str) -> AutoResult<String> {
     let code = std::fs::read_to_string(path)
         .map_err(|e| format!("Failed to read file: {}", e))
@@ -4141,7 +4143,6 @@ mod plan707_stream_e2e_tests;
 #[path = "tests/plan042_scan_probe_tests.rs"]
 mod plan042_scan_probe_tests;
 
-
 // ---- PLAN-814：run 入口族的上层装配包装（原三处隐式扇入收敛点） ----
 // ui/ui-dialog 构建下，run 管线先装兼容宿主能力（if-absent 补缺，不覆盖
 // 显式默认——779/785 三级装配契约），再委托 SDK 实现；纯 SDK 消费者无
@@ -4159,13 +4160,19 @@ pub fn run_with_capture(code: &str) -> auto_lang_core::AutoResult<(String, Strin
 }
 
 #[cfg(any(feature = "ui", feature = "ui-dialog"))]
-pub fn run_with_capture_and_path(code: &str, path: &str) -> auto_lang_core::AutoResult<(String, String)> {
+pub fn run_with_capture_and_path(
+    code: &str,
+    path: &str,
+) -> auto_lang_core::AutoResult<(String, String)> {
     install_ui_host_capabilities();
     auto_lang_core::run_with_capture_and_path(code, path)
 }
 
 #[cfg(any(feature = "ui", feature = "ui-dialog"))]
-pub fn run_with_capture_and_path_staged(code: &str, path: &str) -> Result<(String, String), auto_lang_core::StagedRunFailure> {
+pub fn run_with_capture_and_path_staged(
+    code: &str,
+    path: &str,
+) -> Result<(String, String), auto_lang_core::StagedRunFailure> {
     install_ui_host_capabilities();
     auto_lang_core::run_with_capture_and_path_staged(code, path)
 }
@@ -4183,4 +4190,7 @@ pub fn run_autovm_capture(code: &str) -> auto_lang_core::AutoResult<(String, Str
 }
 
 #[cfg(not(any(feature = "ui", feature = "ui-dialog")))]
-pub use auto_lang_core::{run, run_autovm, run_autovm_capture, run_with_capture, run_with_capture_and_path, run_with_capture_and_path_staged};
+pub use auto_lang_core::{
+    run, run_autovm, run_autovm_capture, run_with_capture, run_with_capture_and_path,
+    run_with_capture_and_path_staged,
+};

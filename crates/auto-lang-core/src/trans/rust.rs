@@ -28764,8 +28764,9 @@ pub fn make(title str) Note {
 
 /// analysis pass actually runs in the transpile pipeline. Not used by the
 /// transpiler output path.
-#[cfg(test)]
-pub(crate) fn escape_analysis_summary(code: &str) -> std::collections::HashMap<AutoStr, usize> {
+/// PLAN-814 R3-05：跨 crate 测试支撑面（auto-lang a2r_tests 消费）——
+/// 恒编译 pub（原同 crate cfg(test) pub(crate) 形）。
+pub fn escape_analysis_summary(code: &str) -> std::collections::HashMap<AutoStr, usize> {
     use crate::trans::escape::EscapeAnalyzer;
     let mut parser = Parser::from(code);
     parser.set_dest(crate::parser::CompileDest::TransRust);

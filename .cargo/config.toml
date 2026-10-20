@@ -88,7 +88,7 @@ tf = "nextest run -p auto-lang -p auto-lang-core -p auto-ui-compiler --lib --tes
 # 二进制——三档切换零重编。不用 -E 内联表达式:cargo 在 Windows 下对
 # alias 实参不做引号剥离,带空格的 filterset 传不进去(实测两形态皆败)。
 tv = "nextest run -p auto-lang --lib --profile tv --features test-cases"
-tt = "nextest run -p auto-lang --lib --features test-trans,test-cases"
+tt = "nextest run -p auto-lang -p auto-lang-core --lib --features auto-lang/test-trans,auto-lang/test-cases"
 tb = "nextest run -p auto-lang --lib --features test-book"
 # fix-ui-tier(2026-09-30): UI 代码生成档(vue/jet/ark/rust 四生成器内联测试,
 # ~854 例)。刻意用裸 cargo test(单进程 libtest 线程并行)而非 nextest:
