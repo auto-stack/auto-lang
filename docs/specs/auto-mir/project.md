@@ -1,6 +1,8 @@
 # auto-mir
 
-> **Status**: experimental（PLAN-798）；逻辑模块位于 `experimental/ac-av-probe/core/src/{mir,mir_verify}.rs`，实际Rust包是 `auto-av-core`，没有独立已交付的auto-mir crate。
+> **Status**: experimental
+
+PLAN-798：逻辑模块位于 `experimental/ac-av-probe/core/src/{mir,mir_verify}.rs`，实际Rust包是 `auto-av-core`，没有独立已交付的auto-mir crate。
 
 Checked HIR → Typed MIR → verify_mir/CheckedMir → ABC/AV。MIR采用显式块、有类型可变槽与terminator，不要求SSA；当前仅i32/bool、直接调用、控制流和受控测试trace。类型/CFG/初始化/资源检查授信，guest trap不提前提升为前端错误。
 
