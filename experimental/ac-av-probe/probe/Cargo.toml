@@ -1,0 +1,17 @@
+[package]
+name = "auto-av-probe"
+version = "0.1.0"
+edition = "2021"
+description = "PLAN-798 auto-av-probe: HIR adapter, managed cache units, native cross-check reference, driver/observations and the bounded worker for the ac-av vertical probe."
+publish = false
+
+[dependencies]
+auto-av-core = { path = "../core" }
+ac-sema-contract = { path = "../../ac-semantics/contract" }
+auto-ac-prototype = { path = "../../ac-core" }
+ac-artifact-probe = { path = "../../ac-artifact-probe" }
+rusqlite = { version = "0.30", features = ["bundled"] }
+base64 = "0.22"
+blake3 = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

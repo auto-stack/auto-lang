@@ -11,6 +11,10 @@
 //!   桥面的 dyn 形态（游标 / checkpoint / 核心表达式与类型解析委托 /
 //!   场景与语句上下文查询 / 语法错误构造），外加不透明快照凭据
 //!   [`ParseCheckpoint`]（有作用域句柄表后端，T-01 D3）。
+//! - [`ui_context`]：完整 UI 文法端口 [`UiParseContext`]（PLAN-810 冻结
+//!   面；PLAN-814 R3-03b 自 auto-ui-dialect 迁入——语言核心 SDK 函数表
+//!   派发需双侧共同可见，孤儿规则下唯一合法位置）与 UI 文法函数表
+//!   [`UiGrammar`]（SDK 内置 UI 方言的装配注入端口）。
 //!
 //! 依赖方向（T-01 D1）：外部方言 crate → 本 crate → auto-ast/auto-lex/
 //! auto-diagnostics（lang-core 轻层）。**不依赖** auto-lang 或任何 Parser/
@@ -26,10 +30,12 @@
 pub mod context;
 pub mod dialect;
 pub mod session;
+pub mod ui_context;
 
 pub use context::{ParseCheckpoint, ParseContext};
 pub use dialect::{DialectPriority, ExternalDialect};
 pub use session::{CompilerSession, Scenario};
+pub use ui_context::{UiGrammar, UiParseContext};
 
 // 轻层门面 re-export：端口方法签名所暴露的类型（AST 值 / token / 诊断）
 // 的所属模块，模块名与旧 `auto_lang::{ast,token,error}` 对齐——外部方言

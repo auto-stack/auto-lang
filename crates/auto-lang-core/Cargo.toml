@@ -1,0 +1,106 @@
+[package]
+name = "auto-lang-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure language SDK: the single source for the non-UI language stack (scanner/parser/type/compile/VM/trans core), extracted from auto-lang (PLAN-814). Its normal/build/dev closure must not contain UI implementations (generators/renderer/desktop host) or Man."
+license = "MIT"
+keywords = ["language", "sdk", "parser", "vm", "transpiler"]
+
+[features]
+# 镜像 auto-lang 的非 UI 特性（PLAN-814 T-02；UI 特性族留上层兼容包转发）
+default = ["with-file-history"]
+with-file-history = []
+# PLAN-814 R3-03b：原 `ui-dialect` 显式组合 feature 已删除——SDK 清单
+# （含 optional path）不再引用 auto-ui-dialect（无 UI checkout 的源码快照
+# 消费要求）。UI 文法经函数表端口装配：上层组合点注入
+# auto_parser_api::UiGrammar（auto-ui-dialect 单源构造），表缺席=原
+# feature off 语义（方言表为空/公开门面显式拒绝）。
+# PLAN-814 T-02 迁移勘误：a2r_std::diff 双轨门（真 diff=auto-text-core
+# 直调 / 关=panic 同 shim fallback 形）在 SDK 侧的对应 feature；上层
+# auto-lang 的 code-editor feature 转发至此。空 feature——实现依赖
+# （auto-text-core）恒在，只切行为臂。
+code-editor = []
+python = ["dep:pyo3"]
+streaming-http = ["dep:tokio-util"]
+mem-profile = []
+test-cases = ["dep:auto-test-case"]
+
+[dependencies]
+# PLAN-814 T-02 前端门面组闭包（ast/token/error/session/lexer 直连外部轻
+# crate；symbols/scope/scope_manager 另需 auto-val/ecow）。
+auto-ast = { path = "../auto-ast" }
+auto-lex = { path = "../auto-lex" }
+auto-diagnostics = { path = "../auto-diagnostics" }
+auto-parser-api = { path = "../auto-parser-api" }
+auto-val = { path = "../auto-val", features = ["serde"] }
+ecow = { workspace = true }
+
+# ---- PLAN-814 T-02 大迁移：非 UI 依赖全集（镜像 auto-lang，剔除 iced/OS-native/跨仓 autodown/UI 三包）----
+a2r-std = { path = "../a2r-std" }
+auto-atom = { path = "../auto-atom" }
+auto-cache = { path = "../auto-cache" }
+shim-metadata = { path = "../shim-metadata" }
+auto-test-case = { path = "../auto-test-case", optional = true }
+auto-bindgen = { path = "../auto-bindgen" }
+auto-terminal-core = { path = "../auto-terminal-core" }
+rustyline = { workspace = true, features = ["with-file-history"] }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+serde_json = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+auto-text-core = { path = "../auto-text-core" }
+auto-media-core = { path = "../auto-media-core", default-features = false, features = ["image-codec"] }
+toml = { workspace = true }      # Plan 342: block spec.md frontmatter
+normalize-path = { workspace = true }
+roxmltree = { workspace = true }
+dirs = { workspace = true }
+lazy_static = "1.4"
+inventory = "0.3"
+thiserror = { workspace = true }
+miette = { workspace = true }
+regex = "1"
+auto-macros = { path = "../auto-macros" }
+dashmap = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+blake3 = { workspace = true }
+bincode = { workspace = true }
+libloading = "0.8"
+log = { workspace = true }
+urlencoding = { workspace = true }
+colored = { workspace = true }
+sysinfo = { workspace = true }
+reqwest = { version = "0.12", features = ["blocking", "json", "stream", "multipart", "cookies", "gzip", "brotli"] }
+tungstenite = { version = "0.24", features = ["native-tls"] }
+walkdir = "2"
+url = "2"
+semver = "1"
+chrono = "0.4"
+base64 = "0.22"
+hex = "0.4"
+sha2 = "0.10"
+sha1 = "0.10"
+md-5 = "0.10"
+hmac = "0.12"
+mime_guess = "2"
+csv = "1.3"
+tar = "0.4"
+flate2 = "1"
+same-file = "1"
+ansi_term = "0.12"
+tokio-util = { version = "0.7", features = ["io"], optional = true }
+futures = "0.3"
+notify = { workspace = true }
+ureq = { version = "2", features = ["json"], optional = true }
+axum = { version = "0.8", features = ["json"] }
+hyper = { version = "1", default-features = false, features = ["http1", "server"] }
+hyper-util = { version = "0.1", features = ["tokio", "server-auto", "server-graceful", "service"] }
+socket2 = "0.5"
+pyo3 = { version = "0.29", optional = true, features = ["auto-initialize"] }
+trans = "0.4.0"
+syn = { version = "2", features = ["full", "parsing", "printing"] }
+fastrand = "2.4.1"
+stacker = "0.1.25"
+tokio-tungstenite = { version = "0.30.0", default-features = false, features = ["connect", "handshake"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

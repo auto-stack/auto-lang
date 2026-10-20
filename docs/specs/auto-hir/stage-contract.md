@@ -149,3 +149,8 @@ CT 片段（comptime 输入）只经 CTRequest/CTResult 模型接缝（SchemaOnl
 ## 相关 plan
 
 见 [plans.md](plans.md)。
+
+
+## PLAN-798：已实现的AV消费边界
+
+旧S0–S6及各domain保证保持。798以CheckedModule为HIR→Typed MIR消费门，直接保留类型/求值/来源/初始化语义；旧source/Atom的最长真实构造路径128预算在递归parser前受控检查，超限是探针resource，不是永久语言语法上限。前端仍整模块处理，miss仍whole MIR lower/split；安全函数级凭证及source/HIR复用归828，798不扩大旧Checked保证。见[MIR标量合同](../auto-mir/core-i32.md)。

@@ -1,0 +1,13117 @@
+use crate::vm::collections::{SpecializedHashMap, SpecializedHashSet};
+use crate::vm::engine::{AutoVM, VMError};
+use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+use crate::vm::task::AutoTask;
+use auto_val::Value;
+use std::collections::HashMap;
+use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::RwLock;
+
+use crate::{for_each_native, gen_native_constants};
+// Plan 019 批次八: autodown natives（shim 常驻 —— feature off 时为桩）。
+use crate::vm::autodown_natives::{
+    shim_autodown_editor_text, shim_autodown_find_block, shim_autodown_insert_template,
+    shim_autodown_insert_text, shim_autodown_parse, shim_autodown_serialize, shim_autodown_text,
+};
+// auto-os Plan 013 T2: AutoTerm 引擎桥 catalog shim(auto.term.*,ID 2943-2949)。
+// 014 直键入:pump_input(2957)+ 几何随动/光标格(2958/2959/2976)。
+// PLAN-018 D5:spawn_ex(2983)+ 定向泵三件 rows_for/pump_for/
+// apply_resize_for(2984-2986)。
+use crate::vm::ffi::term_engine::{
+    shim_term_apply_resize,
+    shim_term_apply_resize_for,
+    shim_term_backlog_dropped,
+    shim_term_backlog_paused,
+    shim_term_backlog_pending_mb,
+    shim_term_backlog_take_alerts,
+    // PLAN-025:VM 臂配置面 stub + 滚动待排探针(泵节拍门)。
+    shim_term_config_default_profile,
+    shim_term_config_profiles,
+    shim_term_config_profiles_full,
+    shim_term_config_spawn_argv,
+    shim_term_config_spawn_cwd,
+    shim_term_config_spawn_program,
+    shim_term_cursor_col,
+    shim_term_cursor_row,
+    shim_term_engine_history,
+    // PLAN-028:分体轨 resize 断链桥(pend 写入 + history 查询)。
+    shim_term_engine_pend_resize_geom,
+    shim_term_free,
+    shim_term_interrupt,
+    shim_term_is_exited,
+    shim_term_menu_take,
+    shim_term_pump_for,
+    shim_term_pump_input,
+    shim_term_resize,
+    shim_term_rows,
+    shim_term_rows_for,
+    shim_term_scroll_pending_for,
+    shim_term_spawn,
+    shim_term_spawn_ex,
+    shim_term_viewport_cols,
+    shim_term_viewport_rows,
+    // PLAN-020 T-00b:窗口尺寸面 shim(auto.term.window_width/height)。
+    shim_term_window_height,
+    shim_term_window_width,
+    shim_term_write_line,
+    shim_term_write_raw,
+};
+
+/// Decode a tagged string index from a NanoValue popped from the stack.
+#[inline]
+fn decode_str_idx_nv(nv: auto_val::NanoValue) -> usize {
+    auto_val::decode_string(nv) as usize
+}
+
+// Plan 094: ID ranges for hybrid FFI
+/// Maximum ID for static FFI bindings
+pub const STATIC_ID_MAX: u16 = 10000;
+/// Starting ID for dynamic FFI bindings
+pub const DYNAMIC_ID_START: u16 = 10000;
+
+pub type ShimFunc = Arc<dyn Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync>;
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct NativeContract {
+    pub parameters: Vec<String>,
+    pub returns: String,
+    pub producer: String,
+    /// Independent target adapter facts; never populated by the .at scanner.
+    pub receiver: Option<String>,
+    pub is_static: bool,
+    pub generics: Vec<String>,
+    pub parameter_modes: Vec<String>,
+    pub error_shape: String,
+}
+
+/// PLAN-808 R4: one remembered terminal provider plus its revival counter.
+///
+/// Every reinstallation (`set_terminal_provider`) and every session
+/// publication through the spawn shims bumps `revivals` while the entry is
+/// in the owners list. A prune verdict may remove the entry only if
+/// `revivals` is unchanged since the verdict was taken: a provider that
+/// revived after the liveness sample (reinstalled, or it gained a live
+/// session through a real spawn) must stay **continuously** routable —
+/// removing it first and re-adding it later leaves a window in which reads
+/// and frees of already-exposed handles are lost (R4-F01). All bump and
+/// verdict-check sites hold the owners write lock, so lock exclusion orders
+/// the counter; a revival that has not acquired the lock yet re-inserts the
+/// provider as a fresh entry instead (the spawn shims re-remember before
+/// the new handle is returned to VM code).
+struct TerminalOwnerEntry {
+    provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
+    revivals: std::sync::atomic::AtomicU64,
+}
+
+/// Plan 094: NativeInterface with hybrid lookup support
+///
+/// Supports two types of native functions:
+/// - **Static** (IDs 0-9999): Built into VM, registered at compile time
+/// - **Dynamic** (IDs 10000+): Loaded via `use.rust`, registered at runtime
+pub struct NativeInterface {
+    /// Static shims: direct array lookup for maximum performance
+    static_shims: Vec<Option<ShimFunc>>,
+    /// Dynamic shims: HashMap for flexibility
+    dynamic_shims: HashMap<u16, ShimFunc>,
+    /// Next available dynamic ID
+    next_dynamic_id: u16,
+    /// Plan 200 Task 3.3: name -> ID mapping for CALL_SPEC fallback
+    name_to_id: HashMap<String, u16>,
+    contracts: HashMap<u16, NativeContract>,
+    binding_revision: u64,
+    pub binding_conflicts: Vec<(u16, String, String)>,
+    reference_proofs: std::sync::Mutex<
+        HashMap<u16, Result<Option<crate::stdlib_assembly::reference::ReferenceProof>, String>>,
+    >,
+    /// PLAN-779: 宿主能力装配槽（pilot=frame 族）。None=未捕获（读侧 0）。
+    /// per-NativeInterface（即 per-VM）持有，两实例互不串线；Arc 共享同一
+    /// provider 是宿主装配选择，非本结构的隐式全局。内 mut 供 VM 建后注入
+    /// （`AutoVM::set_frame_provider`）。注入不 bump binding_revision/
+    /// 不撤 proof（绑定身份不变，§host_capabilities 契约注释）。
+    frame_provider:
+        std::sync::RwLock<Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>>>,
+    /// PLAN-785: 文本剪贴板能力槽（2925/2926）。语义与 frame_provider
+    /// 槽逐条相同（per-NativeInterface 持有、Clone 保留、注入不动绑定
+    /// 身份）；None = 缺席 → shim 报 feature-disabled 形 VMError。
+    clipboard_text_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>>,
+    >,
+    /// PLAN-790: 文件/图像剪贴板能力槽（2934..2937）。装配语义与
+    /// clipboard_text_provider 槽逐条相同（per-NativeInterface 持有、
+    /// Clone 保留、注入不动绑定身份）；差别在缺席语义 = G3 **值降级**
+    ///（空表/false/null，与迁移前无 OS 面同形），非 VMError。
+    clipboard_media_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>>,
+    >,
+    /// PLAN-794: scroll controller/子锚点能力槽（9900..9905/9922/9923）。
+    /// 装配语义与 clipboard_media_provider 槽逐条相同（per-NativeInterface
+    /// 持有、Clone 保留、注入不动绑定身份）；缺席语义 = T-01 冻结矩阵的
+    /// 降级臂（Int 0 / Bool false / Float 0.0 / "error:unsupported" /
+    /// "unknown"，与迁移前 no-ui 构建同形值语义，非 raise）。
+    scroll_host_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>>,
+    >,
+    /// PLAN-802: code editor 能力槽（22 native 全族：2910..2915、
+    /// 2919..2924、2932/2933、2939、9906、9908..9913）。装配语义与
+    /// scroll_host_provider 槽逐条相同（per-NativeInterface 持有、Clone
+    /// 保留、注入不动绑定身份）；缺席语义 = 802 T-01 冻结矩阵的缺席臂
+    /// （21 项 raise feature-disabled 形 VMError、9913 scroll_to 弹参
+    /// 返 false——与迁移前 feature-off 构建逐字面值同形）。
+    code_editor_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>>,
+    >,
+    /// PLAN-804: OS 文件对话框能力槽（2927/2928）。装配语义与既有五族
+    /// 逐条相同（per-NativeInterface 持有、Clone 保留、注入不动绑定身份）；
+    /// 缺席语义 = 原 feature-off 形 VMError（文本逐字）。模态重入纪律：
+    /// accessor 先 clone Arc 释放槽锁再返回——shim 调用 provider 时不持
+    /// 本锁，真实模态阻塞/回调重入安全（V03）。
+    dialog_host_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>>,
+    >,
+    /// PLAN-804: 拖出能力槽（2938）。装配语义与 dialog 槽逐条相同（两槽
+    /// 独立装配，一种在位不掩盖另一种缺席）；缺席语义 = 迁移前 off 臂
+    /// 同形 false（值降级，非 raise）。
+    dnd_host_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>>,
+    >,
+    /// PLAN-807: 编辑器快照能力槽（diff_snapshots 9916 供值）。装配语义
+    /// 与既有七族逐条相同（per-NativeInterface 持有、Clone 保留、注入不
+    /// 动绑定身份）；缺席语义 = "无法找到相应 editor" err envelope（值，
+    /// 非 raise）。独立于 PLAN-802 的 code_editor_provider 槽——快照供值
+    /// 是单一方法能力，不给 802 trait 加必实现方法（外部实现零破坏）。
+    editor_snapshot_provider: std::sync::RwLock<
+        Option<std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>>,
+    >,
+    /// PLAN-808: terminal 能力槽（34 native 全族：2943..2949、2957..2959、
+    /// 2976..2982、2983..2987、2988..2993、2998..3003）。装配语义与既有
+    /// provider 槽逐条相同（per-NativeInterface 持有、Clone 保留、注入不动
+    /// 绑定身份）。**缺席语义不同于其他族**：无槽时 shim 回落到进程共享
+    /// engine service（非 raise/非全空），保留迁移前"无 UI 也能驱动引擎"
+    /// 的行为。
+    terminal_provider:
+        std::sync::RwLock<Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>>>,
+    /// PLAN-808 R1: per-VM history of terminal providers ever installed.
+    /// Handles stay bound to the provider that owns them across
+    /// `set_terminal_provider` replacement (owner routing); the strong Arcs
+    /// also keep the original service alive until its last session is freed.
+    /// Pruned when a replaced owner has no live sessions (R1-F04); each
+    /// entry's revival counter keeps a provider that revived after the
+    /// liveness sample continuously routable during prune (R4-F01).
+    terminal_owners: std::sync::RwLock<Vec<std::sync::Arc<TerminalOwnerEntry>>>,
+    /// Generation bumped on every owner-list mutation. Owner queries snapshot
+    /// the list and query providers **outside** the lock; a concurrent
+    /// set/prune is detected by the generation and retried so a live owner is
+    /// never lost (R2-F01).
+    terminal_owners_gen: std::sync::atomic::AtomicU64,
+    /// Per-VM retired handle cache (cursor/viewport) captured when a handle
+    /// is freed through the shims. It preserves the frozen post-free values
+    /// without keeping the original service alive or touching a freed DLL
+    /// pointer (R2-F02).
+    terminal_retired:
+        std::sync::Mutex<std::collections::HashMap<i64, auto_terminal_core::TerminalRetiredCache>>,
+}
+
+impl Clone for NativeInterface {
+    fn clone(&self) -> Self {
+        Self {
+            static_shims: self.static_shims.clone(),
+            dynamic_shims: self.dynamic_shims.clone(),
+            next_dynamic_id: self.next_dynamic_id,
+            name_to_id: self.name_to_id.clone(),
+            contracts: self.contracts.clone(),
+            binding_conflicts: self.binding_conflicts.clone(),
+            binding_revision: self.binding_revision,
+            reference_proofs: std::sync::Mutex::new(HashMap::new()),
+            // PLAN-779: provider 随装配克隆保留（merge_native_interface 经
+            // Clone+merge 路径不丢宿主能力；proof 按既有规则清空不变）。
+            frame_provider: std::sync::RwLock::new(
+                self.frame_provider
+                    .read()
+                    .expect("frame_provider poisoned")
+                    .clone(),
+            ),
+            // PLAN-785: clipboard text provider 随装配克隆保留（同上，
+            // merge_native_interface 经 Clone+merge 路径不丢宿主能力）。
+            clipboard_text_provider: std::sync::RwLock::new(
+                self.clipboard_text_provider
+                    .read()
+                    .expect("clipboard_text_provider poisoned")
+                    .clone(),
+            ),
+            // PLAN-790: clipboard media provider 随装配克隆保留（同上）。
+            clipboard_media_provider: std::sync::RwLock::new(
+                self.clipboard_media_provider
+                    .read()
+                    .expect("clipboard_media_provider poisoned")
+                    .clone(),
+            ),
+            // PLAN-794: scroll host provider 随装配克隆保留（同上）。
+            scroll_host_provider: std::sync::RwLock::new(
+                self.scroll_host_provider
+                    .read()
+                    .expect("scroll_host_provider poisoned")
+                    .clone(),
+            ),
+            // PLAN-802: code editor provider 随装配克隆保留（同上——
+            // merge_native_interface 经 Clone+merge 路径不丢宿主能力）。
+            code_editor_provider: std::sync::RwLock::new(
+                self.code_editor_provider
+                    .read()
+                    .expect("code_editor_provider poisoned")
+                    .clone(),
+            ),
+            // PLAN-804: dialog/dnd host provider 随装配克隆保留（同上，
+            // merge_native_interface 经 Clone+merge 路径不丢宿主能力）。
+            dialog_host_provider: std::sync::RwLock::new(
+                self.dialog_host_provider
+                    .read()
+                    .expect("dialog_host_provider poisoned")
+                    .clone(),
+            ),
+            dnd_host_provider: std::sync::RwLock::new(
+                self.dnd_host_provider
+                    .read()
+                    .expect("dnd_host_provider poisoned")
+                    .clone(),
+            ),
+            editor_snapshot_provider: std::sync::RwLock::new(
+                self.editor_snapshot_provider
+                    .read()
+                    .expect("editor_snapshot_provider poisoned")
+                    .clone(),
+            ),
+            // PLAN-808: terminal provider 随装配克隆保留（同上）。
+            terminal_provider: std::sync::RwLock::new(
+                self.terminal_provider
+                    .read()
+                    .expect("terminal_provider poisoned")
+                    .clone(),
+            ),
+            // PLAN-808 R1: owner history survives Clone/merge so a handle
+            // exposed before the clone/replace still routes to its origin.
+            terminal_owners: std::sync::RwLock::new(
+                self.terminal_owners
+                    .read()
+                    .expect("terminal_owners poisoned")
+                    .clone(),
+            ),
+            terminal_owners_gen: std::sync::atomic::AtomicU64::new(
+                self.terminal_owners_gen
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            terminal_retired: std::sync::Mutex::new(
+                self.terminal_retired
+                    .lock()
+                    .expect("terminal_retired poisoned")
+                    .clone(),
+            ),
+        }
+    }
+}
+
+impl NativeInterface {
+    pub fn new() -> Self {
+        Self {
+            static_shims: vec![None; STATIC_ID_MAX as usize],
+            dynamic_shims: HashMap::new(),
+            next_dynamic_id: DYNAMIC_ID_START,
+            name_to_id: HashMap::new(),
+            contracts: HashMap::new(),
+            binding_revision: 0,
+            binding_conflicts: Vec::new(),
+            reference_proofs: std::sync::Mutex::new(HashMap::new()),
+            frame_provider: std::sync::RwLock::new(None),
+            clipboard_text_provider: std::sync::RwLock::new(None),
+            clipboard_media_provider: std::sync::RwLock::new(None),
+            scroll_host_provider: std::sync::RwLock::new(None),
+            code_editor_provider: std::sync::RwLock::new(None),
+            dialog_host_provider: std::sync::RwLock::new(None),
+            dnd_host_provider: std::sync::RwLock::new(None),
+            editor_snapshot_provider: std::sync::RwLock::new(None),
+            terminal_provider: std::sync::RwLock::new(None),
+            terminal_owners: std::sync::RwLock::new(Vec::new()),
+            terminal_owners_gen: std::sync::atomic::AtomicU64::new(0),
+            terminal_retired: std::sync::Mutex::new(std::collections::HashMap::new()),
+        }
+    }
+
+    /// PLAN-779: 注入/替换本接口（=本 VM）的 frame provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_frame_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>,
+    ) {
+        *self
+            .frame_provider
+            .write()
+            .expect("frame_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-779: 当前 provider 快照（None=未捕获 0 语义）。
+    pub fn frame_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>> {
+        self.frame_provider
+            .read()
+            .expect("frame_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-785: 注入/替换本接口（=本 VM）的 clipboard text provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_clipboard_text_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>,
+    ) {
+        *self
+            .clipboard_text_provider
+            .write()
+            .expect("clipboard_text_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-785: 当前 clipboard text provider（None=缺席错误语义）。
+    pub fn clipboard_text_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>> {
+        self.clipboard_text_provider
+            .read()
+            .expect("clipboard_text_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-790: 注入/替换本接口（=本 VM）的 clipboard media provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_clipboard_media_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>,
+    ) {
+        *self
+            .clipboard_media_provider
+            .write()
+            .expect("clipboard_media_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-790: 当前 clipboard media provider（None=G3 值降级语义）。
+    pub fn clipboard_media_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>> {
+        self.clipboard_media_provider
+            .read()
+            .expect("clipboard_media_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-794: 注入/替换本接口（=本 VM）的 scroll host provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_scroll_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>,
+    ) {
+        *self
+            .scroll_host_provider
+            .write()
+            .expect("scroll_host_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-794: 当前 scroll host provider（None=T-01 冻结降级臂语义）。
+    pub fn scroll_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>> {
+        self.scroll_host_provider
+            .read()
+            .expect("scroll_host_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-802: 注入/替换本接口（=本 VM）的 code editor provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_code_editor_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>,
+    ) {
+        *self
+            .code_editor_provider
+            .write()
+            .expect("code_editor_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-802: 当前 code editor provider（None=T-01 冻结缺席臂语义）。
+    pub fn code_editor_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>> {
+        self.code_editor_provider
+            .read()
+            .expect("code_editor_provider poisoned")
+            .clone()
+    }
+    /// PLAN-804: 注入/替换本接口（=本 VM）的 dialog host provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    pub fn set_dialog_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>,
+    ) {
+        *self
+            .dialog_host_provider
+            .write()
+            .expect("dialog_host_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-804: 当前 dialog host provider（None=缺席错误语义）。clone
+    /// Arc 即释放槽锁——模态阻塞/回调重入不持锁（V03）。
+    pub fn dialog_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>> {
+        self.dialog_host_provider
+            .read()
+            .expect("dialog_host_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-804: 注入/替换本接口（=本 VM）的 dnd host provider。
+    pub fn set_dnd_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>,
+    ) {
+        *self
+            .dnd_host_provider
+            .write()
+            .expect("dnd_host_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-807: 注入/替换本接口（=本 VM）的 editor snapshot provider
+    /// （diff_snapshots 9916 供值）。绑定身份不变，不触发 revision/proof
+    /// 失效。
+    pub fn set_editor_snapshot_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>,
+    ) {
+        *self
+            .editor_snapshot_provider
+            .write()
+            .expect("editor_snapshot_provider poisoned") = Some(provider);
+    }
+
+    /// PLAN-807: 当前 editor snapshot provider（None="无法找到相应
+    /// editor" err envelope 语义）。
+    pub fn editor_snapshot_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>> {
+        self.editor_snapshot_provider
+            .read()
+            .expect("editor_snapshot_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-804: 当前 dnd host provider（None=false 降级语义）。
+    pub fn dnd_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>> {
+        self.dnd_host_provider
+            .read()
+            .expect("dnd_host_provider poisoned")
+            .clone()
+    }
+
+    /// PLAN-808: 注入/替换本接口（=本 VM）的 terminal provider。
+    /// 绑定身份不变（shim/ID/contract 均不动），不触发 revision/proof 失效。
+    /// The provider is also remembered in `terminal_owners`: handles already
+    /// exposed by it stay bound to it after later replacements. The old slot
+    /// value is dropped **outside** the write lock (R2-F01: its Drop may
+    /// reenter the interface).
+    pub fn set_terminal_provider(
+        &self,
+        provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
+    ) {
+        let old = {
+            let mut slot = self
+                .terminal_provider
+                .write()
+                .expect("terminal_provider poisoned");
+            std::mem::replace(&mut *slot, Some(provider.clone()))
+        };
+        drop(old);
+        self.remember_terminal_owner(provider);
+    }
+
+    /// Remember a provider for handle-owner routing (deduplicated by Arc
+    /// identity). Called by `set_terminal_provider` and by the spawn shims
+    /// after every successful session publication. An already-remembered
+    /// provider has its entry's **revival counter bumped** instead of the
+    /// call being a no-op: the bump invalidates a concurrently-running prune
+    /// verdict that sampled `live_handle_count == 0` before this
+    /// reinstallation/publication, so a revived provider is never removed
+    /// from the visible list (R4-F01). No provider callback runs under the
+    /// owners lock (R2-F01).
+    pub fn remember_terminal_owner(
+        &self,
+        provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
+    ) {
+        let mut owners = self
+            .terminal_owners
+            .write()
+            .expect("terminal_owners poisoned");
+        if let Some(entry) = owners
+            .iter_mut()
+            .find(|entry| std::sync::Arc::ptr_eq(&entry.provider, &provider))
+        {
+            entry
+                .revivals
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        } else {
+            owners.push(std::sync::Arc::new(TerminalOwnerEntry {
+                provider,
+                revivals: std::sync::atomic::AtomicU64::new(0),
+            }));
+            self.terminal_owners_gen
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+
+    /// Find the provider that owns `handle` (most recently installed first).
+    /// Returns `None` when no remembered provider owns it — callers then use
+    /// the current provider / shared fallback.
+    ///
+    /// The provider list is snapshotted under the read lock and queried
+    /// outside it; the generation retry prevents a concurrent set/prune from
+    /// hiding a live owner (R2-F01).
+    pub fn terminal_owner_for(
+        &self,
+        handle: i64,
+    ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
+        use std::sync::atomic::Ordering;
+        for _ in 0..3 {
+            let generation = self.terminal_owners_gen.load(Ordering::Relaxed);
+            let snapshot: Vec<std::sync::Arc<TerminalOwnerEntry>> = self
+                .terminal_owners
+                .read()
+                .expect("terminal_owners poisoned")
+                .clone();
+            if let Some(owner) = snapshot
+                .iter()
+                .rev()
+                .find(|entry| entry.provider.owns_handle(handle))
+                .map(|entry| entry.provider.clone())
+            {
+                return Some(owner);
+            }
+            if self.terminal_owners_gen.load(Ordering::Relaxed) == generation {
+                return None;
+            }
+        }
+        None
+    }
+
+    /// Find a remembered provider that still has the *retired* cache for
+    /// `handle` (after free). Used only by the cursor/viewport cache shims;
+    /// live operations continue to use [`terminal_owner_for`] (R2-F02).
+    pub fn terminal_cache_owner_for(
+        &self,
+        handle: i64,
+    ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
+        use std::sync::atomic::Ordering;
+        for _ in 0..3 {
+            let generation = self.terminal_owners_gen.load(Ordering::Relaxed);
+            let snapshot: Vec<std::sync::Arc<TerminalOwnerEntry>> = self
+                .terminal_owners
+                .read()
+                .expect("terminal_owners poisoned")
+                .clone();
+            if let Some(owner) = snapshot
+                .iter()
+                .rev()
+                .find(|entry| entry.provider.cached_cursor_viewport(handle).is_some())
+                .map(|entry| entry.provider.clone())
+            {
+                return Some(owner);
+            }
+            if self.terminal_owners_gen.load(Ordering::Relaxed) == generation {
+                return None;
+            }
+        }
+        None
+    }
+
+    /// Drop remembered owners with no live sessions. The current slot is not
+    /// touched (it stays installed even at zero sessions). This lets a
+    /// replaced isolated service Drop and free any remaining sessions
+    /// (F808-R1-04) without losing owners that still have handles.
+    ///
+    /// Provider methods and removed-provider destructors run **outside** the
+    /// owners lock. The visible owner list is **never emptied** while those
+    /// lock-free calls run: it is snapshotted intact and evaluated outside
+    /// (R3-F01). Removal is **conditional on the entry's revival counter**
+    /// (R4-F01): the counter is sampled before each liveness call and every
+    /// reinstallation / session publication through the spawn shims bumps
+    /// it, so a provider that revived after the (legitimately stale-zero)
+    /// liveness sample is never removed from the visible list at all — it
+    /// stays continuously routable instead of being removed and re-added.
+    /// A publication that acquires the write lock only after the removal
+    /// re-inserts the provider as a fresh entry before its handle is
+    /// returned to VM code.
+    pub fn prune_terminal_owners(&self) {
+        // 1. Snapshot the live entries; no provider call under the lock.
+        let snapshot: Vec<std::sync::Arc<TerminalOwnerEntry>> = self
+            .terminal_owners
+            .read()
+            .expect("terminal_owners poisoned")
+            .clone();
+
+        // 2. Evaluate outside the lock; the visible list stays resolvable.
+        //    The revival stamp is read BEFORE the liveness call: any bump
+        //    after the stamp (reinstall or real spawn) makes the verdict
+        //    stale, and a bump before the stamp implies the session table
+        //    already held the session, so the count itself returns alive.
+        let dead: Vec<(std::sync::Arc<TerminalOwnerEntry>, u64)> = snapshot
+            .into_iter()
+            .filter_map(|entry| {
+                let stamp = entry.revivals.load(std::sync::atomic::Ordering::Relaxed);
+                (entry.provider.live_handle_count() == 0).then_some((entry, stamp))
+            })
+            .collect();
+        if dead.is_empty() {
+            return;
+        }
+
+        // 3. Remove a dead-verdict entry only if its revival counter still
+        //    equals the verdict stamp — a revival since the verdict keeps
+        //    the provider visible. No provider method runs under this lock;
+        //    only the entry-local atomic is read.
+        let removed: Vec<std::sync::Arc<TerminalOwnerEntry>> = {
+            let mut owners = self
+                .terminal_owners
+                .write()
+                .expect("terminal_owners poisoned");
+            let mut removed = Vec::new();
+            owners.retain(|entry| {
+                match dead
+                    .iter()
+                    .position(|(dead_entry, _)| std::sync::Arc::ptr_eq(dead_entry, entry))
+                {
+                    Some(index)
+                        if entry.revivals.load(std::sync::atomic::Ordering::Relaxed)
+                            == dead[index].1 =>
+                    {
+                        removed.push(entry.clone());
+                        false
+                    }
+                    _ => true,
+                }
+            });
+            if !removed.is_empty() {
+                self.terminal_owners_gen
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            removed
+        };
+
+        // 4. The final Drop of the removed providers (which may reenter the
+        //    interface through their destructors) happens outside every
+        //    lock. No post-hoc re-add is needed: providers that revived were
+        //    never removed (step 3), and one that revives only after removal
+        //    re-inserts itself through remember_terminal_owner.
+        drop(removed);
+    }
+
+    /// Remember the frozen cursor/viewport cache of a handle freed through
+    /// the shims. A copy survives provider replacement and owner pruning
+    /// without keeping the old service alive (R2-F02).
+    pub fn remember_terminal_retired_cache(
+        &self,
+        handle: i64,
+        cache: auto_terminal_core::TerminalRetiredCache,
+    ) {
+        self.terminal_retired
+            .lock()
+            .expect("terminal_retired poisoned")
+            .insert(handle, cache);
+    }
+
+    /// Retired cache for a freed handle (None = never observed freed here).
+    pub fn terminal_retired_cache(
+        &self,
+        handle: i64,
+    ) -> Option<auto_terminal_core::TerminalRetiredCache> {
+        self.terminal_retired
+            .lock()
+            .expect("terminal_retired poisoned")
+            .get(&handle)
+            .copied()
+    }
+
+    /// PLAN-808: 当前 terminal provider（None → shim 回落进程共享 engine
+    /// service；**不是**缺席错误/空值，见槽位注释）。
+    pub fn terminal_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
+        self.terminal_provider
+            .read()
+            .expect("terminal_provider poisoned")
+            .clone()
+    }
+
+    /// Common production binding order, including the VM overrides.
+    /// Callers may merge external interfaces later; those merges invalidate proof.
+    pub fn production() -> Self {
+        let mut native_interface = NativeInterface::new();
+        native_interface.register_std_shims();
+        // Plan 094: Register manual FFI shims (cannot use #[rust_fn])
+        crate::vm::ffi::register_stdlib_ffi(&mut native_interface);
+        // Plan 555 T06: 分发组合子（interop.obj_* 家族，1860-1865）。
+        crate::vm::interop::register_interop_natives(&mut native_interface);
+        // Plan 198: Register #[rust_fn]-annotated shims via inventory
+        native_interface.build_from_inventory();
+        // The inventory-generated IO.read_line shim has no VM access and
+        // reads process stdin. Rebind it after inventory so hosted requests
+        // use their isolated input queue; CLI calls still fall back to stdin.
+        crate::vm::ffi::stdlib::register_request_io_shims(&mut native_interface);
+        // Override inventory shims with nanbox-aware versions for str methods
+        // (inventory shims use String extraction which doesn't work with NanoValue stack)
+        {
+            native_interface.register(
+                crate::vm::native::NATIVE_STR_CONTAINS,
+                crate::vm::native::shim_str_contains,
+            );
+            native_interface.register(
+                crate::vm::native::NATIVE_STR_STARTS_WITH,
+                crate::vm::native::shim_str_starts_with,
+            );
+            native_interface.register(
+                crate::vm::native::NATIVE_STR_ENDS_WITH,
+                crate::vm::native::shim_str_ends_with,
+            );
+            native_interface.register(
+                crate::vm::native::NATIVE_STR_TO_INT,
+                crate::vm::native::shim_str_to_int_nv,
+            );
+            native_interface.register(
+                crate::vm::native::NATIVE_STR_TO_UINT,
+                crate::vm::native::shim_str_to_uint_nv,
+            );
+            // Plan 446 批三 D1: json.parse 占位 shim（rust_fn 版原样透传字符串）
+            // 覆盖为 vm 感知版——经 Plan 340 转换器物化成 __json_object/
+            // ListData 堆值，下游 GET_FIELD/for-in 直读。ID 取静态表
+            // （auto.json.parse = 1902，native_catalog）。
+            native_interface.register_typed_shim_by_name(
+                "auto.json.parse",
+                crate::vm::ffi::stdlib::shim_json_parse_vm,
+                &["str"],
+                "JsonValue?",
+            );
+            // PLAN-057 T6（等价性缺陷族③）：web 内建 natives 补齐——
+            // Array.isArray/JSON.stringify/Math.trunc/Math.imul 此前未注册，
+            // 调用点经未解析静态兜底（CALL_SPEC str 接收者臂）静默 None。
+            // 名/ID 已入 native_catalog 静态表（NATIVE_ID_ENTRIES，codegen
+            // 任意时刻可解析，沿 auto.json.parse 惯例）；此处绑定 shim 到
+            // 固定 ID + 注册字面/canonical 双名（沿 build_from_inventory
+            // 三名惯例）。注意 canonical 经 TYPE_CANONICAL_MAP：Array→
+            // auto.list、Object→auto.obj。
+            {
+                const WEB_NATIVES: &[(
+                    &str,
+                    &str,
+                    fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>,
+                )] = &[
+                    (
+                        "Array.isArray",
+                        "auto.list.is_array",
+                        crate::vm::ffi::stdlib::shim_web_is_array,
+                    ),
+                    (
+                        "JSON.stringify",
+                        "auto.json.stringify",
+                        crate::vm::ffi::stdlib::shim_web_json_stringify,
+                    ),
+                    (
+                        "Math.trunc",
+                        "auto.math.trunc",
+                        crate::vm::ffi::stdlib::shim_web_math_trunc,
+                    ),
+                    (
+                        "Math.imul",
+                        "auto.math.imul",
+                        crate::vm::ffi::stdlib::shim_web_math_imul,
+                    ),
+                ];
+                for (name, canonical, shim) in WEB_NATIVES {
+                    let id = crate::vm::native_registry::BIGVM_NATIVES
+                        .lock()
+                        .unwrap()
+                        .resolve_qualified(canonical)
+                        .expect("PLAN-057 web native missing from NATIVE_ID_ENTRIES");
+                    native_interface.register(id, *shim);
+                    native_interface.register_name(name, id);
+                    native_interface.register_name(canonical, id);
+                }
+            }
+            // Plan 446 批三 D1(续): 文档类 json native（get/get_at/has_key/
+            // len/keys/is_valid）双态化——堆文档首参序列化回文本走原路径，
+            // json.get(json.parse(x), k) 文本工具链与点访问 idiom 互通。
+            crate::vm::ffi::stdlib::override_json_doc_natives(&mut native_interface);
+        }
+
+        // Plan 011 (MS3-B): shell-host bridge natives.
+        {
+            native_interface.register(
+                crate::vm::native::NATIVE_SHELL_SYSTEM,
+                crate::vm::native::shim_shell_system,
+            );
+            native_interface.register(
+                crate::vm::native::NATIVE_SHELL_SYSTEM_STATUS,
+                crate::vm::native::shim_shell_system_status,
+            );
+            native_interface.register(
+                crate::vm::native::NATIVE_SHELL_EXPORT,
+                crate::vm::native::shim_shell_export,
+            );
+            native_interface.register(
+                crate::vm::native::NATIVE_SHELL_EXIT,
+                crate::vm::native::shim_shell_exit,
+            );
+            // PLAN-082: structured interop natives.
+            native_interface.register(
+                crate::vm::native::NATIVE_SHELL_QUERY,
+                crate::vm::native::shim_shell_query,
+            );
+            native_interface.register(
+                crate::vm::native::NATIVE_SHELL_RUN,
+                crate::vm::native::shim_shell_run,
+            );
+        }
+
+        // PLAN-738 §5.3：既有生产能力面的独立逻辑契约——在全部绑定与
+        // 覆盖（inventory 推导、json 双态化、shell 桥）完成之后声明：
+        // register_static/register/merge 都会撤销同 ID 契约，显式身份必
+        // 须最后落位。声明按 stdlib/auto 公共签名；异步句柄面（Response/
+        // HTTPStream/FileTransfer/RequestBuilder）经 push_handle 物化，
+        // 返回按公共身份；wire 适配记入 error_shape，不改绑定/shim/次序。
+        native_interface.declare_tcp_method_contracts();
+        native_interface.declare_contract_identity("auto.http.get", &[], &["str"], "Response");
+        native_interface.declare_contract_identity(
+            "auto.http.get_stream",
+            &[],
+            &["str"],
+            "HTTPStream",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.request",
+            &[],
+            &["str", "str"],
+            "RequestBuilder",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.transfer_download",
+            &[],
+            &["str", "str", "str"],
+            "FileTransfer",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.file_response",
+            &[],
+            &["str", "str", "str"],
+            "FileResponse",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.upload_error",
+            &[],
+            &["int", "str"],
+            "UploadReceipt",
+        );
+        native_interface.declare_contract_identity("auto.json.is_valid", &[], &["str"], "int");
+        native_interface.declare_contract_identity(
+            "auto.io.read_line_opt",
+            &[],
+            &[],
+            "Option<str>",
+        );
+        native_interface.declare_contract_identity("auto.random.rand_int", &[], &["int"], "int");
+        native_interface.declare_contract_identity("auto.random.rand_float", &[], &[], "float");
+        native_interface.declare_contract_identity("auto.random.rand_bool", &[], &[], "bool");
+        // 声明级泛型面（§5.3 明确 Generic 身份保留）：encode[T]/decode[T]
+        // 的 producer 经 VMConvertible wire 动态取值，契约携带泛型身份。
+        native_interface.declare_contract_identity("auto.json.encode", &["T"], &["T"], "str");
+        native_interface.declare_contract_identity("auto.json.decode", &["T"], &["str"], "T");
+        native_interface.declare_method_contract_identity(
+            "auto.http.stream_next",
+            "HTTPStream",
+            &["HTTPStream"],
+            "str",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.stream_is_done",
+            "HTTPStream",
+            &["HTTPStream"],
+            "int",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.transfer_wait",
+            &[],
+            &["FileTransfer"],
+            "str",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.transfer_error",
+            &[],
+            &["FileTransfer"],
+            "str",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.transfer_cancel",
+            &[],
+            &["FileTransfer"],
+            "void",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.upload_metadata",
+            &[],
+            &["UploadSession"],
+            "str",
+        );
+        // PLAN-755 T-03：HTTP 公共面契约覆盖补齐（SD-01 覆盖完整性规则）。
+        // 以下家族此前 resolved+bound 但缺独立契约——真实程序引用即在编译期
+        // 以 SIGNATURE_UNVERIFIED 拒绝（751-R2 实证 #9937/#3108；41 项全量
+        // 缺口由 plan755_http_contract_tests 走查锁定）。签名逐字对齐
+        // stdlib/auto/http.at 公共声明；句柄/Receipt 的 wire 适配语义沿用本
+        // 节 error_shape 记法，不改绑定/shim/次序。
+        //
+        // Server 构造/路由链面：
+        native_interface.declare_contract_identity("auto.http.server", &[], &[], "Server");
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_get",
+            "Server",
+            &["Server", "str", "fn(Request) Response"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_post",
+            "Server",
+            &["Server", "str", "fn(Request) Response"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_put",
+            "Server",
+            &["Server", "str", "fn(Request) Response"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_delete",
+            "Server",
+            &["Server", "str", "fn(Request) Response"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_static",
+            "Server",
+            &["Server", "str", "str"],
+            "Server",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.server_listen",
+            "Server",
+            &["Server", "str"],
+            "void",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.listen",
+            &[],
+            &["str", "int", "fn(str, str, str) str"],
+            "void",
+        );
+        // Response 构造面（Plan 346 redirect 在内）：
+        native_interface.declare_contract_identity("auto.http.response", &[], &[], "Response");
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_status",
+            "Response",
+            &["Response", "int"],
+            "Response",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_header",
+            "Response",
+            &["Response", "str", "str"],
+            "Response",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_text",
+            "Response",
+            &["Response", "str"],
+            "Response",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_html",
+            "Response",
+            &["Response", "str"],
+            "Response",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.response_bytes",
+            "Response",
+            &["Response", "[]byte"],
+            "Response",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.response_redirect",
+            &[],
+            &["str", "int"],
+            "Response",
+        );
+        // Response sugar 构造族（ok/created/bad_request/not_found/internal_error）：
+        // inventory 从 Rust 签名推导的契约返回 int（句柄 id 栈载荷），与公共层
+        // Response 身份漂移——按 §5.3「返回按公共身份」在尾部覆盖重声明。
+        native_interface.declare_contract_identity("auto.http.ok", &[], &["str"], "Response");
+        native_interface.declare_contract_identity("auto.http.created", &[], &["str"], "Response");
+        native_interface.declare_contract_identity(
+            "auto.http.bad_request",
+            &[],
+            &["str"],
+            "Response",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.not_found",
+            &[],
+            &["str"],
+            "Response",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.internal_error",
+            &[],
+            &["str"],
+            "Response",
+        );
+        // 客户端面（get/request 族已有；同步 post_sync/bearer 与状态查询补齐）：
+        native_interface.declare_contract_identity(
+            "auto.http.post",
+            &[],
+            &["str", "str"],
+            "Response",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.put",
+            &[],
+            &["str", "str"],
+            "Response",
+        );
+        native_interface.declare_contract_identity("auto.http.delete", &[], &["str"], "Response");
+        native_interface.declare_contract_identity(
+            "auto.http.post_sync",
+            &[],
+            &["str", "str", "str"],
+            "str",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.post_bearer",
+            &[],
+            &["str", "str", "str"],
+            "str",
+        );
+        native_interface.declare_contract_identity("auto.http.last_status", &[], &[], "int");
+        // RequestBuilder 方法面（json[T] 为声明级泛型方法）：
+        native_interface.declare_method_contract_identity(
+            "auto.http.request_builder_header",
+            "RequestBuilder",
+            &["RequestBuilder", "str", "str"],
+            "RequestBuilder",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.request_builder_body",
+            "RequestBuilder",
+            &["RequestBuilder", "str"],
+            "RequestBuilder",
+        );
+        native_interface.declare_generic_method_contract_identity(
+            "auto.http.request_builder_json",
+            "RequestBuilder",
+            &["T"],
+            &["RequestBuilder", "T"],
+            "RequestBuilder",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.request_builder_timeout",
+            "RequestBuilder",
+            &["RequestBuilder", "int"],
+            "RequestBuilder",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http.request_builder_send",
+            "RequestBuilder",
+            &["RequestBuilder"],
+            "Response",
+        );
+        // 流式面（post_stream 族 + close/iter 收尾；同 id 双名沿用
+        // stream_next 的方法形声明——自由函数形不核 receiver，两序皆过）：
+        native_interface.declare_contract_identity(
+            "auto.http.post_stream",
+            &[],
+            &["str", "str"],
+            "HTTPStream",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.post_stream_with_headers",
+            &[],
+            &["str", "str", "str"],
+            "HTTPStream",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http_stream.stream_close",
+            "HTTPStream",
+            &["HTTPStream"],
+            "void",
+        );
+        native_interface.declare_method_contract_identity(
+            "auto.http_stream.stream_iter",
+            "HTTPStream",
+            &["HTTPStream"],
+            "int",
+        );
+        // SSE 逐步拉取面（PLAN-658/707）：
+        native_interface.declare_contract_identity("auto.http.sse_open", &[], &["str"], "int");
+        native_interface.declare_contract_identity("auto.http.sse_poll", &[], &["int"], "str");
+        native_interface.declare_contract_identity("auto.http.sse_close", &[], &["int"], "void");
+        native_interface.declare_contract_identity("auto.http.sse_error", &[], &["int"], "str");
+        // 文件传输面（download/wait/error/cancel 已有；upload/progress 补齐）：
+        native_interface.declare_contract_identity(
+            "auto.http.transfer_upload",
+            &[],
+            &["str", "str", "str"],
+            "FileTransfer",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.transfer_next_progress",
+            &[],
+            &["FileTransfer"],
+            "str",
+        );
+        // 服务端上传面（PLAN-730；metadata/error 已有，receive/commit/reject
+        // 为 751-R2 实证缺口 #9937 家族）：
+        native_interface.declare_contract_identity(
+            "auto.http.upload_receive",
+            &[],
+            &["UploadRequest", "str", "str", "str"],
+            "UploadSession",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.upload_commit",
+            &[],
+            &["UploadSession", "str"],
+            "UploadReceipt",
+        );
+        native_interface.declare_contract_identity(
+            "auto.http.upload_reject",
+            &[],
+            &["UploadSession", "int", "str"],
+            "UploadReceipt",
+        );
+
+        native_interface
+    }
+
+    /// Register a static shim (IDs 0-9999)
+    ///
+    /// Used by VM intrinsics and built-in stdlib functions.
+    /// Panics if ID is out of range.
+    pub fn register_static<F>(&mut self, id: u16, func: F)
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        assert!(id < STATIC_ID_MAX, "Static ID must be < {}", STATIC_ID_MAX);
+        self.binding_revision = self.binding_revision.wrapping_add(1);
+        self.contracts.remove(&id);
+        self.reference_proofs.get_mut().unwrap().remove(&id);
+        self.static_shims[id as usize] = Some(Arc::new(func));
+    }
+
+    /// Register a dynamic shim (IDs 10000+)
+    ///
+    /// Used by `use.rust` for runtime-loaded crates.
+    /// Returns the assigned ID.
+    pub fn register_dynamic<F>(&mut self, func: F) -> u16
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        let id = self.next_dynamic_id;
+        self.binding_revision = self.binding_revision.wrapping_add(1);
+        self.next_dynamic_id += 1;
+        self.dynamic_shims.insert(id, Arc::new(func));
+        id
+    }
+
+    /// Register a dynamic shim with a specific ID
+    ///
+    /// Used when the caller wants to control the ID assignment.
+    pub fn register_dynamic_with_id<F>(&mut self, id: u16, func: F)
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        assert!(
+            id >= DYNAMIC_ID_START,
+            "Dynamic ID must be >= {}",
+            DYNAMIC_ID_START
+        );
+        self.binding_revision = self.binding_revision.wrapping_add(1);
+        self.contracts.remove(&id);
+        self.reference_proofs.get_mut().unwrap().remove(&id);
+        self.dynamic_shims.insert(id, Arc::new(func));
+        if id >= self.next_dynamic_id {
+            self.next_dynamic_id = id + 1;
+        }
+    }
+
+    /// Unified lookup - used by CALL_NAT opcode
+    ///
+    /// Checks static array first (fast path), then dynamic HashMap.
+    pub fn get(&self, id: u16) -> Option<&ShimFunc> {
+        if id < STATIC_ID_MAX {
+            self.static_shims.get(id as usize)?.as_ref()
+        } else {
+            self.dynamic_shims.get(&id)
+        }
+    }
+
+    pub fn contract(&self, id: u16) -> Option<&NativeContract> {
+        self.contracts.get(&id)
+    }
+
+    /// Restore the public receiver identity for the two TCP methods whose
+    /// Rust inventory wrappers receive VM handles as integer arguments.
+    pub fn declare_tcp_method_contracts(&mut self) {
+        self.declare_method_contract_identity(
+            "auto.net.tcp_listener_local_addr",
+            "TcpListener",
+            &["TcpListener"],
+            "str",
+        );
+        self.declare_method_contract_identity(
+            "auto.net.tcp_stream_read_line",
+            "TcpStream",
+            &["TcpStream"],
+            "str",
+        );
+    }
+
+    /// PLAN-738 §5.3：既有生产能力面的独立逻辑契约补充——与 shim 绑定
+    /// 同址声明（`register_shim_by_name` 无类型元数据）。只补契约，不改
+    /// 绑定、不改 shim、不改注册次序；wire 适配（VMConvertible 动态取值/
+    /// push_handle 物化）记入 error_shape，不冒称同形。名字不可解析 =
+    /// 无该面，静默跳过（引用核对只会查询可解析面）。
+    #[track_caller]
+    pub fn declare_contract_identity(
+        &mut self,
+        name: &str,
+        generics: &[&str],
+        parameters: &[&str],
+        returns: &str,
+    ) -> Option<u16> {
+        let id = self.name_to_id.get(name).copied().or_else(|| {
+            crate::vm::native_registry::BIGVM_NATIVES
+                .lock()
+                .unwrap()
+                .resolve_qualified(name)
+        })?;
+        let error_shape =
+            "VMError; wire adapter (VMConvertible value / push_handle materialization)".to_string();
+        self.contracts.entry(id).or_insert_with(|| NativeContract {
+            parameters: Vec::new(),
+            returns: String::new(),
+            producer: format!(
+                "{}:{} (declared contract for {name})",
+                std::panic::Location::caller().file().replace('\\', "/"),
+                std::panic::Location::caller().line()
+            ),
+            receiver: None,
+            is_static: false,
+            generics: Vec::new(),
+            parameter_modes: Vec::new(),
+            error_shape,
+        });
+        let contract = self.contracts.get_mut(&id)?;
+        contract.generics = generics.iter().map(|g| g.to_string()).collect();
+        contract.parameters = parameters.iter().map(|p| p.to_string()).collect();
+        contract.parameter_modes = parameters.iter().map(|_| "View".into()).collect();
+        contract.returns = returns.into();
+        Some(id)
+    }
+
+    /// PLAN-738 §5.3 方法面变体：receiver 身份（self 属主）随契约声明——
+    /// 签名核对的 receiver/static 证据来自 producer 侧，与 shim 同址。
+    pub fn declare_method_contract_identity(
+        &mut self,
+        name: &str,
+        receiver: &str,
+        parameters: &[&str],
+        returns: &str,
+    ) -> Option<u16> {
+        let id = self.declare_contract_identity(name, &[], parameters, returns)?;
+        if let Some(contract) = self.contracts.get_mut(&id) {
+            contract.receiver = Some(receiver.into());
+            contract.is_static = false;
+        }
+        Some(id)
+    }
+
+    /// PLAN-755 T-03：泛型方法面变体——`RequestBuilder.json[T]` 一类声明级
+    /// 泛型方法需要 receiver 与 generics 同时随契约声明（§5.3 的方法变体
+    /// 会把 generics 清空，无法表达该形态）。
+    pub fn declare_generic_method_contract_identity(
+        &mut self,
+        name: &str,
+        receiver: &str,
+        generics: &[&str],
+        parameters: &[&str],
+        returns: &str,
+    ) -> Option<u16> {
+        let id = self.declare_contract_identity(name, generics, parameters, returns)?;
+        if let Some(contract) = self.contracts.get_mut(&id) {
+            contract.receiver = Some(receiver.into());
+            contract.is_static = false;
+        }
+        Some(id)
+    }
+
+    pub fn binding_revision(&self) -> u64 {
+        self.binding_revision
+    }
+
+    pub fn verify_core_reference(
+        &self,
+        id: u16,
+    ) -> Result<Option<crate::stdlib_assembly::reference::ReferenceProof>, String> {
+        if let Some(proof) = self.reference_proofs.lock().unwrap().get(&id).cloned() {
+            return proof;
+        }
+        let proof = crate::stdlib_assembly::reference::verify_native_reference(id, self);
+        self.reference_proofs
+            .lock()
+            .unwrap()
+            .insert(id, proof.clone());
+        proof
+    }
+
+    /// Logical contract belongs to the manually implemented producer, not to
+    /// the .at scanner. Keep it next to the shim registration.
+    #[track_caller]
+    pub fn register_typed_shim_by_name(
+        &mut self,
+        name: &str,
+        func: fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>,
+        parameters: &[&str],
+        returns: &str,
+    ) -> u16 {
+        let id = self.register_shim_by_name(name, func);
+        self.contracts.insert(
+            id,
+            NativeContract {
+                parameters: parameters.iter().map(|p| p.to_string()).collect(),
+                returns: returns.into(),
+                producer: format!(
+                    "{}:{} ({name})",
+                    std::panic::Location::caller().file().replace('\\', "/"),
+                    std::panic::Location::caller().line()
+                ),
+                receiver: None,
+                is_static: false,
+                generics: Vec::new(),
+                parameter_modes: parameters.iter().map(|_| "View".into()).collect(),
+                error_shape: "VMError".into(),
+            },
+        );
+        id
+    }
+
+    #[track_caller]
+    pub fn register_method_shim_by_name(
+        &mut self,
+        name: &str,
+        func: fn(&mut AutoTask, &AutoVM) -> Result<(), VMError>,
+        receiver: &str,
+        parameters: &[&str],
+        returns: &str,
+    ) -> u16 {
+        let id = self.register_typed_shim_by_name(name, func, parameters, returns);
+        self.contracts.get_mut(&id).unwrap().receiver = Some(receiver.into());
+        id
+    }
+
+    /// Check if an ID is static or dynamic
+    pub fn is_static(&self, id: u16) -> bool {
+        id < STATIC_ID_MAX
+    }
+
+    /// Register a name -> ID mapping for CALL_SPEC fallback (Plan 200 Task 3.3)
+    pub fn register_name(&mut self, name: &str, id: u16) {
+        self.binding_revision = self.binding_revision.wrapping_add(1);
+        self.reference_proofs.get_mut().unwrap().clear();
+        self.name_to_id.insert(name.to_string(), id);
+    }
+
+    /// Reverse map (ID -> first registered name) for disassembly tooltips
+    pub fn id_to_name(&self) -> std::collections::HashMap<u16, String> {
+        let mut map: std::collections::HashMap<u16, String> = std::collections::HashMap::new();
+        for (name, &id) in &self.name_to_id {
+            map.entry(id).or_insert_with(|| name.clone());
+        }
+        map
+    }
+
+    /// Look up a native ID by qualified name (e.g., "Result.Ok.map_err")
+    ///
+    /// Supports canonical normalization: "List.push" → checks "auto.list.push" etc.
+    pub fn resolve(&self, name: &str) -> Option<u16> {
+        // Direct lookup first
+        if let Some(id) = self.name_to_id.get(name).copied() {
+            return Some(id);
+        }
+        // Canonical normalization: "List.push" → "auto.list.push"
+        if !name.starts_with("auto.") && !name.starts_with("rust.") && !name.starts_with("py.") {
+            if let Some(canonical) = Self::to_canonical(name) {
+                if let Some(id) = self.name_to_id.get(&canonical).copied() {
+                    return Some(id);
+                }
+            }
+        }
+        None
+    }
+
+    /// Convert a short native name to its canonical "auto.X.Y" form.
+    pub(crate) fn to_canonical(name: &str) -> Option<String> {
+        let (prefix, rest) = name.split_once('.')?;
+        use crate::vm::native_registry::TYPE_CANONICAL_MAP;
+        for &(short, canonical_prefix) in TYPE_CANONICAL_MAP {
+            if prefix == short {
+                return Some(format!("{}.{}", canonical_prefix, rest));
+            }
+        }
+        let lower = prefix.to_lowercase();
+        Some(format!("auto.{}.{}", lower, rest))
+    }
+
+    /// Get the next available dynamic ID
+    pub fn next_dynamic_id(&self) -> u16 {
+        self.next_dynamic_id
+    }
+
+    /// Plan 212b Task 4: Merge shims from another NativeInterface into this one
+    ///
+    /// Used to merge Rust FFI bridge native shims into the main VM's
+    /// NativeInterface after the bridge has loaded and registered functions.
+    pub fn merge(&mut self, other: &NativeInterface) {
+        self.binding_revision = self.binding_revision.wrapping_add(1);
+        self.reference_proofs.get_mut().unwrap().clear();
+        self.binding_conflicts
+            .extend(other.binding_conflicts.clone());
+        // Merge static shims
+        for (id, shim) in other.static_shims.iter().enumerate() {
+            if let Some(shim) = shim {
+                if id < self.static_shims.len() {
+                    self.contracts.remove(&(id as u16));
+                    self.static_shims[id] = Some(shim.clone());
+                }
+            }
+        }
+        // Merge dynamic shims
+        for (id, shim) in &other.dynamic_shims {
+            self.contracts.remove(id);
+            self.dynamic_shims.insert(*id, shim.clone());
+        }
+        self.contracts.extend(other.contracts.clone());
+        self.name_to_id.extend(other.name_to_id.clone());
+        // Advance next_dynamic_id if needed
+        if other.next_dynamic_id > self.next_dynamic_id {
+            self.next_dynamic_id = other.next_dynamic_id;
+        }
+    }
+
+    /// Register a shim by name, looking up the ID from BIGVM_NATIVES.
+    ///
+    /// Used by inventory-based auto-registration (Plan 198).
+    /// Returns the resolved ID.
+    pub fn register_shim_by_name<F>(&mut self, name: &str, func: F) -> u16
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        use crate::vm::native_registry::BIGVM_NATIVES;
+        let id = BIGVM_NATIVES
+            .lock()
+            .unwrap()
+            .resolve_qualified(name)
+            .unwrap_or_else(|| {
+                panic!(
+                    "register_shim_by_name: '{}' not found in BIGVM_NATIVES",
+                    name
+                )
+            });
+        self.register_shim_for_id(id, func);
+        self.register_name(name, id);
+        id
+    }
+
+    /// Route a name-resolved shim to the correct ID table.
+    ///
+    /// Kept separate so the dynamic-band path can be tested without mutating
+    /// the process-global `BIGVM_NATIVES` registry.
+    fn register_shim_for_id<F>(&mut self, id: u16, func: F)
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        // Names whose registry id landed in the dynamic band (>= 10000 —
+        // e.g. after register_with_id bumped the shared next_id) must go to
+        // the dynamic table: register_static asserts the static band and
+        // would panic on a fresh-binary first VM run (Plan 768 T-07).
+        if id < STATIC_ID_MAX {
+            self.register_static(id, func);
+        } else {
+            self.register_dynamic_with_id(id, func);
+        }
+    }
+
+    /// Collect all inventory-submitted FFI registrations and register them.
+    ///
+    /// Called during VM init after BIGVM_NATIVES is populated.
+    pub fn build_from_inventory(&mut self) {
+        use crate::vm::ffi::StaticFFIRegistration;
+        let mut producers = HashMap::<u16, (&str, usize)>::new();
+        // Preserve legacy registration order until the production conflict
+        // gate is wired. Metadata describes the final selected callee; a
+        // diagnostic must not silently choose a different first producer.
+        for entry in inventory::iter::<StaticFFIRegistration> {
+            use crate::vm::native_registry::BIGVM_NATIVES;
+            let mut natives = BIGVM_NATIVES.lock().unwrap();
+            let id = natives.resolve_qualified(entry.name).unwrap_or_else(|| {
+                panic!(
+                    "build_from_inventory: '{}' not found in BIGVM_NATIVES",
+                    entry.name
+                )
+            });
+            assert!(
+                id < STATIC_ID_MAX,
+                "Inventory shim '{}' resolved to dynamic ID {}",
+                entry.name,
+                id
+            );
+            if let Some((previous, pointer)) =
+                producers.insert(id, (entry.producer, entry.shim as usize))
+            {
+                if pointer != entry.shim as usize {
+                    self.binding_conflicts
+                        .push((id, previous.into(), entry.producer.into()));
+                }
+            }
+            self.static_shims[id as usize] = Some(Arc::new(entry.shim));
+            self.contracts.insert(
+                id,
+                NativeContract {
+                    parameters: entry.parameters.iter().map(|p| p.to_string()).collect(),
+                    returns: entry.returns.into(),
+                    producer: entry.producer.into(),
+                    receiver: None,
+                    is_static: false,
+                    generics: Vec::new(),
+                    parameter_modes: entry.parameters.iter().map(|_| "View".into()).collect(),
+                    error_shape: "VMError".into(),
+                },
+            );
+            // Register names for CALL_SPEC resolve
+            // Register the inventory name itself (e.g., "Str.char_at")
+            self.name_to_id.entry(entry.name.to_string()).or_insert(id);
+            // Register the canonical form (e.g., "auto.str.char_at")
+            if let Some(canonical) = natives.resolve_qualified_to_canonical(entry.name) {
+                self.name_to_id.entry(canonical).or_insert(id);
+            }
+            // Also register lowercase variant for CALL_SPEC dispatch
+            if let Some(lower) = Self::to_canonical(entry.name) {
+                self.name_to_id.entry(lower).or_insert(id);
+            }
+        }
+    }
+
+    /// Legacy method for backwards compatibility
+    /// Routes to register_static for IDs < 10000, register_dynamic otherwise
+    pub fn register<F>(&mut self, id: u16, func: F)
+    where
+        F: Fn(&mut AutoTask, &AutoVM) -> Result<(), VMError> + Send + Sync + 'static,
+    {
+        if id < STATIC_ID_MAX {
+            self.register_static(id, func);
+        } else {
+            self.register_dynamic_with_id(id, func);
+        }
+    }
+
+    pub fn register_std_shims(&mut self) {
+        // Plan 249 Phase 2: All shim bindings generated from unified catalog.
+        // We define a local macro to consume for_each_native! because #[macro_export]
+        // macros cannot use `self` (hygiene restriction). Local macros have no such issue.
+        macro_rules! __register_shims {
+            (($id:expr, $name:ident, $fn:ident, $canonical:expr) $(, $rest:tt)*) => {
+                self.register($name, $fn);
+                __register_shims!($($rest),*);
+            };
+            () => {};
+        }
+        for_each_native!(__register_shims);
+
+        // Plan 249 Phase 5: Canonical name → ID mappings for CALL_SPEC fallback.
+        // Generated from the same catalog as shim bindings (4th field = canonical name).
+        {
+            macro_rules! __register_names {
+                (($id:expr, $name:ident, $fn:ident, $canonical:expr) $(, $rest:tt)*) => {
+                    self.register_name($canonical, $name);
+                    __register_names!($($rest),*);
+                };
+                () => {};
+            }
+            for_each_native!(__register_names);
+        }
+
+        // --- Extra aliases (1-to-N mappings, not in catalog) ---
+        self.register_name("Result.map_err", NATIVE_RESULT_MAP_ERR);
+        self.register_name("Result.Ok.map_err", NATIVE_RESULT_MAP_ERR);
+        self.register_name("Result.Err.map_err", NATIVE_RESULT_MAP_ERR);
+        self.register_name("auto.hashmap.insert", NATIVE_HASHMAP_INSERT_STR);
+        self.register_name("auto.hashmap.set", NATIVE_HASHMAP_INSERT_STR);
+        self.register_name("auto.hashmap.get", NATIVE_HASHMAP_GET_STR);
+        self.register_name("auto.hashmap.contains_key", NATIVE_HASHMAP_CONTAINS);
+        self.register_name("auto.hashmap.len", NATIVE_HASHMAP_SIZE);
+    }
+}
+
+// Plan 249: Native constants generated from unified catalog
+for_each_native!(gen_native_constants);
+
+// ============================================================================
+// Plan 178: Bit Operation Shims
+// ============================================================================
+
+/// int.and(mask) — Bitwise AND: val & mask
+/// Stack: [self, mask] -> result
+fn shim_int_and(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let mask = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val & mask);
+    Ok(())
+}
+
+/// int.or(mask) — Bitwise OR: val | mask
+fn shim_int_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let mask = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val | mask);
+    Ok(())
+}
+
+/// int.xor(mask) — Bitwise XOR: val ^ mask
+fn shim_int_xor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let mask = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val ^ mask);
+    Ok(())
+}
+
+/// int.not() — Bitwise NOT: ~val
+/// Stack: [self] -> result
+fn shim_int_not(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(!val);
+    Ok(())
+}
+
+/// int.shl(n) — Logical left shift: val << n
+/// For n >= 32, the result is 0 (all bits shifted out).
+fn shim_int_shl(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    // wrapping_shl masks n to 5 bits, so n>=32 wraps to n & 31. Clamp to 0 instead.
+    let result = if n >= 32 || n < 0 {
+        0
+    } else {
+        val.wrapping_shl(n as u32)
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// int.shr(n) — Logical right shift: val >> n (unsigned)
+/// For n >= 32, the result is 0 (all bits shifted out).
+fn shim_int_shr(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    // wrapping_shr masks n to 5 bits, so n>=32 wraps to n & 31. Clamp to 0 instead.
+    let result = if n >= 32 || n < 0 {
+        0
+    } else {
+        (val as u32 >> n as u32) as i32
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// int.sar(n) — Arithmetic right shift: val >> n (preserves sign)
+/// For n >= 32, the result is sign-filled (0 if non-negative, -1 if negative).
+fn shim_int_sar(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    // wrapping_shr masks n to 5 bits, so n>=32 wraps to n & 31. Sign-fill instead.
+    let result = if n >= 32 || n < 0 {
+        if val < 0 {
+            -1
+        } else {
+            0
+        }
+    } else {
+        val >> n
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// int.rol(n) — Rotate left
+fn shim_int_rol(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.rotate_left(n as u32));
+    Ok(())
+}
+
+/// int.ror(n) — Rotate right
+fn shim_int_ror(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.rotate_right(n as u32));
+    Ok(())
+}
+
+/// int.count_ones() — Population count
+fn shim_int_count_ones(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.count_ones() as i32);
+    Ok(())
+}
+
+/// int.leading_zeros() — Count leading zeros
+fn shim_int_leading_zeros(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.leading_zeros() as i32);
+    Ok(())
+}
+
+/// int.trailing_zeros() — Count trailing zeros
+fn shim_int_trailing_zeros(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.trailing_zeros() as i32);
+    Ok(())
+}
+
+/// int.flip() — Bit-reverse (mirror all bits)
+fn shim_int_bitrev(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i32();
+    task.ram.push_i32(val.reverse_bits());
+    Ok(())
+}
+
+// === Phase 4: Dynamic bitfield views ===
+
+/// int.bits_read(start, len) — Read bitfield: (val >> start) & ((1 << len) - 1)
+fn shim_int_bit_read(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let len = task.ram.pop_i32();
+    let start = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    let mask = if len >= 32 { -1 } else { (1i32 << len) - 1 };
+    // wrapping_shr masks start to 5 bits, so start>=32 wraps to start & 31. Clamp to 0 instead.
+    let shifted = if start >= 32 || start < 0 {
+        0
+    } else {
+        (val as u32 >> start as u32) as i32
+    };
+    task.ram.push_i32(shifted & mask);
+    Ok(())
+}
+
+/// int.bit_test(n) — Test bit n: (val >> n) & 1 → bool (1 or 0)
+fn shim_int_bit_test(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    // For n >= 32 or n < 0, the bit does not exist in an i32, so the result is false.
+    let result = !(n >= 32 || n < 0) && ((val >> n) & 1) != 0;
+    task.ram.push_nv(auto_val::encode_bool(result));
+    Ok(())
+}
+
+/// int.bit_on(n) — Set bit n: val | (1 << n)
+/// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
+fn shim_int_bit_on(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    let result = if n >= 0 && n < 32 {
+        val | (1 << n)
+    } else {
+        val
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// int.bit_off(n) — Clear bit n: val & !(1 << n)
+/// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
+fn shim_int_bit_off(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    let result = if n >= 0 && n < 32 {
+        val & !(1 << n)
+    } else {
+        val
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// int.bit_flip(n) — Toggle bit n: val ^ (1 << n)
+/// For n outside [0, 31], the bit does not exist in an i32, so val is returned unchanged.
+fn shim_int_bit_flip(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = task.ram.pop_i32();
+    let val = task.ram.pop_i32();
+    let result = if n >= 0 && n < 32 {
+        val ^ (1 << n)
+    } else {
+        val
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 240 VM-1: Math shims for f64 methods (sin/cos/tan/sqrt/pow etc.)
+// ============================================================================
+
+// Plan 437: f64 算术 shim 的 tag 驱动操作数弹出——调用方常以 f32 字面量/
+// 变量传参（lexer 默认 unsuffixed decimal 是 TAG_F32），盲 pop_f64 会把
+// f32 nv 当 f64 位读成 NaN 且位模式保留，sin(pi/2) 呈"参数回显"假象。
+// 与 engine::pop_f32_operand 同一 tag-first 哲学。
+fn pop_f64_operand(task: &mut AutoTask) -> f64 {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_f64(nv) {
+        auto_val::decode_f64(nv)
+    } else if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv) as f64
+    } else if auto_val::is_i32(nv) {
+        auto_val::decode_i32(nv) as f64
+    } else {
+        auto_val::decode_f64(nv)
+    }
+}
+
+macro_rules! math_unary_shim {
+    ($name:ident, $method:ident) => {
+        pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+            let n = pop_f64_operand(task);
+            task.ram.push_f64(n.$method());
+            Ok(())
+        }
+    };
+}
+
+macro_rules! math_binary_shim {
+    ($name:ident, $method:ident) => {
+        pub fn $name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+            let exp = pop_f64_operand(task);
+            let base = pop_f64_operand(task);
+            task.ram.push_f64(base.$method(exp));
+            Ok(())
+        }
+    };
+}
+
+math_unary_shim!(shim_math_sin, sin);
+math_unary_shim!(shim_math_cos, cos);
+math_unary_shim!(shim_math_tan, tan);
+// sqrt — registered in native.rs but shim lives in ffi/stdlib.rs with #[rust_fn]
+// (needed because #[rust_fn] uses VMConvertible which handles f64 encoding)
+math_unary_shim!(shim_math_abs_f, abs);
+math_unary_shim!(shim_math_floor, floor);
+math_unary_shim!(shim_math_ceil, ceil);
+math_unary_shim!(shim_math_round, round);
+math_unary_shim!(shim_math_exp, exp);
+math_unary_shim!(shim_math_ln, ln);
+math_unary_shim!(shim_math_log2, log2);
+math_unary_shim!(shim_math_log10, log10);
+math_unary_shim!(shim_math_signum, signum);
+math_unary_shim!(shim_math_asin, asin);
+math_unary_shim!(shim_math_acos, acos);
+math_unary_shim!(shim_math_atan, atan);
+math_unary_shim!(shim_math_to_radians, to_radians);
+math_unary_shim!(shim_math_to_degrees, to_degrees);
+math_binary_shim!(shim_math_pow, powf);
+math_binary_shim!(shim_math_powf, powf);
+
+pub fn shim_math_powi(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let exp = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_exp = crate::vm::native::StakeGuard::new(vm, exp as i64 as u64);
+    let base = task.ram.pop_f64();
+    task.ram.push_f64(base.powi(exp));
+    Ok(())
+}
+
+pub fn shim_math_atan2(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let x = task.ram.pop_f64();
+    let y = task.ram.pop_f64();
+    task.ram.push_f64(y.atan2(x));
+    Ok(())
+}
+
+// === Manual constants (registered via register_shim_by_name, not in catalog) ===
+
+// String methods (canonical IDs: auto.str.contains=1504, auto.str.starts_with=1505, auto.str.ends_with=1506)
+pub const NATIVE_STR_CONTAINS: u16 = 1504;
+pub const NATIVE_STR_STARTS_WITH: u16 = 1505;
+pub const NATIVE_STR_ENDS_WITH: u16 = 1506;
+pub const NATIVE_STR_TO_INT: u16 = 1516;
+pub const NATIVE_STR_TO_UINT: u16 = 1523;
+
+// Math functions registered in stdlib.rs via register_shim_by_name
+pub const NATIVE_MATH_ABS: u16 = 1700;
+pub const NATIVE_MATH_MIN: u16 = 1701;
+pub const NATIVE_MATH_MAX: u16 = 1702;
+pub const NATIVE_MATH_SQRT: u16 = 1750; // Changed from 1703 to avoid conflict
+pub const NATIVE_MATH_MIN_F: u16 = 1714;
+pub const NATIVE_MATH_MAX_F: u16 = 1715;
+pub const NATIVE_MATH_CLAMP: u16 = 1725;
+
+// Plan 011 (MS3-B): Shell-host bridge natives.
+// system(cmd) -> String, system_status() -> Int, export(k,v), exit(code).
+// These forward to `vm.host` (an Option<SharedHost>). When host is None
+// (pure AutoLang), system returns "" and exit/export are no-ops.
+pub const NATIVE_SHELL_SYSTEM: u16 = 1800;
+pub const NATIVE_SHELL_SYSTEM_STATUS: u16 = 1801;
+pub const NATIVE_SHELL_EXPORT: u16 = 1802;
+pub const NATIVE_SHELL_EXIT: u16 = 1803;
+pub const NATIVE_SHELL_QUERY: u16 = 1804;
+pub const NATIVE_SHELL_RUN: u16 = 1805;
+
+// === Standard Shims ===
+
+/// Plan 177: Helper to print output, captures to buffer if present
+fn vm_print(vm: &AutoVM, s: &str) {
+    if let Some(ref buf) = vm.output_buffer {
+        let mut guard = buf.write().unwrap();
+        guard.push_str(s);
+        guard.push('\n');
+    } else {
+        println!("{}", s);
+    }
+    // Mirror into the in-app console ring buffer (041 Console panel); the
+    // capped buffer makes this cheap enough for non-UI CLI runs too.
+    crate::vm::ui_console::ui_console_push(s);
+}
+
+/// Helper for write() — same as vm_print but without trailing newline
+fn vm_write(vm: &AutoVM, s: &str) {
+    if let Some(ref buf) = vm.output_buffer {
+        let mut guard = buf.write().unwrap();
+        guard.push_str(s);
+    } else {
+        print!("{}", s);
+    }
+}
+
+// ============================================================================
+// Plan 011 (MS3-B): Shell-host bridge natives
+// ============================================================================
+
+/// Read a string argument from the stack (tagged string index → text).
+fn pop_string_arg(task: &mut AutoTask, vm: &AutoVM) -> String {
+    let nv = crate::vm::native::pop_arg_nv(task);
+
+    let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+    if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv);
+        vm.get_string(idx)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
+/// `system(cmd: String) -> String` — run a shell command, return its stdout.
+pub fn shim_shell_system(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cmd = pop_string_arg(task, vm);
+    let out = if let Some(host) = &vm.host {
+        host.system(&cmd)
+    } else {
+        String::new()
+    };
+    // Push the result string into the pool and tag-push its index.
+    let idx = vm.add_string(out.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// PLAN-082: `shell_query(cmd: String) -> records` — structured command
+/// results. Pops the command string, asks the host for the pipeline's
+/// final-stage value (records as `Value::Array` of `Value::Obj` by ash
+/// convention), materializes it into VM heap objects, and pushes the root
+/// reference. Host-less VMs get the trait default (empty array).
+pub fn shim_shell_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cmd = pop_string_arg(task, vm);
+    let val = if let Some(host) = &vm.host {
+        host.query(&cmd)
+    } else {
+        auto_val::Value::Array(auto_val::Array::new())
+    };
+    push_value_tree(task, vm, &val);
+    Ok(())
+}
+
+/// PLAN-082: `shell_run(cmd: String)` — print-executing command bridge.
+/// The host renders output on the shell side; the shim leaves null so the
+/// call is stack-neutral in expression position.
+pub fn shim_shell_run(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cmd = pop_string_arg(task, vm);
+    if let Some(host) = &vm.host {
+        host.run(&cmd);
+    }
+    task.ram.push_nv(auto_val::encode_null());
+    Ok(())
+}
+
+// ── Plan 413: code editor payload accessors (UI bridge) ─────────────────
+// Read / jump live code_editor state by storage key from handler
+// expressions. Text auto-binding (INPUT_TEXT) covers most oninput flows;
+// these natives add cursor/selection/find access and explicit writes for
+// both VM and script use.
+//
+// PLAN-802 依赖倒置：本族 22 项（2910..2915、2919..2924、2932/2933、2939、
+// 9906、9908..9913）不再直引 `crate::ui::code_editor`（editor 注册表 /
+// 寄宿 scroll controller / OS 剪贴板桥）——经本 VM NativeInterface 装配的
+// [`crate::vm::host_capabilities::CodeEditorHostProvider`] 供值（UI 宿主
+// 注册委托既有 registry 的 adapter；外部 no-ui 宿主可注入自定义实现）。
+// shim 体因此 feature 中性：`code-editor` feature 仅决定 UI adapter 是否
+// 编译/装配，不再决定本函数的编译形态。
+//
+// 缺席语义（T-01 冻结矩阵 = 迁移前 feature-off 分支逐字面值）：无
+// provider → raise `…: the \`code-editor\` feature is disabled`（弹参前
+// raise，镜像旧 cfg-off stub）；9913 scroll_to 唯一例外——弹参后 push
+// Bool false（值缺席臂）。cut/copy/paste 为组合特征文案（
+// `code-editor`+`ui-clipboard`），provider 在位但宿主无剪贴板面
+// （`Option<bool>` → None）时同文案。
+
+/// `code_editor_text(key) -> String`
+pub fn shim_code_editor_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_text: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    match provider.text(&key) {
+        Some(text) => {
+            let idx = vm.add_string(text.into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(format!(
+            "code_editor_text: no editor registered for key {key:?}"
+        ))),
+    }
+}
+
+/// `code_editor_delta(key) -> String` — Plan 673 §4.2: destructive read of
+/// the unified delta queue as `{"revision":N,"deltas":[...]}` (empty queue →
+/// `"deltas":[]` at the current watermark). PLAN-802: provider 单次调用即
+/// 恰一次队列消费（text 不清队列；空队列保水位——实现方契约）。
+pub fn shim_code_editor_delta(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_delta: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    match provider.delta(&key) {
+        Some(json) => {
+            let idx = vm.add_string(json.into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(format!(
+            "code_editor_delta: no editor registered for key {key:?}"
+        ))),
+    }
+}
+
+/// `code_editor_edit(key, start, end, replacement) -> Bool` — Plan 673 §4.3
+/// structured write (insert/delete/replace per the interval shape). False on
+/// invalid input (unknown key, start > end, out of bounds, non-char-boundary
+/// offsets); the delta enters the same queue human typing uses.
+/// 负 offset 钳位留在 shim（i32→usize 边界，PLAN-802 T-01 冻结——stderr
+/// 形与迁移前一致，不触 provider）。
+pub fn shim_code_editor_edit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_edit: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    // Args push left-to-right: pop the LAST (replacement) first.
+    let replacement = pop_string_arg(task, vm);
+    let end = task.ram.pop_i32();
+    let start = task.ram.pop_i32();
+    let key = pop_string_arg(task, vm);
+    let ok = if start < 0 || end < 0 {
+        eprintln!("code_editor_edit: negative offsets [{start}, {end})");
+        false
+    } else {
+        provider.edit(&key, start as usize, end as usize, &replacement)
+    };
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_cursor_line(key) -> Int` (0-based line)
+pub fn shim_code_editor_cursor_line(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_cursor_line: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let line = provider.cursor(&key).map_or(0, |c| c.line);
+    task.ram.push_i32(line as i32);
+    Ok(())
+}
+
+/// `code_editor_cursor_col(key) -> Int` (char column)
+pub fn shim_code_editor_cursor_col(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_cursor_col: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let col = provider.cursor(&key).map_or(0, |c| c.char_col);
+    task.ram.push_i32(col as i32);
+    Ok(())
+}
+
+/// `code_editor_selection_len(key) -> Int` (bytes)
+pub fn shim_code_editor_selection_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_selection_len: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let sel = provider.cursor(&key).map_or(0, |c| c.selection_bytes);
+    task.ram.push_i32(sel as i32);
+    Ok(())
+}
+
+/// `code_editor_find(key) -> Bool` — jump to the next regex match (wraps).
+pub fn shim_code_editor_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_find: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let found = provider.find(&key);
+    task.ram.push_nv(auto_val::encode_bool(found));
+    Ok(())
+}
+
+/// `code_editor_set_text(key, text)` — programmatic write (diff-guarded).
+pub fn shim_code_editor_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_set_text: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    // Args push left-to-right: pop the LAST (text) first, then the key.
+    let text = pop_string_arg(task, vm);
+    let key = pop_string_arg(task, vm);
+    if !provider.set_text(&key, &text) {
+        return Err(VMError::RuntimeError(format!(
+            "code_editor_set_text: no editor registered for key {key:?}"
+        )));
+    }
+    Ok(())
+}
+
+/// PLAN-687: `code_editor_load_file(key, path) -> i64` — native-side bulk
+/// load (total bytes; -1 = no editor / IO error / invalid UTF-8). Error is
+/// a VALUE (not a raise): the caller's load loop treats -1 as the empty-tab
+/// path, mirroring `File.read_text`'s `unwrap_or_default` convention.
+pub fn shim_code_editor_load_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_load_file: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    // Args push left-to-right: pop the LAST (path) first, then the key.
+    let path = pop_string_arg(task, vm);
+    let key = pop_string_arg(task, vm);
+    let n = provider.load_file(&key, &path).unwrap_or(-1);
+    task.ram.push_i32(n as i32);
+    Ok(())
+}
+
+// ── PLAN-703 供⑤: diff engine consumption endpoints (9915/9916/9917) ──
+// Envelope JSON field-identical to the downstream replacement-seam
+// contracts (auto-edit diff-view.md SD-01/PLAN-011/012); errors are VALUES
+// in the envelope err field, never raises (669/687 convention).
+
+/// `auto.diff_files(path_a, path_b, ctx) -> Str` — envelope JSON for two
+/// files (rows render-ready, three-segment marks, CR tolerated).
+// PLAN-814: diff 族为纯文本 core 能力（auto-text-core/provider 端口），历史 code-editor 门随 Core 迁 SDK 解除
+pub fn shim_diff_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (ctx) first.
+    let ctx = pop_arg_i32(task).max(0) as usize;
+    let path_b = pop_string_arg(task, vm);
+    let path_a = pop_string_arg(task, vm);
+    // PLAN-807: 纯路径面直调文本 core（零 crate::ui 引用；envelope 语义
+    // 冻结不变）。
+    let json =
+        auto_text_core::diff::envelope::diff_files_envelope_from_paths(&path_a, &path_b, ctx);
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `auto.diff_snapshots(key_a, key_b) -> Str` — envelope JSON for two live
+/// editor buffers (direct registry read, zero full-text VM transit).
+// PLAN-814: diff 族为纯文本 core 能力（auto-text-core/provider 端口），历史 code-editor 门随 Core 迁 SDK 解除
+pub fn shim_diff_snapshots(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_b = pop_string_arg(task, vm);
+    let key_a = pop_string_arg(task, vm);
+    // PLAN-807: 快照经 EditorSnapshotProvider 端口供值（同源 owned 快照，
+    // 零全文字符串 VM 中转）；缺 provider = 无法找到相应 editor → 既有
+    // err envelope（missing=key_a，与旧两键皆缺路径同形）；判错优先
+    // key_a 先（冻结序）。
+    let pair = match vm.native_interface.editor_snapshot_provider() {
+        Some(provider) => match (provider.snapshot(&key_a), provider.snapshot(&key_b)) {
+            (Some(sa), Some(sb)) => auto_text_core::diff::envelope::DiffSnapshotsPair::Both(sa, sb),
+            (None, _) => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(key_a.clone()),
+            (Some(_), None) => {
+                auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(key_b.clone())
+            }
+        },
+        None => auto_text_core::diff::envelope::DiffSnapshotsPair::Missing(key_a.clone()),
+    };
+    let json = auto_text_core::diff::envelope::diff_snapshots_envelope_snapshots(pair);
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `auto.diff_dirs(path_a, path_b) -> Str` — envelope JSON for a recursive
+/// directory comparison (five-state classification, cap 5000).
+// PLAN-814: diff 族为纯文本 core 能力（auto-text-core/provider 端口），历史 code-editor 门随 Core 迁 SDK 解除
+pub fn shim_diff_dirs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_b = pop_string_arg(task, vm);
+    let path_a = pop_string_arg(task, vm);
+    // PLAN-807: 纯目录面直调文本 core。
+    let json = auto_text_core::diff::envelope::diff_dirs_envelope(&path_a, &path_b);
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `auto.frame.begin_ms() -> int` — 帧开始时间戳（单调毫秒；PLAN-716 组B
+/// 供②观测通道，AUTO_FRAME_BENCH 门控；未捕获=0）。
+/// PLAN-716 Phase 2 (供⑨-a)：出口 int lane（i32 单槽）——原 push_i64_vm
+/// 推 TAG_I64 vs .at int (i32) 消费面错配，json obj 字面量等消费形全断
+/// （下游 plan-022 三断实录）；frame.vm.at 判型同步 `-> int`。值域=进程
+/// 单调 ms <2^31（i32 封顶 ≈24.8 天，saturating——SD-B 注记面）。
+/// PLAN-779：core 不再直读 UI 的 frame_bench 通道——经本 VM
+/// NativeInterface 装配的 [`crate::vm::host_capabilities::FrameProvider`]
+/// 供值（UI 宿主注册 frame_bench adapter；缺席=未捕获 0，与原 no-ui/
+/// 未捕获语义一致）。
+pub fn shim_frame_begin_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let observed = vm
+        .native_interface
+        .frame_provider()
+        .map_or(0, |p| p.begin_ms());
+    task.ram.push_i32(observed.min(i32::MAX as i64) as i32);
+    Ok(())
+}
+
+/// `auto.frame.present_ms() -> int` — 呈现完成时间戳（711 帧泵消费时刻，
+/// R-1 序障≥present；单调毫秒；未捕获=0）。出口 int lane 同上（供⑨-a）。
+/// PLAN-779 同 begin_ms：provider 供值，core 零 UI 引用。
+pub fn shim_frame_present_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let observed = vm
+        .native_interface
+        .frame_provider()
+        .map_or(0, |p| p.present_ms());
+    task.ram.push_i32(observed.min(i32::MAX as i64) as i32);
+    Ok(())
+}
+
+/// `auto.diff_files_window(path_a, path_b, ctx, rows_offset, rows_limit) -> Str`
+/// — 窗口投影 envelope（PLAN-716 组C；rows_total+truncated 激活语义）。
+// PLAN-814: diff 族为纯文本 core 能力（auto-text-core/provider 端口），历史 code-editor 门随 Core 迁 SDK 解除
+pub fn shim_diff_files_window(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (rows_limit) first.
+    let limit = pop_arg_i32(task).max(0) as usize;
+    let offset = pop_arg_i32(task).max(0) as usize;
+    let ctx = pop_arg_i32(task).max(0) as usize;
+    let path_b = pop_string_arg(task, vm);
+    let path_a = pop_string_arg(task, vm);
+    // PLAN-807: 纯窗口面直调文本 core。
+    let json = auto_text_core::diff::envelope::diff_files_envelope_from_paths_window(
+        &path_a, &path_b, ctx, offset, limit,
+    );
+    let idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// PLAN-701 供①: `code_editor_save(key, path) -> Bool` — rope→disk direct
+/// write (auto-edit PLAN-013 big-file guard relief). The full text is
+/// materialized NATIVE-side from the rope and written in one pass — zero
+/// full-text VM transit. Error is a VALUE (false), not a raise: the
+/// caller's save flow treats false as the guarded/failed path, mirroring
+/// the load side's -1 convention. PLAN-802: provider 供值（UI adapter 直写
+/// rope 字节——BOM/EOL 包装归 front，701 Spec 不变）。
+pub fn shim_code_editor_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_save: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    // Args push left-to-right: pop the LAST (path) first, then the key.
+    let path = pop_string_arg(task, vm);
+    let key = pop_string_arg(task, vm);
+    let ok = provider.save(&key, &path);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// PLAN-701 供②a: `code_editor_set_cursor(key, line, col) -> Bool` —
+/// programmatic cursor placement (session restore / goto-line). 0-based
+/// line/char-col (read-side `code_editor_cursor_*` convention); clamped
+/// into the document, selection dropped. false = no editor for key.
+/// PLAN-802: provider 供值；负参 max(0) 钳位留 shim（T-01 冻结）。
+pub fn shim_code_editor_set_cursor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_set_cursor: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let col = pop_arg_i32(task).max(0) as usize;
+    let line = pop_arg_i32(task).max(0) as usize;
+    let key = pop_string_arg(task, vm);
+    let ok = provider.set_cursor(&key, line, col);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// PLAN-701 供②b: `code_editor_scroll_offset_x(key) -> Float` /
+/// `code_editor_scroll_offset_y(key)` — per-editor scroll offset readout.
+/// Single source = the scroll controller registry projection (bind 预热 +
+/// intent-drain 投影 + ScrollStateReader 读回校正，MCP 心跳 2s 节拍收敛；
+/// 见 renderer `editor-scroll-{key}` 绑定臂)。Unbound/unmeasured → 0.0
+/// (top) — the session-restore neutral value. PLAN-802: provider 供值
+///（UI adapter 委托 editor_scroll_handle + controller_snapshot——投影
+/// 单源不迁；两读共享一次 DTO 读取，T-01 冻结）。
+pub fn shim_code_editor_scroll_offset_x(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_scroll_offset_x: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let offset = provider.scroll_offset(&key);
+    task.ram.push_f64(offset.x);
+    Ok(())
+}
+
+pub fn shim_code_editor_scroll_offset_y(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_scroll_offset_y: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let offset = provider.scroll_offset(&key);
+    task.ram.push_f64(offset.y);
+    Ok(())
+}
+
+/// PLAN-701 供②b: `code_editor_scroll_to(key, x, y) -> Bool` — apply a
+/// scroll offset to the editor's hosted scroller. Routed through the
+/// scroll controller intent queue; the renderer's existing drain resolves
+/// it to `operation::scroll_to` on `editor-scroll-{key}` (unbound handle =
+/// scroller not built — intent silently dropped by the drain's unprimed
+/// rule; we report true = request enqueued, mirroring shim_scroll_to).
+/// PLAN-802: provider 供值（UI adapter 双轴 ScrollTo intent 入队恒 true，
+/// X 先 Y 后——794 ScrollIntentDto 委托同源）；**缺席=弹参后 push false**
+/// （本族唯一值缺席臂，T-01 冻结=迁移前 feature-off 分支逐字面值）。
+pub fn shim_code_editor_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            // 唯一值缺席臂：镜像迁移前 feature-off 分支（弹 3 参、push
+            // false，不 raise）。
+            let _ = pop_f64_operand(task);
+            let _ = pop_f64_operand(task);
+            let _ = pop_string_arg(task, vm);
+            task.ram.push_nv(auto_val::encode_bool(false));
+            return Ok(());
+        }
+    };
+    let y = pop_f64_operand(task);
+    let x = pop_f64_operand(task);
+    let key = pop_string_arg(task, vm);
+    let ok = provider.scroll_to(&key, x, y);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+// ── PLAN-701 供④: time 族 VM 运行时 shim（catalog 1200/1201/1205 既有
+// 登记位的实装；此前裸/use 两形态均返 0——m1-supply §9 观察清偿）。语义
+// 与 a2r-std/src/time.rs 三方一致（GOAL-003）：now_ms/now_sec = Unix epoch
+// （.at stdlib time.at/time.rs.at 文档注释口径，非单调钟），now = epoch
+// 秒十进制字符串。下游 bench 毫秒差值在双轨语义下同形。
+
+/// `auto.time.now_ms() -> i64` — Unix epoch milliseconds.
+pub fn shim_time_now_ms(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0);
+    vm.push_i64_vm(task, ms);
+    Ok(())
+}
+
+/// `auto.time.now_sec() -> i64` — Unix epoch seconds.
+pub fn shim_time_now_sec(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    vm.push_i64_vm(task, s);
+    Ok(())
+}
+
+/// `auto.time.now() -> str` — epoch seconds as decimal string
+/// (a2r-std `time_now` alias同形).
+pub fn shim_time_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+// ── PLAN-701 供⑥: `shell_add_recent(path) -> Bool` — Windows jump-list
+// Recent 面 shim（auto-edit PLAN-014 T-01 裁定 (b) 用户确认改道件）。
+// One-call form: `SHAddToRecentDocs(SHARD_PATHW, path)` — the opened file
+// lands in the shell Recent items (taskbar jump list). Zero registry
+// association surface (HKCR/Classes untouched); ICustomDestinationList
+// custom-task categories are a non-goal (裁定成文). Non-Windows: no-op
+// returning false (恒定可链接——a2r 轨同形).
+
+/// Non-Windows + test-visible core: cfg(windows) FFI one-call; elsewhere a
+/// false no-op. Exposed (not only a shim body) so the a2r/merged rust
+/// emission (`vm_builtin_host_call` arm) links the same implementation.
+pub fn shell_add_recent(path: &str) -> bool {
+    #[cfg(windows)]
+    {
+        #[link(name = "shell32")]
+        extern "system" {
+            fn SHAddToRecentDocs(flags: u32, path: *const core::ffi::c_void);
+        }
+        const SHARD_PATHW: u32 = 0x0000_0002;
+        if path.is_empty() {
+            return false;
+        }
+        let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+        unsafe {
+            SHAddToRecentDocs(SHARD_PATHW, wide.as_ptr() as *const core::ffi::c_void);
+        }
+        true
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        false
+    }
+}
+
+/// `shell_add_recent(path) -> Bool` shim.
+pub fn shim_shell_add_recent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string_arg(task, vm);
+    let ok = shell_add_recent(&path);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+// ── Plan 428 P1: code folding natives ─────────────────────────────────
+
+/// `code_editor_fold_toggle(key, line_1based) -> Bool` — toggle the fold
+/// whose opener sits on `line` (1-based, gutter numbering). Returns `true`
+/// when the region is folded afterwards. View state only — no undo entry.
+/// PLAN-802: 1 基→0 基钳位（max(1)-1）留 shim，provider 收 0 基行。
+pub fn shim_code_editor_fold_toggle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_fold_toggle: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    // Args push left-to-right: pop the LAST (line) first, then the key.
+    let line_1based = task.ram.pop_i32();
+    let key = pop_string_arg(task, vm);
+    let folded = provider.fold_toggle(&key, line_1based.max(1) as usize - 1);
+    task.ram.push_nv(auto_val::encode_bool(folded));
+    Ok(())
+}
+
+/// `code_editor_fold_hidden_count(key) -> Int` — lines currently hidden by
+/// folding (tests / MCP assertions read this).
+pub fn shim_code_editor_fold_hidden_count(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_fold_hidden_count: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let count = provider.fold_hidden_count(&key);
+    task.ram.push_i32(count as i32);
+    Ok(())
+}
+
+// ── Plan 418: editor action natives (menu/toolbar handlers) ────────────
+// Same semantics as the editor's internal Ctrl+Z/Y/A/C/X/V handling, but
+// triggered programmatically from `.at` handlers (auto-edit menus).
+// PLAN-802: provider 供值；cut/copy/paste 的 `Option<bool>` None 臂 =
+// 宿主有编辑器面但无 OS 剪贴板面（= 迁移前 code-editor on +
+// ui-clipboard off 组合的 raise 臂，组合特征文案逐字面值）。
+
+/// `code_editor_undo(key) -> Bool` — true when an editor exists.
+pub fn shim_code_editor_undo(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_undo: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let ok = provider.undo(&key);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_redo(key) -> Bool`
+pub fn shim_code_editor_redo(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_redo: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let ok = provider.redo(&key);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_select_all(key) -> Bool`
+pub fn shim_code_editor_select_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_select_all: the `code-editor` feature is disabled".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    let ok = provider.select_all(&key);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `code_editor_cut(key) -> Bool` — selection → OS clipboard, then delete.
+pub fn shim_code_editor_cut(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_cut: the `code-editor`+`ui-clipboard` features are required".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    match provider.cut(&key) {
+        Some(ok) => {
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            Ok(())
+        }
+        // None = 宿主无编辑器剪贴板面（错误路径栈弃置，可观察面=组合
+        // 特征文案——T-01 冻结）。
+        None => Err(VMError::RuntimeError(
+            "code_editor_cut: the `code-editor`+`ui-clipboard` features are required".into(),
+        )),
+    }
+}
+
+/// `code_editor_copy(key) -> Bool` — selection → OS clipboard.
+pub fn shim_code_editor_copy(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_copy: the `code-editor`+`ui-clipboard` features are required".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    match provider.copy(&key) {
+        Some(ok) => {
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(
+            "code_editor_copy: the `code-editor`+`ui-clipboard` features are required".into(),
+        )),
+    }
+}
+
+/// `code_editor_paste(key) -> Bool` — OS clipboard → insert at cursor.
+pub fn shim_code_editor_paste(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let provider = match vm.native_interface.code_editor_provider() {
+        Some(p) => p,
+        None => {
+            return Err(VMError::RuntimeError(
+                "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
+            ));
+        }
+    };
+    let key = pop_string_arg(task, vm);
+    match provider.paste(&key) {
+        Some(ok) => {
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(
+            "code_editor_paste: the `code-editor`+`ui-clipboard` features are required".into(),
+        )),
+    }
+}
+
+// ── Plan 418: OS clipboard natives (arboard) ───────────────────────────
+// PLAN-785 依赖倒置：core 不再直引 `crate::ui::clipboard`——经本 VM
+// NativeInterface 装配的 [`crate::vm::host_capabilities::ClipboardTextProvider`]
+// 供值（UI 宿主注册 arboard adapter；外部 no-ui 宿主可注入自定义实现）。
+// 能力=注入：provider 缺席时保留迁移前 no-ui 构建的同形 VMError（函数名
+// 即 2925/2926 诊断定位面）；provider 在而 OS 不可用 = empty/false（值
+// 语义不变，非 raise）。shim 体因此 feature 中性——`ui-clipboard` 仅决定
+// adapter 是否编译/装配，不再决定本函数的编译形态。
+
+/// `clipboard_text() -> String` (empty when the clipboard is unavailable).
+pub fn shim_clipboard_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    match vm.native_interface.clipboard_text_provider() {
+        Some(provider) => {
+            let text = provider.text().unwrap_or_default();
+            let idx = vm.add_string(text.into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(
+            "clipboard_text: the `ui-clipboard` feature is disabled".into(),
+        )),
+    }
+}
+
+/// `clipboard_set_text(text) -> Bool`
+pub fn shim_clipboard_set_text(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    match vm.native_interface.clipboard_text_provider() {
+        Some(provider) => {
+            // pop_string_arg 已物化 owned String（utf8_lossy）——provider 收
+            // 纯 `&str`，接口零 VM 索引/借用缓冲泄漏（V02 ownership）。
+            let text = pop_string_arg(task, vm);
+            let ok = provider.set_text(&text);
+            task.ram.push_nv(auto_val::encode_bool(ok));
+            Ok(())
+        }
+        None => Err(VMError::RuntimeError(
+            "clipboard_set_text: the `ui-clipboard` feature is disabled".into(),
+        )),
+    }
+}
+
+// ── Plan 485: native clipboard files/images (CF_HDROP / DIBV5+PNG) ─────
+// PLAN-790 依赖倒置：core 不再直引 `ui::clipboard_native`——经本 VM
+// NativeInterface 装配的
+// [`crate::vm::host_capabilities::ClipboardMediaProvider`] 供值（UI 宿主
+// 在 windows+native-clipboard 下注册 Win32 adapter；外部 no-ui 宿主可注入
+// 自定义实现）。降级契约（G3）原样：provider 缺席或供值失败 = 空表 /
+// false / null（**值语义**，非 raise——与文本族 2925/2926 的
+// feature-disabled VMError 形不同，迁移前非 Windows / 未开
+// native-clipboard 臂即此形），.at 代码零平台分支。shim 体因此
+// feature/平台中性——`native-clipboard` 仅决定 UI adapter 是否编译/装配，
+// 不再决定本函数的编译形态。
+
+/// `clipboard_files_get() -> List<str>`（Explorer Ctrl+C 后取路径列表）。
+pub fn shim_clipboard_files_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // provider 缺席 = G3 空表（与迁移前非 Windows 臂同形）。
+    let paths = match vm.native_interface.clipboard_media_provider() {
+        Some(provider) => provider.files_get(),
+        None => Vec::new(),
+    };
+    let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
+    for p in paths {
+        list.push(auto_val::Value::Str(auto_val::AutoStr::from(
+            p.to_string_lossy().into_owned(),
+        )));
+    }
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
+/// `clipboard_files_set(paths: List<str>) -> Bool`（Explorer Ctrl+V 落地）。
+pub fn shim_clipboard_files_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
+    let mut paths: Vec<std::path::PathBuf> = Vec::new();
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+            for v in &list.elems {
+                if let auto_val::Value::Str(s) = v {
+                    paths.push(std::path::PathBuf::from(s.as_str()));
+                }
+            }
+        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+            paths.extend(list.elems.iter().map(std::path::PathBuf::from));
+        }
+    }
+    // read 锁限 collect 域（guard 已随上面块尾 drop）；provider 回调在锁外，
+    // 收 owned `Vec<PathBuf>`——接口零 VM 索引/借用缓冲泄漏（V02 ownership）。
+    let ok = match vm.native_interface.clipboard_media_provider() {
+        Some(provider) => provider.files_set(&paths),
+        None => false,
+    };
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+/// `clipboard_image_get() -> {path,width,height} | None`（DIBV5→PNG 存
+/// temp；Record 走 heap ObjectData，Plan 390 §15 H3b 形态）。
+pub fn shim_clipboard_image_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use auto_val::{AutoStr, Value, ValueKey};
+    match vm
+        .native_interface
+        .clipboard_media_provider()
+        .and_then(|provider| provider.image_get())
+    {
+        Some(img) => {
+            let mut rec = crate::vm::types::ObjectData::new();
+            rec.set(
+                ValueKey::Str(AutoStr::from("path")),
+                Value::Str(AutoStr::from(img.path.to_string_lossy())),
+            );
+            rec.set(
+                ValueKey::Str(AutoStr::from("width")),
+                Value::Int(img.width as i32),
+            );
+            rec.set(
+                ValueKey::Str(AutoStr::from("height")),
+                Value::Int(img.height as i32),
+            );
+            let id = vm.insert_heap_object(rec);
+            vm.rc_push_id(task, id as u64);
+        }
+        // provider 缺席或 None（无图像格式/不可用）= G3 null 同形。
+        None => task.ram.push_nv(auto_val::encode_null()),
+    }
+    Ok(())
+}
+
+/// `clipboard_image_set(png_path: str) -> Bool`
+pub fn shim_clipboard_image_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // pop_string_arg 已物化 owned String（utf8_lossy）+ StakeGuard.nv 配平
+    //——provider 收纯 `&Path`（缺席臂同样消费实参保持栈纪律）。
+    let path = pop_string_arg(task, vm);
+    let ok = match vm.native_interface.clipboard_media_provider() {
+        Some(provider) => provider.image_set(std::path::Path::new(&path)),
+        None => false,
+    };
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+// ── Plan 488: OLE 拖出（auto.dnd.start；拖入路由在 renderer 侧） ────────
+// 降级契约（G5）：无 provider（非 Windows / 未开 `native-dnd` / no-ui /
+// 未装配）返 false，事件不触发，.at 代码零条件分支。PLAN-804 依赖倒置：
+// shim 不再直引 `ui::native_dnd`——载荷 JSON 交
+// [`crate::vm::host_capabilities::DndHostProvider`] 唯一解释（UI adapter
+// 委托既有 parse_payload_json + win32::start_drag，windows ∧ native-dnd ∧
+// ui 三门控安装），shim 体因此 feature 中性。
+
+/// `dnd_start(payload_json) -> Bool`：发起系统拖拽（**调用线程内联阻塞**
+/// 至落下/取消——OLE 拖拽循环必须跑在收到按下的输入线程上，488 步骤 9
+/// E2E 定案；桌面模式 VM handler 在 UI 线程执行即被点击线程，DoDragDrop
+/// 自带消息泵，模态期与原生 App 一致）。完成效果经 `on_dnd_finished`
+/// 事件回 App。返回 true = 执行过会话（落下**或取消**）——效果另报，
+/// 不得把 cancel 映射 false 或把 true 当 drop 成功（T-01 冻结）。
+/// 载荷 JSON 字段（text/files/virtual_files 组合）见 `ui::native_dnd`
+/// 模块的 parse_payload_json 文档。
+pub fn shim_dnd_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // pop_string_arg 已物化 owned String + StakeGuard.nv 配平；provider 接
+    // owned JSON（缺席臂同样消费实参保持栈纪律——与迁移前 off 臂同形）。
+    let payload_json = pop_string_arg(task, vm);
+    let ok = match vm.native_interface.dnd_host_provider() {
+        Some(provider) => provider.start(payload_json),
+        None => false,
+    };
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+// ============================================================================
+// PLAN-656 T-03: scroll-pane controller natives
+// （controller 队列；renderer update 期排空消费。
+//   语义：controller 是 logical handle——见 docs/plans/656 §5；
+//   方法语法糖 scroll.to_end() 属后续语言面，v1 为函数族形态。）
+// PLAN-794 依赖倒置：八 shim（9900..9905 + 9922/9923）不再直引 UI 的
+// scroll 模块——经本 VM NativeInterface 装配的
+// [`crate::vm::host_capabilities::ScrollHostProvider`] 供值（UI 宿主注册
+// 委托既有 controller 注册表/锚点状态机的 adapter；no-ui 宿主可注入自定义
+// 实现）。缺席降级 = 迁移前 no-ui 臂逐字面值（Int 0 / false / 0.0 /
+// "error:unsupported" / "unknown"——值语义非 raise）；shim 体因此 feature
+// 中性——`ui` 仅决定 UI adapter 是否编译/装配。ID/arity/返回形态与 781
+// 状态机语义冻结于计划 T-01 矩阵。
+// ============================================================================
+
+/// `scroll_controller() -> Str` — 分配 controller 句柄（UI 宿主
+/// "@scrollctl:N" 形；任意非空 opaque 串等价——T-01 冻结）。缺席 = Int 0
+///（迁移前 no-ui 臂原形，非空串）。
+pub fn shim_scroll_controller(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    match vm.native_interface.scroll_host_provider() {
+        Some(provider) => {
+            let handle = provider.next_controller_handle();
+            let idx = vm.add_string(handle.into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+        }
+        None => task.ram.push_i32(0),
+    }
+    Ok(())
+}
+
+/// 弹出 controller 句柄实参。句柄是不透明非空串（`scroll_controller()`
+/// 分配的形态，或 .at 侧直接以字符串状态字段作柄——两者等价；绑定发生
+/// 在 pane 的 `controller:` prop）。空串 = None（9901..9904 跳过入队）。
+fn pop_controller_handle(task: &mut AutoTask, vm: &AutoVM) -> Option<String> {
+    let s = pop_string_arg(task, vm);
+    (!s.is_empty()).then_some(s)
+}
+
+/// 弹出可选轴实参："x"/"y" → [`ScrollAxisDto`]；缺省 Y（单轴 pane 简写）。
+/// 轴词只认 "x"，其余（含非字符串实参）归 Y——旧臂解码规则逐条保持。
+fn pop_axis_arg(task: &mut AutoTask, vm: &AutoVM) -> crate::vm::host_capabilities::ScrollAxisDto {
+    use crate::vm::host_capabilities::ScrollAxisDto;
+    let nv = crate::vm::native::pop_arg_nv(task);
+    let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+    if auto_val::is_string(nv) {
+        let idx = auto_val::decode_string(nv);
+        let s = vm
+            .get_string(idx)
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
+            .unwrap_or_default();
+        // 池份额已由 StakeGuard 释放；轴词只认 "x"，其余归 Y。
+        if s == "x" {
+            ScrollAxisDto::X
+        } else {
+            ScrollAxisDto::Y
+        }
+    } else {
+        ScrollAxisDto::Y
+    }
+}
+
+/// `scroll_to_start(handle)` — 到起点（Y 简写；可选第二实参轴）。
+/// 弹序与 codegen 压序（左→右、末参在顶）对齐：可选轴在顶先弹、再弹
+/// handle（scroll_to 的 b,a,handle 同款）。T-01 勘定：旧 UI 臂 handle
+/// 先弹把轴串误路由为句柄（记录型 provider 探针实证 `scroll_to_end(h,
+/// "x")` 落 handle="x"）——库内全部用法为单轴简写形零破坏，此处按签名
+/// 合同修正路由；空句柄+可选轴组合同样按声明 arity 配平。
+pub fn shim_scroll_to_start(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::host_capabilities::{ScrollAxisDto, ScrollIntentDto};
+    let arity = task.pending_native_arg_count as usize;
+    let provider = vm.native_interface.scroll_host_provider();
+    let axis = if arity >= 2 {
+        pop_axis_arg(task, vm)
+    } else {
+        ScrollAxisDto::Y
+    };
+    let handle = pop_controller_handle(task, vm);
+    if let (Some(p), Some(handle)) = (provider.as_ref(), handle) {
+        p.enqueue_intent(&handle, ScrollIntentDto::ToStart { axis });
+    }
+    task.ram.push_nv(auto_val::encode_bool(provider.is_some()));
+    Ok(())
+}
+
+/// `scroll_to_end(handle, axis?)` — 到终点（弹序勘定同 to_start）。
+pub fn shim_scroll_to_end(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::host_capabilities::{ScrollAxisDto, ScrollIntentDto};
+    let arity = task.pending_native_arg_count as usize;
+    let provider = vm.native_interface.scroll_host_provider();
+    let axis = if arity >= 2 {
+        pop_axis_arg(task, vm)
+    } else {
+        ScrollAxisDto::Y
+    };
+    let handle = pop_controller_handle(task, vm);
+    if std::env::var("P656_DEBUG").is_ok() {
+        eprintln!(
+            "[P656-NATIVE] to_end handle={}",
+            handle.as_deref().unwrap_or("")
+        );
+    }
+    if let (Some(p), Some(handle)) = (provider.as_ref(), handle) {
+        p.enqueue_intent(&handle, ScrollIntentDto::ToEnd { axis });
+    }
+    task.ram.push_nv(auto_val::encode_bool(provider.is_some()));
+    Ok(())
+}
+
+/// `scroll_by(handle, delta)` / `scroll_by(handle, axis, delta)` — 相对
+/// 滚动（弹序勘定：delta 顶弹→axis→handle，与压序对齐）。
+pub fn shim_scroll_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::host_capabilities::{ScrollAxisDto, ScrollIntentDto};
+    let arity = task.pending_native_arg_count as usize;
+    let provider = vm.native_interface.scroll_host_provider();
+    let delta = pop_f64_operand(task); // 最后压栈，先弹
+    let axis = if arity >= 3 {
+        pop_axis_arg(task, vm)
+    } else {
+        ScrollAxisDto::Y
+    };
+    let handle = pop_controller_handle(task, vm);
+    if let (Some(p), Some(handle)) = (provider.as_ref(), handle) {
+        p.enqueue_intent(&handle, ScrollIntentDto::ScrollBy { axis, delta });
+    }
+    task.ram.push_nv(auto_val::encode_bool(provider.is_some()));
+    Ok(())
+}
+
+/// `scroll_to(handle, x, y)`（双轴绝对）/ `scroll_to(handle, axis, offset)`
+/// （单轴绝对；axis 实参为字符串时按轴形态）。args 压序 handle,a,b → 弹序
+/// b,a,handle；a 为字符串 → 轴形态，否则坐标形态（双 intent，X 先 Y 后
+/// ——drain 顺序折叠依赖此序，T-01 冻结）。缺席 = false（仍弹三实参）。
+pub fn shim_scroll_to(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::host_capabilities::{ScrollAxisDto, ScrollIntentDto};
+    let provider = vm.native_interface.scroll_host_provider();
+    let b = pop_f64_operand(task);
+    let a_nv = crate::vm::native::pop_arg_nv(task);
+    let a_is_string = auto_val::is_string(a_nv);
+    let a_str = if a_is_string {
+        let idx = auto_val::decode_string(a_nv);
+        vm.get_string(idx)
+            .map(|s| String::from_utf8_lossy(&s).into_owned())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let _stake_a = crate::vm::native::StakeGuard::nv(vm, a_nv);
+    let handle = pop_controller_handle(task, vm);
+    if let (Some(p), Some(handle)) = (provider.as_ref(), handle) {
+        if a_is_string {
+            // 池份额已由 StakeGuard 释放；轴形态：a="x"/"y"，b=offset。
+            let axis = if a_str == "x" {
+                ScrollAxisDto::X
+            } else {
+                ScrollAxisDto::Y
+            };
+            p.enqueue_intent(&handle, ScrollIntentDto::ScrollTo { axis, offset: b });
+        } else {
+            let a = if auto_val::is_f64(a_nv) {
+                auto_val::decode_f64(a_nv)
+            } else if auto_val::is_f32(a_nv) {
+                auto_val::decode_f32(a_nv) as f64
+            } else {
+                auto_val::decode_i32(a_nv) as f64
+            };
+            p.enqueue_intent(
+                &handle,
+                ScrollIntentDto::ScrollTo {
+                    axis: ScrollAxisDto::X,
+                    offset: a,
+                },
+            );
+            p.enqueue_intent(
+                &handle,
+                ScrollIntentDto::ScrollTo {
+                    axis: ScrollAxisDto::Y,
+                    offset: b,
+                },
+            );
+        }
+    }
+    task.ram.push_nv(auto_val::encode_bool(provider.is_some()));
+    Ok(())
+}
+
+/// `scroll_state(handle) -> ScrollState` — 最近测量快照读出（8 具名字段
+/// record，GenericInstanceData 堆路径——ProcInfo 同款，.at 端 `s.progress_y`
+/// 具名可读；未测量/未绑定为全零——capability 验证断言面；progress 由
+/// provider 侧几何单源投影）。缺席 = Float 0.0（旧 no-ui 臂原形，非 record）。
+pub fn shim_scroll_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let handle = pop_string_arg(task, vm);
+    if std::env::var("P656_DEBUG").is_ok() {
+        eprintln!("[P656-NATIVE] state handle={handle}");
+    }
+    match vm.native_interface.scroll_host_provider() {
+        Some(provider) => {
+            let snap = provider.controller_snapshot(&handle);
+            let fields = vec![
+                auto_val::Value::Float(snap.offset_x),
+                auto_val::Value::Float(snap.offset_y),
+                auto_val::Value::Float(snap.viewport_w),
+                auto_val::Value::Float(snap.viewport_h),
+                auto_val::Value::Float(snap.content_w),
+                auto_val::Value::Float(snap.content_h),
+                auto_val::Value::Float(snap.progress_x),
+                auto_val::Value::Float(snap.progress_y),
+            ];
+            let names: Vec<String> = [
+                "offset_x",
+                "offset_y",
+                "viewport_w",
+                "viewport_h",
+                "content_w",
+                "content_h",
+                "progress_x",
+                "progress_y",
+            ]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+            let inst =
+                GenericInstanceData::new_with_names("ScrollState".to_string(), fields, names);
+            let id = vm.insert_heap_object(inst);
+            vm.rc_push_id(task, id as u64);
+        }
+        None => task.ram.push_f64(0.0),
+    }
+    Ok(())
+}
+
+/// PLAN-781 T-01 冻结：`to_child(handle, key) -> str`——锚点定位请求入队
+/// 回执（非完成证明）。返回 "queued" / "error:<reason>"（bad_handle /
+/// empty_key / unsupported——reason 由 provider 校验透传，UI adapter 委托
+/// 既有 controller::enqueue_anchor_request 原语义）。args 压序 handle,key →
+/// 弹序 key,handle。缺席 = "error:unsupported"（旧 no-ui 臂原形）。
+pub fn shim_scroll_to_child(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = pop_string_arg(task, vm);
+    let handle = pop_string_arg(task, vm);
+    let reply = match vm.native_interface.scroll_host_provider() {
+        Some(provider) => match provider.enqueue_anchor_request(&handle, &key) {
+            Ok(()) => "queued".to_string(),
+            Err(reason) => format!("error:{reason}"),
+        },
+        None => "error:unsupported".to_string(),
+    };
+    let idx = vm.add_string(reply.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// PLAN-781 T-01 冻结：`anchor_state(handle, key) -> str`——请求状态查询。
+/// "pending" / "applied" / "invalid:<reason>" / "unknown"（781 状态机完整
+/// 继承——queued≠完成、一次性消费、换绑/失锚 invalid reason 语义在 provider
+/// 侧状态机，本 shim 仅编组）。缺席 = "unknown"（旧 no-ui 臂原形）。
+pub fn shim_scroll_anchor_state(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::host_capabilities::ScrollAnchorStateDto;
+    let key = pop_string_arg(task, vm);
+    let handle = pop_string_arg(task, vm);
+    let reply = match vm.native_interface.scroll_host_provider() {
+        Some(provider) => match provider.anchor_request_state(&handle, &key) {
+            Some(ScrollAnchorStateDto::Pending) => "pending".to_string(),
+            Some(ScrollAnchorStateDto::Applied) => "applied".to_string(),
+            Some(ScrollAnchorStateDto::Invalid(reason)) => format!("invalid:{reason}"),
+            None => "unknown".to_string(),
+        },
+        None => "unknown".to_string(),
+    };
+    let idx = vm.add_string(reply.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+// ── Plan 418: native file dialogs（rfd，同步 API）──────────────────────
+// PLAN-804 依赖倒置：OS 对话框、父窗选择（原 dialog_parent，Win32
+// EnumWindows 最大可见自有顶层窗 + rfd set_parent）迁 crate 上层
+// `host_adapters::dialog`（ui-dialog 单门控，独立于 ui renderer 门）；
+// shim 只编解码并调用 [`crate::vm::host_capabilities::DialogHostProvider`]
+// ——过滤语义在单一 OS 实现维护，core 不复制第二套 parser。两者返回
+// "" on cancel/unavailable（headless CI included）。
+//
+// 缺席语义（T-01 冻结矩阵 = 迁移前 feature-off 臂逐字面值）：无 provider
+// → feature-disabled 形 VMError，**在弹实参前 raise**（旧 off 臂不弹实参；
+// 错误中止下栈面不可观察，缺席矩阵按逐字面值冻结）。在位 provider 取消
+// 或不可用返回空串。Plan 428 债修（父窗锚定）语义由 VM 默认 adapter
+// （parented 策略）保持——见 host_adapters::dialog。
+
+/// `dialog_open(filter) -> String` — filter is a `,. ;`-separated extension
+/// list (".at, .au"); empty disables filtering. "" on cancel.
+pub fn shim_dialog_open(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let Some(provider) = vm.native_interface.dialog_host_provider() else {
+        return Err(VMError::RuntimeError(
+            "dialog_open: the `ui-dialog` feature is disabled".into(),
+        ));
+    };
+    // pop_string_arg 已物化 owned String + StakeGuard.nv 配平；provider 接
+    // raw filter（&str 借用 owned 实参，不泄漏 VM 池索引）。
+    let filter = pop_string_arg(task, vm);
+    let path = provider.open(&filter);
+    let idx = vm.add_string(path.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `dialog_save(default_name) -> String` — "" on cancel.
+pub fn shim_dialog_save(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let Some(provider) = vm.native_interface.dialog_host_provider() else {
+        return Err(VMError::RuntimeError(
+            "dialog_save: the `ui-dialog` feature is disabled".into(),
+        ));
+    };
+    let default_name = pop_string_arg(task, vm);
+    let path = provider.save(&default_name);
+    let idx = vm.add_string(path.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `file_basename(path) -> String` — final path segment, treating both `/`
+/// and `\` as separators (Plan 418: tab titles after Open/Save show the
+/// file name, not the full OS path). No feature gate — pure string logic.
+pub fn shim_file_basename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string_arg(task, vm);
+    let base = path.rsplit(['/', '\\']).next().unwrap_or("").to_string();
+    let idx = vm.add_string(base.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+// ── Plan 541: System Monitor Natives (auto.sys.*) ───────────────────────────
+
+pub fn shim_sys_cpu_usage(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::cpu_usage();
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+pub fn shim_sys_cpu_count(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::cpu_count();
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+pub fn shim_sys_cpu_core_usage(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let idx = pop_arg_i32(task) as usize;
+    let val = crate::libs::sys::cpu_core_usage(idx);
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+pub fn shim_sys_cpu_brand(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let brand = crate::libs::sys::cpu_brand();
+    let idx = vm.add_string(brand.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_mem_total_mb(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::mem_total_mb();
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+pub fn shim_sys_mem_used_mb(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::mem_used_mb();
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+pub fn shim_sys_net_sent_kbs(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::net_sent_kbs();
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+pub fn shim_sys_net_recv_kbs(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::net_recv_kbs();
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+pub fn shim_sys_os_name(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = crate::libs::sys::os_name();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_os_version(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = crate::libs::sys::os_version();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_kernel_version(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = crate::libs::sys::kernel_version();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_hostname(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let s = crate::libs::sys::hostname();
+    let idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+pub fn shim_sys_uptime_s(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::libs::sys::uptime_s();
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+pub fn shim_sys_kill(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    let pid = pop_arg_i32(task);
+    let ok = crate::libs::sys::kill(pid);
+    task.ram.push_nv(auto_val::encode_bool(ok));
+    Ok(())
+}
+
+pub fn shim_sys_processes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::types::ListData;
+    use auto_val::Value;
+
+    let procs = crate::libs::sys::processes();
+    let mut list: ListData<Value> = ListData::new();
+
+    let field_names = vec![
+        "pid".to_string(),
+        "name".to_string(),
+        "cpu".to_string(),
+        "mem_mb".to_string(),
+        "disk_kbs".to_string(),
+        "net_kbs".to_string(),
+        "status".to_string(),
+        "user".to_string(),
+    ];
+
+    for p in procs {
+        let fields = vec![
+            Value::Int(p.pid),
+            Value::Str(p.name.into()),
+            Value::Double(p.cpu),
+            Value::Int(p.mem_mb),
+            Value::Double(p.disk_kbs),
+            Value::Double(p.net_kbs),
+            Value::Str(p.status.into()),
+            Value::Str(p.user.into()),
+        ];
+        let inst = GenericInstanceData::new_with_names(
+            "ProcInfo".to_string(),
+            fields,
+            field_names.clone(),
+        );
+        let inst_id = vm.insert_heap_object(inst);
+        vm.rc_retain_id(inst_id as u64);
+        list.push(Value::VmRef(auto_val::VmRef {
+            id: inst_id as usize,
+        }));
+    }
+
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
+pub fn shim_sys_disks(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::types::ListData;
+    use auto_val::Value;
+
+    let disks = crate::libs::sys::disks();
+    let mut list: ListData<Value> = ListData::new();
+
+    let field_names = vec![
+        "name".to_string(),
+        "mount".to_string(),
+        "total_mb".to_string(),
+        "avail_mb".to_string(),
+    ];
+
+    for d in disks {
+        let fields = vec![
+            Value::Str(d.name.into()),
+            Value::Str(d.mount.into()),
+            Value::Int(d.total_mb),
+            Value::Int(d.avail_mb),
+        ];
+        let inst = GenericInstanceData::new_with_names(
+            "DiskInfo".to_string(),
+            fields,
+            field_names.clone(),
+        );
+        let inst_id = vm.insert_heap_object(inst);
+        vm.rc_retain_id(inst_id as u64);
+        list.push(Value::VmRef(auto_val::VmRef {
+            id: inst_id as usize,
+        }));
+    }
+
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
+pub fn shim_sys_users(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::types::ListData;
+    use auto_val::Value;
+
+    let users = crate::libs::sys::users();
+    let mut list: ListData<Value> = ListData::new();
+
+    let field_names = vec!["name".to_string()];
+
+    for u in users {
+        let fields = vec![Value::Str(u.name.into())];
+        let inst = GenericInstanceData::new_with_names(
+            "UserInfo".to_string(),
+            fields,
+            field_names.clone(),
+        );
+        let inst_id = vm.insert_heap_object(inst);
+        vm.rc_retain_id(inst_id as u64);
+        list.push(Value::VmRef(auto_val::VmRef {
+            id: inst_id as usize,
+        }));
+    }
+
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64);
+    Ok(())
+}
+
+// PLAN-802: code_editor 族 22 项已单态化（feature 中性，provider 装配）——
+// 本处原 feature-off stub 群（text/delta/edit/cursor_line/cursor_col/
+// selection_len/find/set_text/fold_toggle/fold_hidden_count/undo/redo/
+// select_all/cut/copy/paste）并入各 shim 的缺席臂，逐字面值保留。
+
+/// `system_status() -> Int` — exit code of the last `system()` call.
+pub fn shim_shell_system_status(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let code = if let Some(host) = &vm.host {
+        host.system_status()
+    } else {
+        0
+    };
+    task.ram.push_i32(code);
+    Ok(())
+}
+
+// ── Plan 413 follow-up: console natives (in-app Console panel) ──────────
+// Backed by the process-wide ring buffer in vm::ui_console (also fed by
+// vm_print, so plain `print()` lines show up in the panel too).
+
+/// `console_log(msg) -> Bool` — append one line to the console buffer.
+pub fn shim_console_log(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg = pop_string_arg(task, vm);
+    crate::vm::ui_console::ui_console_push(&msg);
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `console_lines() -> String` — newest-first snapshot for panel display.
+pub fn shim_console_lines(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let text = crate::vm::ui_console::ui_console_lines(crate::vm::ui_console::DEFAULT_LINES);
+    let idx = vm.add_string(text.into_bytes());
+    vm.rc_push_str_idx(task, idx as usize);
+    Ok(())
+}
+
+/// `console_clear() -> Bool` — drop all console lines.
+pub fn shim_console_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    crate::vm::ui_console::ui_console_clear();
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `export(key: String, val: String)` — set an environment variable.
+pub fn shim_shell_export(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = pop_string_arg(task, vm);
+    let key = pop_string_arg(task, vm);
+    if let Some(host) = &vm.host {
+        host.export(&key, &val);
+    }
+    Ok(())
+}
+
+/// `exit(code: Int)` — request the script to stop with `code`.
+/// Raises `VMError::ExitRequested` so the current run unwinds immediately;
+/// the host records the code for the process-exit propagation.
+pub fn shim_shell_exit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let code = auto_val::decode_i32(crate::vm::native::pop_arg_nv(task));
+    if let Some(host) = &vm.host {
+        host.exit(code);
+    }
+    Err(VMError::ExitRequested(code))
+}
+
+/// Generic print that handles any value type.
+/// If the value is a tagged string index (negative), prints the string.
+/// Otherwise prints as an integer.
+pub fn shim_print(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let str_index = auto_val::decode_string(nv);
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_print(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else {
+            vm_print(vm, &auto_val::decode_i32(nv).to_string());
+        }
+    }
+    Ok(())
+}
+
+pub fn shim_print_i32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let str_index = auto_val::decode_string(nv);
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_print(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else if auto_val::is_null(nv) {
+            // None value (null)
+            vm_print(vm, "None");
+        } else if auto_val::is_object(nv) {
+            let handle = auto_val::decode_object(nv) as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                } else {
+                    // Plan 560 T06 (D7)：py 句柄 print 保真——GIL str()。
+                    #[cfg(feature = "python")]
+                    {
+                        let pyh = guard
+                            .as_any()
+                            .downcast_ref::<crate::py_ffi::PyObjectHandle>();
+                        if let Some(pyh) = pyh {
+                            let s = pyo3::Python::attach(|py| {
+                                use pyo3::types::PyAnyMethods;
+                                pyh.obj
+                                    .bind(py)
+                                    .str()
+                                    .map(|s| s.to_string())
+                                    .unwrap_or_else(|e| format!("<py str failed: {}>", e))
+                            });
+                            vm_print(vm, &s);
+                            return Ok(());
+                        }
+                    }
+                    if let Some(dep_obj) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>(
+                    ) {
+                        // PLAN-591 D2(DIV-DEP-8 print 半边):dep 对象路由
+                        // shim 包 Display 合成 to_string;无 Display 面维持占位。
+                        let short_type = dep_obj.short_type.clone();
+                        drop(guard);
+                        let text = match crate::vm::ffi::dep_methods::display_string(
+                            task,
+                            vm,
+                            handle,
+                            &short_type,
+                        )? {
+                            Some(t) => t,
+                            None => format!("<obj:{}>", handle),
+                        };
+                        vm_print(vm, &text);
+                    } else {
+                        vm_print(vm, &format!("<obj:{}>", handle));
+                    }
+                }
+            } else {
+                vm_print(vm, &format!("<invalid object: {}>", handle));
+            }
+        } else {
+            let val = auto_val::decode_i32(nv);
+            // Boolean sentinel values: i32::MIN = true, i32::MIN+1 = false
+            if val == -2147483648 {
+                vm_print(vm, "1");
+            } else if val == -2147483647 {
+                vm_print(vm, "0");
+            } else if val > 0 {
+                // Check if positive value is a heap object handle (RustStdlibObject etc.)
+                let handle = val as u64;
+                if let Some(obj) = vm.get_heap_object(handle) {
+                    let guard = obj.read().unwrap();
+                    if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                        vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                    } else {
+                        vm_print(vm, &val.to_string());
+                    }
+                } else {
+                    vm_print(vm, &val.to_string());
+                }
+            } else {
+                vm_print(vm, &val.to_string());
+            }
+        }
+        Ok(())
+    }
+}
+
+pub fn shim_print_f32(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 377: 全值单槽化。f64/f32 各占 1 槽，弹出单个 NanoValue 按 tag 分派。
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_f64(nv) {
+            // f64（非 nanboxed，直接位模式）
+            let val = f64::from_bits(nv);
+            vm_print(vm, &val.to_string());
+            return Ok(());
+        }
+        if auto_val::is_f32(nv) {
+            let val = auto_val::decode_f32(nv);
+            vm_print(vm, &val.to_string());
+            return Ok(());
+        }
+        // 兜底：i32 的位模式当 f32 解（兼容旧路径）
+        let val_bits = auto_val::decode_i32(nv) as u32;
+        let val = f32::from_bits(val_bits);
+        vm_print(vm, &val.to_string());
+    }
+    Ok(())
+}
+
+/// Print an f64 value. Plan 377: 单槽（pop_f64 现在弹 1 个 NanoValue）。
+pub fn shim_print_f64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_f64();
+    vm_print(vm, &val.to_string());
+    Ok(())
+}
+
+/// Print a u64/i64 value.
+/// Plan 377: 单槽化后 pop_i64 弹单个 NanoValue（TAG_I64/U64/BIGINT）。
+pub fn shim_print_u64(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_i64();
+    vm_print(vm, &val.to_string());
+    Ok(())
+}
+
+/// Plan 377 §3.1: 统一 print —— 弹出单个 NanoValue，按 tag 解码打印任意类型。
+///
+/// 取代按类型路由的 5 个 print native（I32/F32/F64/U64/STR）的分裂：单槽化后
+/// 每个值都是单个 NanoValue，无需 codegen 在编译期推断 ObjectType 选 print 入口。
+/// 本函数把 i32/f32/f64/i64/u64/bigint/string/bool/null/object 的解码全部集中。
+///
+/// 格式约定（与既有 shim_print_i32/f32/f64/u64 保持一致，避免回归）：
+/// - bool sentinel（i32::MIN/-2147483648 = true → "1"，i32::MIN+1 = false → "0"）
+/// - null → "None"；object → format_rust_stdlib_obj 或 <obj:id>
+/// - 数值 → to_string()
+pub fn shim_print_unified(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        let tag = auto_val::tag_of(nv);
+        // f64（非 nanboxed，直接位模式）
+        if !auto_val::is_nanboxed(nv) {
+            vm_print(vm, &auto_val::decode_f64(nv).to_string());
+            return Ok(());
+        }
+        match tag {
+            // TAG_STRING
+            t if t == 2 => {
+                let str_index = auto_val::decode_string(nv);
+                if let Some(bytes) = vm.get_string(str_index) {
+                    vm_print(vm, &String::from_utf8_lossy(&bytes));
+                } else {
+                    vm_print(vm, &format!("<invalid string index: {}>", str_index));
+                }
+            }
+            // TAG_BOOL（sentinel: i32::MIN = true, i32::MIN+1 = false）
+            // Plan 474 待澄清#3: 显示形态对齐 Rust 式语义 true/false（原打
+            // "1"/"0"——json bool 字段 print 与真值语义混淆的旁支根源）。
+            t if t == 3 => {
+                vm_print(
+                    vm,
+                    if auto_val::decode_bool(nv) {
+                        "true"
+                    } else {
+                        "false"
+                    },
+                );
+            }
+            // TAG_NULL
+            t if t == 4 => {
+                vm_print(vm, "None");
+            }
+            // TAG_OBJECT
+            t if t == 5 => {
+                let handle = auto_val::decode_object(nv) as u64;
+                if let Some(obj) = vm.get_heap_object(handle) {
+                    let guard = obj.read().unwrap();
+                    if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                        vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                    } else if let Some(dep_obj) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>(
+                    ) {
+                        // PLAN-591 D2(DIV-DEP-8 print 半边):dep 对象路由 shim 包
+                        // Display 合成 to_string;无 Display 面维持占位。
+                        let short_type = dep_obj.short_type.clone();
+                        drop(guard);
+                        let text = match crate::vm::ffi::dep_methods::display_string(
+                            task,
+                            vm,
+                            handle,
+                            &short_type,
+                        )? {
+                            Some(t) => t,
+                            None => format!("<obj:{}>", handle),
+                        };
+                        vm_print(vm, &text);
+                    } else {
+                        vm_print(vm, &format!("<obj:{}>", handle));
+                    }
+                } else {
+                    vm_print(vm, &format!("<invalid object: {}>", handle));
+                }
+            }
+            // TAG_F32
+            t if t == 7 => {
+                vm_print(vm, &auto_val::decode_f32(nv).to_string());
+            }
+            // TAG_I64
+            t if t == 8 => {
+                vm_print(vm, &auto_val::decode_i64(nv).to_string());
+            }
+            // TAG_U64
+            t if t == 9 => {
+                vm_print(vm, &auto_val::decode_u64(nv).to_string());
+            }
+            // TAG_BIGINT（堆对象，需解引用 —— 与 convert.rs decode 一致）
+            t if t == 0xA => {
+                let id = auto_val::decode_bigint_handle(nv) as u64;
+                let printed = if let Some(obj) = vm.get_heap_object(id) {
+                    if let Some(guard) = obj.read().ok() {
+                        use crate::vm::heap_object::{downcast, BigIntData};
+                        if let Some(big) = downcast::<BigIntData>(&*guard) {
+                            if big.is_unsigned {
+                                big.as_u64().to_string()
+                            } else {
+                                big.as_i64().to_string()
+                            }
+                        } else {
+                            format!("<bigint:{}>", id)
+                        }
+                    } else {
+                        format!("<bigint:{}>", id)
+                    }
+                } else {
+                    format!("<invalid bigint: {}>", id)
+                };
+                vm_print(vm, &printed);
+            }
+            // TAG_I32（正数 heap handle 探测，兼容 shim_print_i32）。
+            // Plan 474 待澄清#3: 原 bool 哨兵特判（i32::MIN→"1"、MIN+1→"0"）
+            // 摘除——TAG_BOOL 已由上方 tag==3 臂处理，此处特判只会把真整数
+            // i32::MIN/i32::MIN+1 误显为 1/0。
+            _ => {
+                let val = auto_val::decode_i32(nv);
+                if val > 0 {
+                    let handle = val as u64;
+                    if let Some(obj) = vm.get_heap_object(handle) {
+                        let guard = obj.read().unwrap();
+                        if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                            vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                        } else {
+                            vm_print(vm, &val.to_string());
+                        }
+                    } else {
+                        vm_print(vm, &val.to_string());
+                    }
+                } else {
+                    vm_print(vm, &val.to_string());
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Format a RustStdlibObject for display.
+pub fn format_rust_stdlib_obj(obj: &RustStdlibObject) -> String {
+    match obj.type_name.as_str() {
+        "Instant" => "<Instant>".to_string(),
+        "Duration" => {
+            if let Some(dur) = obj.downcast_ref::<std::time::Duration>() {
+                format!("{}ms", dur.as_millis())
+            } else {
+                "<Duration>".to_string()
+            }
+        }
+        "PathBuf" => {
+            if let Some(p) = obj.downcast_ref::<std::path::PathBuf>() {
+                format!("{}", p.display())
+            } else {
+                "<PathBuf>".to_string()
+            }
+        }
+        "Arc" => "<Arc>".to_string(),
+        "Mutex" => "<Mutex>".to_string(),
+        "Box" => "<Box>".to_string(),
+        "RefCell" => "<RefCell>".to_string(),
+        "std::cell::OnceCell::Value" => {
+            if let Some(s) = obj.downcast_ref::<String>() {
+                s.clone()
+            } else {
+                "<OnceCell::Value>".to_string()
+            }
+        }
+        "semver::Version" => {
+            if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                format!("{}", mutex.lock().unwrap())
+            } else {
+                "<semver::Version>".to_string()
+            }
+        }
+        // PLAN-596 T-07 (DIV-DEP-8 VM 半边收口): url::Url Display 路由——
+        // print 与 TYPE_TO_STR(.to(str)) 共用本表,镜像 semver::Version 臂。
+        "url::Url" => {
+            if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                format!("{}", mutex.lock().unwrap())
+            } else {
+                "<url::Url>".to_string()
+            }
+        }
+        "semver::VersionReq" => {
+            if let Some(mutex) = obj.downcast_ref::<std::sync::Mutex<semver::VersionReq>>() {
+                format!("{}", mutex.lock().unwrap())
+            } else {
+                "<semver::VersionReq>".to_string()
+            }
+        }
+        other => format!("<{}>", other),
+    }
+}
+
+/// Print a string from the string constant pool, or an integer if not a string.
+/// Expects tagged string index on TOS (LOAD_STR pushes -(idx+1)).
+/// If the value is non-negative and not a valid string index, prints as integer.
+pub fn shim_print_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let str_index = auto_val::decode_string(nv);
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_print(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_print(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else if auto_val::is_null(nv) {
+            vm_print(vm, "None");
+        } else if auto_val::is_object(nv) {
+            let handle = auto_val::decode_object(nv) as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                } else if let Some(dep_obj) = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>(
+                ) {
+                    // PLAN-591 D2(DIV-DEP-8 print/write 半边):dep 对象路由
+                    // shim 包 Display 合成 to_string;无 Display 面维持占位。
+                    let short_type = dep_obj.short_type.clone();
+                    drop(guard);
+                    let text = match crate::vm::ffi::dep_methods::display_string(
+                        task,
+                        vm,
+                        handle,
+                        &short_type,
+                    )? {
+                        Some(t) => t,
+                        None => format!("<obj:{}>", handle),
+                    };
+                    vm_print(vm, &text);
+                } else {
+                    if let Some(dep_obj) = guard
+                        .as_any()
+                        .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>(
+                    ) {
+                        // PLAN-591 D2(DIV-DEP-8 print 半边):dep 对象路由
+                        // shim 包 Display 合成 to_string;无 Display 面维持占位。
+                        let short_type = dep_obj.short_type.clone();
+                        drop(guard);
+                        let text = match crate::vm::ffi::dep_methods::display_string(
+                            task,
+                            vm,
+                            handle,
+                            &short_type,
+                        )? {
+                            Some(t) => t,
+                            None => format!("<obj:{}>", handle),
+                        };
+                        vm_print(vm, &text);
+                    } else {
+                        vm_print(vm, &format!("<obj:{}>", handle));
+                    }
+                }
+            } else {
+                vm_print(vm, &format!("<invalid object: {}>", handle));
+            }
+        } else if auto_val::is_bool(nv) {
+            // Plan 474 待澄清#3: bool 按 tag 判定打印 true/false。原实现对
+            // TAG_BOOL 的哨兵 payload 走 decode_i32 后按值特判打 "1"/"0"——
+            // decode 不分 tag，真整数 i32::MIN/i32::MIN+1 会被同路误打，且
+            // bool 显示形态与 Rust 式语义不符。
+            vm_print(
+                vm,
+                if auto_val::decode_bool(nv) {
+                    "true"
+                } else {
+                    "false"
+                },
+            );
+        } else {
+            let val = auto_val::decode_i32(nv);
+            if val > 0 {
+                // Check if positive value is a heap object handle
+                let handle = val as u64;
+                if let Some(obj) = vm.get_heap_object(handle) {
+                    let guard = obj.read().unwrap();
+                    if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                        vm_print(vm, &format_rust_stdlib_obj(rust_obj));
+                    } else {
+                        vm_print(vm, &val.to_string());
+                    }
+                } else {
+                    vm_print(vm, &val.to_string());
+                }
+            } else {
+                vm_print(vm, &val.to_string());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Write a string without trailing newline (write() in Auto).
+/// Same logic as shim_print_str but uses vm_write instead of vm_print.
+pub fn shim_write_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let str_index = auto_val::decode_string(nv);
+            if let Some(bytes) = vm.get_string(str_index) {
+                vm_write(vm, &String::from_utf8_lossy(&bytes));
+            } else {
+                vm_write(vm, &format!("<invalid string index: {}>", str_index));
+            }
+        } else if auto_val::is_object(nv) {
+            let handle = auto_val::decode_object(nv) as u64;
+            if let Some(obj) = vm.get_heap_object(handle) {
+                let guard = obj.read().unwrap();
+                if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                    vm_write(vm, &format_rust_stdlib_obj(rust_obj));
+                } else if let Some(dep_obj) = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>(
+                ) {
+                    // PLAN-591 D2(DIV-DEP-8 print/write 半边):dep 对象路由
+                    // shim 包 Display 合成 to_string;无 Display 面维持占位。
+                    let short_type = dep_obj.short_type.clone();
+                    drop(guard);
+                    let text = match crate::vm::ffi::dep_methods::display_string(
+                        task,
+                        vm,
+                        handle,
+                        &short_type,
+                    )? {
+                        Some(t) => t,
+                        None => format!("<obj:{}>", handle),
+                    };
+                    vm_write(vm, &text);
+                } else {
+                    vm_write(vm, &format!("<obj:{}>", handle));
+                }
+            } else {
+                vm_write(vm, &format!("<invalid object: {}>", handle));
+            }
+        } else {
+            let val = auto_val::decode_i32(nv);
+            vm_write(vm, &val.to_string());
+        }
+    }
+    Ok(())
+}
+
+pub fn shim_assert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        let is_true = if auto_val::is_bool(nv) {
+            auto_val::decode_bool(nv)
+        } else if auto_val::is_i32(nv) {
+            let v = auto_val::decode_i32(nv);
+            v != 0 && v != (-2147483647i32)
+        } else {
+            true
+        };
+        if !is_true {
+            return Err(VMError::RuntimeError("Assertion failed".to_string()));
+        }
+    }
+    Ok(())
+}
+
+/// Runtime panic: pops a string (tagged index) from stack and returns it as an error.
+/// Used by #[vm] function stubs when no matching native implementation is found.
+pub fn shim_runtime_panic(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg = {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv);
+            vm.get_string(idx)
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_else(|| format!("Runtime panic (invalid string index {})", idx))
+        } else {
+            format!("Runtime panic (unexpected stack value: {:?})", nv)
+        }
+    };
+    Err(VMError::RuntimeError(msg))
+}
+
+pub fn shim_assert_eq(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let right_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_right_nv = crate::vm::native::StakeGuard::nv(vm, right_nv);
+        let left_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_left_nv = crate::vm::native::StakeGuard::nv(vm, left_nv);
+
+        let left_is_str = auto_val::is_string(left_nv);
+        let right_is_str = auto_val::is_string(right_nv);
+        let equal = if left_is_str && right_is_str {
+            let lidx = auto_val::decode_string(left_nv);
+            let ridx = auto_val::decode_string(right_nv);
+            let left_str = vm
+                .get_string(lidx)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            let right_str = vm
+                .get_string(ridx)
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            left_str.as_deref() == right_str.as_deref()
+        } else if left_nv == right_nv {
+            true
+        } else if auto_val::is_i32(left_nv) && auto_val::is_i32(right_nv) {
+            auto_val::decode_i32(left_nv) == auto_val::decode_i32(right_nv)
+        } else if auto_val::is_object(left_nv) && auto_val::is_object(right_nv) {
+            vm.struct_eq(
+                auto_val::decode_object(left_nv) as i32,
+                auto_val::decode_object(right_nv) as i32,
+            )
+        } else {
+            false
+        };
+
+        if !equal {
+            return Err(VMError::RuntimeError(format!(
+                "Assertion failed: {:?} != {:?}",
+                left_nv, right_nv
+            )));
+        }
+        Ok(())
+    }
+}
+
+pub fn shim_assert_ne(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let right_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_right_nv = crate::vm::native::StakeGuard::nv(vm, right_nv);
+        let left_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_left_nv = crate::vm::native::StakeGuard::nv(vm, left_nv);
+
+        let left_is_str = auto_val::is_string(left_nv);
+        let right_is_str = auto_val::is_string(right_nv);
+
+        let equal = if left_is_str && right_is_str {
+            let left_str = vm
+                .get_string(auto_val::decode_string(left_nv))
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            let right_str = vm
+                .get_string(auto_val::decode_string(right_nv))
+                .map(|b| String::from_utf8_lossy(&b).to_string());
+            left_str.as_deref() == right_str.as_deref()
+        } else if left_nv == right_nv {
+            true
+        } else if auto_val::is_i32(left_nv) && auto_val::is_i32(right_nv) {
+            auto_val::decode_i32(left_nv) == auto_val::decode_i32(right_nv)
+        } else if auto_val::is_object(left_nv) && auto_val::is_object(right_nv) {
+            vm.struct_eq(
+                auto_val::decode_object(left_nv) as i32,
+                auto_val::decode_object(right_nv) as i32,
+            )
+        } else {
+            false
+        };
+
+        if equal {
+            return Err(VMError::RuntimeError(format!(
+                "Assertion failed: {:?} == {:?}",
+                left_nv, right_nv
+            )));
+        }
+        Ok(())
+    }
+}
+// ============================================================================
+// List Native Shims
+// ============================================================================
+
+/// Create a new list with optional initial elements.
+/// Stack: [elem1, elem2, ...] -> list_id
+/// Returns: list_id (u64 as i32)
+///
+/// If elements are on the stack (above bp + 1 + num_locals), they are used to initialize the list.
+/// Elements are in LIFO order (top of stack is last element).
+pub fn shim_list_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    // Plan 317: List.new([a, b, c]) receives ONE arg: an array_id (from
+    // CREATE_ARRAY). If all elements are Int, create ListData<i32> (backward
+    // compat with existing List<int> tests). Otherwise (struct/string/etc),
+    // store as Vec<Value> in arrays (supports any element type).
+    // List.new() with no args → empty ListData<i32>.
+    let target_sp = if task.bp == 0 {
+        task.num_locals + 1
+    } else {
+        task.bp + task.num_locals + 2
+    };
+
+    if crate::pool_log_all() {
+        eprintln!(
+            "[POOLLOG #{:>4}] list.new bp={} nlocals={} sp={} target_sp={} has_arg_guess={}",
+            crate::pool_log_seq(),
+            task.bp,
+            task.num_locals,
+            task.ram.sp,
+            target_sp,
+            task.ram.sp > target_sp
+        );
+    }
+
+    if task.ram.sp <= target_sp {
+        // No arguments: empty ListData<i32>.
+        let list: ListData<i32> = ListData::new();
+        let list_id = vm.insert_heap_object(list);
+        vm.rc_push_id(task, list_id as u64); // Plan 419
+        return Ok(());
+    }
+
+    let arg = crate::vm::native::pop_arg_i32(task);
+    // Plan 419: 先克隆(含 retain)再释放参数 stake(读取必须先于释放)。
+    let _stake_arg = crate::vm::native::StakeGuard::new(vm, arg as i64 as u64);
+
+    // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects.
+    if let Some(arr_ref) = vm.get_heap_object(arg as u64) {
+        let arr = arr_ref.read().unwrap();
+        if let Some(arr) = arr
+            .as_any()
+            .downcast_ref::<crate::vm::types::ListData<Value>>()
+        {
+            // Plan 320: empty lists default to ListData<Value> (not ListData<i32>)
+            // so struct pushes (List<Note>) work. Only use ListData<i32> when there
+            // are actual int elements.
+            if !arr.elems.is_empty() && arr.elems.iter().all(|v| matches!(v, Value::Int(_))) {
+                let mut list: ListData<i32> = ListData::new();
+                for v in arr.elems.iter() {
+                    if let Value::Int(i) = v {
+                        list.push(*i);
+                    }
+                }
+                let list_id = vm.insert_heap_object(list);
+                vm.rc_push_id(task, list_id as u64); // Plan 419
+            } else {
+                // Plan 320: use ListData<Value> for empty or mixed/struct lists.
+                // Plan 419: 克隆进新列表的 VmRef/裸 id 元素随容器持有 retain
+                // (arg 已按消费型释放,克隆引用若无 stake 会被级联回收)。
+                let mut list: ListData<Value> = ListData::new();
+                for v in arr.elems.iter() {
+                    match v {
+                        Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                        Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                            vm.rc_retain_id(*i as u64)
+                        }
+                        _ => {}
+                    }
+                    list.push(v.clone());
+                }
+                let list_id = vm.insert_heap_object(list);
+                vm.rc_push_id(task, list_id as u64); // Plan 419
+            }
+            return Ok(());
+        }
+    }
+
+    // Legacy fallback: treat arg as first element, pop remaining as variadic.
+    let target_sp = if task.bp == 0 {
+        task.num_locals + 1
+    } else {
+        task.bp + task.num_locals + 2
+    };
+    let mut elems = vec![arg];
+    while task.ram.sp > target_sp {
+        elems.push(task.ram.pop_i32());
+    }
+    elems.reverse();
+    let mut list: ListData<i32> = ListData::new();
+    for elem in &elems {
+        list.push(*elem);
+    }
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64); // Plan 419
+    Ok(())
+}
+
+/// Push an element to the end of the list.
+/// Stack: list_id, elem -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
+pub fn shim_list_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    // PLAN-062: 列表元素突变（入口计——多成功出口统一覆盖，错误路径
+    // 多 bump 一次是保守安全方向）。
+    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
+    let elem_nv = task.ram.pop_nv();
+    // PLAN-604 T04: 取走元素槽份额。元素是 copy-on-load/构造回推的暂存
+    // 拷贝(rc_push +1 记影子);本 shim 消费它,容器所有权由分支内 retain
+    // 承接——stake 在 retain 之后释放(transfer 配平,避免 rc 短暂下探)。
+    // CALL_SPEC→resolve 分发路径无 CALL_NAT 式死区结算,此前这份份额被
+    // 后续 push 清影静默丢弃 → 元素对象图每调用孤儿一份(KD-VM1 收口
+    // 缺口,探针 StructTick +100 obj/拍)。
+    let elem_stake = task.ram.take_stake_at(task.ram.sp);
+    let elem_val = if auto_val::is_i32(elem_nv) {
+        Value::Int(auto_val::decode_i32(elem_nv))
+    } else if auto_val::is_object(elem_nv) {
+        Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_object(elem_nv) as usize,
+        })
+    } else if auto_val::is_string(elem_nv) {
+        // Plan 403: store the actual string bytes, not the pool index. The old
+        // code stored Value::Int(string_index), which corrupted List<str>/<Value>
+        // element values on read-back (e.g. "3" rendered as its pool index).
+        let idx = auto_val::decode_string(elem_nv) as usize;
+        let s = vm
+            .strings
+            .read()
+            .unwrap()
+            .get(idx)
+            .map(|b| String::from_utf8_lossy(b).to_string())
+            .unwrap_or_default();
+        Value::Str(s.into())
+    } else if auto_val::is_null(elem_nv) {
+        Value::Nil
+    } else if auto_val::is_bool(elem_nv) {
+        Value::Bool(auto_val::decode_bool(elem_nv))
+    } else if auto_val::is_f64(elem_nv) {
+        // Plan 437: f64 nanbox 此前落进末尾 else 被 decode_i32 重解释成垃圾
+        // int（3.0 → 1074266112）。引擎方法分发臂（engine.rs "push"，Plan 403）
+        // 与 CREATE_ARRAY 早已修 float，原生 shim 这条 mono-dispatch 路径漏修
+        // ——List<float>.push() 全部损坏（chart 几何坐标列表直接受阻）。
+        Value::Double(auto_val::decode_f64(elem_nv))
+    } else if auto_val::is_f32(elem_nv) {
+        Value::Float(auto_val::decode_f32(elem_nv) as f64)
+    } else {
+        Value::Int(auto_val::decode_i32(elem_nv))
+    };
+    let list_id = task.ram.pop_i32() as u64;
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
+    // PLAN-047 T-03: 定点归因（B 类）。
+    vm.bump_path(list_id, None);
+
+    // First try heap_objects (ListData<i32> OR ListData<Value> from List<T>.new())
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            // ListData<i32> is untyped storage: normalize bools to 1/0 so the raw
+            // i32::MIN/i32::MIN+1 sentinel payload doesn't leak in (it would break
+            // push_tagged_value's negation on read-back and corrupt element values).
+            let stored = if auto_val::is_bool(elem_nv) {
+                if auto_val::decode_bool(elem_nv) {
+                    1
+                } else {
+                    0
+                }
+            } else {
+                auto_val::decode_i32(elem_nv)
+            };
+            // Plan 419: 裸 id 元素入容器 —— 容器获得持有一份(CALL_NAT 死区
+            // 结算会释放被弹出的参数槽,retain 与之配平)。
+            // Plan 432 D26: 字符串负哨兵同入此契约(此前漏 retain → UAF)。
+            list_i32_elem_retain(vm, stored);
+            list.push(stored);
+            // PLAN-604 T04: 元素暂存份额随入容器结算(transfer 配平)。
+            if elem_stake != 0 {
+                vm.rc_release_id(elem_stake);
+            }
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+        // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>) — store
+        // the actual string bytes, not the nanbox index. Without this branch a
+        // push onto List<str> silently dropped the element (both i32 and Value
+        // downcasts failed), corrupting any string-stack algorithm (e.g. the
+        // calculator's shunting-yard engine).
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<String>>() {
+            let s = if auto_val::is_string(elem_nv) {
+                let idx = auto_val::decode_string(elem_nv) as usize;
+                vm.strings
+                    .read()
+                    .unwrap()
+                    .get(idx)
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .unwrap_or_default()
+            } else {
+                auto_val::decode_i32(elem_nv).to_string()
+            };
+            list.push(s);
+            // PLAN-604 T04: 元素暂存份额结算(本分支存字节拷贝,容器不持
+            // 池/堆份额;堆 stake 释放即消费配平)。
+            if elem_stake != 0 {
+                vm.rc_release_id(elem_stake);
+            }
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+        // Plan 320: ListData<Value> (struct element lists like List<Note>)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            // Plan 419: VmRef/裸 id 元素入容器,retain 配平死区结算。
+            match &elem_val {
+                Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                    vm.rc_retain_id(*i as u64)
+                }
+                _ => {}
+            }
+            list.push(elem_val);
+            // PLAN-604 T04: 元素暂存份额随入容器结算(transfer 配平)——
+            // 容器 retain 承接所有权,暂存拷贝的 stake 释放,rc 净变化 0。
+            if elem_stake != 0 {
+                vm.rc_release_id(elem_stake);
+            }
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+    }
+
+    // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects and
+    // are handled by the heap path above (the legacy arrays fallback is gone).
+
+    // PLAN-604 T04: 落空分支(无 downcast 命中,元素被静默丢弃)——暂存
+    // 份额同样结算,不随丢弃孤儿化。
+    if elem_stake != 0 {
+        vm.rc_release_id(elem_stake);
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Pop an element from the end of the list.
+/// Stack: list_id -> elem
+// Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
+pub fn shim_list_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    // PLAN-062: 列表元素突变（入口计，同 shim_list_push 口径）。
+    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+    vm.bump_path(list_id, None);
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // First try heap_objects (ListData<i32> from List.new())
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            let elem = list.pop().unwrap_or(0);
+            // Plan 419: 元素离开容器 —— 容器 stake 死亡;回栈为转移。
+            // Plan 432 D26: ①先 +1 回栈再释放容器份额——原"先 release 后
+            // push"在末次引用时会把对象/池条目释放掉再让栈引用之(悬垂);
+            // ②字符串负哨兵此前被 push_i32 成裸 int(类型丢失 + 无池份额),
+            // 改走 rc_push_str_idx 保 TAG_STRING。
+            if (elem as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                vm.rc_push_id(task, elem as u64);
+                vm.rc_release_id(elem as u64);
+            } else if elem < 0 {
+                vm.rc_push_str_idx(task, (-elem - 1) as usize);
+                vm.pool_release((-elem - 1) as usize);
+            } else {
+                task.ram.push_i32(elem);
+            }
+            return Ok(());
+        }
+        // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>) — pop the
+        // actual string and push it as a nanbox string value.
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<String>>() {
+            if let Some(s) = list.pop() {
+                let idx = vm.add_string(s.into_bytes());
+                vm.rc_push_str_idx(task, idx as usize);
+            } else {
+                task.ram.push_i32(0);
+            }
+            return Ok(());
+        }
+        // Plan 335: ListData<Value> (struct element lists)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            if let Some(val) = list.pop() {
+                // Plan 419: 容器 stake 死亡(push_value 的 +1 使净效果为转移)。
+                match &val {
+                    Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                        vm.rc_release_id(*i as u64)
+                    }
+                    _ => {}
+                }
+                push_value(task, vm, &val);
+            } else {
+                task.ram.push_i32(0);
+            }
+            return Ok(());
+        }
+    }
+
+    // Invalid list_id
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the length of the list.
+/// Stack: list_id -> len
+// Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
+pub fn shim_list_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // First try heap_objects (ListData<i32> OR ListData<Value> from List<T>.new())
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(list.len() as i32);
+            return Ok(());
+        }
+        // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>)
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+            task.ram.push_i32(list.len() as i32);
+            return Ok(());
+        }
+        // Plan 320: ListData<Value> (struct element lists like List<Note>)
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+            task.ram.push_i32(list.len() as i32);
+            return Ok(());
+        }
+    }
+
+    // Invalid list_id
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Check if the list is empty.
+/// Stack: list_id -> is_empty (1 if empty, 0 otherwise)
+// Plan 077 Phase 5: Updated to unified registry
+pub fn shim_list_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_nv(auto_val::encode_bool(list.is_empty()));
+            return Ok(());
+        }
+    }
+
+    // Invalid list_id treated as empty
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// Clear all elements from the list.
+/// Stack: list_id -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
+pub fn shim_list_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            // Plan 419: 被清空元素的容器 stake 逐个死亡。
+            // Plan 432 D26: 字符串负哨兵同入契约。
+            for &e in &list.elems {
+                list_i32_elem_release(vm, e);
+            }
+            list.clear();
+        }
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            // Plan 419: 同上(VmRef/裸 id)。
+            for v in &list.elems {
+                match v {
+                    Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                        vm.rc_release_id(*i as u64)
+                    }
+                    _ => {}
+                }
+            }
+            list.clear();
+        }
+    }
+
+    // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get element at index.
+/// Stack: list_id, index -> elem
+// Plan 077 Phase 5: Updated to use unified registry
+/// Plan 432 D26 修复:ListData<i32> 元素的容器侧引用记账。
+/// 编码契约(nano_value.rs encode_string 注释):字符串以负哨兵 -(idx+1)
+/// 落在 i32 空间(decode_i32(encode_string(idx)) 即该负值);≥HEAP_ID_BASE
+/// 为裸堆 id;其余为纯 int。
+/// 缺陷:push/set/insert/clear 此前只对堆 id retain/release——负哨兵从不
+/// 获得池份额,调用方栈份额被 native 死区结算释放后,列表持裸哨兵指向
+/// 已回收池槽;读回 push_tagged_value_rc 的 +1 复活墓碑 → canary UAF
+/// (242:S2-432,复现 repro_242_string_pool_uaf:循环内 push 运行期串后读回)。
+#[inline]
+fn list_i32_elem_retain(vm: &AutoVM, val: i32) {
+    if (val as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+        vm.rc_retain_id(val as u64);
+    } else if val < 0 {
+        vm.pool_retain((-val - 1) as usize);
+    }
+}
+
+#[inline]
+fn list_i32_elem_release(vm: &AutoVM, val: i32) {
+    if (val as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+        vm.rc_release_id(val as u64);
+    } else if val < 0 {
+        vm.pool_release((-val - 1) as usize);
+    }
+}
+
+/// Plan 419: ListData<i32> 元素回栈 —— ≥HEAP_ID_BASE 的元素是裸堆 id,+1。
+/// (调用方持有 &AutoVM 时用本函数替代 push_tagged_value。)
+fn push_tagged_value_rc(vm: &AutoVM, task: &mut AutoTask, val: i32) {
+    if val < 0 {
+        let str_idx = (-(val) - 1) as u32;
+        // Plan 432 D30: 池界外的负值是裸 int 而非字符串哨兵 ——
+        // ListData<i32> 的负 int 元素经 .at get 需原样往返
+        // (此前越界哨兵产生悬垂 string tag,读回即坏)
+        if (str_idx as usize) < vm.strings.read().unwrap().len() {
+            vm.rc_push_str_idx(task, str_idx as usize);
+        } else {
+            task.ram.push_i32(val);
+        }
+    } else {
+        vm.rc_push_id(task, val as u64);
+    }
+}
+
+/// Plan 335: 把 ListData<Value> 里取出的 `Value` 推回 VM 栈（nanbox 编码）。
+/// 用于 get/pop/remove 等 struct List 元素访问的返回值。
+/// VmRef → encode_object；Str → 新增 string pool 条目；Int → i32；
+/// Bool → encode_bool（Plan 406：裸 1/0 会让 is_bool 消费者失效）。
+/// Plan 419: VmRef/裸 id(≥4M 的 Int)入栈 +1 —— get(拷贝语义)与
+/// pop/remove(容器侧另行 release,转移语义)统一 +1。
+fn push_value(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
+    match val {
+        auto_val::Value::Int(i) => {
+            if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                vm.rc_push_id(task, *i as u64);
+            } else {
+                task.ram.push_i32(*i);
+            }
+        }
+        auto_val::Value::Bool(b) => task.ram.push_nv(auto_val::encode_bool(*b)),
+        // Plan 437: float 元素此前落进 `_ => push_i32(0)` 兜底——List<float>.get()
+        // 恒返回 0。镜像 GET_ELEM 的 ListData<Value> 臂（Double→f64/Float→f32）。
+        auto_val::Value::Double(d) => task.ram.push_f64(*d),
+        auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
+        auto_val::Value::VmRef(r) => {
+            vm.rc_push(task, auto_val::encode_object(r.id as u32));
+        }
+        auto_val::Value::Str(s) => {
+            let str_idx = vm.add_string(s.as_bytes().to_vec());
+            vm.rc_push_str_idx(task, str_idx as usize);
+        }
+        _ => task.ram.push_i32(0), // Nil 等兜底为 0
+    }
+}
+
+/// PLAN-082: 把 host 侧返回的整棵 `Value` 树物化为 VM 堆对象并把根压栈。
+/// * `Obj` → 堆 `ObjectData`（字段递归转换）——Dot/字段访问与原生 struct 同路径；
+/// * `Array` → 堆 `ListData<Value>`——for-in 逐元素迭代、`.len()`/`.get` 可用，
+///   容器元素是 `Value::VmRef`（嵌套 Obj/Array）或内联标量（Str/Int/Bool）；
+/// * 标量走既有 [`push_value`]（Str 经 string pool）。
+/// 根引用按**裸堆 id** 入栈（`rc_push_id`，clipboard natives 同款）——
+/// `.len()` 等 `pop_arg_i32` 消费者只认裸 id；TAG_OBJECT 编码仅在部分
+/// 消费者有兼容臂（Plan 437 判例）。T-01 spike 实测锚点。
+fn push_value_tree(task: &mut AutoTask, vm: &AutoVM, val: &auto_val::Value) {
+    match val {
+        auto_val::Value::Obj(_) | auto_val::Value::Array(_) => {
+            if let auto_val::Value::VmRef(r) = heap_value(vm, val) {
+                vm.rc_push_id(task, r.id as u64);
+            }
+        }
+        _ => push_value(task, vm, val),
+    }
+}
+
+/// PLAN-082: [`push_value_tree`] 的递归臂——容器（Obj/Array）返回指向新堆对象的
+/// `Value::VmRef`（insert 的初始计数即容器所有权），标量原样克隆。
+fn heap_value(vm: &AutoVM, val: &auto_val::Value) -> auto_val::Value {
+    match val {
+        auto_val::Value::Obj(o) => {
+            let mut rec = crate::vm::types::ObjectData::new();
+            for (k, fv) in o.iter() {
+                rec.set(k.clone(), heap_value(vm, fv));
+            }
+            let id = vm.insert_heap_object(rec);
+            auto_val::Value::VmRef(auto_val::VmRef { id: id as usize })
+        }
+        auto_val::Value::Array(a) => {
+            let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
+            for ev in &a.values {
+                list.push(heap_value(vm, ev));
+            }
+            let id = vm.insert_heap_object(list);
+            auto_val::Value::VmRef(auto_val::VmRef { id: id as usize })
+        }
+        other => other.clone(),
+    }
+}
+
+/// Plan 335: 栈上的 nanbox NanoValue 解码为 `Value`（set/insert/contains 等写入/比较用）。
+/// VmRef / Int / String / Bool / Nil 五类，与 shim_list_push 的编码一致。
+/// Plan 403: string values now decode to Value::Str (actual bytes), not
+/// Value::Int(pool_index) — keeps List<Value> string elements round-tripping.
+fn nv_to_value(nv: auto_val::NanoValue) -> auto_val::Value {
+    if auto_val::is_future(nv) {
+        // PLAN-776 R8-01：Future 句柄保真映射 Value::Future（句柄视图）。
+        return Value::Future(Box::new(auto_val::FutureData {
+            id: auto_val::decode_future(nv) as usize,
+            state: auto_val::FutureState::Pending,
+            result: None,
+        }));
+    }
+    if auto_val::is_i32(nv) {
+        Value::Int(auto_val::decode_i32(nv))
+    } else if auto_val::is_object(nv) {
+        Value::VmRef(auto_val::VmRef {
+            id: auto_val::decode_object(nv) as usize,
+        })
+    } else if auto_val::is_string(nv) {
+        // Plan 403: resolve to actual string bytes via the pool index.
+        // NOTE: this is a best-effort decode; callers that need the string
+        // should use the pool directly. We fall back to Int if unavailable.
+        Value::Int(auto_val::decode_string(nv) as i32)
+    } else if auto_val::is_null(nv) {
+        Value::Nil
+    } else if auto_val::is_bool(nv) {
+        Value::Bool(auto_val::decode_bool(nv))
+    } else {
+        Value::Int(auto_val::decode_i32(nv))
+    }
+}
+
+/// Plan 335: 两个 Value 是否相等（用于 contains 等）。
+/// VmRef 按 id 比较（同一 struct 实例视为相等）；Int/Bool/Str 按值；跨类型不相等。
+fn values_eq(a: &auto_val::Value, b: &auto_val::Value) -> bool {
+    match (a, b) {
+        (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x == y,
+        (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x == y,
+        (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id == y.id,
+        _ => false,
+    }
+}
+
+pub fn shim_list_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    {
+        let index_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_index_nv = crate::vm::native::StakeGuard::nv(vm, index_nv);
+        let list_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_list_nv = crate::vm::native::StakeGuard::nv(vm, list_nv);
+        let index = if auto_val::is_i32(index_nv) {
+            auto_val::decode_i32(index_nv) as usize
+        } else {
+            0usize
+        };
+        // Plan 437: 列表引用是 TAG_OBJECT nanbox（encode_object(list_id)），
+        // 原先只认 is_i32 → object-tag 接收者落 list_id=0，.get() 恒返回 0。
+        let list_id = if auto_val::is_object(list_nv) {
+            auto_val::decode_object(list_nv) as u64
+        } else if auto_val::is_i32(list_nv) {
+            auto_val::decode_i32(list_nv) as u64
+        } else {
+            0u64
+        };
+
+        if let Some(obj) = vm.get_heap_object(list_id) {
+            let guard = obj.read().unwrap();
+            if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                if let Some(&val) = list.get(index) {
+                    // Plan 419: 元素仍在容器 —— 拷贝引用入栈 +1。
+                    push_tagged_value_rc(vm, task, val);
+                } else {
+                    task.ram.push_i32(0);
+                }
+                return Ok(());
+            }
+            // Plan 403: ListData<String> (from CREATE_LIST_STR / List<str>) —
+            // return the element as a nanbox string.
+            if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                if let Some(s) = list.get(index) {
+                    let idx = vm.add_string(s.clone().into_bytes());
+                    vm.rc_push_str_idx(task, idx as usize);
+                } else {
+                    task.ram.push_i32(0);
+                }
+                return Ok(());
+            }
+            // Plan 335: ListData<Value> (struct element lists like List<Note>)
+            if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+                if let Some(val) = list.get(index) {
+                    push_value(task, vm, val);
+                } else {
+                    task.ram.push_i32(0);
+                }
+                return Ok(());
+            }
+        }
+        task.ram.push_i32(0);
+        return Ok(());
+    }
+}
+
+/// Set element at index.
+/// Stack: list_id, index, elem -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
+pub fn shim_list_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    // PLAN-062: 列表元素突变（入口计，同 shim_list_push 口径）。
+    // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
+    let elem_nv = task.ram.pop_nv();
+    let elem_val = nv_to_value(elem_nv);
+    let index = task.ram.pop_i32() as usize;
+    let list_id = task.ram.pop_i32() as u64;
+    vm.bump_path(list_id, None);
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            // Plan 419: 旧元素释放;新值 retain(死区结算配平)。
+            // Plan 432 D26: 字符串负哨兵同入契约。
+            if let Some(&old) = list.get(index) {
+                list_i32_elem_release(vm, old);
+            }
+            let stored = auto_val::decode_i32(elem_nv);
+            list_i32_elem_retain(vm, stored);
+            list.set(index, stored);
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+        // Plan 335: ListData<Value> (struct element lists)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            // Plan 419: 同上。
+            if let Some(old) = list.get(index) {
+                match old {
+                    Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                        vm.rc_release_id(*i as u64)
+                    }
+                    _ => {}
+                }
+            }
+            match &elem_val {
+                Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                    vm.rc_retain_id(*i as u64)
+                }
+                _ => {}
+            }
+            list.set(index, elem_val);
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+    }
+
+    // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Insert element at index.
+/// Stack: list_id, index, elem -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
+pub fn shim_list_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let elem_nv = task.ram.pop_nv();
+    let elem_val = nv_to_value(elem_nv);
+    let index = task.ram.pop_i32() as usize;
+    let list_id = task.ram.pop_i32() as u64;
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
+
+    // First try heap_objects (ListData<i32> from List.new())
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            // Plan 419: 新值 retain(死区结算配平)。
+            // Plan 432 D26: 字符串负哨兵同入契约。
+            let stored = auto_val::decode_i32(elem_nv);
+            list_i32_elem_retain(vm, stored);
+            list.insert(index, stored);
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+        // Plan 335: ListData<Value> (struct element lists)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            // Plan 419: 新值 retain。
+            match &elem_val {
+                Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                    vm.rc_retain_id(*i as u64)
+                }
+                _ => {}
+            }
+            list.insert(index, elem_val);
+            task.ram.push_i32(0);
+            return Ok(());
+        }
+    }
+
+    // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Remove element at index and return it.
+/// Stack: list_id, index -> elem
+// Plan 077 Phase 5: Updated to use unified registry
+// Plan 289: Added arrays DashMap fallback for Value::Array literals
+pub fn shim_list_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // First try heap_objects (ListData<i32> from List.new())
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            if let Some(elem) = list.remove(index) {
+                // Plan 419: 元素离开容器 —— 容器 stake 死亡;回栈为转移。
+                // Plan 432 D26: 先 +1 回栈再释放;字符串哨兵保 TAG_STRING。
+                if (elem as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                    vm.rc_push_id(task, elem as u64);
+                    vm.rc_release_id(elem as u64);
+                } else if elem < 0 {
+                    vm.rc_push_str_idx(task, (-elem - 1) as usize);
+                    vm.pool_release((-elem - 1) as usize);
+                } else {
+                    task.ram.push_i32(elem);
+                }
+                return Ok(());
+            }
+        }
+        // Plan 335: ListData<Value> (struct element lists)
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            if let Some(val) = list.remove(index) {
+                // Plan 419: 容器 stake 死亡(push_value +1 → 净转移)。
+                match &val {
+                    Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                    Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                        vm.rc_release_id(*i as u64)
+                    }
+                    _ => {}
+                }
+                push_value(task, vm, &val);
+                return Ok(());
+            }
+        }
+    }
+
+    // Return default value if index out of bounds
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// List.splice(list_id, start, count) -> removed List
+/// PLAN-622 (d): JS Array.splice removal form — removes `count` elements at
+/// `start` (negative start counts from the end; both clamped) and returns
+/// them as a NEW list. Element stakes transfer from the source container to
+/// the returned one (retain-into-new before release-from-old). The insertion
+/// variant of JS splice is intentionally not in v1 — callers compose with
+/// insert; noted in the ui/store-facade-semantics spec.
+/// Stack: list_id, start, count -> removed_list_id
+pub fn shim_list_splice(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let count = crate::vm::native::pop_arg_i32(task).max(0) as usize;
+    let start_raw = crate::vm::native::pop_arg_i32(task);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id);
+
+    // Removed elements, encoded per source-list representation.
+    let mut removed_i32: Option<Vec<i32>> = None;
+    let mut removed_val: Option<Vec<auto_val::Value>> = None;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            let len = list.elems.len();
+            let start = normalize_splice_start(start_raw, len);
+            let end = (start + count).min(len);
+            if start < end {
+                removed_i32 = Some(list.elems.drain(start..end).collect());
+            }
+        } else if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            let len = list.elems.len();
+            let start = normalize_splice_start(start_raw, len);
+            let end = (start + count).min(len);
+            if start < end {
+                removed_val = Some(list.elems.drain(start..end).collect());
+            }
+        }
+    }
+
+    // Build the removed list with transferred stakes: retain into the new
+    // container first (insert semantics), then release the old container's
+    // stake (remove semantics). JS-parity: no elements removed still returns
+    // a fresh (empty) list.
+    let removed_id: u64 = if let Some(items) = removed_i32 {
+        let mut out: ListData<i32> = ListData::with_capacity(items.len());
+        for v in &items {
+            list_i32_elem_retain(vm, *v);
+        }
+        out.elems = items.clone();
+        let id = vm.insert_heap_object(out);
+        for v in &items {
+            list_i32_elem_release(vm, *v);
+        }
+        id
+    } else if let Some(items) = removed_val {
+        let mut out: ListData<Value> = ListData::with_capacity(items.len());
+        for v in &items {
+            match v {
+                Value::VmRef(r) => vm.rc_retain_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                    vm.rc_retain_id(*i as u64);
+                }
+                _ => {}
+            }
+        }
+        out.elems = items.clone();
+        let id = vm.insert_heap_object(out);
+        for v in &items {
+            match v {
+                Value::VmRef(r) => vm.rc_release_id(r.id as u64),
+                Value::Int(i) if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 => {
+                    vm.rc_release_id(*i as u64);
+                }
+                _ => {}
+            }
+        }
+        id
+    } else {
+        vm.insert_heap_object(ListData::<i32>::new())
+    };
+
+    vm.rc_push_id(task, removed_id);
+    Ok(())
+}
+
+/// JS Array.splice start normalization: negative counts from the end,
+/// everything clamps into [0, len].
+#[inline]
+fn normalize_splice_start(start_raw: i32, len: usize) -> usize {
+    if start_raw < 0 {
+        len.saturating_sub((-start_raw) as usize)
+    } else {
+        (start_raw as usize).min(len)
+    }
+}
+
+/// Drop/free the list.
+/// Stack: list_id -> result (0)
+// Plan 077 Phase 5: Updated to use unified registry
+// Plan 419: 语义更新 —— 无条件 remove 改为 rc 释放(RC 归零才真回收,
+// 兼容"手动提前释放"直觉;多持有时只减一)。
+pub fn shim_list_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+    vm.rc_release_id(list_id);
+
+    // Return success (0)
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// List.reserve(list_id, additional) -> 0
+/// Pre-allocate capacity for additional elements
+pub fn shim_list_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let additional = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_additional = crate::vm::native::StakeGuard::new(vm, additional as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.reserve(additional);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================
+// List Higher-Order Functions (Plan 206: Closure HOF)
+// ============================================================
+
+/// Helper: get list elements as Vec<i32> from a list heap object
+fn get_list_i32_elements(vm: &AutoVM, list_id: u64) -> Result<Vec<i32>, VMError> {
+    use crate::vm::types::ListData;
+
+    // First check heap objects (List created via List.new or previous HOF)
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            return Ok(list.elems.clone());
+        }
+    }
+
+    // Plan 446 批四 D4: 此前对 ListData<Value> 有"非 Int 元素 coerce 为 0"的
+    // fallback——对象/字符串元素的 find/map/any 等全部 HOF 走 i32 快路径时
+    // 谓词接到恒 0，永不命中（plan454 已在 obj.find 剔除同款 tag 位误读，
+    // 本处补齐 list 族）。Value 列表一律交由各 shim 的 Value 路径处理。
+    Err(VMError::RuntimeError(format!(
+        "Invalid list ID: {}",
+        list_id
+    )))
+}
+
+/// Helper: create a new array from Vec<i32> elements, return array ID.
+/// Plan 390 §15 H3b: stored as ListData<Value> in heap_objects (same storage
+/// as CREATE_ARRAY) so results work with ARRAY_LEN etc.
+pub(crate) fn create_list_from_i32(vm: &AutoVM, elems: Vec<i32>) -> u64 {
+    let values: Vec<auto_val::Value> = elems.into_iter().map(|e| auto_val::Value::Int(e)).collect();
+    vm.insert_heap_object(crate::vm::types::ListData {
+        elems: values,
+        storage: None,
+    })
+}
+
+/// Plan 340: 从任意 ListData<T> 获取 Vec<Value>（i32 自动转 Value::Int）。
+/// 查 heap_objects 的 ListData<Value> 和 ListData<i32>（array 字面量已并入，
+/// Plan 390 §15 H3b）。用于 HOF shim（map/filter/find 等）的 Value fallback 路径。
+fn get_list_elements_as_value(vm: &AutoVM, list_id: u64) -> Result<Vec<auto_val::Value>, VMError> {
+    use crate::vm::types::ListData;
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+            return Ok(list.elems.clone());
+        }
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            return Ok(list
+                .elems
+                .iter()
+                .map(|i| auto_val::Value::Int(*i))
+                .collect());
+        }
+    }
+
+    Err(VMError::RuntimeError(format!(
+        "Invalid list ID: {}",
+        list_id
+    )))
+}
+
+/// Plan 340: 从 Vec<Value> 创建新列表，返回 registry ID（存入 heap_objects，
+/// Plan 390 §15 H3b，同 CREATE_ARRAY 的 ListData<Value> 存储）。
+fn create_list_from_value(vm: &AutoVM, elems: Vec<auto_val::Value>) -> u64 {
+    vm.insert_heap_object(crate::vm::types::ListData {
+        elems,
+        storage: None,
+    })
+}
+
+/// Helper: check if a VM value is truthy (handles both conventions)
+/// True values: 1, i32::MIN (-2147483648), or any non-zero/non-false value
+/// False values: 0, i32::MIN+1 (-2147483647)
+#[inline]
+fn vm_is_truthy(val: i32) -> bool {
+    val != 0 && val != i32::MIN + 1
+}
+
+/// Helper: convert a VM value to a printable boolean (1 or 0)
+#[inline]
+#[allow(dead_code)]
+fn vm_to_printable_bool(val: i32) -> i32 {
+    if vm_is_truthy(val) {
+        1
+    } else {
+        0
+    }
+}
+
+/// List.map(closure) -> new List
+/// Stack: closure_id, list_id -> result_list_id
+pub fn shim_list_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        let mut results = Vec::with_capacity(elements.len());
+        for elem in elements {
+            push_tagged_value_rc(vm, task, elem);
+            vm.call_closure(task, closure_id, 1)?;
+            results.push(crate::vm::native::pop_arg_i32(task));
+        }
+        let new_id = create_list_from_i32(vm, results);
+        // Plan 432 D26 堆侧修复:新建堆 id 入栈必须 rc_push_id(+1)——
+        // 此前裸 push_i32,栈拷贝无份额 → STORE_LOC 转移进局部槽仍 0 份额,
+        // 局部槽 LOAD 的 copy-on-load +1 成"首次获取",被 pop_arg 释放归零
+        // 即对象在局部槽仍引用时死亡(RETAIN-AFTER-FREE → canary,
+        // conformance_bootstrap 4000001 实证)。
+        vm.rc_push_id(task, new_id);
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    let mut results: Vec<auto_val::Value> = Vec::with_capacity(elements.len());
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let ret_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_ret_nv = crate::vm::native::StakeGuard::nv(vm, ret_nv);
+        results.push(nv_to_value(ret_nv));
+    }
+    let new_id = create_list_from_value(vm, results);
+    // Plan 432 D26 堆侧修复:同上,新建堆 id 入栈 +1。
+    vm.rc_push_id(task, new_id);
+    Ok(())
+}
+
+/// List.filter(closure) -> new List
+/// Stack: closure_id, list_id -> result_list_id
+pub fn shim_list_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        let mut results = Vec::new();
+        for elem in elements {
+            push_tagged_value_rc(vm, task, elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let predicate = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_predicate = crate::vm::native::StakeGuard::new(vm, predicate as i64 as u64);
+            if vm_is_truthy(predicate) {
+                results.push(elem);
+            }
+        }
+        let new_id = create_list_from_i32(vm, results);
+        // Plan 432 D26 堆侧修复:新建堆 id 入栈必须 rc_push_id(+1)——
+        // 此前裸 push_i32,栈拷贝无份额 → STORE_LOC 转移进局部槽仍 0 份额,
+        // 局部槽 LOAD 的 copy-on-load +1 成"首次获取",被 pop_arg 释放归零
+        // 即对象在局部槽仍引用时死亡(RETAIN-AFTER-FREE → canary,
+        // conformance_bootstrap 4000001 实证)。
+        vm.rc_push_id(task, new_id);
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    let mut results: Vec<auto_val::Value> = Vec::new();
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let predicate = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_predicate = crate::vm::native::StakeGuard::new(vm, predicate as i64 as u64);
+        if vm_is_truthy(predicate) {
+            results.push(elem.clone());
+        }
+    }
+    let new_id = create_list_from_value(vm, results);
+    // Plan 432 D26 堆侧修复:同上,新建堆 id 入栈 +1。
+    vm.rc_push_id(task, new_id);
+    Ok(())
+}
+
+/// List.for_each(closure) -> void
+/// Stack: closure_id, list_id -> 0
+pub fn shim_list_for_each(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for elem in elements {
+            push_tagged_value_rc(vm, task, elem);
+            vm.call_closure(task, closure_id, 1)?;
+            {
+                let d = crate::vm::native::pop_arg_i32(task);
+                vm.rc_release_id(d as u64);
+            } // Plan 419: 丢弃即释放
+        }
+        task.ram.push_i32(0);
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let _disc = crate::vm::native::pop_arg_nv(task);
+
+        let _stake__disc = crate::vm::native::StakeGuard::nv(vm, _disc);
+        vm.rc_release(_disc); // Plan 419: 丢弃的结果若为引用,-1
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// List.find(closure) -> ?T (found value or -1 for None)
+/// Stack: closure_id, list_id -> result
+pub fn shim_list_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: genuine ListData<i32>
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for elem in elements {
+            push_tagged_value_rc(vm, task, elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let found = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
+            if vm_is_truthy(found) {
+                task.ram.push_i32(elem);
+                return Ok(());
+            }
+        }
+        // Plan 446 批四 D4: miss 契约对齐语言层 None（TAG_NULL，与 auto.obj.find
+        // 的 Plan 454 E 契约一致）——此前推 -1 哨兵，`hit == None` 恒假。
+        task.ram.push_nv(auto_val::encode_null());
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let found = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
+        if vm_is_truthy(found) {
+            push_value(task, vm, elem);
+            return Ok(());
+        }
+    }
+    // Plan 446 批四 D4: miss = 语言层 None（同上 fast-path 注记）。
+    task.ram.push_nv(auto_val::encode_null());
+    Ok(())
+}
+
+/// List.find_index(closure) -> int — first matching index, or -1 on miss.
+/// PLAN-624 (P4): jade `findIndex(t => t.path == path)` 用法；此前列表原生面
+/// 无 find_index，调用静默失效。栈：list_id, closure_id -> index(i32)。
+pub fn shim_list_find_index(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: genuine ListData<i32>
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for (i, elem) in elements.iter().enumerate() {
+            push_tagged_value_rc(vm, task, *elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let found = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
+            if vm_is_truthy(found) {
+                task.ram.push_i32(i as i32);
+                return Ok(());
+            }
+        }
+        task.ram.push_i32(-1);
+        return Ok(());
+    }
+
+    // Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for (i, elem) in elements.iter().enumerate() {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let found = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_found = crate::vm::native::StakeGuard::new(vm, found as i64 as u64);
+        if vm_is_truthy(found) {
+            task.ram.push_i32(i as i32);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(-1);
+    Ok(())
+}
+
+/// List.any(closure) -> bool
+/// Stack: closure_id, list_id -> bool (1/0)
+pub fn shim_list_any(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for elem in elements {
+            push_tagged_value_rc(vm, task, elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let result = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_result = crate::vm::native::StakeGuard::new(vm, result as i64 as u64);
+            if vm_is_truthy(result) {
+                task.ram.push_nv(auto_val::encode_bool(true));
+                return Ok(());
+            }
+        }
+        task.ram.push_nv(auto_val::encode_bool(false));
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let result = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_result = crate::vm::native::StakeGuard::new(vm, result as i64 as u64);
+        if vm_is_truthy(result) {
+            task.ram.push_nv(auto_val::encode_bool(true));
+            return Ok(());
+        }
+    }
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+/// List.all(closure) -> bool
+/// Stack: closure_id, list_id -> bool (1/0)
+pub fn shim_list_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        for elem in elements {
+            push_tagged_value_rc(vm, task, elem);
+            vm.call_closure(task, closure_id, 1)?;
+            let result = crate::vm::native::pop_arg_i32(task);
+
+            let _stake_result = crate::vm::native::StakeGuard::new(vm, result as i64 as u64);
+            if !vm_is_truthy(result) {
+                task.ram.push_nv(auto_val::encode_bool(false));
+                return Ok(());
+            }
+        }
+        task.ram.push_nv(auto_val::encode_bool(true));
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let result = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_result = crate::vm::native::StakeGuard::new(vm, result as i64 as u64);
+        if !vm_is_truthy(result) {
+            task.ram.push_nv(auto_val::encode_bool(false));
+            return Ok(());
+        }
+    }
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// List.reduce(init, closure) -> accumulated value
+/// Stack: closure_id, init_val, list_id -> result
+pub fn shim_list_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let init_val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_init_val = crate::vm::native::StakeGuard::new(vm, init_val as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Fast path: i32 elements
+    if let Ok(elements) = get_list_i32_elements(vm, list_id) {
+        let mut acc = init_val;
+        for elem in elements {
+            task.ram.push_i32(acc);
+            task.ram.push_i32(elem);
+            vm.call_closure(task, closure_id, 2)?;
+            acc = crate::vm::native::pop_arg_i32(task);
+        }
+        task.ram.push_i32(acc);
+        return Ok(());
+    }
+
+    // Plan 340: Value path (struct/str elements)
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    let mut acc = auto_val::Value::Int(init_val);
+    for elem in &elements {
+        push_value(task, vm, &acc);
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 2)?;
+        let ret_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_ret_nv = crate::vm::native::StakeGuard::nv(vm, ret_nv);
+        acc = nv_to_value(ret_nv);
+    }
+    push_value(task, vm, &acc);
+    Ok(())
+}
+
+/// List.join(separator) -> str
+/// Stack: separator (str tag), list_id -> joined_str (str tag)
+/// Joins string list elements with the given separator.
+pub fn shim_list_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    // Pop separator (string pool tag)
+    let sep_idx = decode_str_idx_nv(crate::vm::native::pop_arg_nv(task));
+    let separator = vm
+        .strings
+        .read()
+        .unwrap()
+        .get(sep_idx)
+        .map(|b| String::from_utf8_lossy(b).to_string())
+        .unwrap_or_default();
+
+    // Pop list_id
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        // Try ListData<Value> (FFI bridge uses this for Vec<String>)
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<auto_val::Value>>() {
+            let parts: Vec<String> = list
+                .elems
+                .iter()
+                .filter_map(|v| {
+                    if let auto_val::Value::Str(s) = v {
+                        Some(s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+            let joined = parts.join(&separator);
+            let str_idx = vm.add_string(joined.into_bytes());
+            vm.rc_push_str_idx(task, str_idx as usize);
+            return Ok(());
+        }
+        // Try ListData<String>
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+            let joined = list.elems.join(&separator);
+            let str_idx = vm.add_string(joined.into_bytes());
+            vm.rc_push_str_idx(task, str_idx as usize);
+            return Ok(());
+        }
+        // Try ListData<i32> as fallback
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            let parts: Vec<String> = list.elems.iter().map(|e| e.to_string()).collect();
+            let joined = parts.join(&separator);
+            let str_idx = vm.add_string(joined.into_bytes());
+            vm.rc_push_str_idx(task, str_idx as usize);
+            return Ok(());
+        }
+    }
+
+    // Fallback: return empty string
+    let str_idx = vm.add_string(Vec::new());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// List.contains(value) -> bool
+/// Stack: value (i32), list_id -> bool (1/0)
+pub fn shim_list_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let elem_nv = crate::vm::native::pop_arg_nv(task);
+
+    let _stake_elem_nv = crate::vm::native::StakeGuard::nv(vm, elem_nv);
+    let elem_val = nv_to_value(elem_nv);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Plan 335: 统一在 ListData<i32> / ListData<Value> / heap ListData（array
+    // 字面量已并入，Plan 390 §15 H3b）上查找。
+    // struct List 的元素是 VmRef —— 按 id 比较（同一 struct 实例视为相等）。
+    let found = if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            list.elems
+                .iter()
+                .any(|&e| e == auto_val::decode_i32(elem_nv))
+        } else if let Some(list) = guard.as_any().downcast_ref::<ListData<Value>>() {
+            list.elems.iter().any(|v| values_eq(v, &elem_val))
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    task.ram.push_nv(auto_val::encode_bool(found));
+    Ok(())
+}
+
+/// Sort a list in-place.
+/// Stack: list_id -> void
+pub fn shim_list_sort(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Plan 390 §15 H3b: array literals are ListData<Value> in heap_objects.
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.elems.sort_by(|a, b| match (a, b) {
+                (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                (auto_val::Value::Float(x), auto_val::Value::Float(y)) => {
+                    x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+                }
+                (auto_val::Value::Double(x), auto_val::Value::Double(y)) => {
+                    x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+                }
+                (auto_val::Value::Bool(x), auto_val::Value::Bool(y)) => x.cmp(y),
+                (auto_val::Value::Str(x), auto_val::Value::Str(y)) => {
+                    x.to_string().cmp(&y.to_string())
+                }
+                (auto_val::Value::String(x), auto_val::Value::String(y)) => {
+                    x.as_str().cmp(y.as_str())
+                }
+                (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id.cmp(&y.id),
+                _ => std::cmp::Ordering::Equal,
+            });
+        } else if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.elems.sort();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Sort a list with a comparator closure.
+/// Stack: list_id, closure_id -> void
+/// (Currently delegates to default sort — custom comparators not yet supported in VM)
+pub fn shim_list_sort_by(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let _closure_id = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__closure_id = crate::vm::native::StakeGuard::new(vm, _closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.elems.sort_by(|a, b| match (a, b) {
+                (auto_val::Value::Int(x), auto_val::Value::Int(y)) => x.cmp(y),
+                (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => x.cmp(y),
+                (auto_val::Value::Float(x), auto_val::Value::Float(y)) => {
+                    x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+                }
+                (auto_val::Value::Double(x), auto_val::Value::Double(y)) => {
+                    x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+                }
+                (auto_val::Value::VmRef(x), auto_val::Value::VmRef(y)) => x.id.cmp(&y.id),
+                _ => std::cmp::Ordering::Equal,
+            });
+        } else if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            list.elems.sort();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================================
+// Result HOF Native Shims
+// ============================================================================
+
+/// Result.map_err(closure) — if Err, call closure with error value; if Ok, pass through.
+/// Stack: closure_id, result_instance_id -> new_result_instance_id
+/// Plan 200 Task 3.3
+pub fn shim_result_map_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::generic_registry::GenericInstanceData;
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_closure_id = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let result_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_result_id = crate::vm::native::StakeGuard::new(vm, result_id as i64 as u64);
+
+    // Look up the Result heap object
+    let obj = vm.get_heap_object(result_id).ok_or_else(|| {
+        VMError::RuntimeError(format!("map_err: invalid heap object {}", result_id))
+    })?;
+    let guard = obj.read().unwrap();
+    let instance = guard
+        .as_any()
+        .downcast_ref::<GenericInstanceData>()
+        .ok_or_else(|| VMError::RuntimeError("map_err: not a Result heap object".into()))?;
+
+    if instance.mono_name == "Result.Err" {
+        let err_val = match instance.fields.first() {
+            Some(auto_val::Value::Int(v)) => *v,
+            _ => {
+                return Err(VMError::RuntimeError(
+                    "map_err: Err field not an int".into(),
+                ));
+            }
+        };
+        // Release the read lock before calling closure (which may access heap)
+        drop(guard);
+
+        // Call closure with the error value as argument
+        task.ram.push_i32(err_val);
+        vm.call_closure(task, closure_id, 1)?;
+        let new_err_val = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_new_err_val = crate::vm::native::StakeGuard::new(vm, new_err_val as i64 as u64);
+
+        // Wrap back in Result.Err heap object
+        let new_instance = GenericInstanceData::new(
+            "Result.Err".to_string(),
+            vec![auto_val::Value::Int(new_err_val)],
+        );
+        let new_id = vm.insert_heap_object(new_instance);
+        vm.rc_push_id(task, new_id as u64); // Plan 419
+    } else {
+        // Ok — pass through unchanged
+        drop(guard);
+        task.ram.push_i32(result_id as i32);
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Iterator Native Shims
+// ============================================================================
+
+/// Create an iterator for a list.
+/// Stack: list_id -> iterator_id
+/// Returns: iterator_id (u32 as i32)
+pub fn shim_list_iter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::{Iterator, ListIterator};
+    use std::sync::atomic::Ordering;
+
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Allocate new iterator ID
+    let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+
+    // Create iterator state
+    let iterator = Iterator::List(ListIterator {
+        list_id,
+        current_index: 0,
+    });
+
+    // Store iterator
+    vm.iterators.insert(iterator_id, iterator);
+
+    // Return iterator_id
+    task.ram.push_i32(iterator_id as i32);
+    Ok(())
+}
+
+thread_local! {
+    /// PLAN-696: only the top-level SSE iterator is budgeted. Nested iterator
+    /// calls made by the generator body retain their ordinary synchronous
+    /// semantics.
+    static PLAN696_SSE_NEXT_BUDGET: std::cell::Cell<Option<(u32, u32)>> = const { std::cell::Cell::new(None) };
+}
+
+/// Run one SSE iterator step cooperatively. `false` means the generator used
+/// its instruction budget or entered a cooperative sleep and should be polled
+/// again after yielding to the LocalSet.
+/// PLAN-707 T-05：generator next() 驱动体（自 [`shim_iterator_next`] 的
+/// Generator 臂抽出）——调用方先 clone 状态再调本函数，**不持 iterators
+/// 锁驱动**（内层嵌套 iterator_next 同 shard get_mut 重入会自死锁），
+/// 返回后由调用方回写状态。
+fn generator_next_drive(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    iterator_id: u32,
+    gen_state: &mut crate::vm::engine::GeneratorState,
+) {
+    //
+    // Each next() runs the generator task forward from its saved
+    // ip/bp/sp until the NEXT YIELD_VAL (or RET/Terminated). The
+    // task stays alive across next() calls (vm.tasks is not cleaned
+    // by run_task_loop, and we manage the task lifecycle manually).
+    //
+    // This replaces the previous eager approach (which ran the whole
+    // body on first next(), collecting all yields). Lazy enables:
+    //  - infinite generators (fib) that the consumer can break from
+    //  - SSE incremental flush (each yield pushes one frame)
+    //  - side effects in the generator interleaved with consumption
+    //
+    // Plan 326 §1 fix preserved: done pushes the -1 nil sentinel
+    // so the for-loop's `DUP; CONST -1; EQ` exits cleanly.
+    // cooperative 判定原在 shim 顶层（PLAN696 tl 目标比对）——随体迁入。
+    let cooperative_budget = PLAN696_SSE_NEXT_BUDGET.with(|slot| {
+        slot.get()
+            .filter(|(target_iterator, _)| *target_iterator == iterator_id)
+            .map(|(_, budget)| budget)
+    });
+    let cooperative = cooperative_budget.is_some();
+    use crate::vm::engine::StepResult;
+    use crate::vm::task::TaskStatus;
+
+    if gen_state.done {
+        task.ram.push_i32(-1);
+        return;
+    }
+
+    // First next(): spawn the generator task and set up its frame
+    // (mirrors the CALL opcode's frame setup).
+    if !gen_state.started {
+        gen_state.started = true;
+        let tid = vm.spawn_task(gen_state.func_addr as usize, 65536);
+        gen_state.task_id = Some(tid);
+
+        if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+            if let Ok(mut gt) = gen_task_arc.try_lock() {
+                gt.cooperative_http_sleep = cooperative;
+                // Plan 417-D2: seed the CALL-transferred args
+                // BELOW the frame markers, mirroring the CALL
+                // convention [args..., ret_addr, old_bp] so the
+                // generator's FN_PROLOG and RET see a well-formed
+                // frame (previously parameterized generators read
+                // garbage params and underflowed at RET).
+                let seed = std::mem::take(&mut gen_state.stack_snapshot);
+                for nv in seed {
+                    gt.ram.push_nv(nv);
+                }
+                gt.ram.push_i32(0); // return address (unused)
+                gt.ram.push_i32(0); // old BP
+                let new_bp = gt.ram.sp - 1;
+                gt.bp = new_bp;
+                gt.current_fn_n_args = gen_state.n_args as usize;
+                gt.call_stack.push(crate::vm::task::CallFrame {
+                    return_ip: 0,
+                    old_bp: new_bp,
+                    fn_name: None,
+                    line: 0,
+                    old_fn_n_args: 0,
+                    old_fn_n_locals: 0,
+                });
+                gt.ip = gen_state.func_addr as usize;
+            }
+        }
+    }
+
+    let tid = match gen_state.task_id {
+        Some(id) => id,
+        None => {
+            // Task was already cleaned up (generator finished).
+            gen_state.done = true;
+            task.ram.push_i32(-1);
+            return;
+        }
+    };
+
+    // A generator can be created before its first HTTP pull; set
+    // the mode on every pull so sleep dispatch stays scoped to
+    // this cooperative SSE consumer.
+    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+        if let Ok(mut gt) = gen_task_arc.try_lock() {
+            gt.cooperative_http_sleep = cooperative;
+        }
+    }
+
+    // Run the generator task forward until the next YIELD_VAL or
+    // completion. Budget caps a single next() (prevents runaway
+    // loops with no yields); the task resumes from its saved ip.
+    const NEXT_BUDGET: u32 = 1_000_000;
+    let instruction_budget = cooperative_budget.unwrap_or(NEXT_BUDGET);
+    let mut yielded_nv: Option<u64> = None;
+    let mut finished = false;
+    let mut pending = false;
+
+    if let Some(gen_task_arc) = vm.tasks.get(&tid) {
+        if let Ok(mut gt) = gen_task_arc.try_lock() {
+            for _ in 0..instruction_budget {
+                match vm.run_one_instruction(&mut gt) {
+                    Ok(StepResult::Continue) => continue,
+                    Ok(StepResult::GeneratorYield) => {
+                        // Value is on the generator task's stack.
+                        // PEEK (don't pop): codegen emits a POP after
+                        // YIELD_VAL (ExprStmt discards yield's nil
+                        // return value), so we must leave the yielded
+                        // value on the generator stack for that POP to
+                        // consume. We copy it to the caller instead.
+                        let nv = gt.ram.raw_nv[gt.ram.sp - 1];
+                        yielded_nv = Some(nv);
+                        // Park the task so run_task_loop won't pick
+                        // it up between next() calls. Its ip/bp/sp
+                        // are preserved on the task itself.
+                        gt.status = TaskStatus::Waiting("generator_suspended".into());
+                        break;
+                    }
+                    Ok(StepResult::Terminated) => {
+                        finished = true;
+                        break;
+                    }
+                    Ok(StepResult::Yield) => {
+                        // PLAN-707 T-05（D-6）：cooperative sleep 与
+                        // 外部流等待都必须立即停步——流等待无 wake_time，
+                        // 旧形态落 1M 步预算内同 shim 反复重试（热循环）。
+                        if cooperative
+                            && (gt.wake_time.is_some()
+                                || gt.waiting_sse_stream_id.is_some()
+                                || gt.waiting_http_stream_id.is_some())
+                        {
+                            pending = true;
+                            break;
+                        }
+                    }
+                    Ok(StepResult::AwaitFuture {
+                        future_id,
+                        body_offset,
+                    }) => {
+                        // PLAN-707 T-05（§5.4）：外部 `~{}` await 在
+                        // generator 体内同样停步（Pending）——镜像
+                        // drive_handler_segment 的 AwaitFuture 处理；
+                        // 旧形态直接 continue 跳过体执行并热转。
+                        if let Err(e) = vm.handle_await_future(&mut gt, future_id, body_offset) {
+                            eprintln!("[Generator] await body error: {:?}", e);
+                            finished = true;
+                            break;
+                        }
+                        if gt.waiting_future_id.is_some() {
+                            pending = true;
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[Generator] Error: {:?}", e);
+                        finished = true;
+                        break;
+                    }
+                }
+            }
+            // Budget exhausted without yield or termination: treat
+            // as done to avoid an infinite external loop.
+            if yielded_nv.is_none() && !finished && !pending {
+                if cooperative {
+                    pending = true;
+                } else {
+                    eprintln!("[Generator] next() budget exhausted without yield");
+                    finished = true;
+                }
+            }
+        }
+    }
+
+    if pending {
+        return;
+    }
+
+    if finished {
+        // Generator returned/terminated: clean up the task.
+        vm.remove_task(tid);
+        gen_state.task_id = None;
+        gen_state.done = true;
+        task.ram.push_i32(-1);
+        return;
+    }
+
+    // Push the yielded value onto the caller's stack.
+    match yielded_nv {
+        Some(nv) => {
+            if auto_val::is_i32(nv) {
+                task.ram.push_i32(auto_val::decode_i32(nv));
+            } else {
+                task.ram.push_nv(nv);
+            }
+        }
+        None => {
+            // No yield and not finished (shouldn't happen, but be safe).
+            gen_state.done = true;
+            task.ram.push_i32(-1);
+        }
+    }
+    return;
+}
+
+pub fn shim_iterator_next_cooperative(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    budget: u32,
+) -> Result<bool, VMError> {
+    let iterator_id = auto_val::decode_i32(task.ram.peek_nv(0)) as u32;
+    let stack_before = task.ram.sp;
+    let previous =
+        PLAN696_SSE_NEXT_BUDGET.with(|slot| slot.replace(Some((iterator_id, budget.max(1)))));
+    let result = shim_iterator_next(task, vm);
+    PLAN696_SSE_NEXT_BUDGET.with(|slot| slot.set(previous));
+    result.map(|()| task.ram.sp == stack_before)
+}
+
+/// Get next element from iterator.
+/// Stack: iterator_id -> element (or -1 for nil)
+/// Returns: element value, or -1 if exhausted
+// Plan 077 Phase 6: Updated to use unified registry
+/// PLAN-776 R7-02：iterator 消费面**凭据感知**弹栈——TAG_OBJECT Sse 凭据
+///（generator 生产点全部产此形态）解包底层 iterator id；裸 i32 保持原
+/// 语义。返回 (iterator_id, 源是否凭据)。
+pub fn pop_iterator_receiver(task: &mut AutoTask, vm: &AutoVM) -> (u32, bool) {
+    // PLAN-776 R8-02/R9-01：消费协议——
+    // ① 清零弹出槽（残留 TAG_OBJECT 会被 R2-04 任务栈全槽扫描误读成
+    //    有效持有 → 双释放/泄漏两向失真）；
+    // ② 对**原始凭据 nv**：**StakeGuard 即那一次消费**（其 Drop 执行
+    //    rc_release_id——一个输入槽恰一份；R8 误加显式 rc_release 致
+    //    RC2 共享引用 2→0 双释放——F776-R9-01 反例：全局份额被销）。
+    //    读取期间份额未动（release 只发生在 Drop）；错误早退由 Drop
+    //    覆盖同样恰一份。
+    let nv = task.ram.pop_nv();
+    task.ram.raw_nv[task.ram.sp] = 0;
+    if auto_val::is_object(nv) {
+        let stake = StakeGuard::nv(vm, nv);
+        let resolved = crate::vm::ffi::http_return_resource::resolve_resource(vm, nv);
+        drop(stake);
+        if let Some(crate::vm::ffi::http_return_resource::ResourceClaim::Sse { iterator_id }) =
+            resolved
+        {
+            return (iterator_id, true);
+        }
+    }
+    (auto_val::decode_i32(nv) as u32, false)
+}
+
+/// PLAN-776 R7-02：派生 iterator 身份——源为凭据时派生 id 同样包装 Sse
+/// 凭据（身份传播一致，下游 next/terminal 继续可解）；裸源保持裸 id。
+pub fn push_derived_iterator(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+    id: u32,
+    from_credential: bool,
+) -> Result<(), VMError> {
+    if from_credential {
+        crate::vm::ffi::http_return_resource::push_sse_resource(task, vm, id)
+    } else {
+        task.ram.push_i32(id as i32);
+        Ok(())
+    }
+}
+
+pub fn shim_iterator_next(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::Iterator;
+    use crate::vm::types::ListData;
+
+    // Plan 550 T04: null 迭代源守卫——for-in 源为 TAG_NULL 时按 Python
+    // 风格报 TypeError（现状：位模式解码成垃圾 iterator id → 查表落空
+    // → 静默 -1 → 零迭代，p5 探针实证）。合法迭代器 id 永不与 TAG_NULL
+    // 重叠，守卫零误伤。
+    if auto_val::is_null(task.ram.peek_nv(0)) {
+        return Err(VMError::RuntimeError(
+            "TypeError: 'NoneType' object is not iterable".to_string(),
+        ));
+    }
+
+    // PLAN-776 R5-01：凭据感知——for-in/迭代源为 Sse 凭据对象（TAG_OBJECT）
+    // 时解包底层 iterator id。stream 声明函数内 generator 产出已凭据化
+    //（生产点包装），迭代消费经此保持 int 源同语义（非 HTTP 消费兼容）。
+    let iterator_id = if auto_val::is_object(task.ram.peek_nv(0)) {
+        // PLAN-776 R8-02/R9-01：与 pop_iterator_receiver 同款——槽清零 +
+        // StakeGuard 即一次消费（Drop 释放；不加显式 release——F776-R9-01）。
+        let nv = task.ram.pop_nv();
+        task.ram.raw_nv[task.ram.sp] = 0;
+        let stake = StakeGuard::nv(vm, nv);
+        let resolved = crate::vm::ffi::http_return_resource::resolve_resource(vm, nv);
+        drop(stake);
+        match resolved {
+            Some(crate::vm::ffi::http_return_resource::ResourceClaim::Sse { iterator_id }) => {
+                iterator_id
+            }
+            _ => {
+                return Err(VMError::RuntimeError(
+                    "iterator.next: object is not an SSE credential".to_string(),
+                ));
+            }
+        }
+    } else {
+        crate::vm::native::pop_arg_i32(task) as u32
+    };
+    let cooperative_budget = PLAN696_SSE_NEXT_BUDGET.with(|slot| {
+        slot.get()
+            .filter(|(target_iterator, _)| *target_iterator == iterator_id)
+            .map(|(_, budget)| budget)
+    });
+    let cooperative = cooperative_budget.is_some();
+
+    let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
+
+    // Plan 076 Phase 3: Always return i32 by extracting Int from Value
+    // Get the iterator (need to clone to update)
+    // PLAN-707 T-05：Generator 臂在 get_mut **之前**分流——generator 驱动
+    // 不得持有 iterators 写锁（内层嵌套 iterator_next 对同 DashMap shard
+    // 的 get_mut/get 重入自死锁，707 实测挂死）。clone→驱动→回写。
+    let is_generator_iter = vm
+        .iterators
+        .get(&iterator_id)
+        .map(|e| matches!(&*e, Iterator::Generator(_)))
+        .unwrap_or(false);
+    if is_generator_iter {
+        let mut gen_state = {
+            let entry = vm.iterators.get(&iterator_id).expect("checked above");
+            match &*entry {
+                Iterator::Generator(g) => g.clone(),
+                _ => unreachable!("checked above"),
+            }
+        };
+        generator_next_drive(task, vm, iterator_id, &mut gen_state);
+        match vm.iterators.entry(iterator_id) {
+            dashmap::mapref::entry::Entry::Occupied(mut e) => {
+                *e.get_mut() = Iterator::Generator(gen_state);
+            }
+            dashmap::mapref::entry::Entry::Vacant(e) => {
+                e.insert(Iterator::Generator(gen_state));
+            }
+        }
+        return Ok(());
+    }
+
+    let result = if let Some(mut iter_mut) = vm.iterators.get_mut(&iterator_id) {
+        match &mut *iter_mut {
+            Iterator::List(list_iter) => {
+                // Plan 077 Phase 6: Get list from unified registry
+                // Plan 390 §15 H3b: array literals are ListData<Value> here too.
+                if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                    let list = obj.read().unwrap();
+                    if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                        -1
+                    } else if let Some(list_data) = list.as_any().downcast_ref::<ListData<i32>>() {
+                        if list_iter.current_index >= list_data.len() as u32 {
+                            -1
+                        } else {
+                            let elem = list_data
+                                .get(list_iter.current_index as usize)
+                                .copied()
+                                .unwrap_or(0);
+                            list_iter.current_index += 1;
+                            elem
+                        }
+                    } else {
+                        -1
+                    }
+                } else if let Some(arr_ref) = vm.get_heap_object(list_iter.list_id) {
+                    // Plan 390 §15 H3b: ListData<Value> (array literals, struct
+                    // lists). Supports any element type (struct, str, etc).
+                    let arr = arr_ref.read().unwrap();
+                    if let Some(list) = arr.as_any().downcast_ref::<ListData<Value>>() {
+                        if list_iter.current_index >= list.elems.len() as u32 {
+                            -1
+                        } else {
+                            let val = list.elems[list_iter.current_index as usize].clone();
+                            list_iter.current_index += 1;
+                            // Encode Value back to i32 for the result (struct→object id,
+                            // str→string idx, int→int). The caller (for-loop) pushes
+                            // this i32; struct id is recognized by GET_FIELD later.
+                            match val {
+                                Value::Int(i) => i,
+                                Value::VmRef(r) => r.id as i32,
+                                Value::Nil => -1,
+                                Value::Bool(b) => {
+                                    if b {
+                                        1
+                                    } else {
+                                        0
+                                    }
+                                }
+                                _ => 0,
+                            }
+                        }
+                    } else {
+                        -1
+                    }
+                } else {
+                    -1
+                }
+            }
+            Iterator::Map(map_iter) => {
+                // Recursively get next element from source iterator
+                // For MVP, we don't actually call the function yet
+                // We just return the source element as-is
+
+                // Call next() on source iterator
+                // We need to manually call the logic here since we can't recursively call shim_iterator_next
+                if let Some(mut source_iter) = vm.iterators.get_mut(&map_iter.source_iterator_id) {
+                    match &mut *source_iter {
+                        Iterator::List(list_iter) => {
+                            // Plan 077 Phase 6: Get list from unified registry
+                            if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                                let list = obj.read().unwrap();
+
+                                if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                                    -1 // Wrong type
+                                } else if let Some(list_data) =
+                                    list.as_any().downcast_ref::<ListData<i32>>()
+                                {
+                                    if list_iter.current_index >= list_data.len() as u32 {
+                                        -1 // Source exhausted
+                                    } else {
+                                        let elem = list_data
+                                            .get(list_iter.current_index as usize)
+                                            .copied()
+                                            .unwrap_or(0);
+                                        list_iter.current_index += 1;
+
+                                        // TODO: Call the function at map_iter.func_addr with elem
+                                        // For MVP, just return the element without transformation
+                                        elem
+                                    }
+                                } else {
+                                    -1 // Downcast failed
+                                }
+                            } else {
+                                -1 // Invalid list
+                            }
+                        }
+                        Iterator::Map(_) => {
+                            // Nested Map not supported yet
+                            -1
+                        }
+                        Iterator::Filter(_) => {
+                            // Filter source not supported yet
+                            -1
+                        }
+                        Iterator::Generator(_) => {
+                            // Generator as Map source not yet supported
+                            -1
+                        }
+                        Iterator::HttpStream(_) => {
+                            // HttpStream as Map source not yet supported
+                            -1
+                        }
+                        Iterator::AsyncHttpStream(_) => {
+                            // Plan 341: AsyncHttpStream as Map source not yet supported
+                            -1
+                        }
+                        Iterator::Enumerate(enumerate_iter) => {
+                            // Get next from source, then push index on top
+                            if let Some(mut source_iter) =
+                                vm.iterators.get_mut(&enumerate_iter.source_iterator_id)
+                            {
+                                match &mut *source_iter {
+                                    Iterator::List(list_iter) => {
+                                        if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                                            let list = obj.read().unwrap();
+                                            if list.type_tag()
+                                                != crate::vm::heap_object::TypeTag::ListInt
+                                            {
+                                                -1
+                                            } else if let Some(list_data) =
+                                                list.as_any().downcast_ref::<ListData<i32>>()
+                                            {
+                                                if list_iter.current_index >= list_data.len() as u32
+                                                {
+                                                    -1
+                                                } else {
+                                                    let elem = list_data
+                                                        .get(list_iter.current_index as usize)
+                                                        .copied()
+                                                        .unwrap_or(0);
+                                                    list_iter.current_index += 1;
+                                                    let idx = enumerate_iter.current_index as i32;
+                                                    enumerate_iter.current_index += 1;
+                                                    // Push value then index (caller pops index first)
+                                                    task.ram.push_i32(elem);
+                                                    task.ram.push_i32(idx);
+                                                    return Ok(());
+                                                }
+                                            } else {
+                                                -1
+                                            }
+                                        } else {
+                                            -1
+                                        }
+                                    }
+                                    _ => -1,
+                                }
+                            } else {
+                                -1
+                            }
+                        }
+                    }
+                } else {
+                    -1 // Source iterator not found
+                }
+            }
+            Iterator::Filter(filter_iter) => {
+                // Recursively get next element from source iterator
+                // For MVP, we don't actually call the predicate yet
+                // We just return the source element as-is (no filtering)
+
+                // Call next() on source iterator
+                if let Some(mut source_iter) = vm.iterators.get_mut(&filter_iter.source_iterator_id)
+                {
+                    match &mut *source_iter {
+                        Iterator::List(list_iter) => {
+                            // Plan 077 Phase 6: Get list from unified registry
+                            if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                                let list = obj.read().unwrap();
+
+                                if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                                    -1 // Wrong type
+                                } else if let Some(list_data) =
+                                    list.as_any().downcast_ref::<ListData<i32>>()
+                                {
+                                    if list_iter.current_index >= list_data.len() as u32 {
+                                        -1 // Source exhausted
+                                    } else {
+                                        let elem = list_data
+                                            .get(list_iter.current_index as usize)
+                                            .copied()
+                                            .unwrap_or(0);
+                                        list_iter.current_index += 1;
+
+                                        // TODO: Call the predicate at filter_iter.func_addr with elem
+                                        // For MVP, just return the element without filtering
+                                        elem
+                                    }
+                                } else {
+                                    -1 // Downcast failed
+                                }
+                            } else {
+                                -1 // Invalid list
+                            }
+                        }
+                        _ => {
+                            // Nested adapters not yet supported
+                            return Err(VMError::RuntimeError(
+                                "Nested adapters not yet implemented".to_string(),
+                            ));
+                        }
+                    }
+                } else {
+                    -1 // Invalid source iterator
+                }
+            }
+            Iterator::Enumerate(enumerate_iter) => {
+                // Plan 200 Task 3.2: Get next from source, push (index, value)
+                if let Some(mut source_iter) =
+                    vm.iterators.get_mut(&enumerate_iter.source_iterator_id)
+                {
+                    match &mut *source_iter {
+                        Iterator::List(list_iter) => {
+                            if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                                let list = obj.read().unwrap();
+                                if list.type_tag() != crate::vm::heap_object::TypeTag::ListInt {
+                                    -1
+                                } else if let Some(list_data) =
+                                    list.as_any().downcast_ref::<ListData<i32>>()
+                                {
+                                    if list_iter.current_index >= list_data.len() as u32 {
+                                        -1
+                                    } else {
+                                        let elem = list_data
+                                            .get(list_iter.current_index as usize)
+                                            .copied()
+                                            .unwrap_or(0);
+                                        list_iter.current_index += 1;
+                                        let idx = enumerate_iter.current_index as i32;
+                                        enumerate_iter.current_index += 1;
+                                        // Push value then index (two values on stack)
+                                        task.ram.push_i32(elem);
+                                        task.ram.push_i32(idx);
+                                        return Ok(());
+                                    }
+                                } else {
+                                    -1
+                                }
+                            } else {
+                                -1
+                            }
+                        }
+                        _ => -1,
+                    }
+                } else {
+                    -1
+                }
+            }
+            Iterator::Generator(_) => unreachable!(
+                "generator handled before iterators.get_mut dispatch (re-entrant guard)",
+            ),
+            Iterator::HttpStream(hs_iter) => {
+                // PLAN-707 T-04：HTTPStream 迭代器走统一 typed pull
+                //（http_stream::STREAMS 资源表；旧 thread-local blocking
+                // read 退役）。EOF/Failed/Cancelled → -1 终结（修复 G-I：
+                // 旧 EOF 臂不推 -1，cooperative 驱动误判 pending）；无数据
+                // → 挂 waiting_http_stream_id 等待（同 AsyncHttpStream 的
+                // Waiting 语义，wake source 复查 stream_ready）。
+                if hs_iter.done {
+                    return Ok(());
+                }
+
+                match crate::vm::ffi::http_stream::stream_pull(hs_iter.stream_handle) {
+                    crate::vm::ffi::http_stream::Pull::Data(chunk) => {
+                        let idx = vm.add_string(chunk.into_bytes());
+                        vm.rc_push_str_idx(task, idx as usize);
+                    }
+                    crate::vm::ffi::http_stream::Pull::Eof
+                    | crate::vm::ffi::http_stream::Pull::Failed(_) => {
+                        hs_iter.done = true;
+                        task.ram.push_i32(-1);
+                    }
+                    crate::vm::ffi::http_stream::Pull::Opening
+                    | crate::vm::ffi::http_stream::Pull::Pending => {
+                        task.waiting_http_stream_id = Some(hs_iter.stream_handle);
+                        task.status = crate::vm::task::TaskStatus::Waiting("sse".into());
+                        // 参数回推（同 fallback 注释；cooperative 驱动自推）。
+                        if !cooperative {
+                            task.ram.push_i32(iterator_id as i32);
+                        }
+                        return Ok(());
+                    }
+                }
+                return Ok(());
+            }
+            crate::vm::engine::Iterator::AsyncHttpStream(async_iter) => {
+                // Plan 348: Non-blocking SSE event pull. Instead of busy-wait
+                // with sleep(2ms) (which freezes the VM), we do a single
+                // try_recv. If no event is available, yield the task (set
+                // Waiting("sse") + back up IP) so run_task_loop can schedule
+                // other tasks and re-check the channel on the next round.
+                if async_iter.done {
+                    return Ok(());
+                }
+
+                // Single non-blocking poll of the channel.
+                // Plan 349: HTTP and IO streams share the unified ASYNC_STREAMS
+                // table; stream_id is globally unique, so one lookup suffices.
+                let event = crate::vm::ffi::stdlib::ASYNC_STREAMS
+                    .lock()
+                    .ok()
+                    .and_then(|map| {
+                        map.get(&async_iter.stream_id).and_then(|handle| {
+                            handle.rx.lock().ok().and_then(|mut rx| rx.try_recv().ok())
+                        })
+                    });
+
+                // Check if the producing future is done (for end-of-stream detection).
+                let future_done = crate::vm::ffi::stdlib::ASYNC_STREAMS
+                    .lock()
+                    .ok()
+                    .and_then(|map| {
+                        map.get(&async_iter.stream_id)
+                            .map(|handle| handle.done.load(std::sync::atomic::Ordering::SeqCst))
+                    })
+                    .unwrap_or(true);
+
+                match event {
+                    Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Data(s)) => {
+                        let idx = vm.add_string(s.into_bytes());
+                        vm.rc_push_str_idx(task, idx as usize);
+                    }
+                    Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Done)
+                    | Some(crate::vm::ffi::stdlib::AsyncStreamEvent::Error(_)) => {
+                        async_iter.done = true;
+                        task.ram.push_i32(-1);
+                    }
+                    None => {
+                        // No event available right now.
+                        if future_done {
+                            // Future finished and channel drained — end of stream.
+                            async_iter.done = true;
+                            task.ram.push_i32(-1);
+                        } else {
+                            // Still waiting for data — yield without blocking.
+                            // run_task_loop will re-check on the next scheduling round
+                            // (≤10ms), and other tasks (UI rendering etc.) get to run.
+                            task.waiting_sse_stream_id = Some(async_iter.stream_id);
+                            task.status = crate::vm::task::TaskStatus::Waiting("sse".into());
+                            // 参数回推（与 PLAN-707 fallback/HttpStream 臂同款）：
+                            // CALL_NAT rewind 重试时 shim 重新 pop——不回推则
+                            // 重试弹到垃圾 id（707 实测嵌套误入）。cooperative
+                            // 驱动自行重推，回推破坏其 sp==stack_before 契约。
+                            if !cooperative {
+                                // 回推**迭代器 id**（被 pop 的栈参）——流 id 与
+                                // 迭代器 id 是不同键，回推错值令重试弹到无关
+                                // 句柄（707 实测 plan341 回归根因）。
+                                task.ram.push_i32(iterator_id as i32);
+                            }
+                            return Ok(());
+                        }
+                    }
+                }
+                // Clear the waiting flag if we got data or finished.
+                task.waiting_sse_stream_id = None;
+                return Ok(());
+            }
+        }
+    } else {
+        // Fallback: if iterator_id is actually a heap list object, auto-create iterator
+        // PLAN-707 D-5：流句柄惰性消费——for-in 的迭代器通道把「内联
+        // stream-opening 调用」或「持流变量」的值（= 流 id）直接传给本
+        // shim；命中存活流即就地 pull（不进 iterators 表，零 id 碰撞；
+        // 状态全在流资源表 cell 内）。覆盖内联调用、赋变量再 for 两形态。
+        if crate::vm::ffi::http_stream::stream_is_live(iterator_id as u64) {
+            match crate::vm::ffi::http_stream::stream_pull(iterator_id as u64) {
+                crate::vm::ffi::http_stream::Pull::Data(chunk) => {
+                    // 就绪出口必须清等待凭据——否则残留标志令引擎在后续
+                    // 任意 CALL_NAT 上误 rewind（热循环根因，707 实测）。
+                    task.waiting_http_stream_id = None;
+                    let idx = vm.add_string(chunk.into_bytes());
+                    vm.rc_push_str_idx(task, idx as usize);
+                    return Ok(());
+                }
+                crate::vm::ffi::http_stream::Pull::Eof
+                | crate::vm::ffi::http_stream::Pull::Failed(_) => {
+                    task.waiting_http_stream_id = None;
+                    task.ram.push_i32(-1);
+                    return Ok(());
+                }
+                crate::vm::ffi::http_stream::Pull::Opening
+                | crate::vm::ffi::http_stream::Pull::Pending => {
+                    task.waiting_http_stream_id = Some(iterator_id as u64);
+                    task.status = crate::vm::task::TaskStatus::Waiting("sse".into());
+                    // 参数回推：CALL_NAT rewind 重试时 shim 会重新 pop
+                    //（Plan 348/419 重试协议的参数重建臂；cooperative 驱动
+                    // 自行重推 id，回推会破坏其 sp==stack_before 契约）。
+                    if !cooperative {
+                        task.ram.push_i32(iterator_id as i32);
+                    }
+                    return Ok(());
+                }
+            }
+        }
+        if let Some(obj) = vm.get_heap_object(iterator_id as u64) {
+            let guard = obj.read().unwrap();
+            if guard.type_tag() == crate::vm::heap_object::TypeTag::ListInt {
+                if let Some(_list_data) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                    // Create an iterator for this list on the fly
+                    let list_iter = crate::vm::engine::ListIterator {
+                        list_id: iterator_id as u64,
+                        current_index: 0,
+                    };
+                    // Use iterator_id (the list's heap ID) as key so subsequent
+                    // iterator_next calls find it with the same ID the loop passes
+                    vm.iterators.insert(iterator_id, Iterator::List(list_iter));
+                    drop(guard);
+                    if let Some(mut iter_mut) = vm.iterators.get_mut(&iterator_id) {
+                        if let Iterator::List(ref mut li) = *iter_mut {
+                            if let Some(obj2) = vm.get_heap_object(li.list_id) {
+                                let list = obj2.read().unwrap();
+                                if let Some(list_data) =
+                                    list.as_any().downcast_ref::<ListData<i32>>()
+                                {
+                                    if li.current_index < list_data.len() as u32 {
+                                        let elem = list_data
+                                            .get(li.current_index as usize)
+                                            .copied()
+                                            .unwrap_or(0);
+                                        li.current_index += 1;
+                                        task.ram.push_i32(elem);
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        -1
+    };
+
+    // Plan 419: 元素仍在源容器 —— 裸堆 id 结果入栈 +1。
+    if (result as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+        vm.rc_retain_id(result as u64);
+    }
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Create a map adapter iterator.
+/// Stack: func_addr, iterator_id -> new_iterator_id
+/// Returns: new iterator_id (u32 as i32)
+///
+/// NOTE: For MVP, this creates the MapIterator but the actual function
+/// calling during iteration is not yet implemented. The map iterator
+/// will currently return an error when next() is called.
+pub fn shim_iterator_map(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::{Iterator, MapIterator};
+    use std::sync::atomic::Ordering;
+
+    // Stack: func_addr, iterator_id
+    // Pop in reverse order (stack is LIFO)
+    let func_addr = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_func_addr = crate::vm::native::StakeGuard::new(vm, func_addr as i64 as u64);
+    // PLAN-776 R7-02：凭据感知源（TAG_OBJECT Sse 解包；裸 id 原语义）。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
+
+    let _stake_source_iterator_id =
+        crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
+
+    // Verify source iterator exists
+    if !vm.iterators.contains_key(&source_iterator_id) {
+        task.ram.push_i32(-1); // Return -1 on error
+        return Ok(());
+    }
+
+    // Allocate new iterator ID for the map adapter
+    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+
+    // Create map iterator
+    let iterator = Iterator::Map(MapIterator {
+        source_iterator_id,
+        func_addr,
+    });
+
+    // Store iterator
+    vm.iterators.insert(new_iterator_id, iterator);
+
+    // Return new iterator_id（PLAN-776 R7-02：源为凭据时派生 id 同样包装）。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
+    Ok(())
+}
+
+/// Create a filter adapter iterator.
+/// Stack: func_addr, iterator_id -> new_iterator_id
+/// Returns: new iterator_id (u32 as i32)
+///
+/// NOTE: For MVP, this creates the FilterIterator but the actual predicate
+/// calling during iteration is not yet implemented. The filter iterator
+/// will currently return all elements without filtering.
+pub fn shim_iterator_filter(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::{FilterIterator, Iterator};
+    use std::sync::atomic::Ordering;
+
+    // Stack: func_addr, iterator_id
+    // Pop in reverse order (stack is LIFO)
+    let func_addr = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_func_addr = crate::vm::native::StakeGuard::new(vm, func_addr as i64 as u64);
+    // PLAN-776 R7-02：凭据感知源（TAG_OBJECT Sse 解包；裸 id 原语义）。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
+
+    let _stake_source_iterator_id =
+        crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
+
+    // Verify source iterator exists
+    if !vm.iterators.contains_key(&source_iterator_id) {
+        task.ram.push_i32(-1); // Return -1 on error
+        return Ok(());
+    }
+
+    // Allocate new iterator ID for the filter adapter
+    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+
+    // Create filter iterator
+    let iterator = Iterator::Filter(FilterIterator {
+        source_iterator_id,
+        func_addr,
+    });
+
+    // Store iterator
+    vm.iterators.insert(new_iterator_id, iterator);
+
+    // Return new iterator_id（PLAN-776 R7-02：源为凭据时派生 id 同样包装）。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
+    Ok(())
+}
+
+/// Create an enumerate adapter iterator.
+/// Plan 200 Task 3.2: Wraps a source iterator, tracking index.
+/// Stack: iterator_id -> new_iterator_id
+pub fn shim_iterator_enumerate(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::{EnumerateIterator, Iterator};
+    use std::sync::atomic::Ordering;
+
+    // PLAN-776 R7-02：凭据感知源。
+    let (source_iterator_id, from_credential) = pop_iterator_receiver(task, vm);
+
+    let _stake_source_iterator_id =
+        crate::vm::native::StakeGuard::new(vm, source_iterator_id as i64 as u64);
+
+    if !vm.iterators.contains_key(&source_iterator_id) {
+        task.ram.push_i32(-1);
+        return Ok(());
+    }
+
+    let new_iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+
+    let iterator = Iterator::Enumerate(EnumerateIterator {
+        source_iterator_id,
+        current_index: 0,
+    });
+
+    vm.iterators.insert(new_iterator_id, iterator);
+    // PLAN-776 R7-02：派生 iterator 身份——源为凭据时同样包装。
+    push_derived_iterator(task, vm, new_iterator_id, from_credential)?;
+    Ok(())
+}
+
+// ============================================================================
+// Terminal Operations
+// ============================================================================
+
+/// Collect all elements from an iterator into a new list.
+/// Stack: iterator_id -> list_id
+/// Returns: new list_id (lower 32 bits of u64 as i32)
+// Plan 077 Phase 6: Updated to use unified registry
+pub fn shim_iterator_collect(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::Iterator;
+    use crate::vm::types::ListData;
+
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
+
+    let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
+
+    // Collect all elements from the iterator
+    let mut elements = Vec::new();
+
+    // Get the iterator and consume all elements
+    if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
+        match &mut *iter {
+            Iterator::List(list_iter) => {
+                // Plan 077 Phase 6: Get list from unified registry
+                if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                    let list_ref = obj.read().unwrap();
+
+                    if list_ref.type_tag() == crate::vm::heap_object::TypeTag::ListInt {
+                        if let Some(list_data) = list_ref.as_any().downcast_ref::<ListData<i32>>() {
+                            // Collect all remaining elements
+                            while list_iter.current_index < list_data.len() as u32 {
+                                if let Some(&elem) = list_data.get(list_iter.current_index as usize)
+                                {
+                                    elements.push(elem);
+                                }
+                                list_iter.current_index += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            Iterator::Map(_)
+            | Iterator::Filter(_)
+            | Iterator::Enumerate(_)
+            | Iterator::Generator(_)
+            | Iterator::HttpStream(_)
+            | Iterator::AsyncHttpStream(_) => {
+                // For adapters, we'd need to recursively call next()
+                // For MVP, only support direct list iteration
+                return Err(VMError::RuntimeError(
+                    "Collect from adapters not yet implemented".to_string(),
+                ));
+            }
+        }
+    }
+
+    // Plan 077 Phase 6: Create a new list in unified registry
+    let mut list_data: ListData<i32> = ListData::new();
+    for elem in elements {
+        list_data.push(elem);
+    }
+    let list_id = vm.insert_heap_object(list_data);
+
+    // Return list_id as i32 (lower 32 bits only for MVP)
+    vm.rc_push_id(task, list_id as u64); // Plan 419
+
+    Ok(())
+}
+
+/// Reduce all elements from an iterator using a function.
+/// Stack: initial, func_addr, iterator_id -> result
+/// Returns: final reduced value
+///
+/// NOTE: For MVP, this just sums all elements without calling the function.
+pub fn shim_iterator_reduce(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::Iterator;
+    use crate::vm::types::ListData;
+
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
+
+    let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
+    let _func_addr = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake__func_addr = crate::vm::native::StakeGuard::new(vm, _func_addr as i64 as u64); // Not used in MVP
+    let initial = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_initial = crate::vm::native::StakeGuard::new(vm, initial as i64 as u64);
+
+    let mut result = initial;
+
+    // Plan 077 Phase 6: Reduce all elements from the iterator
+    if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
+        match &mut *iter {
+            Iterator::List(list_iter) => {
+                // Plan 077 Phase 6: Get list from unified registry
+                if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                    let list_ref = obj.read().unwrap();
+
+                    if list_ref.type_tag() == crate::vm::heap_object::TypeTag::ListInt {
+                        if let Some(list_data) = list_ref.as_any().downcast_ref::<ListData<i32>>() {
+                            // Sum all remaining elements
+                            while list_iter.current_index < list_data.len() as u32 {
+                                if let Some(&elem) = list_data.get(list_iter.current_index as usize)
+                                {
+                                    result += elem;
+                                }
+                                list_iter.current_index += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            Iterator::Map(_)
+            | Iterator::Filter(_)
+            | Iterator::Enumerate(_)
+            | Iterator::Generator(_)
+            | Iterator::HttpStream(_)
+            | Iterator::AsyncHttpStream(_) => {
+                return Err(VMError::RuntimeError(
+                    "Reduce from adapters not yet implemented".to_string(),
+                ));
+            }
+        }
+    }
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Find the first element from an iterator that matches a predicate.
+/// Stack: func_addr, iterator_id -> element (or -1 if not found)
+/// Returns: first matching element, or -1 if none match
+///
+/// NOTE: For MVP, this just returns the first element without calling the predicate.
+// Plan 077 Phase 6: Updated to use unified registry
+pub fn shim_iterator_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::Iterator;
+    use crate::vm::types::ListData;
+
+    // PLAN-776 R7-02：凭据感知源（terminal 消费同族）。
+    let (iterator_id, _from_credential) = pop_iterator_receiver(task, vm);
+
+    let _stake_iterator_id = crate::vm::native::StakeGuard::new(vm, iterator_id as i64 as u64);
+    let _func_addr = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake__func_addr = crate::vm::native::StakeGuard::new(vm, _func_addr as i64 as u64); // Not used in MVP
+
+    let mut result = -1; // Default: not found
+
+    // Plan 077 Phase 6: Find first element from the iterator
+    if let Some(mut iter) = vm.iterators.get_mut(&iterator_id) {
+        match &mut *iter {
+            Iterator::List(list_iter) => {
+                // Plan 077 Phase 6: Get list from unified registry
+                if let Some(obj) = vm.get_heap_object(list_iter.list_id) {
+                    let list_ref = obj.read().unwrap();
+
+                    if list_ref.type_tag() == crate::vm::heap_object::TypeTag::ListInt {
+                        if let Some(list_data) = list_ref.as_any().downcast_ref::<ListData<i32>>() {
+                            // Return first element
+                            if list_iter.current_index < list_data.len() as u32 {
+                                if let Some(&elem) = list_data.get(list_iter.current_index as usize)
+                                {
+                                    result = elem;
+                                }
+                                list_iter.current_index += 1;
+                            }
+                        }
+                    }
+                }
+            }
+            Iterator::Map(_)
+            | Iterator::Filter(_)
+            | Iterator::Enumerate(_)
+            | Iterator::Generator(_)
+            | Iterator::HttpStream(_)
+            | Iterator::AsyncHttpStream(_) => {
+                return Err(VMError::RuntimeError(
+                    "Find from adapters not yet implemented".to_string(),
+                ));
+            }
+        }
+    }
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+// ============================================================================
+// HashMap Shims (Plan 086)
+// ============================================================================
+
+/// Create a new HashMap
+/// Stack: -> hashmap_id
+pub fn shim_hashmap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map = SpecializedHashMap::new("value"); // Use StringValue variant for generic storage
+    let map_id = vm.insert_heap_object(map);
+
+    vm.rc_push_id(task, map_id as u64); // Plan 419
+    Ok(())
+}
+
+/// Insert a string key with string value
+/// Stack: hashmap_id, key_str_id, value_str_id -> result (0)
+/// Insert a string key with any value type (str, int, bool, ref)
+/// Stack: hashmap_id, key_str_id, value -> result (0)
+///
+/// The value is auto-detected: negative (but not bool sentinels) = string tag,
+/// positive/zero/bool sentinels = int.
+pub fn shim_hashmap_insert_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let value_nv = task.ram.pop_nv();
+        let key_idx = task.ram.pop_str_idx();
+        let map_id = task.ram.pop_i32() as u64;
+        let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id);
+        if let Some(obj) = vm.get_heap_object(map_id) {
+            let strings = vm.strings.read().unwrap();
+            let key_bytes = strings
+                .get(key_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+            let value = if auto_val::is_string(value_nv) {
+                let str_idx = auto_val::decode_string(value_nv) as usize;
+                if let Some(bytes) = strings.get(str_idx) {
+                    Value::Str(auto_val::AutoStr::from(
+                        String::from_utf8_lossy(bytes).as_ref(),
+                    ))
+                } else {
+                    Value::Int(0)
+                }
+            } else if auto_val::is_bool(value_nv) {
+                Value::Bool(auto_val::decode_bool(value_nv))
+            } else if auto_val::is_object(value_nv) {
+                Value::VmRef(auto_val::VmRef {
+                    id: auto_val::decode_object(value_nv) as usize,
+                })
+            } else if auto_val::is_list(value_nv) {
+                Value::VmRef(auto_val::VmRef {
+                    id: auto_val::decode_list(value_nv) as usize,
+                })
+            } else {
+                Value::Int(auto_val::decode_i32(value_nv))
+            };
+            drop(strings);
+            // PLAN-047 T-03（普查发现闭合）：本 shim 原无任何状态面 seq
+            // bump（PLAN-062 遗漏，memo 全局快路径陈旧命中窗口）——补 B 类
+            // 定点归因（按键名 A-able，v1 落 exact+wildcard）。
+            vm.bump_path(map_id, Some(&key_str));
+            let mut guard = obj.write().unwrap();
+            if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+                // Plan 419: 旧值 VmRef 释放;新值 VmRef retain(死区结算配平)。
+                if let Some(old) = map.get(&key_str) {
+                    if let Value::VmRef(r) = old {
+                        vm.rc_release_id(r.id as u64);
+                    }
+                }
+                if let Value::VmRef(r) = &value {
+                    vm.rc_retain_id(r.id as u64);
+                }
+                map.insert(key_str, value)
+                    .map_err(|e| VMError::RuntimeError(e))?;
+            }
+        }
+        task.ram.push_i32(0);
+        return Ok(());
+    }
+}
+
+/// Insert a string key with i32 value
+/// Stack: hashmap_id, key_str_id, value -> result (0)
+pub fn shim_hashmap_insert_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let value_nv = task.ram.pop_nv();
+        let key_nv = task.ram.pop_nv();
+        let map_nv = task.ram.pop_nv();
+        // Key should be a string pool reference. The tag can be
+        // TAG_STRING or (due to i32 round-trips in some code paths) TAG_I32.
+        // Both use the same payload encoding (negative i32 = string pool index),
+        // so decode_string works for both.
+        if !auto_val::is_string(key_nv) && !auto_val::is_i32(key_nv) {
+            return Err(VMError::RuntimeError(format!(
+                "Invalid key for insert_int: key_nv={:#018x} tag={}",
+                key_nv,
+                auto_val::tag_of(key_nv)
+            )));
+        }
+        let key_str_idx = auto_val::decode_string(key_nv) as usize;
+        // Decode value: support i32, object ref, string ref, etc.
+        let value = if auto_val::is_i32(value_nv) {
+            Value::Int(auto_val::decode_i32(value_nv))
+        } else if auto_val::is_object(value_nv) {
+            // Store object reference as VmRef so get_str can restore the tag
+            Value::VmRef(auto_val::VmRef {
+                id: auto_val::decode_object(value_nv) as usize,
+            })
+        } else if auto_val::is_string(value_nv) {
+            // Store the string pool index as an int for later retrieval
+            Value::Int(auto_val::decode_string(value_nv) as i32)
+        } else if auto_val::is_list(value_nv) {
+            Value::VmRef(auto_val::VmRef {
+                id: auto_val::decode_list(value_nv) as usize,
+            })
+        } else {
+            Value::Int(0)
+        };
+        let map_id = if auto_val::is_i32(map_nv) {
+            auto_val::decode_i32(map_nv) as u64
+        } else if auto_val::is_object(map_nv) {
+            auto_val::decode_object(map_nv) as u64
+        } else {
+            0
+        };
+        let _stake_map_id = crate::vm::native::StakeGuard::nv(vm, map_nv);
+        if let Some(obj) = vm.get_heap_object(map_id) {
+            let key_bytes = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(key_str_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+            drop(key_bytes);
+            let mut guard = obj.write().unwrap();
+            if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+                // Plan 419: 旧值 VmRef 释放;新值 VmRef retain。
+                if let Some(old) = map.get(&key_str) {
+                    if let Value::VmRef(r) = old {
+                        vm.rc_release_id(r.id as u64);
+                    }
+                }
+                if let Value::VmRef(r) = &value {
+                    vm.rc_retain_id(r.id as u64);
+                }
+                map.insert(key_str, value)
+                    .map_err(|e| VMError::RuntimeError(e))?;
+            }
+        }
+        task.ram.push_i32(0);
+        return Ok(());
+    }
+}
+
+/// Get value by string key
+/// Stack: hashmap_id, key_str_id -> value (0 if not found)
+pub fn shim_hashmap_get_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_str_idx = task.ram.pop_str_idx();
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            let key_bytes = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(key_str_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            // Get the value from map
+            if let Some(value) = map.get(&key_str) {
+                match value {
+                    auto_val::Value::Int(i) => {
+                        task.ram.push_i32(i);
+                        return Ok(());
+                    }
+                    auto_val::Value::Uint(u) => {
+                        task.ram.push_i32(u as i32);
+                        return Ok(());
+                    }
+                    auto_val::Value::Bool(b) => {
+                        task.ram.push_i32(if b { 1 } else { 0 });
+                        return Ok(());
+                    }
+                    auto_val::Value::Str(s) => {
+                        let str_idx = vm.add_string(s.as_bytes().to_vec());
+                        vm.rc_push_str_idx(task, str_idx as usize);
+                        return Ok(());
+                    }
+                    auto_val::Value::VmRef(vm_ref) => {
+                        {
+                            vm.rc_push(task, auto_val::encode_object(vm_ref.id as u32));
+                        }
+                        return Ok(());
+                    }
+                    _ => {
+                        // Unsupported value type — push nil
+                    }
+                }
+            }
+        }
+    }
+
+    // Not found — push empty string (bash associative-array semantics:
+    // ${arr[key]} returns empty when key doesn't exist, not null/error).
+    // Use contains_key to distinguish "missing" from "empty value".
+    {
+        let str_idx = vm.add_string(Vec::new()); // empty string
+        vm.rc_push_str_idx(task, str_idx as usize);
+    }
+    Ok(())
+}
+
+/// Get value by string key (returns i32)
+/// Stack: hashmap_id, key_str_id -> value (or nil if not found)
+pub fn shim_hashmap_get_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_str_idx = task.ram.pop_str_idx();
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            let key_bytes = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(key_str_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+            drop(key_bytes);
+
+            if let Some(value) = map.get(&key_str) {
+                if let auto_val::Value::Int(i) = value {
+                    task.ram.push_i32(i);
+                    return Ok(());
+                }
+            }
+        }
+    }
+
+    // Not found — push nil marker
+    {
+        task.ram.push_nv(auto_val::encode_null());
+    }
+    Ok(())
+}
+
+/// Check if key exists
+/// Stack: hashmap_id, key_str_id -> result (1 if exists, 0 otherwise)
+pub fn shim_hashmap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_str_idx = task.ram.pop_str_idx();
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            let key_bytes = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(key_str_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            if map.contains_key(&key_str) {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Remove a key-value pair
+/// Stack: hashmap_id, key_str_id -> result (0)
+pub fn shim_hashmap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_str_idx = task.ram.pop_str_idx();
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+            let key_bytes = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(key_str_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            if let Some(value) = map.remove(&key_str) {
+                match value {
+                    auto_val::Value::Int(i) => {
+                        task.ram.push_i32(i);
+                        return Ok(());
+                    }
+                    auto_val::Value::Str(s) => {
+                        let str_idx = vm.add_string(s.as_bytes().to_vec());
+                        vm.rc_push_str_idx(task, str_idx as usize);
+                        return Ok(());
+                    }
+                    // Plan 419: VmRef 值离开容器且不回栈 —— stake 死亡。
+                    auto_val::Value::VmRef(r) => {
+                        vm.rc_release_id(r.id as u64);
+                        task.ram.push_i32(0);
+                        return Ok(());
+                    }
+                    _ => {
+                        task.ram.push_i32(0);
+                        return Ok(());
+                    }
+                }
+            }
+        }
+    }
+
+    // Not found — push nil marker
+    {
+        task.ram.push_nv(auto_val::encode_null());
+    }
+    Ok(())
+}
+
+/// Get the number of entries
+/// Stack: hashmap_id -> size
+pub fn shim_hashmap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let size = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            map.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(size);
+    Ok(())
+}
+
+/// Clear all entries
+/// Stack: hashmap_id -> result (0)
+pub fn shim_hashmap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard.as_any_mut().downcast_mut::<SpecializedHashMap>() {
+            // Plan 419: 被清空条目的 VmRef stake 逐个死亡。
+            for id in map.value_refs() {
+                vm.rc_release_id(id);
+            }
+            map.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the HashMap (no-op for now, heap objects are managed by Arc)
+/// Stack: hashmap_id -> result (0)
+/// Plan 419: 语义更新 —— rc 释放(RC 归零才真回收,"手动提前释放"直觉)。
+pub fn shim_hashmap_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+    vm.rc_release_id(map_id);
+    Ok(())
+}
+
+/// Check if HashMap is empty
+/// Stack: hashmap_id -> bool (1 if empty, 0 if not)
+pub fn shim_hashmap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let is_empty = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            map.is_empty()
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
+    task.ram.push_nv(auto_val::encode_bool(is_empty));
+    Ok(())
+}
+
+/// Get value from HashMap with default fallback
+/// Stack: hashmap_id, key_str_id, default_value -> value
+pub fn shim_hashmap_get_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let default_val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_default_val = crate::vm::native::StakeGuard::new(vm, default_val as i64 as u64);
+    let key_str_idx = task.ram.pop_str_idx();
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            let key_bytes = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(key_str_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            if let Some(value) = map.get(&key_str) {
+                match value {
+                    auto_val::Value::Int(i) => {
+                        task.ram.push_i32(i);
+                        return Ok(());
+                    }
+                    auto_val::Value::Uint(u) => {
+                        task.ram.push_i32(u as i32);
+                        return Ok(());
+                    }
+                    auto_val::Value::Bool(b) => {
+                        task.ram.push_i32(if b { 1 } else { 0 });
+                        return Ok(());
+                    }
+                    auto_val::Value::Str(s) => {
+                        let str_idx = vm.add_string(s.as_bytes().to_vec());
+                        vm.rc_push_str_idx(task, str_idx as usize);
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    task.ram.push_i32(default_val);
+    Ok(())
+}
+
+/// Get all keys from a HashMap as a List of strings
+/// Stack: hashmap_id -> list_id (List of string keys)
+pub fn shim_hashmap_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard.as_any().downcast_ref::<SpecializedHashMap>() {
+            // Collect keys from the specialized map
+            let keys: Vec<String> = match map {
+                SpecializedHashMap::StringInt(m) => m.keys().cloned().collect(),
+                SpecializedHashMap::StringBool(m) => m.keys().cloned().collect(),
+                SpecializedHashMap::StringString(m) => m.keys().cloned().collect(),
+                SpecializedHashMap::StringDouble(m) => m.keys().cloned().collect(),
+                SpecializedHashMap::StringValue(m) => m.keys().cloned().collect(),
+            };
+            drop(guard);
+
+            // Create a List<Value> with string entries
+            use crate::vm::types::ListData;
+            let mut list: ListData<auto_val::Value> = ListData::new();
+            for key in keys {
+                list.push(auto_val::Value::Str(auto_val::AutoStr::from(key.as_str())));
+            }
+            let list_id = vm.insert_heap_object(list);
+            vm.rc_push_id(task, list_id as u64); // Plan 419
+            return Ok(());
+        }
+    }
+
+    // Empty list if map not found
+    use crate::vm::types::ListData;
+    let list: ListData<auto_val::Value> = ListData::new();
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64); // Plan 419
+    Ok(())
+}
+
+// ============================================================================
+// Plan 046 (auto-musk T2): dynamic-receiver (`obj`) method family.
+// musk front handlers historically could not link `.find(pred)` /
+// `Object.values(x)` / corrected `Object.keys(x)` on dynamically-typed values,
+// forcing hand-scanned loops (auto-musk PLAN-045 VM-clean workarounds, see
+// PLAN-046 T4 inventory R1-R4). Runtime shapes for dynamic objects:
+//   - object literals -> heap ObjectData (Plan 390 §15 H3b)
+//   - typed instances -> GenericInstanceData
+// Both are collected here; unsupported shapes error LOUDLY instead of the
+// previous silent empty-value degradation observed in PLAN-046 T2 baseline.
+
+fn dyn_object_entries(vm: &AutoVM, obj_id: u64) -> Result<Vec<(String, auto_val::Value)>, VMError> {
+    let obj = vm.get_heap_object(obj_id).ok_or_else(|| {
+        VMError::RuntimeError(format!(
+            "obj method family: invalid heap object id {}",
+            obj_id
+        ))
+    })?;
+    let guard = obj.read().unwrap();
+    if let Some(od) = guard
+        .as_any()
+        .downcast_ref::<crate::vm::types::ObjectData>()
+    {
+        let mut entries: Vec<(String, auto_val::Value)> = od
+            .fields
+            .iter()
+            .filter_map(|(k, v)| k.name().map(|n| (n.to_string(), v.clone())))
+            .collect();
+        // Deterministic ordering (HashMap storage is unordered) so find/sum
+        // consumers behave reproducibly run-to-run.
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        return Ok(entries);
+    }
+    if let Some(inst) = guard
+        .as_any()
+        .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+    {
+        return Ok(inst
+            .field_names
+            .iter()
+            .cloned()
+            .zip(inst.fields.iter().cloned())
+            .collect());
+    }
+    Err(VMError::RuntimeError(format!(
+        "obj method family: heap object {} is not a dynamic object",
+        obj_id
+    )))
+}
+
+fn push_value_list(task: &mut AutoTask, vm: &AutoVM, items: Vec<auto_val::Value>) {
+    let mut list: crate::vm::types::ListData<auto_val::Value> = crate::vm::types::ListData::new();
+    for item in items {
+        list.push(item);
+    }
+    let list_id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, list_id as u64); // Plan 419
+}
+
+/// Object.keys(dynObj) -> List[str]
+/// Stack: obj_id -> list_id
+pub fn shim_obj_keys(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let obj_id = crate::vm::native::pop_arg_i32(task) as u64;
+    let _stake = crate::vm::native::StakeGuard::new(vm, obj_id as i64 as u64);
+    let entries = dyn_object_entries(vm, obj_id)?;
+    push_value_list(
+        task,
+        vm,
+        entries
+            .into_iter()
+            .map(|(k, _)| auto_val::Value::Str(auto_val::AutoStr::from(k.as_str())))
+            .collect(),
+    );
+    Ok(())
+}
+
+/// Object.values(dynObj) -> List of field values
+/// Stack: obj_id -> list_id
+pub fn shim_obj_values(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let obj_id = crate::vm::native::pop_arg_i32(task) as u64;
+    let _stake = crate::vm::native::StakeGuard::new(vm, obj_id as i64 as u64);
+    let entries = dyn_object_entries(vm, obj_id)?;
+    push_value_list(task, vm, entries.into_iter().map(|(_, v)| v).collect());
+    Ok(())
+}
+
+/// dynObj.find(closure) -> element or None — delegates to the generic list-find
+/// shim; receivers are runtime lists, identical element machinery applies.
+/// dynObj.find(closure) -> element or None — delegates to the generic list-find
+/// shim; receivers are runtime lists, identical element machinery applies.
+///
+/// PLAN-046 T2 现状注:registry/routing 层已通(命名、注册、链接三关全过,
+/// V2 场景 shim 已被调用);残余缺口在下游运行时语义——动态接收者场景的
+/// Option 返回表示、谓词闭包与 GET_FIELD 的协作——使端到端结果仍不正确。
+/// 完整清偿规格见 auto-musk PLAN-046 T2 注 KNOWN-DEBT 046-A;建议并入
+/// auto-lang 后续批次(如 plan454 队列)以本分支为基础续作。
+pub fn shim_obj_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 454 E(缺口①收敛):不再委托通用 list-find——其 miss 约定是
+    // push_i32(-1) 哨兵,而语言层 None 是 TAG_NULL(PUSH_NIL);动态接收者
+    // 场景下 hit == None 永假、hit.u 退化为 0(g08 前身实测)。此处改为
+    // 语言契约:命中推元素(带引用语义),穷尽推 encode_null。
+    let closure_id = crate::vm::native::pop_arg_i32(task) as u32;
+    let _stake_closure = crate::vm::native::StakeGuard::new(vm, closure_id as i64 as u64);
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+    let _stake_list = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+
+    // Plan 454 E(§M 缺口②):只走 Value 元素路径——动态接收者场景的元素
+    // 是堆对象引用(GenericInstance/ObjectData),旧 i32 快路径把存储槽的
+    // tag 位误当元素值解码成 0,谓词闭包接到的接收者恒为 int 0(实测
+    // pred=i32::MIN=false)。obj 字面量数组不存在纯 i32 元素的合法形态。
+    let elements = get_list_elements_as_value(vm, list_id)?;
+    for elem in &elements {
+        push_value(task, vm, elem);
+        vm.call_closure(task, closure_id, 1)?;
+        let found = crate::vm::native::pop_arg_i32(task);
+        if vm_is_truthy(found) {
+            push_value(task, vm, elem);
+            return Ok(());
+        }
+    }
+    task.ram.push_nv(auto_val::encode_null());
+    Ok(())
+}
+// ============================================================================
+// HashSet Shims (Plan 118 Phase 3)
+// ============================================================================
+
+/// Create a new HashSet
+/// Stack: -> hashset_id
+pub fn shim_hashset_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let set = SpecializedHashSet::new();
+    let set_id = vm.insert_heap_object(set);
+
+    vm.rc_push_id(task, set_id as u64); // Plan 419
+    Ok(())
+}
+
+/// Insert a string element into the set
+/// Stack: hashset_id, elem_str_id -> result (0)
+pub fn shim_hashset_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    };
+
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(set_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(set) = guard.as_any_mut().downcast_mut::<SpecializedHashSet>() {
+            set.data.insert(key, ());
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Check if element exists in the set
+/// Stack: hashset_id, elem_str_id -> result (1 if exists, 0 otherwise)
+pub fn shim_hashset_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key = {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    };
+
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(set_id) {
+        let guard = obj.read().unwrap();
+        if let Some(set) = guard.as_any().downcast_ref::<SpecializedHashSet>() {
+            if set.data.contains_key(&key) {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_nv(auto_val::encode_bool(result != 0));
+    Ok(())
+}
+
+/// Remove an element from the set
+/// Stack: hashset_id, elem_str_id -> result (0)
+pub fn shim_hashset_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let elem_str_idx = task.ram.pop_str_idx();
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(set_id) {
+        let elem_bytes = vm
+            .strings
+            .read()
+            .unwrap()
+            .get(elem_str_idx)
+            .cloned()
+            .ok_or(VMError::RuntimeError("Invalid element string ID".into()))?;
+        let elem_str = String::from_utf8_lossy(&elem_bytes).to_string();
+        drop(elem_bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(set) = guard.as_any_mut().downcast_mut::<SpecializedHashSet>() {
+            set.data.remove(&elem_str);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the number of elements
+/// Stack: hashset_id -> size
+pub fn shim_hashset_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
+
+    let size = if let Some(obj) = vm.get_heap_object(set_id) {
+        let guard = obj.read().unwrap();
+        if let Some(set) = guard.as_any().downcast_ref::<SpecializedHashSet>() {
+            set.data.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(size);
+    Ok(())
+}
+
+/// Clear all elements
+/// Stack: hashset_id -> result (0)
+pub fn shim_hashset_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(set_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(set) = guard.as_any_mut().downcast_mut::<SpecializedHashSet>() {
+            set.data.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the HashSet (no-op for now, heap objects are managed by Arc)
+/// Stack: hashset_id -> result (0)
+pub fn shim_hashset_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let set_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_set_id = crate::vm::native::StakeGuard::new(vm, set_id as i64 as u64);
+    vm.rc_release_id(set_id);
+    Ok(())
+}
+
+// ============================================================================
+// StringBuilder Shims (Plan 118 Phase 3)
+// ============================================================================
+
+/// Create a new StringBuilder
+/// Stack: capacity -> sb_id
+pub fn shim_stringbuilder_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _capacity = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake__capacity = crate::vm::native::StakeGuard::new(vm, _capacity as i64 as u64);
+
+    let sb = crate::vm::collections::SpecializedStringBuilder::with_capacity(_capacity.max(16));
+    let sb_id = vm.insert_heap_object(sb);
+
+    vm.rc_push_id(task, sb_id as u64); // Plan 419
+    Ok(())
+}
+
+/// Append a string to the StringBuilder
+/// Stack: sb_id, str_id -> result (0)
+pub fn shim_stringbuilder_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx();
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let bytes = vm
+            .strings
+            .read()
+            .unwrap()
+            .get(str_idx)
+            .cloned()
+            .ok_or(VMError::RuntimeError("Invalid string ID".into()))?;
+        let s = String::from_utf8_lossy(&bytes).to_string();
+        drop(bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer.push_str(&s);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Append an integer to the StringBuilder
+/// Stack: sb_id, int_val -> result (0)
+pub fn shim_stringbuilder_append_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let int_val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_int_val = crate::vm::native::StakeGuard::new(vm, int_val as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer.push_str(&int_val.to_string());
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Append a character to the StringBuilder
+/// Stack: sb_id, char_val -> result (0)
+pub fn shim_stringbuilder_append_char(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let char_bits = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_char_bits = crate::vm::native::StakeGuard::new(vm, char_bits as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    // Decode character (char is stored as i32 representing a Unicode code point)
+    if let Some(ch) = char::from_u32(char_bits as u32) {
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(sb) = guard
+                .as_any_mut()
+                .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+            {
+                sb.buffer.push(ch);
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the length of the StringBuilder content
+/// Stack: sb_id -> length
+pub fn shim_stringbuilder_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    let len = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(len);
+    Ok(())
+}
+
+/// Clear the StringBuilder
+/// Stack: sb_id -> result (0)
+pub fn shim_stringbuilder_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the StringBuilder (no-op, managed by Arc)
+/// Stack: sb_id -> result (0)
+pub fn shim_stringbuilder_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+    vm.rc_release_id(sb_id);
+    Ok(())
+}
+
+/// Build the final string from StringBuilder
+/// Stack: sb_id -> str_id (tagged string index)
+pub fn shim_stringbuilder_build(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    let result_str = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer.clone()
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+
+    // Store the string in the string pool and return tagged index
+    let str_idx = vm.add_string(result_str.into_bytes());
+
+    // Return as tagged string index
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+// ============================================================================
+// VecDeque Shims (Plan 118 Phase 3)
+// ============================================================================
+
+/// Create a new VecDeque
+/// Stack: -> deque_id
+pub fn shim_vecdeque_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque = crate::vm::collections::SpecializedVecDeque::new();
+    let deque_id = vm.insert_heap_object(deque);
+
+    vm.rc_push_id(task, deque_id as u64); // Plan 419
+    Ok(())
+}
+
+/// Push an element to the back
+/// Stack: deque_id, elem -> result (0)
+pub fn shim_vecdeque_push_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let elem = task.ram.pop_i32();
+    let deque_id = task.ram.pop_i32() as u64;
+    let _stake_deque = crate::vm::native::StakeGuard::new(vm, deque_id);
+
+    if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            deque.data.push_back(elem);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Push an element to the front
+/// Stack: deque_id, elem -> result (0)
+pub fn shim_vecdeque_push_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let elem = task.ram.pop_i32();
+    let deque_id = task.ram.pop_i32() as u64;
+    let _stake_deque = crate::vm::native::StakeGuard::new(vm, deque_id);
+
+    if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            deque.data.push_front(elem);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Pop an element from the back
+/// Stack: deque_id -> elem (or 0 if empty)
+pub fn shim_vecdeque_pop_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            deque.data.pop_back().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Pop an element from the front
+/// Stack: deque_id -> elem (or 0 if empty)
+pub fn shim_vecdeque_pop_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            deque.data.pop_front().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get the front element
+/// Stack: deque_id -> elem (or 0 if empty)
+pub fn shim_vecdeque_front(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let guard = obj.read().unwrap();
+        if let Some(deque) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            *deque.data.front().unwrap_or(&0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get the back element
+/// Stack: deque_id -> elem (or 0 if empty)
+pub fn shim_vecdeque_back(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let guard = obj.read().unwrap();
+        if let Some(deque) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            *deque.data.back().unwrap_or(&0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get the size
+/// Stack: deque_id -> size
+pub fn shim_vecdeque_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+
+    let size = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let guard = obj.read().unwrap();
+        if let Some(deque) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            deque.data.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(size);
+    Ok(())
+}
+
+/// Check if empty
+/// Stack: deque_id -> is_empty (1 or 0)
+pub fn shim_vecdeque_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+
+    let is_empty = if let Some(obj) = vm.get_heap_object(deque_id) {
+        let guard = obj.read().unwrap();
+        if let Some(deque) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            deque.data.is_empty()
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
+    task.ram.push_nv(auto_val::encode_bool(is_empty));
+    Ok(())
+}
+
+/// Clear the deque
+/// Stack: deque_id -> result (0)
+pub fn shim_vecdeque_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(deque_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(deque) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedVecDeque>()
+        {
+            deque.data.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Drop the VecDeque (no-op, managed by Arc)
+/// Stack: deque_id -> result (0)
+pub fn shim_vecdeque_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let deque_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_deque_id = crate::vm::native::StakeGuard::new(vm, deque_id as i64 as u64);
+    vm.rc_release_id(deque_id);
+    Ok(())
+}
+
+// ============================================================================
+// BTreeMap Shims (Plan 118 Phase 3)
+// ============================================================================
+
+/// Create a new BTreeMap
+/// Stack: -> btreemap_id
+pub fn shim_btreemap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map = crate::vm::collections::SpecializedBTreeMap::new();
+    let map_id = vm.insert_heap_object(map);
+
+    vm.rc_push_id(task, map_id as u64); // Plan 419
+    Ok(())
+}
+
+/// Insert a key-value pair
+/// Stack: btreemap_id, key_str_id, value -> result (0)
+pub fn shim_btreemap_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let value = task.ram.pop_i32();
+    let key_idx = task.ram.pop_str_idx();
+    let map_id = task.ram.pop_i32() as u64;
+    let _stake_map = crate::vm::native::StakeGuard::new(vm, map_id);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let key_bytes = vm
+            .strings
+            .read()
+            .unwrap()
+            .get(key_idx)
+            .cloned()
+            .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+        drop(key_bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            map.data.insert(key_str, value);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get a value by key
+/// Stack: btreemap_id, key_str_id -> value (0 if not found)
+pub fn shim_btreemap_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_idx = task.ram.pop_str_idx();
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            let key_bytes = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(key_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            map.data.get(&key_str).copied().unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Check if key exists
+/// Stack: btreemap_id, key_str_id -> result (1 if exists, 0 otherwise)
+pub fn shim_btreemap_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_idx = task.ram.pop_str_idx();
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            let key_bytes = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(key_idx)
+                .cloned()
+                .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+            let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+
+            if map.data.contains_key(&key_str) {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Remove a key-value pair
+/// Stack: btreemap_id, key_str_id -> result (0)
+pub fn shim_btreemap_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_idx = task.ram.pop_str_idx();
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let key_bytes = vm
+            .strings
+            .read()
+            .unwrap()
+            .get(key_idx)
+            .cloned()
+            .ok_or(VMError::RuntimeError("Invalid key string ID".into()))?;
+        let key_str = String::from_utf8_lossy(&key_bytes).to_string();
+        drop(key_bytes);
+
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            map.data.remove(&key_str);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the size
+/// Stack: btreemap_id -> size
+pub fn shim_btreemap_size(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let size = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            map.data.len() as i32
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(size);
+    Ok(())
+}
+
+/// Check if empty
+/// Stack: btreemap_id -> is_empty (1 or 0)
+pub fn shim_btreemap_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let is_empty = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            map.data.is_empty()
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
+    task.ram.push_nv(auto_val::encode_bool(is_empty));
+    Ok(())
+}
+
+/// Clear the map
+/// Stack: btreemap_id -> result (0)
+pub fn shim_btreemap_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(map_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(map) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            map.data.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Get the first (smallest) key
+/// Stack: btreemap_id -> key_str_id (or -1 if empty)
+pub fn shim_btreemap_first_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            if let Some(first_key) = map.data.keys().next() {
+                // Add string to pool and return tagged index(dedup)
+                let str_idx = vm.add_string(first_key.as_bytes().to_vec());
+                // Return as tagged string index
+                -((str_idx as i32) + 1)
+            } else {
+                -1 // Empty map
+            }
+        } else {
+            -1
+        }
+    } else {
+        -1
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Get the last (largest) key
+/// Stack: btreemap_id -> key_str_id (or -1 if empty)
+pub fn shim_btreemap_last_key(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(map_id) {
+        let guard = obj.read().unwrap();
+        if let Some(map) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedBTreeMap>()
+        {
+            if let Some(last_key) = map.data.keys().next_back() {
+                // Add string to pool and return tagged index(dedup)
+                let str_idx = vm.add_string(last_key.as_bytes().to_vec());
+                // Return as tagged string index
+                -((str_idx as i32) + 1)
+            } else {
+                -1 // Empty map
+            }
+        } else {
+            -1
+        }
+    } else {
+        -1
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// Drop the BTreeMap (no-op, managed by Arc)
+/// Stack: btreemap_id -> result (0)
+pub fn shim_btreemap_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let map_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_map_id = crate::vm::native::StakeGuard::new(vm, map_id as i64 as u64);
+    vm.rc_release_id(map_id);
+    Ok(())
+}
+
+/// Get the length of a string from the constant pool.
+/// Stack: str_idx (tagged) -> length (as i32)
+pub fn shim_str_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // When compiler can't determine receiver type, it may call str.len on a List heap ID.
+    // Detect this and dispatch to list.len instead.
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        // PLAN-057 T6（JSON.parse 数组形态接线）：堆句柄判定扩展——
+        // ①编码从裸 i32 扩到 object/list tag（json.parse 数组产物是
+        //   encode_object 推栈的 ListData<Value>，此前只认 i32 ≥4000000）；
+        // ②变体从 ListData<i32> 扩到全四型（Value/String/bool 同为列表）。
+        //   原 i32-tag + 非 i32 列表形态落「字符串路径」按池索引解码 → 恒 0
+        //   （case_web_builtins H 现场）。
+        let heap_id = if auto_val::is_object(nv) {
+            Some(auto_val::decode_object(nv) as u64)
+        } else if auto_val::is_list(nv) {
+            Some(auto_val::decode_list(nv) as u64)
+        } else if auto_val::is_i32(nv) && auto_val::decode_i32(nv) >= 4000000 {
+            Some(auto_val::decode_i32(nv) as u64)
+        } else {
+            None
+        };
+        if let Some(id) = heap_id {
+            use crate::vm::types::ListData;
+            if let Some(obj) = vm.get_heap_object(id) {
+                let guard = obj.read().unwrap();
+                let len = if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                    list.len() as i32
+                } else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>() {
+                    list.len() as i32
+                } else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                    list.len() as i32
+                } else if let Some(list) =
+                    guard.as_any().downcast_ref::<ListData<auto_val::Value>>()
+                {
+                    list.len() as i32
+                } else if let Some(fo) = guard.as_foreign_object() {
+                    // Plan 569 D2: py 句柄误入 str.len（存量编译产物/侧表漏报
+                    // 兜底）——GIL len（与 obj_len 组合子外对象臂同语义）。
+                    // 根治归侧表分派，此臂为兜底加固。
+                    return fo.obj_len(task, vm);
+                } else {
+                    // 堆上非列表（对象/实例）：按 0 走（.length 对非数组无 JS 语义）
+                    0
+                };
+                task.ram.push_i32(len);
+            } else {
+                task.ram.push_i32(0);
+            }
+            return Ok(());
+        }
+        // Normal string path
+        // PLAN-055: JS .length 语义 = 字符数（web a2ts `text.length` 同值）。
+        // 此前 bytes.len() 按 UTF-8 字节计——CJK ×3 膨胀，musk estimateTokens
+        // 的 nonCjk 基数失真（思考块 "1 tokens" 根因链一环，P055-M 实测）。
+        let str_idx = auto_val::decode_string(nv);
+        if let Some(bytes) = vm.get_string(str_idx) {
+            let char_count = String::from_utf8_lossy(&bytes).chars().count() as i32;
+            task.ram.push_i32(char_count);
+        } else {
+            task.ram.push_i32(0);
+        }
+        return Ok(());
+    }
+}
+
+/// Helper: decode a NanoValue to a String (from string pool)
+fn nv_to_string(nv: auto_val::NanoValue, vm: &AutoVM) -> String {
+    if auto_val::is_string(nv) {
+        vm.get_string(auto_val::decode_string(nv))
+            .map(|b| String::from_utf8_lossy(&b[..]).to_string())
+            .unwrap_or_default()
+    } else {
+        String::new()
+    }
+}
+
+/// str.contains(substring) — check if string contains substring
+/// Stack: substring, string -> bool
+pub fn shim_str_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let sub_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_sub_nv = crate::vm::native::StakeGuard::nv(vm, sub_nv);
+        let str_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_str_nv = crate::vm::native::StakeGuard::nv(vm, str_nv);
+        let str_s = nv_to_string(str_nv, vm);
+        let sub_s = nv_to_string(sub_nv, vm);
+        task.ram
+            .push_nv(auto_val::encode_bool(str_s.contains(sub_s.as_str())));
+    }
+    Ok(())
+}
+
+/// str.starts_with(prefix) — check if string starts with prefix
+pub fn shim_str_starts_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let prefix_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_prefix_nv = crate::vm::native::StakeGuard::nv(vm, prefix_nv);
+        let str_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_str_nv = crate::vm::native::StakeGuard::nv(vm, str_nv);
+        let str_s = nv_to_string(str_nv, vm);
+        let prefix_s = nv_to_string(prefix_nv, vm);
+        task.ram
+            .push_nv(auto_val::encode_bool(str_s.starts_with(prefix_s.as_str())));
+    }
+    Ok(())
+}
+
+/// str.ends_with(suffix) — check if string ends with suffix
+pub fn shim_str_ends_with(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let suffix_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_suffix_nv = crate::vm::native::StakeGuard::nv(vm, suffix_nv);
+        let str_nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_str_nv = crate::vm::native::StakeGuard::nv(vm, str_nv);
+        let str_s = nv_to_string(str_nv, vm);
+        let suffix_s = nv_to_string(suffix_nv, vm);
+        task.ram
+            .push_nv(auto_val::encode_bool(str_s.ends_with(suffix_s.as_str())));
+    }
+    Ok(())
+}
+
+/// str.to_int() / str.parse_int() — parse string to int, return Result<int>
+/// Stack: str -> CREATE_OK(int) or CREATE_ERR(str)
+/// Returns the value as CREATE_OK for proper .?() chaining
+pub fn shim_str_to_int_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        let s = if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv);
+            vm.get_string(idx as u32)
+                .map(|b| String::from_utf8_lossy(&b[..]).to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let result = s.trim().parse::<i32>().unwrap_or(0);
+        task.ram.push_nv(auto_val::encode_i32(result));
+    }
+    Ok(())
+}
+
+/// Nanbox-aware shim for String.to_uint().
+///
+/// Returns a real 2-slot i64 (low/high), matching the native catalog
+/// registration (`str.to_uint` → I64) and the stdlib declaration
+/// (`fn to_uint(s str) i64`). Plan 073 Stage A added `push_i64` to the
+/// nanbox VM, so the earlier i32-truncation workaround (which corrupted
+/// `let x u64 = s.to_uint()` and `s.to_uint() + 1.5`) is obsolete.
+///
+/// Plan 378: restored the full i64 range and 2-slot stack representation.
+pub fn shim_str_to_uint_nv(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        let s = if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv);
+            vm.get_string(idx as u32)
+                .map(|b| String::from_utf8_lossy(&b[..]).to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let result = s.trim().parse::<i64>().unwrap_or(0);
+        // Plan 377: heap-aware push —— >2^47 经 BigInt 堆装箱（完整 64 位范围）。
+        vm.push_i64_vm(task, result);
+    }
+    Ok(())
+}
+
+/// Get the length of a string (String.len).
+/// Supports both constant pool strings (tagged index) and heap-based mutable Strings (SpecializedStringBuilder).
+/// Stack: str_idx_or_sb_id -> length (as i32, char count for heap, byte count for const pool)
+pub fn shim_string_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+
+        // If it's a string, compute byte length directly
+        if auto_val::is_string(nv) {
+            let str_idx = auto_val::decode_string(nv);
+            if let Some(bytes) = vm.get_string(str_idx) {
+                task.ram.push_i32(bytes.len() as i32);
+            } else {
+                task.ram.push_i32(0);
+            }
+            return Ok(());
+        }
+
+        // Otherwise try as heap object ID
+        let sb_id = auto_val::decode_i32(nv) as u64;
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let guard = obj.read().unwrap();
+            if let Some(sb) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::collections::SpecializedStringBuilder>()
+            {
+                task.ram.push_i32(sb.buffer.chars().count() as i32);
+                return Ok(());
+            }
+        }
+
+        task.ram.push_i32(0);
+        Ok(())
+    }
+}
+
+/// Plan 118 Phase 4: Create a new mutable string with initial content and capacity.
+/// Stack: capacity (i32), initial_str_idx (tagged) -> mut_str_id (i32)
+/// The mutable string is stored in heap_objects as a SpecializedStringBuilder.
+pub fn shim_str_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop capacity (not used in this simple implementation)
+    let _capacity = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__capacity = crate::vm::native::StakeGuard::new(vm, _capacity as i64 as u64);
+
+    // Pop initial string index
+    let str_idx = task.ram.pop_str_idx() as u32;
+
+    // Get initial string content
+    let initial_content = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(bytes.as_slice()).to_string()
+    } else {
+        String::new()
+    };
+
+    // Create a SpecializedStringBuilder with initial content
+    let mut builder = crate::vm::collections::SpecializedStringBuilder::new();
+    builder.buffer = initial_content;
+
+    // Store in heap_objects
+    let obj_id = vm.heap_object_id_gen.fetch_add(1, Ordering::SeqCst);
+    let obj: Arc<RwLock<dyn crate::vm::heap_object::HeapObject>> = Arc::new(RwLock::new(builder));
+    vm.heap_objects.insert(obj_id, obj);
+    // Plan 419: 手写 insert 与 insert_heap_object 保持同一计数口径。
+    vm.rc_created_total
+        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+    // Return object ID
+    vm.rc_push_id(task, obj_id as u64); // Plan 419
+    Ok(())
+}
+
+/// Plan 118 Phase 4: Append a string to a mutable string.
+/// Stack: str_idx (tagged), mut_str_id (i32) -> mut_str_id (i32)
+pub fn shim_str_append(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop string to append
+    let str_idx = task.ram.pop_str_idx() as u32;
+
+    // Pop mutable string ID
+    let obj_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_obj_id = crate::vm::native::StakeGuard::new(vm, obj_id as i64 as u64);
+
+    // Get string to append
+    let to_append = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(bytes.as_slice()).to_string()
+    } else {
+        String::new()
+    };
+
+    // Get and modify the mutable string
+    if let Some(obj_arc) = vm.heap_objects.get(&obj_id) {
+        let mut obj = obj_arc.write().unwrap();
+        if let Some(builder) = obj
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            builder.buffer.push_str(&to_append);
+        }
+    }
+
+    // Return the same mutable string ID
+    task.ram.push_i32(obj_id as i32);
+    Ok(())
+}
+
+/// Plan 118 Phase 4: Convert integer to string.
+/// Stack: int_val (i32) -> str_idx (tagged)
+pub fn shim_int_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop integer value
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+
+    // Convert to string
+    let str_val = val.to_string();
+    let bytes = str_val.into_bytes();
+
+    // Add to string pool
+    let str_idx = vm.add_string(bytes);
+
+    // Return tagged string index
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Plan 118 Phase 4: Convert string to uppercase.
+/// Stack: str_idx (tagged) -> str_idx (tagged)
+pub fn shim_str_upper(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop string index
+    let str_idx = task.ram.pop_str_idx() as u32;
+
+    // Get string content
+    let upper_str = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(bytes.as_slice()).to_uppercase()
+    } else {
+        String::new()
+    };
+
+    // Add to string pool
+    let bytes = upper_str.into_bytes();
+    let new_idx = vm.add_string(bytes);
+
+    // Return tagged string index
+    vm.rc_push_str_idx(task, new_idx as usize);
+    Ok(())
+}
+
+/// str.bytes() -> iterator of byte values
+/// Creates a list of i32 byte values from a string and returns a ListIterator.
+/// Stack: str_idx (tagged) -> iterator_id
+pub fn shim_str_bytes(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::engine::{Iterator, ListIterator};
+    use crate::vm::types::ListData;
+    use std::sync::atomic::Ordering;
+
+    let str_idx = task.ram.pop_str_idx() as u32;
+
+    // Get string bytes
+    let bytes: Vec<i32> = if let Some(str_bytes) = vm.get_string(str_idx) {
+        str_bytes.iter().map(|&b| b as i32).collect()
+    } else {
+        Vec::new()
+    };
+
+    // Create a ListData<i32> with byte values
+    let mut list_data: ListData<i32> = ListData::new();
+    for b in bytes {
+        list_data.push(b);
+    }
+    let list_id = vm.insert_heap_object(list_data);
+
+    // Create iterator
+    let iterator_id = vm.iterator_id_gen.fetch_add(1, Ordering::Relaxed);
+    let iterator = Iterator::List(ListIterator {
+        list_id,
+        current_index: 0,
+    });
+    vm.iterators.insert(iterator_id, iterator);
+
+    task.ram.push_i32(iterator_id as i32);
+    Ok(())
+}
+
+/// uint.to_hex(pad) -> hex string
+/// Formats a u64 value as a zero-padded lowercase hex string.
+/// Stack: pad_width (i32), val_lo (i32), val_hi (i32) -> str_idx (tagged)
+pub fn shim_uint_to_hex(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // u64 is stored as two i32 slots: low pushed first, high pushed second (on top)
+    let pad_width = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_pad_width = crate::vm::native::StakeGuard::new(vm, pad_width as i64 as u64);
+    let val = task.ram.pop_u64();
+
+    let hex_str = format!("{:0width$x}", val, width = pad_width);
+    let bytes = hex_str.into_bytes();
+    let str_idx = vm.add_string(bytes);
+
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Plan 155: String.from(str) -> String
+/// Creates an owned mutable String (heap object) from a string literal.
+/// Stack: str_idx (tagged) -> sb_id (heap object ID)
+pub fn shim_string_from(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u32;
+
+    // Get string content from constant pool
+    let content = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(bytes.as_slice()).to_string()
+    } else {
+        String::new()
+    };
+
+    // Create a SpecializedStringBuilder with the content
+    let mut sb = crate::vm::collections::SpecializedStringBuilder::new();
+    sb.buffer = content;
+
+    // Register in heap
+    let sb_id = vm.insert_heap_object(sb);
+    vm.rc_push_id(task, sb_id as u64); // Plan 419
+    Ok(())
+}
+
+// ============================================================================
+// Mutable String Shims (177-186)
+// ============================================================================
+
+/// String.new() -> sb_id
+/// Create a new mutable String (backed by SpecializedStringBuilder).
+/// Stack: [] -> sb_id
+pub fn shim_string_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb = crate::vm::collections::SpecializedStringBuilder::new();
+    let sb_id = vm.insert_heap_object(sb);
+    vm.rc_push_id(task, sb_id as u64); // Plan 419
+    Ok(())
+}
+
+/// s.push(char) -> 0
+/// Push a character (as codepoint) to the end of the mutable string.
+/// Stack: [char_codepoint, sb_id] -> 0
+pub fn shim_string_push(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let char_codepoint = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_char_codepoint =
+        crate::vm::native::StakeGuard::new(vm, char_codepoint as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    if let Some(ch) = char::from_u32(char_codepoint as u32) {
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(sb) = guard
+                .as_any_mut()
+                .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+            {
+                sb.buffer.push(ch);
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// s.pop() -> char_codepoint (0 if empty)
+/// Pop the last character from the mutable string.
+/// Stack: [sb_id] -> char_codepoint
+pub fn shim_string_pop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            match sb.buffer.pop() {
+                Some(ch) => ch as i32,
+                None => 0,
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// s.get(index) -> char_codepoint
+/// Get the character at the given char index.
+/// Stack: [index, sb_id] -> char_codepoint
+pub fn shim_string_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer
+                .chars()
+                .nth(index)
+                .map(|ch| ch as i32)
+                .unwrap_or(0)
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// s.set(index, char) -> 0
+/// Replace the character at the given char index.
+/// Stack: [char_codepoint, index, sb_id] -> 0
+pub fn shim_string_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let char_codepoint = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_char_codepoint =
+        crate::vm::native::StakeGuard::new(vm, char_codepoint as i64 as u64);
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    if let Some(new_ch) = char::from_u32(char_codepoint as u32) {
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(sb) = guard
+                .as_any_mut()
+                .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+            {
+                // Find byte offset and old char len at char position `index`
+                if let Some((byte_offset, old_ch)) = sb.buffer.char_indices().nth(index) {
+                    let old_len = old_ch.len_utf8();
+                    sb.buffer
+                        .replace_range(byte_offset..byte_offset + old_len, &new_ch.to_string());
+                }
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// s.insert(index, char) -> 0
+/// Insert a character at the given char index.
+/// Stack: [char_codepoint, index, sb_id] -> 0
+pub fn shim_string_insert(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let char_codepoint = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_char_codepoint =
+        crate::vm::native::StakeGuard::new(vm, char_codepoint as i64 as u64);
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    if let Some(ch) = char::from_u32(char_codepoint as u32) {
+        if let Some(obj) = vm.get_heap_object(sb_id) {
+            let mut guard = obj.write().unwrap();
+            if let Some(sb) = guard
+                .as_any_mut()
+                .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+            {
+                // Find byte offset at char position `index`
+                let byte_offset = sb
+                    .buffer
+                    .char_indices()
+                    .nth(index)
+                    .map(|(offset, _)| offset)
+                    .unwrap_or(sb.buffer.len());
+                sb.buffer.insert(byte_offset, ch);
+            }
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// s.remove(index) -> char_codepoint
+/// Remove the character at the given char index and return it.
+/// Stack: [index, sb_id] -> char_codepoint
+pub fn shim_string_remove(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let index = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_index = crate::vm::native::StakeGuard::new(vm, index as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            // Find byte offset and char len at char position `index`
+            if let Some((byte_offset, old_ch)) = sb.buffer.char_indices().nth(index) {
+                let old_len = old_ch.len_utf8();
+                let removed_codepoint = old_ch as i32;
+                sb.buffer.drain(byte_offset..byte_offset + old_len);
+                removed_codepoint
+            } else {
+                0
+            }
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+/// s.clear() -> 0
+/// Clear all characters from the mutable string.
+/// Stack: [sb_id] -> 0
+pub fn shim_string_clear(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer.clear();
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// s.is_empty() -> bool (1/0)
+/// Check if the mutable string is empty.
+/// Stack: [sb_id] -> 1/0
+pub fn shim_string_is_empty(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    let result = if let Some(obj) = vm.get_heap_object(sb_id) {
+        let guard = obj.read().unwrap();
+        if let Some(sb) = guard
+            .as_any()
+            .downcast_ref::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer.is_empty()
+        } else {
+            true
+        }
+    } else {
+        true
+    };
+
+    task.ram.push_nv(auto_val::encode_bool(result));
+    Ok(())
+}
+
+/// s.reserve(n) -> 0
+/// Reserve capacity for at least n additional bytes.
+/// Stack: [n, sb_id] -> 0
+pub fn shim_string_reserve(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let n = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_n = crate::vm::native::StakeGuard::new(vm, n as i64 as u64);
+    let sb_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_sb_id = crate::vm::native::StakeGuard::new(vm, sb_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(sb_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(sb) = guard
+            .as_any_mut()
+            .downcast_mut::<crate::vm::collections::SpecializedStringBuilder>()
+        {
+            sb.buffer.reserve(n);
+        }
+    }
+
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================================
+// Memory Allocation Shims
+// ============================================================================
+
+/// alloc_array(size) -> list_id
+/// Allocate a new array of the given size initialized to 0.
+/// Stack: [size] -> list_id
+/// Plan 390 §15 H3b: stored as ListData<Value> in heap_objects (same as
+/// CREATE_ARRAY) so it works with SET_ELEM/GET_ELEM.
+pub fn shim_alloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let size_raw = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_size_raw = crate::vm::native::StakeGuard::new(vm, size_raw as i64 as u64);
+    if size_raw < 0 {
+        return Err(VMError::RuntimeError(format!(
+            "alloc_array: invalid size {} (must be >= 0)",
+            size_raw
+        )));
+    }
+    let size = size_raw as usize;
+    let elems: Vec<auto_val::Value> = vec![auto_val::Value::Int(0); size];
+
+    let array_id = vm.insert_heap_object(crate::vm::types::ListData {
+        elems,
+        storage: None,
+    });
+    vm.rc_push(task, auto_val::encode_object(array_id as u32));
+    Ok(())
+}
+
+/// realloc_array([array_id, new_size]) -> array_id
+/// Reallocate list to new size, preserving data.
+/// Stack: [new_size, array_id] -> array_id
+pub fn shim_realloc_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let new_size = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_new_size = crate::vm::native::StakeGuard::new(vm, new_size as i64 as u64);
+    let arr_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_arr_id = crate::vm::native::StakeGuard::new(vm, arr_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(arr_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            // Plan 432 D26: 缩容时被丢弃元素的容器 stake 死亡(此前静默泄漏)。
+            if new_size < list.elems.len() {
+                for &e in &list.elems[new_size..] {
+                    list_i32_elem_release(vm, e);
+                }
+            }
+            list.elems.resize(new_size, 0);
+            drop(guard);
+            task.ram.push_i32(arr_id as i32);
+            return Ok(());
+        }
+        // Plan 390 §15 H3b: alloc_array/CREATE_ARRAY produce ListData<Value>.
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<Value>>() {
+            list.elems.resize(new_size, auto_val::Value::Int(0));
+            drop(guard);
+            task.ram.push_i32(arr_id as i32);
+            return Ok(());
+        }
+    }
+    // Fallback: create new list
+    let mut list: ListData<i32> = ListData::new();
+    for _ in 0..new_size {
+        list.push(0);
+    }
+    let id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// free_array(array_id) -> nil
+/// Free an array (no-op in GC-managed VM).
+/// Stack: [array_id] -> nil (-2147483647)
+pub fn shim_free_array(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _arr_id = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__arr_id = crate::vm::native::StakeGuard::new(vm, _arr_id as i64 as u64);
+    task.ram.push_i32(-2147483647); // nil marker
+    Ok(())
+}
+
+// ============================================================================
+// Storage Shims (Heap, InlineInt64)
+// ============================================================================
+
+/// Heap.new() -> instance_id
+/// Create a new Heap storage instance using a ListData<i32> internally.
+pub fn shim_heap_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    // Create an empty list to represent the Heap storage
+    let list: ListData<i32> = ListData::new();
+    let id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// heap.capacity() -> capacity
+/// Get Heap storage capacity.
+/// Stack: [instance_id] -> capacity
+pub fn shim_heap_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let inst_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_inst_id = crate::vm::native::StakeGuard::new(vm, inst_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(inst_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(list.elems.capacity() as i32);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// heap.try_grow(min_cap) -> bool
+/// Try to grow Heap storage to at least min_cap elements.
+/// Stack: [min_cap, instance_id] -> bool (1/0)
+pub fn shim_heap_try_grow(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let min_cap = crate::vm::native::pop_arg_i32(task) as usize;
+
+    let _stake_min_cap = crate::vm::native::StakeGuard::new(vm, min_cap as i64 as u64);
+    let inst_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_inst_id = crate::vm::native::StakeGuard::new(vm, inst_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(inst_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+            let cap = list.elems.capacity();
+            let new_cap = if cap == 0 {
+                std::cmp::max(8, min_cap)
+            } else {
+                std::cmp::max(cap * 2, min_cap)
+            };
+            list.elems.resize(new_cap, 0);
+            drop(guard);
+            task.ram.push_nv(auto_val::encode_bool(true)); // success
+            return Ok(());
+        }
+    }
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+/// heap.drop() -> nil
+/// Free Heap storage.
+/// Stack: [instance_id] -> nil
+pub fn shim_heap_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
+    Ok(())
+}
+
+/// InlineInt64.new() -> instance_id
+pub fn shim_inline_int64_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let mut list: ListData<i32> = ListData::new();
+    for _ in 0..64 {
+        list.push(0);
+    }
+    let id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// InlineInt64.capacity() -> 64
+/// Stack: [instance_id] -> 64
+pub fn shim_inline_int64_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let _inst_id = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__inst_id = crate::vm::native::StakeGuard::new(vm, _inst_id as i64 as u64);
+    task.ram.push_i32(64);
+    Ok(())
+}
+
+/// InlineInt64.try_grow(min_cap) -> bool
+/// Stack: [min_cap, instance_id] -> bool
+pub fn shim_inline_int64_try_grow(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let min_cap = crate::vm::native::pop_arg_i32(task) as u32;
+
+    let _stake_min_cap = crate::vm::native::StakeGuard::new(vm, min_cap as i64 as u64);
+    let _inst_id = crate::vm::native::pop_arg_i32(task);
+
+    let _stake__inst_id = crate::vm::native::StakeGuard::new(vm, _inst_id as i64 as u64);
+    task.ram.push_nv(auto_val::encode_bool(min_cap <= 64));
+    Ok(())
+}
+
+/// InlineInt64.drop() -> nil
+pub fn shim_inline_int64_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
+    Ok(())
+}
+
+// ============================================================================
+// List Extra Shims
+// ============================================================================
+
+/// list.capacity() -> capacity
+/// Get list capacity.
+/// Stack: [list_id] -> capacity
+pub fn shim_list_capacity(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+
+    let list_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_list_id = crate::vm::native::StakeGuard::new(vm, list_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(list_id) {
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            task.ram.push_i32(list.elems.capacity() as i32);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2: Rand Native Shims
+// ============================================================================
+
+/// Simple xorshift64 PRNG — no external rand crate needed
+#[derive(Debug)]
+struct Xorshift64 {
+    state: u64,
+}
+
+impl Xorshift64 {
+    fn new(seed: u64) -> Self {
+        Self {
+            state: if seed == 0 {
+                0xDEAD_BEEF_CAFE_BABE
+            } else {
+                seed
+            },
+        }
+    }
+
+    fn next(&mut self) -> u64 {
+        let mut x = self.state;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.state = x;
+        x
+    }
+}
+
+/// thread_rng() -> opaque Rng handle (stored as RustStdlibObject on heap)
+/// Stack: [] -> [rng_id_i32]
+pub fn shim_rand_thread_rng(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+
+    let rng = std::sync::Mutex::new(Xorshift64::new(seed));
+    let obj = RustStdlibObject::new("rand::ThreadRng", rng);
+    let rng_id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, rng_id as u64); // Plan 419
+    Ok(())
+}
+
+/// rng.gen_range(range) -> i32
+/// Stack: [range_or_hi, lo_or_rng_id, maybe_rng_id] -> [result]
+/// Supports both range expression (single marker) and explicit (hi, lo) args.
+pub fn shim_rng_gen_range(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let top = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_top = crate::vm::native::StakeGuard::new(vm, top as i64 as u64);
+
+    // Check if top is a range marker (-1000000 + idx)
+    let (lo, hi, rng_id) = if top <= -1000000 && top > -2000000 {
+        let range_idx = (top + 1000000) as usize;
+        if let Some(&(start, end, _eq)) = task.ram.ranges.get(range_idx) {
+            let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+            let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
+            (start, end, rng_id)
+        } else {
+            let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+            let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
+            (0, 1, rng_id)
+        }
+    } else {
+        // Legacy: hi, lo, rng_id layout
+        let hi = top;
+        let lo = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_lo = crate::vm::native::StakeGuard::new(vm, lo as i64 as u64);
+        let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+        let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
+        (lo, hi, rng_id)
+    };
+
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let range = (hi - lo).max(1);
+                let val = rng.get_mut().unwrap().next();
+                let result = lo + ((val % range as u64) as i32);
+                task.ram.push_i32(result);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// rng.gen() -> i32
+/// Stack: [rng_id] -> [result]
+pub fn shim_rng_gen(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let val = rng.get_mut().unwrap().next() as i32;
+                task.ram.push_i32(val);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// rng.drop() — no-op, GC will handle
+pub fn shim_rng_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
+    Ok(())
+}
+
+/// rand::random() → random i32
+/// Stack: [] -> [random_i32]
+pub fn shim_rand_random(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let mut rng = Xorshift64::new(seed);
+    // Plan 402 §13.10: the native registry marks auto.rand.random as Void
+    // return, so push_f64 here would leave a float that codegen doesn't
+    // expect (stack imbalance). Return a non-negative i32 instead — the old
+    // push_i32(rng.next() as i32) returned arbitrary (often negative) ints,
+    // so `(math.random() * n).to_int()` produced negative indices and
+    // mine placement never worked. Mask to 31 bits → [0, i32::MAX).
+    task.ram.push_i32((rng.next() & 0x7FFF_FFFF) as i32);
+    Ok(())
+}
+
+/// log no-op — swallows all arguments, returns nothing.
+/// Used for env_logger.init(), log::set_max_level(), tracing::init(), etc.
+pub fn shim_log_noop(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Arguments are already consumed by the caller's stack management.
+    // Nothing to do — these functions are pure side-effects we ignore.
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.2: Regex Opaque Struct Shims
+// ============================================================================
+
+/// Helper: pop a string from the VM stack
+fn pop_vm_string(task: &mut AutoTask, vm: &AutoVM) -> String {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv);
+            vm.get_string(idx)
+                .map(|b| String::from_utf8_lossy(&b).into_owned())
+                .unwrap_or_default()
+        } else {
+            let val = auto_val::decode_i32(nv);
+            format!("{}", val)
+        }
+    }
+}
+
+/// Helper: push a string onto the VM stack via string pool
+fn push_vm_string(task: &mut AutoTask, vm: &AutoVM, s: &str) {
+    let idx = vm.add_string(s.as_bytes().to_vec()) as u32;
+    vm.rc_push_str_idx(task, idx as usize);
+}
+
+/// Regex.new(pattern) → opaque handle
+/// Stack: [pattern_str] -> [handle_i32]
+pub fn shim_re_opaque_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let pattern = pop_vm_string(task, vm);
+    match regex::Regex::new(&pattern) {
+        Ok(re) => {
+            let obj = RustStdlibObject::new("regex::Regex", std::sync::Mutex::new(re));
+            let id = vm.insert_heap_object(obj);
+            vm.rc_push_id(task, id as u64); // Plan 419
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("Regex::new failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+/// re.is_match(text) → bool
+/// Stack: [text_str, handle_i32] -> [bool_i32]
+pub fn shim_re_opaque_is_match(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let text = pop_vm_string(task, vm);
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                let result = re.lock().unwrap().is_match(&text);
+                task.ram.push_nv(auto_val::encode_bool(result));
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+/// re.find(text) → string (first match) or empty string if none
+/// Stack: [text_str, handle_i32] -> [result_str]
+pub fn shim_re_opaque_find(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let text = pop_vm_string(task, vm);
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                let result = re.lock().unwrap().find(&text);
+                let s = result.map(|m| m.as_str().to_string()).unwrap_or_default();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// re.find_all(text) → List of matched strings
+/// Stack: [text_str, handle_i32] -> [list_id_i32]
+pub fn shim_re_opaque_find_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use crate::vm::types::ListData;
+
+    let text = pop_vm_string(task, vm);
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
+
+    let mut matches: Vec<i32> = Vec::new();
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                for m in re.lock().unwrap().find_iter(&text) {
+                    let match_str = m.as_str();
+                    let idx = vm.add_string(match_str.as_bytes().to_vec()) as u32;
+                    matches.push(-(idx as i32) - 1);
+                }
+            }
+        }
+    }
+
+    let mut list = ListData::<i32>::new();
+    list.elems = matches;
+    let id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// re.replace_all(text, replacement) → string
+/// Stack: [replacement_str, text_str, handle_i32] -> [result_str]
+pub fn shim_re_opaque_replace_all(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let replacement = pop_vm_string(task, vm);
+    let text = pop_vm_string(task, vm);
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(re_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                let result = re.lock().unwrap().replace_all(&text, replacement.as_str());
+                let result_str = result.to_string();
+                push_vm_string(task, vm, &result_str);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, &text);
+    Ok(())
+}
+
+/// re.captures(text) → opaque captures handle
+/// Stores captures as Vec<String> (owned copy of each capture group)
+/// Stack: [text_str, handle_i32] -> [captures_handle_i32]
+pub fn shim_re_opaque_captures(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let text = pop_vm_string(task, vm);
+    let re_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_re_id = crate::vm::native::StakeGuard::new(vm, re_id as i64 as u64);
+
+    let captures: Option<Vec<String>> = {
+        if let Some(obj) = vm.get_heap_object(re_id) {
+            let guard = obj.read().unwrap();
+            if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+                if let Some(re) = rso.downcast_ref::<std::sync::Mutex<regex::Regex>>() {
+                    re.lock().unwrap().captures(&text).map(|caps| {
+                        caps.iter()
+                            .map(|m| m.map(|s| s.as_str().to_string()).unwrap_or_default())
+                            .collect()
+                    })
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
+    if let Some(groups) = captures {
+        let caps_obj = RustStdlibObject::new("regex::Captures", std::sync::Mutex::new(groups));
+        let id = vm.insert_heap_object(caps_obj);
+        vm.rc_push_id(task, id as u64); // Plan 419
+    } else {
+        task.ram.push_i32(0);
+    }
+    Ok(())
+}
+
+/// re.drop() — no-op, GC handles cleanup
+pub fn shim_re_opaque_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.2: Url Opaque Struct Shims
+// ============================================================================
+
+/// Url.parse(url_str) → opaque handle
+/// Stack: [url_str] -> [handle_i32]
+pub fn shim_url_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_str = pop_vm_string(task, vm);
+    match url::Url::parse(&url_str) {
+        Ok(url) => {
+            let obj = RustStdlibObject::new("url::Url", std::sync::Mutex::new(url));
+            let id = vm.insert_heap_object(obj);
+            vm.rc_push_id(task, id as u64); // Plan 419
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("Url::parse failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+/// url.scheme() → string
+/// Stack: [handle_i32] -> [scheme_str]
+pub fn shim_url_opaque_scheme(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                push_vm_string(task, vm, url.lock().unwrap().scheme());
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.host_str() → string or empty
+/// Stack: [handle_i32] -> [host_str]
+pub fn shim_url_opaque_host_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let locked = url.lock().unwrap();
+                let s = locked.host_str().unwrap_or("").to_string();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.path() → string
+/// Stack: [handle_i32] -> [path_str]
+pub fn shim_url_opaque_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                push_vm_string(task, vm, url.lock().unwrap().path());
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.fragment() → string or empty
+/// Stack: [handle_i32] -> [fragment_str]
+pub fn shim_url_opaque_fragment(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let locked = url.lock().unwrap();
+                let s = locked.fragment().unwrap_or("").to_string();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.port() → int (0 if none)
+/// Stack: [handle_i32] -> [port_i32]
+pub fn shim_url_opaque_port(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let port = url.lock().unwrap().port().unwrap_or(0) as i32;
+                task.ram.push_i32(port);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// url.query_pairs() → List of "key=value" strings
+/// Stack: [handle_i32] -> [list_id_i32]
+pub fn shim_url_opaque_query_pairs(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use crate::vm::types::ListData;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    let mut pairs: Vec<i32> = Vec::new();
+
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                for (k, v) in url.lock().unwrap().query_pairs() {
+                    let pair = format!("{}={}", k, v);
+                    let idx = vm.add_string(pair.as_bytes().to_vec()) as u32;
+                    pairs.push(-(idx as i32) - 1);
+                }
+            }
+        }
+    }
+
+    let mut list = ListData::<i32>::new();
+    list.elems = pairs;
+    let id = vm.insert_heap_object(list);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// url.query() → raw query string (without ?)
+/// Stack: [handle_i32] -> [query_str]
+pub fn shim_url_opaque_query(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let s = url.lock().unwrap().query().unwrap_or("").to_string();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.to_string() → full URL string
+/// Stack: [handle_i32] -> [url_str]
+pub fn shim_url_opaque_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let s = url.lock().unwrap().to_string();
+                push_vm_string(task, vm, &s);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.join(relative) → new opaque handle
+/// Stack: [relative_str, handle_i32] -> [new_handle_i32]
+pub fn shim_url_opaque_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let relative = pop_vm_string(task, vm);
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                match url.lock().unwrap().join(&relative) {
+                    Ok(joined) => {
+                        let new_obj =
+                            RustStdlibObject::new("url::Url", std::sync::Mutex::new(joined));
+                        let id = vm.insert_heap_object(new_obj);
+                        vm.rc_push_id(task, id as u64); // Plan 419
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        return Err(VMError::RuntimeError(format!("Url::join failed: {}", e)));
+                    }
+                }
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// url.origin() → string
+/// Stack: [handle_i32] -> [origin_str]
+pub fn shim_url_opaque_origin(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let url_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_url_id = crate::vm::native::StakeGuard::new(vm, url_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(url_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(url) = rso.downcast_ref::<std::sync::Mutex<url::Url>>() {
+                let origin = url.lock().unwrap().origin().ascii_serialization();
+                push_vm_string(task, vm, &origin);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// url.drop() — no-op, GC handles cleanup
+pub fn shim_url_opaque_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.2: Semver Opaque Struct Shims
+// ============================================================================
+
+/// Version.parse(ver_str) → opaque handle
+/// Stack: [ver_str] -> [handle_i32]
+pub fn shim_semver_opaque_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_str = pop_vm_string(task, vm);
+    match semver::Version::parse(&ver_str) {
+        Ok(ver) => {
+            let obj = RustStdlibObject::new("semver::Version", std::sync::Mutex::new(ver));
+            let id = vm.insert_heap_object(obj);
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!(
+                "Version::parse failed: {}",
+                e
+            )));
+        }
+    }
+    Ok(())
+}
+/// Stack: [handle_i32] -> [major_i32]
+pub fn shim_semver_opaque_major(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                task.ram.push_i32(ver.lock().unwrap().major as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// v.minor → u64
+/// Stack: [handle_i32] -> [minor_i32]
+pub fn shim_semver_opaque_minor(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                task.ram.push_i32(ver.lock().unwrap().minor as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// v.patch → u64
+/// Stack: [handle_i32] -> [patch_i32]
+pub fn shim_semver_opaque_patch(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                task.ram.push_i32(ver.lock().unwrap().patch as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// v.pre → string
+/// Stack: [handle_i32] -> [pre_str]
+pub fn shim_semver_opaque_pre(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                push_vm_string(task, vm, &ver.lock().unwrap().pre.to_string());
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// v.to_string() → string
+/// Stack: [handle_i32] -> [ver_str]
+pub fn shim_semver_opaque_to_string(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(ver_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                push_vm_string(task, vm, &ver.lock().unwrap().to_string());
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// v1 > v2 → bool
+/// Stack: [v2_handle, v1_handle] -> [bool_i32]
+pub fn shim_semver_opaque_cmp_gt(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let v2_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_v2_id = crate::vm::native::StakeGuard::new(vm, v2_id as i64 as u64);
+    let v1_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_v1_id = crate::vm::native::StakeGuard::new(vm, v1_id as i64 as u64);
+
+    let v1 = if let Some(obj) = vm.get_heap_object(v1_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                Some(ver.lock().unwrap().clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    let v2 = if let Some(obj) = vm.get_heap_object(v2_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(ver) = rso.downcast_ref::<std::sync::Mutex<semver::Version>>() {
+                Some(ver.lock().unwrap().clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    match (v1, v2) {
+        (Some(a), Some(b)) => task.ram.push_nv(auto_val::encode_bool(a > b)),
+        _ => task.ram.push_nv(auto_val::encode_bool(false)),
+    }
+    Ok(())
+}
+
+/// version.drop() — no-op, GC handles cleanup
+pub fn shim_semver_opaque_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
+    Ok(())
+}
+
+/// VersionReq.parse(">=1.0") → opaque VersionReq handle
+/// Stack: [spec_str] -> [handle_i32]
+pub fn shim_semver_opaque_versionreq_parse(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let spec_str = pop_vm_string(task, vm);
+    match semver::VersionReq::parse(&spec_str) {
+        Ok(req) => {
+            let obj = RustStdlibObject::new("semver::VersionReq", std::sync::Mutex::new(req));
+            let id = vm.insert_heap_object(obj);
+            vm.rc_push(task, auto_val::encode_object(id as u32));
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!(
+                "VersionReq::parse failed: {}",
+                e
+            )));
+        }
+    }
+    Ok(())
+}
+
+/// req.matches(version_handle) → 1 if true, 0 if false
+/// Stack: [req_handle, version_handle] -> [result_i32]
+pub fn shim_semver_opaque_versionreq_matches(
+    task: &mut AutoTask,
+    vm: &AutoVM,
+) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let ver_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_ver_id = crate::vm::native::StakeGuard::new(vm, ver_id as i64 as u64);
+    let req_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_req_id = crate::vm::native::StakeGuard::new(vm, req_id as i64 as u64);
+
+    let version: Option<semver::Version> = (|| {
+        let obj = vm.get_heap_object(ver_id)?;
+        let guard = obj.read().ok()?;
+        let rso = guard.as_any().downcast_ref::<RustStdlibObject>()?;
+        let mutex = rso.downcast_ref::<std::sync::Mutex<semver::Version>>()?;
+        let locked = mutex.lock().ok()?;
+        Some(locked.clone())
+    })();
+
+    let req: Option<semver::VersionReq> = (|| {
+        let obj = vm.get_heap_object(req_id)?;
+        let guard = obj.read().ok()?;
+        let rso = guard.as_any().downcast_ref::<RustStdlibObject>()?;
+        let mutex = rso.downcast_ref::<std::sync::Mutex<semver::VersionReq>>()?;
+        let locked = mutex.lock().ok()?;
+        Some(locked.clone())
+    })();
+
+    match (version, req) {
+        (Some(ver), Some(req)) => {
+            task.ram.push_nv(auto_val::encode_bool(req.matches(&ver)));
+        }
+        _ => {
+            task.ram.push_nv(auto_val::encode_bool(false));
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Chrono Opaque Struct Shims
+// ============================================================================
+
+/// Local.now() → opaque NaiveDateTime handle
+/// Stack: [] -> [handle_i32]
+pub fn shim_chrono_local_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let dt = chrono::Local::now().naive_local();
+    let obj = RustStdlibObject::new("chrono::NaiveDateTime", std::sync::Mutex::new(dt));
+    let id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// dt.year() → i32
+/// Stack: [handle_i32] -> [year_i32]
+pub fn shim_chrono_year(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Datelike;
+
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().year());
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.month() → i32
+/// Stack: [handle_i32] -> [month_i32]
+pub fn shim_chrono_month(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Datelike;
+
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().month() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.day() → i32
+/// Stack: [handle_i32] -> [day_i32]
+pub fn shim_chrono_day(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Datelike;
+
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().day() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.hour() → i32
+/// Stack: [handle_i32] -> [hour_i32]
+pub fn shim_chrono_hour(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Timelike;
+
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().hour() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.minute() → i32
+/// Stack: [handle_i32] -> [minute_i32]
+pub fn shim_chrono_minute(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Timelike;
+
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().minute() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.second() → i32
+/// Stack: [handle_i32] -> [second_i32]
+pub fn shim_chrono_second(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Timelike;
+
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                task.ram.push_i32(dt.lock().unwrap().second() as i32);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.timestamp() → i64 (pushed as two i32)
+/// Stack: [handle_i32] -> [timestamp_lo, timestamp_hi]
+pub fn shim_chrono_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                let ts = dt.lock().unwrap().and_utc().timestamp();
+                // Push as i32 if fits, otherwise heap-aware i64 (Plan 377: >2^47 经 BigInt)
+                if ts >= i32::MIN as i64 && ts <= i32::MAX as i64 {
+                    task.ram.push_i32(ts as i32);
+                } else {
+                    vm.push_i64_vm(task, ts);
+                }
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// dt.format(fmt) → string
+/// Stack: [fmt_str, handle_i32] -> [result_str]
+pub fn shim_chrono_format(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+
+    let fmt = pop_vm_string(task, vm);
+    let dt_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_dt_id = crate::vm::native::StakeGuard::new(vm, dt_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(dt_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                let formatted = dt.lock().unwrap().format(&fmt).to_string();
+                push_vm_string(task, vm, &formatted);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// dt.drop() — no-op, GC handles cleanup
+pub fn shim_chrono_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Base64 Pure Function Shims
+// ============================================================================
+
+/// base64::encode(input) → string
+/// Stack: [input_str] -> [encoded_str]
+pub fn shim_base64_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let input = pop_vm_string(task, vm);
+    let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &input);
+    push_vm_string(task, vm, &encoded);
+    Ok(())
+}
+
+/// base64::decode(input) → string (decoded bytes as UTF-8 string)
+/// Stack: [input_str] -> [decoded_str]
+pub fn shim_base64_decode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let input = pop_vm_string(task, vm);
+    match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &input) {
+        Ok(bytes) => {
+            let decoded = String::from_utf8_lossy(&bytes).into_owned();
+            push_vm_string(task, vm, &decoded);
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!(
+                "base64::decode failed: {}",
+                e
+            )));
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Hex Pure Function Shims
+// ============================================================================
+
+/// hex::encode(input) → string
+/// Stack: [input_str] -> [hex_str]
+pub fn shim_hex_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let input = pop_vm_string(task, vm);
+    let encoded = hex::encode(input.as_bytes());
+    push_vm_string(task, vm, &encoded);
+    Ok(())
+}
+
+/// hex::decode(input) → string (decoded bytes as UTF-8 string)
+/// Stack: [input_str] -> [decoded_str]
+pub fn shim_hex_decode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let input = pop_vm_string(task, vm);
+    match hex::decode(&input) {
+        Ok(bytes) => {
+            let decoded = String::from_utf8_lossy(&bytes).into_owned();
+            push_vm_string(task, vm, &decoded);
+        }
+        Err(e) => {
+            return Err(VMError::RuntimeError(format!("hex::decode failed: {}", e)));
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Sha2 Opaque Struct Shims
+// ============================================================================
+
+/// Sha256::new() → opaque handle
+/// Stack: [] -> [handle_i32]
+pub fn shim_sha2_sha256_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use sha2::Digest;
+
+    let hasher = sha2::Sha256::new();
+    let obj = RustStdlibObject::new("sha2::Sha256", std::sync::Mutex::new(hasher));
+    let id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// hasher.update(data) → void
+/// Stack: [data_str, handle_i32] -> [0]
+pub fn shim_sha2_update(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use sha2::Digest;
+
+    let data = pop_vm_string(task, vm);
+    let hasher_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_hasher_id = crate::vm::native::StakeGuard::new(vm, hasher_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(hasher_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(hasher) = rso.downcast_mut::<std::sync::Mutex<sha2::Sha256>>() {
+                hasher.get_mut().unwrap().update(data.as_bytes());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// hasher.finalize() → hex string
+/// Note: finalize() takes ownership of the hasher, so we clone the hasher state
+/// to compute the hash while keeping the original available for further updates.
+/// Stack: [handle_i32] -> [hex_str]
+pub fn shim_sha2_finalize(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use sha2::Digest;
+
+    let hasher_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_hasher_id = crate::vm::native::StakeGuard::new(vm, hasher_id as i64 as u64);
+
+    if let Some(obj) = vm.get_heap_object(hasher_id) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(hasher) = rso.downcast_ref::<std::sync::Mutex<sha2::Sha256>>() {
+                // Clone the hasher to compute without consuming
+                let cloned = hasher.lock().unwrap().clone();
+                let result = cloned.finalize();
+                let hex_str = hex::encode(result);
+                drop(guard);
+                push_vm_string(task, vm, &hex_str);
+                return Ok(());
+            }
+        }
+    }
+    push_vm_string(task, vm, "");
+    Ok(())
+}
+
+/// hasher.drop() — no-op, GC handles cleanup
+pub fn shim_sha2_drop(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Plan 419: 语义更新 —— rc 释放(RC 归零才真回收;单持有时即手动提前释放)。
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    vm.rc_release_id(id);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 212 Phase 2.3: Mime Guess Pure Function Shim
+// ============================================================================
+
+/// mime_guess::from_path(path) → string (MIME type or empty)
+/// Stack: [path_str] -> [mime_str]
+pub fn shim_mime_from_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_vm_string(task, vm);
+    let mime = mime_guess::from_path(&path)
+        .first_or_octet_stream()
+        .to_string();
+    push_vm_string(task, vm, &mime);
+    Ok(())
+}
+
+// Plan 240: Instant opaque shims for std::time::Instant
+
+/// Create an Instant::now() opaque handle.
+/// Stack: -> handle_id
+pub fn shim_instant_now(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let instant = std::time::Instant::now();
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("std::time::Instant", instant);
+    let id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// Get elapsed time from Instant handle.
+/// PLAN-701 供④ elapsed 约定勘定：返回自创建点起的**毫秒 int**（单调钟）。
+/// 此前形态=「Nms」字符串入池 + null 双推、catalog 返回型 Void——.at 侧
+/// 实际得到 None（m1-supply §9 观察件）。现对齐 I64 语义（catalog 同步
+/// Void→I64）；跨轨边界注记：a2r/trans 轨的 `Instant.elapsed()` 保持真实
+/// Rust `Duration`（opaque 不透明形），VM 轨为毫秒 int——不透明类型跨轨
+/// 既有边界，本约定成文于 SD-02。
+/// Stack: handle_id -> elapsed_ms (i64)
+pub fn shim_instant_elapsed(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    let obj = vm
+        .get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid Instant handle".to_string()))?;
+    let guard = obj.read().unwrap();
+    let rust_obj = guard
+        .as_any()
+        .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let instant = rust_obj
+        .downcast_ref::<std::time::Instant>()
+        .ok_or_else(|| VMError::RuntimeError("Not an Instant object".to_string()))?;
+    let millis = instant.elapsed().as_millis() as i64;
+    drop(guard);
+    vm.push_i64_vm(task, millis);
+    Ok(())
+}
+
+// ============================================================================
+// Plan 442 A5: one-shot scheduler primitives (set_timeout / clear_timeout)
+// ============================================================================
+
+/// `sched.set_timeout(callback, delay_ms) -> timer_id`
+/// Stack: callback, delay_ms -> timer_id.
+/// The callback is either a closure value (Int closure id — the CLOSURE
+/// opcode pushes exactly that) or a widget event-name string; the timer
+/// fires on the render loop's timer tick, so unlike `Time.sleep_ms` nothing
+/// stalls the engine thread.
+pub fn shim_sched_set_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let delay_ms = crate::vm::native::pop_arg_i32(task) as u64;
+        let cb_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake_cb = crate::vm::native::StakeGuard::nv(vm, cb_nv);
+        let callback = if auto_val::is_string(cb_nv) {
+            let idx = auto_val::decode_string(cb_nv) as usize;
+            let s = vm
+                .strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .ok_or_else(|| VMError::RuntimeError("set_timeout: bad callback string".into()))?;
+            crate::vm::engine::TimerCallback::Event(s)
+        } else if auto_val::is_i32(cb_nv) {
+            crate::vm::engine::TimerCallback::Closure(auto_val::decode_i32(cb_nv) as u32)
+        } else {
+            return Err(VMError::RuntimeError(
+                "set_timeout: callback must be a closure or an event-name string".into(),
+            ));
+        };
+        let timer_id = vm.set_timer(callback, delay_ms);
+        task.ram.push_i32(timer_id as i32);
+    }
+    Ok(())
+}
+
+/// `sched.clear_timeout(timer_id) -> bool`
+/// Stack: timer_id -> whether a pending timer was removed.
+pub fn shim_sched_clear_timeout(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let id = crate::vm::native::pop_arg_i32(task) as u32;
+        let removed = vm.clear_timer(id);
+        task.ram.push_nv(auto_val::encode_bool(removed));
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Plan 442 B-support: web-platform globals on the VM render target
+// (musk corpus runs single-source in both render modes)
+// ============================================================================
+
+/// `url.encode(s) -> percent-encoded string` — also serves the JS-compat
+/// bare call `encodeURIComponent(s)` via the codegen intrinsics alias.
+/// Stack: s -> encoded.
+pub fn shim_url_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let s_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, s_nv);
+        let s = if auto_val::is_string(s_nv) {
+            let idx = auto_val::decode_string(s_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(s_nv).to_string()
+        };
+        let encoded = urlencoding::encode(&s).to_string();
+        let idx = vm.add_string(encoded.into_bytes());
+        vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
+    }
+    Ok(())
+}
+
+/// `auto.url.encode_path(s)` — percent-encode each `/`-separated segment,
+/// preserving the separators. Client parity for axum `{*path}` wildcards
+/// (plan-022 auto-down): the browser keeps `/` raw in fetch URLs so the
+/// server-side per-segment percent-decode (5441dda28) reconstructs the
+/// path; a full `auto.url.encode` would send `%2F`, which wildcard
+/// captures hand back still-encoded.
+/// Stack: s -> encoded.
+pub fn shim_url_encode_path(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let s_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, s_nv);
+        let s = if auto_val::is_string(s_nv) {
+            let idx = auto_val::decode_string(s_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(s_nv).to_string()
+        };
+        let encoded = s
+            .split('/')
+            .map(|seg| urlencoding::encode(seg).to_string())
+            .collect::<Vec<_>>()
+            .join("/");
+        let idx = vm.add_string(encoded.into_bytes());
+        vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
+    }
+    Ok(())
+}
+
+/// `localStorage.getItem(key) -> stored string or None`
+/// Stack: key -> value|None (None for a missing key — musk's
+/// `saved != None` checks depend on it; session-scoped like storage.*).
+pub fn shim_localstorage_get_item(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let key_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, key_nv);
+        let key = if auto_val::is_string(key_nv) {
+            let idx = auto_val::decode_string(key_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(key_nv).to_string()
+        };
+        match crate::vm::ffi::stdlib::storage_raw_get(&key) {
+            Some(v) => {
+                let idx = vm.add_string(v.into_bytes());
+                vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
+            }
+            None => {
+                // Same encoding the None literal compiles to (PUSH_NIL).
+                task.ram.push_nv(auto_val::encode_null());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `localStorage.setItem(key, value)` — Stack: key, value -> (void).
+/// Non-string values are stringified (session persistence only).
+pub fn shim_localstorage_set_item(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let val_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake_val = crate::vm::native::StakeGuard::nv(vm, val_nv);
+        let key_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake_key = crate::vm::native::StakeGuard::nv(vm, key_nv);
+        let key = if auto_val::is_string(key_nv) {
+            let idx = auto_val::decode_string(key_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(key_nv).to_string()
+        };
+        let value = if auto_val::is_string(val_nv) {
+            let idx = auto_val::decode_string(val_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else if auto_val::is_i32(val_nv) {
+            auto_val::decode_i32(val_nv).to_string()
+        } else if auto_val::is_f64(val_nv) {
+            format!("{}", auto_val::decode_f64(val_nv))
+        } else if auto_val::is_bool(val_nv) {
+            auto_val::decode_bool(val_nv).to_string()
+        } else {
+            format!("{:?}", val_nv)
+        };
+        crate::vm::ffi::stdlib::storage_raw_set(key, value);
+    }
+    Ok(())
+}
+
+/// `env.var(key) -> value or None` — rust-form `env::var` bridge (Plan 442
+/// C2; musk backend .at sources call std::env::var via use.rust). Rust's
+/// env::var returns Result; the VM-native convention collapses
+/// Result-returning stdlib shims to Option shape at the producer boundary,
+/// so the caller's `.ok()` chain step is the engine's identity passthrough.
+pub fn shim_env_var(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let key_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, key_nv);
+        let key = if auto_val::is_string(key_nv) {
+            let idx = auto_val::decode_string(key_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(key_nv).to_string()
+        };
+        match std::env::var(&key) {
+            Ok(v) => {
+                let idx = vm.add_string(v.into_bytes());
+                vm.rc_push_str_idx(task, idx); // Plan 510 G1-2: 返回串入栈配平
+            }
+            Err(_) => {
+                task.ram.push_nv(auto_val::encode_null());
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `localStorage.removeItem(key)` — Stack: key -> (void).
+pub fn shim_localstorage_remove_item(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let key_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, key_nv);
+        let key = if auto_val::is_string(key_nv) {
+            let idx = auto_val::decode_string(key_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(key_nv).to_string()
+        };
+        crate::vm::ffi::stdlib::storage_raw_remove(&key);
+    }
+    Ok(())
+}
+
+// Plan 442 Phase B: `dom.*` / `location.reload()` web globals for the VM
+// target. The iced renderer is dark-fixed, so prefers_dark reports true and
+// set_dark/set_css_var are recorded no-ops; focus/click/reload are desktop
+// stubs; open_url really opens the OS browser. copy_text is routed by the
+// codegen to auto.clipboard.set_text (Plan 418) and has no shim here.
+
+/// `dom.set_dark(on)` — Stack: on -> (void). Renderer theme is dark-fixed;
+/// the intent is recorded in the session KV for a future light theme.
+pub fn shim_dom_set_dark(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let on_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, on_nv);
+        crate::vm::ffi::stdlib::storage_raw_set(
+            "auto.dom.dark".to_string(),
+            if auto_val::decode_bool(on_nv) {
+                "1".to_string()
+            } else {
+                "0".to_string()
+            },
+        );
+    }
+    Ok(())
+}
+
+/// `dom.prefers_dark()` — Stack: -> bool. The iced VM renderer is dark-only
+/// (renderer.rs theme_fn returns Theme::Dark), so report true.
+pub fn shim_dom_prefers_dark(task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    task.ram.push_nv(auto_val::encode_bool(true));
+    Ok(())
+}
+
+/// `dom.set_css_var(name, value)` — Stack: name, value -> (void). CSS custom
+/// properties are a web rendering concept; record and drop on desktop.
+pub fn shim_dom_set_css_var(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let _val_nv = crate::vm::native::pop_arg_nv(task);
+        let name_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, name_nv);
+    }
+    Ok(())
+}
+
+/// `dom.focus_first(selector)` — Stack: sel -> (void). Keyboard focus routing
+/// differs on desktop; no-op stub (web 走 ts_adapter querySelector 真聚焦；
+/// 桌面聚焦合同归 `ui.focus`，见下）。
+pub fn shim_dom_focus_first(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+    }
+    Ok(())
+}
+
+/// PLAN-095 T-04: `ui.focus(target_key)` 请求槽（进程级，renderer update
+/// 轮询消费）。native 无 bridge 状态写面——经全局槽递交，命中/缺失结果由
+/// renderer 落 `__focus_result` 状态（"ok" / "miss:<key>"）可观察。
+pub static UI_FOCUS_REQUEST: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// renderer 侧取走一次聚焦请求（take 语义，防重复消费）。
+pub fn take_ui_focus_request() -> Option<String> {
+    UI_FOCUS_REQUEST
+        .lock()
+        .ok()
+        .and_then(|mut slot| slot.take())
+}
+
+/// `ui.focus(target_key)` — Stack: key -> (void). 平台中立程序化聚焦：
+/// 目标键=输入控件的 .at 输入 handler 事件键（如 ".Input($event)"，比较时
+/// 剥点前缀与实参尾）或 "Widget.event" 限定形。web 轨经 ts_adapter 直译
+/// querySelector（等价 dom.focus_first 语义）。
+pub fn shim_ui_focus(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+        let key = if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        if !key.is_empty() {
+            if let Ok(mut slot) = UI_FOCUS_REQUEST.lock() {
+                *slot = Some(key);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `dom.click_first(selector)` — Stack: sel -> (void). No-op stub.
+pub fn shim_dom_click_first(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, nv);
+    }
+    Ok(())
+}
+
+/// `dom.open_url(url)` — Stack: url -> (void). Opens the OS browser
+/// (detached spawn; failure is non-fatal).
+pub fn shim_dom_open_url(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    {
+        let url_nv = crate::vm::native::pop_arg_nv(task);
+        let _stake = crate::vm::native::StakeGuard::nv(vm, url_nv);
+        let url = if auto_val::is_string(url_nv) {
+            let idx = auto_val::decode_string(url_nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(url_nv).to_string()
+        };
+        if !url.is_empty() {
+            let r = if cfg!(target_os = "windows") {
+                std::process::Command::new("cmd")
+                    .args(["/C", "start", "", &url])
+                    .spawn()
+            } else if cfg!(target_os = "macos") {
+                std::process::Command::new("open").arg(&url).spawn()
+            } else {
+                std::process::Command::new("xdg-open").arg(&url).spawn()
+            };
+            if let Err(e) = r {
+                eprintln!("[VM] dom.open_url('{}') failed: {}", url, e);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// `location.reload()` — Stack: -> (void). Browser page reload has no direct
+/// desktop equivalent (would be an app restart); no-op stub.
+pub fn shim_dom_reload(_task: &mut AutoTask, _vm: &AutoVM) -> Result<(), VMError> {
+    Ok(())
+}
+
+// Plan 240: File I/O opaque shims
+
+/// Helper to pop a string from the stack
+fn pop_string(task: &mut AutoTask, vm: &AutoVM) -> String {
+    {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    }
+}
+
+/// File.create(path) → opaque handle with BufWriter<File>
+/// Stack: path_string -> handle_id
+pub fn shim_file_create_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string(task, vm);
+    let file = std::fs::File::create(&path)
+        .map_err(|e| VMError::RuntimeError(format!("File.create failed: {}", e)))?;
+    let writer: Box<dyn std::io::Write + Send + Sync> = Box::new(std::io::BufWriter::new(file));
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("std::fs::File", writer);
+    let id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// File.open(path) → opaque handle
+/// Stack: path_string -> handle_id
+pub fn shim_file_open_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path = pop_string(task, vm);
+    let file = std::fs::File::open(&path)
+        .map_err(|e| VMError::RuntimeError(format!("File.open failed: {}", e)))?;
+    let content = {
+        let mut buf = String::new();
+        std::io::Read::read_to_string(&mut std::io::BufReader::new(file), &mut buf)
+            .map_err(|e| VMError::RuntimeError(format!("File.open read failed: {}", e)))?;
+        buf
+    };
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("std::fs::FileContent", content);
+    let id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// handle.write(data) → write string to file handle
+/// Stack: data_string, handle_id -> void
+pub fn shim_file_write_handle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let data = pop_string(task, vm);
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    let obj = vm
+        .get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid File handle".to_string()))?;
+    let mut guard = obj.write().unwrap();
+    let rust_obj = guard
+        .as_any_mut()
+        .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let writer = rust_obj
+        .downcast_mut::<Box<dyn std::io::Write + Send + Sync>>()
+        .ok_or_else(|| VMError::RuntimeError("Not a File writer".to_string()))?;
+    writer
+        .write_all(data.as_bytes())
+        .map_err(|e| VMError::RuntimeError(format!("write failed: {}", e)))?;
+    drop(guard);
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// handle.try_clone() → clone the handle (returns same content for read handles)
+/// Stack: handle_id -> handle_id (clone)
+pub fn shim_file_try_clone(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // For simplicity, just push a copy of the handle ID
+    let handle = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    task.ram.push_i32(handle);
+    Ok(())
+}
+
+// Plan 240: OnceCell opaque shims using RustStdlibObject wrapping Option<String>
+
+/// Create a new OnceCell (empty).
+/// Stack: -> handle_id
+pub fn shim_once_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cell: Option<String> = None;
+    let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("std::cell::OnceCell", cell);
+    let id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// Set a value in the OnceCell.
+/// Stack: string_value, handle_id -> void (pushes 1 for success, 0 for already set)
+pub fn shim_once_set(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Pop string value
+    let value = {
+        let nv = crate::vm::native::pop_arg_nv(task);
+
+        let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+        if auto_val::is_string(nv) {
+            let idx = auto_val::decode_string(nv) as usize;
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .map(|b| String::from_utf8_lossy(&b).to_string())
+                .unwrap_or_default()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    };
+
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    let obj = vm
+        .get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid OnceCell handle".to_string()))?;
+    let mut guard = obj.write().unwrap();
+    let rust_obj = guard
+        .as_any_mut()
+        .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let cell = rust_obj
+        .downcast_mut::<Option<String>>()
+        .ok_or_else(|| VMError::RuntimeError("Not an Option<String>".to_string()))?;
+    if cell.is_none() {
+        *cell = Some(value);
+        task.ram.push_i32(1); // success
+    } else {
+        task.ram.push_i32(0); // already set
+    }
+    Ok(())
+}
+
+/// Get the value from the OnceCell.
+/// Returns opaque handle (>=0) if set, or -1 if None.
+/// Stack: handle_id -> i32 (opaque handle or -1)
+pub fn shim_once_get(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    let obj = vm
+        .get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid OnceCell handle".to_string()))?;
+    let guard = obj.read().unwrap();
+    let rust_obj = guard
+        .as_any()
+        .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>()
+        .ok_or_else(|| VMError::RuntimeError("Not a RustStdlibObject".to_string()))?;
+    let cell = rust_obj
+        .downcast_ref::<Option<String>>()
+        .ok_or_else(|| VMError::RuntimeError("Not an Option<String>".to_string()))?;
+
+    match cell {
+        None => {
+            task.ram.push_i32(-1);
+        }
+        Some(value) => {
+            let string_obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+                "std::cell::OnceCell::Value",
+                value.clone(),
+            );
+            let id = vm.insert_heap_object(string_obj);
+            vm.rc_push_id(task, id as u64); // Plan 419
+        }
+    }
+    Ok(())
+}
+
+// ============================================================================
+// Plan 250: Stdlib Enhancement — New Native Shims
+// ============================================================================
+
+/// Bool to string.
+/// Stack: bool_val -> str_idx
+pub fn shim_bool_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = crate::vm::native::pop_arg_nv(task);
+
+    let _stake_nv = crate::vm::native::StakeGuard::nv(vm, nv);
+    // Prefer the TAG_BOOL encoding; fall back to legacy i32 truthiness
+    // (0 / i32::MIN+1 = false, anything else = true) for values pushed
+    // by older code paths that still use push_i32.
+    let is_true = if auto_val::is_bool(nv) {
+        auto_val::decode_bool(nv)
+    } else {
+        let v = auto_val::decode_i32(nv);
+        v != 0 && v != -2147483647
+    };
+    let s = if is_true { "true" } else { "false" };
+    let str_idx = vm.add_string(s.as_bytes().to_vec());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// f64 to string.
+/// Stack: f64_val -> str_idx
+pub fn shim_f64_to_str(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_f64();
+    let s = format!("{}", val);
+    let str_idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+// --- Result shims (2760-2766) ---
+// Result<T,E> is represented as a tagged i32:
+//   Ok(v)  => v >= 0 (the value itself)
+//   Err(e) => e < 0  (negated error code)
+
+/// Check if a Result is Ok.
+/// Stack: result_val (i32) -> bool
+pub fn shim_result_is_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+    task.ram.push_nv(auto_val::encode_bool(val >= 0));
+    Ok(())
+}
+
+/// Check if a Result is Err.
+/// Stack: result_val (i32) -> bool
+pub fn shim_result_is_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+    task.ram.push_nv(auto_val::encode_bool(val < 0));
+    Ok(())
+}
+
+/// Unwrap Result — returns value if Ok, panics if Err.
+/// Stack: result_val (i32) -> value (i32)
+pub fn shim_result_unwrap(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+    if val < 0 {
+        return Err(VMError::RuntimeError("unwrap on Err result".to_string()));
+    }
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+/// Unwrap Result with default.
+/// Stack: default (i32), result_val (i32) -> value (i32)
+pub fn shim_result_unwrap_or(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let default = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_default = crate::vm::native::StakeGuard::new(vm, default as i64 as u64);
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+    task.ram.push_i32(if val >= 0 { val } else { default });
+    Ok(())
+}
+
+/// Unwrap the Err value from a Result.
+/// Stack: result_val (i32) -> err_value (i32)
+pub fn shim_result_unwrap_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+    if val >= 0 {
+        return Err(VMError::RuntimeError("unwrap_err on Ok result".to_string()));
+    }
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+/// Create Ok result — passthrough.
+/// Stack: value (i32) -> result (i32)
+pub fn shim_result_ok(_task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    Ok(())
+}
+
+/// Create Err result — negate to mark as error.
+/// Stack: value (i32) -> result (i32)
+pub fn shim_result_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+    task.ram.push_i32(if val >= 0 { -val - 1 } else { val });
+    Ok(())
+}
+
+// --- List Reverse (2770) ---
+
+/// Reverse a list in-place.
+/// Stack: list_handle -> void
+pub fn shim_list_reverse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    let obj = vm
+        .get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid list handle in reverse".to_string()))?;
+    let mut guard = obj.write().unwrap();
+    if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+        list.elems.reverse();
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// --- Random convenience (2780-2783) ---
+
+/// Thread-local random int in [0, max).
+/// Stack: max (i32) -> i32
+pub fn shim_rand_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let max = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_max = crate::vm::native::StakeGuard::new(vm, max as i64 as u64);
+    let max = if max <= 0 { 1 } else { max as u32 };
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let mut rng = Xorshift64::new(seed);
+    let val = (rng.next() % max as u64) as i32;
+    task.ram.push_i32(val);
+    Ok(())
+}
+
+/// Thread-local random float in [0, 1).
+/// Stack: -> f64
+pub fn shim_rand_float(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let mut rng = Xorshift64::new(seed);
+    let val = (rng.next() as f64) / (u64::MAX as f64);
+    task.ram.push_f64(val);
+    Ok(())
+}
+
+/// Thread-local random bool.
+/// Stack: -> bool
+pub fn shim_rand_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let mut rng = Xorshift64::new(seed);
+    let val = rng.next() % 2 == 0;
+    task.ram.push_nv(auto_val::encode_bool(val));
+    Ok(())
+}
+
+/// Shuffle a list in-place using Fisher-Yates.
+/// Stack: list_handle -> void
+pub fn shim_rand_shuffle(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let obj = vm
+        .get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid list handle in shuffle".to_string()))?;
+    let mut guard = obj.write().unwrap();
+    if let Some(list) = guard.as_any_mut().downcast_mut::<ListData<i32>>() {
+        let mut rng = Xorshift64::new(seed);
+        let mut i = list.elems.len();
+        while i > 1 {
+            i -= 1;
+            let j = (rng.next() % (i as u64 + 1)) as usize;
+            list.elems.swap(i, j);
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// --- DateTime extended (2790-2792) ---
+// These use the existing chrono_opaque infrastructure from stdlib.rs
+
+/// Create DateTime from Unix timestamp.
+/// Stack: timestamp (i32) -> opaque_handle
+pub fn shim_chrono_from_timestamp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let ts = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let _stake_ts = crate::vm::native::StakeGuard::new(vm, ts as i64 as u64);
+    let dt = chrono::DateTime::from_timestamp(ts, 0)
+        .map(|dt| dt.naive_utc())
+        .unwrap_or_else(|| {
+            chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+                .and_then(|d| d.and_hms_opt(0, 0, 0))
+                .unwrap()
+        });
+    let obj = RustStdlibObject::new("DateTime", std::sync::Mutex::new(dt));
+    let handle = vm.insert_heap_object(obj) as i32;
+    vm.rc_push_id(task, handle as u64); // Plan 419
+    Ok(())
+}
+
+/// Create DateTime from year/month/day.
+/// Stack: day, month, year -> opaque_handle
+pub fn shim_chrono_from_ymd(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let day = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_day = crate::vm::native::StakeGuard::new(vm, day as i64 as u64);
+    let month = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_month = crate::vm::native::StakeGuard::new(vm, month as i64 as u64);
+    let year = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_year = crate::vm::native::StakeGuard::new(vm, year as i64 as u64);
+    let dt = chrono::NaiveDate::from_ymd_opt(year, month as u32, day as u32)
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .unwrap_or_else(|| {
+            chrono::NaiveDate::from_ymd_opt(1970, 1, 1)
+                .and_then(|d| d.and_hms_opt(0, 0, 0))
+                .unwrap()
+        });
+    let obj = RustStdlibObject::new("DateTime", std::sync::Mutex::new(dt));
+    let handle = vm.insert_heap_object(obj) as i32;
+    vm.rc_push_id(task, handle as u64); // Plan 419
+    Ok(())
+}
+
+/// Get weekday (0=Monday..6=Sunday).
+/// Stack: opaque_handle -> i32
+pub fn shim_chrono_weekday(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    use chrono::Datelike;
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    let obj = vm
+        .get_heap_object(handle)
+        .ok_or_else(|| VMError::RuntimeError("Invalid DateTime handle".to_string()))?;
+    let guard = obj.read().unwrap();
+    if let Some(rust_obj) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+        if let Some(dt) = rust_obj.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+            task.ram
+                .push_i32(dt.lock().unwrap().weekday().num_days_from_monday() as i32);
+            return Ok(());
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+// --- CSV (2800-2803) ---
+// CSV functions return JSON strings, matching the pattern used by file.walk etc.
+
+/// Parse CSV text into JSON array of arrays.
+/// Stack: str_idx -> str_idx (JSON)
+pub fn shim_csv_parse(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u32;
+    let text = if let Some(bytes) = vm.get_string(str_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        String::new()
+    };
+    let rows: Vec<Vec<String>> = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.split(',').map(|f| f.trim().to_string()).collect())
+        .collect();
+    let json = serde_json::to_string(&rows)
+        .map_err(|e| VMError::RuntimeError(format!("csv_parse: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Parse CSV text with custom delimiter.
+/// Stack: str_idx(delimiter), str_idx(text) -> str_idx (JSON)
+pub fn shim_csv_parse_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let delim_idx = task.ram.pop_str_idx() as u32;
+    let text_idx = task.ram.pop_str_idx() as u32;
+    let delim = if let Some(bytes) = vm.get_string(delim_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        ",".to_string()
+    };
+    let text = if let Some(bytes) = vm.get_string(text_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        String::new()
+    };
+    let delim_char = delim.chars().next().unwrap_or(',');
+    let rows: Vec<Vec<String>> = text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            line.split(delim_char)
+                .map(|f| f.trim().to_string())
+                .collect()
+        })
+        .collect();
+    let json = serde_json::to_string(&rows)
+        .map_err(|e| VMError::RuntimeError(format!("csv_parse_delim: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Encode list of list of strings (JSON) to CSV.
+/// Stack: str_idx (JSON) -> str_idx (CSV)
+pub fn shim_csv_encode(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let json_idx = task.ram.pop_str_idx() as u32;
+    let json = if let Some(bytes) = vm.get_string(json_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        String::new()
+    };
+    let rows: Vec<Vec<String>> = serde_json::from_str(&json)
+        .map_err(|e| VMError::RuntimeError(format!("csv_encode: {}", e)))?;
+    let mut result = String::new();
+    for (i, row) in rows.iter().enumerate() {
+        if i > 0 {
+            result.push('\n');
+        }
+        result.push_str(&row.join(","));
+    }
+    let str_idx = vm.add_string(result.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Encode CSV with custom delimiter.
+/// Stack: str_idx(delim), str_idx(JSON) -> str_idx (CSV)
+pub fn shim_csv_encode_delim(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let delim_idx = task.ram.pop_str_idx() as u32;
+    let json_idx = task.ram.pop_str_idx() as u32;
+    let delim = if let Some(bytes) = vm.get_string(delim_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        ",".to_string()
+    };
+    let json = if let Some(bytes) = vm.get_string(json_idx) {
+        String::from_utf8_lossy(&bytes).to_string()
+    } else {
+        String::new()
+    };
+    let rows: Vec<Vec<String>> = serde_json::from_str(&json)
+        .map_err(|e| VMError::RuntimeError(format!("csv_encode_delim: {}", e)))?;
+    let mut result = String::new();
+    for (i, row) in rows.iter().enumerate() {
+        if i > 0 {
+            result.push('\n');
+        }
+        result.push_str(&row.join(&delim));
+    }
+    let str_idx = vm.add_string(result.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+// --- Hashing (2810-2813) ---
+
+/// MD5 hash.
+/// Stack: str_idx -> str_idx (hex digest)
+pub fn shim_hash_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u32;
+    let data = if let Some(bytes) = vm.get_string(str_idx) {
+        bytes.clone()
+    } else {
+        Vec::new()
+    };
+    // Simple MD5 implementation using digest
+    let digest = md5_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// SHA1 hash.
+/// Stack: str_idx -> str_idx (hex digest)
+pub fn shim_hash_sha1(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u32;
+    let data = if let Some(bytes) = vm.get_string(str_idx) {
+        bytes.clone()
+    } else {
+        Vec::new()
+    };
+    let digest = sha1_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// SHA256 one-shot hash.
+/// Stack: str_idx -> str_idx (hex digest)
+pub fn shim_hash_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u32;
+    let data = if let Some(bytes) = vm.get_string(str_idx) {
+        bytes.clone()
+    } else {
+        Vec::new()
+    };
+    let digest = sha256_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// SHA512 hash.
+/// Stack: str_idx -> str_idx (hex digest)
+pub fn shim_hash_sha512(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let str_idx = task.ram.pop_str_idx() as u32;
+    let data = if let Some(bytes) = vm.get_string(str_idx) {
+        bytes.clone()
+    } else {
+        Vec::new()
+    };
+    let digest = sha512_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+// Simple hash implementations using pure Rust
+fn md5_hash(data: &[u8]) -> String {
+    use md5::{Digest, Md5};
+    let mut hasher = Md5::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:02x}", result)
+}
+
+fn sha1_hash(data: &[u8]) -> String {
+    use sha1::{Digest, Sha1};
+    let mut hasher = Sha1::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:02x}", result)
+}
+
+fn sha256_hash(data: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:02x}", result)
+}
+
+fn sha512_hash(data: &[u8]) -> String {
+    use sha2::{Digest, Sha512};
+    let mut hasher = Sha512::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{:02x}", result)
+}
+
+// --- Test assertions (2820-2825) ---
+
+/// Assert true.
+/// Stack: message_str_idx, condition (i32) -> void
+pub fn shim_test_assert_true(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u32;
+    let condition = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_condition = crate::vm::native::StakeGuard::new(vm, condition as i64 as u64);
+    if condition == 0 {
+        let msg = if let Some(bytes) = vm.get_string(msg_idx) {
+            String::from_utf8_lossy(&bytes).to_string()
+        } else {
+            "assertion failed".to_string()
+        };
+        return Err(VMError::RuntimeError(format!(
+            "assert_true failed: {}",
+            msg
+        )));
+    }
+    Ok(())
+}
+
+/// Assert false.
+/// Stack: message_str_idx, condition (i32) -> void
+pub fn shim_test_assert_false(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u32;
+    let condition = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_condition = crate::vm::native::StakeGuard::new(vm, condition as i64 as u64);
+    if condition != 0 {
+        let msg = if let Some(bytes) = vm.get_string(msg_idx) {
+            String::from_utf8_lossy(&bytes).to_string()
+        } else {
+            "assertion failed".to_string()
+        };
+        return Err(VMError::RuntimeError(format!(
+            "assert_false failed: {}",
+            msg
+        )));
+    }
+    Ok(())
+}
+
+/// Assert string contains.
+/// Stack: message_str_idx, needle_str_idx, haystack_str_idx -> void
+pub fn shim_test_assert_contains(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u32;
+    let needle_idx = task.ram.pop_str_idx() as u32;
+    let haystack_idx = task.ram.pop_str_idx() as u32;
+    let haystack = vm
+        .get_string(haystack_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let needle = vm
+        .get_string(needle_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let msg = vm
+        .get_string(msg_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    if !haystack.contains(&needle) {
+        return Err(VMError::RuntimeError(format!(
+            "assert_contains failed: '{}' not found in '{}' — {}",
+            needle, haystack, msg
+        )));
+    }
+    Ok(())
+}
+
+/// Assert list length.
+/// Stack: message_str_idx, expected_len (i32), list_handle -> void
+pub fn shim_test_assert_len(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::types::ListData;
+    let msg_idx = task.ram.pop_str_idx() as u32;
+    let expected = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_expected = crate::vm::native::StakeGuard::new(vm, expected as i64 as u64);
+    let handle = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_handle = crate::vm::native::StakeGuard::new(vm, handle as i64 as u64);
+    let msg = vm
+        .get_string(msg_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let len = {
+        let obj = vm.get_heap_object(handle).ok_or_else(|| {
+            VMError::RuntimeError("Invalid list handle in assert_len".to_string())
+        })?;
+        let guard = obj.read().unwrap();
+        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+            list.elems.len() as i32
+        } else {
+            -1
+        }
+    };
+    if len != expected {
+        return Err(VMError::RuntimeError(format!(
+            "assert_len failed: expected {} got {} — {}",
+            expected, len, msg
+        )));
+    }
+    Ok(())
+}
+
+/// Assert result is Ok.
+/// Stack: message_str_idx, result_val -> void
+pub fn shim_test_assert_ok(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u32;
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+    let msg = vm
+        .get_string(msg_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    if val < 0 {
+        return Err(VMError::RuntimeError(format!(
+            "assert_ok failed: result is Err — {}",
+            msg
+        )));
+    }
+    Ok(())
+}
+
+/// Assert result is Err.
+/// Stack: message_str_idx, result_val -> void
+pub fn shim_test_assert_err(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let msg_idx = task.ram.pop_str_idx() as u32;
+    let val = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+    let msg = vm
+        .get_string(msg_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    if val >= 0 {
+        return Err(VMError::RuntimeError(format!(
+            "assert_err failed: result is Ok — {}",
+            msg
+        )));
+    }
+    Ok(())
+}
+
+// --- Format (2830-2832) ---
+
+/// sprintf — format string with positional arguments.
+/// Stack: ...args..., arg_count (i32), format_str_idx -> str_idx
+pub fn shim_fmt_sprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arg_count = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_arg_count = crate::vm::native::StakeGuard::new(vm, arg_count as i64 as u64);
+    let fmt_idx = task.ram.pop_str_idx() as u32;
+    let fmt_str = vm
+        .get_string(fmt_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+
+    // Pop arguments in reverse order
+    let mut args: Vec<String> = Vec::new();
+    for _ in 0..arg_count {
+        // Try to pop as string (simplified — real impl would need type info)
+        let val = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+        args.push(val.to_string());
+    }
+    args.reverse();
+
+    // Simple {} replacement
+    let mut result = fmt_str;
+    for arg in args {
+        if let Some(pos) = result.find("{}") {
+            result.replace_range(pos..pos + 2, &arg);
+        }
+    }
+
+    let str_idx = vm.add_string(result.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// printf — format and print to stdout.
+pub fn shim_fmt_printf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arg_count = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_arg_count = crate::vm::native::StakeGuard::new(vm, arg_count as i64 as u64);
+    let fmt_idx = task.ram.pop_str_idx() as u32;
+    let fmt_str = vm
+        .get_string(fmt_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+
+    let mut args: Vec<String> = Vec::new();
+    for _ in 0..arg_count {
+        let val = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+        args.push(val.to_string());
+    }
+    args.reverse();
+
+    let mut result = fmt_str;
+    for arg in args {
+        if let Some(pos) = result.find("{}") {
+            result.replace_range(pos..pos + 2, &arg);
+        }
+    }
+
+    print!("{}", result);
+    Ok(())
+}
+
+/// eprintf — format and print to stderr.
+pub fn shim_fmt_eprintf(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let arg_count = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_arg_count = crate::vm::native::StakeGuard::new(vm, arg_count as i64 as u64);
+    let fmt_idx = task.ram.pop_str_idx() as u32;
+    let fmt_str = vm
+        .get_string(fmt_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+
+    let mut args: Vec<String> = Vec::new();
+    for _ in 0..arg_count {
+        let val = crate::vm::native::pop_arg_i32(task);
+
+        let _stake_val = crate::vm::native::StakeGuard::new(vm, val as i64 as u64);
+        args.push(val.to_string());
+    }
+    args.reverse();
+
+    let mut result = fmt_str;
+    for arg in args {
+        if let Some(pos) = result.find("{}") {
+            result.replace_range(pos..pos + 2, &arg);
+        }
+    }
+
+    eprint!("{}", result);
+    Ok(())
+}
+
+// --- FS extended (2840-2847) ---
+
+/// Get system temp directory.
+/// Stack: -> str_idx
+pub fn shim_fs_temp_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let temp = std::env::temp_dir();
+    let s = temp.to_string_lossy().to_string();
+    let str_idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Create a temporary file and return its path.
+/// Stack: -> str_idx
+pub fn shim_fs_temp_file(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let temp_dir = std::env::temp_dir();
+    let id =
+        std::sync::atomic::AtomicU64::new(0).fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let path = temp_dir.join(format!("auto_tmp_{}", id));
+    // Create the file
+    std::fs::File::create(&path)
+        .map_err(|e| VMError::RuntimeError(format!("temp_file failed: {}", e)))?;
+    let s = path.to_string_lossy().to_string();
+    let str_idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Rename a file or directory.
+/// Stack: str_idx(new), str_idx(old) -> void
+pub fn shim_fs_rename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let new_idx = task.ram.pop_str_idx() as u32;
+    let old_idx = task.ram.pop_str_idx() as u32;
+    let old_path = vm
+        .get_string(old_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let new_path = vm
+        .get_string(new_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    std::fs::rename(&old_path, &new_path).map_err(|e| {
+        VMError::RuntimeError(format!(
+            "rename failed: {} -> {}: {}",
+            old_path, new_path, e
+        ))
+    })?;
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Read directory entries (non-recursive) — returns JSON array of filenames.
+/// Stack: str_idx(path) -> str_idx (JSON)
+pub fn shim_fs_read_dir(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let entries: Vec<String> = std::fs::read_dir(&path)
+        .map_err(|e| VMError::RuntimeError(format!("read_dir failed: {}: {}", path, e)))?
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    let json = serde_json::to_string(&entries)
+        .map_err(|e| VMError::RuntimeError(format!("read_dir json: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Plan 060(api.at 契约归一):merged 模式 shell 执行提交。
+/// shell.at 的 run_command 调 auto.shell.exec_submit(block_id, cmd, cwd),
+/// 请求进 vm::shell_bridge 队列,由 renderer 的 merged_exec_loop 取走执行。
+/// Stack: int(block_id), str_idx(cmd), str_idx(cwd) ->
+pub fn shim_shell_exec_submit(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cwd_idx = task.ram.pop_str_idx() as u32;
+    let cmd_idx = task.ram.pop_str_idx() as u32;
+    let block_id = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let _stake_block_id = crate::vm::native::StakeGuard::new(vm, block_id as i64 as u64);
+    let cmd = vm
+        .get_string(cmd_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let cwd = vm
+        .get_string(cwd_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
+        kind: crate::vm::shell_bridge::ShellExecKind::Process,
+        block_id,
+        cmd,
+        cwd,
+        result_json: String::new(),
+    });
+    Ok(())
+}
+
+/// Plan 060(M2):merged 模式 builtin 直发 —— shell.at 对 ls/cd/pwd 等
+/// 已在 .at 侧算好语义结果,经此把完整 command_result payload JSON 压入
+/// 队列(执行线程直发,不 spawn)。Stack: int(block_id), str_idx(json) ->
+pub fn shim_shell_emit_result(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let json_idx = task.ram.pop_str_idx() as u32;
+    let block_id = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let _stake_block_id = crate::vm::native::StakeGuard::new(vm, block_id as i64 as u64);
+    let json = vm
+        .get_string(json_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
+        kind: crate::vm::shell_bridge::ShellExecKind::Result,
+        block_id,
+        cmd: String::new(),
+        cwd: String::new(),
+        result_json: json,
+    });
+    Ok(())
+}
+
+/// 2026-08-22(show 下沉):读文件 + 逐行高亮 + Code payload 全在 Rust 侧完成。
+/// 动机:.at 侧 `js = js + ...` 拼 ~100KB payload 巨串会触发 VM 字符串堆损坏
+/// (实测:会话 cwd 被写成单字符、payload 丢失、块永挂 Running、进程退出)。
+/// shell.at 只做路径归一后调本 native。Stack: int(block_id), str_idx(path),
+/// str_idx(cwd) ->
+pub fn shim_shell_emit_show(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let cwd_idx = task.ram.pop_str_idx() as u32;
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let block_id = crate::vm::native::pop_arg_i32(task) as i64;
+
+    let _stake_block_id = crate::vm::native::StakeGuard::new(vm, block_id as i64 as u64);
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let cwd = vm
+        .get_string(cwd_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    crate::vm::shell_bridge::submit(crate::vm::shell_bridge::ShellExecRequest {
+        kind: crate::vm::shell_bridge::ShellExecKind::Result,
+        block_id,
+        cmd: String::new(),
+        cwd: String::new(),
+        result_json: crate::vm::shell_bridge::show_result_json(block_id, &cwd, &path),
+    });
+    Ok(())
+}
+
+/// Plan 060 M3(2026-08-22):通用宿主桥 —— merged 模式"进程内直调"。
+/// ash-runner(auto-shell 仓,链接 ash_server)把 api.at 契约端点注册进
+/// host_bridge;本 native 查表直调,返回 JSON 串。参数/返回编码与 HTTP
+/// 模式同构(json body / json 响应),前端桩可复用 json.to_value。
+/// Stack: str_idx(name), str_idx(args_json) -> str_idx(response_json)
+pub fn shim_host_call(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let args_idx = task.ram.pop_str_idx() as u32;
+    let name_idx = task.ram.pop_str_idx() as u32;
+    let name = vm
+        .get_string(name_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let args_json = vm
+        .get_string(args_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    match crate::vm::host_bridge::call_host(&name, &args_json) {
+        Ok(resp) => {
+            let idx = vm.add_string(resp.into_bytes());
+            vm.rc_push_str_idx(task, idx as usize);
+            Ok(())
+        }
+        Err(e) => Err(VMError::RuntimeError(format!("host.call {}: {}", name, e))),
+    }
+}
+
+/// Plan 060 M3:同 shim_host_call,但把 JSON 响应直接转换为 VM 值入栈
+/// (复用 json.to_value 的转换管线)—— 前端桩免一层 json.to_value 调用。
+/// Stack: str_idx(name), str_idx(args_json) -> value
+pub fn shim_host_call_value(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let args_idx = task.ram.pop_str_idx() as u32;
+    let name_idx = task.ram.pop_str_idx() as u32;
+    let name = vm
+        .get_string(name_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let args_json = vm
+        .get_string(args_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let resp = crate::vm::host_bridge::call_host(&name, &args_json)
+        .map_err(|e| VMError::RuntimeError(format!("host.call_value {}: {}", name, e)))?;
+    let parsed: serde_json::Value = serde_json::from_str(&resp).map_err(|e| {
+        VMError::RuntimeError(format!(
+            "host.call_value {}: response parse error: {}",
+            name, e
+        ))
+    })?;
+    crate::vm::ffi::stdlib::json_to_vm_value(task, vm, &parsed, 0)
+}
+
+// ============================================================================
+// Plan 419: 消费型 pop(死区结算的补盲)
+//
+// CALL_NAT 的死区结算只覆盖净减栈的 shim;"pop N → push N"(消费 receiver
+// 返回新值)的 sp 中性形态不会进死区,receiver 的 stake 就此泄漏。所有
+// 消费型(读后即弃)的 pop 走这里:引用值 -1 + 槽位清零(防死区二次释放)。
+// 存储型 pop(值进容器/邮箱)不走这里 —— 容器侧 retain 配平。
+// ============================================================================
+
+/// 消费型参数 pop:弹值 + 槽位清零(不计数 —— 计数由 StakeGuard 在
+/// shim 返回时统一释放,保证"先读取后释放"次序)。槽位清零令死区结算
+/// 对这些槽为 no-op,避免双重释放。
+pub fn pop_arg_i32(task: &mut AutoTask) -> i32 {
+    let v = task.ram.pop_i32();
+    task.ram.raw_nv[task.ram.sp] = 0;
+    v
+}
+
+pub fn pop_arg_nv(task: &mut AutoTask) -> auto_val::NanoValue {
+    let v = task.ram.pop_nv();
+    task.ram.raw_nv[task.ram.sp] = 0;
+    v
+}
+
+/// Plan 419: shim 参数的 stake 守卫 —— Drop 时释放(覆盖早退 return;
+/// 读取对象必须发生在释放之前,故不在 pop 点释放)。id < HEAP_ID_BASE
+/// 时堆侧 Drop 为 no-op(迭代器/闭包/任务 id 安全)。
+/// Plan 510 G3:池串实参同守卫——此前只释放堆引用,池份额(pop_arg_nv
+/// 弹出的 TAG_STRING)从不配平,每个池串实参泄漏 1 份(soak 实测
+/// print(acc) 残 1)。Drop 时点在内容读取之后,安全。
+pub struct StakeGuard<'a> {
+    vm: &'a AutoVM,
+    id: u64,
+    pool_idx: Option<u32>,
+}
+
+impl<'a> StakeGuard<'a> {
+    pub fn new(vm: &'a AutoVM, id: u64) -> Self {
+        Self {
+            vm,
+            id,
+            pool_idx: None,
+        }
+    }
+    pub fn nv(vm: &'a AutoVM, nv: auto_val::NanoValue) -> Self {
+        Self {
+            vm,
+            id: crate::vm::rc::heap_ref_id(nv).unwrap_or(0),
+            pool_idx: crate::vm::rc::pool_idx_nv(nv),
+        }
+    }
+}
+
+impl Drop for StakeGuard<'_> {
+    fn drop(&mut self) {
+        if self.id >= crate::vm::rc::HEAP_ID_BASE {
+            self.vm.rc_release_id(self.id);
+        }
+        if let Some(idx) = self.pool_idx {
+            self.vm.pool_release(idx as usize);
+        }
+    }
+}
+
+// ============================================================================
+// Plan 419: 引用计数诊断 natives(rc_stats 的脚本侧断言通道)
+// ============================================================================
+
+/// auto.rc.live() -> int:当前存活堆对象数(rc_stats().live_heap)。
+pub fn shim_rc_live(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let live = vm.rc_stats().live_heap as i32;
+    task.ram.push_i32(live);
+    Ok(())
+}
+
+/// auto.rc.count(x) -> int:x 的引用计数(堆 id;非引用返回 0)。
+pub fn shim_rc_count(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_id = crate::vm::native::StakeGuard::new(vm, id as i64 as u64);
+    let count = vm.rc_count(id) as i32;
+    task.ram.push_i32(count);
+    Ok(())
+}
+
+/// auto.rc.assert_unique(x) -> x:.mut 借用的动态兜底 —— RC>1(Shared,
+/// 多属主)时抛 "mutable borrow of shared value"。RefCell 式极简借用检查:
+/// 以 RC>1 为冲突判据,不维护活跃借用表(plan 419 §4.4)。非引用值直通。
+pub fn shim_rc_assert_unique(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let nv = task.ram.pop_nv();
+    if let Some(id) = crate::vm::rc::heap_ref_id(nv) {
+        let count = vm.rc_count(id);
+        if count > 1 {
+            return Err(VMError::RuntimeError(format!(
+                "mutable borrow of shared value: heap object {} has {} owners",
+                id, count
+            )));
+        }
+    }
+    task.ram.push_nv(nv);
+    Ok(())
+}
+
+/// Canonicalize a path (absolute, resolved symlinks).
+/// Stack: str_idx -> str_idx
+pub fn shim_fs_canonical(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    // PLAN-016 T-05：剥 Windows 扩展长度前缀 \\\\?\\（canonicalize 原样返回，
+    // 面包屑/地址栏/拼接面不消费该形态）。
+    // PLAN-659 T-06：失败返 ""（语料哨兵权威——027 NavTo 的 `can == ""`
+    // 判空分支可达；与族内 Path.canonicalize 的 unwrap_or_default 对齐）。
+    let canonical = std::fs::canonicalize(&path)
+        .map(|p| {
+            let s = p.to_string_lossy().to_string();
+            s.strip_prefix(r"\\?\").unwrap_or(&s).to_string()
+        })
+        .unwrap_or_default();
+    let str_idx = vm.add_string(canonical.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Get file extension.
+/// Stack: str_idx -> str_idx
+pub fn shim_fs_ext(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let ext = std::path::Path::new(&path)
+        .extension()
+        .map(|e| e.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let str_idx = vm.add_string(ext.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Get filename stem (name without extension).
+/// Stack: str_idx -> str_idx
+pub fn shim_fs_stem(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let stem = std::path::Path::new(&path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let str_idx = vm.add_string(stem.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Walk directory recursively, returning only files — JSON array of paths.
+/// Stack: str_idx(dir) -> str_idx (JSON)
+pub fn shim_fs_walk_files(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let dir_idx = task.ram.pop_str_idx() as u32;
+    let dir = vm
+        .get_string(dir_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let mut files: Vec<String> = Vec::new();
+    if let Ok(entries) = walkdir_recursive(&dir) {
+        files = entries;
+    }
+    let json = serde_json::to_string(&files)
+        .map_err(|e| VMError::RuntimeError(format!("walk_files json: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Simple recursive directory walker.
+fn walkdir_recursive(dir: &str) -> Result<Vec<String>, std::io::Error> {
+    let mut result = Vec::new();
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            let sub = walkdir_recursive(&path.to_string_lossy())?;
+            result.extend(sub);
+        } else {
+            result.push(path.to_string_lossy().to_string());
+        }
+    }
+    Ok(result)
+}
+
+// --- FS more (2860-2865) ---
+
+/// Walk directory recursively, return JSON array of ALL paths (files + dirs).
+/// Stack: str_idx(dir) -> str_idx (JSON)
+pub fn shim_fs_walk(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let dir_idx = task.ram.pop_str_idx() as u32;
+    let dir = vm
+        .get_string(dir_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let mut paths: Vec<String> = Vec::new();
+    if let Ok(entries) = walkdir_all(&dir) {
+        paths = entries;
+    }
+    let json = serde_json::to_string(&paths)
+        .map_err(|e| VMError::RuntimeError(format!("walk json: {}", e)))?;
+    let str_idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Recursive directory walker returning ALL paths (files + dirs).
+fn walkdir_all(dir: &str) -> Result<Vec<String>, std::io::Error> {
+    let mut result = Vec::new();
+    let entries = std::fs::read_dir(dir)?;
+    for entry in entries {
+        let entry = entry?;
+        let path = entry.path();
+        let path_str = path.to_string_lossy().to_string();
+        result.push(path_str.clone());
+        if path.is_dir() {
+            let sub = walkdir_all(&path.to_string_lossy())?;
+            result.extend(sub);
+        }
+    }
+    Ok(result)
+}
+
+// --- FS tree (2875) — Plan 626 T-04 ---
+
+/// Skip-list for `fs.tree`: VCS/build/dependency noise + dotfiles.
+fn fs_tree_skipped(name: &str) -> bool {
+    matches!(
+        name,
+        ".git" | "target" | "build" | "node_modules" | "gen" | "dist" | "__pycache__"
+    ) || name.starts_with('.')
+}
+
+/// Recursive tree builder emitting nested JSON (no trailing separators).
+/// `depth` counts levels BELOW `dir` still to descend (0 = emit nothing).
+pub fn fs_tree_walk(dir: &std::path::Path, root: &std::path::Path, depth: usize, out: &mut String) {
+    let mut entries: Vec<std::fs::DirEntry> = match std::fs::read_dir(dir) {
+        Ok(rd) => rd.filter_map(|e| e.ok()).collect(),
+        Err(_) => return,
+    };
+    // Dirs first, then case-insensitive name order — stable tree shape.
+    entries.sort_by_key(|e| {
+        let is_dir = e.path().is_dir();
+        (!is_dir, e.file_name().to_string_lossy().to_lowercase())
+    });
+    for entry in entries {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if fs_tree_skipped(&name) {
+            continue;
+        }
+        let path = entry.path();
+        let is_dir = path.is_dir();
+        // id = '/'-separated path relative to root — the TreeView node id
+        // convention (apps rejoin it onto the workspace root to read files).
+        let rel = path
+            .strip_prefix(root)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_else(|_| name.clone());
+        let id = serde_json::to_string(&rel).unwrap_or_else(|_| "\"\"".into());
+        let label = serde_json::to_string(&name).unwrap_or_else(|_| "\"\"".into());
+        if !out.is_empty() {
+            out.push(',');
+        }
+        if is_dir && depth > 1 {
+            let mut children = String::new();
+            fs_tree_walk(&path, root, depth - 1, &mut children);
+            out.push_str(&format!(
+                "{{\"id\":{},\"label\":{},\"children\":[{}],\"kind\":\"dir\",\"icon\":\"folder\",\"is_leaf\":false,\"badge\":\"\"}}",
+                id, label, children
+            ));
+        } else if is_dir {
+            out.push_str(&format!(
+                "{{\"id\":{},\"label\":{},\"children\":[],\"kind\":\"dir\",\"icon\":\"folder\",\"is_leaf\":false,\"badge\":\"\"}}",
+                id, label
+            ));
+        } else {
+            out.push_str(&format!(
+                "{{\"id\":{},\"label\":{},\"children\":[],\"kind\":\"file\",\"icon\":\"file-text\",\"is_leaf\":true,\"badge\":\"\"}}",
+                id, label
+            ));
+        }
+    }
+}
+
+/// Recursive directory tree as nested JSON aligned with the TreeView node
+/// schema: `{id,label,children,kind,icon,is_leaf,badge}`. `id` is the path
+/// relative to `root` ('/'-separated); VCS/build noise and dotfiles are
+/// skipped; `max_depth` caps recursion (1 = root entries only).
+/// Stack: str_idx(root), int(max_depth) -> str_idx (JSON)
+pub fn shim_fs_tree(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    // Args push left-to-right: pop the LAST (max_depth) first, then root.
+    let max_depth = crate::vm::native::pop_arg_i32(task).clamp(1, 8) as usize;
+    let root = pop_string_arg(task, vm);
+    let root_path = std::path::PathBuf::from(&root);
+    let mut buf = String::new();
+    if root_path.is_dir() {
+        fs_tree_walk(&root_path, &root_path, max_depth, &mut buf);
+    }
+    let json = if buf.is_empty() {
+        "[]".to_string()
+    } else {
+        format!("[{}]", buf)
+    };
+    let str_idx = vm.add_string(json.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Get file metadata as JSON string.
+/// Stack: str_idx(path) -> str_idx (JSON with len, is_dir, is_file, readonly)
+pub fn shim_fs_metadata(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let metadata = std::fs::metadata(&path)
+        .map_err(|e| VMError::RuntimeError(format!("metadata failed: {}: {}", path, e)))?;
+    // PLAN-016 T-05：补 modified（epoch 秒；1970 前/取值失败 = -1，.at 侧
+    // fmt_date 以 "--" 呈现）——修改日期列为文件管理器基本列，metadata
+    // JSON 原仅 len/is_dir/is_file/readonly。
+    let modified = metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(-1);
+    let json = serde_json::json!({
+        "len": metadata.len(),
+        "is_dir": metadata.is_dir(),
+        "is_file": metadata.is_file(),
+        "readonly": metadata.permissions().readonly(),
+        "modified": modified,
+    });
+    let result = serde_json::to_string(&json)
+        .map_err(|e| VMError::RuntimeError(format!("metadata json: {}", e)))?;
+    let str_idx = vm.add_string(result.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Recursive copy of directory or file.
+/// Stack: str_idx(dst), str_idx(src) -> void
+pub fn shim_fs_copy_recursive(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let dst_idx = task.ram.pop_str_idx() as u32;
+    let src_idx = task.ram.pop_str_idx() as u32;
+    let dst = vm
+        .get_string(dst_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let src = vm
+        .get_string(src_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    copy_recursive(&src, &dst)
+        .map_err(|e| VMError::RuntimeError(format!("copy_recursive failed: {}", e)))?;
+    Ok(())
+}
+
+fn copy_recursive(src: &str, dst: &str) -> Result<(), std::io::Error> {
+    let src_path = std::path::Path::new(src);
+    if src_path.is_dir() {
+        let dst_path = std::path::Path::new(dst);
+        std::fs::create_dir_all(dst_path)?;
+        for entry in std::fs::read_dir(src_path)? {
+            let entry = entry?;
+            let src_child = entry.path();
+            let dst_child = dst_path.join(entry.file_name());
+            copy_recursive(&src_child.to_string_lossy(), &dst_child.to_string_lossy())?;
+        }
+    } else {
+        std::fs::copy(src, dst)?;
+    }
+    Ok(())
+}
+
+/// Extract filename from path.
+/// Stack: str_idx(path) -> str_idx (filename)
+pub fn shim_fs_filename(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let filename = std::path::Path::new(&path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let str_idx = vm.add_string(filename.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Get parent directory of path.
+/// Stack: str_idx(path) -> str_idx (parent)
+pub fn shim_fs_parent(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let parent = std::path::Path::new(&path)
+        .parent()
+        .map(|p| p.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let str_idx = vm.add_string(parent.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// Join path components.
+/// Stack: str_idx(b), str_idx(a) -> str_idx (joined path)
+pub fn shim_fs_join(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let b_idx = task.ram.pop_str_idx() as u32;
+    let a_idx = task.ram.pop_str_idx() as u32;
+    let b = vm
+        .get_string(b_idx)
+        .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+        .unwrap_or_default();
+    let a = vm
+        .get_string(a_idx)
+        .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+        .unwrap_or_default();
+    let joined = std::path::Path::new(&a)
+        .join(&b)
+        .to_string_lossy()
+        .to_string();
+    let str_idx = vm.add_string(joined.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+// --- Hash extended (2814-2816) ---
+
+/// HMAC-SHA256.
+/// Stack: str_idx(key), str_idx(data) -> str_idx (hex digest)
+pub fn shim_hash_hmac_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let key_idx = task.ram.pop_str_idx() as u32;
+    let data_idx = task.ram.pop_str_idx() as u32;
+    let key = vm.get_string(key_idx).unwrap_or_default();
+    let data = vm.get_string(data_idx).unwrap_or_default();
+    let digest = hmac_sha256_hash(&key, &data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// MD5 hash of file contents.
+/// Stack: str_idx(path) -> str_idx (hex digest)
+pub fn shim_hash_file_md5(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let data = std::fs::read(&path)
+        .map_err(|e| VMError::RuntimeError(format!("file_md5: {}: {}", path, e)))?;
+    let digest = md5_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+/// SHA256 hash of file contents.
+/// Stack: str_idx(path) -> str_idx (hex digest)
+pub fn shim_hash_file_sha256(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let path_idx = task.ram.pop_str_idx() as u32;
+    let path = vm
+        .get_string(path_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let data = std::fs::read(&path)
+        .map_err(|e| VMError::RuntimeError(format!("file_sha256: {}: {}", path, e)))?;
+    let digest = sha256_hash(&data);
+    let str_idx = vm.add_string(digest.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+fn hmac_sha256_hash(key: &[u8], data: &[u8]) -> String {
+    use hmac::{Hmac, Mac};
+    use sha2::Sha256;
+    type HmacSha256 = Hmac<Sha256>;
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
+    mac.update(data);
+    let result = mac.finalize();
+    format!("{:02x}", result.into_bytes())
+}
+
+// --- Random type (2870-2874) ---
+
+/// Create RNG from system entropy.
+/// Stack: [] -> rng_handle (i32)
+pub fn shim_random_new(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let seed = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos() as u64;
+    let rng = std::sync::Mutex::new(Xorshift64::new(seed));
+    let obj = RustStdlibObject::new("random::Rng", rng);
+    let id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// Create seeded RNG.
+/// Stack: seed (i32) -> rng_handle (i32)
+pub fn shim_random_seeded(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let seed = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_seed = crate::vm::native::StakeGuard::new(vm, seed as i64 as u64);
+    let rng = std::sync::Mutex::new(Xorshift64::new(seed));
+    let obj = RustStdlibObject::new("random::Rng", rng);
+    let id = vm.insert_heap_object(obj);
+    vm.rc_push_id(task, id as u64); // Plan 419
+    Ok(())
+}
+
+/// Instance method: rng.int(max) -> i32
+/// Stack: max (i32), rng_handle (i32) -> i32
+pub fn shim_random_instance_int(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let max = crate::vm::native::pop_arg_i32(task);
+
+    let _stake_max = crate::vm::native::StakeGuard::new(vm, max as i64 as u64);
+    let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
+    let max = if max <= 0 { 1 } else { max as u32 };
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let val = rng.get_mut().unwrap().next();
+                let result = (val % max as u64) as i32;
+                task.ram.push_i32(result);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_i32(0);
+    Ok(())
+}
+
+/// Instance method: rng.float() -> f64
+/// Stack: rng_handle (i32) -> f64
+pub fn shim_random_instance_float(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let val = (rng.get_mut().unwrap().next() as f64) / (u64::MAX as f64);
+                task.ram.push_f64(val);
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_f64(0.0);
+    Ok(())
+}
+
+/// Instance method: rng.bool() -> bool (i32)
+/// Stack: rng_handle (i32) -> i32 (0 or 1)
+pub fn shim_random_instance_bool(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    let rng_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_rng_id = crate::vm::native::StakeGuard::new(vm, rng_id as i64 as u64);
+    if let Some(obj) = vm.get_heap_object(rng_id) {
+        let mut guard = obj.write().unwrap();
+        if let Some(rso) = guard.as_any_mut().downcast_mut::<RustStdlibObject>() {
+            if let Some(rng) = rso.downcast_mut::<std::sync::Mutex<Xorshift64>>() {
+                let val = rng.get_mut().unwrap().next() % 2 == 0;
+                task.ram.push_nv(auto_val::encode_bool(val));
+                return Ok(());
+            }
+        }
+    }
+    task.ram.push_nv(auto_val::encode_bool(false));
+    Ok(())
+}
+
+// --- Fmt (2752) ---
+
+/// Float debug string with full precision.
+/// Stack: f64_val -> str_idx
+pub fn shim_f64_debug(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let val = task.ram.pop_f64();
+    let s = format!("{:?}", val);
+    let str_idx = vm.add_string(s.into_bytes());
+    vm.rc_push_str_idx(task, str_idx as usize);
+    Ok(())
+}
+
+// --- Cmp (2880) ---
+
+/// String lexicographic comparison, returns Ordering (-1, 0, 1).
+/// Stack: str_idx(b), str_idx(a) -> i32 (-1, 0, 1)
+pub fn shim_str_cmp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let b_idx = task.ram.pop_str_idx() as u32;
+    let a_idx = task.ram.pop_str_idx() as u32;
+    let a = vm
+        .get_string(a_idx)
+        .map(|b| String::from_utf8_lossy(&b).to_string())
+        .unwrap_or_default();
+    let b = vm
+        .get_string(b_idx)
+        .map(|bytes| String::from_utf8_lossy(&bytes).to_string())
+        .unwrap_or_default();
+    use std::cmp::Ordering;
+    let result = match a.cmp(&b) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+// --- DateTime cmp (2794) ---
+
+/// Compare two datetimes by timestamp.
+/// Stack: handle_b (i32), handle_a (i32) -> i32 (-1, 0, 1)
+pub fn shim_datetime_cmp(task: &mut AutoTask, vm: &AutoVM) -> Result<(), VMError> {
+    let b_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_b_id = crate::vm::native::StakeGuard::new(vm, b_id as i64 as u64);
+    let a_id = crate::vm::native::pop_arg_i32(task) as u64;
+
+    let _stake_a_id = crate::vm::native::StakeGuard::new(vm, a_id as i64 as u64);
+
+    let ts_a = get_datetime_timestamp(vm, a_id);
+    let ts_b = get_datetime_timestamp(vm, b_id);
+
+    use std::cmp::Ordering;
+    let result = match ts_a.cmp(&ts_b) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+    task.ram.push_i32(result);
+    Ok(())
+}
+
+fn get_datetime_timestamp(vm: &AutoVM, handle: u64) -> i64 {
+    use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+    if let Some(obj) = vm.get_heap_object(handle) {
+        let guard = obj.read().unwrap();
+        if let Some(rso) = guard.as_any().downcast_ref::<RustStdlibObject>() {
+            if let Some(dt) = rso.downcast_ref::<std::sync::Mutex<chrono::NaiveDateTime>>() {
+                return dt.lock().unwrap().and_utc().timestamp();
+            }
+        }
+    }
+    0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── Plan 626 T-04: fs.tree nested JSON builder ─────────────────────
+    #[test]
+    fn plan626_fs_tree_nested_json_schema_and_order() {
+        let tmp = std::env::temp_dir().join(format!("auto_lang_fs_tree_{}", std::process::id()));
+        let src = tmp.join("ws");
+        let _ = std::fs::remove_dir_all(&src);
+        std::fs::create_dir_all(src.join("b_dir")).unwrap();
+        std::fs::create_dir_all(src.join("a_dir").join("nested")).unwrap();
+        std::fs::write(src.join("z.txt"), "z").unwrap();
+        std::fs::write(src.join("a_dir").join("f.at"), "fn main() {}").unwrap();
+        std::fs::write(src.join("a_dir").join("nested").join("deep.md"), "# d").unwrap();
+        std::fs::create_dir_all(src.join(".git")).unwrap();
+        std::fs::write(src.join(".git").join("HEAD"), "ref").unwrap();
+        std::fs::create_dir_all(src.join("target")).unwrap();
+
+        let mut buf = String::new();
+        fs_tree_walk(&src, &src, 3, &mut buf);
+        let json = format!("[{}]", buf);
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+
+        // Dirs first, then case-insensitive name order: a_dir, b_dir, z.txt.
+        let items = parsed.as_array().expect("root array");
+        assert_eq!(items.len(), 3, "dotfiles/build noise skipped: {json}");
+        assert_eq!(items[0]["label"], "a_dir");
+        assert_eq!(items[1]["label"], "b_dir");
+        assert_eq!(items[2]["label"], "z.txt");
+        // Node schema fields (TreeView direct-fit).
+        assert_eq!(items[0]["kind"], "dir");
+        assert_eq!(items[0]["icon"], "folder");
+        assert_eq!(items[0]["is_leaf"], false);
+        assert_eq!(items[2]["kind"], "file");
+        assert_eq!(items[2]["icon"], "file-text");
+        assert_eq!(items[2]["is_leaf"], true);
+        // ids are '/'-separated paths relative to root.
+        assert_eq!(items[0]["id"], "a_dir");
+        assert_eq!(items[2]["id"], "z.txt");
+        // Nested children carry relative ids too.
+        let a_children = items[0]["children"].as_array().unwrap();
+        assert_eq!(a_children.len(), 2, "f.at + nested: {json}");
+        assert_eq!(a_children[0]["id"], "a_dir/nested");
+        assert_eq!(a_children[1]["id"], "a_dir/f.at");
+        let deep = a_children[0]["children"].as_array().unwrap();
+        assert_eq!(deep[0]["id"], "a_dir/nested/deep.md");
+
+        // max_depth caps recursion: depth 1 = root entries only.
+        let mut shallow = String::new();
+        fs_tree_walk(&src, &src, 1, &mut shallow);
+        let parsed_shallow: serde_json::Value =
+            serde_json::from_str(&format!("[{}]", shallow)).unwrap();
+        let dir0 = &parsed_shallow.as_array().unwrap()[0];
+        assert_eq!(dir0["label"], "a_dir");
+        assert!(
+            dir0["children"].as_array().unwrap().is_empty(),
+            "depth-1 dirs stay collapsed"
+        );
+        let _ = std::fs::remove_dir_all(&src);
+    }
+
+    #[test]
+    fn test_resolve_direct_lookup() {
+        let mut ni = NativeInterface::new();
+        ni.register_name("Result.map_err", 2070);
+        assert_eq!(ni.resolve("Result.map_err"), Some(2070));
+        assert_eq!(ni.resolve("nonexistent.method"), None);
+    }
+
+    #[test]
+    fn test_resolve_canonical_normalization() {
+        let mut ni = NativeInterface::new();
+        ni.register_name("auto.list.push", 101);
+        ni.register_name("auto.hashmap.insert", 120);
+        ni.register_name("auto.list.join", 2080);
+
+        assert_eq!(ni.resolve("List.push"), Some(101));
+        assert_eq!(ni.resolve("List.join"), Some(2080));
+        assert_eq!(ni.resolve("HashMap.insert"), Some(120));
+        assert_eq!(ni.resolve("Map.insert"), Some(120));
+    }
+
+    #[test]
+    fn test_resolve_no_canonical_for_qualified() {
+        let mut ni = NativeInterface::new();
+        ni.register_name("auto.list.push", 101);
+
+        assert_eq!(ni.resolve("auto.list.push"), Some(101));
+        assert_eq!(ni.resolve("rust.something"), None);
+    }
+
+    #[test]
+    fn register_shim_routes_dynamic_band_ids_without_panicking() {
+        let mut ni = NativeInterface::new();
+        ni.register_shim_for_id(DYNAMIC_ID_START, |_, _| Ok(()));
+
+        assert!(ni.get(DYNAMIC_ID_START).is_some());
+        assert_eq!(ni.next_dynamic_id(), DYNAMIC_ID_START + 1);
+    }
+
+    // ── Plan 413: code editor payload natives (UI bridge) ──────────
+    // PLAN-814 T-02 迁移上移：测试组消费上层 ui::code_editor 面，已迁
+    // auto-lang src/tests/plan413_code_editor_natives.rs（原 SDK 死门
+    // 勘误后上移，V-05）。
+
+    // ── PLAN-656 review F-3: scroll controller natives 全管线复现 ──────
+    // PLAN-814 T-02 迁移上移：本测试消费上层 UI 面（ui::scroll），已迁
+    // auto-lang src/tests/plan656_scroll_controller_pipeline.rs（原 `ui`
+    // feature 门在 SDK 无定义——死门、选择丢失，V-05 勘误）。
+
+    // ── Plan 413 follow-up: console natives (in-app Console panel) ──────
+    #[test]
+    fn vm_console_natives_end_to_end() {
+        crate::vm::ui_console::ui_console_clear();
+        // Script-level native calls through the full Codegen → VM → shim
+        // pipeline; plain `print()` must mirror into the ring buffer too.
+        let (_result, out) = crate::run_with_capture(
+            r#"
+print("from-print")
+let ok = console_log("from-console-log")
+print(ok)
+let panel = console_lines()
+print(panel)
+let n = 2
+let m = "edit #" + n.str()
+print(m)
+"#,
+        )
+        .unwrap();
+        // Newest-first: the console_log line precedes the mirrored print.
+        let snapshot = crate::vm::ui_console::ui_console_lines(10);
+        let log_pos = snapshot.find("from-console-log").expect("console_log line");
+        let print_pos = snapshot.find("from-print").expect("mirrored print line");
+        assert!(log_pos < print_pos, "newest first: {snapshot}");
+        // console_lines() delivered the snapshot back into the script.
+        assert!(out.contains("from-console-log"), "panel roundtrip: {out}");
+        // int→str + concat composes with the natives (041 logs use it —
+        // f-strings do NOT interpolate in VM expressions, verified above).
+        assert!(out.contains("edit #2"), "concat: {out}");
+        // clear() empties the ring buffer (other tests may print in parallel,
+        // so assert on our markers rather than strict emptiness).
+        crate::run_with_capture("let c = console_clear()").unwrap();
+        let after = crate::vm::ui_console::ui_console_lines(50);
+        assert!(!after.contains("from-console-log"), "cleared: {after}");
+        assert!(!after.contains("from-print"), "cleared: {after}");
+    }
+
+    #[test]
+    fn test_to_canonical() {
+        assert_eq!(
+            NativeInterface::to_canonical("List.push"),
+            Some("auto.list.push".to_string())
+        );
+        assert_eq!(
+            NativeInterface::to_canonical("HashMap.get"),
+            Some("auto.hashmap.get".to_string())
+        );
+        assert_eq!(
+            NativeInterface::to_canonical("Map.new"),
+            Some("auto.hashmap.new".to_string())
+        );
+        assert_eq!(
+            NativeInterface::to_canonical("Array.len"),
+            Some("auto.list.len".to_string())
+        );
+        assert_eq!(NativeInterface::to_canonical("nopart"), None);
+    }
+}
+
+#[cfg(test)]
+mod plan738_contract_identity_tests {
+    use super::NativeInterface;
+
+    /// PLAN-738 §5.3：既有生产能力面的显式契约在 production() 工厂后可查
+    /// （inventory 覆盖序不吞声明）；签名核对依赖这些契约在场。
+    #[test]
+    fn declared_contract_identities_resolve() {
+        let mut interface = NativeInterface::production();
+        // 复刻 engine::new 的 merge 路径，验证契约在 CFFI 合并后仍在位。
+        let cffi = crate::vm::codegen::CFFI_GLOBAL.lock().unwrap();
+        interface.merge(cffi.native_interface());
+        let faces: &[(&str, &[&str], &str)] = &[
+            ("auto.http.get", &["str"], "Response"),
+            ("auto.http.get_stream", &["str"], "HTTPStream"),
+            ("auto.http.request", &["str", "str"], "RequestBuilder"),
+            (
+                "auto.http.transfer_download",
+                &["str", "str", "str"],
+                "FileTransfer",
+            ),
+            (
+                "auto.http.file_response",
+                &["str", "str", "str"],
+                "FileResponse",
+            ),
+            ("auto.http.upload_error", &["int", "str"], "UploadReceipt"),
+            ("auto.json.is_valid", &["str"], "int"),
+            ("auto.json.encode", &["T"], "str"),
+            ("auto.json.decode", &["str"], "T"),
+        ];
+        for (name, parameters, returns) in faces {
+            let id = crate::vm::native_registry::BIGVM_NATIVES
+                .lock()
+                .unwrap()
+                .resolve_qualified(name)
+                .unwrap_or_else(|| panic!("{name} unresolved"));
+            let contract = interface
+                .contract(id)
+                .unwrap_or_else(|| panic!("{name} (#{id}) lacks contract"));
+            assert_eq!(contract.parameters, *parameters, "{name}");
+            assert_eq!(contract.returns, *returns, "{name}");
+        }
+        assert_eq!(
+            interface
+                .contract(
+                    crate::vm::native_registry::BIGVM_NATIVES
+                        .lock()
+                        .unwrap()
+                        .resolve_qualified("auto.json.encode")
+                        .unwrap()
+                )
+                .unwrap()
+                .generics,
+            ["T"]
+        );
+    }
+}

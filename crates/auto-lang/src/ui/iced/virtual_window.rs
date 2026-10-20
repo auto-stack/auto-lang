@@ -255,7 +255,7 @@ mod title_menu_spot_tests {
 }
 /// 语义色快捷访问（跟随 iced_adapter 的 dark/accent thread-local）。
 fn token(c: crate::ui::style::Color) -> Color {
-    crate::ui::style::iced_adapter::resolve_semantic_rgb(&c)
+    crate::ui::style_iced_adapter::resolve_semantic_rgb(&c)
         .map(|(r, g, b)| Color::from_rgb8(r, g, b))
         .unwrap_or(Color::from_rgb8(0x1E, 0x1E, 0x24))
 }

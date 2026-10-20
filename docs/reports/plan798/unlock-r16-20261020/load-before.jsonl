@@ -1,0 +1,8 @@
+{"sample":0,"utc":"2026-10-20T08:08:32.7063982Z","cpu":[19],"build_test_processes":[{"Id":30632,"ProcessName":"sccache","CPU":0.03125}]}
+{"sample":1,"utc":"2026-10-20T08:08:37.8506236Z","cpu":[17],"build_test_processes":[{"Id":30632,"ProcessName":"sccache","CPU":0.03125}]}
+{"sample":2,"utc":"2026-10-20T08:08:42.9542793Z","cpu":[11],"build_test_processes":[{"Id":30632,"ProcessName":"sccache","CPU":0.03125}]}
+{"sample":3,"utc":"2026-10-20T08:08:48.0366494Z","cpu":[7],"build_test_processes":[{"Id":30632,"ProcessName":"sccache","CPU":0.03125}]}
+{"sample":4,"utc":"2026-10-20T08:08:53.1050319Z","cpu":[26],"build_test_processes":[{"Id":30632,"ProcessName":"sccache","CPU":0.03125}]}
+{"sample":5,"utc":"2026-10-20T08:08:58.1700240Z","cpu":[12],"build_test_processes":[{"Id":30632,"ProcessName":"sccache","CPU":0.03125}]}
+{"sample":6,"utc":"2026-10-20T08:09:03.2376701Z","cpu":[20],"build_test_processes":[{"Id":30632,"ProcessName":"sccache","CPU":0.03125}]}
+{"sample":7,"utc":"2026-10-20T08:09:08.3112457Z","cpu":[14],"build_test_processes":[{"Id":30632,"ProcessName":"sccache","CPU":0.03125}]}

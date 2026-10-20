@@ -1,0 +1,113 @@
+# PLAN-797 T-06: ABI interop corpus (v2). The `probe` adapter runs the
+# registered `abi/interop-v1` recipe through the abi worker (real PE
+# links/runs per query step, real store on disk); every judgement is
+# parent-side. The deck is `.atomdata` DATA — a case never names an
+# executable.
+
+# Leg A: AutoABI caller -> AutoABI callee. Cold publish, in-process hit,
+# then a REAL worker restart keeps the store (cross-process hit), then a
+# body edit (same public signature, different lowering) republishes.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "autoabi.leg-a"
+  tags: ["autoabi", "probe"]
+  source: { file: "src/p797-mix.atomdata", syntax: "atom-data", path: "p797-mix.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "leg-a", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/interop-v1",
+        abi: { leg: "a" },
+        steps: [
+          { op: "query" },
+          { op: "query" },
+          { op: "restart" },
+          { op: "query" },
+          { op: "edit-source", from: "[body: mix-v1]", to: "[body: mix-v1b]" },
+          { op: "query" },
+          { op: "edit-source", from: "[body: mix-v1b]", to: "[body: mix-v1]" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 1, stages_include: ["admit", "link-run"] },
+        { cache: "hit", compute_calls: 0 },
+        { cache: "hit", compute_calls: 0 },
+        { cache: "published", compute_calls: 1 },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+# Leg B: AutoABI caller -> real cl.exe C callee.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "autoabi.leg-b"
+  tags: ["autoabi", "probe"]
+  source: { file: "src/p797-mix.atomdata", syntax: "atom-data", path: "p797-mix.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "leg-b", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/interop-v1",
+        abi: { leg: "b" },
+        steps: [ { op: "query" }, { op: "query" } ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 2 },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+# Leg C: C caller (own oracle/entry) -> AutoABI callee.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "autoabi.leg-c"
+  tags: ["autoabi", "probe"]
+  source: { file: "src/p797-mix.atomdata", syntax: "atom-data", path: "p797-mix.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "leg-c", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/interop-v1",
+        abi: { leg: "c" },
+        steps: [ { op: "query" }, { op: "query" } ]
+      },
+      expect: { completion: "success", probe: [
+        { cache: "published", compute_calls: 2 },
+        { cache: "hit", compute_calls: 0 }
+      ] } }
+  ]
+}
+```
+
+# Negative: a deck fn-signature edit is a typed deck diagnostic (the
+# discriminating descriptor-edit oracle for the formal flow) — the query
+# step returns diags, never a wrong native call.
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "autoabi.bad-sig"
+  tags: ["autoabi", "probe", "negative"]
+  source: { file: "src/p797-mix.atomdata", syntax: "atom-data", path: "p797-mix.atomdata" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "bad-sig", adapter: "probe", action: "run",
+      options: {
+        recipe: "abi/interop-v1",
+        abi: { leg: "a" },
+        steps: [
+          { op: "edit-source", from: "e:i64", to: "e:u32" },
+          { op: "query" }
+        ]
+      },
+      expect: { completion: { stage: "parse", code: "deck" }, probe: [ { } ] } }
+  ]
+}
+```

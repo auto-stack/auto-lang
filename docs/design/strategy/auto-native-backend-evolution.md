@@ -1,6 +1,60 @@
-# AC/AV/AJ统一编译与执行：分层执行、增量发布及后端演进
+# ACE架构总路线：统一编译、解释、JIT、转译与增量热重载
+
+## 0. 总入口与后续规划导航（2026-10-20）
+
+**本文是ACE（Auto Compile & Execution）架构及AAC/AAV后续规划的统一阅读入口。** ACE统一编译、解释、JIT、源码转译与增量/cache/热重载，AC/AV/AJ保留组件职责。历史“AC/AV/AJ总路线”即本入口，文件路径保持。技术合同按主题落在下列设计中；本文维护职责、阶段和引用，不复制各篇的完整合同，也不作为已实现能力清单。
+
+| 要回答的问题 | 继续阅读 | 使用边界 |
+|---|---|---|
+| AC/AV/AJ如何共用语义、MIR、ABC、CTE和增量发布？ | [Design43统一架构](../43-ac-av-typed-mir-and-abc.md) | 架构合同及近期/后续边界；完整AJ并非798或AVM退役的自动前置 |
+| AV怎样表示数据、读写Place、管理move/borrow/drop和Dyn？ | [Design44数据与所有权](../44-av-data-layout-place-and-ownership.md) | 数据合同及820–824安全扩面、825/826性能分工 |
+| 当前这一波完成后能运行多少语言、还缺什么？ | [AV能力矩阵](av-language-capability-matrix.md) | 区分源码/内核/库/产品层，记录语义迁移差异；目标表不等于已通过 |
+| 下一阶段先做什么、怎样运行真实程序并替换旧AVM？ | [AV源码与替换路线](av-source-programs-and-avm-replacement-roadmap.md) | G0–G8、优先级、候选工作包、产品入口和验收；G7按入口切默认，G8才是全部退役 |
+| 用哪些真实程序证明进展？ | [AP程序目录](../../plans/reports/av-source-program-catalog-2026-10-20.md) | 23个初始样本及oracle缺口，不是全部产品/语言库存，也不是运行通过记录 |
+| 第一项源码验收计划是什么？ | [Plan827草案](../../plans/827-av-source-program-baseline.md) | G0/G1，依D798；后续工作包尚未分配ID，不因导航而获执行授权 |
+| 语法、全局cache、ABI和元编程的共同约束在哪里？ | [Design39语法/增量](../39-ac-incremental-syntax-and-language-platform.md)、[40产物/cache](../40-compiler-artifacts-and-cache-lifecycle.md)、[41 ABI](../41-interface-metadata-and-foreign-abi.md)、[42语义/CTE](../42-semantic-metadata-inference-and-comptime.md) | 按涉及的接缝读取，不另建重复类型系统、store或解释器 |
+| AAC/AAV与native路线如何衔接？ | [AC子集](auto-ac-subset-and-target.md)、[HIR](auto-hir-design.md)、[AAC主体/代际合同](auto-acc-bootstrap-contract.md)及本文§1–7 | 自举、语言覆盖、产品替换和机器码后端更换分别验收 |
+| 现在实际已交付什么？ | [Spec总览](../../specs/overview.md)、[Spec索引](../../specs/INDEX.md)，按任务进入auto-ac/auto-hir/auto-semantics/auto-lang/vm/stdlib等模块 | current Spec为现状知识；代码/测试核实观察，Plan与收据确认具体交付。auto-av等拟议Spec必须先确认存在，不把计划中的路径当已交付 |
+
+### 后续Agent的规划读取步骤
+
+1. 先读仓库指引、Spec总览和本文，再按任务选上表相关主题。AV扩面优先对照能力矩阵、G阶段/工作包和AP/EP清单；AJ/自举任务另走对应共同合同与主体清单，不能套用AV替换门代替其验收。
+2. 核实相关模块current Spec、实际代码/测试和依赖交付证据。路线/矩阵中的日期与Plan状态是快照；按Plan ID在`docs/plans/`与`docs/plans/archive/`查当前路径、revision、frontmatter及review/merge收据。工作完成或分支通过不能代替D-N交付。
+3. 检索是否已有相同目标的活动Plan，优先复用/修订已确认匹配项。仅追踪任务相关依赖、引用决策和消费者；不递归加载所有历史附件。Spec缺失/过时、目标态与现状冲突时显式记录差距，不静默改写任一合同。
+4. 选择前置已具备的最小真实程序/消费者切片，再依`/auto-plan:new`冻结目标、非目标、写面/owner、oracle、资源与性能预算、依赖和Spec增量。导航不会自动授权实施、扩张在途Plan或选择所有候选工作包。
+5. 新设计/计划应回链本入口及所属专题；阶段交付后经merge流程沉淀current Spec，更新矩阵的实证与路线门证据，并维护本导航。Plan归档时修复入口链接，以Plan ID继续追溯，不在总路线复制易过期的进度百分比。
+
+可直接给后续Agent如下提示：
+
+> 请以 `docs/design/strategy/auto-native-backend-evolution.md` 为总入口，按其中“后续Agent的规划读取步骤”核实相关Specs、设计、活动/归档Plan及交付证据，选择AV真实程序路线中下一个可执行切片；先复用已有Plan，没有匹配项再规划新Plan。说明所选阶段、真实程序、依赖、验收及尚缺能力，本轮只规划、不写代码。
+
+若用户指定具体主题（例如AJ、CTE、自举或Place），将示例中的“AV真实程序路线”替换为该主题即可。给出这个入口足以定位相关文档；它不保证一次加载全部材料或自动完成依赖核验，Agent仍须遵守上述步骤并报告缺失引用/证据。
+
+### 0.1 统一平台的早期结构约束（2026-10-20澄清）
+
+层级/缓存粒度/格式的具体规划基线见[Design40 §3.2–3.6](../40-compiler-artifacts-and-cache-lifecycle.md#32-首批层级与粒度决策基线2026-10-20)：所有已实现阶段进入统一依赖与计量，持久化按收益分层；HIR/MIR/ABC的查询、产物、页与装载单位分别登记。下一轮RF-I/RF-C规划必须以此核对已有producer与缺口，不另建一份平行产物目录。
+
+增量编译、层级化全局cache、解释器热重载是ACE从早期就必须考虑的基础，具体责任以[Design43 §6.1](../43-ac-av-typed-mir-and-abc.md#61-早期架构约束与分期实现2026-10-20澄清)为准。统一架构名采用ACE（Auto Compile & Execution），不改AC/AV/AJ职责或现有命令。
+
+实现可分期，身份/依赖/生命周期和共同服务不能延期到完整语言或AJ之后再补。后续规划先核“已实现的增量粒度与cache层、仍待消费的共同合同、最小解释器在线热重载证据”三份清单，再选择语言/产品扩面；最小AV热重载验证应较早安排，不等UI/服务全齐。798实际热重载非目标及现有Plan合同保持，不能据本文冒称其已交付，也不把完整平台改造直接塞入798。
+
+### 0.2 粒度演进：函数级先行，显式block与自动分块后续
+
+已认可方向为“声明/函数级首版→显式block区域→自动语义分块”，具体架构空间见[Design43 §8.1](../43-ac-av-typed-mir-and-abc.md#81-函数级首版与block级扩展方向2026-10-20)及[Design40 §3.7](../40-compiler-artifacts-and-cache-lifecycle.md#37-函数内区域与block级扩展空间2026-10-20)。后续RF-I/RF-C/RF-H规划应核根区域/owner、可分解manifest、边界摘要和代际接口，避免把首版整函数布局固化为公共ABI。
+
+block级编译复用、后续入口采用新版与活帧中途迁移分别验收。先从实际支持的显式block验证，不以新增语言语法、自动分割、OSR或每块间接调用作为当前Plan前置；自动分割未来复用同一合同。语言/数据/后端扩面保持既有依赖与单写纪律。
+
+### 0.3 周转性能的分期策略（2026-10-20 用户澄清）
+
+开发态继续以**初始化后的连续编辑到当前结果/准确诊断 P95<1s**为目标，不改为平均值。当前已实现流程先以其真实入口/冻结负载实测达标，未来热重载/数据/CTE新增工作的成本估计用于判断余量和安排次序，接入后重测；估计不能替代PASS，超标先定位优化，目标调整须显式决策。具体口径和预估边界见[Design43 §6.3](../43-ac-av-typed-mir-and-abc.md#63-周转目标与分阶段扩展策略2026-10-20-用户澄清)。
+
+当前就保留逻辑身份/版本、增量依赖、编译—装载—候选安装—执行及generation/lease生命周期接缝，完整热重载能力可分期实施。798既有正式P95门和实际热重载非目标保持，不因本澄清新增实施phase，也不以跨进程恢复代替持续存活VM的在线更新证明。
+
+2026-10-20进一步明确的函数级首版必须是**源码编辑到执行安装的全链路增量**：签名与真实依赖事实不变时，仅变更函数重做语义/HIR/MIR/ABC和受检安装，其他函数IR/已加载代码保持同一身份；整模块重算后命中某层cache不算完成。具体结构/双门验收见[Design43 §6.4](../43-ac-av-typed-mir-and-abc.md#64-真正函数级增量的全链路合同2026-10-20)与[828](../../plans/828-av-function-incremental-session.md)。798 r6保留基础合同并准确标注边界，828在D798后交付完整切片，不反向阻塞798；825的运行优化、826格式和827源码入口都不能替代该切片。完整目标在828验收前未交付，P95仍为稳定会话编辑至当前结果<1s，首启动单列。
 
 ## v0.6 路线阶段合同（2026-10-16 文档整理）
+
+**2026-10-20当前ACE执行顺序**：798先按自身合同完成验收/门禁/合入，随后优先828的全链路函数增量，再进行817/818及820–827的共享核心实施/集成。后继原前置保留；只读调查/合同准备可先，已有在途准备不丢弃。每个后继必须重放828 source基线并验证自身新增能力不引入整模块热重编/重载，配置结构+时间双门和强制退化反控；具体责任以[统一合同](../../plans/reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)和[Design43 §6.5](../43-ac-av-typed-mir-and-abc.md#65-执行优先级与后继增量兼容2026-10-20用户裁定)为准。此顺序取代旧候选排期，不豁免798任何开放项，不宣称828或后继已实现。
 
 本节补充阶段目标/验收/拆分边界，不扩大已批准 Plan，也不将实验通过写成正式交付。总体承诺与候选阶段见[路线矩阵](../../roadmap-v0.6.md#7-v06路线阶段与拆分边界矩阵2026-10-16)。
 
@@ -268,9 +322,9 @@ NEXT-B/C不要求都在下一编号连续出现，各线仍需统一独占取号
 | [743](../../plans/archive/743-acc-bootstrap-hir-contract.md) | ACC主体/能力清单与HIR阶段合同，archived | 已交付盘点，不等于自举实现 |
 | [745](../../plans/archive/745-ac-source-checked-hir-native.md) | 独立Auto源码计算入口→native，archived | 已交付有限源码profile |
 | [772（开发线原767）](../../plans/archive/772-ac-scalar-ops-short-circuit.md) | 精确标量运算、布尔短路、条件for及可信边界，archived 9/9 | 已交付，scalar Spec已沉淀 |
-| [774（开发线原769）](../../plans/774-ac-data-resource-contract.md) | 数据/资源共同契约与真实native可行性探针，drafting 0/8 | 先执行；决定/预算/oracle冻结并实际验证，独立复审合入后解锁770/771 |
-| [770](../../plans/770-ac-text-char-native.md) | str/Str/char首批原生编译，drafting 0/9 | 依赖774，可与771并行实施 |
-| [771](../../plans/771-ac-record-method-native.md) | 标量record、字段与首批方法，drafting 0/9 | 依赖774，可与770并行实施；本轮无文本字段 |
+| [774（开发线原769）](../../plans/archive/774-ac-data-resource-contract.md) | 数据/资源共同契约与真实native可行性探针，drafting 0/8 | 先执行；决定/预算/oracle冻结并实际验证，独立复审合入后解锁770/771 |
+| [770](../../plans/archive/770-ac-text-char-native.md) | str/Str/char首批原生编译，drafting 0/9 | 依赖774，可与771并行实施 |
+| [771](../../plans/archive/771-ac-record-method-native.md) | 标量record、字段与首批方法，drafting 0/9 | 依赖774，可与770并行实施；本轮无文本字段 |
 
 ```mermaid
 flowchart LR
@@ -286,7 +340,7 @@ flowchart LR
 
 770/771的独立profile各自通过不代表文本record组合或完整lexer已实现。两树共享AST/typecheck/HIR/verify/native等热点；774冻结接口和合入安排，第二合入者同步新基线、重跑两条路线相关门禁并重新独立复审。无需先重构旧编译器全仓。
 
-[773（开发线原768）](../../plans/773-autodown-testcase-protocol-pilot.md)是独立AutoDown测试协议试点，当前execution_done；它不是本批AC扩面前置，不能据其状态放行774/770/771。计划状态是本次检查快照，后续以各自frontmatter/执行/复审收据为准；本次引用维护没有启动任何实施或关闭自举目标。
+[773（开发线原768）](../../plans/archive/773-autodown-testcase-protocol-pilot.md)是独立AutoDown测试协议试点，当前execution_done；它不是本批AC扩面前置，不能据其状态放行774/770/771。计划状态是本次检查快照，后续以各自frontmatter/执行/复审收据为准；本次引用维护没有启动任何实施或关闭自举目标。
 
 ### 7.6 增量、插件与通用语法产品约束（2026-10-15）
 

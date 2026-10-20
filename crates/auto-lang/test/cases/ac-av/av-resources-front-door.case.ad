@@ -1,0 +1,22 @@
+# ac-av probe: 200-deep paren nesting exceeds the frozen 128 front-door
+# budget -> a PARSE-stage resource rejection BEFORE the frontend (V-09).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.core.front-door-nesting"
+  tags: ["ac-av", "probe", "resources"]
+  links: ["PLAN-798"]
+  source: { file: "av/resources/nesting_over_budget.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-nesting", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main" },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: { stage: "parse", code: "av.resource.frontend-nesting" } } }
+  ]
+}
+```

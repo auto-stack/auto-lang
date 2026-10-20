@@ -1,6 +1,8 @@
-use auto_lang::{atom, node};
+// PLAN-814 R3-03：dev 依 SDK——宏展开内 auto_lang:: 路径经别名解析。
 use auto_lang::atom::Atom;
 use auto_lang::atom::AtomReader;
+use auto_lang_core as auto_lang;
+use auto_macros::{atom, node};
 
 // 调试测试：查看 AtomReader 期望的语法格式
 #[test]
@@ -20,7 +22,10 @@ fn test_debug_reader_syntax() {
     println!("\nTesting array: {}", code2);
     let result2 = reader.parse(code2);
     println!("Result: {:?}", result2);
-    println!("Result type: {:?}", std::mem::discriminant(&result2.unwrap()));
+    println!(
+        "Result type: {:?}",
+        std::mem::discriminant(&result2.unwrap())
+    );
 }
 
 // 调试测试：打印宏生成的代码
@@ -80,14 +85,14 @@ fn test_debug_macro_output() {
     println!("Array atom: {:?}", arr);
 
     // 对象测试
-    let obj = atom!{name: "Alice", age: 30};
+    let obj = atom! {name: "Alice", age: 30};
     println!("Object atom: {:?}", obj);
 }
 
 #[test]
 #[ignore = "AtomReader no longer parses node syntax correctly — interpreter behavior changed"]
 fn test_atom_simple_node() {
-    let atom = atom!{
+    let atom = atom! {
         config {
             version: "1.0",
             debug: true,
@@ -103,7 +108,7 @@ fn test_atom_simple_node() {
 #[test]
 #[ignore = "AtomReader no longer parses node syntax correctly — interpreter behavior changed"]
 fn test_node_simple() {
-    let node = node!{
+    let node = node! {
         config {
             version: "1.0",
         }
@@ -120,14 +125,14 @@ fn test_atom_array() {
 
 #[test]
 fn test_atom_object() {
-    let atom = atom!{name: "Alice", age: 30};
+    let atom = atom! {name: "Alice", age: 30};
     assert!(atom.is_obj());
 }
 
 #[test]
 #[ignore = "AtomReader no longer parses node syntax correctly — interpreter behavior changed"]
 fn test_nested_structure() {
-    let atom = atom!{
+    let atom = atom! {
         config {
             version: "1.0",
             database {

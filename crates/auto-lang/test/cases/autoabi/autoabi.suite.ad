@@ -1,0 +1,10 @@
+# PLAN-797 T-06: ABI interop probe corpus (v2). The `probe` adapter runs
+# the registered `abi/interop-v1` recipe through the abi worker; every
+# judgement is parent-side. fixture_root = this directory (the deck and
+# cases live beside the suite).
+
+```test-suite
+suite { schema: "autolang.suite/2", id: "autoabi", include: [
+    "interop-legs.case.ad"
+] }
+```

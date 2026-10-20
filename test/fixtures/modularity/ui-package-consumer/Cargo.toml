@@ -1,0 +1,21 @@
+# PLAN-814 M814-A UI 编译包消费方探针（独立 fixture crate，V-03/AC-08）。
+#
+# 角色：模拟"外部 crate"——仅依赖 auto-ui-compiler（其闭包 = SDK
+# auto-lang-core + 显式 ui-dialect 文法组合 + 轻前端 crate），证明真实
+# 消费者可经公开生成入口产出其声明支持的产物。本 fixture 的成功构建/
+# 测试即闭包证据：不依赖旧 auto-lang 兼容包（compiler 不反依赖上层）。
+#
+# 显式脱离根 workspace：空 [workspace] 使其成为独立解析单元（根
+# Cargo.toml 的 exclude 为双保险）。门禁入口：
+#   cargo test --manifest-path test/fixtures/modularity/ui-package-consumer/Cargo.toml
+
+[package]
+name = "ui-package-consumer"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+auto-ui-compiler = { path = "../../../../crates/auto-ui-compiler" }

@@ -38,7 +38,7 @@ fn task_vm() -> (AutoTask, AutoVM) {
 
 #[test]
 fn media_consumers_have_no_ui_path_references() {
-    let stdlib_rs = include_str!("../vm/ffi/stdlib.rs");
+    let stdlib_rs = include_str!("../../../auto-lang-core/src/vm/ffi/stdlib.rs");
     assert!(
         !stdlib_rs.contains("ui::image_pipeline"),
         "vm/ffi/stdlib.rs 不得再含 ui::image_pipeline 直引形态（PLAN-811 \

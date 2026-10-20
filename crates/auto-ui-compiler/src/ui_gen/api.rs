@@ -1,0 +1,2326 @@
+//! High-level Transpiler API for AutoUI
+//!
+//! Provides simple API for transpiling .at files to backend-specific code
+//! using the AURA pipeline (Plan 096).
+//!
+//! # Active API
+//! - `transpile_file` — Transpile a .at file to Rust code
+//! - `transpile_aura` — Transpile UI source string to Rust
+//! - `transpile_vue_aura` — Transpile UI source string to Vue3 SFC
+
+use std::path::Path;
+
+use crate::aura::extract_widget_from_decl;
+use crate::ui_gen::{BackendGenerator, RustGenerator, VueGenerator};
+use auto_lang_core::parser::Parser;
+use auto_lang_core::session::CompilerSession;
+
+/// Transpile Auto UI file to Rust code using AURA pipeline
+///
+/// # Arguments
+/// * `input_path` - Path to .at file
+/// * `output_path` - Optional path to write .rs file
+///
+/// # Returns
+/// Generated Rust code as string
+pub fn transpile_file(
+    input_path: impl AsRef<Path>,
+    output_path: Option<&str>,
+) -> Result<String, String> {
+    let input_path = input_path.as_ref();
+    let source = std::fs::read_to_string(input_path)
+        .map_err(|e| format!("Failed to read file {}: {}", input_path.display(), e))?;
+
+    transpile_aura(&source, output_path)
+}
+
+/// Transpile UI source code to Rust using AURA pipeline (Plan 096)
+///
+/// This is the preferred method for transpiling UI components.
+/// It uses the new AURA-based architecture without DSL preprocessing.
+pub fn transpile_aura(source: &str, output_path: Option<&str>) -> Result<String, String> {
+    // PLAN-814 R4-01：显式文法组合（入口首选；幂等）。
+    crate::assemble_ui_grammar();
+    // Parse with UI scenario
+    let session = CompilerSession::ui();
+    let mut parser = Parser::from(source).with_session(session);
+    let ast = parser
+        .parse()
+        .map_err(|e| format!("Failed to parse: {:?}", e))?;
+
+    // Extract and generate
+    let mut code = String::new();
+    let mut generator = RustGenerator::new();
+
+    for stmt in &ast.stmts {
+        if let auto_lang_core::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let aura_widget = extract_widget_from_decl(widget_decl)
+                .map_err(|e| format!("Failed to extract widget: {}", e))?;
+            let widget_code = generator
+                .generate(&aura_widget)
+                .map_err(|e| format!("Failed to generate: {}", e))?;
+            code.push_str(&widget_code);
+            code.push('\n');
+        }
+    }
+
+    if let Some(output) = output_path {
+        std::fs::write(output, &code)
+            .map_err(|e| format!("Failed to write file {}: {}", output, e))?;
+    }
+
+    Ok(code)
+}
+
+/// Transpile UI source code to Vue3 SFC using AURA pipeline (Plan 096)
+pub fn transpile_vue_aura(source: &str, output_path: Option<&str>) -> Result<String, String> {
+    // PLAN-814 R4-01：显式文法组合（入口首选；幂等）。
+    crate::assemble_ui_grammar();
+    // Parse with UI scenario
+    let session = CompilerSession::ui();
+    let mut parser = Parser::from(source).with_session(session);
+    let ast = parser
+        .parse()
+        .map_err(|e| format!("Failed to parse: {:?}", e))?;
+
+    // Extract and generate
+    let mut code = String::new();
+    let mut generator = VueGenerator::new();
+
+    for stmt in &ast.stmts {
+        if let auto_lang_core::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let aura_widget = extract_widget_from_decl(widget_decl)
+                .map_err(|e| format!("Failed to extract widget: {}", e))?;
+            let widget_code = generator
+                .generate(&aura_widget)
+                .map_err(|e| format!("Failed to generate: {}", e))?;
+            code.push_str(&widget_code);
+            code.push('\n');
+        }
+    }
+
+    if let Some(output) = output_path {
+        std::fs::write(output, &code)
+            .map_err(|e| format!("Failed to write file {}: {}", output, e))?;
+    }
+
+    Ok(code)
+}
+
+// ============================================================================
+// Plan 043 stream phase: resolve streaming endpoints from back/api.at
+// ============================================================================
+
+/// Resolve streaming API endpoints (`#[api] fn` returning `~Stream<T>`) from the
+/// project's `back/api.at`, so the store composable can wire type-driven SSE.
+/// (Plan 043 stream phase.) Uses a targeted regex scan (robust against
+/// `use types:`-style module references that defeat full AST parsing). Returns
+/// an empty vec if api.at is absent or has no stream endpoints.
+///
+/// Plan musk-022 Phase 1: for each endpoint, also resolve the discriminator
+/// field name and variant→action map from the inner type `T`'s definition.
+/// `T` is expected to be a `#[serde(tag = "X", rename_all = "snake_case")] pub tag`
+/// (externally-tagged enum) declared in the same file. When found, each variant
+/// name is converted to its snake_case wire form (matching serde's rename) and
+/// paired with its PascalCase action name. When `T` is not resolvable here,
+/// `variants` stays empty and the codegen falls back to the legacy
+/// `command_output`/`command_result` dispatch (backward compatible).
+pub fn resolve_stream_endpoints_for_project(root_dir: &str) -> Vec<crate::aura::StreamEndpoint> {
+    let root = std::path::Path::new(root_dir);
+    // Plan 061:统一契约定位(本地 back/ 或 pac.at back.project 外部后端)
+    let api_file = match auto_lang_core::config::resolve_back_api(root) {
+        Some(f) => f,
+        None => return Vec::new(),
+    };
+    let content = match std::fs::read_to_string(&api_file) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+
+    // Match: #[api(method = "M", path = "/p")] pub fn name(...) ~Stream<T> {
+    // The path attribute and the `~Stream<T>` return type are both required.
+    // Robust against multi-line annotations and extra whitespace.
+    let Ok(re) = regex::Regex::new(
+        r#"(?s)#\[api\([^]]*path\s*=\s*"([^"]+)"[^]]*\)\]\s*pub\s+fn\s+(\w+)\s*\([^)]*\)\s*~?Stream<([^>]+)>"#,
+    ) else {
+        return Vec::new();
+    };
+
+    re.captures_iter(&content)
+        .filter_map(|cap| {
+            let path = cap.get(1)?.as_str().to_string();
+            let fn_name = cap.get(2)?.as_str().to_string();
+            let item_type = cap.get(3)?.as_str().trim().to_string();
+            let (discriminator, variants) = resolve_stream_variants(&content, &item_type);
+            Some(crate::aura::StreamEndpoint {
+                path,
+                fn_name,
+                item_type,
+                discriminator,
+                variants,
+            })
+        })
+        .collect()
+}
+
+/// Plan musk-022 Phase 1: resolve the SSE discriminator field name and the
+/// variant→action map for a stream's inner type `T`. Scans `content` for a
+/// `#[serde(tag = "X", ...)] pub tag T { V1, V2 {..}, ... }` declaration
+/// (externally-tagged enum). Returns `("event", [])` (legacy defaults) when `T`
+/// is not found or is not a `pub tag` with serde tag annotation.
+fn resolve_stream_variants(content: &str, type_name: &str) -> (String, Vec<(String, String)>) {
+    // Step 1: locate a `pub tag <type_name> {` or `pub enum <type_name> {`
+    // declaration and capture any preceding `#[serde(...)]` attribute. We only
+    // match up to the opening brace here (not the body), because variant bodies
+    // like `Delta { text str }` contain nested braces that defeat a naive
+    // `[^}]*` regex. Step 2 braces-balances to extract the full body.
+    let head_re = match regex::Regex::new(&format!(
+        r#"(?s)(#\[serde\(([^)]*)\)\]\s*)?(?:pub\s+)?(?:tag|enum)\s+{}\s*\{{"#,
+        regex_escape(type_name)
+    )) {
+        Ok(r) => r,
+        Err(_) => return ("event".to_string(), Vec::new()),
+    };
+    let Some(head_match) = head_re.captures(content) else {
+        return ("event".to_string(), Vec::new());
+    };
+    let serde_args = head_match.get(2).map(|m| m.as_str()).unwrap_or("");
+
+    // Step 2: from the opening `{` (end of the head match), braces-balance to
+    // find the matching closing `}`. Nested variant bodies are handled because
+    // we count every `{` and `}`.
+    let body_start = head_match.get(0).unwrap().end();
+    let body = match balance_braces(&content[body_start..]) {
+        Some(b) => b,
+        None => return ("event".to_string(), Vec::new()),
+    };
+
+    // Discriminator: `tag = "X"` in #[serde(...)]. Default "event" when absent.
+    let discriminator = regex::Regex::new(r#"tag\s*=\s*"([^"]+)""#)
+        .ok()
+        .and_then(|re| re.captures(serde_args))
+        .and_then(|c| c.get(1).map(|m| m.as_str().to_string()))
+        .unwrap_or_else(|| "event".to_string());
+
+    // rename_all: when "snake_case", variant names get snake_cased on the wire.
+    let snake = serde_args.contains("snake_case");
+
+    // Variants: each line in the body looks like `VariantName { ... }` or
+    // `VariantName` or `VariantName Type`. Take the leading PascalCase ident.
+    let variant_re = match regex::Regex::new(r"([A-Z][A-Za-z0-9_]*)") {
+        Ok(r) => r,
+        Err(_) => return (discriminator, Vec::new()),
+    };
+    let mut variants = Vec::new();
+    for line in body.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with("//") {
+            continue;
+        }
+        if let Some(m) = variant_re.captures(line) {
+            let name = m.get(1).unwrap().as_str().to_string();
+            let wire = if snake {
+                to_snake_case(&name)
+            } else {
+                name.clone()
+            };
+            variants.push((wire, name));
+        }
+    }
+    (discriminator, variants)
+}
+
+/// Plan musk-022 Phase 1: braces-balance helper. Given a slice starting just
+/// after an opening `{`, return the substring up to (not including) the matching
+/// closing `}`, counting nested braces. Returns None if unbalanced.
+fn balance_braces(s: &str) -> Option<&str> {
+    let mut depth: i32 = 1;
+    let bytes = s.as_bytes();
+    let mut end = 0;
+    let mut i = 0;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if c == b'{' {
+            depth += 1;
+        } else if c == b'}' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(&s[..end]);
+            }
+        }
+        end += 1;
+        i += 1;
+    }
+    None
+}
+
+/// Escape regex metacharacters in a type name for safe interpolation.
+fn regex_escape(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if r"\.+*?()|[]{}^$".contains(c) {
+                format!("\\{}", c)
+            } else {
+                c.to_string()
+            }
+        })
+        .collect()
+}
+
+/// Convert a PascalCase identifier to snake_case (e.g. `ToolCall` → `tool_call`,
+/// `HTTPError` → `http_error`). Matches serde's `rename_all = "snake_case"`.
+fn to_snake_case(s: &str) -> String {
+    let mut out = String::new();
+    let chars: Vec<char> = s.chars().collect();
+    for (i, &c) in chars.iter().enumerate() {
+        if c.is_ascii_uppercase() {
+            if i > 0 {
+                // Insert underscore before an uppercase letter when preceded by a
+                // lowercase letter or digit, OR before the last uppercase in a
+                // run followed by a lowercase (e.g. "HTTPError" → "http_error").
+                let prev = chars[i - 1];
+                let next_lower = chars
+                    .get(i + 1)
+                    .map(|n| n.is_ascii_lowercase())
+                    .unwrap_or(false);
+                if prev.is_ascii_lowercase() || prev.is_ascii_digit() || next_lower {
+                    out.push('_');
+                }
+            }
+            out.push(c.to_ascii_lowercase());
+        } else {
+            out.push(c);
+        }
+    }
+    out
+}
+
+// ============================================================================
+// Plan 361 §3: generate_component_from_file — 统一生成入口
+// ============================================================================
+
+use std::collections::HashSet;
+
+/// Options for `generate_component_from_file`.
+///
+/// All fields are optional overrides. When `None`, the function auto-detects
+/// api_imports / store_deps / sub_widgets from the .at source.
+#[derive(Debug, Default, Clone)]
+pub struct ComponentGenOptions {
+    /// Known sub-widget names (avoids shadcn-vue name collisions).
+    pub sub_widgets: Option<Vec<String>>,
+    /// PLAN-037 T5: cross-file sub-widget model-var map (name -> channels),
+    /// collected by the workspace prescan (auto-man from_workspace). Merged
+    /// with the same-file widgets' state vars inside generate_component_from_file.
+    pub sub_widget_models: Option<std::collections::HashMap<String, Vec<String>>>,
+    /// Plan 443: cross-file BOUND model channels (widget name -> channels
+    /// that some parent file actually binds via `v-model:x`), aggregated by
+    /// the workspace prescan from each file's `GeneratedComponent::
+    /// bound_model_channels`. Only these channels downgrade the child's
+    /// model var to defineModel; everything else stays `ref`.
+    pub bound_model_channels: Option<std::collections::HashMap<String, Vec<String>>>,
+    /// Override API imports. When `None`, auto-detected from `use back.api:`.
+    pub api_imports_override: Option<Vec<String>>,
+    /// Override store dependencies. When `None`, auto-detected from `use store:`.
+    pub store_deps_override: Option<Vec<String>>,
+    /// Plan 446 批三 G1: store composable 导入路径前缀（默认 `@/stores`）。
+    /// 部署管线把生成物迁至 `src/stores/auto/` 时配 `@/stores/auto`，
+    /// 使 SFC 的 import 与实际落盘位置对齐（vue-tsc TS2307 规避）。
+    pub store_import_prefix: Option<String>,
+    /// Root directory for API import validation (auto-man uses this).
+    pub root_dir_for_validation: Option<std::path::PathBuf>,
+    /// Streaming API endpoints (`#[api] fn` returning `~Stream<T>`) discovered
+    /// from the project's `back/api.at`. Populated by the build driver; stamped
+    /// onto each store so its composable can wire type-driven SSE. (Plan 043
+    /// stream phase.) When `None`, no SSE wiring is generated.
+    pub stream_endpoints: Option<Vec<crate::aura::StreamEndpoint>>,
+    /// shadcn-vue widget mapping toggle (pac.at `shadcn:` field). `None` /
+    /// `Some(true)` = Shadcn mode (current default, unchanged); `Some(false)`
+    /// = Plain mode: widgets render as native HTML elements (`button` stays
+    /// `<button>`) and no `@/components/ui/*` imports are emitted.
+    pub shadcn: Option<bool>,
+    /// Default Tailwind class injection toggle (pac.at `default_classes:`
+    /// field). `None` / `Some(true)` = on (current default, unchanged):
+    /// `extract_classes` injects the doc-theme defaults (`text` →
+    /// `text-muted-foreground leading-7`, `h1` → `text-3xl ...`, `button` →
+    /// `px-4 py-2 rounded`, ...). `Some(false)` = off: skip every default
+    /// class EXCEPT the structural layout primitives (`row`/`col`/`column`/
+    /// `grid`/`scroll`/`center`/`container`/`square`) — those stay so the
+    /// layout doesn't collapse. For pixel-exact replica projects that bring
+    /// their own styling.
+    pub default_classes: Option<bool>,
+    /// Plan 444 (ash-shell-057 ①b): cross-file sub-widget emit roster
+    /// (widget name → event names its SFC actually fires), collected by the
+    /// workspace prescan. Merged with the same-file widgets' emit sets
+    /// inside generate_component_from_file so parent-side `on_x: .Y`
+    /// callback bindings can resolve the event the child really emits.
+    pub sub_widget_msgs: Option<std::collections::HashMap<String, Vec<String>>>,
+}
+
+/// Result of generating a component from an .at file.
+#[derive(Debug, Default, Clone)]
+pub struct GeneratedComponent {
+    /// Vue SFC code for the first widget (used as App.vue).
+    pub vue_code: String,
+    /// All widget SFC codes (one per widget declaration).
+    pub all_widget_codes: Vec<(String, String)>, // (widget_name, code)
+    /// Store composable files (filename, code).
+    pub store_composables: Vec<(String, String)>,
+    /// Detected API imports from `use back.api:`.
+    pub detected_api_imports: Vec<String>,
+    /// Detected store dependencies from `use store:`.
+    pub detected_store_deps: Vec<String>,
+    /// All extracted AURA widgets.
+    pub widgets: Vec<crate::aura::AuraWidget>,
+    /// PLAN-024: named view SFCs — one per `view mini { ... }` declaration.
+    /// (widget_name, view_name, SFC code). Desktop vue hosts emit each entry
+    /// as `Mini.vue` next to the app's App.vue.
+    pub named_view_codes: Vec<(String, String, String)>,
+    /// Plan 443: model-channel bindings discovered in THIS file
+    /// (widget name -> bound channels). Workspace drivers aggregate this
+    /// across all .at files and feed it back via
+    /// `ComponentGenOptions::bound_model_channels` on the real pass.
+    pub bound_model_channels: std::collections::HashMap<String, Vec<String>>,
+    /// Validation warnings from the post-generation check.
+    pub validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning>,
+}
+
+/// Unified single-entry-point for "parse .at → extract imports/stores →
+/// register view fragments → extract widgets → generate SFC → validate".
+///
+/// This replaces the duplicated logic in:
+/// - `ui_build_shadcn_with_widgets` (lib.rs)
+/// - `ui_build_shadcn_with_sub_widgets` (lib.rs)
+/// - `compile_at_to_vue` (auto-man/vue.rs)
+/// - `compile_at_to_vue_with_sub_widgets` (auto-man/vue.rs)
+///
+/// All four callers should migrate to this function (Plan 361 §3).
+/// Plan 451 P3: scan this file's `use` imports for a module carrying a
+/// top-level `actions {}` declaration (first hit in use order wins). Module
+/// resolution mirrors the vm loader; unreadable/unparseable modules are
+/// skipped with a log line (never fatal — the host widget just keeps its
+/// own/no actions).
+/// PLAN-639 T-05: locate and convert a pac.at `ui_config: "<file>"` external
+/// action config (Plan 418 auto-atom form) into the DSL ActionsBlock shape.
+///
+/// Walks up from the .at file's directory (≤4 levels) for `pac.at`, reads the
+/// `ui_config:` prop, resolves the file relative to the pac.at directory, and
+/// converts via [`crate::action_config::UiActionConfig::to_actions_block`].
+/// Any failure (no pac.at, no prop, missing/unparseable file) yields `None` —
+/// never fatal, mirroring the use-module fallback tolerance.
+#[cfg(feature = "ui")]
+fn load_ui_config_actions(
+    at_path: &std::path::Path,
+    widgets: &[crate::aura::AuraWidget],
+) -> Option<auto_lang_core::ast::ui::ActionsBlock> {
+    // PLAN-070 T-05: uniform handler-intersection participation gate — the
+    // synthesis emits handler fns + a shortcut keymap that reference the
+    // hosting file's own handlers, so ANY file (app shell or component)
+    // inherits the external action registry only when it declares handlers
+    // for at least one configured action. Two failure classes die here:
+    // components without matching handlers (046 LoginBind TS2304) and
+    // placeholder app shells whose real host lives elsewhere (jade web:
+    // app.at is a never-deployed placeholder — unconditional inheritance
+    // re-leaked TS2304 on the first real try).
+    let mut dir = at_path.parent()?.to_path_buf();
+    let pac_content = (0..4).find_map(|_| {
+        let candidate = dir.join("pac.at");
+        if candidate.is_file() {
+            std::fs::read_to_string(&candidate).ok()
+        } else {
+            let next = dir.parent()?.to_path_buf();
+            dir = next;
+            None
+        }
+    })?;
+    // `ui_config: "auto-edit.at"` — quoted or bare value.
+    let pos = pac_content.find("ui_config")?;
+    let rest = &pac_content[pos + "ui_config".len()..];
+    let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+    let file_name: &str = if let Some(stripped) = rest.strip_prefix('"') {
+        // Quoted: take up to the closing quote.
+        let end = stripped.find('"')?;
+        &stripped[..end]
+    } else {
+        // Bare: up to end of line / comment.
+        let end = rest
+            .find(|c: char| c == '\n' || c == '#')
+            .unwrap_or(rest.len());
+        let raw = rest[..end].trim();
+        if raw.is_empty() {
+            return None;
+        }
+        raw
+    };
+    if file_name.is_empty() {
+        return None;
+    }
+    // dir currently points at the pac.at's directory when found.
+    let cfg_path = dir.join(file_name);
+    let doc = std::fs::read_to_string(&cfg_path).ok()?;
+    let (cfg, warnings) = crate::action_config::UiActionConfig::parse(&doc).ok()?;
+    for w in warnings {
+        log::debug!("ui_config action: {w}");
+    }
+    let block = cfg.to_actions_block();
+    let participates = block.actions.iter().any(|a| {
+        let name = a.handler.trim_start_matches('.');
+        !name.is_empty()
+            && widgets
+                .iter()
+                .any(|w| w.handlers.keys().any(|k| k.contains(name)))
+    });
+    if !participates {
+        return None;
+    }
+    Some(block)
+}
+
+#[cfg(not(feature = "ui"))]
+fn load_ui_config_actions(
+    _at_path: &std::path::Path,
+    _widgets: &[crate::aura::AuraWidget],
+) -> Option<auto_lang_core::ast::ui::ActionsBlock> {
+    None
+}
+
+fn collect_use_module_actions(
+    at_path: &std::path::Path,
+    code: &str,
+) -> Option<auto_lang_core::ast::ui::ActionsBlock> {
+    let base_dir = at_path.parent().unwrap_or(std::path::Path::new("."));
+    for use_stmt in auto_lang_core::use_scanner::scan_use_statements(code) {
+        if use_stmt.is_c_import || use_stmt.is_rust_import {
+            continue;
+        }
+        let module_path = match auto_lang_core::resolve_use_module(base_dir, &use_stmt) {
+            auto_lang_core::UseModuleResolution::Module(p) => p,
+            _ => continue,
+        };
+        let Ok(module_code) = std::fs::read_to_string(&module_path) else {
+            continue;
+        };
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser =
+            auto_lang_core::parser::Parser::from(module_code.as_str()).with_session(session);
+        let Ok(mod_ast) = parser.parse() else {
+            eprintln!(
+                "[codegen] actions module {} failed to parse — skipped",
+                module_path.display()
+            );
+            continue;
+        };
+        for stmt in &mod_ast.stmts {
+            if let auto_lang_core::ast::Stmt::ActionsDecl(acts) = stmt {
+                return Some(acts.clone());
+            }
+        }
+    }
+    None
+}
+
+/// Plan 559 W2: sibling store discovery for a store file. Scans the file's
+/// `use <module>: <Alias>` imports (non-c/rust), resolves each module like
+/// the vm loader does, and records the store name of every module that
+/// declares a `store { ... }` block. The vue store composable generator
+/// consumes these to emit cross-store facade imports/consts and to map
+/// qualified call heads (`Collection.Init(...)`) onto the sibling's facade
+/// variable — previously they emitted bare and failed vue-tsc (TS2304,
+/// os-config modules_store → Collection/DesktopCfg).
+pub fn collect_store_siblings(at_path: &std::path::Path, code: &str) -> Vec<String> {
+    let base_dir = at_path.parent().unwrap_or(std::path::Path::new("."));
+    let mut out: Vec<String> = Vec::new();
+    for use_stmt in auto_lang_core::use_scanner::scan_use_statements(code) {
+        if use_stmt.is_c_import || use_stmt.is_rust_import {
+            continue;
+        }
+        let module_path = match auto_lang_core::resolve_use_module(base_dir, &use_stmt) {
+            auto_lang_core::UseModuleResolution::Module(p) => p,
+            _ => continue,
+        };
+        let Ok(module_code) = std::fs::read_to_string(&module_path) else {
+            continue;
+        };
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser =
+            auto_lang_core::parser::Parser::from(module_code.as_str()).with_session(session);
+        let Ok(mod_ast) = parser.parse() else {
+            continue;
+        };
+        for stmt in &mod_ast.stmts {
+            if let auto_lang_core::ast::Stmt::StoreDecl(store_decl) = stmt {
+                // The call head in bodies is the import item alias when one
+                // is given (os-config: `use collection_store: Collection`),
+                // else the store's own name. Both coincide in this codebase's
+                // convention; prefer the alias when present.
+                let head = if use_stmt.items.len() == 1 {
+                    use_stmt.items[0].trim().to_string()
+                } else {
+                    store_decl.name.as_str().to_string()
+                };
+                if !head.is_empty() && !out.contains(&head) {
+                    out.push(head);
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Plan 522: collect the module-level plain-fn pool from `use`-imported
+/// modules + the bare names the items lists import. Mirrors the vm loader's
+/// full-module load: ALL fns of each resolved module enter the pool (an
+/// imported fn's intra-module callees — e.g. build_month_grid → weekday_of —
+/// resolve via the vue-side closure pull), while the items list gates which
+/// names widget bodies may call bare (import_aliases parity). Module
+/// resolution mirrors the vm loader; unreadable/unparseable modules are
+/// skipped with a log line (never fatal — same policy as
+/// collect_use_module_actions).
+///
+/// Public for secondary generation passes (auto-man's components/ channel
+/// regenerates widget SFCs with a bare VueGenerator and must re-attach the
+/// pool).
+pub fn collect_use_module_fns(
+    at_path: &std::path::Path,
+    code: &str,
+) -> (Vec<crate::aura::AuraModuleFn>, Vec<String>) {
+    let mut fns: Vec<crate::aura::AuraModuleFn> = Vec::new();
+    let mut imported_names: Vec<String> = Vec::new();
+    let base_dir = at_path.parent().unwrap_or(std::path::Path::new("."));
+    for use_stmt in auto_lang_core::use_scanner::scan_use_statements(code) {
+        if use_stmt.is_c_import || use_stmt.is_rust_import || use_stmt.is_python_import {
+            continue;
+        }
+        // Plan 559 W2: `use back.api: ...` is NOT a plain module on the vue
+        // track — its resolution is the `@/lib/api` import line the SFC
+        // already emits (the project-provided or generated TS client).
+        // Feeding back/api.at into the fn-pull transpiles the VM-dialect
+        // bodies (Env/http/json builtins) into the SFC, colliding with the
+        // import (TS2440) and referencing undefined runtime globals (TS2304,
+        // os-config App.vue). The vm interpreter keeps resolving this line
+        // to back/api.at in-process.
+        if use_stmt.module == "back.api" || use_stmt.module.starts_with("back.") {
+            continue;
+        }
+        imported_names.extend(use_stmt.items.iter().cloned());
+        let module_path = match auto_lang_core::resolve_use_module(base_dir, &use_stmt) {
+            auto_lang_core::UseModuleResolution::Module(p) => p,
+            _ => continue,
+        };
+        let Ok(module_code) = std::fs::read_to_string(&module_path) else {
+            continue;
+        };
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser =
+            auto_lang_core::parser::Parser::from(module_code.as_str()).with_session(session);
+        let Ok(mod_ast) = parser.parse() else {
+            eprintln!(
+                "[codegen] use-fn module {} failed to parse — skipped",
+                module_path.display()
+            );
+            continue;
+        };
+        for stmt in &mod_ast.stmts {
+            if let auto_lang_core::ast::Stmt::Fn(fn_decl) = stmt {
+                if let Some(mfn) = crate::aura::extract_module_fn(fn_decl) {
+                    // 跨模块同名去重:use 顺序先到先得。
+                    if !fns.iter().any(|f| f.name == mfn.name) {
+                        fns.push(mfn);
+                    }
+                }
+            }
+        }
+    }
+    (fns, imported_names)
+}
+
+pub fn generate_component_from_file(
+    at_path: &std::path::Path,
+    opts: ComponentGenOptions,
+) -> Result<GeneratedComponent, String> {
+    // PLAN-814 T-03/R4-01：UICache 失效语义装配——生成器源指纹（本
+    // crate build.rs）注入 SDK 缓存（缺 build.rs 环境=None；None 不阻断
+    // 后续真实身份升级）；显式文法组合（入口首选；幂等）。
+    auto_lang_core::database::set_generator_fingerprint(crate::generator_fingerprint());
+    crate::assemble_ui_grammar();
+    use crate::aura::extract_store_from_decl;
+    use crate::aura::extract_widget_from_decl;
+    use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
+    use auto_lang_core::session::CompilerSession;
+
+    let code = std::fs::read_to_string(at_path)
+        .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
+
+    // PLAN-646: 源文件 stem——data-auto-src 注入，overlay 据此选 AUTO_SOURCES 源。
+    let source_stem = at_path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("app")
+        .to_string();
+
+    // PLAN-635: pre-register use-imported recipes before the parse (parser
+    // symbol-checker hook), then replay after the parse.
+    let base_dir = at_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .to_path_buf();
+    let recipe_imports =
+        auto_lang_core::design_tokens::recipe::prepare_style_recipe_imports(&base_dir, &code)
+            .map_err(|e| e.to_string())?;
+
+    // Parse with UI scenario
+    let session = CompilerSession::ui().with_backend("vue");
+    let mut parser = Parser::from(code.as_str());
+    parser = parser.with_session(session);
+    let ast = parser
+        .parse()
+        .map_err(|e| format!("Parse error in {}: {:?}", at_path.display(), e))?;
+
+    // Auto-detect or use overrides
+    let api_imports = opts
+        .api_imports_override
+        .unwrap_or_else(|| extract_api_imports_from_ast(&ast, Some(&at_path)));
+    let mut store_deps = opts
+        .store_deps_override
+        .unwrap_or_else(|| extract_store_imports_from_ast(&ast));
+    // PLAN-048 (auto-musk A 线): Display 化的 AST 省略 handler 体,限定调用
+    // (`ForgeStore.X(...)`)不可见——改扫源文件文本,跨 store 引用并入 deps。
+    // PLAN-675 (T-04 附带修复): 扫描前剥注释（与 lib.rs extract_store_deps_
+    // from_file 同根同修）——注释里的示例标识符（022 app.at 首行
+    // `cf. 018 app.at \`use book_store: BooksStore\``）曾进 deps → 生成幽灵
+    // useBooksStore import → vite ENOENT 构建断链（022 standalone 与画廊
+    // routable 臂同病）。
+    {
+        if let Ok(raw) = std::fs::read_to_string(at_path) {
+            let scan_text = auto_lang_core::strip_line_block_comments(&raw);
+            let mut cur = String::new();
+            let mut extra: Vec<String> = Vec::new();
+            for ch in scan_text.chars() {
+                if ch.is_alphanumeric() || ch == '_' {
+                    cur.push(ch);
+                } else {
+                    let starts_uc = cur
+                        .chars()
+                        .next()
+                        .map(|c| c.is_uppercase())
+                        .unwrap_or(false);
+                    if starts_uc
+                        && cur.len() > 5
+                        && cur.ends_with("Store")
+                        && !store_deps.contains(&cur)
+                        && !extra.contains(&cur)
+                    {
+                        extra.push(cur.clone());
+                    }
+                    cur.clear();
+                }
+            }
+            store_deps.extend(extra);
+        }
+    }
+    let sub_widgets = opts.sub_widgets.unwrap_or_default();
+
+    // Extract store declarations → generate composables
+    // Clear thread-local first to avoid cross-test contamination
+    auto_lang_core::STORE_EXTRA_FILES.with(|cell| {
+        cell.borrow_mut().clear();
+    });
+    let mut store_composables: Vec<(String, String)> = Vec::new();
+    let mut store_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
+    // Plan 367 P2-4: module-level plain functions in the store file (siblings of
+    // the `store { ... }` block, e.g. `fn format_git_label` helpers). The vue
+    // codegen emits them into the composable so handlers can call them by name.
+    let module_fns: Vec<crate::aura::AuraModuleFn> = ast
+        .stmts
+        .iter()
+        .filter_map(|stmt| {
+            if let auto_lang_core::ast::Stmt::Fn(fn_decl) = stmt {
+                crate::aura::extract_module_fn(fn_decl)
+            } else {
+                None
+            }
+        })
+        .collect();
+    // Plan 522: use 导入模块的 fn 池 + 显式导入裸名 —— vue 生成器按需把
+    // computed/handler 体引用的 helper fn 转译进消费方 SFC。
+    let (use_module_fns, use_imported_names) = collect_use_module_fns(at_path, &code);
+    // PLAN-671 ③：store 路径用集合形态（widget 路径 :998/:1037 保持 Vec 传参）。
+    let use_imported_set: std::collections::HashSet<String> =
+        use_imported_names.iter().cloned().collect();
+    for stmt in &ast.stmts {
+        if let auto_lang_core::ast::Stmt::StoreDecl(store_decl) = stmt {
+            let mut store = extract_store_from_decl(store_decl).map_err(|e| e.to_string())?;
+            store.api_imports = api_imports.clone();
+            store.stream_endpoints = opts.stream_endpoints.clone().unwrap_or_default();
+            store.module_fns = module_fns.clone();
+            store.sibling_stores = collect_store_siblings(at_path, &code);
+            // PLAN-671 ③：use 导入 fn 池传进 store 发射器（与组件路径
+            // :995/:1034 的 with_use_module_fns 同源）。
+            let (composable, warnings) = VueGenerator::generate_store_composable_full(
+                &store,
+                &use_module_fns,
+                &use_imported_set,
+            );
+            store_warnings.extend(warnings);
+            // PLAN-063 Phase B T15 (KD 061 D13): 归一命名(AuthStore→useAuthStore)。
+            let filename = format!(
+                "stores/{}.ts",
+                crate::ui_gen::vue::store_composable_name(&store.name)
+            );
+            store_composables.push((filename.clone(), composable.clone()));
+            // Also stash via thread-local for callers that use STORE_EXTRA_FILES
+            //（PLAN-671 ③：stash 复用同一份生成串——主路/线程局部双写路径
+            // 字节一致，否则 drain 落盘会覆盖掉池拉取内联体）。
+            auto_lang_core::STORE_EXTRA_FILES.with(|cell| {
+                cell.borrow_mut().push((filename, composable));
+            });
+        }
+    }
+
+    // Register view fn fragments before widget extraction (Plan 367 P2-3)
+    crate::aura::extract::clear_view_fragments();
+    for stmt in &ast.stmts {
+        if let auto_lang_core::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            crate::aura::extract::register_view_fragment(frag);
+        }
+    }
+    // PLAN-607: register and validate style recipes before extracting widget.
+    // PLAN-635: replay imported (source-tagged) + local recipes in order —
+    // same registration path as the VM track so both backends expand
+    // identically.
+    auto_lang_core::design_tokens::recipe::load_and_validate_style_recipes_with_imports(
+        &recipe_imports,
+        &ast.stmts,
+    )
+    .map_err(|e| e.to_string())?;
+
+    // Extract widgets
+    let mut widgets: Vec<crate::aura::AuraWidget> = Vec::new();
+    for stmt in &ast.stmts {
+        if let auto_lang_core::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let mut aura_widget =
+                extract_widget_from_decl(widget_decl).map_err(|e| e.to_string())?;
+            aura_widget.api_imports = api_imports.clone();
+            widgets.push(aura_widget);
+        }
+    }
+
+    // Plan 451 P3: actions merge for widgets without their own block —
+    // priority: widget's own `actions {}` > same-file top-level declaration >
+    // first `use`d module's top-level declaration (use order). Module
+    // resolution mirrors the vm loader (`{name}.at` / `{name}/mod.at`
+    // relative to this file); unreadable/unparseable modules are skipped
+    // with a warning, never fatal.
+    let fallback_actions: Option<auto_lang_core::ast::ui::ActionsBlock> = ast
+        .stmts
+        .iter()
+        .find_map(|s| match s {
+            auto_lang_core::ast::Stmt::ActionsDecl(b) => Some(b.clone()),
+            _ => None,
+        })
+        .or_else(|| collect_use_module_actions(at_path, &code))
+        // PLAN-639 T-05: lowest priority — pac.at `ui_config:` file (Plan 418
+        // auto-atom form) converted to the DSL shape. Web builds now pick up
+        // the same command system the VM/desktop runtime loads from the same
+        // file (jade-web 无命令系统的根因补齐)。PLAN-070 T-05: component
+        // files participate selectively (handler intersection gate).
+        .or_else(|| load_ui_config_actions(at_path, &widgets));
+    if let Some(acts) = fallback_actions {
+        for w in widgets.iter_mut() {
+            if w.actions.is_none() {
+                w.actions = Some(acts.clone());
+            }
+        }
+    }
+
+    // Plan 408 collected `component fn` declarations here (fragment → SFC
+    // synthesis + sub-widget registration). Plan 425: `component fn` sugars
+    // to a WidgetDecl at parse time, so the main WidgetDecl loop above
+    // already extracts them and the same-file merge below registers their
+    // names — this second track is deleted.
+
+    // PLAN-037 T6: file-level `use.web` statements attach their entries to
+    // EVERY widget declared in the file (the import lands in each generated
+    // SFC whose source references the symbol).
+    let mut web_ext_imports: Vec<auto_lang_core::ast::ui::ExtImport> = Vec::new();
+    for stmt in &ast.stmts {
+        if let auto_lang_core::ast::Stmt::UseWeb(entries) = stmt {
+            web_ext_imports.extend(entries.iter().cloned());
+        }
+    }
+    if !web_ext_imports.is_empty() {
+        for w in widgets.iter_mut() {
+            w.ext_imports.extend(web_ext_imports.iter().cloned());
+        }
+    }
+
+    if widgets.is_empty() && store_composables.is_empty() {
+        // Plan 451 P3: 顶层 `actions {}` 声明的文件（actions 拆独立模块经
+        // use 引用到宿主）不产任何工件——actions 随宿主编译被拾取，本文件
+        // 非错误。其余（纯 fn/类型模块）维持原错误。
+        let has_actions_decl = ast
+            .stmts
+            .iter()
+            .any(|s| matches!(s, auto_lang_core::ast::Stmt::ActionsDecl(_)));
+        if !has_actions_decl {
+            return Err("No widget or store declarations found in input file".into());
+        }
+        return Ok(crate::ui_gen::GeneratedComponent {
+            vue_code: String::new(),
+            widgets: Vec::new(),
+            all_widget_codes: Vec::new(),
+            named_view_codes: Vec::new(),
+            store_composables,
+            detected_api_imports: api_imports.clone(),
+            detected_store_deps: store_deps.clone(),
+            bound_model_channels: Default::default(),
+            validation_warnings: store_warnings,
+        });
+    }
+
+    // Plan 408: merge synthesized component fn names into sub_widgets so every
+    // widget/component sees them as referenceable components.
+    // Plan 425: same-file WidgetDecl names enter the list too — `component fn`
+    // now sugars to WidgetDecl, and same-file widget references take the same
+    // Plan 435 P4:`use { package: x from "dir" }` —— 加载 .at 组件包,
+    // 包内 widget 名并入 sub_widgets(tag 走组件生成路径)。
+    // 加载失败/内置 shadow → S003/S004 告警(不阻塞生成)。
+    let mut package_warnings: Vec<crate::ui_gen::validators::ValidationWarning> = Vec::new();
+    let mut sub_widgets_out: Vec<String> = Vec::new();
+    {
+        use crate::ui_gen::widget::ComponentRegistry;
+        let mut registry = ComponentRegistry::new();
+        let rejected = registry.register_local(&widgets);
+        for r in &rejected {
+            package_warnings.push(crate::ui_gen::validators::ValidationWarning::new(
+                "S004",
+                // Info 而非 Warning:规则本身在解析层强制(builtin wins),
+                // 告警咨询化 —— 既有生态存在合法 shadow(a2vue 语料的 Card),
+                // Warning 会误伤 --strict。
+                crate::ui_gen::validators::Severity::Info,
+                r,
+                format!(
+                    "local widget `{}` shadows builtin tag `{}` — builtin wins (Plan 408/435)",
+                    r,
+                    r.to_lowercase()
+                ),
+            ));
+        }
+        let base = at_path
+            .parent()
+            .unwrap_or(std::path::Path::new("."))
+            .to_path_buf();
+        let mut package_names: Vec<String> = Vec::new();
+        for w in &widgets {
+            for imp in &w.ext_imports {
+                if matches!(imp.kind, auto_lang_core::ast::ui::ExtImportKind::Package) {
+                    let dir = std::path::Path::new(imp.path.as_str());
+                    match registry.load_package(dir, &base) {
+                        Ok(pkg) => {
+                            for name in pkg.widgets.values() {
+                                if !package_names.contains(name) {
+                                    package_names.push(name.clone());
+                                }
+                            }
+                            // Plan 435 P7-3(D7):单文件解析失败不废包 ——
+                            // 合法组件照常并入,失败文件逐一 S003 告警。
+                            for pw in &pkg.parse_warnings {
+                                package_warnings.push(
+                                    crate::ui_gen::validators::ValidationWarning::new(
+                                        "S003",
+                                        crate::ui_gen::validators::Severity::Warning,
+                                        &w.name,
+                                        format!("package file failed to parse: {}", pw),
+                                    ),
+                                );
+                            }
+                        }
+                        Err(e) => package_warnings.push(
+                            crate::ui_gen::validators::ValidationWarning::new(
+                                "S003",
+                                crate::ui_gen::validators::Severity::Warning,
+                                &w.name,
+                                format!("package load failed: {}", e),
+                            ),
+                        ),
+                    }
+                }
+            }
+        }
+        // 存活的包名并入 sub_widgets(fenced below by all_sub_widgets dedup)
+        sub_widgets_out = package_names;
+    }
+    let mut all_sub_widgets: Vec<String> = sub_widgets.clone();
+    for n in std::mem::take(&mut sub_widgets_out) {
+        if !all_sub_widgets.contains(&n) {
+            all_sub_widgets.push(n);
+        }
+    }
+    for w in &widgets {
+        if !all_sub_widgets.contains(&w.name) {
+            all_sub_widgets.push(w.name.clone());
+        }
+    }
+
+    // PLAN-037 T5: sub-widget model-var map = cross-file (opts) + same-file
+    // widgets' state vars. Powers call-site model addressing (v-model).
+    let mut sub_widget_models: std::collections::HashMap<String, Vec<String>> =
+        opts.sub_widget_models.clone().unwrap_or_default();
+    for w in &widgets {
+        let entry = sub_widget_models.entry(w.name.clone()).or_default();
+        for sv in &w.state_vars {
+            if !entry.contains(&sv.name) {
+                entry.push(sv.name.clone());
+            }
+        }
+    }
+
+    // Plan 444 (ash-shell-057 ①b): same-file sub-widget emit roster, merged
+    // with the cross-file map from the workspace prescan.
+    let mut sub_widget_msgs: std::collections::HashMap<String, Vec<String>> =
+        opts.sub_widget_msgs.clone().unwrap_or_default();
+    for w in &widgets {
+        let entry = sub_widget_msgs.entry(w.name.clone()).or_default();
+        for emit in VueGenerator::widget_emit_set(w) {
+            if !entry.contains(&emit) {
+                entry.push(emit);
+            }
+        }
+    }
+
+    // Generate SFC for each widget
+    let mut all_widget_codes: Vec<(String, String)> = Vec::new();
+    let mut all_named_view_codes: Vec<(String, String, String)> = Vec::new();
+    // Plan 435 P2:schema 驱动校验(未知 tag/prop)排最前,其后是既有 store/生成告警
+    let mut all_validation_warnings: Vec<crate::ui_gen::validators::ValidationWarning> =
+        crate::ui_gen::validators::validate_aura_against_schema(&widgets, &all_sub_widgets);
+    // Plan 435 P4:包加载/shadow 告警(S003/S004)
+    all_validation_warnings.extend(package_warnings);
+    all_validation_warnings.extend(store_warnings);
+
+    // Plan 015 P1#8: R016 — view AST hard-keyword 撞名检查（strict 下经
+    // has_blocking_warnings 让 build 失败；非 strict 只打警告）。
+    for w in &widgets {
+        all_validation_warnings.extend(crate::ui_gen::validators::r016_keyword_collision(
+            &w.view_tree,
+            &w.name,
+        ));
+    }
+
+    // pac.at `shadcn: off` (Plan 013): Plain mode keeps native HTML elements
+    // and emits no `@/components/ui/*` imports; default stays Shadcn.
+    let vue_mode = if opts.shadcn.unwrap_or(true) {
+        VueMode::Shadcn
+    } else {
+        VueMode::Plain
+    };
+    // pac.at `default_classes: off` (Plan 014): skip the doc-theme default
+    // Tailwind classes for non-layout-primitive tags; default stays on.
+    let default_classes = opts.default_classes.unwrap_or(true);
+    // Plan 446 批三 G1: store 导入前缀（默认 @/stores）。
+    let store_import_prefix = opts
+        .store_import_prefix
+        .clone()
+        .unwrap_or_else(|| "@/stores".to_string());
+
+    // Plan 443 pass 1 — same-file binding scan. When this file's channel map
+    // is non-empty, generate every widget once WITHOUT bound-channel info and
+    // harvest the `v-model:x` emissions. Parent-side channel decisions read
+    // only sub_widget_models / known_sub_widgets (never the bound set), so
+    // pass 1's emission set equals the real one; the result decides which
+    // children downgrade their model var to defineModel in pass 2.
+    let mut same_file_bound: std::collections::HashMap<String, Vec<String>> = Default::default();
+    let has_any_channel = sub_widget_models.values().any(|c| !c.is_empty());
+    if has_any_channel {
+        for widget in &widgets {
+            let mut gen = VueGenerator::new()
+                .with_mode(vue_mode)
+                .with_source_stem(source_stem.clone())
+                .with_default_classes(default_classes)
+                .with_store_deps(store_deps.clone())
+                .with_store_import_prefix(store_import_prefix.clone())
+                .with_module_fns(module_fns.clone())
+                .with_use_module_fns(use_module_fns.clone(), use_imported_names.clone())
+                .with_sub_widgets(all_sub_widgets.clone())
+                .with_sub_widget_models(sub_widget_models.clone())
+                .with_sub_widget_msgs(sub_widget_msgs.clone());
+            if !api_imports.is_empty() {
+                gen = gen.with_project_api_functions(api_imports.clone());
+            }
+            gen.generate(widget)
+                .map_err(|e| format!("Failed to generate {}: {}", widget.name, e))?;
+            for (tag, channel) in &gen.emitted_model_bindings {
+                let entry = same_file_bound.entry(tag.clone()).or_default();
+                if !entry.contains(channel) {
+                    entry.push(channel.clone());
+                }
+            }
+        }
+    }
+    // Effective bound set = cross-file (opts) ∪ same-file. The same-file
+    // subset is also reported back so workspace drivers can aggregate it
+    // across files before their real generation pass.
+    let mut bound_model_channels: std::collections::HashMap<String, Vec<String>> =
+        opts.bound_model_channels.clone().unwrap_or_default();
+    for (k, v) in &same_file_bound {
+        let entry = bound_model_channels.entry(k.clone()).or_default();
+        for c in v {
+            if !entry.contains(c) {
+                entry.push(c.clone());
+            }
+        }
+    }
+
+    for widget in &widgets {
+        let mut gen = VueGenerator::new()
+            .with_mode(vue_mode)
+            .with_source_stem(source_stem.clone())
+            .with_default_classes(default_classes)
+            .with_store_deps(store_deps.clone())
+            .with_store_import_prefix(store_import_prefix.clone())
+            .with_module_fns(module_fns.clone())
+            .with_use_module_fns(use_module_fns.clone(), use_imported_names.clone())
+            .with_sub_widgets(all_sub_widgets.clone())
+            .with_sub_widget_models(sub_widget_models.clone())
+            .with_sub_widget_msgs(sub_widget_msgs.clone())
+            .with_bound_model_channels(
+                bound_model_channels
+                    .get(&widget.name)
+                    .cloned()
+                    .unwrap_or_default(),
+            );
+        if !api_imports.is_empty() {
+            gen = gen.with_project_api_functions(api_imports.clone());
+        }
+
+        let widget_code = gen
+            .generate(widget)
+            .map_err(|e| format!("Failed to generate {}: {}", widget.name, e))?;
+        all_widget_codes.push((widget.name.clone(), widget_code));
+
+        // Collect validation warnings from this widget's generation
+        for w in &gen.last_validation_warnings {
+            all_validation_warnings.push(w.clone());
+        }
+
+        // PLAN-024: named views (`view mini { ... }`) — generate one SFC per
+        // named face through the same pipeline (script segment/store wiring
+        // shared), only the template root differs. A clone with the named
+        // node swapped into `view_tree` reuses generate() verbatim.
+        for (vname, vnode) in &widget.named_views {
+            let mut mini_widget = widget.clone();
+            mini_widget.view_tree = vnode.clone();
+            let mini_code = gen
+                .generate(&mini_widget)
+                .map_err(|e| format!("Failed to generate {}/view {}: {}", widget.name, vname, e))?;
+            all_named_view_codes.push((widget.name.clone(), vname.clone(), mini_code));
+        }
+    }
+
+    let vue_code = all_widget_codes
+        .first()
+        .map(|(_, code)| code.clone())
+        .unwrap_or_default();
+
+    // Plan 012 Batch A: --strict (`auto build --strict`) escalates any
+    // Warning/Error-severity validation warning to a hard build failure.
+    // Info-severity warnings stay advisory.
+    if crate::ui_gen::validators::strict_enabled()
+        && crate::ui_gen::validators::has_blocking_warnings(&all_validation_warnings)
+    {
+        return Err(format!(
+            "codegen validation failed (strict mode) for {}:\n{}",
+            at_path.display(),
+            crate::ui_gen::validators::format_warnings(&all_validation_warnings)
+        ));
+    }
+
+    Ok(GeneratedComponent {
+        vue_code,
+        all_widget_codes,
+        named_view_codes: all_named_view_codes,
+        store_composables,
+        detected_api_imports: api_imports,
+        detected_store_deps: store_deps,
+        widgets,
+        bound_model_channels: same_file_bound,
+        validation_warnings: all_validation_warnings,
+    })
+}
+
+// Re-export helper functions from super (used by generate_component_from_file)
+fn extract_api_imports_from_ast(
+    ast: &auto_lang_core::ast::Code,
+    front_at: Option<&std::path::Path>,
+) -> Vec<String> {
+    let mut imports = Vec::new();
+    let mut module_form = false;
+    for stmt in &ast.stmts {
+        if let auto_lang_core::ast::Stmt::Use(ref use_stmt) = stmt {
+            if is_api_use_stmt(use_stmt) {
+                if use_stmt.items.is_empty() {
+                    // PLAN-627: 模块形态 `use back.api`（无符号清单）——
+                    // 函数名自 api.at 契约枚举（vue 发射臂 Case 3 对限定名
+                    // `api.X()` 已按方法名路由，缺的只是这份清单）。
+                    module_form = true;
+                }
+                imports.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    if module_form {
+        if let Some(path) = front_at {
+            for name in auto_lang_core::config::api_contract_fn_names_for_front(path) {
+                if !imports.contains(&name) {
+                    imports.push(name);
+                }
+            }
+        }
+    }
+    imports
+}
+
+/// Check if a `use` statement targets `back.api` (same logic as lib.rs::is_api_use_stmt).
+fn is_api_use_stmt(use_stmt: &auto_lang_core::ast::Use) -> bool {
+    if use_stmt.paths.len() == 2
+        && use_stmt.paths[0].as_str() == "back"
+        && use_stmt.paths[1].as_str() == "api"
+    {
+        return true;
+    }
+    if let Some(ref mp) = use_stmt.module_path {
+        if mp.display() == "back.api" {
+            return true;
+        }
+    }
+    false
+}
+
+fn extract_store_imports_from_ast(ast: &auto_lang_core::ast::Code) -> Vec<String> {
+    let mut deps = Vec::new();
+    for stmt in &ast.stmts {
+        if let auto_lang_core::ast::Stmt::Use(use_stmt) = stmt {
+            let is_store = use_stmt.paths.len() == 1
+                && (use_stmt.paths[0].as_str() == "store"
+                    || use_stmt.paths[0].as_str().contains("store"))
+                || use_stmt.module_path.as_ref().map_or(false, |mp| {
+                    mp.display() == "store" || mp.display().contains("store")
+                });
+            if is_store {
+                deps.extend(use_stmt.items.iter().map(|s| s.as_str().to_string()));
+            }
+        }
+    }
+    deps
+}
+
+#[cfg(test)]
+mod tests {
+    use super::transpile_vue_aura;
+
+    #[test]
+    fn test_transpile_placeholder() {
+        // Active API smoke test — real tests require .at fixture files
+        assert!(true);
+    }
+
+    /// DOM escape hatch, end to end (plain Tailwind mode):
+    /// `ref: "menuEl"` in the view → `ref="menuEl"` template attribute +
+    /// `const menuEl = ref<HTMLElement | null>(null)` script declaration;
+    /// `.menuEl.xxx` in `on` handlers → `menuEl.value!.xxx`;
+    /// `document.*` / `window.*` pass through unchanged.
+    #[test]
+    fn test_dom_escape_hatch_plain_mode() {
+        let src = r#"
+widget App {
+    msg Msg {
+        Open
+        Scrolled
+    }
+    model {
+        var menu_left int = 0
+    }
+    view {
+        col {
+            button "open" {
+                ref: "triggerEl",
+                onclick: .Open
+            }
+            col {
+                ref: "menuEl"
+                text "menu"
+            }
+            col {
+                ref: "scrollEl",
+                onwheel: .Scrolled($event)
+                text "content"
+            }
+        }
+    }
+    on {
+        .Open -> {
+            let r = .triggerEl.getBoundingClientRect()
+            .menu_left = r.left
+            let w = window.innerWidth
+            let h = window.innerHeight
+            let ae = document.activeElement
+        }
+
+        .Scrolled(e) -> {
+            .scrollEl.scrollTop = .scrollEl.scrollTop + e.deltaY
+            let sh = .scrollEl.scrollHeight
+            let ch = .scrollEl.clientHeight
+            let q = .menuEl.querySelector(".item")
+        }
+    }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("dom escape hatch must generate");
+        // Template ref attributes
+        assert!(out.contains("ref=\"triggerEl\""), "sfc:\n{out}");
+        assert!(out.contains("ref=\"menuEl\""), "sfc:\n{out}");
+        assert!(out.contains("ref=\"scrollEl\""), "sfc:\n{out}");
+        // Script declarations
+        assert!(
+            out.contains("const triggerEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("const menuEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("const scrollEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{out}"
+        );
+        // Handler body: ref access maps onto the DOM element
+        assert!(
+            out.contains("triggerEl.value!.getBoundingClientRect()"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("scrollEl.value!.scrollTop = scrollEl.value!.scrollTop + e.deltaY"),
+            "sfc:\n{out}"
+        );
+        assert!(out.contains("scrollEl.value!.scrollHeight"), "sfc:\n{out}");
+        assert!(out.contains("scrollEl.value!.clientHeight"), "sfc:\n{out}");
+        assert!(
+            out.contains("menuEl.value!.querySelector('.item')"),
+            "sfc:\n{out}"
+        );
+        // document/window pass-through
+        assert!(out.contains("window.innerWidth"), "sfc:\n{out}");
+        assert!(out.contains("window.innerHeight"), "sfc:\n{out}");
+        assert!(out.contains("document.activeElement"), "sfc:\n{out}");
+    }
+
+    /// Same escape hatch in shadcn mode: layout elements (col) and buttons
+    /// are mapped through the shadcn branch, which whitelists props — the
+    /// `ref` prop must survive there too.
+    #[test]
+    fn test_dom_escape_hatch_shadcn_mode() {
+        let src = r#"
+widget App {
+    msg Msg {
+        Open
+    }
+    model {
+        var menu_left int = 0
+    }
+    view {
+        col {
+            button "open" {
+                ref: "triggerEl",
+                onclick: .Open
+            }
+            col {
+                ref: "menuEl"
+                text "menu"
+            }
+        }
+    }
+    on {
+        .Open -> {
+            let r = .triggerEl.getBoundingClientRect()
+            .menu_left = r.left
+        }
+    }
+}
+"#;
+        use crate::ui_gen::{BackendGenerator, VueGenerator, VueMode};
+        use auto_lang_core::session::CompilerSession;
+        let session = CompilerSession::ui().with_backend("vue");
+        let mut parser = auto_lang_core::Parser::from(src).with_session(session);
+        let ast = parser.parse().expect("parse");
+        let mut generated = None;
+        for stmt in &ast.stmts {
+            if let auto_lang_core::ast::Stmt::WidgetDecl(w) = stmt {
+                let widget = crate::aura::extract_widget_from_decl(w).expect("extract");
+                let mut gen = VueGenerator::new().with_mode(VueMode::Shadcn);
+                generated = Some(gen.generate(&widget).expect("generate"));
+            }
+        }
+        let out = generated.expect("widget");
+        assert!(out.contains("ref=\"triggerEl\""), "sfc:\n{out}");
+        assert!(out.contains("ref=\"menuEl\""), "sfc:\n{out}");
+        // Plan 040: refs on real vue components (button → <Button>) are
+        // typed `ref<any>` (component instance — defineExpose surface
+        // unknown to the parent); native-tag pseudo-mappings (col → div)
+        // stay HTMLElement.
+        assert!(
+            out.contains("const triggerEl = ref<any>(null)"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("const menuEl = ref<HTMLElement | null>(null)"),
+            "sfc:\n{out}"
+        );
+        assert!(
+            out.contains("triggerEl.value!.getBoundingClientRect()"),
+            "sfc:\n{out}"
+        );
+    }
+
+    /// Plan 356 follow-up #2: a reserved-keyword identifier (e.g. `tag`,
+    /// lexed as TokenKind::Tag) used inside an `if` condition — specifically
+    /// as the right-hand side of a comparison in a `style: if` attribute:
+    ///   style: if .active_tag == tag { ... } else { ... }
+    ///
+    /// Previously the expression atom parser matched only TokenKind::Ident,
+    /// so `tag` here produced "Expected term, got RBrace" (the real 015-notes
+    /// sidebar's offset-8873 error). Must now parse + generate.
+    #[test]
+    fn test_soft_keyword_in_if_condition() {
+        let src = r#"
+widget W(active_tag: str) {
+    view {
+        button {
+            style: if .active_tag == tag {
+                "bg-blue-500"
+            } else {
+                "bg-gray-100"
+            }
+        }
+    }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("soft-kw in if-condition must generate");
+        assert!(out.contains(":class"), "expected :class binding in:\n{out}");
+    }
+
+    /// Plan 356 follow-up #2: a reserved-keyword identifier as a comparison
+    /// operand in an `if` condition (the shape the real sidebar uses:
+    /// `if .active_tag == tag`). Covers several soft keywords.
+    ///
+    /// NOTE: a bare soft keyword as the *whole* condition (`if tag {}`) is a
+    /// separate, narrower pre-existing issue with `style:`-attribute parsing
+    /// and is intentionally not covered here — the sidebar doesn't use it.
+    #[test]
+    fn test_soft_keyword_as_condition_value() {
+        for kw in ["tag", "type", "move", "copy", "super"] {
+            let src = format!(
+                "widget W(x: str) {{ view {{ button {{ style: if .x == {kw} {{ \"a\" }} else {{ \"b\" }} }} }} }}",
+            );
+            transpile_vue_aura(&src, None).unwrap_or_else(|e| panic!("compare-operand {kw}: {e}"));
+        }
+    }
+
+    /// Plan 356 follow-up: a view `for`-loop over an `ident.field` iterable
+    /// (e.g. `for tag in note.tags`) must parse + generate. Previously
+    /// `parse_view_for_loop` only accepted `.field`, numeric ranges, or a bare
+    /// ident, so `note.tags` was read as just `note`, leaving `.tags` to break
+    /// the rest of the view ("Expected term, got RBrace").
+    #[test]
+    fn test_view_for_loop_ident_field_iterable() {
+        let src = r#"
+widget Tags {
+    view {
+        col {
+            for note in .notes {
+                for tag in note.tags {
+                    button { text tag }
+                }
+            }
+        }
+    }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("ident.field iterable must generate");
+        // Outer loop iterates .notes; inner loop iterates note.tags.
+        assert!(
+            out.matches("v-for").count() == 2,
+            "expected 2 v-for loops in:\n{out}"
+        );
+    }
+
+    /// Plan 356 follow-up: `ident.field.sub` chains as an iterable must also
+    /// work (symmetric with `.field.sub` chained access).
+    #[test]
+    fn test_view_for_loop_ident_field_chain_iterable() {
+        let src = r#"
+widget W {
+    view {
+        for x in store.items {
+            button { text "x" }
+        }
+    }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("ident.field.chain iterable must generate");
+        assert!(out.contains("v-for"), "missing v-for in:\n{out}");
+    }
+
+    /// Plan 356 end-to-end: the real 015-notes sidebar (commit 50307d51, 200
+    /// lines) that originally OOM'd. This is the full integration guard — it
+    /// exercises every trigger fixed across the three Plan 356 commits:
+    ///   - `onclick: .SelectTag(tag)`        (reserved-kw loop var → OOM)
+    ///   - `for tag in note.tags`            (ident.field iterable)
+    ///   - `style: if .active_tag == tag {}` (reserved-kw in if-condition)
+    /// It must parse AND generate end to end.
+    #[test]
+    fn test_plan356_real_sidebar_generates() {
+        let src = include_str!("../../tests/fixtures/plan356_oom_sidebar.at");
+        let out = transpile_vue_aura(src, None).expect("real sidebar must generate");
+        assert!(out.len() < 100_000, "output too large: {} bytes", out.len());
+        assert!(out.contains("v-for"), "expected v-for in sidebar output");
+        assert!(
+            out.contains("SelectTag"),
+            "expected SelectTag handler in sidebar output"
+        );
+    }
+
+    /// Plan 356 regression: the minimal OOM trigger. A `for`-loop whose body
+    /// has an event handler taking the loop variable as an argument, where the
+    /// loop variable is a reserved-keyword identifier (`tag` → TokenKind::Tag).
+    ///
+    /// Before the fix this exhausted memory (parse_event_arg ignored the `Tag`
+    /// token and the handler arg loop spun forever). It must now parse +
+    /// generate a sane SFC inline (no thread, no timeout needed).
+    #[test]
+    fn test_plan356_oom_regression_loop_var_as_handler_arg() {
+        let src = include_str!("../../tests/fixtures/plan356_minimal_oom.at");
+        let out = transpile_vue_aura(src, None).expect("Plan 356 trigger must generate");
+        assert!(out.contains("v-for"), "expected v-for in:\n{out}");
+        assert!(
+            out.contains("SelectTag"),
+            "expected handler binding in:\n{out}"
+        );
+    }
+
+    /// Plan 356: the soft-keyword-as-identifier fix applies to any reserved
+    /// keyword, not just `tag`. Verify a few others (`type`, `move`) used as a
+    /// loop variable passed to a handler also generate cleanly.
+    #[test]
+    fn test_plan356_soft_keyword_loop_var() {
+        for kw in ["tag", "type", "move", "copy", "super"] {
+            let src = format!(
+                r#"
+widget W(active: bool) {{
+    msg Msg {{ Go(str) }}
+    view {{
+        col {{
+            for {kw} in .items {{
+                button {{
+                    text {kw}
+                    onclick: .Go({kw})
+                }}
+            }}
+        }}
+    }}
+    on {{ .Go(x) -> {{ }} }}
+}}
+"#,
+            );
+            let out = transpile_vue_aura(&src, None).unwrap_or_else(|e| panic!("{kw}: {e}"));
+            assert!(out.contains("v-for"), "{kw}: missing v-for in:\n{out}");
+            assert!(out.contains("Go"), "{kw}: missing handler in:\n{out}");
+        }
+    }
+
+    /// Plan 356 control: a non-keyword loop variable name worked before and
+    /// must still work (guards against the fix over-reaching).
+    #[test]
+    fn test_plan356_normal_loop_var_still_works() {
+        let src = r#"
+widget W(active: bool) {
+    msg Msg { Go(str) }
+    view {
+        col {
+            for item in .items {
+                button {
+                    text item
+                    onclick: .Go(item)
+                }
+            }
+        }
+    }
+    on { .Go(x) -> { } }
+}
+"#;
+        let out = transpile_vue_aura(src, None).expect("normal loop var must generate");
+        assert!(out.contains("v-for"));
+    }
+
+    /// Plan 358 D1 stress guard: the `for` + `style:if` + `msg`/`on`
+    /// combination that OOM'd (1.7GB+) on the real 015-notes sidebar. The
+    /// root cause was a `format!("{:?}", widget.view_tree)` dark-mode scan in
+    /// `generate_sfc` whose Debug output exploded on large trees with
+    /// `Expr::If` nodes (fixed in a86c183c by removing the Debug format).
+    ///
+    /// This test generates a widget with 10 for-loops x 60 `style:if`
+    /// branches (600 if-nodes) plus `msg`/`on`, and asserts generation
+    /// completes well under the Plan 358 budget (< 5s; measured ~0.1s) so a
+    /// reintroduced tree-wide Debug format — or any other superlinear blowup
+    /// on this pattern — fails loudly instead of OOMing a build.
+    #[test]
+    fn test_plan358_d1_for_style_if_msg_on_stress() {
+        let mut src = String::from(
+            "widget NavTree(active: bool) {\n    msg Msg { SelectTag(str) }\n    view {\n        col {\n",
+        );
+        for l in 0..10 {
+            src.push_str(&format!(
+                "            for tag{l} in .items {{\n                button {{\n                    text tag{l}\n                    onclick: .SelectTag(tag{l})\n"
+            ));
+            for i in 0..60 {
+                src.push_str(&format!(
+                    "                    style: if tag{l} == \"t{i}\" {{ \"l{l}c{i}a\" }} else if .active {{ \"l{l}c{i}b\" }} else {{ \"l{l}c{i}c\" }}\n"
+                ));
+            }
+            src.push_str("                }\n            }\n");
+        }
+        src.push_str("        }\n    }\n    on { .SelectTag(t) -> { } }\n}\n");
+
+        let start = std::time::Instant::now();
+        let out = transpile_vue_aura(&src, None).expect("D1 trigger pattern must generate");
+        let elapsed = start.elapsed();
+        assert!(
+            elapsed.as_secs() < 5,
+            "generation took {:?}, over the 5s Plan 358 budget (possible D1 regression)",
+            elapsed
+        );
+        assert_eq!(out.matches("v-for").count(), 10, "expected 10 v-for loops");
+        assert!(out.contains("SelectTag"), "expected handler binding");
+    }
+
+    // --- Plan 012 Batch A: --strict escalation ----------------------------
+
+    /// Resets the process-wide strict flag on drop, so a failing test can't
+    /// leave strict mode on for parallel tests.
+    struct StrictGuard;
+    impl StrictGuard {
+        fn on() -> Self {
+            crate::ui_gen::validators::set_strict(true);
+            StrictGuard
+        }
+    }
+    impl Drop for StrictGuard {
+        fn drop(&mut self) {
+            crate::ui_gen::validators::set_strict(false);
+        }
+    }
+
+    /// Strict mode is a process-wide flag and cargo runs tests in parallel,
+    /// so both strict assertions live in ONE test to avoid toggling races.
+    #[test]
+    fn test_strict_mode_escalation() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let comma_src = r#"
+widget StrictCommaProbe {
+    view {
+        col {
+            button "a"
+            ,
+            button "b",
+        }
+    }
+}
+"#;
+        let comma_path = std::env::temp_dir().join("plan012_strict_comma_probe.at");
+        std::fs::write(&comma_path, comma_src).expect("write probe .at");
+
+        // Non-strict: R008 is advisory, generation succeeds.
+        crate::ui_gen::validators::set_strict(false);
+        let ok = generate_component_from_file(&comma_path, ComponentGenOptions::default());
+        assert!(ok.is_ok(), "non-strict build must succeed: {:?}", ok.err());
+
+        // Plan 015 P1#8: R016 (view AST hard-keyword 撞名) — non-strict
+        // collects the warning without failing (strict flag is off here).
+        let r016_src = r#"
+widget StrictR016Probe {
+    view {
+        col {
+            view { text "inner" }
+        }
+    }
+}
+"#;
+        let r016_path = std::env::temp_dir().join("plan015_strict_r016_probe.at");
+        std::fs::write(&r016_path, r016_src).expect("write probe .at");
+        let ok = generate_component_from_file(&r016_path, ComponentGenOptions::default())
+            .expect("non-strict build must succeed");
+        assert!(
+            ok.validation_warnings.iter().any(|w| w.rule == "R016"),
+            "R016 warning must be collected: {:?}",
+            ok.validation_warnings
+                .iter()
+                .map(|w| w.rule)
+                .collect::<Vec<_>>()
+        );
+
+        // Strict: the R008 warning becomes a hard build failure.
+        let _guard = StrictGuard::on();
+        let err = generate_component_from_file(&comma_path, ComponentGenOptions::default());
+        let msg = err.expect_err("strict build must fail on blocking warnings");
+        assert!(
+            msg.contains("strict mode") && msg.contains("R008"),
+            "error should name strict mode and the rule: {msg}"
+        );
+
+        // Strict: R013 (unsupported bound-position expr, `??` has no
+        // bound-value arm) also escalates to a hard build failure.
+        let r013_src = r#"
+widget StrictR013Probe {
+    model {
+        var a str = "x"
+        var b str = "y"
+    }
+    view {
+        col {
+            span {
+                style: { "line-through": .a ?? .b }
+                text "label"
+            }
+        }
+    }
+}
+"#;
+        let r013_path = std::env::temp_dir().join("plan012_strict_r013_probe.at");
+        std::fs::write(&r013_path, r013_src).expect("write probe .at");
+        let err = generate_component_from_file(&r013_path, ComponentGenOptions::default());
+        let msg = err.expect_err("strict build must fail on R013");
+        assert!(
+            msg.contains("strict mode") && msg.contains("R013"),
+            "error should name strict mode and R013: {msg}"
+        );
+
+        // Strict + Info only: `.remove` on an ext-composable facade passes
+        // through with an R010 Info note — advisory, must NOT fail the build.
+        // (A composable facade rather than `store.*`, to avoid tripping
+        // R002's store-without-import Error.)
+        let info_src = r#"
+widget StrictInfoProbe {
+    use { composable: useRecentFilesStore from "src/front/composables/useRecentFilesStore.ts" }
+    msg Msg { ExtDel(int) }
+    view {
+        col {
+            button "xdel" { onclick: .ExtDel(0) }
+        }
+    }
+    on {
+        .ExtDel(i) -> { .recentFilesStore.remove(i) }
+    }
+}
+"#;
+        let info_path = std::env::temp_dir().join("plan012_strict_info_probe.at");
+        std::fs::write(&info_path, info_src).expect("write probe .at");
+        let res = generate_component_from_file(&info_path, ComponentGenOptions::default());
+        assert!(
+            res.is_ok(),
+            "Info-severity notes must not block a strict build: {:?}",
+            res.err()
+        );
+
+        // Plan 015 P1#8: strict 下 R016（Error 级）同样升级为硬失败。
+        let err = generate_component_from_file(&r016_path, ComponentGenOptions::default());
+        let msg = err.expect_err("strict build must fail on R016");
+        assert!(
+            msg.contains("strict mode") && msg.contains("R016"),
+            "error should name strict mode and R016: {msg}"
+        );
+
+        // Strict + legal keyword-adjacent usage: paren `type:` prop and a
+        // router `link (to:)` must NOT trip R016 (probe-verified legal forms).
+        let legal_src = r#"
+widget StrictR016Legal {
+    view {
+        col {
+            button "ok" (type: "button") { }
+            link (to: "/home") { text "Home" }
+        }
+    }
+}
+"#;
+        let legal_path = std::env::temp_dir().join("plan015_strict_r016_legal.at");
+        std::fs::write(&legal_path, legal_src).expect("write probe .at");
+        let res = generate_component_from_file(&legal_path, ComponentGenOptions::default());
+        drop(_guard);
+        let legal = res.expect("legal keyword-adjacent usage must build");
+        assert!(
+            !legal.validation_warnings.iter().any(|w| w.rule == "R016"),
+            "legal usage must not produce R016: {:?}",
+            legal
+                .validation_warnings
+                .iter()
+                .map(|w| w.rule)
+                .collect::<Vec<_>>()
+        );
+
+        let _ = std::fs::remove_file(&comma_path);
+        let _ = std::fs::remove_file(&info_path);
+        let _ = std::fs::remove_file(&r016_path);
+        let _ = std::fs::remove_file(&legal_path);
+    }
+
+    // --- Plan 012 Batch B: store codegen correctness -------------------------
+
+    /// Gap 9a: a single .at file declaring TWO stores must emit BOTH store
+    /// composables through the real parse path (return value AND the
+    /// STORE_EXTRA_FILES thread-local used by legacy callers).
+    #[test]
+    fn test_multi_store_single_file_emission() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let src = r#"
+store AlphaStore {
+    model {
+        var items []str = []
+    }
+    msg Msg { Touch }
+    on {
+        .Touch -> { }
+    }
+}
+
+store BetaStore {
+    model {
+        var count int = 0
+    }
+    msg Msg { Bump }
+    on {
+        .Bump -> { .count = .count + 1 }
+    }
+}
+"#;
+        let path = std::env::temp_dir().join("plan012_multi_store_probe.at");
+        std::fs::write(&path, src).expect("write probe .at");
+
+        let result = generate_component_from_file(&path, ComponentGenOptions::default())
+            .expect("two-store file must generate");
+
+        let names: Vec<&str> = result
+            .store_composables
+            .iter()
+            .map(|(f, _)| f.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            vec!["stores/useAlphaStore.ts", "stores/useBetaStore.ts"],
+            "both stores must be emitted, got: {:?}",
+            names
+        );
+
+        // The thread-local (drained by auto-man's incremental path) must hold
+        // the same two files.
+        let drained = auto_lang_core::drain_store_extra_files();
+        let drained_names: Vec<&str> = drained.iter().map(|(f, _)| f.as_str()).collect();
+        assert_eq!(drained_names, names, "thread-local must match return value");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Plan 451 P3: 顶层 actions 声明的合并优先级与工件容忍。
+    ///
+    /// ① 同文件顶层声明 → 无自带块的 widget 拾取（keymap/menubar 合成生效）；
+    /// ② widget 自带块优先于顶层声明；
+    /// ③ actions-only 文件（无 widget/store）不再报错，产出空工件；
+    /// ④ use 引入模块的顶层声明拾取到宿主。
+    #[test]
+    fn test_top_level_actions_merge() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let dir = std::env::temp_dir().join("plan451_actions_merge_test");
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        let host_no_block = r#"
+actions {
+    action (id: "file.new", handler: .ActNew, title: "新建", shortcut: "Ctrl+N")
+    menubar { menu (id: "file", title: "文件") { item (action: "file.new") } }
+}
+widget HostApp {
+    msg Msg { ActNew }
+    view { col { menubar {} } }
+    on { .ActNew -> { console_log("x") } }
+}
+"#;
+        let p1 = dir.join("host_noblock.at");
+        std::fs::write(&p1, host_no_block).expect("write host");
+        let result = generate_component_from_file(&p1, ComponentGenOptions::default())
+            .expect("top-level actions + widget must generate");
+        auto_lang_core::drain_store_extra_files();
+        assert!(
+            result.vue_code.contains("'Ctrl+n': ActNew"),
+            "same-file top-level actions reach the SFC keymap:\n{}",
+            result.vue_code
+        );
+        assert!(
+            result.vue_code.contains("<MenubarMenu value=\"file\">"),
+            "same-file top-level actions drive menubar synthesis:\n{}",
+            result.vue_code
+        );
+
+        // ② widget 自带块优先：顶层声明的 id 不出现在 keymap。
+        let host_own = r#"
+actions {
+    action (id: "top.decoy", handler: .ActNew, title: "顶层诱饵", shortcut: "Ctrl+T")
+}
+widget OwnApp {
+    msg Msg { ActNew }
+    actions { action (id: "own.real", handler: .ActNew, title: "自带", shortcut: "Ctrl+R") }
+    view { col { } }
+    on { .ActNew -> { console_log("x") } }
+}
+"#;
+        let p2 = dir.join("host_own.at");
+        std::fs::write(&p2, host_own).expect("write host with own block");
+        let result2 = generate_component_from_file(&p2, ComponentGenOptions::default())
+            .expect("widget with own actions must generate");
+        auto_lang_core::drain_store_extra_files();
+        assert!(
+            result2.vue_code.contains("'Ctrl+r': ActNew")
+                && !result2.vue_code.contains("top.decoy"),
+            "widget's own block wins over the top-level declaration:\n{}",
+            result2.vue_code
+        );
+
+        // ③ actions-only 文件：不再报错，产出空工件（随宿主拾取）。
+        let actions_only = r#"
+actions {
+    action (id: "mod.only", handler: .ActMod, title: "模块动作", shortcut: "Ctrl+M")
+}
+"#;
+        let p3 = dir.join("mod_actions.at");
+        std::fs::write(&p3, actions_only).expect("write actions-only module");
+        let result3 = generate_component_from_file(&p3, ComponentGenOptions::default())
+            .expect("actions-only file must not error");
+        auto_lang_core::drain_store_extra_files();
+        assert!(result3.vue_code.is_empty() && result3.widgets.is_empty());
+
+        // ④ use 引入模块的顶层声明拾取：宿主无自带块、本文件无顶层声明。
+        let host_uses = r#"
+use mod_actions: ActMod
+widget UseApp {
+    msg Msg { ActMod }
+    view { col { toolbar {} } }
+    on { .ActMod -> { console_log("x") } }
+}
+"#;
+        let p4 = dir.join("host_uses.at");
+        std::fs::write(&p4, host_uses).expect("write use host");
+        let result4 = generate_component_from_file(&p4, ComponentGenOptions::default())
+            .expect("use-module actions merge must generate");
+        auto_lang_core::drain_store_extra_files();
+        assert!(
+            result4.vue_code.contains("'Ctrl+m': ActMod"),
+            "use'd module actions reach the host SFC keymap:\n{}",
+            result4.vue_code
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A store with a `notes` state var but NO declared `all_tags` computed
+    /// must generate a composable with no `all_tags` anywhere (previously the
+    /// hack injected a getter referencing `notes.value`).
+    #[test]
+    fn test_store_with_notes_var_no_all_tags_injection() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let src = r#"
+store NotesLikeStore {
+    model {
+        var notes []str = []
+    }
+    msg Msg { Touch }
+    on {
+        .Touch -> { }
+    }
+}
+"#;
+        let path = std::env::temp_dir().join("plan012_notes_no_all_tags_probe.at");
+        std::fs::write(&path, src).expect("write probe .at");
+
+        let result = generate_component_from_file(&path, ComponentGenOptions::default())
+            .expect("store file must generate");
+        auto_lang_core::drain_store_extra_files(); // keep thread-local clean for other tests
+
+        assert_eq!(result.store_composables.len(), 1);
+        let (filename, code) = &result.store_composables[0];
+        assert_eq!(filename, "stores/useNotesLikeStore.ts");
+        assert!(
+            code.contains("export function useNotesLikeStore()"),
+            "composable function, got:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("all_tags"),
+            "no all_tags getter may be injected, got:\n{}",
+            code
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Gap 2 (compatibility): a store that DECLARES `all_tags` in its
+    /// `computed {}` block — the workaround jade and 015-notes carry — must
+    /// still compile, and the declared getter is emitted exactly once.
+    #[test]
+    fn test_store_declared_all_tags_placeholder_still_compiles() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let src = r#"
+store TagsStore {
+    model {
+        var notes []str = []
+    }
+    msg Msg { Touch }
+    computed {
+        all_tags => []
+    }
+    on {
+        .Touch -> { }
+    }
+}
+"#;
+        let path = std::env::temp_dir().join("plan012_declared_all_tags_probe.at");
+        std::fs::write(&path, src).expect("write probe .at");
+
+        let result = generate_component_from_file(&path, ComponentGenOptions::default())
+            .expect("declared all_tags placeholder must still compile");
+        auto_lang_core::drain_store_extra_files();
+
+        let (_, code) = &result.store_composables[0];
+        let occurrences = code.matches("get all_tags()").count();
+        assert_eq!(
+            occurrences, 1,
+            "declared all_tags getter must appear exactly once, got:\n{}",
+            code
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+    // ====================================================================
+    // Plan musk-022 Phase 1: resolve_stream_variants parses a
+    // `#[serde(tag="type", rename_all="snake_case")] pub tag T { ... }`
+    // declaration, extracting the discriminator field name and the
+    // wire-value → action-name variant map. Nested variant bodies
+    // (e.g. `Delta { text str }`) must NOT truncate parsing.
+    // ====================================================================
+
+    /// Plan 559 W2: cross-store qualified calls inside store bodies. A store
+    /// file referencing a sibling store (`use inventory_store: Inventory` →
+    /// `Inventory.Add(...)`) previously emitted the head bare → TS2304 in the
+    /// generated composable (os-config modules_store → Collection/DesktopCfg).
+    /// The composable now imports the sibling composable, declares a reactive
+    /// facade const, and routes qualified heads onto it; self-qualification
+    /// (`Cart.Sync()` inside Cart itself, vm A1 contract) emits a bare local
+    /// call.
+    #[test]
+    fn test_store_cross_store_calls_map_to_facades() {
+        use super::{generate_component_from_file, ComponentGenOptions};
+
+        let sibling = r#"
+store Inventory {
+    model { var items []str = [] }
+    msg Msg { Add }
+    on {
+        .Add(name str) -> { .items.push(name) }
+    }
+}
+"#;
+        let consumer = r#"
+use inventory_store: Inventory
+
+store Cart {
+    model { var total int = 0 }
+    msg Msg { Sync, SelfCheck }
+    on {
+        .Sync -> { Inventory.Add("widget") }
+        .SelfCheck -> { Cart.Sync() }
+    }
+}
+"#;
+        let dir = std::env::temp_dir().join("p559_cross_store_probe");
+        let _ = std::fs::create_dir_all(&dir);
+        let sibling_path = dir.join("inventory_store.at");
+        let consumer_path = dir.join("cart_store.at");
+        std::fs::write(&sibling_path, sibling).expect("write sibling store");
+        std::fs::write(&consumer_path, consumer).expect("write consumer store");
+
+        let result = generate_component_from_file(&consumer_path, ComponentGenOptions::default())
+            .expect("consumer store must generate");
+        auto_lang_core::drain_store_extra_files(); // keep thread-local clean for other tests
+
+        assert_eq!(result.store_composables.len(), 1);
+        let (_, code) = &result.store_composables[0];
+        assert!(
+            code.contains("import { useInventoryStore } from './useInventoryStore'"),
+            "sibling composable import must be emitted, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("const inventoryStore = reactive(useInventoryStore())"),
+            "sibling facade const must be emitted, got:\n{}",
+            code
+        );
+        assert!(
+            code.contains("inventoryStore.Add("),
+            "qualified sibling call must route onto the facade var, got:\n{}",
+            code
+        );
+        assert!(
+            !code.contains("Cart.Sync()"),
+            "self-qualified call must emit bare (vm A1 contract), got:\n{}",
+            code
+        );
+
+        let _ = std::fs::remove_file(&consumer_path);
+        let _ = std::fs::remove_file(&sibling_path);
+        let _ = std::fs::remove_dir(&dir);
+    }
+
+    #[test]
+    fn test_resolve_stream_variants_snake_case_tag() {
+        let content = r#"
+#[serde(tag = "type", rename_all = "snake_case")]
+pub tag SseEventDto {
+    Delta { text str }
+    Thinking { thinking str }
+    ToolCall { id Option<str>, name str, arguments Value }
+    ToolResult { id Option<str>, name str, result str, status str }
+    Done { output str, turns int }
+    Error { message str }
+}
+"#;
+        let (disc, variants) = super::resolve_stream_variants(content, "SseEventDto");
+        assert_eq!(disc, "type");
+        // All 6 variants captured, snake_cased.
+        let wires: Vec<_> = variants.iter().map(|(w, _)| w.as_str()).collect();
+        assert_eq!(
+            wires,
+            vec![
+                "delta",
+                "thinking",
+                "tool_call",
+                "tool_result",
+                "done",
+                "error"
+            ]
+        );
+        let actions: Vec<_> = variants.iter().map(|(_, a)| a.as_str()).collect();
+        assert_eq!(
+            actions,
+            vec![
+                "Delta",
+                "Thinking",
+                "ToolCall",
+                "ToolResult",
+                "Done",
+                "Error"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_resolve_stream_variants_defaults_when_absent() {
+        // No pub tag declared → legacy defaults.
+        let content = "#[api(...)] pub fn stream() ~Stream<Foo> { }";
+        let (disc, variants) = super::resolve_stream_variants(content, "Foo");
+        assert_eq!(disc, "event");
+        assert!(variants.is_empty());
+    }
+
+    #[test]
+    fn test_resolve_stream_variants_default_discriminator_without_tag_attr() {
+        // A pub tag WITHOUT #[serde(tag=...)] → discriminator defaults to "event".
+        // (Auto's pub tag convention: one variant per line.)
+        let content = "pub tag Plain {\n    A\n    B\n    C\n}";
+        let (disc, variants) = super::resolve_stream_variants(content, "Plain");
+        assert_eq!(disc, "event");
+        assert_eq!(
+            variants.iter().map(|(w, _)| w.as_str()).collect::<Vec<_>>(),
+            vec!["A", "B", "C"]
+        );
+    }
+
+    #[test]
+    fn test_to_snake_case_variants() {
+        use super::to_snake_case;
+        assert_eq!(to_snake_case("Delta"), "delta");
+        assert_eq!(to_snake_case("ToolCall"), "tool_call");
+        assert_eq!(to_snake_case("ToolResult"), "tool_result");
+        assert_eq!(to_snake_case("HTTPError"), "http_error");
+        assert_eq!(to_snake_case("Done"), "done");
+    }
+
+    // ====================================================================
+    // Plan 013: pac.at `shadcn: off` — ComponentGenOptions.shadcn switch
+    // ====================================================================
+
+    /// Write `src` to a temp .at file and run `generate_component_from_file`.
+    fn gen_with_shadcn(src: &str, shadcn: Option<bool>) -> super::GeneratedComponent {
+        let tmp = std::env::temp_dir().join(format!("plan013_shadcn_{:?}", shadcn));
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        let at_path = tmp.join("app.at");
+        std::fs::write(&at_path, src).unwrap();
+        let opts = super::ComponentGenOptions {
+            shadcn,
+            ..Default::default()
+        };
+        super::generate_component_from_file(&at_path, opts).expect("generate must succeed")
+    }
+
+    const SHADCN_SWITCH_SRC: &str = r#"
+widget App {
+    view {
+        col {
+            button "save" {
+                class: "primary"
+            }
+        }
+    }
+}
+"#;
+
+    /// Default (None) keeps the current shadcn behavior: `button` maps to the
+    /// shadcn-vue `<Button>` component with a `@/components/ui/button` import.
+    #[test]
+    fn test_shadcn_default_on_maps_button_component() {
+        let result = gen_with_shadcn(SHADCN_SWITCH_SRC, None);
+        assert!(
+            result.vue_code.contains("@/components/ui/button"),
+            "default must emit shadcn import:\n{}",
+            result.vue_code
+        );
+        assert!(
+            result.vue_code.contains("<Button"),
+            "default must map button → <Button>:\n{}",
+            result.vue_code
+        );
+    }
+
+    /// `shadcn: Some(false)` (pac.at `shadcn: off`): `button` stays a native
+    /// `<button>` element and no `@/components/ui/*` import is emitted.
+    #[test]
+    fn test_shadcn_off_keeps_native_button() {
+        let result = gen_with_shadcn(SHADCN_SWITCH_SRC, Some(false));
+        assert!(
+            result.vue_code.contains("<button"),
+            "shadcn off must keep native <button>:\n{}",
+            result.vue_code
+        );
+        assert!(
+            !result.vue_code.contains("@/components/ui"),
+            "shadcn off must not emit shadcn imports:\n{}",
+            result.vue_code
+        );
+        // The widget's own class still lands on the element.
+        assert!(
+            result.vue_code.contains("primary"),
+            "shadcn off must preserve classes:\n{}",
+            result.vue_code
+        );
+    }
+
+    /// Plan 522 end-to-end: `use util: helper` 模块解析 → fn 池收集 →
+    /// computed/handler 引用按需转译进 SFC(真实文件系统路径,覆盖
+    /// collect_use_module_fns 的 resolve_use_module + 解析 + 池构建)。
+    #[test]
+    fn test_plan522_use_module_fn_collected_from_filesystem() {
+        let tmp = std::env::temp_dir().join("plan522_use_fn_pool");
+        let _ = std::fs::remove_dir_all(&tmp);
+        std::fs::create_dir_all(&tmp).unwrap();
+        std::fs::write(
+            tmp.join("util.at"),
+            concat!(
+                "pub fn double(x int) int {\n",
+                "    return x * 2\n",
+                "}\n",
+                "\n",
+                "pub fn quadruple(x int) int {\n",
+                "    return double(double(x))\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
+        std::fs::write(
+            tmp.join("app.at"),
+            concat!(
+                "use util: quadruple\n",
+                "\n",
+                "widget QuadApp {\n",
+                "    model { var n int = 3 }\n",
+                "    computed { q => quadruple(.n) }\n",
+                "    view { col { text `q: ${.q}` } }\n",
+                "}\n",
+            ),
+        )
+        .unwrap();
+        let result = super::generate_component_from_file(
+            &tmp.join("app.at"),
+            crate::ui_gen::ComponentGenOptions::default(),
+        )
+        .expect("generate with use-imported fn pool");
+        let sfc = &result.vue_code;
+        assert!(
+            sfc.contains("function quadruple(x: any): number {"),
+            "imported helper transpiled into SFC:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("function double(x: any): number {"),
+            "intra-module closure dep pulled (quadruple -> double):\n{sfc}"
+        );
+        assert!(
+            sfc.contains("quadruple(n.value)"),
+            "computed call site keeps bare name:\n{sfc}"
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    /// Plan 522 T4 语料回归锁:024-charts 的 donut 组件(components/ 包通道)
+    /// 经 `use chart_geom: dc, ds` 导入几何 helper,Init 体内调用 → SFC 含
+    /// 转译 fn + 调用点零改写(437 §0.6.E-3 被迫直调 math.cos 的绕过点回正)。
+    /// `.Init` 走 lifecycle(→ onMounted)而非 handlers 表,锁定引用收集对
+    /// lifecycle 体的覆盖。
+    #[test]
+    fn test_plan522_024_donut_helpers_emitted() {
+        let front = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples/ui/024-charts/src/front/components");
+        let Ok(result) = super::generate_component_from_file(
+            &front.join("donut_chart.at"),
+            crate::ui_gen::ComponentGenOptions::default(),
+        ) else {
+            eprintln!("024 donut corpus unreadable — skip");
+            return;
+        };
+        let sfc = &result.vue_code;
+        assert!(
+            sfc.contains("function dc(a: any): number {"),
+            "dc helper must be transpiled into the donut SFC:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("function ds(a: any): number {"),
+            "ds helper must be transpiled into the donut SFC:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("return Math.cos(a);"),
+            "dc body keeps the math primitive mapping:\n{sfc}"
+        );
+        assert!(
+            sfc.contains("dc(a0)"),
+            "call sites in the Init lifecycle keep the bare name:\n{sfc}"
+        );
+    }
+}

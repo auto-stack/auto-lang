@@ -13,5 +13,7 @@ quote = "1.0"
 syn = { version = "2.0", features = ["full"] }
 
 [dev-dependencies]
-auto-lang = { path = "../auto-lang" }
+# PLAN-814 R3-03：dev 面改依纯 SDK——消除指向旧巨包的 manifest 链
+# （无 UI checkout 的源码消费需要 auto-macros 可独立解析）。
+auto-lang-core = { path = "../auto-lang-core" }
 auto-val = { path = "../auto-val" }

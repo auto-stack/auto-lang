@@ -14,13 +14,13 @@ fn token_stream_to_string_test() -> String {
     let mut result = String::new();
 
     // 这些 token 之间没有空白字符
-    result.push_str("name");      // Ident
-    result.push(':');             // Punct
+    result.push_str("name"); // Ident
+    result.push(':'); // Punct
     result.push_str("\"Alice\""); // Literal
-    result.push(',');             // Punct
-    result.push_str("age");       // Ident
-    result.push(':');             // Punct
-    result.push_str("30");        // Literal
+    result.push(','); // Punct
+    result.push_str("age"); // Ident
+    result.push(':'); // Punct
+    result.push_str("30"); // Literal
 
     result
 }

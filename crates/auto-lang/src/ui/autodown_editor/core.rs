@@ -9474,7 +9474,10 @@ $details(summary: \"收起项\") {
         // hover 面同锁）。
         let neg = core_for("jade_hover_neg", "行内 `[[NotLink]]` 代码。\n");
         let _ = run_fs(|fs| neg.render_frame(fs, 400.0, WHITE, None));
-        assert!(!neg.link_hover_at(10.0, 10.0), "无链接区即全页零 hover 命中");
+        assert!(
+            !neg.link_hover_at(10.0, 10.0),
+            "无链接区即全页零 hover 命中"
+        );
     }
 
     /// jade 反馈②：行内 code 芯片底色——含行内 code 的段落发 8% muted
@@ -9509,7 +9512,10 @@ $details(summary: \"收起项\") {
             .find(|r| r.text.contains("写作示例"))
             .expect("code 文本 run 在册");
         assert_eq!(code_run.color, WHITE, "code 文字保持基色");
-        assert!(code_run.mono, "code 文本 mono family（PLAN-050 F4 原语义不变）");
+        assert!(
+            code_run.mono,
+            "code 文本 mono family（PLAN-050 F4 原语义不变）"
+        );
     }
 
     /// C 组：折行链接分段——长链接在窄视口折行后每 run 一段、各段独立

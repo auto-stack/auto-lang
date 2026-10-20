@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = ["core", "probe"]
+
+# PLAN-798 Typed MIR / ABC / Rust AV probe workspace.
+# Standalone (same pattern as ../ac-core and ../ac-artifact-probe): `core`
+# must stay dependency-free (no auto-lang/UI/man/Cranelift), `probe` consumes
+# the already-landed ac-core public API and the PLAN-783 ManagedStore.
+
+[profile.release]
+debug = false

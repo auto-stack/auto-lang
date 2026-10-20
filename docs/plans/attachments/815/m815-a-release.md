@@ -1,9 +1,10 @@
 # PLAN-815 M815-A 阶段发布收据(T-14)
 
-2026-10-20。**收尾核验更正：T-14c ledger_refreshed blocked，阶段发布条件尚未全部满足。**
-详见 [收尾核验与恢复方案](t14-closeout/recovery.md)。代码/Spec已合入，原冻结门结果保留；
-机器可读副本已补closeout_reconciliation阻断状态；Git跟踪的当前副本见
-[release-state.json.txt](t14-closeout/release-state.json.txt)，不能只读历史冻结门结果推断发布完成。
+2026-10-20(同日终态)。**M815-L 闭环:ledger 阻断已解除,阶段发布条件全部满足。**
+先前的收尾核验曾判定 T-14c ledger_refreshed blocked(详见 [收尾核验与恢复方案](t14-closeout/recovery.md));
+经 M815-L 恢复 phase(T-15..17,L1..L3 审查链)在主检出单写者执行全库兼容恢复并回填四条增量(终态 v59,
+见 [t15-recovery/m815-l-release.md](t15-recovery/m815-l-release.md)),T-14c 闭合。
+代码/Spec 合入与原冻结门结果保留;机器可读副本 [m815-a-release.json](m815-a-release.json)。
 
 2026-10-20。本收据是 **M815-A 阶段发布**(非整 Plan 交付):Plan 保持 `executing`,
 唯一树/分支保留并同步 master 继续 B;不归档、不清理。机器可读副本:
@@ -48,10 +49,12 @@
   `docs/specs/project-model/project.md`(wire 节);SD-06-A modify
   `docs/specs/repository-boundaries/generated-ui-distribution.md`(A 来源边界节)。
   内容按 R4 校对稿 [spec-delta-reviewed.md](review-r4/spec-delta-reviewed.md)。
-- ledger v56→v57 原写入仅核对JSON/ID，**未通过store schema，不算受管发布完成**。
-  四条 P815-A-{D1,T,R,REL}缺少工厂字段，三条active状态非法；
-  v56备份本身也含1060条不兼容旧记录及六个不完整section。
-  原件/备份保留；修后脚本拒写，完整条目仅为草稿，等待独立全库恢复。
+- ledger **(M815-L 后终态 v59)**:checkpoint A=全库兼容结构恢复+P014-1-R 裁定(57→58)、
+  checkpoint B=四条 P815-A-{D1,T,R,REL} 阶段增量(58→59);终态 SHA
+  `33830b65bd58aebe8a15f94fb71906f64b56883d89140697e6496f32d8475063`,
+  真实 `SpecsStore::load` 读回六区 1098 项、幂等重跑 exit 2 拒绝;恢复链
+  (转换表 12187 行/sidecar/双候选/CAS 备份/逐字原件)身份钉定于
+  [t15-recovery/m815-l-release.md](t15-recovery/m815-l-release.md)。
   spec-index 重生成(50 projects);spec-lint 唯一 ERROR(design/ 缺
   project.md)为 PLAN-777 预存,非本轮引入。
 
@@ -61,7 +64,7 @@
   `crates/auto-project-model`(features=["wire"])——816 经 path 依赖直接解析。
 - 工具二进制:`cargo build -p auto-ui-tools` → `target/debug/auto-ui-tool.exe`
   (SHA256 见 §1);fixture 门以 AUTO_UI_TOOL_BIN 指向该产物验证真实子进程消费。
-- 816 放行条件:本收据 + R4 pass + 冻结门齐备(§3)——**ledger项阻断，尚未全部满足**;816 不得静态
+- 816 放行条件:本收据(含 v59 终态回填)+ R4 pass + 冻结门 + M815-L 恢复收据齐备——**现已全部满足**;816 不得静态
   链接 auto-ui-tools 实现进 CLI。
 
 ## 6. 未交付(B 阶段;不因本收据宣称)

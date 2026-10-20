@@ -82,3 +82,8 @@ crates/auto-lang（adapters/orchestration/CLI）──▶  auto-test-case
   completion 判定，不归 infra ERROR。
 - case 永不携带 shell/任意 exe；worker 工具身份仅可信宿主配置绑定
   （SEMA_CASE_WORKER）。
+
+
+## PLAN-798：已实现的AV消费边界
+
+probe/run新增注册recipe ac-av/core-run-v1，av绑定entry/caps/可选session及run/edit-source步骤；case不能命名任意exe，跨recipe字段/步骤拒绝。保持sema/query-v1、abi/interop-v1和原v1/ac/syntax支持；ABI拒绝AV专用Run，混合报告身份按三recipe独立惰性解析，行顺序不影响结果，篡改某worker只使该recipe stale。AV worker avworker/1协议、avworker/1.0/av.core-i32/1镜像和nonce/request/source/产物身份由父侧准入后判定。worker准备/运行受限启动、Job杀树、双流cap和单截止，超时/截断/错actual为infra/失败，不把expected发给worker。技术计时和驻留增量的边界见[AV缓存验收](../auto-av/cache-and-conformance.md)。

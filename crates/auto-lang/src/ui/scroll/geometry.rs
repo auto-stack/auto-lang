@@ -43,11 +43,7 @@ pub fn progress(s: &ScrollAxisState) -> f64 {
 /// 最小滚动——已正面积相交不动；高于视口顶对齐；底出底对齐；顶出顶对齐。
 /// clamp 沿 [`clamp_offset`]；target 坐标 NaN 的 total 行为 = 比较恒 false
 /// → 落「已相交不动」分支（保持当前 offset——坏测量不触发滚动）。
-pub fn nearest_child_offset(
-    s: &ScrollAxisState,
-    target_y: f64,
-    target_h: f64,
-) -> f64 {
+pub fn nearest_child_offset(s: &ScrollAxisState, target_y: f64, target_h: f64) -> f64 {
     let raw = if target_h > s.viewport_extent {
         target_y
     } else if target_y + target_h > s.offset + s.viewport_extent {

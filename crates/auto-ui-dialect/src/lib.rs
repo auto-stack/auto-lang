@@ -40,8 +40,14 @@
 
 pub mod declarations;
 pub mod grammar;
+// PLAN-814 R3-03b：UI 文法依赖回归测试组（随迁自 auto-lang-core 门控测试；
+// dev-dep 驱动，仅测试编译）。
+#[cfg(test)]
+mod regression;
 
 pub use declarations::{
     parse_model_block, parse_model_block_subset, parse_msg_decl, ModelGrammar, ModelSubset,
 };
 pub use grammar::UiParseContext;
+// PLAN-814 R3-03b：SDK 函数表端口单源构造器（crate 根路径）。
+pub use grammar::ui_grammar;

@@ -1,0 +1,13 @@
+[package]
+name = "auto-ui-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "UI runtime: the VM rendering track / desktop host stack (iced renderer, desktop session/protocol, editor/terminal/media widgets, host adapters and provider implementations), extracted from auto-lang (PLAN-814)."
+license = "MIT"
+keywords = ["ui", "runtime", "renderer", "desktop"]
+
+[dependencies]
+# PLAN-814 T-01/T-02 probe skeleton: the ui/ tree migrates in T-04; the VM
+# keeps only light capabilities via the SDK host-capability provider ports.
+auto-lang-core = { path = "../auto-lang-core" }
+auto-ui-compiler = { path = "../auto-ui-compiler" }

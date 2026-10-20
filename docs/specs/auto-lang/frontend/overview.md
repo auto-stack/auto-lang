@@ -232,3 +232,16 @@ auto-ui-dialect，内建方言与外部方言同样只经端口面）；生产�
 - 外置进度：词法（789）+ 通用诊断（793）已外置；剩余环 parser→ast/
   types/infer/session/module_cache/dialect/ui 归前端外置批次（Design 37
   A 波后续），不冒称整个前端已无环。
+
+## PLAN-814 r3：Scenario::UI 内建方言装配（M814-A）
+
+内建 `UiDialect` 与 Parser 公开 UI 门面（parse_msg_decl/parse_widget_decl
+等十项）经 `UiGrammar` 函数表端口派发（auto-ui-dialect 单源构造）：
+- 表缺席（纯 SDK）＝原 feature off 语义逐位一致：方言表空、UI 语句回退
+  非 UI 路径、公开门面显式拒绝诊断；
+- 装配来源双层：具名入口显式 `set_ui_grammar` 优先；上层经 r3 §5.3
+  具名 inventory 登记兜底直达构造（`Parser::from(..).with_session(UI)`）。
+`UiParseContext for ParserBridge` 无条件编译（trait 归 auto-parser-api，
+r3）。86 项 UI 文法回归测试随文法 owner 迁 auto-ui-dialect
+`src/regression/`（dev-dep 驱动真 Parser；选择面经 t/tf/tt 别名保持，
+映射证据=PLAN-814 r5-closeout 18 件清单+strict proof）。

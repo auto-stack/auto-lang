@@ -713,12 +713,13 @@ use syn::{parse::Parser, parse_macro_input, ItemFn, LitStr};
 #[proc_macro_attribute]
 pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse comma-separated names (e.g., "File.read_text", "auto.fs.read_text", "auto.fs.read")
-    let names: Vec<String> = syn::punctuated::Punctuated::<LitStr, syn::Token![,]>::parse_terminated
-        .parse2(attr.into())
-        .expect("rust_fn attribute expects one or more comma-separated string literals")
-        .iter()
-        .map(|lit| lit.value())
-        .collect();
+    let names: Vec<String> =
+        syn::punctuated::Punctuated::<LitStr, syn::Token![,]>::parse_terminated
+            .parse2(attr.into())
+            .expect("rust_fn attribute expects one or more comma-separated string literals")
+            .iter()
+            .map(|lit| lit.value())
+            .collect();
 
     if names.is_empty() {
         panic!("rust_fn attribute requires at least one name");
@@ -769,31 +770,41 @@ pub fn rust_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Independent producer contract: derive from the Rust callee, never the
     // Auto declaration which will later be checked against it.
-    let parameter_types: Vec<_> = func.sig.inputs.iter().filter_map(|arg| {
-        if let syn::FnArg::Typed(arg) = arg {
-            let ty = &arg.ty;
-            Some(quote! { stringify!(#ty) })
-        } else { None }
-    }).collect();
+    let parameter_types: Vec<_> = func
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|arg| {
+            if let syn::FnArg::Typed(arg) = arg {
+                let ty = &arg.ty;
+                Some(quote! { stringify!(#ty) })
+            } else {
+                None
+            }
+        })
+        .collect();
     let return_type = match &func.sig.output {
         syn::ReturnType::Default => quote! { "()" },
         syn::ReturnType::Type(_, ty) => quote! { stringify!(#ty) },
     };
     // Generate inventory::submit! for each name
-    let inventory_submits: Vec<_> = names.iter().map(|name| {
-        let name_str = name.as_str();
-        quote! {
-            inventory::submit! {
-                crate::vm::ffi::StaticFFIRegistration {
-                    name: #name_str,
-                    shim: #shim_name,
-                    parameters: &[#(#parameter_types),*],
-                    returns: #return_type,
-                    producer: concat!(module_path!(), "::", stringify!(#func_name)),
+    let inventory_submits: Vec<_> = names
+        .iter()
+        .map(|name| {
+            let name_str = name.as_str();
+            quote! {
+                inventory::submit! {
+                    crate::vm::ffi::StaticFFIRegistration {
+                        name: #name_str,
+                        shim: #shim_name,
+                        parameters: &[#(#parameter_types),*],
+                        returns: #return_type,
+                        producer: concat!(module_path!(), "::", stringify!(#func_name)),
+                    }
                 }
             }
-        }
-    }).collect();
+        })
+        .collect();
 
     // Generate the expanded code
     let expanded = quote! {

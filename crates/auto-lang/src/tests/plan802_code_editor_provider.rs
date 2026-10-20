@@ -28,7 +28,7 @@ mod plan802_core_cut {
     /// 非目标保留臂（不匹配）。
     #[test]
     fn code_editor_shims_have_no_ui_direct_reference() {
-        let native_rs = include_str!("../vm/native.rs");
+        let native_rs = include_str!("../../../auto-lang-core/src/vm/native.rs");
         for pattern in [
             "ui::code_editor::code_editor_",
             "ui::code_editor::editor_scroll_handle",

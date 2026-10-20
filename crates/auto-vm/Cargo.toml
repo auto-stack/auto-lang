@@ -6,7 +6,9 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.100"
 tokio = { version = "1", features = ["full"] }
-auto-lang = { path = "../auto-lang" }
+# PLAN-814 T-02（V-01 真实非 UI 消费者）：auto-vm 直接消费纯 SDK——
+# normal 闭包无 UI 文法/编译/运行实现，不经旧 auto-lang 兼容包回拉 UI。
+auto-lang-core = { path = "../auto-lang-core" }
 clap = { version = "4.5.17", features = ["derive"] }
 miette = { version = "7.2", features = ["fancy"] }
 thiserror = "2.0.12"

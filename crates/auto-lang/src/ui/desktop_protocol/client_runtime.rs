@@ -1046,8 +1046,7 @@ pub(crate) mod tests {
     /// `projector_bare_button_chromeless_single_quad` 锁 1-Quad 契约。
     #[test]
     fn projector_counter_layout_and_hits() {
-        let component =
-            crate::build_dynamic_component(COUNTER_SRC_VARIANT, None).expect("build");
+        let component = crate::build_dynamic_component(COUNTER_SRC_VARIANT, None).expect("build");
         let mut p = crate::ui::desktop_protocol::native_projector::RqProjector::new(
             component, 480.0, 320.0,
         );

@@ -1919,3 +1919,12 @@ a2r 编译面轨随缺省翻转计划另立。
   （renderer.rs `wallpapers_dir_or_default`，PLAN-526 T19 机器便利默认）
   挪 env/配置显式开启——dev 便利不应进库代码路径；独立裁定，非消红
   前置（KNOWN-DEBT R5-② 条目）。
+
+## PLAN-814 A 子集事实（M814-A）
+
+UI 分析/生成/registry/四生成器已迁 `auto-ui-compiler`（owner 单源），
+旧 `ui::style`/`aura`/`a2ui`/`ui_gen` 等路径经本包再导出；widget
+registry 构建税与 tu 档单进程机制不变。缓存身份时序（PLAN-698 分包
+精确化）：指纹槽 None→Some 升级、首装优先；save 按出生身份、load
+比对失效。真实 runtime/renderer/editor/terminal/宿本 adapter **仍在
+本 crate**——B 阶段 T-04 迁 auto-ui-runtime，A 不宣称其完成。

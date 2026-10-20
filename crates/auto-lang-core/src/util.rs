@@ -1,0 +1,378 @@
+use crate::error::AutoResult;
+use auto_val::AutoStr;
+use normalize_path::NormalizePath;
+use roxmltree::{Document, NodeType};
+use std::path::Path;
+use std::path::PathBuf;
+
+pub fn find_std_lib() -> AutoResult<AutoStr> {
+    let mut search_dirs = Vec::new();
+
+    // 1. Try project local stdlib (for development/testing)
+    // Check if we're in a Cargo build (CARGO_MANIFEST_DIR is set)
+    if let Ok(manifest_dir) = std::env::var("CARGO_MANIFEST_DIR") {
+        // From crates/auto-lang/, go up to project root (../../../)
+        let project_root = PathBuf::from(manifest_dir).join("../../../").canonicalize();
+        if let Ok(root) = project_root {
+            let local_stdlib = root.join("stdlib");
+            if let Some(path) = local_stdlib.to_str() {
+                search_dirs.push(path.to_string());
+            }
+        }
+    }
+
+    // 2. Try user's local stdlib
+    if let Some(home_dir) = dirs::home_dir() {
+        let auto_std = home_dir.join(".auto/libs/");
+        if let Some(path) = auto_std.to_str() {
+            search_dirs.push(path.to_string());
+        }
+    }
+
+    // 3. System-wide stdlib locations
+    search_dirs.push("/usr/local/lib/auto".to_string());
+    search_dirs.push("/usr/lib/auto".to_string());
+
+    let std_lib_pat = "stdlib/auto";
+
+    for dir in search_dirs {
+        let std_path = PathBuf::from(dir).join(std_lib_pat);
+        // println!("Checking {}", std_path.display()); // LSP: disabled
+        if std_path.is_dir() {
+            // println!("debug: std lib location: {}", std_path.to_str().unwrap()); // LSP: disabled
+            return Ok(AutoStr::from(std_path.to_str().unwrap()));
+        }
+    }
+
+    return Err("stdlib not found".into());
+}
+
+/// Find a module file in multiple search directories (Plan 074)
+///
+/// Search order:
+/// 1. User's local libs: ~/.auto/libs/
+/// 2. System-wide libs: /usr/local/lib/auto, /usr/lib/auto
+/// 3. Current directory: .
+///
+/// # Arguments
+/// * `module_path` - Module path with dots converted to slashes (e.g., "myapp/utils/helpers")
+/// * `extensions` - List of file extensions to try (e.g., [".at", ".c.at"])
+///
+/// # Returns
+/// * `Ok(PathBuf)` - Full path to the first found module file
+/// * `Err(String)` - Error message if module not found in any directory
+///
+/// # Example
+/// ```rust,ignore
+/// use auto_lang::util::find_module_file;
+///
+/// // Finds first match: ~/.auto/libs/myapp/utils/helpers.at
+/// // or /usr/local/lib/auto/myapp/utils/helpers.at
+/// // or /usr/lib/auto/myapp/utils/helpers.at
+/// // or ./myapp/utils/helpers.at
+/// let path = find_module_file("myapp/utils/helpers", &[".at"])?;
+/// ```
+pub fn find_module_file(module_path: &str, extensions: &[&str]) -> AutoResult<PathBuf> {
+    let mut search_dirs = Vec::new();
+
+    // 1. User's local libs
+    if let Some(home_dir) = dirs::home_dir() {
+        search_dirs.push(home_dir.join(".auto/libs/"));
+    }
+
+    // 2. System-wide libs
+    search_dirs.push(PathBuf::from("/usr/local/lib/auto"));
+    search_dirs.push(PathBuf::from("/usr/lib/auto"));
+
+    // 3. Current directory
+    search_dirs.push(PathBuf::from("."));
+
+    // Try each directory with each extension
+    for base_dir in &search_dirs {
+        for ext in extensions {
+            let file_path = base_dir.join(format!("{}{}", module_path, ext));
+            if file_path.exists() {
+                return Ok(file_path);
+            }
+        }
+    }
+
+    // Module not found - construct helpful error message
+    let searched_paths: Vec<String> = search_dirs
+        .iter()
+        .flat_map(|dir| {
+            extensions.iter().map(move |ext| {
+                dir.join(format!("{}{}", module_path, ext))
+                    .to_string_lossy()
+                    .to_string()
+            })
+        })
+        .collect();
+
+    Err(format!(
+        "Module '{}' not found. Searched in:\n  {}",
+        module_path,
+        searched_paths.join("\n  ")
+    )
+    .into())
+}
+
+/// Resolve the experimental AAVM package without changing its `auto.lib.*`
+/// namespace. Local source directories take priority over the checkout fallback.
+pub(crate) fn find_aavm_module(module_path: &str, base_dir: &Path) -> Option<PathBuf> {
+    let relative = module_path.strip_prefix("auto/lib/")?;
+    for dir in base_dir.ancestors() {
+        let candidate = dir
+            .join("packages/aavm/lib")
+            .join(relative)
+            .with_extension("at");
+        if candidate.is_file() {
+            return Some(candidate);
+        }
+    }
+    None
+}
+
+#[cfg(test)]
+mod aavm_package_resolution_tests {
+    use super::*;
+
+    #[test]
+    fn nested_source_uses_its_own_checkout_and_preserves_namespace() {
+        let outer = tempfile::tempdir().unwrap();
+        let checkout = outer.path().join("inner");
+        let source_dir = checkout.join("packages/aavm/lib");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        let source = source_dir.join("token.at");
+        std::fs::write(&source, "// local token module").unwrap();
+        let outer_lib = outer.path().join("packages/aavm/lib");
+        std::fs::create_dir_all(&outer_lib).unwrap();
+        std::fs::write(outer_lib.join("token.at"), "// outer token module").unwrap();
+        assert_eq!(
+            find_aavm_module("auto/lib/token", &source_dir),
+            Some(source)
+        );
+        assert!(find_aavm_module("auto/lib/missing", &source_dir).is_none());
+        assert!(find_aavm_module("auto/io", &source_dir).is_none());
+        assert!(find_aavm_module("bps/form/login", &source_dir).is_none());
+    }
+}
+
+/// Get the file name from a path.
+pub fn file_name(path: &str) -> &str {
+    if let Some(pos) = path.rfind('/') {
+        &path[pos + 1..]
+    } else {
+        if let Some(pos) = path.rfind('\\') {
+            &path[pos + 1..]
+        } else {
+            path
+        }
+    }
+}
+
+pub trait PathExt {
+    fn unified(&self) -> AutoStr;
+}
+
+impl PathExt for Path {
+    fn unified(&self) -> AutoStr {
+        let res = self.normalize().to_string_lossy().replace("\\", "/").into();
+        if res == "" {
+            ".".into()
+        } else {
+            res
+        }
+    }
+}
+
+/// Generate an error message with the file name and line number.
+#[macro_export]
+macro_rules! error_pos {
+    ($msg: literal) => {
+        Err(format!("{} at {}:{}", $msg, $crate::util::file_name(file!()), line!()).into())
+    };
+    ($msg: literal, $($args:tt)*) => {
+        Err(format!("{} at {}:{}", format!($msg, $($args)*), $crate::util::file_name(file!()), line!()).into())
+    };
+}
+
+/// Pretty print an s-expression with proper indentation.
+///
+/// Example:
+/// ```text
+/// (code
+///   (stmt
+///     (pair
+///       (name name)
+///       (str "hello")))
+///   (stmt
+///     (pair
+///       (name version)
+///       (str "0.1.0"))))
+/// ```
+pub fn pretty(text: &str) -> AutoStr {
+    let mut result = String::new();
+    let mut indent = 0;
+    let mut in_str = false;
+
+    for c in text.chars() {
+        match c {
+            '(' if !in_str => {
+                if !result.is_empty() {
+                    result.push('\n');
+                    result.push_str(&"  ".repeat(indent));
+                }
+                result.push(c);
+                indent += 1;
+            }
+            ')' if !in_str => {
+                indent -= 1;
+                result.push(c);
+            }
+            '"' => {
+                in_str = !in_str;
+                result.push(c);
+            }
+            ' ' if !in_str => {
+                // result.push('\n');
+                // result.push_str(&"  ".repeat(indent));
+                result.push(c)
+            }
+            _ => result.push(c),
+        }
+    }
+    result.into()
+}
+
+/// Compacts an XML string by parsing it and regenerating without extra whitespace
+///
+/// # Arguments
+/// * `xml` - The XML string to compact
+///
+/// # Returns
+/// A compacted version of the XML string, or an error message if parsing fails
+pub fn compact_xml(xml: &str) -> Result<String, String> {
+    // Parse the XML
+    let doc = match Document::parse(xml) {
+        Ok(doc) => doc,
+        Err(e) => return Err(format!("XML parsing error: {}", e)),
+    };
+
+    let mut result = String::new();
+
+    // Process the XML declaration if present
+    // if let Some(decl) = doc.declaration() {
+    //     result.push_str(&format!(
+    //         "<?xml version=\"{}\" encoding=\"{}\"?>",
+    //         decl.version().unwrap_or("1.0"),
+    //         decl.encoding().unwrap_or("UTF-8")
+    //     ));
+    // }
+
+    // Recursively process nodes
+    fn process_node(node: roxmltree::Node, output: &mut String) {
+        match node.node_type() {
+            NodeType::Element => {
+                // Open tag
+                output.push('<');
+                output.push_str(node.tag_name().name());
+
+                // Attributes
+                for attr in node.attributes() {
+                    output.push(' ');
+                    output.push_str(attr.name());
+                    output.push_str("=\"");
+                    output.push_str(&attr.value().replace("\"", "&quot;"));
+                    output.push('"');
+                }
+
+                if !node.has_children() {
+                    output.push_str("/>");
+                } else {
+                    output.push('>');
+
+                    // Process children
+                    for child in node.children() {
+                        process_node(child, output);
+                    }
+
+                    // Close tag
+                    output.push_str("</");
+                    output.push_str(node.tag_name().name());
+                    output.push('>');
+                }
+            }
+            NodeType::Text => {
+                // Compact whitespace in text, but preserve it
+                let text = node.text().unwrap();
+                let trimmed = text.trim();
+                if !trimmed.is_empty() {
+                    output.push_str(&text.split_whitespace().collect::<Vec<_>>().join(" "));
+                }
+            }
+            NodeType::Comment => {
+                // Preserve comments
+                output.push_str("<!--");
+                output.push_str(node.text().unwrap_or(""));
+                output.push_str("-->");
+            }
+            _ => {}
+        }
+    }
+
+    // Process all root-level nodes
+    for child in doc.root().children() {
+        process_node(child, &mut result);
+    }
+
+    Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_file_name() {
+        assert_eq!(file_name("src/util.rs"), "util.rs");
+        assert_eq!(file_name("src/util.rs/"), "");
+        assert_eq!(file_name("src\\util.rs"), "util.rs");
+        assert_eq!(file_name("src\\util.rs\\"), "");
+    }
+
+    #[test]
+    fn test_error() {
+        let err: Result<(), String> = error_pos!("test error");
+        let err_line = line!() - 1;
+        assert_eq!(
+            format!("{}", err.unwrap_err()),
+            format!("test error at util.rs:{}", err_line)
+        );
+
+        let err: Result<(), String> = error_pos!("int error {}", "-1");
+        let err_line = line!() - 1;
+        assert_eq!(
+            format!("{}", err.unwrap_err()),
+            format!("int error -1 at util.rs:{}", err_line)
+        );
+    }
+
+    #[test]
+    fn test_pretty_print() {
+        let text = "(code (stmt (pair (name name) (str \"hello\"))) (stmt (pair (name version) (str \"0.1.0\"))) (stmt (node (name exe) (args (str \"hello\")) (props (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))";
+        let pretty = pretty(text);
+        println!("{}", pretty);
+    }
+
+    #[test]
+    fn test_xml_compact() {
+        let xml = r#"
+            <root>
+                <child attr="value">text</child>
+            </root>
+        "#;
+        let compact = compact_xml(xml).unwrap();
+        assert_eq!(compact, r#"<root><child attr="value">text</child></root>"#);
+    }
+}

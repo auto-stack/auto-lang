@@ -1,0 +1,24 @@
+# ac-av probe: mark trace order under the hir.test.trace.v1 capability.
+# Independent oracle: a=1, side(3)=3*2=6, c=1 -> 8 != 10 -> main returns 1;
+# the mark VALUES fold into the exit oracle (the order itself is pinned by
+# the Rust-directed parity test against the real PE stderr).
+
+```test-case
+case {
+  schema: "autolang.case/2"
+  id: "av.core.trace-order"
+  tags: ["ac-av", "probe", "trace"]
+  links: ["PLAN-798"]
+  source: { file: "av/core/trace_order.at", syntax: "auto", path: "main.at" }
+  entry: { mode: "program" }
+  checks: [
+    { id: "run-trace", adapter: "probe", action: "run",
+      options: {
+        recipe: "ac-av/core-run-v1",
+        av: { entry: "d_main", caps: ["hir.test.trace.v1"] },
+        steps: [ { op: "run" } ]
+      },
+      expect: { completion: "success", exit: 1 } }
+  ]
+}
+```

@@ -1,0 +1,178 @@
+{
+  "edit_rows": [
+    {
+      "revision": 1,
+      "window_ms": 930.1
+    },
+    {
+      "revision": 2,
+      "window_ms": 980.1
+    },
+    {
+      "revision": 3,
+      "window_ms": 938.3
+    },
+    {
+      "revision": 4,
+      "window_ms": 916.2
+    },
+    {
+      "revision": 5,
+      "window_ms": 936.5
+    },
+    {
+      "revision": 6,
+      "window_ms": 950.4
+    },
+    {
+      "revision": 7,
+      "window_ms": 936.2
+    },
+    {
+      "revision": 8,
+      "window_ms": 948.5
+    },
+    {
+      "revision": 9,
+      "window_ms": 955.7
+    },
+    {
+      "revision": 10,
+      "window_ms": 966.2
+    },
+    {
+      "revision": 11,
+      "window_ms": 954.7
+    },
+    {
+      "revision": 12,
+      "window_ms": 931.5
+    },
+    {
+      "revision": 13,
+      "window_ms": 925.0
+    },
+    {
+      "revision": 14,
+      "window_ms": 971.4
+    },
+    {
+      "revision": 15,
+      "window_ms": 943.7
+    },
+    {
+      "revision": 16,
+      "window_ms": 948.9
+    },
+    {
+      "revision": 17,
+      "window_ms": 930.4
+    },
+    {
+      "revision": 18,
+      "window_ms": 950.6
+    },
+    {
+      "revision": 19,
+      "window_ms": 914.9
+    },
+    {
+      "revision": 20,
+      "window_ms": 960.3
+    },
+    {
+      "revision": 21,
+      "window_ms": 954.7
+    },
+    {
+      "revision": 22,
+      "window_ms": 924.9
+    },
+    {
+      "revision": 23,
+      "window_ms": 922.3
+    },
+    {
+      "revision": 24,
+      "window_ms": 993.4
+    },
+    {
+      "revision": 25,
+      "window_ms": 949.4
+    },
+    {
+      "revision": 26,
+      "window_ms": 922.0
+    },
+    {
+      "revision": 27,
+      "window_ms": 942.2
+    },
+    {
+      "revision": 28,
+      "window_ms": 943.3
+    },
+    {
+      "revision": 29,
+      "window_ms": 953.9
+    },
+    {
+      "revision": 30,
+      "window_ms": 953.5
+    }
+  ],
+  "edit_p50_ms": 948.5,
+  "edit_p95_ms": 980.1,
+  "edit_p99_ms": 993.4,
+  "signature_p95_ms": 1200.4,
+  "gate_ms": 1000,
+  "samples_per_path": 30,
+  "exit_code": 101,
+  "outcome": "fail-signature-path",
+  "cpu_during": {
+    "samples": 37,
+    "minimum": 0.0,
+    "maximum": 40.0,
+    "mean": 16.56756756756757
+  },
+  "artifact_hashes": [
+    {
+      "path": "formal-gate.log.txt",
+      "sha256": "BF197CB9495A0A5357B667FF251F1AB153BC6BA48573259FDC4A0EE3B130D6E4"
+    },
+    {
+      "path": "load-before.jsonl",
+      "sha256": "658081542A608923FCBF8A362BBF677740D2C16974461CF334B9E82FED996558"
+    },
+    {
+      "path": "load-stability.jsonl",
+      "sha256": "74F1BE58E5A5EE832A8A16896BF71899F922F7A6C0C624633DD26A18E06DCBCF"
+    },
+    {
+      "path": "load-window.jsonl",
+      "sha256": "1BEDBA553479DA75AA06455439A7B4973C75AF87B2B4459BC74F5232BD6CF7A2"
+    },
+    {
+      "path": "load-during.jsonl",
+      "sha256": "0323D81F154714E14F3570381BB5907EB3D8BC23397B75452893486C2F24C521"
+    },
+    {
+      "path": "baseline.json.txt",
+      "sha256": "AB2291DBB77EA6CF70649B2614A626411E649E8D83753609429F37A289B3B133"
+    },
+    {
+      "path": "result.json.txt",
+      "sha256": "BA697A0B2898DCE14B39D2F2559CFEA609AF0827552873236B2E78F5F48056F3"
+    }
+  ],
+  "binary_hashes": [
+    {
+      "path": "D:/autostack/.wt/lang-798/auto-lang/target/debug/deps/auto_lang-8f81e826f0339398.exe",
+      "sha256": "5234E65BC5CC27C36B7DBB0007DCF26AD8F51ACF439A8B4B4A5C43711A59C71C"
+    },
+    {
+      "path": "D:/autostack/.wt/lang-798/auto-lang/experimental/ac-av-probe/target/release/av_probe_worker.exe",
+      "sha256": "E36D7A14E7F19E230D04DFA7810748DF2B22EB1077FCD7940399348359A8B8D4"
+    }
+  ]
+}

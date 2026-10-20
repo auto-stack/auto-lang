@@ -4224,7 +4224,7 @@ tower-http = {{ version = "0.5", features = ["cors"] }}
 
 /// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
 /// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
-pub const DELIVERY_CRATES: [&str; 16] = [
+pub const DELIVERY_CRATES: [&str; 19] = [
     "auto-lang",
     "auto-val",
     "auto-atom",
@@ -4261,6 +4261,16 @@ pub const DELIVERY_CRATES: [&str; 16] = [
     "auto-bindgen",
     "auto-macros",
     "a2r-std",
+    // PLAN-814 T-02 落地后 auto-lang 的必需 path 依赖（纯语言 SDK：非 UI
+    // 语言栈单源；闭包与上述成员同构）——沿 792 合流合同窄接线。
+    "auto-lang-core",
+    // PLAN-814 T-03 落地后 auto-lang 的必需 path 依赖（UI 编译域：style/
+    // aura/a2ui/四生成器/registry；其依赖 auto-lang-core 已在闭包）——沿
+    // 792 合流合同窄接线，不登记则交付根 fresh 解析红。
+    "auto-ui-compiler",
+    // PLAN-814 T-01 骨架起 auto-lang 的必需 path 依赖（UI 运行域骨架——
+    // B/T-04 迁入真实 renderer/宿主 adapter；当前为文档骨架，闭包零额外面）。
+    "auto-ui-runtime",
 ];
 
 /// 随包发行的本地 patch（相对 crates/patches/）。
@@ -4277,24 +4287,41 @@ const DELIVERY_ROOT_INPUTS: [&str; 5] = [
     "docs/schema/aura.at",
 ];
 
-/// 投影修剪：vendored auto-lang/Cargo.toml 剥除的 optional path 依赖行
-///（autodown-core 跨仓 → auto-down；auto-test-case 测试协议 crate——均不在
-/// 交付闭包内且非默认 feature 启用；cargo 对成员的 optional path 依赖仍读
-/// manifest，不剥则解析红）。
-const DELIVERY_PROJECTION_STRIP_DEPS: [&str; 2] = [
-    "autodown-core = { path = \"../../../auto-down/autodown/packages/engine/rust\", optional = true }",
-    "auto-test-case = { path = \"../auto-test-case\", optional = true }",
-];
+/// 投影修剪 spec：vendored manifest 剥除的 optional path 依赖行（不在交付
+/// 闭包内且非默认 feature 启用；cargo 对成员的 optional path 依赖仍读
+/// manifest，不剥则解析红）+ feature 行改写（保留 feature 名维持 cfg 面
+/// 与零新警告，仅剥 dep:/转发引用）。
+///
+/// PLAN-814 SD-08：producer 包图更新——auto-lang 的 test-cases 行自 T-01
+/// 起带 SDK 转发项（auto-lang-core/test-cases）；auto-lang-core 自身清单
+/// 有独立 test-cases/auto-test-case 面。按 manifest 分 spec，漂移判红
+/// （编辑计数 ≠ spec 全量）与幂等（再交付零编辑）按各自 spec 判定。
+struct DeliveryProjectionSpec {
+    strip_deps: &'static [&'static str],
+    feature_rewrites: &'static [(&'static str, &'static str)],
+}
 
-/// 投影修剪：feature 行改写（保留 feature 名维持 cfg 面与零新警告，仅剥
-/// dep: 引用）。
-const DELIVERY_PROJECTION_FEATURE_REWRITES: [(&str, &str); 2] = [
-    (
-        "autodown = [\"ui-iced\", \"dep:autodown-core\"]",
-        "autodown = [\"ui-iced\"]",
-    ),
-    ("test-cases = [\"dep:auto-test-case\"]", "test-cases = []"),
-];
+const PROJECTION_AUTO_LANG: DeliveryProjectionSpec = DeliveryProjectionSpec {
+    strip_deps: &[
+        "autodown-core = { path = \"../../../auto-down/autodown/packages/engine/rust\", optional = true }",
+        "auto-test-case = { path = \"../auto-test-case\", optional = true }",
+    ],
+    feature_rewrites: &[
+        (
+            "autodown = [\"ui-iced\", \"dep:autodown-core\"]",
+            "autodown = [\"ui-iced\"]",
+        ),
+        (
+            "test-cases = [\"dep:auto-test-case\", \"auto-lang-core/test-cases\"]",
+            "test-cases = []",
+        ),
+    ],
+};
+
+const PROJECTION_AUTO_LANG_CORE: DeliveryProjectionSpec = DeliveryProjectionSpec {
+    strip_deps: &["auto-test-case = { path = \"../auto-test-case\", optional = true }"],
+    feature_rewrites: &[("test-cases = [\"dep:auto-test-case\"]", "test-cases = []")],
+};
 
 /// 历史漂移家族（779/785 记录的 fresh-lock 失败面：wgpu-hal 宏边界 E0277
 /// 源于图形栈新补丁流入）：交付应用清单按 producer 已验证的应用锁
@@ -4447,12 +4474,14 @@ fn delivery_git_identity(root: &Path) -> (Option<String>, bool) {
     (head, dirty)
 }
 
-/// producer ui_gen 指纹（与 auto-lang build.rs 的 AUTO_UI_GEN_FINGERPRINT
-/// 同源文件集：crates/auto-lang/src/ui_gen/**，blake3 over 排序 rel+内容）。
+/// producer ui_gen 指纹（与 auto-ui-compiler build.rs 的
+/// AUTO_UI_GEN_FINGERPRINT 同文件集：crates/auto-ui-compiler/src/ui_gen/**
+/// ——PLAN-814 T-03 迁移后单源所在；blake3 over 排序 rel+内容，本指纹为
+/// 交付 manifest 的 producer 身份戳，算法独立于 build.rs 的 FNV 门）。
 fn delivery_ui_gen_fingerprint(root: &Path) -> AutoResult<String> {
     let dir = root
         .join("crates")
-        .join("auto-lang")
+        .join("auto-ui-compiler")
         .join("src")
         .join("ui_gen");
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
@@ -4683,16 +4712,16 @@ fn pac_bin_block(project_dir: &Path, src_: &PacSource) -> String {
 /// 投影修剪 vendored auto-lang/Cargo.toml：剥闭包外 optional path 依赖行
 ///（连带其紧邻上行注释），feature 行改写为无 dep: 引用形态。幂等：已修剪
 /// 的清单二次运行零改动。
-fn delivery_apply_projection(vendored_manifest: &Path) -> AutoResult<Vec<String>> {
+fn delivery_apply_projection(
+    vendored_manifest: &Path,
+    spec: &DeliveryProjectionSpec,
+) -> AutoResult<Vec<String>> {
     let text = fs::read_to_string(vendored_manifest)
         .map_err(|e| format!("delivery: 读 vendored manifest 失败: {e}"))?;
     let mut edits = Vec::new();
     let mut out: Vec<String> = Vec::new();
     for line in text.lines() {
-        if DELIVERY_PROJECTION_STRIP_DEPS
-            .iter()
-            .any(|m| line.contains(m))
-        {
+        if spec.strip_deps.iter().any(|m| line.contains(m)) {
             // Consecutively pop out all immediately adjacent comment lines above (belonging to the stripped dep's explanation block)——avoid dangling comments in the vendored copy
             while out
                 .last()
@@ -4705,7 +4734,7 @@ fn delivery_apply_projection(vendored_manifest: &Path) -> AutoResult<Vec<String>
             continue;
         }
         let mut line = line.to_string();
-        for &(from, to) in &DELIVERY_PROJECTION_FEATURE_REWRITES {
+        for &(from, to) in spec.feature_rewrites {
             if line.trim() == from {
                 line = line.replace(from, to);
                 edits.push(format!("rewrite feature: {from} -> {to}"));
@@ -4723,20 +4752,19 @@ fn delivery_apply_projection(vendored_manifest: &Path) -> AutoResult<Vec<String>
         fs::write(vendored_manifest, &joined)
             .map_err(|e| format!("delivery: 写投影 manifest 失败: {e}"))?;
     }
-    let expected =
-        DELIVERY_PROJECTION_STRIP_DEPS.len() + DELIVERY_PROJECTION_FEATURE_REWRITES.len();
+    let expected = spec.strip_deps.len() + spec.feature_rewrites.len();
     if edits.len() == expected {
         return Ok(edits);
     }
     // 已投影形态（再交付/幂等重放）：strip 标记与改写前形态全缺席 + 改写后
     // 形态全在位 → Ok（零编辑）；否则判 producer 清单结构漂移。
-    let already_projected = DELIVERY_PROJECTION_STRIP_DEPS
-        .iter()
-        .all(|m| !text.contains(m))
-        && DELIVERY_PROJECTION_FEATURE_REWRITES
+    let already_projected = spec.strip_deps.iter().all(|m| !text.contains(m))
+        && spec
+            .feature_rewrites
             .iter()
             .all(|(from, _)| !text.contains(from))
-        && DELIVERY_PROJECTION_FEATURE_REWRITES
+        && spec
+            .feature_rewrites
             .iter()
             .all(|(_, to)| text.contains(to));
     if already_projected {
@@ -5452,6 +5480,7 @@ fn generate_rust_ui_delivery_inner(
     let mut total_files: u64 = 0;
     let mut total_bytes: u64 = 0;
     let mut projection_edits: Vec<String> = Vec::new();
+    let mut projection_edits_core: Vec<String> = Vec::new();
     for name in DELIVERY_CRATES {
         let src = producer_root.join("crates").join(name);
         if !src.is_dir() {
@@ -5465,8 +5494,11 @@ fn generate_rust_ui_delivery_inner(
         total_bytes += copied.records.iter().map(|r| r.bytes).sum::<u64>();
         let mut edits: Vec<String> = Vec::new();
         if name == "auto-lang" {
-            edits = delivery_apply_projection(&dst.join("Cargo.toml"))?;
+            edits = delivery_apply_projection(&dst.join("Cargo.toml"), &PROJECTION_AUTO_LANG)?;
             projection_edits = edits.clone();
+        } else if name == "auto-lang-core" {
+            edits = delivery_apply_projection(&dst.join("Cargo.toml"), &PROJECTION_AUTO_LANG_CORE)?;
+            projection_edits_core = edits.clone();
         }
         crate_entries.push(serde_json::json!({
             "name": name,
@@ -5631,6 +5663,7 @@ fn generate_rust_ui_delivery_inner(
         "pins": pins.iter().cloned().collect::<std::collections::BTreeMap<String, String>>(),
         "pins_multi_slot_lock_frozen": multi_slot,
         "projection_edits_auto_lang": projection_edits,
+        "projection_edits_auto_lang_core": projection_edits_core,
         "disclosure": {
             "total_files": total_files,
             "total_bytes": total_bytes,
@@ -8086,12 +8119,12 @@ pub fn create_item(name str) str {
         let dir = tempfile::tempdir().unwrap();
         let m = dir.path().join("Cargo.toml");
         let original = "[features]\nautodown = [\"ui-iced\", \"dep:autodown-core\"]\n\
-             test-cases = [\"dep:auto-test-case\"]\n\n\
+             test-cases = [\"dep:auto-test-case\", \"auto-lang-core/test-cases\"]\n\n\
              [dependencies]\n# comment\nautodown-core = { path = \"../../../auto-down/autodown/packages/engine/rust\", optional = true }\n\
              auto-test-case = { path = \"../auto-test-case\", optional = true }\n\
              auto-val = { path = \"../auto-val\" }\n";
         std::fs::write(&m, original).unwrap();
-        let edits = delivery_apply_projection(&m).unwrap();
+        let edits = delivery_apply_projection(&m, &PROJECTION_AUTO_LANG).unwrap();
         assert_eq!(edits.len(), 4, "2 strip + 2 rewrite");
         let text = std::fs::read_to_string(&m).unwrap();
         assert!(!text.contains("autodown-core"), "跨仓 optional dep 剥除");
@@ -8104,7 +8137,7 @@ pub fn create_item(name str) str {
         );
         // 幂等：已修剪清单二次运行零改动
         let stripped = std::fs::read_to_string(&m).unwrap();
-        delivery_apply_projection(&m).unwrap();
+        delivery_apply_projection(&m, &PROJECTION_AUTO_LANG).unwrap();
         assert_eq!(std::fs::read_to_string(&m).unwrap(), stripped);
         // 计数不足判红（结构漂移的 producer）
         let drift = dir.path().join("drift.toml");
@@ -8113,7 +8146,26 @@ pub fn create_item(name str) str {
             "[dependencies]\nauto-val = { path = \"../auto-val\" }\n",
         )
         .unwrap();
-        assert!(delivery_apply_projection(&drift).is_err());
+        assert!(delivery_apply_projection(&drift, &PROJECTION_AUTO_LANG).is_err());
+        // PLAN-814 SD-08：SDK spec——旧形态 test-cases 行 + auto-test-case
+        // 剥除（2 编辑）、幂等、漂移判红各自成立。
+        let sdk = dir.path().join("sdk.toml");
+        std::fs::write(
+            &sdk,
+            "[features]\ntest-cases = [\"dep:auto-test-case\"]\n\n[dependencies]\nauto-test-case = { path = \"../auto-test-case\", optional = true }\n",
+        )
+        .unwrap();
+        let sdk_edits = delivery_apply_projection(&sdk, &PROJECTION_AUTO_LANG_CORE).unwrap();
+        assert_eq!(sdk_edits.len(), 2, "1 strip + 1 rewrite");
+        let sdk_text = std::fs::read_to_string(&sdk).unwrap();
+        assert!(
+            !sdk_text.contains("auto-test-case"),
+            "SDK 测试协议 dep 剥除"
+        );
+        assert!(sdk_text.contains("test-cases = []"), "feature 名保留");
+        delivery_apply_projection(&sdk, &PROJECTION_AUTO_LANG_CORE).unwrap();
+        assert_eq!(std::fs::read_to_string(&sdk).unwrap(), sdk_text, "SDK 幂等");
+        assert!(delivery_apply_projection(&drift, &PROJECTION_AUTO_LANG_CORE).is_err());
     }
 
     /// PLAN-792 端到端：generate_rust_ui_delivery 真实生成——镜像布局

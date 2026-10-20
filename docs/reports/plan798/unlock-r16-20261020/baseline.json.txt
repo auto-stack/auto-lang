@@ -1,0 +1,49 @@
+{
+  "stage": "work",
+  "plan_id": "PLAN-798",
+  "plan_revision": 5,
+  "code_commit": "8e78502ba",
+  "tested_commit": "09be7a85b2fdf19c47564666051c586d777eab3c",
+  "main_head_before": "e918f91d52da54594c981638dbfb28c784aa974a",
+  "worktree": "D:/autostack/.wt/lang-798/auto-lang",
+  "branch": "plan-798-dev",
+  "implementation_clean": true,
+  "diff_since_code": "only docs/reports/plan798/autodown-formal-r16.log",
+  "command": "cargo test -p auto-lang --lib --features test-cases --offline --locked tests::ac_av_probe_tests::ac_av_probe_formal_turnaround_gates -- --exact --test-threads=1 --nocapture",
+  "samples": 30,
+  "gate_ms": 1000,
+  "input_identities": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "6ED7451C6A839BB02EC07E5BCCF66C18897703F5678FA1C12E6269D489B1CCCE"
+    },
+    {
+      "path": ".cargo/config.toml",
+      "sha256": "A55E53FD140177F0B32CC7B24F577939E418DAC53973C79102B39370A2022445"
+    },
+    {
+      "path": "experimental/ac-av-probe/Cargo.lock",
+      "sha256": "9CFDEBFF3727E93BCF380EF960D6FB0FC1FF269015C89CA72D63E9328D133E45"
+    },
+    {
+      "path": "experimental/ac-av-probe/contract-decision.md",
+      "sha256": "A8A1EAB9FDDEB36EFA29CD8B3A52B6D0B19534B5E1FD27A40B0C4352EF0FFF39"
+    },
+    {
+      "path": "experimental/ac-av-probe/probe/src/driver.rs",
+      "sha256": "CBBC188712624287C2AA8B74FA05FF21DA9084063AF91975283434090031D562"
+    },
+    {
+      "path": "experimental/ac-av-probe/probe/src/worker_restore.rs",
+      "sha256": "936511A3EAD951365F8EA3375B3306922CF92905DD0E823823CF20FC8403B5A6"
+    },
+    {
+      "path": "crates/auto-lang/src/test_cases/ac_av.rs",
+      "sha256": "5759D34DD9B6DC8041EB740C46A62E2734505964AB3CD09ABA089A4E179BDE2E"
+    },
+    {
+      "path": "crates/auto-lang/src/tests/ac_av_probe_tests.rs",
+      "sha256": "0C4CA6BAACF6EF024D3B60BD913FF0454473458416584AD87BB4E9377833E610"
+    }
+  ]
+}

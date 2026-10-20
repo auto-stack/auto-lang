@@ -535,7 +535,7 @@ impl<Message: Clone + 'static> Widget<Message, iced::Theme, iced::Renderer>
         }
 
         // 行分隔线（renderer::table_row_rule 同色同高，本地坐标 → 绝对）。
-        let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+        let (r, g, b) = crate::ui::style_iced_adapter::resolve_border_rgb();
         let rule_color = iced::Color::from_rgb8(r, g, b);
         for rect in &state.rules {
             fill_quad(
