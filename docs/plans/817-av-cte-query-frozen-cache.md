@@ -2,13 +2,14 @@
 plan_id: PLAN-817
 status: executing
 feature_name: AV驱动的CTE查询与冻结缓存闭环
-plan_revision: 1
+plan_revision: 2
 author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
 current_step: 1
-total_steps: 10
+total_steps: 11
 supersedes_spec_components:
+  - docs/specs/auto-av/resident-function-install.md
   - docs/specs/auto-semantics/semantic-contract.md
   - docs/specs/auto-ac/artifact-contract.md
   - docs/specs/auto-test-case/architecture.md
@@ -68,6 +69,8 @@ Rust独立Cargo workspace+跟踪Cargo.lock；796 `ac-sema-contract`/`ac-sema-cor
 
 ## 4. 需求分析与背景调查
 
+用户2026-10-20确认798完成后优先828，所有ACE扩展保留全链路增量。D828为共享核心实施/集成排期门；只读准备可先，既有准备/进度保留。原其他依赖仍有效，无对798/828的反向依赖。旧revision/排期记录仅为历史，当前以本轮§5–8为准。
+
 授权：用户要求草拟本计划及818，明确797/798/拆分并行、首例cache/AutoDown/亚秒/内存。本轮只调查和写计划，不创建实施树/代理、不安装工具、不修改canonical Spec或他方实现，不联系其他会话。
 
 依据[overview](../specs/overview.md)、[796语义合同](../specs/auto-semantics/semantic-contract.md)、[查询cache](../specs/auto-semantics/query-cache.md)、[阶段合同](../specs/auto-hir/stage-contract.md)、[产物合同](../specs/auto-ac/artifact-contract.md)、[测试架构](../specs/auto-test-case/architecture.md)。Design42/43为目标；auto-cte/auto-mir/auto-av Spec尚未在当前主检出完整交付，D-798后重读实际Spec。
@@ -122,6 +125,18 @@ T-01冻结参考Windows机器/工具、256KiB有意义callee/consumer输入（10
 
 硬门：warm session局部CT helper body编辑及Meta集合编辑的“请求准备/序列化→IPC/排队→新鲜性/CT执行或命中→冻结/consumer推导/HIRverify→父侧准入/比较”单墙钟P95<1000ms。包含真实必要等待，不扣序列化/哈希/比较；数值、trace和计数逐样本绑定当轮新hash，不删失败。完整native参考另报，此门是CTE查询端到端，不冒称完整应用编译/链接或热重载亚秒。内存硬门与时间同轮验，低内存不能靠漏计进程/编码暂存达标；无cache结果/消费观察=cache路径语义基线，字节复现另定。
 
+### 全链路增量兼容与828优先排期（r2）
+
+798实际交付后优先828，本计划在原依赖和D828均满足后取得共享写窗口。D828=当前revision最终review/冻结门禁/实际合入/Spec与merge收据齐全，不消费WIP；只读调研/合同准备可先，已有准备保留。共同合同见[ACE顺序与兼容](reports/ace-execution-order-and-incremental-compatibility-2026-10-20.md)与[828](828-av-function-incremental-session.md)。
+
+专项：CTE helper body/Meta/负依赖进入真实query，命中不执行AV；仅重算受影响query/consumer；只读复用828会话和函数接口，不整模块重建。
+
+T-11 是work必做项：接入D828公共编译/装载/snapshot接口，保留稳定函数身份、私有凭证与实际依赖。纯body编辑、签名/实际依赖/profile/配置/授权不变时，未改HIR/MIR/代码对象和代际不变，未改生产阶段及读盘/decode/verify/load为0。元数据更新单列，不能用全source hash/总revision使所有函数失效。新工件仍走适用准入，恢复不可信。
+
+四必需子case：1)D828真实source edit基线273575B/115函数，至少30不同修订，结构与稳定会话P95<1s双门；2)本计划新增能力真实支持入口两函数局部body更新，未改单元保留且语义/清理正确；3)实际接口/layout/helper body/授权事实变化的精确失效/拒绝正反控；4)强制whole前端/lower/重装载或只保hash却换对象/代际，正式gate必非零。仅手工HIR/MIR支持的新类型不能冒领该类型完整源码能力，但scalar全链仍须重放。由T-11 建立真实入口计数/身份/IO/反控，当前未有新增证据，review不得豁免或推给merge。
+
+原支持面/资源/原生等性能门不放宽；cold/restart/版本迁移或真实广泛失效另报，不掩盖正常body退化。旧帧/值/drop引用期间代码与布局保活，失败/取消/迟到不安装，退出后回收；不兼容布局按实际支持策略拒绝/扩大失效，不擅自迁移活值。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
@@ -131,6 +146,7 @@ T-01冻结参考Windows机器/工具、256KiB有意义callee/consumer输入（10
 | SD-03 | modify | docs/specs/auto-semantics/semantic-contract.md | 796模型不变，追加指向真实CTE版本域/消费接缝 | 不让旧模型mint执行结果 | AC-02/04 |
 | SD-04 | modify | docs/specs/auto-ac/artifact-contract.md | 追加817 producer有限A05实现，旧783 producer仍Future | 不扩大历史授信 | AC-04 |
 | SD-05 | modify | docs/specs/auto-test-case/architecture.md | 追加正式CTE recipe/worker身份/观察，旧recipe不变 | 单一裁判 | AC-07 |
+| SD-06 | modify | docs/specs/auto-av/resident-function-install.md | 继承D828函数IR/代码复用、受检安装/依赖/寿命；新增能力不退回整模块热重编/装载 | 用户明确的顺序与增量机制保留 | AC-11 |
 
 ## 6. 测试设计
 
@@ -154,6 +170,12 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 
 唯一预定树 `D:/autostack/.wt/lang-817/auto-lang`、分支 `plan-817-dev`（尚未创建）。实施/自检后同树独立上下文review，冻结提交、暂停写入；未指定模型/人员，不创建代理。work只相关定向测试和必要check，不跑根整档；最终review pass写merge gates pending，merge按实际注册触面跑独立workspace全套、runner定向兼容，根Rust变更按AGENTS补裸t及tv/tt；无相关aavm/UI/生成器改动不跑taa/tu/docs_gen，tf仅到期主检出单实例。
 
+### 本轮新增的增量兼容验收（work-owned）
+
+| Case ID | AC / owner | 输入 | 实际入口 | 区分性断言 | 边界 |
+|---|---|---|---|---|---|
+| V-12 | AC-11 / T-11 | D828 source30修订+新增能力两函数+依赖变化+强制退化四子case | 本计划真实consumer/正式recipe与D828 edit接口，由T-11 接线 | 未改对象/代际相同、未改函数生产阶段/产物IO=0，结果/清理正确，P95<1s；强制退化非零 | 当前profile真实起点，不冒领未交付源码/迁移能力，四子case无skip |
+
 ## 7. 验收标准
 
 | ID | owner_stage | 可验证结果 |
@@ -168,23 +190,27 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 | AC-08 | work | 依赖/SD/源码边界和支持表完整；V-11 |
 | AC-09 | review | 同树独立逐AC/V/SD及遗漏/延期核验，绑定提交；无开放finding |
 | AC-10 | merge | 冻结门禁、Spec/ledger、归档合入与guard清理实际完成，10/10 |
+| AC-11 | work | D828与新增能力保持全链路增量，V-12 四子case及结构/身份/资源/时间/反控raw齐全；未改函数不重编/重装载，时间绿不替代粒度绿 |
 
 ## 8. 执行步骤
 
 | Task | owner_stage | 前置 | 文件/交付 | 验证/AC |
 |---|---|---|---|---|
 | [x] T-01 | work | 用户实施指令 | 只读D-798接口/CT consumer映射/权限/预算设计，固定recipe Schema、256KiB负载/独立oracle/资源归属，contract-decision.md | 设计与V映射可审；AC-01；不编译在途接口。[✅ 已完成] 2026-10-20：`experimental/ac-cte-probe/contract-decision.md`（worktree 提交 2c38609eb）冻结 §1 身份/Schema 表（recipe IR `ac817/cte-recipe-ir/v1`、envelope `ac817/cte-executed/v1`、层 `ac817/a05-cte-exec/v1`、producer `plan817/cte-probe`）、§2 D-798 接口只读观察（plan-798-dev@072cb4e14：`execute_entry/LoadedModule/ExecLimits`+全冻结 cap 常量；796/783/ac-core master@08ba8ca2b 实际 API；未编译在途接口）、§5 consumer 双向绑定（let 锚点→InputExpr 字面量→infer；HIR `Constant{v}`/`0<n` bool 子树回填+重verify；全拒绝项清单+首例 sum=42/bool 分支例）、§6 冻结 envelope/依赖 manifest/cache 行为、§7 分区预算（hot8+暂存16+AV槽8≤32MiB；worker 384MiB/树 512MiB；AV/验证 cap ≤D-798）、§8 参考负载 load256cte/闭式 oracle/六场景/编辑配方/GC 冷集≥80MiB、§9 AutoDown 五点注册映射、§10 V-01–11 映射。验证=文档审查（Category A doc-only，无 cargo）；T-02 复验义务已记入 §2 |
-| [ ] T-02 | work | T-01、D-798、公共注册窗口 | 新workspace/lock、实际AV首例/新schema冻结+store恢复+consumer最小回灌+正式AutoDown首例+trace/峰值 | cte_first_/cte_admit_/auto-case；V-01/04/05/10；AC-01/02 |
+| [ ] T-02 | work | T-01、D-798、公共注册窗口、D828排期门 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； 新workspace/lock、实际AV首例/新schema冻结+store恢复+consumer最小回灌+正式AutoDown首例+trace/峰值 | cte_first_/cte_admit_/auto-case；V-01/04/05/10；AC-01/02 |
 | [ ] T-03 | work | T-02 | core/schedule/consumer、CT片段检查/纯调用/Meta参数broker/环与取消 | cte_schedule_、V-01–04；AC-02/03 |
 | [ ] T-04 | work | T-03 | 完整依赖/冻结/恢复/跨工程/坏块/root/lease，model与真结果隔离 | cte_freeze_/cte_cache_、V-04–07；AC-04 |
 | [ ] T-05 | work | T-04 | 真实页/512修订/GC、全路径资源和峰值采样/spike反控 | cte_resources_、V-07/08；AC-05 |
 | [ ] T-06 | work | T-05、公共单写窗口 | AutoDown完整suite/worker/兼容与身份/stale、ERROR反控 | cte_adapter_、V-10；AC-07 |
 | [ ] T-07 | work | T-06 | 正式runner六场景及两编辑硬门、raw报告/反控 | cte_turnaround_、V-09；AC-06 |
 | [ ] T-08 | work | T-07 | 新verify全Scope、coverage/SD、docs/reports/plan817、边界审计 | acceptance V-01–11；AC-01–08；execution_done=8/10 |
-| [ ] T-09 | review | T-08冻结提交 | 同树独立review/规范及遗漏审查，反控可重放 | AC-09；reviewed=9/10，merge pending |
-| [ ] T-10 | merge | T-09 pass | 冻结提交门禁/Spec/ledger/归档合入/批量到期判定/wt-guard后清理 | AC-10；实际10/10 |
+| [ ] T-11 | work | D828及本计划其他work实现完成 | 实际consumer接入828编译/装载/snapshot接口并落实专项；建立V-12 四子case生产观测/身份/依赖/失败控制及正式脚本接线，更新SD/coverage | AC-11；共同基线+新增能力兼容定向验收，未实测不勾；送审前不跑整档 |
+| [ ] T-09 | review | T-08冻结提交、T-11 完成 | 同树独立review/规范及遗漏审查，反控可重放 | AC-09；reviewed=10/11，merge pending |
+| [ ] T-10 | merge | T-09 pass | 冻结提交门禁/Spec/ledger/归档合入/批量到期判定/wt-guard后清理 | AC-10；实际11/11 |
 
 ## 9. 复审记录
+
+2026-10-20 stage:new | PLAN-817 r1→r2 | outcome:pass（规划修订，非实现通过） | authority: 用户指定798→828优先/后继保留全链路增量 | delta: AC-11 / V-12四子case / SD-06 / T-11；review依赖新work项，D828排期/集成门，原D门不减 | 原进度保留，total 10→11，新证据pending | next:只读准备可先，D828后串行实施；无代码/测试/Spec发布/合入。
 
 2026-10-19 stage:new；PLAN-817 r1；outcome:pass（规划契约预检，非实现验收）；next:work（需用户实施指令；T-02起等D-798）。新增T-01–10/AC-01–10/V-01–11/SD-01–05；drafting 0/10。未实施/编译/跑性能或创建树；来源及预检见[planning-preflight.md](attachments/817/planning-preflight.md)。预算/支持/接口范围改变应显式revision，不以待绑定或模型绿替代完整验收。
 
@@ -195,3 +221,6 @@ V-01–11全部为必验区分性控制；独立expected不由AV/新freeze生成
 无阻断起草的用户决定。T-01定界的recipe/consumer映射是有限探针接口，不决定Auto最终comptime语法。D-798后T-02先证明整条执行/冻结/推导/runner可行；接口不足、性能/硬内存不达或需要修改在途owner文件时，带证据回规划，不抬预算、不降用例、不复制AV。完整类型生成/泛型/运行期反射及生产接线后续另立Plan。
 
 **当前精确解锁动作（2026-10-20 work 记录）**：T-02 等 798 完成最终 review pass、冻结门禁、实际合入 master 及 Spec/merge 收据（D-798，核验方式=每次开工用实际合入/归档/Spec/提交祖先关系核验，不以历史 blocked 日志当门）；公共注册写面等 797/798 合入与 814–816 边界交接后的短窗口单写。解除后 T-02 从同步新 master 开始，contract-decision.md §2 的接口观察须逐项复验并记录漂移。
+
+
+**当前排期与验收**：798→828→本计划（原前置仍需满足）；T-11 / AC-11 / V-12 未完成，旧revision/测试总数不覆盖新增义务。用户已确认该顺序/目标，不重复请求同范围授权。
