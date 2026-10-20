@@ -1,4 +1,7 @@
 # PLAN-798 verify script — scoped gates for the ac-av probe workspace.
+# r7: turnaround is a strict diagnostic/measurement scope; a warm-only
+# latency miss is preserved, but is not a Plan798 delivery blocker by itself.
+# Formal 30-sample gates, correctness and memory remain mandatory.
 # Usage: powershell -File scripts/verify-ac-av-798.ps1 -Scope <scope>
 #   admission | semantics | cache | resources | turnaround | binding |
 #   autodown | acceptance | closeout
@@ -113,7 +116,7 @@ switch ($Scope) {
         Run-Tests "resources_tier" "acceptance-resources"
         Run-Tests "case_binding" "acceptance-cases"
         Run-Tests "native_trace_parity" "acceptance-native"
-        Write-Host "acceptance: V-01..V-11 Rust-directed legs green; T-06/T-07 legs pending D-796/D-788 (see plan §9)."
+        Write-Host "acceptance: scoped correctness and formal runner gates passed; current r7 delivery boundary and merge-owned gates remain recorded in the Plan."
     }
     "closeout" {
         Write-Host "closeout: merge-owned — full frozen-commit gates per plan §6; nothing executed here."

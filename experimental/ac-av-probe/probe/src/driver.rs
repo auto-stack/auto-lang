@@ -1098,6 +1098,8 @@ impl Driver {
                 }
             }
             let manifest = ModuleManifest {
+                format: 2,
+                diagnostics_snapshot: snapshot,
                 owner: owner.clone(),
                 entry: entry.to_string(),
                 profile: auto_av_core::contract::AV_PROFILE.to_string(),

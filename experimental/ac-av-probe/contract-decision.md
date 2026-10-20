@@ -285,3 +285,9 @@ init 访问步数 ~3.9M > 2M）重钉。
 ## 2026-10-20 R16生命周期复核
 
 A08/A09缓存命中逐消费单元持lease，不能用第一个unit的lease冒充manifest反向闭包。无源码恢复在读取manifest之前持manifest lease，required-data边保住全部unit及当前来源sidecar；成功/拒绝返回释放OS锁。新增真实两函数回归检查A08/A09、多单元、manifest恢复与全部lease释放。当前代码d1357870a；性能/资源由同轮收据记录，不以注释授pass。
+
+## r7交付裁定与恢复manifest格式2（2026-10-20）
+
+用户裁定：798 warm六场景如实计量并保存失败/PASS历史，整模块重查的完整增量优化归828；798正式冻结30样本两路径P95<1000ms及正确性/资源/K14/生命周期要求保持。bench与Scope turnaround严格诊断退出语义不改，不用warm-only时延miss重开798，不把坏结果/样本/资源失败当时延例外。
+
+恢复manifest的payload含必需format=2和diagnostics_snapshot；指纹绑定快照、QueryKey含manifest-format=2。unit的MIR/ABC格式、内容身份和位置无关复用保持，信封仍AVEN v2；manifest信封snapshot=0不再等于其恢复闭包不依赖来源快照。位置变化只重建来源映射/恢复元数据，不因本修复改动其他函数代码。恢复先验证格式及请求快照，再读受manifest lease/required边保护的unit/sidecar，成功/失败释放；旧无快照manifest受控拒绝。该修复关闭R18的来源闭包漏接，非828增量工作延期。

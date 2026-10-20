@@ -1085,6 +1085,11 @@ impl SemaRefSer {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct ModuleManifest {
+    /// Recovery metadata generation, separate from function ABC identities.
+    pub format: u16,
+    /// Required sidecars belong to this source snapshot. Position-only edits
+    /// share unit code, but must publish a distinct recovery closure.
+    pub diagnostics_snapshot: u64,
     pub owner: String,
     pub entry: String,
     pub profile: String,
@@ -1110,7 +1115,9 @@ impl ModuleManifest {
             .collect();
         parts.sort();
         let joined = format!(
-            "{}|{}|{}|{}|{}",
+            "{}|{}|{}|{}|{}|{}|{}",
+            self.format,
+            self.diagnostics_snapshot,
             self.owner,
             self.entry,
             self.profile,
@@ -1211,6 +1218,7 @@ pub fn manifest_key(owner: &str, entry: &str, manifest_fp: &str) -> QueryKey {
             ("producer".into(), PRODUCER_ID.into()),
             ("owner".into(), owner.into()),
             ("kind".into(), "module-manifest".into()),
+            ("manifest-format".into(), "2".into()),
             ("entry".into(), entry.into()),
             ("profile".into(), AV_PROFILE.into()),
             ("units-fp".into(), manifest_fp.into()),

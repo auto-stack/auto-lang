@@ -17,6 +17,27 @@ fn tmpdir(name: &str) -> std::path::PathBuf {
     d
 }
 
+// Publish an explicitly snapshot-bound test manifest so sidecar-negative
+// controls still reach coverage checks rather than fail an earlier binding.
+fn publish_snapshot_manifest(
+    store: &ac_artifact_probe::store::ManagedStore,
+    manifest: &cache::ModuleManifest,
+    snapshot: u64,
+) -> String {
+    let mut bound = manifest.clone();
+    bound.diagnostics_snapshot = snapshot;
+    cache::put_enveloped(
+        store,
+        &cache::manifest_key(&bound.owner, &bound.entry, &bound.fingerprint()),
+        "A09",
+        &EnvelopeIdentity::manifest(&bound.owner, 0),
+        &serde_json::to_vec(&bound).unwrap(),
+        vec![],
+        Some("p"),
+    )
+    .unwrap()
+}
+
 /// V-06: fresh → same-process hot → restart (new driver, warm disk) →
 /// cross-project sharing; hits skip mir_build/abc_emit, ALWAYS re-execute
 /// and re-compare.
@@ -660,7 +681,6 @@ fn av_cache_restore_missing_sidecar_refused() {
     let store = open_store(&root).unwrap();
     let key = cache::manifest_key(&manifest.owner, &manifest.entry, &manifest.fingerprint());
     let art = store.get_artifact("A09", &key).unwrap().unwrap();
-    drop(store);
     // Current snapshot restores WITH its span-bound trap.
     let ok = auto_av_probe::worker_restore::restore_and_run(
         &root,
@@ -676,12 +696,23 @@ fn av_cache_restore_missing_sidecar_refused() {
         "trap carries its source span: {:?}",
         ok.trap
     );
-    // A snapshot with no sidecar: refused, never a source-less trap.
-    let denied = auto_av_probe::worker_restore::restore_and_run(
+    // Wrong snapshot is refused even if it names a valid sidecar elsewhere.
+    let wrong = auto_av_probe::worker_restore::restore_and_run(
         &root,
         &manifest.owner,
         &manifest.entry,
         &art.artifact_id,
+        r.snapshot.wrapping_add(1),
+        &[],
+    );
+    assert!(wrong.error.unwrap().contains("manifest snapshot mismatch"));
+    // An explicitly bound snapshot with no sidecar reaches the missing-map gate.
+    let missing_art = publish_snapshot_manifest(&store, &manifest, r.snapshot.wrapping_add(1));
+    let denied = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &manifest.owner,
+        &manifest.entry,
+        &missing_art,
         r.snapshot.wrapping_add(1),
         &[],
     );
@@ -737,11 +768,12 @@ fn av_cache_restore_empty_or_partial_sidecar_refused() {
         Some("p"),
     )
     .unwrap();
+    let bound_art = publish_snapshot_manifest(&store, &manifest, snap2);
     let denied = auto_av_probe::worker_restore::restore_and_run(
         &root,
         &manifest.owner,
         &manifest.entry,
-        &art.artifact_id,
+        &bound_art,
         snap2,
         &[],
     );
@@ -775,11 +807,12 @@ fn av_cache_restore_empty_or_partial_sidecar_refused() {
         Some("p"),
     )
     .unwrap();
+    let bound_art = publish_snapshot_manifest(&store, &manifest, snap3);
     let denied = auto_av_probe::worker_restore::restore_and_run(
         &root,
         &manifest.owner,
         &manifest.entry,
-        &art.artifact_id,
+        &bound_art,
         snap3,
         &[],
     );
@@ -843,11 +876,12 @@ fn av_cache_restore_unary_trap_requires_span() {
         Some("p"),
     )
     .unwrap();
+    let bound_art = publish_snapshot_manifest(&store, &manifest, snap2);
     let denied = auto_av_probe::worker_restore::restore_and_run(
         &root,
         &manifest.owner,
         &manifest.entry,
-        &art.artifact_id,
+        &bound_art,
         snap2,
         &[],
     );
@@ -1226,6 +1260,143 @@ fn av_cache_consumption_leases_cover_siblings_and_release() {
     for id in ids {
         assert!(!store.lease_live(&id).unwrap(), "leaked {id}");
     }
+    drop(driver);
+    drop(store);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+/// Position edits share function bytes but have distinct diagnostic closures.
+/// A real manifest lease, without project roots, must retain the NEW sidecar.
+#[test]
+fn av_cache_snapshot_manifest_lease_survives_position_edit_gc() {
+    let root = tmpdir("snapshot-manifest-gc");
+    let mut driver = Driver::with_store(&root, "snapshot-project").unwrap();
+    let first = driver.request("fn main() int { return 1 / 0 }", "d_main", &[]);
+    let next = driver.request("\n\nfn main() int { return 1 / 0 }", "d_main", &[]);
+    let old = first.manifest.unwrap();
+    let current = next.manifest.unwrap();
+    assert_eq!(
+        old.units[0].artifact, current.units[0].artifact,
+        "unit code unchanged"
+    );
+    assert_eq!(next.counters.get("cache_hit_abc"), Some(&1));
+    assert_eq!(next.counters.get("abc_units_emitted"), Some(&0));
+    assert_ne!(old.fingerprint(), current.fingerprint());
+    let store = open_store(&root).unwrap();
+    let key = cache::manifest_key(&current.owner, &current.entry, &current.fingerprint());
+    let artifact = store
+        .get_artifact("A09", &key)
+        .unwrap()
+        .unwrap()
+        .artifact_id;
+    let pin = store
+        .acquire_lease("snapshot-test", 60, Some(&artifact))
+        .unwrap();
+    store.remove_project_roots("snapshot-project").unwrap();
+    let gc = ac_artifact_probe::store::gc::run_gc(
+        &store,
+        ac_artifact_probe::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .unwrap();
+    assert!(
+        gc.deleted_chunks > 0,
+        "old unpinned metadata actually collected"
+    );
+    let restored = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &current.owner,
+        &current.entry,
+        &artifact,
+        next.snapshot,
+        &[],
+    );
+    assert!(restored.executed_ok, "{:?}", restored.error);
+    assert_eq!(
+        restored.trap.as_deref(),
+        Some("av.trap.div-by-zero@func#0:25..30")
+    );
+    let denied = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &current.owner,
+        &current.entry,
+        &artifact,
+        first.snapshot,
+        &[],
+    );
+    assert!(denied.error.unwrap().contains("manifest snapshot mismatch"));
+    pin.release();
+    ac_artifact_probe::store::gc::run_gc(
+        &store,
+        ac_artifact_probe::store::gc::GcConfig { high: 0, low: 0 },
+    )
+    .unwrap();
+    assert!(
+        store.get_artifact("A09", &key).unwrap().is_none(),
+        "released closure collectible"
+    );
+    drop(driver);
+    drop(store);
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
+fn av_cache_manifest_generation_and_snapshot_are_required() {
+    let root = tmpdir("manifest-generation");
+    let mut driver = Driver::with_store(&root, "manifest-project").unwrap();
+    let request = driver.request("fn main() int { return 7 }", "d_main", &[]);
+    let manifest = request.manifest.unwrap();
+    let store = open_store(&root).unwrap();
+    for (tag, field) in [
+        ("legacy-format", "format"),
+        ("legacy-snapshot", "diagnostics_snapshot"),
+    ] {
+        let mut old = serde_json::to_value(&manifest).unwrap();
+        old.as_object_mut().unwrap().remove(field);
+        let artifact = cache::put_enveloped(
+            &store,
+            &cache::manifest_key(&manifest.owner, &manifest.entry, tag),
+            "A09",
+            &EnvelopeIdentity::manifest(&manifest.owner, 0),
+            &serde_json::to_vec(&old).unwrap(),
+            vec![],
+            Some("manifest-project"),
+        )
+        .unwrap();
+        let refused = auto_av_probe::worker_restore::restore_and_run(
+            &root,
+            &manifest.owner,
+            &manifest.entry,
+            &artifact,
+            request.snapshot,
+            &[],
+        );
+        assert!(!refused.executed_ok);
+        assert!(refused.error.unwrap().contains("manifest decode"));
+    }
+    let mut future = manifest.clone();
+    future.format = 3;
+    let artifact = cache::put_enveloped(
+        &store,
+        &cache::manifest_key(&future.owner, &future.entry, &future.fingerprint()),
+        "A09",
+        &EnvelopeIdentity::manifest(&future.owner, 0),
+        &serde_json::to_vec(&future).unwrap(),
+        vec![],
+        Some("manifest-project"),
+    )
+    .unwrap();
+    let refused = auto_av_probe::worker_restore::restore_and_run(
+        &root,
+        &future.owner,
+        &future.entry,
+        &artifact,
+        request.snapshot,
+        &[],
+    );
+    assert!(refused
+        .error
+        .unwrap()
+        .contains("unsupported manifest format"));
     drop(driver);
     drop(store);
     let _ = std::fs::remove_dir_all(root);

@@ -8,7 +8,7 @@
 
 缓存信封与实际载荷核owner/类别/版本/签名/producer/内容；A08、A09、闭包与恢复消费都复核当前能力授权。unit信封不能承载完整module；合法raw类别正控保留。损坏/身份冲突与陈旧版本miss分态，旧歧义v1不按v2消费；同指纹重发布Conflict可按既定规则容忍，其他写失败可观察。
 
-manifest有unit/sidecar required-data边；消费窗口有lease，发布的project/root和依赖边参与GC，恢复期间逐单元保活。这里只保证持久产物生命周期，不表示已管理活帧/在线代码代际。source sidecar适用性失败会重推导并重写，不能静默发布无来源trap。
+恢复manifest的JSON格式为2，必含diagnostics_snapshot，查询键带manifest-format=2，指纹绑定此快照；位置编辑复用函数unit身份，但生成独立恢复闭包。旧缺字段/未知格式/请求快照不匹配在执行前受控拒绝。manifest有unit/sidecar required-data边；消费窗口有lease，发布的project/root和依赖边参与GC，恢复期间逐单元保活。这里只保证持久产物生命周期，不表示已管理活帧/在线代码代际。source sidecar适用性失败会重推导并重写，不能静默发布无来源trap。
 
 ## 真实粒度与后继
 
@@ -30,3 +30,6 @@ manifest有unit/sidecar required-data边；消费窗口有lease，发布的proje
 798正式probe/run仍按原技术门记录从请求准备到父侧判定/发布的连续窗口，含逐请求启动/打开store/身份校验；它不是用户定义的驻留VM编辑周转。独立warm Driver bench不能替代formal，正式技术门未过不能授798完成。worker身份每次完整重读文件并计算SHA-256，使用宿主已依赖的加速实现保持相同哈希/替换检测，不缓存身份或跳准入。
 
 稳定工程首个结果之后的完整编辑→正确结果/诊断P95<1s及全链路增量结构门由828交付。后继817/818、820–827新增work-owned兼容项，须重放其source基线并验证新增能力局部更新、精确失效与强制全量退化必红；不能借cold/版本迁移例外使正常body更新整模块重编/重载。
+
+
+798 r7用户交付裁定：六场景warm结果及所有失败如实计量保存，已有正式PASS证据持久保存；整模块重查的完整增量优化归优先828，不再以warm测量超1秒单独阻断798。798正式冻结30样本技术门两路径P95<1000ms、正确性/双线内存/K14和生命周期门继续必需。原bench及Scope turnaround仍可作为严格诊断工具返回目标未达，不能把诊断退出码单独冒充r7合入结论，也不能将资源/正确性失败归为时延例外。

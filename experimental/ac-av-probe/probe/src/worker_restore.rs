@@ -71,12 +71,22 @@ fn restore_and_run_inner(
     let _manifest_lease = store
         .acquire_lease("plan798-restore-manifest", 300, Some(manifest_artifact))
         .map_err(|e| format!("lease manifest: {}", e))?;
-    // Manifest: envelope (code identity, snapshot 0) → JSON.
+    // The envelope stays position-free; the versioned recovery payload
+    // and key bind the exact diagnostics snapshot, unlike reusable unit code.
     let m_expect = EnvelopeIdentity::manifest(owner, 0);
     let m_bytes = get_by_artifact_id(&store, manifest_artifact, &m_expect)
         .map_err(|e| format!("manifest load: {}", e))?;
     let manifest: crate::cache::ModuleManifest =
         serde_json::from_slice(&m_bytes).map_err(|e| format!("manifest decode: {}", e))?;
+    if manifest.format != 2 {
+        return Err(format!("unsupported manifest format {}", manifest.format));
+    }
+    if manifest.diagnostics_snapshot != snapshot {
+        return Err(format!(
+            "manifest snapshot mismatch: {:016x} vs requested {:016x}",
+            manifest.diagnostics_snapshot, snapshot
+        ));
+    }
     if manifest.owner != owner || manifest.entry != entry {
         return Err(format!(
             "manifest identity mismatch: {}/{} vs expected {}/{}",
