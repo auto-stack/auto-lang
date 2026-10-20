@@ -298,7 +298,7 @@ try {
             $lines.Add('V-06/AC-04 cache hit/invalidate/restart: PENDING final-review re-cert')
             $lines.Add('V-07/AC-04 admission bad graphs: PENDING final-review re-cert')
             $lines.Add('V-08/AC-04 512 churn/lease/GC: PENDING final-review re-cert')
-            $v09 = 'V-09/AC-05 hard gates: R8 REDEFINED per-request whole-parent-path oracle (each query request CARRIES the edited deck - the product request unit; edits apply parent-side; worker stage sums are attribution only)'
+            $v09 = 'V-09/AC-05 hard gates: R9 acceptance-boundary oracle (each query request CARRIES the edited deck; the span closes at typed judgement + raw-row persist; edits apply parent-side; worker stage sums are attribution only)'
             $summary = Join-Path $RepoRoot 'crates\auto-lang\target\abi-formal-gates\summary.txt'
             if (Test-Path $summary) {
                 $v09 = $v09 + ' — latest gate summary: ' + ((Get-Content $summary -Raw).Trim())

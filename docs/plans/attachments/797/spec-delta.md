@@ -112,9 +112,10 @@ AC-01–06
    stdout/stderr≤1MiB；IPC≤4MiB；单产物≤64MiB/请求累计产物≤128MiB
    （生产前预留检查 + 每次生产后累计复查，超限=该请求 resource 终止，
    不再运行后续生产）；受管 cache 热点≤8MiB + 暂存/索引另≤8MiB
-   （暂存预算按**物化表示的精确字节**计：结构体 + 真实路径串 + 容量
-   余量，超预算在分配前拒绝）。超限 = resource 状态，与 ABI 不兼容
-   拒绝分开。
+   （暂存预算按**物化表示 + 索引/递归工作态的精确字节**计：结果结构
+   体 + 真实路径串 + 容量余量 + memo 四表与链/seen 名字副本，超预算
+   在分配前拒绝——合法小输出图不得因长记录名把 memo 态撑过 8MiB）。
+   超限 = resource 状态，与 ABI 不兼容拒绝分开。
 
 ### rationale
 
@@ -148,20 +149,33 @@ AC-01–03
    identity）、target/profile、emitter id、C 源名+内容 hash + cl 指纹
    + flags。命中**从不**调 producer，**从不**缓存 PASS；每次仍
    admission + link + run + 重比较 oracle。
-5. **C 依赖闭包**：`#include` 的真实依赖（含注释隐藏、续行拼接、宏
-   include 与系统/MSVC 头）**从编译器自身观测**（`cl -showIncludes`），
-   内容哈希随对象一并存储；命中时**逐一重验**，任一变化/缺失 = 真实
-   miss 重编（文本扫描不作为依赖真相；cl.exe 二进制哈希不等于头文件
-   内容哈希）。tampered block = 受控 CAS 拒；缺块 = miss 重算。
+5. **C 依赖闭包与适用域**：`#include` 的真实依赖（含注释隐藏、续行拼
+   接、宏 include 与系统/MSVC 头）**从编译器自身观测**
+   （`cl -showIncludes`），内容哈希随对象一并存储；命中时**逐一重验**
+   ，任一变化/缺失 = 真实 miss 重编（文本扫描不作为依赖真相；cl.exe
+   二进制哈希不等于头文件内容哈希）。**适用域**同样入信封并逐项重验
+   ：源解析目录、include 搜索目录、target、工具链/flags——同名同内容
+   的源在不同目录/工具链下是不同编译，不得互用对象（F-R9-01）；
+   **负依赖快照**（两个搜索目录的源/头文件名清单）入信封，新增/删除
+   近端头（遮蔽改变解析结果）= miss，即使全部已记录依赖内容未变
+   （F-R4-07）；环境复原到历史状态时复用对应历史代是正确行为，
+   判据是被服务代的适用域与当前环境完全一致。tampered block = 受控
+   CAS 拒；缺块 = miss 重算。
 6. **生命周期**：512 次接口/实现修订后 live 集收敛；rooted+leased 存活；
    用户 source/exe 哨兵不变；失败/取消释放 lease 且不删交付物；并发
-   worker + 逐查询 GC 的全链有真实 worker 证据。
+   worker + 逐查询 GC 的全链有真实 worker 证据，且 GC 的**实际回收**
+   以收据（ran/deleted/freed）入 meter 断言——水位之下的强制调用
+   ran=false 不得冒称回收，rooted 交付物在回收后仍可命中。
 7. **性能**：六场景×30；硬门 P95 body-edit <1000ms、descriptor-reject
-   <1000ms。正式口径：**每个 step 都是独立完整发布的父路径请求**
-   （父入口计时：请求构建+IPC+等待+解码+admission；body-edit 样本 =
-   edit+query 请求对），worker 内部阶段仅作归因子 span，不得以其和
-   冒充请求耗时；每样本先落盘（含成功/失败、完整阶段、cache/compute、
-   Job 对象峰值内存与 I/O、worker meter）再断言；工具准备单列。
+   <1000ms。正式口径：**每个 query 请求携带编辑后 deck**（产品形态的
+   "编辑源→正确 PE 结果"单元；edit 为父侧本地替换，其耗时计入样本的
+   edit_ms），计时边界=**父入口→该请求的 typed 判定完成→原始行落盘**
+   （含请求构建/IPC/等待/解码/admission/判定），worker 内部阶段仅作归
+   因子 span，不得以其和冒充请求耗时；**一请求一结果一原始行**（成功
+   /失败/infra 均有行，含完整阶段、cache/compute、Job 对象进程与树峰
+   值内存及 I/O、worker meter 含 GC 收据），在**下一请求运行前**由
+   适配器持久化；断言只能消费这些原始行，不得批量后写或以整 case 总
+   耗时平均替代 P95；工具准备单列。
 8. **正式通路**：D-796/D-788 后经正式 AutoDown/probe adapter 复测；
    当前 Rust 原生测试是临时等价入口，**不能**充作 AC-05 正式复测。
 

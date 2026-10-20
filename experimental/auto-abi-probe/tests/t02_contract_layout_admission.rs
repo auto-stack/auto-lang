@@ -1097,3 +1097,66 @@ fn abi_contract_absent_capability_symbol_rejected() {
         other => panic!("expected MissingSymbol, got {other:?}"),
     }
 }
+
+/// F-797-R4-10 (R9): the memo/index and recursion working state are
+/// budget items too — the R9 counterexample is a LEGAL acyclic
+/// 1024-node chain whose RECORD names are 1950 bytes each (~4MiB of
+/// table input, a single-field output): the materialized representation
+/// is tiny but the four memo maps + chain/seen name copies exceeded
+/// 8MiB of live staging. The gate must refuse it BEFORE the state grows
+/// (a controlled resource rejection); a short-name chain of the same
+/// shape computes fine.
+#[test]
+fn abi_admission_index_budget_counts_memo_state() {
+    fn chain_table(name_len: usize) -> BTreeMap<String, RecordDefOwned> {
+        let mk_name = |i: usize| -> String {
+            if name_len <= 8 {
+                format!("S{i}")
+            } else {
+                let base = format!("S{i}-");
+                format!("{base}{}", "x".repeat(name_len - base.len()))
+            }
+        };
+        let mut t = BTreeMap::new();
+        for i in 0..1024usize {
+            let ty = if i + 1 < 1024 {
+                FieldTyOwned::Record(mk_name(i + 1))
+            } else {
+                FieldTyOwned::Scalar(SemScalar::I64)
+            };
+            t.insert(
+                mk_name(i),
+                RecordDefOwned {
+                    name: mk_name(i),
+                    fields: vec![FieldDefOwned {
+                        name: "next".into(),
+                        ty,
+                    }],
+                },
+            );
+        }
+        t
+    }
+    let short = chain_table(6);
+    let short_first = short.keys().next().cloned().unwrap();
+    // short names: index state is tiny — computes (the legal control)
+    let ok = layout::layout_record_owned(&short, &short_first).expect("short-name chain computes");
+    // a single-field chain: ONE leaf (the R9 shape — "只有 one field"),
+    // reached through 1024 records
+    assert_eq!(ok.fields.len(), 1);
+    assert_eq!(ok.fields[0].name.matches('.').count(), 1023);
+    // 1950-byte record names: the memo/index estimate crosses the 8MiB
+    // staging budget — refused pre-allocation as a RESOURCE state
+    let long = chain_table(1950);
+    let long_first = long.keys().next().cloned().unwrap();
+    match layout::layout_record_owned(&long, &long_first) {
+        Ok(l) => panic!(
+            "the R9 long-record-name chain must be refused (index/memo budget); got {} fields",
+            l.fields.len()
+        ),
+        Err(LayoutError::StagingTooLarge { size, .. }) => {
+            assert!(size > layout::MAX_STAGING_BYTES);
+        }
+        other => panic!("expected StagingTooLarge (resource), got {other:?}"),
+    }
+}

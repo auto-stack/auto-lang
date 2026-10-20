@@ -377,3 +377,58 @@ fn abi_worker_concurrent_gc_same_store() {
     lane(&store, 2000);
     lane_b.join().expect("concurrent lane joins");
 }
+
+/// F-797-R4-10 (R9): REAL reclamation evidence — the water levels are
+/// shrunk via the TEST seam so published objects cross them; the GC
+/// receipt facts (runs/deleted) are asserted from the worker's meter
+/// (not assumed from a forced call below the water level), the ROOTED
+/// current deliverable survives, and a repeat query for the same body
+/// still HITS after GC.
+#[test]
+fn abi_worker_gc_actually_reclaims() {
+    let _gate = GATE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let store = std::env::temp_dir().join(format!("abi-t06-gcrec-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&store);
+    std::fs::create_dir_all(&store).unwrap();
+    let envs = [
+        ("ABI_TEST_GC_EVERY_STEP", "1"),
+        ("ABI_TEST_GC_HIGH_BYTES", "24576"),
+        ("ABI_TEST_GC_LOW_BYTES", "16384"),
+    ];
+    let query_of = |resp: &serde_json::Value| -> serde_json::Value {
+        resp["ok"]["steps"]
+            .as_array()
+            .expect("steps")
+            .iter()
+            .find(|s| s["op"] == "query")
+            .expect("query step")
+            .clone()
+    };
+    let mut total_deleted: u64 = 0;
+    let mut last_deck = String::new();
+    for i in 0..8u32 {
+        let deck = GOOD_DECK.replace("[body: mix-v1]", &format!("[body: mix-alt{i}]"));
+        last_deck = deck.clone();
+        let (_, resp) = worker_session_env(&deck, "c", &store, &[("query", "", "")], &envs);
+        let q = query_of(&resp);
+        assert_eq!(q["outcome"], "ok", "gc sample {i}: {q}");
+        assert_eq!(q["pe_exit"], 0, "gc sample {i}: {q}");
+        total_deleted += q["meter"]["gc_deleted_chunks"].as_u64().unwrap_or(0);
+    }
+    assert!(
+        total_deleted > 0,
+        "GC must ACTUALLY delete unrooted generations above the water level (receipt in meter)"
+    );
+    // the rooted current deliverable survives GC: repeating the LAST
+    // body is a cache HIT (and still a real PE pass)
+    let (_, resp) = worker_session_env(&last_deck, "c", &store, &[("query", "", "")], &envs);
+    let q = query_of(&resp);
+    assert_eq!(q["outcome"], "ok", "post-GC repeat: {q}");
+    assert_eq!(q["pe_exit"], 0, "post-GC repeat: {q}");
+    assert_eq!(q["cache"], "hit", "the rooted deliverable survived GC: {q}");
+    assert_eq!(
+        q["compute_calls"].as_u64().unwrap_or(0),
+        0,
+        "a GC survivor serves without recompiling: {q}"
+    );
+}

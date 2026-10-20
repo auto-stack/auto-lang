@@ -978,8 +978,7 @@ fn abi_cache_include_real_deps_invalidated_and_reused() {
         }
 
         write_header(17);
-        let ident = auto_abi_probe::cache::c_source_identity(&src).unwrap();
-        let (obj17, hit1) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+        let (obj17, hit1) = auto_abi_probe::cache::produce_c_object(&store, &src, &dir, || {
             compile_once(&src, &dir, &obj_path, &mut producer_runs)
         })
         .expect("compile v17");
@@ -990,7 +989,7 @@ fn abi_cache_include_real_deps_invalidated_and_reused() {
         assert_eq!(pe.code, 17, "{name}: PE exits with the header VALUE (17)");
 
         // repeat: hit, ZERO compiler invocations, identical bytes
-        let (obj17b, hit2) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+        let (obj17b, hit2) = auto_abi_probe::cache::produce_c_object(&store, &src, &dir, || {
             compile_once(&src, &dir, &obj_path, &mut producer_runs)
         })
         .expect("hit v17");
@@ -1001,7 +1000,7 @@ fn abi_cache_include_real_deps_invalidated_and_reused() {
         // header VALUE change with the SOURCE untouched: MISS + real
         // recompile + the PE now exits 29 (the R8 counterexample shape)
         write_header(29);
-        let (obj29, hit3) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+        let (obj29, hit3) = auto_abi_probe::cache::produce_c_object(&store, &src, &dir, || {
             compile_once(&src, &dir, &obj_path, &mut producer_runs)
         })
         .expect("recompile v29");
@@ -1016,7 +1015,7 @@ fn abi_cache_include_real_deps_invalidated_and_reused() {
         // a DELETED dependency is also a miss, and the recompile fails
         // through the real compiler (controlled error, never stale-serve)
         std::fs::remove_file(dir.join("dep.h")).unwrap();
-        match auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+        match auto_abi_probe::cache::produce_c_object(&store, &src, &dir, || {
             compile_once(&src, &dir, &obj_path, &mut producer_runs)
         }) {
             Err(_) => {}
@@ -1044,7 +1043,7 @@ fn abi_cache_include_records_system_header_closure() {
     .unwrap();
     let obj_path = root.join("caller.obj");
     let ident = auto_abi_probe::cache::c_source_identity(&src).unwrap();
-    let (_, hit) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+    let (_, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &root, || {
         let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &root, &obj_path)
             .map_err(|e| e.to_string())?;
         Ok((std::fs::read(&obj_path).map_err(|e| e.to_string())?, deps))
@@ -1085,9 +1084,243 @@ fn abi_cache_include_records_system_header_closure() {
     );
     // and the recorded closure satisfies the re-verification: a second
     // produce is a HIT (every recorded dep still hashes equal)
-    let (_, hit2) = auto_abi_probe::cache::produce_c_object(&store, &ident, || {
+    let (_, hit2) = auto_abi_probe::cache::produce_c_object(&store, &src, &root, || {
         panic!("a verified closure must hit without compiling")
     })
     .expect("hit");
     assert!(hit2);
+}
+
+// ---------------------------------------------------------------------------
+// F-797-R9-01 (R9 repair): generation discovery must bind the FULL recipe
+// input domain — a same-name+content source at a DIFFERENT directory (or
+// under a different toolchain/target) is a DIFFERENT compilation.
+// ---------------------------------------------------------------------------
+
+/// Cross-project wrong-object counterexample (the R9 probe): projects A
+/// and B both carry a byte-identical `same.c` including "dep.h"; A's
+/// header says 17, B's says 29. Over ONE shared store, B's request must
+/// NOT serve A's object — it is a miss (real recompile) and B's PE exits
+/// 29. Correct-reuse control: the SAME source at the SAME location with
+/// unchanged inputs still hits.
+#[test]
+fn abi_cache_cross_project_same_content_different_deps() {
+    let root = t05_root().join("xproj");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let store = fresh_store(&root, "store");
+    let body = "#include \"dep.h\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n";
+    let mk = |proj: &str, value: u32| {
+        let dir = root.join(proj);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("same.c"), body).unwrap();
+        std::fs::write(dir.join("dep.h"), format!("#define VALUE {value}\n")).unwrap();
+        dir
+    };
+    let runs = std::cell::Cell::new(0u32);
+    let produce = |dir: &Path, obj_name: &str| -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+        runs.set(runs.get() + 1);
+        let obj = dir.join(obj_name);
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&dir.join("same.c"), dir, &obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+    };
+    let link_run = |dir: &Path, obj: &[u8]| -> i32 {
+        std::fs::write(dir.join("linked.obj"), obj).unwrap();
+        run::run_pe(&link_pe(dir, &[dir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap()
+            .code
+    };
+
+    let a = mk("projA", 17);
+    let (obj_a, hit_a) =
+        auto_abi_probe::cache::produce_c_object(&store, &a.join("same.c"), &a, || {
+            produce(&a, "caller.obj")
+        })
+        .expect("A compiles");
+    assert!(!hit_a);
+    assert_eq!(link_run(&a, &obj_a), 17, "A's PE exits 17");
+
+    // correct-reuse control FIRST: same source, same dirs, unchanged
+    // inputs -> hit, zero compiler invocations
+    let (_, hit_a2) =
+        auto_abi_probe::cache::produce_c_object(&store, &a.join("same.c"), &a, || {
+            produce(&a, "caller.obj")
+        })
+        .expect("A repeat");
+    assert!(hit_a2, "same project inputs must reuse");
+    assert_eq!(runs.get(), 1);
+
+    // the counterexample: B has the SAME source identity but a different
+    // directory + header — serving A's object would exit 17
+    let b = mk("projB", 29);
+    let (obj_b, hit_b) =
+        auto_abi_probe::cache::produce_c_object(&store, &b.join("same.c"), &b, || {
+            produce(&b, "caller.obj")
+        })
+        .expect("B compiles");
+    assert!(
+        !hit_b,
+        "a different source directory is a MISS, never A's object"
+    );
+    assert_eq!(runs.get(), 2, "B really compiled");
+    assert_eq!(
+        link_run(&b, &obj_b),
+        29,
+        "B's PE exits 29 (A's cached 17-object must not be served)"
+    );
+}
+
+/// Foreign-toolchain generation control (the R9 positive control): a
+/// legally-stored generation under a DIFFERENT toolchain fingerprint
+/// (public store API, well-formed envelope) must not be served to the
+/// CURRENT toolchain's request — discovery pre-filters by the current
+/// target+toolchain before any payload is trusted.
+#[test]
+fn abi_cache_foreign_toolchain_generation_not_served() {
+    use ac_artifact_probe::codec::ChunkKind;
+    let root = t05_root().join("foreigntc");
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root).unwrap();
+    let store = fresh_store(&root, "store");
+    let src = root.join("caller.c");
+    std::fs::write(
+        &src,
+        "#include \"dep.h\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n",
+    )
+    .unwrap();
+    std::fs::write(root.join("dep.h"), "#define VALUE 17\n").unwrap();
+
+    // a well-formed v2 envelope for a DIFFERENT toolchain + target,
+    // stored under the public API with its own closure key
+    let ident = auto_abi_probe::cache::c_source_identity(&src).unwrap();
+    use base64::Engine as _;
+    let foreign = serde_json::json!({
+        "v": 2,
+        "source": ident,
+        "src_dir": root.display().to_string(),
+        "include_dir": root.display().to_string(),
+        "target": "x86_64-unknown-linux-gnu",
+        "toolchain": "cl:C:\\foreign\\cl.exe|ver:x|hash:00|flags:-c",
+        "obj_b64": base64::engine::general_purpose::STANDARD.encode(b"\0foreign-object-payload"),
+        "deps": [],
+        "src_listing": ["caller.c", "dep.h"],
+        "inc_listing": ["caller.c", "dep.h"],
+    });
+    let key = auto_abi_probe::cache::c_object_key(&ident, "foreign-closure");
+    store
+        .put_artifact(ac_artifact_probe::store::PutRequest {
+            layer: auto_abi_probe::cache::LAYER_OBJECT_V01.id,
+            key,
+            kind: ChunkKind::Object,
+            payload: serde_json::to_vec(&foreign).unwrap(),
+            edges: vec![],
+            project: None,
+        })
+        .expect("foreign generation stored via public API");
+
+    let runs = std::cell::Cell::new(0u32);
+    let (obj, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &root, || {
+        runs.set(runs.get() + 1);
+        let obj = root.join("caller.obj");
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &root, &obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+    })
+    .expect("current-toolchain request");
+    assert!(
+        !hit,
+        "a foreign toolchain/target generation must NOT be served"
+    );
+    assert_eq!(runs.get(), 1, "the current toolchain really compiled");
+    std::fs::write(root.join("linked.obj"), &obj).unwrap();
+    let pe = run::run_pe(&link_pe(&root, &[root.join("linked.obj")], "p797_inc_entry").unwrap())
+        .unwrap();
+    assert_eq!(pe.code, 17);
+}
+
+/// F-797-R4-07 (R9): SHADOWING — a NEW header next to the source changes
+/// include resolution without touching any recorded dep. Three states:
+/// resolve-via -I shared (17) -> hit; shadow/dep.h appears (29) -> MISS
+/// and PE flips to 29; the shadow is removed -> MISS and PE returns to
+/// 17. Same-input repeats between the transitions must still HIT.
+#[test]
+fn abi_cache_nearby_shadow_invalidates() {
+    let root = t05_root().join("shadow");
+    let _ = std::fs::remove_dir_all(&root);
+    let shared = root.join("shared");
+    let shadow = root.join("shadow");
+    std::fs::create_dir_all(&shared).unwrap();
+    std::fs::create_dir_all(&shadow).unwrap();
+    std::fs::write(shared.join("dep.h"), "#define VALUE 17\n").unwrap();
+    let src = shadow.join("same.c");
+    std::fs::write(
+        &src,
+        "#include \"dep.h\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n",
+    )
+    .unwrap();
+    let store = fresh_store(&root, "store");
+    let runs = std::cell::Cell::new(0u32);
+    let link_run = |obj: &[u8]| -> i32 {
+        std::fs::write(shadow.join("linked.obj"), obj).unwrap();
+        run::run_pe(&link_pe(&shadow, &[shadow.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap()
+            .code
+    };
+    let produce = || -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+        runs.set(runs.get() + 1);
+        let obj = shadow.join("caller.obj");
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &shared, &obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+    };
+
+    // state 1: dep.h resolves via -I shared -> VALUE 17
+    let (obj, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("initial compile");
+    assert!(!hit);
+    assert_eq!(link_run(&obj), 17);
+    let (_, hit_again) =
+        auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce).expect("repeat");
+    assert!(hit_again, "unchanged search environment must hit");
+    assert_eq!(runs.get(), 1);
+
+    // state 2: a NEW shadowing header appears next to the source — the
+    // source and every previously recorded dep are unchanged, yet the
+    // resolution changes; the listing snapshot must force a MISS
+    std::fs::write(shadow.join("dep.h"), "#define VALUE 29\n").unwrap();
+    let (obj29, hit29) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("shadow compile");
+    assert!(!hit29, "a new nearby header must invalidate (shadowing)");
+    assert_eq!(runs.get(), 2);
+    assert_eq!(link_run(&obj29), 29, "the shadowed resolution wins (29)");
+    let (_, hit29b) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("shadow repeat");
+    assert!(hit29b, "stable shadowed environment hits");
+
+    // state 3: removing the shadow restores the shared resolution. The
+    // listing no longer matches the SHADOWED generation, so it can never
+    // be served again; the environment equals the ORIGINAL state-1
+    // world, whose generation re-verifies (listing + deps) — serving 17
+    // again is CORRECT reuse of a re-appeared environment, and the
+    // shadowed-29 object is dead. The oracle is behavioral: PE is 17.
+    std::fs::remove_file(shadow.join("dep.h")).unwrap();
+    let (obj17, _hit17) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("unshadow serve");
+    assert_eq!(link_run(&obj17), 17, "back to the shared resolution (17)");
+    // and a NOVEL shadowed world (new shadow CONTENT) is a real miss —
+    // neither the 17 nor the 29 generation applies:
+    std::fs::write(
+        shadow.join("dep.h"),
+        "#define VALUE 31
+",
+    )
+    .unwrap();
+    let (obj31, hit31) = auto_abi_probe::cache::produce_c_object(&store, &src, &shared, produce)
+        .expect("novel-shadow compile");
+    assert!(
+        !hit31,
+        "a novel shadow content must miss every earlier generation"
+    );
+    assert_eq!(link_run(&obj31), 31);
 }

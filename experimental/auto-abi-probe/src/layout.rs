@@ -326,11 +326,32 @@ pub fn layout_record_owned(
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
     let per_leaf = std::mem::size_of::<FieldLayout>() as u64;
-    let staging_bytes = root_leaves
+    let representation = root_leaves
         .saturating_mul(per_leaf)
         .saturating_add(root_paths)
         // the shared prefix buffer: worst-case String doubling
         .saturating_add(root_max.saturating_mul(2));
+    // F-797-R4-10 (R9): the INDEX and recursion working state are budget
+    // items too — the four memo maps duplicate every RECORD name, and
+    // the chain/seen vectors carry up to MAX_NESTING_DEPTH+1 name
+    // copies. A legal small-output table whose names are long enough
+    // blows the 8MiB staging budget in the memo state alone (R9
+    // counterexample: a 1024-node chain of 1950-byte record names —
+    // 4MB of input, a single-field output, >8MiB of live memo state).
+    // The caller's own `table` is the caller's input and is excluded,
+    // matching the counterexample's accounting.
+    let entries = sizes.len() as u64;
+    let max_name = sizes.keys().map(|k| k.len() as u64).max().unwrap_or(0);
+    // String (24B header + heap name) + BTreeMap node slack per entry,
+    // across the four maps
+    let map_entry = max_name.saturating_add(24 + 96);
+    let index_bytes = 4u64
+        .saturating_mul(entries.saturating_mul(map_entry))
+        // chain + seen at the depth bound
+        .saturating_add(
+            2u64.saturating_mul((MAX_NESTING_DEPTH as u64 + 1).saturating_mul(max_name + 24)),
+        );
+    let staging_bytes = representation.saturating_add(index_bytes);
     if staging_bytes > MAX_STAGING_BYTES {
         return Err(LayoutError::StagingTooLarge {
             record: name.to_string(),

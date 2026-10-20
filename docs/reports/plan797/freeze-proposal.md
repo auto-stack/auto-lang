@@ -1,6 +1,6 @@
 # PLAN-797 freeze proposal（候选 v0.1）
 
-> 状态：**提案（R8 修复后重置）**——R8 复审的 5 项开放 findings 已
+> 状态：**提案（R9 修复后重置）**——R9 复审的 5 项开放 findings 已
 > 修复并附永久反例（F-R4-02 descriptor 如实化：出参列表/三出参
 > ledger/two_step handle 出参/callback ctx/i64 元素视图 + record
 > mut/out 生产面与原生提交回滚控制，header 文本为独立 oracle；
@@ -10,7 +10,10 @@
 > =edit+query 请求对，逐样本先落盘（含 Job 峰值内存/I/O/meter）再断
 > 言；F-R4-10 精确表示字节暂存门（原 R5 长字段名输入在分配前拒绝）+
 > worker 累计产物预算前后检查 + 并发 GC 全链；F-R4-12 本计划 crate
-> 自身告警清零、freeze/verify/SD 事实对齐）。本文件仍**不**发布 ABI、
+> 自身告警清零、freeze/verify/SD 事实对齐；R9 追加：缓存适用域
+> （源/include 目录·target·工具链·flags·负依赖清单入信封重验）、
+> 遮蔽三态反例、计时边界到判定+落盘与一请求一行、memo/索引入预算、
+> GC 收据断言）。本文件仍**不**发布 ABI、
 > 不改 canonical Spec/ledger；冻结登记以 T-08 独立 review 零阻断 +
 > T-09 merge 门禁通过为条件。
 
@@ -42,7 +45,7 @@
 | 验收脚本 | `scripts/verify-autoabi-797.ps1` | 本提案 |
 | 正式 AutoDown 绑定 | `abi/interop-v1` recipe 注册（contract 追加）+ `abi-worker`（abiworker/1）+ 父侧 `test_cases/abi.rs` + 可执行语料 `crates/auto-lang/test/cases/autoabi/`（4 checks 含跨进程 restart 命中与类型化负例） | T-06 `35794e5ec` |
 | 真实语义绑定 | `ac-sema-contract` DeclRef/TypeDesc/ContentVersion；退役收据 `attachments/797/semref-retirement-receipt.md` | T-06 `35794e5ec` |
-| 性能正式复测 | R8：C 消费腿·单 case·共享 store·统一冷体（mix-alt<seed>），**每 step 独立完整发布的父路径请求**（父入口计时含请求构建/IPC/等待/解码/admission；body-edit 样本=edit+query 请求对）：body-edit P50/P95/P99=419.0/663.0/755.0ms、reject P50/P95=77.0/101.0ms（31/30 样本，verify closeout 收据时序下实测；数字随采样时段浮动、JSONL 为准，每请求携带编辑后 deck=产品形态"编辑源→正确 PE 结果"单元）；compute=31+1 逐样本断言；原始 JSONL 逐样本**先落盘**（阶段/Job 峰值内存·I/O/meter） | R8 本轮 |
+| 性能正式复测 | R9：C 消费腿·单 case·共享 store·统一冷体（mix-alt<seed>），**每个 query 请求携带编辑后 deck**（计时边界=父入口→该请求 typed 判定完成→原始行落盘；edit 为父侧本地替换、耗时入样本 edit_ms）：body-edit(edit+request) P50/P95/P99=536.0/608.0/609.0ms、reject P50/P95=65.0/91.0ms（31/30 样本；数字随采样时段浮动、原始行为准）；compute=31+1 逐样本断言；**一请求一结果一原始行**（成功/失败/infra 均有；阶段/cache/compute/Job 进程+树峰值内存·I-O/meter 含 GC 收据）由适配器在下一请求运行前持久化 | R9 本轮 |
 
 ## 3. 版本与身份分层（拟）
 
@@ -91,7 +94,7 @@ exit 恰 1、tampered descriptor、错 offset 控制、uninjected 与失败期�
 
 ## 7.5 终稿身份绑定
 
-- `spec-delta.md`（R8 重置稿，descriptor/3 同步）SHA256：`023768E8A2514CFD9F71C817E9947525CDB2C10C3437CFDCCFC65C41E7B59463`
+- `spec-delta.md`（R8 重置稿，descriptor/3 同步）SHA256：`8F89D804DAE9EA644EC2C487DDF0456433FFC1C59D98E3D6B6CD1E043E525AB5`
 - canonical 输入 hash 明细见 spec-delta.md 输入表（worktree 终态实测，
   R8 复核未漂移）。
 - work 侧 V-01–11 工作面证据（R8 后）：probe workspace 全绿（t02 20+

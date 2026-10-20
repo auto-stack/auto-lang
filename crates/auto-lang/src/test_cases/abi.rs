@@ -238,6 +238,12 @@ struct MeterMirror {
     hot_bytes: u64,
     #[serde(default)]
     rejections: u32,
+    #[serde(default)]
+    gc_runs: u32,
+    #[serde(default)]
+    gc_deleted_chunks: u32,
+    #[serde(default)]
+    gc_freed_bytes: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -544,6 +550,201 @@ fn replace_once(src: &[u8], from: &str, to: &str) -> Result<Vec<u8>, String> {
     Ok(out.into_bytes())
 }
 
+/// F-797-R4-09 (R9): per-request typed judgement — the SAME rules the
+/// post-loop batch judge applied, evaluated IMMEDIATELY when a request
+/// returns so the request span closes at the acceptance boundary.
+fn judge_query_step(
+    completion: &Completion,
+    got: &StepOut,
+    want: &auto_test_case::ir::ResolvedProbeStep,
+    i: usize,
+    mismatches: &mut Vec<Mismatch>,
+) {
+    match (completion, got.outcome.as_str()) {
+        (Completion::Success, "ok") => {
+            if !got.diagnostics.is_empty() {
+                mismatches.push(Mismatch {
+                    observation: format!("probe[{i}].outcome"),
+                    kind: "text",
+                    expected: "ok with zero diagnostics".into(),
+                    actual: format!(
+                        "ok carrying {} diagnostic(s) [{}]",
+                        got.diagnostics.len(),
+                        got.diagnostics
+                            .first()
+                            .map(|d| d.code.as_str())
+                            .unwrap_or("?")
+                    ),
+                    first_diff: None,
+                });
+            }
+            // a successful query must be a REAL PE pass
+            if got.pe_exit != Some(0) {
+                mismatches.push(Mismatch {
+                    observation: format!("probe[{i}].pe_exit"),
+                    kind: "text",
+                    expected: "0".into(),
+                    actual: format!("{:?}", got.pe_exit),
+                    first_diff: None,
+                });
+            }
+        }
+        (
+            Completion::Error {
+                stage,
+                code,
+                message,
+            },
+            "diags",
+        ) => {
+            let want_stage = stage.as_str();
+            let matched = got.diagnostics.iter().any(|d| {
+                stage_of(&d.code) == want_stage
+                    && code.as_deref().map(|c| c == d.code).unwrap_or(true)
+                    && match message {
+                        Some(MessageMatcher::Exact(m)) => &d.message == m,
+                        Some(MessageMatcher::Contains(m)) => d.message.contains(m.as_str()),
+                        None => true,
+                    }
+            });
+            if !matched {
+                mismatches.push(Mismatch {
+                    observation: format!("probe[{i}].diagnostics"),
+                    kind: "message",
+                    expected: format!(
+                        "a {}-stage diagnostic matching code={:?} message={:?}",
+                        want_stage,
+                        code.as_deref().unwrap_or("-"),
+                        message
+                    ),
+                    actual: got
+                        .diagnostics
+                        .iter()
+                        .map(|d| format!("{}: {}", stage_of(&d.code), d.message))
+                        .collect::<Vec<_>>()
+                        .join(" | "),
+                    first_diff: None,
+                });
+            }
+        }
+        (Completion::Success, other) => {
+            mismatches.push(Mismatch {
+                observation: format!("probe[{i}].outcome"),
+                kind: "text",
+                expected: "success".into(),
+                actual: format!("{other} (cache={})", got.cache),
+                first_diff: None,
+            });
+        }
+        (Completion::Error { .. }, other) => {
+            mismatches.push(Mismatch {
+                observation: format!("probe[{i}].outcome"),
+                kind: "text",
+                expected: "a declared error completion".into(),
+                actual: format!("{other} with zero matching diagnostics"),
+                first_diff: None,
+            });
+        }
+    }
+    if let Some(want_cache) = &want.cache {
+        if &got.cache != want_cache {
+            mismatches.push(Mismatch {
+                observation: format!("probe[{i}].cache"),
+                kind: "text",
+                expected: want_cache.clone(),
+                actual: got.cache.clone(),
+                first_diff: None,
+            });
+        }
+    }
+    if let Some(want_calls) = want.compute_calls {
+        if got.compute_calls != want_calls {
+            mismatches.push(Mismatch {
+                observation: format!("probe[{i}].compute_calls"),
+                kind: "text",
+                expected: format!("{want_calls}"),
+                actual: format!("{}", got.compute_calls),
+                first_diff: None,
+            });
+        }
+    }
+    for inc in &want.stages_include {
+        if !got.stages.iter().any(|s| &s.name == inc) {
+            mismatches.push(Mismatch {
+                observation: format!("probe[{i}].stages"),
+                kind: "text",
+                expected: format!("stage `{inc}` present"),
+                actual: got
+                    .stages
+                    .iter()
+                    .map(|s| s.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(","),
+                first_diff: None,
+            });
+        }
+    }
+}
+
+/// F-797-R4-09 (R9): append ONE raw request row — persisted BEFORE the
+/// next request runs, successful and failed requests alike. The row
+/// carries the request's full attribution: edit wall (parent-local),
+/// request wall to the acceptance boundary, worker outcome/cache/
+/// compute, Job-object peak memory (process AND tree) and I/O, worker
+/// meter (incl. GC receipt facts), and the failure reason when any.
+fn append_request_row(
+    path: &Path,
+    seq: usize,
+    op: &str,
+    edit_ms: u64,
+    request_ms: u64,
+    step: Option<&StepOut>,
+    stats: Option<&containment::JobStats>,
+    error: Option<&str>,
+) {
+    use std::io::Write as _;
+    let ok = error.is_none();
+    let row = serde_json::json!({
+        "seq": seq,
+        "op": op,
+        "ok": ok,
+        "edit_ms": edit_ms,
+        "request_ms": request_ms,
+        "outcome": step.map(|s| s.outcome.clone()),
+        "pe_exit": step.and_then(|s| s.pe_exit),
+        "cache": step.map(|s| s.cache.clone()),
+        "compute_calls": step.map(|s| s.compute_calls),
+        "stages": step.map(|s| s
+            .stages
+            .iter()
+            .map(|sp| (sp.name.clone(), sp.wall_ns / 1_000_000))
+            .collect::<std::collections::BTreeMap<String, u128>>()),
+        "meter": step.map(|s| serde_json::json!({
+            "hot_bytes": s.meter.hot_bytes,
+            "scratch_disk_bytes": s.meter.scratch_peak_disk_bytes,
+            "rejections": s.meter.rejections,
+            "gc_runs": s.meter.gc_runs,
+            "gc_deleted_chunks": s.meter.gc_deleted_chunks,
+            "gc_freed_bytes": s.meter.gc_freed_bytes,
+        })),
+        "peak_mem_bytes": stats.map(|s| s.peak_process_memory_used),
+        "peak_job_mem_bytes": stats.map(|s| s.peak_job_memory_used),
+        "io_read_bytes": stats.map(|s| s.read_transfer_bytes),
+        "io_write_bytes": stats.map(|s| s.write_transfer_bytes),
+        "error": error,
+    });
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(f, "{row}");
+    }
+}
+
 /// Map an ABI diagnostic code to a completion stage (the declared error
 /// completion judges against this): `deck.*`/parse → parse, admission →
 /// admit, pe-exit → run.
@@ -600,7 +801,7 @@ pub fn run_check(
     let mut deck = input_bytes.clone();
 
     let mut mismatches: Vec<Mismatch> = Vec::new();
-    /// F-797-R4-09 (R8): each reported query step paired with the JOB
+    /// F-797-R4-09 (R8/R9): each reported query step paired with the JOB
     /// STATS of the request that produced it (a query request is a
     /// whole worker process — its peak memory and I/O are the sample's
     /// resource attribution).
@@ -612,24 +813,37 @@ pub fn run_check(
     let mut stage_spans: Vec<(String, u64)> = Vec::new();
     let mut infra_detail: Option<String> = None;
     let exe_sha = worker_exe_sha256()?;
+    let expects = oracle.probe.as_deref().unwrap_or(&[]);
 
-    // F-797-R4-09 (R8): every WORKER request is its own fully-published
-    // unit — build → IPC → wait → decode → admission → step extraction —
-    // timed at the parent entry as `parent-request:<op>`. The worker's
-    // stage spans are recorded AFTER their request span as
-    // sub-attribution. (The R5 form bundled 31 steps into one worker
-    // session and summed worker-internal stage spans as "request_ms" —
-    // no parent entry, IPC, decode, or publish was in the number.)
-    // edit-source steps are applied PARENT-SIDE only: the product
+    // F-797-R4-09 (R9): RAW PER-REQUEST EVIDENCE — one row per request,
+    // appended to the check's artifact dir BEFORE the next request runs
+    // (failed/infra requests included, each with its own ok flag). The
+    // formal gates aggregate THESE rows; nothing is batch-written after
+    // the case returns.
+    let samples_path = artifact_dir.join("abi-request-samples.jsonl");
+    let mut sample_seq: usize = 0;
+    let mut pending_edit_ms: u64 = 0;
+
+    // F-797-R4-09 (R8/R9): every WORKER request is its own fully-published
+    // unit — build → IPC → wait → decode → admission → TYPED JUDGEMENT —
+    // timed at the parent entry as `parent-request:<op>` and closed only
+    // AFTER the request's outcome has been judged against the oracle
+    // (the acceptance boundary). The worker's stage spans are recorded
+    // after their request span as sub-attribution. (The R5 form bundled
+    // 31 steps into one worker session and summed worker-internal stage
+    // spans as "request_ms"; the R8 form closed the span before the
+    // final judgement and persisted rows in one batch after the case.)
+    // edit-source steps are applied PARENT-SIDE only — the product
     // request carries the CURRENT deck (the source) with each query —
-    // a standalone edit round-trip is a test-driver artifact, not part
-    // of the "edited source → PE result" request path. The worker
-    // protocol still supports edit-source ops (driven directly by the
-    // worker tests); the parent applies the same validated replace
-    // locally between requests.
-    for (step_no, st) in steps.iter().enumerate() {
+    // and their (microsecond) wall is carried into the NEXT query row
+    // as `edit_ms` so the sample is the full edit→result pair. The
+    // worker protocol still supports edit-source ops (driven directly
+    // by the worker tests).
+    'steps: for (step_no, st) in steps.iter().enumerate() {
         if let ProbeStep::EditSource { from, to } = st {
+            let t_edit = Instant::now();
             deck = replace_once(&deck, from, to)?;
+            pending_edit_ms = t_edit.elapsed().as_millis() as u64;
             continue;
         }
         let step_json = match st {
@@ -669,59 +883,176 @@ pub fn run_check(
         let (resp, job_stats) = match call_worker(&request.to_string(), SESSION_WALL) {
             Ok(r) => r,
             Err(e) => {
+                stage_spans.push((
+                    format!("parent-request:{step_tag}"),
+                    t_step.elapsed().as_millis() as u64,
+                ));
+                append_request_row(
+                    &samples_path,
+                    sample_seq,
+                    step_tag,
+                    pending_edit_ms,
+                    t_step.elapsed().as_millis() as u64,
+                    None,
+                    None,
+                    Some(&e),
+                );
                 infra_detail = Some(e);
-                break;
+                break 'steps;
             }
         };
-        if resp.schema != ABI_WORKER_SCHEMA {
-            infra_detail = Some(format!("abi worker schema mismatch: {}", resp.schema));
-            break;
-        }
-        if resp.nonce != nonce || resp.request_hash != request_hash {
-            infra_detail = Some("abi worker nonce/request_hash echo mismatch".into());
-            break;
-        }
-        let ok = match resp.ok.clone() {
-            Some(ok) => ok,
-            None => {
-                let e = resp.error.unwrap_or(WorkerError {
-                    code: "missing".into(),
-                    message: "neither ok nor error".into(),
-                });
-                infra_detail = Some(format!("abi worker error {}: {}", e.code, e.message));
-                break;
+        let admitted: Result<OkOut, String> = (|| {
+            if resp.schema != ABI_WORKER_SCHEMA {
+                return Err(format!("abi worker schema mismatch: {}", resp.schema));
+            }
+            if resp.nonce != nonce || resp.request_hash != request_hash {
+                return Err("abi worker nonce/request_hash echo mismatch".into());
+            }
+            let ok = match resp.ok.clone() {
+                Some(ok) => ok,
+                None => {
+                    let e = resp.error.clone().unwrap_or(WorkerError {
+                        code: "missing".into(),
+                        message: "neither ok nor error".into(),
+                    });
+                    return Err(format!("abi worker error {}: {}", e.code, e.message));
+                }
+            };
+            if ok.recipe != ABI_RECIPE {
+                return Err(format!("abi worker recipe mismatch: {}", ok.recipe));
+            }
+            if ok.worker_version != EXPECTED_ABI_WORKER_VERSION {
+                return Err(format!(
+                    "abi worker version `{}` does not match the admitted `{}`",
+                    ok.worker_version, EXPECTED_ABI_WORKER_VERSION
+                ));
+            }
+            Ok(ok)
+        })();
+        let ok = match admitted {
+            Ok(o) => o,
+            Err(e) => {
+                stage_spans.push((
+                    format!("parent-request:{step_tag}"),
+                    t_step.elapsed().as_millis() as u64,
+                ));
+                append_request_row(
+                    &samples_path,
+                    sample_seq,
+                    step_tag,
+                    pending_edit_ms,
+                    t_step.elapsed().as_millis() as u64,
+                    None,
+                    None,
+                    Some(&e),
+                );
+                infra_detail = Some(e);
+                break 'steps;
             }
         };
-        if ok.recipe != ABI_RECIPE {
-            infra_detail = Some(format!("abi worker recipe mismatch: {}", ok.recipe));
-            break;
-        }
-        if ok.worker_version != EXPECTED_ABI_WORKER_VERSION {
-            infra_detail = Some(format!(
-                "abi worker version `{}` does not match the admitted `{}`",
-                ok.worker_version, EXPECTED_ABI_WORKER_VERSION
+        if matches!(st, ProbeStep::Restart) {
+            let ok_row = ok.restart_pending;
+            stage_spans.push((
+                format!("parent-request:{step_tag}"),
+                t_step.elapsed().as_millis() as u64,
             ));
-            break;
+            append_request_row(
+                &samples_path,
+                sample_seq,
+                step_tag,
+                pending_edit_ms,
+                t_step.elapsed().as_millis() as u64,
+                None,
+                job_stats.as_ref(),
+                if ok_row {
+                    None
+                } else {
+                    Some("restart step did not end the session as declared")
+                },
+            );
+            sample_seq += 1;
+            pending_edit_ms = 0;
+            if !ok_row {
+                infra_detail = Some("restart step did not end the session as declared".into());
+                break 'steps;
+            }
+            continue;
         }
-        // the FULL parent path for THIS request: build + IPC + wait +
-        // decode + admission — published before its worker sub-spans
+        // query step: judge IMMEDIATELY so the request span closes at
+        // the acceptance boundary (admission + typed judgement + row)
+        let qi = reported.len();
+        let mut query_step: Option<&StepOut> = None;
+        for s in ok.steps.iter().filter(|s| s.op == "query") {
+            query_step = Some(s);
+            // F-797-R4-03 (R5): worker-reported infra/resource outcomes
+            // are INFRASTRUCTURE short-circuits — judged before any
+            // language completion, reported as Status::Error, never FAIL.
+            if s.outcome == "infra" || s.outcome == "resource" {
+                let detail = format!(
+                    "abi worker reported {} on query step {qi}: {}",
+                    s.outcome,
+                    s.diagnostics
+                        .first()
+                        .map(|d| d.message.clone())
+                        .unwrap_or_default()
+                );
+                stage_spans.push((
+                    format!("parent-request:{step_tag}"),
+                    t_step.elapsed().as_millis() as u64,
+                ));
+                append_request_row(
+                    &samples_path,
+                    sample_seq,
+                    step_tag,
+                    pending_edit_ms,
+                    t_step.elapsed().as_millis() as u64,
+                    Some(s),
+                    job_stats.as_ref(),
+                    Some(&detail),
+                );
+                infra_detail = Some(detail);
+                break 'steps;
+            }
+            match expects.get(qi) {
+                Some(want) => judge_query_step(&oracle.completion, s, want, qi, &mut mismatches),
+                None => mismatches.push(Mismatch {
+                    observation: "probe.steps".into(),
+                    kind: "text",
+                    expected: format!("{} query steps", expects.len()),
+                    actual: format!("{} query steps", qi + 1),
+                    first_diff: None,
+                }),
+            }
+        }
+        if let Some(s) = query_step {
+            reported.push(QuerySample {
+                step: s.clone(),
+                stats: job_stats.clone(),
+            });
+        }
+        // the FULL parent path for THIS request closes HERE: build +
+        // IPC + wait + decode + admission + typed judgement
         stage_spans.push((
             format!("parent-request:{step_tag}"),
             t_step.elapsed().as_millis() as u64,
         ));
-        if matches!(st, ProbeStep::Restart) && !ok.restart_pending {
-            infra_detail = Some("restart step did not end the session as declared".into());
-            break;
-        }
-        for s in ok.steps.iter().filter(|s| s.op == "query") {
+        if let Some(s) = query_step {
             for sp in &s.stages {
                 stage_spans.push((sp.name.clone(), (sp.wall_ns / 1_000_000) as u64));
             }
-            reported.push(QuerySample {
-                step: s.clone(),
-                stats: job_stats,
-            });
         }
+        append_request_row(
+            &samples_path,
+            sample_seq,
+            step_tag,
+            pending_edit_ms,
+            t_step.elapsed().as_millis() as u64,
+            query_step,
+            job_stats.as_ref(),
+            None,
+        );
+        sample_seq += 1;
+        pending_edit_ms = 0;
     }
     let reported_query_steps: Vec<StepOut> = reported.iter().map(|q| q.step.clone()).collect();
 
@@ -765,6 +1096,23 @@ pub fn run_check(
         ("worker_peak_mem_bytes".into(), u32cap(peak_mem_max)),
         ("worker_io_read_bytes".into(), u32cap(io_read_total)),
         ("worker_io_write_bytes".into(), u32cap(io_write_total)),
+        (
+            "worker_peak_job_mem_bytes".into(),
+            u32cap(
+                reported
+                    .iter()
+                    .filter_map(|q| q.stats.as_ref().map(|s| s.peak_job_memory_used))
+                    .max()
+                    .unwrap_or(0),
+            ),
+        ),
+        (
+            "meter_gc_deleted_chunks".into(),
+            reported
+                .iter()
+                .map(|q| q.step.meter.gc_deleted_chunks)
+                .sum(),
+        ),
     ];
     // per-sample observed facts (the formal JSONL consumes these):
     // producer count, cache state, and the request's REAL resource
@@ -777,6 +1125,10 @@ pub fn run_check(
         sample_counters.push((
             format!("req_q{i}_peak_mem_bytes"),
             u32cap(st.map(|s| s.peak_process_memory_used).unwrap_or(0)),
+        ));
+        sample_counters.push((
+            format!("req_q{i}_peak_job_mem_bytes"),
+            u32cap(st.map(|s| s.peak_job_memory_used).unwrap_or(0)),
         ));
         sample_counters.push((
             format!("req_q{i}_io_read_bytes"),
@@ -820,8 +1172,7 @@ pub fn run_check(
         });
     }
 
-    // ---- parent-side judgement (typed outcome FIRST) --------------------
-    let expects = oracle.probe.as_deref().unwrap_or(&[]);
+    // ---- step-count check (typed judgement already ran per request) --
     if reported_query_steps.len() != expects.len() {
         mismatches.push(Mismatch {
             observation: "probe.steps".into(),
@@ -830,170 +1181,6 @@ pub fn run_check(
             actual: format!("{} query steps", reported_query_steps.len()),
             first_diff: None,
         });
-    }
-    // F-797-R4-03 (R5): worker-reported infra/resource outcomes are
-    // INFRASTRUCTURE short-circuits — judged before any language
-    // completion, reported as Status::Error, never FAIL.
-    for (i, got) in reported_query_steps.iter().enumerate() {
-        if got.outcome == "infra" || got.outcome == "resource" {
-            infra_detail = Some(format!(
-                "abi worker reported {} on query step {i}: {}",
-                got.outcome,
-                got.diagnostics
-                    .first()
-                    .map(|d| d.message.clone())
-                    .unwrap_or_default()
-            ));
-            break;
-        }
-    }
-    if let Some(detail) = infra_detail {
-        let mut spans = stage_spans;
-        spans.push((
-            "parent-publish".into(),
-            started.elapsed().as_millis() as u64,
-        ));
-        return Ok(Verdict {
-            status: Status::Error,
-            mismatches: vec![],
-            detail: Some(detail),
-            artifacts: vec![],
-            native: Some(NativeRecord {
-                exit_code: None,
-                stage_spans: spans,
-                cache_mode: Some("abi-store".into()),
-                cache_hits,
-                counters: sample_counters,
-                toolchain: abi_toolchain_axes(&exe_sha),
-                gaps: vec![],
-            }),
-        });
-    }
-    for (i, (got, want)) in reported_query_steps.iter().zip(expects.iter()).enumerate() {
-        match (&oracle.completion, got.outcome.as_str()) {
-            (Completion::Success, "ok") => {
-                if !got.diagnostics.is_empty() {
-                    mismatches.push(Mismatch {
-                        observation: format!("probe[{i}].outcome"),
-                        kind: "text",
-                        expected: "ok with zero diagnostics".into(),
-                        actual: format!(
-                            "ok carrying {} diagnostic(s) [{}]",
-                            got.diagnostics.len(),
-                            got.diagnostics
-                                .first()
-                                .map(|d| d.code.as_str())
-                                .unwrap_or("?")
-                        ),
-                        first_diff: None,
-                    });
-                }
-                // a successful query must be a REAL PE pass
-                if got.pe_exit != Some(0) {
-                    mismatches.push(Mismatch {
-                        observation: format!("probe[{i}].pe_exit"),
-                        kind: "text",
-                        expected: "0".into(),
-                        actual: format!("{:?}", got.pe_exit),
-                        first_diff: None,
-                    });
-                }
-            }
-            (
-                Completion::Error {
-                    stage,
-                    code,
-                    message,
-                },
-                "diags",
-            ) => {
-                let want_stage = stage.as_str();
-                let matched = got.diagnostics.iter().any(|d| {
-                    stage_of(&d.code) == want_stage
-                        && code.as_deref().map(|c| c == d.code).unwrap_or(true)
-                        && match message {
-                            Some(MessageMatcher::Exact(m)) => &d.message == m,
-                            Some(MessageMatcher::Contains(m)) => d.message.contains(m.as_str()),
-                            None => true,
-                        }
-                });
-                if !matched {
-                    mismatches.push(Mismatch {
-                        observation: format!("probe[{i}].diagnostics"),
-                        kind: "message",
-                        expected: format!(
-                            "a {}-stage diagnostic matching code={:?} message={:?}",
-                            want_stage,
-                            code.as_deref().unwrap_or("-"),
-                            message
-                        ),
-                        actual: got
-                            .diagnostics
-                            .iter()
-                            .map(|d| format!("{}: {}", stage_of(&d.code), d.message))
-                            .collect::<Vec<_>>()
-                            .join(" | "),
-                        first_diff: None,
-                    });
-                }
-            }
-            (Completion::Success, other) => {
-                mismatches.push(Mismatch {
-                    observation: format!("probe[{i}].outcome"),
-                    kind: "text",
-                    expected: "success".into(),
-                    actual: format!("{other} (cache={})", got.cache),
-                    first_diff: None,
-                });
-            }
-            (Completion::Error { .. }, other) => {
-                mismatches.push(Mismatch {
-                    observation: format!("probe[{i}].outcome"),
-                    kind: "text",
-                    expected: "a declared error completion".into(),
-                    actual: format!("{other} with zero matching diagnostics"),
-                    first_diff: None,
-                });
-            }
-        }
-        if let Some(want_cache) = &want.cache {
-            if &got.cache != want_cache {
-                mismatches.push(Mismatch {
-                    observation: format!("probe[{i}].cache"),
-                    kind: "text",
-                    expected: want_cache.clone(),
-                    actual: got.cache.clone(),
-                    first_diff: None,
-                });
-            }
-        }
-        if let Some(want_calls) = want.compute_calls {
-            if got.compute_calls != want_calls {
-                mismatches.push(Mismatch {
-                    observation: format!("probe[{i}].compute_calls"),
-                    kind: "text",
-                    expected: format!("{want_calls}"),
-                    actual: format!("{}", got.compute_calls),
-                    first_diff: None,
-                });
-            }
-        }
-        for inc in &want.stages_include {
-            if !got.stages.iter().any(|s| &s.name == inc) {
-                mismatches.push(Mismatch {
-                    observation: format!("probe[{i}].stages"),
-                    kind: "text",
-                    expected: format!("stage `{inc}` present"),
-                    actual: got
-                        .stages
-                        .iter()
-                        .map(|s| s.name.clone())
-                        .collect::<Vec<_>>()
-                        .join(","),
-                    first_diff: None,
-                });
-            }
-        }
     }
 
     let status = if mismatches.is_empty() {

@@ -968,7 +968,7 @@ fn run_abi_deck_case(
     completion: &str,
     leg: &str,
     extra_steps: &str,
-) -> auto_test_case::report::RunReport {
+) -> (auto_test_case::report::RunReport, PathBuf) {
     let root = temp_root(tag);
     let tail = format!(
         "adapter: \"probe\", action: \"run\", \
@@ -987,7 +987,9 @@ steps: [ {extra_steps}{{ op: \"query\" }} ] }}"
     std::fs::write(root.join("c.suite.ad"), doc.clone()).unwrap();
     std::fs::write(root.join("c.case.ad"), doc).unwrap();
     let out = out_of(&root, "out");
-    run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults()).expect("abi perf suite runs")
+    let report = run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults())
+        .expect("abi perf suite runs");
+    (report, out)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -998,7 +1000,7 @@ fn run_abi_deck_case_expect(
     leg: &str,
     steps: &str,
     expect_bodies: &[&str],
-) -> auto_test_case::report::RunReport {
+) -> (auto_test_case::report::RunReport, PathBuf) {
     let root = temp_root(tag);
     let tail = format!(
         "adapter: \"probe\", action: \"run\", options: {{ recipe: \"abi/interop-v1\", abi: {{ leg: \"{leg}\" }}, steps: [ {steps}{{ op: \"query\" }} ] }}"
@@ -1029,7 +1031,43 @@ case {{ schema: \"autolang.case/2\", id: \"aperf.case\",
     std::fs::write(root.join("c.suite.ad"), doc.clone()).unwrap();
     std::fs::write(root.join("c.case.ad"), doc).unwrap();
     let out = out_of(&root, "out");
-    run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults()).expect("abi perf suite runs")
+    let report = run_suite(&root.join("c.suite.ad"), &out, &Limits::defaults())
+        .expect("abi perf suite runs");
+    (report, out)
+}
+
+/// F-797-R4-09 (R9): collect the check's RAW per-request rows — written
+/// by the adapter BEFORE each next request ran — from the run's output
+/// tree.
+fn collect_request_rows(out_dir: &Path) -> Vec<serde_json::Value> {
+    fn walk(dir: &Path, found: &mut Vec<PathBuf>) {
+        if let Ok(rd) = std::fs::read_dir(dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    walk(&p, found);
+                } else if p
+                    .file_name()
+                    .is_some_and(|n| n == "abi-request-samples.jsonl")
+                {
+                    found.push(p);
+                }
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(out_dir, &mut files);
+    files.sort();
+    let mut rows = Vec::new();
+    for f in files {
+        for line in std::fs::read_to_string(&f).unwrap_or_default().lines() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            rows.push(serde_json::from_str(line).expect("raw request row decodes"));
+        }
+    }
+    rows
 }
 
 fn p95_of(xs: &mut Vec<f64>) -> f64 {
@@ -1066,7 +1104,7 @@ fn abi_recipe_formal_turnaround_hard_gates() {
     let raw_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/abi-formal-gates");
     let _ = std::fs::remove_dir_all(&raw_dir);
     std::fs::create_dir_all(&raw_dir).unwrap();
-    let mut append_jsonl = |line: &str| {
+    let append_jsonl = |line: &str| {
         use std::io::Write as _;
         let mut f = std::fs::OpenOptions::new()
             .create(true)
@@ -1106,7 +1144,7 @@ fn abi_recipe_formal_turnaround_hard_gates() {
             }
         })
         .collect();
-    let report = run_abi_deck_case_expect(
+    let (report, out_dir) = run_abi_deck_case_expect(
         "abiperf-be",
         ABI_DECK_TEXT,
         "\"success\"",
@@ -1115,9 +1153,19 @@ fn abi_recipe_formal_turnaround_hard_gates() {
         &expect_bodies,
     );
 
-    // ---- extract + persist EVERY raw sample BEFORE asserting --------
+    // ---- aggregate the RAW rows the adapter persisted per request --
+    // (each row was on disk BEFORE the next request ran; the gate only
+    // tags scenario/sample — nothing here re-derives per-sample facts)
+    let rows = collect_request_rows(&out_dir);
+    for (i, row) in rows.iter().enumerate() {
+        let mut tagged = row.clone();
+        tagged["scenario"] = serde_json::json!("body-edit");
+        tagged["sample"] = serde_json::json!(i);
+        append_jsonl(&tagged.to_string());
+    }
+
+    // ---- assertions (raw evidence is already on disk) ----------------
     let check = report.results.iter().find(|r| r.check_id == "c").unwrap();
-    let check_ok = check.status == Status::Pass;
     let native = check.native.as_ref().expect("native record");
     let counter = |k: &str| -> u64 {
         native
@@ -1127,82 +1175,35 @@ fn abi_recipe_formal_turnaround_hard_gates() {
             .map(|(_, v)| *v as u64)
             .unwrap_or(0)
     };
-    // walk the span stream: each `parent-request:query` opens a sample;
-    // the spans up to the next parent marker are that query's worker
-    // sub-spans (attribution only, never the gate).
-    struct Sample {
-        request_ms: f64,
-        stages: Vec<(String, u64)>,
-    }
-    let mut samples: Vec<Sample> = Vec::new();
-    let mut cur: Option<Sample> = None;
-    for (name, ms) in &native.stage_spans {
-        if let Some(step) = name.strip_prefix("parent-request:") {
-            if let Some(s) = cur.take() {
-                samples.push(s);
-            }
-            if step == "query" {
-                cur = Some(Sample {
-                    request_ms: *ms as f64,
-                    stages: Vec::new(),
-                });
-            }
-            continue;
-        }
-        if name == "parent-publish" {
-            continue;
-        }
-        if let Some(s) = cur.as_mut() {
-            s.stages.push((name.clone(), *ms));
-        }
-    }
-    if let Some(s) = cur.take() {
-        samples.push(s);
-    }
-    for (i, s) in samples.iter().enumerate() {
-        let stages = s
-            .stages
-            .iter()
-            .map(|(n, v)| format!("\"{n}\":{v}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let cache = native
-            .cache_hits
-            .get(i)
-            .map(|(_, c)| c.as_str())
-            .unwrap_or("-");
-        append_jsonl(&format!(
-            "{{\"scenario\":\"body-edit\",\"sample\":{i},\"ok\":{check_ok},\
-\"request_ms\":{:.1},\
-\"stages\":{{{stages}}},\
-\"cache\":\"{cache}\",\"compute_calls\":{},\
-\"peak_mem_bytes\":{},\"io_read_bytes\":{},\"io_write_bytes\":{},\
-\"hot_bytes\":{},\"scratch_disk_bytes\":{}}}",
-            s.request_ms,
-            counter(&format!("req_q{i}_compute")),
-            counter(&format!("req_q{i}_peak_mem_bytes")),
-            counter(&format!("req_q{i}_io_read_bytes")),
-            counter(&format!("req_q{i}_io_write_bytes")),
-            counter(&format!("req_q{i}_hot_bytes")),
-            counter(&format!("req_q{i}_scratch_disk_bytes")),
-        ));
-    }
-
-    // ---- assertions (evidence is already on disk) --------------------
+    assert_eq!(status_of(&report, "c"), Status::Pass);
     assert_eq!(
-        status_of(&report, "c"),
-        Status::Pass,
-        "body-edit gate case; native counters {:?}",
-        native.counters
+        rows.len(),
+        31,
+        "31 per-request raw rows (one per query, persisted before the next)"
     );
-    assert_eq!(samples.len(), 31, "31 query samples in the single case");
+    for (i, row) in rows.iter().enumerate() {
+        assert_eq!(row["op"], "query", "row {i}");
+        assert!(
+            row["ok"].as_bool().unwrap_or(false),
+            "row {i} judged ok: {row}"
+        );
+        assert!(
+            row["request_ms"].as_f64().unwrap_or(0.0) > 0.0,
+            "row {i} has a real acceptance-boundary wall"
+        );
+    }
     let compute: u64 = counter("compute_calls");
     assert_eq!(
         compute, 32,
         "compute = 31 callee emits + 1 C compile: {:?}",
         native.counters
     );
-    let mut body_times: Vec<f64> = samples.iter().map(|s| s.request_ms).collect();
+    // sample = the edit->result PAIR: parent-local edit wall + the
+    // request's full wall to its judged/persisted boundary
+    let mut body_times: Vec<f64> = rows
+        .iter()
+        .map(|r| r["edit_ms"].as_f64().unwrap_or(0.0) + r["request_ms"].as_f64().unwrap_or(0.0))
+        .collect();
     for (i, w) in body_times.iter().enumerate() {
         assert!(*w > 0.0, "sample {i} has a real parent-path wall");
     }
@@ -1212,48 +1213,33 @@ fn abi_recipe_formal_turnaround_hard_gates() {
     let bad = ABI_DECK_TEXT.replace("e:i64", "e:u32");
     let mut reject_times = Vec::new();
     for i in 0..30u32 {
-        let report = run_abi_deck_case(
+        let (report, out_dir) = run_abi_deck_case(
             &format!("abiperf-rj-{i}"),
             &bad,
             "{ stage: \"parse\", code: \"deck\" }",
             "c",
             "",
         );
-        // persist the sample BEFORE judging it: the request wall is the
-        // check's OWN parent-request:query span (deck parse diag inside
-        // the worker, published through the full parent path)
-        let ck = report.results.iter().find(|r| r.check_id == "c").unwrap();
-        let native = ck.native.as_ref().expect("native record");
-        let req_ms = native
-            .stage_spans
-            .iter()
-            .find(|(n, _)| n == "parent-request:query")
-            .map(|(_, v)| *v as f64)
-            .unwrap_or(0.0);
-        append_jsonl(&format!(
-            "{{\"scenario\":\"descriptor-reject\",\"sample\":{i},\"ok\":{},\"request_ms\":{:.1},\
-\"stages\":{{{}}},\"peak_mem_bytes\":{}}}",
-            ck.status == Status::Pass,
-            req_ms,
-            native
-                .stage_spans
-                .iter()
-                .filter(|(n, _)| !n.starts_with("parent-"))
-                .map(|(n, v)| format!("\"{n}\":{v}"))
-                .collect::<Vec<_>>()
-                .join(","),
-            native
-                .counters
-                .iter()
-                .find(|(n, _)| n == "worker_peak_mem_bytes")
-                .map(|(_, v)| *v)
-                .unwrap_or(0),
-        ));
+        // the adapter persisted the request row (full attribution:
+        // outcome/cache/compute/stages/meter/Job memory+I-O) BEFORE any
+        // assertion; tag + aggregate it
+        let rows = collect_request_rows(&out_dir);
+        assert_eq!(rows.len(), 1, "reject sample {i}: exactly one request row");
+        let row = &rows[0];
+        let mut tagged = row.clone();
+        tagged["scenario"] = serde_json::json!("descriptor-reject");
+        tagged["sample"] = serde_json::json!(i);
+        append_jsonl(&tagged.to_string());
+        let req_ms = row["request_ms"].as_f64().unwrap_or(0.0);
         reject_times.push(req_ms);
         assert_eq!(
             status_of(&report, "c"),
             Status::Pass,
             "reject sample {i} (declared error completion judged)"
+        );
+        assert!(
+            row["ok"].as_bool().unwrap_or(false),
+            "reject row {i} judged ok against the declared error completion"
         );
         assert!(req_ms > 0.0, "reject sample {i} has a real request wall");
     }
@@ -1262,7 +1248,7 @@ fn abi_recipe_formal_turnaround_hard_gates() {
     std::fs::write(
         raw_dir.join("summary.txt"),
         format!(
-            "C-leg per-request parent-path gates (each request carries the edited deck): body-edit P50/P95/P99 = {:.1}/{:.1}/{:.1} ms; reject P50/P95 = {:.1}/{:.1} ms (31/30 samples, raw JSONL with per-sample stages/resources beside)",
+            "C-leg per-request acceptance-boundary gates (each request carries the edited deck; span closes at judged+persisted): body-edit(edit+request) P50/P95/P99 = {:.1}/{:.1}/{:.1} ms; reject P50/P95 = {:.1}/{:.1} ms (31/30 samples; per-request raw rows persisted by the adapter before the next request, tagged copies beside)",
             p50_of(&mut body_times.clone()),
             be_p95,
             p99_of(&mut body_times.clone()),

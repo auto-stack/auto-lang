@@ -10,7 +10,7 @@
 //! The deck is DATA (the case's `atomdata` source): a frozen, tiny,
 //! worker-owned grammar. A case can never name an executable.
 
-use crate::cache::{autoabi_object_key, c_source_identity, produce_c_object, produce_with_cache};
+use crate::cache::{autoabi_object_key, produce_c_object, produce_with_cache};
 use crate::decl::{self, AbiScalar, BodyKind, FnDecl, MixInputs};
 use crate::emit::{emit_callee_suite, emit_caller_suite, SuiteCheck};
 use crate::layout::{self, REC_MIX};
@@ -71,6 +71,10 @@ pub struct MeterOut {
     pub scratch_peak_disk_bytes: u64,
     pub hot_bytes: u64,
     pub rejections: u32,
+    /// GC receipt facts (cumulative for the session).
+    pub gc_runs: u32,
+    pub gc_deleted_chunks: u32,
+    pub gc_freed_bytes: u64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -435,6 +439,13 @@ struct Session {
     /// F-797-R5-03: degraded store operations (corrupt block, unwritable
     /// store) — reported in the meter, never a panic.
     store_rejections: u32,
+    /// F-797-R4-10 (R9): cumulative GC receipt facts for this session —
+    /// the meter publishes them so reclamation is ASSERTABLE, not
+    /// assumed (a forced run below the water level legitimately reports
+    /// ran=false / deleted=0).
+    gc_runs: u32,
+    gc_deleted_chunks: u32,
+    gc_freed_bytes: u64,
     /// F-797-R4-10 (R5): bytes PRODUCED this session (emitted objects +
     /// compiled C) against the per-request budget (128MiB by contract;
     /// the TEST seam `ABI_TEST_PRODUCED_BUDGET_BYTES` shrinks it so the
@@ -715,18 +726,15 @@ fn execute_query(sess: &mut Session) -> StepOut {
             let cp = scratch.join("caller.obj");
             std::fs::write(&cp, &caller).expect("write caller obj");
             let src = manifest.join("cside/interop_callee.c");
-            // F-797-R4-07 (R8): the C object is cached by SOURCE
-            // identity; the REAL dependency closure (observed via
-            // -showIncludes, incl. system headers) is stored beside the
-            // object and re-verified on every hit.
-            let ident = match c_source_identity(&src) {
-                Ok(i) => i,
-                Err(e) => return infra_step(format!("source identity: {e}"), compute_calls, sess),
-            };
+            // F-797-R4-07 (R8/R9) + F-797-R9-01: the C object is cached
+            // by source identity under the CURRENT target/toolchain;
+            // the observed dependency closure AND the search-domain
+            // facts (src dir, include dir, listings) are stored beside
+            // the object and re-verified on every hit.
             if over_budget(sess) {
                 return resource_step(budget_msg(sess), compute_calls, sess);
             }
-            let c_obj = match produce_c_object(&store, &ident, || {
+            let c_obj = match produce_c_object(&store, &src, &manifest.join("cside"), || {
                 compute_calls += 1;
                 let obj = scratch.join("consumer-once.obj");
                 let deps = crate::ctool::compile_c_with_deps(&src, &manifest.join("cside"), &obj)
@@ -750,14 +758,10 @@ fn execute_query(sess: &mut Session) -> StepOut {
         }
         "c" => {
             let src = manifest.join("cside/caller_main.c");
-            let ident = match c_source_identity(&src) {
-                Ok(i) => i,
-                Err(e) => return infra_step(format!("source identity: {e}"), compute_calls, sess),
-            };
             if over_budget(sess) {
                 return resource_step(budget_msg(sess), compute_calls, sess);
             }
-            let c_obj = match produce_c_object(&store, &ident, || {
+            let c_obj = match produce_c_object(&store, &src, &manifest.join("cside"), || {
                 compute_calls += 1;
                 let obj = scratch.join("consumer-once.obj");
                 let deps = crate::ctool::compile_c_with_deps(&src, &manifest.join("cside"), &obj)
@@ -824,20 +828,32 @@ fn execute_query(sess: &mut Session) -> StepOut {
     }
     {
         let hot = dir_size(&sess.store_root.join("blocks"));
-        // F-797-R4-10 (R8): the hot-set budget GC; the TEST seam
-        // `ABI_TEST_GC_EVERY_STEP` forces a GC pass on every successful
-        // query so concurrent-worker/GC full chains are exercisable by
-        // real workers (production reads the env only).
-        if hot > 8 * 1024 * 1024 || std::env::var("ABI_TEST_GC_EVERY_STEP").is_ok() {
-            if let Err(e) = ac_artifact_probe::store::run_gc(
+        // F-797-R4-10 (R8/R9): the hot-set budget GC. Water levels are
+        // the frozen 8/6MiB by contract; the TEST seams
+        // `ABI_TEST_GC_{HIGH,LOW}_BYTES` shrink them (and
+        // `ABI_TEST_GC_EVERY_STEP` forces a pass per query) so REAL
+        // reclamation above the water level is exercisable end to end —
+        // the receipt (ran/deleted/freed) is accumulated into the meter,
+        // making "GC actually reclaimed" assertable.
+        let env_u64 = |k: &str| std::env::var(k).ok().and_then(|v| v.parse::<u64>().ok());
+        let high = env_u64("ABI_TEST_GC_HIGH_BYTES").unwrap_or(8 * 1024 * 1024);
+        let low = env_u64("ABI_TEST_GC_LOW_BYTES")
+            .unwrap_or(6 * 1024 * 1024)
+            .min(high * 3 / 4);
+        if hot > high || std::env::var("ABI_TEST_GC_EVERY_STEP").is_ok() {
+            match ac_artifact_probe::store::run_gc(
                 &store,
-                ac_artifact_probe::store::GcConfig {
-                    high: 8 * 1024 * 1024,
-                    low: 6 * 1024 * 1024,
-                },
+                ac_artifact_probe::store::GcConfig { high, low },
             ) {
-                sess.store_rejections += 1;
-                eprintln!("# abi-worker: budget GC failed: {e:?}");
+                Ok(rx) => {
+                    sess.gc_runs += u32::from(rx.ran);
+                    sess.gc_deleted_chunks += rx.deleted_chunks as u32;
+                    sess.gc_freed_bytes += rx.freed_bytes;
+                }
+                Err(e) => {
+                    sess.store_rejections += 1;
+                    eprintln!("# abi-worker: budget GC failed: {e:?}");
+                }
             }
         }
     }
@@ -904,6 +920,9 @@ fn meter(sess: &Session) -> MeterOut {
         scratch_peak_disk_bytes: scratch_peak,
         hot_bytes: dir_size(&sess.store_root.join("blocks")),
         rejections: sess.rejections + sess.store_rejections,
+        gc_runs: sess.gc_runs,
+        gc_deleted_chunks: sess.gc_deleted_chunks,
+        gc_freed_bytes: sess.gc_freed_bytes,
     }
 }
 
@@ -981,6 +1000,9 @@ fn execute(req: &WorkerRequest) -> Result<OkOut, DiagOut> {
         step_index: 0,
         rejections: 0,
         store_rejections: 0,
+        gc_runs: 0,
+        gc_deleted_chunks: 0,
+        gc_freed_bytes: 0,
         produced_bytes: 0,
         budget_cap: std::env::var("ABI_TEST_PRODUCED_BUDGET_BYTES")
             .ok()
