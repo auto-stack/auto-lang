@@ -467,6 +467,8 @@ stage: new；outcome: pass（文档合同预检，非实现验收）。用户明
 
 2026-10-20 stage:review | review_scope:affected-final R20 | PLAN-798:r7 | outcome:pass | reviewed_commit:216d139aba888760963d12a5f2cbe693489b06c4；R19完整结论沿用 | 暖路径优化残留unused import由merge日志识别，唯一代码变更为删除该导入及rustfmt折行，无函数/数据/阈值/依赖变化；修正R19新增告警判断，原日志保留。[R20](attachments/798/merge-r7/review-r20.md) | 原门禁5320/163/105/30全通过，但为新冻结提交重新执行merge-owned整档；当前reviewed10/11、T10 pending。
 
+2026-10-20 stage:review | review_scope:affected-final R21 | PLAN-798:r7 | outcome:pass | reviewed_commit:216d139aba888760963d12a5f2cbe693489b06c4；root依赖锁F1F9855F...与main一致；实验锁未变 | 主检出实际根锁下typecheck通过，正式7/7及30样本PASS，edit P95=814.6ms/sig=671.4ms；编辑raw独立重算、其他历史证据按原身份保留 | [R21实际依赖复核](attachments/798/merge-r7/review-r21.md) | reviewed10/11；R19完整矩阵/R20纯import清理结论沿用。merge-owned四档在此pass后重跑，Spec/ledger/ff/归档/清理仍pending。
+
 ## 10. 待澄清事项
 
 **最新周转口径已澄清**：用户保留P95<1s；798按现有真实入口/冻结负载先达标，未来热重载新增工作以成本清单辅助预估，实际接入后重测。早期必须保留相关身份/依赖/安装/生命周期接缝，但本轮不新增完整热重载交付项。见[决策记录](attachments/798/turnaround-policy-20261020/decision.md)及Design43 §6.3。当前sig门未通过的事实与T07状态不变；没有将其改为均值门或用估算授PASS。
