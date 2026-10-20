@@ -80,11 +80,11 @@ mod plan808_core_cut {
             );
         }
         // PLAN-814: set_app_window_px 兼容门面已迁上层（调用方直连
-        // ui::terminal_provider），term_engine 仅余 1 个 cfg(test) 的窗口
-        // 投影读 helper——合法面 2 → 1。
+        // ui::terminal_provider）；R5 卫生批又移除了恒不编译的
+        // cfg(test) 窗口投影读 helper 死副本（SDK 无 ui 模块，声明即
+        // 编译红）——合法面 2 → 1 → 0。codec-only 性质只强不弱。
         let ui_refs: Vec<&str> = src.lines().filter(|l| l.contains("crate::ui::")).collect();
-        assert_eq!(ui_refs.len(), 1, "facade-only UI refs: {ui_refs:?}");
-        assert!(ui_refs.iter().all(|l| l.contains("terminal_provider")));
+        assert!(ui_refs.is_empty(), "term_engine must be codec-only: {ui_refs:?}");
     }
 
     #[test]

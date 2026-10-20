@@ -1676,8 +1676,8 @@ fn schema_drift_fence() {
         );
         return;
     }
-    let schema_rs = read("src/aura/schema.rs");
-    let vue_rs = read("src/ui_gen/vue.rs");
+    let schema_rs = read("../auto-ui-compiler/src/aura/schema.rs");
+    let vue_rs = read("../auto-ui-compiler/src/ui_gen/vue.rs");
     let vb_rs = read("src/ui/aura_view_builder.rs");
     let render_rs = read("src/ui/render_support.rs");
     let aura_at = read("../../docs/schema/aura.at");
@@ -1764,7 +1764,7 @@ fn schema_drift_fence() {
     );
     let parser_tags = &parser_tables[0];
 
-    let a2ui_export_rs = read("src/a2ui/export.rs");
+    let a2ui_export_rs = read("../auto-ui-compiler/src/a2ui/export.rs");
     let a2ui_export_tables = scan_match_tables(&a2ui_export_rs);
     assert_eq!(
         a2ui_export_tables.len(),
@@ -1774,7 +1774,7 @@ fn schema_drift_fence() {
         a2ui_export_tables.len()
     );
     let a2ui_export = &a2ui_export_tables[0];
-    let a2ui_import = scan_tag_literals(&read("src/a2ui/import.rs"));
+    let a2ui_import = scan_tag_literals(&read("../auto-ui-compiler/src/a2ui/import.rs"));
 
     // ---- P1:别名归并 + 生成输入 ----
     let rs_elements = extract_rs_elements(&schema_rs);
@@ -1830,8 +1830,8 @@ fn schema_drift_fence() {
     // 第 11 源:活注册表 spec(ui_gen/widget/registry.rs)—— 其他表未登记的
     // (chart/scroll-area/toast 家族等)入册;Pascal spec 名与 kebab 别名同折叠合并
     let (registry_names, _vue_mappings, _registry_imported) =
-        scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
-    let registry_vue = scan_registry_vue(&read("src/ui_gen/widget/registry.rs"));
+        scan_live_registry(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
+    let registry_vue = scan_registry_vue(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
     let carried_vue = scan_aura_at_vue(&aura_at);
     let other_fold: BTreeSet<String> =
         prod_union.iter().map(|t| fold_key(t)).collect();
@@ -1952,7 +1952,7 @@ fn schema_drift_fence() {
     // —— spec 名(含别名)折叠后必须被 schema 覆盖;vue 映射数变更是显式事件。
     {
         let (registry_names, _vue_mappings, _imported) =
-            scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
+            scan_live_registry(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
         // P4-4:手写 vue insert 已退役(overlay 从 schema 重建)。
         let schema = auto_lang::aura::default_schema_cached().expect("schema");
         assert_eq!(
@@ -2285,7 +2285,7 @@ fn queue_coverage_drift_fence() {
     assert!(
         unregistered.is_empty(),
         "aura.at 新增 element 未在 element_coverage 登记:\n  {}\n\
-         登记路径:crates/auto-lang/src/aura/element_coverage.rs\n\
+         登记路径:crates/auto-ui-compiler/src/aura/element_coverage.rs\n\
          (默认 not-yet/not-consumed 即过——登记动作不可省)",
         unregistered.iter().cloned().collect::<Vec<_>>().join(", ")
     );
