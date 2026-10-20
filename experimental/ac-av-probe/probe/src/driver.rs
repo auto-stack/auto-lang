@@ -248,6 +248,11 @@ impl Driver {
         // (dropped at request end); the manifest's required-data edges
         // extend the same protection to future restores.
         let mut held_leases: Vec<ac_artifact_probe::store::Lease> = Vec::new();
+        // F798-R15-04 (warm path): sidecar artifact ids captured from the
+        // reads the rebind cascade performs anyway — manifest edges reuse
+        // them instead of one extra store read per unit.
+        let mut sidecar_art_ids: std::collections::BTreeMap<String, String> =
+            std::collections::BTreeMap::new();
         if let Some(store) = self.store.as_ref() {
             for info in infos.iter_mut() {
                 // F798-R6-01: the hit expects the artifact's envelope to
@@ -882,8 +887,12 @@ impl Driver {
                     if let Some(store) = self.store.as_ref() {
                         let skey = sidecar_key(&owner, &name, snapshot);
                         let sexpect = EnvelopeIdentity::sidecar(&owner, snapshot);
-                        match get_enveloped_opt(store, &skey, "A08", &sexpect) {
-                            Ok(Some(sp)) => {
+                        match crate::cache::get_enveloped_with_id(store, &skey, "A08", &sexpect) {
+                            Ok(Some((sp_artifact, sp))) => {
+                                // F798-R15-04 (warm-path): the sidecar's
+                                // artifact id comes from THIS read — the
+                                // manifest edge loop never re-reads it.
+                                sidecar_art_ids.insert(name.clone(), sp_artifact);
                                 if let Ok(spans) = decode_sidecar(&sp) {
                                     merge_spans(unit, &spans);
                                     // F798-R15-03: decodable is not
@@ -1116,12 +1125,19 @@ impl Driver {
             // too — edge the current snapshot's sidecar artifacts so a
             // rooted/leased manifest keeps the whole closure restorable.
             for u in infos.iter() {
-                let skey = sidecar_key(&owner, &u.name, snapshot);
-                if let Ok(Some(art)) = store.get_artifact("A08", &skey) {
-                    edges.push((
-                        art.artifact_id.clone(),
-                        ac_artifact_probe::identity::RefKind::RequiredData,
-                    ));
+                let sid = match sidecar_art_ids.get(&u.name) {
+                    // Warm path: captured from the cascade's own read.
+                    Some(id) => Some(id.clone()),
+                    // Edit/fallback path (this unit lowered or re-derived
+                    // without a read): resolve now — rare, not per-warm-hit.
+                    None => store
+                        .get_artifact("A08", &sidecar_key(&owner, &u.name, snapshot))
+                        .ok()
+                        .flatten()
+                        .map(|a| a.artifact_id),
+                };
+                if let Some(id) = sid {
+                    edges.push((id, ac_artifact_probe::identity::RefKind::RequiredData));
                 }
             }
             if let Err(e) = put_enveloped(
