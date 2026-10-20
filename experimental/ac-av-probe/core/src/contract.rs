@@ -17,7 +17,10 @@ use std::time::Duration;
 /// Logical schema identity of the Typed MIR produced by this probe.
 pub const MIR_SCHEMA: &str = "auto.mir.av-probe/1";
 /// Wire schema identity of the ABC format emitted/consumed by this probe.
-pub const ABC_SCHEMA: &str = "auto.abc.av-probe/1";
+/// /2 (F798-R12-03): the wire carries the unit/module KIND bit
+/// (`FLAG_IS_UNIT`) as load-bearing semantics — kind-less /1 artifacts are
+/// a different format generation and can never be read as /2 payloads.
+pub const ABC_SCHEMA: &str = "auto.abc.av-probe/2";
 /// The one execution profile this probe implements.
 pub const AV_PROFILE: &str = "av.core-i32/1";
 /// Producer identity used in store envelopes and keys (PLAN-798 §5.4).
@@ -34,7 +37,9 @@ pub struct AbcSemanticsVersion(pub u32);
 pub struct AvSemanticsVersion(pub u32);
 
 pub const MIR_SEMANTICS: MirSemanticsVersion = MirSemanticsVersion(1);
-pub const ABC_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(1);
+/// 2 (F798-R12-03): ABC semantics distinguish unit vs complete-module
+/// kind; 1 = the kind-less generation whose artifacts must miss/reject.
+pub const ABC_SEMANTICS: AbcSemanticsVersion = AbcSemanticsVersion(2);
 pub const AV_SEMANTICS: AvSemanticsVersion = AvSemanticsVersion(1);
 
 /// Capability that admits the closed test-only trace intrinsic set

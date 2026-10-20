@@ -26,7 +26,13 @@ use crate::mir::*;
 // ---------------------------------------------------------------------------
 
 pub const ABC_MAGIC: &[u8; 4] = b"AVAB";
-pub const ABC_VERSION: u16 = 1;
+/// 2 (F798-R12-03): the kind-bit generation. Version 1 artifacts carry no
+/// `FLAG_IS_UNIT` and are a DIFFERENT format generation — decoding one as
+/// the current wire would silently relabel a kind-less unit payload as a
+/// complete module, so version 1 is an unsupported-version rejection, and
+/// the cache keys/envelopes carry the /2 schema so old artifacts miss
+/// deterministically instead of being read in place.
+pub const ABC_VERSION: u16 = 2;
 pub const ABC_PROFILE_CORE_I32: u16 = 1;
 
 // opcodes

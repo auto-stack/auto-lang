@@ -26,7 +26,10 @@ use ac_artifact_probe::codec::ChunkKind;
 use ac_artifact_probe::identity::QueryKey;
 use ac_artifact_probe::schema::{LayerCoverage, LayerSpec, Regeneration};
 use ac_artifact_probe::store::{LoadedArtifact, ManagedStore, PutRequest, StoreError};
-use auto_av_core::contract::{fnv1a64_parts, ABC_SCHEMA, AV_PROFILE, MIR_SCHEMA, PRODUCER_ID};
+use auto_av_core::contract::{
+    fnv1a64_parts, ABC_SCHEMA, ABC_SEMANTICS, AV_PROFILE, AV_SEMANTICS, MIR_SCHEMA, MIR_SEMANTICS,
+    PRODUCER_ID,
+};
 use auto_av_core::mir::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -52,6 +55,9 @@ pub const MIR_LAYER: LayerSpec = LayerSpec {
         "mir-schema",
         "mir-semantics",
         "av-semantics",
+        // F798-R12-03: MIR units ride the ABC wire codec — the codec
+        // generation is a key axis so kind-less /1 payloads miss.
+        "abc-codec",
         "capabilities-config",
     ],
     ref_kinds: &["provenance"],
@@ -64,7 +70,7 @@ pub const MIR_LAYER: LayerSpec = LayerSpec {
 pub const ABC_LAYER: LayerSpec = LayerSpec {
     id: "A09",
     name: "backend-object (plan798 ABC units + module manifest)",
-    schema_id: "ac798/a09-abc/v1",
+    schema_id: "ac798/a09-abc/v2",
     producer: PRODUCER_ID,
     consumers: &["av executor closure assembly"],
     key_inputs: &[
@@ -1170,8 +1176,12 @@ pub fn mir_unit_key(owner: &str, unit: &str, body_fp: &str, caps_fp: &str) -> Qu
             ("profile".into(), AV_PROFILE.into()),
             ("body-sig".into(), body_fp.into()),
             ("mir-schema".into(), MIR_SCHEMA.into()),
-            ("mir-sem".into(), "1".into()),
-            ("av-sem".into(), "1".into()),
+            ("mir-sem".into(), MIR_SEMANTICS.0.to_string()),
+            ("av-sem".into(), AV_SEMANTICS.0.to_string()),
+            // F798-R12-03: the MIR unit payload is ABC-wire-encoded; the
+            // codec generation belongs to the key so kind-less /1
+            // artifacts can never be restored under a /2 lookup.
+            ("abc-codec".into(), ABC_SCHEMA.into()),
             ("caps".into(), caps_fp.into()),
         ],
     )
@@ -1187,8 +1197,8 @@ pub fn abc_unit_key(owner: &str, unit: &str, body_fp: &str, caps_fp: &str) -> Qu
             ("profile".into(), AV_PROFILE.into()),
             ("body-sig".into(), body_fp.into()),
             ("abc-codec".into(), ABC_SCHEMA.into()),
-            ("abc-sem".into(), "1".into()),
-            ("av-sem".into(), "1".into()),
+            ("abc-sem".into(), ABC_SEMANTICS.0.to_string()),
+            ("av-sem".into(), AV_SEMANTICS.0.to_string()),
             ("caps".into(), caps_fp.into()),
         ],
     )

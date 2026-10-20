@@ -861,3 +861,89 @@ fn av_cache_restore_unary_trap_requires_span() {
     );
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F798-R12-03 (K14-06): kind-less /1 wire artifacts are a DIFFERENT format
+/// generation. Raw /1 bytes face a controlled unsupported-version
+/// rejection; a stale payload seeded under a CURRENT key is a deterministic
+/// miss-rebuild — never read in place as new-semantics bytes, never a hard
+/// error; the stale row survives (store conflict semantics) while the
+/// request serves the freshly re-verified rebuild.
+#[test]
+fn av_cache_kindless_v1_wire_isolated() {
+    let src = "fn main() int { return 7 }";
+    let c = auto_ac_prototype::source::compile_scalar_source(src, "legacy.at", &[]).unwrap();
+    let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+    // Forge a genuine /1 artifact: current encode, version field back to 1,
+    // kind bit cleared, FNV trailer recomputed — the exact byte shape the
+    // pre-R12 writer persisted for a unit.
+    let mut unit = cache::split_units(&m).unwrap().remove(0);
+    unit.funcs[0].spans.clear();
+    unit.funcs[0].source_snapshot = 0;
+    let mut old = auto_av_core::encode_abc(&unit).unwrap().to_flat();
+    old[4..6].copy_from_slice(&1u16.to_le_bytes());
+    let flags = u16::from_le_bytes([old[8], old[9]]) & !auto_av_core::abc::FLAG_IS_UNIT;
+    old[8..10].copy_from_slice(&flags.to_le_bytes());
+    let end = old.len() - 8;
+    let sum = fnv1a64(&old[..end]);
+    old[end..].copy_from_slice(&sum.to_le_bytes());
+
+    // Raw: unsupported-version rejection (controlled, never a panic).
+    let err = auto_av_core::decode_abc(&old).unwrap_err();
+    assert_eq!(err.code(), "abc.decode.version");
+
+    // Managed: seed the stale payload under the CURRENT key + envelope (the
+    // exact ambiguity K14-06 forbids reading in place) and drive requests.
+    let root = tmpdir("legacy-kind");
+    let h = &c.checked.bundle().modules[0];
+    let owner = h.id_text.clone();
+    let (name, body) = h
+        .defs
+        .iter()
+        .find_map(|d| match &d.kind {
+            auto_ac_prototype::hir::DefKind::Function { body, .. } => {
+                Some((d.id_text.clone(), *body))
+            }
+            _ => None,
+        })
+        .unwrap();
+    let fp = auto_av_probe::semrefs::content_version_of(&cache::canonical_hir_function(h, body));
+    let key = abc_unit_key(&owner, &name, &fp, &caps_fingerprint(&[]));
+    let store = open_store(&root).unwrap();
+    put_enveloped(
+        &store,
+        &key,
+        "A09",
+        &EnvelopeIdentity::abc_bound(&owner, &name, &fp),
+        &old,
+        vec![],
+        Some("legacy"),
+    )
+    .unwrap();
+    drop(store);
+
+    let mut d = Driver::with_store(&root, "legacy").unwrap();
+    let r = d.request(src, "d_main", &[]);
+    assert!(r.ok(), "stale payload rebuilds and serves: {:?}", r.diag);
+    assert_eq!(r.value_i32(), Some(7));
+    assert_eq!(
+        *r.counters.get("cache_hit_abc").unwrap_or(&0),
+        0,
+        "the stale row is never a hit"
+    );
+    assert_eq!(*r.counters.get("cache_stale_abc_miss").unwrap_or(&0), 1);
+    assert_eq!(*r.counters.get("abc_units_emitted").unwrap_or(&0), 1);
+    assert_eq!(
+        *r.counters.get("cache_stale_rebuild_conflict").unwrap_or(&0),
+        1,
+        "re-persisting over the stale row conflicts and is tolerated"
+    );
+    // Deterministic replay: the stale row survives (never overwritten in
+    // place), so a second request stale-misses and rebuilds identically.
+    let r2 = d.request(src, "d_main", &[]);
+    assert!(r2.ok(), "{:?}", r2.diag);
+    assert_eq!(r2.value_i32(), Some(7));
+    assert_eq!(*r2.counters.get("cache_hit_abc").unwrap_or(&0), 0);
+    assert_eq!(*r2.counters.get("cache_stale_abc_miss").unwrap_or(&0), 1);
+    drop(d);
+    let _ = std::fs::remove_dir_all(&root);
+}

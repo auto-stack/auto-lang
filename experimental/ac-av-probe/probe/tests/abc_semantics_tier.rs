@@ -4,7 +4,8 @@
 use auto_av_core::contract::{ExecOutcome, ResourceKind, TrapKind, Value};
 use auto_av_core::mir::*;
 use auto_av_core::{
-    decode_abc, encode_abc, execute, verify_abc, verify_mir, CancelFlag, ExecLimits,
+    decode_abc, encode_abc, execute, verify_abc, verify_abc_bytes, verify_mir, CancelFlag,
+    ExecLimits,
 };
 use auto_av_probe::driver::Driver;
 use auto_av_probe::hir_adapter::lower_checked;
@@ -98,7 +99,7 @@ fn abc_codec_rejects_unknown_version_opcode_and_illegal_bool() {
     // guessing byte offsets in real encodings.
     let mut o: Vec<u8> = Vec::new();
     o.extend_from_slice(b"AVAB");
-    o.extend_from_slice(&1u16.to_le_bytes()); // version
+    o.extend_from_slice(&auto_av_core::abc::ABC_VERSION.to_le_bytes()); // version
     o.extend_from_slice(&1u16.to_le_bytes()); // profile
     o.extend_from_slice(&0u16.to_le_bytes()); // flags
     o.extend_from_slice(&0u16.to_le_bytes()); // reserved
@@ -378,7 +379,11 @@ fn abc_kind_survives_roundtrip() {
         "Success { value: I32(42), steps: 6 }",
         "the self-call module executes through the round-trip"
     );
-    // A split unit round-trips as a unit.
+    // A split unit round-trips as a unit. (This self-call shape is not a
+    // VALID unit — units address callees through imports — so the kind
+    // round-trip is asserted at the codec; the unit EXECUTION credential
+    // is pinned by abc_unit_credential_split_at_public_loader on a legal
+    // unit shape, F798-R12-02.)
     let units = auto_av_probe::cache::split_units(&m).unwrap();
     let _ = units; // single function: unit split equals module shape here;
     let mut u = m.clone();
@@ -391,4 +396,38 @@ fn abc_kind_survives_roundtrip() {
     let r = d.request(src, "d_main", &[]);
     assert!(r.ok(), "driver fresh request executes: {:?}", r.diag);
     assert_eq!(r.value_i32(), Some(42));
+}
+
+/// F798-R12-02 (K14-02/K14-04): the unit/complete-module credential split
+/// at the PUBLIC loader — a zero-param i32 unit (a payload that would
+/// satisfy every complete-module entry rule) verifies but never executes,
+/// while the identical body declared a COMPLETE module executes; a legal
+/// kind declaration is judged by the complete-module rules, not rejected
+/// for the flip.
+#[test]
+fn abc_unit_credential_split_at_public_loader() {
+    let src = "fn main() int { return 7 }";
+    let c = auto_ac_prototype::source::compile_scalar_source(src, "unit-admit.at", &[]).unwrap();
+    let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+    let cancel = CancelFlag::new(false);
+    for (is_unit, executable_want) in [(true, false), (false, true)] {
+        let mut k = m.clone();
+        k.is_unit = is_unit;
+        let wire = encode_abc(&k).unwrap().to_flat();
+        let loaded = verify_abc_bytes(&wire, &k.owner)
+            .unwrap_or_else(|e| panic!("kind={} verifies: {:?}", is_unit, e));
+        assert_eq!(loaded.executable(), executable_want, "kind={}", is_unit);
+        let (out, _) = execute(&loaded, &ExecLimits::default(), &cancel);
+        if is_unit {
+            assert!(
+                matches!(&out, ExecOutcome::Infra(msg) if msg.contains("unit kind")),
+                "unit never dispatches: {out:?}"
+            );
+        } else {
+            assert!(
+                matches!(out, ExecOutcome::Success { .. }),
+                "complete-module control executes: {out:?}"
+            );
+        }
+    }
 }

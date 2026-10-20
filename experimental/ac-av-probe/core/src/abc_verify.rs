@@ -31,11 +31,13 @@ impl std::fmt::Display for AbcAdmissionError {
 }
 
 /// Verified module credential. `executable` distinguishes a RE-VERIFIABLE
-/// UNIT from an EXECUTABLE CLOSURE (F798-R6-02): any `Call` targeting an
-/// import (pending unit linkage, or an intrinsically host-side symbol)
-/// means the module still needs closure assembly/resolution — the
-/// executor refuses it instead of running into "unresolved import" infra
-/// mid-dispatch. AV executes ONLY executable closures.
+/// UNIT from an EXECUTABLE CLOSURE (F798-R6-02 + F798-R12-02): a unit kind
+/// (or any `Call` targeting an import — pending unit linkage, or an
+/// intrinsically host-side symbol) means the module still needs closure
+/// assembly/resolution — the executor refuses it instead of running into
+/// "unresolved import" infra mid-dispatch. AV executes ONLY executable
+/// closures; the unit→closure conversion is the driver's closure assembly
+/// (whole-module encode → this verifier), never a flag flip.
 #[derive(Clone, Debug)]
 pub struct LoadedModule {
     checked: CheckedMir,
@@ -94,22 +96,30 @@ pub fn verify_abc(
     }
     let checked =
         verify_mir_with_deadline(&module, deadline()).map_err(AbcAdmissionError::Verify)?;
-    // Executable-closure credential (F798-R6-02): a Call on ANY import —
-    // pending `fn:` unit linkage or a host-side symbol — marks the module
-    // as a re-verifiable unit, not an executable closure.
-    let executable = !module.funcs.iter().any(|f| {
-        f.blocks.iter().any(|b| {
-            b.instrs.iter().any(|i| {
-                matches!(
-                    i,
-                    crate::mir::MirInstr::Call {
-                        callee: crate::mir::CalleeRef::Import(_),
-                        ..
-                    }
-                )
+    // Executable-closure credential (F798-R6-02 + F798-R12-02): the
+    // credential admits EXECUTION only for a COMPLETE closure —
+    //   * the module must declare complete-module KIND (a re-verifiable
+    //     UNIT is verifiable and cacheable but is never an executable
+    //     entry until closure assembly links it into a whole module), and
+    //   * no `Call` may target an import (pending unit linkage or a
+    //     host-side symbol — the closure must be resolved).
+    // Every public entry (raw bytes, hand-built DecodedAbc, driver closure,
+    // restore) funnels through this one constructor, so the unit/complete
+    // split is uniform across all of them.
+    let executable = !module.is_unit
+        && !module.funcs.iter().any(|f| {
+            f.blocks.iter().any(|b| {
+                b.instrs.iter().any(|i| {
+                    matches!(
+                        i,
+                        crate::mir::MirInstr::Call {
+                            callee: crate::mir::CalleeRef::Import(_),
+                            ..
+                        }
+                    )
+                })
             })
-        })
-    });
+        });
     Ok(LoadedModule {
         checked,
         av_semantics: AV_SEMANTICS,

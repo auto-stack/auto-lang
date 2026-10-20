@@ -35,6 +35,30 @@ pub struct StageDiag {
     pub message: String,
 }
 
+/// F798-R12-03: is this cache error a same-key-different-content store
+/// CONFLICT (the store never overwrites; the old row survives)? Tolerated
+/// only for re-persisting a unit this request rebuilt over a stale
+/// payload — never for a first publish or an unrelated writer.
+fn is_store_conflict(e: &crate::cache::CacheError) -> bool {
+    matches!(
+        e,
+        crate::cache::CacheError::Store(ac_artifact_probe::store::StoreError::Conflict { .. })
+    )
+}
+
+/// F798-R12-03 (K14-06): O(1) format-generation gate for a cached payload.
+/// The kind-ambiguity that needs isolating is exactly the WIRE GENERATION:
+/// a kind-less /1 artifact under a /2 key must never be read in place.
+/// A current-generation payload cannot be kind-ambiguous (the /2 flag
+/// field has definite semantics either way) — its full decode and deep
+/// admission still happen at the closure stage, where a genuinely corrupt
+/// or tampered payload is a controlled rejection.
+fn payload_is_current_generation(payload: &[u8]) -> bool {
+    payload.len() >= 6
+        && payload[..4] == *auto_av_core::abc::ABC_MAGIC
+        && u16::from_le_bytes([payload[4], payload[5]]) == auto_av_core::abc::ABC_VERSION
+}
+
 /// Terminal state of one request.
 #[derive(Clone, Debug)]
 pub struct RequestOutcome {
@@ -213,6 +237,12 @@ impl Driver {
         let mut staging_now: usize = 0;
         let mut staging_peak: usize = 0;
         let mut verify_analysis_bytes: usize = 0;
+        // F798-R12-03: units whose cached payload failed to DECODE under
+        // the current wire generation (e.g. a kind-less /1 artifact under
+        // a /2 key). They rebuild this request; re-persisting over the
+        // stale row may Conflict — tolerated, never a request failure.
+        let mut stale_rebuilds: std::collections::BTreeSet<String> =
+            std::collections::BTreeSet::new();
         if let Some(store) = self.store.as_ref() {
             for info in infos.iter_mut() {
                 // F798-R6-01: the hit expects the artifact's envelope to
@@ -223,6 +253,19 @@ impl Driver {
                 let key = abc_unit_key(&owner, &info.name, &info.fp, &caps_fp);
                 match get_enveloped_opt(store, &key, "A09", &expect) {
                     Ok(Some(payload)) => {
+                        // F798-R12-03 (K14-06): a payload of a DIFFERENT
+                        // wire generation (e.g. a kind-less /1 artifact
+                        // under a /2 key) is a deterministic STALE MISS —
+                        // never read in place as new-semantics bytes and
+                        // never a hard error: this unit rebuilds from the
+                        // current source and is re-verified through the
+                        // real pipeline. Current-generation payloads deep-
+                        // decode at closure assembly (tamper = rejection).
+                        if !payload_is_current_generation(&payload) {
+                            obs.counter("cache_stale_abc_miss", 1);
+                            stale_rebuilds.insert(info.name.clone());
+                            continue;
+                        }
                         hits += 1;
                         staging_now += payload.len();
                         staging_peak = staging_peak.max(staging_now);
@@ -278,6 +321,17 @@ impl Driver {
                     Ok(Some(payload)) => {
                         staging_now += payload.len();
                         staging_peak = staging_peak.max(staging_now);
+                        if !payload_is_current_generation(&payload) {
+                            // F798-R12-03 (K14-06): an MIR unit payload of
+                            // a different wire generation is a deterministic
+                            // stale miss — this unit re-lowers and
+                            // re-verifies from the current source (never
+                            // read in place).
+                            obs.counter("cache_stale_mir_miss", 1);
+                            stale_rebuilds.insert(info.name.clone());
+                            remaining.push(idx);
+                            continue;
+                        }
                         let decoded = match decode_abc(&payload) {
                             Ok(d) => d,
                             Err(e) => {
@@ -503,16 +557,25 @@ impl Driver {
                         vec![],
                         Some(&self.project),
                     ) {
-                        return (
-                            Some(StageDiag {
-                                stage: "cache".to_string(),
-                                code: "cache.put".to_string(),
-                                message: format!("MIR unit `{}`: {}", info.name, e),
-                            }),
-                            None,
-                            vec![],
-                            None,
-                        );
+                        // F798-R12-03: re-persisting a rebuilt unit over its
+                        // STALE row conflicts (the store never overwrites).
+                        // The rebuild itself is the invalidation — the old
+                        // row survives untouched and the request proceeds
+                        // on the freshly verified in-memory unit.
+                        if stale_rebuilds.contains(info.name.as_str()) && is_store_conflict(&e) {
+                            obs.counter("cache_stale_rebuild_conflict", 1);
+                        } else {
+                            return (
+                                Some(StageDiag {
+                                    stage: "cache".to_string(),
+                                    code: "cache.put".to_string(),
+                                    message: format!("MIR unit `{}`: {}", info.name, e),
+                                }),
+                                None,
+                                vec![],
+                                None,
+                            );
+                        }
                     }
                     mir_persisted += 1;
                 }
@@ -582,16 +645,23 @@ impl Driver {
                         vec![],
                         Some(&self.project),
                     ) {
-                        return (
-                            Some(StageDiag {
-                                stage: "cache".to_string(),
-                                code: "cache.put".to_string(),
-                                message: format!("unit `{}`: {}", name, e),
-                            }),
-                            None,
-                            vec![],
-                            None,
-                        );
+                        // F798-R12-03: same tolerance as the MIR re-persist
+                        // above — the stale row survives, the rebuilt unit
+                        // still serves THIS request (re-verified in full).
+                        if stale_rebuilds.contains(name.as_str()) && is_store_conflict(&e) {
+                            obs.counter("cache_stale_rebuild_conflict", 1);
+                        } else {
+                            return (
+                                Some(StageDiag {
+                                    stage: "cache".to_string(),
+                                    code: "cache.put".to_string(),
+                                    message: format!("unit `{}`: {}", name, e),
+                                }),
+                                None,
+                                vec![],
+                                None,
+                            );
+                        }
                     }
                 }
                 // (the immutable borrow of `infos[idx]` ended above)
@@ -1004,24 +1074,130 @@ fn sig_string(
 /// lexer/parser/resolve/typecheck walks are ITERATIVE (landed R5/R6), so
 /// the genuine host-recursion paths in the old frontends are the Atom
 /// document parser's nested-list recursion (the `[` depth scan in
-/// [`front_door_admit_atom`]) and the recursive `eval_expr` over
-/// left/right-associated operator CHAINS: a flat `a + b + c + …` run
-/// builds one parse-recursion level per operand even at bracket depth 1,
-/// so the front door counts consecutive operator tokens as expression
-/// CONSTRUCTION depth too (F798-R3-04 — a 600-term flat chain must be a
-/// resource rejection HERE, not a `mir.lower.depth` unsupported from
-/// inside the recursive parser at its own 512 limit).
+/// [`front_door_admit_atom`]) and operator CHAINS: a flat `a + b + c + …`
+/// run builds one construction level per operator even at bracket depth 1,
+/// so the front door measures the expression CONSTRUCTION depth too
+/// (F798-R3-04 — a 600-term flat chain must be a resource rejection HERE,
+/// not a `mir.lower.depth` unsupported from inside the recursive parser at
+/// its own 512 limit).
 /// Breaches are RESOURCE rejections, never syntax errors.
-/// F798-R10-01/R11-01: closing an expression context. The CURRENT
-/// sibling's path always COMPOSES (child paths + its own serial chain
-/// add); a sibling LIST folds its COMPLETED siblings by MAX and the call
-/// level itself adds one.
-fn close_candidate(had_comma: bool, sib_done: u32, cur_path: u32, level_max: u32) -> u32 {
-    let own = cur_path + level_max + 1;
-    if had_comma {
-        sib_done.max(own) + 1
-    } else {
-        own
+///
+/// The construction metric (F798-R12-01) is a miniature
+/// operator-precedence depth evaluator ([`LevelChain`]): it reproduces the
+/// tree depth of the REAL parser's association (parser.rs
+/// `scalar_prec_of`, left-associative), so the door measures the LONGEST
+/// CONSTRUCTION PATH — branch-sibling depths never add, genuinely nested
+/// levels still compose, and every call level counts exactly once.
+#[derive(Default)]
+struct LevelChain {
+    /// Completed operand path depths at this level.
+    vals: Vec<u32>,
+    /// Precedences of pending binary operators (mirrors `scalar_prec_of`).
+    ops: Vec<u8>,
+    /// Pending prefix unary operators (Neg/Not nest one level each).
+    unary: u32,
+    /// The last significant token completed an operand (binary vs prefix
+    /// `-` disambiguation).
+    after_operand: bool,
+    /// The top of `vals` is a bare identifier — `(`/`:` may retract it as
+    /// a callee/parameter NAME (names are not construction levels).
+    ident_top: bool,
+    /// Folded max path of COMPLETED siblings (argument-list commas).
+    sib_done: u32,
+    /// This level is a sibling list (argument commas / named colons).
+    had_comma: bool,
+}
+
+impl LevelChain {
+    /// Left-associative reduction of pending operators `>= min_prec`
+    /// (same `>=` pop rule as the parser's precedence climbing). Reducing
+    /// `a OP b` yields `1 + max(a, b)` — the real tree's depth.
+    fn reduce_ge(&mut self, min_prec: u8) {
+        while self.ops.last().is_some_and(|&top| top >= min_prec) {
+            self.ops.pop();
+            let b = self.vals.pop().unwrap_or(1);
+            let a = self.vals.pop().unwrap_or(1);
+            self.vals.push(1 + a.max(b));
+            self.ident_top = false;
+        }
+    }
+
+    fn reduce_all(&mut self) -> u32 {
+        self.reduce_ge(0);
+        // Defensive max over adjacency-merged leftovers (malformed input
+        // is the parser's to reject; the door just stays robust).
+        self.vals.iter().copied().max().unwrap_or(0)
+    }
+
+    /// A completed operand — literal/ident, `true`/`false`, or a closed
+    /// paren group of path `depth` — joins the current chain; pending
+    /// prefix unary operators nest around it.
+    fn operand(&mut self, depth: u32) {
+        let depth = depth + std::mem::take(&mut self.unary);
+        if self.after_operand {
+            // Adjacent operands with no operator (`a.b`-shapes): one node.
+            if let Some(top) = self.vals.last_mut() {
+                *top = (*top).max(depth);
+            } else {
+                self.vals.push(depth);
+            }
+            self.ident_top = false;
+        } else {
+            self.vals.push(depth);
+        }
+        self.after_operand = true;
+    }
+
+    fn binary(&mut self, prec: u8) {
+        self.reduce_ge(prec);
+        self.ops.push(prec);
+        self.after_operand = false;
+        self.ident_top = false;
+    }
+
+    fn prefix_unary(&mut self) {
+        self.unary += 1;
+        self.after_operand = false;
+        self.ident_top = false;
+    }
+
+    /// A comma ends the current sibling: its COMPOSED path folds by MAX
+    /// into the completed-siblings pool (F798-R10-01 — different arguments'
+    /// maxima never concatenate); the next sibling starts fresh.
+    fn end_sibling(&mut self) -> u32 {
+        let v = self.reduce_all();
+        self.sib_done = self.sib_done.max(v);
+        self.vals.clear();
+        self.ops.clear();
+        self.unary = 0;
+        self.after_operand = false;
+        self.ident_top = false;
+        self.had_comma = true;
+        v
+    }
+
+    /// Close the level: the call/group level itself adds exactly ONE level
+    /// over the deepest sibling path — a named single-argument call is not
+    /// a list level PLUS an expression level (F798-R12-01: each call layer
+    /// counts once).
+    fn close(&mut self) -> u32 {
+        let v = self.reduce_all();
+        1 + self.sib_done.max(v)
+    }
+
+    /// Statement/clause boundary (keywords, `;`, `=`, `{`, `}`): the
+    /// current chain folds into the global peak (a MAX, never a sum across
+    /// statements — F798-R9-01) and the level resets.
+    fn clause_boundary(&mut self, peak: &mut u32) {
+        let v = self.reduce_all();
+        *peak = (*peak).max(v);
+        self.vals.clear();
+        self.ops.clear();
+        self.unary = 0;
+        self.after_operand = false;
+        self.ident_top = false;
+        self.sib_done = 0;
+        self.had_comma = false;
     }
 }
 
@@ -1044,81 +1220,53 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
         message: d.message.clone(),
     })?;
     let (mut depth, mut max_depth) = (0u32, 0u32);
-    // Operator-run depth: consecutive binary/unary operator puncts at one
-    // bracket level, reset by ANY other punct (delimiters terminate an
-    // expression) but not by operands (Idents/keywords/literals continue
-    // the same expression construction).
-    let is_chain_op = |p: &P| {
-        matches!(
-            p,
-            P::Plus
-                | P::Star
-                | P::Slash
-                | P::Percent
-                | P::Minus
-                | P::Lt
-                | P::Gt
-                | P::LeEq
-                | P::GeEq
-                | P::EqEq
-                | P::NotEq
-                | P::AmpAmp
-                | P::PipePipe
-                // Unary chains nest one parse level per operator too.
-                | P::Bang
-        )
+    // Scalar binary-operator precedence (mirrors the real parser's
+    // `scalar_prec_of`: higher binds tighter; left-associative). This is
+    // what makes the depth evaluator follow the REAL association instead
+    // of summing branch-sibling depths (F798-R12-01).
+    let prec_of = |p: &P| -> Option<u8> {
+        match p {
+            P::PipePipe => Some(1),
+            P::AmpAmp => Some(2),
+            P::EqEq | P::NotEq => Some(3),
+            P::Lt | P::Gt | P::LeEq | P::GeEq => Some(4),
+            P::Plus | P::Minus => Some(5),
+            P::Star | P::Slash | P::Percent => Some(6),
+            _ => None,
+        }
     };
-    // F798-R8-01: construction depth is measured PER BRACKET LEVEL as the
-    // level's MAX serial chain, accumulated across levels on the max
-    // construction PATH — sibling arguments of one call are separate
-    // expressions, not one deep chain. `(1)+(1)+…` still counts its serial
-    // run at the outer level; `f(a+b, c+d, …)` counts each argument's own
-    // (small) run and the call contributes one level, so a shallow WIDE
-    // call stays legal while deep chains still hit the 128 budget.
-    let mut level_run = 0u32;
-    let mut level_max = 0u32;
-    // Whether the current level is a SIBLING list (argument commas /
-    // named-argument colons) — completed siblings fold by MAX, while the
-    // CURRENT sibling composes internally (its child paths + its own
-    // serial chain are ONE path and add).
-    let mut had_comma = false;
-    // Max path over COMPLETED siblings of the current level.
-    let mut sib_done = 0u32;
-    // (run, max, enclosing path, sib_done, had_comma) per open level.
-    let mut level_stack: Vec<(u32, u32, u32, u32, bool)> = Vec::new();
-    // Max construction PATH accumulated inside the CURRENT sibling; the
-    // metric is a MAX over statements/siblings — never a sum across them.
-    let mut cur_path = 0u32;
+    // The CURRENT bracket level's chain; `[`/`(` push a fresh one.
+    let mut cur = LevelChain::default();
+    let mut level_stack: Vec<LevelChain> = Vec::new();
     let mut peak = 0u32;
     for t in &tokens {
         match &t.tok {
             Tok::Punct(p) if matches!(p, P::LParen | P::LBracket) => {
                 depth += 1;
                 max_depth = max_depth.max(depth);
-                level_stack.push((level_run, level_max, cur_path, sib_done, had_comma));
-                level_run = 0;
-                level_max = 0;
-                cur_path = 0;
-                sib_done = 0;
-                had_comma = false;
+                // A callee identifier directly before `(` is a NAME, not
+                // an operand of the enclosing chain.
+                if cur.ident_top {
+                    cur.vals.pop();
+                    cur.after_operand = false;
+                    cur.ident_top = false;
+                }
+                level_stack.push(std::mem::take(&mut cur));
             }
             Tok::Punct(p) if matches!(p, P::RParen | P::RBracket) => {
                 depth = depth.saturating_sub(1);
-                // F798-R11-01: closing a level. The CURRENT sibling's
-                // path COMPOSES internally (child paths + its own serial
-                // chain add — a deep call as the FIRST OPERAND of the
-                // sibling's chain is one path); only COMPLETED siblings
-                // fold by MAX, and the call level itself adds one.
-                let cand = close_candidate(had_comma, sib_done, cur_path, level_max);
-                peak = peak.max(cand);
-                if let Some((r, m, pp, sd, hc)) = level_stack.pop() {
-                    level_run = r;
-                    level_max = m;
-                    // The closed expression is ONE operand/path inside the
-                    // enclosing sibling — compose, never a sibling-max.
-                    cur_path = pp.max(cand);
-                    sib_done = sd;
-                    had_comma = hc;
+                // F798-R12-01: closing a level yields ITS OWN longest path
+                // (call level counted once); the closed group then joins
+                // the enclosing chain as ONE operand — composing on the
+                // real association path, never a sibling-sum.
+                let path = cur.close();
+                peak = peak.max(path);
+                match level_stack.pop() {
+                    Some(mut outer) => {
+                        std::mem::swap(&mut cur, &mut outer);
+                        cur.operand(path);
+                    }
+                    None => cur = LevelChain::default(),
                 }
             }
             Tok::Punct(P::LBrace) => {
@@ -1126,80 +1274,65 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                 max_depth = max_depth.max(depth);
                 // Block structure is a statement boundary, not an
                 // expression level (bracket depth covers it).
-                peak = peak.max(close_candidate(had_comma, sib_done, cur_path, level_max));
-                level_run = 0;
-                level_max = 0;
-                cur_path = 0;
-                sib_done = 0;
-                had_comma = false;
+                cur.clause_boundary(&mut peak);
             }
             Tok::Punct(P::RBrace) => {
                 depth = depth.saturating_sub(1);
-                peak = peak.max(close_candidate(had_comma, sib_done, cur_path, level_max));
-                level_run = 0;
-                level_max = 0;
-                cur_path = 0;
-                sib_done = 0;
-                had_comma = false;
+                cur.clause_boundary(&mut peak);
             }
-            Tok::Punct(p) if is_chain_op(p) => {
-                level_run += 1;
-                level_max = level_max.max(level_run);
-            }
-            Tok::Punct(p) if matches!(p, P::Semi | P::Assign) => {
-                // Clause boundaries end the current statement's expression.
-                peak = peak.max(close_candidate(had_comma, sib_done, cur_path, level_max));
-                level_run = 0;
-                level_max = 0;
-                cur_path = 0;
-                sib_done = 0;
-                had_comma = false;
+            // Clause boundaries end the current statement's expression.
+            Tok::Punct(P::Semi) | Tok::Punct(P::Assign) => {
+                cur.clause_boundary(&mut peak);
             }
             Tok::Punct(P::Comma) => {
-                // An argument comma ENDS the current sibling: its COMPOSED
-                // path (child paths + own chain) folds into the completed-
-                // siblings max; the next sibling starts fresh — maxima from
-                // different arguments never add (F798-R10-01).
-                let cand = cur_path + level_max + 1;
-                peak = peak.max(cand);
-                sib_done = sib_done.max(cand);
-                level_run = 0;
-                level_max = 0;
-                cur_path = 0;
-                had_comma = true;
+                // An argument comma ends the current sibling; its composed
+                // path folds by MAX into the siblings pool.
+                let v = cur.end_sibling();
+                peak = peak.max(v);
             }
             Tok::Punct(P::Colon) => {
-                // A named-argument colon separates the parameter NAME from
-                // the VALUE expression — nothing has been composed yet, so
-                // it only MARKS the level as a sibling list; the value's
-                // internal composition stays intact (F798-R11-01: the
-                // colon must not erase the in-argument composition).
-                had_comma = true;
+                // Named-argument `name:` — the parameter NAME is not a
+                // construction level (retract it); the VALUE expression is
+                // this level's sibling. The value's own internal
+                // composition stays intact (F798-R11-01).
+                if cur.ident_top {
+                    cur.vals.pop();
+                }
+                let v = cur.end_sibling();
+                peak = peak.max(v);
             }
-            Tok::Punct(_) => {
-                // Other puncts (`.`) stay inside the current sibling.
+            // Prefix unary always nests one level; `-` after an operand is
+            // the left-associative binary subtraction instead.
+            Tok::Punct(P::Bang) => cur.prefix_unary(),
+            Tok::Punct(P::Minus) => {
+                if cur.after_operand {
+                    cur.binary(5);
+                } else {
+                    cur.prefix_unary();
+                }
+            }
+            Tok::Punct(p) => {
+                if let Some(prec) = prec_of(p) {
+                    cur.binary(prec);
+                }
+                // Other puncts (`.`) stay inside the current operand.
             }
             // `true`/`false` are expression OPERANDS, not clause
-            // boundaries (F798-R7-02). Every other keyword starts a fresh
+            // boundaries (F798-R7-02); every other keyword starts a fresh
             // clause in this newline-terminated grammar.
             Tok::Kw(auto_ac_prototype::source::lexer::Kw::True)
-            | Tok::Kw(auto_ac_prototype::source::lexer::Kw::False) => {}
-            Tok::Kw(_) | Tok::Reserved(_) => {
-                // Keywords start a fresh clause: the previous statement's
-                // expression path is folded into the peak, never summed
-                // into the next one.
-                peak = peak.max(close_candidate(had_comma, sib_done, cur_path, level_max));
-                level_run = 0;
-                level_max = 0;
-                cur_path = 0;
-                sib_done = 0;
-                had_comma = false;
+            | Tok::Kw(auto_ac_prototype::source::lexer::Kw::False) => cur.operand(1),
+            Tok::Kw(_) | Tok::Reserved(_) => cur.clause_boundary(&mut peak),
+            Tok::Ident(_) => {
+                cur.operand(1);
+                cur.ident_top = true;
             }
+            Tok::Int(_) | Tok::Raw { .. } => cur.operand(1),
             _ => {}
         }
     }
     // The final statement's path closes the metric.
-    peak = peak.max(close_candidate(had_comma, sib_done, cur_path, level_max));
+    cur.clause_boundary(&mut peak);
     // The accumulated per-level max construction PATH is the expression
     // construction depth.
     let expr_depth = peak;

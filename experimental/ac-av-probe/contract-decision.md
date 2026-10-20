@@ -53,10 +53,10 @@ scalar `for` 已由前端 HIR 展开，无需特例。
 - 未执行分支上的 trap（如 RHS 的除零）保持潜在运行时行为：AV 只在真正执行的
   指令上 raise trap，lowering/验证不提前求值（`av_semantics_unexecuted_rhs_trap_stays_latent`）。
 
-## 4. ABC wire 布局（v1，小端）
+## 4. ABC wire 布局（v2，小端；r6 升代）
 
 ```
-magic "AVAB"(4) | u16 version=1 | u16 profile=1 | u16 flags(bit0=有sidecar) | u16 reserved=0
+magic "AVAB"(4) | u16 version=2 | u16 profile=1 | u16 flags(bit0=有sidecar, bit1=FLAG_IS_UNIT) | u16 reserved=0
 u32 n_types, n_consts, n_imports, n_funcs, entry
 u16 n_caps, 每项 u16 len + bytes（能力随头部传输——admission 数据）
 types:    u8 tag(0=I32,1=Bool,2=Fn)；Fn: u32 nparams + params(u32 idx)* + result u32
@@ -124,6 +124,34 @@ div-by-zero、div-overflow(MIN/-1)、rem-overflow(MIN%-1)。
 验证墙与 4 MiB 输入上限显式约束。**三反控**（`mir_admission_`）：
 (1) 单函数超族 → `av.resource.table-entries`；(2) 模块表超族（70k consts）→
 同分类；(3) 组合超界（40×31k 块闭包）→ `av.resource.verify-steps`。
+
+**r6 修订记录**（复审 F798-R12-01/02/03 判定 → 本轮修复冻结）：
+(a) **wire 升代与版本隔离**：`ABC_VERSION` 1→2、`ABC_SCHEMA`
+"auto.abc.av-probe/1"→"/2"、`ABC_SEMANTICS` 1→2、A09 层 schema_id
+`ac798/a09-abc/v2`。kind 位是 wire 的载荷语义——/1（无 kind）与 /2 是不同
+格式代际：raw /1 字节按未知版本受控拒绝（`abc.decode.version`）；A09/A08
+查询键携带 codec/schema/语义版本轴（MIR 单元同样以 ABC codec 传输，其键新增
+`abc-codec` 轴），旧键产物确定性 miss。当前键下发现异代载荷（K14-06 歧义形）
+= **确定性陈旧 miss 重建**（计数 `cache_stale_abc_miss`/`cache_stale_mir_miss`，
+O(1) wire 版本门判定）：绝不原地当新语义读、不是硬错误；重建单元重持久化与
+陈旧行的 same-key 冲突按 store 语义保留旧行并容忍（计数
+`cache_stale_rebuild_conflict`），请求以当次全量重验的重建单元服务。当前代际
+载荷的深层 decode/admission 仍在闭包阶段执行——结构性损坏/篡改保持受控拒绝。
+(b) **类别→执行凭证**（K14-02/03/05）：`LoadedModule.executable` 现由**类别**
+与**imports 闭合**共同决定——unit 类别（即使零 import、entry 形状合法）在
+任何公开入口（raw bytes/手工 DecodedAbc/driver 闭包/恢复）都不作为完整入口
+执行（dispatch=0，Infra "unit kind"）；unit→闭包的转换唯一路径是 driver 的
+闭包装配（整模块 encode→verify_abc 重验）。合法完整 module 的 kind 声明按
+完整规则判定（K14-04 正控：同载荷翻位声明 module 且满足完整规则 → 执行）。
+带参入口仅在 unit 上合法，故 `execute_entry` 的参数类型准入降为纵深防御
+（原"带参 unit 可执行"测试 oracle 已按 r4 合同更正）。
+(c) **前门计深 = 真实结合的最长构造路径**：前门内建微型运算符优先级深度求
+值器（shunting-yard，按 parser `scalar_prec_of` 优先级表与左结合 `>=` 归约，
+`a OP b → 1+max(a,b)`），逐括号层维护操作数路径深度栈——分支兄弟深度按真实
+树形取 max 永不相加（尾操作数深调用 60×70 真路径 71 合法执行返回 70，旧法
+算 192 误拒）、真实嵌套沿路径组合（首操作数深调用真路径 131 仍拒）、每个
+调用层恰计一次（命名单实参调用不再列表层+表达式层双重计数）。括号分组仍各
+计一层（保守，与 r5 前一致）。
 
 **r5 修订记录**（复审 F798-R11-02 判定 → 本轮修复冻结）：ABC wire flags
 新增 bit1 `FLAG_IS_UNIT`（§4 布局扩展）——工件类别（可重验 UNIT vs 单函数完整

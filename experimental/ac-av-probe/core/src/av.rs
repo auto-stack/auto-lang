@@ -101,15 +101,21 @@ pub fn execute_entry(
     let mut steps: u64 = 0;
     let mut slot_bytes: usize = 0;
 
-    // Executable-closure gate (F798-R6-02): a re-verifiable UNIT (any Call
-    // on an import — pending linkage or a host-side symbol) is never run;
-    // closure assembly resolves those callees first.
+    // Executable-closure gate (F798-R6-02 + F798-R12-02): a re-verifiable
+    // UNIT — by kind or by an unresolved import call — is never run;
+    // closure assembly resolves those callees and re-verifies the whole
+    // module first. Zero dispatch steps: an admission refusal, not a run.
     if !module.executable() {
+        let unit_kind = module.module().is_unit;
         return (
-            ExecOutcome::Infra(
-                "admission violation: credential is a re-verifiable unit, not an                  executable closure (unresolved import call)"
-                    .to_string(),
-            ),
+            ExecOutcome::Infra(format!(
+                "admission violation: credential is a re-verifiable unit ({}), not an executable closure — close it into a whole module first",
+                if unit_kind {
+                    "unit kind"
+                } else {
+                    "unresolved import call"
+                }
+            )),
             trace,
         );
     }
@@ -658,11 +664,15 @@ mod tests {
         assert_eq!(trace.peak_slot_bytes, 0);
     }
 
-    /// F798-R6-02: a unit whose entry carries typed params and NO import
-    /// calls is an executable closure — but entry arguments are admitted
-    /// against the VERIFIED signature (kind must match the slot type).
+    /// F798-R12-02 (replaces the R6 oracle "typed-param unit executes"):
+    /// a UNIT-kind credential — even one that would satisfy every other
+    /// closure rule (no imports, trivial body) — is never executable
+    /// through the entry seam. The unit→closure conversion is driver
+    /// closure assembly; a param entry is only VALID on units, so the
+    /// entry-args kind admission below is defense-in-depth for credentials
+    /// that should no longer exist, and this test pins the front gate.
     #[test]
-    fn av_entry_argument_kind_mismatch_rejected() {
+    fn av_unit_kind_param_credential_not_executable() {
         let mut m = MirModule::unit(owner());
         let ti = m.intern_type(MirType::I32);
         let sig = m.intern_type(MirType::Fn(FnSig {
@@ -689,15 +699,78 @@ mod tests {
         m.entry = 0;
         let bytes = crate::abc::encode_abc(&m).expect("encode");
         let l = crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owner()).expect("admit");
+        assert!(!l.executable(), "unit kind is a re-verifiable credential");
         let cancel = CancelFlag::new(false);
-        // Correct kind: executes.
+        // Correct-kind args still never dispatch: the KIND gate fires first.
         let (out, _) = execute_entry(&l, &ExecLimits::default(), &cancel, &[Value::I32(5)]);
-        assert!(matches!(out, ExecOutcome::Success { .. }), "got {out:?}");
-        // Bool into an i32 slot: admission violation, never a coerced run.
-        let (out, _) = execute_entry(&l, &ExecLimits::default(), &cancel, &[Value::Bool(true)]);
         assert!(
-            matches!(&out, ExecOutcome::Infra(msg) if msg.contains("admission violation")),
+            matches!(&out, ExecOutcome::Infra(msg) if msg.contains("unit kind")),
             "got {out:?}"
+        );
+    }
+
+    /// F798-R12-02: a zero-param i32 unit — a payload that would satisfy
+    /// every COMPLETE-module entry rule — is still not executable; the
+    /// deciding axis is the KIND declaration, proven by the identical
+    /// body declared as a complete module executing successfully.
+    #[test]
+    fn av_unit_kind_zero_param_credential_not_executable() {
+        let build = |is_unit: bool| {
+            let mut m = if is_unit {
+                MirModule::unit(owner())
+            } else {
+                MirModule::new(owner())
+            };
+            let ti = m.intern_type(MirType::I32);
+            let sig = m.intern_type(MirType::Fn(FnSig {
+                params: vec![],
+                result: ti,
+            }));
+            let c = m.intern_const(MirConst::I32(7));
+            m.funcs.push(MirFunction {
+                owner: owner(),
+                name: "main".into(),
+                sig,
+                slots: vec![MirSlot {
+                    kind: SlotKind::Local,
+                    ty: ti,
+                    name: Some("r".into()),
+                }],
+                blocks: vec![MirBlock {
+                    instrs: vec![MirInstr::Const { dst: 0, value: c }],
+                    term: Terminator::Return { value: 0 },
+                }],
+                entry: 0,
+                source_snapshot: 0,
+                spans: vec![],
+            });
+            m.entry = 0;
+            let bytes = crate::abc::encode_abc(&m).expect("encode");
+            crate::abc_verify::verify_abc_bytes(&bytes.to_flat(), &owner()).expect("admit")
+        };
+        let cancel = CancelFlag::new(false);
+        let unit = build(true);
+        assert!(!unit.executable());
+        let (out, _) = execute(&unit, &ExecLimits::default(), &cancel);
+        assert!(
+            matches!(&out, ExecOutcome::Infra(msg) if msg.contains("unit kind")),
+            "unit kind refused before dispatch: {out:?}"
+        );
+        // Positive control: the IDENTICAL body declared a complete module
+        // is an executable closure (K14-04: a legal kind declaration is
+        // judged by the complete-module rules — not rejected for the flip).
+        let whole = build(false);
+        assert!(whole.executable());
+        let (out, _) = execute(&whole, &ExecLimits::default(), &cancel);
+        assert!(
+            matches!(
+                out,
+                ExecOutcome::Success {
+                    value: crate::contract::Value::I32(7),
+                    ..
+                }
+            ),
+            "complete-module control executes: {out:?}"
         );
     }
 

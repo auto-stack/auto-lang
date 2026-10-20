@@ -563,6 +563,50 @@ fn av_resources_flat_chain_front_door_boundary() {
     assert_eq!(diag.code, "av.resource.frontend-nesting");
 }
 
+/// F798-R12-01: the construction path follows the REAL association — a
+/// deep call as the LAST operand of a left-associative chain is a sibling
+/// BRANCH (deepest left spine 70 + the call = true path 71, legal and
+/// returns 70), while the same call as the FIRST operand sits ON the left
+/// spine (true path 131, still a resource rejection). The pre-R12 door
+/// summed the two branches into 192 and rejected both.
+#[test]
+fn av_resources_tail_operand_deep_call_not_concatenated() {
+    let nested = |n: usize| format!("{}1{}", "idfn(x: ".repeat(n), ")".repeat(n));
+    let src = |deep_first: bool| {
+        let mut operands = vec!["1".to_string(); 70];
+        operands[if deep_first { 0 } else { 69 }] = nested(60);
+        format!(
+            "fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return idfn(x: {})\n}}\n",
+            operands.join(" + ")
+        )
+    };
+    let mut d = Driver::ephemeral();
+    // Tail operand: the deep call and the arithmetic chain are branches of
+    // one tree — true path 71, admits and executes.
+    let tail = src(false);
+    assert!(
+        front_door_admit(&tail).is_ok(),
+        "tail deep call is a sibling branch, not a concatenated path"
+    );
+    let r = d.request(&tail, "d_main", &[]);
+    assert!(r.ok(), "tail deep call executes: {:?}", r.diag);
+    assert_eq!(r.value_i32(), Some(70));
+    // Head operand: the deep call is on the left spine — true path 131.
+    let head = src(true);
+    let err = front_door_admit(&head).unwrap_err();
+    assert_eq!(err.code, "av.resource.frontend-nesting");
+    let r = d.request(&head, "d_main", &[]);
+    assert_eq!(r.diag.expect("rejected").stage, "admission");
+    // Low-depth controls in both positions stay legal.
+    let mut shallow_tail = vec!["1".to_string(); 70];
+    shallow_tail[69] = nested(3);
+    let ok = format!(
+        "fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return idfn(x: {})\n}}\n",
+        shallow_tail.join(" + ")
+    );
+    assert!(front_door_admit(&ok).is_ok());
+}
+
 /// V-09: the recursion-critical ATOM front door — 4096-deep nested lists
 /// are rejected before the recursive document parser runs.
 #[test]
