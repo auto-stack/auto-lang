@@ -15,7 +15,9 @@ path = "src/bin/autogen.rs"
 
 [dependencies]
 clap = { workspace = true }
-auto-lang = { path = "../auto-lang" }
+# PLAN-814 T-06：非 UI 消费者切 SDK（atom/interpreter/ast 全为 Core 面；
+# 旧 default 拖 ui-iced 闭包的形态就此关闭——V-01 纯消费证明）。
+auto-lang-core = { path = "../auto-lang-core" }
 # PLAN-791: single definition of guard/error/report types and the output
 # orchestration; this crate stays the Auto executable-template adapter.
 auto-gen-core = { path = "../auto-gen-core" }

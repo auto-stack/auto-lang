@@ -21,7 +21,7 @@ pub use template::{Template, TemplateEngine};
 // LEGACY CODE - Kept for backward compatibility during transition
 // ============================================================================
 
-use auto_lang::atom::Atom;
+use auto_lang_core::atom::Atom;
 use auto_val::{AutoPath, AutoResult, AutoStr};
 
 pub struct Mold {
@@ -114,7 +114,7 @@ impl AutoGen {
     pub fn gen_all(&self) -> AutoStr {
         // Extract name from atom - if it's a Node, get its name property
         let atom_name = match &self.data {
-            auto_lang::atom::Atom::Node(node) => {
+            auto_lang_core::atom::Atom::Node(node) => {
                 let name_prop = node.get_prop_of("name");
                 if !name_prop.is_nil() {
                     name_prop.to_astr().to_string()
@@ -148,7 +148,7 @@ impl AutoGen {
     }
 
     fn gen_one_str(&self, mold: &Mold) -> AutoStr {
-        let mut interp = auto_lang::interpreter::AutoInterpreter::new().with_fstr_note(self.note);
+        let mut interp = auto_lang_core::interpreter::AutoInterpreter::new().with_fstr_note(self.note);
         interp.merge_atom(&self.data);
         let result = interp.eval_template("", &mold.code);
         match result {
@@ -161,7 +161,7 @@ impl AutoGen {
     }
 
     fn gen_one(&self, mold: &Mold, out_file: &AutoPath) {
-        let mut interp = auto_lang::interpreter::AutoInterpreter::new().with_fstr_note(self.note);
+        let mut interp = auto_lang_core::interpreter::AutoInterpreter::new().with_fstr_note(self.note);
         interp.merge_atom(&self.data);
         let result = interp.eval_template("", &mold.code);
         match result {
@@ -240,7 +240,7 @@ impl OneGen {
     }
 
     pub fn gen(&self) -> AutoResult<()> {
-        let mut interp = auto_lang::interpreter::AutoInterpreter::new().with_fstr_note(self.note);
+        let mut interp = auto_lang_core::interpreter::AutoInterpreter::new().with_fstr_note(self.note);
         interp.merge_atom(&self.data);
         let result = interp.eval_template("", &self.mold.code);
         match result {

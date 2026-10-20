@@ -9,7 +9,7 @@ pub struct RunResult {
     pub meta: Option<serde_json::Value>,
 }
 
-fn disasm_to_json(lines: Vec<auto_lang::vm::disasm::DisasmLine>) -> Vec<serde_json::Value> {
+fn disasm_to_json(lines: Vec<auto_lang_core::vm::disasm::DisasmLine>) -> Vec<serde_json::Value> {
     lines
         .into_iter()
         .map(|l| {
@@ -23,7 +23,7 @@ fn disasm_to_json(lines: Vec<auto_lang::vm::disasm::DisasmLine>) -> Vec<serde_js
         .collect()
 }
 
-fn meta_to_json(meta: auto_lang::vm::disasm::BytecodeMeta) -> Option<serde_json::Value> {
+fn meta_to_json(meta: auto_lang_core::vm::disasm::BytecodeMeta) -> Option<serde_json::Value> {
     serde_json::to_value(meta).ok()
 }
 
@@ -39,7 +39,7 @@ pub fn run_source_with_input(
     // from the AAVM v1 lib — concat it like the golden is_bootstrap branch.
     let owned;
     let source = if prepend_lib {
-        match auto_lang::bootstrap_lib_source() {
+        match auto_lang_core::bootstrap_lib_source() {
             Some(lib) => {
                 owned = format!(
                     "{}
@@ -57,7 +57,7 @@ pub fn run_source_with_input(
     let result = if input.is_some() {
         match crate::project::prepare_files_temp_dir_with_entry(source, &[], Some("main.at")) {
             Ok((dir, entry_path)) => {
-                let run = auto_lang::run_with_capture_and_path_and_bytecode_with_input(
+                let run = auto_lang_core::run_with_capture_and_path_and_bytecode_with_input(
                     source,
                     &entry_path.to_string_lossy(),
                     deadline,
@@ -69,7 +69,7 @@ pub fn run_source_with_input(
             Err(error) => Err(error.to_string()),
         }
     } else {
-        auto_lang::run_with_capture_and_bytecode_with_deadline(source, deadline)
+        auto_lang_core::run_with_capture_and_bytecode_with_deadline(source, deadline)
             .map_err(|error| error.to_string())
     };
     let (result, stdout, bytecode, meta) = match result {
@@ -103,7 +103,7 @@ pub fn run_files_project_with_input(
 
     let outcome = crate::project::prepare_files_temp_dir_with_entry(source, &files, entry)
         .and_then(|(dir, entry_path)| {
-            let run = auto_lang::run_with_capture_and_path_and_bytecode_with_input(
+            let run = auto_lang_core::run_with_capture_and_path_and_bytecode_with_input(
                 source,
                 &entry_path.to_string_lossy(),
                 deadline,
@@ -169,7 +169,7 @@ pub fn run_project_source_with_input(
     };
 
     let (result, stdout, bytecode, meta) =
-        match auto_lang::run_with_capture_and_path_and_bytecode_with_input(
+        match auto_lang_core::run_with_capture_and_path_and_bytecode_with_input(
             source,
             &entry_path.to_string_lossy(),
             deadline,
@@ -197,8 +197,8 @@ pub fn run_project_source_with_input(
 pub fn run_abt(abt: &str) -> RunResult {
     let start = Instant::now();
 
-    let runtime = auto_lang::get_global_runtime();
-    let stdout = match runtime.block_on(auto_lang::run_abt(abt)) {
+    let runtime = auto_lang_core::get_global_runtime();
+    let stdout = match runtime.block_on(auto_lang_core::run_abt(abt)) {
         Ok(out) => out,
         Err(e) => format!("Error: {}", e),
     };

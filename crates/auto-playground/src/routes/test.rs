@@ -44,8 +44,8 @@ pub async fn test_handler(Json(req): Json<TestRequest>) -> Result<Json<TestRespo
     let result = tokio::task::spawn_blocking(move || {
         let (temp_dir, entry_path) =
             prepare_files_temp_dir_with_entry(&source, &files, Some(&entry))?;
-        let runtime = auto_lang::get_global_runtime();
-        let result = runtime.block_on(auto_lang::test_code_with_path_deadline_and_input(
+        let runtime = auto_lang_core::get_global_runtime();
+        let result = runtime.block_on(auto_lang_core::test_code_with_path_deadline_and_input(
             &source,
             &entry_path.to_string_lossy(),
             deadline,
@@ -62,8 +62,8 @@ pub async fn test_handler(Json(req): Json<TestRequest>) -> Result<Json<TestRespo
         .into_iter()
         .map(|report| {
             let (passed, error) = match report.outcome {
-                auto_lang::test_runner::TestOutcome::Passed => (true, None),
-                auto_lang::test_runner::TestOutcome::Failed(error) => (false, Some(error)),
+                auto_lang_core::test_runner::TestOutcome::Passed => (true, None),
+                auto_lang_core::test_runner::TestOutcome::Failed(error) => (false, Some(error)),
             };
             TestReport {
                 name: report.name,

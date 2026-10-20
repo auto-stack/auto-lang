@@ -58,7 +58,7 @@ pub struct TranspileRequest {
 pub struct TranspileResponse {
     pub code: String,
     pub target: String,
-    pub source_map: Vec<auto_lang::trans::SourceMapEntry>,
+    pub source_map: Vec<auto_lang_core::trans::SourceMapEntry>,
 }
 
 // ============================================================================

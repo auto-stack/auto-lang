@@ -2,7 +2,7 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use crate::error::AppError;
 use crate::project::{prepare_project_temp_dir, project_examples_dir, ProjectFile};
-use auto_lang::trans::SourceMapEntry;
+use auto_lang_core::trans::SourceMapEntry;
 use std::collections::HashMap;
 use std::io::Write;
 
@@ -88,7 +88,7 @@ pub fn transpile_rust_project(
     project_dir: &str,
     files: Option<&[ProjectFile]>,
 ) -> Result<(Vec<TransFile>, Vec<SourceMapEntry>), AppError> {
-    use auto_lang::trans::rust::transpile_rust_project as auto_transpile_rust_project;
+    use auto_lang_core::trans::rust::transpile_rust_project as auto_transpile_rust_project;
 
     let temp_dir = prepare_project_temp_dir(source, project_dir, files)?;
     let main_path = temp_dir.join("main.at");
@@ -330,8 +330,8 @@ fn merge_project_source(
 }
 
 pub fn transpile_rust(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
-    use auto_lang::trans::rust::transpile_rust as auto_transpile_rust;
-    use auto_lang::trans::Sink;
+    use auto_lang_core::trans::rust::transpile_rust as auto_transpile_rust;
+    use auto_lang_core::trans::Sink;
 
     let mut sink: Sink = auto_transpile_rust("playground", source)
         .map_err(|e| AppError::CompileError(e.to_string()))?;
@@ -342,17 +342,17 @@ pub fn transpile_rust(source: &str) -> Result<(String, Vec<SourceMapEntry>), App
 }
 
 pub fn transpile_abt(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
-    let (vm, _, _, _) = auto_lang::create_vm_from_source(source)
+    let (vm, _, _, _) = auto_lang_core::create_vm_from_source(source)
         .map_err(|e| AppError::CompileError(e.to_string()))?;
 
     let strings = vm.strings.read().map_err(|e| AppError::Internal(e.to_string()))?;
-    let abt = auto_lang::vm::abt::disasm::disassemble_flash(&vm.flash, Some(&strings));
+    let abt = auto_lang_core::vm::abt::disasm::disassemble_flash(&vm.flash, Some(&strings));
     let (text, source_map) = abt.to_string_with_source_map();
     Ok((text, source_map))
 }
 
 pub fn transpile_c(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
-    use auto_lang::trans::c::transpile_c as auto_transpile_c;
+    use auto_lang_core::trans::c::transpile_c as auto_transpile_c;
 
     let mut sink = auto_transpile_c("playground", source)
         .map_err(|e| AppError::CompileError(e.to_string()))?;
@@ -372,9 +372,9 @@ pub fn transpile_c(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppErr
 }
 
 pub fn transpile_python(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
-    use auto_lang::trans::{Sink, Trans};
-    use auto_lang::trans::python::PythonTrans;
-    use auto_lang::Parser;
+    use auto_lang_core::trans::{Sink, Trans};
+    use auto_lang_core::trans::python::PythonTrans;
+    use auto_lang_core::Parser;
 
     let mut parser = Parser::from(source);
     let ast = parser.parse().map_err(|e| AppError::CompileError(e.to_string()))?;
@@ -388,9 +388,9 @@ pub fn transpile_python(source: &str) -> Result<(String, Vec<SourceMapEntry>), A
 }
 
 pub fn transpile_javascript(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
-    use auto_lang::trans::{Sink, Trans};
-    use auto_lang::trans::javascript::JavaScriptTrans;
-    use auto_lang::Parser;
+    use auto_lang_core::trans::{Sink, Trans};
+    use auto_lang_core::trans::javascript::JavaScriptTrans;
+    use auto_lang_core::Parser;
 
     let mut parser = Parser::from(source);
     let ast = parser.parse().map_err(|e| AppError::CompileError(e.to_string()))?;
@@ -404,9 +404,9 @@ pub fn transpile_javascript(source: &str) -> Result<(String, Vec<SourceMapEntry>
 }
 
 pub fn transpile_typescript(source: &str) -> Result<(String, Vec<SourceMapEntry>), AppError> {
-    use auto_lang::trans::{Sink, Trans};
-    use auto_lang::trans::typescript::TypeScriptTrans;
-    use auto_lang::Parser;
+    use auto_lang_core::trans::{Sink, Trans};
+    use auto_lang_core::trans::typescript::TypeScriptTrans;
+    use auto_lang_core::Parser;
 
     let mut parser = Parser::from(source);
     let ast = parser.parse().map_err(|e| AppError::CompileError(e.to_string()))?;

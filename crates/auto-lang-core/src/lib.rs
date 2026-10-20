@@ -4675,3 +4675,186 @@ pub fn use_diag(msg: String) {
 pub fn take_use_diags() -> Vec<String> {
     USE_DIAGS.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
 }
+
+// ============================================================================
+// Plan 260/327/746：#[test] 执行入口族（PLAN-814 T-06 自 auto-lang 上层
+// 下沉——纯 Core 执行面；宿主装配经本 crate 钩子分发器（无 UI 实现时
+// no-op），auto-lang 旧路径经再导出保持。
+// ============================================================================
+/// Plan 260: Compile and run all `#[test]` functions in the given code.
+/// Returns a TestResult with pass/fail details for each discovered test.
+pub async fn test_code(code: &str) -> AutoResult<test_runner::TestResult> {
+    test_code_with_options(code, None, None, None).await
+}
+
+/// Run all `#[test]` functions with a cooperative deadline and request-local
+/// stdin. The existing `test_code` keeps its unlimited, process-stdin behavior.
+pub async fn test_code_with_deadline_and_input(
+    code: &str,
+    deadline: Option<std::time::Instant>,
+    input: Option<String>,
+) -> AutoResult<test_runner::TestResult> {
+    test_code_with_options(code, None, deadline, input).await
+}
+
+/// Path-aware test execution for isolated files projects.
+pub async fn test_code_with_path_deadline_and_input(
+    code: &str,
+    path: &str,
+    deadline: Option<std::time::Instant>,
+    input: Option<String>,
+) -> AutoResult<test_runner::TestResult> {
+    test_code_with_options(code, Some(path), deadline, input).await
+}
+
+async fn test_code_with_options(
+    code: &str,
+    path: Option<&str>,
+    deadline: Option<std::time::Instant>,
+    input: Option<String>,
+) -> AutoResult<test_runner::TestResult> {
+    let _request_file_root = input
+        .is_some()
+        .then(|| crate::vm::ffi::stdlib::RequestFileRootGuard::for_source_path(path));
+    crate::install_ui_host_capabilities();
+    use crate::vm::codegen::Codegen;
+    use crate::vm::engine::AutoVM;
+    use crate::vm::loader::Linker;
+    use crate::vm::opcode::OpCode;
+    use crate::vm::virt_memory::VirtualFlash;
+    use std::time::Instant;
+
+    // Plan 442 C2: axum serve adapter state reset (see execute_autovm_with_path).
+    crate::vm::ffi::axum_adapter::reset();
+    // PLAN-669: #[api] param-sig side channel — same reset discipline.
+    crate::vm::ffi::http_server::clear_api_param_sigs();
+
+    // Compilation pipeline (same as execute_autovm)
+    let mut session = compile::CompileSession::new();
+    if let Some(path) = path {
+        if let Some(dir) = std::path::Path::new(path).parent() {
+            session.add_source_dir(dir.to_path_buf());
+        }
+    }
+    session.collect_rust_imports(code)?;
+    session.collect_py_imports(code)?;
+    session.resolve_deps(code)?;
+    session.resolve_uses(code)?;
+
+    let rust_ffi_native_interface = init_rust_ffi(&session);
+    let py_ffi_native_interface = init_py_ffi(&session);
+
+    let mut parser = Parser::new_with_type_store(code, session.type_store());
+    let mut ast = parser.parse()?;
+
+    let mut ctee = crate::comptime::CTEE::new();
+    ctee.transform(&mut ast)?;
+
+    // Collect tests from AST before compilation
+    let registry = test_runner::collect_tests(&ast.stmts, "");
+
+    if registry.tests.is_empty() {
+        return Ok(test_runner::TestResult::default());
+    }
+
+    let mut codegen = Codegen::new_with_type_store(parser.type_store.clone());
+    codegen.assembly_context = session.assembly;
+    // PLAN-013 T1: 与脚本路径同款——dep 模块(如 stdlib term.vm.at)声明的
+    // #[vm] fn 名播种进根 codegen,裸调用才不会被 Plan 347 影子抑制改道 reloc。
+    for name in &session.vm_fn_names {
+        codegen.vm_fn_names.insert(name.clone());
+    }
+    let (type_decls, other_stmts): (Vec<_>, Vec<_>) = ast.stmts.iter().partition(|stmt| {
+        matches!(
+            stmt,
+            crate::ast::Stmt::TypeDecl(_)
+                | crate::ast::Stmt::Ext(_)
+                | crate::ast::Stmt::EnumDecl(_)
+        )
+    });
+
+    for stmt in &type_decls {
+        codegen.compile_stmt(stmt)?;
+    }
+
+    if !other_stmts.is_empty() {
+        let n_locals = 16;
+        codegen.emit_op(OpCode::FN_PROLOG);
+        codegen.emit_byte(0);
+        codegen.emit_byte(n_locals as u8);
+        codegen.emit_op(OpCode::RESERVE_STACK);
+        codegen.emit_byte(n_locals as u8);
+        for stmt in other_stmts.iter() {
+            codegen.compile_stmt(stmt)?;
+        }
+    }
+    codegen.code.push(OpCode::HALT as u8);
+
+    let strings = codegen.strings.clone();
+    let mut linker = Linker::new();
+    let dep_modules = session.take_compiled_modules();
+    for module in dep_modules {
+        linker.add_module(module);
+    }
+    let object_keys = codegen.object_keys.clone();
+    let object_types = codegen.object_types.clone();
+    let generic_registry = std::mem::take(&mut codegen.generic_registry);
+    // Plan 327 Phase 1: take task handler registry before finish() consumes codegen,
+    // so HANDLE_MSG opcode can find `task` `on { }` handlers at runtime.
+    let task_handler_registry = std::mem::take(&mut codegen.task_handler_registry);
+    // Plan 312: Extract API routes before finish() consumes codegen
+    let api_routes = codegen.api_routes.clone();
+    session
+        .assembly_references
+        .extend(codegen.assembly_references.iter().cloned());
+    session.freeze_assembly_manifest("vm-batch", std::path::Path::new("<main>"), code.as_ref())?;
+    let main_module = codegen.finish("<main>".to_string());
+    linker.add_entry_module(main_module);
+
+    let (linked_code, global_symbols) = linker
+        .link()
+        .map_err(|e| crate::error::AutoError::Msg(e.message.clone()))?;
+
+    // Create VM with capture
+    let flash = VirtualFlash::from_vec_with_metadata(
+        linked_code,
+        global_symbols.clone(),
+        object_keys,
+        object_types,
+    );
+    let (mut vm, _output_buffer) = AutoVM::new_with_capture(flash, 8192);
+    vm.set_deadline(deadline);
+    vm.set_request_input(input);
+    vm.load_strings(strings);
+    vm.load_generic_registry(generic_registry);
+    vm.load_task_handler_registry(task_handler_registry); // Plan 327 Phase 1
+                                                          // Plan 312: Register #[api] routes for HTTP server dispatch
+    crate::vm::ffi::stdlib::register_http_routes(api_routes);
+
+    if let Some(rust_ni) = rust_ffi_native_interface {
+        vm.merge_native_interface(&rust_ni);
+    }
+    if let Some(py_ni) = py_ffi_native_interface {
+        vm.merge_native_interface(&py_ni);
+    }
+
+    // Run each test
+    let mut result = test_runner::TestResult::default();
+    let _start = Instant::now();
+
+    for test in &registry.tests {
+        let report = test_runner::run_test_in_vm(&vm, test, &global_symbols).await;
+        result.reports.push(report);
+    }
+
+    Ok(result)
+}
+
+/// Plan 260: Run all `#[test]` functions in an Auto source file.
+/// Synchronous wrapper around test_code.
+pub fn test_file(path: &str) -> AutoResult<test_runner::TestResult> {
+    let code = std::fs::read_to_string(path)
+        .map_err(|e| crate::error::AutoError::Msg(format!("Failed to read file: {}", e)))?;
+    let rt = get_global_runtime();
+    rt.block_on(test_code(&code))
+}

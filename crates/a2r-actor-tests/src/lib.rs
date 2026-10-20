@@ -3,7 +3,7 @@
 //! This crate hosts integration tests that verify a2r-transpiled Auto actor
 //! programs behave identically to the AutoVM actor suite. Each test:
 //!   1. reads an actor `.at` from `test/a2r/22_actors/<case>/`,
-//!   2. transpiles it to Rust via `auto_lang::trans::rust::transpile_rust`,
+//!   2. transpiles it to Rust via `auto_lang_core::trans::rust::transpile_rust`,
 //!   3. writes a throwaway crate (depending on `a2r-std` + `tokio`) into a temp dir,
 //!   4. runs `cargo run` in that crate,
 //!   5. asserts the captured stdout equals the VM golden `test/vm/23_actor/<case>/*.expected.out`.

@@ -25,7 +25,7 @@ pub async fn run_debug_session(mut ws: WebSocket) {
 
 async fn run_debug_thread(mut ws: WebSocket, source: &str) {
     // 1. Compile and create VM
-    let (mut vm, output_buffer, entry_point, result_type) = match auto_lang::create_vm_from_source(source) {
+    let (mut vm, output_buffer, entry_point, result_type) = match auto_lang_core::create_vm_from_source(source) {
         Ok(v) => v,
         Err(e) => {
             send_json(
@@ -41,7 +41,7 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
     tracing::debug!("Debug session: compiling done, bytecode lines={}", vm.flash.memory.len());
 
     // 2. Disassemble bytecode and send to frontend
-    let disasm = auto_lang::vm::disasm::Disassembler::new(&vm.flash);
+    let disasm = auto_lang_core::vm::disasm::Disassembler::new(&vm.flash);
     let lines = disasm.disassemble_range(0, vm.flash.memory.len());
     let bytecode_json: Vec<serde_json::Value> = lines
         .iter()
@@ -55,7 +55,7 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
         })
         .collect();
     // VM constructor registers std shims, so symbol tables are complete here
-    let meta = auto_lang::vm::disasm::BytecodeMeta::of_vm(&vm);
+    let meta = auto_lang_core::vm::disasm::BytecodeMeta::of_vm(&vm);
     let meta_json = serde_json::to_value(&meta).ok();
     send_json(
         &mut ws,
@@ -84,7 +84,7 @@ async fn run_debug_thread(mut ws: WebSocket, source: &str) {
 
     // 6. Extract result and send finished state to frontend
     let stdout = output_buffer.read().unwrap().clone();
-    let result = auto_lang::extract_autovm_result(&vm, task_id, Some(result_type)).await.ok();
+    let result = auto_lang_core::extract_autovm_result(&vm, task_id, Some(result_type)).await.ok();
     let _ = state_tx2.send(DebugState {
         status: super::controller::DebugStatus::Finished,
         line: 0,

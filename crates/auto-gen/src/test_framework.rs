@@ -183,7 +183,7 @@ fn convert_atom_to_let(data: &str) -> String {
 
 /// Run a single generation test case
 pub fn run_gen_test(test: &GenTestCase) -> Result<(), String> {
-    use auto_lang::interpreter::AutoInterpreter;
+    use auto_lang_core::interpreter::AutoInterpreter;
 
     // Create interpreter and evaluate data code first
     let mut inter = AutoInterpreter::new();

@@ -5,7 +5,9 @@ edition = "2021"
 description = "Auto Playground web API server"
 
 [dependencies]
-auto-lang = { path = "../auto-lang" }
+# PLAN-814 T-06：非 UI 消费者切 SDK（run 族/test_code 族/VM 面全 Core；
+# test_code 家族随本批下沉 SDK）。
+auto-lang-core = { path = "../auto-lang-core" }
 axum = { version = "0.8", features = ["json", "ws"] }
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }

@@ -43,12 +43,12 @@ fn transpile(at_path: &std::path::Path) -> String {
         .unwrap_or_else(|e| panic!("open {}: {}", at_path.display(), e))
         .read_to_string(&mut src)
         .unwrap();
-    // auto_lang::trans::rust::transpile_rust is pub; call it on a big-stack thread.
+    // auto_lang_core::trans::rust::transpile_rust is pub; call it on a big-stack thread.
     let src_clone = src.clone();
     let child = std::thread::Builder::new()
         .stack_size(32 * 1024 * 1024)
         .spawn(move || -> Vec<u8> {
-            let mut rcode = auto_lang::trans::rust::transpile_rust("test", &src_clone).unwrap();
+            let mut rcode = auto_lang_core::trans::rust::transpile_rust("test", &src_clone).unwrap();
             let rs = rcode.done().unwrap();
             rs.to_vec()
         })

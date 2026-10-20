@@ -1,8 +1,8 @@
 use crate::data::LoadedData;
 use auto_gen_core::{GenError, GenResult, SourceLocation};
-use auto_lang::ast::Code;
-use auto_lang::atom::Atom;
-use auto_lang::interpreter::AutoInterpreter;
+use auto_lang_core::ast::Code;
+use auto_lang_core::atom::Atom;
+use auto_lang_core::interpreter::AutoInterpreter;
 use auto_val::AutoStr;
 use std::path::PathBuf;
 
@@ -71,7 +71,7 @@ impl TemplateEngine {
 
         Ok(Template {
             name: name.into(),
-            code: auto_lang::ast::Code::default(), // Empty AST - not used for templates
+            code: auto_lang_core::ast::Code::default(), // Empty AST - not used for templates
             source: source.into(),
         })
     }

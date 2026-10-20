@@ -1,6 +1,6 @@
 use auto_gen_core::{GenError, GenResult};
-use auto_lang::atom::Atom;
-use auto_lang::interpreter::AutoInterpreter;
+use auto_lang_core::atom::Atom;
+use auto_lang_core::interpreter::AutoInterpreter;
 use auto_val::{Shared, Value};
 use std::path::PathBuf;
 

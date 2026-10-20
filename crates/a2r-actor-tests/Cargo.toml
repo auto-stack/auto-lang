@@ -5,7 +5,8 @@ edition = "2021"
 description = "Plan 387: behavior-parity tests — transpile Auto actor .at → compile+run Rust → compare stdout to the VM actor suite"
 
 [dependencies]
-auto-lang = { path = "../auto-lang" }
+# PLAN-814 T-06：非 UI 消费者切 SDK（仅 trans::rust::transpile_rust 消费面）。
+auto-lang-core = { path = "../auto-lang-core" }
 
 [dev-dependencies]
 # none — tests shell out to `cargo` to build the generated crate

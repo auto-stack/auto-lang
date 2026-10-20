@@ -58,10 +58,10 @@ impl AgentDebugSession {
             let result: Result<(Arc<Mutex<HashSet<u32>>>, Vec<serde_json::Value>), String> =
                 (|| {
                     let (mut vm, output_buffer, entry_point, result_type) =
-                        auto_lang::create_vm_from_source(&source)
+                        auto_lang_core::create_vm_from_source(&source)
                             .map_err(|e| format!("{:?}", e))?;
 
-                    let disasm = auto_lang::vm::disasm::Disassembler::new(&vm.flash);
+                    let disasm = auto_lang_core::vm::disasm::Disassembler::new(&vm.flash);
                     let lines = disasm.disassemble_range(0, vm.flash.memory.len());
                     let bytecode_json: Vec<serde_json::Value> = lines
                         .iter()
@@ -103,7 +103,7 @@ impl AgentDebugSession {
                         tracing::debug!("Agent debug session {}: VM finished", thread_id);
 
                         let stdout = output_buffer.read().unwrap().clone();
-                        let result = auto_lang::extract_autovm_result(
+                        let result = auto_lang_core::extract_autovm_result(
                             &vm,
                             task_id,
                             Some(result_type),

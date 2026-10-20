@@ -1,4 +1,4 @@
-use auto_lang::vm::debugger::{DebugContext, DebuggerAction, DebuggerController};
+use auto_lang_core::vm::debugger::{DebugContext, DebuggerAction, DebuggerController};
 use std::collections::HashSet;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};

@@ -129,8 +129,8 @@ pub fn run_rust(code: &str) -> CodeRunResult {
     let paths = vec![src.clone(), exe.clone()];
 
     // Strip the a2r stdlib import that requires the auto_lang crate
-    let code = code.replace("#[allow(unused_imports)]\nuse auto_lang::a2r_std::*;\n\n", "");
-    let code = code.replace("use auto_lang::a2r_std::*;\n\n", "");
+    let code = code.replace("#[allow(unused_imports)]\nuse auto_lang_core::a2r_std::*;\n\n", "");
+    let code = code.replace("use auto_lang_core::a2r_std::*;\n\n", "");
 
     if let Err(e) = std::fs::write(&src, &code) {
         return CodeRunResult {
