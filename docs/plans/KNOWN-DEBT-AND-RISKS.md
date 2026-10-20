@@ -2547,3 +2547,7 @@ T-16/L2 needs_fix @1082bde52：L1-01/04/06已独立闭合，双checkpoint57→58
 ### Plan 798 修复复审及r5 readiness R13（2026-10-20，needs_fix）
 
 受审`06114f4316468030f1b160bb028046b9e5beab71`，plan r5；[报告/原反例闭合/新prefix输入/双线raw与身份](attachments/798/review-r13/review.md)。R12四项在当前范围关闭：71层尾表达式合法、unit不可执行、wire2隔离旧1、内存按用户批准r5方案C双线门（A224/B128）本轮release六场景×1实测A201.6MiB/B3.6MiB且四态门控通过；历史r4单线失败不改写。新F798-R13-01 P2：前缀unary在callee标识符operand时被消费，随后遇'('撤回名字把prefix一起丢掉；20个-/!加110层调用真实HIR131/132仍放行并返回1，同语义仅加括号则正确resource。116/24层合法控制通过。53项不同定向测试绿、fmt/diff-check0，不覆盖此新组合或完整最终验收。T03/04/06/11保留，T02重开，T01/05/07/08完整K14/正式30样本readiness原已pending，executing4/11。原树work补prefix绑定整个调用的状态与-/!/分组/普通operand区别性oracle后提交再审；未修实施/发布canonical规范/ledger/合入，最终pass后merge门禁和收尾pending。登记不授权延期/缩围。
+
+## D-815-L3：恢复审查缺口已闭，实际恢复待T-17（2026-10-20）
+
+T-16/L3阶段pass @0a65ee2a7：D-815-L1/L2涉及的CLI/schema/并发/部分写/前像/终门/收据finding均独立关闭，无新增。真实CLI57→58→59/1098项往返、A/B六种写失败与持续存储失败的准确残留/完整备份已验证。获准身份与映射边界见 docs/plans/attachments/815/review-l3/review.md。该结论只清偿审查缺口，**D-815-L的生产账本恢复尚未完成**：live仍v57原件未动，T-17真实恢复/upsert/sidecar与版本/读回收据及T-14终验仍pending；不得以review pass宣称阶段发布完成。
