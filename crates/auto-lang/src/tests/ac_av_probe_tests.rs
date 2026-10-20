@@ -193,6 +193,12 @@ fn ac_av_probe_decode_negatives() {
     ))
     .unwrap_err();
     assert!(e.message.contains("not valid for recipe"), "{e:?}");
+    // Extending the shared enum must not authorize AV run in ABI.
+    let e = decode_case_doc(&base(
+        r#"recipe: "abi/interop-v1", abi: { leg: "a" }, steps: [{ op: "run" }]"#,
+    ))
+    .unwrap_err();
+    assert!(e.message.contains("not valid for recipe"), "{e:?}");
     // The valid form decodes.
     decode_case_doc(&base(
         r#"recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [ { op: "run" } ]"#,
@@ -685,4 +691,138 @@ fn ac_av_probe_prep_executor_contained_failure_shapes() {
         .expect("real locate still works");
     assert!(exe.is_file(), "worker binary at {:?}", exe);
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Rebase integration: ABI, sema and AV share probe/run but must never
+/// share a cached identity map. Exercise all row orders through the real
+/// stale adjudicator, with independently declared case/source identities.
+#[test]
+#[cfg(windows)]
+fn ac_av_probe_mixed_recipe_stale_identity_is_order_independent() {
+    use crate::test_cases::{abi, ac_av, sema, stale};
+
+    let _guard = AV_CASE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    // Sema fault tests mutate process-wide worker settings; readers
+    // share their serializer even in a bare multi-thread libtest run.
+    let _sema_guard = crate::tests::probe_adapter_tests::FAULT_LOCK
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let root = temp_root("mixed-recipes");
+    std::fs::write(
+        root.join("all.suite.ad"),
+        "# mixed\n```test-suite\nsuite { schema: \"autolang.suite/2\", id: \"mixed3\", include: [\"av.case.ad\", \"sema.case.ad\", \"abi.case.ad\"] }\n```\n",
+    )
+    .unwrap();
+    let deck = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test/cases/autoabi/src/p797-mix.atomdata"),
+    )
+    .unwrap();
+    let cases = [
+        (
+            "av",
+            "fn main() int { return 1 }".to_string(),
+            "auto",
+            r#"{ recipe: "ac-av/core-run-v1", av: { entry: "d_main" }, steps: [{ op: "run" }] }"#,
+        ),
+        (
+            "sema",
+            "fn main() int { return 1 }".to_string(),
+            "auto",
+            r#"{ recipe: "sema/query-v1", sema: { package: "mixed3", module: "m", kind: "infer-body", fn: "main" }, steps: [{ op: "query" }] }"#,
+        ),
+        (
+            "abi",
+            deck,
+            "atom-data",
+            r#"{ recipe: "abi/interop-v1", abi: { leg: "a" }, steps: [{ op: "query" }] }"#,
+        ),
+    ];
+    for (id, source, syntax, options) in &cases {
+        let virtual_path = if *syntax == "atom-data" {
+            "input.atomdata"
+        } else {
+            "input.at"
+        };
+        let text = format!(
+            "# {id}\n```test-case\ncase {{ schema: \"autolang.case/2\", id: \"{id}\", source: {{ text: {}, syntax: \"{syntax}\", path: \"{virtual_path}\" }}, entry: {{ mode: \"program\" }}, checks: [{{ id: \"run\", adapter: \"probe\", action: \"run\", options: {options}, expect: {{ completion: \"success\" }} }}] }}\n```\n",
+            serde_json::to_string(source).unwrap()
+        );
+        std::fs::write(root.join(format!("{id}.case.ad")), text).unwrap();
+    }
+    let suite = root.join("all.suite.ad");
+    let limits = Limits::defaults();
+    let loaded = auto_test_case::discovery::load_suite(&suite, &limits).unwrap();
+    assert!(
+        loaded.errors.is_empty(),
+        "all fixture cases decode: {:?}",
+        loaded.errors
+    );
+    let identities = stale::current_identities(&suite, &limits).unwrap();
+    assert_eq!(
+        identities.len(),
+        3,
+        "all three declared checks are resolved"
+    );
+    let axes = [
+        ac_av::current_toolchain_identity(),
+        sema::current_toolchain_identity(),
+        abi::current_toolchain_identity(),
+    ];
+    let rows: Vec<_> = cases
+        .iter()
+        .enumerate()
+        .map(|(i, (id, ..))| {
+            let hashes = &identities[&format!("{id}:run")].0;
+            serde_json::json!({
+                "case": id, "check": "run", "adapter": "probe",
+                "identity": {
+                    "suite": hashes.suite, "case_file": hashes.case_file,
+                    "source": hashes.source, "oracle": hashes.oracle,
+                    "contract": hashes.contract,
+                },
+                "native": {"toolchain": axes[i].iter().collect::<Vec<_>>()},
+            })
+        })
+        .collect();
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
+        let report = serde_json::json!({
+            "toolchain": stale::toolchain_axes(&limits),
+            "results": order.map(|i| rows[i].clone()),
+        });
+        let verdicts = stale::check(&suite, &report).unwrap();
+        assert_eq!(verdicts.len(), 3);
+        assert!(
+            verdicts
+                .iter()
+                .all(|v| matches!(v, stale::RowVerdict::Fresh { .. })),
+            "every recipe retains its own axes, order={order:?}: {verdicts:?}"
+        );
+    }
+    for (target, axis) in [(0, "av-worker-exe-sha256"), (2, "abi-worker-exe-sha256")] {
+        let mut bad = rows.clone();
+        for pair in bad[target]["native"]["toolchain"].as_array_mut().unwrap() {
+            if pair[0] == axis {
+                pair[1] = serde_json::json!("changed-worker-content");
+            }
+        }
+        let report = serde_json::json!({
+            "toolchain": stale::toolchain_axes(&limits), "results": bad,
+        });
+        let verdicts = stale::check(&suite, &report).unwrap();
+        for (i, verdict) in verdicts.iter().enumerate() {
+            assert_eq!(
+                matches!(verdict, stale::RowVerdict::Stale { .. }),
+                i == target,
+                "drift is confined to its recipe: {verdicts:?}"
+            );
+        }
+    }
+    let _ = std::fs::remove_dir_all(root);
 }

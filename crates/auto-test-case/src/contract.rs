@@ -1493,7 +1493,7 @@ fn decode_options(
                     return Err(err(
                         &f.path_of("sema"),
                         format!(
-                            "the sema binding belongs to sema/query-v1, not {:?}",
+                            "the sema binding belongs to sema/query-v1; it is not valid for recipe {:?}",
                             recipe
                         ),
                     ));

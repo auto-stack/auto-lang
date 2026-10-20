@@ -791,6 +791,11 @@ pub fn run_check(
     if check.options.probe_recipe.as_deref() != Some(ABI_RECIPE) {
         return Err("probe check with an unregistered recipe (contract violation)".into());
     }
+    // Run belongs only to the AV recipe. Also reject programmatically
+    // constructed checks before creating artifacts or locating a worker.
+    if steps.iter().any(|step| matches!(step, ProbeStep::Run)) {
+        return Err("abi/interop-v1 does not accept run steps".into());
+    }
     let input_bytes = case
         .files
         .first()
@@ -850,13 +855,15 @@ pub fn run_check(
         }
         let step_json = match st {
             ProbeStep::Query => serde_json::json!({"op": "query"}),
+            ProbeStep::Run => return Err("abi/interop-v1 does not accept run steps".into()),
             // SAFETY: edit-source continues above; restart is the only
-            // other step kind
+            // other valid ABI step kind (AV run was rejected above)
             ProbeStep::EditSource { .. } => unreachable!("edit-source handled above"),
             ProbeStep::Restart => serde_json::json!({"op": "restart"}),
         };
         let step_tag = match st {
             ProbeStep::Query => "query",
+            ProbeStep::Run => return Err("abi/interop-v1 does not accept run steps".into()),
             ProbeStep::EditSource { .. } => unreachable!("edit-source handled above"),
             ProbeStep::Restart => "restart",
         };
