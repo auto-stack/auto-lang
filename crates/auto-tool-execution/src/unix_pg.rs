@@ -27,10 +27,19 @@ pub(crate) fn child_setpgid() -> io::Result<()> {
 }
 
 /// 终止整个进程组(group leader pid == pgid)。
+///
+/// 组已空(ESRCH)视为成功:调用场景含"根已退出、仅剩/已无后代"的
+/// 收尾(F-816-R1-02),无成员即无事可做,不是失败。
 pub(crate) fn kill_group(pgid: u32) -> io::Result<()> {
     unsafe {
         if kill(pgid as i32, SIGKILL) == -1 {
-            Err(io::Error::last_os_error())
+            let err = io::Error::last_os_error();
+            if err.raw_os_error() == Some(3) {
+                // ESRCH: 组内已无成员。
+                Ok(())
+            } else {
+                Err(err)
+            }
         } else {
             Ok(())
         }

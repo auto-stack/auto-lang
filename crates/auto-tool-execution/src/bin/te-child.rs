@@ -121,6 +121,23 @@ fn main() {
                 .unwrap();
             std::process::exit(status.code().unwrap_or(0));
         }
+        // ARG1 = 后代存活秒数;ARG2 = heartbeat 文件路径。
+        // 启动即派生一个**继承 stdio** 的后代(heartbeat 模式),自身随即
+        // 退出 0:后代持有本执行的 stdin/stdout/stderr 管道(F-816-R1-02
+        // 持管道反例),同时证明 spawn 返回前已存在的后代属 owned 树
+        // (F-816-R1-04 早派生——挂起入 Job 机制下不可能逃出)。
+        "orphan" => {
+            let secs: u64 = arg1().trim().parse().unwrap_or(5).min(30);
+            let hb = arg2();
+            let exe = std::env::current_exe().unwrap();
+            let _child = Command::new(&exe)
+                .env(MODE, "heartbeat")
+                .env(ARG1, secs.to_string())
+                .env(ARG2, &hb)
+                .spawn() // 默认继承 stdio:后代持有管道。
+                .unwrap();
+            drop(_child); // 不等待:自身立即退出。
+        }
         // ARG1 = 存活秒数;ARG2 = heartbeat 文件路径。
         "heartbeat" => {
             let secs: u64 = arg1().trim().parse().unwrap_or(5).min(30);

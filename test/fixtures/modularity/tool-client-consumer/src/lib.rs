@@ -67,7 +67,10 @@ fn real_client() -> ToolClient {
 
 /// 在给定（调用方持有、请求期间存活）目录里构造样例请求。
 #[cfg(test)]
-fn sample_request(base: &std::path::Path, output_root: Option<&std::path::Path>) -> GenerationRequest {
+fn sample_request(
+    base: &std::path::Path,
+    output_root: Option<&std::path::Path>,
+) -> GenerationRequest {
     let pac = base.join("pac.at");
     std::fs::write(&pac, "name: \"外部 demo\"\nrender: \"vue\"\n").unwrap();
     let mut request = GenerationRequest::from_descriptor(
@@ -118,7 +121,10 @@ fn consumer_validates_real_request_via_client() {
         .expect("host accepts a well-formed request");
     assert!(report.ok, "findings: {:?}", report.findings);
     assert_eq!(report.summary.name.as_deref(), Some("外部 demo"));
-    assert!(report.summary.not_checked.contains(&"generation".to_string()));
+    assert!(report
+        .summary
+        .not_checked
+        .contains(&"generation".to_string()));
     client.shutdown().expect("shutdown");
 }
 
@@ -129,9 +135,12 @@ fn version_rejected_before_side_effects_stream_alive() {
     let project = tempfile::tempdir().expect("tempdir");
     let mut client = real_client();
     let reply = client
-        .request_with_version(4242, ClientBody::ValidateProject {
-            request: WireRequest(sample_request(project.path(), Some(out_root.path()))),
-        })
+        .request_with_version(
+            4242,
+            ClientBody::ValidateProject {
+                request: WireRequest(sample_request(project.path(), Some(out_root.path()))),
+            },
+        )
         .expect("host answers the rejection itself");
     match reply {
         Reply::Host(e) => assert_eq!(
@@ -236,7 +245,10 @@ fn grandchild_tree_stops_on_timeout() {
     spec.env = vec![
         ("TE_CHILD_MODE".into(), "grandchild".into()),
         ("TE_CHILD_ARG1".into(), "30".into()),
-        ("TE_CHILD_ARG2".into(), hb.to_string_lossy().into_owned().into()),
+        (
+            "TE_CHILD_ARG2".into(),
+            hb.to_string_lossy().into_owned().into(),
+        ),
     ];
     spec.request_timeout = Some(Duration::from_secs(2));
     let mut client = ToolClient::spawn(spec).expect("spawn te-child");
@@ -268,7 +280,9 @@ fn stream_pollution_is_named_violation() {
     ];
     spec.request_timeout = Some(Duration::from_secs(3));
     let mut client = ToolClient::spawn(spec).expect("spawn te-child");
-    let err = client.describe().expect_err("stdout carries non-frame bytes");
+    let err = client
+        .describe()
+        .expect_err("stdout carries non-frame bytes");
     assert!(
         matches!(err, ClientError::StreamViolation(_)),
         "expected named stream violation, got {err:?}"
@@ -290,10 +304,7 @@ fn cwd_env_reach_host_and_logs_stay_separate() {
     spec.env = vec![
         ("TE_CHILD_MODE".into(), "probe".into()),
         ("TE_CHILD_ARG1".into(), "AUTO_TOOL_CLIENT_PROBE".into()),
-        (
-            "AUTO_TOOL_CLIENT_PROBE".into(),
-            "marker-✓-816".into(),
-        ),
+        ("AUTO_TOOL_CLIENT_PROBE".into(), "marker-✓-816".into()),
     ];
     let mut client = ToolClient::spawn(spec).expect("spawn te-child");
     // probe 模式：stderr 两行后 300ms 退出，stdout 全程为空 → 干净 EOF。
@@ -307,7 +318,10 @@ fn cwd_env_reach_host_and_logs_stay_separate() {
         logs.contains(&format!("cwd {}", cwd.path().to_string_lossy())),
         "cwd must reach the host: {logs}"
     );
-    assert!(logs.contains("env AUTO_TOOL_CLIENT_PROBE=marker-✓-816"), "{logs}");
+    assert!(
+        logs.contains("env AUTO_TOOL_CLIENT_PROBE=marker-✓-816"),
+        "{logs}"
+    );
     let shutdown = client.shutdown().expect("shutdown");
     assert_eq!(format!("{:?}", shutdown.kind), "Success");
 }
@@ -330,4 +344,73 @@ fn oversize_request_rejected_before_io() {
     // 预算拒绝不污染流：宿主仍正常服务。
     assert!(client.describe().is_ok());
     client.shutdown().expect("shutdown");
+}
+
+/// F-816-R1-01：请求 deadline 覆盖**阻塞发送**——宿主不读 stdin、帧超
+/// 管道缓冲时，250ms 截止以 Timeout 分类返回（终止 owned 树解除 writer
+/// 阻塞），而非等到宿主 2s 自停后以 BrokenPipe 冒出。
+#[test]
+fn request_deadline_covers_blocked_send() {
+    let mut spec = ToolClientSpec::new(te_child());
+    spec.env = vec![
+        ("TE_CHILD_MODE".into(), "sleep".into()),
+        ("TE_CHILD_ARG1".into(), "2".into()),
+    ];
+    spec.request_timeout = Some(Duration::from_millis(250));
+    let mut client = ToolClient::spawn(spec).expect("spawn te-child");
+    let started = Instant::now();
+    let err = client
+        .request_unknown_operation(&"g".repeat(256 * 1024)) // 超管道缓冲、低于帧预算
+        .expect_err("blocked send must hit the deadline");
+    match &err {
+        ClientError::Timeout { id: 1, limit } => {
+            assert_eq!(*limit, Duration::from_millis(250));
+        }
+        other => panic!("expected Timeout, got {other:?}"),
+    }
+    assert!(
+        started.elapsed() < Duration::from_millis(1200),
+        "deadline must bound the blocked send (elapsed={:?})",
+        started.elapsed()
+    );
+}
+
+/// F-816-R1-02：宿主根进程秒退、持管道后代存活时，shutdown 在宽限内
+/// 完成——根退出后 owned 后代先终止、管道关闭、reader 收尾；真实退出
+/// 分类保留（Success），持管道后代随树真停（heartbeat 停止推进）。
+#[test]
+fn shutdown_bounds_pipe_holding_descendants() {
+    let hb_dir = tempfile::tempdir().expect("tempdir");
+    let hb = hb_dir.path().join("heartbeat.log");
+    let mut spec = ToolClientSpec::new(te_child());
+    spec.env = vec![
+        ("TE_CHILD_MODE".into(), "orphan".into()),
+        ("TE_CHILD_ARG1".into(), "3".into()),
+        (
+            "TE_CHILD_ARG2".into(),
+            hb.to_string_lossy().into_owned().into(),
+        ),
+    ];
+    spec.shutdown_timeout = Duration::from_millis(800);
+    let mut client = ToolClient::spawn(spec).expect("spawn te-child");
+    // 不发请求：直接走 shutdown——根秒退（真实分类 Success）后，
+    // 持管道的 owned 后代先终止，宽限内完成收尾。
+    let started = Instant::now();
+    let shutdown = client.shutdown().expect("shutdown bounded");
+    let elapsed = started.elapsed();
+    assert_eq!(shutdown.kind, ExitKind::Success);
+    assert!(
+        elapsed < Duration::from_millis(2000),
+        "shutdown must bound pipe-holding descendants (elapsed={elapsed:?})"
+    );
+    // 后代确已随树终止：heartbeat 停止推进。
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0) == 0 {
+        assert!(Instant::now() < deadline, "descendant never started");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    let stopped_at = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
+    std::thread::sleep(Duration::from_millis(600));
+    let after = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
+    assert_eq!(stopped_at, after, "pipe-holding descendant must be dead");
 }

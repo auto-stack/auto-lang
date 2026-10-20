@@ -337,3 +337,90 @@ fn windows_cmd_shim_routes_builtin() {
     let out = result.stdout_lossy().unwrap();
     assert!(out.contains("shim-ok-816"), "stdout={out:?}");
 }
+
+// ---------------------------------------------------------------------------
+// F-816-R1 复审反例的永久回归(deadline 覆盖写入/持管道后代/早派生归属/
+// writer 失败具名)
+// ---------------------------------------------------------------------------
+
+/// F-816-R1-01：对端不读 stdin 时,大 stdin_data 的管道写阻塞不越过
+/// deadline——250ms 截止按 Timeout 分类返回,而非等到对端 2s 自停后才以
+/// BrokenPipe 冒出。
+#[test]
+fn deadline_covers_blocked_stdin_write() {
+    let mut spec = with_args(child_spec("sleep"), "2", None);
+    spec.stdin = StdioPolicy::Piped;
+    spec.tree_scope = TreeScope::ProcessTree;
+    spec.stdin_data = Some(vec![b'x'; 1024 * 1024]); // 远超管道缓冲
+    spec.deadline = Some(Duration::from_millis(250));
+    let started = Instant::now();
+    let result = run(&spec).expect("run with deadline");
+    let elapsed = started.elapsed();
+    assert!(
+        matches!(result.kind, ExitKind::Timeout { .. }),
+        "{:?}",
+        result.kind
+    );
+    assert!(
+        elapsed < Duration::from_millis(1200),
+        "deadline must bound the blocked write (elapsed={elapsed:?})"
+    );
+}
+
+/// F-816-R1-02：根派生**继承 stdio** 的持管道后代后立即退出——run 在根
+/// 真实退出分类(Success)下及时返回:owned 后代随根退出被终止,管道
+/// 关闭使 reader 收到 EOF;不得等后代自停(反例实测 1818ms/Success 谎报)。
+#[test]
+fn root_exit_terminates_pipe_holding_descendants() {
+    let dir = TempDir::new("f02-hold");
+    let hb = dir.path().join("hb.log");
+    let mut spec = with_args(child_spec("orphan"), "3", Some(hb.to_str().unwrap()));
+    spec.tree_scope = TreeScope::ProcessTree; // 持管道后代属 owned 树
+    spec.deadline = Some(Duration::from_secs(5)); // 根秒退,不会触超时
+    let started = Instant::now();
+    let result = run(&spec).expect("run");
+    let elapsed = started.elapsed();
+    assert_eq!(result.kind, ExitKind::Success, "{:?}", result.kind);
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "root exit must bound the run (elapsed={elapsed:?})"
+    );
+    // 持管道后代确已被 owned 树终止:heartbeat 停止推进。
+    wait_first_tick(&hb, Duration::from_secs(2));
+    let stopped_at = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
+    std::thread::sleep(Duration::from_millis(600));
+    let after = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
+    assert_eq!(stopped_at, after, "pipe-holding descendant must be dead");
+}
+
+/// F-816-R1-04:spawn 返回前即已存在的后代属于 owned 树——挂起入 Job
+/// 机制下,根的任何用户代码(含派生)都在归属建立之后运行,早派生的
+/// 后代不可能逃出 Job;cancel 后 heartbeat 停止(确定性,不靠等待时长)。
+#[test]
+fn early_spawned_descendant_belongs_to_owned_tree() {
+    let dir = TempDir::new("f04-early");
+    let hb = dir.path().join("hb.log");
+    let mut spec = with_args(child_spec("orphan"), "8", Some(hb.to_str().unwrap()));
+    spec.tree_scope = TreeScope::ProcessTree; // 早派生后代必须入 owned 树
+    let mut proc = spawn(&spec).expect("spawn");
+    wait_first_tick(&hb, Duration::from_secs(2)); // 后代已存在
+    proc.cancel().expect("cancel owned tree");
+    let stopped_at = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
+    std::thread::sleep(Duration::from_millis(600));
+    let after = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
+    assert_eq!(stopped_at, after, "early descendant must die with the tree");
+}
+
+/// F-816-R1-06(正常路径 writer 面):子进程不读 stdin 即退出,大
+/// stdin_data 的写失败具名传播(write stdin),不以 Success/空输出掩盖。
+#[test]
+fn stdin_writer_failure_is_named() {
+    let mut spec = with_args(child_spec("exit"), "0", None);
+    spec.stdin = StdioPolicy::Piped;
+    spec.stdin_data = Some(vec![b'x'; 1024 * 1024]); // 子进程即退,写必断管
+    let err = run(&spec).expect_err("writer must fail on broken pipe");
+    match &err {
+        ExecutionError::Io { stage, .. } => assert_eq!(*stage, "write stdin"),
+        other => panic!("expected named write-stdin failure, got {other:?}"),
+    }
+}

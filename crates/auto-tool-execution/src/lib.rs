@@ -14,9 +14,14 @@
 //! - stdout/stderr 捕获无默认截断预算(与语言 sys.exec 的 64KB 截断
 //!   合同相反;截断属调用方策略)。
 //! - cancel/超时后在子进程被观察停止(收尸)后才返回;kill 发出不算已停。
-//! - [`StdioPolicy::Inherit`] + [`TreeScope::ProcessGroup`] 在 Unix 下使
+//! - deadline 覆盖整次执行:写入(stdin)、等待与资源收尾共用同一绝对
+//!   截止(F-816-R1-01);根进程退出后仍持管道的 owned 后代先终止、
+//!   reader 有界 join 后才返回(F-816-R1-02)。
+//! - [`StdioPolicy::Inherit`] + [`TreeScope::ProcessTree`] 在 Unix 下使
 //!   子进程脱离终端前台组(Ctrl+C 不再直达),交互式命令保持
 //!   [`TreeScope::DirectChildOnly`]。
+//! - reader 的读错/panic 与 writer/终止失败具名传播,不以成功码或空
+//!   输出掩盖(F-816-R1-06)。
 
 use std::ffi::OsString;
 use std::io;
@@ -67,7 +72,7 @@ pub enum TreeScope {
 /// 一次执行的完整请求。
 #[derive(Clone, Debug, Default)]
 pub struct ExecutionSpec {
-    /// argv[0] = 程序,其余为参数;零 shell 解释(空 argv 报
+    /// argv 首元素为程序,其余为参数;零 shell 解释(空 argv 报
     /// [`ExecutionError::InvalidSpec`])。
     pub argv: Vec<OsString>,
     /// 工作目录(None = 继承调用方)。
@@ -92,7 +97,7 @@ pub struct ExecutionSpec {
 }
 
 impl ExecutionSpec {
-    /// 便捷构造:argv[0] 为程序,其余为参数。
+    /// 便捷构造:argv 首元素为程序,其余为参数。
     pub fn new<I, S>(argv: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -178,6 +183,22 @@ pub enum ExecutionError {
         stage: &'static str,
         source: io::Error,
     },
+    /// 捕获 reader 以 I/O 错误(而非干净 EOF)结束——捕获内容可能已被
+    /// 截断,不以成功码掩盖(F-816-R1-06)。
+    ReaderIo {
+        stream: &'static str,
+        source: io::Error,
+    },
+    /// 捕获 reader 线程 panic(join 失败),同上不掩盖。
+    ReaderPanicked {
+        stream: &'static str,
+    },
+    /// 根进程已退出且 owned 树已终止,但管道写端仍被**非本次拥有**的
+    /// 进程持有:reader 在宽限内收不到 EOF,按具名失败返回而非无限
+    /// 等待/谎报成功(F-816-R1-02)。捕获内容不可信,已丢弃。
+    PipesHeld {
+        after: Duration,
+    },
 }
 
 impl std::fmt::Display for ExecutionError {
@@ -191,6 +212,20 @@ impl std::fmt::Display for ExecutionError {
             ),
             ExecutionError::InvalidSpec(reason) => write!(f, "invalid execution spec: {reason}"),
             ExecutionError::Io { stage, source } => write!(f, "{stage}: {source}"),
+            ExecutionError::ReaderIo { stream, source } => write!(
+                f,
+                "capture reader for {stream} ended with an I/O error (output may be \
+                 truncated): {source}"
+            ),
+            ExecutionError::ReaderPanicked { stream } => write!(
+                f,
+                "capture reader for {stream} panicked; output may be truncated"
+            ),
+            ExecutionError::PipesHeld { after } => write!(
+                f,
+                "output pipes still held by processes outside this execution after \
+                 {after:?}; captured output was dropped"
+            ),
         }
     }
 }
@@ -198,10 +233,12 @@ impl std::fmt::Display for ExecutionError {
 impl std::error::Error for ExecutionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            ExecutionError::Spawn { source, .. } | ExecutionError::Io { source, .. } => {
-                Some(source)
-            }
-            ExecutionError::InvalidSpec(_) => None,
+            ExecutionError::Spawn { source, .. }
+            | ExecutionError::Io { source, .. }
+            | ExecutionError::ReaderIo { source, .. } => Some(source),
+            ExecutionError::InvalidSpec(_)
+            | ExecutionError::ReaderPanicked { .. }
+            | ExecutionError::PipesHeld { .. } => None,
         }
     }
 }
@@ -267,6 +304,13 @@ fn build_command(spec: &ExecutionSpec) -> Command {
 pub fn spawn(spec: &ExecutionSpec) -> Result<OwnedProcess, ExecutionError> {
     validate(spec)?;
     let mut cmd = build_command(spec);
+    #[cfg(windows)]
+    if spec.tree_scope == TreeScope::ProcessTree {
+        // 挂起启动(F-816-R1-04):任何用户代码——包括派生后代——只在
+        // Job 归属建立并恢复主线程之后运行,后代不可能逃出 owned Job。
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(win_job::suspended_creation_flags());
+    }
     let child = cmd.spawn().map_err(|source| ExecutionError::Spawn {
         program: spec.argv[0].clone(),
         source,
@@ -281,12 +325,11 @@ pub fn spawn(spec: &ExecutionSpec) -> Result<OwnedProcess, ExecutionError> {
     if spec.tree_scope == TreeScope::ProcessTree {
         #[cfg(windows)]
         {
-            // 立即入 job:孙进程只有被子进程 spawn 后才会存在,而本调用
-            // 先于子进程用户代码执行(测试侧以"观察到孙进程存活再取消"
-            // 的协议确定性关闭 assign 竞态窗口)。
-            match win_job::create_and_assign(&proc.child) {
+            match win_job::assign_suspended_and_resume(&proc.child) {
                 Ok(job) => proc.job = Some(job),
                 Err(source) => {
+                    // 根仍处挂起/未恢复状态,不可能已有后代;终止+收尸即
+                    // 完成全部清理。
                     let _ = proc.child.kill();
                     let _ = proc.child.wait();
                     return Err(ExecutionError::Io {
@@ -300,94 +343,214 @@ pub fn spawn(spec: &ExecutionSpec) -> Result<OwnedProcess, ExecutionError> {
     Ok(proc)
 }
 
-/// 一次性执行到终态(含可选 deadline)。捕获策略为 Piped 的流由内部
-/// reader 线程并发读取(大输出不死锁),并在进程终止、管道 EOF 后 join
-/// ——reader 真终止后才返回。
+/// reader 结束方式(具名;干净 EOF 与 I/O 错误分开——F-816-R1-06)。
+#[derive(Debug)]
+enum ReaderEnd {
+    Eof,
+    Io(io::Error),
+}
+
+/// 捕获流的产出:字节 + 结束方式。线程 panic 时通道断开、无消息。
+struct Capture {
+    bytes: Vec<u8>,
+    end: ReaderEnd,
+}
+
+/// 捕获 reader 的完成通道(有界等待;`Disconnected` = 线程 panic)。
+type CaptureRx = std::sync::mpsc::Receiver<Capture>;
+
+fn capture_thread<R: io::Read + Send + 'static>(mut r: R) -> CaptureRx {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let mut end = ReaderEnd::Eof;
+        let mut chunk = [0u8; 16 * 1024];
+        loop {
+            match r.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(n) => bytes.extend_from_slice(&chunk[..n]),
+                Err(e) => {
+                    end = ReaderEnd::Io(e);
+                    break;
+                }
+            }
+        }
+        let _ = tx.send(Capture { bytes, end });
+    });
+    rx
+}
+
+/// 正常路径的捕获收集:EOF 才算成功;I/O 错误/panic/宽限内无 EOF(管道
+/// 被**非本次拥有**的进程持有)分别具名失败,不以部分字节谎报成功。
+fn collect_capture(
+    stream: &'static str,
+    rx: Option<CaptureRx>,
+    grace: Duration,
+) -> Result<Option<Vec<u8>>, ExecutionError> {
+    match rx {
+        None => Ok(None),
+        Some(rx) => match rx.recv_timeout(grace) {
+            Ok(cap) => match cap.end {
+                ReaderEnd::Eof => Ok(Some(cap.bytes)),
+                ReaderEnd::Io(source) => Err(ExecutionError::ReaderIo { stream, source }),
+            },
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                Err(ExecutionError::PipesHeld { after: grace })
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(ExecutionError::ReaderPanicked { stream })
+            }
+        },
+    }
+}
+
+/// owned 树终止后的捕获收集:尽力保留字节,结束状态属拆除噪声(EOF 或
+/// torn-down I/O 皆可能),不改变调用方的超时/取消分类。
+fn drain_capture_after_stop(rx: Option<CaptureRx>, grace: Duration) -> Option<Vec<u8>> {
+    let rx = rx?;
+    match rx.recv_timeout(grace) {
+        Ok(cap) => Some(cap.bytes),
+        Err(_) => None,
+    }
+}
+
+type WriterRx = std::sync::mpsc::Receiver<io::Result<()>>;
+
+/// stdin 写入线程:对端不读导致管道写阻塞时,不越过调用方 deadline
+/// (F-816-R1-01)——超时路径先终止 owned 树,管道关闭使本线程解除阻塞。
+fn stdin_writer_thread(mut stdin: ChildStdin, data: Vec<u8>) -> WriterRx {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let result = io::Write::write_all(&mut stdin, &data);
+        // drop(stdin) 关闭管道,子进程 stdin 见 EOF。
+        let _ = tx.send(result);
+    });
+    rx
+}
+
+fn collect_writer(rx: Option<WriterRx>, grace: Duration) -> Result<(), ExecutionError> {
+    match rx {
+        None => Ok(()),
+        Some(rx) => match rx.recv_timeout(grace) {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(source)) => Err(ExecutionError::Io {
+                stage: "write stdin",
+                source,
+            }),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                Err(ExecutionError::PipesHeld { after: grace })
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(ExecutionError::ReaderPanicked {
+                    stream: "stdin writer",
+                })
+            }
+        },
+    }
+}
+
+/// 无显式 deadline 时,根退出后等待管道收尾的默认宽限;超时即具名
+/// [`ExecutionError::PipesHeld`]——不无限等待(F-816-R1-02)。
+const POST_EXIT_COLLECT_GRACE: Duration = Duration::from_secs(10);
+
+/// owned 树终止后的收尾宽限:拆除后管道应立即关闭,给足调度余量即可。
+const TEARDOWN_GRACE: Duration = Duration::from_secs(3);
+
+/// 一次性执行到终态(含可选 deadline)。deadline 覆盖**整次**执行:
+/// stdin 写入、根等待与资源收尾共用同一绝对截止(F-816-R1-01)。
+/// 根退出后、reader 收尾前,仍持管道的 owned 后代先被终止
+/// (F-816-R1-02);reader 的读错/panic 与 writer/终止失败具名传播
+/// (F-816-R1-06)。
 pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
     validate(spec)?;
     let start = Instant::now();
+    let deadline_at = spec.deadline.map(|limit| start + limit);
     let mut proc = spawn(spec)?;
 
-    if let Some(data) = spec.stdin_data.clone() {
-        let mut stdin = proc
-            .child
-            .stdin
-            .take()
-            .ok_or_else(|| ExecutionError::InvalidSpec("stdin pipe missing".into()))?;
-        io::Write::write_all(&mut stdin, &data).map_err(|source| ExecutionError::Io {
-            stage: "write stdin",
-            source,
-        })?;
-        // drop 关闭管道,子进程 stdin 见 EOF。
-    }
+    // reader 先于任何写入启动:双向大流量不会因对方先写满而互等。
+    let stdout_rx = proc.take_stdout().map(capture_thread);
+    let stderr_rx = proc.take_stderr().map(capture_thread);
 
-    let stdout_reader = proc
-        .child
-        .stdout
-        .take()
-        .map(reader_thread::<std::process::ChildStdout>);
-    let stderr_reader = proc
-        .child
-        .stderr
-        .take()
-        .map(reader_thread::<std::process::ChildStderr>);
+    let writer_rx = match spec.stdin_data.clone() {
+        Some(data) => {
+            let stdin = proc
+                .take_stdin()
+                .ok_or_else(|| ExecutionError::InvalidSpec("stdin pipe missing".into()))?;
+            Some(stdin_writer_thread(stdin, data))
+        }
+        None => None,
+    };
 
-    let mut decided: Option<ExitKind> = None;
-    let status = match spec.deadline {
-        Some(limit) => match proc
-            .wait_deadline(limit)
-            .map_err(|source| ExecutionError::Io {
-                stage: "wait",
-                source,
-            })? {
-            Some(status) => status,
-            None => {
-                // cancel 内含 terminate + wait 收尸;超时分类由上下文给出。
-                let status = proc.cancel().map_err(|source| ExecutionError::Io {
-                    stage: "cancel after timeout",
-                    source,
-                })?;
-                decided = Some(ExitKind::Timeout {
-                    after: start.elapsed(),
-                });
-                status
+    let mut timed_out = false;
+    let status = match deadline_at {
+        Some(at) => {
+            let remaining = at.saturating_duration_since(Instant::now());
+            match proc.wait_deadline(remaining) {
+                Ok(Some(status)) => status,
+                Ok(None) => {
+                    timed_out = true;
+                    // cancel = terminate owned 树 + 收尸;失败具名传播
+                    // (此时树可能仍活,只能放弃 reader/writer 等待)。
+                    proc.cancel().map_err(|source| ExecutionError::Io {
+                        stage: "cancel after timeout",
+                        source,
+                    })?
+                }
+                Err(source) => {
+                    return Err(ExecutionError::Io {
+                        stage: "wait",
+                        source,
+                    })
+                }
             }
-        },
+        }
         None => proc.child.wait().map_err(|source| ExecutionError::Io {
             stage: "wait",
             source,
         })?,
     };
     proc.reaped = true;
+    let elapsed = start.elapsed();
 
-    let stdout = stdout_reader.map(join_reader);
-    let stderr = stderr_reader.map(join_reader);
+    if timed_out {
+        // owned 树已终止并收尸:管道关闭使 writer/reader 解除阻塞并收尾;
+        // 其结束状态属拆除噪声,尽力保留已捕获字节,不改 Timeout 分类。
+        let stdout = drain_capture_after_stop(stdout_rx, TEARDOWN_GRACE);
+        let stderr = drain_capture_after_stop(stderr_rx, TEARDOWN_GRACE);
+        if let Some(rx) = writer_rx {
+            // 挂起在满管道上的写线程随树终止解除;丢弃拆除期结果。
+            let _ = rx.recv_timeout(TEARDOWN_GRACE);
+        }
+        return Ok(ExecutionResult {
+            kind: ExitKind::Timeout { after: elapsed },
+            stdout,
+            stderr,
+            elapsed,
+        });
+    }
+
+    // 根已退出(真实分类保留):先终止仍存活的 owned 后代——它们可能
+    // 持有输出管道使 reader 等 EOF(F-816-R1-02);Unix 下组空(ESRCH)
+    // 视为无事可做。
+    if proc.tree_scope == TreeScope::ProcessTree {
+        proc.terminate().map_err(|source| ExecutionError::Io {
+            stage: "terminate after root exit",
+            source,
+        })?;
+    }
+    let grace = deadline_at
+        .map(|at| at.saturating_duration_since(Instant::now()))
+        .unwrap_or(POST_EXIT_COLLECT_GRACE);
+    let stdout = collect_capture("stdout", stdout_rx, grace)?;
+    let stderr = collect_capture("stderr", stderr_rx, grace)?;
+    collect_writer(writer_rx, grace)?;
 
     Ok(ExecutionResult {
-        kind: decided.unwrap_or_else(|| ExitKind::from_status(&status)),
+        kind: ExitKind::from_status(&status),
         stdout,
         stderr,
-        elapsed: start.elapsed(),
+        elapsed,
     })
-}
-
-fn reader_thread<R: io::Read + Send + 'static>(mut r: R) -> std::thread::JoinHandle<Vec<u8>> {
-    std::thread::spawn(move || {
-        let mut buf = Vec::new();
-        let mut chunk = [0u8; 16 * 1024];
-        loop {
-            match r.read(&mut chunk) {
-                Ok(0) => break,
-                Ok(n) => buf.extend_from_slice(&chunk[..n]),
-                Err(_) => break,
-            }
-        }
-        buf
-    })
-}
-
-fn join_reader(h: std::thread::JoinHandle<Vec<u8>>) -> Vec<u8> {
-    h.join().unwrap_or_default()
 }
 
 /// owned 进程句柄:终止(直接/树)、收尸、管道访问、带限等待。
@@ -403,6 +566,11 @@ pub struct OwnedProcess {
 impl OwnedProcess {
     pub fn id(&self) -> u32 {
         self.child.id()
+    }
+
+    /// 本次执行的 owned 树范围（shutdown/收尾方决定终止策略）。
+    pub fn tree_scope(&self) -> TreeScope {
+        self.tree_scope
     }
 
     pub fn stdin(&mut self) -> Option<&mut ChildStdin> {
@@ -511,6 +679,100 @@ impl Drop for OwnedProcess {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ---- F-816-R1-06 故障注入面:reader 读错/panic/管道被持有 ----
+
+    struct Scripted {
+        chunks: Vec<Vec<u8>>,
+        tail: Tail,
+    }
+
+    enum Tail {
+        Eof,
+        Err(&'static str),
+        /// 永不结束(模拟管道写端被非拥有进程持有)。
+        Block,
+    }
+
+    impl io::Read for Scripted {
+        fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+            if let Some(chunk) = self.chunks.first() {
+                // 测试分块恒小于一次读取窗口,整块交付。
+                let n = chunk.len().min(buf.len());
+                buf[..n].copy_from_slice(&chunk[..n]);
+                self.chunks.remove(0);
+                return Ok(n);
+            }
+            match self.tail {
+                Tail::Eof => Ok(0),
+                Tail::Err(msg) => Err(io::Error::other(msg)),
+                // 模拟管道写端被非拥有进程持有:读永不返回(测试线程
+                // 随进程终结;collect 侧以小宽限判 PipesHeld)。
+                Tail::Block => loop {
+                    std::thread::sleep(Duration::from_secs(3600));
+                },
+            }
+        }
+    }
+
+    /// reader 读错 → ReaderIo 具名传播(不是静默 EOF/Success)。
+    #[test]
+    fn capture_reader_io_error_is_named() {
+        let rx = capture_thread(Scripted {
+            chunks: vec![b"partial".to_vec()],
+            tail: Tail::Err("kernel read gone"),
+        });
+        let err = collect_capture("stdout", Some(rx), Duration::from_secs(2)).unwrap_err();
+        match err {
+            ExecutionError::ReaderIo { stream, source } => {
+                assert_eq!(stream, "stdout");
+                assert!(source.to_string().contains("kernel read gone"));
+            }
+            other => panic!("expected ReaderIo, got {other:?}"),
+        }
+    }
+
+    /// reader panic(通道断开、无消息)→ ReaderPanicked 具名传播。
+    #[test]
+    fn capture_reader_panic_is_named() {
+        struct Panic;
+        impl io::Read for Panic {
+            fn read(&mut self, _buf: &mut [u8]) -> io::Result<usize> {
+                panic!("injected reader panic");
+            }
+        }
+        let rx = capture_thread(Panic);
+        let err = collect_capture("stdout", Some(rx), Duration::from_secs(2)).unwrap_err();
+        assert!(
+            matches!(err, ExecutionError::ReaderPanicked { stream: "stdout" }),
+            "{err:?}"
+        );
+    }
+
+    /// 管道写端被非拥有进程持有(reader 无 EOF)→ 宽限内具名 PipesHeld,
+    /// 不无限等待、不谎报成功。
+    #[test]
+    fn pipes_held_is_named_after_grace() {
+        let rx = capture_thread(Scripted {
+            chunks: vec![],
+            tail: Tail::Block,
+        });
+        let err = collect_capture("stdout", Some(rx), Duration::from_millis(150)).unwrap_err();
+        assert!(matches!(err, ExecutionError::PipesHeld { .. }), "{err:?}");
+    }
+
+    /// 干净 EOF 对照:字节完整保留。
+    #[test]
+    fn capture_clean_eof_keeps_bytes() {
+        let rx = capture_thread(Scripted {
+            chunks: vec![b"hello".to_vec(), b" world".to_vec()],
+            tail: Tail::Eof,
+        });
+        let out = collect_capture("stdout", Some(rx), Duration::from_secs(2))
+            .unwrap()
+            .unwrap();
+        assert_eq!(out, b"hello world");
+    }
 
     #[test]
     fn empty_argv_rejected() {
