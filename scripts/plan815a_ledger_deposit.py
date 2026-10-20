@@ -219,14 +219,25 @@ def deposit(path: Path, items: dict, verify=validate) -> bool:
     backup.write_bytes(original)
     if path.read_bytes() != original:
         raise ValueError("concurrent ledger edit before write")
+    wrote = encode(ledger)
     try:
-        path.write_bytes(encode(ledger))
+        path.write_bytes(wrote)
         reread = json.loads(path.read_bytes())
         verify(reread)
         if reread != ledger:
             raise ValueError("read-back mismatch")
     except Exception:
-        path.write_bytes(original)
+        # guarded rollback (review L1 F-02): restore the original bytes
+        # ONLY if the current content is exactly what this run wrote — an
+        # external update is preserved, never overwritten
+        current = path.read_bytes()
+        if current == wrote:
+            path.write_bytes(original)
+        else:
+            raise RuntimeError(
+                "read-back failed AND the file changed beyond this run's write; "
+                "external update preserved (no rollback)"
+            ) from None
         raise
     return True
 
