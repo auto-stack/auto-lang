@@ -244,15 +244,13 @@ patterns = [
 
 [[text_scan]]
 id = "ui_to_language"
-description = "UI 五目录对语言实现的文本引用候选——观察范围仅 auto_lang:: 前缀；crate::ast/vm/parser 等核心路径不在本扫描范围（明确声明的范围边界，非完整架构依赖图）"
+description = "UI 包（runtime+compiler）对旧 auto_lang 巨包的引用候选——PLAN-814 T-04 起升格为零命中不变量围栏（DAG 禁反向依赖；SDK 引用形态 auto_lang_core:: 不在本扫描范围）"
+# PLAN-814 T-04：UI 五目录随 T-03/T-04 迁 auto-ui-compiler/auto-ui-runtime。
 source_roots = [
-    "crates/auto-lang/src/ui",
-    "crates/auto-lang/src/ui_gen",
-    "crates/auto-lang/src/aura",
-    "crates/auto-lang/src/design_tokens",
-    "crates/auto-lang/src/a2ui",
+    "crates/auto-ui-runtime/src",
+    "crates/auto-ui-compiler/src",
 ]
-patterns = ["\\bauto_lang::"]
+patterns = ["\bauto_lang::"]
 
 [[text_scan]]
 id = "man_to_language"
