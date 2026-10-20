@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
 plan_revision: 2
-current_step: 2
+current_step: 3
 total_steps: 14
 supersedes_spec_components: [docs/specs/auto-cli/project.md, docs/specs/auto-man/project.md, docs/specs/stdlib/design/http-service-deployment.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/tool-execution/project.md]
@@ -159,7 +159,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | [ ] | T-09 | review | T-08 | 同树独立完整命令/资源退出/实际tool/profile审查，保留merge门pending | AC-05 |
 | [ ] | T-10 | merge | T-09 pass | master并集/变化复审、冻结统一适用门，失败归因修复后重审 | AC-06 |
 | [ ] | T-11 | merge | T-10 | 规范/ledger/归档、真实CLI/service/tool消费交后续发行/搬仓，guard clean清理与计数 | AC-06 |
-| [ ] | T-12 | work | T-02+M815-A已发布；不等814/815-B | 真实协议client/独立consumer调用M815-A，V-05及V-02/03当期反例；版本来源/777/适用792发行与Spec候选，新增attachments/816/m816-a-candidate.md | AC-07 |
+| [x] | T-12 | work | T-02+M815-A已发布；不等814/815-B | 真实协议client/独立consumer调用M815-A，V-05及V-02/03当期反例；版本来源/777/适用792发行与Spec候选，新增attachments/816/m816-a-candidate.md | AC-07 [✅ 已完成] worktree codex/plan-816-dev：先合 master b65d0e963（M815-A e609caf1af 消费面零漂移验证）；新 crate `auto-tool-client`（describe/validate/cancel 诚实/版本·缺能力·预算具名负控/请求超时=owned 树终止+收尸+reader join 后返回/Broken 终态/EOF 优雅关闭；闭包=data+man-ecosystem，无 auto-ui-tools 静态链接）+`OwnedProcess::take_*` 管道移交+te-child probe/stdout-kib 延时；独立 fixture tool-client-consumer 10/10 真实进程 V-05（含孙进程 heartbeat 真停/流污染具名/cwd-env 到达）+verify-deps 闭包钉住+fresh/locked 43 包；设施回归 15/15、client 单测 4/4、clippy 两 crate 0 警告、`cargo check -p auto -p auto-man` exit 0；777 登记 execution/client=man-ecosystem 并刷基线（78 边 strict pass 0 violations）；候选 m816-a-candidate.md（code @0373cfa38/baseline @6b4bf9c2f，SD-01 A 子集与 792 增补延后理由在 §5–6） | AC-07 |
 | [ ] | T-13 | review | T-12提交冻结 | 独立A实际client/进程与reader退出/来源/Spec审查，绑定r2/M816-A SHA，merge门pending | AC-08 |
 | [ ] | T-14 | merge | T-13 pass | 串行冻结门/实际master合入、Spec子集/受管ledger增量与真实consumer读回发布收据；不归档不清树 | AC-09 |
 
@@ -176,6 +176,8 @@ r1以下记录为历史合同预检，旧启动门由r2替代；不是当前调�
 2026-10-20 / stage: new / revision: 2 / outcome: pass（文档合同预检，非实现/独立验收pass）/ next: 按§4阶段门work；814先确认已登记唯一树并读取本r2。changed: 阶段A/B与新增T/AC/V、Spec分阶段沉淀、并行审查修复；原目标、原T/AC/SD ID保留。r1证据仅历史，不自动覆盖新范围。未执行实现/未来fixture/门禁。见[预检](attachments/sdk-tools-r2-20261020/preflight.md)。
 
 2026-10-20 / stage: work / plan_id: PLAN-816 / revision: 2 / outcome: 当期可执行面完成（T-01/T-02 pass；非整 Plan execution_done——T-03..T-11/T-12..T-14 阶段门未开） / worktree_path: D:/autostack/.wt/lang-816/auto-lang / branch: codex/plan-816-dev / base_commit: 9e80ae0fb（master） / code_commit: 5fcdabe14 / dependency_revisions: 组内 auto-down 兄弟 worktree @c39ac7f9（detached，跨仓 path 解析）；无 WIP 接口引用（未消费 814/815 未发布面） / task_ids: T-01, T-02 / evidence: 基线 attachments/816/contract-baseline.md（命令矩阵/设施映射/DAG probe/预算冻结）；auto-tool-execution 15 测全绿（bare cargo test + nextest 默认档 .config/nextest.toml，3.7s）；clippy 零警告；cargo check -p auto -p auto-man 过 / blockers: 无缺陷性阻塞——阶段门：T-12 等 M815-A 发布（815 现处 T-13 阶段复审，未合入）；T-03 等 M814-A+M816-A；T-05+ 等 M814-B+M815-B / next_responsible_role: work（阶段门开后续 T-12；或按合同 §4 并行规则做独立只读面）
+
+2026-10-20（续） / stage: work(T-12, M816-A) / revision: 2 / outcome: T-12 完成——M815-A 已发布（815 m815-a-release.md §5 放行条件齐备、v59 回填、816 阻断解除）后门开；本树先合 master b65d0e963 同步消费面（e609caf1af 三 crate 源零漂移验证） / worktree_path: D:/autostack/.wt/lang-816/auto-lang / branch: codex/plan-816-dev / sync_base: b65d0e963（merge 175b62e64） / code_commit: 0373cfa38 / baseline_commit: 6b4bf9c2f（777 基线刷新） / dependency_revisions: M815-A=master e609caf1af（协议 v1 describe/validate_project + 真实 auto-ui-tool + wire codec，path 依赖直接解析）；无 814 依赖 / task_ids: T-12 / evidence: 候选 attachments/816/m816-a-candidate.md §4 全表——fixture tool-client-consumer 10/10 真实进程（2.78s）+fresh/locked（43 包）+verify-deps PASS；client 单测 4/4、设施回归 15/15、clippy 0 警告、cargo check -p auto -p auto-man exit 0；777 strict pass（78 边/0 违规/2 grandfathered） / blockers: 无——T-13 独立阶段审查可开始（绑定 r2/冻结 SHA 0373cfa38+6b4bf9c2f）；merge-owned 门（裸 t/触面/fixture 复跑/Spec 沉淀）T-14 冻结后执行 / next_responsible_role: review（T-13；按阶段合同独立上下文验 AC-07/AC-08 与候选 §1–§6）
 
 ## 10. 待澄清事项
 
