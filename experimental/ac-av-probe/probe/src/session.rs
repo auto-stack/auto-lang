@@ -41,7 +41,7 @@ use auto_ac_prototype::verify::{verify_function, CheckedFunction};
 use auto_av_core::abc::{decode_abc, encode_abc};
 use auto_av_core::abc_verify::verify_abc;
 use auto_av_core::av::{execute_program, CancelFlag, ExecLimits, ExecTrace};
-use auto_av_core::contract::ExecOutcome;
+use auto_av_core::contract::{ExecOutcome, SpanInfo};
 use auto_av_core::function_code::FunctionCode;
 use auto_av_core::mir_verify::verify_mir;
 use auto_av_core::program_snapshot::ProgramSnapshot;
@@ -146,6 +146,13 @@ struct FnRecord {
     /// Admitted execution code — same `Arc` across revisions unless this
     /// function itself changed.
     code: Arc<FunctionCode>,
+    /// Current-source declaration origin (byte offset) of this function.
+    origin: u64,
+    /// Declaration origin in the source revision this function's UNIT
+    /// spans were lowered from — diagnostics-only span mapping delta =
+    /// `origin - mint_origin` (F-828-R1-04/R2: unchanged functions' trap
+    /// spans must track the CURRENT source without touching code payloads).
+    mint_origin: u64,
     /// In-session content-addressed reuse (PLAN-828 T-04): canonical-HIR
     /// content version → the immutable verified (body, code) pair. A body
     /// edited back to a prior content reuses the SAME objects — no
@@ -369,6 +376,8 @@ pub fn warmup(
             stub_item: Item::Fn(stubify(item.1)),
             hir_body: body_arc,
             code: code.clone(),
+            origin: 0,
+            mint_origin: 0,
             history,
         });
         codes.push(code);
@@ -381,6 +390,14 @@ pub fn warmup(
         return Err(format!(
             "first-case contract: def order {def_order:?} != source decl order {ast_order:?}"
         ));
+    }
+
+    // Per-function declaration origins of the accepted source (span
+    // mapping baseline; decl order == fn order was asserted above).
+    for (i, d) in parse.tree.decls.iter().enumerate() {
+        let o = parse.tree.abs_range(d.node).0;
+        fns[i].origin = o;
+        fns[i].mint_origin = o;
     }
 
     let snapshot = Arc::new(
@@ -548,9 +565,43 @@ impl FunctionIncrementalSession {
             .map(|f| (f.name.clone(), f.hir_body.clone(), f.code.clone()))
     }
 
-    /// Run the CURRENT snapshot's entry.
+    /// Run the CURRENT snapshot's entry. Span-bearing outcomes (traps)
+    /// are mapped into CURRENT-source coordinates: each function's unit
+    /// keeps the spans of the revision it was lowered from, and the
+    /// session shifts them by that function's origin delta — code
+    /// payloads are never touched. Runs against a PINNED older snapshot
+    /// keep that revision's coordinates (its own source view).
     pub fn run(&self, limits: &ExecLimits, cancel: &CancelFlag) -> (ExecOutcome, ExecTrace) {
-        execute_program(&self.current, limits, cancel)
+        let (mut out, trace) = execute_program(&self.current, limits, cancel);
+        if let ExecOutcome::Trap {
+            span: Some(sp),
+            kind,
+        } = out
+        {
+            let mapped = self.map_span_to_current(sp);
+            out = ExecOutcome::Trap {
+                kind,
+                span: Some(mapped),
+            };
+        }
+        (out, trace)
+    }
+
+    /// Map one dispatch-view span into current-source coordinates via the
+    /// owning function's origin delta.
+    fn map_span_to_current(&self, sp: SpanInfo) -> SpanInfo {
+        let idx = sp.func as usize;
+        match self.fns.get(idx) {
+            Some(rec) => {
+                let delta = (rec.origin as i64 - rec.mint_origin as i64) as i32;
+                SpanInfo {
+                    func: sp.func,
+                    start: (sp.start as i64 + delta as i64) as u32,
+                    end: (sp.end as i64 + delta as i64) as u32,
+                }
+            }
+            None => sp,
+        }
     }
 
     /// The miss path of the content cache: verify the changed body
@@ -1105,7 +1156,18 @@ impl FunctionIncrementalSession {
         }
 
         // Advance the resident syntax state to the ACTUAL incremental
-        // artifacts (sustained session, not a fresh rebuild).
+        // artifacts (sustained session, not a fresh rebuild), and refresh
+        // per-function origins: the changed function REMINTS its span
+        // baseline (its unit was just lowered against the new source);
+        // unchanged functions keep their mint baseline and only move.
+        for (i, d) in new_parse.tree.decls.iter().enumerate() {
+            let o = new_parse.tree.abs_range(d.node).0;
+            let rec = &mut self.fns[i];
+            rec.origin = o;
+            if i == changed_idx {
+                rec.mint_origin = o;
+            }
+        }
         self.src = new_src;
         self.parse = new_parse;
         self.snap = new_snap;

@@ -47,6 +47,11 @@ pub struct FnEnv {
     /// credentials are current only while this value equals the
     /// credential's bound revision.
     context_revision: String,
+    /// The HIR domain of THIS environment's bundle — a credential minted
+    /// in one domain is never current in another (F-828-R1-06/R2: a
+    /// Scalar credential must not flow into a Core environment even when
+    /// the module declarations read identically).
+    domain: HirDomain,
     fns: Vec<FnInterface>,
     by_name: BTreeMap<String, usize>,
 }
@@ -100,6 +105,7 @@ impl FnEnv {
         }
         Ok(FnEnv {
             context_revision: declaration_context_fingerprint(m),
+            domain: bundle.domain,
             owner,
             revision,
             fns,
@@ -111,6 +117,11 @@ impl FnEnv {
     /// from the bundle the env was built on).
     pub fn context_revision(&self) -> &str {
         &self.context_revision
+    }
+
+    /// THIS environment's HIR domain.
+    pub fn domain(&self) -> HirDomain {
+        self.domain
     }
 
     pub fn revision(&self) -> &str {
@@ -145,6 +156,7 @@ impl FnEnv {
             .iter()
             .any(|f| f.def_id == credential.def_id_text())
             && credential.owner() == self.owner
+            && credential.domain() == self.domain
             && credential.context_revision() == self.context_revision
     }
 

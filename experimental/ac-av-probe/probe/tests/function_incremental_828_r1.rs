@@ -145,3 +145,86 @@ fn r1_session_preserves_frozen_input_cap() {
         auto_av_core::contract::MAX_INPUT_BYTES
     );
 }
+
+/// F-828-R1-04 / R2: an edit in an EARLIER function shifts a LATER
+/// unchanged function's trap span — mapped into current-source
+/// coordinates without touching the code payload.
+#[test]
+fn r2_unchanged_trap_location_after_prefix_edit() {
+    let src = "fn helper() int { return 1 }
+fn main() int { var x = helper(); return 1 / 0 }
+fn tail() int { return 9 }
+";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let trap = |s: &auto_av_probe::session::FunctionIncrementalSession| {
+        let (out, _) = s.run(&ExecLimits::default(), &CancelFlag::new(false));
+        match out {
+            ExecOutcome::Trap { span: Some(sp), .. } => sp,
+            other => panic!("expected trap, got {other:?}"),
+        }
+    };
+    let before = trap(&s);
+    let at = src.find("return 1").unwrap();
+    let insert = "var pad = 2;
+";
+    let out = s
+        .edit(at as u64, at as u64, insert.as_bytes().to_vec())
+        .unwrap();
+    assert!(out.ok, "{out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    let expected = trap(&cold);
+    assert_eq!(expected.start, before.start + insert.len() as u32);
+    assert_eq!(
+        trap(&s),
+        expected,
+        "unchanged code needs snapshot-specific source mapping"
+    );
+}
+
+/// F-828-R1-06 / R2: a Scalar credential is never current in a Core
+/// environment even when the module declarations read identically.
+#[test]
+fn r2_credential_cannot_cross_hir_domains() {
+    use auto_ac_prototype::source::{compile_scalar_source, compile_source};
+    use auto_ac_prototype::verify::verify_function;
+    use auto_av_probe::function_queries::FnEnv;
+    let src = "fn helper() int { return 1 }
+fn main() int { return helper() }";
+    let scalar = compile_scalar_source(src, "same.at", &[]).unwrap();
+    let core = compile_source(src, "same.at", &[]).unwrap();
+    let cf = verify_function(scalar.checked.bundle().clone(), 0).unwrap();
+    let env_scalar = FnEnv::from_bundle(scalar.checked.bundle()).unwrap();
+    let env_core = FnEnv::from_bundle(core.checked.bundle()).unwrap();
+    assert_ne!(env_scalar.domain(), env_core.domain());
+    assert!(env_scalar.credential_current(&cf), "same-domain control");
+    assert!(
+        !env_core.credential_current(&cf),
+        "a Scalar credential must not flow into a Core environment"
+    );
+}
+
+/// F-828-R1-08 / R2: a trace intrinsic in an UNCHANGED callee survives a
+/// legal body edit of its CALLER; without the capability the session
+/// still refuses (authorization negative control).
+#[test]
+fn r2_trace_in_unchanged_function_survives_body_edit() {
+    let src = "fn helper() int { return mark_a() }
+fn main() int { return helper() + 1 }
+fn tail() int { return 9 }
+";
+    let caps = vec!["hir.test.trace.v1".to_string()];
+    // Authorization negative control: without the capability, warm-up
+    // refuses (the compile front door rejects the unresolved mark).
+    assert!(warmup(src, "d_main", &[]).is_err());
+    let mut s = warmup(src, "d_main", &caps).expect("trace-capable warm-up");
+    assert_eq!(value(&s), 2, "mark_a() = 1, +1");
+    let at = src.find("+ 1").unwrap();
+    let out = s
+        .edit(at as u64, (at + 3) as u64, b"+ 2".to_vec())
+        .expect("edit applies");
+    assert!(
+        out.ok,
+        "editing the caller of an intrinsic-using unchanged fn must install: {out:?}"
+    );
+    assert_eq!(value(&s), 3, "mark_a() = 1, +2");
+}

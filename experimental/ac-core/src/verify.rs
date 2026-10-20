@@ -377,6 +377,16 @@ fn context_fingerprint(m: &hir::Module) -> String {
     let mut h: u64 = 0xcbf29ce484222325;
     mix(&mut h, "defs:");
     for d in &m.defs {
+        // Intrinsic declarations are excluded from the context identity:
+        // they are derived from BODY content (used_intrinsics), and an
+        // incremental synth program legitimately carries only the changed
+        // function's real body — unchanged functions' intrinsics ride
+        // their preserved code units (F-828-R1-08/R2). Function/method
+        // declarations (the interface facts every body is verified
+        // against) fully participate.
+        if matches!(&d.kind, hir::DefKind::Intrinsic { .. }) {
+            continue;
+        }
         mix(&mut h, &d.id_text);
         match &d.kind {
             hir::DefKind::Function { ty, .. } => {
