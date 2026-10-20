@@ -27,11 +27,11 @@ ManagedStore 写入，并由新进程 worker（`av-probe-worker restore-run`）�
 | 项 | 冻结值 |
 |---|---|
 | MIR schema | `auto.mir.av-probe/1` |
-| ABC wire schema | `auto.abc.av-probe/1`（magic `AVAB`，version 1） |
+| ABC wire schema | `auto.abc.av-probe/2`（magic `AVAB`，version 2；旧歧义v1隔离） |
 | 执行 profile | `av.core-i32/1`（profile id 1） |
 | producer | `plan798/av-probe`（envelope 校验必填） |
-| 语义版本 | MIR/ABC/AV 各 `1`（任一变化即失效对应层） |
-| 信封 | `AVEN` v1，kind∈{1=MIR单元,2=ABC单元,3=模块manifest,4=源映射sidecar}，校验 producer/schema/owner/stage/三元语义版本/snapshot |
+| 语义版本 | MIR=`1`、ABC=`2`、AV=`1`（任一变化即失效对应层） |
+| 信封 | `AVEN` v2，kind∈{1=MIR单元,2=ABC单元,3=模块manifest,4=源映射sidecar}，校验 producer/schema/owner/stage/三元语义版本/snapshot |
 | 命名 | 单元/entry 用 HIR def id（`d_main`）；前端声明名（`sf_*`）是内部符号 |
 
 MIR 形状：显式基本块 + 唯一 terminator（Jump/Branch/Return）、有类型可变槽
@@ -213,25 +213,16 @@ init 访问步数 ~3.9M > 2M）重钉。
 `av.resource.frontend-nesting`（`av_resources_flat_chain_front_door_boundary`：
 400 项在门前拒绝，不再由递归 parser 的 512 内限报 Unsupported）。
 
-## 7. 前门递归风险核查（§5.5 T-01 义务）
+## 7. 当前前门递归风险核查（§5.5 T-01，r6现行）
 
-- `source::lexer::tokenize`：迭代；`source/parser.rs`：语句/表达式**全迭代**
-  （landed R5/R6，"nesting of any shape or depth parses without recursion"）；
-  `resolve.rs` 表达式解析迭代（R3-QA-02）。
-- `atom_text::tokenize`：迭代；**唯一真实宿主递归**：Atom 文档 parser 的
-  `parse_value`/`parse_field`（嵌套 list 递归下降）。
-- 结论：前门 = 两路 token 流括号深度扫描（`( [ {` 全种类，非仅花括号；Atom 路
-  只认 `[`）**加连续运算符链的构造深度扫描**（r3：`eval_expr` 对平坦链每操作
-  数一层递归，属真实宿主递归路径），>128 在旧递归 parser 之前以 resource 拒绝
-  （`av_resources_front_door_nesting_boundary`、
-  `av_resources_flat_chain_front_door_boundary`、
-  `av_resources_atom_front_door_rejects_before_recursive_parser`）。
-  表达式其余递归路径已由 landed 迭代实现覆盖——覆盖完整性成立，可行性门不触发。
+源码token入口在旧前端之前，按真实优先级/结合性计算最长表达式构造路径，预算128；括号/块及Atom list深度另作有界检查。callee作为operand后遇`(`撤回时保留其一元前缀，前缀归属完整call；各兄弟实参取路径最大值，不能把宽度/尾操作数深度相加。包含命名/位置实参、普通operand、分组、`-`/`!`及调用组合的超深拒绝/合法浅层正控。旧递归HIR/Atom相关消费受此边界保护，不宣称其已改成增量或全迭代。
+
+当前实现及永久测试：`probe/src/driver.rs` 的前门路径计算；resources_tier的131/132层拒绝、116/24层正控、尾操作数71层通过/首操作数131层拒绝和相邻R7–R13组合反例。§6早期r3“连续run扫描”说明仅保留为演变记录，不覆盖本节现行规则。
 
 ## 8. 合法 carrier 与单元/依赖合同（§5.4）
 
 - store：783 `ManagedStore` 公共 API 独立 producer namespace；自有 LayerSpec
-  （`ac798/a08-mir/v1`、`ac798/a09-abc/v1`，coverage=Codec——798 自己实现的
+  （`ac798/a08-mir/v1`、`ac798/a09-abc/v2`，coverage=Codec——798 自己实现的
   范围，不改 783 registry 的 A08 Future 登记）；载荷走 `ChunkKind::LayoutData`
   通用载体，**永不**标 Hir/Object/DeclSummary。
 - 单元：MIR/ABC 按函数单元持久化；模块链接 manifest（JSON，kind 3）映射
@@ -290,3 +281,7 @@ init 访问步数 ~3.9M > 2M）重钉。
 以主计划§5.10和受管acceptance.md的r6阶段矩阵为准：本实现有函数持久产物复用，但每请求仍整模块前端，miss时whole MIR lower/verify/split，hit单元重decode/verify后完整closure装载。没有常驻函数代码在线替换。798通过只交付有限执行/缓存基础；真正源码至AV安装的函数级增量由828承接，执行优先级为798完成后828。旧计量不能证明未改函数IR/代码保持不动。sig为前端错误早退，不代表成功签名更新。
 
 旧formal含逐请求初始化，保留原技术门事实与失败样本，不据此判用户稳定会话目标失败；本次不改测试阈值、入口或以bench替代formal。r5双线内存政策和/2 wire/kind准入仍有效；历史摘要旧版本/旧资源目标不作为当前合同。798仍待正式门、最终review及merge-owned冻结门禁。
+
+## 2026-10-20 R16生命周期复核
+
+A08/A09缓存命中逐消费单元持lease，不能用第一个unit的lease冒充manifest反向闭包。无源码恢复在读取manifest之前持manifest lease，required-data边保住全部unit及当前来源sidecar；成功/拒绝返回释放OS锁。新增真实两函数回归检查A08/A09、多单元、manifest恢复与全部lease释放。当前代码d1357870a；性能/资源由同轮收据记录，不以注释授pass。
