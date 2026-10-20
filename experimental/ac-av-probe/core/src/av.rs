@@ -115,7 +115,10 @@ pub fn execute_entry(
             ExecTrace::default(),
         );
     }
-    dispatch(m, limits, cancel, args)
+    let mut st = LoopState::default();
+    let out = dispatch(m, limits, cancel, args, &mut st, None)
+        .expect("no budget: the loop always terminates with an outcome");
+    (out, st.trace)
 }
 
 /// Execute a linked [`ProgramSnapshot`]'s entry (PLAN-828 T-01): the
@@ -129,172 +132,233 @@ pub fn execute_program(
     limits: &ExecLimits,
     cancel: &CancelFlag,
 ) -> (ExecOutcome, ExecTrace) {
-    dispatch(prog.merged(), limits, cancel, &[])
+    let mut st = LoopState::default();
+    let out = dispatch(prog.merged(), limits, cancel, &[], &mut st, None)
+        .expect("no budget: the loop always terminates with an outcome");
+    (out, st.trace)
+}
+
+/// A paused in-flight execution (PLAN-828 T-06): the live call chain plus
+/// the PINNED snapshot it runs against. Resuming continues the same chain
+/// over the same revision — an install that lands while this run is parked
+/// cannot mix callee versions into it.
+pub struct PausedRun {
+    prog: std::sync::Arc<crate::program_snapshot::ProgramSnapshot>,
+    limits: ExecLimits,
+    state: LoopState,
+}
+
+/// Result of a possibly-paused program execution.
+pub enum SteppedOutcome {
+    Finished(ExecOutcome, ExecTrace),
+    Paused(PausedRun),
+}
+
+/// Execute up to `max_steps` guest instructions of the snapshot's entry,
+/// then park the chain deterministically (no sleeps, no races — the
+/// boundary is a step count). Fuel/frames/slot budgets and the trace carry
+/// into the [`PausedRun`]; the wall budget applies per execution segment.
+pub fn execute_program_steps(
+    prog: &std::sync::Arc<crate::program_snapshot::ProgramSnapshot>,
+    limits: &ExecLimits,
+    cancel: &CancelFlag,
+    max_steps: u64,
+) -> SteppedOutcome {
+    let mut st = LoopState::default();
+    match dispatch(prog.merged(), limits, cancel, &[], &mut st, Some(max_steps)) {
+        Some(out) => SteppedOutcome::Finished(out, st.trace),
+        None => SteppedOutcome::Paused(PausedRun {
+            prog: prog.clone(),
+            limits: *limits,
+            state: st,
+        }),
+    }
+}
+
+/// Continue a paused run (optionally up to another step budget; `None` =
+/// run to completion). The chain keeps its original snapshot.
+pub fn resume_program(
+    paused: PausedRun,
+    cancel: &CancelFlag,
+    max_steps: Option<u64>,
+) -> SteppedOutcome {
+    let PausedRun {
+        prog,
+        limits,
+        mut state,
+    } = paused;
+    match dispatch(prog.merged(), &limits, cancel, &[], &mut state, max_steps) {
+        Some(out) => SteppedOutcome::Finished(out, state.trace),
+        None => SteppedOutcome::Paused(PausedRun {
+            prog,
+            limits,
+            state,
+        }),
+    }
+}
+
+/// Resumable interpreter state: the live call chain of one top-level run.
+#[derive(Default)]
+struct LoopState {
+    frames: Vec<Frame>,
+    slot_bytes: usize,
+    steps: u64,
+    trace: ExecTrace,
 }
 
 /// The shared flat dispatch loop: explicit frames, budgets and traps.
+/// Fresh state seeds the root frame (entry lookup, argument admission,
+/// root budgets); non-empty state resumes the chain untouched. Returns
+/// `None` when the step budget pauses the chain; the wall budget applies
+/// per call (per execution segment).
 fn dispatch(
     m: &MirModule,
     limits: &ExecLimits,
     cancel: &CancelFlag,
     args: &[Value],
-) -> (ExecOutcome, ExecTrace) {
-    let mut trace = ExecTrace::default();
+    st: &mut LoopState,
+    budget: Option<u64>,
+) -> Option<ExecOutcome> {
     let started = Instant::now();
-    let mut steps: u64 = 0;
-    let mut slot_bytes: usize = 0;
-
-    let entry_fn = match m.funcs.get(m.entry as usize) {
-        Some(f) => f,
-        None => {
-            return (
-                ExecOutcome::Infra(format!("entry function #{} missing", m.entry)),
-                trace,
-            );
-        }
-    };
-    let n_params = entry_fn.param_slots().len();
-    if n_params != args.len() {
-        return (
-            ExecOutcome::Infra(format!(
+    let zero = typed_zero(m);
+    if st.frames.is_empty() {
+        let entry_fn = match m.funcs.get(m.entry as usize) {
+            Some(f) => f,
+            None => {
+                return Some(ExecOutcome::Infra(format!(
+                    "entry function #{} missing",
+                    m.entry
+                )))
+            }
+        };
+        let n_params = entry_fn.param_slots().len();
+        if n_params != args.len() {
+            return Some(ExecOutcome::Infra(format!(
                 "entry expects {} args, driver passed {}",
                 n_params,
                 args.len()
-            )),
-            trace,
-        );
-    }
-    // Entry-argument admission against the VERIFIED signature
-    // (F798-R6-02): each Value must match its param slot's type shape —
-    // a Bool handed to an i32 slot (or vice versa, or an Fn-typed slot)
-    // is an admission violation, never a silently executing coercion.
-    for (i, &arg) in args.iter().enumerate() {
-        let slot_ty = entry_fn.slots[entry_fn.param_slots()[i] as usize].ty;
-        let ok = match m.types.get(slot_ty as usize) {
-            Some(MirType::I32) => matches!(arg, Value::I32(_)),
-            Some(MirType::Bool) => matches!(arg, Value::Bool(_)),
-            _ => false,
-        };
-        if !ok {
-            return (
-                ExecOutcome::Infra(format!(
+            )));
+        }
+        // Entry-argument admission against the VERIFIED signature
+        // (F798-R6-02): each Value must match its param slot's type shape —
+        // a Bool handed to an i32 slot (or vice versa, or an Fn-typed slot)
+        // is an admission violation, never a silently executing coercion.
+        for (i, &arg) in args.iter().enumerate() {
+            let slot_ty = entry_fn.slots[entry_fn.param_slots()[i] as usize].ty;
+            let ok = match m.types.get(slot_ty as usize) {
+                Some(MirType::I32) => matches!(arg, Value::I32(_)),
+                Some(MirType::Bool) => matches!(arg, Value::Bool(_)),
+                _ => false,
+            };
+            if !ok {
+                return Some(ExecOutcome::Infra(format!(
                     "entry argument #{} has kind {}, param slot type {} — admission violation",
                     i,
                     arg.type_name(),
                     slot_ty
-                )),
-                trace,
-            );
+                )));
+            }
         }
-    }
-    let zero = typed_zero(m);
-    // Root-frame budgets BEFORE allocation (F798-R3-04): a zero frame or
-    // slot budget must reject a program that genuinely uses slots, instead
-    // of executing it and reporting peak 0.
-    if limits.max_frames < 1 {
-        return (
-            ExecOutcome::Resource {
+        // Root-frame budgets BEFORE allocation (F798-R3-04): a zero frame or
+        // slot budget must reject a program that genuinely uses slots,
+        // instead of executing it and reporting peak 0.
+        if limits.max_frames < 1 {
+            return Some(ExecOutcome::Resource {
                 kind: ResourceKind::Frames,
                 message: format!(
                     "guest frames budget {} cannot hold the root frame",
                     limits.max_frames
                 ),
-            },
-            trace,
-        );
-    }
-    let root_slot_bytes = entry_fn.slots.len() * SLOT_CELL_BYTES;
-    if root_slot_bytes > limits.max_slot_bytes {
-        return (
-            ExecOutcome::Resource {
+            });
+        }
+        let root_slot_bytes = entry_fn.slots.len() * SLOT_CELL_BYTES;
+        if root_slot_bytes > limits.max_slot_bytes {
+            return Some(ExecOutcome::Resource {
                 kind: ResourceKind::SlotBytes,
                 message: format!(
                     "root frame live slot data {} bytes exceeds budget {}",
                     root_slot_bytes, limits.max_slot_bytes
                 ),
-            },
-            trace,
-        );
+            });
+        }
+        // Root frame.
+        let mut frame = Frame {
+            func: m.entry,
+            block: entry_fn.entry,
+            ip: 0,
+            slots: Vec::with_capacity(entry_fn.slots.len()),
+            ret_dst: None,
+        };
+        let mut arg_iter = args.iter().copied();
+        for s in &entry_fn.slots {
+            frame.slots.push(if s.kind == crate::mir::SlotKind::Param {
+                arg_iter.next().expect("count checked above")
+            } else {
+                zero(s.ty)
+            });
+        }
+        st.slot_bytes += frame.slots.len() * SLOT_CELL_BYTES;
+        // The peak lives ON the trace: every exit (success, trap, resource,
+        // cancel) carries the real high-water (F798-R3-04).
+        st.trace.peak_slot_bytes = st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+        st.frames.push(frame);
     }
-    // Root frame.
-    let mut frame = Frame {
-        func: m.entry,
-        block: entry_fn.entry,
-        ip: 0,
-        slots: Vec::with_capacity(entry_fn.slots.len()),
-        ret_dst: None,
-    };
-    let mut arg_iter = args.iter().copied();
-    for s in &entry_fn.slots {
-        frame.slots.push(if s.kind == crate::mir::SlotKind::Param {
-            arg_iter.next().expect("count checked above")
-        } else {
-            zero(s.ty)
-        });
-    }
-    slot_bytes += frame.slots.len() * SLOT_CELL_BYTES;
-    // The peak lives ON the returned trace: every exit (success, trap,
-    // resource, cancel) carries the real high-water (F798-R3-04).
-    trace.peak_slot_bytes = trace.peak_slot_bytes.max(slot_bytes as u64);
-    let mut frames: Vec<Frame> = Vec::with_capacity(16);
-    frames.push(frame);
 
     loop {
-        steps += 1;
-        if steps > limits.max_steps {
-            return (
-                ExecOutcome::Resource {
-                    kind: ResourceKind::InstrSteps,
-                    message: format!("execution exceeded {} instruction steps", limits.max_steps),
-                },
-                trace,
-            );
+        if let Some(budget) = budget {
+            if st.steps >= budget {
+                return None;
+            }
         }
-        if steps % CANCEL_CHECK_INTERVAL == 0 {
+        st.steps += 1;
+        if st.steps > limits.max_steps {
+            return Some(ExecOutcome::Resource {
+                kind: ResourceKind::InstrSteps,
+                message: format!("execution exceeded {} instruction steps", limits.max_steps),
+            });
+        }
+        if st.steps % CANCEL_CHECK_INTERVAL == 0 {
             if CancelCheck::poll(cancel) {
-                return (ExecOutcome::Cancelled, trace);
+                return Some(ExecOutcome::Cancelled);
             }
             if started.elapsed() > limits.wall {
-                return (
-                    ExecOutcome::Resource {
-                        kind: ResourceKind::ExecutionWall,
-                        message: "execution exceeded wall budget".to_string(),
-                    },
-                    trace,
-                );
+                return Some(ExecOutcome::Resource {
+                    kind: ResourceKind::ExecutionWall,
+                    message: "execution exceeded wall budget".to_string(),
+                });
             }
         }
         // Copy the frame cursor, then re-borrow only for writes: the call
-        // arm needs to push/pop `frames` while the current frame is read.
+        // arm needs to push/pop `st.frames` while the current frame is read.
         let (func_idx, block_idx, ip) = {
-            let fr = match frames.last() {
+            let fr = match st.frames.last() {
                 Some(f) => f,
-                None => return (ExecOutcome::Infra("frame stack empty".to_string()), trace),
+                None => return Some(ExecOutcome::Infra("frame stack empty".to_string())),
             };
             (fr.func, fr.block, fr.ip)
         };
         let func = match m.funcs.get(func_idx as usize) {
             Some(f) => f,
             None => {
-                return (
-                    ExecOutcome::Infra(format!("frame func #{} missing", func_idx)),
-                    trace,
-                )
+                return Some(ExecOutcome::Infra(format!(
+                    "frame func #{} missing",
+                    func_idx
+                )))
             }
         };
         let block = match func.blocks.get(block_idx as usize) {
             Some(b) => b,
             None => {
-                return (
-                    ExecOutcome::Infra(format!("frame block #{} missing", block_idx)),
-                    trace,
-                )
+                return Some(ExecOutcome::Infra(format!(
+                    "frame block #{} missing",
+                    block_idx
+                )))
             }
         };
         if ip < block.instrs.len() {
             let instr = &block.instrs[ip];
             {
-                let fr = frames.last_mut().expect("frame present");
+                let fr = st.frames.last_mut().expect("frame present");
                 fr.ip += 1;
             }
             let flat = func.block_base(block_idx) + ip as u32;
@@ -304,59 +368,53 @@ fn dispatch(
                         crate::mir::MirConst::I32(v) => Value::I32(v),
                         crate::mir::MirConst::Bool(b) => Value::Bool(b),
                     };
-                    let fr = frames.last_mut().expect("frame present");
+                    let fr = st.frames.last_mut().expect("frame present");
                     fr.slots[*dst as usize] = v;
                 }
                 MirInstr::Copy { dst, src } => {
                     let v = {
-                        let fr = frames.last().expect("frame present");
+                        let fr = st.frames.last().expect("frame present");
                         fr.slots[*src as usize]
                     };
-                    let fr = frames.last_mut().expect("frame present");
+                    let fr = st.frames.last_mut().expect("frame present");
                     fr.slots[*dst as usize] = v;
                 }
                 MirInstr::Bin { op, dst, lhs, rhs } => {
                     let (l, r) = {
-                        let fr = frames.last().expect("frame present");
+                        let fr = st.frames.last().expect("frame present");
                         (fr.slots[*lhs as usize], fr.slots[*rhs as usize])
                     };
                     match eval_bin(*op, l, r) {
                         Ok(v) => {
-                            let fr = frames.last_mut().expect("frame present");
+                            let fr = st.frames.last_mut().expect("frame present");
                             fr.slots[*dst as usize] = v;
                         }
                         Err(EvalErr::Trap(kind)) => {
-                            return (
-                                ExecOutcome::Trap {
-                                    kind,
-                                    span: span_of(func, flat),
-                                },
-                                trace,
-                            )
+                            return Some(ExecOutcome::Trap {
+                                kind,
+                                span: span_of(func, flat),
+                            })
                         }
-                        Err(EvalErr::Infra(msg)) => return (ExecOutcome::Infra(msg), trace),
+                        Err(EvalErr::Infra(msg)) => return Some(ExecOutcome::Infra(msg)),
                     }
                 }
                 MirInstr::Un { op, dst, operand } => {
                     let v = {
-                        let fr = frames.last().expect("frame present");
+                        let fr = st.frames.last().expect("frame present");
                         fr.slots[*operand as usize]
                     };
                     match eval_un(*op, v) {
                         Ok(v) => {
-                            let fr = frames.last_mut().expect("frame present");
+                            let fr = st.frames.last_mut().expect("frame present");
                             fr.slots[*dst as usize] = v;
                         }
                         Err(EvalErr::Trap(kind)) => {
-                            return (
-                                ExecOutcome::Trap {
-                                    kind,
-                                    span: span_of(func, flat),
-                                },
-                                trace,
-                            )
+                            return Some(ExecOutcome::Trap {
+                                kind,
+                                span: span_of(func, flat),
+                            })
                         }
-                        Err(EvalErr::Infra(msg)) => return (ExecOutcome::Infra(msg), trace),
+                        Err(EvalErr::Infra(msg)) => return Some(ExecOutcome::Infra(msg)),
                     }
                 }
                 MirInstr::Call { callee, dst, args } => {
@@ -364,49 +422,44 @@ fn dispatch(
                         CalleeRef::Func(idx) => match m.funcs.get(*idx as usize) {
                             Some(_) => *idx,
                             None => {
-                                return (
-                                    ExecOutcome::Infra(format!("callee #{} missing", idx)),
-                                    trace,
-                                )
+                                return Some(ExecOutcome::Infra(format!(
+                                    "callee #{} missing",
+                                    idx
+                                )))
                             }
                         },
                         CalleeRef::Import(idx) => {
                             // v1 executable closures lower test-mark imports
                             // to TRACE instructions at closure assembly; a
                             // CALL on an import is an admission violation.
-                            return (
-                                ExecOutcome::Infra(format!("call to unresolved import #{}", idx)),
-                                trace,
-                            );
+                            return Some(ExecOutcome::Infra(format!(
+                                "call to unresolved import #{}",
+                                idx
+                            )));
                         }
                     };
-                    if frames.len() >= limits.max_frames {
-                        return (
-                            ExecOutcome::Resource {
-                                kind: ResourceKind::Frames,
-                                message: format!("guest frames exceeded {}", limits.max_frames),
-                            },
-                            trace,
-                        );
+                    if st.frames.len() >= limits.max_frames {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::Frames,
+                            message: format!("guest frames exceeded {}", limits.max_frames),
+                        });
                     }
                     let callee_fn = &m.funcs[target as usize];
                     // Slot budget BEFORE the callee frame is allocated
                     // (F798-R3-04): the check used to run after the push.
-                    let prospective = slot_bytes + callee_fn.slots.len() * SLOT_CELL_BYTES;
+                    let prospective =
+                        st.slot_bytes + callee_fn.slots.len() * SLOT_CELL_BYTES;
                     if prospective > limits.max_slot_bytes {
-                        return (
-                            ExecOutcome::Resource {
-                                kind: ResourceKind::SlotBytes,
-                                message: format!(
-                                    "live slot data would reach {} bytes, above budget {}",
-                                    prospective, limits.max_slot_bytes
-                                ),
-                            },
-                            trace,
-                        );
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::SlotBytes,
+                            message: format!(
+                                "live slot data would reach {} bytes, above budget {}",
+                                prospective, limits.max_slot_bytes
+                            ),
+                        });
                     }
                     let arg_vals: Vec<Value> = {
-                        let fr = frames.last().expect("frame present");
+                        let fr = st.frames.last().expect("frame present");
                         args.iter().map(|a| fr.slots[*a as usize]).collect()
                     };
                     let mut nf = Frame {
@@ -424,23 +477,21 @@ fn dispatch(
                             zero(s.ty)
                         });
                     }
-                    slot_bytes = prospective;
-                    trace.peak_slot_bytes = trace.peak_slot_bytes.max(slot_bytes as u64);
-                    frames.push(nf);
+                    st.slot_bytes = prospective;
+                    st.trace.peak_slot_bytes =
+                        st.trace.peak_slot_bytes.max(st.slot_bytes as u64);
+                    st.frames.push(nf);
                 }
                 MirInstr::Trace { event } => {
-                    trace.events.push(*event);
-                    if trace.events.len() > limits.max_trace_bytes {
-                        return (
-                            ExecOutcome::Resource {
-                                kind: ResourceKind::TraceBytes,
-                                message: format!(
-                                    "test trace exceeded {} bytes",
-                                    limits.max_trace_bytes
-                                ),
-                            },
-                            trace,
-                        );
+                    st.trace.events.push(*event);
+                    if st.trace.events.len() > limits.max_trace_bytes {
+                        return Some(ExecOutcome::Resource {
+                            kind: ResourceKind::TraceBytes,
+                            message: format!(
+                                "test trace exceeded {} bytes",
+                                limits.max_trace_bytes
+                            ),
+                        });
                     }
                 }
             }
@@ -449,44 +500,44 @@ fn dispatch(
         // Terminator.
         match &block.term {
             Terminator::Jump { target } => {
-                let fr = frames.last_mut().expect("frame present");
+                let fr = st.frames.last_mut().expect("frame present");
                 fr.block = *target;
                 fr.ip = 0;
             }
             Terminator::Branch { cond, then, else_ } => {
                 let go = {
-                    let fr = frames.last().expect("frame present");
+                    let fr = st.frames.last().expect("frame present");
                     match fr.slots[*cond as usize] {
                         Value::Bool(b) => b,
                         Value::I32(_) => {
-                            return (
-                                ExecOutcome::Infra(
-                                    "branch condition holds i32 (admission violation)".to_string(),
-                                ),
-                                trace,
-                            )
+                            return Some(ExecOutcome::Infra(
+                                "branch condition holds i32 (admission violation)".to_string(),
+                            ))
                         }
                     }
                 };
-                let fr = frames.last_mut().expect("frame present");
+                let fr = st.frames.last_mut().expect("frame present");
                 fr.block = if go { *then } else { *else_ };
                 fr.ip = 0;
             }
             Terminator::Return { value } => {
                 let v = {
-                    let fr = frames.last().expect("frame present");
+                    let fr = st.frames.last().expect("frame present");
                     (fr.slots[*value as usize], fr.ret_dst, fr.slots.len())
                 };
                 let (v, ret_dst, len) = v;
-                slot_bytes -= len * SLOT_CELL_BYTES;
-                frames.pop();
-                match (frames.last_mut(), ret_dst) {
+                st.slot_bytes -= len * SLOT_CELL_BYTES;
+                st.frames.pop();
+                match (st.frames.last_mut(), ret_dst) {
                     (Some(caller), Some(dst)) => {
                         caller.slots[dst as usize] = v;
                     }
                     (Some(_), None) => {}
                     (None, _) => {
-                        return (ExecOutcome::Success { value: v, steps }, trace);
+                        return Some(ExecOutcome::Success {
+                            value: v,
+                            steps: st.steps,
+                        })
                     }
                 }
             }

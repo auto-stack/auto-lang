@@ -540,3 +540,88 @@ fn t05_generations_and_stable_ids_across_revisions() {
     let (r, _) = s.run(&ExecLimits::default(), &cancel);
     assert_i32(&r, 23, "reverted run");
 }
+
+/// T-06 / V-05: deterministic barrier. The chain pauses MID-EXECUTION (a
+/// step count — no sleeps, no races), a new revision installs, and the
+/// resumed chain must complete with the OLD semantics while new top-level
+/// calls see the NEW revision. No callee-version mixing.
+#[test]
+fn t06_v05_deterministic_barrier_keeps_inflight_chain_on_its_snapshot() {
+    use auto_av_core::av::{execute_program_steps, resume_program, SteppedOutcome};
+    let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let snap0 = s.current();
+
+    // Pause A mid-execution (a handful of steps into main's body).
+    let paused = match execute_program_steps(&snap0, &ExecLimits::default(), &cancel, 3) {
+        SteppedOutcome::Paused(p) => p,
+        SteppedOutcome::Finished(o, _) => panic!("expected a pause, got {o:?}"),
+    };
+
+    // Install B while A's chain is parked.
+    let star3 = SRC.find("x * 3").expect("target");
+    let pos = (star3 + 4) as u64;
+    let outcome = s.edit(pos, pos + 1, b"4".to_vec()).expect("edit");
+    assert!(outcome.ok, "{:?}", outcome.non_fast_path_reason);
+    assert_eq!(s.revision(), 1);
+
+    // The resumed chain completes on ITS snapshot: old semantics.
+    match resume_program(paused, &cancel, None) {
+        SteppedOutcome::Finished(out, _) => assert_i32(&out, 23, "resumed old chain"),
+        SteppedOutcome::Paused(_) => panic!("resume-to-completion must finish"),
+    }
+    // New top-level calls see the new revision.
+    let (r, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&r, 28, "new top-level call");
+}
+
+/// T-06 / V-06: out-of-order commits. Two candidates prepared on the same
+/// base; the second commits first, and the slow first candidate is REFUSED
+/// as stale — it must not overwrite the newer result.
+#[test]
+fn t06_v06_stale_candidate_never_overwrites_newer_result() {
+    let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let star3 = SRC.find("x * 3").expect("target");
+    let pos = (star3 + 4) as u64;
+
+    // r1 (slow): 3 -> 4 ; r2: 3 -> 5. Both prepared on revision 0.
+    let r1 = s.prepare_edit(pos, pos + 1, b"4".to_vec()).unwrap().ok().unwrap();
+    let r2 = s.prepare_edit(pos, pos + 1, b"5".to_vec()).unwrap().ok().unwrap();
+
+    let out2 = s.commit(r2);
+    assert!(out2.ok);
+    assert_eq!(s.revision(), 1);
+
+    // The late r1 arrives: refused as stale, current stays r2's result.
+    let out1 = s.commit(r1);
+    assert!(!out1.ok);
+    assert!(
+        out1.non_fast_path_reason.as_deref().unwrap_or_default().contains("stale"),
+        "{}",
+        out1.non_fast_path_reason.unwrap_or_default()
+    );
+    assert_eq!(s.revision(), 1, "stale commit does not bump the revision");
+    let (r, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&r, 33, "r2 result survives the late r1 (helper(5)=5*5+7=32, +1)");
+
+    // Fuel exhaustion is a run-level outcome, not an install: the snapshot
+    // stays runnable under normal limits.
+    let tiny = ExecLimits {
+        max_steps: 1,
+        ..ExecLimits::default()
+    };
+    let (out, _) = s.run(&tiny, &cancel);
+    assert!(
+        matches!(
+            out,
+            ExecOutcome::Resource {
+                kind: auto_av_core::contract::ResourceKind::InstrSteps,
+                ..
+            }
+        ),
+        "got {out:?}"
+    );
+    let (r2_again, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&r2_again, 33, "snapshot unchanged after fuel exhaustion");
+}

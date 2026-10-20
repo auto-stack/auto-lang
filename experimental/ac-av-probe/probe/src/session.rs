@@ -170,6 +170,21 @@ impl EditOutcome {
     }
 }
 
+/// A fully prepared candidate (PLAN-828 T-06): the changed function's
+/// verified artifacts plus the session-state advance, held OUT of the
+/// session until [`FunctionIncrementalSession::commit`] accepts it.
+pub struct PreparedEdit {
+    base_revision: u64,
+    changed_idx: usize,
+    changed_name: String,
+    content_version: String,
+    hir_body: Arc<hir::Body>,
+    code: Arc<FunctionCode>,
+    new_src: String,
+    new_snap: Snapshot,
+    new_parse: ParseOutput,
+}
+
 /// The resident session. Single-threaded (ac-syntax state is `Rc`).
 pub struct FunctionIncrementalSession {
     /// The entry function's def id text (e.g. `d_main`) — def-order identity
@@ -450,7 +465,27 @@ impl FunctionIncrementalSession {
     /// Apply one source edit (old-source byte coordinates) and, if it is a
     /// pure single-function body edit, install the next program revision.
     /// A rejected edit leaves the session at its last accepted revision.
+    /// Fused prepare+commit; the split flow is [`prepare_edit`] + [`commit`].
     pub fn edit(&mut self, start: u64, end: u64, insert: Vec<u8>) -> Result<EditOutcome, String> {
+        let prepared = match self.prepare_edit(start, end, insert)? {
+            Ok(p) => p,
+            Err(out) => return Ok(out),
+        };
+        Ok(self.commit(prepared))
+    }
+
+    /// PREPARE (PLAN-828 T-06): run the whole candidate chain (syntax
+    /// increment → per-decl projection → frontend → verify → reuse-or-miss
+    /// chain) WITHOUT touching the session's current revision. The returned
+    /// [`PreparedEdit`] commits only via [`commit`]; a stale candidate
+    /// (its base revision no longer current) never overwrites a newer
+    /// result. Inner `Err` = candidate/non-fast-path rejection.
+    pub fn prepare_edit(
+        &mut self,
+        start: u64,
+        end: u64,
+        insert: Vec<u8>,
+    ) -> Result<Result<PreparedEdit, EditOutcome>, String> {
         let edit = Edit { start, end, insert };
         let new_snap = self
             .snap
@@ -479,11 +514,11 @@ impl FunctionIncrementalSession {
         self.counters
             .set("syntax_reused_decls", inc.reused_decls as u64);
         if let Some(reason) = &inc.fallback {
-            return Ok(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::rejected(
                 self.revision,
                 format!("non-fast-path: syntax fallback {reason:?}"),
                 Vec::new(),
-            ));
+            )));
         }
 
         // Changed-decl detection: the (single) decl whose old span meets the
@@ -499,14 +534,14 @@ impl FunctionIncrementalSession {
             }
         }
         if changed.len() != 1 {
-            return Ok(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::rejected(
                 self.revision,
                 format!(
                     "non-fast-path: edit meets {} declarations (single body edit supported)",
                     changed.len()
                 ),
                 Vec::new(),
-            ));
+            )));
         }
         let changed_idx = changed[0];
         let old_outline = outline(&self.grammar, &self.parse.tree, &self.snap)
@@ -516,18 +551,18 @@ impl FunctionIncrementalSession {
         let old_names: Vec<&str> = old_outline.iter().map(|o| o.name.as_str()).collect();
         let new_names: Vec<&str> = new_outline.iter().map(|o| o.name.as_str()).collect();
         if old_names != new_names {
-            return Ok(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::rejected(
                 self.revision,
                 "non-fast-path: declaration set changed (add/remove/rename)".to_string(),
                 Vec::new(),
-            ));
+            )));
         }
         if changed_idx >= inc.tree.decls.len() {
-            return Ok(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::rejected(
                 self.revision,
                 "non-fast-path: changed decl missing in new tree".to_string(),
                 Vec::new(),
-            ));
+            )));
         }
         let changed_name = new_outline[changed_idx].name.clone();
         if changed_name != self.fns[changed_idx].name {
@@ -556,11 +591,11 @@ impl FunctionIncrementalSession {
         ) {
             Ok(f) => f,
             Err(e) => {
-                return Ok(EditOutcome::rejected(
+                return Ok(Err(EditOutcome::rejected(
                     self.revision,
                     format!("candidate rejected: projection `{e:?}`"),
                     Vec::new(),
-                ));
+                )));
             }
         };
         if projected_fn.name.name != self.fns[changed_idx].name {
@@ -591,11 +626,11 @@ impl FunctionIncrementalSession {
         {
             Ok(p) => p,
             Err(ds) => {
-                return Ok(EditOutcome::rejected(
+                return Ok(Err(EditOutcome::rejected(
                     self.revision,
                     "candidate rejected: frontend diagnostics".to_string(),
                     ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
-                ));
+                )));
             }
         };
         for stage in ["resolve", "typecheck", "hir_build"] {
@@ -623,11 +658,11 @@ impl FunctionIncrementalSession {
             .env
             .interface_unchanged(&candidate_env, &changed_name)
         {
-            return Ok(EditOutcome::rejected(
+            return Ok(Err(EditOutcome::rejected(
                 self.revision,
                 "non-fast-path: interface or declaration context changed".to_string(),
                 Vec::new(),
-            ));
+            )));
         }
 
         // In-session content-addressed reuse (T-04): the candidate body's
@@ -661,28 +696,57 @@ impl FunctionIncrementalSession {
                         &new_src,
                         new_src_hash,
                     )? {
-                        Ok(pair) => {
-                            self.fns[changed_idx].history.insert(cv, pair.clone());
-                            pair
-                        }
+                        Ok(pair) => pair,
                         Err(diags) => {
-                            return Ok(EditOutcome::rejected(
+                            return Ok(Err(EditOutcome::rejected(
                                 self.revision,
                                 "candidate rejected: verification diagnostics".to_string(),
                                 diags,
-                            ));
+                            )));
                         }
                     }
                 }
             };
 
-        // Commit: swap the changed record, Arc-keep every other, link the
-        // next snapshot. Link failure = candidate rejected, old root stays.
+        Ok(Ok(PreparedEdit {
+            base_revision: self.revision,
+            changed_idx,
+            changed_name,
+            content_version: cv,
+            hir_body: new_hir_body,
+            code: new_code,
+            new_src,
+            new_snap,
+            new_parse: ParseOutput {
+                tree: inc.tree,
+                tokens: inc.tokens,
+                lex_diags: inc.lex_diags,
+                grafted_decls: inc.reused_decls as usize,
+            },
+        }))
+    }
+
+    /// COMMIT (PLAN-828 T-06): install a prepared candidate as the next
+    /// program revision. A candidate whose base revision is no longer
+    /// current is refused — a late/slow candidate never overwrites a newer
+    /// committed result (its diagnostics carry the refusal reason).
+    pub fn commit(&mut self, prepared: PreparedEdit) -> EditOutcome {
+        if prepared.base_revision != self.revision {
+            return EditOutcome::rejected(
+                self.revision,
+                format!(
+                    "stale candidate refused: prepared at revision {} but current revision is {}",
+                    prepared.base_revision, self.revision
+                ),
+                Vec::new(),
+            );
+        }
         let next_revision = self.revision + 1;
+        let changed_idx = prepared.changed_idx;
         let mut codes: Vec<Arc<FunctionCode>> = Vec::with_capacity(self.fns.len());
         for (i, rec) in self.fns.iter().enumerate() {
             if i == changed_idx {
-                codes.push(new_code.clone());
+                codes.push(prepared.code.clone());
             } else {
                 codes.push(rec.code.clone());
             }
@@ -690,38 +754,46 @@ impl FunctionIncrementalSession {
         let next = match ProgramSnapshot::link(codes, &self.entry_def_id, next_revision) {
             Ok(s) => Arc::new(s),
             Err(e) => {
-                return Ok(EditOutcome::rejected(
+                return EditOutcome::rejected(
                     self.revision,
                     format!("candidate rejected: link failure `{e}`"),
                     Vec::new(),
-                ));
+                );
             }
         };
+        let PreparedEdit {
+            base_revision,
+            changed_name,
+            content_version,
+            hir_body,
+            code,
+            new_src,
+            new_snap,
+            new_parse,
+            ..
+        } = prepared;
+        let _ = base_revision;
         let changed_rec = &mut self.fns[changed_idx];
-        changed_rec.hir_body = new_hir_body;
-        changed_rec.code = new_code;
+        changed_rec.history.insert(content_version, (hir_body.clone(), code.clone()));
+        changed_rec.hir_body = hir_body;
+        changed_rec.code = code;
 
         // Advance the resident syntax state to the ACTUAL incremental
         // artifacts (sustained session, not a fresh rebuild).
         self.src = new_src;
-        self.parse = ParseOutput {
-            tree: inc.tree,
-            tokens: inc.tokens,
-            lex_diags: inc.lex_diags,
-            grafted_decls: inc.reused_decls as usize,
-        };
+        self.parse = new_parse;
         self.snap = new_snap;
         self.current = next;
         self.revision = next_revision;
 
-        Ok(EditOutcome {
+        EditOutcome {
             ok: true,
             revision: next_revision,
             changed_fn: Some(changed_name),
             install_set: vec![self.fns[changed_idx].def_id.clone()],
             diagnostics: Vec::new(),
             non_fast_path_reason: None,
-        })
+        }
     }
 }
 
