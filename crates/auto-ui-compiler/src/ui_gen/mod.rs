@@ -16,6 +16,7 @@ pub mod shared;
 pub mod nav_contract;
 // Plan 561: sidebar_* class-token contract (VM 契约子集 ↔ shadcn 原版资产逐 token 锚).
 pub mod bp;
+pub mod import_policy;
 pub mod rust;
 pub mod sidebar_contract;
 pub mod ts_adapter;

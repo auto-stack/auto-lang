@@ -237,12 +237,14 @@ widget App {{
         // handler 体直调纪律（710 code_editor_delta 同款——实现体单源
         // ui::frame_bench，不绕 VM shim）；模块 fn 体 a2r 臂=trans/rust.rs
         // 裸名映射（frame_timestamps_a2r_std_parity 锚实现体同源）。
+        // PLAN-814 T-05：发射 canonical 化（import_policy.rs 新旧映射表）——
+        // ui::frame_bench 断言串随 auto_ui_runtime 前缀更新。
         assert!(
-            rs.contains("auto_lang::ui::frame_bench::frame_begin_ms()"),
+            rs.contains("auto_ui_runtime::ui::frame_bench::frame_begin_ms()"),
             "handler 体 frame_begin_ms 直调臂缺失"
         );
         assert!(
-            rs.contains("auto_lang::ui::frame_bench::frame_present_ms()"),
+            rs.contains("auto_ui_runtime::ui::frame_bench::frame_present_ms()"),
             "handler 体 frame_present_ms 直调臂缺失"
         );
     }
@@ -572,11 +574,11 @@ widget App {{
                 .join("\n")
         );
         assert!(
-            rs.contains("auto_lang::ui::frame_bench::frame_begin_ms()"),
+            rs.contains("auto_ui_runtime::ui::frame_bench::frame_begin_ms()"),
             "handler 体 frame.begin_ms 直调臂缺失"
         );
         assert!(
-            rs.contains("auto_lang::ui::frame_bench::frame_present_ms()"),
+            rs.contains("auto_ui_runtime::ui::frame_bench::frame_present_ms()"),
             "handler 体 frame.present_ms 直调臂缺失"
         );
     }

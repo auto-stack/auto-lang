@@ -8,7 +8,9 @@ edition = "2021"
 # boot 时延度量行——T-03）。
 
 [dependencies]
-auto-lang = { path = "../auto-lang", features = ["ui-iced"] }
+# PLAN-814 T-05：shell-pack 生成物 canonical import（lib.rs 同步再生）。
+auto-ui-runtime = { path = "../auto-ui-runtime", features = ["ui-iced"] }
+auto-lang-core = { path = "../auto-lang-core" }
 serde_json.workspace = true
 # a2r 全局 List 字面量（once_cell::Lazy 形态——generate_cargo_toml 同注）。
 once_cell = "1"

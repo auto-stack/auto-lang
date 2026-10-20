@@ -7899,4 +7899,15 @@ pub fn create_item(name str) str {
             "应用撞名拒绝"
         );
     }
+    #[test]
+    fn generated_ui_cargo_uses_canonical_double_dependency() {
+        // PLAN-814 T-05（union 迁移自 auto-man api_gen 测试——rust_ui 归属
+        // auto-ui-tools 后断言随迁）：UI 工程 manifest canonical 双直依赖。
+        let ui_cargo = crate::rust_ui::generate_cargo_toml(
+            "image-ui",
+            std::path::Path::new("."),
+            &crate::rust_ui::PacSource::legacy(),
+        );
+        assert!(ui_cargo.contains("auto-ui-runtime"));
+    }
 }

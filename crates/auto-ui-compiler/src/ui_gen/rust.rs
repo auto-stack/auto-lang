@@ -1168,7 +1168,7 @@ impl RustGenerator {
 
         // Imports
         if self.needs_imports {
-            code.push_str("use auto_lang::ui::{Component, View};\n\n");
+            code.push_str("use auto_ui_runtime::ui::{Component, View};\n\n");
         }
 
         // Pre-scan view tree for child component references (needed for wrapper msg variants)
@@ -1997,7 +1997,7 @@ impl RustGenerator {
         }
 
         let mut code = String::new();
-        code.push_str("    fn state_snapshot(&self) -> std::collections::HashMap<String, auto_lang::ui::auto_val::Value> {\n");
+        code.push_str("    fn state_snapshot(&self) -> std::collections::HashMap<String, auto_ui_runtime::ui::auto_val::Value> {\n");
         code.push_str("        let mut m = std::collections::HashMap::new();\n");
         for (name, ty) in &scalars {
             let expr = scalar_to_auto_value_expr("self", name, ty);
@@ -2038,11 +2038,11 @@ impl RustGenerator {
                 .any(|v| v.name == "__MenubarToggle")
             {
                 code.push_str(&format!(
-                    "            {}::__MenubarToggle(id) => {{\n                let __open = auto_lang::ui::action_config::menubar_open();\n                auto_lang::ui::action_config::set_menubar_open(if __open.as_deref() == Some(id.as_str()) {{ None }} else {{ Some(id.clone()) }});\n            }}\n",
+                    "            {}::__MenubarToggle(id) => {{\n                let __open = auto_ui_runtime::ui::action_config::menubar_open();\n                auto_ui_runtime::ui::action_config::set_menubar_open(if __open.as_deref() == Some(id.as_str()) {{ None }} else {{ Some(id.clone()) }});\n            }}\n",
                     msg_name
                 ));
                 code.push_str(&format!(
-                    "            {}::__MenubarClose => {{\n                auto_lang::ui::action_config::set_menubar_open(None);\n            }}\n",
+                    "            {}::__MenubarClose => {{\n                auto_ui_runtime::ui::action_config::set_menubar_open(None);\n            }}\n",
                     msg_name
                 ));
             }
@@ -2095,11 +2095,11 @@ impl RustGenerator {
                         self.code_editor_sources.get(&variant_name)
                     {
                         format!(
-                            "auto_lang::ui::code_editor::code_editor_text(\"{}\").unwrap_or_default()",
+                            "auto_ui_runtime::ui::code_editor::code_editor_text(\"{}\").unwrap_or_default()",
                             keys.first().map(|s| s.as_str()).unwrap_or("editor")
                         )
                     } else {
-                        "auto_lang::ui::iced::last_input_text()".to_string()
+                        "auto_ui_runtime::ui::iced::last_input_text()".to_string()
                     };
                     code.push_str(&format!(
                         "                let _text = {};
@@ -3622,7 +3622,7 @@ impl RustGenerator {
                 .unwrap_or_default();
             let sc = shortcut.map(|s| format!("    {s}")).unwrap_or_default();
             let btn_dimmed = format!(
-                "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {prefix_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-muted-foreground opacity-50\").unwrap_or_default()).build()"
+                "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {prefix_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).with_style(auto_ui_runtime::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-muted-foreground opacity-50\").unwrap_or_default()).build()"
             );
             match handler {
                 None => btn_dimmed,
@@ -3631,7 +3631,7 @@ impl RustGenerator {
                     // (与解释态 menu_item_button_view 同词汇——静态 Rust 侧
                     // Style::parse 运行期消费 hover: 变体,同一渲染器通道)。
                     let btn = format!(
-                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {prefix_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left rounded-sm hover:bg-accent\").unwrap_or_default()).build()"
+                        "View::button(format!(\"{icon_pua}{{}}{{}}{{}}\", {prefix_expr}, \"{title}\".to_string(), \"{sc}\".to_string())).on_click({handler_fn}).with_style(auto_ui_runtime::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left rounded-sm hover:bg-accent\").unwrap_or_default()).build()"
                     );
                     btn
                 }
@@ -3654,7 +3654,7 @@ impl RustGenerator {
             match itag.as_str() {
                 "menubar-separator" => {
                     code = format!(
-                        "{code}.child(View::container(View::Empty).with_style(auto_lang::ui::style::Style::parse(\"h-px my-1 bg-border\").unwrap_or_default()).build())"
+                        "{code}.child(View::container(View::Empty).with_style(auto_ui_runtime::ui::style::Style::parse(\"h-px my-1 bg-border\").unwrap_or_default()).build())"
                     );
                 }
                 "menubar-item" | "menubar-checkbox-item" => {
@@ -3724,7 +3724,7 @@ impl RustGenerator {
                         depth,
                     );
                     code = format!(
-                        "{code}.child(View::col(){children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-full\").unwrap_or_default()).build())"
+                        "{code}.child(View::col(){children_code}.with_style(auto_ui_runtime::ui::style::Style::parse(\"w-full\").unwrap_or_default()).build())"
                     );
                 }
                 "menubar-radio-item" => {
@@ -3784,7 +3784,7 @@ impl RustGenerator {
                         }
                     }
                     let sub_trigger = format!(
-                        "View::button(\"{sub_title}\".to_string()).on_click(|_| {msg_name}::__MenubarToggle(\"{sub_id}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-[12px] text-popover-foreground rounded-sm hover:bg-accent\").unwrap_or_default()).build()"
+                        "View::button(\"{sub_title}\".to_string()).on_click(|_| {msg_name}::__MenubarToggle(\"{sub_id}\".to_string())).with_style(auto_ui_runtime::ui::style::Style::parse(\"h-7 w-full px-0 py-0 justify-start text-left text-[12px] text-popover-foreground rounded-sm hover:bg-accent\").unwrap_or_default()).build()"
                     );
                     let sub_children_code = self.a2r_menubar_panel_children(
                         &sub_content,
@@ -3795,7 +3795,7 @@ impl RustGenerator {
                     );
                     // 开态内联节（闭态空 col 零高占位）。
                     let sub_section = format!(
-                        "{{ if auto_lang::ui::action_config::menubar_open().as_deref() == Some(\"{sub_id}\") {{ View::col(){sub_children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-full pl-4 ml-2 border-l border-border py-0.5\").unwrap_or_default()).build() }} else {{ View::col().build() }} }}"
+                        "{{ if auto_ui_runtime::ui::action_config::menubar_open().as_deref() == Some(\"{sub_id}\") {{ View::col(){sub_children_code}.with_style(auto_ui_runtime::ui::style::Style::parse(\"w-full pl-4 ml-2 border-l border-border py-0.5\").unwrap_or_default()).build() }} else {{ View::col().build() }} }}"
                     );
                     code = format!("{code}.child({sub_trigger}).child({sub_section})");
                 }
@@ -3809,7 +3809,7 @@ impl RustGenerator {
                         depth,
                     );
                     code = format!(
-                        "{code}.child(View::col(){children_code}.with_style(auto_lang::ui::style::Style::parse(\"w-full\").unwrap_or_default()).build())"
+                        "{code}.child(View::col(){children_code}.with_style(auto_ui_runtime::ui::style::Style::parse(\"w-full\").unwrap_or_default()).build())"
                     );
                 }
                 _ => {}
@@ -4041,7 +4041,7 @@ impl RustGenerator {
                         .map(|v| self.autodown_panel_prop_expr(v))
                         .unwrap_or_else(|| "\"Details\".to_string()".to_string());
                     let mut item =
-                        format!("auto_lang::ui::view::AccordionItem::new({})", summary_expr);
+                        format!("auto_ui_runtime::ui::view::AccordionItem::new({})", summary_expr);
                     if !children.is_empty() {
                         let kids: Vec<String> = children
                             .iter()
@@ -4096,7 +4096,7 @@ impl RustGenerator {
                                 .map(|c| self.generate_view_tree(c))
                                 .collect();
                             return match views.len() {
-                                0 => "auto_lang::ui::view::View::Empty".to_string(),
+                                0 => "auto_ui_runtime::ui::view::View::Empty".to_string(),
                                 1 => views.into_iter().next().unwrap(),
                                 _ => {
                                     let mut b = "View::row()".to_string();
@@ -4125,7 +4125,7 @@ impl RustGenerator {
                                 .map(|c| self.generate_view_tree(c))
                                 .collect();
                             return match views.len() {
-                                0 => "auto_lang::ui::view::View::Empty".to_string(),
+                                0 => "auto_ui_runtime::ui::view::View::Empty".to_string(),
                                 1 => views.into_iter().next().unwrap(),
                                 _ => {
                                     let mut b = "View::row()".to_string();
@@ -4236,7 +4236,7 @@ impl RustGenerator {
                 // None，把后位 022 臂挡成死代码致发射漂移，死臂已删）。
                 if tag == "mouse-area" || tag == "mouse_area" {
                     let content = if children.is_empty() {
-                        "auto_lang::ui::view::View::Empty".to_string()
+                        "auto_ui_runtime::ui::view::View::Empty".to_string()
                     } else if children.len() == 1 {
                         self.generate_view_tree(&children[0])
                     } else {
@@ -4273,7 +4273,7 @@ impl RustGenerator {
                             });
                     let style_expr = match user_style {
                         Some(s) => {
-                            format!("auto_lang::ui::style::Style::parse(\"{s}\").ok()")
+                            format!("auto_ui_runtime::ui::style::Style::parse(\"{s}\").ok()")
                         }
                         None => "None".to_string(),
                     };
@@ -4291,7 +4291,7 @@ impl RustGenerator {
                             let msg_name = self.current_msg_name();
                             if h.params.is_empty() {
                                 format!(
-                                    "Some(auto_lang::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {msg_name}::{variant}(x, y)))"
+                                    "Some(auto_ui_runtime::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {msg_name}::{variant}(x, y)))"
                                 )
                             } else {
                                 let converted: Vec<String> = h
@@ -4300,7 +4300,7 @@ impl RustGenerator {
                                     .map(|p| self.convert_param_value_access(p, &variant))
                                     .collect();
                                 format!(
-                                    "Some(auto_lang::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {{ let _ = (x, y); {msg_name}::{variant}({}) }}))",
+                                    "Some(auto_ui_runtime::ui::view::PointerMoveHandler::new(move |x: f32, y: f32| {{ let _ = (x, y); {msg_name}::{variant}({}) }}))",
                                     converted.join(", ")
                                 )
                             }
@@ -5458,7 +5458,7 @@ impl RustGenerator {
                         "None".to_string()
                     } else {
                         format!(
-                            "auto_lang::ui::style::Style::parse(\"{}\").ok()",
+                            "auto_ui_runtime::ui::style::Style::parse(\"{}\").ok()",
                             user_style
                         )
                     };
@@ -5496,7 +5496,7 @@ impl RustGenerator {
                         "None".to_string()
                     } else {
                         format!(
-                            "auto_lang::ui::style::Style::parse(\"{}\").ok()",
+                            "auto_ui_runtime::ui::style::Style::parse(\"{}\").ok()",
                             user_style
                         )
                     };
@@ -5810,7 +5810,7 @@ impl RustGenerator {
                         Some(AuraPropValue::Expr(e)) => format!(
                             // clone 形——&self 态字段（self.store.diff_scroll）
                             // 直移出借位 E0507（scroll-pane 绑定株）。
-                            ".controller(auto_lang::ui::view::ScrollControllerBinding(std::sync::Arc::from(({}).clone())))",
+                            ".controller(auto_ui_runtime::ui::view::ScrollControllerBinding(std::sync::Arc::from(({}).clone())))",
                             self.ast_expr_to_rust(e)
                         ),
                         _ => String::new(),
@@ -5982,7 +5982,7 @@ impl RustGenerator {
                         "None".to_string()
                     } else {
                         format!(
-                            "Some(auto_lang::ui::style::Style::parse(\"{}\").unwrap())",
+                            "Some(auto_ui_runtime::ui::style::Style::parse(\"{}\").unwrap())",
                             class_str
                         )
                     };
@@ -6410,7 +6410,7 @@ impl RustGenerator {
                     // use 不含该类型；PointerMoveHandler 同款先例）。
                     if let Some(v) = prop_str_lit("variant") {
                         builder = format!(
-                            "{builder}.variant(auto_lang::ui::view::TabsVariant::parse(\"{v}\"))"
+                            "{builder}.variant(auto_ui_runtime::ui::view::TabsVariant::parse(\"{v}\"))"
                         );
                     }
                     // 样式（style/class prop → TabsBuilder.style）。
@@ -6538,7 +6538,7 @@ impl RustGenerator {
                             }
                         }
                         let trigger = format!(
-                            "View::button(\"{}\".to_string()).on_click(|_| {}::__MenubarToggle(\"{}\".to_string())).with_style(auto_lang::ui::style::Style::parse(\"h-7 px-3 rounded-sm text-[12px] text-foreground hover:bg-accent hover:text-accent-foreground\").unwrap_or_default()).build()",
+                            "View::button(\"{}\".to_string()).on_click(|_| {}::__MenubarToggle(\"{}\".to_string())).with_style(auto_ui_runtime::ui::style::Style::parse(\"h-7 px-3 rounded-sm text-[12px] text-foreground hover:bg-accent hover:text-accent-foreground\").unwrap_or_default()).build()",
                             trigger_title, msg_name, menu_id
                         );
                         // PLAN-695 T-04：面板配色字面 #16171B/zinc-700 →
@@ -6555,10 +6555,10 @@ impl RustGenerator {
                             0,
                         );
                         let panel = format!(
-                            "View::col(){items_code}.with_style(auto_lang::ui::style::Style::parse(\"w-44 bg-popover text-popover-foreground border border-border shadow-md py-1\").unwrap_or_default())"
+                            "View::col(){items_code}.with_style(auto_ui_runtime::ui::style::Style::parse(\"w-44 bg-popover text-popover-foreground border border-border shadow-md py-1\").unwrap_or_default())"
                         );
                         let popover = format!(
-                            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({trigger})), content: Box::new({panel}.build()), placement: auto_lang::ui::view::PopoverPlacement::BottomStart, open: auto_lang::ui::action_config::menubar_open().as_deref().map(|o| o == \"{menu_id}\" || o.starts_with(\"{menu_id}::\")).unwrap_or(false), on_dismiss: Some({msg_name}::__MenubarClose) }}"
+                            "View::Popover {{ anchor: auto_ui_runtime::ui::view::PopoverAnchor::Widget(Box::new({trigger})), content: Box::new({panel}.build()), placement: auto_ui_runtime::ui::view::PopoverPlacement::BottomStart, open: auto_ui_runtime::ui::action_config::menubar_open().as_deref().map(|o| o == \"{menu_id}\" || o.starts_with(\"{menu_id}::\")).unwrap_or(false), on_dismiss: Some({msg_name}::__MenubarClose) }}"
                         );
                         root = format!("{root}.child({popover})");
                     }
@@ -6568,7 +6568,7 @@ impl RustGenerator {
                         format!("{root}.build()")
                     } else {
                         format!(
-                            "{root}.with_style(auto_lang::ui::style::Style::parse(\"{user_class}\").unwrap_or_default()).build()"
+                            "{root}.with_style(auto_ui_runtime::ui::style::Style::parse(\"{user_class}\").unwrap_or_default()).build()"
                         )
                     };
                     return root;
@@ -7353,10 +7353,10 @@ impl RustGenerator {
     /// 一致断言的锚点）:横条 w-96 定宽 + h-full 拉满,纵条 w-full 拉满;
     /// drawer 竖向追加贴缘圆角（bottom rounded-t / top rounded-b）。
     fn side_panel_emission(side_val: &str, is_drawer: bool) -> (&'static str, &'static str) {
-        const EDGE_LEFT: &str = "auto_lang::ui::view::PopoverPlacement::EdgeLeft";
-        const EDGE_RIGHT: &str = "auto_lang::ui::view::PopoverPlacement::EdgeRight";
-        const EDGE_TOP: &str = "auto_lang::ui::view::PopoverPlacement::EdgeTop";
-        const EDGE_BOTTOM: &str = "auto_lang::ui::view::PopoverPlacement::EdgeBottom";
+        const EDGE_LEFT: &str = "auto_ui_runtime::ui::view::PopoverPlacement::EdgeLeft";
+        const EDGE_RIGHT: &str = "auto_ui_runtime::ui::view::PopoverPlacement::EdgeRight";
+        const EDGE_TOP: &str = "auto_ui_runtime::ui::view::PopoverPlacement::EdgeTop";
+        const EDGE_BOTTOM: &str = "auto_ui_runtime::ui::view::PopoverPlacement::EdgeBottom";
         const H_CHROME: &str = "w-96 bg-background border shadow-lg p-6 gap-4 h-full";
         const V_CHROME: &str = "bg-background border shadow-lg p-6 gap-4 w-full";
         match side_val {
@@ -7384,7 +7384,7 @@ impl RustGenerator {
     /// PLAN-534: drawer 竖向装饰把手发射串——全宽容器内居中的 w-8 h-1
     /// 圆角条（与解释器臂 drawer_handle_view 同构:纯视觉无手势）。
     fn drawer_handle_emission() -> String {
-        "View::container(View::container(auto_lang::ui::view::View::Empty).style(\"w-8 h-1 rounded-full bg-muted\").build()).center_x().style(\"w-full py-2\").build()".to_string()
+        "View::container(View::container(auto_ui_runtime::ui::view::View::Empty).style(\"w-8 h-1 rounded-full bg-muted\").build()).center_x().style(\"w-full py-2\").build()".to_string()
     }
 
     /// PLAN-534 D4: hovercard 根臂——trigger 包 View::MouseArea（hover
@@ -7450,7 +7450,7 @@ impl RustGenerator {
                 } else if t_children.is_empty() {
                     let label = Self::modal_child_label(t_props, t_children);
                     if label.is_empty() {
-                        "auto_lang::ui::view::View::Empty".to_string()
+                        "auto_ui_runtime::ui::view::View::Empty".to_string()
                     } else {
                         format!("View::text_styled(\"{}\".to_string(), \"\")", label)
                     }
@@ -7464,7 +7464,7 @@ impl RustGenerator {
                 (inner, enter, exit)
             }
             _ => (
-                "auto_lang::ui::view::View::Empty".to_string(),
+                "auto_ui_runtime::ui::view::View::Empty".to_string(),
                 "None".to_string(),
                 "None".to_string(),
             ),
@@ -7483,7 +7483,7 @@ impl RustGenerator {
             _ => "false".to_string(),
         };
         format!(
-            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new(View::MouseArea {{ content: Box::new({}), on_enter: {}, on_exit: {}, on_double_click: None, on_click: None, on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }})), content: Box::new({}), placement: auto_lang::ui::view::PopoverPlacement::Bottom, open: {}, on_dismiss: None }}",
+            "View::Popover {{ anchor: auto_ui_runtime::ui::view::PopoverAnchor::Widget(Box::new(View::MouseArea {{ content: Box::new({}), on_enter: {}, on_exit: {}, on_double_click: None, on_click: None, on_context_menu: None, on_release: None, on_move: None, logical_extent: None, style: None }})), content: Box::new({}), placement: auto_ui_runtime::ui::view::PopoverPlacement::Bottom, open: {}, on_dismiss: None }}",
             anchor_code, on_enter, on_exit, panel, open_expr
         )
     }
@@ -7593,7 +7593,7 @@ impl RustGenerator {
                 } else if t_children.is_empty() {
                     let label = Self::modal_child_label(t_props, t_children);
                     if label.is_empty() {
-                        "auto_lang::ui::view::View::Empty".to_string()
+                        "auto_ui_runtime::ui::view::View::Empty".to_string()
                     } else {
                         format!(
                             "View::button(\"{}\").on_click({}).build()",
@@ -7608,7 +7608,7 @@ impl RustGenerator {
                     format!("{}.build()", b)
                 }
             }
-            _ => "auto_lang::ui::view::View::Empty".to_string(),
+            _ => "auto_ui_runtime::ui::view::View::Empty".to_string(),
         };
         let mut panel = "View::col()".to_string();
         // PLAN-534: sheet/drawer 贴边族——drawer 竖向装饰把手为首子
@@ -7690,12 +7690,12 @@ impl RustGenerator {
         let placement_path: String = match side_val.as_deref() {
             Some(side) => Self::side_panel_emission(side, is_drawer).1.to_string(),
             None if Self::dropdown_menu_root(tag) => {
-                "auto_lang::ui::view::PopoverPlacement::BottomStart".to_string()
+                "auto_ui_runtime::ui::view::PopoverPlacement::BottomStart".to_string()
             }
-            None => "auto_lang::ui::view::PopoverPlacement::Modal".to_string(),
+            None => "auto_ui_runtime::ui::view::PopoverPlacement::Modal".to_string(),
         };
         format!(
-            "View::Popover {{ anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: {}, open: {}, on_dismiss: {} }}",
+            "View::Popover {{ anchor: auto_ui_runtime::ui::view::PopoverAnchor::Widget(Box::new({})), content: Box::new({}), placement: {}, open: {}, on_dismiss: {} }}",
             anchor_code, panel, placement_path, open_expr, on_dismiss_expr
         )
     }
@@ -7761,7 +7761,7 @@ impl RustGenerator {
         let placement_expr = match props.get("placement") {
             Some(AuraPropValue::Expr(auto_lang_core::ast::Expr::Str(s))) => {
                 let lit = placement_lit(s).unwrap_or(default_placement);
-                format!("auto_lang::ui::view::PopoverPlacement::{lit}")
+                format!("auto_ui_runtime::ui::view::PopoverPlacement::{lit}")
             }
             Some(AuraPropValue::Expr(e)) => {
                 let k = self.ast_expr_to_rust(e);
@@ -7779,16 +7779,16 @@ impl RustGenerator {
                 .iter()
                 .filter_map(|p| {
                     placement_lit(p).map(|lit| {
-                        format!("\"{p}\" => auto_lang::ui::view::PopoverPlacement::{lit},")
+                        format!("\"{p}\" => auto_ui_runtime::ui::view::PopoverPlacement::{lit},")
                     })
                 })
                 .collect::<Vec<_>>()
                 .join(" ");
                 format!(
-                    "match {k}.to_ascii_lowercase().as_str() {{ {arms} _ => auto_lang::ui::view::PopoverPlacement::{default_placement} }}"
+                    "match {k}.to_ascii_lowercase().as_str() {{ {arms} _ => auto_ui_runtime::ui::view::PopoverPlacement::{default_placement} }}"
                 )
             }
-            _ => format!("auto_lang::ui::view::PopoverPlacement::{default_placement}"),
+            _ => format!("auto_ui_runtime::ui::view::PopoverPlacement::{default_placement}"),
         };
 
         // ondismiss：events 桶基名（.prevent 等后缀容忍）。
@@ -7835,16 +7835,16 @@ impl RustGenerator {
 
         let anchor_expr = if point_anchor {
             format!(
-                "auto_lang::ui::view::PopoverAnchor::Point {{ x: ({} ) as f32, y: ({} ) as f32 }}",
+                "auto_ui_runtime::ui::view::PopoverAnchor::Point {{ x: ({} ) as f32, y: ({} ) as f32 }}",
                 x_expr.unwrap(),
                 y_expr.unwrap()
             )
         } else if children.is_empty() {
-            "auto_lang::ui::view::PopoverAnchor::Widget(Box::new(auto_lang::ui::view::View::Empty))"
+            "auto_ui_runtime::ui::view::PopoverAnchor::Widget(Box::new(auto_ui_runtime::ui::view::View::Empty))"
                 .to_string()
         } else {
             let anchor_code = self.generate_view_tree(&children[0]);
-            format!("auto_lang::ui::view::PopoverAnchor::Widget(Box::new({anchor_code}))")
+            format!("auto_ui_runtime::ui::view::PopoverAnchor::Widget(Box::new({anchor_code}))")
         };
 
         format!(
@@ -8669,7 +8669,7 @@ impl RustGenerator {
                                     Some(shape),
                                 ),
                                 None => format!(
-                                    "auto_lang::a2r_std::json::truthy(&({}[\"{}\"]))",
+                                    "auto_lang_core::a2r_std::json::truthy(&({}[\"{}\"]))",
                                     output_var_name, field_name
                                 ),
                             };
@@ -8696,7 +8696,7 @@ impl RustGenerator {
                             // PLAN-710 D-6：条件位 truthy 投影（同上——形状
                             // 表外字段不再落 as_str 猜型）。
                             output.push_str(&format!(
-                                "auto_lang::a2r_std::json::truthy(&(self.{}[\"{}\"]))",
+                                "auto_lang_core::a2r_std::json::truthy(&(self.{}[\"{}\"]))",
                                 var_name, field_name
                             ));
                             i = field_end;
@@ -9363,7 +9363,7 @@ impl RustGenerator {
                     // Each condition is an `if ... { &str } else { &str }` expression
                     // format!() needs owned values for interpolation, but &str works fine
                     let args = class_conditions.join(", ");
-                    let combined = format!("auto_lang::ui::style::Style::parse(&format!(\"{}\", {})).unwrap_or_default()", fmt_str, args);
+                    let combined = format!("auto_ui_runtime::ui::style::Style::parse(&format!(\"{}\", {})).unwrap_or_default()", fmt_str, args);
                     format!("{}.with_style({})", builder, combined)
                 }
             }
@@ -10478,7 +10478,7 @@ impl RustGenerator {
                 let body_str = self.join_stmt_block(&t.body.stmts, "; ");
                 let catch_str = self.join_stmt_block(&t.catch_body.stmts, "; ");
                 let catch_bind = match &t.catch_param {
-                    Some(p) => format!("let {p} = auto_lang::a2r_std::panic_message(&__p); "),
+                    Some(p) => format!("let {p} = auto_lang_core::a2r_std::panic_message(&__p); "),
                     None => String::new(),
                 };
                 let catch_arm = if catch_bind.is_empty() && catch_str.is_empty() {
@@ -10551,7 +10551,7 @@ impl RustGenerator {
         // String 形，bool 位需从原始链重建）。前置（早退之前）。
         if matches!(ty, Type::Bool) {
             return format!(
-                "auto_lang::a2r_std::json::truthy(&({}))",
+                "auto_lang_core::a2r_std::json::truthy(&({}))",
                 self.value_bracket_chain(expr)
             );
         }
@@ -11123,7 +11123,7 @@ impl RustGenerator {
                             format!("({ve})")
                         } else {
                             format!(
-                                "auto_lang::a2r_std::json::get_owned(&({ve}), &[{}])",
+                                "auto_lang_core::a2r_std::json::get_owned(&({ve}), &[{}])",
                                 pending.join(", ")
                             )
                         }
@@ -11133,7 +11133,7 @@ impl RustGenerator {
                         format!("({recv})")
                     } else {
                         format!(
-                            "auto_lang::a2r_std::json::get_owned(&({recv}), &[{}])",
+                            "auto_lang_core::a2r_std::json::get_owned(&({recv}), &[{}])",
                             pending.join(", ")
                         )
                     };
@@ -11141,7 +11141,7 @@ impl RustGenerator {
                         base
                     } else {
                         format!(
-                            "auto_lang::a2r_std::json::at_owned(&({base}), ({idx_str}) as usize)"
+                            "auto_lang_core::a2r_std::json::at_owned(&({base}), ({idx_str}) as usize)"
                         )
                     });
                     pending.clear();
@@ -11157,12 +11157,12 @@ impl RustGenerator {
         // 入臂；调用等非字面量缺省走 str-with 变体）。
         let int_default = |n: String| {
             format!(
-                "(auto_lang::a2r_std::json::get_int_or(&({subject}), &[{keys_str}], {n}) as i32)"
+                "(auto_lang_core::a2r_std::json::get_int_or(&({subject}), &[{keys_str}], {n}) as i32)"
             )
         };
         match right {
             Expr::Str(s) => format!(
-                "auto_lang::a2r_std::json::get_str_or(&({subject}), &[{keys_str}], \"{}\")",
+                "auto_lang_core::a2r_std::json::get_str_or(&({subject}), &[{keys_str}], \"{}\")",
                 Self::rust_str_lit_body(s)
             ),
             Expr::Int(n) => int_default(n.to_string()),
@@ -11175,15 +11175,15 @@ impl RustGenerator {
                 int_default(format!("-{}", Self::int_literal_value(inner).unwrap()))
             }
             Expr::Bool(b) => {
-                format!("auto_lang::a2r_std::json::get_bool_or(&({subject}), &[{keys_str}], {b})")
+                format!("auto_lang_core::a2r_std::json::get_bool_or(&({subject}), &[{keys_str}], {b})")
             }
             Expr::Array(_) => {
-                format!("auto_lang::a2r_std::json::get_array_or(&({subject}), &[{keys_str}])")
+                format!("auto_lang_core::a2r_std::json::get_array_or(&({subject}), &[{keys_str}])")
             }
             other => {
                 let d = self.ast_expr_to_rust(other);
                 format!(
-                    "auto_lang::a2r_std::json::get_str_or_with(&({subject}), &[{keys_str}], || ({d}))"
+                    "auto_lang_core::a2r_std::json::get_str_or_with(&({subject}), &[{keys_str}], || ({d}))"
                 )
             }
         }
@@ -11215,7 +11215,7 @@ impl RustGenerator {
                 // 原生括号链直构（不复用 ast_expr_to_rust——其访问器会先
                 // 降型 as_str/as_i64，truthy 需原始 Value 形）。
                 let chain = self.value_bracket_chain(expr);
-                format!("auto_lang::a2r_std::json::truthy(&({chain}))")
+                format!("auto_lang_core::a2r_std::json::truthy(&({chain}))")
             }
             // PLAN-710 D-6 延伸：裸局部条件（`if p`——str 串非空/int>0/
             // Value truthy）——VM is_true 同源；bool/未知维持裸发射。
@@ -11231,7 +11231,7 @@ impl RustGenerator {
                     Some("int") => format!("({s}) > 0"),
                     _ => {
                         if self.value_locals.contains(s) {
-                            format!("auto_lang::a2r_std::json::truthy(&({s}))")
+                            format!("auto_lang_core::a2r_std::json::truthy(&({s}))")
                         } else {
                             s.to_string()
                         }
@@ -11568,13 +11568,13 @@ impl RustGenerator {
 
     /// PLAN-681 T-05（F1 内建函数面）：VM 内建函数名 → a2r 宿主调用，
     /// 单源映射表。语义锚 = vm/native.rs 的 shim 族：
-    /// - console_log/lines/clear → `auto_lang::vm::ui_console` ring——与 VM
+    /// - console_log/lines/clear → `auto_lang_core::vm::ui_console` ring——与 VM
     ///   解释轨**同一实现**（newest-first、DEFAULT_LINES=200、push 返回
     ///   bool 的 VM 语义以块表达式 `{ push; true }` 保形）；
-    /// - code_editor_* → `auto_lang::ui::code_editor` 注册表（VM shim 同一
+    /// - code_editor_* → `auto_ui_runtime::ui::code_editor` 注册表（VM shim 同一
     ///   委派目标；cut/copy/paste 经 clipboard_op、fold 两员经
     ///   code_editor_with 闭包——与 shim 体同形）；
-    /// - dialog_open/save → `auto_lang::ui::dialog`（rfd 宿主，filter 解析
+    /// - dialog_open/save → `auto_ui_runtime::ui::dialog`（rfd 宿主，filter 解析
     ///   与 ""-on-cancel 同式；父窗锚 a2r v1 从简，边界见该模块头注）；
     /// - file_basename → `a2r_std::fs::basename`（rsplit ['/','\\'] 同式）；
     /// - Process.exit → `std::process::exit`（auto.process.exit 语义）；
@@ -11599,19 +11599,19 @@ impl RustGenerator {
             |i: usize| -> Option<String> { pos_args.get(i).map(|e| self.ast_expr_to_rust(e)) };
         match fn_name {
             "console_log" => Some(format!(
-                "{{ auto_lang::vm::ui_console::ui_console_push(&({})); true }}",
+                "{{ auto_lang_core::vm::ui_console::ui_console_push(&({})); true }}",
                 arg(0)?
             )),
             "console_lines" => Some(
-                "auto_lang::vm::ui_console::ui_console_lines(auto_lang::vm::ui_console::DEFAULT_LINES)"
+                "auto_lang_core::vm::ui_console::ui_console_lines(auto_lang_core::vm::ui_console::DEFAULT_LINES)"
                     .to_string(),
             ),
             "console_clear" => Some(
-                "{ auto_lang::vm::ui_console::ui_console_clear(); true }".to_string(),
+                "{ auto_lang_core::vm::ui_console::ui_console_clear(); true }".to_string(),
             ),
-            "file_basename" => Some(format!("auto_lang::a2r_std::fs::basename(&({}))", arg(0)?)),
+            "file_basename" => Some(format!("auto_lang_core::a2r_std::fs::basename(&({}))", arg(0)?)),
             "code_editor_select_all" | "code_editor_undo" | "code_editor_redo" => Some(format!(
-                "auto_lang::ui::code_editor::{}(&({}))",
+                "auto_ui_runtime::ui::code_editor::{}(&({}))",
                 fn_name,
                 arg(0)?
             )),
@@ -11622,13 +11622,13 @@ impl RustGenerator {
                     _ => "Paste",
                 };
                 Some(format!(
-                    "auto_lang::ui::code_editor::code_editor_clipboard_op(&({}), auto_lang::ui::code_editor::ClipboardOp::{})",
+                    "auto_ui_runtime::ui::code_editor::code_editor_clipboard_op(&({}), auto_ui_runtime::ui::code_editor::ClipboardOp::{})",
                     arg(0)?,
                     op
                 ))
             }
             "code_editor_edit" => Some(format!(
-                "auto_lang::ui::code_editor::code_editor_edit(&({a0}), ({a1}).max(0) as u64 as usize, ({a2}).max(0) as u64 as usize, &({a3}))",
+                "auto_ui_runtime::ui::code_editor::code_editor_edit(&({a0}), ({a1}).max(0) as u64 as usize, ({a2}).max(0) as u64 as usize, &({a3}))",
                 a0 = arg(0)?,
                 a1 = arg(1)?,
                 a2 = arg(2)?,
@@ -11640,37 +11640,37 @@ impl RustGenerator {
             // 未注册键 = RuntimeError，非空串）——None → panic! 同消息形，
             // 键值块内预绑一次（参数表达式只求值一次，与 VM pop 一次对齐）。
             "code_editor_delta" => Some(format!(
-                "{{ let __key = ({a0}).clone(); auto_lang::ui::code_editor::code_editor_delta(&__key).unwrap_or_else(|| panic!(\"code_editor_delta: no editor registered for key {{:?}}\", __key.as_str())) }}",
+                "{{ let __key = ({a0}).clone(); auto_ui_runtime::ui::code_editor::code_editor_delta(&__key).unwrap_or_else(|| panic!(\"code_editor_delta: no editor registered for key {{:?}}\", __key.as_str())) }}",
                 a0 = arg(0)?
             )),
             "code_editor_load_file" => Some(format!(
-                "(auto_lang::ui::code_editor::code_editor_load_file(&({a0}), &({a1})).unwrap_or(-1)) as i32",
+                "(auto_ui_runtime::ui::code_editor::code_editor_load_file(&({a0}), &({a1})).unwrap_or(-1)) as i32",
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
             // PLAN-701 供①/供②: save 直写 + 光标/滚动端点（三面同步之
             // a2r/merged 臂——直接调 core 实现，VM shim 语义同源）。
             "code_editor_save" => Some(format!(
-                "auto_lang::ui::code_editor::code_editor_save(&({a0}), &({a1}))",
+                "auto_ui_runtime::ui::code_editor::code_editor_save(&({a0}), &({a1}))",
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
             "code_editor_set_cursor" => Some(format!(
-                "auto_lang::ui::code_editor::code_editor_set_cursor(&({a0}), ({a1}).max(0) as u64 as usize, ({a2}).max(0) as u64 as usize)",
+                "auto_ui_runtime::ui::code_editor::code_editor_set_cursor(&({a0}), ({a1}).max(0) as u64 as usize, ({a2}).max(0) as u64 as usize)",
                 a0 = arg(0)?,
                 a1 = arg(1)?,
                 a2 = arg(2)?
             )),
             "code_editor_scroll_offset_x" => Some(format!(
-                "(auto_lang::ui::scroll::controller::controller_snapshot(&auto_lang::ui::code_editor::editor_scroll_handle(&({a0}))).offset_x)",
+                "(auto_ui_runtime::ui::scroll::controller::controller_snapshot(&auto_ui_runtime::ui::code_editor::editor_scroll_handle(&({a0}))).offset_x)",
                 a0 = arg(0)?
             )),
             "code_editor_scroll_offset_y" => Some(format!(
-                "(auto_lang::ui::scroll::controller::controller_snapshot(&auto_lang::ui::code_editor::editor_scroll_handle(&({a0}))).offset_y)",
+                "(auto_ui_runtime::ui::scroll::controller::controller_snapshot(&auto_ui_runtime::ui::code_editor::editor_scroll_handle(&({a0}))).offset_y)",
                 a0 = arg(0)?
             )),
             "code_editor_scroll_to" => Some(format!(
-                "{{ let __h = auto_lang::ui::code_editor::editor_scroll_handle(&({a0})); auto_lang::ui::scroll::enqueue_intent(&__h, auto_lang::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_lang::ui::scroll::Axis::X, offset: ({a1}) as f64, source: auto_lang::ui::scroll::ScrollSource::Programmatic }}); auto_lang::ui::scroll::enqueue_intent(&__h, auto_lang::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_lang::ui::scroll::Axis::Y, offset: ({a2}) as f64, source: auto_lang::ui::scroll::ScrollSource::Programmatic }}); true }}",
+                "{{ let __h = auto_ui_runtime::ui::code_editor::editor_scroll_handle(&({a0})); auto_ui_runtime::ui::scroll::enqueue_intent(&__h, auto_ui_runtime::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_ui_runtime::ui::scroll::Axis::X, offset: ({a1}) as f64, source: auto_ui_runtime::ui::scroll::ScrollSource::Programmatic }}); auto_ui_runtime::ui::scroll::enqueue_intent(&__h, auto_ui_runtime::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_ui_runtime::ui::scroll::Axis::Y, offset: ({a2}) as f64, source: auto_ui_runtime::ui::scroll::ScrollSource::Programmatic }}); true }}",
                 a0 = arg(0)?,
                 a1 = arg(1)?,
                 a2 = arg(2)?
@@ -11678,7 +11678,7 @@ impl RustGenerator {
             // PLAN-701 供⑥: shell 跳转列表 Recent 一调用（SHAddToRecentDocs；
             // 非 Windows 返 false no-op——实现体单源 vm::native::shell_add_recent）。
             "shell_add_recent" => Some(format!(
-                "auto_lang::vm::native::shell_add_recent(&({}))",
+                "auto_lang_core::vm::native::shell_add_recent(&({}))",
                 arg(0)?
             )),
             // PLAN-710 回补（T-00 普查第四类——基线解析期被 G-A 语法占位
@@ -11693,7 +11693,7 @@ impl RustGenerator {
                 let a1 = arg(1)?;
                 let a2 = arg(2)?;
                 Some(format!(
-                    "{{ let __h = ({a0}).clone(); let __a = ({a1}); let __b = ({a2}) as f64; if __a == \"x\" {{ auto_lang::ui::scroll::enqueue_intent(&__h, auto_lang::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_lang::ui::scroll::Axis::X, offset: __b, source: auto_lang::ui::scroll::ScrollSource::Programmatic }}); }} else {{ auto_lang::ui::scroll::enqueue_intent(&__h, auto_lang::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_lang::ui::scroll::Axis::Y, offset: __b, source: auto_lang::ui::scroll::ScrollSource::Programmatic }}); }}; true }}",
+                    "{{ let __h = ({a0}).clone(); let __a = ({a1}); let __b = ({a2}) as f64; if __a == \"x\" {{ auto_ui_runtime::ui::scroll::enqueue_intent(&__h, auto_ui_runtime::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_ui_runtime::ui::scroll::Axis::X, offset: __b, source: auto_ui_runtime::ui::scroll::ScrollSource::Programmatic }}); }} else {{ auto_ui_runtime::ui::scroll::enqueue_intent(&__h, auto_ui_runtime::ui::scroll::ScrollIntent::ScrollTo {{ axis: auto_ui_runtime::ui::scroll::Axis::Y, offset: __b, source: auto_ui_runtime::ui::scroll::ScrollSource::Programmatic }}); }}; true }}",
                     a0 = a0,
                     a1 = a1,
                     a2 = a2
@@ -11702,25 +11702,25 @@ impl RustGenerator {
             // PLAN-703 供⑤: diff envelope endpoints（a2r 臂——envelope JSON
             // 单源 diff::envelope；ctx 钳非负）。
             "diff_files" => Some(format!(
-                "auto_lang::ui::code_editor::diff::envelope::diff_files_envelope_from_paths(&({a0}), &({a1}), ({a2}).max(0) as usize)",
+                "auto_ui_runtime::ui::code_editor::diff::envelope::diff_files_envelope_from_paths(&({a0}), &({a1}), ({a2}).max(0) as usize)",
                 a0 = arg(0)?,
                 a1 = arg(1)?,
                 a2 = arg(2)?
             )),
             "diff_snapshots" => Some(format!(
-                "auto_lang::ui::code_editor::diff::envelope::diff_snapshots_envelope(&({a0}), &({a1}))",
+                "auto_ui_runtime::ui::code_editor::diff::envelope::diff_snapshots_envelope(&({a0}), &({a1}))",
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
             "diff_dirs" => Some(format!(
-                "auto_lang::ui::code_editor::diff::envelope::diff_dirs_envelope(&({a0}), &({a1}))",
+                "auto_ui_runtime::ui::code_editor::diff::envelope::diff_dirs_envelope(&({a0}), &({a1}))",
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
             // PLAN-716 组C: 窗口投影 endpoint（offset/limit 钳非负——与 VM
             // shim 同源钳制语义）。
             "diff_files_window" => Some(format!(
-                "auto_lang::ui::code_editor::diff::envelope::diff_files_envelope_from_paths_window(&({a0}), &({a1}), ({a2}).max(0) as usize, ({a3}).max(0) as usize, ({a4}).max(0) as usize)",
+                "auto_ui_runtime::ui::code_editor::diff::envelope::diff_files_envelope_from_paths_window(&({a0}), &({a1}), ({a2}).max(0) as usize, ({a3}).max(0) as usize, ({a4}).max(0) as usize)",
                 a0 = arg(0)?,
                 a1 = arg(1)?,
                 a2 = arg(2)?,
@@ -11730,10 +11730,10 @@ impl RustGenerator {
             // PLAN-716 组B: 帧时间戳观测（供②——直调纪律，实现体单源
             // ui::frame_bench；AUTO_FRAME_BENCH 门控在通道层）。
             "frame_begin_ms" => Some(
-                "auto_lang::ui::frame_bench::frame_begin_ms()".to_string(),
+                "auto_ui_runtime::ui::frame_bench::frame_begin_ms()".to_string(),
             ),
             "frame_present_ms" => Some(
-                "auto_lang::ui::frame_bench::frame_present_ms()".to_string(),
+                "auto_ui_runtime::ui::frame_bench::frame_present_ms()".to_string(),
             ),
             // PLAN-716 Phase 2 (供⑨-b): handler 体二段名路由（stdlib
             // frame.vm.at 声明形）——Phase 1 直调臂只认裸名 Expr::Ident
@@ -11741,22 +11741,22 @@ impl RustGenerator {
             // value `frame`（下游 plan-022 front 探针臂 regen 实录）。
             // 直调纪律同款：实现体单源 ui::frame_bench，不绕 VM shim。
             "frame.begin_ms" => Some(
-                "auto_lang::ui::frame_bench::frame_begin_ms()".to_string(),
+                "auto_ui_runtime::ui::frame_bench::frame_begin_ms()".to_string(),
             ),
             "frame.present_ms" => Some(
-                "auto_lang::ui::frame_bench::frame_present_ms()".to_string(),
+                "auto_ui_runtime::ui::frame_bench::frame_present_ms()".to_string(),
             ),
             "code_editor_fold_toggle" => Some(format!(
-                "auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_toggle(({a1}).max(1) as usize - 1)).unwrap_or(false)",
+                "auto_ui_runtime::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_toggle(({a1}).max(1) as usize - 1)).unwrap_or(false)",
                 a0 = arg(0)?,
                 a1 = arg(1)?
             )),
             "code_editor_fold_hidden_count" => Some(format!(
-                "(auto_lang::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_hidden_count()).unwrap_or(0)) as i64",
+                "(auto_ui_runtime::ui::code_editor::code_editor_with(&({a0}), |core| core.fold_hidden_count()).unwrap_or(0)) as i64",
                 a0 = arg(0)?
             )),
-            "dialog_open" => Some(format!("auto_lang::ui::dialog::open(&({}))", arg(0)?)),
-            "dialog_save" => Some(format!("auto_lang::ui::dialog::save(&({}))", arg(0)?)),
+            "dialog_open" => Some(format!("auto_ui_runtime::ui::dialog::open(&({}))", arg(0)?)),
+            "dialog_save" => Some(format!("auto_ui_runtime::ui::dialog::save(&({}))", arg(0)?)),
             "Process.exit" => Some(format!("std::process::exit(({}) as i32)", arg(0)?)),
             "json.to_value" => Some(format!(
                 "serde_json::from_str::<serde_json::Value>(&({a0})).unwrap_or(serde_json::Value::Null)",
@@ -12222,7 +12222,7 @@ impl RustGenerator {
                                     // RHS）is_true 同源投影（la bool 株）。
                                     "bool" => {
                                         value = format!(
-                                            "auto_lang::a2r_std::json::truthy(&({}))",
+                                            "auto_lang_core::a2r_std::json::truthy(&({}))",
                                             self.value_bracket_chain(right)
                                         );
                                     }
@@ -12757,51 +12757,51 @@ impl RustGenerator {
                     // String（clone 形），统一 &(...) 借用收缩（String/&str
                     // 双收，E0308 消）。
                     "code_editor_text" => format!(
-                        "auto_lang::ui::code_editor::code_editor_text(&({})).unwrap_or_default()",
+                        "auto_ui_runtime::ui::code_editor::code_editor_text(&({})).unwrap_or_default()",
                         args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_cursor_line" => format!(
-                        "auto_lang::ui::code_editor::code_editor_cursor(&({})).map(|c| c.0 as i32).unwrap_or(0)",
+                        "auto_ui_runtime::ui::code_editor::code_editor_cursor(&({})).map(|c| c.0 as i32).unwrap_or(0)",
                         args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_cursor_col" => format!(
-                        "auto_lang::ui::code_editor::code_editor_cursor(&({})).map(|c| c.1 as i32).unwrap_or(0)",
+                        "auto_ui_runtime::ui::code_editor::code_editor_cursor(&({})).map(|c| c.1 as i32).unwrap_or(0)",
                         args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_selection_len" => format!(
-                        "auto_lang::ui::code_editor::code_editor_cursor(&({})).map(|c| c.2 as i32).unwrap_or(0)",
+                        "auto_ui_runtime::ui::code_editor::code_editor_cursor(&({})).map(|c| c.2 as i32).unwrap_or(0)",
                         args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_find" => format!(
-                        "auto_lang::ui::code_editor::code_editor_find(&({}))",
+                        "auto_ui_runtime::ui::code_editor::code_editor_find(&({}))",
                         args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned())
                     ),
                     "code_editor_set_text" => format!(
-                        "auto_lang::ui::code_editor::code_editor_set_text(&({}), &({}))",
+                        "auto_ui_runtime::ui::code_editor::code_editor_set_text(&({}), &({}))",
                         args.first().cloned().unwrap_or_else(|| "\"editor\"".to_owned()),
                         args.get(1).cloned().unwrap_or_else(|| "String::new()".to_owned())
                     ),
                     "Time.now_sec" | "time.now_sec" | "time_now_sec" => {
-                        "auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32".to_string()
+                        "auto_lang_core::vm::ffi::stdlib::shim_time_now_sec() as i32".to_string()
                     }
                     "Time.now_ms" | "time.now_ms" | "time_now_ms" => {
-                        "auto_lang::vm::ffi::stdlib::shim_time_now_ms()".to_string()
+                        "auto_lang_core::vm::ffi::stdlib::shim_time_now_ms()".to_string()
                     }
                     "Time.now" | "time.now" => {
-                        "auto_lang::vm::ffi::stdlib::shim_time_now()".to_string()
+                        "auto_lang_core::vm::ffi::stdlib::shim_time_now()".to_string()
                     }
                     "storage.get" | "Storage.get" => {
                         let key = args.first().cloned().unwrap_or_else(|| "\"\"".to_string());
-                        format!("auto_lang::vm::ffi::stdlib::shim_storage_get(({}).to_string())", key)
+                        format!("auto_lang_core::vm::ffi::stdlib::shim_storage_get(({}).to_string())", key)
                     }
                     "storage.set" | "Storage.set" => {
                         let key = args.get(0).cloned().unwrap_or_else(|| "\"\"".to_string());
                         let val = args.get(1).cloned().unwrap_or_else(|| "\"\"".to_string());
-                        format!("auto_lang::vm::ffi::stdlib::shim_storage_set(({}).to_string(), ({}).to_string())", key, val)
+                        format!("auto_lang_core::vm::ffi::stdlib::shim_storage_set(({}).to_string(), ({}).to_string())", key, val)
                     }
                     "storage.remove" | "Storage.remove" => {
                         let key = args.first().cloned().unwrap_or_else(|| "\"\"".to_string());
-                        format!("auto_lang::vm::ffi::stdlib::shim_storage_remove(({}).to_string())", key)
+                        format!("auto_lang_core::vm::ffi::stdlib::shim_storage_remove(({}).to_string())", key)
                     }
                     _ => {
                         // Plan 374: Callback prop calls (on_delete, on_toggle_pin, etc.)
@@ -13209,14 +13209,14 @@ fn is_scalar_state_type(ty: &str) -> bool {
 fn scalar_to_auto_value_expr(receiver: &str, field: &str, ty: &str) -> String {
     let val_expr = format!("{}.{}", receiver, field);
     match ty.trim() {
-        "String" => format!("auto_lang::ui::auto_val::Value::str(&{})", val_expr),
-        "bool" => format!("auto_lang::ui::auto_val::Value::Bool({})", val_expr),
-        "i32" | "u32" => format!("auto_lang::ui::auto_val::Value::Int({})", val_expr),
+        "String" => format!("auto_ui_runtime::ui::auto_val::Value::str(&{})", val_expr),
+        "bool" => format!("auto_ui_runtime::ui::auto_val::Value::Bool({})", val_expr),
+        "i32" | "u32" => format!("auto_ui_runtime::ui::auto_val::Value::Int({})", val_expr),
         "i8" | "i16" | "u8" | "u16" | "isize" | "usize" | "i64" | "u64" => {
-            format!("auto_lang::ui::auto_val::Value::Int({} as i32)", val_expr)
+            format!("auto_ui_runtime::ui::auto_val::Value::Int({} as i32)", val_expr)
         }
-        "f32" | "f64" => format!("auto_lang::ui::auto_val::Value::Float({} as f64)", val_expr),
-        _ => "auto_lang::ui::auto_val::Value::Nil".to_string(),
+        "f32" | "f64" => format!("auto_ui_runtime::ui::auto_val::Value::Float({} as f64)", val_expr),
+        _ => "auto_ui_runtime::ui::auto_val::Value::Nil".to_string(),
     }
 }
 
@@ -14014,7 +14014,7 @@ widget App {
         );
         let code = RustGenerator::new().generate(&widget).unwrap();
         assert!(
-            code.contains("auto_lang::ui::view::AccordionItem::new(\"展开\".to_string())"),
+            code.contains("auto_ui_runtime::ui::view::AccordionItem::new(\"展开\".to_string())"),
             "got:\n{}",
             code
         );
@@ -14431,7 +14431,7 @@ widget App {
         let all = codes.join("\n");
         assert!(
             all.contains("View::Popover {")
-                && all.contains("auto_lang::ui::view::PopoverPlacement::Modal"),
+                && all.contains("auto_ui_runtime::ui::view::PopoverPlacement::Modal"),
             "gallery alertdialog page must emit Modal Popover construction"
         );
         assert!(
@@ -14497,12 +14497,12 @@ widget Demo {
             code
         );
         assert!(
-            code.contains("auto_lang::ui::view::PopoverPlacement::Modal"),
+            code.contains("auto_ui_runtime::ui::view::PopoverPlacement::Modal"),
             "Modal placement:\n{}",
             code
         );
         assert!(
-            code.contains("auto_lang::ui::view::PopoverAnchor::Widget"),
+            code.contains("auto_ui_runtime::ui::view::PopoverAnchor::Widget"),
             "widget anchor:\n{}",
             code
         );
@@ -14593,7 +14593,7 @@ widget Probe {
             code
         );
         assert!(
-            code.contains("auto_lang::ui::view::PopoverAnchor::Point { x: (self.cx"),
+            code.contains("auto_ui_runtime::ui::view::PopoverAnchor::Point { x: (self.cx"),
             "Point anchor bound to cursor state:\n{}",
             code
         );
@@ -14608,7 +14608,7 @@ widget Probe {
             code
         );
         assert!(
-            code.contains("placement: auto_lang::ui::view::PopoverPlacement::BottomStart,"),
+            code.contains("placement: auto_ui_runtime::ui::view::PopoverPlacement::BottomStart,"),
             "point anchor default placement (PLAN-528 W9):\n{}",
             code
         );
@@ -14655,12 +14655,12 @@ widget Taskbar {
         let code = gen.generate(&widget).unwrap();
 
         assert!(
-            code.contains("anchor: auto_lang::ui::view::PopoverAnchor::Widget(Box::new("),
+            code.contains("anchor: auto_ui_runtime::ui::view::PopoverAnchor::Widget(Box::new("),
             "first plain child becomes widget anchor:\n{}",
             code
         );
         assert!(
-            code.contains("placement: auto_lang::ui::view::PopoverPlacement::Top,"),
+            code.contains("placement: auto_ui_runtime::ui::view::PopoverPlacement::Top,"),
             "literal top placement (not TopStart/TopEnd):\n{}",
             code
         );
@@ -14734,7 +14734,7 @@ widget Probe {
         );
         assert!(
             code.contains(
-                "style: auto_lang::ui::style::Style::parse(\"w-24 h-14 border rounded\").ok()"
+                "style: auto_ui_runtime::ui::style::Style::parse(\"w-24 h-14 border rounded\").ok()"
             ),
             "style passthrough:\n{}",
             code
@@ -15081,7 +15081,7 @@ widget Panels {
 
         // sheet: 缺省 right → EdgeRight;横条 chrome 同串;铸造 dismiss 折算。
         assert!(
-            code.contains("auto_lang::ui::view::PopoverPlacement::EdgeRight"),
+            code.contains("auto_ui_runtime::ui::view::PopoverPlacement::EdgeRight"),
             "sheet default EdgeRight:\n{}",
             code
         );
@@ -15097,7 +15097,7 @@ widget Panels {
         );
         // drawer: bottom → EdgeBottom;贴缘圆角;装饰把手。
         assert!(
-            code.contains("auto_lang::ui::view::PopoverPlacement::EdgeBottom"),
+            code.contains("auto_ui_runtime::ui::view::PopoverPlacement::EdgeBottom"),
             "drawer bottom EdgeBottom:\n{}",
             code
         );
@@ -15118,7 +15118,7 @@ widget Panels {
             code
         );
         assert!(
-            code.contains("auto_lang::ui::view::PopoverPlacement::Bottom"),
+            code.contains("auto_ui_runtime::ui::view::PopoverPlacement::Bottom"),
             "hovercard Bottom placement:\n{}",
             code
         );
@@ -15184,7 +15184,7 @@ widget DialogDemo {
             code
         );
         assert!(
-            code.contains("auto_lang::ui::view::PopoverPlacement::Modal"),
+            code.contains("auto_ui_runtime::ui::view::PopoverPlacement::Modal"),
             "Modal placement:\n{}",
             code
         );
@@ -15260,7 +15260,7 @@ widget MenuDemo {
         let code = gen.generate(&widget).unwrap();
 
         assert!(
-            code.contains("auto_lang::ui::view::PopoverPlacement::BottomStart"),
+            code.contains("auto_ui_runtime::ui::view::PopoverPlacement::BottomStart"),
             "dropdown-menu anchors BottomStart:\n{}",
             code
         );
@@ -15476,7 +15476,7 @@ widget LoginForm {
             code
         );
         assert!(
-            code.contains("auto_lang::ui::code_editor::code_editor_text(\"src\")"),
+            code.contains("auto_ui_runtime::ui::code_editor::code_editor_text(\"src\")"),
             "handler reads text via code_editor_text:\n{}",
             code
         );
@@ -15610,12 +15610,16 @@ fn main() {{}}
         let src_dir = tmp.join("src");
         std::fs::create_dir_all(&src_dir).unwrap();
         std::fs::write(src_dir.join("main.rs"), &main_rs).unwrap();
-        let auto_lang_path = root.join("crates").join("auto-lang");
+        // PLAN-814 T-05：canonical import 策略（import_policy.rs）——生成物
+        // 只 import auto_ui_runtime/auto_lang_core，manifest 双直依赖。
+        let runtime_path = root.join("crates").join("auto-ui-runtime");
+        let core_path = root.join("crates").join("auto-lang-core");
         std::fs::write(
             tmp.join("Cargo.toml"),
             format!(
-                "[package]\nname = \"code_editor_e2e_playground\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nauto-lang = {{ path = {:?}, features = [\"ui-iced\"] }}\n\n[workspace]\n",
-                auto_lang_path.to_string_lossy().replace("\\\\", "/")
+                "[package]\nname = \"code_editor_e2e_playground\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nauto-ui-runtime = {{ path = {:?}, features = [\"ui-iced\"] }}\nauto-lang-core = {{ path = {:?} }}\n\n[workspace]\n",
+                runtime_path.to_string_lossy().replace("\\\\", "/"),
+                core_path.to_string_lossy().replace("\\\\", "/")
             ),
         )
         .unwrap();
@@ -15644,7 +15648,7 @@ fn main() {{}}
     }
 
     /// Plan 371 Task 21: scalar state vars must emit a `state_snapshot()`
-    /// override mapping each scalar field to `auto_lang::ui::auto_val::Value`.
+    /// override mapping each scalar field to `auto_ui_runtime::ui::auto_val::Value`.
     /// Non-scalar (Vec/serde_json::Value) fields must be skipped.
     #[test]
     fn test_state_snapshot_scalar_override() {
@@ -15710,7 +15714,7 @@ fn main() {{}}
         let code = gen.generate(&widget).unwrap();
 
         assert!(
-            code.contains("fn state_snapshot(&self) -> std::collections::HashMap<String, auto_lang::ui::auto_val::Value>"),
+            code.contains("fn state_snapshot(&self) -> std::collections::HashMap<String, auto_ui_runtime::ui::auto_val::Value>"),
             "missing state_snapshot signature, got:\n{}",
             code
         );
@@ -15973,7 +15977,7 @@ widget T {
         );
         // variant full-path（生成物 use 预载不含 TabsVariant）。
         assert!(
-            code.contains(".variant(auto_lang::ui::view::TabsVariant::parse(\"enclosed\"))"),
+            code.contains(".variant(auto_ui_runtime::ui::view::TabsVariant::parse(\"enclosed\"))"),
             "variant 发射"
         );
         // onselect 闭包物化：首参 = value 串（vals 表捕获）。
@@ -16023,12 +16027,16 @@ widget T {
         let src_dir = tmp.join("src");
         std::fs::create_dir_all(&src_dir).unwrap();
         std::fs::write(src_dir.join("main.rs"), &main_rs).unwrap();
-        let auto_lang_path = root.join("crates").join("auto-lang");
+        // PLAN-814 T-05：canonical import 策略（import_policy.rs）——同
+        // code_editor_e2e 形态：双直依赖（runtime ui-iced + SDK）。
+        let runtime_path = root.join("crates").join("auto-ui-runtime");
+        let core_path = root.join("crates").join("auto-lang-core");
         std::fs::write(
             tmp.join("Cargo.toml"),
             format!(
-                "[package]\nname = \"tabs_046_e2e\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nauto-lang = {{ path = {:?}, features = [\"ui-iced\"] }}\n\n[workspace]\n",
-                auto_lang_path.to_string_lossy().replace("\\\\", "/")
+                "[package]\nname = \"tabs_046_e2e\"\nversion = \"0.1.0\"\nedition = \"2021\"\n\n[dependencies]\nauto-ui-runtime = {{ path = {:?}, features = [\"ui-iced\"] }}\nauto-lang-core = {{ path = {:?} }}\n\n[workspace]\n",
+                runtime_path.to_string_lossy().replace("\\\\", "/"),
+                core_path.to_string_lossy().replace("\\\\", "/")
             ),
         )
         .unwrap();
@@ -16677,19 +16685,19 @@ widget StorageDemo {
             }
         }
         assert!(
-            code.contains("auto_lang::vm::ffi::stdlib::shim_storage_set"),
+            code.contains("auto_lang_core::vm::ffi::stdlib::shim_storage_set"),
             "storage.set lowered:\n{code}"
         );
         assert!(
-            code.contains("auto_lang::vm::ffi::stdlib::shim_storage_get"),
+            code.contains("auto_lang_core::vm::ffi::stdlib::shim_storage_get"),
             "storage.get lowered:\n{code}"
         );
         assert!(
-            code.contains("auto_lang::vm::ffi::stdlib::shim_storage_remove"),
+            code.contains("auto_lang_core::vm::ffi::stdlib::shim_storage_remove"),
             "storage.remove lowered:\n{code}"
         );
         assert!(
-            code.contains("auto_lang::vm::ffi::stdlib::shim_time_now_sec() as i32"),
+            code.contains("auto_lang_core::vm::ffi::stdlib::shim_time_now_sec() as i32"),
             "Time.now_sec lowered:\n{code}"
         );
     }

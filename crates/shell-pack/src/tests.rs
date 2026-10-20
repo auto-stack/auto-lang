@@ -9,16 +9,20 @@
 //! 度量面，T-09 汇总）。
 
 use super::*;
-use auto_lang::ui::desktop_protocol::message::shell_face;
-use auto_lang::ui::desktop_protocol::shell_client::{
+use auto_ui_runtime::ui::desktop_protocol::message::shell_face;
+use auto_ui_runtime::ui::desktop_protocol::shell_client::{
     ShellFaces, ShellGeometry, ShellStateAccess, ShellSurface,
 };
-use auto_lang::ui::shell_projection::{
+use auto_ui_runtime::ui::shell_projection::{
     DesktopSurfaceSnapshot, NotesSnapshot, ShellProjection, ShellWin, SwitcherSnapshot,
 };
 
 fn geom() -> ShellGeometry {
-    ShellGeometry { viewport_w: 1280.0, viewport_h: 800.0, band_h: 48.0 }
+    ShellGeometry {
+        viewport_w: 1280.0,
+        viewport_h: 800.0,
+        band_h: 48.0,
+    }
 }
 
 fn compiled_faces() -> ShellFaces {
@@ -42,7 +46,7 @@ fn mount_face_covers_manifest() {
     let g = geom();
     // 覆盖门诊断面（029 五件 Covered 前提——首漏直接暴露 gate 文本）。
     {
-        use auto_lang::ui::desktop_protocol::shell_client::FaceProjector;
+        use auto_ui_runtime::ui::desktop_protocol::shell_client::FaceProjector;
         let chrome = FaceProjector::new(Desktop::default(), g.viewport_w, g.band_h);
         if let Err(gate) = chrome.ensure_covered() {
             panic!("shell(chrome) 覆盖门: {gate}");
@@ -76,7 +80,10 @@ fn mount_face_covers_manifest() {
             "面 {id} 应可装配（覆盖门过）"
         );
     }
-    assert!(mount_face("no-such-face", 100.0, 100.0).is_none(), "未知 id 拒收");
+    assert!(
+        mount_face("no-such-face", 100.0, 100.0).is_none(),
+        "未知 id 拒收"
+    );
 }
 
 /// ② 写态覆盖：投影 interpreted_writes 的每键必中编译臂写臂（键集与
@@ -102,8 +109,8 @@ fn shell_state_access_covers_projection_writes() {
     };
     for w in proj.interpreted_writes() {
         let key = match &w {
-            auto_lang::ui::shell_projection::ShellWrite::Scalar(k, _) => k.clone(),
-            auto_lang::ui::shell_projection::ShellWrite::Array(k, _) => k.clone(),
+            auto_ui_runtime::ui::shell_projection::ShellWrite::Scalar(k, _) => k.clone(),
+            auto_ui_runtime::ui::shell_projection::ShellWrite::Array(k, _) => k.clone(),
         };
         // 跨面键集：ShellProjection 为共享载荷，`__wm_mru` 为 switcher 面
         // 专属（v1 in-proc；B1 后编译 switcher 消费）——chrome 面缺臂 =
@@ -112,14 +119,17 @@ fn shell_state_access_covers_projection_writes() {
             continue;
         }
         let hit = match w {
-            auto_lang::ui::shell_projection::ShellWrite::Scalar(k, v) => {
+            auto_ui_runtime::ui::shell_projection::ShellWrite::Scalar(k, v) => {
                 chrome.shell_write(&k, v)
             }
-            auto_lang::ui::shell_projection::ShellWrite::Array(k, vs) => {
+            auto_ui_runtime::ui::shell_projection::ShellWrite::Array(k, vs) => {
                 chrome.shell_write_vec(&k, vs)
             }
         };
-        assert!(hit, "编译 chrome 面缺写臂：{key:?}（pack 状态字段漂移？重生成）");
+        assert!(
+            hit,
+            "编译 chrome 面缺写臂：{key:?}（pack 状态字段漂移？重生成）"
+        );
     }
     // 读走面：__desktop_cmd 经 shell_read_str 可读。
     assert_eq!(chrome.shell_read_str("__desktop_cmd"), Some(String::new()));
@@ -130,7 +140,10 @@ fn shell_state_access_covers_projection_writes() {
 #[test]
 fn compiled_faces_smoke_roundtrip() {
     let mut faces = compiled_faces();
-    let proj = ShellProjection { fp: "fp-1".into(), ..Default::default() };
+    let proj = ShellProjection {
+        fp: "fp-1".into(),
+        ..Default::default()
+    };
     let mut payload = Vec::new();
     proj.wire_encode(&mut payload);
     assert!(
@@ -140,16 +153,25 @@ fn compiled_faces_smoke_roundtrip() {
     let rev = faces.revision(shell_face::SHELL);
     assert!(rev > 0);
     assert!(faces.apply_projection(shell_face::SHELL, &payload));
-    assert!(faces.revision(shell_face::SHELL) > rev, "全量应用 revision 前进");
+    assert!(
+        faces.revision(shell_face::SHELL) > rev,
+        "全量应用 revision 前进"
+    );
     let mut snap_payload = Vec::new();
     DesktopSurfaceSnapshot::default().wire_encode(&mut snap_payload);
     assert!(faces.apply_projection(shell_face::DESKTOP_SURFACE, &snap_payload));
     assert!(faces.apply_clock(shell_face::SHELL, "09:05", "9月20日 周日"));
     assert!(faces.apply_cursor(shell_face::DESKTOP_SURFACE, 12.0, 34.0));
-    assert!(faces.drain_commands(shell_face::SHELL).is_empty(), "读走幂等空");
+    assert!(
+        faces.drain_commands(shell_face::SHELL).is_empty(),
+        "读走幂等空"
+    );
     let list = faces.render(shell_face::SHELL).expect("shell 面渲染");
     assert!(!list.ops.is_empty(), "渲染非空");
-    assert!(!faces.hit_rects(shell_face::SHELL).is_empty() || true, "命中表可取");
+    assert!(
+        !faces.hit_rects(shell_face::SHELL).is_empty() || true,
+        "命中表可取"
+    );
     // PLAN-036 T-04：overlay 两面在编译装配预给——SWITCHER 投影可应用
     ///（payload 应为 SwitcherSnapshot；SHELL 面 payload 拒收仍 false）。
     let mut sw_payload = Vec::new();
@@ -166,7 +188,8 @@ fn compiled_faces_smoke_roundtrip() {
     );
     // PLAN-036 T-05：dashboard 面激活（D2-A 中间 z 档——预装 + 应用）。
     let mut dash_payload = Vec::new();
-    auto_lang::ui::shell_projection::DashboardSnapshot::default().wire_encode(&mut dash_payload);
+    auto_ui_runtime::ui::shell_projection::DashboardSnapshot::default()
+        .wire_encode(&mut dash_payload);
     assert!(
         faces.apply_projection(shell_face::DASHBOARD, &dash_payload),
         "dashboard 面投影应用（预装）"
