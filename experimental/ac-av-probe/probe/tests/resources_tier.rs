@@ -926,6 +926,71 @@ fn av_resources_peak_sampler_distinguishes_transient_spike() {
     );
 }
 
+/// r5 §5.9 (F798-R12-04 closure): the worker memory budget is TWO
+/// attributed HARD-gated lines — Line A the ac-core-owned frontend
+/// transient (isolated peak ≤224 MiB), Line B the probe-owned residual
+/// (overall minus Line A ≤128 MiB; missing attribution conservatively
+/// charges the whole peak). Neither line is advisory.
+#[test]
+fn av_turnaround_two_line_memory_gate() {
+    use auto_av_probe::bench::{validate_and_gate, BenchSummary};
+    // Empty rows + 0 samples: every scenario count and edit-hash check
+    // passes, so the failure list isolates the memory lines.
+    let rows = [];
+    let mk = |frontend: Option<u64>, overall: Option<u64>| BenchSummary {
+        frontend_peak_bytes: frontend,
+        private_bytes_peak: overall,
+        ..BenchSummary::default()
+    };
+    // Both lines within budget: no failures.
+    let ok = mk(Some(210 * 1024 * 1024), Some(216 * 1024 * 1024));
+    assert!(
+        validate_and_gate(&rows, &ok, 0).is_empty(),
+        "both lines within budget"
+    );
+    // Line A breach: the frontend line fires, the residual stays quiet.
+    let a_over = mk(
+        Some(auto_av_probe::bench::BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES + 1),
+        Some(auto_av_probe::bench::BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES + 5 * 1024 * 1024),
+    );
+    let failures = validate_and_gate(&rows, &a_over, 0);
+    assert!(
+        failures
+            .iter()
+            .any(|f| f.contains("frontend transient line")),
+        "Line A breach reported: {failures:?}"
+    );
+    assert!(
+        !failures.iter().any(|f| f.contains("probe-owned residual")),
+        "residual within its own line: {failures:?}"
+    );
+    // Line B breach: frontend within Line A, overall exceeds frontend by
+    // more than 128 MiB.
+    let b_over = mk(
+        Some(150 * 1024 * 1024),
+        Some(150 * 1024 * 1024 + auto_av_probe::bench::BUDGET_WORKER_PRIVATE_PEAK_BYTES + 1),
+    );
+    let failures = validate_and_gate(&rows, &b_over, 0);
+    assert!(
+        failures.iter().any(|f| f.contains("probe-owned residual")),
+        "Line B breach reported: {failures:?}"
+    );
+    assert!(
+        !failures
+            .iter()
+            .any(|f| f.contains("frontend transient line")),
+        "frontend within its own line: {failures:?}"
+    );
+    // Missing attribution: the WHOLE peak is charged to Line B
+    // (conservative — no decomposition, no waiver).
+    let no_attr = mk(None, Some(200 * 1024 * 1024));
+    let failures = validate_and_gate(&rows, &no_attr, 0);
+    assert!(
+        failures.iter().any(|f| f.contains("probe-owned residual")),
+        "unattributed peak charged to the probe line: {failures:?}"
+    );
+}
+
 /// V-11 smoke: the six-scenario bench runs end-to-end on a scaled load
 /// (3 samples) with correct results, real hit/miss counters and diagnosed
 /// signature conflicts. The 30-sample release-grade run with the P95 hard

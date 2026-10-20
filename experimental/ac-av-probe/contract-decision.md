@@ -125,6 +125,11 @@ div-by-zero、div-overflow(MIN/-1)、rem-overflow(MIN%-1)。
 (1) 单函数超族 → `av.resource.table-entries`；(2) 模块表超族（70k consts）→
 同分类；(3) 组合超界（40×31k 块闭包）→ `av.resource.verify-steps`。
 
+**r7 修订记录**（F798-R12-04 闭合 → 用户裁定方案 C，2026-10-20，plan r5 §5.9 授权）：worker 内存预算由单一"相对空载增量 ≤128 MiB"拆分为**两条归属明确、均实测、均硬门**的预算线（`validate_and_gate` 失败即 bench 非零退出）：
+- **A 线（ac-core owner）**：前端编译瞬态，冻结负载隔离测量（`frontend_peak_bytes`）≤ **224 MiB**——锚定实测 ~200-212 MiB（R12-04 分阶段归属：`descriptor::bind` 单独 ≈158.9 MiB；`compile_parts_with` 公开缝内部强制"atom 渲染→整体重绑定"架构）；ac-core 收敛该架构后**预期收紧本线**，224 不是增长许可。
+- **B 线（798 owner）**：探针自有残差 = 总采样峰值（worker+子进程 max）− A 线 ≤ **128 MiB**（数字不变，语义按归属重定义）；**缺归因测量时整峰保守计入 B 线**（无分解即无豁免）。
+受管分区 32 MiB（16/8/8）硬门不变；原单一 128MiB 目标字样由本双线取代。永久测试 `av_turnaround_two_line_memory_gate`（A 线越界/B 线越界/双过/无归因保守四态）。当前证据（release `bench-turnaround`，冻结 273 575 B 负载，2026-10-20）：A 线 211 869 696 B=202.1 MiB ✓、B 线 3 637 248 B≈3.5 MiB ✓、`hard_gate_failures=[]`、exit 0。
+
 **r6 修订记录**（复审 F798-R12-01/02/03 判定 → 本轮修复冻结）：
 (a) **wire 升代与版本隔离**：`ABC_VERSION` 1→2、`ABC_SCHEMA`
 "auto.abc.av-probe/1"→"/2"、`ABC_SEMANTICS` 1→2、A09 层 schema_id

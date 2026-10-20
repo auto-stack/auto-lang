@@ -504,12 +504,13 @@ fn bench_turnaround(args: &[String]) -> ! {
     let sampler = auto_av_probe::mempeek::PeakSampler::start(5);
 
     let load = auto_av_probe::load256::generate();
-    // Frontend attribution (F798-R2-02): measure the LANDED scalar
-    // frontend's own transient peak on the frozen load, in isolation. The
-    // observed spike (~180 MiB) dominates the worker peak while the probe
-    // layers stay single-digit MB; ac-core is read-only for this plan, so
-    // the §3 128 MiB target miss is reported with attribution instead of
-    // being silently gated or silently blamed on the AV pipeline.
+    // Frontend attribution Line A (r5 §5.9, ac-core owned): measure the
+    // LANDED scalar frontend's own transient peak on the frozen load, in
+    // isolation. HARD-gated at 224 MiB (anchored to the measured
+    // ~200-212 MiB; descriptor::bind alone ≈158.9 MiB per the R12-04
+    // stage attribution). ac-core is read-only for this plan — the line
+    // reports and gates the frontend's own cost; the probe's residual
+    // (Line B) is gated separately.
     let frontend_peak = {
         let s = auto_av_probe::mempeek::PeakSampler::start(5);
         let _ =
@@ -544,17 +545,19 @@ fn bench_turnaround(args: &[String]) -> ! {
     #[cfg(windows)]
     {
         let mem1 = ac_artifact_probe::sysinfo::current_process_memory();
-        // Informational endpoint delta; the budget gates on the sampled
-        // PEAK (own process + max child), per F798-R2-02.
+        // Informational endpoint delta; both r5 budget lines gate on the
+        // sampled PEAKS (own process + max child), per F798-R2-02/§5.9.
         summary.worker_private_bytes_delta =
             Some((mem1.private_bytes as f64 - mem0.private_bytes as f64).max(0.0));
         let overall = own_peak.max(summary.child_private_bytes_peak);
         summary.private_bytes_peak = Some(overall);
-        // §3 TARGET (advisory with attribution): increment vs idle.
-        summary.worker_private_bytes_target_met = Some(
-            overall.saturating_sub(mem0.private_bytes)
-                <= auto_av_probe::bench::BUDGET_WORKER_PRIVATE_PEAK_BYTES,
-        );
+        // r5 two-line targets (§5.9): Line A frontend transient (ac-core
+        // owned) ≤224 MiB; Line B probe-owned residual ≤128 MiB.
+        summary.frontend_transient_target_met =
+            Some(frontend_peak <= auto_av_probe::bench::BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES);
+        let residual = overall.saturating_sub(frontend_peak);
+        summary.worker_private_bytes_target_met =
+            Some(residual <= auto_av_probe::bench::BUDGET_WORKER_PRIVATE_PEAK_BYTES);
     }
     #[cfg(not(windows))]
     {

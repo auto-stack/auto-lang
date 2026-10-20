@@ -67,6 +67,19 @@ pub struct SampleRow {
 pub const BUDGET_STAGING_BYTES: u64 = 16 * 1024 * 1024;
 pub const BUDGET_HOT_BYTES: u64 = 8 * 1024 * 1024;
 pub const BUDGET_EXEC_SLOT_BYTES: u64 = 8 * 1024 * 1024;
+/// r5 two-line worker-memory policy (plan §5.9 / F798-R12-04, user ruling
+/// 2026-10-20): the former single ≤128 MiB worker line splits into two
+/// attributed budget lines, both measured and both HARD-gated — nothing is
+/// deducted or waived:
+///   * Line A (ac-core owned): the frontend compile TRANSIENT, measured in
+///     isolation on the frozen load (`frontend_peak_bytes`), ceiling
+///     224 MiB anchored to the measured ~200-212 MiB (descriptor::bind
+///     alone ≈158.9 MiB); expected to TIGHTEN when ac-core converges the
+///     atom render→re-bind architecture — it is not a license to grow.
+///   * Line B (probe owned): the residual the probe pipeline itself adds
+///     (overall sampled peak MINUS Line A), ceiling 128 MiB (number
+///     unchanged from §3; semantics now attributed per §5.9).
+pub const BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES: u64 = 224 * 1024 * 1024;
 pub const BUDGET_WORKER_PRIVATE_PEAK_BYTES: u64 = 128 * 1024 * 1024;
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -101,18 +114,32 @@ pub struct BenchSummary {
     /// Max private-bytes peak observed by spawned children (request /
     /// gc-loop processes report their own sampled peaks).
     pub child_private_bytes_peak: u64,
-    /// Attribution measurement: the LANDED scalar frontend's own sampled
-    /// peak on the frozen load (measured once in isolation). The §3
-    /// 128 MiB worker target is currently exceeded by this phase, which is
-    /// outside this plan's write scope (ac-core is read-only) — reported,
-    /// not silently gated green.
+    /// Attribution Line A (r5 §5.9, ac-core owned): the LANDED scalar
+    /// frontend's own sampled peak on the frozen load, measured once in
+    /// isolation. HARD-gated at `BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frontend_peak_bytes: Option<u64>,
-    /// §3 target check (increment vs idle ≤ 128 MiB) — advisory with
-    /// attribution; the HARD guards are the managed partitions and the P95
-    /// gate.
+    /// Line A target check (r5): frontend transient ≤ 224 MiB.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frontend_transient_target_met: Option<bool>,
+    /// Line B target check (r5 §5.9, probe owned): overall peak MINUS the
+    /// frontend attribution line ≤ 128 MiB — the increment this plan's
+    /// pipeline itself adds. Without a frontend attribution measurement
+    /// the WHOLE peak counts against this line (conservative).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worker_private_bytes_target_met: Option<bool>,
+}
+
+/// r5 Line B: the probe-owned residual = overall sampled peak minus the
+/// frontend attribution line (same sampler family, absolute values). A
+/// missing attribution measurement conservatively charges the whole peak
+/// to the probe line.
+pub fn probe_owned_residual_bytes(summary: &BenchSummary) -> Option<u64> {
+    match (summary.private_bytes_peak, summary.frontend_peak_bytes) {
+        (Some(overall), Some(frontend)) => Some(overall.saturating_sub(frontend)),
+        (Some(overall), None) => Some(overall),
+        _ => None,
+    }
 }
 
 pub const SCENARIOS: [&str; 6] = [
@@ -370,12 +397,29 @@ pub fn validate_and_gate(
             ));
         }
     }
-    // §3's 128 MiB worker-bytes TARGET is advisory with attribution: the
-    // landed frontend's isolated peak (frontend_peak_bytes) dominates it
-    // and is outside this plan's write scope. The HARD memory guards are
-    // the managed partitions below. A target miss is reported in the
-    // summary (worker_private_bytes_target_met=false), never silently
-    // green and never blamed on the probe layers.
+    // r5 two-line worker-memory policy (plan §5.9 / F798-R12-04): both
+    // lines are measured and HARD-gated — Line A is the ac-core-owned
+    // frontend compile transient (isolated attribution measurement);
+    // Line B is the probe-owned residual (overall peak minus Line A, or
+    // the whole peak when attribution is missing). Neither line is
+    // advisory, neither is waived; together they replace the former
+    // single advisory ≤128 MiB worker target.
+    if let Some(frontend) = summary.frontend_peak_bytes {
+        if frontend > BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES {
+            failures.push(format!(
+                "frontend transient line: isolated frontend peak {} > {} bytes (ac-core-owned line, r5 §5.9)",
+                frontend, BUDGET_FRONTEND_TRANSIENT_PEAK_BYTES
+            ));
+        }
+    }
+    if let Some(residual) = probe_owned_residual_bytes(summary) {
+        if residual > BUDGET_WORKER_PRIVATE_PEAK_BYTES {
+            failures.push(format!(
+                "probe-owned residual line: {} > {} bytes (overall minus frontend attribution, r5 §5.9)",
+                residual, BUDGET_WORKER_PRIVATE_PEAK_BYTES
+            ));
+        }
+    }
     // Managed partitions per row (§3 r2): staging 16 MiB / hot 8 MiB /
     // execution slots 8 MiB (sum = the 32 MiB managed envelope).
     for r in rows {
