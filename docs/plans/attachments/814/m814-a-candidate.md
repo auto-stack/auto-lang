@@ -77,3 +77,20 @@ AC-08/AC-09 由 T-14 独立阶段审查绑定本 SHA 判定；AC-10 归 T-15。
   消费者迁移=T-04）。
 - `code-editor`/`ui-dialect` 为 SDK 侧显式组合 feature：纯 SDK 默认闭包
   不含其实现，属设计内边界而非缺口。
+
+## 6. R3 修复批增量（2026-10-20 追加，绑定分支头）
+
+R3 阶段审查 needs_fix 后三批修复（`d1fbae132`/`d905e796c`/`6f9daa680`+`6418f99ef`）
+对本文件的证据矩阵更新：
+
+- §5 限制项"`ui-dialect` 为 SDK 显式组合 feature"**已失效**——R3-03b 起
+  SDK 清单零 auto-ui-dialect（UI 文法经 UiGrammar 函数表端口装配；
+  no-UI 源码快照消费探针 PASS）。纯 SDK 边界从"optional 组合"升格为
+  "清单级不存在"。
+- §3 证据矩阵的绑定刷新：777 基线 → `6418f99ef`（violations=0）；
+  新增绑定 [R3-05 测试选择映射表](r3-05-test-selection-mapping.md)（86 项
+  随迁 auto-ui-dialect）、[R3-06 告警归因](r3-06-warning-attribution.md)
+  （unexpected_cfgs=0）、[R3-03b 收口探针证据](r3-03b-closeout/)
+  （host/cache/autodown 三探针 + no-ui 快照全 PASS）。
+- reviewer 三探针原始反例（R3-01 宿主装配/R3-02 指纹顺序/R3-04 autodown
+  实装）批 1 修复后回放全 PASS，批 3 后复跑保持 PASS。
