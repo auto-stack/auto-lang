@@ -274,3 +274,71 @@ fn t02_syntax_error_candidate_rejected_keeps_old() {
         assert_eq!(count, 0, "main stage `{stage}`");
     }
 }
+
+/// T-03: interface environment gates + credential currency.
+#[test]
+fn t03_signature_change_is_non_fast_path_and_keeps_old() {
+    let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let (out, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&out, 23, "warm-up run");
+
+    // Edit the SIGNATURE (helper gains a param): still one decl, still valid
+    // code — the interface-environment gate must refuse it as non-fast-path.
+    let sig_pos = SRC.find("(x int)").expect("sig");
+    let outcome = s
+        .edit(sig_pos as u64, (sig_pos + 7) as u64, b"(x int, y int)".to_vec())
+        .expect("edit applies");
+    assert!(!outcome.ok, "signature edit must not take the fast path");
+    let reason = outcome.non_fast_path_reason.unwrap_or_default();
+    assert!(
+        reason.contains("interface") || reason.contains("context"),
+        "rejection reason names the interface gate: {reason}"
+    );
+    assert_eq!(s.revision(), 0);
+    let (out1, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&out1, 23, "old version still runs");
+}
+
+#[test]
+fn t03_body_credentials_are_context_bound() {
+    use auto_ac_prototype::source::compile_scalar_source;
+    use auto_ac_prototype::verify::verify_function;
+    use auto_av_probe::function_queries::FnEnv;
+
+    let a = "fn helper(x int) int { return x }
+fn main() int { return helper(1) }";
+    let b = "fn helper(x int, y int) int { return x + y }
+fn main() int { return helper(1, 2) }";
+    let mut mint = |src: &str| -> (FnEnv, String) {
+        let compiled = compile_scalar_source(src, "probe.at", &[]).expect("compiles");
+        let bundle = compiled.checked.bundle();
+        let env = FnEnv::from_bundle(bundle).expect("env");
+        let idx = bundle.modules[0]
+            .defs
+            .iter()
+            .position(|d| d.id_text == "d_helper")
+            .expect("helper def");
+        let cf = verify_function(bundle.clone(), idx).expect("verify");
+        (env, cf.context_revision().to_string())
+    };
+    let (env_a, rev_a) = mint(a);
+    let (env_b, rev_b) = mint(b);
+    assert_ne!(rev_a, rev_b, "different declaration contexts");
+    // A credential minted under context A is current in env A only.
+    let cf_a = {
+        let compiled = compile_scalar_source(a, "probe.at", &[]).expect("compiles");
+        let bundle = compiled.checked.bundle();
+        let idx = bundle.modules[0]
+            .defs
+            .iter()
+            .position(|d| d.id_text == "d_helper")
+            .unwrap();
+        verify_function(bundle.clone(), idx).expect("verify")
+    };
+    assert!(env_a.credential_current(&cf_a, &rev_a));
+    assert!(!env_b.credential_current(&cf_a, &rev_b));
+    // Interface queries are owner-scoped: unknown names are absent.
+    assert!(env_a.interface_of("nope").is_none());
+    assert_eq!(env_a.def_id_of("helper"), Some("d_helper"));
+}

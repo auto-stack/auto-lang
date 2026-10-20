@@ -8,6 +8,7 @@
 pub mod bench;
 pub mod cache;
 pub mod driver;
+pub mod function_queries;
 pub mod hir_adapter;
 pub mod load256;
 pub mod mempeek;

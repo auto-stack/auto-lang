@@ -62,6 +62,26 @@ fn_037 中部）结构上满足该边界。
 | 执行 | av.rs 抽出共享派发循环；新 `execute_program(&ProgramSnapshot, …)`：merged 视图**由构造保证可派发**（仅经 link 产生），顶层调用捕获 snapshot `Arc`，在途链固定旧版（V-05 种子已在首例断言） |
 | 798 路径 | `lower_checked`/`split_units`/`assemble_closure`/整闭包往返/Driver 全部原样保留（本次回归：core 21、mir 8、abc 15、binding 4、vertical 3、cache 20 全绿） |
 
+### T-03 增补（function_queries / 凭证失效）
+
+- `probe/src/function_queries.rs`：`FnEnv`（owner 域=模块 id + 全函数接口事实 + 内容
+  修订）与查询：`interface_of/def_id_of`（owner 作用域；未知名与他 owner 同名=缺席）、
+  `interface_unchanged`（快路径接口门：被改函数接口与整个声明上下文修订都不变）、
+  `credential_current`（body 凭证仅在铸造时的声明上下文修订下可复用）。
+- **内容规范化指纹（关键修正）**：签名/上下文指纹一律按类型**形状**（i32/bool/递归
+  fn 形）解析，不用类型表下标——真实体程序与签名桩程序的类型表布局不同，下标指纹会
+  误伤失效（实测复现后修正：ac-core `context_fingerprint` 与 probe `sig` 渲染同步改）。
+- 会话接线：warm-up 铸造上下文修订（对 entry 跑一次 verify_function）；每次编辑后
+  `interface_unchanged` 门 + `credential_current` 防御性复检；`sf_<name>` 内部符号
+  在查询层剥离为源名（方法符号不剥离、不在 scalar 会话面）。
+- 证据：t03_signature_change_is_non_fast_path（签名编辑被接口门拒绝、旧版可运行）、
+  t03_body_credentials_are_context_bound（不同声明上下文→不同修订→凭证不可跨上下文
+  复用；owner 作用域查询）。
+- **重排记录（r3）**：函数 HIR A07 codec/producer/恢复原列 T-03，但恢复的唯一消费方
+  是 T-07 的 store/重启路径——无 store 的 codec 即"只定义 key 未接消费"（计划明令禁
+  止）。A07 持久化整体随 T-07 落地（codec+producer+恢复+重验一次交付），T-03 交付
+  上述查询/凭证/失效层。此为任务内重排，不减验收面。
+
 ## 4. 身份、引用与常量
 
 - 跨修订函数身份 = **def id 文本**（`d_<name>`，bundle def 序）；不使用模块内数组序号、

@@ -314,37 +314,66 @@ fn context_fingerprint(m: &hir::Module) -> String {
             *h = h.wrapping_mul(0x100000001b3);
         }
     }
-    fn mix_use(h: &mut u64, u: &hir::TypeUse) {
+    // Content-canonical type mixing: type references resolve to their
+    // SHAPE, never their table index — two compilations of the same
+    // declarations with different type-table layouts (a real body vs a
+    // stub program) must produce the SAME fingerprint, or function
+    // credentials would falsely invalidate.
+    fn mix_use(h: &mut u64, u: &hir::TypeUse, m: &hir::Module, depth: u8) {
+        if depth == 0 {
+            mix(h, "!");
+            return;
+        }
         match u {
             hir::TypeUse::Builtin(b) => mix(h, &format!("b:{b:?}")),
-            hir::TypeUse::Ref(tid) => mix(h, &format!("r:{}", tid.0)),
+            hir::TypeUse::Ref(tid) => match m.types.get(tid.0 as usize).map(|t| &t.kind) {
+                Some(hir::TypeKind::Function(sig)) => {
+                    mix(h, "fn(");
+                    for p in &sig.params {
+                        mix_use(h, p, m, depth - 1);
+                    }
+                    mix(h, ")");
+                    mix_use(h, &sig.result, m, depth - 1);
+                }
+                Some(hir::TypeKind::I32) => mix(h, "i32"),
+                Some(hir::TypeKind::Bool) => mix(h, "bool"),
+                Some(hir::TypeKind::Str) => mix(h, "str"),
+                Some(hir::TypeKind::StrOwned) => mix(h, "Str"),
+                Some(hir::TypeKind::Char) => mix(h, "char"),
+                Some(hir::TypeKind::Record(_)) => mix(h, "rec"),
+                None => mix(h, "oob"),
+            },
+        }
+    }
+    fn mix_fn_type(h: &mut u64, ty: hir::TypeId, m: &hir::Module) {
+        match m.types.get(ty.0 as usize).map(|t| &t.kind) {
+            Some(hir::TypeKind::Function(sig)) => {
+                mix(h, "fn(");
+                for p in &sig.params {
+                    mix_use(h, p, m, 8);
+                }
+                mix(h, ")");
+                mix_use(h, &sig.result, m, 8);
+            }
+            other => mix(h, &format!("{other:?}")),
         }
     }
     let mut h: u64 = 0xcbf29ce484222325;
-    mix(&mut h, "types:");
-    for t in &m.types {
-        mix(&mut h, &t.id_text);
-        match &t.kind {
-            hir::TypeKind::Function(sig) => {
-                mix(&mut h, "fn(");
-                for p in &sig.params {
-                    mix_use(&mut h, p);
-                }
-                mix(&mut h, ")→");
-                mix_use(&mut h, &sig.result);
-            }
-            other => mix(&mut h, &format!("{other:?}")),
-        }
-        mix(&mut h, ";");
-    }
     mix(&mut h, "defs:");
     for d in &m.defs {
         mix(&mut h, &d.id_text);
         match &d.kind {
-            hir::DefKind::Function { ty, .. } => mix(&mut h, &format!("f:{}", ty.0)),
-            hir::DefKind::Method { ty, .. } => mix(&mut h, &format!("m:{}", ty.0)),
+            hir::DefKind::Function { ty, .. } => {
+                mix(&mut h, "f:");
+                mix_fn_type(&mut h, *ty, m);
+            }
+            hir::DefKind::Method { ty, .. } => {
+                mix(&mut h, "m:");
+                mix_fn_type(&mut h, *ty, m);
+            }
             hir::DefKind::Intrinsic { symbol, ty, .. } => {
-                mix(&mut h, &format!("i:{symbol}:{}", ty.0))
+                mix(&mut h, &format!("i:{symbol}:"));
+                mix_fn_type(&mut h, *ty, m);
             }
         }
         mix(&mut h, ";");

@@ -18,6 +18,7 @@
 //! persistence (warm session only — restore/GC arrive with T-07).
 
 use crate::cache::split_units;
+use crate::function_queries::FnEnv;
 use crate::hir_adapter::{lower_checked, lower_function_unit};
 use ac_syntax_core_adapter::{project_decl_strict, project_strict, CoreKinds};
 use ac_syntax_grammar::compile as compile_grammar;
@@ -124,10 +125,6 @@ struct FnRecord {
     /// with an empty body and all spans zeroed (stubs carry no real source
     /// positions; re-anchoring never sees out-of-range stub spans).
     stub_item: Item,
-    /// Debug-canonical snapshot of the def's function signature in the
-    /// warm-up module context; any edit whose synth context disagrees is a
-    /// signature change (rejected fast path).
-    sig_debug: String,
     /// The verified HIR body object — same `Arc` across revisions unless
     /// this function itself changed.
     hir_body: Arc<hir::Body>,
@@ -180,6 +177,12 @@ pub struct FunctionIncrementalSession {
     snap: Snapshot,
     parse: ParseOutput,
     fns: Vec<FnRecord>,
+    /// Interface environment of the accepted revision (signatures + def
+    /// ids + owner scope; PLAN-828 T-03).
+    env: FnEnv,
+    /// The ac-core declaration-context fingerprint the outstanding body
+    /// credentials were verified under; a drift invalidates them.
+    context_revision: String,
     current: Arc<ProgramSnapshot>,
     revision: u64,
     counters: SessionCounters,
@@ -234,6 +237,21 @@ pub fn warmup(
     if !parse.tree.diags.is_empty() {
         return Err(format!("syntax diags: {:?}", parse.tree.diags));
     }
+    // Interface environment + the declaration-context fingerprint the
+    // per-function credentials bind to (T-03). The context revision is
+    // minted by ONE warm-up function verification against the same bundle —
+    // every later edit must reproduce it or its credentials are stale.
+    let env = FnEnv::from_bundle(bundle)?;
+    let context_revision = {
+        let entry_idx = m
+            .defs
+            .iter()
+            .position(|d| d.id_text == entry_def_id)
+            .ok_or_else(|| format!("entry def `{entry_def_id}` not found"))?;
+        let cf = verify_function(bundle.clone(), entry_idx)
+            .map_err(|ds| render_diags(src, &ds))?;
+        cf.context_revision().to_string()
+    };
     let projected =
         project_strict(&grammar, &kinds, &parse.tree, &snap).map_err(|e| format!("project: {e:?}"))?;
     let ast_fns: Vec<(String, FnItem)> = projected
@@ -284,7 +302,6 @@ pub fn warmup(
             def_id: d.id_text.clone(),
             name: name.clone(),
             stub_item: Item::Fn(stubify(item.1)),
-            sig_debug: sig_debug_of(m, di),
             hir_body: Arc::new(body_ref.clone()),
             code: code.clone(),
         });
@@ -314,6 +331,8 @@ pub fn warmup(
         snap,
         parse,
         fns,
+        env,
+        context_revision,
         current: snapshot,
         revision: 0,
         counters: SessionCounters::default(),
@@ -510,12 +529,11 @@ impl FunctionIncrementalSession {
         }
         self.counters.bump("synth_stub_walks");
 
-        let synth_m = parts
+        let def_idx = parts
             .bundle
             .modules
             .first()
-            .ok_or_else(|| "synth bundle has no module".to_string())?;
-        let def_idx = synth_m
+            .ok_or_else(|| "synth bundle has no module".to_string())?
             .defs
             .iter()
             .position(|d| d.id_text == self.fns[changed_idx].def_id)
@@ -523,12 +541,17 @@ impl FunctionIncrementalSession {
                 format!("def {} missing in synth bundle", self.fns[changed_idx].def_id)
             })?;
 
-        // Fast-path invariant: the changed function's signature (and the
-        // whole declaration context) is unchanged.
-        if self.fns[changed_idx].sig_debug != sig_debug_of(synth_m, def_idx) {
+        // Fast-path gate through the interface environment (T-03): the
+        // changed function's interface AND the whole declaration context
+        // must be identical to the resident environment.
+        let candidate_env = FnEnv::from_bundle(&parts.bundle)?;
+        if !self
+            .env
+            .interface_unchanged(&candidate_env, &changed_name)
+        {
             return Ok(EditOutcome::rejected(
                 self.revision,
-                "non-fast-path: signature of the edited function changed".to_string(),
+                "non-fast-path: interface or declaration context changed".to_string(),
                 Vec::new(),
             ));
         }
@@ -544,6 +567,20 @@ impl FunctionIncrementalSession {
                 ));
             }
         };
+        // Credential currency: the body was verified under the SAME
+        // declaration context as the outstanding ones — a drift here means
+        // the interface gate above missed a context change (defense in
+        // depth; reject rather than re-stamp).
+        if !self
+            .env
+            .credential_current(&checked_fn, &self.context_revision)
+        {
+            return Ok(EditOutcome::rejected(
+                self.revision,
+                "candidate rejected: body credential minted under a different declaration context".to_string(),
+                Vec::new(),
+            ));
+        }
         self.counters.bump(&format!("verify_hir:{changed_name}"));
 
         // Per-function MIR unit + admission.
@@ -638,15 +675,6 @@ fn stubify(mut f: FnItem) -> FnItem {
     };
     f.span = zero;
     f
-}
-
-fn sig_debug_of(m: &hir::Module, def_idx: usize) -> String {
-    let d = &m.defs[def_idx];
-    let ty = d.kind.fn_type().map(|t| t.0).unwrap_or(u32::MAX);
-    match m.types.get(ty as usize).map(|t| &t.kind) {
-        Some(hir::TypeKind::Function(sig)) => format!("{sig:?}"),
-        other => format!("{other:?}"),
-    }
 }
 
 fn render_diags(src: &str, ds: &[Diagnostic]) -> String {
