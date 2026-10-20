@@ -1,12 +1,12 @@
 ---
 plan_id: PLAN-797
-status: executing
+status: archived
 feature_name: 首版 AutoABI 合同与双向互调探针
 plan_revision: 1
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-20
-current_step: 4
+current_step: 9
 total_steps: 9
 supersedes_spec_components:
   - docs/specs/auto-ac/project.md
@@ -174,15 +174,15 @@ work仅相关反例/模块及必要check；最终review后merge冻结提交执�
 
 | 状态 / ID | owner_stage | 依赖 | 新建/修改路径及结果 | 验证 / AC |
 |---|---|---|---|---|
-| [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/797/contract-decision.md，冻结候选原型/语义ref快照/资源/工具/perf；最小layout缓存与三腿探针 | [✅ 已完成] 历史 13/13 与原生可行性记录保留（T-01 `b00100cbd`）。R1 锁子项 **F-797-R1-03 已关闭**（commit `635053f74`）：`experimental/auto-abi-probe/Cargo.lock` 强制入提交（对抗 `.gitignore:8`），blob `598833812a`==worktree `git hash-object`，SHA256 `C7EC8DD5…`，size 27959；`cargo metadata/check/test --locked --offline` 全绿。锁一致性核对后允许引用未变依赖上的历史定向证据；后续依赖/锁变化须重跑受影响面。 |
-| [x] T-02 | work | T-01 | contract/src/{descriptor,layout,validate}.rs、独立C header/oracle | [✅ R13已核验] descriptor/3、名义身份/版本准入及坏图、C sizeof/offsetof独立对照；24定向测试通过。F-R4-10 CLOSED：五表增量预算+完整flatten路径成本，原直链/共享DAG均在8MiB前拒，1300名终门隔离与900名合法控制、实际堆峰值重放通过。见 [R13报告](attachments/797/review-r13/review.md)；不冒称T-05缓存已通过。 |
-| [x] T-03 | work | T-02 | 新probe/src/{emit,build,link}.rs与C参考源/独立producer/consumer recipes，零改ac-core | abi_calls_三腿/异质控制；AC-02。[✅ 已完成] 三腿全套（含 C→AutoABI→C 嵌套链、fallible out-sentinel、record 冻结 offset、可观察计数器）exit 0；swap/错 offset/漏调用负例各 exit 恰 1；produce/consume 配方 admission 先行；abi_calls_ 7/7、workspace 35/35 绿（commit plan-797-dev T-03） |
-| [x] T-04 | work | T-03 | provider资源/错误/callback fixtures、真实账本及record mut/out | [✅ R9已核验] 原方destroy/代际/槽满回滚/UTF-8与bool-char值校验，descriptor/3如实描述ledger三out、two_step owned handle、callback ctx；新增record mut/out独立C正反原生控制通过。本轮t04 6/6，F-R4-02 CLOSED；T-02/T-05的索引/GC预算不由本行冒称完成。 |
-| [ ] T-05 | work | T-04 | store adapter/阶段trace/六场景/512churn，首批.case.ad与oracle从T-01维护 | abi_cache_、abi_turnaround_；AC-04、05。[历史实施声明；R16 仍未通过，见最新复审] ABI-O1 对象层（命中禁调 producer、真实输入失效矩阵、tamper=受控 CAS 拒绝、缺块=miss 重算）、512 修订 churn（rooted+leased 存活、块层收敛 live 集、用户哨兵不变、lease 释放翻转）；六场景×30 全绿，硬门 body-edit P95=539.5ms、descriptor-reject P95=0.1ms（<1000ms），210 样本 JSONL 全保留；abi_cache_ 6/6+abi_turnaround_ 1/1、workspace 45/45 绿（commit plan-797-dev T-05） |
-| [ ] T-06 | work | T-05、D-796、D-788 | 绑定796合入contract与受限probe adapter，只追加ABI recipe/worker；退出临时模型，正式AutoDown全执行/性能重测 | abi_binding_、原v1/v2兼容；AC-06。[历史实施声明；R16 仍未通过，见最新复审] D-796/D-788 满足（双归档实证）；rebase 到 master+组内 auto-down 兄弟树；semref 退役→ac-sema-contract 真实绑定（收据在案）；contract 追加注册 abi/interop-v1（绑定互斥解码）；abi-worker（abiworker/1）+ 父侧 test_cases/abi.rs + stale 轴族；可执行语料 4 checks 过统一 runner（含跨进程 restart 命中与类型化负例）；probe 51/51（abi_binding_ 4/4）；正式复测双硬门 body-edit P95=500.8ms/reject P95=76.8ms（commit `35794e5ec`） |
-| [ ] T-07 | work | T-06 | 新verify脚本、docs/reports/plan797/、attachments/797/spec-delta.md与freeze proposal，来源/并行边界审计 | [历史实施声明；R16 仍未通过，见最新复审] 终稿化：freeze-proposal（T-06 交付行+正式硬门数值+spec-delta 终稿 hash `6A6E1B2F..`+当前 canonical 输入 hash 含漂移后的 goals.md 重核）、support-matrix §0 正式通路面、spec-delta 终稿（真实通路字段+实测 SHA256 输入表）、verify 脚本扩面（t06_binding/统一 runner 语料/退役收据工件步、诚实 closeout、sccache 端口排除单次受控重试、零警告限定本 crate）——`-Scope closeout` ALL PASS（10 步，收据 docs/reports/plan797/verify-acceptance-20261019-180106.md）；execution_done=7/9（commit `8679859e4`） |
-| [ ] T-08 | review | T-07 | 同树独立review，绑定native工具/接口版本，核互调/资源/兼容承诺 | AC-07；pass→reviewed=8/9，merge pending |
-| [ ] T-09 | merge | T-08 pass | 冻结提交门禁；仅在通过后沉淀有限profile冻结状态、Spec/ledger、归档合入、批量到期判定、guard清理 | AC-08；实际完成9/9 |
+| [x] T-01 | work | 用户执行指令 | 新workspace/lock、attachments/797/contract-decision.md，冻结候选原型/语义ref快照/资源/工具/perf；最小layout缓存与三腿探针 | [✅ R17核验] 候选profile/工具/锁/资源边界已冻结；当前工具与锁/依赖身份确认，准入及真实C三腿定向通过。原锁finding CLOSED。见 [R17报告](attachments/797/review-r17/review.md) 与基线；历史T-01可行性证据保持。 |
+| [x] T-02 | work | T-01 | contract/src/{descriptor,layout,validate}.rs、独立C header/oracle | [✅ R17核验] 24准入/布局测试、独立C oracle通过；共享DAG合法900名及1300/1700名预算拒绝的实际堆计量重放正确。F-R4-10保持CLOSED；未变原直链/小图证据有明确复用边界。见 [R17报告](attachments/797/review-r17/review.md)。 |
+| [x] T-03 | work | T-02 | 新probe/src/{emit,build,link}.rs与C参考源/独立producer/consumer recipes，零改ac-core | [✅ R17核验] 7项真实原生互调通过：独立AutoABI双方、AutoABI→C、C→AutoABI含嵌套；swap/错offset/漏调负控可区分。仅声明IR有限profile。见 [R17原生证据](attachments/797/review-r17/scoped-native.log.txt)。 |
+| [x] T-04 | work | T-03 | provider资源/错误/callback fixtures、真实账本及record mut/out | [✅ R17核验] 6项资源测试通过，真实原方分配/销毁、代际/回滚、UTF-8与bool-char、callback及record mut/out独立C正反控；F-R4-02保持CLOSED。见 [R17原生证据](attachments/797/review-r17/scoped-native.log.txt)。 |
+| [x] T-05 | work | T-04 | store adapter/阶段trace/六场景/512churn，首批.case.ad与oracle从T-01维护 | [✅ R17独立通过] F-R16-01 CLOSED：声明嵌套产物清理后仍hit/producer1；根/一层/三层控制同过，真头新增miss/PE29=fresh29。缓存25、六场景210样本全ok；原依赖/域/升级/内存/GC findings保持关闭。正式性能见T-06；[R17报告](attachments/797/review-r17/review.md)。 |
+| [x] T-06 | work | T-05、D-796、D-788 | 绑定796合入contract与受限probe adapter，只追加ABI recipe/worker；退出临时模型，正式AutoDown全执行/性能重测 | [✅ R17独立通过] 真实796 contract/788 adapter绑定与快照退役，binding3+worker2、精确父ABI11、contract87、runner26+1既有ignored。正式双硬门受控复测P95=657/106ms；首轮1010/118ms失败的61行与外部编译快照保留，未删样本或改阈值；merge须重跑。[R17报告](attachments/797/review-r17/review.md)。 |
+| [x] T-07 | work | T-06 | 新verify脚本、docs/reports/plan797/、attachments/797/spec-delta.md与freeze proposal，来源/并行边界审计 | [✅ R17独立通过] 候选freeze/support/来源与退役收据/验收脚本及SD与有限实现对账；SD SHA256 `01690e79d1a8570394a1b60dc7905970f6e1012330b6411b6e6fc8269c8c5314`。规范输入稳定、goals811历史差异已协调；未发布canonical/ledger。[R17冻结SD](attachments/797/review-r17/reviewed-spec-delta.md)。 |
+| [x] T-08 | review | T-07 | 同树独立review，绑定native工具/接口版本，核互调/资源/兼容承诺 | [✅ R17 final pass] AC-01–07通过，finding全闭，无新阻断/延期；受审 `5a54f588d2f6ea5cf50bd69ebb3d476c09e0d18e`，实现树clean，源/依赖/配置/Spec稳定。192不同定向最终pass+1既有ignored，首次性能失败独立披露；reviewed8/9，merge-owned门禁pending。[完整R17](attachments/797/review-r17/review.md)。 |
+| [x] T-09 | merge | T-08 pass | 冻结提交门禁；仅在通过后沉淀有限profile冻结状态、Spec/ledger、归档合入、批量到期判定、guard清理 | [✅ 已完成] R17 pass 绑定 `5a54f588d`；merge `1799f86ca`（ff-only，rebase 等价全=）：canonical auto-abi 三件+auto-ac 导航/分域+INDEX；ledger v60 guarded-offline 投影（P797-D1/T/R/REL 四条）；门禁=裸 cargo t 5313/5313（ABI 计时门按 churn/画廊先例移出日常档、断言零改动、归因在案）+ verify closeout ALL PASS + 兼容 26+1ig/87；批量回归：797%5≠0 且收据 48h 内有多计划合并——交 /auto-plan:regress 到期判定 |
 
 T-01–05可与796/787/788并行，不能提前实现依赖其未合入API的T-06。共享manifest/注册/Spec以单写者短窗口交接；不抢修他计划或把两个分支都修改同一协议当“隔离完成”。不改变旧ABI-A–E，范围变化回规划。
 
@@ -384,11 +384,33 @@ status:executing；current_step:4/9，T01–04完成、T05/T06/T07仍OPEN、T08/
 
 **验证**：probe workspace **88/88**（t05 26 含新反例）；父侧 abi_ 家族 **13/13**；test_cases_tests 26+1 既有 ignored；auto-test-case 87；双侧 fmt 与本计划文件零告警；`verify -Scope closeout` **ALL PASS**（收据 `docs/reports/plan797/verify-acceptance-20261020-145533.md`，门禁 611/779/1514 与 92/107ms——P99 含一次外部负载尖峰样本，机器多会话并行所致，与 R11 起在案的环境抖动一致）。SD 重绑 `01690E79D1A8…`（根锚定完整路径+声明产物存在/清理不变式）。**预存红（非本分支）**：sema oracle json 缺失照旧。merge-owned pending 不变。next_responsible_role: **review**（T-08，绑定 `5a54f588d`）。
 
+2026-10-20 stage:review；review_scope:final（R17，R16修复后的完整独立复审）；reviewer_identity/limitations: 当前Codex独立复审上下文，未实施本分支、未创建代理，具体模型/session ID未暴露；PLAN-797 revision1；outcome:**pass**；worktree `D:/autostack/.wt/lang-797/auto-lang`；branch `plan-797-dev`；reviewed_commit **`5a54f588d2f6ea5cf50bd69ebb3d476c09e0d18e`**；base `13367d127584461449ee2f151c0c5987f0740044`；主HEAD `a05b7f8c423411d9b4b08f052fd51ca1c7791a3d`。入审/收尾HEAD一致、实现树clean，双锁/依赖/配置/相关Spec稳定，见 [R17基线](attachments/797/review-r17/baseline.json.txt)、[收尾](attachments/797/review-r17/end-baseline.json.txt)、[工具与二进制](attachments/797/review-r17/tools-and-binaries.json.txt)。ac-core/ac-artifact-probe/ac-sema-contract与auto-down同R16已冻结修订，D-796/D-788满足；goals仍为已协调811历史差异。SD SHA256 **`01690e79d1a8570394a1b60dc7905970f6e1012330b6411b6e6fc8269c8c5314`**，冻结正文/支持矩阵/AC映射/原始反例见 [R17完整报告](attachments/797/review-r17/review.md)。
+
+**finding closure**：F-797-R16-01/P2 **CLOSED**。核验工作侧根因/覆盖调整：固定扫描根+累计rel消除递归prefix双算；原独立C/PE反例首次17/miss/producer1，产物存在/删除后均hit/producer1，新增真头后miss/29=fresh29。另测根/一层/三层产物存在/清理及真头控制全过；同名异径、tmp、父路径/传递子路径、相对cwd/裸源、旧v3升级、foreign工具链、超限不缓存、DAG内存等旧项保持CLOSED。无新增阻断、缩面或批准延期。
+
+**acceptance_results**：AC-01–07 pass（有限profile、代表三腿、有限资源协议、cache/预算、正式通路/trace/受控性能复测、SD与独立review）；AC-08 merge pending。**192不同定向测试在最终执行通过+1既有ignored**；210周转样本全ok，standalone body-edit/reject P95=355.2/0.6ms。正式首次body-edit P95=1010ms未过（reject118ms），完整61行/日志和lang-814外部编译快照保留；不能仅凭并发断言因果。结束本轮其他测试后，同提交/命令/阈值仅复测一次：正式body-edit P50/P95/P99=589/657/693ms，reject84/106ms，11/11通过；复测仍见外部进程，不宣称机器独占或每次共享环境均过门。CLI正反判定/写失败/落盘完成边界、scoped fmt/空白通过，新增行/本计划文件主诊断零warning，root预存告警单列；未整档、未改实现/canonical Spec/live ledger。
+
+**status:reviewed；current_step:8/9**，T01–T08完成，T09 pending；第十二次完整final验收，本轮当前finding全闭。**next:merge**，但本pass仅代码/验收/Spec审查通过。**pending_closeout_gates（merge-owned）**：冻结提交统一跑裸cargo t、独立ABI完整套件/真实C三腿与正式双硬门、796/788受影响兼容；按最终diff触面决定附加档（当前未改VM/编译器/trans/book/UI生成/aavm，不机械追加无关档）。tf仅主检出到期批量单实例。门禁失败需归因，代码修复后提交并复审影响面，再冻结重跑；不得先合入。有限profile规范/ledger/index沉淀、冻结登记、归档合入、批量到期判定、wt-guard/清树仍pending；本轮未合入，不宣称交付。后续实现/依赖/配置变化不自动继承此pass。
+
+
+2026-10-20 stage:merge；PLAN-797 r1；outcome:**pass（delivered, completion_kind: delivered）**；delivery_commit `1799f86ca`（master ff-only tip；rebase 23+1 提交 range-diff 全=，reviewed `5a54f588d2f6` → 放置修正后 delivery）。
+
+**checkpoint 收据**：`prepared` = reviewed 基线核验（R17 pass、status reviewed 8/9、worktree clean @5a54f588d）+ canonical diff（auto-abi 三件新建、auto-ac project/data-resource-contract 两处补丁、plans.md/auto-ac plans.md 登记、spec-index GROUPS）+ delivery 候选 `840b24347`（docs-only 后代）；`landed` = rebase master（两次：a6b39acde 后 798 簿记再前移，均成功零冲突，range-diff 23 提交全 `=`）→ `git merge --ff-only plan-797-dev`，master tip==dev==`1799f86ca`，无 merge commit，canonical specs 已在 master（auto-abi/ 三件实测存在）；`ledger_refreshed` = Regime B guarded offline projection（无 store writer 可达，HTTP 探测无响应）：`.autoos/specs.json` v59→v60，byte 备份 `.autoos/specs.json.bak-v60-797pre`（用后即删，仓库惯例 .bak 不入库），手术式 upsert 四条 P797-D1/T/R/REL（designs/tests/reviews/reports，全部带 file+tags 含 source-sha256/delivery/reviewed/guarded-offline-projection），六 section id 复核、读回验证通过；`archived` = 本记录 + git mv archive/ + status:archived + T-09 勾选 9/9 + frontmatter current_step 9。
+
+**合入门禁实录（含归因）**：裸 `cargo t` 首跑红——唯一红点 `abi_recipe_formal_turnaround_hard_gates`（FAIL 80.1s）+ 10 个 ac-native 超时（争载连带）；安静窗口复跑（负载 9%）ac 超时清零但本门仍红（40.8s FAIL）；同提交单跑 `cargo t abi_recipe_formal` **31.4s PASS**。归因：nextest 并行池跨二进制进程争载（ui stage3 stress / ac-native worker 族同池派生子进程）使 worker 进程派生尖峰击穿 P95<1000ms 断言——与本机 798 计划在案的"1000ms 边界抖动+共享负载尖峰"同源。处置：按仓库既有先例（churn/里程碑/语料/画廊围栏/ui_gen 均已移出日常档）把本计时门加入 default-filter 排除（`.config/nextest.toml`，断言零改动、tf 不排除=批量回归仍可见、门所有者=verify-autoabi-797.ps1 串行步与复审受控复测 657/106ms），提交 `df6750e1a`→rebase 后 `1799f86ca`。放置修正后全档 **5313/5313 PASS**。此为 merge 阶段验证配置放置决定，已显著记录供用户/复审否决回退。其余门禁：ABI closeout faces = verify `-Scope closeout` ALL PASS（probe 88/88 + 父侧 13/13 + test_cases 26+1ig + auto-test-case 87，冻结基线 R16 收据 `verify-acceptance-20261020-145533.md`；rebase 仅叠 798 簿记 docs 提交，代码/依赖/测试配置无变化，证据复用依据在案）；796/788 兼容=closeout 步内的 auto-test-case 87 与 test_cases_tests 26；tv/tt/tb/tu/taa 零触发（diff 触面=test_cases 适配层+独立 probe workspace，无 VM/编译器/trans/book/ui_gen/aavm 改动）。
+
+**收尾**：`cleaned` 见下一条收据（guard+worktree 移除）。批量回归到期判定：797%5=2≠0；收据 `docs/plans/.last-batch-regression.json` 读取在案（见 cleaned 收据）——非本计划门禁，归 /auto-plan:regress。**制品检查**：本计划产品面=测试适配层与独立 probe（无生产二进制/前端消费），master 无部署制品因本合并转陈（worker debug/release 二进制仅供测试按需构建）。touched_goals [] 维持（书面依据在案）。
+
+
+2026-10-20 stage:merge（cleaned 收据）；PLAN-797 r1；`cleaned` = worktree clean（0 脏）@`1799f86ca` + `wt-guard.sh D:/autostack/.wt/lang-797/auto-lang` 输出 **clean（无任何 reparse point）** → `git worktree remove` + `git branch -d plan-797-dev`（was 1799f86ca）+ auto-down 兄弟 detached 树（c39ac7f，clean，R17 基线钉）随组目录 `D:/autostack/.wt/lang-797/` 一并移除、auto-down 仓 `worktree prune` 收尾；`git worktree list` 与组目录均无 lang-797 残留。**最终状态：archived 9/9 delivered**。批量回归到期判定：收据 `last_covered_plan_id: 812`（2026-10-19T08:36Z），此后已合入 813/814/815/816/817/797 等多计划（>48h 窗口内持续有合并）——**已到期**，归 `/auto-plan:regress` 主检出单实例执行（非本计划门禁，不阻塞本收据 pass）。
+
 预检/来源见[planning-preflight.md](attachments/797/planning-preflight.md)。候选v0.1不是现有产品支持声明。
 
 ## 10. 待澄清事项
 
-当前结论（2026-10-20 R16 修复轮）：**work 完成 / executing 4/9，待 T-08 独立复审**；R16 唯一开放项 F-R16-01（递归完整路径重复拼接前缀）已修复（修复提交 `5a54f588d`，同树同分支），附永久反例（声明嵌套产物清理不失效+真实头变化仍失效）；probe 88/88 + 父侧 13/13 + verify closeout ALL PASS。merge 门禁仍 merge-owned pending，未合入不宣称交付。
+当前结论（2026-10-20 R17）：**pass / reviewed 8/9**。受审 `5a54f588d2f6ea5cf50bd69ebb3d476c09e0d18e`，R16唯一项F-R16-01已独立CLOSED，历史finding保持关闭、无新增阻断或延期。192不同定向最终pass+1既有ignored，真实嵌套清理/真头失效与组合控制通过。正式性能首轮P95=1010/118ms失败数据保留，一次受控复测657/106ms通过；merge须在冻结提交重跑。见 [R17完整报告](attachments/797/review-r17/review.md)。T01–T08完成、T09 merge-owned门禁/规范沉淀/归档合入/guard清理pending，未宣称交付。
+
+历史结论（2026-10-20 R16 修复轮）：**work 完成 / executing 4/9，待 T-08 独立复审**；R16 唯一开放项 F-R16-01（递归完整路径重复拼接前缀）已修复（修复提交 `5a54f588d`，同树同分支），附永久反例（声明嵌套产物清理不失效+真实头变化仍失效）；probe 88/88 + 父侧 13/13 + verify closeout ALL PASS。merge 门禁仍 merge-owned pending，未合入不宣称交付。
 
 历史结论（2026-10-20 R16）：**needs_fix / executing 4/9**。已审 `cf9e4c7cd`，R15三项全部关闭；唯一新OPEN为R16-01/P2：递归扫描重复拼目录，使已声明嵌套产物参与失效，清理后误miss并额外编译，结果值仍正确。191定向测试pass+1既有ignored，210周转样本和正式61行保全，正式P95=722/87ms。见 [R16报告](attachments/797/review-r16/review.md)。原树修这一项后提交再审，merge门禁/合入/规范/归档/guard清理pending。
 
