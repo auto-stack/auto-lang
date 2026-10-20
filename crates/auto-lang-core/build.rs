@@ -63,15 +63,20 @@ fn main() {
     }
     let root = Path::new("../..");
     let mut inputs = Vec::new();
+    // 792 受管投影/无 UI 快照只携带清单子集：具名目录缺席即跳过（身份
+    // 只覆盖实际存在的源——与旧全扫描"存在即扫"语义对齐；完整检出下
+    // 清单全命中）。
     for crate_name in IDENTITY_SOURCE_CRATES {
-        collect(
-            &root.join("crates").join(crate_name),
-            &format!("crates/{crate_name}"),
-            &mut inputs,
-        );
+        let dir = root.join("crates").join(crate_name);
+        if dir.is_dir() {
+            collect(&dir, &format!("crates/{crate_name}"), &mut inputs);
+        }
     }
     for (dir, prefix) in IDENTITY_SOURCE_OUT_OF_TREE {
-        collect(&root.join(dir), prefix, &mut inputs);
+        let dir = root.join(dir);
+        if dir.is_dir() {
+            collect(&dir, prefix, &mut inputs);
+        }
     }
     for name in ["Cargo.toml", "Cargo.lock"] {
         let path = root.join(name);
