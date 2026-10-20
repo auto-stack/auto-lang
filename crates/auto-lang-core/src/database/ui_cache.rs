@@ -10,6 +10,17 @@ use serde::{Deserialize, Serialize};
 
 use super::ui_artifact::UIArtifact;
 
+/// PLAN-814 T-03：生成器指纹注入槽（生成器源在 auto-ui-compiler，SDK 不
+/// 反依赖——compiler UI 构建入口经 [`set_generator_fingerprint`] 装配；
+/// 未装配 = None，语义同原 option_env! 的 foreign build 缺省）。
+static GENERATOR_FINGERPRINT: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+
+/// 注入生成器源指纹（幂等：首调生效，后续调用不覆盖——与 779 显式默认
+/// 优先合同同形）。
+pub fn set_generator_fingerprint(fp: Option<String>) {
+    let _ = GENERATOR_FINGERPRINT.set(fp);
+}
+
 /// Persistent cache for UI incremental compilation
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct UICache {
@@ -31,10 +42,15 @@ pub struct UICache {
 impl UICache {
     const VERSION: u32 = 2;
 
-    /// Generator fingerprint stamped by build.rs (`AUTO_UI_GEN_FINGERPRINT`).
-    /// `None` when the binary was built without it (foreign build).
+    /// Generator fingerprint（Plan 692 W-1 失效语义输入）。
+    ///
+    /// PLAN-814 T-03 起生成器源在 auto-ui-compiler（其 build.rs 指纹经
+    /// `auto_ui_compiler::generator_fingerprint()` 公开），SDK 不反依赖——
+    /// 改运行时注入：compiler UI 构建入口调用
+    /// [`set_generator_fingerprint`] 自装配。未装配/foreign build = None
+    /// （原 option_env! 缺省语义保持）。
     pub fn generator_fingerprint() -> Option<String> {
-        option_env!("AUTO_UI_GEN_FINGERPRINT").map(|s| s.to_string())
+        GENERATOR_FINGERPRINT.get().cloned().flatten()
     }
 
     /// A cached fingerprint mismatches the current one when they differ, or

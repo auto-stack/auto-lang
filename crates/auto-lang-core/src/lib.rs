@@ -4558,3 +4558,71 @@ pub async fn run_abt(abt_text: &str) -> AutoResult<String> {
     let result = output_buffer.read().unwrap().clone();
     Ok(result)
 }
+
+// ---- PLAN-814 T-03：store 扫描辅助下沉（原 auto-lang lib.rs 根项）----
+
+/// PLAN-675: 注释剥离（store 依赖启发式扫描的预处理，lib.rs/api.rs 两处
+/// 扫描共用）——`//` 行注释与 `/* */` 块注释整体移除，换行保留；双引号
+/// 字符串面内的 `//`、`/*` 不触发（.at 字符串字面量双引号定界）。
+pub fn strip_line_block_comments(code: &str) -> String {
+    let mut out = String::with_capacity(code.len());
+    let mut chars = code.chars().peekable();
+    let mut in_str = false;
+    let mut str_escape = false;
+    while let Some(c) = chars.next() {
+        if in_str {
+            out.push(c);
+            if str_escape {
+                str_escape = false;
+            } else if c == '\\' {
+                str_escape = true;
+            } else if c == '"' {
+                in_str = false;
+            }
+            continue;
+        }
+        match c {
+            '"' => {
+                in_str = true;
+                out.push(c);
+            }
+            '/' if chars.peek() == Some(&'/') => {
+                chars.next();
+                for n in chars.by_ref() {
+                    if n == '\n' {
+                        out.push('\n');
+                        break;
+                    }
+                }
+            }
+            '/' if chars.peek() == Some(&'*') => {
+                chars.next();
+                while let Some(n) = chars.next() {
+                    if n == '*' && chars.peek() == Some(&'/') {
+                        chars.next();
+                        break;
+                    }
+                    if n == '\n' {
+                        out.push('\n');
+                    }
+                }
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+// Plan 351: thread-local for passing store composable files out-of-band
+// (avoids changing the return type of ui_build_* functions). PLAN-814 T-03：
+// 单源在此（UI 编译器 api.rs 扫描消费）；auto-lang 旧路径经再导出保持。
+thread_local! {
+    pub static STORE_EXTRA_FILES: std::cell::RefCell<Vec<(String, String)>> =
+        std::cell::RefCell::new(Vec::new());
+}
+
+/// Drain and return stashed store composable files (filename, content).
+pub fn drain_store_extra_files() -> Vec<(String, String)> {
+    let result = STORE_EXTRA_FILES.with(|cell| std::mem::take(&mut *cell.borrow_mut()));
+    result
+}

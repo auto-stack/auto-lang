@@ -129,7 +129,9 @@ impl UiActionConfig {
 
     /// Plan 451: build from a widget decl's `actions {}` block (DSL form).
     /// Same validation as the auto-atom parse (warnings, non-fatal).
-    pub fn from_actions_block(b: &auto_lang_core::ast::ui::ActionsBlock) -> (UiActionConfig, Vec<String>) {
+    pub fn from_actions_block(
+        b: &auto_lang_core::ast::ui::ActionsBlock,
+    ) -> (UiActionConfig, Vec<String>) {
         let map_item = |i: &auto_lang_core::ast::ui::MenuItemEntry| match i {
             auto_lang_core::ast::ui::MenuItemEntry::Action(id) => MenuItem::Action(id.clone()),
             auto_lang_core::ast::ui::MenuItemEntry::Sep => MenuItem::Separator,
@@ -548,7 +550,9 @@ fn install_dsl_config(
 /// 此提取 → install）。优先首个带 actions 块的 widget；否则取顶层
 /// `actions {}` 声明（Plan 451 P3 的模块级形态——热重载只重读本源文件，
 /// use 引入模块的声明改动需 touch 本文件触发）。
-pub fn extract_actions_from_source(code: &str) -> Result<auto_lang_core::ast::ui::ActionsBlock, String> {
+pub fn extract_actions_from_source(
+    code: &str,
+) -> Result<auto_lang_core::ast::ui::ActionsBlock, String> {
     let session = auto_lang_core::session::CompilerSession::ui();
     let mut parser = auto_lang_core::parser::Parser::from(code).with_session(session);
     let ast = parser

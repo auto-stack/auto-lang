@@ -30,7 +30,7 @@ pub use ui_artifact::{UIArtifact, UIBackend};
 
 // Plan 134: UI Cache for persistent incremental compilation
 mod ui_cache;
-pub use ui_cache::UICache;
+pub use ui_cache::{set_generator_fingerprint, UICache};
 
 // =============================================================================
 // Stable Identifiers

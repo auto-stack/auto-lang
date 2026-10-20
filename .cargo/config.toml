@@ -97,7 +97,7 @@ tb = "nextest run -p auto-lang --lib --features test-book"
 # 6250 测试秒几乎全在此);单进程下 setup 全档只付一次。纯函数代码生成测试
 # 无进程级全局态/重内存,单进程安全(重内存测试全在 taa 档,heavy_gate 亦
 # 不在本族)。日常档(default-filter)已排除 ui_gen::,tf 批量档仍全覆盖。
-tu = "test -p auto-lang --lib --features ui-iced ui_gen::"
+tu = "test -p auto-ui-compiler -p auto-lang --lib --features auto-lang/ui-iced ui_gen::"
 # Plan 568: AAVM/AA2R 专属档(独立空 feature,PLAN-700 起不再 imply 语料档;
 # full 配置含 1M churn 与
 # 全部重测试,无 XL 排除——裸跑=aavm 全集兜底,附带日常面)。仅当改动触及

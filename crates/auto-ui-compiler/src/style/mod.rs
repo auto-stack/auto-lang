@@ -161,9 +161,7 @@ pub mod variants;
 #[cfg(feature = "ui-iced")]
 // PLAN-814 T-03：iced 后端适配器留 auto-lang（ui/style_iced_adapter.rs），
 // 经本 crate 公开 style 类型面消费；headless 适配随分析侧在本 crate。
-
 #[cfg(feature = "ui-iced")]
-
 #[cfg(feature = "ui-headless")]
 pub mod headless_adapter;
 
@@ -681,10 +679,10 @@ mod tests {
             "dark 态 dark:bg-slate-900 应进 base: {:?}",
             s.classes
         );
-        assert!(s.classes.iter().any(|c| matches!(
-            c,
-            StyleClass::BackgroundColor(crate::style::Color::Surface)
-        )));
+        assert!(s
+            .classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::BackgroundColor(crate::style::Color::Surface))));
         assert_eq!(s.variant_classes.len(), 1);
 
         // light 态:dark: 类不进 base(仅登记),同一样本只有底色
@@ -698,10 +696,10 @@ mod tests {
             "light 态 dark: 类不进 base: {:?}",
             s.classes
         );
-        assert!(s.classes.iter().any(|c| matches!(
-            c,
-            StyleClass::BackgroundColor(crate::style::Color::Surface)
-        )));
+        assert!(s
+            .classes
+            .iter()
+            .any(|c| matches!(c, StyleClass::BackgroundColor(crate::style::Color::Surface))));
         assert_eq!(s.variant_classes.len(), 1, "light 态登记可见不静默");
 
         // 还原默认,防污染其他用例(Plan 408 默认 dark)

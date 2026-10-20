@@ -1,0 +1,1439 @@
+//! AURA Core Types - Data structures for UI intermediate representation
+//!
+//! This module defines the core data structures for AURA (Auto UI Representation Abstract).
+//! These types represent the extracted, structured form of UI components.
+
+use std::collections::HashMap;
+use std::fmt;
+
+// Re-export Type from ast for convenience
+pub use auto_lang_core::ast::Type;
+use auto_lang_core::ast::{RouteDef, RoutesBlock};
+
+// ============================================================================
+// Stable Node ID (Plan 273)
+// ============================================================================
+
+/// 稳定唯一 ID，在 AuraNode 提取时分配，用于 DevTools 源码↔组件双向映射
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct AuraNodeId(pub u32);
+
+impl fmt::Display for AuraNodeId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "aura_{}", self.0)
+    }
+}
+
+/// 源码位置信息，用于 DevTools 双向映射
+#[derive(Debug, Clone)]
+pub struct SpanInfo {
+    /// 源码字节偏移和长度
+    pub span: Option<(usize, usize)>,
+    /// 原始 AuraNode tag（如 "center", "button"）
+    pub aura_tag: String,
+    /// 用户指定的 id 属性（如 id: "my-btn"）
+    pub user_id: Option<String>,
+}
+
+// ============================================================================
+// AURA Widget - Core Component Definition
+// ============================================================================
+
+/// AURA Widget: The core component definition
+///
+/// This is the primary structure extracted from a `widget` declaration.
+/// It contains:
+/// - State tree (model)
+/// - View tree (pure layout and bindings)
+/// - Event handlers (logic payload)
+/// - Routes (for router widgets, Plan 105)
+/// - Lifecycle methods (Plan 05-Nav)
+#[derive(Debug, Clone)]
+/// Plan 051 C7: timer 块条目的 Aura 形态（vue codegen / VM 收集消费）。
+pub struct AuraTimerEntry {
+    /// msg 变体名（派发目标）。
+    pub event: String,
+    /// 周期毫秒（解析期已钳 ≥16）。
+    pub every_ms: u64,
+    /// 门控条件源文本（actions enabled_if 约定；None = 恒派发）。
+    pub when: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuraWidget {
+    /// Widget name (e.g., "Counter")
+    pub name: String,
+
+    /// State variable definitions
+    pub state_vars: Vec<AuraStateDef>,
+
+    /// Computed properties
+    pub computed: Vec<AuraComputed>,
+
+    /// Message type definitions
+    pub messages: Vec<AuraMessage>,
+
+    /// View tree: pure layout and bindings, no logic
+    pub view_tree: AuraNode,
+
+    /// PLAN-024: named views (`view mini { ... }`) — additional render faces
+    /// sharing this widget's state/handlers. Extracted alongside `view_tree`;
+    /// consumers: desktop dashboard faces (auto-os shell), other backends
+    /// ignore.
+    pub named_views: Vec<(String, AuraNode)>,
+
+    /// Event handlers: mapped by event pattern (e.g., "Msg::Inc")
+    pub handlers: std::collections::BTreeMap<String, LogicPayload>,
+
+    /// Handler parameter names (pattern → param names) for action fn signatures
+    pub handler_params: HashMap<String, Vec<String>>,
+
+    /// Props for reusable components
+    pub props: Vec<AuraProp>,
+
+    /// Routes configuration (for router widgets, Plan 105)
+    pub routes: Option<AuraRoutes>,
+
+    /// Lifecycle methods (e.g., aboutToAppear) - Plan 05-Nav
+    pub lifecycle: Vec<AuraLifecycle>,
+
+    /// Tick interval in ms — when set, the runtime emits .Tick events at this interval
+    pub tick_interval: Option<u32>,
+
+    /// Plan 051 C7: `timer { ... }` 块条目（周期计时器）。
+    pub timers: Vec<AuraTimerEntry>,
+
+    /// Handler parameter names: maps handler pattern to parameter list
+    /// e.g., ".AddItem" -> ["text"] for .AddItem(text) -> { ... }
+
+    /// Span map: AuraNodeId → source info for DevTools (Plan 273)
+    pub span_map: HashMap<AuraNodeId, SpanInfo>,
+
+    /// Key bindings: key string → handler pattern (Plan 275)
+    /// e.g., "1" → ".Digit1", "Enter" → ".Equals"
+    pub key_bindings: HashMap<String, String>,
+
+    /// API function names explicitly imported via `use back.api: ...`
+    pub api_imports: Vec<String>,
+
+    /// Raw native CSS from the widget-level `style { ... }` block (verbatim).
+    /// Emitted into the component's `<style scoped>` by the Vue backend;
+    /// other backends ignore it.
+    pub style_css: Option<String>,
+
+    /// External TS/Vue imports from the widget-level `use { ... }` block.
+    /// The Vue backend emits them as ES imports in `<script setup>`;
+    /// `component` entries also become instantiable tags in the view tree.
+    /// Other backends ignore them.
+    pub ext_imports: Vec<auto_lang_core::ast::ExtImport>,
+
+    /// Reactive watchers from the widget-level `watch { ... }` block.
+    /// The Vue backend emits them as `watch(source, handler, opts)` calls
+    /// in `<script setup>`; other backends ignore them.
+    pub watchers: Vec<AuraWatch>,
+
+    /// Exposed member names from the widget-level `expose { ... }` block.
+    /// The Vue backend emits `defineExpose({ ... })` in `<script setup>` so
+    /// a parent holding a template ref on this component can call imperative
+    /// methods or read exposed refs; other backends ignore them.
+    pub exposes: Vec<String>,
+
+    /// Per-instance setup preamble from the widget-level `setup { ... }` block
+    /// (Plan 426). The Vue backend emits the statements at `<script setup>`
+    /// top level (before state/computed definitions); other backends ignore.
+    pub setup: Option<auto_lang_core::ast::ui::SetupBlock>,
+
+    /// Plan 451: `actions { ... }` 块（动作注册表 + menubar/toolbar 声明）。
+    /// vm 渲染器不经此字段（run_file_dynamic_ui_inner 直接从 WidgetDecl
+    /// 安装 action_config）；Vue 后端（Plan 451 P2）据此生成全局 keydown
+    /// 回退层 + menubar/toolbar 组件树；其他后端忽略。
+    pub actions: Option<auto_lang_core::ast::ui::ActionsBlock>,
+}
+
+/// A reactive watcher (widget-level `watch { ... }` entry).
+///
+/// ```auto
+/// watch {
+///     .filtered_items -> { .selected_index = 0 }
+///     .ratio.immediate -> { ... }
+/// }
+/// ```
+#[derive(Debug, Clone)]
+pub struct AuraWatch {
+    /// Watched source field names (model field, prop, or computed).
+    pub sources: Vec<String>,
+    /// Run the handler once on setup (`.immediate` modifier).
+    pub immediate: bool,
+    /// Deep-watch the source (`.deep` modifier).
+    pub deep: bool,
+    /// Handler body (same conventions as `on` handlers).
+    pub payload: LogicPayload,
+}
+
+// ============================================================================
+// Logic / View 拆分视图（PR-3）
+// ============================================================================
+//
+// AuraWidget 的消费方天然分为两类：
+// - 逻辑消费者：synthesize（VM 合成）、VmBridge state 初始化
+// - 视图消费者：AuraViewBuilder、DynamicComponent 的 view_template
+//
+// 这两个 Ref 结构体是 AuraWidget 的零拷贝引用视图，让依赖关系在代码上显式化。
+// 详见 docs/design/dialect-extension-diagnosis.md §6.2/§7.1。
+
+/// AuraWidget 逻辑部分的引用视图。
+///
+/// 包含 VM 合成和状态初始化所需的全部字段。
+/// 对应 WidgetDecl 的 model/on/messages/lifecycle 部分。
+#[derive(Debug, Clone, Copy)]
+pub struct WidgetLogicRef<'a> {
+    pub name: &'a str,
+    pub state_vars: &'a [AuraStateDef],
+    pub messages: &'a [AuraMessage],
+    pub handlers: &'a std::collections::BTreeMap<String, LogicPayload>,
+    pub handler_params: &'a HashMap<String, Vec<String>>,
+    pub lifecycle: &'a [AuraLifecycle],
+    pub computed: &'a [AuraComputed],
+    pub props: &'a [AuraProp],
+    pub api_imports: &'a [String],
+}
+
+/// AuraWidget 视图部分的引用视图。
+///
+/// 包含渲染器和 DynamicComponent 视图模板所需的全部字段。
+/// 对应 WidgetDecl 的 view/bind 部分 + 提取时生成的元数据。
+#[derive(Debug)]
+pub struct WidgetViewRef<'a> {
+    pub view_tree: &'a AuraNode,
+    pub span_map: &'a HashMap<AuraNodeId, SpanInfo>,
+    pub key_bindings: &'a HashMap<String, String>,
+    pub tick_interval: Option<u32>,
+    pub routes: &'a Option<AuraRoutes>,
+}
+
+impl AuraWidget {
+    /// 返回逻辑部分的引用视图（零拷贝）。
+    /// 供 VM 合成（synthesize_widget_module）和状态初始化使用。
+    pub fn logic(&self) -> WidgetLogicRef<'_> {
+        WidgetLogicRef {
+            name: &self.name,
+            state_vars: &self.state_vars,
+            messages: &self.messages,
+            handlers: &self.handlers,
+            handler_params: &self.handler_params,
+            lifecycle: &self.lifecycle,
+            computed: &self.computed,
+            props: &self.props,
+            api_imports: &self.api_imports,
+        }
+    }
+
+    /// 返回视图部分的引用视图（零拷贝）。
+    /// 供渲染器（AuraViewBuilder）和 DynamicComponent 的视图模板使用。
+    pub fn view_data(&self) -> WidgetViewRef<'_> {
+        WidgetViewRef {
+            view_tree: &self.view_tree,
+            span_map: &self.span_map,
+            key_bindings: &self.key_bindings,
+            tick_interval: self.tick_interval,
+            routes: &self.routes,
+        }
+    }
+
+    /// Names of the slot outlets (`slot` elements) in this widget's view
+    /// tree; the default outlet is the empty string. Used by the build to
+    /// warn when a parent passes slot children the widget cannot render.
+    pub fn slot_outlet_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        collect_slot_outlets(&self.view_tree, &mut names);
+        names
+    }
+
+    /// Warnings for component instantiations in this widget's view tree
+    /// that pass children (default-slot content or `slot(name:)` templates)
+    /// to a sub-widget that declares no matching slot outlet.
+    /// `outlets` maps sub-widget name → its `slot_outlet_names()`.
+    /// Instantiations of widgets not present in `outlets` (unknown or
+    /// external components) are skipped — their slot surface is unknowable.
+    pub fn slot_children_warnings(&self, outlets: &HashMap<String, Vec<String>>) -> Vec<String> {
+        let mut warnings = Vec::new();
+        collect_slot_children_warnings(&self.view_tree, outlets, &mut warnings);
+        warnings
+    }
+}
+
+/// Extract the slot name from a `slot` element's `name` prop
+/// (`""` = default slot when the prop is absent).
+/// Plan 476: pub(crate) — the VM view builder reuses this to match call-site
+/// fills (`slot(name: "x") { … }`) against widget-view outlets.
+pub fn slot_element_name(props: &HashMap<String, AuraPropValue>) -> String {
+    match props.get("name") {
+        Some(AuraPropValue::Expr(auto_lang_core::ast::Expr::Str(s))) => s.to_string(),
+        Some(AuraPropValue::Expr(auto_lang_core::ast::Expr::Ident(s))) => s.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn collect_slot_outlets(node: &AuraNode, names: &mut Vec<String>) {
+    match node {
+        AuraNode::Element {
+            tag,
+            props,
+            children,
+            ..
+        } => {
+            if tag == "slot" || tag == "Slot" {
+                let name = slot_element_name(props);
+                if !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+            for child in children {
+                collect_slot_outlets(child, names);
+            }
+        }
+        AuraNode::ForLoop { body, .. } => {
+            for child in body {
+                collect_slot_outlets(child, names);
+            }
+        }
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
+            for child in then_body {
+                collect_slot_outlets(child, names);
+            }
+            if let Some(else_nodes) = else_body {
+                for child in else_nodes {
+                    collect_slot_outlets(child, names);
+                }
+            }
+        }
+        AuraNode::Link { children, .. } => {
+            for child in children {
+                collect_slot_outlets(child, names);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_slot_children_warnings(
+    node: &AuraNode,
+    outlets: &HashMap<String, Vec<String>>,
+    warnings: &mut Vec<String>,
+) {
+    match node {
+        AuraNode::Element { tag, children, .. } => {
+            // A sub-widget instantiation with children: check each child
+            // against the target widget's declared slot outlets.
+            if let Some(target_outlets) = outlets.get(tag) {
+                let mut default_warned = false;
+                for child in children {
+                    if let AuraNode::Element {
+                        tag: ctag,
+                        props: cprops,
+                        ..
+                    } = child
+                    {
+                        if ctag == "slot" || ctag == "Slot" {
+                            let name = slot_element_name(cprops);
+                            if !target_outlets.contains(&name) {
+                                warnings.push(format!(
+                                    "slot(name: \"{}\") passed to <{}> but widget '{}' declares no '{}' slot outlet — content will not render",
+                                    name, tag, tag, name
+                                ));
+                            }
+                            continue;
+                        }
+                    }
+                    // Any non-slot child goes to the default outlet.
+                    if !default_warned && !target_outlets.contains(&String::new()) {
+                        warnings.push(format!(
+                            "children passed to <{}> but widget '{}' declares no default slot outlet — children will not render",
+                            tag, tag
+                        ));
+                        default_warned = true;
+                    }
+                }
+            }
+            for child in children {
+                collect_slot_children_warnings(child, outlets, warnings);
+            }
+        }
+        AuraNode::ForLoop { body, .. } => {
+            for child in body {
+                collect_slot_children_warnings(child, outlets, warnings);
+            }
+        }
+        AuraNode::Conditional {
+            then_body,
+            else_body,
+            ..
+        } => {
+            for child in then_body {
+                collect_slot_children_warnings(child, outlets, warnings);
+            }
+            if let Some(else_nodes) = else_body {
+                for child in else_nodes {
+                    collect_slot_children_warnings(child, outlets, warnings);
+                }
+            }
+        }
+        AuraNode::Link { children, .. } => {
+            for child in children {
+                collect_slot_children_warnings(child, outlets, warnings);
+            }
+        }
+        _ => {}
+    }
+}
+
+// ============================================================================
+// Plan 351 / Design 18: Shared Store (Rung 4)
+// ============================================================================
+
+/// An AURA shared store — a view-less widget whose state is shared across
+/// widgets/routes via `use store:`. Isomorphic to AuraWidget minus
+/// view_tree/routes/props.
+#[derive(Debug, Clone)]
+pub struct AuraStore {
+    /// Store name (e.g., "CounterStore")
+    pub name: String,
+
+    /// State variable definitions (→ module-level ref()s)
+    pub state_vars: Vec<AuraStateDef>,
+
+    /// Message type definitions (→ action functions)
+    pub messages: Vec<AuraMessage>,
+
+    /// Event handlers: pattern → logic (→ action function bodies)
+    pub handlers: std::collections::BTreeMap<String, LogicPayload>,
+
+    /// Handler parameter names (pattern → param names) for action fn signatures
+    pub handler_params: HashMap<String, Vec<String>>,
+
+    /// API function names imported via `use back.api` (→ import in composable)
+    pub api_imports: Vec<String>,
+
+    /// Streaming API endpoints whose return type is `~Stream<T>` (Plan 043 stream
+    /// phase). Drives type-based SSE wiring in the store composable: each such
+    /// endpoint opens an EventSource at its `path` and dispatches messages into
+    /// actions. Replaces the old name-heuristic ("stream" + RunOutput/RunResult).
+    /// Populated from the project's `back/api.at` via `ComponentGenOptions`.
+    pub stream_endpoints: Vec<StreamEndpoint>,
+
+    /// Plan 028 F9: `on stream sse(url[, "event"]) -> { … }` subscriptions.
+    /// Each entry wires an EventSource whose (pre-parsed) events dispatch the
+    /// on-handler stored under `handler_key` (已决③: the platform layer parses
+    /// the SSE data JSON; the handler body branches on `.ev.type` directly).
+    pub stream_handlers: Vec<AuraStreamHandler>,
+
+    /// Computed properties (Plan 367 P2-2: → getters in store composable)
+    pub computed: Vec<AuraComputed>,
+
+    /// Reactive watchers from the store-level `watch { ... }` block
+    /// (Plan 012 Batch G / gap 12). The Vue backend emits them as
+    /// module-level `watch(source, handler, opts)` calls in the store
+    /// composable (store refs are module-level singletons, so the watcher
+    /// lives for the app lifetime — the same semantics jade previously
+    /// hand-wrote in its facade modules); other backends ignore them.
+    pub watchers: Vec<AuraWatch>,
+
+    /// Plan 051 C7: `timer { ... }` 块条目（store 计时器，应用生命周期）。
+    pub timers: Vec<AuraTimerEntry>,
+
+    /// Module-level plain functions declared in the store file but OUTSIDE the
+    /// `store { ... }` block (e.g. `fn format_git_label(...)` helper). The vue
+    /// codegen emits them as module-level helper functions in the composable so
+    /// handlers can call them by bare name. Without this, such helpers are
+    /// silently dropped and generated handlers throw ReferenceError at runtime.
+    pub module_fns: Vec<AuraModuleFn>,
+
+    /// Plan 559 W2: sibling store names this store's bodies reference through
+    /// `use <other>_store: <Alias>` imports (alias == the store's declared
+    /// name in this codebase's convention). The vue store composable emits a
+    /// composable import + reactive facade const per sibling and maps the
+    /// qualified call heads (`Collection.Init(...)`) onto it via the
+    /// ts_adapter store_facades channel — previously these emitted bare
+    /// (`Collection.Init(...)` → TS2304, os-config modules_store).
+    /// Self-qualification (`Collection.Select` inside the Collection store
+    /// itself, vm A1 contract) stays a bare local call (store_facade_from).
+    pub sibling_stores: Vec<String>,
+}
+
+/// A plain (non-`#[api]`, non-widget) module-level function from a store file.
+/// Transpiled to a TS helper function in the store composable.
+#[derive(Debug, Clone)]
+pub struct AuraModuleFn {
+    /// Function name (e.g. "format_git_label").
+    pub name: String,
+    /// Parameter names in declaration order (→ TS function parameters).
+    pub params: Vec<String>,
+    /// TS return type ("" for no return value / unit).
+    pub ret_ts: String,
+    /// Raw AST body statements (transpiled via the ts_adapter).
+    pub body: Vec<auto_lang_core::ast::Stmt>,
+}
+
+/// Plan 028 F9: an `on stream sse(url[, "event"])` subscription in a store's
+/// on-block. The handler body (keyed by `handler_key` in `AuraStore::handlers`)
+/// receives the pre-parsed event object.
+#[derive(Debug, Clone)]
+pub struct AuraStreamHandler {
+    /// Key into `handlers` / `handler_params` (pattern with embedded params).
+    pub handler_key: String,
+    /// Protocol kind — "sse" for now.
+    pub kind: String,
+    /// Endpoint URL.
+    pub url: String,
+    /// Named-event filter (None → default message events; EventSource uses
+    /// addEventListener for named events like relay's "run_event").
+    pub event: Option<String>,
+}
+
+/// A streaming API endpoint: an `#[api]` function returning `~Stream<T>`.
+/// (Plan 043 stream phase.) The store composable opens an EventSource at `path`
+/// and dispatches each SSE message into a handler action. `item_type` is the
+/// inner `T` (e.g. `ShellEvent`), kept as a raw string for lightweight matching.
+///
+/// Plan musk-022 Phase 1: `discriminator` + `variants` make SSE dispatch
+/// data-driven instead of the hardcoded `command_output`/`command_result` pair.
+/// `discriminator` is the JSON field name on each SSE payload whose value
+/// selects the action (default `"event"`; externally-tagged enums using
+/// `#[serde(tag = "type")]` set this to `"type"`). `variants` maps each wire
+/// value (snake_case, as emitted by `#[serde(rename_all = "snake_case")]`) to
+/// the PascalCase store action name that consumes it. When `variants` is empty,
+/// the legacy two-variant fallback (`command_output`→RunOutput,
+/// `command_result`→RunResult) is preserved for backward compatibility.
+#[derive(Debug, Clone)]
+pub struct StreamEndpoint {
+    /// The API function name (e.g. "stream"), for matching against `api_imports`.
+    pub fn_name: String,
+    /// The HTTP path from `#[api(path=...)]` (e.g. "/api/stream").
+    pub path: String,
+    /// The inner item type `T` of `~Stream<T>` (raw string, e.g. "ShellEvent").
+    pub item_type: String,
+    /// Plan musk-022 Phase 1: JSON field name used as the SSE discriminator.
+    /// Defaults to `"event"` (ash-gui ShellEvent contract). Forge streams emit
+    /// `#[serde(tag = "type")]` so this becomes `"type"`.
+    pub discriminator: String,
+    /// Plan musk-022 Phase 1: (wire_value, action_name) pairs. `wire_value` is
+    /// the snake_case discriminator value (e.g. `tool_call`); `action_name` is
+    /// the PascalCase store action (e.g. `ToolCall`). Empty = legacy fallback.
+    pub variants: Vec<(String, String)>,
+}
+
+// ============================================================================
+// Router Types (Plan 105)
+// ============================================================================
+
+/// AURA route definition
+///
+/// Represents a single route in the application's routing table.
+/// Extracted from `routes { ... }` blocks in AutoUI.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuraRoute {
+    /// URL path pattern (e.g., "/button" or "/user/:id")
+    pub path: String,
+
+    /// Module name to render (e.g., "index", "button", "user")
+    /// Maps to `@/pages/{module}.vue` in Vue generator
+    pub module: String,
+
+    /// Actual widget name from the source file (e.g., "ListPage" from listpage.at)
+    /// This is used for imports and component references
+    pub widget_name: String,
+
+    /// Extracted parameters from path (e.g., ["id"] from "/user/:id")
+    pub params: Vec<String>,
+}
+
+/// AURA routes configuration
+///
+/// Contains all routes for an application, extracted from `routes { ... }` blocks.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuraRoutes {
+    /// Collection of route definitions
+    pub routes: Vec<AuraRoute>,
+}
+
+impl AuraRoutes {
+    /// Create a new empty routes configuration
+    pub fn new() -> Self {
+        Self { routes: Vec::new() }
+    }
+
+    /// Create routes configuration with the given routes
+    pub fn with_routes(routes: Vec<AuraRoute>) -> Self {
+        Self { routes }
+    }
+}
+
+impl Default for AuraRoutes {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ============================================================================
+// Lifecycle Types (Plan 05-Nav)
+// ============================================================================
+
+/// Lifecycle method definition
+///
+/// Represents lifecycle methods like `aboutToAppear()` in AURA widgets.
+/// These are extracted from `lifecycle { ... }` blocks.
+#[derive(Debug, Clone)]
+pub struct AuraLifecycle {
+    /// Method name (e.g., "Init", "Destroy")
+    pub name: String,
+
+    /// Method body — stored as LogicPayload so generators can reuse existing body generation
+    pub payload: LogicPayload,
+}
+
+impl AuraLifecycle {
+    /// Create a new lifecycle method
+    pub fn new(name: impl Into<String>, payload: LogicPayload) -> Self {
+        Self {
+            name: name.into(),
+            payload,
+        }
+    }
+}
+
+/// Well-known lifecycle event names (dot-prefixed, as they appear in `on {}` blocks)
+///
+/// These are automatically extracted from the `on {}` block and moved into
+/// `AuraWidget.lifecycle` during extraction, so generators can handle them
+/// platform-specifically.
+///
+/// | AutoLang | Vue              | ArkTS              | Jetpack Compose       |
+/// |----------|------------------|--------------------|-----------------------|
+/// | `.Init`  | `onMounted`      | `aboutToAppear`    | `LaunchedEffect`      |
+/// | `.Destroy`| `onUnmounted`   | `aboutToDisappear` | `DisposableEffect`    |
+/// | `.Tick`  | `setInterval`    | `setInterval`      | `LaunchedEffect+delay`|
+pub mod lifecycle {
+    /// Component mounted/initialized — runs once after the component is added to the DOM
+    pub const INIT: &str = ".Init";
+    /// Component about to be destroyed — runs cleanup before removal
+    pub const DESTROY: &str = ".Destroy";
+    /// Periodic tick — handled separately via `tick_interval`
+    pub const TICK: &str = ".Tick";
+}
+
+// ============================================================================
+// From Implementations for Route Types
+// ============================================================================
+
+impl From<RouteDef> for AuraRoute {
+    fn from(route: RouteDef) -> Self {
+        // Derive widget_name from module name
+        // Use smart capitalization that handles common patterns
+        let widget_name = capitalize_module(&route.module);
+        AuraRoute {
+            path: route.path,
+            module: route.module,
+            widget_name,
+            params: route.params,
+        }
+    }
+}
+
+/// Capitalize module name to widget name using smart word detection
+///
+/// Handles common patterns:
+/// - "listpage" -> "ListPage"
+/// - "gridpage" -> "GridPage"
+/// - "listitem" -> "ListItem"
+/// - "button" -> "Button"
+fn capitalize_module(module: &str) -> String {
+    // Common word boundaries to detect
+    const WORD_BOUNDARIES: &[&str] = &[
+        "page", "item", "card", "list", "grid", "box", "text", "input", "button", "switch",
+        "slider", "checkbox", "radio", "toggle", "image", "icon", "badge", "chip", "tab", "table",
+        "progress", "header", "footer", "nav", "menu", "sidebar", "panel", "modal", "dialog",
+        "form", "field", "area", "view", "screen", "widget",
+    ];
+
+    let lower = module.to_lowercase();
+
+    // Try to find word boundaries
+    for word in WORD_BOUNDARIES {
+        if lower.ends_with(word) && lower.len() > word.len() {
+            let prefix = &lower[..lower.len() - word.len()];
+            let capitalized_prefix = capitalize_first(prefix);
+            let capitalized_word = capitalize_first(word);
+            return format!("{}{}", capitalized_prefix, capitalized_word);
+        }
+    }
+
+    // Fallback: simple capitalization
+    capitalize_first(module)
+}
+
+/// Capitalize the first letter of a string
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    let first = chars
+        .next()
+        .map(|c| c.to_uppercase().collect::<String>())
+        .unwrap_or_default();
+    let rest: String = chars.collect();
+    format!("{}{}", first, rest)
+}
+
+impl From<RoutesBlock> for AuraRoutes {
+    fn from(block: RoutesBlock) -> Self {
+        AuraRoutes {
+            routes: block.routes.into_iter().map(|r| r.into()).collect(),
+        }
+    }
+}
+
+// ============================================================================
+// State Definition
+// ============================================================================
+
+/// Decorator for state management (Plan 05-Nav Task 0)
+#[derive(Debug, Clone)]
+pub struct AuraDecorator {
+    /// Decorator name (e.g., "Consume", "Provide")
+    pub name: String,
+
+    /// Decorator arguments (e.g., ["pathStack"])
+    pub args: Vec<String>,
+}
+
+/// State variable definition
+#[derive(Debug, Clone)]
+pub struct AuraStateDef {
+    /// Variable name (e.g., "count")
+    pub name: String,
+
+    /// Type information (e.g., Type::Int)
+    pub type_info: Type,
+
+    /// Initial value expression
+    pub initial: auto_lang_core::ast::Expr,
+
+    /// Decorators for state management (e.g., @Consume, @Provide)
+    pub decorators: Vec<AuraDecorator>,
+}
+
+/// Prop definition for reusable components
+#[derive(Debug, Clone)]
+pub struct AuraProp {
+    /// Prop name
+    pub name: String,
+
+    /// Type information
+    pub type_info: Type,
+
+    /// Default value (if any)
+    pub default: Option<auto_lang_core::ast::Expr>,
+}
+
+// ============================================================================
+// Computed Property Definition
+// ============================================================================
+
+/// Computed property definition
+#[derive(Debug, Clone)]
+pub struct AuraComputed {
+    /// Property name (e.g., "activeCount")
+    pub name: String,
+
+    /// Computation expression
+    pub expr: auto_lang_core::ast::Expr,
+}
+
+// ============================================================================
+// Message Definition
+// ============================================================================
+
+/// Message type definition (for MVU pattern)
+#[derive(Debug, Clone)]
+pub struct AuraMessage {
+    /// Message variants
+    pub variants: Vec<AuraMsgVariant>,
+}
+
+/// Message variant
+#[derive(Debug, Clone)]
+pub struct AuraMsgVariant {
+    /// Variant name (e.g., "Inc", "Dec")
+    pub name: String,
+
+    /// True when the variant name was written quoted in source — a
+    /// contractual emit name (see ast MsgVariant.quoted; Vue codegen
+    /// always declares/emits those).
+    pub quoted: bool,
+
+    /// Payload types (empty = no payload). Plan 043 M5 #1: was
+    /// `Option<Type>`; now `Vec<Type>` to support multi-param variants like
+    /// `Complete(str, int)`.
+    pub payload: Vec<Type>,
+
+    /// Plan 435 挂账②:命名参数形态的名字(ast MsgVariant.payload_names 透传),
+    /// 位置形态为 None。供 P4 组件包 API 文档面使用。
+    pub payload_names: Vec<Option<String>>,
+}
+
+// ============================================================================
+// View Tree
+// ============================================================================
+
+/// Event handler with optional parameters
+#[derive(Debug, Clone)]
+pub struct AuraEvent {
+    /// Handler pattern (e.g., ".Inc" or "Msg::Inc")
+    pub handler: String,
+
+    /// Optional parameters (e.g., ["todo.id"] for .Delete(todo.id))
+    pub params: Vec<String>,
+}
+
+/// Split an event key into (base, modifiers), quote-aware.
+///
+/// `"onkeydown.enter.prevent"` → `("onkeydown", ["enter", "prevent"])`.
+///
+/// Quoted custom event names (`on"autodown:slash-open"`) may contain
+/// characters that are illegal in identifiers (':'/'-'); the base then runs
+/// to the closing quote and only what follows it counts as modifiers.
+/// (Mirror of the Vue backend's `split_event_key`, kept local so the aura
+/// layer does not depend on `ui_gen`.)
+pub fn split_aura_event_key(event: &str) -> (&str, Vec<&str>) {
+    if let Some(rest) = event.strip_prefix("on\"") {
+        if let Some(close) = rest.find('"') {
+            let end = 3 + close + 1; // just past the closing quote
+            let base = &event[..end];
+            let mods: Vec<&str> = event[end..]
+                .strip_prefix('.')
+                .map(|t| t.split('.').filter(|m| !m.is_empty()).collect())
+                .unwrap_or_default();
+            return (base, mods);
+        }
+    }
+    let mut parts = event.split('.');
+    let base = parts.next().unwrap_or(event);
+    (base, parts.collect())
+}
+
+/// Base-aware event lookup: exact `get` first, otherwise scan keys whose
+/// base (modifiers stripped via [`split_aura_event_key`]) equals `base`.
+///
+/// Event keys may carry modifiers (`oncontextmenu.prevent`); consumers that
+/// dispatch a single DOM event (VM button right-click, input change, …)
+/// must not miss those keys, so they look up by base name through here
+/// instead of `events.get(...)`.
+pub fn aura_events_get_base<'a>(
+    events: &'a HashMap<String, AuraEvent>,
+    base: &str,
+) -> Option<&'a AuraEvent> {
+    if let Some(ev) = events.get(base) {
+        return Some(ev);
+    }
+    // Plan 409 §8: match case-insensitively — .at sources commonly write
+    // `onClick:` (Vue convention) while VM lookups use lowercase `onclick`.
+    events
+        .iter()
+        .find(|(k, _)| split_aura_event_key(k).0.eq_ignore_ascii_case(base))
+        .map(|(_, v)| v)
+}
+
+/// AURA property value - can be an expression or a class binding
+#[derive(Debug, Clone)]
+pub enum AuraPropValue {
+    /// Regular expression value
+    Expr(auto_lang_core::ast::Expr),
+
+    /// Style binding: { completed: todo.done }
+    StyleBinding(Vec<AuraStyleBinding>),
+}
+
+/// A single style binding entry
+#[derive(Debug, Clone)]
+pub struct AuraStyleBinding {
+    /// Style name (e.g., "completed")
+    pub style_name: String,
+
+    /// Condition expression
+    pub condition: auto_lang_core::ast::Expr,
+}
+
+/// View node: element or text
+#[derive(Debug, Clone)]
+pub enum AuraNode {
+    /// Element node with tag, props, events, and children
+    Element {
+        /// Tag name (e.g., "col", "button", "h2")
+        tag: String,
+
+        /// Properties (key-value pairs, values can be dynamic or class bindings)
+        props: HashMap<String, AuraPropValue>,
+
+        /// Event handlers (event name -> AuraEvent)
+        events: HashMap<String, AuraEvent>,
+
+        /// Child nodes
+        children: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
+    },
+
+    /// Text node (literal or interpolated)
+    Text(AuraTextContent),
+
+    /// For loop: for item in .list { body }
+    ForLoop {
+        /// Loop variable name
+        var: String,
+
+        /// Optional index variable
+        index: Option<String>,
+
+        /// Iterable expression
+        iterable: String,
+
+        /// PLAN-046: optional keyed-for clause expression (`key: .id`).
+        /// Evaluated per item with loop bindings active; `None` = keyless
+        /// loop, item evaluation unchanged.
+        key_expr: Option<auto_lang_core::ast::Expr>,
+
+        /// Loop body nodes
+        body: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
+    },
+
+    /// Conditional: if condition { then_body } else { else_body }
+    Conditional {
+        /// Condition expression
+        condition: String,
+
+        /// Body when condition is true
+        then_body: Vec<AuraNode>,
+
+        /// Optional else body
+        else_body: Option<Vec<AuraNode>>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
+    },
+
+    /// Component instantiation
+    Component {
+        /// Component name
+        name: String,
+
+        /// Properties passed to component (Vec preserves insertion order)
+        props: Vec<(String, auto_lang_core::ast::Expr)>,
+
+        /// Event handlers
+        events: HashMap<String, AuraEvent>,
+
+        /// Plan 408 P11: child nodes passed to the component — `slot(name:"x")`
+        /// elements become `<template #x>…</template>`, plain children go to
+        /// the default slot. Empty when the call site is self-closing.
+        children: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
+    },
+
+    /// Router outlet: renders matched child route (Plan 105). PLAN-046
+    /// T-05: `outlet (memo: true)` corpus prop (prop > env gate > raw).
+    Outlet {
+        /// PLAN-708 T-01（S-01）三态载体（None=未设/Some(false)/Some(true)）；
+        /// 解析语义见 builder resolve_outlet_memo（env=0 强制关 > env=1
+        /// 强制开 > prop 缺省 on）。
+        memo: Option<bool>,
+    },
+
+    /// PLAN-046 T-04: explicit memo block — `memo (deps: .a, .b) { body }`
+    /// (`exact: true` optional). VM 渲染轨的用户声明缓存边界：deps 值指纹 ∪
+    /// 块内自动可证读槽（默认）或纯 deps（exact，语料签名担保）+ episode
+    /// 全同才命中复用。
+    MemoBlock {
+        /// Declared dependency expressions (value-fingerprinted per check)
+        deps: Vec<auto_lang_core::ast::Expr>,
+
+        /// Pure-deps trust mode (staleness risk borne by the corpus author)
+        exact: bool,
+
+        /// Block body nodes
+        body: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
+    },
+
+    /// Navigation link with routing (Plan 105)
+    Link {
+        /// Target path for router-link
+        to: String,
+
+        /// Text content (optional, for shorthand form)
+        text: String,
+
+        /// href for external links (optional)
+        href: String,
+
+        /// Child content
+        children: Vec<AuraNode>,
+
+        /// Source span: (byte_offset, byte_length) in the .at file
+        span: Option<(usize, usize)>,
+
+        /// Stable debug ID assigned during extraction (Plan 273)
+        debug_id: Option<AuraNodeId>,
+    },
+}
+
+/// Text content: can be literal or contain interpolations
+#[derive(Debug, Clone)]
+pub enum AuraTextContent {
+    /// Literal text
+    Literal(String),
+
+    /// Interpolated text with state references
+    /// Format: "Current Count: ${.count}"
+    Interpolated {
+        /// Raw text with ${...} placeholders
+        template: String,
+
+        /// Extracted state references (e.g., ["count"])
+        bindings: Vec<String>,
+    },
+}
+
+impl AuraNode {
+    /// Create a new element node
+    pub fn element(tag: impl Into<String>) -> Self {
+        AuraNode::Element {
+            tag: tag.into(),
+            props: HashMap::new(),
+            events: HashMap::new(),
+            children: Vec::new(),
+            span: None,
+            debug_id: None,
+        }
+    }
+
+    /// Create a text node
+    pub fn text(content: impl Into<String>) -> Self {
+        AuraNode::Text(AuraTextContent::Literal(content.into()))
+    }
+
+    /// Add a prop
+    pub fn with_prop(mut self, key: impl Into<String>, value: auto_lang_core::ast::Expr) -> Self {
+        if let AuraNode::Element { props, .. } = &mut self {
+            props.insert(key.into(), AuraPropValue::Expr(value));
+        }
+        self
+    }
+
+    /// Add an event handler
+    pub fn with_event(mut self, event: impl Into<String>, handler: impl Into<String>) -> Self {
+        if let AuraNode::Element { events, .. } = &mut self {
+            events.insert(
+                event.into(),
+                AuraEvent {
+                    handler: handler.into(),
+                    params: Vec::new(),
+                },
+            );
+        }
+        self
+    }
+
+    /// Add a child node
+    pub fn with_child(mut self, child: AuraNode) -> Self {
+        if let AuraNode::Element { children, .. } = &mut self {
+            children.push(child);
+        }
+        self
+    }
+}
+
+// ============================================================================
+// Logic Payload
+// ============================================================================
+
+/// Logic payload: supports both AOT and dynamic execution
+///
+/// This allows handlers to be:
+/// - Transpiled to target language (React/Compose)
+/// - Executed by AutoVM (GPUI dynamic)
+#[derive(Debug, Clone)]
+pub enum LogicPayload {
+    /// Original AutoLang AST statements for handler bodies.
+    /// This is the only payload variant produced by extract_on_block.
+    /// Consumed by: Vue (ts_adapter), Rust (ast_stmt_to_rust), Jet/Ark (TODO stubs).
+    AstStmts(Vec<auto_lang_core::ast::Stmt>),
+
+    /// Bytecode for AutoVM dynamic execution (GPUI)
+    /// Pre-compiled bytecode that can be executed at runtime
+    Bytecode(Vec<u8>),
+}
+
+// ============================================================================
+// Statements
+// ============================================================================
+
+// PR-5: AuraStmt / AuraUpdateOp removed — handlers now use LogicPayload::AstStmts
+// (base auto_lang_core::ast::Stmt) exclusively. See docs/design/dialect-extension-diagnosis.md §6.4.
+
+// ============================================================================
+// AURA Module
+// ============================================================================
+
+/// AURA Module: contains multiple widgets and app definition
+#[derive(Debug, Clone)]
+pub struct AuraModule {
+    /// Module name
+    pub name: String,
+
+    /// Widgets defined in this module
+    pub widgets: Vec<AuraWidget>,
+
+    /// Messages defined at module level
+    pub messages: Vec<AuraMessage>,
+
+    /// App definition (entry point)
+    pub app: Option<AuraApp>,
+}
+
+/// App definition: the entry point for UI applications
+#[derive(Debug, Clone)]
+pub struct AuraApp {
+    /// App name
+    pub name: String,
+
+    /// Root widget
+    pub root: String,
+
+    /// Window properties
+    pub window: AuraWindow,
+}
+
+/// Window properties
+#[derive(Debug, Clone)]
+pub struct AuraWindow {
+    /// Window title
+    pub title: String,
+
+    /// Window width
+    pub width: u32,
+
+    /// Window height
+    pub height: u32,
+}
+
+impl Default for AuraWindow {
+    fn default() -> Self {
+        AuraWindow {
+            title: "Auto App".to_string(),
+            width: 800,
+            height: 600,
+        }
+    }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_aura_node_element() {
+        let node = AuraNode::element("col")
+            .with_prop("gap", auto_lang_core::ast::Expr::Int(16))
+            .with_child(AuraNode::text("Hello"));
+
+        match node {
+            AuraNode::Element {
+                tag,
+                props,
+                children,
+                ..
+            } => {
+                assert_eq!(tag, "col");
+                assert_eq!(props.len(), 1);
+                assert_eq!(children.len(), 1);
+            }
+            _ => panic!("Expected Element node"),
+        }
+    }
+
+    #[test]
+    fn test_aura_node_text() {
+        let node = AuraNode::text("Hello World");
+
+        match node {
+            AuraNode::Text(AuraTextContent::Literal(s)) => {
+                assert_eq!(s, "Hello World");
+            }
+            _ => panic!("Expected Text node"),
+        }
+    }
+
+    #[test]
+    fn test_aura_state_def() {
+        let state = AuraStateDef {
+            name: "count".to_string(),
+            type_info: Type::Int,
+            initial: auto_lang_core::ast::Expr::Int(0),
+            decorators: vec![],
+        };
+
+        assert_eq!(state.name, "count");
+        assert!(matches!(state.type_info, Type::Int));
+    }
+
+    #[test]
+    fn test_aura_message() {
+        let msg = AuraMessage {
+            variants: vec![
+                AuraMsgVariant {
+                    name: "Inc".to_string(),
+                    quoted: false,
+                    payload: vec![],
+                    payload_names: vec![],
+                },
+                AuraMsgVariant {
+                    name: "Set".to_string(),
+                    quoted: false,
+                    payload: vec![Type::Int],
+                    payload_names: vec![None],
+                },
+            ],
+        };
+
+        assert_eq!(msg.variants.len(), 2);
+    }
+
+    #[test]
+    fn test_aura_widget() {
+        let widget = AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            name: "Counter".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: auto_lang_core::ast::Expr::Int(0),
+                decorators: vec![],
+            }],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: None,
+            timers: Vec::new(),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        };
+
+        assert_eq!(widget.name, "Counter");
+        assert_eq!(widget.state_vars.len(), 1);
+    }
+
+    #[test]
+    fn test_logic_payload() {
+        // PR-5: AstBlock removed; LogicPayload now has AstStmts + Bytecode.
+        let ast_payload = LogicPayload::AstStmts(vec![]);
+        let bytecode_payload = LogicPayload::Bytecode(vec![0x01, 0x02, 0x03]);
+
+        assert!(matches!(ast_payload, LogicPayload::AstStmts(_)));
+        assert!(matches!(bytecode_payload, LogicPayload::Bytecode(_)));
+    }
+
+    #[test]
+    fn test_aura_route() {
+        let route = AuraRoute {
+            path: "/user/:id".to_string(),
+            module: "user".to_string(),
+            widget_name: "User".to_string(),
+            params: vec!["id".to_string()],
+        };
+
+        assert_eq!(route.path, "/user/:id");
+        assert_eq!(route.module, "user");
+        assert_eq!(route.params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_aura_routes() {
+        let routes = AuraRoutes::with_routes(vec![
+            AuraRoute {
+                path: "/".to_string(),
+                module: "index".to_string(),
+                widget_name: "Index".to_string(),
+                params: vec![],
+            },
+            AuraRoute {
+                path: "/user/:id".to_string(),
+                module: "user".to_string(),
+                widget_name: "User".to_string(),
+                params: vec!["id".to_string()],
+            },
+        ]);
+
+        assert_eq!(routes.routes.len(), 2);
+        assert_eq!(routes.routes[0].path, "/");
+        assert_eq!(routes.routes[1].params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_aura_route_from_route_def() {
+        let route_def = RouteDef::new("/user/:id".to_string(), "user".to_string());
+        let aura_route: AuraRoute = route_def.into();
+
+        assert_eq!(aura_route.path, "/user/:id");
+        assert_eq!(aura_route.module, "user");
+        assert_eq!(aura_route.params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_aura_routes_from_routes_block() {
+        let mut block = RoutesBlock::new();
+        block.add_route(RouteDef::new("/button".to_string(), "button".to_string()));
+        block.add_route(RouteDef::new("/user/:id".to_string(), "user".to_string()));
+
+        let aura_routes: AuraRoutes = block.into();
+
+        assert_eq!(aura_routes.routes.len(), 2);
+        assert_eq!(aura_routes.routes[0].path, "/button");
+        assert_eq!(aura_routes.routes[1].params, vec!["id"]);
+    }
+
+    #[test]
+    fn test_widget_logic_and_view_split() {
+        // PR-3: 验证 logic()/view_data() 引用视图正确拆分 AuraWidget 的逻辑/视图两部分。
+        let widget = AuraWidget {
+            named_views: Vec::new(),
+            actions: None,
+            timers: Vec::new(),
+            name: "Counter".to_string(),
+            state_vars: vec![AuraStateDef {
+                name: "count".to_string(),
+                type_info: Type::Int,
+                initial: auto_lang_core::ast::Expr::Int(0),
+                decorators: vec![],
+            }],
+            computed: vec![],
+            messages: vec![],
+            view_tree: AuraNode::element("col"),
+            handlers: std::collections::BTreeMap::new(),
+            props: vec![],
+            routes: None,
+            lifecycle: vec![],
+            tick_interval: Some(16),
+            handler_params: HashMap::new(),
+            span_map: HashMap::new(),
+            key_bindings: HashMap::new(),
+            api_imports: vec![],
+            style_css: None,
+            ext_imports: Vec::new(),
+            watchers: Vec::new(),
+            exposes: Vec::new(),
+            setup: None,
+        };
+
+        // logic 视图
+        let logic = widget.logic();
+        assert_eq!(logic.name, "Counter");
+        assert_eq!(logic.state_vars.len(), 1);
+        assert_eq!(logic.state_vars[0].name, "count");
+
+        // view_data 视图
+        let view = widget.view_data();
+        assert!(matches!(view.view_tree, AuraNode::Element { .. }));
+        assert_eq!(view.tick_interval, Some(16));
+
+        // logic 视图不含视图字段；view_data 视图不含逻辑字段
+        // （编译期已由类型保证，这里只验证可访问性）
+    }
+
+    #[test]
+    fn test_split_aura_event_key() {
+        let (base, mods) = split_aura_event_key("onkeydown.enter.prevent");
+        assert_eq!(base, "onkeydown");
+        assert_eq!(mods, vec!["enter", "prevent"]);
+
+        let (base, mods) = split_aura_event_key("onclick");
+        assert_eq!(base, "onclick");
+        assert!(mods.is_empty());
+
+        // Quoted custom names: dots/colons inside the quotes are part of the
+        // base, only what follows the closing quote is modifiers.
+        let (base, mods) = split_aura_event_key("on\"autodown:slash-open\".prevent");
+        assert_eq!(base, "on\"autodown:slash-open\"");
+        assert_eq!(mods, vec!["prevent"]);
+
+        let (base, mods) = split_aura_event_key("on\"autodown:slash-open\"");
+        assert_eq!(base, "on\"autodown:slash-open\"");
+        assert!(mods.is_empty());
+    }
+
+    #[test]
+    fn test_aura_events_get_base() {
+        let mk = |handler: &str| AuraEvent {
+            handler: handler.to_string(),
+            params: Vec::new(),
+        };
+        let mut events: HashMap<String, AuraEvent> = HashMap::new();
+        events.insert("oncontextmenu.prevent".to_string(), mk(".Flag"));
+        events.insert("onclick".to_string(), mk(".Tap"));
+
+        // Exact hit takes the fast path.
+        assert_eq!(
+            aura_events_get_base(&events, "onclick").unwrap().handler,
+            ".Tap"
+        );
+        // Modifier-carrying key is found by its base.
+        assert_eq!(
+            aura_events_get_base(&events, "oncontextmenu")
+                .unwrap()
+                .handler,
+            ".Flag"
+        );
+        // Unknown base misses.
+        assert!(aura_events_get_base(&events, "oninput").is_none());
+    }
+}

@@ -14,6 +14,15 @@ auto-lang-core = { path = "../auto-lang-core", features = ["ui-dialect"] }
 # PLAN-814 T-03 Batch 1：action_config 解析消费的轻前端 crate（与 SDK 同源）。
 auto-atom = { path = "../auto-atom" }
 auto-val = { path = "../auto-val", features = ["serde"] }
+# PLAN-814 T-03 Batch 2：aura 诊断面（miette/thiserror）+ ui_gen 序列化。
+miette = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+log = { workspace = true }
+toml = { workspace = true }
+regex = "1"
+walkdir = "2"
 
 [dev-dependencies]
 # PLAN-814 T-03 Batch 1：lucide 表脚手架测试（node_modules 抽样核对）。

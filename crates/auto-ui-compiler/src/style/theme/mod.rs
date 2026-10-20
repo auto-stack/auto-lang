@@ -65,7 +65,8 @@ pub fn active_theme_rgb(token: registry::TokenName, is_dark: bool) -> Option<(u8
 
 /// PLAN-601 T-10：活动合成主题（editor syntax 系统首次构建时把它烘焙进
 /// 主题集——合成主题 boot 后即固定，先于任何编辑器创建）。
-pub fn active_composed() -> Option<std::sync::Arc<auto_lang_core::design_tokens::decl::ComposedTheme>> {
+pub fn active_composed(
+) -> Option<std::sync::Arc<auto_lang_core::design_tokens::decl::ComposedTheme>> {
     ACTIVE_THEME.with(|t| match &*t.borrow() {
         ActiveSpec::Composed(c) => Some(c.clone()),
         ActiveSpec::Builtin(_) => None,

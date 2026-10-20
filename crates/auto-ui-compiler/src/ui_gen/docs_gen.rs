@@ -1,0 +1,435 @@
+//! Plan 435 P5 / P8-1(D13)—— schema 驱动的组件文档生成器(库侧)。
+//!
+//! 从 docs/schema/aura.at 生成两份产物:
+//! - `generate_core_reference()`:核心组件参考 Markdown
+//!   (tier ∈ {builtin_widget, native_html};tier/后端徽章 + props 表 + 别名/家族);
+//! - `generate_kitchen_sink()`:kitchen-sink demo 页 `.at`
+//!   (builtin_widget 层含可字面化 props 的元素,每节默认形态 + 变体)。
+//!
+//! 调用方:`auto docs gen` CLI(crates/auto)与 tests/docs_gen.rs 同步围栏。
+//! 围栏(文档覆盖/对拍)留在测试侧 —— 生成是库能力,纪律是仓库纪律。
+
+use crate::aura::schema::PropType;
+
+/// (canonical, tier, category, description, aliases, sub_widgets, props, backends)
+pub struct ElemInfo {
+    pub canonical: String,
+    pub tier: String,
+    pub category: String,
+    pub description: String,
+    pub aliases: Vec<String>,
+    pub sub_widgets: Vec<String>,
+    pub props: Vec<(String, String, String, String)>, // (name, type, default, desc)
+    pub allows_children: bool,
+    pub web: String,
+    pub iced: String,
+    /// P7-2/D9:vue 组件 import 路径 —— 非 @/components/ui/* 的是 app 本地
+    /// 命令式外壳(CodeEditor/AutoDownEditor/ChatMessage),props 不按
+    /// 字面 prop 绑定,kitchen-sink 变体发射须跳过。
+    pub vue_import: Option<String>,
+    /// Plan 562:退役标注(schema superseded_by)——带标注的元素不进
+    /// core.md / kitchen-sink 生成物(nav 族,实现移除留观察期)。
+    pub superseded_by: Option<String>,
+}
+
+/// 描述文本进 Markdown/VitePress 前的 HTML 转义——schema 描述里出现
+/// `<prefix>_pts` 这类裸尖括号会被 Vue 模板编译器当未闭合标签,整站 build 失败。
+fn esc_desc(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+pub fn prop_type_str(t: &PropType) -> String {
+    match t {
+        PropType::String => "string".into(),
+        PropType::Int => "int".into(),
+        PropType::Float => "float".into(),
+        PropType::Bool => "bool".into(),
+        PropType::Color => "color".into(),
+        PropType::StateRef => "state_ref".into(),
+        PropType::MsgRef => "msg_ref".into(),
+        PropType::Expr => "expr".into(),
+        PropType::Closure => "closure".into(),
+        PropType::StyleBinding => "class_binding".into(),
+        PropType::Interpolated => "interpolated".into(),
+        PropType::Union(v) => {
+            let inner: Vec<String> = v.iter().map(prop_type_str).collect();
+            format!("union: {}", inner.join("|"))
+        }
+        PropType::OneOf(v) => format!("one_of: {}", v.join("|")),
+    }
+}
+
+pub fn load_elements() -> Vec<ElemInfo> {
+    let schema = crate::aura::default_schema_cached().expect("schema");
+    let mut out = Vec::new();
+    for (tag, def) in &schema.elements {
+        let meta = schema.meta.get(*tag);
+        let tier = meta
+            .map(|m| m.tier.as_str())
+            .unwrap_or("unclassified")
+            .to_string();
+        let web = meta.map(|m| m.backends.web.clone()).unwrap_or_default();
+        let iced = meta.map(|m| m.backends.iced.clone()).unwrap_or_default();
+        out.push(ElemInfo {
+            canonical: tag.to_string(),
+            tier,
+            category: format!("{:?}", def.category).to_lowercase(),
+            description: def.description.to_string(),
+            aliases: meta
+                .map(|m| m.aliases.iter().map(|a| a.to_string()).collect())
+                .unwrap_or_default(),
+            sub_widgets: meta
+                .map(|m| m.sub_widgets.iter().map(|s| s.to_string()).collect())
+                .unwrap_or_default(),
+            props: def
+                .props
+                .iter()
+                .map(|p| {
+                    (
+                        p.name.to_string(),
+                        prop_type_str(&p.type_),
+                        p.default.unwrap_or("—").to_string(),
+                        p.description.to_string(),
+                    )
+                })
+                .collect(),
+            allows_children: def.allows_children,
+            web,
+            iced,
+            vue_import: meta
+                .and_then(|m| m.vue.as_ref())
+                .and_then(|v| v.import.clone()),
+            superseded_by: meta.and_then(|m| m.superseded_by.clone()),
+        });
+    }
+    out
+}
+
+/// Plan 435 P8-7(D13):gallery 页面 stem 折叠键表(fold → 页名 stem)。
+/// PLAN-590(Stage B P-5):widgets-gallery 物理迁 auto-os 顶层,demo 链接
+/// 语料改经 `resolve_os_top_dir` 解析序定位(env AUTO_OS_ROOT → 兄弟 →
+/// 主检出);未解析(solo 检出)→ 空表,core.md 再生成不带 demo 链接
+/// (docs_gen 测试在该形态整体 SKIP,见 tests/docs_gen.rs 守卫)。
+pub fn gallery_page_stems(root: &std::path::Path) -> std::collections::BTreeMap<String, String> {
+    // 基准 = 仓根父目录(其 auto-os 子目录 = 兄弟候选;主检出兜底见 resolver)
+    let sibling_base = root.join("..");
+    let dir = auto_lang_core::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
+        .map(|g| g.join("src/front/pages"));
+    let mut out = std::collections::BTreeMap::new();
+    if let Some(dir) = dir {
+        if let Ok(rd) = std::fs::read_dir(&dir) {
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.extension().map_or(false, |x| x == "at") {
+                    if let Some(stem) = p.file_stem().and_then(|s| s.to_str()) {
+                        if stem != "index" {
+                            out.insert(fold_str(stem), stem.to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn fold_str(s: &str) -> String {
+    s.chars()
+        .filter(|c| *c != '-' && *c != '_')
+        .collect::<String>()
+        .to_lowercase()
+}
+
+/// 核心组件参考(docs/components/core.md)生成。
+/// `root` = 仓库根(P8-7:demo 链接需查 gallery 页面表)。
+pub fn generate_core_reference(root: &std::path::Path) -> String {
+    let demo_pages = gallery_page_stems(root);
+    let mut elems = load_elements();
+    // Plan 562:带 superseded_by 标注的退役元素(nav 族)不进生成物——
+    // 标注本身即文档面记录,实现移除留观察期。
+    elems.retain(|e| {
+        (e.tier == "builtin_widget" || e.tier == "native_html") && e.superseded_by.is_none()
+    });
+    elems.sort_by(|a, b| {
+        let ra = if a.tier == "builtin_widget" { 0 } else { 1 };
+        let rb = if b.tier == "builtin_widget" { 0 } else { 1 };
+        ra.cmp(&rb).then(a.canonical.cmp(&b.canonical))
+    });
+
+    let mut md = String::new();
+    md.push_str("---\ntitle: 核心组件参考(Core Components)\n---\n\n");
+    md.push_str(
+        "> 本页由 schema/aura.at 生成(Plan 435 P5)—— **勿手改**;再生成:\n\
+         > `auto docs gen`(推荐;测试内等价 `DOCS_GEN_UPDATE=1 cargo test -p auto-lang --test docs_gen`)\n\
+         > tier 语义:`builtin_widget`=桌面有实现;`native_html`=Web 原生直通。\n\
+         > shadcn 家族组件的活文档/Demo 见 widgets-gallery(本页仅收核心层)。\n\n",
+    );
+
+    for tier in ["builtin_widget", "native_html"] {
+        md.push_str(&format!(
+            "## {}\n\n",
+            if tier == "builtin_widget" {
+                "内置组件(builtin_widget)"
+            } else {
+                "原生直通(native_html)"
+            }
+        ));
+        for e in elems.iter().filter(|e| e.tier == tier) {
+            md.push_str(&format!("### `{}`\n\n", e.canonical));
+            md.push_str(&format!(
+                "`{}` · `{}` · web: `{}` · iced: `{}` · category: `{}`\n\n",
+                e.tier, e.canonical, e.web, e.iced, e.category
+            ));
+            // P8-7:有 gallery 页的元素加 demo 链接(VitePress → gallery 互链)
+            if let Some(stem) = demo_pages.get(&fold_str(&e.canonical)) {
+                md.push_str(&format!(
+                    "[demo →](/examples/widgets-gallery/{stem})
+
+"
+                ));
+            }
+            if !e.description.is_empty() {
+                md.push_str(&format!("{}\n\n", esc_desc(&e.description)));
+            }
+            if !e.aliases.is_empty() {
+                md.push_str(&format!(
+                    "别名:{}\n\n",
+                    e.aliases
+                        .iter()
+                        .map(|a| format!("`{}`", a))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ));
+            }
+            if e.props.is_empty() {
+                md.push_str("_props 待声明_\n\n");
+            } else {
+                md.push_str("| Prop | Type | Default | Description |\n|------|------|---------|-------------|\n");
+                for (n, ty, d, desc) in &e.props {
+                    md.push_str(&format!(
+                        "| `{}` | `{}` | {} | {} |\n",
+                        n,
+                        ty,
+                        d,
+                        esc_desc(desc)
+                    ));
+                }
+                md.push('\n');
+            }
+            if !e.sub_widgets.is_empty() {
+                md.push_str(&format!(
+                    "子件:{}\n\n",
+                    e.sub_widgets
+                        .iter()
+                        .map(|s| format!("`{}`", s))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ));
+            }
+            md.push_str("---\n\n");
+        }
+    }
+    md
+}
+
+fn literal_prop_variants(prop: &(String, String, String, String)) -> Vec<String> {
+    // 返回该 prop 的示例取值(字面可写的);空 = 跳过
+    let (name, ty, _default, _desc) = prop;
+    if name == "class" || name == "style" || name.starts_with("on") {
+        return Vec::new();
+    }
+    if let Some(opts) = ty.strip_prefix("one_of:") {
+        // prop_type_str 用 | 连接 OneOf 取值
+        return opts
+            .split('|')
+            .take(3)
+            .map(|v| v.trim().to_string())
+            .collect();
+    }
+    match ty.as_str() {
+        "string" => vec!["sample".to_string()],
+        "bool" => vec!["true".to_string()],
+        "int" | "float" | "color" => vec!["1".to_string()],
+        _ => Vec::new(), // state_ref/msg_ref/expr/closure/union —— 需状态,跳过
+    }
+}
+
+/// kitchen-sink demo 页(examples/widgets-gallery/src/front/pages/kitchen-sink.at)生成。
+pub fn generate_kitchen_sink() -> String {
+    let mut elems = load_elements();
+    elems.retain(|e| {
+        // PLAN-528 W6(生成器固化,PLAN-536 T11): 桌面壳专属 widget(Plan 526)
+        // 的 @/wm/* 脚手架在 web 画廊工程不存在——不入 web 生成页
+        // (此前是手工版页面的例外注记,固化后页面回归"勿手改"幂等)。
+        const DESKTOP_SHELL_ONLY: &[&str] = &["window_thumbnail"];
+        // Plan 656's synthetic scroll extent is a capability-test fixture, not
+        // a public widget. Its 10,000,000px default makes the gallery unusable.
+        const NON_PUBLIC_HELPERS: &[&str] = &["scroll_test_content"];
+        e.tier == "builtin_widget"
+            && !DESKTOP_SHELL_ONLY.contains(&e.canonical.as_str())
+            && !NON_PUBLIC_HELPERS.contains(&e.canonical.as_str())
+            // Plan 562:退役元素(superseded_by 标注,nav 族)不入生成页
+            && e.superseded_by.is_none()
+            && e.props.iter().any(|pr| !literal_prop_variants(pr).is_empty())
+    });
+    elems.sort_by(|a, b| a.canonical.cmp(&b.canonical));
+
+    let mut at = String::new();
+    // Preserve the historical generator label consumed by auto-os golden assets.
+    // The active declaration source is now docs/schema/aura.at (PLAN-763).
+    at.push_str("// Plan 435 P5b —— kitchen-sink demo 页(schema/aura.at 生成,**勿手改**)\n");
+    at.push_str("// 再生成:auto docs gen(测试内等价 KITCHEN_SINK_UPDATE=1 cargo test -p auto-lang --test docs_gen)\n");
+    at.push_str("// 覆盖:builtin_widget 层含可字面化 props 的全部元素(当前 ");
+    at.push_str(&format!("{}", elems.len()));
+    at.push_str(" 个)。\n\n");
+    at.push_str("widget KitchenSinkPage {\n");
+    at.push_str("    msg { Go }\n");
+    at.push_str("    model { dummy int = 0 }\n");
+    at.push_str("    on { .Go -> { } }\n");
+    at.push_str("    view {\n");
+    at.push_str("        col (style: \"p-6 space-y-8\") {\n");
+    at.push_str("            h1 \"Kitchen Sink\"\n");
+    at.push_str("            text \"核心组件全量示例 —— schema 生成页,展示每个组件的 props 取值。\" { style: \"text-muted-foreground\" }\n");
+    for e in &elems {
+        at.push_str(&format!("\n            h2 \"{}\"\n", e.canonical));
+        at.push_str("            row (style: \"gap-2 flex-wrap items-center w-full min-w-0\") {\n");
+        // Overlay parts require their owning root's injected context. Show a
+        // complete sample for these rows rather than mounting a leaf alone.
+        let overlay_sample = match e.canonical.as_str() {
+            "dropdown-menu" => Some("dropdown-menu { dropdown-menu-trigger { button (text: \"Open menu\", variant: \"outline\") {} } dropdown-menu-content { dropdown-menu-item \"Profile\" dropdown-menu-item \"Settings\" } }"),
+            "alert_dialog_action" | "alert_dialog_cancel" | "alert_dialog_description" | "alert_dialog_title" | "alert_dialog_trigger" => Some("alert_dialog { alert_dialog_trigger { button (text: \"Open dialog\", variant: \"outline\") {} } alert_dialog_content { alert_dialog_header { alert_dialog_title \"Dialog sample\" alert_dialog_description \"Dialog content sample\" } alert_dialog_footer { alert_dialog_cancel \"Cancel\" alert_dialog_action \"Continue\" } } }"),
+            "drawer_content" | "drawer_description" | "drawer_title" | "drawer_trigger" => Some("drawer { drawer-trigger \"Open drawer\" drawer-content { drawer-header { drawer-title \"Drawer sample\" drawer-description \"Drawer content sample\" } drawer-footer { button (text: \"Done\") {} } } }"),
+            "hover_card_content" | "hover_card_trigger" => Some("hover_card { hover_card_trigger { button (text: \"Hover for details\", variant: \"outline\") {} } hover_card_content { text \"Hover card sample\" {} } }"),
+            "sheet_content" | "sheet_title" | "sheet_trigger" => Some("sheet { sheet_trigger { button (text: \"Open sheet\", variant: \"outline\") {} } sheet_content { sheet_header { sheet-title \"Sheet sample\" sheet-description \"Sheet content sample\" } } }"),
+            _ => None,
+        };
+        if let Some(sample) = overlay_sample {
+            at.push_str("                ");
+            at.push_str(sample);
+            at.push('\n');
+        } else {
+            // 默认形态(裸标签或 text 简写)。P499-6:视图关键字名元素
+            // (link/tag/use——`link` 被 parse_view_link 独占,Plan 105)不可
+            // 发射标签简写 `name "text" {}`(解析错级联 20×"Expected term,
+            // got RBrace" → serve 跳页 → router 悬空 500);link 用其关键字
+            // 形状 (text:,href:) 显式发射,其余关键字名退回裸形态。
+            const VIEW_KEYWORD_ELEMENTS: &[&str] = &["link", "tag", "use"];
+            if e.canonical == "spacer" {
+                at.push_str("                row (style: \"w-full items-center gap-2\") { text \"Start\" {} spacer {} text \"End\" {} }\n");
+            } else if e.canonical == "autodown_editor" {
+                at.push_str(
+                    "                autodown_editor (content: \"Sample editor content\") {}\n",
+                );
+            } else if e.canonical == "link" {
+                at.push_str("                link (text: \"sample\", href: \"/button\") {}\n");
+            } else if VIEW_KEYWORD_ELEMENTS.contains(&e.canonical.as_str()) {
+                at.push_str(&format!("                {} {{}}\n", e.canonical));
+            } else if e.props.iter().any(|pr| pr.0 == "text") {
+                at.push_str(&format!(
+                    "                {} \"sample\" {{}}\n",
+                    e.canonical
+                ));
+            } else if e.allows_children {
+                let child = match e.canonical.as_str() {
+                "col" => "text \"Column item\" {} text \"Second item\" {}",
+                "container" => "text \"Contained sample\" {}",
+                "grid" => "text \"Cell one\" {} text \"Cell two\" {} text \"Cell three\" {}",
+                "row" => "text \"First item\" {} text \"Second item\" {}",
+                "scroll" => "text \"Scrollable sample content\" {} text \"Second line\" {}",
+                "select" => "select-trigger { select-value (placeholder: \"Choose an option\") {} } select-content { select-item (text: \"Sample option\", value: \"sample\") {} }",
+                "dropdown-menu" => "dropdown-menu-trigger { button (text: \"Open menu\", variant: \"outline\") {} } dropdown-menu-content { dropdown-menu-item \"Profile\" dropdown-menu-item \"Settings\" }",
+                "drawer" => "drawer-trigger \"Open drawer\" drawer-content { drawer-header { drawer-title \"Drawer sample\" drawer-description \"Visible after opening the drawer.\" } }",
+                "hover_card" => "hover-card-trigger { button (text: \"Hover for details\", variant: \"outline\") {} } hover-card-content { text \"Hover card sample\" {} }",
+                "popover" => "popover-trigger { button (text: \"Open popover\", variant: \"outline\") {} } popover-content { text \"Popover sample\" {} }",
+                "sheet" => "sheet-trigger { button (text: \"Open sheet\", variant: \"outline\") {} } sheet-content { sheet-header { sheet-title \"Sheet sample\" sheet-description \"Visible after opening the sheet.\" } }",
+                "alert_dialog_trigger" => "button (text: \"Open dialog\", variant: \"outline\") {}",
+                "slot" => "text \"Slot content\" {}",
+                _ => "text \"sample\" {}",
+            };
+                if e.canonical == "scroll" {
+                    at.push_str("                scroll (style: \"h-20 w-64\") { ");
+                    at.push_str(child);
+                    at.push_str(" }\n");
+                } else {
+                    at.push_str(&format!(
+                        "                {} {{ {} }}\n",
+                        e.canonical, child
+                    ));
+                }
+            } else {
+                at.push_str(&format!("                {} {{}}\n", e.canonical));
+            }
+        }
+        if e.canonical == "toaster" {
+            at.push_str(
+                "                text \"Toast host (visible after a toast is queued)\" {}\n",
+            );
+        }
+        if e.canonical == "workspace_preview" {
+            at.push_str(
+                "                text \"Workspace preview needs a live host snapshot.\" {}\n",
+            );
+        }
+        // 变体:每 prop 至多 2 个取值,总变体至多 4。
+        // P7-2/D9:app 本地命令式外壳组件(import 非 @/components/ui/*)的
+        // props 不按字面绑定(如 code_editor 的 key/content 在真实组件上
+        // 不存在),只发射默认形态。
+        let shell_component = e
+            .vue_import
+            .as_deref()
+            .map_or(false, |p| !p.starts_with("@/components/ui/"));
+        let mut variants = if overlay_sample.is_some() { 4 } else { 0 };
+        for pr in &e.props {
+            if shell_component || variants >= 4 {
+                break;
+            }
+            if e.canonical == "spacer" {
+                if pr.0 == "size" {
+                    at.push_str("                row (style: \"w-full items-center gap-2\") { text \"Start\" {} spacer (size: 16) {} text \"End\" {} }\n");
+                    variants += 1;
+                }
+                continue;
+            }
+            for v in literal_prop_variants(pr).into_iter().take(2) {
+                if variants >= 4 {
+                    break;
+                }
+                if pr.0 == "text" {
+                    continue;
+                } // text 已用简写
+                  // PLAN-528 W6(生成器固化,PLAN-536 T11): src 指向 public/icon.png
+                  // ——裸词 "sample" 会被 vue 生成器当静态资源 import,vite 解析
+                  // 不到整页 500(此前是手工版页面的例外注记)。
+                let v = if pr.0 == "src" {
+                    "/icon.png".to_string()
+                } else if pr.0 == "to" || pr.0 == "href" {
+                    "/button".to_string()
+                } else {
+                    v
+                };
+                at.push_str(&format!(
+                    "                {} ({}: {}) {{}}\n",
+                    e.canonical,
+                    pr.0,
+                    quote_if_str(&v, &pr.1)
+                ));
+                variants += 1;
+            }
+        }
+        at.push_str("            }\n");
+    }
+    at.push_str("        }\n");
+    at.push_str("    }\n");
+    at.push_str("}\n");
+    at
+}
+
+fn quote_if_str(v: &str, ty: &str) -> String {
+    if ty.starts_with("one_of:") || ty == "string" || ty == "color" {
+        format!("\"{}\"", v)
+    } else {
+        v.to_string()
+    }
+}
