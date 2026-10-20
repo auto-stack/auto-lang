@@ -128,12 +128,17 @@ pub fn c_source_identity(src: &std::path::Path) -> Result<String, String> {
 /// * `target` / `toolchain`: the key carries them, but the DISCOVERY
 ///   path must consume them too (F-797-R9-01's foreign-toolchain
 ///   positive control);
-/// * `src_listing` / `inc_listing`: the NEGATIVE-DEPENDENCY snapshot —
-///   the source/header file NAMES visible in the two search dirs. A NEW
-///   or REMOVED nearby file can change include resolution (shadowing)
-///   without touching any recorded dep's content
-///   (F-797-R4-07's shadow counterexample), so a listing change is a
-///   miss even when every recorded dep still hashes equal.
+/// * `dir_listings`: the NEGATIVE-DEPENDENCY snapshot — the recursive
+///   file listing of EVERY directory that participates in include
+///   resolution for this compilation: the source's directory, the
+///   explicit `-I` directory, AND the parent directory of every
+///   RECORDED dependency (the preprocessor also searches the including
+///   file's directory — a header pulled in from anywhere puts ITS
+///   directory on the search path, F-797-R4-07 R11's transitive-shadow
+///   counterexample). A NEW or REMOVED file in any of these dirs can
+///   change include resolution (shadowing) without touching any
+///   recorded dep's content, so a listing change is a miss even when
+///   every recorded dep still hashes equal.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct CObjectEntry {
     v: u32,
@@ -144,8 +149,7 @@ struct CObjectEntry {
     toolchain: String,
     obj_b64: String,
     deps: Vec<(String, String)>,
-    src_listing: Vec<String>,
-    inc_listing: Vec<String>,
+    dir_listings: Vec<(String, Vec<String>)>,
 }
 
 /// Snapshot EVERY file the search tree currently offers (negative
@@ -156,7 +160,12 @@ struct CObjectEntry {
 /// COMPILE/LINK ARTIFACTS are excluded (a build must not invalidate
 /// itself); anything else — extension-less files included — is a
 /// potential include candidate and part of the environment.
-fn search_listing(dir: &std::path::Path) -> Vec<String> {
+/// `recursive=false` lists ONLY the directory's top level (used for
+/// dependency-parent dirs outside the two explicit roots: a sibling
+/// shadow next to a transitive header is caught, sub-path targets are
+/// covered by their own parent dirs entering the set, and walking an
+/// entire toolchain include TREE per lookup stays off the hot path).
+fn search_listing_mode(dir: &std::path::Path, recursive: bool) -> Vec<String> {
     fn is_artifact(name: &str) -> bool {
         let l = name.to_ascii_lowercase();
         l.ends_with(".obj")
@@ -170,7 +179,7 @@ fn search_listing(dir: &std::path::Path) -> Vec<String> {
             // staged-link temporaries: <exe>.tmp-<txn> beside the output
             || l.contains(".tmp-")
     }
-    fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>) {
+    fn walk_mode(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>, recursive: bool) {
         let Ok(rd) = std::fs::read_dir(dir) else {
             return;
         };
@@ -186,14 +195,16 @@ fn search_listing(dir: &std::path::Path) -> Vec<String> {
                 format!("{prefix}/{name}")
             };
             if e.file_type().is_ok_and(|t| t.is_dir()) {
-                walk(&e.path(), &rel, out);
+                if recursive {
+                    walk_mode(&e.path(), &rel, out, true);
+                }
             } else if !is_artifact(&name) {
                 out.push(rel);
             }
         }
     }
     let mut names = Vec::new();
-    walk(dir, "", &mut names);
+    walk_mode(dir, "", &mut names, recursive);
     names
 }
 
@@ -288,14 +299,21 @@ where
                 let verified = serde_json::from_slice::<CObjectEntry>(&payload)
                     .ok()
                     .filter(|e| {
-                        e.v == 2
+                        e.v == 3
                             && e.source == source_identity
                             && e.src_dir == src_dir
                             && e.include_dir == inc_dir_s
                             && e.target == target
                             && e.toolchain == toolchain
-                            && e.src_listing == search_listing(std::path::Path::new(&src_dir))
-                            && e.inc_listing == search_listing(include_dir)
+                            // every RECORDED search dir (source dir,
+                            // include dir, and each recorded dep's
+                            // parent — the transitive include-chain
+                            // dirs) must still offer exactly the
+                            // recorded file set
+                            && e.dir_listings.iter().all(|(d, l)| {
+                                let recursive = d == &src_dir || d == &inc_dir_s;
+                                search_listing_mode(std::path::Path::new(d), recursive) == *l
+                            })
                     })
                     .and_then(|e| {
                         base64::engine::general_purpose::STANDARD
@@ -340,23 +358,48 @@ where
     // a NEW key (the old generation stays for its own environment and is
     // reclaimed by GC) instead of colliding with the content-bound old
     // entry; same-input repeats hit and never put at all.
-    let src_listing = search_listing(std::path::Path::new(&src_dir));
-    let inc_listing = search_listing(include_dir);
+    // F-797-R4-07 (R11): the SEARCH-DOMAIN DIRS — the source dir, the
+    // include dir, AND the parent dir of every recorded dependency (the
+    // preprocessor searches the including file's directory, so a
+    // transitive header puts its own dir on the search path even when
+    // it lies outside the two explicit roots).
+    let mut dirs: Vec<String> = vec![src_dir.clone(), inc_dir_s.clone()];
+    for (p, _) in &hashed {
+        if let Some(parent) = std::path::Path::new(p).parent() {
+            let ps = parent.display().to_string();
+            if !dirs.contains(&ps) {
+                dirs.push(ps);
+            }
+        }
+    }
+    dirs.sort();
+    dirs.dedup();
+    let dir_listings: Vec<(String, Vec<String>)> = dirs
+        .iter()
+        .map(|d| {
+            let recursive = *d == src_dir || *d == inc_dir_s;
+            (
+                d.clone(),
+                search_listing_mode(std::path::Path::new(d), recursive),
+            )
+        })
+        .collect();
     let mut gen_lines: Vec<String> = hashed.iter().map(|(p, h)| format!("dep|{p}|{h}")).collect();
     gen_lines.push(format!("src_dir|{src_dir}"));
     gen_lines.push(format!("inc_dir|{inc_dir_s}"));
     gen_lines.push(format!("target|{target}"));
     gen_lines.push(format!("toolchain|{toolchain}"));
-    for n in &src_listing {
-        gen_lines.push(format!("srcl|{n}"));
-    }
-    for n in &inc_listing {
-        gen_lines.push(format!("incl|{n}"));
+    for (d, l) in &dir_listings {
+        gen_lines.push(format!("dir|{d}"));
+        for n in l {
+            gen_lines.push(format!("file|{d}|{n}"));
+        }
     }
     gen_lines.sort();
+    gen_lines.dedup();
     let generation_hash = crate::semref::blake3_hex(gen_lines.join("\n").as_bytes());
     let entry = CObjectEntry {
-        v: 2,
+        v: 3,
         source: source_identity.clone(),
         src_dir: src_dir.clone(),
         include_dir: inc_dir_s.clone(),
@@ -364,8 +407,7 @@ where
         toolchain: toolchain.clone(),
         obj_b64: base64::engine::general_purpose::STANDARD.encode(&obj),
         deps: hashed,
-        src_listing,
-        inc_listing,
+        dir_listings,
     };
     let payload = serde_json::to_vec(&entry).map_err(|e| StoreError::Internal(e.to_string()))?;
     match store.put_artifact(PutRequest {

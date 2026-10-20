@@ -1207,8 +1207,12 @@ fn abi_cache_foreign_toolchain_generation_not_served() {
         "toolchain": "cl:C:\\foreign\\cl.exe|ver:x|hash:00|flags:-c",
         "obj_b64": base64::engine::general_purpose::STANDARD.encode(b"\0foreign-object-payload"),
         "deps": [],
-        "src_listing": ["caller.c", "dep.h"],
-        "inc_listing": ["caller.c", "dep.h"],
+        "dir_listings": [
+            (
+                root.display().to_string(),
+                vec!["caller.c".to_string(), "dep.h".to_string()],
+            ),
+        ],
     });
     let key = auto_abi_probe::cache::c_object_key(&ident, "foreign-closure");
     store
@@ -1517,4 +1521,66 @@ fn abi_cache_no_include_cross_project_both_succeed() {
         assert_eq!(pe.code, 17, "{proj}");
     }
     assert_eq!(runs.get(), 2, "both projects really compiled");
+}
+
+/// F-797-R4-07 (R11): TRANSITIVE include directories are part of the
+/// search environment — the reviewer's construction: src/value.c
+/// includes ../common/outer.h; outer.h includes "dep.h" which resolves
+/// via -I include/ (17). A NEW common/dep.h (29) sits in the INCLUDING
+/// header's directory — outside both snapshot roots — and wins the
+/// resolution; the dependency-dir listings must force a miss.
+#[test]
+fn abi_cache_transitive_header_dir_shadow_invalidates() {
+    let root = t05_root().join("transitive");
+    let _ = std::fs::remove_dir_all(&root);
+    let srcdir = root.join("project/src");
+    let common = root.join("project/common");
+    let include = root.join("project/include");
+    std::fs::create_dir_all(&srcdir).unwrap();
+    std::fs::create_dir_all(&common).unwrap();
+    std::fs::create_dir_all(&include).unwrap();
+    std::fs::write(
+        srcdir.join("value.c"),
+        "#include \"../common/outer.h\"\n__declspec(dllimport) void __stdcall ExitProcess(unsigned int code);\nvoid p797_inc_entry(void) { ExitProcess(VALUE); }\n",
+    )
+    .unwrap();
+    std::fs::write(common.join("outer.h"), "#include \"dep.h\"\n").unwrap();
+    std::fs::write(include.join("dep.h"), "#define VALUE 17\n").unwrap();
+    let src = srcdir.join("value.c");
+    let store = fresh_store(&t05_root(), "transitive-store");
+    let runs = std::cell::Cell::new(0u32);
+    let link_run = |obj: &[u8]| -> i32 {
+        std::fs::write(srcdir.join("linked.obj"), obj).unwrap();
+        run::run_pe(&link_pe(&srcdir, &[srcdir.join("linked.obj")], "p797_inc_entry").unwrap())
+            .unwrap()
+            .code
+    };
+    let produce = || -> Result<(Vec<u8>, Vec<PathBuf>), String> {
+        runs.set(runs.get() + 1);
+        let obj = srcdir.join("caller.obj");
+        let deps = auto_abi_probe::ctool::compile_c_with_deps(&src, &include, &obj)
+            .map_err(|e| format!("cl: {e}"))?;
+        Ok((std::fs::read(&obj).map_err(|e| e.to_string())?, deps))
+    };
+
+    let (obj, hit) = auto_abi_probe::cache::produce_c_object(&store, &src, &include, produce)
+        .expect("initial compile");
+    assert!(!hit);
+    assert_eq!(link_run(&obj), 17, "dep.h resolves via the -I dir (17)");
+    let (_, hit_again) =
+        auto_abi_probe::cache::produce_c_object(&store, &src, &include, produce).expect("repeat");
+    assert!(hit_again, "unchanged environment hits");
+    assert_eq!(runs.get(), 1);
+
+    // the R11 counterexample: a NEW header in the TRANSITIVE header's
+    // own directory (not under src/ or include/) shadows dep.h
+    std::fs::write(common.join("dep.h"), "#define VALUE 29\n").unwrap();
+    let (obj29, hit29) = auto_abi_probe::cache::produce_c_object(&store, &src, &include, produce)
+        .expect("transitive shadow compile");
+    assert!(
+        !hit29,
+        "a new header in a transitive dependency's directory must invalidate"
+    );
+    assert_eq!(runs.get(), 2);
+    assert_eq!(link_run(&obj29), 29, "the transitive shadow wins (29)");
 }

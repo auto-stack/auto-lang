@@ -1217,3 +1217,59 @@ fn abi_admission_tiny_graph_with_long_name_computes() {
     let ok = layout::layout_record_owned(&mixed, &name).expect("mixed table computes");
     assert_eq!(ok.fields.len(), 1, "single-field chain: one leaf");
 }
+
+/// F-797-R4-10 (R11): the FLATTEN phase runs with ALL FOUR memo maps
+/// alive while `seen` re-copies every name along the deepest path — the
+/// reviewer's near-miss: a legal 1024-node single-field chain with
+/// 1700-byte RECORD names passed the size-phase walk (maps+chain under
+/// budget) but measured 9,018,591B of live heap at flatten time. The
+/// final gate now budgets the flatten-phase live set explicitly, so
+/// this input is refused; a mid-size control (800-byte names) computes.
+#[test]
+fn abi_admission_flatten_phase_peak_budgeted() {
+    fn chain_table(name_len: usize) -> BTreeMap<String, RecordDefOwned> {
+        let mk_name = |i: usize| -> String {
+            let base = format!("S{i}-");
+            format!("{base}{}", "x".repeat(name_len.saturating_sub(base.len())))
+        };
+        let mut t = BTreeMap::new();
+        for i in 0..1024usize {
+            let ty = if i + 1 < 1024 {
+                FieldTyOwned::Record(mk_name(i + 1))
+            } else {
+                FieldTyOwned::Scalar(SemScalar::U8)
+            };
+            t.insert(
+                mk_name(i),
+                RecordDefOwned {
+                    name: mk_name(i),
+                    fields: vec![FieldDefOwned {
+                        name: "next".into(),
+                        ty,
+                    }],
+                },
+            );
+        }
+        t
+    }
+    // mid-size control: maps ~3.7MB + flatten seen ~1.6MB — computes
+    let ok_table = chain_table(800);
+    let ok_first = ok_table.keys().next().cloned().unwrap();
+    let ok = layout::layout_record_owned(&ok_table, &ok_first)
+        .expect("mid-size chain computes (both phases inside budget)");
+    assert_eq!(ok.fields.len(), 1);
+    // the R11 counterexample: 1700-byte names — the flatten-phase live
+    // set (full maps + seen copies) crosses 8MiB — refused
+    let big_table = chain_table(1700);
+    let big_first = big_table.keys().next().cloned().unwrap();
+    match layout::layout_record_owned(&big_table, &big_first) {
+        Ok(l) => panic!(
+            "the 1700-byte-name chain must be refused at the flatten-phase budget; got {} fields",
+            l.fields.len()
+        ),
+        Err(LayoutError::StagingTooLarge { size, .. }) => {
+            assert!(size > layout::MAX_STAGING_BYTES);
+        }
+        other => panic!("expected StagingTooLarge (resource), got {other:?}"),
+    }
+}

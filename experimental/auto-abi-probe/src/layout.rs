@@ -311,6 +311,12 @@ pub fn layout_record_owned(
     // tiny table with one long name is charged only what it actually
     // uses (no fictional max-depth/max-name multiplication).
     let mut budget_used: u64 = 0;
+    // F-797-R4-10 (R11): peak OUTSTANDING chain charge — the flatten
+    // phase re-spends the same shape (its `seen` vector re-copies every
+    // name along the deepest path) while ALL FOUR memo maps stay alive,
+    // so the final gate must budget that phase explicitly instead of
+    // relying on chain credits returned during the size walk.
+    let mut chain_acc: (u64, u64) = (0, 0);
     compute_size(
         table,
         name,
@@ -321,6 +327,7 @@ pub fn layout_record_owned(
         &mut path_bytes,
         &mut max_path,
         &mut budget_used,
+        &mut chain_acc,
     )?;
     let (root_size, root_align) = sizes
         .get(name)
@@ -335,15 +342,17 @@ pub fn layout_record_owned(
         .get(name)
         .ok_or_else(|| LayoutError::UnknownRecord(name.to_string()))?;
     let per_leaf = std::mem::size_of::<FieldLayout>() as u64;
-    // representation + the already-charged index state (maps remain
-    // live through flatten; `seen` re-spends at most what `chain` was
-    // charged at its peak, inside the same budget)
+    // representation + the FLATTEN-phase live set: all four memo maps
+    // (budget_used after the walk = maps only, chain credited) PLUS the
+    // `seen` name copies re-spent along the deepest path (Vec-doubling
+    // worst case 2x) PLUS the materialized representation and prefix
     let staging_bytes = root_leaves
         .saturating_mul(per_leaf)
         .saturating_add(root_paths)
         // the shared prefix buffer: worst-case String doubling
         .saturating_add(root_max.saturating_mul(2))
-        .saturating_add(budget_used);
+        .saturating_add(budget_used)
+        .saturating_add(chain_acc.1);
     if staging_bytes > MAX_STAGING_BYTES {
         return Err(LayoutError::StagingTooLarge {
             record: name.to_string(),
@@ -388,6 +397,7 @@ fn compute_size(
     path_bytes: &mut std::collections::BTreeMap<String, u64>,
     max_path: &mut std::collections::BTreeMap<String, u64>,
     budget_used: &mut u64,
+    chain_acc: &mut (u64, u64),
 ) -> Result<(u32, u32), LayoutError> {
     if let Some(hit) = memo.get(name) {
         return Ok(*hit);
@@ -414,6 +424,8 @@ fn compute_size(
         });
     }
     *budget_used += chain_charge;
+    chain_acc.0 = chain_acc.0.saturating_add(chain_charge);
+    chain_acc.1 = chain_acc.1.max(chain_acc.0);
     chain.push(name.to_string());
     let mut offset: u32 = 0;
     let mut align: u32 = 1;
@@ -430,6 +442,7 @@ fn compute_size(
                 path_bytes,
                 max_path,
                 budget_used,
+                chain_acc,
             )?,
         };
         offset = offset
@@ -516,6 +529,7 @@ fn compute_size(
     // the transient chain copies are gone with the pop — credit back
     chain.pop();
     *budget_used = budget_used.saturating_sub(chain_charge);
+    chain_acc.0 = chain_acc.0.saturating_sub(chain_charge);
     Ok((size, align))
 }
 

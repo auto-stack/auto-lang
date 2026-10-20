@@ -1154,19 +1154,33 @@ fn abi_recipe_formal_turnaround_hard_gates() {
     );
 
     // ---- aggregate the RAW rows the adapter persisted per request --
-    // (each row was on disk BEFORE the next request ran; the gate only
-    // tags scenario/sample — nothing here re-derives per-sample facts)
+    // (each row was on disk BEFORE the next request ran). The WALL for
+    // the gate is the check's `parent-request:query` span, which closes
+    // AFTER the row write COMPLETED (the acceptance boundary); the
+    // row's own request_ms is the pre-write judged time, kept for
+    // transparency as row_request_ms.
     let rows = collect_request_rows(&out_dir);
-    for (i, row) in rows.iter().enumerate() {
-        let mut tagged = row.clone();
+    let check = report.results.iter().find(|r| r.check_id == "c").unwrap();
+    let native = check.native.as_ref().expect("native record");
+    let query_rows: Vec<&serde_json::Value> = rows.iter().filter(|r| r["op"] == "query").collect();
+    let span_walls: Vec<f64> = native
+        .stage_spans
+        .iter()
+        .filter(|(name, _)| name == "parent-request:query")
+        .map(|(_, v)| *v as f64)
+        .collect();
+    for (i, row) in query_rows.iter().enumerate() {
+        let mut tagged = (*row).clone();
         tagged["scenario"] = serde_json::json!("body-edit");
         tagged["sample"] = serde_json::json!(i);
+        if let Some(w) = span_walls.get(i) {
+            tagged["row_request_ms"] = tagged["request_ms"].clone();
+            tagged["request_ms"] = serde_json::json!(w);
+        }
         append_jsonl(&tagged.to_string());
     }
 
     // ---- assertions (raw evidence is already on disk) ----------------
-    let check = report.results.iter().find(|r| r.check_id == "c").unwrap();
-    let native = check.native.as_ref().expect("native record");
     let counter = |k: &str| -> u64 {
         native
             .counters
@@ -1177,19 +1191,23 @@ fn abi_recipe_formal_turnaround_hard_gates() {
     };
     assert_eq!(status_of(&report, "c"), Status::Pass);
     assert_eq!(
-        rows.len(),
+        query_rows.len(),
         31,
         "31 per-request raw rows (one per query, persisted before the next)"
     );
-    for (i, row) in rows.iter().enumerate() {
-        assert_eq!(row["op"], "query", "row {i}");
+    assert_eq!(span_walls.len(), 31, "31 post-persist request spans");
+    for (i, row) in query_rows.iter().enumerate() {
         assert!(
             row["ok"].as_bool().unwrap_or(false),
             "row {i} judged ok: {row}"
         );
         assert!(
             row["request_ms"].as_f64().unwrap_or(0.0) > 0.0,
-            "row {i} has a real acceptance-boundary wall"
+            "row {i} has a real request wall"
+        );
+        assert!(
+            span_walls[i] >= row["request_ms"].as_f64().unwrap_or(0.0),
+            "span {i} closes at/after the row's judged time (persist included)"
         );
     }
     let compute: u64 = counter("compute_calls");
@@ -1199,10 +1217,13 @@ fn abi_recipe_formal_turnaround_hard_gates() {
         native.counters
     );
     // sample = the edit->result PAIR: parent-local edit wall + the
-    // request's full wall to its judged/persisted boundary
-    let mut body_times: Vec<f64> = rows
+    // request's POST-PERSIST span wall (row write completion included)
+    let mut body_times: Vec<f64> = query_rows
         .iter()
-        .map(|r| r["edit_ms"].as_f64().unwrap_or(0.0) + r["request_ms"].as_f64().unwrap_or(0.0))
+        .enumerate()
+        .map(|(i, r)| {
+            r["edit_ms"].as_f64().unwrap_or(0.0) + span_walls.get(i).copied().unwrap_or(0.0)
+        })
         .collect();
     for (i, w) in body_times.iter().enumerate() {
         assert!(*w > 0.0, "sample {i} has a real parent-path wall");
@@ -1229,8 +1250,24 @@ fn abi_recipe_formal_turnaround_hard_gates() {
         let mut tagged = row.clone();
         tagged["scenario"] = serde_json::json!("descriptor-reject");
         tagged["sample"] = serde_json::json!(i);
+        let rj_span = report
+            .results
+            .iter()
+            .find(|r| r.check_id == "c")
+            .and_then(|r| r.native.as_ref())
+            .and_then(|n| {
+                n.stage_spans
+                    .iter()
+                    .find(|(name, _)| name == "parent-request:query")
+                    .map(|(_, v)| *v as f64)
+            })
+            .unwrap_or(0.0);
+        if rj_span > 0.0 {
+            tagged["row_request_ms"] = tagged["request_ms"].clone();
+            tagged["request_ms"] = serde_json::json!(rj_span);
+        }
         append_jsonl(&tagged.to_string());
-        let req_ms = row["request_ms"].as_f64().unwrap_or(0.0);
+        let req_ms = rj_span.max(row["request_ms"].as_f64().unwrap_or(0.0));
         reject_times.push(req_ms);
         assert_eq!(
             status_of(&report, "c"),

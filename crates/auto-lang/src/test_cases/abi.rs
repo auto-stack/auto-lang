@@ -1071,17 +1071,11 @@ pub fn run_check(
                     .join("; "),
             )
         };
-        // the FULL parent path for THIS request closes HERE: build +
-        // IPC + wait + decode + admission + typed judgement
-        stage_spans.push((
-            format!("parent-request:{step_tag}"),
-            t_step.elapsed().as_millis() as u64,
-        ));
-        if let Some(s) = query_step {
-            for sp in &s.stages {
-                stage_spans.push((sp.name.clone(), (sp.wall_ns / 1_000_000) as u64));
-            }
-        }
+        // the row is persisted FIRST (its request_ms is measured at
+        // judged time, before the write); the request span then closes
+        // AFTER the row write COMPLETED — the acceptance boundary is
+        // build + IPC + wait + decode + admission + typed judgement +
+        // raw-evidence persistence (F-797-R4-09 R11)
         // evidence persistence failure is an INFRASTRUCTURE error — the
         // raw-row chain must never silently break
         append_request_row(
@@ -1095,6 +1089,15 @@ pub fn run_check(
             job_stats.as_ref(),
             judged_error.as_deref(),
         )?;
+        stage_spans.push((
+            format!("parent-request:{step_tag}"),
+            t_step.elapsed().as_millis() as u64,
+        ));
+        if let Some(s) = query_step {
+            for sp in &s.stages {
+                stage_spans.push((sp.name.clone(), (sp.wall_ns / 1_000_000) as u64));
+            }
+        }
         sample_seq += 1;
         pending_edit_ms = 0;
     }
