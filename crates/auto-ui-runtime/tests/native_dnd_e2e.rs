@@ -21,9 +21,9 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-use auto_lang::ui::native_dnd::win32::{self as dndw};
-use auto_lang::ui::native_dock::win32::drag_sim;
-use auto_lang::ui::native_dock::{win32 as ndw, NativeHwnd};
+use auto_ui_runtime::ui::native_dnd::win32::{self as dndw};
+use auto_ui_runtime::ui::native_dock::win32::drag_sim;
+use auto_ui_runtime::ui::native_dock::{win32 as ndw, NativeHwnd};
 
 /// fixture exe 路径（缺失时自动构建；与 native_dock_e2e 同款，独立
 /// target 防 flock 死锁）。
@@ -33,7 +33,11 @@ fn fixture_bin() -> std::path::PathBuf {
         let manifest_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let workspace_root = manifest_dir.join("../..");
         let manifest = workspace_root.join("scripts/tools/native-fixture/Cargo.toml");
-        let profile = if cfg!(debug_assertions) { "debug" } else { "release" };
+        let profile = if cfg!(debug_assertions) {
+            "debug"
+        } else {
+            "release"
+        };
         let bin = workspace_root
             .join("scripts/tools/native-fixture/target")
             .join(profile)
@@ -90,7 +94,8 @@ fn spawn_fixture(extra_args: &[&str]) -> Fixture {
     // 启动行 emit，实测），循环取直到 start。
     let deadline = Instant::now() + Duration::from_secs(10);
     let start = loop {
-        let line = rx.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        let line = rx
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
             .expect("fixture start 行");
         if line.contains("\"evt\":\"start\"") {
             break line;
@@ -139,7 +144,7 @@ fn create_target_window(x: i32, y: i32, w: i32, h: i32) -> TargetWindow {
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::Ole::OleInitialize;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, RegisterClassW, SW_SHOW, ShowWindow, WINDOW_EX_STYLE,
+        CreateWindowExW, DefWindowProcW, RegisterClassW, ShowWindow, SW_SHOW, WINDOW_EX_STYLE,
         WINDOW_STYLE, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     };
 
@@ -187,7 +192,7 @@ fn create_target_window(x: i32, y: i32, w: i32, h: i32) -> TargetWindow {
 }
 
 /// T4 源窗的拖出载荷与完成旗标（wndproc ↔ 测试主线程）。
-static T4_PAYLOAD: Mutex<Option<auto_lang::ui::native_dnd::DndPayload>> = Mutex::new(None);
+static T4_PAYLOAD: Mutex<Option<auto_ui_runtime::ui::native_dnd::DndPayload>> = Mutex::new(None);
 static T4_DRAG_DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// T4 源窗：客户区 WM_LBUTTONDOWN → 内联 `start_drag`（调用线程 = 输入
@@ -211,8 +216,8 @@ fn create_source_window(x: i32, y: i32, w: i32, h: i32) -> SourceWindow {
     use windows::Win32::System::LibraryLoader::GetModuleHandleW;
     use windows::Win32::System::Ole::OleInitialize;
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, RegisterClassW, SW_SHOW, ShowWindow, WINDOW_EX_STYLE,
-        WINDOW_STYLE, WNDCLASSW, WM_LBUTTONDOWN, WS_OVERLAPPEDWINDOW,
+        CreateWindowExW, DefWindowProcW, RegisterClassW, ShowWindow, SW_SHOW, WINDOW_EX_STYLE,
+        WINDOW_STYLE, WM_LBUTTONDOWN, WNDCLASSW, WS_OVERLAPPEDWINDOW,
     };
 
     unsafe extern "system" fn src_wndproc(
@@ -280,7 +285,7 @@ fn wait_until(timeout: Duration, mut f: impl FnMut() -> bool) -> bool {
 fn idle_wait_until(timeout: Duration, mut f: impl FnMut() -> bool) -> bool {
     use windows::Win32::Foundation::WAIT_OBJECT_0;
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, MsgWaitForMultipleObjects, PeekMessageW, PM_REMOVE, QS_ALLINPUT, MSG,
+        DispatchMessageW, MsgWaitForMultipleObjects, PeekMessageW, MSG, PM_REMOVE, QS_ALLINPUT,
     };
     let start = Instant::now();
     unsafe {
@@ -313,7 +318,7 @@ fn idle_wait_until(timeout: Duration, mut f: impl FnMut() -> bool) -> bool {
 /// 上，实测 keys 恒 0x1 现象即此）。
 fn pump_wait_until(timeout: Duration, mut f: impl FnMut() -> bool) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{
-        DispatchMessageW, MsgWaitForMultipleObjects, PeekMessageW, PM_REMOVE, QS_ALLINPUT, MSG,
+        DispatchMessageW, MsgWaitForMultipleObjects, PeekMessageW, MSG, PM_REMOVE, QS_ALLINPUT,
     };
     let start = Instant::now();
     unsafe {
@@ -399,7 +404,10 @@ fn t3_drag_in_fixture_to_desktop_drop_target() {
         got = dndw::take_native_drop();
         got.is_some()
     });
-    assert!(ok, "5s 内应收到 NativeDrop（空闲等待仅由 ticker 唤醒——WM_NULL 生效）");
+    assert!(
+        ok,
+        "5s 内应收到 NativeDrop（空闲等待仅由 ticker 唤醒——WM_NULL 生效）"
+    );
     let payload = got.expect("payload");
     assert_eq!(payload.text.as_deref(), Some("e2e-drag-in-payload"));
     assert!(payload.formats.iter().any(|f| f == "CF_UNICODETEXT"));
@@ -427,11 +435,14 @@ fn t4_drag_out_desktop_to_fixture() {
 
     // 源窗（左）与 fixture（右）各占一角，互不遮挡。
     let source = create_source_window(200, 600, 320, 200);
-    assert!(drag_sim::raise_top(NativeHwnd(source.hwnd.0 as isize)), "raise source");
+    assert!(
+        drag_sim::raise_top(NativeHwnd(source.hwnd.0 as isize)),
+        "raise source"
+    );
     assert!(drag_sim::raise_top(fixture.hwnd), "raise fixture");
     std::thread::sleep(Duration::from_millis(120));
 
-    *T4_PAYLOAD.lock().unwrap() = Some(auto_lang::ui::native_dnd::DndPayload {
+    *T4_PAYLOAD.lock().unwrap() = Some(auto_ui_runtime::ui::native_dnd::DndPayload {
         text: Some("e2e-drag-out-payload".into()),
         ..Default::default()
     });
@@ -459,7 +470,10 @@ fn t4_drag_out_desktop_to_fixture() {
         let _ = drag_sim::ole_release();
     });
 
-    assert!(drag_sim::ole_move_to(press_at.0, press_at.1), "move to source");
+    assert!(
+        drag_sim::ole_move_to(press_at.0, press_at.1),
+        "move to source"
+    );
     std::thread::sleep(Duration::from_millis(80));
     assert!(drag_sim::ole_press(), "press on source");
     // 泵等待：WM_LBUTTONDOWN 送达本线程 wndproc → 内联 DoDragDrop（其
@@ -482,8 +496,14 @@ fn t4_drag_out_desktop_to_fixture() {
     });
     assert!(ok, "5s 内应见 fixture drop 行");
     let line = drop_line.expect("drop line");
-    assert!(line.contains("CF_UNICODETEXT"), "formats 含文本格式: {line}");
-    assert!(line.contains("e2e-drag-out-payload"), "drop 文本载荷: {line}");
+    assert!(
+        line.contains("CF_UNICODETEXT"),
+        "formats 含文本格式: {line}"
+    );
+    assert!(
+        line.contains("e2e-drag-out-payload"),
+        "drop 文本载荷: {line}"
+    );
 
     // 完成效果读掉防跨测试残留。
     let _ = dndw::take_finished_effect();

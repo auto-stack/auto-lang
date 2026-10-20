@@ -271,45 +271,6 @@ tokio-tungstenite = { version = "0.30.0", default-features = false, features = [
 [target.'cfg(windows)'.dependencies]
 
 
-# PLAN-814 T-04：windows/windows-core 依赖随 ui/ 迁 runtime；本 crate 残留
-# UI 测试（plan804_os_e2e/native_dnd_e2e 等）直引 windows:: —— 测试期依赖
-# 形态保持编译（测试源码 owner 迁移=T-07）。
-[target.'cfg(windows)'.dev-dependencies]
-windows = { version = "0.58", features = [
-    "Win32_Foundation",
-    "Win32_Graphics_Dwm",
-    # Plan 515 D1：HICON 真图标提取（GetIconInfo + GetDIBits 位图 → RGBA）。
-    "Win32_Graphics_Gdi",
-    "Win32_UI_WindowsAndMessaging",
-    "Win32_UI_Accessibility",
-    "Win32_UI_HiDpi",
-    "Win32_System_LibraryLoader",
-    "Win32_System_Threading",
-    "Win32_System_DataExchange",
-    "Win32_UI_Shell",
-    "Win32_System_Memory",
-    "Win32_Security",
-    # Plan 486 T4：合成拖拽 SendInput（test-native-dock 档独占使用；
-    # feature 列与 native-dock/native-clipboard 共用条目——Cargo 合并语义）。
-    "Win32_UI_Input_KeyboardAndMouse",
-    # PLAN-690 T-02：daemon 窗 IME 激活门控（ImmAssociateContextEx/
-    # ImmSetCompositionWindow/ImmSetCandidateWindow——win_ime.rs）。
-    "Win32_UI_Input_Ime",
-    # Plan 488: OLE 拖放——Com(OLE 基础/DoDragDrop/OleInitialize)+
-    # Ole(IDataObject/IDropSource/IDropTarget/STGMEDIUM/FORMATETC)+
-    # implement(#[implement] 宏与 *_Impl trait 的 include 门)+
-    # SystemServices(MODIFIERKEYS_FLAGS——DragEnter/Over/Drop 签名)+
-    # Graphics_Gdi+Com_StructuredStorage(IDataObject_Impl/FORMATETC 全签名的
-    # cfg 门)。后三组为 implement 宏的传递性必需（485 T9 增 Security 同型）。
-    "Win32_System_Com",
-    "Win32_System_Ole",
-    "Win32_System_SystemServices",
-    "Win32_Graphics_Gdi",
-    "Win32_System_Com_StructuredStorage",
-    # Plan 488 T6 修：拖入目标跨线程 marshal（专用 STA 线程持对象）。
-    "Win32_System_Com_Marshal",
-    "implement",
-] }
 
 [dev-dependencies]
 
@@ -320,14 +281,8 @@ tiny-skia = "0.11"
 criterion = "0.5"
 tempfile = "3"
 insta = { version = "1", features = ["yaml"] }
-# PLAN-814 T-04：残留 UI 测试（plan536/732/765/739/446b5/osconfig 等）直引
-# iced::/image::/arboard::/rfd::/cosmic_text::——依赖迁 runtime 后以 dev-deps
-# 兜住（与 runtime 同版本同 feature 集，同锁实例）；测试源码 owner 迁移=T-07。
-iced = { version = "0.14.0", features = ["tokio", "image", "svg", "advanced", "canvas", "unconditional-rendering"] }
-image = "0.25"
-arboard = "3"
-rfd = "0.15"
-cosmic-text = { version = "0.15", features = ["vi", "syntect"] }
+# PLAN-814 T-07：测试期 UI 依赖随 owner 迁 auto-ui-runtime 清零（T-04 临时
+# dev-deps 兜住形态收口；残留 UI 测试仅经 auto_lang:: 再导出消费=V-02 兼容面）。
 
 # PLAN-634 T-01：terminal 像素金样稳健比对（容差像素差分）。版本随
 # iced_test（其 matches_image 即用 png 落盘/读盘），不新增编译单元。

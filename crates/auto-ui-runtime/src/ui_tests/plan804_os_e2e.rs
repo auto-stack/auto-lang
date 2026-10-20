@@ -28,7 +28,7 @@
 /// V-04：真模态文件对话框（cfg(ui-dialog)；windows 由外层 mod 门控）。
 #[cfg(feature = "ui-dialog")]
 mod dialog_e2e {
-    use crate::vm::host_capabilities::DialogHostProvider as _;
+    use auto_lang_core::vm::host_capabilities::DialogHostProvider as _;
     use std::sync::mpsc;
 
     // ── 原始 user32/kernel32 extern（ui-dialog-only 构建无 windows crate
@@ -523,10 +523,10 @@ mod dialog_e2e {
         if !env_gate() {
             return;
         }
-        use crate::vm::engine::AutoVM;
-        use crate::vm::native::shim_dialog_open;
-        use crate::vm::task::AutoTask;
-        use crate::vm::virt_memory::VirtualFlash;
+        use auto_lang_core::vm::engine::AutoVM;
+        use auto_lang_core::vm::native::shim_dialog_open;
+        use auto_lang_core::vm::task::AutoTask;
+        use auto_lang_core::vm::virt_memory::VirtualFlash;
 
         let dir = unicode_temp_dir();
         let pick = dir.join("vm-链选中🎉.at");
@@ -632,7 +632,7 @@ mod dialog_e2e {
         };
         let driver = std::thread::spawn(move || drive_dialog(spec, tx));
         let program = "let p = dialog_open(\" .at, 文件🎉 \")\nprint(p)\n";
-        let (result, stdout) = crate::run_with_capture(program).expect("高层入口成功");
+        let (result, stdout) = auto_lang_core::run_with_capture(program).expect("高层入口成功");
         let _ = result;
         let (dlg, _, _) = rx.recv().expect("driver ack");
         driver.join().unwrap();
@@ -1065,10 +1065,10 @@ mod dnd_e2e {
         if !env_gate() {
             return;
         }
-        use crate::vm::engine::AutoVM;
-        use crate::vm::native::shim_dnd_start;
-        use crate::vm::task::AutoTask;
-        use crate::vm::virt_memory::VirtualFlash;
+        use auto_lang_core::vm::engine::AutoVM;
+        use auto_lang_core::vm::native::shim_dnd_start;
+        use auto_lang_core::vm::task::AutoTask;
+        use auto_lang_core::vm::virt_memory::VirtualFlash;
 
         assert!(unsafe { OleInitialize(None) }.is_ok(), "OleInitialize");
         let caller_tid = unsafe { GetCurrentThreadId() };

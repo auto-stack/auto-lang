@@ -99,3 +99,22 @@ mod plan794_scroll_host_provider;
 mod plan802_code_editor_provider;
 mod plan807_text_core;
 mod plan811_media_runtime;
+
+// PLAN-814 T-07：dev-deps 消费面随 owner 迁入（auto-lang 侧测试期
+// UI 依赖清零）。
+#[cfg(feature = "native-clipboard")]
+mod plan485_clipboard_natives;
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan732_wikilink_tests;
+mod plan804_dialog_dnd_provider;
+#[cfg(windows)]
+mod plan804_os_e2e;
+
+// PLAN-814 T-07 勘误补挂：T-04 批三模块（plan019/042/058）文件已迁但挂载
+// 漏加（shell 短路事故），选择面验证器逐 ID 捕获——门与原 tests.rs 一致。
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan019_vm_own_module_link_tests;
+#[cfg(test)]
+mod plan042_scan_probe_tests;
+#[cfg(all(test, feature = "ui-iced"))]
+mod plan058_engine_gap_tests;

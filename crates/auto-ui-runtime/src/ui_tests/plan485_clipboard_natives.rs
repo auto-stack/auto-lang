@@ -3,16 +3,16 @@
 // PLAN-814 T-02 迁移上移：本测试消费上层 UI 面（ui::clipboard_media_
 // provider 真实 Win32 adapter / GlobalClipboardTestLock），原居
 // auto-lang-core vm/ 的 `native-clipboard` 门在 SDK 无定义——迁移后死门、
-// 选择丢失（V-05）；按真实所有者上移本包恢复选择（crate::vm::* 经 SDK
+// 选择丢失（V-05）；按真实所有者上移本包恢复选择（auto_lang_core::vm::* 经 SDK
 // 再导出，路径不变）。
 
-use crate::vm::engine::AutoVM;
-use crate::vm::native::{
+use auto_lang_core::vm::engine::AutoVM;
+use auto_lang_core::vm::native::{
     shim_clipboard_files_get, shim_clipboard_files_set, shim_clipboard_image_get,
     shim_clipboard_image_set,
 };
-use crate::vm::task::AutoTask;
-use crate::vm::virt_memory::VirtualFlash;
+use auto_lang_core::vm::task::AutoTask;
+use auto_lang_core::vm::virt_memory::VirtualFlash;
 
 fn make_vm() -> AutoVM {
     let vm = AutoVM::new(VirtualFlash::new(1024), 1024);
@@ -28,7 +28,7 @@ fn make_vm() -> AutoVM {
 /// 弹出 shim 压入的堆引用 NV 并归还 RC 计数（测试内的栈纪律）。
 fn pop_heap_id(vm: &AutoVM, task: &mut AutoTask) -> u64 {
     let nv = task.ram.pop_nv();
-    let id = crate::vm::rc::heap_ref_id(nv).expect("heap ref NV") as u64;
+    let id = auto_lang_core::vm::rc::heap_ref_id(nv).expect("heap ref NV") as u64;
     vm.rc_retain_id(id); // pop 消费一次属主
     vm.rc_release_id(id);
     id
@@ -47,7 +47,7 @@ fn clipboard_files_and_image_via_vm_shims() {
     let mut task = AutoTask::new(0, 1024, 0);
 
     // ── 1. files_set(["C:\...\一.txt", "C:\...\二.png"]) -> true ──
-    let mut list = crate::vm::types::ListData::<auto_val::Value>::new();
+    let mut list = auto_lang_core::vm::types::ListData::<auto_val::Value>::new();
     list.push(auto_val::Value::Str(auto_val::AutoStr::from(
         "C:\\plan485-vm\\示例 一.txt",
     )));
@@ -69,7 +69,7 @@ fn clipboard_files_and_image_via_vm_shims() {
     let guard = obj.read().unwrap();
     let got = guard
         .as_any()
-        .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+        .downcast_ref::<auto_lang_core::vm::types::ListData<auto_val::Value>>()
         .expect("ListData<Value>");
     let strs: Vec<String> = got
         .elems
@@ -109,7 +109,7 @@ fn clipboard_files_and_image_via_vm_shims() {
     let guard = obj.read().unwrap();
     let rec = guard
         .as_any()
-        .downcast_ref::<crate::vm::types::ObjectData>()
+        .downcast_ref::<auto_lang_core::vm::types::ObjectData>()
         .expect("ObjectData record");
     let field = |k: &str| {
         rec.get(&auto_val::ValueKey::Str(auto_val::AutoStr::from(k)))

@@ -16,7 +16,7 @@ fn plan814_v02_parser_public_surface_pins() {
     use crate::session::CompilerSession;
 
     let src = "fn main() int { return 1 }";
-    let mut cs = crate::compile::CompileSession::new();
+    let cs = crate::compile::CompileSession::new();
     let mut p =
         Parser::new_with_type_store(src, cs.type_store()).with_session(CompilerSession::ui());
 
@@ -84,7 +84,7 @@ fn plan814_v02_parser_bridge_surface_pins() {
     use crate::parser_bridge::ParserBridge;
 
     let src = "let x = 1";
-    let mut cs = crate::compile::CompileSession::new();
+    let cs = crate::compile::CompileSession::new();
     let mut p = Parser::new_with_type_store(src, cs.type_store());
     let mut b = ParserBridge::new(&mut p);
     let _: crate::token::TokenKind = b.cur_kind();
@@ -155,6 +155,9 @@ fn plan814_v02_vm_public_surface_pins() {
 #[cfg(feature = "ui-iced")]
 #[test]
 fn plan814_v02_root_reexports_and_type_identity_pins() {
+    // 12 名门控根面存在性 use-pin（未消费即编译期锁名；消费面经
+    // identity_bridge/PhantomData 另行触达）。
+    #[allow(unused_imports)]
     use crate::{
         App, AppResult, Component, Style, VNode, VNodeId, VNodeKind, VNodeProps, VTree, View,
         ViewBuilder,

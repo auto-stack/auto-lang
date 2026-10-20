@@ -34,22 +34,17 @@ mod plan785_clipboard_provider;
 mod plan790_clipboard_media_provider;
 // PLAN-794: scroll controller/子锚点 9900..9905+9922/9923 host provider——
 // core 剪断/降级契约/装配身份/真实 UI adapter 接线回归锚
-#[cfg(feature = "native-clipboard")]
-mod plan485_clipboard_natives; // PLAN-814 T-02 上移：clipboard natives 四件套实剪贴板往返（SDK 死门勘误）
 #[cfg(feature = "ui-iced")]
 mod plan712_back_prefix_route_fetch; // PLAN-814 T-02 上移：routes 页前缀化端到端（SDK 死门勘误）
                                      // PLAN-802: code editor 22 native host provider——core 剪断/装配身份/
                                      // 真实 adapter 注册表往返/滚动投影链/OS 剪贴板回归锚
                                      // PLAN-804: dialog 2927/2928 + dnd 2938 host provider——core 剪断/缺席
                                      // 契约（dialog VMError+dnd false）/槽独立/重入/装配身份回归锚
-mod plan804_dialog_dnd_provider;
 // PLAN-808: terminal 34 native host-domain extraction——codec 剪断/34 形状/
 // 装配身份/缺席矩阵/真实 DLL 会话生命周期与 UI 投影回归锚
 mod plan808_terminal_domain;
 // PLAN-804 V-04/V-05: 真 OS 实机证据档——env 门控（AUTO_LANG_DIALOG_E2E/
 // AUTO_LANG_DND_E2E=1 才运行，日常档零 OS 面零交互；详见文件头）。
-#[cfg(windows)]
-mod plan804_os_e2e;
 // KNOWN-DEBT 396 rider (Plan 415-B1): stdlib .rs.at ↔ a2r-std signature parity
 #[cfg(feature = "test-trans")]
 mod a2r_c_abi_gates;
@@ -248,8 +243,6 @@ mod plan634_block_tail_semi_tests;
 mod plan024_named_view_tests;
 // Plan 442 A3: `use.web` ext link regression corpus.
 // PLAN-732: autodown 编辑壳 wikilink 激活供给六环贯通 corpus。
-#[cfg(all(test, feature = "ui-iced"))]
-mod plan732_wikilink_tests;
 // PLAN-739: 编辑回声→换页视面跟随回归（F-037-R1——input_values 键入条目
 // 永生 × patch_input_values ADE 覆写钉死视面）。
 // Plan 051 C7: `timer { ... }` 声明块（widget/store 周期计时器 DSL）。

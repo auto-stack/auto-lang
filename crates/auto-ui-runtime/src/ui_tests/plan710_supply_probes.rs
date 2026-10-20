@@ -289,7 +289,8 @@ widget App {{
         );
         assert!(code.contains("Ok(_) => {}"), "成功臂零扰动（空 Ok）");
         assert!(
-            code.contains("let err = auto_lang::a2r_std::panic_message(&__p);"),
+            // PLAN-814 T-05：发射 canonical 化（import_policy.rs 映射表）。
+            code.contains("let err = auto_lang_core::a2r_std::panic_message(&__p);"),
             "catch 绑定形 = panic_message 载荷串（VM STORE_LOCAL 同源）"
         );
     }
@@ -298,7 +299,7 @@ widget App {{
     fn emitted_delta_direct_call_with_shim_error_message() {
         let code = gen_rust(".Init -> { code_editor_delta(\"k710\") }");
         assert!(
-            code.contains("auto_lang::ui::code_editor::code_editor_delta(&__key)"),
+            code.contains("auto_ui_runtime::ui::code_editor::code_editor_delta(&__key)"),
             "delta 直调臂（703 直调纪律——不绕 VM shim）: {code}"
         );
         assert!(
@@ -314,31 +315,37 @@ widget App {{
             ".Init -> {\n            let v = json.to_value(\"{}\")\n            var a str = v.err ?? \"\"\n            var b int = v.active ?? -1\n            var c bool = v.degraded ?? false\n            var d = v.hunks ?? []\n            var e str = v.t ?? file_basename(v.p ?? \"\")\n            var f str = v.a.b ?? \"d\"\n            let hk = v.h\n            var g int = hk.a1 ?? 0\n        }",
         );
         assert!(
-            code.contains("auto_lang::a2r_std::json::get_str_or(&(v), &[\"err\"], \"\")"),
+            code.contains("auto_lang_core::a2r_std::json::get_str_or(&(v), &[\"err\"], \"\")"),
             "str 平形: {code}"
         );
         assert!(
-            code.contains("auto_lang::a2r_std::json::get_int_or(&(v), &[\"active\"], -1) as i32"),
+            code.contains(
+                "auto_lang_core::a2r_std::json::get_int_or(&(v), &[\"active\"], -1) as i32"
+            ),
             "int 负缺省形（Unary(Sub) 入臂）: {code}"
         );
         assert!(
-            code.contains("auto_lang::a2r_std::json::get_bool_or(&(v), &[\"degraded\"], false)"),
+            code.contains(
+                "auto_lang_core::a2r_std::json::get_bool_or(&(v), &[\"degraded\"], false)"
+            ),
             "bool 形: {code}"
         );
         assert!(
-            code.contains("auto_lang::a2r_std::json::get_array_or(&(v), &[\"hunks\"])"),
+            code.contains("auto_lang_core::a2r_std::json::get_array_or(&(v), &[\"hunks\"])"),
             "list 形: {code}"
         );
         assert!(
-            code.contains("auto_lang::a2r_std::json::get_str_or_with("),
+            code.contains("auto_lang_core::a2r_std::json::get_str_or_with("),
             "调用缺省形（str-with 变体）: {code}"
         );
         assert!(
-            code.contains("auto_lang::a2r_std::json::get_str_or(&(v), &[\"a\", \"b\"], \"d\")"),
+            code.contains(
+                "auto_lang_core::a2r_std::json::get_str_or(&(v), &[\"a\", \"b\"], \"d\")"
+            ),
             "嵌套路径切片形: {code}"
         );
         assert!(
-            code.contains("auto_lang::a2r_std::json::get_int_or(&(hk), &[\"a1\"], 0) as i32"),
+            code.contains("auto_lang_core::a2r_std::json::get_int_or(&(hk), &[\"a1\"], 0) as i32"),
             "局部接收者形: {code}"
         );
     }
@@ -347,7 +354,7 @@ widget App {{
     fn emitted_scroll_to_and_scroll_pane_controller() {
         let code = gen_rust(".Init -> { let ok = scroll_to(\"h710\", \"y\", 24.0) }");
         assert!(
-            code.contains("auto_lang::ui::scroll::ScrollIntent::ScrollTo"),
+            code.contains("auto_ui_runtime::ui::scroll::ScrollIntent::ScrollTo"),
             "D-4 scroll_to 臂（shim_scroll_to 同源 intent 形）: {code}"
         );
         assert!(code.contains("Axis::Y"), "轴串分派: {code}");
@@ -590,6 +597,8 @@ fn plan714_back_try_arm_catch_binding_panic_message() {
     let rs_bytes = rcode.done().expect("done failed");
     let rs = String::from_utf8_lossy(rs_bytes);
     assert!(
+        // a2r trans 泳道发射（trans/rust.rs）非 T-05 canonical 射面——保持
+        // 旧包前缀期望（a2r 消费者仍依赖 auto-lang；切换归后续批次）。
         rs.contains("let err = auto_lang::a2r_std::panic_message(&__p);"),
         "catch 绑定形 = panic_message 载荷串: {rs}"
     );

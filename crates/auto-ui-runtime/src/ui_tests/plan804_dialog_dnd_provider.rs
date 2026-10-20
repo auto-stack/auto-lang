@@ -78,7 +78,7 @@ mod plan804_dialog_dnd {
         }
     }
 
-    impl crate::vm::host_capabilities::DialogHostProvider for FakeDialog {
+    impl auto_lang_core::vm::host_capabilities::DialogHostProvider for FakeDialog {
         fn open(&self, filter: &str) -> String {
             self.received_open.lock().unwrap().push(filter.to_string());
             if let Some(cb) = &self.on_call {
@@ -118,7 +118,7 @@ mod plan804_dialog_dnd {
         }
     }
 
-    impl crate::vm::host_capabilities::DndHostProvider for FakeDnd {
+    impl auto_lang_core::vm::host_capabilities::DndHostProvider for FakeDnd {
         fn start(&self, payload_json: String) -> bool {
             self.received.lock().unwrap().push(payload_json);
             self.ret
@@ -131,10 +131,10 @@ mod plan804_dialog_dnd {
     /// F-785-R2-01：缺席断言锚=构造式，零全局槽操作，无需隔离锁。
     #[test]
     fn shim_absence_contract_dialog_error_dnd_false() {
-        use crate::vm::engine::AutoVM;
-        use crate::vm::native::{shim_dialog_open, shim_dialog_save, shim_dnd_start};
-        use crate::vm::task::AutoTask;
-        use crate::vm::virt_memory::VirtualFlash;
+        use auto_lang_core::vm::engine::AutoVM;
+        use auto_lang_core::vm::native::{shim_dialog_open, shim_dialog_save, shim_dnd_start};
+        use auto_lang_core::vm::task::AutoTask;
+        use auto_lang_core::vm::virt_memory::VirtualFlash;
 
         let vm = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 64);
         assert!(
@@ -191,10 +191,10 @@ mod plan804_dialog_dnd {
     /// dnd 缺席同批仍 false；反向（仅 dnd 在位）dialog 仍报缺席错误。
     #[test]
     fn shim_delegation_and_slot_independence() {
-        use crate::vm::engine::AutoVM;
-        use crate::vm::native::{shim_dialog_open, shim_dialog_save, shim_dnd_start};
-        use crate::vm::task::AutoTask;
-        use crate::vm::virt_memory::VirtualFlash;
+        use auto_lang_core::vm::engine::AutoVM;
+        use auto_lang_core::vm::native::{shim_dialog_open, shim_dialog_save, shim_dnd_start};
+        use auto_lang_core::vm::task::AutoTask;
+        use auto_lang_core::vm::virt_memory::VirtualFlash;
 
         let vm = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 256);
         let dialog = FakeDialog::new("C:\\plan804\\选中文件-🎉.at", "C:\\plan804\\保存目标-β.md");
@@ -272,10 +272,10 @@ mod plan804_dialog_dnd {
     /// 空串出口。
     #[test]
     fn shim_cancel_returns_empty_string() {
-        use crate::vm::engine::AutoVM;
-        use crate::vm::native::{shim_dialog_open, shim_dialog_save};
-        use crate::vm::task::AutoTask;
-        use crate::vm::virt_memory::VirtualFlash;
+        use auto_lang_core::vm::engine::AutoVM;
+        use auto_lang_core::vm::native::{shim_dialog_open, shim_dialog_save};
+        use auto_lang_core::vm::task::AutoTask;
+        use auto_lang_core::vm::virt_memory::VirtualFlash;
 
         let vm = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 256);
         vm.set_dialog_host_provider(FakeDialog::new("", ""));
@@ -313,10 +313,10 @@ mod plan804_dialog_dnd {
     ///（provider 持 NI Arc 回调；shim 调用点无槽锁——重入窗口关闭。）
     #[test]
     fn ni_slot_lock_released_before_provider_call() {
-        use crate::vm::engine::AutoVM;
-        use crate::vm::native::shim_dialog_open;
-        use crate::vm::task::AutoTask;
-        use crate::vm::virt_memory::VirtualFlash;
+        use auto_lang_core::vm::engine::AutoVM;
+        use auto_lang_core::vm::native::shim_dialog_open;
+        use auto_lang_core::vm::task::AutoTask;
+        use auto_lang_core::vm::virt_memory::VirtualFlash;
 
         let vm = AutoVM::new_without_host_snapshot(VirtualFlash::new(0), 256);
         let ni = vm.native_interface.clone();
@@ -347,9 +347,9 @@ mod plan804_dialog_dnd {
     /// provider（merge 目标实例槽不丢）。
     #[test]
     fn assembly_identity_and_merge_preserve_providers() {
-        use crate::vm::engine::AutoVM;
-        use crate::vm::native::NativeInterface;
-        use crate::vm::virt_memory::VirtualFlash;
+        use auto_lang_core::vm::engine::AutoVM;
+        use auto_lang_core::vm::native::NativeInterface;
+        use auto_lang_core::vm::virt_memory::VirtualFlash;
 
         let ni = NativeInterface::production();
         let rev0 = ni.binding_revision();
@@ -385,9 +385,9 @@ mod plan804_dialog_dnd {
 
     /// merge 载体用 noop shim（register_static 收 fn 指针）。
     fn plan804_noop_shim(
-        _task: &mut crate::vm::task::AutoTask,
-        _vm: &crate::vm::engine::AutoVM,
-    ) -> Result<(), crate::vm::engine::VMError> {
+        _task: &mut auto_lang_core::vm::task::AutoTask,
+        _vm: &auto_lang_core::vm::engine::AutoVM,
+    ) -> Result<(), auto_lang_core::vm::engine::VMError> {
         Ok(())
     }
 

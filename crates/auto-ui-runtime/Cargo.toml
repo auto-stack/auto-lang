@@ -188,6 +188,8 @@ windows = { version = "0.58", optional = true, features = [
 windows-core = { version = "0.58", optional = true }
 
 [dev-dependencies]
+# PLAN-814 T-07：plan804_os_e2e（随 owner 迁入）的消费面。
+fastrand = "2.4.1"
 resvg = "0.45"
 tiny-skia = "0.11"
 tempfile = "3"
