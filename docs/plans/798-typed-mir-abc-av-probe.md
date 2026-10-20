@@ -214,6 +214,8 @@ T-08统一维护V-01..14及K14-01..06实际入口/Scope/phase/code/oracle清单�
 
 最近formal含逐请求进程启动/store-open/外围校验，不能直接判定用户稳定会话目标失败；旧结果只保留其真实跨进程技术门意义。warm bench 874.5993ms也不证明单函数编译成本或结构门通过。828正式门必须首个结果后开始计编辑入队至当前结果发布，包含当次必要IPC/编译/安装等，启动单列；不得把独立bench静默替换798原formal入口。原T-07仍开放，现有技术门若需改生命周期/语义必须显式修订，不凭本段自动解锁。
 
+
+**2026-10-20 用户交付归因裁定（补记）**：warm 编辑 P95 复验未达（1027.0/1465.5ms 及当日系列）归因于**整模块重查——其他阶段未实现真增量编译**；真增量优化归 **PLAN-828**（排期合同：798 完成交付 → 优先 828 → 其他 ACE 扩展）。798 的义务＝如实计量＋PASS 证据保留，**已满足**：暖路径优化（sidecar 工件 id 复用 rebind 级联已有读取，消除 warm 命中每单元额外读）@worktree `9316512c8` 后，正式周转门最终提交静置窗 **PASS——edit P50/P95/P99=646.9/687.4/690.9ms、sig 234.9ms**（30 样本，`docs/reports/plan798/autodown-formal-final.log`，全天最佳）；R15 探针 manifest-live required_edges=2/GC 后恢复带 span 不变（acceptance.md 已补记）。据此若无其他 open finding，798 具备完成交付条件。
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
