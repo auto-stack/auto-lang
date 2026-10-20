@@ -84,3 +84,23 @@ registry/loader、其余 Pac/VM 消费者、剩余文本读取与 locale 求值�
 ## generation_request 独立消费（PLAN-809 SD-03，as-built）
 
 `generation_request` 为具名独立模块（非静态扫描器一部分）：输入可以是静态准入描述（from_descriptor——静态子集与 786 护栏不变、不扩语法域）或动态求值后的显式投影（dynamic/直接构造），不强制工程先过静态扫描器。静态 origin 携带 unsupported 不伪造已求值（is_evaluated 诚实判定）。外部消费证据 = project-request-consumer（闭包 auto-atom/auto-val 单证）。
+
+## wire feature:同源 JSON codec(PLAN-815 M815-A SD-04-A,as-built)
+
+可选 `wire` feature 引入 serde_json,为同一个 GenerationRequest 提供版本 1
+(`WIRE_FORMAT_VERSION=1`)的具名 JSON codec(`wire::request_to_wire` /
+`request_from_wire`)。纯数据变换,无 FS/VM/生成副作用;基础静态扫描器与已发布
+动态 adapter 的职责不变,不增加 pac.at 语法支持。
+
+请求和固定嵌套结构采用精确槽/键集;缺失可空字段须显式 null,未知字段、错类型
+与非法 tag 受控拒绝。Value 采用带标签表示;支持已声明标量/Array/Block/Obj/
+Pair/CStr 等数据变体,不可表示变体、非 Unicode 路径、非有限数、数值越界与过深
+wire(120 JSON 层)明确拒绝,不静默转换。窗口编解码共享已冻结范围/可表示性规则
+(有限、Pac 200..=7680/4320 边界、f32 精确可表示)。
+
+TypeMismatch 诊断 payload 保留 field,members/defines 在编解码两侧采用同一封闭
+集合。`type-mismatch:` 前缀只消费一次,未知/空 payload、重复前缀不规范化为合法
+诊断。原普通 unsupported 变体保持身份。
+
+消费证据:协议 crate 与工具经同源 codec 交换请求;外部消费门
+`test/fixtures/modularity/ui-tool-consumer/`(闭包含 auto-project-model/wire)。

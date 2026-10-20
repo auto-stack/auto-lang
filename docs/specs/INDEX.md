@@ -516,4 +516,6 @@
 - [auto-man-core](auto-man-core/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-media-core](auto-media-core/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [auto-ui-dialect](auto-ui-dialect/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
+- [auto-ui-tools](auto-ui-tools/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
 - [repository-boundaries](repository-boundaries/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
+- [tool-protocol](tool-protocol/project.md)（请在 scripts/spec-index.py 的 GROUPS 中登记）
