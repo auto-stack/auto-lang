@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-20
 plan_revision: 2
-current_step: 2
+current_step: 4
 total_steps: 15
 supersedes_spec_components: [docs/specs/auto-lang/project.md, docs/specs/auto-lang/frontend/overview.md, docs/specs/auto-lang/vm/overview.md, docs/specs/auto-lang/ui/overview.md, docs/specs/auto-ui-dialect/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/language-sdk/project.md, docs/specs/auto-ui-compiler/project.md, docs/specs/auto-ui-runtime/project.md]
@@ -141,7 +141,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 现在；807/808/810/811已交付 | 新attachments/814/contract-baseline.md：所有者DAG/旧API构造/状态/测试族/资源/真实消费者清单与候选布局；前置合入后整链编译probe冻结SDK/默认UI兼容方案，不可行先重规划。[✅ 已完成 2026-10-20：基线 14 节 + probe 记录 §15；切片 `be10024ab`（唯一树，基面 `203e2ce91`）冻结包名 `auto-lang-core`/`auto-ui-compiler`/`auto-ui-runtime`+DAG+再导出机制+别名多 -p 机制；全部消费者编译/日常档 5303 绿/777 pass；无 needs_replan] | AC-01..05 |
 | [x] | T-02 | work | T-01可行性决策 | 真实纯SDK/上层兼容、单份Core/状态与公开出口；立即清除阻碍纯SDK的全部反向边，保旧默认API；迁出测试/资源/非UIconsumer及V-01/02当期证据 | AC-01,02 [✅ 已完成 2026-10-20 R3 会话：主迁移 `edb78b2ef`（soft-reset 吸收 WIP）+ 残项收口 `43366c989`——auto-vm 切 SDK（V-01 真实非 UI 消费者，闭包零旧包/UI，冒烟执行过）+ a2r frame 经 PLAN-779 FrameProvider 进程默认端口单源（plan716 帧探针全过）+ F814-R1-02 整改 `ac2882a0d`（SDK auto-ui-dialect 改非默认 `ui-dialect` 显式组合 feature；上层 default 转发保旧行为；normal/build/dev 三边闭包验证无 UI 文法；86 UI 文法测试按 feature 门控选择面不变）+ 迁移死门清偿（i18n 路由/diff code-editor 转发/4 组滞留 UI 测试上移 plan656/485/712/413）；SDK off 1627/1627、on 1713/1713；777 strict pass ×2] | AC-01,02 |
-| [ ] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 [R3 会话 Batch 1/2 完成（`b907a89eb`+`59b9c7673`+基线 `704260bd6`）：style DSL/ action_config/lucide/aura/a2ui/ui_gen 四生成器/registry/bp/route 分析约 11.3 万行迁 auto-ui-compiler 单源，旧路径全再导出；compiler 显式启用 SDK ui-dialect；语料资产随 owner 迁（a2ark/a2vue/fixtures×4）；ui_gen 指纹机制迁 compiler build.rs+UICache OnceLock 注入（SDK build 边清偿）；ui_gen 862/862+compiler 215/215+上层定向全绿；DAG 断言 SDK→compiler=0/compiler→旧包=0；777 strict pass。R3 续批（`b02a10772`+基线 `d91948ee1`）：V-03 消费者证据落地——ui-package-consumer 独立 fixture 4/4（generate_component_from_file 真实 Vue SFC 生成+指纹+style+lucide 公开面）。**剩余**：SD-02 正文备稿（事实底稿已在 m814-a-candidate §2）、生成 import 路径策略的 B 期切换单（A 期已钉当期真实实现）] | AC-03 |
+| [x] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 [✅ 已完成 2026-10-20 R3（B1 `b907a89eb` + B2 `59b9c7673` + 消费批 `b02a10772` + SD-08 `abe9c9900`）：style/action_config/lucide/aura/a2ui/ui_gen 四生成器/registry/bp/route ≈11.3 万行迁 auto-ui-compiler 单源+旧路径全再导出；ui-package-consumer 独立 fixture 真实生成 4/4；语料资产随 owner 迁；指纹机制迁 compiler build.rs；交付合同更新至新包图（792 driver 25/25）；SD-02 事实底稿=m814-a-candidate §2（正文随 T-14/T-15 受管沉淀）] | AC-03 |
 | [ ] | T-04 | work | T-15/M814-A已发布 | UI runtime/renderer/宿主adapter与资源迁移，VM依轻能力；保持真实编辑器/终端/媒体与跨端 | AC-03,04 |
 | [ ] | T-05 | work | T-04；补齐B默认组合，A兼容不得先破坏 | 默认Parser/VM/新SDK显式UI装配、旧auto-lang字段/方法/feature/旧路径兼容；真实import及外部consumer V-02 | AC-02 |
 | [ ] | T-06 | work | T-05；A纯SDK禁止边已在T-02清除 | i18n/a2r frame/config等残边、全局/TLS/registry单源和退出验证；必要非UI消费者切SDK，V-01/04 | AC-01,04 |
@@ -151,7 +151,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | [ ] | T-10 | review | T-09 | 同树独立完整DAG/公开兼容/生产/寿命/测试选择与SD审查，merge门pending | AC-06 |
 | [ ] | T-11 | merge | T-10 pass | master并集/变化复审，最终冻结提交统一§6门，失败修复后重审重冻 | AC-07 |
 | [ ] | T-12 | merge | T-11 | 规范/ledger沉淀、归档、已合入SDK/UI出口交815，guard clean后清理、终态计数 | AC-07 |
-| [ ] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [R3 续批进行中：候选草案 [m814-a-candidate.md](attachments/814/m814-a-candidate.md) 已立（§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双双落地（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免 2 条，基线 `d91948ee1`）；fresh+`--locked` 消费跑通（lockfile 按仓规不入库，流程=generate→locked test）。**Pending**：792 交付 driver（`python test/fixtures/modularity/generated-ui-consumer/driver.py`，需 `auto gen --delivery-root` 真实构建）跑完后方可冻结候选 SHA、勾 T-13] | AC-08 |
+| [x] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [✅ 已完成 2026-10-20：候选冻结 @ `abe9c9900`（[m814-a-candidate.md](attachments/814/m814-a-candidate.md)——§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双绿（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免，基线 `d91948ee1`）；fresh+`--locked` 消费跑通；**792 driver 25/25（EXIT=0）**——首轮受管红暴露新包图三接缝（投影 test-cases 新形态/ui_gen 源根/auto-ui-runtime 未 vendored），SD-08 修复于 `abe9c9900`（DELIVERY_CRATES 19、投影分 spec、指纹路径）；auto-man delivery 单测 9/9。**AC-08 判定归 T-14 独立审查**（本勾选=work 交付完成，非审查 pass）] | AC-08 |
 | [ ] | T-14 | review | T-13提交冻结 | 独立阶段AC-08/API/类型状态/资源/Spec审查，绑定r2/M814-A SHA；全Plan未reviewed、merge门pending | AC-09 |
 | [ ] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 | AC-10 |
 
@@ -315,6 +315,28 @@ worktree 同上 | code: `b02a10772`（fixture+域登记）→ `d91948ee1`（777 
   真实构建）→回填候选 §3 →冻结 SHA→勾 T-03/T-13；②T-14 具名 M814-A 阶段
   审查（绑定冻结 SHA+Spec 子集 SD-01/02/04 备稿）；③T-15 冻结门（裸 t+tv/
   tu/tt）+受管 ledger 增量。merge-owned 门禁 pending 不变。
+
+2026-10-20（续 2）/ stage: work / revision: 2 / outcome: **T-13 完成冻结 @ `abe9c9900`**（M814-A
+候选齐备；AC-08 判定归 T-14，本记录非 pass）/ worktree 同上 | code 追加：
+`abe9c9900`（SD-08 交付合同更新）。
+- **792 driver 复跑实录**：首轮受管红（投影修剪 4 缺 1——producer test-cases
+  行自 T-01 起带 SDK 转发项）→ 修复后续红（ui_gen 源根旧路径）→ 再续红
+  （auto-ui-runtime 未 vendored——上层 T-01 骨架依赖）→ 三接缝一并修复后
+  **25/25 全过 EXIT=0**（V01 fresh/V02 重定位/V03a..j 负控/V04 dev 同源）。
+  受管判红逐级暴露、不回退主检出——792 合同的漂移哨兵语义按设计工作。
+- **修复面（`abe9c9900`）**：DELIVERY_CRATES 16→19（+auto-lang-core/
+  auto-ui-compiler/auto-ui-runtime）；投影修剪按 manifest 分 spec
+  （PROJECTION_AUTO_LANG 新形态 test-cases 改写 + PROJECTION_AUTO_LANG_CORE
+  SDK 清单 spec；漂移判红/幂等按各自 spec，强度不降）；ui_gen 指纹源路径
+  → crates/auto-ui-compiler/src/ui_gen。auto-man delivery 单测 9/9（含新增
+  SDK spec 用例）。
+- **T-03/T-13 勾选**（current_step=4/15）：T-03 剩余项（V-03 消费者/SD-02
+  底稿）随本批收口；候选文档冻结 SHA=abe9c9900、V-05 行回填 792 结果、
+  §4 改 T-14/T-15 归属。
+- **next_responsible_role: review（T-14）**——同树独立阶段审查，绑定
+  abe9c9900 + m814-a-candidate.md + r2 §5.1 阶段性质；Spec 子集
+  SD-01/02/04 备稿以候选 §2 为事实底稿。merge-owned 冻结门（裸 t+tv/tu/tt）
+  保持 pending。B 阶段（T-04..12）在 A 发布后继续。
 
 ## 10. 待澄清事项
 

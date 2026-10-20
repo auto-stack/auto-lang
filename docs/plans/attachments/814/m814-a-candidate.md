@@ -1,15 +1,15 @@
-# PLAN-814 M814-A 候选（T-13 草案——**未冻结**）
+# PLAN-814 M814-A 候选（T-13 冻结 @ `abe9c9900`）
 
-2026-10-20。stage: work（T-13 进行中）。本文件按 §8 T-13 要求准备 A 候选
-证据清单；**候选 SHA 尚未冻结**——792 交付 driver 与最终触面未跑完前不
-得宣称 T-13 完成，更不构成 AC-08/AC-09 pass。
+2026-10-20。stage: work（T-13 完成冻结）。792 交付 driver 已跑通（25/25，
+EXIT=0），候选 SHA 冻结于 `abe9c9900`。**T-13 完成不等于 AC-08 pass**——
+AC-08/AC-09 由 T-14 独立阶段审查绑定本 SHA 判定；AC-10 归 T-15。
 
-## 1. 冻结对象（候选，待 792 后定稿）
+## 1. 冻结对象
 
 | 项 | 值 |
 |---|---|
 | worktree / branch | `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev` |
-| 候选 HEAD | `d91948ee1`（777 基线收口提交；792 跑完后的最终提交为冻结 SHA） |
+| **冻结 SHA** | `abe9c9900`（交付合同更新至新包图——792 driver 25/25 恢复全绿的收口提交） |
 | base | master `203e2ce91` |
 | A 发布包 | `auto-lang-core 0.1.0`（纯 SDK）、`auto-ui-compiler 0.1.0`（UI 编译域）、`auto-ui-runtime 0.1.0`（骨架——**能力未发布**，B/T-04 迁入） |
 
@@ -53,18 +53,19 @@
 | V-02 兼容/装配 | ✅（A 范围） | 旧路径再导出编译 probe（上层 --tests 全编译）；plan806/dialect/scene 24/24；SDK on 1713/1713；文法拒绝负控（feature off 显式诊断不静默） |
 | V-03 真生成出口 | ✅（A 范围） | `ui-package-consumer` 4/4（真实 SFC/script setup/状态/vue 生态 import）；ui_gen 862/862 金样；**当期真实 runtime 消费=A 期上层路径（旧行为保持），B 切新 runtime** |
 | V-04 余边/寿命 | ✅（A 已知面） | frame 779 端口单源（plan716 探针）；i18n 路由恢复；store_extra/strip 下沉单源；autodown 残边已归因记 T-04 |
-| V-05 选择面/发行 | ✅（选择面） | t/tf/tu 别名扩包（池 6851，ui_gen 862 保持选中）；777 strict pass ×4（基线 `d91948ee1`）；fresh（path+独立 lockfile）+ `--locked` 双 fixture 消费通过 |
+| V-05 选择面/发行 | ✅ | t/tf/tu 别名扩包（池 6851，ui_gen 862 保持选中）；777 strict pass ×4（基线 `d91948ee1`）；fresh（path+独立 lockfile）+ `--locked` 双 fixture 消费通过；**792 交付 driver 25/25（EXIT=0 @ `abe9c9900`）**——V01 fresh resolve+build/V02 A→B 重定位 --locked/V03a..j 全负控（资源缺失/坏 hash/漏 patch/不兼容 pin/外来目录/sidecar 外部 path/raw TOML）/V04 dev 同源；SD-08 三接缝修复：DELIVERY_CRATES 16→19、投影按 manifest 分 spec（含 SDK spec）、ui_gen 指纹源路径更新 |
 | V-06 A 真实边界 | ✅（除 792） | 上表合成：禁止边确实消除+非 UI 消费执行成功+旧 API 同源+A 公开生成出口可用；缺新 runtime 能力处显式拒绝（ui_grammar_unavailable） |
 
-## 4. Pending（冻结前必跑）
+## 4. 后续（T-14/T-15 归属）
 
-1. **792 交付 driver**：`python test/fixtures/modularity/generated-ui-consumer/
-   driver.py`（fresh lock/A→B 重定位/资源负控/patch 漏配红——需 `auto gen
-   --delivery-root` 真实构建，分钟级；跑完回填本文件 §3 V-05 发行行）。
-2. 触面确认：M814-A 涉及面（SDK/编译器/别名）由 T-14 审查复核；merge-owned
-   裸 t+tv+tu+tt 归 T-15 冻结门（本轮未跑整档，per 2026-10-14 时序裁定）。
-3. Spec 子集（SD-01/02/04 部分按 A 事实备稿）——正文待 T-14 审查通过后随
-   T-15 受管沉淀，本文件 §2 即事实底稿。
+1. ~~792 交付 driver~~ **已完成**（25/25，EXIT=0；首轮受管红暴露的三处结构
+   漂移即 `abe9c9900` 修复面——投影 4 缺 1/ui_gen 源根/runtime 未 vendored，
+   红不回退主检出语义保持）。
+2. **T-14（next）**：同树独立阶段审查——绑定 `abe9c9900` + 本文件 + r2 §5.1
+   阶段性质，验 AC-08/V-06 与 Spec 子集（SD-01/02/04 按 §2 事实备稿）；
+   merge-owned 门禁（裸 t+tv/tu/tt）保持 pending 记录（2026-10-14 时序裁定）。
+3. **T-15（T-14 pass 后）**：冻结门（裸 cargo t + 触面 tv/tu/tt）→ 实际
+   master 合入 → Spec/受管 ledger 增量与发布收据；保原树/分支继续 B。
 
 ## 5. 已知限制（A 边界内的诚实声明）
 
