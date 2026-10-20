@@ -298,6 +298,10 @@ F787-R6-03（P1，上游783遗留）：lease id=毫秒+PID，连续申请即释�
 F787-R5-01（P1）：新子树准入误拒合法空args，f()恢复失败而f(1)正常；现有136文件/144声明中12次拒绝（7 valid/5 invalid）。F787-R5-02（P1）：合法2MiB+10前导空白使原query程序exit0但空name，进程内精确name=f。F787-R5-03（P2）：受管峰值仍漏返回树/源码页；65556B同型块可见漏树容器22728B及源payload至少65556B，未声称实际超限；OS期间采样改善认可。
 acceptance含64MiB 16族全绿、raw passed合计106次（有重叠）。原R4-01/02/03旧例与旧SD文字/格式已闭，R4-04部分闭；本轮修复回归须按合同组合治理。保留T01..05，仅重开T06/07；原树修复永久oracle/计量/SD后再审，merge-owned完整独立套件/沉淀/合流归档/guard收尾pending。未改实现或合入。
 
+### Plan 797（2026-10-20，R13 修复轮完成，待 T-08 复审）
+
+R13 复审（受审 `ae51fea21`，needs_fix，F-R4-10 关闭、进度 4/9）唯一开放项 F-R4-07 已修复（修复提交 `e1088b0ad`，同树）：候选位置全集派生——对全部 (依赖, 解析目录, 链目录) 三元组记录 normalize(D2+rel(P,D1)) 父目录，覆盖父路径逃逸候选（R13 构造 17→29 反例+同输入 hit 控制为永久测试）；派生完备性=真实 spec 必在枚举内；上限 1024 超限保守不缓存；实测真实 consumer 成本可忽略。probe 83/83、父侧 13/13、verify closeout ALL PASS；merge-owned 门禁/沉淀/归档 guard 仍 pending。无新增债务延期项。
+
 ### Plan 797（2026-10-20，R13 完整复审，needs_fix）
 
 受审 `ae51fea21171ef14ae0630498fab3203318edbce`，revision1；[R13完整报告/AC映射/原始反例](attachments/797/review-r13/review.md)。**F-R4-10 CLOSED**：五表+完整flatten路径成本，原1700名直链/共享DAG均超8MiB前拒、1300名终门拒、900名及小图合法控制通过；T-02闭合。**唯一OPEN/P1仍F-R4-07**：传递头引用 `../shared/dep.h`，新增更近文件不在source/-I/已成功解析依赖父目录的后代树里，仍hit PE17而fresh29。已知依赖目录递归不是全部候选搜索位置；无新增finding ID/规模承诺，登记不批准延期/缩面。
