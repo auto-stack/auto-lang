@@ -439,3 +439,63 @@ fn native_worker_preparation_bounded_and_killed_on_stall() {
     assert!(ready.is_ok(), "ready control: {:?}", ready.err());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+/// F798-R9-02: the preparation supervisor drains BOTH streams under caps —
+/// an over-cap stderr FAILS (never a truncated success), a large stdout
+/// under the cap succeeds (no pipe backpressure false-timeout), and a
+/// stalled preparation is killed promptly.
+#[cfg(windows)]
+#[test]
+fn native_worker_preparation_dual_stream_controls() {
+    let _env_guard = NATIVE_ENV_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+    let root = std::env::temp_dir().join(format!("av798-prep2-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(root.join("target").join("release")).unwrap();
+    let exe = root
+        .join("target")
+        .join("release")
+        .join("av_probe_worker.exe");
+
+    // Control A: over-cap stderr (2 MiB) must FAIL even with exit 0 and
+    // the product present.
+    let overflow = root.join("overflow.cmd");
+    std::fs::write(
+        &overflow,
+        "@echo off\r\ntype nul > \"%CD%\\target\\release\\av_probe_worker.exe\"\r\npowershell -NoProfile -Command \"$s='A'*1024; 1..2048 | ForEach-Object { [Console]::Error.WriteLine($s) }\"\r\nexit /b 0\r\n",
+    )
+    .unwrap();
+    std::env::set_var("AV798_NATIVE_PREP_WALL_MS", "60000");
+    std::env::set_var("AV798_NATIVE_PREP_CARGO", &overflow);
+    let out = auto_av_probe::native_reference::bounded_worker_build(&root, &exe);
+    assert!(
+        out.as_ref()
+            .err()
+            .map(|e| e.contains("stream cap"))
+            .unwrap_or(false),
+        "2MiB stderr over the cap fails closed: {:?}",
+        out
+    );
+
+    // Control B: 128 KiB stdout under the cap succeeds (the pipe is
+    // drained — no backpressure false-timeout).
+    let stdout_ok = root.join("stdout-ok.cmd");
+    std::fs::write(
+        &stdout_ok,
+        "@echo off\r\ntype nul > \"%CD%\\target\\release\\av_probe_worker.exe\"\r\npowershell -NoProfile -Command \"$s='B'*1024; 1..128 | ForEach-Object { [Console]::Out.WriteLine($s) }\"\r\nexit /b 0\r\n",
+    )
+    .unwrap();
+    let _ = std::fs::remove_file(&exe);
+    std::env::set_var("AV798_NATIVE_PREP_CARGO", &stdout_ok);
+    let started = std::time::Instant::now();
+    let out = auto_av_probe::native_reference::bounded_worker_build(&root, &exe);
+    let wall = started.elapsed();
+    assert!(out.is_ok(), "128KiB stdout drains and succeeds: {:?}", out);
+    assert!(
+        wall < std::time::Duration::from_secs(20),
+        "no backpressure stall (took {wall:?})"
+    );
+
+    std::env::remove_var("AV798_NATIVE_PREP_WALL_MS");
+    std::env::remove_var("AV798_NATIVE_PREP_CARGO");
+    let _ = std::fs::remove_dir_all(&root);
+}

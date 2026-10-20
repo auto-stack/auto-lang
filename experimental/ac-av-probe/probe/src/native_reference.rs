@@ -159,6 +159,35 @@ pub fn native_worker_binary() -> Result<PathBuf, String> {
         bounded_worker_build(&root, &exe)?;
     }
     if exe.is_file() {
+        // F798-R9-02: bind the EXISTING binary's functional identity — it
+        // must execute and expose this plan's helper subcommands (the
+        // usage banner lists `native-build`/`native-run`). A stale or
+        // foreign binary at the expected path fails here, bounded.
+        let mut probe = std::process::Command::new(&exe);
+        probe
+            .arg("native-build")
+            .stdout(std::process::Stdio::piped());
+        let run = link::run_deadlined_captured(
+            &mut probe,
+            Duration::from_secs(10),
+            link::CaptureCaps {
+                stdout_max: NATIVE_STREAM_CAP,
+                stderr_max: NATIVE_STREAM_CAP,
+            },
+        )
+        .map_err(|e| match e {
+            link::SubprocError::Deadline | link::SubprocError::DeadlineCollect => {
+                "worker identity probe timed out".to_string()
+            }
+            other => format!("worker identity probe: {:?}", other),
+        })?;
+        let usage = String::from_utf8_lossy(&run.stderr);
+        if !usage.contains("native-build") || !usage.contains("native-run") {
+            return Err(format!(
+                "worker at {} does not expose the native helper subcommands (stale binary?)",
+                exe.display()
+            ));
+        }
         Ok(exe)
     } else {
         Err(format!("worker binary missing at {}", exe.display()))
@@ -184,58 +213,43 @@ pub fn bounded_worker_build(root: &Path, exe: &Path) -> Result<(), String> {
     );
     let cargo =
         std::env::var("AV798_NATIVE_PREP_CARGO").unwrap_or_else(|_| env!("CARGO").to_string());
-    let mut child = std::process::Command::new(&cargo)
-        .args(["build", "--release", "--bin", "av_probe_worker"])
+    // F798-R9-02: the preparation runs through ac-core's CONTAINED
+    // executor — suspended start + job containment (the whole subtree is
+    // killed at the wall), BOTH streams drained under hard caps (an
+    // over-cap output is a failure, never a truncated success; a large
+    // stdout cannot backpressure into a false timeout), one absolute
+    // deadline. No private spawn/supervise plumbing.
+    let mut cmd = std::process::Command::new(&cargo);
+    cmd.args(["build", "--release", "--bin", "av_probe_worker"])
         .current_dir(root)
         .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("spawn cargo for the worker: {e}"))?;
-    let (tx, rx) = std::sync::mpsc::channel::<Vec<u8>>();
-    {
-        let mut pipe = child.stderr.take().expect("stderr");
-        std::thread::spawn(move || {
-            use std::io::Read;
-            let mut buf = Vec::new();
-            let mut chunk = [0u8; 16384];
-            loop {
-                match pipe.read(&mut chunk) {
-                    Ok(0) => break,
-                    Ok(n) => {
-                        buf.extend_from_slice(&chunk[..n]);
-                        if buf.len() > NATIVE_STREAM_CAP {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-            let _ = tx.send(buf);
-        });
-    }
-    let started = std::time::Instant::now();
-    let status = loop {
-        if started.elapsed() > wall {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(format!(
-                "native worker preparation exceeded its {:?} wall (killed)",
-                wall
-            ));
+        .stderr(std::process::Stdio::piped());
+    let run = link::run_deadlined_captured(
+        &mut cmd,
+        wall,
+        link::CaptureCaps {
+            stdout_max: NATIVE_STREAM_CAP,
+            stderr_max: NATIVE_STREAM_CAP,
+        },
+    )
+    .map_err(|e| match e {
+        link::SubprocError::Deadline | link::SubprocError::DeadlineCollect => format!(
+            "native worker preparation exceeded its {:?} wall (tree killed)",
+            wall
+        ),
+        link::SubprocError::OutputCapExceeded { .. } => {
+            "native worker preparation output exceeded the stream cap".to_string()
         }
-        match child.try_wait() {
-            Ok(Some(st)) => break st,
-            Ok(None) => {}
-            Err(e) => return Err(format!("poll cargo build: {e}")),
-        }
-        std::thread::sleep(Duration::from_millis(5));
-    };
-    let log = rx.recv_timeout(Duration::from_secs(2)).unwrap_or_default();
-    if !status.success() {
+        other => format!("native worker preparation spawn: {:?}", other),
+    })?;
+    let status = run
+        .exit_code
+        .ok_or_else(|| "native worker preparation terminated abnormally".to_string())?;
+    if status != 0 {
         return Err(format!(
             "worker build failed:
 {}",
-            String::from_utf8_lossy(&log)
+            String::from_utf8_lossy(&run.stderr)
         ));
     }
     if !exe.is_file() {

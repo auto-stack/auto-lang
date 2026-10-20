@@ -188,6 +188,66 @@ fn av_resources_front_door_nesting_boundary() {
     assert_eq!(*r.counters.get("admission_reject").unwrap_or(&0), 1);
 }
 
+/// F798-R9-01: sequential STATEMENTS are independent expressions — 64
+/// `let vI = (1 + 1)` lines stay legal (the metric is a max over paths,
+/// never a sum), while serial/nested chains still hit the 128 door.
+#[test]
+fn av_resources_sequential_shallow_statements_not_depth_summed() {
+    let stmts = |n: usize| {
+        let mut src = String::from("fn main() int {\n");
+        for i in 0..n {
+            src.push_str(&format!("    let v{i} = (1 + 1)\n"));
+        }
+        src.push_str("    return v0\n}\n");
+        src
+    };
+    let mut d = Driver::ephemeral();
+    for n in [16usize, 63, 64, 65, 100] {
+        let src = stmts(n);
+        let door = front_door_admit(&src);
+        assert!(
+            door.is_ok(),
+            "{n} shallow statements admit: {:?}",
+            door.err()
+        );
+        let r = d.request(&src, "d_main", &[]);
+        assert!(r.ok(), "{n} shallow statements execute: {:?}", r.diag);
+        assert_eq!(r.value_i32(), Some(2), "{n} statements value");
+    }
+    // The deep rejections stay: serial chain and mixed nesting+chain.
+    let serial = format!(
+        "fn main() int {{\n    return {}\n}}\n",
+        vec!["(1)"; 129].join(" + ")
+    );
+    assert!(
+        front_door_admit(&serial).is_err(),
+        "serial 129 still rejected"
+    );
+    // Mixed: a 70-deep nesting of calls each containing a 70-op chain —
+    // the true max path (~140) must be rejected, not just one axis.
+    let mut mixed = String::from("fn main() int {\n    return ");
+    mixed.push_str(&"idfn(".repeat(0)); // built below via named chain instead
+    let chain = vec!["1"; 70].join(" + ");
+    let nested = format!("fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return idfn(idfn(idfn({})))\n}}\n", chain);
+    let _ = mixed;
+    assert!(
+        front_door_admit(&nested).is_ok(),
+        "3-deep nesting of a 70-op chain (path ~74) is legal"
+    );
+    let deep_nested = format!(
+        "fn idfn(x int) int {{\n    return x\n}}\n\nfn main() int {{\n    return {}\n}}\n",
+        format!(
+            "{}{}",
+            "idfn(".repeat(60),
+            format!("{}{}", chain, ")".repeat(60))
+        )
+    );
+    assert!(
+        front_door_admit(&deep_nested).is_err(),
+        "60-deep nesting of a 70-op chain (path ~130) is rejected"
+    );
+}
+
 /// F798-R8-01: sibling arguments of ONE call are separate expressions —
 /// a shallow WIDE call (each argument a single add) stays legal at any
 /// arity the wire allows, while serial chains still hit the 128 door.
