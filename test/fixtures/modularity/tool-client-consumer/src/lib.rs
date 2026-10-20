@@ -503,3 +503,43 @@ fn abort_stops_own_threads_despite_unowned_holders() {
     assert!(shutdown_started.elapsed() < Duration::from_secs(2));
     assert_eq!(shutdown.kind, ExitKind::Success);
 }
+
+/// F-816-R5 写端真停（客户端实机面，镜像 R5 探针）：DirectChildOnly +
+/// 非拥有后代持有 stdin 读端且不读——256KiB 请求帧阻塞写。250ms 超时
+/// 必须以 **Timeout** 分类有界返回（写线程经取消真停；非"带活线程的
+/// PipesHeld"），随后 shutdown 快速完成。
+#[test]
+fn abort_stops_blocked_writer_for_real() {
+    let hb_dir = tempfile::tempdir().expect("tempdir");
+    let hb = hb_dir.path().join("heartbeat.log");
+    let mut spec = ToolClientSpec::new(te_child());
+    spec.env = vec![
+        ("TE_CHILD_MODE".into(), "orphan".into()),
+        ("TE_CHILD_ARG1".into(), "4".into()),
+        (
+            "TE_CHILD_ARG2".into(),
+            hb.to_string_lossy().into_owned().into(),
+        ),
+    ];
+    spec.tree_scope = TreeScope::DirectChildOnly; // 非拥有后代保留（scope 合同）
+    spec.request_timeout = Some(Duration::from_millis(250));
+    let mut client = ToolClient::spawn(spec).expect("spawn te-child");
+    let started = Instant::now();
+    let err = client
+        .request_unknown_operation(&"g".repeat(256 * 1024)) // 超管道缓冲、低于帧预算
+        .expect_err("blocked write must hit the deadline");
+    let elapsed = started.elapsed();
+    match &err {
+        ClientError::Timeout { id: 1, limit } => assert_eq!(*limit, Duration::from_millis(250)),
+        other => panic!("expected Timeout (writer truly stopped), got {other:?}"),
+    }
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "abort must be bounded with the writer truly stopped (elapsed={elapsed:?})"
+    );
+    // 非拥有后代保留（scope 合同）且随后 shutdown 快速完成。
+    let shutdown_started = Instant::now();
+    let shutdown = client.shutdown().expect("shutdown after abort");
+    assert!(shutdown_started.elapsed() < Duration::from_secs(2));
+    assert_eq!(shutdown.kind, ExitKind::Success);
+}

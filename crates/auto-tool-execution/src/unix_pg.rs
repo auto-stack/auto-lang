@@ -45,3 +45,21 @@ pub(crate) fn kill_group(pgid: u32) -> io::Result<()> {
         }
     }
 }
+
+/// 将 fd 设为非阻塞（stdin 写端的可停止写：EAGAIN + poll 轮询，
+/// F-816-R5；Windows 侧由自建重叠管道承担同语义）。
+#[cfg(unix)]
+pub(crate) fn set_nonblocking(fd: i32) {
+    const F_GETFL: i32 = 3;
+    const F_SETFL: i32 = 4;
+    const O_NONBLOCK: i32 = 0o4000;
+    extern "C" {
+        fn fcntl(fd: i32, cmd: i32, arg: i32) -> i32;
+    }
+    unsafe {
+        let flags = fcntl(fd, F_GETFL, 0);
+        if flags >= 0 {
+            fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        }
+    }
+}

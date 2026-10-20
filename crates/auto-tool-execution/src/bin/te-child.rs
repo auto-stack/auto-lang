@@ -85,6 +85,26 @@ fn main() {
             std::io::stdin().read_to_end(&mut data).unwrap();
             std::io::stdout().write_all(&data).unwrap();
         }
+        // ARG1 = 根存活秒数;ARG2 = heartbeat 文件路径。派生一个**仅继承
+        // stdin** 的后代(heartbeat 模式,stdout/stderr 置 null)后根保持
+        // 睡眠——供上层写端在"根活着 + 非拥有持读者不读"语境下验证
+        // 取消真停(816 R5)。
+        "stdin-holder" => {
+            let secs: u64 = arg1().trim().parse().unwrap_or(5).min(30);
+            let hb = arg2();
+            let exe = std::env::current_exe().unwrap();
+            let _child = Command::new(&exe)
+                .env(MODE, "heartbeat")
+                .env(ARG1, secs.to_string())
+                .env(ARG2, &hb)
+                .stdin(std::process::Stdio::inherit()) // 持有根的 stdin 读端
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            drop(_child);
+            std::thread::sleep(std::time::Duration::from_secs(secs));
+        }
         // ARG1 = 环境变量名。两行打到 stderr 后小睡 300ms 再退出:
         //   cwd <当前目录>
         //   env <name>=<value>

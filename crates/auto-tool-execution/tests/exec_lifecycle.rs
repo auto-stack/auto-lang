@@ -424,3 +424,31 @@ fn stdin_writer_failure_is_named() {
         other => panic!("expected named write-stdin failure, got {other:?}"),
     }
 }
+
+/// F-816-R5 写端真停（Windows 实机,生产路径）：根存活 +
+/// 非拥有持读者（stdin-holder 后代继承 stdin 且不读）——1MiB
+/// stdin_data 超缓冲阻塞写;250ms deadline 后 run 必须以 Timeout 分类
+/// 有界返回（写线程经 CancelIoEx 取消真停,kind=Stopped 部分写;
+/// 非owned 后代保留,heartbeat 继续推进）。
+#[test]
+fn deadline_covers_blocked_stdin_with_unowned_holder() {
+    let dir = TempDir::new("r5-writer");
+    let hb = dir.path().join("hb.log");
+    let mut spec = with_args(child_spec("stdin-holder"), "5", Some(hb.to_str().unwrap()));
+    spec.stdin = StdioPolicy::Piped;
+    spec.tree_scope = TreeScope::DirectChildOnly; // 非拥有后代保留(scope 合同)
+    spec.stdin_data = Some(vec![b'x'; 1024 * 1024]);
+    spec.deadline = Some(Duration::from_millis(250));
+    let started = Instant::now();
+    let result = run(&spec).expect("run with deadline");
+    let elapsed = started.elapsed();
+    assert!(
+        matches!(result.kind, ExitKind::Timeout { .. }),
+        "{:?}",
+        result.kind
+    );
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "writer must truly stop via cancel (elapsed={elapsed:?})"
+    );
+}

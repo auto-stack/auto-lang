@@ -25,12 +25,12 @@
 
 use std::ffi::OsString;
 use std::io;
-use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -38,6 +38,12 @@ use std::time::{Duration, Instant};
 mod unix_pg;
 #[cfg(windows)]
 mod win_job;
+#[cfg(windows)]
+mod win_stdin;
+#[cfg(windows)]
+pub mod win_stdin_reexport {
+    pub use crate::win_stdin::CancelHandle;
+}
 
 /// 每流 stdio 策略。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -308,6 +314,7 @@ fn build_command(spec: &ExecutionSpec) -> Command {
 /// [`OwnedProcess::wait_deadline`]/[`OwnedProcess::cancel`] 自管。
 pub fn spawn(spec: &ExecutionSpec) -> Result<OwnedProcess, ExecutionError> {
     validate(spec)?;
+    let _ = &spec;
     let mut cmd = build_command(spec);
     #[cfg(windows)]
     if spec.tree_scope == TreeScope::ProcessTree {
@@ -345,6 +352,13 @@ pub fn spawn(spec: &ExecutionSpec) -> Result<OwnedProcess, ExecutionError> {
             }
         }
     }
+    #[cfg(unix)]
+    if spec.stdin == StdioPolicy::Piped {
+        use std::os::unix::io::AsRawFd;
+        if let Some(stdin) = proc.child.stdin.as_ref() {
+            unix_pg::set_nonblocking(stdin.as_raw_fd());
+        }
+    }
     Ok(proc)
 }
 
@@ -368,6 +382,39 @@ struct Capture {
 /// 轮询切片：stop/owned_closed 的最大生效延迟（公开供客户端复用同一
 /// 停止性节奏）。
 pub const PIPE_POLL_SLICE: Duration = Duration::from_millis(50);
+
+/// 我方 stdin 写端（平台包装，F-816-R5 写端真停）：
+/// - Windows：std 管道端 + 取消句柄——`CancelIoEx` 按文件对象取消
+///   挂起的同步写（阻塞写 ~10ms 解除，实测）；
+/// - Unix：std 管道端 + `O_NONBLOCK` + poll 轮询（分片间 stop 生效）。
+pub struct StdinPipe {
+    inner: ChildStdin,
+    #[cfg(windows)]
+    cancel: Option<win_stdin::CancelHandle>,
+}
+
+impl StdinPipe {
+    /// 取消写线程挂起的同步写（Windows；Unix 无操作——轮询本身可停）。
+    pub fn cancel_blocked_write(&self) {
+        #[cfg(windows)]
+        if let Some(h) = &self.cancel {
+            h.cancel();
+        }
+    }
+
+    /// 取消凭证副本（Windows;Unix 返回 None）。写端被移交给写线程后，
+    /// 停止侧仍可经副本取消挂起的同步写。
+    pub fn cancel_handle(&self) -> Option<win_stdin::CancelHandle> {
+        #[cfg(windows)]
+        {
+            self.cancel.clone()
+        }
+        #[cfg(not(windows))]
+        {
+            None
+        }
+    }
+}
 
 #[cfg(windows)]
 mod pipe_wait {
@@ -501,21 +548,38 @@ impl PipePoll for std::io::PipeWriter {
     }
 }
 
-/// 排空当前已可读的内容（F-816-R3-01：stop/收尾语义=先排空再退出）。
-/// 有界：管道空即止；DRAIN_CAP 防御仍活跃的写入方无限供数（stop 仅在
-/// owned 树终止后的收尾语境使用,正常情况下数据有限）。
-fn drain_readable<R: io::Read + PipePoll>(r: &mut R, bytes: &mut Vec<u8>, chunk: &mut [u8]) {
+/// stop 排空的结构化结束状态（F-816-R5-01：排空不得把流失败抹成正常
+/// 停止——EOF/读错按真实终态映射）。
+#[derive(Debug)]
+enum DrainEnd {
+    /// 管道空（无更多已到达数据）——真正的"被停止"。
+    Empty,
+    /// 排空中观察到干净 EOF。
+    Eof,
+    /// 排空中读错（具名 I/O 失败）。
+    Io(io::Error),
+}
+
+/// 排空当前已可读的内容（F-816-R3-01：stop/收尾语义=先排空再退出；
+/// R5-01：结束状态结构化返回）。有界：管道空即止；DRAIN_CAP 防御仍
+/// 活跃的写入方无限供数（stop 仅在 owned 树终止后的收尾语境使用）。
+fn drain_readable<R: io::Read + PipePoll>(
+    r: &mut R,
+    bytes: &mut Vec<u8>,
+    chunk: &mut [u8],
+) -> DrainEnd {
     let cap = Instant::now() + DRAIN_CAP;
     while Instant::now() < cap {
         if !r.poll_ready(Duration::from_millis(0)) {
-            break;
+            return DrainEnd::Empty;
         }
         match r.read(chunk) {
-            Ok(0) => break,
+            Ok(0) => return DrainEnd::Eof,
             Ok(n) => bytes.extend_from_slice(&chunk[..n]),
-            Err(_) => break,
+            Err(e) => return DrainEnd::Io(e),
         }
     }
+    DrainEnd::Empty
 }
 
 /// 排空上限（防御性;owned 树已终止时数据有限,远用不满）。
@@ -554,9 +618,13 @@ impl CaptureWorker {
             loop {
                 if flag.load(Ordering::Relaxed) {
                     // F-816-R3-01: stop 不丢弃已到达数据——先排空可读
-                    // 内容再以 Stopped 结束(捕获字节截至真正排空点)。
-                    drain_readable(&mut r, &mut bytes, &mut chunk);
-                    end = ReaderEnd::Stopped;
+                    // 内容;R5-01:排空的结束状态按真实终态映射,不把
+                    // EOF/读错抹成 Stopped。
+                    end = match drain_readable(&mut r, &mut bytes, &mut chunk) {
+                        DrainEnd::Empty => ReaderEnd::Stopped,
+                        DrainEnd::Eof => ReaderEnd::Eof,
+                        DrainEnd::Io(source) => ReaderEnd::Io(source),
+                    };
                     break;
                 }
                 if !r.poll_ready(PIPE_POLL_SLICE) {
@@ -664,7 +732,8 @@ fn finish_capture(
 /// stdin 写入结果（具名）：全部写完、写错或被设施停止（部分写入）。
 #[derive(Debug)]
 struct WriterOutcome {
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// 已写字节(部分写记录;诊断/debug 断言用)。
+    #[allow(dead_code)]
     written: usize,
     end: WriterEnd,
 }
@@ -676,6 +745,77 @@ enum WriterEnd {
     Stopped,
 }
 
+/// 可停止的写端（F-816-R5）：`Ok(0)` = stop 取消（部分写语义）；
+/// `Err` = 真实写失败（含断管）。Windows 由自建重叠管道实现（stop →
+/// `CancelIoEx` 内核保证取消）；Unix 由 `O_NONBLOCK` + poll 实现。
+pub trait StoppableWrite: Send {
+    fn write_stoppable(&mut self, buf: &[u8], stop: &Arc<AtomicBool>) -> io::Result<usize>;
+}
+
+#[cfg(windows)]
+impl StoppableWrite for StdinPipe {
+    fn write_stoppable(&mut self, buf: &[u8], _stop: &Arc<AtomicBool>) -> io::Result<usize> {
+        // 直接阻塞写:挂起时由停止侧 cancel_blocked_write 取消
+        //（CancelIoEx 按文件对象;停止语境的写错误由 Worker 归类 Stopped）。
+        use std::io::Write;
+        self.inner.write(buf)
+    }
+}
+
+#[cfg(unix)]
+impl StoppableWrite for StdinPipe {
+    fn write_stoppable(&mut self, buf: &[u8], stop: &Arc<AtomicBool>) -> io::Result<usize> {
+        use std::io::Write;
+        use std::os::unix::io::AsRawFd;
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                return Ok(0);
+            }
+            if !crate::pipe_wait::fd_ready(self.inner.as_raw_fd(), 0x004, PIPE_POLL_SLICE) {
+                continue;
+            }
+            match self.inner.write(buf) {
+                Ok(0) => return Ok(0),
+                Ok(n) => return Ok(n),
+                Err(e)
+                    if e.kind() == io::ErrorKind::WouldBlock
+                        || e.kind() == io::ErrorKind::Interrupted =>
+                {
+                    continue
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
+#[cfg(unix)]
+impl StoppableWrite for std::process::ChildStdin {
+    fn write_stoppable(&mut self, buf: &[u8], stop: &Arc<AtomicBool>) -> io::Result<usize> {
+        use std::io::Write;
+        use std::os::unix::io::AsRawFd;
+        loop {
+            if stop.load(Ordering::Relaxed) {
+                return Ok(0);
+            }
+            if !crate::pipe_wait::fd_ready(self.as_raw_fd(), 0x004, PIPE_POLL_SLICE) {
+                continue;
+            }
+            match self.write(buf) {
+                Ok(0) => return Ok(0),
+                Ok(n) => return Ok(n),
+                Err(e)
+                    if e.kind() == io::ErrorKind::WouldBlock
+                        || e.kind() == io::ErrorKind::Interrupted =>
+                {
+                    continue
+                }
+                Err(e) => return Err(e),
+            }
+        }
+    }
+}
+
 /// stdin 写入线程控制器：分块写入 + 就绪轮询，可被设施停止（对端不读
 /// 且管道写端读侧被非拥有方持有时，deadline 收尾不悬挂，F-816-R1/R2）。
 /// Windows 同步写端无就绪查询：阻塞分片写由 owned 终止解除；非拥有方
@@ -684,6 +824,11 @@ struct WriterWorker {
     stop: Arc<AtomicBool>,
     done: Receiver<WriterOutcome>,
     join: Option<JoinHandle<()>>,
+    /// 共享取消凭证（Windows）：写线程正常完成时经此关闭副本（EOF
+    /// 不被凭证延迟——R5 实测 cancel 后立即 close 仍完成 abort）；
+    /// 停止侧 cancel 后同样关闭。
+    #[cfg(windows)]
+    cancel: Option<Arc<Mutex<Option<win_stdin::CancelHandle>>>>,
 }
 
 /// 单次阻塞写的分片上限：写阻塞窗口受此约束（对端 draining 时每个
@@ -691,13 +836,37 @@ struct WriterWorker {
 const WRITE_CHUNK: usize = 16 * 1024;
 
 impl WriterWorker {
+    #[cfg(not(windows))]
     fn spawn<W>(stdin: W, data: Vec<u8>) -> Self
     where
-        W: Write + PipePoll + Send + 'static,
+        W: StoppableWrite + Send + 'static,
     {
+        let _ = None::<Arc<Mutex<Option<u8>>>>;
+        Self::spawn_inner(stdin, data)
+    }
+
+    #[cfg(not(windows))]
+    fn spawn_inner<W>(stdin: W, data: Vec<u8>) -> Self
+    where
+        W: StoppableWrite + Send + 'static,
+    {
+        Self::spawn_with(stdin, data, None::<Arc<Mutex<Option<u8>>>>)
+    }
+
+    fn spawn_with<W>(
+        stdin: W,
+        data: Vec<u8>,
+        cancel_slot: Option<Arc<Mutex<Option<win_stdin::CancelHandle>>>>,
+    ) -> Self
+    where
+        W: StoppableWrite + Send + 'static,
+    {
+        let _ = &cancel_slot;
         let (tx, done) = std::sync::mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&stop);
+        #[cfg(windows)]
+        let shared_cancel = cancel_slot.clone();
         let join = std::thread::spawn(move || {
             let mut stdin = stdin;
             let mut written = 0usize;
@@ -711,9 +880,15 @@ impl WriterWorker {
                     break;
                 }
                 let upper = (written + WRITE_CHUNK).min(data.len());
-                match stdin.write(&data[written..upper]) {
+                match stdin.write_stoppable(&data[written..upper], &flag) {
                     Ok(0) => {
-                        end = WriterEnd::Io(io::Error::from(io::ErrorKind::WriteZero));
+                        // 停止取消(重叠写被 CancelIoEx)或写零:停止语境为
+                        // Stopped(部分写);否则写零按 I/O 失败具名。
+                        end = if flag.load(Ordering::Relaxed) {
+                            WriterEnd::Stopped
+                        } else {
+                            WriterEnd::Io(io::Error::from(io::ErrorKind::WriteZero))
+                        };
                         break;
                     }
                     Ok(n) => written += n,
@@ -723,20 +898,35 @@ impl WriterWorker {
                     {
                         continue
                     }
+                    // stop 语境（取消句柄中止/对端关读端）的写失败=
+                    // 拆除语义:Stopped(部分写);非 stop 的失败具名 Io。
                     Err(e) => {
-                        end = WriterEnd::Io(e);
+                        end = if flag.load(Ordering::Relaxed) {
+                            WriterEnd::Stopped
+                        } else {
+                            WriterEnd::Io(e)
+                        };
                         break;
                     }
                 }
             }
-            // drop(stdin) 关闭管道，子进程 stdin 见 EOF。
+            // drop(stdin) 关闭管道，子进程 stdin 见 EOF;随后关闭共享
+            // 取消凭证（EOF 不被副本延迟——R5 cancel-then-close 实测）。
             drop(stdin);
+            #[cfg(windows)]
+            if let Some(shared) = &shared_cancel {
+                if let Ok(mut slot) = shared.lock() {
+                    *slot = None; // drop 关闭
+                }
+            }
             let _ = tx.send(WriterOutcome { written, end });
         });
         Self {
             stop,
             done,
             join: Some(join),
+            #[cfg(windows)]
+            cancel: cancel_slot,
         }
     }
 
@@ -752,8 +942,23 @@ impl WriterWorker {
         }
     }
 
+    /// 请求停止并等待线程**真停**：取消挂起的同步写（Windows——
+    /// `CancelIoEx` 实测 ~10ms 解除;Unix 由非阻塞轮询分片间生效）→
+    /// 有界等待完成消息，未停即 [`ExecutionError::PipesHeld`]（不冒充
+    /// 已清理）。`cancel` 由 spawn 时注入。
     fn stop_and_join(&mut self, grace: Duration) -> Result<WriterOutcome, ExecutionError> {
         self.request_stop();
+        #[cfg(windows)]
+        if let Some(shared) = &self.cancel {
+            // cancel 后立即关闭副本（EOF 不被延迟;abort 已入队——实测
+            // cancel-then-close 语义成立）。唤醒阻塞写;若写线程恰在同
+            // 时完成并已关闭,取消为无害无操作。
+            if let Ok(mut slot) = shared.lock() {
+                if let Some(h) = slot.take() {
+                    h.cancel();
+                }
+            }
+        }
         let outcome = self.done.recv_timeout(grace);
         if !matches!(outcome, Err(RecvTimeoutError::Timeout)) {
             let _ = self.join.take().map(|h| h.join());
@@ -805,19 +1010,23 @@ fn finish_early(
     stderr_w: &mut Option<CaptureWorker>,
     writer_w: &mut Option<WriterWorker>,
 ) -> ExecutionError {
-    if let Some(w) = stdout_w.as_mut() {
-        w.request_stop();
-        w.mark_owned_closed();
-        let _ = w.stop_and_join(TEARDOWN_GRACE);
-    }
-    if let Some(w) = stderr_w.as_mut() {
-        w.request_stop();
-        w.mark_owned_closed();
-        let _ = w.stop_and_join(TEARDOWN_GRACE);
+    // 逐个停止并确认真停；任一线程未能停（PipesHeld）即以该失败返回
+    //（R5：清理失败具名传播——"带着活线程返回"事实优先于原始错误；
+    // 其余清理结果不覆盖原错误）。
+    for w in [stdout_w, stderr_w] {
+        if let Some(w) = w.as_mut() {
+            w.request_stop();
+            w.mark_owned_closed();
+            if let Err(e @ ExecutionError::PipesHeld { .. }) = w.stop_and_join(TEARDOWN_GRACE) {
+                return e;
+            }
+        }
     }
     if let Some(w) = writer_w.as_mut() {
         w.request_stop();
-        let _ = w.stop_and_join(TEARDOWN_GRACE);
+        if let Err(e @ ExecutionError::PipesHeld { .. }) = w.stop_and_join(TEARDOWN_GRACE) {
+            return e;
+        }
     }
     err
 }
@@ -846,6 +1055,22 @@ const POST_EXIT_COLLECT_GRACE: Duration = Duration::from_secs(10);
 /// 正常远小于本值)。
 const TEARDOWN_GRACE: Duration = Duration::from_secs(3);
 
+/// 有界取消：两次终止 + 有界收尸（R5：终止失败时不得无界 wait——
+/// `OwnedProcess::cancel` 内的 `wait` 无界）。失败即返回具名错误。
+fn bounded_cancel(proc: &mut OwnedProcess, grace: Duration) -> Result<(), io::Error> {
+    let _ = proc.terminate(); // 首次终止（失败交由第二次判定）
+    if matches!(proc.wait_deadline(grace), Ok(Some(_))) {
+        return Ok(());
+    }
+    proc.terminate()?;
+    match proc.wait_deadline(grace)? {
+        Some(_) => Ok(()),
+        None => Err(io::Error::other(
+            "process did not exit within two terminations",
+        )),
+    }
+}
+
 /// 一次性执行到终态(含可选 deadline)。deadline 覆盖**整次**执行:
 /// stdin 写入、根等待与资源收尾共用同一绝对截止(F-816-R1-01)。
 /// 根退出后、reader 收尾前,仍持管道的 owned 后代先被终止
@@ -872,7 +1097,14 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
             let stdin = proc
                 .take_stdin()
                 .ok_or_else(|| ExecutionError::InvalidSpec("stdin pipe missing".into()))?;
-            Some(WriterWorker::spawn(stdin, data))
+            let cancel = stdin.cancel_handle();
+            #[cfg(windows)]
+            let slot = cancel.map(|h| Arc::new(Mutex::new(Some(h))));
+            #[cfg(windows)]
+            let w = WriterWorker::spawn_with(stdin, data, slot);
+            #[cfg(not(windows))]
+            let mut w = WriterWorker::spawn(stdin, data);
+            Some(w)
         }
         None => None,
     };
@@ -885,13 +1117,13 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
                 Ok(Some(status)) => status,
                 Ok(None) => {
                     timed_out = true;
-                    // 终止 owned 树;收尸与失败传播在停止自有线程之后统一进行。
-                    let _ = proc.terminate();
-                    match proc.child.wait() {
-                        Ok(status) => status,
+                    // 有界取消（R5：terminate 失败时无界 wait 会在收尾
+                    // 前悬挂）；status 在超时路径不用于分类。
+                    match bounded_cancel(&mut proc, TEARDOWN_GRACE) {
+                        Ok(()) => ExitStatus::default(),
                         Err(source) => {
                             let err = ExecutionError::Io {
-                                stage: "wait",
+                                stage: "cancel after timeout",
                                 source,
                             };
                             return Err(finish_early(
@@ -948,7 +1180,7 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
         if let Some(w) = &writer_w {
             w.request_stop();
         }
-        let cancel_result = proc.cancel();
+        let cancel_result = bounded_cancel(&mut proc, TEARDOWN_GRACE);
         // owned 写端已全关(树已终止):reader 的 EOF 判定依据(Windows)。
         if let Some(w) = &stdout_w {
             w.mark_owned_closed();
@@ -1074,10 +1306,17 @@ impl OwnedProcess {
         self.child.stderr.as_mut()
     }
 
-    /// 移交 stdin 管道所有权(取出后 drop 即向子进程发 EOF;shutdown 语义
+    /// 移交 stdin 写端所有权(取出后 drop 即向子进程发 EOF;shutdown 语义
     /// 由消费方拥有)。T-12 客户端消费:长运行协议宿主的生命期归调用方。
-    pub fn take_stdin(&mut self) -> Option<ChildStdin> {
-        self.child.stdin.take()
+    pub fn take_stdin(&mut self) -> Option<StdinPipe> {
+        let inner = self.child.stdin.take()?;
+        #[cfg(windows)]
+        let cancel = win_stdin::CancelHandle::from_stdin(&inner).ok();
+        Some(StdinPipe {
+            inner,
+            #[cfg(windows)]
+            cancel,
+        })
     }
 
     /// 移交 stdout 管道所有权(消费方自带 reader 线程时;设施 `run` 的
@@ -1269,8 +1508,9 @@ mod tests {
         assert!(matches!(err, ExecutionError::PipesHeld { .. }), "{err:?}");
     }
 
-    /// F-816-R3-01：stop 语义=先排空已可读内容——预置数据+先行置 stop，
-    /// 字节不得丢弃（确定性，无 sleep/无负载依赖）。
+    /// F-816-R3-01/R5-01：stop 语义=先排空已可读内容，且结束状态按
+    /// 真实终态映射——预置数据+Eof 尾：字节保留、终态为 Eof（排空中
+    /// 观察到干净 EOF，不冒充 Stopped）。
     #[test]
     fn stop_drains_readable_bytes_before_stopping() {
         let payload = b"arrived-before-stop".to_vec();
@@ -1286,7 +1526,7 @@ mod tests {
             .unwrap()
             .stop_and_join(Duration::from_secs(2))
             .expect("worker stops");
-        assert!(matches!(cap.end, ReaderEnd::Stopped), "{:?}", cap.end);
+        assert!(matches!(cap.end, ReaderEnd::Eof), "{:?}", cap.end);
         assert_eq!(
             cap.bytes, payload,
             "arrived bytes must not be dropped on stop"
@@ -1326,35 +1566,71 @@ mod tests {
         drop(keeper); // 释放持有的写端,管道资源随作用域回收。
     }
 
-    /// writer 对称面:真实管道、读端被持有、写入量超缓冲——Windows 同步
-    /// 写端阻塞中的分片写不能被 stop 中断(内核限制;生产路径由 owned
-    /// 终止解除)。合同在此场景的承诺是有界+具名:stop_and_join 不得
-    /// 悬挂,宽限内未停即 PipesHeld。Unix(poll POLLOUT)下 stop 真停,
-    /// 返回 Stopped——两种结果都接受,断言共同不变量(不悬挂、不谎报)。
+    /// F-816-R5-01 矩阵——stop 排空的读错具名：直接驱动**生产**
+    /// `drain_readable`（stop 路径的唯一数据面），预置字节后读错 →
+    /// `DrainEnd::Io` 且已读字节保留（确定性，无栅栏/无 sleep）。
+    /// F-816-R5-01 矩阵——stop 排空的读错具名：直接驱动**生产**
+    /// `drain_readable`（stop 路径的唯一数据面），预置字节后读错 →
+    /// `DrainEnd::Io` 且已读字节保留（确定性，无栅栏/无 sleep）。
     #[test]
-    fn writer_on_held_pipe_is_bounded_and_named() {
-        let (keeper, writer_end) = std::io::pipe().expect("pipe");
-        let data = vec![b'w'; 1024 * 1024];
-        let mut w = WriterWorker::spawn(writer_end, data.clone());
-        assert!(
-            w.wait(Duration::from_millis(200)).is_none(),
-            "writer cannot finish while the read end is held"
-        );
-        let started = Instant::now();
-        let outcome = w.stop_and_join(Duration::from_secs(2));
-        let elapsed = started.elapsed();
-        assert!(
-            elapsed < Duration::from_secs(4),
-            "stop_and_join must be bounded (elapsed={elapsed:?})"
-        );
-        match outcome {
-            Ok(out) => {
-                assert!(matches!(out.end, WriterEnd::Stopped), "{:?}", out.end);
-                assert!(out.written < data.len(), "partial write before stop");
-            }
-            Err(ExecutionError::PipesHeld { .. }) => {}
-            other => panic!("expected Stopped or named PipesHeld, got {other:?}"),
+    fn stop_drain_read_error_is_named_io() {
+        let mut fake = Scripted {
+            chunks: vec![b"arrived".to_vec()],
+            tail: Tail::Err("kernel read gone during stop-drain"),
+        };
+        let mut bytes = Vec::new();
+        let mut chunk = [0u8; 16 * 1024];
+        match drain_readable(&mut fake, &mut bytes, &mut chunk) {
+            DrainEnd::Io(ref e) => assert!(e.to_string().contains("stop-drain"), "{e}"),
+            other => panic!("expected Io from stop-drain, got {other:?}"),
         }
+        assert_eq!(bytes, b"arrived", "bytes before the error must be kept");
+    }
+
+    /// F-816-R5 写端真停（Windows 生产路径）：自建 stdin 管道、读端被
+    /// 持有且不读、写入量超缓冲——空间探测使写永不阻塞，stop 在分片间
+    /// 生效：线程真停（Stopped、部分写入、有界）。Unix 用 std 管道端
+    /// （poll POLLOUT 同样可停）。
+    #[cfg(windows)]
+    #[test]
+    #[cfg(unix)]
+    #[test]
+    fn writer_stop_aborts_blocked_write_for_real() {
+        use std::io::Write;
+        use std::os::unix::io::AsRawFd;
+        // 真实管道 + O_NONBLOCK（生产同构:写满后 EAGAIN,stop 生效）。
+        struct NonblockPipe(std::io::PipeWriter);
+        impl StoppableWrite for NonblockPipe {
+            fn write_stoppable(&mut self, buf: &[u8], stop: &Arc<AtomicBool>) -> io::Result<usize> {
+                loop {
+                    if stop.load(Ordering::Relaxed) {
+                        return Ok(0);
+                    }
+                    if !crate::pipe_wait::fd_ready(self.0.as_raw_fd(), 0x004, PIPE_POLL_SLICE) {
+                        continue;
+                    }
+                    match self.0.write(buf) {
+                        Ok(0) => return Ok(0),
+                        Ok(n) => return Ok(n),
+                        Err(e)
+                            if e.kind() == io::ErrorKind::WouldBlock
+                                || e.kind() == io::ErrorKind::Interrupted =>
+                        {
+                            continue
+                        }
+                        Err(e) => return Err(e),
+                    }
+                }
+            }
+        }
+        let (keeper, writer_end) = std::io::pipe().expect("pipe");
+        unix_pg::set_nonblocking(writer_end.as_raw_fd());
+        let data = vec![b'w'; 1024 * 1024];
+        let mut w = WriterWorker::spawn(NonblockPipe(writer_end), data.clone());
+        assert!(w.wait(Duration::from_millis(200)).is_none());
+        let out = w.stop_and_join(Duration::from_secs(2)).expect("stop");
+        assert!(matches!(out.end, WriterEnd::Stopped));
+        assert!(out.written < data.len());
         drop(keeper);
     }
 
