@@ -199,7 +199,7 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 | Task | owner_stage | 前置 | 文件/交付 | 验证/AC |
 |---|---|---|---|---|
 | [x] T-01 | work | 用户实施指令 | 只读MIR映射/符号/ABI/工具/内存/负载/测试owner设计，contract-decision.md及独立golden | 指令覆盖/资源可审；AC-01，不编译未合入接口。[✅ 已完成 2026-10-20：[contract-decision.md](attachments/818/contract-decision.md)（全指令表映射/符号/私有ABI `msvc-x64/priv-i32-bool-v1`/trap70/预算与mn.*错误分类/对象key/层与恢复/工具链与参考机身份/48-512-768MiB分区/测试owner映射）+ [golden.md](attachments/818/golden.md)（首例源冻结+手算：exit 0/stderr "aab"/无trap审计；256KiB/100caller+14leaf+main负载设计、LCG seed 0x818_5eed、K=19、fn_041编辑位/fn_leaf_2签名冲突位、无trap界分析、闭式镜像+手审义务）。全程只读：主检出零代码WIP预检过、未编译在途接口、未造mock、未开树；观察基面=798在途分支072cb4e14（forecast非冻结，D-798后重读） ] |
-| [ ] T-02 | work | T-01、D-798、公共注册窗口、D828排期门 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； 新workspace/lock、两函数多obj新codegen→PE、三路径/expected、cache新进程恢复/正式AutoDown/trace/峰值首例 | first-case，V-01/04/10；AC-01 |
+| [ ] T-02 | work | T-01、D-798、公共注册窗口、D828排期门 | D828后先刷新T-01接口/版本/预算合同，旧准备不冒领新依赖pass； 新workspace/lock、两函数多obj新codegen→PE、三路径/expected、cache新进程恢复/正式AutoDown/trace/峰值首例 | first-case，V-01/04/10；AC-01。[⏳ 执行完成+验证绿，pass记条件化待裁定 2026-10-20：本会话以用户聊天指令"798已经提交，请继续"为解锁依据执行（会话开始时r2尚未入目）；完工后发现计划已于同日修订r2新增D828排期门（T-02前置），而828在途（仅其T-01落地）。已实现并验证（worktree `D:/autostack/.wt/lang-818/auto-lang`@plan-818-dev 提交21b95c0e8，28文件含Cargo.lock）：首例3/3绿（新路径真PE=golden exit0/stderr"aab"；三路径对拍一致；真store put→新进程mn-worker恢复codegen=0仍真link/run→进程内命中forbid_codegen反控）；正式AutoDown首例3测绿（语料3 case过真实runner：trace首例exit0/值7位精确/除溢出真PE exit70；负oracle红；解码负控4例）；recipe ac/mir-native-scalar-v1已注册（**触及公共写面**：contract.rs/suite.rs/mod.rs——828分支后续注册须按并行合同串行解决）。条件：①D828落地后须按本行前置刷新T-01接口/版本/预算合同并重放本验证（旧证据不冒领新依赖pass）②共享写面注册的合并次序裁定。裁定前T-03+不启动 ] |
 | [ ] T-03 | work | T-02 | 完整有限MIR指令/CFG/槽/调用/数值/trace与负例，精确错误/来源 | mir_native_codegen_/parity_、V-01–03；AC-02/03 |
 | [ ] T-04 | work | T-03 | 函数对象/符号/manifest/版本key，恢复/再生/无MIR命中、事务/失败/反控 | mir_native_cache_/transaction_、V-04–07；AC-04/05 |
 | [ ] T-05 | work | T-04 | 32MiB冷对象/512真实编辑/GC、内存分区/树峰值/深CFG/超限清理 | resources、V-06–08；AC-05 |
@@ -211,6 +211,8 @@ V-01–11为必验区分性补充，固定语料族总绿不替代反控；requi
 | [ ] T-10 | merge | T-09 pass | 冻结门禁、Spec/ledger、归档合入、批量判定/wt-guard后清理 | AC-10；实际11/11 |
 
 ## 9. 复审记录
+
+2026-10-20 stage:work | PLAN-818 | plan_revision 2 | outcome:blocked（T-02实现+验证完成；r2 D828排期门冲突在案待用户裁定）| worktree:`D:/autostack/.wt/lang-818/auto-lang`（组内补auto-down兄弟detached@master）| branch:plan-818-dev | base_commit:f79b1b835（master）| code_commit:21b95c0e8 | dependency_revisions:798已合入面（archive 11/11，D-798重读义务已履行——MIR核心未变、ABC wire升/2不触A09'key轴，记contract-decision r1.1注记）；828在途（其T-01=lang-828@f81b5eaf4，D828未满足）| task_ids:T-02（实现/验证完成，checkbox条件化未勾）| evidence:§8 T-02行全录（首例3/3绿/正式AutoDown 3测绿/提交28文件）| blockers:用户裁定①聊天指令优先 vs ②r2 D828门严格（§10在案两选项）；裁定前T-03+暂停，worktree/提交保留（r2"既有准备/进度保留"条款）| next_responsible_role:用户裁定→work（选项①继续T-03或②D828后刷新重放再继续）
 
 2026-10-20 stage:new | PLAN-818 r1→r2 | outcome:pass（规划修订，非实现通过） | authority: 用户指定798→828优先/后继保留全链路增量 | delta: AC-11 / V-12四子case / SD-06 / T-11；review依赖新work项，D828排期/集成门，原D门不减 | 原进度保留，total 10→11，新证据pending | next:只读准备可先，D828后串行实施；无代码/测试/Spec发布/合入。
 
@@ -225,6 +227,8 @@ T-01要点：入口=用户实施指令（drafting→executing授权）；范围�
 无阻断起草的用户决定。T-01固定准确MIR版本/符号/私有ABI/产物与负载；D-798后T-02验证新codegen、多obj链接、缓存及正式runner全路径。若API不足、必须修改公共MIR或hard性能/内存不达，回规划，不抬预算、不缩负载、不改在途798。公开ABI/FFI及真正生产默认切换后续单列；不需要等待817或797全部完成才做本有限profile。
 
 **2026-10-20 在案阻断（work记录）**：T-02..T-08全部等待D-798（798最终review/冻结门禁/实际合入/Spec/merge收据齐全；当前798=executing 1/10）。解除动作：D-798达成后，work以实际合入的798 API/Spec重读contract-decision.md §1/§2/§9（接口/指令/验证规则若变则以证据revision），再开 `D:/autostack/.wt/lang-818/auto-lang`（分支plan-818-dev）执行T-02首例。公共注册窗口在817/814–816先合入时按并行合同同步master后串行追加。
+
+**2026-10-20 D-798已满足；T-02执行完成但发现r2 D828排期门冲突（在案，待用户裁定）**：本会话依用户聊天指令"798已经提交，请继续"执行T-02并全绿（证据见§8 T-02行，提交21b95c0e8）；完工核对时发现计划已修订r2（同日另一会话，用户授权"798→828优先"），T-02前置新增D828排期门而828在途（其T-01已落地、ac-av-probe为其独占写面）。冲突面：(a) 本计划分支已触及公共写面（recipe注册 contract.rs/suite.rs/mod.rs）与r2"原依赖和D828均满足后取得共享写窗口"的字面冲突；(b) 828交付后T-09函数级接口可能替代本驱动消费的整模块前端路径（刷新义务）。保留裁定（r2自身条款"既有准备/进度保留"）：worktree与提交保留不动、T-03+暂停。用户选项：①确认聊天指令优先——T-02翻[x]（补D828后刷新+重放义务到T-11/复审），继续T-03；②确认r2门严格——冻结在树，D828后刷新合同/重放验证再翻T-02。两选项下本计划代码零浪费（重放为定向测试）。
 
 
 **当前排期与验收**：798→828→本计划（原前置仍需满足）；T-11 / AC-11 / V-12 未完成，旧revision/测试总数不覆盖新增义务。用户已确认该顺序/目标，不重复请求同范围授权。
