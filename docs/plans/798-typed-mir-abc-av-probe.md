@@ -2,7 +2,7 @@
 plan_id: PLAN-798
 status: executing
 feature_name: Typed MIR 与 ABC/AV 执行合同及首个全路径探针
-plan_revision: 2
+plan_revision: 3
 author: [Codex]
 created_at: 2026-10-16
 updated_at: 2026-10-20
@@ -154,13 +154,25 @@ AutoDown源/oracle从T-01进入 `test/cases/ac-av/*.case.ad` 和suite；D-796/D-
 
 正常、trap、诊断、cache/restart/编辑/资源负例由正式runner实际选择/执行；未知recipe/字段、错worker/profile和坏actual+好expected必须gate红。required缺例/skip/缺native工具/timeout不得绿。原v1 avm/run、a2r/emit及788 native/syntax、796语义recipe和已合入797 recipe兼容回归；没有实际合入的797不能伪造其兼容证据。晚绑定如需扩公共IPC，先形成有owner的显式revision，不与其他计划并发改协议。
 
+### 5.7 r3正确性收口与后续性能分界
+
+2026-10-20用户认可[ABC设计评审](reports/798-abc-design-review-2026-10-20.md)并要求落入合同，本节是r3当前要求；本轮只修订文档，未修改或验证实现。
+
+**798必须收口（ABC-A01）**：unit/module类别是语义，不能由函数数量推断。已观察MIR显式is_unit而decode以n_funcs==1重建；这是静态反例线索，尚非本轮执行复现。T-01先在真实公开入口复现单函数完整模块含未执行直接自调用（另一分支返回42），并冻结unit/完整module的entry、imports和可执行条件。无论最终用wire显式kind或版本化可信外层信封，encode/decode、手工DecodedAbc再verify、driver闭包及store恢复都必须保持同一分类；载荷自称完整不能跳过imports闭包/entry验证，未链接unit不得直接执行。禁止通过补空函数、删死代码或重定义单函数完整module为unit规避。
+
+修复若改变wire/持久化语义，T-03/04同步冻结版本、producer/cache键和旧产物策略；缺kind、歧义旧缓存应确定性失效重建或受控拒绝，不猜测、不原地当新版本读。记录fresh/hit/新worker restart全部V-14，非法输入dispatch=0，完整模块正控返回42。kind与版本是必需语义，不能随debug剥离。
+
+独立复审F798-R10-01（兄弟参数括号深度与长链错相加、误拒合法输入）仍开放，按原T-02/05/07/08及反例矩阵修复复审；本节不取代它或把它转成性能债务。r3新增类别/版本验收使T-01/03/04旧证据在相应触面失效并重开；T-06未受影响的语义ref证据保留，若实现改其接口则再复核。
+
+**不作为798新增交付门槛**：ABC-A02/A08–10由820–824随数据profile落实；A03–05/A11由[825](825-av-loaded-program-runtime-efficiency.md)落实装载表示、PC及帧策略/测量；A06–07由[826](826-av-compact-abc-format-and-size.md)落实紧凑wire/section。当前安全MIR解释允许交付；不要求798本轮重写LoadedProgram、ULEB、slot复用或JIT，不新增WASM/V8速度承诺。现有预算、正确性和编辑P95合同保持。
+
 ### 规范增量
 
 | delta_id | add/modify/retire | docs/specs/... target | before/after rule | rationale | acceptance IDs |
 |---|---|---|---|---|---|
 | SD-01 | add | docs/specs/auto-mir/project.md、core-i32.md | 无实现→有限Typed MIR、slot/CFG/初始化和Checked门 | 正确性共同层 | AC-01/02 |
-| SD-02 | add | docs/specs/auto-av/project.md、abc-core-i32.md | 无新版AV→有限ABC wire/验证/装载/执行及unsupported | 不混旧AVM和新引擎 | AC-01/03/04 |
-| SD-03 | add | docs/specs/auto-av/cache-and-conformance.md | 无→MIR/ABC producer身份、恢复/依赖/root/lease/资源/计量 | 跨工程复用可信 | AC-05/06 |
+| SD-02 | add | docs/specs/auto-av/project.md、abc-core-i32.md | 无新版AV→有限ABC wire/验证/装载/执行及unsupported；r3 kind/entry/imports往返与准入（V-14） | 不混旧AVM和新引擎 | AC-01/03/04 |
+| SD-03 | add | docs/specs/auto-av/cache-and-conformance.md | 无→MIR/ABC producer身份、恢复/依赖/root/lease/资源/计量；r3 kind/版本绑定及歧义旧缓存失效（V-14） | 跨工程复用可信 | AC-05/06 |
 | SD-04 | modify | docs/specs/auto-ac/artifact-contract.md | 783 A08 Future不改历史→追加798 producer的实际实现范围与carrier/引用/准入 | 不给旧producer冒领覆盖 | AC-05/08 |
 | SD-05 | modify | docs/specs/auto-hir/stage-contract.md | 旧S0–S6保留→追加HIR到新MIR的消费前门/资源支持表 | 不扩大旧Checked保证 | AC-02/08 |
 | SD-06 | modify | docs/specs/auto-test-case/architecture.md | 在D-796后probe/run支持表追加本recipe、worker身份/失败/观测 | 使用正式runner | AC-07 |
@@ -187,6 +199,7 @@ Spec导航/ledger只在merge按实际增量登记；796语义及797ABI的权威S
 | V-11 | AC-06 亚秒 | 六场景≥30样本、局部body和签名错编辑 | T-05/07、av_turnaround_/正式runner | raw trace/结果绑定当前输入，硬门两路径P95<1000ms，不删失败样本 | 工具准备/全冷/native分列 |
 | V-12 | AC-07 AutoDown真实执行 | 本recipe正/负、未知recipe/字段、错误actual且expected正确 | T-07、auto-case run及实际worker | 真实dispatch、actual身份、gate0/1/2符合合同；篡改必红，旧支持面不变 | D-796/D-788后才执行 |
 | V-13 | AC-08 绑定及并行 | 796同名异owner/版本、core依赖闭包、797未合入、不支持native地址产物/代际 | T-06/08、av_binding_/av_boundary_ | 真codec校验；临时模型退出，无旧VM/产品依赖和伪AJ安装；未知代际拒绝 | 仅合同模型不称热重载 |
+| V-14 | AC-01/03/04/05/07；r3类别保真 | unit、单函数完整module未走分支直接自调用/返回42、多函数完整module；零参/带参entry；未解imports、伪kind好hash、歧义旧版 | T-01/03/04/07/08；真实MIR→ABC、手工DecodedAbc→verify、driver fresh/hit/store新worker restart；T-01使补充用例可运行 | 合法完整模块往返语义相同且返回42；未链接unit/错entry/伪造或歧义旧版在适用门拒绝或缓存重建且无非法dispatch；不加dummy函数 | 本轮静态建议未执行，r3必须补可复现证据；沿原公开入口/预算 |
 
 以上V-01–13均为必验补充，不以一个固定语料族的通过总数替代。实现时逐例绑定实际命令/输入/commit/依赖hash/raw结果；若预期与现有Spec冲突，先查明并修订，不悄改oracle。native工具缺失是infra阻断，不能用AV两次执行代替对拍。
 
@@ -200,8 +213,8 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 |---|---|---|
 | AC-01 | work | 有限profile/Schema/版本/支持表及T-01真实最小vertical含首例store/新进程恢复/AutoDown源/trace；V-01/06 |
 | AC-02 | work | HIR→MIR真实lowering与独立verifier，控制/求值/类型/初始化正确；V-02–04 |
-| AC-03 | work | ABC codec/验证与Rust AV实际执行，全标量语义/顺序与native及独立expected一致；V-03–05 |
-| AC-04 | work | 无trusted绕过，坏输入/未知能力拒绝，fuel/帧/取消有效且分态；V-01/05/10 |
+| AC-03 | work | ABC codec/验证与Rust AV实际执行，全标量语义/顺序与native及独立expected一致；V-03–05及V-14：单函数完整module不被误判unit，分类与entry/imports规则在各消费路径保真 |
+| AC-04 | work | 无trusted绕过，坏输入/未知能力拒绝，fuel/帧/取消有效且分态；V-01/05/10/14（伪造kind/旧歧义版本执行前拒绝） |
 | AC-05 | work | 真单元cache/依赖/恢复/跨工程及坏地址/冲突/GC正确，命中仍执行；V-06–08 |
 | AC-06 | work | 资源/规模和六场景计量、两路径含正式adapter的P95<1s，原始样本可复验；V-09–11 |
 | AC-07 | work | D-796/D-788后正式AutoDown真实dispatch/比较/反控及旧协议兼容，无required gap；V-12 |
@@ -210,16 +223,17 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 | AC-10 | merge | 冻结门禁、Spec/ledger沉淀、归档合入/实际计数/guard清理齐全；最终10/10 |
 
 ## 8. 执行步骤
-**最新独立复审（R9，2026-10-20，`e00340842`）**：needs_fix，开放 F798-R9-01/02。原宽实参反例、一元NegI32来源与旧预算降格文字已闭合；同层括号仍全局累计深度（64条浅语句误拒），新增首次准备器仍漏报stderr超帽、stdout背压并超时遗留后代。[报告/闭合矩阵/原始源码与输出](attachments/798/review-r9/review.md)。保留T01/03/06并恢复T04；T02/05/07/08及下游完整验收待完成，T09/10未完成，executing **4/10**。新基线完整V11尚待独立验收；下面旧work完成文字是历史，不覆盖本轮finding。
+**r3当前交接（2026-10-20，文档修订）**：executing **1/10**。用户认可ABC建议后，按§5.7/V-14重开T-01/03/04，旧证据保留为历史；T-06保留完成。R10的F798-R10-01仍needs_fix，T-02/05/07/08待完成，T-09/10未完成；[R10原报告](attachments/798/review-r10/review.md)不变。新增kind问题是静态复核线索，必须由work真实复现/收口，不能冒称已验证或已修复。825/826性能不阻塞798。
+**历史独立复审（R9，2026-10-20，`e00340842`）**：needs_fix，开放 F798-R9-01/02。原宽实参反例、一元NegI32来源与旧预算降格文字已闭合；同层括号仍全局累计深度（64条浅语句误拒），新增首次准备器仍漏报stderr超帽、stdout背压并超时遗留后代。[报告/闭合矩阵/原始源码与输出](attachments/798/review-r9/review.md)。保留T01/03/06并恢复T04；T02/05/07/08及下游完整验收待完成，T09/10未完成，executing **4/10**。新基线完整V11尚待独立验收；下面旧work完成文字是历史，不覆盖本轮finding。
 **历史独立复审（R8，2026-10-20，实际提交 `f9d982157`）**：needs_fix，开放 F798-R8-01..03。上一轮5项具体反例已修；完整不变量仍有浅层宽参数误拒、一元NegI32恢复丢来源、首次native worker准备无界及旧合同文字未撤销。[报告/闭合矩阵/全部原始输入与结果](attachments/798/review-r8/review.md)。保留T01/03/06；T02/04/05/07/08与下游完整验收仍重开，T09/10未完成，3/10。下表旧work完成说明为历史，不能替代当前验收状态。
 **历史独立复审（2026-10-20，`36108624a`）**：needs_fix，开放 F798-R7-01..05；旧8项中的错键、错型参数、原解码放大、警告/缺oracle已有实证修复，其余完整不变量仍有缺口，并发现合法双分支return被lower拒绝。[报告/闭合矩阵/原始反例](attachments/798/review-r7/review.md)。保留T01最小vertical、T03核心codec/执行门、T06语义绑定；重开T02/04/05/07/08及相关完整验收，T09/10未完成，current_step=3/10。下表旧work完成说明属于历史，不代表当前最终验收通过。
 
 | Task | owner_stage | 前置 | 文件/产物与可验成果 | 验证及AC |
 |---|---|---|---|---|
-| [x] T-01 | work | 用户实施指令 | 新workspace/lock、contract-decision.md、最小两函数vertical/MIR/ABC/Rust AV/store恢复、AutoDown源/oracle和计量首例；冻结§3/5.1策略 | [✅ r2 已闭合 31628c5d7：contract-decision §6 升格 r2 正式合同（三反控 mir_admission_ 单函数/模块表/组合步数全绿）；Cargo.lock 已 -f 入库；两 package 零新增警告+fmt 过检。F02/06/07 闭合。历史收据] ce860fb24/fee55cd2d：`experimental/ac-av-probe/`（core+probe 独立 workspace）+ `contract-decision.md`（冻结 Schema/wire/预算/carrier/负载，含 r1.1 每表族预算修订）；vertical 三测绿（AV=独立期望、命中跳产仍执行、真实 PE 对拍）；store 首写+新进程 worker 恢复重验执行（`av_cache_worker_restore_new_process`）；AutoDown 源/oracle `test/cases/ac-av/`（5 用例）+ Rust 定向绑定 5 测绿；AC-01 |
+| [ ] T-01 | work | 用户实施指令 | 新workspace/lock、contract-decision.md、最小两函数vertical/MIR/ABC/Rust AV/store恢复、AutoDown源/oracle和计量首例；冻结§3/5.1策略；r3新增§5.7/V-14：先复现并冻结kind/版本合同 | [r3重开：本行旧完成证据仅属历史，受影响触面须重验] [✅ r2 已闭合 31628c5d7：contract-decision §6 升格 r2 正式合同（三反控 mir_admission_ 单函数/模块表/组合步数全绿）；Cargo.lock 已 -f 入库；两 package 零新增警告+fmt 过检。F02/06/07 闭合。历史收据] ce860fb24/fee55cd2d：`experimental/ac-av-probe/`（core+probe 独立 workspace）+ `contract-decision.md`（冻结 Schema/wire/预算/carrier/负载，含 r1.1 每表族预算修订）；vertical 三测绿（AV=独立期望、命中跳产仍执行、真实 PE 对拍）；store 首写+新进程 worker 恢复重验执行（`av_cache_worker_restore_new_process`）；AutoDown 源/oracle `test/cases/ac-av/`（5 用例）+ Rust 定向绑定 5 测绿；AC-01 |
 | [ ] T-02 | work | T-01 | core/mir与mir_verify、HIR adapter、scalar控制/调用/来源，补V-02–04 | [R3重开→r4 已闭合：F798-R3-01（owner 核对/类型表 ==len/import allowlist+单元 fn: 链接/能力 allowlist）+F798-R3-04（前门平坦链 128 构造深度）+F798-R3-03（span 重绑定）。永久测试：mir_admission_foreign_function_owner_rejected/_type_ref_equal_len_rejected/_unknown_capability_rejected/_unknown_import_rejected/_unit_fn_linkage_import_allowed、av_resources_flat_chain_front_door_boundary] [✅ 已完成] `core/src/{mir,mir_verify}.rs`+`probe/src/hir_adapter.rs`；mir_admission_/mir_lower_ 10 测绿：变异矩阵（悬空目标/越界槽/非法分支类型+哈希证明实际改动）、半初始化合流拒绝、合法循环/合流不误杀、landed p-binop-args/p-gcd-euclid 降级验证、迭代语句栈（200 连续 if）、text 域 unsupported 拒绝；AC-02 |
-| [x] T-03 | work | T-02 | ABC codec/verifier/LoadedModule、AV显式帧/槽及全有限profile、预算/取消/测试能力 | [R3重开→r4 已闭合：F798-R3-01（verify_abc 复核手工 DecodedAbc 版本/profile）+F798-R3-04（根帧/调用帧预算分配前生效+peak_slot_bytes 全退出真值）。永久测试：abc 手工版本反例（core lib）、av_zero_frame_budget_rejects_root_frame/_zero_slot_budget/_success_reports_real_peak_slot_bytes] [✅ 已完成] `core/src/{abc,abc_verify,av}.rs`；abc_codec_/abc_admission_/av_semantics_ 13+1 测绿：字节稳定往返/截断/尾随/校验和/未知版本-opcode（手工字节流）/bool 合法性；仅 verify_abc 产生可执行句柄、篡改内层必拒；trap 全矩阵（MAX+1/MIN负/除0/MIN÷-1/MIN%-1）结构化分态；未走 RHS trap 潜伏；trace 顺序+能力门（无能力执行前拒绝）；命名实参源序求值；fib(15) 燃料递归；燃料/取消/1024帧两侧；wire 携带 capabilities；AC-03/04 |
-| [x] T-04 | work | T-03 | probe/cache、函数单元/依赖manifest/恢复准入及root/lease，错身份/版本/并发反控 | [R3重开→r4 已闭合：F798-R3-02（UnitLink payload_fp+SemaRefSer 信封、manifest fingerprint 全字段、恢复侧 profile/av_sem/sig/logical/payload/信封/当前 caps 七轴准入、driver manifest 轮实调 admit_unit_ref）+F798-R3-03（span 重绑定级联+sidecar 写失败传播）。永久测试：av_cache_restore_identity_negative_controls（七轴）、av_cache_restore_requires_current_trace_grant、av_cache_position_drift_keeps_trap_span、binding_tier UnknownPayload 负控] [✅ r2 已闭合 31628c5d7：A08 MIR 单元真持久化+恢复重入 verify_mir（driver 两层查找 ABC→MIR→lower）；计数分离落地（mir_lower_modules=整模块真实调用/mir_units_persisted/restored/abc_units_emitted/closure_encodes/peak_staging_bytes），cache_tier/vertical 断言改钉新计数。F04/06 的缓存腿闭合。历史收据] `probe/src/{cache,worker_restore}.rs`+bin；av_cache_ 7 测绿：fresh→hot→restart/跨工程共享（命中 mir_build=0/abc_emit=0 且 av_execute>0 每次重比较）；body-only 单单元重键+caller 复用、签名变更全 caller 重键+正确 frontend 诊断；错 producer/schema/stage 信封受控拒绝（非 miss 非覆盖）；坏帧坏内层拒绝；同键异内容 Conflict 且旧提交原样存活；lease 保活过 GC、stale sweep；跨进程 worker 恢复（manifest→artifact id→重验→执行，值一致）；AC-05 |
+| [ ] T-03 | work | T-02 | ABC codec/verifier/LoadedModule、AV显式帧/槽及全有限profile、预算/取消/测试能力；r3新增§5.7/V-14：修复codec/各公开授信入口的kind往返 | [r3重开：本行旧完成证据仅属历史，受影响触面须重验] [R3重开→r4 已闭合：F798-R3-01（verify_abc 复核手工 DecodedAbc 版本/profile）+F798-R3-04（根帧/调用帧预算分配前生效+peak_slot_bytes 全退出真值）。永久测试：abc 手工版本反例（core lib）、av_zero_frame_budget_rejects_root_frame/_zero_slot_budget/_success_reports_real_peak_slot_bytes] [✅ 已完成] `core/src/{abc,abc_verify,av}.rs`；abc_codec_/abc_admission_/av_semantics_ 13+1 测绿：字节稳定往返/截断/尾随/校验和/未知版本-opcode（手工字节流）/bool 合法性；仅 verify_abc 产生可执行句柄、篡改内层必拒；trap 全矩阵（MAX+1/MIN负/除0/MIN÷-1/MIN%-1）结构化分态；未走 RHS trap 潜伏；trace 顺序+能力门（无能力执行前拒绝）；命名实参源序求值；fib(15) 燃料递归；燃料/取消/1024帧两侧；wire 携带 capabilities；AC-03/04 |
+| [ ] T-04 | work | T-03 | probe/cache、函数单元/依赖manifest/恢复准入及root/lease，错身份/版本/并发反控；r3新增§5.7/V-14：缓存键/恢复/新进程版本失效 | [r3重开：本行旧完成证据仅属历史，受影响触面须重验] [R3重开→r4 已闭合：F798-R3-02（UnitLink payload_fp+SemaRefSer 信封、manifest fingerprint 全字段、恢复侧 profile/av_sem/sig/logical/payload/信封/当前 caps 七轴准入、driver manifest 轮实调 admit_unit_ref）+F798-R3-03（span 重绑定级联+sidecar 写失败传播）。永久测试：av_cache_restore_identity_negative_controls（七轴）、av_cache_restore_requires_current_trace_grant、av_cache_position_drift_keeps_trap_span、binding_tier UnknownPayload 负控] [✅ r2 已闭合 31628c5d7：A08 MIR 单元真持久化+恢复重入 verify_mir（driver 两层查找 ABC→MIR→lower）；计数分离落地（mir_lower_modules=整模块真实调用/mir_units_persisted/restored/abc_units_emitted/closure_encodes/peak_staging_bytes），cache_tier/vertical 断言改钉新计数。F04/06 的缓存腿闭合。历史收据] `probe/src/{cache,worker_restore}.rs`+bin；av_cache_ 7 测绿：fresh→hot→restart/跨工程共享（命中 mir_build=0/abc_emit=0 且 av_execute>0 每次重比较）；body-only 单单元重键+caller 复用、签名变更全 caller 重键+正确 frontend 诊断；错 producer/schema/stage 信封受控拒绝（非 miss 非覆盖）；坏帧坏内层拒绝；同键异内容 Conflict 且旧提交原样存活；lease 保活过 GC、stale sweep；跨进程 worker 恢复（manifest→artifact id→重验→执行，值一致）；AC-05 |
 | [ ] T-05 | work | T-04 | 规模/预算/GC/深链、六场景trace与周转脚本/raw报告 | [R3重开→r4 已闭合：F798-R3-08（heap_estimate 真实台账替代 wire 冒充+init 位图分配前 16MiB 守卫 av.resource.verify-memory+decode 放大守卫，dense 24581 条目反例分配前拒绝；组合上界反控内存精简形态重钉）+F798-R3-04（平坦链前门）。永久测试：mir_verify_dense_analysis_memory_pre_rejected/_analysis_bytes_recorded_on_credential、mir_admission_combination_bound_is_verify_steps（r4 形态）。bench 30 样本 gates []（edit P95 418ms）] [R2复审重开 F798-R2-01/02 → r2.1 已闭合 d72269f54：脚本 benchOut 空管道截断移除+成功/失败双路汇总可解析校验（实测）；峰值采样器（5ms 轮询）+request/gc 子进程自采样折入+前端隔离归因（worker 215.7MB 中前端 211.8MB≈98%，target_met=false 如实上报+债务路由 KNOWN-DEBT）；受管分区硬门 staging≤16/hot≤8/exec≤8MiB 逐样本入 validate_and_gate，staging 计数后移至闭包 codec 完成后，AV peak_slot_bytes 高水位；瞬态峰值区分性反控测试。历史收据] [✅ r2 已闭合 31628c5d7：六场景 r2 语义重做（fresh 每样本冷 store/restart 每样本新进程 request 子命令/edit 每样本当轮新修订 30 不同 hash/签名冲突仅认 frontend:source.*/gc-loop 进程真并发）；churn 512 轮真实编辑（逐轮 hash 变化+独立期望+重键数断言）+同 store 水位回收+哨兵存活+受管暂存峰值断言；worker private-bytes 增量 8.6MiB 计入 gate；硬门真接线（gate-ms 0 反控 exit 5；正式跑 PASS：edit P95 506.5ms/冲突 21.3ms/零失败，docs/reports/plan798 r2 版）。F03/04/05 闭合。历史收据] av_resources_/av_turnaround_ 6+6 测绿：4096 直链+菱形+合法循环预算内验证（修 block_base O(n²)：31k 块 verify 419ms→11ms release）；超表预算=resource 分类；128 嵌套两侧+4096 前拒（door 在旧递归 parser 前、resource 态）；atom `[` 深度前拒；33.5MiB 冷 ABC 产物（64 模块分页合规）随机只读重验+512 修订+GC 水位有界；六场景×30 release 样本+**硬门 PASS**（body-edit P95 829.4ms/签名冲突 41.4ms/零失败，raw 180 行可复验 `docs/reports/plan798/turnaround-{raw.jsonl,summary.json,md}`+`scripts/verify-ac-av-798.ps1`）；AC-06（正式 runner 重测留 T-07） |
 | [x] T-06 | work | T-05、D-796 | 绑定合入语义ref/codec，退临时语义快照，冻结消费hash | [R3重开→r4 已闭合：F798-R3-02（admit_unit_ref 增 payload 绑定参数并在 driver manifest 轮实调；restore 侧 admit_restored_unit 字节级比对）+R3 反例重放闭合。binding_tier 4 测绿+UnknownPayload 负控] [✅ 已完成] b9682967f（rebase master 13367d127 后）：D-796 门满足（796 归档合入+Spec/收据齐全）；只读消费 ac-sema-contract（`probe/src/semrefs.rs`：logical_id/DeclRef/ContentVersion/SemaRef::admit）；驱动内容轴从 FNV 快照切换到 796 ContentVersion 域（canonical dump 同源）；manifest 单元携带 logical ids；av_binding_ 4 测绿（同名异 owner 三作用域分离+缓存不串、重启序稳定+跨进程命中、schema/owner/tamper/内容版本/种类轴拒绝、消费面钉扎）；未触碰 796 推导/CT 库；AC-08 |
 | [ ] T-07 | work | T-06、D-788 | 基于796已合入probe/run仅追加本recipe/worker/suite，正式AutoDown语义/cache/资源/周转与负控/兼容 | [R3重开→r4 已闭合：F798-R3-05（exit 码/恰一协议行/步骤回显/父侧 fnv source_hash 逐 run 绑定）+F798-R3-06（call_worker 受限执行器重写：writer 线程/帽定读者/单一绝对截止/杀树/READER_GRACE/BUILD_WALL 有界 cargo）+F798-R3-07（两调用显式 session 模型，窗口=受测 [edit,run] 调用 request_wall_ms 连续含 IPC，30 样本编辑窗 P95≈600-640ms<1000ms，前端 290ms 如实计入；decode 合同 r4：前导 edit 放行+须 run 结尾+av.session 绑定）+F798-R3-10（locate_worker 恒构建绑定二进制）。永久测试：ac_av_probe_worker_contract_faults_are_infra（exit9/extra-frame/wrong-hash/delay 四故障全 Infra）、formal gates（hits/misses 形状+当前修订值断言）；5 测全绿] [✅ 已完成] b9682967f：D-788 门满足（788 归档合入）；recipe `ac-av/core-run-v1` 注册（配方专属步骤词表 run/edit-source+av 绑定+probe exit 通道/run 完成态）；共享侧 `ac_av.rs`（Job 收容+resume/envelope+nonce+hash+recipe+双版本镜像准入/stale 按配方族路由/父侧判定/receipt）；worker `case-serve`（会话步骤模型+warm store+逐步墙钟）与 `load-revision`（冻结负载单一来源，免产品依赖）；`crates/auto-lang/test/cases/ac-av/` 6 checks 全 oracle 形态；**正式硬门 PASS**：warm-edit 窗 P50/P95/P99=556/569/574ms<1000ms（30 样本，终步驱动 ~412ms+spawn/IPC/admit ~148ms，热身 run 如实分列），sig 冲突 P95=221ms；负控：错 exit 必红+decode 负例全拒（未知 recipe/跨域词表/跨域绑定/缺绑定）；兼容：接缝 17 腿绿（sema corpus 阻断=Plan 813 oracle 跟踪在途，非本 diff 引入，登记复放）；AC-06/07 |
@@ -230,6 +244,10 @@ work仅定向模块/上述验收和必要cargo check，修复完再送审；不�
 T-01–05不等796/797/788全部合入；T-06/07是真依赖，不搬其在途代码、不自造第二语义库/runner。没有正式AutoDown或796真绑定仍属executing，不以早期模型/文件存在标execution_done。范围/预算/支持或公共IPC需扩张时回规划修订，保留完成进度/旧证据并标失效。
 
 ## 9. 复审记录
+
+### r3设计合同修订（2026-10-20）
+
+stage: new；outcome: pass（文档合同预检，非实现验收）。用户明确要求采纳ABC建议并区分正确性/性能，本次授权仅文档。r2→r3新增§5.7/V-14及SD-02/03、AC-03/04；受影响T-01/03/04重开，current_step由4变1，保留T-06及全部原复审。未运行用例/修改源码，R10仍needs_fix；历史work完成/ready文字不代表r3当前状态。后续work须在既有唯一798树收口V-14与F798-R10-01，独立review绑定新提交，merge-owned冻结门禁仍pending。完整责任表见[采纳记录](attachments/av-abc-adoption-20261020/decisions.md)。
 
 2026-10-16 stage:work；PLAN-798 r1；outcome:pass（规划契约预检，非独立实现验收）；next:work（待用户实施指令）。新增T-01–10、AC-01–10、V-01–13、SD-01–07；drafting 0/10。前五项可独立推进，T-06需D-796，T-07需D-788；797无实施前置。未创建树/实施/编译/运行新测试/发布ABI或新ABC。
 
@@ -290,11 +308,17 @@ T-01–05不等796/797/788全部合入；T-06/07是真依赖，不搬其在途�
 
 2026-10-20 stage:work | PLAN-798 | r2 | outcome:pass（R9 全部 2 findings 闭合，work-owned 8/10 恢复 execution_done） | worktree `D:/autostack/.wt/lang-798/auto-lang` | branch `plan-798-dev` | base `e00340842` | code `f24bd46a6`（4 文件 +221/−61） | deps: 同树只读 | task_ids T-02/04/05/08 复勾 | **闭合**：F798-R9-01→前门计深改**全文件最大构造路径**（层级栈携 enclosing path；闭层 cand=cur_path+level_max+1 并 cur_path=max(parent,cand)；语句/子句/关键字/花括号边界折叠进 peak 后复位——同层兄弟、连续语句、跨函数一律取 max 不求和；嵌套×链混合仍沿路径累加：60 深×70 链≈130 拒、3 深×70 链合法；复审 sibling-probes 重放 16/63/64/65/100 全 front_door_ok 且值=2（直通管线 65-401 步一致），串行/带括号 129/400/600 与宽参 16-200 对照不回归）；F798-R9-02→预备器改用 **ac-core contained executor**（挂起创建+Job 收容=墙到期整树杀——复审 descendant 模式 API 1514ms 返回后 heartbeat 15→15 不再增长（R9 时 15→19 存活）；双流硬帽：2MiB stderr 46ms Err"stream cap"（R9 时 Ok）、128KiB stdout 51ms 排空 Ok（R9 时 1506ms 误超时）；单绝对截止）；已有 worker 增**功能身份探测**（10s 有界 usage 须列 native-build/native-run，旧/异二进制在预期路径即拒） | evidence: probe workspace **92 测**全绿（+sibling 语句组 5 档+双流两控制）；兼容 18/18；R9 探针重放全闭（[sibling](attachments/798/review-r9/r9fix-sibling-replay.log)+[prep 四模式](attachments/798/review-r9/r9fix-prep-replay.log)——helper 原样复用仅重编，输入未改）；正式门 30 样本 PASS 144.3s | blockers: 无 work-owned 遗留；遗留观察同前（负载敏感/ui_container/前端峰值 KNOWN-DEBT） | next:review（R10 完整最终验收；merge-owned pending 由 review 列明）。
 
+2026-10-20 stage:review | review_scope:final（旧例闭合与受影响验收，未授完整最终pass） | reviewer_identity:当前聊天Codex，独立于本轮实施、无代理，从实际源码/输入重建结论 | plan_id:PLAN-798 | plan_revision:2 | outcome:needs_fix | worktree_path:D:/autostack/.wt/lang-798/auto-lang | branch:plan-798-dev | reviewed_commit:f24bd46a6f84286c30c90b156d9b4e7d72ad1358 | base_commit:13367d127584461449ee2f151c0c5987f0740044；repair_base:e00340842fdca15417c3195041ca909b1fcb8bb1 | dependency_revisions:ac-core e02c2dcc8094fc522569533304aea175f6aae867、artifact-probe 37db1a07eef2182773e7b952684da16ece40658b、semantics-contract 243a79f49dce3c36905f02e980fd36f4603dbf8d（最后修改提交；tree/锁/Spec/配置另存附件）；组内auto-down c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8 clean；实施树审前后clean | spec_inputs:SD冻结4b6582965b882a0b46e6ac1b20fdfb14726d72a523628332ee59d50b5c529b3e、contract-decision冻结47e65a126ae2bd19b27ceb403185acdd2f02b29f33496f6c65eecd3420386f39 | acceptance_results:AC01/03/05当前定向矩阵通过；AC02/04/06因R10-01 fail，V11新基线完整独立门pending；AC07正式协议/兼容通过；AC08前门SD收口未闭；AC09 fail；AC10 merge pending | findings:F798-R10-01 OPEN P2（同层两个实参分别含60层括号/70项链，却把两个独立最大值相加为131层误拒；源码nesting62，直接Checked HIR→MIR→ABC→AV=1/143步，交换表达式=70/143步；60/69与40/90亦误拒；同一真实路径60层调用+70项链仍正确resource） | prior_closure:R9-01连续浅语句16/63/64/65/100均Driver=2、宽参/深链旧例通过，但完整最大路径不变量未闭；R9-02 contained准备正负控通过并关闭（正常110ms、stderr超帽52ms拒绝、128KiB stdout50ms成功、超时1513ms树杀后heartbeat15→15且OS PID不存在，额外stdout超帽/exit7/缺产物均拒绝）；NegI32来源旧修复未回退 | evidence:core20+probe72（23+49）+正式协议4（skip完整30样本）+兼容16+contract20=132项通过；旧信任/缓存/COFF/解码反例符合预期；native剩余截止1054ms即Budget，双return/落空对照均native=AV=1；两package fmt/完整diff-check0，无新增实施告警 | evidence_links:[R10报告/命令/源码/输入hash/raw](attachments/798/review-r10/review.md) | pending_closeout_gates:最终pass后merge冻结根裸t/编译器tv、独立workspace全套/native及实际796/788/已合入797兼容，其余档按最终diff；tf仅主检出到期单实例。work-owned完整新基线V11仍归最终验收，不据work摘要授pass | next:auto-plan-work同树修正sibling完整路径关联，补同路径/异路径、实参顺序及语句/函数组合oracle和诊断，提交后再审；保留T01/03/04/06，T02/05/08待修、T07完整验收pending、T09/10未完成，executing4/10。未改实施/发布Spec/ledger或合入/归档/清理。
+
+2026-10-20 stage:review | review_scope:final | reviewer_identity:延续独立 Codex 复审 | plan_id:PLAN-798 | plan_revision:2 | outcome:needs_fix | reviewed_commit:f24bd46a6（r9 修复轮） | findings:F798-R10-01（闭层 cur_path+level_max+1 把来自不同实参的两条最大路径相加：60 括号实参×70 链实参被拼成 131 误拒，直通管线 143 步返回 1；worker 预备确认关闭） | evidence:[报告](attachments/798/review-r10/review.md)（disjoint/sibling/prep probes 可重放） | executing 4/10，重开 T02/05/08 | next:work。
+
+2026-10-20 stage:work | PLAN-798 | r2 | outcome:pass（R10 全部 1 finding 闭合，work-owned 8/10 恢复 execution_done） | worktree `D:/autostack/.wt/lang-798/auto-lang` | branch `plan-798-dev` | base `f24bd46a6` | code `5def3af48`（2 文件 +115/−16） | deps: 同树只读 | task_ids T-02/05/08 复勾 | **闭合**：F798-R10-01→close_candidate 二态闭层（单表达式层=cur_path+level_max+1 组合相加；**兄弟列表层=max(children)+1**——调用层自身仍算一层，嵌套调用逐层组合；逗号/命名冒号处 sibling 折叠只取自身链 level_max+1 并同时复位 run/max，嵌套闭层路径 max 入 cur_path 不再滞留相加）；复审 disjoint-probes 重放：**7 组兄弟组合全过值正确**（60×70 两序=1/70、60×1、0×70、60×69、40×90；直通管线 5-183 步一致），**同路径对照判别正确**（3 层嵌套×70 链=path 74 过、60 层×70 链=path 131 拒）；sibling/edge/宽参回放不破 | evidence: probe **93 测**全绿（+av_resources_sibling_max_paths_not_concatenated 判别测试含组合对照）；正式门 30 样本 PASS 142.0s | blockers: 无 work-owned 遗留；遗留观察同前 | next:review（R11 完整最终验收；merge-owned pending 由 review 列明）。
+
 ## 10. 待澄清事项
 
 无阻断草拟的用户决策。T-01仅在既定范围内冻结准确opcode/表字段/计步、现有store合法carrier、参考机/256KiB负载、初始公共快照与AutoDown recipe输入。预算为拟议实验政策，若全路径不可行须带数据回规划，不能临时降低负载/提高阈值/改语义。D-796/D-788未满足影响后段接线，不阻断前五项；最终公开CLI/全部Auto语言、CTE/AJ/发布器仍后续Plan。
 
-**当前状态（2026-10-20，R9）**：受审`e00340842`，needs_fix，2项开放见[报告](attachments/798/review-r9/review.md)，executing 4/10。原宽参、NegI32来源和旧合同文字已修；须修复同层括号全局累计误拒及首次准备器双流/超帽/子树清理，并补多轮失败诊断。保留T01/03/04/06；新基线正式30样本和六场景release V11完整独立验收pending，merge-owned门禁另列。
+**当前状态（2026-10-20，R10）**：受审`f24bd46a6`，needs_fix，1项P2开放见[报告](attachments/798/review-r10/review.md)，executing4/10。R9-02准备监督独立验证关闭；原连续浅语句通过，前门仍拼接不同实参的两种深度导致合法调用误拒。保留T01/03/04/06；须修复sibling完整路径关联并补组合oracle/诊断，完整新基线V11独立验收和merge-owned门禁另列pending。
 
 - 根examples/ui_container.rs预存语法损坏、已着陆scalar前端约211MB瞬态峰值的既有归因保留，不冒称本计划已修。
 - 未发布Spec/ledger，未合入/归档/清理实施树。
