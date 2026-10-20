@@ -2529,3 +2529,7 @@ PLAN-815 T-14收尾发现：v56备份已有1060条历史item与六section不满�
 ## D-815-L1：恢复工具失败路径尚未通过审查（2026-10-20）
 
 T-16/L1 needs_fix，feacf79e8：六项F-815-L1-01..06开放，涉及CLI假成功、并发写入/回滚丢失外部内容、原值/ID转换与删除保护、schema负控、双checkpoint/version及命令冻结SHA。均为r3合同内阻断，不能以既有账本缺陷或记录为债务豁免。原候选可被真实store加载/往返的正控不等于安全发布。T-15重开，T-17与T-14继续pending；原树修复并新SHA复审，生产账本未改。反例及完整证据：docs/plans/attachments/815/review-l1/review.md。
+
+## D-815-L2：恢复复审剩余失败不变量（2026-10-20）
+
+T-16/L2 needs_fix @1082bde52：L1-01/04/06已独立闭合，双checkpoint57→58→59/1098项真实往返通过；L1-02部分写失败留下本运行257字节残留、L1-03存在性/legacy删除/section声明保护仍开；L1-05代码闭但当前收据旧版本策略残留P3；新增L2-01最终SHA已不符仍成功退出。T-15重开，production v57原件未动；这些是r3合同内阻断，不能以debt豁免。原树按两轮未闭诊断修复后新SHA复审；证据 docs/plans/attachments/815/review-l2/review.md。
