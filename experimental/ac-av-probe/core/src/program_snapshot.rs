@@ -195,6 +195,19 @@ impl ProgramSnapshot {
         &self.code
     }
 
+    /// Stable-id lookup: find the resident code of one function by its
+    /// cross-revision def id (the identity axis — never a positional
+    /// index).
+    pub fn find_code(&self, def_id: &str) -> Option<&Arc<FunctionCode>> {
+        self.code.iter().find(|c| c.name() == def_id)
+    }
+
+    /// The generation (mint revision) of one function's resident code in
+    /// THIS snapshot; unchanged functions report an unchanged generation.
+    pub fn generation_of(&self, def_id: &str) -> Option<u64> {
+        self.find_code(def_id).map(|c| c.generation())
+    }
+
     /// The linked execution view (crate-internal: dispatch goes through
     /// [`crate::av::execute_program`]).
     pub(crate) fn merged(&self) -> &MirModule {

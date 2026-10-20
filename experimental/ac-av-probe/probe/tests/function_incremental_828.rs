@@ -432,7 +432,7 @@ fn t04_unit_admission_negatives() {
     let loaded = verify_abc_bytes(&bytes, &owner).unwrap();
     assert!(loaded.executable());
     assert!(
-        FunctionCode::admit_unit(loaded).is_err(),
+        FunctionCode::admit_unit(loaded, 0).is_err(),
         "executable closures are not resident function code"
     );
 
@@ -492,10 +492,12 @@ fn t04_unit_admission_negatives() {
     }
     let code_a = FunctionCode::admit_unit(
         verify_abc_bytes(&encode_abc(&unit_a).unwrap().to_flat(), &owner).unwrap(),
+        0,
     )
     .unwrap();
     let code_b = FunctionCode::admit_unit(
         verify_abc_bytes(&encode_abc(&unit_b).unwrap().to_flat(), &owner).unwrap(),
+        0,
     )
     .unwrap();
     let err = ProgramSnapshot::link(vec![code_a.into(), code_b.into()], "d_main", 1).unwrap_err();
@@ -503,4 +505,38 @@ fn t04_unit_admission_negatives() {
         err.contains("signature mismatch"),
         "link refuses mismatched call bindings: {err}"
     );
+}
+
+/// T-05: stable cross-revision identity + generation axis. The def id is
+/// the identity; unchanged functions keep object AND generation; a content
+/// hit reuses the original object with its original generation.
+#[test]
+fn t05_generations_and_stable_ids_across_revisions() {
+    let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let snap0 = s.current();
+    assert_eq!(snap0.generation_of("d_main"), Some(0));
+    assert_eq!(snap0.generation_of("d_helper"), Some(0));
+    assert!(snap0.find_code("d_nope").is_none());
+
+    // A -> B: helper mints generation 1; main keeps 0.
+    let star3 = SRC.find("x * 3").expect("target");
+    let pos = (star3 + 4) as u64;
+    let out1 = s.edit(pos, pos + 1, b"4".to_vec()).expect("edit");
+    assert!(out1.ok);
+    let snap1 = s.current();
+    assert_eq!(snap1.generation_of("d_main"), Some(0), "main generation");
+    assert_eq!(snap1.generation_of("d_helper"), Some(1), "helper generation");
+    // The warm-up snapshot is unaffected (immutable history).
+    assert_eq!(snap0.generation_of("d_helper"), Some(0));
+
+    // B -> A (content hit): helper reuses the WARM-UP object, so its
+    // generation is the original 0, not a new mint.
+    let out2 = s.edit(pos, pos + 1, b"3".to_vec()).expect("edit");
+    assert!(out2.ok);
+    let snap2 = s.current();
+    assert_eq!(snap2.generation_of("d_helper"), Some(0), "content hit keeps the original generation");
+    assert_eq!(snap2.generation_of("d_main"), Some(0));
+    let (r, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&r, 23, "reverted run");
 }

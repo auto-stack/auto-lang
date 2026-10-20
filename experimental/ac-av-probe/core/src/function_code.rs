@@ -20,15 +20,21 @@ use std::sync::Arc;
 #[derive(Clone, Debug)]
 pub struct FunctionCode {
     name: String,
+    /// The program revision this code object was minted at (its
+    /// GENERATION). Unchanged functions keep their object AND generation
+    /// across snapshot revisions; a content hit reuses the original object
+    /// with its original generation.
+    mint_revision: u64,
     unit: LoadedModule,
 }
 
 impl FunctionCode {
-    /// Admit an ABC-verified unit as resident function code. Rejects
-    /// non-unit credentials, multi-function payloads and units whose module
+    /// Admit an ABC-verified unit as resident function code, stamped with
+    /// the program revision it is being minted at. Rejects non-unit
+    /// credentials, multi-function payloads and units whose module
     /// disagrees with the unit kind — the caller cannot hand in a forged
     /// executable closure through this seam.
-    pub fn admit_unit(loaded: LoadedModule) -> Result<Self, String> {
+    pub fn admit_unit(loaded: LoadedModule, mint_revision: u64) -> Result<Self, String> {
         let m = loaded.module();
         if loaded.executable() {
             return Err(format!(
@@ -47,13 +53,21 @@ impl FunctionCode {
         }
         Ok(FunctionCode {
             name: m.funcs[0].name.clone(),
+            mint_revision,
             unit: loaded,
         })
     }
 
-    /// The function's stable logical name (the def id text, e.g. `d_main`).
+    /// The function's stable logical name (the def id text, e.g. `d_main`)
+    /// — the cross-revision identity axis; never a module-local index,
+    /// source offset or code address.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// The program revision this code object was minted at.
+    pub fn generation(&self) -> u64 {
+        self.mint_revision
     }
 
     /// The admitted unit credential (never executable standalone).

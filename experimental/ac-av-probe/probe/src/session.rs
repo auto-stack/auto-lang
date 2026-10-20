@@ -297,7 +297,7 @@ pub fn warmup(
         let loaded =
             verify_abc(decoded, &unit.owner).map_err(|e| format!("warm-up admit: {e:?}"))?;
         let code = Arc::new(
-            FunctionCode::admit_unit(loaded)
+            FunctionCode::admit_unit(loaded, 0)
                 .map_err(|e| format!("warm-up function code: {e}"))?,
         );
         let body_ref = m
@@ -440,7 +440,8 @@ impl FunctionIncrementalSession {
         let loaded = verify_abc(decoded, &unit.owner).map_err(|e| format!("abc verify: {e:?}"))?;
         self.counters.bump(&format!("verify_abc:{changed_name}"));
         let code = Arc::new(
-            FunctionCode::admit_unit(loaded).map_err(|e| format!("function code: {e}"))?,
+            FunctionCode::admit_unit(loaded, self.revision + 1)
+                .map_err(|e| format!("function code: {e}"))?,
         );
         self.counters.bump(&format!("load:{changed_name}"));
         Ok(Ok((Arc::new(checked_fn.into_body()), code)))
