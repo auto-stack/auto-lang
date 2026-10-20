@@ -193,6 +193,10 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r7a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): full interval surgery for source-map composition" | r6a-check三例span反例全部闭合并收编回归(r1回归套件27/27=24前+3r6a)：
+F-04→复合改为完整区间手术：编辑的当前范围双端逆映射（被替换文本的mint长度=unmap(c1)-unmap(c0)——删除先前插入的字节=替换0个mint字节）；被本次编辑完全重写的区域移除（插入被整体删除不留痕迹：撤销=恒等映射，pin的撤销前快照保留自身map）；记录的delta为当前长度变化（部分修剪已插入空白记录为mint长度0的trim）；整段当前范围均来自被移除区域时不补记（cur_len>0守卫防纯插入误判）。逆映射对插入/替换输出内部塌缩到区域mint锚点，净当前像长（删除的像是一个点），删除后前像可超当前offset。
+r6a-check材料自C盘目录复制入分支(attachments/828/r6a-check/；D盘副本不完整)。回归面：主17、r1套件27、scalar差分6、vertical/cache/binding绿 | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r6a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): token-boundary span mapping and region-aware inverse" | r5a-check三例span反例全部闭合并收编回归(r1回归套件24/24=21前+3r5a)：
 F-04→半开区间token语义：start 仅当编辑整体在其前(p+len<=s)或纯插入恰在起点(p==s,len0,d>0)时移动；end 仅当编辑严格在其前(p<e)移动；逆映射改为区域感知下降（替代假设map(x)>=x的二分）：插入区内部塌缩到该插入锚点、删除区之后解析越过被删块（mint前像可大于当前offset——旧搜索上界c截断导致删除后编辑被误放到前方span之前）
 另记：复审报告的进程内正式档首跑超阈/复跑通过的时延波动——归因与样本协议（预热排除、样本数、计时窗口）归 T-08 正式档工作面，不在本span修复中处理
