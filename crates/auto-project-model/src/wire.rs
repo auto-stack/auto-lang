@@ -205,22 +205,32 @@ fn value_from_wire(json: &Json) -> Result<Value, WireError> {
         field: "value",
         reason: format!("expected tag object, got {}", json_type(json)),
     })?;
-    let allowed = match obj.get("t").and_then(Json::as_str) {
-        Some("nil") | Some("null") => obj.len() == 1,
-        Some("obj") => obj.len() == 2 && obj.contains_key("e"),
-        Some("pair") => obj.len() == 3 && obj.contains_key("k") && obj.contains_key("v"),
-        _ => obj.len() == 2 && obj.contains_key("v"),
+    // Controlled access FIRST (review R2, F-815-R1-02): a missing or
+    // non-string tag must be a named Shape error — Map indexing on an
+    // absent key used to panic and kill the tool (exit 101) on a valid
+    // frame carrying {"v":1,"extra":2}.
+    let tag = obj
+        .get("t")
+        .and_then(Json::as_str)
+        .ok_or_else(|| WireError::Shape {
+            field: "value.t",
+            reason: "tag object requires a string 't' key".into(),
+        })?
+        .to_string();
+    // Per-tag exact key sets: every tag names its own required slots; no
+    // leniency branch can accept a key set for a different tag shape.
+    let expected: &[&str] = match tag.as_str() {
+        "nil" | "null" => &["t"],
+        "obj" => &["t", "e"],
+        "pair" => &["t", "k", "v"],
+        "bool" | "byte" | "int" | "uint" | "usize" | "i8" | "u8" | "i64" | "float" | "double"
+        | "char" | "str" | "string" | "cstr" | "array" | "block" => &["t", "v"],
+        _ => &[], // unknown tag: fall through to UnknownTag below
     };
-    if !allowed {
-        return Err(WireError::Shape {
-            field: "value",
-            reason: "expected exactly {'t','v'} / {'t','e'} / {'t','k','v'}".into(),
-        });
+    if !expected.is_empty() {
+        require_exact_keys(obj, "value", expected)?;
     }
-    let tag = obj["t"].as_str().ok_or_else(|| WireError::Shape {
-        field: "value.t",
-        reason: "tag must be a string".into(),
-    })?;
+    let tag = tag.as_str();
     match tag {
         "nil" => Ok(Value::Nil),
         "null" => Ok(Value::Null),
@@ -482,7 +492,7 @@ fn request_fields_to_wire(request: &GenerationRequest) -> Result<Json, WireError
         } => json!({
             "kind": "static",
             "source": source_to_wire(source)?,
-            "unsupported": unsupported.iter().map(|k| unsupported_kind_tag(k)).collect::<Vec<_>>(),
+            "unsupported": unsupported.iter().map(unsupported_kind_tag).collect::<Result<Vec<_>, WireError>>()?,
         }),
         RequestOrigin::DynamicEvaluated { source } => json!({
             "kind": "dynamic",
@@ -904,8 +914,8 @@ fn raw_nodes_from_wire(json: &[Json]) -> Result<Vec<RawNodeDecl>, WireError> {
 /// Wire form of an unsupported-construct kind. Every arm is lossless:
 /// `TypeMismatch` carries its diagnostic payload as `type-mismatch:<field>`
 /// (review R1 F-01: the bare `type-mismatch` tag lost the field).
-fn unsupported_kind_tag(kind: &UnsupportedKind) -> String {
-    match kind {
+fn unsupported_kind_tag(kind: &UnsupportedKind) -> Result<String, WireError> {
+    Ok(match kind {
         UnsupportedKind::Interpolation => "interpolation".into(),
         UnsupportedKind::FString => "f-string".into(),
         UnsupportedKind::BareIdentValue => "bare-ident-value".into(),
@@ -916,8 +926,15 @@ fn unsupported_kind_tag(kind: &UnsupportedKind) -> String {
         UnsupportedKind::DepNameUnrepresentable => "dep-name-unrepresentable".into(),
         UnsupportedKind::RootWrapper => "root-wrapper".into(),
         UnsupportedKind::ValueSyntax => "value-syntax".into(),
-        UnsupportedKind::TypeMismatch { field } => format!("type-mismatch:{field}"),
-    }
+        UnsupportedKind::TypeMismatch { field } => {
+            // Encode admission == decode admission (review R2 F-815-R2-01):
+            // the closed scanner set is the support domain in BOTH
+            // directions; a programmatic out-of-set field must fail here,
+            // never emit wire this codec itself would reject.
+            type_mismatch_field(field)?;
+            format!("type-mismatch:{field}")
+        }
+    })
 }
 
 /// The closed set of fields the scanner classifies as
@@ -949,12 +966,17 @@ fn unsupported_kind_from_tag(tag: &str) -> Result<UnsupportedKind, WireError> {
         "dep-name-unrepresentable" => Ok(UnsupportedKind::DepNameUnrepresentable),
         "root-wrapper" => Ok(UnsupportedKind::RootWrapper),
         "value-syntax" => Ok(UnsupportedKind::ValueSyntax),
-        other if other.starts_with("type-mismatch:") => Ok(UnsupportedKind::TypeMismatch {
-            field: type_mismatch_field(other.trim_start_matches("type-mismatch:"))?,
-        }),
-        other => Err(WireError::UnknownTag {
-            tag: other.to_string(),
-        }),
+        // strip_prefix (not trim_start_matches): the prefix is consumed
+        // exactly once, so "type-mismatch:type-mismatch:members" is an
+        // unknown tag — not silently normalized to members (R2 F-815-R2-01).
+        other => match other.strip_prefix("type-mismatch:") {
+            Some(payload) => Ok(UnsupportedKind::TypeMismatch {
+                field: type_mismatch_field(payload)?,
+            }),
+            None => Err(WireError::UnknownTag {
+                tag: other.to_string(),
+            }),
+        },
     }
 }
 

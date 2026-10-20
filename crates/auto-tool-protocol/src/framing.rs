@@ -74,7 +74,24 @@ pub fn write_frame<W: Write>(
 /// Transmittable nesting envelope shared by writer and readers (review R1
 /// F-05): strictly below the JSON text deserializer's recursion limit (128)
 /// so any frame one side accepts is readable by the other.
-pub const MAX_FRAME_JSON_DEPTH: usize = 120;
+/// Nesting levels the wire request codec allows for the request document
+/// itself (must stay in sync with
+/// `auto_project_model::wire::MAX_WIRE_JSON_DEPTH` — pinned by a protocol
+/// test).
+pub const WIRE_REQUEST_JSON_DEPTH: usize = 120;
+
+/// Fixed depth overhead of the real message envelope above the wire request
+/// document: envelope object (1) + body object (1). The request value sits
+/// at envelope level 2, so frame depth = wire depth + 2 exactly.
+pub const ENVELOPE_DEPTH_OVERHEAD: usize = 2;
+
+/// Transmittable nesting envelope for a whole framed message, shared by
+/// the writer AND both readers (review R2, F-815-R1-05): wire request
+/// budget + real envelope overhead, strictly below the JSON text
+/// deserializer's recursion limit (128) so any frame one side accepts is
+/// readable by the other — and everything any reader accepts is within
+/// the declared envelope.
+pub const MAX_FRAME_JSON_DEPTH: usize = WIRE_REQUEST_JSON_DEPTH + ENVELOPE_DEPTH_OVERHEAD;
 
 fn json_depth(json: &Json) -> usize {
     fn depth_of(json: &Json, level: usize) -> usize {
@@ -121,11 +138,21 @@ pub fn read_frame<R: Read>(
     let text = std::str::from_utf8(&payload).map_err(|e| FrameError::Malformed {
         reason: format!("frame payload is not UTF-8: {e}"),
     })?;
-    serde_json::from_str(text)
-        .map(Some)
-        .map_err(|e| FrameError::Malformed {
-            reason: format!("frame payload is not JSON: {e}"),
-        })
+    let message: Json = serde_json::from_str(text).map_err(|e| FrameError::Malformed {
+        reason: format!("frame payload is not JSON: {e}"),
+    })?;
+    // Reader-side envelope gate (review R2, F-815-R1-05): frames deeper
+    // than the declared transmittable envelope are rejected with a named
+    // reason instead of relying on the parser's own recursion limit.
+    let depth = json_depth(&message);
+    if depth > MAX_FRAME_JSON_DEPTH {
+        return Err(FrameError::Malformed {
+            reason: format!(
+                "frame nests {depth} JSON levels deep, beyond the transmittable envelope {MAX_FRAME_JSON_DEPTH}"
+            ),
+        });
+    }
+    Ok(Some(message))
 }
 
 enum ReadOutcome {
@@ -175,14 +202,27 @@ pub fn parse_frame(buffer: &[u8], max_frame_bytes: usize) -> FrameParse {
             }
         }
     };
-    match serde_json::from_str(text) {
-        Ok(message) => FrameParse::Complete {
-            message,
-            consumed: total,
-        },
-        Err(e) => FrameParse::Malformed {
-            reason: format!("frame payload is not JSON: {e}"),
-        },
+    let message: Json = match serde_json::from_str(text) {
+        Ok(message) => message,
+        Err(e) => {
+            return FrameParse::Malformed {
+                reason: format!("frame payload is not JSON: {e}"),
+            }
+        }
+    };
+    // Same reader-side envelope gate as `read_frame` — the buffered and
+    // streaming read paths admit exactly the same set.
+    let depth = json_depth(&message);
+    if depth > MAX_FRAME_JSON_DEPTH {
+        return FrameParse::Malformed {
+            reason: format!(
+                "frame nests {depth} JSON levels deep, beyond the transmittable envelope {MAX_FRAME_JSON_DEPTH}"
+            ),
+        };
+    }
+    FrameParse::Complete {
+        message,
+        consumed: total,
     }
 }
 

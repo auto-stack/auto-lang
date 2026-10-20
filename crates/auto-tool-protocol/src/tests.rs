@@ -4,7 +4,7 @@
 
 use crate::budget::Budgets;
 use crate::error::{ErrorKind, ToolError};
-use crate::framing::{read_frame, write_frame, FrameError};
+use crate::framing::{parse_frame, read_frame, write_frame, FrameError};
 use crate::message::{ClientBody, ClientEnvelope, ServerBody, ServerEnvelope, WireRequest};
 use crate::report::{Finding, RequestSummary, Severity, ValidateProjectReport};
 use crate::{Capability, LifecyclePolicy, ToolDescriptor, PROTOCOL_VERSION};
@@ -349,4 +349,120 @@ fn r1_unknown_version_error_carries_the_actual_number() {
             server: 1
         }
     );
+}
+
+/// Review R2 (F-815-R1-05): the frame budget is the wire budget plus the
+/// real envelope overhead — pinned so the two constants cannot drift.
+#[test]
+fn r2_frame_budget_covers_the_wire_budget_plus_envelope() {
+    use auto_project_model::wire::MAX_WIRE_JSON_DEPTH;
+    assert_eq!(
+        crate::framing::WIRE_REQUEST_JSON_DEPTH,
+        MAX_WIRE_JSON_DEPTH,
+        "framing wire-depth constant must mirror the codec's"
+    );
+    assert_eq!(crate::framing::ENVELOPE_DEPTH_OVERHEAD, 2);
+    assert_eq!(
+        crate::framing::MAX_FRAME_JSON_DEPTH,
+        MAX_WIRE_JSON_DEPTH + 2
+    );
+}
+
+/// R1-05 (R2 scope): a request the codec accepts at the wire boundary,
+/// wrapped in a REAL ClientEnvelope, is writable and readable — the whole
+/// chain shares one transmittable set. One layer deeper, the codec itself
+/// refuses.
+#[test]
+fn r2_real_envelope_depth_boundary_round_trips() {
+    fn nested_values(depth: usize) -> auto_val::Value {
+        let mut value = auto_val::Value::Int(1);
+        for _ in 0..depth {
+            value = auto_val::Value::Array(auto_val::Array {
+                values: vec![value],
+            });
+        }
+        value
+    }
+    fn envelope_with(depth: usize) -> ClientEnvelope {
+        let mut request = sample_request();
+        request.package_assets.npm_deps = Some(nested_values(depth));
+        ClientEnvelope {
+            protocol_version: PROTOCOL_VERSION,
+            id: 1,
+            body: ClientBody::ValidateProject {
+                request: WireRequest(request),
+            },
+        }
+    }
+    // 57 layers: wire depth 119 ≤ 120, envelope depth 121 ≤ 122 — full chain
+    let envelope = envelope_with(57);
+    let json = serde_json::to_value(&envelope).expect("57-layer envelope serializes");
+    let mut buffer = Vec::new();
+    write_frame(&mut buffer, &json, 16 * 1024 * 1024).expect("writer accepts envelope depth 121");
+    let mut reader = Cursor::new(buffer);
+    let back = read_frame(&mut reader, 16 * 1024 * 1024)
+        .expect("reader accepts envelope depth 121")
+        .expect("frame");
+    assert_eq!(back, json);
+    // 58 layers: the codec refuses first (wire 121 > 120) — producers can
+    // never emit a frame the readers reject
+    let mut request = sample_request();
+    request.package_assets.npm_deps = Some(nested_values(58));
+    let envelope = ClientEnvelope {
+        protocol_version: PROTOCOL_VERSION,
+        id: 1,
+        body: ClientBody::ValidateProject {
+            request: WireRequest(request),
+        },
+    };
+    let err = serde_json::to_value(&envelope).unwrap_err();
+    assert!(err.to_string().contains("nest"), "{err}");
+}
+
+/// R1-05 (R2 scope): both reader entrances enforce the envelope with a
+/// named reason — hand-crafted frames at depth 123..128 (parseable by the
+/// JSON deserializer's own 128 limit) are rejected as beyond-envelope, not
+/// silently admitted.
+#[test]
+fn r2_readers_gate_depth_with_a_named_reason() {
+    fn nested_arrays(depth: usize) -> Json {
+        let mut value = json!(1);
+        for _ in 0..depth {
+            value = json!([value]);
+        }
+        value
+    }
+    let budget = crate::framing::MAX_FRAME_JSON_DEPTH;
+    // at-budget frame parses on both paths (json_depth counts the scalar
+    // leaf level, so `budget` nested arrays are exactly at the envelope)
+    let mut buffer = Vec::new();
+    write_frame(&mut buffer, &nested_arrays(budget - 1), 1024).expect("at budget");
+    let mut reader = Cursor::new(buffer);
+    assert!(read_frame(&mut reader, 1024).unwrap().is_some());
+    // over-budget but under the parser's own limit: named rejection
+    let over = nested_arrays(budget + 2); // ≤128 → deserializes fine
+                                          // the writer refuses over-budget frames with the same named reason…
+    let mut buffer = Vec::new();
+    let err = write_frame(&mut buffer, &over, 16 * 1024 * 1024).unwrap_err();
+    assert!(
+        matches!(err, FrameError::Malformed { ref reason } if reason.contains("envelope")),
+        "{err}"
+    );
+    // …and both readers reject a hand-framed copy of the same message
+    let payload = serde_json::to_vec(&over).unwrap();
+    let mut raw = Vec::new();
+    raw.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    raw.extend_from_slice(&payload);
+    let mut reader = Cursor::new(raw.clone());
+    let err = read_frame(&mut reader, 1024).unwrap_err();
+    assert!(
+        matches!(err, FrameError::Malformed { ref reason } if reason.contains("transmittable envelope")),
+        "{err}"
+    );
+    match parse_frame(&raw, 1024) {
+        crate::framing::FrameParse::Malformed { reason } => {
+            assert!(reason.contains("transmittable envelope"), "{reason}")
+        }
+        other => panic!("parse_frame admitted an over-envelope frame: {other:?}"),
+    }
 }

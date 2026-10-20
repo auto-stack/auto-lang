@@ -622,3 +622,132 @@ fn path_roles_are_checked_and_relative_roots_rejected() {
     );
     tool.kill();
 }
+
+// ---------------------------------------------------------------------------
+// Review R2 regressions: controlled rejection of tagless value payloads
+// (F-815-R1-02) and Windows cwd-qualified path forms (F-815-R1-04).
+// ---------------------------------------------------------------------------
+
+/// A valid frame carrying {"v":1,"extra":2} in three real value positions
+/// gets a controlled invalid-field error (never a panic / exit 101), and
+/// the tool keeps serving afterwards.
+#[test]
+fn r2_tagless_value_payload_is_controlled_not_fatal() {
+    for (position, inject) in [
+        ("npm_deps", serde_json::json!({"v": 1, "extra": 2})),
+        (
+            "raw value",
+            serde_json::json!([{"key": "k", "value": {"v": 1, "extra": 2}, "line": 1}]),
+        ),
+        (
+            "raw node prop",
+            serde_json::json!([{"head": "app", "name": null, "raw_args": null,
+                "props": [{"key": "k", "value": {"v": 1, "extra": 2}, "line": 1}],
+                "children": [], "line": 1}]),
+        ),
+    ] {
+        let mut tool = ToolProcess::spawn();
+        let request = patched_request_with(|wire| match position {
+            "npm_deps" => {
+                wire["request"]["package_assets"]["npm_deps"] = inject;
+            }
+            "raw value" => {
+                wire["request"]["raw"] = inject;
+            }
+            _ => {
+                wire["request"]["raw_nodes"] = inject;
+            }
+        });
+        tool.send(&request);
+        let response = parse_response(&tool.next_response());
+        match response.body {
+            ServerBody::Error { error } => match error.kind {
+                ErrorKind::InvalidField { field, reason } => {
+                    assert!(
+                        reason.contains("value") || reason.contains("'t'"),
+                        "{position}: {field}: {reason}"
+                    );
+                }
+                other => panic!("{position}: expected InvalidField, got {other:?}"),
+            },
+            other => panic!("{position}: expected Error, got {other:?}"),
+        }
+        // stream survives: describe answers, clean EOF exit 0 (not 101)
+        tool.send(&envelope(99, ClientBody::Describe));
+        assert!(matches!(
+            parse_response(&tool.next_response()).body,
+            ServerBody::DescribeOk { .. }
+        ));
+        let (code, _) = tool.close_stdin_and_wait();
+        assert_eq!(code, 0, "{position}: tool must not die on a bad payload");
+    }
+}
+
+fn patched_request_with(patch: impl FnOnce(&mut serde_json::Value)) -> Json {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"x\"\nrender: \"vue\"\n",
+            SourceInfo::from_path(dir.path().join("pac.at")),
+        )
+        .expect("parse"),
+    );
+    let mut wire = auto_project_model::wire::request_to_wire(&request).expect("encode");
+    patch(&mut wire);
+    json!({
+        "protocol_version": 1,
+        "id": 40,
+        "body": {"op": "validate_project", "request": wire}
+    })
+}
+
+/// Windows drive-relative (`C:dir`) and rooted-without-prefix (`\dir`)
+/// forms are never probed against the per-drive process cwd — the report
+/// is identical from any working directory and says cwd-qualified-path.
+#[cfg(windows)]
+#[test]
+fn r2_drive_relative_paths_are_cwd_qualified_not_cwd_probed() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let root = dir.path().to_path_buf();
+    std::fs::create_dir_all(root.join("front")).unwrap();
+    std::fs::write(root.join("front").join("main.at"), "// x").unwrap();
+    std::fs::write(root.join("result"), "file").unwrap();
+
+    // derive the real drive prefix from the temp path (no C: assumption)
+    let drive = root.to_string_lossy();
+    let drive = &drive[..drive.find(':').unwrap() + 1];
+    let drive_relative = format!("{drive}front/main.at");
+    let rooted = r"\front\main.at";
+
+    for raw in [drive_relative.as_str(), rooted] {
+        let mut request = GenerationRequest::dynamic(SourceInfo::inline());
+        request.identity.name = Some("drive-rel".into());
+        request.project_root = Some(root.clone());
+        request.input_sources = vec![PathBuf::from(raw)];
+
+        let same_drive_elsewhere =
+            tempfile::tempdir_in(root.parent().unwrap()).expect("same-drive cwd");
+        let report_a = {
+            let mut tool = ToolProcess::spawn_in(Some(&root));
+            let r = validate_in(&mut tool, 1, request.clone());
+            tool.kill();
+            r
+        };
+        let report_b = {
+            let mut tool = ToolProcess::spawn_in(Some(same_drive_elsewhere.path()));
+            let r = validate_in(&mut tool, 2, request.clone());
+            tool.kill();
+            r
+        };
+        assert_eq!(report_a, report_b, "'{raw}' result depends on cwd");
+        let codes: Vec<&str> = report_a.findings.iter().map(|f| f.code.as_str()).collect();
+        assert!(
+            codes.contains(&"cwd-qualified-path"),
+            "'{raw}' codes: {codes:?}"
+        );
+        assert!(
+            !codes.contains(&"input-source-missing"),
+            "'{raw}' probed the cwd"
+        );
+    }
+}

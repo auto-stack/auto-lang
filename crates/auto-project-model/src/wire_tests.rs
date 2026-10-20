@@ -446,3 +446,128 @@ fn deeply_nested_json(depth: usize) -> serde_json::Value {
     }
     value
 }
+
+// ---------------------------------------------------------------------------
+// Review R2 counterexamples as permanent regressions
+// (F-815-R1-02 / F-815-R1-05 / F-815-R2-01)
+// ---------------------------------------------------------------------------
+
+/// R1-02: a tag object without 't' is a named Shape error — never a Map
+/// indexing panic that kills the tool (exit 101).
+#[test]
+fn r2_value_object_without_tag_is_a_named_error() {
+    for bad in [
+        serde_json::json!({"v": 1, "extra": 2}),
+        serde_json::json!({"v": 1}),
+        serde_json::json!({"t": 7, "v": 1}),
+        serde_json::json!({"t": "int", "v": 1, "extra": 3}),
+        serde_json::json!({"t": "obj", "v": []}),
+        serde_json::json!({"t": "pair", "v": 1}),
+    ] {
+        let err = request_from_wire(&serde_json::json!({
+            "wire": 1,
+            "request": minimal_request_with_npm(&bad),
+        }))
+        .unwrap_err();
+        assert!(matches!(err, WireError::Shape { .. }), "{bad} -> {err}");
+    }
+    // the same payload placed in raw props / raw node props stays controlled
+    let err = request_from_wire(&serde_json::json!({
+        "wire": 1,
+        "request": minimal_request_with_raw_value(&serde_json::json!({"v": 1, "extra": 2})),
+    }))
+    .unwrap_err();
+    assert!(matches!(err, WireError::Shape { .. }), "{err:?}");
+}
+
+fn base_request_json() -> serde_json::Value {
+    let req = static_request("name: \"x\"\n");
+    request_to_wire(&req).expect("encode")
+}
+
+fn minimal_request_with_npm(value: &serde_json::Value) -> serde_json::Value {
+    let mut wire = base_request_json();
+    wire["request"]["package_assets"]["npm_deps"] = value.clone();
+    wire
+}
+
+fn minimal_request_with_raw_value(value: &serde_json::Value) -> serde_json::Value {
+    let mut wire = base_request_json();
+    wire["request"]["raw"] = serde_json::json!([
+        {"key": "k", "value": value, "line": 1}
+    ]);
+    wire
+}
+
+/// R2-01: the diagnostic tag prefix is consumed exactly once; encode and
+/// decode share the closed field-set admission.
+#[test]
+fn r2_diagnostic_tag_admission_is_exact() {
+    // positives: real scanner fields round-trip
+    for text in ["members: 7\n", "defines: 7\n"] {
+        let req = static_request(text);
+        assert_eq!(round_trip(&req), req);
+    }
+    // repeated prefix: the prefix is consumed once, so the payload
+    // "type-mismatch:members" fails the closed-set check — rejected as a
+    // named Shape error, never normalized into members
+    let wire = base_request_json();
+    let err = unsupported_decode(&wire, "type-mismatch:type-mismatch:members");
+    assert!(
+        matches!(&err, WireError::Shape { field, .. } if *field == "origin.unsupported"
+            && err.to_string().contains("type-mismatch:members")),
+        "{err}"
+    );
+    // empty payload and unknown fields are rejected
+    assert!(matches!(
+        unsupported_decode(&wire, "type-mismatch:"),
+        WireError::Shape { .. }
+    ));
+    assert!(matches!(
+        unsupported_decode(&wire, "type-mismatch:future"),
+        WireError::Shape { .. }
+    ));
+    // encode side: out-of-set field must not produce unreadable wire
+    let mut req = static_request("name: \"x\"\n");
+    if let RequestOrigin::StaticAdmitted { unsupported, .. } = &mut req.origin {
+        unsupported.push(UnsupportedKind::TypeMismatch { field: "future" });
+    }
+    assert!(matches!(
+        request_to_wire(&req).unwrap_err(),
+        WireError::Shape { field, .. } if field == "origin.unsupported"
+    ));
+}
+
+fn unsupported_decode(wire: &serde_json::Value, tag: &str) -> WireError {
+    let mut wire = wire.clone();
+    wire["request"]["origin"]["unsupported"] = serde_json::json!([tag]);
+    request_from_wire(&wire).unwrap_err()
+}
+
+/// R1-05 (R2 scope): the wire-document depth envelope is the codec's own
+/// boundary — 57 array layers fit, 58 do not (measured on the real wire
+/// tree, not a hand-waved count).
+#[test]
+fn r2_wire_depth_boundary_on_the_real_tree() {
+    fn nested(depth: usize) -> Value {
+        let mut value = Value::Int(1);
+        for _ in 0..depth {
+            value = Value::Array(auto_val::Array {
+                values: vec![value],
+            });
+        }
+        value
+    }
+    let mut req = GenerationRequest::dynamic(SourceInfo::inline());
+    req.package_assets.npm_deps = Some(nested(57));
+    let wire = request_to_wire(&req).expect("57 layers fit the wire envelope");
+    assert_eq!(request_from_wire(&wire).expect("decode symmetric"), req);
+    let mut deep = GenerationRequest::dynamic(SourceInfo::inline());
+    deep.package_assets.npm_deps = Some(nested(58));
+    assert!(matches!(
+        request_to_wire(&deep).unwrap_err(),
+        WireError::DepthExceeded {
+            limit: crate::wire::MAX_WIRE_JSON_DEPTH
+        }
+    ));
+}

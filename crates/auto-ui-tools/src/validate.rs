@@ -32,22 +32,56 @@ pub const NOT_CHECKED_SCOPES: &[&str] = &[
 
 /// How a declared path was anchored for probing.
 enum Anchored {
-    /// Absolute, or relative joined onto the request's absolute project root.
+    /// Absolute, or a purely relative path joined onto the request's
+    /// absolute project root (the join result is verified absolute).
     Resolved(PathBuf),
-    /// Cannot be anchored: the request carries no project root, or the root
-    /// itself is relative (reported separately). Never probed against the
-    /// tool process's working directory.
-    NoAnchor { raw: PathBuf },
+    /// Cannot be anchored against request data. Never probed against the
+    /// tool process's working directory. `cwd_qualified` marks Windows
+    /// drive-relative (`C:dir`) / rooted-without-prefix (`\dir`) forms:
+    /// `Path::join` keeps them drive-relative, so any probe would use the
+    /// process's per-drive current directory (review R2, F-815-R1-04).
+    NoAnchor { raw: PathBuf, cwd_qualified: bool },
+}
+
+/// True when the path is relative in the *pure* sense: no Windows prefix
+/// and no root component — the only form `root.join(p)` anchors correctly
+/// on every platform.
+fn is_purely_relative(path: &Path) -> bool {
+    !path.components().any(|c| {
+        matches!(
+            c,
+            std::path::Component::Prefix(_) | std::path::Component::RootDir
+        )
+    })
 }
 
 fn anchor(request: &GenerationRequest, raw: &Path) -> Anchored {
     if raw.is_absolute() {
         return Anchored::Resolved(raw.to_path_buf());
     }
+    if !is_purely_relative(raw) {
+        return Anchored::NoAnchor {
+            raw: raw.to_path_buf(),
+            cwd_qualified: true,
+        };
+    }
     match &request.project_root {
-        Some(root) if root.is_absolute() => Anchored::Resolved(root.join(raw)),
+        Some(root) if root.is_absolute() => {
+            let joined = root.join(raw);
+            // belt and braces: a join that somehow stays relative can
+            // never be probed cwd-free
+            if joined.is_absolute() {
+                Anchored::Resolved(joined)
+            } else {
+                Anchored::NoAnchor {
+                    raw: raw.to_path_buf(),
+                    cwd_qualified: true,
+                }
+            }
+        }
         _ => Anchored::NoAnchor {
             raw: raw.to_path_buf(),
+            cwd_qualified: false,
         },
     }
 }
@@ -164,10 +198,14 @@ pub fn validate_request(request: &GenerationRequest) -> ValidateProjectReport {
                     );
                 }
             }
-            Anchored::NoAnchor { raw } => findings.push(
+            Anchored::NoAnchor { raw, cwd_qualified } => findings.push(
                 Finding::new(
                     Severity::Warning,
-                    "relative-path-without-root",
+                    if cwd_qualified {
+                        "cwd-qualified-path"
+                    } else {
+                        "relative-path-without-root"
+                    },
                     format!(
                         "relative input source '{}' cannot be verified: the request carries no \
                          project root (never probed against the tool's working directory)",
@@ -197,10 +235,14 @@ pub fn validate_request(request: &GenerationRequest) -> ValidateProjectReport {
                     );
                 }
             }
-            Anchored::NoAnchor { raw } => findings.push(
+            Anchored::NoAnchor { raw, cwd_qualified } => findings.push(
                 Finding::new(
                     Severity::Warning,
-                    "relative-path-without-root",
+                    if cwd_qualified {
+                        "cwd-qualified-path"
+                    } else {
+                        "relative-path-without-root"
+                    },
                     format!(
                         "relative output_root '{}' cannot be verified: the request carries no \
                          project root (never probed against the tool's working directory)",
@@ -245,13 +287,18 @@ pub fn validate_request(request: &GenerationRequest) -> ValidateProjectReport {
                         );
                     }
                 }
-                Anchored::NoAnchor { raw } => findings.push(
+                Anchored::NoAnchor { raw, cwd_qualified } => findings.push(
                     Finding::new(
                         Severity::Warning,
-                        "relative-path-without-root",
+                        if cwd_qualified {
+                            "cwd-qualified-path"
+                        } else {
+                            "relative-path-without-root"
+                        },
                         format!(
-                            "relative dependency root '{}' cannot be verified: the request \
-                             carries no project root",
+                            "dependency root '{}' cannot be verified against request data \
+                             (cwd-qualified path forms are never probed against the tool's \
+                             working directory)",
                             raw.display()
                         ),
                     )
@@ -293,10 +340,14 @@ pub fn validate_request(request: &GenerationRequest) -> ValidateProjectReport {
                     );
                 }
             }
-            Anchored::NoAnchor { raw } => findings.push(
+            Anchored::NoAnchor { raw, cwd_qualified } => findings.push(
                 Finding::new(
                     Severity::Warning,
-                    "relative-path-without-root",
+                    if cwd_qualified {
+                        "cwd-qualified-path"
+                    } else {
+                        "relative-path-without-root"
+                    },
                     format!(
                         "relative front directory '{}' cannot be verified: the request carries \
                          no project root",
