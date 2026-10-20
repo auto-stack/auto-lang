@@ -75,9 +75,59 @@ fn probe_toolchain_axes(exe_sha: &str) -> Vec<(String, String)> {
 }
 
 fn worker_exe_sha256() -> Result<String, String> {
-    let exe = worker_binary()?;
-    let bytes = std::fs::read(&exe).map_err(|e| format!("read worker exe: {e}"))?;
-    Ok(hex(&sha256(&bytes)))
+    worker_file_sha256(&worker_binary()?)
+}
+
+fn worker_file_sha256(exe: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    // Re-read the executable on every admission: same-path replacement
+    // must change the tool identity. Use the existing accelerated digest
+    // implementation rather than the contract crate's debug-mode scalar
+    // reference; the SHA-256 bytes and admission policy stay identical.
+    let bytes = std::fs::read(exe).map_err(|e| format!("read worker exe: {e}"))?;
+    Ok(hex(&Sha256::digest(&bytes)))
+}
+
+#[cfg(test)]
+mod worker_identity_tests {
+    use super::*;
+
+    #[test]
+    fn av_worker_sha256_matches_contract_and_same_path_replacement() {
+        let path = std::env::temp_dir().join(format!(
+            "av798-hash-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        // Empty, known vector, block/padding boundaries and a multi-block
+        // artifact all use the SAME path: no metadata/hash cache may hide
+        // a replacement, even when its length remains unchanged.
+        let mut inputs = vec![Vec::new(), b"abc".to_vec()];
+        for len in [55, 56, 63, 64, 65, (1 << 20) + 17] {
+            inputs.push((0..len).map(|i| (i % 251) as u8).collect());
+        }
+        inputs.push(vec![b'x'; 65]);
+        inputs.push(vec![b'y'; 65]);
+        for bytes in inputs {
+            std::fs::write(&path, &bytes).unwrap();
+            let observed = worker_file_sha256(&path).unwrap();
+            assert_eq!(observed, hex(&sha256(&bytes)));
+            if bytes == b"abc" {
+                assert_eq!(
+                    observed,
+                    "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+                );
+            }
+        }
+        std::fs::remove_file(&path).unwrap();
+        assert!(worker_file_sha256(&path)
+            .unwrap_err()
+            .starts_with("read worker exe:"));
+    }
 }
 
 /// Locate (and on first use build) the av worker binary. Env override
