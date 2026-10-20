@@ -2601,3 +2601,7 @@ T-16/L3阶段pass @0a65ee2a7：D-815-L1/L2涉及的CLI/schema/并发/部分写/�
 ### Plan 798 独立最终验收 R15（2026-10-20，needs_fix）
 
 受审 `79b31f5dcb99b2b95e1c79a5ae58299c0139f8f6`，r5；[完整报告/AC-V-K14-SD/原始反例与输入](attachments/798/review-r15/review.md)。R14-01 CLOSED：同轮180raw/summary/hash齐全，edit P95 414.7482ms、A201.3MiB/B4.2MiB、正式30样本保存日志948.9ms PASS；此前关闭原例保留。新增五项P2合同内遗漏：F798-R15-01 A08/A09缓存命中不对当前grants复核，caps=[]仍Success7+MarkA；02 单元信封接完整module载荷，可信producer-kind冲突仍执行；03 Driver空可解码sidecar被当bound，A08/A09命中trap span=None（正常重推导正控23..28）；04 manifest required边0且生产无lease，只有manifest lease移除scratch项目根后GC删除3块，后续恢复unit missing；05 正式runner locate_worker构建准备器stdout不排空/无Job，原函数提取体300ms加速反控超时后自建后代仍STILL_ACTIVE（已定点清理）。新增P3 F06 core/src/abc.rs:1063 unused import（实验验收实际warning，非根既有566条）。实验101/正式正确性4/共享probe兼容16通过不覆盖新失败；原树work同批修复并补入口/状态闭合矩阵再提交送审。T01/03/04/05/07/08重开，保留T02/06/11，executing3/11；登记不授权延期/缩面，不要求825/826未来优化。未改实施或canonical Spec/live ledger、未跑根整档/合入；最终pass后的merge-owned冻结门禁/沉淀/归档/guard仍pending。
+
+### Plan 798 r7 最终复审 R19收口（2026-10-20）
+
+R15六项、R16多单元lease及R18位置修订manifest/sidecar GC不变量已关闭；当前83086e76f，cache20/resources17/formal7、同轮180计量/双线内存及原独立反例均通过。R17 warm-only时延阻断按用户r7交付裁定关闭（历史失败保留），完整函数增量归优先828；不能把它写成旧失败测试已改绿或新hot架构已实现。新正确性组合反例、修复与覆盖见[诊断](attachments/798/review-r18/diagnosis.md)，最终逐AC/V/K14/SD见[R19](attachments/798/review-r19/review.md)。旧“needs_fix”段落是历史，不代表当前仍开放；merge-owned整档与沉淀/归档/清理仍pending，未借债务登记豁免验收。
