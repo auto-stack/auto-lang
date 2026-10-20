@@ -91,3 +91,8 @@ A06 的**受限探针 producer** = `experimental/ac-semantics/probe`（PLAN-796�
 [auto-semantics/semantic-contract.md](../auto-semantics/semantic-contract.md)
 的名义身份与页准入只读消费；不绕过 consumer 身份校验，不把 HIR kind 冒充
 语义值。
+
+
+## PLAN-798：已实现的AV消费边界
+
+798在独立ac-av-probe实现A08 MIR/A09 ABC函数producer、unit/manifest/sidecar、恢复重验/当前grant与required-edge/lease/GC；使用既有carrier和统一store，不新建数据库。类别/版本信封绑定和raw准入分开；只交付当前标量面，不冒领A01–A12全层生产化。详细行为及整模块重算现状见[AV缓存合同](../auto-av/cache-and-conformance.md)。
