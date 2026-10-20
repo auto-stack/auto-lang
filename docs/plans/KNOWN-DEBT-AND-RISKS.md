@@ -2486,3 +2486,7 @@ F810-R2-01（P2）同实例错误oracle仍未齐：fresh Parser成功不能证�
 ### Plan 798 修复复审及r4 readiness R12（2026-10-20，needs_fix）
 
 受审`bf7e44f8ef18d9f6b9c03467986f5b91cadc58c3`，plan r4；[报告/反例/命令/当前资源数据与raw](attachments/798/review-r12/review.md)。开放四项P2：F798-R12-01真实Checked HIR仅71层的尾操作数深调用被前门估成192层误拒（直接管线=70/262步）；R12-02 raw unit仍获executable凭证并直接执行（零参=7/2步、带参=42/1步，未走闭包装配/完整entry门）；R12-03新增kind位而wire/schema/producer/sem/key未隔离旧语义，旧无kind单元raw误作module且真实store hit1/miss0/emitted0成功7；R12-04冻结273575bytes当前release请求值正确2665，但private-bytes空载761856/峰值211918848/增量211156992（约201.4MiB）>128MiB，r4明确历史前端归因/债务不是豁免。资源若只读ac-core不可行按T01给owner阻断及有界修订回new，不扩大上限/扣前端/抢写依赖。R11原131层漏准入和module42往返具体例已验证修复；四个精确定向测试各1/1、fmt/diff-check0，不证明完整K14/资源。仅T06完成，executing1/10；未跑完整最终门或整档，未改实施/发布canonical规范/ledger/合入。登记不授权延期/缩围；最终pass后merge门禁/归档/guard仍pending。
+
+## D-815-L：派生账本无法按store schema加载（2026-10-20）
+
+PLAN-815 T-14收尾发现：v56备份已有1060条历史item与六section不满足store schema，v57四条815投影亦不完整。JSON/ID校验不等于store成功。原件/备份保留；修后815脚本在schema前检拒写。记录恢复责任在PLAN-815 r3/M815-L（T-15 work→T-16独立审查→T-17受管恢复及815 upsert→关闭T-14），不新增编号、不回滚已合入A代码；R4仅未变代码阶段pass保持。审计与原件SHA、恢复方案见`docs/plans/attachments/815/t14-closeout/`。未完成前不宣称完整阶段发布，不归档不清树。
