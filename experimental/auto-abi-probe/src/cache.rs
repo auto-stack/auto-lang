@@ -161,15 +161,20 @@ struct CObjectEntry {
 /// COMPILE/LINK ARTIFACTS are excluded (a build must not invalidate
 /// itself); anything else — extension-less files included — is a
 /// potential include candidate and part of the environment.
-fn search_listing(dir: &std::path::Path, artifact_names: &[String]) -> Vec<String> {
-    // ONLY files this pipeline actually creates are excluded from the
-    // environment: the caller-declared compile/link outputs, and our
-    // staged-link temporaries (`<exe>.tmp-<txn>`). A header named
-    // `config.tmp` is a REAL include candidate (F-797-R4-07 R14) —
-    // suffix-based filtering is not sound.
-    fn is_artifact(name: &str, artifact_names: &[String]) -> bool {
-        artifact_names.iter().any(|a| a.eq_ignore_ascii_case(name))
-            || name.starts_with("probe.exe.tmp-")
+fn search_listing(dir: &std::path::Path, artifact_paths: &[String]) -> Vec<String> {
+    // ONLY the EXACT files this pipeline creates are excluded — matched
+    // by FULL PATH, never by basename: a declared output `value.obj`
+    // must not hide a real header `sub/value.obj` elsewhere in the
+    // tree (F-797-R4-07 R15) — plus our staged-link temporaries bound
+    // to a declared output's location (`<output>.tmp-<txn>`). Headers
+    // with ANY name anywhere are candidates.
+    fn is_artifact(full: &str, arts: &[String]) -> bool {
+        arts.iter().any(|a| {
+            full.eq_ignore_ascii_case(a)
+                || full
+                    .to_ascii_lowercase()
+                    .starts_with(&format!("{a}.tmp-").to_ascii_lowercase())
+        })
     }
     fn walk(dir: &std::path::Path, prefix: &str, out: &mut Vec<String>, arts: &[String]) {
         let Ok(rd) = std::fs::read_dir(dir) else {
@@ -177,6 +182,15 @@ fn search_listing(dir: &std::path::Path, artifact_names: &[String]) -> Vec<Strin
         };
         let mut entries: Vec<_> = rd.flatten().collect();
         entries.sort_by_key(|e| e.file_name());
+        let dir_s = dir.display().to_string();
+        let base = {
+            let b = dir_s.as_bytes();
+            if b.len() > 4 && b.starts_with(b"\\\\?\\") {
+                dir_s[4..].to_string()
+            } else {
+                dir_s.clone()
+            }
+        };
         for e in entries {
             let Ok(name) = e.file_name().into_string() else {
                 continue;
@@ -188,13 +202,16 @@ fn search_listing(dir: &std::path::Path, artifact_names: &[String]) -> Vec<Strin
             };
             if e.file_type().is_ok_and(|t| t.is_dir()) {
                 walk(&e.path(), &rel, out, arts);
-            } else if !is_artifact(&name, arts) {
-                out.push(rel);
+            } else {
+                let full = format!("{base}\\{}", rel.replace('/', "\\"));
+                if !is_artifact(&full, arts) {
+                    out.push(rel);
+                }
             }
         }
     }
     let mut names = Vec::new();
-    walk(dir, "", &mut names, artifact_names);
+    walk(dir, "", &mut names, artifact_paths);
     names
 }
 
@@ -319,7 +336,7 @@ pub fn produce_c_object<F>(
     store: &ManagedStore,
     src: &std::path::Path,
     include_dir: &std::path::Path,
-    artifact_names: &[&str],
+    artifact_paths: &[std::path::PathBuf],
     produce: F,
 ) -> Result<(Vec<u8>, bool), StoreError>
 where
@@ -332,7 +349,13 @@ where
     // directories, not the path LITERALS — canonicalize both anchors so
     // relative spellings resolve against the CURRENT working directory
     // and two projects sharing the same literals never alias.
-    let src_dir = std::fs::canonicalize(src.parent().unwrap_or(std::path::Path::new(".")))
+    // F-797-R15-01: `Path("same.c")` has an EMPTY parent — resolve it
+    // to the current directory instead of failing
+    let src_parent = src
+        .parent()
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or(std::path::Path::new("."));
+    let src_dir = std::fs::canonicalize(src_parent)
         .map_err(|e| StoreError::Internal(format!("canonicalize src dir: {e}")))?
         .display()
         .to_string();
@@ -340,7 +363,35 @@ where
         .map_err(|e| StoreError::Internal(format!("canonicalize include dir: {e}")))?
         .display()
         .to_string();
-    let artifact_names: Vec<String> = artifact_names.iter().map(|a| a.to_string()).collect();
+    // F-797-R4-07 (R15): artifact exclusion by FULL PATH — resolved
+    // against the (always existing) parent directory so the spelling
+    // is stable whether or not the output file exists yet; separators
+    // unified; compared case-insensitively against full listing paths
+    let artifact_paths: Vec<String> = artifact_paths
+        .iter()
+        .map(|p| {
+            let name = p
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            let parent = p
+                .parent()
+                .filter(|d| !d.as_os_str().is_empty())
+                .unwrap_or(std::path::Path::new("."));
+            let dir_s = std::fs::canonicalize(parent)
+                .map(|c| c.display().to_string())
+                .unwrap_or_else(|_| parent.display().to_string());
+            let dir_s = {
+                let b = dir_s.as_bytes();
+                if b.len() > 4 && b.starts_with(b"\\\\?\\") {
+                    dir_s[4..].to_string()
+                } else {
+                    dir_s
+                }
+            };
+            format!("{}\\{}", dir_s.replace('/', "\\"), name)
+        })
+        .collect();
     let target = crate::layout::TARGET.to_string();
     let toolchain = current_toolchain();
     // DISCOVERY (+ verification). Canonical keys sort fields
@@ -395,7 +446,7 @@ where
                             // dirs) must still offer exactly the
                             // recorded file set
                             && e.dir_listings.iter().all(|(d, l)| {
-                                search_listing(std::path::Path::new(d), &artifact_names) == *l
+                                search_listing(std::path::Path::new(d), &artifact_paths) == *l
                             })
                     })
                     .and_then(|e| {
@@ -496,7 +547,7 @@ where
         .map(|d| {
             (
                 d.clone(),
-                search_listing(std::path::Path::new(d), &artifact_names),
+                search_listing(std::path::Path::new(d), &artifact_paths),
             )
         })
         .collect();
@@ -505,7 +556,12 @@ where
     gen_lines.push(format!("inc_dir|{inc_dir_s}"));
     gen_lines.push(format!("target|{target}"));
     gen_lines.push(format!("toolchain|{toolchain}"));
-    for a in &artifact_names {
+    // F-797-R15-02: the ENVELOPE ALGORITHM VERSION is part of the
+    // generation identity — a legacy v3 entry (even one whose domain
+    // equals the current one) can never occupy a v4 key, so an upgrade
+    // recompile always publishes instead of dead-ending in Conflict
+    gen_lines.push("env|4".to_string());
+    for a in &artifact_paths {
         gen_lines.push(format!("art|{a}"));
     }
     for (d, l) in &dir_listings {
