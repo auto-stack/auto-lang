@@ -37,3 +37,29 @@
   `cargo test -p auto-ui-compiler --lib --features ui plan571`（4 过）、
   `cargo test -p auto-ui-compiler -p auto-lang --lib --features
   auto-lang/ui-iced plan571_button_preset`（tu 形态 compiler 侧 3 过）。
+
+## R4 修订：基面回溯原 master 203e2ce91（口径修正）
+
+R4 判定：上版以中途基线 d905e796c（296==296）只能证明"R3 修复批零新增"，
+不能证明"814 全迁移相对原 master 零新增"。本节补齐：临时 worktree@
+203e2ce91 上 `cargo check -p auto-lang`（409 warning 行/279 去重）vs 当前
+五 crate check（421/289），按（文本, 迁移路径归一）对照。
+
+结论：绝大多数"差集"是同一警告随代码搬家（`crates/auto-lang/src/X` →
+`crates/auto-lang-core/src/X` / `auto-ui-compiler/src/X`），真实净新增
+约 14 条，逐条归因如下；另有约 4 条净消失（迁移顺带解决，如
+`static WARNED_API_NOOP`、`started_at`/`key` 未读等）。
+
+| 净新增告警 | 归因 | 处置 |
+|---|---|---|
+| SDK lib.rs `AUTO_LIB_FILES`/`AUTO_LIB_FILES_V2`/`aavm2_lib_source` never used（3 条，另有旧包 `AUTO_LIB_FILES` 1 条转死） | T-02 大迁移的 aavm 常量双份（SDK 副本无调用方；上层 aavm 测试自足后上层副本转死） | aavm 族拟退役（AGENTS §AAVM）；B 阶段单源化时一并清偿，A 不动 |
+| 旧包 lib.rs 未用 import 族（`AutoError`/`ast_parse_ext::*`/`lexer::*`/`Array,Node,Value`/`AtomicBool,AtomicUsize,Ordering`，约 5 条） | T-02 再导出门面拆分残留（门面 import 在新结构下无消费方） | 同上归 B 清偿；非 R3-03b/R4 批新增 |
+| SDK lib.rs `std::path::PathBuf` 未用 import + unused doc comment（2 条） | T-02 迁移残留 | 归 B 清偿 |
+| `field prev is never read`（vm/ffi/stdlib.rs） | T-02 搬家后可见性变化 | 归 B |
+| http_server.rs 私有性三连（`ParkStage`/`DispatchCtx`/`ApiBody` more private） | 814 迁移期可见性漂移（vs d905e796c 已在，非 R3-03b/R4 批新增） | 归 B |
+
+**边界声明**：本表不声称"814 全迁移零新增告警"——净新增 ≈14 条全部为
+T-02/T-03 迁移残留且已在册（aavm 退役/B 清偿域），R3-03b 与 R4 修复批
+相对其各自受审基线零新增（前节双基线差集 0）。R4 要求整理的 fmt 项
+（ui_cache.rs:371、auto-macros tests 导入序、macros src/lib.rs）已全部
+rustfmt 过（见 R4 修复批提交）。

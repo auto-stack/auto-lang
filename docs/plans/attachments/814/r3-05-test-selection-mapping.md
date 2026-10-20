@@ -1,15 +1,59 @@
-# R3-05 测试选择面映射表（PLAN-814 R3-03b 全文）
+# R3-05/R4 测试选择面映射表（PLAN-814；R4 修订——基面回溯迁包前 master）
 
-迁前形态：86 项 UI 文法依赖测试在 auto-lang-core 内 `#[cfg(feature = "ui-dialect")]`
-门控（parser 60 / design_tokens 9 / tscn 11 / gdscript 6），经 feature 组合
-（上层 default 转发 / auto-ui-compiler 显式启用 + feature 统一）进档。
+R4 复审判定：原映射表以中途基线 d905e796c 为参照，且把 tb/taa/ta/t3 等
+原档位说成"非本族档/否"——**迁包前这些档位经 `-p auto-lang`（default 含
+ui-iced）实际覆盖了后来迁出的全部 inline 测试**。本修订把映射基面回溯到
+**814 迁包前的 master `203e2ce91`**（Plan 基线提交），逐档重建选择面。
 
-迁后形态：同一 86 项随文法 owner 迁 auto-ui-dialect `src/regression/`
-（dev-dep auto-lang-core 驱动真 Parser；文法表经 `setup()` 进程级装配），
-无条件编译——`.cargo/config.toml` 的 t/tf/tt 别名已扩 `-p auto-ui-dialect`
-保持选择（迁移当轮起生效；tu 档为 compiler 侧 ui_gen 面，不含本族）。
+## 方法论（可复现）
 
-## 逐项映射（86/86，无丢失/无新增）
+- 旧侧：临时 worktree（组内 detached@`203e2ce91`）按**该 commit 的原别名
+  定义**逐档 `cargo nextest list`（t/tf/tv/tt/tb/taa/ta/t3 + tu 的 libtest
+  `-- --list`；旧别名取 `git show 203e2ce91:.cargo/config.toml`）。
+- 新侧：R4 修复后工作树按当前别名逐档同命令。
+- 匹配：路径精确匹配 + 已记录迁移动作的模块重写规则
+  （`parser::tests::`→`regression::parser_ui_grammar::tests::`、
+  `design_tokens::recipe::tests::`→`regression::design_tokens_recipe::tests::`
+  /`tests::plan814_recipe_extraction_tests::`、`trans::{tscn,gdscript}::tests::`
+  →`regression::trans_*::tests::`、`ui::{action_config,style,iced::lucide_generated}::`
+  →compiler 同名去前缀、`ui::style::iced_adapter::`→`ui::style_iced_adapter::`、
+  `tests::heavy_gate::`→`heavy_gate::`、
+  `vm::native::tests::code_editor_natives::`→`tests::plan413_code_editor_natives::`、
+  back_proxy/back_prefix→`tests::plan712_*`）。
+
+## 逐档结果（R4 修复后，方法如上）
+
+| 档 | 旧（203e2ce91） | 新（修复后） | 未匹配（真实丢失） | 选择缺口 |
+|---|---|---|---|---|
+| `t` | 5303 | 5307 | **0** | **0** |
+| `tf` | 6270 | 6274 | **0** | **0** |
+| `tv` | 163 | 163 | **0** | **0** |
+| `tt` | 5675 | 5679 | **0** | **0** |
+| `tb` | 5296 | 5300 | **0** | **0** |
+| `tu`（libtest） | 869 | 869 | **0** | **0** |
+| `taa` | 6266 | 6270 | **0** | **0** |
+| `ta` | 6720 | 6724 | **0** | **0** |
+| `t3` | 6721 | 6725 | **0** | **0** |
+
+（新计数略增=新增回归：ui_cache 身份语义 2 + build 边界负控 2 等。）
+
+## R4 判定项的修复清单
+
+1. **别名扩包**（`.cargo/config.toml`）：tt 增 `-p auto-ui-compiler`；
+   tb/taa/ta/t3 增 `-p auto-lang-core -p auto-ui-compiler -p auto-ui-dialect`
+   （taa/ta/t3 裸 feature 列表同步前缀化——多 -p 下裸 feature 会红）。
+2. **aavm 档编译红修复（T-02 遗留回归）**：`aavm2_m4.rs` 两处
+   `crate::remap_string_indices` → `auto_lang_core::remap_string_indices`
+   （fn 迁 SDK 后提 pub）——taa/ta/t3 自 T-02 起 lib 编译红（该族短期
+   不跑未暴露），本次重建清单时发现并修复。
+3. **残留 `ui-iced` 门归位**：compiler `ui_gen/rust.rs`
+   `image_surface_rust_codegen` 测试门 `ui-iced`→`ui`（旧包 default 链
+   ui-iced→ui→compiler/ui 转发，各档恢复选择）。
+4. **恢复 T-02 被丢测试**：`test_style_recipe_in_widget_extraction`
+   （203e2ce91 在册、T-02 大迁移时丢失）——归属 auto-ui-compiler
+   `style`（aura owner；语义逐字保持 + 显式文法装配）。
+
+## 86 项文法测试映射（沿 R3-03b 批；R4 复审独立验证 86/86 名称相等）
 
 | # | 迁前 ID（auto-lang-core, feature on） | 迁后 ID（auto-ui-dialect） |
 |---|---|---|
@@ -100,24 +144,10 @@
 | 85 | `auto-lang-core trans/tscn::tests::test_tscn_005_subresource` | `auto-ui-dialect regression::trans_tscn::tests::test_tscn_005_subresource` |
 | 86 | `auto-lang-core trans/tscn::tests::test_tscn_006_combined_with_gd` | `auto-ui-dialect regression::trans_tscn::tests::test_tscn_006_combined_with_gd` |
 
-## 档位覆盖对照
+## 采集工件
 
-| 档 | 迁前是否覆盖 | 迁后是否覆盖 | 机制 |
-|---|---|---|---|
-| `cargo t`（日常） | 是（feature 统一经上层 default 转发拉入） | 是（`-p auto-ui-dialect` 直选） | t 别名扩包 |
-| `cargo tf`（批量回归） | 是（同上） | 是（`-p auto-ui-dialect` 直选） | tf 别名扩包 |
-| `cargo tt`（trans 档） | 是（tscn/gdscript 17 项经 `-p auto-lang-core` + feature 统一） | 是（`-p auto-ui-dialect` 直选） | tt 别名扩包 |
-| `cargo tu`（ui_gen 档） | 否（滤串 ui_gen:: 不含本族） | 否（不变） | — |
-| `cargo tv`/`tb`/`taa`/`ta` | 否（非本族档） | 否（不变） | — |
-
-## 采集与计数核对
-
-- 迁前清单：`cargo nextest list -p auto-lang-core --lib --features
-  auto-lang-core/ui-dialect`（受审基线 d905e796c）+ 门控行源码级提取
-  （`#[cfg(feature = "ui-dialect")]` 测试标记 → fn 名）双核对，恰 86 项。
-- 迁后清单：`cargo nextest list -p auto-ui-dialect --lib`（R3-03b 工作树），
-  86 项全为 regression:: 族。
-- 运行核对：auto-ui-dialect 86/86 绿（0.35s）；auto-lang-core 全档绿
-  （表缺席形态）；上层 auto-lang 定向 UI 面 107 项绿；ui_gen 862 绿。
-- SDK 计数：迁前 on 1713 / off 1627（差恰 86）；迁后无 feature 可开、
-  门控测试移出后全档绿（test-cases on 1632）。
+- 旧侧逐档清单：临时 worktree `target/r4-old-*.txt`（树随验后删除；方法
+  与命令可复现）。新侧逐档清单与匹配脚本：工作树 `target/r4-cur/`
+  （tier_diff.py/exact_diff.py）。
+- R3-03b 批原始采集（d905e796c 中途基线的 86 项门控提取）沿上一版方法
+  存档于 closeout 目录。

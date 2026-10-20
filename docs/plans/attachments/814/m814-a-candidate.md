@@ -94,3 +94,21 @@ R3 阶段审查 needs_fix 后三批修复（`d1fbae132`/`d905e796c`/`6f9daa680`+
   （host/cache/autodown 三探针 + no-ui 快照全 PASS）。
 - reviewer 三探针原始反例（R3-01 宿主装配/R3-02 指纹顺序/R3-04 autodown
   实装）批 1 修复后回放全 PASS，批 3 后复跑保持 PASS。
+
+## 7. R4 修复批增量（2026-10-20 追加，绑定 `189ca0f77`）
+
+R4 复验 needs_fix 后修复批（`81c8a5743`+`189ca0f77`）对本文件的更新：
+
+- §3 证据绑定刷新：777 基线 → `189ca0f77`；新增 [R4-01 装配合同对账
+  与 SD 增量正文](r4-01-assembly-contract.md)（显式装配优先 + inventory
+  兜底边界 + AC-02 澄清提案 + UiParseContext 归属变更理由 + 缓存身份
+  时序规范——回应 R4"实际规范 delta 正文尚缺"）。
+- [映射表](r3-05-test-selection-mapping.md) R4 修订：基面回溯
+  203e2ce91，九档（含 tb/tu/taa/ta/t3）未匹配 0/选择缺口 0；aavm 档
+  T-02 编译红、ui-iced 残门、T-02 被丢测试三项修复。
+- [告警归因](r3-06-warning-attribution.md) 203e2ce91 口径：净新增≈14
+  条全归因 T-02/T-03 残留（B 清偿域），R4 批零新增。
+- SDK build 输入：全 crates 扫描 → 具名 17-crate 编译闭包（零 UI/Man
+  条目 + 双负控测试）——§2 的 SDK 事实清单相应更新。
+- 缓存身份语义（SD/PLAN-698 精确化）：None→Some 升级、首装优先、
+  save 按出生身份落盘、load 比对失效。
