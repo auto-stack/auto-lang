@@ -141,7 +141,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 |---|---|---|---|---|---|
 | [x] | T-01 | work | 现在；807/808/810/811已交付 | 新attachments/814/contract-baseline.md：所有者DAG/旧API构造/状态/测试族/资源/真实消费者清单与候选布局；前置合入后整链编译probe冻结SDK/默认UI兼容方案，不可行先重规划。[✅ 已完成 2026-10-20：基线 14 节 + probe 记录 §15；切片 `be10024ab`（唯一树，基面 `203e2ce91`）冻结包名 `auto-lang-core`/`auto-ui-compiler`/`auto-ui-runtime`+DAG+再导出机制+别名多 -p 机制；全部消费者编译/日常档 5303 绿/777 pass；无 needs_replan] | AC-01..05 |
 | [x] | T-02 | work | T-01可行性决策 | 真实纯SDK/上层兼容、单份Core/状态与公开出口；立即清除阻碍纯SDK的全部反向边，保旧默认API；迁出测试/资源/非UIconsumer及V-01/02当期证据 | AC-01,02 [✅ 已完成 2026-10-20 R3 会话：主迁移 `edb78b2ef`（soft-reset 吸收 WIP）+ 残项收口 `43366c989`——auto-vm 切 SDK（V-01 真实非 UI 消费者，闭包零旧包/UI，冒烟执行过）+ a2r frame 经 PLAN-779 FrameProvider 进程默认端口单源（plan716 帧探针全过）+ F814-R1-02 整改 `ac2882a0d`（SDK auto-ui-dialect 改非默认 `ui-dialect` 显式组合 feature；上层 default 转发保旧行为；normal/build/dev 三边闭包验证无 UI 文法；86 UI 文法测试按 feature 门控选择面不变）+ 迁移死门清偿（i18n 路由/diff code-editor 转发/4 组滞留 UI 测试上移 plan656/485/712/413）；SDK off 1627/1627、on 1713/1713；777 strict pass ×2] | AC-01,02 |
-| [ ] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 [R3 会话 Batch 1/2 完成（`b907a89eb`+`59b9c7673`+基线 `704260bd6`）：style DSL/ action_config/lucide/aura/a2ui/ui_gen 四生成器/registry/bp/route 分析约 11.3 万行迁 auto-ui-compiler 单源，旧路径全再导出；compiler 显式启用 SDK ui-dialect；语料资产随 owner 迁（a2ark/a2vue/fixtures×4）；ui_gen 指纹机制迁 compiler build.rs+UICache OnceLock 注入（SDK build 边清偿）；ui_gen 862/862+compiler 215/215+上层定向全绿；DAG 断言 SDK→compiler=0/compiler→旧包=0；777 strict pass。**剩余**：V-03 当期证据（独立 consumer 经 compiler 真实生成产物+当期真实 runtime 消费）、生成 runtime import 路径策略单源审视、SD-02 备稿、desktop.at 资产家族归属（T-04 联动）] | AC-03 |
+| [ ] | T-03 | work | T-02 | 真实UI compiler、aura/a2ui/design_tokens/registry与生成路径迁移；A当期真实runtime产物消费、无环公开面、资源/测试选择与V-03/05当期证据 | AC-03 [R3 会话 Batch 1/2 完成（`b907a89eb`+`59b9c7673`+基线 `704260bd6`）：style DSL/ action_config/lucide/aura/a2ui/ui_gen 四生成器/registry/bp/route 分析约 11.3 万行迁 auto-ui-compiler 单源，旧路径全再导出；compiler 显式启用 SDK ui-dialect；语料资产随 owner 迁（a2ark/a2vue/fixtures×4）；ui_gen 指纹机制迁 compiler build.rs+UICache OnceLock 注入（SDK build 边清偿）；ui_gen 862/862+compiler 215/215+上层定向全绿；DAG 断言 SDK→compiler=0/compiler→旧包=0；777 strict pass。R3 续批（`b02a10772`+基线 `d91948ee1`）：V-03 消费者证据落地——ui-package-consumer 独立 fixture 4/4（generate_component_from_file 真实 Vue SFC 生成+指纹+style+lucide 公开面）。**剩余**：SD-02 正文备稿（事实底稿已在 m814-a-candidate §2）、生成 import 路径策略的 B 期切换单（A 期已钉当期真实实现）] | AC-03 |
 | [ ] | T-04 | work | T-15/M814-A已发布 | UI runtime/renderer/宿主adapter与资源迁移，VM依轻能力；保持真实编辑器/终端/媒体与跨端 | AC-03,04 |
 | [ ] | T-05 | work | T-04；补齐B默认组合，A兼容不得先破坏 | 默认Parser/VM/新SDK显式UI装配、旧auto-lang字段/方法/feature/旧路径兼容；真实import及外部consumer V-02 | AC-02 |
 | [ ] | T-06 | work | T-05；A纯SDK禁止边已在T-02清除 | i18n/a2r frame/config等残边、全局/TLS/registry单源和退出验证；必要非UI消费者切SDK，V-01/04 | AC-01,04 |
@@ -151,7 +151,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | [ ] | T-10 | review | T-09 | 同树独立完整DAG/公开兼容/生产/寿命/测试选择与SD审查，merge门pending | AC-06 |
 | [ ] | T-11 | merge | T-10 pass | master并集/变化复审，最终冻结提交统一§6门，失败修复后重审重冻 | AC-07 |
 | [ ] | T-12 | merge | T-11 | 规范/ledger沉淀、归档、已合入SDK/UI出口交815，guard clean后清理、终态计数 | AC-07 |
-| [ ] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 |
+| [ ] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [R3 续批进行中：候选草案 [m814-a-candidate.md](attachments/814/m814-a-candidate.md) 已立（§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双双落地（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免 2 条，基线 `d91948ee1`）；fresh+`--locked` 消费跑通（lockfile 按仓规不入库，流程=generate→locked test）。**Pending**：792 交付 driver（`python test/fixtures/modularity/generated-ui-consumer/driver.py`，需 `auto gen --delivery-root` 真实构建）跑完后方可冻结候选 SHA、勾 T-13] | AC-08 |
 | [ ] | T-14 | review | T-13提交冻结 | 独立阶段AC-08/API/类型状态/资源/Spec审查，绑定r2/M814-A SHA；全Plan未reviewed、merge门pending | AC-09 |
 | [ ] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 | AC-10 |
 
@@ -295,6 +295,26 @@ code: `ac2882a0d`（F02）→ `3fe81822c`（777 基线）→ `43366c989`（auto-
   → T-13（M814-A 候选：V-06+fresh/locked consumer+负控+m814-a-candidate.md）→
   T-14 独立阶段审查 → T-15 冻结门/发布。主检出簿记本记录随本提交落账。
   pending_closeout_gates 不变（merge owner 冻结裸 t+触面 tv/tu/tt）。
+
+2026-10-20（续）/ stage: work / revision: 2 / outcome: T-03 V-03 消费者证据落地 + T-13
+候选草案立（**候选未冻结**：792 driver 未跑，T-13/T-03 终态判定见任务行）/
+worktree 同上 | code: `b02a10772`（fixture+域登记）→ `d91948ee1`（777 基线）。
+- **V-01/V-03 独立消费者**：`test/fixtures/modularity/language-sdk-consumer`
+  （仅依赖 auto-lang-core 默认特性；Core VM 真实执行/手工字节码管线/
+  trans_rust 产物/UI 文法显式拒绝负控，5/5）与 `ui-package-consumer`
+  （仅依赖 auto-ui-compiler；真实 Vue SFC 生成出口+指纹+style+lucide，4/4）
+  ——cargo tree 闭包断言：前者零 UI/旧包边，后者=SDK+显式文法组合零旧包边。
+- **fresh/locked**：双 fixture `cargo generate-lockfile` 后 `cargo test
+  --locked` 全绿（lockfile 按仓规不入库——流程与 792 fresh-lock 同构）。
+- **777**：域表登记 auto-lang-core=lang-core、auto-ui-compiler/runtime=ui；
+  SDK→runtime 两条存量轻能力边（a2r-std/auto-terminal-core）按窄豁免
+  edge_note 登记（owner=PLAN-814，R8 复核）；strict pass（grandfathered=4）。
+- **T-13 候选草案**：attachments/814/m814-a-candidate.md——A 事实清单（两包
+  公开面/特性/闭包/测试选择+上层兼容面）、V-01..06 证据矩阵、诚实限制节。
+- **续作**：①跑 792 driver（generated-ui-consumer，`auto gen --delivery-root`
+  真实构建）→回填候选 §3 →冻结 SHA→勾 T-03/T-13；②T-14 具名 M814-A 阶段
+  审查（绑定冻结 SHA+Spec 子集 SD-01/02/04 备稿）；③T-15 冻结门（裸 t+tv/
+  tu/tt）+受管 ledger 增量。merge-owned 门禁 pending 不变。
 
 ## 10. 待澄清事项
 
