@@ -144,3 +144,23 @@ V-14 行（并入上文 V 矩阵口径）：unit/完整 module/entry/imports/旧
   `cargo test -p auto-lang --lib --features test-cases
   tests::ac_av_probe_tests::ac_av_probe_formal_turnaround_gates -- --exact
   --test-threads=1`，pass 后 T-07/T-08 复勾、execution_done 送审。
+
+### R14 修复（F798-R14-01 同轮证据 + 正式门解锁，2026-10-20 静置窗口）
+
+- **同轮 30 样本 bench（受控、单一运行、完整保留）**：
+  `av_probe_worker bench-turnaround --samples 30 --gate-ms 1000 --out
+  turnaround-r5b-30sample-rows.jsonl`（stdout 同轮捕获为
+  `turnaround-r5b-30sample-summary.jsonl`）——**exit 0、`hard_gate_failures=[]`**；
+  edit P50/P95/P99 = 401.1/**414.7**/419.6 ms、sig P95 = 20.7 ms、180/180；
+  **A 线 211 058 688B = 201.3MiB ≤224 ✓（met=true）、B 线残差
+  4 354 048B ≈ 4.2MiB ≤128 ✓（met=true）**。同轮 summary 已写入
+  `turnaround-summary.json`（含命令/退出码/提交/rows 绑定），三件 sha-256
+  见 `r5b-evidence-hashes.txt`。替代并更正此前"两轮拼接"的引用
+  （旧 `turnaround-r5-30sample*.jsonl` 保留为历史，其摘要数字不再引用）。
+- **正式 AutoDown 周转门（V-11 formal）PASS×2（当前代码 `c8c598f0a`）**：
+  静置窗口连续两次 30 样本通过——edit P50/P95/P99 = 919.4/**961.7**/986.1 ms
+  （sig 598.9）与 903.5/**948.9**/996.9 ms（sig 599.6），均 <1000ms，test ok；
+  第二次带 tee 落盘 `autodown-formal-r5.log`。逐样本分解：窗口 ≈ step
+  ~410-430ms（含前端 ~285-297ms）+ spawn/IPC/admit ~240-300ms；白天劣化
+  为共享负载下 spawn 侧膨胀（基线 A/B 同红在案），静置后回落。
+- T-05 同轮证据闭合、T-07/T-08 正式门解锁复勾。
