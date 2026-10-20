@@ -6,7 +6,7 @@
 //! `generate_desktop_host` 每次 run 全量覆写（资产是生成物，勿手改产物）。
 //!
 //! Plan 516: 追加 `RemoteWindow.vue` / `remote.ts`（远程窗 wm 叶与会话
-//! 切片）+ 远程渲染器运行时（`packages/drawlist-renderer/src` 的编译期
+//! 切片）+ 远程渲染器运行时（`drawlist-renderer/src`(随组迁至本 crate)的编译期
 //! 拷贝 → `src/wm/remote-renderer/`）。渲染器包零改动；拷贝与包源的
 //! 漂移由 wm-test 测试位（resolveId 直指包源测 wm 资产）双向钉住。
 
@@ -47,7 +47,7 @@ pub fn materialize(output_dir: &Path) -> AutoResult<()> {
     materialize_renderer(output_dir)
 }
 
-/// 远程渲染器运行时（Plan 516）：`packages/drawlist-renderer/src`（508
+/// 远程渲染器运行时（Plan 516）：`drawlist-renderer/src`（PLAN-815 T-04 随组迁入本 crate；508
 /// 交付，vitest 20/20 锁）的编译期拷贝。生成项目 wm 资产以相对路径
 /// `./remote-renderer/index.ts` 消费——与测试位同一导入面。
 const REMOTE_RENDERER_FILES: &[(&str, &str)] = &[

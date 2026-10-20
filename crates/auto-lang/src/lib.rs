@@ -3473,6 +3473,10 @@ fn is_api_use_stmt(use_stmt: &crate::ast::Use) -> bool {
     false
 }
 
+// PLAN-815 T-04 R1-F03: store-deps 提取族迁 auto-ui-compiler、注释剥离
+// 单源在 SDK——三个历史根级公开路径经转发保持（消费者零改动）。
+pub use auto_lang_core::strip_line_block_comments;
+pub use auto_ui_compiler::store_deps::{extract_store_deps_from_file, extract_store_imports_from_ast};
 
 /// // Check if any widget has routes
 /// let has_routes = widgets.iter().any(|w| w.routes.is_some());

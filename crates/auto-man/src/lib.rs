@@ -52,7 +52,14 @@ pub mod project_model_adapter;
 
 // Phase 5: Vue project support
 // PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
-pub use auto_ui_tools::vue;
+// R1-F03: run 家族残留在 vue_run_compat（M814-B 门），经本门面转发回
+// auto_man::vue::* 历史公开路径（无复制算法，纯转发）。
+pub mod vue {
+    pub use crate::vue_run_compat::{
+        run_vue_project, run_vue_project_with_request, start_gallery_back_proxy,
+    };
+    pub use auto_ui_tools::vue::*;
+}
 
 // PLAN-662 T-02: 画廊行扫描磁盘缓存（画廊 registry/proxy 共用扫描面）
 // PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
@@ -84,7 +91,12 @@ pub use auto_ui_tools::ark;
 
 // Phase 9: Rust UI support (ICED/GPUI)
 // PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
-pub use auto_ui_tools::rust_ui;
+// R1-F03: run_vm_ui 家族/start_vm_server 残留在 rust_ui_vm_compat
+// （M814-B 门），经本门面转发回 auto_man::rust_ui::* 历史公开路径。
+pub mod rust_ui {
+    pub use crate::rust_ui_vm_compat::{run_vm_ui, run_vm_ui_with_request, start_vm_server};
+    pub use auto_ui_tools::rust_ui::*;
+}
 
 // Phase 9: API code generation (Plan 130)
 // PLAN-815 T-04: api_gen moved to auto-api-gen (single algorithm; owner

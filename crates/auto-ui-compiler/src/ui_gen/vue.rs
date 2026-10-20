@@ -1939,7 +1939,7 @@ impl VueGenerator {
     /// Plan 548 T6: `<sidebar_menu_button>` / `<sidebar_menu_sub_button>` ——
     /// shadcn SidebarMenuButton/SidebarMenuSubButton + to/active 扩展臂(D2)。
     ///
-    /// 资产 props 真名(crates/auto-man/assets/shadcn-ui/sidebar/
+    /// 资产 props 真名(crates/auto-ui-tools/assets/shadcn-ui/sidebar/ — PLAN-815 T-04 迁,
     /// SidebarMenuButtonChild.vue / SidebarMenuSubButton.vue 的 defineProps):
     /// variant/size/isActive/asChild(class 之外);isActive 在模板发 kebab 形
     /// `:is-active`,asChild 发 `as-child`。

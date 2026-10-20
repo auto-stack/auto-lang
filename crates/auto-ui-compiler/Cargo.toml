@@ -41,6 +41,8 @@ regex = "1"
 walkdir = "2"
 
 [dev-dependencies]
+# PLAN-815 T-04 F-02: store_deps 回归测试随迁所需（原 auto-lang dev-dep）。
+tempfile = { workspace = true }
 # PLAN-814 T-03 Batch 1：lucide 表脚手架测试（node_modules 抽样核对）。
 walkdir = "2"
 serde_json = { workspace = true }

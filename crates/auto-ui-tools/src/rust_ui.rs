@@ -3844,7 +3844,7 @@ pub fn generate_shell_pack_lib(output_dir: &Path) -> AutoResult<()> {
 
 /// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
 /// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
-pub const DELIVERY_CRATES: [&str; 23] = [
+pub const DELIVERY_CRATES: [&str; 25] = [
     "auto-lang",
     "auto-val",
     "auto-atom",
@@ -3894,11 +3894,15 @@ pub const DELIVERY_CRATES: [&str; 23] = [
     // PLAN-815 T-04 起受管交付随包发行 UI 工具链（合同 §1 增补
     // auto-tool-protocol/auto-ui-tools；工具的生成主体闭包新增
     // auto-api-gen（api 生成单算法）与 auto-man-core（rust_sidecar 声明
-    // 单源）——四者缺一则交付根无法构建/复算 UI 生成物）。
+    // 单源）；R1-F01 补 auto-project-model（协议 crate 的 path 依赖）与
+    // auto-toolchain-core（auto-man-core 的 path 依赖）——六者缺一则
+    // 交付根 fresh metadata/lock 即红（闭包完备性由 delivery 测试静态钉住）。
     "auto-tool-protocol",
     "auto-ui-tools",
     "auto-api-gen",
     "auto-man-core",
+    "auto-project-model",
+    "auto-toolchain-core",
 ];
 
 /// 随包发行的本地 patch（相对 crates/patches/）。
@@ -5924,6 +5928,70 @@ fn type_to_rust_str(ty: &auto_lang_core::ast::Type) -> String {
 
 #[cfg(test)]
 mod tests {
+    /// PLAN-815 T-04 R1-F01 永久反例：交付闭包完备性静态钉——对
+    /// DELIVERY_CRATES 中每个 crate，读其 Cargo.toml 的 [dependencies]/
+    /// [build-dependencies] path 项；凡指向本 workspace 兄弟 crate 的
+    /// path 依赖必须在 DELIVERY_CRATES 内。R1 首轮 23 项清单漏
+    /// auto-project-model/auto-toolchain-core 致交付根 fresh metadata
+    /// exit 101——本测试把该缺陷类钉死在源内（真实 bundle 的隔离
+    /// metadata 验收另由 driver/收尾证明承载）。
+    #[test]
+    fn delivery_crates_path_closure_is_complete() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        for name in DELIVERY_CRATES {
+            let manifest_path = root.join(name).join("Cargo.toml");
+            let manifest = std::fs::read_to_string(&manifest_path)
+                .unwrap_or_else(|e| panic!("{} manifest unreadable: {e}", name));
+            let parsed: toml::Value = toml::from_str(&manifest)
+                .unwrap_or_else(|e| panic!("{} manifest unparsable: {e}", name));
+            // 投影剥除豁免面：vendored manifest 中被 DeliveryProjectionSpec
+            // 逐行剥除的 optional path 依赖（如 auto-lang 的
+            // auto-test-case/autodown-core——前者闭包外 optional，后者指向
+            // 仓外 auto-down）不经交付解析，无需随包。
+            let stripped: Vec<&str> = [
+                PROJECTION_AUTO_LANG.strip_deps,
+                PROJECTION_AUTO_LANG_CORE.strip_deps,
+            ]
+            .into_iter()
+            .flatten()
+            .copied()
+            .collect();
+            let manifest_text = &manifest;
+            for section in ["dependencies", "build-dependencies"] {
+                let Some(deps) = parsed.get(section).and_then(|v| v.as_table()) else {
+                    continue;
+                };
+                for (dep, spec) in deps {
+                    let Some(path) = spec.get("path").and_then(|v| v.as_str()) else {
+                        continue;
+                    };
+                    if !path.replace(char::from(92), "/").starts_with("../") {
+                        continue; // 同 crate 内相对资源（tests/fixtures 等）不经 workspace 解析
+                    }
+                    let target = path.trim_start_matches("../");
+                    if target.contains("..") {
+                        continue; // 越出 workspace 的外部 path（如 auto-down）经投影剥除受管
+                    }
+                    if stripped
+                        .iter()
+                        .any(|line| line.contains(&format!("{dep} = ")))
+                    {
+                        continue; // 投影 spec 已剥除该行
+                    }
+                    let target = target.split('/').next().unwrap_or(target);
+                    if target == name {
+                        continue;
+                    }
+                    assert!(
+                        DELIVERY_CRATES.contains(&target),
+                        "{name} 的 path 依赖 {target} 不在 DELIVERY_CRATES 且无投影剥除——交付根 fresh metadata 将 exit 101（R1-F01 缺陷类）"
+                    );
+                }
+            }
+            let _ = manifest_text;
+        }
+    }
+
     use super::*;
     // PLAN-815 T-04: freshness pure helpers moved to auto-api-gen (api_gen).
     use auto_api_gen::api_gen::{assembly_freshness, lock_freshness};
