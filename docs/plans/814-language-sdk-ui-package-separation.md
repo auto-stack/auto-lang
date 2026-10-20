@@ -151,7 +151,7 @@ A新增review任务只给阶段pass；原最终review任务仍验全部AC/SD。�
 | [ ] | T-10 | review | T-09 | 同树独立完整DAG/公开兼容/生产/寿命/测试选择与SD审查，merge门pending | AC-06 |
 | [ ] | T-11 | merge | T-10 pass | master并集/变化复审，最终冻结提交统一§6门，失败修复后重审重冻 | AC-07 |
 | [ ] | T-12 | merge | T-11 | 规范/ledger沉淀、归档、已合入SDK/UI出口交815，guard clean后清理、终态计数 | AC-07 |
-| [x] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [✅ 已完成 2026-10-20：候选冻结 @ `abe9c9900`（[m814-a-candidate.md](attachments/814/m814-a-candidate.md)——§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双绿（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免，基线 `d91948ee1`）；fresh+`--locked` 消费跑通；**792 driver 25/25（EXIT=0）**——首轮受管红暴露新包图三接缝（投影 test-cases 新形态/ui_gen 源根/auto-ui-runtime 未 vendored），SD-08 修复于 `abe9c9900`（DELIVERY_CRATES 19、投影分 spec、指纹路径）；auto-man delivery 单测 9/9。**AC-08 判定归 T-14 独立审查**（本勾选=work 交付完成，非审查 pass）] [✅ R3 全 findings 修齐 2026-10-20：批 3 `6f9daa680`+`6418f99ef` 关闭 R3-03b/05/06（映射表全文 [r3-05](attachments/814/r3-05-test-selection-mapping.md)、告警归因 [r3-06](attachments/814/r3-06-warning-attribution.md)、探针复跑 [收口证据](attachments/814/r3-03b-closeout/)）；R3-01..04 批 1/2 已关（§9 前录）；候选 SHA 待 T-14 重冻=分支头] [✅ R4 批 2026-10-20：R3-05 档位选择面 203e2ce91 基面全量回溯——九档（t/tf/tv/tt/tb/tu/taa/ta/t3）未匹配 0/选择缺口 0（[映射表 R4 修订](attachments/814/r3-05-test-selection-mapping.md)）；别名 tb/taa/ta/t3 扩四包、tt 补 compiler；告警归因 [203e2ce91 口径](attachments/814/r3-06-warning-attribution.md)（净新增≈14 条全归因 T-02/T-03 残留+B 清偿域）；候选 SHA=分支头 `189ca0f77`] | AC-08 |
+| [x] | T-13 | work | T-02/T-03 | 冻结A API/版本/源码与支持清单；V-06及A涉及V-01..05、777/792/独立fresh/locked/负控完成，新增attachments/814/m814-a-candidate.md，准备实际Spec子集 | AC-08 [✅ 已完成 2026-10-20：候选冻结 @ `abe9c9900`（[m814-a-candidate.md](attachments/814/m814-a-candidate.md)——§2 A 事实清单/§3 证据矩阵/§5 诚实限制）；消费者 fixture 双绿（language-sdk-consumer 5/5 + ui-package-consumer 4/4，`b02a10772`）；777 strict pass（域登记+窄豁免，基线 `d91948ee1`）；fresh+`--locked` 消费跑通；**792 driver 25/25（EXIT=0）**——首轮受管红暴露新包图三接缝（投影 test-cases 新形态/ui_gen 源根/auto-ui-runtime 未 vendored），SD-08 修复于 `abe9c9900`（DELIVERY_CRATES 19、投影分 spec、指纹路径）；auto-man delivery 单测 9/9。**AC-08 判定归 T-14 独立审查**（本勾选=work 交付完成，非审查 pass）] [✅ R3 全 findings 修齐 2026-10-20：批 3 `6f9daa680`+`6418f99ef` 关闭 R3-03b/05/06（映射表全文 [r3-05](attachments/814/r3-05-test-selection-mapping.md)、告警归因 [r3-06](attachments/814/r3-06-warning-attribution.md)、探针复跑 [收口证据](attachments/814/r3-03b-closeout/)）；R3-01..04 批 1/2 已关（§9 前录）；候选 SHA 待 T-14 重冻=分支头] [✅ R4 批 2026-10-20：R3-05 档位选择面 203e2ce91 基面全量回溯——九档（t/tf/tv/tt/tb/tu/taa/ta/t3）未匹配 0/选择缺口 0（[映射表 R4 修订](attachments/814/r3-05-test-selection-mapping.md)）；别名 tb/taa/ta/t3 扩四包、tt 补 compiler；告警归因 [203e2ce91 口径](attachments/814/r3-06-warning-attribution.md)（净新增≈14 条全归因 T-02/T-03 残留+B 清偿域）；候选 SHA=分支头 `16cc4f14a`（R4 批+追修）] | AC-08 |
 | [ ] | T-14 | review | T-13提交冻结 | 独立阶段AC-08/API/类型状态/资源/Spec审查，绑定r2/M814-A SHA；全Plan未reviewed、merge门pending | AC-09 |
 | [ ] | T-15 | merge | T-14 pass | 串行冻结门/实际master合入/Spec子集与受管ledger增量、版本来源consumer读回发布收据；保原树/分支继续B，不归档 | AC-10 |
 
@@ -501,8 +501,15 @@ auto-down `c39ac7f`（未变）。current_step=4/15（T-02/T-03/T-13 复勾）�
   no-ui-source 快照 fresh+locked PASS；dialect 86/86、SDK 1636/1636、
   compiler style 110/110、上层定向 54/54；777 strict violations=0
   （基线 `189ca0f77`）；792 driver 复跑见下；触面文件 rustfmt 过。
+- **792 driver 复跑实录（追修）**：首轮真退出码 1——R3-03 具名清单在
+  受管投影（vendored 子集）下缺目录 unwrap 崩（此前一轮的"通过"为管道
+  吞码假绿，已纠正采集方式）；追修 `16cc4f14a`（具名目录缺席即跳过，
+  "存在即扫"语义与旧全扫描对齐）后**25/25 真退出码 0**（收据
+  scratch-consumer/driver-receipt.json）。no-ui 探针/边界双负控/777
+  strict 复验保持。
 - **next_responsible_role: review（T-14 重审）**——绑定分支头
-  `189ca0f77`。merge-owned 冻结门照旧 pending。
+  `16cc4f14a`（`81c8a5743`→`189ca0f77`→追修）。merge-owned 冻结门照旧
+  pending。
 
 
 ## 10. 待澄清事项
