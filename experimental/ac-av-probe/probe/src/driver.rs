@@ -1012,6 +1012,21 @@ fn sig_string(
 /// resource rejection HERE, not a `mir.lower.depth` unsupported from
 /// inside the recursive parser at its own 512 limit).
 /// Breaches are RESOURCE rejections, never syntax errors.
+/// F798-R10-01: closing an expression context. A SIBLING list folds its
+/// children by MAX; a single-expression level COMPOSES its own serial
+/// chain on top of the child paths (they add).
+fn close_candidate(had_comma: bool, cur_path: u32, level_max: u32) -> u32 {
+    let own = level_max + 1;
+    if had_comma {
+        // A sibling list (call arguments): the deepest child path, PLUS
+        // the call level itself — nesting calls still compose one level
+        // each, while sibling maxima never add to each other.
+        cur_path.max(own) + 1
+    } else {
+        cur_path + own
+    }
+}
+
 pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
     use auto_ac_prototype::source::lexer::{tokenize, Tok, P};
     if src.len() > MAX_INPUT_BYTES {
@@ -1064,8 +1079,12 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
     // call stays legal while deep chains still hit the 128 budget.
     let mut level_run = 0u32;
     let mut level_max = 0u32;
-    // (run, max, enclosing path) per open bracket level.
-    let mut level_stack: Vec<(u32, u32, u32)> = Vec::new();
+    // Whether the current level is a SIBLING list (argument commas /
+    // named-argument colons) — its children are alternative expressions
+    // whose paths take a MAX, never a sum.
+    let mut had_comma = false;
+    // (run, max, enclosing path, had_comma) per open bracket level.
+    let mut level_stack: Vec<(u32, u32, u32, bool)> = Vec::new();
     // Max construction PATH accumulated inside the current level; the
     // metric is a MAX over statements/siblings — never a sum across them.
     let mut cur_path = 0u32;
@@ -1075,23 +1094,27 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
             Tok::Punct(p) if matches!(p, P::LParen | P::LBracket) => {
                 depth += 1;
                 max_depth = max_depth.max(depth);
-                level_stack.push((level_run, level_max, cur_path));
+                level_stack.push((level_run, level_max, cur_path, had_comma));
                 level_run = 0;
                 level_max = 0;
                 cur_path = 0;
+                had_comma = false;
             }
             Tok::Punct(p) if matches!(p, P::RParen | P::RBracket) => {
                 depth = depth.saturating_sub(1);
-                // Close the level: its total path = enclosing path + its
-                // own serial chain (K ops = K+1 operand levels). The
-                // enclosing context takes the MAX over its children
-                // (sibling expressions never sum).
-                let cand = cur_path + level_max + 1;
+                // F798-R10-01: closing a SIBLING list folds its children
+                // by MAX — two maximal paths taken from DIFFERENT
+                // arguments never concatenate into one fictitious path. A
+                // single-expression level COMPOSES: its own serial chain
+                // (K ops = K+1 operand levels) sits on top of the child
+                // paths, so they add.
+                let cand = close_candidate(had_comma, cur_path, level_max);
                 peak = peak.max(cand);
-                if let Some((r, m, pp)) = level_stack.pop() {
+                if let Some((r, m, pp, hc)) = level_stack.pop() {
                     level_run = r;
                     level_max = m;
                     cur_path = pp.max(cand);
+                    had_comma = hc;
                 }
             }
             Tok::Punct(P::LBrace) => {
@@ -1099,17 +1122,19 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                 max_depth = max_depth.max(depth);
                 // Block structure is a statement boundary, not an
                 // expression level (bracket depth covers it).
-                peak = peak.max(cur_path + level_max + 1);
+                peak = peak.max(close_candidate(had_comma, cur_path, level_max));
                 level_run = 0;
                 level_max = 0;
                 cur_path = 0;
+                had_comma = false;
             }
             Tok::Punct(P::RBrace) => {
                 depth = depth.saturating_sub(1);
-                peak = peak.max(cur_path + level_max + 1);
+                peak = peak.max(close_candidate(had_comma, cur_path, level_max));
                 level_run = 0;
                 level_max = 0;
                 cur_path = 0;
+                had_comma = false;
             }
             Tok::Punct(p) if is_chain_op(p) => {
                 level_run += 1;
@@ -1117,16 +1142,27 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
             }
             Tok::Punct(p) if matches!(p, P::Semi | P::Assign) => {
                 // Clause boundaries end the current statement's expression.
-                peak = peak.max(cur_path + level_max + 1);
+                peak = peak.max(close_candidate(had_comma, cur_path, level_max));
                 level_run = 0;
                 level_max = 0;
                 cur_path = 0;
+                had_comma = false;
             }
             Tok::Punct(p) if matches!(p, P::Comma | P::Colon) => {
                 // Sibling separators (argument commas, named-argument
-                // colons) end the CURRENT sibling's run; the level keeps
-                // its max (siblings never sum).
+                // colons) END the current sibling: its path (bare chain or
+                // nested closes) folds into the level by MAX, and BOTH the
+                // run and the max reset — the next sibling starts fresh, so
+                // maximal paths from different arguments never add
+                // (F798-R10-01).
+                // The sibling's OWN path: its bare chain (nested closes
+                // already maxed into cur_path) — never cur_path again.
+                let cand = close_candidate(false, 0, level_max);
+                peak = peak.max(cand);
+                cur_path = cur_path.max(cand);
                 level_run = 0;
+                level_max = 0;
+                had_comma = true;
             }
             Tok::Punct(_) => {
                 // Other puncts (`.`) stay inside the current sibling.
@@ -1140,16 +1176,17 @@ pub fn front_door_admit(src: &str) -> Result<(), StageDiag> {
                 // Keywords start a fresh clause: the previous statement's
                 // expression path is folded into the peak, never summed
                 // into the next one.
-                peak = peak.max(cur_path + level_max + 1);
+                peak = peak.max(close_candidate(had_comma, cur_path, level_max));
                 level_run = 0;
                 level_max = 0;
                 cur_path = 0;
+                had_comma = false;
             }
             _ => {}
         }
     }
     // The final statement's path closes the metric.
-    peak = peak.max(cur_path + level_max + 1);
+    peak = peak.max(close_candidate(had_comma, cur_path, level_max));
     // The accumulated per-level max construction PATH is the expression
     // construction depth.
     let expr_depth = peak;

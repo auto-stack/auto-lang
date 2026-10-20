@@ -188,6 +188,68 @@ fn av_resources_front_door_nesting_boundary() {
     assert_eq!(*r.counters.get("admission_reject").unwrap_or(&0), 1);
 }
 
+/// F798-R10-01: two SIBLING ARGUMENTS' maximal paths never concatenate —
+/// a 60-paren argument beside a 70-term chain argument stays legal in
+/// either order and at various splits, while true composition (the chain
+/// INSIDE the nesting) still hits the door.
+#[test]
+fn av_resources_sibling_max_paths_not_concatenated() {
+    let parens = |n: usize| format!("{}1{}", "(".repeat(n), ")".repeat(n));
+    let chain = |n: usize| vec!["1"; n].join(" + ");
+    let two_arg = |pa: usize, ch: usize, swap: bool| {
+        let (a, b) = if swap {
+            (chain(ch), parens(pa))
+        } else {
+            (parens(pa), chain(ch))
+        };
+        format!(
+            "fn first(a int, b int) int {{
+    return a
+}}
+
+fn main() int {{
+    return first(a: {a}, b: {b})
+}}
+"
+        )
+    };
+    let mut d = Driver::ephemeral();
+    for (pa, ch) in [(60usize, 70usize), (60, 69), (40, 90)] {
+        for swap in [false, true] {
+            let src = two_arg(pa, ch, swap);
+            let door = front_door_admit(&src);
+            assert!(
+                door.is_ok(),
+                "sibling maxima {pa}/{ch} (swap={swap}) never add: {:?}",
+                door.err()
+            );
+            let r = d.request(&src, "d_main", &[]);
+            assert!(
+                r.ok(),
+                "sibling {pa}/{ch} swap={swap} executes: {:?}",
+                r.diag
+            );
+            // first returns a: the parens literal (1) or, swapped, the
+            // chain's value.
+            let want = if swap { ch as i32 } else { 1 };
+            assert_eq!(r.value_i32(), Some(want));
+        }
+    }
+    // The TRUE composition control stays rejected: the chain INSIDE the
+    // nesting is one path of ~pa+ch levels.
+    let composed = format!(
+        "fn main() int {{
+    return {}
+}}
+",
+        format!("{}{}{}", "(".repeat(60), chain(70), ")".repeat(60))
+    );
+    assert!(
+        front_door_admit(&composed).is_err(),
+        "60 nesting around a 70-chain (~130 path) is still rejected"
+    );
+}
+
 /// F798-R9-01: sequential STATEMENTS are independent expressions — 64
 /// `let vI = (1 + 1)` lines stay legal (the metric is a max over paths,
 /// never a sum), while serial/nested chains still hit the 128 door.
