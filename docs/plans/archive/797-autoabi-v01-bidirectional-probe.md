@@ -404,11 +404,22 @@ status:executing；current_step:4/9，T01–04完成、T05/T06/T07仍OPEN、T08/
 
 2026-10-20 stage:merge（cleaned 收据）；PLAN-797 r1；`cleaned` = worktree clean（0 脏）@`1799f86ca` + `wt-guard.sh D:/autostack/.wt/lang-797/auto-lang` 输出 **clean（无任何 reparse point）** → `git worktree remove` + `git branch -d plan-797-dev`（was 1799f86ca）+ auto-down 兄弟 detached 树（c39ac7f，clean，R17 基线钉）随组目录 `D:/autostack/.wt/lang-797/` 一并移除、auto-down 仓 `worktree prune` 收尾；`git worktree list` 与组目录均无 lang-797 残留。**最终状态：archived 9/9 delivered**。批量回归到期判定：收据 `last_covered_plan_id: 812`（2026-10-19T08:36Z），此后已合入 813/814/815/816/817/797 等多计划（>48h 窗口内持续有合并）——**已到期**，归 `/auto-plan:regress` 主检出单实例执行（非本计划门禁，不阻塞本收据 pass）。
 
+2026-10-20 stage:merge（合入后收尾对账）；PLAN-797 r1；outcome:**pass（post-merge reconciliation，四项缺口闭合）**；主HEAD `8d2fda1ee`（delivery `1799f86ca` 为祖先；`git diff 1799f86ca..HEAD -- crates experimental .config scripts Cargo.toml Cargo.lock` = **空**，代码/依赖/验证配置与交付逐字节一致，其后提交均 docs）。依据 [post-merge-audit-20261020 核查报告](../attachments/797/post-merge-audit-20261020/report.md) 四项收尾缺口逐项闭合：
+
+- **PM-01（P1）CLOSED**：live 台账 `.autoos/specs.json` v60 四条 P797-D1/T/R/REL 的 12 处 ISO 时间戳串→u64 epoch `1792485000`（受管单写者手术：前检 SHA=`66451eb3…` 与核查基线一致、模式命中恰 12、全库非 u64 时间戳恰 12 且全在 P797 四条；备份 `.autoos/specs.json.bak-v60-797pm01pre`）；真实 `SpecsStore::load` 探针（SHA256 `555b1744…`，与 815 留存二进制一致）复验 **exit0：v60 六区 1102 项**；815 恢复与其余条目零改动。[受管收据](../attachments/797/post-merge-audit-20261020/pm01-ledger-fix.json.txt)。
+- **PM-02（P2）CLOSED**：`review-r9..r17` 全量 + 核查证据目录共 703 文件入库（提交 `401e9867c`；扩展名普查纯文本 txt/md/rs/py、无 target/二进制；R17 128 份经 manifest 本机哈希核对全配）；新检出可解析；r1/r4/r5/r6 及 r8 辅助工件系 2026-10-20 stash 清除事件已失（§9 簿记在案），保留历史指向不虚构。
+- **PM-03（P2）CLOSED**：nextest 放置修正补充独立审查 **ACCEPT**（断言文件 reviewed `5a54f588d`→HEAD 零 diff；`nextest-full.toml` 不排除=批量回归可见；串行参考入口=verify 脚本 `--test-threads=1` 步；[审查记录](../attachments/797/post-merge-audit-20261020/pm03-config-placement-review.md)）；并在冻结交付代码上重跑 closeout 全部面：probe 套件 9 二进制全绿（unit 12 + t01 8 + t02 24 + t03 7 + t04 6 + t05 26 + t06 7，含真实 C 三腿/资源/缓存/t06 绑定与双硬门）、正式双硬门串行 **PASS：body-edit P95=966.0ms / reject P95=98.0ms**（31/30 样本、一请求一原始行 61 行 JSONL）、父侧 `abi_recipe` 4/4（119.82s，含被移出日常档的 `abi_recipe_formal_turnaround_hard_gates` 本体）+ `abi_` 全族 11/11（50.71s）串行、兼容 auto-test-case 87 + test_cases 26+1ig；verify 脚本级两次尝试分别败于计时边界抖动（专用步 P95=1189.5ms，失败样本与并发进程快照保全，多会话共享机在案模式）与 SQLite store-open 锁瞬态（该次套件内双硬门已先行通过），均归因在案、未删样本、未改阈值。[执行实录](../attachments/797/post-merge-audit-20261020/pm03-closeout-rerun/README.md)。
+- **PM-04（P2）CLOSED**：归档计划 80 处相对链接按 docs/plans/→archive/ 搬移规则机械改写（72 attachments + 6 specs + 2 design）+ `docs/specs/plans.md` auto-abi 导航 `../auto-abi/`→`auto-abi/`（提交 `8d2fda1ee`）；81 链接重解析仅余 9 个唯一失效=已录丢失工件的历史指向；§10 当前结论同步改写为本对账状态。
+
+遗留（跨计划，非 797 门禁）：815 触发的批量回归续办（tf 已绿 6270/6270；tt 3 失败/1 超时待归因、tb 未完、新合并窗口覆盖后写成功收据），归 /auto-plan:regress 主检出单实例。台账 tracked HEAD=v57 / live 投影 v60 的滞后为 813–817 合入期既有事实（本仓 README 定义为兼容期本地投影）；本次修复的是真实读取的 live 文档，不改变其提交策略。归档终态维持，不重开。
+
 预检/来源见[planning-preflight.md](../attachments/797/planning-preflight.md)。候选v0.1不是现有产品支持声明。
 
 ## 10. 待澄清事项
 
-当前结论（2026-10-20 R17）：**pass / reviewed 8/9**。受审 `5a54f588d2f6ea5cf50bd69ebb3d476c09e0d18e`，R16唯一项F-R16-01已独立CLOSED，历史finding保持关闭、无新增阻断或延期。192不同定向最终pass+1既有ignored，真实嵌套清理/真头失效与组合控制通过。正式性能首轮P95=1010/118ms失败数据保留，一次受控复测657/106ms通过；merge须在冻结提交重跑。见 [R17完整报告](../attachments/797/review-r17/review.md)。T01–T08完成、T09 merge-owned门禁/规范沉淀/归档合入/guard清理pending，未宣称交付。
+当前结论（2026-10-20 合入后收尾对账）：**archived 9/9 delivered，post-merge 四项缺口已闭合**。delivery `1799f86ca`（ff-only）+ merge/cleaned 收据在案；合入后核查（[报告](../attachments/797/post-merge-audit-20261020/report.md)）提出 F-797-PM-01..04（live 台账真实读取 / R9–R17 证据入库 / 分档补充审查与冻结门禁绑定 / 归档链接与状态），同日逐项闭合（明细见 §9 合入后对账记录）：真实 loader exit0 v60/1102 项、证据 703 文件入库、closeout 全部面在冻结代码上串行重跑收据（正式双硬门 P95=966/98ms、父侧 4/4+11/11、兼容 87+26+1ig，脚本级两处瞬态失败样本保全归因）、80 处链接改写+导航修正。跨计划批量回归（815 触发）由 /auto-plan:regress 续办，非本计划门禁。归档终态不重开。
+
+历史结论（2026-10-20 R17 final review，已由上方合入后对账取代）：**pass / reviewed 8/9**。受审 `5a54f588d2f6ea5cf50bd69ebb3d476c09e0d18e`，R16唯一项F-R16-01已独立CLOSED，历史finding保持关闭、无新增阻断或延期。192不同定向最终pass+1既有ignored，真实嵌套清理/真头失效与组合控制通过。正式性能首轮P95=1010/118ms失败数据保留，一次受控复测657/106ms通过；merge须在冻结提交重跑。见 [R17完整报告](../attachments/797/review-r17/review.md)。T01–T08完成、T09 merge-owned门禁/规范沉淀/归档合入/guard清理pending，未宣称交付。（T-09 后续已由 §9 merge/cleaned/合入后对账三条收据闭合。）
 
 历史结论（2026-10-20 R16 修复轮）：**work 完成 / executing 4/9，待 T-08 独立复审**；R16 唯一开放项 F-R16-01（递归完整路径重复拼接前缀）已修复（修复提交 `5a54f588d`，同树同分支），附永久反例（声明嵌套产物清理不失效+真实头变化仍失效）；probe 88/88 + 父侧 13/13 + verify closeout ALL PASS。merge 门禁仍 merge-owned pending，未合入不宣称交付。
 
