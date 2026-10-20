@@ -188,6 +188,83 @@ fn av_resources_front_door_nesting_boundary() {
     assert_eq!(*r.counters.get("admission_reject").unwrap_or(&0), 1);
 }
 
+/// F798-R11-01: the CURRENT sibling COMPOSES internally — a deep call as
+/// the FIRST OPERAND of the sibling's own left-assoc chain is ONE path
+/// (child calls + serial chain add); only COMPLETED siblings fold by max.
+#[test]
+fn av_resources_composed_path_inside_one_argument() {
+    let nested =
+        |n: usize, inner: &str| format!("{}{}{}", "idfn(x: ".repeat(n), inner, ")".repeat(n));
+    let with_chain = |inner_nest: usize| -> String {
+        let value = format!(
+            "{} + {}",
+            nested(inner_nest, "1"),
+            vec!["1"; 69].join(" + ")
+        );
+        format!(
+            "fn idfn(x int) int {{
+    return x
+}}
+
+fn main() int {{
+    return idfn(x: {value})
+}}
+"
+        )
+    };
+    let deep_only = |inner_nest: usize| -> String {
+        format!(
+            "fn idfn(x int) int {{
+    return x
+}}
+
+fn main() int {{
+    return idfn(x: {})
+}}
+",
+            nested(inner_nest, "1")
+        )
+    };
+    let mut d = Driver::ephemeral();
+    // Legal low-depth controls: 3-nest + 70-chain (true ~74) passes with
+    // value 70; 60-nest + single item, no chain (true ~62) passes with
+    // value 1.
+    for (src, tag, want) in [
+        (with_chain(3), "3-nest+chain", 70i32),
+        (deep_only(60), "60-nest-only", 1),
+    ] {
+        let _ = tag;
+        let door = front_door_admit(&src);
+        assert!(door.is_ok(), "{tag} control admits: {:?}", door.err());
+        let r = d.request(&src, "d_main", &[]);
+        assert!(r.ok(), "{tag} control executes: {:?}", r.diag);
+        assert_eq!(r.value_i32(), Some(want));
+    }
+    // The R11 shape: 60-nest + 70-chain INSIDE ONE named argument — true
+    // path 131 — must be rejected AT THE DOOR (was bypassed, Driver
+    // returned 70).
+    let over = with_chain(60);
+    let err = front_door_admit(&over).unwrap_err();
+    assert_eq!(err.code, "av.resource.frontend-nesting");
+    let r = d.request(&over, "d_main", &[]);
+    let diag = r.diag.clone().expect("rejected");
+    assert_eq!(diag.stage, "admission");
+    assert_eq!(diag.code, "av.resource.frontend-nesting");
+    // The positional-argument equivalent was already rejected and stays.
+    let positional = format!(
+        "fn idfn(x int) int {{
+    return x
+}}
+
+fn main() int {{
+    return idfn({})
+}}
+",
+        format!("{} + {}", nested(60, "1"), vec!["1"; 69].join(" + "))
+    );
+    assert!(front_door_admit(&positional).is_err());
+}
+
 /// F798-R10-01: two SIBLING ARGUMENTS' maximal paths never concatenate —
 /// a 60-paren argument beside a 70-term chain argument stays legal in
 /// either order and at various splits, while true composition (the chain

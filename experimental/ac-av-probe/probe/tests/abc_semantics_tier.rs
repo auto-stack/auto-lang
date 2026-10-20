@@ -355,3 +355,40 @@ fn av_semantics_frame_budget_is_guest_not_host() {
         "depth-999 mutual recursion succeeds"
     );
 }
+
+/// F798-R11-02: the artifact KIND survives the codec — a single-function
+/// WHOLE module (direct self-call, zero-param i32 entry) round-trips as a
+/// module and executes; a split UNIT round-trips as a unit.
+#[test]
+fn abc_kind_survives_roundtrip() {
+    let src = "fn main() int { if false { return main() } else { return 42 } }";
+    let c = auto_ac_prototype::source::compile_scalar_source(src, "kind.at", &[]).unwrap();
+    let m = auto_av_probe::hir_adapter::lower_checked(&c.checked, "d_main", 0).unwrap();
+    assert!(!m.is_unit, "single-function whole module");
+    let wire = encode_abc(&m).unwrap().to_flat();
+    let decoded = decode_abc(&wire).unwrap();
+    assert!(
+        !decoded.module.is_unit,
+        "the wire kind flag preserves whole-module category (was n_funcs-inferred)"
+    );
+    let loaded = verify_abc(decoded, &m.owner).unwrap();
+    let (out, _) = execute(&loaded, &ExecLimits::default(), &CancelFlag::new(false));
+    assert_eq!(
+        format!("{:?}", out),
+        "Success { value: I32(42), steps: 6 }",
+        "the self-call module executes through the round-trip"
+    );
+    // A split unit round-trips as a unit.
+    let units = auto_av_probe::cache::split_units(&m).unwrap();
+    let _ = units; // single function: unit split equals module shape here;
+    let mut u = m.clone();
+    u.is_unit = true;
+    let uw = encode_abc(&u).unwrap().to_flat();
+    let ud = decode_abc(&uw).unwrap();
+    assert!(ud.module.is_unit, "unit kind preserved");
+    // And the real driver fresh request returns 42 (was mir.unit-callee).
+    let mut d = Driver::ephemeral();
+    let r = d.request(src, "d_main", &[]);
+    assert!(r.ok(), "driver fresh request executes: {:?}", r.diag);
+    assert_eq!(r.value_i32(), Some(42));
+}

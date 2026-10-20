@@ -125,6 +125,16 @@ div-by-zero、div-overflow(MIN/-1)、rem-overflow(MIN%-1)。
 (1) 单函数超族 → `av.resource.table-entries`；(2) 模块表超族（70k consts）→
 同分类；(3) 组合超界（40×31k 块闭包）→ `av.resource.verify-steps`。
 
+**r5 修订记录**（复审 F798-R11-02 判定 → 本轮修复冻结）：ABC wire flags
+新增 bit1 `FLAG_IS_UNIT`（§4 布局扩展）——工件类别（可重验 UNIT vs 单函数完整
+MODULE）由编码方写入 wire，解码按 flag 读取，**不再按 n_funcs 猜测**：单函数
+完整模块（允许直接 self/mutual 调用）往返后仍是 module（`fn main() int { if
+false { return main() } else { return 42 } }` fresh 请求执行返回 42，此前被
+`mir.unit-callee` 误拒）；split 单元往返仍是 unit。未知 flag 拒绝集合相应扩展。
+同轮前门计深规则收敛（F798-R11-01）：**当前 sibling 内部组合**（子路径+自身串
+行链相加——深调用作为链首操作数是一条路径）、**已完成 siblings 之间取 max**、
+调用层自身 +1；命名冒号只标记 sibling 列表、不折叠未完成的值表达式。
+
 **r4 修订记录**（复审 F798-R6-04/05/07 判定 → 本轮修复冻结）：
 (a) **decode 分配预算前置到 decode 自身**：解码器在类型/常量/导入/函数名/
 槽/块/指令/span 各表分配**前**累计结构堆估算（元素口径同 heap_estimate），

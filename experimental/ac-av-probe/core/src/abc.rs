@@ -62,6 +62,12 @@ pub const TY_FN: u8 = 2;
 
 // flags
 pub const FLAG_SOURCE_SIDECAR: u16 = 1;
+/// F798-R11-02: the artifact KIND travels on the wire — a single-function
+/// WHOLE MODULE and a re-verifiable UNIT are different categories with
+/// different admission contracts (a unit addresses callees through
+/// imports; a module may call its own functions directly). Decoding must
+/// not GUESS the kind from the function count.
+pub const FLAG_IS_UNIT: u16 = 2;
 
 /// Codec error taxonomy. `Resource` = frozen budget breach (e.g. page size,
 /// table quota); `Format` = every structural violation (truncation, unknown
@@ -223,7 +229,14 @@ pub fn encode_abc(m: &MirModule) -> Result<AbcBytes, AbcDecodeError> {
         .funcs
         .iter()
         .any(|f| !f.spans.is_empty() || f.source_snapshot != 0);
-    put_u16(&mut w, if has_sidecar { FLAG_SOURCE_SIDECAR } else { 0 });
+    let mut flags = 0u16;
+    if has_sidecar {
+        flags |= FLAG_SOURCE_SIDECAR;
+    }
+    if m.is_unit {
+        flags |= FLAG_IS_UNIT;
+    }
+    put_u16(&mut w, flags);
     put_u16(&mut w, 0); // reserved
     put_u32(&mut w, m.types.len() as u32);
     put_u32(&mut w, m.consts.len() as u32);
@@ -574,7 +587,7 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
         ));
     }
     let flags = c.u16()?;
-    if flags & !FLAG_SOURCE_SIDECAR != 0 {
+    if flags & !(FLAG_SOURCE_SIDECAR | FLAG_IS_UNIT) != 0 {
         return Err(AbcDecodeError::fmt_err(
             "abc.decode.flags",
             format!("unknown flag bits {:x}", flags),
@@ -680,7 +693,11 @@ pub fn decode_abc(bytes: &[u8]) -> Result<DecodedAbc, AbcDecodeError> {
             schema: String::new(),
             module: String::new(),
         },
-        is_unit: n_funcs == 1,
+        // F798-R11-02: the kind is read from the WIRE flag, never
+        // inferred from the function count — a single-function whole
+        // module (direct self/mutual calls allowed) round-trips as a
+        // module, and a split unit stays a unit.
+        is_unit: flags & FLAG_IS_UNIT != 0,
         types: Vec::with_capacity(n_types.min(1024)),
         consts: Vec::with_capacity(n_consts.min(1024)),
         imports: Vec::with_capacity(n_imports.min(64)),
