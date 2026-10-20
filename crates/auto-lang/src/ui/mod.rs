@@ -114,7 +114,8 @@ pub mod dnd_host_provider;
 // Win32 calls are double-gated inside (windows × `native-clipboard`).
 pub mod clipboard_native;
 // Plan 418 Phase 2: declarative action/binding config (auto-atom).
-pub mod action_config;
+// PLAN-814 T-03：action 配置解析迁 auto-ui-compiler；旧路径经再导出保持。
+pub use auto_ui_compiler::action_config;
 pub mod view;
 // PLAN-063 T-04d-2: 右栏块锚定坐标槽（iced 布局期记录 + 同步目标消费）。
 #[cfg(feature = "ui-iced")]
@@ -122,7 +123,12 @@ pub mod anchor_slot;
 pub mod app;
 pub mod debug;
 pub mod node_converter;
-pub mod style;
+// PLAN-814 T-03：style DSL 分析/模型单源迁 auto-ui-compiler；iced 后端
+// 适配器是运行时件，留本包 style_iced_adapter（旧 style::IcedStyle 用户
+// 已改指）。旧路径 crate::ui::style 经再导出保持。
+pub use auto_ui_compiler::style;
+pub mod style_iced_adapter;
+pub use style_iced_adapter::IcedStyle;
 pub mod vnode;
 pub mod vnode_converter;
 pub mod widget;

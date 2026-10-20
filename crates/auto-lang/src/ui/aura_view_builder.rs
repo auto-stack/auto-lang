@@ -5582,7 +5582,7 @@ impl<'a> AuraViewBuilder<'a> {
                         .collect();
                     CATEGORY_COLOR.with(|c| *c.borrow_mut() = prev_color);
                     // Plan 409 §10 续 11: 响应式列数(对齐 vue sm/lg/xl 断点)。
-                    let win_w = crate::ui::style::iced_adapter::window_width();
+                    let win_w = crate::ui::style_iced_adapter::window_width();
                     let cols = if win_w < 640.0 {
                         1
                     } else if win_w < 1024.0 {
@@ -16233,7 +16233,7 @@ fn rederive_layout(style: Option<&crate::ui::style::Style>) -> Option<RederivedL
 /// Plan 409 §10 续 5: 读 View 的 style,若 position:absolute 返回其
 /// top/right/bottom/left offset(用于 Overlay 浮层定位)。
 fn extract_absolute_position(v: &View<DynamicMessage>) -> Option<crate::ui::view::OverlayPosition> {
-    use crate::ui::style::iced_adapter::{IcedPosition, IcedStyle};
+    use crate::ui::style_iced_adapter::{IcedPosition, IcedStyle};
     let style = match v {
         View::Row { style, .. } | View::Column { style, .. } | View::Container { style, .. } => {
             style.as_ref()?
@@ -23333,7 +23333,7 @@ mod tests {
                         .any(|c| matches!(c, crate::ui::style::StyleClass::StrokeWidth(w) if (*w - 2.5).abs() < f32::EPSILON)),
                     "state:on 未注入描边加重 2.5: {classes:?}"
                 );
-                let is = crate::ui::style::IcedStyle::from_style(s);
+                let is = crate::ui::style_iced_adapter::IcedStyle::from_style(s);
                 assert_eq!(is.stroke_width, Some(2.5), "适配器必须消费 StrokeWidth");
                 assert!(
                     is.text_color.is_some(),

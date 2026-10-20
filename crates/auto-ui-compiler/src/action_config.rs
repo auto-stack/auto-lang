@@ -129,10 +129,10 @@ impl UiActionConfig {
 
     /// Plan 451: build from a widget decl's `actions {}` block (DSL form).
     /// Same validation as the auto-atom parse (warnings, non-fatal).
-    pub fn from_actions_block(b: &crate::ast::ui::ActionsBlock) -> (UiActionConfig, Vec<String>) {
-        let map_item = |i: &crate::ast::ui::MenuItemEntry| match i {
-            crate::ast::ui::MenuItemEntry::Action(id) => MenuItem::Action(id.clone()),
-            crate::ast::ui::MenuItemEntry::Sep => MenuItem::Separator,
+    pub fn from_actions_block(b: &auto_lang_core::ast::ui::ActionsBlock) -> (UiActionConfig, Vec<String>) {
+        let map_item = |i: &auto_lang_core::ast::ui::MenuItemEntry| match i {
+            auto_lang_core::ast::ui::MenuItemEntry::Action(id) => MenuItem::Action(id.clone()),
+            auto_lang_core::ast::ui::MenuItemEntry::Sep => MenuItem::Separator,
         };
         let mut cfg = UiActionConfig {
             actions: b
@@ -181,16 +181,16 @@ impl UiActionConfig {
     /// `ui_config:` file the VM/desktop runtime loads. Inverse of
     /// [`Self::from_actions_block`]; shortcut_bindings (a derived index) are
     /// not carried — the SFC rebuilds its own keymap.
-    pub fn to_actions_block(&self) -> crate::ast::ui::ActionsBlock {
+    pub fn to_actions_block(&self) -> auto_lang_core::ast::ui::ActionsBlock {
         let map_item = |i: &MenuItem| match i {
-            MenuItem::Action(id) => crate::ast::ui::MenuItemEntry::Action(id.clone()),
-            MenuItem::Separator => crate::ast::ui::MenuItemEntry::Sep,
+            MenuItem::Action(id) => auto_lang_core::ast::ui::MenuItemEntry::Action(id.clone()),
+            MenuItem::Separator => auto_lang_core::ast::ui::MenuItemEntry::Sep,
         };
-        crate::ast::ui::ActionsBlock {
+        auto_lang_core::ast::ui::ActionsBlock {
             actions: self
                 .actions
                 .iter()
-                .map(|a| crate::ast::ui::ActionEntry {
+                .map(|a| auto_lang_core::ast::ui::ActionEntry {
                     id: a.id.clone(),
                     handler: a.handler.clone(),
                     title: (!a.title.is_empty()).then(|| a.title.clone()),
@@ -200,18 +200,18 @@ impl UiActionConfig {
                     checked_if: a.checked_if.clone(),
                 })
                 .collect(),
-            menubar: (!self.menus.is_empty()).then(|| crate::ast::ui::MenubarBlock {
+            menubar: (!self.menus.is_empty()).then(|| auto_lang_core::ast::ui::MenubarBlock {
                 menus: self
                     .menus
                     .iter()
-                    .map(|m| crate::ast::ui::MenuEntry {
+                    .map(|m| auto_lang_core::ast::ui::MenuEntry {
                         id: m.id.clone(),
                         title: m.title.clone(),
                         items: m.items.iter().map(map_item).collect(),
                     })
                     .collect(),
             }),
-            toolbar: (!self.toolbar.is_empty()).then(|| crate::ast::ui::ToolbarBlock {
+            toolbar: (!self.toolbar.is_empty()).then(|| auto_lang_core::ast::ui::ToolbarBlock {
                 items: self.toolbar.iter().map(map_item).collect(),
             }),
         }
@@ -355,7 +355,47 @@ impl UiActionConfig {
 /// Implementation lives in `ui_gen` (ungated) so non-`ui` builds can use it;
 /// re-exported here to keep the `ui::action_config::normalize_shortcut`
 /// path stable.
-pub use crate::ui_gen::normalize_shortcut;
+/// PLAN-814 T-03：单源在此（原 auto-lang ui_gen/mod.rs——曾为 vue 生成器
+/// 非 ui 消费可用而 ungated；两模块现已同 crate）。
+/// Normalize a display shortcut (`Ctrl+N`, `alt+f4`) to a keyboard listener's
+/// lookup form: `Ctrl+`/`Alt+` prefixes + key. Single alpha chars are
+/// lowercased (the OS reports the base character with Ctrl/Alt held); named
+/// keys (F4, Enter…) pass through as-is.
+///
+/// Lives here (ungated) rather than in `ui::action_config` so the vue
+/// transpiler — which compiles without the `ui` feature — can use it
+/// (plan-451 regression: `ui_gen/vue.rs` referenced the gated path and broke
+/// every non-`ui` consumer, e.g. auto-shell).
+pub fn normalize_shortcut(s: &str) -> String {
+    let mut ctrl = false;
+    let mut alt = false;
+    let mut key = String::new();
+    for part in s.split('+') {
+        let raw = part.trim();
+        match raw.to_ascii_lowercase().as_str() {
+            "ctrl" | "control" => ctrl = true,
+            "alt" => alt = true,
+            "shift" => {} // Shift is expressed by the shifted character itself
+            "" => {}
+            _ => key = raw.to_string(),
+        }
+    }
+    if key.is_empty() {
+        return String::new();
+    }
+    if key.len() == 1 {
+        key = key.to_lowercase();
+    }
+    let mut out = String::new();
+    if ctrl {
+        out.push_str("Ctrl+");
+    }
+    if alt {
+        out.push_str("Alt+");
+    }
+    out.push_str(&key);
+    out
+}
 
 static ACTION_CONFIG: std::sync::RwLock<Option<std::sync::Arc<UiActionConfig>>> =
     std::sync::RwLock::new(None);
@@ -461,7 +501,7 @@ pub fn action_config() -> Option<std::sync::Arc<UiActionConfig>> {
 /// 解析根 decl 后调用）：应用 OS 键位层、bump generation、记录 reload 摘要。
 /// source_path 是源 .at 文件路径，供热重载重读。
 pub fn set_dsl_action_config_from_block(
-    block: &crate::ast::ui::ActionsBlock,
+    block: &auto_lang_core::ast::ui::ActionsBlock,
     source_path: Option<&str>,
 ) -> Option<std::sync::Arc<UiActionConfig>> {
     let _ = DSL_SOURCE_PATH.set(source_path.map(|s| s.to_string()));
@@ -473,7 +513,7 @@ pub fn set_dsl_action_config_from_block(
 
 /// 校验 + 键位层 + 换装 + generation/reload-info 更新。
 fn install_dsl_config(
-    block: crate::ast::ui::ActionsBlock,
+    block: auto_lang_core::ast::ui::ActionsBlock,
 ) -> Option<std::sync::Arc<UiActionConfig>> {
     let (mut cfg, warnings) = UiActionConfig::from_actions_block(&block);
     for w in &warnings {
@@ -508,21 +548,21 @@ fn install_dsl_config(
 /// 此提取 → install）。优先首个带 actions 块的 widget；否则取顶层
 /// `actions {}` 声明（Plan 451 P3 的模块级形态——热重载只重读本源文件，
 /// use 引入模块的声明改动需 touch 本文件触发）。
-pub fn extract_actions_from_source(code: &str) -> Result<crate::ast::ui::ActionsBlock, String> {
-    let session = crate::session::CompilerSession::ui();
-    let mut parser = crate::parser::Parser::from(code).with_session(session);
+pub fn extract_actions_from_source(code: &str) -> Result<auto_lang_core::ast::ui::ActionsBlock, String> {
+    let session = auto_lang_core::session::CompilerSession::ui();
+    let mut parser = auto_lang_core::parser::Parser::from(code).with_session(session);
     let ast = parser
         .parse()
         .map_err(|e| format!("DSL source parse error: {e}"))?;
     for stmt in &ast.stmts {
-        if let crate::ast::Stmt::WidgetDecl(decl) = stmt {
+        if let auto_lang_core::ast::Stmt::WidgetDecl(decl) = stmt {
             if let Some(ref acts) = decl.actions {
                 return Ok(acts.clone());
             }
         }
     }
     for stmt in &ast.stmts {
-        if let crate::ast::Stmt::ActionsDecl(acts) = stmt {
+        if let auto_lang_core::ast::Stmt::ActionsDecl(acts) = stmt {
             return Ok(acts.clone());
         }
     }

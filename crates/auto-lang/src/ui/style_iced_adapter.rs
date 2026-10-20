@@ -1,15 +1,19 @@
+// PLAN-814 T-03：style DSL 的 iced 后端适配器——分析/模型单源已迁
+// auto-ui-compiler::style；本文件是 iced 运行时件（iced::Color/Radius/
+// Padding 映射），按 owner 留本包，类型面经 compiler 公开 style 消费。
+
 // Iced Adapter - Convert StyleClass IR to Iced style objects
 //
 // This adapter translates the unified StyleClass IR into Iced-specific
 // style objects for styling components.
 
-use super::{Color, SizeValue, Style, StyleClass};
+use crate::ui::style::{Color, SizeValue, Style, StyleClass};
 
 // Theme state + semantic color resolution now live in `super::theme`
 // (backend-neutral, so `code-editor`-only builds keep dark-mode-aware
 // semantic alpha blending in class.rs). Re-exported here for the many
 // existing `iced_adapter::…` call sites.
-pub use super::theme::{
+pub use crate::ui::style::theme::{
     accent_name, dark_mode, resolve_border_rgb, resolve_semantic_rgb, set_accent_name,
     set_dark_mode, set_window_height, set_window_width, window_height, window_width,
 };
@@ -536,7 +540,7 @@ impl IcedStyle {
     /// Plan 527 T6: base + 指定变体类合并(变体后应用胜出,hover 先例同构)。
     /// 按钮状态回调面(Hovered/Focused/Pressed/Disabled)经此构建各状态样式;
     /// 无变体声明时等价 base。
-    pub fn merged_with_variant(base: &Style, variant: super::Variant) -> IcedStyle {
+    pub fn merged_with_variant(base: &Style, variant: crate::ui::style::Variant) -> IcedStyle {
         let mut merged = base.classes.clone();
         merged.extend(base.variant_slice(variant));
         IcedStyle::from_style(&Style {
@@ -673,7 +677,7 @@ impl IcedStyle {
                 // PLAN-080: mt-auto 的推底语义——此前 Auto 落 to_pixels()=0
                 // 静默丢失（musk rail 底簇不被推到栏底，y 偏 ~310px 实机
                 // 对拍定罪）。像素值维持外部 padding 包装语义不变。
-                if matches!(size, super::SizeValue::Auto) {
+                if matches!(size, crate::ui::style::SizeValue::Auto) {
                     self.margin_top_auto = true;
                 } else {
                     self.margin_top = Some(size.to_pixels() as f32);

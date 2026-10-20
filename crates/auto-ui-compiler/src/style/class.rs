@@ -2358,8 +2358,8 @@ mod tests {
         // (Plan 448 对齐批: hsl 222.2 47.4% 7%;Plan 518 stella 重校:
         // dark #141a29 = (20,26,41)),+ alpha≈242,而非 to_rgb8() 拍平出的白色。
         // PLAN-619 T-03：轨缺省已改 scaffold，本用例断言的是 stella 值 → 钉住。
-        assert!(crate::ui::style::theme::set_theme("stella"), "stella 恒在");
-        crate::ui::style::iced_adapter::set_dark_mode(true);
+        assert!(crate::style::theme::set_theme("stella"), "stella 恒在");
+        crate::style::theme::set_dark_mode(true);
         match StyleClass::parse_single("bg-background/95") {
             Ok(StyleClass::BackgroundColor(Color::Rgba { r, g, b, a })) => {
                 assert_eq!(
@@ -3425,7 +3425,7 @@ mod tests {
     /// Absolute/TopOffset/LeftOffset 全部保留(槽位绝对定位的消费前提)。
     #[test]
     fn p022_slot_style_string_keeps_absolute_and_offsets() {
-        let s = crate::ui::style::Style::parse(
+        let s = crate::style::Style::parse(
             "absolute z-10 top-[640px] left-[0px] w-[640px] h-[760px]",
         )
         .expect("slot style must parse");

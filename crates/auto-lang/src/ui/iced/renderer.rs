@@ -7,7 +7,7 @@
 
 use crate::ui::app::AppResult;
 use crate::ui::component::Component;
-use crate::ui::style::iced_adapter::{
+use crate::ui::style_iced_adapter::{
     IcedAlign, IcedFontSize, IcedFontWeight, IcedJustify, IcedOverflow, IcedShadowSize, IcedSize,
     IcedStyle,
 };
@@ -1526,7 +1526,7 @@ fn build_container_style(is: &IcedStyle) -> iced::widget::container::Style {
         if is.rounded || is.border || has_radius || is.border_width.map_or(false, |w| w > 0.0) {
             let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
             let color = is.border_color.unwrap_or_else(|| {
-                let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+                let (r, g, b) = crate::ui::style_iced_adapter::resolve_border_rgb();
                 iced::Color::from_rgb8(r, g, b)
             });
             iced::Border {
@@ -1691,7 +1691,7 @@ fn col_fixed_width(col_widths: Option<&[f32]>, col: usize) -> Option<f32> {
 /// Plan 411 P2-A④: 行 border-b——iced 容器边框是四边整圈,单侧下边线用
 /// 1px 填充分隔条子元素模拟(vue `border-b border-border`)。
 fn table_row_rule<M: 'static>() -> iced::Element<'static, M> {
-    let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+    let (r, g, b) = crate::ui::style_iced_adapter::resolve_border_rgb();
     iced::widget::container(
         iced::widget::Space::new()
             .width(iced::Length::Shrink)
@@ -1719,19 +1719,19 @@ fn plan050_content_align(
     use iced::alignment::{Horizontal, Vertical};
     let Some(is) = is else { return (None, None) };
     let h = match is.justify_content {
-        Some(crate::ui::style::iced_adapter::IcedJustify::Start) => Some(Horizontal::Left),
-        Some(crate::ui::style::iced_adapter::IcedJustify::End) => Some(Horizontal::Right),
-        Some(crate::ui::style::iced_adapter::IcedJustify::Center) => Some(Horizontal::Center),
+        Some(crate::ui::style_iced_adapter::IcedJustify::Start) => Some(Horizontal::Left),
+        Some(crate::ui::style_iced_adapter::IcedJustify::End) => Some(Horizontal::Right),
+        Some(crate::ui::style_iced_adapter::IcedJustify::Center) => Some(Horizontal::Center),
         _ => is.text_align.map(|a| match a {
-            crate::ui::style::iced_adapter::IcedTextAlign::Left => Horizontal::Left,
-            crate::ui::style::iced_adapter::IcedTextAlign::Center => Horizontal::Center,
-            crate::ui::style::iced_adapter::IcedTextAlign::Right => Horizontal::Right,
+            crate::ui::style_iced_adapter::IcedTextAlign::Left => Horizontal::Left,
+            crate::ui::style_iced_adapter::IcedTextAlign::Center => Horizontal::Center,
+            crate::ui::style_iced_adapter::IcedTextAlign::Right => Horizontal::Right,
         }),
     };
     let v = is.align_items.map(|a| match a {
-        crate::ui::style::iced_adapter::IcedAlign::Start => Vertical::Top,
-        crate::ui::style::iced_adapter::IcedAlign::Center => Vertical::Center,
-        crate::ui::style::iced_adapter::IcedAlign::End => Vertical::Bottom,
+        crate::ui::style_iced_adapter::IcedAlign::Start => Vertical::Top,
+        crate::ui::style_iced_adapter::IcedAlign::Center => Vertical::Center,
+        crate::ui::style_iced_adapter::IcedAlign::End => Vertical::Bottom,
     });
     (h, v)
 }
@@ -1769,7 +1769,7 @@ fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
         if is.rounded || is.border || has_radius || is.border_width.map_or(false, |w| w > 0.0) {
             let width = is.border_width.unwrap_or(if is.border { 1.0 } else { 0.0 });
             let color = is.border_color.unwrap_or_else(|| {
-                let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+                let (r, g, b) = crate::ui::style_iced_adapter::resolve_border_rgb();
                 iced::Color::from_rgb8(r, g, b)
             });
             iced::Border {
@@ -1821,7 +1821,7 @@ fn build_button_style(is: &IcedStyle) -> iced::widget::button::Style {
         background: is.background_color.map(|c| Background::Color(fade(c))),
         text_color: fade(is.text_color.unwrap_or_else(|| {
             // Plan 408: dark-mode-aware default (equivalent to vue body text-foreground).
-            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+            crate::ui::style_iced_adapter::resolve_semantic_rgb(
                 &crate::ui::style::Color::OnBackground,
             )
             .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
@@ -2153,17 +2153,17 @@ fn apply_column_style<M: Clone + Debug + 'static>(
                 // End → Shrink+align_x(Right)；Start/Center 同理；
                 // 无 align_self 维持块级 Fill（AI 消息 hairline 全宽不回归）。
                 match is.align_self {
-                    Some(crate::ui::style::iced_adapter::IcedAlign::End) => {
+                    Some(crate::ui::style_iced_adapter::IcedAlign::End) => {
                         cont = cont
                             .width(iced::Length::Shrink)
                             .align_x(iced::alignment::Horizontal::Right);
                     }
-                    Some(crate::ui::style::iced_adapter::IcedAlign::Start) => {
+                    Some(crate::ui::style_iced_adapter::IcedAlign::Start) => {
                         cont = cont
                             .width(iced::Length::Shrink)
                             .align_x(iced::alignment::Horizontal::Left);
                     }
-                    Some(crate::ui::style::iced_adapter::IcedAlign::Center) => {
+                    Some(crate::ui::style_iced_adapter::IcedAlign::Center) => {
                         cont = cont
                             .width(iced::Length::Shrink)
                             .align_x(iced::alignment::Horizontal::Center);
@@ -2301,15 +2301,15 @@ fn apply_column_style<M: Clone + Debug + 'static>(
             // 丢 align_self（musk 用户消息行 self-end 失效贴左，实机对拍
             // x=429 vs vue 827 定罪）。
             match iced_style.as_ref().and_then(|is| is.align_self) {
-                Some(crate::ui::style::iced_adapter::IcedAlign::End) => container(capped)
+                Some(crate::ui::style_iced_adapter::IcedAlign::End) => container(capped)
                     .width(iced::Length::Fill)
                     .align_x(iced::alignment::Horizontal::Right)
                     .into(),
-                Some(crate::ui::style::iced_adapter::IcedAlign::Start) => container(capped)
+                Some(crate::ui::style_iced_adapter::IcedAlign::Start) => container(capped)
                     .width(iced::Length::Fill)
                     .align_x(iced::alignment::Horizontal::Left)
                     .into(),
-                Some(crate::ui::style::iced_adapter::IcedAlign::Center) => container(capped)
+                Some(crate::ui::style_iced_adapter::IcedAlign::Center) => container(capped)
                     .width(iced::Length::Fill)
                     .align_x(iced::alignment::Horizontal::Center)
                     .into(),
@@ -2710,7 +2710,7 @@ fn apply_side_borders<M: Clone + Debug + 'static>(
         return el;
     }
     let border_col = is.border_color.unwrap_or_else(|| {
-        let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+        let (r, g, b) = crate::ui::style_iced_adapter::resolve_border_rgb();
         iced::Color::from_rgb8(r, g, b)
     });
     // PLAN-054 T1: 单侧宽度档优先（border-l-N → side_border_width）；
@@ -2878,7 +2878,7 @@ pub(crate) fn build_column<M: Clone + Debug + 'static>(
     // `items-end` 此前被静默丢弃,气泡与 header 贴左)。仅 End 臂新增,
     // Start/Center 维持既有(忽略)行为,零回归面。
     let align_end = iced_style.as_ref().map_or(false, |is| {
-        is.align_items == Some(crate::ui::style::iced_adapter::IcedAlign::End)
+        is.align_items == Some(crate::ui::style_iced_adapter::IcedAlign::End)
     });
     let spacer =
         |portion: u16| iced::widget::Space::new().height(iced::Length::FillPortion(portion));
@@ -3352,7 +3352,7 @@ fn build_input_shape<M: Clone + Debug + 'static>(
             .background_color
             .unwrap_or(iced::Color::TRANSPARENT);
         let border_color = iced_style.border_color.unwrap_or_else(|| {
-            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+            let (r, g, b) = crate::ui::style_iced_adapter::resolve_border_rgb();
             iced::Color::from_rgb8(r, g, b)
         });
         let border_width =
@@ -3361,20 +3361,20 @@ fn build_input_shape<M: Clone + Debug + 'static>(
                 .unwrap_or(if iced_style.border { 1.0 } else { 1.0 });
         let radius = iced_style.border_radius.unwrap_or(6.0);
         let value_color = iced_style.text_color.unwrap_or_else(|| {
-            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+            crate::ui::style_iced_adapter::resolve_semantic_rgb(
                 &crate::ui::style::Color::OnBackground,
             )
             .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
             .unwrap_or(iced::Color::WHITE)
         });
-        let placeholder_color = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+        let placeholder_color = crate::ui::style_iced_adapter::resolve_semantic_rgb(
             &crate::ui::style::Color::OnSurface,
         )
         .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
         .unwrap_or(iced::Color::from_rgba(0.6, 0.6, 0.6, 0.7));
 
         let focus_border_color =
-            crate::ui::style::iced_adapter::resolve_semantic_rgb(&crate::ui::style::Color::Primary)
+            crate::ui::style_iced_adapter::resolve_semantic_rgb(&crate::ui::style::Color::Primary)
                 .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
                 .unwrap_or(iced::Color::from_rgb8(59, 130, 246));
         let focus_border_width = (border_width + 1.0).max(2.0);
@@ -3938,7 +3938,7 @@ fn overlay_percent_units<M: Clone + std::fmt::Debug>(
     let Some(s) = extract_view_style(view) else {
         return (None, None);
     };
-    let is = crate::ui::style::iced_adapter::IcedStyle::from_style(&s);
+    let is = crate::ui::style_iced_adapter::IcedStyle::from_style(&s);
     let units = |sz: Option<IcedSize>| match sz {
         Some(IcedSize::Percent(v)) => Some(percent_fill_units(v)),
         _ => None,
@@ -4072,7 +4072,7 @@ fn build_floating_layer_full<M: Clone + Debug + 'static>(
 pub(crate) fn dynamic_abs_layer_position<M: Clone + std::fmt::Debug>(
     view: &AbstractView<M>,
 ) -> Option<crate::ui::view::OverlayPosition> {
-    let is = crate::ui::style::iced_adapter::IcedStyle::from_style(extract_view_style(view)?);
+    let is = crate::ui::style_iced_adapter::IcedStyle::from_style(extract_view_style(view)?);
     let px_or_pct = |px: Option<f32>, pct: Option<f32>| match (px, pct) {
         (Some(v), _) => Some(crate::ui::view::OverlayLength::Px(v)),
         (None, Some(p)) => Some(crate::ui::view::OverlayLength::Percent(p)),
@@ -4686,7 +4686,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             rich = rich.width(iced_length(w));
                         }
                         if let Some(ref align) = is.text_align {
-                            use crate::ui::style::iced_adapter::IcedTextAlign;
+                            use crate::ui::style_iced_adapter::IcedTextAlign;
                             if is.width.is_none() {
                                 rich = rich.width(iced::Length::Fill);
                             }
@@ -4707,7 +4707,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let fill_clip = is.truncate_flag
                             || matches!(
                                 is.width,
-                                Some(crate::ui::style::iced_adapter::IcedSize::Full)
+                                Some(crate::ui::style_iced_adapter::IcedSize::Full)
                             );
                         let el: iced::Element<'static, M> = if fill_clip {
                             iced::widget::container(rich)
@@ -4739,7 +4739,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         if let Some(color) = iced_style.text_color {
                             st = st.color(color);
                         } else if let Some((r, g, b)) =
-                            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                            crate::ui::style_iced_adapter::resolve_semantic_rgb(
                                 &crate::ui::style::Color::OnBackground,
                             )
                         {
@@ -4770,7 +4770,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             st = st.width(iced_length(w));
                         }
                         if let Some(ref align) = iced_style.text_align {
-                            use crate::ui::style::iced_adapter::IcedTextAlign;
+                            use crate::ui::style_iced_adapter::IcedTextAlign;
                             if iced_style.width.is_none() {
                                 st = st.width(iced::Length::Fill);
                             }
@@ -4810,7 +4810,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     if let Some(color) = iced_style.text_color {
                         span = span.color(color);
                     } else if let Some((r, g, b)) =
-                        crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                        crate::ui::style_iced_adapter::resolve_semantic_rgb(
                             &crate::ui::style::Color::OnBackground,
                         )
                     {
@@ -4842,7 +4842,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         rich = rich.width(iced_length(w));
                     }
                     if let Some(ref align) = iced_style.text_align {
-                        use crate::ui::style::iced_adapter::IcedTextAlign;
+                        use crate::ui::style_iced_adapter::IcedTextAlign;
                         if iced_style.width.is_none() {
                             rich = rich.width(iced::Length::Fill);
                         }
@@ -4875,7 +4875,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             // inheritance). Without this, iced defaults to BLACK which
                             // is invisible on dark backgrounds.
                             if let Some((r, g, b)) =
-                                crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                crate::ui::style_iced_adapter::resolve_semantic_rgb(
                                     &crate::ui::style::Color::OnBackground,
                                 )
                             {
@@ -4918,7 +4918,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             text_widget = text_widget.width(iced_length(w));
                         }
                         if let Some(ref align) = iced_style.text_align {
-                            use crate::ui::style::iced_adapter::IcedTextAlign;
+                            use crate::ui::style_iced_adapter::IcedTextAlign;
                             if iced_style.width.is_none() {
                                 text_widget = text_widget.width(iced::Length::Fill);
                             }
@@ -5001,7 +5001,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 cont = cont.height(h);
                                 if matches!(
                                     iced_style.align_items,
-                                    Some(crate::ui::style::iced_adapter::IcedAlign::Center)
+                                    Some(crate::ui::style_iced_adapter::IcedAlign::Center)
                                 ) {
                                     cont = cont.align_y(iced::alignment::Vertical::Center);
                                 }
@@ -5092,8 +5092,8 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         iced_style.as_ref().and_then(|is| is.height)
                     ),
                     (
-                        Some(crate::ui::style::iced_adapter::IcedSize::Fixed(_)),
-                        Some(crate::ui::style::iced_adapter::IcedSize::Fixed(_))
+                        Some(crate::ui::style_iced_adapter::IcedSize::Fixed(_)),
+                        Some(crate::ui::style_iced_adapter::IcedSize::Fixed(_))
                     )
                 );
                 let button_content: iced::Element<'static, M> = if let Some(mut content_view) =
@@ -5190,7 +5190,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                 .as_ref()
                                 .and_then(|is| is.text_color)
                                 .or_else(|| {
-                                    crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                    crate::ui::style_iced_adapter::resolve_semantic_rgb(
                                         &crate::ui::style::Color::OnBackground,
                                     )
                                     .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
@@ -5198,7 +5198,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let hover_color = style.as_ref().and_then(|s| {
                             s.hover_classes.iter().find_map(|c| match c {
                                 StyleClass::TextColor(color) => {
-                                    Some(crate::ui::style::iced_adapter::convert_color(color))
+                                    Some(crate::ui::style_iced_adapter::convert_color(color))
                                 }
                                 _ => None,
                             })
@@ -5324,13 +5324,13 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             let _ = align;
                             rich = rich.width(iced::Length::Fill);
                             match align {
-                                crate::ui::style::iced_adapter::IcedTextAlign::Center => {
+                                crate::ui::style_iced_adapter::IcedTextAlign::Center => {
                                     rich = rich.align_x(iced::alignment::Horizontal::Center);
                                 }
-                                crate::ui::style::iced_adapter::IcedTextAlign::Right => {
+                                crate::ui::style_iced_adapter::IcedTextAlign::Right => {
                                     rich = rich.align_x(iced::alignment::Horizontal::Right);
                                 }
-                                crate::ui::style::iced_adapter::IcedTextAlign::Left => {}
+                                crate::ui::style_iced_adapter::IcedTextAlign::Left => {}
                             }
                         }
                         rich.into()
@@ -5367,15 +5367,15 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             let _ = align;
                             text_widget = text_widget.width(iced::Length::Fill);
                             match align {
-                                crate::ui::style::iced_adapter::IcedTextAlign::Center => {
+                                crate::ui::style_iced_adapter::IcedTextAlign::Center => {
                                     text_widget =
                                         text_widget.align_x(iced::alignment::Horizontal::Center);
                                 }
-                                crate::ui::style::iced_adapter::IcedTextAlign::Right => {
+                                crate::ui::style_iced_adapter::IcedTextAlign::Right => {
                                     text_widget =
                                         text_widget.align_x(iced::alignment::Horizontal::Right);
                                 }
-                                crate::ui::style::iced_adapter::IcedTextAlign::Left => {}
+                                crate::ui::style_iced_adapter::IcedTextAlign::Left => {}
                             }
                         }
                         text_widget.into()
@@ -5551,7 +5551,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                 } else {
                     // No style prop at all: chromeless instead of iced Primary.
                     // Plan 408: chromeless + dark-mode-aware text color.
-                    let default_text = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                    let default_text = crate::ui::style_iced_adapter::resolve_semantic_rgb(
                         &crate::ui::style::Color::OnBackground,
                     )
                     .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
@@ -5736,7 +5736,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         els.push(iced::widget::Space::new().height(iced::Length::Fill).into());
                     }
                     let align_self = extract_view_style(c).and_then(|s| {
-                        crate::ui::style::iced_adapter::IcedStyle::from_style(s).align_self
+                        crate::ui::style_iced_adapter::IcedStyle::from_style(s).align_self
                     });
                     let el = if distributed {
                         axis_fix_col_child_distributed(c.clone())
@@ -5745,19 +5745,19 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                     }
                     .into_iced();
                     let el = match align_self {
-                        Some(crate::ui::style::iced_adapter::IcedAlign::End) => {
+                        Some(crate::ui::style_iced_adapter::IcedAlign::End) => {
                             iced::widget::container(el)
                                 .width(iced::Length::Fill)
                                 .align_x(iced::alignment::Horizontal::Right)
                                 .into()
                         }
-                        Some(crate::ui::style::iced_adapter::IcedAlign::Start) => {
+                        Some(crate::ui::style_iced_adapter::IcedAlign::Start) => {
                             iced::widget::container(el)
                                 .width(iced::Length::Fill)
                                 .align_x(iced::alignment::Horizontal::Left)
                                 .into()
                         }
-                        Some(crate::ui::style::iced_adapter::IcedAlign::Center) => {
+                        Some(crate::ui::style_iced_adapter::IcedAlign::Center) => {
                             iced::widget::container(el)
                                 .width(iced::Length::Fill)
                                 .align_x(iced::alignment::Horizontal::Center)
@@ -7073,7 +7073,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         )
                         .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
                         .unwrap_or_else(|| {
-                            let (r, g, b) = crate::ui::style::iced_adapter::resolve_border_rgb();
+                            let (r, g, b) = crate::ui::style_iced_adapter::resolve_border_rgb();
                             iced::Color::from_rgb8(r, g, b)
                         });
 
@@ -7403,7 +7403,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         .and_then(|d| d.wallpaper)
                         .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
                         .or_else(|| {
-                            crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                            crate::ui::style_iced_adapter::resolve_semantic_rgb(
                                 &crate::ui::style::Color::Primary,
                             )
                             .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
@@ -7455,7 +7455,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                                     crate::ui::iced::snapshot::request_capture(w);
                                 }
                                 // miss = 占位块 + fallback icon 居中。
-                                let ph = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                let ph = crate::ui::style_iced_adapter::resolve_semantic_rgb(
                                     &crate::ui::style::Color::Surface,
                                 )
                                 .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
@@ -7608,7 +7608,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             .as_ref()
                             .and_then(|is| is.text_color)
                             .or_else(|| {
-                                crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                crate::ui::style_iced_adapter::resolve_semantic_rgb(
                                     &crate::ui::style::Color::OnBackground,
                                 )
                                 .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
@@ -7617,7 +7617,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                         let hover_color = style.as_ref().and_then(|s| {
                             s.hover_classes.iter().find_map(|c| match c {
                                 StyleClass::TextColor(color) => {
-                                    Some(crate::ui::style::iced_adapter::convert_color(color))
+                                    Some(crate::ui::style_iced_adapter::convert_color(color))
                                 }
                                 _ => None,
                             })
@@ -7673,7 +7673,7 @@ impl<M: Clone + Debug + 'static> IntoIcedElement<M> for AbstractView<M> {
                             .as_ref()
                             .and_then(|is| is.text_color)
                             .or_else(|| {
-                                crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                                crate::ui::style_iced_adapter::resolve_semantic_rgb(
                                     &crate::ui::style::Color::OnBackground,
                                 )
                                 .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
@@ -8714,8 +8714,8 @@ pub fn window_title(fallback: String) -> String {
 }
 
 /// Convert IcedFontSize to f32 pixel value
-fn font_size_to_f32(font_size: &crate::ui::style::iced_adapter::IcedFontSize) -> f32 {
-    use crate::ui::style::iced_adapter::IcedFontSize;
+fn font_size_to_f32(font_size: &crate::ui::style_iced_adapter::IcedFontSize) -> f32 {
+    use crate::ui::style_iced_adapter::IcedFontSize;
     match font_size {
         IcedFontSize::Xs => 12.0,
         IcedFontSize::Sm => 14.0,
@@ -10072,7 +10072,7 @@ fn toast_palette(kind: &str) -> ((u8, u8, u8), (u8, u8, u8), &'static str) {
         "error" => ((239, 68, 68), (239, 68, 68), "Error"),     // red-500
         "warning" => ((245, 158, 11), (245, 158, 11), "Warning"), // amber-500
         "info" => {
-            let accent = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+            let accent = crate::ui::style_iced_adapter::resolve_semantic_rgb(
                 &crate::ui::style::Color::Primary,
             )
             .unwrap_or((59, 130, 246)); // blue-500(仅解析失败时退回)
@@ -12713,7 +12713,7 @@ fn update_shell_clock(state: &mut crate::ui::session::DesktopSession) {
 /// 此收敛：值变才写面板 `__dash_dark` + 置脏（面板 .at 玻璃底双分支
 /// 消费；boot 缺省 dark=true 与 DesktopConfig::default 对齐）。
 fn sync_dash_dark_bit(state: &mut crate::ui::session::DesktopSession) {
-    let dark = crate::ui::style::iced_adapter::dark_mode();
+    let dark = crate::ui::style_iced_adapter::dark_mode();
     if state.desktop.dash_dark_cache.get() == dark {
         return;
     }
@@ -15124,7 +15124,7 @@ fn execute_set_theme_name(state: &mut crate::ui::session::DesktopSession, name: 
 }
 
 fn execute_set_theme(state: &mut crate::ui::session::DesktopSession, dark: bool) {
-    crate::ui::style::iced_adapter::set_dark_mode(dark);
+    crate::ui::style_iced_adapter::set_dark_mode(dark);
     // PLAN-051 T10（DEBTS 050 处置）：桌面壳主题翻转臂与 D-GAP 值变化臂
     // 同款——既有 fence buffer 重着色到新档 hljs 主题。
     // PLAN-551 门控补缺（合并取 master 字面门）：随 autodown_editor 模块
@@ -15557,7 +15557,7 @@ fn apply_external_config_diff(
         // PLAN-041 T-05（F-R1 根修）：补 snapshot::invalidate_all——face
         // 内容/缩略/pager 走快照缓存，缺此则 config 外写热切后 face 渲染
         // 滞留旧主题（bus 臂 12345 同款；2026-09-22 实机复现 shot-07）。
-        crate::ui::style::iced_adapter::set_dark_mode(cfg.dark_theme);
+        crate::ui::style_iced_adapter::set_dark_mode(cfg.dark_theme);
         #[cfg(feature = "autodown")]
         crate::ui::autodown_editor::retheme_all_fence_buffers();
         crate::ui::iced::snapshot::invalidate_all();
@@ -19539,7 +19539,7 @@ fn run_session(
                 // 被翻回。
                 {
                     let dark = session.desktop.config.dark_theme;
-                    crate::ui::style::iced_adapter::set_dark_mode(dark);
+                    crate::ui::style_iced_adapter::set_dark_mode(dark);
                     for app in session.apps.values_mut() {
                         if app.component.read_state("dark_mode").is_ok() {
                             let _ = app
@@ -24803,7 +24803,7 @@ fn run_session(
                 // PLAN-041 追随三轮（用户裁定）：dark = 任务栏同色系
                 // #272e48 @95%（卡自身实底；外层面板框已退役），light =
                 // 白 45% 浅卡沿旧。
-                let card_fill = if crate::ui::style::iced_adapter::dark_mode() {
+                let card_fill = if crate::ui::style_iced_adapter::dark_mode() {
                     iced::Color::from_rgba(0.153, 0.180, 0.282, 0.90)
                 } else {
                     iced::Color::from_rgba(1.0, 1.0, 1.0, 0.45)
@@ -25352,7 +25352,7 @@ fn run_session(
     let theme_fn =
         move |_state: &crate::ui::session::DesktopSession,
               _window: iced::window::Id|
-              -> iced::Theme { shadcn_theme(crate::ui::style::iced_adapter::dark_mode()) };
+              -> iced::Theme { shadcn_theme(crate::ui::style_iced_adapter::dark_mode()) };
 
     iced::daemon(boot, update, view_desktop_fn)
         .title(title_fn)
@@ -25984,7 +25984,7 @@ fn dynamic_view_impl_inner(
                 #[cfg(all(feature = "autodown", feature = "code-editor"))]
                 crate::ui::autodown_editor::retheme_all_fence_buffers();
             }
-            crate::ui::style::iced_adapter::set_dark_mode(is_dark);
+            crate::ui::style_iced_adapter::set_dark_mode(is_dark);
         }
     }
     if let Ok(accent_val) = state.component.read_state("accent_color") {
@@ -25992,7 +25992,7 @@ fn dynamic_view_impl_inner(
             auto_val::Value::Str(s) => s.as_str().to_string(),
             _ => "indigo".to_string(),
         };
-        crate::ui::style::iced_adapter::set_accent_name(&name);
+        crate::ui::style_iced_adapter::set_accent_name(&name);
     }
 
     // ── PLAN-725 T-01：脏帧单建（单帧单建本体）─────────────────────────
@@ -26202,10 +26202,10 @@ fn dynamic_view_impl_inner(
     } // sync_mcp 门控（459：仅 primary App 视图执行 MCP 同步）
 
     // Plan 409 §10 续 11: 同步窗口宽度,供 VM builder 响应式布局(grid 列数)。
-    crate::ui::style::iced_adapter::set_window_width(state.window_size.borrow().width);
+    crate::ui::style_iced_adapter::set_window_width(state.window_size.borrow().width);
     // PLAN-020 T-00b: 高度随帧同步(window_size = 逻辑 px;分屏矩形投影
     // 窗口尺寸面的消费源,与 width 同点同规约)。
-    crate::ui::style::iced_adapter::set_window_height(state.window_size.borrow().height);
+    crate::ui::style_iced_adapter::set_window_height(state.window_size.borrow().height);
     // PLAN-028 T-02:窗口尺寸真值发布(分体轨桥;变化才发布——每帧两次
     // f32 比较,发布仅随真实变化,稳态零写入)。消费面:同进程 .at
     // storage.get 直读;分体轨后端经共享 storage 文件按拍拉取
@@ -29398,7 +29398,7 @@ fn build_autodown_editor_generic<M: Clone + Debug + 'static>(
         let sk = ade::storage_key(key);
         // 单向数据流：外部差分回写（与 code editor 同 §5.4 口径）。
         ade::autodown_editor_sync(&sk, value, is_final);
-        let fg = if crate::ui::style::iced_adapter::dark_mode() {
+        let fg = if crate::ui::style_iced_adapter::dark_mode() {
             ade_fg_dark()
         } else {
             ade_fg_light()
@@ -30331,7 +30331,7 @@ fn render_dynamic_view(
                         // 可见光标色(theme foreground)。
                         if value_color.a <= 0.001 {
                             editor = editor.highlight_with((), text_editor_text_transparent);
-                            let caret_color = crate::ui::style::iced_adapter::resolve_semantic_rgb(
+                            let caret_color = crate::ui::style_iced_adapter::resolve_semantic_rgb(
                                 &crate::ui::style::Color::OnBackground,
                             )
                             .map(|(r, g, b)| iced::Color::from_rgb8(r, g, b))
@@ -30922,8 +30922,8 @@ fn render_dynamic_view(
             // Bridge the renderer's semantic theme into the editor theme
             // source (dark mode + accent), then build the widget.
             ce::set_theme_source(
-                crate::ui::style::iced_adapter::dark_mode(),
-                &crate::ui::style::iced_adapter::accent_name(),
+                crate::ui::style_iced_adapter::dark_mode(),
+                &crate::ui::style_iced_adapter::accent_name(),
             );
 
             let config = ce::CodeEditorConfig {
@@ -31068,7 +31068,7 @@ fn render_dynamic_view(
                 use crate::ui::autodown_editor as ade;
                 let sk = ade::storage_key(&key);
                 ade::autodown_editor_sync(&sk, &value, is_final);
-                let fg = if crate::ui::style::iced_adapter::dark_mode() {
+                let fg = if crate::ui::style_iced_adapter::dark_mode() {
                     ade_fg_dark()
                 } else {
                     ade_fg_light()
@@ -34266,23 +34266,23 @@ mod tests {
             "bg-surface hover:bg-primary/20 focus:bg-blue-500 active:bg-muted disabled:opacity-50",
         )
         .unwrap();
-        let base = build_button_style(&crate::ui::style::IcedStyle::from_style(&s));
+        let base = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::from_style(&s));
         // hover:变体色覆盖 base(既有先例)
-        let hover = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(
+        let hover = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(
             &s,
             Variant::Hover,
         ));
         assert!(hover.background.is_some());
         // focus/active/disabled:同构合并,各自底色生效
-        let focus = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(
+        let focus = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(
             &s,
             Variant::Focus,
         ));
-        let active = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(
+        let active = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(
             &s,
             Variant::Active,
         ));
-        let disabled = build_button_style(&crate::ui::style::IcedStyle::merged_with_variant(
+        let disabled = build_button_style(&crate::ui::style_iced_adapter::IcedStyle::merged_with_variant(
             &s,
             Variant::Disabled,
         ));

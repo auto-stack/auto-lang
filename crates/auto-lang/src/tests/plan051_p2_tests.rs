@@ -91,7 +91,7 @@ mod plan051_p2_tests {
         )));
         // 应用面：IcedStyle 携带 min_height（此前 from_style 已带，缺的是
         // apply_container_style 消费——单测以 IcedStyle 断言 + 实机对拍兜底）。
-        let is = crate::ui::style::iced_adapter::IcedStyle::from_style(&s);
+        let is = crate::ui::style_iced_adapter::IcedStyle::from_style(&s);
         assert_eq!(is.min_height, Some(80.0), "from_style 必须携带 min_height");
     }
 

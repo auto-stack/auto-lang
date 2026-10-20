@@ -10,9 +10,9 @@ use super::Color;
 
 /// PLAN-593（Design 29 Phase 1）：语义 token 值单一事实源——zinc/scaffold
 /// （CSS 面）与 stella（VM 面）三套色板 + accent 表 + 封闭词表。
-/// 实体在无门的 `crate::design_tokens`（ui_gen 消费方不受 feature="ui" 门，
+/// 实体在无门的 `auto_lang_core::design_tokens`（ui_gen 消费方不受 feature="ui" 门，
 /// 见该模块头注）；此处 re-export 保持 `theme::registry` 路径稳定。
-pub use crate::design_tokens::registry;
+pub use auto_lang_core::design_tokens::registry;
 
 // PLAN-601 T-04/T-03：活动主题槽——命名主题（内置名或 theme{} 合成主题）
 // 热切换。epoch 失效回路与 dark_mode 共用（THEME_EPOCH）；mode 仍由
@@ -20,7 +20,7 @@ pub use crate::design_tokens::registry;
 // 读值不变=零回归泛化）。
 pub enum ActiveSpec {
     Builtin(&'static registry::ThemeSpec),
-    Composed(std::sync::Arc<crate::design_tokens::decl::ComposedTheme>),
+    Composed(std::sync::Arc<auto_lang_core::design_tokens::decl::ComposedTheme>),
 }
 
 impl ActiveSpec {
@@ -65,7 +65,7 @@ pub fn active_theme_rgb(token: registry::TokenName, is_dark: bool) -> Option<(u8
 
 /// PLAN-601 T-10：活动合成主题（editor syntax 系统首次构建时把它烘焙进
 /// 主题集——合成主题 boot 后即固定，先于任何编辑器创建）。
-pub fn active_composed() -> Option<std::sync::Arc<crate::design_tokens::decl::ComposedTheme>> {
+pub fn active_composed() -> Option<std::sync::Arc<auto_lang_core::design_tokens::decl::ComposedTheme>> {
     ACTIVE_THEME.with(|t| match &*t.borrow() {
         ActiveSpec::Composed(c) => Some(c.clone()),
         ActiveSpec::Builtin(_) => None,
@@ -84,7 +84,7 @@ pub fn set_theme(name: &str) -> bool {
 /// PLAN-601 T-03：应用 theme{} 合成主题（decl::compose 产物）。
 /// 返回是否发生变化（同名同值不触发 epoch）。
 pub fn set_theme_composed(
-    theme: std::sync::Arc<crate::design_tokens::decl::ComposedTheme>,
+    theme: std::sync::Arc<auto_lang_core::design_tokens::decl::ComposedTheme>,
 ) -> bool {
     set_active(ActiveSpec::Composed(theme))
 }

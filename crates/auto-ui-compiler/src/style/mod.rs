@@ -22,12 +22,12 @@
 // `dark:`(theme::dark_mode 门控)——命中态进 base,未命中登记 variant_classes
 // 可见不静默;resize/主题切换经 view 重建→重解析生效。
 
-mod class;
-mod color;
-mod layout_extract;
-mod parser;
-pub use crate::design_tokens::recipe;
-pub use crate::design_tokens::recipe::*;
+pub mod class;
+pub mod color;
+pub mod layout_extract;
+pub mod parser;
+pub use auto_lang_core::design_tokens::recipe;
+pub use auto_lang_core::design_tokens::recipe::*;
 pub use class::{GradientDir, ObjectFit, RoundedSize, SizeValue, StyleClass};
 pub use color::Color;
 pub use layout_extract::BoxLayout;
@@ -159,10 +159,10 @@ pub mod theme;
 pub mod variants;
 
 #[cfg(feature = "ui-iced")]
-pub mod iced_adapter;
+// PLAN-814 T-03：iced 后端适配器留 auto-lang（ui/style_iced_adapter.rs），
+// 经本 crate 公开 style 类型面消费；headless 适配随分析侧在本 crate。
 
 #[cfg(feature = "ui-iced")]
-pub use iced_adapter::IcedStyle; // Re-export for backend adapters
 
 #[cfg(feature = "ui-headless")]
 pub mod headless_adapter;
@@ -576,7 +576,7 @@ mod tests {
 
     #[test]
     fn test_responsive_gates_by_window_width() {
-        use crate::ui::style::theme;
+        use crate::style::theme;
         // 默认 1024(md/lg 命中,xl/2xl 不命中)
         theme::set_window_width(1024.0);
         let s = Style::parse("hidden md:flex xl:grid 2xl:block").unwrap();
@@ -624,7 +624,7 @@ mod tests {
     // 惯例的机制底座,消费者=packages/blueprints/navigation/sidebar-shell。
     #[test]
     fn test_lg_hidden_override_and_width_cascade() {
-        use crate::ui::style::theme;
+        use crate::style::theme;
         // label 面:768 竖屏(<lg 1024)→ hidden;1280(≥lg)→ flex 覆盖
         theme::set_window_width(768.0);
         let s = Style::parse("hidden lg:flex").unwrap();
@@ -666,14 +666,14 @@ mod tests {
 
     #[test]
     fn test_dark_prefix_gates_by_theme_mode() {
-        use crate::ui::style::theme;
+        use crate::style::theme;
         // dark 态:dark: 类命中进 base(后应用胜出)
         theme::set_dark_mode(true);
         let s = Style::parse("bg-card dark:bg-slate-900").unwrap();
         let has_slate = s.classes.iter().any(|c| {
             matches!(
                 c,
-                StyleClass::BackgroundColor(crate::ui::style::Color::Slate(_))
+                StyleClass::BackgroundColor(crate::style::Color::Slate(_))
             )
         });
         assert!(
@@ -683,7 +683,7 @@ mod tests {
         );
         assert!(s.classes.iter().any(|c| matches!(
             c,
-            StyleClass::BackgroundColor(crate::ui::style::Color::Surface)
+            StyleClass::BackgroundColor(crate::style::Color::Surface)
         )));
         assert_eq!(s.variant_classes.len(), 1);
 
@@ -693,14 +693,14 @@ mod tests {
         assert!(
             !s.classes.iter().any(|c| matches!(
                 c,
-                StyleClass::BackgroundColor(crate::ui::style::Color::Slate(_))
+                StyleClass::BackgroundColor(crate::style::Color::Slate(_))
             )),
             "light 态 dark: 类不进 base: {:?}",
             s.classes
         );
         assert!(s.classes.iter().any(|c| matches!(
             c,
-            StyleClass::BackgroundColor(crate::ui::style::Color::Surface)
+            StyleClass::BackgroundColor(crate::style::Color::Surface)
         )));
         assert_eq!(s.variant_classes.len(), 1, "light 态登记可见不静默");
 
@@ -734,7 +734,7 @@ mod plan411_tests {
         let has_4xl = s
             .classes
             .iter()
-            .any(|c| matches!(c, crate::ui::style::StyleClass::Text4Xl));
+            .any(|c| matches!(c, crate::style::StyleClass::Text4Xl));
         assert!(has_4xl, "ladder parse: {:?}", s.classes);
     }
 
@@ -745,10 +745,10 @@ mod plan411_tests {
         // [Hidden, NegativeMarginLeft]（472 T2 修复 stale 断言，master 既有红）。
         let s = Style::parse("md:hidden -ml-2").unwrap();
         assert_eq!(s.classes.len(), 2);
-        assert!(matches!(s.classes[0], crate::ui::style::StyleClass::Hidden));
+        assert!(matches!(s.classes[0], crate::style::StyleClass::Hidden));
         assert!(matches!(
             s.classes[1],
-            crate::ui::style::StyleClass::NegativeMarginLeft(_)
+            crate::style::StyleClass::NegativeMarginLeft(_)
         ));
     }
 
@@ -756,7 +756,7 @@ mod plan411_tests {
     fn test_text_5xl_9xl_parse() {
         // Plan 411 P0-B: hero ladder needs text-5xl..text-9xl to exist so
         // "text-4xl md:text-5xl lg:text-7xl" resolves to 72px (last wins).
-        use crate::ui::style::StyleClass;
+        use crate::style::StyleClass;
         assert!(matches!(
             StyleClass::parse_single("text-5xl"),
             Ok(StyleClass::Text5Xl)
@@ -906,7 +906,7 @@ fn split_css_declarations(input: &str) -> (Vec<StyleClass>, Vec<String>, String)
                 }
                 None => unmapped.push(segment),
             },
-            ("background", v) => match crate::ui::style::Color::from_css(v) {
+            ("background", v) => match crate::style::Color::from_css(v) {
                 Ok(c) => classes.push(StyleClass::BackgroundColor(c)),
                 Err(_) => unmapped.push(segment),
             },
@@ -934,7 +934,7 @@ fn parse_css_len(value: &str) -> Option<CssLen> {
 
 /// `border` 声明：`2px solid rgb(59,130,246)` / `1px` / `none`。
 /// 返回 (宽度, 颜色)；识别不出任何成分时 None。
-fn parse_css_border(value: &str) -> Option<(Option<f32>, Option<crate::ui::style::Color>)> {
+fn parse_css_border(value: &str) -> Option<(Option<f32>, Option<crate::style::Color>)> {
     let value = value.trim();
     if value == "none" {
         return Some((None, None));
@@ -956,7 +956,7 @@ fn parse_css_border(value: &str) -> Option<(Option<f32>, Option<crate::ui::style
         .split_whitespace()
         .find(|t| t.starts_with("rgb(") || t.starts_with("rgba(") || t.starts_with('#'))
     {
-        color = crate::ui::style::Color::from_css(color_token).ok();
+        color = crate::style::Color::from_css(color_token).ok();
     }
     if width.is_none() && color.is_none() {
         return None;

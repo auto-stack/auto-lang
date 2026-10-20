@@ -162,7 +162,7 @@ where
 
         // 主题单源（PLAN-679）：与独立轨 run 链同款 shadcn 调色板。
         let theme =
-            crate::ui::iced::renderer::shadcn_theme(crate::ui::style::iced_adapter::dark_mode());
+            crate::ui::iced::renderer::shadcn_theme(crate::ui::style_iced_adapter::dark_mode());
         let style = advanced_renderer::Style {
             text_color: theme.base().text_color,
         };

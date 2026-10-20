@@ -5534,7 +5534,7 @@ pub(super) static LUCIDE_ICONS: &[(&str, &str)] = &[
 pub(super) const LUCIDE_SOURCE_VERSION: &str = "0.312.0";
 
 /// 二分查名。命中返回字形内部 markup（24×24 坐标系，不含 `<svg>` 外壳）。
-pub(super) fn lookup(name: &str) -> Option<&'static str> {
+pub fn lookup(name: &str) -> Option<&'static str> {
     LUCIDE_ICONS
         .binary_search_by(|(k, _)| (*k).cmp(name))
         .ok()
@@ -5542,7 +5542,7 @@ pub(super) fn lookup(name: &str) -> Option<&'static str> {
 }
 
 /// PLAN-706: lucide kebab 名是否在册（vue 生成器防非法 import）。
-pub(crate) fn is_known(name: &str) -> bool {
+pub fn is_known(name: &str) -> bool {
     LUCIDE_ICONS
         .binary_search_by(|(k, _)| (*k).cmp(name))
         .is_ok()

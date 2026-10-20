@@ -10,4 +10,12 @@ keywords = ["ui", "compiler", "codegen", "aura"]
 # PLAN-814 T-01/T-02 probe skeleton: the UI analysis/generator surface
 # (aura/ui_gen/design_tokens validators + widget registry) migrates in T-03.
 # The compiler may use the SDK; it must NOT be depended on by the SDK.
-auto-lang-core = { path = "../auto-lang-core" }
+auto-lang-core = { path = "../auto-lang-core", features = ["ui-dialect"] }
+# PLAN-814 T-03 Batch 1：action_config 解析消费的轻前端 crate（与 SDK 同源）。
+auto-atom = { path = "../auto-atom" }
+auto-val = { path = "../auto-val", features = ["serde"] }
+
+[dev-dependencies]
+# PLAN-814 T-03 Batch 1：lucide 表脚手架测试（node_modules 抽样核对）。
+walkdir = "2"
+serde_json = { workspace = true }
