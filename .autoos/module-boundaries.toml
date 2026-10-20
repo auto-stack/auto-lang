@@ -127,6 +127,10 @@ schema = "module-boundaries/1"
 "auto-toolchain-core" = "man-ecosystem"
 # PLAN-809: 管理规则核心（声明归一/闭包/选择/规划纯规则；闭包恒轻）
 "auto-man-core" = "man-ecosystem"
+# PLAN-815 T-04: API 生成核心（api_gen/sidecar/rust_workspace 单算法，
+# 自 auto-man 析出；owner=lang-service-adapter——man 域(http_service)与
+# ui 域(auto-ui-tools)双消费的最低层，落 man-ecosystem）。
+"auto-api-gen" = "man-ecosystem"
 # 顶层装配/工具/CLI（允许依赖任意下层域）。
 "auto" = "cli"
 "auto-lsp" = "tool"
@@ -466,7 +470,7 @@ evidence = "调研 §5.2：pac/git/index/lock/pull/resolver 归 man core；resol
 id = "split-man-ui-orchestration"
 coverage_group = "man-split"
 kind = "split"
-path = "crates/auto-man/src/vue.rs"
+path = "crates/auto-ui-tools/src/vue.rs"  # PLAN-815 T-04 迁入 auto-ui-tools
 owner = "auto-ui-tool-plugin"
 exit_phase = "R5"
 status = "active"
@@ -476,7 +480,7 @@ evidence = "调研 §5.2：vue/vue_shadcn/rust_ui/jet/ark/tauri、gallery/wm/ima
 id = "split-man-service-gen"
 coverage_group = "man-split"
 kind = "split"
-path = "crates/auto-man/src/api_gen.rs"
+path = "crates/auto-api-gen/src/api_gen.rs"  # PLAN-815 T-04 析出独立 crate
 owner = "lang-service-adapter"
 exit_phase = "R5"
 status = "active"
@@ -506,7 +510,7 @@ evidence = "调研 §5.2：auto-gen 拆纯模板核心与 Auto 可执行模板 a
 id = "split-man-rust-ui"
 coverage_group = "man-split"
 kind = "split"
-path = "crates/auto-man/src/rust_ui.rs"
+path = "crates/auto-ui-tools/src/rust_ui.rs"  # PLAN-815 T-04 迁入 auto-ui-tools
 owner = "auto-ui-tool-plugin"
 exit_phase = "R5"
 status = "active"

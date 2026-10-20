@@ -224,12 +224,19 @@ pub fn run_script_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), Strin
             .map_err(|e| format!("Failed to run {}: {}", cmd, e))?;
 
         let mut guard = ChildGuard(Some(child));
-        let status = guard.0.as_mut().unwrap().wait()
+        let status = guard
+            .0
+            .as_mut()
+            .unwrap()
+            .wait()
             .map_err(|e| format!("Failed to wait: {}", e))?;
         guard.0 = None; // Child exited normally, don't kill on drop
 
-        if status.success() { Ok(()) }
-        else { Err(format!("{} exited with code {:?}", cmd, status.code())) }
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{} exited with code {:?}", cmd, status.code()))
+        }
     }
 
     #[cfg(not(windows))]
@@ -244,12 +251,19 @@ pub fn run_script_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), Strin
             .map_err(|e| format!("Failed to run {}: {}", cmd, e))?;
 
         let mut guard = ChildGuard(Some(child));
-        let status = guard.0.as_mut().unwrap().wait()
+        let status = guard
+            .0
+            .as_mut()
+            .unwrap()
+            .wait()
             .map_err(|e| format!("Failed to wait: {}", e))?;
         guard.0 = None;
 
-        if status.success() { Ok(()) }
-        else { Err(format!("{} exited with code {:?}", cmd, status.code())) }
+        if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{} exited with code {:?}", cmd, status.code()))
+        }
     }
 }
 
@@ -334,10 +348,7 @@ mod tests {
             parse_pkg_from_at("pkg:\"pnpm\""),
             Some(PkgManagerKind::Pnpm)
         );
-        assert_eq!(
-            parse_pkg_from_at("name: \"foo\""),
-            None
-        );
+        assert_eq!(parse_pkg_from_at("name: \"foo\""), None);
     }
 
     #[test]

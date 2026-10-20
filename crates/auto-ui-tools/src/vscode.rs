@@ -16,7 +16,7 @@ use std::path::Path;
 
 use colored::Colorize;
 
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 // ---------------------------------------------------------------------------
 // VscodeConfig — parsed from pac.at `vscode { }` block
@@ -121,12 +121,11 @@ impl VscodeProject {
             return Err("pac.at not found in workspace".into());
         }
 
-        let pac_content = fs::read_to_string(&pac_path)
-            .map_err(|e| format!("Failed to read pac.at: {}", e))?;
+        let pac_content =
+            fs::read_to_string(&pac_path).map_err(|e| format!("Failed to read pac.at: {}", e))?;
 
         // Parse project name
-        let name = parse_pac_name(&pac_content)
-            .unwrap_or_else(|| "my-extension".to_string());
+        let name = parse_pac_name(&pac_content).unwrap_or_else(|| "my-extension".to_string());
 
         // Parse vscode config block
         let config = VscodeConfig::parse_from_pac(&pac_content, &name);
@@ -166,7 +165,9 @@ impl VscodeProject {
         );
         println!(
             "{}",
-            "  AURA Workspace -> VSCode Extension".bright_yellow().bold()
+            "  AURA Workspace -> VSCode Extension"
+                .bright_yellow()
+                .bold()
         );
         println!(
             "{}",
@@ -185,12 +186,9 @@ impl VscodeProject {
         let media_dir = self.output_dir.join("media");
         let vscode_dir = self.output_dir.join(".vscode");
 
-        fs::create_dir_all(&src_dir)
-            .map_err(|e| format!("Failed to create src/panels: {}", e))?;
-        fs::create_dir_all(&media_dir)
-            .map_err(|e| format!("Failed to create media: {}", e))?;
-        fs::create_dir_all(&vscode_dir)
-            .map_err(|e| format!("Failed to create .vscode: {}", e))?;
+        fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create src/panels: {}", e))?;
+        fs::create_dir_all(&media_dir).map_err(|e| format!("Failed to create media: {}", e))?;
+        fs::create_dir_all(&vscode_dir).map_err(|e| format!("Failed to create .vscode: {}", e))?;
 
         println!("{}", "  Created directory structure".bright_green());
 
@@ -208,9 +206,7 @@ impl VscodeProject {
         if let Some(ref icon_rel) = self.config.icon {
             let icon_src = self.root_dir.join(icon_rel);
             if icon_src.exists() {
-                let icon_dest = media_dir.join(
-                    Path::new(icon_rel).file_name().unwrap_or_default(),
-                );
+                let icon_dest = media_dir.join(Path::new(icon_rel).file_name().unwrap_or_default());
                 fs::copy(&icon_src, &icon_dest)
                     .map_err(|e| format!("Failed to copy icon: {}", e))?;
                 println!("  {} icon from {}", "Copied".bright_green(), icon_rel);
@@ -220,7 +216,9 @@ impl VscodeProject {
         println!();
         println!(
             "{}",
-            "  VSCode extension project generated!".bright_green().bold()
+            "  VSCode extension project generated!"
+                .bright_green()
+                .bold()
         );
 
         Ok(())
@@ -231,8 +229,7 @@ impl VscodeProject {
     fn write_package_json(&self) -> AutoResult<()> {
         let content = generate_package_json(&self.name, &self.config);
         let path = self.output_dir.join("package.json");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write package.json: {}", e))?;
+        fs::write(&path, content).map_err(|e| format!("Failed to write package.json: {}", e))?;
         println!("  {} package.json", "Generated".bright_green());
         Ok(())
     }
@@ -240,17 +237,19 @@ impl VscodeProject {
     fn write_extension_ts(&self) -> AutoResult<()> {
         let content = generate_extension_ts(&self.config);
         let path = self.output_dir.join("src").join("extension.ts");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write extension.ts: {}", e))?;
+        fs::write(&path, content).map_err(|e| format!("Failed to write extension.ts: {}", e))?;
         println!("  {} src/extension.ts", "Generated".bright_green());
         Ok(())
     }
 
     fn write_app_panel_ts(&self) -> AutoResult<()> {
         let content = generate_app_panel_ts(&self.config);
-        let path = self.output_dir.join("src").join("panels").join("AppPanel.ts");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write AppPanel.ts: {}", e))?;
+        let path = self
+            .output_dir
+            .join("src")
+            .join("panels")
+            .join("AppPanel.ts");
+        fs::write(&path, content).map_err(|e| format!("Failed to write AppPanel.ts: {}", e))?;
         println!("  {} src/panels/AppPanel.ts", "Generated".bright_green());
         Ok(())
     }
@@ -258,8 +257,7 @@ impl VscodeProject {
     fn write_tsconfig(&self) -> AutoResult<()> {
         let content = generate_tsconfig();
         let path = self.output_dir.join("tsconfig.json");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
+        fs::write(&path, content).map_err(|e| format!("Failed to write tsconfig.json: {}", e))?;
         println!("  {} tsconfig.json", "Generated".bright_green());
         Ok(())
     }
@@ -276,8 +274,7 @@ impl VscodeProject {
     fn write_vscodeignore(&self) -> AutoResult<()> {
         let content = generate_vscodeignore();
         let path = self.output_dir.join(".vscodeignore");
-        fs::write(&path, content)
-            .map_err(|e| format!("Failed to write .vscodeignore: {}", e))?;
+        fs::write(&path, content).map_err(|e| format!("Failed to write .vscodeignore: {}", e))?;
         println!("  {} .vscodeignore", "Generated".bright_green());
         Ok(())
     }
@@ -372,7 +369,10 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
                 println!("  {} Vue project built", "OK".bright_green());
             }
             Err(_) => {
-                return Err("Vue build failed — cannot generate VSCode extension without webview assets".into());
+                return Err(
+                    "Vue build failed — cannot generate VSCode extension without webview assets"
+                        .into(),
+                );
             }
         }
     } else {
@@ -395,20 +395,16 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
 
     // Step 3: Check for npm
     println!();
-    println!(
-        "{}",
-        "  Step 3: Checking build tools...".bright_cyan()
-    );
+    println!("{}", "  Step 3: Checking build tools...".bright_cyan());
 
-    let has_npm = {
-        crate::pkg::command_exists(crate::pkg::install_cmd())
-    };
+    let has_npm = { crate::pkg::command_exists(crate::pkg::install_cmd()) };
 
     if !has_npm {
         let pm = crate::pkg::display_name();
         println!(
             "  {} {} not found. Cannot build automatically.",
-            "Warning:".bright_yellow(), pm
+            "Warning:".bright_yellow(),
+            pm
         );
         println!("  Please install Node.js or bun.");
         println!("  Project location: {}", vscode_dir.display());
@@ -418,10 +414,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
     // Step 4: Install extension dependencies
     println!("  {} npm found", "OK".bright_green());
     println!();
-    println!(
-        "{}",
-        "  Step 4: Installing dependencies...".bright_cyan()
-    );
+    println!("{}", "  Step 4: Installing dependencies...".bright_cyan());
 
     // Install extension dependencies if needed
     if !vscode_dir.join("node_modules").exists() {
@@ -440,10 +433,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
 
     // Step 5: Compile extension
     println!();
-    println!(
-        "{}",
-        "  Step 5: Compiling extension...".bright_cyan()
-    );
+    println!("{}", "  Step 5: Compiling extension...".bright_cyan());
 
     let npm_result = crate::pkg::run_script("build", &[], &vscode_dir);
 
@@ -452,7 +442,9 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
             println!();
             println!(
                 "{}",
-                "  VSCode extension built successfully!".bright_green().bold()
+                "  VSCode extension built successfully!"
+                    .bright_green()
+                    .bold()
             );
         }
         Err(e) => {
@@ -482,10 +474,7 @@ pub fn build_vscode_project(root_dir: &Path) -> AutoResult<()> {
 
 /// Run the VSCode extension in development mode (auto run command).
 pub fn run_vscode_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()> {
-    println!(
-        "{}",
-        "Running VSCode extension project".bright_cyan()
-    );
+    println!("{}", "Running VSCode extension project".bright_cyan());
 
     // Step 1: Build first (generates + installs deps + compiles)
     build_vscode_project(root_dir)?;
@@ -526,8 +515,7 @@ pub fn run_vscode_project(root_dir: &Path, _args: Vec<String>) -> AutoResult<()>
             );
             println!(
                 "  {}",
-                format!("code --extensionDevelopmentPath={}", vscode_dir.display())
-                    .bright_cyan()
+                format!("code --extensionDevelopmentPath={}", vscode_dir.display()).bright_cyan()
             );
         }
     }
@@ -547,7 +535,7 @@ fn generate_package_json(name: &str, config: &VscodeConfig) -> String {
     let icon_field = if config.icon.is_some() {
         r#",
     "icon": "media/icon.png""#
-        .to_string()
+            .to_string()
     } else {
         "".to_string()
     };
@@ -812,7 +800,8 @@ fn generate_tsconfig() -> String {
     },
     "exclude": ["node_modules", ".vscode-test"]
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn generate_webpack_config() -> String {
@@ -857,7 +846,8 @@ const config = {
 };
 
 module.exports = config;
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn generate_vscodeignore() -> String {
@@ -892,7 +882,8 @@ fn generate_launch_json() -> String {
         }
     ]
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn generate_tasks_json() -> String {
@@ -909,7 +900,8 @@ fn generate_tasks_json() -> String {
         }
     ]
 }
-"#.to_string()
+"#
+    .to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -918,9 +910,10 @@ fn generate_tasks_json() -> String {
 
 /// Recursively copy a directory. Used as fallback when symlink fails.
 fn copy_dir_recursive(src: &Path, dst: &Path) -> AutoResult<()> {
-    fs::create_dir_all(dst)
-        .map_err(|e| format!("Failed to create {}: {}", dst.display(), e))?;
-    for entry in fs::read_dir(src).map_err(|e| format!("Failed to read {}: {}", src.display(), e))? {
+    fs::create_dir_all(dst).map_err(|e| format!("Failed to create {}: {}", dst.display(), e))?;
+    for entry in
+        fs::read_dir(src).map_err(|e| format!("Failed to read {}: {}", src.display(), e))?
+    {
         let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());

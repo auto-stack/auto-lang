@@ -44,59 +44,81 @@ pub mod generation_request_adapter;
 pub mod pac;
 /// PLAN-786: 展示字段（name/title/title_zh）统一只读入口——首个生产
 /// project-model 消费者；兼容臂为 vue.rs 原行扫描的唯一冻结副本。
-pub(crate) mod project_display_reader;
+// PLAN-815 T-04: display-field reader moved to auto-ui-tools (vue closure).
+pub(crate) use auto_ui_tools::project_display_reader;
 pub mod project_model_adapter;
-// PLAN-786 T-04: V01..V05 永久对拍族（冻结旧 oracle 只存于此）。
-#[cfg(test)]
-mod project_display_reader_tests;
+// PLAN-786 T-04: V01..V05 永久对拍族随 project_display_reader 迁
+// auto-ui-tools（其 cfg(test) 模块在本 crate 测试构建运行）。
 
 // Phase 5: Vue project support
-pub mod vue;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::vue;
 
 // PLAN-662 T-02: 画廊行扫描磁盘缓存（画廊 registry/proxy 共用扫描面）
-pub mod gallery_cache;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::gallery_cache;
 
 // PLAN-075: G-6 收口定向测——dep/components//bps 重生成臂同文件模块 fn 池
 // （夹具 examples/capability-tests/048-bp-module-fn，首个真实消费方）。
-#[cfg(test)]
-mod plan075_bp_tests;
+// PLAN-815 T-04: plan075 bp 链测试随 vue 迁 auto-ui-tools（cfg(test) 模块）。
 
 // PLAN-457: bundled shadcn-vue ui component snapshots (offline cold start)
-pub mod gallery_assets;
-pub mod vue_shadcn;
-pub mod wm_assets;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::gallery_assets;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::vue_shadcn;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::wm_assets;
 
 // Phase 6: Tauri project support (Plan 130)
-pub mod tauri;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::tauri;
 
 // Phase 7: Jetpack Compose project support
-pub mod jet;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::jet;
 
 // Phase 8: ArkTS/HarmonyOS project support
-pub mod ark;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::ark;
 
 // Phase 9: Rust UI support (ICED/GPUI)
-pub mod rust_ui;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::rust_ui;
 
 // Phase 9: API code generation (Plan 130)
 // PLAN-815 T-04: api_gen moved to auto-api-gen (single algorithm; owner
 // lang-service-adapter); module re-export keeps crate::api_gen paths alive.
 pub use auto_api_gen::api_gen;
 
+// PLAN-815 T-04: M814-B 门残留 —— vue run 面(画廊 back_proxy 依赖
+// auto_lang::back_proxy/photo_service,814-B 迁 auto-ui-runtime 后归 T-05)
+// 与 run_vm_ui 家族(iced 运行时 + vm::backend_abi 同门)。生成/构建主体
+// 已迁 auto-ui-tools;残留经门面消费其公开面,行为冻结。
+pub mod rust_ui_vm_compat;
+pub mod vue_run_compat;
+// PLAN-815 T-04: I-PROJECT 请求缝对拍测试(构造侧=adapter 属 Man)。
+#[cfg(test)]
+mod vue_request_seam_tests;
+
 // PLAN-736: 工程级 HTTP 服务独立启动（`auto serve`；vm/rust 双轨）
 pub mod http_service;
 
 // Plan 547: deterministic image-viewer directory/index primitives.
-pub mod image_viewer;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::image_viewer;
 
 // Phase 10: Tauri backend generator (Plan 151)
-pub mod tauri_backend;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::tauri_backend;
 
 // Phase 11: VSCode extension generator (Plan 181)
-pub mod vscode;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::vscode;
 
 // Phase 12: Package manager abstraction (bun/npm) (Plan 186)
-pub mod pkg;
+// PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
+pub use auto_ui_tools::pkg;
 
 // NOTE: stubs.rs removed in Phase 6 - all types migrated
 

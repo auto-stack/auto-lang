@@ -247,11 +247,12 @@ pub fn backend_generation_is_fresh(project_dir: &Path) -> bool {
     // 读取（含零字节空文件）一律实际内容指纹（空文件=811c9dc5，与生成端
     // 收据同口径）；**其它读取错误（权限/IO）不冒充 absent**——归 None
     // （不可核验=保守陈旧），防止 recorded="absent" × 读错误 → 假新鲜。
-    let current_lock: Option<String> = crate::rust_workspace::workspace_lock_identity(std::fs::read(
-        crate::rust_workspace::ensure_shared_workspace(project_dir).join("Cargo.lock"),
-    ))
-    .map(|identity| identity.unwrap_or_else(|| "absent".to_string()))
-    .ok();
+    let current_lock: Option<String> =
+        crate::rust_workspace::workspace_lock_identity(std::fs::read(
+            crate::rust_workspace::ensure_shared_workspace(project_dir).join("Cargo.lock"),
+        ))
+        .map(|identity| identity.unwrap_or_else(|| "absent".to_string()))
+        .ok();
     // PLAN-738 R5-01：一次绑定状态机。生成时未建 lock（收据记 absent）
     // → 首次出现实际 lock 时判新鲜**并把实际 lock 身份写回收据**（一次性
     // 物化绑定，收据升级）——此后严格比较：依赖版本漂移/lock 删除/读取
@@ -322,7 +323,10 @@ pub fn try_full_parse(api_content: &str) -> Option<ApiModule> {
 }
 
 /// Generate Tauri API code
-fn generate_tauri_api(api_module: &auto_lang_core::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+fn generate_tauri_api(
+    api_module: &auto_lang_core::api::ApiModule,
+    root_dir: &Path,
+) -> AutoResult<()> {
     use auto_lang_core::api::Target;
 
     let vue_dir = root_dir.join("gen").join("front").join("vue");
@@ -460,7 +464,10 @@ fn auto_type_to_ts(auto_type: &str) -> String {
 }
 
 /// Generate Vue + HTTP API code
-fn generate_vue_api(api_module: &auto_lang_core::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+fn generate_vue_api(
+    api_module: &auto_lang_core::api::ApiModule,
+    root_dir: &Path,
+) -> AutoResult<()> {
     use auto_lang_core::api::TypeScriptGenerator;
 
     // For workspace projects, output to dist/src/lib/
@@ -1039,7 +1046,10 @@ fn fix_borrowed_slice_returns(code: &str) -> String {
     out
 }
 
-fn generate_rust_server(api_module: &auto_lang_core::api::ApiModule, root_dir: &Path) -> AutoResult<()> {
+fn generate_rust_server(
+    api_module: &auto_lang_core::api::ApiModule,
+    root_dir: &Path,
+) -> AutoResult<()> {
     let frozen_sources = generation_source_snapshot(root_dir)?;
     let parsed = try_full_parse(&frozen_sources[0].1);
     let api_module = parsed.as_ref().unwrap_or(api_module);
@@ -2085,7 +2095,8 @@ fn try_transpile_body_with_proofs(
 pub fn current_generated_api_assembly(
     root: &Path,
 ) -> AutoResult<auto_lang_core::stdlib_assembly::manifest::AssemblyManifest> {
-    let api_file = auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let api_file =
+        auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
     let source = std::fs::read_to_string(api_file)?;
     let module = try_full_parse(&source).ok_or("API contract parse failed")?;
     generated_api_assembly(root, &module)
@@ -2095,7 +2106,8 @@ fn generated_api_assembly(
     root: &Path,
     module: &auto_lang_core::api::ApiModule,
 ) -> AutoResult<auto_lang_core::stdlib_assembly::manifest::AssemblyManifest> {
-    let api_file = auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let api_file =
+        auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
     let source = std::fs::read_to_string(&api_file)?;
     let mut session = auto_lang_core::compile::CompileSession::new();
     session.set_assembly_target(auto_lang_core::stdlib_assembly::model::AssemblyTarget::Rust)?;
@@ -5029,7 +5041,10 @@ pub fn generate_initial_data_pub(
 
 /// Extract seed data from db.at's `var notes List<Note>.new([...])` declaration.
 /// Parses the Note { ... } struct literals and converts to Rust.
-fn extract_seed_data(db_content: &str, api_module: &auto_lang_core::api::ApiModule) -> Option<String> {
+fn extract_seed_data(
+    db_content: &str,
+    api_module: &auto_lang_core::api::ApiModule,
+) -> Option<String> {
     let primary_type = primary_type_name_pub(api_module)?;
     let api_type = api_module.types.iter().find(|t| t.name == primary_type)?;
 
@@ -5847,9 +5862,10 @@ pub fn answer() int { let d = json.parse(\"{}\")
         cli.set_assembly_target(AssemblyTarget::Rust).unwrap();
         cli.add_source_dir(api_path.parent().unwrap().to_path_buf());
         cli.resolve_uses(api).unwrap();
-        let references =
-            auto_lang_core::stdlib_assembly::reference::compile_actual_references(&cli, api, &api_path)
-                .unwrap();
+        let references = auto_lang_core::stdlib_assembly::reference::compile_actual_references(
+            &cli, api, &api_path,
+        )
+        .unwrap();
         let cli_manifest = AssemblyManifest::freeze(
             cli.assembly,
             "stdlib-inspect",

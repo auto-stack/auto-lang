@@ -10,14 +10,14 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use auto_lang::aura::{AuraRoute, AuraWidget};
-use auto_lang::database::{UIArtifact, UIBackend, UICache};
-use auto_lang::ui_gen::{BackendGenerator, VueGenerator};
+use auto_lang_core::database::{UIArtifact, UIBackend, UICache};
+use auto_ui_compiler::aura::{AuraRoute, AuraWidget};
+use auto_ui_compiler::ui_gen::{BackendGenerator, VueGenerator};
 use colored::Colorize;
 
 use crate::project_display_reader::{self, DisplayRead};
 use crate::util::hash_string;
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 /// Recursively copy a directory and all its contents
 fn copy_dir_all(src: &Path, dst: &Path) -> std::io::Result<()> {
@@ -437,7 +437,7 @@ impl VueDependencyUsage {
 /// Plan 442 P0-1: package.json is stale when any optional dep's declared
 /// state no longer matches the code's usage — either direction (missing
 /// after a feature was added, or leftover from the full-hardcoded era).
-fn package_json_deps_drifted(
+pub fn package_json_deps_drifted(
     existing: &str,
     usage: &VueDependencyUsage,
     extra_deps: &[(String, String)],
@@ -670,7 +670,7 @@ fn merge_unknown_devdeps(existing: &str, generated: String) -> String {
     serde_json::to_string_pretty(&new).unwrap_or(generated)
 }
 
-fn generate_package_json(
+pub fn generate_package_json(
     name: &str,
     has_routes: bool,
     i18n_enabled: bool,
@@ -1009,7 +1009,7 @@ const on_contextmenu = (e: MouseEvent) => {
     .to_string()
 }
 
-fn generate_vite_config() -> String {
+pub fn generate_vite_config() -> String {
     // AUTO_HTTP_PORT lets multiple `auto run` instances coexist; default 8080.
     let _proxy_target = format!("http://127.0.0.1:{}", crate::util::http_port());
     r#"import { defineConfig } from 'vite'
@@ -1115,7 +1115,7 @@ fn generate_tsconfig_node() -> String {
     .to_string()
 }
 
-fn generate_tailwind_config() -> String {
+pub fn generate_tailwind_config() -> String {
     r#"/** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
@@ -1230,10 +1230,10 @@ fn generate_postcss_config() -> String {
     .to_string()
 }
 
-fn generate_index_html(
+pub fn generate_index_html(
     name: &str,
     title: Option<&str>,
-    composed_theme: Option<&auto_lang::design_tokens::decl::ComposedTheme>,
+    composed_theme: Option<&auto_lang_core::design_tokens::decl::ComposedTheme>,
 ) -> String {
     // Plan 043 M5: the shadcn template ships fully-populated `.dark` tokens
     // in index.css; the handwritten ash-gui (and the shadcn default) render
@@ -1244,7 +1244,7 @@ fn generate_index_html(
     // bootstrap pins `--primary` on <html> when AUTO_UI_ACCENT is set (inline
     // style beats every stylesheet, and a later runtime `applyAccent` — app
     // `accent_color` state — overwrites it again).
-    let dark_attr = if auto_lang::ui::style::theme::theme_pref_from_env() == "dark" {
+    let dark_attr = if auto_ui_compiler::style::theme::theme_pref_from_env() == "dark" {
         r#" class="dark""#
     } else {
         ""
@@ -1257,10 +1257,10 @@ fn generate_index_html(
     // value stands untouched.
     let theme_env = std::env::var("AUTO_UI_THEME")
         .ok()
-        .filter(|t| auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str()));
+        .filter(|t| auto_ui_compiler::style::theme::THEME_PREFS.contains(&t.as_str()));
     let accent_env = std::env::var("AUTO_UI_ACCENT")
         .ok()
-        .filter(|a| auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str()));
+        .filter(|a| auto_ui_compiler::style::theme::ACCENT_PRESETS.contains(&a.as_str()));
     // Plan 672 条目 6 继承链: env 链（CLI > os-config > pac.at）未解析任何
     // theme 值 → OS 系统主题回退（与 iced PLAN-615 T-04 对称）——内联
     // matchMedia 解析脚本实时跟随；dark class 保留 dark 缺省（resolver 立即
@@ -1274,19 +1274,19 @@ fn generate_index_html(
                 // Plan 672 条目 6 继承链: standalone 进程的宿主即 OS——
                 // matchMedia 解析 prefers-color-scheme 并实时跟随（静态
                 // dark class 不可知，故不发，由本脚本立即回填）。
-                lines.push_str(&auto_lang::ui::style::theme::system_theme_bootstrap_js(
+                lines.push_str(&auto_ui_compiler::style::theme::system_theme_bootstrap_js(
                     "    ",
                 ));
             } else {
                 lines.push_str(&format!("    window.__AUTO_UI_THEME__ = '{}';\n", t));
             }
         } else if system_fallback {
-            lines.push_str(&auto_lang::ui::style::theme::system_theme_bootstrap_js(
+            lines.push_str(&auto_ui_compiler::style::theme::system_theme_bootstrap_js(
                 "    ",
             ));
         }
         if let Some(a) = &accent_env {
-            let hsl = auto_lang::ui::style::theme::accent_primary_hsl(a, dark)
+            let hsl = auto_ui_compiler::style::theme::accent_primary_hsl(a, dark)
                 .unwrap_or_else(|| "239 84% 67%".to_string());
             lines.push_str(&format!("    window.__AUTO_UI_ACCENT__ = '{}';\n", a));
             lines.push_str(&format!(
@@ -1506,7 +1506,7 @@ fn basename(path: &str) -> String {
 
 /// PLAN-646: Select Anything overlay 资产（dev-only 采集层）。main.ts 以
 /// `import.meta.env.DEV` 动态引用，Vite 产物构建 tree-shake 掉。
-fn generate_select_overlay_ts() -> &'static str {
+pub fn generate_select_overlay_ts() -> &'static str {
     r##"// PLAN-646: Select Anything overlay —— 任意 AutoUI Vue 页面 Alt+拖拽框选，
 // 返回与 VM/MCP 端同一契约的结构化信封（中心包含命中 → 顶层修剪 → 文档序）。
 // dev-only：main.ts 在 import.meta.env.DEV 下动态 import，Vite 产物构建
@@ -1801,7 +1801,7 @@ export const __selectAnythingActive = true
 /// PLAN-646: 汇集 front_dir/*.at 源文 → `src/auto-sources.ts`
 /// （`AUTO_SOURCES: Record<stem, 全文>`）。内容 hash 防抖——不变不写，
 /// 保持增量工具链（vite watcher）安静。
-fn write_auto_sources_ts(front_dir: &Path, output_dir: &Path) {
+pub fn write_auto_sources_ts(front_dir: &Path, output_dir: &Path) {
     let mut entries: Vec<(String, String)> = Vec::new();
     if let Ok(dirs) = fs::read_dir(front_dir) {
         for entry in dirs.flatten() {
@@ -1903,10 +1903,11 @@ fn ensure_vue_type_stubs(output_dir: &Path) {
 fn ensure_natives_layer(output_dir: &Path) {
     let src = output_dir.join("src");
     let lib = src.join("lib");
-    let reg_set: std::collections::HashSet<&str> = auto_lang::vm::codegen::bare_native_intrinsics()
-        .keys()
-        .map(|s| s.as_str())
-        .collect();
+    let reg_set: std::collections::HashSet<&str> =
+        auto_lang_core::vm::codegen::bare_native_intrinsics()
+            .keys()
+            .map(|s| s.as_str())
+            .collect();
 
     // 1. 裸用面扫描：src/**/*.{ts,vue} 的标识符 token ∩ 注册表。
     let mut used: std::collections::BTreeSet<&str> = Default::default();
@@ -1950,7 +1951,7 @@ fn ensure_natives_layer(output_dir: &Path) {
         // 对象形态扫描：ts_adapter 改写后的 `__vmOnly('Process.exit'` 串
         // 同样命中（防御性声明——模板表达式位等未走改写的裸引用由此兜底
         // 类型 + 运行期抛错）；注释/字符串误报仅多一条无害声明。
-        for name in auto_lang::ui_gen::ts_adapter::VM_ONLY_OBJECT_NATIVES {
+        for name in auto_ui_compiler::ui_gen::ts_adapter::VM_ONLY_OBJECT_NATIVES {
             let pat = format!("{}.", name);
             let bytes = content.as_bytes();
             let mut from = 0usize;
@@ -2173,8 +2174,10 @@ fn generate_app_vue(vue_code: &str) -> String {
 /// 原 CSS 继承语义）。sidebar 族块经 extra 槽拼接。
 /// PLAN-601 T-06：pac.at theme{} 声明合成体（Some）替换 scaffold 成双 mode
 /// 块值源——声明面消费点；None = scaffold 缺省（零变化）。
-fn generate_index_css(composed: Option<&auto_lang::design_tokens::decl::ComposedTheme>) -> String {
-    use auto_lang::ui::style::theme::registry;
+pub fn generate_index_css(
+    composed: Option<&auto_lang_core::design_tokens::decl::ComposedTheme>,
+) -> String {
+    use auto_ui_compiler::style::theme::registry;
     let (core_l, sb_l, core_d, sb_d) = match composed {
         Some(t) => (
             t.render_core(false),
@@ -2408,7 +2411,7 @@ fn write_project_files(
     style_files: &[String],
     i18n: &I18nConfig,
     locale_files: &[String],
-    composed_theme: Option<&auto_lang::design_tokens::decl::ComposedTheme>,
+    composed_theme: Option<&auto_lang_core::design_tokens::decl::ComposedTheme>,
 ) -> Result<(), String> {
     // Plan 482: uses_autodown 的 main.ts 引 `@autodown/engine/style.css`，但
     // pac npm_deps 通常只链接 editor/core——engine 缺声明导致 vite 解析失败
@@ -2453,7 +2456,7 @@ fn write_project_files(
         .map_err(|e| format!("Failed to write .npmrc: {}", e))?;
 
     // components.json (shadcn-vue config)
-    let components_json = auto_lang::ui_gen::VueGenerator::generate_components_json();
+    let components_json = auto_ui_compiler::ui_gen::VueGenerator::generate_components_json();
     fs::write(output_path.join("components.json"), components_json)
         .map_err(|e| format!("Failed to write components.json: {}", e))?;
 
@@ -2557,7 +2560,7 @@ pub(crate) fn resolve_front_dir_public(root_dir: &Path) -> std::path::PathBuf {
     resolve_front_dir(root_dir)
 }
 
-fn resolve_front_dir(root_dir: &Path) -> std::path::PathBuf {
+pub fn resolve_front_dir(root_dir: &Path) -> std::path::PathBuf {
     if root_dir.join("src").join("front").exists() {
         root_dir.join("src").join("front")
     } else if root_dir.join("source").join("front").exists() {
@@ -2644,7 +2647,7 @@ fn parse_pac_display_title_in(display: &DisplayRead, prefers_zh: bool) -> Option
 /// （Automan 生产分派传入 GenerationRequest——生成器不再回读
 /// pac.at/AutoConfig）。dep 自身 pac.at 的 npm_deps/styles 合并是跨文件
 /// 读取，两种路径都在构建内做（合同携带 dep 根清单）。
-pub(crate) struct VueReads {
+pub struct VueReads {
     pub name: String,
     pub index_title: Option<String>,
     pub shadcn: bool,
@@ -2657,33 +2660,44 @@ pub(crate) struct VueReads {
     pub npm_deps: Vec<(String, String)>,
     pub style_files: Vec<String>,
     pub i18n: I18nConfig,
-    pub theme: Option<auto_lang::design_tokens::decl::ComposedTheme>,
+    pub theme: Option<auto_lang_core::design_tokens::decl::ComposedTheme>,
 }
 
 impl VueReads {
     /// legacy 自扫（行为冻结：与原 from_workspace 内联读取逐字段一致）。
-    fn scan(_root_dir: &Path, pac_path: &Path, pac_content: &str) -> Self {
+    pub fn scan(_root_dir: &Path, pac_path: &Path, pac_content: &str) -> Self {
         // theme{} 声明 → 合成（PLAN-601；AutoConfig 臂保留给 legacy 路径）
-        let composed_theme: Option<auto_lang::design_tokens::decl::ComposedTheme> =
-            match auto_lang::config::AutoConfig::from_file(pac_path, &auto_val::Obj::new()) {
+        let composed_theme: Option<auto_lang_core::design_tokens::decl::ComposedTheme> =
+            match auto_lang_core::config::AutoConfig::from_file(pac_path, &auto_val::Obj::new()) {
                 Ok(config) => {
-                    let mut pac = crate::pac::Pac::new(config);
-                    let _ = pac.resolve();
-                    pac.theme_decl.and_then(|decl| {
-                        match auto_lang::design_tokens::decl::compose(
-                            &decl,
-                            &std::collections::BTreeMap::new(),
-                        ) {
-                            Ok(t) => Some(t),
-                            Err(e) => {
-                                println!(
-                                    "{} theme{{}} 合成失败：{e} —— 回退 scaffold 缺省",
-                                    "Warn:".bright_yellow()
-                                );
-                                None
+                    // PLAN-815 T-04: 声明读取经 auto_man_core 单源（Pac::new
+                    // 对 theme_decl 是 decl 字段直拷+语言类型直映；resolve()
+                    // 只动 props/targets/依赖下载，不触及 theme_decl——冻结
+                    // oracle 不变，不引 Man Pac）。
+                    let decl_lite =
+                        auto_man_core::pac_from_decl(&config.root, &config.args).theme_decl;
+                    decl_lite
+                        .map(|d| auto_lang_core::design_tokens::decl::ThemeDecl {
+                            name: d.name.clone(),
+                            extends: d.extends.clone(),
+                            mode: d.mode.clone(),
+                            colors: d.colors.clone(),
+                        })
+                        .and_then(|decl| {
+                            match auto_lang_core::design_tokens::decl::compose(
+                                &decl,
+                                &std::collections::BTreeMap::new(),
+                            ) {
+                                Ok(t) => Some(t),
+                                Err(e) => {
+                                    println!(
+                                        "{} theme{{}} 合成失败：{e} —— 回退 scaffold 缺省",
+                                        "Warn:".bright_yellow()
+                                    );
+                                    None
+                                }
                             }
-                        }
-                    })
+                        })
                 }
                 Err(_) => None,
             };
@@ -2709,7 +2723,7 @@ impl VueReads {
     }
 
     /// 请求路径（生产）。
-    fn from_request(req: &auto_project_model::generation_request::GenerationRequest) -> Self {
+    pub fn from_request(req: &auto_project_model::generation_request::GenerationRequest) -> Self {
         // R2-F03：app("front") 节点形态优先于 front prop（镜像
         // parse_workspace_path 的优先序）。
         let front_rel_path = req
@@ -2741,13 +2755,13 @@ impl VueReads {
             .theme_decl
             .as_ref()
             .map(|lite| {
-                let decl = auto_lang::design_tokens::decl::ThemeDecl {
+                let decl = auto_lang_core::design_tokens::decl::ThemeDecl {
                     name: lite.name.clone(),
                     extends: lite.extends.clone(),
                     mode: lite.mode.clone(),
                     colors: lite.colors.clone(),
                 };
-                match auto_lang::design_tokens::decl::compose(
+                match auto_lang_core::design_tokens::decl::compose(
                     &decl,
                     &std::collections::BTreeMap::new(),
                 ) {
@@ -3238,7 +3252,7 @@ fn collect_ext_import_files(widgets: &[AuraWidget], out: &mut std::collections::
             // Plan 437 Phase 2:包引用(`use { package: x from "..." }`)不产
             // ext 文件拷贝 —— 组件经 ComponentRegistry 加载生成,路径可含
             // `..`(页文件相对),进 ext 集会触发"escapes project root"误杀。
-            if matches!(imp.kind, auto_lang::ast::ui::ExtImportKind::Package) {
+            if matches!(imp.kind, auto_lang_core::ast::ui::ExtImportKind::Package) {
                 continue;
             }
             let path = imp.path.as_str();
@@ -3292,11 +3306,12 @@ fn expand_at_module_web_imports(root_dir: &Path, ext_set: &mut std::collections:
         let Ok(source) = fs::read_to_string(&resolved) else {
             continue;
         };
-        let session = auto_lang::session::CompilerSession::ui();
-        let mut parser = auto_lang::parser::Parser::from(source.as_str()).with_session(session);
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser =
+            auto_lang_core::parser::Parser::from(source.as_str()).with_session(session);
         let Ok(ast) = parser.parse() else { continue };
         for stmt in &ast.stmts {
-            if let auto_lang::ast::Stmt::UseWeb(entries) = stmt {
+            if let auto_lang_core::ast::Stmt::UseWeb(entries) = stmt {
                 for imp in entries {
                     let path = imp.path.as_str();
                     if is_local_ext_path(path) {
@@ -3472,7 +3487,7 @@ pub struct VueProject {
     /// PLAN-601 T-06：pac.at `theme: {}` 声明合成体（T-03 解析 → compose）。
     /// index.css 双 mode 块取其渲染、index.html 注入运行时种子；None =
     /// scaffold 缺省（零变化）。compose 失败回退 None 并告警（生成不硬失败）。
-    pub theme: Option<auto_lang::design_tokens::decl::ComposedTheme>,
+    pub theme: Option<auto_lang_core::design_tokens::decl::ComposedTheme>,
 }
 
 impl VueProject {
@@ -3628,7 +3643,7 @@ export default router
     /// 不物化不建链接；全缺 → None（solo 检出静默不炸）。
     fn resolve_dep_os_mirror(root_dir: &Path, dep_name: &str, declared: &str) -> Option<PathBuf> {
         let parent = root_dir.parent()?;
-        let apps = auto_lang::os_paths::resolve_os_top_dir(parent, "apps")?;
+        let apps = auto_lang_core::os_paths::resolve_os_top_dir(parent, "apps")?;
         let declared_path = Path::new(declared);
         if declared_path.is_absolute() || declared.contains("..\\") {
             return None;
@@ -3778,10 +3793,12 @@ export default router
                                 continue;
                             }
                             // Quick-scan to collect widget names (lightweight parse)
-                            if let Ok((_code, widgets)) = auto_lang::ui_build_shadcn_with_widgets(
-                                path.to_str().unwrap(),
-                                None,
-                            ) {
+                            if let Ok((_code, widgets)) =
+                                crate::shadcn_build::ui_build_shadcn_with_widgets(
+                                    path.to_str().unwrap(),
+                                    None,
+                                )
+                            {
                                 for widget in &widgets {
                                     sub_widget_slot_outlets
                                         .insert(widget.name.clone(), widget.slot_outlet_names());
@@ -3795,7 +3812,9 @@ export default router
                                     );
                                     sub_widget_msgs.insert(
                                         widget.name.clone(),
-                                        auto_lang::ui_gen::VueGenerator::widget_emit_set(widget),
+                                        auto_ui_compiler::ui_gen::VueGenerator::widget_emit_set(
+                                            widget,
+                                        ),
                                     );
                                     sub_widget_names.push(widget.name.clone());
                                 }
@@ -3847,15 +3866,17 @@ export default router
                 // pages/ files are same-file only (T5 visibility parity).
                 let cross = !path.starts_with(&pages_dir);
                 let opts = if cross {
-                    auto_lang::ui_gen::ComponentGenOptions {
+                    auto_ui_compiler::ui_gen::ComponentGenOptions {
                         sub_widgets: Some(sub_widget_names.clone()),
                         sub_widget_models: Some(sub_widget_models.clone()),
                         ..Default::default()
                     }
                 } else {
-                    auto_lang::ui_gen::ComponentGenOptions::default()
+                    auto_ui_compiler::ui_gen::ComponentGenOptions::default()
                 };
-                if let Ok(result) = auto_lang::ui_gen::generate_component_from_file(path, opts) {
+                if let Ok(result) =
+                    auto_ui_compiler::ui_gen::generate_component_from_file(path, opts)
+                {
                     for (k, v) in result.bound_model_channels {
                         let entry = bound_model_channels.entry(k).or_default();
                         for c in v {
@@ -3873,7 +3894,7 @@ export default router
         // 声明提至外层作用域（ViewProject 构造消费）。
         let mut root_widget_name_minis: Option<(String, String)> = None;
         if app_at.exists() {
-            match auto_lang::ui_build_shadcn_with_sub_widgets_and_stores_full(
+            match crate::shadcn_build::ui_build_shadcn_with_sub_widgets_and_stores_full(
                 app_at.to_str().unwrap(),
                 None,
                 sub_widget_names.clone(),
@@ -3922,7 +3943,9 @@ export default router
                             // Additional widgets in app.at become components
                             // Extract store deps from app.at so these components get store imports
                             let app_store_deps =
-                                auto_lang::extract_store_deps_from_file(app_at.to_str().unwrap());
+                                auto_ui_compiler::store_deps::extract_store_deps_from_file(
+                                    app_at.to_str().unwrap(),
+                                );
                             let gen = if shadcn {
                                 VueGenerator::new_shadcn()
                             } else {
@@ -3951,7 +3974,7 @@ export default router
                                     for comp in &comp_names {
                                         all_shadcn_components.insert(comp.clone());
                                     }
-                                    auto_lang::ui_gen::validators::print_warnings_once(
+                                    auto_ui_compiler::ui_gen::validators::print_warnings_once(
                                         &app_at.display().to_string(),
                                         &gen.last_validation_warnings,
                                     );
@@ -3977,7 +4000,7 @@ export default router
                 Err(e) => {
                     // Plan 012 Batch A: in strict mode a codegen failure (e.g.
                     // escalated validation warnings) must fail the whole build.
-                    if auto_lang::ui_gen::validators::strict_enabled() {
+                    if auto_ui_compiler::ui_gen::validators::strict_enabled() {
                         return Err(format!("Failed to compile app.at: {}", e).into());
                     }
                     println!(
@@ -4037,7 +4060,7 @@ export default router
                         })
                         .unwrap_or_else(|_| "pages".to_string());
 
-                    match auto_lang::ui_build_shadcn_all_widget_codes_with_bound(
+                    match crate::shadcn_build::ui_build_shadcn_all_widget_codes_with_bound(
                         path.to_str().unwrap(),
                         Some(root_dir.to_str().unwrap()),
                         Some(shadcn),
@@ -4099,7 +4122,7 @@ export default router
                             // 无 widget/store 声明是其正常形态,经独立 fn 编译
                             // 轨消费——strict 不升为硬错,保持 Warning。
                             let fn_only = e.to_string().contains("No widget or store declarations");
-                            if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
+                            if auto_ui_compiler::ui_gen::validators::strict_enabled() && !fn_only {
                                 return Err(format!("Failed to compile {}: {}", path.display(), e));
                             }
                             println!(
@@ -4155,7 +4178,7 @@ export default router
                         if file_name == "package.at" {
                             continue;
                         }
-                        match auto_lang::ui_build_shadcn_with_widgets_and_stores(
+                        match crate::shadcn_build::ui_build_shadcn_with_widgets_and_stores(
                             path.to_str().unwrap(),
                             None,
                             Some(root_dir.to_str().unwrap()),
@@ -4169,7 +4192,7 @@ export default router
                                 // 重新收集并挂回 —— 与主通道同一收集器。
                                 let comp_code = fs::read_to_string(&path).unwrap_or_default();
                                 let (use_fns, imported_names) =
-                                    auto_lang::ui_gen::api::collect_use_module_fns(
+                                    auto_ui_compiler::ui_gen::api::collect_use_module_fns(
                                         &path, &comp_code,
                                     );
                                 // PLAN-075 (074-sink-mode G-6 未修面): 同文件模块 fn
@@ -4247,7 +4270,7 @@ export default router
                 if std::env::var_os("AUTO_BUILD_TRACE").is_some() {
                     eprintln!("[BUILD-TRACE] front file: {}", file_name);
                 }
-                match auto_lang::ui_build_shadcn_with_widgets_and_stores(
+                match crate::shadcn_build::ui_build_shadcn_with_widgets_and_stores(
                     path.to_str().unwrap(),
                     None,
                     Some(root_dir.to_str().unwrap()),
@@ -4267,7 +4290,9 @@ export default router
                         // Extract store deps from this .at file so re-generated
                         // components get their store import + `const store = ...`
                         let file_store_deps =
-                            auto_lang::extract_store_deps_from_file(path.to_str().unwrap());
+                            auto_ui_compiler::store_deps::extract_store_deps_from_file(
+                                path.to_str().unwrap(),
+                            );
                         // PLAN-074: src/front 兄弟通道与 components//bps（上方
                         // Plan 522 臂）同病——首遍 vue_code 被丢弃、逐 widget 裸
                         // 重生成丢 fn 池：use 导入池（Plan 522）与同文件模块 fn
@@ -4276,7 +4301,7 @@ export default router
                         // ——app 根通道发射正常、兄弟通道 TS2304 的不对称即本缺口）。
                         let sib_code = fs::read_to_string(&path).unwrap_or_default();
                         let (sib_use_fns, sib_imported_names) =
-                            auto_lang::ui_gen::api::collect_use_module_fns(&path, &sib_code);
+                            auto_ui_compiler::ui_gen::api::collect_use_module_fns(&path, &sib_code);
                         let sib_module_fns = same_file_module_fns(&sib_code);
                         for widget in &widgets {
                             if let Some(ref routes) = widget.routes {
@@ -4316,7 +4341,7 @@ export default router
                                     for comp in &comp_names {
                                         all_shadcn_components.insert(comp.clone());
                                     }
-                                    auto_lang::ui_gen::validators::print_warnings_once(
+                                    auto_ui_compiler::ui_gen::validators::print_warnings_once(
                                         &path.display().to_string(),
                                         &gen.last_validation_warnings,
                                     );
@@ -4345,7 +4370,7 @@ export default router
                     Err(e) => {
                         // Plan 041a(strict 收口): fn-only 文件同降级(见上)。
                         let fn_only = e.to_string().contains("No widget or store declarations");
-                        if auto_lang::ui_gen::validators::strict_enabled() && !fn_only {
+                        if auto_ui_compiler::ui_gen::validators::strict_enabled() && !fn_only {
                             return Err(
                                 format!("Failed to compile {}: {}", path.display(), e).into()
                             );
@@ -4371,7 +4396,7 @@ export default router
                 if file_name == "pac.at" {
                     continue;
                 }
-                match auto_lang::ui_build_shadcn_with_widgets_and_stores(
+                match crate::shadcn_build::ui_build_shadcn_with_widgets_and_stores(
                     path.to_str().unwrap(),
                     None,
                     Some(root_dir.to_str().unwrap()),
@@ -4386,7 +4411,9 @@ export default router
                         }
                         all_store_files.extend(stores);
                         let file_store_deps =
-                            auto_lang::extract_store_deps_from_file(path.to_str().unwrap());
+                            auto_ui_compiler::store_deps::extract_store_deps_from_file(
+                                path.to_str().unwrap(),
+                            );
                         // PLAN-645 T-02: dep 文件（bp reference 等）自己的跨文件
                         // fn 导入（`use tree_util: flatten_tree` bare/bps 限定）须
                         // 转译进 SFC——否则只有调用无定义（vue-tsc TS2304，
@@ -4395,7 +4422,10 @@ export default router
                         // api.rs 挂过池，但这里逐 widget 重生成，必须重挂。
                         let dep_comp_code = fs::read_to_string(&path).unwrap_or_default();
                         let (dep_use_fns, dep_imported_names) =
-                            auto_lang::ui_gen::api::collect_use_module_fns(&path, &dep_comp_code);
+                            auto_ui_compiler::ui_gen::api::collect_use_module_fns(
+                                &path,
+                                &dep_comp_code,
+                            );
                         // PLAN-075 (074-sink-mode G-6 未修面): dep 文件自身的
                         // 同文件模块 fn（Plan 367 P2-4）在重生成臂同样被丢弃——
                         // bp reference 携带文件顶层 fn 时调用点 TS2304（048
@@ -4438,7 +4468,7 @@ export default router
                                     for comp in &comp_names {
                                         all_shadcn_components.insert(comp.clone());
                                     }
-                                    auto_lang::ui_gen::validators::print_warnings_once(
+                                    auto_ui_compiler::ui_gen::validators::print_warnings_once(
                                         &path.display().to_string(),
                                         &gen.last_validation_warnings,
                                     );
@@ -4477,7 +4507,7 @@ export default router
                         // S003（046 基线实红）。消费方只 import 所用变体，未用
                         // 变体的 SFC 缺席由 vite import 解析兜底，告警不硬炸。
                         // 应用形态 dep（有 front 布局）strict 门禁不变。
-                        if auto_lang::ui_gen::validators::strict_enabled()
+                        if auto_ui_compiler::ui_gen::validators::strict_enabled()
                             && !fn_only
                             && !library_dep
                         {
@@ -4572,7 +4602,7 @@ export default router
                     "App.vue 引用的组件 SFC 未编译落盘（dep 源未解析？）：{} —— vite 将断链",
                     detail
                 );
-                if auto_lang::ui_gen::validators::strict_enabled() {
+                if auto_ui_compiler::ui_gen::validators::strict_enabled() {
                     return Err(msg.into());
                 }
                 println!("{} {}", "Warning:".bright_yellow(), msg);
@@ -4746,16 +4776,17 @@ export default router
                 e
             )
         })?;
-        let session = auto_lang::session::CompilerSession::ui();
-        let mut parser = auto_lang::parser::Parser::from(source.as_str()).with_session(session);
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser =
+            auto_lang_core::parser::Parser::from(source.as_str()).with_session(session);
         let ast = parser
             .parse()
             .map_err(|e| format!("Failed to parse fn module {}: {}", src.display(), e))?;
-        let fns: Vec<auto_lang::aura::AuraModuleFn> = ast
+        let fns: Vec<auto_ui_compiler::aura::AuraModuleFn> = ast
             .stmts
             .iter()
             .filter_map(|s| match s {
-                auto_lang::ast::Stmt::Fn(f) => auto_lang::aura::extract_module_fn(f),
+                auto_lang_core::ast::Stmt::Fn(f) => auto_ui_compiler::aura::extract_module_fn(f),
                 _ => None,
             })
             .collect();
@@ -4765,7 +4796,7 @@ export default router
         let has_web_bindings = ast
             .stmts
             .iter()
-            .any(|s| matches!(s, auto_lang::ast::Stmt::UseWeb(_)));
+            .any(|s| matches!(s, auto_lang_core::ast::Stmt::UseWeb(_)));
         if fns.is_empty() && !has_web_bindings {
             return Err(format!(
                 "use-block fn module {} declares no top-level fns or use.web bindings",
@@ -4778,19 +4809,16 @@ export default router
         // wrapper fns). Plan 424: component/composable kinds are re-exported
         // by the generator (ports symbol forwarding); fn kinds are both
         // imported (wrapper use) and re-exported (forwarding).
-        let web_imports: Vec<auto_lang::ast::ui::ExtImport> = ast
+        let web_imports: Vec<auto_lang_core::ast::ui::ExtImport> = ast
             .stmts
             .iter()
             .filter_map(|s| match s {
-                auto_lang::ast::Stmt::UseWeb(entries) => Some(entries.clone()),
+                auto_lang_core::ast::Stmt::UseWeb(entries) => Some(entries.clone()),
                 _ => None,
             })
             .flatten()
             .collect();
-        Ok(auto_lang::ui_gen::VueGenerator::generate_fn_module_full(
-            &fns,
-            &web_imports,
-        ))
+        Ok(auto_ui_compiler::ui_gen::VueGenerator::generate_fn_module_full(&fns, &web_imports))
     }
 
     fn copy_ext_files(&self) -> AutoResult<Vec<String>> {
@@ -4955,7 +4983,7 @@ export default router
         // Generate TypeScript API client if api.at exists.
         // PLAN-734 T-06：Err 传播（不再静默丢弃——生成失败不能以旧产物/无产物
         // 继续；AC-05）。
-        crate::api_gen::generate_api(&self.root_dir, "vue")?;
+        auto_api_gen::api_gen::generate_api(&self.root_dir, "vue")?;
 
         // Write project files
         write_project_files(
@@ -5468,10 +5496,10 @@ export default router
     /// (registered limitation; see plan §3.3 known-limits approach).
     pub fn generate_desktop_host(&self) -> AutoResult<()> {
         let apps_dir = desktop_apps_dir(&self.root_dir)?;
-        let scan_opts = auto_lang::ui::app_registry::ScanOptions {
+        let scan_opts = auto_ui_compiler::app_registry::ScanOptions {
             render: Some("vue".to_string()),
         };
-        let mut entries = auto_lang::ui::app_registry::scan_apps(&apps_dir, &scan_opts);
+        let mut entries = auto_ui_compiler::app_registry::scan_apps(&apps_dir, &scan_opts);
         // Plan 559 W3: sibling extra roots — single-app dirs carrying their
         // own pac.at (id = the sibling dir name; primary-root ids win). Env
         // override AUTO_DESKTOP_APPS_EXTRA (path list), else the Plan 501
@@ -5483,7 +5511,7 @@ export default router
             if entries.iter().any(|e| e.id == id) {
                 continue;
             }
-            match auto_lang::ui::app_registry::scan_app_root(&root, &id, &scan_opts) {
+            match auto_ui_compiler::app_registry::scan_app_root(&root, &id, &scan_opts) {
                 Some(entry) => {
                     println!(
                         "  {} extra root: {} (from {})",
@@ -5736,8 +5764,9 @@ export default router
         // Plan 515 G3：壁纸配置注入——VM 轨同键 `shell.desktop.wallpaper`
         //（iced/renderer.rs load_desktop_wallpaper 同源 storage）；vue 侧
         // 无 storage 桥，生成期注入（运行期改动经下次生成生效）。
-        let wallpaper = auto_lang::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper")
-            .unwrap_or_default();
+        let wallpaper =
+            auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.desktop.wallpaper")
+                .unwrap_or_default();
         fs::write(src_dir.join("App.vue"), generate_host_app_vue(&wallpaper))
             .map_err(|e| format!("Failed to write host App.vue: {}", e))?;
         println!(
@@ -5759,9 +5788,9 @@ export default router
     /// src/demos-registry.ts.
     pub fn generate_gallery_host(&self) -> AutoResult<()> {
         let apps_dir = gallery_apps_dir(&self.root_dir)?;
-        let entries = auto_lang::ui::app_registry::scan_apps(
+        let entries = auto_ui_compiler::app_registry::scan_apps(
             &apps_dir,
-            &auto_lang::ui::app_registry::ScanOptions::default(),
+            &auto_ui_compiler::app_registry::ScanOptions::default(),
         );
         println!(
             "{} {} (from {})",
@@ -6490,7 +6519,7 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
     let project = VueProject::from_workspace(root_dir)?;
 
     // Plan 351: drain stashed store composable files and write them
-    for (filename, content) in auto_lang::drain_store_extra_files() {
+    for (filename, content) in auto_lang_core::drain_store_extra_files() {
         let stores_dir = project.output_dir.join("src").join("stores");
         fs::create_dir_all(&stores_dir).ok();
         let clean_name = filename.strip_prefix("stores/").unwrap_or(&filename);
@@ -6523,7 +6552,7 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
     println!();
     println!("▶ Generating API client...");
     // PLAN-734 T-06：Err 传播（无契约时 generate_api 返回 Ok——不受影响）。
-    crate::api_gen::generate_api(root_dir, "vue")?;
+    auto_api_gen::api_gen::generate_api(root_dir, "vue")?;
 
     // Refresh API function names after generating (for next run)
     let api_fns_path = root_dir.join("dist").join(".api_functions");
@@ -6726,7 +6755,7 @@ fn prepare_vue_sources(root_dir: &Path) -> AutoResult<VueProject> {
 /// npm. Parse failures print the same "Warning: Failed to compile ..." line
 /// as the fresh path (see `handle_compile_error`) and fail the build under
 /// `auto build --strict`.
-fn incremental_compile_changed(
+pub fn incremental_compile_changed(
     root_dir: &Path,
     req: Option<&auto_project_model::generation_request::GenerationRequest>,
 ) -> AutoResult<usize> {
@@ -6757,7 +6786,7 @@ fn incremental_compile_changed(
 
     // PLAN-814 R3-02：生成器指纹在 cache load/dirty 判定前注入（compiler
     // build.rs 单源经 SDK 槽；未注入则每次误判失效——Plan 698 SD-01 时序）。
-    auto_lang::database::set_generator_fingerprint(auto_lang::generator_fingerprint());
+    auto_lang_core::database::set_generator_fingerprint(auto_ui_compiler::generator_fingerprint());
     // Load cache for incremental compilation
     let mut cache = UICache::load(root_dir);
     // Plan 015 P0#2: snapshot of previously-owned artifact outputs — used at
@@ -7287,7 +7316,9 @@ fn incremental_compile_changed(
     // entries (e.g. stashed by the Phase-1 cached-branch recompile) merge in
     // first; the explicitly-collected content wins on name conflicts.
     let mut store_map: std::collections::BTreeMap<String, String> =
-        auto_lang::drain_store_extra_files().into_iter().collect();
+        auto_lang_core::drain_store_extra_files()
+            .into_iter()
+            .collect();
     store_map.extend(store_files);
     if !store_map.is_empty() {
         let stores_dir = output_dir.join("src").join("stores");
@@ -7306,365 +7337,8 @@ fn incremental_compile_changed(
     Ok(changed_count)
 }
 
-/// Run Vue dev server (auto run command)
-///
-/// Steps:
-/// 1. Incrementally compile changed .at files (see `incremental_compile_changed`)
-/// 2. Generate project structure if not exists
-/// 3. Generate API client code (if api.at exists)
-/// 4. Materialize bundled shadcn-vue components (PLAN-457, before install)
-/// 5. npm install (+ registry fallback for non-bundled components)
-/// 6. Copy public assets
-/// 7. Start dev server
-pub fn run_vue_project(root_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-    run_vue_project_inner(root_dir, args, None)
-}
-
-/// 请求路径（PLAN-809 R1-F02：run 的项目读取经 I-PROJECT）。
-pub fn run_vue_project_with_request(
-    root_dir: &Path,
-    args: Vec<String>,
-    req: &auto_project_model::generation_request::GenerationRequest,
-) -> AutoResult<()> {
-    run_vue_project_inner(root_dir, args, Some(req))
-}
-
-fn run_vue_project_inner(
-    root_dir: &Path,
-    args: Vec<String>,
-    req: Option<&auto_project_model::generation_request::GenerationRequest>,
-) -> AutoResult<()> {
-    // PLAN-646: dev 运行面开启 Select Anything DOM 标记（data-auto-*）——
-    // SFC 注入 data-auto-{tag,id,span} 供 overlay 框选采集；产物构建
-    // （build_vue_project）不设，保持输出逐字节不变。VueGenerator::new()
-    // 构造期读取（AUTO_API_FUNCTIONS 同款进程级 env 通道）。
-    // SAFETY: edition 2021——set_var 安全；在任一 VueGenerator::new() 之前设置。
-    std::env::set_var("AUTOUI_SELECT_MARKERS", "1");
-    println!("{}", "Running Vue dev server (backend: vue)".bright_cyan());
-
-    // PLAN-646: 源码映射随每次运行刷新（内容 hash 防抖，覆盖首启/全量生成路径
-    // ——incremental_compile_changed 内的同步点只在有增量时触达）。
-    let p646_vue_root = root_dir.join("gen").join("front").join("vue");
-    write_auto_sources_ts(&resolve_front_dir(root_dir), &p646_vue_root);
-    // PLAN-646: overlay 资产自愈刷新（旧工程 scaffold 停在旧版 overlay）。
-    {
-        let overlay_path = p646_vue_root
-            .join("src")
-            .join("auto-select")
-            .join("overlay.ts");
-        let overlay_new = generate_select_overlay_ts();
-        let stale = match std::fs::read_to_string(&overlay_path) {
-            Ok(existing) => existing != overlay_new,
-            Err(_) => true,
-        };
-        if stale {
-            std::fs::create_dir_all(overlay_path.parent().unwrap()).ok();
-            std::fs::write(&overlay_path, overlay_new).ok();
-        }
-    }
-    // P660-D1 自愈：旧工程 scaffold 无 vite-env.d.ts（增量路径不重写 scaffold
-    // 文件）——缺即补，vue-tsc TS2339 防线。
-    {
-        let vite_env = p646_vue_root.join("src").join("vite-env.d.ts");
-        if !vite_env.exists() {
-            std::fs::write(&vite_env, "/// <reference types=\"vite/client\" />\n").ok();
-        }
-    }
-
-    let changed_count = incremental_compile_changed(root_dir, req)?;
-
-    // Load project context（R1-F02：请求在场则经合同读取，不再回读 pac.at）
-    let project = match req {
-        Some(r) => VueProject::from_workspace_with_request(root_dir, r)?,
-        None => VueProject::from_workspace(root_dir)?,
-    };
-
-    // Determine total steps based on whether project exists
-    let total_steps = 6;
-    let mut current_step = 0;
-
-    // Step 1: Generate project structure if not exists, or regenerate source files
-    current_step += 1;
-    println!();
-    if !project.exists() && changed_count == 0 {
-        // Fresh project: no incremental changes were written, so generate everything
-        println!(
-            "▶ Step {}/{}: Generating Vue project...",
-            current_step, total_steps
-        );
-        project.generate()?;
-    } else if !project.exists() && changed_count > 0 {
-        // Project dir was removed but we already wrote files incrementally.
-        // Only generate scaffolding (package.json, vite.config, etc), don't
-        // overwrite the incrementally-written component .vue files.
-        println!(
-            "▶ Step {}/{}: Generating project scaffolding...",
-            current_step, total_steps
-        );
-        project.generate_scaffolding_only()?;
-    } else if changed_count == 0 {
-        println!(
-            "▶ Step {}/{}: Checking source files...",
-            current_step, total_steps
-        );
-        // Self-heal router/index.ts — older scaffolding-only runs left it
-        // missing, which breaks `import router from './router'` in main.ts.
-        project.ensure_router_file()?;
-        // Plan 413: self-heal the CodeEditor shell the same way.
-        project.ensure_code_editor_component()?;
-    }
-
-    // Plan 465: the desktop host shell + app registry must refresh on EVERY
-    // run (apps may change) — same reasoning as the index.html rewrite below.
-    if desktop_mode() {
-        project.generate_desktop_host()?;
-    }
-
-    // PLAN-528 W6: pac.at npm_deps（如 @autodown/* link 依赖）必须每次 run
-    // 自愈进 package.json——增量路径不走 regenerate_source_files 的漂移重写，
-    // 只在 pac.at 新增的依赖永远不会被安装。自愈理由同上方 index.html。
-    //
-    // Plan 672: 此块必须在 generate_gallery_host **之前**执行——W6 以宿主单项目
-    // usage 整体重写 package.json，会把画廊刚合并的跨 demo 依赖当作残留清除
-    // （实测 vue-sonner 被冲掉 → vite 解析失败整站崩溃）。gallery 场景让
-    // merge_host_npm_deps 做最后写入者；非 gallery 项目本块与下方 no-op 无序依赖。
-    {
-        let pkg_path = project.output_dir.join("package.json");
-        if pkg_path.exists() {
-            let existing = fs::read_to_string(&pkg_path).unwrap_or_default();
-            let usage = project.dependency_usage();
-            if package_json_deps_drifted(&existing, &usage, &project.npm_deps) {
-                let new_pkg = generate_package_json(
-                    &project.name,
-                    project.has_routes,
-                    project.i18n.enabled,
-                    &project.npm_deps,
-                    &usage,
-                );
-                match fs::write(&pkg_path, new_pkg) {
-                    Ok(_) => println!(
-                        "{}",
-                        "  ✓ Updated package.json (npm_deps sync)".bright_green()
-                    ),
-                    Err(e) => println!("  ⚠ package.json refresh skipped: {}", e),
-                }
-            }
-        }
-    }
-
-    // Plan 549: UI gallery host + demos registry refresh on EVERY run
-    if project.is_ui_gallery() || gallery_mode() {
-        project.generate_gallery_host()?;
-
-        // Plan 672 条目 4: Vue 臂 back-proxy 接线——PLAN-658 多后端 proxy
-        // 此前仅 rust_ui（VM 臂宿主）启动，fullstack 档（013/015 等
-        // back.api CRUD demo）在 Vue 臂只能显示「独立运行」提示。此处
-        // 补启动（generate_gallery_host 之后 = demo 行缓存已热），端口经
-        // env 传给 vite 子进程（generate_vite_config 的 `/apps` 条目消费，
-        // npm_run_dev → run_script 子进程继承进程 env）。启动失败照 658
-        // 降级语义：env 不注入，fullstack demo 运行期 fetch 失败走错误
-        // 横幅，不阻断画廊。
-        match start_gallery_back_proxy(root_dir) {
-            Some(port) => std::env::set_var(
-                "AUTO_GALLERY_BACK_PROXY",
-                format!("http://127.0.0.1:{port}"),
-            ),
-            None => {
-                std::env::remove_var("AUTO_GALLERY_BACK_PROXY");
-            }
-        }
-    }
-
-    // Plan 458: index.html carries the theme default (`class="dark"`) and the
-    // accent bootstrap (`--primary`). It is tiny, so rewrite it on EVERY run —
-    // otherwise a stale index.html (e.g. a pre-Plan-043-M5 template without
-    // `class="dark"`, or a theme flag flip) survives the "project exists,
-    // nothing changed" fast path forever.
-    {
-        let index_html_path = project.output_dir.join("index.html");
-        if index_html_path
-            .parent()
-            .map(|p| p.exists())
-            .unwrap_or(false)
-        {
-            let index_html = generate_index_html(
-                &project.name,
-                project.index_title.as_deref(),
-                project.theme.as_ref(),
-            );
-            if let Err(e) = fs::write(&index_html_path, index_html) {
-                println!("  ⚠ index.html refresh skipped: {}", e);
-            }
-        }
-    }
-
-    // Plan 548: tailwind.config.cjs / index.css 同理自愈——它们是确定性模板，
-    // 增量路径不重写，生成器侧新增的主题色（如 sidebar 色阶）与 CSS 变量
-    // 在老项目里会永久缺失。两个文件都不含用户手改入口（样式走 pac.at
-    // `styles:` 注入），每次 run 重写零风险。
-    {
-        let tw_path = project.output_dir.join("tailwind.config.cjs");
-        if tw_path.exists() {
-            if let Err(e) = fs::write(&tw_path, generate_tailwind_config()) {
-                println!("  ⚠ tailwind.config.cjs refresh skipped: {}", e);
-            }
-        }
-        let index_css_path = project.output_dir.join("src/assets/index.css");
-        if index_css_path.exists() {
-            if let Err(e) = fs::write(&index_css_path, generate_index_css(project.theme.as_ref())) {
-                println!("  ⚠ index.css refresh skipped: {}", e);
-            }
-        }
-        // Plan 672 条目 4: vite.config.ts 同律自愈——`/apps` back-proxy 条目
-        // （env 运行时读取）只在生成器模板里，增量 run 不重写会让老项目
-        // 永久缺失该路由（实测：proxy 起了但 vite 无 /apps 转发 → fullstack
-        // demo 404）。模板确定性，重写零风险。
-        let vite_cfg_path = project.output_dir.join("vite.config.ts");
-        if vite_cfg_path.exists() {
-            if let Err(e) = fs::write(&vite_cfg_path, generate_vite_config()) {
-                println!("  ⚠ vite.config.ts refresh skipped: {}", e);
-            }
-        }
-    }
-
-    // Copy handmade theme assets if available
-    let handmade_css = root_dir
-        .join("vue")
-        .join("src")
-        .join("assets")
-        .join("index.css");
-    let gen_css = root_dir
-        .join("gen")
-        .join("front")
-        .join("vue")
-        .join("src")
-        .join("assets")
-        .join("index.css");
-    if handmade_css.exists() && gen_css.exists() {
-        if let Ok(content) = fs::read_to_string(&handmade_css) {
-            fs::write(&gen_css, content)
-                .map_err(|e| format!("Failed to copy handmade index.css: {}", e))?;
-            println!("{}", "  ✓ Copied handmade theme CSS".bright_green());
-        }
-    }
-    let handmade_theme_toggle = root_dir
-        .join("vue")
-        .join("src")
-        .join("components")
-        .join("ThemeToggle.vue");
-    let gen_components_dir = root_dir
-        .join("gen")
-        .join("front")
-        .join("vue")
-        .join("src")
-        .join("components");
-    if handmade_theme_toggle.exists() {
-        let gen_theme_toggle = gen_components_dir.join("ThemeToggle.vue");
-        if let Ok(content) = fs::read_to_string(&handmade_theme_toggle) {
-            fs::write(&gen_theme_toggle, content)
-                .map_err(|e| format!("Failed to copy ThemeToggle.vue: {}", e))?;
-            println!("{}", "  ✓ Copied ThemeToggle.vue".bright_green());
-        }
-    }
-
-    // Step 2: Generate API client code (if api.at exists)
-    current_step += 1;
-    println!();
-    println!(
-        "▶ Step {}/{}: Generating API client...",
-        current_step, total_steps
-    );
-    // PLAN-734 T-06：Err 传播（错误不能只 warn 后继续启动旧产物）。
-    crate::api_gen::generate_api(root_dir, "vue")?;
-
-    // Load API function names for Vue generator (dynamic detection)
-    let api_fns_path = root_dir.join("dist").join(".api_functions");
-    if api_fns_path.exists() {
-        if let Ok(content) = fs::read_to_string(&api_fns_path) {
-            let fns: Vec<&str> = content.lines().filter(|l| !l.trim().is_empty()).collect();
-            if !fns.is_empty() {
-                // SAFETY: Setting a process-wide env var before spawning Vue generation
-                unsafe {
-                    std::env::set_var("AUTO_API_FUNCTIONS", fns.join(","));
-                }
-            }
-        }
-    }
-
-    // Step 3: Materialize bundled shadcn-vue ui components (PLAN-457).
-    // Offline copies land BEFORE the dependency install so package.json is
-    // complete when pnpm resolves — no post-install dependency surgery.
-    current_step += 1;
-    println!();
-    println!(
-        "▶ Step {}/{}: Materializing UI components...",
-        current_step, total_steps
-    );
-    project.materialize_ui_components()?;
-
-    // Step 4: npm install
-    current_step += 1;
-    println!();
-    println!(
-        "▶ Step {}/{}: Installing dependencies...",
-        current_step, total_steps
-    );
-    project.npm_install()?;
-
-    // Step 5 (fallback): registry add for long-tail components outside the
-    // bundle; a no-op with "already installed (skipping)" when fully bundled.
-    project.install_shadcn_components()?;
-
-    // Step 5: Copy public assets
-    current_step += 1;
-    println!();
-    println!(
-        "▶ Step {}/{}: Copying public assets...",
-        current_step, total_steps
-    );
-    project.copy_public_assets()?;
-
-    // Step 5.5: Start API backend server.
-    // Plan 346: --server=vm starts AutoVM HTTP server; --server=rust (default)
-    // starts the a2r-generated Rust axum server.
-    let mut _api_child: Option<std::process::Child> = None;
-    let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| "rust".to_string());
-    if backend_impl == "vm" {
-        // Vue+VM: AutoVM HTTP server as backend.
-        crate::rust_ui::start_vm_server(root_dir);
-    } else {
-        // Vue+Rust: a2r-generated Rust axum server.
-        // PLAN-026 T-05: ready 失败显式中止(不进 dev-server 步)。
-        match crate::rust_ui::start_api_server(root_dir) {
-            Ok(Some(child)) => _api_child = Some(child),
-            Ok(None) => {}
-            Err(e) => return Err(format!("vue backend start failed: {}", e).into()),
-        }
-    }
-
-    // Step 6: npm run dev
-    current_step += 1;
-    println!();
-    println!(
-        "▶ Step {}/{}: Starting dev server...",
-        current_step, total_steps
-    );
-    project.npm_run_dev(args)?;
-
-    // Cleanup: stop API backend server when dev server exits
-    if let Some(mut child) = _api_child {
-        let _ = child.kill();
-        println!("  ✓ API server (Rust) stopped");
-    } else if backend_impl == "vm" {
-        // VM server runs on a background thread — process exit cleans it up.
-        println!("  ✓ API server (VM) stopped");
-    }
-
-    Ok(())
-}
-
 /// Check if a `use` statement imports from the API module (`back.api`)
-fn is_api_use(use_stmt: &auto_lang::ast::Use) -> bool {
+fn is_api_use(use_stmt: &auto_lang_core::ast::Use) -> bool {
     // Check legacy paths: ["back", "api"]
     if use_stmt.paths.len() == 2
         && use_stmt.paths[0].as_str() == "back"
@@ -7709,8 +7383,8 @@ fn validate_api_imports(imports: &[String], root_dir: &Path) -> Result<(), Strin
 /// Resolve streaming API endpoints (`#[api] fn` returning `~Stream<T>`) from the
 /// project's `back/api.at`, so the store composable can wire type-driven SSE.
 /// (Plan 043 stream phase.) Delegates to the auto-lang regex-based resolver.
-fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_lang::aura::StreamEndpoint> {
-    auto_lang::ui_gen::api::resolve_stream_endpoints_for_project(&root_dir.to_string_lossy())
+fn resolve_stream_endpoints(root_dir: &Path) -> Vec<auto_ui_compiler::aura::StreamEndpoint> {
+    auto_ui_compiler::ui_gen::api::resolve_stream_endpoints_for_project(&root_dir.to_string_lossy())
 }
 
 /// Compile an .at file to Vue SFC (Plan 361 §3: uses generate_component_from_file).
@@ -7730,7 +7404,7 @@ fn handle_compile_error(path: &Path, e: &str) -> Result<(), String> {
         );
         return Ok(());
     }
-    if auto_lang::ui_gen::validators::strict_enabled() {
+    if auto_ui_compiler::ui_gen::validators::strict_enabled() {
         return Err(format!("Failed to compile {}: {}", path.display(), e));
     }
     println!(
@@ -7753,7 +7427,7 @@ fn handle_compile_error_with_dep_shape(
     library_dep: bool,
 ) -> Result<(), String> {
     let fn_only = e.contains("No widget or store declarations");
-    if auto_lang::ui_gen::validators::strict_enabled() && !fn_only && !library_dep {
+    if auto_ui_compiler::ui_gen::validators::strict_enabled() && !fn_only && !library_dep {
         return Err(format!("Failed to compile {}: {}", path.display(), e));
     }
     println!(
@@ -7770,16 +7444,16 @@ fn handle_compile_error_with_dep_shape(
 /// bare VueGenerator. Mirrors the in-file collection in
 /// ui_gen::api::generate_component_from_file — parse failures yield an
 /// empty pool (the first pass already reported the real error).
-fn same_file_module_fns(code: &str) -> Vec<auto_lang::aura::AuraModuleFn> {
-    let session = auto_lang::session::CompilerSession::ui();
-    let mut parser = auto_lang::parser::Parser::from(code).with_session(session);
+fn same_file_module_fns(code: &str) -> Vec<auto_ui_compiler::aura::AuraModuleFn> {
+    let session = auto_lang_core::session::CompilerSession::ui();
+    let mut parser = auto_lang_core::parser::Parser::from(code).with_session(session);
     let Ok(ast) = parser.parse() else {
         return Vec::new();
     };
     ast.stmts
         .iter()
         .filter_map(|s| match s {
-            auto_lang::ast::Stmt::Fn(f) => auto_lang::aura::extract_module_fn(f),
+            auto_lang_core::ast::Stmt::Fn(f) => auto_ui_compiler::aura::extract_module_fn(f),
             _ => None,
         })
         .collect()
@@ -7799,7 +7473,7 @@ fn compile_at_to_vue(
     shadcn: bool,
     default_classes: bool,
 ) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
-    use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
+    use auto_ui_compiler::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
         root_dir_for_validation: Some(root_dir.to_path_buf()),
@@ -7811,7 +7485,7 @@ fn compile_at_to_vue(
     let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
 
     // Plan 012 Batch A: surface codegen validation warnings (deduplicated).
-    auto_lang::ui_gen::validators::print_warnings_once(
+    auto_ui_compiler::ui_gen::validators::print_warnings_once(
         &at_path.display().to_string(),
         &result.validation_warnings,
     );
@@ -7835,7 +7509,7 @@ fn compile_at_to_vue_with_sub_widgets(
     shadcn: bool,
     default_classes: bool,
 ) -> Result<(String, Vec<String>, Vec<(String, String)>), String> {
-    use auto_lang::ui_gen::{generate_component_from_file, ComponentGenOptions};
+    use auto_ui_compiler::ui_gen::{generate_component_from_file, ComponentGenOptions};
 
     let opts = ComponentGenOptions {
         sub_widgets: Some(sub_widget_names),
@@ -7847,7 +7521,7 @@ fn compile_at_to_vue_with_sub_widgets(
     };
     let result = generate_component_from_file(at_path, opts).map_err(|e| format!("{}", e))?;
 
-    auto_lang::ui_gen::validators::print_warnings_once(
+    auto_ui_compiler::ui_gen::validators::print_warnings_once(
         &at_path.display().to_string(),
         &result.validation_warnings,
     );
@@ -7892,7 +7566,7 @@ fn gallery_proxy_root() -> Option<String> {
 /// PLAN-658 T-02 → PLAN-037 T-02: `/api/` 字面量子前缀化已迁
 /// auto-lang `ui::back_provision::prefix_api_url_literals`（桌面宿主与
 /// auto-man 双消费；精确性依据与改写面边界注记见彼处）。
-use auto_lang::ui::back_provision::prefix_api_url_literals;
+use auto_lang_core::back_prefix::prefix_api_url_literals;
 
 /// PLAN-658 T-04: 从 `use <module>: a, b, c` 行剔除指定 item（流端点 fn
 /// 不进 client——流消费走 Tick 注入）。非匹配行原样保留。
@@ -8003,7 +7677,7 @@ fn inject_sse_tick(source: &str, stream_url: &str) -> String {
 fn build_back_client_module(
     root: &str,
     app_id: &str,
-    api_mod: &auto_lang::api::ApiModule,
+    api_mod: &auto_lang_core::api::ApiModule,
     api_content: &str,
 ) -> String {
     let mut out = String::from("// PLAN-658 T-04: gallery back-proxy client (generated, 勿手改)\n");
@@ -8034,7 +7708,7 @@ fn build_back_client_module(
         let method = ep.method().to_uppercase();
         let path = ep.path();
         let url = format!("{root}/apps/{app_id}{}", path);
-        let params: Vec<&auto_lang::api::ApiParam> = ep.params.iter().collect();
+        let params: Vec<&auto_lang_core::api::ApiParam> = ep.params.iter().collect();
         let void = matches!(ep.return_type.as_str(), "void" | "" | "()");
         let params_sig: Vec<String> = params
             .iter()
@@ -8047,7 +7721,7 @@ fn build_back_client_module(
         };
         // 路径参数拼接（{p}/:p 占位）。v1 语料无路径参数形态——命中时保守
         // 走整 URL 字面量（拼参形态留待实装语料出现时补）。
-        let body_params: Vec<&&auto_lang::api::ApiParam> = params
+        let body_params: Vec<&&auto_lang_core::api::ApiParam> = params
             .iter()
             .filter(|p| !path.contains(&format!(":{}", p.name)))
             .collect();
@@ -8106,7 +7780,7 @@ fn build_back_client_module(
 /// Apps directory for the gallery demos registry:
 /// AUTO_GALLERY_APPS env wins; next is `<root_dir>/../ui` (sibling in examples/),
 /// then `<workspace>/examples/ui`.
-fn gallery_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
+pub fn gallery_apps_dir(root_dir: &Path) -> AutoResult<PathBuf> {
     if let Some(d) = std::env::var_os("AUTO_GALLERY_APPS") {
         return Ok(PathBuf::from(d));
     }
@@ -8305,7 +7979,7 @@ pub fn demo_field_str(id str, field str, fallback str) str {
 
 /// PLAN-658 T-03: pac 文本抽取 `media_root`（引号值；缺省 None）。
 /// 走文本而非 Pac 解析器——rows 已带 pac 原文，重解析只为一个键不划算。
-fn pac_media_root(pac_text: &str) -> Option<String> {
+pub fn pac_media_root(pac_text: &str) -> Option<String> {
     let pos = pac_text.find("media_root")?;
     let after = pac_text[pos + "media_root".len()..].trim_start();
     let after = after.strip_prefix(':')?.trim_start();
@@ -8342,7 +8016,7 @@ thread_local! {
 /// PLAN-662 T-02: 进程内缓存之下再垫**磁盘层**——per-demo 内容哈希命中
 /// 即免 `from_workspace`（gallery_cache 模块，SD-01 契约）。扫描函数注入
 /// 式（scan_one）供测试计数；生产路径走 gallery_demo_row。
-fn gallery_rows_via_cache(apps_dir: &Path, fill: bool) -> Vec<GalleryDemoRow> {
+pub fn gallery_rows_via_cache(apps_dir: &Path, fill: bool) -> Vec<GalleryDemoRow> {
     gallery_rows_with_disk_cache(apps_dir, fill, &|apps_dir, e| {
         gallery_demo_row(apps_dir, e).0
     })
@@ -8351,7 +8025,7 @@ fn gallery_rows_via_cache(apps_dir: &Path, fill: bool) -> Vec<GalleryDemoRow> {
 fn gallery_rows_with_disk_cache(
     apps_dir: &Path,
     fill: bool,
-    scan_one: &(dyn Fn(&Path, &auto_lang::ui::app_registry::AppRegistryEntry) -> GalleryDemoRow
+    scan_one: &(dyn Fn(&Path, &auto_ui_compiler::app_registry::AppRegistryEntry) -> GalleryDemoRow
           + Sync),
 ) -> Vec<GalleryDemoRow> {
     GALLERY_ROWS_CACHE.with(|c| {
@@ -8360,9 +8034,9 @@ fn gallery_rows_with_disk_cache(
                 return rows;
             }
         }
-        let entries = auto_lang::ui::app_registry::scan_apps(
+        let entries = auto_ui_compiler::app_registry::scan_apps(
             apps_dir,
-            &auto_lang::ui::app_registry::ScanOptions::default(),
+            &auto_ui_compiler::app_registry::ScanOptions::default(),
         );
         // PLAN-662 T-02: 磁盘缓存层——依赖目录摘要 memo（共享 stylekit 只
         // 走查一遍）；哈希算不出的 demo 恒走扫描且不缓存。
@@ -8483,100 +8157,6 @@ fn gallery_scan_jobs() -> usize {
     std::thread::available_parallelism()
         .map(|n| n.get())
         .unwrap_or(1)
-}
-
-/// PLAN-658 T-03: 画廊多后端 proxy 启动编排（rust_ui 画廊钩子在
-/// refresh_gallery_registry **之前**调用——发射器 T-02 前缀化消费线程局部
-/// 根）。v1 注册面：全部内嵌档 demo 的宿主原生 media 路由
-/// （`/api/media/scan` + `/api/media/stream/:id`，media_root 取自各自
-/// pac.at；无 root 亦注册——诚实空列表与生成器一致）。注册判定镜像
-/// registry.at 的 loadable 三档并集（write_registry_at 同式）——020 为
-/// loadable 档（前端语料无 `@/lib/api`，fullstack=false），按 fullstack
-/// 过滤会漏（T-03 实测修正）。T-04/T-05 起 stream/native-ns demo 的 VM
-/// session 在此追加。失败降级：告警 + None（画廊继续跑，内嵌 demo 维持
-/// 静态诚实空态，不阻断一键体验）。
-pub fn start_gallery_back_proxy(project_dir: &Path) -> Option<u16> {
-    let Ok(apps_dir) = gallery_apps_dir(project_dir) else {
-        return None;
-    };
-    let mut sessions: Vec<auto_lang::back_proxy::SessionSpec> = Vec::new();
-    let native_media: Vec<auto_lang::back_proxy::NativeMediaApp> =
-        gallery_rows_via_cache(&apps_dir, true)
-            .into_iter()
-            .filter_map(|row| {
-                // PLAN-658 T-04/T-05: stream（~Stream）与 native-ns（use auto.*）
-                // 后端 demo 加载为 VM session——#[api] CRUD 在 session 内执行，
-                // 流端点按 proxy 签名特路服务，原生命名空间经进程级注册表可用。
-                let back_api = apps_dir
-                    .join(&row.id)
-                    .join("src")
-                    .join("back")
-                    .join("api.at");
-                // PLAN-037 T-02: 谓词迁 auto-lang back_provision（本处改引用）。
-                let needs_session = std::fs::read_to_string(&back_api)
-                    .map(|c| auto_lang::ui::back_provision::back_needs_session(&c))
-                    .unwrap_or(false);
-                // Plan 672 条目 4: fullstack 档（普通 #[api] CRUD）同样建
-                // session——VM 臂此前靠 inproc 合并编译 CALL 面消费（谓词原
-                // 注释），Vue 臂浏览器 fetch 必须经 proxy /apps/<id>/ 伺服，
-                // 无会话即 404。VM 臂侧多出的空闲 session 无害（demo 语料
-                // 仍走 inproc，不经 proxy 路由）。
-                let fullstack_session = row.fullstack && back_api.is_file();
-                // PLAN-675 T-08: routable 档会话准入——路由 demo 的 back 链同为
-                // 普通 CRUD（needs_session 谓词只认 ~Stream/~Promise/use auto.），
-                // 不补此臂则五家路由 demo 的 API 全数 `404 unknown app`（走查
-                // 数据冻结真身之二，与 N2 死亡窗口叠加）。
-                let routable_session = row.routable && back_api.is_file();
-                if (needs_session || fullstack_session || routable_session) && back_api.is_file() {
-                    sessions.push(auto_lang::back_proxy::SessionSpec {
-                        app_id: row.id.clone(),
-                        back_entry: back_api,
-                    });
-                }
-                if !(row.loadable || row.fullstack || row.route_stub) {
-                    return None;
-                }
-                Some(auto_lang::back_proxy::NativeMediaApp {
-                    app_id: row.id.clone(),
-                    media_root: pac_media_root(&row.pac),
-                })
-            })
-            .collect();
-    if native_media.is_empty() && sessions.is_empty() {
-        return None;
-    }
-    let app_count = native_media.len();
-    let session_count = sessions.len();
-    let config = auto_lang::back_proxy::BackProxyConfig {
-        port: 0,
-        sessions,
-        // PLAN-675 T-08: lazy 档——点开 demo 即载对应会话（全量预装载
-        // 赶不上点击：走查实证 N2 死亡窗口内路由 demo 会话永远轮空，
-        // 且 12 家 VM 常驻改为按访问付费更省）。
-        lazy_sessions: true,
-        native_media,
-        // PLAN-043 Part 1: ui-gallery 当前无 photo 声明者——空表。
-        native_photos: Vec::new(),
-    };
-    match auto_lang::back_proxy::start(config) {
-        Ok(proxy) => {
-            let base = format!("http://127.0.0.1:{}", proxy.port);
-            set_gallery_proxy_root(Some(base.clone()));
-            println!(
-                "  {} Gallery back-proxy: {base} ({app_count} apps, {session_count} sessions)",
-                "✓".bright_green(),
-            );
-            Some(proxy.port)
-        }
-        Err(e) => {
-            set_gallery_proxy_root(None);
-            println!(
-                "  {} Gallery back-proxy failed to start: {e} (embedded demos stay static)",
-                "⚠".bright_yellow()
-            );
-            None
-        }
-    }
 }
 
 /// PLAN-625: VM 臂 registry 刷新入口——`run_vm_ui`(rust_ui.rs)在编译
@@ -8903,7 +8483,7 @@ pub fn emit_gallery_vm_demos(
                     skipped.push(format!("{}(back 链缺 api 模块)", r.id));
                     continue;
                 };
-                let Some(api_mod) = crate::api_gen::extract_api_lenient(&api_content) else {
+                let Some(api_mod) = auto_api_gen::api_gen::extract_api_lenient(&api_content) else {
                     skipped.push(format!("{}(api 端点解析失败)", r.id));
                     continue;
                 };
@@ -9018,8 +8598,8 @@ pub fn emit_gallery_vm_demos(
                 for (m, c) in back_modules.iter() {
                     let rc =
                         qualify_native_ns_receivers(&rewrite_use_modules(c, &renames, &back_names));
-                    let mut parser = auto_lang::Parser::from(rc.as_str())
-                        .with_session(auto_lang::session::CompilerSession::core());
+                    let mut parser = auto_lang_core::Parser::from(rc.as_str())
+                        .with_session(auto_lang_core::session::CompilerSession::core());
                     if let Err(e) = parser.parse() {
                         println!(
                             "  {} gallery back module `{}` parse failed — demo skipped: {e}",
@@ -9999,7 +9579,7 @@ pub fn gallery_strip_root_page_chrome(sfc: &str) -> String {
 
 fn gallery_demo_row(
     apps_dir: &Path,
-    e: &auto_lang::ui::app_registry::AppRegistryEntry,
+    e: &auto_ui_compiler::app_registry::AppRegistryEntry,
 ) -> (GalleryDemoRow, Option<VueProject>) {
     let app_root = apps_dir.join(&e.id);
     let doc = fs::read_to_string(app_root.join("tutorial.ad"))
@@ -10234,9 +9814,9 @@ fn resolve_demo_api_client_ts(apps_dir: &Path, demo_id: &str) -> Option<String> 
             let api_at = app_root.join("src").join("back").join("api.at");
             fs::read_to_string(&api_at)
                 .ok()
-                .and_then(|content| crate::api_gen::try_full_parse(&content))
+                .and_then(|content| auto_api_gen::api_gen::try_full_parse(&content))
                 .map(|module| {
-                    auto_lang::api::TypeScriptGenerator::new().generate_simple_client(&module)
+                    auto_lang_core::api::TypeScriptGenerator::new().generate_simple_client(&module)
                 })
         }
     };
@@ -10541,8 +10121,8 @@ fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
         // the 2026-09-07 ruling; registered as extra roots (native mount),
         // vm-track parity with app_registry::manifest_repo_roots. Env
         // override above keeps full-replace semantics (manifest not merged).
-        if let Some(os_root) = auto_lang::ui::app_registry::resolve_os_manifest_root(parent) {
-            for (id, root) in auto_lang::ui::app_registry::manifest_repo_roots(&os_root) {
+        if let Some(os_root) = auto_ui_compiler::app_registry::resolve_os_manifest_root(parent) {
+            for (id, root) in auto_ui_compiler::app_registry::manifest_repo_roots(&os_root) {
                 if !out.iter().any(|(existing, _)| existing == &id) {
                     out.push((id, root));
                 }
@@ -10554,7 +10134,7 @@ fn desktop_extra_app_roots(root_dir: &Path) -> Vec<(String, PathBuf)> {
         // full-replace arm above stays this track's gallery off-switch (the
         // desktop.ps1/sh wrappers append the two roots explicitly); no
         // separate storage gate on this track (PLAN-008 §4).
-        for (id, root) in auto_lang::ui::app_registry::gallery_extra_roots_from(None, parent) {
+        for (id, root) in auto_ui_compiler::app_registry::gallery_extra_roots_from(None, parent) {
             if !out.iter().any(|(existing, _)| existing == &id) {
                 out.push((id, root));
             }
@@ -10921,76 +10501,6 @@ onMounted(() => {
 #[cfg(test)]
 mod tests {
 
-    /// PLAN-809 T-06c V-02：请求路径与 legacy 自扫的读点对拍——同输入
-    /// pac.at 下 VueReads 双源字段逐一相等 + 完整 from_workspace 双路径
-    /// 项目字段一致（生成器项目读取改轻合同的等价性证据）。
-    #[test]
-    fn plan809_v02_reads_request_vs_legacy_parity() {
-        use auto_project_model::descriptor::SourceInfo;
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        let front = root.join("src").join("front");
-        std::fs::create_dir_all(&front).unwrap();
-        std::fs::write(front.join("app.at"), "widget W { view { text \"hi\" {} } }").unwrap();
-        std::fs::write(
-            root.join("pac.at"),
-            "name: \"parity-app\"
-title: \"Parity\"
-title_zh: \"对拍\"
-render: \"vue\"
-shadcn: off
-default_classes: on
-front: \"src/front\"
-npm_deps: [\"vue\", \"axios@^1.0.0\"]
-styles: [\"theme.css\"]
-i18n: true
-window: \"800x600\"
-",
-        )
-        .unwrap();
-
-        let pac_path = root.join("pac.at");
-        let pac_content = std::fs::read_to_string(&pac_path).unwrap();
-        let legacy = VueReads::scan(root, &pac_path, &pac_content);
-
-        // 生产请求构造路径（Pac::new → request_of）
-        let config =
-            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
-        let pac = crate::pac::Pac::new(config);
-        let req = crate::generation_request_adapter::request_of(&pac, &pac_path);
-        let from_req = VueReads::from_request(&req);
-
-        assert_eq!(from_req.name, legacy.name, "name");
-        assert_eq!(from_req.shadcn, legacy.shadcn, "shadcn 决策");
-        assert_eq!(
-            from_req.default_classes, legacy.default_classes,
-            "default_classes 决策"
-        );
-        assert_eq!(from_req.front_rel_path, legacy.front_rel_path, "front 声明");
-        assert_eq!(from_req.index_title, legacy.index_title, "locale 链标题");
-        assert_eq!(
-            from_req.npm_deps, legacy.npm_deps,
-            "npm_deps（数组+@ver 形态）"
-        );
-        assert_eq!(from_req.style_files, legacy.style_files, "styles");
-        assert_eq!(from_req.i18n.enabled, legacy.i18n.enabled, "i18n.enabled");
-        assert_eq!(
-            from_req.theme.is_some(),
-            legacy.theme.is_some(),
-            "theme 合成存在性"
-        );
-
-        // 完整双路径：from_workspace（自扫）vs from_workspace_with_request
-        let a = VueProject::from_workspace(root).unwrap();
-        let b = VueProject::from_workspace_with_request(root, &req).unwrap();
-        assert_eq!(a.name, b.name);
-        assert_eq!(a.index_title, b.index_title);
-        assert_eq!(a.npm_deps, b.npm_deps);
-        assert_eq!(a.style_files, b.style_files);
-        assert_eq!(a.i18n.enabled, b.i18n.enabled);
-        assert_eq!(a.theme.is_some(), b.theme.is_some());
-        assert_eq!(a.output_dir, b.output_dir);
-    }
     use super::*;
 
     /// Stage B P-3: apps 容器展开（vue 轨）——`../auto-os/apps` 下每个含
@@ -11075,15 +10585,17 @@ window: \"800x600\"
         // vm/iced 轨组合面（host_extra_roots 的纯函数形态，CWD 无关重演）。
         let front = tmp.path().join("auto-os-config").join("auto");
         let apps = os_root.join("apps");
-        let mut vm_roots = auto_lang::ui::app_registry::extra_roots_from(None, None, &front, &apps);
-        if let Some(resolved) = auto_lang::ui::app_registry::resolve_os_manifest_root(tmp.path()) {
-            for (id, root) in auto_lang::ui::app_registry::manifest_repo_roots(&resolved) {
+        let mut vm_roots =
+            auto_ui_compiler::app_registry::extra_roots_from(None, None, &front, &apps);
+        if let Some(resolved) = auto_ui_compiler::app_registry::resolve_os_manifest_root(tmp.path())
+        {
+            for (id, root) in auto_ui_compiler::app_registry::manifest_repo_roots(&resolved) {
                 if !vm_roots.iter().any(|(existing, _)| existing == &id) {
                     vm_roots.push((id, root));
                 }
             }
         }
-        vm_roots.extend(auto_lang::ui::app_registry::gallery_extra_roots_from(
+        vm_roots.extend(auto_ui_compiler::app_registry::gallery_extra_roots_from(
             None,
             tmp.path(),
         ));
@@ -11405,9 +10917,9 @@ render: \"vm\"
         )
         .unwrap();
 
-        let entries = auto_lang::ui::app_registry::scan_apps(
+        let entries = auto_ui_compiler::app_registry::scan_apps(
             &ui,
-            &auto_lang::ui::app_registry::ScanOptions {
+            &auto_ui_compiler::app_registry::ScanOptions {
                 render: Some("vue".to_string()),
             },
         );
@@ -12456,15 +11968,15 @@ widget App {
     view { div { "hi" } }
 }
 "#;
-        let session = auto_lang::session::CompilerSession::ui();
-        let mut parser = auto_lang::Parser::from(src).with_session(session);
+        let session = auto_lang_core::session::CompilerSession::ui();
+        let mut parser = auto_lang_core::Parser::from(src).with_session(session);
         let ast = parser.parse().expect("parse");
         let widgets: Vec<AuraWidget> = ast
             .stmts
             .iter()
             .filter_map(|s| match s {
-                auto_lang::ast::Stmt::WidgetDecl(d) => {
-                    auto_lang::aura::extract_widget_from_decl(d).ok()
+                auto_lang_core::ast::Stmt::WidgetDecl(d) => {
+                    auto_ui_compiler::aura::extract_widget_from_decl(d).ok()
                 }
                 _ => None,
             })
@@ -12672,7 +12184,7 @@ store BetaStore {
         .unwrap();
 
         // Non-strict: warning + build continues.
-        auto_lang::ui_gen::validators::set_strict(false);
+        auto_ui_compiler::ui_gen::validators::set_strict(false);
         let ok = incremental_compile_changed(root, None);
         assert!(ok.is_ok(), "non-strict build must continue: {:?}", ok.err());
         let stores_dir = root
@@ -12694,13 +12206,13 @@ store BetaStore {
         struct StrictGuard;
         impl StrictGuard {
             fn on() -> Self {
-                auto_lang::ui_gen::validators::set_strict(true);
+                auto_ui_compiler::ui_gen::validators::set_strict(true);
                 StrictGuard
             }
         }
         impl Drop for StrictGuard {
             fn drop(&mut self) {
-                auto_lang::ui_gen::validators::set_strict(false);
+                auto_ui_compiler::ui_gen::validators::set_strict(false);
             }
         }
         let _guard = StrictGuard::on();
@@ -13001,7 +12513,7 @@ widget App {
     }
     impl Drop for Plan609Restore {
         fn drop(&mut self) {
-            auto_lang::ui_gen::validators::set_strict(false);
+            auto_ui_compiler::ui_gen::validators::set_strict(false);
             match &self.prev_root {
                 Some(v) => std::env::set_var("AUTO_OS_ROOT", v),
                 None => std::env::remove_var("AUTO_OS_ROOT"),
@@ -13030,7 +12542,7 @@ widget App {
     );
 
     // strict：一致性守卫升硬错，错误信息点名缺失组件。
-    auto_lang::ui_gen::validators::set_strict(true);
+    auto_ui_compiler::ui_gen::validators::set_strict(true);
     let err = match crate::vue::VueProject::from_workspace(&root) {
         Err(e) => e,
         Ok(_) => panic!("strict: unresolved component import must fail the workspace"),
@@ -13049,8 +12561,8 @@ widget App {
 /// ③声明覆盖键以规范化值落位（非基座原值）。
 #[test]
 fn plan609_theme_decl_dual_face_same_source() {
-    use auto_lang::design_tokens::decl;
-    use auto_lang::design_tokens::decl::ThemeDecl;
+    use auto_lang_core::design_tokens::decl;
+    use auto_lang_core::design_tokens::decl::ThemeDecl;
 
     let decl = ThemeDecl {
         name: Some("dual-src".to_string()),
@@ -13066,7 +12578,7 @@ fn plan609_theme_decl_dual_face_same_source() {
 
     // VM 面：合成体上槽（thread-local，nextest 每测独立进程隔离）。
     assert!(
-        auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(composed.clone())),
+        auto_ui_compiler::style::theme::set_theme_composed(std::sync::Arc::new(composed.clone())),
         "合成主题上槽"
     );
 
@@ -13074,9 +12586,9 @@ fn plan609_theme_decl_dual_face_same_source() {
     // （PLAN-038 Phase B：EXTENDED_ORDER 在主题表持有时亦入 CSS）。
     // 本断言仍按 core+sidebar 抽查，避免 composed 基座缺扩展键时误伤。
     let css = generate_index_css(Some(&composed));
-    let css_face = |t: auto_lang::ui::style::theme::registry::TokenName| {
-        auto_lang::ui::style::theme::registry::CORE_ORDER.contains(&t)
-            || auto_lang::ui::style::theme::registry::SIDEBAR_ORDER.contains(&t)
+    let css_face = |t: auto_ui_compiler::style::theme::registry::TokenName| {
+        auto_ui_compiler::style::theme::registry::CORE_ORDER.contains(&t)
+            || auto_ui_compiler::style::theme::registry::SIDEBAR_ORDER.contains(&t)
     };
     for (token, value) in composed.light.iter().chain(composed.dark.iter()) {
         if !css_face(*token) {
@@ -13096,16 +12608,16 @@ fn plan609_theme_decl_dual_face_same_source() {
     // ② VM 面逐键：resolve == 该键 CSS 值串解析（两端同一数值域）。
     for (token, css_value) in &composed.light {
         assert_eq!(
-            auto_lang::ui::style::theme::active_theme_rgb(*token, false),
-            auto_lang::ui::style::theme::registry::hsl_str_to_rgb(css_value),
+            auto_ui_compiler::style::theme::active_theme_rgb(*token, false),
+            auto_ui_compiler::style::theme::registry::hsl_str_to_rgb(css_value),
             "light 面 {:?}: VM resolve == CSS 值串",
             token
         );
     }
     for (token, css_value) in &composed.dark {
         assert_eq!(
-            auto_lang::ui::style::theme::active_theme_rgb(*token, true),
-            auto_lang::ui::style::theme::registry::hsl_str_to_rgb(css_value),
+            auto_ui_compiler::style::theme::active_theme_rgb(*token, true),
+            auto_ui_compiler::style::theme::registry::hsl_str_to_rgb(css_value),
             "dark 面 {:?}: VM resolve == CSS 值串",
             token
         );
@@ -13281,7 +12793,7 @@ fn gc662_row(id: &str, marker: &str) -> GalleryDemoRow {
 /// 读 marker（app.at 首行 `// marker <m>`）→ 合成行。计数走外层闭包。
 fn gc662_scan_one(
     apps_dir: &Path,
-    e: &auto_lang::ui::app_registry::AppRegistryEntry,
+    e: &auto_ui_compiler::app_registry::AppRegistryEntry,
 ) -> GalleryDemoRow {
     let root = apps_dir.join(&e.id);
     let app_at =
@@ -13314,7 +12826,7 @@ fn test_plan_662_gallery_rows_disk_cache() {
     gc662_make_demo(&apps_dir, "011-beta", "b1");
 
     let scans = std::sync::atomic::AtomicUsize::new(0);
-    let counting = |dir: &Path, e: &auto_lang::ui::app_registry::AppRegistryEntry| {
+    let counting = |dir: &Path, e: &auto_ui_compiler::app_registry::AppRegistryEntry| {
         scans.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         gc662_scan_one(dir, e)
     };
@@ -13512,7 +13024,7 @@ mod plan593_index_css_golden_tests {
 // ── PLAN-601 T-06: theme{} 声明 → vue 生成面消费 ────────────────────────
 #[cfg(test)]
 mod plan601_theme_declaration_tests {
-    use auto_lang::design_tokens::decl::{compose, normalize_value, ThemeDecl};
+    use auto_lang_core::design_tokens::decl::{compose, normalize_value, ThemeDecl};
     use std::collections::BTreeMap;
 
     fn decl(name: Option<&str>, extends: Option<&str>, colors: &[(&str, &str)]) -> ThemeDecl {
@@ -13538,14 +13050,14 @@ mod plan601_theme_declaration_tests {
         let primary = normalize_value("#8b5cf6").unwrap();
         assert!(css.contains(&format!("--primary: {primary};")), "{css}");
         // 双 mode 都吃到覆盖（compose 双 mode 同步覆盖语义）
-        let stella = auto_lang::design_tokens::registry::builtin("stella").unwrap();
+        let stella = auto_lang_core::design_tokens::registry::builtin("stella").unwrap();
         let bg = stella
             .light
             .iter()
             .find(|(tok, _)| {
                 matches!(
                     tok,
-                    auto_lang::design_tokens::registry::TokenName::Background
+                    auto_lang_core::design_tokens::registry::TokenName::Background
                 )
             })
             .unwrap()
@@ -13779,9 +13291,9 @@ mod gallery_registry_at_tests {
             .join("..")
             .join("examples")
             .join("ui");
-        let entries = auto_lang::ui::app_registry::scan_apps(
+        let entries = auto_ui_compiler::app_registry::scan_apps(
             &examples,
-            &auto_lang::ui::app_registry::ScanOptions::default(),
+            &auto_ui_compiler::app_registry::ScanOptions::default(),
         );
         let find = |id: &str| {
             entries
@@ -13841,11 +13353,11 @@ mod gallery_registry_at_tests {
             .join("back")
             .join("api.at");
         let content = std::fs::read_to_string(&path).expect("read 018 api.at");
-        let mut parser = auto_lang::Parser::from(content.as_str());
+        let mut parser = auto_lang_core::Parser::from(content.as_str());
         let ast = parser
             .parse()
             .unwrap_or_else(|e| panic!("018 api.at parse failed: {e:?}"));
-        let module = auto_lang::api::ApiExtractor::new().extract("api", &ast.stmts);
+        let module = auto_lang_core::api::ApiExtractor::new().extract("api", &ast.stmts);
         assert!(
             !module.endpoints.is_empty() && !module.types.is_empty(),
             "018 api extraction empty: endpoints={} types={}",
@@ -14451,9 +13963,9 @@ pub fn open_file(path str) str {
         )
         .unwrap();
 
-        let entries = auto_lang::ui::app_registry::scan_apps(
+        let entries = auto_ui_compiler::app_registry::scan_apps(
             &apps,
-            &auto_lang::ui::app_registry::ScanOptions::default(),
+            &auto_ui_compiler::app_registry::ScanOptions::default(),
         );
         let entry = entries
             .iter()
@@ -14584,74 +14096,5 @@ pub fn open_file(path str) str {
             line.contains("search_lc: \"001 hello world 001-helloworld basic text\""),
             "search_lc lowercased concat: {line}"
         );
-    }
-    /// R2-F03 对拍补例：仅 title_zh + app(front) 节点形态 + 主声明不变反控。
-    #[test]
-    fn plan809_r2_parity_zh_only_and_front_node() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        let front = root.join("front");
-        let src_front = root.join("src").join("front");
-        std::fs::create_dir_all(&front).unwrap();
-        std::fs::create_dir_all(&src_front).unwrap();
-        std::fs::write(
-            front.join("app.at"),
-            "widget W { view { text \"node\" {} } }",
-        )
-        .unwrap();
-        std::fs::write(
-            src_front.join("app.at"),
-            "widget S { view { text \"src\" {} } }",
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("pac.at"),
-            "name: \"fp\"
-title_zh: \"Only Chinese\"
-render: \"vue\"
-app(\"front\") { }
-",
-        )
-        .unwrap();
-        let pac_path = root.join("pac.at");
-        let config =
-            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
-        let pac = crate::pac::Pac::new(auto_lang::config::AutoConfig {
-            code: config.code.clone(),
-            root: config.root.clone(),
-            args: config.args.clone(),
-        });
-        let req = crate::generation_request_adapter::request_of(&pac, &pac_path);
-        assert_eq!(req.front_node_form.as_deref(), Some("./front"));
-        let a = VueProject::from_workspace(root).unwrap();
-        let b = VueProject::from_workspace_with_request(root, &req).unwrap();
-        assert_eq!(a.front_dir, b.front_dir, "app(front) 节点形态目录一致");
-        assert!(
-            b.front_dir.ends_with("front"),
-            "选 ./front 而非 src/front：{:?}",
-            b.front_dir
-        );
-        assert_eq!(a.index_title.as_deref(), Some("Only Chinese"));
-        assert_eq!(
-            b.index_title.as_deref(),
-            Some("Only Chinese"),
-            "仅 title_zh 不得 None"
-        );
-
-        // 主声明不变反控：请求不变，磁盘后加 dep 不得改变请求路径产物集
-        let req2 = crate::generation_request_adapter::request_of(&pac, &pac_path);
-        assert_eq!(req2.dep_roots.len(), 0);
-        std::fs::write(
-            root.join("pac.at"),
-            "name: \"fp\"
-title_zh: \"Only Chinese\"
-render: \"vue\"
-app(\"front\") { }
-dep \"late\" { path: \"../late\" }
-",
-        )
-        .unwrap();
-        let c = VueProject::from_workspace_with_request(root, &req2).unwrap();
-        assert!(c.npm_deps.is_empty(), "磁盘后改的声明不得进入请求路径产物");
     }
 }

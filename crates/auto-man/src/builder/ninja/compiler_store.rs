@@ -4,8 +4,10 @@ use log::*;
 use std::collections::HashMap;
 use std::path::Path;
 
+use super::config::{
+    CompilerConfig, CompilerKind, CompilerLocation, ExecutableType, FlagFormat, FlagMappings,
+};
 use crate::AutoResult;
-use super::config::{CompilerConfig, CompilerKind, CompilerLocation, ExecutableType, FlagFormat, FlagMappings};
 
 /// 编译器配置存储
 ///
@@ -48,7 +50,9 @@ impl CompilerStore {
 
         // 查找 compilers 节点
         use auto_val::{Kid, ValueKey};
-        if let Some(Kid::Node(compilers_node)) = config.root.get_kid(&ValueKey::Str("compilers".into())) {
+        if let Some(Kid::Node(compilers_node)) =
+            config.root.get_kid(&ValueKey::Str("compilers".into()))
+        {
             for (_, kid) in compilers_node.kids_iter() {
                 if let Kid::Node(node) = kid {
                     if node.name == "compiler" {
@@ -56,7 +60,10 @@ impl CompilerStore {
                             let name = compiler_config.name.clone();
                             store.configs.insert(name, compiler_config);
                         } else {
-                            warn!("Failed to parse compiler node: {}", node.main_arg().to_astr());
+                            warn!(
+                                "Failed to parse compiler node: {}",
+                                node.main_arg().to_astr()
+                            );
                         }
                     }
                 }
@@ -229,7 +236,8 @@ impl CompilerStore {
     fn parse_default_cflags(node: &auto_val::Node) -> Vec<AutoStr> {
         use auto_val::{Kid, ValueKey};
 
-        if let Some(Kid::Node(cflags_node)) = node.get_kid(&ValueKey::Str("default_cflags".into())) {
+        if let Some(Kid::Node(cflags_node)) = node.get_kid(&ValueKey::Str("default_cflags".into()))
+        {
             // 尝试获取值并转换为字符串数组
             // 如果节点有value属性
             if cflags_node.has_prop("value") {

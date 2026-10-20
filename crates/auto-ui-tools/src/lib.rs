@@ -1,22 +1,51 @@
 //! # auto-ui-tools
 //!
-//! UI engineering tool package (PLAN-815). **M815-A scope** (this revision):
-//! the real `auto-ui-tool` process hosts the light I-TOOL protocol with two
-//! narrow operations — `describe` (identity/version/capabilities/lifecycle)
-//! and `validate_project` (I-PROJECT metadata / path / request-constraint
-//! checks). It deliberately does *not* claim generation, build, or run
-//! support: requests for unimplemented operations are rejected before any
-//! side effect, and validation reports list exactly what was not verified
-//! (§5.5 honesty contract). The generation/build/run closure lands with
-//! M815-B on top of the M814-A SDK.
+//! UI engineering tool package (PLAN-815). M815-A delivered the real
+//! `auto-ui-tool` process with two narrow protocol operations — `describe`
+//! and `validate_project` (§5.5 honesty contract: unimplemented operations
+//! are rejected before any side effect).
 //!
-//! Closure discipline: this crate depends only on the protocol crate and
-//! the one-source project model — no auto-man, no language/VM/UI stack.
-//! Clients (PLAN-816 CLI) talk to the binary over framed stdio; they must
-//! not link this crate as a library dependency.
+//! **M815-B / T-04** (this revision) lands the generation closure extracted
+//! from auto-man: the Vue/Rust/Jet/Ark/Tauri/VSCode project generators,
+//! gallery/wm/shadcn assets, the JS package runner and the display-field
+//! reader — all consuming the M814-A public surface (auto-ui-compiler +
+//! auto-lang-core), the 809 I-PROJECT request (via `PacSource`) and the
+//! auto-api-gen single-algorithm API generation. Real build/run execution
+//! over the protocol lands with T-05 (M814-B gate); the run paths that
+//! depend on the not-yet-migrated iced runtime/back_proxy stay behind in
+//! auto-man compat modules.
+//!
+//! Closure discipline: this crate depends only on the protocol crate, the
+//! one-source project model, the M814-A public UI/compiler/SDK packages,
+//! auto-man-core (declaration single source) and auto-api-gen — no auto-man,
+//! no legacy auto-lang compat big lib. Clients (PLAN-816 CLI) talk to the
+//! binary over framed stdio; they must not link this crate as a library
+//! dependency.
 
 pub mod resources;
 pub mod validate;
+
+// ---- PLAN-815 T-04: UI engineering tool closure (from auto-man) ----
+pub mod ark;
+pub mod gallery_assets;
+pub mod gallery_cache;
+pub mod image_viewer;
+pub mod jet;
+pub mod pkg;
+#[cfg(test)]
+mod plan075_bp_tests;
+pub mod project_display_reader;
+#[cfg(test)]
+mod project_display_reader_tests;
+pub mod rust_ui;
+pub mod shadcn_build;
+pub mod tauri;
+pub mod tauri_backend;
+pub mod util;
+pub mod vscode;
+pub mod vue;
+pub mod vue_shadcn;
+pub mod wm_assets;
 
 use auto_tool_protocol::message::{ClientBody, ClientEnvelope, ServerBody, ServerEnvelope};
 use auto_tool_protocol::{

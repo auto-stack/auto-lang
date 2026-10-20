@@ -41,6 +41,11 @@ auto-man-core = { path = "../auto-man-core" }
 # workspace layout) moved out of this crate — facade re-export keeps the
 # historic auto_man::api_gen / ::sidecar / ::rust_ui paths alive.
 auto-api-gen = { path = "../auto-api-gen" }
+# PLAN-815 T-04: UI tool generation closure — facade re-export keeps every
+# historic auto_man::{vue,rust_ui,jet,ark,tauri,vscode,...} path alive; the
+# M814-B-gated run residues (vue_run_compat / rust_ui_vm_compat) consume its
+# public surface from this side.
+auto-ui-tools = { path = "../auto-ui-tools" }
 auto-gen = { path = "../auto-gen" }
 auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
 blake3 = { workspace = true }  # Plan 134: File hashing utilities

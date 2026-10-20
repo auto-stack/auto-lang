@@ -9,7 +9,12 @@
 // ---- PLAN-814 T-03 Batch 1：style DSL 分析/模型、action 配置解析、lucide 表 ----
 // （iced 后端适配器留 auto-lang ui/style_iced_adapter.rs——runtime 件。）
 pub mod action_config;
+// PLAN-815 T-04: 画廊 app 元信息扫描 + i18n 查询（自 auto-lang ui 迁入；
+// 旧包经 ui/mod.rs 再导出保持 auto_lang::ui::{app_registry,i18n_lookup} 路径）。
+pub mod app_registry;
+pub mod i18n_lookup;
 pub mod lucide_generated;
+pub mod store_deps;
 pub mod style;
 // ---- PLAN-814 T-03 Batch 2：AURA 模型/校验、a2ui、四生成器、route 分析 ----
 pub mod a2ui;

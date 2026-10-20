@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# PLAN-815 V-01(A 范围)/V-05 dependency-closure oracle: the external
-# consumer's normal/build closure must contain the UI tool + protocol +
-# project model and must NOT contain auto-man / auto-lang / auto-vm /
-# auto-gen / auto-media-core (the M815-A tool host is interpreter/Man-free
-# by construction; this pins it against regressions).
+# PLAN-815 V-01/V-05 dependency-closure oracle: the external consumer's
+# normal/build closure must contain the UI tool + protocol + project model
+# and must NOT contain auto-man / auto-lang / auto-vm / auto-gen (the tool
+# host is interpreter-big-lib/Man-free by construction). PLAN-815 T-04: the
+# generation closure consumes the M814-A SDK/compiler, which legitimately
+# carries auto-media-core (image pipeline, lang-core domain) — removed from
+# the forbidden list; auto-man/auto-lang/auto-vm/auto-gen stay forbidden.
 #
 # Usage: bash test/fixtures/modularity/ui-tool-consumer/verify-deps.sh
 set -euo pipefail
@@ -16,9 +18,9 @@ TREE="$(cd "$HERE" && cargo tree --workspace --edges normal,build 2>/dev/null)"
 # (e.g. .../.wt/lang-815/auto-lang/crates/...) are not false positives.
 # NOTE: auto-ui-tools is REQUIRED and would match a naive "auto-ui" prefix
 # pattern — the forbidden list uses exact crate names via word boundaries.
-if grep -Eq "(auto-lang|auto-man|auto-vm|auto-gen|auto-media-core) v" <<<"$TREE"; then
+if grep -Eq "(auto-lang|auto-man|auto-vm|auto-gen) v" <<<"$TREE"; then
   echo "FAIL: forbidden crates in the ui-tool-consumer dependency closure:"
-  grep -E "(auto-lang|auto-man|auto-vm|auto-gen|auto-media-core) v" <<<"$TREE"
+  grep -E "(auto-lang|auto-man|auto-vm|auto-gen) v" <<<"$TREE"
   exit 1
 fi
 

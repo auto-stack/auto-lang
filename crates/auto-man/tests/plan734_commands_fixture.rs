@@ -19,7 +19,5 @@ use tauri::Manager;
 
 /// Register all API commands with the Tauri app
 pub fn register_commands(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
-    builder.invoke_handler(tauri::generate_handler![
-        echo,
-    ])
+    builder.invoke_handler(tauri::generate_handler![echo,])
 }

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Plan 516: vue 桌面 WM 运行时资产（crates/auto-man/assets/wm）的 vitest 前置测试位——RemoteWindow/remote 切片/store 扩展（T1/T2/T3）。",
+  "description": "Plan 516: vue 桌面 WM 运行时资产（crates/auto-ui-tools/assets/wm）的 vitest 前置测试位——RemoteWindow/remote 切片/store 扩展（T1/T2/T3）。",
   "scripts": {
     "test": "vitest run"
   },

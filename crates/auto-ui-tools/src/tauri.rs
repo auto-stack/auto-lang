@@ -14,7 +14,7 @@ use std::path::Path;
 
 use colored::Colorize;
 
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 /// Run Tauri dev server (full workflow: generate Vue, install deps, run)
 ///
@@ -99,7 +99,7 @@ fn run_tauri_project_inner(
         "▶ Step {}/{}: Generating API client...",
         current_step, total_steps
     );
-    if let Err(e) = crate::api_gen::generate_api(root_dir, "tauri") {
+    if let Err(e) = auto_api_gen::api_gen::generate_api(root_dir, "tauri") {
         // API generation is optional - only warn on failure
         println!("  ⚠ API generation skipped: {}", e);
     }
@@ -168,7 +168,7 @@ fn run_tauri_project_inner(
 
     // Step 5.5: Re-generate Tauri API code and register commands in lib.rs
     // (must run AFTER tauri init because --force overwrites src-tauri/src/)
-    if let Err(e) = crate::api_gen::generate_api(root_dir, "tauri") {
+    if let Err(e) = auto_api_gen::api_gen::generate_api(root_dir, "tauri") {
         println!("  ⚠ API generation skipped: {}", e);
     } else if tauri_dir.join("src").join("commands.rs").is_file()
         || tauri_dir.join("src").join("commands").is_dir()

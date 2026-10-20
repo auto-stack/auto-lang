@@ -84,7 +84,10 @@ impl AutoManResolver {
             self.load_pac_at(&pac_path)?;
         } else {
             // No pac.at file - use default configuration
-            log::warn!("No pac.at found at {}, using default configuration", pac_path.display());
+            log::warn!(
+                "No pac.at found at {}, using default configuration",
+                pac_path.display()
+            );
         }
 
         Ok(self)
@@ -102,8 +105,7 @@ impl AutoManResolver {
         use std::fs;
 
         // Read pac.at content
-        let content = fs::read_to_string(pac_path)
-            .map_err(|e| crate::AutoManError::Io(e))?;
+        let content = fs::read_to_string(pac_path).map_err(|e| crate::AutoManError::Io(e))?;
 
         // **Plan 081 Phase 3**: Parse mode field
         // Format: `mode: "autovm"` or `mode: "c"` or `mode: "rust"`
@@ -116,7 +118,10 @@ impl AutoManResolver {
                     self.default_mode = mode;
                     log::info!("Project execution mode: {}", mode.as_str());
                 } else {
-                    log::warn!("Invalid execution mode: '{}', using default (AutoVM)", mode_str);
+                    log::warn!(
+                        "Invalid execution mode: '{}', using default (AutoVM)",
+                        mode_str
+                    );
                 }
             }
         }
@@ -174,8 +179,10 @@ impl AutoManResolver {
                                 if let Some(mode_quote) = mode_part.find('"') {
                                     let mode_str_start = mode_quote + 1;
                                     if let Some(mode_end) = mode_part[mode_str_start..].find('"') {
-                                        let mode_str = &mode_part[mode_str_start..mode_str_start + mode_end];
-                                        ExecutionMode::from_str(mode_str).unwrap_or(self.default_mode)
+                                        let mode_str =
+                                            &mode_part[mode_str_start..mode_str_start + mode_end];
+                                        ExecutionMode::from_str(mode_str)
+                                            .unwrap_or(self.default_mode)
                                     } else {
                                         self.default_mode
                                     }
@@ -315,10 +322,7 @@ mod tests {
 
     #[test]
     fn test_automan_resolver_creation() {
-        let resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         assert_eq!(resolver.get_std_root(), PathBuf::from("stdlib/auto"));
         assert_eq!(resolver.core.project_root(), std::path::Path::new("."));
@@ -326,10 +330,7 @@ mod tests {
 
     #[test]
     fn test_automan_resolver_std_module() {
-        let resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         let path = resolver.resolve("std.io");
         assert_eq!(path, Ok(PathBuf::from("stdlib/auto/io.at")));
@@ -337,10 +338,8 @@ mod tests {
 
     #[test]
     fn test_automan_resolver_relative_import() {
-        let resolver = AutoManResolver::new(
-            PathBuf::from("/project"),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver =
+            AutoManResolver::new(PathBuf::from("/project"), PathBuf::from("stdlib/auto"));
 
         let path = resolver.resolve("./utils");
         assert_eq!(path, Ok(PathBuf::from("/project/./utils")));
@@ -351,10 +350,7 @@ mod tests {
 
     #[test]
     fn test_automan_resolver_add_search_path() {
-        let mut resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let mut resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         resolver.add_search_path(PathBuf::from("packages"));
 
@@ -365,10 +361,7 @@ mod tests {
 
     #[test]
     fn test_automan_resolver_not_found() {
-        let resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         let result = resolver.resolve("nonexistent_package");
         assert!(result.is_err());
@@ -377,10 +370,7 @@ mod tests {
 
     #[test]
     fn test_find_package_path_std() {
-        let resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         // std.* modules should resolve to std_root
         let result = resolver.core.find_package_path("std.io");
@@ -413,10 +403,7 @@ use std.fs
         fs::write(&pac_at_path, pac_content).ok();
 
         // Create resolver and prepare environment
-        let resolver = AutoManResolver::new(
-            project_root.clone(),
-            stdlib_dir.clone()
-        );
+        let resolver = AutoManResolver::new(project_root.clone(), stdlib_dir.clone());
 
         let resolver = resolver.prepare_env();
 
@@ -437,10 +424,7 @@ use std.fs
 
     #[test]
     fn test_resolve_std_modules() {
-        let resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         // Test standard library module resolution
         let io_path = resolver.resolve("std.io");
@@ -458,10 +442,7 @@ use std.fs
 
     #[test]
     fn test_exists_check() {
-        let resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         // Test exists() for standard library modules
         // Note: These return false if the files don't actually exist
@@ -474,10 +455,7 @@ use std.fs
 
     #[test]
     fn test_search_paths() {
-        let mut resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let mut resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         resolver.add_search_path(PathBuf::from("packages"));
         resolver.add_search_path(PathBuf::from("vendor"));
@@ -505,10 +483,7 @@ use std.fs
         fs::write(&pac_at_path, pac_content).ok();
 
         // Create resolver and prepare environment
-        let resolver = AutoManResolver::new(
-            project_root.clone(),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(project_root.clone(), PathBuf::from("stdlib/auto"));
 
         let resolver = resolver.prepare_env().unwrap();
 
@@ -530,10 +505,7 @@ use std.fs
 
     #[test]
     fn test_default_mode() {
-        let resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         // Default mode should be AutoVM
         assert_eq!(resolver.get_default_mode(), ExecutionMode::AutoVM);
@@ -544,7 +516,7 @@ use std.fs
         let dep = Dependency::new(
             "test_pkg".to_string(),
             PathBuf::from("/test/pkg"),
-            ExecutionMode::C
+            ExecutionMode::C,
         );
 
         assert_eq!(dep.name, "test_pkg");
@@ -554,10 +526,7 @@ use std.fs
 
     #[test]
     fn test_dependency_with_default_mode() {
-        let dep = Dependency::with_default_mode(
-            "test_pkg".to_string(),
-            PathBuf::from("/test/pkg")
-        );
+        let dep = Dependency::with_default_mode("test_pkg".to_string(), PathBuf::from("/test/pkg"));
 
         // Default mode should be AutoVM
         assert_eq!(dep.mode, ExecutionMode::AutoVM);
@@ -565,15 +534,12 @@ use std.fs
 
     #[test]
     fn test_add_dependency_with_mode() {
-        let mut resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let mut resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         resolver.add_dependency(
             "test_pkg".to_string(),
             PathBuf::from("/test/pkg"),
-            ExecutionMode::Rust
+            ExecutionMode::Rust,
         );
 
         // Verify dependency was added with correct mode
@@ -588,24 +554,20 @@ use std.fs
 
     #[test]
     fn test_get_dependency_mode() {
-        let mut resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let mut resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         resolver.add_dependency(
             "pkg1".to_string(),
             PathBuf::from("/pkg1"),
-            ExecutionMode::AutoVM
+            ExecutionMode::AutoVM,
         );
 
-        resolver.add_dependency(
-            "pkg2".to_string(),
-            PathBuf::from("/pkg2"),
-            ExecutionMode::C
-        );
+        resolver.add_dependency("pkg2".to_string(), PathBuf::from("/pkg2"), ExecutionMode::C);
 
-        assert_eq!(resolver.get_dependency_mode("pkg1"), Some(ExecutionMode::AutoVM));
+        assert_eq!(
+            resolver.get_dependency_mode("pkg1"),
+            Some(ExecutionMode::AutoVM)
+        );
         assert_eq!(resolver.get_dependency_mode("pkg2"), Some(ExecutionMode::C));
         assert_eq!(resolver.get_dependency_mode("nonexistent"), None);
     }
@@ -634,10 +596,7 @@ use std.io
         fs::write(stdlib_dir.join("io.at"), "// std.io mock").ok();
 
         // Create resolver and prepare environment
-        let resolver = AutoManResolver::new(
-            project_root.clone(),
-            stdlib_dir.clone()
-        );
+        let resolver = AutoManResolver::new(project_root.clone(), stdlib_dir.clone());
 
         let resolver = resolver.prepare_env().unwrap();
 
@@ -666,10 +625,7 @@ use std.io
         fs::write(&pac_at_path, pac_content).ok();
 
         // Create resolver and prepare environment
-        let resolver = AutoManResolver::new(
-            project_root.clone(),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(project_root.clone(), PathBuf::from("stdlib/auto"));
 
         let resolver = resolver.prepare_env().unwrap();
 
@@ -695,10 +651,7 @@ use std.io
         fs::write(&pac_at_path, pac_content).ok();
 
         // Create resolver and prepare environment
-        let resolver = AutoManResolver::new(
-            project_root.clone(),
-            PathBuf::from("stdlib/auto")
-        );
+        let resolver = AutoManResolver::new(project_root.clone(), PathBuf::from("stdlib/auto"));
 
         let resolver = resolver.prepare_env().unwrap();
 
@@ -712,22 +665,15 @@ use std.io
 
     #[test]
     fn test_get_all_dependencies() {
-        let mut resolver = AutoManResolver::new(
-            PathBuf::from("."),
-            PathBuf::from("stdlib/auto")
-        );
+        let mut resolver = AutoManResolver::new(PathBuf::from("."), PathBuf::from("stdlib/auto"));
 
         resolver.add_dependency(
             "pkg1".to_string(),
             PathBuf::from("/pkg1"),
-            ExecutionMode::AutoVM
+            ExecutionMode::AutoVM,
         );
 
-        resolver.add_dependency(
-            "pkg2".to_string(),
-            PathBuf::from("/pkg2"),
-            ExecutionMode::C
-        );
+        resolver.add_dependency("pkg2".to_string(), PathBuf::from("/pkg2"), ExecutionMode::C);
 
         let deps = resolver.get_dependencies();
         assert_eq!(deps.len(), 2);
@@ -801,10 +747,7 @@ dep database(path: "../database")"#,
         let db_pkg = workspace.path().join("database");
 
         // Create resolver with dependency manually added
-        let mut resolver = AutoManResolver::new(
-            app_pkg.clone(),
-            PathBuf::from("stdlib/auto"),
-        );
+        let mut resolver = AutoManResolver::new(app_pkg.clone(), PathBuf::from("stdlib/auto"));
         resolver.add_dependency(
             "database".to_string(),
             db_pkg.join("src"),
@@ -829,10 +772,7 @@ dep database(path: "../database")"#,
         let app_pkg = workspace.path().join("app");
 
         // Create resolver WITHOUT database dependency
-        let resolver = AutoManResolver::new(
-            app_pkg.clone(),
-            PathBuf::from("stdlib/auto"),
-        );
+        let resolver = AutoManResolver::new(app_pkg.clone(), PathBuf::from("stdlib/auto"));
 
         // Try to import from undeclared dependency
         let path = ModulePath::dep(
@@ -860,10 +800,7 @@ dep database(path: "../database")"#,
         let db_pkg = workspace.path().join("database");
 
         // Create resolver with dependency
-        let mut resolver = AutoManResolver::new(
-            app_pkg.clone(),
-            PathBuf::from("stdlib/auto"),
-        );
+        let mut resolver = AutoManResolver::new(app_pkg.clone(), PathBuf::from("stdlib/auto"));
         resolver.add_dependency(
             "database".to_string(),
             db_pkg.join("src"),
@@ -901,10 +838,7 @@ dep database(path: "../database")"#,
         fs::write(db_models.join("mod.at"), "fn user() {}").unwrap();
 
         // Create resolver with dependency
-        let mut resolver = AutoManResolver::new(
-            app_pkg.clone(),
-            PathBuf::from("stdlib/auto"),
-        );
+        let mut resolver = AutoManResolver::new(app_pkg.clone(), PathBuf::from("stdlib/auto"));
         resolver.add_dependency(
             "database".to_string(),
             db_pkg.join("src"),
@@ -936,10 +870,7 @@ dep database(path: "../database")"#,
         fs::write(db_api_v1.join("handlers.at"), "fn user() {}").unwrap();
 
         // Create resolver with dependency
-        let mut resolver = AutoManResolver::new(
-            app_pkg.clone(),
-            PathBuf::from("stdlib/auto"),
-        );
+        let mut resolver = AutoManResolver::new(app_pkg.clone(), PathBuf::from("stdlib/auto"));
         resolver.add_dependency(
             "database".to_string(),
             db_pkg.join("src"),
@@ -981,10 +912,7 @@ dep database(path: "../database")"#,
         fs::write(db_models.join("mod.at"), "fn user() {}").unwrap();
 
         // Create resolver with dependency
-        let mut resolver = AutoManResolver::new(
-            app_pkg.clone(),
-            PathBuf::from("stdlib/auto"),
-        );
+        let mut resolver = AutoManResolver::new(app_pkg.clone(), PathBuf::from("stdlib/auto"));
         resolver.add_dependency(
             "database".to_string(),
             db_pkg.join("src"),
@@ -1013,10 +941,7 @@ dep database(path: "../database")"#,
         let app_pkg = workspace.path().join("app");
 
         // Create resolver WITHOUT database dependency
-        let resolver = AutoManResolver::new(
-            app_pkg.clone(),
-            PathBuf::from("stdlib/auto"),
-        );
+        let resolver = AutoManResolver::new(app_pkg.clone(), PathBuf::from("stdlib/auto"));
 
         // Try to import from undeclared dependency
         let path = ModulePath::dep(
@@ -1056,10 +981,7 @@ dep database(path: "../database")"#,
         let db_pkg = workspace.path().join("database");
 
         // Create resolver with dependency
-        let mut resolver = AutoManResolver::new(
-            app_pkg.clone(),
-            PathBuf::from("stdlib/auto"),
-        );
+        let mut resolver = AutoManResolver::new(app_pkg.clone(), PathBuf::from("stdlib/auto"));
 
         resolver.add_dependency(
             "database".to_string(),

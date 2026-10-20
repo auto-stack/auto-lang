@@ -1,7 +1,8 @@
 // Plan 508 G4 —— 远程会话接纳：宿主 WS 监听（回环 + token）+ broker
 // 会话镜像泵。
 //
-// 拓扑（架构图）：远程浏览器经 `packages/drawlist-renderer` 连入
+// 拓扑（架构图）：远程浏览器经 drawlist-renderer（PLAN-815 T-04 起位于
+// crates/auto-ui-tools/drawlist-renderer）连入
 // `:17800`（token query），镜像**已落地的 outproc queue 臂**——
 // - 下行：宿主 composed DrawList 变化 → `FrameReady`（payload 内联，
 //   v1.0 纯管道帧形态，无 shm）；订阅兑现时一次性 `Welcome` +
@@ -421,7 +422,7 @@ mod ts_fixtures {
     use super::*;
     use crate::ui::desktop_protocol::message::{DrawOp, InputMsg, MouseButton, Rgba8, WRect};
 
-    /// Plan 508 T3 对拍锚点：Rust ↔ TS（packages/drawlist-renderer
+    /// Plan 508 T3 对拍锚点：Rust ↔ TS（drawlist-renderer（今 crates/auto-ui-tools/drawlist-renderer）
     /// test/fixtures.golden.ts）双侧钉同一批字节——Hello（握手编码）/
     /// PointerPressed（InputMsg 编码）/ FrameReady（DrawList 解码）。
     /// 任一侧 codec 漂移即红（计划②：手工镜像 + 对拍兜底）。

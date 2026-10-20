@@ -14,15 +14,15 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use auto_lang::api::types::{ApiEndpoint, ApiModule};
+use auto_lang_core::api::types::{ApiEndpoint, ApiModule};
 
-use auto_lang::session::CompilerSession;
-use auto_lang::ui_gen::rust::RustGenerator;
-use auto_lang::ui_gen::BackendGenerator;
-use auto_lang::Parser;
+use auto_lang_core::session::CompilerSession;
+use auto_lang_core::Parser;
+use auto_ui_compiler::ui_gen::rust::RustGenerator;
+use auto_ui_compiler::ui_gen::BackendGenerator;
 use colored::Colorize;
 
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 // PLAN-815 T-04: shared rust-workspace layout moved to auto-api-gen
 // (single source; re-export keeps every historic crate::rust_ui path).
@@ -79,7 +79,7 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
 
     // 014:侧车源(term.rs 等)同样参与指纹——此前侧车更新不触发 regen,
     // 生成 crate 一直吃旧拷贝(at-app 泵扩面实测踩中)。
-    let sidecar = crate::sidecar::load_sidecar(project_dir);
+    let sidecar = auto_api_gen::sidecar::load_sidecar(project_dir);
     if let Ok(main_meta) = fs::metadata(&main_rs) {
         if let Ok(main_time) = main_meta.modified() {
             for (_, source_rel) in &sidecar.modules {
@@ -107,8 +107,8 @@ fn needs_regeneration(project_dir: &Path, rust_dir: &Path) -> (bool, bool) {
 
 /// PLAN-039 T-14（组件传型）：WidgetDecl view 树是否含 PascalCase
 /// 子件引用（CHILD_MSG_TYPES 预注册的口径面）。
-fn view_decl_has_pascal_child(node: &auto_lang::ast::ui::ViewNode) -> bool {
-    use auto_lang::ast::ui::ViewNode;
+fn view_decl_has_pascal_child(node: &auto_lang_core::ast::ui::ViewNode) -> bool {
+    use auto_lang_core::ast::ui::ViewNode;
     match node {
         ViewNode::Element { tag, children, .. } => {
             if tag
@@ -149,14 +149,14 @@ fn collect_component_prop_orders(at_files: &[std::path::PathBuf]) {
             let mut parser = Parser::from(code.as_str()).with_session(session);
             if let Ok(ast) = parser.parse() {
                 for stmt in &ast.stmts {
-                    if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                    if let auto_lang_core::ast::Stmt::WidgetDecl(widget_decl) = stmt {
                         let order: Vec<String> = widget_decl
                             .props
                             .iter()
                             .map(|p| p.name.as_str().to_string())
                             .collect();
                         if !order.is_empty() {
-                            auto_lang::ui_gen::rust::WIDGET_PROP_ORDERS.with(|po| {
+                            auto_ui_compiler::ui_gen::rust::WIDGET_PROP_ORDERS.with(|po| {
                                 po.borrow_mut()
                                     .insert(widget_decl.name.as_str().to_string(), order);
                             });
@@ -167,14 +167,14 @@ fn collect_component_prop_orders(at_files: &[std::path::PathBuf]) {
                             let mut prop_tys = std::collections::HashMap::new();
                             for pd in &widget_decl.props {
                                 let kind = match pd.ty {
-                                    auto_lang::ast::Type::Int
-                                    | auto_lang::ast::Type::I64
-                                    | auto_lang::ast::Type::Uint
-                                    | auto_lang::ast::Type::U64 => "int",
-                                    auto_lang::ast::Type::Bool => "bool",
-                                    auto_lang::ast::Type::StrFixed(_)
-                                    | auto_lang::ast::Type::StrOwned
-                                    | auto_lang::ast::Type::StrSlice => "str",
+                                    auto_lang_core::ast::Type::Int
+                                    | auto_lang_core::ast::Type::I64
+                                    | auto_lang_core::ast::Type::Uint
+                                    | auto_lang_core::ast::Type::U64 => "int",
+                                    auto_lang_core::ast::Type::Bool => "bool",
+                                    auto_lang_core::ast::Type::StrFixed(_)
+                                    | auto_lang_core::ast::Type::StrOwned
+                                    | auto_lang_core::ast::Type::StrSlice => "str",
                                     _ => "",
                                 };
                                 if !kind.is_empty() {
@@ -182,7 +182,7 @@ fn collect_component_prop_orders(at_files: &[std::path::PathBuf]) {
                                 }
                             }
                             if !prop_tys.is_empty() {
-                                auto_lang::ui_gen::rust::CHILD_PROP_TYPES.with(|m| {
+                                auto_ui_compiler::ui_gen::rust::CHILD_PROP_TYPES.with(|m| {
                                     m.borrow_mut()
                                         .insert(widget_decl.name.as_str().to_string(), prop_tys);
                                 });
@@ -202,7 +202,7 @@ fn collect_component_prop_orders(at_files: &[std::path::PathBuf]) {
                         } else {
                             format!("{}Msg", widget_decl.name.as_str())
                         };
-                        auto_lang::ui_gen::rust::CHILD_MSG_TYPES.with(|m| {
+                        auto_ui_compiler::ui_gen::rust::CHILD_MSG_TYPES.with(|m| {
                             m.borrow_mut()
                                 .insert(widget_decl.name.as_str().to_string(), msg_ty);
                         });
@@ -243,15 +243,15 @@ fn register_api_typed_fns_for(project_dir: &Path) {
 /// passed an empty store list, starving the store-composable pipeline
 /// (struct/enum generation + `store.X` rewriting registration) and producing
 /// 86 errors on store-composable apps like 015-notes.
-fn collect_store_decls(at_files: &[std::path::PathBuf]) -> Vec<auto_lang::ast::ui::StoreDecl> {
-    let mut all_stores: Vec<auto_lang::ast::ui::StoreDecl> = Vec::new();
+fn collect_store_decls(at_files: &[std::path::PathBuf]) -> Vec<auto_lang_core::ast::ui::StoreDecl> {
+    let mut all_stores: Vec<auto_lang_core::ast::ui::StoreDecl> = Vec::new();
     for at_path in at_files {
         if let Ok(code) = std::fs::read_to_string(at_path) {
             let session = CompilerSession::ui().with_backend("rust");
             let mut parser = Parser::from(code.as_str()).with_session(session);
             if let Ok(ast) = parser.parse() {
                 for stmt in &ast.stmts {
-                    if let auto_lang::ast::Stmt::StoreDecl(ref store) = stmt {
+                    if let auto_lang_core::ast::Stmt::StoreDecl(ref store) = stmt {
                         all_stores.push(store.clone());
                     }
                 }
@@ -275,7 +275,7 @@ fn collect_component_state_fields(
             let mut parser = Parser::from(code.as_str()).with_session(session);
             if let Ok(ast) = parser.parse() {
                 for stmt in &ast.stmts {
-                    if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                    if let auto_lang_core::ast::Stmt::WidgetDecl(widget_decl) = stmt {
                         let fields: Vec<(String, String)> = widget_decl
                             .model
                             .as_ref()
@@ -284,20 +284,24 @@ fn collect_component_state_fields(
                                     .iter()
                                     .filter_map(|v| {
                                         let ty = match v.ty {
-                                            auto_lang::ast::Type::Bool => Some("bool"),
-                                            auto_lang::ast::Type::Int => Some("i32"),
-                                            auto_lang::ast::Type::Float
-                                            | auto_lang::ast::Type::Double => Some("f64"),
-                                            auto_lang::ast::Type::StrOwned
-                                            | auto_lang::ast::Type::StrFixed(_) => Some("String"),
+                                            auto_lang_core::ast::Type::Bool => Some("bool"),
+                                            auto_lang_core::ast::Type::Int => Some("i32"),
+                                            auto_lang_core::ast::Type::Float
+                                            | auto_lang_core::ast::Type::Double => Some("f64"),
+                                            auto_lang_core::ast::Type::StrOwned
+                                            | auto_lang_core::ast::Type::StrFixed(_) => {
+                                                Some("String")
+                                            }
                                             _ => None,
                                         };
                                         let ty = ty.or_else(|| match &v.init {
-                                            auto_lang::ast::Expr::Bool(_) => Some("bool"),
-                                            auto_lang::ast::Expr::Int(_) => Some("i32"),
-                                            auto_lang::ast::Expr::Float(_, _)
-                                            | auto_lang::ast::Expr::Double(_, _) => Some("f64"),
-                                            auto_lang::ast::Expr::Str(_) => Some("String"),
+                                            auto_lang_core::ast::Expr::Bool(_) => Some("bool"),
+                                            auto_lang_core::ast::Expr::Int(_) => Some("i32"),
+                                            auto_lang_core::ast::Expr::Float(_, _)
+                                            | auto_lang_core::ast::Expr::Double(_, _) => {
+                                                Some("f64")
+                                            }
+                                            auto_lang_core::ast::Expr::Str(_) => Some("String"),
                                             _ => None,
                                         });
                                         ty.map(|t| (v.name.to_string(), t.to_string()))
@@ -320,7 +324,7 @@ fn collect_component_state_fields(
 /// general code. Mirrors `collect_component_state_fields` in structure.
 /// Defined in `auto_lang::ui_gen::rust` (the generator crate) and re-exported
 /// here so `auto-man` can use it without a reverse dependency.
-pub use auto_lang::ui_gen::rust::ComponentSemantics;
+pub use auto_ui_compiler::ui_gen::rust::ComponentSemantics;
 
 /// Cross-file pre-scan: for each widget, collect which props its handlers write.
 /// Scans `on` blocks for assignments `self.<prop>.<field> = ...` where `<prop>`
@@ -328,7 +332,7 @@ pub use auto_lang::ui_gen::rust::ComponentSemantics;
 pub fn collect_component_semantics(
     at_files: &[std::path::PathBuf],
 ) -> std::collections::HashMap<String, ComponentSemantics> {
-    use auto_lang::ast::Stmt;
+    use auto_lang_core::ast::Stmt;
 
     let mut map: std::collections::HashMap<String, ComponentSemantics> =
         std::collections::HashMap::new();
@@ -371,11 +375,11 @@ pub fn collect_component_semantics(
 /// Matches `self.<prop>.<field> = rhs` (two-level Dot on left, Op::Asn),
 /// where `<prop>` is one of the widget's declared props.
 fn scan_written_props(
-    body: &auto_lang::ast::Body,
+    body: &auto_lang_core::ast::Body,
     prop_names: &std::collections::HashSet<String>,
     out: &mut Vec<String>,
 ) {
-    use auto_lang::ast::{Expr, Stmt};
+    use auto_lang_core::ast::{Expr, Stmt};
     use auto_val::Op;
     for stmt in &body.stmts {
         match stmt {
@@ -521,7 +525,7 @@ fn regenerate_code_only(project_dir: &Path, rust_dir: &Path, src_: &PacSource) -
 
     let sidecar = src_.sidecar_spec(project_dir);
     if !sidecar.is_empty() {
-        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, rust_dir)?;
+        auto_api_gen::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, rust_dir)?;
     }
 
     Ok(())
@@ -594,7 +598,7 @@ fn generate_rust_ui_inner(
     // PLAN-013 T2: pac.at rust_sidecar 供给(用户 .rs 模块 + Cargo 依赖)。
     let sidecar = source.sidecar_spec(project_dir);
     if !sidecar.is_empty() {
-        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &output)?;
+        auto_api_gen::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &output)?;
         println!(
             "{}",
             "  rust_sidecar applied (modules + deps)".bright_green()
@@ -786,11 +790,11 @@ pub(crate) fn compile_rust_ui_app(
 /// PLAN-627: 模块形态 `use back.api`（无符号清单）自 api.at 契约枚举
 /// （`auto_lang::config::api_contract_fn_names_for_front`，与 ui_gen/api.rs
 /// 双写同源语义）。
-fn extract_api_imports_from_ast(ast: &auto_lang::ast::Code, at_path: &Path) -> Vec<String> {
+fn extract_api_imports_from_ast(ast: &auto_lang_core::ast::Code, at_path: &Path) -> Vec<String> {
     let mut imports = Vec::new();
     let mut module_form = false;
     for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::Use(ref use_stmt) = stmt {
+        if let auto_lang_core::ast::Stmt::Use(ref use_stmt) = stmt {
             if is_api_use(use_stmt) {
                 if use_stmt.items.is_empty() {
                     module_form = true;
@@ -800,7 +804,7 @@ fn extract_api_imports_from_ast(ast: &auto_lang::ast::Code, at_path: &Path) -> V
         }
     }
     if module_form {
-        for name in auto_lang::config::api_contract_fn_names_for_front(at_path) {
+        for name in auto_lang_core::config::api_contract_fn_names_for_front(at_path) {
             if !imports.contains(&name) {
                 imports.push(name);
             }
@@ -810,7 +814,7 @@ fn extract_api_imports_from_ast(ast: &auto_lang::ast::Code, at_path: &Path) -> V
 }
 
 /// Check if a `use` statement targets `back.api`
-fn is_api_use(use_stmt: &auto_lang::ast::Use) -> bool {
+fn is_api_use(use_stmt: &auto_lang_core::ast::Use) -> bool {
     if use_stmt.paths.len() == 2
         && use_stmt.paths[0].as_str() == "back"
         && use_stmt.paths[1].as_str() == "api"
@@ -829,7 +833,7 @@ fn is_api_use(use_stmt: &auto_lang::ast::Use) -> bool {
 /// Returns (generated_code, api_imports) so callers can deduplicate API stubs.
 fn compile_at_file(
     at_path: &Path,
-    stores: &[auto_lang::ast::ui::StoreDecl],
+    stores: &[auto_lang_core::ast::ui::StoreDecl],
     component_fields: &std::collections::HashMap<String, Vec<(String, String)>>,
     component_semantics: &std::collections::HashMap<String, ComponentSemantics>,
 ) -> AutoResult<(String, Vec<String>)> {
@@ -860,10 +864,10 @@ fn compile_at_file(
     let api_imports = extract_api_imports_from_ast(&ast, at_path);
 
     // Plan 374 Task 1: Register view fn fragments BEFORE extracting widgets.
-    auto_lang::aura::extract::clear_view_fragments();
+    auto_ui_compiler::aura::extract::clear_view_fragments();
     for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::ViewFragmentDecl(frag) = stmt {
-            auto_lang::aura::extract::register_view_fragment(frag);
+        if let auto_lang_core::ast::Stmt::ViewFragmentDecl(frag) = stmt {
+            auto_ui_compiler::aura::extract::register_view_fragment(frag);
         }
     }
 
@@ -871,7 +875,7 @@ fn compile_at_file(
     // but only GENERATE the store struct in the file that declares it.
     // PLAN-681 T-05（E0618 收口）：预填 store msg 载荷表——on-only 根
     // handler 的载荷推断源（app.at 字母序先编译，须跨文件预填）。
-    auto_lang::ui_gen::rust::register_store_msg_payloads(stores);
+    auto_ui_compiler::ui_gen::rust::register_store_msg_payloads(stores);
     for store in stores {
         generator.register_store("store", store.name.as_str());
     }
@@ -879,10 +883,10 @@ fn compile_at_file(
     let file_has_store = ast
         .stmts
         .iter()
-        .any(|s| matches!(s, auto_lang::ast::Stmt::StoreDecl(_)));
+        .any(|s| matches!(s, auto_lang_core::ast::Stmt::StoreDecl(_)));
     if file_has_store {
         for store in stores {
-            let fake_decl = auto_lang::ast::ui::WidgetDecl {
+            let fake_decl = auto_lang_core::ast::ui::WidgetDecl {
                 name: store.name.clone(),
                 messages: store.messages.clone(),
                 model: store.model.clone(),
@@ -902,7 +906,7 @@ fn compile_at_file(
                 actions: None,
                 timer: None,
             };
-            match auto_lang::aura::extract_widget_from_decl(&fake_decl) {
+            match auto_ui_compiler::aura::extract_widget_from_decl(&fake_decl) {
                 Ok(aura_widget) => {
                     let rust_code = generator
                         .generate(&aura_widget)
@@ -928,8 +932,8 @@ fn compile_at_file(
 
     // Extract AURA widgets from AST
     for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-            let mut aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
+        if let auto_lang_core::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+            let mut aura_widget = auto_ui_compiler::aura::extract_widget_from_decl(widget_decl)
                 .map_err(|e| e.to_string())?;
             aura_widget.api_imports = api_imports.clone();
 
@@ -946,7 +950,7 @@ fn compile_at_file(
     // User-defined types (like Note) are aliased to serde_json::Value since
     // the code generator uses Value-based dynamic field access (["field"]).
     for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::TypeDecl(type_decl) = stmt {
+        if let auto_lang_core::ast::Stmt::TypeDecl(type_decl) = stmt {
             output.push_str(&generate_type_struct(type_decl));
             output.push('\n');
         }
@@ -958,8 +962,8 @@ fn compile_at_file(
     // #[api]/test fn 由 extract_module_fn 门跳过；参数/返回按声明型直译，
     // 函数体复用 handler 语句翻译链（join/postprocess 全含）。
     for stmt in &ast.stmts {
-        if let auto_lang::ast::Stmt::Fn(fn_decl) = stmt {
-            if auto_lang::aura::extract::extract_module_fn(fn_decl).is_some() {
+        if let auto_lang_core::ast::Stmt::Fn(fn_decl) = stmt {
+            if auto_ui_compiler::aura::extract::extract_module_fn(fn_decl).is_some() {
                 output.push_str(&generate_module_fn_rust(&generator, fn_decl));
                 output.push('\n');
             }
@@ -995,9 +999,9 @@ struct MergedRouteAImpl {
 
 fn merged_route_a_impl(
     project_dir: &Path,
-    module: &auto_lang::api::ApiModule,
+    module: &auto_lang_core::api::ApiModule,
 ) -> Option<MergedRouteAImpl> {
-    if crate::api_gen::primary_type_name_pub(module).is_some() {
+    if auto_api_gen::api_gen::primary_type_name_pub(module).is_some() {
         return None;
     }
     if project_dir.join("src").join("back").join("db.at").exists() {
@@ -1019,8 +1023,8 @@ fn merged_route_a_impl(
         stems.sort();
         for stem in stems {
             let content = std::fs::read_to_string(back_dir.join(format!("{}.at", stem))).ok()?;
-            let rs = crate::api_gen::transpile_back_module_to_rs(&stem, &content).ok()?;
-            companions.push((stem, crate::api_gen::post_process_companion_rs(rs)));
+            let rs = auto_api_gen::api_gen::transpile_back_module_to_rs(&stem, &content).ok()?;
+            companions.push((stem, auto_api_gen::api_gen::post_process_companion_rs(rs)));
         }
     }
     let api_at = std::fs::read_to_string(back_dir.join("api.at")).ok()?;
@@ -1029,8 +1033,9 @@ fn merged_route_a_impl(
         .filter(|l| !l.trim_start().starts_with("#[api"))
         .collect::<Vec<_>>()
         .join("\n");
-    let api_impl = crate::api_gen::transpile_back_module_to_rs("api_impl", &stripped).ok()?;
-    let api_impl = crate::api_gen::post_process_companion_rs(api_impl);
+    let api_impl =
+        auto_api_gen::api_gen::transpile_back_module_to_rs("api_impl", &stripped).ok()?;
+    let api_impl = auto_api_gen::api_gen::post_process_companion_rs(api_impl);
     Some(MergedRouteAImpl {
         api_impl,
         companions,
@@ -1040,16 +1045,19 @@ fn merged_route_a_impl(
 /// 载入并转译 src/back/db.at;含「引用工程外类型面」(crate::types /
 /// super:: 依赖,015-notes 类结构型 db)的转译件不可吸收——避免 front
 /// crate 里悬空引用;此时返回 None,endpoint 落回 JSON CRUD 脚手架。
-fn merged_db_impl(project_dir: &Path, module: &auto_lang::api::ApiModule) -> Option<MergedDbImpl> {
+fn merged_db_impl(
+    project_dir: &Path,
+    module: &auto_lang_core::api::ApiModule,
+) -> Option<MergedDbImpl> {
     let db_file = project_dir.join("src").join("back").join("db.at");
     let content = std::fs::read_to_string(db_file).ok()?;
     let _ = module;
-    let db_rs = crate::api_gen::transpile_db_to_rs(&content).ok()?;
-    let rs = crate::api_gen::post_process_db_rs(db_rs);
+    let db_rs = auto_api_gen::api_gen::transpile_db_to_rs(&content).ok()?;
+    let rs = auto_api_gen::api_gen::post_process_db_rs(db_rs);
     if rs.contains("crate::types") || rs.contains("super::") || rs.contains("crate::api::") {
         return None;
     }
-    let fns = crate::api_gen::extract_db_fn_names(&rs);
+    let fns = auto_api_gen::api_gen::extract_db_fn_names(&rs);
     if fns.is_empty() {
         return None;
     }
@@ -1073,7 +1081,10 @@ fn merged_scalar_rust_ty(ty: &str) -> Option<&'static str> {
 }
 
 /// db 吸收的 endpoint 委托 fn;不可覆盖(无同名 db fn / 非标量面)→ None。
-fn merged_db_delegate(db: &MergedDbImpl, endpoint: &auto_lang::api::ApiEndpoint) -> Option<String> {
+fn merged_db_delegate(
+    db: &MergedDbImpl,
+    endpoint: &auto_lang_core::api::ApiEndpoint,
+) -> Option<String> {
     if !db.fns.contains(endpoint.fn_name.as_str()) {
         return None;
     }
@@ -1239,8 +1250,8 @@ fn parse_api_module(project_dir: &Path) -> Option<ApiModule> {
     }
 
     let content = fs::read_to_string(&api_file).ok()?;
-    crate::api_gen::try_full_parse(&content)
-        .or_else(|| crate::api_gen::extract_api_lenient(&content))
+    auto_api_gen::api_gen::try_full_parse(&content)
+        .or_else(|| auto_api_gen::api_gen::extract_api_lenient(&content))
 }
 
 /// Plan 349 step 1 / Plan 388 W1: Generate a TLS-aware HTTP client helper.
@@ -1451,7 +1462,7 @@ fn generate_delete_fn_body(url_expr: String) -> String {
 fn generate_write_fn_body(
     method: String,
     url_expr: String,
-    body_params: &[&auto_lang::api::types::ApiParam],
+    body_params: &[&auto_lang_core::api::types::ApiParam],
     is_void: bool,
     return_type: &str,
 ) -> String {
@@ -1609,8 +1620,8 @@ fn generate_api_stubs(api_imports: &[String]) -> String {
 /// Plan 347: Generate JSON initial data for the merged-mode global store.
 /// Returns a string like `[json!({"id":0,"title":"Welcome",...}), ...]`
 /// (without the outer `vec![]` wrapper).
-fn generate_json_initial_data(module: &auto_lang::api::ApiModule) -> String {
-    let primary_type = crate::api_gen::primary_type_name_pub(module);
+fn generate_json_initial_data(module: &auto_lang_core::api::ApiModule) -> String {
+    let primary_type = auto_api_gen::api_gen::primary_type_name_pub(module);
     let primary_type = match primary_type {
         Some(t) => t,
         None => return "[]".to_string(),
@@ -1702,7 +1713,10 @@ fn generate_json_initial_data(module: &auto_lang::api::ApiModule) -> String {
 /// 应用(auto-term、013/015 等)全部走吸收臂。行为锁定测试:
 /// merged_api_client_db_absorption_wins_over_crud /
 /// merged_api_client_crud_fallback_for_uncovered_endpoints。
-fn generate_merged_api_client(module: &auto_lang::api::ApiModule, project_dir: &Path) -> String {
+fn generate_merged_api_client(
+    module: &auto_lang_core::api::ApiModule,
+    project_dir: &Path,
+) -> String {
     let mut code = String::new();
     code.push_str("// API functions (auto-generated, in-process merged mode — no HTTP)\n\n");
 
@@ -2878,7 +2892,7 @@ fn collect_dep_fn_imports(
         let mut parser = Parser::from(code.as_str()).with_session(session);
         let Ok(ast) = parser.parse() else { continue };
         for stmt in &ast.stmts {
-            if let auto_lang::ast::Stmt::Use(ref use_stmt) = stmt {
+            if let auto_lang_core::ast::Stmt::Use(ref use_stmt) = stmt {
                 if let Some(first) = use_stmt.paths.first() {
                     if dep_names.iter().any(|d| d == first.as_str()) && use_stmt.paths.len() > 1 {
                         let segs: Vec<String> = use_stmt
@@ -2933,7 +2947,7 @@ fn resolve_bps_dependencies(
         let mut parser = Parser::from(code.as_str()).with_session(session);
         if let Ok(ast) = parser.parse() {
             for stmt in &ast.stmts {
-                if let auto_lang::ast::Stmt::WidgetDecl(ref wd) = stmt {
+                if let auto_lang_core::ast::Stmt::WidgetDecl(ref wd) = stmt {
                     local_widget_names.insert(wd.name.as_str().to_string());
                 }
             }
@@ -2971,7 +2985,7 @@ fn resolve_bps_dependencies(
                     let Ok(ast) = parser.parse() else { continue };
                     let mut hit = false;
                     for stmt in &ast.stmts {
-                        if let auto_lang::ast::Stmt::WidgetDecl(ref wd) = stmt {
+                        if let auto_lang_core::ast::Stmt::WidgetDecl(ref wd) = stmt {
                             let name = wd.name.as_str();
                             if !local_widget_names.contains(name)
                                 && front_texts.iter().any(|t| {
@@ -3014,9 +3028,9 @@ fn resolve_bps_dependencies(
         // 调用实参收口、view 迭代 Value 判定按表消费（先注册后转译,顺序
         // 无关——registry 是 thread_local 静态表）。
         RustGenerator::new().register_bare_fn_sigs_from_source(&content);
-        match crate::api_gen::transpile_back_module_to_rs(&mod_name, &content) {
+        match auto_api_gen::api_gen::transpile_back_module_to_rs(&mod_name, &content) {
             Ok(rs) => {
-                let rs = crate::api_gen::post_process_companion_rs(rs);
+                let rs = auto_api_gen::api_gen::post_process_companion_rs(rs);
                 if !fn_code.is_empty() {
                     fn_code.push('\n');
                 }
@@ -3176,7 +3190,7 @@ fn parse_pac_title(pac_path: &Path) -> Option<String> {
 /// rust_ui 的 pac.at 数据字段读取统一经此类型：legacy 路径懒解析文件
 /// （行为冻结），请求路径直接供值（生产分派传入 Automan 构造的
 /// GenerationRequest——生成器不再回读 pac.at/AutoConfig）。
-pub(crate) struct PacSource<'a> {
+pub struct PacSource<'a> {
     req: Option<&'a auto_project_model::generation_request::GenerationRequest>,
 }
 
@@ -3268,7 +3282,7 @@ impl<'a> PacSource<'a> {
             Some(r) => r.runtime.api.as_deref() == Some("rust"),
             None => {
                 pac_path.is_file() && {
-                    auto_lang::config::AutoConfig::from_file(pac_path, &auto_val::Obj::new())
+                    auto_lang_core::config::AutoConfig::from_file(pac_path, &auto_val::Obj::new())
                         .ok()
                         .map(|c| c.root.get_prop("api").to_astr() == "rust")
                         .unwrap_or(false)
@@ -3290,7 +3304,7 @@ impl<'a> PacSource<'a> {
 
     /// rust_sidecar 声明（R2-F02：legacy=load_sidecar 文件读；请求路径=
     /// req.raw_nodes 中 rust_sidecar 节点经 core 单源解析，不回读 pac.at）。
-    pub fn sidecar_spec(&self, project_dir: &Path) -> crate::sidecar::SidecarSpec {
+    pub fn sidecar_spec(&self, project_dir: &Path) -> auto_api_gen::sidecar::SidecarSpec {
         match self.req {
             Some(r) => {
                 // R4-02：完整支持域=节点形态 + 对象/嵌套 prop 形态
@@ -3324,9 +3338,9 @@ impl<'a> PacSource<'a> {
                 for n in sidecar_nodes {
                     root.add_kid(n);
                 }
-                crate::sidecar::from_decl(&auto_man_core::sidecar_decl_from_root(&root))
+                auto_api_gen::sidecar::from_decl(&auto_man_core::sidecar_decl_from_root(&root))
             }
-            None => crate::sidecar::load_sidecar(project_dir),
+            None => auto_api_gen::sidecar::load_sidecar(project_dir),
         }
     }
 
@@ -3336,19 +3350,21 @@ impl<'a> PacSource<'a> {
         match self.req {
             Some(r) => {
                 let lite = r.theme_decl.as_ref()?;
-                let decl = auto_lang::design_tokens::decl::ThemeDecl {
+                let decl = auto_lang_core::design_tokens::decl::ThemeDecl {
                     name: lite.name.clone(),
                     extends: lite.extends.clone(),
                     mode: lite.mode.clone(),
                     colors: lite.colors.clone(),
                 };
-                match auto_lang::design_tokens::decl::compose(
+                match auto_lang_core::design_tokens::decl::compose(
                     &decl,
                     &std::collections::BTreeMap::new(),
                 ) {
                     Ok(theme) => {
                         let name = theme.name.clone();
-                        auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(theme));
+                        auto_ui_compiler::style::theme::set_theme_composed(std::sync::Arc::new(
+                            theme,
+                        ));
                         Some(name)
                     }
                     Err(e) => {
@@ -3531,8 +3547,8 @@ struct ShellFaceInfo {
 /// 填充[Unknown 初值推断] + `auto_type_to_rust` 递归映射）。返回 None =
 /// 不生成写臂（typed 集合等非常用形态——运行时 write 返 false，parity
 /// 冒烟可见；不误配字段类型）。
-fn shell_state_rust_type(state: &auto_lang::aura::AuraStateDef) -> Option<String> {
-    use auto_lang::ast::{Expr, Type};
+fn shell_state_rust_type(state: &auto_ui_compiler::aura::AuraStateDef) -> Option<String> {
+    use auto_lang_core::ast::{Expr, Type};
     if matches!(state.type_info, Type::Unknown) {
         return match &state.initial {
             Expr::Array(_) => Some("Vec<serde_json::Value>".into()),
@@ -3556,7 +3572,7 @@ fn shell_state_rust_type(state: &auto_lang::aura::AuraStateDef) -> Option<String
         Type::Bool => Some("bool".into()),
         // 未定形元素集合（List/Array/Slice 的 Unknown 内型）→ 生成器实际
         // 产出 Vec<serde_json::Value>（auto_type_to_rust 递归 Unknown 臂）。
-        Type::List(inner) | Type::Array(auto_lang::ast::ArrayType { elem: inner, .. }) => {
+        Type::List(inner) | Type::Array(auto_lang_core::ast::ArrayType { elem: inner, .. }) => {
             match inner.as_ref() {
                 Type::Unknown => Some("Vec<serde_json::Value>".into()),
                 _ => None,
@@ -3585,11 +3601,11 @@ fn collect_shell_face_infos(pack_dir: &Path) -> AutoResult<Vec<ShellFaceInfo>> {
             .stmts
             .iter()
             .find_map(|s| match s {
-                auto_lang::ast::Stmt::WidgetDecl(d) if d.name == widget => Some(d),
+                auto_lang_core::ast::Stmt::WidgetDecl(d) if d.name == widget => Some(d),
                 _ => None,
             })
             .ok_or_else(|| format!("shell pack {file} 缺根 widget {widget}"))?;
-        let aura = auto_lang::aura::extract_widget_from_decl(decl)
+        let aura = auto_ui_compiler::aura::extract_widget_from_decl(decl)
             .map_err(|e| format!("shell pack {file} widget 提取失败: {e}"))?;
         let states = aura
             .state_vars
@@ -3778,7 +3794,7 @@ pub fn generate_shell_pack_lib(output_dir: &Path) -> AutoResult<()> {
         "{}",
         "Generating shell-pack lib crate (a2r windowless target)".bright_cyan()
     );
-    let pack_dir = auto_lang::os_paths::resolve_os_top_dir(
+    let pack_dir = auto_lang_core::os_paths::resolve_os_top_dir(
         &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
         "shell",
     )
@@ -3828,7 +3844,7 @@ pub fn generate_shell_pack_lib(output_dir: &Path) -> AutoResult<()> {
 
 /// 交付闭包内受管源码 crate（相对 crates/；含 auto-lang 全库——语言源码
 /// 尚未拆完，属如实披露的受管包含，非"纯 core/独立 UI 仓"）。
-pub const DELIVERY_CRATES: [&str; 19] = [
+pub const DELIVERY_CRATES: [&str; 23] = [
     "auto-lang",
     "auto-val",
     "auto-atom",
@@ -3875,6 +3891,14 @@ pub const DELIVERY_CRATES: [&str; 19] = [
     // PLAN-814 T-01 骨架起 auto-lang 的必需 path 依赖（UI 运行域骨架——
     // B/T-04 迁入真实 renderer/宿主 adapter；当前为文档骨架，闭包零额外面）。
     "auto-ui-runtime",
+    // PLAN-815 T-04 起受管交付随包发行 UI 工具链（合同 §1 增补
+    // auto-tool-protocol/auto-ui-tools；工具的生成主体闭包新增
+    // auto-api-gen（api 生成单算法）与 auto-man-core（rust_sidecar 声明
+    // 单源）——四者缺一则交付根无法构建/复算 UI 生成物）。
+    "auto-tool-protocol",
+    "auto-ui-tools",
+    "auto-api-gen",
+    "auto-man-core",
 ];
 
 /// 随包发行的本地 patch（相对 crates/patches/）。
@@ -4712,7 +4736,7 @@ fn delivery_check_path_values<'a>(
 /// Cargo.toml，`{path='…'}` 等合法变体与 `{ path = "…" }` 同结论）；
 /// registry 版本依赖与项目内 .rs 模块照常。相对值按 app/（根下一层）
 /// 解析。生成后的全 manifest 边界自检为权威兜底。
-fn delivery_validate_sidecar(sidecar: &crate::sidecar::SidecarSpec) -> AutoResult<()> {
+fn delivery_validate_sidecar(sidecar: &auto_api_gen::sidecar::SidecarSpec) -> AutoResult<()> {
     for (name, spec) in &sidecar.deps {
         // 解析为 TOML 值（`__dep__ = <spec>` 载体）；解析失败 = 非 TOML
         // 表达式的版本串（写入形态带引号、cargo 不当 path 消费），由
@@ -5190,7 +5214,7 @@ fn generate_rust_ui_delivery_inner(
     // member——外部 path 已在 R1-F03 前置拒绝，此处仅 registry 版本依赖
     // 与项目内 .rs 模块）。
     if !sidecar.is_empty() {
-        crate::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &app_dir)?;
+        auto_api_gen::sidecar::apply_sidecar_to_crate(&sidecar, project_dir, &app_dir)?;
         println!(
             "{}",
             "  rust_sidecar applied to delivery app member (modules + deps)".bright_green()
@@ -5309,7 +5333,6 @@ fn generate_rust_ui_delivery_inner(
     Ok(())
 }
 
-
 /// PLAN-734 T-04：新鲜度失配时绕过复用臂的再生入口（等价默认路径）。
 /// PLAN-736 T-05/AC-02：health 优先就绪探针。
 /// - Some(true)  = 服务模式 ready（/__/health 200，身份可读）
@@ -5318,7 +5341,7 @@ fn generate_rust_ui_delivery_inner(
 /// - None        = 端口无 HTTP 应答（连接失败/超时——继续等待）
 /// 相比纯 TCP connect：503（bind 成功但初始化未完/旧实例 draining）不再
 /// 被误判为 ready；返回体含身份（instance/bound/config_hash）供上层核对。
-fn probe_service_ready(port: u16) -> std::option::Option<bool> {
+pub fn probe_service_ready(port: u16) -> std::option::Option<bool> {
     use std::io::{Read, Write};
     let addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().ok()?;
     let mut stream =
@@ -5396,7 +5419,7 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
     let back_name = back_member_name(project_dir);
     let api_backend_dir = ws_dir.join(&back_name);
     // Generate or update the Rust backend from #[api] declarations (idempotent).
-    if let Err(e) = crate::api_gen::generate_api(project_dir, "rust") {
+    if let Err(e) = auto_api_gen::api_gen::generate_api(project_dir, "rust") {
         return Err(format!("Failed to generate Rust backend: {}", e));
     }
     if !api_backend_dir.join("Cargo.toml").exists() {
@@ -5532,112 +5555,6 @@ pub fn stop_api_server(child: &mut Option<std::process::Child>) {
     }
 }
 
-/// Plan 340 fix: Start the AutoVM HTTP server (not the a2r Rust backend) for
-/// VM+VM split mode. Spawns a background thread running
-/// `auto_lang::run_file(api.at)`, which detects #[api] routes and enters
-/// `serve_async`. Polls the port until ready (or timeout). The thread runs
-/// for the process lifetime (cleaned up when the process exits).
-///
-/// Returns true if the server became ready, false on timeout / missing api.at.
-pub fn start_vm_server(project_dir: &Path) -> bool {
-    let api_path = project_dir.join("src").join("back").join("api.at");
-    if !api_path.exists() {
-        eprintln!(
-            "  {} VM split mode requires src/back/api.at (not found)",
-            "⚠".bright_yellow()
-        );
-        return false;
-    }
-
-    let port = crate::util::http_port();
-    println!();
-    println!(
-        "  {} Starting AutoVM HTTP server (VM backend, port {})...",
-        "▶".bright_cyan(),
-        port
-    );
-    println!("    api.at: {}", api_path.display());
-
-    let api_str = api_path.to_string_lossy().to_string();
-    // Seed extra module search dirs for the standalone api.at run. A split-mode
-    // api.at imports `types` from src/front/types.at, but run_file only seeds
-    // the source file's own directory (src/back) — without this, `use types`
-    // fails with "Module not found". Inject src/ + src/front via AUTO_SOURCE_DIRS.
-    let src_dir = project_dir.join("src");
-    let mut extra_dirs: Vec<std::path::PathBuf> = vec![src_dir.join("front")];
-    if !extra_dirs[0].exists() {
-        extra_dirs = Vec::new();
-    }
-    if !extra_dirs.is_empty() {
-        let joined = extra_dirs
-            .iter()
-            .map(|d| d.to_string_lossy().to_string())
-            .collect::<Vec<_>>()
-            .join(";");
-        let existing = std::env::var("AUTO_SOURCE_DIRS").unwrap_or_default();
-        let combined = if existing.is_empty() {
-            joined
-        } else {
-            format!("{};{}", existing, joined)
-        };
-        std::env::set_var("AUTO_SOURCE_DIRS", &combined);
-        println!("    module search dirs: {}", combined);
-    }
-    // Spawn the VM server on a large-stack background thread (the flattened
-    // api.at + db.at + types.at exceeds the 1MB default during parse/codegen).
-    std::thread::Builder::new()
-        .stack_size(32 * 1024 * 1024)
-        .name("auto-vm-http-server".into())
-        .spawn(move || {
-            if let Err(e) = auto_lang::run_file(&api_str) {
-                eprintln!("[AutoVM server] error: {}", e);
-            }
-        })
-        .expect("spawn VM server thread");
-
-    // Wait for the server to become ready by polling the port.
-    // PLAN-026 T-05: 同 start_api_server 有界重试门(60s→120s)。
-    println!("    Waiting for AutoVM server to be ready...");
-    let max_wait = std::time::Duration::from_secs(120);
-    let start = std::time::Instant::now();
-    let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
-    while start.elapsed() < max_wait {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        // PLAN-736 T-05：health 优先（VM serve 面有控制面；legacy auto run
-        // 的 VM 轨无 /__auto 路由 → 404 视为可继续），TCP connect 兜底。
-        // PLAN-781 R1 勘定：legacy VM 轨的 __auto 控制面实际已注册（共享
-        // transport），run 模式下 /ready 恒 503 "starting"（ready 态翻转只在
-        // service 面发生）→ Some(false) 不能再跳过 TCP 兜底，否则 -r vm
-        // --no-merge 原生窗口 split 形态 120s 必死。TCP 语义恢复为最终裁决。
-        if probe_service_ready(port) == Some(true) {
-            println!(
-                "  {} AutoVM server ready on http://127.0.0.1:{}",
-                "✓".bright_green(),
-                port
-            );
-            return true;
-        }
-        if std::net::TcpStream::connect_timeout(&probe_addr, std::time::Duration::from_secs(1))
-            .is_ok()
-        {
-            println!(
-                "  {} AutoVM server ready on http://127.0.0.1:{}",
-                "✓".bright_green(),
-                port
-            );
-            return true;
-        }
-    }
-    // PLAN-026 T-05: 超限显式错误(vm+vm split 独立卡死症状另档
-    // §10.2;本门语义 = 不再吞错续跑)。
-    eprintln!(
-        "ERROR: AutoVM server not ready within {}s (port {}); aborting before UI init",
-        max_wait.as_secs(),
-        port
-    );
-    false
-}
-
 /// `auto build` for rust-mode UI projects: regenerate as needed, then
 /// `cargo build` the shared-workspace member. Mirrors `run_rust_ui`'s
 /// regeneration logic without running the app.
@@ -5677,12 +5594,12 @@ fn build_rust_ui_inner(project_dir: &Path, source: &PacSource) -> AutoResult<()>
     // start_api_server 触发，back 源变更在 build 下只再生成 front 成员，
     // 陈旧空体桩照常编译绿（消费方 back 停 9-21 桩版实证）。该入口自注
     // idempotent；无契约纯前工程经 resolve_back_api 门控跳过。
-    if auto_lang::config::resolve_back_api(project_dir).is_some() {
+    if auto_lang_core::config::resolve_back_api(project_dir).is_some() {
         println!(
             "{}",
             "Refreshing Rust backend crate (idempotent)...".bright_cyan()
         );
-        crate::api_gen::generate_api(project_dir, "rust")
+        auto_api_gen::api_gen::generate_api(project_dir, "rust")
             .map_err(|e| format!("Failed to generate Rust backend: {}", e))?;
     }
 
@@ -5847,319 +5764,11 @@ fn external_backend_of(project_dir: &Path) -> AutoResult<Option<auto_val::AutoSt
     }
     let mut probe = Obj::new();
     probe.set("port", Value::Str(AutoStr::from("win32")));
-    let config = auto_lang::config::AutoConfig::from_file(&pac_path, &probe)?;
-    let pac = crate::pac::Pac::new(config);
-    Ok(pac.external_backend.filter(|s| !s.is_empty()))
-}
-
-/// merged 模式宿主注册表:后端 cdylib 经它把端点实现注册进既有宿主桥,
-/// 事件回流复用 renderer 的 SSE 注入通道(与 ash-runner 手写宿主同构)。
-struct VmHostRegistry;
-
-impl auto_lang::vm::backend_abi::BackendRegistry for VmHostRegistry {
-    fn host_call(&self, name: &str, f: auto_lang::vm::backend_abi::BackendHostCallFn) {
-        auto_lang::vm::host_bridge::register_host_call(name, f);
-    }
-    fn inject_event(&self, tag: &str, json: &str) -> bool {
-        auto_lang::ui::iced::renderer::inject_shell_event(tag, json)
-    }
-    fn log(&self, msg: &str) {
-        eprintln!("[backend] {msg}");
-    }
-}
-
-/// 在后端项目的 target/{debug,release} 下定位其 cdylib 并装载注册。
-/// 库名 = 后端 pac.at `name` 规整('-'→'_',Windows `x.dll` / macOS
-/// `libx.dylib` / Linux `libx.so`);缺失时给出"先构建后端"的明确指引。
-fn load_external_backend(
-    backend_dir: &Path,
-) -> Result<auto_lang::vm::backend_abi::LoadedBackend, String> {
-    use auto_val::{AutoStr, Obj, Value};
-    let pac_path = backend_dir.join("pac.at");
-    let lib_stem = if pac_path.is_file() {
-        let mut probe = Obj::new();
-        probe.set("port", Value::Str(AutoStr::from("win32")));
-        auto_lang::config::AutoConfig::from_file(&pac_path, &probe)
-            .ok()
-            .map(|c| c.name().to_string())
-            .filter(|n| !n.is_empty())
-            .map(|n| n.replace('-', "_"))
-            .unwrap_or_else(|| "backend".to_string())
-    } else {
-        "backend".to_string()
-    };
-    let lib_file = if cfg!(windows) {
-        format!("{lib_stem}.dll")
-    } else if cfg!(target_os = "macos") {
-        format!("lib{lib_stem}.dylib")
-    } else {
-        format!("lib{lib_stem}.so")
-    };
-    let candidates = [
-        backend_dir.join("target").join("debug").join(&lib_file),
-        backend_dir.join("target").join("release").join(&lib_file),
-    ];
-    let found = candidates.iter().find(|p| p.is_file());
-    let Some(lib_path) = found else {
-        return Err(format!(
-            "backend cdylib `{}` not found under {}/target/{{debug,release}} — build the backend project first (`cargo build` in {})",
-            lib_file,
-            backend_dir.display(),
-            backend_dir.display()
-        ));
-    };
-    auto_lang::vm::backend_abi::load_backend_cdylib(lib_path, std::sync::Arc::new(VmHostRegistry))
-}
-
-/// Run the UI via the AutoLang interpreter (--render=vm mode).
-/// Starts the same API backend server as --render=rust, but runs
-/// the frontend through the in-process interpreter instead of
-/// transpiling to Rust.
-pub fn run_vm_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
-    let source = PacSource::legacy();
-    run_vm_ui_inner(project_dir, args, &source)
-}
-
-/// 请求路径（PLAN-809 T-06c 生产入口）。
-pub fn run_vm_ui_with_request(
-    project_dir: &Path,
-    args: Vec<String>,
-    req: &auto_project_model::generation_request::GenerationRequest,
-) -> AutoResult<()> {
-    let source = PacSource::from_request(req);
-    run_vm_ui_inner(project_dir, args, &source)
-}
-
-fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -> AutoResult<()> {
-    // Plan 334: vm+vm 同进程合并。前端 widget VM（经 Plan 333）直接链接后端
-    // 函数访问数据（list_notes → db.all_notes → notes 全局），不需要独立的 Axum
-    // HTTP 后端进程。跳过 start_api_server 可消除冗余 cargo 编译、端口占用、
-    // 启动等待。
-    //
-    // Plan 340: --no-merge（AUTO_VM_MERGE=0）切换到分离模式：启动独立后端 HTTP
-    // 进程，前端 VM 通过 HTTP 调用后端 API（codegen 把 #[api] 调用改写成 HTTP）。
-    // AUTO_VM_WITH_HTTP=1 是旧开关，等价于分离模式（向后兼容）。
-    //
-    // Plan 340 fix: 分离模式启动独立后端 HTTP 进程。后端可以是 AutoVM server
-    // （VM+VM split）或 a2r 转译的 Rust axum server（VM+Rust）。
-    // AUTO_BACKEND_IMPL=rust → Rust 后端（start_api_server）
-    let pac_path = project_dir.join("pac.at");
-    let has_rust_api = source.api_is_rust(&pac_path);
-    let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| {
-        if has_rust_api {
-            "rust".to_string()
-        } else {
-            "vm".to_string()
-        }
-    });
-    let split_mode = std::env::var("AUTO_VM_MERGE").as_deref() == Ok("0")
-        || std::env::var("AUTO_VM_WITH_HTTP").as_deref() == Ok("1")
-        || backend_impl == "rust";
-    let mut _api_child = if split_mode {
-        if backend_impl == "rust" {
-            // VM+Rust split: ensure the Rust axum server is generated, then
-            // start it. generate_api("rust") writes Cargo.toml + main.rs +
-            // api.rs + types.rs from #[api] annotations (idempotent).
-            // PLAN-734 T-06：Err 传播（split 生成失败不再 warn 后仍启动——
-            // start_api_server 内的二次生成同错误也会硬传，此处提前终结）。
-            crate::api_gen::generate_api(project_dir, "rust")
-                .map_err(|e| format!("Failed to generate Rust backend: {}", e))?;
-            let child = match start_api_server(project_dir) {
-                Ok(child) => child,
-                // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
-                Err(e) => return Err(e.into()),
-            };
-            if child.is_some() && std::env::var_os("AUTO_HTTP_BASE").is_none() {
-                std::env::set_var(
-                    "AUTO_HTTP_BASE",
-                    format!("http://127.0.0.1:{}", crate::util::http_port()),
-                );
-            }
-            child
-        } else {
-            // VM+VM split: AutoVM HTTP server as backend.
-            // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
-            if !start_vm_server(project_dir) {
-                return Err("AutoVM backend not ready; aborting before UI init".into());
-            }
-            if std::env::var_os("AUTO_HTTP_BASE").is_none() {
-                std::env::set_var(
-                    "AUTO_HTTP_BASE",
-                    format!("http://127.0.0.1:{}", crate::util::http_port()),
-                );
-            }
-            None
-        }
-    } else {
-        println!();
-        println!(
-            "  {} vm+vm merged mode: backend runs in-process (no HTTP server)",
-            "✓".bright_green()
-        );
-        None
-    };
-
-    // Plan 061:外部后端(pac.at `back: { project: "..." }`)——merged 模式下
-    // 由宿主链接并装载后端项目:① 链接式契约引用(`back.*` 解析映射到
-    // 后端根,前端无需本地 back/,零复制);② libloading 装载 cdylib +
-    // ABI 校验 + 注册进宿主桥(vm::host_bridge,与 ash-runner 同表)。
-    // 无 back.project 配置时零行为变化(本地 back/ 现状)。
-    let mut _backend_keepalive: Option<auto_lang::vm::backend_abi::LoadedBackend> = None;
-    if !split_mode {
-        match source.external_backend(project_dir) {
-            Ok(Some(backend_rel)) => {
-                let backend_dir = project_dir
-                    .join(backend_rel.as_str())
-                    .canonicalize()
-                    .unwrap_or_else(|_| project_dir.join(backend_rel.as_str()));
-                // ① 链接式契约引用:`back.*` 模块解析映射到后端项目根
-                // (lib.rs resolve_module_path 的 EXTERNAL_BACK_ROOT 钩子),
-                // 前端无需本地 back/ 目录,零复制。
-                if backend_dir.join("api.at").is_file() {
-                    auto_lang::set_external_back_root(backend_dir.clone());
-                    println!(
-                        "  {} external backend linked: back.* -> {}",
-                        "✓".bright_green(),
-                        backend_dir.display()
-                    );
-                } else {
-                    eprintln!(
-                        "  {} external backend: no api.at in {}",
-                        "⚠".bright_yellow(),
-                        backend_dir.display()
-                    );
-                }
-                // ② cdylib 装载(名字取自后端 pac.at 的 name;debug 优先)
-                match load_external_backend(&backend_dir) {
-                    Ok(lib) => {
-                        println!(
-                            "  {} external backend loaded: {}",
-                            "✓".bright_green(),
-                            backend_dir.display()
-                        );
-                        _backend_keepalive = Some(lib);
-                    }
-                    Err(e) => {
-                        stop_api_server(&mut _api_child);
-                        return Err(format!("external backend load failed: {e}").into());
-                    }
-                }
-            }
-            Ok(None) => {}
-            Err(e) => eprintln!("  {} pac.at parse failed: {}", "⚠".bright_yellow(), e),
-        }
-    }
-
-    // PLAN-625: ui-gallery VM 臂 registry 刷新——app.at 的 `use registry:`
-    // 消费 src/front/registry.at(生成产物),须在编译前落盘。vue 臂每次
-    // run/build 都刷 generate_gallery_host(run_vue_project 先例),VM 臂
-    // 此前不产任何 registry。非 gallery 项目零行为变化。
-    if project_dir.file_name().and_then(|n| n.to_str()) == Some("ui-gallery")
-        || crate::vue::gallery_mode()
-    {
-        // PLAN-658 T-03: 多后端 proxy 先于发射启动（发射器 /api/ 字面量
-        // 前缀化消费线程局部根，T-02）；失败降级不阻断画廊。
-        crate::vue::start_gallery_back_proxy(project_dir);
-        let n = crate::vue::refresh_gallery_registry(project_dir)?;
-        println!(
-            "  {} Gallery registry: src/front/registry.at ({} demos)",
-            "✓".bright_green(),
-            n
-        );
-    }
-
-    let entry = project_dir.join("src").join("front").join("app.at");
-    if !entry.exists() {
-        stop_api_server(&mut _api_child);
-        return Err(format!("Frontend entry not found: {}", entry.display()).into());
-    }
-
-    println!(
-        "{}",
-        if split_mode {
-            format!(
-                "Running VM interpreter UI (backend: {}, split over HTTP)",
-                backend_impl
-            )
-            .bright_cyan()
-        } else {
-            "Running VM interpreter UI (backend: vm, merged)".bright_cyan()
-        }
-    );
-
-    // Change CWD to src/front/ so `use` imports resolve correctly
-    let front_dir = project_dir.join("src").join("front");
-    let original_dir = std::env::current_dir().ok();
-    let _ = std::env::set_current_dir(&front_dir);
-
-    // Plan 458: apply the `auto run`-injected theme + accent presets
-    // (AUTO_UI_THEME / AUTO_UI_ACCENT, set by the run handler from
-    // --theme/--accent > pac.at) to the backend-neutral theme thread-locals
-    // BEFORE the first frame. Values are re-validated here because this fn
-    // is also reachable without the run handler (split-mode hosts). Apps
-    // that declare `dark_mode`/`accent_color` state vars override these
-    // per-frame via the renderer sync (renderer.rs read_state).
-    if let Ok(t) = std::env::var("AUTO_UI_THEME") {
-        if auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str()) {
-            auto_lang::ui::style::theme::set_dark_mode(t == "dark");
-        }
-    }
-    if let Ok(a) = std::env::var("AUTO_UI_ACCENT") {
-        if auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str()) {
-            auto_lang::ui::style::theme::set_accent_name(&a);
-        }
-    }
-
-    // PLAN-609 T-A1: pac.at `theme: {}` 声明色板激活（VM 腿 boot,与 vue 腿
-    // T-06 双端同源）。在 env 种子**之后**执行：声明只换 ACTIVE_THEME 色板
-    // 槽,不清写 DARK_MODE/ACCENT_NAME——优先级链
-    // CLI env > os-config/宿主 > pac.at 声明 > 内置缺省 语义成文。
-    if let Some(name) = source.apply_theme_decl(project_dir) {
-        println!(
-            "  {} theme declaration activated: {}",
-            "✓".bright_green(),
-            name
-        );
-    }
-
-    // PLAN-080 §10-9 足迹桩：静默 exit 1 定位（真机多例死亡，输出无声截断）。
-    // ①panic 钩子带 backtrace 落 stderr（防丢失）；②30s 存活心跳；③run_file
-    // 返回值显式标记——死亡在循环内/外由此二分。
-    {
-        std::panic::set_hook(Box::new(|info| {
-            eprintln!(
-                "[X9-PANIC] {info}
-backtrace:
-{}",
-                std::backtrace::Backtrace::force_capture()
-            );
-        }));
-        std::thread::spawn(|| loop {
-            std::thread::sleep(std::time::Duration::from_secs(30));
-            eprintln!(
-                "[X9-ALIVE] {}",
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs())
-                    .unwrap_or(0)
-            );
-        });
-    }
-    eprintln!("[X9] entering vm interpreter");
-    let result = auto_lang::run_file(entry.to_str().unwrap_or("src/front/app.at"));
-    eprintln!("[X9] vm interpreter returned ok={}", result.is_ok());
-
-    // Restore original CWD
-    if let Some(dir) = original_dir {
-        let _ = std::env::set_current_dir(dir);
-    }
-
-    stop_api_server(&mut _api_child);
-
-    match result {
-        Ok(_) => Ok(()),
-        Err(e) => Err(format!("VM UI error: {}", e).into()),
-    }
+    let config = auto_lang_core::config::AutoConfig::from_file(&pac_path, &probe)?;
+    // PLAN-815 T-04: 读取经 auto_man_core 声明归一单源（Pac::new 对
+    // external_backend 是 decl 字段直拷——冻结 oracle 不变；不引 Man Pac）。
+    let decl = auto_man_core::pac_from_decl(&config.root, &config.args);
+    Ok(decl.external_backend.filter(|s| !s.is_empty()))
 }
 
 /// PLAN-609 T-A1: pac.at `theme: {}` 块声明 → 合成主题激活（VM 腿 boot）。
@@ -6170,17 +5779,25 @@ backtrace:
 /// env 种子之后）。返回激活的合成主题名（测试断言面）。
 fn apply_pac_theme_decl(project_dir: &Path) -> Option<String> {
     let pac_path = project_dir.join("pac.at");
-    let config = match auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
-        Ok(c) => c,
-        Err(_) => return None,
+    let config =
+        match auto_lang_core::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()) {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
+    // PLAN-815 T-04: 声明读取经 auto_man_core 单源（Pac::new 对 theme_decl
+    // 是 decl 字段直拷+语言类型直映；resolve() 只动 props/targets/依赖
+    // 下载，不触及 theme_decl——冻结 oracle 不变，不引 Man Pac）。
+    let decl_lite = auto_man_core::pac_from_decl(&config.root, &config.args).theme_decl?;
+    let decl = auto_lang_core::design_tokens::decl::ThemeDecl {
+        name: decl_lite.name.clone(),
+        extends: decl_lite.extends.clone(),
+        mode: decl_lite.mode.clone(),
+        colors: decl_lite.colors.clone(),
     };
-    let mut pac = crate::pac::Pac::new(config);
-    let _ = pac.resolve();
-    let decl = pac.theme_decl?;
-    match auto_lang::design_tokens::decl::compose(&decl, &std::collections::BTreeMap::new()) {
+    match auto_lang_core::design_tokens::decl::compose(&decl, &std::collections::BTreeMap::new()) {
         Ok(theme) => {
             let name = theme.name.clone();
-            auto_lang::ui::style::theme::set_theme_composed(std::sync::Arc::new(theme));
+            auto_ui_compiler::style::theme::set_theme_composed(std::sync::Arc::new(theme));
             Some(name)
         }
         Err(e) => {
@@ -6196,7 +5813,7 @@ fn apply_pac_theme_decl(project_dir: &Path) -> Option<String> {
 /// Generate a Rust type alias from an Auto TypeDecl.
 /// Uses serde_json::Value as the underlying type to maintain compatibility
 /// with the dynamic-typing code generator (field access via ["field"]).
-fn generate_type_struct(type_decl: &auto_lang::ast::TypeDecl) -> String {
+fn generate_type_struct(type_decl: &auto_lang_core::ast::TypeDecl) -> String {
     format!("pub type {} = serde_json::Value;\n", type_decl.name)
 }
 
@@ -6253,8 +5870,8 @@ fn __at_trim(v: &serde_json::Value) -> String {
 /// 返回按声明型直译（type_to_rust_str）；函数体复用 handler 语句翻译
 /// 链（generate_handler_body：join_stmt_block + postprocess 全含）。
 fn generate_module_fn_rust(
-    generator: &auto_lang::ui_gen::rust::RustGenerator,
-    fn_decl: &auto_lang::ast::Fn,
+    generator: &auto_ui_compiler::ui_gen::rust::RustGenerator,
+    fn_decl: &auto_lang_core::ast::Fn,
 ) -> String {
     let params: Vec<String> = fn_decl
         .params
@@ -6262,10 +5879,10 @@ fn generate_module_fn_rust(
         .map(|p| format!("{}: {}", p.name.as_str(), type_to_rust_str(&p.ty)))
         .collect();
     let ret = match &fn_decl.ret {
-        auto_lang::ast::Type::Void => String::new(),
+        auto_lang_core::ast::Type::Void => String::new(),
         t => format!(" -> {}", type_to_rust_str(t)),
     };
-    let body = generator.generate_handler_body(&auto_lang::aura::LogicPayload::AstStmts(
+    let body = generator.generate_handler_body(&auto_ui_compiler::aura::LogicPayload::AstStmts(
         fn_decl.body.stmts.clone(),
     ));
     format!(
@@ -6278,8 +5895,8 @@ fn generate_module_fn_rust(
 }
 
 /// Convert an Auto Type to a Rust type string (standalone, mirrors RustGenerator::auto_type_to_rust).
-fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
-    use auto_lang::ast::Type;
+fn type_to_rust_str(ty: &auto_lang_core::ast::Type) -> String {
+    use auto_lang_core::ast::Type;
     match ty {
         Type::Int => "i32".to_string(),
         Type::Uint => "u32".to_string(),
@@ -6309,7 +5926,7 @@ fn type_to_rust_str(ty: &auto_lang::ast::Type) -> String {
 mod tests {
     use super::*;
     // PLAN-815 T-04: freshness pure helpers moved to auto-api-gen (api_gen).
-    use crate::api_gen::{assembly_freshness, lock_freshness};
+    use auto_api_gen::api_gen::{assembly_freshness, lock_freshness};
 
     /// PLAN-815 T-04 随迁：image stdlib 共享 runtime feature 的 UI 侧断言
     /// （原 api_gen::image_stdlib_codegen_uses_shared_runtime_feature 的
@@ -6372,7 +5989,7 @@ pub fn answer() int { return 42 }
         }
         let _restore = Restore(std::env::var_os("AUTO_RUST_WORKSPACE"));
         std::env::set_var("AUTO_RUST_WORKSPACE", &isolated_workspace);
-        crate::api_gen::generate_api(&project, "rust").unwrap();
+        auto_api_gen::api_gen::generate_api(&project, "rust").unwrap();
         let ws = ensure_shared_workspace(&project);
         let receipt_path = ws.join(back_member_name(&project)).join("generation.json");
         let read_lock_field = || {
@@ -6401,7 +6018,7 @@ version = \"0.1.0\"
         let bound = read_lock_field();
         assert_eq!(
             bound,
-            format!("{:x}", crate::api_gen::fnv1a(lock_v1.as_bytes())),
+            format!("{:x}", auto_api_gen::api_gen::fnv1a(lock_v1.as_bytes())),
             "首次物化必须把实际 lock 身份绑定进收据"
         );
         assert!(backend_generation_is_fresh(&project), "绑定后同内容仍新鲜");
@@ -6439,7 +6056,7 @@ version = \"0.2.0\"
     fn workspace_lock_identity_three_states() {
         assert_eq!(
             workspace_lock_identity(Ok(vec![1, 2])).unwrap(),
-            Some(format!("{:x}", crate::api_gen::fnv1a(&[1, 2])))
+            Some(format!("{:x}", auto_api_gen::api_gen::fnv1a(&[1, 2])))
         );
         // R11 反例锚：零字节文件=实际内容身份，两端同口径。
         assert_eq!(
@@ -6494,7 +6111,7 @@ pub fn answer() int { return 42 }
         }
         let _restore = Restore(std::env::var_os("AUTO_RUST_WORKSPACE"));
         std::env::set_var("AUTO_RUST_WORKSPACE", &isolated_workspace);
-        crate::api_gen::generate_api(&project, "rust").unwrap();
+        auto_api_gen::api_gen::generate_api(&project, "rust").unwrap();
         let ws = ensure_shared_workspace(&project);
         let receipt_path = ws.join(back_member_name(&project)).join("generation.json");
         let read_lock_field = || {
@@ -6518,7 +6135,7 @@ pub fn answer() int { return 42 }
         );
         assert_eq!(
             read_lock_field(),
-            format!("{:x}", crate::api_gen::fnv1a(b"")),
+            format!("{:x}", auto_api_gen::api_gen::fnv1a(b"")),
             "空文件必须绑定实际内容身份（811c9dc5），不得归 absent"
         );
         assert!(
@@ -6527,10 +6144,10 @@ pub fn answer() int { return 42 }
         );
         // 3) R11 反例转正：同一空文件上再生成——收据仍记 811c9dc5（两端
         //    一致），业务与 lock 均未变，门必须新鲜。
-        crate::api_gen::generate_api(&project, "rust").unwrap();
+        auto_api_gen::api_gen::generate_api(&project, "rust").unwrap();
         assert_eq!(
             read_lock_field(),
-            format!("{:x}", crate::api_gen::fnv1a(b"")),
+            format!("{:x}", auto_api_gen::api_gen::fnv1a(b"")),
             "生成端对空文件必须记同一实际身份（两端一致）"
         );
         assert!(
@@ -6680,27 +6297,27 @@ pub fn answer() int { return 42 }
         let activated = apply_pac_theme_decl(&project).expect("声明应激活");
         assert_eq!(activated, "brand-x", "激活名=声明名");
         assert_eq!(
-            auto_lang::ui::style::theme::theme_name(),
+            auto_ui_compiler::style::theme::theme_name(),
             "brand-x",
             "theme_name 返回合成主题名"
         );
         let composed =
-            auto_lang::ui::style::theme::active_composed().expect("合成主题在 ACTIVE_THEME 槽");
+            auto_ui_compiler::style::theme::active_composed().expect("合成主题在 ACTIVE_THEME 槽");
         let expected_primary =
-            auto_lang::design_tokens::decl::normalize_value("#8b5cf6").expect("声明值合法");
+            auto_lang_core::design_tokens::decl::normalize_value("#8b5cf6").expect("声明值合法");
         assert!(
             composed.light.iter().any(|(t, v)| *t
-                == auto_lang::ui::style::theme::registry::TokenName::Primary
+                == auto_ui_compiler::style::theme::registry::TokenName::Primary
                 && v == &expected_primary),
             "合成体 primary = 声明色规范化值（normalize hex→HSL 串）"
         );
         assert_eq!(
-            auto_lang::ui::style::theme::active_theme_rgb(
-                auto_lang::ui::style::theme::registry::TokenName::Primary,
+            auto_ui_compiler::style::theme::active_theme_rgb(
+                auto_ui_compiler::style::theme::registry::TokenName::Primary,
                 false,
             ),
             composed.resolve_rgb(
-                auto_lang::ui::style::theme::registry::TokenName::Primary,
+                auto_ui_compiler::style::theme::registry::TokenName::Primary,
                 false,
             ),
             "VM resolve 走合成体（与合成体自身解析同值）"
@@ -6708,11 +6325,11 @@ pub fn answer() int { return 42 }
 
         // ①b 优先级成文：声明激活不清写 mode/accent（env 种子语义位不动）。
         assert!(
-            auto_lang::ui::style::theme::dark_mode(),
+            auto_ui_compiler::style::theme::dark_mode(),
             "DARK_MODE 不被声明清写"
         );
         assert_eq!(
-            auto_lang::ui::style::theme::accent_name(),
+            auto_ui_compiler::style::theme::accent_name(),
             "indigo",
             "ACCENT_NAME 不被声明清写"
         );
@@ -6725,10 +6342,10 @@ pub fn answer() int { return 42 }
         std::fs::create_dir_all(&project).unwrap();
         std::fs::write(project.join("pac.at"), "name: \"p609-plain\"\n").unwrap();
 
-        let before = auto_lang::ui::style::theme::theme_name();
+        let before = auto_ui_compiler::style::theme::theme_name();
         assert_eq!(apply_pac_theme_decl(&project), None, "无声明 → 无激活");
         assert_eq!(
-            auto_lang::ui::style::theme::theme_name(),
+            auto_ui_compiler::style::theme::theme_name(),
             before,
             "无声明零变化（内置缺省链不动）"
         );
@@ -6750,14 +6367,14 @@ pub fn answer() int { return 42 }
         )
         .unwrap();
 
-        let before = auto_lang::ui::style::theme::theme_name();
+        let before = auto_ui_compiler::style::theme::theme_name();
         assert_eq!(
             apply_pac_theme_decl(&project),
             None,
             "compose 失败（extends 非内置）→ 不激活"
         );
         assert_eq!(
-            auto_lang::ui::style::theme::theme_name(),
+            auto_ui_compiler::style::theme::theme_name(),
             before,
             "坏声明回退内置缺省，不 panic 不换槽"
         );
@@ -7160,7 +6777,7 @@ pub fn create_item(name str) str {
     fn test_w1_write_and_delete_bodies_use_reqwest_client() {
         // POST/PUT fire-and-forget + blocking bodies, and DELETE, must use
         // _http_client() and reqwest .json(&body)/.send().
-        let params: Vec<&auto_lang::api::types::ApiParam> = vec![];
+        let params: Vec<&auto_lang_core::api::types::ApiParam> = vec![];
         let void = generate_write_fn_body("post".into(), "\"http://x\"".into(), &params, true, "");
         assert!(
             void.contains("_http_client().post(&url).json(&body).send()"),
@@ -7448,7 +7065,7 @@ pub fn create_item(name str) str {
     /// 本门红。
     #[test]
     fn test_shell_pack_lib_freshness() {
-        let Some(pack_dir) = auto_lang::os_paths::resolve_os_top_dir(
+        let Some(pack_dir) = auto_lang_core::os_paths::resolve_os_top_dir(
             &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
             "shell",
         ) else {

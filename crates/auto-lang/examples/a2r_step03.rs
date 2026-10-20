@@ -12,12 +12,18 @@ fn main() {
 fn run() {
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let src_path = manifest_dir
-        .parent().unwrap()       // crates/
-        .parent().unwrap()       // auto-lang/
-        .parent().unwrap()       // autostack/
+        .parent()
+        .unwrap() // crates/
+        .parent()
+        .unwrap() // auto-lang/
+        .parent()
+        .unwrap() // autostack/
         .join("auto-code-rs/snapshots/step-03-agent-runtime/main.at");
     let src_path = src_path.canonicalize().unwrap_or_else(|e| {
-        eprintln!("Error: cannot find step-03 main.at at {:?}: {}", src_path, e);
+        eprintln!(
+            "Error: cannot find step-03 main.at at {:?}: {}",
+            src_path, e
+        );
         std::process::exit(1);
     });
     let code = fs::read_to_string(&src_path).unwrap_or_else(|e| {
@@ -26,9 +32,12 @@ fn run() {
     });
 
     let out_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()       // crates/
-        .parent().unwrap()       // auto-lang/
-        .parent().unwrap()       // autostack/
+        .parent()
+        .unwrap() // crates/
+        .parent()
+        .unwrap() // auto-lang/
+        .parent()
+        .unwrap() // autostack/
         .join("auto-code-rs/target/step03_test/src/main.rs");
 
     println!("=== Transpiling step-03-agent-runtime/main.at ===");
