@@ -9,36 +9,36 @@
 //! 客户端自身失败（spawn/发送/控制流污染/EOF/超时）以 [`ClientError`]
 //! 具名分类——不吞、不字符串化、不假装成功。
 //!
-//! 寿命合同（V-02/V-05，含 R1 复审修复）：
-//! - 请求 deadline 覆盖**整次往返**：帧写入（经 writer 线程，对端不读
-//!   导致的管道写阻塞不越过截止）与回答等待共用同一绝对截止
-//!   （F-816-R1-01）。
-//! - 超时/取消后 owned 进程树被终止并**观察到真停**（收尸）、writer 与
-//!   reader 线程有界收尾之后才返回 [`ClientError::Timeout`]；终止/收尸
-//!   失败与 reader/writer panic、管道被非拥有进程持有一律具名传播，
-//!   不以固定文案谎报（F-816-R1-02/06）。
-//! - 宿主根进程退出后、reader 收尾前，仍持管道的 owned 后代先被终止；
-//!   宽限内收不到 EOF 即 [`ClientError::PipesHeld`]（F-816-R1-02）。
-//! - 控制流只解析帧且**先 drain 已缓冲内容**：已到达的完整帧与坏前缀
-//!   不等待新字节即被处理（F-816-R1-03）。
+//! 寿命合同（V-02/V-05，含 R1/R2 复审修复）：
+//! - 请求 deadline 覆盖**整次往返**：帧写入（writer 线程分片写 + 就绪
+//!   轮询）与回答等待共用同一绝对截止（F-816-R1-01）。
+//! - **任何返回路径都不带活的自有线程**（F-816-R2-06）：超时/关闭先请求
+//!   停止、终止 owned 树、确认 reader/writer 真停（poll 轮询 + stop 标志
+//!   + join）之后才返回；`Timeout` 仅在取消成功且收尾完成后给出。
+//! - 宿主根退出后先终止 owned 后代；非拥有方持管道导致收尾不能完成时
+//!   具名 [`ClientError::PipesHeld`]，不谎报、不悬挂。
+//! - 控制流只解析帧且**先 drain 已缓冲内容**；坏帧/坏前缀在任何消费
+//!   路径（请求/EOF 关闭/超时收尾）都不被吞掉（F-816-R1-03/R2-03）。
 //! - 优雅关闭（EOF）按宿主合同期待退出码 0，宽限到期则 cancel 收尸。
 //!
 //! 边界（§5.3）：不静态链接任何工具实现（auto-ui-tools 等）——只与真实
-//! 进程说话；不做工具发现/隐式搜索（T-04 的 discovery 职责），调用方
-//! 给出显式二进制路径；日志只从 stderr 读，控制流（stdout）出现任何
-//! 非帧字节即具名 [`ClientError::StreamViolation`]，绝不静默解析。
+//! 进程说话；不做工具发现/隐式搜索（T-04），调用方给出显式二进制路径；
+//! 日志只从 stderr 读，控制流（stdout）出现任何非帧字节即具名
+//! [`ClientError::StreamViolation`]，绝不静默解析。
 
 use std::ffi::OsString;
 use std::io::Read;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use auto_tool_execution::{
-    spawn as spawn_owned, ExecutionSpec, OwnedProcess, StdioPolicy, TreeScope,
+    spawn as spawn_owned, ExecutionSpec, OwnedProcess, PipePoll, StdioPolicy, TreeScope,
+    PIPE_POLL_SLICE,
 };
-use auto_tool_protocol::framing::{parse_frame, write_frame, FrameError, FrameParse};
+use auto_tool_protocol::framing::{parse_frame, FrameError, FrameParse};
 use auto_tool_protocol::message::{ClientBody, ClientEnvelope, ServerEnvelope, WireRequest};
 use auto_tool_protocol::{
     Budgets, ToolDescriptor, ToolError, ToolEvent, ValidateProjectReport, PROTOCOL_VERSION,
@@ -48,8 +48,8 @@ use auto_tool_protocol::{
 // 不需要直接依赖 auto-tool-execution。
 pub use auto_tool_execution::ExitKind;
 
-/// writer/reader 收尾的拆除宽限：owned 树终止后管道应立即关闭，给足
-/// 调度余量即可；超时即管道被非拥有进程持有（F-816-R1-02/06）。
+/// reader/writer 收尾的拆除宽限：stop 生效延迟 ≤ 轮询切片，正常远小于
+/// 本值；超时即管道被非拥有进程持有（F-816-R1/R2-06）。
 const TEARDOWN_GRACE: Duration = Duration::from_secs(3);
 
 /// 一次工具宿主连接的完整请求。
@@ -113,7 +113,7 @@ pub enum BrokenReason {
     TimedOut,
     /// 控制流违规（非帧字节），流不可再用。
     StreamViolated,
-    /// stdin writer 失败（管道断裂/序列化/预算），连接不可再用。
+    /// stdin writer 失败（管道断裂/预算拒绝后致命错误），连接不可再用。
     WriterFailed,
 }
 
@@ -132,9 +132,10 @@ pub enum ClientError {
     },
     /// 请求帧写出失败（管道断裂/序列化/超预算——预算超限为 `TooLarge`）。
     SendFrame(FrameError),
-    /// 控制流出现非帧字节/坏帧：协议违规，流不可再用。
+    /// 控制流出现非帧字节/坏帧：协议违规，流不可再用。**任何**消费路径
+    /// （请求/EOF 关闭/超时收尾）都不得吞掉（F-816-R2-03）。
     StreamViolation(FrameError),
-    /// 宿主在回答前关闭了控制流。
+    /// 宿主在回答前关闭了控制流（含 EOF 夹带半帧——请求路径视角）。
     StreamClosed {
         id: u64,
     },
@@ -148,13 +149,13 @@ pub enum ClientError {
         reason: String,
     },
     /// 请求 deadline 到期：owned 进程树已终止并收尸、writer 与 reader
-    /// 线程有界收尾之后才返回本错误；`limit` 为到期的时限。
+    /// 线程确认真停之后才返回本错误；`limit` 为到期的时限。
     Timeout {
         id: u64,
         limit: Duration,
     },
     /// 宿主根进程已退出且 owned 树已终止，但管道写端仍被**非本次拥有**
-    /// 的进程持有：reader/writer 在宽限内收不到 EOF，按具名失败返回
+    /// 的进程持有：reader/writer 在宽限内收不到完成，按具名失败返回
     /// 而非无限等待（F-816-R1-02）。
     PipesHeld {
         after: Duration,
@@ -252,12 +253,19 @@ impl From<auto_tool_execution::ExecutionError> for ClientError {
 }
 
 /// reader 线程 → 客户端的控制流消息。`Done` 是唯一的不变量标记：所有
-/// 非恐慌退出路径的最后一条消息；通道在无 `Done` 的情况下断开 = 线程
-/// panic（F-816-R1-06）。
+/// 非恐慌退出路径（含被停止）的最后一条消息；通道在无 `Done` 的情况下
+/// 断开 = 线程 panic（F-816-R1-06）。
 #[derive(Debug)]
 enum FromReader {
     Frame(Box<ServerEnvelope>),
+    /// 已解析的坏帧/坏前缀（TooLarge、非 JSON、非类型化信封）。
     Violation(FrameError),
+    /// 控制流在半帧处结束。**关闭路径**（宿主自然退出）这是宿主违规；
+    /// 超时/取消路径（我方 kill 截断在途合法回复）属拆除噪声——由消费
+    /// 方按语境决定（F-816-R2-03）。
+    TruncatedEof {
+        trailing: usize,
+    },
     Eof,
     Done,
 }
@@ -265,29 +273,28 @@ enum FromReader {
 /// 与一个真实工具宿主进程的连接。
 pub struct ToolClient {
     proc: OwnedProcess,
-    writer_tx: Option<Sender<serde_json::Value>>,
-    /// 每次写出的结果（writer 线程回执）。
+    jobs_tx: Option<Sender<serde_json::Value>>,
     writer_ack: Receiver<Result<(), FrameError>>,
-    /// writer 线程退出标记（stdin 已随之关闭）。
-    writer_done: Receiver<()>,
+    writer_done: Receiver<Result<(), std::io::Error>>,
+    writer_stop: Arc<AtomicBool>,
     rx: Receiver<FromReader>,
-    /// stderr 日志累计（reader 线程只写不判）。
+    reader_stop: Arc<AtomicBool>,
+    reader_closed: Arc<AtomicBool>,
     logs: Arc<Mutex<Vec<u8>>>,
-    stderr_done: Receiver<()>,
+    stderr_done: Receiver<Result<(), std::io::Error>>,
+    stderr_stop: Arc<AtomicBool>,
+    stderr_closed: Arc<AtomicBool>,
     next_id: u64,
     spec: ToolClientSpec,
     broken: Option<BrokenReason>,
-    /// writer 完成标记是否已被消费（shutdown/收尾只等一次，重复 recv 会
-    /// 把正常终态的通道断开误判为 panic）。
-    writer_done_seen: bool,
-    /// writer/reader 是否已完成过收尾（Timeout/Violation 路径已 drain
-    /// `Done` 后，shutdown 不重复等待——通道断开是正常终态而非 panic）。
     collected: bool,
+    writer_done_seen: bool,
 }
 
 impl ToolClient {
     /// spawn 真实宿主进程并接线控制/日志流。stdin 写入由内部 writer
-    /// 线程拥有（管道写阻塞不越过调用方 deadline，F-816-R1-01）。
+    /// 线程拥有（分片写 + 就绪轮询：管道写阻塞不越过调用方 deadline，
+    /// F-816-R1-01）；三条线程都可被设施停止（R2-06）。
     pub fn spawn(spec: ToolClientSpec) -> Result<Self, ClientError> {
         if spec.frame_budget == 0 {
             return Err(ClientError::InvalidSpec(
@@ -308,76 +315,120 @@ impl ToolClient {
         esp.tree_scope = spec.tree_scope;
         let mut proc = spawn_owned(&esp)?;
 
+        // ---- stdin writer 线程 ----
         let stdin = proc
             .take_stdin()
             .ok_or_else(|| ClientError::InvalidSpec("tool host stdin was not piped".into()))?;
-        let (writer_tx, writer_rx) = std::sync::mpsc::channel::<serde_json::Value>();
+        let (jobs_tx, jobs_rx) = std::sync::mpsc::channel::<serde_json::Value>();
         let (ack_tx, writer_ack) = std::sync::mpsc::channel::<Result<(), FrameError>>();
-        let (wdone_tx, writer_done) = std::sync::mpsc::channel::<()>();
+        let (wdone_tx, writer_done) = std::sync::mpsc::channel::<Result<(), std::io::Error>>();
+        let writer_stop = Arc::new(AtomicBool::new(false));
+        let wflag = Arc::clone(&writer_stop);
         let budget = spec.frame_budget;
         std::thread::spawn(move || {
             let mut stdin = stdin;
-            for json in writer_rx {
-                let result = write_frame(&mut stdin, &json, budget);
+            let mut fatal: Option<std::io::Error> = None;
+            loop {
+                let job = match jobs_rx.recv_timeout(PIPE_POLL_SLICE) {
+                    Ok(job) => job,
+                    Err(RecvTimeoutError::Timeout) => {
+                        if wflag.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        continue;
+                    }
+                    Err(RecvTimeoutError::Disconnected) => break,
+                };
+                let result = write_frame_chunked(&mut stdin, &job, budget);
                 // 仅真实写出失败(Io)终结连接;预算/序列化拒绝发生在任何
                 // 字节写出之前,流保持可用。
-                let fatal = matches!(result, Err(FrameError::Io(_)));
+                let fatal_io = matches!(&result, Err(FrameError::Io(_)));
                 let _ = ack_tx.send(result);
-                if fatal {
+                if fatal_io {
+                    fatal = Some(std::io::Error::other("stdin writer failed"));
                     break;
                 }
             }
-            // 通道关闭（调用方 shutdown/收尾）或致命写失败：drop stdin。
+            // 通道关闭（调用方收尾）或致命写失败：drop stdin → 宿主见 EOF。
             drop(stdin);
-            let _ = wdone_tx.send(());
+            let _ = wdone_tx.send(Ok(()));
+            let _ = fatal; // 致命性已随逐写回执传播;done 只承担"线程已停"。
         });
 
+        // ---- stdout 控制流 reader 线程 ----
         let (tx, rx) = std::sync::mpsc::channel::<FromReader>();
+        let reader_stop = Arc::new(AtomicBool::new(false));
+        let reader_closed = Arc::new(AtomicBool::new(false));
+        let (rstop, rclosed) = (Arc::clone(&reader_stop), Arc::clone(&reader_closed));
         let has_stdout = proc
             .take_stdout()
-            .map(|out| {
-                std::thread::spawn(move || {
-                    let mut boxed: Box<dyn Read + Send> = Box::new(out);
-                    reader_session(&mut boxed, &tx, budget);
-                })
-            })
+            .map(|out| spawn_stdout_reader(out, tx, budget, rstop, rclosed))
             .is_some();
         if !has_stdout {
             return Err(ClientError::InvalidSpec(
                 "tool host stdout was not piped".into(),
             ));
         }
+
+        // ---- stderr 日志 reader 线程（结束方式具名：EOF 或 I/O 错误）----
         let logs = Arc::new(Mutex::new(Vec::new()));
-        let (sdone_tx, stderr_done) = std::sync::mpsc::channel::<()>();
+        let (sdone_tx, stderr_done) = std::sync::mpsc::channel::<Result<(), std::io::Error>>();
+        let stderr_stop = Arc::new(AtomicBool::new(false));
+        let stderr_closed = Arc::new(AtomicBool::new(false));
+        let (sstop, sclosed, sink) = (
+            Arc::clone(&stderr_stop),
+            Arc::clone(&stderr_closed),
+            Arc::clone(&logs),
+        );
         if let Some(err) = proc.take_stderr() {
-            let sink = Arc::clone(&logs);
             std::thread::spawn(move || {
                 let mut r = err;
                 let mut chunk = [0u8; 8192];
-                loop {
-                    match r.read(&mut chunk) {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => sink.lock().unwrap().extend_from_slice(&chunk[..n]),
+                let end = loop {
+                    if sstop.load(Ordering::Relaxed) {
+                        break Ok(());
                     }
-                }
-                let _ = sdone_tx.send(());
+                    if !r.poll_ready(PIPE_POLL_SLICE) {
+                        if sclosed.load(Ordering::Relaxed) {
+                            break Ok(());
+                        }
+                        continue;
+                    }
+                    match r.read(&mut chunk) {
+                        Ok(0) => break Ok(()),
+                        Ok(n) => sink.lock().unwrap().extend_from_slice(&chunk[..n]),
+                        Err(e)
+                            if e.kind() == std::io::ErrorKind::WouldBlock
+                                || e.kind() == std::io::ErrorKind::Interrupted =>
+                        {
+                            continue
+                        }
+                        Err(e) => break Err(e),
+                    }
+                };
+                let _ = sdone_tx.send(end);
             });
         } else {
-            let _ = sdone_tx.send(());
+            let _ = sdone_tx.send(Ok(()));
         }
         Ok(Self {
             proc,
-            writer_tx: Some(writer_tx),
+            jobs_tx: Some(jobs_tx),
             writer_ack,
             writer_done,
+            writer_stop,
             rx,
+            reader_stop,
+            reader_closed,
             logs,
             stderr_done,
+            stderr_stop,
+            stderr_closed,
             next_id: 1,
             spec,
             broken: None,
-            writer_done_seen: false,
             collected: false,
+            writer_done_seen: false,
         })
     }
 
@@ -490,8 +541,7 @@ impl ToolClient {
     }
 
     /// 发送一帧，**绝对 deadline 同时约束排队与阻塞写**（F-816-R1-01）：
-    /// `started+limit` 是本次请求的唯一截止；写阻塞到截止即走超时路径
-    /// （终止 owned 树 → 管道关闭解除 writer 阻塞 → 有界收尾）。
+    /// `started+limit` 是本次请求的唯一截止；写阻塞到截止即走超时路径。
     fn send_deadline(
         &mut self,
         json: &serde_json::Value,
@@ -500,7 +550,7 @@ impl ToolClient {
         id: u64,
     ) -> Result<(), ClientError> {
         let tx = self
-            .writer_tx
+            .jobs_tx
             .as_ref()
             .ok_or_else(|| ClientError::InvalidSpec("writer already closed".into()))?;
         tx.send(json.clone()).map_err(|_| ClientError::Panicked {
@@ -569,67 +619,83 @@ impl ToolClient {
                 self.broken = Some(BrokenReason::StreamViolated);
                 Err(ClientError::StreamViolation(e))
             }
-            FromReader::Eof | FromReader::Done => Err(ClientError::StreamClosed { id }),
+            FromReader::TruncatedEof { .. } | FromReader::Eof | FromReader::Done => {
+                Err(ClientError::StreamClosed { id })
+            }
         }
     }
 
-    /// deadline 到期路径：终止 owned 树 → 收尸 → writer/reader 有界
-    /// 收尾，全部完成后才返回（F-816-R1-01/02/06）。终止失败与收尾失败
-    /// 具名传播，不以固定 Timeout 文案谎报"已收尸/reader 已 join"。
+    /// deadline 到期路径（F-816-R1-01/02、R2-03/06）：先结束 writer、终止
+    /// owned 树（解除任何管道阻塞）、请求 reader 停止并确认**真停**；随后
+    /// 取消失败、stderr 读错、缓冲坏帧具名传播，全部完成才返回 Timeout。
     fn abort_for_timeout(&mut self, id: u64, limit: Duration) -> ClientError {
-        // 先终止 owned 树(解除可能卡在满管道上的写),再结束 writer
-        //(idle writer 阻塞在任务通道上,须 drop 发送端才退出)。
+        self.writer_stop.store(true, Ordering::Relaxed);
+        drop(self.jobs_tx.take());
         let cancel_result = self.proc.cancel();
-        drop(self.writer_tx.take());
-        let collect = self.join_all_bounded(TEARDOWN_GRACE);
+        self.reader_closed.store(true, Ordering::Relaxed);
+        self.stderr_closed.store(true, Ordering::Relaxed);
+        self.reader_stop.store(true, Ordering::Relaxed);
+        self.stderr_stop.store(true, Ordering::Relaxed);
         self.broken = Some(BrokenReason::TimedOut);
+        let drained = self.drain_until_done(TEARDOWN_GRACE, false);
         if let Err(source) = cancel_result {
             return ClientError::Io {
                 stage: "cancel after timeout",
                 source: Box::new(source),
             };
         }
-        if let Err(e) = collect {
+        if let Err(e) = drained {
             return e;
         }
         ClientError::Timeout { id, limit }
     }
 
-    /// writer 完成（单次消费：shutdown 与收尾路径共享）。
-    fn wait_writer_done(&mut self, grace: Duration) -> Result<(), ClientError> {
-        if self.writer_done_seen {
-            return Ok(());
-        }
-        match self.writer_done.recv_timeout(grace) {
-            Ok(()) => {
-                self.writer_done_seen = true;
-                Ok(())
-            }
-            Err(RecvTimeoutError::Timeout) => Err(ClientError::PipesHeld { after: grace }),
-            Err(RecvTimeoutError::Disconnected) => Err(ClientError::Panicked {
-                which: "stdin writer",
-            }),
-        }
-    }
-
-    /// writer/stderr/stdout 的有界收尾：owned 树终止后管道应立即关闭。
-    /// stdout 侧持续 drain 到 `Done`（缺 `Done` 的断开 = panic）。已收尾
-    /// 过的连接（Timeout/Violation 路径）直接成功，不重复消费已完成通道。
-    fn join_all_bounded(&mut self, grace: Duration) -> Result<(), ClientError> {
+    /// 收尾 drain：等待 writer/stderr/stdout 三条线程的完成标记。
+    ///
+    /// `natural_exit` = 宿主自然退出（关闭路径）：缓冲的坏帧（含 EOF 夹
+    /// 半帧）按控制流违规保留在最终结果里；false（超时/取消路径）：
+    /// 我方终止造成的 `Violation(Io)`（管道拆除）与 `TruncatedEof`（kill
+    /// 截断在途回复）属拆除噪声，其余坏帧仍具名传播（F-816-R2-03）。
+    fn drain_until_done(&mut self, grace: Duration, natural_exit: bool) -> Result<(), ClientError> {
         if self.collected {
             return Ok(());
         }
-        // writer：树终止后阻塞写解除，线程随即退出。
-        self.wait_writer_done(grace)?;
-        match self.stderr_done.recv_timeout(grace) {
-            Ok(()) => {}
-            Err(RecvTimeoutError::Timeout) => return Err(ClientError::PipesHeld { after: grace }),
-            Err(RecvTimeoutError::Disconnected) => {
-                return Err(ClientError::Panicked {
-                    which: "stderr reader",
-                })
+        // writer：停止后（jobs 通道已关）分片写在树终止下解除。
+        if !self.writer_done_seen {
+            match self.writer_done.recv_timeout(grace) {
+                Ok(_) => self.writer_done_seen = true,
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(ClientError::PipesHeld { after: grace })
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(ClientError::Panicked {
+                        which: "stdin writer",
+                    })
+                }
             }
         }
+        // stderr：结束方式具名（读错不吞——F-816-R2-06）。
+        match self.stderr_done.recv_timeout(grace) {
+            Ok(Ok(())) => {}
+            Ok(Err(source)) => {
+                self.collected = true;
+                return Err(ClientError::Io {
+                    stage: "stderr reader",
+                    source: Box::new(source),
+                });
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                self.collected = true;
+                return Err(ClientError::PipesHeld { after: grace });
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                self.collected = true;
+                return Err(ClientError::Panicked {
+                    which: "stderr reader",
+                });
+            }
+        }
+        // stdout：drain 到 Done；途经的坏帧按语境保留。
         let deadline = Instant::now() + grace;
         loop {
             let remaining = deadline.saturating_duration_since(Instant::now());
@@ -638,35 +704,74 @@ impl ToolClient {
                     self.collected = true;
                     return Ok(());
                 }
+                Ok(FromReader::Violation(e)) => {
+                    let teardown = !natural_exit && matches!(e, FrameError::Io(_));
+                    if !teardown {
+                        self.collected = true;
+                        self.broken = Some(BrokenReason::StreamViolated);
+                        return Err(ClientError::StreamViolation(e));
+                    }
+                }
+                Ok(FromReader::TruncatedEof { trailing }) => {
+                    if natural_exit {
+                        self.collected = true;
+                        self.broken = Some(BrokenReason::StreamViolated);
+                        return Err(ClientError::StreamViolation(FrameError::Malformed {
+                            reason: format!(
+                                "control stream closed mid-frame ({trailing} trailing bytes)"
+                            ),
+                        }));
+                    }
+                    // 超时/取消路径：我方 kill 截断在途合法回复——噪声。
+                }
                 Ok(_) => continue,
                 Err(RecvTimeoutError::Timeout) => {
-                    return Err(ClientError::PipesHeld { after: grace })
+                    self.collected = true;
+                    return Err(ClientError::PipesHeld { after: grace });
                 }
                 Err(RecvTimeoutError::Disconnected) => {
+                    self.collected = true;
                     return Err(ClientError::Panicked {
                         which: "stdout reader",
-                    })
+                    });
                 }
             }
         }
     }
 
     /// 优雅关闭：结束 writer（EOF）→ 宽限内等待宿主退出（合同期待码 0）；
-    /// 根退出后先终止仍持管道的 owned 后代（F-816-R1-02），reader 有界
-    /// 收尾；宽限到期则 cancel 收尸。返回退出分类与完整日志。
+    /// 根退出后先终止仍持管道的 owned 后代（F-816-R1-02），三条线程确
+    /// 认真停；宽限到期则 cancel 收尸。返回退出分类与完整日志。
     pub fn shutdown(mut self) -> Result<Shutdown, ClientError> {
         let deadline = Instant::now() + self.spec.shutdown_timeout;
-        drop(self.writer_tx.take());
-        let writer_grace = deadline
-            .saturating_duration_since(Instant::now())
-            .min(TEARDOWN_GRACE);
-        self.wait_writer_done(writer_grace)?;
+        // 1. 结束 writer（jobs 通道关闭 → 分片写完成 → drop stdin → EOF）。
+        drop(self.jobs_tx.take());
+        if !self.writer_done_seen {
+            let writer_grace = deadline
+                .saturating_duration_since(Instant::now())
+                .min(TEARDOWN_GRACE);
+            match self.writer_done.recv_timeout(writer_grace) {
+                Ok(_) => self.writer_done_seen = true,
+                Err(RecvTimeoutError::Timeout) => {
+                    return Err(ClientError::PipesHeld {
+                        after: writer_grace,
+                    })
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(ClientError::Panicked {
+                        which: "stdin writer",
+                    })
+                }
+            }
+        }
+        // 2. 宿主退出（自然=真实分类保留;宽限尽=cancel）。
+        let natural_exit;
         let status = match self
             .proc
             .wait_deadline(deadline.saturating_duration_since(Instant::now()))
         {
             Ok(Some(status)) => {
-                // 根已退出：真实分类保留;仍持管道的 owned 后代先终止。
+                natural_exit = true;
                 if self.proc.tree_scope() == TreeScope::ProcessTree {
                     self.proc.terminate().map_err(|source| ClientError::Io {
                         stage: "terminate after root exit",
@@ -675,10 +780,13 @@ impl ToolClient {
                 }
                 status
             }
-            Ok(None) => self.proc.cancel().map_err(|source| ClientError::Io {
-                stage: "cancel after shutdown grace",
-                source: Box::new(source),
-            })?,
+            Ok(None) => {
+                natural_exit = false;
+                self.proc.cancel().map_err(|source| ClientError::Io {
+                    stage: "cancel after shutdown grace",
+                    source: Box::new(source),
+                })?
+            }
             Err(source) => {
                 return Err(ClientError::Io {
                     stage: "wait for host shutdown",
@@ -686,7 +794,12 @@ impl ToolClient {
                 })
             }
         };
-        self.join_all_bounded(TEARDOWN_GRACE)?;
+        // 3. owned 写端已全关 → reader 的 EOF 判定;停止并确认三条线程。
+        self.reader_closed.store(true, Ordering::Relaxed);
+        self.stderr_closed.store(true, Ordering::Relaxed);
+        self.reader_stop.store(true, Ordering::Relaxed);
+        self.stderr_stop.store(true, Ordering::Relaxed);
+        self.drain_until_done(TEARDOWN_GRACE, natural_exit)?;
         Ok(Shutdown {
             kind: ExitKind::from_status(&status),
             logs: self.logs(),
@@ -711,18 +824,103 @@ fn typed_reply(envelope: ServerEnvelope) -> Reply {
     }
 }
 
+/// 序列化并预算检查一帧（不写）;分片写在 [`write_frame_chunked`] 内。
+fn frame_payload(json: &serde_json::Value, max_frame_bytes: usize) -> Result<Vec<u8>, FrameError> {
+    let payload = serde_json::to_vec(json).map_err(|e| FrameError::Malformed {
+        reason: format!("json serialization failed: {e}"),
+    })?;
+    if payload.len() > max_frame_bytes {
+        return Err(FrameError::TooLarge {
+            limit: max_frame_bytes,
+            observed: payload.len() as u64,
+        });
+    }
+    let mut bytes = (payload.len() as u32).to_be_bytes().to_vec();
+    bytes.extend_from_slice(&payload);
+    Ok(bytes)
+}
+
+/// 分片写一帧：16KiB 分片 + 就绪轮询 + stop 检查（由调用方的 writer
+/// 循环持有 stop 语义,本函数只做有界分片写;预算拒绝发生在写出前）。
+fn write_frame_chunked<W: std::io::Write + PipePoll>(
+    w: &mut W,
+    json: &serde_json::Value,
+    max_frame_bytes: usize,
+) -> Result<(), FrameError> {
+    let bytes = frame_payload(json, max_frame_bytes)?;
+    let mut written = 0usize;
+    while written < bytes.len() {
+        if !w.poll_ready(PIPE_POLL_SLICE) {
+            continue;
+        }
+        let upper = (written + 16 * 1024).min(bytes.len());
+        match w.write(&bytes[written..upper]) {
+            Ok(0) => {
+                return Err(FrameError::Io(std::io::Error::from(
+                    std::io::ErrorKind::WriteZero,
+                )))
+            }
+            Ok(n) => written += n,
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::Interrupted =>
+            {
+                continue
+            }
+            Err(e) => return Err(FrameError::Io(e)),
+        }
+    }
+    Ok(())
+}
+
+/// 具体类型直接持有（避免 trait object 的轮询转发;ChildStdout 在两
+/// 平台都实现 [`PipePoll`]）。
+fn spawn_stdout_reader<R>(
+    r: R,
+    tx: Sender<FromReader>,
+    budget: usize,
+    stop: Arc<AtomicBool>,
+    owned_closed: Arc<AtomicBool>,
+) -> std::thread::JoinHandle<()>
+where
+    R: Read + PipePoll + Send + 'static,
+{
+    std::thread::spawn(move || {
+        let mut r = r;
+        reader_session(&mut r, &tx, budget, &stop, &owned_closed);
+    })
+}
+
 /// 控制流 reader 会话：[`reader_run`] 之后以 `Done` 收尾（panic 时不发
-/// ——通道断开可判）。线程包装与故障注入单测共用同一路径。
-fn reader_session<R: Read>(r: &mut R, tx: &Sender<FromReader>, max_frame_bytes: usize) {
-    reader_run(r, tx, max_frame_bytes);
+/// ——通道断开可判）。
+fn reader_session<R>(
+    r: &mut R,
+    tx: &Sender<FromReader>,
+    max_frame_bytes: usize,
+    stop: &AtomicBool,
+    owned_closed: &AtomicBool,
+) where
+    R: Read + PipePoll,
+{
+    reader_run(r, tx, max_frame_bytes, stop, owned_closed);
     let _ = tx.send(FromReader::Done);
 }
 
-/// 控制流 reader 主体（泛化 `Read` 以便故障注入单测，F-816-R1-03/06）：
-/// 只解析帧；**先 drain 缓冲内全部可解析内容**（完整帧与坏前缀都不
-/// 等待新字节），仅 Incomplete 才读取更多；任何非帧字节/坏帧/超预算帧
-/// 都是具名违规且终结流（同步/拆包时序不影响结果）。
-fn reader_run<R: Read>(r: &mut R, tx: &Sender<FromReader>, max_frame_bytes: usize) {
+/// 控制流 reader 主体（泛化 `Read`+`PipePoll` 以便故障注入单测）：
+/// - **先 drain 缓冲内全部可解析内容**（完整帧与坏前缀都不等待新字节，
+///   仅 Incomplete 才读取——F-816-R1-03）；
+/// - 就绪轮询 + 停止标志：线程可被设施停止（F-816-R2-06）;
+/// - 任何非帧字节/坏帧/超预算帧都是具名违规且终结流;EOF 夹半帧记为
+///   [`FromReader::TruncatedEof`]（消费方按语境定性）。
+fn reader_run<R>(
+    r: &mut R,
+    tx: &Sender<FromReader>,
+    max_frame_bytes: usize,
+    stop: &AtomicBool,
+    owned_closed: &AtomicBool,
+) where
+    R: Read + PipePoll,
+{
     let mut buffer = Vec::new();
     let mut pos = 0usize;
     let mut chunk = [0u8; 8192];
@@ -763,21 +961,41 @@ fn reader_run<R: Read>(r: &mut R, tx: &Sender<FromReader>, max_frame_bytes: usiz
                 }
             }
         }
+        if stop.load(Ordering::Relaxed) {
+            return;
+        }
+        if !r.poll_ready(PIPE_POLL_SLICE) {
+            if owned_closed.load(Ordering::Relaxed) {
+                // owned 写端全关且无数据:EOF(或半帧截断)。
+                if buffer.len() > pos {
+                    let _ = tx.send(FromReader::TruncatedEof {
+                        trailing: buffer.len() - pos,
+                    });
+                } else {
+                    let _ = tx.send(FromReader::Eof);
+                }
+                return;
+            }
+            continue;
+        }
         match r.read(&mut chunk) {
             Ok(0) => {
-                let leftover = buffer.len() - pos;
-                if leftover == 0 {
-                    let _ = tx.send(FromReader::Eof);
+                if buffer.len() > pos {
+                    let _ = tx.send(FromReader::TruncatedEof {
+                        trailing: buffer.len() - pos,
+                    });
                 } else {
-                    let _ = tx.send(FromReader::Violation(FrameError::Malformed {
-                        reason: format!(
-                            "control stream closed mid-frame ({leftover} trailing bytes)"
-                        ),
-                    }));
+                    let _ = tx.send(FromReader::Eof);
                 }
                 return;
             }
             Ok(n) => buffer.extend_from_slice(&chunk[..n]),
+            Err(e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::Interrupted =>
+            {
+                continue
+            }
             Err(e) => {
                 let _ = tx.send(FromReader::Violation(FrameError::Io(e)));
                 return;
@@ -909,39 +1127,60 @@ mod tests {
             source: std::io::Error::other("boom"),
         });
         assert!(matches!(e, ClientError::Io { stage: "wait", .. }));
-        // 新设施错误变体不再无声穿过（F-816-R1-06）。
         let e = ClientError::from(auto_tool_execution::ExecutionError::PipesHeld {
             after: Duration::from_millis(5),
         });
         assert!(e.to_string().contains("execution facility"));
     }
 
-    // ---- 故障注入面（F-816-R1-03/06 永久回归，无 sleep、无子进程）----
+    // ---- 故障注入面（F-816-R1-03/06、R2-03/06 永久回归，无 sleep）----
 
     /// 预置分块的假 Read：依次交付 `chunks`，之后按 `tail` 结束。
+    /// `idle_ready`=分块耗尽后是否仍报就绪（true 模拟"恒就绪"直接进
+    /// read——Eof/Err 立即返回;false 模拟空管道轮询——stop 可在
+    /// 不进 read 的情况下生效）。
     struct Chunked {
         chunks: Vec<Vec<u8>>,
         tail: Tail,
+        idle_ready: bool,
     }
 
     enum Tail {
         Eof,
         Err(&'static str),
+        /// 永不结束(模拟管道写端被非拥有进程持有)。
+        Block,
     }
 
     impl Read for Chunked {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            if !self.chunks.is_empty() {
-                let chunk = self.chunks.remove(0);
+            if let Some(chunk) = self.chunks.first() {
                 let n = chunk.len().min(buf.len());
                 buf[..n].copy_from_slice(&chunk[..n]);
+                self.chunks.remove(0);
                 return Ok(n);
             }
             match self.tail {
                 Tail::Eof => Ok(0),
                 Tail::Err(msg) => Err(std::io::Error::other(msg)),
+                Tail::Block => loop {
+                    std::thread::sleep(Duration::from_secs(3600));
+                },
             }
         }
+    }
+
+    impl PipePoll for Chunked {
+        fn poll_ready(&self, _slice: Duration) -> bool {
+            !self.chunks.is_empty() || self.idle_ready
+        }
+    }
+
+    fn flags() -> (Arc<AtomicBool>, Arc<AtomicBool>) {
+        (
+            Arc::new(AtomicBool::new(false)),
+            Arc::new(AtomicBool::new(false)),
+        )
     }
 
     fn frame_bytes(value: &serde_json::Value) -> Vec<u8> {
@@ -964,27 +1203,32 @@ mod tests {
     #[test]
     fn buffered_bad_prefix_reported_without_more_reads() {
         let (tx, rx) = std::sync::mpsc::channel::<FromReader>();
+        let (stop, closed) = flags();
         let good = frame_bytes(&typed_error_envelope(1));
         let mut combined = good;
         combined.extend_from_slice(&[0xff, 0xff, 0xff, 0xff]);
         let mut reader = Chunked {
+            idle_ready: true,
             chunks: vec![combined],
             tail: Tail::Err("read after buffered content — drain regression"),
         };
-        reader_session(&mut reader, &tx, Budgets::contract().max_frame_bytes);
-        // 第一条：合法类型化错误帧。
+        reader_session(
+            &mut reader,
+            &tx,
+            Budgets::contract().max_frame_bytes,
+            &stop,
+            &closed,
+        );
         match rx.try_recv().unwrap() {
             FromReader::Frame(env) => assert_eq!(env.id, 1),
             other => panic!("expected buffered frame first, got {other:?}"),
         }
-        // 第二条：缓冲坏前缀（0xffffffff > 预算）→ TooLarge，不是 Io。
         match rx.try_recv().unwrap() {
             FromReader::Violation(FrameError::TooLarge { observed, .. }) => {
                 assert_eq!(observed, 0xffff_ffff);
             }
             other => panic!("expected buffered TooLarge, got {other:?}"),
         }
-        // 收尾：Done 恒为最后一条。
         assert!(matches!(rx.try_recv().unwrap(), FromReader::Done));
         assert!(rx.try_recv().is_err());
     }
@@ -993,6 +1237,7 @@ mod tests {
     #[test]
     fn coalesced_frames_all_drained_before_eof() {
         let (tx, rx) = std::sync::mpsc::channel::<FromReader>();
+        let (stop, closed) = flags();
         let mut combined = frame_bytes(&typed_error_envelope(1));
         combined.extend_from_slice(&frame_bytes(
             &serde_json::to_value(ServerEnvelope::error(
@@ -1002,10 +1247,17 @@ mod tests {
             .unwrap(),
         ));
         let mut reader = Chunked {
+            idle_ready: true,
             chunks: vec![combined],
             tail: Tail::Eof,
         };
-        reader_session(&mut reader, &tx, Budgets::contract().max_frame_bytes);
+        reader_session(
+            &mut reader,
+            &tx,
+            Budgets::contract().max_frame_bytes,
+            &stop,
+            &closed,
+        );
         assert!(matches!(rx.try_recv().unwrap(), FromReader::Frame(_)));
         assert!(matches!(rx.try_recv().unwrap(), FromReader::Frame(_)));
         assert!(matches!(rx.try_recv().unwrap(), FromReader::Eof));
@@ -1016,11 +1268,19 @@ mod tests {
     #[test]
     fn reader_io_error_surfaces_as_violation() {
         let (tx, rx) = std::sync::mpsc::channel::<FromReader>();
+        let (stop, closed) = flags();
         let mut reader = Chunked {
+            idle_ready: true,
             chunks: vec![(3u32).to_be_bytes().to_vec()],
             tail: Tail::Err("kernel pipe gone"),
         };
-        reader_session(&mut reader, &tx, Budgets::contract().max_frame_bytes);
+        reader_session(
+            &mut reader,
+            &tx,
+            Budgets::contract().max_frame_bytes,
+            &stop,
+            &closed,
+        );
         match rx.try_recv().unwrap() {
             FromReader::Violation(FrameError::Io(e)) => {
                 assert!(e.to_string().contains("kernel pipe gone"))
@@ -1030,22 +1290,28 @@ mod tests {
         assert!(matches!(rx.try_recv().unwrap(), FromReader::Done));
     }
 
-    /// EOF 夹带半帧 → 具名"mid-frame"违规。
+    /// EOF 夹带半帧 → `TruncatedEof`（关闭路径定性为违规的依据）。
     #[test]
-    fn eof_with_partial_frame_is_named_violation() {
+    fn eof_with_partial_frame_is_truncated_eof() {
         let (tx, rx) = std::sync::mpsc::channel::<FromReader>();
+        let (stop, closed) = flags();
         let mut partial = (64u32).to_be_bytes().to_vec();
-        partial.extend_from_slice(b"{\"id\": 1"); // 不足 64 字节载荷
+        partial.extend_from_slice(b"{\"id\": 1");
         let mut reader = Chunked {
+            idle_ready: true,
             chunks: vec![partial],
             tail: Tail::Eof,
         };
-        reader_session(&mut reader, &tx, Budgets::contract().max_frame_bytes);
+        reader_session(
+            &mut reader,
+            &tx,
+            Budgets::contract().max_frame_bytes,
+            &stop,
+            &closed,
+        );
         match rx.try_recv().unwrap() {
-            FromReader::Violation(FrameError::Malformed { reason }) => {
-                assert!(reason.contains("mid-frame"), "{reason}")
-            }
-            other => panic!("expected mid-frame violation, got {other:?}"),
+            FromReader::TruncatedEof { trailing } => assert!(trailing > 0),
+            other => panic!("expected TruncatedEof, got {other:?}"),
         }
         assert!(matches!(rx.try_recv().unwrap(), FromReader::Done));
     }
@@ -1054,17 +1320,65 @@ mod tests {
     #[test]
     fn untyped_envelope_is_named_violation() {
         let (tx, rx) = std::sync::mpsc::channel::<FromReader>();
+        let (stop, closed) = flags();
         let mut reader = Chunked {
+            idle_ready: true,
             chunks: vec![frame_bytes(&serde_json::json!({"id": 1, "nope": true}))],
             tail: Tail::Eof,
         };
-        reader_session(&mut reader, &tx, Budgets::contract().max_frame_bytes);
+        reader_session(
+            &mut reader,
+            &tx,
+            Budgets::contract().max_frame_bytes,
+            &stop,
+            &closed,
+        );
         match rx.try_recv().unwrap() {
             FromReader::Violation(FrameError::Malformed { reason }) => {
                 assert!(reason.contains("typed envelope"), "{reason}")
             }
             other => panic!("expected typed-envelope violation, got {other:?}"),
         }
+        assert!(matches!(rx.try_recv().unwrap(), FromReader::Done));
+    }
+
+    /// F-816-R2-06：stop 标志使 reader 真停（不依赖 EOF/数据到达）。
+    #[test]
+    fn stop_flag_stops_reader_without_more_reads() {
+        let (tx, rx) = std::sync::mpsc::channel::<FromReader>();
+        let (stop, closed) = flags();
+        let mut reader = Chunked {
+            idle_ready: false,
+            chunks: vec![frame_bytes(&typed_error_envelope(1))],
+            tail: Tail::Block,
+        };
+        // 先 drain 帧再置 stop:线程在 Block 读之前观察到 stop 即退。
+        let stop_thread = Arc::clone(&stop);
+        let handle = std::thread::spawn(move || {
+            reader_session(
+                &mut reader,
+                &tx,
+                Budgets::contract().max_frame_bytes,
+                &stop_thread,
+                &closed,
+            )
+        });
+        // 等首帧被 drain(有界),随后置 stop。
+        let deadline = Instant::now() + Duration::from_secs(2);
+        loop {
+            match rx.recv_timeout(Duration::from_millis(50)) {
+                Ok(FromReader::Frame(env)) => {
+                    assert_eq!(env.id, 1);
+                    break;
+                }
+                Ok(FromReader::Done) => panic!("reader stopped before the frame was drained"),
+                Ok(other) => panic!("unexpected message {other:?}"),
+                Err(RecvTimeoutError::Timeout) if Instant::now() < deadline => continue,
+                Err(e) => panic!("channel error {e:?}"),
+            }
+        }
+        stop.store(true, Ordering::Relaxed);
+        handle.join().expect("reader thread stops after the flag");
         assert!(matches!(rx.try_recv().unwrap(), FromReader::Done));
     }
 }

@@ -126,6 +126,40 @@ fn main() {
         // 退出 0:后代持有本执行的 stdin/stdout/stderr 管道(F-816-R1-02
         // 持管道反例),同时证明 spawn 返回前已存在的后代属 owned 树
         // (F-816-R1-04 早派生——挂起入 Job 机制下不可能逃出)。
+        // 最小协议宿主(816 R2-03 关闭路径反例):读一个请求帧(4 字节
+        // 前缀+载荷),回一个合法 UnknownOperation 错误信封(id=1);随后
+        // 读 stdin 到 EOF——ARG1=bad 时向 stdout 写 4 字节坏前缀
+        // ff ff ff ff 再退 0(关闭阶段坏帧),clean 则干净退出。
+        "proto-close" => {
+            let bad = arg1() == "bad";
+            // 读请求帧:前缀+载荷(忽略内容)。
+            let mut prefix = [0u8; 4];
+            std::io::stdin()
+                .read_exact(&mut prefix)
+                .expect("read frame prefix");
+            let len = u32::from_be_bytes(prefix) as usize;
+            let mut payload = vec![0u8; len];
+            std::io::stdin()
+                .read_exact(&mut payload)
+                .expect("read frame payload");
+            // 回合法错误信封 {"id":1,"body":{"type":"error","error":
+            // {"kind":"unknown_operation","operation":"probe",...}}}。
+            // ToolError/ErrorKind 为 internally-tagged 嵌套形状(serde 派生)。
+            let reply = br#"{"id":1,"body":{"type":"error","error":{"kind":{"kind":"unknown_operation","operation":"probe"},"message":"te-child proto-close"}}}"#;
+            let mut frame = (reply.len() as u32).to_be_bytes().to_vec();
+            frame.extend_from_slice(reply);
+            std::io::stdout().write_all(&frame).unwrap();
+            std::io::stdout().flush().unwrap();
+            // 等 EOF(客户端 shutdown 关闭 stdin)。
+            let mut sink = Vec::new();
+            std::io::stdin().read_to_end(&mut sink).unwrap();
+            if bad {
+                std::io::stdout()
+                    .write_all(&[0xff, 0xff, 0xff, 0xff])
+                    .unwrap();
+                std::io::stdout().flush().unwrap();
+            }
+        }
         "orphan" => {
             let secs: u64 = arg1().trim().parse().unwrap_or(5).min(30);
             let hb = arg2();

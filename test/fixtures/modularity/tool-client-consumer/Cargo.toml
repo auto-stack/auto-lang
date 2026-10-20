@@ -32,6 +32,8 @@ auto-project-model = { path = "../../../../crates/auto-project-model" }
 # 协议类型仅用于解释回答（ErrorKind/PROTOCOL_VERSION/帧错误）；工具实现
 # （auto-ui-tools）不在闭包内——消费只经真实进程。
 auto-tool-protocol = { path = "../../../../crates/auto-tool-protocol" }
+# 仅测试需要 TreeScope（DirectChildOnly 对照;已在闭包内,非新增边）。
+auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 # 测试体在 lib 目标内(#[test] 函数随非 test cfg 的 lib 一同编译,dev-deps
 # 在该目标不可用——与既有 modularity fixture 同口径),按探针 crate 直挂。
 tempfile = "3.14"

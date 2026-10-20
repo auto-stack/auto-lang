@@ -25,8 +25,13 @@
 
 use std::ffi::OsString;
 use std::io;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 #[cfg(unix)]
@@ -343,124 +348,462 @@ pub fn spawn(spec: &ExecutionSpec) -> Result<OwnedProcess, ExecutionError> {
     Ok(proc)
 }
 
-/// reader 结束方式(具名;干净 EOF 与 I/O 错误分开——F-816-R1-06)。
+/// reader 结束方式（具名；干净 EOF、I/O 错误与设施主动停止分开——
+/// F-816-R1-06/R2-06）。
 #[derive(Debug)]
 enum ReaderEnd {
     Eof,
     Io(io::Error),
+    /// 设施主动停止（stop 标志）：管道写端仍被非拥有方持有时收尾自有
+    /// reader 的手段；捕获字节截至停止点，语义由调用方语境决定。
+    Stopped,
 }
 
-/// 捕获流的产出:字节 + 结束方式。线程 panic 时通道断开、无消息。
+/// 捕获流的产出：字节 + 结束方式。线程 panic 时通道断开、无消息。
 struct Capture {
     bytes: Vec<u8>,
     end: ReaderEnd,
 }
 
-/// 捕获 reader 的完成通道(有界等待;`Disconnected` = 线程 panic)。
-type CaptureRx = std::sync::mpsc::Receiver<Capture>;
+/// 轮询切片：stop/owned_closed 的最大生效延迟（公开供客户端复用同一
+/// 停止性节奏）。
+pub const PIPE_POLL_SLICE: Duration = Duration::from_millis(50);
 
-fn capture_thread<R: io::Read + Send + 'static>(mut r: R) -> CaptureRx {
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let mut bytes = Vec::new();
-        let mut end = ReaderEnd::Eof;
-        let mut chunk = [0u8; 16 * 1024];
-        loop {
-            match r.read(&mut chunk) {
-                Ok(0) => break,
-                Ok(n) => bytes.extend_from_slice(&chunk[..n]),
-                Err(e) => {
-                    end = ReaderEnd::Io(e);
+#[cfg(windows)]
+mod pipe_wait {
+    use std::ffi::c_void;
+    use std::io;
+    use std::os::windows::io::AsRawHandle;
+
+    extern "system" {
+        fn PeekNamedPipe(
+            hNamedPipe: *mut c_void,
+            lpBuffer: *mut c_void,
+            nBufferSize: u32,
+            lpBytesRead: *mut u32,
+            lpTotalBytesAvail: *mut u32,
+            lpBytesLeftThisMessage: *mut u32,
+        ) -> i32;
+    }
+
+    /// 读端就绪 = 管道内已有数据(PeekNamedPipe,零阻塞)。同步匿名管道
+    /// 句柄对 WaitForSingleObject 恒 signaled,不可用作读就绪(F-816-R2-06
+    /// 实测),EOF 判定改由 `owned_closed` 标志承担(owned 写端全关)。
+    pub(super) fn read_ready(handle: *mut c_void) -> io::Result<bool> {
+        let mut avail: u32 = 0;
+        let ok = unsafe {
+            PeekNamedPipe(
+                handle,
+                std::ptr::null_mut(),
+                0,
+                std::ptr::null_mut(),
+                &mut avail,
+                std::ptr::null_mut(),
+            )
+        };
+        if ok == 0 {
+            Err(io::Error::last_os_error())
+        } else {
+            Ok(avail > 0)
+        }
+    }
+
+    pub(super) fn as_handle<T: AsRawHandle>(t: &T) -> *mut c_void {
+        t.as_raw_handle()
+    }
+}
+
+#[cfg(unix)]
+mod pipe_wait {
+    use std::os::unix::io::AsRawFd;
+    use std::time::Duration;
+
+    #[repr(C)]
+    struct PollFd {
+        fd: i32,
+        events: i16,
+        revents: i16,
+    }
+
+    extern "C" {
+        fn poll(fds: *mut PollFd, nfds: u64, timeout: i32) -> i32;
+    }
+
+    const POLLIN: i16 = 0x001;
+    const POLLOUT: i16 = 0x004;
+
+    pub(super) fn fd_ready(fd: i32, events: i16, timeout: Duration) -> bool {
+        let mut fds = PollFd {
+            fd,
+            events,
+            revents: 0,
+        };
+        let ms = timeout.as_millis().min(i32::MAX as u128) as i32;
+        unsafe { poll(&mut fds, 1, ms) > 0 }
+    }
+
+    pub(super) fn as_fd<T: AsRawFd>(t: &T) -> i32 {
+        t.as_raw_fd()
+    }
+}
+
+/// 管道端"就绪"轮询(F-816-R2-06):使自有 reader/writer 线程**可被设施
+/// 停止**——每个切片检查 stop/owned_closed 标志,收尾路径确认真停后才
+/// 返回(完成通知不等于资源停止,也不带活线程返回)。
+pub trait PipePoll {
+    /// 读端:管道内已有数据(读不会长期阻塞);写端:可尝试写入。
+    /// `false` = 空闲,调用方检查停止/EOF 标志后继续轮询。
+    fn poll_ready(&self, slice: Duration) -> bool;
+}
+
+#[cfg(windows)]
+impl<T: std::os::windows::io::AsRawHandle> PipePoll for T {
+    fn poll_ready(&self, _slice: Duration) -> bool {
+        // 读端:peek 有数据才就绪(EOF 由 owned_closed 判定);写端:
+        // 同步句柄无就绪查询,恒"可尝试"(阻塞写由 owned 终止解除;
+        // 非拥有方持读端的极端情形由 stop_and_join 具名 PipesHeld)。
+        pipe_wait::read_ready(pipe_wait::as_handle(self)).unwrap_or(true)
+    }
+}
+
+#[cfg(unix)]
+impl PipePoll for std::process::ChildStdout {
+    fn poll_ready(&self, slice: Duration) -> bool {
+        pipe_wait::fd_ready(pipe_wait::as_fd(self), 0x001, slice)
+    }
+}
+
+#[cfg(unix)]
+impl PipePoll for std::process::ChildStderr {
+    fn poll_ready(&self, slice: Duration) -> bool {
+        pipe_wait::fd_ready(pipe_wait::as_fd(self), 0x001, slice)
+    }
+}
+
+#[cfg(unix)]
+impl PipePoll for std::process::ChildStdin {
+    fn poll_ready(&self, slice: Duration) -> bool {
+        pipe_wait::fd_ready(pipe_wait::as_fd(self), 0x004, slice)
+    }
+}
+
+#[cfg(unix)]
+impl PipePoll for std::io::PipeReader {
+    fn poll_ready(&self, slice: Duration) -> bool {
+        pipe_wait::fd_ready(pipe_wait::as_fd(self), 0x001, slice)
+    }
+}
+
+#[cfg(unix)]
+impl PipePoll for std::io::PipeWriter {
+    fn poll_ready(&self, slice: Duration) -> bool {
+        pipe_wait::fd_ready(pipe_wait::as_fd(self), 0x004, slice)
+    }
+}
+
+/// 一条捕获 reader 线程的控制器。
+///
+/// 两个停止性标志（F-816-R2-06）：
+/// - `stop`：设施收尾（超时/取消/关闭）——线程以 `Stopped` 结束，
+///   字节截至停止点；
+/// - `owned_closed`：owned 写端已全部关闭——Windows 同步管道无 EOF
+///   轮询，peek 零数据 + 本标志即判 `Eof`（Unix 由 poll 的 HUP 覆盖，
+///   标志仅作加速）。
+struct CaptureWorker {
+    stream: &'static str,
+    stop: Arc<AtomicBool>,
+    owned_closed: Arc<AtomicBool>,
+    done: Receiver<Capture>,
+    join: Option<JoinHandle<()>>,
+}
+
+impl CaptureWorker {
+    fn spawn<R>(stream: &'static str, r: R) -> Self
+    where
+        R: io::Read + PipePoll + Send + 'static,
+    {
+        let (tx, done) = std::sync::mpsc::channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let owned_closed = Arc::new(AtomicBool::new(false));
+        let (flag, closed) = (Arc::clone(&stop), Arc::clone(&owned_closed));
+        let join = std::thread::spawn(move || {
+            let mut r = r;
+            let mut bytes = Vec::new();
+            let mut end = ReaderEnd::Eof;
+            let mut chunk = [0u8; 16 * 1024];
+            loop {
+                if flag.load(Ordering::Relaxed) {
+                    end = ReaderEnd::Stopped;
                     break;
                 }
+                if !r.poll_ready(PIPE_POLL_SLICE) {
+                    if closed.load(Ordering::Relaxed) {
+                        // owned 写端已全关且无数据:EOF。
+                        break;
+                    }
+                    continue;
+                }
+                match r.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => bytes.extend_from_slice(&chunk[..n]),
+                    Err(e)
+                        if e.kind() == io::ErrorKind::WouldBlock
+                            || e.kind() == io::ErrorKind::Interrupted =>
+                    {
+                        continue
+                    }
+                    Err(e) => {
+                        end = ReaderEnd::Io(e);
+                        break;
+                    }
+                }
             }
+            let _ = tx.send(Capture { bytes, end });
+        });
+        Self {
+            stream,
+            stop,
+            owned_closed,
+            done,
+            join: Some(join),
         }
-        let _ = tx.send(Capture { bytes, end });
-    });
-    rx
+    }
+
+    /// 请求停止（不等待）。
+    fn request_stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    /// 标记 owned 写端已全部关闭（EOF 判定依据之一）。
+    fn mark_owned_closed(&self) {
+        self.owned_closed.store(true, Ordering::Relaxed);
+    }
+
+    /// 等待自然完成（EOF/Io/panic），不请求停止；None = 宽限内未完成
+    ///（如管道被非拥有方持有）。`Some(Err(()))` = 线程 panic。
+    fn wait(&self, grace: Duration) -> Option<Result<Capture, ()>> {
+        match self.done.recv_timeout(grace) {
+            Ok(cap) => Some(Ok(cap)),
+            Err(RecvTimeoutError::Disconnected) => Some(Err(())),
+            Err(RecvTimeoutError::Timeout) => None,
+        }
+    }
+
+    /// 请求停止并等待线程**真停**。join 只在收到完成消息（或确认断开）
+    /// 后进行——对一个仍阻塞在读里的线程 join 会永久悬挂；宽限内未停
+    /// 即 [`ExecutionError::PipesHeld`]（具名而不谎报、不悬挂）。
+    fn stop_and_join(&mut self, grace: Duration) -> Result<Capture, ExecutionError> {
+        self.request_stop();
+        let outcome = self.done.recv_timeout(grace);
+        if !matches!(outcome, Err(RecvTimeoutError::Timeout)) {
+            let _ = self.join.take().map(|h| h.join());
+        }
+        match outcome {
+            Ok(cap) => Ok(cap),
+            Err(RecvTimeoutError::Disconnected) => Err(ExecutionError::ReaderPanicked {
+                stream: self.stream,
+            }),
+            Err(RecvTimeoutError::Timeout) => Err(ExecutionError::PipesHeld { after: grace }),
+        }
+    }
 }
 
-/// 正常路径的捕获收集:EOF 才算成功;I/O 错误/panic/宽限内无 EOF(管道
-/// 被**非本次拥有**的进程持有)分别具名失败,不以部分字节谎报成功。
-fn collect_capture(
-    stream: &'static str,
-    rx: Option<CaptureRx>,
+/// 正常路径的捕获收集：EOF 才算成功；I/O 错误/panic 具名传播；宽限内
+/// 无 EOF（管道被**非本次拥有**的进程持有）→ 先停止并 join 自有线程
+/// 再返回 [`ExecutionError::PipesHeld`]——不带活线程返回（R2-06）。
+fn finish_capture(
+    worker: &mut Option<CaptureWorker>,
     grace: Duration,
 ) -> Result<Option<Vec<u8>>, ExecutionError> {
-    match rx {
-        None => Ok(None),
-        Some(rx) => match rx.recv_timeout(grace) {
-            Ok(cap) => match cap.end {
-                ReaderEnd::Eof => Ok(Some(cap.bytes)),
-                ReaderEnd::Io(source) => Err(ExecutionError::ReaderIo { stream, source }),
-            },
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                Err(ExecutionError::PipesHeld { after: grace })
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                Err(ExecutionError::ReaderPanicked { stream })
-            }
+    let Some(w) = worker else {
+        return Ok(None);
+    };
+    match w.wait(grace) {
+        Some(Ok(cap)) => match cap.end {
+            ReaderEnd::Eof => Ok(Some(cap.bytes)),
+            ReaderEnd::Io(source) => Err(ExecutionError::ReaderIo {
+                stream: w.stream,
+                source,
+            }),
+            ReaderEnd::Stopped => Err(ExecutionError::PipesHeld { after: grace }),
         },
+        Some(Err(())) => {
+            w.stop_and_join(TEARDOWN_GRACE)?;
+            Err(ExecutionError::ReaderPanicked { stream: w.stream })
+        }
+        None => {
+            w.stop_and_join(TEARDOWN_GRACE)?;
+            Err(ExecutionError::PipesHeld { after: grace })
+        }
     }
 }
 
-/// owned 树终止后的捕获收集:尽力保留字节,结束状态属拆除噪声(EOF 或
-/// torn-down I/O 皆可能),不改变调用方的超时/取消分类。
-fn drain_capture_after_stop(rx: Option<CaptureRx>, grace: Duration) -> Option<Vec<u8>> {
-    let rx = rx?;
-    match rx.recv_timeout(grace) {
-        Ok(cap) => Some(cap.bytes),
-        Err(_) => None,
+/// stdin 写入结果（具名）：全部写完、写错或被设施停止（部分写入）。
+#[derive(Debug)]
+struct WriterOutcome {
+    #[cfg_attr(not(test), allow(dead_code))]
+    written: usize,
+    end: WriterEnd,
+}
+
+#[derive(Debug)]
+enum WriterEnd {
+    Done,
+    Io(io::Error),
+    Stopped,
+}
+
+/// stdin 写入线程控制器：分块写入 + 就绪轮询，可被设施停止（对端不读
+/// 且管道写端读侧被非拥有方持有时，deadline 收尾不悬挂，F-816-R1/R2）。
+/// Windows 同步写端无就绪查询：阻塞分片写由 owned 终止解除；非拥有方
+/// 持读端的极端情形由 stop_and_join 具名 PipesHeld（不谎报、不悬挂）。
+struct WriterWorker {
+    stop: Arc<AtomicBool>,
+    done: Receiver<WriterOutcome>,
+    join: Option<JoinHandle<()>>,
+}
+
+/// 单次阻塞写的分片上限：写阻塞窗口受此约束（对端 draining 时每个
+/// 分片很快完成）。
+const WRITE_CHUNK: usize = 16 * 1024;
+
+impl WriterWorker {
+    fn spawn<W>(stdin: W, data: Vec<u8>) -> Self
+    where
+        W: Write + PipePoll + Send + 'static,
+    {
+        let (tx, done) = std::sync::mpsc::channel();
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&stop);
+        let join = std::thread::spawn(move || {
+            let mut stdin = stdin;
+            let mut written = 0usize;
+            let mut end = WriterEnd::Done;
+            loop {
+                if written == data.len() {
+                    break;
+                }
+                if flag.load(Ordering::Relaxed) {
+                    end = WriterEnd::Stopped;
+                    break;
+                }
+                let upper = (written + WRITE_CHUNK).min(data.len());
+                match stdin.write(&data[written..upper]) {
+                    Ok(0) => {
+                        end = WriterEnd::Io(io::Error::from(io::ErrorKind::WriteZero));
+                        break;
+                    }
+                    Ok(n) => written += n,
+                    Err(e)
+                        if e.kind() == io::ErrorKind::WouldBlock
+                            || e.kind() == io::ErrorKind::Interrupted =>
+                    {
+                        continue
+                    }
+                    Err(e) => {
+                        end = WriterEnd::Io(e);
+                        break;
+                    }
+                }
+            }
+            // drop(stdin) 关闭管道，子进程 stdin 见 EOF。
+            drop(stdin);
+            let _ = tx.send(WriterOutcome { written, end });
+        });
+        Self {
+            stop,
+            done,
+            join: Some(join),
+        }
+    }
+
+    fn request_stop(&self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+
+    fn wait(&self, grace: Duration) -> Option<Result<WriterOutcome, ()>> {
+        match self.done.recv_timeout(grace) {
+            Ok(out) => Some(Ok(out)),
+            Err(RecvTimeoutError::Disconnected) => Some(Err(())),
+            Err(RecvTimeoutError::Timeout) => None,
+        }
+    }
+
+    fn stop_and_join(&mut self, grace: Duration) -> Result<WriterOutcome, ExecutionError> {
+        self.request_stop();
+        let outcome = self.done.recv_timeout(grace);
+        if !matches!(outcome, Err(RecvTimeoutError::Timeout)) {
+            let _ = self.join.take().map(|h| h.join());
+        }
+        match outcome {
+            Ok(out) => Ok(out),
+            Err(RecvTimeoutError::Disconnected) => Err(ExecutionError::ReaderPanicked {
+                stream: "stdin writer",
+            }),
+            Err(RecvTimeoutError::Timeout) => Err(ExecutionError::PipesHeld { after: grace }),
+        }
     }
 }
 
-type WriterRx = std::sync::mpsc::Receiver<io::Result<()>>;
-
-/// stdin 写入线程:对端不读导致管道写阻塞时,不越过调用方 deadline
-/// (F-816-R1-01)——超时路径先终止 owned 树,管道关闭使本线程解除阻塞。
-fn stdin_writer_thread(mut stdin: ChildStdin, data: Vec<u8>) -> WriterRx {
-    let (tx, rx) = std::sync::mpsc::channel();
-    std::thread::spawn(move || {
-        let result = io::Write::write_all(&mut stdin, &data);
-        // drop(stdin) 关闭管道,子进程 stdin 见 EOF。
-        let _ = tx.send(result);
-    });
-    rx
-}
-
-fn collect_writer(rx: Option<WriterRx>, grace: Duration) -> Result<(), ExecutionError> {
-    match rx {
-        None => Ok(()),
-        Some(rx) => match rx.recv_timeout(grace) {
-            Ok(Ok(())) => Ok(()),
-            Ok(Err(source)) => Err(ExecutionError::Io {
+/// 正常路径的 writer 收集：全部写完才算成功；写错具名传播；宽限内
+/// 未完成 → 停止+join 后 [`ExecutionError::PipesHeld`]。
+fn finish_writer(worker: &mut Option<WriterWorker>, grace: Duration) -> Result<(), ExecutionError> {
+    let Some(w) = worker else {
+        return Ok(());
+    };
+    match w.wait(grace) {
+        Some(Ok(out)) => match out.end {
+            WriterEnd::Done => Ok(()),
+            WriterEnd::Io(source) => Err(ExecutionError::Io {
                 stage: "write stdin",
                 source,
             }),
-            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                Err(ExecutionError::PipesHeld { after: grace })
-            }
-            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                Err(ExecutionError::ReaderPanicked {
-                    stream: "stdin writer",
-                })
-            }
+            WriterEnd::Stopped => Err(ExecutionError::PipesHeld { after: grace }),
         },
+        Some(Err(())) => {
+            w.stop_and_join(TEARDOWN_GRACE)?;
+            Err(ExecutionError::ReaderPanicked {
+                stream: "stdin writer",
+            })
+        }
+        None => {
+            w.stop_and_join(TEARDOWN_GRACE)?;
+            Err(ExecutionError::PipesHeld { after: grace })
+        }
     }
 }
 
-/// 无显式 deadline 时,根退出后等待管道收尾的默认宽限;超时即具名
+/// 拆分超时路径的捕获结果：I/O 结束具名传播（不被 Timeout 吞掉，
+/// F-816-R2-06），其余结束保留字节。
+fn take_capture_bytes(
+    stream: &'static str,
+    cap: Option<Capture>,
+) -> Result<Option<Vec<u8>>, ExecutionError> {
+    match cap {
+        None => Ok(None),
+        Some(Capture {
+            bytes: _,
+            end: ReaderEnd::Io(source),
+        }) => Err(ExecutionError::ReaderIo { stream, source }),
+        Some(Capture { bytes, end: _ }) => Ok(Some(bytes)),
+    }
+}
+
+/// 无显式 deadline 时，根退出后等待管道收尾的默认宽限;超时即具名
 /// [`ExecutionError::PipesHeld`]——不无限等待(F-816-R1-02)。
 const POST_EXIT_COLLECT_GRACE: Duration = Duration::from_secs(10);
 
-/// owned 树终止后的收尾宽限:拆除后管道应立即关闭,给足调度余量即可。
+/// 停止自有 reader/writer 后等待其真停的宽限(stop 生效延迟 ≤ 轮询切片,
+/// 正常远小于本值)。
 const TEARDOWN_GRACE: Duration = Duration::from_secs(3);
 
 /// 一次性执行到终态(含可选 deadline)。deadline 覆盖**整次**执行:
 /// stdin 写入、根等待与资源收尾共用同一绝对截止(F-816-R1-01)。
 /// 根退出后、reader 收尾前,仍持管道的 owned 后代先被终止
-/// (F-816-R1-02);reader 的读错/panic 与 writer/终止失败具名传播
-/// (F-816-R1-06)。
+/// (F-816-R1-02);**任何返回路径都不带活的自有线程**:超时/关闭先请求
+/// 停止、终止 owned 树、join 确认真停;reader 读错/panic、writer 写错与
+/// 终止失败在正常/超时/关闭各路径具名传播(F-816-R1-06/R2-06);
+/// `elapsed` 取实际返回时刻(F-816-R2-06)。
 pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
     validate(spec)?;
     let start = Instant::now();
@@ -468,15 +811,19 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
     let mut proc = spawn(spec)?;
 
     // reader 先于任何写入启动:双向大流量不会因对方先写满而互等。
-    let stdout_rx = proc.take_stdout().map(capture_thread);
-    let stderr_rx = proc.take_stderr().map(capture_thread);
+    let mut stdout_w = proc
+        .take_stdout()
+        .map(|r| CaptureWorker::spawn("stdout", r));
+    let mut stderr_w = proc
+        .take_stderr()
+        .map(|r| CaptureWorker::spawn("stderr", r));
 
-    let writer_rx = match spec.stdin_data.clone() {
+    let mut writer_w = match spec.stdin_data.clone() {
         Some(data) => {
             let stdin = proc
                 .take_stdin()
                 .ok_or_else(|| ExecutionError::InvalidSpec("stdin pipe missing".into()))?;
-            Some(stdin_writer_thread(stdin, data))
+            Some(WriterWorker::spawn(stdin, data))
         }
         None => None,
     };
@@ -489,10 +836,10 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
                 Ok(Some(status)) => status,
                 Ok(None) => {
                     timed_out = true;
-                    // cancel = terminate owned 树 + 收尸;失败具名传播
-                    // (此时树可能仍活,只能放弃 reader/writer 等待)。
-                    proc.cancel().map_err(|source| ExecutionError::Io {
-                        stage: "cancel after timeout",
+                    // 终止 owned 树;收尸与失败传播在停止自有线程之后统一进行。
+                    let _ = proc.terminate();
+                    proc.child.wait().map_err(|source| ExecutionError::Io {
+                        stage: "wait",
                         source,
                     })?
                 }
@@ -510,16 +857,61 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
         })?,
     };
     proc.reaped = true;
-    let elapsed = start.elapsed();
 
     if timed_out {
-        // owned 树已终止并收尸:管道关闭使 writer/reader 解除阻塞并收尾;
-        // 其结束状态属拆除噪声,尽力保留已捕获字节,不改 Timeout 分类。
-        let stdout = drain_capture_after_stop(stdout_rx, TEARDOWN_GRACE);
-        let stderr = drain_capture_after_stop(stderr_rx, TEARDOWN_GRACE);
-        if let Some(rx) = writer_rx {
-            // 挂起在满管道上的写线程随树终止解除;丢弃拆除期结果。
-            let _ = rx.recv_timeout(TEARDOWN_GRACE);
+        // 先请求自有线程停止(非拥有方持管道时也不悬挂),再终止 owned 树
+        //(管道关闭同时解除任何阻塞),join 确认真停;随后取消失败与
+        // reader/writer 的 Io/panic 具名传播,elapsed 取实际时刻。
+        if let Some(w) = &stdout_w {
+            w.request_stop();
+        }
+        if let Some(w) = &stderr_w {
+            w.request_stop();
+        }
+        if let Some(w) = &writer_w {
+            w.request_stop();
+        }
+        let cancel_result = proc.cancel();
+        // owned 写端已全关(树已终止):reader 的 EOF 判定依据(Windows)。
+        if let Some(w) = &stdout_w {
+            w.mark_owned_closed();
+        }
+        if let Some(w) = &stderr_w {
+            w.mark_owned_closed();
+        }
+        // 三个线程都确认真停之后才传播任何失败(先清理后报告)。
+        let out_r = stdout_w.as_mut().map(|w| w.stop_and_join(TEARDOWN_GRACE));
+        let err_r = stderr_w.as_mut().map(|w| w.stop_and_join(TEARDOWN_GRACE));
+        let wr_r = writer_w.as_mut().map(|w| w.stop_and_join(TEARDOWN_GRACE));
+        let elapsed = start.elapsed();
+        if let Err(source) = cancel_result {
+            return Err(ExecutionError::Io {
+                stage: "cancel after timeout",
+                source,
+            });
+        }
+        let out_cap = out_r.transpose()?;
+        let err_cap = err_r.transpose()?;
+        let wr_out = wr_r.transpose()?;
+        let stdout = take_capture_bytes("stdout", out_cap)?;
+        let stderr = take_capture_bytes("stderr", err_cap)?;
+        if let Some(WriterOutcome {
+            end: WriterEnd::Io(source),
+            ..
+        }) = wr_out
+        {
+            // owned 终止使阻塞写以 BrokenPipe 解除属拆除噪声(deadline
+            // 已先行分类);其余写失败具名传播,不以 Timeout 掩盖。
+            let teardown = matches!(
+                source.kind(),
+                io::ErrorKind::BrokenPipe | io::ErrorKind::WriteZero | io::ErrorKind::NotConnected
+            );
+            if !teardown {
+                return Err(ExecutionError::Io {
+                    stage: "write stdin",
+                    source,
+                });
+            }
         }
         return Ok(ExecutionResult {
             kind: ExitKind::Timeout { after: elapsed },
@@ -538,18 +930,25 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
             source,
         })?;
     }
+    // 根已退出(+树已终止):owned 写端全部关闭——reader 的 EOF 判定依据。
+    if let Some(w) = &stdout_w {
+        w.mark_owned_closed();
+    }
+    if let Some(w) = &stderr_w {
+        w.mark_owned_closed();
+    }
     let grace = deadline_at
         .map(|at| at.saturating_duration_since(Instant::now()))
         .unwrap_or(POST_EXIT_COLLECT_GRACE);
-    let stdout = collect_capture("stdout", stdout_rx, grace)?;
-    let stderr = collect_capture("stderr", stderr_rx, grace)?;
-    collect_writer(writer_rx, grace)?;
+    let stdout = finish_capture(&mut stdout_w, grace)?;
+    let stderr = finish_capture(&mut stderr_w, grace)?;
+    finish_writer(&mut writer_w, grace)?;
 
     Ok(ExecutionResult {
         kind: ExitKind::from_status(&status),
         stdout,
         stderr,
-        elapsed,
+        elapsed: start.elapsed(),
     })
 }
 
@@ -715,14 +1114,25 @@ mod tests {
         }
     }
 
+    // 假读端即刻"就绪"(真管道的就绪等待由平台 impl 承担;注入面只
+    // 关心 read 语义)。
+    impl PipePoll for Scripted {
+        fn poll_ready(&self, _slice: Duration) -> bool {
+            true
+        }
+    }
+
     /// reader 读错 → ReaderIo 具名传播(不是静默 EOF/Success)。
     #[test]
     fn capture_reader_io_error_is_named() {
-        let rx = capture_thread(Scripted {
-            chunks: vec![b"partial".to_vec()],
-            tail: Tail::Err("kernel read gone"),
-        });
-        let err = collect_capture("stdout", Some(rx), Duration::from_secs(2)).unwrap_err();
+        let mut w = Some(CaptureWorker::spawn(
+            "stdout",
+            Scripted {
+                chunks: vec![b"partial".to_vec()],
+                tail: Tail::Err("kernel read gone"),
+            },
+        ));
+        let err = finish_capture(&mut w, Duration::from_secs(2)).unwrap_err();
         match err {
             ExecutionError::ReaderIo { stream, source } => {
                 assert_eq!(stream, "stdout");
@@ -732,7 +1142,7 @@ mod tests {
         }
     }
 
-    /// reader panic(通道断开、无消息)→ ReaderPanicked 具名传播。
+    /// reader panic(通道断开、无消息)→ 停止回收后 ReaderPanicked 具名传播。
     #[test]
     fn capture_reader_panic_is_named() {
         struct Panic;
@@ -741,37 +1151,97 @@ mod tests {
                 panic!("injected reader panic");
             }
         }
-        let rx = capture_thread(Panic);
-        let err = collect_capture("stdout", Some(rx), Duration::from_secs(2)).unwrap_err();
+        impl PipePoll for Panic {
+            fn poll_ready(&self, _slice: Duration) -> bool {
+                true
+            }
+        }
+        let mut w = Some(CaptureWorker::spawn("stdout", Panic));
+        let err = finish_capture(&mut w, Duration::from_secs(2)).unwrap_err();
         assert!(
             matches!(err, ExecutionError::ReaderPanicked { stream: "stdout" }),
             "{err:?}"
         );
     }
 
-    /// 管道写端被非拥有进程持有(reader 无 EOF)→ 宽限内具名 PipesHeld,
-    /// 不无限等待、不谎报成功。
+    /// 管道写端被非拥有进程持有(reader 无 EOF)→ 停止自有线程后具名
+    /// PipesHeld,不无限等待、不谎报成功、不带活线程返回。
     #[test]
     fn pipes_held_is_named_after_grace() {
-        let rx = capture_thread(Scripted {
-            chunks: vec![],
-            tail: Tail::Block,
-        });
-        let err = collect_capture("stdout", Some(rx), Duration::from_millis(150)).unwrap_err();
+        let mut w = Some(CaptureWorker::spawn(
+            "stdout",
+            Scripted {
+                chunks: vec![],
+                tail: Tail::Block,
+            },
+        ));
+        let err = finish_capture(&mut w, Duration::from_millis(150)).unwrap_err();
         assert!(matches!(err, ExecutionError::PipesHeld { .. }), "{err:?}");
     }
 
     /// 干净 EOF 对照:字节完整保留。
     #[test]
     fn capture_clean_eof_keeps_bytes() {
-        let rx = capture_thread(Scripted {
-            chunks: vec![b"hello".to_vec(), b" world".to_vec()],
-            tail: Tail::Eof,
-        });
-        let out = collect_capture("stdout", Some(rx), Duration::from_secs(2))
+        let mut w = Some(CaptureWorker::spawn(
+            "stdout",
+            Scripted {
+                chunks: vec![b"hello".to_vec(), b" world".to_vec()],
+                tail: Tail::Eof,
+            },
+        ));
+        let out = finish_capture(&mut w, Duration::from_secs(2))
             .unwrap()
             .unwrap();
         assert_eq!(out, b"hello world");
+    }
+
+    /// F-816-R2-06 核心:**真实管道**、写端被持有(不关)——stop_and_join
+    /// 在宽限内使自有 reader 真停(Stopped,字节截至停止点),不悬挂。
+    #[test]
+    fn stop_and_join_stops_reader_on_held_real_pipe() {
+        let (reader, keeper) = std::io::pipe().expect("pipe");
+        let mut w = CaptureWorker::spawn("stdout", reader);
+        assert!(
+            w.wait(Duration::from_millis(150)).is_none(),
+            "no EOF while the write end is held"
+        );
+        let cap = w
+            .stop_and_join(Duration::from_secs(2))
+            .expect("reader must stop after the stop flag");
+        assert!(matches!(cap.end, ReaderEnd::Stopped), "{:?}", cap.end);
+        drop(keeper); // 释放持有的写端,管道资源随作用域回收。
+    }
+
+    /// writer 对称面:真实管道、读端被持有、写入量超缓冲——Windows 同步
+    /// 写端阻塞中的分片写不能被 stop 中断(内核限制;生产路径由 owned
+    /// 终止解除)。合同在此场景的承诺是有界+具名:stop_and_join 不得
+    /// 悬挂,宽限内未停即 PipesHeld。Unix(poll POLLOUT)下 stop 真停,
+    /// 返回 Stopped——两种结果都接受,断言共同不变量(不悬挂、不谎报)。
+    #[test]
+    fn writer_on_held_pipe_is_bounded_and_named() {
+        let (keeper, writer_end) = std::io::pipe().expect("pipe");
+        let data = vec![b'w'; 1024 * 1024];
+        let mut w = WriterWorker::spawn(writer_end, data.clone());
+        assert!(
+            w.wait(Duration::from_millis(200)).is_none(),
+            "writer cannot finish while the read end is held"
+        );
+        let started = Instant::now();
+        let outcome = w.stop_and_join(Duration::from_secs(2));
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(4),
+            "stop_and_join must be bounded (elapsed={elapsed:?})"
+        );
+        match outcome {
+            Ok(out) => {
+                assert!(matches!(out.end, WriterEnd::Stopped), "{:?}", out.end);
+                assert!(out.written < data.len(), "partial write before stop");
+            }
+            Err(ExecutionError::PipesHeld { .. }) => {}
+            other => panic!("expected Stopped or named PipesHeld, got {other:?}"),
+        }
+        drop(keeper);
     }
 
     #[test]

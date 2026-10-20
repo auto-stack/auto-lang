@@ -21,6 +21,8 @@ use auto_project_model::{parse_document, GenerationRequest};
 #[cfg(test)]
 use auto_tool_client::{BrokenReason, ClientError, ExitKind, Reply, ToolClient, ToolClientSpec};
 #[cfg(test)]
+use auto_tool_execution::TreeScope;
+#[cfg(test)]
 use auto_tool_protocol::message::{ClientBody, WireRequest};
 #[cfg(test)]
 use auto_tool_protocol::{ErrorKind, FrameError, PROTOCOL_VERSION};
@@ -392,7 +394,7 @@ fn shutdown_bounds_pipe_holding_descendants() {
         ),
     ];
     spec.shutdown_timeout = Duration::from_millis(800);
-    let mut client = ToolClient::spawn(spec).expect("spawn te-child");
+    let client = ToolClient::spawn(spec).expect("spawn te-child");
     // 不发请求：直接走 shutdown——根秒退（真实分类 Success）后，
     // 持管道的 owned 后代先终止，宽限内完成收尾。
     let started = Instant::now();
@@ -413,4 +415,85 @@ fn shutdown_bounds_pipe_holding_descendants() {
     std::thread::sleep(Duration::from_millis(600));
     let after = std::fs::metadata(&hb).map(|m| m.len()).unwrap_or(0);
     assert_eq!(stopped_at, after, "pipe-holding descendant must be dead");
+}
+
+/// F-816-R2-03：关闭阶段坏帧不被吞——宿主在 EOF 后写坏前缀再退出，
+/// shutdown 必须返回具名 StreamViolation(TooLarge)，不得报 Success。
+#[test]
+fn close_phase_bad_frame_is_not_swallowed() {
+    let mut spec = ToolClientSpec::new(te_child());
+    spec.env = vec![
+        ("TE_CHILD_MODE".into(), "proto-close".into()),
+        ("TE_CHILD_ARG1".into(), "bad".into()),
+    ];
+    let mut client = ToolClient::spawn(spec).expect("spawn te-child");
+    let reply = client
+        .request_unknown_operation("probe")
+        .expect("host answers the legal error envelope");
+    assert!(matches!(reply, Reply::Host(_)), "{reply:?}");
+    let err = client
+        .shutdown()
+        .expect_err("close-phase garbage must fail");
+    match &err {
+        ClientError::StreamViolation(FrameError::TooLarge { observed, .. }) => {
+            assert_eq!(*observed, 0xffff_ffff);
+        }
+        other => panic!("expected StreamViolation(TooLarge), got {other:?}"),
+    }
+}
+
+/// F-816-R2-03 对照：同一流程、宿主干净退出——shutdown 正常 Success。
+#[test]
+fn close_phase_clean_eof_control() {
+    let mut spec = ToolClientSpec::new(te_child());
+    spec.env = vec![
+        ("TE_CHILD_MODE".into(), "proto-close".into()),
+        ("TE_CHILD_ARG1".into(), "clean".into()),
+    ];
+    let mut client = ToolClient::spawn(spec).expect("spawn te-child");
+    assert!(matches!(
+        client.request_unknown_operation("probe"),
+        Ok(Reply::Host(_))
+    ));
+    let shutdown = client.shutdown().expect("clean close");
+    assert_eq!(shutdown.kind, ExitKind::Success);
+}
+
+/// F-816-R2-06：DirectChildOnly + 持管道非拥有后代——请求超时后客户端
+/// 的自有 reader/writer 线程必须**真停**（有界返回，不带活线程）：
+/// Timeout 在 ~deadline 返回（R2 反例实测 6.3s/线程存活；修复后 <
+/// 1.5s），随后 shutdown 快速完成。
+#[test]
+fn abort_stops_own_threads_despite_unowned_holders() {
+    let hb_dir = tempfile::tempdir().expect("tempdir");
+    let hb = hb_dir.path().join("heartbeat.log");
+    let mut spec = ToolClientSpec::new(te_child());
+    spec.env = vec![
+        ("TE_CHILD_MODE".into(), "orphan".into()),
+        ("TE_CHILD_ARG1".into(), "4".into()),
+        (
+            "TE_CHILD_ARG2".into(),
+            hb.to_string_lossy().into_owned().into(),
+        ),
+    ];
+    spec.tree_scope = TreeScope::DirectChildOnly; // 非拥有后代保留（scope 合同）
+    spec.request_timeout = Some(Duration::from_millis(250));
+    let mut client = ToolClient::spawn(spec).expect("spawn te-child");
+    let started = Instant::now();
+    let err = client.describe().expect_err("no answer while pipes held");
+    match &err {
+        ClientError::Timeout { id: 1, limit } => assert_eq!(*limit, Duration::from_millis(250)),
+        other => panic!("expected Timeout, got {other:?}"),
+    }
+    let elapsed = started.elapsed();
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "abort must stop own threads within bound (elapsed={elapsed:?})"
+    );
+    // 后续 shutdown 在已收尾的连接上快速完成;orphan 根进程以 0 退出,
+    // 其真实分类(Success)保留——非拥有后代不在清理范围(scope 合同)。
+    let shutdown_started = Instant::now();
+    let shutdown = client.shutdown().expect("shutdown after abort");
+    assert!(shutdown_started.elapsed() < Duration::from_secs(2));
+    assert_eq!(shutdown.kind, ExitKind::Success);
 }
