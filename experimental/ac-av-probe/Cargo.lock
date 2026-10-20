@@ -23,6 +23,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ac-syntax-core-adapter"
+version = "0.1.0"
+dependencies = [
+ "ac-artifact-probe",
+ "ac-syntax-grammar",
+ "ac-syntax-rt",
+ "auto-ac-prototype",
+]
+
+[[package]]
 name = "ac-syntax-grammar"
 version = "0.1.0"
 dependencies = [
@@ -124,6 +134,7 @@ version = "0.1.0"
 dependencies = [
  "ac-artifact-probe",
  "ac-sema-contract",
+ "ac-syntax-core-adapter",
  "ac-syntax-grammar",
  "ac-syntax-rt",
  "auto-ac-prototype",

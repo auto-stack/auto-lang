@@ -225,7 +225,34 @@ fn compile_parts_observed(
             return Err(vec![d]);
         }
     };
-    let resolved = match super::resolve_with(&program, capabilities, profile) {
+    compile_program_observed(&program, src, module_path, capabilities, profile, observer)
+}
+
+/// Compile an already-parsed program up to (but not including) verification
+/// (PLAN-828 T-02): the function-incremental session supplies the program
+/// assembled from the CST projection of the changed declaration plus
+/// signature-stub items, so no whole-module parse runs on the edit path.
+/// `src` is only used for span re-anchoring; unchanged-entry completions are
+/// identical to [`compile_parts_with`].
+pub fn compile_program_parts(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    compile_program_observed(program, src, module_path, capabilities, profile, None)
+}
+
+fn compile_program_observed(
+    program: &super::ast::Program,
+    src: &str,
+    module_path: &str,
+    capabilities: &[String],
+    profile: SourceProfile,
+    mut observer: Option<&mut dyn SourceObserver>,
+) -> Result<SourceParts, Vec<Diagnostic>> {
+    let resolved = match super::resolve_with(program, capabilities, profile) {
         Ok(r) => {
             if let Some(o) = observer.as_deref_mut() {
                 o.stage(SourceStage::Resolve, &[]);

@@ -25,14 +25,25 @@ core-i32 parser 行为）vs `auto.source.scalar-i32.draft`（798 冻结负载
 |---|---|---|---|
 | `+ * <` 二元、负字面量 | 已覆盖 | auto-core.at pratt 表（`<`(1) `+`(2) `*`(3)）；fixtures | 首例直接使用 |
 | 命名实参、位置调用、bool 字面量 | 已覆盖 | `named-arg` 规则、`true/false` token、投影 `ExprKind::BoolLit` | 首例直接使用 |
-| 二元 `- / %`、`== != > <= >=` | **缺** | pratt 表无这些算符（`-` 仅字面量前缀） | T-02 补齐 |
-| `&& \|\|` 短路、一元 `!` | **缺** | 无对应 token/规则 | T-02 补齐 |
-| 条件 `for cond { }` | **缺**（core 用 `while`，scalar 反之拒绝 `while`） | auto-core.at 保留字 `for` 无规则引用；scalar profile 文档 | T-02 补齐 |
-| `while` | 覆盖（core） | scalar **拒绝** while | 首例两者都不用 |
+| 二元 `- / %`、`== != > <= >=` | **缺** | pratt 表无这些算符（`-` 仅字面量前缀） | **T-02 已补齐**（auto-scalar rev 1） |
+| `&& \|\|` 短路、一元 `!` | **缺** | 无对应 token/规则 | **T-02 已补齐**（unary-expr 前缀规则） |
+| 条件 `for cond { }` | **缺**（core 用 `while`，scalar 反之拒绝 `while`） | auto-core.at 保留字 `for` 无规则引用；scalar profile 文档 | **T-02 已补齐**（for-stmt→While 形状投影） |
+| `while` | 覆盖（core） | scalar **拒绝** while | auto-scalar 不引用 `while` token（同保留字处理） |
 
-**决策**：不悄改 auto-core.at；T-02 新增显式版本化 grammar（`auto-scalar` rev 1）+
-配套投影种类，覆盖上表全部缺项，用 798 冻结负载旧/新源码对照验证（T-02 验收）。
-首例源码取两语法共同子集（`+ *`、int、调用、let/return），首例不含短路面。
+**T-02 落地（2026-10-20）**：新增版本化 grammar `grammars/auto-scalar.at`（rev 1，
+全 scalar 表面：`||`(1) `&&`(2) `== !=`(3) 关系(4) `+ -`(5) `* / %`(6) 全左结合；
+一元 `- !` 右结合经 `unary-expr` primary 规则，`-字面量` 仍走 int-literal 带符号折叠，
+`-g()` = Unary(Neg, Call)（callee 包裹层算子链按 parser apply_unaries 施用序重包装，
+Unary span = 操作数 span、Call span 起点 = callee ident——与 parser 逐字节一致）。
+投影扩展：`CoreKinds` 对 grammar 可缺项改 Option；`project_decl_strict`（单声明投影，
+增量热路径原语）；`compile_program_parts`（ac-core 新接缝：已解析 Program 直入
+resolve→…→bind，整模块 parse 入口 `compile_parts_with` 原样保留）。
+
+**对拍证据**：`scalar_projection_.rs` 5 组差分（算符/一元与字面量/循环与语句/调用与布局/
+拒绝形状）AST+span Debug 全等；冻结负载 256KiB×2 修订（115 函数含二元`-`/`>`/条件for）
+`t02_frozen_load_projection_parity` 全等；adapter 全套 44 测试绿；会话 4 测试绿
+（V-01/V-04/语法错误反控 t02）。会话热路径现为：增量重扫/嫁接 → 单声明投影 →
+synth Program（签名桩）→ compile_program_parts（无整模块 parse/投影，无垫片串）。
 
 **拼接收敛边界（实证）**：增量词法收敛需编辑区后 ≥8 个对齐 token（`CONVERGE_K`）；
 被编辑函数若是文件末声明且尾部 token 不足，将得到记录在案的 `NoConvergence` 显式

@@ -23,9 +23,9 @@ pub mod resolve;
 pub mod typecheck;
 
 pub use adapter::{
-    compile_parts, compile_parts_with, compile_record_source, compile_scalar_source,
-    compile_source, compile_text_record_source, compile_text_source, CompiledSource, SourceParts,
-    RUNTIME_TEXT_CAPABILITY,
+    compile_parts, compile_parts_with, compile_program_parts, compile_record_source,
+    compile_scalar_source, compile_source, compile_text_record_source, compile_text_source,
+    CompiledSource, SourceParts, RUNTIME_TEXT_CAPABILITY,
 };
 pub use parser::{parse_program, parse_program_with};
 pub use resolve::resolve_with;

@@ -1,0 +1,244 @@
+// auto-scalar — Auto scalar-i32 源码语法的 Atom 配置（PLAN-828 T-02）。
+// 合同 = experimental/ac-core 现行 scalar parser 行为（source-scalar-i32，
+// PLAN-767）：在 auto-core 基础上的差异面——
+//  - 二元 `||`(1) `&&`(2) `== !=`(3) `< > <= >=`(4) `+ -`(5) `* / %`(6)
+//    全左结合（绑定值越大越紧）；`-` 在 operator 位置 = 二元减法；
+//  - 一元 `- !` 右结合（primary 位）：`--5` = -(-5)（内层按有符号字面量）、
+//    `-a*b` = (-a)*b；`-` 紧邻数字（含空白）仍是一个带符号字面量（int-literal
+//    的 sign 前缀，i32 域检查在投影层，含 -2147483648 下界）；
+//  - 条件循环写作 `for <bool-expr> { … }`（While 的每轮重测语义；`while`
+//    关键字在 scalar 表面拒绝——本语法不引用该 token，等同保留字）；
+//  - `loop/break/continue` 照 core 保留；换行/`;`/`}` 分隔语句、括号内换行
+//    自由、运算符后行 = 表达式结束、`//` 行注释、非 ASCII 拒绝均同 core。
+grammar(name: "auto-scalar", revision: 1, newline: true, stmt-end: ["semi", "rbrace"], sep: ["semi"], sync: ["semi", "rbrace"]) {
+    tokens {
+        ws(trivia: true) { charset: " \t\r\n" }
+        line-comment(trivia: true) { line-comment: "//" }
+        // 关键字（声明先于 ident：同长取声明序）
+        fn { literal: "fn" }
+        let { literal: "let" }
+        var { literal: "var" }
+        if { literal: "if" }
+        else { literal: "else" }
+        for { literal: "for" }
+        loop { literal: "loop" }
+        break { literal: "break" }
+        continue { literal: "continue" }
+        return { literal: "return" }
+        true-kw { literal: "true" }
+        false-kw { literal: "false" }
+        int-kw { literal: "int" }
+        i32 { literal: "i32" }
+        bool { literal: "bool" }
+        // 保留字：无任何规则引用 → 不可开始/继续任何构造（= ac-core Reserved
+        // 拒绝）。scalar 表面 `while` 同为保留（PLAN-767：条件循环写作 for）。
+        while { literal: "while" }
+        r-alias { literal: "alias" }
+        r-as { literal: "as" }
+        r-await { literal: "await" }
+        r-catch { literal: "catch" }
+        r-const { literal: "const" }
+        r-copy { literal: "copy" }
+        r-dep { literal: "dep" }
+        r-enum { literal: "enum" }
+        r-ext { literal: "ext" }
+        r-go { literal: "go" }
+        r-has { literal: "has" }
+        r-hold { literal: "hold" }
+        r-impl { literal: "impl" }
+        r-in { literal: "in" }
+        r-is { literal: "is" }
+        r-link { literal: "link" }
+        r-mod { literal: "mod" }
+        r-move { literal: "move" }
+        r-nil { literal: "nil" }
+        r-null { literal: "null" }
+        r-outlet { literal: "outlet" }
+        r-pac { literal: "pac" }
+        r-reply { literal: "reply" }
+        r-routes { literal: "routes" }
+        r-shared { literal: "shared" }
+        r-spawn { literal: "spawn" }
+        r-spec { literal: "spec" }
+        r-super { literal: "super" }
+        r-super2 { literal: "super2" }
+        r-super3 { literal: "super3" }
+        r-super4 { literal: "super4" }
+        r-tag { literal: "tag" }
+        r-take { literal: "take" }
+        r-task { literal: "task" }
+        r-to { literal: "to" }
+        r-try { literal: "try" }
+        r-union { literal: "union" }
+        r-use { literal: "use" }
+        r-view { literal: "view" }
+        r-with { literal: "with" }
+        r-yield { literal: "yield" }
+        type-kw { literal: "type" }
+        static { literal: "static" }
+        mut { literal: "mut" }
+        // 标点（最长匹配：`<=` `>=` `==` `!=` `&&` `||` 整体命中）
+        lparen { literal: "(" }
+        rparen { literal: ")" }
+        lbrace { literal: "{" }
+        rbrace { literal: "}" }
+        comma { literal: "," }
+        semi { literal: ";" }
+        colon { literal: ":" }
+        assign { literal: "=" }
+        plus { literal: "+" }
+        minus { literal: "-" }
+        star { literal: "*" }
+        slash { literal: "/" }
+        percent { literal: "%" }
+        lt { literal: "<" }
+        gt { literal: ">" }
+        le { literal: "<=" }
+        ge { literal: ">=" }
+        eq { literal: "==" }
+        ne { literal: "!=" }
+        andand { literal: "&&" }
+        oror { literal: "||" }
+        bang { literal: "!" }
+        // 标识符（最后声明：同长关键字号胜）
+        ident { charset: "a-zA-Z_", cont: "a-zA-Z0-9_" }
+        int-lit { charset: "0-9" }
+    }
+    rules {
+        program { list { fn-item() {} } }
+        fn-item(recover: true) {
+            fn(field: "kw")
+            ident(field: "name")
+            lparen() {}
+            params(repeat: "opt", field: "params")
+            rparen() {}
+            type(field: "ty")
+            block(field: "body")
+        }
+        params { param() {} many { param-tail() {} } }
+        param-tail { comma() {} param() {} }
+        param {
+            ident(field: "name")
+            type(field: "ty")
+        }
+        type {
+            alt { int-kw() {} }
+            alt { i32() {} }
+            alt { bool() {} }
+        }
+        block { lbrace() {} list-nl { stmt() {} } rbrace() {} }
+        stmt(recover: true) {
+            alt { let-stmt() {} }
+            alt { var-stmt() {} }
+            alt { assign-stmt() {} }
+            alt { return-stmt() {} }
+            alt { if-stmt() {} }
+            alt { for-stmt() {} }
+            alt { loop-stmt() {} }
+            alt { break() {} }
+            alt { continue() {} }
+        }
+        let-stmt {
+            let(field: "kw")
+            ident(field: "name")
+            type-ann(repeat: "opt")
+            assign() {}
+            expr(field: "value")
+        }
+        var-stmt {
+            var(field: "kw")
+            ident(field: "name")
+            type-ann(repeat: "opt")
+            assign() {}
+            expr(field: "value")
+        }
+        type-ann { type() {} }
+        assign-stmt {
+            ident(field: "name")
+            assign() {}
+            expr(field: "value")
+        }
+        return-stmt {
+            return(field: "kw")
+            expr(field: "value")
+        }
+        if-stmt {
+            if(field: "kw")
+            expr(field: "cond")
+            block(field: "then")
+            else-block(repeat: "opt")
+        }
+        else-block { else() {} block() {} }
+        // 条件 for（PLAN-767 §5.2.1）：字段名与 while 同（cond/body）——投影
+        // 复用 While AST 形状，语义 = 每轮进入体前重测条件。
+        for-stmt {
+            for(field: "kw")
+            expr(field: "cond")
+            block(field: "body")
+        }
+        loop-stmt {
+            loop(field: "kw")
+            block(field: "body")
+        }
+        expr { pratt(of: "expr-table") }
+        // 一元前缀（右结合）：字面量分支先行——`-5` 走 int-literal 的带符号
+        // 折叠（与 parser 的"负号紧邻数字=一个带符号字面量"一致），`-x`
+        // `!(…)` `- -x` 走递归前缀。
+        unary-expr {
+            alt { int-literal() {} }
+            alt { minus() {} unary-expr(field: "operand") }
+            alt { bang() {} unary-expr(field: "operand") }
+            alt { atom-expr() {} }
+        }
+        atom-expr {
+            alt { true-kw() {} }
+            alt { false-kw() {} }
+            alt { ident() {} }
+            alt { lparen() {} expr() {} rparen() {} }
+        }
+        int-literal {
+            minus(repeat: "opt", field: "sign")
+            int-lit(field: "value", same-line: true)
+        }
+        args { arg(repeat: "opt") many { arg-tail() {} } }
+        arg-tail { comma() {} arg() {} }
+        arg {
+            alt { named-arg() {} }
+            alt { expr() {} }
+        }
+        named-arg {
+            ident(field: "label")
+            colon() {}
+            expr(field: "value")
+        }
+    }
+    pratt(expr-table) {
+        primary: "unary-expr"
+        op(binding: 1, assoc: "left") { of: "||" }
+        op(binding: 2, assoc: "left") { of: "&&" }
+        op(binding: 3, assoc: "left") { of: "==" }
+        op(binding: 3, assoc: "left") { of: "!=" }
+        op(binding: 4, assoc: "left") { of: "<" }
+        op(binding: 4, assoc: "left") { of: ">" }
+        op(binding: 4, assoc: "left") { of: "<=" }
+        op(binding: 4, assoc: "left") { of: ">=" }
+        op(binding: 5, assoc: "left") { of: "+" }
+        op(binding: 5, assoc: "left") { of: "-" }
+        op(binding: 6, assoc: "left") { of: "*" }
+        op(binding: 6, assoc: "left") { of: "/" }
+        op(binding: 6, assoc: "left") { of: "%" }
+        group: ["(", ")"]
+        call {
+            open: "("
+            close: ")"
+            args: "args"
+            same-line: true
+            nl-free: true
+        }
+    }
+    outline {
+        decl-rule: "fn-item"
+        name-field: "name"
+        params-field: "params"
+    }
+}

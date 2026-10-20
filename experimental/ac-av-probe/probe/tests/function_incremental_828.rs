@@ -17,6 +17,7 @@
 
 use auto_av_core::av::{execute_program, CancelFlag, ExecLimits};
 use auto_av_core::contract::{ExecOutcome, Value};
+use auto_av_probe::load256;
 use auto_av_probe::session::{warmup, STAGES};
 use std::sync::Arc;
 
@@ -166,13 +167,19 @@ fn t01_v04_rejected_candidate_keeps_current_version() {
         Arc::ptr_eq(&helper_code0, &helper_code1),
         "rejected candidate must not replace helper's code"
     );
-    // No stage ran to completion for any function (the frontend failed
-    // before any per-function stage bump).
+    // No stage ran for the UNCHANGED function; the changed function's
+    // PROJECTION legitimately ran (the edit is syntactically valid — the
+    // rejection is semantic), but nothing past the frontend completed.
     for (stage, count) in s.counters().stages_of("main") {
         assert_eq!(count, 0, "main stage `{stage}`");
     }
-    for (stage, count) in s.counters().stages_of("helper") {
-        assert_eq!(count, 0, "helper stage `{stage}` after rejected candidate");
+    assert_eq!(s.counters().stage_of("project", "helper"), 1);
+    for stage in STAGES.iter().filter(|s| **s != "project") {
+        assert_eq!(
+            s.counters().stage_of(stage, "helper"),
+            0,
+            "helper stage `{stage}` after rejected candidate"
+        );
     }
 
     // Recovery: a correct edit relative to the still-accepted source runs
@@ -188,11 +195,82 @@ fn t01_v04_rejected_candidate_keeps_current_version() {
     assert_eq!(s.revision(), 1);
     let (out2, _) = s.run(&ExecLimits::default(), &cancel);
     assert_i32(&out2, 28, "recovery run");
-    for stage in STAGES {
+    for stage in STAGES.iter().filter(|s| **s != "project") {
         assert_eq!(
             s.counters().stage_of(stage, "helper"),
             1,
             "helper stage `{stage}` after recovery"
         );
+    }
+    // project ran for both the rejected candidate and the recovery edit.
+    assert_eq!(s.counters().stage_of("project", "helper"), 2);
+}
+
+/// T-02 frozen-load parity: the 256 KiB scalar load (115 functions, the
+/// full 798 surface incl. binary `-`, `>`, conditional `for`) must project
+/// through the auto-scalar grammar to the EXACT ac-core scalar-parser AST
+/// (structure + spans, Debug equality) — and so must an edited revision.
+#[test]
+fn t02_frozen_load_projection_parity() {
+    let gs = std::fs::read_to_string(format!(
+        "{}/../../ac-syntax/grammars/auto-scalar.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .unwrap();
+    let p = ac_syntax_grammar::compile(&gs).unwrap();
+    let cs = ac_syntax_rt::lexer::CompiledScanner::compile(&p).unwrap();
+    let load = load256::generate_revision(0);
+    let load_edited = load256::generate_revision(3);
+    for (tag, src) in [("base", load.source.as_str()), ("rev3", load_edited.source.as_str())] {
+        let snap =
+            ac_syntax_rt::snapshot::Snapshot::from_text(&std::rc::Rc::new(ac_syntax_rt::snapshot::PageStore::new()), src);
+        let out = ac_syntax_rt::parse::parse_snapshot(
+            &p,
+            &cs,
+            &snap,
+            &ac_syntax_rt::program::Budget::default(),
+        )
+        .unwrap();
+        assert!(out.tree.diags.is_empty(), "{tag}: syntax diags");
+        let k = ac_syntax_core_adapter::CoreKinds::from_program(&p);
+        let projected =
+            ac_syntax_core_adapter::project_strict(&p, &k, &out.tree, &snap).unwrap();
+        let oracle = auto_ac_prototype::source::parse_program_with(
+            src,
+            auto_ac_prototype::source::SourceProfile::Scalar,
+        )
+        .unwrap();
+        assert_eq!(
+            format!("{projected:?}"),
+            format!("{oracle:?}"),
+            "{tag}: frozen-load AST+span parity"
+        );
+    }
+}
+
+/// T-02 syntax-error control: an edit that breaks the changed decl's syntax
+/// is rejected at projection (strict HasErrors) and the current revision
+/// stays runnable — a refused fast path, never a silent whole-module
+/// rebuild.
+#[test]
+fn t02_syntax_error_candidate_rejected_keeps_old() {
+    let mut s = warmup(SRC, "d_main", &[]).expect("warm-up");
+    let cancel = CancelFlag::new(false);
+    let (out, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&out, 23, "warm-up run");
+    // Break the body: `x * 3` -> `x *` (dangling operator).
+    let star3 = SRC.find("x * 3").expect("target");
+    let pos = (star3 + 4) as u64;
+    let outcome = s
+        .edit(pos, pos + 1, b"".to_vec())
+        .expect("edit applies");
+    assert!(!outcome.ok, "syntax-broken candidate must be rejected");
+    assert!(outcome.install_set.is_empty());
+    assert_eq!(s.revision(), 0);
+    let (out1, _) = s.run(&ExecLimits::default(), &cancel);
+    assert_i32(&out1, 23, "old version still runs");
+    // main untouched at every stage.
+    for (stage, count) in s.counters().stages_of("main") {
+        assert_eq!(count, 0, "main stage `{stage}`");
     }
 }

@@ -73,11 +73,19 @@ pub(super) enum Frame {
     OpPost {
         op: BinOp,
     },
-    /// 调用实参汇总：全部实参 Arg 就绪后组装 Call。
+    /// 一元前缀（scalar）：操作数完成后组装（span = 操作数 span，与
+    /// parser apply_unaries 一致）。
+    UnaryPost {
+        op: UnaryOp,
+    },
+    /// 调用实参汇总：全部实参 Arg 就绪后组装 Call；`unary_ops` 为 callee
+    /// 包裹层的一元前缀链（外→内），按 parser apply_unaries 的施用序
+    /// （内→外）包到 Call 结果上（`-g()` = Unary(Neg, Call)）。
     CallAssemble {
         callee: Ident,
         span: Span,
         argc: usize,
+        unary_ops: Vec<UnaryOp>,
     },
     /// 单实参值 → Arg（命名/位置）。
     ArgBuild {
@@ -293,6 +301,17 @@ pub(super) fn run(
                 let span = span_of(cx.tree, node);
                 vals.push(Val::Stmt(Stmt::Loop { body, span }));
             }
+            Frame::UnaryPost { op } => {
+                let operand = pop_expr(vals, "unary operand")?;
+                let span = operand.span;
+                vals.push(Val::Expr(Expr {
+                    kind: ExprKind::Unary {
+                        op,
+                        operand: Box::new(operand),
+                    },
+                    span,
+                }));
+            }
             Frame::ExprEnter(node) => step_expr(cx, stack, vals, node)?,
             Frame::OpPost { op } => {
                 let rhs = pop_expr(vals, "binary rhs")?;
@@ -310,7 +329,12 @@ pub(super) fn run(
                     span: sp,
                 }));
             }
-            Frame::CallAssemble { callee, span, argc } => {
+            Frame::CallAssemble {
+                callee,
+                span,
+                argc,
+                unary_ops,
+            } => {
                 let mut args = Vec::with_capacity(argc);
                 for _ in 0..argc {
                     match vals.pop() {
@@ -319,10 +343,21 @@ pub(super) fn run(
                     }
                 }
                 args.reverse(); // 弹栈逆序 → 文档序。
-                vals.push(Val::Expr(Expr {
+                let mut e = Expr {
                     kind: ExprKind::Call { callee, args },
                     span,
-                }));
+                };
+                for op in unary_ops.iter().rev() {
+                    let sp = e.span;
+                    e = Expr {
+                        kind: ExprKind::Unary {
+                            op: *op,
+                            operand: Box::new(e),
+                        },
+                        span: sp,
+                    };
+                }
+                vals.push(Val::Expr(e));
             }
             Frame::ArgBuild { named, span } => {
                 let e = pop_expr(vals, "arg value")?;
@@ -432,11 +467,13 @@ fn step_stmt(p: &GrammarProgram, cx: &mut Cx, stack: &mut Vec<Frame>, node: u32)
             node,
         });
         stack.push(Frame::ExprEnter(cond_n));
-    } else if kind == cx.k.while_stmt {
+    } else if Some(kind) == cx.k.while_stmt || Some(kind) == cx.k.for_stmt {
+        // scalar 条件 for 复用 While 的 AST 形状（PLAN-767 §5.2.1）；两语法
+        // 的 cond/body 字段名一致，投影同构。
         let cond_f = p.field_id("cond").unwrap();
         let body_f = p.field_id("body").unwrap();
-        let cond_n = tree_field_child(cx, node, cond_f, "while cond")?;
-        let body_n = tree_field_child(cx, node, body_f, "while body")?;
+        let cond_n = tree_field_child(cx, node, cond_f, "while/for cond")?;
+        let body_n = tree_field_child(cx, node, body_f, "while/for body")?;
         stack.push(Frame::WhileCond { body_n, node });
         stack.push(Frame::ExprEnter(cond_n));
     } else if kind == cx.k.loop_stmt {
@@ -479,21 +516,64 @@ fn step_expr(cx: &mut Cx, stack: &mut Vec<Frame>, vals: &mut Vec<Val>, node: u32
         }));
     } else if kind == KIND_CALL {
         let kids = cx.tree.children(node);
+        // callee 包裹层：core = atom-expr；scalar = unary-expr（primary 规则
+        // 更名，可带一元前缀链 `- -g(...)`）。先剥前缀链（外→内），再在
+        // 最内包裹层限深 DFS 找首个 ident 叶。
         let callee_n = *kids
             .iter()
-            .find(|&&c| cx.tree.kind(c) == cx.k.atom_expr)
+            .find(|&&c| {
+                cx.tree.kind(c) == cx.k.atom_expr || Some(cx.tree.kind(c)) == cx.k.unary_expr
+            })
             .ok_or_else(|| ProjectionError::Unsupported("call callee wrap".into()))?;
-        let ident_n = *cx
-            .tree
-            .children(callee_n)
-            .iter()
-            .find(|&&c| cx.tree.kind(c) == cx.k.tok_ident)
-            .ok_or_else(|| ProjectionError::Unsupported("call callee".into()))?;
+        let mut unary_ops: Vec<UnaryOp> = Vec::new();
+        let mut wrap = callee_n;
+        while Some(cx.tree.kind(wrap)) == cx.k.unary_expr {
+            let wk = cx.tree.children(wrap);
+            let has_minus = wk.iter().any(|&c| cx.tree.kind(c) == cx.k.tok_minus);
+            let has_bang = wk.iter().any(|&c| Some(cx.tree.kind(c)) == cx.k.tok_bang);
+            if !has_minus && !has_bang {
+                break;
+            }
+            unary_ops.push(if has_bang { UnaryOp::Not } else { UnaryOp::Neg });
+            let inner = wk
+                .iter()
+                .find(|&&c| Some(cx.tree.kind(c)) == cx.k.unary_expr)
+                .copied();
+            match inner {
+                Some(i) => wrap = i,
+                None => break,
+            }
+        }
+        let ident_n = {
+            let mut found: Option<u32> = None;
+            let mut work: Vec<(u32, u8)> = vec![(wrap, 0)];
+            while let Some((n, depth)) = work.pop() {
+                if depth > 2 {
+                    continue;
+                }
+                for c in cx.tree.children(n) {
+                    if cx.tree.kind(c) == cx.k.tok_ident {
+                        found = Some(c);
+                    } else {
+                        work.push((c, depth + 1));
+                    }
+                }
+                if found.is_some() {
+                    break;
+                }
+            }
+            found.ok_or_else(|| ProjectionError::Unsupported("call callee".into()))?
+        };
         let callee = Ident {
             name: spelling(cx.tree, cx.snap, ident_n)?,
             span: span_of(cx.tree, ident_n),
         };
-        let span = span_of(cx.tree, node);
+        // Call span：callee ident 起点到括号尾（不含一元前缀——与 parser 的
+        // Call span 一致；core 下 ident 起点即节点起点）。
+        let span = Span {
+            start: callee.span.start,
+            end: span_of(cx.tree, node).end,
+        };
         if let Some(&args_n) = kids.iter().find(|&&c| cx.tree.kind(c) == cx.k.args) {
             // args := arg (, arg)*：本层 arg 直取、arg_tail 内的 arg 展开，
             // 按位置序（与原实现一致）。
@@ -513,7 +593,12 @@ fn step_expr(cx: &mut Cx, stack: &mut Vec<Frame>, vals: &mut Vec<Val>, node: u32
             direct.sort_by_key(|&n| cx.tree.abs_range(n).0);
             // 汇总帧压底，各实参 [ArgBuild, ExprEnter] 逆序压栈 → 文档序完成。
             let argc = direct.len();
-            stack.push(Frame::CallAssemble { callee, span, argc });
+            stack.push(Frame::CallAssemble {
+                callee,
+                span,
+                argc,
+                unary_ops,
+            });
             for a in direct.into_iter().rev() {
                 let named_n = cx
                     .tree
@@ -563,29 +648,101 @@ fn step_expr(cx: &mut Cx, stack: &mut Vec<Frame>, vals: &mut Vec<Val>, node: u32
                 stack.push(Frame::ExprEnter(named));
             }
         } else {
-            vals.push(Val::Expr(Expr {
+            let mut e = Expr {
                 kind: ExprKind::Call {
                     callee,
                     args: Vec::new(),
                 },
                 span,
-            }));
+            };
+            for op in unary_ops.iter().rev() {
+                let sp = e.span;
+                e = Expr {
+                    kind: ExprKind::Unary {
+                        op: *op,
+                        operand: Box::new(e),
+                    },
+                    span: sp,
+                };
+            }
+            vals.push(Val::Expr(e));
         }
-    } else if kind == cx.k.op_plus || kind == cx.k.op_star || kind == cx.k.op_lt {
+    } else if kind == cx.k.op_plus
+        || kind == cx.k.op_star
+        || kind == cx.k.op_lt
+        || Some(kind) == cx.k.op_minus
+        || Some(kind) == cx.k.op_slash
+        || Some(kind) == cx.k.op_percent
+        || Some(kind) == cx.k.op_gt
+        || Some(kind) == cx.k.op_le
+        || Some(kind) == cx.k.op_ge
+        || Some(kind) == cx.k.op_eq
+        || Some(kind) == cx.k.op_ne
+        || Some(kind) == cx.k.op_andand
+        || Some(kind) == cx.k.op_oror
+    {
         let kids = cx.tree.children(node);
         if kids.len() < 2 {
             return Err(ProjectionError::Unsupported("binary operands".into()));
         }
         let lhs_n = kids[0];
         let rhs_n = kids[kids.len() - 1];
-        let op = match kind {
-            x if x == cx.k.op_plus => BinOp::Add,
-            x if x == cx.k.op_star => BinOp::Mul,
-            _ => BinOp::Lt,
+        let op = if kind == cx.k.op_plus {
+            BinOp::Add
+        } else if kind == cx.k.op_star {
+            BinOp::Mul
+        } else if Some(kind) == cx.k.op_minus {
+            BinOp::Sub
+        } else if Some(kind) == cx.k.op_slash {
+            BinOp::Div
+        } else if Some(kind) == cx.k.op_percent {
+            BinOp::Rem
+        } else if Some(kind) == cx.k.op_gt {
+            BinOp::Gt
+        } else if Some(kind) == cx.k.op_le {
+            BinOp::Le
+        } else if Some(kind) == cx.k.op_ge {
+            BinOp::Ge
+        } else if Some(kind) == cx.k.op_eq {
+            BinOp::Eq
+        } else if Some(kind) == cx.k.op_ne {
+            BinOp::Ne
+        } else if Some(kind) == cx.k.op_andand {
+            BinOp::And
+        } else if Some(kind) == cx.k.op_oror {
+            BinOp::Or
+        } else {
+            BinOp::Lt
         };
         stack.push(Frame::OpPost { op });
         stack.push(Frame::ExprEnter(rhs_n));
         stack.push(Frame::ExprEnter(lhs_n));
+    } else if Some(kind) == cx.k.unary_expr {
+        // scalar 一元前缀（右结合）：`-x` / `!(...)`；字面量/原子分支直取
+        // 唯一内层孩子。Unary 的 span = 操作数 span（与 parser apply_unaries
+        // 一致——不含前缀符本身）。
+        let kids = cx.tree.children(node);
+        let has_minus = kids.iter().any(|&c| cx.tree.kind(c) == cx.k.tok_minus);
+        let has_bang = kids
+            .iter()
+            .any(|&c| Some(cx.tree.kind(c)) == cx.k.tok_bang);
+        if has_minus || has_bang {
+            let operand_n = *kids
+                .iter()
+                .find(|&&c| Some(cx.tree.kind(c)) == cx.k.unary_expr)
+                .ok_or_else(|| ProjectionError::Unsupported("unary operand".into()))?;
+            let op = if has_bang { UnaryOp::Not } else { UnaryOp::Neg };
+            stack.push(Frame::UnaryPost { op });
+            stack.push(Frame::ExprEnter(operand_n));
+        } else {
+            let inner = *kids
+                .iter()
+                .find(|&&c| {
+                    cx.tree.kind(c) == cx.k.int_literal || cx.tree.kind(c) == cx.k.atom_expr
+                })
+                .ok_or_else(|| ProjectionError::Unsupported("unary-expr empty".into()))?;
+            stack.push(Frame::ExprEnter(inner));
+        }
     } else if kind == cx.k.atom_expr {
         // 按孩子序取第一个可识别内层（int-literal/布尔/ident/括号组）。
         let mut handled = false;

@@ -35,13 +35,18 @@ pub struct CoreKinds {
     assign_stmt: u32,
     return_stmt: u32,
     if_stmt: u32,
-    while_stmt: u32,
+    /// core 语法独有（scalar 拒绝 `while`）。
+    while_stmt: Option<u32>,
+    /// scalar 语法独有（条件 `for`，投影为 While AST 形状）。
+    for_stmt: Option<u32>,
     loop_stmt: u32,
     else_block: u32,
     type_ann: u32,
     type_rule: u32,
     int_literal: u32,
     atom_expr: u32,
+    /// scalar 语法独有（一元前缀 `- !`）。
+    unary_expr: Option<u32>,
     expr_rule: u32,
     args: u32,
     arg: u32,
@@ -60,6 +65,18 @@ pub struct CoreKinds {
     op_plus: u32,
     op_star: u32,
     op_lt: u32,
+    /// scalar 扩展二元算符（grammar 缺失 = None）。
+    op_minus: Option<u32>,
+    op_slash: Option<u32>,
+    op_percent: Option<u32>,
+    op_gt: Option<u32>,
+    op_le: Option<u32>,
+    op_ge: Option<u32>,
+    op_eq: Option<u32>,
+    op_ne: Option<u32>,
+    op_andand: Option<u32>,
+    op_oror: Option<u32>,
+    tok_bang: Option<u32>,
     tok_let: u32,
     tok_var: u32,
 }
@@ -78,6 +95,18 @@ fn tk(p: &GrammarProgram, name: &str) -> u32 {
             .position(|t| t.name == name)
             .expect("token in grammar") as u32
 }
+fn rk_opt(p: &GrammarProgram, name: &str) -> Option<u32> {
+    p.rules
+        .iter()
+        .position(|r| r.name == name)
+        .map(|i| RULE_KIND_BASE + i as u32)
+}
+fn tk_opt(p: &GrammarProgram, name: &str) -> Option<u32> {
+    p.tokens
+        .iter()
+        .position(|t| t.name == name)
+        .map(|i| TOKEN_KIND_BASE + i as u32)
+}
 
 impl CoreKinds {
     pub fn from_program(p: &GrammarProgram) -> CoreKinds {
@@ -89,13 +118,15 @@ impl CoreKinds {
             assign_stmt: rk(p, "assign-stmt"),
             return_stmt: rk(p, "return-stmt"),
             if_stmt: rk(p, "if-stmt"),
-            while_stmt: rk(p, "while-stmt"),
+            while_stmt: rk_opt(p, "while-stmt"),
+            for_stmt: rk_opt(p, "for-stmt"),
             loop_stmt: rk(p, "loop-stmt"),
             else_block: rk(p, "else-block"),
             type_ann: rk(p, "type-ann"),
             type_rule: rk(p, "type"),
             int_literal: rk(p, "int-literal"),
             atom_expr: rk(p, "atom-expr"),
+            unary_expr: rk_opt(p, "unary-expr"),
             expr_rule: rk(p, "expr"),
             args: rk(p, "args"),
             arg: rk(p, "arg"),
@@ -114,6 +145,17 @@ impl CoreKinds {
             op_plus: tk(p, "plus"),
             op_star: tk(p, "star"),
             op_lt: tk(p, "lt"),
+            op_minus: Some(tk(p, "minus")),
+            op_slash: tk_opt(p, "slash"),
+            op_percent: tk_opt(p, "percent"),
+            op_gt: tk_opt(p, "gt"),
+            op_le: tk_opt(p, "le"),
+            op_ge: tk_opt(p, "ge"),
+            op_eq: tk_opt(p, "eq"),
+            op_ne: tk_opt(p, "ne"),
+            op_andand: tk_opt(p, "andand"),
+            op_oror: tk_opt(p, "oror"),
+            tok_bang: tk_opt(p, "bang"),
             tok_let: tk(p, "let"),
             tok_var: tk(p, "var"),
         }
@@ -181,6 +223,39 @@ pub fn project_strict(
         ));
     }
     Ok(Program { items })
+}
+
+/// strict 单声明投影（PLAN-828 T-02）：只投影 `decl_index` 指向的顶层 fn
+/// 声明——增量编辑热路径的原语（未改声明不重新投影）。span 为快照绝对
+/// 坐标；树含 error/missing 时受控拒绝。
+pub fn project_decl_strict(
+    p: &GrammarProgram,
+    k: &CoreKinds,
+    tree: &CstTree,
+    snap: &Snapshot,
+    decl_index: usize,
+) -> PResult<FnItem> {
+    if tree.has_error_nodes() {
+        return Err(ProjectionError::HasErrors(
+            "tree contains error/missing nodes".into(),
+        ));
+    }
+    let d = tree
+        .decls
+        .get(decl_index)
+        .ok_or_else(|| ProjectionError::Unsupported("decl index out of range".into()))?;
+    if tree.kind(d.node) != k.fn_item {
+        return Err(ProjectionError::Unsupported(format!(
+            "decl {decl_index} is not an fn item"
+        )));
+    }
+    let mut cx = Cx {
+        k,
+        tree,
+        snap,
+        visited: 0,
+    };
+    project_fn(p, &mut cx, d.node)
 }
 
 fn project_fn(p: &GrammarProgram, cx: &mut Cx, node: u32) -> PResult<FnItem> {

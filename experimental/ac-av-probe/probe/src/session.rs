@@ -19,6 +19,7 @@
 
 use crate::cache::split_units;
 use crate::hir_adapter::{lower_checked, lower_function_unit};
+use ac_syntax_core_adapter::{project_decl_strict, project_strict, CoreKinds};
 use ac_syntax_grammar::compile as compile_grammar;
 use ac_syntax_rt::edit::incremental_reparse;
 use ac_syntax_rt::lexer::CompiledScanner;
@@ -26,11 +27,11 @@ use ac_syntax_rt::outline::outline;
 use ac_syntax_rt::parse::{parse_snapshot, ParseOutput};
 use ac_syntax_rt::program::{Budget, GrammarProgram};
 use ac_syntax_rt::snapshot::{Edit, EditRequest, PageStore, Snapshot};
-use auto_ac_prototype::atom_text::Diagnostic;
+use auto_ac_prototype::atom_text::{Diagnostic, Span};
 use auto_ac_prototype::hir;
-use auto_ac_prototype::source::ast::Item;
+use auto_ac_prototype::source::ast::{Block, FnItem, Item, Program as AstProgram};
 use auto_ac_prototype::source::{
-    compile_parts_with, compile_scalar_source, parse_program_with, SourceProfile,
+    compile_program_parts, compile_scalar_source, SourceProfile,
 };
 use auto_ac_prototype::verify::{verify_function, CheckedFunction};
 use auto_av_core::abc::{decode_abc, encode_abc};
@@ -119,9 +120,10 @@ struct FnRecord {
     def_id: String,
     /// The source-level function name (e.g. `main`).
     name: String,
-    /// Signature text `[fn keyword .. body '{')` — identical bytes across
-    /// body-only edits of this function.
-    sig_prefix: String,
+    /// Signature-only stub item for the synth program: the projected fn item
+    /// with an empty body and all spans zeroed (stubs carry no real source
+    /// positions; re-anchoring never sees out-of-range stub spans).
+    stub_item: Item,
     /// Debug-canonical snapshot of the def's function signature in the
     /// warm-up module context; any edit whose synth context disagrees is a
     /// signature change (rejected fast path).
@@ -173,6 +175,7 @@ pub struct FunctionIncrementalSession {
     caps: Vec<String>,
     src: String,
     grammar: GrammarProgram,
+    kinds: CoreKinds,
     scanner: CompiledScanner,
     snap: Snapshot,
     parse: ParseOutput,
@@ -206,22 +209,41 @@ pub fn warmup(
         .iter()
         .find(|d| d.id_text == entry_def_id)
         .ok_or_else(|| format!("entry def `{entry_def_id}` not found"))?;
-    let entry = entry_def_id.to_string();
 
     // Whole-module lower + per-unit admission (cold; mirrors the 798 path).
     let snapshot_hash = fnv64(src.as_bytes());
     let mir = lower_checked(&checked, &entry_def_id, snapshot_hash).map_err(|e| format!("{e:?}"))?;
     let units = split_units(&mir).map_err(|e| e)?;
 
-    // Per-fn records: Function defs in module order, matched to AST items
-    // by name for the signature prefix slices.
-    let ast = parse_program_with(src, SourceProfile::Scalar).map_err(|d| d.render("probe.at", src))?;
-    let mut ast_fns: Vec<(String, usize, usize)> = Vec::new(); // (name, item start, body brace)
-    for item in &ast.items {
-        if let Item::Fn(f) = item {
-            ast_fns.push((f.name.name.clone(), f.span.start, f.body.span.start));
-        }
+    // ac-syntax resident state over the same source, under the versioned
+    // scalar grammar (PLAN-828 T-02). The projected AST is the session's
+    // name/declaration view (parity with the ac-core parser is pinned by the
+    // scalar_projection_ differential suite and the frozen-load check).
+    let grammar_src = std::fs::read_to_string(format!(
+        "{}/../../ac-syntax/grammars/auto-scalar.at",
+        env!("CARGO_MANIFEST_DIR")
+    ))
+    .map_err(|e| format!("read auto-scalar grammar: {e}"))?;
+    let grammar = compile_grammar(&grammar_src).map_err(|e| format!("compile grammar: {e:?}"))?;
+    let kinds = CoreKinds::from_program(&grammar);
+    let scanner = CompiledScanner::compile(&grammar).map_err(|e| format!("scanner: {e:?}"))?;
+    let store = Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&store, src);
+    let parse = parse_snapshot(&grammar, &scanner, &snap, &Budget::default())
+        .map_err(|e| format!("syntax parse: {e:?}"))?;
+    if !parse.tree.diags.is_empty() {
+        return Err(format!("syntax diags: {:?}", parse.tree.diags));
     }
+    let projected =
+        project_strict(&grammar, &kinds, &parse.tree, &snap).map_err(|e| format!("project: {e:?}"))?;
+    let ast_fns: Vec<(String, FnItem)> = projected
+        .items
+        .into_iter()
+        .filter_map(|i| match i {
+            Item::Fn(f) => Some((f.name.name.clone(), f)),
+            _ => None,
+        })
+        .collect();
 
     let mut fns: Vec<FnRecord> = Vec::new();
     let mut codes: Vec<Arc<FunctionCode>> = Vec::new();
@@ -232,12 +254,13 @@ pub fn warmup(
         };
         // Function defs and AST fn items share source order; the record's
         // source name comes from the AST item.
-        let (name, item_start, body_brace) = ast_fns
+        let item = ast_fns
             .get(ast_i)
             .cloned()
             .ok_or_else(|| format!("fewer AST items than function defs (def {})", d.id_text))?;
         ast_i += 1;
         let _ = di;
+        let name = item.0;
         let unit = units
             .iter()
             .find(|u| u.funcs[0].name == d.id_text.as_str())
@@ -260,7 +283,7 @@ pub fn warmup(
         fns.push(FnRecord {
             def_id: d.id_text.clone(),
             name: name.clone(),
-            sig_prefix: src[item_start..body_brace].to_string(),
+            stub_item: Item::Fn(stubify(item.1)),
             sig_debug: sig_debug_of(m, di),
             hir_body: Arc::new(body_ref.clone()),
             code: code.clone(),
@@ -270,7 +293,7 @@ pub fn warmup(
 
     // Def order must agree with the source decl order (first-case contract).
     let def_order: Vec<&str> = fns.iter().map(|f| f.name.as_str()).collect();
-    let ast_order: Vec<&str> = ast_fns.iter().map(|(n, _, _)| n.as_str()).collect();
+    let ast_order: Vec<&str> = ast_fns.iter().map(|(n, _)| n.as_str()).collect();
     if def_order != ast_order {
         return Err(format!(
             "first-case contract: def order {def_order:?} != source decl order {ast_order:?}"
@@ -281,23 +304,8 @@ pub fn warmup(
         ProgramSnapshot::link(codes, &entry_def_id, 0).map_err(|e| format!("warm-up link: {e}"))?,
     );
 
-    // ac-syntax resident state over the same source.
-    let grammar_src = std::fs::read_to_string(format!(
-        "{}/../../ac-syntax/grammars/auto-core.at",
-        env!("CARGO_MANIFEST_DIR")
-    ))
-    .map_err(|e| format!("read auto-core grammar: {e}"))?;
-    let grammar = compile_grammar(&grammar_src).map_err(|e| format!("compile grammar: {e:?}"))?;
-    let scanner = CompiledScanner::compile(&grammar).map_err(|e| format!("scanner: {e:?}"))?;
-    let store = Rc::new(PageStore::new());
-    let snap = Snapshot::from_text(&store, src);
-    let parse = parse_snapshot(&grammar, &scanner, &snap, &Budget::default())
-        .map_err(|e| format!("syntax parse: {e:?}"))?;
-    if !parse.tree.diags.is_empty() {
-        return Err(format!("syntax diags: {:?}", parse.tree.diags));
-    }
-
     Ok(FunctionIncrementalSession {
+        kinds,
         entry_def_id: entry_def_id.to_string(),
         caps: caps.to_vec(),
         src: src.to_string(),
@@ -428,7 +436,6 @@ impl FunctionIncrementalSession {
                 Vec::new(),
             ));
         }
-        let (decl_lo, decl_hi) = inc.tree.abs_range(inc.tree.decls[changed_idx].node);
         let changed_name = new_outline[changed_idx].name.clone();
         if changed_name != self.fns[changed_idx].name {
             return Err(format!(
@@ -436,48 +443,69 @@ impl FunctionIncrementalSession {
                 changed_idx, self.fns[changed_idx].name
             ));
         }
-        let decl_text = new_snap
-            .read_str(decl_lo, decl_hi)
-            .map_err(|e| format!("decl read: {e:?}"))?;
+        let new_src = String::from_utf8(
+            new_snap
+                .read_bytes(0, new_snap.len())
+                .map_err(|e| format!("new source read: {e:?}"))?,
+        )
+        .map_err(|e| format!("utf8: {e:?}"))?;
 
-        // Synth source: unchanged fns contribute their signature text plus
-        // an O(1) empty body stub; the changed fn's real decl text is
-        // space-padded to its true new-source offset so its spans (and only
-        // its — stub spans are never consumed) carry new-source coordinates.
-        let mut synth = String::new();
+        // Project ONLY the changed declaration (PLAN-828 T-02): the
+        // incremental CST is the source of truth and unchanged declarations
+        // are never re-projected. Spans come out in absolute new-source
+        // coordinates.
+        let projected_fn = match project_decl_strict(
+            &self.grammar,
+            &self.kinds,
+            &inc.tree,
+            &new_snap,
+            changed_idx,
+        ) {
+            Ok(f) => f,
+            Err(e) => {
+                return Ok(EditOutcome::rejected(
+                    self.revision,
+                    format!("candidate rejected: projection `{e:?}`"),
+                    Vec::new(),
+                ));
+            }
+        };
+        if projected_fn.name.name != self.fns[changed_idx].name {
+            return Err(format!(
+                "internal: projected name `{}` != record `{}`",
+                projected_fn.name.name, self.fns[changed_idx].name
+            ));
+        }
+        self.counters.bump(&format!("project:{changed_name}"));
+
+        // Synth program: the changed fn's projected item plus the unchanged
+        // fns' signature-only stubs (O(1) per function — no parse, no
+        // projection, no body work for them).
+        let mut items: Vec<Item> = Vec::with_capacity(self.fns.len());
         for (i, rec) in self.fns.iter().enumerate() {
             if i == changed_idx {
-                if (synth.len() as u64) > decl_lo {
-                    return Err(format!(
-                        "internal: synth length {} already past changed decl offset {decl_lo}",
-                        synth.len()
-                    ));
-                }
-                let pad = decl_lo - synth.len() as u64;
-                synth.push_str(&" ".repeat(pad as usize));
-                synth.push_str(&decl_text);
+                items.push(Item::Fn(projected_fn.clone()));
             } else {
-                synth.push_str(&rec.sig_prefix);
-                synth.push_str("{ }");
-                synth.push(' ');
+                items.push(rec.stub_item.clone());
             }
         }
+        let synth = AstProgram { items };
 
-        // Per-function frontend over the synth source: the REAL parse /
-        // resolve / typecheck / emit+bind entries, carrying real work only
-        // for the changed function.
-        let parts = match compile_parts_with(&synth, "probe.at", &self.caps, SourceProfile::Scalar)
+        // Per-function frontend over the synth program: the REAL resolve /
+        // typecheck / emit+bind entries, carrying real work only for the
+        // changed function.
+        let parts = match compile_program_parts(&synth, &new_src, "probe.at", &self.caps, SourceProfile::Scalar)
         {
             Ok(p) => p,
             Err(ds) => {
                 return Ok(EditOutcome::rejected(
                     self.revision,
                     "candidate rejected: frontend diagnostics".to_string(),
-                    ds.iter().map(|d| d.render("probe.at", &synth)).collect(),
+                    ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
                 ));
             }
         };
-        for stage in ["project", "resolve", "typecheck", "hir_build"] {
+        for stage in ["resolve", "typecheck", "hir_build"] {
             self.counters.bump(&format!("{stage}:{changed_name}"));
         }
         self.counters.bump("synth_stub_walks");
@@ -512,19 +540,14 @@ impl FunctionIncrementalSession {
                 return Ok(EditOutcome::rejected(
                     self.revision,
                     "candidate rejected: HIR verification diagnostics".to_string(),
-                    ds.iter().map(|d| d.render("probe.at", &synth)).collect(),
+                    ds.iter().map(|d| d.render("probe.at", &new_src)).collect(),
                 ));
             }
         };
         self.counters.bump(&format!("verify_hir:{changed_name}"));
 
         // Per-function MIR unit + admission.
-        let new_src_hash = {
-            let whole = new_snap
-                .read_bytes(0, new_snap.len())
-                .map_err(|e| format!("new source read: {e:?}"))?;
-            fnv64(&whole)
-        };
+        let new_src_hash = fnv64(new_src.as_bytes());
         let unit = lower_function_unit(
             &parts.bundle,
             &self.fns[changed_idx].def_id,
@@ -575,10 +598,7 @@ impl FunctionIncrementalSession {
 
         // Advance the resident syntax state to the ACTUAL incremental
         // artifacts (sustained session, not a fresh rebuild).
-        let new_src_vec = new_snap
-            .read_bytes(0, new_snap.len())
-            .map_err(|e| format!("new source read: {e:?}"))?;
-        self.src = String::from_utf8(new_src_vec).map_err(|e| format!("utf8: {e:?}"))?;
+        self.src = new_src;
         self.parse = ParseOutput {
             tree: inc.tree,
             tokens: inc.tokens,
@@ -598,6 +618,26 @@ impl FunctionIncrementalSession {
             non_fast_path_reason: None,
         })
     }
+}
+
+/// Signature-only stub for the synth program: empty body, all spans zeroed
+/// (stubs carry no real source positions — their spans are never consumed
+/// and re-anchoring never sees out-of-range stub spans).
+fn stubify(mut f: FnItem) -> FnItem {
+    let zero = Span { start: 0, end: 0 };
+    f.name.span = zero;
+    for p in &mut f.params {
+        p.name.span = zero;
+        p.ty.span = zero;
+        p.span = zero;
+    }
+    f.ret.span = zero;
+    f.body = Block {
+        stmts: Vec::new(),
+        span: zero,
+    };
+    f.span = zero;
+    f
 }
 
 fn sig_debug_of(m: &hir::Module, def_idx: usize) -> String {
