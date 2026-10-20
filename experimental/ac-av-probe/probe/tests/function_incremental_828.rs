@@ -639,7 +639,7 @@ fn t07_restore_readmits_and_miss_falls_back() {
 
     // Cold start + deposit.
     {
-        let mut s = auto_av_probe::session::warmup_persisted(SRC, "d_main", &[], &dir, "p828")
+        let s = auto_av_probe::session::warmup_persisted(SRC, "d_main", &[], &dir, "p828")
             .expect("cold persisted warm-up");
         let (r, _) = s.run(&ExecLimits::default(), &cancel);
         assert_i32(&r, 23, "cold run");
@@ -749,4 +749,104 @@ fn main() int { return helper(6) }
     };
     let (l2, c2) = s.line_col(sp2.start as u64);
     assert_eq!((l2, c2), (1, c1 + 11), "trap span shifts with the edit ('var b = 2; ' is 11 bytes)");
+}
+
+/// T-08 / V-08: the formal dual gate on the frozen load — 30 distinct
+/// fn_037 revisions through the REAL resident session, edit→verified
+/// result P95 < 1000 ms AND every structural gate green AND every result
+/// matching the independent expected.
+#[test]
+fn t08_v08_formal_p95_and_structural_dual_gate() {
+    let report = auto_av_probe::formal_828::run_formal_series(30).expect("formal series");
+    assert_eq!(report.samples.len(), 30);
+    for s in &report.samples {
+        assert_eq!(
+            s.structural.unaffected_stage_total, 0,
+            "revision {}: some unchanged function did stage work",
+            s.revision
+        );
+        assert_eq!(s.structural.whole_module_total, 0);
+        assert_eq!(s.structural.install_set_len, 1);
+        assert_eq!(s.structural.reparsed_decls, 1, "exactly fn_037 re-parsed");
+        assert!(s.structural.reused_decls >= 114, "the other decls graft");
+    }
+    let failures = auto_av_probe::formal_828::validate_and_gate(&report, 1000.0, 30);
+    assert!(
+        failures.is_empty(),
+        "dual gate failures: {failures:?} (p50={:.1} p95={:.1} p99={:.1}ms)",
+        report.p50_ms, report.p95_ms, report.p99_ms
+    );
+}
+
+/// T-08 / V-09: gate negatives — each axis reddens on its own. A zero
+/// threshold, a short series (missing samples), and a forced whole-module
+/// recompute (simulated by a structural snapshot that counts unchanged
+/// stage work) must each fail the gate.
+#[test]
+fn t08_v09_gate_negatives_redden_independently() {
+    use auto_av_probe::formal_828::{validate_and_gate, FormalReport, FormalSample, StructuralSnapshot};
+    // A minimal clean report.
+    let clean = |unaffected: u64, samples: usize| -> FormalReport {
+        FormalReport {
+            samples: (1..=samples)
+                .map(|i| FormalSample {
+                    revision: i as u32,
+                    edit_to_result_ms: 10.0,
+                    expected: i as i32,
+                    structural: StructuralSnapshot {
+                        unaffected_stage_total: unaffected,
+                        whole_module_total: 0,
+                        install_set_len: 1,
+                        reparsed_decls: 1,
+                        reused_decls: 114,
+                    },
+                })
+                .collect(),
+            p50_ms: 10.0,
+            p95_ms: 10.0,
+            p99_ms: 10.0,
+            all_correct: true,
+            peak_slot_bytes: 0,
+        }
+    };
+    // Clean report passes.
+    assert!(validate_and_gate(&clean(0, 30), 1000.0, 30).is_empty());
+    // (a) zero threshold must fail by construction.
+    assert!(!validate_and_gate(&clean(0, 30), 0.0, 30).is_empty());
+    // (b) missing samples.
+    let failures = validate_and_gate(&clean(0, 5), 1000.0, 30);
+    assert!(failures.iter().any(|f| f.contains("insufficient samples")));
+    // (c) forced whole-module recompute — the structural axis reddens even
+    // though timing is green (a timing pass can never cover granularity).
+    let failures = validate_and_gate(&clean(7, 30), 1000.0, 30);
+    assert!(
+        failures.iter().any(|f| f.contains("unaffected stage total")),
+        "{failures:?}"
+    );
+    // (d) timing axis alone: a slow-but-granular run still fails its P95.
+    let mut slow = clean(0, 30);
+    for s in slow.samples.iter_mut() {
+        s.edit_to_result_ms = 1500.0;
+    }
+    slow.p50_ms = 1500.0;
+    slow.p95_ms = 1500.0;
+    slow.p99_ms = 1500.0;
+    let failures = validate_and_gate(&slow, 1000.0, 30);
+    assert!(failures.iter().any(|f| f.contains("P95")));
+}
+
+#[test]
+fn t08_debug_changed_fn_calls_another() {
+    let src = "fn leaf(v int) int { return v + 1 }
+fn mid(x int) int { return leaf(x) * 2 }
+fn main() int { return mid(5) }
+";
+    let mut s = warmup(src, "d_main", &[]).expect("warmup");
+    let (r, _) = s.run(&ExecLimits::default(), &CancelFlag::new(false));
+    assert_i32(&r, 12, "warm-up (leaf(5)+1)*2");
+    let at = src.find("* 2").expect("site") + 2;
+    let out = s
+        .edit(at as u64, (at + 1) as u64, b"3".to_vec())
+        .expect("edit");
+    assert!(out.ok, "{:?}", out.non_fast_path_reason);
 }

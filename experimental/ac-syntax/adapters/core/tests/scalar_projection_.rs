@@ -205,3 +205,32 @@ fn scalar_projection_reject_shape_parity() {
         ("bad char", "fn f() int { return 1 # 2 }"),
     ]);
 }
+
+/// T-08 isolation: incremental reparse vs fresh on an edit inside a MIDDLE
+/// declaration whose body contains a CALL (the session formal-load shape).
+#[test]
+fn scalar_incremental_middle_decl_with_call_matches_fresh() {
+    let p = scalar_grammar();
+    let cs = CompiledScanner::compile(&p).unwrap();
+    let src = "fn leaf(v int) int { return v + 1 }
+fn mid(x int) int { return leaf(x) * 2 }
+fn main() int { return mid(5) }
+";
+    let store = Rc::new(PageStore::new());
+    let snap = Snapshot::from_text(&store, src);
+    let out = parse_snapshot(&p, &cs, &snap, &Budget::default()).unwrap();
+    let at = src.find("* 2").unwrap();
+    let e = ac_syntax_rt::snapshot::Edit { start: at as u64, end: (at + 3) as u64, insert: b"* 3".to_vec() };
+    let ns = snap
+        .edit(&ac_syntax_rt::snapshot::EditRequest { base_revision: snap.revision(), edits: vec![e.clone()] })
+        .unwrap();
+    let inc = ac_syntax_rt::edit::incremental_reparse(&p, &cs, &out, &snap, &ns, &[e], &Budget::default()).unwrap();
+    let fresh = parse_snapshot(&p, &cs, &ns, &Budget::default()).unwrap();
+    assert!(inc.fallback.is_none(), "{:?}", inc.fallback);
+    assert_eq!(
+        inc.tree.canonical(),
+        fresh.tree.canonical(),
+        "incremental must equal fresh"
+    );
+    assert_eq!(inc.tree.diags, fresh.tree.diags);
+}

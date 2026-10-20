@@ -597,8 +597,44 @@ impl<'a> FnLower<'a> {
                     )
                 })?;
                 if let CalleeRef::Import(imp) = callee_ref {
-                    // Test marks: trace event + frozen i32 result.
                     let symbol = self.out.imports[imp as usize].symbol.clone();
+                    if symbol.starts_with("fn:") {
+                        // Unit lowering (PLAN-828 T-04): a cross-function
+                        // callee becomes a `fn:<name>` unit import call —
+                        // the same shape split_units produces post-hoc; the
+                        // checked linking environment resolves it at
+                        // snapshot link with a signature check. Arg binding
+                        // mirrors the Func path (source-order eval, formal
+                        // mapping through `bindings`).
+                        let sig_idx = self.out.imports[imp as usize].sig;
+                        let n_params = self
+                            .out
+                            .sig_of(sig_idx)
+                            .map(|s| s.params.len())
+                            .unwrap_or(0);
+                        let mut actuals: Vec<SlotId> = vec![0; n_params];
+                        for b in bindings {
+                            let pos = b.param as usize;
+                            if pos >= n_params {
+                                return Err(AdapterError::inv(
+                                    "lower.binding",
+                                    format!("call binding param {pos} out of range"),
+                                ));
+                            }
+                            actuals[pos] = arg_slots[b.arg as usize];
+                        }
+                        let dst = self.temp(shape);
+                        self.emit(
+                            MirInstr::Call {
+                                callee: CalleeRef::Import(imp),
+                                dst,
+                                args: actuals,
+                            },
+                            sp,
+                        );
+                        return Ok(dst);
+                    }
+                    // Test marks: trace event + frozen i32 result.
                     let dst = self.temp(ScalarShape::I32);
                     let (event, value) = match symbol.as_str() {
                         "hir.test.mark_a" => (TraceEvent::MarkA, 1i32),

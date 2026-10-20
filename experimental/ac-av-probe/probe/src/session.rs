@@ -90,6 +90,12 @@ impl SessionCounters {
         self.map.insert(key.to_string(), value);
     }
 
+    fn add(&mut self, key: &str, value: u64) {
+        if value != 0 {
+            *self.map.entry(key.to_string()).or_insert(0) += value;
+        }
+    }
+
     pub fn get(&self, key: &str) -> u64 {
         self.map.get(key).copied().unwrap_or(0)
     }
@@ -607,6 +613,11 @@ impl FunctionIncrementalSession {
         rec.history.entry(cv).or_insert_with(|| pair);
     }
 
+    /// Resident function source-names in declaration order.
+    pub fn function_names(&self) -> Vec<String> {
+        self.fns.iter().map(|f| f.name.clone()).collect()
+    }
+
     /// Total resident content-history entries (bounded by HISTORY_CAP ×
     /// functions; V-07 soak oracle).
     pub fn history_len(&self) -> usize {
@@ -748,11 +759,11 @@ impl FunctionIncrementalSession {
             &Budget::default(),
         )
         .map_err(|e| format!("incremental reparse: {e:?}"))?;
-        self.counters.set("syntax_rescan_bytes", inc.rescan_bytes);
+        self.counters.add("syntax_rescan_bytes", inc.rescan_bytes);
         self.counters
-            .set("syntax_reparsed_decls", inc.reparsed_decls as u64);
+            .add("syntax_reparsed_decls", inc.reparsed_decls as u64);
         self.counters
-            .set("syntax_reused_decls", inc.reused_decls as u64);
+            .add("syntax_reused_decls", inc.reused_decls as u64);
         if let Some(reason) = &inc.fallback {
             return Ok(Err(EditOutcome::rejected(
                 self.revision,
@@ -1019,8 +1030,8 @@ impl FunctionIncrementalSession {
         changed_rec.code = code;
 
         // T-07: durable deposit of the installed revision (units + the
-        /// session manifest). A store failure is recorded but never
-        /// rolls the installed revision back — memory state is primary.
+        // session manifest). A store failure is recorded but never
+        // rolls the installed revision back — memory state is primary.
         if self.store.is_some() {
             let persist = self.persist_all_units().and_then(|()| self.persist_manifest());
             if let Err(e) = persist {
