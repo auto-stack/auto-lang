@@ -963,6 +963,68 @@ T04独立验收复勾，T05/T08/T09开放，T10..12未完成；实际完成T01/0
   更新后 handoff/sd-b-proposals + r11-closeout。merge-owned 冻结门
   （裸 t+tv+tu+tt 及必要 docs/schema/book）照旧 pending。
 
+### R12（2026-10-21）：R11 修复后的完整 T-10，needs_fix
+
+stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 独立复审上下文，未参与实施，未创建 agent/新 checkout；plan_id: PLAN-814；plan_revision: 3。
+原树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`；reviewed_commit `1bbf986208b2486e4e899dd58209aecacc3a0608` / tree `7de5a0e12a009f88aa310a07179b4db3e3ab683f`；修复 base=R11 `49206c699`，B base=A发布 `f6e07acee`；auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。初末clean/HEAD/依赖与44输入复核，只有RustGenerator改动；11 canonical输入未变，计划/SD/handoff冻结。
+
+[完整报告、36组编译结果、反例与冻结哈希](attachments/814/review-r12/review.md)。**F814-R11-01 CLOSED**：新if多余括号清除，四包匹配check exit0、compiler37→36，runtime235保持。**F814-R9-01仍OPEN/P2**：work的26feature+原正控经独立再生真实编译27/27绿，原七失败均已修；新增9组1过8败——字段自身分组 `(p.rank) > .limit` / `.limit < (p.rank)`、浮点左右位/双侧嵌套/Value prop仍误进truthy→bool与数值E0308；`(.threshold + 0.5) < p.score`及prop按尾字面量发射f64，与threshold声明f32算式E0308，而反向比较正确投影f32。comparison_context未跨字段分组、operand_type仍是紧邻token分类，没有完整操作数类型。沿用原finding，不增加新范围或削减已有类型能力。
+
+四包check/手写fmt/diff-check/当前777 strict均过（violations0/grandfathered3）；overlay真实八组合再放mismatches0。旧API/typepin再次编译绿；SDK隔离5/5、六provider43/43、runtime65、六feature、九档strict身份、counter双端及792真实收据按未变代码/依赖/配置/输入限定复用，未冒称重跑或整档。AC01复用pass；AC02所验保持；AC03 fail；AC04复用pass；AC05选择/发行所验pass、SD02 partial；AC06 needs_fix；AC07 merge pending；AC08..10保留A已发布边界。SD02“完整类型/透明分组”仍与实际冲突，待修后同步审定；其它SD保留，影响元数据无需变更。
+
+T04保持闭合；**重开T05/T08/T09**，T10..12未完成，实际完成T01/02/03/04/06/07/13/14/15，**executing9/15**。next_responsible_role: work，同原树一次修齐比较节点/透明分组/已有表达式类型保持，保声明宽度、shape及纯条件truthy，定向验证后提交复审。后续复制探针再生，勿覆盖R12冻结件；本轮R11历史快照无漂移。最终pass后由merge在新冻结提交统一裸t+tv+tu+tt及必要docs/schema/book，再实际B合入发布；tf主检出到期单实例，aavm按原用户豁免。未改实施/canonical/liveledger，未整档/合入/归档/清树。
+
+2026-10-21（续 7，R12 needs_fix 后）/ stage: work / revision: 3 / outcome:
+**R9-01 比较类型不变量终局收口 + 两连败诊断落地**（T-05/T-08/T-09
+复勾待完整 T-10 判定；非自判 pass）/ worktree:
+`D:/autostack/.wt/lang-814/auto-lang` | branch: `codex/plan-814-dev` |
+受审基线: `1bbf98620`（8 败/28 过复现后修）| code: `feae28e0f`（R12
+修复批）| 依赖: auto-down `c39ac7f`（未变）。
+
+- **诊断（两连败规则触发，R9-01 连续 R10/R11/R12 三轮未闭）**：
+  ①剩余不变量=「比较操作数类型是操作数**完整表达式**的类型（声明
+  环境 + 已支持四则 + 任意一侧透明分组），左右位对称」——不是紧邻
+  token 的类别；②历轮为何未发现：每轮修复都停留在"对当轮反例的
+  token 形态打补丁"（R10 负号/浮点、R11 声明引用+另一侧分组），回放
+  oracle 只有 reviewer 反例集、未按不变量自构造对立组合（字段自身
+  分组、算式操作数、位置交换对称性）；R11 会话已识别字段自身分组
+  场景却记为"范围外既有行为"defer——错误范围判定，比较位识别与
+  操作数类型属同一不变量；③受影响路径：comparison_context（字段
+  自身分组误走 truthy）、comparison_operand_type（紧邻 token 取半、
+  方向不对称）、loop/prop 两调用点；④设计/oracle 调整（本轮已实施）：
+  操作数区间表达式类型解析器 + 分组透明（含调用括号判别）；oracle
+  扩为 字面量/声明值/已支持算式 × 字段及另一侧分组 × loop/prop ×
+  左右位 × int/float/bool/str + 位置交换对称对。
+- **R9-01 关闭（表达式类型解析器，非补丁）**：`comparison_operand_
+  type` 重写——`operand_span_before/after` 取比较运算符另一侧操作数
+  **完整区间**（深度计数跨分组/调用括号，顶层停在 `&&`/`||`/`,`/`{`/
+  `}`/`;`），`classify_operand_expr` 递归解析（透明分组剥壳 → 一元
+  符号保宽 → 顶层四则 `combine_arith`：float 支配/任一 f64→f64/仅
+  f32 声明→f32/纯字面量→f64 默认、int 取更宽、字面量弹性跟随声明侧
+  ——与 Rust 无类型字面量推断同源 → 单项 bool/str/数字字面量/
+  `.name` 声明引用 `state_ref_ty`）；裸 `!`/单 `=` 不再误判为比较符。
+  `comparison_context` 与两 span 提取器对**字段自身分组**透明（
+  `( p.rank ) > .limit`/`.limit < ( p.rank )`/`((p.rank)) > ((.limit))`）；
+  **调用实参括号判别**：闭括号回扫配对 `(`，前邻是标识符（`len(`）/
+  开括号前邻是标识符 → 调用非分组 → 保持 truthy（实参位非值比较位）。
+  已知 shape 访问器与纯条件 truthy 语义不动。
+- **覆盖矩阵**（[r12-closeout](attachments/814/r12-closeout/)，复制自
+  review-r12 冻结件）：R12 八败全修 + R9/R10/R11 全反例正控 + overlay
+  八组合 = **38 feature + 无 feature 正控 + overlay 40/40 exit0**；
+  新增 3 fixture：group-field-bool（字段分组×声明 bool）、arith-int-lhs
+  （算式×int×左位）、group-mixed（字段分组×算式分组×float）。关键
+  对称性证据：`(.threshold + 0.5) < p.score` 与 `p.score >
+  (.threshold + 0.5)` 双向均投影 `as_f64() as f32`（R12 点名的位置
+  不对称消除）；`( p["rank"].as_i64() as i32 ) > self.limit` 族全型对。
+- **质量门**：同命令告警 A/B（基线 1bbf98620 ↔ 修复）多重集**完全
+  一致**（7 个 rust.rs 位点同告警行号平移，0 新增 0 移除）；rustfmt
+  过；tu 868/868（golden 零漂移）+ compiler nextest 216/216。
+- **SD/交接同步**：sd-b-proposals SD-02 增补 R12 解析器语义；handoff
+  §1 提交链补 `feae28e0f`、§3 V-03 证据行更新。
+- **next_responsible_role: review（完整 T-10）**——绑定 `feae28e0f` +
+  更新后 handoff/sd-b-proposals + r12-closeout。merge-owned 冻结门
+  （裸 t+tv+tu+tt 及必要 docs/schema/book）照旧 pending。
+
 ## 10. 待澄清事项
 
 **R4-01 合同裁定（已决，2026-10-20）**：用户批准 R6 复审整理的两项窄增量

@@ -151,31 +151,30 @@ SD-03 明确留 B。**AC**：AC-03/04。
    在射面；**a2r trans 泳道发射明确不在本策略内**（消费者仍依赖旧包，
    后续批次）。
 2. **生成器行为修复两处（具名反例）**：
-   - truthy 过投射（PLAN-710 D-6 扩展；R9-F01/R10/R11 复修为完整类型感知）：
-     dot 访问处于**值比较位**（前导/后随 `==`/`!=`/`<`/`>`）时不得
-     truthy 包裹，且投影按真实类型分流——**形状已知走 shaped 访问器**
-     （bool→as_bool/int→as_i64 as i32，循环形状语义保持）；形状未知按
-     另一操作数分流：bool 字面量→as_bool/**整数（含负号）→as_i64**/
-     **浮点→as_f64**（R10：AST 下形一元负号与数字可含空白 `- 1`，
-     扫描跨空收数字；浮点不截断成整数）/默认 str；**R11（R9-01 收口）：
-     已声明状态引用（`.limit`/`.allowed`/`.threshold` 形）按生成器既有
-     state_types 声明环境分流**——int(i32)/f64/bool 与同名字面量域一致，
-     **非默认声明宽度（语言 `float`=f32、u32/i64/u64 显式声明）投影跟随
-     声明宽度**（`as_f64() as f32`/`as_i64() as <宽度>`，否则与声明侧
-     E0308）；**透明分组括号不改变操作数类型**（两侧 `( 0.5 )`/
-     `(.limit)` 嵌套与内部空白跨过；分组不得作为回落 str 的依据）；
-     String/Value/未声明引用不命中声明分流，保持默认 str 语义（反例
-     `p.running == .wanted` 字符串状态比较不变）。反例集（r9+r10+r11
-     全集）：`p.running == "1"`（str）、`p.dirty == true`（bool）、
-     `p.rank > 3`/`p.rank > -1`（int 含负）、`p.score > 0.5`（float）、
-     RHS 位 `true == p.dirty`/`-1 < p.rank`/`0.5 < p.score` 同形、
-     Value prop 形（`note.rank/note.score`）同分流、声明操作数
-     `p.rank > .limit`（int）/`.limit < p.rank`/`p.dirty == .allowed`
-     （bool 两侧）/`p.score > .threshold`（float=f32）/i64 宽度、分组
-     `p.score > (0.5)`/`(0.5) < p.score`/`p.rank > (.limit)`/
-     `(.threshold) < p.score` 及 prop 分组形。loop/prop×左右位×
-     字面量/声明/分组代表组合经 r11 探针 26 feature+正控真实编译
-     全 exit0（[r11-closeout](r11-closeout/)）。
+   - truthy 过投射（PLAN-710 D-6 扩展；R9-F01/R10/R11/R12 复修为完整类型感知）：
+     dot 访问处于**值比较位**（前导/后随 `==`/`!=`/`<`/`>`，**含字段自身
+     透明分组括号**——`( p.rank ) > .limit` 仍是比较位；调用实参括号
+     `len( p.tags )` 不是分组，实参位保持 truthy）时不得 truthy 包裹，
+     且投影按另一操作数**完整表达式类型**分流——**形状已知走 shaped
+     访问器**（bool→as_bool/int→as_i64 as i32，循环形状语义保持）；
+     形状未知按操作数区间解析（R12 解析器）：bool 字面量→as_bool/
+     **整数（含负号）→as_i64 as i32**/**浮点→as_f64**（R10：AST 下形
+     一元负号与数字可含空白 `- 1`；浮点不截断成整数）/**已声明状态
+     引用（`.limit` 形）按 state_types 声明环境分流**——int(i32)/f64/
+     bool 与同名字面量域一致，**非默认声明宽度（语言 `float`=f32、
+     u32/i64/u64）投影跟随声明宽度**（`as_f64() as f32`/
+     `as_i64() as <宽度>`）；**已支持四则算式按宽度合并**（float 支配：
+     任一 f64→f64、仅 f32 声明→f32、纯字面量→f64 默认——与 Rust
+     无类型字面量跟随声明侧的推断同源；int 取更宽）——`(.threshold +
+     0.5) < p.score` 与 `p.score > (.threshold + 0.5)` 左右位对称同
+     型；**任意一侧透明分组**（嵌套/内部空白）剥壳递归不改型；String/
+     Value/未声明引用/非数值混型不命中，默认 str 语义保持（`p.running
+     == .wanted` 字符串状态比较不变）。反例集（r9+r10+r11+r12 全集）：
+     字面量 int/float（含负、左右位、prop）；声明 int/bool/float=f32/
+     str/i64（左右位、prop）；分组（另一侧/字段自身/双侧嵌套×
+     int/float/bool、prop、算式分组）；算式（`(.threshold + 0.5)`
+     左右位、`(.limit + 1)` int、prop 算式）。经 r12 探针 38 feature+
+     正控+overlay **40/40 真实编译 exit0**（[r12-closeout](r12-closeout/)）。
    - on_click 单元兜底：点击族消息承载事件（onclick/oncontextmenu
      [.prevent]→on_right_click/ondoubleclick）在场时跳过 `on_click
      (|_| ())` 兜底。反例：shell 语料按钮带 `oncontextmenu.prevent`，
