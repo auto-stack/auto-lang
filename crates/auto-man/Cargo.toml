@@ -17,26 +17,21 @@ regex = "1"
 auto-val = { path = "../auto-val" }
 # PLAN-795: pac.lock core (model/codec/verify) — lock.rs is the Target/Git
 # adapter + compatibility facade delegating to this crate.
-auto-package-lock = { path = "../auto-package-lock" }
 # PLAN-800: resolved dependency view & module path resolution core —
 # resolver.rs is the language adapter (ExecutionMode/pac.at scan/
 # ModuleResolver trait) delegating to this crate.
-auto-package-resolver = { path = "../auto-package-resolver" }
 # PLAN-803: Man template/builder asset single source + pure scaffold path
 # planning — asset.rs is the compat facade (Auto eval + file IO adapter)
 # delegating to this crate.
-auto-man-assets = { path = "../auto-man-assets" }
 # PLAN-805: toolchain config model / flag mapping / command template core —
 # builder/ninja/{config,mapper,templates}.rs are thin re-export facades over
 # this crate; am.at loading (CompilerStore), PATH/disk/process resolution
 # (CompilerResolver) and Ninja execution (NinjaBuilder) stay here.
-auto-toolchain-core = { path = "../auto-toolchain-core" }
 # PLAN-809: management/build-planning rules core — pac.rs/target.rs/dir.rs/
 # port.rs/group.rs/node_ext.rs hold Pac (effect carrier) + extension traits
 # (TargetEffects/DirEffects: transpile/scan/clean/FS) and delegate all pure
 # declaration/selection/projection/closure rules to this crate (re-export
 # keeps type identity).
-auto-man-core = { path = "../auto-man-core" }
 # PLAN-815 T-04: API generation core (api_gen + sidecar + shared rust
 # workspace layout) moved out of this crate — facade re-export keeps the
 # historic auto_man::api_gen / ::sidecar / ::rust_ui paths alive.
@@ -46,9 +41,8 @@ auto-api-gen = { path = "../auto-api-gen" }
 # M814-B-gated run residues (vue_run_compat / rust_ui_vm_compat) consume its
 # public surface from this side.
 auto-ui-tools = { path = "../auto-ui-tools" }
-auto-gen = { path = "../auto-gen" }
-auto-cache = { path = "../auto-cache" }  # Plan 082: AutoCache integration
-blake3 = { workspace = true }  # Plan 134: File hashing utilities
+# PLAN-816 T-03: 非 UI 管理服务/执行单源（本 crate 为其 re-export 门面）。
+auto-man-runtime = { path = "../auto-man-runtime" }
 # PLAN-792 R1-F01: 资源 hash 用 SHA-256（随包 verify.py 经 python hashlib 独立可校验）
 sha2 = "0.10"
 
@@ -57,10 +51,8 @@ thiserror = { workspace = true }
 
 # CLI
 clap = { workspace = true }
-rust-embed = { workspace = true }
 
 # Utilities
-tabled = { workspace = true }
 simplelog = { workspace = true }
 log = { workspace = true }
 normalize-path = { workspace = true }
@@ -84,6 +76,16 @@ chrono = { workspace = true }  # Plan 082: Timestamp formatting
 [dev-dependencies]
 tauri = { version = "2", default-features = false, features = ["test"] }
 tempfile = { workspace = true }
+# PLAN-816 T-03: tests/ 目标直接消费的已拆 cores（编译期 dev 边,不进 normal 闭包）
+auto-package-lock = { path = "../auto-package-lock" }
+auto-package-resolver = { path = "../auto-package-resolver" }
+auto-toolchain-core = { path = "../auto-toolchain-core" }
+auto-man-core = { path = "../auto-man-core" }
+auto-gen = { path = "../auto-gen" }
+auto-cache = { path = "../auto-cache" }
+blake3 = { workspace = true }
+tabled = { workspace = true }
+rust-embed = { workspace = true }
 # PLAN-803 V03/V04: 门面↔资源层字节对照与 exporter 测试直接消费资源 crate
 auto-man-assets = { path = "../auto-man-assets" }
 # PLAN-811 V-01: 媒体基础真消费方（与生成应用同形——绕过 auto-lang 闭包直接

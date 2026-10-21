@@ -428,6 +428,8 @@ fn v05b_cargo_real_build_and_failure_paths() {
 /// V-05c：真实 VueBuilder 执行（npm+node，离线 build 脚本）+ 失败传播。
 #[test]
 fn v05_vue_real_build_and_failure() {
+    // PLAN-816 T-03: Builder 的 npm 编排经 UiOps seam——compat 实现注入。
+    auto_man::compat::install_default_ui_ops();
     if which("npm").is_none() || which("node").is_none() {
         panic!(
             "V05-PENDING: npm/node 不可用——真实 VueBuilder 验收未执行， \

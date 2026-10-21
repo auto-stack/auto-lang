@@ -1,7 +1,7 @@
 //! PLAN-736: 工程级 HTTP 服务独立启动（`auto serve`）。
 //!
 //! 两条服务轨，同一份解析后的 [HttpServiceConfig]：
-//! - **vm**：进程内 VM 网络轨（`auto_lang::run_file` + 服务配置 seam），
+//! - **vm**：进程内 VM 网络轨（`auto_lang_core::run_file` + 服务配置 seam），
 //!   不启动任何 UI/Vite/桌面。
 //! - **rust**：真实生成链（`api_gen::generate_api`，strict 门）→ 子进程
 //!   `cargo run`，配置经 `AUTO_HTTP_SERVICE_JSON` 注入，子进程自行
@@ -10,7 +10,7 @@
 //! 与 legacy `auto run` 的边界：serve 面**不 kill 占端口进程**（端口冲突 =
 //! bind 失败 = 非零退出诊断）；无文件 legacy 端口链不受影响。
 
-use auto_lang::http_service_config::{
+use auto_lang_core::http_service_config::{
     resolve_service_config, set_active_service_config, HttpServiceConfig,
 };
 use std::io::Read;
@@ -97,7 +97,7 @@ fn resolve_workspace_anchored(project_dir: &Path) -> PathBuf {
 // ============================================================================
 
 fn serve_vm(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, String> {
-    let api_path = auto_lang::config::resolve_back_api(project_dir).ok_or_else(|| {
+    let api_path = auto_lang_core::config::resolve_back_api(project_dir).ok_or_else(|| {
         format!(
             "no back API found under {} (expected src/back/api.at)",
             project_dir.display()
@@ -119,7 +119,7 @@ fn serve_vm(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, String
         std::env::set_var("AUTO_SOURCE_DIRS", &combined);
     }
 
-    auto_lang::vm::ffi::http_server::reset_serve_state();
+    auto_lang_core::vm::ffi::http_server::reset_serve_state();
     set_active_service_config(Arc::new(config.clone()));
     let display_addr = format!("{}:{}", config.listen_addr, config.listen_port);
     println!(
@@ -131,14 +131,19 @@ fn serve_vm(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, String
     let handle = std::thread::Builder::new()
         .stack_size(32 * 1024 * 1024)
         .name("auto-vm-http-service".into())
-        .spawn(move || auto_lang::run_file(&api_str))
+        .spawn(move || {
+            crate::ui_ops::current()
+                .run_language_file(&api_str)
+                .map(|_| ())
+                .map_err(|e| std::io::Error::other(e.to_string()))
+        })
         .map_err(|e| format!("failed to spawn VM service thread: {e}"))?;
 
     // bind 判定：等待 serve hook 报告真实 bound 地址（port=0 → 内核分配）。
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
     let mut bound = None;
     while std::time::Instant::now() < deadline {
-        if let Some(addr) = auto_lang::vm::ffi::http_server::bound_addr_snapshot() {
+        if let Some(addr) = auto_lang_core::vm::ffi::http_server::bound_addr_snapshot() {
             bound = Some(addr);
             break;
         }
@@ -160,7 +165,7 @@ fn serve_vm(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, String
             // 未在期限内 bind：join 收尸并按 fatal 非零退出（消息三源取一：
             // serve fatal > run_file 的 Err > 兜底超时文案）。
             let join_result = handle.join();
-            let fatal = auto_lang::vm::ffi::http_server::take_serve_fatal_error();
+            let fatal = auto_lang_core::vm::ffi::http_server::take_serve_fatal_error();
             if let Some(f) = fatal {
                 return Err(f);
             }
@@ -173,7 +178,7 @@ fn serve_vm(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, String
 
     // Ctrl+C 由 serve_async 内注册的处理器驱动优雅关闭；此处 join 至线程结束。
     let run_result = handle.join();
-    let fatal = auto_lang::vm::ffi::http_server::take_serve_fatal_error();
+    let fatal = auto_lang_core::vm::ffi::http_server::take_serve_fatal_error();
     match (run_result, fatal) {
         (Ok(_), None) => {
             println!("  ✓ VM HTTP service stopped cleanly");
@@ -200,11 +205,11 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
     // 共享 workspace 根重写（成员表+相对路径锚点按实际落点重算；serve 面无
     // generate_rust_ui 前置，必须自行 ensure——陈旧根的坏 path dep 会毒化
     // 整个 workspace 的 cargo 解析）。
-    let ws_dir = crate::rust_ui::ensure_shared_workspace(project_dir);
+    let ws_dir = crate::ui_ops::current().rust_ensure_shared_workspace(project_dir);
     // 真实生成链（734 strict 门；失败=Err 硬传播，不落旧产物）。
     crate::api_gen::generate_api(project_dir, "rust")
         .map_err(|e| format!("Failed to generate Rust backend: {e}"))?;
-    let back_name = crate::rust_ui::back_member_name(project_dir);
+    let back_name = crate::ui_ops::current().rust_back_member_name(project_dir);
     let backend_dir = ws_dir.join(&back_name);
     let cargo_toml = backend_dir.join("Cargo.toml");
     if !cargo_toml.exists() {
@@ -271,7 +276,7 @@ mod tests {
         let c = resolve_config(None, None).unwrap();
         assert_eq!(
             c.profile,
-            auto_lang::http_service_config::ServiceProfile::Development
+            auto_lang_core::http_service_config::ServiceProfile::Development
         );
         assert_eq!(c.listen_port, 8080);
     }

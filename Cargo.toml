@@ -65,6 +65,10 @@ members = [
     "crates/auto-macros",
     # Plan 078: AutoMan migration from ../auto-man
     "crates/auto-man",
+    # PLAN-816 T-03: 非 UI 管理服务/执行实现（自 auto-man 析出;语言面走
+    # auto-lang-core,进程操作走 auto-tool-execution,UI 经 UiOps seam 注入;
+    # auto-man 变为其纯 re-export 门面 + UI 门面 + M814-B 门残留。
+    "crates/auto-man-runtime",
     # PLAN-809: management/build-planning rules core — pac.at declaration
     # normalization, target/link closure, source selection and build planning
     # as pure rules over auto-val nodes; language execution, Git/FS

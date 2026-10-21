@@ -1,0 +1,64 @@
+[package]
+name = "auto-man-runtime"
+version = "0.1.0"
+edition = "2021"
+
+# PLAN-816 T-03（M816-B）：非 UI 管理服务/执行实现包（合同基线 §4 DAG）。
+# 自 auto-man 析出全部非 UI 模块（resolver/pac/target/git/builder/lock/
+# http_service/fs/scanner/cache/exporter/automan 编排等），语言面走
+# auto-lang-core（814 语言 SDK adapter），进程操作走 auto-tool-execution
+# （本 Plan 设施）。**闭包无 UI 实现**：不依赖 auto-lang（兼容大包）/
+# auto-ui-compiler/auto-ui-runtime/auto-ui-tools/iced；UI 操作经 UiOps
+# seam 由上层 compat（auto-man）注入。旧 auto-man 仅保 UI 门面转发与
+# M814-B 门残留（vue_run_compat/rust_ui_vm_compat），Pac/Target/Automan
+# 类型单源在本包，compat 纯 re-export。
+
+[dependencies]
+# 语言 adapter（814 M814-A：纯 SDK——parse/compile/VM/trans/config）
+auto-lang-core = { path = "../auto-lang-core" }
+auto-project-model = { path = "../auto-project-model" }
+auto-val = { path = "../auto-val" }
+
+# 管理生态已拆 cores（809/795/800/803/805）
+auto-package-lock = { path = "../auto-package-lock" }
+auto-package-resolver = { path = "../auto-package-resolver" }
+auto-man-assets = { path = "../auto-man-assets" }
+auto-toolchain-core = { path = "../auto-toolchain-core" }
+auto-man-core = { path = "../auto-man-core" }
+auto-api-gen = { path = "../auto-api-gen" }
+auto-gen = { path = "../auto-gen" }
+auto-cache = { path = "../auto-cache" }
+
+# 本 Plan 统一 owned 子进程执行设施（git/build 站点迁移消费）
+auto-tool-execution = { path = "../auto-tool-execution" }
+
+blake3 = { workspace = true }
+sha2 = "0.10"
+thiserror = { workspace = true }
+rust-embed = { workspace = true }
+tabled = { workspace = true }
+simplelog = { workspace = true }
+log = { workspace = true }
+normalize-path = { workspace = true }
+dialoguer = { workspace = true }
+glob = { workspace = true }
+dirs = { workspace = true }
+reqwest = { workspace = true }
+colored = { workspace = true }
+glob-match = { workspace = true }
+encoding_rs = { workspace = true }
+is_executable = { workspace = true }
+base64 = "0.22"
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+indicatif = { workspace = true }
+chrono = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+auto-man-assets = { path = "../auto-man-assets" }
+
+[lib]
+name = "auto_man_runtime"
+path = "src/lib.rs"

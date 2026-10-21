@@ -5,8 +5,8 @@ use crate::Pac;
 use crate::Port;
 use crate::TargetKind;
 use crate::{Index, IndexStore};
-use auto_lang::config::AutoConfig;
-use auto_lang::config::BackendType;
+use auto_lang_core::config::AutoConfig;
+use auto_lang_core::config::BackendType;
 use auto_val::shared;
 use auto_val::{AutoPath, AutoStr, Obj, Value};
 use colored::Colorize;
@@ -66,48 +66,8 @@ impl Automan {
 
     /// Create a new Jetpack Compose Android project
     pub fn create_jet(name: &str) -> AutoResult<()> {
-        use auto_lang::ui_gen::jet::{JetProjectConfig, ProjectGenerator};
-
-        let path = Path::new(name);
-
-        // Check if project already exists
-        if path.is_file() {
-            return Err(format!("A file named with {} already exists", name).into());
-        }
-        if path.is_dir()
-            && path
-                .read_dir()
-                .map(|mut d| d.next().is_some())
-                .unwrap_or(false)
-        {
-            return Err(format!("A non-empty directory named with {} already exists", name).into());
-        }
-
-        // Get project name from path
-        let pac_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("MyApp");
-
-        // Generate project with JetProjectConfig
-        let config = JetProjectConfig::new(pac_name);
-        let mut generator = ProjectGenerator::with_config(config);
-        let files = generator.generate();
-
-        // Create all files
-        std::fs::create_dir_all(path)?;
-        for (file_path, content) in files {
-            let full_path = path.join(&file_path);
-            if let Some(parent) = full_path.parent() {
-                std::fs::create_dir_all(parent)?;
-            }
-            std::fs::write(&full_path, content)?;
-            info!("Created {}", file_path);
-        }
-
-        println!(
-            "Jetpack Compose project '{}' created successfully!",
-            pac_name
-        );
-        println!("Open with: auto open");
-        Ok(())
+        // UI 脚手架经 seam（JetProjectConfig 流程 owner=auto-ui-tools/compat）。
+        crate::ui_ops::current().create_jet_project(name)
     }
 
     pub fn create_by_template(name: &str, template: &str) -> AutoResult<()> {
@@ -435,8 +395,8 @@ impl Automan {
 
     /// PR-6: Resolve the effective parser scenario as a CompilerSession.
     /// Priority: --scene CLI override > pac.at scene field > Core default.
-    pub fn effective_scenario(&self) -> auto_lang::session::CompilerSession {
-        use auto_lang::session::{CompilerSession, Scenario};
+    pub fn effective_scenario(&self) -> auto_lang_core::session::CompilerSession {
+        use auto_lang_core::session::{CompilerSession, Scenario};
         // 1. CLI --scene override
         if let Some(ref scene_str) = self.scene_override {
             let scenario = Scenario::from_str(scene_str).unwrap_or_default();
@@ -453,7 +413,7 @@ impl Automan {
     /// PR-6: Return the effective scenario as an Option for APIs that take
     /// override (collect_module_imports etc.). Always Some since we resolve
     /// from CLI override or pac.at.
-    pub fn scenario_override(&self) -> Option<auto_lang::session::CompilerSession> {
+    pub fn scenario_override(&self) -> Option<auto_lang_core::session::CompilerSession> {
         Some(self.effective_scenario())
     }
 
@@ -461,8 +421,8 @@ impl Automan {
     /// 1. --render CLI override (any valid BackendType)
     /// 2. pac.at render default
     /// 3. Interactive selection from all types
-    fn resolve_backend(&self) -> AutoResult<auto_lang::config::BackendType> {
-        use auto_lang::config::BackendType;
+    fn resolve_backend(&self) -> AutoResult<auto_lang_core::config::BackendType> {
+        use auto_lang_core::config::BackendType;
 
         // Priority 1: CLI --render override (any valid type)
         if let Some(ref render_name) = self.render_override {
@@ -485,7 +445,7 @@ impl Automan {
     /// resolve_backend 同优先级：CLI --render 覆盖 → pac 默认前端）。
     /// 交互选择路径（无覆盖且无 pac 默认）判 false（不弹交互去凑交付条件）。
     pub fn pac_backend_is_rust_only(&self) -> bool {
-        use auto_lang::config::BackendType;
+        use auto_lang_core::config::BackendType;
         if let Some(ref render_name) = self.render_override {
             return BackendType::from_str(render_name) == Some(BackendType::Rust);
         }
@@ -683,12 +643,7 @@ impl Automan {
             // Generate the jet project first
             let output_dir = root_dir.join("gen").join("front").join("jet");
             let req = self.gen_request()?;
-            crate::jet::generate_jet_project_with_request(
-                &root_dir,
-                Some(&output_dir),
-                true,
-                &req,
-            )?;
+            crate::ui_ops::current().jet_generate(&root_dir, Some(&output_dir), true, &req)?;
         }
 
         println!("Opening Jetpack Compose project with Android Studio...");
@@ -818,12 +773,7 @@ impl Automan {
             // Generate the ark project first
             let output_dir = root_dir.join("gen").join("front").join("ark");
             let req = self.gen_request()?;
-            crate::ark::generate_ark_project_with_request(
-                &root_dir,
-                Some(&output_dir),
-                true,
-                &req,
-            )?;
+            crate::ui_ops::current().ark_generate(&root_dir, Some(&output_dir), true, &req)?;
         }
 
         println!("Opening ArkTS/HarmonyOS project with DevEco Studio...");
@@ -1122,7 +1072,7 @@ impl Automan {
     fn build_vue(&mut self) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::vue::build_vue_project(&root_dir)
+        crate::ui_ops::current().vue_build(&root_dir)
     }
 
     /// Build Jetpack Compose project (full workflow: generate, gradle build)
@@ -1131,7 +1081,7 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         {
             let req = self.gen_request()?;
-            crate::jet::build_jet_project_with_request(&root_dir, &req)
+            crate::ui_ops::current().jet_build(&root_dir, &req)
         }
     }
 
@@ -1141,7 +1091,7 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         {
             let req = self.gen_request()?;
-            crate::ark::build_ark_project_with_request(&root_dir, &req)
+            crate::ui_ops::current().ark_build(&root_dir, &req)
         }
     }
 
@@ -1149,24 +1099,24 @@ impl Automan {
     fn build_vscode(&mut self) -> AutoResult<()> {
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
-        crate::vscode::build_vscode_project(&root_dir)
+        crate::ui_ops::current().vscode_build(&root_dir)
     }
 
     /// Build with multiple backends - let user select one
     /// Build a specific backend
-    fn build_backend(&mut self, backend: &auto_lang::config::BackendType) -> AutoResult<()> {
+    fn build_backend(&mut self, backend: &auto_lang_core::config::BackendType) -> AutoResult<()> {
         match backend {
-            auto_lang::config::BackendType::Vue => {
+            auto_lang_core::config::BackendType::Vue => {
                 if self.gen_only {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
-                    crate::vue::gen_vue_project(&root_dir)?;
+                    crate::ui_ops::current().vue_generate(&root_dir)?;
                 } else {
                     println!("Building Vue project (backend: vue)");
                     self.build_vue()?;
                 }
             }
-            auto_lang::config::BackendType::Tauri => {
+            auto_lang_core::config::BackendType::Tauri => {
                 println!("Building Tauri project (backend: tauri)");
                 let root_dir = std::env::current_dir()
                     .map_err(|e| format!("Failed to get current directory: {}", e))?;
@@ -1174,18 +1124,18 @@ impl Automan {
                 // API gen + install). The actual server launch is deferred to run.
                 {
                     let req = self.gen_request()?;
-                    crate::tauri::run_tauri_project_with_request(&root_dir, vec![], &req)?;
+                    crate::ui_ops::current().tauri_run(&root_dir, vec![], &req)?;
                 }
             }
-            auto_lang::config::BackendType::Jet => {
+            auto_lang_core::config::BackendType::Jet => {
                 println!("Building Jetpack Compose project (backend: jet)");
                 self.build_jet()?;
             }
-            auto_lang::config::BackendType::Arkts => {
+            auto_lang_core::config::BackendType::Arkts => {
                 println!("Building ArkTS/HarmonyOS project (backend: ark)");
                 self.build_ark()?;
             }
-            auto_lang::config::BackendType::Rust => {
+            auto_lang_core::config::BackendType::Rust => {
                 // UI projects (src/front/) use the rust_ui generator into the
                 // shared workspace — the pac transpile+builder path requires a
                 // declared rust target which UI projects don't have (it used to
@@ -1195,7 +1145,7 @@ impl Automan {
                 if root_dir.join("src").join("front").exists() {
                     {
                         let req = self.gen_request()?;
-                        crate::rust_ui::build_rust_ui_with_request(&root_dir, &req)?;
+                        crate::ui_ops::current().rust_build(&root_dir, &req)?;
                     }
                 } else {
                     println!("Transpiling Auto code to Rust (backend: rust)");
@@ -1208,7 +1158,7 @@ impl Automan {
                     self.pac.build()?;
                 }
             }
-            auto_lang::config::BackendType::Vscode => {
+            auto_lang_core::config::BackendType::Vscode => {
                 println!("Building VSCode extension project (backend: vscode)");
                 self.build_vscode()?;
             }
@@ -1301,9 +1251,9 @@ impl Automan {
                 println!("{} {}/", "→ Member:".bright_green(), member_path);
 
                 // Load member's pac.at to determine backend type
-                let member_config_kept = auto_lang::config::AutoConfig::read(&member_pac_path)
+                let member_config_kept = auto_lang_core::config::AutoConfig::read(&member_pac_path)
                     .map_err(|e| format!("Failed to read {}: {}", member_pac_path.display(), e))?;
-                let member_pac = Pac::new(auto_lang::config::AutoConfig {
+                let member_pac = Pac::new(auto_lang_core::config::AutoConfig {
                     code: member_config_kept.code.clone(),
                     root: member_config_kept.root.clone(),
                     args: member_config_kept.args.clone(),
@@ -1342,23 +1292,13 @@ impl Automan {
                     match backend {
                         BackendType::Vue => {
                             println!("  Generating Vue (backend: vue)");
-                            let project_ctx = crate::vue::VueProject::from_workspace_with_request(
-                                &member_dir,
-                                &member_req,
-                            )?;
-                            if project || !project_ctx.exists() {
-                                project_ctx.generate()?;
-                            } else {
-                                project_ctx.generate()?;
-                            }
+                            crate::ui_ops::current()
+                                .vue_generate_workspace(&member_dir, &member_req)?;
                         }
                         BackendType::Tauri => {
                             println!("  Generating Tauri (backend: tauri)");
-                            let project_ctx = crate::vue::VueProject::from_workspace_with_request(
-                                &member_dir,
-                                &member_req,
-                            )?;
-                            project_ctx.generate()?;
+                            crate::ui_ops::current()
+                                .vue_generate_workspace(&member_dir, &member_req)?;
                         }
                         BackendType::Jet => {
                             println!("  Generating Kotlin (backend: jet)");
@@ -1378,14 +1318,14 @@ impl Automan {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
                             if let Some(ref out) = output_path {
-                                crate::jet::generate_jet_project_with_request(
+                                crate::ui_ops::current().jet_generate(
                                     &member_dir,
                                     Some(out.as_path()),
                                     project,
                                     &member_req,
                                 )?;
                             } else {
-                                crate::jet::generate_jet_project_with_request(
+                                crate::ui_ops::current().jet_generate(
                                     &member_dir,
                                     None,
                                     project,
@@ -1411,14 +1351,14 @@ impl Automan {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
                             if let Some(ref out) = output_path {
-                                crate::ark::generate_ark_project_with_request(
+                                crate::ui_ops::current().ark_generate(
                                     &member_dir,
                                     Some(out.as_path()),
                                     project,
                                     &member_req,
                                 )?;
                             } else {
-                                crate::ark::generate_ark_project_with_request(
+                                crate::ui_ops::current().ark_generate(
                                     &member_dir,
                                     None,
                                     project,
@@ -1432,7 +1372,7 @@ impl Automan {
                             // 可搬动 bundle；未设置时开发模式（rust-workspace
                             // 共享工作区）行为不变。
                             if let Some(ref delivery) = self.delivery_root {
-                                crate::rust_ui::generate_rust_ui_delivery_with_request(
+                                crate::ui_ops::current().rust_generate_delivery(
                                     &member_dir,
                                     delivery,
                                     &member_req,
@@ -1455,14 +1395,14 @@ impl Automan {
                                 };
 
                                 if let Some(ref out) = output_path {
-                                    crate::rust_ui::generate_rust_ui_with_request(
+                                    crate::ui_ops::current().rust_generate(
                                         &member_dir,
                                         Some(out.as_path()),
                                         project,
                                         &member_req,
                                     )?;
                                 } else {
-                                    crate::rust_ui::generate_rust_ui_with_request(
+                                    crate::ui_ops::current().rust_generate(
                                         &member_dir,
                                         None,
                                         project,
@@ -1489,13 +1429,17 @@ impl Automan {
                                 output.as_ref().map(|o| std::path::PathBuf::from(o))
                             };
                             if let Some(ref out) = output_path {
-                                crate::vscode::generate_vscode_project(
+                                crate::ui_ops::current().vscode_generate(
                                     &member_dir,
                                     Some(out.as_path()),
                                     project,
                                 )?;
                             } else {
-                                crate::vscode::generate_vscode_project(&member_dir, None, project)?;
+                                crate::ui_ops::current().vscode_generate(
+                                    &member_dir,
+                                    None,
+                                    project,
+                                )?;
                             }
                         }
                         _ => {
@@ -1550,16 +1494,15 @@ impl Automan {
                     };
 
                     if let Some(ref out) = output_path {
-                        crate::jet::generate_jet_project_with_request(
+                        crate::ui_ops::current().jet_generate(
                             &root_dir,
                             Some(out.as_path()),
                             project,
                             &self_req,
                         )?;
                     } else {
-                        crate::jet::generate_jet_project_with_request(
-                            &root_dir, None, project, &self_req,
-                        )?;
+                        crate::ui_ops::current()
+                            .jet_generate(&root_dir, None, project, &self_req)?;
                     }
                 }
                 BackendType::Arkts => {
@@ -1583,16 +1526,15 @@ impl Automan {
                     };
 
                     if let Some(ref out) = output_path {
-                        crate::ark::generate_ark_project_with_request(
+                        crate::ui_ops::current().ark_generate(
                             &root_dir,
                             Some(out.as_path()),
                             project,
                             &self_req,
                         )?;
                     } else {
-                        crate::ark::generate_ark_project_with_request(
-                            &root_dir, None, project, &self_req,
-                        )?;
+                        crate::ui_ops::current()
+                            .ark_generate(&root_dir, None, project, &self_req)?;
                     }
                 }
                 BackendType::Vue => {
@@ -1600,14 +1542,7 @@ impl Automan {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                    let project_ctx =
-                        crate::vue::VueProject::from_workspace_with_request(&root_dir, &self_req)?;
-
-                    if project || !project_ctx.exists() {
-                        project_ctx.generate()?;
-                    } else {
-                        project_ctx.generate()?;
-                    }
+                    crate::ui_ops::current().vue_generate_workspace(&root_dir, &self_req)?;
                 }
                 BackendType::Tauri => {
                     println!("Generating Tauri app (backend: tauri)");
@@ -1615,9 +1550,7 @@ impl Automan {
                     let root_dir = std::env::current_dir()
                         .map_err(|e| format!("Failed to get current directory: {}", e))?;
 
-                    let project_ctx =
-                        crate::vue::VueProject::from_workspace_with_request(&root_dir, &self_req)?;
-                    project_ctx.generate()?;
+                    crate::ui_ops::current().vue_generate_workspace(&root_dir, &self_req)?;
                 }
                 BackendType::Rust => {
                     println!("Generating Rust UI (backend: rust)");
@@ -1627,9 +1560,8 @@ impl Automan {
                     // PLAN-792：显式交付模式（--delivery-root）——受管可搬动
                     // bundle；未设置时开发模式行为不变。
                     if let Some(ref delivery) = self.delivery_root {
-                        crate::rust_ui::generate_rust_ui_delivery_with_request(
-                            &root_dir, delivery, &self_req,
-                        )?;
+                        crate::ui_ops::current()
+                            .rust_generate_delivery(&root_dir, delivery, &self_req)?;
                     } else {
                         // For multi-backend, create output subdirectory
                         let output_path = if frontends.len() > 1 {
@@ -1647,16 +1579,15 @@ impl Automan {
                         };
 
                         if let Some(ref out) = output_path {
-                            crate::rust_ui::generate_rust_ui_with_request(
+                            crate::ui_ops::current().rust_generate(
                                 &root_dir,
                                 Some(out.as_path()),
                                 project,
                                 &self_req,
                             )?;
                         } else {
-                            crate::rust_ui::generate_rust_ui_with_request(
-                                &root_dir, None, project, &self_req,
-                            )?;
+                            crate::ui_ops::current()
+                                .rust_generate(&root_dir, None, project, &self_req)?;
                         }
                     }
                 }
@@ -1680,13 +1611,13 @@ impl Automan {
                     };
 
                     if let Some(ref out) = output_path {
-                        crate::vscode::generate_vscode_project(
+                        crate::ui_ops::current().vscode_generate(
                             &root_dir,
                             Some(out.as_path()),
                             project,
                         )?;
                     } else {
-                        crate::vscode::generate_vscode_project(&root_dir, None, project)?;
+                        crate::ui_ops::current().vscode_generate(&root_dir, None, project)?;
                     }
                 }
                 _ => {
@@ -1715,10 +1646,10 @@ impl Automan {
     /// Run a specific backend
     fn run_backend(
         &mut self,
-        backend: &auto_lang::config::BackendType,
+        backend: &auto_lang_core::config::BackendType,
         args: Vec<String>,
     ) -> AutoResult<()> {
-        use auto_lang::database::UICache;
+        use auto_lang_core::database::UICache;
 
         let root_dir = std::env::current_dir()
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
@@ -1748,34 +1679,34 @@ impl Automan {
         }
 
         match backend {
-            auto_lang::config::BackendType::Vue => {
+            auto_lang_core::config::BackendType::Vue => {
                 println!("Running Vue dev server (backend: vue)");
                 self.run_vue(args)
             }
-            auto_lang::config::BackendType::Tauri => {
+            auto_lang_core::config::BackendType::Tauri => {
                 println!("Running Tauri dev server (backend: tauri)");
                 self.run_tauri(args)
             }
-            auto_lang::config::BackendType::Jet => {
+            auto_lang_core::config::BackendType::Jet => {
                 println!("Running Jetpack Compose project (backend: jet)");
                 {
                     let req = self.gen_request_run()?;
-                    crate::jet::run_jet_project_with_request(&root_dir, args, &req)
+                    crate::ui_ops::current().jet_run(&root_dir, args, &req)
                 }
             }
-            auto_lang::config::BackendType::Arkts => {
+            auto_lang_core::config::BackendType::Arkts => {
                 println!("Running ArkTS/HarmonyOS project (backend: ark)");
                 {
                     let req = self.gen_request_run()?;
-                    crate::ark::run_ark_project_with_request(&root_dir, args, &req)
+                    crate::ui_ops::current().ark_run(&root_dir, args, &req)
                 }
             }
-            auto_lang::config::BackendType::Rust => {
+            auto_lang_core::config::BackendType::Rust => {
                 // Check if this is a UI project (has front/ dir)
                 if root_dir.join("src").join("front").exists() {
                     {
                         let req = self.gen_request_run()?;
-                        crate::rust_ui::run_rust_ui_with_request(&root_dir, args, &req)
+                        crate::ui_ops::current().rust_run(&root_dir, args, &req)
                     }
                 } else {
                     println!("Running Rust project (backend: rust)");
@@ -1791,13 +1722,13 @@ impl Automan {
                     Ok(())
                 }
             }
-            auto_lang::config::BackendType::Vm => {
+            auto_lang_core::config::BackendType::Vm => {
                 if self.vm_server_mode {
                     // Plan 317: --server=vm → AutoVM HTTP server with module
                     // flattening. Find back/api.at (or main entry), run via
                     // run_file which flattens use deps + starts serve_async.
                     // Plan 061:统一契约定位(本地 back/ 或外部后端项目)
-                    let api_path = auto_lang::config::resolve_back_api(&root_dir)
+                    let api_path = auto_lang_core::config::resolve_back_api(&root_dir)
                         .unwrap_or_else(|| root_dir.join("src/back/api.at"));
                     if api_path.exists() {
                         eprintln!(
@@ -1813,7 +1744,7 @@ impl Automan {
                             .stack_size(32 * 1024 * 1024)
                             .name("auto-vm-server".into())
                             .spawn(move || {
-                                if let Err(e) = auto_lang::run_file(&api_str) {
+                                if let Err(e) = crate::language::run_language_file(&api_str) {
                                     eprintln!("[AutoVM] Server error: {}", e);
                                 }
                             })
@@ -1826,13 +1757,13 @@ impl Automan {
                 } else {
                     {
                         let req = self.gen_request_run()?;
-                        crate::rust_ui::run_vm_ui_with_request(&root_dir, args, &req)
+                        crate::ui_ops::current().vm_run(&root_dir, args, &req)
                     }
                 }
             }
-            auto_lang::config::BackendType::Vscode => {
+            auto_lang_core::config::BackendType::Vscode => {
                 println!("Running VSCode extension (backend: vscode)");
-                crate::vscode::run_vscode_project(&root_dir, args)
+                crate::ui_ops::current().vscode_run(&root_dir, args)
             }
             _ => Err(format!("Backend {:?} does not support run command", backend).into()),
         }
@@ -1844,7 +1775,7 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         {
             let req = self.gen_request_run()?;
-            crate::vue::run_vue_project_with_request(&root_dir, args, &req)
+            crate::ui_ops::current().vue_run(&root_dir, args, &req)
         }
     }
 
@@ -1854,7 +1785,7 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         {
             let req = self.gen_request_run()?;
-            crate::tauri::run_tauri_project_with_request(&root_dir, args, &req)
+            crate::ui_ops::current().tauri_run(&root_dir, args, &req)
         }
     }
 
@@ -1907,17 +1838,17 @@ impl Automan {
 
                 for frontend in frontends {
                     match frontend {
-                        auto_lang::config::BackendType::Vue => {
+                        auto_lang_core::config::BackendType::Vue => {
                             println!("  Building Vue frontend");
                             // Pass workspace root (parent of front/) to Vue builder
-                            crate::vue::build_vue_project(&root_dir)?;
+                            crate::ui_ops::current().vue_build(&root_dir)?;
                         }
-                        auto_lang::config::BackendType::Tauri => {
+                        auto_lang_core::config::BackendType::Tauri => {
                             println!("  Building Tauri frontend");
                             // Tauri uses Vue as base, then adds Tauri wrapper
-                            crate::vue::build_vue_project(&root_dir)?;
+                            crate::ui_ops::current().vue_build(&root_dir)?;
                         }
-                        auto_lang::config::BackendType::Jet => {
+                        auto_lang_core::config::BackendType::Jet => {
                             println!("  Building Jetpack project");
                             // TODO: Implement jet build
                         }
@@ -1930,7 +1861,7 @@ impl Automan {
                 // Default scene - check backend type
                 if let Some(backend_type) = member_pac.backend_type() {
                     match backend_type {
-                        auto_lang::config::BackendType::Rust => {
+                        auto_lang_core::config::BackendType::Rust => {
                             println!("  Building Rust backend");
                             // TODO: Implement rust build (cargo build)
                         }
@@ -1952,17 +1883,17 @@ impl Automan {
 
     /// Run a member's frontend (helper for run_workspace)
     fn run_member_frontend(
-        frontend: &auto_lang::config::BackendType,
+        frontend: &auto_lang_core::config::BackendType,
         root_dir: &Path,
         args: Vec<String>,
         req: &auto_project_model::generation_request::GenerationRequest,
     ) -> AutoResult<()> {
-        use auto_lang::config::BackendType;
+        use auto_lang_core::config::BackendType;
 
         match frontend {
             BackendType::Vue => {
                 println!("  Running Vue dev server");
-                crate::vue::run_vue_project_with_request(root_dir, args, req)?;
+                crate::ui_ops::current().vue_run(root_dir, args, req)?;
             }
             BackendType::Jet => {
                 println!("  Running Jetpack project");
@@ -1970,7 +1901,7 @@ impl Automan {
             }
             BackendType::Tauri => {
                 println!("  Running Tauri project");
-                crate::tauri::run_tauri_project_with_request(root_dir, args, req)?;
+                crate::ui_ops::current().tauri_run(root_dir, args, req)?;
             }
             BackendType::Rust => {
                 println!("  Running Rust backend");
@@ -1978,7 +1909,7 @@ impl Automan {
             }
             BackendType::Vscode => {
                 println!("  Running VSCode extension");
-                crate::vscode::run_vscode_project(root_dir, args)?;
+                crate::ui_ops::current().vscode_run(root_dir, args)?;
             }
             _ => {
                 println!("  Unknown frontend type: {:?}", frontend);
@@ -2053,7 +1984,7 @@ impl Automan {
 
             // Load member's pac.at
             let config = AutoConfig::read(&member_pac_path)?;
-            let member_pac = Pac::new(auto_lang::config::AutoConfig {
+            let member_pac = Pac::new(auto_lang_core::config::AutoConfig {
                 code: config.code.clone(),
                 root: config.root.clone(),
                 args: config.args.clone(),

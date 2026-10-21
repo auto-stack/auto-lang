@@ -10,8 +10,8 @@
 use crate::dir::Dir;
 use crate::git::check_changes;
 use crate::AutoResult;
-use auto_lang::trans::c::transpile_c;
-use auto_lang::util::*;
+use auto_lang_core::trans::c::transpile_c;
+use auto_lang_core::util::*;
 use auto_val::{AutoPath, AutoStr};
 use log::*;
 use std::path::Path;
@@ -89,8 +89,9 @@ impl TargetEffects for Target {
             let fname = AutoPath::new(path).basename();
 
             if self.lang.as_str() == "rust" {
-                let mut rust_code = auto_lang::trans::rust::transpile_rust(fname.clone(), &content)
-                    .map_err(|e| format!("Failed to transpile '{}' to rust: {}", path, e))?;
+                let mut rust_code =
+                    auto_lang_core::trans::rust::transpile_rust(fname.clone(), &content)
+                        .map_err(|e| format!("Failed to transpile '{}' to rust: {}", path, e))?;
 
                 let rs_content = rust_code.done()?;
                 if !rs_content.is_empty() {
@@ -109,7 +110,7 @@ impl TargetEffects for Target {
             } else if self.lang.as_str() == "ts" || self.lang.as_str() == "typescript" {
                 // TypeScript transpilation via a2ts
                 let ts_path = path.as_str().replace(".at", ".ts");
-                let result = auto_lang::trans_typescript(path.as_str());
+                let result = crate::trans_typescript(path.as_str());
                 match result {
                     Ok(msg) => info!("{}", msg),
                     Err(e) => {
@@ -512,10 +513,10 @@ fn scan_auto_dir(t: &Target, dir: &Path, files: &mut Vec<AutoStr>) {
 
 /// Plan 328: Generate Axum HTTP server code from #[api] endpoints.
 fn generate_api_server(t: &Target) -> Result<(), String> {
-    use auto_lang::api::targets::AxumGenerator;
-    use auto_lang::api::targets::TauriGenerator;
-    use auto_lang::api::ApiExtractor;
-    use auto_lang::api::ApiModule; // Plan 328 IPC
+    use auto_lang_core::api::targets::AxumGenerator;
+    use auto_lang_core::api::targets::TauriGenerator;
+    use auto_lang_core::api::ApiExtractor;
+    use auto_lang_core::api::ApiModule; // Plan 328 IPC
 
     // Collect #[api] endpoints from all .at source files
     let mut combined_module = ApiModule::new("api".to_string());
@@ -525,7 +526,7 @@ fn generate_api_server(t: &Target) -> Result<(), String> {
         let content = std::fs::read_to_string(path.as_str())
             .map_err(|e| format!("Failed to read '{}': {}", path, e))?;
         // Parse the source file to get AST
-        let mut parser = auto_lang::parser::Parser::new(&content);
+        let mut parser = auto_lang_core::parser::Parser::new(&content);
         let code = match parser.parse() {
             Ok(c) => c,
             Err(_) => continue, // skip unparseable files
@@ -609,7 +610,7 @@ fn transpile_rust_project_multi(t: &mut Target) -> AutoResult<()> {
     info!("Entry file: {}", entry.as_str());
 
     // Call transpile_rust_project() which discovers all modules
-    let files = auto_lang::trans::rust::transpile_rust_project(entry.as_str())
+    let files = auto_lang_core::trans::rust::transpile_rust_project(entry.as_str())
         .map_err(|e| format!("transpile_rust_project failed: {}", e))?;
 
     info!("Generated {} files", files.len());

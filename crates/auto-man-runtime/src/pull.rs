@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use auto_lang::parse;
-    use auto_lang::util::pretty;
+    use auto_lang_core::parse;
+    use auto_lang_core::util::pretty;
 
     #[test]
     fn test_read_config() {

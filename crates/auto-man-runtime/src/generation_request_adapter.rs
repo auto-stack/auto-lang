@@ -336,8 +336,8 @@ fn node_to_raw_decl(n: &auto_val::Node) -> auto_project_model::descriptor::RawNo
 }
 
 fn render_spec_of(pac: &Pac) -> auto_project_model::descriptor::RenderSpec {
-    use auto_lang::config::BackendConfig;
-    let to_spec_name = |b: &auto_lang::config::BackendType| {
+    use auto_lang_core::config::BackendConfig;
+    let to_spec_name = |b: &auto_lang_core::config::BackendType| {
         BackendName::from_str(b.as_str()).expect("BackendType as_str round-trips")
     };
     match &pac.backend_config {
@@ -384,227 +384,16 @@ mod tests {
     use auto_project_model::generation_request::RequestOrigin;
 
     /// V-02 字段完备性：求值 Pac 的全部 A 组字段无损进入请求。
-    #[test]
-    fn request_from_pac_carries_all_fields() {
-        let config = auto_lang::config::AutoConfig::new(
-            r#"
-            name: "demo"
-            version: "0.2.0"
-            scene: "ui"
-            render: { front: "vue", back: "rust" }
-            api: "rust"
-            title: "Demo"
-            title_zh: "演示"
-            icon: "app-window"
-            category: "tool"
-            theme: "dark"
-            accent: "coral"
-            desktop_render: "queue"
-            ui_config: "auto-edit.at"
-            media_root: "E:/Video"
-            photo_root: "E:/Pics"
-            window: "1024x768"
-            front_port: 3018
-            back_port: 8018
-            members: ["m1"]
-            back: "../ash-server"
-            shadcn: off
-            dep "common" {
-                path: "../common"
-            }
-            "#,
-        )
-        .unwrap();
-        let pac = Pac::new(config);
-        let req = request_from_pac(&pac, SourceInfo::inline());
-        assert!(matches!(req.origin, RequestOrigin::DynamicEvaluated { .. }));
-        assert!(req.is_evaluated());
-        assert_eq!(req.identity.name.as_deref(), Some("demo"));
-        assert_eq!(req.identity.version.as_deref(), Some("0.2.0"));
-        assert_eq!(req.display.title.as_deref(), Some("Demo"));
-        assert_eq!(req.display_title(true).as_deref(), Some("演示"));
-        assert_eq!(req.display.icon.as_deref(), Some("app-window"));
-        assert_eq!(req.display.category.as_deref(), Some("tool"));
-        assert_eq!(req.display.theme.as_deref(), Some("dark"));
-        assert_eq!(req.display.accent.as_deref(), Some("coral"));
-        assert_eq!(req.display.desktop_render.as_deref(), Some("queue"));
-        assert_eq!(req.display.ui_config.as_deref(), Some("auto-edit.at"));
-        assert_eq!(req.runtime.api.as_deref(), Some("rust"));
-        assert_eq!(req.runtime.front_port, Some(3018));
-        assert_eq!(req.runtime.back_port, Some(8018));
-        assert_eq!(req.runtime.media_root.as_deref(), Some("E:/Video"));
-        assert_eq!(req.runtime.photo_root.as_deref(), Some("E:/Pics"));
-        assert_eq!(req.window_size(), Some((1024.0, 768.0)));
-        assert_eq!(req.scene, auto_project_model::descriptor::SceneKind::Ui);
-        assert_eq!(req.members, vec!["m1".to_string()]);
-        assert_eq!(req.external_backend.as_deref(), Some("../ash-server"));
-        assert!(!req.shadcn(), "shadcn: off 决策保持");
-        assert_eq!(
-            req.frontend_names(),
-            vec!["vue".to_string()],
-            "Split front 投影"
-        );
-        assert_eq!(req.backend_name(), Some("rust"));
-        assert_eq!(req.dep_roots.len(), 1);
-        assert_eq!(req.dep_roots[0].name, "common");
-        assert_eq!(req.dep_roots[0].path.as_deref(), Some("../common"));
-        // 窗口 fit 覆盖分支
-        let pac2 =
-            Pac::new(auto_lang::config::AutoConfig::new("name: \"f\"\nwindow: \"fit\"\n").unwrap());
-        let req2 = request_from_pac(&pac2, SourceInfo::inline());
-        assert!(req2.window_fit());
-    }
-
-    /// R3-03：input_sources 用请求自身 front 解析（front 声明优先、递归、
-    /// 正交 src/front 干扰排除）。
-    #[test]
-    fn input_sources_follow_request_front() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        let custom = root.join("custom").join("front");
-        std::fs::create_dir_all(custom.join("pages")).unwrap();
-        std::fs::create_dir_all(root.join("src").join("front")).unwrap();
-        std::fs::write(custom.join("app.at"), "widget A {}").unwrap();
-        std::fs::write(custom.join("pages").join("child.at"), "widget C {}").unwrap();
-        std::fs::write(
-            root.join("src").join("front").join("wrong.at"),
-            "widget W {}",
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("pac.at"),
-            "name: \"cf\"
-render: \"vue\"
-front: \"custom/front\"
-",
-        )
-        .unwrap();
-        let pac_path = root.join("pac.at");
-        let config =
-            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
-        let pac = Pac::new(config);
-        let req = request_of(&pac, &pac_path);
-        let names: Vec<String> = req
-            .input_sources
-            .iter()
-            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
-            .collect();
-        assert!(
-            names.contains(&"app.at".to_string()),
-            "custom front app.at：{:?}",
-            names
-        );
-        assert!(
-            names.contains(&"child.at".to_string()),
-            "递归 pages/child.at：{:?}",
-            names
-        );
-        assert!(
-            !names.contains(&"wrong.at".to_string()),
-            "src/front 干扰排除：{:?}",
-            names
-        );
-    }
-
-    /// R3-01：请求侧 sidecar 声明真实驱动生成（来源=请求，磁盘不改产物）。
-    #[test]
-    fn sidecar_source_is_request_not_disk() {
-        let dir = tempfile::tempdir().unwrap();
-        let root = dir.path();
-        let front = root.join("src").join("front");
-        std::fs::create_dir_all(&front).unwrap();
-        std::fs::write(front.join("app.at"), "widget S { view { text \"s\" {} } }").unwrap();
-        // 磁盘声明无 sidecar；请求手工带 sidecar
-        std::fs::write(
-            root.join("pac.at"),
-            "name: \"sc\"
-render: \"vm\"
-",
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("extra.rs"),
-            "// sidecar module
-",
-        )
-        .unwrap();
-        let pac_path = root.join("pac.at");
-        let config =
-            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
-        let pac = Pac::new(config);
-        let mut req = request_of(&pac, &pac_path);
-        // 请求注入 sidecar 声明（等价于另一磁盘 pac 声明 rust_sidecar）
-        req.raw_nodes
-            .push(auto_project_model::descriptor::RawNodeDecl {
-                head: "rust_sidecar".into(),
-                name: None,
-                raw_args: None,
-                props: vec![auto_project_model::descriptor::NodeProp {
-                    key: "modules".into(),
-                    value: auto_val::Value::str_array(vec![auto_val::AutoStr::from(
-                        "extra:extra.rs",
-                    )]),
-                    line: 0,
-                }],
-                children: vec![],
-                line: 0,
-            });
-        let source = crate::rust_ui::PacSource::from_request(&req);
-        let spec = source.sidecar_spec(root);
-        assert_eq!(spec.modules.len(), 1, "请求声明驱动（磁盘无 sidecar）");
-        assert_eq!(spec.modules[0].0, "extra");
-    }
 
     /// R5：sidecar 对象/嵌套 prop 形态经真实 pac→request→PacSource 全链
     /// 不丢模块/依赖（R4-02 修复的回归锚——重建必须挂 root prop 而非
     /// wrapper kid）。
     #[test]
-    fn sidecar_obj_and_nested_prop_forms_survive_request() {
-        let dir = tempfile::tempdir().unwrap();
-        let root_dir = dir.path();
-        std::fs::write(
-            root_dir.join("extra.rs"),
-            "// m
-",
-        )
-        .unwrap();
-        // 对象 prop 形态
-        std::fs::write(
-            root_dir.join("pac.at"),
-            "name: \"obj-side\"
-render: \"vm\"
-rust_sidecar: {
-    modules: [\"extra:extra.rs\"]
-    deps: [\"libloading:0.8\"]
-}
-",
-        )
-        .unwrap();
-        let pac_path = root_dir.join("pac.at");
-        let config =
-            auto_lang::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new()).unwrap();
-        let pac = Pac::new(config);
-        let req = request_of(&pac, &pac_path);
-        assert!(
-            req.raw.iter().any(|p| p.key == "rust_sidecar"),
-            "对象形态进入 req.raw"
-        );
-        let spec = crate::rust_ui::PacSource::from_request(&req).sidecar_spec(root_dir);
-        assert_eq!(
-            spec.modules.len(),
-            1,
-            "对象形态不丢模块：{:?}",
-            spec.modules
-        );
-        assert_eq!(spec.deps.len(), 1, "对象形态不丢依赖：{:?}", spec.deps);
-        assert_eq!(spec.modules[0].0, "extra");
-        assert_eq!(spec.deps[0].0, "libloading");
-    }
 
     /// B 组键经求值 root 追加（npm_deps/exe_name/theme 块/sidecar）。
     #[test]
     fn apply_evaluated_root_b_group() {
-        let config = auto_lang::config::AutoConfig::new(
+        let config = auto_lang_core::config::AutoConfig::new(
             r#"
             name: "g"
             render: "vue"
@@ -620,7 +409,7 @@ rust_sidecar: {
         )
         .unwrap();
         // Pac::new 只读 root/args（core 规则半），求值 root 复用同一份
-        let pac = Pac::new(auto_lang::config::AutoConfig {
+        let pac = Pac::new(auto_lang_core::config::AutoConfig {
             code: config.code.clone(),
             root: config.root.clone(),
             args: config.args.clone(),

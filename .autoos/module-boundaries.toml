@@ -138,6 +138,12 @@ schema = "module-boundaries/1"
 # auto-ui-tools 静态链接/auto-man/auto-lang/UI；工具发现归 T-04
 # （闭包由 test/fixtures/modularity/tool-client-consumer 钉住）。
 "auto-tool-client" = "man-ecosystem"
+# PLAN-816 T-03：非 UI 管理服务/执行实现（自 auto-man 析出：pac/target/
+# resolver/builder/git/lock/http_service/automan 编排等；语言面走
+# auto-lang-core、进程面走 auto-tool-execution、UI 经 UiOps seam 由
+# auto-man compat 注入）。闭包无 auto-lang 兼容大包/auto-ui-*；
+# auto-man 变为其纯 re-export 门面（Pac/Target/Automan 单源在此）。
+"auto-man-runtime" = "man-ecosystem"
 # PLAN-815 T-04: API 生成核心（api_gen/sidecar/rust_workspace 单算法，
 # 自 auto-man 析出；owner=lang-service-adapter——man 域(http_service)与
 # ui 域(auto-ui-tools)双消费的最低层，落 man-ecosystem）。

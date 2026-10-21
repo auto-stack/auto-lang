@@ -5,7 +5,7 @@ use crate::target::TargetKind;
 use crate::Pac; // Changed from crate::pac::Pac (pac.rs not migrated yet)
 use crate::{AutoResult, Dir};
 use auto_gen::*;
-use auto_lang::Atom;
+use auto_lang_core::atom::Atom;
 use auto_val::{AutoPath, AutoStr};
 use log::*;
 

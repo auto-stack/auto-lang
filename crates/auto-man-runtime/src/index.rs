@@ -1,4 +1,4 @@
-use auto_lang::config::AutoConfig;
+use auto_lang_core::config::AutoConfig;
 use auto_val::{AutoPath, AutoResult, AutoStr, Kid};
 use std::collections::HashMap;
 use std::fmt;

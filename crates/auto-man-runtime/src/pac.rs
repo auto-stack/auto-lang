@@ -10,8 +10,8 @@ use crate::Port;
 use crate::TargetOrigin;
 use crate::{Index, PacInfo};
 use crate::{Target, TargetKind, TargetStatus};
-use auto_lang::config::{AutoConfig, BackendConfig, BackendType};
-use auto_lang::Atom;
+use auto_lang_core::atom::Atom;
+use auto_lang_core::config::{AutoConfig, BackendConfig, BackendType};
 use auto_man_core as core_;
 use auto_val::pretty;
 use auto_val::shared;
@@ -130,9 +130,9 @@ pub struct Pac {
 
     /// PLAN-601 T-03：theme{} 块声明（extends/mode/colors；Design 29 §4.2）。
     /// 标量 `theme: "dark"|"light"` 仍走 458 链路不动；块形态在此承载原始
-    /// 声明，消费端经 `auto_lang::design_tokens::decl::compose` 合成后
+    /// 声明，消费端经 `auto_lang_core::design_tokens::decl::compose` 合成后
     /// `set_theme_composed` 应用（词表/值校验在 compose 层）。
-    pub theme_decl: Option<auto_lang::design_tokens::decl::ThemeDecl>,
+    pub theme_decl: Option<auto_lang_core::design_tokens::decl::ThemeDecl>,
 
     /// Plan 458: UI accent (theme primary color) preset name, declared as
     /// `accent: "indigo" | "coral" | "ocean" | "sage" | "amber"` in pac.at.
@@ -218,7 +218,7 @@ impl Pac {
         let theme_decl =
             decl.theme_decl
                 .as_ref()
-                .map(|d| auto_lang::design_tokens::decl::ThemeDecl {
+                .map(|d| auto_lang_core::design_tokens::decl::ThemeDecl {
                     name: d.name.clone(),
                     extends: d.extends.clone(),
                     mode: d.mode.clone(),
@@ -1421,7 +1421,7 @@ theme: { }
             toolchain: "arm-none-eabi-gcc"
         }
         "#;
-        let config = auto_lang::config::AutoConfig::new(code).expect("failed to parse pac.at");
+        let config = auto_lang_core::config::AutoConfig::new(code).expect("failed to parse pac.at");
         let pac = Pac::new(config);
 
         assert_eq!(pac.name, "sensor_hub");

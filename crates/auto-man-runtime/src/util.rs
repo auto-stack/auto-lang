@@ -16,11 +16,6 @@ pub fn hash_file(path: &Path) -> std::io::Result<u64> {
     ))
 }
 
-pub use auto_ui_tools::util::{
-    hash_string, http_base_url, http_port, kill_process_on_port, parse_tasklist_name,
-    should_skip_kill,
-};
-
 pub fn split_first(in_string: &str, sep: char) -> (&str, &str) {
     let mut splitter = in_string.splitn(2, sep);
     let first = splitter.next().unwrap();
@@ -86,7 +81,7 @@ pub fn select_or_default_port(
 /// 3. Non-TTY → auto-select first
 /// 4. Print numbered list, read number input from user
 pub fn select_backend(
-    frontends: &[auto_lang::config::BackendType],
+    frontends: &[auto_lang_core::config::BackendType],
     action: &str,
 ) -> AutoResult<usize> {
     // 1. Auto-select if only one option
@@ -182,4 +177,36 @@ mod tests {
         assert_eq!(first, "assets/templates/lib");
         assert_eq!(second, "mylib.h");
     }
+}
+
+/// Transpile AutoLang file to TypeScript（PLAN-816 T-03：语言 adapter 面——
+/// 与外层 auto-lang 的历史包装同构，全部算法经 auto-lang-core 公开面：
+/// Parser/TypeScriptTrans/ts_runtime；供 target.ts 臂消费）。
+pub fn trans_typescript(path: &str) -> AutoResult<String> {
+    use auto_lang_core::parser::Parser;
+    use auto_lang_core::trans::typescript::ts_runtime;
+    use auto_lang_core::trans::typescript::TypeScriptTrans;
+
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {e}"))?;
+    let tsname = path.replace(".at", ".ts");
+    let fname = auto_val::AutoPath::new(path).filename();
+
+    let mut parser = Parser::from(code.as_str());
+    let ast = parser.parse().map_err(|e| e.to_string())?;
+    let mut sink = auto_lang_core::trans::Sink::new(fname.clone());
+    let mut trans = TypeScriptTrans::new(fname);
+    use auto_lang_core::trans::Trans as _;
+    trans.trans(ast, &mut sink)?;
+
+    std::fs::write(&tsname, sink.done()?.clone())?;
+
+    if trans.needs_range || trans.needs_print {
+        let runtime_dir = std::path::Path::new(path)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+        let runtime_path = runtime_dir.join("runtime.ts");
+        std::fs::write(&runtime_path, ts_runtime::runtime_file_content())?;
+    }
+
+    Ok(format!("[trans] {} -> {}", path, tsname))
 }

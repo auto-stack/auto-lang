@@ -948,6 +948,10 @@ fn run_command_live(cmd: &str, args: &[&str], cwd: &std::path::Path) -> Result<(
 }
 
 fn main() -> Result<()> {
+    // PLAN-816 T-03: 安装管理服务的 UI seam（runtime 编排的 UI 臂经 compat
+    // 门面回调 auto-ui-tools/残留;未安装时 UI 臂具名失败,非 UI 路径不受影响）。
+    auto_man::compat::install_default_ui_ops();
+
     let cli = Cli::parse();
 
     // The binary is linked with a 4MB stack (see build.rs) so the main thread

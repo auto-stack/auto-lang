@@ -15,7 +15,7 @@
 
 use crate::pac::{Pac, Scene};
 use crate::TargetKind;
-use auto_lang::config::{AutoConfig, BackendConfig};
+use auto_lang_core::config::{AutoConfig, BackendConfig};
 use auto_project_model::{
     parse_document as model_parse, ErrorStage, ProjectDescriptor, RenderSpec, SceneKind,
     SourceInfo, WindowSpec,
@@ -726,7 +726,7 @@ mod tests {
         let code = std::fs::read_to_string(fixture("static-nested-objects.pac.at")).unwrap();
         std::fs::write(tmp.join("pac.at"), &code).unwrap();
         // legacy behavior
-        let legacy = auto_lang::config::external_backend_dir(&tmp)
+        let legacy = auto_lang_core::config::external_backend_dir(&tmp)
             .expect("legacy external_backend_dir resolves");
         // model declaration + documented base point (the pac.at's own dir)
         let d = auto_project_model::parse_file(&tmp.join("pac.at")).unwrap();

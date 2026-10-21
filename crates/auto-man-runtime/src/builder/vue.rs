@@ -36,10 +36,11 @@ impl Builder for VueBuilder {
         }
 
         let project_dir = self.project_dir();
-        let pm = crate::pkg::display_name();
+        let pm = crate::ui_ops::current().pkg_display_name();
 
         println!("Running {} run build in {}...", pm, project_dir.display());
-        crate::pkg::run_script("build", &[], project_dir)
+        crate::ui_ops::current()
+            .pkg_run_script("build", &[], project_dir)
             .map_err(|e| format!("{} run build failed: {}", pm, e))?;
 
         println!("Vue project built successfully!");
@@ -77,11 +78,12 @@ impl Builder for VueBuilder {
 
         if !self.memory_output_enabled {
             let project_dir = self.project_dir();
-            let pm = crate::pkg::display_name();
+            let pm = crate::ui_ops::current().pkg_display_name();
 
             println!("Starting Vue dev server...");
             let args_str: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            crate::pkg::run_script("dev", &args_str, project_dir)
+            crate::ui_ops::current()
+                .pkg_run_script("dev", &args_str, project_dir)
                 .map_err(|e| format!("{} run dev failed: {}", pm, e))?;
         }
         Ok(())

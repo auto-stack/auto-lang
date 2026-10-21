@@ -10,9 +10,9 @@
 // 行扫描（prepare_env/load_pac_at）与 Pac/Super/None 前缀对
 // FilesystemResolver 的委托留在此 adapter。
 
-use auto_lang::ast::{ModulePath, PathPrefix};
-use auto_lang::mode::ExecutionMode;
-use auto_lang::resolver::ModuleResolver;
+use auto_lang_core::ast::{ModulePath, PathPrefix};
+use auto_lang_core::mode::ExecutionMode;
+use auto_lang_core::resolver::ModuleResolver;
 use auto_package_resolver::PackageResolverCore;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -287,7 +287,7 @@ impl AutoManResolver {
             // For other prefixes, use the package root
             PathPrefix::Pac | PathPrefix::Super(_) | PathPrefix::None => {
                 // Delegate to base resolver logic
-                let base_resolver = auto_lang::resolver::FilesystemResolver::with_package_root(
+                let base_resolver = auto_lang_core::resolver::FilesystemResolver::with_package_root(
                     self.core.project_root().to_path_buf(),
                 );
                 base_resolver.resolve_with_prefix(module_path, current_file)
@@ -574,7 +574,7 @@ use std.fs
 
     #[test]
     fn test_parse_pac_at_with_mode() {
-        use auto_lang::mode::ExecutionMode;
+        use auto_lang_core::mode::ExecutionMode;
         use std::fs;
 
         let temp_dir = std::env::temp_dir();
@@ -612,7 +612,7 @@ use std.io
 
     #[test]
     fn test_parse_pac_at_with_rust_mode() {
-        use auto_lang::mode::ExecutionMode;
+        use auto_lang_core::mode::ExecutionMode;
         use std::fs;
 
         let temp_dir = std::env::temp_dir();
@@ -688,7 +688,7 @@ use std.io
 #[cfg(test)]
 mod plan131_dep_tests {
     use super::*;
-    use auto_lang::ast::ModulePath;
+    use auto_lang_core::ast::ModulePath;
     use auto_val::AutoStr;
     use std::fs;
     use tempfile::TempDir;
@@ -1017,7 +1017,7 @@ dep database(path: "../database")"#,
 #[cfg(test)]
 mod plan800_tests {
     use super::*;
-    use auto_lang::ast::ModulePath;
+    use auto_lang_core::ast::ModulePath;
     use auto_val::AutoStr;
     use std::fs;
     use tempfile::TempDir;

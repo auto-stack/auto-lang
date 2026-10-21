@@ -1,6 +1,6 @@
 use crate::util::split_last;
 use crate::{AutoError, AutoResult};
-use auto_lang::interpreter::AutoInterpreter;
+use auto_lang_core::interpreter::AutoInterpreter;
 use auto_man_assets::{plan_template_family, GhsAssets, IarAssets, TemplateAssets};
 use auto_val::AutoStr;
 use auto_val::Value;
