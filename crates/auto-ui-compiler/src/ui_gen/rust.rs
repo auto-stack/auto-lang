@@ -55,6 +55,19 @@
 //! Based on auto-ui/trans/rust_gen.rs, adapted for AuraWidget input.
 
 use super::{BackendGenerator, GenError, GenResult};
+
+/// 比较操作数表达式的解析类型（PLAN-814 R12，R9-01 终局收口）：宽度
+/// Option 为 None=字面量弹性（int 默认 i32、float 默认 f64；与声明宽度
+/// 组合时跟随声明侧——Rust 无类型字面量的推断同源语义）。
+#[derive(Clone, Copy, PartialEq)]
+enum OperandTy {
+    Bool,
+    Int(Option<&'static str>),
+    Float(Option<&'static str>),
+    Str,
+    Unknown,
+}
+
 use crate::aura::{
     AuraEvent, AuraMsgVariant, AuraNode, AuraPropValue, AuraTextContent, AuraWidget, LogicPayload,
 };
@@ -8635,11 +8648,24 @@ impl RustGenerator {
     /// 后随比较运算符（LHS 位）或前导比较运算符（RHS 位）时属**值比较位**
     /// 而非纯条件位——truthy 包裹会产出 `bool == "1"` 型错；改走
     /// as_str().unwrap_or_default() 值投影（保迁移前比较语义）。
+    /// R12（R9-01）：字段自身的透明分组括号跨过再判（`( p.rank ) > .limit`
+    /// 仍是比较位）；调用实参括号（`len( p.tags )`——闭括号匹配的 `(` 前邻
+    /// 是标识符）不是分组，停在原地保持 truthy（实参位非值比较位）。
     fn comparison_context(bytes: &[u8], ident_start: usize, field_end: usize) -> bool {
-        // LHS：后随比较运算符。
+        // LHS：后随比较运算符（透明跨过字段自身的分组闭括号）。
         let mut j = field_end;
-        while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
-            j += 1;
+        loop {
+            while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
+                j += 1;
+            }
+            if j < bytes.len()
+                && bytes[j] == b')'
+                && Self::closes_transparent_group(bytes, ident_start, j)
+            {
+                j += 1;
+                continue;
+            }
+            break;
         }
         if j + 1 < bytes.len() && bytes[j] == b'=' && bytes[j + 1] == b'=' {
             return true;
@@ -8650,10 +8676,17 @@ impl RustGenerator {
         if j < bytes.len() && (bytes[j] == b'<' || bytes[j] == b'>') {
             return true;
         }
-        // RHS：前导比较运算符。
+        // RHS：前导比较运算符（对称跨过字段自身的分组开括号）。
         let mut k = ident_start;
-        while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
-            k -= 1;
+        loop {
+            while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
+                k -= 1;
+            }
+            if k >= 1 && bytes[k - 1] == b'(' && Self::opens_transparent_group(bytes, k - 1) {
+                k -= 1;
+                continue;
+            }
+            break;
         }
         if k >= 2 && bytes[k - 1] == b'=' && bytes[k - 2] != b'=' && bytes[k - 2] != b'!' {
             // `x >=`/`<=` 形（前导符为 < 或 >）与 `==`（前导 =）皆命中
@@ -8674,174 +8707,337 @@ impl RustGenerator {
         false
     }
 
-    /// 比较位另一操作数的类型（PLAN-814 R9-F01/R10/R11：比较投影按
-    /// 真实类型分流——`p.dirty == true`→bool、`p.rank > 3`→int、
-    /// `p.score > 0.5`→float、`p.rank > -1`（负数同型）→int、
-    /// `p.running == "1"`→str；R11 起已声明状态引用 `.limit` 按
-    /// state_types 声明型分流、透明分组括号不改变类型；形状已知字段
-    /// 不走此路径）。
+    /// `(`（位置 pos）是透明分组括号而非调用实参括号：其前邻非空白字符
+    /// 不是标识符/闭括号/闭下标（`len(` 是调用；`> (`、`&& (`、串首、
+    /// `((` 内层是分组）。
+    fn opens_transparent_group(bytes: &[u8], pos: usize) -> bool {
+        let mut i = pos;
+        while i > 0 && (bytes[i - 1] == b' ' || bytes[i - 1] == b'\t') {
+            i -= 1;
+        }
+        i == 0
+            || !(bytes[i - 1].is_ascii_alphanumeric()
+                || bytes[i - 1] == b'_'
+                || bytes[i - 1] == b')'
+                || bytes[i - 1] == b']')
+    }
+
+    /// `)`（位置 close_pos）闭括号包裹的是 [ident_start, close_pos) 的
+    /// 访问（而非把访问作为实参的调用）：回扫其配对 `(`，须落在访问之前
+    /// 且本身是分组括号。
+    fn closes_transparent_group(bytes: &[u8], ident_start: usize, close_pos: usize) -> bool {
+        let mut depth = 1usize;
+        let mut i = close_pos;
+        while i > 0 {
+            i -= 1;
+            match bytes[i] {
+                b')' => depth += 1,
+                b'(' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return i < ident_start && Self::opens_transparent_group(bytes, i);
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// 比较位另一操作数的类型（PLAN-814 R9-F01/R10/R11/R12：比较投影按
+    /// 真实类型分流；R12 起不再取紧邻 token——解析另一侧操作数的
+    /// **完整表达式类型**（字面量/已声明状态引用/一元符号/顶层四则
+    /// 宽度合并/透明分组剥壳），左右位对称。返回类别串协议不变：
+    /// bool/int/float/f32/u32/i64/u64/str（str=默认与字符串）；形状已知
+    /// 字段不走此路径。
     fn comparison_operand_type(
         &self,
         bytes: &[u8],
         ident_start: usize,
         field_end: usize,
     ) -> &'static str {
-        // 取访问另一侧的操作数 token（跳过比较运算符与空白；含符号位
-        // `-`/`+` 与小数点，R10 反例：负整数/浮点不是 str）。
-        let is_token_char = |c: u8| {
-            c.is_ascii_alphanumeric()
-                || c == b'_'
-                || c == b'"'
-                || c == b'.'
-                || c == b'-'
-                || c == b'+'
+        let span = self
+            .operand_span_before(bytes, ident_start)
+            .or_else(|| self.operand_span_after(bytes, ident_start, field_end));
+        let ty = match span {
+            Some((s, e)) => {
+                self.classify_operand_expr(std::str::from_utf8(&bytes[s..e]).unwrap_or(""))
+            }
+            None => OperandTy::Unknown,
         };
-        let token: Vec<u8> = {
-            // RHS 侧（比较符在访问之前）：先跳过运算符，再向前取 token。
-            let mut back = Vec::new();
-            let mut k = ident_start;
+        match ty {
+            OperandTy::Bool => "bool",
+            OperandTy::Int(Some("i32")) | OperandTy::Int(None) => "int",
+            OperandTy::Int(Some(w)) => w,
+            OperandTy::Float(Some("f32")) => "f32",
+            OperandTy::Float(_) => "float",
+            OperandTy::Str | OperandTy::Unknown => "str",
+        }
+    }
+
+    /// 访问前邻是比较运算符时，取运算符之前操作数的完整区间（R12：区间
+    /// 而非紧邻 token——算式/分组整体属于同一操作数）。裸 `!`（负非）与
+    /// 单 `=` 不是比较符，返回 None 回退后向判定。
+    fn operand_span_before(&self, bytes: &[u8], ident_start: usize) -> Option<(usize, usize)> {
+        let mut k = ident_start;
+        // 字段自身的透明分组开括号跨过再找运算符（`.limit < ( p.rank )`）。
+        loop {
             while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
                 k -= 1;
             }
-            if k >= 1
-                && (bytes[k - 1] == b'='
-                    || bytes[k - 1] == b'!'
-                    || bytes[k - 1] == b'<'
-                    || bytes[k - 1] == b'>')
-            {
-                // 跳过运算符（1..2 字符，如 `==`/`!=`/`<=`/`>=`）。
+            if k >= 1 && bytes[k - 1] == b'(' && Self::opens_transparent_group(bytes, k - 1) {
                 k -= 1;
-                if k >= 1 && matches!(bytes[k - 1], b'=' | b'!' | b'<' | b'>') {
-                    k -= 1;
-                }
-                while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
-                    k -= 1;
-                }
-                // R11（R9-01 收口）：透明分组——`)` 包裹不改变操作数类型，
-                // 跨过（含嵌套与内部空白）再回扫 token。
-                while k > 0 && bytes[k - 1] == b')' {
-                    k -= 1;
-                    while k > 0 && (bytes[k - 1] == b' ' || bytes[k - 1] == b'\t') {
-                        k -= 1;
-                    }
-                }
-                let mut m = k;
-                while m > 0 && is_token_char(bytes[m - 1]) {
-                    m -= 1;
-                }
-                if m < k {
-                    back.extend_from_slice(&bytes[m..k]);
-                }
-                // R10：一元负号与数字间可含空白（`- 1`）——符号单独成
-                // token 时继续向前跨空白收数字部分。
-                if back == b"-" || back == b"+" {
-                    let mut m2 = m;
-                    while m2 > 0 && (bytes[m2 - 1] == b' ' || bytes[m2 - 1] == b'\t') {
-                        m2 -= 1;
-                    }
-                    while m2 > 0 && is_token_char(bytes[m2 - 1]) {
-                        m2 -= 1;
-                    }
-                    if m2 < m {
-                        back.extend_from_slice(&bytes[m2..m]);
-                    }
-                }
+                continue;
             }
-            // LHS 侧（比较符在访问之后）：向后取 token。
-            let mut fwd = Vec::new();
-            let mut j = field_end;
+            break;
+        }
+        let op_len = match bytes.get(k.wrapping_sub(1)).copied() {
+            Some(b'<') | Some(b'>') => 1,
+            Some(b'=') if k >= 2 && matches!(bytes[k - 2], b'=' | b'!' | b'<' | b'>') => 2,
+            _ => return None,
+        };
+        let mut end = k - op_len;
+        while end > 0 && (bytes[end - 1] == b' ' || bytes[end - 1] == b'\t') {
+            end -= 1;
+        }
+        if end == 0 {
+            return None;
+        }
+        // 回扫操作数区间：深度计数跨过分组/调用括号，顶层停在
+        // `&&`/`||`/`,`/`{`/`}`/`;` 或未配对的 `(`。
+        let mut depth = 0usize;
+        let mut start = end;
+        while start > 0 {
+            match bytes[start - 1] {
+                b')' => depth += 1,
+                b'(' => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                b'&' | b'|' if depth == 0 && start >= 2 && bytes[start - 2] == bytes[start - 1] => {
+                    break;
+                }
+                b',' | b'{' | b'}' | b';' if depth == 0 => break,
+                _ => {}
+            }
+            start -= 1;
+        }
+        Some((start, end))
+    }
+
+    /// 访问后随是比较运算符时，取运算符之后操作数的完整区间（对称；
+    /// 运算符可在字段自身分组闭括号之后——`( p.rank ) > .limit`）。
+    fn operand_span_after(
+        &self,
+        bytes: &[u8],
+        ident_start: usize,
+        field_end: usize,
+    ) -> Option<(usize, usize)> {
+        let mut j = field_end;
+        // 字段自身的透明分组闭括号跨过再找运算符。
+        loop {
             while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
                 j += 1;
             }
             if j < bytes.len()
-                && (bytes[j] == b'=' || bytes[j] == b'!' || bytes[j] == b'<' || bytes[j] == b'>')
+                && bytes[j] == b')'
+                && Self::closes_transparent_group(bytes, ident_start, j)
             {
-                // 跳过运算符（1..2 字符）。
                 j += 1;
-                if j < bytes.len() && bytes[j] == b'=' {
-                    j += 1;
-                }
-                while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
-                    j += 1;
-                }
-                // R11（R9-01 收口）：透明分组——`(` 包裹不改变操作数类型，
-                // 跨过（含嵌套与内部空白）再取 token。
-                while j < bytes.len() && bytes[j] == b'(' {
-                    j += 1;
-                    while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
-                        j += 1;
-                    }
-                }
-                while j < bytes.len() && is_token_char(bytes[j]) {
-                    fwd.push(bytes[j]);
-                    j += 1;
-                }
-                // R10：AST 下形的一元负号与数字间可含空白（`- 1`）——
-                // 符号单独成 token 时继续跨空白收数字部分。
-                if fwd == b"-" || fwd == b"+" {
-                    while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t') {
-                        j += 1;
-                    }
-                    while j < bytes.len() && is_token_char(bytes[j]) {
-                        fwd.push(bytes[j]);
-                        j += 1;
-                    }
-                }
+                continue;
             }
-            if !back.is_empty() {
-                back
-            } else {
-                fwd
+            break;
+        }
+        let op_len = match bytes.get(j).copied() {
+            Some(b'<') | Some(b'>') => 1,
+            Some(b'=') if j + 1 < bytes.len() && bytes[j + 1] == b'=' => 2,
+            Some(b'!') if j + 1 < bytes.len() && bytes[j + 1] == b'=' => 2,
+            _ => return None,
+        };
+        let mut start = j + op_len;
+        while start < bytes.len() && (bytes[start] == b' ' || bytes[start] == b'\t') {
+            start += 1;
+        }
+        if start >= bytes.len() {
+            return None;
+        }
+        let mut depth = 0usize;
+        let mut end = start;
+        while end < bytes.len() {
+            match bytes[end] {
+                b'(' => depth += 1,
+                b')' => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                b'&' | b'|'
+                    if depth == 0 && end + 1 < bytes.len() && bytes[end + 1] == bytes[end] =>
+                {
+                    break;
+                }
+                b',' | b'{' | b'}' | b';' if depth == 0 => break,
+                _ => {}
             }
-        };
-        if token.is_empty() {
-            return "str";
+            end += 1;
         }
-        let t = token.as_slice();
-        if t == b"true" || t == b"false" {
-            return "bool";
-        }
-        // R11（R9-01 收口）：已声明状态引用（`.limit` 形）按声明型分流，
-        // 不再回落 str（R10 数字收窄把点前缀 token 从旧 int 分类挤出的
-        // 修复回归）。未声明或 String/Value 等不命中，继续字面量分流。
-        if let Some(cls) = self.declared_operand_class(t) {
-            return cls;
-        }
-        // 数字（含符号/小数点）：含小数点 → float，否则 int。
-        let digits: &[u8] = if t[0] == b'-' || t[0] == b'+' {
-            &t[1..]
-        } else {
-            t
-        };
-        if !digits.is_empty() && digits.iter().all(|c| c.is_ascii_digit() || *c == b'.') {
-            return if digits.contains(&b'.') {
-                "float"
-            } else {
-                "int"
-            };
-        }
-        "str"
+        Some((start, end))
     }
 
-    /// 比较操作数 token 是已声明状态引用（`.limit` 形）时，按 state_types
-    /// 声明型返回比较类别（PLAN-814 R11：i32→"int"（与字面量 int 同域，
-    /// 投影 as i32）、f64→"float"（与字面量 float 同域，投影 as_f64）、
-    /// bool→"bool"；**非默认宽度** f32/u32/i64/u64 原样返回宽度名——投影
-    /// 跟随声明宽度，否则定宽投影与声明侧 E0308）。未声明、String、Value
-    /// 或其他复合型返回 None——由字面量分流接管，默认 str 语义保持
-    /// （`.wanted` 字符串状态比较不受影响）。
-    fn declared_operand_class(&self, token: &[u8]) -> Option<&'static str> {
-        let name = std::str::from_utf8(token).ok()?.strip_prefix('.')?;
-        match self.state_types.get(name).map(|s| s.as_str()) {
-            Some("bool") => Some("bool"),
-            Some("i32") => Some("int"),
-            Some("f64") => Some("float"),
-            Some("f32") => Some("f32"),
-            Some("u32") => Some("u32"),
-            Some("i64") => Some("i64"),
-            Some("u64") => Some("u64"),
-            _ => None,
+    /// 操作数表达式的类型解析（R12）：透明分组剥壳 → 一元符号（数值型
+    /// 保持宽度）→ 顶层四则合并 → 单项（bool/str 字面量、`.name` 声明
+    /// 引用、数字字面量）。非数值混型/未识别形态 → Unknown（默认 str
+    /// 投影，与旧默认语义一致）。
+    fn classify_operand_expr(&self, s: &str) -> OperandTy {
+        let s = s.trim();
+        if s.is_empty() {
+            return OperandTy::Unknown;
         }
+        let b = s.as_bytes();
+        if b[0] == b'(' && b[b.len() - 1] == b')' && Self::balanced_wraps(b) {
+            return self.classify_operand_expr(&s[1..s.len() - 1]);
+        }
+        if b[0] == b'-' || b[0] == b'+' {
+            return match self.classify_operand_expr(&s[1..]) {
+                OperandTy::Int(w) => OperandTy::Int(w),
+                OperandTy::Float(w) => OperandTy::Float(w),
+                _ => OperandTy::Unknown,
+            };
+        }
+        if let Some((l, r)) = Self::split_top_arith(s) {
+            let lt = self.classify_operand_expr(l);
+            let rt = self.classify_operand_expr(r);
+            return Self::combine_arith(lt, rt);
+        }
+        if s == "true" || s == "false" {
+            return OperandTy::Bool;
+        }
+        if b[0] == b'"' {
+            return OperandTy::Str;
+        }
+        if let Some(name) = s.strip_prefix('.') {
+            // 纯状态引用（`.limit`）；`.a.b`/方法链查表不中 → Unknown。
+            if !name.is_empty() && name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_') {
+                return self.state_ref_ty(name);
+            }
+            return OperandTy::Unknown;
+        }
+        if b.iter().all(|c| c.is_ascii_digit() || *c == b'.') {
+            return if b.contains(&b'.') {
+                OperandTy::Float(None)
+            } else {
+                OperandTy::Int(None)
+            };
+        }
+        OperandTy::Unknown
+    }
+
+    /// `.name` 状态引用按 state_types 声明环境取型（R11 宽度语义保持：
+    /// i32/f64/bool 与同名字面量域一致；u32/i64/u64/f32 保留声明宽度）。
+    /// String/Value/未声明 → Unknown（默认 str 语义保持）。
+    fn state_ref_ty(&self, name: &str) -> OperandTy {
+        match self.state_types.get(name).map(|s| s.as_str()) {
+            Some("bool") => OperandTy::Bool,
+            Some("i32") => OperandTy::Int(Some("i32")),
+            Some("u32") => OperandTy::Int(Some("u32")),
+            Some("i64") => OperandTy::Int(Some("i64")),
+            Some("u64") => OperandTy::Int(Some("u64")),
+            Some("f32") => OperandTy::Float(Some("f32")),
+            Some("f64") => OperandTy::Float(Some("f64")),
+            _ => OperandTy::Unknown,
+        }
+    }
+
+    /// 顶层四则类型的合并：float 支配（任一 f64 → f64；仅 f32 声明 → f32；
+    /// 纯字面量 → f64 默认——与 Rust 无类型字面量跟随声明侧的推断同源）；
+    /// int 取更宽；int⊕float 取 float 宽度；bool/str/未知混型 → Unknown。
+    fn combine_arith(l: OperandTy, r: OperandTy) -> OperandTy {
+        match (l, r) {
+            (OperandTy::Int(a), OperandTy::Int(b)) => OperandTy::Int(match (a, b) {
+                (Some(x), Some(y)) => Some(Self::wider_int(x, y)),
+                (Some(x), None) | (None, Some(x)) => Some(x),
+                (None, None) => None,
+            }),
+            (OperandTy::Float(a), OperandTy::Float(b)) => OperandTy::Float(match (a, b) {
+                (Some("f64"), _) | (_, Some("f64")) => Some("f64"),
+                (Some(_), Some(_)) => Some("f32"),
+                (Some(w), None) | (None, Some(w)) => Some(w),
+                (None, None) => None,
+            }),
+            (OperandTy::Int(_), OperandTy::Float(f)) | (OperandTy::Float(f), OperandTy::Int(_)) => {
+                OperandTy::Float(f)
+            }
+            _ => OperandTy::Unknown,
+        }
+    }
+
+    fn wider_int(a: &'static str, b: &'static str) -> &'static str {
+        let rank = |w: &str| match w {
+            "u64" => 4,
+            "i64" => 3,
+            "u32" => 2,
+            _ => 1,
+        };
+        if rank(a) >= rank(b) {
+            a
+        } else {
+            b
+        }
+    }
+
+    /// 首尾括号是否配对包裹整个表达式（`( a ) + ( b )` 不是包裹）。
+    fn balanced_wraps(b: &[u8]) -> bool {
+        let mut depth = 0usize;
+        for (i, &c) in b.iter().enumerate() {
+            match c {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return i == b.len() - 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+        false
+    }
+
+    /// 顶层（括号外）二元四则分隔：`+`/`-`/`*`/`/` 前邻非空白字符是项尾
+    /// （标识符/闭括号/串字面量/数字）才是分隔符；串首或跟在开括号后的
+    /// 是一元符号不算。
+    fn split_top_arith(s: &str) -> Option<(&str, &str)> {
+        let b = s.as_bytes();
+        let mut depth = 0usize;
+        for i in 0..b.len() {
+            match b[i] {
+                b'(' => depth += 1,
+                b')' => depth = depth.saturating_sub(1),
+                b'+' | b'-' | b'*' | b'/' if depth == 0 => {
+                    let mut p = i;
+                    while p > 0 && (b[p - 1] == b' ' || b[p - 1] == b'\t') {
+                        p -= 1;
+                    }
+                    if p == 0 {
+                        continue;
+                    }
+                    let prev = b[p - 1];
+                    if prev.is_ascii_alphanumeric()
+                        || prev == b'_'
+                        || prev == b')'
+                        || prev == b'"'
+                        || prev == b'.'
+                    {
+                        return Some((&s[..i], &s[i + 1..]));
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     /// Convert AURA condition to Rust expression
