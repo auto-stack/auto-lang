@@ -8,7 +8,7 @@
 |---|---|
 | worktree / branch | `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev` |
 | base | master `f6e07acee`（M814-A 合入点） |
-| B 阶段提交链 | `4949c1a45`（T-04 主体）→ `49835196b`（T-04 收口）→ `30d397a13`+`a2fdef7f3`（777）→ `872a1b2c2`（fmt）→ `a75c616f5`（T-05）→ `26b8b33bd`（T-06）→ `257e02454`（T-07）→ `463fd029c`+`8afba8d01`（T-08 边修复+基线）→ `e1c0f4770`（T-08 生成器修复）→ `780415083`（T-08 driver 断言）→ `6063b7a94`（R8-F03 健康修复批）→ `236827f1c`（R9-F01..04 修复批）→ `2f83c4270`+`49206c699`（R10 修复+基线）→ `1bbf98620`（R11 修复）→ `feae28e0f`（R12 修复：表达式类型解析器+字段分组透明） |
+| B 阶段提交链 | `4949c1a45`（T-04 主体）→ `49835196b`（T-04 收口）→ `30d397a13`+`a2fdef7f3`（777）→ `872a1b2c2`（fmt）→ `a75c616f5`（T-05）→ `26b8b33bd`（T-06）→ `257e02454`（T-07）→ `463fd029c`+`8afba8d01`（T-08 边修复+基线）→ `e1c0f4770`（T-08 生成器修复）→ `780415083`（T-08 driver 断言）→ `6063b7a94`（R8-F03 健康修复批）→ `236827f1c`（R9-F01..04 修复批）→ `2f83c4270`+`49206c699`（R10 修复+基线）→ `1bbf98620`（R11 修复）→ `feae28e0f`（R12 修复：表达式类型解析器+字段分组透明）→ `42a4ef792`（R13 修复：`<=`/`>=` 整体消费+布尔取反传播+逻辑组合） |
 | 依赖 | auto-down `c39ac7f`（未变，组内兄弟 detached） |
 
 ## 2. B 阶段交付事实（T-04..T-08）
@@ -61,7 +61,7 @@
 |---|---|---|
 | V-01 纯 SDK/单源 | ✅ | 四真实消费者（auto-vm/gen/playground/a2r-actor-tests）闭包零 UI 零旧包；language-sdk-consumer 5/5；SDK 三边 0 UI（每任务复钉）；SDK 1631/1631 |
 | V-02 兼容/装配 | ✅ | V-02 pin 4 测试（Parser 17 字段/构造族/方言、桥 17 方法、VM/NativeInterface、门控根再导出+类型身份同一编译证明）；六 provider fixture 43 测（缺席臂恢复）；上层 --tests 全编译；**旧样式路径**（R9-F02：`ui::style::IcedStyle`/`iced_adapter::*` 门面恢复，reviewer old-path pin 过）；**声明面六形态**（R9-F03：no-default/ui/ui-headless/ui-dialog/code-editor/default 全 0 错） |
-| V-03 真闭环 | ✅ | **双端对照完成**（[v03-dual-run](v03-dual-run/)：002-counter 同源，Vue Playwright 与 VM MCP 三状态两操作逐点一致 0→-1→1，截图+结构化状态在档）；tu e2e 生成工程真编译 2/2（canonical import+双直依赖）；792 driver 24/24（V01/V02 真实 cargo build）；shell-pack canonical 再生+freshness；**比较投影完整表达式类型感知**（R9-F01+R10+R11+R12 终局：字面量/声明（含 float=f32/u32/i64/u64 宽度跟随）/已支持算式（宽度合并、左右位对称）×字段及另一侧透明分组（调用括号判别保 truthy）×loop/prop——r12 探针 38 feature+正控+overlay 40/40 exit0，[r12-closeout](r12-closeout/)）；**浮层 position 仲裁**（R10-01：后继覆盖语义恢复，overlay 探针 mismatches=0） |
+| V-03 真闭环 | ✅ | **双端对照完成**（[v03-dual-run](v03-dual-run/)：002-counter 同源，Vue Playwright 与 VM MCP 三状态两操作逐点一致 0→-1→1，截图+结构化状态在档）；tu e2e 生成工程真编译 2/2（canonical import+双直依赖）；792 driver 24/24（V01/V02 真实 cargo build）；shell-pack canonical 再生+freshness；**比较投影完整表达式类型感知**（R9-F01+R10..R13 终局：字面量/声明（含 float=f32/u32/i64/u64 宽度跟随）/已支持算式（宽度合并、左右位对称）/布尔取反/括号内逻辑组合×六比较符两方向完整消费×字段及另一侧透明分组（调用括号判别保 truthy）×loop/prop——r13 探针 62 feature+正控+overlay 64/64 exit0，[r13-closeout](r13-closeout/)）；**浮层 position 仲裁**（R10-01：后继覆盖语义恢复，overlay 探针 mismatches=0） |
 | V-04 余边/寿命 | ✅ | provider/frame/i18n/theme/mem_guard 91/91；SDK 生产码零 UI 引用复钉；777 ui_to_language=0 不变量（基线@463fd029c） |
 | V-05 选择面/发行 | ✅ | 九档全核销（r5 验证器+selftest 负控）；**777 strict 重采样绿收据**（R10-02：基线 @49206c699 重放 violations=0 exit0）；792 24/24 EXIT=0；新 consumer fresh+locked |
 | V-06 已被 B 全量取代 | n/a | A 期 Case；B 以 V-01..05 全量为准 |

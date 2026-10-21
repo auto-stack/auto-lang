@@ -151,10 +151,12 @@ SD-03 明确留 B。**AC**：AC-03/04。
    在射面；**a2r trans 泳道发射明确不在本策略内**（消费者仍依赖旧包，
    后续批次）。
 2. **生成器行为修复两处（具名反例）**：
-   - truthy 过投射（PLAN-710 D-6 扩展；R9-F01/R10/R11/R12 复修为完整类型感知）：
-     dot 访问处于**值比较位**（前导/后随 `==`/`!=`/`<`/`>`，**含字段自身
-     透明分组括号**——`( p.rank ) > .limit` 仍是比较位；调用实参括号
-     `len( p.tags )` 不是分组，实参位保持 truthy）时不得 truthy 包裹，
+   - truthy 过投射（PLAN-710 D-6 扩展；R9-F01/R10/R11/R12/R13 复修为完整类型感知）：
+     dot 访问处于**值比较位**（前导/后随六种比较符 `==`/`!=`/`<`/`>`/
+     `<=`/`>=`，**含字段自身透明分组括号**——`( p.rank ) > .limit`
+     仍是比较位；调用实参括号 `len( p.tags )` 不是分组，实参位保持
+     truthy；**比较符两方向完整消费**——R13：前向双字符 `<=`/`>=`
+     整体跳过，残留 `=` 污染操作数区间即回归）时不得 truthy 包裹，
      且投影按另一操作数**完整表达式类型**分流——**形状已知走 shaped
      访问器**（bool→as_bool/int→as_i64 as i32，循环形状语义保持）；
      形状未知按操作数区间解析（R12 解析器）：bool 字面量→as_bool/
@@ -167,14 +169,18 @@ SD-03 明确留 B。**AC**：AC-03/04。
      任一 f64→f64、仅 f32 声明→f32、纯字面量→f64 默认——与 Rust
      无类型字面量跟随声明侧的推断同源；int 取更宽）——`(.threshold +
      0.5) < p.score` 与 `p.score > (.threshold + 0.5)` 左右位对称同
-     型；**任意一侧透明分组**（嵌套/内部空白）剥壳递归不改型；String/
-     Value/未声明引用/非数值混型不命中，默认 str 语义保持（`p.running
-     == .wanted` 字符串状态比较不变）。反例集（r9+r10+r11+r12 全集）：
-     字面量 int/float（含负、左右位、prop）；声明 int/bool/float=f32/
-     str/i64（左右位、prop）；分组（另一侧/字段自身/双侧嵌套×
-     int/float/bool、prop、算式分组）；算式（`(.threshold + 0.5)`
-     左右位、`(.limit + 1)` int、prop 算式）。经 r12 探针 38 feature+
-     正控+overlay **40/40 真实编译 exit0**（[r12-closeout](r12-closeout/)）。
+     型；**布尔取反传播**（R13：`! .allowed` 剥 `!` 递归取型保 bool，
+     非 bool 取反非既有支持形态）；**括号内逻辑组合**（R13：`&&`/`||`
+     bool⊕bool→bool）；**任意一侧透明分组**（嵌套/内部空白）剥壳递归
+     不改型；String/Value/未声明引用/非数值混型不命中，默认 str 语义
+     保持（`p.running == .wanted` 字符串状态比较不变）。反例集
+     （r9+r10+r11+r12+r13 全集）：字面量 int/float（含负、左右位、
+     prop）；声明 int/bool/float=f32/str/i64（左右位、prop）；分组
+     （另一侧/字段自身/双侧嵌套×int/float/bool、prop、算式分组）；
+     算式（`(.threshold + 0.5)` 左右位、`(.limit + 1)` int、prop 算式）；
+     `<=`/`>=` 六例（loop/prop/分组/float 算式前向）；布尔取反三例
+     （两方向/prop）；逻辑组合/取反×逻辑。经 r13 探针 62 feature+
+     正控+overlay **64/64 真实编译 exit0**（[r13-closeout](r13-closeout/)）。
    - on_click 单元兜底：点击族消息承载事件（onclick/oncontextmenu
      [.prevent]→on_right_click/ondoubleclick）在场时跳过 `on_click
      (|_| ())` 兜底。反例：shell 语料按钮带 `oncontextmenu.prevent`，
