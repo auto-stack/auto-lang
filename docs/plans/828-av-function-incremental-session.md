@@ -193,6 +193,11 @@ T-01在D门后先完成有界全路径首例，冻结 `attachments/828/contract-
 
 ## 9. 复审记录
 
+2026-10-21 stage:work(repair r10a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(av-core): token-run re-anchoring and correct mint-text deposits" | r9a-check三例反例闭合并收编回归(r1回归套件44/44=40前+4r9a)：
+F-04/R9a类1内外trivia同改→from_texts增加token-run回退：中段非连续子串时按非空白run序列对齐（run间空白为blob）——'1 / 0'→'  1  /  0  '保留全部语义锚
+F-04/R9a类2重铸造条目存上一版文本→deposite改从prepared.new_parse/new_src取声明区间与文本（原在会话状态推进前读旧self.parse/self.src）——重铸造后紧接的同一/等价编辑按代码自身mint文本对齐；该陈旧文本bug同时是类3丢尾段(55..55)根因，由remint+等价字面量回归覆盖
+已知开放不变：恢复载荷无span（798 sidecar范围）。回归面：r1套件44/44、core 22、主17、scalar差分6、vertical/cache/binding绿；r9a-check材料自C盘复制入分支(attachments/828/r9a-check/) | OPEN不变：F-01真·函数级前端；F-02安装payload重建；F-05b取消/关闭态；F-09剩余资源预算轴；F-10 A07/依赖查询/GC（+恢复span sidecar）；F-11 changed-only持久化+manifest驱动恢复；F-12正式worker/IPC/双线内存门（含时延归因）；F-14文档重整+SD文本 | next_responsible_role:work(继续，同一树)
+
 2026-10-21 stage:work(repair r9a) | PLAN-828 r2 | outcome:in_progress | worktree:D:/autostack/.wt/lang-828/auto-lang | branch:plan-828-dev | repair_commit:"fix(probe): content-aware re-anchoring for equivalent rewrites and restored maps" | r8a-check两类缺口闭合并收编回归(r1回归套件40/40=36前+4r8a)：
 F-04/R8a类1等价token重写丢锚→历史条目携带MINT TEXT；内容命中时按全文对齐(SpanSegments::from_texts：前缀/后缀+中段子串重嵌入，mint/当前基点分离)重建——重写trivia保留token锚；中段无对应(多编辑分离)时保留累计几何映射并以apply_aligned(编辑区间内容感知手术：被替换字节重嵌入替换产物中则保留分段)复合；命中跳过双重复合；pin快照保留自身视图
 F-04/R8a类2恢复空映射→恢复会话为每个驻留记录与历史条目播种当前声明区间的非空恒等对齐+mint text
