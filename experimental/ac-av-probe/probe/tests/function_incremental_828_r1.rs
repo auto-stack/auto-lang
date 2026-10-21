@@ -1594,3 +1594,179 @@ fn r17a_restored_session_first_run_maps_trap_span() {
     assert_eq!(trap_span(&s), trap_span(&cold));
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// r17a-check F10-S01/S02 + F11-S01 shared seeding: publish a REAL
+/// content-bound spanless ABC unit through the public cache API, then
+/// vary exactly one sidecar/unit property per mode (mirrors the
+/// reviewer's restore-sidecar harness verbatim in inputs).
+const R18A_TRAP: &str = "fn main() int { return 1 / 0 }\n";
+
+fn r18a_axes() -> (String, String) {
+    use auto_av_probe::cache as scache;
+    let c = auto_ac_prototype::source::compile_scalar_source(R18A_TRAP, "probe.at", &[]).unwrap();
+    let h = &c.checked.bundle().modules[0];
+    let body = h
+        .defs
+        .iter()
+        .find_map(|d| match &d.kind {
+            auto_ac_prototype::hir::DefKind::Function { body, .. } if d.id_text == "d_main" => {
+                Some(*body)
+            }
+            _ => None,
+        })
+        .unwrap();
+    (
+        h.id_text.clone(),
+        auto_av_probe::semrefs::content_version_of(&scache::canonical_hir_function(h, body)),
+    )
+}
+
+fn r18a_seed(root: &std::path::Path, mode: &str) {
+    use auto_av_probe::cache as scache;
+    let cold = warmup(R18A_TRAP, "d_main", &[]).unwrap();
+    let mut unit = cold
+        .current()
+        .find_code("d_main")
+        .unwrap()
+        .unit()
+        .module()
+        .clone();
+    let mut spans = std::mem::take(&mut unit.funcs[0].spans);
+    let (owner, cv) = r18a_axes();
+    if mode == "empty-unit" {
+        unit.funcs.clear();
+    }
+    let bytes = auto_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+    let store = scache::open_store(root).unwrap();
+    let key = scache::abc_unit_key(&owner, "d_main", &cv, &scache::caps_fingerprint(&[]));
+    scache::put_enveloped(
+        &store,
+        &key,
+        "A09",
+        &scache::EnvelopeIdentity::abc_bound(&owner, "d_main", &cv),
+        &bytes,
+        vec![],
+        Some("r18a"),
+    )
+    .unwrap();
+    if mode == "missing" {
+        return;
+    }
+    let payload = match mode {
+        "empty" => scache::encode_sidecar(&[]),
+        "non-covering" => {
+            let mut one = spans[0];
+            one.0 = u32::MAX;
+            scache::encode_sidecar(&[one])
+        }
+        _ => scache::encode_sidecar(&spans),
+    };
+    let skey = scache::unit_span_sidecar_key(&owner, "d_main", &cv);
+    let id = scache::EnvelopeIdentity::unit_span_sidecar(&owner, "d_main", &cv);
+    scache::put_enveloped(&store, &skey, "A09", &id, &payload, vec![], Some("r18a")).unwrap();
+    let _ = &mut spans;
+}
+
+/// F10-S01: a zero-function unit payload decodes fine — restore must
+/// reject it in a CONTROLLED way (cold fallback, no panic at any
+/// pre-verification index).
+#[test]
+fn r18a_zero_function_unit_fails_closed_without_panic() {
+    let dir = std::env::temp_dir().join(format!("plan828-r18a-s01-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r18a_seed(&dir, "empty-unit");
+    let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        restore(R18A_TRAP, "d_main", &[], &dir, "r18a")
+    }));
+    assert!(
+        attempt.is_ok(),
+        "unverified disk unit must be rejected before indexing"
+    );
+    let s = attempt.unwrap().unwrap();
+    assert_eq!(s.counters().get("restore_units_admitted"), 0);
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&warmup(R18A_TRAP, "d_main", &[]).unwrap())
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F10-S02: an inapplicable sidecar row must not strand the store — the
+/// cold recovery re-derives AND repairs (publishes under the repair
+/// identity), so the SECOND restore on the same store actually admits.
+#[test]
+fn r18a_inapplicable_sidecar_is_repaired_for_future_restores() {
+    for mode in ["empty", "non-covering"] {
+        let dir =
+            std::env::temp_dir().join(format!("plan828-r18a-s02-{mode}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        r18a_seed(&dir, mode);
+        let first = restore(R18A_TRAP, "d_main", &[], &dir, "r18a").unwrap();
+        assert_eq!(
+            first.counters().get("restore_units_admitted"),
+            0,
+            "mode={mode}: inapplicable sidecar fails cold"
+        );
+        drop(first);
+        let second = restore(R18A_TRAP, "d_main", &[], &dir, "r18a").unwrap();
+        assert_eq!(
+            second.counters().get("restore_units_admitted"),
+            1,
+            "mode={mode}: rederive-AND-rewrite heals the store"
+        );
+        assert_eq!(
+            trap_span(&second),
+            trap_span(&warmup(R18A_TRAP, "d_main", &[]).unwrap())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+/// F10-S02 adjacent control: a genuinely MISSING sidecar is written back
+/// by the cold recovery, so the next restore hits.
+#[test]
+fn r18a_missing_sidecar_is_written_back_for_future_restores() {
+    let dir = std::env::temp_dir().join(format!("plan828-r18a-miss-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    r18a_seed(&dir, "missing");
+    let first = restore(R18A_TRAP, "d_main", &[], &dir, "r18a").unwrap();
+    assert_eq!(first.counters().get("restore_units_admitted"), 0);
+    drop(first);
+    let second = restore(R18A_TRAP, "d_main", &[], &dir, "r18a").unwrap();
+    assert_eq!(second.counters().get("restore_units_admitted"), 1);
+    assert_eq!(
+        trap_span(&second),
+        trap_span(&warmup(R18A_TRAP, "d_main", &[]).unwrap())
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// F11-S01: a LEGAL persisted edit (prefix insert in helper) then
+/// restore of the exact latest persisted source must yield CURRENT
+/// coordinates — the generation-2 sidecar's mint range/text re-anchors
+/// the restored unit's mint spans, not stale absolute positions.
+#[test]
+fn r18a_persisted_prefix_edit_restores_current_coordinates() {
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return 1 / 0 }\nfn tail() int { return 9 }\n";
+    let dir = std::env::temp_dir().join(format!("plan828-r18a-f11-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let mut s = warmup_persisted(src, "d_main", &[], &dir, "r18a").unwrap();
+    let at = s.src().find("return 1").unwrap();
+    let out = s.edit(at as u64, at as u64, vec![b' '; 16]).unwrap();
+    assert!(out.ok, "{out:?}");
+    let source = s.src().to_string();
+    let expected = trap_span(&warmup(&source, "d_main", &[]).unwrap());
+    assert_eq!(trap_span(&s), expected, "live source mapping control");
+    drop(s);
+    let restored = restore(&source, "d_main", &[], &dir, "r18a").unwrap();
+    assert!(
+        restored.counters().get("restore_units_admitted") > 0,
+        "restore is invoked with the exact latest persisted source"
+    );
+    assert_eq!(
+        trap_span(&restored),
+        expected,
+        "restored coordinates track the current source, not the mint"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}

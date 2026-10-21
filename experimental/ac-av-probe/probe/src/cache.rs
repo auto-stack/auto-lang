@@ -176,6 +176,95 @@ pub fn unit_span_sidecar_key(owner: &str, unit: &str, body_fp: &str) -> QueryKey
     )
 }
 
+/// PLAN-828 F10-S02 repair row: when the primary sidecar key is held by
+/// an INVALID survivor (the store has no per-artifact rewrite), the
+/// re-derived payload publishes under this NEW identity and restore
+/// probes primary → repair ("publish a new identity and switch the
+/// restore reference to a valid artifact").
+pub fn unit_span_sidecar_repair_key(owner: &str, unit: &str, body_fp: &str) -> QueryKey {
+    QueryKey::new(
+        &ABC_LAYER,
+        vec![
+            ("producer".into(), PRODUCER_ID.into()),
+            ("owner".into(), owner.into()),
+            ("kind".into(), "unit-span-sidecar-repair".into()),
+            ("unit".into(), unit.into()),
+            ("body-sig".into(), body_fp.into()),
+            ("sidecar-format".into(), "1".into()),
+        ],
+    )
+}
+
+/// One decoded unit-span sidecar payload. Generation 2 carries the
+/// unit's mint declaration range and text (PLAN-828 F11-S01: a restore
+/// re-anchors the mint spans to the CURRENT source through
+/// `SpanSegments::from_texts`); the legacy spans-only generation leaves
+/// `mint` empty and is taken as CURRENT-source coordinates.
+#[derive(Clone, Debug)]
+pub struct UnitSidecar {
+    pub spans: Vec<(u32, auto_av_core::contract::SpanInfo)>,
+    pub mint: Option<(u64, u64, Vec<u8>)>,
+}
+
+pub fn encode_unit_sidecar(sc: &UnitSidecar) -> Vec<u8> {
+    let blob = encode_sidecar(&sc.spans);
+    let mut out =
+        Vec::with_capacity(8 + blob.len() + 16 + sc.mint.as_ref().map_or(0, |m| m.2.len()));
+    out.extend_from_slice(b"8SS2");
+    out.extend_from_slice(&(blob.len() as u32).to_le_bytes());
+    out.extend_from_slice(&blob);
+    if let Some((d0, d1, text)) = &sc.mint {
+        out.extend_from_slice(&d0.to_le_bytes());
+        out.extend_from_slice(&d1.to_le_bytes());
+        out.extend_from_slice(text);
+    }
+    out
+}
+
+pub fn decode_unit_sidecar(bytes: &[u8]) -> Result<UnitSidecar, CacheError> {
+    if bytes.len() >= 8 && &bytes[0..4] == b"8SS2" {
+        let blob_len = u32::from_le_bytes(bytes[4..8].try_into().unwrap()) as usize;
+        if bytes.len() < 8 + blob_len + 16 {
+            return Err(CacheError::Codec("unit sidecar truncated".into()));
+        }
+        let spans = decode_sidecar(&bytes[8..8 + blob_len])?;
+        let d0 = u64::from_le_bytes(bytes[8 + blob_len..8 + blob_len + 8].try_into().unwrap());
+        let d1 = u64::from_le_bytes(
+            bytes[8 + blob_len + 8..8 + blob_len + 16]
+                .try_into()
+                .unwrap(),
+        );
+        let text = bytes[8 + blob_len + 16..].to_vec();
+        if d1 < d0 || (d1 - d0) as usize != text.len() {
+            return Err(CacheError::Codec("unit sidecar mint range mismatch".into()));
+        }
+        return Ok(UnitSidecar {
+            spans,
+            mint: Some((d0, d1, text)),
+        });
+    }
+    // Legacy spans-only generation (the 798 codec).
+    Ok(UnitSidecar {
+        spans: decode_sidecar(bytes)?,
+        mint: None,
+    })
+}
+
+/// F10-S02 survivor/repair validation: a stored unit-sidecar payload is
+/// USABLE for a unit whose function shape is `f` when it decodes (either
+/// payload generation) and its merged span table is APPLICABLE — a
+/// decodable-but-empty or non-covering survivor loses provenance exactly
+/// like a missing row (F798-R15-03).
+pub fn unit_sidecar_payload_usable(bytes: &[u8], f: &MirFunction) -> bool {
+    let sc = match decode_unit_sidecar(bytes) {
+        Ok(sc) => sc,
+        Err(_) => return false,
+    };
+    let mut probe = f.clone();
+    probe.spans = sc.spans;
+    sidecar_applicable(&probe).is_ok()
+}
+
 // ---------------------------------------------------------------------------
 // Inner envelope
 // ---------------------------------------------------------------------------

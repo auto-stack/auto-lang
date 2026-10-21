@@ -18,9 +18,10 @@
 //! persistence (warm session only — restore/GC arrive with T-07).
 
 use crate::cache::{
-    abc_unit_key, canonical_hir_function, caps_fingerprint, decode_sidecar, encode_sidecar,
-    get_enveloped_opt, merge_spans, open_store, payload_fingerprint, put_enveloped,
-    sidecar_applicable, split_units, unit_span_sidecar_key, EnvelopeIdentity,
+    abc_unit_key, canonical_hir_function, caps_fingerprint, decode_unit_sidecar,
+    encode_unit_sidecar, get_enveloped_opt, merge_spans, open_store, payload_fingerprint,
+    put_enveloped, split_units, unit_sidecar_payload_usable, unit_span_sidecar_key,
+    unit_span_sidecar_repair_key, EnvelopeIdentity, UnitSidecar,
 };
 use crate::driver::front_door_admit;
 use crate::function_queries::FnEnv;
@@ -514,8 +515,12 @@ pub fn restore(
     let caps_fp = caps_fingerprint(caps);
     // Restore candidates keyed by the CURRENT source's content versions —
     // a source that changed since the units were written simply misses.
+    // `anchors` collects each unit's mint→current SPAN MAP plus its true
+    // mint origin/text (F11-S01) for the record/snapshot seeding below.
     let mut restored: Vec<Arc<FunctionCode>> = Vec::with_capacity(session.fns.len());
-    for rec in session.fns.iter() {
+    let mut anchors: Vec<(auto_av_core::span_map::SpanSegments, u64, Vec<u8>)> =
+        Vec::with_capacity(session.fns.len());
+    for (idx, rec) in session.fns.iter().enumerate() {
         // Content version of the resident body (history seeds hold it).
         let body_cv = match session.resident_content_version(&rec.name) {
             Some(v) => v,
@@ -531,24 +536,60 @@ pub fn restore(
             Ok(d) => d,
             Err(_) => return cold(),
         };
-        // Re-attach the unit's mint span table (PLAN-828 F-10): the
-        // payload row is spanless BY DESIGN; without its sidecar a
-        // restored session's runs would publish `span: None` — fail
-        // closed to the cold path instead of restoring span-blind.
-        let skey = unit_span_sidecar_key(&owner, &rec.def_id, &body_cv);
-        let sid = EnvelopeIdentity::unit_span_sidecar(&owner, &rec.def_id, &body_cv);
-        let spans = match get_enveloped_opt(&store, &skey, "A09", &sid) {
-            Ok(Some(sp)) => match decode_sidecar(&sp) {
-                Ok(s) => s,
-                Err(_) => return cold(),
-            },
-            _ => return cold(),
+        // F10-S01: a CONTROLLED shape check before any indexing — a
+        // zero-function payload decodes fine and must fail closed here,
+        // not panic; `verify_abc` below still rejects deeper shape
+        // issues authoritatively.
+        let Some(shape) = decoded.module.funcs.first().cloned() else {
+            return cold();
         };
-        merge_spans(&mut decoded.module, &spans);
-        // F798-R15-03 applicability, shared with the 798 restore face: a
-        // decodable-but-non-covering table loses provenance exactly like
-        // a missing one — refuse it.
-        if sidecar_applicable(&decoded.module.funcs[0]).is_err() {
+        // Re-attach the unit's mint span table (PLAN-828 F-10): the
+        // payload row is spanless BY DESIGN. The sidecar is probed
+        // primary → repair (F10-S02); a row that is missing, undecodable
+        // or inapplicable (F798-R15-03) fails closed to the cold path —
+        // never a span-blind restore.
+        let sid = EnvelopeIdentity::unit_span_sidecar(&owner, &rec.def_id, &body_cv);
+        let skey = unit_span_sidecar_key(&owner, &rec.def_id, &body_cv);
+        let rkey = unit_span_sidecar_repair_key(&owner, &rec.def_id, &body_cv);
+        let sidecar_bytes = match get_enveloped_opt(&store, &skey, "A09", &sid) {
+            Ok(Some(b)) if unit_sidecar_payload_usable(&b, &shape) => b,
+            _ => match get_enveloped_opt(&store, &rkey, "A09", &sid) {
+                Ok(Some(b)) if unit_sidecar_payload_usable(&b, &shape) => b,
+                _ => return cold(),
+            },
+        };
+        let sc = match decode_unit_sidecar(&sidecar_bytes) {
+            Ok(sc) => sc,
+            Err(_) => return cold(), // usable implies decodable; fail closed anyway
+        };
+        merge_spans(&mut decoded.module, &sc.spans);
+        // F11-S01: re-anchor the unit's MINT spans to the CURRENT decl —
+        // a generation-2 sidecar carries its mint range/text (a
+        // repositioned source still restores CURRENT coordinates); the
+        // legacy spans-only generation has no mint basis and is taken as
+        // CURRENT-source coordinates (identity).
+        let (d0, d1) = session
+            .parse
+            .tree
+            .abs_range(session.parse.tree.decls[idx].node);
+        let (map, mint_origin, mint_text) = match sc.mint {
+            Some((m_d0, m_d1, m_text)) => {
+                let cur = src[d0 as usize..d1 as usize].as_bytes();
+                match auto_av_core::span_map::SpanSegments::from_texts(m_d0, m_d1, d0, &m_text, cur)
+                {
+                    Some(m) => (m, m_d0, m_text),
+                    None => return cold(),
+                }
+            }
+            None => (
+                auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0),
+                d0,
+                src[d0 as usize..d1 as usize].as_bytes().to_vec(),
+            ),
+        };
+        // The mint text seeds future content-hit re-anchoring — it must
+        // round-trip as a source string.
+        if std::str::from_utf8(&mint_text).is_err() {
             return cold();
         }
         let unit_owner = decoded.module.owner.clone();
@@ -563,28 +604,22 @@ pub fn restore(
             return cold();
         }
         match FunctionCode::admit_unit(loaded, 0) {
-            Ok(code) => restored.push(Arc::new(code)),
+            Ok(code) => {
+                restored.push(Arc::new(code));
+                anchors.push((map, mint_origin, mint_text));
+            }
             Err(_) => return cold(),
         }
     }
     // Swap in the RESTORED code (the cold compile's units are discarded —
     // only their content versions/bodies seed the history).
     let codes: Vec<Arc<FunctionCode>> = restored;
-    // Restored code aligns to the CURRENT source (its content version
-    // keys match it): identity over each decl range — never an empty map
-    // (F-828-R1-04/R8a-check). The SAME maps back the snapshot the
-    // restored session serves, so the first run after restore maps
-    // through its own snapshot instead of the empty-map accident of bare
-    // `link` (PLAN-828 F-10).
-    let maps: Vec<auto_av_core::span_map::SpanSegments> = (0..codes.len())
-        .map(|i| {
-            let (d0, d1) = session
-                .parse
-                .tree
-                .abs_range(session.parse.tree.decls[i].node);
-            auto_av_core::span_map::SpanSegments::identity_range(d0, d1, d0)
-        })
-        .collect();
+    // The per-function anchors back BOTH the served snapshot and the
+    // resident records: the first run after restore maps through its own
+    // snapshot (PLAN-828 F-10), never the empty-map accident of bare
+    // `link`.
+    let maps: Vec<auto_av_core::span_map::SpanSegments> =
+        anchors.iter().map(|a| a.0.clone()).collect();
     let snapshot =
         match ProgramSnapshot::link_with_maps(codes.clone(), entry_def_id, 0, maps.clone()) {
             Ok(sn) => Arc::new(sn),
@@ -593,20 +628,18 @@ pub fn restore(
     // F-828-R1-07: the RESTORED code objects become the resident ones —
     // records AND the content-history entries — so a later commit keeps
     // every unchanged function's restored object identity instead of
-    // swapping back to the cold-compiled ones.
+    // swapping back to the cold-compiled ones. History entries carry the
+    // unit's TRUE mint origin/text (F11-S01), not the current slice.
     for (i, code) in codes.iter().enumerate() {
-        let (d0, d1) = session
-            .parse
-            .tree
-            .abs_range(session.parse.tree.decls[i].node);
-        let ident = maps[i].clone();
+        let (map, mint_d0, mint_text) = (anchors[i].0.clone(), anchors[i].1, anchors[i].2.clone());
         let rec = &mut session.fns[i];
         let body = rec.hir_body.clone();
-        rec.span_map = ident.clone();
+        rec.span_map = map.clone();
         if let Some(entry) = rec.history.iter_mut().next() {
-            let text = src[d0 as usize..d1 as usize].to_string();
-            *entry.1 = (body.clone(), code.clone(), d0, ident, text.clone());
-            let _ = text;
+            let Ok(text) = String::from_utf8(mint_text) else {
+                return cold();
+            };
+            *entry.1 = (body.clone(), code.clone(), mint_d0, map, text);
         }
         rec.code = code.clone();
     }
@@ -758,9 +791,10 @@ impl FunctionIncrementalSession {
     /// Persist every function's ABC unit under its content version (same
     /// identity scheme as the 798 driver's A09 rows). The payload row is
     /// SPANLESS by design — byte-equal to the 798 scheme — and the unit's
-    /// mint span table rides a separate unit-bound sidecar row
-    /// (PLAN-828 F-10), so a later [`restore`] re-attaches it instead of
-    /// publishing `span: None` runs.
+    /// mint span table plus its mint decl range/text ride a separate
+    /// unit-bound sidecar row (PLAN-828 F-10/F11-S01), so a later
+    /// [`restore`] re-attaches and RE-ANCHORS it instead of publishing
+    /// `span: None` or stale absolute positions.
     fn persist_all_units(&self) -> Result<(), String> {
         let Some((store, project)) = self.store.as_ref() else {
             return Err("no store".to_string());
@@ -768,11 +802,21 @@ impl FunctionIncrementalSession {
         let owner = self.fns_owner();
         let caps_fp = caps_fingerprint(&self.caps);
         for rec in self.fns.iter() {
-            let Some(cv) = self.resident_content_version(&rec.name) else {
+            // The resident entry keys the row AND carries the code's true
+            // mint range/text — the F11-S01 re-anchoring basis.
+            let Some((cv, mint_d0, mint_text)) = rec
+                .history
+                .iter()
+                .find(|(_, v)| Arc::ptr_eq(&v.1, &rec.code))
+                .map(|(cv, v)| (cv.clone(), v.2, v.4.clone()))
+            else {
                 continue;
             };
             let mut spanless = rec.code.unit().module().clone();
-            let spans = std::mem::take(&mut spanless.funcs[0].spans);
+            let Some(f) = spanless.funcs.first_mut() else {
+                continue;
+            };
+            let spans = std::mem::take(&mut f.spans);
             let bytes = auto_av_core::abc::encode_abc(&spanless)
                 .map_err(|e| format!("encode {}: {e:?}", rec.def_id))?
                 .to_flat();
@@ -793,15 +837,58 @@ impl FunctionIncrementalSession {
             }
             let skey = unit_span_sidecar_key(&owner, &rec.def_id, &cv);
             let sid = EnvelopeIdentity::unit_span_sidecar(&owner, &rec.def_id, &cv);
-            let spayload = encode_sidecar(&spans);
+            let spayload = encode_unit_sidecar(&UnitSidecar {
+                spans,
+                mint: Some((
+                    mint_d0,
+                    mint_d0 + mint_text.len() as u64,
+                    mint_text.as_bytes().to_vec(),
+                )),
+            });
             if let Err(e) =
                 put_enveloped(store, &skey, "A09", &sid, &spayload, vec![], Some(project))
             {
-                // Pairing tolerance mirrors the unit row: a conflicting
-                // survivor still pairs with the surviving unit row.
-                if format!("{e:?}").contains("Conflict") {
-                } else {
+                if !format!("{e:?}").contains("Conflict") {
                     return Err(format!("put sidecar {}: {e:?}", rec.def_id));
+                }
+                // F10-S02: a Conflict must not silently keep an INVALID
+                // survivor as the only restore reference. The store has
+                // no per-artifact rewrite, so an inapplicable survivor is
+                // repaired by publishing the re-derived payload under the
+                // repair identity, which restore probes after the primary
+                // key — the same rederive-AND-rewrite contract as the 798
+                // source sidecar (cache-and-conformance §11).
+                let resident_f = rec.code.unit().module().funcs.first();
+                let row_usable =
+                    |b: &[u8]| resident_f.is_some_and(|f| unit_sidecar_payload_usable(b, f));
+                let survivor_usable = matches!(
+                    get_enveloped_opt(store, &skey, "A09", &sid),
+                    Ok(Some(b)) if row_usable(&b)
+                );
+                if !survivor_usable {
+                    let rkey = unit_span_sidecar_repair_key(&owner, &rec.def_id, &cv);
+                    if let Err(e) =
+                        put_enveloped(store, &rkey, "A09", &sid, &spayload, vec![], Some(project))
+                    {
+                        if !format!("{e:?}").contains("Conflict") {
+                            return Err(format!("put sidecar repair {}: {e:?}", rec.def_id));
+                        }
+                        // The repair row is held too: a VALID holder still
+                        // serves future restores; an invalid one means the
+                        // store is genuinely stuck on this unit — surface
+                        // the error instead of accepting a permanently
+                        // broken sidecar.
+                        let repair_usable = matches!(
+                            get_enveloped_opt(store, &rkey, "A09", &sid),
+                            Ok(Some(b)) if row_usable(&b)
+                        );
+                        if !repair_usable {
+                            return Err(format!(
+                                "sidecar `{}`: primary and repair rows both hold invalid payloads",
+                                rec.def_id
+                            ));
+                        }
+                    }
                 }
             }
         }
