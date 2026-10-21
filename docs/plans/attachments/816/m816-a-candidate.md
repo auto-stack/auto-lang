@@ -1,10 +1,9 @@
 # PLAN-816 M816-A 阶段候选（T-12 交付，待 T-13 独立阶段审查冻结）
 
-> 状态：**R3 修复后候选**（R3 判 01/02/04 无回归、03/05/06 主面闭合，
-> 两项新 finding F-R3-01/02 已修复 @`6e03f5f26`，见 §10。R1+R2 双
-> replay 保持全过、fixture 全套 15 连跑 0 红。T-13 R4 审查绑定
-> `6e03f5f26`。本阶段 ≠ 整 Plan 交付：T-03..T-11 未开，Plan 保持
-> `executing`。
+> 状态：**R5 修复后候选**（R4 pass 被独立 R5 推翻：writer 未真停 +
+> stop 排空丢错误；两项已修复 @`a972286fd`，见 §11。R1/R2/R5 三
+> replay 全过。T-13 R6 审查绑定 `a972286fd`。本阶段 ≠ 整 Plan 交付：
+> T-03..T-11 未开，Plan 保持 `executing`。
 
 ## 1. 身份
 
@@ -120,3 +119,12 @@ R2（reviewed 4372d56d9）判定 01/02/04 CLOSED；三残项修复（+1166/−26
 顺带修两处**测试侧**时序缺陷（非产品回归）：`shutdown_bounds` 的 heartbeat 观察移到 shutdown 之前（否则树终止可能先于后代首跳，观察不确定）；`consumer_describes` 的 stderr 断言移至 shutdown drain 完成后（stdout 回帧与 stderr 读取是异步流，即时快照必输竞争）。
 
 验证矩阵（@6e03f5f26）：设施 9 单测+17 集测、client 12 单测、fixture 15/15（连跑 15 次全绿）；R1 replay 5/5 + R2 replay 全 contract_pass；clippy/rustdoc 0、fmt 过、verify-deps PASS、777 strict pass、`cargo check -p auto -p auto-man` exit 0。
+
+## 11. R5 修复轮记录（T-13 R5 needs_fix 两项 → work 修复，@a972286fd）
+
+| Finding | 修复 | 验证 |
+|---|---|---|
+| F-816-R3-02 重开（writer 未真停/错误分支） | 平台事实修正：`CancelSynchronousIo` 对管道同步写 ERROR_NOT_FOUND（探针），弃用；改 **`CancelIoEx`（按文件对象）**——设施 `win_stdin.rs` 提供 `CancelHandle`（DuplicateHandle 副本+Clone）。设施 WriterWorker 共享槽：写线程正常完成即关副本（EOF 不被延迟——探针证实副本存活期间宿主收不到 EOF）、`stop_and_join` cancel-then-close（实测 ~10ms 解除）。client 同步接入并于 `wait_writer_done` 后立即关副本（另修复一份 shadow `shutdown` 实现未关副本导致 EOF 丢失的回归）。超时臂 `bounded_cancel`（两次终止+有界收尸）替代无界 `child.wait` | R5 replay writer 探针两入口 **276/261ms**（R5 实测 3254/3272ms）、**threads 4→4 零悬留**、非拥有持有者存活；集成 `deadline_covers_blocked_stdin_with_unowned_holder`（DirectChildOnly+stdin-holder+1MiB+250ms→Timeout） |
+| F-816-R5-01（stop 排空丢读错/半帧终态） | 设施 `drain_readable`→`DrainEnd{Empty,Eof,Io}` 结构化（Io 具名传播、Eof 真实终态）；client reader stop 分支：排空后按"EOF 或 owned_closed"判流终——**半帧保留 `TruncatedEof` 证据**（适配审方 Cursor 型就绪源），读错 `Violation(Io)`；`stderr_session` 排空读错具名 `Err` | R5 replay 三个确定性注入全过（设施 stop 读错=Io / client stderr=Err / 半帧=TruncatedEof）；新增永久回归：直驱生产 `drain_readable` 的确定性读错测试 |
+
+机械适配：R5 replay 复制清单补 `win_stdin.rs`（新增平台模块；probe 语义=production 源+追审测试，不变）。验证矩阵（@a972286fd）：设施 9+18、client 15、fixture 16/16（压力 8/8）；R1 5/R2 4/R5 全 contract_pass；clippy/rustdoc/fmt 0、verify-deps/777 strict/check 全绿。
