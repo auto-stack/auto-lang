@@ -52,10 +52,10 @@ pub mod project_model_adapter;
 
 // Phase 5: Vue project support
 // PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
-// R1-F03: run 家族残留在 vue_run_compat（M814-B 门），经本门面转发回
-// auto_man::vue::* 历史公开路径（无复制算法，纯转发）。
+// R1-F03: run 家族随 PLAN-815 T-05 迁 auto-ui-tools::run_vue（M814-B 门
+// 解除），历史公开路径经本门面继续转发（无复制算法，纯转发）。
 pub mod vue {
-    pub use crate::vue_run_compat::{
+    pub use auto_ui_tools::run_vue::{
         run_vue_project, run_vue_project_with_request, start_gallery_back_proxy,
     };
     pub use auto_ui_tools::vue::*;
@@ -91,10 +91,10 @@ pub use auto_ui_tools::ark;
 
 // Phase 9: Rust UI support (ICED/GPUI)
 // PLAN-815 T-04: moved to auto-ui-tools; facade keeps historic paths.
-// R1-F03: run_vm_ui 家族/start_vm_server 残留在 rust_ui_vm_compat
-// （M814-B 门），经本门面转发回 auto_man::rust_ui::* 历史公开路径。
+// R1-F03: run_vm_ui 家族/start_vm_server 随 PLAN-815 T-05 迁
+// auto-ui-tools::run_vm（M814-B 门解除），历史公开路径经本门面继续转发。
 pub mod rust_ui {
-    pub use crate::rust_ui_vm_compat::{run_vm_ui, run_vm_ui_with_request, start_vm_server};
+    pub use auto_ui_tools::run_vm::{run_vm_ui, run_vm_ui_with_request, start_vm_server};
     pub use auto_ui_tools::rust_ui::*;
 }
 
@@ -107,8 +107,6 @@ pub use auto_api_gen::api_gen;
 // auto_lang::back_proxy/photo_service,814-B 迁 auto-ui-runtime 后归 T-05)
 // 与 run_vm_ui 家族(iced 运行时 + vm::backend_abi 同门)。生成/构建主体
 // 已迁 auto-ui-tools;残留经门面消费其公开面,行为冻结。
-pub mod rust_ui_vm_compat;
-pub mod vue_run_compat;
 // PLAN-815 T-04: I-PROJECT 请求缝对拍测试(构造侧=adapter 属 Man)。
 #[cfg(test)]
 mod vue_request_seam_tests;

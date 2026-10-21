@@ -5,8 +5,13 @@
 use crate::budget::Budgets;
 use crate::error::{ErrorKind, ToolError};
 use crate::framing::{parse_frame, read_frame, write_frame, FrameError};
-use crate::message::{ClientBody, ClientEnvelope, ServerBody, ServerEnvelope, WireRequest};
-use crate::report::{Finding, RequestSummary, Severity, ValidateProjectReport};
+use crate::message::{
+    ClientBody, ClientEnvelope, ServerBody, ServerEnvelope, ToolEvent, WireRequest,
+};
+use crate::report::{
+    Finding, GenerationReport, RequestSummary, RunOutcome, RunReport, Severity,
+    ValidateProjectReport,
+};
 use crate::{Capability, LifecyclePolicy, ToolDescriptor, PROTOCOL_VERSION};
 use auto_project_model::descriptor::SourceInfo;
 use auto_project_model::{parse_document, GenerationRequest};
@@ -464,5 +469,95 @@ fn r2_readers_gate_depth_with_a_named_reason() {
             assert!(reason.contains("transmittable envelope"), "{reason}")
         }
         other => panic!("parse_frame admitted an over-envelope frame: {other:?}"),
+    }
+}
+
+/// PLAN-815 T-05: the B-stage additions round-trip losslessly over the
+/// same framing — new client bodies (generate_ui / run_ui / input), the
+/// launched event, and the new server receipts/reports.
+#[test]
+fn t05_b_stage_bodies_round_trip() {
+    // Client bodies.
+    let describe_only = ClientEnvelope {
+        protocol_version: 1,
+        id: 1,
+        body: ClientBody::Describe,
+    };
+    let json = serde_json::to_value(&describe_only).expect("serialize");
+    assert_eq!(json["body"]["op"], "describe");
+    let input = ClientEnvelope {
+        protocol_version: 1,
+        id: 2,
+        body: ClientBody::Input {
+            target_id: 7,
+            data: vec![113, 10],
+        },
+    };
+    let back: ClientEnvelope =
+        serde_json::from_value(serde_json::to_value(&input).expect("serialize")).expect("parse");
+    assert_eq!(back, input);
+    assert_eq!(back.body.operation(), "input");
+
+    // Launched event + new server bodies.
+    let launched = ServerEnvelope {
+        id: 7,
+        body: ServerBody::Event {
+            event: ToolEvent::Launched {
+                url: "http://127.0.0.1:5173".into(),
+            },
+        },
+    };
+    let back: ServerEnvelope =
+        serde_json::from_value(serde_json::to_value(&launched).expect("serialize")).expect("parse");
+    assert_eq!(back, launched);
+
+    let run_ok = ServerEnvelope {
+        id: 7,
+        body: ServerBody::RunOk {
+            report: RunReport {
+                profile: "vue".into(),
+                outcome: RunOutcome::Cancelled,
+                duration_ms: 1234,
+                launch: Some("http://127.0.0.1:5173".into()),
+                error: None,
+            },
+        },
+    };
+    let back: ServerEnvelope =
+        serde_json::from_value(serde_json::to_value(&run_ok).expect("serialize")).expect("parse");
+    assert_eq!(back, run_ok);
+    // outcome serializes as the frozen snake_case string.
+    let json = serde_json::to_value(&run_ok).expect("serialize");
+    assert_eq!(json["body"]["report"]["outcome"], "cancelled");
+
+    let receipts = vec![
+        ServerEnvelope {
+            id: 9,
+            body: ServerBody::Cancelled { target_id: 7 },
+        },
+        ServerEnvelope {
+            id: 10,
+            body: ServerBody::InputAck {
+                target_id: 7,
+                bytes: 2,
+            },
+        },
+        ServerEnvelope {
+            id: 11,
+            body: ServerBody::GenerateOk {
+                report: GenerationReport {
+                    output_root: "C:/tmp/gen".into(),
+                    frontends: vec!["vue".into()],
+                    files_written: 143,
+                    duration_ms: 42,
+                },
+            },
+        },
+    ];
+    for envelope in receipts {
+        let back: ServerEnvelope =
+            serde_json::from_value(serde_json::to_value(&envelope).expect("serialize"))
+                .expect("parse");
+        assert_eq!(back, envelope);
     }
 }

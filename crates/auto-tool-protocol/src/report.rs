@@ -80,3 +80,56 @@ pub struct ValidateProjectReport {
     pub findings: Vec<Finding>,
     pub summary: RequestSummary,
 }
+
+/// The `generate_ui` answer (PLAN-815 T-05): what the real generation
+/// produced on disk. Counts are measured by walking the output root after
+/// generation — never the generator's self-report alone.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GenerationReport {
+    /// Absolute output root the artifacts landed under.
+    pub output_root: String,
+    /// Frontends actually generated (subset of the request's declared
+    /// frontends this build serves).
+    pub frontends: Vec<String>,
+    /// Files written under the output root (post-generation walk).
+    pub files_written: u64,
+    pub duration_ms: u64,
+}
+
+/// How a `run_ui` operation ended (PLAN-815 T-05).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RunOutcome {
+    /// The run path completed on its own (service exited / VM UI window
+    /// closed / bounded path returned).
+    Completed,
+    /// A `cancel` (or progress-budget abort behaving as cancellation)
+    /// stopped the operation; owned child processes were killed.
+    Cancelled,
+    /// The run path failed with a real error.
+    Failed,
+}
+
+impl RunOutcome {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            RunOutcome::Completed => "completed",
+            RunOutcome::Cancelled => "cancelled",
+            RunOutcome::Failed => "failed",
+        }
+    }
+}
+
+/// The `run_ui` answer (PLAN-815 T-05): the real run's session result.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RunReport {
+    /// Render profile the request resolved to (e.g. `vue`, `vm`).
+    pub profile: String,
+    pub outcome: RunOutcome,
+    pub duration_ms: u64,
+    /// Last announced service URL (the [`crate::message::ToolEvent::Launched`]
+    /// value), when a foreground service came up.
+    pub launch: Option<String>,
+    /// Real error text when `outcome` is `failed`.
+    pub error: Option<String>,
+}

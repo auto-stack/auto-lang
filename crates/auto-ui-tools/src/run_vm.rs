@@ -1,23 +1,63 @@
-//! PLAN-815 T-04 run_vm_ui 残留（M814-B 门）。
+//! PLAN-815 T-05: VM 臂运行面自 auto-man `rust_ui_vm_compat` 迁入（M814-B
+//! 门解除后的 T-04 残留）。依赖全部经新公开包解析：解释器执行
+//! `auto_lang_core::execute_autovm_with_path`、动态 UI `auto_ui_runtime::
+//! run_file_dynamic_ui`、外部后端 ABI `auto_lang_core::vm::{backend_abi,
+//! host_bridge}`、renderer 事件注入 `auto_ui_runtime::ui::iced::renderer`、
+//! back-proxy/画廊注册面 `crate::run_vue`。零 legacy `auto_lang` 依赖。
 //!
-//! VM 臂 in-process 执行面依赖 `auto_lang::ui::iced` 运行时与
-//! `vm::backend_abi`/`host_bridge`（814-B 才迁 auto-ui-runtime），留在
-//! Man；生成/构建主体已迁 `auto-ui-tools::rust_ui`。经门面消费
-//! PacSource 与工作区布局（auto-api-gen 单源），行为冻结。
+//! 托管模式（工具宿主安装 [`crate::proc_host::RunIo`]）：iced 执行经
+//! `proc_host::vm_main_hook` 交回宿主的 OS 主线程（iced 约束）；步骤
+//! 边界取消收口。未安装时行为与迁移前一致（CLI 主线程直接执行）。
 
 use std::path::Path;
 
 use colored::Colorize;
 
-use auto_val::AutoResult;
+use auto_val::{AutoError, AutoResult};
 
+use crate::proc_host::{self, FlowEnd};
 use crate::rust_ui::{probe_service_ready, start_api_server, stop_api_server, PacSource};
 
+/// 旧 `auto_lang::run_file` 的同语义复刻（读文件 → UI 关键字分流）：
+/// UI 入口走动态 UI 管线（iced），否则走通用解释器执行（#[api] serve
+/// 检测在执行器内）。32MB 栈线程承载（扁平化 api.at+db.at+types.at 超
+/// 1MB 默认栈）。
+fn run_entry_file(path: &str) -> auto_lang_core::AutoResult<String> {
+    let code = std::fs::read_to_string(path).map_err(|e| format!("Failed to read file: {}", e))?;
+    if auto_ui_runtime::has_ui_keywords(&code) {
+        return execute_vm_entry(&code, Some(path));
+    }
+    let path = path.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(auto_lang_core::vm_thread_stack_size())
+        .name("auto-vm-exec".into())
+        .spawn(move || {
+            let (result, stdout) = auto_lang_core::run_with_capture_and_path(&code, &path)?;
+            if !stdout.is_empty() {
+                println!("{stdout}");
+            }
+            Ok(result)
+        })
+        .expect("spawn VM exec thread");
+    match handle.join() {
+        Ok(r) => r,
+        Err(_) => Err("execution thread panicked".into()),
+    }
+}
+
+/// 执行动态 UI 入口：托管时交宿主主线程，未托管在当前线程（= CLI 的
+/// OS 主线程，迁移前行为）。
+fn execute_vm_entry(code: &str, path: Option<&str>) -> auto_lang_core::AutoResult<String> {
+    match proc_host::vm_main_hook() {
+        Some(hook) => hook(code, path),
+        None => auto_ui_runtime::run_file_dynamic_ui(code, path),
+    }
+}
+
 /// Plan 340 fix: Start the AutoVM HTTP server (not the a2r Rust backend) for
-/// VM+VM split mode. Spawns a background thread running
-/// `auto_lang::run_file(api.at)`, which detects #[api] routes and enters
-/// `serve_async`. Polls the port until ready (or timeout). The thread runs
-/// for the process lifetime (cleaned up when the process exits).
+/// VM+VM split mode. Spawns a background thread running the api.at entry
+/// (serve detection inside), polls the port until ready (or timeout). The
+/// thread runs for the process lifetime (cleaned up when the process exits).
 ///
 /// Returns true if the server became ready, false on timeout / missing api.at.
 pub fn start_vm_server(project_dir: &Path) -> bool {
@@ -30,7 +70,7 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
         return false;
     }
 
-    let port = auto_ui_tools::util::http_port();
+    let port = crate::util::http_port();
     println!();
     println!(
         "  {} Starting AutoVM HTTP server (VM backend, port {})...",
@@ -41,7 +81,7 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
 
     let api_str = api_path.to_string_lossy().to_string();
     // Seed extra module search dirs for the standalone api.at run. A split-mode
-    // api.at imports `types` from src/front/types.at, but run_file only seeds
+    // api.at imports `types` from src/front/types.at, but the entry only seeds
     // the source file's own directory (src/back) — without this, `use types`
     // fails with "Module not found". Inject src/ + src/front via AUTO_SOURCE_DIRS.
     let src_dir = project_dir.join("src");
@@ -70,7 +110,7 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
         .stack_size(32 * 1024 * 1024)
         .name("auto-vm-http-server".into())
         .spawn(move || {
-            if let Err(e) = auto_lang::run_file(&api_str) {
+            if let Err(e) = run_entry_file(&api_str) {
                 eprintln!("[AutoVM server] error: {}", e);
             }
         })
@@ -83,6 +123,10 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
     let start = std::time::Instant::now();
     let probe_addr: std::net::SocketAddr = format!("127.0.0.1:{}", port).parse().unwrap();
     while start.elapsed() < max_wait {
+        if proc_host::cancelled() {
+            eprintln!("ERROR: cancelled while waiting for the AutoVM server");
+            return false;
+        }
         std::thread::sleep(std::time::Duration::from_millis(500));
         // PLAN-736 T-05：health 优先（VM serve 面有控制面；legacy auto run
         // 的 VM 轨无 /__auto 路由 → 404 视为可继续），TCP connect 兜底。
@@ -123,12 +167,12 @@ pub fn start_vm_server(project_dir: &Path) -> bool {
 /// 事件回流复用 renderer 的 SSE 注入通道(与 ash-runner 手写宿主同构)。
 struct VmHostRegistry;
 
-impl auto_lang::vm::backend_abi::BackendRegistry for VmHostRegistry {
-    fn host_call(&self, name: &str, f: auto_lang::vm::backend_abi::BackendHostCallFn) {
-        auto_lang::vm::host_bridge::register_host_call(name, f);
+impl auto_lang_core::vm::backend_abi::BackendRegistry for VmHostRegistry {
+    fn host_call(&self, name: &str, f: auto_lang_core::vm::backend_abi::BackendHostCallFn) {
+        auto_lang_core::vm::host_bridge::register_host_call(name, f);
     }
     fn inject_event(&self, tag: &str, json: &str) -> bool {
-        auto_lang::ui::iced::renderer::inject_shell_event(tag, json)
+        auto_ui_runtime::ui::iced::renderer::inject_shell_event(tag, json)
     }
     fn log(&self, msg: &str) {
         eprintln!("[backend] {msg}");
@@ -140,13 +184,13 @@ impl auto_lang::vm::backend_abi::BackendRegistry for VmHostRegistry {
 /// `libx.dylib` / Linux `libx.so`);缺失时给出"先构建后端"的明确指引。
 fn load_external_backend(
     backend_dir: &Path,
-) -> Result<auto_lang::vm::backend_abi::LoadedBackend, String> {
+) -> Result<auto_lang_core::vm::backend_abi::LoadedBackend, String> {
     use auto_val::{AutoStr, Obj, Value};
     let pac_path = backend_dir.join("pac.at");
     let lib_stem = if pac_path.is_file() {
         let mut probe = Obj::new();
         probe.set("port", Value::Str(AutoStr::from("win32")));
-        auto_lang::config::AutoConfig::from_file(&pac_path, &probe)
+        auto_lang_core::config::AutoConfig::from_file(&pac_path, &probe)
             .ok()
             .map(|c| c.name().to_string())
             .filter(|n| !n.is_empty())
@@ -175,16 +219,18 @@ fn load_external_backend(
             backend_dir.display()
         ));
     };
-    auto_lang::vm::backend_abi::load_backend_cdylib(lib_path, std::sync::Arc::new(VmHostRegistry))
+    auto_lang_core::vm::backend_abi::load_backend_cdylib(
+        lib_path,
+        std::sync::Arc::new(VmHostRegistry),
+    )
 }
 
 /// Run the UI via the AutoLang interpreter (--render=vm mode).
-/// Starts the same API backend server as --render=rust, but runs
-/// the frontend through the in-process interpreter instead of
-/// transpiling to Rust.
+/// Legacy signature (behavior frozen; hosted hooks engage only when the
+/// tool host installed a RunIo).
 pub fn run_vm_ui(project_dir: &Path, args: Vec<String>) -> AutoResult<()> {
     let source = PacSource::legacy();
-    run_vm_ui_inner(project_dir, args, &source)
+    run_vm_ui_flow(project_dir, args, &source).map(|_| ())
 }
 
 /// 请求路径（PLAN-809 T-06c 生产入口）。
@@ -194,10 +240,17 @@ pub fn run_vm_ui_with_request(
     req: &auto_project_model::generation_request::GenerationRequest,
 ) -> AutoResult<()> {
     let source = PacSource::from_request(req);
-    run_vm_ui_inner(project_dir, args, &source)
+    run_vm_ui_flow(project_dir, args, &source).map(|_| ())
 }
 
-fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -> AutoResult<()> {
+pub fn run_vm_ui_flow(
+    project_dir: &Path,
+    _args: Vec<String>,
+    source: &PacSource,
+) -> Result<FlowEnd, AutoError> {
+    let total_steps = 4u64;
+    let step = |n: u64, what: &str| proc_host::progress(n, Some(total_steps), what);
+
     // Plan 334: vm+vm 同进程合并。前端 widget VM（经 Plan 333）直接链接后端
     // 函数访问数据（list_notes → db.all_notes → notes 全局），不需要独立的 Axum
     // HTTP 后端进程。跳过 start_api_server 可消除冗余 cargo 编译、端口占用、
@@ -210,6 +263,7 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
     // Plan 340 fix: 分离模式启动独立后端 HTTP 进程。后端可以是 AutoVM server
     // （VM+VM split）或 a2r 转译的 Rust axum server（VM+Rust）。
     // AUTO_BACKEND_IMPL=rust → Rust 后端（start_api_server）
+    step(1, "resolve backend");
     let pac_path = project_dir.join("pac.at");
     let has_rust_api = source.api_is_rust(&pac_path);
     let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_else(|_| {
@@ -229,7 +283,7 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
             // api.rs + types.rs from #[api] annotations (idempotent).
             // PLAN-734 T-06：Err 传播（split 生成失败不再 warn 后仍启动——
             // start_api_server 内的二次生成同错误也会硬传，此处提前终结）。
-            crate::api_gen::generate_api(project_dir, "rust")
+            auto_api_gen::api_gen::generate_api(project_dir, "rust")
                 .map_err(|e| format!("Failed to generate Rust backend: {}", e))?;
             let child = match start_api_server(project_dir) {
                 Ok(child) => child,
@@ -247,6 +301,9 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
             // VM+VM split: AutoVM HTTP server as backend.
             // PLAN-026 T-05: ready 失败显式中止(不进组件构建/Init)。
             if !start_vm_server(project_dir) {
+                if proc_host::cancelled() {
+                    return Ok(FlowEnd::Cancelled);
+                }
                 return Err("AutoVM backend not ready; aborting before UI init".into());
             }
             if std::env::var_os("AUTO_HTTP_BASE").is_none() {
@@ -265,13 +322,17 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
         );
         None
     };
+    if proc_host::cancelled() {
+        stop_api_server(&mut _api_child);
+        return Ok(FlowEnd::Cancelled);
+    }
 
     // Plan 061:外部后端(pac.at `back: { project: "..." }`)——merged 模式下
     // 由宿主链接并装载后端项目:① 链接式契约引用(`back.*` 解析映射到
     // 后端根,前端无需本地 back/,零复制);② libloading 装载 cdylib +
     // ABI 校验 + 注册进宿主桥(vm::host_bridge,与 ash-runner 同表)。
     // 无 back.project 配置时零行为变化(本地 back/ 现状)。
-    let mut _backend_keepalive: Option<auto_lang::vm::backend_abi::LoadedBackend> = None;
+    let mut _backend_keepalive: Option<auto_lang_core::vm::backend_abi::LoadedBackend> = None;
     if !split_mode {
         match source.external_backend(project_dir) {
             Ok(Some(backend_rel)) => {
@@ -283,7 +344,7 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
                 // (lib.rs resolve_module_path 的 EXTERNAL_BACK_ROOT 钩子),
                 // 前端无需本地 back/ 目录,零复制。
                 if backend_dir.join("api.at").is_file() {
-                    auto_lang::set_external_back_root(backend_dir.clone());
+                    auto_lang_core::set_external_back_root(backend_dir.clone());
                     println!(
                         "  {} external backend linked: back.* -> {}",
                         "✓".bright_green(),
@@ -326,7 +387,7 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
     {
         // PLAN-658 T-03: 多后端 proxy 先于发射启动（发射器 /api/ 字面量
         // 前缀化消费线程局部根，T-02）；失败降级不阻断画廊。
-        crate::vue_run_compat::start_gallery_back_proxy(project_dir);
+        crate::run_vue::start_gallery_back_proxy(project_dir);
         let n = crate::vue::refresh_gallery_registry(project_dir)?;
         println!(
             "  {} Gallery registry: src/front/registry.at ({} demos)",
@@ -339,6 +400,10 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
     if !entry.exists() {
         stop_api_server(&mut _api_child);
         return Err(format!("Frontend entry not found: {}", entry.display()).into());
+    }
+    if proc_host::cancelled() {
+        stop_api_server(&mut _api_child);
+        return Ok(FlowEnd::Cancelled);
     }
 
     println!(
@@ -367,13 +432,13 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
     // that declare `dark_mode`/`accent_color` state vars override these
     // per-frame via the renderer sync (renderer.rs read_state).
     if let Ok(t) = std::env::var("AUTO_UI_THEME") {
-        if auto_lang::ui::style::theme::THEME_PREFS.contains(&t.as_str()) {
-            auto_lang::ui::style::theme::set_dark_mode(t == "dark");
+        if auto_ui_compiler::style::theme::THEME_PREFS.contains(&t.as_str()) {
+            auto_ui_compiler::style::theme::set_dark_mode(t == "dark");
         }
     }
     if let Ok(a) = std::env::var("AUTO_UI_ACCENT") {
-        if auto_lang::ui::style::theme::ACCENT_PRESETS.contains(&a.as_str()) {
-            auto_lang::ui::style::theme::set_accent_name(&a);
+        if auto_ui_compiler::style::theme::ACCENT_PRESETS.contains(&a.as_str()) {
+            auto_ui_compiler::style::theme::set_accent_name(&a);
         }
     }
 
@@ -389,10 +454,9 @@ fn run_vm_ui_inner(project_dir: &Path, _args: Vec<String>, source: &PacSource) -
         );
     }
 
-    // PLAN-080 §10-9 足迹桩：静默 exit 1 定位（真机多例死亡，输出无声截断）。
-    // ①panic 钩子带 backtrace 落 stderr（防丢失）；②30s 存活心跳；③run_file
-    // 返回值显式标记——死亡在循环内/外由此二分。
-    {
+    // PLAN-080 §10-9 足迹桩（CLI 调试遗留）：仅在未托管（CLI 直跑）形态
+    // 安装——工具宿主进程不应被全局 panic 钩子/心跳线程改变生命周期语义。
+    if proc_host::current().is_none() {
         std::panic::set_hook(Box::new(|info| {
             eprintln!(
                 "[X9-PANIC] {info}
@@ -412,8 +476,9 @@ backtrace:
             );
         });
     }
+    step(2, "vm interpreter");
     eprintln!("[X9] entering vm interpreter");
-    let result = auto_lang::run_file(entry.to_str().unwrap_or("src/front/app.at"));
+    let result = run_entry_file(entry.to_str().unwrap_or("src/front/app.at"));
     eprintln!("[X9] vm interpreter returned ok={}", result.is_ok());
 
     // Restore original CWD
@@ -423,8 +488,11 @@ backtrace:
 
     stop_api_server(&mut _api_child);
 
+    if proc_host::cancelled() {
+        return Ok(FlowEnd::Cancelled);
+    }
     match result {
-        Ok(_) => Ok(()),
+        Ok(_) => Ok(FlowEnd::Completed),
         Err(e) => Err(format!("VM UI error: {}", e).into()),
     }
 }

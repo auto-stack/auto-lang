@@ -3934,20 +3934,27 @@ struct DeliveryProjectionSpec {
 }
 
 const PROJECTION_AUTO_LANG: DeliveryProjectionSpec = DeliveryProjectionSpec {
+    // PLAN-815 T-05 门禁附带修复（披露）：814-T-04 把跨仓 autodown-core
+    // optional path 依赖与 dep: 特征形态随迁 auto-ui-runtime——本 spec 的
+    // autodown 剥除/改写两项陈旧化（master 端到端即红），移除；runtime
+    // 清单的对应投影见 PROJECTION_AUTO_UI_RUNTIME。
+    strip_deps: &["auto-test-case = { path = \"../auto-test-case\", optional = true }"],
+    feature_rewrites: &[(
+        "test-cases = [\"dep:auto-test-case\", \"auto-lang-core/test-cases\"]",
+        "test-cases = []",
+    )],
+};
+
+const PROJECTION_AUTO_UI_RUNTIME: DeliveryProjectionSpec = DeliveryProjectionSpec {
+    // 814-T-04 随迁的跨仓 optional 依赖（原 auto-lang 位置），投影语义
+    // 原样承接：剥 autodown-core 路径行，autodown 特征改写为无 dep: 形态。
     strip_deps: &[
         "autodown-core = { path = \"../../../auto-down/autodown/packages/engine/rust\", optional = true }",
-        "auto-test-case = { path = \"../auto-test-case\", optional = true }",
     ],
-    feature_rewrites: &[
-        (
-            "autodown = [\"ui-iced\", \"dep:autodown-core\"]",
-            "autodown = [\"ui-iced\"]",
-        ),
-        (
-            "test-cases = [\"dep:auto-test-case\", \"auto-lang-core/test-cases\"]",
-            "test-cases = []",
-        ),
-    ],
+    feature_rewrites: &[(
+        "autodown = [\"ui-iced\", \"dep:autodown-core\"]",
+        "autodown = [\"ui-iced\"]",
+    )],
 };
 
 const PROJECTION_AUTO_LANG_CORE: DeliveryProjectionSpec = DeliveryProjectionSpec {
@@ -5113,6 +5120,7 @@ fn generate_rust_ui_delivery_inner(
     let mut total_bytes: u64 = 0;
     let mut projection_edits: Vec<String> = Vec::new();
     let mut projection_edits_core: Vec<String> = Vec::new();
+    let mut projection_edits_runtime: Vec<String> = Vec::new();
     for name in DELIVERY_CRATES {
         let src = producer_root.join("crates").join(name);
         if !src.is_dir() {
@@ -5131,6 +5139,10 @@ fn generate_rust_ui_delivery_inner(
         } else if name == "auto-lang-core" {
             edits = delivery_apply_projection(&dst.join("Cargo.toml"), &PROJECTION_AUTO_LANG_CORE)?;
             projection_edits_core = edits.clone();
+        } else if name == "auto-ui-runtime" {
+            edits =
+                delivery_apply_projection(&dst.join("Cargo.toml"), &PROJECTION_AUTO_UI_RUNTIME)?;
+            projection_edits_runtime = edits.clone();
         }
         crate_entries.push(serde_json::json!({
             "name": name,
@@ -5296,6 +5308,7 @@ fn generate_rust_ui_delivery_inner(
         "pins_multi_slot_lock_frozen": multi_slot,
         "projection_edits_auto_lang": projection_edits,
         "projection_edits_auto_lang_core": projection_edits_core,
+        "projection_edits_auto_ui_runtime": projection_edits_runtime,
         "disclosure": {
             "total_files": total_files,
             "total_bytes": total_bytes,
@@ -5477,18 +5490,39 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
     }
 
     println!("  cargo run --manifest-path {}", cargo_toml.display());
-    let api_server = std::process::Command::new("cargo")
-        .args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .spawn();
+    // PLAN-815 T-05 hosted mode: the cargo api-server child is tracked
+    // (piped stdout forwarded to the host log stream with URL sniffing;
+    // cancel kills it; the registry owns it, so nothing is handed back).
+    // Legacy path: inherit stdio, child returned to the caller as before.
+    let mut tracked: Option<std::sync::Arc<crate::proc_host::TrackedChild>> = None;
+    let api_server: Result<Option<std::process::Child>, String> =
+        if crate::proc_host::current().is_some() {
+            let mut command = std::process::Command::new("cargo");
+            command.args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")]);
+            tracked = crate::proc_host::spawn_tracked(command, "api-server")
+                .map_err(|e| format!("Failed to start API server: {e}"))
+                .ok();
+            Ok(None)
+        } else {
+            std::process::Command::new("cargo")
+                .args(["run", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
+                .stdout(std::process::Stdio::inherit())
+                .stderr(std::process::Stdio::inherit())
+                .spawn()
+                .map(Some)
+                .map_err(|e| format!("Failed to start API server: {e}"))
+        };
 
     match api_server {
         Ok(mut child) => {
             println!(
                 "  {} API server starting (PID: {})...",
                 "✓".bright_green(),
-                child.id()
+                child
+                    .as_ref()
+                    .map(|c| c.id())
+                    .or_else(|| tracked.as_ref().map(|t| t.id))
+                    .unwrap_or(0)
             );
 
             // Wait for the server to become ready by polling the port.
@@ -5507,6 +5541,16 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
 
             while start.elapsed() < max_wait {
                 std::thread::sleep(std::time::Duration::from_millis(500));
+                // PLAN-815 T-05: hosted cancel during the ready window
+                // kills the owned child and bails with the sentinel.
+                if crate::proc_host::cancelled() {
+                    if let Some(t) = &tracked {
+                        t.kill();
+                    } else if let Some(c) = child.as_mut() {
+                        let _ = c.kill();
+                    }
+                    return Err(crate::proc_host::CANCELLED_ERR.to_string());
+                }
                 // PLAN-736 T-05：health 优先（200=service ready；404=legacy
                 // 产物可继续；503=bind 成功但未 ready——不再假 ready），
                 // TCP connect 兜底（health 通道异常时不阻塞 legacy 面）。
@@ -5538,9 +5582,13 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
                     "✓".bright_green(),
                     port
                 );
-                Ok(Some(child))
+                Ok(child)
             } else {
-                let _ = child.kill();
+                if let Some(t) = &tracked {
+                    t.kill();
+                } else if let Some(c) = child.as_mut() {
+                    let _ = c.kill();
+                }
                 Err(format!(
                     "API backend not ready within {}s (port {}); aborting before UI init — check backend build/run above",
                     max_wait.as_secs(), port
@@ -5549,6 +5597,17 @@ pub fn start_api_server(project_dir: &Path) -> Result<Option<std::process::Child
         }
         Err(e) => Err(format!("Failed to start API server: {}", e)),
     }
+}
+
+/// PLAN-815 T-05: hosted-aware cargo invocation — tracked child with
+/// cancel-aware wait when a RunIo is installed, plain `.status()` otherwise
+/// (legacy behavior frozen).
+fn cargo_status(mut command: std::process::Command) -> std::io::Result<std::process::ExitStatus> {
+    if crate::proc_host::current().is_some() {
+        let tracked = crate::proc_host::spawn_tracked(command, "cargo")?;
+        return crate::proc_host::wait_tracked(&tracked);
+    }
+    command.status()
 }
 
 /// Stop an API server child process (if running).
@@ -5624,14 +5683,15 @@ fn build_rust_ui_inner(project_dir: &Path, source: &PacSource) -> AutoResult<()>
         "{}",
         "Building Rust UI project (backend: rust-ui)".bright_cyan()
     );
-    let status = std::process::Command::new("cargo")
+    let mut build_command = std::process::Command::new("cargo");
+    build_command
         .args([
             "build",
             "--manifest-path",
             cargo_toml.to_str().unwrap_or("."),
         ])
-        .env("CARGO_TARGET_DIR", shared_cargo_target_dir(project_dir))
-        .status()?;
+        .env("CARGO_TARGET_DIR", shared_cargo_target_dir(project_dir));
+    let status = cargo_status(build_command)?;
 
     if !status.success() {
         return Err(format!("Cargo build failed with status: {}", status).into());
@@ -5740,7 +5800,7 @@ fn run_rust_ui_inner(project_dir: &Path, args: Vec<String>, source: &PacSource) 
     // whole tree (onig_sys included).
     cmd.env("CARGO_TARGET_DIR", shared_cargo_target_dir(project_dir));
 
-    let status = cmd.status()?;
+    let status = cargo_status(cmd)?;
 
     // Restore original CWD
     if let Some(dir) = original_dir {
@@ -5951,6 +6011,7 @@ mod tests {
             let stripped: Vec<&str> = [
                 PROJECTION_AUTO_LANG.strip_deps,
                 PROJECTION_AUTO_LANG_CORE.strip_deps,
+                PROJECTION_AUTO_UI_RUNTIME.strip_deps,
             ]
             .into_iter()
             .flatten()
@@ -7256,28 +7317,33 @@ pub fn create_item(name str) str {
     fn delivery_projection_strip_and_idempotent() {
         let dir = tempfile::tempdir().unwrap();
         let m = dir.path().join("Cargo.toml");
-        let original = "[features]\nautodown = [\"ui-iced\", \"dep:autodown-core\"]\n\
+        // T-05 fact update: the auto-lang manifest no longer carries the cross-repo
+        // autodown-core optional dep (814-T-04 moved it to auto-ui-runtime), so this
+        // spec keeps only the test-protocol strip/rewrite; the runtime shape is
+        // verified by the runtime-spec arm below.
+        let original = "[features]\n\
              test-cases = [\"dep:auto-test-case\", \"auto-lang-core/test-cases\"]\n\n\
-             [dependencies]\n# comment\nautodown-core = { path = \"../../../auto-down/autodown/packages/engine/rust\", optional = true }\n\
+             [dependencies]\n# comment\n\
              auto-test-case = { path = \"../auto-test-case\", optional = true }\n\
              auto-val = { path = \"../auto-val\" }\n";
         std::fs::write(&m, original).unwrap();
         let edits = delivery_apply_projection(&m, &PROJECTION_AUTO_LANG).unwrap();
-        assert_eq!(edits.len(), 4, "2 strip + 2 rewrite");
+        assert_eq!(edits.len(), 2, "1 strip + 1 rewrite");
         let text = std::fs::read_to_string(&m).unwrap();
-        assert!(!text.contains("autodown-core"), "跨仓 optional dep 剥除");
-        assert!(!text.contains("auto-test-case"), "测试协议 dep 剥除");
-        assert!(text.contains("autodown = [\"ui-iced\"]"), "feature 名保留");
-        assert!(text.contains("test-cases = []"), "feature 名保留");
+        assert!(
+            !text.contains("auto-test-case"),
+            "test-protocol dep stripped"
+        );
+        assert!(text.contains("test-cases = []"), "feature name kept");
         assert!(
             text.contains("auto-val = { path = \"../auto-val\" }"),
-            "闭包内依赖不动"
+            "in-closure dependency untouched"
         );
-        // 幂等：已修剪清单二次运行零改动
+        // Idempotent: a second pass over the trimmed manifest makes zero edits.
         let stripped = std::fs::read_to_string(&m).unwrap();
         delivery_apply_projection(&m, &PROJECTION_AUTO_LANG).unwrap();
         assert_eq!(std::fs::read_to_string(&m).unwrap(), stripped);
-        // 计数不足判红（结构漂移的 producer）
+        // Under-count is red (a producer whose structure drifted).
         let drift = dir.path().join("drift.toml");
         std::fs::write(
             &drift,
@@ -7285,6 +7351,36 @@ pub fn create_item(name str) str {
         )
         .unwrap();
         assert!(delivery_apply_projection(&drift, &PROJECTION_AUTO_LANG).is_err());
+        // PLAN-815 T-05: runtime spec — cross-repo autodown-core strip + feature
+        // rewrite (the shape moved over from auto-lang by 814-T-04), idempotent,
+        // drift-red, each holding on its own.
+        let rt = dir.path().join("runtime.toml");
+        std::fs::write(
+            &rt,
+            "[features]\nautodown = [\"ui-iced\", \"dep:autodown-core\"]\n\n[dependencies]\n# comment\nautodown-core = { path = \"../../../auto-down/autodown/packages/engine/rust\", optional = true }\n",
+        )
+        .unwrap();
+        let rt_edits = delivery_apply_projection(&rt, &PROJECTION_AUTO_UI_RUNTIME).unwrap();
+        assert_eq!(rt_edits.len(), 2, "1 strip + 1 rewrite");
+        let rt_text = std::fs::read_to_string(&rt).unwrap();
+        assert!(
+            !rt_text.contains("autodown-core"),
+            "cross-repo optional dep stripped"
+        );
+        assert!(
+            rt_text.contains("autodown = [\"ui-iced\"]"),
+            "feature name kept"
+        );
+        let rt_stripped = std::fs::read_to_string(&rt).unwrap();
+        delivery_apply_projection(&rt, &PROJECTION_AUTO_UI_RUNTIME).unwrap();
+        assert_eq!(std::fs::read_to_string(&rt).unwrap(), rt_stripped);
+        let rt_drift = dir.path().join("runtime-drift.toml");
+        std::fs::write(
+            &rt_drift,
+            "[dependencies]\nauto-val = { path = \"../auto-val\" }\n",
+        )
+        .unwrap();
+        assert!(delivery_apply_projection(&rt_drift, &PROJECTION_AUTO_UI_RUNTIME).is_err());
         // PLAN-814 SD-08：SDK spec——旧形态 test-cases 行 + auto-test-case
         // 剥除（2 编辑）、幂等、漂移判红各自成立。
         let sdk = dir.path().join("sdk.toml");

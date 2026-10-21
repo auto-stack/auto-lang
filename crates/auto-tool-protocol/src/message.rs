@@ -3,7 +3,7 @@
 
 use crate::descriptor::ToolDescriptor;
 use crate::error::ToolError;
-use crate::report::ValidateProjectReport;
+use crate::report::{GenerationReport, RunReport, ValidateProjectReport};
 use auto_project_model::GenerationRequest;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -52,6 +52,22 @@ pub enum ClientBody {
     Describe,
     /// Validate I-PROJECT metadata / paths / request constraints.
     ValidateProject { request: WireRequest },
+    /// Generate the UI project for the request into its declared output
+    /// root (PLAN-815 T-05). Bounded operation: runs to completion.
+    GenerateUi { request: WireRequest },
+    /// Run the UI project for the request through the real run path
+    /// (PLAN-815 T-05): generation steps, owned child processes
+    /// (package manager / dev server / API server) or the in-process
+    /// VM UI on the OS main thread. Long-running and cancellable;
+    /// the dev-server URL is announced via
+    /// [`ToolEvent::Launched`] once the foreground child is up.
+    RunUi { request: WireRequest },
+    /// Forward raw bytes to the stdin of the operation's foreground owned
+    /// child (PLAN-815 T-05 interactive channel). The Vite dev server
+    /// genuinely consumes this — `q` + Enter terminates it. Protocol-level
+    /// control message like `cancel`, not a capability-listed operation;
+    /// operations without an interactive child answer with a named error.
+    Input { target_id: u64, data: Vec<u8> },
     /// Cancel an in-flight operation (honest answer for non-cancellable
     /// operations is [`ToolError::not_cancellable`]).
     Cancel { target_id: u64 },
@@ -63,6 +79,9 @@ impl ClientBody {
         match self {
             ClientBody::Describe => "describe",
             ClientBody::ValidateProject { .. } => "validate_project",
+            ClientBody::GenerateUi { .. } => "generate_ui",
+            ClientBody::RunUi { .. } => "run_ui",
+            ClientBody::Input { .. } => "input",
             ClientBody::Cancel { .. } => "cancel",
         }
     }
@@ -87,16 +106,46 @@ pub enum ToolEvent {
         done: u64,
         total: Option<u64>,
     },
+    /// The operation's foreground service is up at `url` (PLAN-815 T-05
+    /// LaunchSpec signal, e.g. the Vite dev server). The operation stays
+    /// in flight until the service exits or is cancelled.
+    Launched { url: String },
 }
 
 /// Host → client body.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ServerBody {
-    DescribeOk { descriptor: ToolDescriptor },
-    ValidateOk { report: ValidateProjectReport },
-    Event { event: ToolEvent },
-    Error { error: ToolError },
+    DescribeOk {
+        descriptor: ToolDescriptor,
+    },
+    ValidateOk {
+        report: ValidateProjectReport,
+    },
+    GenerateOk {
+        report: GenerationReport,
+    },
+    RunOk {
+        report: RunReport,
+    },
+    /// Receipt for an accepted `cancel` of an in-flight operation; the
+    /// operation itself completes with its own final envelope
+    /// (e.g. `RunOk` with `outcome: "cancelled"`).
+    Cancelled {
+        target_id: u64,
+    },
+    /// Receipt for accepted `input` bytes forwarded to the target
+    /// operation's foreground child stdin.
+    InputAck {
+        target_id: u64,
+        bytes: u64,
+    },
+    Event {
+        event: ToolEvent,
+    },
+    Error {
+        error: ToolError,
+    },
 }
 
 /// Host → client envelope; `id` mirrors the request id (0 when the request

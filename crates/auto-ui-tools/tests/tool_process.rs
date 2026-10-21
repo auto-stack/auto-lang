@@ -23,6 +23,11 @@ struct ToolProcess {
     child: Child,
     stdout_buffer: Vec<u8>,
     read_pos: usize,
+    /// The tool's stderr lands in a file (PLAN-815 T-05: run paths and
+    /// owned children are chatty; an in-band pipe interacts badly with
+    /// inherited-stdio grandchildren under load — a file keeps the log
+    /// oracle intact with zero backpressure).
+    stderr_path: std::path::PathBuf,
 }
 
 impl ToolProcess {
@@ -34,10 +39,19 @@ impl ToolProcess {
     /// validation must not depend on the tool's cwd).
     fn spawn_in(cwd: Option<&std::path::Path>) -> Self {
         let mut command = Command::new(BIN);
+        let stderr_path = std::env::temp_dir().join(format!(
+            "auto-ui-tool-stderr-{}-{}.log",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let stderr_file = std::fs::File::create(&stderr_path).expect("create tool stderr log");
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
+            .stderr(Stdio::from(stderr_file));
         if let Some(dir) = cwd {
             command.current_dir(dir);
         }
@@ -46,7 +60,13 @@ impl ToolProcess {
             child,
             stdout_buffer: Vec::new(),
             read_pos: 0,
+            stderr_path,
         }
+    }
+
+    /// The tool's stderr accumulated so far (live file read).
+    fn stderr_so_far(&self) -> String {
+        std::fs::read_to_string(&self.stderr_path).unwrap_or_default()
     }
 
     fn send(&mut self, message: &Json) {
@@ -90,7 +110,16 @@ impl ToolProcess {
                 .read(&mut chunk)
                 .expect("read stdout");
             if n == 0 {
-                panic!("tool closed stdout before answering");
+                let status = self.child.try_wait().expect("tool still running?");
+                panic!(
+                    "tool closed stdout before answering; exit status: {status:?}; stderr tail: {}",
+                    {
+                        let text = self.stderr_so_far();
+                        let lines: Vec<&str> = text.lines().collect();
+                        let n = lines.len();
+                        lines[n.saturating_sub(12)..].join(" | ")
+                    }
+                );
             }
             self.stdout_buffer.extend_from_slice(&chunk[..n]);
         }
@@ -103,17 +132,28 @@ impl ToolProcess {
             out.read_to_end(&mut rest).expect("drain stdout");
         }
         self.stdout_buffer.extend_from_slice(&rest);
-        let mut err = String::new();
-        if let Some(mut stderr) = self.child.stderr.take() {
-            stderr.read_to_string(&mut err).expect("drain stderr");
-        }
         let status = self.child.wait().expect("wait");
+        // Give the tool a moment to flush its stderr file on the way out.
+        for _ in 0..50 {
+            if self
+                .stderr_so_far()
+                .lines()
+                .any(|l| l.contains("exiting with code"))
+                || status.code().is_some()
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        let err = self.stderr_so_far();
+        let _ = std::fs::remove_file(&self.stderr_path);
         (status.code().unwrap_or(-1), err)
     }
 
     fn kill(mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+        let _ = std::fs::remove_file(&self.stderr_path);
     }
 }
 
@@ -169,12 +209,20 @@ fn describe_returns_real_identity_and_capabilities() {
                     .iter()
                     .map(|c| c.operation.as_str())
                     .collect::<Vec<_>>(),
-                vec!["describe", "validate_project"]
+                vec!["describe", "validate_project", "generate_ui", "run_ui"]
             );
-            assert!(descriptor
-                .capabilities
-                .iter()
-                .all(|c| !c.cancellable && !c.interactive));
+            // T-05: the bounded A ops stay non-cancellable/non-interactive;
+            // run_ui is honestly cancellable AND interactive (Vite reads
+            // stdin; children are owned and killed on cancel).
+            for capability in &descriptor.capabilities {
+                match capability.operation.as_str() {
+                    "run_ui" => assert!(capability.cancellable && capability.interactive),
+                    other => {
+                        assert!(!capability.cancellable, "{other}");
+                        assert!(!capability.interactive, "{other}");
+                    }
+                }
+            }
             assert!(descriptor.lifecycle.logs_on_stderr_only);
         }
         other => panic!("expected DescribeOk, got {other:?}"),
@@ -335,7 +383,7 @@ fn unimplemented_operation_is_rejected_with_zero_side_effects() {
     tool.send(&json!({
         "protocol_version": 1,
         "id": 9,
-        "body": {"op": "generate_ui", "output_root": output_root.path().to_string_lossy()}
+        "body": {"op": "teleport_ui", "output_root": output_root.path().to_string_lossy()}
     }));
     let response = parse_response(&tool.next_response());
     match response.body {
@@ -343,7 +391,7 @@ fn unimplemented_operation_is_rejected_with_zero_side_effects() {
             assert_eq!(
                 error.kind,
                 ErrorKind::UnknownOperation {
-                    operation: "generate_ui".into()
+                    operation: "teleport_ui".into()
                 }
             );
         }
@@ -409,7 +457,7 @@ fn cancel_answers_per_operation_and_for_unknown_targets() {
     match parse_response(&tool.next_response()).body {
         ServerBody::Error { error } => {
             assert!(
-                matches!(error.kind, ErrorKind::InvalidField { field, .. } if field == "target_id")
+                matches!(error.kind, ErrorKind::InvalidField { ref field, .. } if field == "target_id")
             );
         }
         other => panic!("expected Error, got {other:?}"),
@@ -750,4 +798,386 @@ fn r2_drive_relative_paths_are_cwd_qualified_not_cwd_probed() {
             "'{raw}' probed the cwd"
         );
     }
+}
+
+// ---------------------------------------------------------------------------
+// PLAN-815 T-05 / V-03 (B stage): real execution over the real binary —
+// generate_ui artifacts + progress, unserved-render rejection, busy gate,
+// input channel, and the real Vite dev-server lifecycle (launch spec from
+// real child stdout, cancel killing owned children, logs on stderr only).
+// ---------------------------------------------------------------------------
+
+/// A real minimal UI project (002-counter shape): pac.at + src/front/app.at.
+fn vue_ui_project() -> (tempfile::TempDir, GenerationRequest) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src").join("front")).unwrap();
+    std::fs::write(
+        dir.path().join("pac.at"),
+        "name: \"t05demo\"\nrender: \"vue\"\nwindow: \"640x480\"\nfront: \"./src/front\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("src").join("front").join("app.at"),
+        "widget App {\n    model {\n        var count int = 0\n    }\n    view {\n        col {\n            text `Count: ${.count}`\n            button \"+\" { onclick: () => {.count += 1} }\n        }\n    }\n}\n",
+    )
+    .unwrap();
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"t05demo\"\nrender: \"vue\"\nwindow: \"640x480\"\nfront: \"./src/front\"\n",
+            SourceInfo::from_path(dir.path().join("pac.at")),
+        )
+        .expect("parse"),
+    );
+    (dir, request)
+}
+
+/// Read envelopes until one matches; return (matched, all_seen). Progress
+/// events for the same op id are expected interleaved noise.
+fn next_until(
+    tool: &mut ToolProcess,
+    mut predicate: impl FnMut(&ServerEnvelope) -> bool,
+) -> (ServerEnvelope, Vec<ServerEnvelope>) {
+    let mut seen = Vec::new();
+    loop {
+        let envelope = parse_response(&tool.next_response());
+        if predicate(&envelope) {
+            seen.push(envelope.clone());
+            return (envelope, seen);
+        }
+        seen.push(envelope);
+    }
+}
+
+#[test]
+#[ignore = "heavy: real cold generation (debug compile of the real chain, minutes); serial evidence run via --ignored"]
+fn generate_ui_reports_real_artifacts_with_progress() {
+    let (dir, request) = vue_ui_project();
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(
+        50,
+        ClientBody::GenerateUi {
+            request: WireRequest(request),
+        },
+    ));
+    let (final_envelope, seen) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::GenerateOk { .. })
+            || matches!(e.body, ServerBody::Error { .. })
+    });
+    assert_eq!(final_envelope.id, 50);
+    match final_envelope.body {
+        ServerBody::GenerateOk { report } => {
+            assert_eq!(report.frontends, vec!["vue".to_string()]);
+            assert!(report.files_written > 10, "real artifacts: {report:?}");
+            assert!(report.duration_ms > 0);
+            // The generation root exists on disk with real files — the
+            // report counts a real walk, not a generator self-report.
+            assert!(dir.path().join("gen").join("front").join("vue").exists());
+            let real_files = walk_files(&dir.path().join("gen"));
+            assert_eq!(real_files, report.files_written, "disk matches report");
+        }
+        other => panic!("expected GenerateOk, got {other:?}"),
+    }
+    // Progress events arrived on the control stream (framed, same id).
+    let progress: Vec<_> = seen
+        .iter()
+        .filter(|e| matches!(e.body, ServerBody::Event { .. }))
+        .collect();
+    assert!(!progress.is_empty(), "no progress events: {seen:?}");
+    // The tool keeps serving after a completed work op.
+    tool.send(&envelope(51, ClientBody::Describe));
+    assert!(matches!(
+        parse_response(&tool.next_response()).body,
+        ServerBody::DescribeOk { .. }
+    ));
+    let (code, stderr) = tool.close_stdin_and_wait();
+    eprintln!("EXIT CODE = {code}; stderr last lines: {}", {
+        let lines: Vec<&str> = stderr.lines().collect();
+        let n = lines.len();
+        lines[n.saturating_sub(6)..].join(" | ")
+    });
+    assert_eq!(code, 0);
+}
+
+fn walk_files(root: &std::path::Path) -> u64 {
+    let mut count = 0u64;
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                stack.push(path);
+            } else {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+#[test]
+fn generate_ui_rejects_unserved_render_before_side_effects() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("front")).unwrap();
+    std::fs::write(dir.path().join("pac.at"), "name: \"x\"\nrender: \"jet\"\n").unwrap();
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"x\"\nrender: \"jet\"\n",
+            SourceInfo::from_path(dir.path().join("pac.at")),
+        )
+        .expect("parse"),
+    );
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(
+        52,
+        ClientBody::GenerateUi {
+            request: WireRequest(request),
+        },
+    ));
+    match parse_response(&tool.next_response()).body {
+        ServerBody::Error { error } => {
+            assert!(
+                matches!(error.kind, ErrorKind::InvalidField { ref field, .. } if field == "request"),
+                "named rejection: {error:?}"
+            );
+        }
+        other => panic!("expected Error, got {other:?}"),
+    }
+    // Zero side effects: nothing was generated anywhere under the project.
+    assert!(!dir.path().join("gen").exists());
+    tool.kill();
+}
+
+#[test]
+fn input_targets_are_answered_honestly() {
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(60, ClientBody::Describe));
+    let _ = tool.next_response();
+    // Input to a completed bounded op: already completed, named.
+    tool.send(&json!({
+        "protocol_version": 1,
+        "id": 61,
+        "body": {"op": "input", "target_id": 60, "data": [104, 105, 10]}
+    }));
+    match parse_response(&tool.next_response()).body {
+        ServerBody::Error { error } => {
+            assert!(
+                matches!(error.kind, ErrorKind::InvalidField { ref field, .. } if field == "target_id"),
+                "{error:?}"
+            );
+        }
+        other => panic!("expected Error, got {other:?}"),
+    }
+    // Input to an id that never existed.
+    tool.send(&json!({
+        "protocol_version": 1,
+        "id": 62,
+        "body": {"op": "input", "target_id": 4040, "data": [104, 105, 10]}
+    }));
+    match parse_response(&tool.next_response()).body {
+        ServerBody::Error { error } => {
+            assert!(
+                matches!(error.kind, ErrorKind::InvalidField { ref field, .. } if field == "target_id"),
+                "{error:?}"
+            );
+        }
+        other => panic!("expected Error, got {other:?}"),
+    }
+    let (code, _) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
+}
+
+#[test]
+fn run_ui_reports_real_failure_for_broken_source() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    std::fs::create_dir_all(dir.path().join("src").join("front")).unwrap();
+    std::fs::write(
+        dir.path().join("pac.at"),
+        "name: \"broken\"\nrender: \"vue\"\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("src").join("front").join("app.at"),
+        "widget App {\n    model {\n        var count int = 0\n", // unclosed
+    )
+    .unwrap();
+    let request = GenerationRequest::from_descriptor(
+        &parse_document(
+            "name: \"broken\"\nrender: \"vue\"\n",
+            SourceInfo::from_path(dir.path().join("pac.at")),
+        )
+        .expect("parse"),
+    );
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(
+        63,
+        ClientBody::RunUi {
+            request: WireRequest(request),
+        },
+    ));
+    let (envelope, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::RunOk { .. }) || matches!(e.body, ServerBody::Error { .. })
+    });
+    match envelope.body {
+        ServerBody::RunOk { report } => {
+            // Real failure surfaced from the real compile path.
+            assert_eq!(report.outcome, auto_tool_protocol::RunOutcome::Failed);
+            assert!(report.error.as_deref().is_some_and(|e| !e.is_empty()));
+        }
+        other => panic!("expected RunOk(failed), got {other:?}"),
+    }
+    tool.kill();
+}
+
+/// The real execution chain on a no-backend vue project: real generation,
+/// real `pnpm install` child (hosted stdio, progress events on the control
+/// stream), then the honest backend failure surfaced from the real run
+/// path. The Launched/URL-sniff positive and the interactive-quit path
+/// need a backend-served fixture — they land with the T-06 real-project
+/// matrix (V-04); the forwarding mechanism itself is covered by the
+/// proc_host real-child unit test.
+/// Environment: needs pnpm (warm store / network).
+#[test]
+#[ignore = "heavy+env: real pnpm install; serial evidence run via --ignored"]
+fn run_ui_real_install_chain_then_honest_backend_failure() {
+    let (_dir, request) = vue_ui_project();
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(
+        70,
+        ClientBody::RunUi {
+            request: WireRequest(request),
+        },
+    ));
+    // Progress events stream while the real install child runs; the run
+    // then fails honestly at the backend step (the fixture declares no
+    // back contract — start_api_server refuses, matching legacy).
+    let (final_run, seen) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::RunOk { .. }) || matches!(e.body, ServerBody::Error { .. })
+    });
+    let progress_steps: Vec<String> = seen
+        .iter()
+        .filter_map(|e| match &e.body {
+            ServerBody::Event {
+                event: auto_tool_protocol::ToolEvent::Progress { message, .. },
+            } => Some(message.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        progress_steps.iter().any(|m| m.contains("install")),
+        "real install step announced: {progress_steps:?}"
+    );
+    match final_run.body {
+        ServerBody::RunOk { report } => {
+            assert_eq!(report.outcome, auto_tool_protocol::RunOutcome::Failed);
+            let error = report.error.expect("real failure text");
+            assert!(error.contains("backend"), "honest backend failure: {error}");
+            assert_eq!(report.profile, "vue");
+        }
+        other => panic!("expected RunOk(failed), got {other:?}"),
+    }
+    // The tool keeps serving; the log stream carried the real child output
+    // (never the control stream — every frame parsed above).
+    tool.send(&envelope(73, ClientBody::Describe));
+    assert!(matches!(
+        parse_response(&tool.next_response()).body,
+        ServerBody::DescribeOk { .. }
+    ));
+    let (code, stderr) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
+    assert!(
+        stderr.contains("Installing dependencies"),
+        "install phase visible on the log stream: {}",
+        stderr.lines().take(6).collect::<Vec<_>>().join(" | ")
+    );
+}
+
+/// Single work operation at a time: while a real run (with a real install
+/// child in flight) is running, a second work op is rejected by name BEFORE
+/// side effects; the `input` channel delivers bytes to the real foreground
+/// child (InputAck); cancel kills the owned children and the slot frees.
+/// Environment: needs pnpm.
+#[test]
+#[ignore = "heavy+env: real run op with real children; serial evidence run via --ignored"]
+fn run_ui_single_flight_input_busy_then_cancel() {
+    let (_dir, request) = vue_ui_project();
+    let mut tool = ToolProcess::spawn();
+    tool.send(&envelope(
+        80,
+        ClientBody::RunUi {
+            request: WireRequest(request.clone()),
+        },
+    ));
+    let _ = next_until(&mut tool, |e| match &e.body {
+        ServerBody::Event {
+            event: auto_tool_protocol::ToolEvent::Progress { message, .. },
+        } => message.contains("install"),
+        _ => false,
+    });
+    // Second work op while the first runs: named busy rejection.
+    tool.send(&envelope(
+        81,
+        ClientBody::RunUi {
+            request: WireRequest(request),
+        },
+    ));
+    match parse_response(&tool.next_response()).body {
+        ServerBody::Error { error } => {
+            assert!(
+                matches!(error.kind, ErrorKind::InvalidField { ref field, .. } if field == "request"),
+                "busy rejection: {error:?}"
+            );
+        }
+        other => panic!("expected busy Error, got {other:?}"),
+    }
+    // Input channel against the in-flight op. With a warm store the
+    // install child may already have exited by now, so BOTH answers are
+    // honest and expected: InputAck (bytes delivered to the live child's
+    // stdin) or the named no-interactive-child error. Which arm fires is
+    // timing; that each fires by name is the contract.
+    tool.send(&json!({
+        "protocol_version": 1,
+        "id": 82,
+        "body": {"op": "input", "target_id": 80, "data": [113, 10]}
+    }));
+    match parse_response(&tool.next_response()).body {
+        ServerBody::InputAck { target_id, bytes } => {
+            assert_eq!(target_id, 80);
+            assert_eq!(bytes, 2);
+        }
+        ServerBody::Error { error } => {
+            assert!(
+                matches!(error.kind, ErrorKind::InvalidField { ref field, .. } if field == "data"),
+                "expected the honest no-interactive-child error, got {error:?}"
+            );
+        }
+        other => panic!("expected InputAck or named no-child error, got {other:?}"),
+    }
+    // Cancel the first: owned children die, the receipt answers, the op
+    // completes as cancelled, and the slot frees for another work op.
+    tool.send(&envelope(83, ClientBody::Cancel { target_id: 80 }));
+    let (cancelled, _) = next_until(&mut tool, |e| {
+        matches!(e.body, ServerBody::Cancelled { .. })
+    });
+    match cancelled.body {
+        ServerBody::Cancelled { target_id } => assert_eq!(target_id, 80),
+        other => panic!("expected Cancelled, got {other:?}"),
+    }
+    let (final_run, _) = next_until(&mut tool, |e| matches!(e.body, ServerBody::RunOk { .. }));
+    match final_run.body {
+        ServerBody::RunOk { report } => {
+            assert_eq!(report.outcome, auto_tool_protocol::RunOutcome::Cancelled);
+        }
+        other => panic!("expected RunOk, got {other:?}"),
+    }
+    // Describe still answers inline (bounded ops bypass the work slot).
+    tool.send(&envelope(84, ClientBody::Describe));
+    assert!(matches!(
+        parse_response(&tool.next_response()).body,
+        ServerBody::DescribeOk { .. }
+    ));
+    let (code, _) = tool.close_stdin_and_wait();
+    assert_eq!(code, 0);
 }

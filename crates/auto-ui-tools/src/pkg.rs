@@ -108,32 +108,40 @@ fn parse_pkg_from_at(content: &str) -> Option<PkgManagerKind> {
 /// Always sets `CI=true` so child processes (notably pnpm v11's build-approval
 /// prompt triggered inside `shadcn-vue add`) run non-interactively instead of
 /// hanging on a TTY prompt that has no one to answer it.
+///
+/// PLAN-815 T-05 hosted mode: when a tool-host [`crate::proc_host::RunIo`] is
+/// installed, the child is spawned tracked (piped stdout forwarded to the
+/// host log stream, piped stdin, cancel-aware wait) instead of inheriting.
 pub fn run_command_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
     #[cfg(windows)]
-    let status = {
-        let mut full_args = vec!["/C", cmd];
-        full_args.extend(args);
-        Command::new("cmd")
-            .args(&full_args)
-            .current_dir(cwd)
-            .env("CI", "true")
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
-    };
-
+    let mut full_args = vec!["/C", cmd];
+    #[cfg(windows)]
+    full_args.extend(args);
+    #[cfg(windows)]
+    let mut command = Command::new("cmd");
+    #[cfg(windows)]
+    command.args(&full_args);
     #[cfg(not(windows))]
-    let status = {
-        Command::new(cmd)
-            .args(args)
-            .current_dir(cwd)
-            .env("CI", "true")
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .status()
-            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?
-    };
+    let mut command = Command::new(cmd);
+    #[cfg(not(windows))]
+    command.args(args);
+    command.current_dir(cwd).env("CI", "true");
+    if crate::proc_host::current().is_some() {
+        let tracked = crate::proc_host::spawn_tracked(command, "install")
+            .map_err(|e| format!("Failed to run {cmd}: {e}"))?;
+        let status =
+            crate::proc_host::wait_tracked(&tracked).map_err(|e| format!("Failed to wait: {e}"))?;
+        return if status.success() {
+            Ok(())
+        } else {
+            Err(format!("{cmd} exited with code {:?}", status.code()))
+        };
+    }
+    let status = command
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .status()
+        .map_err(|e| format!("Failed to run {cmd}: {e}"))?;
 
     if status.success() {
         Ok(())
@@ -211,59 +219,57 @@ impl Drop for ChildGuard {
 
 pub fn run_script_live(cmd: &str, args: &[&str], cwd: &Path) -> Result<(), String> {
     #[cfg(windows)]
-    {
-        let mut full_args = vec!["/C", cmd];
-        full_args.extend(args);
-        let child = Command::new("cmd")
-            .args(&full_args)
-            .current_dir(cwd)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .stdin(Stdio::inherit())
-            .spawn()
-            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?;
+    let mut full_args = vec!["/C", cmd];
+    #[cfg(windows)]
+    full_args.extend(args);
+    #[cfg(windows)]
+    let mut command = Command::new("cmd");
+    #[cfg(windows)]
+    command.args(&full_args);
+    #[cfg(not(windows))]
+    let mut command = Command::new(cmd);
+    #[cfg(not(windows))]
+    command.args(args);
+    command.current_dir(cwd);
 
-        let mut guard = ChildGuard(Some(child));
-        let status = guard
-            .0
-            .as_mut()
-            .unwrap()
-            .wait()
-            .map_err(|e| format!("Failed to wait: {}", e))?;
-        guard.0 = None; // Child exited normally, don't kill on drop
-
-        if status.success() {
+    // PLAN-815 T-05 hosted mode: the dev server runs as a tracked child —
+    // its stdout is forwarded to the host log stream (the sniffed URL
+    // announces the launch spec), its stdin is fed by the protocol `Input`
+    // channel (Vite really does quit on `q` + Enter), and cancel kills it.
+    if crate::proc_host::current().is_some() {
+        let tracked = crate::proc_host::spawn_tracked(command, "dev-server")
+            .map_err(|e| format!("Failed to run {cmd}: {e}"))?;
+        let status =
+            crate::proc_host::wait_tracked(&tracked).map_err(|e| format!("Failed to wait: {e}"))?;
+        return if status.success() {
             Ok(())
         } else {
-            Err(format!("{} exited with code {:?}", cmd, status.code()))
-        }
+            Err(format!("{cmd} exited with code {:?}", status.code()))
+        };
     }
 
-    #[cfg(not(windows))]
-    {
-        let child = Command::new(cmd)
-            .args(args)
-            .current_dir(cwd)
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit())
-            .stdin(Stdio::inherit())
-            .spawn()
-            .map_err(|e| format!("Failed to run {}: {}", cmd, e))?;
+    // Legacy interactive path (behavior frozen): inherit stdio so the user
+    // can type `q` + Enter to stop Vite.
+    let child = command
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .stdin(Stdio::inherit())
+        .spawn()
+        .map_err(|e| format!("Failed to run {}: {}", cmd, e))?;
 
-        let mut guard = ChildGuard(Some(child));
-        let status = guard
-            .0
-            .as_mut()
-            .unwrap()
-            .wait()
-            .map_err(|e| format!("Failed to wait: {}", e))?;
-        guard.0 = None;
+    let mut guard = ChildGuard(Some(child));
+    let status = guard
+        .0
+        .as_mut()
+        .unwrap()
+        .wait()
+        .map_err(|e| format!("Failed to wait: {}", e))?;
+    guard.0 = None; // Child exited normally, don't kill on drop
 
-        if status.success() {
-            Ok(())
-        } else {
-            Err(format!("{} exited with code {:?}", cmd, status.code()))
-        }
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("{} exited with code {:?}", cmd, status.code()))
     }
 }
 

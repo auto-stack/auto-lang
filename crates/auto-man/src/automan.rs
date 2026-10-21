@@ -1826,7 +1826,7 @@ impl Automan {
                 } else {
                     {
                         let req = self.gen_request_run()?;
-                        crate::rust_ui_vm_compat::run_vm_ui_with_request(&root_dir, args, &req)
+                        crate::rust_ui::run_vm_ui_with_request(&root_dir, args, &req)
                     }
                 }
             }
@@ -1844,7 +1844,7 @@ impl Automan {
             .map_err(|e| format!("Failed to get current directory: {}", e))?;
         {
             let req = self.gen_request_run()?;
-            crate::vue_run_compat::run_vue_project_with_request(&root_dir, args, &req)
+            crate::vue::run_vue_project_with_request(&root_dir, args, &req)
         }
     }
 
@@ -1962,7 +1962,7 @@ impl Automan {
         match frontend {
             BackendType::Vue => {
                 println!("  Running Vue dev server");
-                crate::vue_run_compat::run_vue_project_with_request(root_dir, args, req)?;
+                crate::vue::run_vue_project_with_request(root_dir, args, req)?;
             }
             BackendType::Jet => {
                 println!("  Running Jetpack project");

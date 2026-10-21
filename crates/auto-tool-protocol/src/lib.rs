@@ -42,7 +42,10 @@ pub use message::{
     ClientBody, ClientEnvelope, ServerBody, ServerEnvelope, ToolEvent, ValidateProjectRequest,
     WireRequest,
 };
-pub use report::{Finding, RequestSummary, Severity, ValidateProjectReport};
+pub use report::{
+    Finding, GenerationReport, RequestSummary, RunOutcome, RunReport, Severity,
+    ValidateProjectReport,
+};
 pub use version::PROTOCOL_VERSION;
 
 #[cfg(test)]
