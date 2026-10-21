@@ -707,10 +707,12 @@ pub struct CheckedEnv {
     /// rejection — a matching function name and slot index is NOT
     /// environment identity.
     pub(crate) id: u64,
-    /// D-03: publication generation — bumped by every successful candidate
-    /// commit. A candidate records the generation it was prepared against;
-    /// committing onto a newer base is a controlled stale rejection (an
-    /// old candidate never overwrites a newer published result).
+    /// D-03: publication generation — advanced by every SUCCESSFUL
+    /// external publication of current semantics: a candidate commit and
+    /// an in-place [`recheck_function`](fn recheck_function). A candidate
+    /// records the generation it was prepared against; committing onto a
+    /// newer base is a controlled stale rejection (an old candidate never
+    /// overwrites a newer published result).
     pub(crate) generation: u64,
     /// D-03 (T01-C05): set by the explicit [`CheckedEnv::close`] — after it
     /// every recheck/emit/prepare is a controlled `source.closed`
@@ -741,7 +743,8 @@ impl CheckedEnv {
         self.id
     }
 
-    /// D-03: how many candidate commits this environment has published.
+    /// D-03: how many successful external publications (candidate commits
+    /// plus in-place rechecks) this environment has served.
     pub fn generation(&self) -> u64 {
         self.generation
     }
@@ -800,18 +803,32 @@ pub fn env_note_cold_walks(env: &mut CheckedEnv) {
 /// success the entry is swapped into `env.program.fns[fn_index]` (the
 /// environment stays current for later edits and the emit seam reads it
 /// from there); on failure the previous entry is restored untouched.
+///
+/// D-03 unified base invalidation (T01-C05 residual): a SUCCESSFUL
+/// re-check is an external PUBLICATION of the current semantics, so it
+/// advances the candidate base generation — candidates prepared against
+/// the previous base become stale and can no longer overwrite it. A
+/// failed re-check publishes nothing.
 pub fn recheck_function(
     env: &mut CheckedEnv,
     item: &ast::FnItem,
     fn_index: usize,
 ) -> Result<(), Vec<Diagnostic>> {
-    recheck_swap(env, item, fn_index).map(|_| ())
+    let published = recheck_swap(env, item, fn_index);
+    if published.is_ok() {
+        env.generation += 1;
+    }
+    published.map(|_| ())
 }
 
 /// Core re-check: the same guarded walk as [`recheck_function`], returning
 /// the DISPLACED previous entry (moved — nothing is cloned) so a
 /// transactional caller can hold "current" across the candidate's
-/// post-recheck stages (D-03 single-slot transaction).
+/// post-recheck stages (D-03 single-slot transaction). Deliberately does
+/// NOT advance the publication generation: prepare uses this as its
+/// bounded TEMPORARY graft and restores current before returning, so it
+/// publishes nothing — only the external publication entries
+/// ([`recheck_function`], `FnCandidate::commit`) advance the base.
 pub(crate) fn recheck_swap(
     env: &mut CheckedEnv,
     item: &ast::FnItem,

@@ -862,6 +862,94 @@ fn contract_828_transaction_two_live_candidates_and_stale_base() {
     );
 }
 
+/// C05 residual (0b612fda1 review, publisher control): EVERY entry that
+/// successfully publishes current semantics joins the SAME base
+/// invalidation credential. The public in-place recheck publishes a newer
+/// current (3) — a candidate prepared earlier against the old base (2)
+/// must be rejected stale instead of overwriting it.
+#[test]
+fn contract_828_transaction_public_recheck_invalidates_old_candidate() {
+    use auto_ac_prototype::source as ac;
+    let base_src = "fn helper() int { return 1 }\nfn main() int { return helper() }\n";
+    let cand_src = "fn helper() int { return 2 }\nfn main() int { return helper() }\n";
+    let direct_src = "fn helper() int { return 3 }\nfn main() int { return helper() }\n";
+    let parsed = ac::parse_program_with(base_src, ac::SourceProfile::Scalar).unwrap();
+    let mut env = ac::resolve_env(&parsed, &[], ac::SourceProfile::Scalar).unwrap();
+
+    let old = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(cand_src, "helper"),
+        0,
+        cand_src,
+        "probe.at",
+    )
+    .unwrap();
+    let base = old.base_generation();
+    // The retained public primitive really installs a NEWER current (3).
+    ac::recheck_function(&mut env, &fn_item_of(direct_src, "helper"), 0).unwrap();
+    assert_eq!(
+        current_dump(&env, direct_src),
+        cold_dump(direct_src),
+        "the public recheck installed the new current semantics"
+    );
+    assert!(
+        env.generation() > base,
+        "a successful external publication advances the candidate base"
+    );
+    // The old prepared candidate must not overwrite the newer current.
+    let rejected = old.commit(&mut env).unwrap_err();
+    assert!(
+        rejected.iter().any(|d| d.code == "source.stale"),
+        "an old candidate must not overwrite a current installed by the other public publishing entry: {rejected:?}"
+    );
+    assert_eq!(
+        current_dump(&env, direct_src),
+        cold_dump(direct_src),
+        "the newer current stays"
+    );
+}
+
+/// Legal publisher control: a FAILED recheck publishes nothing — a
+/// pending candidate stays valid against the unchanged base and commits
+/// legally.
+#[test]
+fn contract_828_transaction_failed_recheck_preserves_pending_candidate() {
+    use auto_ac_prototype::source as ac;
+    let base_src = "fn helper() int { return 1 }\nfn main() int { return helper() }\n";
+    let cand_src = "fn helper() int { return 2 }\nfn main() int { return helper() }\n";
+    let bad_src = "fn helper() int { return true }\nfn main() int { return helper() }\n";
+    let parsed = ac::parse_program_with(base_src, ac::SourceProfile::Scalar).unwrap();
+    let mut env = ac::resolve_env(&parsed, &[], ac::SourceProfile::Scalar).unwrap();
+
+    let candidate = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(cand_src, "helper"),
+        0,
+        cand_src,
+        "probe.at",
+    )
+    .unwrap();
+    let base = candidate.base_generation();
+    // A real type error: the recheck is rejected and publishes nothing.
+    assert!(ac::recheck_function(&mut env, &fn_item_of(bad_src, "helper"), 0).is_err());
+    assert_eq!(
+        current_dump(&env, base_src),
+        cold_dump(base_src),
+        "a failed recheck leaves current untouched"
+    );
+    assert_eq!(
+        env.generation(),
+        base,
+        "a failed recheck does not advance the publication base"
+    );
+    candidate.commit(&mut env).unwrap();
+    assert_eq!(
+        current_dump(&env, cand_src),
+        cold_dump(cand_src),
+        "the pending candidate is still valid and publishes"
+    );
+}
+
 /// Foreign disposition: a matching function NAME and SLOT in a DIFFERENT
 /// environment is not environment identity. Committing another
 /// environment's candidate is rejected and modifies NEITHER environment;
