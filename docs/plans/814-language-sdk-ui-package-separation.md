@@ -1075,6 +1075,48 @@ T04保持闭合；重开T05/T08/T09，T10..12未完成；实际完成T01/02/03/0
   更新后 handoff/sd-b-proposals + r13-closeout。merge-owned 冻结门
   （裸 t+tv+tu+tt 及必要 docs/schema/book）照旧 pending。
 
+### R14（2026-10-21）：R13 修复后的完整 T-10，needs_fix
+
+stage: review；review_scope: final；reviewer_identity: 本聊天 Codex 独立复审上下文，未参与实施，未创建agent/新checkout；plan_id: PLAN-814；plan_revision: 3。
+原树 `D:/autostack/.wt/lang-814/auto-lang` / `codex/plan-814-dev`；reviewed_commit `42a4ef792e522d0b30e81f42f6fb25e254148ac1` / tree `abce0e2b0af2406b0a8ceb1687b97359b5673b91`；修复base=R13 `feae28e0f`，B base=A发布`f6e07acee`；auto-down `c39ac7f9dacdc769fc4a5ad3b98ec896240b28e8`。初末clean/HEAD/依赖/44输入复核，只有RustGenerator变化；11 canonical输入与R13相同，计划/SD/handoff冻结。
+
+[完整报告、96编译/24组六符双向矩阵/正反控与冻结哈希](attachments/814/review-r14/review.md)。**R13两项具体缺口均CLOSED**：原九败全部变绿，work原62feature+默认正控63编译全0，overlay八组合mismatches0，即原64检查独立重放全绿；额外六比较符×两方向×loop/prop24/24实际编译全过。**F814-R9-01仍OPEN/P2**：classify_operand_expr没有既有比较表达式节点的bool结果类型；`p.dirty == (.limit > 3)`、反向、Value prop及再包! /&&共五组合错误as_str对bool，E0277。完全相同的比较/逻辑式在已知shape bool正控均真实编译绿，声明bool嵌套逻辑/双取反及prop反向控制也绿；非新增语法承诺。106输入全生成，96编译91过5败，沿用原类型保持finding，不增加独立finding。
+
+四包check/fmt/diff-check/777 strict绿（violations0/grandfathered3），compiler36/runtime235保持无新段告警；旧API/typepin再次编译绿。SDK隔离5/5、六provider43、runtime65、feature面、九档strict身份、counter双端及792真实收据按未变工作树代码/依赖/配置/输入限定复用。AC01 pass复用、AC02所验保持、AC03 fail、AC04 pass复用、AC05选择/发行所验pass而SD02 partial、AC06 needs_fix、AC07 merge pending、AC08..10保留A已发布。SD02完整表达式类型仍待修后审定；其余SD与R13当前Spec对账保持，SD08按de5e9d4a增补并保留M815/M816章节；影响元数据不变。
+
+T04保持；重开T05/T08/T09，T10..12未完成；完成T01/02/03/04/06/07/13/14/15，**executing9/15**。next_responsible_role: work，同原树修齐既有比较子表达式bool类型及逻辑/取反递归传播，保持已过六符/shape/宽度/纯条件语义，定向验证并提交再审。本轮初跑夹具重名污染已纠正并完整重放，废弃初次结果，最终73个历史AT逐字节保持；R13冻结快照未改。用户说明的未跟踪复审/历史证据按仓规保留，不算WIP、不清理。最终pass后merge新冻结裸t+tv+tu+tt及必要docs/schema/book，T11复审主库并集变化，再实际B发布沉淀与收据；tf主检出到期单实例，aavm原豁免。未改实施/canonical/liveledger，未整档/合入/归档/清树。
+
+2026-10-21（续 9，R14 needs_fix 后）/ stage: work / revision: 3 / outcome:
+**R9-01 比较子表达式 bool 结果传播收口**（T-05/T-08/T-09 复勾待完整
+T-10 判定；非自判 pass）/ worktree:
+`D:/autostack/.wt/lang-814/auto-lang` | branch: `codex/plan-814-dev` |
+受审基线: `42a4ef792`（5 败/92 过复现后修）| code: `6f1cac8cb`（R14
+修复批）| 依赖: auto-down `c39ac7f`（未变）。
+
+- **比较节点结果=Bool**：`classify_operand_expr` 在逻辑分裂与算术
+  分裂之间增比较节点规则——`has_top_comparison`（六符全集：`<`/`>`
+  含双字符首字符、`==`、`!=`；**括号外、字符串字面量外**——
+  `"a<b"` 不误报）命中即 Bool。取反/逻辑的既有递归自然传播：
+  `!( .limit > 3 )`、`( .limit > 3 ) && .allowed`、双取反嵌套全
+  保型。按复审"同一递归规则"指示实现，非逐条替换产物字符串，
+  Unknown 不一律当 bool（比较节点按语法事实取 bool，非数值混型
+  仍默认 str）。
+- **覆盖矩阵**（[r14-closeout](attachments/814/r14-closeout/)，复制自
+  review-r14 冻结件）：R14 五败全修 + R9-R13 全反例正控（95
+  feature）+ overlay = **97 feature + 正控 + overlay 99/99 exit0**
+  （fmt 后重建复放同结果）；新增边界审计 2 fixture：bool-cmp-arith
+  （比较×算术子树 `((.threshold + 0.5) > 1.0)`）、string-cmp-guard
+  （字符串字面量内 `<` 防误报——quote 感知 pin）。关键形态：
+  `(p["dirty"].as_bool().unwrap_or(false)) == ( self.limit > 3 )`、
+  `p["name"].as_str().unwrap_or_default() == "a<b"`。
+- **质量门**：同命令告警 A/B（基线 42a4ef792 ↔ 修复）**多重集完全
+  一致**（0 新增 0 移除）；rustfmt 过；tu 868/868 + compiler 216/216。
+- **SD/交接同步**：sd-b-proposals SD-02 补比较子表达式语义；handoff
+  §1 提交链补 `6f1cac8cb`、§3 V-03 行更新。
+- **next_responsible_role: review（完整 T-10）**——绑定 `6f1cac8cb` +
+  更新后 handoff/sd-b-proposals + r14-closeout。merge-owned 冻结门
+  （裸 t+tv+tu+tt 及必要 docs/schema/book）照旧 pending。
+
 ## 10. 待澄清事项
 
 **R4-01 合同裁定（已决，2026-10-20）**：用户批准 R6 复审整理的两项窄增量

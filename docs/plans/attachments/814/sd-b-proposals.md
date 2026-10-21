@@ -171,16 +171,22 @@ SD-03 明确留 B。**AC**：AC-03/04。
      0.5) < p.score` 与 `p.score > (.threshold + 0.5)` 左右位对称同
      型；**布尔取反传播**（R13：`! .allowed` 剥 `!` 递归取型保 bool，
      非 bool 取反非既有支持形态）；**括号内逻辑组合**（R13：`&&`/`||`
-     bool⊕bool→bool）；**任意一侧透明分组**（嵌套/内部空白）剥壳递归
+     bool⊕bool→bool）；**比较子表达式结果是 bool**（R14：`( .limit >
+     3 )` 剥壳后含顶层比较运算符即 bool——六符全集、括号外、字符串
+     字面量外（`"a<b"` 不误报）；与取反/逻辑在同一递归传播规则中：
+     `!( .limit > 3 )`、`( .limit > 3 ) && .allowed` 自然保型）；
+     **任意一侧透明分组**（嵌套/内部空白）剥壳递归
      不改型；String/Value/未声明引用/非数值混型不命中，默认 str 语义
      保持（`p.running == .wanted` 字符串状态比较不变）。反例集
-     （r9+r10+r11+r12+r13 全集）：字面量 int/float（含负、左右位、
+     （r9..r14 全集）：字面量 int/float（含负、左右位、
      prop）；声明 int/bool/float=f32/str/i64（左右位、prop）；分组
      （另一侧/字段自身/双侧嵌套×int/float/bool、prop、算式分组）；
      算式（`(.threshold + 0.5)` 左右位、`(.limit + 1)` int、prop 算式）；
      `<=`/`>=` 六例（loop/prop/分组/float 算式前向）；布尔取反三例
-     （两方向/prop）；逻辑组合/取反×逻辑。经 r13 探针 62 feature+
-     正控+overlay **64/64 真实编译 exit0**（[r13-closeout](r13-closeout/)）。
+     （两方向/prop）；逻辑组合/取反×逻辑；比较子表达式五例（两方向/
+     prop/取反包裹/逻辑左子树）+ 边界审计（比较×算术子树、字符串内
+     比较符防误报）。经 r14 探针 97 feature+
+     正控+overlay **99/99 真实编译 exit0**（[r14-closeout](r14-closeout/)）。
    - on_click 单元兜底：点击族消息承载事件（onclick/oncontextmenu
      [.prevent]→on_right_click/ondoubleclick）在场时跳过 `on_click
      (|_| ())` 兜底。反例：shell 语料按钮带 `oncontextmenu.prevent`，
