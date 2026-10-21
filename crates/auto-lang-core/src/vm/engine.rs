@@ -1,0 +1,14148 @@
+use crate::vm::channel::{AutoChannel, ChannelId};
+use crate::vm::codegen::ObjectType;
+use crate::vm::heap_object::HeapObject;
+use crate::vm::native::NativeInterface;
+use crate::vm::opcode::OpCode;
+use crate::vm::task::{AutoTask, ResultType, TaskId, TaskStatus};
+use crate::vm::task_system::TaskRegistry;
+use crate::vm::virt_memory::{
+    null_binop_type_error, null_unop_type_error, VirtualFlash, VirtualRAM,
+};
+use auto_val::AutoStr;
+use dashmap::DashMap;
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
+use std::time::Instant;
+use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
+
+/// Debug logging macro - only prints when VM debug mode is enabled
+/// Plan 423 P5:越界跳转的错误上下文(裸 InvalidOpCode(0xFF) 无从定位
+/// mispatched jump —— 带 ip/offset/new_ip/当前函数名)。
+fn jump_oob_error(task: &AutoTask, offset: isize, new_ip: isize, flash_len: usize) -> VMError {
+    let fn_name = task
+        .call_stack
+        .last()
+        .and_then(|f| f.fn_name.clone())
+        .unwrap_or_else(|| "<root>".to_string());
+    VMError::RuntimeError(format!(
+        "jump out of bounds: ip=0x{:04x} offset={} new_ip=0x{:04x} flash_len=0x{:04x} in {}",
+        task.ip, offset, new_ip, flash_len, fn_name
+    ))
+}
+
+/// Plan 423 P5:runaway 判定参数 —— 一次 handler 调用内的字符串池/堆增量
+/// 阈值与检查节拍。正常 UI handler 为百级增量;毒化字节码/失控循环为百万
+/// 级(检查本身每 5 万步一次,开销可忽略)。pub 供单测引用。
+pub const RUNAWAY_STRINGS_GROWTH: usize = 500_000;
+pub const RUNAWAY_HEAP_GROWTH: usize = 500_000;
+pub const RUNAWAY_CHECK_EVERY: u64 = 50_000;
+
+/// PLAN-781 T-22（R04 修复轮）：HTTP 段协作式取消探测节拍（步）——连续
+/// CPU 段无 park 边界，deadline/RST/关闭终态后在安全指令边界中止段，
+/// 不继续业务副作用（非抢占；与 runaway 节拍同量级 ≈ 每 5-10ms CPU）。
+pub const HTTP_CANCEL_PROBE_EVERY: u64 = 50_000;
+
+macro_rules! vm_debug {
+    ($($arg:tt)*) => {
+        if crate::is_vm_debug() {
+            eprintln!($($arg)*);
+        }
+    };
+}
+
+// ============================================================================
+// Plan 221 Task 5: String tagging helpers
+// ============================================================================
+
+/// Result of popping a mixed int/string value from the stack.
+/// Strings use NaN-boxed encoding, ints use i32 encoding.
+#[derive(Debug, Clone, Copy)]
+pub enum StackTag {
+    /// A plain integer value
+    Int(i32),
+    /// A string pool index
+    Str(u32),
+}
+
+/// Push a string tag onto the stack.
+#[inline(always)]
+pub fn push_str_tag(ram: &mut VirtualRAM, idx: u32) {
+    ram.push_string(idx);
+}
+
+/// Plan 403: Format an f64 for display. Whole numbers (e.g. 7.0) render
+/// without a decimal part ("7"); others use Rust's default float formatting.
+/// Used by the f64 to_string() path so calculator results show cleanly.
+#[inline(always)]
+fn fmt_f64(f: f64) -> String {
+    if f.is_nan() {
+        return "NaN".to_string();
+    }
+    if f.is_infinite() {
+        return if f > 0.0 {
+            "Infinity".to_string()
+        } else {
+            "-Infinity".to_string()
+        };
+    }
+    // If the value is (very nearly) a whole number, show it as an int.
+    let rounded = f.round();
+    if (f - rounded).abs() < 1e-9 && rounded.abs() < 1e15 {
+        return format!("{}", rounded as i64);
+    }
+    format!("{}", f)
+}
+
+/// Pop a known-string value, returning the string pool index.
+#[inline(always)]
+fn pop_str_idx(ram: &mut VirtualRAM) -> usize {
+    ram.pop_string() as usize
+}
+
+/// Pop a mixed int/string value from the stack.
+/// Uses NanoValue type detection.
+#[inline(always)]
+fn pop_tagged(ram: &mut VirtualRAM) -> StackTag {
+    let nv = ram.pop_nv();
+    if auto_val::is_string(nv) {
+        StackTag::Str(auto_val::decode_string(nv))
+    } else if auto_val::is_null(nv) {
+        // None (null nanbox) — map to old sentinel for backward compatibility
+        StackTag::Int(-1)
+    } else {
+        StackTag::Int(auto_val::decode_i32(nv))
+    }
+}
+
+/// Decode a string tag from an i32 variable (non-stack sources).
+/// NOTE: Under nanbox, callers should prefer `pop_str_idx()` when reading from the stack.
+/// This helper is for sites where the value is already in an i32 variable
+/// (e.g., read from bytecode or a non-stack source).
+#[inline(always)]
+#[allow(dead_code)]
+fn decode_str_tag_from_i32(bits: i32) -> usize {
+    (-bits - 1) as usize
+}
+
+/// List iterator state
+#[derive(Debug, Clone)]
+pub struct ListIterator {
+    pub list_id: u64,
+    pub current_index: u32,
+}
+
+/// Map iterator state - wraps a source iterator and applies a function
+#[derive(Debug, Clone)]
+pub struct MapIterator {
+    pub source_iterator_id: u32,
+    pub func_addr: u32, // Address of the function to call
+}
+
+/// Filter iterator state - wraps a source iterator and applies a predicate
+#[derive(Debug, Clone)]
+pub struct FilterIterator {
+    pub source_iterator_id: u32,
+    pub func_addr: u32, // Address of the predicate function
+}
+
+/// Enumerate iterator state - wraps a source iterator, tracking index
+/// Plan 200 Task 3.2: for (i, x) in iter.enumerate()
+#[derive(Debug, Clone)]
+pub struct EnumerateIterator {
+    pub source_iterator_id: u32,
+    pub current_index: u32,
+}
+
+/// Plan 321: Generator frame — saved execution state for yield/resume.
+/// A generator runs on an independent AutoTask; this struct tracks the
+/// association and lifecycle. The actual ip/bp/sp live on the task itself.
+#[derive(Debug, Clone)]
+pub struct GeneratorState {
+    /// The AutoTask that owns the generator's execution frame.
+    /// Created lazily on first next() call via vm.spawn_task(func_addr).
+    pub task_id: Option<u64>,
+    /// Function address of the generator body (used for first next()).
+    pub func_addr: u32,
+    /// Number of arguments the generator function takes.
+    pub n_args: u8,
+    /// Whether the generator has been started (first next() called).
+    pub started: bool,
+    /// Whether the generator has finished (function returned).
+    pub done: bool,
+    /// Plan 321 lazy: saved instruction pointer for resume (after YIELD_VAL).
+    /// Set on first next() to func_addr; updated each time YIELD_VAL is hit.
+    pub resume_ip: usize,
+    /// Plan 321 lazy: saved base pointer for resume.
+    pub resume_bp: usize,
+    /// Plan 321 lazy: saved stack pointer for resume.
+    pub resume_sp: usize,
+    /// Plan 321 lazy: saved stack contents (snapshot of local vars + args).
+    pub stack_snapshot: Vec<u64>, // Vec<NanoValue> as raw u64
+}
+
+/// Plan 321: HTTP stream iterator — wraps an HTTPStream handle so that
+/// `for chunk in http_stream { }` works via the standard Iter protocol.
+#[derive(Debug, Clone)]
+pub struct HttpStreamIterator {
+    pub stream_handle: u64,
+    pub done: bool,
+}
+
+/// Plan 341: Async HTTP stream iterator — wraps an async SSE/stream handle.
+/// Events are produced by a tokio::spawn'd future (reqwest async) and pulled
+/// via try_recv in shim_iterator_next. `done` is set locally when the channel
+/// reports Done or is closed.
+#[derive(Debug, Clone)]
+pub struct AsyncStreamIterator {
+    pub stream_id: u64,
+    pub done: bool,
+}
+
+/// Unified iterator type
+#[derive(Debug, Clone)]
+pub enum Iterator {
+    List(ListIterator),
+    Map(MapIterator),
+    Filter(FilterIterator),
+    Enumerate(EnumerateIterator),
+    /// Plan 321: Generator-based iterator (yield/~Iter<T>)
+    Generator(GeneratorState),
+    /// Plan 321: HTTP stream iterator (wraps HTTPStream for for-loop consumption)
+    HttpStream(HttpStreamIterator),
+    /// Plan 341: Async HTTP stream iterator (SSE / async streaming response)
+    AsyncHttpStream(AsyncStreamIterator),
+}
+
+// ============================================================================
+// Closures (Plan 071: Direct Capture)
+// ============================================================================
+
+use auto_val::Value;
+
+/// Closure - a function value with directly captured environment (Plan 071: Direct Capture)
+#[derive(Debug, Clone)]
+pub struct Closure {
+    pub func_addr: u32,              // Bytecode address
+    pub env: HashMap<String, Value>, // Direct captured values (no upvalues!)
+    pub n_args: usize, // Number of parameters (for CALL_CLOSURE to set current_fn_n_args)
+    /// Plan 385: 捕获变量的原始栈位置 (creator_bp, slot_offset)。
+    /// LOAD/STORE_CAPTURED 通过此映射直接读写创建者的栈帧（by-reference 捕获）。
+    /// 若为空（旧字节码兼容），fallback 到 env（by-value）。
+    pub capture_slots: HashMap<String, (usize, usize)>,
+    /// Plan 454 E5a:函数参数域捕获的绝对槽位(bp-(n_args-idx+1),创建时
+    /// 解析——参数不在 bp+1+idx 正域,通用 capture_slots 公式对它全错,
+    /// 表现为谓词闭包读外层参数得 ""/0。为空=无参数域捕获。
+    pub param_abs: HashMap<String, usize>,
+    /// PLAN-667 (F-01): 创建帧身份 (task_id, frame_uid)。帧相对捕获
+    /// (capture_slots/param_abs 非空)在读写前按此校验：任务不符=跨任务
+    /// 错帧，uid 不在活跃表=创建帧已返回（含同 bp 复用）。None=无帧
+    /// 相对捕获（env by-value / 合成闭包），无需校验。
+    pub creator_frame: Option<(crate::vm::task::TaskId, u64)>,
+}
+
+/// Plan 442 A5: one-shot timer callback form. The event form dispatches a
+/// widget handler (the `__toast_tick` pattern — no frame-geometry concerns);
+/// the closure form satisfies the auto-down SchedulerTimer contract
+/// (`setTimeout(fn, ms) -> handle`) but only supports by-value captures —
+/// by-reference captures (capture_slots) read the creator's frame and are
+/// meaningless once that frame is gone.
+#[derive(Debug, Clone)]
+pub enum TimerCallback {
+    /// Closure registry id (a closure value on the VM stack is Int(id)).
+    Closure(u32),
+    /// Widget event name — dispatched like any UI event.
+    Event(String),
+}
+
+/// Plan 442 A5: a pending one-shot timer.
+#[derive(Debug, Clone)]
+pub struct TimerEntry {
+    pub deadline: std::time::Instant,
+    pub callback: TimerCallback,
+}
+
+#[derive(Debug)]
+pub enum VMError {
+    StackOverflow,
+    StackUnderflow,
+    InvalidOpCode(u8),
+    DivisionByZero,
+    Halt,
+    MissingNative(u16),
+    RuntimeError(String),
+    /// Plan 092: FFI-related errors (library loading, ABI incompatibility, etc.)
+    FFI(String),
+    /// Plan 011 (MS3-B): `exit(code)` was called from AutoLang. Carries the
+    /// requested exit code. The embedding shell's run loop treats this as a
+    /// cooperative stop, not a failure.
+    ExitRequested(i32),
+}
+
+/// Plan 773 F-08: stable variant-name identity of a VM trap, decided where
+/// the typed `VMError` still exists (the run-task loop's error arm). This is
+/// the type-derived run-stage code for test-case oracles — never parsed back
+/// out of the flattened message text.
+pub fn vm_error_code(e: &VMError) -> &'static str {
+    match e {
+        VMError::StackOverflow => "StackOverflow",
+        VMError::StackUnderflow => "StackUnderflow",
+        VMError::InvalidOpCode(_) => "InvalidOpCode",
+        VMError::DivisionByZero => "DivisionByZero",
+        VMError::Halt => "Halt",
+        VMError::MissingNative(_) => "MissingNative",
+        VMError::RuntimeError(_) => "RuntimeError",
+        VMError::FFI(_) => "FFI",
+        VMError::ExitRequested(_) => "ExitRequested",
+    }
+}
+
+/// Result of executing a single VM instruction (used by `run_one_instruction`)
+#[derive(Debug, Clone, PartialEq)]
+pub enum StepResult {
+    /// Continue executing more instructions
+    Continue,
+    /// Task has terminated (HALT, RET at bp==0, IP past end)
+    Terminated,
+    /// Task should pause the current batch (YIELD_TASK, SLEEP, blocked JOIN/SEND/RECV)
+    Yield,
+    /// Plan 224: AWAIT_FUTURE hit a Pending future — caller should handle body execution
+    AwaitFuture { future_id: u32, body_offset: u32 },
+    /// Plan 321: YIELD_VAL hit — generator yielded a value. The value is on
+    /// top of stack. The generator driver (shim_iterator_next Generator branch)
+    /// should pop the value and save the task state for next resume.
+    GeneratorYield,
+}
+
+/// Plan 224: Result of executing a single frame (budget-limited instruction batch)
+#[derive(Debug)]
+pub enum FrameResult {
+    /// Normal continuation (unreachable — budget handles this)
+    Continue,
+    /// Frame completed: RET/HALT reached
+    Return,
+    /// AWAIT_FUTURE hit Pending — body_offset needs execution
+    AwaitFuture { future_id: u32, body_offset: u32 },
+    /// Task yielded (SLEEP, YIELD, blocked channel op)
+    Yielded,
+    /// Execution error
+    Error(VMError),
+    /// Instruction budget exhausted (cooperative yielding)
+    BudgetExhausted,
+}
+
+/// PLAN-702 T-01: outcome of one handler dispatch segment (segment driver for
+/// the UI bridge; sync `call_fn_by_name` is the busy-wait specialization).
+#[derive(Debug)]
+pub enum SegmentOutcome {
+    /// Handler finished within this segment (RET reached, or the Plan 321
+    /// generator short-circuit fired). `Ok(())` ≡ `call_fn_by_name` Ok —
+    /// result value on stack top; `Err` after non-stack state restore, same
+    /// as the sync driver's error return.
+    Completed(Result<(), VMError>),
+    /// Handler yielded with a pending wait (async HTTP request / external
+    /// `~{}` future). Task state (ip/bp/stack/closures) is preserved for
+    /// [`AutoVM::resume_fn_by_name_segment`]. No busy-wait happened; the
+    /// wait's result slot is deliberately NOT dropped — PLAN-027 缺陷 A 的
+    /// `drop_async_result` 回收只属于"真正放弃等待"的超时路径，恢复时按
+    /// req_id 从 ASYNC_RESULTS 取用。
+    Parked {
+        wait: ParkedWait,
+        seg: ParkedSegment,
+    },
+    /// PLAN-711 T-11 (M-02/D-2): CPU 预算耗尽——栈完整（ip 停在函数内、
+    /// bp≠saved_bp、闭包/异常帧原样），下一轮由 CPU 泵在预算内继续。
+    /// **不得**伪装为 `Completed`：预算耗尽假成功（旧实现落入
+    /// `Completed(Ok(()))` 无结果值）是本变体要替换的正确性缺陷（AC-13）。
+    /// 仅 `DriveBudget::CpuSlice` 驱动产生；legacy 档耗尽返回真错误。
+    Runnable { seg: ParkedSegment },
+}
+
+/// PLAN-711 T-11 (D-2 冻结初值): UI CPU 片预算。数值为 708-decision §D-2
+/// 冻结的提议初值，按实测校准时不得为通过而下调验收指标。
+#[derive(Clone, Copy, Debug)]
+pub struct CpuSliceBudget {
+    /// 每片指令上限（初值 4096）。
+    pub max_steps: u64,
+    /// 每片墙钟上限（初值 4ms）——至多每 [`Self::clock_check_every`] 步查一次。
+    pub max_duration: std::time::Duration,
+    /// 查钟间隔（初值 64 步）。
+    pub clock_check_every: u64,
+    /// 跨片累计指令护栏（初值 10M，与 legacy 单调用预算同量级）——
+    /// I/O 等待不计忙时；不让出重置绕过原 runaway 保护。
+    pub cumulative_steps: u64,
+}
+
+impl CpuSliceBudget {
+    pub const fn d2_default() -> Self {
+        Self {
+            max_steps: CPU_SLICE_MAX_STEPS,
+            max_duration: CPU_SLICE_MAX_DURATION,
+            clock_check_every: CPU_SLICE_CLOCK_CHECK_EVERY,
+            cumulative_steps: CPU_CUMULATIVE_STEP_BUDGET,
+        }
+    }
+}
+
+/// PLAN-711 T-11 (D-2): 每片 4096 指令。
+/// **T-04 R-1 实测校准（2026-09-30，D-2 授权的按实测校准面）**：4096 步
+/// 在解释器实际速度（~1-3ns/指令）下 ≈ 4-12μs ≪ 4ms 墙钟帽——指令帽成为
+/// 实际预算，长 handler 每 ~93ms 帧仅推进 4K 指令（5M 迭代夹具实测
+/// 11s+ 未完）。校准为 1M 指令天花板：正常片由 4ms 墙钟帽收口（实测
+/// ~0.2-0.5ms 提前让出），1M 只兜病理长指令；累计 10M 护栏不变。
+pub const CPU_SLICE_MAX_STEPS: u64 = 1_000_000;
+/// PLAN-711 T-11 (D-2): 每片 4ms。
+pub const CPU_SLICE_MAX_DURATION: std::time::Duration = std::time::Duration::from_millis(4);
+/// PLAN-711 T-11 (D-2): 至多每 64 指令查时钟。
+pub const CPU_SLICE_CLOCK_CHECK_EVERY: u64 = 64;
+/// PLAN-711 T-11 (D-2): 跨片累计护栏 10M 指令（I/O 等待不计）。
+pub const CPU_CUMULATIVE_STEP_BUDGET: u64 = 10_000_000;
+/// PLAN-711 T-11 (D-2): 会话宿主每轮 CPU pump 总预算 8ms（消费方=vm_bridge
+/// 有界泵；引擎片内不感知轮次）。
+pub const CPU_PUMP_ROUND_BUDGET: std::time::Duration = std::time::Duration::from_millis(8);
+
+/// PLAN-711 T-11: 段驱动预算档。Legacy 保持既有 10M 步预算与逐字节同的
+/// 同步语义（非 UI 契约）；CpuSlice 为 UI 专用可续跑片。
+/// PLAN-781 T-15: `LegacyHttp(cap)` = HTTP 入口族的请求级累计预算档
+/// （决策报告 781-budget-decision.md D-1/D-4）——段内 10M 帽不变，另加
+/// **跨段累计**上限 `cap`（park/resume、嵌套 fn 不重置，不变量 2）；
+/// 逐指令精确检查（V-16 的 N-1/N/N+1 可控性）。
+#[derive(Clone, Copy, Debug)]
+pub enum DriveBudget {
+    Legacy,
+    /// 请求级累计上限（`AUTO_HTTP_STEP_BUDGET` 解析产物）。
+    LegacyHttp(u64),
+    CpuSlice(CpuSliceBudget),
+}
+
+/// What a parked segment is waiting on (readiness credential for the UI
+/// resume pump, PLAN-702 T-03).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ParkedWait {
+    /// Async HTTP request — ready when ASYNC_RESULTS[req_id] holds a result;
+    /// the shim's re-entry branch consumes it when the re-driven CALL_NAT
+    /// re-fires (Plan 349 step 7 re-entry protocol).
+    HttpRequest(u64),
+    /// External `~{}` future — ready when the future leaves Pending; the
+    /// wake itself happens in `resume_fn_by_name_segment` (mirror of wake
+    /// source 6, Plan 394 Phase A).
+    Future(u32),
+    /// PLAN-707 T-05: HTTP/SSE stream — ready when the stream has a queued
+    /// item or reached a terminal state (`http_stream::stream_ready`);
+    /// the shim's re-entry branch consumes it when the re-driven CALL_NAT
+    /// re-fires (same protocol as HttpRequest).
+    HttpStream(u64),
+    /// PLAN-711 T-11 (D-2): CPU 预算耗尽的 continuation 凭据——非 I/O 等待，
+    /// 就绪性由 CPU 泵的轮次预算/公平策略裁决（tick 泵不拾取；见 vm_bridge
+    /// `parked_wait_ready` CpuRunnable 臂与 `resume_cpu_slices`）。只增不改
+    /// 707 三凭据（HttpRequest/Future/HttpStream 语义原样）。
+    CpuRunnable,
+}
+
+/// Resume context captured at park time; immutable across repeated
+/// park→resume cycles of the same call (saved_bp / saved_fn_n_args /
+/// fn_name are fixed for the lifetime of the dispatch).
+#[derive(Debug, Clone)]
+pub struct ParkedSegment {
+    pub fn_name: String,
+    /// Caller-frame bp at dispatch time (completion detection: `task.bp ==
+    /// saved_bp` after RET restores it).
+    pub saved_bp: usize,
+    /// `current_fn_n_args` to restore once the handler returns / errors.
+    pub saved_fn_n_args: usize,
+}
+
+/// PLAN-776 R1-F03：VM 实例唯一号分配器（凭据 owner 身份的来源侧）。
+static VM_INSTANCE_ID_GEN: AtomicU64 = AtomicU64::new(1);
+
+pub struct AutoVM {
+    pub flash: Arc<VirtualFlash>,
+    pub native_interface: Arc<NativeInterface>,
+    /// String constant pool (Plan 073: Made mutable for runtime string field access)
+    pub strings: Arc<RwLock<Vec<Vec<u8>>>>,
+    /// 运行时字符串池去重索引(2026-08-22,见 add_string 注释):
+    /// 内容 → 池索引。池索引在 natives 侧以 u16 截断,只增不减的池
+    /// 溢出后会回绕串写;去重令重复内容复用索引,池稳定在低位。
+    pub string_dedup: std::sync::Mutex<std::collections::HashMap<Vec<u8>, usize>>,
+
+    pub tasks: DashMap<TaskId, Arc<Mutex<AutoTask>>>,
+    pub id_gen: AtomicU64,
+    // Plan 744: VM SQLite handles belong to their VM instance and opening
+    // task. HTTP request task cleanup releases its connections instead of
+    // retaining one process-global entry per request.
+    sqlite_handles: std::sync::Mutex<HashMap<i64, (TaskId, a2r_std::sqlite::SqliteDb)>>,
+
+    // Channel Registry
+    pub channels: DashMap<ChannelId, Arc<AutoChannel>>,
+    pub channel_id_gen: AtomicU64,
+
+    // Plan 077 Phase 6: Legacy list registry removed - all lists now use unified heap_objects registry
+
+    // Iterator Registry
+    pub iterators: DashMap<u32, Iterator>,
+    pub iterator_id_gen: AtomicU32,
+
+    // Closure Registry (Plan 071: Direct Capture, no upvalues)
+    pub closures: DashMap<u32, Closure>,
+    pub closure_id_gen: AtomicU32,
+
+    // Plan 077 Phase 4: Unified Object Registry
+    // Single registry for all heap-allocated objects (lists, maps, sets, nodes,
+    // ObjectData, GenericInstance, etc.). Plan 390 §15 H3: the standalone
+    // `objects`/`arrays`/`nodes` registries were folded in here (H1/H3a/H3b).
+    pub heap_objects: DashMap<u64, Arc<RwLock<dyn HeapObject>>>,
+    pub heap_object_id_gen: AtomicU64,
+    /// PLAN-776 R1-F03：VM 实例唯一号（进程级 AtomicU64 分配）。heap id 是
+    /// per-VM 局部编号（两 VM 同号必然），HTTP 返回资源凭据的 id 段编入
+    /// owner（见 http_return_resource::credential_id），解析侧 id 层校验——
+    /// "每 VM 一张表"不构成来源证明。
+    pub instance_id: u64,
+    /// PLAN-776 R1-F03：HTTP 凭据专用 per-VM local 计数（凭据 id 不走通用
+    /// heap_object_id_gen——id 段编 owner，跨 VM 同号不可能）。
+    pub http_credential_gen: std::sync::atomic::AtomicU64,
+    /// PLAN-781 T-15：HTTP handler 请求级累计步预算快照（宿主 env
+    /// `AUTO_HTTP_STEP_BUDGET`；None = 默认 10M Legacy 语义）。构造期一次
+    /// 读取，运行期不可变（每 VM 实例一份——同进程多实例共享同一 env，
+    /// 跨进程天然隔离，决策报告 D-1）。
+    pub http_step_budget: Option<u64>,
+
+    // Plan 419 Phase 1: 精确引用计数(heap_rc)+ 毒化 canary(tombstones)。
+    // heap_rc: id → 计数(owned slot 数);insert_heap_object 不建条目,
+    // 首次 rc_push/rc_retain 建条目。归零 → remove_heap_object 递归释放。
+    pub heap_rc: DashMap<u64, std::sync::atomic::AtomicU32>,
+    #[cfg(debug_assertions)]
+    pub tombstones: DashMap<u64, std::time::Instant>,
+    pub rc_created_total: AtomicU64,
+    pub rc_freed_total: AtomicU64,
+    pub rc_traffic: AtomicU64,
+    // PLAN-062: 状态突变序号——堆/状态**写点**统一 bump（insert_heap_object/
+    // SET_FIELD/list 元素突变/字符串池新内容），读与 dedup 命中不 bump。
+    // 用途：fire_timer 派发前后对比判定"本拍是否零状态写"（空转拍不置脏，
+    // 不触发整树重建）。保守方向：多 bump 至多多一次重建，漏 bump 才丢更新。
+    pub state_mutation_seq: AtomicU64,
+    // PLAN-047 T-03（档 C SD-09）: per-path 版本表——写点字段归因的定点
+    // bump 面。键 = (堆对象 id, path)；path 为字段名（A 类带名写）或 "*"
+    // （B 类容器/未知字段写）。全局 [`Self::state_mutation_seq`] 语义零
+    // 变化（[`Self::bump_path`] 内仍同步 bump），此表纯增量消费者（memo
+    // 门 version_fast 判定）。键用原生 (u64, String) 元组——vm 模块不得
+    // 依赖 ui 门控类型（memo_deps DepKey 由桥侧转换）。
+    pub path_versions: dashmap::DashMap<(u64, String), u64>,
+    // PLAN-047 T-04（档 C SD-08）: 依赖录制槽——ui 侧 memo 门/computed
+    // 信号求值期经 guard 激活，VM 读臂（GET_FIELD/GET_GENERIC_FIELD/
+    // GET_ELEM/LIST_GET_INT）把堆读记入 [`Self::record_heap_read`]。
+    // 快速门 = AtomicBool（未激活读臂一次原子 load 直落——非 memo 零开销
+    // 红线）；槽 = Mutex<Option<Arc<Mutex<RecState>>>>（bridge guard 持
+    // Arc，finish 取走收编）。顺序纪律：**先填槽后开旗（Release）、先关
+    // 旗后清槽（Acquire）**——读臂见旗即见已填槽。同线程串行（渲染/桥
+    // 调用），旗与槽无并发写竞争。
+    pub dep_recorder_slot:
+        std::sync::Mutex<Option<std::sync::Arc<std::sync::Mutex<crate::vm::dep_track::RecState>>>>,
+    pub dep_rec_active: std::sync::atomic::AtomicBool,
+    // PLAN-062 T12: 宽限窗延迟回收——rc 归零对象先进 dying 队列（记录入队
+    // 时的解释步计数），DYING_GRACE_STEPS 步后续期仍未被复活才真回收。
+    // 帧内/近邻的 raw 别名（无份额拷贝）在窗口内安全；长期零累积（窗口
+    // 有界）。复活（窗口内再 retain）即出队。canary 的 tombstone 只在真
+    // 回收后落——窗口内 ACCESS 探测仍见活对象。
+    pub dying_heap: std::sync::Mutex<Vec<(u64, u64)>>,
+    pub interp_steps: AtomicU64,
+    // Plan 419 Phase 2: 字符串池并行状态(rc/pinned/freelist,见 rc.rs)。
+    pub pool_state: std::sync::RwLock<crate::vm::rc::PoolState>,
+
+    // Plan 121: Task/Msg Registry for Actor model
+    // Manages singleton tasks and task instances
+    pub task_registry: Arc<TaskRegistry>,
+
+    // Plan 127: Task Handler Registry for message routing
+    // Maps task type names to their handler tables
+    pub task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry,
+
+    // Plan 124: Future Registry for async/await
+    // Stores pending futures with their body code offsets
+    pub futures: DashMap<u32, Arc<RwLock<FutureValue>>>,
+    pub future_id_gen: AtomicU32,
+
+    // Plan 442 A5: one-shot timer registry (set_timeout/clear_timeout). The
+    // render loop polls due timers on its subscription tick and dispatches
+    // the callbacks (closure via call_closure, event via handler dispatch).
+    pub timers: DashMap<u32, TimerEntry>,
+    pub timer_id_gen: AtomicU32,
+
+    // Plan 317 Phase 1: Per-task message queues for message-loop tasks.
+    // Keyed by AutoVM task id (== the handle id returned by Task.spawn).
+    // DashMap avoids the tokio Mutex blocking_lock panic that would occur if
+    // pending_messages lived on AutoTask (which is behind tokio::sync::Mutex).
+    pub task_mailboxes: DashMap<u64, std::sync::Mutex<Vec<auto_val::Value>>>,
+
+    // Plan 317: Global variables (module-level `var x = ...`).
+    // String-keyed so any function can read/write them via LOAD_GLOBAL/
+    // STORE_GLOBAL. DashMap for thread-safety (concurrent HTTP handlers).
+    pub globals: DashMap<String, auto_val::NanoValue>,
+
+    // Plan 197 Task 9: Generic registry for field name lookup at runtime
+    pub generic_registry: crate::vm::generic_registry::GenericRegistry,
+
+    // Plan 177: Optional stdout capture buffer for testing
+    pub output_buffer: Option<Arc<RwLock<String>>>,
+
+    // Plan 199: Debugger controller (NoOpController for normal execution)
+    pub debugger: Arc<std::sync::Mutex<Box<dyn crate::vm::debugger::DebuggerController>>>,
+
+    // Plan 199: Execution trace collector (None = tracing disabled)
+    pub trace: Arc<std::sync::Mutex<Option<crate::vm::trace::TraceCollector>>>,
+
+    // Plan 011 (MS3-B): optional shell host bridge. When set, the
+    // system()/system_status()/export()/exit() natives forward to it.
+    // None for pure-AutoLang use (backward compatible).
+    pub host: Option<crate::host::SharedHost>,
+
+    // PLAN-746 (PG-MEM-1): optional cooperative execution deadline. When
+    // set, run_task_loop terminates all tasks once the Instant passes and
+    // surfaces a synthetic `last_error` ("ExecutionTimeout...") so callers
+    // get a clean error instead of a runaway execution. None = unlimited
+    // (default; zero behavior change for existing callers).
+    pub deadline: Option<std::time::Instant>,
+    /// Request-scoped stdin for hosted executions. `None` preserves the
+    /// process stdin used by the CLI; `Some(reader)` is isolated to this VM.
+    request_input: std::sync::Mutex<Option<std::io::BufReader<std::io::Cursor<Vec<u8>>>>>,
+}
+
+// Plan 124: Future value for async operations
+#[derive(Debug, Clone)]
+pub struct FutureValue {
+    /// Bytecode offset of the async block body
+    pub body_offset: u32,
+    /// Current state of the future
+    pub state: FutureState,
+    /// Result value when ready
+    pub result: Option<auto_val::Value>,
+    /// Task ID that owns this future (for suspension/resumption)
+    pub owner_task_id: TaskId,
+    /// Plan 348 Task 22: Captured free-variable environment for `~{ ... }`.
+    /// For SPAWN_GO the spawned task gets its own RAM, so captures cannot be
+    /// read from the caller's stack. Instead we stash them here (keyed by the
+    /// variable name) and expose them to the body via LOAD_CAPTURED by
+    /// installing a synthetic Closure entry before the body runs.
+    pub captures: HashMap<String, auto_val::Value>,
+    /// Plan 394: Internal = `~{}` bytecode body (sync inline). External =
+    /// native-spawned async source resolved via register/resolve API.
+    pub kind: FutureKind,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum FutureState {
+    Pending,
+    Ready,
+    Failed,
+}
+
+/// Plan 394: distinguishes `~{}` body futures from native external sources.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FutureKind {
+    /// Body offset points at bytecode; `execute_future_body` runs it inline.
+    Internal,
+    /// Worker thread writes `result`/`state`; AWAIT_FUTURE suspends the task.
+    External,
+}
+
+/// Convert a single-slot nanboxed value to f64 for mixed-type arithmetic.
+/// Handles i32 → f64 and f32 → f64 promotion.
+#[inline(always)]
+fn nanbox_single_to_f64(nv: auto_val::NanoValue) -> f64 {
+    if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv) as f64
+    } else {
+        auto_val::decode_i32(nv) as f64
+    }
+}
+
+/// Plan 576: 单槽 nanbox 值按 tag 解码为 f32（f32 按位、int 按值）——
+/// ADD/SUB/MUL/DIV 的 f32×int 混算臂用（nanbox_single_to_f64 的 f32 域
+/// 形态，pop_f32_operand 同哲学）。原 else 臂 decode_i32 把整值/任意
+/// f32 位型当整数（240.0 + 1 → 1131413505，DEBTS 043 家族）。
+#[inline(always)]
+fn nanbox_single_to_f32(nv: auto_val::NanoValue) -> f32 {
+    if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv)
+    } else {
+        auto_val::decode_i32(nv) as f32
+    }
+}
+
+/// Plan 437: f32 算术的 tag 驱动操作数弹出——动态来源（Index/Dot/Call 等
+/// 推断不可知处）的 int 操作数按**值**转 f32，f32/f64 按 tag 解码。
+/// 盲 pop_f32 会把 int 位模式重解释成 denormal（int 80 → 1.12e-43），
+/// 与 extract_autovm_result 的 tag-first 修复同一哲学。
+/// PLAN-063 T-04b（auto-down 转介）：_D 族算术/比较的标签驱动弹栈。
+/// `pop_f64` 是严格 `decode_f64`——而 demo/iced 派发路（call_handler_for →
+/// `push_value`）对 `Value::Float` 推的是 **f32 编码槽**（`push_f32`），
+/// f64 严格解码得全零位型（恰为 int 0），f64（Type::Double）参数参与任何
+/// 二元运算/比较即坍缩为 0/恒假（实机：OnLeftScroll 比例级联、自绘滚动条
+/// Move 守卫 `.scrollHeight > .clientHeight` 全哑）。Plan 437
+/// `pop_f32_operand` 同款口径：按实际 tag 解码并归一到 f64。
+#[inline(always)]
+fn pop_f64_operand(task: &mut AutoTask) -> f64 {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_f64(nv) {
+        auto_val::decode_f64(nv)
+    } else if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv) as f64
+    } else if auto_val::is_i32(nv) {
+        auto_val::decode_i32(nv) as f64
+    } else {
+        auto_val::decode_f64(nv)
+    }
+}
+fn pop_f32_operand(task: &mut AutoTask) -> f32 {
+    let nv = task.ram.pop_nv();
+    if auto_val::is_f32(nv) {
+        auto_val::decode_f32(nv)
+    } else if auto_val::is_f64(nv) {
+        auto_val::decode_f64(nv) as f32
+    } else if auto_val::is_i32(nv) {
+        auto_val::decode_i32(nv) as f32
+    } else {
+        auto_val::decode_f32(nv)
+    }
+}
+
+/// Plan 550 T03: 定点算术槽（_F/_D/_U64/MOD 族）弹栈前的 null 窥视守卫。
+/// 这些臂的弹栈助手按 tag/位模式解码（TAG_NULL → 垃圾整数或 NaN 静默
+/// 传播），统一在弹栈前窥视拦截。peek(0)=右操作数，peek(1)=左操作数。
+#[inline(always)]
+fn null_guard_peek_pair(task: &AutoTask, op: &str) -> Result<(), VMError> {
+    let b_nv = task.ram.peek_nv(0);
+    let a_nv = task.ram.peek_nv(1);
+    if auto_val::is_null(a_nv) || auto_val::is_null(b_nv) {
+        return Err(null_binop_type_error(
+            op,
+            (a_nv, !auto_val::is_nanboxed(a_nv)),
+            (b_nv, !auto_val::is_nanboxed(b_nv)),
+        ));
+    }
+    Ok(())
+}
+
+/// Plan 550 T03: 一元定点算术槽（NEG_F/NEG_D）弹栈前的 null 窥视守卫。
+#[inline(always)]
+fn null_guard_peek_unary(task: &AutoTask, op: &str) -> Result<(), VMError> {
+    if auto_val::is_null(task.ram.peek_nv(0)) {
+        return Err(null_unop_type_error(op));
+    }
+    Ok(())
+}
+
+/// Plan 550 T05: GET_ELEM 越界消息（对标 Python IndexError；携带原始
+/// 索引值，负索引越界同报原值）。原先静默 push_i32(0) 哨兵（p8 探针）。
+#[cold]
+fn index_out_of_range_error(index: i32) -> VMError {
+    VMError::RuntimeError(format!("IndexError: index {} out of range", index))
+}
+
+/// Plan 406: unified condition truthiness. Tagged bools (TAG_BOOL) are
+/// authoritative; null is falsy; everything else falls back to legacy i32
+/// truthiness (0 / i32::MIN+1 sentinels) for values pushed by older code
+/// paths that still use push_i32. NOTE: a REAL integer -2147483647 is
+/// indistinguishable from the legacy false sentinel at the i32 layer — an
+/// accepted, documented limitation until all push_i32-bool sites are gone.
+#[inline]
+fn nv_truthy(nv: auto_val::NanoValue) -> bool {
+    if auto_val::is_bool(nv) {
+        auto_val::decode_bool(nv)
+    } else if auto_val::is_null(nv) {
+        false
+    } else {
+        let v = auto_val::decode_i32(nv);
+        v != 0 && v != -2147483647
+    }
+}
+
+impl AutoVM {
+    /// Plan 394 Phase A: allocate an External future for a native async source.
+    pub fn register_external_future(&self, owner_task: TaskId) -> u32 {
+        let future_id = self.future_id_gen.fetch_add(1, Ordering::SeqCst);
+        let future = FutureValue {
+            body_offset: 0,
+            state: FutureState::Pending,
+            result: None,
+            owner_task_id: owner_task,
+            captures: HashMap::new(),
+            kind: FutureKind::External,
+        };
+        self.futures
+            .insert(future_id, Arc::new(RwLock::new(future)));
+        future_id
+    }
+
+    /// Plan 394 Phase A: resolve an External future from a worker thread.
+    /// Ok(v) → Ready with result; Err(_) → Failed (await yields null).
+    pub fn resolve_external_future(&self, future_id: u32, result: Result<auto_val::Value, String>) {
+        if let Some(future_arc) = self.futures.get(&future_id) {
+            let mut future = future_arc.write().unwrap();
+            match result {
+                Ok(v) => {
+                    future.result = Some(v);
+                    future.state = FutureState::Ready;
+                }
+                Err(_) => {
+                    future.state = FutureState::Failed;
+                }
+            }
+        }
+    }
+
+    /// Plan 394: encode future id onto the VM stack (`(id << 8) | 0xF0`).
+    pub fn encode_future_bits(future_id: u32) -> i32 {
+        ((future_id as i32) << 8) | 0xF0
+    }
+
+    /// PLAN-776 R7-01：Future 句柄解码——TAG_FUTURE（逐值来源）优先；
+    /// i32 `0xF0` 位模式为 legacy 兼容臂（句柄经 `Value::Int` 载体往返
+    /// ——容器元素/闭包捕获 env——标签退化为位形态，功能保留）。
+    pub fn decode_future_handle(nv: auto_val::NanoValue) -> Option<u32> {
+        if auto_val::is_future(nv) {
+            Some(auto_val::decode_future(nv))
+        } else if auto_val::is_i32(nv) {
+            let bits = auto_val::decode_i32(nv);
+            if (bits & 0xFF) == 0xF0 {
+                Some((bits >> 8) as u32)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn new(flash: VirtualFlash, ram_size: usize) -> Self {
+        Self::new_inner(flash, ram_size, true)
+    }
+
+    /// F-785-R2-01：跳过进程默认快照的构造（cfg(test)）。共享 lib 测试
+    /// 进程的全局默认槽不可假定缺席（普通程序测试经 run 族隐式 if-absent
+    /// 装配），"无 provider"断言锚必须**构造式**成立而非依赖全局时序；
+    /// 全局缺席时序合同由外部 fixture 独立进程承担（no-ui 无安装路径）。
+    // PLAN-814: 跨 crate 测试支持面
+    pub fn new_without_host_snapshot(flash: VirtualFlash, ram_size: usize) -> Self {
+        Self::new_inner(flash, ram_size, false)
+    }
+
+    fn new_inner(flash: VirtualFlash, _ram_size: usize, snapshot_host_capabilities: bool) -> Self {
+        let mut native_interface = NativeInterface::production();
+
+        // PLAN-779: 宿主能力装配——构造期快照进程默认 frame provider 进
+        // 本实例（每 VM 独立槽：之后进程默认替换/其他实例注入互不影响，
+        // 两实例可持不同 provider 不串线）。core 零 UI 引用；宿主注册点
+        // 见 vm::host_capabilities（UI adapter / 外部 consumer）。
+        if snapshot_host_capabilities {
+            if let Some(provider) = crate::vm::host_capabilities::process_default_frame_provider() {
+                native_interface.set_frame_provider(provider);
+            }
+
+            // PLAN-785: 同纪律快照文本剪贴板 provider（2925/2926 能力=
+            // 注入；缺席快照 = shim 侧 feature-disabled 形 VMError，与
+            // no-ui 构建迁移前行为一致）。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_clipboard_text_provider()
+            {
+                native_interface.set_clipboard_text_provider(provider);
+            }
+
+            // PLAN-790: 同纪律快照文件/图像剪贴板 provider（2934..2937）。
+            // 缺席快照 = shim 侧 G3 值降级（空表/false/null），与迁移前
+            // 非 Windows / 未开 native-clipboard 面同形。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_clipboard_media_provider()
+            {
+                native_interface.set_clipboard_media_provider(provider);
+            }
+
+            // PLAN-794: 同纪律快照 scroll host provider（9900..9905/
+            // 9922/9923）。缺席快照 = shim 侧 T-01 冻结降级臂（Int 0 /
+            // false / 0.0 / "error:unsupported" / "unknown"），与迁移前
+            // no-ui 构建同形。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_scroll_host_provider()
+            {
+                native_interface.set_scroll_host_provider(provider);
+            }
+
+            // PLAN-802: 同纪律快照 code editor provider（22 native 全族）。
+            // 缺席快照 = shim 侧 802 T-01 冻结缺席臂（21 项 raise
+            // feature-disabled 形、9913 scroll_to 弹参返 false），与迁移前
+            // feature-off 构建逐字面值同形。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_code_editor_host_provider()
+            {
+                native_interface.set_code_editor_provider(provider);
+            }
+
+            // PLAN-804: 同纪律快照 dialog host provider（2927/2928）。
+            // 缺席快照 = shim 侧 feature-disabled 形 VMError（T-01 冻结
+            // 矩阵，与迁移前 no-ui 构建一致）。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_dialog_host_provider()
+            {
+                native_interface.set_dialog_host_provider(provider);
+            }
+
+            // PLAN-804: 同纪律快照 dnd host provider（2938）。缺席快照 =
+            // shim 侧 false 降级（G5，与迁移前 off 臂同形）。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_dnd_host_provider()
+            {
+                native_interface.set_dnd_host_provider(provider);
+            }
+
+            // PLAN-807: 同纪律快照 editor snapshot provider（9916 供值）。
+            // 缺席快照 = shim 侧"无法找到相应 editor"err envelope（值，
+            // 非 raise，与迁移前无编辑器注册同形）。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_editor_snapshot_provider()
+            {
+                native_interface.set_editor_snapshot_provider(provider);
+            }
+
+            // PLAN-808: 同纪律快照 terminal provider（34 native 全族）。
+            // 缺席快照**不是**错误/空值——shim 回落进程共享 engine service
+            // （迁移前无 UI 也驱动引擎的行为保留）；UI 宿主安装 adapter 后
+            // 才有输入/几何/menu/scroll/window/palette 面。
+            if let Some(provider) =
+                crate::vm::host_capabilities::process_default_terminal_host_provider()
+            {
+                native_interface.set_terminal_provider(provider);
+            }
+        }
+
+        // Plan 216 Phase 2: Merge C-FFI shims from the global CFFI_GLOBAL registry.
+        // The codegen's handle_c_import populates CFFI_GLOBAL during compilation;
+        // here we merge those shims into the VM's NativeInterface so CALL_NAT can find them.
+        {
+            let cffi = crate::vm::codegen::CFFI_GLOBAL.lock().unwrap();
+            native_interface.merge(cffi.native_interface());
+        }
+
+        Self {
+            flash: Arc::new(flash),
+            native_interface: Arc::new(native_interface),
+            strings: Arc::new(RwLock::new(Vec::new())),
+            string_dedup: std::sync::Mutex::new(std::collections::HashMap::new()),
+            tasks: DashMap::new(),
+            id_gen: AtomicU64::new(0),
+            sqlite_handles: std::sync::Mutex::new(HashMap::new()),
+            channels: DashMap::new(),
+            channel_id_gen: AtomicU64::new(0),
+            // Plan 077 Phase 6: Legacy list registry removed
+            iterators: DashMap::new(),
+            iterator_id_gen: AtomicU32::new(0),
+            closures: DashMap::new(),
+            closure_id_gen: AtomicU32::new(0),
+            // Plan 077 Phase 4: Unified object registry (Plan 390 §15 H3:
+            // objects/arrays/nodes registries folded in — single id space).
+            heap_objects: DashMap::new(),
+            heap_object_id_gen: AtomicU64::new(4000000),
+            // PLAN-776 R1-F03：VM 实例唯一号（凭据 owner 身份）。
+            instance_id: VM_INSTANCE_ID_GEN.fetch_add(1, Ordering::Relaxed),
+            http_credential_gen: std::sync::atomic::AtomicU64::new(0),
+            http_step_budget: crate::vm::budget_policy::http_step_budget_from_env(), // Plan 419 Phase 1: RC 协议状态
+            heap_rc: DashMap::new(),
+            #[cfg(debug_assertions)]
+            tombstones: DashMap::new(),
+            rc_created_total: AtomicU64::new(0),
+            rc_freed_total: AtomicU64::new(0),
+            rc_traffic: AtomicU64::new(0),
+            state_mutation_seq: AtomicU64::new(0),
+            path_versions: DashMap::new(),
+            dep_recorder_slot: std::sync::Mutex::new(None),
+            dep_rec_active: std::sync::atomic::AtomicBool::new(false),
+            dying_heap: std::sync::Mutex::new(Vec::new()),
+            interp_steps: AtomicU64::new(0),
+            pool_state: std::sync::RwLock::new(crate::vm::rc::PoolState::new()),
+            // Plan 121: Task/Msg registry for Actor model
+            task_registry: Arc::new(TaskRegistry::new()),
+            // Plan 127: Task handler registry for message routing
+            task_handler_registry: crate::vm::task_handler::TaskHandlerRegistry::new(),
+            // Plan 124: Future registry for async/await
+            futures: DashMap::new(),
+            future_id_gen: AtomicU32::new(1),
+            // Plan 442 A5: one-shot timer registry
+            timers: DashMap::new(),
+            timer_id_gen: AtomicU32::new(1),
+            task_mailboxes: DashMap::new(), // Plan 317 Phase 1
+            globals: DashMap::new(),        // Plan 317: module-level var storage
+            // Plan 197 Task 9: Generic registry for runtime field name lookup
+            generic_registry: crate::vm::generic_registry::GenericRegistry::new(),
+            // Plan 177: stdout capture (None = normal println)
+            output_buffer: None,
+            // Plan 199: Debugger controller (NoOpController for normal execution)
+            debugger: Arc::new(std::sync::Mutex::new(Box::new(
+                crate::vm::debugger::NoOpController,
+            ))),
+            trace: Arc::new(std::sync::Mutex::new(None)),
+            host: None,
+            // PLAN-746: no deadline by default (unlimited execution).
+            deadline: None,
+            request_input: std::sync::Mutex::new(None),
+        }
+    }
+
+    /// Store a VM SQLite handle under the task that opened it.
+    pub(crate) fn store_sqlite_handle(
+        &self,
+        task_id: TaskId,
+        handle: i64,
+        db: a2r_std::sqlite::SqliteDb,
+    ) {
+        self.sqlite_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(handle, (task_id, db));
+    }
+
+    /// Clone a live SQLite connection for one shim operation.
+    pub(crate) fn sqlite_handle(&self, handle: i64) -> Option<a2r_std::sqlite::SqliteDb> {
+        self.sqlite_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&handle)
+            .map(|(_, db)| db.clone())
+    }
+
+    /// Remove a task and release resources owned by its lifetime.
+    pub fn remove_task(&self, task_id: TaskId) {
+        // PLAN-776 R1-F04：任务终结清偿 HTTP 返回资源凭据的栈份额——
+        // dispatch（含 middleware/parked/shutdown/cancel 各终态）统一经此
+        // remove；Internal `~{}` body 栈与异常退出路径的残留引用在此收口
+        //（只清 HttpReturnResource，通用对象栈清理是 P776-D1 既有边界）。
+        // try_lock 失败（任务仍在执行——remove 本身即异常路径）跳过不阻塞。
+        if let Some(t_arc) = self.tasks.get(&task_id) {
+            if let Ok(t) = t_arc.try_lock() {
+                crate::vm::ffi::http_return_resource::release_task_credentials(self, &t);
+            }
+        }
+        self.tasks.remove(&task_id);
+        self.sqlite_handles
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .retain(|_, (owner, _)| *owner != task_id);
+    }
+
+    /// PLAN-746 (PG-MEM-1): install a cooperative execution deadline. The VM
+    /// checks it on every run_task_loop sweep; once passed, all tasks are
+    /// terminated with a synthetic "ExecutionTimeout" last_error.
+    pub fn set_deadline(&mut self, deadline: Option<std::time::Instant>) {
+        self.deadline = deadline;
+    }
+
+    /// Install finite stdin for one hosted execution. An empty string is an
+    /// immediate EOF; blank lines remain readable lines.
+    pub fn set_request_input(&self, input: Option<String>) {
+        let reader =
+            input.map(|text| std::io::BufReader::new(std::io::Cursor::new(text.into_bytes())));
+        *self
+            .request_input
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = reader;
+    }
+
+    /// Return `None` when this VM uses process stdin, otherwise `Some(line)`
+    /// or `Some(None)` at the request-input EOF.
+    pub fn read_request_input_line(&self) -> Option<Option<String>> {
+        use std::io::BufRead;
+        let mut request_input = self
+            .request_input
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let reader = request_input.as_mut()?;
+        let mut line = String::new();
+        match reader.read_line(&mut line) {
+            Ok(0) => Some(None),
+            Ok(_) => {
+                if line.ends_with('\n') {
+                    line.pop();
+                    if line.ends_with('\r') {
+                        line.pop();
+                    }
+                }
+                Some(Some(line))
+            }
+            Err(_) => Some(None),
+        }
+    }
+
+    /// Plan 011 (MS3-B): Install a shell host so that `system()` /
+    /// `system_status()` / `export()` / `exit()` natives forward to it.
+    pub fn set_host(&mut self, host: crate::host::SharedHost) {
+        self.host = Some(host);
+    }
+
+    /// Plan 011: Remove the shell host (pure-AutoLang mode).
+    pub fn clear_host(&mut self) {
+        self.host = None;
+    }
+
+    /// Plan 442 A5: schedule a one-shot timer. Non-blocking — the callback
+    /// fires on the render loop's timer tick (16ms granularity, matching the
+    /// auto-down SchedulerTimer batch cadence). Returns the timer id handle.
+    pub fn set_timer(&self, callback: TimerCallback, delay_ms: u64) -> u32 {
+        let id = self.timer_id_gen.fetch_add(1, Ordering::Relaxed);
+        self.timers.insert(
+            id,
+            TimerEntry {
+                deadline: std::time::Instant::now()
+                    + std::time::Duration::from_millis(delay_ms.max(1)),
+                callback,
+            },
+        );
+        id
+    }
+
+    /// Plan 442 A5: cancel a one-shot timer. Returns whether a pending
+    /// timer was actually removed.
+    pub fn clear_timer(&self, id: u32) -> bool {
+        self.timers.remove(&id).is_some()
+    }
+
+    /// Plan 442 A5: remove and return the timers whose deadline has passed.
+    /// One-shot semantics: entries are taken out of the registry when they
+    /// fire (a timer that stays would keep the render tick subscribed
+    /// forever and could re-fire on every poll).
+    pub fn due_timers(&self) -> Vec<(u32, TimerCallback)> {
+        let now = std::time::Instant::now();
+        let due_ids: Vec<u32> = self
+            .timers
+            .iter()
+            .filter(|e| e.value().deadline <= now)
+            .map(|e| *e.key())
+            .collect();
+        let mut out = Vec::with_capacity(due_ids.len());
+        for id in due_ids {
+            if let Some((_, entry)) = self.timers.remove(&id) {
+                out.push((id, entry.callback));
+            }
+        }
+        out
+    }
+
+    /// Plan 442 A5: whether any one-shot timer is pending (render loop uses
+    /// this to decide whether to subscribe to the timer tick at all).
+    pub fn has_pending_timers(&self) -> bool {
+        !self.timers.is_empty()
+    }
+
+    /// Decode a tagged value from the VM stack.
+    /// Negative values encode string indices (tag = -(idx+1)), positive values are plain ints.
+    fn decode_tagged_value(&self, raw: i32) -> auto_val::Value {
+        if raw < 0 {
+            let str_idx = (-raw - 1) as usize;
+            let strings = self.strings.read().unwrap();
+            if let Some(bytes) = strings.get(str_idx) {
+                return auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
+            }
+        }
+        auto_val::Value::Int(raw)
+    }
+
+    /// Decode a tagged NanoValue into a Value (nanbox mode).
+    fn decode_tagged_nv(&self, nv: auto_val::NanoValue) -> auto_val::Value {
+        if auto_val::is_string(nv) {
+            let str_idx = auto_val::decode_string(nv) as usize;
+            let strings = self.strings.read().unwrap();
+            if let Some(bytes) = strings.get(str_idx) {
+                let copy = auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
+                drop(strings);
+                // Plan 419 Phase 2: 字段持有字节拷贝 —— 池引用的 stake 随转移死亡。
+                self.pool_release(str_idx);
+                return copy;
+            }
+        } else if auto_val::is_future(nv) {
+            // PLAN-776 R8-01：Future 句柄入 Value 载体（容器/捕获 env/异步
+            // 终值）——**保真映射** `Value::Future(FutureData{id: fid})`（句柄
+            // 视图，state 占位 Pending；真实状态在 vm.futures）。R7 的降级
+            // Int(bits) 使 marshal 无法区分真实 Future 与同值普通数字
+            //（F776-R8-01 F2/F3），已废弃。
+            return auto_val::Value::Future(Box::new(auto_val::FutureData {
+                id: auto_val::decode_future(nv) as usize,
+                state: auto_val::FutureState::Pending,
+                result: None,
+            }));
+        } else if auto_val::is_i32(nv) {
+            // Plan 390 §15 H3b: all heap refs are TAG_OBJECT now (objects/
+            // arrays/nodes produce encode_object), so a raw i32 is always a
+            // plain scalar Int — the old `>= 4000000 → VmRef` heuristic is gone.
+            let i = auto_val::decode_i32(nv);
+            return auto_val::Value::Int(i);
+        } else if auto_val::is_bool(nv) {
+            return auto_val::Value::Bool(auto_val::decode_bool(nv));
+        } else if auto_val::is_f32(nv) {
+            return auto_val::Value::Float(auto_val::decode_f32(nv) as f64);
+        } else if auto_val::is_f64(nv) {
+            return auto_val::Value::Double(auto_val::decode_f64(nv));
+        } else if auto_val::is_null(nv) {
+            // Plan 474 待澄清#4: null nv 原落 _ => Value::Int(0) 兜底——
+            // SET_FIELD 存 null 值字段失真（json null / __json_object 缺键
+            // 读回的 encode_null 再写字段会变成 Int(0)）。归一到 VM 侧
+            // null 约定 Value::Nil（json_to_vm_value 的 Null 臂同款）。
+            return auto_val::Value::Nil;
+        } else if auto_val::is_object(nv) {
+            return auto_val::Value::VmRef(auto_val::VmRef {
+                id: auto_val::decode_object(nv) as usize,
+            });
+        } else if auto_val::is_list(nv) {
+            return auto_val::Value::VmRef(auto_val::VmRef {
+                id: auto_val::decode_list(nv) as usize,
+            });
+        } else if auto_val::is_null(nv) {
+            // PLAN-050 T9: tag-null 字段赋值此前落兜底 Int(0)——`x = f()` 而 f
+            // return None 时 `.x != None` 恒真、`.x.field` 落空（musk
+            // WorkspaceSelector rail 底部裸 "${currentName}" 根因）。
+            return auto_val::Value::Nil;
+        }
+        auto_val::Value::Int(0)
+    }
+
+    /// Create VM with stdout capture for testing (Plan 177)
+    pub fn new_with_capture(flash: VirtualFlash, ram_size: usize) -> (Self, Arc<RwLock<String>>) {
+        let mut vm = Self::new(flash, ram_size);
+        let buffer = Arc::new(RwLock::new(String::new()));
+        vm.output_buffer = Some(buffer.clone());
+        (vm, buffer)
+    }
+
+    /// Load strings from a module's string constant pool
+    pub fn load_strings(&mut self, strings: Vec<Vec<u8>>) {
+        // 2026-08-22:池整体替换时同步重建去重索引(见 add_string 注释),
+        // 否则旧映射会指向失效索引。
+        let mut dedup = self.string_dedup.lock().unwrap();
+        dedup.clear();
+        for (idx, s) in strings.iter().enumerate() {
+            dedup.insert(s.clone(), idx);
+        }
+        // Plan 419 Phase 2: flash 编译期常量条目 pinned —— 永活永复用、
+        // 免计费;字节码立即数只引用 pinned 条目(免重映射不变量,§3.1)。
+        let n = strings.len();
+        let mut pool = crate::vm::rc::PoolState::new();
+        pool.ensure_len(n);
+        for i in 0..n {
+            pool.pinned[i] = true;
+        }
+        self.pool_state = std::sync::RwLock::new(pool);
+        self.strings = Arc::new(RwLock::new(strings));
+    }
+
+    /// Plan 375: Inject an `auto_val::Value` into this VM, returning the
+    /// `NanoValue` that represents it on the data stack / in `globals`.
+    ///
+    /// Scalars are encoded directly. Compound values (Array / Obj / Node) are
+    /// recursively registered into the VM heap registries (`arrays` / `objects`
+    /// / `nodes`) and represented by their tagged id — mirroring the reverse
+    /// `extract_value_from_vm`. This lets mold templates read globals set via
+    /// `AutoInterpreter::set_global` / `merge_atom` (e.g. the IAR `.eww`
+    /// template's `@ for app in apps { ... }`).
+    pub fn inject_value(&mut self, value: &auto_val::Value) -> auto_val::NanoValue {
+        use auto_val::Value;
+        use std::sync::atomic::Ordering;
+        match value {
+            // --- scalars ---
+            Value::Int(i) => auto_val::encode_i32(*i),
+            Value::Uint(u) => auto_val::encode_i32(*u as i32),
+            Value::I64(i) => auto_val::encode_i32(*i as i32),
+            Value::USize(u) => auto_val::encode_i32(*u as i32),
+            Value::Bool(b) => auto_val::encode_bool(*b),
+            Value::Nil | Value::Null => auto_val::encode_null(),
+            Value::Float(f) => auto_val::encode_f64(*f),
+            Value::Double(d) => auto_val::encode_f64(*d),
+            Value::Byte(b) => auto_val::encode_i32(*b as i32),
+            Value::Char(c) => auto_val::encode_i32(*c as i32),
+            Value::Str(s) => {
+                // Intern into the string pool and return its tagged index.
+                let idx = self.add_string(s.as_bytes().to_vec());
+                auto_val::encode_string(idx as u32)
+            }
+            Value::VmRef(r) => auto_val::encode_object(r.id as u32),
+            // PLAN-776 R8-01：Future 句柄 Value 载体还原为 TAG_FUTURE 载荷
+            //（容器/捕获往返保真；普通 Int 恒数据）。
+            Value::Future(f) => auto_val::encode_future(f.id as u32),
+
+            // --- Array: register into heap_objects as ListData<Value> (H3b) ---
+            Value::Array(arr) => {
+                let mut elems: Vec<auto_val::Value> = Vec::with_capacity(arr.values.len());
+                for v in &arr.values {
+                    elems.push(self.materialize_value(v));
+                }
+                let id = self.insert_heap_object(crate::vm::types::ListData {
+                    elems,
+                    storage: None,
+                });
+                // Plan 390 §15 H3b: array ids are TAG_OBJECT-encoded (same as
+                // CREATE_ARRAY now) — consumers distinguish via is_object.
+                auto_val::encode_object(id as u32)
+            }
+
+            // --- Obj: register into heap_objects as ObjectData (H3b) ---
+            Value::Obj(obj) => {
+                let mut data = crate::vm::types::ObjectData::new();
+                for (key, val) in obj.iter() {
+                    data.fields.insert(key.clone(), self.materialize_value(val));
+                }
+                // Plan 390 §15 H3b: objects live in heap_objects (ObjectData
+                // impl HeapObject, H1). Stack encoding stays TAG_OBJECT so
+                // consumers distinguish it from scalar i32 via is_object.
+                let id = self.insert_heap_object(data);
+                auto_val::encode_object(id as u32)
+            }
+
+            // --- Node: register into heap_objects (Plan 390 §15 H3a) ---
+            Value::Node(node) => {
+                let mut cloned = (**node).clone();
+                // Recurse into props so nested VmRefs point at real heap entries.
+                let props = cloned.props_clone();
+                for (key, val) in props.iter() {
+                    cloned.set_prop(key.clone(), self.materialize_value(val));
+                }
+                let id = self.insert_heap_object(cloned);
+                auto_val::encode_object(id as u32)
+            }
+
+            _ => auto_val::encode_null(),
+        }
+    }
+
+    /// Plan 375: helper used by `inject_value`. For compound element values it
+    /// injects them into the registries and records the resulting id as a
+    /// `Value::VmRef` (so the array/object stores carry heap references, just
+    /// like values produced at runtime). Scalars are returned as-is.
+    fn materialize_value(&mut self, val: &auto_val::Value) -> auto_val::Value {
+        match val {
+            auto_val::Value::Array(_) | auto_val::Value::Obj(_) | auto_val::Value::Node(_) => {
+                let nv = self.inject_value(val);
+                // Plan 390 §15 H2: Obj encodes its id as TAG_OBJECT while
+                // Node has migrated to encode_object as well (H3a); Array
+                // still uses raw i32 (its storage migration is H3b).
+                // Decode whichever tag inject_value produced — the low-32-bit
+                // payload is the registry id in both forms.
+                let id = if auto_val::is_object(nv) {
+                    auto_val::decode_object(nv) as usize
+                } else {
+                    auto_val::decode_i32(nv) as usize
+                };
+                auto_val::Value::VmRef(auto_val::VmRef { id })
+            }
+            auto_val::Value::VmRef(r) => auto_val::Value::VmRef(r.clone()),
+            other => other.clone(),
+        }
+    }
+
+    /// Plan 375: intern a byte string into the VM string pool, returning its
+    /// index. Used by `inject_value` for Str globals (mirrors codegen's
+    /// `add_string` but runs at injection time on an already-built VM).
+    fn intern_string(&mut self, bytes: &[u8]) -> usize {
+        self.add_string(bytes.to_vec())
+    }
+
+    /// Plan 199: Set a custom debugger controller
+    pub fn set_debugger(&mut self, controller: Box<dyn crate::vm::debugger::DebuggerController>) {
+        self.debugger = Arc::new(std::sync::Mutex::new(controller));
+    }
+
+    /// Plan 199: Enable execution trace collection with a max record limit
+    pub fn enable_trace(&mut self, max_records: usize) {
+        self.trace = Arc::new(std::sync::Mutex::new(Some(
+            crate::vm::trace::TraceCollector::new(max_records),
+        )));
+    }
+
+    /// Plan 199: Get trace output as JSON
+    pub fn get_trace_json(&self) -> Option<String> {
+        let trace = self.trace.lock().unwrap();
+        trace.as_ref().map(|t| t.to_json())
+    }
+
+    /// Plan 212b Task 4: Merge additional native shims into this VM
+    ///
+    /// Rebuilds the internal Arc<NativeInterface> by merging in shims
+    /// from another NativeInterface (e.g., from RustFfiBridge).
+    pub fn merge_native_interface(&mut self, other: &NativeInterface) {
+        let mut ni = (*self.native_interface).clone();
+        ni.merge(other);
+        self.native_interface = Arc::new(ni);
+    }
+
+    /// PLAN-779: 实例级 frame provider 注入/覆盖（宿主 adapter、外部
+    /// consumer、测试装配用）。覆盖构造期的进程默认快照；只影响本 VM，
+    /// 不触碰绑定身份（revision/proof 不失效）。读取面=shim 9918/9919。
+    pub fn set_frame_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>,
+    ) {
+        self.native_interface.set_frame_provider(provider);
+    }
+
+    /// PLAN-779: 本 VM 当前 frame provider（None=未捕获 0 语义）。
+    pub fn frame_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::FrameProvider>> {
+        self.native_interface.frame_provider()
+    }
+
+    /// PLAN-785: 实例级 clipboard text provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 2925/2926。
+    pub fn set_clipboard_text_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>,
+    ) {
+        self.native_interface.set_clipboard_text_provider(provider);
+    }
+
+    /// PLAN-785: 本 VM 当前 clipboard text provider（None=缺席错误语义）。
+    pub fn clipboard_text_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardTextProvider>> {
+        self.native_interface.clipboard_text_provider()
+    }
+
+    /// PLAN-790: 实例级 clipboard media provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 2934..2937。
+    pub fn set_clipboard_media_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>,
+    ) {
+        self.native_interface.set_clipboard_media_provider(provider);
+    }
+
+    /// PLAN-790: 本 VM 当前 clipboard media provider（None=G3 值降级语义）。
+    pub fn clipboard_media_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ClipboardMediaProvider>> {
+        self.native_interface.clipboard_media_provider()
+    }
+
+    /// PLAN-794: 实例级 scroll host provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 9900..9905/9922/9923。
+    pub fn set_scroll_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>,
+    ) {
+        self.native_interface.set_scroll_host_provider(provider);
+    }
+
+    /// PLAN-794: 本 VM 当前 scroll host provider（None=降级臂语义）。
+    pub fn scroll_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::ScrollHostProvider>> {
+        self.native_interface.scroll_host_provider()
+    }
+
+    /// PLAN-802: 实例级 code editor provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 2910..2915/2919..
+    /// 2924/2932/2933/2939/9906/9908..9913。
+    pub fn set_code_editor_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>,
+    ) {
+        self.native_interface.set_code_editor_provider(provider);
+    }
+
+    /// PLAN-802: 本 VM 当前 code editor provider（None=T-01 冻结缺席臂）。
+    pub fn code_editor_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::CodeEditorHostProvider>> {
+        self.native_interface.code_editor_provider()
+    }
+
+    /// PLAN-804: 实例级 dialog host provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=shim 2927/2928。
+    pub fn set_dialog_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>,
+    ) {
+        self.native_interface.set_dialog_host_provider(provider);
+    }
+
+    /// PLAN-804: 本 VM 当前 dialog host provider（None=缺席错误语义）。
+    pub fn dialog_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DialogHostProvider>> {
+        self.native_interface.dialog_host_provider()
+    }
+
+    /// PLAN-804: 实例级 dnd host provider 注入/覆盖。读取面=shim 2938。
+    pub fn set_dnd_host_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>,
+    ) {
+        self.native_interface.set_dnd_host_provider(provider);
+    }
+
+    /// PLAN-804: 本 VM 当前 dnd host provider（None=false 降级语义）。
+    pub fn dnd_host_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::DndHostProvider>> {
+        self.native_interface.dnd_host_provider()
+    }
+
+    /// PLAN-807: 实例级 editor snapshot provider 注入/覆盖（diff_snapshots
+    /// 9916 供值；宿主 adapter、外部 consumer、测试装配用）。覆盖构造期
+    /// 快照；只影响本 VM，不触碰绑定身份。
+    pub fn set_editor_snapshot_provider(
+        &self,
+        provider: std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>,
+    ) {
+        self.native_interface.set_editor_snapshot_provider(provider);
+    }
+
+    /// PLAN-807: 本 VM 当前 editor snapshot provider（None="无法找到相应
+    /// editor" err envelope 语义）。
+    pub fn editor_snapshot_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn crate::vm::host_capabilities::EditorSnapshotProvider>> {
+        self.native_interface.editor_snapshot_provider()
+    }
+
+    /// PLAN-808: 实例级 terminal provider 注入/覆盖（宿主 adapter、
+    /// 外部 consumer、测试装配用）。覆盖构造期快照；只影响本 VM，不触碰
+    /// 绑定身份（revision/proof 不失效）。读取面=34 项 `auto.term.*`。
+    pub fn set_terminal_provider(
+        &self,
+        provider: std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>,
+    ) {
+        self.native_interface.set_terminal_provider(provider);
+    }
+
+    /// PLAN-808: 本 VM 当前 terminal provider（None → shim 回落进程共享
+    /// engine service，不是禁用引擎）。
+    pub fn terminal_provider(
+        &self,
+    ) -> Option<std::sync::Arc<dyn auto_terminal_core::TerminalHostProvider>> {
+        self.native_interface.terminal_provider()
+    }
+
+    /// Plan 197 Task 9: Load generic registry from codegen
+    pub fn load_generic_registry(
+        &mut self,
+        registry: crate::vm::generic_registry::GenericRegistry,
+    ) {
+        self.generic_registry = registry;
+    }
+
+    /// Plan 317 Phase 1: Load task handler registry from codegen.
+    ///
+    /// Without this, `AutoVM.task_handler_registry` stays empty (initialized at
+    /// engine.rs:370) and the HANDLE_MSG opcode (engine.rs:5449) can never find
+    /// a handler table — so `task` definitions' `on { ... }` handlers never run.
+    /// Mirrors `load_generic_registry` above (take from codegen before finish()).
+    pub fn load_task_handler_registry(
+        &mut self,
+        registry: crate::vm::task_handler::TaskHandlerRegistry,
+    ) {
+        self.task_handler_registry = registry;
+    }
+
+    /// Plan 317 Phase 1: Find the bytecode offset of the handler for a message.
+    ///
+    /// Used by both HANDLE_MSG (opcode path) and run_task_loop (message wake
+    /// path). Looks up the task type's handler table, matches the message
+    /// against patterns in order, and returns the matching handler's
+    /// (body_offset, has_context). If no pattern matches, falls back to the
+    /// task's `else` handler (exported as `"{task_type}#else"` by codegen).
+    /// Returns None if no handler at all (no table, no else).
+    pub fn find_handler_offset(
+        &self,
+        task_type: &str,
+        msg: &auto_val::Value,
+    ) -> Option<(u32, bool)> {
+        if let Some(table) = self.task_handler_registry.get_table(task_type) {
+            for handler in table.get_handlers() {
+                if let Some(pattern) = table.get_pattern(handler.pattern_idx) {
+                    if self.match_message_pattern_vm(msg, pattern, &table.string_pool) {
+                        return Some((handler.body_offset, handler.has_context));
+                    }
+                }
+            }
+        }
+        // Fallback: else handler (codegen stores it in exports as "{task_type}#else").
+        let else_key = format!("{}#else", task_type);
+        if let Some(&offset) = self.flash.exports_by_name.get(&else_key) {
+            return Some((offset, false));
+        }
+        None
+    }
+
+    /// Plan 118 Phase 4: Add a new string to the string pool
+    /// Returns the index of the newly added string.
+    ///
+    /// 2026-08-22(字符串池去重):池索引在 natives 侧以 u16 截断
+    /// (get_string(u16),上限 65535),而运行时拼接会为每个中间串新增
+    /// 池条目 —— ash-gui show 的 `line = line + ch` 式逐字符拼装一次就
+    /// 塞 ~1.8 万条,池溢出后 u16 回绕令既有字符串互相串写(实测:会话
+    /// cwd 变成单字符 "r"、payload 丢失、进程静默退出)。池只增不减,
+    /// 这里按内容去重:重复内容(样式串/标签/空串等运行时高频churn)
+    /// 复用既有索引,池规模稳定在低位。根治(索引 u32 化/池 GC)记
+    /// 引擎债——池生命周期债登记于
+    /// docs/plans/KNOWN-DEBT-AND-RISKS.md(Plan 510 条目;over-release
+    /// 记账清偿见 docs/plans/510-vm-pool-over-release.md;旧指针
+    /// docs/plans/060 系闭包语法计划,主题不符已接正)。
+    pub fn add_string(&self, bytes: Vec<u8>) -> usize {
+        let dedup_hit = { self.string_dedup.lock().unwrap().get(&bytes).copied() };
+        if let Some(idx) = dedup_hit {
+            // dedup 键只在条目存活时存在(释放时删键)→ 命中即活条目。
+            // Plan 432 D26 加固:残键指向墓碑槽时不可复活(canary 按
+            // tombstone 判定而非 rc)——视作 miss 走 freelist/append 重建。
+            // PLAN-053 P-053-8 残键防御:另有一族残键指向**已被复用覆写**
+            // 的存活槽(幻影 freelist 条目让槽在 rc≥1 时被 freelist 弹出
+            // 复用,内容覆写而旧键未删——POOLLOG 实测 #222→#223:键
+            // "8f20…" 命中槽 2348,槽内容已轮转为 "你好",musk 点击会话
+            // 实参由 id 漂移成会话名)。命中槽内容必须与请求字节一致,
+            // 不一致视为 miss 走重内化——insert 覆盖残键,一键一槽不变量
+            // 自愈,对任何注入源免疫。
+            let content_matches = {
+                let strings = self.strings.read().unwrap();
+                strings.get(idx).map(|b| b.as_slice()) == Some(bytes.as_slice())
+            };
+            if !self.pool_is_tombstone(idx) && content_matches {
+                if crate::pool_log_all() {
+                    eprintln!(
+                        "[POOLLOG #{:>4}] intern-dedup-hit {} content={:?}",
+                        crate::pool_log_seq(),
+                        idx,
+                        String::from_utf8_lossy(&bytes)
+                            .chars()
+                            .take(12)
+                            .collect::<String>()
+                    );
+                }
+                return idx;
+            }
+            if crate::pool_log_all() && !content_matches && !self.pool_is_tombstone(idx) {
+                eprintln!(
+                    "[POOLLOG #{:>4}] intern-stale-key {} content={:?} != key {:?} — re-interning",
+                    crate::pool_log_seq(),
+                    idx,
+                    self.strings
+                        .read()
+                        .unwrap()
+                        .get(idx)
+                        .map(|b| String::from_utf8_lossy(b)
+                            .chars()
+                            .take(12)
+                            .collect::<String>())
+                        .unwrap_or_default(),
+                    String::from_utf8_lossy(&bytes)
+                        .chars()
+                        .take(12)
+                        .collect::<String>()
+                );
+            }
+        }
+        // Plan 419 Phase 2: freelist 优先复用(池峰值 = 并发不同串数,
+        // 而非累计创建数)。复用条目 rc=0,由 push 侧 +1 建立 stake。
+        {
+            let mut pool = self.pool_state.write().unwrap();
+            // PLAN-053 P-053-8: 幻影 freelist 条目清扫——rc>0 的弹出槽是
+            // 存活槽(不变量:freelist 槽 rc==0)。丢弃条目以恢复不变量,
+            // 绝不复用:复用会覆写活内容+清零 rc,触发孤儿 release 下溢
+            // 风暴并自续(实测槽 49299:rc=5 被复用→下溢 4294967295→再
+            // free→再入 freelist;musk store 兄弟调用实参读到后落的 404
+            // JSON 即此伤害)。首见打签名,注入源治理归 060 RC 债。
+            let mut chosen: Option<usize> = None;
+            while let Some(slot) = pool.freelist.pop() {
+                let live = slot < pool.rc.len()
+                    && pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed) > 0;
+                if live {
+                    if pool.phantom_seen.insert(slot) {
+                        eprintln!(
+                            "[P053-8] phantom freelist entry dropped: slot {} (live holders, rc={})",
+                            slot,
+                            pool.rc[slot].load(std::sync::atomic::Ordering::Relaxed)
+                        );
+                    }
+                    // Plan 510 G3:总次数计数(soak 断言通道;首见签名只去重打印)。
+                    pool.phantom_drops
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    continue;
+                }
+                chosen = Some(slot);
+                break;
+            }
+            if let Some(slot) = chosen {
+                let mut strings = self.strings.write().unwrap();
+                if slot < strings.len() {
+                    strings[slot] = bytes.clone();
+                    drop(strings);
+                    pool.rc[slot] = std::sync::atomic::AtomicU32::new(0);
+                    pool.tombstone[slot] = false;
+                    drop(pool);
+                    self.string_dedup
+                        .lock()
+                        .unwrap()
+                        .insert(bytes.clone(), slot);
+                    if crate::pool_log_all() {
+                        eprintln!(
+                            "[POOLLOG #{:>4}] intern-freelist {} content={:?}",
+                            crate::pool_log_seq(),
+                            slot,
+                            String::from_utf8_lossy(&bytes)
+                                .chars()
+                                .take(12)
+                                .collect::<String>()
+                        );
+                    }
+                    // PLAN-062: 槽位写入新内容 = 状态面突变（dedup 命中不算）。
+                    self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+                    return slot;
+                }
+                // strings 与 freelist 长度异常时兜底:还回槽位走追加。
+                pool.freelist.push(slot);
+            }
+        }
+        let mut strings = self.strings.write().unwrap();
+        let idx = strings.len();
+        strings.push(bytes.clone());
+        drop(strings);
+        self.pool_state.write().unwrap().ensure_len(idx + 1);
+        self.string_dedup.lock().unwrap().insert(bytes, idx);
+        if crate::pool_log_all() {
+            eprintln!(
+                "[POOLLOG #{:>4}] intern-append {} (pool len {})",
+                crate::pool_log_seq(),
+                idx,
+                idx + 1
+            );
+        }
+        // PLAN-062: 追加新槽 = 状态面突变（dedup 命中不算）。
+        self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+        idx
+    }
+
+    /// Plan 423 P5 续修:运行期字符串入池并带份额入栈的咽喉。原各处裸
+    /// `strings.push` 不进 pool_state(rc/pinned/tombstone 不覆盖)也不进
+    /// dedup —— 条目落在计数数组边界外无份额;后续 add_string 的
+    /// ensure_len 扩池后 rc=0 即"可释放",而栈/槽上仍持 nanbox 索引,
+    /// 消费释放归零即悬垂(016-calendar `ds == today` EQ canary 实测
+    /// engine.rs get_string tombstone)。统一收口到 add_string。
+    pub fn intern_runtime_str(&self, task: &mut AutoTask, bytes: Vec<u8>) {
+        let idx = self.add_string(bytes);
+        self.rc_push_str_idx(task, idx);
+    }
+
+    // ============================================================================
+    // Plan 077 Phase 4: Unified Object Registry Helper Methods
+    // ============================================================================
+
+    /// Insert a heap-allocated object into the unified registry
+    ///
+    /// Returns the object ID assigned to this object.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use auto_lang::vm::types::ListData;
+    /// use auto_lang::vm::engine::AutoVM;
+    ///
+    /// let mut list: ListData<i32> = ListData::new();
+    /// list.push(1);
+    /// list.push(2);
+    ///
+    /// let id = vm.insert_heap_object(list);
+    /// ```
+    pub fn insert_heap_object<T: HeapObject + Send + Sync + 'static>(&self, obj: T) -> u64 {
+        let id = self.heap_object_id_gen.fetch_add(1, Ordering::Relaxed);
+        if crate::vm::rc::p419_uaf_traces(id) {
+            eprintln!(
+                "[P419UAF] ALLOC id={} (#{}) type={:?}",
+                id,
+                id - crate::vm::rc::HEAP_ID_BASE,
+                obj.type_tag()
+            );
+            if crate::vm::rc::p419_uaf_narrow() {
+                eprintln!(
+                    "[P419UAF] alloc site:\n{}",
+                    std::backtrace::Backtrace::force_capture()
+                );
+            }
+        }
+        self.heap_objects.insert(id, Arc::new(RwLock::new(obj)));
+        // Plan 419: RC 不在此建条目 —— 对象出世时尚无 owned slot,
+        // 首次 rc_push/rc_retain 建条目(计数语义见 rc.rs 模块注释)。
+        self.rc_created_total.fetch_add(1, Ordering::Relaxed);
+        // PLAN-062: 任何堆对象出世都算状态面突变（列表/对象字面量、JSON
+        // 解析中间体、桥接实参物化等）。
+        self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+        id
+    }
+
+    /// PLAN-062: 状态突变序号只读访问（fire_timer 空转判定 + 测试断言）。
+    pub fn state_mutation_seq(&self) -> u64 {
+        self.state_mutation_seq.load(Ordering::Relaxed)
+    }
+
+    /// PLAN-047 T-03（档 C SD-09）: 归因写点定点 bump。`path = Some(字段)`
+    /// = A 类带名写（**同时** bump exact 与 `"*"` 通配——通配保证
+    /// materialize/容器粗粒度 dep 面不漏）；`path = None` = B 类容器/未知
+    /// 字段写（只 bump 通配）。全局 [`Self::state_mutation_seq`] 在此同步
+    /// bump——既有消费者（seq 快路径/fire_timer 空转判定）语义零变化。
+    pub fn bump_path(&self, heap_id: u64, path: Option<&str>) {
+        self.state_mutation_seq.fetch_add(1, Ordering::Relaxed);
+        *self
+            .path_versions
+            .entry((heap_id, "*".to_string()))
+            .or_insert(0) += 1;
+        if let Some(p) = path {
+            *self
+                .path_versions
+                .entry((heap_id, p.to_string()))
+                .or_insert(0) += 1;
+        }
+    }
+
+    /// PLAN-047 T-03: 版本读（memo 门 version_fast 判定 + 测试断言）。
+    /// 无条目 = 0（未写过该 path）。
+    pub fn path_version(&self, heap_id: u64, path: &str) -> u64 {
+        self.path_versions
+            .get(&(heap_id, path.to_string()))
+            .map(|v| *v)
+            .unwrap_or(0)
+    }
+
+    /// PLAN-706 r2 T-10: dep 键堆对象存活查询——`deps_unchanged` 的死对象
+    /// 伪命中守卫。`path_versions` 条目随状态替换留存，而对象已从
+    /// `heap_objects` 摘除 → 死键版本永不 bump，比对恒等 = 伪命中（缓存值
+    /// 陈旧/悬垂）。判据：`< HEAP_ID_BASE` 的非堆 id（单测合成键）与未分配
+    /// id 按存活处理（纯版本比对语义保持）；已分配（≥ base 且 id < id_gen）
+    /// 而不在 `heap_objects` = 已释放（id_gen 单调不复用，dying 宽限窗内
+    /// 对象仍在表）。
+    pub fn heap_dep_key_alive(&self, id: u64) -> bool {
+        if id < crate::vm::rc::HEAP_ID_BASE {
+            return true;
+        }
+        if self.heap_objects.contains_key(&id) {
+            return true;
+        }
+        id >= self.heap_object_id_gen.load(Ordering::Relaxed)
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // PLAN-047 T-04（档 C SD-08）: 依赖录制槽（VM 读臂挂钩的宿主面）
+    // ─────────────────────────────────────────────────────────────────
+
+    /// 激活录制（ui guard 持返回的 Arc；finish 时 [`Self::take_dep_recorder`]
+    /// 取走收编）。先填槽后开旗（Release）。
+    pub fn set_dep_recorder(
+        &self,
+        rec: std::sync::Arc<std::sync::Mutex<crate::vm::dep_track::RecState>>,
+    ) {
+        *self.dep_recorder_slot.lock().unwrap() = Some(rec);
+        self.dep_rec_active
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    /// 取走录制状态并去激活（ui guard finish 时收编进条目）。先关旗（ext
+    /// Acquire）后清槽——读臂从此零开销直落。
+    pub fn take_dep_recorder(&self) -> crate::vm::dep_track::RecState {
+        self.dep_rec_active
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.dep_recorder_slot
+            .lock()
+            .unwrap()
+            .take()
+            .map(|arc| arc.lock().unwrap().clone())
+            .unwrap_or_default()
+    }
+
+    /// VM 读臂录制口（未激活 = 一次原子 load 直落，非 memo 零开销红线）。
+    #[inline]
+    pub fn record_heap_read(&self, heap_id: u64, path: &str) {
+        if !self
+            .dep_rec_active
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return;
+        }
+        if let Some(rec) = self.dep_recorder_slot.lock().unwrap().as_ref() {
+            rec.lock()
+                .unwrap()
+                .record(crate::vm::dep_track::DepKey::field(heap_id, path));
+        }
+    }
+
+    /// VM 读臂录制口（容器/结构体整体展开面，粗粒度 `"*"`）。
+    #[inline]
+    pub fn record_heap_read_any(&self, heap_id: u64) {
+        if !self
+            .dep_rec_active
+            .load(std::sync::atomic::Ordering::Acquire)
+        {
+            return;
+        }
+        if let Some(rec) = self.dep_recorder_slot.lock().unwrap().as_ref() {
+            rec.lock()
+                .unwrap()
+                .record(crate::vm::dep_track::DepKey::any(heap_id));
+        }
+    }
+
+    /// PLAN-062 T12: 槽旧值释放——堆份额按影子、字符串按内容（Plan 510
+    /// 池语义稳定面）。STORE_* 覆盖赋值的统一旧值清账点。
+    fn release_slot_old_value(&self, task: &mut AutoTask, addr: usize) {
+        let old_stake = task.ram.take_stake_at(addr);
+        if old_stake != 0 {
+            self.rc_release_id(old_stake);
+        }
+        let old_nv = task.ram.read_nv(addr);
+        if auto_val::is_string(old_nv) {
+            self.rc_release(old_nv);
+        }
+    }
+
+    /// PLAN-667 (F-01): 帧相对捕获守卫——任何 capture_slots/param_abs 槽位
+    /// 读写前调用。创建帧身份不符（跨任务错帧）或创建帧已返回（含同 bp
+    /// 复用后的陈旧 uid）时，在读到陈旧/他人槽位**之前**以 RuntimeError
+    /// 拒绝；不得静默回落 nil/旧值/副本。
+    fn ensure_capture_frame_alive(
+        &self,
+        task: &AutoTask,
+        closure: &Closure,
+        var_name: &str,
+        closure_id: u32,
+    ) -> Result<(), VMError> {
+        let Some((creator_task, creator_uid)) = closure.creator_frame else {
+            return Ok(());
+        };
+        if creator_task != task.id {
+            return Err(VMError::RuntimeError(format!(
+                "captured variable '{}' in closure {}: created in task {} but accessed from task {} — cross-task frame captures are not supported; capture by value instead",
+                var_name, closure_id, creator_task, task.id
+            )));
+        }
+        if !task.frame_alive(creator_task, creator_uid) {
+            return Err(VMError::RuntimeError(format!(
+                "captured variable '{}' in closure {}: creator frame has already returned — by-reference captures are only valid while the creator frame is alive; capture by value or call within the creator's lifetime",
+                var_name, closure_id
+            )));
+        }
+        Ok(())
+    }
+
+    /// Get a heap object by ID, returning a read guard
+    ///
+    /// Returns `None` if the object doesn't exist.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use auto_lang::vm::heap_object::downcast;
+    /// use auto_lang::vm::types::ListData;
+    ///
+    /// if let Some(obj) = vm.get_heap_object(id) {
+    ///     let guard = obj.read().unwrap();
+    ///     if let Some(list) = downcast::<ListData<i32>>(&*guard) {
+    ///         println!("Got list with {} elements", list.len());
+    ///     }
+    /// }
+    /// ```
+    pub fn get_heap_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        // Plan 419: 毒化 canary —— 命中已释放 id 即 use-after-free(debug)。
+        #[cfg(debug_assertions)]
+        self.rc_check_tombstone(id);
+        self.heap_objects.get(&id).map(|v| v.clone())
+    }
+
+    /// Get a heap object by ID with mutable access
+    ///
+    /// Returns `None` if the object doesn't exist.
+    pub fn get_heap_object_mut(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        self.heap_objects.get(&id).map(|v| v.clone())
+    }
+
+    /// Plan 390 §15 Phase H2: unified lookup that routes by id segment.
+    ///
+    /// Plan 390 §15 Phase H2: unified object lookup.
+    ///
+    /// H2 unified the *stack encoding* (everything → `encode_object`); H3a
+    /// folded `nodes`, H3b folded `objects`/`arrays` into `heap_objects` — so
+    /// all VM object ids resolve in the single registry and the old id-segment
+    /// routing collapses to a plain `get_heap_object`.
+    pub fn get_any_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        self.get_heap_object(id)
+    }
+
+    /// Plan 390 §15 H2: rehydrate the `__variant` name of a structured message
+    /// held as a `Value::VmRef`. WithBindings variant constructors
+    /// (`Add(3,5)`) build an `ObjectData { __variant: "Add", a:3, b:5 }` and
+    /// the send shim stores only the registry id in the mailbox. The message
+    /// matcher therefore sees a `VmRef`, not an inlined `Obj`, and needs this
+    /// lookup to compare the variant name against the handler pattern.
+    fn vmref_variant_name(&self, id: usize) -> Option<auto_val::AutoStr> {
+        let id = id as u64;
+        // Plan 390 §15 H3b: ObjectData lives in heap_objects — probe + downcast
+        // (no id-segment routing).
+        if let Some(obj_ref) = self.get_heap_object(id) {
+            let obj = obj_ref.read().unwrap();
+            if let Some(od) = obj.as_any().downcast_ref::<crate::vm::types::ObjectData>() {
+                if let Some(auto_val::Value::Str(v)) = od.get(&auto_val::ValueKey::Str(
+                    auto_val::AutoStr::from("__variant"),
+                )) {
+                    return Some(v.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Remove a heap object from the registry
+    ///
+    /// Returns `None` if the object doesn't exist.
+    pub fn remove_heap_object(&self, id: u64) -> Option<Arc<RwLock<dyn HeapObject>>> {
+        self.heap_objects.remove(&id).map(|(_, v)| v)
+    }
+
+    // ===== Plan 377 §4.3: heap-aware 64-bit push/pop =====
+    //
+    // virt_memory 的 push_i64/u64/pop_i64/u64 只处理 48 位内联编码（无 VM 访问），
+    // 溢出或 BIGINT 会 panic。以下方法在 AutoVM 层（有 heap_objects 访问）提供完整
+    // 64 位范围支持：push 溢出时 BigInt 堆装箱，pop 遇 BIGINT 时解引用堆对象。
+    // engine opcode / native 调用方应使用这些方法替代 task.ram.push/pop_i64/u64。
+
+    /// 压入 i64：48 位内联，否则 BigInt 堆装箱（完整 64 位范围）。
+    #[inline(always)]
+    pub fn push_i64_vm(&self, task: &mut AutoTask, val: i64) {
+        task.ram
+            .push_nv(crate::vm::ffi::encode_i64_with_heap(self, val));
+    }
+
+    /// 压入 u64：48 位内联，否则 BigInt 堆装箱（完整 64 位范围）。
+    #[inline(always)]
+    pub fn push_u64_vm(&self, task: &mut AutoTask, val: u64) {
+        task.ram
+            .push_nv(crate::vm::ffi::encode_u64_with_heap(self, val));
+    }
+
+    /// 弹出 i64：TAG_I64/U64 内联解码，TAG_BIGINT 解引用堆对象（完整 64 位范围）。
+    #[inline(always)]
+    pub fn pop_i64_vm(&self, task: &mut AutoTask) -> i64 {
+        let nv = task.ram.pop_nv();
+        crate::vm::ffi::decode_i64_full(self, nv)
+    }
+
+    /// 弹出 u64：TAG_U64/I64 内联解码，TAG_BIGINT 解引用堆对象（完整 64 位范围）。
+    #[inline(always)]
+    pub fn pop_u64_vm(&self, task: &mut AutoTask) -> u64 {
+        let nv = task.ram.pop_nv();
+        crate::vm::ffi::decode_u64_full(self, nv)
+    }
+
+    /// Get the number of heap objects in the registry
+    pub fn heap_object_count(&self) -> usize {
+        self.heap_objects.len()
+    }
+
+    /// Check if a heap object exists in the registry
+    pub fn contains_heap_object(&self, id: u64) -> bool {
+        self.heap_objects.contains_key(&id)
+    }
+
+    /// Clear all heap objects from the registry
+    pub fn clear_heap_objects(&self) {
+        self.heap_objects.clear();
+    }
+
+    // ============================================================================
+    // Plan 087 Phase 2: Generic Instance Value Helper Functions
+    // ============================================================================
+
+    /// Push a Value onto the stack based on its type
+    ///
+    /// For Phase 2, supports: Int, Uint, Float, Double, Bool, Char, Nil, Str
+    fn push_value(task: &mut AutoTask, value: &Value, vm: &AutoVM) {
+        let ram = &mut task.ram;
+        match value {
+            Value::Int(i) => {
+                ram.push_nv(auto_val::encode_i32(*i));
+            }
+            Value::Uint(u) => {
+                ram.push_nv(auto_val::encode_i32(*u as i32));
+            }
+            Value::Float(f) => ram.push_f32(*f as f32),
+            Value::Double(d) => ram.push_f64(*d),
+            Value::Bool(b) => {
+                ram.push_nv(auto_val::encode_bool(*b));
+            }
+            Value::Char(c) => {
+                ram.push_nv(auto_val::encode_i32(*c as i32));
+            }
+            Value::Nil => {
+                ram.push_nv(auto_val::encode_null());
+            }
+            Value::Str(s) => {
+                // Store string in constant pool and push its tagged index
+                // String indices are stored as -(index+1) to distinguish from integers
+                // 2026-08-22(侧栏串写根因):Value::Str 字段每次被读取都会走到
+                // 这里 —— 直推无去重曾令池随每次视图重建膨胀(81 命令 × name/
+                // description,每敲一键全量重建),越过 u16 上限后索引回绕互串。
+                // 改走 add_string(内容去重):重复内容零增长。
+                // 2026-08-26(plan447-E2):入池条目 rc=0,freelist 复用注释明言
+                // "由 push 侧 +1 建立 stake"——原直推漏 retain,GET_GENERIC_FIELD
+                // 读运行期字符串载荷后任意一次 pop/槽释放即超额释放(canary;
+                // 此前全库载荷均为 pinned 常量故未暴露)。统一走 rc_push_str_idx。
+                let idx = vm.add_string(s.as_bytes().to_vec());
+                vm.rc_push_str_idx(task, idx);
+            }
+            Value::VmRef(vmref) => {
+                // Plan 419: 堆引用入栈 +1(咽喉点)。PLAN-062 T12: 记影子。
+                vm.rc_retain_id(vmref.id as u64);
+                ram.push_nv(auto_val::encode_object(vmref.id as u32));
+                ram.mark_top_stake(vmref.id as u64);
+            }
+            // PLAN-776 R9-02：Future 句柄还原 TAG_FUTURE（原落 WARNING+0）。
+            Value::Future(f) => {
+                ram.push_nv(auto_val::encode_future(f.id as u32));
+            }
+            _ => {
+                eprintln!("WARNING: push_value unsupported type: {:?}", value);
+                ram.push_nv(auto_val::encode_i32(0));
+            }
+        }
+    }
+
+    /// Plan 364 Step 5: Pop the top of the data stack as an `auto_val::Value`,
+    /// resolving object/node references into the actual Obj/Node.
+    ///
+    /// Used by the Config accumulation opcodes (ACCUM_PAIR/ACCUM_NODE/
+    /// ACCUM_MERGE). Mirrors the resolution in `extract_value_from_vm`
+    /// (lib.rs): negative bits = tagged string index, positive bits = object
+    /// id / node id (distinguished by registry membership) or plain int.
+    ///
+    /// Note: unlike `extract_value_from_vm` this does NOT recurse into nested
+    /// refs (no `visited` cycle guard) — accumulation only inspects the top
+    /// value; its nested VmRefs stay as-is in the Obj/Node clone and are
+    /// resolved later by the result materializer.
+    fn pop_auto_value(&self, task: &mut AutoTask) -> auto_val::Value {
+        use auto_val::{
+            decode_bool, decode_f32, decode_f64, decode_i32, decode_list, decode_object,
+            decode_string, is_bool, is_f32, is_f64, is_list, is_null, is_object, is_string,
+        };
+        let nv = task.ram.pop_nv();
+        // Non-NaN-boxed values are raw f64.
+        if is_f64(nv) {
+            return auto_val::Value::Float(decode_f64(nv));
+        }
+        if is_string(nv) {
+            let str_idx = decode_string(nv) as usize;
+            let strings = self.strings.read().unwrap();
+            return if let Some(bytes) = strings.get(str_idx) {
+                auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
+            } else {
+                auto_val::Value::Nil
+            };
+        }
+        if is_bool(nv) {
+            return auto_val::Value::Bool(decode_bool(nv));
+        }
+        if is_null(nv) {
+            return auto_val::Value::Nil;
+        }
+        if is_f32(nv) {
+            return auto_val::Value::Float(decode_f32(nv) as f64);
+        }
+        // Object reference: ObjectData/Node/ListData all live in heap_objects
+        // (Plan 390 §15 H3b) — probe + downcast instead of registry-membership
+        // checks.
+        if is_object(nv) {
+            let id = decode_object(nv) as u64;
+            if let Some(obj_ref) = self.get_heap_object(id) {
+                let guard = obj_ref.read().unwrap();
+                if let Some(od) = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ObjectData>()
+                {
+                    let mut out = auto_val::Obj::new();
+                    for (k, v) in od.fields.iter() {
+                        out.set(k.clone(), v.clone());
+                    }
+                    return auto_val::Value::Obj(Box::new(out));
+                }
+                if let Some(list) = guard
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                {
+                    // CREATE_ARRAY now encodes arrays as TAG_OBJECT (H3b).
+                    let mut out = auto_val::Array::new();
+                    for v in list.elems.iter() {
+                        out.push(self.resolve_array_elem(v));
+                    }
+                    return auto_val::Value::Array(out);
+                }
+                if let Some(node) = guard.as_any().downcast_ref::<auto_val::Node>() {
+                    // ACCUM_NODE pops a nested node through this path.
+                    return auto_val::Value::node((*node).clone());
+                }
+            }
+            return auto_val::Value::Nil;
+        }
+        // List reference: arrays/lists are stored in heap_objects (H3b).
+        if is_list(nv) {
+            let id = decode_list(nv) as u64;
+            if let Some(list_ref) = self.get_heap_object(id) {
+                let elems = list_ref.read().unwrap();
+                if let Some(list) = elems
+                    .as_any()
+                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                {
+                    let mut out = auto_val::Array::new();
+                    for v in list.elems.iter() {
+                        out.push(self.resolve_array_elem(v));
+                    }
+                    return auto_val::Value::Array(out);
+                }
+            }
+            return auto_val::Value::Nil;
+        }
+        // i32-tagged payload. CREATE_NODE / POP_ACCUM push node ids via
+        // push_i32 (also i32-tagged), so a positive payload may be a node /
+        // object / array id — distinguish by registry membership before
+        // treating it as a literal Int.
+        let bits = decode_i32(nv);
+        if bits < 0 {
+            // Legacy negative-tagged string index: -(index+1).
+            let str_idx = (-bits - 1) as usize;
+            let strings = self.strings.read().unwrap();
+            return if let Some(bytes) = strings.get(str_idx) {
+                auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into())
+            } else {
+                auto_val::Value::Nil
+            };
+        }
+        let id = bits as u64;
+        // Plan 390 §15 H3b: ObjectData/Node live in heap_objects — single probe.
+        if let Some(obj_ref) = self.get_heap_object(id) {
+            let guard = obj_ref.read().unwrap();
+            if let Some(od) = guard
+                .as_any()
+                .downcast_ref::<crate::vm::types::ObjectData>()
+            {
+                let mut out = auto_val::Obj::new();
+                for (k, v) in od.fields.iter() {
+                    out.set(k.clone(), v.clone());
+                }
+                return auto_val::Value::Obj(Box::new(out));
+            }
+            if let Some(node) = guard.as_any().downcast_ref::<auto_val::Node>() {
+                // Deep-clone the Node (props, args, AND kids). Sub-nodes are
+                // accumulated into `kids` via ACCUM_NODE (Plan 364 Step 5), so
+                // they must survive this pop to be queryable via `nodes(name)`.
+                return auto_val::Value::node((*node).clone());
+            }
+        }
+        if let Some(list_ref) = self.get_heap_object(id) {
+            let elems = list_ref.read().unwrap();
+            if let Some(list) = elems
+                .as_any()
+                .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+            {
+                let mut out = auto_val::Array::new();
+                for v in list.elems.iter() {
+                    out.push(self.resolve_array_elem(v));
+                }
+                return auto_val::Value::Array(out);
+            }
+        }
+        auto_val::Value::Int(bits)
+    }
+
+    /// Plan 364 Step 5: Resolve a stored array element into a proper
+    /// `auto_val::Value`. The Script VM stores string elements inside arrays
+    /// as negative `Value::Int` (the neg_tag string-index convention shared
+    /// with GET_ELEM), so we convert those back to `Value::Str` here. Other
+    /// element types pass through unchanged.
+    fn resolve_array_elem(&self, v: &auto_val::Value) -> auto_val::Value {
+        if let auto_val::Value::Int(i) = v {
+            if *i < 0 {
+                let str_idx = (-(*i) - 1) as usize;
+                let strings = self.strings.read().unwrap();
+                if let Some(bytes) = strings.get(str_idx) {
+                    return auto_val::Value::Str(String::from_utf8_lossy(bytes).to_string().into());
+                }
+            }
+        }
+        v.clone()
+    }
+
+    /// Pop a basic value from the stack as i32
+    ///
+    /// For Phase 2, assumes the value is a basic type (int, bool, char, nil)
+    #[allow(dead_code)]
+    fn pop_value_as_int(ram: &mut VirtualRAM) -> i32 {
+        ram.pop_i32()
+    }
+
+    /// Pop a float value from the stack as f32
+    #[allow(dead_code)]
+    fn pop_value_as_float(ram: &mut VirtualRAM) -> f32 {
+        ram.pop_f32()
+    }
+
+    /// Pop a double value from the stack as f64
+    #[allow(dead_code)]
+    fn pop_value_as_double(ram: &mut VirtualRAM) -> f64 {
+        ram.pop_f64()
+    }
+
+    /// Plan 197 Task 7: Structural equality for heap objects (struct instances)
+    ///
+    /// Compares two heap objects by their structural content rather than by ID.
+    /// Both operands are expected to be >= 4000000 (heap object IDs).
+    /// Normalize boolean comparison: literal 1/0 vs comparison sentinel i32::MIN/i32::MIN+1.
+    fn bool_eq(a: i32, b: i32) -> bool {
+        if a == b {
+            return true;
+        }
+        let a_bool = match a {
+            1 | -2147483648 => Some(true),
+            0 | -2147483647 => Some(false),
+            _ => None,
+        };
+        let b_bool = match b {
+            1 | -2147483648 => Some(true),
+            0 | -2147483647 => Some(false),
+            _ => None,
+        };
+        match (a_bool, b_bool) {
+            (Some(ab), Some(bb)) => ab == bb,
+            _ => false,
+        }
+    }
+
+    /// PLAN-053 P-053-2: nil 家族判定 —— tag-null(encode_null，现行
+    /// `None`/`null`/`nil` 字面量与 JSON null 的统一编码)或旧编码
+    /// i32(-1)(历史 `null` 字面量/CREATE_NONE)或 i32(i32::MIN+1)
+    /// (历史 `nil` 字面量)。EQ/NE/NULL_COALESCE 用它在等值/合并语义上
+    /// 抹平新旧编码(存量持久化字段兼容)。
+    /// Plan 539 W2 (T19): numeric tag test for mixed-type comparisons
+    /// (f64/f32/i32 — bools excluded, they have their own bit-compare).
+    /// PLAN-026 T-03 配套: 宽整数值归一(i32/i64 tag → i64 按值;算术
+    /// 兜底臂与序比较宽整臂共用)。
+    // ── PLAN-026 T-04: api.* 忙等预算观测(AUTO_VM_API_BUDGET=1 门控)──
+    // 累计 call_fn_by_name 的 Yield 忙等段(5ms-sleep 轮询 HTTP 结果)的
+    // 等待次数与忙等时长;handler(call_fn_by_name)退出时输出
+    // [VM-API-BUDGET] fn=<name> waits=<n> busy_ms=<t>;busy_ms 超阈
+    //(默认 100ms)无条件 warn(不受 env 门控——慢端点观测为防御面)。
+    thread_local! {
+        static API_BUSY_BUDGET: std::cell::RefCell<(u64, std::time::Duration)> =
+            std::cell::RefCell::new((0, std::time::Duration::ZERO));
+    }
+
+    /// 累计一次忙等段(waits 次轮询,busy 时长)。
+    fn api_budget_accumulate(waits: u64, busy: std::time::Duration) {
+        Self::API_BUSY_BUDGET.with(|b| {
+            let mut b = b.borrow_mut();
+            b.0 += waits;
+            b.1 += busy;
+        });
+    }
+
+    /// 预算阈值(ms;env AUTO_VM_API_BUDGET_MS 覆盖,缺省 100)。
+    fn api_budget_threshold_ms() -> u128 {
+        static THRESHOLD: std::sync::OnceLock<u128> = std::sync::OnceLock::new();
+        *THRESHOLD.get_or_init(|| {
+            std::env::var("AUTO_VM_API_BUDGET_MS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(100)
+        })
+    }
+
+    /// env 门控(AUTO_VM_API_BUDGET=1 时启用完整日志输出)。
+    fn api_budget_enabled() -> bool {
+        static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *ENABLED.get_or_init(|| std::env::var("AUTO_VM_API_BUDGET").as_deref() == Ok("1"))
+    }
+
+    /// handler 退出位报告:重置累计并按门控输出/超阈 warn。
+    fn api_budget_report(fn_name: &str) {
+        let (waits, busy) = Self::API_BUSY_BUDGET.with(|b| {
+            let mut b = b.borrow_mut();
+            let snap = (b.0, b.1);
+            *b = (0, std::time::Duration::ZERO);
+            snap
+        });
+        let busy_ms = busy.as_millis();
+        if Self::api_budget_enabled() {
+            eprintln!(
+                "[VM-API-BUDGET] fn={} waits={} busy_ms={}",
+                fn_name, waits, busy_ms
+            );
+        }
+        let threshold = Self::api_budget_threshold_ms();
+        if busy_ms > threshold {
+            eprintln!(
+                "WARN[VM-API-BUDGET] fn={} busy_ms={} exceeds {}ms (api.* busy-wait budget)",
+                fn_name, busy_ms, threshold
+            );
+        }
+    }
+
+    fn nv_int_as_i64(nv: auto_val::NanoValue) -> i64 {
+        if auto_val::is_i64(nv) {
+            auto_val::decode_i64(nv)
+        } else {
+            auto_val::decode_i32(nv) as i64
+        }
+    }
+
+    /// PLAN-749 T-02：ADD 串拼接臂的非串操作数显示。此前一律
+    /// `decode_i32(bits).to_string()`——TAG_BOOL 低 32 位 0x80000000 →
+    /// `"-2147483648"`（musk PLAN-100 E2E `[084-probe] ... ok=-2147483648`
+    /// 实锤），TAG_I64/U64 截断为低 32 位同族垃圾。bool/宽整型按值显示；
+    /// f64/f32 到不了串臂（ADD 前置数值臂已拦截）；obj/list 维持既有
+    /// 堆 id 数值形态（display 语义变更不在本修复面）。
+    fn nv_concat_operand_display(nv: auto_val::NanoValue) -> String {
+        if auto_val::is_bool(nv) {
+            if auto_val::decode_bool(nv) {
+                "true".to_string()
+            } else {
+                "false".to_string()
+            }
+        } else if auto_val::is_i64(nv) {
+            auto_val::decode_i64(nv).to_string()
+        } else if auto_val::is_u64(nv) {
+            auto_val::decode_u64(nv).to_string()
+        } else {
+            auto_val::decode_i32(nv).to_string()
+        }
+    }
+
+    fn nv_is_numeric(nv: auto_val::NanoValue) -> bool {
+        // PLAN-591 T9:补 is_i64——dep 方法返回的宽整型走 push_i64_vm
+        // (TAG_I64),此前 EQ/数值谓词恒 false(uuid 勘测 get_version_num
+        // == 4 实勘暴露);GT/序比较走独立臂未受影响。
+        auto_val::is_f64(nv) || auto_val::is_f32(nv) || auto_val::is_i32(nv) || auto_val::is_i64(nv)
+    }
+
+    /// Plan 539 W2 (T19): widen a numeric nv to f64 for comparison.
+    fn nv_as_f64(nv: auto_val::NanoValue) -> f64 {
+        if auto_val::is_f64(nv) {
+            auto_val::decode_f64(nv)
+        } else if auto_val::is_f32(nv) {
+            auto_val::decode_f32(nv) as f64
+        } else if auto_val::is_i64(nv) {
+            auto_val::decode_i64(nv) as f64
+        } else {
+            auto_val::decode_i32(nv) as f64
+        }
+    }
+
+    /// Plan 576: 有序比较（LT/GT/LE/GE）的"至少一侧 float"路由条件——
+    /// 双侧数值且一侧 f32/f64 时走 nv_as_f64 按值比较；纯 int 对与
+    /// object/string 走各自既有臂不变。
+    fn nv_pair_is_float_numeric(a: auto_val::NanoValue, b: auto_val::NanoValue) -> bool {
+        Self::nv_is_numeric(a)
+            && Self::nv_is_numeric(b)
+            && (auto_val::is_f32(a)
+                || auto_val::is_f32(b)
+                || auto_val::is_f64(a)
+                || auto_val::is_f64(b))
+    }
+
+    fn nv_is_null_family(nv: auto_val::NanoValue) -> bool {
+        if auto_val::is_null(nv) {
+            return true;
+        }
+        if auto_val::is_i32(nv) {
+            let v = auto_val::decode_i32(nv);
+            return v == -1 || v == -2147483647;
+        }
+        false
+    }
+
+    /// Compare two opaque heap objects by value.
+    /// Returns Some(true/false) if comparison is supported, None to fall back to integer comparison.
+    fn compare_opaque_objects(&self, a_id: u64, b_id: u64) -> Option<bool> {
+        use crate::vm::ffi::rust_stdlib::RustStdlibObject;
+        let a_obj = self.get_heap_object(a_id)?;
+        let b_obj = self.get_heap_object(b_id)?;
+        let a_guard = a_obj.read().ok()?;
+        let b_guard = b_obj.read().ok()?;
+        let a_rso = a_guard.as_any().downcast_ref::<RustStdlibObject>()?;
+        let b_rso = b_guard.as_any().downcast_ref::<RustStdlibObject>()?;
+        // semver::Version comparison
+        if a_rso.type_name == "semver::Version" && b_rso.type_name == "semver::Version" {
+            let a_ver = a_rso.downcast_ref::<std::sync::Mutex<semver::Version>>()?;
+            let b_ver = b_rso.downcast_ref::<std::sync::Mutex<semver::Version>>()?;
+            Some(*a_ver.lock().unwrap() > *b_ver.lock().unwrap())
+        } else {
+            None
+        }
+    }
+
+    pub fn struct_eq(&self, a: i32, b: i32) -> bool {
+        use crate::vm::generic_registry::GenericInstanceData;
+        use crate::vm::heap_object::TypeTag;
+
+        let id_a = a as u64;
+        let id_b = b as u64;
+
+        // Quick pointer equality check
+        if id_a == id_b {
+            return true;
+        }
+
+        // Look up both instances
+        let obj_a = match self.get_heap_object(id_a) {
+            Some(obj) => obj,
+            None => return false,
+        };
+        let obj_b = match self.get_heap_object(id_b) {
+            Some(obj) => obj,
+            None => return false,
+        };
+
+        let guard_a = obj_a.read().unwrap();
+        let guard_b = obj_b.read().unwrap();
+
+        // Check both are GenericInstance
+        if !matches!(guard_a.type_tag(), TypeTag::GenericInstance(_)) {
+            return false;
+        }
+        if !matches!(guard_b.type_tag(), TypeTag::GenericInstance(_)) {
+            return false;
+        }
+
+        let inst_a = match guard_a.as_any().downcast_ref::<GenericInstanceData>() {
+            Some(inst) => inst,
+            None => return false,
+        };
+        let inst_b = match guard_b.as_any().downcast_ref::<GenericInstanceData>() {
+            Some(inst) => inst,
+            None => return false,
+        };
+
+        // Different types are never equal
+        if inst_a.mono_name != inst_b.mono_name {
+            return false;
+        }
+
+        // Must have same number of fields
+        if inst_a.fields.len() != inst_b.fields.len() {
+            return false;
+        }
+
+        // Compare each field pairwise
+        for (fa, fb) in inst_a.fields.iter().zip(inst_b.fields.iter()) {
+            if !self.values_equal(fa, fb) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Plan 197 Task 16: Check if a heap object is an Option.None instance
+    pub fn is_option_none(&self, instance_id: u64) -> bool {
+        use crate::vm::generic_registry::GenericInstanceData;
+        if let Some(obj) = self.get_heap_object(instance_id) {
+            let guard = obj.read().unwrap();
+            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                return instance.mono_name == "Option.None";
+            }
+        }
+        false
+    }
+
+    /// Plan 197 Task 16: Check if a heap object is an Option.Some instance
+    pub fn is_option_some(&self, instance_id: u64) -> bool {
+        use crate::vm::generic_registry::GenericInstanceData;
+        if let Some(obj) = self.get_heap_object(instance_id) {
+            let guard = obj.read().unwrap();
+            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                return instance.mono_name == "Option.Some";
+            }
+        }
+        false
+    }
+
+    /// Plan 197 Task 16: Get the inner value from an Option.Some instance
+    pub fn get_option_inner(&self, instance_id: u64) -> Option<Value> {
+        use crate::vm::generic_registry::GenericInstanceData;
+        if let Some(obj) = self.get_heap_object(instance_id) {
+            let guard = obj.read().unwrap();
+            if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                if instance.mono_name == "Option.Some" {
+                    return instance.get_field(0).cloned();
+                }
+            }
+        }
+        None
+    }
+
+    /// Compare two Value instances for structural equality
+    fn values_equal(&self, a: &Value, b: &Value) -> bool {
+        match (a, b) {
+            (Value::Int(x), Value::Int(y)) => x == y,
+            (Value::Uint(x), Value::Uint(y)) => x == y,
+            (Value::Bool(x), Value::Bool(y)) => x == y,
+            (Value::Float(x), Value::Float(y)) => x.to_bits() == y.to_bits(),
+            (Value::Double(x), Value::Double(y)) => x.to_bits() == y.to_bits(),
+            (Value::Char(x), Value::Char(y)) => x == y,
+            (Value::Nil, Value::Nil) => true,
+            (Value::Str(x), Value::Str(y)) => x.as_bytes() == y.as_bytes(),
+            (Value::VmRef(ref_a), Value::VmRef(ref_b)) => {
+                // Nested heap object — recursive structural equality
+                self.struct_eq(ref_a.id as i32, ref_b.id as i32)
+            }
+            _ => false,
+        }
+    }
+
+    /// Pop a string value from the stack (returns string index)
+    #[allow(dead_code)]
+    fn pop_value_as_string_index(ram: &mut VirtualRAM) -> i32 {
+        ram.pop_i32()
+    }
+
+    // ============================================================================
+    // End Plan 087 Phase 2
+    // ============================================================================
+
+    /// Spawn a new task starting at the given instruction pointer
+    /// Returns the TaskId
+    pub fn spawn_task(&self, start_ip: usize, ram_size: usize) -> TaskId {
+        let id = self.id_gen.fetch_add(1, Ordering::Relaxed);
+        let task = AutoTask::new(id, ram_size, start_ip);
+        self.tasks.insert(id, Arc::new(Mutex::new(task)));
+        id
+    }
+
+    /// Get string by index from the constant pool.
+    /// 2026-08-22(侧栏串写根因):u16 → u32。运行期池会持续增长(字段读
+    /// 重新驻留/STR_CAT 中间串/宿主桥 JSON),会话活跃几分钟即可越过
+    /// 65535;u16 截断令新旧索引回绕互串(ash-gui 侧栏 alias/bash 条目
+    /// 消失、ash 名字变 "." 的根因)。nanbox 字符串标签本就是 u32 负数
+    /// 编码,容量到 2^31,此处放开没有表示性问题。
+    pub fn get_string(&self, index: u32) -> Option<Vec<u8>> {
+        // Plan 419 Phase 2: 池墓碑 canary(debug)—— rc=0 的非 pinned 条目
+        // 已释放,读它即 use-after-free。
+        #[cfg(debug_assertions)]
+        {
+            if self.pool_is_tombstone(index as usize) {
+                panic!(
+                    "[RC canary] string tombstone access: pool index {} was freed",
+                    index
+                );
+            }
+        }
+        if crate::pool_log_all() {
+            eprintln!(
+                "[POOLLOG #{:>4}] CANARY-READ {}",
+                crate::pool_log_seq(),
+                index
+            );
+        }
+        let strings = self.strings.read().unwrap();
+        strings.get(index as usize).cloned()
+    }
+
+    /// Call an Auto closure from native code.
+    ///
+    /// # Arguments
+    /// * `task` - Current task (mutable)
+    /// * `closure_id` - ID of closure to call
+    /// * `arg_count` - Number of arguments already on stack
+    ///
+    /// # Stack effect
+    /// Pops `arg_count` args + closure_id from stack, pushes result.
+    /// After return: result is on top of stack.
+    pub fn call_closure(
+        &self,
+        task: &mut AutoTask,
+        closure_id: u32,
+        _arg_count: usize,
+    ) -> Result<(), VMError> {
+        // 1. Clone closure data (can't hold DashMap guard across yields)
+        let closure = match self.closures.get(&closure_id) {
+            Some(guard) => guard.clone(),
+            None => {
+                return Err(VMError::RuntimeError(format!(
+                    "Invalid closure ID: {}",
+                    closure_id
+                )))
+            }
+        };
+
+        // 2. Save current state
+        let saved_ip = task.ip;
+        let saved_bp = task.bp;
+        let saved_closure_id = task.current_closure_id;
+        let saved_fn_n_args = task.current_fn_n_args;
+        let saved_fn_n_locals = task.current_fn_n_locals;
+        let saved_saved_closure_id = task.saved_closure_id;
+
+        // 3. Setup closure context (mirrors CALL_CLOSURE opcode logic)
+        task.current_closure_id = Some(closure_id);
+        task.current_fn_n_args = closure.n_args;
+        task.saved_closure_id = saved_closure_id;
+
+        // 4. Setup stack frame
+        task.ram.push_i32(saved_ip as i32); // Return address
+        task.ram.push_i32(saved_bp as i32); // Old BP
+        task.bp = task.ram.sp - 1;
+        // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+        task.push_frame_id(task.bp);
+
+        // PLAN-624 T-03: 闭包激活必须入 call_stack 一帧 —— 闭包体末端 RET
+        // 无条件弹一帧(CALL 帧协议)；此前本方法只推 ram 帧、不推 CallFrame，
+        // 闭包 RET 弹走的是**外层函数**的帧(call_stack 错位一层)。后果链
+        // (plan624 P2 实证)：store handler 内 `.tabs.find(λ)` → λ RET 偷走
+        // store 帧 → store 自身 RET 弹空栈、不恢复 → 最深被调帧的
+        // current_fn_n_args 泄漏进外层(0 参 widget handler 读 __state 时
+        // 偏移越界走 NULL 守卫 → SET_FIELD "Invalid object ID" 崩)。
+        // 入帧后 λ RET 弹自己的帧，外层帧原样保留，RET 恢复链闭合。
+        task.call_stack.push(crate::vm::task::CallFrame {
+            return_ip: saved_ip,
+            old_bp: task.bp,
+            fn_name: Some(format!("<closure:{}>", closure_id)),
+            line: task.current_line,
+            old_fn_n_args: saved_fn_n_args,
+            old_fn_n_locals: saved_fn_n_locals,
+        });
+
+        // 5. Jump to closure body
+        task.ip = closure.func_addr as usize;
+
+        // 6. Execute until closure returns (BP restored to saved_bp)
+        let budget = 1_000_000;
+        for _ in 0..budget {
+            let step = match self.run_one_instruction(task) {
+                Ok(s) => s,
+                Err(e) => {
+                    // Plan 010 (MS3-A): try/catch interception.
+                    if self.intercept_error(task, &e) {
+                        continue;
+                    }
+                    // Restore state even on error。Err 出口上闭包帧未被 RET
+                    // 弹出(RET 未执行)——手动退帧，否则外层帧账错位。
+                    task.call_stack.pop();
+                    task.current_closure_id = saved_closure_id;
+                    task.current_fn_n_args = saved_fn_n_args;
+                    task.current_fn_n_locals = saved_fn_n_locals;
+                    return Err(e);
+                }
+            };
+            match step {
+                StepResult::Continue => {
+                    if task.bp == saved_bp {
+                        break;
+                    }
+                    continue;
+                }
+                StepResult::Terminated => {
+                    // Restore state even on error(同 Err 出口退帧)
+                    task.call_stack.pop();
+                    task.current_closure_id = saved_closure_id;
+                    task.current_fn_n_args = saved_fn_n_args;
+                    task.current_fn_n_locals = saved_fn_n_locals;
+                    return Err(VMError::RuntimeError(
+                        "Closure execution terminated unexpectedly".into(),
+                    ));
+                }
+                StepResult::Yield => {
+                    // In call_closure context, Yield just means "continue after pause"
+                    continue;
+                }
+                StepResult::GeneratorYield => {
+                    // Plan 321: YIELD_VAL in closure context — treat like Yield
+                    // (continue past the yield). Proper suspension only via
+                    // Iterator::Generator driver.
+                    continue;
+                }
+                StepResult::AwaitFuture {
+                    future_id,
+                    body_offset,
+                } => {
+                    // Handle await within closure execution(Err 同上退帧)
+                    if let Err(e) = self.handle_await_future(task, future_id, body_offset) {
+                        task.call_stack.pop();
+                        task.current_closure_id = saved_closure_id;
+                        task.current_fn_n_args = saved_fn_n_args;
+                        task.current_fn_n_locals = saved_fn_n_locals;
+                        return Err(e);
+                    }
+                }
+            }
+        }
+
+        // 7. Restore non-stack state
+        task.current_closure_id = saved_closure_id;
+        task.current_fn_n_args = saved_fn_n_args;
+        task.saved_closure_id = saved_saved_closure_id;
+
+        Ok(())
+    }
+
+    /// PLAN-705 T-04/SD-01: 段驱动的闭包调用（`__axum:` 路由的 park 形态）。
+    ///
+    /// 帧建立与 [`Self::call_closure`] 逐字节同（闭包上下文/ram 返回帧/
+    /// CallFrame 入栈/PLAN-667 帧身份），驱动改走
+    /// [`Self::drive_handler_segment`]（10M 预算 + runaway 守卫 + try/catch
+    /// 拦截 + **Yield → Parked**）：闭包内异步 HTTP/External Future 等待
+    /// 不再同步自旋（旧 call_closure 对 Yield 一律 continue——等待期间
+    /// 占住执行线程，budget 耗尽后静默无结果返回）。恢复走
+    /// [`Self::resume_fn_by_name_segment`]（ParkedSegment.fn_name 仅用于
+    /// 诊断，"<closure:id>" 形态对驱动透明）。
+    pub fn call_closure_segment(
+        &self,
+        task: &mut AutoTask,
+        closure_id: u32,
+        _arg_count: usize,
+    ) -> SegmentOutcome {
+        // 1. Clone closure data (can't hold DashMap guard across yields)
+        let closure = match self.closures.get(&closure_id) {
+            Some(guard) => guard.clone(),
+            None => {
+                return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                    "Invalid closure ID: {}",
+                    closure_id
+                ))))
+            }
+        };
+
+        // 2. Save current state
+        let saved_ip = task.ip;
+        let saved_bp = task.bp;
+        let saved_closure_id = task.current_closure_id;
+        let saved_fn_n_args = task.current_fn_n_args;
+        let saved_fn_n_locals = task.current_fn_n_locals;
+        let saved_saved_closure_id = task.saved_closure_id;
+
+        // 3-5. Setup closure context + stack frame + jump（同 call_closure）
+        task.current_closure_id = Some(closure_id);
+        task.current_fn_n_args = closure.n_args;
+        task.saved_closure_id = saved_closure_id;
+        task.ram.push_i32(saved_ip as i32); // Return address
+        task.ram.push_i32(saved_bp as i32); // Old BP
+        task.bp = task.ram.sp - 1;
+        task.push_frame_id(task.bp);
+        task.call_stack.push(crate::vm::task::CallFrame {
+            return_ip: saved_ip,
+            old_bp: task.bp,
+            fn_name: Some(format!("<closure:{}>", closure_id)),
+            line: task.current_line,
+            old_fn_n_args: saved_fn_n_args,
+            old_fn_n_locals: saved_fn_n_locals,
+        });
+        task.ip = closure.func_addr as usize;
+
+        // 6. Segment drive（Parked 时 task 状态原样保留供恢复）。
+        // PLAN-781 T-15: 唯一生产调用方 = http_server axum closure 臂
+        //（决策报告 D-2 入口矩阵）——预算档随 policy 快照。
+        task.segment_no_busy_wait = true;
+        let budget = match self.http_step_budget {
+            Some(cap) => DriveBudget::LegacyHttp(cap),
+            None => DriveBudget::Legacy,
+        };
+        let outcome = self.drive_handler_segment(
+            task,
+            &format!("<closure:{}>", closure_id),
+            saved_bp,
+            saved_fn_n_args,
+            false,
+            budget,
+        );
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// Plan 312: Call a named VM function from native code (HTTP handler dispatch).
+    ///
+    /// Looks up `fn_name` in `exports_by_name`, pushes a stack frame (mirroring
+    /// CALL opcode), executes until RET, and leaves the result on top of stack.
+    /// Arguments must be pushed onto `task.ram` BEFORE calling this method,
+    /// in left-to-right order (arg0 at lower address, argN-1 on top).
+    ///
+    /// After return: result is on top of stack (`task.ram.pop_nv()`).
+    /// Plan 423 P5:runaway 增量判定(字符串池条目数 / 堆对象数)。
+    fn runaway_growth_exceeded(&self, baseline_strings: usize, baseline_heap: usize) -> bool {
+        let s_now = self.strings.read().map(|s| s.len()).unwrap_or(0);
+        let h_now = self.heap_objects.len();
+        s_now.saturating_sub(baseline_strings) > RUNAWAY_STRINGS_GROWTH
+            || h_now.saturating_sub(baseline_heap) > RUNAWAY_HEAP_GROWTH
+    }
+
+    pub fn call_fn_by_name(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> Result<(), VMError> {
+        // PLAN-702 T-05: legacy entry — busy-wait drive, reserved for NON-UI
+        // callers (back_proxy / http_server / run_module_init bootstrap), whose
+        // own thread may block for the wait's duration. The UI bridge
+        // (vm_bridge) must dispatch via [`Self::call_fn_by_name_segment`]
+        // instead: busy-waiting here freezes the iced event loop for the
+        // whole wait (PLAN-083 T-01: auto-edit 切换冻结 20.9s 即此).
+        match self.dispatch_fn_by_name(task, fn_name, n_args, true, DriveBudget::Legacy) {
+            SegmentOutcome::Completed(res) => res,
+            SegmentOutcome::Parked { .. } => Err(VMError::RuntimeError(
+                "internal: segment driver parked under busy-wait mode (unreachable)".into(),
+            )),
+            // PLAN-711 T-11: Runnable 仅由 CpuSlice 驱动产生；legacy 同步
+            // 调用图到不了这里（防御臂保持 Result 契约形状）。
+            SegmentOutcome::Runnable { .. } => Err(VMError::RuntimeError(
+                "internal: cpu-slice outcome escaped legacy sync driver (unreachable)".into(),
+            )),
+        }
+    }
+
+    /// PLAN-776 R2-01：HTTP handler dispatch 专用——generator 臂返回凭据对象。
+    pub fn call_fn_by_name_http(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> Result<(), VMError> {
+        // PLAN-781 T-15: policy 快照 → LegacyHttp 档（None = Legacy 逐字节
+        // 保持；决策报告 D-2 入口矩阵）。
+        let budget = match self.http_step_budget {
+            Some(cap) => DriveBudget::LegacyHttp(cap),
+            None => DriveBudget::Legacy,
+        };
+        match self.dispatch_fn_by_name_opt(task, fn_name, n_args, true, budget, true) {
+            SegmentOutcome::Completed(res) => res,
+            SegmentOutcome::Parked { .. } => Err(VMError::RuntimeError(
+                "internal: segment driver parked under busy-wait mode (unreachable)".into(),
+            )),
+            SegmentOutcome::Runnable { .. } => Err(VMError::RuntimeError(
+                "internal: cpu-slice outcome escaped legacy sync driver (unreachable)".into(),
+            )),
+        }
+    }
+
+    /// PLAN-776 R2-01：segment 形态的 HTTP dispatch（parked handler）——
+    /// generator 臂同样返回凭据对象。
+    pub fn call_fn_by_name_segment_http(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> SegmentOutcome {
+        // 与 call_fn_by_name_segment 同参数形态（busy_wait=false），
+        // wrap_generators=true（generator 臂返回凭据对象）。PLAN-781 T-15:
+        // 预算档 = policy 快照（None = Legacy）。
+        // PLAN-781 T-15: policy 快照 → LegacyHttp 档（None = Legacy 逐字节
+        // 保持；决策报告 D-2 入口矩阵）。
+        let budget = match self.http_step_budget {
+            Some(cap) => DriveBudget::LegacyHttp(cap),
+            None => DriveBudget::Legacy,
+        };
+        self.dispatch_fn_by_name_opt(task, fn_name, n_args, false, budget, true)
+    }
+
+    /// PLAN-702 T-01: segment-dispatch a named VM function (UI handler drive).
+    ///
+    /// Same setup contract as [`Self::call_fn_by_name`] (args pre-pushed on
+    /// `task.ram` left-to-right, result on stack top on `Completed`), but a
+    /// Yield with a pending wait does NOT busy-wait: the call returns
+    /// [`SegmentOutcome::Parked`] immediately and the task keeps its
+    /// ip/bp/stack/closure state, ready for [`Self::resume_fn_by_name_segment`]
+    /// once the wait is satisfied. The iced event loop is free for the whole
+    /// wait (E3/E7: 忙等冻结 UI 的事故面).
+    ///
+    /// Handlers that never yield complete inside this call — the step loop,
+    /// budget, runaway guard and try/catch interception are byte-identical
+    /// to the sync driver (兼容性论证：迁移爆炸半径 = 今天已坏的会 yield 的
+    /// handler，正是缺陷面本身).
+    pub fn call_fn_by_name_segment(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+    ) -> SegmentOutcome {
+        // PLAN-705 T-03: 段模式标志——CALL_SPEC 的 RequestBuilder send 拦截
+        // 据此跳过同步 drain（rewind+Yield → park）。Parked 时保持置位
+        // （task 静置，无人驱动；resume 入口会重新置位）；Completed 复位。
+        task.segment_no_busy_wait = true;
+        let outcome = self.dispatch_fn_by_name(task, fn_name, n_args, false, DriveBudget::Legacy);
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-711 T-11 (M-02/D-2): UI 专用 CPU slice 首次派发——与
+    /// [`Self::call_fn_by_name_segment`] 同一套帧建立/park 语义，但驱动
+    /// 预算为 [`DriveBudget::CpuSlice`]：片耗尽返回 [`SegmentOutcome::Runnable`]
+    /// （栈完整可续跑），不再有 10M 步同步长占用。首次派发与 resume 共用
+    /// 同一预算策略（调用方传同一 [`CpuSliceBudget`]）。
+    pub fn call_fn_by_name_cpu_slice(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+        budget: CpuSliceBudget,
+    ) -> SegmentOutcome {
+        task.segment_no_busy_wait = true;
+        let outcome =
+            self.dispatch_fn_by_name(task, fn_name, n_args, false, DriveBudget::CpuSlice(budget));
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-702 T-01/T-03: resume a parked handler segment once its wait is
+    /// ready. Returns `Completed` on finish, or `Parked` again (still
+    /// waiting / chained await). Readiness probing is the resume pump's job
+    /// (vm_bridge scans `ParkedWait`); the external-future wake itself
+    /// happens here.
+    pub fn resume_fn_by_name_segment(
+        &self,
+        task: &mut AutoTask,
+        seg: &ParkedSegment,
+    ) -> SegmentOutcome {
+        if let Some(o) = self.resume_parked_wake(task, seg) {
+            return o;
+        }
+        // PLAN-705 T-03: 段标志复位语义同首次入口（Completed 复位，Parked
+        // 保持——见 call_fn_by_name_segment 注）。
+        task.segment_no_busy_wait = true;
+        let outcome = self.drive_handler_segment(
+            task,
+            &seg.fn_name,
+            seg.saved_bp,
+            seg.saved_fn_n_args,
+            false,
+            DriveBudget::Legacy,
+        );
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-781 T-15: HTTP 请求恢复驱动——与 [`Self::resume_fn_by_name_segment`]
+    /// 同唤醒序障，预算档 = policy 快照（`DriveBudget::LegacyHttp`；None =
+    /// Legacy 逐字节同）。http_server 三处 step 循环专用；UI 桥沿用既有
+    /// cpu_slice / legacy resume 不经此入口。
+    pub fn resume_fn_by_name_segment_http(
+        &self,
+        task: &mut AutoTask,
+        seg: &ParkedSegment,
+    ) -> SegmentOutcome {
+        if let Some(o) = self.resume_parked_wake(task, seg) {
+            return o;
+        }
+        task.segment_no_busy_wait = true;
+        let budget = match self.http_step_budget {
+            Some(cap) => DriveBudget::LegacyHttp(cap),
+            None => DriveBudget::Legacy,
+        };
+        let outcome = self.drive_handler_segment(
+            task,
+            &seg.fn_name,
+            seg.saved_bp,
+            seg.saved_fn_n_args,
+            false,
+            budget,
+        );
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-711 T-11 (M-02/D-2): CPU slice 档 resume——唤醒序障与 legacy
+    /// resume 相同（外部 future wake / Phase B body 续驱），驱动预算换为
+    /// [`DriveBudget::CpuSlice`]。首次派发与 resume 共用预算策略（D-2）。
+    pub fn resume_fn_by_name_cpu_slice(
+        &self,
+        task: &mut AutoTask,
+        seg: &ParkedSegment,
+        budget: CpuSliceBudget,
+    ) -> SegmentOutcome {
+        if let Some(o) = self.resume_parked_wake(task, seg) {
+            return o;
+        }
+        task.segment_no_busy_wait = true;
+        let outcome = self.drive_handler_segment(
+            task,
+            &seg.fn_name,
+            seg.saved_bp,
+            seg.saved_fn_n_args,
+            false,
+            DriveBudget::CpuSlice(budget),
+        );
+        if matches!(outcome, SegmentOutcome::Completed(_)) {
+            task.segment_no_busy_wait = false;
+        }
+        outcome
+    }
+
+    /// PLAN-711 T-11: resume 前置唤醒序障（外部 future wake + Phase B
+    /// suspended body 续驱）。返回 `Some(outcome)` = 已被唤醒路径终结
+    /// （仍未就绪再 park / body 出错），调用方直接上浮；`None` = 继续段驱动。
+    fn resume_parked_wake(
+        &self,
+        task: &mut AutoTask,
+        seg: &ParkedSegment,
+    ) -> Option<SegmentOutcome> {
+        // Wake source 6 mirror (Plan 394 Phase A): an external `~{}` future
+        // reached Ready/Failed — push the await result and clear the slot so
+        // the suspended body resumes at the instruction after the await.
+        if let Some(fid) = task.waiting_future_id {
+            let ready = self
+                .futures
+                .get(&fid)
+                .map(|f| f.read().unwrap().state != FutureState::Pending)
+                .unwrap_or(true); // future gone → wake (nil fallback)
+            if !ready {
+                return Some(SegmentOutcome::Parked {
+                    wait: ParkedWait::Future(fid),
+                    seg: seg.clone(),
+                });
+            }
+            if let Some(future_arc) = self.futures.get(&fid) {
+                let future = future_arc.read().unwrap();
+                match future.state {
+                    FutureState::Ready => {
+                        if let Some(ref r) = future.result {
+                            Self::push_value(task, r, self);
+                        } else {
+                            task.ram.push_nv(auto_val::encode_null());
+                        }
+                    }
+                    _ => {
+                        // Failed / missing result → null (Phase A)
+                        task.ram.push_nv(auto_val::encode_null());
+                    }
+                }
+            } else {
+                task.ram.push_nv(auto_val::encode_null());
+            }
+            task.waiting_future_id = None;
+            task.status = TaskStatus::Ready;
+        }
+        // Plan 394 Phase B continuation: the `~{}` body was suspended
+        // mid-await (async_frames holds the continuation) — finish the body
+        // first (execute_task's resume arm, adapted to the call frame), then
+        // keep driving the outer handler frame below.
+        if task.waiting_future_id.is_none() {
+            if let Some(frame) = task.async_frames.last().copied() {
+                match self.resume_suspended_body(task, frame) {
+                    Ok(TaskStatus::Waiting(_)) => {
+                        return Some(SegmentOutcome::Parked {
+                            wait: ParkedWait::Future(task.waiting_future_id.unwrap_or(0)),
+                            seg: seg.clone(),
+                        });
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        task.current_fn_n_args = seg.saved_fn_n_args;
+                        return Some(SegmentOutcome::Completed(Err(e)));
+                    }
+                }
+            }
+        }
+        // Async-HTTP wait: nothing to push here — when the re-driven CALL_NAT
+        // re-fires, the shim's re-entry branch consumes ASYNC_RESULTS[req_id]
+        // (Plan 349 step 7 protocol; the driver loop below is identical to
+        // what the busy-wait arm continued into).
+        None
+    }
+
+    /// Shared first-entry path of [`Self::call_fn_by_name`],
+    /// [`Self::call_fn_by_name_segment`] and [`Self::call_fn_by_name_cpu_slice`]:
+    /// fn lookup, Plan 321 generator short-circuit, frame setup, then the
+    /// segment drive loop.
+    fn dispatch_fn_by_name(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+        allow_busy_wait: bool,
+        budget: DriveBudget,
+    ) -> SegmentOutcome {
+        self.dispatch_fn_by_name_opt(task, fn_name, n_args, allow_busy_wait, budget, false)
+    }
+
+    /// PLAN-776 R2-01：`wrap_generators=true` 时 generator 臂在返回边界建立
+    /// 身份（push Sse 凭据对象而非裸 int id）——仅供 HTTP handler dispatch
+    /// 消费（marshal 资源臂按值分派）；for-in 等通用调用面保持 int 语义。
+    fn dispatch_fn_by_name_opt(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        n_args: usize,
+        allow_busy_wait: bool,
+        budget: DriveBudget,
+        wrap_generators: bool,
+    ) -> SegmentOutcome {
+        // 1. Look up function address
+        let addr = match self.flash.exports_by_name.get(fn_name) {
+            Some(a) => *a,
+            None => {
+                return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                    "call_fn_by_name: function '{}' not found in exports",
+                    fn_name
+                ))))
+            }
+        };
+
+        // Plan 321: Generator detection — if the function body contains
+        // YIELD_VAL (0x8D), it's a generator. Don't execute the body;
+        // instead, create an Iterator::Generator and push its ID.
+        // This allows #[api] handlers returning ~Iter<T>/~Stream<T> to
+        // work when called via call_fn_by_name (HTTP handler dispatch).
+        let is_generator = self.is_generator_fn(addr as usize);
+        if is_generator {
+            // Plan 417-D2: mirror the CALL-opcode short-circuit — the caller
+            // pre-pushed the n_args args onto task.ram; move them into the
+            // generator state so the first next() seeds the generator frame.
+            let mut arg_nvs = Vec::with_capacity(n_args);
+            for _ in 0..n_args {
+                arg_nvs.push(task.ram.pop_nv());
+            }
+            arg_nvs.reverse();
+            let gen_state = GeneratorState {
+                task_id: None,
+                func_addr: addr as u32,
+                n_args: n_args as u8,
+                started: false,
+                done: false,
+                resume_ip: 0,
+                resume_bp: 0,
+                resume_sp: 0,
+                stack_snapshot: arg_nvs,
+            };
+            let iter_id = {
+                let next_id = self
+                    .iterator_id_gen
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                self.iterators
+                    .insert(next_id, Iterator::Generator(gen_state));
+                next_id
+            };
+            // PLAN-776 R2-01：generator 真实 producer 在返回边界建立身份——
+            // HTTP dispatch 消费面收 Sse 凭据对象（iterator 身份不靠声明或
+            // 表命中猜测）；通用调用面（for-in 等）保持 int 语义。
+            if wrap_generators {
+                if let Err(e) =
+                    crate::vm::ffi::http_return_resource::push_sse_resource(task, self, iter_id)
+                {
+                    return SegmentOutcome::Completed(Err(e));
+                }
+            } else {
+                task.ram.push_i32(iter_id as i32);
+            }
+            return SegmentOutcome::Completed(Ok(()));
+        }
+
+        // 2. Save current state
+        let saved_ip = task.ip;
+        let saved_bp = task.bp;
+        let saved_fn_n_args = task.current_fn_n_args;
+
+        // 3. Setup stack frame (mirrors CALL opcode: push return addr + old BP)
+        task.ram.push_i32(saved_ip as i32); // Return address
+        task.ram.push_i32(saved_bp as i32); // Old BP
+        task.bp = task.ram.sp - 1;
+        // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+        task.push_frame_id(task.bp);
+        task.current_fn_n_args = n_args;
+
+        // 4. Jump to function body
+        task.ip = addr as usize;
+
+        // 5. Execute until function returns (BP restored to saved_bp)
+        self.drive_handler_segment(
+            task,
+            fn_name,
+            saved_bp,
+            saved_fn_n_args,
+            allow_busy_wait,
+            budget,
+        )
+    }
+
+    /// PLAN-702 T-01: the shared step loop behind `call_fn_by_name`
+    /// (`allow_busy_wait = true`, legacy) and `call_fn_by_name_segment`
+    /// (`false`, park-on-wait). The frame must already be set up; the
+    /// segment completes when RET restores `task.bp` to `saved_bp`.
+    fn drive_handler_segment(
+        &self,
+        task: &mut AutoTask,
+        fn_name: &str,
+        saved_bp: usize,
+        saved_fn_n_args: usize,
+        allow_busy_wait: bool,
+        budget: DriveBudget,
+    ) -> SegmentOutcome {
+        let (max_steps, slice, cum_cap) = match budget {
+            DriveBudget::Legacy => (10_000_000u64, None, None),
+            // PLAN-781 T-15: 段帽 = policy 本身——无 park 的单段 handler（导入
+            // 形态）需要单段跑满请求预算；多段由累计帽执法（后段先触累计）。
+            // 默认不设 policy = 10M 段帽，逐字节不变。
+            DriveBudget::LegacyHttp(cap) => (cap, None, Some(cap)),
+            DriveBudget::CpuSlice(b) => (b.max_steps, Some(b), Some(b.cumulative_steps)),
+        };
+        // PLAN-781 T-15: LegacyHttp 的 runaway 基线跨段延续（与 CpuSlice 同
+        // 理由——慢速跨段泄漏不因逐段重置基线而漏检）；纯 Legacy 档保持
+        // 段独立基线（既有语义逐字节不动）。
+        let baseline_carry = slice.is_some() || cum_cap.is_some();
+        let slice_started = std::time::Instant::now();
+        let mut steps = 0u64;
+        // PLAN-711 AC-13: 段是否真正完成（RET 恢复 saved_bp）——与"预算/片
+        // 耗尽"分开记账。旧实现两者共用尾部且都返回 `Completed(Ok(()))`，
+        // 预算耗尽 = 静默假成功（task 停在函数中部、无结果值）。
+        let mut finished = false;
+        // Plan 423 P5 加固:步预算只限时长不限内存 —— 字节码错位后可在垃圾
+        // 指令里无界生长字符串池/堆(实机 20G 内存事故)。每 RUNAWAY_CHECK_EVERY
+        // 步核对一次增量,超阈即以明确错误中止,把内存炸弹变成可读失败。
+        // (段驱动语义:每个段独立基线与预算——非 yield handler 只有首段,
+        // 与同步驱动逐字节同;会 park 的 handler 每段重新计,比同步更宽。)
+        // PLAN-711 T-11 (D-2): CPU slice 档的 runaway 基线跨片延续——首片
+        // 初始化到 task，后续片沿用，慢速跨片泄漏不因逐片重置基线而漏检；
+        // legacy 档保持段独立基线（既有语义逐字节不动）。
+        let baseline_strings = if baseline_carry {
+            match task.cpu_baseline_strings {
+                Some(b) => b,
+                None => {
+                    let b = self.strings.read().map(|s| s.len()).unwrap_or(0);
+                    task.cpu_baseline_strings = Some(b);
+                    b
+                }
+            }
+        } else {
+            self.strings.read().map(|s| s.len()).unwrap_or(0)
+        };
+        let baseline_heap = if baseline_carry {
+            match task.cpu_baseline_heap {
+                Some(b) => b,
+                None => {
+                    let b = self.heap_objects.len();
+                    task.cpu_baseline_heap = Some(b);
+                    b
+                }
+            }
+        } else {
+            self.heap_objects.len()
+        };
+        while steps < max_steps {
+            steps += 1;
+            // PLAN-781 T-15: 请求级累计上限（LegacyHttp）——逐指令精确检查：
+            // 恰好执行 cap 条指令（第 cap+1 条前拒绝），V-16 的 N-1 耗尽 /
+            // N 通过边界可控。I/O park 不计步（等待期不进循环）。
+            if let Some(cap) = cum_cap {
+                if task.cpu_steps_total.saturating_add(steps) > cap {
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                        "instruction budget exhausted in '{}' at ip=0x{:04x} (per-request cumulative budget {} steps; AUTO_HTTP_STEP_BUDGET)",
+                        fn_name, task.ip, cap
+                    ))));
+                }
+            }
+            // PLAN-781 T-22（R04 修复轮）：HTTP 请求协作式取消——连续 CPU
+            // 段没有 park 边界，deadline/RST/关闭终态后段会继续跑满预算并
+            // 执行迟到副作用（复审反例：503 终态后 ~5.9s 仍写出 late 文
+            // 件）。每 HTTP_CANCEL_PROBE_EVERY 步在安全指令边界探测当前请
+            // 求 scope；已终结即中止段——与预算耗尽同 Err 形态，由 HTTP
+            // 入口统一收口（迟到 500 无消费者=静默失败，不产生第二个终
+            // 态）。无 scope 绑定的 CLI/UI/legacy 程序段恒 false，语义不变。
+            if steps % HTTP_CANCEL_PROBE_EVERY == 0
+                && crate::vm::ffi::http_server::current_request_cancelled()
+            {
+                task.current_fn_n_args = saved_fn_n_args;
+                return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                    "request cancelled in '{}' at ip=0x{:04x} (scope terminal/deadline reached; cooperative cancel at safe instruction boundary)",
+                    fn_name, task.ip
+                ))));
+            }
+            // PLAN-711 T-11 (D-2): slice 档至多每 clock_check_every 步查一次
+            // 墙钟，超 4ms 即到片末——在安全指令边界（step 之间）让出。
+            if let Some(b) = slice {
+                if steps % b.clock_check_every == 0 && slice_started.elapsed() >= b.max_duration {
+                    steps -= 1; // 本步未执行，不计入片消耗
+                    break;
+                }
+            }
+            // PLAN-711 T-11: runaway 检查节拍跨片累计——slice 档内 steps 每片
+            // 归零，若只看片内步数则 50k 节拍在 4096 步片内永不命中，堆增长
+            // 护栏形同虚设；legacy 档 cpu_steps_total 恒 0，语义逐字节不变。
+            let runaway_step_clock = task.cpu_steps_total + steps;
+            if runaway_step_clock % RUNAWAY_CHECK_EVERY == 0
+                && self.runaway_growth_exceeded(baseline_strings, baseline_heap)
+            {
+                let s_growth = self
+                    .strings
+                    .read()
+                    .map(|s| s.len().saturating_sub(baseline_strings))
+                    .unwrap_or(0);
+                let h_growth = self.heap_objects.len().saturating_sub(baseline_heap);
+                task.current_fn_n_args = saved_fn_n_args;
+                return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                    "runaway execution halted in '{}' at ip=0x{:04x}: +{} strings, +{} heap objects within one call (bytecode desync or unbounded loop?)",
+                    fn_name, task.ip, s_growth, h_growth
+                ))));
+            }
+            let step = match self.run_one_instruction(task) {
+                Ok(s) => s,
+                Err(e) => {
+                    // Plan 010 (MS3-A): try/catch interception.
+                    if self.intercept_error(task, &e) {
+                        continue;
+                    }
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return SegmentOutcome::Completed(Err(e));
+                }
+            };
+            match step {
+                StepResult::Continue => {
+                    if task.bp == saved_bp {
+                        finished = true;
+                        break;
+                    }
+                    continue;
+                }
+                StepResult::Terminated => {
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                        "Function '{}' execution terminated unexpectedly",
+                        fn_name
+                    ))));
+                }
+                StepResult::Yield => {
+                    if !allow_busy_wait {
+                        // PLAN-702 T-01: park instead of busy-waiting — the
+                        // iced update returns and the resume pump re-drives
+                        // the segment once the wait is satisfied.
+                        if let Some(fid) = task.waiting_future_id {
+                            // PLAN-781 T-15: 段终止但请求未终——本段已执行步数计入任务累计
+                            //（resume 在新段继续累加，不重置）。
+                            task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
+                            return SegmentOutcome::Parked {
+                                wait: ParkedWait::Future(fid),
+                                seg: ParkedSegment {
+                                    fn_name: fn_name.to_string(),
+                                    saved_bp,
+                                    saved_fn_n_args,
+                                },
+                            };
+                        }
+                        if let Some(req_id) = task.waiting_http_request_id {
+                            if std::env::var_os("AUTO_DEBUG_G9").is_some() {
+                                eprintln!(
+                                    "[G9] PARK: fn={} req={} ip={:#x} sp={} bp={} saved_bp={}",
+                                    fn_name, req_id, task.ip, task.ram.sp, task.bp, saved_bp
+                                );
+                            }
+                            // PLAN-781 T-15: 段终止但请求未终——本段已执行步数计入任务累计
+                            //（resume 在新段继续累加，不重置）。
+                            task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
+                            return SegmentOutcome::Parked {
+                                wait: ParkedWait::HttpRequest(req_id),
+                                seg: ParkedSegment {
+                                    fn_name: fn_name.to_string(),
+                                    saved_bp,
+                                    saved_fn_n_args,
+                                },
+                            };
+                        }
+                        // PLAN-707 T-05: 外部流无数据 → park（就绪/终结后由
+                        // 完成通知唤醒的泵恢复；凭证供 parked_is_ready 判定）。
+                        if let Some(stream_id) = task.waiting_http_stream_id {
+                            // PLAN-781 T-15: 段终止但请求未终——本段已执行步数计入任务累计
+                            //（resume 在新段继续累加，不重置）。
+                            task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
+                            return SegmentOutcome::Parked {
+                                wait: ParkedWait::HttpStream(stream_id),
+                                seg: ParkedSegment {
+                                    fn_name: fn_name.to_string(),
+                                    saved_bp,
+                                    saved_fn_n_args,
+                                },
+                            };
+                        }
+                        // Non-waiting yield (SLEEP / SSE generator retry):
+                        // sync-driver parity — keep stepping.
+                        continue;
+                    }
+                    if let Some(req_id) = task.waiting_http_request_id {
+                        let deadline =
+                            std::time::Instant::now() + std::time::Duration::from_secs(30);
+                        // PLAN-026 T-04: 忙等段预算计(轮询次数 + 忙等时长)。
+                        let mut budget_waits: u64 = 0;
+                        let budget_start = std::time::Instant::now();
+                        while !crate::vm::ffi::stdlib::async_http_result_ready(req_id) {
+                            if std::time::Instant::now() > deadline {
+                                task.waiting_http_request_id = None;
+                                // PLAN-027 缺陷 A:超时放弃必须同步回收
+                                // ASYNC_RESULTS 条目——worker 迟到完成的
+                                // 完整响应体会永驻(每超时泄漏一个 body)。
+                                crate::vm::ffi::stdlib::drop_async_result(req_id);
+                                return SegmentOutcome::Completed(Err(VMError::RuntimeError(
+                                    "async http request timed out in call_fn_by_name".into(),
+                                )));
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                            budget_waits += 1;
+                        }
+                        Self::api_budget_accumulate(budget_waits, budget_start.elapsed());
+                        steps = steps.saturating_sub(1);
+                    }
+                    // PLAN-707 T-05: legacy 同步 busy-wait 段的流等待臂——
+                    // 既有形态比照（5ms 轮询 + 30s 超时；同步驱动的既有约束，
+                    // 事件驱动路径见 segment 泵与 D-6）。
+                    if let Some(stream_id) = task.waiting_http_stream_id {
+                        let deadline =
+                            std::time::Instant::now() + std::time::Duration::from_secs(30);
+                        while !crate::vm::ffi::http_stream::stream_ready(stream_id) {
+                            if std::time::Instant::now() > deadline {
+                                task.waiting_http_stream_id = None;
+                                crate::vm::ffi::http_stream::stream_cancel(stream_id);
+                                return SegmentOutcome::Completed(Err(VMError::RuntimeError(
+                                    "http stream wait timed out in call_fn_by_name".into(),
+                                )));
+                            }
+                            std::thread::sleep(std::time::Duration::from_millis(5));
+                        }
+                        steps = steps.saturating_sub(1);
+                    }
+                    continue;
+                }
+                StepResult::GeneratorYield => {
+                    // Plan 321: YIELD_VAL in a regular call_fn_by_name context
+                    // means the function is a generator. In non-generator mode
+                    // (called via call_fn_by_name), we can't suspend — just
+                    // continue past the yield (the yielded value is on stack,
+                    // we leave it there as a side effect).
+                    // NOTE: Proper generator suspension only happens via the
+                    // Iterator::Generator driver (Phase 2), not call_fn_by_name.
+                    continue;
+                }
+                StepResult::AwaitFuture {
+                    future_id,
+                    body_offset,
+                } => {
+                    if let Err(e) = self.handle_await_future(task, future_id, body_offset) {
+                        task.current_fn_n_args = saved_fn_n_args;
+                        return SegmentOutcome::Completed(Err(e));
+                    }
+                    // PLAN-702 T-01: Phase B suspension (body parked mid-await
+                    // on an external future) — park instead of the sync
+                    // driver's fall-through hot-continue over a mid-body ip.
+                    if !allow_busy_wait && task.waiting_future_id.is_some() {
+                        // PLAN-781 T-15: 段终止但请求未终——本段已执行步数计入任务累计
+                        //（resume 在新段继续累加，不重置）。
+                        task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
+                        return SegmentOutcome::Parked {
+                            wait: ParkedWait::Future(task.waiting_future_id.unwrap_or(0)),
+                            seg: ParkedSegment {
+                                fn_name: fn_name.to_string(),
+                                saved_bp,
+                                saved_fn_n_args,
+                            },
+                        };
+                    }
+                }
+            }
+        }
+
+        // PLAN-711 T-11 (AC-13): 预算/片耗尽分支——task 状态完整（ip 指向
+        // 函数内、bp≠saved_bp、闭包/异常帧/返回槽原样）。
+        if !finished {
+            match budget {
+                DriveBudget::CpuSlice(b) => {
+                    // 跨片累计护栏：只累计实际执行的指令（I/O 等待不计忙时）；
+                    // 达累计上限即真错误，逐片让出不得重置护栏绕过 runaway 保护。
+                    task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
+                    if task.cpu_steps_total >= b.cumulative_steps {
+                        task.current_fn_n_args = saved_fn_n_args;
+                        return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                            "cumulative CPU budget exhausted in '{}' ({} steps across slices) — runaway handler?",
+                            fn_name, task.cpu_steps_total
+                        ))));
+                    }
+                    // 栈完整可续跑：返回 Runnable，栈/帧/闭包全部原样留给
+                    // CPU 泵下一轮在预算内继续（不清栈、不重进 prologue）。
+                    return SegmentOutcome::Runnable {
+                        seg: ParkedSegment {
+                            fn_name: fn_name.to_string(),
+                            saved_bp,
+                            saved_fn_n_args,
+                        },
+                    };
+                }
+                DriveBudget::LegacyHttp(cap) => {
+                    // PLAN-781 T-15: 请求预算耗尽（单段形态 = 段帽即请求帽；
+                    // 多段形态由循环内累计检查先触）。指名 policy 的资源拒绝
+                    // （不 Runnable：HTTP 无 CPU 泵；不假成功；不落 legacy
+                    // 文案——观测面可区分配置档与默认档）。累计记账在函数尾。
+                    let ip = task.ip;
+                    eprintln!(
+                        "WARN[budget] fn='{}' ip={} per-request cap {} reached at segment end",
+                        fn_name, ip, cap
+                    );
+                    task.current_fn_n_args = saved_fn_n_args;
+                    return SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                        "instruction budget exhausted in '{}' at ip=0x{:04x} (per-request cumulative budget {} steps; AUTO_HTTP_STEP_BUDGET)",
+                        fn_name, ip, cap
+                    ))));
+                }
+                DriveBudget::Legacy => {
+                    // legacy 档耗尽：保留既有 WARN 诊断（近旁 FN_PROLOGUE 扫描），
+                    // 但**不再落入 `Completed(Ok(()))` 静默假成功**——真实错误
+                    // 上浮（`Result` 契约形状不变；旧假成功即 AC-13 缺陷本身）。
+                    let ip = task.ip;
+                    let mut trace = String::new();
+                    let start = ip.saturating_sub(20);
+                    for i in start..(start + 30).min(self.flash.memory.len()) {
+                        let b = self.flash.memory[i];
+                        if b == 0x06 {
+                            // RESERVE_STACK = fn prologue marker
+                            trace.push_str(&format!("[FN_PROLOGUE@{}] ", i));
+                        }
+                    }
+                    let cur_fn = task
+                        .call_stack
+                        .last()
+                        .and_then(|f| f.fn_name.clone())
+                        .unwrap_or_default();
+                    let call_depth = task.call_stack.len();
+                    eprintln!(
+                        "WARN[budget] fn='{}' ip={} call_depth={} trace={}",
+                        cur_fn, ip, call_depth, trace
+                    );
+                }
+            }
+        }
+
+        // 6. Restore non-stack state (return value already on stack top)
+        // PLAN-781 T-15: LegacyHttp 的段末统一累计（成功/段帽耗尽两路；
+        // Parked 各点已内联累计；CpuSlice 臂自带累计并提前 return）。
+        if cum_cap.is_some() {
+            task.cpu_steps_total = task.cpu_steps_total.saturating_add(steps);
+        }
+        task.current_fn_n_args = saved_fn_n_args;
+        // PLAN-026 T-04: handler 粒度预算报告(api.* 忙等观测护栏)。
+        Self::api_budget_report(fn_name);
+        // PLAN-026 needs_fix3(内存爬升分流):AUTO_VM_MEM=1 时每 500 次
+        // 调用打印 VM 侧池/堆规模(strings 池字节数近似 = Σ len)——
+        // 区分"VM 层泄漏(池/堆线性涨)"与"rust 层(HTTP/渲染)"。
+        if std::env::var("AUTO_VM_MEM").as_deref() == Ok("1") {
+            static MEM_N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+            let n = MEM_N.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if n % 500 == 0 {
+                let pool_len = self.strings.read().map(|p| p.len()).unwrap_or(0);
+                let pool_bytes: usize = self
+                    .strings
+                    .read()
+                    .map(|p| p.iter().map(|v| v.len()).sum())
+                    .unwrap_or(0);
+                eprintln!(
+                    "[VM-MEM] calls={} strings_pool={} pool_bytes={} heap_objs={}",
+                    n,
+                    pool_len,
+                    pool_bytes,
+                    self.heap_objects.len()
+                );
+            }
+        }
+        if finished {
+            SegmentOutcome::Completed(Ok(()))
+        } else {
+            SegmentOutcome::Completed(Err(VMError::RuntimeError(format!(
+                "instruction budget exhausted in '{}' at ip=0x{:04x} (infinite loop or runaway handler; legacy budget 10M steps)",
+                fn_name, task.ip
+            ))))
+        }
+    }
+
+    /// Plan 321: Check if a function body contains YIELD_VAL (0x8D) opcode.
+    fn is_generator_fn(&self, addr: usize) -> bool {
+        // Plan 348 Task 21: Walk the bytecode instruction-by-instruction,
+        // decoding each opcode's operand stream via `OpCode::operand_size` so
+        // that operand bytes are never mistaken for opcodes.
+        //
+        // The previous implementation (Plan 347) bounded a raw byte scan at the
+        // first 0x71 (RET) byte. This stopped cross-function false positives
+        // but was still vulnerable to *intra-function* false positives:
+        // whenever a function's operand stream (e.g. a CONST_I32 immediate, a
+        // CALL target, or a SOURCE_LINE line number) happened to contain 0x8D
+        // before the real RET opcode, the function was misclassified as a
+        // generator. The CALL handler then short-circuited the body and
+        // returned an iterator id instead of executing the function —
+        // producing symptoms like "sha256 miscomputes" that were hard to
+        // connect back to this scan. The fix is to never look at operand
+        // bytes at all.
+        //
+        // A generator always yields before returning, so a real YIELD_VAL
+        // cannot appear after the first genuine RET opcode. We stop at the
+        // first RET found at an opcode boundary.
+        //
+        // For variable-length instructions (BUILD_FSTR, NEW_INSTANCE,
+        // IS_VARIANT) `operand_size` returns None. NEW_INSTANCE in particular
+        // reads its length from the stack rather than the bytecode, so we
+        // cannot statically step past it; the safe choice is to stop scanning
+        // (return false). Generators are extremely unlikely to contain these
+        // opcodes before their first yield, and the previous behavior on
+        // encountering them was undefined anyway.
+        const YIELD_VAL: u8 = OpCode::YIELD_VAL as u8;
+        const RET: u8 = OpCode::RET as u8;
+        let max_scan = std::cmp::min(addr + 4096, self.flash.memory.len());
+        let mut ip = addr;
+        while ip < max_scan {
+            let op_byte = self.flash.memory[ip];
+            if op_byte == YIELD_VAL {
+                return true;
+            }
+            if op_byte == RET {
+                return false;
+            }
+            if !OpCode::is_valid(op_byte) {
+                // Desynchronized — bail out safely.
+                return false;
+            }
+            let op: OpCode = op_byte.into();
+            let step = match op.operand_size() {
+                Some(n) => n,
+                None => return false, // variable-length; cannot safely step
+            };
+            ip = ip.saturating_add(1 + step);
+        }
+        false
+    }
+
+    /// Plan 317 §11 Phase 11 (Bug fix): Read a function's declared parameter
+    /// count (the `n_args` byte stored right after its FN_PROLOG opcode at the
+    /// function's entry address). Returns `None` if the function isn't found or
+    /// the bytecodes don't start with FN_PROLOG (defensive).
+    ///
+    /// Used by HTTP handler dispatch (`build_handler_args`) to decide whether
+    /// the handler declared an extra parameter to receive the cookies/auth
+    /// metadata. Without this, the runtime can't tell a 1-param handler
+    /// (`fn echo_id(id int)`) from a 2-param one that wants the metadata, and it
+    /// unconditionally pushes the metadata — corrupting parameter binding (the
+    /// handler's first param ends up bound to the metadata JSON instead of the
+    /// path param).
+    pub fn get_fn_n_args(&self, fn_name: &str) -> Option<usize> {
+        let addr = *self.flash.exports_by_name.get(fn_name)? as usize;
+        // The first byte at the entry point is FN_PROLOG (0xFN), followed by
+        // n_args (u8), then n_locals (u8). See codegen.rs Plan 088 Phase 4:
+        // "Always emit FN_PROLOG at function entry".
+        let prolog_byte = self.flash.memory.get(addr).copied()?;
+        if prolog_byte != OpCode::FN_PROLOG as u8 {
+            return None;
+        }
+        self.flash.memory.get(addr + 1).copied().map(|n| n as usize)
+    }
+
+    /// Returns true if the message matches the pattern
+    fn match_message_pattern_vm(
+        &self,
+        msg: &auto_val::Value,
+        pattern: &crate::vm::task_handler::SerializedPattern,
+        string_pool: &[String],
+    ) -> bool {
+        use crate::vm::task_handler::PatternType;
+        use auto_val::Value;
+
+        match pattern.pattern_type {
+            PatternType::Literal => {
+                if pattern.data.is_empty() {
+                    return false;
+                }
+                let lit_type = pattern.data[0];
+                match lit_type {
+                    0x01 => {
+                        // String literal
+                        if pattern.data.len() < 5 {
+                            return false;
+                        }
+                        let idx = u32::from_le_bytes([
+                            pattern.data[1],
+                            pattern.data[2],
+                            pattern.data[3],
+                            pattern.data[4],
+                        ]) as usize;
+                        if let Some(s) = string_pool.get(idx) {
+                            matches!(msg, Value::Str(s2) if s2.as_str() == s.as_str())
+                        } else {
+                            false
+                        }
+                    }
+                    0x02 => {
+                        // Int literal
+                        if pattern.data.len() < 9 {
+                            return false;
+                        }
+                        let n = i64::from_le_bytes([
+                            pattern.data[1],
+                            pattern.data[2],
+                            pattern.data[3],
+                            pattern.data[4],
+                            pattern.data[5],
+                            pattern.data[6],
+                            pattern.data[7],
+                            pattern.data[8],
+                        ]);
+                        matches!(msg, Value::Int(i) if *i as i64 == n)
+                    }
+                    0x03 => {
+                        // Uint literal
+                        if pattern.data.len() < 9 {
+                            return false;
+                        }
+                        let n = u64::from_le_bytes([
+                            pattern.data[1],
+                            pattern.data[2],
+                            pattern.data[3],
+                            pattern.data[4],
+                            pattern.data[5],
+                            pattern.data[6],
+                            pattern.data[7],
+                            pattern.data[8],
+                        ]);
+                        matches!(msg, Value::Uint(u) if *u as u64 == n)
+                    }
+                    0x04 => {
+                        // Bool literal
+                        if pattern.data.len() < 2 {
+                            return false;
+                        }
+                        let b = pattern.data[1] != 0;
+                        matches!(msg, Value::Bool(b2) if *b2 == b)
+                    }
+                    0x05 => {
+                        // Char literal
+                        if pattern.data.len() < 5 {
+                            return false;
+                        }
+                        let c = u32::from_le_bytes([
+                            pattern.data[1],
+                            pattern.data[2],
+                            pattern.data[3],
+                            pattern.data[4],
+                        ]);
+                        matches!(msg, Value::Char(c2) if (*c2 as u32) == c)
+                    }
+                    0x06 => {
+                        // Float literal (two i64 parts)
+                        if pattern.data.len() < 17 {
+                            return false;
+                        }
+                        let _integral = i64::from_le_bytes([
+                            pattern.data[1],
+                            pattern.data[2],
+                            pattern.data[3],
+                            pattern.data[4],
+                            pattern.data[5],
+                            pattern.data[6],
+                            pattern.data[7],
+                            pattern.data[8],
+                        ]);
+                        let _fractional = i64::from_le_bytes([
+                            pattern.data[9],
+                            pattern.data[10],
+                            pattern.data[11],
+                            pattern.data[12],
+                            pattern.data[13],
+                            pattern.data[14],
+                            pattern.data[15],
+                            pattern.data[16],
+                        ]);
+                        // For now, just check if it's a float type
+                        matches!(msg, Value::Float(_) | Value::Double(_))
+                    }
+                    _ => false,
+                }
+            }
+            PatternType::Simple => {
+                // Simple variant pattern - check if message is an object with __variant field
+                if pattern.data.len() < 4 {
+                    return false;
+                }
+                let idx = u32::from_le_bytes([
+                    pattern.data[0],
+                    pattern.data[1],
+                    pattern.data[2],
+                    pattern.data[3],
+                ]) as usize;
+                if let Some(variant_name) = string_pool.get(idx) {
+                    match msg {
+                        Value::Obj(obj) => {
+                            if let Some(Value::Str(v)) =
+                                obj.get(auto_val::AutoStr::from("__variant"))
+                            {
+                                v.as_str() == variant_name.as_str()
+                            } else {
+                                false
+                            }
+                        }
+                        // Plan 390 §15 H2: structured messages arrive at the
+                        // matcher as Value::VmRef (send shim stores a ref, not
+                        // an inlined Obj). Rehydrate just the __variant field
+                        // from the objects registry to match the variant name.
+                        Value::VmRef(r) => self
+                            .vmref_variant_name(r.id)
+                            .map_or(false, |v| v.as_str() == variant_name.as_str()),
+                        Value::Str(s) => s.as_str() == variant_name.as_str(),
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            PatternType::TypeBinding => {
+                // Type binding pattern - check if message matches the expected type
+                if pattern.data.len() < 5 {
+                    return false;
+                }
+                let _name_idx = u32::from_le_bytes([
+                    pattern.data[0],
+                    pattern.data[1],
+                    pattern.data[2],
+                    pattern.data[3],
+                ]) as usize;
+                let type_tag = pattern.data[4];
+
+                // Match based on type tag
+                match type_tag {
+                    0x01 => matches!(msg, Value::Int(_)),    // Int
+                    0x02 => matches!(msg, Value::I64(_)),    // I64
+                    0x03 => matches!(msg, Value::Uint(_)),   // Uint
+                    0x04 => matches!(msg, Value::I64(_)),    // U64 -> I64 (Value doesn't have U64)
+                    0x05 => matches!(msg, Value::Float(_)),  // Float
+                    0x06 => matches!(msg, Value::Double(_)), // Double
+                    0x07 => matches!(msg, Value::Bool(_)),   // Bool
+                    0x08 => matches!(msg, Value::Char(_)),   // Char
+                    0x09 => matches!(msg, Value::Str(_)),    // Str
+                    0xFF => true,                            // Unknown - match anything
+                    _ => false,
+                }
+            }
+            PatternType::WithBindings => {
+                // Variant with bindings pattern
+                if pattern.data.len() < 5 {
+                    return false;
+                }
+                let variant_idx = u32::from_le_bytes([
+                    pattern.data[0],
+                    pattern.data[1],
+                    pattern.data[2],
+                    pattern.data[3],
+                ]) as usize;
+
+                if let Some(variant_name) = string_pool.get(variant_idx) {
+                    match msg {
+                        Value::Obj(obj) => {
+                            if let Some(Value::Str(v)) =
+                                obj.get(auto_val::AutoStr::from("__variant"))
+                            {
+                                v.as_str() == variant_name.as_str()
+                            } else {
+                                false
+                            }
+                        }
+                        // Plan 390 §15 H2: rehydrate __variant from the
+                        // objects registry (see PatternType::Simple).
+                        Value::VmRef(r) => self
+                            .vmref_variant_name(r.id)
+                            .map_or(false, |v| v.as_str() == variant_name.as_str()),
+                        Value::Str(s) => s.as_str() == variant_name.as_str(),
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// The main async loop that schedules and runs tasks.
+    pub async fn run_task_loop(&self) {
+        loop {
+            let mut active_count = 0;
+            let mut alive_count = 0;
+
+            // Collect tasks to iterate
+            // We use a Vec of Arcs to avoid holding the map lock during execution
+            let tasks: Vec<(TaskId, Arc<Mutex<AutoTask>>)> = self
+                .tasks
+                .iter()
+                .map(|r| (*r.key(), r.value().clone()))
+                .collect();
+
+            if tasks.is_empty() {
+                break; // No tasks left, exit VM
+            }
+
+            // PLAN-746 (PG-MEM-1): cooperative execution deadline. Once
+            // passed, terminate every remaining task with a synthetic
+            // timeout error so callers see a clean failure instead of a
+            // runaway execution that never returns (and keeps allocating).
+            if let Some(dl) = self.deadline {
+                if std::time::Instant::now() >= dl {
+                    for (_id, task_mutex) in &tasks {
+                        let mut t = task_mutex.lock().await;
+                        if t.status != TaskStatus::Terminated {
+                            t.last_error =
+                                Some("ExecutionTimeout: execution deadline exceeded".to_string());
+                            t.status = TaskStatus::Terminated;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            for (_id, task_mutex) in tasks {
+                let mut task = task_mutex.lock().await;
+
+                if task.status == TaskStatus::Terminated {
+                    continue;
+                }
+
+                // Check if sleeping task should wake up
+                if let Some(wake_time) = task.wake_time {
+                    if Instant::now() >= wake_time {
+                        task.wake_time = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still sleeping
+                    }
+                }
+
+                // Plan 317 Phase 1: wake a message-loop task that has pending
+                // messages. TASK_LOOP left it Waiting; TaskHandle.send pushed
+                // to its mailbox in vm.task_mailboxes. Drain one message, find
+                // its handler, set ip to the handler body_offset, and mark Ready
+                // so execute_task runs it. The handler RETs; the next iteration
+                // re-parks it if more messages wait, else it stays Waiting.
+                if task.in_message_loop {
+                    // Check the mailbox (DashMap, std Mutex — safe to lock here
+                    // since we're in async run_task_loop, not a sync native).
+                    let drained = if let Some(mb) = self.task_mailboxes.get(&task.id) {
+                        if let Ok(mut q) = mb.lock() {
+                            if !q.is_empty() {
+                                Some(q.remove(0))
+                            } else {
+                                None
+                            }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if crate::is_vm_debug() {
+                        eprintln!(
+                            "[run_task_loop] task {} in_message_loop, drained={:?}",
+                            task.id,
+                            drained.as_ref().map(|_| ())
+                        );
+                    }
+                    if let Some(msg) = drained {
+                        let task_type = task.task_type_name.clone().unwrap_or_default();
+                        if let Some((body_offset, has_context)) =
+                            self.find_handler_offset(&task_type, &msg)
+                        {
+                            // Plan 390 §15 G2-refactor (方案 B): 给 handler 建立真正的
+                            // bp 栈帧（CALL 风格），根治 G2 方案 A（H2 的 HANDLER_LOCALS_BAND
+                            // 预留固定 16 槽）的 handler locals 与 message/表达式临时值重叠
+                            // 问题。深嵌套表达式或多字段 WithBindings 会穿透固定预留带。
+                            //
+                            // 帧布局（低 → 高）:
+                            //   [ret_ip, old_bp, <locals 区 16 槽>, message, <表达式临时值>]
+                            //    bp 指向 old_bp；handler locals 在 bp+1..bp+16；message 与
+                            //    临时值在 locals 之上，永不重叠。
+                            //
+                            // ret_ip = actor park 时的 ip（#start 里 TASK_LOOP 之后的 RET）。
+                            // handler RET 把 ip 恢复成 ret_ip → 执行那条 RET → bp 已恢复为
+                            // old_bp(=0) → engine.rs RET 的 bp==0 短路 Terminated → 下方
+                            // in_message_loop catch 把 Terminate 转回 Waiting（重 park）。
+                            // 无需特殊 ret_ip 哨兵，复用 #start 尾部 RET。
+                            const HANDLER_LOCALS_SLOTS: usize = 16;
+                            let saved_ip = task.ip; // park 时 ip（TASK_LOOP 后的 RET）
+                            let saved_bp = task.bp; // 0（parked actor）
+                                                    // 1. CALL 风格建帧：push ret_ip, push old_bp, bp = sp - 1
+                            task.ram.push_i32(saved_ip as i32);
+                            task.ram.push_i32(saved_bp as i32);
+                            task.bp = task.ram.sp - 1;
+                            // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+                            let handler_bp = task.bp;
+                            task.push_frame_id(handler_bp);
+                            // 2. 预留 locals 区（bp+1 .. bp+HANDLER_LOCALS_SLOTS）
+                            for _ in 0..HANDLER_LOCALS_SLOTS {
+                                task.ram.push_i32(0);
+                            }
+                            // 3. push message（在 locals 区之上）
+                            // Plan 390 §14 L3: structured messages (Value::VmRef
+                            // from a WithBindings variant constructor) are pushed
+                            // as object refs so the handler can GET_FIELD each
+                            // binding. Scalar messages stay as i32 for backward
+                            // compat with Literal/TypeBinding/Simple patterns.
+                            match &msg {
+                                auto_val::Value::VmRef(vmref) => {
+                                    // Plan 419: 消息引用入 handler 帧 +1;邮箱
+                                    // 排水侧的 stake(send 时的 retain)随之
+                                    // 死亡 —— 净效果:消息 stake 转入 handler 帧。
+                                    self.rc_push(
+                                        &mut task,
+                                        auto_val::encode_object(vmref.id as u32),
+                                    );
+                                    self.rc_release_id(vmref.id as u64);
+                                }
+                                auto_val::Value::Int(i) => {
+                                    task.ram.push_i32(*i);
+                                }
+                                auto_val::Value::Uint(u) => {
+                                    task.ram.push_i32(*u as i32);
+                                }
+                                auto_val::Value::Bool(b) => {
+                                    task.ram.push_i32(if *b { 1 } else { 0 });
+                                }
+                                _ => {
+                                    task.ram.push_i32(0);
+                                }
+                            }
+                            task.ip = body_offset as usize;
+                            task.current_handler_has_context = has_context;
+                            task.status = TaskStatus::Ready;
+                        } else if crate::is_vm_debug() {
+                            eprintln!(
+                                "[run_task_loop] No handler for message {:?} in task {}",
+                                msg, task_type
+                            );
+                        }
+                    }
+                }
+
+                // Plan 317 Phase 1: a Waiting message-loop task with an empty
+                // mailbox is idle — it won't self-wake. Don't count it as alive,
+                // so run_task_loop can exit when only such idle actors remain
+                // (otherwise it busy-loops on sleep forever). If a message
+                // arrives later (TaskHandle.send), the task isn't idle anymore.
+                let is_idle_actor = task.in_message_loop
+                    && matches!(task.status, TaskStatus::Waiting(_))
+                    && !self
+                        .task_mailboxes
+                        .get(&task.id)
+                        .map(|m| m.lock().map(|q| !q.is_empty()).unwrap_or(false))
+                        .unwrap_or(false);
+                if is_idle_actor {
+                    continue;
+                }
+
+                // Plan 317 §11 Phase 7 (P3): a generator task suspended at a
+                // YIELD_VAL (Waiting("generator_suspended")) is driven externally
+                // — it only resumes when a consumer calls iter.next() (which
+                // try_locks the task and runs instructions, not via run_task_loop).
+                // Such a task never self-wakes, so if the consumer has broken out
+                // of the for-loop and abandoned it, the task stays Waiting forever.
+                // Without this exclusion, run_task_loop sees alive_count > 0 and
+                // busy-loops on sleep forever — the classic "infinite generator
+                // hangs the VM" symptom. Treat it like an idle actor: don't count
+                // it as alive, so the VM can exit when only suspended generators
+                // (or idle actors) remain.
+                if matches!(task.status, TaskStatus::Waiting(ref reason) if reason == "generator_suspended")
+                {
+                    continue;
+                }
+
+                // Plan 348/353/349: Wake source 4 — SSE/IO stream data available.
+                // Task yielded with Waiting("sse") because the async channel
+                // had no data. Check if data has arrived since then. HTTP and IO
+                // streams now share the unified ASYNC_STREAMS table (Plan 349
+                // table consolidation); stream_id is globally unique.
+                if let Some(stream_id) = task.waiting_sse_stream_id {
+                    let has_data = crate::vm::ffi::stdlib::ASYNC_STREAMS
+                        .lock()
+                        .ok()
+                        .and_then(|m| {
+                            m.get(&stream_id).map(|handle| {
+                                let done = handle.done.load(std::sync::atomic::Ordering::SeqCst);
+                                let has_recv =
+                                    handle.rx.lock().map(|rx| !rx.is_empty()).unwrap_or(false);
+                                has_recv || done
+                            })
+                        })
+                        .unwrap_or(true); // Stream gone → wake up (push -1 sentinel).
+                    if has_data {
+                        task.waiting_sse_stream_id = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still waiting for SSE data
+                    }
+                }
+
+                // PLAN-707 T-05: Wake source 4b — HTTPStream 句柄惰性消费的
+                // 等待唤醒（数据入队或终态；stream_ready 含终结与条目消失）。
+                if let Some(stream_id) = task.waiting_http_stream_id {
+                    if crate::vm::ffi::http_stream::stream_ready(stream_id) {
+                        task.waiting_http_stream_id = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still waiting for stream data
+                    }
+                }
+
+                // Plan 394 Phase A: Wake source 6 — external future ready.
+                // On Ready/Failed, push the await result and clear the slot so
+                // the task resumes at the instruction after AWAIT_FUTURE.
+                if let Some(fid) = task.waiting_future_id {
+                    let ready = self
+                        .futures
+                        .get(&fid)
+                        .map(|f| {
+                            let fv = f.read().unwrap();
+                            fv.state != FutureState::Pending
+                        })
+                        .unwrap_or(true); // future gone → wake (nil fallback)
+                    if ready {
+                        if let Some(future_arc) = self.futures.get(&fid) {
+                            let future = future_arc.read().unwrap();
+                            match future.state {
+                                FutureState::Ready => {
+                                    if let Some(ref r) = future.result {
+                                        Self::push_value(&mut task, r, self);
+                                    } else {
+                                        task.ram.push_nv(auto_val::encode_null());
+                                    }
+                                }
+                                _ => {
+                                    // Failed / missing result → null (Phase A)
+                                    task.ram.push_nv(auto_val::encode_null());
+                                }
+                            }
+                        } else {
+                            task.ram.push_nv(auto_val::encode_null());
+                        }
+                        task.waiting_future_id = None;
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still waiting on external future
+                    }
+                }
+
+                // Plan 349 step 7 / Plan 353: Wake source 5 — async HTTP/IO completed.
+                // PLAN-705 T-02: 统一 live-op 表（async_http::LIVE_OPS）——
+                // 极性与旧表逐字节同（缺席/已终结 → 唤醒落错误 fallback）。
+                if let Some(req_id) = task.waiting_http_request_id {
+                    let ready = crate::vm::ffi::async_http::live_op_ready_or_gone(req_id);
+                    if ready {
+                        // NOTE: do NOT clear waiting_http_request_id here. The
+                        // shim's re-entry branch needs it to look up the result
+                        // in the live-op table. The shim itself clears the
+                        // field once it has consumed the result. Clearing it
+                        // prematurely makes the re-entry take the first-call
+                        // path and pop args that are no longer on the stack
+                        // (Stack Underflow). Plan 349 步骤 7.
+                        task.status = TaskStatus::Ready;
+                    } else {
+                        alive_count += 1;
+                        continue; // Still waiting for HTTP response
+                    }
+                }
+
+                alive_count += 1;
+
+                // Check if task is runnable
+                if task.status != TaskStatus::Running && task.status != TaskStatus::Ready {
+                    continue;
+                }
+
+                active_count += 1;
+                task.status = TaskStatus::Running;
+
+                // Run a chunk of instructions
+                match self.execute_task(&mut task) {
+                    Ok(new_status) => {
+                        // Plan 317 Phase 1: a message-loop task that hits RET
+                        // (handler finished, or start hook finished) must NOT
+                        // terminate — it parks back in Waiting to receive the
+                        // next message. Without this, the actor dies after its
+                        // first handler returns.
+                        if new_status == TaskStatus::Terminated && task.in_message_loop {
+                            // Plan 390 §15 G2-refactor (方案 B): handler RET 已通过真 bp 帧
+                            // 的标准 unwind 恢复 sp/bp（old_bp=0）。但 RET 恢复的 ip 指向
+                            // #start 尾部 RET，那条 RET 执行时会读 n_args 字节推进 ip，
+                            // 污染下次 wake 的 saved_ip。故这里把 ip 重置到 TASK_LOOP 时
+                            // 记录的稳定 park_ip，使 actor 干净等待下一条消息。
+                            if let Some(park) = task.park_ip {
+                                task.ip = park;
+                            }
+                            task.status = TaskStatus::Waiting("message_loop".to_string());
+                        } else {
+                            task.status = new_status;
+                        }
+                    }
+                    Err(e) => {
+                        // Plan 118: Store error for proper error propagation
+                        // Plan 199: Include source line number in error message
+                        let line = task.current_line;
+                        let ip = task.ip;
+                        let error_msg = if line > 0 {
+                            format!("{:?} at line {} (ip={:#06x})", e, line, ip)
+                        } else {
+                            format!("{:?}", e)
+                        };
+                        task.last_error = Some(error_msg.clone());
+                        // Plan 773 F-08: keep the typed identity alongside the
+                        // flattened message — the staged run API reads it as
+                        // the run-stage oracle code.
+                        task.last_error_code = Some(vm_error_code(&e));
+                        // Plan 260: Suppress error output when running in test mode (output_buffer set)
+                        // Plan 011: ExitRequested is a cooperative stop, not a failure — don't log it.
+                        if self.output_buffer.is_none() && !matches!(e, VMError::ExitRequested(_)) {
+                            eprintln!("Task {} Error: {}", task.id, error_msg);
+                        }
+                        // Plan 199: Print call stack trace on error.
+                        // PLAN-081 (R4③): ExitRequested is a cooperative
+                        // stop, not a failure — the same guard as the error
+                        // line above applies; `exit(N≠0)` used to print a
+                        // noise "Stack trace:" of <anonymous> frames.
+                        if self.output_buffer.is_none()
+                            && !matches!(e, VMError::ExitRequested(_))
+                            && !task.call_stack.is_empty()
+                        {
+                            eprintln!("Stack trace:");
+                            for (i, frame) in task.call_stack.iter().enumerate().rev() {
+                                let name = frame.fn_name.as_deref().unwrap_or("<anonymous>");
+                                eprintln!("  #{} {} at line {}", i, name, frame.line);
+                            }
+                        }
+                        task.status = TaskStatus::Terminated;
+                    }
+                }
+            }
+
+            // Cleanup terminated tasks
+            // This is a simplified garbage collection for MVP
+            /*
+            self.tasks.retain(|_, v| {
+                // We need to try_lock to avoid deadlocks or blocking?
+                // Since we are single-threaded loop essentially here (sequential iteration),
+                // blocking_lock or try_lock is fine if no one else holds it.
+                // But wait, if we are in async context, blocking_lock is bad.
+                // However, we cloned the Arcs above, so we don't hold the map lock.
+                // Re-acquiring lock here is okay.
+                if let Ok(task) = v.try_lock() {
+                    task.status != TaskStatus::Terminated
+                } else {
+                    true // Keep it if locked (should be rare/impossible in this simple loop)
+                }
+            });
+            */
+
+            if alive_count == 0 {
+                break;
+            }
+
+            if active_count == 0 {
+                if self.tasks.is_empty() {
+                    break;
+                }
+                // All tasks waiting/sleeping?
+                sleep(Duration::from_millis(10)).await;
+            }
+
+            // Yield to tokio runtime to let other things happen
+            tokio::task::yield_now().await;
+        }
+    }
+
+    /// Execute a single instruction from the given task's instruction stream.
+    ///
+    /// Returns `Ok(StepResult::Continue)` if the task should keep running,
+    /// `Ok(StepResult::Terminated)` if the task has finished, or
+    /// `Ok(StepResult::Yield)` if the task should pause the current batch.
+    pub fn run_one_instruction(&self, task: &mut AutoTask) -> Result<StepResult, VMError> {
+        let assembly_revision = (
+            self.flash.memory.len(),
+            self.native_interface.binding_revision(),
+        );
+        if task.assembly_checked != Some(assembly_revision) {
+            crate::stdlib_assembly::reference::verify_linked_native_closure(
+                &self.flash,
+                task.ip,
+                &self.native_interface,
+                &self.strings.read().unwrap(),
+            )
+            .map_err(VMError::RuntimeError)?;
+            task.assembly_checked = Some(assembly_revision);
+        }
+        // 1. Fetch
+        if task.ip >= self.flash.memory.len() {
+            return Ok(StepResult::Terminated);
+        }
+
+        // PLAN-062 T12: 解释步计数 + 周期性收割宽限窗到期的 dying 对象。
+        let step = self.interp_steps.fetch_add(1, Ordering::Relaxed);
+        if step & 0x3FF == 0 {
+            self.reap_dying(step);
+        }
+        let op_byte = self.flash.read_u8(task.ip);
+        task.ip += 1;
+        if !OpCode::is_valid(op_byte) {
+            return Err(VMError::RuntimeError(format!(
+                "Invalid opcode: 0x{:02x} at ip={}",
+                op_byte,
+                task.ip - 1
+            )));
+        }
+        let op: OpCode = op_byte.into();
+
+        // Plan 423 P5 续修(诊断设施):每指令 trace。定位 RC 计数漂移时
+        // 需要完整指令流对齐 retain/release(OnceLock 缓存,默认零成本)。
+        if crate::is_vm_trace_ops() {
+            eprintln!(
+                "[VMOP] ip=0x{:04x} op={:?} sp={} bp={}",
+                task.ip - 1,
+                op,
+                task.ram.sp,
+                task.bp
+            );
+        }
+
+        // Plan 199: Debugger hook — check if we should pause before executing
+        {
+            let mut dbg = self.debugger.lock().unwrap();
+            let ctx = crate::vm::debugger::DebugContext {
+                task: &task,
+                current_op: op,
+                ip: task.ip - 1,
+                line: task.current_line,
+                call_stack: &task.call_stack,
+            };
+            if dbg.should_pause(&ctx) {
+                let action = dbg.on_pause(&ctx);
+                match action {
+                    crate::vm::debugger::DebuggerAction::Quit => {
+                        return Err(VMError::RuntimeError("Debugger quit".to_string()));
+                    }
+                    crate::vm::debugger::DebuggerAction::Continue
+                    | crate::vm::debugger::DebuggerAction::Step
+                    | crate::vm::debugger::DebuggerAction::StepOver
+                    | crate::vm::debugger::DebuggerAction::StepOut => {}
+                }
+            }
+        }
+
+        // 2. Decode & Execute
+        match op {
+            OpCode::NOP => {
+                // Do nothing
+            }
+            OpCode::POP => {
+                // Plan 419: 弹出的值若为引用 → 计数 -1(协议 §1 POP 行);
+                // 槽位清零防双重释放(嵌套执行外层可能再扫死区)。
+                // PLAN-062 T12: 堆份额按影子释放(裸副本零释放),字符串
+                // 沿内容;影子随取随清。
+                let nv = task.ram.pop_nv();
+                let stake = task.ram.take_stake_at(task.ram.sp);
+                if stake != 0 {
+                    self.rc_release_id(stake);
+                }
+                if auto_val::is_string(nv) {
+                    self.rc_release(nv);
+                }
+                task.ram.raw_nv[task.ram.sp] = 0;
+            }
+            OpCode::POP_N => {
+                let n = self.flash.read_u8(task.ip);
+                task.ip += 1;
+                for _ in 0..n {
+                    // PLAN-062 T12: 同 POP——影子释放 + 字符串内容释放。
+                    let nv = task.ram.pop_nv();
+                    let stake = task.ram.take_stake_at(task.ram.sp);
+                    if stake != 0 {
+                        self.rc_release_id(stake);
+                    }
+                    if auto_val::is_string(nv) {
+                        self.rc_release(nv);
+                    }
+                    task.ram.raw_nv[task.ram.sp] = 0;
+                }
+            }
+            OpCode::DUP => {
+                // Plan 419: DUP 的值是引用时 +1(栈上多一个 owned slot)。
+                // PLAN-667 (F-07): 份额出处门——源槽无影子的裸 i32≥4M 是
+                // 真整数,裸拷贝零计数(内容性补计=幻影份额来源)。
+                if task.ram.sp > 0 {
+                    let src = task.ram.sp - 1;
+                    let nv = task.ram.raw_nv[src];
+                    let src_stake = task.ram.stake_at(src);
+                    self.rc_push_slot(task, nv, src_stake);
+                }
+            }
+
+            // === Constants ===
+            OpCode::CONST_I32 => {
+                let val = self.flash.read_i32(task.ip);
+                task.ip += 4;
+                task.ram.push_i32(val);
+                vm_debug!(
+                    "DEBUG: CONST_I32: sp after push={}, wrote to address {}",
+                    task.ram.sp,
+                    task.ram.sp - 1
+                );
+            }
+            OpCode::CONST_F32 => {
+                // Plan 073: Fixed to use push_f32 instead of push_i32
+                let val = self.flash.read_f32(task.ip);
+                task.ip += 4;
+                task.ram.push_f32(val);
+                task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
+            }
+            OpCode::CONST_F64 => {
+                let val = self.flash.read_f64(task.ip);
+                task.ip += 8;
+                task.ram.push_f64(val);
+            }
+            OpCode::CONST_I64 => {
+                // Plan 073: 64-bit integer constant (Plan 377: heap-aware for >2^47)
+                let val = self.flash.read_i64(task.ip);
+                task.ip += 8;
+                self.push_i64_vm(task, val);
+            }
+            OpCode::CONST_U64 => {
+                // Plan 073: 64-bit unsigned integer constant (Plan 377: heap-aware for >=2^48)
+                let val = self.flash.read_u64(task.ip);
+                task.ip += 8;
+                self.push_u64_vm(task, val);
+            }
+            OpCode::CONST_0 => {
+                task.ram.push_i32(0);
+            }
+            OpCode::CONST_1 => {
+                task.ram.push_i32(1);
+            }
+            OpCode::LOAD_STR => {
+                let str_idx = self.flash.read_u32(task.ip);
+                task.ip += 4;
+                // Push string reference (NaN-boxed tag)
+                // Plan 419 Phase 2: flash 常量 pinned,rc_push 免计费直推。
+                self.rc_push(task, auto_val::encode_string(str_idx as u32));
+                // Reset result type since this produces a string, not a number
+                task.last_result_type = ResultType::default();
+            }
+            // Plan 073: Node support
+            OpCode::CREATE_NODE => {
+                let name_idx = self.flash.read_u32(task.ip);
+                task.ip += 4;
+                let arg_count = self.flash.read_u8(task.ip);
+                task.ip += 1;
+                let id_idx = self.flash.read_u32(task.ip);
+                task.ip += 4;
+
+                // Pop kids_id and props_id first
+                let kids_id = task.ram.pop_i32();
+                let props_id = task.ram.pop_i32();
+
+                // Pop args (in reverse order)
+                let mut args = Vec::with_capacity(arg_count as usize);
+                for _ in 0..arg_count {
+                    // Inside VM, everything is either a string tag or an int (VmRef id).
+                    let val = match pop_tagged(&mut task.ram) {
+                        StackTag::Str(str_idx) => {
+                            let strings = self.strings.read().unwrap();
+                            let v = strings
+                                .get(str_idx as usize)
+                                .map(|bytes| {
+                                    auto_val::Value::Str(
+                                        String::from_utf8_lossy(bytes).to_string().into(),
+                                    )
+                                })
+                                .unwrap_or(auto_val::Value::Nil);
+                            drop(strings);
+                            // Plan 510 G3:物化拷贝后份额配平释放。
+                            self.pool_release(str_idx as usize);
+                            v
+                        }
+                        StackTag::Int(bits) => {
+                            auto_val::Value::VmRef(auto_val::VmRef { id: bits as usize })
+                        }
+                    };
+                    args.push(val);
+                }
+                args.reverse();
+
+                // Decode name and id
+                let strings = self.strings.read().unwrap();
+                let name = if let Some(bytes) = strings.get(name_idx as usize) {
+                    String::from_utf8_lossy(bytes).to_string()
+                } else {
+                    "".to_string()
+                };
+                let id = if id_idx != 0xFFFF {
+                    strings
+                        .get(id_idx as usize)
+                        .map(|bytes| String::from_utf8_lossy(bytes).to_string())
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                drop(strings);
+
+                let mut node = auto_val::Node::new(&name);
+                if !id.is_empty() {
+                    node.id = AutoStr::from(id);
+                }
+
+                // Assign args
+                for arg in args {
+                    node.add_arg(auto_val::Arg::Pos(arg));
+                }
+
+                // Assign props if available (Plan 390 §15 H3b: ObjectData
+                // lives in heap_objects).
+                if props_id >= 0 {
+                    if let Some(props_ref) = self.get_heap_object(props_id as u64) {
+                        let guard = props_ref.read().unwrap();
+                        if let Some(props_data) = guard
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ObjectData>()
+                        {
+                            // Clone properties from ObjectData to Node
+                            for (key, val) in &props_data.fields {
+                                node.set_prop(key.clone(), val.clone());
+                            }
+                        }
+                    }
+                }
+
+                // Assign kids if available
+                if kids_id >= 0 {
+                    // TODO: Implement kids array/list mapping
+                }
+
+                // Store node in heap_objects registry (Plan 390 §15 H3a)
+                let node_id = self.insert_heap_object(node);
+                self.rc_push(task, auto_val::encode_object(node_id as u32));
+            }
+            // Plan 364 Step 5: Config accumulation opcodes.
+            // PUSH_ACCUM name_str_idx:u16, id_str_idx:u16 — push a fresh Node container.
+            OpCode::PUSH_ACCUM => {
+                let name_idx = self.flash.read_u32(task.ip);
+                let id_idx = self.flash.read_u32(task.ip + 4);
+                task.ip += 8;
+                let (name, id) = {
+                    let strings = self.strings.read().unwrap();
+                    let name = strings
+                        .get(name_idx as usize)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_default();
+                    // 0xFFFF sentinel = no id.
+                    let id = if id_idx != 0xFFFF {
+                        strings
+                            .get(id_idx as usize)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default()
+                    } else {
+                        String::new()
+                    };
+                    (name, id)
+                };
+                let container = crate::vm::task::AccumContainer::new_node(
+                    auto_val::AutoStr::from(name.as_str()),
+                    auto_val::AutoStr::from(id.as_str()),
+                );
+                task.accum_stack.push(container);
+            }
+            // ACCUM_PAIR key_str_idx:u16 — pop value, set_prop(key, value) on top container.
+            OpCode::ACCUM_PAIR => {
+                let key_idx = self.flash.read_u32(task.ip);
+                task.ip += 4;
+                let value = self.pop_auto_value(task);
+                let key = {
+                    let strings = self.strings.read().unwrap();
+                    strings
+                        .get(key_idx as usize)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_default()
+                };
+                if let Some(container) = task.accum_stack.last_mut() {
+                    container.set_field(auto_val::ValueKey::Str(key.into()), value);
+                } else {
+                    eprintln!("WARNING: ACCUM_PAIR with empty accum_stack");
+                }
+            }
+            // ACCUM_NODE — pop a Node value, append it to top container's kids.
+            OpCode::ACCUM_NODE => {
+                let value = self.pop_auto_value(task);
+                if let auto_val::Value::Node(node) = value {
+                    if let Some(container) = task.accum_stack.last_mut() {
+                        container.add_kid(*node);
+                    } else {
+                        eprintln!("WARNING: ACCUM_NODE with empty accum_stack");
+                    }
+                } else {
+                    eprintln!("WARNING: ACCUM_NODE expected Node, got {:?}", value);
+                }
+            }
+            // ACCUM_MERGE — pop an Obj value, merge all its fields into top container.
+            OpCode::ACCUM_MERGE => {
+                let value = self.pop_auto_value(task);
+                if let auto_val::Value::Obj(obj) = value {
+                    if let Some(container) = task.accum_stack.last_mut() {
+                        container.merge_obj(&obj);
+                    } else {
+                        eprintln!("WARNING: ACCUM_MERGE with empty accum_stack");
+                    }
+                } else {
+                    eprintln!("WARNING: ACCUM_MERGE expected Obj, got {:?}", value);
+                }
+            }
+            // POP_ACCUM — pop top Node container, store in nodes registry, push id.
+            OpCode::POP_ACCUM => {
+                if let Some(container) = task.accum_stack.pop() {
+                    let mut node = match container.into_value() {
+                        auto_val::Value::Node(n) => *n,
+                        other => {
+                            eprintln!("WARNING: POP_ACCUM got unexpected value {:?}", other);
+                            auto_val::Node::new(auto_val::AutoStr::new())
+                        }
+                    };
+                    // Plan 364 Step 5: if the node has no explicit id yet
+                    // (PUSH_ACCUM's id operand), but an `id:` Pair was
+                    // accumulated into its props (e.g. `dir(id: d)` where d
+                    // is a runtime variable), promote that prop to the
+                    // node's id field so `node.id()` / `main_arg()` resolve
+                    // it. We leave the prop in place for downstream readers.
+                    if node.id.is_empty() {
+                        let id_val = node.get_prop("id");
+                        if matches!(id_val, auto_val::Value::Str(_)) {
+                            node.id = id_val.to_astr();
+                        }
+                    }
+                    let id = self.insert_heap_object(node);
+                    self.rc_push(task, auto_val::encode_object(id as u32));
+                } else {
+                    eprintln!("WARNING: POP_ACCUM with empty accum_stack");
+                    task.ram.push_i32(0);
+                }
+            }
+            // Plan 073: Object literal support
+            OpCode::CREATE_OBJ => {
+                let key_index = self.flash.read_u32(task.ip);
+                task.ip += 4;
+                let field_count = self.flash.read_u8(task.ip);
+                task.ip += 1;
+
+                // Get keys from flash metadata
+                let keys = &self.flash.object_keys[key_index as usize];
+                // Get types from flash metadata
+                let types = &self.flash.object_types[key_index as usize];
+
+                // Pop values from stack (in reverse order since last value is on top).
+                // Plan 402 §13.10: decode by the value's ACTUAL nanbox tag, not the
+                // compile-time ObjectType. infer_object_type is unreliable for
+                // variable/field references (e.g. `mine: cell.mine` infers
+                // NestedObject instead of Bool), which caused CREATE_OBJ to pop
+                // bool/int/string values with the wrong branch (NestedObject does
+                // pop_i32() as usize → Value::VmRef with garbage ids). Decoding by
+                // tag — the same approach the array push path uses (engine.rs push
+                // handler) — is type-inferral-free and always correct.
+                let mut values = Vec::with_capacity(field_count as usize);
+                for i in 0..field_count {
+                    let type_idx = (field_count - 1 - i) as usize;
+                    let obj_type = types.get(type_idx).copied().unwrap_or(ObjectType::Int);
+                    let nv = task.ram.pop_nv();
+                    let value = if auto_val::is_future(nv) {
+                        // PLAN-776 R9-02：Future 句柄字段**保真映射**
+                        // Value::Future（句柄视图）——原落整数 payload 臂
+                        // 把 fid 存成 Int(1)（F776-R9-02 反例 body=1）。
+                        auto_val::Value::Future(Box::new(auto_val::FutureData {
+                            id: auto_val::decode_future(nv) as usize,
+                            state: auto_val::FutureState::Pending,
+                            result: None,
+                        }))
+                    } else if auto_val::is_object(nv) {
+                        auto_val::Value::VmRef(auto_val::VmRef {
+                            id: auto_val::decode_object(nv) as usize,
+                        })
+                    } else if auto_val::is_string(nv) {
+                        let str_idx = auto_val::decode_string(nv) as usize;
+                        let strings = self.strings.read().unwrap();
+                        let v = if let Some(str_bytes) = strings.get(str_idx) {
+                            auto_val::Value::Str(
+                                String::from_utf8_lossy(str_bytes).to_string().into(),
+                            )
+                        } else {
+                            auto_val::Value::Nil
+                        };
+                        drop(strings);
+                        // Plan 419 Phase 2: 对象字段持拷贝,池 stake 死亡。
+                        self.pool_release(str_idx);
+                        v
+                    } else if auto_val::is_bool(nv) {
+                        auto_val::Value::Bool(auto_val::decode_bool(nv))
+                    } else if auto_val::is_null(nv) {
+                        auto_val::Value::Nil
+                    } else if auto_val::is_f64(nv) {
+                        auto_val::Value::Double(auto_val::decode_f64(nv))
+                    } else if auto_val::is_f32(nv) {
+                        auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+                    } else {
+                        // i32 (and everything else): decode payload. Byte/Uint/Char
+                        // are stored as raw i32 too — apply the obj_type narrowing
+                        // only for these known-int payload types.
+                        let bits = auto_val::decode_i32(nv);
+                        match obj_type {
+                            ObjectType::Byte => auto_val::Value::Byte(bits as u8),
+                            ObjectType::Uint => auto_val::Value::Uint(bits as u32),
+                            ObjectType::Char => char::from_u32(bits as u32)
+                                .map(auto_val::Value::Char)
+                                .unwrap_or(auto_val::Value::Nil),
+                            _ => auto_val::Value::Int(bits),
+                        }
+                    };
+                    values.push(value);
+                }
+
+                // Create object from key-value pairs
+                let mut obj = crate::vm::types::ObjectData::new();
+                for (i, key) in keys.iter().enumerate() {
+                    // Values were popped in reverse order, so reverse them back
+                    let val = &values[field_count as usize - 1 - i];
+                    obj.set(key.clone(), val.clone());
+                }
+
+                // Store object in heap_objects and get ID (Plan 390 §15 H3b)
+                let obj_id = self.insert_heap_object(obj);
+
+                // Plan 390 §15 H2: push object id as a TAG_OBJECT-encoded
+                // value so downstream consumers (GET_FIELD/SET_FIELD, send
+                // shim's is_object check) recognize it as an object ref,
+                // not a scalar i32. This unblocks L3 WithBindings.
+                self.rc_push(task, auto_val::encode_object(obj_id as u32));
+            }
+            // Plan 073: Array literal support
+            OpCode::CREATE_ARRAY => {
+                let elem_count = self.flash.read_u8(task.ip);
+                task.ip += 1;
+
+                let mut elems = Vec::with_capacity(elem_count as usize);
+                for _ in 0..elem_count {
+                    {
+                        let nv = task.ram.pop_nv();
+                        let is_nil = nv == auto_val::encode_i32(-2147483647);
+                        if !is_nil {
+                            let value = if auto_val::is_string(nv) {
+                                // Plan 370 (Issue 2 tags): decode the string tag
+                                // to its pool index and look up the actual bytes,
+                                // mirroring CREATE_OBJ's ObjectType::String arm.
+                                // Previously this called decode_i32, which returns
+                                // the raw negative tag (e.g. -4) — so []str array
+                                // elements rendered as numbers like "-4".
+                                let str_idx = auto_val::decode_string(nv) as usize;
+                                let strings = self.strings.read().unwrap();
+                                let v = if let Some(str_bytes) = strings.get(str_idx) {
+                                    let s = String::from_utf8_lossy(str_bytes).to_string();
+                                    auto_val::Value::Str(s.into())
+                                } else {
+                                    auto_val::Value::Nil
+                                };
+                                drop(strings);
+                                // Plan 419 Phase 2: 数组元素持拷贝,池 stake 死亡。
+                                self.pool_release(str_idx);
+                                v
+                            } else if auto_val::is_object(nv) {
+                                auto_val::Value::VmRef(auto_val::VmRef {
+                                    id: auto_val::decode_object(nv) as usize,
+                                })
+                            } else if auto_val::is_null(nv) {
+                                auto_val::Value::Nil
+                            } else if auto_val::is_bool(nv) {
+                                auto_val::Value::Bool(auto_val::decode_bool(nv))
+                            } else if auto_val::is_f64(nv) {
+                                auto_val::Value::Double(auto_val::decode_f64(nv))
+                            } else if auto_val::is_f32(nv) {
+                                auto_val::Value::Float(auto_val::decode_f32(nv) as f64)
+                            } else if auto_val::is_future(nv) {
+                                // PLAN-776 R8-01：Future 句柄入数组——保真
+                                // 映射 Value::Future（句柄视图）。
+                                auto_val::Value::Future(Box::new(auto_val::FutureData {
+                                    id: auto_val::decode_future(nv) as usize,
+                                    state: auto_val::FutureState::Pending,
+                                    result: None,
+                                }))
+                            } else {
+                                auto_val::Value::Int(auto_val::decode_i32(nv))
+                            };
+                            elems.push(value);
+                        }
+                    }
+                }
+
+                elems.reverse();
+
+                // Plan 390 §15 H3b: arrays live in heap_objects as
+                // ListData<Value>, TAG_OBJECT-encoded on the stack.
+                let array_id = self.insert_heap_object(crate::vm::types::ListData {
+                    elems,
+                    storage: None,
+                });
+
+                self.rc_push(task, auto_val::encode_object(array_id as u32));
+            }
+            // Plan 073: Range expression support (0..10, 0..=10)
+            OpCode::CREATE_RANGE => {
+                // Stack layout: [..., end, start]
+                // Pop end first (top of stack), then start
+                let end = task.ram.pop_i32();
+                let start = task.ram.pop_i32();
+
+                // Store range in ranges registry and push range_id
+                let range_id = task.ram.ranges.len() as i32;
+                task.ram.ranges.push((start, end, false)); // false = exclusive
+
+                // Use special marker for range: -1000000 + range_id
+                task.ram.push_i32(-1000000 + range_id);
+            }
+            OpCode::CREATE_RANGE_EQ => {
+                // Stack layout: [..., end, start]
+                // Pop end first (top of stack), then start
+                let end = task.ram.pop_i32();
+                let start = task.ram.pop_i32();
+
+                // Create RangeEq value (inclusive)
+                let _range_value = auto_val::Value::RangeEq(start, end);
+
+                // Store range in ranges registry and push range_id
+                let range_id = task.ram.ranges.len() as i32;
+                task.ram.ranges.push((start, end, true)); // true = inclusive
+                vm_debug!(
+                    "DEBUG CREATE_RANGE_EQ: start={}, end={}, range_id={}",
+                    start,
+                    end,
+                    range_id
+                );
+
+                // Use special marker for range: -1000000 + range_id
+                task.ram.push_i32(-1000000 + range_id);
+            }
+            OpCode::ARRAY_LEN => {
+                // Stack: array_id (raw i32 for legacy arrays, TAG_OBJECT for heap lists)
+                {
+                    let nv = task.ram.pop_nv();
+                    // PLAN-604 T04: 结算弹出槽份额。栈顶引用是 copy-on-load
+                    // 的暂存拷贝（rc_push +1 记影子），本 opcode 消费它——
+                    // 原实现裸 pop 不结算，+1 永久孤儿（for-in 头部
+                    // `dup; arr.len` 形态每拍漏一个列表对象，探针实测
+                    // LitPushTick +4040/40=100 实例+1 列表）。DROP:同款
+                    // 纪律——堆按影子释放，字符串按内容释放。释放后对象
+                    // 入 dying 宽限窗，本 opcode 内 heap 查找仍安全。
+                    {
+                        let stake = task.ram.take_stake_at(task.ram.sp);
+                        if stake != 0 {
+                            self.rc_release_id(stake);
+                        }
+                        if auto_val::is_string(nv) {
+                            self.rc_release(nv);
+                        }
+                    }
+                    if auto_val::is_string(nv) {
+                        // String .len() fallback — JS .length 语义 = 字符数
+                        // （PLAN-055：此前按字节计，for-in over str 对 CJK
+                        // 逐字节迭代 ×3 且 GET_ELEM 索引越界——迭代面失真）。
+                        let len = self
+                            .strings
+                            .read()
+                            .unwrap()
+                            .get(auto_val::decode_string(nv) as usize)
+                            .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
+                            .unwrap_or(0);
+                        task.ram.push_i32(len);
+                    } else if auto_val::is_i32(nv) || auto_val::is_object(nv) {
+                        // Plan 390 §15 H2: accept both raw i32 (legacy arrays)
+                        // and TAG_OBJECT (heap List from CREATE_LIST_*).
+                        let array_id = if auto_val::is_object(nv) {
+                            auto_val::decode_object(nv) as u64
+                        } else {
+                            auto_val::decode_i32(nv) as u64
+                        };
+                        // Plan 390 §15 H3b: arrays live in heap_objects.
+                        if let Some(list) = self.heap_objects.get(&array_id) {
+                            use crate::vm::types::ListData;
+                            let guard = list.read().unwrap();
+                            // Plan 539 W0 (DIV-PY-ITER-1): PyObjectHandle —
+                            // GIL len() so for-in over sized py objects
+                            // (tensors/lists/dicts) iterates like Python.
+                            #[cfg(feature = "python")]
+                            {
+                                #[allow(unused_imports)]
+                                use pyo3::prelude::*;
+                                let py_len = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                                    .map(|pyh| {
+                                        pyo3::Python::attach(|py| {
+                                            pyh.obj
+                                                .clone_ref(py)
+                                                .into_bound(py)
+                                                .len()
+                                                .map(|l| l as i32)
+                                                .unwrap_or(0)
+                                        })
+                                    });
+                                if let Some(n) = py_len {
+                                    task.ram.push_i32(n);
+                                    return Ok(StepResult::Continue);
+                                }
+                            }
+                            let len = if let Some(list) =
+                                guard.as_any().downcast_ref::<ListData<i32>>()
+                            {
+                                list.elems.len() as i32
+                            } else if let Some(list) =
+                                guard.as_any().downcast_ref::<ListData<String>>()
+                            {
+                                list.elems.len() as i32
+                            } else if let Some(list) =
+                                guard.as_any().downcast_ref::<ListData<bool>>()
+                            {
+                                list.elems.len() as i32
+                            } else if let Some(list) =
+                                guard.as_any().downcast_ref::<ListData<auto_val::Value>>()
+                            {
+                                list.elems.len() as i32
+                            } else {
+                                0
+                            };
+                            task.ram.push_i32(len);
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    } else if auto_val::is_null(nv) {
+                        // Plan 550 T04: null 迭代源守卫。ARRAY_LEN 是
+                        // array 通道 for-in 的长度探针（codegen Plan 089），
+                        // 现状落此静默 push 0 → 零迭代（p5 探针实证）。
+                        // 同臂亦承接 .len() 发射点——null.len() 同翻为
+                        // TypeError（Python: None 无 len）。
+                        return Err(VMError::RuntimeError(
+                            "TypeError: 'NoneType' object is not iterable".to_string(),
+                        ));
+                    } else {
+                        task.ram.push_i32(0);
+                    }
+                }
+            }
+            // Plan 073: F-string support (f"hello $name")
+            OpCode::BUILD_FSTR => {
+                let part_count = self.flash.read_u8(task.ip);
+                task.ip += 1;
+
+                // Read type tags for each part: 0=i32, 1=string, 2=f64, 3=f32, 4=u64
+                let mut type_tags = Vec::with_capacity(part_count as usize);
+                for _ in 0..part_count {
+                    type_tags.push(self.flash.read_u8(task.ip));
+                    task.ip += 1;
+                }
+
+                // Pop parts from stack (in reverse order)
+                // Plan 510:守卫不得跨弹栈持有——pop_tagged_rc 的
+                // pool_release 归零会走 pool_free_idx 的 strings.write(),
+                // 外层 read 守卫未放即同线程自锁(mold 模板测试实挂)。
+                let mut parts = Vec::with_capacity(part_count as usize);
+                for i in (0..part_count as usize).rev() {
+                    let tag = type_tags[i];
+                    // Plan 474 待澄清#5: 运行期 tag-first 转换。原实现盲信
+                    // 编译期 expr_type_hint 标签——json/unknown 局部落 Int
+                    // 提示时，裸 f64（encode_f64=原始位）被按 i32 解码成
+                    // 低 32 位位型垃圾（54.16 → -515396076，与 ④ 同族）。
+                    // 栈上实际 nv tag 优先，编译期标签仅作兜底（Int 兜底
+                    // 中 TAG_BOOL 哨兵特判随之摘除——bool 已被上方 tag 检查
+                    // 截走，残留分支只会把真整数 i32::MIN 误显为 true/false）。
+                    let s = {
+                        let nv = task.ram.peek_nv(0);
+                        if auto_val::is_f64(nv) {
+                            let val = auto_val::decode_f64(task.ram.pop_nv());
+                            format!("{}", val)
+                        } else if auto_val::is_i64(nv) {
+                            // PLAN-026 T-03 配套: i64 插值串化(tag 8
+                            // 此前缺分支,兜底 pop_tagged 的 Int(bits)
+                            // ≥4000000 启发式把 i64 位型当 heap id 走
+                            // 对象格式化 = 垃圾串/越界;快照消费模型
+                            // 字段(px 几何)全 i64,受害面 = 布局串)。
+                            let val = auto_val::decode_i64(task.ram.pop_nv());
+                            format!("{}", val)
+                        } else if auto_val::is_f32(nv) {
+                            let val = auto_val::decode_f32(task.ram.pop_nv());
+                            format!("{}", val)
+                        } else if auto_val::is_bool(nv) {
+                            let b = auto_val::decode_bool(task.ram.pop_nv());
+                            if b {
+                                "true".to_string()
+                            } else {
+                                "false".to_string()
+                            }
+                        } else if auto_val::is_null(nv) {
+                            task.ram.pop_nv();
+                            "None".to_string()
+                        } else {
+                            match tag {
+                                2 => {
+                                    let val = task.ram.pop_f64();
+                                    format!("{}", val)
+                                }
+                                3 => {
+                                    let val = task.ram.pop_f32();
+                                    format!("{}", val)
+                                }
+                                4 => {
+                                    let val = self.pop_u64_vm(task);
+                                    format!("{}", val)
+                                }
+                                1 => {
+                                    match pop_tagged(&mut task.ram) {
+                                        StackTag::Str(idx) => {
+                                            let bytes = {
+                                                let strings = self.strings.read().unwrap();
+                                                strings.get(idx as usize).cloned()
+                                            };
+                                            // Plan 510 G3:内容已拷贝,份额配平释放
+                                            // (free 清内容,必须先拷贝后释放)。
+                                            self.pool_release(idx as usize);
+                                            match bytes {
+                                                Some(b) => String::from_utf8_lossy(&b).to_string(),
+                                                None => format!("<invalid_str_idx:{}>", idx),
+                                            }
+                                        }
+                                        StackTag::Int(bits) => {
+                                            if bits == -1 {
+                                                "None".to_string()
+                                            } else {
+                                                bits.to_string()
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    match pop_tagged(&mut task.ram) {
+                                        StackTag::Str(idx) => {
+                                            let bytes = {
+                                                let strings = self.strings.read().unwrap();
+                                                strings.get(idx as usize).cloned()
+                                            };
+                                            // Plan 510 G3:内容已拷贝,份额配平释放
+                                            // (free 清内容,必须先拷贝后释放)。
+                                            self.pool_release(idx as usize);
+                                            match bytes {
+                                                Some(b) => String::from_utf8_lossy(&b).to_string(),
+                                                None => format!("<invalid_str_idx:{}>", idx),
+                                            }
+                                        }
+                                        StackTag::Int(bits) => {
+                                            if bits == -1 {
+                                                "None".to_string()
+                                            } else if bits >= 4000000 {
+                                                // Heap object — format as struct instance
+                                                use crate::vm::generic_registry::GenericInstanceData;
+                                                use crate::vm::heap_object::TypeTag;
+                                                let obj_id = bits as u64;
+                                                match self.get_heap_object(obj_id) {
+                                                    Some(obj) => {
+                                                        let guard = obj.read().unwrap();
+                                                        if let TypeTag::RustStdlib(ref name) =
+                                                            guard.type_tag()
+                                                        {
+                                                            // RustStdlibObject — check for string-like values
+                                                            if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                                                            crate::vm::native::format_rust_stdlib_obj(rust_obj)
+                                                        } else if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                                                            // PLAN-591 D2(DIV-DEP-8 print 半边):
+                                                            // dep 对象 → shim 包 Display 合成 to_string;
+                                                            // 无 Display 面维持占位。
+                                                            let short_type = dep_obj.short_type.clone();
+                                                            let fallback = format!("<{}>", name);
+                                                            drop(guard);
+                                                            match crate::vm::ffi::dep_methods::display_string(task, self, obj_id, &short_type)? {
+                                                                Some(s) => s,
+                                                                None => fallback,
+                                                            }
+                                                        } else {
+                                                            format!("<{}>", name)
+                                                        }
+                                                        } else if let TypeTag::GenericInstance(_) =
+                                                            guard.type_tag()
+                                                        {
+                                                            if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                                            // Special formatting for Option/Result types
+                                                            if inst.mono_name == "Option.None" {
+                                                                "None".to_string()
+                                                            } else if inst.mono_name.starts_with("Option.Some") {
+                                                                if let Some(val) = inst.fields.first() {
+                                                                    match val {
+                                                                        Value::Int(i) => i.to_string(),
+                                                                        Value::Str(s) => s.as_str().to_string(),
+                                                                        Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                                        _ => format!("{:?}", val),
+                                                                    }
+                                                                } else {
+                                                                    "Some".to_string()
+                                                                }
+                                                            } else if inst.mono_name == "Result.Err" || inst.mono_name.starts_with("Result.Err") {
+                                                                if let Some(val) = inst.fields.first() {
+                                                                    format!("Err({})", match val {
+                                                                        Value::Int(i) => i.to_string(),
+                                                                        Value::Str(s) => s.as_str().to_string(),
+                                                                        _ => format!("{:?}", val),
+                                                                    })
+                                                                } else {
+                                                                    "Err".to_string()
+                                                                }
+                                                            } else if inst.mono_name.starts_with("Result.Ok") {
+                                                                if let Some(val) = inst.fields.first() {
+                                                                    match val {
+                                                                        Value::Int(i) => i.to_string(),
+                                                                        Value::Str(s) => s.as_str().to_string(),
+                                                                        Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                                        _ => format!("{:?}", val),
+                                                                    }
+                                                                } else {
+                                                                    "Ok".to_string()
+                                                                }
+                                                            } else {
+                                                                let type_name = self.generic_registry
+                                                                    .get_type(&inst.mono_name)
+                                                                    .map(|ct| ct.base_name().to_string())
+                                                                    .unwrap_or_else(|| inst.mono_name.clone());
+                                                                let field_strs: Vec<String> = inst.field_names.iter()
+                                                                    .zip(inst.fields.iter())
+                                                                    .map(|(name, val)| {
+                                                                        let val_str = match val {
+                                                                            Value::Int(i) => i.to_string(),
+                                                                            Value::Uint(u) => u.to_string(),
+                                                                            Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                                            Value::Float(f) => f.to_string(),
+                                                                            Value::Double(d) => d.to_string(),
+                                                                            Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                                            Value::VmRef(r) => format!("<heap:{}>", r.id),
+                                                                            Value::Nil => "nil".to_string(),
+                                                                            _ => format!("{:?}", val),
+                                                                        };
+                                                                        format!("{}: {}", name, val_str)
+                                                                    })
+                                                                    .collect();
+                                                                format!("{} {{ {} }}", type_name, field_strs.join(", "))
+                                                            }
+                                                        } else {
+                                                            bits.to_string()
+                                                        }
+                                                        } else {
+                                                            bits.to_string()
+                                                        }
+                                                    }
+                                                    None => bits.to_string(),
+                                                }
+                                            } else {
+                                                bits.to_string()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    };
+                    parts.push(s);
+                }
+                parts.reverse();
+
+                // Join all parts into a single string
+                let result = parts.join("");
+
+                // Add to strings pool and push tagged index(dedup:重复
+                // 中间串不再膨胀池 —— 2026-08-22 侧栏串写根因治理)
+                let result_idx = self.add_string(result.into_bytes());
+                self.rc_push_str_idx(task, result_idx as usize);
+            }
+            OpCode::NULL_COALESCE => {
+                {
+                    // Pop right expression (default value)
+                    let default_nv = task.ram.pop_nv();
+                    // Pop left expression (May<T> value)
+                    let may_nv = task.ram.pop_nv();
+
+                    // PLAN-053 P-053-2: 判空与 IS_NIL/UNWRAP_SOME 对齐——
+                    // 旧编码 i32(-1)/i32(i32::MIN+1) 的 nil 家族值也落
+                    // default(原只认 is_null，`null ?? x` 落 -1)。
+                    if Self::nv_is_null_family(may_nv) {
+                        // Plan 419: None → default 转移回栈,may 死亡。
+                        self.rc_release(may_nv);
+                        task.ram.push_nv(default_nv);
+                    } else if auto_val::is_object(may_nv) {
+                        let obj_id = auto_val::decode_object(may_nv) as u64;
+                        if self.is_option_none(obj_id) {
+                            self.rc_release(may_nv);
+                            task.ram.push_nv(default_nv);
+                        } else if self.is_option_some(obj_id) {
+                            if let Some(field_val) = self.get_option_inner(obj_id) {
+                                // Plan 419: 容器 stake 死亡,内值入栈 +1;
+                                // default 丢弃 -1。
+                                self.rc_release(may_nv);
+                                self.rc_release(default_nv);
+                                Self::push_value(task, &field_val, self);
+                            } else {
+                                task.ram.push_nv(may_nv);
+                                self.rc_release(default_nv);
+                            }
+                        } else {
+                            // Plan 539 W0 (DIV-PY-EXCEPT-1): Result values
+                            // participate in `??` fallback — Err yields the
+                            // default, Ok unwraps the inner value (previously
+                            // Result objects passed through opaquely).
+                            use crate::vm::generic_registry::GenericInstanceData;
+                            let result_kind = self.get_heap_object(obj_id).and_then(|obj| {
+                                let guard = obj.read().unwrap();
+                                guard
+                                    .as_any()
+                                    .downcast_ref::<GenericInstanceData>()
+                                    .and_then(|inst| match inst.mono_name.as_str() {
+                                        "Result.Err" => Some(None),
+                                        "Result.Ok" => {
+                                            inst.fields.first().cloned().map(|f| Some(f))
+                                        }
+                                        _ => None,
+                                    })
+                            });
+                            match result_kind {
+                                // Result.Err — fall back to the default.
+                                Some(None) => {
+                                    self.rc_release(may_nv);
+                                    task.ram.push_nv(default_nv);
+                                }
+                                // Result.Ok — unwrap the inner value.
+                                Some(Some(field_val)) => {
+                                    self.rc_release(may_nv);
+                                    self.rc_release(default_nv);
+                                    Self::push_value(task, &field_val, self);
+                                }
+                                _ => {
+                                    task.ram.push_nv(may_nv);
+                                    self.rc_release(default_nv);
+                                }
+                            }
+                        }
+                    } else {
+                        // Non-None, non-object: push as-is (it's the value itself)
+                        task.ram.push_nv(may_nv);
+                        self.rc_release(default_nv);
+                    }
+                }
+            }
+            // Plan 073: May<T> error propagate operator: expression.?
+            // Plan 208: Also handles Result.Ok / Result.Err heap objects with early return
+            OpCode::ERROR_PROPAGATE => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                // Read n_args for potential early return
+                let n_args = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                // Pop May<T> value from stack
+                let may_nv = task.ram.pop_nv();
+                let may_bits = auto_val::decode_i32(may_nv);
+
+                // Determine if this is an error case that should propagate
+                let should_propagate;
+                let mut propagate_value = 0;
+                // Plan 567 T08（P560-D2）: Err 值传播可被当前帧的 try
+                // handler 拦截（值通道 catch）；None/null 是值不进 catch。
+                let mut interceptable_err = false;
+
+                // Plan 197 Task 16: Check if May<T> is Option.None (heap object or old -1)
+                let is_none = if auto_val::is_null(may_nv) {
+                    true
+                } else if may_bits == -1 {
+                    true
+                } else if may_bits > 0 {
+                    self.is_option_none(may_bits as u64)
+                } else {
+                    false
+                };
+
+                if is_none {
+                    // Nil case: early return (error propagation)
+                    // Push an Option.None sentinel for the caller
+                    should_propagate = true;
+                    propagate_value = -1;
+                    // Plan 419: 弹出的 None 容器 stake 死亡。
+                    self.rc_release(may_nv);
+                } else if may_bits > 0 {
+                    // Positive value: could be heap object (Option.Some, Result.Ok, Result.Err)
+                    // or legacy plain positive integer
+                    if let Some(obj) = self.get_heap_object(may_bits as u64) {
+                        // Plan 419: 先克隆内值再释放容器 —— 容器 RC 归零会级联
+                        // 释放子引用,不能在容器借用存续期触碰其字段。
+                        enum MayKind {
+                            Err,
+                            WithInner(auto_val::Value),
+                            Bare,
+                        }
+                        let kind = {
+                            let guard = obj.read().unwrap();
+                            if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>()
+                            {
+                                match inst.mono_name.as_str() {
+                                    "Result.Err" => MayKind::Err,
+                                    "Result.Ok" | "Option.Some" => match inst.fields.first() {
+                                        Some(f) => MayKind::WithInner(f.clone()),
+                                        None => MayKind::Bare,
+                                    },
+                                    _ => MayKind::Bare,
+                                }
+                            } else {
+                                MayKind::Bare
+                            }
+                        };
+                        match kind {
+                            MayKind::Err => {
+                                // Error case: propagate the Result.Err object to
+                                // caller via early return (stack stake 转移)。
+                                should_propagate = true;
+                                propagate_value = may_bits;
+                                interceptable_err = true;
+                            }
+                            MayKind::WithInner(field) => {
+                                // Unwrap the inner value (continue execution)。
+                                // Plan 419: 容器 stake 死亡;内值入栈 +1
+                                // (push_value 的 VmRef 臂已 retain)。
+                                should_propagate = false;
+                                Self::push_value(task, &field, self);
+                                self.rc_release_id(may_bits as u64);
+                            }
+                            MayKind::Bare => {
+                                // Other/non-generic heap object: pass through。
+                                should_propagate = false;
+                                task.ram.push_i32(may_bits);
+                            }
+                        }
+                    } else {
+                        // Legacy: plain positive value (not a heap object)
+                        should_propagate = false;
+                        task.ram.push_i32(may_bits);
+                    }
+                } else {
+                    // Negative value: legacy Err sentinel or string nanbox (decoded)
+                    should_propagate = false;
+                    {
+                        task.ram.push_nv(may_nv);
+                    }
+                }
+
+                // Perform early return if propagating error
+                if should_propagate {
+                    // Plan 567 T08（P560-D2）: 值通道拦截——Err 传播遇到
+                    // 当前帧的 try handler 时改跳 catch_pc 绑定载荷（设计
+                    // §4.3「catch 拦值传播」——两通道在此汇合；对齐
+                    // intercept_error 的异常通道行为：栈回卷到 try 入口 +
+                    // 载荷串入栈）。None/null 传播不经此（值不进 catch）。
+                    if interceptable_err {
+                        if let Some(handler) = task.handler_stack.last().copied() {
+                            if handler.bp == task.bp {
+                                task.handler_stack.pop();
+                                let payload = self.result_err_payload(propagate_value);
+                                // 容器 stake 死亡（消费于 catch）。
+                                self.rc_release_id(propagate_value as u64);
+                                let sp_at_unwind = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, handler.sp, sp_at_unwind);
+                                task.ram.sp = handler.sp;
+                                let idx = self.add_string(payload.into_bytes());
+                                self.rc_push_str_idx(task, idx);
+                                task.ip = handler.catch_pc;
+                                return Ok(StepResult::Continue);
+                            }
+                        }
+                    }
+                    if task.bp == 0 {
+                        // Plan 567 T10（P560-D2）: 未捕获 Err 传播到 main
+                        // 边界 → 带错退出（= Python traceback 等价物）。
+                        // 原形态为静默 Terminated（退出码 0）——p7 四套件
+                        // 中止时无消息可寻的根因面。None/null 传播维持
+                        // 原 May 语义（main 正常结束）。
+                        if interceptable_err {
+                            let payload = self.result_err_payload(propagate_value);
+                            self.rc_release_id(propagate_value as u64);
+                            return Err(VMError::RuntimeError(payload));
+                        }
+                        // Main task: just push the error value and terminate
+                        task.ram.push_i32(propagate_value);
+                        return Ok(StepResult::Terminated);
+                    }
+                    // Perform RET-like frame unwinding
+                    let old_bp = task.ram.read_i32(task.bp) as usize;
+                    let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
+                    task.current_closure_id = task.saved_closure_id;
+                    let new_sp = task.bp - n_args;
+                    // Plan 419: 帧扫描 —— 释放被展开区间内每个引用槽
+                    // (含 new_sp-1 槽的旧值;返回值槽由 write 重写)。
+                    let new_sp = new_sp.max(1);
+                    let sp_before = task.ram.sp;
+                    self.rc_release_slot_range(&mut task.ram, new_sp - 1, sp_before);
+                    task.ram.write_i32(new_sp - 1, propagate_value);
+                    task.bp = old_bp;
+                    task.ip = ret_ip;
+                    task.ram.sp = new_sp;
+                    task.ram.write_i32(new_sp - 1, propagate_value);
+                }
+            }
+            // Plan 162: Type cast opcodes — runtime type conversion
+            OpCode::TYPE_CAST_I32 => {
+                let v = if task.last_result_type == ResultType::Float {
+                    let f = task.ram.pop_f32();
+                    f as i32
+                } else {
+                    task.ram.pop_i32()
+                };
+                task.ram.push_i32(v);
+                task.last_result_type = ResultType::Int;
+            }
+            OpCode::TYPE_CAST_U32 => {
+                let v = if task.last_result_type == ResultType::Float {
+                    let f = task.ram.pop_f32();
+                    f as u32 as i32
+                } else {
+                    let v = task.ram.pop_i32();
+                    v as u32 as i32
+                };
+                task.ram.push_i32(v);
+                task.last_result_type = ResultType::Uint;
+            }
+            OpCode::TYPE_CAST_I64 => {
+                // PLAN-026 T-03 配套: 宽整入参 sign-extend → i64 TAG 单槽。
+                // 原为 no-op(push_i32 回填)——i64 var 持 i32 tag,与 I64
+                // 语义链(GET_ELEM 下标/串化/数值比较)全不接;且入参
+                // 可能已是 TAG_I64(loop 内赋值位 contains_u64 判定随
+                // 作用域波动,此时 pop_i32 位读 = 0x8000_000x 垃圾,
+                // i64_probe24 "2147483649u" 实证)。nv_int_as_i64 按 tag
+                // 归一,双形态幂等。
+                let nv = task.ram.pop_nv();
+                let v = Self::nv_int_as_i64(nv).clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+                task.ram.push_i64(v as i64);
+                task.last_result_type = ResultType::Int;
+            }
+            OpCode::TYPE_CAST_U64 => {
+                // Plan 377: 单槽 u64 —— zero-extend i32 to u64（单 NanoValue）
+                let v = task.ram.pop_i32();
+                task.ram.push_u64(v as u32 as u64);
+            }
+            OpCode::PROMOTE_F64 => {
+                // Plan 377: f32 与 f64 现在都是单槽，widen 仅是编码转换
+                let val_f32 = task.ram.pop_f32();
+                task.ram.push_f64(val_f32 as f64);
+            }
+            OpCode::PUSH_NIL => {
+                task.ram.push_nv(auto_val::encode_null());
+            }
+            // Plan 318: push a real bool (nanbox tag=3), not Int(0/1). Without
+            // this, `.editing = false` stores Value::Int(0) and the view
+            // builder's `.editing == false` comparison fails ("0" != "false"),
+            // hiding conditional blocks (note.title/body). byte: 0=false, 1=true.
+            OpCode::PUSH_BOOL => {
+                let b = self.flash.read_u8(task.ip);
+                task.ip += 1;
+                task.ram.push_nv(auto_val::encode_bool(b != 0));
+            }
+            // Plan 010 (MS3-A): push a try/catch handler frame.
+            // Operand: i16 relative offset from the end of this instruction
+            // to the catch handler. Resolved to an absolute IP and recorded.
+            OpCode::PUSH_HANDLER => {
+                let rel = i16::from_le_bytes([
+                    self.flash.read_u8(task.ip),
+                    self.flash.read_u8(task.ip + 1),
+                ]);
+                task.ip += 2;
+                let catch_pc = task.ip.wrapping_add(rel as usize);
+                task.handler_stack.push(crate::vm::task::HandlerFrame {
+                    catch_pc,
+                    bp: task.bp,
+                    sp: task.ram.sp,
+                });
+            }
+            // Plan 010 (MS3-A): pop the handler frame on normal try-exit.
+            OpCode::POP_HANDLER => {
+                task.handler_stack.pop();
+            }
+            OpCode::TYPE_CAST_F64 => {
+                // Always pop i32 and push f32 (1 slot → 1 slot)
+                let v = task.ram.pop_i32();
+                task.ram.push_f32(v as f32);
+                task.last_result_type = ResultType::Float;
+            }
+            OpCode::TYPE_CAST_PTR => {
+                // Pointer cast — no-op at runtime (same bits)
+            }
+            // Plan 162: Explicit type conversion (.to) opcodes
+            // Plan 197 Task 10: Struct instances formatted as Type { field: val, ... }
+            OpCode::TYPE_TO_STR => {
+                {
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        task.ram.push_nv(nv);
+                    } else if auto_val::is_object(nv)
+                        || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) >= 4000000)
+                    {
+                        use crate::vm::generic_registry::GenericInstanceData;
+                        use crate::vm::heap_object::TypeTag;
+                        let obj_id = if auto_val::is_object(nv) {
+                            auto_val::decode_object(nv) as u64
+                        } else {
+                            auto_val::decode_i32(nv) as u64
+                        };
+                        let value_bits = obj_id as i32;
+                        let string_value = match self.get_heap_object(obj_id) {
+                            Some(obj) => {
+                                let guard = obj.read().unwrap();
+                                // Check for RustStdlibObject (e.g. semver::Version, Duration, etc.)
+                                if let Some(rust_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                                    crate::vm::native::format_rust_stdlib_obj(rust_obj)
+                                } else if let Some(dep_obj) = guard.as_any().downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>() {
+                                    // PLAN-591 D2(DIV-DEP-8 .to(str) VM 半边):
+                                    // dep 对象 → shim 包 Display 合成 to_string;
+                                    // 无 Display 面维持 <heap:N> 占位。注意 a2r 轨
+                                    // .to(str) 仍发 Debug(无 dep 元数据,P592-D3),
+                                    // 该形态不入三轨语料。
+                                    let short_type = dep_obj.short_type.clone();
+                                    drop(guard);
+                                    crate::vm::ffi::dep_methods::display_string(task, self, obj_id, &short_type)?
+                                        .unwrap_or_else(|| format!("<heap:{}>", value_bits))
+                                } else if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                                        let type_name = self.generic_registry
+                                            .get_type(&inst.mono_name)
+                                            .map(|ct| ct.base_name().to_string())
+                                            .unwrap_or_else(|| inst.mono_name.clone());
+                                        let field_strs: Vec<String> = inst.field_names.iter()
+                                            .zip(inst.fields.iter())
+                                            .map(|(name, val)| {
+                                                let val_str = match val {
+                                                    Value::Int(i) => i.to_string(),
+                                                    Value::Uint(u) => u.to_string(),
+                                                    Value::Bool(b) => if *b { "true".to_string() } else { "false".to_string() },
+                                                    Value::Float(f) => f.to_string(),
+                                                    Value::Double(d) => d.to_string(),
+                                                    Value::Char(c) => format!("'{}'", c),
+                                                    Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                    Value::VmRef(r) => format!("<heap:{}>", r.id),
+                                                    Value::Nil => "nil".to_string(),
+                                                    _ => format!("{:?}", val),
+                                                };
+                                                format!("{}: {}", name, val_str)
+                                            })
+                                            .collect();
+                                        format!("{} {{ {} }}", type_name, field_strs.join(", "))
+                                    } else { format!("<heap:{}>", value_bits) }
+                                } else { format!("<heap:{}>", value_bits) }
+                            }
+                            None => format!("<heap:{}>", value_bits),
+                        };
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_bool(nv) {
+                        let b = auto_val::decode_bool(nv);
+                        let string_value = if b { "true" } else { "false" }.to_string();
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_f64(nv) {
+                        let d = auto_val::decode_f64(nv);
+                        let string_value = format!("{}", d);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_f32(nv) {
+                        let f = auto_val::decode_f32(nv);
+                        let string_value = format!("{}", f);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_bool(nv) {
+                        let b = auto_val::decode_bool(nv);
+                        let string_value = if b { "true" } else { "false" };
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.as_bytes().to_vec());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_null(nv) {
+                        // Plan 550 T07: null → "None"（a2py str(None) 三方
+                        // parity）。print shim（native.rs shim_print_i32）
+                        // 已然输出 "None"，本臂补齐 TYPE_TO_STR 同型——
+                        // 原落 i32 兜底臂把位模式解码成 -2147483647
+                        // （p7 探针病灶）。
+                        // Plan 423 P5 续修:入池收口 add_string。
+                        let str_idx = self.add_string(b"None".to_vec());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else {
+                        let value_bits = auto_val::decode_i32(nv);
+                        let string_value = format!("{}", value_bits);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    }
+                }
+            }
+            OpCode::TYPE_TO_I32 => {
+                // Plan 539 W0 (DIV-PY-FLOAT-1): py-FFI returns now carry
+                // real f64/f32 NanoValues — convert by truncation instead
+                // of letting pop_tagged misdecode the payload bits as i32.
+                let nv = task.ram.pop_nv();
+                if auto_val::is_string(nv) {
+                    let idx = auto_val::decode_string(nv);
+                    let strings = self.strings.read().unwrap();
+                    let parsed = strings
+                        .get(idx as usize)
+                        .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i32>().ok())
+                        .unwrap_or(0);
+                    drop(strings);
+                    // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                    self.pool_release(idx as usize);
+                    task.ram.push_i32(parsed);
+                } else if auto_val::is_f64(nv) {
+                    task.ram.push_i32(auto_val::decode_f64(nv) as i32);
+                } else if auto_val::is_f32(nv) {
+                    task.ram.push_i32(auto_val::decode_f32(nv) as i32);
+                } else if auto_val::is_bool(nv) {
+                    task.ram
+                        .push_i32(if auto_val::decode_bool(nv) { 1 } else { 0 });
+                } else if auto_val::is_null(nv) {
+                    // Plan 550 T06: null 静默 -1 臂翻案 → TypeError
+                    // （原臂为 539 T05 兼容自加；TYPE_TO_I32 仅由显式
+                    // .to(int) 发射，内部路径无依赖——T06 前置排查结论）。
+                    return Err(crate::vm::virt_memory::null_to_type_error("int"));
+                } else {
+                    task.ram.push_i32(auto_val::decode_i32(nv));
+                }
+                task.last_result_type = ResultType::Int;
+            }
+            OpCode::TYPE_TO_F64 => {
+                // Plan 539 W0 (DIV-PY-FLOAT-1): same tag-aware dispatch —
+                // an f64 on the stack is already the answer; f32 widens.
+                let nv = task.ram.pop_nv();
+                if auto_val::is_string(nv) {
+                    let idx = auto_val::decode_string(nv);
+                    let strings = self.strings.read().unwrap();
+                    let parsed = strings
+                        .get(idx as usize)
+                        .and_then(|b| String::from_utf8_lossy(b).trim().parse::<f32>().ok())
+                        .unwrap_or(0.0);
+                    drop(strings);
+                    // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                    self.pool_release(idx as usize);
+                    task.ram.push_f32(parsed);
+                } else if auto_val::is_f64(nv) {
+                    task.ram.push_f64(auto_val::decode_f64(nv));
+                } else if auto_val::is_f32(nv) {
+                    task.ram.push_f32(auto_val::decode_f32(nv));
+                } else if auto_val::is_bool(nv) {
+                    task.ram
+                        .push_f32(if auto_val::decode_bool(nv) { 1.0 } else { 0.0 });
+                } else if auto_val::is_null(nv) {
+                    // Plan 550 T06: null 静默 -1.0 臂翻案 → TypeError。
+                    return Err(crate::vm::virt_memory::null_to_type_error("float"));
+                } else {
+                    task.ram.push_f32(auto_val::decode_i32(nv) as f32);
+                }
+                task.last_result_type = ResultType::Float;
+            }
+            // Plan 193: f64 -> String
+            OpCode::TYPE_F64_TO_STR => {
+                let val = task.ram.pop_f64();
+                let string_value = format!("{}", val);
+                // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                let str_idx = self.add_string(string_value.into_bytes());
+                self.rc_push_str_idx(task, str_idx);
+            }
+            // Plan 193: i64 -> String
+            OpCode::TYPE_I64_TO_STR => {
+                let val = self.pop_i64_vm(task);
+                let string_value = format!("{}", val);
+                // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                let str_idx = self.add_string(string_value.into_bytes());
+                self.rc_push_str_idx(task, str_idx);
+            }
+            // Plan 193: u64 -> String (hex)
+            OpCode::TYPE_U64_TO_STR => {
+                let val = self.pop_u64_vm(task);
+                let string_value = format!("{:08x}", val);
+                // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                let str_idx = self.add_string(string_value.into_bytes());
+                self.rc_push_str_idx(task, str_idx);
+            }
+            // Plan 193: bool -> String
+            OpCode::TYPE_BOOL_TO_STR => {
+                let nv = task.ram.pop_nv();
+                let is_true = nv_truthy(nv);
+                let string_value = if is_true { "true" } else { "false" };
+                // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                let str_idx = self.add_string(string_value.as_bytes().to_vec());
+                self.rc_push_str_idx(task, str_idx);
+            }
+            // Plan 193: f64 -> i32 (truncate)
+            OpCode::TYPE_F64_TO_I32 => {
+                let val = task.ram.pop_f64();
+                task.ram.push_i32(val as i32);
+                task.last_result_type = ResultType::Int;
+            }
+            // Plan 193: String -> i64
+            OpCode::TYPE_STR_TO_I64 => {
+                match pop_tagged(&mut task.ram) {
+                    StackTag::Str(idx) => {
+                        let strings = self.strings.read().unwrap();
+                        let parsed = strings
+                            .get(idx as usize)
+                            .and_then(|b| String::from_utf8_lossy(b).trim().parse::<i64>().ok())
+                            .unwrap_or(0i64);
+                        drop(strings);
+                        // Plan 510 G3:解析已完成(内容拷贝于 parsed),份额配平释放。
+                        self.pool_release(idx as usize);
+                        self.push_i64_vm(task, parsed);
+                    }
+                    StackTag::Int(v) => {
+                        self.push_i64_vm(task, v as i64);
+                    }
+                }
+            }
+            // Plan 193: f32 -> String
+            OpCode::TYPE_F32_TO_STR => {
+                let val = task.ram.pop_f32();
+                let string_value = format!("{}", val);
+                // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                let str_idx = self.add_string(string_value.into_bytes());
+                self.rc_push_str_idx(task, str_idx);
+            }
+            // Plan 193: f32 -> i32 (truncate)
+            OpCode::TYPE_F32_TO_I32 => {
+                let val = task.ram.pop_f32();
+                task.ram.push_i32(val as i32);
+                task.last_result_type = ResultType::Int;
+            }
+            // Plan 075: Convert any value to string
+            // Plan 197 Task 10: Struct instances formatted as Type { field: val, ... }
+            OpCode::TO_STR => {
+                {
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_string(nv) {
+                        task.ram.push_nv(nv);
+                    } else if auto_val::is_object(nv) {
+                        use crate::vm::generic_registry::GenericInstanceData;
+                        use crate::vm::heap_object::TypeTag;
+                        let obj_id = auto_val::decode_object(nv) as u64;
+                        let value_bits = auto_val::decode_object(nv) as i32;
+                        let string_value = match self.get_heap_object(obj_id) {
+                            Some(obj) => {
+                                let guard = obj.read().unwrap();
+                                if let TypeTag::GenericInstance(_) = guard.type_tag() {
+                                    if let Some(inst) =
+                                        guard.as_any().downcast_ref::<GenericInstanceData>()
+                                    {
+                                        let type_name = self
+                                            .generic_registry
+                                            .get_type(&inst.mono_name)
+                                            .map(|ct| ct.base_name().to_string())
+                                            .unwrap_or_else(|| inst.mono_name.clone());
+                                        let field_strs: Vec<String> = inst
+                                            .field_names
+                                            .iter()
+                                            .zip(inst.fields.iter())
+                                            .map(|(name, val)| {
+                                                let val_str = match val {
+                                                    Value::Int(i) => i.to_string(),
+                                                    Value::Uint(u) => u.to_string(),
+                                                    Value::Bool(b) => {
+                                                        if *b {
+                                                            "true".to_string()
+                                                        } else {
+                                                            "false".to_string()
+                                                        }
+                                                    }
+                                                    Value::Float(f) => f.to_string(),
+                                                    Value::Double(d) => d.to_string(),
+                                                    Value::Char(c) => format!("'{}'", c),
+                                                    Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                    Value::VmRef(r) => format!("<heap:{}>", r.id),
+                                                    Value::Nil => "nil".to_string(),
+                                                    _ => format!("{:?}", val),
+                                                };
+                                                format!("{}: {}", name, val_str)
+                                            })
+                                            .collect();
+                                        format!("{} {{ {} }}", type_name, field_strs.join(", "))
+                                    } else {
+                                        format!("<heap:{}>", value_bits)
+                                    }
+                                } else {
+                                    format!("<heap:{}>", value_bits)
+                                }
+                            }
+                            None => format!("<heap:{}>", value_bits),
+                        };
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_bool(nv) {
+                        let b = auto_val::decode_bool(nv);
+                        let string_value = if b { "true" } else { "false" }.to_string();
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_f64(nv) {
+                        let d = auto_val::decode_f64(nv);
+                        let string_value = format!("{}", d);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else if auto_val::is_f32(nv) {
+                        let f = auto_val::decode_f32(nv);
+                        let string_value = format!("{}", f);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    } else {
+                        let value_bits = auto_val::decode_i32(nv);
+                        let string_value = format!("{}", value_bits);
+                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                        let str_idx = self.add_string(string_value.into_bytes());
+                        self.rc_push_str_idx(task, str_idx);
+                    }
+                }
+            }
+            // Plan 075: Check if value is nil
+            OpCode::IS_NIL => {
+                let nv = task.ram.pop_nv();
+                let is_nil = if auto_val::is_null(nv) {
+                    1
+                } else if auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1 {
+                    1
+                } else {
+                    0
+                };
+                task.ram.push_i32(is_nil);
+            }
+            // Plan 075: Concatenate two strings
+            OpCode::STR_CAT => {
+                {
+                    let right_nv = task.ram.pop_nv();
+                    let left_nv = task.ram.pop_nv();
+                    // Plan 550 T03: null 拼接守卫（539 探针 2 病灶：
+                    // "a" + null → 垃圾数字入串）。字符串形态的 `+` 在
+                    // codegen 静态路由到本臂，守卫消息与算术族同格式
+                    // （op 报 '+'，null 方报 'NoneType'，另一方报 'str'）。
+                    if auto_val::is_null(left_nv) || auto_val::is_null(right_nv) {
+                        return Err(null_binop_type_error(
+                            "+",
+                            (left_nv, !auto_val::is_nanboxed(left_nv)),
+                            (right_nv, !auto_val::is_nanboxed(right_nv)),
+                        ));
+                    }
+                    // Plan 419 Phase 2: 操作数 stake 在物化完成后释放(先读后放)。
+                    let strings = self.strings.read().unwrap();
+                    let left_str = if auto_val::is_string(left_nv) {
+                        let idx = auto_val::decode_string(left_nv) as usize;
+                        strings
+                            .get(idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default()
+                    } else if auto_val::is_object(left_nv) {
+                        // Plan 390 §15 H3b: heap ref rendered as its id
+                        // (explicit, not the low-32 decode coincidence).
+                        auto_val::decode_object(left_nv).to_string()
+                    } else {
+                        Self::nv_concat_operand_display(left_nv)
+                    };
+                    let right_str = if auto_val::is_string(right_nv) {
+                        let idx = auto_val::decode_string(right_nv) as usize;
+                        strings
+                            .get(idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .unwrap_or_default()
+                    } else if auto_val::is_object(right_nv) {
+                        auto_val::decode_object(right_nv).to_string()
+                    } else {
+                        Self::nv_concat_operand_display(right_nv)
+                    };
+                    drop(strings);
+                    let result = format!("{}{}", left_str, right_str);
+                    self.rc_release(left_nv);
+                    self.rc_release(right_nv);
+                    // Plan 419 Phase 2: 走 add_string(dedup + freelist 复用)
+                    // + 池计数入栈。
+                    let result_idx = self.add_string(result.into_bytes());
+                    self.rc_push_str_idx(task, result_idx as usize);
+                }
+            }
+            // Plan 120: Option type constructor - Some(value)
+            OpCode::CREATE_SOME => {
+                // Value is already on stack, just tag it as Some
+                // We use a special encoding: Some values are positive, None is -1
+                // The value is already on stack, no change needed for now
+                // This opcode is a marker for type tracking
+                // TODO: Implement proper Option<T> type tracking in VM
+            }
+            // Plan 120: Option type constructor - None
+            OpCode::CREATE_NONE => {
+                // Push None onto stack (represented as -1)
+                task.ram.push_i32(-1);
+            }
+            // Plan 120: Result type constructor - Ok(value)
+            // Plan 208: Wrap value in a Result.Ok heap object
+            // Plan 204: type_tag operand (0=i32, 1=f64) for multi-type support
+            OpCode::CREATE_OK => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                let type_tag = self.flash.read_u8(task.ip);
+                task.ip += 1;
+                let val = if type_tag == 1 {
+                    auto_val::Value::Double(task.ram.pop_f64())
+                } else {
+                    {
+                        let nv = task.ram.pop_nv();
+                        if auto_val::is_string(nv) {
+                            let idx = auto_val::decode_string(nv) as usize;
+                            let s = self
+                                .get_string(idx as u32)
+                                .map(|b| String::from_utf8_lossy(&b).to_string())
+                                .unwrap_or_default();
+                            auto_val::Value::Str(auto_val::AutoStr::from(s))
+                        } else if auto_val::is_object(nv) {
+                            auto_val::Value::VmRef(auto_val::VmRef {
+                                id: auto_val::decode_object(nv) as usize,
+                            })
+                        } else {
+                            auto_val::Value::Int(auto_val::decode_i32(nv))
+                        }
+                    }
+                };
+                let instance = GenericInstanceData::new("Result.Ok".to_string(), vec![val]);
+                let instance_id = self.insert_heap_object(instance);
+                self.rc_push(task, auto_val::encode_object(instance_id as u32));
+            }
+            // Plan 120: Result type constructor - Err(message)
+            // Plan 208: Wrap error value in a Result.Err heap object
+            OpCode::CREATE_ERR => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                let err_val = task.ram.pop_i32();
+                let instance = GenericInstanceData::new(
+                    "Result.Err".to_string(),
+                    vec![auto_val::Value::Int(err_val)],
+                );
+                let instance_id = self.insert_heap_object(instance);
+                self.rc_push(task, auto_val::encode_object(instance_id as u32));
+            }
+            // Plan 120: Check if Option is Some
+            OpCode::IS_SOME => {
+                let nv = task.ram.pop_nv();
+                let is_some = !(auto_val::is_null(nv)
+                    || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1));
+                task.ram.push_nv(auto_val::encode_bool(is_some));
+            }
+            // Plan 120: Check if Result is Ok
+            // Plan 208: Check heap object mono_name instead of sign
+            OpCode::IS_OK => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                // Plan 390 §15 H3b: Result refs are TAG_OBJECT (encode_object).
+                // Decode explicitly instead of relying on the low-32-bit
+                // coincidence of decode_i32 on a tagged object payload.
+                let nv = task.ram.pop_nv();
+                let value = if auto_val::is_object(nv) {
+                    auto_val::decode_object(nv) as i64
+                } else if auto_val::is_i32(nv) {
+                    auto_val::decode_i32(nv) as i64
+                } else {
+                    0
+                };
+                let is_ok = if value > 0 {
+                    if let Some(obj) = self.get_heap_object(value as u64) {
+                        let guard = obj.read().unwrap();
+                        if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                            inst.mono_name == "Result.Ok"
+                        } else {
+                            // Legacy: plain positive value = Ok
+                            true
+                        }
+                    } else {
+                        // Legacy: plain positive value = Ok
+                        true
+                    }
+                } else {
+                    false
+                };
+                // VM boolean convention: i32::MIN = true, i32::MIN+1 = false
+                task.ram.push_nv(auto_val::encode_bool(is_ok));
+            }
+            // Plan 120: Unwrap Option (panic if None)
+            OpCode::UNWRAP_SOME => {
+                let nv = task.ram.pop_nv();
+                if auto_val::is_null(nv) || (auto_val::is_i32(nv) && auto_val::decode_i32(nv) == -1)
+                {
+                    return Err(VMError::RuntimeError("called unwrap on None".to_string()));
+                }
+                task.ram.push_nv(nv);
+            }
+            // Plan 120: Unwrap Result (panic if Err)
+            // Plan 208: Extract field[0] from Result.Ok heap object
+            OpCode::UNWRAP_OK => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                // Plan 390 §15 H3b: Result refs are TAG_OBJECT — decode
+                // explicitly instead of the low-32 coincidence.
+                let nv = task.ram.pop_nv();
+                let value = if auto_val::is_object(nv) {
+                    auto_val::decode_object(nv) as i64
+                } else if auto_val::is_i32(nv) {
+                    auto_val::decode_i32(nv) as i64
+                } else {
+                    0
+                };
+                if value <= 0 {
+                    return Err(VMError::RuntimeError("called unwrap on Err".to_string()));
+                }
+                if let Some(obj) = self.get_heap_object(value as u64) {
+                    let guard = obj.read().unwrap();
+                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                        if inst.mono_name == "Result.Ok" {
+                            if let Some(field) = inst.fields.first() {
+                                Self::push_value(task, field, self);
+                                return Ok(StepResult::Continue);
+                            }
+                        }
+                    }
+                }
+                // Legacy fallback: plain positive value
+                task.ram.push_i32(value as i32);
+            }
+            // Plan 120: Unwrap Result error (panic if Ok)
+            // Plan 208: Extract field[0] from Result.Err heap object
+            OpCode::UNWRAP_ERR => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                // Plan 390 §15 H3b: Result refs are TAG_OBJECT — decode
+                // explicitly instead of the low-32 coincidence.
+                let nv = task.ram.pop_nv();
+                let value = if auto_val::is_object(nv) {
+                    auto_val::decode_object(nv) as i64
+                } else if auto_val::is_i32(nv) {
+                    auto_val::decode_i32(nv) as i64
+                } else {
+                    0
+                };
+                if value <= 0 {
+                    return Err(VMError::RuntimeError(
+                        "called unwrap_err on non-heap value".to_string(),
+                    ));
+                }
+                if let Some(obj) = self.get_heap_object(value as u64) {
+                    let guard = obj.read().unwrap();
+                    if let Some(inst) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                        if inst.mono_name == "Result.Err" {
+                            if let Some(field) = inst.fields.first() {
+                                Self::push_value(task, field, self);
+                                return Ok(StepResult::Continue);
+                            }
+                        }
+                    }
+                }
+                task.ram.push_i32(value as i32);
+            }
+            // Plan 076 Phase 3 & 4: Generic List opcodes with storage strategies
+            OpCode::CREATE_LIST_INT => {
+                // Plan 077 Phase 5: Create List<int> in unified registry
+                use crate::vm::types::ListData;
+                let list_data: ListData<i32> = ListData::new(); // Heap storage (default)
+                let list_id = self.insert_heap_object(list_data);
+
+                // Push list ID onto stack
+                self.rc_push(task, auto_val::encode_object(list_id as u32));
+            }
+            OpCode::CREATE_LIST_STR => {
+                // Plan 077 Phase 5: Create List<String> in unified registry
+                use crate::vm::types::ListData;
+                let list_data: ListData<String> = ListData::new(); // Heap storage (default)
+                let list_id = self.insert_heap_object(list_data);
+
+                // Push list ID onto stack
+                self.rc_push(task, auto_val::encode_object(list_id as u32));
+            }
+            OpCode::CREATE_LIST_BOOL => {
+                // Plan 077 Phase 5: Create List<bool> in unified registry
+                use crate::vm::types::ListData;
+                let list_data: ListData<bool> = ListData::new(); // Heap storage (default)
+                let list_id = self.insert_heap_object(list_data);
+
+                // Push list ID onto stack
+                self.rc_push(task, auto_val::encode_object(list_id as u32));
+            }
+            // Plan 076 Phase 4: InlineInt64 storage variants
+            OpCode::CREATE_LIST_INT_INLINE => {
+                // Plan 077 Phase 5: Create List<int> with InlineInt64 storage in unified registry
+                use crate::vm::types::{ListData, ListStorage};
+                let mut list_data: ListData<i32> = ListData::new();
+                list_data.storage = Some(ListStorage::InlineInt64);
+                let list_id = self.insert_heap_object(list_data);
+
+                // Push list ID onto stack
+                self.rc_push(task, auto_val::encode_object(list_id as u32));
+            }
+            OpCode::CREATE_LIST_STR_INLINE => {
+                // Plan 077 Phase 5: Create List<String> with InlineInt64 storage in unified registry
+                use crate::vm::types::{ListData, ListStorage};
+                let mut list_data: ListData<String> = ListData::new();
+                list_data.storage = Some(ListStorage::InlineInt64);
+                let list_id = self.insert_heap_object(list_data);
+
+                // Push list ID onto stack
+                self.rc_push(task, auto_val::encode_object(list_id as u32));
+            }
+            OpCode::CREATE_LIST_BOOL_INLINE => {
+                // Plan 077 Phase 5: Create List<bool> with InlineInt64 storage in unified registry
+                use crate::vm::types::{ListData, ListStorage};
+                let mut list_data: ListData<bool> = ListData::new();
+                list_data.storage = Some(ListStorage::InlineInt64);
+                let list_id = self.insert_heap_object(list_data);
+
+                // Push list ID onto stack
+                self.rc_push(task, auto_val::encode_object(list_id as u32));
+            }
+
+            // === Plan 087 Phase 2: Generic Instance Support ===
+            OpCode::NEW_INSTANCE => {
+                // Plan 087 Phase 2: Create a new generic instance (type-erased storage)
+                // Stack layout: [..., mono_name_len]
+                // Code layout: [opcode, mono_name_bytes...]
+                // Stack after: [..., instance_id]
+                use crate::vm::generic_registry::GenericInstanceData;
+
+                vm_debug!(
+                    "DEBUG NEW_INSTANCE: Stack depth before pop = {}",
+                    task.ram.sp
+                );
+
+                // Read mono_name length from stack
+                let name_len = task.ram.pop_i32() as usize;
+                vm_debug!("DEBUG NEW_INSTANCE: Popped name_len = {}", name_len);
+
+                // Read mono_name bytes from flash memory and convert to String
+                // Note: task.ip already points to the first byte after the opcode (advanced by main loop)
+                let mut name_bytes = vec![0u8; name_len];
+                for i in 0..name_len {
+                    let byte_addr = task.ip.wrapping_add(i);
+                    name_bytes[i] = self.flash.read_u8(byte_addr);
+                }
+
+                // Advance IP past the name bytes
+                task.ip = task.ip.wrapping_add(name_len);
+
+                let mono_name = String::from_utf8(name_bytes).map_err(|e| {
+                    VMError::RuntimeError(format!("Invalid UTF-8 in mono_name: {}", e))
+                })?;
+                vm_debug!("DEBUG NEW_INSTANCE: mono_name = '{}'", mono_name);
+
+                // Create instance with no fields (uninitialized)
+                let instance = GenericInstanceData::new(mono_name, vec![]);
+                let instance_id = self.insert_heap_object(instance);
+
+                // Push instance ID onto stack
+                vm_debug!("DEBUG NEW_INSTANCE: Pushing instance_id = {}", instance_id);
+                self.rc_push(task, auto_val::encode_object(instance_id as u32));
+            }
+            OpCode::CONSTRUCT_INSTANCE => {
+                // Plan 087 Phase 2: Populate fields of a generic instance
+                // Stack layout: [..., value1, value2, ..., valueN, instance_id, field_count]
+                // Stack after: [..., instance_id]  (instance_id left on stack for variable assignment)
+                use crate::vm::generic_registry::GenericInstanceData;
+                use crate::vm::heap_object::TypeTag;
+
+                vm_debug!(
+                    "DEBUG CONSTRUCT_INSTANCE: Stack depth before pop = {}",
+                    task.ram.sp
+                );
+
+                // Pop field_count (top of stack)
+                let field_count = task.ram.pop_i32() as usize;
+                vm_debug!(
+                    "DEBUG CONSTRUCT_INSTANCE: Popped field_count = {}",
+                    field_count
+                );
+
+                // Pop instance_id (next on stack)
+                // Plan 390 §15 H2: NEW_INSTANCE now pushes the id as a
+                // TAG_OBJECT-encoded value, so decode either tag form (the
+                // i32 path is retained for any legacy producer/inline test).
+                // PLAN-062 T12: 取走弹出槽份额(随值转移到回推栈顶)。
+                // PLAN-604 T03: 必须在 pop field_count 之后、pop instance_id
+                // 之前取 **sp-1** 槽——此刻实例恰在栈顶(sp-1)(NEW_INSTANCE
+                // rc_push 的份额所在;实测 sp_after_count=9、实例@8)。原实现
+                // 在两次 pop 之后取 sp,读到的是末字段槽(影子恒 0);
+                // 首版修复取 sp(=field_count 旧槽,亦 0)——仪器化实测后钉定
+                // sp-1。份额失明 → struct 字面量经 push 每实例永久滞留
+                // (025-sys-monitor 55-147MB/min 复盘主凶,探针 +100 obj/拍)。
+                let instance_stake = task.ram.take_stake_at(task.ram.sp - 1);
+                let instance_id = {
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_object(nv) {
+                        auto_val::decode_object(nv) as u64
+                    } else {
+                        auto_val::decode_i32(nv) as u64
+                    }
+                };
+                vm_debug!(
+                    "DEBUG CONSTRUCT_INSTANCE: Popped instance_id = {}",
+                    instance_id
+                );
+
+                // Peek mono_name from the instance to look up field types
+                let mono_name = if let Some(obj) = self.get_heap_object(instance_id) {
+                    let guard = obj.read().unwrap();
+                    guard
+                        .as_any()
+                        .downcast_ref::<GenericInstanceData>()
+                        .map(|inst| inst.mono_name.clone())
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+                // Pop values from stack (in reverse order)
+                // Use field types from generic registry to correctly interpret stack values
+                let field_types: Vec<crate::ast::Type> = self
+                    .generic_registry
+                    .get_type(&mono_name)
+                    .map(|ct| {
+                        ct.template
+                            .fields
+                            .iter()
+                            .map(|f| f.field_type.clone())
+                            .collect()
+                    })
+                    .unwrap_or_else(|| vec![]);
+                let mut field_values = Vec::with_capacity(field_count);
+                for i in 0..field_count {
+                    vm_debug!(
+                        "DEBUG CONSTRUCT_INSTANCE: Popping value {}/{}, stack depth = {}",
+                        i + 1,
+                        field_count,
+                        task.ram.sp
+                    );
+                    // Fields are popped in reverse order; look up type from the end
+                    let type_idx = field_count.saturating_sub(1 + i);
+                    let field_type = field_types.get(type_idx);
+
+                    let value = match field_type {
+                        Some(crate::ast::Type::Float) => {
+                            let val_f32 = task.ram.pop_f32();
+                            vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped float = {}", val_f32);
+                            Value::Float(val_f32 as f64)
+                        }
+                        Some(crate::ast::Type::Double) => {
+                            let val_f64 = task.ram.pop_f64();
+                            vm_debug!("DEBUG CONSTRUCT_INSTANCE: Popped double = {}", val_f64);
+                            Value::Double(val_f64)
+                        }
+                        _ => {
+                            // Pop value — in nanbox mode, preserve type information
+                            {
+                                let nv = task.ram.pop_nv();
+                                if auto_val::is_string(nv) {
+                                    let idx = auto_val::decode_string(nv) as usize;
+                                    let strings_guard = self.strings.read().unwrap();
+                                    if idx < strings_guard.len() {
+                                        let s = String::from_utf8_lossy(&strings_guard[idx])
+                                            .to_string();
+                                        drop(strings_guard);
+                                        // Plan 419 Phase 2: 实例字段持拷贝,池 stake 死亡。
+                                        self.pool_release(idx);
+                                        Value::Str(auto_val::AutoStr::from(s))
+                                    } else {
+                                        drop(strings_guard);
+                                        // Plan 454 A3(447 2.4):字符串 tag 指向
+                                        // 越界池索引曾是"解成 i32 继续跑"的静默
+                                        // 回退——nanbox 重读出的必然是乱值,编码
+                                        // 漂移应显式失败而非产出垃圾字段。
+                                        return Err(VMError::RuntimeError(format!(
+                                                "CONSTRUCT_INSTANCE: string payload pool index {} out of bounds (pool len {})",
+                                                idx,
+                                                self.strings.read().unwrap().len()
+                                            )));
+                                    }
+                                } else if auto_val::is_object(nv) {
+                                    Value::VmRef(auto_val::VmRef {
+                                        id: auto_val::decode_object(nv) as usize,
+                                    })
+                                } else if auto_val::is_null(nv) {
+                                    Value::Nil
+                                } else if auto_val::is_bool(nv) {
+                                    Value::Bool(auto_val::decode_bool(nv))
+                                } else if auto_val::is_f64(nv) {
+                                    Value::Double(auto_val::decode_f64(nv))
+                                } else if auto_val::is_f32(nv) {
+                                    Value::Float(auto_val::decode_f32(nv) as f64)
+                                } else if auto_val::is_future(nv) {
+                                    // PLAN-776 R9-02：Future 句柄字段**保真映射**
+                                    //（原落 Int 兜臂把 fid 存成 Int(1)——F776-R9-02）。
+                                    Value::Future(Box::new(auto_val::FutureData {
+                                        id: auto_val::decode_future(nv) as usize,
+                                        state: auto_val::FutureState::Pending,
+                                        result: None,
+                                    }))
+                                } else {
+                                    Value::Int(auto_val::decode_i32(nv))
+                                }
+                            }
+                        }
+                    };
+                    field_values.push(value);
+                }
+                field_values.reverse(); // Reverse to get correct order
+
+                vm_debug!(
+                    "DEBUG CONSTRUCT_INSTANCE: Field values (reversed): {:?}",
+                    field_values
+                );
+
+                // Get instance and populate fields
+                if let Some(obj) = self.get_heap_object(instance_id) {
+                    let mut guard = obj.write().unwrap();
+
+                    // Check if this is a GenericInstance by checking the type tag
+                    let is_generic_instance =
+                        matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+
+                    if is_generic_instance {
+                        // Use as_any_mut for downcasting (works without exact TypeTag match)
+                        if let Some(instance) =
+                            guard.as_any_mut().downcast_mut::<GenericInstanceData>()
+                        {
+                            let field_count = field_values.len();
+                            instance.fields = field_values;
+
+                            // Plan 197 Task 9: Populate field_names from generic registry
+                            let field_names = self
+                                .generic_registry
+                                .get_type(&instance.mono_name)
+                                .map(|ct| {
+                                    ct.template.fields.iter().map(|f| f.name.clone()).collect()
+                                })
+                                .unwrap_or_else(|| vec!["_unknown".to_string(); field_count]);
+                            instance.field_names = field_names;
+
+                            vm_debug!(
+                                "DEBUG CONSTRUCT_INSTANCE: Successfully populated {} fields",
+                                field_count
+                            );
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Type error: Failed to downcast GenericInstance"
+                            )));
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Type error: CONSTRUCT_INSTANCE expected GenericInstance, got {:?}",
+                            guard.type_tag()
+                        )));
+                    }
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid instance ID: {}",
+                        instance_id
+                    )));
+                }
+
+                // Push instance_id back onto stack for variable assignment
+                // Stack layout after: [..., instance_id]
+                // Plan 419: 自栈 pop 转移回栈(不 +1 —— NEW_INSTANCE 的
+                // stake 一路随行;字段值的 stakes 已随 field_values 转移进实例)。
+                vm_debug!(
+                    "DEBUG CONSTRUCT_INSTANCE: Pushing instance_id back to stack: {}",
+                    instance_id
+                );
+                task.ram
+                    .push_nv(auto_val::encode_object(instance_id as u32));
+                // PLAN-062 T12: 份额随值转移回栈顶。
+                task.ram.mark_top_stake(instance_stake);
+                vm_debug!(
+                    "DEBUG CONSTRUCT_INSTANCE: Stack depth after = {}",
+                    task.ram.sp
+                );
+            }
+            OpCode::IS_VARIANT => {
+                // Check if a value matches an expected variant name
+                // Code layout: [opcode, name_len:u16, name_bytes...]
+                // Stack layout: [..., value]
+                // Stack after: [..., bool] (value consumed, bool pushed)
+                use crate::vm::generic_registry::GenericInstanceData;
+
+                let name_len = self.flash.read_u16(task.ip) as usize;
+                task.ip += 2;
+                let mut name_bytes = vec![0u8; name_len];
+                for i in 0..name_len {
+                    name_bytes[i] = self.flash.read_u8(task.ip);
+                    task.ip += 1;
+                }
+                let expected_name = String::from_utf8_lossy(&name_bytes).to_string();
+
+                {
+                    let nv = task.ram.pop_nv();
+                    let obj_id = if auto_val::is_object(nv) {
+                        Some(auto_val::decode_object(nv) as u64)
+                    } else if auto_val::is_i32(nv) {
+                        let v = auto_val::decode_i32(nv);
+                        if v >= 4000000 {
+                            Some(v as u64)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    let result = if auto_val::is_null(nv) {
+                        expected_name == "Option.None"
+                    } else if let Some(id) = obj_id {
+                        if let Some(obj) = self.get_heap_object(id) {
+                            let guard = obj.read().unwrap();
+                            if let Some(instance) =
+                                guard.as_any().downcast_ref::<GenericInstanceData>()
+                            {
+                                instance.mono_name == expected_name
+                            } else {
+                                false
+                            }
+                        } else {
+                            false
+                        }
+                    } else {
+                        // Option 原始载荷编码(CREATE_SOME 不包对象):
+                        // int/str/bool/f64 载荷按 Some 命中是设计行为。
+                        // Plan 454 A2 复核(447 2.4):曾尝试对"用户变体名
+                        // ×非对象标量"显式报错,被 p03_enum_payload 实证
+                        // 否决——单元变体(Val.VN 等)以裸判别值标量合法
+                        // 流入级联 payload 模式测试,静默 false 是级联
+                        // 语义的一部分,运行时无类型元数据不可与编码漂移
+                        // 区分。维持宽松,false 为终态。
+                        expected_name == "Option.Some"
+                    };
+                    task.ram.push_nv(auto_val::encode_bool(result));
+                    // Plan 419: 被消费的 receiver 引用 stake 死亡。
+                    self.rc_release(nv);
+                }
+            }
+            OpCode::GET_GENERIC_FIELD => {
+                // Get field value from a generic instance or primitive Option.Some value
+                // Code layout: [opcode, field_index:u32]
+                // Stack layout: [..., value]
+                // Stack after: [..., field_value]
+                use crate::vm::generic_registry::GenericInstanceData;
+                use crate::vm::heap_object::TypeTag;
+
+                let field_index = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+
+                {
+                    let nv = task.ram.pop_nv();
+                    // Determine object ID: if it's a proper TAG_OBJECT, decode it;
+                    // if it's TAG_I32 with a large value, it might be an object ID stored as i32
+                    let obj_id = if auto_val::is_object(nv) {
+                        Some(auto_val::decode_object(nv) as u64)
+                    } else if auto_val::is_i32(nv) {
+                        let v = auto_val::decode_i32(nv);
+                        if v >= 4000000 {
+                            Some(v as u64)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+
+                    if let Some(id) = obj_id {
+                        // Plan 419 §9.4 ②:访问点打点——tag 来源直接判
+                        // H0(TAG_I32≥4M 启发式误判)vs H1/H2(真悬垂)。
+                        if crate::vm::rc::p419_uaf_traces(id) {
+                            let via = if auto_val::is_object(nv) {
+                                "TAG_OBJECT"
+                            } else if auto_val::is_i32(nv) {
+                                "TAG_I32-heur"
+                            } else {
+                                "other"
+                            };
+                            // 裸表探测(绕过 canary):log 先行,随后真正的
+                            // get_heap_object 若命中 tombstone 即 panic。
+                            let live = self.heap_objects.get(&id).is_some();
+                            // tombstones 表只在 debug_assertions 下存在
+                            // (字段级 cfg);release 下该探测退化为
+                            // live-only(否则 release 编译 E0609)。
+                            #[cfg(debug_assertions)]
+                            let tomb = self.tombstones.get(&id).is_some();
+                            #[cfg(not(debug_assertions))]
+                            let tomb = false;
+                            let fn_name = task
+                                .call_stack
+                                .last()
+                                .and_then(|f| f.fn_name.clone())
+                                .unwrap_or_else(|| "<root>".to_string());
+                            eprintln!(
+                                    "[P419UAF] ACCESS GET_GENERIC_FIELD id={} via={} field={} live={} tomb={} fn='{}' ip=0x{:x}",
+                                    id, via, field_index, live, tomb, fn_name, task.ip
+                                );
+                        }
+                        if let Some(obj) = self.get_heap_object(id) {
+                            let guard = obj.read().unwrap();
+                            let is_generic_instance =
+                                matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+                            if is_generic_instance {
+                                if let Some(instance) =
+                                    guard.as_any().downcast_ref::<GenericInstanceData>()
+                                {
+                                    if let Some(value) = instance.get_field(field_index) {
+                                        // PLAN-047 T-04: VM 读臂依赖录制
+                                        // （字段名可证面；未激活零开销）。
+                                        if let Some(name) = instance.field_names.get(field_index) {
+                                            self.record_heap_read(id, name);
+                                        }
+                                        Self::push_value(task, value, self);
+                                    } else {
+                                        return Err(VMError::RuntimeError(format!(
+                                            "Field index {} out of bounds",
+                                            field_index
+                                        )));
+                                    }
+                                } else {
+                                    return Err(VMError::RuntimeError(
+                                        "GET_GENERIC_FIELD: failed to downcast".to_string(),
+                                    ));
+                                }
+                            } else if field_index == 0 {
+                                self.rc_push(task, nv); // Plan 419: 透传 +1(与臂尾释放配对成转移)
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field index {} out of bounds for non-generic object",
+                                    field_index
+                                )));
+                            }
+                        } else if field_index == 0 {
+                            self.rc_push(task, nv); // Plan 419: 透传 +1(与臂尾释放配对成转移)
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Field index {} out of bounds",
+                                field_index
+                            )));
+                        }
+                    } else if field_index == 0 {
+                        // Primitive value — field 0 is the value itself
+                        self.rc_push(task, nv); // Plan 419: 透传 +1(与臂尾释放配对成转移)
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Field index {} out of bounds for primitive",
+                            field_index
+                        )));
+                    }
+                    // Plan 419: 被消费的 receiver 引用 stake 死亡
+                    // (push_value 已对字段 VmRef +1;原样回推路径为转移)。
+                    self.rc_release(nv);
+                }
+            }
+            OpCode::SET_GENERIC_FIELD => {
+                // Plan 087 Phase 2: Set field value in generic instance
+                // Plan 118 Phase 7: Stack layout changed to [..., value, instance_id]
+                // Code layout: [opcode, field_index:u32]
+                // Stack layout: [..., value, instance_id] (value pushed first, then instance_id)
+                // Stack after: [...]
+                use crate::vm::generic_registry::GenericInstanceData;
+                use crate::vm::heap_object::TypeTag;
+
+                vm_debug!("DEBUG: SET_GENERIC_FIELD executing at IP={}", task.ip);
+
+                // Read field_index from code stream (not stack!)
+                let field_index = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+
+                // Pop instance_id (stack top)
+                let instance_id = task.ram.pop_i32() as u64;
+
+                // Pop value (below instance_id)
+                let value = {
+                    // Plan 377: 全值单槽。pop_arith_operand 弹单个 NanoValue 并
+                    // 标识是否 f64（非 nanboxed），无需 2-slot padding 处理。
+                    let (bits, is_f64) = task.ram.pop_arith_operand();
+                    if is_f64 {
+                        Value::Double(f64::from_bits(bits))
+                    } else {
+                        self.decode_tagged_nv(bits)
+                    }
+                };
+
+                vm_debug!(
+                    "DEBUG: SET_GENERIC_FIELD: instance_id={}, field_index={}, value={:?}",
+                    instance_id,
+                    field_index,
+                    value
+                );
+
+                // Plan 419: 记录旧字段引用(写锁释放后级联回收)。
+                let mut old_field_ref: Option<u64> = None;
+
+                // Get instance and set field
+                if let Some(obj) = self.get_heap_object(instance_id) {
+                    let mut guard = obj.write().unwrap();
+
+                    // Check if this is a GenericInstance (any variant)
+                    let is_generic_instance =
+                        matches!(guard.type_tag(), TypeTag::GenericInstance(_));
+
+                    if is_generic_instance {
+                        if let Some(instance) =
+                            guard.as_any_mut().downcast_mut::<GenericInstanceData>()
+                        {
+                            old_field_ref =
+                                instance.fields.get(field_index).and_then(|v| match v {
+                                    Value::VmRef(r) => Some(r.id as u64),
+                                    _ => None,
+                                });
+                            let value_repr = format!("{:?}", value); // Capture before move
+                            instance.set_field(field_index, value).map_err(|e| {
+                                VMError::RuntimeError(format!("Failed to set field: {}", e))
+                            })?;
+                            vm_debug!(
+                                "DEBUG: SET_GENERIC_FIELD: successfully set field {} to {}",
+                                field_index,
+                                value_repr
+                            );
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Type error: SET_GENERIC_FIELD failed to downcast GenericInstance"
+                            )));
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Type error: SET_GENERIC_FIELD expected GenericInstance, got {:?}",
+                            guard.type_tag()
+                        )));
+                    }
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid instance ID: {}",
+                        instance_id
+                    )));
+                }
+                // Plan 419: 旧字段级联释放 + receiver stake 死亡
+                // (value 自栈转移进字段,计数不变)。
+                if let Some(old_id) = old_field_ref {
+                    self.rc_release_id(old_id);
+                }
+                self.rc_release_id(instance_id);
+            }
+            OpCode::LIST_PUSH_INT => {
+                // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
+                // Plan 077 Phase 7: Optimized with inline helper
+                // Stack layout: [..., list_id, value:int]
+                // Pop value first (top of stack), then list_id
+                let value = task.ram.pop_i32();
+                let list_id = task.ram.pop_i32() as u64;
+                self.bump_path(list_id, None);
+
+                // Get list from unified registry and downcast to ListData<i32>
+                use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+                use crate::vm::types::ListData;
+
+                if let Some(obj) = self.get_heap_object(list_id) {
+                    let mut guard = obj.write().unwrap();
+
+                    // Optimized: single type check + downcast (inline)
+                    if let Some(list) =
+                        try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
+                    {
+                        if !list.push(value) {
+                            return Err(VMError::RuntimeError(format!(
+                                "List capacity exceeded (InlineInt64 limit: 64)"
+                            )));
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Type error: LIST_PUSH_INT expected ListInt"
+                        )));
+                    }
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid list ID: {}",
+                        list_id
+                    )));
+                }
+                // Plan 419: value 自栈转移进容器;receiver stake 死亡。
+                self.rc_release_id(list_id);
+            }
+            OpCode::LIST_POP_INT => {
+                // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
+                // Plan 077 Phase 7: Optimized with inline helper
+                // Stack layout: [..., list_id]
+                // Pop list_id, get list, pop element, push result
+                let list_id = task.ram.pop_i32() as u64;
+                self.bump_path(list_id, None);
+
+                // Get list from unified registry and downcast to ListData<i32>
+                use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+                use crate::vm::types::ListData;
+
+                if let Some(obj) = self.get_heap_object(list_id) {
+                    let mut guard = obj.write().unwrap();
+
+                    // Optimized: single type check + downcast (inline)
+                    if let Some(list) =
+                        try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
+                    {
+                        let value = list.pop().unwrap_or(0);
+                        // Plan 419: 元素离开容器,其 stake 转移给栈(计数不变)。
+                        task.ram.push_i32(value);
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Type error: LIST_POP_INT expected ListInt"
+                        )));
+                    }
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid list ID: {}",
+                        list_id
+                    )));
+                }
+                // Plan 419: receiver stake 死亡。
+                self.rc_release_id(list_id);
+            }
+            OpCode::LIST_GET_INT => {
+                // Plan 077 Phase 7: Optimized with inline helper
+                // Stack layout: [..., list_id, index:int]
+                // Pop index first (top of stack), then list_id
+                let index = task.ram.pop_i32() as usize;
+                let list_id = task.ram.pop_i32() as u64;
+                // PLAN-047 T-04: VM 读臂依赖录制（容器内容粗粒度面；
+                // 无效 id 过录=保守方向）。
+                self.record_heap_read_any(list_id);
+
+                // Get list from unified registry and downcast to ListData<i32>
+                use crate::vm::heap_object::{try_downcast_checked, TypeTag};
+                use crate::vm::types::ListData;
+
+                if let Some(obj) = self.get_heap_object(list_id) {
+                    let guard = obj.read().unwrap();
+
+                    // Optimized: single type check + downcast (inline)
+                    if let Some(list) =
+                        try_downcast_checked::<ListData<i32>>(&*guard, TypeTag::ListInt)
+                    {
+                        let value = list.get(index).copied().unwrap_or(0);
+                        // Plan 419: 元素仍在容器 —— 拷贝引用入栈 +1。
+                        if (value as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                            self.rc_retain_id(value as u64);
+                        }
+                        task.ram.push_i32(value);
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Type error: LIST_GET_INT expected ListInt"
+                        )));
+                    }
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid list ID: {}",
+                        list_id
+                    )));
+                }
+                // Plan 419: receiver stake 死亡。
+                self.rc_release_id(list_id);
+            }
+            OpCode::LIST_SET_INT => {
+                // PLAN-062: 列表元素突变（同 SET_FIELD 口径）。
+                // PLAN-047 T-03: bump 移至 list_id 出栈后定点归因（B 类）。
+                // Plan 077 Phase 7: Optimized with inline helper
+                // Stack layout: [..., list_id, index:int, value:int]
+                // Pop value first, then index, then list_id
+                let value = task.ram.pop_i32();
+                let index = task.ram.pop_i32() as usize;
+                let list_id = task.ram.pop_i32() as u64;
+                self.bump_path(list_id, None);
+
+                // Get list from unified registry and downcast to ListData<i32>
+                use crate::vm::heap_object::{try_downcast_checked_mut, TypeTag};
+                use crate::vm::types::ListData;
+
+                let mut old_elem_ref: Option<u64> = None;
+                if let Some(obj) = self.get_heap_object(list_id) {
+                    let mut guard = obj.write().unwrap();
+
+                    // Optimized: single type check + downcast (inline)
+                    if let Some(list) =
+                        try_downcast_checked_mut::<ListData<i32>>(&mut *guard, TypeTag::ListInt)
+                    {
+                        if let Some(&old) = list.elems.get(index) {
+                            if (old as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                                old_elem_ref = Some(old as u64);
+                            }
+                        }
+                        if !list.set(index, value) {
+                            return Err(VMError::RuntimeError(format!(
+                                "List index out of bounds: {}",
+                                index
+                            )));
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Type error: LIST_SET_INT expected ListInt"
+                        )));
+                    }
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid list ID: {}",
+                        list_id
+                    )));
+                }
+                // Plan 419: 旧元素释放 + 新值自栈转移 + receiver 死亡。
+                if let Some(old_id) = old_elem_ref {
+                    self.rc_release_id(old_id);
+                }
+                self.rc_release_id(list_id);
+            }
+            // Slice: stack: container, start, end -> new_container
+            OpCode::SLICE => {
+                let end = task.ram.pop_i32();
+                let start = task.ram.pop_i32();
+                let container = task.ram.pop_i32();
+
+                // Tagged string slice
+                if container < 0 && container > -1000000 && container != -2147483648 {
+                    let str_idx = (-container - 1) as usize;
+                    let strings = self.strings.read().unwrap();
+                    if let Some(bytes) = strings.get(str_idx) {
+                        let s = String::from_utf8_lossy(bytes).to_string();
+                        let chars: Vec<char> = s.chars().collect();
+                        let len = chars.len();
+                        let s_start = if start < 0 {
+                            0
+                        } else {
+                            (start as usize).min(len)
+                        };
+                        let s_end = if end < 0 {
+                            len
+                        } else {
+                            (end as usize).min(len)
+                        };
+                        let sliced: String = chars[s_start..s_end].iter().collect();
+                        drop(strings);
+                        let new_idx = self.add_string(sliced.into_bytes());
+                        self.rc_push_str_idx(task, new_idx as usize);
+                    } else {
+                        task.ram.push_i32(0);
+                    }
+                } else {
+                    // Array slice
+                    let arr_key = container as u64;
+                    if let Some(arr_lock) = self.get_heap_object(arr_key) {
+                        let arr = arr_lock.read().unwrap();
+                        if let Some(list) = arr
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                        {
+                            let len = list.elems.len();
+                            let s_start = if start < 0 {
+                                0
+                            } else {
+                                (start as usize).min(len)
+                            };
+                            let s_end = if end < 0 {
+                                len
+                            } else {
+                                (end as usize).min(len)
+                            };
+                            let sliced: Vec<auto_val::Value> = list.elems[s_start..s_end].to_vec();
+                            drop(arr);
+                            // Plan 390 §15 H3b: slice result is a new
+                            // ListData<Value> in heap_objects.
+                            let new_id = self.insert_heap_object(crate::vm::types::ListData {
+                                elems: sliced,
+                                storage: None,
+                            });
+                            self.rc_push(task, auto_val::encode_object(new_id as u32));
+                        } else {
+                            drop(arr);
+                            task.ram.push_i32(0);
+                        }
+                    } else {
+                        task.ram.push_i32(0);
+                    }
+                }
+            }
+            // Plan 200: Create tuple from stack elements
+            // Stack: elem0, elem1, ..., elemN-1 -> tuple_id
+            OpCode::CREATE_TUPLE => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                let elem_count = self.flash.read_u8(task.ip);
+                task.ip += 1;
+                let mut fields = Vec::with_capacity(elem_count as usize);
+                for _ in 0..elem_count {
+                    {
+                        let nv = task.ram.pop_nv();
+                        let val = self.decode_tagged_nv(nv);
+                        fields.push(val);
+                    }
+                }
+                fields.reverse();
+                let mut data = GenericInstanceData::new(
+                    format!("tuple_{}", elem_count).into(),
+                    vec![auto_val::Value::Null; fields.len()],
+                );
+                for (i, val) in fields.into_iter().enumerate() {
+                    let _ = data.set_field(i, val);
+                }
+                let instance_id = self.insert_heap_object(data);
+                self.rc_push(task, auto_val::encode_object(instance_id as u32));
+            }
+            // Plan 200: Get tuple field by index
+            // Stack: tuple_id -> value (field_index from bytecode)
+            OpCode::GET_TUPLE_FIELD => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                let field_index = self.flash.read_u8(task.ip);
+                task.ip += 1;
+                // Plan 390 §15 H2: tuple id may be TAG_OBJECT-encoded now.
+                let tuple_id = {
+                    let nv = task.ram.pop_nv();
+                    if auto_val::is_object(nv) {
+                        auto_val::decode_object(nv) as u64
+                    } else {
+                        auto_val::decode_i32(nv) as u64
+                    }
+                };
+                if let Some(lock) = self.get_heap_object(tuple_id) {
+                    let guard = lock.read().unwrap();
+                    if let Some(instance) = guard.as_any().downcast_ref::<GenericInstanceData>() {
+                        if let Some(val) = instance.get_field(field_index as usize) {
+                            match val {
+                                auto_val::Value::Int(n) => task.ram.push_i32(*n),
+                                auto_val::Value::Bool(b) => {
+                                    task.ram.push_i32(if *b { 1 } else { 0 })
+                                }
+                                auto_val::Value::Str(s) => {
+                                    let idx = self.add_string(s.as_bytes().to_vec());
+                                    self.rc_push_str_idx(task, idx as usize);
+                                }
+                                _ => task.ram.push_i32(0),
+                            }
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    } else {
+                        task.ram.push_i32(0);
+                    }
+                } else {
+                    task.ram.push_i32(0);
+                }
+            }
+            // Plan 073: Array element access (arr[index])
+            // Plan 080: Also supports heap objects (lists like List<int>)
+            // Plan 118 Phase 4: Also supports string indexing (str[index])
+            OpCode::GET_ELEM => {
+                // Stack: array_id/list_id/str_id, index
+                // Pop index first (top of stack).
+                // Plan 437: 保留原 nv tag —— record 动态字段访问 d[field_name]
+                // 的 key 是 string-tagged；i32 路径行为不变（位模式解码同旧
+                // pop_i32）。
+                let index_nv = task.ram.pop_nv();
+                // PLAN-026 T-03 配套: i64 索引下标按 i64 数值解码
+                // (tag 8)。此前恒 decode_i32 位模式解码——i64 值的位模
+                // 式当 i32 = 垃圾下标(evidence/026/probe i64_probe2
+                // "c index=-3" 负索引泄漏实证;快照消费循环的 i64 游标
+                // 全体受害)。超 i32 域夹取到负哨兵走越界路径。
+                let index_i32 = if auto_val::is_i64(index_nv) {
+                    auto_val::decode_i64(index_nv).clamp(i32::MIN as i64, i32::MAX as i64) as i32
+                } else {
+                    auto_val::decode_i32(index_nv)
+                };
+                // Pop array_id/list_id or str_id (tagged)
+                let obj_or_str_nv = task.ram.pop_nv();
+
+                // Plan 550 T04: null 索引对象守卫（现状：null 位模式当
+                // obj_id 解码 → 堆查找落空 → 静默 push 0）。Python 风格
+                // TypeError，try-catch 可捕获。
+                if auto_val::is_null(obj_or_str_nv) {
+                    return Err(VMError::RuntimeError(
+                        "TypeError: 'NoneType' object is not subscriptable".to_string(),
+                    ));
+                }
+
+                // Helper function to convert negative index to actual index
+                // e.g., for array of length 3: -1 -> 2, -2 -> 1, -3 -> 0
+                let normalize_index = |idx: i32, len: usize| -> Option<usize> {
+                    if idx >= 0 {
+                        let uidx = idx as usize;
+                        if uidx < len {
+                            Some(uidx)
+                        } else {
+                            None
+                        }
+                    } else {
+                        // Negative index: -1 means last element, -2 means second-to-last, etc.
+                        let from_end = (-idx) as usize;
+                        if from_end <= len && from_end > 0 {
+                            Some(len - from_end)
+                        } else {
+                            None
+                        }
+                    }
+                };
+
+                vm_debug!(
+                    "DEBUG GET_ELEM: obj_or_str_bits={}, index={}",
+                    { auto_val::decode_i32(obj_or_str_nv) },
+                    index_i32
+                );
+
+                // Check if this is a tagged string index
+                let is_string_val = auto_val::is_string(obj_or_str_nv);
+
+                if is_string_val {
+                    // This is a tagged string index - string indexing operation
+                    let str_idx = auto_val::decode_string(obj_or_str_nv) as usize;
+                    let strings = self.strings.read().unwrap();
+                    if let Some(bytes) = strings.get(str_idx) {
+                        // Get the character at the specified index
+                        // Convert bytes to string and get char
+                        let s = String::from_utf8_lossy(bytes);
+                        let char_count = s.chars().count();
+                        if let Some(normalized_idx) = normalize_index(index_i32, char_count) {
+                            if let Some(ch) = s.chars().nth(normalized_idx) {
+                                vm_debug!("DEBUG GET_ELEM: String[{}] = '{}'", normalized_idx, ch);
+                                // Push character as i32 (Unicode code point)
+                                task.ram.push_i32(ch as i32);
+                            } else {
+                                vm_debug!(
+                                    "DEBUG GET_ELEM: String index {} out of bounds",
+                                    normalized_idx
+                                );
+                                task.ram.push_i32(0); // Out of bounds
+                            }
+                        } else {
+                            vm_debug!("DEBUG GET_ELEM: String index {} out of bounds", index_i32);
+                            task.ram.push_i32(0); // Out of bounds
+                        }
+                    } else {
+                        vm_debug!("DEBUG GET_ELEM: Invalid string index {}", str_idx);
+                        task.ram.push_i32(0); // Invalid string index
+                    }
+                } else {
+                    // Regular array/list access
+                    let obj_id = if auto_val::is_object(obj_or_str_nv) {
+                        auto_val::decode_object(obj_or_str_nv) as u64
+                    } else {
+                        auto_val::decode_i32(obj_or_str_nv) as u64
+                    };
+
+                    // First, try heap_objects registry (Plan 077 unified registry)
+                    if let Some(obj) = self.get_heap_object(obj_id) {
+                        use crate::vm::types::ListData;
+                        let guard = obj.read().unwrap();
+                        // PLAN-047 T-04: VM 读臂依赖录制（索引/按键读统一
+                        // 粗粒度 `"*"` 面——按键 A-able v1 不展开，保守）。
+                        self.record_heap_read_any(obj_id);
+
+                        // Plan 539 W0 (DIV-PY-ITER-1): PyObjectHandle —
+                        // GIL obj[index], result marshalled through the
+                        // standard py return path (handles stay opaque).
+                        #[cfg(feature = "python")]
+                        if guard
+                            .as_any()
+                            .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                            .is_some()
+                        {
+                            #[cfg(feature = "python")]
+                            {
+                                #[allow(unused_imports)]
+                                use pyo3::prelude::*;
+                                let pyh = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::py_ffi::PyObjectHandle>()
+                                    .unwrap();
+                                pyo3::Python::attach(|py| -> Result<(), VMError> {
+                                    let bound = pyh.obj.clone_ref(py).into_bound(py);
+                                    let item = bound.get_item(index_i32).map_err(|e| {
+                                        VMError::FFI(format!(
+                                            "Python getitem on {} failed: {}",
+                                            bound
+                                                .get_type()
+                                                .name()
+                                                .map(|n| n.to_string())
+                                                .unwrap_or_default(),
+                                            e
+                                        ))
+                                    })?;
+                                    crate::py_ffi::marshal_pyany_to_stack(&item, task, self)?;
+                                    Ok(())
+                                })?;
+                                // Plan 419: receiver(list/数组引用)的栈上 stake 死亡。
+                                self.rc_release(obj_or_str_nv);
+                                return Ok(StepResult::Continue);
+                            }
+                        }
+
+                        // Try List<int>
+                        if let Some(list) = guard.as_any().downcast_ref::<ListData<i32>>() {
+                            vm_debug!(
+                                "DEBUG GET_ELEM: Found List<int> with {} elems",
+                                list.elems.len()
+                            );
+                            if let Some(normalized_idx) =
+                                normalize_index(index_i32, list.elems.len())
+                            {
+                                let elem = list.elems[normalized_idx];
+                                vm_debug!(
+                                    "DEBUG GET_ELEM: Returning elem[{}]={}",
+                                    normalized_idx,
+                                    elem
+                                );
+                                // Preserve string tag encoding: negative values are string indices
+                                {
+                                    if elem < 0 {
+                                        let str_idx = (-(elem) - 1) as u32;
+                                        self.rc_push_str_idx(task, str_idx as usize);
+                                    } else if elem >= 4000000 {
+                                        // Heap object ID
+                                        // Plan 419: 元素引用入栈 +1。
+                                        self.rc_push(task, auto_val::encode_object(elem as u32));
+                                    } else {
+                                        task.ram.push_i32(elem);
+                                    }
+                                }
+                            } else {
+                                // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                return Err(index_out_of_range_error(index_i32));
+                            }
+                        }
+                        // Try List<String>
+                        else if let Some(list) = guard.as_any().downcast_ref::<ListData<String>>()
+                        {
+                            vm_debug!("DEBUG GET_ELEM: Found List<String>");
+                            if let Some(normalized_idx) =
+                                normalize_index(index_i32, list.elems.len())
+                            {
+                                let elem = &list.elems[normalized_idx];
+                                // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                                // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                                let str_idx = self.add_string(elem.as_bytes().to_vec());
+                                self.rc_push_str_idx(task, str_idx);
+                            } else {
+                                // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                return Err(index_out_of_range_error(index_i32));
+                            }
+                        }
+                        // Try List<bool>
+                        else if let Some(list) = guard.as_any().downcast_ref::<ListData<bool>>() {
+                            vm_debug!("DEBUG GET_ELEM: Found List<bool>");
+                            if let Some(normalized_idx) =
+                                normalize_index(index_i32, list.elems.len())
+                            {
+                                let elem = list.elems[normalized_idx];
+                                // Plan 406: push a tagged bool so is_bool consumers
+                                // (print/to_string/EQ bit-compare) behave like bool literals.
+                                task.ram.push_nv(auto_val::encode_bool(elem));
+                            } else {
+                                // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                return Err(index_out_of_range_error(index_i32));
+                            }
+                        }
+                        // Try List<Value> (generic list of Values)
+                        else if let Some(list) =
+                            guard.as_any().downcast_ref::<ListData<auto_val::Value>>()
+                        {
+                            vm_debug!("DEBUG GET_ELEM: Found List<Value>");
+                            if let Some(normalized_idx) =
+                                normalize_index(index_i32, list.elems.len())
+                            {
+                                let elem = &list.elems[normalized_idx];
+                                match elem {
+                                    auto_val::Value::Str(s) => {
+                                        // Plan 423 P5 续修:入池收口 add_string(原裸 strings.push
+                                        // 无 pool_state/dedup —— 计数覆盖后 rc=0 可释放,持有者悬垂)。
+                                        let str_idx = self.add_string(s.as_bytes().to_vec());
+                                        self.rc_push_str_idx(task, str_idx);
+                                    }
+                                    auto_val::Value::Int(i) => {
+                                        task.ram.push_i32(*i);
+                                    }
+                                    auto_val::Value::Bool(b) => {
+                                        task.ram.push_nv(auto_val::encode_bool(*b));
+                                    }
+                                    auto_val::Value::Float(f) => {
+                                        task.ram.push_f32(*f as f32);
+                                    }
+                                    auto_val::Value::Double(d) => {
+                                        task.ram.push_f64(*d);
+                                    }
+                                    // Plan 419: 元素引用入栈 +1。
+                                    auto_val::Value::VmRef(r) => {
+                                        self.rc_push(task, auto_val::encode_object(r.id as u32));
+                                    }
+                                    // PLAN-776 R8-01：Future 句柄元素还原
+                                    // TAG_FUTURE 载荷（容器取出保真——
+                                    // F776-R8-01 F3；原落 `_` 臂 push_i32(0)）。
+                                    auto_val::Value::Future(f) => {
+                                        task.ram.push_nv(auto_val::encode_future(f.id as u32));
+                                    }
+                                    // PLAN-053 P-053-1: 对象元素物化——
+                                    // Value::Obj 原落 `_` 臂 push_i32(0)，
+                                    // `messages[i].id` 读 0、守卫恒假 →
+                                    // computed 产出空列表（musk
+                                    // filteredMessages 消息列表恒空）。
+                                    // 物化为 ObjectData 堆对象，GET_FIELD
+                                    // 按名读字段。
+                                    auto_val::Value::Obj(o) => {
+                                        let mut od = crate::vm::types::ObjectData::new();
+                                        for (k, v) in o.iter() {
+                                            od.set(k.clone(), v.clone());
+                                        }
+                                        let id = self.insert_heap_object(od);
+                                        self.rc_push_id(task, id);
+                                    }
+                                    auto_val::Value::Nil => {
+                                        task.ram.push_i32(0);
+                                    }
+                                    _ => {
+                                        task.ram.push_i32(0);
+                                    }
+                                }
+                            } else {
+                                // Plan 550 T05: 越界翻转 0 哨兵 → IndexError。
+                                return Err(index_out_of_range_error(index_i32));
+                            }
+                        }
+                        // Plan 437: 动态 record 字段访问 —— d[field_name]，
+                        // key 为 string-tagged（charts 的 index/categories
+                        // 按名取列语义）。镜像 GET_FIELD 的 ObjectData 臂
+                        // （含 intern_runtime_str / rc_push 的 RC 契约）。
+                        else if let Some(obj) = guard
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ObjectData>()
+                        {
+                            if auto_val::is_string(index_nv) {
+                                let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                                let field_name = self
+                                    .strings
+                                    .read()
+                                    .unwrap()
+                                    .get(key_pool_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let value = obj
+                                    .get(&auto_val::ValueKey::Str(field_name.into()))
+                                    .cloned();
+                                match value {
+                                    Some(auto_val::Value::Int(i)) => {
+                                        task.ram.push_i32(i);
+                                    }
+                                    Some(auto_val::Value::Uint(u)) => {
+                                        task.ram.push_i32(u as i32);
+                                    }
+                                    Some(auto_val::Value::Float(f)) => {
+                                        task.ram.push_f32(f as f32);
+                                    }
+                                    Some(auto_val::Value::Double(d)) => {
+                                        task.ram.push_f64(d);
+                                    }
+                                    Some(auto_val::Value::Bool(b)) => {
+                                        task.ram.push_nv(auto_val::encode_bool(b));
+                                    }
+                                    Some(auto_val::Value::Char(c)) => {
+                                        task.ram.push_i32(c as i32);
+                                    }
+                                    Some(auto_val::Value::Str(s)) => {
+                                        self.intern_runtime_str(task, s.as_bytes().to_vec());
+                                    }
+                                    Some(auto_val::Value::VmRef(r)) => {
+                                        self.rc_push(task, auto_val::encode_object(r.id as u32));
+                                    }
+                                    _ => {
+                                        task.ram.push_i32(0);
+                                    } // Nil / 缺字段
+                                }
+                            } else {
+                                task.ram.push_i32(0);
+                            }
+                        }
+                        // Plan 445 M3: GenericInstanceData 同语义 —— vm_bridge
+                        // 把 model 字面量物化为 GenericInstanceData
+                        // (eval_expr_to_value 的 Object 臂)，UI 运行时
+                        // (`auto run -r vm`) 的 d[field_name] 全落此表示
+                        // (024-charts 实机探针：落 Unknown → push 0)。
+                        // 按名查 field_names → fields；Value 分发镜像
+                        // ObjectData 臂（RC 契约一致）。
+                        else if let Some(inst) = guard
+                            .as_any()
+                            .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>(
+                        ) {
+                            if auto_val::is_string(index_nv) {
+                                let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                                let field_name = self
+                                    .strings
+                                    .read()
+                                    .unwrap()
+                                    .get(key_pool_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default();
+                                let fidx = inst.field_names.iter().position(|n| *n == field_name);
+                                let value = fidx.and_then(|i| inst.get_field(i)).cloned();
+                                match value {
+                                    Some(auto_val::Value::Int(i)) => {
+                                        task.ram.push_i32(i);
+                                    }
+                                    Some(auto_val::Value::Uint(u)) => {
+                                        task.ram.push_i32(u as i32);
+                                    }
+                                    Some(auto_val::Value::Float(f)) => {
+                                        task.ram.push_f32(f as f32);
+                                    }
+                                    Some(auto_val::Value::Double(d)) => {
+                                        task.ram.push_f64(d);
+                                    }
+                                    Some(auto_val::Value::Bool(b)) => {
+                                        task.ram.push_nv(auto_val::encode_bool(b));
+                                    }
+                                    Some(auto_val::Value::Char(c)) => {
+                                        task.ram.push_i32(c as i32);
+                                    }
+                                    Some(auto_val::Value::Str(s)) => {
+                                        self.intern_runtime_str(task, s.as_bytes().to_vec());
+                                    }
+                                    Some(auto_val::Value::VmRef(r)) => {
+                                        self.rc_push(task, auto_val::encode_object(r.id as u32));
+                                    }
+                                    _ => {
+                                        task.ram.push_i32(0);
+                                    } // Nil / 缺字段
+                                }
+                            } else {
+                                task.ram.push_i32(0);
+                            }
+                        } else {
+                            vm_debug!(
+                                "DEBUG GET_ELEM: Unknown heap object type: {:?}",
+                                guard.type_tag()
+                            );
+                            task.ram.push_i32(0); // Unknown heap object type
+                        }
+                    } else {
+                        // Object not found - push 0 as error sentinel
+                        // TODO: Proper error handling for invalid object IDs
+                        task.ram.push_i32(0);
+                    }
+                } // end of else block for non-string case
+                  // Plan 419: receiver(list/数组引用)的栈上 stake 死亡
+                  // (字符串 tag 非堆引用,release 为 no-op)。
+                self.rc_release(obj_or_str_nv);
+            }
+            // Plan 073: Array element assignment (arr[index] = value)
+            OpCode::SET_ELEM => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                // Stack: value, array_id, index (compiled in this order by codegen)
+                // PLAN-661 T-01: keep the raw index nanbox — map bracket writes
+                // (`m[k] = v`) carry a string-tagged key, mirroring GET_ELEM's
+                // Plan 437/445 read arms. The list path decodes i32 as before.
+                let index_nv = task.ram.pop_nv();
+                let _ = task.ram.take_stake_at(task.ram.sp);
+                // Pop array_id. arrays still push raw i32 (H3 will migrate),
+                // but accept TAG_OBJECT too in case a heap List id reaches here.
+                // Plan 419: receiver stake 在 arm 末尾释放;value 自栈转移
+                // 进元素;被覆盖的旧元素为引用时释放。
+                let receiver_nv;
+                let array_id = {
+                    let nv = task.ram.pop_nv();
+                    let _ = task.ram.take_stake_at(task.ram.sp);
+                    receiver_nv = nv;
+                    if auto_val::is_object(nv) {
+                        auto_val::decode_object(nv) as u64
+                    } else {
+                        auto_val::decode_i32(nv) as u64
+                    }
+                };
+                // Pop value (bottom of stack) — tagged form. Plan 502 M3:
+                // 此前 pop_i32 + Value::Int 丢弃 float/bool/str 元素标签,
+                // float 位模式被当整数存入(f"84.0" 写入读回 1118306300
+                // 实锤)——与 SET_FIELD 的 decode_tagged_nv 同型修复。
+                let value_nv = task.ram.pop_nv();
+                let _ = task.ram.take_stake_at(task.ram.sp);
+                let value = self.decode_tagged_nv(value_nv);
+                let mut old_elem_ref: Option<u64> = None;
+
+                // Get array from heap_objects (Plan 390 §15 H3b: arrays are
+                // ListData<Value> in the unified registry now).
+                if let Some(list_ref) = self.get_heap_object(array_id) {
+                    let mut guard = list_ref.write().unwrap();
+                    if let Some(list) = guard
+                        .as_any_mut()
+                        .downcast_mut::<crate::vm::types::ListData<auto_val::Value>>()
+                    {
+                        let index = auto_val::decode_i32(index_nv);
+                        // Check bounds
+                        if index >= 0 && (index as usize) < list.elems.len() {
+                            // PLAN-047 T-03: SET_ELEM 列表臂补 bump——普查
+                            // 发现该写面原无全局 seq bump（PLAN-062 遗漏，
+                            // memo 快路径陈旧命中窗口）；B 类定点归因。
+                            self.bump_path(array_id, None);
+                            // Plan 419: 记录旧元素引用,写锁释放后级联回收。
+                            old_elem_ref = match &list.elems[index as usize] {
+                                auto_val::Value::VmRef(r) => Some(r.id as u64),
+                                _ => None,
+                            };
+                            list.elems[index as usize] = value;
+                        } else {
+                            // Plan 118: Return error for out-of-bounds assignment
+                            return Err(VMError::RuntimeError(format!(
+                                "Array index {} out of bounds (array length: {})",
+                                index,
+                                list.elems.len()
+                            )));
+                        }
+                    }
+                    // PLAN-661 T-01: map 括号写 —— 读侧 m[k] 走 GET_ELEM 的
+                    // ObjectData（Plan 437）/GenericInstanceData（Plan 445 M3）
+                    // 臂，写侧 SET_ELEM 此前只有 ListData 臂，map 目标落
+                    // "Invalid array ID" 中止 handler（078 复现包实录）。
+                    // 三臂按名写，与 GET_ELEM 读臂一一镜像。
+                    else if let Some(obj) = guard
+                        .as_any_mut()
+                        .downcast_mut::<crate::vm::types::ObjectData>()
+                    {
+                        if !auto_val::is_string(index_nv) {
+                            return Err(VMError::RuntimeError(
+                                "TypeError: map key must be a string".to_string(),
+                            ));
+                        }
+                        // PLAN-062: map 写算状态面突变（与 SET_FIELD 同口径）。
+                        // PLAN-047 T-03: 定点归因（按键名 A-able，v1 落
+                        // exact+wildcard——bump_path 通配同 bump）。
+                        let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                        let key_name = self
+                            .strings
+                            .read()
+                            .unwrap()
+                            .get(key_pool_idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .ok_or_else(|| {
+                                VMError::RuntimeError(format!(
+                                    "Invalid key string index: {}",
+                                    key_pool_idx
+                                ))
+                            })?;
+                        self.bump_path(array_id, Some(&key_name));
+                        // 键语义镜像 SET_FIELD ObjectData 分支（PLAN-057）：
+                        // 开放 HashMap，set=insert（JS obj.newKey = v 语义）。
+                        let key = auto_val::ValueKey::Str(key_name.into());
+                        old_elem_ref = obj.get(&key).and_then(|v| match v {
+                            auto_val::Value::VmRef(r) => Some(r.id as u64),
+                            _ => None,
+                        });
+                        obj.set(key, value);
+                    } else if let Some(inst) =
+                        guard.as_any_mut().downcast_mut::<GenericInstanceData>()
+                    {
+                        if !auto_val::is_string(index_nv) {
+                            return Err(VMError::RuntimeError(
+                                "TypeError: map key must be a string".to_string(),
+                            ));
+                        }
+                        let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                        let key_name = self
+                            .strings
+                            .read()
+                            .unwrap()
+                            .get(key_pool_idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .ok_or_else(|| {
+                                VMError::RuntimeError(format!(
+                                    "Invalid key string index: {}",
+                                    key_pool_idx
+                                ))
+                            })?;
+                        // PLAN-047 T-03: 定点归因（同 ObjectData 臂）。
+                        self.bump_path(array_id, Some(&key_name));
+                        // UI 轨 state map（StateObjectLit）表示。GET_ELEM 读臂
+                        // 按 field_names 名取，故新键平行追加 fields/field_names
+                        // （开键插入，镜像 PLAN-057 语义）；既有键走 set_field。
+                        match inst.field_names.iter().position(|n| *n == key_name) {
+                            Some(idx) => {
+                                old_elem_ref = inst.fields.get(idx).and_then(|v| match v {
+                                    auto_val::Value::VmRef(r) => Some(r.id as u64),
+                                    _ => None,
+                                });
+                                inst.set_field(idx, value).map_err(VMError::RuntimeError)?;
+                            }
+                            None => {
+                                inst.field_names.push(key_name);
+                                inst.fields.push(value);
+                            }
+                        }
+                    }
+                    // auto.hashmap.new 建的 map：同 auto.hashmap.set native
+                    // （NATIVE_HASHMAP_INSERT_STR）的插入语义。
+                    else if let Some(map) = guard
+                        .as_any_mut()
+                        .downcast_mut::<crate::vm::collections::SpecializedHashMap>(
+                    ) {
+                        if !auto_val::is_string(index_nv) {
+                            return Err(VMError::RuntimeError(
+                                "TypeError: map key must be a string".to_string(),
+                            ));
+                        }
+                        let key_pool_idx = auto_val::decode_string(index_nv) as usize;
+                        let key_name = self
+                            .strings
+                            .read()
+                            .unwrap()
+                            .get(key_pool_idx)
+                            .map(|b| String::from_utf8_lossy(b).to_string())
+                            .ok_or_else(|| {
+                                VMError::RuntimeError(format!(
+                                    "Invalid key string index: {}",
+                                    key_pool_idx
+                                ))
+                            })?;
+                        // PLAN-047 T-03: 定点归因（同上两臂）。
+                        self.bump_path(array_id, Some(&key_name));
+                        if let Some(auto_val::Value::VmRef(r)) = map.get(&key_name) {
+                            old_elem_ref = Some(r.id as u64);
+                        }
+                        map.insert(key_name, value).map_err(VMError::RuntimeError)?;
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid array ID: {}",
+                            array_id
+                        )));
+                    }
+                } else {
+                    // Plan 118: Return error for invalid array IDs
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid array ID: {}",
+                        array_id
+                    )));
+                }
+                // Plan 419: 旧元素级联释放 + receiver stake 死亡。
+                if let Some(old_id) = old_elem_ref {
+                    self.rc_release_id(old_id);
+                }
+                self.rc_release(receiver_nv);
+            }
+            // Plan 075: Object field assignment (obj.field = value)
+            OpCode::SET_FIELD => {
+                // PLAN-062: 字段写算状态面突变。PLAN-047 T-03: bump 移至
+                // obj_id/field_name 解码后定点归因（A 类——exact+wildcard
+                // 双 bump；错误路径此后不再多 bump，handler Err 本身置脏
+                // 帧面，方向不变）。
+                use crate::vm::generic_registry::GenericInstanceData;
+                // Stack: value, object_id, field_name_idx (compiled in this order by codegen)
+                // Pop field_name_idx first (top of stack)
+                let field_idx = {
+                    let nv = task.ram.pop_nv();
+                    let _ = task.ram.take_stake_at(task.ram.sp);
+                    if auto_val::is_string(nv) {
+                        auto_val::decode_string(nv) as usize
+                    } else {
+                        auto_val::decode_i32(nv) as usize
+                    }
+                };
+                // Pop object_id
+                // Plan 419: receiver 的栈上 stake 在 arm 末尾释放(错误路径
+                // 泄漏一个 stake —— 安全方向);value 自栈转移进字段(不变);
+                // 旧字段值为 VmRef 时在写入后释放(级联回收可能触发)。
+                let receiver_nv;
+                let obj_id = {
+                    let nv = task.ram.pop_nv();
+                    let _ = task.ram.take_stake_at(task.ram.sp);
+                    receiver_nv = nv;
+                    if auto_val::is_i32(nv) {
+                        auto_val::decode_i32(nv) as u64
+                    } else if auto_val::is_object(nv) {
+                        auto_val::decode_object(nv) as u64
+                    } else {
+                        auto_val::decode_i32(nv) as u64
+                    }
+                };
+                // Pop value (bottom of stack)
+                let value_nv = task.ram.pop_nv();
+                let _ = task.ram.take_stake_at(task.ram.sp);
+                let mut old_field_ref: Option<u64> = None;
+
+                // Get field name from strings pool
+                let strings = self.strings.read().unwrap();
+                let field_name = if let Some(field_bytes) = strings.get(field_idx) {
+                    String::from_utf8_lossy(field_bytes).to_string()
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid string index: {}",
+                        field_idx
+                    )));
+                };
+                drop(strings); // Release lock before writing
+
+                // PLAN-093 G-9 诊断：字段写去向（对象身份 vs 状态对象）。
+                // 内容指纹：写前对象里的 phase/polls 现值——若 pre-park 与
+                // post-resume 写面向同一对象，序列单调；若对象被换，指纹断裂。
+                if std::env::var_os("AUTO_DEBUG_G9").is_some()
+                    && matches!(
+                        field_name.as_str(),
+                        "phase" | "polls" | "r_start" | "r_source"
+                    )
+                {
+                    let fp = self
+                        .heap_objects
+                        .get(&obj_id)
+                        .and_then(|a| {
+                            let g = a.read().unwrap();
+                            g.as_any()
+                                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>()
+                                .map(|inst| {
+                                    let f = |name: &str| -> String {
+                                        inst.field_names
+                                            .iter()
+                                            .position(|n| n == name)
+                                            .and_then(|i| inst.get_field(i))
+                                            .map(|v| format!("{:?}", v))
+                                            .unwrap_or_else(|| "<none>".into())
+                                    };
+                                    format!(
+                                        "phase={} polls={} r_start={}",
+                                        f("phase"),
+                                        f("polls"),
+                                        f("r_start")
+                                    )
+                                })
+                        })
+                        .unwrap_or_else(|| "<obj-missing>".into());
+                    eprintln!(
+                        "[G9] SET_FIELD {} -> obj_id={} BEFORE[{}] (ip={:#x} sp={} bp={})",
+                        field_name, obj_id, fp, task.ip, task.ram.sp, task.bp
+                    );
+                }
+
+                // PLAN-047 T-03: A 类定点归因（带名字段写）。
+                self.bump_path(obj_id, Some(&field_name));
+
+                // Get object from registry (Plan 390 §15 H3b: ObjectData /
+                // GenericInstance / RustStdlib all in heap_objects).
+                if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
+                    let mut heap_obj = heap_ref.write().unwrap();
+                    if let Some(obj) = heap_obj
+                        .as_any_mut()
+                        .downcast_mut::<crate::vm::types::ObjectData>()
+                    {
+                        // Try multiple key formats: string, integer, boolean (same as GET_FIELD)
+                        let key = if obj
+                            .get(&auto_val::ValueKey::Str(field_name.clone().into()))
+                            .is_some()
+                        {
+                            auto_val::ValueKey::Str(field_name.into())
+                        } else if let Ok(int_key) = field_name.parse::<i32>() {
+                            if obj.get(&auto_val::ValueKey::Int(int_key)).is_some() {
+                                auto_val::ValueKey::Int(int_key)
+                            } else {
+                                // Plan 118: Integer field not found - return error
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on object",
+                                    field_name
+                                )));
+                            }
+                        } else if field_name == "true" {
+                            if obj.get(&auto_val::ValueKey::Bool(true)).is_some() {
+                                auto_val::ValueKey::Bool(true)
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on object",
+                                    field_name
+                                )));
+                            }
+                        } else if field_name == "false" {
+                            if obj.get(&auto_val::ValueKey::Bool(false)).is_some() {
+                                auto_val::ValueKey::Bool(false)
+                            } else {
+                                return Err(VMError::RuntimeError(format!(
+                                    "Field '{}' not found on object",
+                                    field_name
+                                )));
+                            }
+                        } else {
+                            // PLAN-057（等价性缺陷族①）：ObjectData 未见过的
+                            // Str 键改为插入（JS `obj.newKey = v` 赋值语义；
+                            // ObjectData 底层是开放 HashMap，set=insert）。
+                            // Plan 118 的类型严格性仍由 Int/Bool 键格式分支
+                            // （上方）与 GenericInstanceData 分支（下方）持有。
+                            auto_val::ValueKey::Str(field_name.clone().into())
+                        };
+                        old_field_ref = obj.get(&key).and_then(|v| match v {
+                            auto_val::Value::VmRef(r) => Some(r.id as u64),
+                            _ => None,
+                        });
+                        obj.set(key, { self.decode_tagged_nv(value_nv) });
+                    } else if let Some(inst) =
+                        heap_obj.as_any_mut().downcast_mut::<GenericInstanceData>()
+                    {
+                        // PLAN-536 Phase 2 T13: PollStream 兜底链追踪面——
+                        // 环境门控(AUTO_DEBUG_POLLTRACE=1),观察跨模块调用帧
+                        // 内对 store 字段(合并根态 GenericInstanceData)的
+                        // SET_FIELD 实际落点与值(KD P536-D2 定罪)。
+                        if std::env::var("AUTO_DEBUG_POLLTRACE").is_ok()
+                            && matches!(
+                                field_name.as_str(),
+                                "streaming" | "pre_stream_len" | "messages" | "poll_window"
+                            )
+                        {
+                            let decoded = self.decode_tagged_nv(value_nv);
+                            let vdesc = match &decoded {
+                                auto_val::Value::Bool(b) => format!("bool={b}"),
+                                auto_val::Value::Int(i) => format!("int={i}"),
+                                auto_val::Value::Str(_) => "str".to_string(),
+                                auto_val::Value::Nil => "nil".to_string(),
+                                auto_val::Value::VmRef(r) => {
+                                    let len = self
+                                            .heap_objects
+                                            .get(&(r.id as u64))
+                                            .map(|h| {
+                                                let g = h.read().unwrap();
+                                                g.as_any()
+                                                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                                                    .map(|l| l.len())
+                                                    .unwrap_or(usize::MAX)
+                                            })
+                                            .unwrap_or(usize::MAX);
+                                    format!("vmref={} len={len}", r.id)
+                                }
+                                other => format!("nv({:?})", std::mem::discriminant(other)),
+                            };
+                            eprintln!(
+                                "[POLLTRACE][SET] obj={obj_id} .{field_name} = {vdesc} (ip=0x{:x})",
+                                task.ip
+                            );
+                        }
+                        let field_idx = inst.field_names.iter().position(|n| n == &field_name);
+                        if let Some(idx) = field_idx {
+                            old_field_ref = inst.fields.get(idx).and_then(|v| match v {
+                                auto_val::Value::VmRef(r) => Some(r.id as u64),
+                                _ => None,
+                            });
+                            inst.set_field(idx, { self.decode_tagged_nv(value_nv) })
+                                .map_err(|e| VMError::RuntimeError(e))?;
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Field '{}' not found on type instance {}",
+                                field_name, inst.mono_name
+                            )));
+                        }
+                    } else if let Some(rust_obj) = heap_obj
+                        .as_any()
+                        .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>(
+                    ) {
+                        // Opaque external crate type — try field mutation
+                        let type_name = rust_obj.type_name.clone();
+                        drop(heap_obj); // release write lock
+                                        // Handle semver field mutation
+                        let mut field_set = false;
+                        if type_name == "semver::Version" {
+                            let new_val = auto_val::decode_i32(value_nv);
+                            if let Some(obj) = self.heap_objects.get(&obj_id) {
+                                let mut guard = obj.write().unwrap();
+                                if let Some(rso) = guard
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::ffi::rust_stdlib::RustStdlibObject>(
+                                ) {
+                                    if let Some(ver) =
+                                        rso.downcast_mut::<std::sync::Mutex<semver::Version>>()
+                                    {
+                                        let mut v = ver.lock().unwrap();
+                                        match field_name.as_str() {
+                                            "major" => v.major = new_val as u64,
+                                            "minor" => v.minor = new_val as u64,
+                                            "patch" => v.patch = new_val as u64,
+                                            _ => {}
+                                        }
+                                        field_set = true;
+                                    }
+                                }
+                            }
+                        }
+                        if !field_set {
+                            return Err(VMError::RuntimeError(format!(
+                                "Cannot set field '{}' on opaque type {}",
+                                field_name, type_name
+                            )));
+                        }
+                        // Field set successfully — fall through to next instruction
+                    } else if let Some(dep) = heap_obj
+                        .as_any()
+                        .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>(
+                    ) {
+                        // PLAN-591 T1(V1-2): dep 对象标量字段 offset 直写——
+                        // 写穿透到 cdylib 堆本体(Rust 侧方法读回可见,V1-2)。
+                        // V1 纪律:单线程批处理执行;标量面仅此(String/嵌套
+                        // 句柄不在写面);别名/写后 Rust 侧缓存失效语义登记
+                        // KNOWN-DEBT(待澄清 #1 裁定)。写经裸指针穿透,守卫
+                        // 只护句柄元数据,持锁写与释放后写等价,无重入。
+                        crate::vm::ffi::dep_methods::write_scalar_field(
+                            self,
+                            dep,
+                            field_name.as_str(),
+                            value_nv,
+                        )?;
+                        // Field set successfully — fall through to next instruction
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid object ID: {}",
+                            obj_id
+                        )));
+                    }
+                } else {
+                    // Plan 118: Return error for invalid object IDs
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid object ID: {}",
+                        obj_id
+                    )));
+                }
+                // Plan 419: 写锁已释放 —— 旧字段值级联释放 + receiver stake 死亡。
+                if let Some(old_id) = old_field_ref {
+                    self.rc_release_id(old_id);
+                }
+                self.rc_release(receiver_nv);
+            }
+            // Plan 073: Object field access (obj.field)
+            OpCode::GET_FIELD => {
+                use crate::vm::generic_registry::GenericInstanceData;
+                let field_idx = self.flash.read_u32(task.ip);
+                task.ip += 4;
+
+                // Pop object ID from stack
+                let receiver_nv;
+                let obj_id = {
+                    let nv = task.ram.pop_nv();
+                    receiver_nv = nv;
+                    // Plan 419: receiver 的栈上 stake 在操作完成后释放
+                    // (arm 末尾;错误路径泄漏一个 stake —— 安全方向)。
+                    // 不能在此立即释放:`Cell{...}.x` 临时对象会先死后用。
+                    if auto_val::is_i32(nv) {
+                        auto_val::decode_i32(nv) as u64
+                    } else if auto_val::is_object(nv) {
+                        auto_val::decode_object(nv) as u64
+                    } else if auto_val::is_list(nv) {
+                        // PLAN-053 P-053-1: TAG_LIST 接收者——computed
+                        // helper 实参经 bridge call_vm_fn 按 encode_list
+                        // 编码传入，`.length` 落此。decode_list 与
+                        // decode_i32 位型同值(低 32 位即堆 id)，但显式
+                        // 分派消除误报 stderr(musk 实机 571×
+                        // "GET_FIELD non-i32 obj_id field=length" 噪音)。
+                        auto_val::decode_list(nv) as u64
+                    } else {
+                        // mem 复盘修复：该臂此前每命中一行 eprintln
+                        // （sys-monitor 曾 6 分钟 344MB 日志饿死 UI 线程）
+                        // 且不结算槽位 stake（每次命中泄漏一份 rc 份额）。
+                        // 现改为环境门控诊断 + stake 结算，与 SET_FIELD
+                        // 同款纪律。
+                        let _ = task.ram.take_stake_at(task.ram.sp);
+                        if std::env::var_os("AUTO_DEBUG_GETFIELD").is_some() {
+                            let fn_name = task
+                                .call_stack
+                                .last()
+                                .map(|f| f.fn_name.clone().unwrap_or_default())
+                                .unwrap_or_default();
+                            let field_name = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(field_idx as usize)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            eprintln!("[GET_FIELD] non-i32 obj_id: raw={:016x} field={} fn={} bp={} ip={}", nv, field_name, fn_name, task.bp, task.ip);
+                        }
+                        auto_val::decode_i32(nv) as u64
+                    }
+                };
+
+                // Get field name from strings pool (Plan 073: Now uses RwLock)
+                let strings = self.strings.read().unwrap();
+                let field_name = if let Some(field_bytes) = strings.get(field_idx as usize) {
+                    String::from_utf8_lossy(field_bytes).to_string()
+                } else {
+                    drop(strings);
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid string index: {} (pool size={}, obj_id={}, ip={})",
+                        field_idx,
+                        self.strings.read().unwrap().len(),
+                        obj_id,
+                        task.ip
+                    )));
+                };
+                drop(strings); // Release lock before potentially writing below
+
+                // PLAN-047 T-04: VM 读臂依赖录制（field_name 可证面；
+                // 非 i32 接收者的 decode 兜底 id 可能含位型碰撞——过录
+                // 是保守安全方向，多失效只多一次重求值）。
+                self.record_heap_read(obj_id, &field_name);
+
+                // PLAN-055: TAG_STRING 接收者——JS 语义 `.length` = 字符数
+                // （与 web a2ts `text.length` 同值）。此前 Str 接收者落
+                // "non-i32 obj_id" 噪音臂 push 0——musk estimateTokens 的
+                // `text.length - cjk` 恒负零系，全部思考块显示 "1 tokens"
+                // （P055 探针实测 est(17 chars) = Int(1)；agentAvatarData
+                // 的 hash 循环同根失效）。
+                if auto_val::is_string(receiver_nv) {
+                    if field_name == "length" {
+                        let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                        let n = self
+                            .strings
+                            .read()
+                            .unwrap()
+                            .get(str_idx)
+                            .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
+                            .unwrap_or(0);
+                        task.ram.push_i32(n);
+                    } else {
+                        task.ram.push_i32(0);
+                    }
+                } else if let Some(heap_ref) = self.heap_objects.get(&obj_id) {
+                    // Heap objects (4M+): Node (H3a), ObjectData (H3b),
+                    // GenericInstanceData, RustStdlibObject.
+                    let heap_obj = heap_ref.read().unwrap();
+                    // Plan 390 §15 H3a: Node now lives in heap_objects —
+                    // check it first (mold template node-field priority).
+                    if let Some(node) = heap_obj.as_any().downcast_ref::<auto_val::Node>() {
+                        let prop = node.get_prop(field_name.as_str());
+                        let resolved: auto_val::Value = if !prop.is_nil() {
+                            prop
+                        } else {
+                            match field_name.as_str() {
+                                "id" if !node.id.is_empty() => {
+                                    auto_val::Value::Str(node.id.clone())
+                                }
+                                "name" if !node.name.is_empty() => {
+                                    auto_val::Value::Str(node.name.clone())
+                                }
+                                "text" if !node.text.is_empty() => {
+                                    auto_val::Value::Str(node.text.clone())
+                                }
+                                _ => auto_val::Value::Nil,
+                            }
+                        };
+                        if !resolved.is_nil() {
+                            match resolved {
+                                auto_val::Value::Str(s) => {
+                                    // Plan 423 P5 续修:入池收口(原裸
+                                    // strings.push 无 pool_state/dedup)。
+                                    self.intern_runtime_str(task, s.as_bytes().to_vec());
+                                }
+                                auto_val::Value::Int(i) => task.ram.push_i32(i),
+                                auto_val::Value::Uint(u) => task.ram.push_i32(u as i32),
+                                auto_val::Value::Bool(b) => {
+                                    task.ram.push_i32(if b { 1 } else { 0 })
+                                }
+                                // Plan 419: 子对象引用入栈 +1。
+                                auto_val::Value::VmRef(r) => self.rc_push_id(task, r.id as u64),
+                                _ => task.ram.push_i32(0),
+                            }
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    } else if let Some(obj) = heap_obj
+                        .as_any()
+                        .downcast_ref::<crate::vm::types::ObjectData>()
+                    {
+                        // Plan 390 §15 H3b: obj literals are ObjectData in
+                        // heap_objects.
+                        // Try multiple key formats: string, integer, boolean
+                        // This handles cases like { 1: 2, 3: 4 } accessed as a.3
+                        let value = if let Some(v) =
+                            obj.get(&auto_val::ValueKey::Str(field_name.clone().into()))
+                        {
+                            Some(v.clone())
+                        } else if let Ok(int_key) = field_name.parse::<i32>() {
+                            obj.get(&auto_val::ValueKey::Int(int_key)).cloned()
+                        } else if field_name == "true" {
+                            obj.get(&auto_val::ValueKey::Bool(true)).cloned()
+                        } else if field_name == "false" {
+                            obj.get(&auto_val::ValueKey::Bool(false)).cloned()
+                        } else {
+                            None
+                        };
+
+                        if let Some(value) = value {
+                            // Push field value onto stack based on type
+                            match value {
+                                auto_val::Value::Int(i) => task.ram.push_i32(i),
+                                auto_val::Value::Uint(u) => task.ram.push_i32(u as i32),
+                                auto_val::Value::Float(f) => task.ram.push_f32(f as f32),
+                                auto_val::Value::Double(d) => task.ram.push_f64(d),
+                                auto_val::Value::Bool(b) => {
+                                    // Plan 402 §13.10: push TAG_BOOL (encode_bool),
+                                    // not raw i32. Otherwise `obj.bool_field == false`
+                                    // compares i32(0) vs TAG_BOOL(false) → different
+                                    // nanbox tags → EQ returns false (6892: both must
+                                    // be is_i32, or both is_bool; a mix falls through
+                                    // to `else { false }`). This broke every bool-field
+                                    // comparison in minesweeper (mine==false, revealed
+                                    // ==false, flagged==false), so SET_ELEM never ran
+                                    // and the board never updated.
+                                    task.ram.push_nv(auto_val::encode_bool(b))
+                                }
+                                auto_val::Value::Char(c) => task.ram.push_i32(c as i32),
+                                auto_val::Value::Str(s) => {
+                                    // Push tagged string index (NaN-boxed)
+                                    // Plan 423 P5 续修:入池收口(add_string
+                                    // + 份额入栈;原裸 push 无计数覆盖)。
+                                    self.intern_runtime_str(task, s.as_bytes().to_vec());
+                                }
+                                auto_val::Value::Nil => task.ram.push_nv(auto_val::encode_null()), // Plan 474 待澄清#4 读侧闭环: Nil 字段读回 null nv(原 push_i32(0),与 Plan 044 __json_object 缺键 null 不一致)
+                                // Plan 073: Nested objects/arrays - push their ID
+                                auto_val::Value::VmRef(vm_ref) => {
+                                    // Plan 419: 子对象引用入栈 +1。
+                                    self.rc_push_id(task, vm_ref.id as u64);
+                                }
+                                // PLAN-776 R9-02：Future 句柄字段还原
+                                // TAG_FUTURE（原落 `_` placeholder 0）。
+                                auto_val::Value::Future(f) => {
+                                    task.ram.push_nv(auto_val::encode_future(f.id as u32));
+                                }
+                                _ => {
+                                    // Unsupported type - push 0 as placeholder
+                                    task.ram.push_i32(0);
+                                }
+                            }
+                        } else {
+                            // PLAN-053 P-053-6: 缺键读 null（对齐
+                            // PLAN-044 __json_object 缺键语义与 web 轨
+                            // undefined→?? 兜底惯用）——原硬报错使
+                            // `msg.blocks ?? [textBlock(msg)]` 一类
+                            // Option 链在普通 obj 上直接炸（musk 消息
+                            // 渲染链 messageDisplayBlocks 现场）。
+                            task.ram.push_nv(auto_val::encode_null());
+                        }
+                    } else if let Some(inst) =
+                        heap_obj.as_any().downcast_ref::<GenericInstanceData>()
+                    {
+                        let field_idx = inst.field_names.iter().position(|n| n == &field_name);
+                        if let Some(idx) = field_idx {
+                            if let Some(value) = inst.get_field(idx) {
+                                match value {
+                                    auto_val::Value::Int(i) => {
+                                        // Plan 423 P5 续修(RC 根引用缺口):
+                                        // Int ≥ HEAP_ID_BASE 是裸堆 id(数组/
+                                        // 列表槽约定,Plan 057 Bug 2)—— 引用
+                                        // 值入栈必须 +1。此前裸 push_i32,
+                                        // GET_ELEM/ARRAY_LEN 等消费弹栈释放
+                                        // 时把字段持有份额吃掉归零 → 字段悬垂
+                                        // → canary UAF(015 TogglePin 链式写
+                                        // 实测 rc.rs:378)。
+                                        if (*i as i64) >= crate::vm::rc::HEAP_ID_BASE as i64 {
+                                            self.rc_push_id(task, *i as u64);
+                                        } else {
+                                            task.ram.push_i32(*i);
+                                        }
+                                    }
+                                    auto_val::Value::Uint(u) => task.ram.push_i32(*u as i32),
+                                    auto_val::Value::Float(f) => task.ram.push_f32(*f as f32),
+                                    auto_val::Value::Double(d) => task.ram.push_f64(*d),
+                                    auto_val::Value::Bool(b) => {
+                                        // Audit B12(a)/A4 family: push TAG_BOOL
+                                        // (encode_bool), not raw i32 — `field == false`
+                                        // compares against a bool nanbox and never
+                                        // matched raw 0/1 (013 Init count loop read
+                                        // .done on each seed and counted nothing).
+                                        // Same fix as ObjectData (Plan 402 §13.10).
+                                        task.ram.push_nv(auto_val::encode_bool(*b))
+                                    }
+                                    auto_val::Value::Char(c) => task.ram.push_i32(*c as i32),
+                                    auto_val::Value::Str(s) => {
+                                        // Plan 423 P5 续修:入池收口(原裸
+                                        // strings.push 无 pool_state/dedup ——
+                                        // 016-calendar today 参数槽悬垂根因)。
+                                        self.intern_runtime_str(task, s.as_bytes().to_vec());
+                                    }
+                                    auto_val::Value::Nil => {
+                                        task.ram.push_nv(auto_val::encode_null())
+                                    } // Plan 474 待澄清#4 读侧闭环: Nil 字段读回 null nv(原 push_i32(0),与 Plan 044 __json_object 缺键 null 不一致)
+                                    auto_val::Value::VmRef(vm_ref) => {
+                                        // Plan 419: 子对象引用入栈 +1。
+                                        self.rc_push(
+                                            task,
+                                            auto_val::encode_object(vm_ref.id as u32),
+                                        );
+                                    }
+                                    // PLAN-776 R9-02：Future 句柄字段还原
+                                    // TAG_FUTURE（原落 `_` placeholder 0）。
+                                    auto_val::Value::Future(f) => {
+                                        task.ram.push_nv(auto_val::encode_future(f.id as u32));
+                                    }
+                                    _ => {
+                                        task.ram.push_i32(0);
+                                    }
+                                }
+                            } else {
+                                task.ram.push_i32(0);
+                            }
+                        } else if inst.mono_name.starts_with("__json_object") {
+                            // PLAN-044: json-backed instance (axum Json/Query
+                            // extractor marshalling) — missing key reads as
+                            // null (Option.unwrap_or chains depend on it).
+                            task.ram.push_nv(auto_val::encode_null());
+                        } else {
+                            return Err(VMError::RuntimeError(format!(
+                                "Field '{}' not found on type instance {} (fields: {:?})",
+                                field_name, inst.mono_name, inst.field_names
+                            )));
+                        }
+                    } else if let Some(rust_obj) = heap_obj
+                        .as_any()
+                        .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>(
+                    ) {
+                        // Opaque external crate type — try opaque dispatch for field access
+                        let type_name = &rust_obj.type_name;
+                        if type_name == "std::process::Output"
+                            && (field_name == "stdout" || field_name == "stderr")
+                        {
+                            drop(heap_obj);
+                            if let Some(obj) = self.heap_objects.get(&obj_id) {
+                                let guard = obj.read().unwrap();
+                                if let Some(rust_obj2) = guard.as_any().downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>() {
+                                        if let Some(output) = rust_obj2.downcast_ref::<std::process::Output>() {
+                                            let bytes = if field_name == "stdout" { &output.stdout } else { &output.stderr };
+                                            let vec_obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new("Vec<u8>", bytes.to_vec());
+                                            let handle = self.insert_heap_object(vec_obj);
+                                            // Plan 419: 新堆对象引用入栈 +1。
+                                            self.rc_push_id(task, handle);
+                                        } else {
+                                            task.ram.push_i32(0);
+                                        }
+                                    } else {
+                                        task.ram.push_i32(0);
+                                    }
+                            } else {
+                                task.ram.push_i32(0);
+                            }
+                        } else {
+                            let native_name =
+                                crate::vm::native_catalog::lookup_opaque_dispatch_by_type(
+                                    type_name,
+                                    &field_name,
+                                );
+                            if let Some(native_name) = native_name {
+                                drop(heap_obj);
+                                // Plan 419: 接收者重新入栈作 self(+1;shim
+                                // 侧 raw pop 不减,由 GET_FIELD 入口的 pop 减过)。
+                                self.rc_push(task, auto_val::encode_object(obj_id as u32));
+                                if let Some(&native_id) =
+                                    crate::vm::native_registry::NATIVE_ID_MAP.get(native_name)
+                                {
+                                    if let Some(shim) =
+                                        self.native_interface.get(native_id).cloned()
+                                    {
+                                        shim(task, self)?;
+                                    } else {
+                                        task.ram.pop_i32();
+                                        task.ram.push_i32(0);
+                                    }
+                                } else {
+                                    task.ram.pop_i32();
+                                    task.ram.push_i32(0);
+                                }
+                            } else {
+                                task.ram.push_i32(0);
+                            }
+                        }
+                    } else if let Some(dep_obj) = heap_obj
+                        .as_any()
+                        .downcast_ref::<crate::vm::ffi::dep_methods::DepOpaqueObject>(
+                    ) {
+                        // PLAN-591 T1: offset 直读优先——layout 命中标量字段
+                        // 时按探针偏移读 cdylib 堆(乱序 repr(Rust) 布局的
+                        // 真读面);String/嵌套句柄等非标量落 None → 下方的
+                        // PLAN-592 T7 合成 getter 路由(clone 语义)。
+                        let scalar = crate::vm::ffi::dep_methods::read_scalar_field(
+                            dep_obj,
+                            field_name.as_str(),
+                        );
+                        // PLAN-592 T7: dep crate 对象字段访问桥——`p.x` 路由到
+                        // shim 包合成 getter("短类型名.字段名" 在 METHODS 表,
+                        // 即 rustdoc 公共字段合成面);未命中显式报错,替代
+                        // 此前的静默 push 0(p 字段名拼错拿回 0 的正确性陷阱)。
+                        let short_type = dep_obj.short_type.clone();
+                        let full_type = dep_obj.full_type.clone();
+                        drop(heap_obj);
+                        match scalar {
+                            Some(crate::vm::ffi::dep_methods::ScalarFieldValue::I(i)) => {
+                                self.push_i64_vm(task, i);
+                            }
+                            Some(crate::vm::ffi::dep_methods::ScalarFieldValue::F(v)) => {
+                                task.ram.push_f64(v);
+                            }
+                            Some(crate::vm::ffi::dep_methods::ScalarFieldValue::B(b)) => {
+                                task.ram.push_nv(auto_val::encode_bool(b));
+                            }
+                            None => {
+                                // Plan 419: 接收者重新入栈作 self(+1;marshaller 侧
+                                // raw pop 不减,与 native_catalog 字段臂同一纪律)。
+                                self.rc_push(task, auto_val::encode_object(obj_id as u32));
+                                let hit = crate::vm::ffi::dep_methods::dispatch(
+                                    &short_type,
+                                    field_name.as_str(),
+                                    task,
+                                    self,
+                                )?;
+                                if !hit {
+                                    task.ram.pop_i32();
+                                    return Err(VMError::RuntimeError(format!(
+                                            "unknown field '{field_name}' on dep object {full_type} (无合成 getter:字段非 pub,或字段类型不在 标量/Str/Opaque 白名单)"
+                                        )));
+                                }
+                            }
+                        }
+                    } else {
+                        // plan-022 (auto-down): `.length` on a heap LIST
+                        // that arrived through an obj-typed parameter —
+                        // lists carry no named fields, so the named-field
+                        // downcasts above all miss. Mirror ARRAY_LEN's
+                        // element-count semantics before the 0 sentinel.
+                        if field_name == "length" {
+                            use crate::vm::types::ListData;
+                            let len = if let Some(l) =
+                                heap_obj.as_any().downcast_ref::<ListData<i32>>()
+                            {
+                                l.elems.len() as i32
+                            } else if let Some(l) =
+                                heap_obj.as_any().downcast_ref::<ListData<String>>()
+                            {
+                                l.elems.len() as i32
+                            } else if let Some(l) =
+                                heap_obj.as_any().downcast_ref::<ListData<bool>>()
+                            {
+                                l.elems.len() as i32
+                            } else if let Some(l) = heap_obj
+                                .as_any()
+                                .downcast_ref::<ListData<auto_val::Value>>()
+                            {
+                                l.elems.len() as i32
+                            } else {
+                                -1
+                            };
+                            if len >= 0 {
+                                task.ram.push_i32(len);
+                            } else {
+                                task.ram.push_i32(0);
+                            }
+                        } else {
+                            task.ram.push_i32(0);
+                        }
+                    }
+                } else {
+                    // Object not found - push 0 as error sentinel
+                    task.ram.push_i32(0);
+                }
+                // Plan 419: 操作完成,receiver 的栈上 stake 死亡。
+                self.rc_release(receiver_nv);
+            }
+            // === Arithmetic ===
+            OpCode::ADD => {
+                // Plan 539 W1 (T10): py-handle operands route to the
+                // Python dunder (arms stay one-liners to bound the
+                // recursive frame size — see the aavm2 overflow note).
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_arith("__add__", "__radd__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    // Plan 550 T03: 算术双操作数经 null 守卫弹出（TAG_NULL
+                    // 拒收，含下方字符串拼接臂——decode_i32(null) 垃圾入串
+                    // 的 539 探针 2 病灶在分派前拦截）。
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("+")?;
+                    if a_is_f64 && b_is_f64 {
+                        task.ram
+                            .push_f64(f64::from_bits(a_bits) + f64::from_bits(b_bits));
+                    } else if a_is_f64 || b_is_f64 {
+                        // Mixed f64 + non-f64: promote both to f64
+                        let a = if a_is_f64 {
+                            f64::from_bits(a_bits)
+                        } else {
+                            nanbox_single_to_f64(a_bits)
+                        };
+                        let b = if b_is_f64 {
+                            f64::from_bits(b_bits)
+                        } else {
+                            nanbox_single_to_f64(b_bits)
+                        };
+                        task.ram.push_f64(a + b);
+                    } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
+                        task.ram
+                            .push_f32(auto_val::decode_f32(a_bits) + auto_val::decode_f32(b_bits));
+                    } else if auto_val::is_f32(a_bits) || auto_val::is_f32(b_bits) {
+                        // Plan 576: f32×int 混算按 tag 解码（int 按值转 f32）。
+                        let a = nanbox_single_to_f32(a_bits);
+                        let b = nanbox_single_to_f32(b_bits);
+                        task.ram.push_f32(a + b);
+                    } else if auto_val::is_string(a_bits) || auto_val::is_string(b_bits) {
+                        // String concatenation: decode both as strings, concatenate, push new string
+                        // Plan 567 T01（P539-D1 双症状收口）: 先读后放——对齐
+                        // STR_CAT 单次释放纪律。原实现有两处病灶：①release 在读
+                        // 之前，左结合链的中间结果槽被 FREE+tombstone 后
+                        // strings.get 归空（"got d" 病灶，池日志实证：retain"ab"
+                        // 0→1 → release 1→0 → FREE → 读空 → intern"cd"）；
+                        // ②add_string 前另有第二对 release 对同一操作数重复扣减，
+                        // rc 从 0 回绕 u32::MAX = P053-8 freelist 幻影条目。
+                        let a_str = if auto_val::is_string(a_bits) {
+                            let idx = auto_val::decode_string(a_bits) as usize;
+                            let strings = self.strings.read().unwrap();
+                            strings.get(idx).cloned().unwrap_or_default()
+                        } else {
+                            Self::nv_concat_operand_display(a_bits).into_bytes()
+                        };
+                        let b_str = if auto_val::is_string(b_bits) {
+                            let idx = auto_val::decode_string(b_bits) as usize;
+                            let strings = self.strings.read().unwrap();
+                            strings.get(idx).cloned().unwrap_or_default()
+                        } else {
+                            Self::nv_concat_operand_display(b_bits).into_bytes()
+                        };
+                        // Plan 419 Phase 2: 操作数 stake 随消费死亡（读完再放）。
+                        self.rc_release(a_bits);
+                        self.rc_release(b_bits);
+                        let mut combined = a_str;
+                        combined.extend_from_slice(&b_str);
+                        // Plan 419 Phase 2: 同 STR_CAT(原为裸 push,dedup 漂移源)。
+                        let new_idx = self.add_string(combined);
+                        self.rc_push_str_idx(task, new_idx as usize);
+                    } else {
+                        // PLAN-026 T-03 配套: i64 参与时按 i64 值算并
+                        // push_i64(纯 i32 对保持 i32 通路,既有程序零变化);
+                        // 此前 i64 位模式被 decode_i32 = 垃圾(i64_probe2
+                        // "mix sum=63" 实证)。
+                        if auto_val::is_i64(a_bits) || auto_val::is_i64(b_bits) {
+                            let a = Self::nv_int_as_i64(a_bits);
+                            let b = Self::nv_int_as_i64(b_bits);
+                            task.ram.push_i64(a.wrapping_add(b));
+                        } else {
+                            let a = auto_val::decode_i32(a_bits);
+                            let b = auto_val::decode_i32(b_bits);
+                            task.ram.push_i32(a.wrapping_add(b));
+                        }
+                    }
+                }
+            }
+            OpCode::SUB => {
+                // Plan 539 W1 (T10): py-handle operands route to the
+                // Python dunder (arms stay one-liners to bound the
+                // recursive frame size — see the aavm2 overflow note).
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_arith("__sub__", "__rsub__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("-")?;
+                    if a_is_f64 && b_is_f64 {
+                        task.ram
+                            .push_f64(f64::from_bits(a_bits) - f64::from_bits(b_bits));
+                    } else if a_is_f64 || b_is_f64 {
+                        let a = if a_is_f64 {
+                            f64::from_bits(a_bits)
+                        } else {
+                            nanbox_single_to_f64(a_bits)
+                        };
+                        let b = if b_is_f64 {
+                            f64::from_bits(b_bits)
+                        } else {
+                            nanbox_single_to_f64(b_bits)
+                        };
+                        task.ram.push_f64(a - b);
+                    } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
+                        task.ram
+                            .push_f32(auto_val::decode_f32(a_bits) - auto_val::decode_f32(b_bits));
+                    } else if auto_val::is_f32(a_bits) || auto_val::is_f32(b_bits) {
+                        // Plan 576: f32×int 混算按 tag 解码（int 按值转 f32）。
+                        let a = nanbox_single_to_f32(a_bits);
+                        let b = nanbox_single_to_f32(b_bits);
+                        task.ram.push_f32(a - b);
+                    } else {
+                        // PLAN-026 T-03 配套: i64 参与时按 i64 值算并
+                        // push_i64(纯 i32 对保持 i32 通路,既有程序零变化);
+                        // 此前 i64 位模式被 decode_i32 = 垃圾(i64_probe2
+                        // "mix sum=63" 实证)。
+                        if auto_val::is_i64(a_bits) || auto_val::is_i64(b_bits) {
+                            let a = Self::nv_int_as_i64(a_bits);
+                            let b = Self::nv_int_as_i64(b_bits);
+                            task.ram.push_i64(a.wrapping_sub(b));
+                        } else {
+                            let a = auto_val::decode_i32(a_bits);
+                            let b = auto_val::decode_i32(b_bits);
+                            task.ram.push_i32(a.wrapping_sub(b));
+                        }
+                    }
+                }
+            }
+            OpCode::MUL => {
+                // Plan 539 W1 (T10): py-handle operands route to the
+                // Python dunder (arms stay one-liners to bound the
+                // recursive frame size — see the aavm2 overflow note).
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_arith("__mul__", "__rmul__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("*")?;
+                    if a_is_f64 && b_is_f64 {
+                        task.ram
+                            .push_f64(f64::from_bits(a_bits) * f64::from_bits(b_bits));
+                    } else if a_is_f64 || b_is_f64 {
+                        let a = if a_is_f64 {
+                            f64::from_bits(a_bits)
+                        } else {
+                            nanbox_single_to_f64(a_bits)
+                        };
+                        let b = if b_is_f64 {
+                            f64::from_bits(b_bits)
+                        } else {
+                            nanbox_single_to_f64(b_bits)
+                        };
+                        task.ram.push_f64(a * b);
+                    } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
+                        task.ram
+                            .push_f32(auto_val::decode_f32(a_bits) * auto_val::decode_f32(b_bits));
+                    } else if auto_val::is_f32(a_bits) || auto_val::is_f32(b_bits) {
+                        // Plan 576: f32×int 混算按 tag 解码（int 按值转 f32）。
+                        let a = nanbox_single_to_f32(a_bits);
+                        let b = nanbox_single_to_f32(b_bits);
+                        task.ram.push_f32(a * b);
+                    } else {
+                        // PLAN-026 T-03 配套: i64 参与时按 i64 值算并
+                        // push_i64(纯 i32 对保持 i32 通路,既有程序零变化);
+                        // 此前 i64 位模式被 decode_i32 = 垃圾(i64_probe2
+                        // "mix sum=63" 实证)。
+                        if auto_val::is_i64(a_bits) || auto_val::is_i64(b_bits) {
+                            let a = Self::nv_int_as_i64(a_bits);
+                            let b = Self::nv_int_as_i64(b_bits);
+                            task.ram.push_i64(a.wrapping_mul(b));
+                        } else {
+                            let a = auto_val::decode_i32(a_bits);
+                            let b = auto_val::decode_i32(b_bits);
+                            task.ram.push_i32(a.wrapping_mul(b));
+                        }
+                    }
+                }
+            }
+            OpCode::DIV => {
+                // Plan 539 W1 (T10): py-handle operands route to the
+                // Python dunder (arms stay one-liners to bound the
+                // recursive frame size — see the aavm2 overflow note).
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_arith("__truediv__", "__rtruediv__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let ((a_bits, a_is_f64), (b_bits, b_is_f64)) =
+                        task.ram.pop_arith_pair_non_null("/")?;
+                    if a_is_f64 && b_is_f64 {
+                        let b = f64::from_bits(b_bits);
+                        if b == 0.0 {
+                            return Err(VMError::DivisionByZero);
+                        }
+                        task.ram.push_f64(f64::from_bits(a_bits) / b);
+                    } else if a_is_f64 || b_is_f64 {
+                        let a = if a_is_f64 {
+                            f64::from_bits(a_bits)
+                        } else {
+                            nanbox_single_to_f64(a_bits)
+                        };
+                        let b = if b_is_f64 {
+                            f64::from_bits(b_bits)
+                        } else {
+                            nanbox_single_to_f64(b_bits)
+                        };
+                        if b == 0.0 {
+                            return Err(VMError::DivisionByZero);
+                        }
+                        task.ram.push_f64(a / b);
+                    } else if auto_val::is_f32(a_bits) && auto_val::is_f32(b_bits) {
+                        let b = auto_val::decode_f32(b_bits);
+                        if b == 0.0 {
+                            return Err(VMError::DivisionByZero);
+                        }
+                        task.ram.push_f32(auto_val::decode_f32(a_bits) / b);
+                    } else if auto_val::is_f32(a_bits) || auto_val::is_f32(b_bits) {
+                        // Plan 576: f32×int 混算按 tag 解码（int 按值转 f32）。
+                        let a = nanbox_single_to_f32(a_bits);
+                        let b = nanbox_single_to_f32(b_bits);
+                        if b == 0.0 {
+                            return Err(VMError::DivisionByZero);
+                        }
+                        task.ram.push_f32(a / b);
+                    } else {
+                        let a = auto_val::decode_i32(a_bits);
+                        let b = auto_val::decode_i32(b_bits);
+                        if b == 0 {
+                            return Err(VMError::DivisionByZero);
+                        }
+                        task.ram.push_i32(a.wrapping_div(b));
+                    }
+                }
+            }
+
+            // === Control Flow ===
+            OpCode::NEG => {
+                // Plan 539 W1 (T10): py-handle unary minus dunder.
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_neg(task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let (a_bits, a_is_f64) = task.ram.pop_arith_operand_non_null("-")?;
+                    if a_is_f64 {
+                        task.ram.push_f64(-f64::from_bits(a_bits));
+                    } else if auto_val::is_f32(a_bits) {
+                        task.ram.push_f32(-auto_val::decode_f32(a_bits));
+                    } else {
+                        task.ram
+                            .push_i32(auto_val::decode_i32(a_bits).wrapping_neg());
+                    }
+                }
+            }
+
+            // Plan 073 Stage A: Floating-point arithmetic (f32)
+            OpCode::ADD_F => {
+                null_guard_peek_pair(task, "+")?;
+                let b = pop_f32_operand(task);
+                let a = pop_f32_operand(task);
+                task.ram.push_f32(a + b);
+                task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
+            }
+            OpCode::SUB_F => {
+                null_guard_peek_pair(task, "-")?;
+                let b = pop_f32_operand(task);
+                let a = pop_f32_operand(task);
+                task.ram.push_f32(a - b);
+                task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
+            }
+            OpCode::MUL_F => {
+                null_guard_peek_pair(task, "*")?;
+                let b = pop_f32_operand(task);
+                let a = pop_f32_operand(task);
+                task.ram.push_f32(a * b);
+                task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
+            }
+            OpCode::DIV_F => {
+                null_guard_peek_pair(task, "/")?;
+                let b = pop_f32_operand(task);
+                let a = pop_f32_operand(task);
+                if b == 0.0 {
+                    return Err(VMError::DivisionByZero);
+                }
+                task.ram.push_f32(a / b);
+                task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
+            }
+            OpCode::NEG_F => {
+                null_guard_peek_unary(task, "-")?;
+                let a = pop_f32_operand(task);
+                task.ram.push_f32(-a);
+                task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
+            }
+
+            // Plan 073 Stage A: Double precision arithmetic (f64)
+            OpCode::ADD_D => {
+                null_guard_peek_pair(task, "+")?;
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_f64(a + b);
+                task.last_result_type = ResultType::Float; // Plan 403-F: mark f64 result
+            }
+            OpCode::SUB_D => {
+                null_guard_peek_pair(task, "-")?;
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_f64(a - b);
+                task.last_result_type = ResultType::Float;
+            }
+            OpCode::MUL_D => {
+                null_guard_peek_pair(task, "*")?;
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_f64(a * b);
+                task.last_result_type = ResultType::Float;
+            }
+            OpCode::DIV_D => {
+                null_guard_peek_pair(task, "/")?;
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                if b == 0.0 {
+                    return Err(VMError::DivisionByZero);
+                }
+                task.ram.push_f64(a / b);
+                task.last_result_type = ResultType::Float;
+            }
+            OpCode::MOD => {
+                // Plan 539 W1 (T10): py-handle operands route to the
+                // Python dunder (arms stay one-liners to bound the
+                // recursive frame size — see the aavm2 overflow note).
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_arith("__mod__", "__rmod__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                null_guard_peek_pair(task, "%")?;
+                // PLAN-026 T-03 配套: 宽整取模(i32/i64 tag 归一;含
+                // i64 时 push_i64,纯 i32 对保持 i32 通路)。
+                let b_nv = task.ram.pop_nv();
+                let a_nv = task.ram.pop_nv();
+                let a = Self::nv_int_as_i64(a_nv);
+                let b = Self::nv_int_as_i64(b_nv);
+                if b == 0 {
+                    return Err(VMError::DivisionByZero);
+                }
+                if auto_val::is_i64(a_nv) || auto_val::is_i64(b_nv) {
+                    task.ram.push_i64(a % b);
+                } else {
+                    task.ram.push_i32((a % b) as i32);
+                }
+            }
+            OpCode::MOD_F => {
+                null_guard_peek_pair(task, "%")?;
+                let b = task.ram.pop_f32();
+                let a = task.ram.pop_f32();
+                task.ram.push_f32(a % b);
+            }
+            OpCode::MOD_D => {
+                null_guard_peek_pair(task, "%")?;
+                let b = task.ram.pop_f64();
+                let a = task.ram.pop_f64();
+                task.ram.push_f64(a % b);
+                task.last_result_type = ResultType::Float;
+            }
+            OpCode::NEG_D => {
+                null_guard_peek_unary(task, "-")?;
+                let a = task.ram.pop_f64();
+                task.ram.push_f64(-a);
+                task.last_result_type = ResultType::Float;
+            }
+
+            // 64-bit integer arithmetic (Plan 377: u64/i64 now 1 slot; heap-aware for full range)
+            OpCode::ADD_U64 => {
+                null_guard_peek_pair(task, "+")?;
+                let b = self.pop_u64_vm(task);
+                let a = self.pop_u64_vm(task);
+                self.push_u64_vm(task, a.wrapping_add(b));
+            }
+            OpCode::SUB_U64 => {
+                null_guard_peek_pair(task, "-")?;
+                let b = self.pop_u64_vm(task);
+                let a = self.pop_u64_vm(task);
+                self.push_u64_vm(task, a.wrapping_sub(b));
+            }
+            OpCode::MUL_U64 => {
+                null_guard_peek_pair(task, "*")?;
+                let b = self.pop_u64_vm(task);
+                let a = self.pop_u64_vm(task);
+                self.push_u64_vm(task, a.wrapping_mul(b));
+            }
+            OpCode::DIV_U64 => {
+                null_guard_peek_pair(task, "/")?;
+                let b = self.pop_u64_vm(task);
+                let a = self.pop_u64_vm(task);
+                if b == 0 {
+                    return Err(VMError::DivisionByZero);
+                }
+                self.push_u64_vm(task, a / b);
+            }
+            OpCode::MOD_U64 => {
+                null_guard_peek_pair(task, "%")?;
+                let b = self.pop_u64_vm(task);
+                let a = self.pop_u64_vm(task);
+                if b == 0 {
+                    return Err(VMError::DivisionByZero);
+                }
+                self.push_u64_vm(task, a % b);
+            }
+
+            // Plan 117: Type coercion for mixed arithmetic
+            OpCode::I32_TO_F32 => {
+                // Plan 502 M3: tag 驱动——值已是 float-tag(如泛型 List
+                // 元素经 GET_ELEM 的运行时 float)时直接透传。此前
+                // pop_i32 无视标签把 f32 位模式当整数做数值转换
+                // (`var x float = list[i]` 的 168.0 写入读回 ~1.12e9,
+                // diagram 布局坐标整体位漂移的根因)。
+                let nv = task.ram.pop_nv();
+                if auto_val::is_f32(nv) {
+                    task.ram.push_nv(nv);
+                } else {
+                    let val = auto_val::decode_i32(nv);
+                    task.ram.push_f32(val as f32);
+                }
+                task.last_result_type = ResultType::Float; // Plan 117/118: Mark result as float
+            }
+            OpCode::I64_TO_F64 => {
+                let val = self.pop_i64_vm(task);
+                task.ram.push_f64(val as f64);
+                task.last_result_type = ResultType::Float;
+            }
+            OpCode::U64_TO_F64 => {
+                let val = self.pop_u64_vm(task);
+                task.ram.push_f64(val as f64);
+                task.last_result_type = ResultType::Float;
+            }
+
+            OpCode::NOT => {
+                let nv = task.ram.pop_nv();
+                task.ram.push_nv(auto_val::encode_bool(!nv_truthy(nv)));
+            }
+            OpCode::CALL => {
+                vm_debug!("DEBUG CALL: Stack depth before = {}", task.ram.sp);
+                // Print stack before CALL
+                if task.ram.sp > 0 {
+                    vm_debug!("DEBUG CALL: Stack[0] = {}", task.ram.read_i32(0));
+                }
+
+                let target = self.flash.read_u32(task.ip) as usize;
+                vm_debug!("DEBUG CALL: Calling function at address 0x{:04x}", target);
+                task.ip += 4;
+
+                // Plan 317: Generator short-circuit. If the callee is a
+                // generator function (contains YIELD_VAL), don't execute
+                // its body inline — create an Iterator::Generator and push
+                // its id, just like call_fn_by_name does. This makes
+                // `fn handler() ~Iter<int> { counter() }` (indirect call)
+                // work the same as inline yield, so SSE detection fires on
+                // the returned iter_id. The generator body runs lazily on
+                // the first next() (shim_iterator_next).
+                if self.is_generator_fn(target) {
+                    // Plan 417-D2: parameterized generators. The callee's
+                    // real arg count is in its FN_PROLOG header (byte at
+                    // target+1); n_args used to come from the CALLER's
+                    // current_fn_n_args (best-effort, wrong for any call
+                    // with args) and the CALL-pushed args stayed on the
+                    // caller stack, never reaching the generator task —
+                    // parameterized generators crashed at RET (bp-n_args
+                    // underflow) and read garbage params. Pop the args
+                    // into stack_snapshot (declaration order); the first
+                    // next() seeds them below the generator frame.
+                    let real_n_args = self.flash.read_u8(target + 1) as usize;
+                    let mut arg_nvs = Vec::with_capacity(real_n_args);
+                    for _ in 0..real_n_args {
+                        arg_nvs.push(task.ram.pop_nv());
+                    }
+                    arg_nvs.reverse();
+                    let gen_state = GeneratorState {
+                        task_id: None,
+                        func_addr: target as u32,
+                        n_args: real_n_args as u8,
+                        started: false,
+                        done: false,
+                        resume_ip: 0,
+                        resume_bp: 0,
+                        resume_sp: 0,
+                        stack_snapshot: arg_nvs,
+                    };
+                    let next_id = self
+                        .iterator_id_gen
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    self.iterators
+                        .insert(next_id, Iterator::Generator(gen_state));
+                    task.ram.push_i32(next_id as i32);
+                    return Ok(StepResult::Continue);
+                }
+
+                // Push Return Address (IP)
+                task.ram.push_i32(task.ip as i32);
+                // Push Old Stack Frame (BP)
+                task.ram.push_i32(task.bp as i32);
+
+                // New BP points to the saved BP location (SP - 1)
+                task.bp = task.ram.sp - 1;
+                // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+                task.push_frame_id(task.bp);
+
+                // Plan 199 Phase 7: Resolve function name from address
+                let fn_name = self.flash.addr_to_name.get(&(target as u32)).cloned();
+
+                // Plan 199: Push structured call frame for debugging
+                // Save current function metadata for restoration on RET
+                let saved_n_args = task.current_fn_n_args;
+                let saved_n_locals = task.current_fn_n_locals;
+                task.call_stack.push(crate::vm::task::CallFrame {
+                    return_ip: task.ip,
+                    old_bp: task.bp,
+                    fn_name,
+                    line: task.current_line,
+                    old_fn_n_args: saved_n_args,
+                    old_fn_n_locals: saved_n_locals,
+                });
+
+                vm_debug!(
+                    "DEBUG CALL: Stack depth after setup = {}, BP = {}",
+                    task.ram.sp,
+                    task.bp
+                );
+                vm_debug!(
+                    "DEBUG CALL: Stack[0] = {}, [1] = {}, [2] = {}",
+                    task.ram.read_i32(0),
+                    task.ram.read_i32(1),
+                    task.ram.read_i32(2)
+                );
+
+                // Jump
+                task.ip = target;
+            }
+            OpCode::CALL_SPEC => {
+                // Dynamic dispatch via spec vtable
+                // Reads: method_name string index (u32), arg_count (u8)
+                // Stack: [..., receiver, arg0, arg1, ..., argN-1]
+                let method_name_idx = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+                let arg_count = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                // Get method name from string pool
+                let method_name = self
+                    .strings
+                    .read()
+                    .unwrap()
+                    .get(method_name_idx)
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .unwrap_or_default();
+                // The receiver is at stack position sp - arg_count - 1
+                // (args are on top, receiver is below them)
+                let sp = task.ram.sp;
+                let receiver_pos = if sp >= arg_count + 1 {
+                    sp - arg_count - 1
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "CALL_SPEC '{}' stack underflow: sp={} arg_count={}",
+                        method_name, sp, arg_count
+                    )));
+                };
+
+                let (receiver_nv, receiver_pos) = {
+                    let nv = task.ram.read_nv(receiver_pos);
+                    // In nanbox mode, if receiver_pos landed on a null marker
+                    // (2nd slot of a 2-slot string arg), the actual receiver
+                    // is one position earlier.
+                    if auto_val::is_null(nv) && receiver_pos > 0 {
+                        let prev_nv = task.ram.read_nv(receiver_pos - 1);
+                        if auto_val::is_string(prev_nv) || auto_val::is_i32(prev_nv) {
+                            (prev_nv, receiver_pos - 1)
+                        } else {
+                            (nv, receiver_pos)
+                        }
+                    } else {
+                        (nv, receiver_pos)
+                    }
+                };
+                let receiver_nv = receiver_nv;
+
+                // Plan 446 批二 E1/E2: HTTP response-handle 访问器兜底。
+                // http.get / builder .send() 返回的是 HTTP_RESPONSES
+                // (stdlib 线程本地表)里的裸句柄,不是堆对象;静态类型在多语境
+                // 推断坍缩后,`.status()/.body()/.header(k)` 到达 CALL_SPEC 时
+                // 既无静态 native 名也无堆 tag 可分派——此前落入未定义调用
+                // 的静默兜底:哨兵值(os-config E1 现场)、栈槽被吞导致后续任何
+                // http 调用栈下溢崩溃(E2 现场同根)。
+                // 判定收窄到"小正整数句柄且不在堆上、但命中 response 表",
+                // 服务端 Response 构建链(堆对象)与普通 int 方法不受影响。
+                // PLAN-776 R1-F06：receiver 双形态——client int 句柄（查表面）
+                // 或 **Response 凭据对象**（快照面——read_response_payload 内
+                // owner 校验分流）。对象臂 Some(0) 仅作"走 shim"标志（shim 按
+                // 栈上原 receiver nv 分流，不消费该值）。
+                let receiver_is_credential = auto_val::is_object(receiver_nv)
+                    && self
+                        .heap_objects
+                        .get(&(auto_val::decode_object(receiver_nv) as u64))
+                        .map(|o| {
+                            o.read()
+                                .map(|g| {
+                                    g.type_tag()
+                                        == crate::vm::heap_object::TypeTag::HttpReturnResource
+                                })
+                                .unwrap_or(false)
+                        })
+                        .unwrap_or(false);
+                let http_response_handle = match method_name.as_str() {
+                    "status" | "status_code" | "body" | "body_bytes" | "body_to_file"
+                    | "header" | "header_get"
+                        if arg_count <= 2 && receiver_is_credential =>
+                    {
+                        Some(0i32)
+                    }
+                    "status" | "status_code" | "body" | "body_bytes" | "body_to_file"
+                    | "header" | "header_get"
+                        if arg_count <= 2 && auto_val::is_i32(receiver_nv) =>
+                    {
+                        let h = auto_val::decode_i32(receiver_nv);
+                        let is_heap = h > 0 && self.heap_objects.contains_key(&(h as u64));
+                        if h > 0
+                            && !is_heap
+                            && crate::vm::ffi::stdlib::lookup_http_response(h as u64).is_some()
+                        {
+                            Some(h)
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
+                };
+                if let Some(handle) = http_response_handle {
+                    let shim_id = match (method_name.as_str(), arg_count) {
+                        ("status", 0) | ("status_code", 0) => {
+                            crate::vm::ffi::stdlib::NATIVE_RESPONSE_STATUS_CODE
+                        }
+                        ("body", 0) => crate::vm::ffi::stdlib::NATIVE_RESPONSE_BODY,
+                        // plan-022 (auto-down D4): byte-faithful accessor
+                        ("body_bytes", 0) => crate::vm::ffi::stdlib::NATIVE_RESPONSE_BODY_BYTES,
+                        ("body_to_file", 1) => crate::vm::ffi::stdlib::NATIVE_RESPONSE_BODY_TO_FILE,
+                        ("header", 1) | ("header_get", 1) => {
+                            crate::vm::ffi::stdlib::NATIVE_RESPONSE_HEADER_GET
+                        }
+                        _ => u16::MAX,
+                    };
+                    if shim_id != u16::MAX {
+                        if let Some(shim) = self.native_interface.get(shim_id).cloned() {
+                            return shim(task, self).map(|_| StepResult::Continue);
+                        }
+                    }
+                }
+
+                // Plan 446 批二 E2: RequestBuilder 链的 CALL_SPEC 拦截 +
+                // Yield 协议同步完成。链式 .header/.body/.timeout/.send 以
+                // "RequestBuilder.X" 到达本处;若落入 exports 声明Stub/其它
+                // 兜底臂,send 置位的 waiting_http_request_id 无人消费——
+                // 之后任何 CALL_NAT(如 .status() 查询)撞上 stale 标记即
+                // 无限 rewind+Yield(现场"send 后同作用域 http 调用崩溃/
+                // 挂死"的协议级根因,轨迹实证 826K 次自旋)。
+                // 处理:精确判定"接收者堆对象 tag == RequestBuilder"后直调
+                // shim 支撑的 native;send 的异步语义在本路径无调度器配合,
+                // 以同步 drain 完成——轮询结果就绪后触发 shim 重入(清位+
+                // 推柄),保持 waiting 标记零残留。
+                if matches!(
+                    method_name.as_str(),
+                    "header" | "body" | "timeout" | "json" | "send"
+                ) && arg_count <= 2
+                {
+                    // PLAN-705 T-03: 段模式重入臂——yield 后 rewind 重
+                    // firing 的 .send()。receiver 已在首轮被 shim 消费
+                    // （堆对象已移除、栈槽已弹出），下方 receiver 探测
+                    // 必然落空；`waiting_http_request_id` 即重入凭据
+                    // （与 CALL_NAT 的 shim 重入协议同构）。结果已就绪
+                    // → shim 重入臂消费并 Continue；仍未就绪 → 再让步
+                    // park（链式等待）。
+                    if method_name == "send" && task.waiting_http_request_id.is_some() {
+                        if let Some(shim) = self
+                            .native_interface
+                            .get(crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_SEND)
+                            .cloned()
+                        {
+                            shim(task, self)?;
+                            if task.waiting_http_request_id.is_some() {
+                                if std::env::var_os("AUTO_DEBUG_G9").is_some() {
+                                    eprintln!(
+                                        "[G9] re-fire not-ready: ip={:#x} sp={} bp={}",
+                                        task.ip, task.ram.sp, task.bp
+                                    );
+                                }
+                                task.ip -= 6; // CALL_SPEC = 1 op + 4 idx + 1 count
+                                return Ok(StepResult::Yield);
+                            }
+                            if std::env::var_os("AUTO_DEBUG_G9").is_some() {
+                                eprintln!(
+                                    "[G9] re-fire CONSUMED result: ip={:#x} sp={} bp={}",
+                                    task.ip, task.ram.sp, task.bp
+                                );
+                            }
+                            return Ok(StepResult::Continue);
+                        }
+                    }
+                    let rb_heap_id = if auto_val::is_object(receiver_nv) {
+                        Some(auto_val::decode_object(receiver_nv) as u64)
+                    } else if auto_val::is_i32(receiver_nv) {
+                        let v = auto_val::decode_i32(receiver_nv);
+                        if v > 0 {
+                            Some(v as u64)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    let is_builder = rb_heap_id
+                        .and_then(|id| self.heap_objects.get(&id))
+                        .map(|o| o.read().unwrap().type_tag().name() == "RequestBuilder")
+                        .unwrap_or(false);
+                    if is_builder {
+                        const RB_NONE: u16 = u16::MAX;
+                        let shim_id = match (method_name.as_str(), arg_count) {
+                            ("header", 2) => {
+                                crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_HEADER
+                            }
+                            ("body", 1) => crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_BODY,
+                            ("timeout", 1) => {
+                                crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_TIMEOUT
+                            }
+                            ("json", 1) => crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_JSON,
+                            ("send", 0) => crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_SEND,
+                            _ => RB_NONE,
+                        };
+                        if shim_id != RB_NONE {
+                            if let Some(shim) = self.native_interface.get(shim_id).cloned() {
+                                shim(task, self)?;
+                                if shim_id
+                                    == crate::vm::ffi::stdlib::NATIVE_HTTP_REQUEST_BUILDER_SEND
+                                {
+                                    // Yield 协议同步完成:首轮 shim 已 spawn 并置位
+                                    // waiting;轮询就绪后重入(清位+推柄)。
+                                    if let Some(req_id) = task.waiting_http_request_id {
+                                        if task.segment_no_busy_wait {
+                                            // PLAN-705 T-03: 段模式退役同步
+                                            // drain——rewind 至 CALL_SPEC 指令
+                                            // 起点（1 opcode + 4 name_idx +
+                                            // 1 arg_count = 6 字节）并 Yield，
+                                            // 段驱动 park 成 HttpRequest；恢复
+                                            // 时重 firing 的 CALL_SPEC 走 shim
+                                            // 重入臂消费结果（等待零占线程）。
+                                            task.ip -= 6;
+                                            return Ok(StepResult::Yield);
+                                        }
+                                        let deadline = std::time::Instant::now()
+                                            + std::time::Duration::from_secs(30);
+                                        // PLAN-026 T-04: 同构忙等段预算计。
+                                        let mut budget_waits: u64 = 0;
+                                        let budget_start = std::time::Instant::now();
+                                        while !crate::vm::ffi::stdlib::async_http_result_ready(
+                                            req_id,
+                                        ) {
+                                            if std::time::Instant::now() > deadline {
+                                                task.waiting_http_request_id = None;
+                                                // PLAN-027 缺陷 A:同构超时回收
+                                                //(与 call_fn_by_name drain 臂同修)。
+                                                crate::vm::ffi::stdlib::drop_async_result(req_id);
+                                                return Err(VMError::RuntimeError(
+                                                        "http request-builder send timed out (plan-446 E2)".into(),
+                                                    ));
+                                            }
+                                            std::thread::sleep(std::time::Duration::from_millis(5));
+                                            budget_waits += 1;
+                                        }
+                                        Self::api_budget_accumulate(
+                                            budget_waits,
+                                            budget_start.elapsed(),
+                                        );
+                                        shim(task, self)?;
+                                    }
+                                }
+                                return Ok(StepResult::Continue);
+                            }
+                        }
+                    }
+                }
+
+                // 2026-08-28 勘误注记: 最初版拦截缺上面的同步 drain,曾致
+                // 挂死;已由带协议完成的版本取代,勿回退。
+
+                // PLAN-044: unwrap_or 的坍缩 Option 协议——非 null 接收者
+                // 即 Some(v),unwrap_or(d) = 恒等(丢默认值参);null 接收者
+                // 由 None 协议臂接管(mpsc/stream 失败前 intercept)。
+                if method_name == "unwrap_or" && arg_count == 1 && !auto_val::is_null(receiver_nv) {
+                    let _default_arg = task.ram.pop_nv();
+                    let recv = task.ram.pop_nv();
+                    task.ram.push_nv(recv);
+                    return Ok(StepResult::Continue);
+                }
+
+                // Plan 442 C2: `.ok()` 恒等直通 —— rust 形态 Result 语义的
+                // VM-native 约定:返回 Result 的 stdlib shim(env.var 等)在
+                // 生产者边界坍缩为 Option 形状(None=TAG_NULL / Some(v)=v 本身),
+                // 调用方的 Rust 式 `.ok()` 链步因此是纯透传(与 codegen 侧
+                // .unwrap()/.expect() 的 opaque 透明直通同构)。任何接收者形
+                // 态一致透传;未知方法在别处的既有行为不变。
+                if arg_count == 0 && method_name == "ok" {
+                    let nv = task.ram.pop_nv();
+                    task.ram.push_nv(nv);
+                    return Ok(StepResult::Continue);
+                }
+
+                // 2026-08-22(方法链修复):标量接收者的内建方法兜底。
+                // 链式调用 `l.len().str()` 中前一方法返回普通 i32/f64/bool
+                // 标量;此前 i32>0 被一律按堆对象 id 解析(heap 无此 id →
+                // <unknown:N>.str → 派发失败静默推 None —— 列表方法链
+                // 串成垃圾串/None 的根因)。与 TYPE_TO_STR 同款格式化。
+                if arg_count == 0 && matches!(method_name.as_str(), "str" | "to_string") {
+                    let scalar_str: Option<String> = if auto_val::is_bool(receiver_nv) {
+                        Some(if auto_val::decode_bool(receiver_nv) {
+                            "true".to_string()
+                        } else {
+                            "false".to_string()
+                        })
+                    } else if auto_val::is_f64(receiver_nv) {
+                        Some(format!("{}", auto_val::decode_f64(receiver_nv)))
+                    } else if auto_val::is_f32(receiver_nv) {
+                        Some(format!("{}", auto_val::decode_f32(receiver_nv)))
+                    } else if auto_val::is_i64(receiver_nv) {
+                        // PLAN-026 T-03 配套: i64 标量串化(tag 8 此前
+                        // 缺分支,接收者落 heap 查找路径 = 垃圾串;
+                        // i64_probe "tab 2"/"sum=63" 实证)。
+                        Some(format!("{}", auto_val::decode_i64(receiver_nv)))
+                    } else if auto_val::is_i32(receiver_nv) {
+                        let v = auto_val::decode_i32(receiver_nv);
+                        if v >= 4_000_000 {
+                            None
+                        } else {
+                            Some(format!("{}", v))
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(s) = scalar_str {
+                        // 栈:[receiver] → [str 结果](argc=0,receiver 即栈顶)
+                        task.ram.pop_nv();
+                        let idx = self.add_string(s.into_bytes());
+                        self.rc_push_str_idx(task, idx as usize);
+                        return Ok(StepResult::Continue);
+                    }
+                }
+
+                // Look up the object's type name from all registries
+                let type_name = if auto_val::is_string(receiver_nv) {
+                    let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                    let s = self
+                        .strings
+                        .read()
+                        .unwrap()
+                        .get(str_idx)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_default();
+                    // Check if this string is a type name by looking up "TypeName.method" in exports.
+                    // This handles user-defined types (Settings.load, Agent.new, etc.) that
+                    // the static call types list below can't cover.
+                    let candidate = format!("{}.{}", s, method_name);
+                    if self.flash.exports_by_name.contains_key(&candidate) {
+                        s
+                    } else {
+                        // Fallback: check known crate type names pushed by codegen for static calls.
+                        const STATIC_CALL_TYPES: &[&str] = &[
+                            "Command",
+                            "Stdio",
+                            "Writer",
+                            "Reader",
+                            "ReaderBuilder",
+                            "WriterBuilder",
+                            "StringRecord",
+                            "ThreadRng",
+                            "Complex",
+                            "BigInt",
+                            "Normal",
+                            "Rng",
+                            "WalkDir",
+                            "Instant",
+                            "Duration",
+                            "OnceCell",
+                            "Regex",
+                            "Url",
+                            "Version",
+                            "RefCell",
+                            "Child",
+                            "File",
+                            "FileWriter",
+                            "PathBuf",
+                            "String",
+                            "Vec",
+                        ];
+                        if STATIC_CALL_TYPES.contains(&s.as_str()) {
+                            s
+                        } else {
+                            "str".to_string()
+                        }
+                    }
+                } else if auto_val::is_i32(receiver_nv) {
+                    let receiver = auto_val::decode_i32(receiver_nv);
+                    if receiver > 0 {
+                        let obj_key = receiver as u64;
+                        if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
+                            let guard = obj_lock.read().unwrap();
+                            if let Some(inst) = guard
+                                .as_any()
+                                .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>(
+                            ) {
+                                inst.mono_name
+                                    .split('_')
+                                    .next()
+                                    .unwrap_or(&inst.mono_name)
+                                    .to_string()
+                            } else if guard
+                                .as_any()
+                                .downcast_ref::<crate::vm::types::ObjectData>()
+                                .is_some()
+                            {
+                                // Plan 390 §15 H3b: obj literals are ObjectData
+                                // in heap_objects — keep the "HashMap" type name
+                                // so .set/.get/.len dispatch to auto.hashmap.
+                                "HashMap".to_string()
+                            } else {
+                                let tag_name = guard.type_tag().name();
+                                tag_name.split('<').next().unwrap_or(&tag_name).to_string()
+                            }
+                        } else {
+                            format!("<unknown:{}>", obj_key)
+                        }
+                    } else if auto_val::is_null(receiver_nv) {
+                        "Option".to_string()
+                    } else if receiver == -1 {
+                        "Option".to_string()
+                    } else {
+                        format!("<invalid_i32:{}>", receiver)
+                    }
+                } else if auto_val::is_null(receiver_nv) {
+                    "None".to_string()
+                } else if auto_val::is_object(receiver_nv) {
+                    let obj_key = auto_val::decode_object(receiver_nv) as u64;
+                    if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
+                        let guard = obj_lock.read().unwrap();
+                        if let Some(inst) = guard
+                            .as_any()
+                            .downcast_ref::<crate::vm::generic_registry::GenericInstanceData>(
+                        ) {
+                            inst.mono_name
+                                .split('_')
+                                .next()
+                                .unwrap_or(&inst.mono_name)
+                                .to_string()
+                        } else if guard
+                            .as_any()
+                            .downcast_ref::<crate::vm::types::ObjectData>()
+                            .is_some()
+                        {
+                            // Plan 390 §15 H3b: ObjectData → "HashMap" (see above).
+                            "HashMap".to_string()
+                        } else {
+                            let tag_name = guard.type_tag().name();
+                            tag_name.split('<').next().unwrap_or(&tag_name).to_string()
+                        }
+                    } else {
+                        format!("<unknown_obj:{}>", obj_key)
+                    }
+                } else {
+                    format!("<unknown_nv:{:016x}>", receiver_nv)
+                };
+
+                // Construct function name: TypeName.method
+                let func_name = format!("{}.{}", type_name, method_name);
+                if method_name == "push" || method_name == "len" {}
+
+                // Plan 212 Phase 2.2: .unwrap() and similar on opaque handles is identity
+                // (constructors already handle errors by raising VMError)
+                // first_or_octet_stream: mime shim already resolves the value
+                let is_identity_unwrap = matches!(
+                    method_name.as_str(),
+                    "unwrap" | "expect" | "first_or_octet_stream" | "first"
+                );
+
+                // Plan 249 Phase 4: Unified opaque dispatch via native_catalog
+                let opaque_native_name = crate::vm::native_catalog::lookup_opaque_dispatch_by_type(
+                    type_name.as_str(),
+                    method_name.as_str(),
+                );
+
+                // Resolve opaque native shim
+                let opaque_native_id = opaque_native_name
+                    .as_ref()
+                    .and_then(|name| self.native_interface.resolve(name));
+
+                // PLAN-053 P-053-6: web 生态 Regex 静态形态——
+                // `Regex.replace(text, pat, repl, flags)` / `Regex.test(text, pat)`
+                // （musk forge_helpers/mention_helpers 的消息渲染链）。原仅
+                // OPAQUE_DISPATCH_REGEX_METHODS 的实例方法（is_match/
+                // replace_all…）可解析，静态形态落兜底报错 → 消息正文整体空。
+                let regex_static_native_id =
+                    if type_name == "Regex" && matches!(method_name.as_str(), "replace" | "test") {
+                        self.native_interface
+                            .resolve(&format!("auto.regex.{}", method_name))
+                    } else {
+                        None
+                    };
+
+                // Plan 240: Math method dispatch for CALL_SPEC
+                // Handles chained expressions like (a-b).to_radians() where type inference fails
+                const CALL_SPEC_MATH_METHODS: &[&str] = &[
+                    "sin",
+                    "cos",
+                    "tan",
+                    "sqrt",
+                    "abs",
+                    "floor",
+                    "ceil",
+                    "round",
+                    "pow",
+                    "powf",
+                    "powi",
+                    "exp",
+                    "ln",
+                    "log2",
+                    "log10",
+                    "signum",
+                    "asin",
+                    "acos",
+                    "atan",
+                    "atan2",
+                    "to_radians",
+                    "to_degrees",
+                ];
+                let math_native_id = if CALL_SPEC_MATH_METHODS.contains(&method_name.as_str()) {
+                    let math_name = format!("auto.math.{}", method_name);
+                    self.native_interface.resolve(&math_name)
+                } else {
+                    None
+                };
+
+                // Look up function address in exports first
+                if is_identity_unwrap {
+                    // Do nothing — receiver stays on stack, no args to pop
+                } else if let Some(&addr) = self.flash.exports_by_name.get(&func_name) {
+                    // Standard CALL sequence: push return address, old BP, set new BP, jump
+                    task.ram.push_i32(task.ip as i32);
+                    task.ram.push_i32(task.bp as i32);
+                    task.bp = task.ram.sp - 1;
+                    // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+                    task.push_frame_id(task.bp);
+                    task.ip = addr as usize;
+                    // Plan 417-E3: push a CallFrame exactly like regular
+                    // CALL — the callee's RET pops one to restore
+                    // current_fn_n_args/current_fn_n_locals. Without this
+                    // frame the CALLER's frame is popped instead, and
+                    // LOAD_LOCAL param addressing (which reads
+                    // current_fn_n_args) degrades to the null guard —
+                    // e.g. the second receiver load in
+                    // `a.cmp(0) >= b.cmp(0)` pushed null.
+                    let fn_name = self.flash.addr_to_name.get(&(addr as u32)).cloned();
+                    let saved_n_args = task.current_fn_n_args;
+                    let saved_n_locals = task.current_fn_n_locals;
+                    task.call_stack.push(crate::vm::task::CallFrame {
+                        return_ip: task.ip,
+                        old_bp: task.bp,
+                        fn_name,
+                        line: task.current_line,
+                        old_fn_n_args: saved_n_args,
+                        old_fn_n_locals: saved_n_locals,
+                    });
+                } else if let Some(native_id) = regex_static_native_id {
+                    // PLAN-053 P-053-6: web 生态 Regex 静态形态
+                    // （Regex.replace/test）。CALL_SPEC 布局
+                    // [..., recv, arg0..argN-1] → shim 按 CALL_NAT 约定
+                    // 只吃实参：实参弹出暂存 → 弃接收者 → 实参回栈 →
+                    // 执行（结果由 shim 压回，无额外清理）。
+                    let mut args_rev = Vec::with_capacity(arg_count);
+                    for _ in 0..arg_count {
+                        args_rev.push(task.ram.pop_nv());
+                    }
+                    task.ram.pop_nv(); // receiver（"Regex" 类型名占位）
+                    for nv in args_rev.into_iter().rev() {
+                        task.ram.push_nv(nv);
+                    }
+                    if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                        shim(task, self)?;
+                    } else {
+                        return Err(VMError::MissingNative(native_id));
+                    }
+                } else if let Some(native_id) = opaque_native_id {
+                    // Plan 212 Phase 2.2: Opaque type method routed to native shim
+                    // CALL_SPEC stack: [..., receiver, arg0, arg1, ..., argN-1]
+                    // Native shim expects: [..., argN-1, ..., arg0, receiver] (pop args first, then receiver)
+                    // Re-push receiver on top so shim can pop in correct order
+                    {
+                        let recv_nv = task.ram.read_nv(receiver_pos);
+                        task.ram.push_nv(recv_nv);
+                    }
+                    if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                        shim(task, self)?;
+                    } else {
+                        return Err(VMError::MissingNative(native_id));
+                    }
+                    // After shim returns, remove duplicate args+receiver from CALL_SPEC layout.
+                    // Stack: [..., receiver, arg0..argN-1, receiver, return_value(s)]
+                    // Need: [..., return_value(s)]
+                    // In nanbox mode, string values occupy 2 slots (encode_string + encode_null).
+                    {
+                        use auto_val::NanoValue;
+                        let top_nv: NanoValue = task.ram.pop_nv();
+                        if auto_val::is_string(top_nv) {
+                            for _ in 0..=arg_count {
+                                task.ram.pop_nv();
+                            }
+                            task.ram.push_nv(top_nv);
+                            task.ram.push_nv(auto_val::encode_null());
+                        } else if auto_val::is_null(top_nv)
+                            && task.ram.sp > 0
+                            && auto_val::is_string(task.ram.read_nv(task.ram.sp - 1))
+                        {
+                            let str_nv = task.ram.pop_nv();
+                            for _ in 0..=arg_count {
+                                task.ram.pop_nv();
+                            }
+                            task.ram.push_nv(str_nv);
+                            task.ram.push_nv(top_nv);
+                        } else {
+                            for _ in 0..=arg_count {
+                                task.ram.pop_nv();
+                            }
+                            task.ram.push_nv(top_nv);
+                        }
+                    }
+                } else if let Some(native_id) = math_native_id {
+                    // Plan 240: Math method on expression result (e.g., (a-b).to_radians())
+                    // CALL_SPEC stack: [..., receiver, arg0, ..., argN-1]
+                    // Pop args in reverse, then pop receiver as f64, apply math, push result
+                    // For unary math methods (0 args): receiver is the f64 value
+                    // Plan 474: 接收者/结果必须按 NanoValue 透传。原实现
+                    // read_i32/push_i32/pop_i32 是 nanbox 前 i32 栈约定的化石：
+                    // 裸 f64（encode_f64=原始位）被读成低 32 位、TAG_F32 被
+                    // 读成 payload 位型——`__json_object` 浮点字段 `.floor()`
+                    // 返回位型垃圾（plan011④：54.16 → -515396076）。shim 的
+                    // VMConvertible f64 pop 自带 TAG_F32→f64 提升与裸 f64
+                    // 直读（convert.rs），此处无需任何转换。
+                    if arg_count == 0 {
+                        // Unary math: receiver is the float value on stack.
+                        // 1. Copy the receiver nv (tag-intact) to the top
+                        // 2. Shim pops it and pushes the result
+                        // 3. Replace the original receiver slot with the result
+                        let recv_nv = task.ram.read_nv(receiver_pos);
+                        task.ram.push_nv(recv_nv);
+                        if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                            shim(task, self)?;
+                        } else {
+                            return Err(VMError::MissingNative(native_id));
+                        }
+                        let return_nv = task.ram.pop_nv();
+                        // Remove old receiver (1 slot)
+                        task.ram.pop_nv();
+                        task.ram.push_nv(return_nv);
+                    } else {
+                        // Binary+ math (e.g., powf/atan2): CALL_SPEC layout
+                        // [recv, arg0..argN-1] 与 rust_fn shim 的逆序弹出
+                        // 约定（宏按声明序逆序 pop：末参在栈顶）天然对齐
+                        // ——shim 首参(receiver 值)在窗口底、末参(argN-1)
+                        // 在栈顶，即 recv.powf(arg) 语义。原地调用即可，
+                        // shim 消费整个窗口并留结果于栈顶。原实现把
+                        // receiver 拷贝压顶，在逆序弹出下变成「末参收到
+                        // receiver 值」的参数序倒置（54.16.powf(2.0) 算成
+                        // 2.0^54.16，Plan 474 实测）。
+                        if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                            shim(task, self)?;
+                        } else {
+                            return Err(VMError::MissingNative(native_id));
+                        }
+                    }
+                } else if let Some(native_id) = self.native_interface.resolve(&func_name) {
+                    // Plan 200 Task 3.3: Fallback to native registry for type.method natives
+                    // (e.g., Result.Ok.map_err -> shim_result_map_err)
+                    if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                        // PLAN-608 T03（KD-VM6①）：resolve 路径补 CALL_NAT 同款
+                        // 死区结算（与 CALL_NAT 臂同构）。shim 按 CALL_NAT 约定
+                        // 消费实参/接收者并回推结果，但 CALL_NAT 的
+                        // rc_release_slot_range 死区不在本路径——字符串元素/实参
+                        // 的暂存池份额（池不入影子，按内容结算）此前每调用孤儿
+                        // +1（List<str>.push 把 dedup 共享条目永久钉死）。窗口
+                        // [sp_after, sp_before)：结果落窗口底槽，被弹槽按影子
+                        // （堆）/内容（池）释放，与 CALL_NAT 完全一致。
+                        let sp_before_shim = task.ram.sp;
+                        shim(task, self)?;
+                        let sp_after_shim = task.ram.sp;
+                        if sp_after_shim < sp_before_shim {
+                            self.rc_release_slot_range(
+                                &mut task.ram,
+                                sp_after_shim,
+                                sp_before_shim,
+                            );
+                        }
+                    } else {
+                        return Err(VMError::MissingNative(native_id));
+                    }
+                } else if type_name == "str" {
+                    // Inline str type method dispatch for CALL_SPEC
+                    // Stack: [..., receiver(str nanbox), arg0, ..., argN-1]
+                    // PLAN-608 T02: CALL_SPEC 布局顶界。消费型臂弹毕、压结果前
+                    // 以 rc_release_slot_range 结算 [sp, spec_sp_entry) 弹出窗口
+                    // （堆按影子、池按内容——CALL_SPEC 路径无 CALL_NAT 死区，
+                    // 此前接收者/字符串实参的暂存份额每调用孤儿 +1，KD-VM6②）。
+                    let spec_sp_entry = task.ram.sp;
+                    match method_name.as_str() {
+                        "as_bytes" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let bytes: Vec<u8> = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| b.clone())
+                                .unwrap_or_default();
+                            // Wrap as RustStdlibObject for FFI consumption
+                            let obj = crate::vm::ffi::rust_stdlib::RustStdlibObject::new(
+                                "Vec<u8>", bytes,
+                            );
+                            let handle = self.insert_heap_object(obj) as i32;
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_i32(handle));
+                            }
+                        }
+                        // Plan 378 §10.5: 补全所有大小写别名。原表只有
+                        // to_uppercase/to_lower/to_lowercase，漏了裸 upper/lower 和
+                        // to_upper/to_lowercase，导致 split()/lines() 等数组元素
+                        // (Expr::Index receiver，走 CALL_SPEC inline 分发) 上调用
+                        // .lower()/.upper() 落入 _ => push null，返回 None。
+                        "upper" | "to_upper" | "to_uppercase" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            let result = s.to_uppercase();
+                            let idx = self.add_string(result.into_bytes());
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push_str_idx(task, idx as usize);
+                            }
+                        }
+                        "lower" | "to_lower" | "to_lowercase" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            let result = s.to_lowercase();
+                            let idx = self.add_string(result.into_bytes());
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push_str_idx(task, idx as usize);
+                            }
+                        }
+                        "chars" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            use crate::vm::types::ListData;
+                            let mut list: ListData<i32> = ListData::new();
+                            for ch in s.chars() {
+                                list.push(ch as i32);
+                            }
+                            let list_id = self.insert_heap_object(list);
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push(task, auto_val::encode_object(list_id as u32));
+                            }
+                        }
+                        "graphemes" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            use crate::vm::types::ListData;
+                            let mut list: ListData<i32> = ListData::new();
+                            for g in s.split(|c: char| c.is_whitespace() || !c.is_alphanumeric()) {
+                                if !g.is_empty() {
+                                    list.push(g.chars().next().unwrap() as i32);
+                                }
+                            }
+                            // Fallback: split by char boundaries
+                            if list.len() == 0 {
+                                for ch in s.chars() {
+                                    list.push(ch as i32);
+                                }
+                            }
+                            let list_id = self.insert_heap_object(list);
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push(task, auto_val::encode_object(list_id as u32));
+                            }
+                        }
+                        "split" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            // Pop the separator argument
+                            let sep_nv = task.ram.pop_nv();
+                            let sep = if auto_val::is_string(sep_nv) {
+                                let sep_idx = auto_val::decode_string(sep_nv) as usize;
+                                self.strings
+                                    .read()
+                                    .unwrap()
+                                    .get(sep_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default()
+                            } else {
+                                ",".to_string()
+                            };
+                            let parts: Vec<&str> = s.split(&sep).collect();
+                            let mut strings = self.strings.write().unwrap();
+                            use crate::vm::types::ListData;
+                            let mut list: ListData<i32> = ListData::new();
+                            for part in &parts {
+                                let idx = strings.len();
+                                strings.push(part.to_string().into_bytes());
+                                list.push(idx as i32);
+                            }
+                            drop(strings);
+                            let list_id = self.insert_heap_object(list);
+                            // Remove receiver from CALL_SPEC layout, push result
+                            {
+                                task.ram.pop_nv();
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push(task, auto_val::encode_object(list_id as u32));
+                            }
+                        }
+                        "is_empty" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| b.is_empty())
+                                .unwrap_or(true);
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(if s {
+                                    auto_val::encode_i32(1)
+                                } else {
+                                    auto_val::encode_i32(0)
+                                });
+                            }
+                        }
+                        "starts_with" | "ends_with" | "contains" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            let arg_nv = task.ram.pop_nv();
+                            let pat = if auto_val::is_string(arg_nv) {
+                                let pat_idx = auto_val::decode_string(arg_nv) as usize;
+                                self.strings
+                                    .read()
+                                    .unwrap()
+                                    .get(pat_idx)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+                            let result = if method_name == "starts_with" {
+                                s.starts_with(&pat)
+                            } else if method_name == "ends_with" {
+                                s.ends_with(&pat)
+                            } else {
+                                s.contains(&pat)
+                            };
+                            {
+                                task.ram.pop_nv();
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(if result {
+                                    auto_val::encode_i32(1)
+                                } else {
+                                    auto_val::encode_i32(0)
+                                });
+                            }
+                        }
+                        "len" => {
+                            // PLAN-055: JS .length 语义 = 字符数（web a2ts
+                            // `text.length` 同值）。此前按字节计——CJK 3×
+                            // 膨胀，musk estimateTokens 的 nonCjk 基数失真。
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let len = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).chars().count() as i32)
+                                .unwrap_or(0);
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_i32(len));
+                            }
+                        }
+                        "trim" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                .unwrap_or_default();
+                            let idx = self.add_string(s.into_bytes());
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push_str_idx(task, idx as usize);
+                            }
+                        }
+                        // PLAN-053 P-053-6: web 生态字符串方法族（musk 消息
+                        // 渲染链使用面）——此前落 _ => push null，正文链
+                        // 静默退化（stripQuestionnaire 的 trimEnd、
+                        // chatSearchFilter 的 includes/to_lower、
+                        // estimateTokens 的 char_code_at 等）。
+                        "trimEnd" | "trim_end" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).trim_end().to_string())
+                                .unwrap_or_default();
+                            let idx = self.add_string(s.into_bytes());
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push_str_idx(task, idx as usize);
+                            }
+                        }
+                        "includes" => {
+                            let pat_nv = if arg_count >= 1 {
+                                task.ram.pop_nv()
+                            } else {
+                                receiver_nv
+                            };
+                            let pat = if auto_val::is_string(pat_nv) {
+                                let i = auto_val::decode_string(pat_nv) as usize;
+                                self.strings
+                                    .read()
+                                    .unwrap()
+                                    .get(i)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            {
+                                task.ram.pop_nv();
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_bool(s.contains(&pat)));
+                            }
+                        }
+                        "indexOf" | "indexOf_str" | "lastIndexOf" | "last_index_of" => {
+                            let pat_nv = if arg_count >= 1 {
+                                task.ram.pop_nv()
+                            } else {
+                                receiver_nv
+                            };
+                            let pat = if auto_val::is_string(pat_nv) {
+                                let i = auto_val::decode_string(pat_nv) as usize;
+                                self.strings
+                                    .read()
+                                    .unwrap()
+                                    .get(i)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            let found = if method_name == "indexOf" || method_name == "indexOf_str"
+                            {
+                                s.find(&pat).map(|b| b as i32).unwrap_or(-1)
+                            } else {
+                                s.rfind(&pat).map(|b| b as i32).unwrap_or(-1)
+                            };
+                            {
+                                task.ram.pop_nv();
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_i32(found));
+                            }
+                        }
+                        "substring" | "substring_str" => {
+                            // JS 语义近似：(start[, end])，越界钳制，按字节
+                            // 切片（musk 现场的 start/end 来自 find() 字节位）。
+                            let (a, b) = if arg_count >= 2 {
+                                let e = task.ram.pop_nv();
+                                let s0 = task.ram.pop_nv();
+                                (auto_val::decode_i32(s0), auto_val::decode_i32(e))
+                            } else if arg_count == 1 {
+                                (auto_val::decode_i32(task.ram.pop_nv()), i32::MAX)
+                            } else {
+                                (0, i32::MAX)
+                            };
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            let bytes = s.as_bytes();
+                            let start = (a.max(0) as usize).min(bytes.len());
+                            let end = (b.max(0) as usize).min(bytes.len()).max(start);
+                            // 字符边界钳制（非 UTF-8 边界时退到字符边界）。
+                            let mut se = start;
+                            while se < end && !s.is_char_boundary(se) {
+                                se += 1;
+                            }
+                            let mut ee = end;
+                            while ee > se && !s.is_char_boundary(ee) {
+                                ee -= 1;
+                            }
+                            let out = String::from_utf8_lossy(&bytes[se..ee]).to_string();
+                            let idx = self.add_string(out.into_bytes());
+                            {
+                                task.ram.pop_nv();
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push_str_idx(task, idx as usize);
+                            }
+                        }
+                        "char_code_at" | "charCodeAt" => {
+                            let i = if arg_count >= 1 {
+                                auto_val::decode_i32(task.ram.pop_nv())
+                            } else {
+                                0
+                            };
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            let code = s
+                                .chars()
+                                .nth(i.max(0) as usize)
+                                .map(|c| c as i32)
+                                .unwrap_or(-1);
+                            {
+                                task.ram.pop_nv();
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_i32(code));
+                            }
+                        }
+                        "replace" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).to_string())
+                                .unwrap_or_default();
+                            // Pop replacement arg first (top), then pattern arg
+                            let repl_nv = task.ram.pop_nv();
+                            let pat_nv = task.ram.pop_nv();
+                            let pat = if auto_val::is_string(pat_nv) {
+                                let i = auto_val::decode_string(pat_nv) as usize;
+                                self.strings
+                                    .read()
+                                    .unwrap()
+                                    .get(i)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+                            let repl = if auto_val::is_string(repl_nv) {
+                                let i = auto_val::decode_string(repl_nv) as usize;
+                                self.strings
+                                    .read()
+                                    .unwrap()
+                                    .get(i)
+                                    .map(|b| String::from_utf8_lossy(b).to_string())
+                                    .unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+                            let result = s.replace(&pat, &repl);
+                            let idx = self.add_string(result.into_bytes());
+                            {
+                                task.ram.pop_nv();
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push_str_idx(task, idx as usize);
+                            }
+                        }
+                        "to_string" | "to_str" | "clone" => {
+                            // str.to_string() / str.to_str() / str.clone() — return self
+                            // No-op: receiver stays on stack as-is
+                        }
+                        "to_int" | "parse_int" => {
+                            // Plan 402 §13.10: handle float→int truncation too.
+                            // codegen routes ALL to_int calls here regardless of
+                            // receiver type (there is no float/int type_name
+                            // dispatch branch). A float receiver (e.g.
+                            // `(math.random() * n).to_int()`) was decoded via
+                            // decode_string on a float nanbox → garbage. Decode
+                            // by the receiver's actual tag.
+                            let result = if auto_val::is_f64(receiver_nv) {
+                                auto_val::decode_f64(receiver_nv) as i32
+                            } else if auto_val::is_f32(receiver_nv) {
+                                auto_val::decode_f32(receiver_nv) as i32
+                            } else if auto_val::is_string(receiver_nv) {
+                                let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                                let s = self
+                                    .strings
+                                    .read()
+                                    .unwrap()
+                                    .get(str_idx)
+                                    .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                    .unwrap_or_default();
+                                s.parse::<i32>().unwrap_or(0)
+                            } else if auto_val::is_bool(receiver_nv) {
+                                if auto_val::decode_bool(receiver_nv) {
+                                    1
+                                } else {
+                                    0
+                                }
+                            } else {
+                                auto_val::decode_i32(receiver_nv)
+                            };
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_i32(result));
+                            }
+                        }
+                        "to_uint" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                .unwrap_or_default();
+                            let result = s.parse::<i64>().unwrap_or(0) as i32;
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_i32(result));
+                            }
+                        }
+                        // Plan 403: str.to_float() — parse a numeric string to f64.
+                        // Needed by the calculator engine (nums stored as strings,
+                        // parsed to float at arithmetic time).
+                        "to_float" | "parse_float" => {
+                            let str_idx = auto_val::decode_string(receiver_nv) as usize;
+                            let s = self
+                                .strings
+                                .read()
+                                .unwrap()
+                                .get(str_idx)
+                                .map(|b| String::from_utf8_lossy(b).trim().to_string())
+                                .unwrap_or_default();
+                            let result = s.parse::<f64>().unwrap_or(0.0);
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_f64(result));
+                            }
+                        }
+                        _ => {
+                            // PLAN-057 T4（等价性缺陷族⑤）：未知 str 方法兜底
+                            // 配平——原只压 None 不弹 receiver+实参，栈失衡 +1
+                            // 平移后续调用的参数槽。未解析静态调用
+                            // （Array.isArray/JSON.stringify 等，接收者=类型名
+                            // 字符串）正落本臂：case_web_builtins A/B/C 标签
+                            // 乱码（4000000/None/hi）根因。
+                            for _ in 0..=arg_count {
+                                task.ram.pop_nv();
+                            }
+                            let sp_now = task.ram.sp;
+                            self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                            task.ram.push_nv(auto_val::encode_null());
+                        }
+                    }
+                } else if type_name == "List" {
+                    // PLAN-608 T02: 同 str 区——消费型臂（count|len/last/
+                    // 未知兜底）弹出窗口结算（接收者 list_id 的 copy-on-load
+                    // 堆份额按影子释放，此前裸弹每调用孤儿 +1）。
+                    let spec_sp_entry = task.ram.sp;
+                    // Plan 320: receiver may be Int(heap_id) or VmRef(decode_object).
+                    // Try both to get the list_id.
+                    let list_id = if auto_val::is_i32(receiver_nv) {
+                        auto_val::decode_i32(receiver_nv) as u64
+                    } else {
+                        auto_val::decode_object(receiver_nv) as u64
+                    };
+                    match method_name.as_str() {
+                        "count" | "len" => {
+                            let len = if let Some(obj) = self.heap_objects.get(&list_id) {
+                                let guard = obj.read().unwrap();
+                                if let Some(list) = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::vm::types::ListData<i32>>()
+                                {
+                                    list.len() as i32
+                                } else if let Some(list) = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    // Plan 320: ListData<Value> (struct lists)
+                                    list.len() as i32
+                                } else {
+                                    0
+                                }
+                            } else {
+                                0
+                            };
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_i32(len));
+                            }
+                        }
+                        // Plan 403: List.last() — peek the last element without
+                        // removing it (needed by the calculator's shunting-yard
+                        // engine, which inspects stack tops before popping).
+                        // Returns the element re-encoded onto the stack; pushes
+                        // null if the list is empty.
+                        "last" => {
+                            // Plan 403: List.last() — peek the last element
+                            // without removing it (the calculator's shunting-yard
+                            // engine inspects stack tops before popping). Handles
+                            // ListData<Value>, ListData<String>, and ListData<i32>.
+                            let top_nv = if let Some(obj) = self.heap_objects.get(&list_id) {
+                                let guard = obj.read().unwrap();
+                                if let Some(list) = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    list.elems
+                                        .last()
+                                        .map(|v| match v {
+                                            auto_val::Value::Int(i) => auto_val::encode_i32(*i),
+                                            auto_val::Value::Double(f) => auto_val::encode_f64(*f),
+                                            auto_val::Value::Float(f) => {
+                                                auto_val::encode_f64(*f as f64)
+                                            }
+                                            auto_val::Value::Bool(b) => auto_val::encode_bool(*b),
+                                            auto_val::Value::Str(s) => {
+                                                let idx =
+                                                    self.add_string(s.to_string().into_bytes());
+                                                auto_val::encode_string(idx as u32)
+                                            }
+                                            auto_val::Value::String(s) => {
+                                                let idx =
+                                                    self.add_string(s.to_string().into_bytes());
+                                                auto_val::encode_string(idx as u32)
+                                            }
+                                            auto_val::Value::VmRef(r) => {
+                                                auto_val::encode_object(r.id as u32)
+                                            }
+                                            _ => auto_val::encode_null(),
+                                        })
+                                        .unwrap_or(auto_val::encode_null())
+                                } else if let Some(list) = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::vm::types::ListData<String>>()
+                                {
+                                    // Plan 403: List<str> (CREATE_LIST_STR) — peek
+                                    // the last String and re-encode as nanbox string.
+                                    list.elems
+                                        .last()
+                                        .map(|s| {
+                                            let idx = self.add_string(s.as_bytes().to_vec());
+                                            auto_val::encode_string(idx as u32)
+                                        })
+                                        .unwrap_or(auto_val::encode_null())
+                                } else if let Some(list) = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::vm::types::ListData<i32>>()
+                                {
+                                    list.elems
+                                        .last()
+                                        .map(|&i| auto_val::encode_i32(i))
+                                        .unwrap_or(auto_val::encode_null())
+                                } else {
+                                    auto_val::encode_null()
+                                }
+                            } else {
+                                auto_val::encode_null()
+                            };
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                self.rc_push(task, top_nv);
+                            }
+                        }
+                        "get" => {
+                            // Pop index arg, then get element from list
+                            let index = auto_val::decode_i32(task.ram.pop_nv());
+                            let list_id = auto_val::decode_object(receiver_nv) as u64;
+                            if let Some(obj) = self.heap_objects.get(&list_id) {
+                                let guard = obj.read().unwrap();
+                                if let Some(list) = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::vm::types::ListData<i32>>()
+                                {
+                                    if let Some(val) = list.get(index as usize) {
+                                        let v = *val;
+                                        if v >= 4000000 {
+                                            // Heap object ID — push as object reference
+                                            {
+                                                task.ram.pop_nv();
+                                                for _ in 1..arg_count {
+                                                    task.ram.pop_nv();
+                                                }
+                                                self.rc_push(
+                                                    task,
+                                                    auto_val::encode_object(v as u32),
+                                                );
+                                            }
+                                        } else if let Some(bytes) = self.get_string(v as u32) {
+                                            let new_idx = self.add_string(bytes.to_vec());
+                                            {
+                                                task.ram.pop_nv();
+                                                for _ in 1..arg_count {
+                                                    task.ram.pop_nv();
+                                                }
+                                                self.rc_push_str_idx(task, new_idx as usize);
+                                            }
+                                        } else {
+                                            {
+                                                task.ram.pop_nv();
+                                                for _ in 1..arg_count {
+                                                    task.ram.pop_nv();
+                                                }
+                                                task.ram.push_nv(auto_val::encode_i32(v));
+                                            }
+                                        }
+                                    } else {
+                                        // Out of bounds — push 0 (None)
+                                        {
+                                            task.ram.pop_nv();
+                                            for _ in 1..arg_count {
+                                                task.ram.pop_nv();
+                                            }
+                                            task.ram.push_i32(0);
+                                        }
+                                    }
+                                } else if let Some(list) = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::vm::types::ListData<String>>()
+                                {
+                                    // Plan 403: List<str> via CREATE_LIST_STR.
+                                    if let Some(s) = list.get(index as usize) {
+                                        let idx = self.add_string(s.clone().into_bytes());
+                                        {
+                                            task.ram.pop_nv();
+                                            for _ in 1..arg_count {
+                                                task.ram.pop_nv();
+                                            }
+                                            self.rc_push_str_idx(task, idx as usize);
+                                        }
+                                    } else {
+                                        {
+                                            task.ram.pop_nv();
+                                            for _ in 1..arg_count {
+                                                task.ram.pop_nv();
+                                            }
+                                            task.ram.push_i32(0);
+                                        }
+                                    }
+                                } else if let Some(list) = guard
+                                    .as_any()
+                                    .downcast_ref::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    // Plan 403: ListData<Value> (from CREATE_ARRAY / `[]`) —
+                                    // re-encode the element by variant onto the stack.
+                                    if let Some(v) = list.get(index as usize) {
+                                        let nv = match v {
+                                            auto_val::Value::Int(i) => auto_val::encode_i32(*i),
+                                            auto_val::Value::Double(f) => auto_val::encode_f64(*f),
+                                            auto_val::Value::Float(f) => {
+                                                auto_val::encode_f64(*f as f64)
+                                            }
+                                            auto_val::Value::Bool(b) => auto_val::encode_bool(*b),
+                                            auto_val::Value::Str(s) => {
+                                                let idx =
+                                                    self.add_string(s.to_string().into_bytes());
+                                                auto_val::encode_string(idx as u32)
+                                            }
+                                            auto_val::Value::String(s) => {
+                                                let idx =
+                                                    self.add_string(s.to_string().into_bytes());
+                                                auto_val::encode_string(idx as u32)
+                                            }
+                                            auto_val::Value::VmRef(r) => {
+                                                auto_val::encode_object(r.id as u32)
+                                            }
+                                            _ => auto_val::encode_null(),
+                                        };
+                                        {
+                                            task.ram.pop_nv();
+                                            for _ in 1..arg_count {
+                                                task.ram.pop_nv();
+                                            }
+                                            self.rc_push(task, nv);
+                                        }
+                                    } else {
+                                        {
+                                            task.ram.pop_nv();
+                                            for _ in 1..arg_count {
+                                                task.ram.pop_nv();
+                                            }
+                                            task.ram.push_i32(0);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        "push" => {
+                            // Push element to end of List (uses unified list_id above).
+                            // PLAN-608 T05 定罪注记：本臂**不可达**——resolve
+                            // ("List.push"→auto.list.push) 恒命中
+                            // shim_list_push（604/608 实证），下方代码是历史
+                            // 化石。注意：与旧注释所述相反，这里**从未有过**
+                            // stake 结算/容器 retain（list.push(elem_val) 裸存）
+                            // ——若 registry 覆盖回退使本臂复活，即 UAF 面
+                            // （路由守护见 tests/plan608_dispatch_golden_tests.rs；
+                            // 移除候选登记 KNOWN-DEBT KD-VM5）。
+                            let elem_nv = task.ram.pop_nv();
+                            let elem_val = if auto_val::is_i32(elem_nv) {
+                                auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                            } else if auto_val::is_f64(elem_nv) {
+                                // Plan 403: f64 values use raw bit encoding
+                                // (encode_f64), so must be checked before the
+                                // else-branch Int fallback — otherwise floats
+                                // pushed onto a List<float> get corrupted to
+                                // garbage ints (e.g. 3.0 -> 1074266112).
+                                auto_val::Value::Double(auto_val::decode_f64(elem_nv))
+                            } else if auto_val::is_f32(elem_nv) {
+                                auto_val::Value::Double(auto_val::decode_f64(elem_nv))
+                            } else if auto_val::is_object(elem_nv) {
+                                auto_val::Value::VmRef(auto_val::VmRef {
+                                    id: auto_val::decode_object(elem_nv) as usize,
+                                })
+                            } else if auto_val::is_string(elem_nv) {
+                                let idx = auto_val::decode_string(elem_nv) as usize;
+                                let bytes = self
+                                    .strings
+                                    .read()
+                                    .unwrap()
+                                    .get(idx)
+                                    .cloned()
+                                    .unwrap_or_default();
+                                auto_val::Value::Str(
+                                    String::from_utf8_lossy(&bytes).to_string().into(),
+                                )
+                            } else if auto_val::is_bool(elem_nv) {
+                                auto_val::Value::Bool(auto_val::decode_bool(elem_nv))
+                            } else if auto_val::is_null(elem_nv) {
+                                auto_val::Value::Nil
+                            } else {
+                                auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                            };
+                            // Plan 320: push into ListData<Value> or ListData<i32>.
+                            if let Some(obj) = self.get_heap_object(list_id) {
+                                let mut guard = obj.write().unwrap();
+                                if let Some(list) = guard
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    list.push(elem_val);
+                                } else if let Some(list) = guard
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<i32>>(
+                                ) {
+                                    list.push(auto_val::decode_i32(elem_nv));
+                                }
+                            }
+                            {
+                                task.ram.pop_nv();
+                                for _ in 1..arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                task.ram.push_i32(0);
+                            }
+                        }
+                        "remove" => {
+                            // Remove element at index from List (arrays DashMap)
+                            let arr_key = if auto_val::is_object(receiver_nv) {
+                                auto_val::decode_object(receiver_nv) as u64
+                            } else if auto_val::is_i32(receiver_nv) {
+                                auto_val::decode_i32(receiver_nv) as u64
+                            } else {
+                                0u64
+                            };
+                            // Pop the index arg
+                            let index = auto_val::decode_i32(task.ram.pop_nv()) as usize;
+                            if let Some(arr_ref) = self.get_heap_object(arr_key) {
+                                let mut arr = arr_ref.write().unwrap();
+                                if let Some(list) = arr
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    if index < list.elems.len() {
+                                        list.elems.remove(index);
+                                    }
+                                }
+                            }
+                            // Pop receiver, push 0 (void)
+                            {
+                                task.ram.pop_nv();
+                                task.ram.push_i32(0);
+                            }
+                        }
+                        "pop" => {
+                            // Pop last element from List (arrays DashMap)
+                            let arr_key = if auto_val::is_object(receiver_nv) {
+                                auto_val::decode_object(receiver_nv) as u64
+                            } else if auto_val::is_i32(receiver_nv) {
+                                auto_val::decode_i32(receiver_nv) as u64
+                            } else {
+                                0u64
+                            };
+                            // Plan 402 §13.10: return the popped element, not a
+                            // fixed 0. The old `let _ = list.elems.pop()` discarded
+                            // the value and pushed 0 — so `var x = stack.pop()` in
+                            // flood-fill always got 0, making the loop never
+                            // terminate (stack grew until OOM → process crash).
+                            let popped: Option<auto_val::Value> =
+                                if let Some(arr_ref) = self.get_heap_object(arr_key) {
+                                    let mut arr = arr_ref.write().unwrap();
+                                    if let Some(list) = arr
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    list.elems.pop()
+                                } else {
+                                    None
+                                }
+                                } else {
+                                    None
+                                };
+                            // Push the popped value onto the operand stack (replacing receiver)
+                            {
+                                task.ram.pop_nv();
+                            } // pop receiver
+                            match popped {
+                                Some(auto_val::Value::Int(i)) => {
+                                    task.ram.push_nv(auto_val::encode_i32(i))
+                                }
+                                Some(auto_val::Value::Bool(b)) => {
+                                    task.ram.push_nv(auto_val::encode_bool(b))
+                                }
+                                Some(auto_val::Value::Str(s)) => {
+                                    let mut strings = self.strings.write().unwrap();
+                                    let idx = strings.len() as u32;
+                                    strings.push(s.as_bytes().to_vec());
+                                    drop(strings);
+                                    self.rc_push_str_idx(task, idx as usize);
+                                }
+                                Some(auto_val::Value::VmRef(r)) => {
+                                    self.rc_push(task, auto_val::encode_object(r.id as u32))
+                                }
+                                Some(other) => {
+                                    // For other types, push as i32 fallback
+                                    task.ram.push_nv(auto_val::encode_i32(0));
+                                }
+                                None => task.ram.push_nv(auto_val::encode_i32(0)),
+                            }
+                        }
+                        "insert" => {
+                            // Insert element at index in List (arrays DashMap)
+                            let arr_key = if auto_val::is_object(receiver_nv) {
+                                auto_val::decode_object(receiver_nv) as u64
+                            } else if auto_val::is_i32(receiver_nv) {
+                                auto_val::decode_i32(receiver_nv) as u64
+                            } else {
+                                0u64
+                            };
+                            // Stack: [..., receiver, index, elem]
+                            let elem_nv = task.ram.pop_nv();
+                            let index = auto_val::decode_i32(task.ram.pop_nv()) as usize;
+                            if let Some(arr_ref) = self.get_heap_object(arr_key) {
+                                let mut arr = arr_ref.write().unwrap();
+                                if let Some(list) = arr
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    let pos = index.min(list.elems.len());
+                                    {
+                                        let value = if auto_val::is_i32(elem_nv) {
+                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                        } else if auto_val::is_object(elem_nv) {
+                                            auto_val::Value::VmRef(auto_val::VmRef {
+                                                id: auto_val::decode_object(elem_nv) as usize,
+                                            })
+                                        } else if auto_val::is_string(elem_nv) {
+                                            let idx = auto_val::decode_string(elem_nv) as usize;
+                                            let bytes = self
+                                                .strings
+                                                .read()
+                                                .unwrap()
+                                                .get(idx)
+                                                .cloned()
+                                                .unwrap_or_default();
+                                            auto_val::Value::Str(
+                                                String::from_utf8_lossy(&bytes).to_string().into(),
+                                            )
+                                        } else if auto_val::is_bool(elem_nv) {
+                                            auto_val::Value::Bool(auto_val::decode_bool(elem_nv))
+                                        } else if auto_val::is_f64(elem_nv) {
+                                            auto_val::Value::Double(auto_val::decode_f64(elem_nv))
+                                        } else if auto_val::is_f32(elem_nv) {
+                                            auto_val::Value::Float(
+                                                auto_val::decode_f32(elem_nv) as f64
+                                            )
+                                        } else if auto_val::is_null(elem_nv) {
+                                            auto_val::Value::Nil
+                                        } else {
+                                            auto_val::Value::Int(auto_val::decode_i32(elem_nv))
+                                        };
+                                        list.elems.insert(pos, value);
+                                    }
+                                }
+                            }
+                            // Pop receiver, push 0 (void)
+                            {
+                                task.ram.pop_nv();
+                                task.ram.push_i32(0);
+                            }
+                        }
+                        "sort" | "dedup" | "reverse" => {
+                            // In-place sort/dedup/reverse of List
+                            let arr_key = if auto_val::is_object(receiver_nv) {
+                                auto_val::decode_object(receiver_nv) as u64
+                            } else if auto_val::is_i32(receiver_nv) {
+                                auto_val::decode_i32(receiver_nv) as u64
+                            } else {
+                                0u64
+                            };
+                            if let Some(obj) = self.heap_objects.get(&arr_key) {
+                                let mut guard = obj.write().unwrap();
+                                if let Some(list) = guard
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    match method_name.as_str() {
+                                        "sort" => {
+                                            list.elems.sort_by(|a, b| match (a, b) {
+                                                (
+                                                    auto_val::Value::Int(x),
+                                                    auto_val::Value::Int(y),
+                                                ) => x.cmp(y),
+                                                (
+                                                    auto_val::Value::Uint(x),
+                                                    auto_val::Value::Uint(y),
+                                                ) => x.cmp(y),
+                                                (
+                                                    auto_val::Value::Float(x),
+                                                    auto_val::Value::Float(y),
+                                                ) => x
+                                                    .partial_cmp(y)
+                                                    .unwrap_or(std::cmp::Ordering::Equal),
+                                                (
+                                                    auto_val::Value::Double(x),
+                                                    auto_val::Value::Double(y),
+                                                ) => x
+                                                    .partial_cmp(y)
+                                                    .unwrap_or(std::cmp::Ordering::Equal),
+                                                (
+                                                    auto_val::Value::Bool(x),
+                                                    auto_val::Value::Bool(y),
+                                                ) => x.cmp(y),
+                                                (
+                                                    auto_val::Value::Str(x),
+                                                    auto_val::Value::Str(y),
+                                                ) => x.to_string().cmp(&y.to_string()),
+                                                (
+                                                    auto_val::Value::String(x),
+                                                    auto_val::Value::String(y),
+                                                ) => x.as_str().cmp(y.as_str()),
+                                                _ => std::cmp::Ordering::Equal,
+                                            });
+                                        }
+                                        "dedup" => {
+                                            list.elems.dedup();
+                                        }
+                                        "reverse" => {
+                                            list.elems.reverse();
+                                        }
+                                        _ => {}
+                                    }
+                                } else if let Some(list) = guard
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<i32>>(
+                                ) {
+                                    match method_name.as_str() {
+                                        "sort" => {
+                                            list.elems.sort();
+                                        }
+                                        "dedup" => {
+                                            list.elems.dedup();
+                                        }
+                                        "reverse" => {
+                                            list.elems.reverse();
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            // Pop args, leave receiver on stack as return value
+                            for _ in 0..arg_count {
+                                task.ram.pop_nv();
+                            }
+                        }
+                        "sort_by" | "sort_by_key" => {
+                            // In-place sort with comparator — pop closure arg, use default sort for now
+                            let arr_key = if auto_val::is_object(receiver_nv) {
+                                auto_val::decode_object(receiver_nv) as u64
+                            } else {
+                                auto_val::decode_i32(receiver_nv) as u64
+                            };
+                            // Pop args (closure)
+                            for _ in 0..arg_count {
+                                task.ram.pop_nv();
+                            }
+                            if let Some(obj) = self.heap_objects.get(&arr_key) {
+                                let mut guard = obj.write().unwrap();
+                                if let Some(list) = guard
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<auto_val::Value>>()
+                                {
+                                    list.elems.sort_by(|a, b| match (a, b) {
+                                        (auto_val::Value::Int(x), auto_val::Value::Int(y)) => {
+                                            x.cmp(y)
+                                        }
+                                        (auto_val::Value::Uint(x), auto_val::Value::Uint(y)) => {
+                                            x.cmp(y)
+                                        }
+                                        (auto_val::Value::Float(x), auto_val::Value::Float(y)) => {
+                                            x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+                                        }
+                                        (
+                                            auto_val::Value::Double(x),
+                                            auto_val::Value::Double(y),
+                                        ) => x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal),
+                                        _ => std::cmp::Ordering::Equal,
+                                    });
+                                } else if let Some(list) = guard
+                                    .as_any_mut()
+                                    .downcast_mut::<crate::vm::types::ListData<i32>>(
+                                ) {
+                                    list.elems.sort();
+                                }
+                            }
+                        }
+                        _ => {
+                            // Identity operations: return receiver unchanged, only pop args
+                            if matches!(
+                                method_name.as_str(),
+                                "collect"
+                                    | "rev"
+                                    | "filter_map"
+                                    | "flatten"
+                                    | "into_iter"
+                                    | "iter"
+                                    | "iter_mut"
+                                    | "par_iter"
+                                    | "par_iter_mut"
+                                    | "for_each"
+                                    | "map"
+                                    | "filter"
+                                    | "find"
+                                    | "any"
+                                    | "all"
+                                    | "reduce"
+                                    | "fold"
+                                    | "to_array"
+                            ) {
+                                // Pop args only (not receiver) — receiver stays as return value
+                                for _ in 0..arg_count {
+                                    task.ram.pop_nv();
+                                }
+                            } else {
+                                // PLAN-057 T4（等价性缺陷族⑤）：未知 List
+                                // 方法兜底配平（同 str 臂，原失衡 +1）。
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                let sp_now = task.ram.sp;
+                                self.rc_release_slot_range(&mut task.ram, sp_now, spec_sp_entry);
+                                task.ram.push_nv(auto_val::encode_null());
+                            }
+                        }
+                    }
+                } else if auto_val::is_i32(receiver_nv)
+                    && matches!(method_name.as_str(), "char_code_at" | "charCodeAt")
+                    && !self
+                        .heap_objects
+                        .contains_key(&(auto_val::decode_i32(receiver_nv).max(0) as u64))
+                {
+                    // PLAN-055 Char（码点）接收者恒等臂 + PLAN-057 T5 重定位
+                    // （等价性缺陷族④）：for-in over str 经 GET_ELEM 逐字符
+                    // 产出 i32 码点，`c.char_code_at(0)` 语义等价单字符字符串
+                    // 的 charCodeAt（web a2ts 同值）= 恒等。原位置在链尾，
+                    // 被 `<unknown:` 接收者臂（整型字面量方法族）先行吞
+                    // None——恒等臂永不命中（case_str_charcode A 红根因），
+                    // 故提升到本臂之前。heap 命中者优先按对象走原链。
+                    for _ in 0..=arg_count {
+                        task.ram.pop_nv();
+                    }
+                    task.ram.push_nv(receiver_nv);
+                } else if type_name.starts_with("<unknown:")
+                    || type_name.starts_with("<invalid")
+                    || type_name.starts_with("<unknown_nv:")
+                {
+                    // Integer literal methods: 0x1234.to_be_bytes(), etc.
+                    // Plan 499 M3: f64/f32/bool nanbox 接收者的 type_name 是
+                    // "<unknown_nv:{hex}>"(下方 6036 一带最终 else 产出),旧条件
+                    // 只匹配 "<unknown:"/"<invalid" 前缀——浮点接收者的
+                    // .to_int()/.to_string() 漏网直坠 CALL_SPEC 报错臂
+                    // (axisPointer 索引吸附 fi.to_int() 现场)。403-F 的
+                    // 按标签解码臂本就为这些接收者书写,补前缀即通。
+                    let int_val = auto_val::decode_i32(receiver_nv);
+                    match method_name.as_str() {
+                        "to_be_bytes" | "to_le_bytes" => {
+                            let be = method_name == "to_be_bytes";
+                            let bytes: Vec<u8> = if be {
+                                int_val.to_be_bytes().to_vec()
+                            } else {
+                                int_val.to_le_bytes().to_vec()
+                            };
+                            use crate::vm::types::ListData;
+                            let mut list: ListData<i32> = ListData::new();
+                            for b in bytes {
+                                list.push(b as i32);
+                            }
+                            let list_id = self.insert_heap_object(list);
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                self.rc_push(task, auto_val::encode_object(list_id as u32));
+                            }
+                        }
+                        "to_string" | "to_str" => {
+                            // Plan 403-F Bug D: f64/f32/bool values reach here
+                            // as non-i32 nanbox values (type_name
+                            // "<unknown_nv:...>"). Decode by runtime tag.
+                            let s = if auto_val::is_f64(receiver_nv) {
+                                let f = auto_val::decode_f64(receiver_nv);
+                                fmt_f64(f)
+                            } else if auto_val::is_f32(receiver_nv) {
+                                let f = auto_val::decode_f32(receiver_nv);
+                                fmt_f64(f as f64)
+                            } else if auto_val::is_bool(receiver_nv) {
+                                if auto_val::decode_bool(receiver_nv) {
+                                    "true".to_string()
+                                } else {
+                                    "false".to_string()
+                                }
+                            } else {
+                                int_val.to_string()
+                            };
+                            let bytes = s.into_bytes();
+                            let idx = {
+                                let mut strings = self.strings.write().unwrap();
+                                strings.push(bytes);
+                                strings.len() - 1
+                            };
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                self.rc_push_str_idx(task, idx as usize);
+                            }
+                        }
+                        // Plan 403-F: float to_int/to_float/to_uint on
+                        // f64/f32 values (which reach here as "<unknown_nv>").
+                        // Without this, float.to_int() returns null and
+                        // downstream integer math crashes.
+                        "to_int" | "parse_int" => {
+                            let v = if auto_val::is_f64(receiver_nv) {
+                                auto_val::decode_f64(receiver_nv) as i32
+                            } else if auto_val::is_f32(receiver_nv) {
+                                auto_val::decode_f32(receiver_nv) as i32
+                            } else {
+                                int_val
+                            };
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                task.ram.push_nv(auto_val::encode_i32(v));
+                            }
+                        }
+                        "to_uint" => {
+                            let v = if auto_val::is_f64(receiver_nv) {
+                                auto_val::decode_f64(receiver_nv) as i64 as i32
+                            } else if auto_val::is_f32(receiver_nv) {
+                                auto_val::decode_f32(receiver_nv) as i64 as i32
+                            } else {
+                                int_val
+                            };
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                task.ram.push_nv(auto_val::encode_i32(v));
+                            }
+                        }
+                        "to_float" | "parse_float" => {
+                            let v = if auto_val::is_f64(receiver_nv) {
+                                auto_val::decode_f64(receiver_nv)
+                            } else if auto_val::is_f32(receiver_nv) {
+                                auto_val::decode_f32(receiver_nv) as f64
+                            } else {
+                                int_val as f64
+                            };
+                            {
+                                for _ in 0..=arg_count {
+                                    task.ram.pop_nv();
+                                }
+                                task.ram.push_nv(auto_val::encode_f64(v));
+                            }
+                        }
+                        _ => {
+                            // PLAN-057 T4（等价性缺陷族⑤）：unknown 接收者臂
+                            // 兜底配平（同 str/List 臂，原失衡 +1）。
+                            for _ in 0..=arg_count {
+                                task.ram.pop_nv();
+                            }
+                            task.ram.push_nv(auto_val::encode_null());
+                        }
+                    }
+                } else if type_name.contains("::")
+                    || type_name.contains("RustStdlib")
+                    || matches!(
+                        type_name.as_str(),
+                        "Command"
+                            | "Stdio"
+                            | "Writer"
+                            | "Reader"
+                            | "ReaderBuilder"
+                            | "WriterBuilder"
+                            | "StringRecord"
+                            | "ThreadRng"
+                            | "Complex"
+                            | "BigInt"
+                            | "Normal"
+                            | "Rng"
+                            | "WalkDir"
+                            | "RefCell"
+                            | "Instant"
+                            | "Duration"
+                            | "Child"
+                            | "OnceCell"
+                            | "Backtrace"
+                            | "Args"
+                            | "File"
+                            | "FileWriter"
+                            | "PathBuf"
+                            | "String"
+                            | "Vec"
+                    )
+                {
+                    // Generic fallback for external crate types (csv::ReaderBuilder, etc.)
+                    // Also matches bare type names from static calls (e.g., "Command" from Command.arg)
+                    // Route through shim_rust_stdlib_dispatch with type_name + method injected
+                    let dispatch_id: u16 = 3000; // NATIVE_RUST_STDLIB_DISPATCH
+                                                 // Extract short type name: "csv::ReaderBuilder" -> "ReaderBuilder"
+                    let short_type = type_name.rsplit("::").next().unwrap_or(&type_name);
+
+                    // Detect if receiver is a type-name string from a static call
+                    // Static calls have a string receiver (e.g., "WalkDir" from WalkDir.new)
+                    // Instance calls have a heap handle receiver (i32 > 0 or object)
+                    let receiver_is_type_string = auto_val::is_string(receiver_nv);
+
+                    // Push method and type_name strings for the dispatch handler
+                    let method_bytes = method_name.as_bytes().to_vec();
+                    let type_bytes = short_type.as_bytes().to_vec();
+                    let method_idx = self.add_string(method_bytes);
+                    let type_idx = self.add_string(type_bytes);
+                    // shim_rust_stdlib_dispatch expects: type_name(str), method(str) on top
+                    // Stack is: [..., receiver, arg0..argN-1]
+                    // Push type_name and method on top (1 nanbox slot each, no null marker)
+                    {
+                        self.rc_push_str_idx(task, type_idx as usize);
+                        self.rc_push_str_idx(task, method_idx as usize);
+                    }
+                    if let Some(shim) = self.native_interface.get(dispatch_id).cloned() {
+                        shim(task, self)?;
+                    } else {
+                        return Err(VMError::MissingNative(dispatch_id));
+                    }
+                    // Dispatch handler consumed type_name + method + args.
+                    // For instance methods, receiver was consumed by handler too.
+                    // For static calls, receiver type-name string is still on stack below return.
+                    if receiver_is_type_string {
+                        let ret_nv = task.ram.pop_nv();
+                        task.ram.pop_nv(); // remove the type-name receiver leftover
+                        task.ram.push_nv(ret_nv);
+                    }
+                } else if method_name == "is_none" || method_name == "is_some" {
+                    // Plan 240: Inline is_none/is_some for any type (Option semantics)
+                    // Check nanbox type tag to determine Some vs None
+                    let (is_some, receiver_is_string) = {
+                        let recv_nv = task.ram.read_nv(receiver_pos);
+                        if auto_val::is_string(recv_nv) {
+                            // String tag at top position (shouldn't happen with 2-slot string,
+                            // but handle if the receiver is already the string tag)
+                            (true, true)
+                        } else if auto_val::is_null(recv_nv) {
+                            // Could be the null marker of a 2-slot string
+                            // Check the slot below for string tag
+                            if receiver_pos > 0
+                                && auto_val::is_string(task.ram.read_nv(receiver_pos - 1))
+                            {
+                                (true, true) // string value = Some
+                            } else {
+                                (false, false) // standalone null = None
+                            }
+                        } else if auto_val::is_i32(recv_nv) {
+                            let val = auto_val::decode_i32(recv_nv);
+                            (val >= 0, false)
+                        } else {
+                            (true, false) // object, bool, f64, etc. = Some
+                        }
+                    };
+                    let result = if method_name == "is_some" {
+                        if is_some {
+                            1
+                        } else {
+                            0
+                        }
+                    } else {
+                        if is_some {
+                            0
+                        } else {
+                            1
+                        }
+                    };
+                    {
+                        if receiver_is_string {
+                            // String receiver occupies 2 nanbox slots
+                            // Pop all: null marker + args + string tag = arg_count + 2
+                            for _ in 0..=(arg_count + 1) {
+                                task.ram.pop_nv();
+                            }
+                        } else {
+                            for _ in 0..=arg_count {
+                                task.ram.pop_nv();
+                            }
+                        }
+                        task.ram.push_nv(auto_val::encode_i32(result));
+                    }
+                } else if method_name == "to_string" || method_name == "to_str" {
+                    // Inline to_string — convert to debug string representation
+                    let recv_nv = task.ram.read_nv(receiver_pos);
+                    let recv_val = if auto_val::is_i32(recv_nv) {
+                        auto_val::decode_i32(recv_nv)
+                    } else if auto_val::is_object(recv_nv) {
+                        auto_val::decode_object(recv_nv) as i32
+                    } else {
+                        task.ram.read_i32(receiver_pos)
+                    };
+                    let mut converted = false;
+                    if recv_val > 0 {
+                        let obj_key = recv_val as u64;
+                        if let Some(obj_lock) = self.heap_objects.get(&obj_key) {
+                            let guard = obj_lock.read().unwrap();
+                            // RustStdlibObject wrapping a String
+                            if let Some(rust_obj) = guard
+                                .as_any()
+                                .downcast_ref::<crate::vm::ffi::rust_stdlib::RustStdlibObject>(
+                            ) {
+                                if let Some(s) = rust_obj.downcast_ref::<String>() {
+                                    let bytes = s.as_bytes().to_vec();
+                                    let idx = {
+                                        let mut strings = self.strings.write().unwrap();
+                                        strings.push(bytes);
+                                        strings.len() - 1
+                                    };
+                                    for _ in 0..=arg_count {
+                                        task.ram.pop_i32();
+                                    }
+                                    {
+                                        self.rc_push_str_idx(task, idx as usize);
+                                    }
+                                    converted = true;
+                                }
+                            }
+                            // GenericInstanceData (user-defined struct)
+                            if !converted {
+                                if let Some(inst) = guard.as_any().downcast_ref::<crate::vm::generic_registry::GenericInstanceData>() {
+                                        let type_name = inst.mono_name.split('_').next().unwrap_or(&inst.mono_name);
+                                        let mut parts = vec![type_name.to_string()];
+                                        let strings_guard = self.strings.read().unwrap();
+                                        for field in &inst.fields {
+                                            let s = match field {
+                                                auto_val::Value::Int(i) => i.to_string(),
+                                                auto_val::Value::Uint(u) => u.to_string(),
+                                                auto_val::Value::Str(s) => format!("\"{}\"", s.as_str()),
+                                                auto_val::Value::Bool(b) => b.to_string(),
+                                                auto_val::Value::Double(d) => format!("{:.1}", d),
+                                                auto_val::Value::Nil => "null".to_string(),
+                                                auto_val::Value::VmRef(r) => format!("<obj:{}>", r.id),
+                                                _ => "?".to_string(),
+                                            };
+                                            parts.push(s);
+                                        }
+                                        drop(strings_guard);
+                                        let debug_str = if inst.fields.is_empty() {
+                                            type_name.to_string()
+                                        } else {
+                                            format!("{}({})", type_name, parts[1..].join(", "))
+                                        };
+                                        let bytes = debug_str.into_bytes();
+                                        let idx = {
+                                            let mut strings = self.strings.write().unwrap();
+                                            strings.push(bytes);
+                                            strings.len() - 1
+                                        };
+                                        for _ in 0..=arg_count { task.ram.pop_i32(); }
+                                        {
+                                            self.rc_push_str_idx(task, idx as usize);
+                                        }
+                                        converted = true;
+                                    }
+                            }
+                        }
+                    }
+                    if !converted {
+                        // Primitive value — convert i32/f32/f64/bool to string
+                        // Plan 403-F Bug D: added is_f32 branch (was missing,
+                        // so f32 values fell through to the {:?} debug dump).
+                        {
+                            let s = if auto_val::is_i32(recv_nv) {
+                                auto_val::decode_i32(recv_nv).to_string()
+                            } else if auto_val::is_f64(recv_nv) {
+                                fmt_f64(auto_val::decode_f64(recv_nv))
+                            } else if auto_val::is_f32(recv_nv) {
+                                fmt_f64(auto_val::decode_f32(recv_nv) as f64)
+                            } else if auto_val::is_bool(recv_nv) {
+                                if auto_val::decode_bool(recv_nv) {
+                                    "true".to_string()
+                                } else {
+                                    "false".to_string()
+                                }
+                            } else if auto_val::is_null(recv_nv) {
+                                "null".to_string()
+                            } else {
+                                format!("{:?}", recv_nv)
+                            };
+                            // Pop receiver + args
+                            for _ in 0..=arg_count {
+                                task.ram.pop_nv();
+                            }
+                            // Push string result
+                            let bytes = s.into_bytes();
+                            let idx = {
+                                let mut strings = self.strings.write().unwrap();
+                                strings.push(bytes);
+                                strings.len() - 1
+                            };
+                            self.rc_push_str_idx(task, idx as usize);
+                        }
+                    }
+                } else if type_name == "None" {
+                    // PLAN-044: None-receiver protocol — Option 链的 VM 坍缩
+                    // 语义(musk Json body 缺字段 → null 后的 unwrap_or 链):
+                    //   None.unwrap_or(d) → d;None.clone()/.ok() → None 透传。
+                    match method_name.as_str() {
+                        "unwrap_or" if arg_count == 1 => {
+                            let arg = task.ram.pop_nv();
+                            task.ram.pop_nv(); // receiver (None)
+                            task.ram.push_nv(arg);
+                        }
+                        "clone" | "ok" => {
+                            // identity: receiver stays as the result
+                        }
+                        _ => {
+                            return Err(VMError::RuntimeError(format!(
+                                "CALL_SPEC: no function '{}' for type 'None'",
+                                method_name
+                            )));
+                        }
+                    }
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "CALL_SPEC: no function '{}' for type '{}'",
+                        func_name, type_name
+                    )));
+                }
+            }
+            OpCode::CALL_NAT => {
+                let native_id = self.flash.read_u16(task.ip);
+                task.ip += 2;
+                self.native_interface
+                    .verify_core_reference(native_id)
+                    .map_err(VMError::RuntimeError)?;
+
+                // Plan 419: native 死区结算 —— shim 弹掉的参数/receiver 槽
+                // 在此统一释放(shim 内 pop 均为 raw,不计数)。shim 内
+                // 推栈的堆 id 必须 rc_push(+1),与本结算配平。
+                let sp_before_native = task.ram.sp;
+                // DEBUG: Bypass native_interface for iterator.next
+                if native_id == 112 {
+                    // Save IP before call — if iterator_next yields
+                    // (SSE waiting), we need to retry this CALL_NAT.
+                    let pre_call_ip = task.ip;
+                    crate::vm::native::shim_iterator_next(task, self)?;
+                    // Plan 348: if iterator_next yielded (SSE stream waiting),
+                    // back up IP so the CALL_NAT re-executes on resume,
+                    // and signal Yield so the scheduler can run other tasks.
+                    // PLAN-707: HTTPStream 句柄惰性消费臂同款重试协议。
+                    if task.waiting_sse_stream_id.is_some() || task.waiting_http_stream_id.is_some()
+                    {
+                        // Plan 419: yield 重试路径不结算 —— 参数仍在死区
+                        // 语义之外,重试时 shim 会重新 pop。
+                        task.ip = pre_call_ip - 3;
+                        return Ok(StepResult::Yield);
+                    }
+                } else if native_id == 1202 && task.cooperative_http_sleep {
+                    // PLAN-696: SSE generator stepping is driven in bounded
+                    // batches by the HTTP LocalSet. Preserve Time.sleep_ms
+                    // semantics by parking this generator task until its
+                    // deadline instead of blocking the LocalSet thread.
+                    let ms = crate::vm::native::pop_arg_i32(task).max(0) as u64;
+                    task.wake_time = Some(Instant::now() + std::time::Duration::from_millis(ms));
+                    task.status = TaskStatus::Waiting(format!("sleep for {}ms", ms));
+                    return Ok(StepResult::Yield);
+                } else if native_id == 2300 {
+                    // Plan 317 Phase 1: Task.spawn -> vm-aware (register AutoVM task)
+                    crate::vm::ffi::stdlib::shim_task_spawn_vm(task, self)?;
+                } else if native_id == 2301 {
+                    // Plan 317 Phase 1: TaskHandle.send -> vm-aware (push to pending_messages)
+                    crate::vm::ffi::stdlib::shim_task_send_vm(task, self)?;
+                } else if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                    let pre_call_ip = task.ip;
+                    // Plan 567 T05：对齐 CALL_NAT_COUNTED 的 560 T11 通道
+                    // 统一——py 桥 FFI 错误转 RuntimeError；**非 FFI 错误
+                    // 原样传播**（`if let Err(FFI)` 形态会把 RuntimeError/
+                    // MissingNative 等静默吞掉——alloc_array 负尺寸回归
+                    // 实证）。
+                    match shim(task, self) {
+                        Err(VMError::FFI(msg)) => {
+                            return Err(VMError::RuntimeError(msg));
+                        }
+                        Err(other) => return Err(other),
+                        Ok(()) => {}
+                    }
+                    // Plan 349 step 7: if HTTP json native yielded (async
+                    // request pending), back up IP to retry CALL_NAT.
+                    // PLAN-707 T-05: 流等待同款重试协议（shim 重入臂消费
+                    // waiting_http_stream_id 后重新 pull）。
+                    if task.waiting_http_request_id.is_some()
+                        || task.waiting_http_stream_id.is_some()
+                    {
+                        task.ip = pre_call_ip - 3;
+                        return Ok(StepResult::Yield);
+                    }
+                } else {
+                    return Err(VMError::MissingNative(native_id));
+                }
+                // Plan 419: 死区 [sp_after, sp_before) 内引用槽结算清零。
+                let sp_after_native = task.ram.sp;
+                if sp_after_native < sp_before_native {
+                    self.rc_release_slot_range(&mut task.ram, sp_after_native, sp_before_native);
+                }
+            }
+            // Plan 369 Task 10: Python FFI native call with explicit arg count.
+            // Reads native_id:u16, arg_count:u8. The arg_count is stashed on
+            // the task so the Python shim pops the ACTUAL number of args pushed
+            // at this call site (count cannot be baked into the shim because
+            // C builtins defeat inspect.signature and struct.pack is variadic).
+            OpCode::CALL_NAT_COUNTED => {
+                let native_id = self.flash.read_u16(task.ip);
+                task.ip += 2;
+                let arg_count = self.flash.read_u8(task.ip);
+                task.ip += 1;
+                task.pending_native_arg_count = arg_count;
+                self.native_interface
+                    .verify_core_reference(native_id)
+                    .map_err(VMError::RuntimeError)?;
+
+                // Plan 419: 同 CALL_NAT 的死区结算。
+                let sp_before_native = task.ram.sp;
+                if let Some(shim) = self.native_interface.get(native_id).cloned() {
+                    // Plan 560 T11（§4-3）：py 桥错误统一 RuntimeError
+                    // 通道（catch 拦值一致绑定——FFI 标签在载荷里保留
+                    // 上下文原文；PyException 前缀精化归 P560 债）。
+                    // Plan 567 T05 加固：非 FFI 错误原样传播（同 CALL_NAT
+                    // 臂的静默吞错回归教训）。
+                    match shim(task, self) {
+                        Err(VMError::FFI(msg)) => {
+                            return Err(VMError::RuntimeError(msg));
+                        }
+                        Err(other) => return Err(other),
+                        Ok(()) => {}
+                    }
+                } else {
+                    return Err(VMError::MissingNative(native_id));
+                }
+                let sp_after_native = task.ram.sp;
+                if sp_after_native < sp_before_native {
+                    self.rc_release_slot_range(&mut task.ram, sp_after_native, sp_before_native);
+                }
+            }
+            OpCode::RET => {
+                // Spec: RET n_args
+                let n_args = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                // Check if we're in the main task (bp == 0 means no caller)
+                if task.bp == 0 {
+                    // Main task returning - just terminate
+                    return Ok(StepResult::Terminated);
+                }
+
+                // Under nanbox: preserve NanoValue type tag for string/bool/etc.
+                let result_nv = task.ram.pop_nv();
+                // PLAN-062 T12: 结果份额读走——帧清扫(按影子)后随值
+                // 回落调用方槽位(write_nv 清影子后重新标记)。
+                let result_stake = task.ram.take_stake_at(task.ram.sp);
+
+                let old_bp = task.ram.read_i32(task.bp) as usize;
+                let ret_ip = task.ram.read_i32(task.bp - 1) as usize;
+
+                // PLAN-667 (F-01): 帧退栈——摘除刚返回帧的身份条目
+                // （创建帧死亡的闭包自此被守卫拒绝）。
+                task.pop_frame_id(task.bp);
+
+                // Plan 071 Phase 5: Restore previous closure from saved_closure_id
+                task.current_closure_id = task.saved_closure_id;
+
+                // Plan 053 后续(ash-gui VM 稳定性)+ T-03 G-8 修正:bp - n_args
+                // 可为 0 / 下溢(帧不匹配 / 主任务边界 RET / 适配器派发的
+                // handler 0 参入栈)。守卫必须先于减法——原实现先减后判,
+                // debug 构建(bp<n_args)在守卫之前的减法处直接 panic
+                // (PLAN-093 实证:VMHTTP canvas 路由整 VM 崩溃即此)。
+                // 夹到最小槽位 1 保命,丢一个返回值槽位远好于崩溃;warn 便于
+                // 追踪帧不匹配的真因。
+                let new_sp = if task.bp >= n_args {
+                    task.bp - n_args
+                } else {
+                    0
+                };
+                if new_sp == 0 {
+                    eprintln!(
+                        "[VM-RET] underflow guard: bp={}, n_args={} (frame mismatch?)",
+                        task.bp, n_args
+                    );
+                }
+                let new_sp = new_sp.max(1);
+
+                // Plan 419: RET 帧扫描 —— 释放帧区间 [new_sp-1, sp) 内每个
+                // 引用槽(参数/局部/临时;返回值已 pop 转移给调用方,
+                // 其落入的 new_sp-1 槽旧值也随覆盖而死亡)。
+                let sp_after_result_pop = task.ram.sp;
+                self.rc_release_slot_range(&mut task.ram, new_sp - 1, sp_after_result_pop);
+
+                {
+                    task.ram.write_nv(new_sp - 1, result_nv);
+                    task.ram.sp = new_sp;
+                    task.ram.write_nv(new_sp - 1, result_nv);
+                    task.ram.mark_stake_at(new_sp - 1, result_stake);
+                }
+
+                task.bp = old_bp;
+                task.ip = ret_ip;
+
+                if let Some(frame) = task.call_stack.pop() {
+                    task.current_fn_n_args = frame.old_fn_n_args;
+                    task.current_fn_n_locals = frame.old_fn_n_locals;
+                    // Plan 432 D26 修复:num_locals 随帧恢复——此前从不恢复,
+                    // 用户函数返回后 native shim 的帧几何启发式(shim_list_new
+                    // 的有参判定 bp+num_locals+2)读到被调者的局部数,sp 偶然
+                    // 越过错误阈值即偷弹栈值(List.new 返回被污染的初始列表,
+                    // 242:S2-432;构造参数内联调用丢失即 D25-① 同机制)。
+                    task.num_locals = task.current_fn_n_locals;
+                }
+            }
+            // Plan 377 §3.3: RET_D opcode 已删除（全值单槽化后恒用 RET）。
+
+            // === Closures (Plan 071: Direct Capture) ===
+            OpCode::CLOSURE => {
+                // Stack: capture_count × value -> closure_id
+                // Immediate: func_addr (u32), capture_count (u8), n_args (u8)
+                let func_addr = self.flash.read_u32(task.ip);
+                task.ip += 4;
+                let capture_count = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+                let n_args = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                vm_debug!("DEBUG CLOSURE: func_addr={}, capture_count={}, n_args={}, ip after header={}, sp before={}", func_addr, capture_count, n_args, task.ip, task.ram.sp);
+
+                // Pop captured values from stack and build environment
+                let mut env = HashMap::new();
+                let mut capture_slots = HashMap::new();
+                let mut param_abs: HashMap<String, usize> = HashMap::new();
+                let creator_bp = task.bp; // Plan 385: 记录创建者的 bp
+                for _i in 0..capture_count {
+                    // Read variable name from string table (stored in reverse order)
+                    let var_name_idx = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
+
+                    // Plan 385: Read slot offset (u16) — 0xFFFF means "no slot" (兼容旧字节码)
+                    let slot_offset = self.flash.read_u16(task.ip) as usize;
+                    task.ip += 2;
+
+                    // Pop value from stack (values pushed in order, popped in reverse)
+                    // PLAN-667 (F-01): pop_nv 保留类型标签（旧 pop_i32 把
+                    // 字符串/对象捕获截成垃圾整数）；弹出槽的影子随值
+                    // 转入 env 持有（env 条目隐式占一份；闭包死亡属
+                    // 泄漏方向——安全纪律内，见 rc.rs 头注）。
+                    let value_nv = task.ram.pop_nv();
+                    let _env_stake = task.ram.take_stake_at(task.ram.sp);
+
+                    // Look up variable name from string table (Plan 073: Now uses RwLock)
+                    let strings = self.strings.read().unwrap();
+                    let var_name_str = if let Some(var_name) = strings.get(var_name_idx) {
+                        String::from_utf8_lossy(var_name).to_string()
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Invalid string index for captured variable: {}",
+                            var_name_idx
+                        )));
+                    };
+                    drop(strings);
+                    env.insert(var_name_str.clone(), self.decode_tagged_nv(value_nv));
+                    // Plan 385/454 E5a: 记录原始栈位置用于 by-reference 捕获。
+                    // 0x8000 旗标 = 函数参数域(负向寻址),此处即用创建帧
+                    // 的 n_args 解析成绝对槽位;普通局部沿用 bp+1+off。
+                    if slot_offset != 0xFFFF {
+                        if slot_offset & 0x8000 != 0 {
+                            let real = (slot_offset & 0x3FFF) as usize;
+                            let cur_n = task.current_fn_n_args;
+                            if real < cur_n && cur_n > 0 {
+                                let abs = task.bp - (cur_n - real + 1);
+                                param_abs.insert(var_name_str.clone(), abs);
+                            }
+                        } else {
+                            capture_slots.insert(var_name_str, (creator_bp, slot_offset));
+                        }
+                    }
+                }
+
+                // PLAN-667 (F-01): 嵌套闭包传递继承——在闭包 outer 执行
+                // 体内创建 inner 时，inner 对 outer 已捕获变量的槽位解析
+                // 必须沿用 outer 的帧锚（祖父帧），而非 inner 创建帧。
+                // 旧实现按 inner 编译期作用域算槽位，读的是 outer 帧的
+                // 垃圾（嵌套探针得 8 非 106 的根因）。
+                if let Some(outer_id) = task.current_closure_id {
+                    if let Some(outer) = self.closures.get(&outer_id) {
+                        for (name, entry) in capture_slots.iter_mut() {
+                            if let Some(&outer_entry) = outer.capture_slots.get(name) {
+                                *entry = outer_entry;
+                            }
+                        }
+                        for (name, abs) in param_abs.iter_mut() {
+                            if let Some(&outer_abs) = outer.param_abs.get(name) {
+                                *abs = outer_abs;
+                            }
+                        }
+                    }
+                }
+
+                // PLAN-667 (F-01): 帧相对捕获记录创建帧身份
+                // (task_id, frame_uid)，读写前校验存亡。
+                let creator_frame = if capture_slots.is_empty() && param_abs.is_empty() {
+                    None
+                } else {
+                    Some((task.id, task.current_frame_uid()))
+                };
+
+                // Create closure
+                let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
+                let closure = Closure {
+                    func_addr,
+                    env,
+                    n_args,
+                    capture_slots,
+                    param_abs,
+                    creator_frame,
+                };
+
+                vm_debug!(
+                    "DEBUG CLOSURE: created closure_id={}, ip after names={}, sp after={}",
+                    closure_id,
+                    task.ip,
+                    task.ram.sp
+                );
+
+                self.closures.insert(closure_id, closure);
+                task.ram.push_i32(closure_id as i32);
+            }
+            OpCode::CAPTURE_VAR => {
+                // Stack: -> value
+                // Immediate: var_name_idx (u32)
+                // Load variable by name from current scope and push value
+                let var_name_idx = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+
+                // Plan 073: Now uses RwLock for strings access
+                let strings = self.strings.read().unwrap();
+                let _var_name = if let Some(var_name_bytes) = strings.get(var_name_idx) {
+                    String::from_utf8_lossy(var_name_bytes).to_string()
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid string index: {}",
+                        var_name_idx
+                    )));
+                };
+                drop(strings);
+
+                // Look up variable in local scope (from stack frame)
+                // TODO: For MVP, we'll need to implement proper scope lookup
+                // For now, push placeholder value
+                task.ram.push_i32(0);
+            }
+            OpCode::LOAD_CAPTURED => {
+                // Plan 071 Phase 5: Load captured variable from current closure
+                // Stack: -> value (no longer pops closure_id)
+                // Immediate: var_name_idx (u32)
+                let var_name_idx = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+
+                // Use current_closure_id instead of popping from stack
+                let closure_id = task.current_closure_id.ok_or_else(|| {
+                    VMError::RuntimeError(
+                        "LOAD_CAPTURED called outside of closure context".to_string(),
+                    )
+                })?;
+
+                // Plan 073: Now uses RwLock for strings access
+                let strings = self.strings.read().unwrap();
+                let var_name = if let Some(var_name_bytes) = strings.get(var_name_idx) {
+                    String::from_utf8_lossy(var_name_bytes).to_string()
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid string index: {}",
+                        var_name_idx
+                    )));
+                };
+                drop(strings);
+
+                if let Some(closure) = self.closures.get(&closure_id) {
+                    // Plan 454 E5a: 参数域捕获优先(绝对槽,创建帧存活期内有效)
+                    if let Some(&abs_slot) = closure.param_abs.get(var_name.as_str()) {
+                        // PLAN-667 (F-01): 任何槽位读写前校验创建帧身份。
+                        self.ensure_capture_frame_alive(task, &closure, &var_name, closure_id)?;
+                        drop(closure);
+                        let nv = task.ram.read_nv(abs_slot);
+                        self.rc_push(task, nv);
+                        return Ok(StepResult::Continue);
+                    }
+                    // Plan 385: 优先通过 capture_slots 读原始栈位置（by-reference）
+                    if let Some(&(creator_bp, slot_offset)) =
+                        closure.capture_slots.get(var_name.as_str())
+                    {
+                        // PLAN-667 (F-01): 任何槽位读写前校验创建帧身份。
+                        self.ensure_capture_frame_alive(task, &closure, &var_name, closure_id)?;
+                        let nv = task.ram.read_nv(creator_bp + 1 + slot_offset);
+                        // Plan 419: copy-on-load(+1)。
+                        drop(closure);
+                        self.rc_push(task, nv);
+                        return Ok(StepResult::Continue);
+                    }
+                    // Fallback: 从 env 读值副本（by-value，兼容旧字节码）
+                    if let Some(value) = closure.env.get(var_name.as_str()) {
+                        // Push value to stack
+                        // PLAN-667 (F-01): env 持有的引用入栈 +1 并标记
+                        // 影子（旧实现裸 push_i32 无影子——POP 按影子释放
+                        // 不到，循环内每次 env 加载净漏一份）。
+                        match value {
+                            Value::Int(i) => {
+                                task.ram.push_i32(*i);
+                            }
+                            Value::Bool(b) => {
+                                task.ram.push_nv(auto_val::encode_bool(*b));
+                            }
+                            Value::Float(f) => {
+                                task.ram.push_nv(auto_val::encode_f64(*f as f64));
+                            }
+                            Value::Double(d) => {
+                                task.ram.push_nv(auto_val::encode_f64(*d));
+                            }
+                            Value::Nil | Value::Null => {
+                                task.ram.push_nv(auto_val::encode_null());
+                            }
+                            Value::Str(s) => {
+                                let idx = self.add_string(s.as_bytes().to_vec());
+                                self.rc_push_str_idx(task, idx);
+                            }
+                            Value::VmRef(r) => {
+                                self.rc_push_id(task, r.id as u64);
+                            }
+                            _ => task.ram.push_i32(0),
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Captured variable '{}' not found in closure {}",
+                            var_name, closure_id
+                        )));
+                    }
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid closure ID: {}",
+                        closure_id
+                    )));
+                }
+            }
+            OpCode::STORE_CAPTURED => {
+                // Plan 071 Phase 5: Store to captured variable in current closure
+                // Stack: value -> (no longer pops closure_id)
+                // Immediate: var_name_idx (u32)
+                let var_name_idx = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+
+                let value_nv = task.ram.pop_nv();
+                // PLAN-667 (F-01): 弹出槽影子随值转移（旧实现不取——
+                // 陈旧影子滞留死位，槽位复用后 POP 误释他人份额）。
+                let in_stake = task.ram.take_stake_at(task.ram.sp);
+
+                // Use current_closure_id instead of popping from stack
+                let closure_id = task.current_closure_id.ok_or_else(|| {
+                    VMError::RuntimeError(
+                        "STORE_CAPTURED called outside of closure context".to_string(),
+                    )
+                })?;
+
+                // Plan 073: Now uses RwLock for strings access
+                let strings = self.strings.read().unwrap();
+                let var_name = if let Some(var_name_bytes) = strings.get(var_name_idx) {
+                    String::from_utf8_lossy(var_name_bytes).to_string()
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid string index: {}",
+                        var_name_idx
+                    )));
+                };
+                drop(strings);
+
+                // Plan 454 E5a: 参数域捕获优先(绝对槽直写)
+                // PLAN-667 (F-01): 旧实现此处再 pop 一次（双 pop 吃掉
+                // 无关栈值）且不转影子；改为单 pop + 影子转移 + 旧槽按
+                // 影子释放（内容判释放会误杀与活 id 相等的整数）。
+                if let Some(closure) = self.closures.get(&closure_id) {
+                    if let Some(&abs_slot) = closure.param_abs.get(var_name.as_str()) {
+                        self.ensure_capture_frame_alive(task, &closure, &var_name, closure_id)?;
+                        drop(closure);
+                        self.release_slot_old_value(task, abs_slot);
+                        task.ram.write_nv(abs_slot, value_nv);
+                        task.ram.mark_stake_at(abs_slot, in_stake);
+                        return Ok(StepResult::Continue);
+                    }
+                    // Plan 385: 优先通过 capture_slots 写原始栈位置（by-reference）
+                    if let Some(&(creator_bp, slot_offset)) =
+                        closure.capture_slots.get(var_name.as_str())
+                    {
+                        self.ensure_capture_frame_alive(task, &closure, &var_name, closure_id)?;
+                        drop(closure);
+                        let addr = creator_bp + 1 + slot_offset;
+                        self.release_slot_old_value(task, addr);
+                        task.ram.write_nv(addr, value_nv);
+                        task.ram.mark_stake_at(addr, in_stake);
+                        return Ok(StepResult::Continue);
+                    }
+                    drop(closure);
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid closure ID: {}",
+                        closure_id
+                    )));
+                }
+
+                // Fallback: 写 closure.env（by-value，兼容旧字节码）
+                let value = self.decode_tagged_nv(value_nv);
+                if let Some(mut closure) = self.closures.get_mut(&closure_id) {
+                    // Plan 419: env 旧值(堆引用)释放;新值转移。
+                    if let Some(Value::VmRef(old)) = closure.env.get(var_name.as_str()) {
+                        self.rc_release_id(old.id as u64);
+                    }
+                    // 字符串 env 条目为字节拷贝（无池份额），无需释放。
+                    closure.env.insert(var_name, value);
+                    // 新值的影子（若为堆引用）归 env 隐式持有——计数
+                    // 已在入栈时发生（copy-on-load），env 覆盖/闭包死亡
+                    // 时按上述约定释放/泄漏（安全方向）。
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid closure ID: {}",
+                        closure_id
+                    )));
+                }
+            }
+            OpCode::CALL_CLOSURE => {
+                // Stack: closure_id, [args...] -> result
+                // Immediate: arg_count (u8)
+                let _arg_count = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                // Plan 550 T04: null callee 守卫。正常模式 null callee 被
+                // 静态解析在编译期拦下（E0401，见 p4 探针），本守卫覆盖
+                // 动态/脚本路径：现状 pop_i32 把 TAG_NULL 解码成垃圾 id，
+                // 落到 "Invalid closure ID" 无类型语义错误。
+                if auto_val::is_null(task.ram.peek_nv(0)) {
+                    return Err(VMError::RuntimeError(
+                        "TypeError: 'NoneType' object is not callable".to_string(),
+                    ));
+                }
+
+                let closure_id = task.ram.pop_i32() as u32;
+
+                if let Some(_closure) = self.closures.get(&closure_id) {
+                    // Plan 071 Phase 5: Set current closure for LOAD_CAPTURED access
+                    let old_closure_id = task.current_closure_id;
+                    task.current_closure_id = Some(closure_id);
+
+                    // Set current_fn_n_args for LOAD_LOCAL parameter access
+                    let prev_fn_n_args = task.current_fn_n_args;
+                    let prev_fn_n_locals = task.current_fn_n_locals;
+                    task.current_fn_n_args = _closure.n_args;
+
+                    // Store old closure ID in task (not on stack) to avoid breaking parameter layout
+                    // The RET opcode will restore it from task.saved_closure_id
+                    task.saved_closure_id = old_closure_id;
+
+                    // Push Return Address (IP)
+                    task.ram.push_i32(task.ip as i32);
+                    // Push Old Stack Frame (BP)
+                    task.ram.push_i32(task.bp as i32);
+
+                    // New BP points to the saved BP location (SP - 1)
+                    task.bp = task.ram.sp - 1;
+                    // PLAN-667 (F-01): 帧身份登记——帧实例 uid 发号。
+                    task.push_frame_id(task.bp);
+
+                    // PLAN-624 T-03: 同 call_closure 方法 —— 闭包激活入
+                    // call_stack 一帧，闭包体 RET 弹自己的帧而非外层函数
+                    // 的帧（帧错位使 current_fn_n_args 跨层泄漏）。
+                    task.call_stack.push(crate::vm::task::CallFrame {
+                        return_ip: task.ip,
+                        old_bp: task.bp,
+                        fn_name: Some(format!("<closure:{}>", closure_id)),
+                        line: task.current_line,
+                        old_fn_n_args: prev_fn_n_args,
+                        old_fn_n_locals: prev_fn_n_locals,
+                    });
+
+                    // Jump to closure function
+                    task.ip = _closure.func_addr as usize;
+                } else {
+                    return Err(VMError::RuntimeError(format!(
+                        "Invalid closure ID: {}",
+                        closure_id
+                    )));
+                }
+            }
+
+            // === Concurrency ===
+            OpCode::SPAWN => {
+                let target = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+                let arg_count = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                let mut args = Vec::new();
+                for _ in 0..arg_count {
+                    args.push(task.ram.pop_i32());
+                }
+
+                let new_task_id = self.spawn_task(target, 1024);
+
+                if let Some(new_task_arc) = self.tasks.get(&new_task_id) {
+                    if let Ok(mut new_task) = new_task_arc.try_lock() {
+                        // Push args in reverse order (A, B, C)
+                        for arg in args.into_iter().rev() {
+                            new_task.ram.push_i32(arg);
+                        }
+                    } else {
+                        return Err(VMError::RuntimeError(format!(
+                            "Failed to lock spawned task {}",
+                            new_task_id
+                        )));
+                    }
+                }
+                task.ram.push_i32(new_task_id as i32);
+            }
+            OpCode::TASK_ID => {
+                task.ram.push_i32(task.id as i32);
+            }
+            OpCode::YIELD_TASK => {
+                return Ok(StepResult::Yield);
+            }
+            OpCode::YIELD_VAL => {
+                // Plan 321: Generator yield. The yielded value is already
+                // on top of stack (compiled by codegen before YIELD_VAL).
+                // Signal the generator driver that a value was yielded.
+                // The task's ip now points PAST the YIELD_VAL instruction,
+                // so on resume the generator continues from the next stmt.
+                return Ok(StepResult::GeneratorYield);
+            }
+            OpCode::CREATE_GENERATOR => {
+                // Plan 321: Create a generator iterator from inline operands.
+                // Bytecode: CREATE_GENERATOR, func_addr:u32, n_args:u8
+                // Result: pushes iterator_id:i32
+                let func_addr = self.flash.read_u32(task.ip);
+                task.ip += 4;
+                let n_args = self.flash.read_u8(task.ip);
+                task.ip += 1;
+
+                // Plan 417-D2: the codegen pushed the generator call's
+                // args onto the caller stack right before this opcode.
+                // Pop them into the state (declaration order) so the
+                // first next() seeds the generator frame — previously
+                // they stayed on the caller stack and parameterized
+                // generators underflowed at RET with garbage params.
+                let mut arg_nvs = Vec::with_capacity(n_args as usize);
+                for _ in 0..n_args as usize {
+                    arg_nvs.push(task.ram.pop_nv());
+                }
+                arg_nvs.reverse();
+                let gen_state = GeneratorState {
+                    task_id: None,
+                    func_addr,
+                    n_args,
+                    started: false,
+                    done: false,
+                    resume_ip: 0,
+                    resume_bp: 0,
+                    resume_sp: 0,
+                    stack_snapshot: arg_nvs,
+                };
+                let iter_id = {
+                    let next_id = self
+                        .iterator_id_gen
+                        .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    self.iterators
+                        .insert(next_id, Iterator::Generator(gen_state));
+                    next_id
+                };
+                task.ram.push_i32(iter_id as i32);
+            }
+            OpCode::WRAP_SSE_RESOURCE => {
+                // PLAN-776 R2-01/R5-01：generator 产出在**生产点**建立身份
+                //（codegen 对 ~Iter/~Stream 声明 fn 内的 CREATE_GENERATOR 后
+                // 插入；iterator 注册表校验后装箱 Sse 凭据）。幂等：已是
+                // 凭据对象（TAG_OBJECT）则原样回推——双包装/凭据回流安全。
+                let nv = task.ram.pop_nv();
+                if auto_val::is_object(nv) {
+                    task.ram.push_nv(nv);
+                } else {
+                    let iter_id = auto_val::decode_i32(nv) as u32;
+                    if !self.iterators.contains_key(&iter_id) {
+                        return Err(VMError::RuntimeError(format!(
+                            "wrap_sse: iterator {iter_id} not registered"
+                        )));
+                    }
+                    crate::vm::ffi::http_return_resource::push_sse_resource(task, self, iter_id)?;
+                }
+            }
+            OpCode::SLEEP => {
+                let ms = self.flash.read_u32(task.ip) as u64;
+                task.ip += 4;
+
+                // Set wake time
+                task.wake_time = Some(Instant::now() + std::time::Duration::from_millis(ms));
+                task.status = TaskStatus::Waiting(format!("sleep for {}ms", ms));
+                return Ok(StepResult::Yield);
+            }
+            OpCode::JOIN => {
+                let target_task_id = task.ram.pop_i32() as u64;
+
+                // Get Arc first (must outlive the try_lock call)
+                let target_task_opt: Option<Arc<Mutex<AutoTask>>> =
+                    self.tasks.get(&target_task_id).map(|r| r.value().clone());
+
+                let join_result: Option<(bool, i32)> = match &target_task_opt {
+                    Some(target_task) => {
+                        match target_task.try_lock() {
+                            Ok(target) => {
+                                if target.status == TaskStatus::Terminated {
+                                    Some((true, target.ram.top().unwrap_or(0)))
+                                } else {
+                                    Some((false, 0))
+                                }
+                            }
+                            Err(_) => None, // Couldn't lock
+                        }
+                    }
+                    None => Some((true, 0)), // Task not found, return 0
+                };
+
+                match join_result {
+                    Some((true, result)) => {
+                        task.ram.push_i32(result);
+                    }
+                    Some((false, _)) | None => {
+                        // Task still running or lock failed, yield and retry
+                        task.ip -= 1;
+                        task.ram.push_i32(target_task_id as i32);
+                        return Ok(StepResult::Yield);
+                    }
+                }
+            }
+            OpCode::CHAN_NEW => {
+                let id = self.channel_id_gen.fetch_add(1, Ordering::Relaxed) as u32;
+                let chan = Arc::new(AutoChannel::new(id, 16));
+                self.channels.insert(id, chan);
+                task.ram.push_i32(id as i32);
+            }
+            OpCode::SEND => {
+                let data = task.ram.pop_i32();
+                let chan_id = task.ram.pop_i32() as u32;
+                let mut success = false;
+                let mut closed = false;
+
+                if let Some(chan_ref) = self.channels.get(&chan_id) {
+                    let chan = chan_ref.value().clone();
+                    drop(chan_ref);
+                    match chan.tx.try_send(data) {
+                        Ok(_) => success = true,
+                        Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                            // Channel full
+                        }
+                        Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                            closed = true;
+                        }
+                    }
+                } else {
+                    closed = true;
+                }
+
+                if !success && !closed {
+                    // Retry later
+                    task.ip -= 1;
+                    task.ram.push_i32(chan_id as i32);
+                    task.ram.push_i32(data);
+                    return Ok(StepResult::Yield);
+                }
+            }
+            OpCode::RECV => {
+                let chan_id = task.ram.pop_i32() as u32;
+                let mut success = false;
+                let mut val = 0;
+                let mut closed = false;
+                match self.channels.get(&chan_id) {
+                    Some(chan_ref) => {
+                        let chan = chan_ref.value().clone();
+                        drop(chan_ref);
+                        // Lock rx
+                        let mut rx = chan.rx.lock().unwrap();
+                        match rx.try_recv() {
+                            Ok(v) => {
+                                val = v;
+                                success = true;
+                            }
+                            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                                // Empty
+                            }
+                            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                                closed = true;
+                            }
+                        }
+                    }
+                    None => {
+                        closed = true; // Invalid = closed
+                        val = -1; // Error code?
+                    }
+                }
+
+                if success {
+                    task.ram.push_i32(val);
+                } else if closed {
+                    task.ram.push_i32(0); // TODO: Null/None
+                } else {
+                    // Empty, Retry
+                    task.ip -= 1;
+                    task.ram.push_i32(chan_id as i32);
+                    return Ok(StepResult::Yield);
+                }
+            }
+            OpCode::TRY_RECV => {
+                let chan_id = task.ram.pop_i32() as u32;
+                let mut success = false;
+                let mut val = 0;
+                let mut closed = false;
+                match self.channels.get(&chan_id) {
+                    Some(chan_ref) => {
+                        let chan = chan_ref.value().clone();
+                        drop(chan_ref);
+                        // Lock rx
+                        let mut rx = chan.rx.lock().unwrap();
+                        match rx.try_recv() {
+                            Ok(v) => {
+                                val = v;
+                                success = true;
+                            }
+                            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {
+                                // Empty - return 0 without blocking
+                            }
+                            Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                                closed = true;
+                            }
+                        }
+                    }
+                    None => {
+                        closed = true; // Invalid = closed
+                        val = -1; // Error code?
+                    }
+                }
+
+                if success {
+                    task.ram.push_i32(val);
+                } else if closed {
+                    task.ram.push_i32(0); // TODO: Null/None
+                } else {
+                    // Empty channel - return 0 immediately (non-blocking)
+                    task.ram.push_i32(0);
+                }
+            }
+
+            // Plan 126: SPAWN_GO - fire-and-forget spawn
+            // Pops a single value from the stack (a Future created by an
+            // async block `~{ ... }.go`, encoded as (future_id << 8) | 0xF0,
+            // or a closure id) and spawns it as a background task.
+            // Returns void (no value pushed to stack).
+            // Stack layout: [..., future_or_closure:i32]
+            OpCode::SPAWN_GO => {
+                // Pop the single value pushed by the Expr::Go codegen.
+                let value_nv = task.ram.pop_nv();
+
+                // PLAN-776 R7-01：TAG_FUTURE 逐值来源优先（legacy 位模式
+                // 兼容）；非 future 值按 closure id 处理（原语义）。
+                if let Some(future_id) = Self::decode_future_handle(value_nv) {
+                    let value = auto_val::decode_i32(value_nv);
+                    // Look up the future to obtain its body offset and
+                    // captures, then spawn a background task that starts at
+                    // the body offset.
+                    if let Some(future_arc) = self.futures.get(&future_id) {
+                        let (body_offset, captures) = {
+                            let future = future_arc.read().unwrap();
+                            (future.body_offset as usize, future.captures.clone())
+                        };
+                        // Plan 348 Task 22: only spawn when the body offset
+                        // is a real, in-range bytecode address. The new
+                        // out-of-line AsyncBlock codegen always supplies a
+                        // non-zero address; the guard keeps us safe if a
+                        // future was constructed through some other path.
+                        if body_offset != 0 && body_offset < self.flash.memory.len() {
+                            let new_task_id = self.spawn_task(body_offset, 1024);
+                            // Install captures: the spawned task has a fresh
+                            // RAM, so any LOAD_CAPTURED the body emits must
+                            // resolve via a Closure entry. We synthesize one
+                            // and point the task's current_closure_id at it.
+                            if !captures.is_empty() {
+                                let closure_id =
+                                    self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
+                                self.closures.insert(
+                                    closure_id,
+                                    Closure {
+                                        func_addr: body_offset as u32,
+                                        env: captures,
+                                        n_args: 0,
+                                        capture_slots: HashMap::new(),
+                                        param_abs: HashMap::new(),
+                                        creator_frame: None, // PLAN-667: 合成闭包无帧相对捕获
+                                    },
+                                );
+                                if let Some(task_guard) = self.tasks.get(&new_task_id) {
+                                    if let Ok(mut spawned) = task_guard.try_lock() {
+                                        spawned.current_closure_id = Some(closure_id);
+                                        spawned.saved_closure_id = Some(closure_id);
+                                    }
+                                }
+                            }
+                        }
+                        // Fire-and-forget: we do not push task_id back and
+                        // do not wait for the spawned task.
+                    }
+                } else {
+                    // Otherwise treat the value as a closure id. Spawn a
+                    // background task at the closure's function address so
+                    // that the closure's body runs concurrently.
+                    let closure_id = auto_val::decode_i32(value_nv) as u32;
+                    if let Some(closure_guard) = self.closures.get(&closure_id) {
+                        let func_addr = closure_guard.func_addr as usize;
+                        let _new_task_id = self.spawn_task(func_addr, 1024);
+                    }
+                    // If neither a valid future nor closure, silently drop
+                    // the value (fire-and-forget; never crash on bad input).
+                }
+            }
+
+            // Plan 127: TASK_LOOP - enter task message processing loop
+            // This opcode marks the start of a task's message handling loop.
+            // The task will wait for messages and dispatch them to handlers.
+            // Stack layout: [task_type_str_idx:i32]
+            OpCode::TASK_LOOP => {
+                // Get task type string index
+                let task_type_idx = task.ram.pop_i32() as u16;
+                let strings = self.strings.read().unwrap();
+                let task_type = strings
+                    .get(task_type_idx as usize)
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .unwrap_or_default();
+                drop(strings);
+
+                // Store that this task is now in message loop mode
+                task.in_message_loop = true;
+                task.task_type_name = Some(task_type.clone());
+
+                // VM bug fix: #start's default initializers have run (or were
+                // skipped for spawn-injected fields). Clear the lock set so
+                // message handlers can freely STORE_STATE_FIELD on any field.
+                task.locked_state_fields.clear();
+
+                // Set task to waiting state (will be woken when messages arrive)
+                task.status = TaskStatus::Waiting("message_loop".to_string());
+                // Plan 390 §15 G2-refactor (方案 B): 记录稳定的重 park ip（TASK_LOOP
+                // 之后的 RET）。handler RET 后的 RET-catch 会把 ip 重置到这里，使
+                // actor 干净地等待下一条消息，不依赖 handler RET 恢复的 ip（那个 ip
+                // 指向 #start 尾部 RET，执行后会推进 ip 污染下次 wake 的 saved_ip）。
+                task.park_ip = Some(task.ip);
+
+                if crate::is_vm_debug() {
+                    eprintln!(
+                        "[TASK_LOOP] Task {} entering message loop for type {}",
+                        task.id, task_type
+                    );
+                }
+
+                // Plan 317 Phase 1: yield immediately so the trailing RET
+                // (bp==0 for a spawned task) doesn't terminate the task.
+                // run_task_loop will re-run this task when a message arrives
+                // (its ip still points at the RET after TASK_LOOP, but the
+                // message wake path resets ip to the handler body_offset).
+                return Ok(StepResult::Yield);
+            }
+
+            // Plan 127: HANDLE_MSG - dispatch message to matched handler
+            // The message value is on the stack, handlers are looked up from metadata.
+            // Stack layout: [..., msg_value:i32]
+            // Pushes: handler_found:bool, handler_offset:i32 (if found)
+            OpCode::HANDLE_MSG => {
+                // Get message value from stack
+                let msg_value = task.ram.pop_i32();
+
+                // Get task type for handler lookup
+                let task_type = task.task_type_name.clone().unwrap_or_default();
+                let msg = auto_val::Value::Int(msg_value);
+
+                // Plan 317 Phase 1: delegate to shared matcher (now also
+                // covers the `else` fallback via exports).
+                if let Some((body_offset, has_context)) = self.find_handler_offset(&task_type, &msg)
+                {
+                    task.ram.push_i32(1); // true - handler found
+                    task.ram.push_i32(body_offset as i32);
+                    task.current_handler_has_context = has_context;
+                } else {
+                    task.ram.push_i32(0); // false - no handler
+                    if crate::is_vm_debug() {
+                        eprintln!(
+                            "[HANDLE_MSG] No handler found for message {} in task {}",
+                            msg_value, task_type
+                        );
+                    }
+                }
+            }
+
+            // Plan 127: REPLY - send reply via current MessageContext
+            // Stack layout: [..., reply_value:i32]
+            // Pops the reply value and sends it through the reply channel.
+            OpCode::REPLY => {
+                // Get reply value from stack
+                let reply_value = task.ram.pop_i32();
+
+                // Check if we have a current message context with reply capability
+                if let Some(ref ctx) = task.current_msg_context {
+                    // Convert i32 to Value for reply
+                    let value = auto_val::Value::Int(reply_value);
+                    match ctx.reply(value) {
+                        Ok(()) => {
+                            if crate::is_vm_debug() {
+                                eprintln!("[REPLY] Sent reply value {}", reply_value);
+                            }
+                        }
+                        Err(_e) => {
+                            if crate::is_vm_debug() {
+                                eprintln!("[REPLY] Failed to send reply: {}", _e);
+                            }
+                        }
+                    }
+                } else {
+                    if crate::is_vm_debug() {
+                        eprintln!("[REPLY] No message context available for reply");
+                    }
+                }
+            }
+
+            // === Local Variables ===
+            //
+            // Stack frame layout (Plan 080):
+            //   [..., ret_ip, old_bp, local0, local1, ..., temps...]
+            //                     bp
+            //   Local variables are at bp+1, bp+2, ... (not bp+0!)
+            //
+            // For main task (bp=1):
+            //   [unused, local0, local1, ..., temps...]
+            //      bp-1     bp     bp+1
+            //
+            OpCode::LOAD_LOCAL => {
+                let idx = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+                if crate::is_vm_trace_ops() {
+                    eprintln!("[VMOP] LOAD_LOCAL idx=0x{:02x}", idx);
+                }
+
+                // Plan 087 Phase 3: Check if this is a parameter (idx >= 0x80)
+                if idx >= 0x80 {
+                    // Parameter: decode parameter index
+                    let param_idx = idx - 0x80;
+                    let n_args = task.current_fn_n_args;
+                    // Guard against param_idx > n_args (corrupt frame) and
+                    // bp underflow. Returning Nil avoids a panic that would
+                    // crash the whole UI; the caller sees an unset param.
+                    if param_idx >= n_args {
+                        task.ram.push_nv(auto_val::encode_null());
+                    } else {
+                        let offset = n_args - param_idx;
+                        let actual_offset = offset + 1;
+                        if actual_offset > task.bp {
+                            task.ram.push_nv(auto_val::encode_null());
+                        } else {
+                            // Plan 419: copy-on-load —— 加载引用值 +1。
+                            // PLAN-667 (F-07): 源槽份额出处门。
+                            let slot = task.bp - actual_offset;
+                            let nv = task.ram.read_nv(slot);
+                            let ss = task.ram.stake_at(slot);
+                            self.rc_push_slot(task, nv, ss);
+                        }
+                    }
+                } else {
+                    // Local variable: load from bp+1+idx
+                    // Plan 419: copy-on-load。
+                    // PLAN-667 (F-07): 源槽份额出处门。
+                    let slot = task.bp + 1 + idx;
+                    let nv = task.ram.read_nv(slot);
+                    let ss = task.ram.stake_at(slot);
+                    self.rc_push_slot(task, nv, ss);
+                }
+            }
+            OpCode::STORE_LOCAL => {
+                let idx = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+                if crate::is_vm_trace_ops() {
+                    eprintln!("[VMOP] STORE_LOCAL idx=0x{:02x}", idx);
+                }
+                let val_nv = task.ram.pop_nv();
+                // PLAN-062 T12: 份额随值转移——读走弹出槽影子,写槽
+                // 重新标记;旧槽值按其影子释放(内容判定废除)。
+                let transferred = task.ram.take_stake_at(task.ram.sp);
+
+                // Plan 088 Phase 4: Check if this is a parameter (idx >= 0x80)
+                if idx >= 0x80 {
+                    let param_idx = idx - 0x80;
+                    let n_args = task.current_fn_n_args;
+                    let offset = n_args - param_idx;
+                    let actual_offset = offset + 1;
+                    // Plan 419: 槽内旧值 -1;新值自栈转移进槽(计数不变)。
+                    let addr = task.bp - actual_offset;
+                    self.release_slot_old_value(task, addr);
+                    task.ram.write_nv(addr, val_nv);
+                    task.ram.mark_stake_at(addr, transferred);
+                } else {
+                    let addr = task.bp + 1 + idx;
+                    // Plan 419: 覆盖赋值旧值 -1(overwrite_drop 语义)。
+                    self.release_slot_old_value(task, addr);
+                    task.ram.write_nv(addr, val_nv);
+                    task.ram.mark_stake_at(addr, transferred);
+                }
+            }
+            OpCode::LOAD_LOC_0 => {
+                // Plan 419: copy-on-load。PLAN-667 (F-07): 源槽份额出处门。
+                let slot = task.bp + 1;
+                let nv = task.ram.read_nv(slot);
+                let ss = task.ram.stake_at(slot);
+                self.rc_push_slot(task, nv, ss);
+            }
+            // Plan 317: Actor state field access (absolute, bp-independent).
+            // state_vars is a Vec on AutoTask; field_idx is assigned by codegen.
+            OpCode::LOAD_STATE_FIELD => {
+                let field_idx = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+                let nv = task.state_vars.get(field_idx).copied().unwrap_or(0);
+                // Plan 419: copy-on-load。state_vars 条目恒持有,tagged 引用
+                // 正常计份;裸 i32 由 rc_push_slot 出处门处置。
+                self.rc_push_slot(task, nv, u64::MAX);
+            }
+            OpCode::STORE_STATE_FIELD => {
+                let field_idx = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+                let val_nv = task.ram.pop_nv();
+                // VM bug fix: skip the default initializer for fields set at
+                // spawn via init args (shim_task_spawn_vm locked them). The
+                // lock set is cleared at TASK_LOOP, so handler writes (which
+                // run after TASK_LOOP) are unaffected.
+                if !task.locked_state_fields.contains(&(field_idx as u8)) {
+                    // Grow state_vars if needed (safety; normally pre-sized at spawn).
+                    if field_idx >= task.state_vars.len() {
+                        task.state_vars.resize(field_idx + 1, 0);
+                    }
+                    // PLAN-062 T12: 弹出槽影子随值转移;state_vars 条目
+                    // 恒持一份(无影子的裸堆引用防御性补持)。
+                    let transferred = task.ram.take_stake_at(task.ram.sp);
+                    let _ = transferred;
+                    // PLAN-667 (F-07): 防御性补持收紧到 tagged 引用
+                    // (TAG_OBJECT/LIST/BIGINT)——裸 i32≥4M 与真整数不可
+                    // 按值区分,补持会让真整数冒领活对象份额。裸 id 生产
+                    // 者已全部迁移 rc_push_id(带影子),无份额裸 i32 即真整数。
+                    let is_tagged_ref = auto_val::is_object(val_nv)
+                        || auto_val::is_list(val_nv)
+                        || auto_val::is_bigint(val_nv);
+                    if is_tagged_ref {
+                        if let Some(id) = crate::vm::rc::heap_ref_id(val_nv) {
+                            self.rc_retain_id(id);
+                        }
+                    }
+                    // Plan 419: 旧 state 字段值 -1;新值转移进槽。
+                    self.rc_release(task.state_vars[field_idx]);
+                    task.state_vars[field_idx] = val_nv;
+                } else {
+                    // Plan 419: 被锁定跳过写入时,弹出的值按死亡处理。
+                    self.rc_release(val_nv);
+                }
+            }
+            // Plan 317: Global variable access (module-level var).
+            // name_idx: u32 indexes the string pool.
+            OpCode::LOAD_GLOBAL => {
+                let name_idx = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+                let name = self
+                    .strings
+                    .read()
+                    .unwrap()
+                    .get(name_idx)
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .unwrap_or_default();
+                let nv = self.globals.get(&name).map(|v| *v).unwrap_or(0);
+                // Plan 419: copy-on-load(全局表项保留自己的 stake)。
+                // PLAN-667 (F-07): 全局表条目持有份额(写入时已立),按
+                // tagged 判定走正常 copy-on-load;rc_push_slot 对 tagged
+                // 引用恒计份。
+                self.rc_push_slot(task, nv, u64::MAX);
+            }
+            OpCode::STORE_GLOBAL => {
+                let name_idx = self.flash.read_u32(task.ip) as usize;
+                task.ip += 4;
+                let name = self
+                    .strings
+                    .read()
+                    .unwrap()
+                    .get(name_idx)
+                    .map(|b| String::from_utf8_lossy(b).to_string())
+                    .unwrap_or_default();
+                let nv = task.ram.pop_nv();
+                // PLAN-062 T12: 读走弹出槽影子(转移语义);无份额的裸堆
+                // 引用入全局表前防御性补一份(全局表条目恒持有——保守
+                // 方向:多持至多延后回收,不持有即悬垂)。
+                let transferred = task.ram.take_stake_at(task.ram.sp);
+                let _ = transferred;
+                // PLAN-667 (F-07): 同 STORE_STATE_FIELD——防御性补持收紧
+                // 到 tagged 引用,真整数不再冒领活对象份额。
+                let is_tagged_ref =
+                    auto_val::is_object(nv) || auto_val::is_list(nv) || auto_val::is_bigint(nv);
+                if is_tagged_ref {
+                    if let Some(id) = crate::vm::rc::heap_ref_id(nv) {
+                        self.rc_retain_id(id);
+                    }
+                }
+                // Plan 419: 旧全局值 -1;新值自栈转移进全局表。
+                if let Some(old) = self.globals.get(&name) {
+                    let old_nv = *old;
+                    drop(old);
+                    self.rc_release(old_nv);
+                }
+                self.globals.insert(name, nv);
+            }
+            OpCode::LOAD_LOC_1 => {
+                // Plan 419: copy-on-load。PLAN-667 (F-07): 源槽份额出处门。
+                let slot = task.bp + 2;
+                let nv = task.ram.read_nv(slot);
+                let ss = task.ram.stake_at(slot);
+                self.rc_push_slot(task, nv, ss);
+            }
+            OpCode::LOAD_LOC_2 => {
+                // Plan 419: copy-on-load。
+                self.rc_push(task, task.ram.read_nv(task.bp + 3));
+            }
+            OpCode::STORE_LOC_0 => {
+                // Plan 419: 覆盖旧值 -1;新值转移。PLAN-062 T12: 影子随值
+                // 转移,旧槽按影子释放。
+                let v = task.ram.pop_nv();
+                let transferred = task.ram.take_stake_at(task.ram.sp);
+                let addr = task.bp + 1;
+                self.release_slot_old_value(task, addr);
+                task.ram.write_nv(addr, v);
+                task.ram.mark_stake_at(addr, transferred);
+            }
+            OpCode::STORE_LOC_1 => {
+                // Plan 419: 覆盖旧值 -1;新值转移。PLAN-062 T12: 影子随值
+                // 转移,旧槽按影子释放。
+                let v = task.ram.pop_nv();
+                let transferred = task.ram.take_stake_at(task.ram.sp);
+                let addr = task.bp + 2;
+                self.release_slot_old_value(task, addr);
+                task.ram.write_nv(addr, v);
+                task.ram.mark_stake_at(addr, transferred);
+            }
+
+            // === Stack ===
+            OpCode::DROP => {
+                // Plan 419: DROP 兑现 RAII 承诺 —— 弹出并释放 owned value
+                // (引用值计数 -1,归零则真回收);槽位清零。
+                // PLAN-062 T12: 堆份额按影子释放;字符串沿内容释放。
+                let nv = task.ram.pop_nv();
+                let stake = task.ram.take_stake_at(task.ram.sp);
+                if stake != 0 {
+                    self.rc_release_id(stake);
+                }
+                if auto_val::is_string(nv) {
+                    self.rc_release(nv);
+                }
+                task.ram.raw_nv[task.ram.sp] = 0;
+            }
+            // Plan 088 Phase 4: Function Prologue
+            OpCode::FN_PROLOG => {
+                // Read function metadata
+                let n_args = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+                let n_locals = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                vm_debug!("DEBUG FN_PROLOG: n_args={}, n_locals={}", n_args, n_locals);
+
+                // Save function metadata in task for use by LOAD_LOCAL/STORE_LOCAL
+                task.current_fn_n_args = n_args;
+                task.current_fn_n_locals = n_locals;
+            }
+            OpCode::RESERVE_STACK => {
+                // Reserve stack space for n_locals to prevent stack from overwriting locals
+                let n_locals = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                // Push n_locals+1 zeros to reserve space for local variables + 1 extra slot
+                // The extra slot ensures SP starts beyond all local variable addresses
+                for _ in 0..n_locals + 1 {
+                    task.ram.push_i32(0);
+                }
+
+                vm_debug!("RESERVE_STACK: n_locals={} sp={}", n_locals, task.ram.sp);
+
+                // Track num_locals for native shims
+                task.num_locals = n_locals;
+            }
+
+            // === Comparison ===
+            OpCode::EQ => {
+                // Plan 539 W1 (T10): py-handle comparison dunder.
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_cmp("__eq__", "", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    // Plan 419: 比较消费操作数 —— stake 在比较完成后释放(先读后放)。
+                    // PLAN-053 P-053-2: nil 家族等值 —— 一侧 tag-null
+                    // (encode_null)、另一侧旧编码 i32(-1) 或 i32(i32::MIN+1)
+                    // 时视为相等。新代码字面量已全归一 PUSH_NIL，此处兜底
+                    // 存量载荷(musk KV 持久化的旧 Int(-1) 字段、生成器
+                    // CREATE_NONE 返回值)，否则 `x != None` 守卫对旧数据
+                    // 恒真(gate 卡常显)。
+                    let a_is_null_family = Self::nv_is_null_family(a_nv);
+                    let b_is_null_family = Self::nv_is_null_family(b_nv);
+                    let result = if a_nv == b_nv {
+                        true
+                    } else if a_is_null_family && b_is_null_family {
+                        true
+                    } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
+                        let a = auto_val::decode_object(a_nv) as i32;
+                        let b = auto_val::decode_object(b_nv) as i32;
+                        self.struct_eq(a, b)
+                    } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => sa == sb,
+                            _ => false,
+                        }
+                    } else if auto_val::is_i32(a_nv) && auto_val::is_i32(b_nv) {
+                        let a_val = auto_val::decode_i32(a_nv);
+                        let b_val = auto_val::decode_i32(b_nv);
+                        if a_val >= 4000000 && b_val >= 4000000 {
+                            self.struct_eq(a_val, b_val)
+                        } else {
+                            Self::bool_eq(a_val, b_val)
+                        }
+                    } else if auto_val::is_f64(a_nv) && auto_val::is_f64(b_nv) {
+                        auto_val::decode_f64(a_nv) == auto_val::decode_f64(b_nv)
+                    } else if auto_val::is_f32(a_nv) && auto_val::is_f32(b_nv) {
+                        auto_val::decode_f32(a_nv) == auto_val::decode_f32(b_nv)
+                    } else if Self::nv_is_numeric(a_nv) && Self::nv_is_numeric(b_nv) {
+                        // Plan 539 W2 (T19): mixed numeric compare (f64 ==
+                        // i32 literal) — py_float results against int
+                        // literals previously fell to the false catch-all.
+                        Self::nv_as_f64(a_nv) == Self::nv_as_f64(b_nv)
+                    } else {
+                        false
+                    };
+                    self.rc_release(a_nv);
+                    self.rc_release(b_nv);
+                    task.ram.push_nv(auto_val::encode_bool(result));
+                }
+            }
+            OpCode::NE => {
+                // Plan 539 W1 (T10): py-handle comparison dunder.
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_cmp("__ne__", "", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    // Plan 419: 比较消费操作数 —— stake 在比较完成后释放(先读后放)。
+                    // PLAN-053 P-053-2: nil 家族等值(与 EQ 对称,见其注释)。
+                    let a_is_null_family = Self::nv_is_null_family(a_nv);
+                    let b_is_null_family = Self::nv_is_null_family(b_nv);
+                    let result = if a_nv == b_nv {
+                        false
+                    } else if a_is_null_family && b_is_null_family {
+                        false
+                    } else if auto_val::is_object(a_nv) && auto_val::is_object(b_nv) {
+                        let a = auto_val::decode_object(a_nv) as i32;
+                        let b = auto_val::decode_object(b_nv) as i32;
+                        !self.struct_eq(a, b)
+                    } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => sa != sb,
+                            _ => true,
+                        }
+                    } else if auto_val::is_i32(a_nv) && auto_val::is_i32(b_nv) {
+                        let a_val = auto_val::decode_i32(a_nv);
+                        let b_val = auto_val::decode_i32(b_nv);
+                        // Both values >= 4000000 are heap object IDs stored as i32 — use struct_eq
+                        if a_val >= 4000000 && b_val >= 4000000 {
+                            !self.struct_eq(a_val, b_val)
+                        } else {
+                            !Self::bool_eq(a_val, b_val)
+                        }
+                    } else if Self::nv_is_numeric(a_nv) && Self::nv_is_numeric(b_nv) {
+                        // Plan 539 W2 (T19): mixed numeric compare — see EQ.
+                        Self::nv_as_f64(a_nv) != Self::nv_as_f64(b_nv)
+                    } else {
+                        true
+                    };
+                    self.rc_release(a_nv);
+                    self.rc_release(b_nv);
+                    task.ram.push_nv(auto_val::encode_bool(result));
+                }
+            }
+            OpCode::LT => {
+                // Plan 539 W1 (T10): py-handle comparison dunder.
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_cmp("__lt__", "__gt__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa < sb
+                            }
+                            _ => false,
+                        }
+                    } else if Self::nv_pair_is_float_numeric(a_nv, b_nv) {
+                        // Plan 576: float×(int|float) 按值比较——原 else 臂
+                        // decode_i32 把 f32/raw-f64 位型当整数（043 比较守卫假）。
+                        Self::nv_as_f64(a_nv) < Self::nv_as_f64(b_nv)
+                    } else {
+                        // Plan 390 §15 H3b: heap refs are TAG_OBJECT — decode
+                        // explicitly (same id value as the old low-32 trick).
+                        // PLAN-026 T-03 配套: 宽整兜底(object ref 旧路
+                        // 保留;i32/i64 tag 归一按值;纯 i32 语义等价)。
+                        let a = if auto_val::is_object(a_nv) {
+                            auto_val::decode_object(a_nv) as i64
+                        } else {
+                            Self::nv_int_as_i64(a_nv)
+                        };
+                        let b = if auto_val::is_object(b_nv) {
+                            auto_val::decode_object(b_nv) as i64
+                        } else {
+                            Self::nv_int_as_i64(b_nv)
+                        };
+                        a < b
+                    };
+                    task.ram.push_nv(auto_val::encode_bool(result));
+                }
+            }
+            OpCode::GT => {
+                // Plan 539 W1 (T10): py-handle comparison dunder.
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_cmp("__gt__", "__lt__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let a_is_obj = auto_val::is_object(a_nv);
+                    let b_is_obj = auto_val::is_object(b_nv);
+                    let result = if a_is_obj && b_is_obj {
+                        let a_id = auto_val::decode_object(a_nv) as u64;
+                        let b_id = auto_val::decode_object(b_nv) as u64;
+                        if let Some(cmp_result) = self.compare_opaque_objects(a_id, b_id) {
+                            cmp_result
+                        } else {
+                            a_id > b_id
+                        }
+                    } else if auto_val::is_i32(a_nv) && auto_val::is_i32(b_nv) {
+                        let a = auto_val::decode_i32(a_nv);
+                        let b = auto_val::decode_i32(b_nv);
+                        // Opaque object comparison: check if both are heap objects
+                        if a > 0 && b > 0 {
+                            let cmp = self.compare_opaque_objects(a as u64, b as u64);
+                            if let Some(cmp_result) = cmp {
+                                cmp_result
+                            } else {
+                                a > b
+                            }
+                        } else if auto_val::is_string(a_nv) || auto_val::is_string(b_nv) {
+                            // shouldn't reach here for i32 check, but be safe
+                            a > b
+                        } else {
+                            a > b
+                        }
+                    } else if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa > sb
+                            }
+                            _ => false,
+                        }
+                    } else if Self::nv_pair_is_float_numeric(a_nv, b_nv) {
+                        // Plan 576: float×(int|float) 按值比较——GT fallback
+                        // 注记承认的 decode_i32 位型误读（f64 落 GT 时取低
+                        // 32 位、f32 取 payload 位型）就此收口。
+                        Self::nv_as_f64(a_nv) > Self::nv_as_f64(b_nv)
+                    } else {
+                        // Fallback (covers f64 values that land in GT instead
+                        // of GT_D when type inference misses the double type).
+                        // PLAN-026 T-03 配套: 宽整兜底(i32/i64 tag 归一按值;
+                        // 纯 i32 语义等价)。
+                        let a = Self::nv_int_as_i64(a_nv);
+                        let b = Self::nv_int_as_i64(b_nv);
+                        a > b
+                    };
+                    task.ram.push_nv(auto_val::encode_bool(result));
+                }
+            }
+            OpCode::LE => {
+                // Plan 539 W1 (T10): py-handle comparison dunder.
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_cmp("__le__", "__ge__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa <= sb
+                            }
+                            _ => true,
+                        }
+                    } else if Self::nv_pair_is_float_numeric(a_nv, b_nv) {
+                        // Plan 576: float×(int|float) 按值比较（同 LT 注记）。
+                        Self::nv_as_f64(a_nv) <= Self::nv_as_f64(b_nv)
+                    } else {
+                        // PLAN-026 T-03 配套: 宽整兜底(i32/i64 tag
+                        // 归一按值;纯 i32 语义等价)。
+                        let a = Self::nv_int_as_i64(a_nv);
+                        let b = Self::nv_int_as_i64(b_nv);
+                        a <= b
+                    };
+                    task.ram.push_nv(auto_val::encode_bool(result));
+                }
+            }
+            OpCode::GE => {
+                // Plan 539 W1 (T10): py-handle comparison dunder.
+                #[cfg(feature = "python")]
+                if crate::py_ffi::stack_has_py_handle(task, self) {
+                    crate::py_ffi::py_dunder_cmp("__ge__", "__le__", task, self)?;
+                    return Ok(StepResult::Continue);
+                }
+                {
+                    let b_nv = task.ram.pop_nv();
+                    let a_nv = task.ram.pop_nv();
+                    let result = if auto_val::is_string(a_nv) && auto_val::is_string(b_nv) {
+                        let a_idx = auto_val::decode_string(a_nv);
+                        let b_idx = auto_val::decode_string(b_nv);
+                        let a_str = self.get_string(a_idx);
+                        let b_str = self.get_string(b_idx);
+                        match (a_str, b_str) {
+                            (Some(sa), Some(sb)) => {
+                                let sa = String::from_utf8_lossy(&sa);
+                                let sb = String::from_utf8_lossy(&sb);
+                                sa >= sb
+                            }
+                            _ => true,
+                        }
+                    } else if Self::nv_pair_is_float_numeric(a_nv, b_nv) {
+                        // Plan 576: float×(int|float) 按值比较（同 LT 注记）。
+                        Self::nv_as_f64(a_nv) >= Self::nv_as_f64(b_nv)
+                    } else {
+                        // PLAN-026 T-03 配套: 宽整兜底(i32/i64 tag
+                        // 归一按值;纯 i32 语义等价)。
+                        let a = Self::nv_int_as_i64(a_nv);
+                        let b = Self::nv_int_as_i64(b_nv);
+                        a >= b
+                    };
+                    task.ram.push_nv(auto_val::encode_bool(result));
+                }
+            }
+
+            // f64 comparison opcodes (Plan 377: each pops 1+1 slot, pushes 1 bool)
+            OpCode::EQ_D => {
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_nv(auto_val::encode_bool(a == b));
+            }
+            OpCode::NE_D => {
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_nv(auto_val::encode_bool(a != b));
+            }
+            OpCode::LT_D => {
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_nv(auto_val::encode_bool(a < b));
+            }
+            OpCode::GT_D => {
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_nv(auto_val::encode_bool(a > b));
+            }
+            OpCode::LE_D => {
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_nv(auto_val::encode_bool(a <= b));
+            }
+            OpCode::GE_D => {
+                let b = pop_f64_operand(task);
+                let a = pop_f64_operand(task);
+                task.ram.push_nv(auto_val::encode_bool(a >= b));
+            }
+
+            // Plan 378/377: u64/i64 comparison (each pops 1+1 slot, pushes 1 bool)
+            OpCode::EQ_U64 => {
+                let b = self.pop_i64_vm(task);
+                let a = self.pop_i64_vm(task);
+                task.ram.push_nv(auto_val::encode_bool(a == b));
+            }
+            OpCode::NE_U64 => {
+                let b = self.pop_i64_vm(task);
+                let a = self.pop_i64_vm(task);
+                task.ram.push_nv(auto_val::encode_bool(a != b));
+            }
+            OpCode::LT_U64 => {
+                let b = self.pop_i64_vm(task);
+                let a = self.pop_i64_vm(task);
+                task.ram.push_nv(auto_val::encode_bool(a < b));
+            }
+            OpCode::GT_U64 => {
+                let b = self.pop_i64_vm(task);
+                let a = self.pop_i64_vm(task);
+                task.ram.push_nv(auto_val::encode_bool(a > b));
+            }
+            OpCode::LE_U64 => {
+                let b = self.pop_i64_vm(task);
+                let a = self.pop_i64_vm(task);
+                task.ram.push_nv(auto_val::encode_bool(a <= b));
+            }
+            OpCode::GE_U64 => {
+                let b = self.pop_i64_vm(task);
+                let a = self.pop_i64_vm(task);
+                task.ram.push_nv(auto_val::encode_bool(a >= b));
+            }
+
+            // Plan 403-F: f32 comparison (each pops 1+1 slot, pushes 1 bool).
+            // Mirrors EQ_D/NE_D/LT_D/GT_D/LE_D/GE_D but for TAG_F32-encoded
+            // floats. Use pop_f32/push_nv(encode_bool) so operands are decoded
+            // from the f32 nanbox tag rather than mis-read as i32.
+            OpCode::EQ_F => {
+                let b = task.ram.pop_f32();
+                let a = task.ram.pop_f32();
+                task.ram.push_nv(auto_val::encode_bool(a == b));
+            }
+            OpCode::NE_F => {
+                let b = task.ram.pop_f32();
+                let a = task.ram.pop_f32();
+                task.ram.push_nv(auto_val::encode_bool(a != b));
+            }
+            OpCode::LT_F => {
+                let b = task.ram.pop_f32();
+                let a = task.ram.pop_f32();
+                task.ram.push_nv(auto_val::encode_bool(a < b));
+            }
+            OpCode::GT_F => {
+                let b = task.ram.pop_f32();
+                let a = task.ram.pop_f32();
+                task.ram.push_nv(auto_val::encode_bool(a > b));
+            }
+            OpCode::LE_F => {
+                let b = task.ram.pop_f32();
+                let a = task.ram.pop_f32();
+                task.ram.push_nv(auto_val::encode_bool(a <= b));
+            }
+            OpCode::GE_F => {
+                let b = task.ram.pop_f32();
+                let a = task.ram.pop_f32();
+                task.ram.push_nv(auto_val::encode_bool(a >= b));
+            }
+
+            // === Logical ===
+            OpCode::AND => {
+                // Plan 406: tag-first truthiness (was raw i32 magic compare)
+                let b = task.ram.pop_nv();
+                let a = task.ram.pop_nv();
+                task.ram
+                    .push_nv(auto_val::encode_bool(nv_truthy(a) && nv_truthy(b)));
+            }
+            OpCode::OR => {
+                // Plan 406: tag-first truthiness (was raw i32 magic compare)
+                let b = task.ram.pop_nv();
+                let a = task.ram.pop_nv();
+                task.ram
+                    .push_nv(auto_val::encode_bool(nv_truthy(a) || nv_truthy(b)));
+            }
+            OpCode::XOR => {
+                let b = task.ram.pop_i32();
+                let a = task.ram.pop_i32();
+                task.ram.push_i32(a ^ b);
+            }
+
+            // === Control Flow ===
+            OpCode::JMP => {
+                let offset = self.flash.read_i16(task.ip) as isize;
+                task.ip += 2;
+
+                let new_ip = (task.ip as isize) + offset;
+
+                if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
+                    return Err(jump_oob_error(
+                        task,
+                        offset,
+                        new_ip,
+                        self.flash.memory.len(),
+                    ));
+                }
+
+                task.ip = new_ip as usize;
+            }
+            OpCode::JMP_FAR => {
+                let offset = self.flash.read_i32(task.ip) as isize;
+                task.ip += 4;
+
+                let new_ip = (task.ip as isize) + offset;
+
+                if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
+                    return Err(jump_oob_error(
+                        task,
+                        offset,
+                        new_ip,
+                        self.flash.memory.len(),
+                    ));
+                }
+
+                task.ip = new_ip as usize;
+            }
+            OpCode::JMP_IF_Z => {
+                let offset = self.flash.read_i16(task.ip) as isize;
+                task.ip += 2;
+
+                // Plan 406: decode the condition by its nanbox tag instead
+                // of comparing raw i32 magic values. Tagged bools (Plan 091)
+                // are authoritative; 0 stays falsy for i32 values pushed by
+                // legacy paths.
+                let cond_nv = task.ram.pop_nv();
+                if !nv_truthy(cond_nv) {
+                    let new_ip = (task.ip as isize) + offset;
+                    if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
+                        return Err(jump_oob_error(
+                            task,
+                            offset,
+                            new_ip,
+                            self.flash.memory.len(),
+                        ));
+                    }
+                    task.ip = new_ip as usize;
+                }
+            }
+            OpCode::JMP_IF_NZ => {
+                let offset = self.flash.read_i16(task.ip) as isize;
+                task.ip += 2;
+
+                // Plan 406: see JMP_IF_Z — tag-first truthiness.
+                let cond_nv = task.ram.pop_nv();
+                if nv_truthy(cond_nv) {
+                    let new_ip = (task.ip as isize) + offset;
+                    if new_ip < 0 || new_ip as usize >= self.flash.memory.len() {
+                        return Err(jump_oob_error(
+                            task,
+                            offset,
+                            new_ip,
+                            self.flash.memory.len(),
+                        ));
+                    }
+                    task.ip = new_ip as usize;
+                }
+            }
+
+            // === Debug ===
+            OpCode::SOURCE_LINE => {
+                // Plan 199: Record current source line for debugging
+                let line = self.flash.read_u16(task.ip);
+                task.ip += 2;
+                task.current_line = line as u32;
+            }
+            OpCode::HALT => {
+                return Ok(StepResult::Terminated);
+            }
+
+            // === Plan 088 Phase 5: Reference Passing Instructions ===
+            // Note: For Phase 5, references are implemented as var_index on the stack
+            // LOAD_REF/LOAD_MUT_REF push the var_index, STORE_REF/STORE_MUT_REF use it
+            OpCode::LOAD_REF => {
+                // Plan 088 Phase 5: Load immutable reference
+                // Format: var_index: u32
+                let var_index = self.flash.read_u32(task.ip);
+                task.ip += 4;
+
+                // Push var_index onto stack as the "reference"
+                // This will be used by subsequent STORE_REF or other operations
+                task.ram.push_i32(var_index as i32);
+
+                vm_debug!("DEBUG: LOAD_REF: var_index={}, bp={}", var_index, task.bp);
+            }
+            OpCode::STORE_REF => {
+                // Plan 088 Phase 5: Store through immutable reference
+                // Format: var_index: u32
+                let var_index = self.flash.read_u32(task.ip);
+                task.ip += 4;
+
+                // Pop the value to store
+                let val = task.ram.pop_i32();
+
+                // Store to bp+1+var_index (same as LOAD_LOCAL logic)
+                task.ram.write_i32(task.bp + 1 + var_index as usize, val);
+
+                vm_debug!(
+                    "DEBUG: STORE_REF: var_index={}, val={}, bp={}",
+                    var_index,
+                    val,
+                    task.bp
+                );
+            }
+            OpCode::LOAD_MUT_REF => {
+                // Plan 088 Phase 5: Load mutable reference
+                // Format: var_index: u32
+                let var_index = self.flash.read_u32(task.ip);
+                task.ip += 4;
+
+                // Push var_index onto stack as the "mutable reference"
+                task.ram.push_i32(var_index as i32);
+            }
+            OpCode::STORE_MUT_REF => {
+                // Plan 088 Phase 5: Store through mutable reference
+                // Format: var_index: u32
+                let var_index = self.flash.read_u32(task.ip);
+                task.ip += 4;
+
+                // Pop the value to store
+                let val = task.ram.pop_i32();
+
+                // Store to bp+1+var_index (same as STORE_LOCAL logic)
+                task.ram.write_i32(task.bp + 1 + var_index as usize, val);
+
+                vm_debug!(
+                    "DEBUG: STORE_MUT_REF: var_index={}, val={}, bp={}",
+                    var_index,
+                    val,
+                    task.bp
+                );
+            }
+
+            // === Plan 124: Async/Future/Await Instructions ===
+            OpCode::CREATE_FUTURE => {
+                // Create a Future value from an async block body.
+                // Immediates: body_offset: u32, capture_count: u8,
+                //             capture_name_idx: u16 (× capture_count)
+                // Stack (popped in reverse): capture_count values pushed by
+                // the AsyncBlock codegen (in declaration order).
+                let body_offset = self.flash.read_u32(task.ip);
+                task.ip += 4;
+                let capture_count = self.flash.read_u8(task.ip) as usize;
+                task.ip += 1;
+
+                // Read the capture name indices and pop the matching values.
+                // The codegen pushes captures in declaration order; we read
+                // names in the same order and pop in reverse, mirroring the
+                // CLOSURE opcode's convention.
+                let mut capture_names: Vec<String> = Vec::with_capacity(capture_count);
+                let strings = self.strings.read().unwrap();
+                for _ in 0..capture_count {
+                    let name_idx = self.flash.read_u32(task.ip) as usize;
+                    task.ip += 4;
+                    let name = strings
+                        .get(name_idx)
+                        .map(|b| String::from_utf8_lossy(b).to_string())
+                        .unwrap_or_default();
+                    capture_names.push(name);
+                }
+                drop(strings);
+
+                let mut captures: HashMap<String, auto_val::Value> = HashMap::new();
+                for name in capture_names.into_iter().rev() {
+                    let raw = task.ram.pop_i32();
+                    captures.insert(name, auto_val::Value::Int(raw));
+                }
+
+                // Allocate a new future ID from VM's registry
+                let future_id = self.future_id_gen.fetch_add(1, Ordering::SeqCst);
+
+                // Create the future value with pending state
+                let future = FutureValue {
+                    body_offset,
+                    state: FutureState::Pending,
+                    result: None,
+                    owner_task_id: task.id,
+                    captures,
+                    kind: FutureKind::Internal,
+                };
+
+                // Store in VM's future registry
+                self.futures
+                    .insert(future_id, Arc::new(RwLock::new(future)));
+
+                // PLAN-776 R7-01：Future 句柄走 TAG_FUTURE **逐值来源**载荷
+                //（普通 i32 永不携带 Future 身份——`(fid<<8)|0xF0` 位模式
+                // 撞值即数据；legacy 位形态仅作 Value 往返降级兼容）。
+                task.ram.push_nv(auto_val::encode_future(future_id));
+
+                vm_debug!(
+                    "DEBUG: CREATE_FUTURE: id={}, body_offset={}",
+                    future_id,
+                    body_offset
+                );
+            }
+            OpCode::AWAIT_FUTURE => {
+                // Wait for future completion (blocking)
+                // Stack: [..., future_bits]
+                // Returns: value when ready
+                // PLAN-050 T9: pop_nv/push_nv 全程保标签——此前 pop_i32 把
+                // await 的同步值（含 return None 的 null nv）按 raw i32
+                // 重推（identity 路径），null 被拍平成 Int(-2147483647)。
+                let future_nv = task.ram.pop_nv();
+
+                // PLAN-776 R7-01：TAG_FUTURE 逐值来源优先；0xF0 位模式为
+                // legacy 兼容臂（非 future 值原样回推——下方 else）。
+                if let Some(future_id) = Self::decode_future_handle(future_nv) {
+                    // Look up the future in the registry
+                    if let Some(future_arc) = self.futures.get(&future_id) {
+                        let future = future_arc.write().unwrap();
+
+                        match future.state {
+                            FutureState::Ready => {
+                                // Future is ready - return the result
+                                vm_debug!("DEBUG: AWAIT_FUTURE: id={} is ready", future_id);
+                                let result = future.result.clone();
+                                drop(future); // Release lock before push_value
+                                if let Some(ref r) = result {
+                                    Self::push_value(task, r, self);
+                                } else {
+                                    task.ram.push_nv(auto_val::encode_null()); // No result = nil
+                                }
+                            }
+                            FutureState::Failed => {
+                                // Future failed - return nil
+                                vm_debug!("DEBUG: AWAIT_FUTURE: id={} failed", future_id);
+                                drop(future);
+                                task.ram.push_nv(auto_val::encode_null());
+                            }
+                            FutureState::Pending => {
+                                // Plan 394: External futures suspend the task (wake source 6)
+                                // instead of inlining a body. future_bits already popped; the
+                                // wake path pushes the result. Do NOT pop again on resume.
+                                if future.kind == FutureKind::External {
+                                    vm_debug!(
+                                        "DEBUG: AWAIT_FUTURE: id={} external pending, suspend",
+                                        future_id
+                                    );
+                                    drop(future);
+                                    task.waiting_future_id = Some(future_id);
+                                    task.status = TaskStatus::Waiting("future".into());
+                                    return Ok(StepResult::Yield);
+                                }
+                                // Plan 224: Return AwaitFuture signal for frame-level handling
+                                vm_debug!("DEBUG: AWAIT_FUTURE: id={} is pending, returning AwaitFuture signal", future_id);
+                                let body_offset = future.body_offset;
+                                drop(future);
+                                return Ok(StepResult::AwaitFuture {
+                                    future_id,
+                                    body_offset,
+                                });
+                            }
+                        }
+                    } else {
+                        // Future not found - return nil
+                        vm_debug!(
+                            "DEBUG: AWAIT_FUTURE: id={} not found in registry",
+                            future_id
+                        );
+                        task.ram.push_nv(auto_val::encode_null());
+                    }
+                } else {
+                    // Not a future - push back as-is (identity, tag-preserving)
+                    task.ram.push_nv(future_nv);
+                }
+            }
+            OpCode::POLL_FUTURE => {
+                // Non-blocking poll for future state
+                // Stack: [..., future_handle]
+                // Returns: (is_ready: bool, value_or_nil)
+                let future_nv = task.ram.pop_nv();
+
+                if let Some(future_id) = Self::decode_future_handle(future_nv) {
+                    // Look up the future in the registry
+                    if let Some(future_arc) = self.futures.get(&future_id) {
+                        let future = future_arc.read().unwrap();
+
+                        match future.state {
+                            FutureState::Ready => {
+                                // Push is_ready = 1
+                                task.ram.push_i32(1);
+
+                                // Push the result value
+                                let result = future.result.clone();
+                                drop(future); // Release lock before push_value
+                                if let Some(ref r) = result {
+                                    Self::push_value(task, r, self);
+                                } else {
+                                    task.ram.push_i32(0);
+                                }
+                            }
+                            FutureState::Failed => {
+                                // Push is_ready = 1 (failed is also "complete")
+                                drop(future);
+                                task.ram.push_i32(1);
+                                // Push nil for failed
+                                task.ram.push_i32(0);
+                            }
+                            FutureState::Pending => {
+                                // Push is_ready = 0
+                                drop(future);
+                                task.ram.push_i32(0);
+                                // Push nil (no value yet)
+                                task.ram.push_i32(0);
+                            }
+                        }
+                    } else {
+                        // Future not found - return not ready
+                        task.ram.push_i32(0);
+                        task.ram.push_i32(0);
+                    }
+                } else {
+                    // Not a future - return not ready
+                    task.ram.push_i32(0);
+                    task.ram.push_i32(0);
+                }
+            }
+
+            _ => {
+                // Unimplemented opcodes for Phase 1. Include the ip and
+                // current fn name — mid-instruction landings (mispatched
+                // jumps / call-resume offsets) otherwise give a bare 255
+                // with no way to locate the site (Plan 423 P5).
+                let fn_name = task
+                    .call_stack
+                    .last()
+                    .and_then(|f| f.fn_name.clone())
+                    .unwrap_or_else(|| "<root>".to_string());
+                return Err(VMError::RuntimeError(format!(
+                    "InvalidOpCode(0x{:02x}) at ip=0x{:04x} in {}",
+                    op_byte, task.ip, fn_name
+                )));
+            }
+        }
+
+        Ok(StepResult::Continue)
+    }
+
+    /// Plan 224: Execute bytecode for a single frame until a boundary condition.
+    /// Returns FrameResult indicating what stopped execution.
+    /// This can be called recursively for AWAIT_FUTURE body execution.
+    pub fn execute_single_frame(&self, task: &mut AutoTask, budget: u32) -> FrameResult {
+        for _ in 0..budget {
+            let ip_before = task.ip;
+            let line_before = task.current_line;
+            match self.run_one_instruction(task) {
+                Ok(StepResult::Continue) => {
+                    self.record_trace(ip_before, line_before, task);
+                }
+                Ok(StepResult::Terminated) => return FrameResult::Return,
+                Ok(StepResult::Yield) => return FrameResult::Yielded,
+                Ok(StepResult::GeneratorYield) => {
+                    // Plan 321: Generator yield in frame context — yield the frame
+                    // so the generator driver can handle it.
+                    return FrameResult::Yielded;
+                }
+                Ok(StepResult::AwaitFuture {
+                    future_id,
+                    body_offset,
+                }) => {
+                    return FrameResult::AwaitFuture {
+                        future_id,
+                        body_offset,
+                    };
+                }
+                Err(e) => {
+                    // Plan 010 (MS3-A): try/catch interception.
+                    if self.intercept_error(task, &e) {
+                        continue;
+                    }
+                    return FrameResult::Error(e);
+                }
+            }
+        }
+        FrameResult::BudgetExhausted
+    }
+
+    /// Plan 010 (MS3-A): try/catch interception.
+    ///
+    /// If the task has a handler frame on its stack, the error is caught:
+    /// Plan 567 T08/T10（P560-D2）: Result.Err 载荷串——fields[0] Str
+    /// （`PyException <Type>: <msg>`）；非 Str/缺容兜底描述。
+    fn result_err_payload(&self, obj_id_bits: i32) -> String {
+        use crate::vm::generic_registry::GenericInstanceData;
+        self.get_heap_object(obj_id_bits as u64)
+            .and_then(|obj| {
+                let guard = obj.read().unwrap();
+                guard
+                    .as_any()
+                    .downcast_ref::<GenericInstanceData>()
+                    .and_then(|inst| match inst.fields.first() {
+                        Some(auto_val::Value::Str(s)) => Some(s.as_str().to_string()),
+                        _ => Some(format!("Result.Err {}", obj_id_bits)),
+                    })
+            })
+            .unwrap_or_else(|| format!("Result.Err {}", obj_id_bits))
+    }
+
+    /// unwind to the recorded bp/sp, push the error message as a value, and
+    /// jump to the catch handler. Returns `true` if caught (caller continues
+    /// execution), `false` if the error should propagate (caller returns Err).
+    fn intercept_error(&self, task: &mut AutoTask, e: &VMError) -> bool {
+        // Plan 011: ExitRequested is a cooperative stop, not a catchable
+        // runtime error — it must propagate past try/catch boundaries.
+        if matches!(e, VMError::ExitRequested(_) | VMError::Halt) {
+            return false;
+        }
+        let Some(handler) = task.handler_stack.pop() else {
+            return false;
+        };
+        let msg = match e {
+            VMError::RuntimeError(m) => m.clone(),
+            other => format!("{:?}", other),
+        };
+        // Unwind the operand stack to the try-entry point. bp is left
+        // unchanged because the try/catch runs in the same frame — restoring
+        // bp here would fool the function-call loop into thinking the
+        // function has returned.
+        // Plan 419: 被展开区间 [handler.sp, sp) 内的引用槽逐个 -1(错误路径
+        // 不丢帧清理 → 悬空计数)。
+        let sp_at_unwind = task.ram.sp;
+        self.rc_release_slot_range(&mut task.ram, handler.sp, sp_at_unwind);
+        task.ram.sp = handler.sp;
+        // PLAN-705 T-04: 跨帧展开——错误可能发生在 try 帧的**被调帧**内
+        //（服务端 handler 的 park/resume 恢复路径：try 在外层 fn、除零等
+        // 错误在深层被调 fn）。此时必须弃掉被调帧的调用栈账并恢复 try 帧
+        // bp，否则 catch 体 RET 弹错帧 → 返回地址错乱（现场 ip 出界
+        // Terminated，catch 永不生效）。同帧情形（错误与 try 同帧，既有
+        // 702 测试面）无帧可弃，行为逐字节不变。
+        // PLAN-781 T-22（F-781-E01 根修）：CallFrame.old_bp 全仓一致语义
+        // = **帧自身 bp**（五处压帧点均在 `task.bp = sp-1` 之后捕获）。
+        // 原 `>=` 把 try 帧**自己**也弹掉——同帧 catch 后 RET 弹空，
+        // current_fn_n_args 不再恢复，调用方 LOAD_LOCAL 参数臂
+        // （bp - n_args + param_idx - 1 依赖 task.current_fn_n_args）走
+        // null 守卫 → 调用方参数/局部槽位读作 None（跨帧 raise 毒化，
+        // 最小复现 maybe_raise/caller 实锤）。改严格 `>` 只弹被调帧。
+        // 弹帧时同步恢复 n_args/n_locals 链（最外被弹帧的 old_* 即 try
+        // 帧的值）——否则 catch 体内参数寻址仍读被调帧计数。
+        let mut last_popped: Option<crate::vm::task::CallFrame> = None;
+        while let Some(fr) = task.call_stack.last() {
+            if fr.old_bp > handler.bp {
+                last_popped = task.call_stack.pop();
+            } else {
+                break;
+            }
+        }
+        if let Some(fr) = last_popped {
+            task.current_fn_n_args = fr.old_fn_n_args;
+            task.current_fn_n_locals = fr.old_fn_n_locals;
+            task.num_locals = task.current_fn_n_locals;
+        }
+        task.bp = task.bp.min(handler.bp);
+        // Push the error message as a string value for the catch handler to
+        // bind to its parameter. The string is added to the pool at runtime
+        // and its index pushed as a tag.
+        let idx = self.add_string(msg.clone().into_bytes());
+        self.rc_push_str_idx(task, idx as usize);
+        task.ip = handler.catch_pc;
+        // Note: do NOT set task.last_error here — the error was caught and is
+        // being handled. extract_autovm_result treats last_error as a fatal
+        // failure, which would wrongly fail an otherwise-successful catch.
+        true
+    }
+
+    /// Plan 224: Handle AWAIT_FUTURE for a pending future.
+    /// Executes the async body bytecode via recursive execute_single_frame.
+    pub fn handle_await_future(
+        &self,
+        task: &mut AutoTask,
+        future_id: u32,
+        body_offset: u32,
+    ) -> Result<(), VMError> {
+        const MAX_RECURSION_DEPTH: u32 = 64;
+        // Plan 348 Task 22: if the future carries captures, install a synthetic
+        // closure so LOAD_CAPTURED/STORE_CAPTURED inside the body can resolve.
+        // The closure_id is saved/restored across the body execution below so
+        // the caller's closure context is untouched on return.
+        let saved_closure_id = task.current_closure_id;
+        let saved_saved_closure_id = task.saved_closure_id;
+        let installed_closure_id = self.install_future_captures(future_id, body_offset);
+        if let Some(cid) = installed_closure_id {
+            task.current_closure_id = Some(cid);
+            // Keep saved_closure_id in sync so RET inside the body restores to
+            // the synthetic closure (allowing multiple LOAD_CAPTURED ops).
+            task.saved_closure_id = Some(cid);
+        }
+        let result = self.execute_future_body(task, future_id, body_offset, 0, MAX_RECURSION_DEPTH);
+        // Phase B: body suspended mid-await — keep synthetic closure so resume
+        // can still LOAD_CAPTURED; caller treats waiting_future_id as Waiting.
+        if task.waiting_future_id.is_some() {
+            return Ok(());
+        }
+        task.current_closure_id = saved_closure_id;
+        task.saved_closure_id = saved_saved_closure_id;
+        result
+    }
+
+    /// Plan 348 Task 22: register a synthetic Closure for a future's captures.
+    /// Returns the closure_id (so the caller can wire it into the task's
+    /// current_closure_id), or None if the future has no captures.
+    fn install_future_captures(&self, future_id: u32, body_offset: u32) -> Option<u32> {
+        let captures = {
+            let future_arc = self.futures.get(&future_id)?;
+            let future = future_arc.read().unwrap();
+            if future.captures.is_empty() {
+                return None;
+            }
+            future.captures.clone()
+        };
+        let closure_id = self.closure_id_gen.fetch_add(1, Ordering::Relaxed);
+        self.closures.insert(
+            closure_id,
+            Closure {
+                func_addr: body_offset,
+                env: captures,
+                n_args: 0,
+                capture_slots: HashMap::new(),
+                param_abs: HashMap::new(),
+                creator_frame: None, // PLAN-667: 合成闭包无帧相对捕获
+            },
+        );
+        Some(closure_id)
+    }
+
+    /// Recursively execute a future's body bytecode.
+    fn execute_future_body(
+        &self,
+        task: &mut AutoTask,
+        future_id: u32,
+        body_offset: u32,
+        depth: u32,
+        max_depth: u32,
+    ) -> Result<(), VMError> {
+        if depth >= max_depth {
+            // Set future to Failed on recursion limit
+            if let Some(future_arc) = self.futures.get(&future_id) {
+                future_arc.write().unwrap().state = FutureState::Failed;
+            }
+            return Err(VMError::RuntimeError(format!(
+                "Future recursion depth exceeded ({})",
+                max_depth
+            )));
+        }
+
+        // Save current IP so we can restore after body execution
+        let saved_ip = task.ip;
+        task.ip = body_offset as usize;
+
+        // Execute body until Return/AwaitFuture/Error
+        const BODY_BUDGET: u32 = 10_000;
+        let mut result_value = auto_val::Value::Int(0);
+
+        loop {
+            match self.execute_single_frame(task, BODY_BUDGET) {
+                FrameResult::Return => {
+                    // Body completed — read result from stack top.
+                    // PLAN-050 T9: pop_nv+decode_tagged_nv（与 RET 的 write_nv
+                    // 对齐）——此前 pop_i32+decode_tagged_value 把 nanobox
+                    // 标签位当 raw i32 重解码，return None 的 null nv 被拍平
+                    // 成 Int(0)/Int(-1)，`.x = f().await` 后 `.x != None` 恒真。
+                    // PLAN-776 R5-01：bp==0（dispatch 直驱立即体——handler 已
+                    // RET、任务栈归 base，RET bp==0 短路不弹帧）时值就在
+                    // 栈顶；原 `sp > bp + 1` 只覆盖帧内（await/spawn）形态，
+                    // base 形态漏读 → 终值恒 Int(0)。
+                    let has_result = if task.bp == 0 {
+                        task.ram.sp > task.bp
+                    } else {
+                        task.ram.sp > task.bp + 1
+                    };
+                    if has_result {
+                        let raw = task.ram.pop_nv();
+                        // PLAN-776 R1-F04：body 栈槽份额终结（与 RET 指令的
+                        // 影子转移语义对齐）——result 是 VmRef（无份额），
+                        // push_value 回调用者栈时另行建份额（Plan 419 咽喉
+                        // 点）；此前只 pop 不释放，每 Internal body 的对象
+                        // 终值悬空一份（dying 宽限窗内的 retain 复活使窗口
+                        // 期安全）。
+                        if auto_val::is_object(raw) || auto_val::is_list(raw) {
+                            self.rc_release(raw);
+                        }
+                        result_value = self.decode_tagged_nv(raw);
+                    }
+                    break;
+                }
+                FrameResult::AwaitFuture {
+                    future_id: inner_id,
+                    body_offset: inner_offset,
+                } => {
+                    // Recursive await: execute inner future body
+                    self.execute_future_body(task, inner_id, inner_offset, depth + 1, max_depth)?;
+                    // Plan 394 Phase B: nested body suspended on external await
+                    if task.waiting_future_id.is_some() {
+                        return Ok(());
+                    }
+                    // Inner future result was pushed onto stack, continue body execution
+                }
+                FrameResult::BudgetExhausted => {
+                    // Continue executing body
+                    continue;
+                }
+                FrameResult::Yielded => {
+                    // Plan 394 Phase B: external await inside `~{}` body —
+                    // save continuation, leave IP mid-body, do NOT restore
+                    // outer saved_ip. Wake source 6 pushes the result; resume
+                    // continues from async_frames.
+                    if let Some(fid) = task.waiting_future_id {
+                        task.async_frames.push(crate::vm::task::AsyncFrame {
+                            resume_ip: task.ip,
+                            resume_bp: task.bp,
+                            future_id: fid,
+                            outer_future_id: future_id,
+                            outer_saved_ip: saved_ip,
+                        });
+                        return Ok(());
+                    }
+                    continue;
+                }
+                FrameResult::Error(e) => {
+                    if let Some(future_arc) = self.futures.get(&future_id) {
+                        future_arc.write().unwrap().state = FutureState::Failed;
+                    }
+                    task.ip = saved_ip;
+                    return Err(e);
+                }
+                FrameResult::Continue => unreachable!(),
+            }
+        }
+
+        // Restore IP
+        task.ip = saved_ip;
+
+        // Update future state
+        if let Some(future_arc) = self.futures.get(&future_id) {
+            let mut future = future_arc.write().unwrap();
+            future.state = FutureState::Ready;
+            future.result = Some(result_value.clone());
+        }
+
+        // Push result onto caller's stack
+        Self::push_value(task, &result_value, self);
+
+        Ok(())
+    }
+
+    /// Plan 394 Phase B: continue a `~{}` body after an external await resume.
+    /// The wake path has already pushed the await result; IP is mid-body.
+    fn resume_suspended_body(
+        &self,
+        task: &mut AutoTask,
+        frame: crate::vm::task::AsyncFrame,
+    ) -> Result<TaskStatus, VMError> {
+        const BODY_BUDGET: u32 = 10_000;
+        let mut result_value = auto_val::Value::Int(0);
+        loop {
+            match self.execute_single_frame(task, BODY_BUDGET) {
+                FrameResult::Return => {
+                    if task.ram.sp > task.bp + 1 {
+                        let raw = task.ram.pop_nv();
+                        // PLAN-776 R1-F04：与 execute_future_body 同款——body
+                        // 栈槽份额终结（VmRef 无份额，push_value 另建）。
+                        if auto_val::is_object(raw) || auto_val::is_list(raw) {
+                            self.rc_release(raw);
+                        }
+                        result_value = self.decode_tagged_nv(raw);
+                    }
+                    // Complete the outer `~{}` future
+                    if let Some(future_arc) = self.futures.get(&frame.outer_future_id) {
+                        let mut future = future_arc.write().unwrap();
+                        future.state = FutureState::Ready;
+                        future.result = Some(result_value.clone());
+                    }
+                    // Drop all continuation frames for this body; restore outer IP
+                    let mut restore_ip = frame.outer_saved_ip;
+                    // Pop every frame belonging to this body (sequential external
+                    // awaits each push one; leaving orphans re-enters resume).
+                    while let Some(f) = task.async_frames.pop() {
+                        if f.outer_future_id == frame.outer_future_id {
+                            restore_ip = f.outer_saved_ip;
+                        } else {
+                            task.async_frames.push(f);
+                            break;
+                        }
+                    }
+                    task.ip = restore_ip;
+                    Self::push_value(task, &result_value, self);
+                    return Ok(TaskStatus::Ready);
+                }
+                FrameResult::AwaitFuture {
+                    future_id: inner_id,
+                    body_offset: inner_offset,
+                } => {
+                    self.handle_await_future(task, inner_id, inner_offset)?;
+                    if task.waiting_future_id.is_some() {
+                        return Ok(TaskStatus::Waiting("future".into()));
+                    }
+                }
+                FrameResult::BudgetExhausted | FrameResult::Yielded => {
+                    if let Some(fid) = task.waiting_future_id {
+                        task.async_frames.push(crate::vm::task::AsyncFrame {
+                            resume_ip: task.ip,
+                            resume_bp: task.bp,
+                            future_id: fid,
+                            outer_future_id: frame.outer_future_id,
+                            outer_saved_ip: frame.outer_saved_ip,
+                        });
+                        return Ok(TaskStatus::Waiting("future".into()));
+                    }
+                    continue;
+                }
+                FrameResult::Error(e) => {
+                    if let Some(future_arc) = self.futures.get(&frame.outer_future_id) {
+                        future_arc.write().unwrap().state = FutureState::Failed;
+                    }
+                    task.async_frames
+                        .retain(|f| f.outer_future_id != frame.outer_future_id);
+                    task.ip = frame.outer_saved_ip;
+                    return Err(e);
+                }
+                FrameResult::Continue => unreachable!(),
+            }
+        }
+    }
+
+    /// Execute a chunk of opcodes for a specific task
+    fn execute_task(&self, task: &mut AutoTask) -> Result<TaskStatus, VMError> {
+        // Plan 394 Phase B: resume suspended `~{}` body (result already pushed).
+        if task.waiting_future_id.is_none() {
+            if let Some(frame) = task.async_frames.last().copied() {
+                return self.resume_suspended_body(task, frame);
+            }
+        }
+        const BUDGET: u32 = 100;
+        let result = self.execute_single_frame(task, BUDGET);
+        match result {
+            FrameResult::Return => Ok(TaskStatus::Terminated),
+            FrameResult::Yielded => {
+                if matches!(task.status, TaskStatus::Waiting(_)) {
+                    Ok(task.status.clone())
+                } else {
+                    Ok(TaskStatus::Ready)
+                }
+            }
+            FrameResult::AwaitFuture {
+                future_id,
+                body_offset,
+            } => {
+                self.handle_await_future(task, future_id, body_offset)?;
+                if task.waiting_future_id.is_some() {
+                    return Ok(TaskStatus::Waiting("future".into()));
+                }
+                Ok(TaskStatus::Ready)
+            }
+            FrameResult::BudgetExhausted => Ok(TaskStatus::Ready),
+            FrameResult::Continue => unreachable!(),
+            FrameResult::Error(e) => Err(e),
+        }
+    }
+
+    /// Plan 199: Record a trace entry if tracing is enabled
+    fn record_trace(&self, ip: usize, line: u32, task: &AutoTask) {
+        let mut trace = self.trace.lock().unwrap();
+        if let Some(ref mut collector) = *trace {
+            let op_name = if ip < self.flash.memory.len() {
+                let byte = self.flash.read_u8(ip);
+                if OpCode::is_valid(byte) {
+                    OpCode::from(byte).to_mnemonic().to_string()
+                } else {
+                    format!("0x{:02x}", byte)
+                }
+            } else {
+                "EOF".to_string()
+            };
+            collector.record(ip, &op_name, line, task.ram.sp, task.call_stack.len());
+        }
+    }
+}
+
+// ============================================================================
+// Plan 550 T08: null 家族守卫单测——直推 null 调 opcode，断言 VMError
+// 消息格式（539 py_ffi 单测同型：AutoVM::new(VirtualFlash::new_with_code)
+// + AutoTask::new，run_one_instruction 单步驱动）。
+// ============================================================================
+#[cfg(test)]
+mod tests_null_guards {
+    use super::*;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_with(code: Vec<u8>) -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(code), 1024)
+    }
+
+    fn runtime_err_of(res: Result<StepResult, VMError>) -> String {
+        match res {
+            Err(VMError::RuntimeError(msg)) => msg,
+            other => panic!("expected RuntimeError, got {:?}", other),
+        }
+    }
+
+    // ---- T03 算术族 ----
+
+    #[test]
+    fn test_null_add_none_left() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        task.ram.push_i32(1);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'NoneType' and 'int'"
+        );
+    }
+
+    #[test]
+    fn test_null_add_none_right() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(1);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'int' and 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_null_sub_mul_div_mod() {
+        for (op, sym) in [
+            (OpCode::SUB, "-"),
+            (OpCode::MUL, "*"),
+            (OpCode::DIV, "/"),
+            (OpCode::MOD, "%"),
+        ] {
+            let vm = vm_with(vec![op as u8]);
+            let mut task = AutoTask::new(1, 256, 0);
+            task.ram.push_nv(auto_val::encode_null());
+            task.ram.push_i32(2);
+            let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+            assert_eq!(
+                msg,
+                format!(
+                    "TypeError: unsupported operand type(s) for {}: 'NoneType' and 'int'",
+                    sym
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn test_null_neg_unary() {
+        let vm = vm_with(vec![OpCode::NEG as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: bad operand type for unary -: 'NoneType'");
+    }
+
+    #[test]
+    fn test_null_strcat_concat() {
+        // "a" + null：含 str 的 + 经 codegen 静态路由到 STR_CAT（539 探针 2
+        // 病灶实际落点）；守卫在解码前拦截，消息报 op='+' 类型 'str'。
+        let vm = vm_with(vec![OpCode::STR_CAT as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_string(0));
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: unsupported operand type(s) for +: 'str' and 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_legit_minus_one_arithmetic_unaffected() {
+        // 合法 i32(-1) / i32::MIN+1 算术不得被守卫误伤（守卫只拒 TAG_NULL，
+        // 历史 i32 哨兵编码与真实整数不可区分，不在守卫范围）。
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(-1);
+        task.ram.push_i32(1);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), 0);
+
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(i32::MIN + 1);
+        task.ram.push_i32(1);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), i32::MIN + 2);
+    }
+
+    // ---- T04 GET_ELEM / CALL_CLOSURE / 迭代源 ----
+
+    #[test]
+    fn test_null_getelem_not_subscriptable() {
+        let vm = vm_with(vec![OpCode::GET_ELEM as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        task.ram.push_i32(0);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not subscriptable");
+    }
+
+    #[test]
+    fn test_null_callee_not_callable() {
+        // 正常模式 null callee 被静态解析在编译期拦下（p4 探针 E0401），
+        // .at 探针不可达 VM 路径——CALL_CLOSURE 守卫由此单测钉住。
+        let vm = vm_with(vec![OpCode::CALL_CLOSURE as u8, 0]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not callable");
+    }
+
+    #[test]
+    fn test_null_array_len_not_iterable() {
+        // array 通道 for-in 的长度探针（p5 探针病灶实际落点）；同臂承接
+        // null.len() 发射点。
+        let vm = vm_with(vec![OpCode::ARRAY_LEN as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "TypeError: 'NoneType' object is not iterable");
+    }
+
+    // ---- T05 越界 ----
+
+    #[test]
+    fn test_oob_getelem_index_error() {
+        use crate::vm::types::ListData;
+        let vm = vm_with(vec![OpCode::GET_ELEM as u8]);
+        let list_id = vm.insert_heap_object(ListData::<i32> {
+            elems: vec![1, 2, 3],
+            storage: None,
+        });
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_object(list_id as u32));
+        task.ram.push_i32(999);
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(msg, "IndexError: index 999 out of range");
+    }
+
+    // ---- T06 TYPE_TO_I32/F64 翻案 + 合法回归 ----
+
+    #[test]
+    fn test_null_to_i32_f64_type_error() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_I32 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: int() argument must be a string or a real number, not 'NoneType'"
+        );
+
+        let vm = vm_with(vec![OpCode::TYPE_TO_F64 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        let msg = runtime_err_of(vm.run_one_instruction(&mut task));
+        assert_eq!(
+            msg,
+            "TypeError: float() argument must be a string or a real number, not 'NoneType'"
+        );
+    }
+
+    #[test]
+    fn test_to_i32_f64_legit_paths_unaffected() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_I32 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_i32(7);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_i32(), 7);
+
+        let vm = vm_with(vec![OpCode::TYPE_TO_F64 as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_f64(2.5);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(task.ram.pop_f64(), 2.5);
+    }
+
+    // ---- T07 TYPE_TO_STR null → "None" ----
+
+    #[test]
+    fn test_null_to_str_renders_none() {
+        let vm = vm_with(vec![OpCode::TYPE_TO_STR as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        task.ram.push_nv(auto_val::encode_null());
+        vm.run_one_instruction(&mut task).unwrap();
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_string(nv), "expected string result");
+        let idx = auto_val::decode_string(nv) as usize;
+        let rendered = vm.strings.read().unwrap().get(idx).cloned().unwrap();
+        assert_eq!(rendered, b"None".to_vec());
+    }
+}
+
+mod tests_add_concat_rc {
+    use super::*;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_with(code: Vec<u8>) -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(code), 1024)
+    }
+
+    fn pop_str(vm: &AutoVM, task: &mut AutoTask) -> String {
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_string(nv), "expected string on stack");
+        let idx = auto_val::decode_string(nv) as usize;
+        String::from_utf8(
+            vm.strings
+                .read()
+                .unwrap()
+                .get(idx)
+                .cloned()
+                .unwrap_or_default(),
+        )
+        .unwrap()
+    }
+
+    /// Plan 567 T02（P539-D1）: rc=1 操作数 ADD 拼接——先读后放纪律回归。
+    /// 病灶形态：release 在读之前 → 中间结果槽 FREE+tombstone 后读归空
+    /// （"got d"）；add_string 前的旧第二对 release → rc 下溢回绕 u32::MAX
+    /// （P053-8 幻影 freelist 条目）。
+    #[test]
+    fn test_add_string_concat_rc1_operands() {
+        let vm = vm_with(vec![OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        let a = vm.add_string(b"a".to_vec());
+        let b = vm.add_string(b"b".to_vec());
+        vm.rc_push_str_idx(&mut task, a);
+        vm.rc_push_str_idx(&mut task, b);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(pop_str(&vm, &mut task), "ab");
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0, "no double release (rc underflow)");
+        assert_eq!(h.phantom_drops, 0, "no phantom freelist entry");
+    }
+
+    /// 左结合链的中间结果必须可读：((a+b)+c) == "abc"——修复前第二跳
+    /// 读到已释放的 "ab" 槽（tombstone）归空串，得 "c"（py_list
+    /// test_sorted_getitem "got d" 的引擎级最小复现）。
+    #[test]
+    fn test_add_string_concat_chain_intermediate_survives() {
+        let vm = vm_with(vec![OpCode::ADD as u8, OpCode::ADD as u8]);
+        let mut task = AutoTask::new(1, 256, 0);
+        let a = vm.add_string(b"a".to_vec());
+        let b = vm.add_string(b"b".to_vec());
+        let c = vm.add_string(b"c".to_vec());
+        vm.rc_push_str_idx(&mut task, a);
+        vm.rc_push_str_idx(&mut task, b);
+        vm.run_one_instruction(&mut task).unwrap();
+        vm.rc_push_str_idx(&mut task, c);
+        vm.run_one_instruction(&mut task).unwrap();
+        assert_eq!(pop_str(&vm, &mut task), "abc");
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0);
+        assert_eq!(h.phantom_drops, 0);
+    }
+}
+
+mod tests_p583_pool_child_shares {
+    use super::*;
+    use crate::vm::ffi::VMConvertible;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_idle() -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(vec![OpCode::RET as u8]), 1024)
+    }
+
+    /// Plan 583 T4: Vec<String> 入栈必须为每个负哨兵元素建立容器子份额（+1）。
+    /// 修复前 add_string 后裸嵌哨兵：元素 rc=0，首个 GET_ELEM 的 +1 被槽位
+    /// 释放抵消归零 → FREE 清内容 → 列表悬垂（Plan 579 T9 真实语料扫描
+    /// 100% tombstone/静默空串的根因）。
+    #[test]
+    fn test_vec_string_push_child_shares() {
+        let vm = vm_idle();
+        let mut task = AutoTask::new(1, 256, 0);
+        let payload: Vec<String> = vec!["alpha".to_string(), "beta".to_string()];
+        payload.push_to_stack(&mut task, &vm).unwrap();
+
+        // 栈顶是 list id（带影子份额）；列表内每个元素各持 1 份池份额。
+        let list_nv = task.ram.pop_nv();
+        assert!(
+            crate::vm::rc::heap_ref_id(list_nv).is_some(),
+            "list id on stack"
+        );
+        let list_id = crate::vm::rc::heap_ref_id(list_nv).unwrap();
+        let obj = vm.get_heap_object(list_id).unwrap();
+        let sentinels: Vec<i32> = {
+            let g = obj.read().unwrap();
+            g.as_any()
+                .downcast_ref::<crate::vm::types::ListData<i32>>()
+                .unwrap()
+                .elems
+                .clone()
+        };
+        assert_eq!(sentinels.len(), 2);
+        for &sent in &sentinels {
+            assert!(sent < 0, "string sentinel encoding");
+            let idx = (-(sent) - 1) as usize;
+            assert_eq!(vm.pool_count(idx), 1, "container child share established");
+        }
+
+        // 释放列表（rc 归零 + 宽限窗收割）→ 子份额随死亡释放归零、墓碑化。
+        vm.rc_release(list_nv);
+        vm.reap_all();
+        for &sent in &sentinels {
+            let idx = (-(sent) - 1) as usize;
+            assert_eq!(
+                vm.pool_count(idx),
+                0,
+                "child share released with container death"
+            );
+            assert!(vm.pool_is_tombstone(idx), "tombstoned after release");
+        }
+        let h = vm.pool_health();
+        assert_eq!(
+            h.underflow_events, 0,
+            "no over-release (paired retain/release)"
+        );
+        assert_eq!(h.phantom_drops, 0);
+    }
+
+    /// Plan 583 T4: 复活加固——墓碑槽收到 retain（陈旧拷贝症状）时必须
+    /// 摘 freelist + 清墓碑，杜绝"存活且在复用队列"的幻影条目
+    /// （P-053-8 级联腐化源）。
+    #[test]
+    fn test_pool_retain_resurrection_unfreelists() {
+        let vm = vm_idle();
+        let idx = vm.add_string(b"ghost".to_vec());
+        vm.pool_retain(idx);
+        assert_eq!(vm.pool_count(idx), 1);
+        vm.pool_release(idx); // 归零 → 墓碑 + freelist
+        assert!(vm.pool_is_tombstone(idx));
+        assert!(vm.pool_state.read().unwrap().freelist.contains(&idx));
+
+        vm.pool_retain(idx); // 陈旧拷贝到达 → 复活加固
+        assert!(
+            !vm.pool_is_tombstone(idx),
+            "tombstone cleared on resurrection"
+        );
+        assert!(
+            !vm.pool_state.read().unwrap().freelist.contains(&idx),
+            "unfreelisted"
+        );
+        assert_eq!(vm.pool_count(idx), 1);
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0);
+        assert_eq!(h.phantom_drops, 0);
+    }
+}
+
+mod tests_err_value_channel {
+    use super::*;
+    use crate::vm::generic_registry::GenericInstanceData;
+    use crate::vm::task::AutoTask;
+    use crate::vm::virt_memory::VirtualFlash;
+
+    fn vm_with(code: Vec<u8>) -> AutoVM {
+        AutoVM::new(VirtualFlash::new_with_code(code), 1024)
+    }
+
+    fn push_result_instance(vm: &AutoVM, task: &mut AutoTask, kind: &str, field: auto_val::Value) {
+        let inst = GenericInstanceData::new(kind.to_string(), vec![field]);
+        let id = vm.insert_heap_object(inst);
+        vm.rc_push(task, auto_val::encode_object(id as u32));
+    }
+
+    /// Plan 567 T08（P560-D2）: Err 值传播被当前帧 try handler 拦截——
+    /// 改跳 catch_pc + 载荷串入栈（与 intercept_error 异常通道汇合）。
+    /// 布局：PUSH_HANDLER(rel=2) → ERROR_PROPAGATE(n=0) → catch: CONST_I32 77。
+    #[test]
+    fn test_error_propagate_value_channel_catch_hit() {
+        let mut code = Vec::new();
+        code.push(OpCode::PUSH_HANDLER as u8);
+        code.extend_from_slice(&2i16.to_le_bytes());
+        code.push(OpCode::ERROR_PROPAGATE as u8);
+        code.push(0u8); // n_args
+        code.push(OpCode::CONST_I32 as u8);
+        code.extend_from_slice(&77i32.to_le_bytes());
+
+        let vm = vm_with(code);
+        let mut task = AutoTask::new(1, 256, 0);
+        vm.run_one_instruction(&mut task).unwrap(); // PUSH_HANDLER
+        assert_eq!(task.handler_stack.len(), 1);
+
+        push_result_instance(
+            &vm,
+            &mut task,
+            "Result.Err",
+            auto_val::Value::Str("PyException AttributeError: boom".to_string().into()),
+        );
+        vm.run_one_instruction(&mut task).unwrap(); // ERROR_PROPAGATE → intercept
+
+        assert!(task.handler_stack.is_empty(), "handler consumed by catch");
+        let nv = task.ram.pop_nv();
+        assert!(auto_val::is_string(nv), "payload bound for catch");
+        let idx = auto_val::decode_string(nv) as usize;
+        let payload = vm.strings.read().unwrap().get(idx).cloned().unwrap();
+        assert_eq!(payload, b"PyException AttributeError: boom".to_vec());
+        assert_eq!(
+            task.ip, 5,
+            "ip redirected to catch_pc (right after ERROR_PROPAGATE)"
+        );
+
+        vm.run_one_instruction(&mut task).unwrap(); // catch body
+        assert_eq!(task.ram.pop_i32(), 77);
+        let h = vm.pool_health();
+        assert_eq!(h.underflow_events, 0);
+        assert_eq!(h.phantom_drops, 0);
+    }
+
+    /// null 是值不进 catch：None 传播走原 May 帧展开路径（main 帧 = Terminate），
+    /// handler 不被消费。
+    #[test]
+    fn test_error_propagate_null_not_intercepted() {
+        let mut code = Vec::new();
+        code.push(OpCode::PUSH_HANDLER as u8);
+        code.extend_from_slice(&2i16.to_le_bytes());
+        code.push(OpCode::ERROR_PROPAGATE as u8);
+        code.push(0u8);
+
+        let vm = vm_with(code);
+        let mut task = AutoTask::new(1, 256, 0);
+        vm.run_one_instruction(&mut task).unwrap(); // PUSH_HANDLER
+        task.ram.push_nv(auto_val::encode_null());
+        let step = vm.run_one_instruction(&mut task).unwrap();
+        assert!(
+            matches!(step, StepResult::Terminated),
+            "null propagation in main frame terminates, got {:?}",
+            step
+        );
+        assert_eq!(
+            task.handler_stack.len(),
+            1,
+            "handler untouched by null path"
+        );
+    }
+
+    /// Result.Ok 解包继续执行——不进 catch、handler 保持。
+    #[test]
+    fn test_error_propagate_ok_unwraps_no_interception() {
+        let mut code = Vec::new();
+        code.push(OpCode::PUSH_HANDLER as u8);
+        code.extend_from_slice(&2i16.to_le_bytes());
+        code.push(OpCode::ERROR_PROPAGATE as u8);
+        code.push(0u8);
+
+        let vm = vm_with(code);
+        let mut task = AutoTask::new(1, 256, 0);
+        vm.run_one_instruction(&mut task).unwrap(); // PUSH_HANDLER
+        push_result_instance(&vm, &mut task, "Result.Ok", auto_val::Value::Int(42));
+        vm.run_one_instruction(&mut task).unwrap(); // ERROR_PROPAGATE → unwrap
+        assert_eq!(task.ram.pop_i32(), 42);
+        assert_eq!(task.handler_stack.len(), 1, "handler untouched by Ok path");
+    }
+}

@@ -57,3 +57,19 @@ graph LR
 > 模块层文档已完成 Phase 1 蒸馏与 PLAN-546 代码证据 rebaseline（2026-09-07，
 > 报告 [docs/reports/module-spec-rebaseline-2026-09-04.md](../../reports/module-spec-rebaseline-2026-09-04.md)）；
 > 状态列以各模块 overview 的 Status 行为准。
+
+## PLAN-814：上层兼容包定位（M814-A @ master f6e07acee）
+
+原巨型包拆分后，本 crate 降为**上层兼容/默认组合包**：纯语言栈单源在
+`auto-lang-core`（[language-sdk](../language-sdk/project.md)）、UI 编译/
+生成在 `auto-ui-compiler`（[auto-ui-compiler](../auto-ui-compiler/project.md)）。
+旧 `auto_lang::*` 公开路径经再导出保类型身份；UI 特性族（ui-iced/ui/
+autodown/ui-headless/code-editor 等）在此转发。真实 UI runtime/renderer/
+宿主 adapter 仍由本 crate 承载（B 阶段 T-04 迁移 auto-ui-runtime）。
+
+**r3 具名登记例外**（合同见 PLAN-814 §5.3）：本包经源码可见
+`inventory::submit!` 登记轻量 UI 文法函数表/宿主安装器函数指针（启动
+构造器机制，只登记不执行 UI 业务/I/O），覆盖不经装配入口的旧直达
+调用；`install_ui_host_capabilities()`（run 族漏斗/旧公开入口包装/SDK
+钩子回调汇点）首句显式 `set_ui_grammar` 装配优先。纯 SDK 的无 UI
+闭包/缺席语义不受影响。

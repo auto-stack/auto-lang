@@ -3402,7 +3402,10 @@ impl DesktopSession {
         }
         // 升格诊断行（2026-10-10 小组件独立裁定配套）：孵化→窗同会话
         // 交接的可观测面（实机冒烟按此对账 wid；零分家 = 无 launch 行）。
-        eprintln!("[session] promote `{name}` app={:?} → wid {:?}", app_id.0, wid.0);
+        eprintln!(
+            "[session] promote `{name}` app={:?} → wid {:?}",
+            app_id.0, wid.0
+        );
         if layout != LayoutMode::Free {
             self.wm_set_layout(layout);
         }
@@ -3883,7 +3886,7 @@ impl DesktopSession {
         let rect = crate::ui::layout::cascade_rect(index, size, usable);
         {
             let sz = crate::ui::iced::virtual_window::vwin_content_size(rect);
-            crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+            crate::ui::terminal_provider::set_app_window_px(sz.width, sz.height);
         }
         let comp = crate::build_dynamic_component(&provisioned_code, spec.source_path.as_deref())
             .map_err(|e| {
@@ -5767,7 +5770,7 @@ impl DesktopSession {
             // 字段语义(Plan 409 响应式布局)不动。
             {
                 let sz = crate::ui::iced::virtual_window::vwin_content_size(*v.rect.borrow());
-                crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+                crate::ui::terminal_provider::set_app_window_px(sz.width, sz.height);
             }
             return Some(SessionViewMut {
                 app_id: id,
@@ -5817,7 +5820,7 @@ impl DesktopSession {
             // desktop 分支——view/订阅闭包侧入口)。
             {
                 let sz = crate::ui::iced::virtual_window::vwin_content_size(*v.rect.borrow());
-                crate::vm::ffi::term_engine::set_app_window_px(sz.width, sz.height);
+                crate::ui::terminal_provider::set_app_window_px(sz.width, sz.height);
             }
             return Some(SessionViewRef {
                 app_id: id,
@@ -6171,7 +6174,9 @@ impl DesktopSession {
         }
         let provision_root = self.ensure_backend(&spec, name);
         let provisioned_code = match &provision_root {
-            Some(root) => crate::ui::back_provision::prefix_api_url_literals(&spec.code, root, name),
+            Some(root) => {
+                crate::ui::back_provision::prefix_api_url_literals(&spec.code, root, name)
+            }
             None => spec.code.clone(),
         };
         let _prefix_guard = provision_root.as_ref().and_then(|root| {
@@ -6180,21 +6185,23 @@ impl DesktopSession {
                 .as_deref()
                 .and_then(|p| std::path::Path::new(p).parent())
                 .map(|d| d.to_path_buf())?;
-            Some(crate::back_prefix::set_guard(crate::back_prefix::PrefixSpec {
-                front_dir,
-                root: root.clone(),
-                app_key: name.to_string(),
-            }))
+            Some(crate::back_prefix::set_guard(
+                crate::back_prefix::PrefixSpec {
+                    front_dir,
+                    root: root.clone(),
+                    app_key: name.to_string(),
+                },
+            ))
         });
         let comp = crate::build_dynamic_component(&provisioned_code, spec.source_path.as_deref())
             .map_err(|e| {
-                // 编译失败回滚供给计数（app 未诞生无归属可 release——归零
-                // 即卸载，防计数泄漏；launch 臂同律）。
-                if provision_root.is_some() {
-                    self.release_app_key(name);
-                }
-                format!("hatch `{name}` failed: {e}")
-            })?;
+            // 编译失败回滚供给计数（app 未诞生无归属可 release——归零
+            // 即卸载，防计数泄漏；launch 臂同律）。
+            if provision_root.is_some() {
+                self.release_app_key(name);
+            }
+            format!("hatch `{name}` failed: {e}")
+        })?;
         // 面无 mini（文本误报/只有主视图）→ 丢弃，不占会话槽（供给计数
         // 同样回滚）。
         if comp.named_views().is_empty() {
@@ -6809,18 +6816,18 @@ mod tests {
     #[test]
     fn p024_app_window_px_setter_semantics() {
         assert_eq!(
-            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            crate::ui::terminal_provider::app_window_px_for_test(),
             (0.0, 0.0)
         );
-        crate::vm::ffi::term_engine::set_app_window_px(0.0, 500.0);
+        crate::ui::terminal_provider::set_app_window_px(0.0, 500.0);
         assert_eq!(
-            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            crate::ui::terminal_provider::app_window_px_for_test(),
             (0.0, 0.0),
             "退化拒收保号"
         );
-        crate::vm::ffi::term_engine::set_app_window_px(777.0, 555.0);
+        crate::ui::terminal_provider::set_app_window_px(777.0, 555.0);
         assert_eq!(
-            crate::vm::ffi::term_engine::app_window_px_for_test(),
+            crate::ui::terminal_provider::app_window_px_for_test(),
             (777.0, 555.0)
         );
     }
@@ -7159,7 +7166,10 @@ mod tests {
         let app_id = provisioned.expect("带后端 mini 随供给孵化");
         assert!(ds2.desktop.back_proxy.is_some(), "proxy 懒启（供给在册）");
         assert!(
-            ds2.desktop.back_refs.get("probe-app").is_some_and(|c| *c == 1),
+            ds2.desktop
+                .back_refs
+                .get("probe-app")
+                .is_some_and(|c| *c == 1),
             "供给计数归孵化会话（升格共享/关窗不释放的底座）"
         );
         assert!(

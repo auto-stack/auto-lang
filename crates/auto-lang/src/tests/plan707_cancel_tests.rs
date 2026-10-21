@@ -46,9 +46,7 @@ fn plan707_cancel_active_job_aborts_and_frees_permit() {
     // Keep the gate closed while cancellation propagates. Releasing it here
     // races the runtime's abort handling and can let the job finish first.
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-    while ah::client_active_available() != baseline_active
-        && std::time::Instant::now() < deadline
-    {
+    while ah::client_active_available() != baseline_active && std::time::Instant::now() < deadline {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 

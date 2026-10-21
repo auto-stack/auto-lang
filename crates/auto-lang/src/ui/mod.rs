@@ -114,7 +114,8 @@ pub mod dnd_host_provider;
 // Win32 calls are double-gated inside (windows × `native-clipboard`).
 pub mod clipboard_native;
 // Plan 418 Phase 2: declarative action/binding config (auto-atom).
-pub mod action_config;
+// PLAN-814 T-03：action 配置解析迁 auto-ui-compiler；旧路径经再导出保持。
+pub use auto_ui_compiler::action_config;
 pub mod view;
 // PLAN-063 T-04d-2: 右栏块锚定坐标槽（iced 布局期记录 + 同步目标消费）。
 #[cfg(feature = "ui-iced")]
@@ -122,7 +123,12 @@ pub mod anchor_slot;
 pub mod app;
 pub mod debug;
 pub mod node_converter;
-pub mod style;
+// PLAN-814 T-03：style DSL 分析/模型单源迁 auto-ui-compiler；iced 后端
+// 适配器是运行时件，留本包 style_iced_adapter（旧 style::IcedStyle 用户
+// 已改指）。旧路径 crate::ui::style 经再导出保持。
+pub use auto_ui_compiler::style;
+pub mod style_iced_adapter;
+pub use style_iced_adapter::IcedStyle;
 pub mod vnode;
 pub mod vnode_converter;
 pub mod widget;
@@ -161,7 +167,8 @@ pub mod layout;
 pub mod shell;
 
 // Plan 463 T7：应用注册表（apps 目录扫描 → LaunchApp 目标清单）。
-pub mod app_registry;
+// PLAN-815 T-04: moved to auto-ui-compiler; re-export keeps paths.
+pub use auto_ui_compiler::app_registry;
 
 // Plan 501：os-config daemon 生命周期（检活/发现序 spawn/AUTOOS_DAEMON env
 // 注入——外部仓 settings app 的宿主侧底座；纯逻辑全平台单测）。
@@ -220,7 +227,14 @@ pub mod autodown_render;
 
 // PLAN-041 T1: 块家族注册表——chrome/样式单源，只读臂与编辑壳共同消费。
 #[cfg(feature = "autodown")]
+// PLAN-814 R3-04：autodown 文档引擎实装（跨仓 autodown-core 依赖与
+// `autodown` feature 同 owner 在本包）——经 SDK 端口注册。
+#[cfg(feature = "autodown")]
 pub mod autodown_blocks;
+// PLAN-814 R3-04：autodown 文档引擎实装（跨仓 autodown-core 依赖与
+// `autodown` feature 同 owner 在本包）——经 SDK 端口注册。
+#[cfg(feature = "autodown")]
+pub mod autodown_engine;
 
 // PLAN-084 T-01b: VM 轨 LaTeX→Unicode 数学符号转换（真渲染 bounded 子集）。
 #[cfg(feature = "autodown")]
@@ -262,7 +276,7 @@ pub mod native_widget;
 pub mod state_migration;
 
 #[cfg(feature = "ui-interpreter")]
-pub mod i18n_lookup;
+pub use auto_ui_compiler::i18n_lookup;
 
 #[cfg(feature = "ui-headless")]
 pub mod headless;

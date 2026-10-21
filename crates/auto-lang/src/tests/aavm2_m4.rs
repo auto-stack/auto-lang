@@ -389,7 +389,7 @@ fn compile_and_link_multi(dir: &std::path::Path) -> AutoResult<(Vec<u8>, Vec<Vec
                     remap[old_idx] = new_idx;
                 }
             }
-            crate::remap_string_indices(&mut module.code, &remap);
+            auto_lang_core::remap_string_indices(&mut module.code, &remap);
         }
         // corpus_use 无 CREATE_OBJ 面(object 池恒空);object 池合并不镜像
     }
@@ -534,7 +534,7 @@ fn test_aavm2_p532_lib_static_diff() {
                     remap[old_idx] = new_idx;
                 }
             }
-            crate::remap_string_indices(&mut module.code, &remap);
+            auto_lang_core::remap_string_indices(&mut module.code, &remap);
         }
     }
     let mut linker = Linker::new();

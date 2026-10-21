@@ -1,0 +1,9697 @@
+//! API Code Generation Integration
+//!
+//! Plan 130: Integrate API code generation with build workflow
+//!
+//! This module bridges the gap between:
+//! - auto-lang/src/api: API extraction and code generation
+//! - auto-man/src/tauri: Tauri project generation
+//! - auto-man/src/vue: Vue project generation
+//!
+//! ## Workflow
+//!
+//! 1. Parse `back/api.at` to extract `#[api]` function definitions
+//! 2. Generate backend code:
+//!    - Tauri mode: `src-tauri/src/commands.rs` with `#[tauri::command]`
+//!    - Vue mode: Generate Axum routes for HTTP backend
+//! 3. Generate frontend code:
+//!    - `src/api/types.ts`: TypeScript interfaces
+//!    - `src/api/client.ts`: API client (IPC or HTTP)
+
+use std::path::Path;
+
+use auto_val::AutoResult;
+
+use auto_lang_core::api::{ApiAttrs, ApiEndpoint, ApiField, ApiModule, ApiParam, ApiType};
+
+/// Generate API code for the project
+///
+/// This is the main entry point for API code generation.
+/// It reads the backend API definitions and generates:
+/// - Backend: Tauri commands or Axum routes
+/// - Frontend: TypeScript types and API client
+
+/// PLAN-734 T-04：32 位 FNV-1a（generation.json 的内容指纹——与
+/// ui_cache invalidate_if_api_functions_changed 同族）。
+pub fn fnv1a(bytes: &[u8]) -> u32 {
+    let mut h: u32 = 0x811c9dc5;
+    for b in bytes {
+        h ^= *b as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    h
+}
+
+pub fn generate_api(root_dir: &Path, backend: &str) -> AutoResult<()> {
+    // Plan 061:统一契约定位 —— 本地 src/back/ | back/,或 pac.at
+    // `back: { project }` 指向的外部后端项目(前端可无本地 back/)。
+    let api_file = match auto_lang_core::config::resolve_back_api(root_dir) {
+        Some(f) => f,
+        // No backend contract found anywhere, skip generation
+        None => return Ok(()),
+    };
+    let back_dir = api_file
+        .parent()
+        .map(|p| p.to_path_buf())
+        .unwrap_or_else(|| root_dir.to_path_buf());
+
+    // Read API file
+    let api_content = std::fs::read_to_string(&api_file)
+        .map_err(|e| format!("Failed to read {}: {}", api_file.display(), e))?;
+
+    // PLAN-734 T-04（D4）：strict 解析门——full-parse 失败 = Err（解析错误
+    // 不再静默落 lenient/空提取；AC-04）。lenient 退役为显式
+    // `AUTO_API_LENIENT=1`（产物按 scaffold 语义——不含业务体）。
+    let strict_parse = std::env::var("AUTO_API_LENIENT")
+        .map(|v| v != "1")
+        .unwrap_or(true);
+    let api_module = match try_full_parse(&api_content) {
+        Some(module) => module,
+        None if strict_parse => {
+            return Err(format!(
+                "api.at parse failed ({}); fix the parse error or set AUTO_API_LENIENT=1 for scaffold-only extraction",
+                api_file.display()
+            )
+            .into());
+        }
+        None => {
+            // Lenient extraction for files with module references like `use db`
+            match extract_api_lenient(&api_content) {
+                Some(m) => {
+                    println!("  ℹ Using lenient API extraction (scaffold: no bodies)");
+                    m
+                }
+                None => {
+                    println!("  ⚠ Could not extract API definitions");
+                    if backend == "vue" {
+                        install_project_api_glue(root_dir);
+                    }
+                    return Ok(());
+                }
+            }
+        }
+    };
+
+    // Check if any endpoints or types were extracted
+    if api_module.endpoints.is_empty() && api_module.types.is_empty() {
+        println!("  ⚠ No API endpoints or types found");
+        // Plan 559 W2: implementation-style back/api.at (VM-dialect bodies —
+        // os-config's 80 fn http/json surface) yields no contract endpoints.
+        // If the project ships the web implementation as a hand-written TS
+        // twin at src/back/api.ts (the "vue codegen → @/lib/api" arm of the
+        // same `use back.api` import line), install it as the gen tree's
+        // lib/api.ts so the vue track type-checks. Without a twin, the gen
+        // tree gets no glue (desktop-host v1 keeps skipping such apps).
+        if backend == "vue" {
+            install_project_api_glue(root_dir);
+        }
+        return Ok(());
+    }
+
+    // PLAN-734 T-04：契约预检——HTTP 专属种类（File/Upload）在非 HTTP 消费
+    // 面（tauri 命令生成）按矩阵拒绝；显式 Response/Stream 保持各自形态。
+    // （rust/vue 后端经 HTTP 承载，无此限制。）
+    if backend == "tauri" {
+        for ep in &api_module.endpoints {
+            // PLAN-776 T-06：读提取期冻结的来源身份分类。
+            let kind = ep.response;
+            if kind.is_http_exclusive() {
+                return Err(format!(
+                    "api endpoint `{}.{}` returns an HTTP-exclusive kind ({:?}); Tauri IPC cannot carry it — call the HTTP URL instead",
+                    api_file.display(),
+                    ep.fn_name,
+                    kind
+                )
+                .into());
+            }
+        }
+    }
+
+    // Generate code based on backend
+    match backend {
+        "tauri" => {
+            generate_tauri_api(&api_module, root_dir)?;
+        }
+        "vue" => {
+            generate_vue_api(&api_module, root_dir)?;
+        }
+        "rust" => {
+            // Plan 345: VM+Rust mode — generate Rust axum server from #[api].
+            generate_rust_server(&api_module, root_dir)?;
+        }
+        _ => {
+            // No API generation for other backends
+        }
+    }
+
+    Ok(())
+}
+
+/// Plan 559 W2: install a project-provided TS API glue (`src/back/api.ts`,
+/// the hand-written web implementation of the `use back.api` surface) into
+/// the vue gen tree (`gen/front/vue/src/lib/api.ts`) and the workspace dist
+/// copy, so generated `import { ... } from '@/lib/api'` resolve under the
+/// gen-side vue-tsc gate. Called only when contract extraction found no
+/// endpoints/types — contract-style projects (015-notes) keep their
+/// generated client. Returns true when a glue was installed.
+pub fn install_project_api_glue(root_dir: &Path) -> bool {
+    let glue = root_dir.join("src").join("back").join("api.ts");
+    if !glue.exists() {
+        return false;
+    }
+    let lib_dir = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("lib");
+    let dist_lib_dir = root_dir.join("dist").join("src").join("lib");
+    let mut installed = false;
+    for dir in [&lib_dir, &dist_lib_dir] {
+        if std::fs::create_dir_all(dir).is_err() {
+            continue;
+        }
+        let target = dir.join("api.ts");
+        // Never copy a file onto itself (src/back/api.ts IS the source).
+        if std::fs::canonicalize(&target).ok().as_deref()
+            == std::fs::canonicalize(&glue).ok().as_deref()
+        {
+            continue;
+        }
+        if std::fs::copy(&glue, &target).is_ok() {
+            installed = true;
+        }
+    }
+    if installed {
+        println!("  ✓ Installed project API glue: src/back/api.ts → src/lib/api.ts");
+    }
+    installed
+}
+
+/// PLAN-734 T-04：复用路径的 ready 新鲜度校验——在跑 bundle 的
+/// generation.json 源指纹与当前 api.at（+db.at）内容一致才允许复用。
+pub fn backend_generation_is_fresh(project_dir: &Path) -> bool {
+    let Some(api_file) = auto_lang_core::config::resolve_back_api(project_dir) else {
+        return true; // 无契约项目：无新鲜度可校验，维持旧行为
+    };
+    let ws_dir = crate::rust_workspace::resolve_rust_workspace_dir(project_dir);
+    let back_name = crate::rust_workspace::back_member_name(project_dir);
+    let record_path = ws_dir.join(&back_name).join("generation.json");
+    let Ok(record_text) = std::fs::read_to_string(&record_path) else {
+        return false; // 无 ready 记录（旧产物）——不复用
+    };
+    let Ok(mut record) = serde_json::from_str::<serde_json::Value>(&record_text) else {
+        return false;
+    };
+    let Some(hashes) = record.get("source_hashes").and_then(|h| h.as_array()) else {
+        return false;
+    };
+    for entry in hashes {
+        let Some(name) = entry.get(0).and_then(|v| v.as_str()) else {
+            return false;
+        };
+        let Some(recorded) = entry.get(1).and_then(|v| v.as_str()) else {
+            return false;
+        };
+        let source_path = match name {
+            "api.at" => api_file.clone(),
+            "db.at" => api_file
+                .parent()
+                .map(|d| d.join("db.at"))
+                .unwrap_or_default(),
+            _ => return false,
+        };
+        let Ok(text) = std::fs::read_to_string(&source_path) else {
+            return false;
+        };
+        if format!("{:x}", fnv1a(text.as_bytes())) != recorded {
+            return false;
+        }
+    }
+    // PLAN-738 T-06（AC-06/07，SD-05）：装配新鲜度——收据的 assembly 指纹
+    // 与当前 stdlib 装配身份必须一致（「改 stdlib 但 api.at 不变」在此失效
+    // 复用 → 走再生臂）。
+    let recorded_assembly = record
+        .get("assembly")
+        .and_then(|a| a.get("consumer_fingerprint"))
+        .and_then(|f| f.as_str());
+    let current_assembly = crate::api_gen::current_generated_api_assembly(project_dir)
+        .ok()
+        .map(|manifest| manifest.consumer_fingerprint().to_string());
+    if !assembly_freshness(recorded_assembly, current_assembly.as_deref()) {
+        return false;
+    }
+    // PLAN-738 T-12：生成 workspace lock 身份对拍——生成产物运行时依赖
+    // 输入变化（lock 出现/更新）即陈旧；旧收据无此字段=不可核验，保守再生。
+    let recorded_lock = record.get("workspace_lock").and_then(|v| v.as_str());
+    // P738-R9-01 fail-closed + R11-01 身份单点：absent 仅指 NotFound；成功
+    // 读取（含零字节空文件）一律实际内容指纹（空文件=811c9dc5，与生成端
+    // 收据同口径）；**其它读取错误（权限/IO）不冒充 absent**——归 None
+    // （不可核验=保守陈旧），防止 recorded="absent" × 读错误 → 假新鲜。
+    let current_lock: Option<String> =
+        crate::rust_workspace::workspace_lock_identity(std::fs::read(
+            crate::rust_workspace::ensure_shared_workspace(project_dir).join("Cargo.lock"),
+        ))
+        .map(|identity| identity.unwrap_or_else(|| "absent".to_string()))
+        .ok();
+    // PLAN-738 R5-01：一次绑定状态机。生成时未建 lock（收据记 absent）
+    // → 首次出现实际 lock 时判新鲜**并把实际 lock 身份写回收据**（一次性
+    // 物化绑定，收据升级）——此后严格比较：依赖版本漂移/lock 删除/读取
+    // 失败均陈旧。旧收据缺字段=不可核验，保守再生（一次再生写入后收敛）。
+    match (recorded_lock, current_lock.as_deref()) {
+        (Some("absent"), Some(materialized)) if materialized != "absent" => {
+            // R6-02：绑定写回收据失败=无法建立可核验身份，保守判陈旧
+            // （下一次成功写回收敛），不以未绑定状态放行。
+            bind_workspace_lock(&record_path, &mut record, materialized)
+        }
+        (recorded, current) => lock_freshness(recorded, current),
+    }
+}
+
+/// 首次物化绑定：把实际 lock 身份写回收据的 workspace_lock 字段（保持
+/// 其余字段逐字不动——serde_json 值级更新，时间戳等不重写）。
+pub fn bind_workspace_lock(record_path: &Path, record: &mut serde_json::Value, lock: &str) -> bool {
+    let Some(value) = record.get_mut("workspace_lock") else {
+        return false;
+    };
+    if value.as_str() == Some(lock) {
+        return true;
+    }
+    *value = serde_json::Value::String(lock.to_string());
+    std::fs::write(record_path, record.to_string()).is_ok()
+}
+
+/// workspace lock 新鲜度（PLAN-738 T-12/R5-01）：双方一致才新鲜；首次
+/// 物化（absent→实际值）由调用方在绑定收据后判新鲜；absent/absent=
+/// 尚无 lock 物化，新鲜；其余（值漂移/lock 消失/读取失败→None 不可
+/// 核验/收据缺字段）一律陈旧。
+pub fn lock_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
+    match (recorded, current) {
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// 装配新鲜度判定（PLAN-738 T-06；纯函数便于单测）。
+/// - 双 None：不能核验装配身份，必须重新生成；
+/// - 单侧缺失：陈旧——旧产物无该字段而当前可算=门升级后首查（再生一次
+///   写入新字段收敛）；收据有而当前不可算=无法核验，保守再生；
+/// - 双方在：十六进制指纹串相等才新鲜。
+pub fn assembly_freshness(recorded: Option<&str>, current: Option<&str>) -> bool {
+    match (recorded, current) {
+        (None, None) => false,
+        (Some(a), Some(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Try to parse API file with full AST parsing
+pub fn try_full_parse(api_content: &str) -> Option<ApiModule> {
+    use auto_lang_core::api::ApiExtractor;
+
+    let mut parser = auto_lang_core::Parser::from(api_content);
+    let ast = parser.parse().ok()?;
+
+    let extractor = ApiExtractor::new();
+    let module = extractor.extract("api", &ast.stmts);
+
+    // Only return if we found endpoints
+    if module.endpoints.is_empty() && module.types.is_empty() {
+        None
+    } else {
+        Some(module)
+    }
+}
+
+/// Generate Tauri API code
+fn generate_tauri_api(
+    api_module: &auto_lang_core::api::ApiModule,
+    root_dir: &Path,
+) -> AutoResult<()> {
+    use auto_lang_core::api::Target;
+
+    let vue_dir = root_dir.join("gen").join("front").join("vue");
+    let tauri_src_dir = vue_dir.join("src-tauri").join("src");
+
+    // Ensure directories exist
+    std::fs::create_dir_all(&tauri_src_dir)
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+
+    // Generate Tauri commands
+    let tauri_gen = Target::Tauri.generator();
+    let tauri_code = tauri_gen.generate(api_module);
+    std::fs::write(tauri_src_dir.join("commands.rs"), &tauri_code)
+        .map_err(|e| format!("Failed to write commands.rs: {}", e))?;
+
+    // Generate TypeScript IPC client for Tauri (uses invoke instead of fetch)
+    let ts_ipc_code = generate_tauri_ts_client(api_module);
+
+    // Write to src/lib/api.ts so Vue imports resolve correctly
+    let lib_dir = vue_dir.join("src").join("lib");
+    std::fs::create_dir_all(&lib_dir)
+        .map_err(|e| format!("Failed to create lib directory: {}", e))?;
+    std::fs::write(lib_dir.join("api.ts"), &ts_ipc_code)
+        .map_err(|e| format!("Failed to write src/lib/api.ts: {}", e))?;
+
+    // Also write to src/api/client.ts for backward compatibility
+    let api_dir = vue_dir.join("src").join("api");
+    std::fs::create_dir_all(&api_dir)
+        .map_err(|e| format!("Failed to create api directory: {}", e))?;
+    std::fs::write(api_dir.join("client.ts"), &ts_ipc_code)
+        .map_err(|e| format!("Failed to write client.ts: {}", e))?;
+
+    println!("  ✓ Generated Tauri commands: src-tauri/src/commands.rs");
+    println!("  ✓ Generated TypeScript IPC client: src/lib/api.ts");
+
+    Ok(())
+}
+
+/// Generate a Tauri IPC TypeScript client using `invoke`
+fn generate_tauri_ts_client(api_module: &auto_lang_core::api::ApiModule) -> String {
+    let mut lines = vec![
+        "import { invoke } from '@tauri-apps/api/core';".to_string(),
+        "".to_string(),
+    ];
+
+    // Type definitions
+    for api_type in &api_module.types {
+        lines.push(format!("export interface {} {{", api_type.name));
+        for field in &api_type.fields {
+            let ts_type = auto_type_to_ts(&field.ty);
+            let optional = if field.optional { "?" } else { "" };
+            lines.push(format!("    {}{}: {};", field.name, optional, ts_type));
+        }
+        lines.push("}".to_string());
+        lines.push("".to_string());
+    }
+
+    // IPC functions
+    for endpoint in &api_module.endpoints {
+        let params_ts: Vec<String> = endpoint
+            .params
+            .iter()
+            .map(|p| {
+                let ts_type = auto_type_to_ts(&p.ty);
+                format!("{}: {}", p.name, ts_type)
+            })
+            .collect();
+
+        let return_ts = auto_type_to_ts(&endpoint.return_type);
+        let args_str = if params_ts.is_empty() {
+            "".to_string()
+        } else {
+            params_ts.join(", ")
+        };
+
+        if params_ts.is_empty() {
+            lines.push(format!(
+                "export async function {}(): Promise<{}> {{",
+                endpoint.fn_name, return_ts
+            ));
+            lines.push(format!("    return invoke('{}');", endpoint.fn_name));
+        } else {
+            lines.push(format!(
+                "export async function {}({}): Promise<{}> {{",
+                endpoint.fn_name, args_str, return_ts
+            ));
+            lines.push(format!(
+                "    return invoke('{}', {{ {} }});",
+                endpoint.fn_name,
+                endpoint
+                    .params
+                    .iter()
+                    .map(|p| format!("{}", p.name))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+        }
+        lines.push("}".to_string());
+        lines.push("".to_string());
+    }
+
+    lines.join("\n")
+}
+
+/// Convert Auto type to TypeScript type
+fn auto_type_to_ts(auto_type: &str) -> String {
+    let auto_type = auto_type.trim();
+    // Handle prefix ?T (Auto Option syntax: ?Note, ?int)
+    if let Some(inner) = auto_type.strip_prefix('?') {
+        return format!("{} | null", auto_type_to_ts(inner));
+    }
+    // Handle suffix T? (alternative Option syntax)
+    if auto_type.ends_with('?') {
+        let inner = &auto_type[..auto_type.len() - 1];
+        return format!("{} | null", auto_type_to_ts(inner));
+    }
+    if auto_type.starts_with("[]") || auto_type.starts_with("List<") {
+        let inner = if auto_type.starts_with("[]") {
+            &auto_type[2..]
+        } else if let Some(close) = auto_type.find('>') {
+            &auto_type[5..close]
+        } else {
+            auto_type
+        };
+        return format!("{}[]", auto_type_to_ts(inner));
+    }
+    match auto_type {
+        "int" | "i32" | "i64" | "long" | "uint" | "u32" | "u64" | "ulong" => "number".to_string(),
+        "float" | "f32" | "double" | "f64" => "number".to_string(),
+        "bool" | "boolean" => "boolean".to_string(),
+        "str" | "string" | "String" => "string".to_string(),
+        "void" | "()" => "void".to_string(),
+        _ => auto_type.to_string(),
+    }
+}
+
+/// Generate Vue + HTTP API code
+fn generate_vue_api(
+    api_module: &auto_lang_core::api::ApiModule,
+    root_dir: &Path,
+) -> AutoResult<()> {
+    use auto_lang_core::api::TypeScriptGenerator;
+
+    // For workspace projects, output to dist/src/lib/
+    let dist_dir = root_dir.join("dist");
+    let lib_dir = dist_dir.join("src").join("lib");
+    std::fs::create_dir_all(&lib_dir)
+        .map_err(|e| format!("Failed to create lib directory: {}", e))?;
+
+    // Generate simple TypeScript client
+    // PLAN-776 T-06：注入模块类型名集（来源身份映射——用户同名不落专属 wire）。
+    let ts_gen = TypeScriptGenerator::new().with_types(api_module.types.clone());
+    let ts_code = ts_gen.generate_simple_client(api_module);
+
+    std::fs::write(lib_dir.join("api.ts"), &ts_code)
+        .map_err(|e| format!("Failed to write api.ts: {}", e))?;
+
+    // Also write to vue/src/lib/ for Vue project imports
+    let vue_lib_dir = root_dir
+        .join("gen")
+        .join("front")
+        .join("vue")
+        .join("src")
+        .join("lib");
+    if vue_lib_dir.exists() || root_dir.join("gen").join("front").join("vue").exists() {
+        std::fs::create_dir_all(&vue_lib_dir)
+            .map_err(|e| format!("Failed to create vue lib directory: {}", e))?;
+        std::fs::write(vue_lib_dir.join("api.ts"), &ts_code)
+            .map_err(|e| format!("Failed to write vue api.ts: {}", e))?;
+    }
+
+    // Write API function names to a manifest file for code generator consumption
+    let fn_names: Vec<String> = api_module
+        .endpoints
+        .iter()
+        .map(|ep| ep.fn_name.to_lowercase())
+        .collect();
+    std::fs::write(dist_dir.join(".api_functions"), fn_names.join("\n"))
+        .map_err(|e| format!("Failed to write .api_functions: {}", e))?;
+
+    println!("  ✓ Generated TypeScript client: dist/src/lib/api.ts");
+
+    // Generate Rust server if back/ exists.
+    // Plan 583 T8: --server=vm（AUTO_BACKEND_IMPL=vm）由 AutoVM HTTP 服务端
+    // 承载 API——跳过 a2r rust-server 生成。该生成会把 <app>-back/ crate 连同
+    // workspace member 注册写进共享 rust-workspace（auto-lang 仓内），仓外
+    // app 每次 `auto run --server vm` 都会污染框架仓。rust/tauri 路径不受影响。
+    let backend_impl = std::env::var("AUTO_BACKEND_IMPL").unwrap_or_default();
+    if backend_impl == "vm" {
+        println!(
+            "  ℹ VM server mode: skipping Rust server generation (AutoVM HTTP serves the API)"
+        );
+        return Ok(());
+    }
+    let back_dir = if root_dir.join("src").join("back").exists() {
+        root_dir.join("src").join("back")
+    } else if root_dir.join("back").exists() {
+        root_dir.join("back")
+    } else {
+        return Ok(());
+    };
+    if back_dir.exists() {
+        generate_rust_server(api_module, root_dir)?;
+    }
+
+    Ok(())
+}
+
+/// Generate Rust server code (Axum-based)
+/// Plan musk-022 CRUD 智能扩展: transpile db.at to a db.rs module via a2r.
+/// Reuses the Tauri-backend precedent (tauri_backend::transpile_at_to_rust).
+pub fn transpile_db_to_rs(content: &str) -> AutoResult<String> {
+    transpile_back_module_to_rs_with_proofs("db", content).map(|(code, _)| code)
+}
+
+/// PLAN-681 T-01: transpile a `src/back/*.at` module to Rust (companion
+/// modules like fsys.at share db.at's 16MB-stack transpile pipeline; the
+/// module name feeds the transpiler's module-id slot and error strings).
+pub fn transpile_back_module_to_rs(module_name: &str, content: &str) -> AutoResult<String> {
+    transpile_back_module_to_rs_with_proofs(module_name, content).map(|(code, _)| code)
+}
+
+/// PLAN-738 T-11：back 模块转译携带引用闭包证明。生成服务的 back 产物经
+/// `qualify_a2r_std` 链接 `auto_lang::` 内嵌镜像——核心 producer 引用按
+/// Embedded 运行形态收集（原实现用 Standalone 默认并丢弃证明）。
+pub(crate) fn transpile_back_module_to_rs_with_proofs(
+    module_name: &str,
+    content: &str,
+) -> AutoResult<(
+    String,
+    Vec<auto_lang_core::stdlib_assembly::reference::ReferenceProof>,
+)> {
+    use auto_val::AutoStr;
+    // Plan 399 §7: parse + transpile on a 16MB stack. db.at with deep nesting
+    // (for + if/else + multi-field struct literals) overflows Windows's 1MB
+    // main-thread stack (parser frames are large; cf. run_autovm lib.rs:341).
+    // This mirrors the repo's established pattern. UTF-8-safety fixes in
+    // strip_collection_new (post_process) handle the second §7 bug separately.
+    // Error is converted to String inside the thread (AutoError is !Send).
+    let content = content.to_string();
+    let module = module_name.to_string();
+    let handle = std::thread::Builder::new()
+        .stack_size(16 * 1024 * 1024)
+        .spawn(move || -> Result<(String, Vec<auto_lang_core::stdlib_assembly::reference::ReferenceProof>), String> {
+            let (mut sink, references) = auto_lang_core::trans::rust::transpile_rust_full_with_options(
+                AutoStr::from(module.as_str()),
+                &content,
+                None,
+                None,
+                Some(auto_lang_core::stdlib_assembly::host::RustRuntime::Embedded),
+                true,
+            )
+            .map_err(|e| format!("Failed to transpile {}.at: {}", module, e))?;
+            let rust_code = String::from_utf8(sink.done().map_err(|e| e.to_string())?.to_vec())
+                .map_err(|e| format!("Invalid UTF-8 in {}.rs output: {}", module, e))?;
+            // AutoError is !Send; proofs cross the thread boundary as plain data.
+            Ok((rust_code, references))
+        })
+        .map_err(|e| format!("Failed to spawn {}.rs transpile thread: {}", module_name, e))?;
+    handle
+        .join()
+        .map_err(|_| format!("{}.rs transpile thread panicked", module_name))?
+        .map_err(|e| e.into())
+}
+
+/// Plan musk-022 CRUD 扩展: post-process a2r's db.rs output to fix the known
+/// backend-context gaps (a2r transpiles for a generic module; the HTTP backend
+/// has specific shape). All rewrites below are mechanical, safe string fixes.
+///
+/// NOTE (Plan 399 调研 2026-08-07): these are **workarounds**, not redundant —
+/// the corresponding a2r root causes are NOT fixed in `trans/rust.rs`. Verified:
+/// - `use api:` → `crate::api` : a2r `use_stmt` has no api→types remap
+///   (`rust.rs:11490` maps any non-stdlib bare module to `crate::<name>`).
+/// - `List<T>.new(EXPR)` wrapper : a2r `call` has no List/Array interception
+///   (`rust.rs:3659`); `GenName` emits `List<T>` verbatim.
+/// - `&[T]` return over a MutexGuard : a2r `Type::Slice` always emits `&[T]`
+///   regardless of return position (`rust.rs:1184`), no owned-Vec rewrite.
+/// - str param → String field missing `.to_string()` : no such logic in a2r.
+/// Do NOT delete these rewrites unless the a2r root cause is fixed first.
+/// Plan 405/396-B3: generated backends depend on `auto-lang.workspace` (not
+/// the standalone a2r-std crate), so re-qualify the bare `a2r_std` preamble
+/// and paths that the a2r transpiler now emits (see rust.rs Plan 396/B3
+/// comment) into the `auto_lang::` form that resolves against our deps.
+fn qualify_a2r_std(code: String) -> String {
+    // Plan 742 R3 (F-742-R3-01): single-pass, priority-ordered scan over
+    // code regions only — NO placeholder/restore round-trip. A restore step
+    // cannot distinguish a placeholder it inserted from a legal business
+    // string of the same spelling (`"__AUTO_A2R_STD_QUAL__"` is a legal
+    // str), so the r2 marker scheme rewrote literal payloads. Priority per
+    // position: already-qualified > standalone-only faces > generic
+    // qualification; `use` lines also qualify the bare crate name.
+    // PLAN-668 R-24 / Plan 742: `a2r_std::sys` / `a2r_std::sqlite` are
+    // standalone-crate-only faces (the embedded facade has neither) — they
+    // keep their direct form, the sys one untouched and sqlite with the
+    // standalone-crate `::` prefix.
+    code.split('\n')
+        .map(|l| {
+            if !l.contains("a2r_std") {
+                return l.to_string();
+            }
+            let mask = auto_lang_core::trans::rust::RustTrans::code_region_mask(l);
+            let is_use_line = l.trim_start().starts_with("use ");
+            let bytes = l.as_bytes();
+            // Plan 742 R4 (F-742-R4-01): code-region identity is NOT module
+            // identity — a match must start at an identifier boundary. A
+            // legal companion named `custom_a2r_std` ends with the stdlib
+            // token; without this check its qualified path
+            // (`crate::custom_a2r_std::`) was rewritten into
+            // `crate::custom_auto_lang::a2r_std::` (E0433).
+            let at_ident_boundary = |i: usize| {
+                i == 0 || !(bytes[i - 1].is_ascii_alphanumeric() || bytes[i - 1] == b'_')
+            };
+            let mut out = String::with_capacity(l.len());
+            let mut i = 0;
+            while i < bytes.len() {
+                if mask[i] && at_ident_boundary(i) {
+                    // Already qualified — copy verbatim (idempotency).
+                    if l[i..].starts_with("auto_lang::a2r_std::") {
+                        out.push_str("auto_lang::a2r_std::");
+                        i += "auto_lang::a2r_std::".len();
+                        continue;
+                    }
+                    // Standalone-only faces — keep their direct form.
+                    if l[i..].starts_with("a2r_std::sys::") {
+                        out.push_str("a2r_std::sys::");
+                        i += "a2r_std::sys::".len();
+                        continue;
+                    }
+                    if l[i..].starts_with("a2r_std::sqlite") {
+                        out.push_str("::a2r_std::sqlite");
+                        i += "a2r_std::sqlite".len();
+                        continue;
+                    }
+                    // Generic qualification.
+                    if l[i..].starts_with("a2r_std::") {
+                        out.push_str("auto_lang::a2r_std::");
+                        i += "a2r_std::".len();
+                        continue;
+                    }
+                    // `use a2r_std;` / `use a2r_std::*;` — bare crate name.
+                    if is_use_line && l[i..].starts_with("a2r_std") {
+                        let after = &l[i + "a2r_std".len()..];
+                        if after.starts_with(';') || after.starts_with("::*") {
+                            out.push_str("auto_lang::a2r_std");
+                            i += "a2r_std".len();
+                            continue;
+                        }
+                    }
+                }
+                let ch = l[i..].chars().next().unwrap();
+                out.push(ch);
+                i += ch.len_utf8();
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Plan 742 R2 (F-742-R2-01): plain-text replacement confined to code
+/// regions of each line — strings/chars/comments keep their payload bytes.
+/// Line-oriented (split on '\n' keeps the trailing newline shape); the
+/// needle must not span lines (all current callers are single-line forms).
+// PLAN-815 T-04 迁移归因：在 auto-man 即已无调用方（历史后处理族残员），
+// 按单算法保真随迁，不在移动提交中裁剪冻结面。
+#[allow(dead_code)]
+fn replace_in_code_regions(code: &str, from: &str, to: &str) -> String {
+    if !code.contains(from) {
+        return code.to_string();
+    }
+    code.split('\n')
+        .map(|l| {
+            if !l.contains(from) {
+                return l.to_string();
+            }
+            let mask = auto_lang_core::trans::rust::RustTrans::code_region_mask(l);
+            let bytes = l.as_bytes();
+            let mut out = String::with_capacity(l.len());
+            let mut i = 0;
+            while i < bytes.len() {
+                if mask[i] && l[i..].starts_with(from) {
+                    out.push_str(to);
+                    i += from.len();
+                } else {
+                    let ch = l[i..].chars().next().unwrap();
+                    out.push(ch);
+                    i += ch.len_utf8();
+                }
+            }
+            out
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Plan 742 R2 (F-742-R2-01): whole-text code-region mask (per-line masks
+/// concatenated, '\n' bytes masked out). Single-line comment/string state —
+/// multi-line block comments are outside the emitted-surface boundary
+/// documented on the line-level scanner.
+fn code_region_mask_text(text: &str) -> Vec<bool> {
+    text.split('\n')
+        .flat_map(|l| {
+            let mut m = auto_lang_core::trans::rust::RustTrans::code_region_mask(l);
+            m.push(false); // the '\n' separator itself
+            m
+        })
+        .collect()
+}
+
+/// PLAN-681 T-01: light post-process for companion `src/back/*.at` modules
+/// (fsys.at shape — stateless fn wrappers). Only the module-shape fixups that
+/// are shape-generic: a2r_std re-qualification, api→types import remap and
+/// `List<T>.new` stripping. The db-only heuristics in [`post_process_db_rs`]
+/// (MutexGuard deref, borrowed-iterator clones, id widening) target CRUD
+/// state shapes a companion module does not have — deliberately NOT applied.
+pub fn post_process_companion_rs(code: String) -> String {
+    let mut code = qualify_a2r_std(code);
+    code = code.replace("use crate::api::", "use crate::types::");
+    code = strip_collection_new(&code);
+    code
+}
+
+pub fn post_process_db_rs(mut code: String) -> String {
+    code = qualify_a2r_std(code);
+    code = code.replace("use crate::api::", "use crate::types::");
+    // Strip `List<T>.new(EXPR)` -> `EXPR` (a2r leaves the wrapper; List=Vec, the
+    // array literal is already vec![...]). Bracket-balanced over the .new(...) parens.
+    code = strip_collection_new(&code);
+    // Plan 399 Phase 11.3: &[T] return + global clone now handled in a2r
+    // (rust_return_type_name emits Vec<T>; write_return_expr adds .clone() for
+    // global var returns). Keeping fix_borrowed_slice_returns as a no-op fallback
+    // is unnecessary once a2r is verified — comment out to confirm.
+    // code = fix_borrowed_slice_returns(&code);
+    // Plan 399 §3/P11.6: over-deref before method calls. Generalize the hardcoded
+    // MESSAGES to any global + any mutating method: `*VAR.lock().unwrap().METHOD(`
+    // → drop `*`. a2r over-dereferences the MutexGuard before a method call
+    // (push/insert/extend/etc. need &mut self via DerefMut, not a moved value).
+    // P11.6 a2r根治(改 Expr::Ident)回归面广,保留这个后处理正则作为完整覆盖.
+    {
+        use regex::Regex;
+        if let Ok(re) = Regex::new(
+            r"\*(\w+)\.lock\(\)\.unwrap\(\)\.(push|insert|extend|pop|remove|retain|clear|sort_by|sort|swap|truncate|drain|splice|resize)\(",
+        ) {
+            code = re.replace_all(&code, "$1.lock().unwrap().$2(").to_string();
+        }
+    }
+    // Param-to-field &str -> String: a2r passes &str fn params into String struct
+    // fields without .to_string(). Regex: `<field>: <param>,` where both are the same
+    // bare ident and field is a known String field (skip id/bool/time/count).
+    code = append_tostring_for_str_fields(&code);
+    // id field type widening: backend types.rs uses i64 for int, but a2r emits i32
+    // guards. `id: *NEXTID.lock().unwrap()` -> add `as i64` for the id field.
+    code = code.replace(
+        "id: *NEXTID.lock().unwrap()",
+        "id: *NEXTID.lock().unwrap() as i64",
+    );
+    // Plan 399 Phase 11.1: a2r now emits i64 for `int` (rust_type_name Type::Int
+    // => i64 + as i64 casts). The blunt code.replace("i32","i64") is no longer
+    // needed — comment out to confirm 015/017 still compile.
+    // code = code.replace("i32", "i64");
+    // Plan 399 §3: a2r emits `let results: Vec<T> = ...` without `mut` but then
+    // calls results.push(). Add `mut` to `let NAME:` that is followed (in the same
+    // fn) by `NAME.push`. Simple per-line heuristic: `let X = vec![]` / `let X:` → `let mut X`.
+    // Plan 399 Phase 11.5: a2r now scans the fn body for mutated `let` bindings
+    // (scan_mutated_bindings) and emits `let mut` — this post-process is removed.
+    // code = add_mut_to_let_collections(&code);
+    // Plan 399 §3: a2r iterates borrowed (`for note in &*G.lock()`) but moves
+    // fields out of the shared reference in struct literals (`tags: note.tags`)
+    // and returns (`return Some(note)`).
+    // Plan 399 Phase 11.4: a2r now clones borrowed-iter field reads in struct
+    // ctors (write_expr_for_struct_field). The return-Some(note) case still
+    // needs this post-process (a2r doesn't yet clone bare iter-var returns) —
+    // keep it until that's covered.
+    code = append_clone_for_borrowed_fields(&code);
+    code
+}
+
+/// Plan 399 §3: in `Type { ..., field: note.x, ... }` struct literals, `note` is
+/// a `&Note` (borrowed iterator), so moving `note.tags`/`note.title` errors.
+/// Append `.clone()` to every `<ident>.<ident>` read inside struct-ctor fields.
+/// Also fix `return Some(<ident>)` over a borrow → `Some(<ident>.clone())`.
+fn append_clone_for_borrowed_fields(code: &str) -> String {
+    use regex::Regex;
+    let mut out = code.to_string();
+    // `field: name.attr` (not already cloned, not a method call) → add .clone()
+    // Matches `word.word` followed by `,` or ` }` (struct field end). Avoids
+    // `word.word(...)` calls and already-`.clone()`d reads.
+    let re = match Regex::new(r"(\b\w+:\s*)(\w+)\.(\w+)(,|\s*\})") {
+        Ok(r) => r,
+        Err(_) => return out,
+    };
+    out = re
+        .replace_all(&out, "${1}${2}.${3}.clone()${4}")
+        .to_string();
+    // `return Some(name)` → `return Some(name.clone())` when name is a bare ident
+    // (covers `for note in &*G.lock() { ... return Some(note) }`).
+    let re2 = match Regex::new(r"return Some\((\w+)\)") {
+        Ok(r) => r,
+        Err(_) => return out,
+    };
+    out = re2.replace_all(&out, "return Some($1.clone())").to_string();
+    out
+}
+
+/// Plan 399 §3: add `mut` to `let NAME = vec![...]` / `let NAME: Vec<...> = ...`
+/// when the binding is later mutated (a2r omits `mut`). Conservative: only
+/// prefixes `let ` → `let mut ` for lines that look like a fresh Vec binding.
+// PLAN-815 T-04 迁移归因：在 auto-man 即已无调用方（历史后处理族残员），
+// 按单算法保真随迁，不在移动提交中裁剪冻结面。
+#[allow(dead_code)]
+fn add_mut_to_let_collections(code: &str) -> String {
+    use regex::Regex;
+    let re = match Regex::new(r"(?m)^(\s*)let (\w+)(:\s*Vec<| =\s*vec!\[)") {
+        Ok(r) => r,
+        Err(_) => return code.to_string(),
+    };
+    re.replace_all(code, "${1}let mut ${2}${3}").to_string()
+}
+
+/// For `Type { field: field, ... }` where `field` is a &str param assigned to a
+/// String struct field, append `.to_string()`. Scans for `ident: ident,` pairs
+/// (no regex backref — regex crate lacks it) where the ident is a str param.
+fn append_tostring_for_str_fields(code: &str) -> String {
+    use std::collections::HashSet;
+    let mut str_params: HashSet<String> = HashSet::new();
+    // Plan 399 §3: slice params (&[String]) assigned to Vec<String> fields need
+    // .to_vec() (a2r passes them straight: `tags: tags` where tags: &[String]).
+    let mut slice_params: HashSet<String> = HashSet::new();
+    for line in code.lines() {
+        let l = line.trim_start();
+        if !(l.starts_with("pub fn ") || l.starts_with("fn ")) {
+            continue;
+        }
+        if let Some(open) = l.find('(') {
+            if let Some(close) = l[open..].find(')') {
+                for p in l[open + 1..open + close].split(',') {
+                    let tok: Vec<&str> = p
+                        .trim()
+                        .split(|c: char| c == ':' || c.is_whitespace())
+                        .filter(|t| !t.is_empty())
+                        .collect();
+                    if tok.len() >= 2 && (tok[1] == "str" || tok[1] == "&str") {
+                        str_params.insert(tok[0].to_string());
+                    }
+                    // Slice param: `name &[String]` or `name &[...]`.
+                    if tok.len() >= 2 && tok[1].starts_with("&[") {
+                        slice_params.insert(tok[0].to_string());
+                    }
+                }
+            }
+        }
+    }
+    let skip: HashSet<&str> = [
+        "id",
+        "mine",
+        "done",
+        "pinned",
+        "time",
+        "count",
+        "unread",
+        "active_id",
+    ]
+    .iter()
+    .copied()
+    .collect();
+    // Scan the whole code; for each word w that is a str param, replace `w: w,` -> `w: w.to_string(),`.
+    // Process by iterating over str_params (small set) and doing targeted replace.
+    let mut out = code.to_string();
+    for name in &str_params {
+        if skip.contains(name.as_str()) {
+            continue;
+        }
+        // Plan 399 §3: a2r emits `field: field` for str params; add .to_string().
+        // Match both `,` (mid-struct) and ` }` (last field, no trailing comma).
+        for sep in [",", " }"] {
+            let needle = format!("{}: {}{}", name, name, sep);
+            let repl = format!("{}: {}.to_string(){}", name, name, sep);
+            out = out.replace(&needle, &repl);
+        }
+    }
+    // Plan 399 §3: slice params (`tags: &[String]`) → `field: tags.to_vec()`.
+    for name in &slice_params {
+        for sep in [",", " }"] {
+            let needle = format!("{}: {}{}", name, name, sep);
+            let repl = format!("{}: {}.to_vec(){}", name, name, sep);
+            out = out.replace(&needle, &repl);
+        }
+    }
+    out
+}
+
+/// Strip `List<T>.new(...)` / `Array<T>.new(...)` wrappers, leaving the inner expr.
+/// Plan 399 §7: made UTF-8 safe — `List</Array<` are ASCII so byte-indexing for
+/// matching is fine, but the byte cursor must skip whole UTF-8 sequences when
+/// it lands on a non-ASCII lead byte (e.g. emoji in seed data like 📄), else
+/// `code[i..]` slices into a multi-byte char and panics.
+fn strip_collection_new(code: &str) -> String {
+    // Plan 742 R2 (F-742-R2-01): constructs must sit in code regions — a
+    // business string spelling `List<T>.new([...])` is literal text.
+    let mask = code_region_mask_text(code);
+    let mut out = String::with_capacity(code.len());
+    let bytes = code.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // Only attempt the List/Array match at an ASCII lead byte — landing mid
+        // multi-byte char means we just copy the byte run through.
+        if mask[i]
+            && bytes[i] < 0x80
+            && (code[i..].starts_with("List<") || code[i..].starts_with("Array<"))
+        {
+            let is_array = code[i..].starts_with("Array<");
+            let lt_at = if is_array { i + 5 } else { i + 4 };
+            if let Some(gt_rel) = code[lt_at..].find('>') {
+                let gt_at = lt_at + gt_rel;
+                if mask[gt_at]
+                    && code
+                        .get(gt_at + 1..)
+                        .map_or(false, |s| s.starts_with(".new("))
+                {
+                    let paren_open = gt_at + 5;
+                    if let Some(paren_close) = balance_paren(code, paren_open) {
+                        out.push_str(&code[paren_open + 1..paren_close]);
+                        i = paren_close + 1;
+                        continue;
+                    }
+                }
+            }
+        }
+        // Advance one whole UTF-8 char so the cursor stays on a char boundary.
+        let ch_len = utf8_len(bytes[i]);
+        out.push_str(&code[i..i + ch_len]);
+        i += ch_len;
+    }
+    out
+}
+
+/// Byte length of the UTF-8 char whose lead byte is `b`. Plan 399 §7.
+fn utf8_len(b: u8) -> usize {
+    if b < 0x80 {
+        1
+    } else if b < 0xC0 {
+        1
+    }
+    // continuation byte (shouldn't be a lead, stay safe)
+    else if b < 0xE0 {
+        2
+    } else if b < 0xF0 {
+        3
+    } else {
+        4
+    }
+}
+
+/// Find the matching ')' for the '(' at `open`, balancing () [] {} and "".
+fn balance_paren(code: &str, open: usize) -> Option<usize> {
+    let bytes = code.as_bytes();
+    let mut depth = 1i32;
+    let mut in_str = false;
+    let mut j = open + 1;
+    while j < bytes.len() {
+        let c = bytes[j] as char;
+        if in_str {
+            if c == '"' {
+                in_str = false;
+            }
+            j += 1;
+            continue;
+        }
+        match c {
+            '"' => in_str = true,
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(j);
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    None
+}
+
+/// `pub fn f() -> &[T] { return *G.lock().unwrap(); }` -> `pub fn f() -> Vec<T>
+/// { return G.lock().unwrap().clone(); }`. The borrowed-slice-over-guard form
+/// doesn't compile; return an owned clone instead.
+// PLAN-815 T-04 迁移归因：在 auto-man 即已无调用方（历史后处理族残员），
+// 按单算法保真随迁，不在移动提交中裁剪冻结面。
+#[allow(dead_code)]
+fn fix_borrowed_slice_returns(code: &str) -> String {
+    let mut out = code.to_string();
+    // Return type: `&[T]` -> `Vec<T>`
+    while let Some(idx) = out.find("-> &[") {
+        if let Some(end) = out[idx..].find("]") {
+            let abs_end = idx + end;
+            // Replace "-> &[T]" (5 chars "-> &[") with "-> Vec<[T]"
+            out.replace_range(
+                idx..=abs_end,
+                &format!("-> Vec<{}>", &out[idx + 5..abs_end]),
+            );
+        } else {
+            break;
+        }
+    }
+    // Body: `return *G.lock().unwrap();` -> `return G.lock().unwrap().clone();`
+    // Plan 399 §3: generalize the hardcoded MESSAGES/NOTES to any global (e.g.
+    // FOLDERS) — `return *<UPPER>.lock().unwrap();` over a guard can't move.
+    {
+        use regex::Regex;
+        if let Ok(re) = Regex::new(r"return \*(\w+)\.lock\(\)\.unwrap\(\);") {
+            out = re
+                .replace_all(&out, "return $1.lock().unwrap().clone();")
+                .to_string();
+        }
+    }
+    out
+}
+
+fn generate_rust_server(
+    api_module: &auto_lang_core::api::ApiModule,
+    root_dir: &Path,
+) -> AutoResult<()> {
+    let frozen_sources = generation_source_snapshot(root_dir)?;
+    let parsed = try_full_parse(&frozen_sources[0].1);
+    let api_module = parsed.as_ref().unwrap_or(api_module);
+    // Freeze actual selections and emitted body references before creating artifacts.
+    let assembly = generated_api_assembly(root_dir, api_module)?;
+    // Output to shared workspace at D:/.auto/rust-workspace/{name}-back/
+    let ws_dir = crate::rust_workspace::ensure_shared_workspace(root_dir);
+    let back_name = crate::rust_workspace::back_member_name(root_dir);
+    let rust_dir = ws_dir.join(&back_name);
+    let receipt_path = rust_dir.join("generation.json");
+    if receipt_path.exists() {
+        std::fs::remove_file(&receipt_path)?;
+    }
+    let src_dir = rust_dir.join("src");
+    std::fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create rust/src: {}", e))?;
+
+    // Plan musk-022: detect streaming endpoints — they need events.rs + cargo deps.
+    let has_sse = api_module
+        .endpoints
+        .iter()
+        .any(|e| e.return_type.contains("Stream<"));
+
+    // Plan musk-022 CRUD 扩展: read db.at early so has_db gates cargo deps + db.rs.
+    let db_file = root_dir.join("src").join("back").join("db.at");
+    let db_content = if db_file.exists() {
+        std::fs::read_to_string(&db_file).ok()
+    } else {
+        None
+    };
+    let has_db = db_content
+        .as_deref()
+        .map(|c| c.contains("pub fn"))
+        .unwrap_or(false);
+
+    // Generate Cargo.toml (workspace member version — no [workspace])
+    let cargo_toml = generate_cargo_toml(&back_name, has_sse, has_db);
+    std::fs::write(rust_dir.join("Cargo.toml"), &cargo_toml)
+        .map_err(|e| format!("Failed to write Cargo.toml: {}", e))?;
+
+    // Generate types.rs
+    let types_rs = generate_types_rs(api_module);
+    std::fs::write(src_dir.join("types.rs"), &types_rs)
+        .map_err(|e| format!("Failed to write types.rs: {}", e))?;
+
+    // Plan 742: companion modules must exist BEFORE api.rs generation —
+    // handler bodies may call `crate::<companion>::fn()` (NOTES-001 T-04:
+    // api.at bodies calling `repository.repo_list_active()`), and the import
+    // injection below only adds modules that actually transpiled. Moving the
+    // loop up also lets the api.rs emitter rely on companion modules without
+    // ordering surprises (previously written after api.rs).
+    let mut companion_mods: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root_dir.join("src").join("back")) {
+        let mut stems: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
+            .filter_map(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|s| s.trim_end_matches(".at").to_string())
+            })
+            .filter(|stem| stem != "api" && stem != "db")
+            .collect();
+        stems.sort();
+        for stem in stems {
+            let Ok(content) = std::fs::read_to_string(
+                root_dir
+                    .join("src")
+                    .join("back")
+                    .join(format!("{}.at", stem)),
+            ) else {
+                continue;
+            };
+            match transpile_back_module_to_rs(&stem, &content) {
+                Ok(rs) => {
+                    let rs = post_process_companion_rs(rs);
+                    if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
+                        eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
+                        continue;
+                    }
+                    companion_mods.push(stem);
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ {}.rs transpile failed (module skipped): {}", stem, e);
+                }
+            }
+        }
+    }
+
+    // Plan 399 第 4-5 步: collect db.rs's public fn names so handlers can call
+    // them directly (status unified to db.rs lazy_static) instead of State<Db>.
+    let db_fns: Option<std::collections::HashSet<String>> = if has_db {
+        if let Some(ref content) = db_content {
+            match transpile_db_to_rs(content) {
+                Ok(db_rs) => {
+                    let mut db_rs = post_process_db_rs(db_rs);
+                    // Plan 742: db.rs bodies calling companion modules
+                    // (`repository.nid_of(id)` dot-form) need the same borrow
+                    // fixup as api.rs — against the transpiled companion's
+                    // signatures. Runs here so the persisted db.rs AND the
+                    // api.rs fixup (which reads this file) both see it.
+                    if let Ok(repo_rs) = std::fs::read_to_string(src_dir.join("repository.rs")) {
+                        // a2r emits bare `repository::` paths in db.rs（无 crate 前缀）
+                        db_rs = borrow_string_module_call_args(&db_rs, &repo_rs, "repository::");
+                    }
+                    // Also persist db.rs (idempotent with the write below).
+                    if let Err(e) = std::fs::write(src_dir.join("db.rs"), &db_rs) {
+                        eprintln!("  ⚠ Failed to write db.rs: {}", e);
+                    }
+                    Some(extract_db_fn_names(&db_rs))
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ db.rs transpile failed (db_fns unavailable, handlers fall back to State<Db>): {}", e);
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
+    // PLAN-681 T-02 (route A): transpile the endpoint bodies themselves.
+    // Strip the `#[api(...)]` attribute lines (HTTP metadata, not .at code)
+    // and transpile api.at as a plain module — every `pub fn` keeps its real
+    // body (`return fsys.tree_json(path, depth)` shape) and resolves its
+    // companion through the module path. Handlers (api.rs) and the merged
+    // front client then delegate to `api_impl::<fn>` instead of TODO stubs /
+    // CRUD mock scaffolds. Gate: no primary type AND db not active — the
+    // db-covered route B and primary-type paths are untouched (zero regression
+    // anchors); transpile failure falls back to the skeleton unchanged.
+    let mut api_impl_active = false;
+    if primary_type_name_pub(api_module).is_none() && !has_db {
+        let api_at = root_dir.join("src").join("back").join("api.at");
+        if let Ok(content) = std::fs::read_to_string(&api_at) {
+            let stripped: String = content
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("#[api"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            match transpile_back_module_to_rs("api_impl", &stripped) {
+                Ok(rs) => {
+                    let rs = post_process_companion_rs(rs);
+                    std::fs::write(src_dir.join("api_impl.rs"), &rs)
+                        .map_err(|e| format!("Failed to write api_impl.rs: {}", e))?;
+                    api_impl_active = true;
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ api_impl.rs transpile failed (route A inactive): {}", e);
+                }
+            }
+        }
+    }
+
+    // Generate api.rs with route handlers. Inline API bodies retain their
+    // source-level calls into db.rs; borrow String expressions where the
+    // transpiled db signature expects `&str`, just as route-B handlers do.
+    // Plan 742 R1 (F-742-R1-02): companion dot-call qualification moved INTO
+    // generate_api_rs's per-endpoint body loop — endpoint locals in scope,
+    // string/comment spans masked out, call shape (`mod.fn(`) required. The
+    // previous whole-file text pass rewrote same-spelling business strings
+    // (`"repository.filename"` → `"crate::repository::filename"`) and
+    // template-body `db.lock()` state access it could not distinguish.
+    let mut crate_modules: Vec<String> = vec!["db".to_string()];
+    for m in &companion_mods {
+        crate_modules.push(m.clone());
+    }
+    let api_rs = generate_api_rs(api_module, db_fns.as_ref(), api_impl_active, &crate_modules);
+    let api_rs = qualify_a2r_std(api_rs);
+    // Plan 742: borrow fixup AFTER module path qualification — the passes
+    // match `crate::db::` / `crate::<companion>::` markers, which the body
+    // loop emits directly (order dependency unchanged).
+    let mut api_rs = api_rs;
+    if let Ok(db_source) = std::fs::read_to_string(src_dir.join("db.rs")) {
+        api_rs = borrow_string_db_call_args(&api_rs, &db_source);
+    }
+    for m in &companion_mods {
+        if let Ok(m_source) = std::fs::read_to_string(src_dir.join(format!("{}.rs", m))) {
+            let marker = format!("crate::{}::", m);
+            api_rs = borrow_string_module_call_args(&api_rs, &m_source, &marker);
+        }
+    }
+    std::fs::write(src_dir.join("api.rs"), &api_rs)
+        .map_err(|e| format!("Failed to write api.rs: {}", e))?;
+
+    // PLAN-681 T-01: generic companion-module transpilation. Every
+    // `src/back/*.at` besides api.at (the contract) and db.at (the CRUD
+    // route-B module above) is a companion implementation module (fsys.at
+    // shape: Env/fs/File thin wrappers the endpoint bodies delegate to).
+    // Transpile each to `<stem>.rs`; route A handlers (and the merged front
+    // client) reach them as `crate::<stem>::...`. A transpile failure is
+    // non-fatal — the module is skipped with a warning, matching the db.rs
+    // fallback discipline above.
+    let mut companion_mods: Vec<String> = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(root_dir.join("src").join("back")) {
+        let mut stems: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
+            .filter_map(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|s| s.trim_end_matches(".at").to_string())
+            })
+            .filter(|stem| stem != "api" && stem != "db")
+            .collect();
+        stems.sort();
+        for stem in stems {
+            let Ok(content) = std::fs::read_to_string(
+                root_dir
+                    .join("src")
+                    .join("back")
+                    .join(format!("{}.at", stem)),
+            ) else {
+                continue;
+            };
+            match transpile_back_module_to_rs(&stem, &content) {
+                Ok(rs) => {
+                    let rs = post_process_companion_rs(rs);
+                    if let Err(e) = std::fs::write(src_dir.join(format!("{}.rs", stem)), &rs) {
+                        eprintln!("  ⚠ Failed to write {}.rs: {}", stem, e);
+                        continue;
+                    }
+                    companion_mods.push(stem);
+                }
+                Err(e) => {
+                    eprintln!("  ⚠ {}.rs transpile failed (module skipped): {}", stem, e);
+                }
+            }
+        }
+    }
+
+    // Plan musk-022: events broadcast-bus module for SSE backends.
+    if has_sse {
+        let events_rs = generate_events_rs();
+        std::fs::write(src_dir.join("events.rs"), &events_rs)
+            .map_err(|e| format!("Failed to write events.rs: {}", e))?;
+    }
+
+    // db.rs was already written above when db_fns was collected (Plan 399 4-5).
+    // If has_db is true but transpile failed there, nothing more to do here.
+    let seed_data = db_content;
+
+    // Plan 399 第 4-5 步: when db.rs takes over state, main.rs drops State<Db>
+    // (seed data lives in db.rs's once_cell::Lazy globals). `db_full_cover` is
+    // true only when every non-SSE endpoint resolved to a db.rs call — otherwise
+    // keep State<Db> for the template-fallback endpoints (mixed-state safety).
+    let db_full_cover = db_fns.as_ref().map(|s| !s.is_empty()).unwrap_or(false)
+        && all_endpoints_covered(api_module, db_fns.as_ref());
+
+    // Plan 399 Phase 13 (§10): mixed state (some endpoints delegate to db.rs
+    // Lazy, others lock State<Db>) silently diverges — writes to one store are
+    // invisible to the other. Fail fast at generation time instead of emitting
+    // a server that compiles but corrupts data. Escape hatch for incremental
+    // db.at migration: AUTO_ALLOW_PARTIAL_DB=1 keeps the old mixed behavior.
+    if has_db && db_fns.as_ref().map(|s| !s.is_empty()).unwrap_or(false) && !db_full_cover {
+        let allow_partial = std::env::var("AUTO_ALLOW_PARTIAL_DB")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false);
+        let uncovered: Vec<&str> = api_module
+            .endpoints
+            .iter()
+            .filter(|e| !e.return_type.contains("Stream<"))
+            .filter(|e| match db_fns.as_ref() {
+                Some(fns) => resolve_db_call(*e, fns).is_none(),
+                None => true,
+            })
+            .map(|e| e.fn_name.as_str())
+            .collect();
+        if allow_partial {
+            eprintln!(
+                "  ⚠ PARTIAL db.rs coverage (AUTO_ALLOW_PARTIAL_DB=1): endpoints {:?} \
+                 fall back to State<Db> — state WILL diverge (db.rs Lazy ≠ State<Db> seed).",
+                uncovered
+            );
+        } else {
+            return Err(format!(
+                "db.rs exists but endpoints {:?} have no matching db.rs function. \
+                 This produces a mixed-state server (db.rs Lazy vs State<Db>) whose writes \
+                 silently diverge. Either (a) add db.rs functions for these endpoints, or \
+                 (b) set AUTO_ALLOW_PARTIAL_DB=1 to accept the mixed state during migration.",
+                uncovered
+            )
+            .into());
+        }
+    }
+
+    // Generate main.rs
+    let main_rs = generate_main_rs(
+        api_module,
+        seed_data.as_deref(),
+        db_full_cover,
+        &companion_mods,
+        api_impl_active,
+    );
+    let main_rs = main_rs.replace(
+        "fn __assembly_fingerprint() -> Option<&'static str> { None }",
+        &format!(
+            "fn __assembly_fingerprint() -> Option<&'static str> {{ Some(\"{}\") }}",
+            assembly.consumer_fingerprint()
+        ),
+    );
+    std::fs::write(src_dir.join("main.rs"), &main_rs)
+        .map_err(|e| format!("Failed to write main.rs: {}", e))?;
+
+    // PLAN-013 T2: pac.at rust_sidecar 供给到 back crate(用户 .rs 模块
+    // + Cargo 依赖;at-app 的 crate::term 引擎胶水经此入位)。
+    let sidecar = crate::sidecar::load_sidecar(root_dir);
+    if !sidecar.is_empty() {
+        crate::sidecar::apply_sidecar_to_crate(&sidecar, root_dir, &rust_dir)?;
+        println!("  ✓ rust_sidecar applied to back crate");
+    }
+
+    // Update workspace members. MUST run after main.rs is written: ensure_shared_workspace
+    // skips members with no src/main.rs (has_cargo_targets guard). Plan musk-022.
+    let _ = crate::rust_workspace::ensure_shared_workspace(root_dir);
+
+    println!("  ✓ Generated Rust server: {}/", back_name);
+
+    // PLAN-734 T-04：ready 记录——源内容指纹（api.at/db.at）+ 端点清单 +
+    // scaffold 标志，随 bundle 最后写入；复用路径据此校验新鲜度。
+    {
+        if generation_source_snapshot(root_dir)? != frozen_sources
+            || current_generated_api_assembly(root_dir)?.fingerprint() != assembly.fingerprint()
+        {
+            return Err("assembly inputs changed during generation; receipt withheld".into());
+        }
+        let sources: Vec<(String, String)> = frozen_sources
+            .iter()
+            .map(|(name, text)| (name.clone(), format!("{:x}", fnv1a(text.as_bytes()))))
+            .collect();
+        let endpoints: Vec<String> = api_module
+            .endpoints
+            .iter()
+            .map(|e| e.fn_name.clone())
+            .collect();
+        let scaffold = std::env::var("AUTO_A2R_BODY")
+            .map(|v| v == "0")
+            .unwrap_or(false);
+        // PLAN-738 T-12：生成 workspace 实际 lock 身份——生成产物的运行时
+        // 依赖输入，与生成器自身 Cargo 输入（manifest provider 面）分开
+        // 记录；未建 lock 时记 absent，复用门在 lock 出现/变化时判陈旧。
+        // P738-R9-01 fail-closed：NotFound=未物化记 absent；其它读错误
+        // 拒绝写收据（收据不得携带不可核验的 lock 身份）。P738-R11-01：
+        // 分类/指纹与复用门共用 workspace_lock_identity 单点——空文件
+        // =实际内容身份 811c9dc5，两端不再漂移。
+        let workspace_lock = match crate::rust_workspace::workspace_lock_identity(std::fs::read(
+            crate::rust_workspace::ensure_shared_workspace(root_dir).join("Cargo.lock"),
+        )) {
+            Ok(Some(fingerprint)) => fingerprint,
+            Ok(None) => "absent".into(),
+            Err(e) => {
+                return Err(format!("workspace Cargo.lock unreadable: {e}").into());
+            }
+        };
+        // A receipt must identify the assembly it actually used. Failure to
+        // locate/hash stdlib is an error, never a reusable null identity.
+        let record = serde_json::json!({
+            "schema_version": 1,
+            "generated_at": std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+            "endpoints": endpoints,
+            "source_hashes": sources,
+            "assembly": assembly,
+            "scaffold": scaffold,
+            "workspace_lock": workspace_lock,
+        });
+        std::fs::write(rust_dir.join("generation.json"), record.to_string())
+            .map_err(|e| format!("cannot write generation receipt: {e}"))?;
+    }
+
+    Ok(())
+}
+
+/// Generate Cargo.toml for the Rust server (workspace member version).
+///
+/// `package_name` must be unique across the shared workspace — multiple
+/// projects' backends live as siblings under `D:/.auto/rust-workspace`, and
+/// cargo forbids two members with the same package name. Use the per-project
+/// `back_member_name` (e.g. "015-notes-back"), not a fixed "api-server".
+fn generate_cargo_toml(package_name: &str, has_sse: bool, has_db: bool) -> String {
+    // Plan 328: Cargo rejects names starting with a digit.
+    let safe_name = if package_name
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_digit())
+        .unwrap_or(false)
+    {
+        format!("app-{}", package_name)
+    } else {
+        package_name.to_string()
+    };
+    // PLAN-730 T-06: futures 无条件依赖——上传 glue（Request body 流投影）
+    // 与 SSE 共用；SSE 独占 async-stream。
+    let sse_deps = if has_sse {
+        "
+async-stream = \"0.3\""
+    } else {
+        ""
+    };
+    let futures_deps = "
+futures = \"0.3\"";
+    // Plan musk-022 CRUD 扩展: a2r 全局变量转译用 once_cell::Lazy.
+    // Plan 405: db.at 字符串操作(+ 拼接/contains)会让 a2r 生成 `use a2r_std`
+    // (StringBuilder 等), 而 a2r_std 在 auto-lang crate 里 → 必须加 auto-lang
+    // 依赖, 否则 `unresolved import a2r_std`。任何用字符串的后端都会触发。
+    let runtime_deps = "
+auto-lang = { workspace = true, features = [\"ui\", \"image-pipeline\"] }
+# PLAN-811: 生成后端直接消费媒体基础公开入口（auto_media_core::）。
+auto-media-core = { workspace = true }
+a2r-std = { workspace = true }
+# PLAN-736 AC-03/06: 连接驱动同构（hyper-util auto Builder + 准入许可 + 排空）
+hyper = { version = \"1\", features = [\"http1\", \"server\"] }
+hyper-util = { version = \"0.1\", features = [\"tokio\", \"server-auto\", \"service\", \"http1\"] }";
+    let db_deps = if has_db {
+        "
+once_cell = \"1\""
+    } else {
+        ""
+    };
+    format!(
+        r#"[package]
+name = "{}"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum.workspace = true
+tokio = {{ version = "1", features = ["full"] }}
+# Plan 617 T-05: ReaderStream for byte-range media streaming (no whole-file read).
+tokio-util = {{ version = "0.7", features = ["io"] }}
+serde.workspace = true
+serde_json.workspace = true
+tower-http.workspace = true{}{}{}{}
+"#,
+        safe_name, runtime_deps, db_deps, futures_deps, sse_deps
+    )
+}
+
+/// Plan musk-022: SSE broadcast-bus module. tokio::sync::broadcast channel;
+/// POST handlers call broadcast(json), GET stream handler calls subscribe().
+fn generate_events_rs() -> String {
+    r#"// Auto-generated SSE event bus (Plan musk-022).
+use tokio::sync::broadcast;
+type Bus = broadcast::Sender<String>;
+fn bus() -> Bus {
+    use std::sync::OnceLock;
+    static BUS: OnceLock<Bus> = OnceLock::new();
+    BUS.get_or_init(|| { let (tx, _rx) = broadcast::channel(256); tx }).clone()
+}
+pub fn subscribe() -> broadcast::Receiver<String> { bus().subscribe() }
+pub fn broadcast(json: String) { let _ = bus().send(json); }
+"#
+    .to_string()
+}
+
+/// Rust 关键字撞名的字段用 raw identifier（`r#type`）保名——serde derive
+/// 对 `r#` 前缀字段按去前缀的标识符收发 JSON（`type` 键往返不变）。
+/// AutoLang 字段名无此限制（auto-musk `TreeNode.type` 实例），生成侧兜底。
+fn rust_field_ident(name: &str) -> String {
+    const KEYWORDS: &[&str] = &[
+        "as", "box", "break", "const", "continue", "crate", "else", "enum", "extern", "false",
+        "fn", "for", "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+        "ref", "return", "self", "static", "struct", "super", "trait", "true", "type", "unsafe",
+        "use", "where", "while", "async", "await", "dyn", "abstract", "become", "final", "macro",
+        "override", "priv", "typeof", "unsized", "virtual", "yield",
+    ];
+    if KEYWORDS.contains(&name) {
+        format!("r#{}", name)
+    } else {
+        name.to_string()
+    }
+}
+
+/// Generate types.rs with serde structs
+fn generate_types_rs(api_module: &auto_lang_core::api::ApiModule) -> String {
+    let mut lines = vec![
+        "use serde::{Serialize, Deserialize};".to_string(),
+        "".to_string(),
+    ];
+
+    for api_type in &api_module.types {
+        // Include Default derive for simple placeholder generation
+        lines.push(format!(
+            "#[derive(Clone, Debug, Default, Serialize, Deserialize)]"
+        ));
+        lines.push(format!("pub struct {} {{", api_type.name));
+        for field in &api_type.fields {
+            let rust_type = auto_type_to_rust(&field.ty);
+            lines.push(format!(
+                "    pub {}: {},",
+                rust_field_ident(&field.name),
+                rust_type
+            ));
+        }
+        lines.push("}".to_string());
+        lines.push("".to_string());
+    }
+
+    lines.join("\n")
+}
+
+/// Convert AutoLang type to Rust type
+/// Convert snake_case to PascalCase (e.g. "search_notes" → "SearchNotes")
+fn to_pascal_case(s: &str) -> String {
+    s.split('_')
+        .map(|word| {
+            let mut c = word.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect()
+}
+
+fn auto_type_to_rust(auto_type: &str) -> String {
+    // Handle optional type: prefix ?T (AutoLang syntax: ?Note) or suffix T?
+    let auto_type = auto_type.trim();
+    if let Some(inner) = auto_type.strip_prefix('?') {
+        return format!("Option<{}>", auto_type_to_rust(inner));
+    }
+    if auto_type.ends_with('?') {
+        let inner = &auto_type[..auto_type.len() - 1];
+        return format!("Option<{}>", auto_type_to_rust(inner));
+    }
+
+    match auto_type {
+        "int" => "i64".to_string(),
+        "str" => "String".to_string(),
+        "bool" => "bool".to_string(),
+        "float" => "f64".to_string(),
+        // AutoLang `any`（auto-musk startRun.steps 等动态载荷）→ JSON 值；
+        // 裸 passthrough 会产出非法 Rust `Vec<any>`。
+        "any" => "serde_json::Value".to_string(),
+        s if s.starts_with("[]") || s.starts_with("[") => {
+            // Handle []T and [N]T
+            let inner = s.trim_start_matches(|c: char| c == '[' || c == ']' || c.is_numeric());
+            format!("Vec<{}>", auto_type_to_rust(inner))
+        }
+        // Tuple type (T1, T2, ...): map each element individually
+        // (e.g. (str, RenderedCell) → (String, RenderedCell)). Without this
+        // arm the whole tuple string fell through to the passthrough below,
+        // leaving AutoLang `str` as rust `str` (unsized → derive Deserialize
+        // fails). Split at top-level commas so nested ()/[]/{} element types
+        // don't trip the split.
+        s if s.starts_with('(') && s.ends_with(')') => {
+            let inner = &s[1..s.len() - 1];
+            let mut parts: Vec<String> = Vec::new();
+            let mut depth = 0i32;
+            let mut last = 0usize;
+            for (i, c) in inner.char_indices() {
+                match c {
+                    '(' | '[' | '{' => depth += 1,
+                    ')' | ']' | '}' => depth -= 1,
+                    ',' if depth == 0 => {
+                        parts.push(auto_type_to_rust(&inner[last..i]));
+                        last = i + 1;
+                    }
+                    _ => {}
+                }
+            }
+            parts.push(auto_type_to_rust(&inner[last..]));
+            format!("({})", parts.join(", "))
+        }
+        s => s.to_string(),
+    }
+}
+
+/// Determine if a path contains a path parameter (e.g., `:id`)
+fn has_path_param(path: &str) -> bool {
+    path.split('/').any(|s| s.starts_with(':'))
+}
+
+/// Determine the primary type from an ApiModule (first defined type)
+pub fn primary_type_name_pub(api_module: &auto_lang_core::api::ApiModule) -> Option<String> {
+    api_module.types.first().map(|t| t.name.clone())
+}
+
+/// Plan B1(b) (audit B1 follow-up): the `meta str` server-injected param.
+/// The VM http server pushes a request-metadata JSON
+/// (`{"cookies":{…},"auth":"…"}`, http_server.rs `push_meta`) as the trailing
+/// handler arg when declared params exceed path/query/body data. Recognize the
+/// same convention on the rust path so `meta` is threaded from request
+/// headers instead of being misparsed as a query/body field.
+fn is_meta_param(p: &ApiParam) -> bool {
+    p.name == "meta" && {
+        let t = p.ty.trim();
+        t == "str" || t == "String"
+    }
+}
+
+/// Get body params (params that aren't path params and aren't query params)
+fn endpoint_body_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
+    let path = endpoint.path();
+    let method = endpoint.method();
+    endpoint
+        .params
+        .iter()
+        .filter(|p| {
+            if is_meta_param(p) {
+                return false;
+            }
+            // PLAN-730 T-06 / 734 R1 F-1: UploadRequest 是宿主注入参数（Request
+            // 提取器），不进 JSON body 结构/绑定（契约身份判定）。
+            if auto_lang_core::api::contract::is_upload_param(&p.ty) {
+                return false;
+            }
+            let is_path = path.contains(&format!(":{}", p.name));
+            let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
+            !is_path && !is_query
+        })
+        .collect()
+}
+
+/// Get query params (non-path params on GET/DELETE endpoints)
+fn endpoint_query_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
+    let path = endpoint.path();
+    let method = endpoint.method();
+    endpoint
+        .params
+        .iter()
+        .filter(|p| {
+            if is_meta_param(p) {
+                return false;
+            }
+            let is_path = path.contains(&format!(":{}", p.name));
+            !is_path && matches!(method.as_str(), "GET" | "DELETE")
+        })
+        .collect()
+}
+
+/// Get path params (params that appear in the URL path)
+fn endpoint_path_params(endpoint: &ApiEndpoint) -> Vec<&ApiParam> {
+    let path = endpoint.path();
+    endpoint
+        .params
+        .iter()
+        .filter(|p| path.contains(&format!(":{}", p.name)))
+        .collect()
+}
+
+/// Check if endpoint has a JSON body to extract.
+/// Plan 399 §9: PATCH with body params (e.g. `set_pinned(id, pinned bool)`)
+/// was previously excluded, which meant no `Json(input)` extractor — but
+/// `resolve_db_call` still emitted `&input.X` → unbound `input` → compile error.
+/// A handler has a JSON body only when it declares body params (params not
+/// bound from the path). Previously POST/PUT were unconditionally treated as
+/// having a body, which broke path-only POSTs like favorite/follow (they got
+/// a spurious `Json<User>` extraction that rejected requests). Now every
+/// method is consistent: body exists iff there are body params. (Plan 405)
+fn endpoint_has_body(endpoint: &ApiEndpoint) -> bool {
+    !endpoint_body_params(endpoint).is_empty()
+}
+
+// ============================================================================
+// Plan 399 第 4-5 步: db.rs delegation helpers
+// ============================================================================
+
+/// Extract the set of `pub fn NAME` names from a transpiled db.rs source.
+/// Used to decide whether an HTTP handler can delegate to `db::NAME(...)`
+/// instead of the `State<Db>` CRUD template.
+pub fn extract_db_fn_names(db_rs: &str) -> std::collections::HashSet<String> {
+    use regex::Regex;
+    let mut set = std::collections::HashSet::new();
+    // Match `pub fn name(` at the start of a line (a2r emits this form).
+    let re = Regex::new(r"(?m)^\s*pub\s+fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(").expect("valid regex");
+    for cap in re.captures_iter(db_rs) {
+        if let Some(m) = cap.get(1) {
+            set.insert(m.as_str().to_string());
+        }
+    }
+    set
+}
+
+/// Build the ordered list of candidate db.rs function names for an endpoint,
+/// in priority order. The api.at convention (015-notes / 017-chat) is that each
+/// endpoint body is a thin `return db.FN(args)` delegate, so FN follows the
+/// endpoint name with CRUD-verb normalization:
+///   - exact name first (list_notes may map to a db fn literally named list_notes)
+///   - list_X / get_X        → all_X / all_Xs / find_X / get_X
+///   - send_X / create_X     → create_X / add_X
+///   - update_X / edit_X     → update_X
+///   - delete_X / remove_X   → delete_X / remove_X
+///   - toggle_X              → toggle_X
+///   - search_X              → search_X
+///   - otherwise: same name (rely on exact match above)
+fn db_fn_candidates(endpoint: &ApiEndpoint) -> Vec<String> {
+    let name = endpoint.fn_name.as_str();
+    let mut cands: Vec<String> = vec![name.to_string()];
+
+    // The api.at convention (015-notes / 017-chat): each endpoint body is a thin
+    // `return db.FN(args)` delegate. FN follows the endpoint name with CRUD-verb
+    // normalization. The "subject" after the verb is the db fn's subject as-is
+    // (e.g. list_notes → all_notes: rest="notes" → all_notes; list_messages →
+    // all_messages: rest="messages" → all_messages).
+    for (verb, rest_fn) in [
+        ("list", name.strip_prefix("list_")),
+        ("get", name.strip_prefix("get_")),
+        ("find", name.strip_prefix("find_")),
+        ("send", name.strip_prefix("send_")),
+        ("create", name.strip_prefix("create_")),
+        ("add", name.strip_prefix("add_")),
+        ("update", name.strip_prefix("update_")),
+        ("edit", name.strip_prefix("edit_")),
+        ("move", name.strip_prefix("move_")),
+        ("delete", name.strip_prefix("delete_")),
+        ("remove", name.strip_prefix("remove_")),
+        ("toggle", name.strip_prefix("toggle_")),
+        ("search", name.strip_prefix("search_")),
+    ] {
+        if let Some(rest) = rest_fn {
+            // The "subject" for the db fn: for list_notes rest="notes", db fn is
+            // all_notes. For list_messages rest="messages", db fn is all_messages.
+            // So the `all_{rest}` form (no re-pluralization) is what we want; drop
+            // the `all_{rest}s` candidate to avoid double-plural when rest is already plural.
+            let mut cands_for_verb = match verb {
+                "list" => vec![
+                    format!("all_{}", rest), // all_notes / all_messages  ✓
+                    format!("get_{}", rest),
+                    format!("list_{}", rest),
+                ],
+                "get" | "find" => vec![format!("find_{}", rest), format!("get_{}", rest)],
+                "send" | "create" | "add" => {
+                    vec![format!("create_{}", rest), format!("add_{}", rest)]
+                }
+                "update" | "edit" | "move" => vec![format!("update_{}", rest)],
+                "delete" | "remove" => vec![format!("delete_{}", rest), format!("remove_{}", rest)],
+                "toggle" => vec![format!("toggle_{}", rest)],
+                "search" => vec![format!("search_{}", rest)],
+                _ => vec![],
+            };
+            cands.append(&mut cands_for_verb);
+        }
+    }
+
+    cands.dedup();
+    cands
+}
+
+/// The resolved db.rs delegation for one endpoint: the db fn name plus the
+/// ordered argument expressions to pass it (mapped from extractors).
+struct DbDelegation {
+    db_fn: String,
+    /// Argument expressions in source order, e.g. ["id", "input.sender", "query.q"].
+    args: Vec<String>,
+}
+
+/// Plan 399 §8: extract the db function name from the endpoint's body AST when
+/// it is a thin `return db.FN(...)` delegate (the documented api.at convention).
+/// Reads `Stmt::Return(Expr::Call{ name: Dot(Ident("db"), FN) })`. Returns the
+/// FN name (verified to exist in db_fns) — far more reliable than the
+/// name-heuristic `db_fn_candidates`, which fails on synonyms/plurals/aliases.
+fn extract_db_fn_from_body(
+    endpoint: &ApiEndpoint,
+    db_fns: &std::collections::HashSet<String>,
+) -> Option<String> {
+    use auto_lang_core::ast::{Expr, Stmt};
+    let body = endpoint.body.as_ref()?;
+    // Scan statements for `return db.FN(...)` (the whole-body convention).
+    for stmt in &body.stmts {
+        if let Stmt::Return(expr) = stmt {
+            if let Expr::Call(call) = expr.as_ref() {
+                if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    if let Expr::Ident(recv_name) = receiver.as_ref() {
+                        if recv_name.as_ref() == "db" && db_fns.contains(method.as_ref()) {
+                            return Some(method.as_ref().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Plan 547: detect the metadata-only image control-plane delegation used by
+/// the 031 image viewer.  These calls are host runtime primitives rather than
+/// CRUD/db functions, so they must bypass the generic Default-return scaffold.
+fn extract_image_fn_from_body(endpoint: &ApiEndpoint) -> Option<String> {
+    use auto_lang_core::ast::{Expr, Stmt};
+    let body = endpoint.body.as_ref()?;
+    for stmt in &body.stmts {
+        if let Stmt::Return(expr) = stmt {
+            if let Expr::Call(call) = expr.as_ref() {
+                if let Expr::Dot(receiver, method) = call.name.as_ref() {
+                    // `use auto.image` binds the module as `image` in VM
+                    // handler synthesis; accept the fully-qualified AST
+                    // form too for callers that still use auto.image.*.
+                    if let Expr::Ident(root) = receiver.as_ref() {
+                        if root.as_ref() == "image" {
+                            return Some(method.as_ref().to_string());
+                        }
+                    }
+                    if let Expr::Dot(namespace, group) = receiver.as_ref() {
+                        if let Expr::Ident(root) = namespace.as_ref() {
+                            if root.as_ref() == "auto" && group == "image" {
+                                return Some(method.as_ref().to_string());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Resolve an endpoint to a db.rs function call, or `None` if no candidate name
+/// exists in `db_fns`. When matched, builds the argument list by mapping each
+/// endpoint param to its extractor binding:
+///   - path param  → bare ident `name` (Path extractor binds it directly)
+///   - query param → `query.name`
+///   - body param  → `input.name`
+/// a2r transpiles `str` params to Rust `&str`, but axum's serde extractors hold
+/// owned `String`s — so string params are borrowed (`&input.name`/`&query.name`)
+/// and Rust's deref coercion (`&String` → `&str`) bridges the gap. Non-str params
+/// pass by value as-is. Params preserve api.at declaration order (matches the
+/// db.rs fn signature).
+fn resolve_db_call(
+    endpoint: &ApiEndpoint,
+    db_fns: &std::collections::HashSet<String>,
+) -> Option<DbDelegation> {
+    // Plan 399 §8: prefer the body's explicit `db.FN(...)` call over the
+    // name-heuristic (handles synonyms/plurals/aliases that the heuristic misses).
+    let db_fn = extract_db_fn_from_body(endpoint, db_fns).or_else(|| {
+        db_fn_candidates(endpoint)
+            .into_iter()
+            .find(|c| db_fns.contains(c))
+    })?;
+    let path = endpoint.path();
+    let method = endpoint.method();
+    let is_str = |ty: &str| {
+        let t = ty.trim();
+        t == "str" || t == "String" || t == "&str"
+    };
+    // Plan 399 §3: a2r turns `[]str` into `&[String]` params, but extractors hold
+    // `Vec<String>` — borrow (`&input.tags`) so `&Vec<String>` derefs to `&[String]`.
+    let is_slice_str = |ty: &str| {
+        let t = ty.trim();
+        t == "[]str" || t == "[]String" || t == "&[String]"
+    };
+    let args: Vec<String> = endpoint
+        .params
+        .iter()
+        .map(|p| {
+            if is_meta_param(p) {
+                // Plan B1(b): server-injected metadata — bound from headers in the
+                // handler prologue (see meta_json), never a query/body field.
+                return "&meta".to_string();
+            }
+            let is_path = path.contains(&format!(":{}", p.name));
+            let is_query = !is_path && matches!(method.as_str(), "GET" | "DELETE");
+            let borrow = is_str(&p.ty) || is_slice_str(&p.ty);
+            if is_path {
+                // Path str params are rare; borrow them too (Path<String> → &str).
+                if borrow {
+                    format!("&{}", p.name)
+                } else {
+                    p.name.clone()
+                }
+            } else if is_query {
+                if borrow {
+                    format!("&query.{}", p.name)
+                } else {
+                    format!("query.{}", p.name)
+                }
+            } else {
+                if borrow {
+                    format!("&input.{}", p.name)
+                } else {
+                    format!("input.{}", p.name)
+                }
+            }
+        })
+        .collect();
+    Some(DbDelegation { db_fn, args })
+}
+
+/// True when every non-SSE endpoint in the module resolves to a db.rs call.
+/// Used to decide whether main.rs can drop `State<Db>` entirely (full db.rs
+/// coverage) vs. keep it for template-fallback endpoints (mixed state).
+fn all_endpoints_covered(
+    api_module: &auto_lang_core::api::ApiModule,
+    db_fns: Option<&std::collections::HashSet<String>>,
+) -> bool {
+    let db_fns = match db_fns {
+        Some(s) => s,
+        None => return false,
+    };
+    api_module.endpoints.iter().all(|e| {
+        // SSE/streaming endpoints don't touch State<Db>; ignore them.
+        e.return_type.contains("Stream<") || resolve_db_call(e, db_fns).is_some()
+    })
+}
+
+/// Plan 399 §6: infer the SSE broadcast discriminator value for a POST endpoint.
+/// The frontend store dispatches by `data.<discriminator_field>` (default field
+/// "event"), and the value names the ChatEvent variant to route to. Convention:
+/// - POST returning a declared entity (a "create") → `"New{TypeName}"`
+///   (e.g. POST /api/messages → Message → "NewMessage").
+/// - POST whose fn name contains "typing" (void, signals presence) → `"Typing"`.
+/// Returns None when the endpoint should not broadcast.
+fn broadcast_event_name(
+    endpoint: &ApiEndpoint,
+    primary_type: &str,
+    declared_types: &[ApiType],
+) -> Option<String> {
+    if endpoint.method() != "POST" {
+        return None;
+    }
+    let fn_name = endpoint.fn_name.to_lowercase();
+    if fn_name.contains("typing") {
+        return Some("Typing".to_string());
+    }
+    // A create can return a secondary declared type (e.g. Contact is the
+    // primary store type while send_message returns Message). Use that actual
+    // endpoint type when available, retaining the primary-type convention for
+    // scalar/collection results that do not name a declared entity.
+    let return_type = endpoint.return_type.trim().trim_start_matches('?').trim();
+    let event_type = declared_types
+        .iter()
+        .find(|ty| ty.name == return_type)
+        .map(|ty| ty.name.as_str())
+        .unwrap_or(primary_type);
+    Some(format!("New{}", event_type))
+}
+
+/// Generate api.rs with route handlers — full CRUD implementation.
+///
+/// Plan 399 第 4-5 步: when `db_fns` is `Some`, endpoints whose business logic
+/// lives in db.rs (matched by `resolve_db_call`) get a handler that calls
+/// `db::FN(...)` directly instead of the `State<Db>` CRUD template. Endpoints
+/// not matched fall back to the template (with a warning). `None` keeps the
+/// legacy `State<Db>` behavior (e.g. seed-only backends with no db.at).
+
+/// Plan 400 Phase 2: Check if an endpoint's body is a "thin delegation"
+/// (`return db.FN(args)` or simple let+return). Thin delegations go through
+/// route B; only non-thin bodies with real logic (if/for/while/is/try/multi-statement)
+/// go through the a2r body-transpilation path.
+fn is_thin_delegation(endpoint: &ApiEndpoint) -> bool {
+    let body = match &endpoint.body {
+        Some(b) => b,
+        None => return true,
+    };
+    // Thin delegation = no control-flow statements. A body with only
+    // return/let-return is "thin" (goes to route B or CRUD). Note `while`
+    // desugars to Stmt::For (parser while_stmt), and Auto has no `match`
+    // statement — pattern matching is `is` and error handling is `try`, both
+    // of which carry real logic and must take the a2r path.
+    !body.stmts.iter().any(stmt_is_control_flow)
+        && !body.stmts.iter().any(stmt_has_nested_call_argument)
+}
+
+/// A nested call changes argument semantics and cannot be lowered by the db
+/// delegation's parameter-name mapping (for example,
+/// `db.current_user(bearer_token(meta))`). Keep it on the body transpiler path.
+fn stmt_has_nested_call_argument(stmt: &auto_lang_core::ast::Stmt) -> bool {
+    use auto_lang_core::ast::{Expr, Stmt};
+    let expr = match stmt {
+        Stmt::Return(expr) => expr.as_ref(),
+        Stmt::Expr(expr) => expr,
+        _ => return false,
+    };
+    let Expr::Call(call) = expr else { return false };
+    call.args
+        .args
+        .iter()
+        .any(|arg| matches!(arg.get_expr(), Expr::Call(_)))
+}
+
+/// A statement that makes a handler body "non-thin": control flow whose
+/// transpilation only the a2r path can handle. Blocks are recursed into.
+fn stmt_is_control_flow(stmt: &auto_lang_core::ast::Stmt) -> bool {
+    use auto_lang_core::ast::Stmt;
+    match stmt {
+        Stmt::If(_) | Stmt::For(_) | Stmt::Is(_) | Stmt::Try(_) => true,
+        Stmt::Block(b) => b.stmts.iter().any(stmt_is_control_flow),
+        _ => false,
+    }
+}
+
+/// Plan 400 Phase 2: transpile body statements via a2r into indented Rust lines.
+fn try_transpile_body(
+    body: &auto_lang_core::ast::Body,
+    endpoint: &ApiEndpoint,
+    api_module: &auto_lang_core::api::ApiModule,
+) -> Result<Vec<String>, String> {
+    try_transpile_body_with_proofs(body, endpoint, api_module).map(|(lines, _)| lines)
+}
+
+fn try_transpile_body_with_proofs(
+    body: &auto_lang_core::ast::Body,
+    endpoint: &ApiEndpoint,
+    api_module: &auto_lang_core::api::ApiModule,
+) -> Result<
+    (
+        Vec<String>,
+        Vec<auto_lang_core::stdlib_assembly::reference::ReferenceProof>,
+    ),
+    String,
+> {
+    use auto_lang_core::ast::Type;
+    use auto_lang_core::trans::rust::RustTrans;
+    use auto_val::AutoStr;
+
+    let mut trans = RustTrans::new(AutoStr::from("api_handler"));
+    trans.assembly_runtime = auto_lang_core::stdlib_assembly::host::RustRuntime::Embedded;
+    // PLAN-730 T-06: `~T`（Future<T>）handler 的内联体在 async fn 内执行
+    // ——await 点（upload_receive/commit/reject）合法。
+    if endpoint.return_type.contains("Future<") {
+        trans.set_async_ctx(true);
+    }
+    for api_type in &api_module.types {
+        let fields: Vec<(&str, Type)> = api_type
+            .fields
+            .iter()
+            .map(|f| (f.name.as_str(), Type::StrOwned))
+            .collect();
+        trans.register_type(&api_type.name, fields);
+    }
+    let params: Vec<(AutoStr, Type)> = endpoint
+        .params
+        .iter()
+        .map(|p| {
+            let ty = match p.ty.as_str() {
+                "int" | "uint" | "u64" | "i64" => Type::Int,
+                "bool" => Type::Bool,
+                "float" => Type::Float,
+                _ => Type::StrOwned,
+            };
+            (AutoStr::from(p.name.as_str()), ty)
+        })
+        .collect();
+    let lines = trans
+        .transpile_body_stmts(body, &params)
+        .map_err(|e| e.to_string())?;
+    Ok((lines, trans.assembly_references))
+}
+
+/// The startup freshness gate rebuilds the same dry assembly contract as generation.
+pub fn current_generated_api_assembly(
+    root: &Path,
+) -> AutoResult<auto_lang_core::stdlib_assembly::manifest::AssemblyManifest> {
+    let api_file =
+        auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let source = std::fs::read_to_string(api_file)?;
+    let module = try_full_parse(&source).ok_or("API contract parse failed")?;
+    generated_api_assembly(root, &module)
+}
+
+fn generated_api_assembly(
+    root: &Path,
+    module: &auto_lang_core::api::ApiModule,
+) -> AutoResult<auto_lang_core::stdlib_assembly::manifest::AssemblyManifest> {
+    let api_file =
+        auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let source = std::fs::read_to_string(&api_file)?;
+    let mut session = auto_lang_core::compile::CompileSession::new();
+    session.set_assembly_target(auto_lang_core::stdlib_assembly::model::AssemblyTarget::Rust)?;
+    if let Some(parent) = api_file.parent() {
+        session.add_source_dir(parent.to_path_buf());
+    }
+    session.resolve_uses(&source)?;
+    let mut references = Vec::new();
+    if std::env::var("AUTO_A2R_BODY").as_deref() != Ok("0") {
+        for endpoint in &module.endpoints {
+            if let Some(body) = &endpoint.body {
+                let (_, proofs) = try_transpile_body_with_proofs(body, endpoint, module)
+                    .map_err(|e| format!("API assembly rejected {}: {e}", endpoint.fn_name))?;
+                references.extend(proofs);
+            }
+        }
+    }
+    // PLAN-738 T-11：db/伴生 back 模块是生成产物的真实组成——其核心
+    // producer 引用按 Embedded 运行形态收集进 manifest（生成器输入与
+    // 生成产物运行时输入一致，不把 endpoint 面冒称全部装配）。
+    let back_dir = api_file.parent().unwrap().to_path_buf();
+    let mut back_modules: Vec<(String, String)> = Vec::new();
+    if let Ok(db_text) = std::fs::read_to_string(back_dir.join("db.at")) {
+        back_modules.push(("db".to_string(), db_text));
+    }
+    if let Ok(entries) = std::fs::read_dir(&back_dir) {
+        let mut stems: Vec<String> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().extension().map(|x| x == "at").unwrap_or(false))
+            .filter_map(|e| {
+                e.file_name()
+                    .to_str()
+                    .map(|s| s.trim_end_matches(".at").to_string())
+            })
+            .filter(|stem| stem != "api" && stem != "db")
+            .collect();
+        stems.sort();
+        for stem in stems {
+            if let Ok(text) = std::fs::read_to_string(back_dir.join(format!("{stem}.at"))) {
+                back_modules.push((stem, text));
+            }
+        }
+    }
+    for (name, text) in &back_modules {
+        let (_, proofs) = transpile_back_module_to_rs_with_proofs(name, text)
+            .map_err(|e| format!("API assembly rejected back module {name}: {e}"))?;
+        references.extend(proofs);
+    }
+    let stdlib = auto_lang_core::stdlib_assembly::loader::repo_stdlib_root()?;
+    let mut manifest = auto_lang_core::stdlib_assembly::manifest::AssemblyManifest::freeze(
+        session.assembly,
+        "api-generation",
+        root,
+        &stdlib,
+        &session.layer_selections,
+        references,
+    )
+    .with_consumer_input(
+        "configuration/AUTO_A2R_BODY",
+        if std::env::var("AUTO_A2R_BODY").as_deref() == Ok("0") {
+            "scaffold"
+        } else {
+            "translated"
+        },
+    );
+    for (name, text) in generation_source_snapshot(root)? {
+        manifest = manifest.with_consumer_input(&format!("project/back/{name}"), &text);
+    }
+    let db = api_file.parent().unwrap().join("db.at");
+    manifest = manifest.with_consumer_input(
+        "selection/back/db.at",
+        if db.is_file() { "present" } else { "absent" },
+    );
+    Ok(manifest)
+}
+
+fn generation_source_snapshot(root: &Path) -> AutoResult<Vec<(String, String)>> {
+    let api = auto_lang_core::config::resolve_back_api(root).ok_or("API contract unavailable")?;
+    let mut sources = vec![("api.at".into(), std::fs::read_to_string(&api)?)];
+    let db = api
+        .parent()
+        .ok_or("API source directory unavailable")?
+        .join("db.at");
+    match std::fs::read_to_string(db) {
+        Ok(text) => sources.push(("db.at".into(), text)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error.into()),
+    }
+    Ok(sources)
+}
+
+fn append_inline_param_bindings(lines: &mut Vec<String>, endpoint: &ApiEndpoint) {
+    for param in endpoint_body_params(endpoint) {
+        lines.push(format!(
+            "    let {} = input.{}.clone();",
+            param.name, param.name
+        ));
+    }
+    for param in endpoint_query_params(endpoint) {
+        lines.push(format!(
+            "    let {} = query.{}.clone();",
+            param.name, param.name
+        ));
+    }
+}
+
+fn rewrite_inline_runtime_names(source: &str) -> String {
+    let bytes = source.as_bytes();
+    let mut out = String::with_capacity(source.len());
+    let (mut index, mut in_string, mut escaped) = (0usize, false, false);
+    while index < bytes.len() {
+        if in_string {
+            let ch = source[index..].chars().next().unwrap();
+            out.push(ch);
+            index += ch.len_utf8();
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+        let previous = source[..index].chars().next_back();
+        let is_boundary = |ch: Option<char>| {
+            ch.map(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == ':' || c == '.'))
+                .unwrap_or(true)
+        };
+        if is_boundary(previous) && source[index..].starts_with("db.") {
+            out.push_str("crate::db::");
+            index += 3;
+            continue;
+        }
+        if is_boundary(previous) && source[index..].starts_with("bearer_token(") {
+            out.push_str("auto_bearer_token(");
+            index += "bearer_token(".len();
+            continue;
+        }
+        let ch = source[index..].chars().next().unwrap();
+        out.push(ch);
+        index += ch.len_utf8();
+        if ch == '"' {
+            in_string = true;
+        }
+    }
+    out
+}
+
+/// PLAN-729 T-05: 文件端点尾 return 包装——`return X;` → 宿主 serve await
+/// （非 return 行原样；JsonResponse 包装不适用文件面）。
+/// PLAN-730 T-06: 上传体行包装——尾 `return X;` → `return __upload_reply(X);`
+/// （收据 → 真实 status + JSON；非 return 行原样）。裸返回注入参数本身 =
+/// 契约缺口诊断（未 receive 即返回）。
+/// PLAN-730 T-06: 上传端点 glue——Request → UploadRequest 投影（版本无关
+/// UploadBodyStream；不预读）+ 收据 → 真实 status + JSON（生成 crate 的
+/// axum 版本与 auto-lang 不同也成立：facade 类型不含 axum）。
+/// PLAN-736 AC-03/06：生成轨服务模式连接驱动与许可机械层（文件顶层项；
+/// legacy 模式不触发的路径标 allow(dead_code)）。
+/// - 连接许可：accept 时 try_acquire，满=解析前关闭（conn_rejected）。
+/// - inflight 门：middleware try_acquire；满=503+Retry-After（零业务）。
+///   许可经 __CountedBody 持有至响应 body 终态（流式不提前释放）。
+/// - 头预算：hyper-util http1 builder（max_buf_size + header_read_timeout）。
+/// - body 上限：DefaultBodyLimit（413 由 axum 语义给出）。
+/// - 排空：ctrl_c(+unix SIGTERM) → 停 accept → drain 超时强收。
+const SERVICE_MAIN_MACHINERY: &str = r#"// PLAN-736 service-mode machinery (budgets/permits/drain)
+#[allow(dead_code)]
+static __INFLIGHT_SEM: std::sync::OnceLock<std::sync::Arc<tokio::sync::Semaphore>> =
+    std::sync::OnceLock::new();
+
+#[allow(dead_code)]
+static __SERVICE_RT: std::sync::OnceLock<
+    std::sync::Arc<auto_lang::http_service_config::ServiceRuntime>,
+> = std::sync::OnceLock::new();
+
+/// PLAN-736 T-04：Host/可信代理身份/限速/CORS 纯策略 gate（peer 由连接层
+/// 注入 extensions）。全部在业务与 inflight 之前短路（零业务零 body）。
+#[allow(dead_code)]
+async fn __policy_gate(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let Some(rt) = __SERVICE_RT.get() else {
+        return next.run(req).await; // legacy 形态直通
+    };
+    let c = &rt.config;
+    let authority = req
+        .headers()
+        .get("host")
+        .and_then(|v| v.to_str().ok());
+    if !c.host_allowed(authority) {
+        auto_lang::http_service_observability::emit_event(serde_json::json!({
+            "event": "request_rejected", "reason": "host_not_allowed",
+        }));
+        return axum::response::Response::builder()
+            .status(axum::http::StatusCode::BAD_REQUEST)
+            .header("content-type", "application/json")
+            .body(axum::body::Body::from("{\"error\":\"host not allowed\"}"))
+            .unwrap();
+    }
+    let peer = req.extensions().get::<std::net::SocketAddr>().copied();
+    let xff = req.headers().get("x-forwarded-for").and_then(|v| v.to_str().ok());
+    let xfp = req.headers().get("x-forwarded-proto").and_then(|v| v.to_str().ok());
+    let (identity, _proto) = c.effective_client_identity(
+        peer.map(|p| p.ip()).unwrap_or(std::net::IpAddr::from([0, 0, 0, 0])),
+        xff,
+        xfp,
+    );
+    if let Some(rl) = &rt.limiter {
+        if let auto_lang::http_service_config::RateDecision::Limited { retry_after_secs } =
+            rl.check(identity.client, auto_lang::http_service_config::ServiceRuntime::now_ms())
+        {
+            return axum::response::Response::builder()
+                .status(axum::http::StatusCode::TOO_MANY_REQUESTS)
+                .header("retry-after", retry_after_secs.to_string())
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from("{\"error\":\"rate limited\"}"))
+                .unwrap();
+        }
+    }
+    let origin_owned: Option<String> =
+        req.headers().get("origin").and_then(|v| v.to_str().ok()).map(str::to_string);
+    let origin = origin_owned.as_deref();
+    if req.method() == axum::http::Method::OPTIONS {
+        if let Some(origin) = origin {
+            let acrm = req
+                .headers()
+                .get("access-control-request-method")
+                .and_then(|v| v.to_str().ok());
+            let acrh: Vec<String> = req
+                .headers()
+                .get("access-control-request-headers")
+                .and_then(|v| v.to_str().ok())
+                .map(|h| h.split(',').map(|x| x.trim().to_string()).collect())
+                .unwrap_or_default();
+            let (status, acao, vary) = c.cors.preflight(Some(origin), acrm, &acrh);
+            let mut builder = axum::response::Response::builder().status(
+                axum::http::StatusCode::from_u16(status).unwrap_or(axum::http::StatusCode::FORBIDDEN),
+            );
+            if let Some(acao) = acao {
+                builder = builder
+                    .header("access-control-allow-origin", acao)
+                    .header("access-control-max-age", c.cors.max_age_seconds.to_string())
+                    .header(
+                        "access-control-allow-methods",
+                        c.cors.allowed_methods.join(", "),
+                    )
+                    .header(
+                        "access-control-allow-headers",
+                        c.cors.allowed_headers.join(", "),
+                    );
+                if vary {
+                    builder = builder.header("vary", "Origin");
+                }
+            }
+            return builder.body(axum::body::Body::empty()).unwrap();
+        }
+    }
+    let mut resp = next.run(req).await;
+    if let Some(origin) = origin {
+        if let auto_lang::http_service_config::CorsOutcome::Allowed { allow_origin, vary_origin } =
+            c.cors.actual_request(Some(origin))
+        {
+            if let Ok(v) = axum::http::HeaderValue::from_str(&allow_origin) {
+                resp.headers_mut().insert("Access-Control-Allow-Origin", v);
+            }
+            if vary_origin {
+                resp.headers_mut().insert("Vary", axum::http::HeaderValue::from_static("Origin"));
+            }
+        }
+    }
+    resp
+}
+
+#[allow(dead_code)]
+async fn __inflight_gate(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let sem = match __INFLIGHT_SEM.get() {
+        Some(s) => s.clone(),
+        None => return next.run(req).await, // 未初始化=legacy 形态，直通
+    };
+    let permit = match sem.try_acquire_owned() {
+        Ok(p) => p,
+        Err(_) => {
+            auto_lang::http_service_observability::counter_add(
+                auto_lang::http_service_observability::CounterName::RequestsRejected503,
+                1,
+            );
+            return axum::response::Response::builder()
+                .status(axum::http::StatusCode::SERVICE_UNAVAILABLE)
+                .header("retry-after", "1")
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from("{\"error\":\"server busy (inflight cap)\"}"))
+                .unwrap();
+        }
+    };
+    auto_lang::http_service_observability::counter_add(
+        auto_lang::http_service_observability::CounterName::RequestsTotal,
+        1,
+    );
+    let resp = next.run(req).await;
+    // body 终态释放：permit 存进 response extensions——hyper 持有响应直到
+    // body 发送完成/连接中止，Extensions 随之 drop = 终态释放（不 headers 即放）。
+    let (mut parts, body) = resp.into_parts();
+    // Arc：Extensions::insert 要求 Clone；permit 随 extensions 末引用 drop。
+    parts.extensions.insert(std::sync::Arc::new(permit));
+    axum::response::Response::from_parts(parts, body)
+}
+
+#[allow(dead_code)]
+static __SHUTDOWN_TX: std::sync::OnceLock<tokio::sync::watch::Sender<bool>> =
+    std::sync::OnceLock::new();
+
+#[allow(dead_code)]
+fn __json_resp(status: u16, body: serde_json::Value) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(axum::http::StatusCode::from_u16(status)
+            .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR))
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(body.to_string()))
+        .unwrap()
+}
+
+// PLAN-736 T-05/AC-02/05：服务控制面（/__auto/*）。live/ready 开放；snapshot/
+// shutdown 仅 loopback peer（不对外暴露操作面）。
+#[allow(dead_code)]
+async fn __health_live() -> axum::response::Response {
+    __json_resp(
+        200,
+        serde_json::json!({ "state": auto_lang::http_service_observability::service_state().as_str() }),
+    )
+}
+
+#[allow(dead_code)]
+fn __assembly_fingerprint() -> Option<&'static str> { None }
+
+#[allow(dead_code)]
+async fn __health_ready() -> axum::response::Response {
+    use auto_lang::http_service_observability as obs;
+    if obs::is_ready() {
+        let mut identity = obs::service_identity().unwrap_or_else(|| serde_json::json!({}));
+        identity["assembly_fingerprint"] = serde_json::json!(__assembly_fingerprint());
+        __json_resp(200, identity)
+    } else {
+        __json_resp(503, serde_json::json!({ "state": obs::service_state().as_str() }))
+    }
+}
+
+#[allow(dead_code)]
+async fn __health_snapshot(req: axum::extract::Request) -> axum::response::Response {
+    use auto_lang::http_service_observability as obs;
+    let peer = req.extensions().get::<std::net::SocketAddr>().copied();
+    if !peer.map(|p| p.ip().is_loopback()).unwrap_or(false) {
+        return __json_resp(403, serde_json::json!({ "error": "loopback only" }));
+    }
+    __json_resp(
+        200,
+        serde_json::json!({
+            "state": obs::service_state().as_str(),
+            "identity": obs::service_identity(),
+            "counters": obs::service_counters().snapshot(),
+        }),
+    )
+}
+
+#[allow(dead_code)]
+async fn __shutdown(req: axum::extract::Request) -> axum::response::Response {
+    use auto_lang::http_service_observability as obs;
+    let peer = req.extensions().get::<std::net::SocketAddr>().copied();
+    if !peer.map(|p| p.ip().is_loopback()).unwrap_or(false) {
+        return __json_resp(403, serde_json::json!({ "error": "loopback only" }));
+    }
+    let sent = __SHUTDOWN_TX.get().map(|tx| tx.send(true).is_ok()).unwrap_or(false);
+    obs::emit_event(serde_json::json!({
+        "event": "drain", "trigger": "shutdown_endpoint", "delivered": sent,
+    }));
+    __json_resp(202, serde_json::json!({ "draining": sent }))
+}
+
+"#;
+
+/// PLAN-736 AC-03/06：服务模式主运行环（连接许可 accept loop + 排空）。
+/// `c` = 已解析 HttpServiceConfig；listener/bound 为 bind 成功后的真实值。
+const SERVICE_RUN_LOOP: &str = r#"
+    {
+        use std::sync::Arc;
+        use tokio::sync::Semaphore;
+        __INFLIGHT_SEM
+            .set(Arc::new(Semaphore::new(c.limits.max_inflight_requests)))
+            .ok();
+        __SERVICE_RT.set(Arc::new(
+            auto_lang::http_service_config::ServiceRuntime::new(c.clone()),
+        ))
+        .ok();
+        use auto_lang::http_service_observability as obs;
+        obs::init_instance_id();
+        obs::set_service_identity(&bound, c.profile.as_str(), c.effective_config_hash());
+        obs::set_service_state(obs::ServiceState::Ready);
+        println!(
+            "AUTO_SERVICE_READY {{\"bound\":\"{}\",\"instance_id\":\"{}\",\"profile\":\"{}\",\"config_hash\":\"{:016x}\",\"assembly_fingerprint\":\"{}\"}}",
+            bound,
+            obs::instance_id(),
+            c.profile.as_str(),
+            c.effective_config_hash(),
+            __assembly_fingerprint().unwrap_or("unknown")
+        );
+        let app = app
+            .route("/__auto/health/live", axum::routing::get(__health_live))
+            .route("/__auto/health/ready", axum::routing::get(__health_ready))
+            .route("/__auto/health/snapshot", axum::routing::get(__health_snapshot))
+            .route("/__auto/shutdown", axum::routing::post(__shutdown));
+        let conn_sem = Arc::new(Semaphore::new(c.limits.max_connections));
+        // 层序（外→内）：peer 注入 → policy（Host/代理/限速/CORS）→ inflight → body 上限 → 路由。
+        let app = app
+            .layer(axum::extract::DefaultBodyLimit::max(c.limits.body_limit_bytes))
+            .layer(axum::middleware::from_fn(__inflight_gate))
+            .layer(axum::middleware::from_fn(__policy_gate));
+        let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+        let mut shutdown_rx = shutdown_rx;
+        let _ = __SHUTDOWN_TX.set(shutdown_tx.clone());
+        {
+            let tx = shutdown_tx.clone();
+            tokio::spawn(async move {
+                let _ = tokio::signal::ctrl_c().await;
+                let _ = tx.send(true);
+            });
+        }
+        #[cfg(unix)]
+        {
+            let tx = shutdown_tx;
+            tokio::spawn(async move {
+                if let Ok(mut sig) =
+                    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                {
+                    sig.recv().await;
+                    let _ = tx.send(true);
+                }
+            });
+        }
+        let header_buf = c.limits.header_buf_bytes;
+        let header_to = std::time::Duration::from_millis(c.limits.header_read_timeout_ms);
+        let drain = std::time::Duration::from_millis(c.limits.drain_timeout_ms);
+        loop {
+            tokio::select! {
+                accepted = listener.accept() => {
+                    let (stream, _peer) = match accepted {
+                        Ok(x) => x,
+                        Err(_) => continue,
+                    };
+                    let permit = match conn_sem.clone().try_acquire_owned() {
+                        Ok(p) => p,
+                        Err(_) => {
+                            auto_lang::http_service_observability::counter_add(
+                                auto_lang::http_service_observability::CounterName::ConnRejected,
+                                1,
+                            );
+                            drop(stream);
+                            continue;
+                        }
+                    };
+                    auto_lang::http_service_observability::counter_add(
+                        auto_lang::http_service_observability::CounterName::ConnAccepted,
+                        1,
+                    );
+                    auto_lang::http_service_observability::counter_add(
+                        auto_lang::http_service_observability::CounterName::ConnActive,
+                        1,
+                    );
+                    let peer_addr = stream.peer_addr().ok();
+                    let app = app.clone().layer(axum::middleware::from_fn(
+                        move |mut req: axum::extract::Request,
+                              next: axum::middleware::Next| {
+                            let peer = peer_addr;
+                            async move {
+                                if let Some(p) = peer {
+                                    req.extensions_mut().insert(p);
+                                }
+                                next.run(req).await
+                            }
+                        },
+                    ));
+                    let svc = hyper_util::service::TowerToHyperService::new(app);
+                    let watcher = graceful.watcher();
+                    tokio::spawn(async move {
+                        let _permit = permit;
+                        let mut builder =
+                            hyper_util::server::conn::auto::Builder::new(
+                                hyper_util::rt::TokioExecutor::new(),
+                            );
+                        builder
+                            .http1()
+                            .timer(hyper_util::rt::TokioTimer::new())
+                            .max_buf_size(header_buf)
+                            .header_read_timeout(header_to);
+                        let conn = builder.serve_connection_with_upgrades(
+                            hyper_util::rt::TokioIo::new(stream),
+                            svc,
+                        );
+                        let _ = watcher.watch(conn).await;
+                        auto_lang::http_service_observability::counter_sub(
+                            auto_lang::http_service_observability::CounterName::ConnActive,
+                            1,
+                        );
+                    });
+                }
+                _ = shutdown_rx.changed() => {
+                    let _ = tokio::time::timeout(drain, graceful.shutdown()).await;
+                    break;
+                }
+            }
+        }
+        println!(
+            "AUTO_SERVICE_STOPPED {{\"bound\":\"{}\"}}",
+            bound
+        );
+        auto_lang::http_service_observability::set_service_state(
+            auto_lang::http_service_observability::ServiceState::Stopped,
+        );
+    }
+"#;
+const UPLOAD_GLUE: &str = r#"// PLAN-730: upload ingress glue (a2r_std facade -> auto_lang host service)
+fn __upload_request(
+    method: &axum::http::Method,
+    headers: &axum::http::HeaderMap,
+    request: axum::extract::Request,
+) -> a2r_std::http::UploadRequest {
+    use futures::StreamExt;
+    let (parts, body) = request.into_parts();
+    let hdrs: Vec<(String, String)> = headers
+        .iter()
+        .map(|(k, v)| (k.as_str().to_string(), v.to_str().unwrap_or("").to_string()))
+        .collect();
+    let stream = body.into_data_stream().map(|r| {
+        r.map(|b| b.to_vec())
+            .map_err(|e| std::io::Error::other(e.to_string()))
+    });
+    a2r_std::http::upload_request_from_parts(
+        method.as_str(),
+        parts.uri.to_string().as_str(),
+        hdrs,
+        Box::pin(stream),
+    )
+}
+
+fn __upload_reply(receipt: a2r_std::http::UploadReceipt) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(axum::http::StatusCode::from_u16(receipt.status).unwrap_or(
+            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(receipt.json))
+        .unwrap_or_else(|_| {
+            axum::response::Response::builder()
+                .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+                .body(axum::body::Body::empty())
+                .expect("fallback response")
+        })
+}
+"#;
+
+fn wrap_upload_return(line: &str, upload_param: &str) -> String {
+    let trimmed = line.trim_start();
+    if let Some(rest) = trimmed.strip_prefix("return ") {
+        if let Some(expr) = rest.strip_suffix(';') {
+            let expr = expr.trim();
+            if expr == upload_param {
+                return "    return __upload_reply(a2r_std::http::upload_error(500, \"upload handler returned the request without receiving\"));".to_string();
+            }
+            return format!("    return __upload_reply({expr});");
+        }
+    }
+    line.to_string()
+}
+
+fn wrap_file_return(line: &str) -> String {
+    let trimmed = line.trim_start();
+    let Some(value) = trimmed.strip_prefix("return ") else {
+        return line.to_string();
+    };
+    let value = value
+        .trim_end()
+        .strip_suffix(';')
+        .unwrap_or(value.trim_end());
+    if value.is_empty() {
+        return line.to_string();
+    }
+    let indent = &line[..line.len() - trimmed.len()];
+    format!(
+        "{}return __file_reply({}, &method, &headers).await;",
+        indent, value
+    )
+}
+
+/// PLAN-729 T-05: 文件端点 glue 块（FILE_RESPONSE_GLUE 尾部）。
+const FILE_RESPONSE_GLUE: &str = r#"// PLAN-729: file response glue (shared host service; version-agnostic FileReply)
+#[allow(dead_code)]
+fn __file_header_pairs(headers: &axum::http::HeaderMap) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .filter_map(|(k, v)| {
+            v.to_str()
+                .ok()
+                .map(|val| (k.as_str().to_string(), val.to_string()))
+        })
+        .collect()
+}
+#[allow(dead_code)]
+async fn __file_reply(
+    descriptor: a2r_std::http::FileResponse,
+    method: &axum::http::Method,
+    headers: &axum::http::HeaderMap,
+) -> axum::response::Response {
+    let hdrs = __file_header_pairs(headers);
+    let deadline =
+        std::time::Instant::now() + auto_lang::http_file_service::file_serve_limits().prepare_timeout;
+    let reply = auto_lang::http_file_service::serve_file_response(
+        &descriptor,
+        auto_lang::http_file_service::ServeFileRequest {
+            method: method.as_str(),
+            request_headers: &hdrs,
+            prepare_deadline: deadline,
+            finish_hook: None,
+            idle_timeout: None,
+        },
+    )
+    .await;
+    let mut builder = axum::response::Response::builder().status(
+        axum::http::StatusCode::from_u16(reply.status)
+            .unwrap_or(axum::http::StatusCode::INTERNAL_SERVER_ERROR),
+    );
+    for (k, v) in &reply.headers {
+        if let (Ok(name), Ok(value)) = (
+            axum::http::HeaderName::try_from(k.as_str()),
+            axum::http::HeaderValue::from_str(v),
+        ) {
+            builder = builder.header(name, value);
+        }
+    }
+    match reply.body {
+        auto_lang::http_file_service::FileReplyBody::None => {
+            builder.body(axum::body::Body::empty()).unwrap()
+        }
+        auto_lang::http_file_service::FileReplyBody::Inline(b) => {
+            builder.body(axum::body::Body::from(b)).unwrap()
+        }
+        auto_lang::http_file_service::FileReplyBody::Stream(s) => {
+            builder.body(axum::body::Body::from_stream(s)).unwrap()
+        }
+    }
+}
+#[allow(dead_code)]
+async fn file_response_reply_missing(message: &str) -> axum::response::Response {
+    let body = format!("{{\"error\":{}}}", message);
+    axum::response::Response::builder()
+        .status(axum::http::StatusCode::INTERNAL_SERVER_ERROR)
+        .header("content-type", "application/json")
+        .body(axum::body::Body::from(body))
+        .unwrap()
+}"#;
+
+/// Plan 742 R1 (F-742-R1-03): how a transpiled body's `return` line must be
+/// wrapped to satisfy THIS handler's signature. Every needs_result endpoint
+/// (path param or DELETE/PUT) has a `Result<_, StatusCode>` signature — for
+/// `?T` returns Some/None map to Ok/Err(NOT_FOUND), plain values wrap
+/// Ok(JsonResponse(x)), and void bodies owe a status value.
+#[derive(Clone, Copy, PartialEq)]
+enum InlineRetWrap {
+    /// `-> StatusCode` (void endpoint, no path) — bare `return;` → OK status.
+    VoidStatus,
+    /// `-> Result<StatusCode, StatusCode>` (void endpoint with path).
+    VoidResult,
+    /// `-> JsonResponse<T>` — `return x;` wraps JsonResponse(x).
+    Plain,
+    /// `-> Result<JsonResponse<T>, StatusCode>` — `return x;` wraps
+    /// Ok(JsonResponse(x)).
+    Result,
+    /// `?T` on a Result signature — Some(x) → Ok(JsonResponse(x)),
+    /// None/bare-return → Err(StatusCode::NOT_FOUND), plain → Ok(Json(x)).
+    ResultOption,
+}
+
+fn wrap_inline_return(line: &str, mode: InlineRetWrap) -> String {
+    let trimmed = line.trim_start();
+    let indent = &line[..line.len() - trimmed.len()];
+    // Plan 742 (D5): the transpiler lowers `return None` to a bare `return;`
+    // before this pass — in ResultOption mode that means NOT_FOUND, and in
+    // void modes it completes the status value.
+    if trimmed == "return;" || trimmed == "return" {
+        return match mode {
+            InlineRetWrap::ResultOption => {
+                format!("{}return Err(StatusCode::NOT_FOUND);", indent)
+            }
+            InlineRetWrap::VoidResult => format!("{}return Ok(StatusCode::OK);", indent),
+            InlineRetWrap::VoidStatus => format!("{}return StatusCode::OK;", indent),
+            // Non-void signatures never bare-return; leave the line so the
+            // artifact fails visibly at build instead of silently lying.
+            InlineRetWrap::Plain | InlineRetWrap::Result => line.to_string(),
+        };
+    }
+    // R2 (F-742-R2-03): a2r lowers a bare `return` in a VOID body to
+    // `return None;` — void signatures still owe the status value there.
+    if trimmed == "return None;" {
+        return match mode {
+            InlineRetWrap::VoidResult => format!("{}return Ok(StatusCode::OK);", indent),
+            InlineRetWrap::VoidStatus => format!("{}return StatusCode::OK;", indent),
+            InlineRetWrap::ResultOption => {
+                format!("{}return Err(StatusCode::NOT_FOUND);", indent)
+            }
+            InlineRetWrap::Plain | InlineRetWrap::Result => line.to_string(),
+        };
+    }
+    let Some(value) = trimmed.strip_prefix("return ") else {
+        return line.to_string();
+    };
+    let value = value
+        .trim_end()
+        .strip_suffix(';')
+        .unwrap_or(value.trim_end());
+    if value.is_empty() {
+        return line.to_string();
+    }
+    match mode {
+        InlineRetWrap::VoidStatus | InlineRetWrap::VoidResult => line.to_string(),
+        InlineRetWrap::Plain => {
+            if value.starts_with("JsonResponse(") {
+                line.to_string()
+            } else {
+                format!("{}return JsonResponse({});", indent, value)
+            }
+        }
+        InlineRetWrap::Result | InlineRetWrap::ResultOption => {
+            if let Some(inner) = value.strip_prefix("Some(") {
+                if let Some(stripped) = inner.strip_suffix(')') {
+                    return format!("{}return Ok(JsonResponse({}));", indent, stripped);
+                }
+            }
+            if value == "None" {
+                return format!("{}return Err(StatusCode::NOT_FOUND);", indent);
+            }
+            if let Some(inner) = value.strip_prefix("JsonResponse(") {
+                if let Some(stripped) = inner.strip_suffix(')') {
+                    return format!("{}return Ok(JsonResponse({}));", indent, stripped);
+                }
+            }
+            // R2 (F-742-R2-03): a `?T` endpoint's plain return expression is
+            // Option-typed (a variable like `p`, not a Some/None spelling) —
+            // its Some/None-ness is a RUNTIME property. Classify by spelling
+            // only after exhausting the literal forms above; everything else
+            // maps through a match: Some→200, None→404.
+            if mode == InlineRetWrap::ResultOption {
+                return format!(
+                    "{}return match {} {{ Some(__opt_v) => Ok(JsonResponse(__opt_v)), None => Err(StatusCode::NOT_FOUND) }};",
+                    indent, value
+                );
+            }
+            format!("{}return Ok(JsonResponse({}));", indent, value)
+        }
+    }
+}
+
+fn matching_paren(source: &str, open: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+    for (index, byte) in bytes.iter().enumerate().skip(open) {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if *byte == b'\\' {
+                escaped = true;
+            } else if *byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match *byte {
+            b'"' => in_string = true,
+            b'(' => depth += 1,
+            b')' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(index);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn split_top_level_args(source: &str) -> Vec<&str> {
+    if source.trim().is_empty() {
+        return Vec::new();
+    }
+    let mut args = Vec::new();
+    let (mut parens, mut brackets, mut braces, mut angles) = (0usize, 0usize, 0usize, 0usize);
+    let mut in_string = false;
+    let mut escaped = false;
+    let mut start = 0usize;
+    for (index, byte) in source.as_bytes().iter().enumerate() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if *byte == b'\\' {
+                escaped = true;
+            } else if *byte == b'"' {
+                in_string = false;
+            }
+            continue;
+        }
+        match *byte {
+            b'"' => in_string = true,
+            b'(' => parens += 1,
+            b')' => parens = parens.saturating_sub(1),
+            b'[' => brackets += 1,
+            b']' => brackets = brackets.saturating_sub(1),
+            b'{' => braces += 1,
+            b'}' => braces = braces.saturating_sub(1),
+            // Plan 742 R5 (F-742-R5-01): a `<` only opens generic depth when
+            // it is GLUED to a type-position token (`Vec<NoteDocument>` —
+            // the emitter never spaces generics); a comparison operand
+            // (`1 < 2`, `a <= b`) has whitespace before the operator and
+            // must not swallow the argument comma. The closing side stays
+            // unconditional (saturating) — a comparison `>` can only appear
+            // where generic depth is already 0.
+            b'<' => {
+                let glued_to_ident = index > 0
+                    && (source.as_bytes()[index - 1].is_ascii_alphanumeric()
+                        || source.as_bytes()[index - 1] == b'_');
+                if glued_to_ident {
+                    angles += 1;
+                }
+            }
+            b'>' => angles = angles.saturating_sub(1),
+            b',' if parens == 0 && brackets == 0 && braces == 0 && angles == 0 => {
+                args.push(source[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    args.push(source[start..].trim());
+    args
+}
+
+fn db_string_param_signatures(db_source: &str) -> std::collections::HashMap<String, Vec<bool>> {
+    let mut signatures = std::collections::HashMap::new();
+    for line in db_source.lines() {
+        let Some(decl) = line.trim().strip_prefix("pub fn ") else {
+            continue;
+        };
+        let Some(open_rel) = decl.find('(') else {
+            continue;
+        };
+        let Some(close_rel) = matching_paren(decl, open_rel) else {
+            continue;
+        };
+        let name = decl[..open_rel]
+            .trim()
+            .split('<')
+            .next()
+            .unwrap_or("")
+            .trim();
+        let params = split_top_level_args(&decl[open_rel + 1..close_rel]);
+        let string_params = params
+            .iter()
+            .map(|param| {
+                param
+                    .split_once(':')
+                    .map(|(_, ty)| ty.contains("&str") || ty.contains("&[String]"))
+                    .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+        signatures.insert(name.to_string(), string_params);
+    }
+    signatures
+}
+
+/// Plan 742 R1 (F-742-R1-02): lower `mod.fn(` dot-calls in ONE transpiled
+/// body line to `crate::mod::fn(`. Qualification runs per endpoint body with
+/// that body's local names in hand (a local named like a module shadows it),
+/// and only call-shaped occurrences in code regions qualify — same-spelling
+/// business strings (`"repository.filename"`), comment text and field/method
+/// positions (`x.db.get()`) survive verbatim. `referenced` accumulates the
+/// modules needing a `use crate::<mod>;` header import.
+fn qualify_module_dot_calls(
+    line: &str,
+    modules: &[String],
+    locals: &std::collections::HashSet<String>,
+    referenced: &mut Vec<String>,
+) -> String {
+    if !modules
+        .iter()
+        .filter(|m| !locals.contains(*m))
+        .any(|m| line.contains(&format!("{}.", m)))
+    {
+        return line.to_string();
+    }
+    let mask = auto_lang_core::trans::rust::RustTrans::code_region_mask(line);
+    let bytes = line.as_bytes();
+    let mut out = String::with_capacity(line.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let mut matched = false;
+        for m in modules {
+            if locals.contains(m) {
+                continue;
+            }
+            let dot_call = format!("{}.", m);
+            if mask[i]
+                && line[i..].starts_with(&dot_call)
+                && (i == 0
+                    || (!bytes[i - 1].is_ascii_alphanumeric()
+                        && bytes[i - 1] != b'_'
+                        && bytes[i - 1] != b'.'))
+                && module_call_shape_at(line, &mask, i + dot_call.len())
+            {
+                out.push_str(&format!("crate::{}::", m));
+                if !referenced.iter().any(|r| r == m) {
+                    referenced.push(m.clone());
+                }
+                i += dot_call.len();
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            let ch = line[i..].chars().next().unwrap_or(' ');
+            out.push(ch);
+            i += ch.len_utf8();
+        }
+    }
+    out
+}
+
+/// `mod.` at `start` is a real module call only when an identifier followed
+/// by `(` appears in code regions (whitespace tolerated) —
+/// `repository.list_notes(` qualifies; the string `"repository.filename"`
+/// and `x.repository.field` never do.
+fn module_call_shape_at(line: &str, mask: &[bool], start: usize) -> bool {
+    let bytes = line.as_bytes();
+    let mut i = start;
+    let ident_start = i;
+    while i < bytes.len() && mask[i] && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+        i += 1;
+    }
+    if i == ident_start {
+        return false;
+    }
+    while i < bytes.len() && mask[i] && (bytes[i] == b' ' || bytes[i] == 9) {
+        i += 1;
+    }
+    i < bytes.len() && mask[i] && bytes[i] == b'('
+}
+/// Plan 742 R2 (F-742-R2-02): per-body scope state for module-call
+/// qualification. Bindings shadow module names only within their actual
+/// block visibility: a sub-block `var repository str` must NOT disable
+/// qualification for outer calls that lexically precede it (r1's flattened
+/// whole-body name set did exactly that, E0423), and the shadow must lapse
+/// once the block closes. Frame [0] carries the endpoint params; each
+/// code-region `{` pushes a frame, `}` pops (floor: params frame).
+struct BodyQualifyScope {
+    frames: Vec<std::collections::HashSet<String>>,
+}
+
+impl BodyQualifyScope {
+    fn new(param_names: &[String]) -> Self {
+        Self {
+            frames: vec![param_names.iter().cloned().collect()],
+        }
+    }
+
+    fn visible(&self) -> std::collections::HashSet<String> {
+        self.frames.iter().flatten().cloned().collect()
+    }
+
+    /// Qualify one emitted body line, then apply its scope effects.
+    /// Returns the line plus the frame depth at line start — a `return` at
+    /// depth 1 (function body top level) is the only kind that covers the
+    /// fallthrough for tail synthesis.
+    fn qualify_line(
+        &mut self,
+        line: &str,
+        modules: &[String],
+        referenced: &mut Vec<String>,
+    ) -> (String, usize) {
+        let depth_at_start = self.frames.len();
+        let out = qualify_module_dot_calls(line, modules, &self.visible(), referenced);
+        let mask = auto_lang_core::trans::rust::RustTrans::code_region_mask(line);
+        let bytes = line.as_bytes();
+        let t = line.trim_start();
+        // Head bindings: plain `let` joins the current frame; `for NAME` /
+        // `if let Some(NAME)` belong to the frame the trailing `{` opens
+        // (the brace walk below pushes that block frame first).
+        let mut plain_let: Option<String> = None;
+        let mut block_binding: Option<String> = None;
+        if let Some(rest) = t.strip_prefix("let ") {
+            let rest = rest.strip_prefix("mut ").unwrap_or(rest);
+            let n = take_ascii_ident(rest);
+            if !n.is_empty() {
+                plain_let = Some(n);
+            }
+        } else if let Some(rest) = t.strip_prefix("for ") {
+            let n = take_ascii_ident(rest);
+            if !n.is_empty() {
+                block_binding = Some(n);
+            }
+        } else if let Some(rest) = t.strip_prefix("if let Some(") {
+            let n = take_ascii_ident(rest);
+            if !n.is_empty() {
+                block_binding = Some(n);
+            }
+        }
+        for i in 0..bytes.len() {
+            if !mask[i] {
+                continue;
+            }
+            match bytes[i] {
+                b'{' => self.frames.push(Default::default()),
+                b'}' => {
+                    if self.frames.len() > 1 {
+                        self.frames.pop();
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(n) = plain_let {
+            self.frames.last_mut().unwrap().insert(n);
+        }
+        if let Some(n) = block_binding {
+            self.frames.last_mut().unwrap().insert(n);
+        }
+        (out, depth_at_start)
+    }
+}
+
+fn take_ascii_ident(rest: &str) -> String {
+    rest.chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+        .collect()
+}
+
+fn borrow_string_db_call_args(api_source: &str, db_source: &str) -> String {
+    borrow_string_module_call_args(api_source, db_source, "crate::db::")
+}
+
+/// Plan 742: marker-generalized form of [[borrow_string_db_call_args]] —
+/// companion modules (repository) have the same `&str`-param shape as db.rs,
+/// and handler bodies that call them directly need the same borrow fixup.
+/// Plan 742 R2 (F-742-R2-01): the marker must land on a real call site — a
+/// code-region position followed by an identifier and `(`. A business string
+/// spelling the marker (`"crate::repository::take(value)"`) is literal text
+/// and must survive byte-for-byte; the r1 whole-text `find(marker)` rewrote
+/// it into `take(&value)` while generation still reported Ok.
+fn borrow_string_module_call_args(api_source: &str, module_source: &str, marker: &str) -> String {
+    let signatures = db_string_param_signatures(module_source);
+    if signatures.is_empty() {
+        return api_source.to_string();
+    }
+    borrow_pass(api_source, &signatures, marker)
+}
+
+/// Plan 742 R3 (F-742-R3-02): the borrow worker, separated so call
+/// ARGUMENTS recurse — `outer(measure(s))` copies the outer arg text
+/// wholesale and then jumps past the whole call, so the inner module call
+/// never got its own &str fixup (E0308 at real compile). Each argument is
+/// re-processed before the outer-level & insertion, preserving evaluation
+/// order, already-borrowed args, and the real signatures at every level.
+fn borrow_pass(
+    api_source: &str,
+    signatures: &std::collections::HashMap<String, Vec<bool>>,
+    marker: &str,
+) -> String {
+    let mask = code_region_mask_text(api_source);
+    let mut out = String::with_capacity(api_source.len());
+    let mut cursor = 0usize;
+    while let Some(rel) = api_source[cursor..].find(marker) {
+        let start = cursor + rel;
+        let name_start = start + marker.len();
+        let call_shape = mask[start]
+            && (start == 0
+                || !(api_source.as_bytes()[start - 1].is_ascii_alphanumeric()
+                    || api_source.as_bytes()[start - 1] == b'_'
+                    || api_source.as_bytes()[start - 1] == b':'))
+            && module_call_shape_at(api_source, &mask, name_start);
+        if !call_shape {
+            // Literal/comment occurrence — copy through verbatim.
+            out.push_str(&api_source[cursor..name_start]);
+            cursor = name_start;
+            continue;
+        }
+        let name_end = name_start
+            + api_source[name_start..]
+                .bytes()
+                .take_while(|b| b.is_ascii_alphanumeric() || *b == b'_')
+                .count();
+        let name = &api_source[name_start..name_end];
+        let Some(expected) = signatures.get(name) else {
+            out.push_str(&api_source[cursor..name_end]);
+            cursor = name_end;
+            continue;
+        };
+        let open = api_source[name_end..]
+            .find('(')
+            .map(|i| name_end + i)
+            .filter(|i| api_source[name_end..*i].trim().is_empty());
+        let Some(open) = open else {
+            out.push_str(&api_source[cursor..name_end]);
+            cursor = name_end;
+            continue;
+        };
+        let Some(close) = matching_paren(api_source, open) else {
+            out.push_str(&api_source[cursor..open + 1]);
+            cursor = open + 1;
+            continue;
+        };
+        let args = split_top_level_args(&api_source[open + 1..close]);
+        out.push_str(&api_source[cursor..open + 1]);
+        for (index, arg) in args.iter().enumerate() {
+            if index > 0 {
+                out.push_str(", ");
+            }
+            // Nested module calls inside this argument get their own fixup
+            // first (any depth), then the outer-level & applies.
+            let arg = borrow_pass(arg, signatures, marker);
+            if expected.get(index).copied().unwrap_or(false) && !arg.starts_with('&') {
+                out.push('&');
+            }
+            out.push_str(&arg);
+        }
+        out.push(')');
+        cursor = close + 1;
+    }
+    out.push_str(&api_source[cursor..]);
+    out
+}
+
+/// Plan B1(b): request-metadata JSON builder emitted into generated api.rs.
+/// Mirrors the VM server's push_meta format byte-for-byte so bearer_token /
+/// cookie readers behave identically on both backends.
+const META_JSON_HELPER: &str = r#"fn meta_json(headers: &axum::http::HeaderMap) -> String {
+    let cookie_header = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let cookies = if cookie_header.is_empty() {
+        "{}".to_string()
+    } else {
+        let pairs: Vec<String> = cookie_header
+            .split(';')
+            .filter_map(|pair| {
+                let pair = pair.trim();
+                let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                Some(format!(
+                    "\"{}\":\"{}\"",
+                    k.trim().replace('"', "\\\""),
+                    v.trim().replace('"', "\\\"")
+                ))
+            })
+            .collect();
+        format!("{{{}}}", pairs.join(","))
+    };
+    let auth = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .replace('"', "\\\"");
+    format!("{{\"cookies\":{},\"auth\":\"{}\"}}", cookies, auth)
+}"#;
+
+const META_BEARER_TOKEN_HELPER: &str = r#"fn auto_bearer_token(meta: &str) -> String {
+    let marker = "Bearer ";
+    let Some(start) = meta.find(marker).map(|i| i + marker.len()) else { return String::new(); };
+    meta[start..].split('"').next().unwrap_or("").to_string()
+}"#;
+
+// Plan 617 T-05: local media file service routes. Deliberately mirrors the
+// `auto_media` precedent above (a hand-written route emitted by the generator),
+// but streams from the filesystem instead of serving the image rendition
+// registry. The index is built once per process via std's OnceLock — no extra
+// dependency — and the byte-range window is streamed through tokio-util so a
+// multi-GB file is never read into memory.
+const MEDIA_SERVICE_HANDLERS: &str = r#"fn media_plain(status: u16, msg: String) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(status)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(axum::body::Body::from(msg))
+        .expect("media plain response is valid")
+}
+
+fn media_json_str(s: &str) -> String {
+    let mut o = String::with_capacity(s.len() + 2);
+    o.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            '\r' => o.push_str("\\r"),
+            '\t' => o.push_str("\\t"),
+            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
+}
+
+static MEDIA_INDEX: std::sync::OnceLock<auto_media_core::media_service::MediaIndex> =
+    std::sync::OnceLock::new();
+
+fn media_index() -> Option<&'static auto_media_core::media_service::MediaIndex> {
+    let root = auto_media_core::media_service::resolve_root(None)?;
+    Some(MEDIA_INDEX.get_or_init(|| {
+        auto_media_core::media_service::index_directory(&root).unwrap_or_default()
+    }))
+}
+
+async fn auto_media_scan() -> axum::response::Response {
+    // PLAN-617 T-10: 三态如实回传 —— 根目录未配置 / 已配置但不存在 /
+    // 正常。`root_missing` 让前端能把「目录不存在」与「目录为空」分开说；
+    // 绝对路径本身不出后端（SD-02 安全边界）。
+    let Some(root) = auto_media_core::media_service::resolve_root(None) else {
+        // No configured root is an honest empty list, not a 500.
+        return axum::response::Response::builder()
+            .status(200)
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from("{\"entries\":[],\"root_missing\":false}"))
+            .expect("media scan response is valid");
+    };
+    if !root.exists() {
+        return axum::response::Response::builder()
+            .status(200)
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from("{\"entries\":[],\"root_missing\":true}"))
+            .expect("media scan response is valid");
+    }
+    let index = MEDIA_INDEX.get_or_init(|| {
+        auto_media_core::media_service::index_directory(&root).unwrap_or_default()
+    });
+    let mut out = String::from("{\"entries\":[");
+    for (i, e) in index.entries.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        let (artist, song_title) = auto_media_core::media_service::parse_artist_and_title(&e.name);
+        let album = if e.rel_dir.is_empty() {
+            "本地单曲".to_string()
+        } else {
+            e.rel_dir.clone()
+        };
+        let index_str = format!("{:02}", i + 1);
+        out.push_str(&format!(
+            "{{\"id\":{},\"index\":{},\"index_str\":{},\"title\":{},\"song_title\":{},\"artist\":{},\"album\":{},\"is_liked\":false,\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"url\":\"/api/media/stream/{}\",\"audio_url\":\"/api/media/stream/{}\",\"video_url\":\"/api/media/stream/{}\"}}",
+            media_json_str(&e.id),
+            i + 1,
+            media_json_str(&index_str),
+            media_json_str(auto_media_core::media_service::display_title(&e.name)),
+            media_json_str(&song_title),
+            media_json_str(&artist),
+            media_json_str(&album),
+            media_json_str(&e.name),
+            media_json_str(&e.rel_dir),
+            media_json_str(&e.relative_path),
+            media_json_str(&e.extension),
+            e.bytes,
+            media_json_str(&auto_media_core::media_service::human_size(e.bytes)),
+            &e.id,
+            &e.id,
+            &e.id
+        ));
+    }
+    out.push_str("],\"root_missing\":false}");
+    axum::response::Response::builder()
+        .status(200)
+        .header("Content-Type", "application/json")
+        .body(axum::body::Body::from(out))
+        .expect("media scan response is valid")
+}
+
+async fn auto_media_stream(
+    axum::extract::Path(id): axum::extract::Path<String>,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    use auto_media_core::media_service as ms;
+    use tokio::io::{AsyncReadExt, AsyncSeekExt};
+
+    let Some(index) = media_index() else {
+        return media_plain(503, "no media root configured".to_string());
+    };
+    let Some(entry) = ms::find(index, &id) else {
+        return media_plain(404, "unknown media id".to_string());
+    };
+    // Re-join under the index root: the caller only ever supplied a token.
+    let Some(root) = auto_media_core::media_service::resolve_root(None) else {
+        return media_plain(503, "no media root configured".to_string());
+    };
+    let path = ms::entry_path(&root, entry);
+    let Ok(meta) = tokio::fs::metadata(&path).await else {
+        return media_plain(404, "media file missing".to_string());
+    };
+    let len = meta.len();
+    let range = headers
+        .get(axum::http::header::RANGE)
+        .and_then(|v| v.to_str().ok());
+    let plan = ms::parse_range(range, len);
+
+    if plan == ms::StreamPlan::Unsatisfiable {
+        return axum::response::Response::builder()
+            .status(416)
+            .header("Content-Range", format!("bytes */{}", len))
+            .header("Content-Length", "0")
+            .body(axum::body::Body::empty())
+            .expect("media 416 response is valid");
+    }
+
+    let (start, end) = match &plan {
+        ms::StreamPlan::Full => (0u64, len.saturating_sub(1)),
+        ms::StreamPlan::Partial { start, end } => (*start, *end),
+        ms::StreamPlan::Unsatisfiable => unreachable!("handled above"),
+    };
+
+    let mut file = match tokio::fs::File::open(&path).await {
+        Ok(f) => f,
+        Err(_) => return media_plain(404, "media file unreadable".to_string()),
+    };
+    if start > 0 && file.seek(std::io::SeekFrom::Start(start)).await.is_err() {
+        return media_plain(500, "seek failed".to_string());
+    }
+    // Bounded chunks: the whole (possibly multi-GB) file is never resident.
+    let window = file.take(end - start + 1);
+    let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::with_capacity(
+        window,
+        256 * 1024,
+    ));
+
+    let mut builder = axum::response::Response::builder()
+        .status(plan.status())
+        .header("Content-Type", ms::content_type(&entry.extension))
+        .header("Accept-Ranges", "bytes")
+        .header("Content-Length", (end - start + 1).to_string());
+    if let ms::StreamPlan::Partial { start: s, end: e } = plan {
+        builder = builder.header("Content-Range", ms::content_range(s, e, len));
+    }
+    builder.body(body).expect("media stream response is valid")
+}
+"#;
+
+// PLAN-043 Part 1: local photo file service routes (029-photo-gallery).
+// Mirrors MEDIA_SERVICE_HANDLERS: hand-written routes emitted by the
+// generator, answering /api/photos/scan + /api/photos/thumb/:id +
+// /api/photos/full/:id from the filesystem via auto_lang::ui::photo_service.
+// Thumbnails render on demand behind a disk cache; originals stream through
+// tokio-util so a multi-GB panorama is never read whole. Scan URLs are
+// absolute (AUTO_HTTP_BASE inherited from `auto run`) because VM-native
+// image srcs are not URL-prefixed the way Http. call lines are.
+const PHOTO_SERVICE_HANDLERS: &str = r#"fn photo_plain(status: u16, msg: String) -> axum::response::Response {
+    axum::response::Response::builder()
+        .status(status)
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(axum::body::Body::from(msg))
+        .expect("photo plain response is valid")
+}
+
+fn photo_json_str(s: &str) -> String {
+    let mut o = String::with_capacity(s.len() + 2);
+    o.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => o.push_str("\\\""),
+            '\\' => o.push_str("\\\\"),
+            '\n' => o.push_str("\\n"),
+            '\r' => o.push_str("\\r"),
+            '\t' => o.push_str("\\t"),
+            c if (c as u32) < 0x20 => o.push_str(&format!("\\u{:04x}", c as u32)),
+            c => o.push(c),
+        }
+    }
+    o.push('"');
+    o
+}
+
+/// Absolute base for scan URLs: AUTO_HTTP_BASE inherited from `auto run`
+/// (points at this backend's own origin); falls back to the bound port.
+fn photo_base() -> String {
+    if let Ok(base) = std::env::var("AUTO_HTTP_BASE") {
+        let base = base.trim().trim_end_matches('/').to_string();
+        if !base.is_empty() {
+            return base;
+        }
+    }
+    let port = std::env::var("AUTO_HTTP_PORT").ok().and_then(|p| p.trim().parse::<u16>().ok()).unwrap_or(8080);
+    format!("http://127.0.0.1:{}", port)
+}
+
+async fn auto_photos_scan(
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Response {
+    use auto_lang::ui::photo_service as ps;
+    // 非递归浏览模型：`?dir=<相对路径>`（缺省根目录）；非法段 400。
+    let dir = params.get("dir").cloned().unwrap_or_default();
+    let Some(root) = ps::resolve_root(None) else {
+        return axum::response::Response::builder()
+            .status(200)
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from("{\"dir\":\"\",\"entries\":[],\"dirs\":[],\"root_missing\":false}"))
+            .expect("photo scan response is valid");
+    };
+    if !root.exists() {
+        return axum::response::Response::builder()
+            .status(200)
+            .header("Content-Type", "application/json")
+            .body(axum::body::Body::from("{\"dir\":\"\",\"entries\":[],\"dirs\":[],\"root_missing\":true}"))
+            .expect("photo scan response is valid");
+    }
+    let listing = match ps::list_directory(&root, &dir) {
+        Ok(l) => l,
+        Err(_) => return photo_plain(400, "illegal dir segment".to_string()),
+    };
+    let base = photo_base();
+    let mut out = String::from("{\"dir\":");
+    out.push_str(&photo_json_str(&listing.dir_rel));
+    out.push_str(",\"entries\":[");
+    for (i, e) in listing.images.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"id\":{},\"index\":{},\"title\":{},\"name\":{},\"rel_dir\":{},\"relative_path\":{},\"extension\":{},\"bytes\":{},\"size_str\":{},\"width\":{},\"height\":{},\"date\":{},\"sort_key\":{},\"thumb_url\":\"{}/api/photos/thumb/{}\",\"full_url\":\"{}/api/photos/full/{}\"}}",
+            photo_json_str(&e.id),
+            i + 1,
+            photo_json_str(ps::display_title(&e.name)),
+            photo_json_str(&e.name),
+            photo_json_str(&e.rel_dir),
+            photo_json_str(&e.relative_path),
+            photo_json_str(&e.extension),
+            e.bytes,
+            photo_json_str(&ps::human_size(e.bytes)),
+            e.width,
+            e.height,
+            photo_json_str(&ps::date_label(e.mtime)),
+            e.mtime,
+            base,
+            &e.id,
+            base,
+            &e.id,
+        ));
+    }
+    out.push_str("],\"dirs\":[");
+    for (i, d) in listing.dirs.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        out.push_str(&format!(
+            "{{\"name\":{},\"rel_path\":{},\"image_count\":{}}}",
+            photo_json_str(&d.name),
+            photo_json_str(&d.rel_path),
+            d.image_count,
+        ));
+    }
+    out.push_str("],\"root_missing\":false}");
+    axum::response::Response::builder()
+        .status(200)
+        .header("Content-Type", "application/json")
+        .body(axum::body::Body::from(out))
+        .expect("photo scan response is valid")
+}
+
+/// token 反查公共臂（生成后端形态：注册表按 root 分桶，miss → None）。
+fn photo_entry_for(id: &str) -> Option<auto_lang::ui::photo_service::PhotoEntry> {
+    let root = auto_lang::ui::photo_service::resolve_root(None)?;
+    let rel = auto_lang::ui::photo_service::resolve_token(&root, id)?;
+    auto_lang::ui::photo_service::photo_from_rel(&root, &rel)
+}
+
+async fn auto_photos_thumb(
+    axum::extract::Path(id): axum::extract::Path<String>,
+    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+) -> axum::response::Response {
+    use auto_lang::ui::photo_service as ps;
+    let width = params.get("w").and_then(|v| v.parse::<u32>().ok()).unwrap_or(260);
+    let Some(entry) = photo_entry_for(&id) else {
+        return photo_plain(404, "unknown photo id".to_string());
+    };
+    let Some(root) = ps::resolve_root(None) else {
+        return photo_plain(503, "no photo root configured".to_string());
+    };
+    // Sync render behind a disk cache: worst case is one bounded decode of a
+    // single photo (~tens of ms for phone JPEGs) — no spawn_blocking needed.
+    match ps::render_thumbnail(&root, &entry, width) {
+        Ok(bytes) => axum::response::Response::builder()
+            .status(200)
+            .header("Content-Type", "image/jpeg")
+            .header("Cache-Control", "no-store")
+            .body(axum::body::Body::from(bytes))
+            .expect("photo thumb response is valid"),
+        Err(e) => photo_plain(500, e),
+    }
+}
+
+async fn auto_photos_full(
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> axum::response::Response {
+    use auto_lang::ui::photo_service as ps;
+    use tokio::io::AsyncReadExt;
+    let Some(entry) = photo_entry_for(&id) else {
+        return photo_plain(404, "unknown photo id".to_string());
+    };
+    let Some(root) = ps::resolve_root(None) else {
+        return photo_plain(503, "no photo root configured".to_string());
+    };
+    let path = ps::rel_to_path(&root, &entry.relative_path);
+    let Ok(file) = tokio::fs::File::open(&path).await else {
+        return photo_plain(404, "photo file missing".to_string());
+    };
+    let len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+    let body = axum::body::Body::from_stream(tokio_util::io::ReaderStream::with_capacity(
+        file.take(len),
+        256 * 1024,
+    ));
+    axum::response::Response::builder()
+        .status(200)
+        .header("Content-Type", ps::content_type(&entry.extension))
+        .header("Content-Length", len.to_string())
+        .header("Cache-Control", "no-store")
+        .body(body)
+        .expect("photo full response is valid")
+}
+"#;
+
+const MEDIA_HTTP_HANDLER: &str = r#"async fn auto_media(
+    method: axum::http::Method,
+    uri: axum::http::Uri,
+    headers: axum::http::HeaderMap,
+) -> axum::response::Response {
+    let mut response = auto_media_core::image_pipeline::media_http_response(
+        auto_media_core::image_pipeline::global_media_registry(),
+        method.as_str(),
+        uri.path(),
+        headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
+    );
+    // A freshly queued rendition is expected to be pending for a short time.
+    // Give the bounded worker a small grace window so browser <img> loads do
+    // not turn a transient 503 into a terminal error callback.
+    if response.status == 503 {
+        tokio::time::sleep(std::time::Duration::from_millis(120)).await;
+        response = auto_media_core::image_pipeline::media_http_response(
+            auto_media_core::image_pipeline::global_media_registry(),
+            method.as_str(),
+            uri.path(),
+            headers.get(axum::http::header::IF_NONE_MATCH).and_then(|value| value.to_str().ok()),
+        );
+    }
+    let mut builder = axum::response::Response::builder().status(response.status);
+    for (name, value) in response.headers {
+        builder = builder.header(name, value);
+    }
+    builder
+        .body(axum::body::Body::from(response.body.map(|bytes| bytes.to_vec()).unwrap_or_default()))
+        .expect("media response is valid")
+}"#;
+
+/// PLAN-681 T-02: emit delegating handlers for the covered scalar endpoints.
+/// Extracted verbatim from the PLAN-013 T2 db branch — `gate` decides which
+/// endpoints are covered (db: fn-name set; route A: all), `target` is the
+/// delegation module (`db` | `api_impl`). Uncovered endpoints (db branch
+/// only) keep the skeleton TODO stub.
+fn push_delegating_scalar_handlers(
+    lines: &mut Vec<String>,
+    api_module: &auto_lang_core::api::ApiModule,
+    gate: &dyn Fn(&str) -> bool,
+    target: &str,
+) {
+    // PLAN-653 T-01: GET/DELETE 带参读走 Query 提取,复用主类型
+    // 路径的 {Fn}Query-struct 机制(endpoint_query_params 一族)。
+    // 此前无差别发 `Json` 提取器,axum 对无 body 的 GET 一律
+    // 400("Expected request with Content-Type: application/json",
+    // auto-term vue 轨 tab-id-at 族实测),前端轮询链路整体中断。
+    for endpoint in &api_module.endpoints {
+        if !gate(&endpoint.fn_name) {
+            continue;
+        }
+        let query_params = endpoint_query_params(endpoint);
+        if query_params.is_empty() {
+            continue;
+        }
+        let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
+        lines.push("".to_string());
+        lines.push("#[derive(serde::Deserialize, Default)]".to_string());
+        lines.push("#[serde(default)]".to_string());
+        lines.push(format!("pub struct {} {{", struct_name));
+        for param in &query_params {
+            let rust_type = auto_type_to_rust(&param.ty);
+            lines.push(format!("    pub {}: {},", param.name, rust_type));
+        }
+        lines.push("}".to_string());
+    }
+    for endpoint in &api_module.endpoints {
+        lines.push("".to_string());
+        if !gate(&endpoint.fn_name) {
+            lines.push(format!("pub async fn {}() {{", endpoint.fn_name));
+            lines.push("    // TODO: Implement".to_string());
+            lines.push("}".to_string());
+            continue;
+        }
+        let query_params = endpoint_query_params(endpoint);
+        let body_params = endpoint_body_params(endpoint);
+        let (sig, call_args) = if !query_params.is_empty() {
+            let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
+            (
+                format!("Query(query): Query<{}>", struct_name),
+                query_params
+                    .iter()
+                    .map(|p| {
+                        if p.ty.contains("str") {
+                            format!("&query.{}", p.name)
+                        } else {
+                            format!("query.{}", p.name)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        } else if !body_params.is_empty() {
+            (
+                "Json(body): Json<serde_json::Value>".to_string(),
+                body_params
+                    .iter()
+                    .map(|p| {
+                        let get = if p.ty.contains("int") || p.ty.contains("i64") {
+                            format!("body[\"{}\"].as_i64().unwrap_or_default()", p.name)
+                        } else if p.ty.contains("bool") {
+                            format!("body[\"{}\"].as_bool().unwrap_or_default()", p.name)
+                        } else {
+                            format!("body[\"{}\"].as_str().unwrap_or_default()", p.name)
+                        };
+                        get
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        } else {
+            (String::new(), String::new())
+        };
+        let ret = endpoint.return_type.trim();
+        // PLAN-729 T-05 / 734 R1 F-1：委派路径（route A/db 覆盖）的文件端点——
+        // 同样生成真实文件 adapter（契约身份判定）。
+        if auto_lang_core::api::contract::ResponseKind::from_return_identity(ret, &api_module.types)
+            == auto_lang_core::api::contract::ResponseKind::File
+        {
+            // 路径参数：委派路径此前只覆盖 query/body——文件端点的典型
+            // 形态是 `:name` 路径参数，这里补 Path 提取（首个路径参数，
+            // 主路径同约定）。
+            let path_params = endpoint_path_params(endpoint);
+            let (path_sig, path_args) = match path_params.first() {
+                Some(p) => {
+                    let rust_type = auto_type_to_rust(&p.ty);
+                    let call = if rust_type == "String" {
+                        format!("&{}", p.name)
+                    } else {
+                        p.name.clone()
+                    };
+                    (format!("Path({}): Path<{}>", p.name, rust_type), vec![call])
+                }
+                None => (String::new(), Vec::new()),
+            };
+            let mut file_sig =
+                "method: axum::http::Method, headers: axum::http::HeaderMap".to_string();
+            if !path_sig.is_empty() {
+                file_sig.push_str(", ");
+                file_sig.push_str(&path_sig);
+            }
+            if !sig.is_empty() {
+                file_sig.push_str(", ");
+                file_sig.push_str(&sig);
+            }
+            lines.push(format!(
+                "pub async fn {}({}) -> axum::response::Response {{",
+                endpoint.fn_name, file_sig
+            ));
+            if matches!(endpoint.method().as_str(), "GET" | "HEAD") {
+                let mut all_args = path_args;
+                if !call_args.is_empty() {
+                    all_args.push(call_args.clone());
+                }
+                lines.push(format!(
+                    "    let descriptor = crate::{}::{}({});",
+                    target,
+                    endpoint.fn_name,
+                    all_args.join(", ")
+                ));
+                lines.push("    __file_reply(descriptor, &method, &headers).await".to_string());
+            } else {
+                eprintln!(
+                    "  ⚠ PLAN-729 file endpoint `{} {}` ({}) uses {} — file endpoints support GET/HEAD only; emitting 405",
+                    endpoint.method(),
+                    endpoint.path(),
+                    endpoint.fn_name,
+                    endpoint.method()
+                );
+                lines.push(
+                    "    file_response_reply_missing(\"file endpoints support GET/HEAD only\").await".to_string(),
+                );
+            }
+            lines.push("}".to_string());
+            continue;
+        }
+        let ret_clause = if ret == "void" || ret.is_empty() {
+            " -> axum::http::StatusCode".to_string()
+        } else if ret.contains("[]int") || ret.contains("List<int>") {
+            // PLAN-026 T-02: []int 数值面端点(Vec<i64>;先于
+            // 通用 [] 分支——其模板恒 Vec<String>,mux_tick_nums
+            // 实证 E0308)。
+            " -> JsonResponse<Vec<i64>>".to_string()
+        } else if ret.contains("[]") || ret.contains("List") {
+            " -> JsonResponse<Vec<String>>".to_string()
+        } else if ret.contains("bool") {
+            " -> JsonResponse<bool>".to_string()
+        } else if ret.contains("str") {
+            " -> JsonResponse<String>".to_string()
+        } else {
+            " -> JsonResponse<i64>".to_string()
+        };
+        lines.push(format!(
+            "pub async fn {}({}){} {{",
+            endpoint.fn_name, sig, ret_clause
+        ));
+        if ret == "void" || ret.is_empty() {
+            lines.push(format!(
+                "    crate::{}::{}({});",
+                target, endpoint.fn_name, call_args
+            ));
+            lines.push("    StatusCode::OK".to_string());
+        } else {
+            lines.push(format!(
+                "    JsonResponse(crate::{}::{}({}))",
+                target, endpoint.fn_name, call_args
+            ));
+        }
+        lines.push("}".to_string());
+    }
+}
+
+fn generate_api_rs(
+    api_module: &auto_lang_core::api::ApiModule,
+    db_fns: Option<&std::collections::HashSet<String>>,
+    api_impl_active: bool,
+    crate_modules: &[String],
+) -> String {
+    let db_active = db_fns.map(|s| !s.is_empty()).unwrap_or(false);
+    let mut lines = vec![
+        "use axum::{".to_string(),
+        "    extract::{Path, State, Json, Query},".to_string(),
+        "    http::StatusCode,".to_string(),
+        "    Json as JsonResponse,".to_string(),
+        "};".to_string(),
+        "use crate::types::*;".to_string(),
+        "use std::sync::{Arc, Mutex};".to_string(),
+        "".to_string(),
+    ];
+
+    // PLAN-729 T-05: 文件端点 glue——method/headers 提取 + 共享宿主 serve +
+    // 版本无关 FileReply → 本地 axum Response（生成 crate 的 axum 版本与
+    // auto-lang 不同也成立：FileReply 不含 axum 类型）。
+    // PLAN-734 T-04：契约分类（假同名不命中）。
+    if api_module
+        .endpoints
+        .iter()
+        .any(|e| e.response == auto_lang_core::api::contract::ResponseKind::File)
+    {
+        lines.extend(FILE_RESPONSE_GLUE.lines().map(|l| l.to_string()));
+        lines.push("".to_string());
+    }
+
+    // PLAN-730 T-06: 上传端点 glue——Request → UploadRequest + 收据回复。
+    // PLAN-734 T-04：类型身份判定（契约单源）。
+    if api_module.endpoints.iter().any(|e| {
+        e.params
+            .iter()
+            .any(|p| auto_lang_core::api::contract::is_upload_param(&p.ty))
+            || e.response == auto_lang_core::api::contract::ResponseKind::Upload
+    }) {
+        lines.extend(UPLOAD_GLUE.lines().map(|l| l.to_string()));
+        lines.push("".to_string());
+    }
+
+    // PLAN-734 T-04（SD-04）：AUTO_A2R_BODY=0 = 显式 scaffold 模式——模板桩
+    // 而非真实业务体；头部标注防冒充同源。
+    if std::env::var("AUTO_A2R_BODY")
+        .map(|v| v == "0")
+        .unwrap_or(false)
+    {
+        lines.insert(
+            0,
+            "// PLAN-734: SCAFFOLD MODE (AUTO_A2R_BODY=0) — handlers below are template stubs, NOT the api.at business bodies."
+                .to_string(),
+        );
+    }
+
+    // Determine primary type and generate Db type alias
+    let primary_type = match primary_type_name_pub(api_module) {
+        Some(t) => t,
+        None => {
+            // PLAN-013 T2: 标量服务型 API(无 primary 类型)但 db 覆盖 →
+            // 委托处理器(db.rs 真实现),不再落 TODO 骨架。
+            if db_active {
+                let fns = db_fns.unwrap();
+                lines.push("// db-covered scalar service endpoints (PLAN-013 T2)".to_string());
+                push_delegating_scalar_handlers(
+                    &mut lines,
+                    api_module,
+                    &|name| fns.contains(name),
+                    "db",
+                );
+                return lines.join(
+                    "
+",
+                );
+            }
+            // PLAN-681 T-02 (route A): scalar contract without db coverage —
+            // if api_impl.rs transpiled, every endpoint delegates to its real
+            // transpiled body (crate::api_impl::<fn>). Same extraction shapes
+            // as the db branch above (Query structs for GET-with-params, Json
+            // body for POST). The skeleton fallback below stays the last
+            // resort for contracts whose transpile failed.
+            if api_impl_active {
+                push_delegating_scalar_handlers(&mut lines, api_module, &|_| true, "api_impl");
+                return lines.join("\n");
+            }
+            // Fallback: generate skeleton handlers
+            lines.push("// No types defined, generating skeleton handlers".to_string());
+            for endpoint in &api_module.endpoints {
+                lines.push("".to_string());
+                lines.push(format!("pub async fn {}() {{", endpoint.fn_name));
+                lines.push("    // TODO: Implement".to_string());
+                lines.push("}".to_string());
+            }
+            return lines.join("\n");
+        }
+    };
+
+    lines.push(format!("pub type Db = Arc<Mutex<Vec<{}>>>;", primary_type));
+    lines.push("".to_string());
+
+    // Plan B1(b): meta_json helper — parity with the VM server's trailing
+    // `meta` arg ({"cookies":{…},"auth":"…"}). Emitted only when some
+    // endpoint declares the `meta str` server-injected param.
+    if api_module
+        .endpoints
+        .iter()
+        .any(|e| e.params.iter().any(|p| is_meta_param(p)))
+    {
+        lines.push(META_JSON_HELPER.to_string());
+        lines.push(META_BEARER_TOKEN_HELPER.to_string());
+        lines.push("".to_string());
+    }
+
+    // Generate CreateInput struct(s) for POST endpoints with body fields.
+    // Plan 399 Phase 12: each unique body-param set gets its own struct (was:
+    // only one CreateInput per primary type, so a void POST like set_typing
+    // with different params than the create POST got the wrong struct → 422).
+    // Mirrors the UpdateInput dedup logic below.
+    let mut seen_create_sets: Vec<String> = Vec::new();
+    let mut create_struct_for_sig: Vec<(String, String)> = Vec::new(); // (param_sig, struct_name)
+    for endpoint in &api_module.endpoints {
+        if endpoint.method() == "POST" {
+            let body_params = endpoint_body_params(endpoint);
+            if !body_params.is_empty() {
+                let param_sig: String = body_params
+                    .iter()
+                    .map(|p| format!("{}:{}", p.name, p.ty))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                if seen_create_sets.contains(&param_sig) {
+                    continue;
+                }
+                seen_create_sets.push(param_sig.clone());
+                let ep_fn_name = &endpoint.fn_name;
+                let struct_name = if seen_create_sets.len() == 1 {
+                    format!("Create{}Input", primary_type)
+                } else {
+                    let suffix: String = ep_fn_name
+                        .split('_')
+                        .map(|s| {
+                            let mut c = s.chars();
+                            match c.next() {
+                                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                None => String::new(),
+                            }
+                        })
+                        .collect::<String>();
+                    format!("Create{}{}Input", primary_type, suffix)
+                };
+                create_struct_for_sig.push((param_sig, struct_name.clone()));
+                lines.push("#[derive(serde::Deserialize)]".to_string());
+                lines.push(format!("pub struct {} {{", struct_name));
+                for param in &body_params {
+                    let rust_type = auto_type_to_rust(&param.ty);
+                    lines.push(format!("    pub {}: {},", param.name, rust_type));
+                }
+                lines.push("}".to_string());
+                lines.push("".to_string());
+            }
+        }
+    }
+
+    // Generate UpdateInput structs for PUT/PATCH endpoints with body fields.
+    // Each unique set of body params gets its own struct.
+    let mut seen_param_sets: Vec<String> = Vec::new();
+    for endpoint in &api_module.endpoints {
+        let method = endpoint.method();
+        let ep_fn_name = &endpoint.fn_name;
+        if method == "PUT" || method == "PATCH" {
+            let body_params = endpoint_body_params(endpoint);
+            if !body_params.is_empty() {
+                // Create a signature for this param set
+                let param_sig: String = body_params
+                    .iter()
+                    .map(|p| format!("{}:{}", p.name, p.ty))
+                    .collect::<Vec<_>>()
+                    .join(",");
+                if seen_param_sets.contains(&param_sig) {
+                    continue; // Skip duplicate
+                }
+                seen_param_sets.push(param_sig);
+
+                // Struct name: Update{Type}Input for first, Update{Type}{FnName}Input for others
+                let struct_name = if seen_param_sets.len() == 1 {
+                    format!("Update{}Input", primary_type)
+                } else {
+                    // PascalCase the fn_name suffix
+                    let suffix: String = ep_fn_name
+                        .split('_')
+                        .map(|s| {
+                            let mut c = s.chars();
+                            match c.next() {
+                                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                None => String::new(),
+                            }
+                        })
+                        .collect::<String>();
+                    format!("Update{}{}Input", primary_type, suffix)
+                };
+
+                lines.push("#[derive(serde::Deserialize)]".to_string());
+                lines.push(format!("pub struct {} {{", struct_name));
+                for param in &body_params {
+                    let rust_type = auto_type_to_rust(&param.ty);
+                    lines.push(format!("    pub {}: {},", param.name, rust_type));
+                }
+                lines.push("}".to_string());
+                lines.push("".to_string());
+            }
+        }
+    }
+
+    // Generate Query structs for GET/DELETE endpoints with query params
+    for endpoint in &api_module.endpoints {
+        let query_params = endpoint_query_params(endpoint);
+        if !query_params.is_empty() {
+            let struct_name = format!("{}Query", to_pascal_case(&endpoint.fn_name));
+            lines.push("#[derive(serde::Deserialize, Default)]".to_string());
+            lines.push("#[serde(default)]".to_string());
+            lines.push(format!("pub struct {} {{", struct_name));
+            for param in &query_params {
+                let rust_type = auto_type_to_rust(&param.ty);
+                lines.push(format!("    pub {}: {},", param.name, rust_type));
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+        }
+    }
+
+    // Get type field names for time detection
+    let type_fields: Vec<&str> = api_module
+        .types
+        .iter()
+        .find(|t| t.name == primary_type)
+        .map(|t| t.fields.iter().map(|f| f.name.as_str()).collect())
+        .unwrap_or_default();
+    let has_time_field = type_fields.contains(&"time");
+    // Convention: first field is the ID field
+    let id_field = type_fields.first().copied().unwrap_or("id");
+
+    // Plan musk-022: detect SSE for POST broadcast.
+    let has_sse = api_module
+        .endpoints
+        .iter()
+        .any(|e| e.return_type.contains("Stream<"));
+
+    // Plan 742 R1 (F-742-R1-02): modules whose dot-calls got qualified in an
+    // a2r inline body — each needs `use crate::<mod>;` in the header.
+    let mut referenced_modules: Vec<String> = Vec::new();
+
+    // Generate handler for each endpoint
+    for endpoint in &api_module.endpoints {
+        let method = endpoint.method();
+        let fn_name = &endpoint.fn_name;
+        let has_path = has_path_param(&endpoint.path());
+        // Plan 399 §6: SSE broadcast event name (was hardcoded "NewMessage").
+        let bcast_evt = broadcast_event_name(endpoint, &primary_type, &api_module.types);
+
+        // Plan musk-022: streaming endpoints get an SSE handler (Sse<impl Stream>),
+        // not a JSON CRUD handler. Subscribes to the events bus, emits each as SSE.
+        if endpoint.return_type.contains("Stream<") {
+            lines.push(format!(
+                "pub async fn {}() -> axum::response::Sse<impl futures::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>> {{",
+                fn_name
+            ));
+            lines.push("    let rx = crate::events::subscribe();".to_string());
+            lines.push("    let stream = async_stream::stream! {".to_string());
+            lines.push("        let mut rx = rx;".to_string());
+            lines.push("        while let Ok(json) = rx.recv().await {".to_string());
+            lines.push(
+                "            yield Ok(axum::response::sse::Event::default().data(json));"
+                    .to_string(),
+            );
+            lines.push("        }".to_string());
+            lines.push("    };".to_string());
+            lines.push("    axum::response::Sse::new(stream)".to_string());
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
+
+        // Plan 399 第 4-5 步: try to delegate this handler to a db.rs function.
+        // When db.rs is active and a matching fn is found, the handler calls
+        // `db::FN(...)` instead of locking `State<Db>` — state stays unified in
+        // db.rs's once_cell::Lazy globals.
+        let db_delegation = if db_active {
+            db_fns.and_then(|fns| resolve_db_call(endpoint, fns))
+        } else {
+            None
+        };
+        if db_active && db_delegation.is_none() {
+            // db.rs exists but no matching fn for this endpoint — must keep
+            // State<Db> as a fallback (mixed state). Warn so it's visible.
+            eprintln!(
+                "  ⚠ endpoint `{}` has no db.rs match; falling back to State<Db> template",
+                fn_name
+            );
+        }
+
+        // Build function parameters
+        let mut params = vec![];
+        if has_path {
+            let path_params = endpoint_path_params(endpoint);
+            if let Some(first) = path_params.first() {
+                let rust_type = auto_type_to_rust(&first.ty);
+                params.push(format!("Path({}): Path<{}>", first.name, rust_type));
+            }
+        }
+        // Only inject State<Db> when NOT delegating to db.rs.
+        if db_delegation.is_none() {
+            params.push("State(db): State<Db>".to_string());
+        }
+        // Query params for GET/DELETE with non-path params
+        let query_params = endpoint_query_params(endpoint);
+        let has_query = !query_params.is_empty();
+        if has_query {
+            let query_struct = format!("{}Query", to_pascal_case(fn_name));
+            params.push(format!("Query(query): Query<{}>", query_struct));
+        }
+        if endpoint_has_body(endpoint) {
+            if method == "POST" {
+                let body_params = endpoint_body_params(endpoint);
+                if !body_params.is_empty() {
+                    // Plan 399 Phase 12: pick the CreateInput struct matching this
+                    // endpoint's body-param signature (was: always Create{Type}Input).
+                    let param_sig: String = body_params
+                        .iter()
+                        .map(|p| format!("{}:{}", p.name, p.ty))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let struct_name = create_struct_for_sig
+                        .iter()
+                        .find(|(sig, _)| sig == &param_sig)
+                        .map(|(_, name)| name.clone())
+                        .unwrap_or_else(|| format!("Create{}Input", primary_type));
+                    params.push(format!("Json(input): Json<{}>", struct_name));
+                } else {
+                    params.push(format!("Json(input): Json<{}>", primary_type));
+                }
+            } else {
+                // PUT/PATCH uses per-endpoint Input struct if body params exist
+                let body_params = endpoint_body_params(endpoint);
+                if !body_params.is_empty() {
+                    // Find the matching struct name for this endpoint's params
+                    let param_sig: String = body_params
+                        .iter()
+                        .map(|p| format!("{}:{}", p.name, p.ty))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let struct_name = if seen_param_sets
+                        .first()
+                        .map(|s| s == &param_sig)
+                        .unwrap_or(false)
+                    {
+                        format!("Update{}Input", primary_type)
+                    } else {
+                        let suffix: String = fn_name
+                            .split('_')
+                            .map(|s| {
+                                let mut c = s.chars();
+                                match c.next() {
+                                    Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                                    None => String::new(),
+                                }
+                            })
+                            .collect::<String>();
+                        format!("Update{}{}Input", primary_type, suffix)
+                    };
+                    params.push(format!("Json(input): Json<{}>", struct_name));
+                } else {
+                    params.push(format!("Json(input): Json<{}>", primary_type));
+                }
+            }
+        }
+        // Plan B1(b): endpoints declaring the server-injected `meta str` param
+        // get a HeaderMap extractor (FromRequestParts — must precede Json).
+        // Only when the handler will actually consume meta: db delegation or
+        // an eligible a2r body. The CRUD template ignores it, so no extractor
+        // there (unused fn params would only add noise).
+        let has_meta = endpoint.params.iter().any(|p| is_meta_param(p));
+        let a2r_body_enabled = std::env::var("AUTO_A2R_BODY")
+            .map(|v| v != "0")
+            .unwrap_or(true);
+        let meta_binding_needed = has_meta
+            && (db_delegation.is_some()
+                || (a2r_body_enabled && !is_thin_delegation(endpoint) && endpoint.body.is_some()));
+        if meta_binding_needed {
+            let header_extractor = "headers: axum::http::HeaderMap".to_string();
+            if let Some(body_index) = params.iter().position(|param| param.starts_with("Json(")) {
+                params.insert(body_index, header_extractor);
+            } else {
+                params.push(header_extractor);
+            }
+        }
+
+        // PLAN-729 T-05 / 734 R1 F-1: 文件端点——返回 `FileResponse`/
+        // `Future<FileResponse>` 的 #[api] handler 生成真实文件 adapter
+        // （契约身份判定；不经 JsonResponse，转译失败 = 诊断 500）。
+        if endpoint.response == auto_lang_core::api::contract::ResponseKind::File {
+            // 文件端点仅 GET/HEAD：生成期诊断 + 405 handler（与 VM 腿同语义）。
+            if !matches!(method.as_str(), "GET" | "HEAD") {
+                eprintln!(
+                    "  ⚠ PLAN-729 file endpoint `{} {}` ({}) declares FileResponse but uses {} — file endpoints support GET/HEAD only; emitting 405",
+                    method, endpoint.path(), fn_name, method
+                );
+                lines.push(format!(
+                    "pub async fn {}(method: axum::http::Method, headers: axum::http::HeaderMap) -> axum::response::Response {{",
+                    fn_name
+                ));
+                lines.push("    axum::response::Response::builder()".to_string());
+                lines.push(
+                    "        .status(axum::http::StatusCode::METHOD_NOT_ALLOWED)".to_string(),
+                );
+                lines.push("        .header(\"allow\", \"GET, HEAD\")".to_string());
+                lines.push("        .header(\"content-type\", \"application/json\")".to_string());
+                lines.push("        .body(axum::body::Body::from(br#\"{\"error\":\"file endpoints support GET/HEAD only\"}\"#.to_vec()))".to_string());
+                lines.push("        .unwrap()".to_string());
+                lines.push("}".to_string());
+                lines.push("".to_string());
+                continue;
+            }
+            // method/headers 先于 body 提取器（FromRequestParts 序）。
+            let mh_extractors = [
+                "method: axum::http::Method".to_string(),
+                "headers: axum::http::HeaderMap".to_string(),
+            ];
+            if let Some(body_index) = params.iter().position(|param| param.starts_with("Json(")) {
+                for (offset, ext) in mh_extractors.iter().enumerate() {
+                    params.insert(body_index + offset, ext.clone());
+                }
+            } else {
+                params.extend(mh_extractors);
+            }
+            lines.push(format!(
+                "pub async fn {}({}) -> axum::response::Response {{",
+                fn_name,
+                params.join(", ")
+            ));
+            let body_src = endpoint
+                .body
+                .as_ref()
+                .and_then(|b| crate::api_gen::try_transpile_body(b, endpoint, api_module).ok());
+            match body_src {
+                Some(stmts) => {
+                    if has_meta {
+                        lines.push("    let meta: String = meta_json(&headers);".to_string());
+                    }
+                    append_inline_param_bindings(&mut lines, endpoint);
+                    // Plan 742 R2 (F-742-R2-04): file bodies call companion
+                    // modules too (`repository.path()`) — same scope-aware
+                    // qualification as the JSON loop; the retired whole-file
+                    // pass used to cover this entry point.
+                    let mut scope = BodyQualifyScope::new(
+                        &endpoint
+                            .params
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect::<Vec<_>>(),
+                    );
+                    let mut saw_tail_return = false;
+                    for source_line in &stmts {
+                        let line = rewrite_inline_runtime_names(source_line);
+                        let (line, depth_at_start) =
+                            scope.qualify_line(&line, crate_modules, &mut referenced_modules);
+                        let line = wrap_file_return(&line);
+                        if line.trim_start().starts_with("return") && depth_at_start == 1 {
+                            saw_tail_return = true;
+                        }
+                        lines.push(line);
+                    }
+                    // 体无尾 return（隐式返回）——按声明返回类型的契约缺口
+                    // 诊断（不静默 200）。R2 (F-742-R2-03)：分支内 return 不
+                    // 覆盖 fallthrough，只有顶层 return 才算数。
+                    if !saw_tail_return {
+                        lines.push(
+                            "    return file_response_reply_missing(\"file handler body has no return\").await;".to_string(),
+                        );
+                    }
+                }
+                None => {
+                    // 转译失败：诊断（不落模板）+ 500 handler。
+                    let detail = match endpoint.body.as_ref() {
+                        Some(b) => {
+                            match crate::api_gen::try_transpile_body(b, endpoint, api_module) {
+                                Err(e) => e,
+                                Ok(_) => "empty body".to_string(),
+                            }
+                        }
+                        None => "no body captured".to_string(),
+                    };
+                    eprintln!(
+                        "  ⚠ PLAN-729 file endpoint `{}` a2r body failed ({}); emitting diagnostic 500 (no template fallback)",
+                        fn_name, detail
+                    );
+                    lines.push(format!(
+                        "    return file_response_reply_missing({:?}).await;",
+                        format!(
+                            "api.at handler `{}` body failed to transpile: {}",
+                            fn_name, detail
+                        )
+                    ));
+                }
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
+
+        // PLAN-730 T-06: 上传端点——参数含 `UploadRequest` 的 #[api] handler
+        // 生成真实上传 adapter：body 提取器（Request）置最后、不预读；宿主
+        // executor 接收/提交单源（a2r_std facade → auto_lang 服务）；收据
+        // 映射真实 status + JSON。转译失败 = 诊断 500（不落 CRUD 模板）。
+        let upload_param = endpoint
+            .params
+            .iter()
+            .find(|p| auto_lang_core::api::contract::is_upload_param(&p.ty))
+            .cloned();
+        if let Some(up_param) = upload_param {
+            if !matches!(method.as_str(), "POST" | "PUT") {
+                eprintln!(
+                    "  ⚠ PLAN-730 upload endpoint `{} {}` ({}) declares UploadRequest but uses {} — uploads are POST/PUT only; emitting 405",
+                    method, endpoint.path(), fn_name, method
+                );
+                lines.push(format!(
+                    "pub async fn {}() -> axum::response::Response {{",
+                    fn_name
+                ));
+                lines.push("    axum::response::Response::builder()".to_string());
+                lines.push(
+                    "        .status(axum::http::StatusCode::METHOD_NOT_ALLOWED)".to_string(),
+                );
+                lines.push("        .header(\"allow\", \"POST, PUT\")".to_string());
+                lines.push("        .header(\"content-type\", \"application/json\")".to_string());
+                lines.push("        .body(axum::body::Body::from(br#\"{\\\"error\\\":\\\"upload endpoints support POST/PUT only\\\"}\"#.to_vec()))".to_string());
+                lines.push("        .unwrap()".to_string());
+                lines.push("}".to_string());
+                lines.push("".to_string());
+                continue;
+            }
+            // 提取器序：method/headers（FromRequestParts）→ path 参数 →
+            // Request（body 最后——axum 约定；不预读、不过早鉴权）。
+            let mut up_params: Vec<String> = vec![
+                "method: axum::http::Method".to_string(),
+                "headers: axum::http::HeaderMap".to_string(),
+            ];
+            for p in &endpoint.params {
+                if auto_lang_core::api::contract::is_upload_param(&p.ty) || is_meta_param(p) {
+                    continue;
+                }
+                if endpoint.path().contains(&format!(":{}", p.name)) {
+                    let ty = match p.ty.trim() {
+                        "int" | "i64" => "i64",
+                        "str" | "String" => "String",
+                        other => other,
+                    };
+                    up_params.push(format!("{}: axum::extract::Path<{}>", p.name, ty));
+                }
+            }
+            up_params.push("request: axum::extract::Request".to_string());
+            lines.push(format!(
+                "pub async fn {}({}) -> axum::response::Response {{",
+                fn_name,
+                up_params.join(", ")
+            ));
+            lines.push(format!(
+                "    let {}: a2r_std::http::UploadRequest = __upload_request(&method, &headers, request);",
+                up_param.name
+            ));
+            // PLAN-736 T-07：伴随 UploadRequest 的 path 参数以 Path<T> 提取器
+            // 形态入签；转译体裸引用参数名——在此解包（Path<String> → String，
+            // 与 729 文件臂 name.as_str() 同义），否则 upload_commit 等消费点
+            // E0277（deployment fixture 实测）。
+            for p in &endpoint.params {
+                if auto_lang_core::api::contract::is_upload_param(&p.ty) || is_meta_param(p) {
+                    continue;
+                }
+                if endpoint.path().contains(&format!(":{}", p.name)) {
+                    lines.push(format!("    let {n} = {n}.as_str();", n = p.name));
+                }
+            }
+            let body_src = endpoint
+                .body
+                .as_ref()
+                .and_then(|b| crate::api_gen::try_transpile_body(b, endpoint, api_module).ok());
+            match body_src {
+                Some(stmts) => {
+                    if has_meta {
+                        lines.push("    let meta: String = meta_json(&headers);".to_string());
+                    }
+                    append_inline_param_bindings(&mut lines, endpoint);
+                    // Plan 742 R2 (F-742-R2-04): upload bodies share the
+                    // scope-aware companion qualification (source-level wiring
+                    // this round; oracle coverage documented in the plan).
+                    let mut scope = BodyQualifyScope::new(
+                        &endpoint
+                            .params
+                            .iter()
+                            .map(|p| p.name.clone())
+                            .collect::<Vec<_>>(),
+                    );
+                    let mut saw_tail_return = false;
+                    for source_line in &stmts {
+                        let line = rewrite_inline_runtime_names(source_line);
+                        let (line, depth_at_start) =
+                            scope.qualify_line(&line, crate_modules, &mut referenced_modules);
+                        let line = wrap_upload_return(&line, &up_param.name);
+                        if line.trim_start().starts_with("return") && depth_at_start == 1 {
+                            saw_tail_return = true;
+                        }
+                        lines.push(line);
+                    }
+                    if !saw_tail_return {
+                        lines.push(
+                            "    return __upload_reply(a2r_std::http::upload_error(500, \"upload handler body has no return\"));".to_string(),
+                        );
+                    }
+                }
+                None => {
+                    let detail = match endpoint.body.as_ref() {
+                        Some(b) => {
+                            match crate::api_gen::try_transpile_body(b, endpoint, api_module) {
+                                Err(e) => e,
+                                Ok(_) => "empty body".to_string(),
+                            }
+                        }
+                        None => "no body captured".to_string(),
+                    };
+                    eprintln!(
+                        "  ⚠ PLAN-730 upload endpoint `{}` a2r body failed ({}); emitting diagnostic 500 (no template fallback)",
+                        fn_name, detail
+                    );
+                    lines.push(format!(
+                        "    return __upload_reply(a2r_std::http::upload_error(500, {:?}));",
+                        format!(
+                            "api.at handler `{}` body failed to transpile: {}",
+                            fn_name, detail
+                        )
+                    ));
+                }
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
+
+        // Determine return type
+        // Strip Option wrapper for endpoints that use Result<_, StatusCode> for 404
+        let raw_ret = auto_type_to_rust(&endpoint.return_type);
+        let is_void = raw_ret == "()" || raw_ret == "void";
+        // Wrap in Result if endpoint may return NOT_FOUND
+        let needs_result = has_path || matches!(method.as_str(), "DELETE" | "PUT");
+        // For Result-returning endpoints, strip Option<> since 404 is handled via Err
+        let json_inner = if needs_result {
+            raw_ret
+                .strip_prefix("Option<")
+                .and_then(|s| s.strip_suffix('>'))
+                .unwrap_or(&raw_ret)
+                .to_string()
+        } else {
+            raw_ret.clone()
+        };
+        let json_ret = if is_void {
+            "StatusCode".to_string()
+        } else {
+            format!("JsonResponse<{}>", json_inner)
+        };
+        let ret_type = if needs_result {
+            format!("Result<{}, StatusCode>", json_ret)
+        } else {
+            json_ret
+        };
+
+        lines.push(format!(
+            "pub async fn {}({}) -> {} {{",
+            fn_name,
+            params.join(", "),
+            ret_type
+        ));
+
+        // Plan 547: `auto.image.*` is a host-side control plane.  It carries
+        // only opaque media URIs and metadata, so emit direct runtime calls
+        // instead of falling through to the generic CRUD Default scaffold.
+        if let Some(image_fn) = extract_image_fn_from_body(endpoint) {
+            match image_fn.as_str() {
+                "open_session" => lines.push(
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::open_media_session(input.path.clone()))"
+                        .to_string(),
+                ),
+                "snapshot" => lines.push(
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::media_session_snapshot(&query.session))"
+                        .to_string(),
+                ),
+                "current_uri" => lines.push(
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::media_session_uri(&query.session))"
+                        .to_string(),
+                ),
+                "names" => lines.push(
+                    "    JsonResponse::<Vec<String>>(auto_media_core::image_pipeline::media_session_names(&query.session))"
+                        .to_string(),
+                ),
+                "navigate" => lines.push(
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::navigate_media_session(&input.session, input.delta as i32))"
+                        .to_string(),
+                ),
+                "request_view" => lines.push(
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::request_media_view(&input.session, input.index as i32, input.viewport_width as i32, input.viewport_height as i32, input.quality as i32))"
+                        .to_string(),
+                ),
+                "close_session" => lines.push(
+                    "    JsonResponse::<bool>(auto_media_core::image_pipeline::close_media_session(&input.session))"
+                        .to_string(),
+                ),
+                "session_stats" => lines.push(
+                    "    JsonResponse::<String>(auto_media_core::image_pipeline::media_session_stats(&query.session))"
+                        .to_string(),
+                ),
+                other => {
+                    eprintln!("  ⚠ unsupported auto.image function `{}` in `{}`", other, fn_name);
+                    lines.push("    JsonResponse::<String>(String::new())".to_string());
+                }
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
+
+        // Plan 400 Phase 2: a2r body transpilation. Non-thin bodies with real
+        // logic get transpiled via a2r instead of CRUD template. Disable: AUTO_A2R_BODY=0.
+        if a2r_body_enabled && !is_thin_delegation(endpoint) {
+            if let Some(body) = &endpoint.body {
+                match try_transpile_body(body, endpoint, api_module) {
+                    Ok(stmts) => {
+                        // PLAN-668 R-24：非 void 端点的 a2r 内联体尾 `return X;`
+                        // 是语义值，而 handler 签名是 `-> JsonResponse<T>`——
+                        // 尾 return 包 JsonResponse(...)（025 system_snapshot
+                        // return snap_out 实案；分支内早 return 的多出口形态
+                        // 不在内联面，见 a2r_body 覆盖注记）。
+                        let ret_nonvoid = !endpoint.return_type.trim().is_empty()
+                            && endpoint.return_type.trim() != "void";
+                        // Plan 742 (D5): `?T` returns on needs_result endpoints
+                        // (has_path ⇒ Result signature) — Some/None must map to
+                        // Ok(JsonResponse)/Err(NOT_FOUND) instead of
+                        // JsonResponse(Option).
+                        let ret_is_option = endpoint.return_type.trim().starts_with('?');
+                        // Plan 742 R1 (F-742-R1-03): EVERY non-void return on a
+                        // needs_result endpoint faces a Result signature, not
+                        // just ?T — plain `return x;` must wrap Ok(JsonResponse(x))
+                        // too. R1 review: update_note -> []NoteDocument emitted a
+                        // bare `return JsonResponse(docs);` against
+                        // `Result<JsonResponse<Vec<NoteDocument>>, StatusCode>`
+                        // (E0308). Void endpoints owe their signature a status
+                        // value even without an explicit tail return.
+                        let wrap_mode = if ret_is_option && needs_result {
+                            InlineRetWrap::ResultOption
+                        } else if needs_result {
+                            if ret_nonvoid {
+                                InlineRetWrap::Result
+                            } else {
+                                InlineRetWrap::VoidResult
+                            }
+                        } else if ret_nonvoid {
+                            InlineRetWrap::Plain
+                        } else {
+                            InlineRetWrap::VoidStatus
+                        };
+                        // Plan B1(b): bind the server-injected meta JSON before
+                        // the transpiled body (it references `meta` like any param).
+                        if has_meta {
+                            lines.push("    let meta: String = meta_json(&headers);".to_string());
+                        }
+                        append_inline_param_bindings(&mut lines, endpoint);
+                        // Plan 742 R1 (F-742-R1-02): qualify companion module
+                        // dot-calls HERE, per body — string/comment spans are
+                        // masked out and only call shapes qualify. R2
+                        // (F-742-R2-02): scope-aware — bindings shadow modules
+                        // only within their actual block visibility (params
+                        // frame + one frame per code-region brace).
+                        let mut scope = BodyQualifyScope::new(
+                            &endpoint
+                                .params
+                                .iter()
+                                .map(|p| p.name.clone())
+                                .collect::<Vec<_>>(),
+                        );
+                        // R2 (F-742-R2-03): only a TOP-LEVEL return (frame
+                        // depth 1 at the return line) covers the fallthrough —
+                        // a branch-internal early return does not, and the
+                        // tail status must still be synthesized after it.
+                        let mut saw_tail_return = false;
+                        for source_line in &stmts {
+                            let src = rewrite_inline_runtime_names(source_line);
+                            let (line, depth_at_start) =
+                                scope.qualify_line(&src, crate_modules, &mut referenced_modules);
+                            let line = wrap_inline_return(&line, wrap_mode);
+                            if line.trim_start().starts_with("return") && depth_at_start == 1 {
+                                saw_tail_return = true;
+                            }
+                            lines.push(line);
+                        }
+                        // A void body without a top-level return still owes
+                        // the signature its status value on the fallthrough.
+                        if !ret_nonvoid && !saw_tail_return {
+                            lines.push(if needs_result {
+                                "    return Ok(StatusCode::OK);".to_string()
+                            } else {
+                                "    return StatusCode::OK;".to_string()
+                            });
+                        }
+                        lines.push("}".to_string());
+                        lines.push("".to_string());
+                        continue;
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "  ⚠ endpoint `{}` a2r body failed ({}); fallback to template",
+                            fn_name, e
+                        );
+                    }
+                }
+            }
+        }
+
+        // Plan 399 第 4-5 步: db.rs delegation body. When resolved, the handler
+        // body is just `db::FN(args)` (optionally broadcasting an SSE event for
+        // POST creates). This replaces the entire State<Db> CRUD template below.
+        // `json_inner` holds the inner Rust type (e.g. `Vec<Message>`/`Message`)
+        // already computed above; reuse it to wrap the db result.
+        if let Some(deleg) = &db_delegation {
+            // Plan B1(b): bind the server-injected meta JSON when the db call
+            // consumes it (resolve_db_call maps the meta param to `&meta`).
+            if has_meta {
+                lines.push("    let meta: String = meta_json(&headers);".to_string());
+            }
+            let call = format!("crate::db::{}({})", deleg.db_fn, deleg.args.join(", "));
+            if is_void {
+                // Plan 399 §6/Phase 12: a void POST that broadcasts (e.g. typing
+                // signal) emits a single-value SSE payload. The frontend ChatEvent
+                // declares `Typing(str)` (single-value variant), so the broadcast
+                // uses a fixed "name" field carrying the typing user's name — the
+                // store handler reads `evt.name`. (Object variants like NewMessage
+                // broadcast the whole struct, which already matches.)
+                if has_sse && bcast_evt.as_deref() == Some("Typing") {
+                    lines.push(format!("    {};", call));
+                    // Build {"event":"Typing","name": <first str body param>}.
+                    // The typing endpoint conventionally takes a single `sender`
+                    // str param naming who is typing.
+                    let name_field = endpoint_body_params(endpoint)
+                        .first()
+                        .map(|p| p.name.as_str())
+                        .unwrap_or("sender");
+                    lines.push(format!(
+                        "    let evt = serde_json::json!({{ \"event\": \"Typing\", \"name\": input.{} }});",
+                        name_field
+                    ));
+                    lines.push("    crate::events::broadcast(evt.to_string());".to_string());
+                    lines.push("    StatusCode::OK".to_string());
+                } else if needs_result {
+                    lines.push(format!("    match {} {{ Some(_) => Ok(StatusCode::OK), None => Err(StatusCode::NOT_FOUND) }};", call));
+                } else {
+                    lines.push(format!("    {};", call));
+                    lines.push("    StatusCode::OK".to_string());
+                }
+            } else if needs_result {
+                // Option<T>-returning db fn → Ok-or-404. Non-Option with path
+                // (rare) wraps directly in Ok(JsonResponse::<T>(...)).
+                if endpoint.return_type.trim_start().starts_with('?')
+                    || endpoint.return_type.contains("?")
+                {
+                    lines.push(format!(
+                        "    {}.map(JsonResponse::<{}>).ok_or(StatusCode::NOT_FOUND)",
+                        call, json_inner
+                    ));
+                } else {
+                    lines.push(format!("    Ok(JsonResponse::<{}>({}))", json_inner, call));
+                }
+            } else if has_sse && method == "POST" {
+                // Capture the created item, broadcast, then return it.
+                // Plan 399 §6: event name is New{Type} (was hardcoded "NewMessage").
+                lines.push(format!("    let item = {};", call));
+                lines.push(
+                    "    let mut evt = serde_json::to_value(&item).unwrap_or_default();"
+                        .to_string(),
+                );
+                lines.push(format!(
+                    "    if let Some(obj) = evt.as_object_mut() {{ obj.insert(\"event\".to_string(), serde_json::Value::String(\"{}\".to_string())); }}",
+                    bcast_evt.as_deref().unwrap_or("NewMessage")
+                ));
+                lines.push("    crate::events::broadcast(evt.to_string());".to_string());
+                lines.push(format!("    JsonResponse::<{}>(item)", json_inner));
+            } else {
+                // Non-void, no path, no SSE: wrap the db fn result directly.
+                lines.push(format!("    JsonResponse::<{}>({})", json_inner, call));
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
+
+        // Plan 053 后续: action endpoints — declared return type is NOT the
+        // primary CRUD resource (e.g. command_list -> BootSnapshot, complete ->
+        // Vec<CompletionItem>, run_command -> StatusCode). The CRUD template
+        // below assumes the primary type and emits bodies that mismatch the
+        // declared return type (the backend's compile errors). For these, emit
+        // a compiling Default stub instead. This is a non-functional scaffold;
+        // real logic lives in ash-core (see back/api.at header), not generated.
+        let is_crud_resource_return = json_inner == primary_type
+            || json_inner == format!("Vec<{}>", primary_type)
+            || json_inner == format!("Option<{}>", primary_type)
+            || json_inner == format!("Option<Vec<{}>>", primary_type);
+        if !is_crud_resource_return {
+            if is_void {
+                // 签名启发式（needs_result = has_path || DELETE/PUT）给 void 端点
+                // 包 Result<StatusCode, StatusCode>（404 语义），body 须同步 Ok()。
+                if needs_result {
+                    lines.push("    Ok(StatusCode::OK)".to_string());
+                } else {
+                    lines.push("    StatusCode::OK".to_string());
+                }
+            } else if needs_result {
+                lines.push(format!(
+                    "    Ok(JsonResponse::<{}>(Default::default()))",
+                    json_inner
+                ));
+            } else {
+                lines.push(format!(
+                    "    JsonResponse::<{}>(Default::default())",
+                    json_inner
+                ));
+            }
+            lines.push("}".to_string());
+            lines.push("".to_string());
+            continue;
+        }
+
+        // Generate handler body based on CRUD operation
+        match method.as_str() {
+            "GET" if !has_path && has_query => {
+                // Search/filter: filter items by query params (case-insensitive
+                // substring match on all string fields, or exact match on others).
+                lines.push("    let items = db.lock().unwrap();".to_string());
+                lines.push("    let filtered: Vec<_> = items.iter().filter(|n| {".to_string());
+                for (i, param) in query_params.iter().enumerate() {
+                    let connector = if i == 0 { "" } else { " && " };
+                    let field = param
+                        .name
+                        .trim_start_matches("query_")
+                        .trim_start_matches("search_");
+                    // Heuristic: "query" param → search title+body; named field → match that field
+                    if field == "query" || field == "q" || field == "search" {
+                        lines.push(format!("        {}n.title.to_lowercase().contains(&query.{}.to_lowercase()) || n.body.to_lowercase().contains(&query.{}.to_lowercase())",
+                            connector, param.name, param.name));
+                    } else {
+                        lines.push(format!(
+                            "        {}n.{} == query.{}",
+                            connector, field, param.name
+                        ));
+                    }
+                }
+                lines.push("    }).cloned().collect();".to_string());
+                lines.push("    JsonResponse(filtered)".to_string());
+            }
+            "GET" if !has_path => {
+                // 声明返回单对象（auth/me 型单例端点）不得套集合模板——
+                // items.clone() 是 Vec<T> 而签名是 JsonResponse<T>（E0308）。
+                // 集合声明（[]T）json_inner 为 Vec<primary>，走 list-all 原路。
+                if json_inner == primary_type {
+                    lines.push(format!(
+                        "    JsonResponse::<{}>(Default::default())",
+                        json_inner
+                    ));
+                } else {
+                    lines.push("    let items = db.lock().unwrap();".to_string());
+                    lines.push("    JsonResponse(items.clone())".to_string());
+                }
+            }
+            "GET" if has_path => {
+                // Get by ID
+                let path_params = endpoint_path_params(endpoint);
+                let id_name = path_params
+                    .first()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(id_field);
+                lines.push("    let items = db.lock().unwrap();".to_string());
+                lines.push("    items.iter()".to_string());
+                lines.push(format!("        .find(|n| n.{} == {})", id_name, id_name));
+                lines.push("        .cloned()".to_string());
+                lines.push("        .map(JsonResponse)".to_string());
+                lines.push("        .ok_or(StatusCode::NOT_FOUND)".to_string());
+            }
+            "POST" => {
+                // Create
+                lines.push("    let mut items = db.lock().unwrap();".to_string());
+                lines.push(format!(
+                    "    let new_id = items.iter().map(|n| n.{}).max().unwrap_or(-1) + 1;",
+                    id_field
+                ));
+                let body_params = endpoint_body_params(endpoint);
+                if body_params.is_empty() {
+                    lines.push(format!(
+                        "    let item = {} {{ {}: new_id, ..Default::default() }};",
+                        primary_type, id_field
+                    ));
+                } else {
+                    lines.push(format!("    let item = {} {{", primary_type));
+                    lines.push(format!("        {}: new_id,", id_field));
+                    for param in &body_params {
+                        lines.push(format!("        {}: input.{},", param.name, param.name));
+                    }
+                    if has_time_field {
+                        lines.push("        time: \"Just now\".to_string(),".to_string());
+                    }
+                    lines.push("        ..Default::default()".to_string());
+                    lines.push("    };".to_string());
+                }
+                lines.push("    items.push(item.clone());".to_string());
+                if has_sse {
+                    lines.push(
+                        "    let mut evt = serde_json::to_value(&item).unwrap_or_default();"
+                            .to_string(),
+                    );
+                    lines.push(format!(
+                        "    if let Some(obj) = evt.as_object_mut() {{ obj.insert(\"event\".to_string(), serde_json::Value::String(\"{}\".to_string())); }}",
+                        bcast_evt.as_deref().unwrap_or("NewMessage")
+                    ));
+                    lines.push("    crate::events::broadcast(evt.to_string());".to_string());
+                }
+                lines.push("    JsonResponse(item)".to_string());
+            }
+            "PUT" => {
+                // Update
+                let path_params = endpoint_path_params(endpoint);
+                let id_name = path_params
+                    .first()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(id_field);
+                lines.push("    let mut items = db.lock().unwrap();".to_string());
+                lines.push(format!(
+                    "    if let Some(item) = items.iter_mut().find(|n| n.{} == {}) {{",
+                    id_name, id_name
+                ));
+                let body_params = endpoint_body_params(endpoint);
+                if !body_params.is_empty() {
+                    for param in &body_params {
+                        lines.push(format!(
+                            "        item.{} = input.{}.clone();",
+                            param.name, param.name
+                        ));
+                    }
+                } else {
+                    // Update from full type - copy all fields except id
+                    for field in &type_fields {
+                        if *field != id_name {
+                            lines
+                                .push(format!("        item.{} = input.{}.clone();", field, field));
+                        }
+                    }
+                }
+                if has_time_field && !body_params.iter().any(|p| p.name == "time") {
+                    lines.push("        item.time = \"Just now\".to_string();".to_string());
+                }
+                lines.push("        Ok(JsonResponse(item.clone()))".to_string());
+                lines.push("    } else {".to_string());
+                lines.push("        Err(StatusCode::NOT_FOUND)".to_string());
+                lines.push("    }".to_string());
+            }
+            "DELETE" => {
+                // Delete
+                let path_params = endpoint_path_params(endpoint);
+                let id_name = path_params
+                    .first()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(id_field);
+                lines.push("    let mut items = db.lock().unwrap();".to_string());
+                lines.push("    let len_before = items.len();".to_string());
+                lines.push(format!(
+                    "    items.retain(|n| n.{} != {});",
+                    id_name, id_name
+                ));
+                lines.push("    if items.len() < len_before {".to_string());
+                if raw_ret == "bool" {
+                    lines.push("        Ok(JsonResponse(true))".to_string());
+                } else {
+                    lines.push("        Ok(StatusCode::OK)".to_string());
+                }
+                lines.push("    } else {".to_string());
+                lines.push("        Err(StatusCode::NOT_FOUND)".to_string());
+                lines.push("    }".to_string());
+            }
+            "PATCH" => {
+                // PATCH: toggle/update specific fields (e.g. toggle_pin)
+                let path_params = endpoint_path_params(endpoint);
+                let id_name = path_params
+                    .first()
+                    .map(|p| p.name.as_str())
+                    .unwrap_or(id_field);
+                let body_params = endpoint_body_params(endpoint);
+                lines.push("    let mut items = db.lock().unwrap();".to_string());
+                lines.push(format!(
+                    "    if let Some(item) = items.iter_mut().find(|n| n.{} == {}) {{",
+                    id_name, id_name
+                ));
+                // Toggle boolean fields; set others from input
+                for param in &body_params {
+                    if param.ty.contains("bool") {
+                        lines.push(format!(
+                            "        item.{} = !item.{};",
+                            param.name, param.name
+                        ));
+                    } else {
+                        lines.push(format!(
+                            "        item.{} = input.{}.clone();",
+                            param.name, param.name
+                        ));
+                    }
+                }
+                // If no body params, infer toggle from fn name (e.g. toggle_pin → toggle pinned)
+                if body_params.is_empty() {
+                    // Try to infer field name from function name (toggle_X → X or toggle_Xed)
+                    if let Some(stripped) = fn_name.strip_prefix("toggle_") {
+                        // Try exact match first, then with "ned" / "d" suffix (pin → pinned)
+                        let field = if type_fields.contains(&stripped) {
+                            stripped.to_string()
+                        } else if type_fields.contains(&format!("{}ned", stripped).as_str()) {
+                            format!("{}ned", stripped)
+                        } else if type_fields.contains(&format!("{}d", stripped).as_str()) {
+                            format!("{}d", stripped)
+                        } else {
+                            stripped.to_string()
+                        };
+                        lines.push(format!("        item.{} = !item.{};", field, field));
+                    }
+                }
+                lines.push("        Ok(JsonResponse(item.clone()))".to_string());
+                lines.push("    } else {".to_string());
+                lines.push("        Err(StatusCode::NOT_FOUND)".to_string());
+                lines.push("    }".to_string());
+            }
+            _ => {
+                // Default fallback
+                lines.push("    // TODO: Implement".to_string());
+                lines.push("    JsonResponse(Default::default())".to_string());
+            }
+        }
+
+        lines.push("}".to_string());
+        lines.push("".to_string());
+    }
+
+    // Plan 742 R1 (F-742-R1-02): header imports for modules an a2r body
+    // actually qualified (prepended, mirroring the retired whole-file pass).
+    if referenced_modules.is_empty() {
+        lines.join("\n")
+    } else {
+        let uses = referenced_modules
+            .iter()
+            .map(|m| format!("use crate::{};", m))
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("{}\n{}", uses, lines.join("\n"))
+    }
+}
+
+/// Generate initial sample data for the primary type.
+///
+/// If db_at_content is provided, try to extract seed data from
+/// `var notes List<Note>.new([...])` declarations. Fall back to
+/// generating 3 default sample items.
+pub fn generate_initial_data_pub(
+    api_module: &auto_lang_core::api::ApiModule,
+    db_at_content: Option<&str>,
+) -> String {
+    // Try to extract seed data from db.at first
+    if let Some(content) = db_at_content {
+        if let Some(seed) = extract_seed_data(content, api_module) {
+            return seed;
+        }
+    }
+
+    // Fall back to hardcoded samples
+    generate_default_seed_data(api_module)
+}
+
+/// Extract seed data from db.at's `var notes List<Note>.new([...])` declaration.
+/// Parses the Note { ... } struct literals and converts to Rust.
+fn extract_seed_data(
+    db_content: &str,
+    api_module: &auto_lang_core::api::ApiModule,
+) -> Option<String> {
+    let primary_type = primary_type_name_pub(api_module)?;
+    let api_type = api_module.types.iter().find(|t| t.name == primary_type)?;
+
+    // Find .new([ pattern (most reliable)
+    let new_pattern = ".new([";
+    let start = db_content.find(new_pattern)?;
+    let after_start = &db_content[start + new_pattern.len()..];
+    let after_start = &db_content[start + new_pattern.len()..];
+
+    // Find matching closing ]) — count brackets
+    let mut depth = 1;
+    let mut end = 0;
+    for (i, c) in after_start.chars().enumerate() {
+        match c {
+            '[' => depth += 1,
+            ']' => {
+                depth -= 1;
+                if depth == 0 {
+                    end = i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    if end == 0 {
+        return None;
+    }
+
+    let items_str = &after_start[..end];
+
+    // Parse individual Note { field: value, ... } entries
+    let mut rust_items = Vec::new();
+    let mut remaining = items_str;
+    while let Some(type_start) = remaining.find(&format!("{} {{", primary_type)) {
+        let after_type = &remaining[type_start + primary_type.len()..];
+        // Find matching closing brace
+        let mut brace_depth = 0;
+        let mut brace_end = 0;
+        for (i, c) in after_type.chars().enumerate() {
+            match c {
+                '{' => brace_depth += 1,
+                '}' => {
+                    brace_depth -= 1;
+                    if brace_depth == 0 {
+                        brace_end = i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if brace_end == 0 {
+            break;
+        }
+
+        // Skip leading whitespace and opening brace
+        let inner_start = after_type.find('{').map(|p| p + 1).unwrap_or(1);
+        let fields_str = &after_type[inner_start..brace_end];
+        let rust_fields = convert_at_fields_to_rust(fields_str, api_type);
+        rust_items.push(format!(
+            "        {} {{\n            {}\n        }}",
+            primary_type, rust_fields
+        ));
+
+        remaining = &after_type[brace_end + 1..];
+    }
+
+    if rust_items.is_empty() {
+        return None;
+    }
+
+    Some(format!("vec![\n{}\n    ]", rust_items.join(",\n")))
+}
+
+/// Convert Auto-style struct fields to Rust struct fields.
+/// E.g., `title: "Welcome"` → `title: "Welcome".into()`
+///       `pinned: true` → `pinned: true`
+///       `tags: ["intro"]` → `tags: vec!["intro".into()]`
+///       `folder: ""` → `folder: "".into()`
+fn convert_at_fields_to_rust(fields_str: &str, api_type: &auto_lang_core::api::ApiType) -> String {
+    let mut rust_fields = Vec::new();
+
+    // Parse field: value pairs (comma-separated at top level)
+    let mut current_field = String::new();
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut fields: Vec<String> = Vec::new();
+
+    for c in fields_str.chars() {
+        match c {
+            '"' => {
+                in_string = !in_string;
+                current_field.push(c);
+            }
+            '[' | '{' if !in_string => {
+                depth += 1;
+                current_field.push(c);
+            }
+            ']' | '}' if !in_string => {
+                depth -= 1;
+                current_field.push(c);
+            }
+            ',' if depth == 0 && !in_string => {
+                fields.push(current_field.trim().to_string());
+                current_field.clear();
+            }
+            _ => {
+                current_field.push(c);
+            }
+        }
+    }
+    if !current_field.trim().is_empty() {
+        fields.push(current_field.trim().to_string());
+    }
+
+    for field_def in &fields {
+        if let Some(colon_pos) = field_def.find(':') {
+            let name = field_def[..colon_pos].trim();
+            let value = field_def[colon_pos + 1..].trim();
+
+            // Infer conversion from value syntax (don't rely on api_type lookup)
+            let rust_value = if value.starts_with('[') {
+                // Array: ["a", "b"] → vec!["a".into(), "b".into()]
+                let inner = value.trim_start_matches('[').trim_end_matches(']');
+                let items: Vec<&str> = inner
+                    .split(',')
+                    .map(|s| s.trim())
+                    .filter(|s| !s.is_empty())
+                    .collect();
+                let rust_items: Vec<String> =
+                    items.iter().map(|s| format!("{}.into()", s)).collect();
+                format!("vec![{}]", rust_items.join(", "))
+            } else if value.starts_with('"') {
+                // String literal: ensure .into()
+                format!("{}.into()", value)
+            } else {
+                // Number, bool, etc: pass through
+                value.to_string()
+            };
+
+            rust_fields.push(format!("{}: {}", name, rust_value));
+        }
+    }
+
+    rust_fields.join(",\n            ")
+}
+
+/// Generate 3 default sample items (fallback when no db.at seed data)
+fn generate_default_seed_data(api_module: &auto_lang_core::api::ApiModule) -> String {
+    let primary_type = match primary_type_name_pub(api_module) {
+        Some(t) => t,
+        None => return "Vec::new()".to_string(),
+    };
+
+    let api_type = match api_module.types.iter().find(|t| t.name == primary_type) {
+        Some(t) => t,
+        None => return "Vec::new()".to_string(),
+    };
+
+    // Generate 3 sample items based on type fields
+    let mut items = vec![];
+    for i in 0..3 {
+        let fields: Vec<String> = api_type
+            .fields
+            .iter()
+            .map(|f| {
+                let val = match f.ty.as_str() {
+                    "int" | "i64" => format!("{}", i),
+                    "str" | "String" => {
+                        let sample = match f.name.as_str() {
+                            "title" | "name" => match i {
+                                0 => "Welcome",
+                                1 => "Shopping List",
+                                _ => "Meeting Notes",
+                            },
+                            "body" | "description" | "content" => match i {
+                                0 => "This is your notes app. Click on any note to view it.",
+                                1 => "Milk, Eggs, Bread, Cheese",
+                                _ => "Q3 roadmap discussion with the team",
+                            },
+                            "email" => match i {
+                                0 => "alice@example.com",
+                                1 => "bob@example.com",
+                                _ => "charlie@example.com",
+                            },
+                            "time" | "date" | "created_at" => match i {
+                                0 => "Just now",
+                                1 => "2 hours ago",
+                                _ => "Yesterday",
+                            },
+                            _ => "Sample",
+                        };
+                        format!("\"{}\".into()", sample)
+                    }
+                    "bool" => "false".to_string(),
+                    _ => "Default::default()".to_string(),
+                };
+                format!("{}: {}", f.name, val)
+            })
+            .collect();
+        let field_str = fields.join(",\n            ");
+        items.push(format!(
+            "        {} {{\n            {}\n        }}",
+            primary_type, field_str
+        ));
+    }
+
+    let items_str = items.join(",\n");
+    format!("vec![\n{}\n    ]", items_str)
+}
+
+/// Generate main.rs with Axum server setup, shared state, and initial data.
+///
+/// Plan 399 第 4-5 步: when `db_full_cover` is true, every non-SSE endpoint
+/// delegates to db.rs and holds its own state in once_cell::Lazy globals — so
+/// main.rs drops the `State<Db>` seed entirely (no `use api::Db`, no
+/// `.with_state(data)`). When false (no db.rs, or db.rs only partially covers
+/// endpoints), the legacy `State<Db>` seed path is used.
+///
+/// Plan 670 F-R1-A: the legacy seed path additionally requires the contract
+/// to actually define `Db` — `generate_api_rs` only emits `pub type Db` when
+/// a primary type exists (:1705). Scalar contracts without a type block get
+/// skeleton handlers with no `Db` anywhere, so the unconditional `use api::Db`
+/// produced E0432 in the generated project (auto-edit rust track). Such
+/// contracts take the stateless shape below.
+fn generate_main_rs(
+    api_module: &auto_lang_core::api::ApiModule,
+    db_at_content: Option<&str>,
+    db_full_cover: bool,
+    companion_mods: &[String],
+    api_impl_active: bool,
+) -> String {
+    let routes: Vec<String> = api_module
+        .endpoints
+        .iter()
+        .map(|e| {
+            let path = e.path();
+            let method = e.method().to_lowercase();
+            // PLAN-729 T-05: GET 文件端点自动具备 HEAD（显式 HEAD 路由不存在
+            // 时；handler 从 Method 提取器区分）。
+            if e.response == auto_lang_core::api::contract::ResponseKind::File
+                && method == "get"
+                && !api_module.endpoints.iter().any(|other| {
+                    other.method().eq_ignore_ascii_case("HEAD") && other.path() == path
+                })
+            {
+                format!(
+                    "        .route(\"{}\", axum::routing::{}(api::{}).head(api::{}))",
+                    path, method, e.fn_name, e.fn_name
+                )
+            } else {
+                format!(
+                    "        .route(\"{}\", axum::routing::{}(api::{}))",
+                    path, method, e.fn_name
+                )
+            }
+        })
+        .collect();
+
+    let routes_str = routes.join("\n");
+
+    // Plan musk-022: declare events module when SSE endpoints exist.
+    let has_sse = api_module
+        .endpoints
+        .iter()
+        .any(|e| e.return_type.contains("Stream<"));
+    // Plan musk-022 CRUD 智能扩展 第3步: declare db module when db.at has functions.
+    let has_db = db_at_content.map(|c| c.contains("pub fn")).unwrap_or(false);
+
+    let mut s = String::new();
+    s.push_str("mod api;\n");
+    s.push_str("mod types;\n");
+    if has_sse {
+        s.push_str("mod events;\n");
+    }
+    if has_db {
+        s.push_str("mod db;\n");
+    }
+    // PLAN-681 T-01/T-02: companion modules (src/back/*.at minus api/db) and
+    // the route-A endpoint-body module, so `crate::<mod>` paths in the
+    // delegating handlers resolve.
+    for stem in companion_mods {
+        s.push_str(&format!("mod {};\n", stem));
+    }
+    if api_impl_active {
+        s.push_str("mod api_impl;\n");
+    }
+    s.push_str(MEDIA_HTTP_HANDLER);
+    s.push_str("\n");
+    // Plan 617 T-05: local media service handlers (same emission point).
+    s.push_str(MEDIA_SERVICE_HANDLERS);
+    s.push_str("\n");
+    // PLAN-043 Part 1: local photo service handlers (same emission point).
+    s.push_str(PHOTO_SERVICE_HANDLERS);
+    s.push_str("\n");
+    // Plan 670 F-R1-A: `Db` exists in api.rs only when the contract has a
+    // primary type; without it the seed path would emit `use api::Db` against
+    // a type api.rs never defines (E0432).
+    let has_db_type = primary_type_name_pub(api_module).is_some();
+    if !db_full_cover && has_db_type {
+        // Legacy seed-state path: handlers take State<Db>, main injects the seed.
+        let initial_data = generate_initial_data_pub(api_module, db_at_content);
+        s.push_str("use api::Db;\n");
+        s.push_str("use crate::types::*;\n");
+        s.push_str("use std::sync::{Arc, Mutex};\n");
+        s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
+        // PLAN-736：服务模式机械层（文件顶层项，legacy 不触发）。
+        s.push_str(SERVICE_MAIN_MACHINERY);
+        s.push_str("\n");
+        s.push_str("#[tokio::main]\n");
+        s.push_str("async fn main() {\n");
+        // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
+        // 轻量 no-op 面；a2r facade 的 receive/commit/reject 经此执行）。
+        s.push_str("    auto_lang::http_upload_service::install_upload_executor_service();\n");
+        // Resolve the bind port from AUTO_HTTP_PORT (default 8080) so multiple
+        // `auto run` instances — or other services sharing the host — can coexist.
+        // PLAN-736 AC-01/02: 服务配置面（AUTO_HTTP_SERVICE_JSON，由 `auto
+        // service --server rust` 注入的解析后规范形）优先；legacy 面维持
+        // env/8080 链不变。坏配置 = 指名诊断 + 退出码 2（不假装 ready）。
+        s.push_str(
+            "    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
+",
+        );
+        s.push_str("        Ok(json) => match auto_lang::http_service_config::resolve_service_config(&json, None) {
+");
+        s.push_str(
+            "            Ok(c) => Some(std::sync::Arc::new(c)),
+",
+        );
+        s.push_str(
+            "            Err(e) => {
+",
+        );
+        s.push_str(
+            "                eprintln!(\"http-service config error: {e}\");
+",
+        );
+        s.push_str(
+            "                std::process::exit(2);
+",
+        );
+        s.push_str(
+            "            }
+",
+        );
+        s.push_str(
+            "        },
+",
+        );
+        s.push_str(
+            "        Err(_) => None,
+",
+        );
+        s.push_str(
+            "    };
+",
+        );
+        s.push_str(
+            "    let addr: String = match &service_cfg {
+",
+        );
+        s.push_str(
+            "        Some(c) => format!(\"{}:{}\", c.listen_addr, c.listen_port),
+",
+        );
+        s.push_str(
+            "        None => {
+",
+        );
+        s.push_str(
+            "            let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")
+",
+        );
+        s.push_str(
+            "                .ok()
+",
+        );
+        s.push_str(
+            "                .and_then(|v| v.trim().parse().ok())
+",
+        );
+        s.push_str(
+            "                .unwrap_or(8080);
+",
+        );
+        s.push_str(
+            "            format!(\"127.0.0.1:{}\", port)
+",
+        );
+        s.push_str(
+            "        }
+",
+        );
+        s.push_str(
+            "    };
+",
+        );
+        s.push_str("    // Initial data\n");
+        s.push_str(&format!(
+            "    let data: Db = Arc::new(Mutex::new({}));\n\n",
+            initial_data
+        ));
+        s.push_str("    // Enable CORS for frontend development\n");
+        s.push_str("    let cors = CorsLayer::new()\n");
+        s.push_str("        .allow_origin(Any)\n");
+        s.push_str("        .allow_methods(Any)\n");
+        s.push_str("        .allow_headers(Any);\n\n");
+        s.push_str("    let app = axum::Router::new()\n");
+        s.push_str(&format!("{}\n", routes_str));
+        // PLAN-736 T-04: 媒体/照片 scan 路由按 profile 门控（service 默认 off，
+        // 显式 features.* 才可 opt-in；legacy 面（无配置）保持现状全开。
+        s.push_str("    ;\n");
+        s.push_str("    let media_on = service_cfg.as_ref().map(|c| c.features.media_scan).unwrap_or(true);\n");
+        s.push_str("    let photo_on = service_cfg.as_ref().map(|c| c.features.photo_scan).unwrap_or(true);\n");
+        s.push_str("    let mut app = app;\n");
+        s.push_str("    if media_on {\n");
+        s.push_str("        app = app\n");
+        s.push_str("        .route(\"/api/__auto/media/:id/:revision\", axum::routing::get(auto_media).head(auto_media))\n");
+        s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan));\n");
+        s.push_str("        app = app.route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream));\n");
+        s.push_str("    }\n");
+        s.push_str("    if photo_on {\n");
+        s.push_str("        app = app\n");
+        s.push_str("        .route(\"/api/photos/scan\", axum::routing::get(auto_photos_scan))\n");
+        s.push_str(
+            "        .route(\"/api/photos/thumb/:id\", axum::routing::get(auto_photos_thumb))\n",
+        );
+        s.push_str(
+            "        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full));\n",
+        );
+        s.push_str("    }\n");
+        s.push_str("    let app = app.with_state(data);\n\n");
+    } else {
+        // Stateless path. Plan 399: db.rs full coverage (seed lives in db.rs
+        // Lazy globals). Plan 670 F-R1-A: also contracts with no primary type
+        // — api.rs defines no Db, handlers are skeleton/db-delegated stubs
+        // that never take State, so no seed to inject.
+        s.push_str("use tower_http::cors::{CorsLayer, Any};\n\n");
+        // PLAN-736：服务模式机械层（文件顶层项，legacy 不触发）。
+        s.push_str(SERVICE_MAIN_MACHINERY);
+        s.push_str("\n");
+        s.push_str("#[tokio::main]\n");
+        s.push_str("async fn main() {\n");
+        // PLAN-730 T-06: 上传宿主 executor 安装（幂等——无上传端点时
+        // 轻量 no-op 面；a2r facade 的 receive/commit/reject 经此执行）。
+        s.push_str("    auto_lang::http_upload_service::install_upload_executor_service();\n");
+        // PLAN-736 AC-01/02: 服务配置面（AUTO_HTTP_SERVICE_JSON，由 `auto
+        // service --server rust` 注入的解析后规范形）优先；legacy 面维持
+        // env/8080 链不变。坏配置 = 指名诊断 + 退出码 2（不假装 ready）。
+        s.push_str(
+            "    let service_cfg = match std::env::var(\"AUTO_HTTP_SERVICE_JSON\") {
+",
+        );
+        s.push_str("        Ok(json) => match auto_lang::http_service_config::resolve_service_config(&json, None) {
+");
+        s.push_str(
+            "            Ok(c) => Some(std::sync::Arc::new(c)),
+",
+        );
+        s.push_str(
+            "            Err(e) => {
+",
+        );
+        s.push_str(
+            "                eprintln!(\"http-service config error: {e}\");
+",
+        );
+        s.push_str(
+            "                std::process::exit(2);
+",
+        );
+        s.push_str(
+            "            }
+",
+        );
+        s.push_str(
+            "        },
+",
+        );
+        s.push_str(
+            "        Err(_) => None,
+",
+        );
+        s.push_str(
+            "    };
+",
+        );
+        s.push_str(
+            "    let addr: String = match &service_cfg {
+",
+        );
+        s.push_str(
+            "        Some(c) => format!(\"{}:{}\", c.listen_addr, c.listen_port),
+",
+        );
+        s.push_str(
+            "        None => {
+",
+        );
+        s.push_str(
+            "            let port: u16 = std::env::var(\"AUTO_HTTP_PORT\")
+",
+        );
+        s.push_str(
+            "                .ok()
+",
+        );
+        s.push_str(
+            "                .and_then(|v| v.trim().parse().ok())
+",
+        );
+        s.push_str(
+            "                .unwrap_or(8080);
+",
+        );
+        s.push_str(
+            "            format!(\"127.0.0.1:{}\", port)
+",
+        );
+        s.push_str(
+            "        }
+",
+        );
+        s.push_str(
+            "    };
+",
+        );
+        s.push_str("    let cors = CorsLayer::new()\n");
+        s.push_str("        .allow_origin(Any)\n");
+        s.push_str("        .allow_methods(Any)\n");
+        s.push_str("        .allow_headers(Any);\n\n");
+        s.push_str("    let app = axum::Router::new()\n");
+        s.push_str(&format!("{}\n", routes_str));
+        // PLAN-736 T-04: 媒体/照片 scan 路由按 profile 门控（service 默认 off，
+        // 显式 features.* 才可 opt-in；legacy 面（无配置）保持现状全开。
+        s.push_str("    ;\n");
+        s.push_str("    let media_on = service_cfg.as_ref().map(|c| c.features.media_scan).unwrap_or(true);\n");
+        s.push_str("    let photo_on = service_cfg.as_ref().map(|c| c.features.photo_scan).unwrap_or(true);\n");
+        s.push_str("    let mut app = app;\n");
+        s.push_str("    if media_on {\n");
+        s.push_str("        app = app\n");
+        s.push_str("        .route(\"/api/__auto/media/:id/:revision\", axum::routing::get(auto_media).head(auto_media))\n");
+        s.push_str("        .route(\"/api/media/scan\", axum::routing::get(auto_media_scan));\n");
+        s.push_str("        app = app.route(\"/api/media/stream/:id\", axum::routing::get(auto_media_stream).head(auto_media_stream));\n");
+        s.push_str("    }\n");
+        s.push_str("    if photo_on {\n");
+        s.push_str("        app = app\n");
+        s.push_str("        .route(\"/api/photos/scan\", axum::routing::get(auto_photos_scan))\n");
+        s.push_str(
+            "        .route(\"/api/photos/thumb/:id\", axum::routing::get(auto_photos_thumb))\n",
+        );
+        s.push_str(
+            "        .route(\"/api/photos/full/:id\", axum::routing::get(auto_photos_full));\n",
+        );
+        s.push_str("    }\n");
+        s.push_str("    let app = app;\n\n");
+    }
+    // PLAN-736 AC-01/02: bind 失败 = 指名诊断 + 非零退出（旧 unwrap panic 退役）；
+    // ready 打印移到 bind 成功之后并报真实 local_addr（port=0 场景）。
+    s.push_str(
+        "    let listener = match tokio::net::TcpListener::bind(&addr).await {
+",
+    );
+    s.push_str(
+        "        Ok(l) => l,
+",
+    );
+    s.push_str(
+        "        Err(e) => {
+",
+    );
+    s.push_str(
+        "            eprintln!(\"http-service bind failed on {}: {}\", addr, e);
+",
+    );
+    s.push_str(
+        "            std::process::exit(1);
+",
+    );
+    s.push_str(
+        "        }
+",
+    );
+    s.push_str(
+        "    };
+",
+    );
+    s.push_str(
+        "    let bound = listener
+",
+    );
+    s.push_str(
+        "        .local_addr()
+",
+    );
+    s.push_str(
+        "        .map(|a| a.to_string())
+",
+    );
+    s.push_str(
+        "        .unwrap_or_else(|_| addr.clone());
+",
+    );
+    // PLAN-736 AC-03/06: 服务模式 = 预算运行环；legacy = 既有 axum::serve。
+    s.push_str("    match &service_cfg {\n");
+    s.push_str("        Some(c) => {\n");
+    s.push_str(SERVICE_RUN_LOOP);
+    s.push_str("        }\n");
+    s.push_str("        None => {\n");
+    s.push_str("            println!(\"Server running on http://{} (CORS enabled for all origins)\", bound);\n");
+    s.push_str("            axum::serve(listener, app.layer(cors)).await.unwrap();\n");
+    s.push_str("        }\n");
+    s.push_str("    }\n");
+    s.push_str("}\n");
+    s
+}
+
+// ============================================================================
+// Lenient API Extraction (Plan 132)
+// ============================================================================
+
+/// Extract API definitions leniently - skip unresolvable module references
+///
+/// This function uses regex-based parsing to extract API definitions without
+/// requiring full module resolution. This is useful when `back/api.at` contains
+/// `use db` statements where the db module isn't available during extraction.
+pub fn extract_api_lenient(api_content: &str) -> Option<ApiModule> {
+    use regex::Regex;
+
+    let mut module = ApiModule::new("api".to_string());
+
+    // Extract type definitions using regex
+    // Pattern: pub type Name = { fields }
+    let type_pattern = Regex::new(r"pub\s+type\s+(\w+)\s*=\s*\{([^}]+)\}").ok()?;
+
+    for cap in type_pattern.captures_iter(api_content) {
+        let name = cap.get(1)?.as_str().to_string();
+        let fields_str = cap.get(2)?.as_str();
+
+        let fields = parse_fields(fields_str);
+        module.types.push(ApiType {
+            name,
+            fields,
+            doc: None,
+            alias_of: None,
+        });
+    }
+
+    // Extract #[api] function definitions
+    // Pattern: #[api(...)] pub fn name(params) return_type {
+    // Note: return_type may be followed by { or whitespace
+    let fn_pattern =
+        Regex::new(r#"#\[api\(([^]]*)\]\s*pub\s+fn\s+(\w+)\s*\(([^)]*)\)\s*(\S+)?"#).ok()?;
+
+    for cap in fn_pattern.captures_iter(api_content) {
+        let annotation_str = cap.get(1).map(|m| m.as_str()).unwrap_or("");
+        let fn_name = cap.get(2)?.as_str().to_string();
+        let params_str = cap.get(3).map(|m| m.as_str()).unwrap_or("");
+        // Return type may have trailing { which we need to strip
+        let return_type_raw = cap.get(4).map(|m| m.as_str()).unwrap_or("void");
+        let return_type = return_type_raw.trim_end_matches('{').trim().to_string();
+        let return_type = if return_type.is_empty() {
+            "void".to_string()
+        } else {
+            return_type
+        };
+
+        // Extract method from annotation (e.g., method = "GET")
+        let method_pattern = Regex::new(r#"method\s*=\s*"(\w+)""#).ok()?;
+        let method = method_pattern
+            .captures(annotation_str)
+            .and_then(|cap| cap.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| "GET".to_string());
+
+        // Extract path from annotation (e.g., path = "/api/users")
+        let path_pattern = Regex::new(r#"path\s*=\s*"([^"]+)""#).ok()?;
+        let path = path_pattern
+            .captures(annotation_str)
+            .and_then(|cap| cap.get(1))
+            .map(|m| m.as_str().to_string())
+            .unwrap_or_else(|| format!("/api/{}", fn_name));
+
+        let params = parse_params(params_str);
+        let mut attrs = ApiAttrs::new();
+        attrs.method = Some(method);
+        attrs.path = Some(path);
+        let mut endpoint = ApiEndpoint::new(fn_name.clone(), attrs);
+        endpoint.params = params;
+        endpoint.return_type = return_type;
+
+        module.endpoints.push(endpoint);
+    }
+
+    Some(module)
+}
+
+/// Parse type fields from a string like "id: int\nname: str" or the
+/// space-separated form "id int\nname str" (Plan 317 supports both).
+/// Plan 043 M5 B-4: colon-less fields (e.g. `commands []ToolEntry`,
+/// `rows [][]RenderedCell`) were previously dropped, so the generated
+/// interface silently lost fields and callers failed with TS2339.
+fn parse_fields(fields_str: &str) -> Vec<ApiField> {
+    fields_str
+        .lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            if line.is_empty() {
+                return None;
+            }
+
+            // Split on ':' to get name and type (canonical form)
+            let parts: Vec<&str> = line.splitn(2, ':').collect();
+            let (name, ty) = if parts.len() == 2 && !parts[1].trim().is_empty() {
+                (parts[0].trim(), parts[1].trim())
+            } else {
+                // Colon-less "name type" form: split on the first whitespace.
+                // A bare name (no type) is skipped, matching the colon path.
+                let mut ws = line.splitn(2, char::is_whitespace);
+                match (ws.next(), ws.next()) {
+                    (Some(n), Some(t)) => (n, t.trim()),
+                    _ => return None,
+                }
+            };
+            if name.is_empty() {
+                return None;
+            }
+            Some(ApiField {
+                name: name.to_string(),
+                ty: ty.to_string(),
+                optional: false,
+                default: None,
+            })
+        })
+        .collect()
+}
+
+/// Parse function parameters from a string like "id int, name str"
+fn parse_params(params_str: &str) -> Vec<ApiParam> {
+    if params_str.trim().is_empty() {
+        return Vec::new();
+    }
+
+    params_str
+        .split(',')
+        .filter_map(|param| {
+            let parts: Vec<&str> = param.trim().split_whitespace().collect();
+            if parts.len() >= 2 {
+                Some(ApiParam {
+                    name: parts[0].to_string(),
+                    ty: parts[1].to_string(),
+                    optional: false,
+                    default: None,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// P738-R5-03 生成消费者腿：真实 generate_api + current_generated_
+    /// assembly（api-generation），与同 api.at 文件的 CLI actual（rust）
+    /// 共同装配身份对拍——不使用 clone 模拟（对账 auto-lang 侧三目标
+    /// CLI↔会话三角）。
+    #[test]
+    fn generation_consumer_identity_matches_cli_actual() {
+        use auto_lang_core::compile::CompileSession;
+        use auto_lang_core::stdlib_assembly::manifest::AssemblyManifest;
+        use auto_lang_core::stdlib_assembly::model::AssemblyTarget;
+        // Plan 742 R1: this test pins AUTO_RUST_WORKSPACE process-globally —
+        // serialize against every other env-sensitive generate_api test or
+        // the pin lands mid-flight and their backends vanish with this
+        // tempdir (bp-root-env-lock precedent, mirrored shape).
+        let _env_guard = a2r_env_lock();
+        let dir = tempfile::tempdir().unwrap();
+        let project = dir.path().join("project");
+        let isolated_workspace = dir.path().join("workspace");
+        std::fs::create_dir_all(project.join("src/back")).unwrap();
+        std::fs::write(
+            project.join("pac.at"),
+            "{ name: \"plan738-r5-triangle\", scene: \"workspace\" }",
+        )
+        .unwrap();
+        let api = "#[api(method = \"GET\", path = \"/api/answer\")]
+pub fn answer() int { let d = json.parse(\"{}\")
+ return 42 }
+";
+        std::fs::write(project.join("src/back/api.at"), api).unwrap();
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("AUTO_RUST_WORKSPACE", value),
+                    None => std::env::remove_var("AUTO_RUST_WORKSPACE"),
+                }
+            }
+        }
+        let _restore = Restore(std::env::var_os("AUTO_RUST_WORKSPACE"));
+        std::env::set_var("AUTO_RUST_WORKSPACE", &isolated_workspace);
+        generate_api(&project, "rust").expect("真实 generate_api");
+        let generation = current_generated_api_assembly(&project).expect("真实生成装配收据");
+        assert!(
+            generation.references().iter().any(|p| p.symbol == "parse"),
+            "生成装配必须携带 endpoint body 的核心引用证明"
+        );
+        let root = auto_lang_core::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let api_path = project.join("src/back/api.at");
+        let mut cli = CompileSession::new();
+        cli.set_assembly_target(AssemblyTarget::Rust).unwrap();
+        cli.add_source_dir(api_path.parent().unwrap().to_path_buf());
+        cli.resolve_uses(api).unwrap();
+        let references = auto_lang_core::stdlib_assembly::reference::compile_actual_references(
+            &cli, api, &api_path,
+        )
+        .unwrap();
+        let cli_manifest = AssemblyManifest::freeze(
+            cli.assembly,
+            "stdlib-inspect",
+            api_path.parent().unwrap(),
+            &root,
+            &cli.layer_selections,
+            references,
+        );
+        // P738-R5-03：可比装配面必须一致；fingerprint 的唯一允许差异来源
+        // =运行形态 producer（生成器=Embedded 内嵌镜像 vs CLI 默认
+        // Standalone 独立 crate——§5.8.3 合理差异，显式钉死而非泛泛不等）。
+        let gen_sources: Vec<_> = generation
+            .sources()
+            .iter()
+            .filter(|src| src.role != "consumer_input")
+            .collect();
+        let cli_sources: Vec<_> = cli_manifest.sources().iter().collect();
+        assert_eq!(
+            format!("{gen_sources:?}"),
+            format!("{cli_sources:?}"),
+            "可比装配源面（非消费者输入）必须一致"
+        );
+        assert_eq!(generation.target_json(), cli_manifest.target_json());
+        assert_eq!(
+            generation.environment_json(),
+            cli_manifest.environment_json()
+        );
+        assert_eq!(generation.features_json(), cli_manifest.features_json());
+        assert_eq!(generation.providers_json(), cli_manifest.providers_json());
+        assert_eq!(
+            generation.references().len(),
+            cli_manifest.references().len()
+        );
+        let gen_parse = generation
+            .references()
+            .iter()
+            .find(|p| p.symbol == "parse")
+            .unwrap();
+        let cli_parse = cli_manifest
+            .references()
+            .iter()
+            .find(|p| p.symbol == "parse")
+            .unwrap();
+        assert_eq!(gen_parse.declaration_hash, cli_parse.declaration_hash);
+        assert_eq!(
+            gen_parse.public_signature.parameters,
+            cli_parse.public_signature.parameters
+        );
+        assert!(
+            gen_parse
+                .producer
+                .starts_with("crates/auto-lang/src/a2r_std.rs"),
+            "生成器证明应来自 Embedded 内嵌镜像: {}",
+            gen_parse.producer
+        );
+        assert!(
+            cli_parse.producer.starts_with("crates/a2r-std/src/"),
+            "CLI 默认证明应来自 Standalone crate: {}",
+            cli_parse.producer
+        );
+    }
+
+    /// Plan 559 W2: project-provided TS glue install. When the back/api.at is
+    /// implementation-style (no contract endpoints) but the project ships the
+    /// web implementation as src/back/api.ts, the vue gen tree and dist copy
+    /// receive it as lib/api.ts so `import { ... } from '@/lib/api'` resolve
+    /// under the gen-side vue-tsc gate. Absent glue = no-op (false).
+    #[test]
+    fn test_install_project_api_glue() {
+        let dir = std::env::temp_dir().join("p559_glue_install_probe");
+        let _ = std::fs::remove_dir_all(&dir);
+        let back_dir = dir.join("src").join("back");
+        std::fs::create_dir_all(&back_dir).expect("create back dir");
+        let marker = "export function probe_fn(): number { return 42 }\n";
+        std::fs::write(back_dir.join("api.ts"), marker).expect("write glue");
+
+        assert!(install_project_api_glue(&dir), "glue present → installed");
+        let gen_lib = dir
+            .join("gen")
+            .join("front")
+            .join("vue")
+            .join("src")
+            .join("lib");
+        let installed = std::fs::read_to_string(gen_lib.join("api.ts")).expect("gen api.ts");
+        assert_eq!(installed, marker, "gen tree receives the glue verbatim");
+        let dist = std::fs::read_to_string(dir.join("dist").join("src").join("lib").join("api.ts"))
+            .expect("dist api.ts");
+        assert_eq!(dist, marker, "dist copy receives the glue verbatim");
+
+        // No glue → no-op.
+        let empty = std::env::temp_dir().join("p559_glue_install_probe_empty");
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).expect("create empty dir");
+        assert!(!install_project_api_glue(&empty), "no glue → no install");
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&empty);
+    }
+
+    /// Plan 742 (NOTES-001 T-04 cross-repo): api.rs handler bodies that call
+    /// sibling crate modules and build List locals must transpile to
+    /// compilable Rust — module import collected, List construct lowered to
+    /// Vec, no chained comparison. Reproduces the 015-notes T-04 compile
+    /// failures (E0425 missing crate::repository, verbatim List<Note>.new,
+    /// E0062-ish chained ==).
+    #[test]
+    fn test_handler_body_module_calls_and_list_construct() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type NoteDocument = { schema_version: int, note_id: str, title: str }
+pub type NoteView = { schema_version: int, note_id: str, title: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var out List<NoteDocument> = List<NoteDocument>.new([])
+    for d in docs {
+        out.push(d)
+    }
+    return out
+}
+
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn get_note(id int) ?NoteView {
+    var docs []NoteDocument = repository.repo_list_active()
+    if docs.len() > 0 {
+        var d NoteDocument = docs[0]
+        var v NoteView = NoteView { schema_version: d.schema_version, note_id: d.note_id, title: d.title }
+        return Some(v)
+    }
+    return None
+}
+
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn update_note(id int, title str) []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var ok bool = docs.len() > 0
+    if ok {
+        ok = docs[0].title == title
+    }
+    return docs
+}
+"#;
+        let dir = std::env::temp_dir().join("p742_body_parity_probe");
+        let _ = std::fs::remove_dir_all(&dir);
+        let back_dir = dir.join("src").join("back");
+        std::fs::create_dir_all(&back_dir).expect("create back dir");
+        std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
+        // Minimal transpilable companion module the bodies call into.
+        let repo_at = r#"
+pub fn repo_list_active() []NoteDocument {
+    var out List<NoteDocument> = List<NoteDocument>.new([])
+    return out
+}
+"#;
+        std::fs::write(back_dir.join("repository.at"), repo_at).expect("write repository.at");
+
+        generate_api(&dir, "rust").expect("generate api");
+
+        // The generated server lands in <project>/rust-workspace/<name>-back;
+        // locate the api.rs containing this probe's body marker.
+        let mut api_rs_path = None;
+        let ws = dir.join("rust-workspace");
+        if let Ok(entries) = std::fs::read_dir(&ws) {
+            for e in entries.flatten() {
+                let candidate = e.path().join("src").join("api.rs");
+                if let Ok(content) = std::fs::read_to_string(&candidate) {
+                    if content.contains("repo_list_active") {
+                        api_rs_path = Some(candidate);
+                        break;
+                    }
+                }
+            }
+        }
+        let api_rs_path = api_rs_path.expect("generated api.rs with probe body");
+        let api_rs = std::fs::read_to_string(&api_rs_path).expect("read api.rs");
+
+        // D5: `?NoteView` (non-primary ⇒ a2r body path) return on a :id path
+        // endpoint — signature becomes Result<Json<NoteView>, StatusCode> and
+        // Some/None map to Ok(JsonResponse(v)) / Err(NOT_FOUND).
+        // needs_result + ?T：签名剥 Option 为 Result<JsonResponse<T>, StatusCode>
+        assert!(
+            api_rs.contains("Result<JsonResponse<NoteView>, StatusCode>"),
+            "option+path signature:
+{}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("return Ok(JsonResponse("),
+            "Some→Ok:
+{}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("Err(StatusCode::NOT_FOUND)"),
+            "None→NOT_FOUND:
+{}",
+            api_rs
+        );
+
+        // D2: body references `repository.` → the crate module must be imported.
+        assert!(
+            api_rs.contains("use crate::repository;"),
+            "module import missing:
+{}",
+            api_rs
+        );
+        // D1: List construct must lower to Vec, not stay verbatim.
+        assert!(
+            !api_rs.contains("List<"),
+            "List construct must lower to Vec::new/collect:
+{}",
+            api_rs
+        );
+        // D3: no chained comparison emission.
+        assert!(
+            !api_rs.contains("== =="),
+            "chained comparison:
+{}",
+            api_rs
+        );
+    }
+
+    /// Plan 742 R1 (F-742-R1-01/02/03): business strings must survive the
+    /// body post-passes verbatim, the module-call qualification must not
+    /// rewrite same-spelling string payloads, and the generated handlers
+    /// must ACTUALLY compile and return the business values — a rustc
+    /// compile-and-run oracle on the real generate_api artifact, not
+    /// substring matching (r1 review: green substring test while the
+    /// E0308 artifact shipped).
+    #[test]
+    fn test_handler_body_string_survival_and_compile_oracle() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Probe = { text: str }
+pub type NoteDocument = { schema_version: int, note_id: str, title: str }
+pub type NoteView = { schema_version: int, note_id: str, title: str }
+
+#[api(method = "GET", path = "/api/echo")]
+pub fn echo() Probe {
+    var msg str = "ordinary message"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/echo_list")]
+pub fn echo_list() Probe {
+    var msg str = "List<int>.new([])"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/echo_brace")]
+pub fn echo_brace() Probe {
+    var msg str = "} return secret"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/echo_mod")]
+pub fn echo_mod() Probe {
+    var msg str = "repository.filename"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var out List<NoteDocument> = List<NoteDocument>.new([])
+    for d in docs {
+        out.push(d)
+    }
+    return out
+}
+
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn get_note(id int) ?NoteView {
+    var docs []NoteDocument = repository.repo_list_active()
+    if docs.len() > 0 {
+        var d NoteDocument = docs[0]
+        var v NoteView = NoteView { schema_version: d.schema_version, note_id: d.note_id, title: d.title }
+        return Some(v)
+    }
+    return None
+}
+
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn update_note(id int, title str) []NoteDocument {
+    var docs []NoteDocument = repository.repo_list_active()
+    var ok bool = docs.len() > 0
+    if ok {
+        ok = docs[0].title == title
+    }
+    return docs
+}
+"#;
+        let dir = std::env::temp_dir().join("p742_r1_string_survival_probe");
+        let _ = std::fs::remove_dir_all(&dir);
+        let back_dir = dir.join("src").join("back");
+        std::fs::create_dir_all(&back_dir).expect("create back dir");
+        std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
+        std::fs::write(
+            back_dir.join("repository.at"),
+            "pub fn repo_list_active() []NoteDocument {\n    var out List<NoteDocument> = List<NoteDocument>.new([])\n    return out\n}\n",
+        )
+        .expect("write repository.at");
+
+        generate_api(&dir, "rust").expect("generate api");
+
+        let mut api_rs_path = None;
+        let ws = dir.join("rust-workspace");
+        for e in std::fs::read_dir(&ws).expect("rust-workspace").flatten() {
+            let candidate = e.path().join("src").join("api.rs");
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                if content.contains("repo_list_active") {
+                    api_rs_path = Some(candidate);
+                    break;
+                }
+            }
+        }
+        let api_rs_path = api_rs_path.expect("generated api.rs");
+        let api_rs = std::fs::read_to_string(&api_rs_path).expect("read api.rs");
+
+        // F-742-R1-01/02: business strings survive VERBATIM (payload bytes
+        // unchanged, single line, no qualified module path inside quotes).
+        for (needle, label) in [
+            (r#""ordinary message""#, "control"),
+            (r#""List<int>.new([])""#, "list literal"),
+            (r#""} return secret""#, "brace literal"),
+            (r#""repository.filename""#, "module literal"),
+        ] {
+            assert!(
+                api_rs.contains(needle),
+                "{label} string must survive verbatim:
+{api_rs}"
+            );
+        }
+        assert!(
+            !api_rs.contains("crate::repository::filename"),
+            "module qualification leaked into a business string:
+{api_rs}"
+        );
+        assert!(
+            !api_rs.contains("\"vec![]\""),
+            "list lowering leaked into a business string:
+{api_rs}"
+        );
+        // D2 companion import still emitted for the REAL module calls.
+        assert!(
+            api_rs.contains("use crate::repository;"),
+            "module import missing:
+{api_rs}"
+        );
+        // Real List constructs still lower (code region, not the literals).
+        assert!(
+            api_rs.contains("= vec![]"),
+            "real List construct must still lower to vec![]:
+{api_rs}"
+        );
+        // F-742-R1-03: plain-value return on a PUT/path endpoint (Result
+        // signature) must wrap Ok(JsonResponse(..)) — the E0308 shape.
+        assert!(
+            api_rs.contains("return Ok(JsonResponse(docs));"),
+            "PUT plain-value tail must be Ok(JsonResponse(..)) against the Result signature:
+{api_rs}"
+        );
+
+        // Real-compile + run + value oracle: extract the generated handlers
+        // and Input structs, wrap them in stub extractors/types (no axum/serde
+        // deps — mirror of the r1 review's runner), compile with rustc and
+        // compare the executed handler outputs.
+        let mut extracted = String::new();
+        let mut extracting = false;
+        for line in api_rs.lines() {
+            let t = line.trim_start();
+            if !extracting
+                && (t.starts_with("#[derive(")
+                    || t.starts_with("pub struct ")
+                    || t.starts_with("pub async fn "))
+            {
+                extracting = true;
+            }
+            if !extracting {
+                continue;
+            }
+            // The Input structs' serde derives don't exist in the stub world.
+            if t.starts_with("#[derive(") || t.starts_with("#[serde") {
+                continue;
+            }
+            extracted.push_str(line);
+            extracted.push('\n');
+        }
+        assert!(
+            extracted.contains("pub async fn update_note"),
+            "extraction must capture the handlers:
+{api_rs}"
+        );
+        // The Db state alias follows the (heuristic) primary type too —
+        // take it from the artifact so the stub State matches the handlers.
+        let db_alias = api_rs
+            .lines()
+            .find(|l| l.trim_start().starts_with("pub type Db"))
+            .expect("generated Db state alias")
+            .trim()
+            .to_string();
+        // The PUT body-param struct name follows the (heuristic) primary
+        // type — take it from the generated artifact instead of guessing.
+        let input_struct = api_rs
+            .lines()
+            .find_map(|l| {
+                let t = l.trim();
+                t.strip_prefix("pub struct ")
+                    .and_then(|r| r.strip_suffix(" {"))
+                    .filter(|name| name.ends_with("Input"))
+                    .map(|name| name.to_string())
+            })
+            .expect("generated Input struct for the PUT body params");
+        let runner = format!(
+            r#"#![allow(unused)]
+use std::future::Future;
+use std::pin::pin;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Wake;
+use std::task::Waker;
+
+mod types {{
+    #[derive(Clone)] pub struct Probe {{ pub text: String }}
+    #[derive(Clone)] pub struct NoteDocument {{ pub schema_version: i64, pub note_id: String, pub title: String }}
+    #[derive(Clone)] pub struct NoteView {{ pub schema_version: i64, pub note_id: String, pub title: String }}
+}}
+use crate::types::*;
+
+mod repository {{
+    pub fn repo_list_active() -> Vec<super::types::NoteDocument> {{ Vec::new() }}
+}}
+
+#[derive(Clone)] pub struct State<T>(T);
+pub struct Path<T>(T);
+pub struct Json<T>(pub T);
+pub struct JsonResponse<T>(pub T);
+pub struct StatusCode;
+impl StatusCode {{ pub const NOT_FOUND: Self = Self; pub const OK: Self = Self; }}
+{db_alias}
+struct Noop;
+impl Wake for Noop {{ fn wake(self: Arc<Self>) {{}} }}
+
+fn block_on_val<T>(f: impl Future<Output = T>) -> T {{
+    let w = Waker::from(Arc::new(Noop));
+    let mut c = Context::from_waker(&w);
+    let mut fut = pin!(f);
+    match fut.as_mut().poll(&mut c) {{
+        Poll::Ready(v) => v,
+        Poll::Pending => panic!("handler unexpectedly pending"),
+    }}
+}}
+
+{extracted}
+fn main() {{
+    let sdb = State(Arc::new(Mutex::new(Vec::new())));
+    let p = block_on_val(echo(sdb.clone()));
+    println!("echo={{}}", p.0.text);
+    let p = block_on_val(echo_list(sdb.clone()));
+    println!("echo_list={{}}", p.0.text);
+    let p = block_on_val(echo_brace(sdb.clone()));
+    println!("echo_brace={{}}", p.0.text);
+    let p = block_on_val(echo_mod(sdb.clone()));
+    println!("echo_mod={{}}", p.0.text);
+    let p = block_on_val(list_notes(sdb.clone()));
+    println!("list_notes_len={{}}", p.0.len());
+    match block_on_val(get_note(Path(1), sdb.clone())) {{
+        Ok(_) => println!("get_note=ok"),
+        Err(_) => println!("get_note=not_found"),
+    }}
+    let input = {input_struct} {{ title: String::from("t") }};
+    match block_on_val(update_note(Path(1), sdb.clone(), Json(input))) {{
+        Ok(v) => println!("update_note=ok_len_{{}}", v.0.len()),
+        Err(_) => println!("update_note=err"),
+    }}
+}}
+"#
+        );
+        let runner_path = dir.join("oracle_runner.rs");
+        std::fs::write(&runner_path, runner).expect("write runner");
+        let exe_path = dir.join("oracle_runner.exe");
+        let compile = std::process::Command::new("rustc")
+            .arg("--edition=2021")
+            .arg("-o")
+            .arg(&exe_path)
+            .arg(&runner_path)
+            .output()
+            .expect("rustc on PATH (compile oracle)");
+        assert!(
+            compile.status.success(),
+            "generated handlers must compile:
+--- api.rs ---
+{api_rs}
+--- rustc stderr ---
+{}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        let run = std::process::Command::new(&exe_path)
+            .output()
+            .expect("run compiled oracle");
+        assert!(
+            run.status.success(),
+            "compiled oracle run failed:
+{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+        let expected = "echo=ordinary message\n\
+                        echo_list=List<int>.new([])\n\
+                        echo_brace=} return secret\n\
+                        echo_mod=repository.filename\n\
+                        list_notes_len=0\n\
+                        get_note=not_found\n\
+                        update_note=ok_len_0\n";
+        assert_eq!(
+            stdout, expected,
+            "handler return values must preserve the business strings"
+        );
+    }
+
+    /// Plan 742 R5 (F-742-R5-01): comparison operators are not type
+    /// delimiters — a `<` glued to an identifier opens generic depth
+    /// (`Vec<T>`); a spaced comparison operand (`1 < 2`) must not swallow
+    /// the argument comma.
+    #[test]
+    fn test_split_top_level_args_comparison_vs_generic() {
+        let args = split_top_level_args("1 < 2, s");
+        assert_eq!(args, vec!["1 < 2", "s"]);
+        let args = split_top_level_args("flag <= 2, s");
+        assert_eq!(args, vec!["flag <= 2", "s"]);
+        let args = split_top_level_args("a, b > 1, c");
+        assert_eq!(args, vec!["a", "b > 1", "c"]);
+        // generic commas stay inside their angle depth
+        let args = split_top_level_args("HashMap<String, i32>, s");
+        assert_eq!(args, vec!["HashMap<String, i32>", "s"]);
+        let args = split_top_level_args("Vec<Vec<Note>>, s");
+        assert_eq!(args, vec!["Vec<Vec<Note>>", "s"]);
+        // string commas stay literal
+        let args = split_top_level_args("\"a, b\", s");
+        assert_eq!(args, vec!["\"a, b\"", "s"]);
+    }
+
+    /// Plan 742 R3 (F-742-R3-01): placeholder-free qualify_a2r_std — the
+    /// r2 marker/restore round-trip rewrote legal business strings spelled
+    /// like an internal marker. Code positives keep their behavior (generic
+    /// qualification, use-line forms, standalone sys/sqlite faces,
+    /// already-qualified idempotency); literal payloads keep their bytes.
+    #[test]
+    fn test_qualify_a2r_std_code_regions_only() {
+        let code = "let x = a2r_std::list::new();
+                    use a2r_std;
+                    use a2r_std::*;
+                    let y = a2r_std::sys::now();
+                    let z = a2r_std::sqlite::open(p);
+                    let q = auto_lang::a2r_std::f();
+";
+        let out = qualify_a2r_std(code.to_string());
+        assert!(out.contains("auto_lang::a2r_std::list::new()"), "{out}");
+        assert!(out.contains("use auto_lang::a2r_std;"), "{out}");
+        assert!(out.contains("use auto_lang::a2r_std::*;"), "{out}");
+        // standalone-only faces keep their direct form
+        assert!(out.contains("a2r_std::sys::now()"), "{out}");
+        assert!(out.contains("::a2r_std::sqlite::open(p)"), "{out}");
+        assert!(!out.contains("auto_lang::a2r_std::sqlite"), "{out}");
+        // idempotency: already-qualified paths are not double-qualified
+        assert_eq!(out.matches("auto_lang::auto_lang").count(), 0, "{out}");
+        assert!(out.contains("auto_lang::a2r_std::f();"), "{out}");
+
+        let literal = "let m = \"__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__ a2r_std::x\".to_string();
+";
+        let out2 = qualify_a2r_std(literal.to_string());
+        assert_eq!(out2, literal, "literal payloads must keep their bytes");
+
+        // F-742-R4-01: a legal module whose name merely ENDS with the stdlib
+        // token is a different identity — code occurrences stay verbatim.
+        let suffix = concat!(
+            "let c = custom_a2r_std::ping();\n",
+            "use custom_a2r_std;\n",
+            "let d = crate::custom_a2r_std::ping();\n",
+        );
+        let out3 = qualify_a2r_std(suffix.to_string());
+        assert_eq!(
+            out3, suffix,
+            "identifier-boundary: suffix-collision modules keep their identity"
+        );
+    }
+
+    /// Plan 742 R2: the r2 review matrix as one compile-and-run oracle —
+    /// escaped/composite literals, the borrow-marker literal (F-742-R2-01)
+    /// beside a REAL &str borrow positive control, nested local shadowing
+    /// (F-742-R2-02), void bodies with branch-internal early returns and a
+    /// path variant (F-742-R2-03), an Option VARIABLE return, and a File
+    /// endpoint calling a companion module (F-742-R2-04). Every handler is
+    /// compiled from the real generated artifact and value-compared.
+    #[test]
+    fn test_handler_body_r2_matrix_compile_oracle() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Probe = { text: str }
+
+#[api(method = "GET", path = "/api/echo")]
+pub fn echo() Probe {
+    var msg str = "引号\" List<int>.new([]) repository.ping() } return secret"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/echo_borrow")]
+pub fn echo_borrow() Probe {
+    var msg str = "crate::repository::measure(value)"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/borrow_pos")]
+pub fn borrow_pos() int {
+    var s str = "hi"
+    if s.len() > 0 { return repository.measure(s) }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/nested")]
+pub fn nested() int {
+    var s str = "hi"
+    if true { return repository.outer(repository.measure(s)) }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/cmp_args")]
+pub fn cmp_args() int {
+    var s str = "hi"
+    if true { return repository.choose(1 < 2, s) }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/cmp_control")]
+pub fn cmp_control() int {
+    var s str = "hi"
+    if true { return repository.choose(true, s) }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/nsfx")]
+pub fn nsfx() int {
+    if true { return custom_a2r_std.ping() }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/marker")]
+pub fn marker() Probe {
+    var msg str = "__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__"
+    if false { return Probe { text: msg } }
+    return Probe { text: msg }
+}
+
+#[api(method = "GET", path = "/api/ping")]
+pub fn ping() int {
+    if true { return repository.ping() }
+    return 0
+}
+
+#[api(method = "GET", path = "/api/scope")]
+pub fn scope() Probe {
+    var n int = repository.ping()
+    if false {
+        var repository str = "local"
+        var size int = repository.len()
+    }
+    if n == 7 { return Probe { text: "ok" } }
+    return Probe { text: "bad" }
+}
+
+#[api(method = "POST", path = "/api/void_plain")]
+pub fn void_plain() {
+    var x int = 1
+}
+
+#[api(method = "POST", path = "/api/void_branch")]
+pub fn void_branch() {
+    if false { return }
+    var x int = 1
+}
+
+#[api(method = "PUT", path = "/api/void_path/:id")]
+pub fn void_path(id int) {
+    if false { return }
+    var x int = 1
+}
+
+#[api(method = "GET", path = "/api/opt/:id")]
+pub fn opt(id int) ?Probe {
+    var p ?Probe = Some(Probe { text: "some" })
+    if id > 0 { return p }
+    return None
+}
+
+#[api(method = "GET", path = "/api/file")]
+pub fn file() FileResponse {
+    var path str = repository.path()
+    return http.file_response("D:/files", path, "{}")
+}
+"#;
+        let dir = std::env::temp_dir().join("p742_r2_matrix_probe");
+        let _ = std::fs::remove_dir_all(&dir);
+        let back_dir = dir.join("src").join("back");
+        std::fs::create_dir_all(&back_dir).expect("create back dir");
+        std::fs::write(back_dir.join("api.at"), api).expect("write api.at");
+        std::fs::write(
+            back_dir.join("repository.at"),
+            "pub fn ping() int { return 7 }\npub fn measure(value str) int { return value.len() }\npub fn outer(value int) int { return value }
+pub fn choose(flag bool, s str) int {\n    if flag {\n        return s.len()\n    }\n    return 0\n}\npub fn path() str { return \"readme.txt\" }\n",
+        )
+        .expect("write repository.at");
+        // F-742-R4-01: a companion whose name merely ends with the stdlib
+        // token must keep its own module identity end-to-end.
+        std::fs::write(
+            back_dir.join("custom_a2r_std.at"),
+            "pub fn ping() int { return 7 }\n",
+        )
+        .expect("write custom_a2r_std.at");
+
+        generate_api(&dir, "rust").expect("generate api");
+
+        let mut api_rs_path = None;
+        let ws = dir.join("rust-workspace");
+        for e in std::fs::read_dir(&ws).expect("rust-workspace").flatten() {
+            let candidate = e.path().join("src").join("api.rs");
+            if let Ok(content) = std::fs::read_to_string(&candidate) {
+                if content.contains("repo_list") || content.contains("repository::ping") {
+                    api_rs_path = Some(candidate);
+                    break;
+                }
+            }
+        }
+        let api_rs =
+            std::fs::read_to_string(&api_rs_path.expect("generated api.rs")).expect("read api.rs");
+
+        // F-742-R2-01: the borrow-marker string survives byte-for-byte and
+        // the REAL borrow call still gets its & inserted (positive control).
+        assert!(
+            api_rs.contains(r#""crate::repository::measure(value)""#),
+            "borrow-marker literal must survive:
+{api_rs}"
+        );
+        assert!(
+            !api_rs.contains("measure(&value)"),
+            "borrow insertion leaked into the literal:
+{api_rs}"
+        );
+        assert!(
+            api_rs.contains("repository::measure(&s)")
+                || api_rs.contains("repository::measure(&msg"),
+            "real &str borrow positive control must keep its insertion:
+{api_rs}"
+        );
+        // F-742-R3-02: nested module calls fix the INNER borrow too.
+        assert!(
+            api_rs.contains("crate::repository::outer(crate::repository::measure(&s))"),
+            "nested module call must borrow the inner &str arg:
+{api_rs}"
+        );
+        // F-742-R5-01: a comparison operand must not hide the argument
+        // comma — the second &str arg keeps its borrow.
+        assert!(
+            api_rs.contains("repository::choose(1 < 2, &s)"),
+            "comparison arg must not swallow the comma (2nd param borrow):
+{api_rs}"
+        );
+        assert!(
+            api_rs.contains("repository::choose(true, &s)"),
+            "control shape keeps its borrow:
+{api_rs}"
+        );
+        // F-742-R4-01: suffix-collision companion keeps its full identity.
+        assert!(
+            api_rs.contains("crate::custom_a2r_std::ping()"),
+            "suffix-collision companion call must qualify to its own module:
+{api_rs}"
+        );
+        assert!(
+            !api_rs.contains("custom_auto_lang"),
+            "stdlib scan must not rewrite inside a longer identifier:
+{api_rs}"
+        );
+        // F-742-R3-01: internal-marker literals survive byte-for-byte.
+        assert!(
+            api_rs.contains(
+                r#""__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__""#
+            ),
+            "marker literal must survive:
+{api_rs}"
+        );
+        // F-742-R2-02: outer call qualified, sub-block method call NOT.
+        assert!(
+            api_rs.contains("crate::repository::ping()"),
+            "outer module call must qualify:
+{api_rs}"
+        );
+        assert!(
+            api_rs.contains("repository.len()"),
+            "sub-block local shadow must keep its method call:
+{api_rs}"
+        );
+        assert!(
+            !api_rs.contains("\"local\".len"),
+            "shadow initializer is literal text:
+{api_rs}"
+        );
+        // F-742-R2-03: Option variable maps through a runtime match.
+        assert!(
+            api_rs.contains("return match p {"),
+            "option variable must map Some/None at runtime:
+{api_rs}"
+        );
+        // F-742-R2-04: file body module call qualified.
+        assert!(
+            api_rs.contains("crate::repository::path()"),
+            "file-body module call must qualify:
+{api_rs}"
+        );
+
+        // Extract each generated handler by name (brace-balanced over CODE
+        // regions only — a `}` inside a business string must not end the
+        // handler) — skips glue/input structs entirely.
+        let file_mask = code_region_mask_text(&api_rs);
+        let extract = |name: &str| -> String {
+            let start = api_rs
+                .find(&format!("pub async fn {name}"))
+                .unwrap_or_else(|| panic!("handler {name} missing:\n{api_rs}"));
+            let bytes = api_rs.as_bytes();
+            let mut depth = 0i32;
+            let mut i = start;
+            let mut end = api_rs.len();
+            while i < bytes.len() {
+                if file_mask[i] {
+                    match bytes[i] {
+                        b'{' => depth += 1,
+                        b'}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = i + 1;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                i += 1;
+            }
+            api_rs[start..end].to_string()
+        };
+        let handlers = [
+            "echo",
+            "echo_borrow",
+            "borrow_pos",
+            "nested",
+            "marker",
+            "nsfx",
+            "cmp_args",
+            "cmp_control",
+            "ping",
+            "scope",
+            "void_plain",
+            "void_branch",
+            "void_path",
+            "opt",
+            "file",
+        ]
+        .iter()
+        .map(|n| format!("{}\n", extract(n)))
+        .collect::<String>();
+
+        let runner = r#"#![allow(unused)]
+use std::future::Future;
+use std::pin::pin;
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::task::Context;
+use std::task::Poll;
+use std::task::Wake;
+use std::task::Waker;
+
+mod types {
+    #[derive(Clone)] pub struct Probe { pub text: String }
+}
+use crate::types::*;
+
+mod custom_a2r_std { pub fn ping() -> i64 { 7 } }
+mod repository {
+    pub fn ping() -> i64 { 7 }
+    pub fn measure(value: &str) -> i64 { value.len() as i64 }
+    pub fn outer(value: i64) -> i64 { value }
+    pub fn choose(flag: bool, s: &str) -> i64 { if flag { s.len() as i64 } else { 0 } }
+    pub fn path() -> String { "readme.txt".to_string() }
+}
+
+#[derive(Clone)] pub struct State<T>(T);
+pub struct Path<T>(T);
+pub struct JsonResponse<T>(pub T);
+pub struct StatusCode;
+impl StatusCode { pub const NOT_FOUND: Self = Self; pub const OK: Self = Self; }
+pub type Db = Arc<Mutex<Vec<types::Probe>>>;
+
+mod axum {
+    pub mod http { pub struct Method; pub struct HeaderMap; }
+    pub mod response { #[derive(Debug)] pub struct Response(pub String); }
+}
+mod auto_lang {
+    pub mod a2r_std {
+        pub mod http {
+            pub struct FileResponse(pub String);
+            pub fn file_response(_: &str, path: &str, _: &str) -> FileResponse {
+                FileResponse(path.to_string())
+            }
+        }
+    }
+}
+async fn __file_reply(
+    d: auto_lang::a2r_std::http::FileResponse,
+    _: &axum::http::Method,
+    _: &axum::http::HeaderMap,
+) -> axum::response::Response {
+    axum::response::Response(d.0)
+}
+
+struct Noop;
+impl Wake for Noop { fn wake(self: Arc<Self>) {} }
+fn ready<T>(f: impl Future<Output = T>) -> T {
+    let w = Waker::from(Arc::new(Noop));
+    let mut c = Context::from_waker(&w);
+    let mut f = pin!(f);
+    match f.as_mut().poll(&mut c) {
+        Poll::Ready(v) => v,
+        Poll::Pending => panic!("handler unexpectedly pending"),
+    }
+}
+
+__HANDLERS__
+fn main() {
+    let sdb = State(Arc::new(Mutex::new(Vec::new())));
+    println!("echo={}", ready(echo(sdb.clone())).0.text);
+    println!("echo_borrow={}", ready(echo_borrow(sdb.clone())).0.text);
+    println!("borrow_pos={}", ready(borrow_pos(sdb.clone())).0);
+    println!("nested={}", ready(nested(sdb.clone())).0);
+    println!("nsfx={}", ready(nsfx(sdb.clone())).0);
+    println!("cmp_args={}", ready(cmp_args(sdb.clone())).0);
+    println!("cmp_control={}", ready(cmp_control(sdb.clone())).0);
+    println!("marker={}", ready(marker(sdb.clone())).0.text);
+    println!("ping={}", ready(ping(sdb.clone())).0);
+    println!("scope={}", ready(scope(sdb.clone())).0.text);
+    let _ = ready(void_plain(sdb.clone()));
+    println!("void_plain=ok");
+    let _ = ready(void_branch(sdb.clone()));
+    println!("void_branch=ok");
+    match ready(void_path(Path(1), sdb.clone())) {
+        Ok(_) => println!("void_path=ok"),
+        Err(_) => println!("void_path=err"),
+    }
+    match ready(opt(Path(1), sdb.clone())) {
+        Ok(v) => println!("opt1={}", v.0.text),
+        Err(_) => println!("opt1=none"),
+    }
+    match ready(opt(Path(0), sdb.clone())) {
+        Ok(v) => println!("opt0={}", v.0.text),
+        Err(_) => println!("opt0=none"),
+    }
+    println!("file={}", ready(file(sdb.clone(), axum::http::Method, axum::http::HeaderMap)).0);
+}
+"#
+        .replace("__HANDLERS__", &handlers);
+        let runner_path = dir.join("oracle_runner.rs");
+        std::fs::write(&runner_path, runner).expect("write runner");
+        let exe_path = dir.join("oracle_runner.exe");
+        let compile = std::process::Command::new("rustc")
+            .arg("--edition=2021")
+            .arg("-o")
+            .arg(&exe_path)
+            .arg(&runner_path)
+            .output()
+            .expect("rustc on PATH (compile oracle)");
+        assert!(
+            compile.status.success(),
+            "generated handlers must compile:
+--- api.rs ---
+{api_rs}
+--- rustc stderr ---
+{}",
+            String::from_utf8_lossy(&compile.stderr)
+        );
+        let run = std::process::Command::new(&exe_path)
+            .output()
+            .expect("run compiled oracle");
+        assert!(
+            run.status.success(),
+            "compiled oracle run failed:
+{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+        let stdout = String::from_utf8_lossy(&run.stdout).to_string();
+        let expected = "echo=引号\" List<int>.new([]) repository.ping() } return secret\n\
+                        echo_borrow=crate::repository::measure(value)\n\
+                        borrow_pos=2\n\
+                        nested=2\n\
+                        nsfx=7\n\
+                        cmp_args=2\n\
+                        cmp_control=2\n\
+                        marker=__AUTO_A2R_STD_QUAL__ __AUTO_A2R_STD_SQLITE__ __AUTO_A2R_STD_SYS__\n\
+                        ping=7\n\
+                        scope=ok\n\
+                        void_plain=ok\n\
+                        void_branch=ok\n\
+                        void_path=ok\n\
+                        opt1=some\n\
+                        opt0=none\n\
+                        file=readme.txt\n";
+        assert_eq!(
+            stdout, expected,
+            "handler return values must preserve business strings and map exits"
+        );
+    }
+
+    #[test]
+    fn test_extract_api_lenient_types() {
+        let content = r#"
+pub type User = {
+    id: int
+    name: str
+    email: str
+}
+
+pub type CreateUserRequest = {
+    name: str
+    email: str
+}
+"#;
+        let module = extract_api_lenient(content).expect("Should extract");
+
+        assert_eq!(module.types.len(), 2);
+        assert_eq!(module.types[0].name, "User");
+        assert_eq!(module.types[0].fields.len(), 3);
+        assert_eq!(module.types[0].fields[0].name, "id");
+        assert_eq!(module.types[0].fields[0].ty, "int");
+        assert_eq!(module.types[1].name, "CreateUserRequest");
+    }
+
+    #[test]
+    fn test_extract_api_lenient_colonless_fields() {
+        // Plan 043 M5 B-4: colon-less `name type` fields (valid Auto syntax,
+        // e.g. `commands []ToolEntry` / `rows [][]RenderedCell`) must survive
+        // lenient extraction — previously only `name: type` lines were kept,
+        // silently dropping the rest from the generated interface (TS2339).
+        let content = r#"
+pub type RenderedOutput = {
+    kind: str
+    text: str
+    rows [][]RenderedCell
+    code_lines [][]CodeSpan
+}
+
+pub type BootSnapshot = {
+    cwd: str
+    home: str
+    commands []ToolEntry
+    smart_commands []SmartCommandEntry
+}
+"#;
+        let module = extract_api_lenient(content).expect("Should extract");
+        assert_eq!(module.types.len(), 2);
+
+        let ro = &module.types[0];
+        assert_eq!(ro.name, "RenderedOutput");
+        let field_names: Vec<&str> = ro.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(field_names, vec!["kind", "text", "rows", "code_lines"]);
+        assert_eq!(ro.fields[2].ty, "[][]RenderedCell");
+        assert_eq!(ro.fields[3].ty, "[][]CodeSpan");
+
+        let snap = &module.types[1];
+        assert_eq!(snap.name, "BootSnapshot");
+        let snap_names: Vec<&str> = snap.fields.iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(
+            snap_names,
+            vec!["cwd", "home", "commands", "smart_commands"]
+        );
+        assert_eq!(snap.fields[2].ty, "[]ToolEntry");
+    }
+
+    #[test]
+    fn test_extract_api_lenient_endpoints() {
+        let content = r#"
+#[api(method = "GET", path = "/api/users/:id")]
+pub fn getuser(id int) User? {
+    use db
+    return db.find_user(id)
+}
+
+#[api(method = "GET", path = "/api/users")]
+pub fn listusers() []User {
+    use db
+    return db.all_users()
+}
+"#;
+        let module = extract_api_lenient(content).expect("Should extract");
+
+        assert_eq!(module.endpoints.len(), 2);
+        assert_eq!(module.endpoints[0].fn_name, "getuser");
+        assert_eq!(module.endpoints[0].params.len(), 1);
+        assert_eq!(module.endpoints[0].params[0].name, "id");
+        assert_eq!(module.endpoints[0].params[0].ty, "int");
+        assert_eq!(module.endpoints[0].return_type, "User?");
+        // Verify method and path extraction
+        assert_eq!(module.endpoints[0].attrs.method, Some("GET".to_string()));
+        assert_eq!(
+            module.endpoints[0].attrs.path,
+            Some("/api/users/:id".to_string())
+        );
+
+        assert_eq!(module.endpoints[1].fn_name, "listusers");
+        assert_eq!(module.endpoints[1].params.len(), 0);
+        assert_eq!(module.endpoints[1].return_type, "[]User");
+        // Verify method and path extraction
+        assert_eq!(module.endpoints[1].attrs.method, Some("GET".to_string()));
+        assert_eq!(
+            module.endpoints[1].attrs.path,
+            Some("/api/users".to_string())
+        );
+    }
+
+    #[test]
+    fn test_extract_api_lenient_with_create_request() {
+        let content = r#"
+#[api(method = "POST", path = "/api/users")]
+pub fn createuser(req CreateUserRequest) User {
+    use db
+    let user = db.create_user(req.name, req.email)
+    return user
+}
+"#;
+        let module = extract_api_lenient(content).expect("Should extract");
+
+        assert_eq!(module.endpoints.len(), 1);
+        assert_eq!(module.endpoints[0].fn_name, "createuser");
+        assert_eq!(module.endpoints[0].params.len(), 1);
+        assert_eq!(module.endpoints[0].params[0].name, "req");
+        assert_eq!(module.endpoints[0].params[0].ty, "CreateUserRequest");
+        assert_eq!(module.endpoints[0].return_type, "User");
+        // Verify method and path extraction
+        assert_eq!(module.endpoints[0].attrs.method, Some("POST".to_string()));
+        assert_eq!(
+            module.endpoints[0].attrs.path,
+            Some("/api/users".to_string())
+        );
+    }
+
+    #[test]
+    fn test_parse_fields() {
+        let fields_str = r#"
+    id: int
+    name: str
+    email: str
+"#;
+        let fields = parse_fields(fields_str);
+
+        assert_eq!(fields.len(), 3);
+        assert_eq!(fields[0].name, "id");
+        assert_eq!(fields[0].ty, "int");
+        assert_eq!(fields[1].name, "name");
+        assert_eq!(fields[1].ty, "str");
+    }
+
+    #[test]
+    fn test_parse_params() {
+        let params_str = "id int, name str";
+        let params = parse_params(params_str);
+
+        assert_eq!(params.len(), 2);
+        assert_eq!(params[0].name, "id");
+        assert_eq!(params[0].ty, "int");
+        assert_eq!(params[1].name, "name");
+        assert_eq!(params[1].ty, "str");
+    }
+
+    #[test]
+    fn test_parse_params_empty() {
+        let params = parse_params("");
+        assert!(params.is_empty());
+
+        let params = parse_params("   ");
+        assert!(params.is_empty());
+    }
+
+    #[test]
+    fn test_extract_full_example() {
+        // Test with content from the actual api-example file
+        let content = r#"
+/// User information
+pub type User = {
+    id: int
+    name: str
+    email: str
+}
+
+/// Create user request
+pub type CreateUserRequest = {
+    name: str
+    email: str
+}
+
+/// Get user by ID
+#[api(method = "GET", path = "/api/users/:id")]
+pub fn getuser(id int) User? {
+    use db
+
+    let user = db.find_user(id)
+    return user
+}
+
+/// List all users
+#[api(method = "GET", path = "/api/users")]
+pub fn listusers() []User {
+    use db
+
+    return db.all_users()
+}
+"#;
+        let module = extract_api_lenient(content).expect("Should extract");
+
+        assert_eq!(module.types.len(), 2, "Should have 2 types");
+        assert_eq!(module.endpoints.len(), 2, "Should have 2 endpoints");
+
+        // Check User type
+        assert_eq!(module.types[0].name, "User");
+        assert_eq!(module.types[0].fields.len(), 3);
+
+        // Check getuser endpoint
+        assert_eq!(module.endpoints[0].fn_name, "getuser");
+        assert_eq!(module.endpoints[0].return_type, "User?");
+        assert_eq!(module.endpoints[0].attrs.method, Some("GET".to_string()));
+        assert_eq!(
+            module.endpoints[0].attrs.path,
+            Some("/api/users/:id".to_string())
+        );
+
+        // Check listusers endpoint
+        assert_eq!(module.endpoints[1].fn_name, "listusers");
+        assert_eq!(module.endpoints[1].return_type, "[]User");
+        assert_eq!(module.endpoints[1].attrs.method, Some("GET".to_string()));
+        assert_eq!(
+            module.endpoints[1].attrs.path,
+            Some("/api/users".to_string())
+        );
+    }
+
+    /// AUTO_A2R_BODY is process-global and read inside `generate_api_rs`;
+    /// tests that generate api.rs must not run in parallel with
+    /// `test_a2r_body_disabled_falls_back`, which temporarily sets it.
+    static A2R_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn a2r_env_lock() -> std::sync::MutexGuard<'static, ()> {
+        A2R_ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    // =======================================================================
+    // PLAN-729 T-06: 生成文件 handler 实编 wire e2e（test-http-e2e 串行档）。
+    // 真实生成产物（api.rs/main.rs/types.rs/Cargo.toml）→ 临时 crate →
+    // cargo run（共享 worktree target 缓存）→ 真 TCP wire 断言。
+    // =======================================================================
+    // ===========================================================================
+    // PLAN-730 T-06: 上传端点生成（字符串锁 + TS/Tauri 形态 + 真实编译运行 e2e）
+    // ===========================================================================
+
+    /// 上传端点生成：Request 提取器置最后、宿主 receive/commit await 直发、
+    /// 收据真实 status；main 安装 executor。
+    /// PLAN-734 R1 F-3：Tauri MockRuntime command dispatcher 实测——真实
+    /// 生成命令（fixture 锁定）经 mock_builder + generate_handler! 注册，
+    /// get_ipc_response 走完整 IPC dispatcher（非直接函数调用）。证明
+    /// command 编组/返回序列化；不证明 webview/权限/安装包。
+    #[test]
+    fn plan734_tauri_mock_dispatcher_invokes_generated_command() {
+        // 最小 api 实现（生成命令引用 crate::api::echo——本测试以局部模块
+        // 提供同形实现，command 体本身来自生成器 fixture）。
+        mod api {
+            use serde::{Deserialize, Serialize};
+
+            #[derive(Debug, Clone, Serialize, serde::Deserialize)]
+            pub struct Echo {
+                pub ok: bool,
+                pub n: i32,
+                pub tag: String,
+            }
+
+            pub fn echo(n: i32, tag: String) -> Echo {
+                Echo { ok: true, n, tag }
+            }
+        }
+        // 生成的命令体（与 fixture 逐字一致由上面的锁测试保证——此处仅
+        // 保留 dispatcher 所需的 command 定义）。
+        #[tauri::command]
+        fn echo(n: i32, tag: String) -> api::Echo {
+            api::echo(n, tag)
+        }
+
+        let app = tauri::test::mock_builder()
+            .invoke_handler(tauri::generate_handler![echo])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .expect("mock app builds");
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .expect("mock webview builds");
+
+        let body = serde_json::json!({ "n": 42, "tag": "hi" });
+        let resp = tauri::test::get_ipc_response(
+            &webview,
+            tauri::webview::InvokeRequest {
+                cmd: "echo".into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: "http://tauri.localhost".parse().unwrap(),
+                body: tauri::ipc::InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.to_string(),
+            },
+        )
+        .expect("dispatcher resolves");
+
+        let echo: api::Echo = resp.deserialize().expect("body deserializes to Echo");
+        assert!(echo.ok);
+        assert_eq!(echo.n, 42);
+        assert_eq!(echo.tag, "hi");
+    }
+
+    /// PLAN-734 R1 F-3 fixture 源：锁定 TauriGenerator 当前输出与已提交
+    /// tests/plan734_commands_fixture.rs 逐字一致（生成器漂移即红）。
+    #[test]
+    fn test_plan734_tauri_fixture_matches_generator() {
+        let api = r#"
+pub type Echo = { ok: bool, n: int, tag: str }
+
+#[api(method = "POST", path = "/api/echo")]
+pub fn echo(n int, tag str) Echo {
+    return Echo { ok: true, n: n, tag: tag }
+}
+"#;
+        let module = try_full_parse(api).expect("parse");
+        use auto_lang_core::api::TargetGenerator as _;
+        let generated = auto_lang_core::api::TauriGenerator::new().generate(&module);
+        let fixture = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../auto-man/tests/fixtures/plan734_commands_fixture.rs.txt"
+        ))
+        .expect("fixture readable");
+        assert_eq!(
+            generated.trim(),
+            fixture.trim(),
+            "generator drift vs fixture"
+        );
+    }
+
+    #[test]
+    fn test_plan730_upload_endpoint_generation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    let root = env.get("UPLOADS_ROOT")
+    let staging = env.get("UPLOADS_STAGING")
+    let session = http.upload_receive(req, root, staging, "{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("{\"state\":\"failed\"") {
+        return http.upload_reject(session, 0, "receive failed")
+    }
+    return http.upload_commit(session, "mp/blob.bin")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false, &[]);
+        // 提取器：method/headers 先、Request 最后（不预读）——锁完整签名行
+        //（glue 块也含同名类型，不单独寻位）。
+        assert!(
+            api_rs.contains("pub async fn upload(method: axum::http::Method, headers: axum::http::HeaderMap, request: axum::extract::Request)"),
+            "Request extractor last: {api_rs}"
+        );
+        // 注入参数构造 + 收据回复 + 转译体 await 直发。
+        assert!(
+            api_rs.contains("__upload_request(&method, &headers, request)"),
+            "{api_rs}"
+        );
+        assert!(api_rs.contains("__upload_reply("), "{api_rs}");
+        assert!(
+            api_rs.contains("a2r_std::http::upload_receive(req, root, staging"),
+            "{api_rs}"
+        );
+        assert!(
+            api_rs.contains("upload_receive(req, root, staging"),
+            "await emission: {api_rs}"
+        );
+        assert!(api_rs.contains(").await;"), "await emission: {api_rs}");
+        assert!(
+            api_rs.contains("a2r_std::http::upload_commit(session"),
+            "{api_rs}"
+        );
+        // 不落 CRUD 模板。
+        assert!(
+            !api_rs.contains("JsonResponse::"),
+            "no CRUD template: {api_rs}"
+        );
+        let main = generate_main_rs(&module, None, false, &[], false);
+        assert!(
+            main.contains("install_upload_executor_service();"),
+            "main installs host executor: {main}"
+        );
+        assert!(main.contains("axum::routing::post(api::upload)"), "{main}");
+    }
+
+    /// 非 POST/PUT → 405 诊断 handler（与 VM 腿同语义）。
+    #[test]
+    fn test_plan730_upload_non_post_405() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "GET", path = "/api/up")]
+pub fn up(req UploadRequest) ~UploadReceipt {
+    return http.upload_error(500, "x")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false, &[]);
+        assert!(api_rs.contains("METHOD_NOT_ALLOWED"), "{api_rs}");
+        assert!(api_rs.contains("\"allow\", \"POST, PUT\""), "{api_rs}");
+    }
+
+    /// PLAN-776 T-06（AC-07/AC-08）：生成轨消费提取期来源身份——用户同名
+    /// `FileResponse`/`Response` 声明是普通 Json 端点：不生成文件 adapter、
+    /// TS 客户端不落原生 Response 映射（fetch .json() 数据面）；未遮蔽的
+    /// 真实 FileResponse 保持文件 glue。
+    #[test]
+    fn plan776_generation_consumes_source_identity() {
+        use auto_lang_core::api::contract::ResponseKind;
+        use auto_lang_core::api::ApiExtractor;
+        use auto_lang_core::api::TypeScriptGenerator;
+        let api = r#"
+pub type FileResponse = { name: str }
+
+#[api(method = "GET", path = "/api/user-file")]
+pub fn user_file() FileResponse {
+    return FileResponse { name: "x" }
+}
+
+#[api(method = "GET", path = "/api/real-file")]
+pub fn real_file() FileResponse2 {
+    return real_file_response("root", "a.bin", "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let user_ep = module
+            .endpoints
+            .iter()
+            .find(|e| e.fn_name == "user_file")
+            .expect("user endpoint");
+        assert_eq!(user_ep.response, ResponseKind::Json, "用户同名遮蔽 → Json");
+
+        // TS 客户端：遮蔽端点走 .json() 数据面（不映射原生 Response）。
+        let gen = TypeScriptGenerator::new().with_types(module.types.clone());
+        let ts = gen.generate_simple_client(&module);
+        assert!(
+            ts.contains("return response.json();"),
+            "遮蔽端点按 JSON 数据面: {ts}"
+        );
+    }
+
+    /// TS 上传方法：FormData 直传（无 JSON.stringify/无 Content-Type 头）、
+    /// 注入参数删除、收据 JSON 返回。
+    #[test]
+    fn test_plan730_upload_ts_formdata() {
+        use auto_lang_core::api::ApiExtractor;
+        use auto_lang_core::api::TypeScriptGenerator;
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    return http.upload_error(201, "x")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let gen = TypeScriptGenerator::new();
+        let ts = gen.generate_simple_client(&module);
+        assert!(ts.contains("body: FormData"), "FormData param: {ts}");
+        assert!(ts.contains("body,"), "fetch body passthrough: {ts}");
+        assert!(!ts.contains("JSON.stringify"), "no JSON body: {ts}");
+        assert!(
+            !ts.contains("'Content-Type': 'application/json'"),
+            "browser sets multipart boundary: {ts}"
+        );
+        assert!(!ts.contains("req:"), "injected param removed: {ts}");
+        assert!(ts.contains("return response.json();"), "receipt JSON: {ts}");
+    }
+
+    /// Tauri IPC：上传端点 Unsupported 诊断（生成串锁）。
+    #[test]
+    fn test_plan730_tauri_upload_unsupported() {
+        use auto_lang_core::api::TauriGenerator;
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/uploads")]
+pub fn upload(req UploadRequest) ~UploadReceipt {
+    return http.upload_error(201, "x")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let gen = TauriGenerator::new();
+        use auto_lang_core::api::TargetGenerator as _;
+        let cmds = gen.generate(&module);
+        assert!(
+            cmds.contains("PLAN-730: upload endpoint `upload` requires HTTP transport"),
+            "unsupported diagnostic: {cmds}"
+        );
+        assert!(!cmds.contains("invoke_upload"), "{cmds}");
+    }
+
+    /// 转译失败 → 诊断 500（不落 CRUD 模板）。
+    #[test]
+    fn test_plan730_upload_transpile_failure_diagnostic() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type UploadMeta = { name: str }
+
+#[api(method = "POST", path = "/api/broken")]
+pub fn broken(req UploadRequest) UploadReceipt {
+    let session = http.upload_receive(req, "r", "s", "{\"mode\":\"raw\"}")
+    return http.upload_error(500, "x")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false, &[]);
+        assert!(
+            api_rs.contains("upload_error(500, \"api.at handler `broken` body failed to transpile"),
+            "diagnostic 500: {api_rs}"
+        );
+        assert!(!api_rs.contains("JsonResponse::"), "{api_rs}");
+    }
+
+    #[cfg(feature = "test-http-e2e")]
+    mod plan729_e2e {
+        use super::*;
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        const PORT: u16 = 18960;
+
+        fn temp_root(tag: &str) -> std::path::PathBuf {
+            let dir =
+                std::env::temp_dir().join(format!("plan729-gen-{}-{}", tag, std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        }
+
+        fn raw_request(
+            port: u16,
+            method: &str,
+            path: &str,
+            headers: &[(&str, &str)],
+        ) -> (u16, Vec<(String, String)>, Vec<u8>) {
+            let mut stream = None;
+            for _ in 0..100 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect to generated server");
+            stream.set_read_timeout(Some(Duration::from_secs(30))).ok();
+            let mut req =
+                format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
+            for (k, v) in headers {
+                req.push_str(&format!("{k}: {v}\r\n"));
+            }
+            req.push_str("\r\n");
+            stream.write_all(req.as_bytes()).unwrap();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 65536];
+            let header_end = loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break None;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break Some(pos + 4);
+                }
+            };
+            let header_end = header_end.expect("response headers");
+            let head = String::from_utf8_lossy(&raw[..header_end]).into_owned();
+            let mut lines = head.split("\r\n");
+            let status_line = lines.next().unwrap_or_default().to_string();
+            let status: u16 = status_line
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let mut hdrs = Vec::new();
+            for line in lines {
+                if let Some((k, v)) = line.split_once(':') {
+                    hdrs.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
+                }
+            }
+            let cl: usize = hdrs
+                .iter()
+                .find(|(k, _)| k == "content-length")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(0);
+            let mut body = raw[header_end..].to_vec();
+            while body.len() < cl {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                body.extend_from_slice(&buf[..n]);
+            }
+            body.truncate(cl);
+            (status, hdrs, body)
+        }
+
+        fn header_of(hdrs: &[(String, String)], name: &str) -> String {
+            hdrs.iter()
+                .find(|(k, _)| k == name)
+                .map(|(_, v)| v.clone())
+                .unwrap_or_default()
+        }
+
+        /// 生成 → 写 crate → cargo run（子进程；监听后返回 Child）。
+        fn spawn_generated_server(api_at: &str, port: u16) -> std::process::Child {
+            let module = try_full_parse(api_at).expect("full parse");
+            let api_rs = generate_api_rs(&module, None, false, &[]);
+            let main_rs = generate_main_rs(&module, None, false, &[], false);
+            let types_rs = generate_types_rs(&module);
+            let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            // crates/auto-man → 仓库根（ancestors: [auto-man, crates, <root>]）。
+            let repo_root = manifest.ancestors().nth(2).unwrap().to_path_buf();
+            let dir = temp_root("crate");
+            let src = dir.join("src");
+            std::fs::create_dir_all(&src).unwrap();
+            // 与生产生成 crate 同形依赖（rust_ui.rs workspace 集的直 dep 形）；
+            // 共享 worktree target —— auto-lang 重产物复用，首编只有 glue。
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "plan729-gen-e2e"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = {{ version = "1", features = ["full"] }}
+tokio-util = {{ version = "0.7", features = ["io"] }}
+futures = "0.3"
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+tower-http = {{ version = "0.5", features = ["cors"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
+auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
+auto-media-core = {{ path = {auto_media_core:?} }}
+a2r-std = {{ path = {a2r_std:?} }}
+
+[[bin]]
+name = "plan729-gen-e2e"
+path = "src/main.rs"
+
+[workspace]
+"#,
+                    auto_lang = repo_root.join("crates/auto-lang"),
+                    auto_media_core = repo_root.join("crates/auto-media-core"),
+                    a2r_std = repo_root.join("crates/a2r-std"),
+                ),
+            )
+            .unwrap();
+            std::fs::write(src.join("api.rs"), &api_rs).unwrap();
+            std::fs::write(src.join("types.rs"), &types_rs).unwrap();
+            std::fs::write(src.join("main.rs"), &main_rs).unwrap();
+            let target = repo_root.join("target");
+            let log_path = dir.join("server.log");
+            let log = std::fs::File::create(&log_path).expect("log file");
+            let mut child = std::process::Command::new("cargo")
+                .args(["run", "--bin", "plan729-gen-e2e"])
+                .env("AUTO_HTTP_PORT", port.to_string())
+                .env("CARGO_TARGET_DIR", &target)
+                .current_dir(&dir)
+                .stdout(log.try_clone().expect("stdout log"))
+                .stderr(log)
+                .spawn()
+                .expect("cargo run spawn");
+            for _ in 0..450 {
+                if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    return child;
+                }
+                if let Ok(Some(_)) = child.try_wait() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let log = std::fs::read_to_string(&log_path).unwrap_or_default();
+            panic!(
+                "generated server did not listen on {port}; log tail:
+{}",
+                log.lines().rev().take(40).collect::<Vec<_>>().join(
+                    "
+"
+                )
+            );
+        }
+
+        /// 生成服务 wire 矩阵（AC-01/02/06：同源 fixture、真实编译运行）。
+        #[test]
+        fn http_e2e_plan729_generated_service_wire_matrix() {
+            let root = temp_root("files");
+            let data: Vec<u8> = (0u8..=199).collect();
+            std::fs::write(root.join("r.bin"), &data).unwrap();
+            std::fs::write(root.join("hello.txt"), b"hello generated").unwrap();
+            std::fs::write(root.join("empty.bin"), b"").unwrap();
+            std::fs::write(root.join("raw.bin"), [0x00u8, 0xFF, 0xFE, 0x80]).unwrap();
+            // 12MiB 确定样本（与 VM 腿同式模式生成；hash 对拍）。
+            let mut big = Vec::with_capacity(12 * 1024 * 1024);
+            for i in 0u64..3072 {
+                let bytes = i.to_le_bytes();
+                for j in 0..4096usize {
+                    big.push(bytes[j % 8] ^ (j as u8) ^ (i as u8));
+                }
+            }
+            let expect_big = blake3::hash(&big);
+            std::fs::write(root.join("big.bin"), &big).unwrap();
+            drop(big);
+            let root_fwd = root.to_str().unwrap().replace('\\', "/");
+            let api_at = format!(
+                r#"
+pub type FileMeta = {{ name: str, size: int }}
+
+#[api(method = "GET", path = "/files/:name")]
+pub fn download(name str) FileResponse {{
+    return http.file_response("{root}", name, "{{}}")
+}}
+
+#[api(method = "GET", path = "/etag/:name")]
+pub fn download_etag(name str) FileResponse {{
+    return http.file_response("{root}", name, "{{\"etag\":\"v1\"}}")
+}}
+
+#[api(method = "GET", path = "/api/async/:name")]
+pub fn download_async(name str) ~FileResponse {{
+    return http.file_response("{root}", name, "{{}}")
+}}
+"#,
+                root = root_fwd
+            );
+            let mut child = spawn_generated_server(&api_at, PORT);
+            let result = std::panic::catch_unwind(|| {
+                let (s, h, b) = raw_request(PORT, "GET", "/files/hello.txt", &[]);
+                assert_eq!(s, 200);
+                assert_eq!(header_of(&h, "content-length"), "15");
+                assert_eq!(b, b"hello generated");
+                let (s, h, b) = raw_request(PORT, "HEAD", "/files/hello.txt", &[]);
+                assert_eq!(s, 200, "GET 文件路由自动 HEAD");
+                assert_eq!(header_of(&h, "content-length"), "15");
+                assert!(b.is_empty());
+                let (s, _, b) = raw_request(PORT, "GET", "/files/raw.bin", &[]);
+                assert_eq!(s, 200);
+                assert_eq!(b, vec![0x00u8, 0xFF, 0xFE, 0x80]);
+                let (s, h, b) = raw_request(PORT, "GET", "/files/empty.bin", &[]);
+                assert_eq!(s, 200);
+                assert_eq!(header_of(&h, "content-length"), "0");
+                assert!(b.is_empty());
+                let (s, h, b) =
+                    raw_request(PORT, "GET", "/files/r.bin", &[("range", "bytes=10-19")]);
+                assert_eq!(
+                    (s, header_of(&h, "content-range").as_str()),
+                    (206, "bytes 10-19/200")
+                );
+                assert_eq!(b, (10u8..=19).collect::<Vec<u8>>());
+                let (s, _, _) = raw_request(PORT, "GET", "/files/r.bin", &[("range", "bytes=-0")]);
+                assert_eq!(s, 416);
+                let (s, _, b) = raw_request(PORT, "GET", "/etag/r.bin", &[("if-none-match", "v1")]);
+                assert_eq!((s, b.len()), (304, 0));
+                let (s, _, _) = raw_request(PORT, "GET", "/etag/r.bin", &[("if-match", "v2")]);
+                assert_eq!(s, 412);
+                let (s, _, b) = raw_request(
+                    PORT,
+                    "GET",
+                    "/etag/r.bin",
+                    &[("range", "bytes=10-19"), ("if-range", "v2")],
+                );
+                assert_eq!((s, b.len()), (200, 200));
+                let (s, _, _) = raw_request(PORT, "GET", "/files/nope.bin", &[]);
+                assert_eq!(s, 404);
+                let (s, _, _) = raw_request(PORT, "GET", "/files/..%2Fetc%2Fpasswd", &[]);
+                assert_eq!(s, 403);
+                // [G-01] 异步端点 wire：同一文件表示。
+                let (s, h, b) =
+                    raw_request(PORT, "GET", "/api/async/r.bin", &[("range", "bytes=10-19")]);
+                assert_eq!(
+                    (s, header_of(&h, "content-range").as_str()),
+                    (206, "bytes 10-19/200")
+                );
+                assert_eq!(b, (10u8..=19).collect::<Vec<u8>>());
+                let (s, h, _) = raw_request(PORT, "HEAD", "/api/async/hello.txt", &[]);
+                assert_eq!((s, header_of(&h, "content-length").as_str()), (200, "15"));
+                // [G-05] 12MiB 同源 hash（生成腿全量流式读）。
+                let (s, h, b) = raw_request(PORT, "GET", "/files/big.bin", &[]);
+                assert_eq!(
+                    (s, header_of(&h, "content-length").as_str()),
+                    (200, "12582912")
+                );
+                assert_eq!(b.len(), 12 * 1024 * 1024);
+                assert_eq!(blake3::hash(&b), expect_big, "生成腿 12MiB hash 一致");
+            });
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_dir_all(&root);
+            let _ = std::fs::remove_dir_all(temp_root("crate"));
+            if let Err(panic) = result {
+                std::panic::resume_unwind(panic);
+            }
+        }
+    }
+
+    // =======================================================================
+
+    // =======================================================================
+    // PLAN-776 F776-R6-04 e2e：生成服务 JSON record（route B db 真实转译体）
+    // + bus SSE（events broadcast）真 wire——现行支持面的第三/四面。
+    // =======================================================================
+    #[cfg(feature = "test-http-e2e")]
+    mod plan776_gen_e2e {
+        use super::*;
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        const PORT: u16 = 18980;
+
+        fn temp_root(tag: &str) -> std::path::PathBuf {
+            let dir =
+                std::env::temp_dir().join(format!("plan776-gen-{}-{}", tag, std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            dir
+        }
+
+        /// 真实 db fixture（route B：a2r 转译 db.rs——真实业务体，非模板）。
+        /// 类型不在此重声明（api 类型归 types.rs；db.rs 经 a2r 的
+        /// `use crate::api::` 引用并经 post_process 映射到 types）。
+        /// db fixture：琐碎可转译模块（has_db → State<Db> + CRUD scaffold）。
+        /// 真实业务体 JSON 委托当前被 a2r 阻塞——db.at 跨模块引用 api 类型
+        ///（`use api: Message` 的 record ctor）在独立转译中报 undefined
+        /// variable（点式同红、局部类型可转译但与 types.rs 撞型 E0308），
+        /// 属 a2r 转译面（742 族），非 776 返回边界——证据矩阵见
+        /// verification R6 修复轮节。现行可编译运行的生成 JSON 面 =
+        /// scaffold CRUD create（真实编译 + 真 wire）。
+        const DB_AT: &str = r#"
+pub fn noop() int {
+    return 0
+}
+"#;
+
+        const API_AT: &str = r#"
+pub type Message = { id: int, text: str }
+
+use db
+
+#[api(method = "POST", path = "/api/send")]
+pub fn send(text str) Message {
+    return db.create_message(text)
+}
+
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<Message> {
+    return bus.subscribe()
+}
+"#;
+
+        /// 生成 → 写 crate → cargo run。按生产管线组 route B（db.rs 转译 +
+        /// db 委托 + borrow 修约）与 events bus（has_sse → events.rs +
+        /// async-stream 依赖），与 plan729/730 harness 同形依赖（共享
+        /// worktree target 缓存）。
+        fn spawn_generated_server(port: u16) -> std::process::Child {
+            let _a2r_env = a2r_env_lock();
+            let module = try_full_parse(API_AT).expect("full parse");
+            let db_rs = post_process_db_rs(transpile_db_to_rs(DB_AT).expect("db transpile"));
+            let db_fns = extract_db_fn_names(&db_rs);
+            let mut api_rs = generate_api_rs(&module, Some(&db_fns), false);
+            api_rs = qualify_a2r_std(api_rs);
+            api_rs = borrow_string_db_call_args(&api_rs, &db_rs);
+            let main_rs = generate_main_rs(&module, Some(DB_AT), false, &[], false);
+            let types_rs = generate_types_rs(&module);
+            let events_rs = generate_events_rs();
+            let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let repo_root = manifest.ancestors().nth(2).unwrap().to_path_buf();
+            let dir = temp_root("crate");
+            let src = dir.join("src");
+            std::fs::create_dir_all(&src).unwrap();
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "plan776-gen-e2e"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = {{ version = "1", features = ["full"] }}
+tokio-util = {{ version = "0.7", features = ["io"] }}
+futures = "0.3"
+async-stream = "0.3"
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+tower-http = {{ version = "0.5", features = ["cors"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
+auto-lang = {{ path = {:?}, features = ["ui", "image-pipeline"] }}
+auto-media-core = {{ path = {:?} }}
+a2r-std = {{ path = {:?} }}
+
+[[bin]]
+name = "plan776-gen-e2e"
+path = "src/main.rs"
+
+[workspace]
+"#,
+                    repo_root.join("crates/auto-lang"),
+                    repo_root.join("crates/auto-media-core"),
+                    repo_root.join("crates/a2r-std"),
+                ),
+            )
+            .unwrap();
+            std::fs::write(src.join("api.rs"), &api_rs).unwrap();
+            std::fs::write(src.join("types.rs"), &types_rs).unwrap();
+            std::fs::write(src.join("main.rs"), &main_rs).unwrap();
+            std::fs::write(src.join("db.rs"), &db_rs).unwrap();
+            std::fs::write(src.join("events.rs"), &events_rs).unwrap();
+            let target = repo_root.join("target");
+            let log_path = dir.join("server.log");
+            let log = std::fs::File::create(&log_path).expect("log file");
+            let mut child = std::process::Command::new("cargo")
+                .args(["run", "--bin", "plan776-gen-e2e"])
+                .env("AUTO_HTTP_PORT", port.to_string())
+                .env("CARGO_TARGET_DIR", &target)
+                .current_dir(&dir)
+                .stdout(log.try_clone().expect("stdout log"))
+                .stderr(log)
+                .spawn()
+                .expect("cargo run spawn");
+            for _ in 0..450 {
+                if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    return child;
+                }
+                if let Ok(Some(_)) = child.try_wait() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let log = std::fs::read_to_string(&log_path).unwrap_or_default();
+            panic!(
+                "generated server did not listen on {port}; log tail:\n{}",
+                log.lines().rev().take(40).collect::<Vec<_>>().join("\n")
+            );
+        }
+
+        fn raw_request(
+            port: u16,
+            method: &str,
+            path: &str,
+            body: &[u8],
+        ) -> (u16, Vec<(String, String)>, Vec<u8>) {
+            let mut s = TcpStream::connect(("127.0.0.1", port)).expect("connect");
+            s.set_read_timeout(Some(Duration::from_secs(30))).ok();
+            let req = format!(
+                "{method} {path} HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            );
+            s.write_all(req.as_bytes()).unwrap();
+            s.write_all(body).unwrap();
+            let _ = s.flush();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 16384];
+            loop {
+                let n = s.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                let text = String::from_utf8_lossy(&raw).into_owned();
+                if method == "POST" {
+                    if let Some(idx) = text.find("\r\n\r\n") {
+                        if text.len() > idx + 4 {
+                            break;
+                        }
+                    }
+                }
+            }
+            let text = String::from_utf8_lossy(&raw).into_owned();
+            let status = text
+                .lines()
+                .next()
+                .and_then(|l| l.split_whitespace().nth(1))
+                .and_then(|c| c.parse::<u16>().ok())
+                .unwrap_or(0);
+            let body_start = text.find("\r\n\r\n").map(|i| i + 4).unwrap_or(text.len());
+            (status, Vec::new(), raw[body_start..].to_vec())
+        }
+
+        /// F776-R6-04（AC-08）：生成服务 **JSON record**（scaffold CRUD
+        /// create——现行可编译运行的生成 JSON 面）与 **bus SSE**（events
+        /// broadcast 通道）的真 TCP wire。
+        #[test]
+        fn http_e2e_plan776_generated_json_and_bus_sse_wire() {
+            let mut child = spawn_generated_server(PORT);
+            let result = std::panic::catch_unwind(|| {
+                // JSON record 面：POST → scaffold CRUD create（new id=1 +
+                // 输入参数透传）→ Message JSON（真实编译 + 真 wire；真实
+                // 业务体委托被 a2r `use api:` 跨模块转译阻塞——见 DB_AT 注）。
+                let (s, _, b) =
+                    raw_request(PORT, "POST", "/api/send", br#"{"text":"world"}"#.as_slice());
+                assert_eq!(s, 200, "POST /api/send status");
+                // 种子数据（generate_initial_data_pub 两例）后新 id=3——确定性。
+                assert_eq!(String::from_utf8_lossy(&b), r#"{"id":3,"text":"world"}"#);
+
+                // bus SSE 面：先开订阅连接（broadcast 只投订阅后消息），
+                // 再 POST → NewMessage 帧到达。
+                let mut sub = TcpStream::connect(("127.0.0.1", PORT)).expect("subscribe");
+                sub.set_read_timeout(Some(Duration::from_secs(30))).ok();
+                sub.write_all(b"GET /api/stream HTTP/1.1\r\nHost: x\r\nConnection: close\r\n\r\n")
+                    .unwrap();
+                std::thread::sleep(Duration::from_millis(300));
+                let (s2, _, _) =
+                    raw_request(PORT, "POST", "/api/send", br#"{"text":"frame"}"#.as_slice());
+                assert_eq!(s2, 200);
+
+                let mut raw = Vec::new();
+                let mut buf = [0u8; 8192];
+                let deadline = std::time::Instant::now() + Duration::from_secs(20);
+                loop {
+                    let n = sub.read(&mut buf).unwrap_or(0);
+                    if n > 0 {
+                        raw.extend_from_slice(&buf[..n]);
+                        let text = String::from_utf8_lossy(&raw).into_owned();
+                        if text.contains("\"text\":\"frame\"") {
+                            break;
+                        }
+                    }
+                    assert!(
+                        std::time::Instant::now() < deadline,
+                        "SSE 帧未到达: {}",
+                        String::from_utf8_lossy(&raw)
+                    );
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+                let text = String::from_utf8_lossy(&raw).into_owned();
+                assert!(text.contains("text/event-stream"), "SSE 头: {text}");
+                assert!(
+                    text.contains("NewMessage") && text.contains("\"text\":\"frame\""),
+                    "广播帧: {text}"
+                );
+            });
+            let _ = child.kill();
+            let _ = child.wait();
+            if let Err(panic) = result {
+                std::panic::resume_unwind(panic);
+            }
+        }
+    }
+
+    // PLAN-730 T-06 e2e：生成 Rust 服务真实编译运行（上传 wire 矩阵）。
+    // 真实生成产物（api.rs/main.rs/types.rs/Cargo.toml）→ 临时 crate →
+    // cargo run（共享 worktree target 缓存）→ 真 TCP wire 断言。
+    // =======================================================================
+    #[cfg(feature = "test-http-e2e")]
+    mod plan730_e2e {
+        use super::*;
+        use std::io::{Read, Write};
+        use std::net::TcpStream;
+        use std::time::Duration;
+
+        const PORT: u16 = 18976;
+
+        fn temp_roots(tag: &str) -> std::path::PathBuf {
+            let dir =
+                std::env::temp_dir().join(format!("plan730-gen-{}-{}", tag, std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(dir.join("public/mp")).unwrap();
+            std::fs::create_dir_all(dir.join("public/raw")).unwrap();
+            std::fs::create_dir_all(dir.join("private-staging")).unwrap();
+            dir
+        }
+
+        fn upload_program(root: &str, staging: &str) -> String {
+            format!(
+                r#"
+pub type UploadMeta = {{ name: str }}
+
+#[api(method = "POST", path = "/api/uploads/mp")]
+pub fn upload_mp(req UploadRequest) ~UploadReceipt {{
+    let root = env.get("PLAN730_PUBLIC")
+    let staging = env.get("PLAN730_STAGING")
+    let session = http.upload_receive(req, root, staging, "{{\"mode\":\"multipart\",\"text_fields\":[\"note\"]}}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("{{\"state\":\"failed\"") {{
+        return http.upload_reject(session, 0, "receive failed")
+    }}
+    if meta.contains("\"value\":\"deny\"") {{
+        return http.upload_reject(session, 422, "business check failed")
+    }}
+    return http.upload_commit(session, "mp/blob.bin")
+}}
+
+#[api(method = "POST", path = "/api/uploads/raw")]
+pub fn upload_raw(req UploadRequest) ~UploadReceipt {{
+    let root = env.get("PLAN730_PUBLIC")
+    let staging = env.get("PLAN730_STAGING")
+    let session = http.upload_receive(req, root, staging, "{{\"mode\":\"raw\"}}")
+    let meta = http.upload_metadata(session)
+    if meta.contains("{{\"state\":\"failed\"") {{
+        return http.upload_reject(session, 0, "receive failed")
+    }}
+    return http.upload_commit(session, "raw/data.bin")
+}}
+
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse {{
+    let root = env.get("PLAN730_PUBLIC")
+    return http.file_response(root, "mp/" + name, "{{}}")
+}}
+"#,
+            )
+        }
+
+        fn multipart_body(boundary: &str, note: &str, file: &[u8]) -> Vec<u8> {
+            let mut b = Vec::new();
+            b.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            b.extend_from_slice(b"Content-Disposition: form-data; name=\"note\"\r\n\r\n");
+            b.extend_from_slice(note.as_bytes());
+            b.extend_from_slice(b"\r\n");
+            b.extend_from_slice(format!("--{}\r\n", boundary).as_bytes());
+            b.extend_from_slice(
+                b"Content-Disposition: form-data; name=\"file\"; filename=\"blob.bin\"\r\n\r\n",
+            );
+            b.extend_from_slice(file);
+            b.extend_from_slice(format!("\r\n--{}--\r\n", boundary).as_bytes());
+            b
+        }
+
+        fn raw_request_with_body(
+            port: u16,
+            method: &str,
+            path: &str,
+            headers: &[(&str, &str)],
+            body: &[u8],
+        ) -> (u16, Vec<(String, String)>, Vec<u8>) {
+            let mut stream = None;
+            for _ in 0..100 {
+                if let Ok(s) = TcpStream::connect(("127.0.0.1", port)) {
+                    stream = Some(s);
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            let mut stream = stream.expect("connect");
+            stream.set_read_timeout(Some(Duration::from_secs(60))).ok();
+            let mut req =
+                format!("{method} {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n");
+            for (k, v) in headers {
+                req.push_str(&format!("{k}: {v}\r\n"));
+            }
+            req.push_str(&format!("Content-Length: {}\r\n\r\n", body.len()));
+            stream.write_all(req.as_bytes()).unwrap();
+            stream.write_all(body).unwrap();
+            let _ = stream.flush();
+            // 读响应（与 raw_request 同形）。
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 65536];
+            let header_end = loop {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break None;
+                }
+                raw.extend_from_slice(&buf[..n]);
+                if let Some(pos) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break Some(pos + 4);
+                }
+            };
+            let header_end = header_end.expect("response headers");
+            let head = String::from_utf8_lossy(&raw[..header_end]).into_owned();
+            let mut lines = head.split("\r\n");
+            let status: u16 = lines
+                .next()
+                .unwrap_or_default()
+                .split_whitespace()
+                .nth(1)
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(0);
+            let mut hdrs = Vec::new();
+            for line in lines {
+                if let Some((k, v)) = line.split_once(':') {
+                    hdrs.push((k.trim().to_ascii_lowercase(), v.trim().to_string()));
+                }
+            }
+            let cl: usize = hdrs
+                .iter()
+                .find(|(k, _)| k == "content-length")
+                .and_then(|(_, v)| v.parse().ok())
+                .unwrap_or(0);
+            let mut resp_body = raw[header_end..].to_vec();
+            while resp_body.len() < cl {
+                let n = stream.read(&mut buf).unwrap_or(0);
+                if n == 0 {
+                    break;
+                }
+                resp_body.extend_from_slice(&buf[..n]);
+            }
+            resp_body.truncate(cl);
+            (status, hdrs, resp_body)
+        }
+
+        /// 生成 + 起服（plan729 spawn 同形；crate 名区分以隔离产物；
+        /// `roots` = 预建 public/private-staging 目录——env 指向其）。
+        fn spawn_upload_server(
+            api_at: &str,
+            port: u16,
+            roots: &std::path::Path,
+        ) -> std::process::Child {
+            let module = try_full_parse(api_at).expect("full parse");
+            let api_rs = generate_api_rs(&module, None, false, &[]);
+            let main_rs = generate_main_rs(&module, None, false, &[], false);
+            let types_rs = generate_types_rs(&module);
+            let manifest = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+            let repo_root = manifest.ancestors().nth(2).unwrap().to_path_buf();
+            let dir = std::env::temp_dir().join(format!("plan730-crate-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            let src = dir.join("src");
+            std::fs::create_dir_all(&src).unwrap();
+            std::fs::write(
+                dir.join("Cargo.toml"),
+                format!(
+                    r#"[package]
+name = "plan730-gen-e2e"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = {{ version = "1", features = ["full"] }}
+tokio-util = {{ version = "0.7", features = ["io"] }}
+futures = "0.3"
+serde = {{ version = "1", features = ["derive"] }}
+serde_json = "1"
+tower-http = {{ version = "0.5", features = ["cors"] }}
+hyper-util = {{ version = "0.1", features = ["tokio", "server-auto", "service", "http1"] }}
+auto-lang = {{ path = {auto_lang:?}, features = ["ui", "image-pipeline"] }}
+auto-media-core = {{ path = {auto_media_core:?} }}
+a2r-std = {{ path = {a2r_std:?} }}
+
+[[bin]]
+name = "plan730-gen-e2e"
+path = "src/main.rs"
+
+[workspace]
+"#,
+                    auto_lang = repo_root.join("crates/auto-lang"),
+                    auto_media_core = repo_root.join("crates/auto-media-core"),
+                    a2r_std = repo_root.join("crates/a2r-std"),
+                ),
+            )
+            .unwrap();
+            std::fs::write(src.join("api.rs"), &api_rs).unwrap();
+            std::fs::write(src.join("main.rs"), &main_rs).unwrap();
+            std::fs::write(src.join("types.rs"), &types_rs).unwrap();
+            let log_path = dir.join("server.log");
+            let log = std::fs::File::create(&log_path).unwrap();
+            let target = repo_root.join("target");
+            let mut child = std::process::Command::new("cargo")
+                .args(["run", "--bin", "plan730-gen-e2e"])
+                .env("AUTO_HTTP_PORT", port.to_string())
+                .env("CARGO_TARGET_DIR", &target)
+                .env("PLAN730_PUBLIC", roots.join("public"))
+                .env("PLAN730_STAGING", roots.join("private-staging"))
+                .current_dir(&dir)
+                .stdout(log.try_clone().expect("stdout log"))
+                .stderr(log)
+                .spawn()
+                .expect("cargo run spawn");
+            for _ in 0..450 {
+                if TcpStream::connect(("127.0.0.1", port)).is_ok() {
+                    return child;
+                }
+                if let Ok(Some(_)) = child.try_wait() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let log_text = std::fs::read_to_string(&log_path).unwrap_or_default();
+            let _ = child.kill();
+            panic!(
+                "generated upload server did not listen on {port}; log tail:\n{}",
+                log_text
+                    .lines()
+                    .rev()
+                    .take(60)
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+
+        /// 生成腿上传 wire：multipart 201 + 字节一致 + 729 下载互通 + 冲突
+        /// 409 + 业务拒绝 422 + raw + 404 零落盘。
+        #[test]
+        fn http_e2e_plan730_generated_upload_matrix() {
+            let roots = temp_roots("wire");
+            let root = roots.join("public");
+            let staging = roots.join("private-staging");
+            let api = upload_program(&root.to_string_lossy(), &staging.to_string_lossy());
+            let mut child = spawn_upload_server(&api, PORT, &roots);
+            let result = std::panic::catch_unwind(|| {
+                let payload: Vec<u8> = (0..2usize * 1024 * 1024).map(|i| (i % 251) as u8).collect();
+                let body = multipart_body("G730", "hello", &payload);
+                let (s, _h, b) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/uploads/mp",
+                    &[("Content-Type", "multipart/form-data; boundary=G730")],
+                    &body,
+                );
+                assert_eq!(s, 201, "{}", String::from_utf8_lossy(&b));
+                let text = String::from_utf8_lossy(&b).to_string();
+                assert!(text.contains("\"ok\":true"), "{text}");
+                assert!(text.contains("\"size\":\"2097152\""), "{text}");
+                assert!(text.contains("\"path\":\"mp/blob.bin\""), "{text}");
+                assert_eq!(std::fs::read(root.join("mp/blob.bin")).unwrap(), payload);
+                // staging 清零。
+                let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                while std::fs::read_dir(&staging).unwrap().next().is_some()
+                    && std::time::Instant::now() < deadline
+                {
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                assert!(std::fs::read_dir(&staging).unwrap().next().is_none());
+                // 729 下载路由互通（同字节）。
+                let (s2, _h2, dl) =
+                    raw_request_with_body(PORT, "GET", "/api/files/blob.bin", &[], b"");
+                assert_eq!(s2, 200);
+                assert_eq!(dl, payload, "generated download bytes identical");
+                // 同名冲突 409（原文件不变）。
+                let body2 = multipart_body("G730", "again", b"second");
+                let (s3, _h3, b3) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/uploads/mp",
+                    &[("Content-Type", "multipart/form-data; boundary=G730")],
+                    &body2,
+                );
+                assert_eq!(s3, 409, "{}", String::from_utf8_lossy(&b3));
+                assert_eq!(std::fs::read(root.join("mp/blob.bin")).unwrap(), payload);
+                // 业务拒绝（note=deny → 422，无公开文件、staging 清零）。
+                let deny = multipart_body("G730", "deny", b"NOPE");
+                let (s4, _h4, b4) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/uploads/mp",
+                    &[("Content-Type", "multipart/form-data; boundary=G730")],
+                    &deny,
+                );
+                assert_eq!(s4, 422, "{}", String::from_utf8_lossy(&b4));
+                // raw 上传。
+                let (s5, _h5, b5) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/uploads/raw",
+                    &[("Content-Type", "application/octet-stream")],
+                    b"GEN-RAW-PAYLOAD",
+                );
+                assert_eq!(s5, 201, "{}", String::from_utf8_lossy(&b5));
+                assert_eq!(
+                    std::fs::read(root.join("raw/data.bin")).unwrap(),
+                    b"GEN-RAW-PAYLOAD"
+                );
+                // 404 零落盘（staging 保持清零）。
+                let nf = multipart_body("G730", "x", b"SHOULD-NOT-LAND");
+                let (s6, _h6, _b6) = raw_request_with_body(
+                    PORT,
+                    "POST",
+                    "/api/nope",
+                    &[("Content-Type", "multipart/form-data; boundary=G730")],
+                    &nf,
+                );
+                assert_eq!(s6, 404);
+                assert!(
+                    std::fs::read_dir(&staging).unwrap().next().is_none(),
+                    "404 stages nothing"
+                );
+            });
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = std::fs::remove_dir_all(&roots);
+            let _ = std::fs::remove_dir_all(
+                std::env::temp_dir().join(format!("plan730-crate-{}", std::process::id())),
+            );
+            if let Err(panic) = result {
+                std::panic::resume_unwind(panic);
+            }
+        }
+    }
+
+    /// PLAN-729 R1 [G-01]：异步 `~FileResponse`（Future<FileResponse>）端点——
+    /// 同一文件分支（Response 签名 + 宿主 serve；类型门按 contains 命中）。
+    #[test]
+    fn test_plan729_async_file_endpoint_generation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str }
+
+#[api(method = "GET", path = "/api/async/:name")]
+pub fn download_async(name str) ~FileResponse {
+    let root = env.get("FILES_ROOT")
+    return http.file_response(root, name, "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        assert!(
+            module.endpoints[0].return_type.contains("FileResponse"),
+            "Future<FileResponse> 返回类型: {}",
+            module.endpoints[0].return_type
+        );
+        let api_rs = generate_api_rs(&module, None, false, &[]);
+        assert!(api_rs.contains("-> axum::response::Response"), "{api_rs}");
+        assert!(api_rs.contains("__file_reply("), "{api_rs}");
+        let main = generate_main_rs(&module, None, false, &[], false);
+        assert!(main.contains(".head(api::download_async))"), "{main}");
+    }
+
+    /// PLAN-729 R1 [G-04]：体无尾 return（契约缺口）→ 诊断 500 handler，
+    /// 不落 JsonResponse/模板（与转译失败同族的不回退路径）。
+    #[test]
+    fn test_plan729_file_endpoint_no_return_diagnostic() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str }
+
+#[api(method = "GET", path = "/api/broken")]
+pub fn broken() FileResponse {
+    let x = 1
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false, &[]);
+        assert!(
+            api_rs.contains("file_response_reply_missing("),
+            "诊断 500 handler: {api_rs}"
+        );
+        assert!(
+            !api_rs.contains("JsonResponse::"),
+            "不得回退 JsonResponse 模板"
+        );
+        assert!(
+            !api_rs.contains("Default::default()"),
+            "不得回退 CRUD Default 模板"
+        );
+    }
+
+    /// PLAN-729 R1 [G-12]：用户同名函数不被重写——分支以声明返回类型为门，
+    /// 非 `file_response` 名字。
+    #[test]
+    fn test_plan729_user_same_name_fn_untouched() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str }
+
+// 用户自定义同名函数（返回 int）——不因名字撞 native 而被文件分支改写。
+#[api(method = "GET", path = "/api/legacy")]
+pub fn file_response(name str) int {
+    return 42
+}
+
+#[api(method = "GET", path = "/api/file/:name")]
+pub fn download(name str) FileResponse {
+    return http.file_response("files", name, "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false, &[]);
+        // 同名 int 端点保持 JSON 面：其 handler 签名是 JsonResponse，不被
+        // 文件分支改写（名字撞 native 不触发分支——门是声明返回类型）。
+        let legacy_sig = api_rs
+            .lines()
+            .find(|l| l.contains("pub async fn file_response("))
+            .unwrap_or_default();
+        assert!(
+            legacy_sig.contains("JsonResponse") && !legacy_sig.contains("axum::response::Response"),
+            "同名 int 函数保持 JSON 面: {legacy_sig}"
+        );
+        // 文件端点仍走文件分支。
+        assert!(api_rs.contains("__file_reply("), "{api_rs}");
+    }
+
+    /// PLAN-729 T-05: 文件端点生成——Response 签名 + 宿主 serve 胶水 +
+    /// .head() 路由 + 转译体（file_response lowering 同源）。
+    #[test]
+    fn test_plan729_file_endpoint_generation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str, size: int }
+
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse {
+    let root = env.get("FILES_ROOT")
+    return http.file_response(root, name, "{}")
+}
+
+#[api(method = "GET", path = "/api/report")]
+pub fn report() FileResponse {
+    return http.file_response("files", "report.pdf", "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        assert!(
+            module
+                .endpoints
+                .iter()
+                .all(|e| e.return_type.contains("FileResponse")),
+            "return types: {:?}",
+            module
+                .endpoints
+                .iter()
+                .map(|e| e.return_type.clone())
+                .collect::<Vec<_>>()
+        );
+        // 有 body 的端点走内联转译臂。
+        assert!(
+            module.endpoints.iter().any(|e| e.body.is_some()),
+            "body captured"
+        );
+        let api_rs = generate_api_rs(&module, None, false, &[]);
+        assert!(
+            api_rs.contains("-> axum::response::Response"),
+            "Response 签名: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("__file_reply("),
+            "宿主 serve 胶水: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("a2r_std::http::file_response("),
+            "描述符构造 lowering: {api_rs}"
+        );
+        assert!(
+            !api_rs.contains("JsonResponse<a2r_std::http::FileResponse>"),
+            "文件面不得包 JsonResponse"
+        );
+        let main = generate_main_rs(&module, None, false, &[], false);
+        assert!(
+            main.contains(".head(api::download))"),
+            "GET 文件路由自动 HEAD: {main}"
+        );
+        assert!(
+            main.contains(".head(api::report))"),
+            "无参文件路由自动 HEAD: {main}"
+        );
+    }
+
+    /// PLAN-729 T-05: 非 GET/HEAD 文件注解 → 405 诊断 handler（不落模板）。
+    #[test]
+    fn test_plan729_file_endpoint_non_get_405() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type FileMeta = { name: str }
+
+#[api(method = "POST", path = "/api/files")]
+pub fn upload_file(name str) FileResponse {
+    return http.file_response("files", name, "{}")
+}
+"#;
+        let module = try_full_parse(api).expect("full parse");
+        let api_rs = generate_api_rs(&module, None, false, &[]);
+        assert!(
+            api_rs.contains("METHOD_NOT_ALLOWED"),
+            "非 GET 文件端点 405: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("file endpoints support GET/HEAD only"),
+            "405 诊断体: {api_rs}"
+        );
+    }
+
+    /// PLAN-729 T-05: 委派路径（route A）的文件端点——同样生成真实 adapter
+    /// （Path 提取 + 委托 + 宿主 serve，非 JsonResponse）。
+    #[test]
+    fn test_plan729_file_endpoint_delegating_path() {
+        let content = r#"
+#[api(method = "GET", path = "/api/files/:name")]
+pub fn download(name str) FileResponse { return http.file_response("files", name, "{}") }
+"#;
+        let module = extract_api_lenient(content).expect("extract");
+        assert!(module.types.is_empty(), "scalar 契约（无 primary 类型）");
+        // route A: api_impl_active → 委派 handler。
+        let mut lines: Vec<String> = vec![];
+        push_delegating_scalar_handlers(&mut lines, &module, &|_| true, "api_impl");
+        let joined = lines.join(
+            "
+",
+        );
+        assert!(
+            joined.contains("Path(name): Path<String>"),
+            "路径参数提取: {joined}"
+        );
+        assert!(
+            joined.contains("crate::api_impl::download(&name)"),
+            "委派调用: {joined}"
+        );
+        assert!(
+            joined.contains("__file_reply(descriptor, &method, &headers).await"),
+            "宿主 serve: {joined}"
+        );
+    }
+
+    /// Plan musk-022: SSE endpoint → Sse handler + events bus + cargo deps.
+    #[test]
+    fn test_sse_handler_generation() {
+        let _a2r_env = a2r_env_lock();
+        let content = r#"
+pub type Message = { id: int, text: str }
+
+#[api(method = "GET", path = "/api/messages")]
+pub fn list_messages() []Message { return db.all() }
+
+#[api(method = "POST", path = "/api/messages")]
+pub fn send_message(text str) Message { return db.create_message(text) }
+
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
+"#;
+        let module = extract_api_lenient(content).expect("Should extract");
+        assert!(module
+            .endpoints
+            .iter()
+            .any(|e| e.return_type.contains("Stream<")));
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false, &[]);
+        assert!(
+            api_rs.contains("axum::response::Sse<"),
+            "SSE return: {}",
+            api_rs
+        );
+        assert!(api_rs.contains("crate::events::subscribe()"), "subscribe");
+        assert!(api_rs.contains("async_stream::stream!"), "stream macro");
+        assert!(api_rs.contains("crate::events::broadcast("), "broadcast");
+        let cargo = generate_cargo_toml("chat-back", true, true);
+        assert!(cargo.contains("async-stream"), "dep");
+        let events = generate_events_rs();
+        assert!(events.contains("pub fn subscribe()"), "subscribe fn");
+        assert!(events.contains("pub fn broadcast("), "broadcast fn");
+        let main = generate_main_rs(&module, None, false, &[], false);
+        assert!(main.contains("mod events;"), "mod events");
+    }
+
+    /// Plan B1(b): `meta str` server-injected param — GET current_user(meta) and
+    /// POST create_article(..., meta) must NOT classify meta as a query/body
+    /// field; instead: HeaderMap extractor + meta_json binding + &meta
+    /// delegation arg (VM push_meta parity, http_server.rs).
+    #[test]
+    fn test_meta_param_header_injection() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Article = { id: int, slug: str, title: str }
+
+#[api(method = "GET", path = "/api/user")]
+pub fn current_user(meta str) Article { return db.current_user(meta) }
+
+#[api(method = "POST", path = "/api/articles")]
+pub fn create_article(slug str, title str, meta str) Article { return db.create_article(slug, title, meta) }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let db_fns: std::collections::HashSet<String> =
+            ["current_user".to_string(), "create_article".to_string()]
+                .into_iter()
+                .collect();
+
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
+
+        // helper emitted once
+        assert!(
+            api_rs.contains("fn meta_json(headers: &axum::http::HeaderMap) -> String"),
+            "helper: {}",
+            api_rs
+        );
+        // GET: meta is NOT a query struct field
+        assert!(
+            !api_rs.contains("CurrentUserQuery"),
+            "meta not query: {}",
+            api_rs
+        );
+        // extractor + binding present
+        assert!(
+            api_rs.contains("headers: axum::http::HeaderMap"),
+            "extractor: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("let meta: String = meta_json(&headers);"),
+            "binding: {}",
+            api_rs
+        );
+        let post_signature = api_rs
+            .lines()
+            .find(|line| line.contains("pub async fn create_article"))
+            .expect("POST handler signature");
+        assert!(
+            post_signature.find("headers:").unwrap() < post_signature.find("Json(input)").unwrap(),
+            "HeaderMap extractor precedes body-consuming Json: {post_signature}"
+        );
+        // delegation args use the binding
+        assert!(
+            api_rs.contains("crate::db::current_user(&meta)"),
+            "get deleg: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("crate::db::create_article(&input.slug, &input.title, &meta)"),
+            "post deleg: {}",
+            api_rs
+        );
+        // POST: meta excluded from the CreateInput body struct
+        assert!(
+            !api_rs.contains("pub meta: String"),
+            "meta not body field: {}",
+            api_rs
+        );
+        // helper JSON format parity spot-check (VM push_meta format)
+        assert!(api_rs.contains("cookies"), "cookies key: {}", api_rs);
+        assert!(api_rs.contains("auth"), "auth key: {}", api_rs);
+    }
+
+    #[test]
+    fn test_inline_meta_body_binds_extractors_and_wraps_early_returns() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type User = { id: int, username: str, token: str }
+pub type Article = { slug: str, title: str, author: str }
+use db
+
+#[api(method = "GET", path = "/api/user")]
+pub fn current_user(meta str) User { return db.current_user(bearer_token(meta)) }
+
+#[api(method = "POST", path = "/api/articles")]
+pub fn create_article(slug str, title str, meta str) Article {
+    let user User = db.current_user(bearer_token(meta))
+    if user.id == 0 {
+        return Article { slug: "", title: "", author: "" }
+    }
+    return db.create_article(slug, title, user.username)
+}
+"#;
+        let module = try_full_parse(api).expect("extract API");
+        let db_fns: std::collections::HashSet<String> =
+            ["current_user".to_string(), "create_article".to_string()]
+                .into_iter()
+                .collect();
+        let api_rs = generate_api_rs(&module, Some(&db_fns), false, &[]);
+        let db_source = r#"
+pub fn current_user(token: &str) -> User {
+    todo!()
+}
+pub fn create_article(slug: &str, title: &str, author: &str) -> Article {
+    todo!()
+}
+"#;
+        let api_rs = borrow_string_db_call_args(&api_rs, db_source);
+
+        assert!(
+            api_rs.contains("fn auto_bearer_token(meta: &str) -> String"),
+            "token helper: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("crate::db::current_user(&auto_bearer_token(meta.as_str()))"),
+            "nested metadata call: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("let slug = input.slug.clone();"),
+            "body field binding: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("return JsonResponse(Article"),
+            "early return wrapper: {api_rs}"
+        );
+        assert!(
+            api_rs.contains("crate::db::create_article(&slug, &title, &user.username)"),
+            "db qualification and bound params: {api_rs}"
+        );
+    }
+
+    /// Plan B1(b): module without any meta param must NOT emit the helper.
+    #[test]
+    fn test_no_meta_param_no_helper() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Note = { id: int, text: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note { return db.all_notes() }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let db_fns: std::collections::HashSet<String> =
+            ["all_notes".to_string()].into_iter().collect();
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
+        assert!(
+            !api_rs.contains("meta_json"),
+            "no helper without meta: {}",
+            api_rs
+        );
+        assert!(
+            !api_rs.contains("HeaderMap"),
+            "no extractor without meta: {}",
+            api_rs
+        );
+    }
+
+    /// Plan 399 第 4-5 步: 017-chat — handlers delegate to db.rs (no State<Db>),
+    /// POST still broadcasts the SSE NewMessage event.
+    #[test]
+    fn test_handler_calls_db_for_chat() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Message = { id: int, sender: str, text: str, time: str, mine: bool }
+
+#[api(method = "GET", path = "/api/messages")]
+pub fn list_messages() []Message { return db.all_messages() }
+
+#[api(method = "POST", path = "/api/messages")]
+pub fn send_message(sender str, text str) Message { return db.create_message(sender, text) }
+
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        // db.rs exposes all_messages + create_message.
+        let db_fns: std::collections::HashSet<String> =
+            ["all_messages".to_string(), "create_message".to_string()]
+                .into_iter()
+                .collect();
+
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
+
+        // GET list delegates to crate::db::all_messages(), no State<Db>.
+        assert!(
+            api_rs.contains("crate::db::all_messages()"),
+            "list delegates: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("JsonResponse::<Vec<Message>>(crate::db::all_messages())"),
+            "list wrap: {}",
+            api_rs
+        );
+        // POST delegates to crate::db::create_message(&input.sender, &input.text)
+        // (str params borrowed: a2r emits &str, extractors hold String).
+        assert!(
+            api_rs.contains("crate::db::create_message(&input.sender, &input.text)"),
+            "create delegates: {}",
+            api_rs
+        );
+        // POST still broadcasts the SSE event after create.
+        assert!(
+            api_rs.contains("crate::events::broadcast("),
+            "broadcast: {}",
+            api_rs
+        );
+        // No handler should lock State<Db> now.
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+        assert!(
+            !api_rs.contains("..Default::default()"),
+            "no default fill: {}",
+            api_rs
+        );
+    }
+
+    /// Plan 399 第 4-5 步: 015-notes regression — all 9 endpoints delegate to
+    /// db.rs (list_notes→all_notes, create_note→create_note, get_note→find_note,
+    /// update_note→update_note, delete_note→delete_note, toggle_pin→toggle_pin,
+    /// update_tags→update_tags, search_notes→search_notes).
+    #[test]
+    fn test_handler_calls_db_for_notes_regression() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Note = { id: int, title: str, body: str, time: str, pinned: bool, tags: []str, folder: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note { return db.all_notes() }
+
+#[api(method = "GET", path = "/api/notes/:id")]
+pub fn get_note(id int) ?Note { return db.find_note(id) }
+
+#[api(method = "POST", path = "/api/notes")]
+pub fn create_note(title str, body str, folder str) Note { return db.create_note(title, body, folder) }
+
+#[api(method = "PUT", path = "/api/notes/:id")]
+pub fn update_note(id int, title str, body str) ?Note { return db.update_note(id, title, body) }
+
+#[api(method = "DELETE", path = "/api/notes/:id")]
+pub fn delete_note(id int) bool { return db.delete_note(id) }
+
+#[api(method = "PATCH", path = "/api/notes/:id/pin")]
+pub fn toggle_pin(id int) ?Note { return db.toggle_pin(id) }
+
+#[api(method = "PUT", path = "/api/notes/:id/tags")]
+pub fn update_tags(id int, tags []str) ?Note { return db.update_tags(id, tags) }
+
+#[api(method = "GET", path = "/api/notes/search")]
+pub fn search_notes(query str) []Note { return db.search_notes(query) }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let db_fns: std::collections::HashSet<String> = [
+            "all_notes".to_string(),
+            "find_note".to_string(),
+            "create_note".to_string(),
+            "update_note".to_string(),
+            "delete_note".to_string(),
+            "toggle_pin".to_string(),
+            "update_tags".to_string(),
+            "search_notes".to_string(),
+        ]
+        .into_iter()
+        .collect();
+
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
+
+        // Every endpoint resolves to its db.rs counterpart.
+        for db_fn in &[
+            "crate::db::all_notes",
+            "crate::db::find_note",
+            "crate::db::create_note",
+            "crate::db::update_note",
+            "crate::db::delete_note",
+            "crate::db::toggle_pin",
+            "crate::db::update_tags",
+            "crate::db::search_notes",
+        ] {
+            assert!(api_rs.contains(db_fn), "missing {}: {}", db_fn, api_rs);
+        }
+        // Path params bind directly, body params via input., query via query.
+        // str params are borrowed (&input.x / &query.x).
+        assert!(
+            api_rs.contains("crate::db::find_note(id)"),
+            "path arg: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("crate::db::create_note(&input.title, &input.body, &input.folder)"),
+            "body args: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("crate::db::search_notes(&query.query)"),
+            "query arg: {}",
+            api_rs
+        );
+        // Option-returning path endpoints map to ok_or(NOT_FOUND).
+        assert!(
+            api_rs.contains(".ok_or(StatusCode::NOT_FOUND)"),
+            "404 mapping: {}",
+            api_rs
+        );
+        // No State<Db> at all.
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+    }
+
+    /// Plan 399 第 4-5 步: when db.rs fully covers all endpoints, main.rs drops
+    /// State<Db> (no `with_state`, no `use api::Db`). Seed lives in db.rs globals.
+    #[test]
+    fn test_main_rs_no_state_when_db_full_cover() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Note = { id: int, title: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note { return db.all_notes() }
+"#;
+        // db.at with at least one pub fn → has_db true.
+        let db_at = "use api: Note\npub fn all_notes() []Note { return notes }\n";
+        let module = extract_api_lenient(api).expect("extract api");
+        let main = generate_main_rs(&module, Some(db_at), true, &[], false);
+        assert!(main.contains("mod db;"), "declare db module: {}", main);
+        assert!(!main.contains("with_state"), "no with_state: {}", main);
+        assert!(!main.contains("use api::Db;"), "no Db import: {}", main);
+        assert!(
+            main.contains("axum::Router::new()"),
+            "router still built: {}",
+            main
+        );
+
+        // And the legacy path is preserved when db_full_cover is false.
+        let main_legacy = generate_main_rs(&module, None, false, &[], false);
+        assert!(
+            main_legacy.contains("with_state"),
+            "legacy keeps state: {}",
+            main_legacy
+        );
+    }
+
+    /// Plan 670 F-R1-A: a contract with NO type block (scalar endpoints only,
+    /// no db.at) generates skeleton handlers that never define/take `Db` —
+    /// main.rs must NOT emit `use api::Db` / `with_state` (was E0432 in the
+    /// generated project; auto-edit rust track, survey p670-fr1b-survey §1).
+    #[test]
+    fn test_main_rs_stateless_when_no_db_type() {
+        let _a2r_env = a2r_env_lock();
+        // Shape mirrors auto-edit's back/api.at: scalar endpoints, no pub type.
+        let api = r#"
+#[api(method = "GET", path = "/api/ws_root")]
+pub fn ws_root() str { return fsys.root_dir() }
+
+#[api(method = "GET", path = "/api/exists")]
+pub fn exists(path str) bool { return fsys.path_exists(path) }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        assert!(module.types.is_empty(), "contract has no type block");
+        assert!(primary_type_name_pub(&module).is_none(), "no primary type");
+
+        // No db.at at all → db_full_cover=false; no Db type → stateless.
+        let main = generate_main_rs(&module, None, false, &[], false);
+        assert!(!main.contains("use api::Db;"), "no Db import: {}", main);
+        assert!(!main.contains("with_state"), "no state injection: {}", main);
+        assert!(!main.contains("State<Db>"), "no State<Db>: {}", main);
+        assert!(
+            main.contains("axum::Router::new()"),
+            "router still built: {}",
+            main
+        );
+        // Routes for the scalar endpoints are still wired.
+        assert!(
+            main.contains("axum::routing::get(api::ws_root)"),
+            "route ws_root: {}",
+            main
+        );
+        assert!(
+            main.contains("axum::routing::get(api::exists)"),
+            "route exists: {}",
+            main
+        );
+
+        // Same shape with a db.at that only partially covers (allow-partial
+        // migration): handlers are db-delegated/TODO stubs, still no State.
+        let db_at = "pub fn other() str { return \"x\" }\n";
+        let main_partial = generate_main_rs(&module, Some(db_at), false, &[], false);
+        assert!(
+            !main_partial.contains("use api::Db;"),
+            "partial: no Db import: {}",
+            main_partial
+        );
+        assert!(
+            !main_partial.contains("with_state"),
+            "partial: no state: {}",
+            main_partial
+        );
+        assert!(
+            main_partial.contains("mod db;"),
+            "partial: db module declared: {}",
+            main_partial
+        );
+    }
+
+    /// Plan 399 第 4-5 步: end-to-end on the real 017-chat db.at. Confirms the
+    /// transpiled db.rs carries the real `mine: true` business logic (the
+    /// original bug returned mine:false), and that extract_db_fn_names recovers
+    /// all_messages + create_message so handlers can delegate to them.
+    #[test]
+    fn test_017_chat_db_rs_has_real_logic_and_fn_names() {
+        let _a2r_env = a2r_env_lock();
+        let db_at = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui")
+            .join("017-chat")
+            .join("src")
+            .join("back")
+            .join("db.at");
+        if !db_at.exists() {
+            eprintln!("skipping: 017-chat db.at not found at {:?}", db_at);
+            return;
+        }
+        let content = std::fs::read_to_string(&db_at).unwrap();
+
+        let db_rs = transpile_db_to_rs(&content).expect("db.rs transpiles");
+        let db_rs = post_process_db_rs(db_rs);
+
+        // The create_message body must set mine: true (the whole point of the
+        // CRUD extension: handler delegation makes this run server-side).
+        assert!(
+            db_rs.contains("mine: true"),
+            "real mine:true logic: {}",
+            db_rs
+        );
+
+        // extract_db_fn_names recovers the two functions handlers delegate to.
+        let fns = extract_db_fn_names(&db_rs);
+        assert!(
+            fns.contains("all_messages"),
+            "all_messages found: {:?}",
+            fns
+        );
+        assert!(
+            fns.contains("create_message"),
+            "create_message found: {:?}",
+            fns
+        );
+
+        // And the api.at side wires both endpoints to those db functions.
+        let api_at = std::fs::read_to_string(db_at.with_file_name("api.at")).unwrap();
+        let module = extract_api_lenient(&api_at).expect("api extracts");
+        let api_rs = generate_api_rs(&module, Some(&fns), /* api_impl_active */ false, &[]);
+        assert!(
+            api_rs.contains("crate::db::all_messages()"),
+            "list delegates: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("crate::db::create_message(&input.sender, &input.text)"),
+            "create delegates: {}",
+            api_rs
+        );
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+
+        // Full coverage → main.rs must drop State<Db> (state unified to db.rs).
+        let db_at_content = std::fs::read_to_string(&db_at).unwrap();
+        let main_rs = generate_main_rs(&module, Some(&db_at_content), true, &[], false);
+        assert!(
+            !main_rs.contains("with_state"),
+            "main drops state: {}",
+            main_rs
+        );
+        assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
+        assert!(
+            main_rs.contains("mod events;"),
+            "main declares events (SSE): {}",
+            main_rs
+        );
+    }
+
+    /// Plan 399 §9: PATCH endpoint WITH body params must get a Json(input)
+    /// extractor (previously endpoint_has_body excluded PATCH → unbound input).
+    /// PATCH WITHOUT body (toggle_pin) must still get no Json extractor.
+    #[test]
+    fn test_patch_with_body_gets_json_extractor() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Task = { id: int, title: str, done: bool }
+
+#[api(method = "PATCH", path = "/api/tasks/:id")]
+pub fn set_done(id int, done bool) ?Task { return db.set_done(id, done) }
+
+#[api(method = "PATCH", path = "/api/tasks/:id/pin")]
+pub fn toggle_pin(id int) ?Task { return db.toggle_pin(id) }
+"#;
+        let module = extract_api_lenient(api).expect("extract");
+        let db_fns: std::collections::HashSet<String> =
+            ["set_done".to_string(), "toggle_pin".to_string()]
+                .into_iter()
+                .collect();
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
+
+        // PATCH+body (set_done): must have Json extractor AND delegate &input.done.
+        assert!(
+            api_rs.contains("Json(input): Json<") && api_rs.contains("set_done"),
+            "PATCH+body has Json extractor: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("crate::db::set_done(id, input.done)"),
+            "PATCH+body delegates bool param (no borrow): {}",
+            api_rs
+        );
+
+        // PATCH no body (toggle_pin): must NOT have a Json extractor (only Path).
+        // Match "Json(input)" specifically — the return type JsonResponse also contains "Json".
+        let toggle_sig = api_rs
+            .lines()
+            .find(|l| l.contains("pub async fn toggle_pin"))
+            .unwrap_or_else(|| panic!("toggle_pin handler missing: {}", api_rs));
+        assert!(
+            !toggle_sig.contains("Json(input)"),
+            "PATCH no-body has no Json extractor: {}",
+            toggle_sig
+        );
+        assert!(
+            toggle_sig.contains("Path(id)"),
+            "PATCH no-body has Path: {}",
+            toggle_sig
+        );
+    }
+
+    /// Plan 399 §6: SSE broadcast event name is no longer hardcoded. A create
+    /// POST broadcasts "New{Type}", a typing POST (void, fn name has "typing")
+    /// broadcasts "Typing" with the input payload.
+    #[test]
+    fn test_sse_broadcast_event_name_not_hardcoded() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Contact = { id: str, name: str }
+pub type Message = { id: int, text: str }
+
+use db
+
+#[api(method = "POST", path = "/api/messages")]
+pub fn send_message(text str) Message { return db.create(text) }
+
+#[api(method = "POST", path = "/api/typing")]
+pub fn set_typing(sender str) { return db.set_typing(sender) }
+
+#[api(method = "GET", path = "/api/stream")]
+pub fn stream() ~Stream<ChatEvent> { return bus.subscribe() }
+"#;
+        let module = extract_api_lenient(api).expect("extract");
+        let db_fns: std::collections::HashSet<String> =
+            ["create_message".to_string(), "set_typing".to_string()]
+                .into_iter()
+                .collect();
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
+
+        // create POST broadcasts "NewMessage" (was hardcoded before §6).
+        assert!(
+            api_rs.contains("\"NewMessage\""),
+            "create broadcasts NewMessage: {}",
+            api_rs
+        );
+        // typing POST (void) broadcasts "Typing" with the name field (Phase 12
+        // protocol: single-value variant uses a fixed "name" field, not &input).
+        assert!(
+            api_rs.contains("\"Typing\""),
+            "typing broadcasts Typing: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("serde_json::json!") && api_rs.contains("\"name\": input.sender"),
+            "typing broadcasts json! with name field: {}",
+            api_rs
+        );
+    }
+
+    /// Plan 399 §8: db fn resolution prefers the body's `db.FN(...)` call over
+    /// the name-heuristic. A synonym endpoint (lookup, not in the verb whitelist)
+    /// delegates correctly via the body — the heuristic alone would miss it.
+    #[test]
+    fn test_db_fn_resolved_from_body_over_heuristic() {
+        let api = r#"
+pub type User = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/users/:id")]
+pub fn lookup(id int) ?User { return db.find_user(id) }
+"#;
+        // full_parse recovers the body (the `return db.find_user(id)` AST).
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(module.endpoints[0].body.is_some(), "body captured");
+        // db.rs has find_user. The endpoint fn name "lookup" is NOT in the
+        // heuristic verb whitelist, so db_fn_candidates would fail — but the
+        // body-based resolver finds find_user directly.
+        let db_fns: std::collections::HashSet<String> =
+            ["find_user".to_string()].into_iter().collect();
+        let api_rs = generate_api_rs(
+            &module,
+            Some(&db_fns),
+            /* api_impl_active */ false,
+            &[],
+        );
+        assert!(
+            api_rs.contains("crate::db::find_user(id)"),
+            "synonym endpoint delegates via body: {}",
+            api_rs
+        );
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+    }
+
+    /// Plan 399 Phase 13 (§10): mixed-state detection. When db.rs exists but
+    /// doesn't cover all endpoints, `all_endpoints_covered` returns false and
+    /// the uncovered endpoints can be collected (generate_rust_server then
+    /// hard-errors unless AUTO_ALLOW_PARTIAL_DB=1). This test exercises the
+    /// detection logic without the full generate_api write path.
+    #[test]
+    fn test_mixed_state_detection_collects_uncovered() {
+        let api = r#"
+pub type Note = { id: int, title: str }
+
+#[api(method = "GET", path = "/api/notes")]
+pub fn list_notes() []Note { return db.all_notes() }
+
+#[api(method = "POST", path = "/api/notes")]
+pub fn create_note(title str) Note { return db.create_note(title) }
+
+#[api(method = "POST", path = "/api/notes/duplicate")]
+pub fn duplicate(id int) Note { return db.clone_note(id) }
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        // db.rs has all_notes + create_note but NOT clone_note (duplicate's body).
+        let db_fns: std::collections::HashSet<String> =
+            ["all_notes".to_string(), "create_note".to_string()]
+                .into_iter()
+                .collect();
+        // Not full cover — duplicate is uncovered.
+        assert!(
+            !all_endpoints_covered(&module, Some(&db_fns)),
+            "duplicate endpoint should make coverage partial"
+        );
+        // Collect uncovered (same logic as generate_rust_server's hard check).
+        let uncovered: Vec<&str> = module
+            .endpoints
+            .iter()
+            .filter(|e| !e.return_type.contains("Stream<"))
+            .filter(|e| resolve_db_call(e, &db_fns).is_none())
+            .map(|e| e.fn_name.as_str())
+            .collect();
+        assert_eq!(
+            uncovered,
+            vec!["duplicate"],
+            "only duplicate is uncovered: {:?}",
+            uncovered
+        );
+    }
+
+    /// Plan 399 §7: regenerate the REAL 015-notes backend (default stack) and
+    /// assert it now uses full db-delegation. Marked #[ignore] because it
+    /// writes the shared workspace on disk. Previously this overflowed; the fix
+    /// (transpile_db_to_rs runs on a 16MB stack + strip_collection_new UTF-8
+    /// safe) makes 015's complex db.at (12 fns + for/if-else + emoji seeds)
+    /// transpile and generate cleanly.
+    #[test]
+    #[ignore]
+    fn regen_real_015_backend_db_delegation() {
+        let project = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("examples")
+            .join("ui")
+            .join("015-notes");
+        if !project.exists() {
+            eprintln!("skip: 015-notes not found");
+            return;
+        }
+        // stage A: api.at extracts (default stack — parse_api is shallow).
+        let api_content = std::fs::read_to_string(project.join("src").join("back").join("api.at"))
+            .expect("api.at");
+        let module = try_full_parse(&api_content)
+            .or_else(|| extract_api_lenient(&api_content))
+            .expect("api extracts");
+        assert!(
+            module.endpoints.len() >= 8,
+            "8 endpoints: {}",
+            module.endpoints.len()
+        );
+
+        // stage B: full generate (transpile_db_to_rs has its own 16MB stack).
+        generate_api(&project, "rust").expect("generate_api 015 ok");
+
+        let ws = crate::rust_workspace::ensure_shared_workspace(&project);
+        let back = crate::rust_workspace::back_member_name(&project);
+        let api_rs = std::fs::read_to_string(ws.join(&back).join("src").join("api.rs"))
+            .expect("api.rs exists");
+        let main_rs = std::fs::read_to_string(ws.join(&back).join("src").join("main.rs"))
+            .expect("main.rs exists");
+        // Full db-delegation (no State<Db>).
+        assert!(!api_rs.contains("State<Db>"), "no State<Db>: {}", api_rs);
+        assert!(
+            api_rs.contains("crate::db::all_notes"),
+            "list delegates: {}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("crate::db::create_note"),
+            "create delegates: {}",
+            api_rs
+        );
+        // []str param (update_tags) — borrowed (&input.tags): a2r emits &[String]
+        // params, extractors hold Vec<String>, &Vec derefs to &[String].
+        assert!(
+            api_rs.contains("crate::db::update_tags(id, &input.tags)"),
+            "[]str param borrowed: {}",
+            api_rs
+        );
+        assert!(
+            !main_rs.contains("with_state"),
+            "main no with_state: {}",
+            main_rs
+        );
+        assert!(main_rs.contains("mod db;"), "main declares db: {}", main_rs);
+    }
+
+    /// Plan 400 Phase 2: a non-thin-delegation body (contains real logic like
+    /// if/else, not just `return db.FN(...)`) should be transpiled via a2r and
+    /// injected into the handler — NOT fall through to the CRUD template.
+    #[test]
+    fn test_a2r_body_non_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    if id > 0 {
+        return Item { id: id, name: "positive" }
+    }
+    return Item { id: id, name: "zero" }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        // The body has an if-statement → NOT a thin delegation.
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "if-body is non-thin"
+        );
+        // No db.rs → no delegation possible.
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false, &[]);
+        // The a2r path should have transpiled the if-statement into the handler.
+        // Look for evidence: "if" keyword from the transpiled body (not the
+        // CRUD template which has no if-statements).
+        assert!(
+            api_rs.contains("if id") || api_rs.contains("if (id"),
+            "a2r body transpiled if-statement into handler:\n{}",
+            api_rs
+        );
+        // Should NOT contain the CRUD template's `db.lock()` (that's the
+        // fallback path which we bypassed).
+        assert!(
+            !api_rs.contains("db.lock()"),
+            "non-thin body should not use CRUD template:\n{}",
+            api_rs
+        );
+    }
+
+    /// Plan 400 audit fix (A2): `is` (pattern match) and `try` bodies carry
+    /// real control flow and must take the a2r path, not be misclassified as
+    /// thin delegations. `while` already desugars to Stmt::For (covered).
+    #[test]
+    fn test_is_statement_body_is_not_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    is id {
+        1 -> { return Item { id: id, name: "one" } }
+        _ -> { return Item { id: id, name: "many" } }
+    }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "is-statement body is non-thin"
+        );
+    }
+
+    #[test]
+    fn test_while_body_is_not_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    while id > 10 {
+        id = id - 1
+    }
+    return Item { id: id, name: "done" }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "while body is non-thin (desugars to For)"
+        );
+    }
+
+    #[test]
+    fn test_try_body_is_not_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    try {
+        return Item { id: id, name: "ok" }
+    } catch e {
+        return Item { id: 0, name: "err" }
+    }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "try/catch body is non-thin"
+        );
+    }
+
+    #[test]
+    fn test_nested_block_control_flow_is_not_thin_delegation() {
+        let _a2r_env = a2r_env_lock();
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    {
+        if id > 0 {
+            id = id * 2
+        }
+    }
+    return Item { id: id, name: "block" }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        assert_eq!(module.endpoints.len(), 1);
+        assert!(
+            !is_thin_delegation(&module.endpoints[0]),
+            "control flow hidden in a nested block is still non-thin"
+        );
+    }
+
+    /// Plan 400 Phase 2: AUTO_A2R_BODY=0 disables the a2r body path, falling
+    /// back to CRUD template even for non-thin bodies.
+    #[test]
+    fn test_a2r_body_disabled_falls_back() {
+        let _a2r_env = a2r_env_lock();
+        std::env::set_var("AUTO_A2R_BODY", "0");
+        let api = r#"
+pub type Item = { id: int, name: str }
+
+#[api(method = "GET", path = "/api/items/:id")]
+pub fn get_item(id int) Item {
+    if id > 0 { return Item { id: id, name: "positive" } }
+    return Item { id: id, name: "zero" }
+}
+"#;
+        let module = try_full_parse(api).expect("full_parse");
+        let api_rs = generate_api_rs(&module, None, /* api_impl_active */ false, &[]);
+        std::env::remove_var("AUTO_A2R_BODY");
+        // PLAN-734 T-04：AUTO_A2R_BODY=0 = 显式 scaffold 模式——CRUD 模板可达
+        // 但必须带 SCAFFOLD 标注（不冒充同源；SD-04）。
+        assert!(
+            api_rs.contains("db.lock()"),
+            "AUTO_A2R_BODY=0 should use CRUD template:\n{}",
+            api_rs
+        );
+        assert!(
+            api_rs.contains("SCAFFOLD MODE"),
+            "scaffold mode must be labeled:\n{}",
+            api_rs
+        );
+    }
+
+    #[test]
+    fn media_route_is_emitted_for_stateful_and_full_cover_servers() {
+        let api = r#"
+#[api(method = "GET", path = "/api/items")]
+pub fn list_items() []str { return [] }
+"#;
+        let module = extract_api_lenient(api).expect("extract api");
+        let stateful = generate_main_rs(&module, None, false, &[], false);
+        let full_cover = generate_main_rs(
+            &module,
+            Some("pub fn list_items() []str { return [] }"),
+            true,
+            &[],
+            false,
+        );
+        for generated in [&stateful, &full_cover] {
+            assert!(
+                generated.contains("/api/__auto/media/:id/:revision"),
+                "route missing: {generated}"
+            );
+            assert!(
+                generated.contains("get(auto_media).head(auto_media)"),
+                "GET/HEAD missing: {generated}"
+            );
+            assert!(
+                generated.contains("global_media_registry"),
+                "runtime bridge missing: {generated}"
+            );
+            // PLAN-043 Part 1: photo service routes ride the same emission point.
+            assert!(
+                generated.contains("/api/photos/scan"),
+                "photo scan route missing: {generated}"
+            );
+            assert!(
+                generated.contains("get(auto_photos_thumb)"),
+                "photo thumb route missing: {generated}"
+            );
+            assert!(
+                generated.contains("get(auto_photos_full)"),
+                "photo full route missing: {generated}"
+            );
+            assert!(
+                generated.contains("auto_lang::ui::photo_service"),
+                "photo runtime missing: {generated}"
+            );
+        }
+        assert!(generate_cargo_toml("media-back", false, false)
+            .contains("auto-lang = { workspace = true"));
+    }
+
+    #[test]
+    fn image_stdlib_codegen_uses_shared_runtime_feature() {
+        let rs_api = include_str!("../../../stdlib/auto/image.rs.at");
+        assert!(rs_api.contains("pub fn queue") && rs_api.contains("pub fn stats"));
+        let cargo = crate::api_gen::generate_cargo_toml("image-back", false, false);
+        assert!(cargo.contains("auto-lang = { workspace = true"));
+    }
+}
+
+#[cfg(all(test, feature = "test-http-e2e"))]
+mod plan738_generated_service {
+    use super::*;
+    use std::io::{Read, Write};
+    use std::time::{Duration, Instant};
+
+    struct Server(std::process::Child);
+    impl Drop for Server {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
+
+    fn get(port: u16, path: &str) -> Option<(u16, serde_json::Value)> {
+        let addr: std::net::SocketAddr = format!("127.0.0.1:{port}").parse().ok()?;
+        let mut stream =
+            std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(200)).ok()?;
+        stream.set_read_timeout(Some(Duration::from_secs(2))).ok()?;
+        write!(
+            stream,
+            "GET {path} HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"
+        )
+        .ok()?;
+        let mut response = String::new();
+        stream.read_to_string(&mut response).ok()?;
+        let (head, body) = response.split_once("\r\n\r\n")?;
+        let status = head.split_whitespace().nth(1)?.parse().ok()?;
+        Some((status, serde_json::from_str(body).ok()?))
+    }
+
+    #[test]
+    #[ignore = "on-demand production generation, nested cargo build and real TCP service witness"]
+    fn http_e2e_plan738_production_generation_receipt_ready_and_regeneration() {
+        let root = std::env::temp_dir().join(format!("plan738-service-{}", std::process::id()));
+        std::fs::create_dir_all(root.join("src/back")).unwrap();
+        std::fs::write(
+            root.join("pac.at"),
+            "{ name: \"plan738-service\", scene: \"workspace\" }",
+        )
+        .unwrap();
+        let api = "#[api(method = \"GET\", path = \"/api/answer\")]\npub fn answer() int { let d = json.parse(\"{}\")\n return 42 }\n";
+        std::fs::write(root.join("src/back/api.at"), api).unwrap();
+        let original_stdlib = auto_lang_core::stdlib_assembly::loader::repo_stdlib_root().unwrap();
+        let local_stdlib = root.join("stdlib");
+        std::fs::create_dir_all(&local_stdlib).unwrap();
+        std::fs::copy(
+            original_stdlib.join("json.at"),
+            local_stdlib.join("json.at"),
+        )
+        .unwrap();
+        let previous = std::env::var_os("AUTO_STDLIB_ROOT");
+        struct Restore(Option<std::ffi::OsString>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                match &self.0 {
+                    Some(value) => std::env::set_var("AUTO_STDLIB_ROOT", value),
+                    None => std::env::remove_var("AUTO_STDLIB_ROOT"),
+                }
+            }
+        }
+        let _restore = Restore(previous);
+        std::env::set_var("AUTO_STDLIB_ROOT", &local_stdlib);
+        generate_api(&root, "rust").expect("production generate_api");
+        let workspace = crate::rust_workspace::ensure_shared_workspace(&root);
+        let name = crate::rust_workspace::back_member_name(&root);
+        let member = workspace.join(&name);
+        let read_receipt = || {
+            serde_json::from_str::<serde_json::Value>(
+                &std::fs::read_to_string(member.join("generation.json")).unwrap(),
+            )
+            .unwrap()
+        };
+        let receipt = read_receipt();
+        assert_eq!(receipt["assembly"]["schema_version"], 4); // PLAN-738 T-12：双重身份 schema 4
+        assert!(receipt["assembly"]["references"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|proof| proof["symbol"] == "parse"));
+        assert!(backend_generation_is_fresh(&root));
+        let target = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target")
+            .canonicalize()
+            .unwrap();
+        let target = std::path::PathBuf::from(
+            target
+                .to_string_lossy()
+                .strip_prefix(r"\\?\")
+                .unwrap_or(&target.to_string_lossy())
+                .to_string(),
+        );
+        let build = || {
+            let result = std::process::Command::new("cargo")
+                .args(["build", "-p", &name])
+                .env("CARGO_TARGET_DIR", &target)
+                .current_dir(&workspace)
+                .output()
+                .unwrap();
+            assert!(
+                result.status.success(),
+                "generated crate build failed: {}",
+                String::from_utf8_lossy(&result.stderr)
+            );
+        };
+        build();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let config = format!(
+            "{{\"profile\":\"development\",\"listen\":{{\"addr\":\"127.0.0.1\",\"port\":{port}}}}}"
+        );
+        let start = |fingerprint: &serde_json::Value| {
+            let log = std::fs::File::create(root.join("server.log")).unwrap();
+            let mut server = Server(
+                std::process::Command::new(target.join("debug").join(format!("{name}.exe")))
+                    .env("AUTO_HTTP_SERVICE_JSON", &config)
+                    .current_dir(&root)
+                    .stdout(log.try_clone().unwrap())
+                    .stderr(log)
+                    .spawn()
+                    .unwrap(),
+            );
+            let deadline = Instant::now() + Duration::from_secs(15);
+            loop {
+                if let Some((200, ready)) = get(port, "/__auto/health/ready") {
+                    assert_eq!(&ready["assembly_fingerprint"], fingerprint);
+                    let (status, answer) = get(port, "/api/answer").unwrap();
+                    assert_eq!(status, 200);
+                    assert!(
+                        answer.to_string().contains("42"),
+                        "business result: {answer}"
+                    );
+                    return server;
+                }
+                assert!(
+                    Instant::now() < deadline && server.0.try_wait().unwrap().is_none(),
+                    "service not ready: {}",
+                    std::fs::read_to_string(root.join("server.log")).unwrap()
+                );
+                std::thread::sleep(Duration::from_millis(25));
+            }
+        };
+        let server = start(&receipt["assembly"]["consumer_fingerprint"]); // 与服务烘焙常量同身份（T-12）
+        drop(server);
+        let public = local_stdlib.join("json.at");
+        let mut text = std::fs::read_to_string(&public).unwrap();
+        text.push_str("\n// changed assembly input\n");
+        std::fs::write(public, text).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.join("src/back/api.at")).unwrap(),
+            api
+        );
+        assert!(
+            !backend_generation_is_fresh(&root),
+            "unchanged API must not reuse changed assembly"
+        );
+        generate_api(&root, "rust").unwrap();
+        let regenerated = read_receipt();
+        assert_ne!(
+            receipt["assembly"]["fingerprint"],
+            regenerated["assembly"]["fingerprint"]
+        );
+        assert!(backend_generation_is_fresh(&root));
+        build();
+        let server = start(&regenerated["assembly"]["consumer_fingerprint"]); // 同身份（T-12）
+        drop(server);
+    }
+}

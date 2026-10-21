@@ -37,8 +37,7 @@ pub const ANCHOR_ID_PREFIX: &str = "scrollanchor:";
 // key 的文档序 last-wins 语义保持（先注册者的旧 seq 被驱逐，上报侧跳过）。
 // ---------------------------------------------------------------------------
 
-static ANCHOR_SEQ_GEN: std::sync::atomic::AtomicU32 =
-    std::sync::atomic::AtomicU32::new(1);
+static ANCHOR_SEQ_GEN: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 lazy_static::lazy_static! {
     static ref ANCHOR_SEQ_FORWARD: Mutex<HashMap<(String, String), u32>> =
         Mutex::new(HashMap::new());
@@ -70,11 +69,7 @@ pub fn parse_anchor_widget_seq(id: &str) -> Option<u32> {
 
 /// seq → (pane, key)（stale/未知 seq = None——调用方跳过该上报）。
 pub fn lookup_anchor(seq: u32) -> Option<(String, String)> {
-    ANCHOR_SEQ_REVERSE
-        .lock()
-        .unwrap()
-        .get(&seq)
-        .cloned()
+    ANCHOR_SEQ_REVERSE.lock().unwrap().get(&seq).cloned()
 }
 
 // ---------------------------------------------------------------------------
@@ -124,13 +119,8 @@ impl Operation<AnchorRectMap> for AnchorBoundsCollector {
             // Id Debug 形态 `Id(Custom("scrollanchor:42"))`——取内层串。
             // T-19 后 id 体为纯数字 seq（pane/key 不进入 id——R01 的分隔符
             // 与 Debug 转义两类面根除），查注册表还原。
-            let inner = debug
-                .split('"')
-                .nth(1)
-                .unwrap_or_default();
-            if let Some((pane, key)) =
-                parse_anchor_widget_seq(inner).and_then(lookup_anchor)
-            {
+            let inner = debug.split('"').nth(1).unwrap_or_default();
+            if let Some((pane, key)) = parse_anchor_widget_seq(inner).and_then(lookup_anchor) {
                 self.out.push(AnchorRectEntry {
                     pane,
                     key,
@@ -181,15 +171,16 @@ pub fn take_resolved_finals() -> Vec<(String, String, f64, f64)> {
 
 /// 两路 stash 齐备时取走并联动解析（controller 请求队列 → finals）。
 /// 未齐备/无 pending 返回空（下一拍重试——drain/心跳节拍既有形态）。
-pub fn try_resolve_pending()
--> Vec<(String, String, f64, f64)> {
+pub fn try_resolve_pending() -> Vec<(String, String, f64, f64)> {
     let rects_taken = ANCHOR_RECTS.lock().unwrap().take();
     let origins_taken = PANE_ORIGINS.lock().unwrap().take();
     let dbg = std::env::var("P781_DEBUG").is_ok();
     if dbg {
-        eprintln!("[P781] try_resolve: rects={} origins={}",
+        eprintln!(
+            "[P781] try_resolve: rects={} origins={}",
             rects_taken.as_ref().map(|m| m.len()).unwrap_or(0),
-            origins_taken.as_ref().map(|m| m.len()).unwrap_or(0));
+            origins_taken.as_ref().map(|m| m.len()).unwrap_or(0)
+        );
     }
     let (rects, origins) = match (rects_taken, origins_taken) {
         (Some(r), Some(o)) => (r, o),
@@ -404,7 +395,10 @@ mod plan783_tests {
         let seq = register_anchor("@scrollctl:1", "q\"k");
         let id = anchor_widget_id(seq);
         let rest = id.strip_prefix(ANCHOR_ID_PREFIX).unwrap();
-        assert!(rest.bytes().all(|b| b.is_ascii_digit()), "id body digits only: {rest}");
+        assert!(
+            rest.bytes().all(|b| b.is_ascii_digit()),
+            "id body digits only: {rest}"
+        );
     }
 
     /// 重注册驱逐：同 (pane,key) 重建后旧 seq 失效（lookup miss = 上报侧

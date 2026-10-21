@@ -49,8 +49,7 @@ impl BuildCache {
         let content = fs::read_to_string(cache_path.path())
             .map_err(|e| format!("Failed to read cache file: {}", e))?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse cache file: {}", e))
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse cache file: {}", e))
     }
 
     /// Save cache to disk
@@ -132,10 +131,7 @@ impl BuildCache {
 
     /// Get list of dirty (modified) files
     pub fn get_dirty_files(&self, files: &[String]) -> Vec<String> {
-        files.iter()
-            .filter(|f| self.is_dirty(f))
-            .cloned()
-            .collect()
+        files.iter().filter(|f| self.is_dirty(f)).cloned().collect()
     }
 
     /// Clear the cache

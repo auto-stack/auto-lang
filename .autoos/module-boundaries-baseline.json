@@ -1,6 +1,6 @@
 {
-  "base_revision": "0373cfa388b9afc6b58e1e699fab1119af6dafd8",
-  "config_sha256": "ce8981bdc8d7b8e8d135e6da604454fdaf153c1fe9ad4a6daff880eb47ac5c62",
+  "base_revision": "eea682150a78349b484d1b5cbfa371b15e67e94d",
+  "config_sha256": "cd626de3468aded8a70226ef0f352f83e5941bfa741b675e113dce66297d3a3d",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -45,6 +45,33 @@
       "optional": false,
       "target": null,
       "to": "shell-pack",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-api-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man-core",
+      "from": "auto-api-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-api-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
       "to_scope": "member"
     },
     {
@@ -237,6 +264,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-lang-core",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-lex",
       "from": "auto-lang",
       "kind": "normal",
@@ -300,12 +336,30 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-ui-compiler",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-compiler",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-ui-dialect",
       "from": "auto-lang",
       "kind": "normal",
       "optional": false,
       "target": null,
       "to": "auto-ui-dialect",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-runtime",
+      "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-runtime",
       "to_scope": "member"
     },
     {
@@ -329,6 +383,141 @@
     {
       "dep_key": "shim-metadata",
       "from": "auto-lang",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "shim-metadata",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "a2r-std",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "a2r-std",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ast",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ast",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-atom",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-bindgen",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-bindgen",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-cache",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-cache",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-diagnostics",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-diagnostics",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lex",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lex",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-macros",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-macros",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-media-core",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-media-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-parser-api",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-parser-api",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-terminal-core",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-terminal-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-test-case",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": true,
+      "target": null,
+      "to": "auto-test-case",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-text-core",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-text-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-lang-core",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "shim-metadata",
+      "from": "auto-lang-core",
       "kind": "normal",
       "optional": false,
       "target": null,
@@ -363,12 +552,12 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-lang-core",
       "from": "auto-macros",
       "kind": "dev",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
@@ -378,6 +567,15 @@
       "optional": false,
       "target": null,
       "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-api-gen",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-api-gen",
       "to_scope": "member"
     },
     {
@@ -477,6 +675,15 @@
       "optional": false,
       "target": null,
       "to": "auto-toolchain-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-tools",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-tools",
       "to_scope": "member"
     },
     {
@@ -607,33 +814,6 @@
     },
     {
       "dep_key": "auto-project-model",
-      "from": "auto-tool-client",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-project-model",
-      "to_scope": "member"
-    },
-    {
-      "dep_key": "auto-tool-execution",
-      "from": "auto-tool-client",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-tool-execution",
-      "to_scope": "member"
-    },
-    {
-      "dep_key": "auto-tool-protocol",
-      "from": "auto-tool-client",
-      "kind": "normal",
-      "optional": false,
-      "target": null,
-      "to": "auto-tool-protocol",
-      "to_scope": "member"
-    },
-    {
-      "dep_key": "auto-project-model",
       "from": "auto-tool-protocol",
       "kind": "normal",
       "optional": false,
@@ -660,12 +840,102 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-atom",
+      "from": "auto-ui-compiler",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-atom",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-ui-compiler",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-dialect",
+      "from": "auto-ui-compiler",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-dialect",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-ui-compiler",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-ui-dialect",
+      "kind": "dev",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-parser-api",
       "from": "auto-ui-dialect",
       "kind": "normal",
       "optional": false,
       "target": null,
       "to": "auto-parser-api",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-ui-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-compiler",
+      "from": "auto-ui-runtime",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-compiler",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-api-gen",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-api-gen",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man-core",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-core",
       "to_scope": "member"
     },
     {
@@ -687,12 +957,30 @@
       "to_scope": "member"
     },
     {
-      "dep_key": "auto-lang",
+      "dep_key": "auto-ui-compiler",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-compiler",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
       "from": "auto-vm",
       "kind": "normal",
       "optional": false,
       "target": null,
-      "to": "auto-lang",
+      "to": "auto-lang-core",
       "to_scope": "member"
     },
     {
@@ -708,8 +996,8 @@
   "generated_by": "scripts/modularity-audit.py --refresh-baseline",
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
-    "core_to_ui": 846,
-    "man_to_language": 553,
-    "ui_to_language": 182
+    "core_to_ui": 842,
+    "man_to_language": 119,
+    "ui_to_language": 23
   }
 }

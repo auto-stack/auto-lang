@@ -1526,7 +1526,10 @@ pub fn run_bridge(wellknown: &str, ws_port: u16, token: &str) -> Result<(), Stri
             for ev in events {
                 let wire = match ev {
                     RqEvent::ImeRequest { enabled } => {
-                        Some(ProtocolMsg::Control(ControlMsg::ImeRequest { wid, enabled }))
+                        Some(ProtocolMsg::Control(ControlMsg::ImeRequest {
+                            wid,
+                            enabled,
+                        }))
                     }
                     RqEvent::SetCursor { kind } => {
                         Some(ProtocolMsg::Control(ControlMsg::SetCursor { wid, kind }))

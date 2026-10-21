@@ -1,5 +1,5 @@
-use auto_val::AutoPath;
 use crate::AutoResult;
+use auto_val::AutoPath;
 use log::*;
 use std::env;
 
@@ -12,10 +12,7 @@ impl CompilerResolver {
     /// 解析可执行文件路径
     ///
     /// 根据 CompilerConfig 的 location 配置查找可执行文件
-    pub fn resolve_executable(
-        config: &CompilerConfig,
-        exec_type: ExecutableType,
-    ) -> AutoPath {
+    pub fn resolve_executable(config: &CompilerConfig, exec_type: ExecutableType) -> AutoPath {
         // MSVC Linker/Archiver 同目录优先（Plan 580 缺陷#3）：编译器已定位到
         // 具体目录时先查同目录 link.exe/lib.exe——VS 工具链布局
         // （VC\Tools\MSVC\<ver>\bin\Hostx64\<arch>）下四件套同目录，避免
@@ -46,15 +43,13 @@ impl CompilerResolver {
             CompilerLocation::Env => {
                 // 从 PATH 环境变量查找
                 let default = Self::default_executable(config.kind, exec_type);
-                let exe_name = config.get_executable(exec_type)
-                    .unwrap_or(&default);
+                let exe_name = config.get_executable(exec_type).unwrap_or(&default);
                 Self::find_in_path(exe_name)
             }
             CompilerLocation::Dir(dir) => {
                 // 从指定目录查找
                 let default = Self::default_executable(config.kind, exec_type);
-                let exe_name = config.get_executable(exec_type)
-                    .unwrap_or(&default);
+                let exe_name = config.get_executable(exec_type).unwrap_or(&default);
                 dir.join(exe_name.to_astr().as_str())
             }
             CompilerLocation::Executable(e_type, path) => {
@@ -102,7 +97,10 @@ impl CompilerResolver {
     }
 
     /// 获取默认可执行文件名称
-    fn default_executable(kind: super::config::CompilerKind, exec_type: ExecutableType) -> AutoPath {
+    fn default_executable(
+        kind: super::config::CompilerKind,
+        exec_type: ExecutableType,
+    ) -> AutoPath {
         use crate::builder::ninja::config::CompilerKind;
 
         match (kind, exec_type) {
@@ -239,9 +237,7 @@ impl CompilerResolver {
 
         all_kinds
             .into_iter()
-            .filter(|kind| {
-                Self::validate_compiler(*kind).unwrap_or(false)
-            })
+            .filter(|kind| Self::validate_compiler(*kind).unwrap_or(false))
             .collect()
     }
 }
@@ -249,15 +245,11 @@ impl CompilerResolver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
 
     #[test]
     fn test_resolve_executable_env() {
         let config = CompilerConfig::gcc_default();
-        let cc_path = CompilerResolver::resolve_executable(
-            &config,
-            ExecutableType::Compiler
-        );
+        let cc_path = CompilerResolver::resolve_executable(&config, ExecutableType::Compiler);
         // 路径应该包含 gcc 或 gcc.exe
         let path_astr = cc_path.to_astr();
         let path_str = path_astr.as_str();
@@ -269,15 +261,19 @@ mod tests {
         use crate::builder::ninja::config::CompilerKind;
 
         // Test GCC
-        let gcc_path = CompilerResolver::default_executable(CompilerKind::GCC, ExecutableType::Compiler);
+        let gcc_path =
+            CompilerResolver::default_executable(CompilerKind::GCC, ExecutableType::Compiler);
         assert_eq!(gcc_path.to_astr().as_str(), "gcc.exe");
-        let ar_path = CompilerResolver::default_executable(CompilerKind::GCC, ExecutableType::Archiver);
+        let ar_path =
+            CompilerResolver::default_executable(CompilerKind::GCC, ExecutableType::Archiver);
         assert_eq!(ar_path.to_astr().as_str(), "ar.exe");
 
         // Test MSVC
-        let cl_path = CompilerResolver::default_executable(CompilerKind::MSVC, ExecutableType::Compiler);
+        let cl_path =
+            CompilerResolver::default_executable(CompilerKind::MSVC, ExecutableType::Compiler);
         assert_eq!(cl_path.to_astr().as_str(), "cl.exe");
-        let link_path = CompilerResolver::default_executable(CompilerKind::MSVC, ExecutableType::Linker);
+        let link_path =
+            CompilerResolver::default_executable(CompilerKind::MSVC, ExecutableType::Linker);
         assert_eq!(link_path.to_astr().as_str(), "link.exe");
     }
 
@@ -286,8 +282,7 @@ mod tests {
         use crate::builder::ninja::config::CompilerKind;
 
         // GCC 通常在大多数系统上可用
-        let gcc_available = CompilerResolver::validate_compiler(CompilerKind::GCC)
-            .unwrap_or(false);
+        let gcc_available = CompilerResolver::validate_compiler(CompilerKind::GCC).unwrap_or(false);
         // 测试应该能够运行，不管 GCC 是否实际安装
         info!("GCC available: {}", gcc_available);
     }
@@ -322,19 +317,31 @@ mod tests {
 
         let link = CompilerResolver::resolve_executable(&config, ExecutableType::Linker);
         let link_norm = link.to_astr().as_str().replace('\\', "/");
-        assert!(link_norm.starts_with(&dir_norm), "linker should stay in compiler dir, got {}", link_norm);
+        assert!(
+            link_norm.starts_with(&dir_norm),
+            "linker should stay in compiler dir, got {}",
+            link_norm
+        );
         assert!(link_norm.ends_with("link.exe"));
 
         let ar = CompilerResolver::resolve_executable(&config, ExecutableType::Archiver);
         let ar_norm = ar.to_astr().as_str().replace('\\', "/");
-        assert!(ar_norm.starts_with(&dir_norm), "archiver should stay in compiler dir, got {}", ar_norm);
+        assert!(
+            ar_norm.starts_with(&dir_norm),
+            "archiver should stay in compiler dir, got {}",
+            ar_norm
+        );
         assert!(ar_norm.ends_with("lib.exe"));
 
         // 同目录无 link.exe → 回退 PATH 探测，结果脱离该目录
         std::fs::remove_file(dir.join("link.exe")).unwrap();
         let link2 = CompilerResolver::resolve_executable(&config, ExecutableType::Linker);
         let l2_norm = link2.to_astr().as_str().replace('\\', "/");
-        assert!(!l2_norm.starts_with(&dir_norm), "linker should fall back to PATH, got {}", l2_norm);
+        assert!(
+            !l2_norm.starts_with(&dir_norm),
+            "linker should fall back to PATH, got {}",
+            l2_norm
+        );
     }
 
     // 复审补充（回归锁，Plan 580 review）：Executable 钉定 Linker 的 MSVC
@@ -343,8 +350,10 @@ mod tests {
     #[test]
     fn msvc_executable_pinned_linker_returns_pinned_path() {
         let mut config = CompilerConfig::msvc_default();
-        config.location =
-            CompilerLocation::Executable(ExecutableType::Linker, AutoPath::new("C:/tools/link.exe"));
+        config.location = CompilerLocation::Executable(
+            ExecutableType::Linker,
+            AutoPath::new("C:/tools/link.exe"),
+        );
         let link = CompilerResolver::resolve_executable(&config, ExecutableType::Linker);
         assert_eq!(link.to_astr().as_str(), "C:/tools/link.exe");
     }
@@ -360,8 +369,13 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         std::fs::write(tmp.path().join("link.exe"), b"").unwrap();
         let cl = tmp.path().join("cl.exe");
-        let hit = CompilerResolver::msvc_sibling_tool(&AutoPath::new(cl.to_str().unwrap()), "link.exe")
-            .expect("sibling link.exe should hit");
-        assert!(hit.to_astr().as_str().replace('\\', "/").ends_with("link.exe"));
+        let hit =
+            CompilerResolver::msvc_sibling_tool(&AutoPath::new(cl.to_str().unwrap()), "link.exe")
+                .expect("sibling link.exe should hit");
+        assert!(hit
+            .to_astr()
+            .as_str()
+            .replace('\\', "/")
+            .ends_with("link.exe"));
     }
 }

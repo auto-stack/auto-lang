@@ -1,0 +1,850 @@
+use auto_val::AutoStr;
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+pub mod abt;
+pub mod budget_policy;
+pub mod builder;
+pub mod channel;
+pub mod codegen;
+pub mod context;
+pub mod debugger;
+pub mod disasm;
+pub mod trace;
+// Plan 364 Step 5: runtime VM Config eval tests (ConfigCodegen was removed;
+// config mode is now Codegen::new_for_config() + accumulation opcodes).
+#[cfg(test)]
+mod config_eval_tests;
+// 2026-08-22(侧栏串写根因):字符串池 u32 化 + 驻留去重的回归锁。
+#[cfg(test)]
+mod tests_string_pool;
+// 2026-08-22 已知 VM 限制复现(方法链 / fn 返回复合值)。
+#[cfg(test)]
+mod tests_known_limits;
+// Plan 419 Phase 1:引用计数生命周期里程碑测试(§2.2)。
+#[cfg(test)]
+mod tests_rc_lifecycle;
+// Plan 419 §8.3:解析器巨帧栈溢出回归(循环内结构体赋值/嵌套块)。
+#[cfg(test)]
+mod tests_parser_stack;
+// 2026-08-22 tag 软关键字的标识符用法回归。
+#[cfg(test)]
+mod tests_tag;
+// Plan 075: TemplateCodegen for template file compilation
+pub mod collections;
+// PLAN-047（档 C SD-08）: 依赖录制核心类型（不挂 feature 门——AutoVM 录制
+// 槽与 ui/memo_deps 宿主共用；类型单源）。
+pub mod dep_track;
+pub mod engine;
+pub mod template_codegen;
+// Plan 076 Phase 1: Generic type support for AutoVM
+pub mod generic;
+// Plan 087 Phase 1: Generic registry for user-defined generic types
+pub mod generic_registry;
+// Plan 076 Phase 2: Monomorphization pass
+pub mod monomorphize;
+// Plan 076 Phase 4: Storage strategy runtime for AutoVM
+pub mod list_data;
+pub mod list_storage;
+// Plan 077 Phase 1: HeapObject trait for unified object registry
+pub mod heap;
+pub mod heap_object;
+// Plan 419 Phase 1: 引用计数协议核心(copy-on-load 所有权协议)
+pub mod io;
+pub mod rc;
+// Plan 088 Phase 5: Reference types for parameter passing modes
+pub mod list;
+pub mod loader;
+pub mod memory;
+// Plan 125 Phase 3.4: MessageContext for task message handling
+pub mod message_context;
+// Plan 125 Phase 3.5: Pattern matcher for task message routing
+pub mod pattern_matcher;
+// Plan 249: Unified native function catalog (must be before native + native_registry)
+pub mod native_catalog;
+// Plan 019 批次八: autodown_* 文档 natives（JSON 传输；feature autodown 门控）。
+pub mod autodown_natives;
+pub mod host_bridge;
+// PLAN-779: 宿主能力装配点（frame provider 接口 + 进程默认；core 不引 UI）。
+pub mod host_capabilities;
+pub mod native;
+pub mod shell_bridge;
+// Plan 061:外部后端 cdylib 插件 ABI(merged 模式,BackendRegistry + 装载器)
+pub mod backend_abi;
+pub mod native_registry;
+pub mod opcode;
+// Plan 203 Phase 1: Qualified name type for canonical native function identification
+pub mod qualified_name;
+pub mod refs;
+pub mod storage;
+pub mod task;
+// Plan 121: Task/Msg Runtime System
+pub mod task_system;
+// Plan 127: Task Handler Table for message routing
+pub mod task_handler;
+// Plan 127: Scheduler Message Dispatch Loop
+pub mod interop;
+pub mod scheduler;
+pub mod types;
+pub mod virt_memory; // Plan 555 T05/T06: ForeignObject 协议 + 分发组合子
+                     // Plan 091: Extracted from universe.rs
+pub mod object_data;
+
+// Plan 413 follow-up: in-app console ring buffer (print/console_log sink)
+pub mod ui_console;
+
+// Plan 094: Hybrid FFI Bridge
+pub mod ffi;
+
+// #[cfg(test)]
+// mod tests_concurrency; // TODO: Create tests_concurrency.rs
+
+#[cfg(test)]
+mod tests_closures;
+
+mod tests_chart_geometry;
+#[cfg(test)]
+mod tests_collections;
+
+// Plan 485 T3: clipboard natives 四件套 VM 层栈协议（实剪贴板往返）。
+// PLAN-814 T-02 迁移上移：测试消费上层 UI 面，已迁 auto-lang
+// src/tests/plan485_clipboard_natives.rs（原 `native-clipboard` 门在 SDK
+// 无定义——死门、选择丢失，V-05 勘误）。
+
+// TODO: Create tests_bigvm.rs file
+// #[cfg(test)]
+// mod tests_bigvm;
+
+/// Plan 091: VM function signature using VmContext (no Evaler dependency)
+pub type VmFunction = fn(&mut context::VmContext, auto_val::Value) -> auto_val::Value;
+
+/// Plan 091: VM method signature using VmContext (no Evaler dependency)
+pub type VmMethod =
+    fn(&mut context::VmContext, &mut auto_val::Value, Vec<auto_val::Value>) -> auto_val::Value;
+
+/// Represents a VM function in the registry
+#[derive(Clone)]
+pub struct VmFunctionEntry {
+    pub name: AutoStr,
+    pub func: VmFunction,
+    pub is_method: bool,
+}
+
+/// Represents a VM type with its methods
+pub struct VmTypeEntry {
+    pub name: AutoStr,
+    pub methods: HashMap<AutoStr, VmMethod>,
+}
+
+/// Represents a VM module containing functions and types
+pub struct VmModule {
+    pub name: AutoStr,
+    pub functions: HashMap<AutoStr, VmFunctionEntry>,
+    pub types: HashMap<AutoStr, VmTypeEntry>,
+}
+
+/// Global VM registry for all modules
+pub struct VmRegistry {
+    modules: HashMap<AutoStr, VmModule>,
+}
+
+impl VmRegistry {
+    pub fn new() -> Self {
+        Self {
+            modules: HashMap::new(),
+        }
+    }
+
+    pub fn register_module(&mut self, module: VmModule) {
+        self.modules.insert(module.name.clone(), module);
+    }
+
+    pub fn get_module(&self, name: &str) -> Option<&VmModule> {
+        self.modules.get(name)
+    }
+
+    pub fn get_function(&self, module_name: &str, func_name: &str) -> Option<&VmFunctionEntry> {
+        self.modules.get(module_name)?.functions.get(func_name)
+    }
+
+    pub fn get_method(&self, _type_name: &str, _method_name: &str) -> Option<&VmMethod> {
+        // Search all modules for the type
+        for module in self.modules.values() {
+            if let Some(type_entry) = module.types.get(_type_name) {
+                if let Some(method) = type_entry.methods.get(_method_name) {
+                    return Some(method);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn modules(&self) -> &HashMap<AutoStr, VmModule> {
+        &self.modules
+    }
+}
+
+// Global VM registry instance
+lazy_static::lazy_static! {
+    pub static ref VM_REGISTRY: Mutex<VmRegistry> = Mutex::new(VmRegistry::new());
+}
+
+/// Initialize and register the IO module with the VM registry
+pub fn init_io_module() {
+    use std::sync::Mutex;
+
+    static INIT: Mutex<bool> = Mutex::new(false);
+    let mut initialized = INIT.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+    drop(initialized);
+
+    let mut io_module = VmModule {
+        name: "auto.io".into(),
+        functions: HashMap::new(),
+        types: HashMap::new(),
+    };
+
+    // Register 'File.open' as a static function
+    io_module.functions.insert(
+        "File.open".into(),
+        VmFunctionEntry {
+            name: "File.open".into(),
+            func: io::open,
+            is_method: false,
+        },
+    );
+
+    // Register File type with methods
+    let mut file_type = VmTypeEntry {
+        name: "File".into(),
+        methods: HashMap::new(),
+    };
+
+    file_type
+        .methods
+        .insert("close".into(), io::close_method as VmMethod);
+    file_type
+        .methods
+        .insert("read_text".into(), io::read_text_method as VmMethod);
+    file_type
+        .methods
+        .insert("read_line".into(), io::read_line_method as VmMethod);
+    file_type
+        .methods
+        .insert("write_line".into(), io::write_line_method as VmMethod);
+    file_type
+        .methods
+        .insert("flush".into(), io::flush_method as VmMethod);
+    file_type
+        .methods
+        .insert("read_char".into(), io::read_char_method as VmMethod);
+    file_type
+        .methods
+        .insert("read_buf".into(), io::read_buf_method as VmMethod);
+
+    io_module.types.insert("File".into(), file_type);
+
+    // Register the module
+    VM_REGISTRY.lock().unwrap().register_module(io_module);
+}
+
+/// Initialize and register the collections module with the VM registry
+pub fn init_collections_module() {
+    use std::sync::Mutex;
+
+    static INIT: Mutex<bool> = Mutex::new(false);
+    let mut initialized = INIT.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+    drop(initialized);
+
+    let mut collections_module = VmModule {
+        name: "collections".into(),
+        functions: HashMap::new(),
+        types: HashMap::new(),
+    };
+
+    // Register HashMap type with methods
+    let mut hashmap_type = VmTypeEntry {
+        name: "HashMap".into(),
+        methods: HashMap::new(),
+    };
+
+    hashmap_type.methods.insert(
+        "insert_str".into(),
+        collections::hash_map_insert_str as VmMethod,
+    );
+    hashmap_type.methods.insert(
+        "insert_int".into(),
+        collections::hash_map_insert_int as VmMethod,
+    );
+    hashmap_type
+        .methods
+        .insert("get_str".into(), collections::hash_map_get_str as VmMethod);
+    hashmap_type
+        .methods
+        .insert("get_int".into(), collections::hash_map_get_int as VmMethod);
+    hashmap_type.methods.insert(
+        "contains".into(),
+        collections::hash_map_contains as VmMethod,
+    );
+    hashmap_type
+        .methods
+        .insert("remove".into(), collections::hash_map_remove as VmMethod);
+    hashmap_type
+        .methods
+        .insert("size".into(), collections::hash_map_size as VmMethod);
+    hashmap_type
+        .methods
+        .insert("clear".into(), collections::hash_map_clear as VmMethod);
+    hashmap_type
+        .methods
+        .insert("drop".into(), collections::hash_map_drop as VmMethod);
+
+    // Register HashMap.new() as a static function
+    collections_module.functions.insert(
+        "HashMap.new".into(),
+        VmFunctionEntry {
+            name: "HashMap.new".into(),
+            func: collections::hash_map_new_static,
+            is_method: false,
+        },
+    );
+
+    collections_module
+        .types
+        .insert("HashMap".into(), hashmap_type);
+
+    // Register HashSet type with methods
+    let mut hashset_type = VmTypeEntry {
+        name: "HashSet".into(),
+        methods: HashMap::new(),
+    };
+
+    hashset_type
+        .methods
+        .insert("insert".into(), collections::hash_set_insert as VmMethod);
+    hashset_type.methods.insert(
+        "contains".into(),
+        collections::hash_set_contains as VmMethod,
+    );
+    hashset_type
+        .methods
+        .insert("remove".into(), collections::hash_set_remove as VmMethod);
+    hashset_type
+        .methods
+        .insert("size".into(), collections::hash_set_size as VmMethod);
+    hashset_type
+        .methods
+        .insert("clear".into(), collections::hash_set_clear as VmMethod);
+    hashset_type
+        .methods
+        .insert("drop".into(), collections::hash_set_drop as VmMethod);
+
+    // Register HashSet.new() as a static function
+    collections_module.functions.insert(
+        "HashSet.new".into(),
+        VmFunctionEntry {
+            name: "HashSet.new".into(),
+            func: collections::hash_set_new,
+            is_method: false,
+        },
+    );
+
+    collections_module
+        .types
+        .insert("HashSet".into(), hashset_type);
+
+    // Register VecDeque type with methods (Plan 085)
+    let mut vecdeque_type = VmTypeEntry {
+        name: "VecDeque".into(),
+        methods: HashMap::new(),
+    };
+
+    vecdeque_type.methods.insert(
+        "push_back".into(),
+        collections::vec_deque_push_back as VmMethod,
+    );
+    vecdeque_type.methods.insert(
+        "push_front".into(),
+        collections::vec_deque_push_front as VmMethod,
+    );
+    vecdeque_type.methods.insert(
+        "pop_back".into(),
+        collections::vec_deque_pop_back as VmMethod,
+    );
+    vecdeque_type.methods.insert(
+        "pop_front".into(),
+        collections::vec_deque_pop_front as VmMethod,
+    );
+    vecdeque_type
+        .methods
+        .insert("front".into(), collections::vec_deque_front as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("back".into(), collections::vec_deque_back as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("size".into(), collections::vec_deque_size as VmMethod);
+    vecdeque_type.methods.insert(
+        "is_empty".into(),
+        collections::vec_deque_is_empty as VmMethod,
+    );
+    vecdeque_type
+        .methods
+        .insert("clear".into(), collections::vec_deque_clear as VmMethod);
+    vecdeque_type
+        .methods
+        .insert("drop".into(), collections::vec_deque_drop as VmMethod);
+
+    // Register VecDeque.new() as a static function
+    collections_module.functions.insert(
+        "VecDeque.new".into(),
+        VmFunctionEntry {
+            name: "VecDeque.new".into(),
+            func: collections::vec_deque_new,
+            is_method: false,
+        },
+    );
+
+    collections_module
+        .types
+        .insert("VecDeque".into(), vecdeque_type);
+
+    // Register BTreeMap type with methods (Plan 085)
+    let mut btreemap_type = VmTypeEntry {
+        name: "BTreeMap".into(),
+        methods: HashMap::new(),
+    };
+
+    btreemap_type
+        .methods
+        .insert("insert".into(), collections::btree_map_insert as VmMethod);
+    btreemap_type
+        .methods
+        .insert("get".into(), collections::btree_map_get as VmMethod);
+    btreemap_type.methods.insert(
+        "contains".into(),
+        collections::btree_map_contains as VmMethod,
+    );
+    btreemap_type
+        .methods
+        .insert("remove".into(), collections::btree_map_remove as VmMethod);
+    btreemap_type
+        .methods
+        .insert("size".into(), collections::btree_map_size as VmMethod);
+    btreemap_type.methods.insert(
+        "is_empty".into(),
+        collections::btree_map_is_empty as VmMethod,
+    );
+    btreemap_type
+        .methods
+        .insert("clear".into(), collections::btree_map_clear as VmMethod);
+    btreemap_type.methods.insert(
+        "first_key".into(),
+        collections::btree_map_first_key as VmMethod,
+    );
+    btreemap_type.methods.insert(
+        "last_key".into(),
+        collections::btree_map_last_key as VmMethod,
+    );
+    btreemap_type
+        .methods
+        .insert("drop".into(), collections::btree_map_drop as VmMethod);
+
+    // Register BTreeMap.new() as a static function
+    collections_module.functions.insert(
+        "BTreeMap.new".into(),
+        VmFunctionEntry {
+            name: "BTreeMap.new".into(),
+            func: collections::btree_map_new,
+            is_method: false,
+        },
+    );
+
+    collections_module
+        .types
+        .insert("BTreeMap".into(), btreemap_type);
+
+    // Register List type with methods
+    let mut list_type = VmTypeEntry {
+        name: "List".into(),
+        methods: HashMap::new(),
+    };
+
+    list_type
+        .methods
+        .insert("push".into(), list::list_push as VmMethod);
+    list_type
+        .methods
+        .insert("pop".into(), list::list_pop as VmMethod);
+    list_type
+        .methods
+        .insert("len".into(), list::list_len as VmMethod);
+    list_type
+        .methods
+        .insert("is_empty".into(), list::list_is_empty as VmMethod);
+    list_type
+        .methods
+        .insert("capacity".into(), list::list_capacity as VmMethod);
+    list_type
+        .methods
+        .insert("clear".into(), list::list_clear as VmMethod);
+    list_type
+        .methods
+        .insert("reserve".into(), list::list_reserve as VmMethod);
+    list_type
+        .methods
+        .insert("get".into(), list::list_get as VmMethod);
+    list_type
+        .methods
+        .insert("set".into(), list::list_set as VmMethod);
+    list_type
+        .methods
+        .insert("insert".into(), list::list_insert as VmMethod);
+    list_type
+        .methods
+        .insert("remove".into(), list::list_remove as VmMethod);
+    list_type
+        .methods
+        .insert("drop".into(), list::list_drop as VmMethod);
+    list_type
+        .methods
+        .insert("iter".into(), list::list_iter as VmMethod);
+
+    // Register List.new() as a static function
+    collections_module.functions.insert(
+        "List.new".into(),
+        VmFunctionEntry {
+            name: "List.new".into(),
+            func: list::list_new,
+            is_method: false,
+        },
+    );
+
+    collections_module.types.insert("List".into(), list_type);
+
+    // Register ListIter type with methods (Plan 051 Phase 2)
+    let mut listiter_type = VmTypeEntry {
+        name: "ListIter".into(),
+        methods: HashMap::new(),
+    };
+
+    listiter_type
+        .methods
+        .insert("next".into(), list::list_iter_next as VmMethod);
+    listiter_type
+        .methods
+        .insert("map".into(), list::list_iter_map as VmMethod);
+    listiter_type
+        .methods
+        .insert("filter".into(), list::list_iter_filter as VmMethod);
+    listiter_type
+        .methods
+        .insert("reduce".into(), list::list_iter_reduce as VmMethod);
+    listiter_type
+        .methods
+        .insert("count".into(), list::list_iter_count as VmMethod);
+    listiter_type
+        .methods
+        .insert("for_each".into(), list::list_iter_for_each as VmMethod);
+    listiter_type
+        .methods
+        .insert("collect".into(), list::list_iter_collect as VmMethod);
+    listiter_type
+        .methods
+        .insert("any".into(), list::list_iter_any as VmMethod);
+    listiter_type
+        .methods
+        .insert("all".into(), list::list_iter_all as VmMethod);
+    listiter_type
+        .methods
+        .insert("find".into(), list::list_iter_find as VmMethod);
+
+    collections_module
+        .types
+        .insert("ListIter".into(), listiter_type);
+
+    // Register MapIter type with methods (Plan 051 Phase 3)
+    let mut mapiter_type = VmTypeEntry {
+        name: "MapIter".into(),
+        methods: HashMap::new(),
+    };
+
+    mapiter_type
+        .methods
+        .insert("next".into(), list::map_iter_next as VmMethod);
+    mapiter_type
+        .methods
+        .insert("filter".into(), list::map_iter_filter as VmMethod);
+    mapiter_type
+        .methods
+        .insert("reduce".into(), list::list_iter_reduce as VmMethod);
+    mapiter_type
+        .methods
+        .insert("count".into(), list::list_iter_count as VmMethod);
+    mapiter_type
+        .methods
+        .insert("for_each".into(), list::list_iter_for_each as VmMethod);
+    mapiter_type
+        .methods
+        .insert("collect".into(), list::list_iter_collect as VmMethod);
+    mapiter_type
+        .methods
+        .insert("any".into(), list::list_iter_any as VmMethod);
+    mapiter_type
+        .methods
+        .insert("all".into(), list::list_iter_all as VmMethod);
+    mapiter_type
+        .methods
+        .insert("find".into(), list::list_iter_find as VmMethod);
+
+    collections_module
+        .types
+        .insert("MapIter".into(), mapiter_type);
+
+    // Register FilterIter type with methods (Plan 051 Phase 4)
+    let mut filteriter_type = VmTypeEntry {
+        name: "FilterIter".into(),
+        methods: HashMap::new(),
+    };
+
+    filteriter_type
+        .methods
+        .insert("next".into(), list::filter_iter_next as VmMethod);
+    filteriter_type
+        .methods
+        .insert("map".into(), list::filter_iter_map as VmMethod);
+    filteriter_type
+        .methods
+        .insert("reduce".into(), list::list_iter_reduce as VmMethod);
+    filteriter_type
+        .methods
+        .insert("count".into(), list::list_iter_count as VmMethod);
+    filteriter_type
+        .methods
+        .insert("for_each".into(), list::list_iter_for_each as VmMethod);
+    filteriter_type
+        .methods
+        .insert("collect".into(), list::list_iter_collect as VmMethod);
+    filteriter_type
+        .methods
+        .insert("any".into(), list::list_iter_any as VmMethod);
+    filteriter_type
+        .methods
+        .insert("all".into(), list::list_iter_all as VmMethod);
+    filteriter_type
+        .methods
+        .insert("find".into(), list::list_iter_find as VmMethod);
+
+    collections_module
+        .types
+        .insert("FilterIter".into(), filteriter_type);
+
+    // Register memory management functions (Plan 052 Phase 2)
+    // These functions enable self-hosted List<T> with manual reallocation
+    collections_module.functions.insert(
+        "alloc_array".into(),
+        VmFunctionEntry {
+            name: "alloc_array".into(),
+            func: memory::alloc_array,
+            is_method: false,
+        },
+    );
+
+    collections_module.functions.insert(
+        "free_array".into(),
+        VmFunctionEntry {
+            name: "free_array".into(),
+            func: memory::free_array,
+            is_method: false,
+        },
+    );
+
+    collections_module.functions.insert(
+        "realloc_array".into(),
+        VmFunctionEntry {
+            name: "realloc_array".into(),
+            func: memory::realloc_array_wrapped, // Wrapper that accepts [array, new_size]
+            is_method: false,
+        },
+    );
+
+    // Register the module
+    VM_REGISTRY
+        .lock()
+        .unwrap()
+        .register_module(collections_module);
+}
+
+/// Initialize and register the builder module with the VM registry
+pub fn init_builder_module() {
+    use std::sync::Mutex;
+
+    static INIT: Mutex<bool> = Mutex::new(false);
+    let mut initialized = INIT.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+    drop(initialized);
+
+    let mut builder_module = VmModule {
+        name: "auto.builder".into(),
+        functions: HashMap::new(),
+        types: HashMap::new(),
+    };
+
+    // Register StringBuilder type with methods
+    let mut stringbuilder_type = VmTypeEntry {
+        name: "StringBuilder".into(),
+        methods: HashMap::new(),
+    };
+
+    stringbuilder_type
+        .methods
+        .insert("append".into(), builder::string_builder_append as VmMethod);
+    stringbuilder_type.methods.insert(
+        "append_char".into(),
+        builder::string_builder_append_char as VmMethod,
+    );
+    stringbuilder_type.methods.insert(
+        "append_int".into(),
+        builder::string_builder_append_int as VmMethod,
+    );
+    stringbuilder_type
+        .methods
+        .insert("build".into(), builder::string_builder_build as VmMethod);
+    stringbuilder_type
+        .methods
+        .insert("clear".into(), builder::string_builder_clear as VmMethod);
+    stringbuilder_type
+        .methods
+        .insert("len".into(), builder::string_builder_len as VmMethod);
+    stringbuilder_type
+        .methods
+        .insert("drop".into(), builder::string_builder_drop as VmMethod);
+
+    // Register StringBuilder.new() as a static function
+    builder_module.functions.insert(
+        "StringBuilder.new".into(),
+        VmFunctionEntry {
+            name: "StringBuilder.new".into(),
+            func: builder::string_builder_new_static,
+            is_method: false,
+        },
+    );
+
+    // Register StringBuilder.new_with_default() as a static function
+    builder_module.functions.insert(
+        "StringBuilder.new_with_default".into(),
+        VmFunctionEntry {
+            name: "StringBuilder.new_with_default".into(),
+            func: builder::string_builder_new_with_default_static,
+            is_method: false,
+        },
+    );
+
+    builder_module
+        .types
+        .insert("StringBuilder".into(), stringbuilder_type);
+
+    // Register the module
+    VM_REGISTRY.lock().unwrap().register_module(builder_module);
+}
+
+/// Initialize and register the storage module with the VM registry
+/// This module provides Heap<T> and other storage strategies for Plan 052
+pub fn init_storage_module() {
+    use std::sync::Mutex;
+
+    static INIT: Mutex<bool> = Mutex::new(false);
+    let mut initialized = INIT.lock().unwrap();
+    if *initialized {
+        return;
+    }
+    *initialized = true;
+    drop(initialized);
+
+    let mut storage_module = VmModule {
+        name: "storage".into(),
+        functions: HashMap::new(),
+        types: HashMap::new(),
+    };
+
+    // Register Heap<T> type with methods
+    let mut heap_type = VmTypeEntry {
+        name: "Heap".into(),
+        methods: HashMap::new(),
+    };
+
+    // Register Heap.new() as a static function
+    storage_module.functions.insert(
+        "Heap.new".into(),
+        VmFunctionEntry {
+            name: "Heap.new".into(),
+            func: storage::heap_new,
+            is_method: false,
+        },
+    );
+
+    // Register Heap instance methods
+    heap_type
+        .methods
+        .insert("data".into(), storage::heap_data as VmMethod);
+    heap_type
+        .methods
+        .insert("capacity".into(), storage::heap_capacity as VmMethod);
+    heap_type
+        .methods
+        .insert("try_grow".into(), storage::heap_try_grow as VmMethod);
+    heap_type
+        .methods
+        .insert("drop".into(), storage::heap_drop as VmMethod);
+
+    storage_module.types.insert("Heap".into(), heap_type);
+
+    // Register InlineInt64 type with methods
+    let mut inline_int64_type = VmTypeEntry {
+        name: "InlineInt64".into(),
+        methods: HashMap::new(),
+    };
+
+    // Register InlineInt64.new() as a static function
+    storage_module.functions.insert(
+        "InlineInt64.new".into(),
+        VmFunctionEntry {
+            name: "InlineInt64.new".into(),
+            func: storage::inline_int64_new,
+            is_method: false,
+        },
+    );
+
+    // Register InlineInt64 instance methods
+    inline_int64_type
+        .methods
+        .insert("data".into(), storage::inline_int64_data as VmMethod);
+    inline_int64_type.methods.insert(
+        "capacity".into(),
+        storage::inline_int64_capacity as VmMethod,
+    );
+    inline_int64_type.methods.insert(
+        "try_grow".into(),
+        storage::inline_int64_try_grow as VmMethod,
+    );
+    inline_int64_type
+        .methods
+        .insert("drop".into(), storage::inline_int64_drop as VmMethod);
+
+    storage_module
+        .types
+        .insert("InlineInt64".into(), inline_int64_type);
+
+    // Register the module
+    VM_REGISTRY.lock().unwrap().register_module(storage_module);
+}

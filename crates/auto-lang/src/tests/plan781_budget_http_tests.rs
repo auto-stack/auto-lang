@@ -338,7 +338,10 @@ fn ping() str {{
         let elapsed = t0.elapsed();
         // 单终态：恰一次 503（deadline 桥臂与 owner abort 竞速，双路径
         // 幂等——客户端只见一次应答）。
-        assert_eq!(status, 503, "deadline must yield single 503 terminal: {body}");
+        assert_eq!(
+            status, 503,
+            "deadline must yield single 503 terminal: {body}"
+        );
         assert!(
             body.contains("error") || body.contains("cancelled"),
             "503 terminal carries error form: {body}"

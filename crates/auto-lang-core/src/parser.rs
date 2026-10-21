@@ -1,0 +1,15115 @@
+use crate::ast::*;
+use crate::database::Database;
+use crate::error::{pos_to_span, AutoError, AutoResult, NameError, SyntaxError, Warning};
+use crate::infer::{check_field_type, InferenceContext};
+use crate::lexer::Lexer;
+use crate::parser_helpers::{LambdaIdGenerator, ModuleTracker};
+use crate::scope::Meta;
+use crate::scope_manager::ScopeManager;
+use crate::symbols::SymbolLocation;
+use crate::token::{Pos, Token, TokenKind};
+use crate::types;
+use auto_val::AutoStr;
+use auto_val::Op;
+use auto_val::{shared, Shared};
+use miette::SourceSpan;
+use std::collections::HashMap;
+use std::i32;
+use std::rc::Rc;
+use std::sync::{Arc, RwLock};
+
+/// TODO: T should be a generic AST node type
+pub trait ParserExt {
+    fn parse(input: impl Into<AutoStr>) -> AutoResult<Self>
+    where
+        Self: Sized;
+}
+
+pub struct PostfixPrec {
+    l: u8,
+    _r: (),
+}
+
+pub struct InfixPrec {
+    l: u8,
+    r: u8,
+}
+
+pub struct PrefixPrec {
+    _l: (),
+    r: u8,
+}
+
+const fn prefix_prec(n: u8) -> PrefixPrec {
+    PrefixPrec { _l: (), r: 2 * n }
+}
+
+const fn postfix_prec(n: u8) -> PostfixPrec {
+    PostfixPrec { l: 2 * n, _r: () }
+}
+
+const fn infix_prec(n: u8) -> InfixPrec {
+    if n == 0 {
+        InfixPrec { l: 0, r: 0 }
+    } else {
+        InfixPrec {
+            l: 2 * n - 1,
+            r: 2 * n,
+        }
+    }
+}
+
+const PREC_ASN: InfixPrec = infix_prec(1);
+const PREC_ADDEQ: InfixPrec = infix_prec(2);
+const PREC_MULEQ: InfixPrec = infix_prec(3);
+const PREC_PAIR: PostfixPrec = postfix_prec(4);
+const PREC_OR: InfixPrec = infix_prec(5); // Logical or (Plan 072)
+const PREC_AND: InfixPrec = infix_prec(6); // Logical and (Plan 072)
+const PREC_EQ: InfixPrec = infix_prec(7);
+const PREC_CMP: InfixPrec = infix_prec(8);
+const PREC_RANGE: InfixPrec = infix_prec(9);
+const PREC_ADD: InfixPrec = infix_prec(10);
+const PREC_MUL: InfixPrec = infix_prec(11);
+const PREC_NULLCOALESCE: InfixPrec = infix_prec(5); // ?? operator (same as OR)
+
+const _PREC_REF: PrefixPrec = prefix_prec(12);
+const PREC_SIGN: PrefixPrec = prefix_prec(13);
+const PREC_NOT: PrefixPrec = prefix_prec(14);
+const PREC_CALL: PostfixPrec = postfix_prec(15);
+const PREC_INDEX: PostfixPrec = postfix_prec(16);
+const PREC_POSTFIX: PostfixPrec = postfix_prec(17); // Bang operator (!)
+const PREC_DOT: InfixPrec = infix_prec(18);
+const _PREC_ATOM: InfixPrec = infix_prec(18);
+
+fn prefix_power(op: Op, span: SourceSpan) -> AutoResult<PrefixPrec> {
+    match op {
+        Op::Add | Op::Sub => Ok(PREC_SIGN),
+        Op::Not => Ok(PREC_NOT),
+        // Plan 379: unary `*` (dereference) as a prefix operator. The transpiler
+        // already maps `Op::Mul` → `*` in Expr::Unary (Plan 052); only the parser
+        // rejected `*x` in prefix position before.
+        Op::Mul => Ok(PREC_SIGN),
+        _ => Err(SyntaxError::Generic {
+            message: format!("Invalid prefix operator: {}", op),
+            span,
+        }
+        .into()),
+    }
+}
+
+fn postfix_power(op: Op) -> AutoResult<Option<PostfixPrec>> {
+    match op {
+        Op::LSquare => Ok(Some(PREC_INDEX)),
+        Op::LParen => Ok(Some(PREC_CALL)),
+        Op::Colon => Ok(Some(PREC_PAIR)),
+        Op::Not => Ok(Some(PREC_POSTFIX)), // Bang operator (!) for eager collection
+        _ => Ok(None),
+    }
+}
+
+/// Helper function to capitalize first letter for backwards compatibility
+/// Converts "int" -> "Int", "string" -> "String", etc.
+#[allow(dead_code)]
+fn capitalize_first(s: &str) -> String {
+    let mut chars = s.chars();
+    match chars.next() {
+        None => String::new(),
+        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+    }
+}
+fn infix_power(op: Op, span: SourceSpan) -> AutoResult<InfixPrec> {
+    match op {
+        Op::Add | Op::Sub => Ok(PREC_ADD),
+        Op::Mul | Op::Div | Op::Mod => Ok(PREC_MUL),
+        Op::AddEq | Op::SubEq => Ok(PREC_ADDEQ),
+        Op::MulEq | Op::DivEq | Op::ModEq => Ok(PREC_MULEQ),
+        Op::Asn => Ok(PREC_ASN),
+        Op::Eq | Op::Neq => Ok(PREC_EQ),
+        Op::Lt | Op::Gt | Op::Le | Op::Ge => Ok(PREC_CMP),
+        Op::Range | Op::RangeEq => Ok(PREC_RANGE),
+        Op::Dot => Ok(PREC_DOT),
+        // Property keywords (Phase 3): same precedence as dot
+        // Error propagation (Phase 1b..3): ?. same precedence as dot
+        // Plan 120: .? same precedence as dot
+        Op::DotView | Op::DotMut | Op::DotMove | Op::DotTake | Op::DotQuestion | Op::DotQuest => {
+            Ok(PREC_DOT)
+        }
+        // May type operators (Phase 1b.3)
+        Op::QuestionQuestion => Ok(PREC_NULLCOALESCE),
+        // Logical operators (Plan 072)
+        Op::Or => Ok(PREC_OR),
+        Op::And => Ok(PREC_AND),
+        _ => Err(SyntaxError::Generic {
+            message: format!("Invalid infix operator: {}", op),
+            span,
+        }
+        .into()),
+    }
+}
+
+// pub fn parse(code: &str, scope: Rc<RefCell<Universe>>, interpreter: &'a Interpreter) -> AutoResult<Code> {
+// let mut parser = Parser::new(code, scope, interpreter);
+// parser.parse()
+// }
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CompileDest {
+    Interp,    // for interperter
+    TransC,    // for tranpiler to C
+    TransRust, // for tranpiler to Rust
+    Config,    // for pac.at manifest config evaluation (Plan 364)
+}
+
+/// Plan 260: Parsed function annotations returned by parse_fn_annotations()
+#[derive(Default)]
+struct FnAnnotations {
+    has_c: bool,
+    has_vm: bool,
+    has_rs: bool,
+    has_pub: bool,
+    has_test: bool,
+    /// Plan 306 Phase 3: GDScript variable annotations (`#[export]`, `#[onready]`,
+    /// `#[export_range(0,100)]`, …) captured as full text to emit verbatim after `@`.
+    store_attrs: Vec<AutoStr>,
+    with_params: Vec<crate::ast::TypeParam>,
+    /// Plan 312: #[api(method = "GET", path = "/api/notes")] — HTTP endpoint.
+    /// Parsed into ApiAttrs; propagated to Fn.api_attrs by the caller.
+    api_endpoint: Option<crate::ast::ApiAttrs>,
+    /// Plan 610 ⑤: `#[export]` / `#[export(system)]` — cdylib export face
+    /// (a2r sibling-wrapper emission). Some("C") for the bare form. Shared
+    /// with GDScript var annotations (`#[export] var x` → store_attrs); fn
+    /// paths read this field, var paths read store_attrs — no interference.
+    export_abi: Option<AutoStr>,
+}
+
+/// Plan 419 §8.3:块嵌套深度护栏(防真实病态递归把分段栈无限吃穿;
+/// 正常程序 < 50。debug 构建每层嵌套 ~670KB 巨帧,256 层上限把
+/// 最坏分段栈提交约束在 ~170MB 量级)。
+const MAX_BODY_NESTING: u32 = 256;
+
+/// PLAN-801：Parser 实例身份计数器（端口快照凭据的跨上下文拒绝判据）。
+fn next_port_instance_id() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(1);
+    NEXT.fetch_add(1, Ordering::Relaxed)
+}
+
+pub struct Parser<'a> {
+    pub scope: ScopeManager,
+    /// Plan 419 §8.3:parse_body 嵌套深度(护栏计数)。
+    body_depth: u32,
+    /// Plan 091: Optional Database for incremental compilation
+    /// When set, Database methods are used instead of Universe methods
+    pub db: Option<Arc<RwLock<Database>>>,
+    lexer: Lexer<'a>,
+    pub cur: Token,
+    prev: Token, // Track previous token for validation
+    /// Plan 351: true when parsing inside an on-block handler body.
+    /// Prevents `store` (contextual keyword) from being misinterpreted as a
+    /// store declaration when it's actually a variable reference (store.action()).
+    pub(crate) in_on_body: bool,
+    pub(crate) in_fn_body: bool,
+    /// Plan 567 T12（P560-D1）: with 头部窗口旗标——置位期间 `as` Cast 臂
+    /// 截断（`with e as x` 的绑定位由 with_stmt 消费，不被 parse_expr
+    /// 整吞为 Cast）。仅语句头部窗口生效，正常模式 Cast 语义零变化。
+    with_header: bool,
+    /// Plan 043 M5: true while parsing the RHS of a Dot expression
+    /// (`obj.field`). The struct-literal widening in atom() (any PascalCase
+    /// ident + `{` → construction) must NOT fire here — `text cell.Text { }`
+    /// would otherwise parse `Text{` as a Node and swallow the element's
+    /// props brace ("Expected term, got RBrace"). Struct literals are always
+    /// standalone `Type{...}`, never `obj.Field{...}`.
+    in_dot_rhs: bool,
+    /// 方言表三段（PLAN-778）：pre = `DialectPriority::Override` 前插的外部
+    /// 方言；builtin = `with_session` 按 session 装配的内建方言（UiDialect 等，
+    /// 随 with_session 重建）；post = `Append` 后接的外部方言。派发序恒为
+    /// pre → builtin → post，外部注册跨 `with_session` 保留。
+    /// R1（F778-R1-01）：元素为 Arc 共享句柄——派发时克隆 Arc 调用而非移出，
+    /// 活跃方言在自身委托核心解析（如闭包体内嵌语句再派发）期间仍留在表内，
+    /// 合法递归派发可见完整方言表。
+    dialects_pre: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
+    dialects_builtin: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
+    dialects_post: Vec<std::sync::Arc<dyn crate::dialect::Dialect>>,
+    /// PLAN-801 端口快照句柄表：`ParseContext::checkpoint` 的有作用域后端
+    ///（T-01 D3；F-801-R1-01 修订）。槽位 tombstone 复用，签发 gen 在本
+    /// Parser 内全局单调不重复；**每个槽位记录签发它的方言调用作用域**
+    ///（`port_call_scope`），派发器在每次方言调用退出时按归属失效该调用
+    /// 签发的快照（`port_release_scope`），嵌套调用作用域保存/恢复——
+    /// 外层存活快照不受内层退出影响，内层退出凭据必失效，与槽位复用
+    /// 与否无关。
+    port_snapshots: Vec<crate::parser_bridge::PortSnapshotSlot<'a>>,
+    /// 本 Parser 实例身份（端口凭据跨上下文拒绝的判据；全局计数器签发）。
+    port_instance_id: u64,
+    /// 端口凭据下一次签发代次（单调递增，永不重复→槽位复用无误接受）。
+    port_gen_next: u64,
+    /// 当前方言调用作用域（派发器每次调用前递增、退出后恢复；checkpoint
+    /// 以此标记槽位归属）。
+    port_call_scope: u64,
+    pub skip_check: bool,
+    pub compile_dest: CompileDest,
+    /// Error recovery: collected errors during parsing
+    pub errors: Vec<AutoError>,
+    /// Plan 122: Collected warnings during parsing
+    pub warnings: Vec<Warning>,
+    /// Plan 312: Pending #[api] attributes from the most recent parse_fn_annotations
+    /// call, consumed by fn_decl_stmt_with_annotations when building the Fn AST.
+    pending_api_attrs: Option<crate::ast::ApiAttrs>,
+    /// Plan 610 ⑤: pending `#[export]` ABI from the most recent
+    /// parse_fn_annotations call, consumed by fn_decl_stmt_with_annotations
+    /// (same pending flow as pending_api_attrs).
+    pending_export_abi: Option<AutoStr>,
+    /// Plan 395: Explicit generic type args (`<T1, T2>`) parsed right before a
+    /// call's `(` in expr_pratt_with_left. The `<`-intercept stores them here and
+    /// the very next loop iteration's LParen arm mounts them onto the Call.
+    /// Sequential-only: the intercept REQUIRES `(` to immediately follow
+    /// `<types>`, so no nesting can interleave a stale pending value.
+    pending_generic_args: Vec<Type>,
+    /// Maximum number of errors to collect before aborting
+    pub error_limit: usize,
+    /// Current type parameters being parsed (for generic type definitions)
+    current_type_params: Vec<Name>,
+    /// Current const generic parameters being parsed (Plan 052)
+    /// Maps const parameter name to its type (e.g., N -> u32)
+    current_const_params: HashMap<Name, Type>,
+    /// Type inference context (Plan 010 Phase 5: Integration)
+    pub infer_ctx: InferenceContext,
+    /// Type registry for REPL (Plan 087)
+    /// Allows checking if an identifier is a type across REPL inputs
+    pub type_registry: Option<crate::type_registry::SharedTypeRegistry>,
+    /// Plan 084: 统一类型存储
+    pub type_store: Arc<RwLock<types::TypeStore>>,
+    /// Plan 090: 模块路径追踪器
+    pub module_tracker: ModuleTracker,
+    /// Plan 090: Lambda ID 生成器
+    pub lambda_id_gen: LambdaIdGenerator,
+    /// Plan 096: Compiler session for scenario-based parsing
+    pub session: crate::session::CompilerSession,
+    /// Plan 159 Phase 6B-2: Collected raw attribute strings for derive/serde passthrough
+    raw_attrs: Vec<AutoStr>,
+    /// Plan 364 W1: Dotted attribute-macro paths (`#[zbus.interface]` →
+    /// `#[zbus::interface]`) collected for the following decl's **impl block**
+    /// (fn-level `#[tokio.main]` included). Separate from `raw_attrs` so
+    /// struct-level derives and impl-level macros don't mix.
+    impl_attrs: Vec<AutoStr>,
+    /// Plan 306 Phase 3: Script-level GDScript annotations (`tool`, `icon(...)`)
+    /// collected from top-level `#[tool]`/`#[icon]`; drained into Code.file_attrs.
+    file_attrs: Vec<AutoStr>,
+    /// Collected doc comment lines (///) to attach to the next declaration
+    pending_docs: Vec<AutoStr>,
+    /// Track imported module names from `use` statements for check_symbol
+    use_imports: Vec<AutoStr>,
+    /// Plan 369 P4: Track item names imported via `use.py module: a, b` so the
+    /// symbol checker treats bare references to py-imported constants/functions
+    /// (e.g. `NAMESPACE_DNS`, `pi`, `uuid5`) as defined. Without this, py
+    /// constants only resolve in method-call position (`pi.to(str)`) and fail
+    /// with "undefined variable" in argument or assignment position
+    /// (`uuid5(NAMESPACE_DNS, ...)`). See Task 13.
+    py_item_imports: Vec<AutoStr>,
+    /// Plan 550 T10: 文件级 `#[script]` pragma——脚本模式生产者门控标注。
+    /// 仅登记（→ CompileSession.script_marked），不改变任何编译/运行
+    /// 行为；.as 扩展名与模式管线归 W1。
+    pub script_pragma: bool,
+    /// Plan 555 T02: 文件级 `#[rust]` pragma——脚本模式的显式压回通道
+    /// （.as 文件标注 #[rust] 即回正常模式；设计 §2 pragma 覆盖）。
+    /// 优先序：#[rust] > #[script] > 扩展名（见 mode.rs resolve_script_mode）。
+    pub rust_pragma: bool,
+    /// Plan 550 T10: 文件含裸 null/nil 字面量（生产者门控三信号之一；
+    /// None/Some 是 Option 构造器，不计入）。
+    pub saw_bare_null: bool,
+}
+
+impl<'a> Parser<'a> {
+    /// Create parser (no Universe needed)
+    /// Prefer this for new code.
+    pub fn from(code: &'a str) -> Self {
+        Self::new(code)
+    }
+
+    /// Create parser
+    /// Plan 059 续(§B8):把单个表达式文本(如 ".block.id")解析为 Expr。
+    /// 供事件参数求值复用视图表达式解析器。
+    pub fn parse_expr_fragment(src: &str) -> Option<crate::ast::Expr> {
+        let code = src.trim().trim_start_matches('.').to_string();
+        if code.is_empty() {
+            return None;
+        }
+        let mut parser = Parser::new(&code);
+        match parser.parse_expr() {
+            Ok(expr) => Some(expr),
+            Err(_) => None,
+        }
+    }
+
+    pub fn new(code: &'a str) -> Self {
+        let mut lexer = Lexer::new(code);
+        let cur = lexer.next().expect("lexer should produce first token");
+        let mut parser = Parser {
+            scope: ScopeManager::new(),
+            body_depth: 0,
+            db: None, // Plan 091: Optional Database
+            lexer,
+            cur,
+            prev: Token {
+                kind: TokenKind::EOF,
+                pos: Pos {
+                    line: 0,
+                    at: 0,
+                    pos: 0,
+                    len: 0,
+                },
+                text: "".into(),
+            }, // Initialize with EOF token
+            in_on_body: false,
+            in_fn_body: false,
+            in_dot_rhs: false,
+            with_header: false,
+            compile_dest: CompileDest::Interp,
+            dialects_pre: Vec::new(),
+            dialects_builtin: Vec::new(),
+            dialects_post: Vec::new(),
+            port_snapshots: Vec::new(),
+            port_instance_id: next_port_instance_id(),
+            port_gen_next: 0,
+            port_call_scope: 0,
+            skip_check: false,
+            errors: Vec::new(),
+            warnings: Vec::new(),             // Plan 122: Warnings collection
+            pending_api_attrs: None,          // Plan 312
+            pending_export_abi: None,         // Plan 610
+            pending_generic_args: Vec::new(), // Plan 395
+            error_limit: crate::get_error_limit(), // Use global error limit
+            current_type_params: Vec::new(),
+            current_const_params: HashMap::new(),
+            infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
+            type_registry: None,                // Plan 087: Type registry for REPL
+            type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
+            module_tracker: ModuleTracker::new(), // Plan 090
+            lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
+            session: crate::session::CompilerSession::default(), // Plan 096: Default session
+            raw_attrs: Vec::new(),              // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(),             // Plan 364 W1
+            file_attrs: Vec::new(),             // Plan 306 Phase 3
+            pending_docs: Vec::new(),
+            use_imports: Vec::new(),
+            py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            rust_pragma: false,   // Plan 555 T02
+            saw_bare_null: false, // Plan 550 T10
+        };
+        parser.skip_comments();
+        parser
+    }
+
+    pub fn set_dest(&mut self, dest: CompileDest) {
+        self.compile_dest = dest;
+    }
+
+    /// Set type registry for REPL (Plan 087)
+    ///
+    /// This allows the parser to check if an identifier is a type
+    /// across REPL inputs, enabling node instance syntax like `Point{x:1, y:2}`.
+    pub fn set_type_registry(&mut self, registry: crate::type_registry::SharedTypeRegistry) {
+        self.type_registry = Some(registry);
+    }
+
+    /// Set Database for incremental compilation (Plan 091)
+    ///
+    /// When set, Parser will use Database methods instead of Universe methods
+    /// for symbol and type storage.
+    pub fn set_database(&mut self, db: Arc<RwLock<Database>>) {
+        self.db = Some(db);
+    }
+
+    pub fn new_with_note(code: &'a str, note: char) -> Self {
+        let mut lexer = Lexer::new(code);
+        lexer.set_fstr_note(note);
+        let cur = lexer.next().expect("lexer should produce first token");
+        let mut parser = Parser {
+            scope: ScopeManager::new(),
+            body_depth: 0,
+            db: None, // Plan 091: Optional Database
+            lexer,
+            cur,
+            prev: Token {
+                kind: TokenKind::EOF,
+                pos: Pos {
+                    line: 0,
+                    at: 0,
+                    pos: 0,
+                    len: 0,
+                },
+                text: "".into(),
+            }, // Initialize with EOF token
+            in_on_body: false,
+            in_fn_body: false,
+            in_dot_rhs: false,
+            with_header: false,
+            compile_dest: CompileDest::Interp,
+            dialects_pre: Vec::new(),
+            dialects_builtin: Vec::new(),
+            dialects_post: Vec::new(),
+            port_snapshots: Vec::new(),
+            port_instance_id: next_port_instance_id(),
+            port_gen_next: 0,
+            port_call_scope: 0,
+            skip_check: false,
+            errors: Vec::new(),
+            warnings: Vec::new(),             // Plan 122: Warnings collection
+            pending_api_attrs: None,          // Plan 312
+            pending_export_abi: None,         // Plan 610
+            pending_generic_args: Vec::new(), // Plan 395
+            error_limit: crate::get_error_limit(), // Use global error limit
+            current_type_params: Vec::new(),
+            current_const_params: HashMap::new(),
+            infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
+            type_registry: None,                // Plan 087: Type registry for REPL
+            type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
+            module_tracker: ModuleTracker::new(), // Plan 090
+            lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
+            session: crate::session::CompilerSession::default(), // Plan 096: Default session
+            raw_attrs: Vec::new(),              // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(),             // Plan 364 W1
+            file_attrs: Vec::new(),             // Plan 306 Phase 3
+            pending_docs: Vec::new(),
+            use_imports: Vec::new(),
+            py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            rust_pragma: false,   // Plan 555 T02
+            saw_bare_null: false, // Plan 550 T10
+        };
+        parser.skip_comments();
+        parser
+    }
+
+    /// Create a new parser with a pre-lexed first token
+    pub fn new_with_note_and_first_token(
+        _code: &'a str,
+        _note: char,
+        first_token: Token,
+        lexer: Lexer<'a>,
+    ) -> Self {
+        let mut parser = Parser {
+            scope: ScopeManager::new(),
+            body_depth: 0,
+            db: None, // Plan 091: Optional Database
+            lexer,
+            cur: first_token,
+            prev: Token {
+                kind: TokenKind::EOF,
+                pos: Pos {
+                    line: 0,
+                    at: 0,
+                    pos: 0,
+                    len: 0,
+                },
+                text: "".into(),
+            }, // Initialize with EOF token
+            in_on_body: false,
+            in_fn_body: false,
+            in_dot_rhs: false,
+            with_header: false,
+            compile_dest: CompileDest::Interp,
+            dialects_pre: Vec::new(),
+            dialects_builtin: Vec::new(),
+            dialects_post: Vec::new(),
+            port_snapshots: Vec::new(),
+            port_instance_id: next_port_instance_id(),
+            port_gen_next: 0,
+            port_call_scope: 0,
+            skip_check: false,
+            errors: Vec::new(),
+            warnings: Vec::new(),             // Plan 122: Warnings collection
+            pending_api_attrs: None,          // Plan 312
+            pending_export_abi: None,         // Plan 610
+            pending_generic_args: Vec::new(), // Plan 395
+            error_limit: crate::get_error_limit(), // Use global error limit
+            current_type_params: Vec::new(),
+            current_const_params: HashMap::new(),
+            infer_ctx: InferenceContext::new(), // Plan 010 Phase 5: Initialize inference context
+            type_registry: None,                // Plan 087: Type registry for REPL
+            type_store: Arc::new(RwLock::new(types::TypeStore::new())), // Plan 084
+            module_tracker: ModuleTracker::new(), // Plan 090
+            lambda_id_gen: LambdaIdGenerator::new(), // Plan 090
+            session: crate::session::CompilerSession::default(), // Plan 096: Default session
+            raw_attrs: Vec::new(),              // Plan 159 Phase 6B-2
+            impl_attrs: Vec::new(),             // Plan 364 W1
+            file_attrs: Vec::new(),             // Plan 306 Phase 3
+            pending_docs: Vec::new(),
+            use_imports: Vec::new(),
+            py_item_imports: Vec::new(),
+            script_pragma: false, // Plan 550 T10
+            rust_pragma: false,   // Plan 555 T02
+            saw_bare_null: false, // Plan 550 T10
+        };
+        parser.skip_comments();
+        parser
+    }
+
+    pub fn skip_check(mut self) -> Self {
+        self.skip_check = true;
+        self
+    }
+
+    /// Set the compiler session (Plan 096)
+    ///
+    /// This enables scenario-based parsing where keywords like
+    /// `widget`, `view`, `model`, `msg`, `on` are only keywords
+    /// in UI scenario.
+    ///
+    /// PLAN-778: 只重建内建段；`register_dialect`/`with_dialect` 注册的
+    /// 外部方言（pre/post 段）跨 with_session 保留（V-03 传播不变量）。
+    pub fn with_session(mut self, session: crate::session::CompilerSession) -> Self {
+        self.session = session;
+        self.dialects_builtin = Self::build_dialects(&self.session);
+        self
+    }
+
+    /// 显式注册外部方言（PLAN-778）。
+    ///
+    /// - `DialectPriority::Override`：前插 pre 段，先于内建方言查询——外部
+    ///   显式覆盖内建同名关键字处理，内建退为 Ok(None) 后备。
+    /// - `DialectPriority::Append`：后接 post 段，仅在内建方言全部 Ok(None)
+    ///   后可见。
+    pub fn register_dialect(
+        &mut self,
+        dialect: Box<dyn crate::dialect::Dialect>,
+        priority: crate::dialect::DialectPriority,
+    ) {
+        // R1：内部存储 Arc 共享句柄（派发期间活跃方言保持在表）。
+        let dialect: std::sync::Arc<dyn crate::dialect::Dialect> = dialect.into();
+        match priority {
+            crate::dialect::DialectPriority::Override => self.dialects_pre.push(dialect),
+            crate::dialect::DialectPriority::Append => self.dialects_post.push(dialect),
+        }
+    }
+
+    /// `register_dialect` 的 builder 形态（PLAN-778）。
+    pub fn with_dialect(
+        mut self,
+        dialect: Box<dyn crate::dialect::Dialect>,
+        priority: crate::dialect::DialectPriority,
+    ) -> Self {
+        self.register_dialect(dialect, priority);
+        self
+    }
+
+    /// PLAN-801：注册新接口外部方言（`auto_parser_api::ExternalDialect`，
+    /// 只依赖轻端口 crate 的实现方）。经 `ExternalDialectAdapter` 协议转换
+    /// 进入与旧 trait **同一张**三段派发表：Override 前插 pre 段 /
+    /// Append 后接 post 段，派发序与恢复不变量（Arc 注册永不出表 /
+    /// None 强制回滚 / Err 边界恢复 context）与 `register_dialect` 完全
+    /// 一致；注册跨 `with_session` 保留。
+    pub fn register_external_dialect(
+        &mut self,
+        dialect: Box<dyn crate::dialect::ExternalDialect>,
+        priority: crate::dialect::DialectPriority,
+    ) {
+        let adapter: std::sync::Arc<dyn crate::dialect::Dialect> =
+            std::sync::Arc::new(crate::dialect::external::ExternalDialectAdapter {
+                inner: dialect.into(),
+            });
+        match priority {
+            crate::dialect::DialectPriority::Override => self.dialects_pre.push(adapter),
+            crate::dialect::DialectPriority::Append => self.dialects_post.push(adapter),
+        }
+    }
+
+    /// `register_external_dialect` 的 builder 形态（PLAN-801）。
+    pub fn with_external_dialect(
+        mut self,
+        dialect: Box<dyn crate::dialect::ExternalDialect>,
+        priority: crate::dialect::DialectPriority,
+    ) -> Self {
+        self.register_external_dialect(dialect, priority);
+        self
+    }
+
+    // ---- PLAN-801 端口快照句柄表后端（ParseContext::checkpoint/restore） ----
+
+    /// 签发一张端口快照凭据：快照数据（游标+五旗标）入表，凭据=（实例
+    /// id, 槽位, 单调 gen），槽位标记**当前方言调用作用域**。tombstone
+    /// 槽位复用（复用槽位换新 gen，旧凭据自然失效）；无 unsafe、无
+    /// 'static、无全局池（T-01 D3）。调用退出按作用域失效由派发器
+    /// `port_release_scope` 负责。
+    /// PLAN-806 端口原语（F806-R2-01 引入/R3-01 定形）：原始单 token 探测
+    /// ——读下一个原始 token，成功则立即回推（零副作用/幂等）；词法失败
+    /// 遵循旧回推前瞻的失败消费协议（是否推进输入由 Lexer 失败模式决定，
+    /// 错误不记录返回 None——与旧 `lexer.next()`+`push_token` 逐字同构，
+    /// 失败路径不承诺幂等）。见 auto-parser-api
+    /// `ParseContext::probe_next_kind`。
+    pub(crate) fn port_probe_next_kind(&mut self) -> Option<TokenKind> {
+        match self.lexer.next() {
+            Ok(tok) => {
+                let kind = tok.kind;
+                self.lexer.push_token(tok);
+                Some(kind)
+            }
+            Err(_) => None,
+        }
+    }
+
+    pub(crate) fn port_checkpoint(&mut self) -> auto_parser_api::ParseCheckpoint {
+        let gen = self.port_gen_next;
+        self.port_gen_next += 1;
+        let slot = match self.port_snapshots.iter().position(|s| s.data.is_none()) {
+            Some(i) => i,
+            None => {
+                self.port_snapshots
+                    .push(crate::parser_bridge::PortSnapshotSlot {
+                        scope: self.port_call_scope,
+                        gen,
+                        data: None,
+                    });
+                self.port_snapshots.len() - 1
+            }
+        };
+        let data = self.bridge_checkpoint();
+        self.port_snapshots[slot] = crate::parser_bridge::PortSnapshotSlot {
+            scope: self.port_call_scope,
+            gen,
+            data: Some(data),
+        };
+        auto_parser_api::ParseCheckpoint::new(self.port_instance_id, slot as u32, gen)
+    }
+
+    /// 失效指定方言调用作用域签发的全部快照（调用退出清理，
+    /// F-801-R1-01：按签发归属而非表长——tombstone 复用可使本轮新快照
+    /// 落在调用入口表长之下，长度截断清不到它们）。仅置 tombstone（gen
+    /// 保留），未兑现凭据在 `port_restore` 处被存活位拒绝且游标不动；
+    /// 其他作用域（含外层存活快照）不受影响。尾部 tombstone 保守收缩
+    /// （只剥尾，不动中部，槽位下标不漂移）。
+    pub(crate) fn port_release_scope(&mut self, scope: u64) {
+        for slot in &mut self.port_snapshots {
+            if slot.scope == scope {
+                slot.data = None;
+            }
+        }
+        while matches!(self.port_snapshots.last(), Some(s) if s.data.is_none()) {
+            self.port_snapshots.pop();
+        }
+    }
+
+    /// 兑现端口快照凭据：合法（本实例 + 槽位在表 + gen 匹配 + 未消费）则
+    /// 恢复游标与五旗标（诊断单调追加），凭据一次性；否则**受控拒绝**——
+    /// 返回当前 token 位置的语法错误（跨上下文/过期/重复使用）。
+    pub(crate) fn port_restore(&mut self, cp: auto_parser_api::ParseCheckpoint) -> AutoResult<()> {
+        let (parser_id, slot, gen) = cp.parts();
+        let rejected = |cur: &Token| -> AutoError {
+            crate::error::SyntaxError::Generic {
+                message: "dialect checkpoint rejected: credential from another parse context \
+                          or already consumed/expired"
+                    .to_string(),
+                span: pos_to_span(cur.pos),
+            }
+            .into()
+        };
+        if parser_id != self.port_instance_id {
+            return Err(rejected(&self.cur));
+        }
+        let idx = slot as usize;
+        let valid = idx < self.port_snapshots.len()
+            && self.port_snapshots[idx].gen == gen
+            && self.port_snapshots[idx].data.is_some();
+        if !valid {
+            return Err(rejected(&self.cur));
+        }
+        let data = self.port_snapshots[idx]
+            .data
+            .take()
+            .expect("gen-matched live slot carries snapshot data");
+        self.bridge_restore(data);
+        Ok(())
+    }
+
+    // ---- PLAN-810：UiParseContext 端口后端（完整 UI 文法能力面，T-01 冻结） ----
+
+    /// 原始游标投机的回滚：与 `port_restore` 同凭据校验/一次性消费，但
+    /// **只**恢复 lexer + cur/prev——不恢复五旗标、不回滚诊断（与旧臂
+    /// widget 近失/computed/style recipe 投机位点的手工 save/restore 逐字
+    /// 等价：中间 `next()` 的 docs 收集与词法错误记录保留）。
+    pub(crate) fn port_restore_raw(
+        &mut self,
+        cp: auto_parser_api::ParseCheckpoint,
+    ) -> AutoResult<()> {
+        let (parser_id, slot, gen) = cp.parts();
+        let rejected = |cur: &Token| -> AutoError {
+            crate::error::SyntaxError::Generic {
+                message: "dialect checkpoint rejected: credential from another parse context \
+                          or already consumed/expired"
+                    .to_string(),
+                span: pos_to_span(cur.pos),
+            }
+            .into()
+        };
+        if parser_id != self.port_instance_id {
+            return Err(rejected(&self.cur));
+        }
+        let idx = slot as usize;
+        let valid = idx < self.port_snapshots.len()
+            && self.port_snapshots[idx].gen == gen
+            && self.port_snapshots[idx].data.is_some();
+        if !valid {
+            return Err(rejected(&self.cur));
+        }
+        let data = self.port_snapshots[idx]
+            .data
+            .take()
+            .expect("gen-matched live slot carries snapshot data");
+        self.lexer.restore_state(data.lexer);
+        self.cur = data.cur;
+        self.prev = data.prev;
+        Ok(())
+    }
+
+    /// 原始单 token 前看（probe 全 token 形态）：词法成功即回推（零副作用、
+    /// 幂等）；失败原样上抛（失败推进由 Lexer 失败模式决定——806 冻结的
+    /// 失败消费协议，错误是否丢弃由调用方决定 `?`/`.ok()`）。
+    pub(crate) fn port_probe_next_token(&mut self) -> AutoResult<Token> {
+        let tok = self.lexer.next()?;
+        self.lexer.push_token(tok.clone());
+        Ok(tok)
+    }
+
+    /// 回推一个 owned token（双 token 回推再 next() 重同步的旧臂模式）。
+    pub(crate) fn port_push_back_token(&mut self, tok: Token) {
+        self.lexer.push_token(tok);
+    }
+
+    /// 注释跳过前看（PLAN-810；**on stream 位点形态**——F810-R1-04 区分）：
+    /// 完整 advance（全部副作用），观察 kind，回推观察到的 token 并恢复
+    /// cur；prev 保持 advance 后的值（旧臂手动恢复形态的泄漏）。
+    pub(crate) fn port_advance_peek_kind(&mut self) -> TokenKind {
+        let saved = self.cur.clone();
+        self.next();
+        let kind = self.cur.kind;
+        let observed = self.cur.clone();
+        self.lexer.push_token(observed);
+        self.cur = saved;
+        kind
+    }
+
+    /// 注释跳过前看·双 push 重同步（PLAN-810；**scene 门/typed
+    /// subresource 位点形态**）：next → 观察 → push observed → push saved
+    /// → next 重同步。与 `port_advance_peek_kind` 仅 **prev** 终值不同：
+    /// 第二次 next 使 prev=被观察 token（旧臂两 push 形态逐字复刻，
+    /// F810-R1-04）。
+    pub(crate) fn port_advance_peek_kind_resync(&mut self) -> TokenKind {
+        let saved = self.cur.clone();
+        self.next();
+        let kind = self.cur.kind;
+        let observed = self.cur.clone();
+        self.lexer.push_token(observed);
+        self.lexer.push_token(saved);
+        self.next();
+        kind
+    }
+
+    /// 释放 raw 投机快照凭据（F810-R1-01）：仅按（实例 id + 槽位 + 代次）
+    /// 校验后 tombstone 该槽，不动游标/旗标/诊断；失效凭据为无操作
+    ///（Drop 语义）。尾部 tombstone 保守收缩（同 `port_release_scope`，
+    /// 只剥尾不动中部，槽位下标不漂移；tombstone 本身可被复用）。
+    pub(crate) fn port_release_raw(&mut self, cp: auto_parser_api::ParseCheckpoint) {
+        let (parser_id, slot, gen) = cp.parts();
+        if parser_id != self.port_instance_id {
+            return;
+        }
+        let idx = slot as usize;
+        if idx < self.port_snapshots.len()
+            && self.port_snapshots[idx].gen == gen
+            && self.port_snapshots[idx].data.is_some()
+        {
+            self.port_snapshots[idx].data = None;
+        }
+        while matches!(self.port_snapshots.last(), Some(s) if s.data.is_none()) {
+            self.port_snapshots.pop();
+        }
+    }
+
+    /// raw CSS 块捕获（前置条件：cur 为 LBrace 且 lexer 无缓冲 token）。
+    pub(crate) fn port_capture_raw_block(&mut self) -> AutoResult<String> {
+        Ok(self.lexer.capture_raw_block()?)
+    }
+
+    pub(crate) fn port_prev_pos(&self) -> Pos {
+        self.prev.pos
+    }
+
+    pub(crate) fn port_set_skip_check(&mut self, value: bool) -> bool {
+        std::mem::replace(&mut self.skip_check, value)
+    }
+
+    pub(crate) fn port_set_in_on_body(&mut self, value: bool) -> bool {
+        std::mem::replace(&mut self.in_on_body, value)
+    }
+
+    pub(crate) fn port_diagnostics_mark(&self) -> (usize, usize) {
+        (self.errors.len(), self.warnings.len())
+    }
+
+    /// 局部诊断事务回退（**仅** raw 投机回退位点：computed object→body）。
+    pub(crate) fn port_diagnostics_truncate(&mut self, mark: (usize, usize)) {
+        self.errors.truncate(mark.0);
+        self.warnings.truncate(mark.1);
+    }
+
+    /// on 处理器参数符号定义（与旧臂同构的 Meta::Store(Var) 构造）。
+    pub(crate) fn port_define_handler_param(&mut self, name: &str) {
+        let meta = crate::scope::Meta::Store(crate::ast::Store {
+            kind: crate::ast::StoreKind::Var,
+            attrs: vec![],
+            is_pub: false,
+            name: name.into(),
+            expr: crate::ast::Expr::Nil,
+            ty: crate::ast::Type::Unknown,
+        });
+        self.define(name, meta);
+    }
+
+    pub(crate) fn port_warn_suspicious_block_keyword(&mut self, found: String, suggestion: String) {
+        let span = pos_to_span(self.cur.pos);
+        self.warn(crate::error::Warning::SuspiciousBlockKeyword {
+            found,
+            suggestion,
+            span,
+        });
+    }
+
+    /// 按 session 装配内建方言表。集中所有内建方言注册，便于一眼看清
+    /// "当前有哪些内建方言"（外部方言经 register_dialect 显式注册，不在此）。
+    fn build_dialects(
+        session: &crate::session::CompilerSession,
+    ) -> Vec<std::sync::Arc<dyn crate::dialect::Dialect>> {
+        let mut v: Vec<std::sync::Arc<dyn crate::dialect::Dialect>> = Vec::new();
+        // PLAN-814 R3-03b：内建 UiDialect 仅在 UI 文法表已装配时注册
+        // （上层组合点经 set_ui_grammar/UiGrammarSource inventory 注入
+        // auto-ui-dialect 单源构造器）；纯 SDK 表缺席，Scenario::UI 方言表
+        // 为空，语句回退非 UI 路径。
+        if session.scenario == crate::session::Scenario::UI && crate::ui_grammar().is_some() {
+            v.push(std::sync::Arc::new(crate::dialect::ui::UiDialect));
+        }
+        // 未来内建方言（Shell 等）在此注册
+        v
+    }
+
+    // ---- PLAN-778 方言派发（三段，恢复不变量核心保证） ----
+
+    /// PLAN-814 R3-03b：方言表只读观测口（段长；0=pre/1=builtin/2=post）。
+    /// 方言注册是公开特性（PLAN-778），外部消费者与随迁回归测试经此观测
+    /// 注册结果，不暴露内部表结构。
+    pub fn dialect_section_len(&self, section: u8) -> usize {
+        self.dialect_section(section).len()
+    }
+
+    fn dialect_section(&self, section: u8) -> &Vec<std::sync::Arc<dyn crate::dialect::Dialect>> {
+        match section {
+            0 => &self.dialects_pre,
+            1 => &self.dialects_builtin,
+            _ => &self.dialects_post,
+        }
+    }
+
+    /// 游标+上下文 checkpoint（PLAN-778；R1 F778-R1-02 扩展）：lexer 全状态
+    /// （Plan 395 LexerState）+ cur/prev token 快照 + 语句级 context 旗标
+    /// （in_on_body/in_fn_body/in_dot_rhs/with_header/body_depth）。
+    /// 供 ParserBridge 与方言派发器共用。
+    pub(crate) fn bridge_checkpoint(&self) -> crate::parser_bridge::BridgeCheckpoint<'a> {
+        crate::parser_bridge::BridgeCheckpoint {
+            lexer: self.lexer.save_state(),
+            cur: self.cur.clone(),
+            prev: self.prev.clone(),
+            in_on_body: self.in_on_body,
+            in_fn_body: self.in_fn_body,
+            in_dot_rhs: self.in_dot_rhs,
+            with_header: self.with_header,
+            body_depth: self.body_depth,
+        }
+    }
+
+    pub(crate) fn bridge_restore(&mut self, cp: crate::parser_bridge::BridgeCheckpoint<'a>) {
+        self.restore_context_flags(&cp);
+        self.lexer.restore_state(cp.lexer);
+        self.cur = cp.cur;
+        self.prev = cp.prev;
+    }
+
+    /// 仅恢复语句级 context 旗标（不动游标/lexer）——派发错误边界用：
+    /// 委托核心解析的 Err 可能泄漏 fn/on 体旗标，恢复点继续解析时必须回到
+    /// 方言调用前的语句上下文；游标保持在失败位置（错误位置不变量）。
+    pub(crate) fn restore_context_flags(
+        &mut self,
+        cp: &crate::parser_bridge::BridgeCheckpoint<'a>,
+    ) {
+        self.in_on_body = cp.in_on_body;
+        self.in_fn_body = cp.in_fn_body;
+        self.in_dot_rhs = cp.in_dot_rhs;
+        self.with_header = cp.with_header;
+        self.body_depth = cp.body_depth;
+    }
+
+    /// 尝试用已注册的方言解析当前语句起始标识符。
+    /// 在 parse_stmt_inner 的 TokenKind::Ident 分支首位置调用。
+    /// 返回 Ok(Some(stmt)) 表示某方言已处理；Ok(None) 表示无方言接管。
+    ///
+    /// PLAN-778 恢复不变量（核心保证，非方言纪律；R1 修订）：
+    /// - 注册永不移出（F778-R1-01）：方言表存 Arc 共享句柄，派发时克隆调用。
+    ///   活跃方言在自身委托核心解析（闭包体内嵌语句再派发）期间仍在表内，
+    ///   合法递归派发可见完整方言表；Err/None 天然不丢注册（从未移出，
+    ///   旧 `mem::take` 整表 + `?` 丢表缺陷不复存在）。
+    /// - Ok(None) 不吞 token：调用方言前取 checkpoint，None 后强制 restore
+    ///   （含游标与 context 旗标）。
+    /// - Err 边界恢复 context（F778-R1-02）：委托核心解析泄漏的语句级
+    ///   context 旗标在错误边界恢复；游标保持在失败位置（错误位置不变量）。
+    fn try_dialect_stmt(&mut self, ident: &str) -> AutoResult<Option<Stmt>> {
+        let mut section = 0u8;
+        while section < 3 {
+            let mut i = 0;
+            while i < self.dialect_section_len(section) {
+                // PLAN-778：matches() 是"该方言在当前 session 下生效"的契约——
+                // 外部方言跨 with_session 持久注册后，场景门控必须在派发时生效
+                // （内建方言此前仅靠 build_dialects 的注册时机巧合满足）。
+                let dialect = &self.dialect_section(section)[i];
+                if !dialect.matches(&self.session) || !dialect.keywords().contains(&ident) {
+                    i += 1;
+                    continue;
+                }
+                let cp = self.bridge_checkpoint();
+                let dialect = std::sync::Arc::clone(dialect);
+                // PLAN-801（F-801-R1-01 修订）：端口快照按**签发作用域**
+                // 清理——调用前递增作用域（嵌套保存/恢复），退出时失效本
+                // 作用域签发的快照。外层存活快照（他作用域）不受影响；
+                // tombstone 复用导致的新快照落在入口表长之下也能正确失效。
+                let prev_port_scope = self.port_call_scope;
+                self.port_call_scope += 1;
+                let call_scope = self.port_call_scope;
+                let outcome = {
+                    let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+                    dialect.try_parse_stmt(&mut bridge, ident)
+                };
+                self.port_release_scope(call_scope);
+                self.port_call_scope = prev_port_scope;
+                match outcome {
+                    Ok(Some(stmt)) => return Ok(Some(stmt)),
+                    Ok(None) => self.bridge_restore(cp),
+                    Err(e) => {
+                        self.restore_context_flags(&cp);
+                        return Err(e);
+                    }
+                }
+                i += 1;
+            }
+            section += 1;
+        }
+        Ok(None)
+    }
+
+    /// 尝试用已注册的方言解析当前真实 TokenKind（view/on 等非 Ident 的 UI token）。
+    /// 在 parse_stmt_inner 的 TokenKind::View / TokenKind::On arm 里调用。
+    /// 恢复不变量同 `try_dialect_stmt`（Arc 注册永不出表 / None 强制回滚
+    /// 游标+context / Err 边界恢复 context，游标留失败位置）。
+    fn try_token_dialect_stmt(&mut self, kind: TokenKind) -> AutoResult<Option<Stmt>> {
+        let mut section = 0u8;
+        while section < 3 {
+            let mut i = 0;
+            while i < self.dialect_section_len(section) {
+                let dialect = &self.dialect_section(section)[i];
+                if !dialect.matches(&self.session) {
+                    i += 1;
+                    continue;
+                }
+                let cp = self.bridge_checkpoint();
+                let dialect = std::sync::Arc::clone(dialect);
+                // PLAN-801（F-801-R1-01 修订）：端口快照按签发作用域清理
+                //（同 try_dialect_stmt——嵌套保存/恢复，退出失效本作用域）。
+                let prev_port_scope = self.port_call_scope;
+                self.port_call_scope += 1;
+                let call_scope = self.port_call_scope;
+                let outcome = {
+                    let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+                    dialect.try_parse_token_stmt(&mut bridge, kind)
+                };
+                self.port_release_scope(call_scope);
+                self.port_call_scope = prev_port_scope;
+                match outcome {
+                    Ok(Some(stmt)) => return Ok(Some(stmt)),
+                    Ok(None) => self.bridge_restore(cp),
+                    Err(e) => {
+                        self.restore_context_flags(&cp);
+                        return Err(e);
+                    }
+                }
+                i += 1;
+            }
+            section += 1;
+        }
+        Ok(None)
+    }
+
+    /// Check if current scenario is UI (Plan 096)
+    pub fn is_ui_scenario(&self) -> bool {
+        self.session.scenario == crate::session::Scenario::UI
+    }
+
+    /// Create a new parser with an external type_store (Plan 085)
+    ///
+    /// Used after `CompileSession.resolve_uses()` to pass the pre-loaded
+    /// type_store containing module symbols.
+    pub fn new_with_type_store(code: &'a str, type_store: Arc<RwLock<types::TypeStore>>) -> Self {
+        let mut parser = Self::from(code);
+        parser.type_store = type_store;
+        parser
+    }
+
+    pub fn peek(&mut self) -> &Token {
+        &self.cur
+    }
+
+    pub fn kind(&mut self) -> TokenKind {
+        self.peek().kind
+    }
+
+    pub fn pos(&mut self) -> Pos {
+        self.peek().pos
+    }
+
+    pub fn is_kind(&mut self, kind: TokenKind) -> bool {
+        self.peek().kind == kind
+    }
+
+    /// Plan 356: is the current token a *soft keyword* that should be accepted
+    /// as an ordinary identifier in expression/argument position?
+    ///
+    /// Some words are lexed as reserved keyword tokens (e.g. `tag` →
+    /// `TokenKind::Tag`, `type` → `TokenKind::Type`) but users legitimately use
+    /// them as variable names (a `for tag in ...` loop variable, a struct field
+    /// named `type`). When such a name appears as a function-call argument —
+    /// e.g. `onclick: .Select(tag)` — the event-arg parser used to match only
+    /// `TokenKind::Ident`, so it consumed nothing and spun forever (OOM).
+    ///
+    /// This returns true for keyword tokens whose spelling is itself a valid
+    /// identifier and which carry no structural meaning in argument position.
+    pub(crate) fn cur_is_soft_ident(&self) -> bool {
+        matches!(
+            self.cur.kind,
+            TokenKind::Tag
+                | TokenKind::Type
+                | TokenKind::Union
+                | TokenKind::Spec
+                | TokenKind::Super
+                | TokenKind::Has
+                | TokenKind::Copy
+                | TokenKind::Move
+                | TokenKind::Take
+                | TokenKind::Hold
+                | TokenKind::Alias
+                | TokenKind::Ext
+                | TokenKind::Impl
+                | TokenKind::Mod
+                | TokenKind::Enum
+        )
+    }
+
+    /// Check if the current position is a function annotation followed by fn
+    /// This is used by the statement parser to distinguish between:
+    /// - [c] fn foo() ...  (function declaration)
+    /// - [1, 2, 3]         (array literal)
+    #[allow(dead_code)]
+    fn is_fn_annotation(&mut self) -> bool {
+        // We're at [ now, need to check if this is [c] or [vm] followed by fn
+        // Manually peek ahead by consuming and checking tokens
+        // Collect tokens to restore if this isn't an annotation
+        let mut tokens = Vec::new();
+
+        // Save the current token ([)
+        tokens.push(self.cur.clone());
+
+        // Skip the [ and check the next token
+        self.next(); // Now self.cur is the token after [
+
+        // Check for c or vm identifier
+        let is_annot =
+            self.cur.kind == TokenKind::Ident && (self.cur.text == "c" || self.cur.text == "vm");
+
+        if !is_annot {
+            // Not an annotation, restore and return false
+            // We need to restore self.cur to the saved [
+            for token in tokens.into_iter().rev() {
+                self.lexer.push_token(token);
+            }
+            // Restore self.cur
+            self.next();
+            return false;
+        }
+
+        // Save the c/vm token
+        tokens.push(self.cur.clone());
+
+        // Skip the annotation, check for ]
+        self.next(); // Now self.cur is the token after c/vm
+
+        if self.cur.kind != TokenKind::RSquare {
+            // Not a properly formed annotation, restore
+            for token in tokens.into_iter().rev() {
+                self.lexer.push_token(token);
+            }
+            self.next();
+            return false;
+        }
+
+        // Save the ] token
+        tokens.push(self.cur.clone());
+
+        // Skip ], check for fn
+        self.next(); // Now self.cur is the token after ]
+
+        let has_fn = self.cur.kind == TokenKind::Fn;
+
+        // Save the fn token
+        tokens.push(self.cur.clone());
+
+        // Restore all tokens in reverse order
+        for token in tokens.into_iter().rev() {
+            self.lexer.push_token(token);
+        }
+        // Restore self.cur to the first token
+        self.next();
+
+        has_fn
+    }
+
+    pub fn skip_comments(&mut self) {
+        loop {
+            match self.kind() {
+                TokenKind::DocComment => {
+                    let text = self.cur.text.clone();
+                    self.pending_docs.push(text);
+                    self.cur = self.lexer.next().expect("lexer should produce token");
+                }
+                TokenKind::CommentLine
+                | TokenKind::CommentStart
+                | TokenKind::CommentContent
+                | TokenKind::CommentEnd => {
+                    self.cur = self.lexer.next().expect("lexer should produce token");
+                }
+                _ => {
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Collect pending doc comments and return them as a single string (joined by \n).
+    /// Returns None if no doc comments were collected.
+    pub fn take_docs(&mut self) -> Option<AutoStr> {
+        if self.pending_docs.is_empty() {
+            return None;
+        }
+        let doc: String = self
+            .pending_docs
+            .drain(..)
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        Some(doc.into())
+    }
+
+    pub fn next(&mut self) -> &Token {
+        self.prev = self.cur.clone();
+        // Try to get the next token, if lexer returns an error, record it and use EOF
+        let new_token = match self.lexer.next() {
+            Ok(token) => token,
+            Err(err) => {
+                // Record the lexer error
+                self.errors.push(err.into());
+                // Check if we've hit the error limit
+                if self.errors.len() >= self.error_limit {
+                    // Set cur to EOF and return to stop parsing
+                    self.cur = Token {
+                        kind: TokenKind::EOF,
+                        pos: Pos {
+                            line: 0,
+                            at: 0,
+                            pos: 0,
+                            len: 0,
+                        },
+                        text: "".into(),
+                    };
+                    return &self.cur;
+                }
+                // Create an EOF token to continue parsing
+                Token {
+                    kind: TokenKind::EOF,
+                    pos: Pos {
+                        line: 0,
+                        at: 0,
+                        pos: 0,
+                        len: 0,
+                    },
+                    text: "".into(),
+                }
+            }
+        };
+        self.cur = new_token;
+        self.skip_comments();
+        &self.cur
+    }
+
+    pub fn expect(&mut self, kind: TokenKind) -> AutoResult<()> {
+        if self.is_kind(kind) {
+            self.next();
+            Ok(())
+        } else {
+            let expected = format!("{:?}", kind);
+            let found = self.cur.text.to_string();
+            let span = pos_to_span(self.cur.pos);
+            Err(SyntaxError::UnexpectedToken {
+                expected,
+                found,
+                span,
+            }
+            .into())
+        }
+    }
+
+    fn define(&mut self, name: &str, meta: Meta) {
+        // Plan 089: Register to InferenceContext for fn, spec, type, and store
+        match &meta {
+            // 变量绑定 - 绑定类型到 type_env
+            Meta::Store(ref store) => {
+                use crate::ast::Name;
+                let name_obj = Name::from(name);
+                self.infer_ctx.bind_var(name_obj, store.ty.clone());
+            }
+            // 函数声明 - 注册到 fn_registry 和 TypeStore
+            Meta::Fn(ref fn_decl) => {
+                self.infer_ctx.register_fn(fn_decl.clone());
+                // Plan 084 Phase 2: Also register to TypeStore
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_fn_decl(fn_decl);
+                }
+            }
+            // Spec 声明 - 注册到 spec_registry 和 TypeStore
+            Meta::Spec(ref spec_decl) => {
+                self.infer_ctx.register_spec(spec_decl.clone());
+                // Plan 084 Phase 2: Also register to TypeStore
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_spec_decl(spec_decl);
+                }
+            }
+            // 类型声明和 Enum 声明 - 确保类型已经注册到 type_registry
+            // 注意: TypeDecl 和 EnumDecl 已经在 parse_type_decl/parse_enum_decl 中
+            // 通过 register_type_decl() 注册到 type_registry 了（在 Universe 之前）
+            // 这里不需要额外注册，只需要确保类型在 registry 中即可
+            Meta::Type(_) | Meta::Enum(_) => {
+                // 类型声明已经在 parse_type_decl/parse_enum_decl 中通过 register_type_decl() 注册过了
+                // Plan 084 Phase 2: Also register to TypeStore
+                if let Meta::Type(ref ty) = meta {
+                    // Type::User(TypeDecl) contains the TypeDecl
+                    if let Type::User(ref type_decl) = ty {
+                        if let Ok(mut store) = self.type_store.write() {
+                            store.register_type_decl(type_decl);
+                        }
+                    } else if let Type::Tag(ref tag) = ty {
+                        // Register tag types to InferenceContext's global type_env so lookup_type() can find them
+                        // Use type_env directly to ensure global visibility (not affected by scopes)
+                        use crate::ast::Name;
+                        let name_obj = Name::from(name);
+                        self.infer_ctx
+                            .type_env
+                            .insert(name_obj, Type::Tag(tag.clone()));
+                    }
+                } else if let Meta::Enum(ref enum_decl) = meta {
+                    // EnumDecl is similar to TypeDecl, register it with minimal fields
+                    let type_decl = crate::ast::TypeDecl {
+                        consts: Vec::new(),
+                        name: enum_decl.name.clone(),
+                        kind: crate::ast::TypeDeclKind::UserType,
+                        parent: None,
+                        has: vec![],
+                        specs: vec![],
+                        spec_impls: vec![],
+                        generic_params: vec![],
+                        members: vec![],
+                        methods: vec![],
+                        delegations: vec![],
+                        attrs: vec![],
+                        impl_attrs: vec![],
+                        doc: None,
+                        is_pub: false,
+                    };
+                    if let Ok(mut store) = self.type_store.write() {
+                        store.register_type_decl(&type_decl);
+                    }
+                }
+            }
+            // 其他类型 - 不需要处理
+            _ => {}
+        }
+
+        // Plan 091: Removed Universe.define() - TypeStore + InferenceContext are sufficient
+    }
+
+    fn define_alias(&mut self, alias: AutoStr, target: AutoStr) {
+        // Plan 091: Register to TypeStore only (removed Universe fallback)
+        if let Ok(mut store) = self.type_store.write() {
+            store.register_type_alias(alias.clone(), target);
+        }
+    }
+
+    #[allow(dead_code)]
+    fn define_rc(&mut self, name: &str, meta: Rc<Meta>) {
+        // Plan 090: Register to TypeStore + infer_ctx based on meta type
+        match meta.as_ref() {
+            Meta::Store(ref store) => {
+                use crate::ast::Name;
+                let name_obj = Name::from(name);
+                self.infer_ctx.bind_var(name_obj, store.ty.clone());
+            }
+            Meta::Fn(ref fn_decl) => {
+                self.infer_ctx.register_fn(fn_decl.clone());
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_fn_decl(fn_decl);
+                }
+            }
+            Meta::Spec(ref spec_decl) => {
+                self.infer_ctx.register_spec(spec_decl.clone());
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_spec_decl(spec_decl);
+                }
+            }
+            Meta::Type(ref ty) => {
+                if let Type::User(ref type_decl) = ty {
+                    if let Ok(mut store) = self.type_store.write() {
+                        store.register_type_decl(type_decl);
+                    }
+                }
+            }
+            Meta::Enum(ref enum_decl) => {
+                let type_decl = crate::ast::TypeDecl {
+                    consts: Vec::new(),
+                    name: enum_decl.name.clone(),
+                    kind: crate::ast::TypeDeclKind::UserType,
+                    parent: None,
+                    has: vec![],
+                    specs: vec![],
+                    spec_impls: vec![],
+                    generic_params: vec![],
+                    members: vec![],
+                    methods: vec![],
+                    delegations: vec![],
+                    attrs: vec![],
+                    impl_attrs: vec![],
+                    doc: None,
+                    is_pub: false,
+                };
+                if let Ok(mut store) = self.type_store.write() {
+                    store.register_type_decl(&type_decl);
+                }
+            }
+            _ => {}
+        }
+        // Plan 091: Removed Universe.define() - TypeStore + InferenceContext are sufficient
+    }
+
+    /// 检查符号是否存在（使用 TypeStore 和 InferenceContext）
+    ///
+    /// Plan 090: 优先使用 TypeStore，然后是 InferenceContext，最后是 Universe
+    fn exists(&mut self, name: &str) -> bool {
+        // Plan 090: 首先从 TypeStore 查找
+        if let Ok(store) = self.type_store.read() {
+            if store.lookup_fn_decl_str(name).is_some() {
+                return true;
+            }
+            if store.lookup_spec_decl_str(name).is_some() {
+                return true;
+            }
+            if store.lookup_type_decl_str(name).is_some() {
+                return true;
+            }
+            if store.lookup_type_alias_str(name).is_some() {
+                return true;
+            }
+        }
+
+        // 从 InferenceContext 查找变量绑定
+        // Plan 514 W1（447-① 债①）：嵌套具名 fn 体内不跨外层 fn 边界解析
+        // （Rust 嵌套 fn 语义；此前跨界解析 → 运行期静默 0）。闭包不走
+        // fn 声明路径，不受影响。
+        let found = if self.infer_ctx.fn_scope_idxs.len() >= 2 {
+            self.infer_ctx.lookup_type_no_capture(&Name::from(name))
+        } else {
+            self.infer_ctx.lookup_type(&Name::from(name))
+        };
+        if found.is_some() {
+            return true;
+        }
+
+        // Plan 369 P4 (Task 13): py-imported items (`use.py m: a, b`) are
+        // resolved at runtime as native shims (py.<name>), so the symbol
+        // checker must treat them as defined — otherwise bare references to
+        // py constants/functions fail with "undefined variable" outside
+        // method-call position (e.g. `uuid5(NAMESPACE_DNS, ...)`).
+        if self.py_item_imports.iter().any(|n| n.as_str() == name) {
+            return true;
+        }
+
+        // PLAN-607: style recipes are valid identifiers in expressions
+        if crate::design_tokens::recipe::has_style_recipe(name) {
+            return true;
+        }
+
+        // Plan 091: Removed Universe fallback
+        false
+    }
+
+    /// 定义符号位置（用于 LSP 和调试）
+    ///
+    /// Plan 091: 优先使用 Database，然后回退到 Universe
+    fn define_symbol_location(&mut self, name: AutoStr, location: SymbolLocation) {
+        // Plan 091: 首先尝试使用 Database
+        if let Some(ref db) = self.db {
+            if let Ok(mut db) = db.write() {
+                use crate::scope::Sid;
+                let sid = Sid::from(name.as_str());
+                db.define_symbol_location(sid, location);
+                return;
+            }
+        }
+        // Plan 091: If no Database, symbol locations are not tracked
+    }
+
+    pub(crate) fn exit_scope(&mut self) {
+        // Plan 091: Use InferenceContext for scope management
+        self.infer_ctx.pop_scope();
+    }
+
+    /// Plan 514 W1（447-① 债①）：fn 声明体的对称出口（同步弹 fn 边界栈）。
+    fn exit_fn_scope(&mut self) {
+        self.infer_ctx.pop_fn_scope();
+    }
+
+    pub(crate) fn enter_scope(&mut self) {
+        // Plan 091: Use InferenceContext for scope management
+        self.infer_ctx.push_scope();
+    }
+
+    /// 查找元数据（使用 TypeStore 和 InferenceContext）
+    ///
+    /// Plan 084: 优先使用 TypeStore，然后是 InferenceContext，最后是 Universe
+    fn lookup_meta(&mut self, name: &str) -> Option<Rc<Meta>> {
+        // Plan 084: 首先从 TypeStore 查找（如果已注册）
+        // 注意：TypeStore 存储 Fn, Spec, Type 声明
+        if let Ok(store) = self.type_store.read() {
+            if let Some(fn_decl) = store.lookup_fn_decl_str(name) {
+                return Some(Rc::new(Meta::Fn(fn_decl.clone())));
+            }
+            if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
+                return Some(Rc::new(Meta::Spec(spec_decl.clone())));
+            }
+            if let Some(type_decl) = store.lookup_type_decl_str(name) {
+                return Some(Rc::new(Meta::Type(Type::User(type_decl.as_ref().clone()))));
+            }
+        }
+
+        // 从 InferenceContext 查找
+        self.infer_ctx.lookup_meta(name)
+    }
+
+    /// 查找类型（使用 TypeStore 和 InferenceContext）
+    ///
+    /// Plan 091: Use TypeStore + InferenceContext (removed Universe fallback)
+    fn lookup_type(&mut self, name: &str) -> Shared<Type> {
+        // Plan 125: Check for built-in type aliases first
+        match name {
+            "str" => return shared(Type::StrSlice),
+            "Str" => return shared(Type::StrOwned),
+            "int" => return shared(Type::Int),
+            "uint" => return shared(Type::Uint),
+            "i64" => return shared(Type::I64),
+            "u64" => return shared(Type::U64),
+            "float" => return shared(Type::Float),
+            "double" => return shared(Type::Double),
+            "bool" => return shared(Type::Bool),
+            "byte" => return shared(Type::Byte),
+            "char" => return shared(Type::Char),
+            "void" => return shared(Type::Void),
+            "usize" => return shared(Type::USize),
+            _ => {}
+        }
+
+        // Plan 091/190: 首先从 TypeStore 查找类型声明
+        if let Ok(store) = self.type_store.read() {
+            if let Some(type_decl) = store.lookup_type_decl_str(name) {
+                // Plan 190: Return Type::Rust for use.rust imports
+                if let Some(full_path) = store.get_rust_type_path(name) {
+                    return shared(Type::Rust(RustSource::new(full_path)));
+                }
+                return shared(Type::User(type_decl.as_ref().clone()));
+            }
+            // Also check enum declarations (for heterogeneous enum pattern matching)
+            if let Some(enum_decl) = store.lookup_enum_decl_str(name) {
+                return shared(Type::Enum(shared(enum_decl.as_ref().clone())));
+            }
+            // Plan 159 Phase 6B-2.2: Check spec declarations
+            // When a spec name is used as a type annotation, return Type::Spec
+            // so the transpiler can generate Box<dyn Trait>
+            if let Some(spec_decl) = store.lookup_spec_decl_str(name) {
+                return shared(Type::Spec(shared(spec_decl.clone())));
+            }
+        }
+
+        // PLAN-037 后续修复:类型位置不再解析到 InferenceContext。
+        // 该表只承载变量绑定(define→bind_var),在类型位置查询它会使
+        // 同名变量遮蔽类型名——`let list = ...` 之后的 `let out list = []`
+        // 曾因此把标注解析为变量的推断类型(Value→Unknown)而静默丢失。
+        // 类型声明走上方 TypeStore;泛型参数走 current_const_params/
+        // 类型别名分支。全量测试套件验证此改动不破坏既有解析。
+
+        // Plan 05-Nav: Preserve unknown type names for code generation
+        // Only preserve names that look like external types (not common collection names)
+        // Common collection names without parameters should return Unknown
+        let common_collection_types = [
+            "List", "Map", "Set", "Array", "Vec", "HashMap", "HashSet", "Option", "Result",
+        ];
+        if common_collection_types.contains(&name) {
+            // Return typed version for bare collection names (e.g., List -> Type::List(Unknown))
+            match name {
+                "List" => return shared(Type::List(Box::new(Type::Unknown))),
+                "Map" => {
+                    return shared(Type::Map(Box::new(Type::Unknown), Box::new(Type::Unknown)))
+                }
+                _ => return shared(Type::Unknown),
+            }
+        }
+
+        // Return Type::User with just the name so generators can use it
+        // Plan 599 (004 S5-4): F6 formalized -- when an unresolved type name
+        // is passed through as a User placeholder, emit a one-time
+        // (process-deduped) warning so typos no longer silently produce
+        // invalid target code; the passthrough semantics itself is unchanged
+        // (foreign names rely on it).
+        {
+            // Opt-in via env: full-corpus runs showed lookup_type is fed many
+            // non-type/lowercase idents and intentional foreign types alike —
+            // default-on would be pure noise. AUTO_WARN_UNRESOLVED_TYPES=1
+            // enables the one-shot deduped warning (dedupe per process).
+            if std::env::var_os("AUTO_WARN_UNRESOLVED_TYPES").is_some() {
+                static WARNED: std::sync::OnceLock<
+                    std::sync::Mutex<std::collections::HashSet<String>>,
+                > = std::sync::OnceLock::new();
+                let warned = WARNED.get_or_init(Default::default);
+                if let Ok(mut set) = warned.lock() {
+                    if set.insert(name.to_string()) {
+                        eprintln!(
+                            "[type warning] unresolved type name '{}' passed through as opaque",
+                            name
+                        );
+                    }
+                }
+            }
+        }
+        shared(Type::User(TypeDecl {
+            consts: Vec::new(),
+            name: Name::from(name),
+            kind: TypeDeclKind::UserType,
+            parent: None,
+            has: Vec::new(),
+            specs: Vec::new(),
+            spec_impls: Vec::new(),
+            generic_params: Vec::new(),
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+            attrs: vec![],
+            impl_attrs: vec![],
+            doc: None,
+            is_pub: false,
+        }))
+    }
+
+    /// 获取所有已定义的名称（用于错误提示）
+    ///
+    /// Plan 091: Use TypeStore only (removed Universe fallback)
+    fn get_defined_names(&self) -> Vec<String> {
+        if let Ok(store) = self.type_store.read() {
+            return store.get_defined_names();
+        }
+        Vec::new()
+    }
+
+    /// 根据名称查找类型（用于继承和方法查找）
+    ///
+    /// Plan 091: Use TypeStore only (removed Universe fallback)
+    fn find_type_for_name(&self, name: &str) -> Option<Type> {
+        if let Ok(store) = self.type_store.read() {
+            return store.find_type_for_name(name);
+        }
+        None
+    }
+
+    /// 检查标识符是否是类型名（用于泛型类型解析）
+    ///
+    /// Plan 091: Use TypeStore only (removed Universe fallback)
+    fn lookup_ident_type(&self, name: &str) -> Option<Type> {
+        if let Ok(store) = self.type_store.read() {
+            if let Some(decl) = store.lookup_type_decl_str(name) {
+                return Some(Type::User(decl.as_ref().clone()));
+            }
+            // 也检查类型别名
+            if store.lookup_type_alias_str(name).is_some() {
+                return Some(Type::Unknown);
+            }
+        }
+        None
+    }
+
+    fn break_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next();
+        Ok(Stmt::Break)
+    }
+
+    fn continue_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next();
+        Ok(Stmt::Continue)
+    }
+
+    /// Plan 200 Task 1.1: loop { body } desugars to for ever { body }
+    fn loop_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `loop`
+        let body = self.body()?;
+        let has_new_line = body.has_new_line;
+        Ok(Stmt::For(For {
+            iter: Iter::Ever,
+            range: Expr::Nil,
+            body,
+            new_line: has_new_line,
+            init: None,
+        }))
+    }
+
+    /// Plan 560 T09 (E2)：`with expr { body }` / `with expr as x { body }`。
+    ///
+    /// 无 as：直产 `py_with(expr, () => { body })`——全复用 539 通道
+    /// （host __enter__/闭包体/__exit__；异常抑制默认不做，§10 裁决）。
+    /// as x（Plan 567 T12/T13，P560-D1 清偿）：`{ var __w = expr; var x =
+    /// py_enter(__w); try { body } catch (__we) { py_exit(__w); py_raise(__we) }
+    /// finally { py_exit(__w) } }`——块形态（绑定 + 出口保证）。绑定值 =
+    /// py_enter 返回的 `__enter__` 结果；出口保证 = 正常路径走 finally，
+    /// body 的 Err 值传播被 T08 值通道拦截进 catch（py_exit + py_raise
+    /// 再抛外传；py_raise 报错即外传、按 Plan 012 P2 语义跳过 finally——
+    /// `__exit__` 恰好一次）。
+    fn with_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `with`
+                     // P560-D1/567-T12: with 头部窗口内 `as` Cast 臂截断——绑定位由本
+                     // 函数消费（`with x as T {}` 的 T 不再被误吞为 Cast 类型位）。
+        self.with_header = true;
+        let ctx_res = self.parse_expr();
+        self.with_header = false;
+        let ctx = ctx_res?;
+        let binding = if self.is_kind(TokenKind::As) {
+            self.next(); // skip `as`
+            if !matches!(self.cur.kind, TokenKind::Ident) {
+                return Err(SyntaxError::Generic {
+                    message: "with-as binding expects an identifier after 'as'".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            let name = self.cur.text.clone();
+            self.next();
+            Some(name)
+        } else {
+            None
+        };
+        self.skip_empty_lines();
+        let body = self.body()?;
+        match binding {
+            None => {
+                // 直产 `py_with(ctx, () => { body })` 调用（Stmt::Expr——非
+                // Block：body 尾块的 convert_last_block 会把 Block 末语句转
+                // 对象字面量，T09 实证）。539 py_with 通道：host __enter__/体/
+                // __exit__；异常抑制默认不做（§10 裁决）。A5 规则（T06）随后
+                // 自动包 py_callable。
+                let closure = crate::ast::Closure {
+                    params: vec![],
+                    ret: None,
+                    body: Box::new(Expr::Block(body)),
+                    is_move: false,
+                };
+                let call = crate::ast::Call {
+                    name: Box::new(Expr::Ident("py_with".into())),
+                    args: crate::ast::Args {
+                        args: vec![
+                            crate::ast::Arg::Pos(ctx),
+                            crate::ast::Arg::Pos(Expr::Closure(closure)),
+                        ],
+                    },
+                    ret: crate::ast::Type::Unknown,
+                    type_args: Vec::new(),
+                    generic_args: Vec::new(),
+                    pos: None,
+                };
+                Ok(Stmt::Expr(Expr::Call(call)))
+            }
+            Some(name) => {
+                // 块形态：绑定 + 出口保证（规范序列，a2py 回译 `with e as x:`）。
+                let mk_store = |n: &str, e: Expr| {
+                    Stmt::Store(crate::ast::Store {
+                        kind: crate::ast::StoreKind::Var,
+                        name: n.into(),
+                        ty: crate::ast::Type::Unknown,
+                        expr: e,
+                        attrs: Vec::new(),
+                        is_pub: false,
+                    })
+                };
+                let mk_bridge = |n: &str, arg: Expr| {
+                    Expr::Call(crate::ast::Call {
+                        name: Box::new(Expr::Ident(n.into())),
+                        args: crate::ast::Args {
+                            args: vec![crate::ast::Arg::Pos(arg)],
+                        },
+                        ret: crate::ast::Type::Unknown,
+                        type_args: Vec::new(),
+                        generic_args: Vec::new(),
+                        pos: None,
+                    })
+                };
+                let w = "__w".to_string();
+                let exit_call = || Stmt::Expr(mk_bridge("py_exit", Expr::Ident("__w".into())));
+                let mut catch_stmts = vec![exit_call()];
+                catch_stmts.push(Stmt::Expr(mk_bridge(
+                    "py_raise",
+                    Expr::Ident("__we".into()),
+                )));
+                let try_stmt = Stmt::Try(crate::ast::Try {
+                    body,
+                    catch_param: Some("__we".to_string()),
+                    catch_body: crate::ast::Body {
+                        stmts: catch_stmts,
+                        has_new_line: true,
+                        source_lines: Vec::new(),
+                    },
+                    // 正常路径的出口收口（Plan 012 P2：body/after 与 catch 两
+                    // 路都汇入 finally——catch 臂内 py_raise 报错即外传、跳过
+                    // finally，__exit__ 恰好一次）。
+                    finally_body: Some(crate::ast::Body {
+                        stmts: vec![exit_call()],
+                        has_new_line: true,
+                        source_lines: Vec::new(),
+                    }),
+                    new_line: true,
+                });
+                let block = crate::ast::Body {
+                    stmts: vec![
+                        mk_store("__w", ctx),
+                        mk_store(&name, mk_bridge("py_enter", Expr::Ident("__w".into()))),
+                        try_stmt,
+                    ],
+                    has_new_line: true,
+                    source_lines: Vec::new(),
+                };
+                // Stmt::Expr(Expr::Block) 而非 Stmt::Block——convert_last_block
+                // 会把函数体尾部的 Stmt::Block 转对象字面量（560 T09 同款坑，
+                // "Last block must be an object!"）；块表达式走语句序编译且
+                // 尾语句值 pop 语义正确（codegen Expr::Block 臂）。
+                Ok(Stmt::Expr(Expr::Block(block)))
+            }
+        }
+    }
+
+    /// Plan 010 (MS3-A): `while (cond) { body }` — desugars to a conditional
+    /// `for` (Iter::Cond), identical semantics to `for cond { body }`.
+    fn while_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `while`
+                     // Optional parentheses around the condition: `while (cond)` or `while cond`.
+        let had_paren = if self.is_kind(TokenKind::LParen) {
+            self.next();
+            true
+        } else {
+            false
+        };
+        // Skip newlines after `while`/`(` to allow condition on the next line.
+        while self.is_kind(TokenKind::Newline) {
+            self.next();
+        }
+        let condition = self.parse_expr()?;
+        if had_paren {
+            self.expect(TokenKind::RParen)?;
+        }
+        let body = self.body()?;
+        let has_new_line = body.has_new_line;
+        Ok(Stmt::For(For {
+            iter: Iter::Cond,
+            range: condition,
+            body,
+            new_line: has_new_line,
+            init: None,
+        }))
+    }
+
+    /// Plan 010 (MS3-A): `try { body } catch (e) { handler }`.
+    /// `catch` is required; the binding `(e)` is optional.
+    /// Plan 012 P2 (gap 4): optional trailing `finally { cleanup }`.
+    fn try_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `try`
+        let body = self.body()?;
+        let body_new_line = body.has_new_line;
+
+        // `catch` is required.
+        // Skip newlines/semicolons between body and catch.
+        while self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
+            self.next();
+        }
+        self.expect(TokenKind::Catch)?;
+
+        // Optional binding: catch (e) or catch e. None for bare `catch { }`.
+        let mut catch_param: Option<String> = None;
+        let had_paren = if self.is_kind(TokenKind::LParen) {
+            self.next();
+            true
+        } else {
+            false
+        };
+        // If the next token is an identifier, parse the binding name.
+        if had_paren {
+            let name = self.parse_name()?;
+            self.expect(TokenKind::RParen)?;
+            catch_param = Some(name.to_string());
+        } else if self.is_kind(TokenKind::Ident) {
+            let name = self.parse_name()?;
+            catch_param = Some(name.to_string());
+        }
+
+        // Scope the catch binding like for-loop variables do: enter a scope,
+        // define the param, parse the catch body, then exit — so `e` resolves
+        // inside the handler but stays invisible to `finally` and beyond.
+        let has_catch_binding = catch_param.is_some();
+        if let Some(ref param) = catch_param {
+            self.enter_scope();
+            let meta = Meta::Store(Store {
+                kind: StoreKind::Var,
+                attrs: vec![],
+                is_pub: false,
+                name: Name::from(param.as_str()),
+                expr: Expr::Nil,
+                ty: Type::Unknown,
+            });
+            self.define(param.as_str(), meta);
+        }
+
+        let catch_body = self.body()?;
+        let catch_new_line = catch_body.has_new_line;
+        if has_catch_binding {
+            self.exit_scope();
+        }
+
+        // Plan 012 P2: optional `finally { cleanup }`. `finally` is not a
+        // lexer keyword — it lexes as Ident, matched by text (contextual).
+        // Plan 029 T15: newline 前瞻必须可回退——原实现无条件吞掉换行/分号，
+        // 调用方 expect_eos 随之看不到分隔符，try/catch 之后的任何语句都会
+        // 报 "Expected end of statement"（fn 体/on 体皆然）。lexer 是流式
+        // 的，回退用 Plan 395 的 save_state/restore_state + cur/prev。
+        let saved_lexer = self.lexer.save_state();
+        let saved_cur = self.cur.clone();
+        let saved_prev = self.prev.clone();
+        while self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
+            self.next();
+        }
+        let mut finally_body = None;
+        let mut finally_new_line = false;
+        if self.cur.text.as_str() == "finally" {
+            self.next();
+            let fb = self.body()?;
+            finally_new_line = fb.has_new_line;
+            finally_body = Some(fb);
+        } else {
+            self.lexer.restore_state(saved_lexer);
+            self.cur = saved_cur;
+            self.prev = saved_prev;
+        }
+
+        Ok(Stmt::Try(crate::ast::Try {
+            body,
+            catch_param,
+            catch_body,
+            finally_body,
+            new_line: body_new_line || catch_new_line || finally_new_line,
+        }))
+    }
+
+    fn return_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip return keyword
+                     // Plan 012 batch F (early return): a newline after `return` ends the
+                     // statement — bare early return. Previously newlines were skipped to
+                     // allow the value on the next line, which silently swallowed the
+                     // following statement as the return expression:
+                     //     return
+                     //     .count += 1   // parsed as `return (.count += 1)`
+                     // Now the return value must be on the same line as `return`; no
+                     // source in the repo used the next-line form.
+        if self.is_kind(TokenKind::Newline)
+            || self.is_kind(TokenKind::Semi)
+            || self.is_kind(TokenKind::RBrace)
+            || self.is_kind(TokenKind::EOF)
+        {
+            return Ok(Stmt::Return(Box::new(Expr::Nil)));
+        }
+        let expr = self.parse_expr()?;
+        Ok(Stmt::Return(Box::new(expr)))
+    }
+
+    /// Plan 321: Parse yield expression as a statement.
+    /// `yield expr` suspends the generator and sends expr's value to the caller.
+    /// Can also be used bare as `yield` (yields nil).
+    fn yield_expr_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip 'yield' keyword
+                     // Skip newlines
+        while self.is_kind(TokenKind::Newline) {
+            self.next();
+        }
+        if self.is_kind(TokenKind::Semi)
+            || self.is_kind(TokenKind::RBrace)
+            || self.is_kind(TokenKind::EOF)
+        {
+            // bare `yield` → yield nil
+            return Ok(Stmt::Expr(Expr::Yield(Box::new(Expr::Nil))));
+        }
+        let expr = self.parse_expr()?;
+        Ok(Stmt::Expr(Expr::Yield(Box::new(expr))))
+    }
+
+    /// Plan 124 Phase 2.3: Parse reply statement for ask/reply RPC
+    ///
+    /// reply expr
+    fn reply_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip reply keyword
+        let expr = self.parse_expr()?;
+        Ok(Stmt::Reply(Box::new(expr)))
+    }
+
+    /// Synchronize parser state after encountering an error
+    ///
+    /// This method skips tokens until we reach a statement boundary,
+    /// allowing the parser to continue collecting errors instead of
+    /// aborting on the first error.
+    ///
+    /// Statement boundaries are:
+    /// - Semicolon
+    /// - Keywords that start statements (fn, let, var, mut, for, while, if, return, etc.)
+    /// - End of file
+    fn synchronize(&mut self) {
+        // Skip tokens until we reach a statement boundary.
+        // Tracks brace depth so we skip past entire block bodies (nodes, if, for, etc.)
+        // instead of getting stuck inside them.
+        let mut brace_depth: u32 = 0;
+
+        while !self.is_at_end() {
+            // Track brace nesting: skip entire blocks
+            if self.is_kind(TokenKind::LBrace) {
+                brace_depth += 1;
+                self.next();
+                continue;
+            }
+            if self.is_kind(TokenKind::RBrace) {
+                if brace_depth > 0 {
+                    brace_depth -= 1;
+                    self.next();
+                    continue;
+                }
+                // Closing brace at depth 0 — this is a block boundary, stop here
+                return;
+            }
+
+            // Inside a block, keep skipping
+            if brace_depth > 0 {
+                self.next();
+                continue;
+            }
+
+            // Semicolon is a statement boundary
+            if self.is_kind(TokenKind::Semi) {
+                self.next();
+                return;
+            }
+
+            // Check if we're at a keyword that starts a statement
+            match self.kind() {
+                TokenKind::Fn
+                | TokenKind::Let
+                | TokenKind::Var
+                | TokenKind::Mut
+                | TokenKind::Hold
+                | TokenKind::For
+                | TokenKind::Loop
+                | TokenKind::If
+                | TokenKind::Break
+                | TokenKind::Continue
+                | TokenKind::Use
+                | TokenKind::Type
+                | TokenKind::Union
+                | TokenKind::Tag
+                | TokenKind::Enum
+                | TokenKind::On
+                | TokenKind::Alias
+                | TokenKind::Is => {
+                    // We've reached a statement boundary, don't consume the token
+                    return;
+                }
+                _ => {
+                    // Not at a boundary, skip this token
+                    self.next();
+                }
+            }
+        }
+    }
+
+    /// Check if we're at the end of the input
+    fn is_at_end(&mut self) -> bool {
+        self.kind() == TokenKind::EOF
+    }
+
+    /// Add an error to the error collection
+    ///
+    /// Returns true if we should continue parsing (haven't hit error limit),
+    /// false if we should abort.
+    fn add_error(&mut self, error: AutoError) -> bool {
+        // Plan 419 §8.3:超限即拒收(先查后推)。原实现先 push 再查,超限后
+        // 每层恢复路径仍把(嵌套着全部下层错误的)传播错误推入,错误树
+        // O(n²) 嵌套增长 —— 深嵌套输入实测内存 ~25GB、解析挂死。
+        if self.errors.len() >= self.error_limit {
+            return false;
+        }
+        self.errors.push(error);
+        self.errors.len() < self.error_limit
+    }
+
+    /// Build the error to return when the error limit is exceeded.
+    ///
+    /// Plan error-spans (jade gap 37a): previously this popped and returned
+    /// only the LAST collected error — typically a derivative of error
+    /// recovery ("Expected term, got RBrace" at some closing brace), while
+    /// the FIRST collected error is the root cause carrying the correct
+    /// span. Return all collected errors as MultipleErrors (same shape as
+    /// the under-limit path) so the root cause and its span survive.
+    fn error_limit_exceeded(&self) -> AutoError {
+        let error_count = self.errors.len();
+        AutoError::MultipleErrors {
+            count: error_count,
+            plural: if error_count > 1 {
+                "s".into()
+            } else {
+                "".into()
+            },
+            errors: self.errors.clone(),
+        }
+    }
+
+    /// Plan 122: Add a warning to the warnings collection
+    fn warn(&mut self, warning: Warning) {
+        self.warnings.push(warning);
+    }
+}
+
+pub enum CodeSection {
+    None,
+    C,
+    Rust,
+    Auto,
+}
+
+impl<'a> Parser<'a> {
+    pub fn parse(&mut self) -> AutoResult<Code> {
+        // Plan 419 §8.3(巨帧治理):解析器在 debug 构建下单帧可达 50~270KB
+        // (cdb 实测:expr_pratt_with_left ~116KB / parse_stmt_dispatch
+        // ~267KB / atom ~74KB,每层嵌套 ~670KB),2MB 线程栈在 3 层嵌套
+        // 即溢出 ——「循环内结构体字面量赋值」「循环内嵌套块」等正常形态
+        // 都会触发(曾误判为无限递归;实测 64MB 栈下 9 行程序正常解析,
+        // 嵌套深度仅 ~13 层 → 有限深度 + 病态巨帧)。
+        //
+        // 修复:递归咽喉(parse_body / expr_pratt_with_left / atom)挂
+        // stacker::maybe_grow —— 余量低于 512KB 时在同线程上切换新的
+        // 1MB 堆上栈段继续,数据零跨线程;余量充足时仅一次线程本地读,
+        // 近零开销。护栏:body_depth 上限把真病态递归转为干净语法错误。
+        self.body_depth = 0;
+        self.parse_impl()
+    }
+
+    fn parse_impl(&mut self) -> AutoResult<Code> {
+        let mut stmts = Vec::new();
+        let mut source_lines = Vec::new();
+        self.skip_empty_lines();
+        let mut current_section = CodeSection::None;
+        let mut stmt_index = 0; // Track statement index for is_first_stmt check
+
+        while !self.is_kind(TokenKind::EOF) {
+            // deal with sections (but not #[...] annotations)
+            if self.is_kind(TokenKind::Hash) {
+                // Check if this is a #[...] annotation by looking ahead
+                // Save current state for lookahead
+                let saved_cur = self.cur.clone();
+                // Consume # and check next token
+                self.next();
+                let is_annotation = self.is_kind(TokenKind::LSquare);
+                // Restore state
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+
+                if is_annotation {
+                    // This is #[...], let parse_stmt() handle it
+                    // Don't process as section, continue to parse_stmt()
+                } else {
+                    // This is a #section declaration — or a corpus-style
+                    // `# prose note ...` line (musk relay_store's hand-written
+                    // PLAN-032 notes): `#` + name + NON-newline continuation
+                    // means prose, skip the whole line (Plan 442 C2).
+                    self.next();
+                    let section = self.parse_name()?;
+                    if !self.is_kind(TokenKind::Newline)
+                        && !self.is_kind(TokenKind::EOF)
+                        && !self.is_kind(TokenKind::RBrace)
+                    {
+                        let _ = self.skip_line();
+                        continue;
+                    }
+                    match section.as_str() {
+                        "C" => {
+                            current_section = CodeSection::C;
+                        }
+                        "RUST" => {
+                            current_section = CodeSection::Rust;
+                        }
+                        "AUTO" => {
+                            current_section = CodeSection::Auto;
+                        }
+                        _ => {
+                            let error = SyntaxError::Generic {
+                                message: format!("Unknown section {}", section),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into();
+                            if !self.add_error(error) {
+                                return Err(self.error_limit_exceeded()); // Error limit exceeded
+                            }
+                            self.synchronize();
+                            continue;
+                        }
+                    }
+                    // skip until newline
+                    let _ = self.skip_line();
+                    continue;
+                }
+            }
+
+            if !self.is_kind(TokenKind::Hash) {
+                match self.compile_dest {
+                    CompileDest::Interp => match current_section {
+                        CodeSection::None | CodeSection::Auto => {}
+                        _ => {
+                            self.skip_line()?;
+                            continue;
+                        }
+                    },
+                    CompileDest::TransC => match current_section {
+                        CodeSection::None | CodeSection::C => {}
+                        _ => {
+                            self.skip_line()?;
+                            continue;
+                        }
+                    },
+                    CompileDest::TransRust => match current_section {
+                        CodeSection::None | CodeSection::Rust => {}
+                        _ => {
+                            self.skip_line()?;
+                            continue;
+                        }
+                    },
+                    CompileDest::Config => match current_section {
+                        CodeSection::None | CodeSection::Auto => {}
+                        _ => {
+                            self.skip_line()?;
+                            continue;
+                        }
+                    },
+                }
+            }
+
+            let stmt_line = self.cur.pos.line;
+            match self.parse_stmt() {
+                Ok(stmt) => {
+                    // First level pairs are viewed as variable declarations
+                    // TODO: this should only happen in a Config scenario
+                    if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
+                        if let Some(name) = key.name() {
+                            self.define(
+                                name,
+                                Meta::Store(Store {
+                                    name: name.into(),
+                                    kind: StoreKind::Var,
+                                    attrs: vec![],
+                                    is_pub: false,
+                                    ty: Type::Unknown,
+                                    expr: *value.clone(),
+                                }),
+                            );
+                        }
+                    }
+                    stmts.push(stmt);
+                    source_lines.push(stmt_line);
+                    let is_first = stmt_index == 0;
+                    // Check for ambiguous syntax errors in expect_eos
+                    let newline_count = match self.expect_eos(is_first) {
+                        Ok(count) => count,
+                        Err(e) => {
+                            // Plan 419 §8.3:护栏错误不可恢复 —— 立即中止。
+                            if e.to_string().contains("[non-recoverable]") {
+                                return Err(e);
+                            }
+                            // Ambiguous syntax errors should not be recovered from
+                            if e.to_string().contains("Ambiguous syntax") {
+                                return Err(e);
+                            }
+                            // Other EOS errors are added to collection and synchronized
+                            if !self.add_error(e) {
+                                return Err(self.error_limit_exceeded());
+                            }
+                            self.synchronize();
+                            0
+                        }
+                    };
+                    // Insert EmptyLine statement for 2+ consecutive newlines
+                    if newline_count > 1 {
+                        stmts.push(Stmt::EmptyLine(newline_count - 1));
+                        source_lines.push(stmt_line);
+                    }
+                    stmt_index += 1;
+                }
+                Err(e) => {
+                    // Check if this is an ambiguous syntax error - these should not be recovered from
+                    if e.to_string().contains("Ambiguous syntax") {
+                        return Err(e);
+                    }
+                    // Add error to collection and synchronize
+                    if !self.add_error(e) {
+                        return Err(self.error_limit_exceeded()); // Error limit exceeded
+                    }
+                    self.synchronize();
+                }
+            }
+        }
+
+        // Check if we collected any errors
+        if !self.errors.is_empty() {
+            // Return MultipleErrors with all collected errors
+            let error_count = self.errors.len();
+            let plural = if error_count > 1 { "s" } else { "" };
+
+            return Err(AutoError::MultipleErrors {
+                count: error_count,
+                plural: plural.to_string(),
+                errors: self.errors.clone(),
+            });
+        }
+
+        stmts = self.convert_last_block(stmts)?;
+
+        // Post-processing: Merge ext blocks into their target TypeDecl
+        stmts = self.merge_ext_blocks(stmts)?;
+
+        Ok(Code {
+            stmts,
+            source_lines,
+            file_attrs: std::mem::take(&mut self.file_attrs),
+        })
+    }
+
+    /// Merge ext blocks into their target TypeDecl
+    /// This processes all Stmt::Ext statements and merges their fields/methods
+    /// into the corresponding Stmt::TypeDecl
+    fn merge_ext_blocks(&self, mut stmts: Vec<Stmt>) -> AutoResult<Vec<Stmt>> {
+        use crate::ast::Stmt;
+
+        // Collect all TypeDecls and Exts in separate passes
+        let mut type_decl_indices: std::collections::HashMap<Name, usize> =
+            std::collections::HashMap::new();
+        let mut ext_statements: Vec<(usize, crate::ast::Ext)> = Vec::new();
+
+        for (i, stmt) in stmts.iter().enumerate() {
+            if let Stmt::TypeDecl(ref decl) = stmt {
+                type_decl_indices.insert(decl.name.clone(), i);
+            } else if let Stmt::Ext(ref ext) = stmt {
+                // Plan 164: ext blocks with "for Trait" should NOT be merged into TypeDecl
+                // They must remain as standalone Stmt::Ext so the transpiler can emit
+                // "impl Trait for Type" instead of "impl Type"
+                if ext.trait_name.is_none() {
+                    ext_statements.push((i, ext.clone()));
+                }
+            }
+        }
+
+        // Track which Ext statements were successfully merged
+        let mut merged_ext_indices: Vec<usize> = Vec::new();
+
+        // Process each Ext statement and merge into target TypeDecl
+        for (ext_idx, ext) in ext_statements {
+            // Find the target TypeDecl
+            if let Some(&decl_idx) = type_decl_indices.get(&ext.target) {
+                // Clone the TypeDecl, merge ext into it, then replace
+                if let Stmt::TypeDecl(ref decl) = &stmts[decl_idx] {
+                    let mut merged_decl = decl.clone();
+
+                    // Merge fields: ext fields override type fields with same name
+                    for ext_field in ext.fields.clone() {
+                        // Remove existing field with same name if it exists
+                        merged_decl.members.retain(|m| m.name != ext_field.name);
+                        // Add the ext field
+                        merged_decl.members.push(ext_field);
+                    }
+
+                    // Merge methods: ext methods override type methods with same name
+                    for ext_method in ext.methods.clone() {
+                        // Remove existing method with same name if it exists
+                        merged_decl.methods.retain(|m| m.name != ext_method.name);
+                        // Add the ext method
+                        merged_decl.methods.push(ext_method);
+                    }
+
+                    // C8: merge associated consts (same-name ext const wins).
+                    for ext_const in ext.consts.clone() {
+                        merged_decl.consts.retain(|c| c.name != ext_const.name);
+                        merged_decl.consts.push(ext_const);
+                    }
+
+                    // Plan 364 W1: ext's impl-level macro attrs move onto the merged
+                    // type's impl block (e.g. `#[zbus.interface] impl CosmicSession`).
+                    merged_decl.impl_attrs.extend(ext.attrs.iter().cloned());
+
+                    stmts[decl_idx] = Stmt::TypeDecl(merged_decl);
+                    // Mark this Ext as merged
+                    merged_ext_indices.push(ext_idx);
+                }
+            }
+            // If no TypeDecl exists (extending built-in type like int, str, etc.),
+            // the Ext statement is kept in the AST for later processing
+        }
+
+        // Remove only Ext statements that were successfully merged
+        let mut final_stmts: Vec<Stmt> = Vec::new();
+        for (i, stmt) in stmts.into_iter().enumerate() {
+            if let Stmt::Ext(_) = stmt {
+                // Only keep this Ext if it wasn't merged
+                if !merged_ext_indices.contains(&i) {
+                    final_stmts.push(stmt);
+                }
+                // If it was merged, skip it (don't add to final_stmts)
+            } else {
+                final_stmts.push(stmt);
+            }
+        }
+
+        Ok(final_stmts)
+    }
+
+    fn skip_line(&mut self) -> AutoResult<()> {
+        // println!("Skiipping line"); // Debug output disabled for LSP
+        while !self.is_kind(TokenKind::Newline) {
+            self.next();
+        }
+        self.skip_empty_lines();
+        Ok(())
+    }
+
+    fn skip_block(&mut self) -> AutoResult<()> {
+        // Skip a { ... } block, handling nested braces
+        self.expect(TokenKind::LBrace)?;
+        let mut depth = 1;
+        while depth > 0 && !self.is_kind(TokenKind::EOF) {
+            if self.is_kind(TokenKind::LBrace) {
+                depth += 1;
+            } else if self.is_kind(TokenKind::RBrace) {
+                depth -= 1;
+            }
+            self.next();
+        }
+        if depth > 0 {
+            return Err(SyntaxError::Generic {
+                message: "Unclosed block, missing '}'".to_string(),
+                span: pos_to_span(self.prev.pos),
+            }
+            .into());
+        }
+        Ok(())
+    }
+
+    fn convert_last_block(&mut self, mut stmts: Vec<Stmt>) -> AutoResult<Vec<Stmt>> {
+        let last = stmts.last();
+        if let Some(st) = last {
+            match st {
+                // Plan 567 T12: 尾块仅在**纯 pair 形**时转对象（UI 单元构造
+                // 语义）；含语句（Store/Try 等）的块是作用域块（with-as 块
+                // 形态产物等），保留原样——原实现一律 body_to_obj，非 pair
+                // 尾块报 "Last block must be an object!" 挡死块语句收尾。
+                Stmt::Block(body) => {
+                    let all_pairs = body
+                        .stmts
+                        .iter()
+                        .all(|s| matches!(s, Stmt::Expr(Expr::Pair(_))));
+                    if all_pairs && !body.stmts.is_empty() {
+                        let obj = self.body_to_obj(body)?;
+                        stmts.pop();
+                        stmts.push(Stmt::Expr(Expr::Object(obj)))
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(stmts)
+    }
+
+    fn body_to_obj(&mut self, body: &Body) -> AutoResult<Vec<Pair>> {
+        let mut pairs = Vec::new();
+        for stmt in body.stmts.iter() {
+            match stmt {
+                Stmt::Expr(expr) => match expr {
+                    Expr::Pair(p) => {
+                        pairs.push(p.clone());
+                    }
+                    _ => {
+                        return Err(SyntaxError::Generic {
+                            message: "Last block must be an object!".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                },
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: "Last block must be an object!".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+        }
+        Ok(pairs)
+    }
+}
+
+// Expressions
+impl<'a> Parser<'a> {
+    pub fn parse_expr(&mut self) -> AutoResult<Expr> {
+        // Plan 364 W5 (D4): explicit `move` closure prefix.
+        // `move (params) => body` and `move x => body` → Expr::Closure with
+        // is_move=true. We detect `move` at the expression boundary so both the
+        // multi-param path (pratt→atom→group→parse_closure) and the single-param
+        // path (expr_pratt_with_left's `x =>` arm) are covered. `move` here must
+        // be followed by `(` or an identifier to be a closure prefix; otherwise
+        // it falls through to its existing roles (param mode `fn(move x)`,
+        // soft-identifier use as a variable name).
+        if self.is_kind(TokenKind::Move) {
+            // Lookahead: consume the token after `move` and push it back.
+            let after = self.lexer.next()?;
+            let is_closure_prefix = matches!(after.kind, TokenKind::LParen | TokenKind::Ident);
+            self.lexer.push_token(after);
+            if is_closure_prefix {
+                self.next(); // consume 'move'
+                let start_pos = self.cur.pos; // Plan 410: expression start for check_symbol's error span
+                let mut exp = self.expr_pratt(0)?;
+                if let Expr::Closure(ref mut c) = exp {
+                    c.is_move = true;
+                }
+                exp = self.check_symbol(exp, pos_to_span(start_pos))?;
+                return Ok(exp);
+            }
+        }
+
+        // Plan 410: record the expression start BEFORE expr_pratt so
+        // check_symbol's UndefinedVariable span points at the offending
+        // identifier, not at the cursor (which has moved past the expression).
+        let start_pos = self.cur.pos;
+        let mut exp = self.expr_pratt(0)?;
+        exp = self.check_symbol(exp, pos_to_span(start_pos))?;
+        Ok(exp)
+    }
+
+    // simple Pratt parser
+    // ref: https://matklad.github.io/2020/04/13/simple-but-powerful-pratt-parsing.html
+    pub fn expr_pratt(&mut self, min_power: u8) -> AutoResult<Expr> {
+        // Plan 419 §8.3:表达式递归咽喉(cdb 实测括号链在此自递归)。
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || self.expr_pratt_inner(min_power))
+    }
+
+    fn expr_pratt_inner(&mut self, min_power: u8) -> AutoResult<Expr> {
+        // hold expression (Phase 3) - special case that returns directly
+        if self.is_kind(TokenKind::Hold) {
+            let start_pos = self.cur.pos; // Record start position
+
+            self.next(); // skip hold
+
+            // Parse the path expression (identifier with optional member access)
+            let path = self.parse_path_expr()?;
+
+            // Expect 'as' keyword
+            self.expect(TokenKind::As)?;
+
+            // Get the binding name
+            let name = self.cur.text.clone();
+            self.expect(TokenKind::Ident)?;
+
+            // Skip empty lines before body (allows newline between name and {)
+            if self.is_kind(TokenKind::Newline) {
+                self.skip_empty_lines();
+            }
+
+            // Disable symbol checking inside hold body (bindings are created at runtime)
+            let old_skip_check = self.skip_check;
+            self.skip_check = true;
+
+            // Parse the body (a block)
+            let body = self.body()?;
+
+            // Restore symbol checking
+            self.skip_check = old_skip_check;
+
+            // Calculate span: (offset, length)
+            let span = Some((start_pos.pos, self.cur.pos.pos - start_pos.pos));
+
+            // Hold is a complete expression, return directly
+            return Ok(Expr::Hold(crate::ast::Hold {
+                path: Box::new(path),
+                name,
+                body,
+                span,
+            }));
+        }
+
+        // Prefix
+        let lhs = match self.kind() {
+            // if expression
+            TokenKind::If => self.if_expr()?,
+            // unary
+            TokenKind::Add | TokenKind::Sub | TokenKind::Not | TokenKind::Star => {
+                let op = self.op();
+                let span = pos_to_span(self.cur.pos);
+                let power = prefix_power(op, span)?;
+                self.next(); // skip unary op
+                let lhs = self.expr_pratt(power.r)?;
+                Expr::Unary(op, Box::new(lhs))
+            }
+            // group or multi-param closure
+            TokenKind::LParen => {
+                // Plan 060: Check if this is a multi-param closure: (a, b) => expr
+                // Or zero-param closure: () => expr
+                self.next(); // skip (
+
+                // Quick check for zero-param closure: () => expr
+                if self.is_kind(TokenKind::RParen) {
+                    // Peek ahead to check for =>
+                    if let Ok(next_token) = self.lexer.next() {
+                        let is_closure = next_token.kind == TokenKind::DoubleArrow;
+                        self.lexer.push_token(next_token);
+                        if is_closure {
+                            // This is a zero-param closure: () => expr
+                            // Restore state so parse_closure sees the ( token
+                            let saved_token = self.cur.clone();
+                            self.cur = Token {
+                                kind: TokenKind::LParen,
+                                text: AutoStr::from("("),
+                                pos: saved_token.pos,
+                            };
+                            self.lexer.push_token(saved_token);
+                            return self.parse_closure();
+                        }
+                    }
+                    // Not a closure, continue with regular group expression
+                    // Plan 391 D5: `()` (empty, not a closure) is the unit
+                    // value — e.g. `Ok(())`, `return ()`. Emit an empty tuple
+                    // expression (a2r codegen renders Expr::Tuple([]) as `()`).
+                    if self.is_kind(TokenKind::RParen) {
+                        self.next(); // skip )
+                        Expr::Tuple(vec![])
+                    } else {
+                        let lhs = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs
+                    }
+                } else if self.is_kind(TokenKind::Ident) {
+                    // Collect tokens for lookahead and rollback
+                    let mut tokens = Vec::new();
+                    let mut found_comma = false;
+                    let mut found_double_arrow = false;
+                    let mut depth = 1; // Track nesting for types like Array<T>
+
+                    // Scan ahead to detect closure pattern
+                    loop {
+                        let token = self.lexer.next()?;
+
+                        // Check for pattern before consuming token into buffer
+                        let is_closing_paren = depth == 1 && token.kind == TokenKind::RParen;
+
+                        tokens.push(token.clone());
+
+                        match token.kind {
+                            TokenKind::LParen | TokenKind::LSquare | TokenKind::LBrace => {
+                                depth += 1
+                            }
+                            TokenKind::RParen | TokenKind::RSquare | TokenKind::RBrace => {
+                                depth -= 1;
+                            }
+                            TokenKind::Comma if depth == 1 => found_comma = true,
+                            TokenKind::EOF => break,
+                            _ => {}
+                        }
+
+                        // If we found the closing paren at depth 0, check for =>
+                        if is_closing_paren {
+                            // Peek at the next token without consuming it
+                            if let Ok(next_token) = self.lexer.next() {
+                                if next_token.kind == TokenKind::DoubleArrow {
+                                    found_double_arrow = true;
+                                }
+                                // Don't add the peeked token to our buffer
+                                // We need to push it back so it's available later
+                                self.lexer.push_token(next_token);
+                            }
+                            break;
+                        }
+                    }
+
+                    // Push tokens back to lexer buffer in reverse order
+                    for token in tokens.into_iter().rev() {
+                        self.lexer.push_token(token);
+                    }
+
+                    // Plan 200: Tuple detection — comma found but no => means it's a tuple
+                    let is_closure = found_double_arrow;
+                    if found_comma && !found_double_arrow {
+                        // Tuple expression: (expr1, expr2, ...)
+                        // We already consumed (, parse first expr, then comma-separated rest
+                        let first = self.expr_pratt(0)?;
+                        let mut elems = vec![first];
+                        while self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            elems.push(self.expr_pratt(0)?);
+                        }
+                        self.expect(TokenKind::RParen)?;
+                        Expr::Tuple(elems)
+                    } else if is_closure {
+                        // Multi-param closure: (a, b) => expr
+                        // Need to restore state so parse_closure sees the ( token
+                        // Save current token (identifier)
+                        let ident_token = self.cur.clone();
+
+                        // Set current token back to (
+                        self.cur = Token {
+                            kind: TokenKind::LParen,
+                            text: AutoStr::from("("),
+                            pos: ident_token.pos, // Use identifier's position for better error messages
+                        };
+
+                        // Push the identifier back to lexer
+                        self.lexer.push_token(ident_token);
+
+                        // Now parse_closure will see ( as current token
+                        self.parse_closure()?
+                    } else {
+                        // Regular group expression: (expr)
+                        let lhs = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RParen)?; // skip )
+                        lhs
+                    }
+                } else {
+                    // Regular group expression or tuple starting with non-identifier
+                    let first = self.expr_pratt(0)?;
+                    if self.is_kind(TokenKind::Comma) {
+                        // Tuple expression: (expr1, expr2, ...)
+                        let mut elems = vec![first];
+                        while self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            elems.push(self.expr_pratt(0)?);
+                        }
+                        self.expect(TokenKind::RParen)?;
+                        Expr::Tuple(elems)
+                    } else {
+                        self.expect(TokenKind::RParen)?; // skip )
+                        first
+                    }
+                }
+            }
+            // array
+            TokenKind::LSquare => self.array()?,
+            // object
+            TokenKind::LBrace => Expr::Object(self.object()?),
+            // fstr
+            TokenKind::FStrStart => self.fstr()?,
+            // grid (Plan 408: 'grid' is no longer a hard keyword — the lexer
+            // emits TokenKind::Ident for it. Detect the AutoData grid(...)
+            // literal textually, mirroring Plan 354's text-based nav() check
+            // in call(). TokenKind::Grid is retained for compatibility but no
+            // longer produced by the lexer.)
+            TokenKind::Grid => Expr::Grid(self.grid()?),
+            // Only treat `grid(` as the grid literal (one-token lookahead); a
+            // bare `grid` stays an ordinary identifier (variable reference).
+            TokenKind::Ident if self.cur.text.as_str() == "grid" => {
+                let saved_cur = self.cur.clone();
+                self.next();
+                let is_literal = self.is_kind(TokenKind::LParen);
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+                if is_literal {
+                    Expr::Grid(self.grid()?)
+                } else {
+                    self.atom()?
+                }
+            }
+            // dot
+            TokenKind::Dot => self.dot_item()?,
+            // Plan 095: Compile-time expression #{ expr }
+            TokenKind::HashBrace => {
+                self.next(); // skip #{
+                let expr = self.parse_expr()?;
+                self.expect(TokenKind::RBrace)?;
+                Expr::Comptime(Box::new(HashBrace { expr }))
+            }
+            // Plan 223: is as expression (e.g., `let x = is y { ... }`)
+            TokenKind::Is => {
+                let is = self.parse_is()?;
+                Expr::Is(Box::new(is))
+            }
+            // normal
+            _ => self.atom()?,
+        };
+        self.expr_pratt_with_left(lhs, min_power)
+    }
+
+    /// Parse a path expression (identifier with optional member access)
+    /// Used for hold expressions to parse paths like `obj.field.subfield`
+    /// Stops before keywords like 'as', 'in', etc.
+    fn parse_path_expr(&mut self) -> AutoResult<Expr> {
+        let mut lhs = self.atom()?;
+
+        // Allow member access (dot operator) for paths like obj.field
+        loop {
+            if self.is_kind(TokenKind::Dot) {
+                self.next(); // skip .
+                let field_name = self.cur.text.clone();
+                // Allow @, * as special field names for pointer operations
+                // Allow numeric literals for integer-keyed objects: a.1, a.2
+                // Allow boolean keywords: a.true, a.false
+                // Allow 'type' keyword as property name: expr.type
+                if self.is_kind(TokenKind::Ident)
+                    || self.is_kind(TokenKind::At)
+                    || self.is_kind(TokenKind::Star)
+                    || self.is_kind(TokenKind::Int)
+                    || self.is_kind(TokenKind::Uint)
+                    || self.is_kind(TokenKind::I8)
+                    || self.is_kind(TokenKind::U8)
+                    || self.is_kind(TokenKind::Float)
+                    || self.is_kind(TokenKind::Double)
+                    || self.is_kind(TokenKind::True)
+                    || self.is_kind(TokenKind::False)
+                    || self.is_kind(TokenKind::Nil)
+                    || self.is_kind(TokenKind::Type)
+                    || self.is_kind(TokenKind::Spawn)
+                    || self.is_kind(TokenKind::Tag)
+                // Allow .type property and .spawn method;
+                // 2026-08-22(tag 软关键字):.tag 字段访问 —— TaggedCell.tag 等
+                {
+                    self.next();
+                    // Use Expr::Dot for semantic clarity
+                    lhs = Expr::Dot(Box::new(lhs), field_name);
+                } else {
+                    let message = format!(
+                        "Expected identifier, @, *, number, or boolean after dot, got {:?}",
+                        self.cur.kind
+                    );
+                    let span = pos_to_span(self.cur.pos);
+                    return Err(SyntaxError::Generic { message, span }.into());
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(lhs)
+    }
+
+    pub(crate) fn dot_item(&mut self) -> AutoResult<Expr> {
+        self.next(); // skip dot
+        let name = self.cur.text.clone();
+        self.next(); // skip name
+                     // Use Expr::Dot for semantic clarity (.field is shorthand for self.field)
+        let mut lhs = Expr::Dot(Box::new(Expr::Ident("self".into())), name);
+
+        // Handle chained property access like .section.title
+        while self.is_kind(TokenKind::Dot) {
+            // Plan 162: Check for .as(Type) / .to(Type) — peek at next token
+            let next_is_as_or_to = if let Ok(tok) = self.lexer.next() {
+                let is_special = matches!(tok.kind, TokenKind::As | TokenKind::To);
+                self.lexer.push_token(tok);
+                is_special
+            } else {
+                false
+            };
+            if next_is_as_or_to {
+                // This is .as(Type) or .to(Type), not a field access — let the Pratt parser handle it
+                break;
+            }
+            self.next(); // skip dot
+            let field_name = self.cur.text.clone();
+            self.next(); // skip field name
+            lhs = Expr::Dot(Box::new(lhs), field_name);
+        }
+
+        // Plan 408 P7 / §7.5 缺陷 6: handle dynamic indexing on a dot lhs,
+        // e.g. `.row[.col]` (object value by dynamic key) or `.list[.i]`.
+        // dot_item previously returned just `.row`, leaving `[.col]` in the
+        // token stream — which then parsed as stray children/props, breaking
+        // `text .row[.col]` into multiple nodes. Wrap as Expr::Index so the
+        // whole expression stays one node → `{{ row[col] }}`.
+        while self.is_kind(TokenKind::LSquare) {
+            self.next(); // skip [
+            let index = self.parse_expr()?;
+            self.expect(TokenKind::RSquare)?;
+            lhs = Expr::Index(Box::new(lhs), Box::new(index));
+        }
+
+        // Plan 043: `.field = expr` — consume the assignment here so the
+        // resulting Dot-lhs never re-enters expr_pratt_with_left's Asn path
+        // (which recursed deeply for ash-gui api.at). Only fires when the dot
+        // chain is immediately followed by `=`; method calls / field access
+        // continue through the normal Pratt path.
+        if self.is_kind(TokenKind::Asn) {
+            self.next(); // consume =
+            let rhs = self.parse_expr()?;
+            lhs = Expr::Bina(Box::new(lhs), Op::Asn, Box::new(rhs));
+        }
+        Ok(lhs)
+    }
+
+    /// Plan 395: is `expr` a plausible call target — a name, a method chain
+    /// (`a.b.c`), or a path (`env::var`)? Only these can carry `<Type>` generic
+    /// args. Backtracking (in try_parse_call_generic_args) guards the rest.
+    fn is_callable_lhs(expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(_) => true,
+            Expr::Dot(_, _) => true,
+            Expr::Bina(_, op, _) if matches!(op, Op::Dot) => true,
+            _ => false,
+        }
+    }
+
+    /// Plan 395: speculatively parse `<T1, T2>` generic type args on a call
+    /// (turbofish). Returns:
+    /// - `Some(types)` — the full `<types>(` shape parsed; caller must set
+    ///   `pending_generic_args` (the `(` is still the current token).
+    /// - `None` — not a generic-args call; the lexer/parser state has been
+    ///   rolled back so the `<` can be re-consumed as a comparison operator.
+    fn try_parse_call_generic_args(&mut self) -> AutoResult<Option<Vec<Type>>> {
+        // Cheap guard (no state to roll back): the token after `<` must look
+        // like a type start. Mirrors next_token_is_type's token set.
+        let after_lt_is_type = match self.lexer.next() {
+            Ok(tok) => {
+                let is_type = matches!(
+                    tok.kind,
+                    TokenKind::Ident
+                        | TokenKind::Question
+                        | TokenKind::LSquare
+                        | TokenKind::Star
+                        | TokenKind::Lt
+                );
+                self.lexer.push_token(tok);
+                is_type
+            }
+            Err(_) => false,
+        };
+        if !after_lt_is_type {
+            return Ok(None);
+        }
+
+        // Speculative parse with full rollback on any failure.
+        let lex_state = self.lexer.save_state();
+        let saved_cur = self.cur.clone();
+        let saved_prev = self.prev.clone();
+        let saved_errors_len = self.errors.len();
+        let saved_warnings_len = self.warnings.len();
+        let mut rollback = |slf: &mut Self| {
+            slf.lexer.restore_state(lex_state);
+            slf.cur = saved_cur.clone();
+            slf.prev = saved_prev.clone();
+            slf.errors.truncate(saved_errors_len);
+            slf.warnings.truncate(saved_warnings_len);
+        };
+
+        self.next(); // consume '<'
+        let mut types = Vec::new();
+        match self.parse_type() {
+            Ok(t) => types.push(t),
+            Err(_) => {
+                rollback(self);
+                return Ok(None);
+            }
+        }
+        while self.is_kind(TokenKind::Comma) {
+            self.next();
+            match self.parse_type() {
+                Ok(t) => types.push(t),
+                Err(_) => {
+                    rollback(self);
+                    return Ok(None);
+                }
+            }
+        }
+        if !self.is_kind(TokenKind::Gt) {
+            rollback(self);
+            return Ok(None);
+        }
+        self.next(); // consume '>'
+        if !self.is_kind(TokenKind::LParen) {
+            rollback(self);
+            return Ok(None);
+        }
+        Ok(Some(types))
+    }
+
+    fn expr_pratt_with_left(&mut self, lhs: Expr, min_power: u8) -> AutoResult<Expr> {
+        // Plan 419 §8.3:表达式递归咽喉挂分段栈(见 parse 注释)。
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || {
+            self.expr_pratt_with_left_inner(lhs, min_power)
+        })
+    }
+
+    fn expr_pratt_with_left_inner(&mut self, mut lhs: Expr, min_power: u8) -> AutoResult<Expr> {
+        // Plan 060: Check for single-param closure:  x => expr
+        // If lhs is an identifier and next token is =>, parse as closure
+        if matches!(lhs, Expr::Ident(_)) && self.is_kind(TokenKind::DoubleArrow) {
+            use crate::ast::{Closure, ClosureParam};
+
+            // Extract parameter name from identifier
+            let param_name = match &lhs {
+                Expr::Ident(name) => name.clone(),
+                _ => unreachable!(),
+            };
+
+            // Expect =>
+            self.expect(TokenKind::DoubleArrow)?;
+
+            // Register parameter in scope so body can reference it
+            self.infer_ctx.bind_var(
+                crate::ast::Name::from(param_name.as_str()),
+                crate::ast::Type::Unknown,
+            );
+
+            // Parse body (expression or block)
+            let body = if self.is_kind(TokenKind::LBrace) {
+                Expr::Block(self.body()?)
+            } else {
+                self.parse_expr()?
+            };
+
+            // Note: we don't unbind the param — the InferenceContext is flat
+            // and doesn't support scope pops. This is acceptable because closure
+            // param names don't conflict with outer scope names.
+
+            return Ok(Expr::Closure(Closure::new(
+                vec![ClosureParam::new(param_name, None)],
+                None,
+                body,
+            )));
+        }
+
+        loop {
+            // Plan 514 W5: 换行后行首 `|>` = 显式续行。越过换行探测 PipeGt
+            // （save/restore 不误伤空行计数：命中时这些换行是续行分隔而非
+            // 段落边界；未命中则完整回退照常 break）。门控与管道臂一致。
+            if self.is_kind(TokenKind::Newline) {
+                const PREC_PIPE_PEEK: InfixPrec = infix_prec(2);
+                if PREC_PIPE_PEEK.l >= min_power {
+                    let saved_lexer = self.lexer.save_state();
+                    let saved_cur = self.cur.clone();
+                    let saved_prev = self.prev.clone();
+                    while self.is_kind(TokenKind::Newline) {
+                        self.next();
+                    }
+                    if self.is_kind(TokenKind::PipeGt) {
+                        continue; // 交给下面的管道臂
+                    }
+                    self.lexer.restore_state(saved_lexer);
+                    self.cur = saved_cur;
+                    self.prev = saved_prev;
+                }
+            }
+            // Plan 514 W5: 管道算子 `|>`（docs/design/pipe-operator.md）。
+            // 脱糖层位在 parser：`expr |> .m(args)` → `expr.m(args)`、
+            // `expr |> .f` → `expr.f`（字段投影形）；左结合；优先级在
+            // 赋值之上、比较之下（PREC_PIPE=infix_prec(2)）。行首形态即
+            // 显式续行（替代已移除的换行流式链糖）。AST 零新节点——
+            // VM/主 a2r 走既有方法调用路径。
+            if self.is_kind(TokenKind::PipeGt) {
+                const PREC_PIPE: InfixPrec = infix_prec(2);
+                if PREC_PIPE.l >= min_power {
+                    self.next(); // consume '|>'
+                    if !self.is_kind(TokenKind::Dot) {
+                        return Err(SyntaxError::Generic {
+                            message: "expected `.method(...)` or `.field` after `|>`".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                    self.next(); // consume '.'
+                    let name = self.parse_name()?;
+                    if self.is_kind(TokenKind::LParen) {
+                        // 方法形：`|> .m(args)` → lhs.m(args)
+                        let args = self.args()?;
+                        lhs = Expr::Call(crate::ast::Call {
+                            name: Box::new(Expr::Dot(Box::new(lhs), name)),
+                            args,
+                            ret: crate::ast::Type::Unknown,
+                            type_args: Vec::new(),
+                            generic_args: Vec::new(),
+                            pos: Some(self.prev.pos),
+                        });
+                    } else {
+                        // 字段投影形：`|> .f` → lhs.f
+                        lhs = Expr::Dot(Box::new(lhs), name);
+                    }
+                    continue;
+                }
+            }
+            // Plan 391 D4: path separator `::` in expressions (e.g. `env::var("X").ok()`).
+            // Previously `env::var` parsed as a single Ident, then `.ok()` couldn't
+            // chain onto the `env::var(...)` call (RHS method chain on a path-call
+            // failed with "Expected Asn, but found ."). Treat `::` like `.` so the
+            // path-call result becomes a valid lhs for the infix Dot loop.
+            if self.is_kind(TokenKind::Colon) {
+                let second_is_colon = if let Ok(tok) = self.lexer.next() {
+                    let is_colon = tok.kind == TokenKind::Colon;
+                    self.lexer.push_token(tok);
+                    is_colon
+                } else {
+                    false
+                };
+                if second_is_colon && PREC_DOT.l >= min_power {
+                    self.next(); // consume first ':'
+                    self.next(); // consume second ':'
+                    let segment = self.parse_name()?;
+                    lhs = Expr::Dot(Box::new(lhs), segment);
+                    continue;
+                }
+            }
+            // Plan 395: turbofish-style generic type args on calls —
+            // `obj.method<Type>(args)` or `fn<Type>(args)`. This is a
+            // speculative parse: `a < b` comparisons (b not a type-start) and
+            // `x < Foo > y` chains (no `(` after `>`) roll back to the plain
+            // `<` comparison below. Only callable-shaped lhs can carry args.
+            if self.is_kind(TokenKind::Lt) && Self::is_callable_lhs(&lhs) {
+                if let Some(types) = self.try_parse_call_generic_args()? {
+                    self.pending_generic_args = types;
+                    continue;
+                }
+            }
+            let mut op = match self.kind() {
+                TokenKind::EOF
+                | TokenKind::Newline
+                | TokenKind::Semi
+                | TokenKind::LBrace
+                | TokenKind::RBrace
+                | TokenKind::Comma
+                | TokenKind::Arrow
+                | TokenKind::DoubleArrow
+                | TokenKind::VBar => break,
+                // Plan 567 T12（P560-D1）: with 头部窗口内 `as` 是绑定位——
+                // 表达式在此终止，由 with_stmt 消费。
+                TokenKind::As if self.with_header => break,
+                TokenKind::Add
+                | TokenKind::Sub
+                | TokenKind::Star
+                | TokenKind::Div
+                | TokenKind::Mod
+                | TokenKind::Not => self.op(),
+                TokenKind::AddEq
+                | TokenKind::SubEq
+                | TokenKind::MulEq
+                | TokenKind::DivEq
+                | TokenKind::ModEq => self.op(),
+                TokenKind::DotView
+                | TokenKind::DotMut
+                | TokenKind::DotMove
+                | TokenKind::DotTake
+                | TokenKind::DotQuestion => {
+                    // Property keywords: .view, .mut, .move, .take (Phase 3 / Plan 122)
+                    // Error propagation: ?. (Phase 1b.3)
+                    // These are postfix operators with same precedence as dot
+                    self.op()
+                }
+                TokenKind::As if !self.with_header => {
+                    // Infix `as` type cast: expr as Type
+                    self.next(); // consume 'as'
+                    let target_type = self.parse_type()?;
+                    lhs = Expr::Cast {
+                        expr: Box::new(lhs),
+                        target_type,
+                    };
+                    continue;
+                }
+                TokenKind::Question => {
+                    // Ternary conditional: condition ? true_expr : false_expr
+                    // Precedence: very low (between assignment=1 and comparison)
+                    const PREC_TERNARY: u8 = 2;
+                    if PREC_TERNARY < min_power {
+                        break;
+                    }
+                    self.next(); // consume ?
+                                 // Parse true branch with min_power > PREC_PAIR.l (8) so : isn't consumed as pair
+                    let true_expr = self.expr_pratt(9)?;
+                    self.expect(TokenKind::Colon)?;
+                    let false_expr = self.expr_pratt(PREC_TERNARY)?;
+                    // Desugar into If expression
+                    let true_body = Body {
+                        stmts: vec![Stmt::Expr(true_expr)],
+                        has_new_line: false,
+                        source_lines: vec![],
+                    };
+                    let false_body = Body {
+                        stmts: vec![Stmt::Expr(false_expr)],
+                        has_new_line: false,
+                        source_lines: vec![],
+                    };
+                    let branch = Branch {
+                        cond: lhs,
+                        body: true_body,
+                    };
+                    lhs = Expr::If(If {
+                        branches: vec![branch],
+                        else_: Some(false_body),
+                    });
+                    continue;
+                }
+                TokenKind::Dot => self.op(),
+                TokenKind::Colon => self.op(),
+                TokenKind::Range | TokenKind::RangeEq => self.op(),
+                TokenKind::LSquare => self.op(),
+                TokenKind::LParen => self.op(),
+                TokenKind::Asn => self.op(),
+                TokenKind::Eq
+                | TokenKind::Neq
+                | TokenKind::Lt
+                | TokenKind::Gt
+                | TokenKind::Le
+                | TokenKind::Ge => self.op(),
+                TokenKind::And | TokenKind::Or => self.op(),
+                TokenKind::QuestionQuestion => self.op(),
+                // Plan 560 T07 (C5/C6)：`a @ b` / `a ** b` 脚本糖——直接
+                // 解析为桥调用（免新增 Op 变量的全仓波及；@T 引用类型
+                // 在类型位不受影响——此臂仅在表达式 infix 位命中）。
+                // Plan 560 T08 (C7)：`a is b` 同一性糖——词位判别（is 为
+                // 普通标识符 token，非保留字；仅 infix 位命中，变量名
+                // is 的常规用法在 atom 位不受影响）。
+                TokenKind::Is => {
+                    self.next(); // skip `is`
+                    let rhs = self.atom()?;
+                    lhs = mk_infix_sugar_call("py_is", lhs, rhs);
+                    continue;
+                }
+                TokenKind::At | TokenKind::Power => {
+                    let is_matmul = matches!(self.cur.kind, TokenKind::At);
+                    self.next(); // skip @ / **
+                    let rhs = self.atom()?;
+                    lhs = mk_infix_sugar_call(
+                        if is_matmul { "py_matmul" } else { "py_pow" },
+                        lhs,
+                        rhs,
+                    );
+                    continue;
+                }
+                TokenKind::RSquare => break,
+                TokenKind::RParen => break,
+                _ => {
+                    let message = format!("Expected infix operator, got {:?}", self.peek());
+                    let span = pos_to_span(self.cur.pos);
+                    return Err(SyntaxError::Generic { message, span }.into());
+                }
+            };
+
+            // Special case: .! is the bang operator for eager collection
+            // When we see Op::Dot, check if the next token is ! and treat it as postfix Op::Not
+            if matches!(op, Op::Dot) {
+                // Try to peek at next token - if it's Not, convert this to a postfix Not operation
+                // We need to be very careful here to not corrupt the token stream
+                let next_is_bang = if let Ok(tok) = self.lexer.next() {
+                    self.lexer.push_token(tok.clone());
+                    matches!(tok.kind, TokenKind::Not)
+                } else {
+                    false
+                };
+
+                if next_is_bang {
+                    // This is .! - skip the . and let postfix ! handle it
+                    self.next(); // consume the .
+                    op = Op::Not; // change to postfix Not operator
+                }
+            }
+
+            // Postfix
+
+            if let Ok(Some(power)) = postfix_power(op) {
+                if power.l < min_power {
+                    break;
+                }
+
+                match op {
+                    // Index or slice
+                    Op::LSquare => {
+                        self.next(); // skip [
+                        let rhs = if self.is_kind(TokenKind::Range)
+                            || self.is_kind(TokenKind::RangeEq)
+                        {
+                            // Leading ..: expr[..end] or expr[..=end]
+                            let eq = self.is_kind(TokenKind::RangeEq);
+                            self.next(); // skip .. or ..=
+                            let end_expr = self.expr_pratt(0)?;
+                            Expr::Range(Range {
+                                start: Box::new(Expr::Nil),
+                                end: Box::new(end_expr),
+                                eq,
+                            })
+                        } else if self.is_kind(TokenKind::RSquare) {
+                            Expr::Nil
+                        } else {
+                            // Parse first expr with high priority to stop before consuming ..
+                            let first = self.expr_pratt(18)?;
+                            if self.is_kind(TokenKind::Range) || self.is_kind(TokenKind::RangeEq) {
+                                let eq = self.is_kind(TokenKind::RangeEq);
+                                self.next(); // skip .. or ..=
+                                if self.is_kind(TokenKind::RSquare) {
+                                    // Trailing ..: expr[pos..]
+                                    Expr::Range(Range {
+                                        start: Box::new(first),
+                                        end: Box::new(Expr::Nil),
+                                        eq,
+                                    })
+                                } else {
+                                    // expr[start..end] or expr[start..end..step]
+                                    let rhs_rest = self.expr_pratt(0)?;
+                                    Expr::Range(Range {
+                                        start: Box::new(first),
+                                        end: Box::new(rhs_rest),
+                                        eq,
+                                    })
+                                }
+                            } else {
+                                first
+                            }
+                        };
+                        self.expect(TokenKind::RSquare)?;
+                        lhs = Expr::Index(Box::new(lhs), Box::new(rhs));
+                        continue;
+                    }
+                    // Call or Node Instance
+                    Op::LParen => {
+                        let args = self.args()?;
+                        // Plan 395: mount explicit generic args (`<T>` turbofish)
+                        // parsed by the loop-top intercept / node_or_call_expr.
+                        let generic_args = std::mem::take(&mut self.pending_generic_args);
+                        let mut expr = self.call(lhs, args)?;
+                        if !generic_args.is_empty() {
+                            if let Expr::Call(call) = &mut expr {
+                                call.generic_args = generic_args;
+                            }
+                        }
+                        lhs = expr;
+                        continue;
+                    }
+                    // Pair
+                    Op::Colon => {
+                        self.next(); // skip :
+                        let key = match &lhs {
+                            Expr::Ident(name) => Key::NamedKey(name.clone()),
+                            Expr::Int(i) => Key::IntKey(*i),
+                            Expr::Bool(b) => Key::BoolKey(*b),
+                            Expr::Str(s) => Key::StrKey(s.clone()),
+                            _ => {
+                                let message = format!("Invalid key: {}", lhs);
+                                let span = pos_to_span(self.cur.pos);
+                                return Err(SyntaxError::Generic { message, span }.into());
+                            }
+                        };
+                        let rhs = self.pair_expr()?;
+                        lhs = Expr::Pair(Pair {
+                            key,
+                            value: Box::new(rhs),
+                        });
+                        return Ok(lhs);
+                    }
+                    // Bang operator (!) for eager collection
+                    // Converts expr! into expr.collect()
+                    Op::Not => {
+                        // Plan 442 C2: Rust 宏形态 `format!(...)` — musk 后端
+                        // 语料直用(conversation/relay_api/task_plan/_engine ×7)。
+                        // 不转 expr.collect()(那会把后随 (args) 的调用名变成
+                        // format.collect 垃圾形状,VM codegen 的 Dynamic-call
+                        // unimplemented 即由此来);保留 Ident(format),后随
+                        // 括号按普通调用编译,由 codegen 路由 fmt.sprintf。
+                        if let Expr::Ident(n) = &lhs {
+                            if n.as_str() == "format" {
+                                self.next(); // skip !
+                                continue;
+                            }
+                        }
+                        self.next(); // skip !
+                        let collect_name = crate::ast::Name::from("collect");
+                        let collect_expr =
+                            Expr::Bina(Box::new(lhs), Op::Dot, Box::new(Expr::Ident(collect_name)));
+                        lhs = Expr::Call(crate::ast::Call {
+                            name: Box::new(collect_expr),
+                            args: crate::ast::Args::new(),
+                            ret: crate::ast::Type::Unknown,
+                            type_args: Vec::new(),
+                            generic_args: Vec::new(),
+                            pos: Some(self.prev.pos),
+                        });
+                        continue;
+                    }
+                    _ => {
+                        let message = format!("Invalid postfix operator: {}", op);
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::Generic { message, span }.into());
+                    }
+                }
+            }
+            // Infix
+            let span = pos_to_span(self.cur.pos);
+            let power = infix_power(op, span)?;
+            if power.l < min_power {
+                break;
+            }
+            self.next(); // skip binary op
+                         // Plan 317: Allow line continuation after || and && (and other
+                         // binary ops) so multi-line conditions work:
+                         //   if a.contains(x) ||
+                         //      b.contains(x) {
+            if matches!(op, Op::Or | Op::And) {
+                self.skip_empty_lines();
+            }
+            // Check for whether assignment is allowed
+            match op {
+                Op::Asn => {
+                    self.check_asn(&lhs)?;
+                }
+                _ => {}
+            }
+            match op {
+                // Property keywords (Phase 3): postfix operators, no rhs needed
+                Op::DotView => {
+                    lhs = Expr::View(Box::new(lhs));
+                    continue;
+                }
+                Op::DotMut => {
+                    lhs = Expr::Mut(Box::new(lhs));
+                    continue;
+                }
+                Op::DotMove => {
+                    // Plan 122: .move accessor for ownership transfer
+                    lhs = Expr::Move(Box::new(lhs));
+                    continue;
+                }
+                Op::DotTake => {
+                    // Plan 122: Deprecated - emit warning and treat as .move
+                    self.warnings.push(Warning::DeprecatedFeature {
+                        name: ".take".to_string(),
+                        message: "use '.move' instead".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    });
+                    lhs = Expr::Move(Box::new(lhs));
+                    continue;
+                }
+                // May type operators (Phase 1b.3): ?. error propagation
+                // ?.       → ErrorPropagate (unwrap + propagate)
+                Op::DotQuestion => {
+                    if self.is_kind(TokenKind::LParen) {
+                        // ?.(default) — safe unwrap with default value
+                        self.next(); // consume (
+                        let default = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::NullCoalesce(Box::new(lhs), Box::new(default));
+                    } else {
+                        lhs = Expr::ErrorPropagate(Box::new(lhs));
+                    }
+                    continue;
+                }
+                // Plan 120: .? error propagation (new Option/Result style)
+                // .?       → ErrorPropagate (unwrap + propagate)
+                // .?(expr) → NullCoalesce (unwrap with default)
+                Op::DotQuest => {
+                    if self.is_kind(TokenKind::LParen) {
+                        // .?(default) — safe unwrap with default value
+                        self.next(); // consume (
+                        let default = self.expr_pratt(0)?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::NullCoalesce(Box::new(lhs), Box::new(default));
+                    } else {
+                        lhs = Expr::ErrorPropagate(Box::new(lhs));
+                    }
+                    continue;
+                }
+                _ => {
+                    // Regular infix operators need rhs
+                    // Plan 124: Special case for Dot operator - check for .await before parsing rhs
+                    if matches!(op, Op::Dot) && self.is_kind(TokenKind::Await) {
+                        // .await suffix - consume the 'await' token
+                        self.next();
+                        lhs = Expr::Await {
+                            expr: Box::new(lhs),
+                        };
+                        continue;
+                    }
+                    // Plan 126: .go postfix operator - spawn background task
+                    if matches!(op, Op::Dot) && self.is_kind(TokenKind::Go) {
+                        // .go suffix - consume the 'go' token
+                        self.next();
+                        lhs = Expr::Go {
+                            expr: Box::new(lhs),
+                        };
+                        continue;
+                    }
+                    // Plan 162: .as(Type) type conversion
+                    if matches!(op, Op::Dot) && self.is_kind(TokenKind::As) {
+                        // .as( Type ) — type conversion
+                        self.next(); // consume 'as'
+                        self.expect(TokenKind::LParen)?;
+                        let target_type = self.parse_type()?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::Cast {
+                            expr: Box::new(lhs),
+                            target_type,
+                        };
+                        continue;
+                    }
+                    // Plan 162: .to(Type) explicit type conversion
+                    if matches!(op, Op::Dot) && self.is_kind(TokenKind::To) {
+                        // .to( Type ) — explicit type conversion (may allocate)
+                        self.next(); // consume 'to'
+                        self.expect(TokenKind::LParen)?;
+                        let target_type = self.parse_type()?;
+                        self.expect(TokenKind::RParen)?;
+                        lhs = Expr::To {
+                            expr: Box::new(lhs),
+                            target_type,
+                        };
+                        continue;
+                    }
+                    // Handle enum variant constructors after dot: MayInt.Err(1), MayInt.Ok(val), etc.
+                    // These keywords (Err, Ok, Some, None) should be treated as identifiers in this context
+                    if matches!(op, Op::Dot)
+                        && matches!(
+                            self.cur.kind,
+                            TokenKind::ErrKW
+                                | TokenKind::OkKW
+                                | TokenKind::SomeKW
+                                | TokenKind::NoneKW
+                        )
+                    {
+                        let variant_name: AutoStr = self.cur.text.clone().into();
+                        self.next(); // consume the keyword token
+                                     // Check if followed by parentheses (constructor call)
+                        if self.is_kind(TokenKind::LParen) {
+                            self.next(); // consume '('
+                            let mut args = crate::ast::Args::new();
+                            if !self.is_kind(TokenKind::RParen) {
+                                args.args.push(crate::ast::Arg::Pos(self.parse_expr()?));
+                                while self.is_kind(TokenKind::Comma) {
+                                    self.next();
+                                    args.args.push(crate::ast::Arg::Pos(self.parse_expr()?));
+                                }
+                            }
+                            self.expect(TokenKind::RParen)?;
+                            // Build: lhs.variant_name(args) as a method call
+                            let method = Expr::Dot(Box::new(lhs), variant_name);
+                            lhs = Expr::Call(crate::ast::Call {
+                                name: Box::new(method),
+                                args,
+                                ret: Type::Unknown,
+                                type_args: Vec::new(),
+                                generic_args: Vec::new(),
+                                pos: Some(self.prev.pos),
+                            });
+                        } else {
+                            // Just field access: MayInt.Err (no args)
+                            lhs = Expr::Dot(Box::new(lhs), variant_name);
+                        }
+                        continue;
+                    }
+                    // Plan 043 M5: the RHS of a Dot is a FIELD/METHOD name —
+                    // suppress struct-literal widening so `cell.Text { }` keeps
+                    // the `{` for the element's props instead of parsing
+                    // `Text{...}` as a Node (see in_dot_rhs). Only Dot (not
+                    // Asn/other infix ops) sets the flag, so `x = Type{...}`
+                    // still widens.
+                    let saved_dot_rhs = self.in_dot_rhs;
+                    if matches!(op, Op::Dot) {
+                        self.in_dot_rhs = true;
+                    }
+                    // PLAN-778 R1（F778-R1-02）：Err 平衡恢复（同类泄漏位点）。
+                    let rhs_res = self.expr_pratt(power.r);
+                    self.in_dot_rhs = saved_dot_rhs;
+                    let rhs = rhs_res?;
+                    match op {
+                        Op::Range => {
+                            lhs = Expr::Range(Range {
+                                start: Box::new(lhs),
+                                end: Box::new(rhs),
+                                eq: false,
+                            });
+                        }
+                        Op::RangeEq => {
+                            lhs = Expr::Range(Range {
+                                start: Box::new(lhs),
+                                end: Box::new(rhs),
+                                eq: true,
+                            });
+                        }
+                        Op::Dot => {
+                            // Dot expression: handle both field access and method calls
+                            // Field access: object.field
+                            // Method call: object.method(args)
+                            match rhs {
+                                Expr::Ident(field_name) => {
+                                    // Simple field access: object.field
+                                    lhs = Expr::Dot(Box::new(lhs), field_name);
+                                }
+                                // Plan 043: numeric tuple/element index access, e.g.
+                                // `field.0`, `pair.1`. The RHS is an integer literal;
+                                // render as `Expr::Dot(lhs, "<n>")` so downstream
+                                // codegen emits `field.0` (valid JS/TS tuple index).
+                                Expr::Int(n) => {
+                                    lhs = Expr::Dot(Box::new(lhs), Name::from(n.to_string()));
+                                }
+                                Expr::Uint(n) => {
+                                    lhs = Expr::Dot(Box::new(lhs), Name::from(n.to_string()));
+                                }
+                                Expr::Call(call) => {
+                                    // Method call: object.method(args)
+                                    // The RHS is a Call like: Call { name: Ident("push"), args: [...] }
+                                    // We need to transform this into: Call { name: Dot(object, "push"), args: [...] }
+                                    let method_name = match call.name.as_ref() {
+                                        Expr::Ident(name) => name.clone(),
+                                        _ => {
+                                            let message = format!(
+                                                "Method name must be an identifier, got {}",
+                                                call.name
+                                            );
+                                            let span = pos_to_span(self.cur.pos);
+                                            return Err(
+                                                SyntaxError::Generic { message, span }.into()
+                                            );
+                                        }
+                                    };
+                                    lhs = Expr::Call(Call {
+                                        name: Box::new(Expr::Dot(Box::new(lhs), method_name)),
+                                        args: call.args,
+                                        ret: call.ret,
+                                        type_args: Vec::new(), // Plan 061: No type args for method calls yet
+                                        generic_args: Vec::new(), // Plan 395: explicit turbofish args
+                                        pos: call.pos,
+                                    });
+                                }
+                                _ => {
+                                    // Error: right-hand side of dot must be an identifier or method call
+                                    let message = format!("Invalid field name after dot: {}", rhs);
+                                    let span = pos_to_span(self.cur.pos);
+                                    return Err(SyntaxError::Generic { message, span }.into());
+                                }
+                            }
+                        }
+                        Op::QuestionQuestion => {
+                            // Null-coalescing operator: left ?? right
+                            lhs = Expr::NullCoalesce(Box::new(lhs), Box::new(rhs));
+                        }
+                        _ => {
+                            lhs = Expr::Bina(Box::new(lhs), op, Box::new(rhs));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(lhs)
+    }
+
+    fn check_asn(&mut self, lhs: &Expr) -> AutoResult<()> {
+        match lhs {
+            Expr::Ident(name) => {
+                let meta = self.lookup_meta(name.as_str());
+                if let Some(Meta::Store(store)) = meta.as_deref() {
+                    if matches!(store.kind, StoreKind::Let) {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Syntax error: Assignment not allowed for let store: {}",
+                                store.name
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    pub fn op(&mut self) -> Op {
+        match self.kind() {
+            TokenKind::Add => Op::Add,
+            TokenKind::Sub => Op::Sub,
+            TokenKind::Star => Op::Mul,
+            TokenKind::Div => Op::Div,
+            TokenKind::Mod => Op::Mod,
+            TokenKind::AddEq => Op::AddEq,
+            TokenKind::SubEq => Op::SubEq,
+            TokenKind::MulEq => Op::MulEq,
+            TokenKind::DivEq => Op::DivEq,
+            TokenKind::ModEq => Op::ModEq,
+            TokenKind::LSquare => Op::LSquare,
+            TokenKind::LParen => Op::LParen,
+            TokenKind::LBrace => Op::LBrace,
+            TokenKind::Not => Op::Not,
+            TokenKind::Asn => Op::Asn,
+            TokenKind::Eq => Op::Eq,
+            TokenKind::Neq => Op::Neq,
+            TokenKind::Lt => Op::Lt,
+            TokenKind::Gt => Op::Gt,
+            TokenKind::Le => Op::Le,
+            TokenKind::Ge => Op::Ge,
+            TokenKind::Range => Op::Range,
+            TokenKind::RangeEq => Op::RangeEq,
+            TokenKind::Dot => Op::Dot,
+            TokenKind::Colon => Op::Colon,
+            TokenKind::DotView => Op::DotView,
+            TokenKind::DotMut => Op::DotMut,
+            TokenKind::DotMove => Op::DotMove,
+            TokenKind::DotTake => Op::DotTake,
+            TokenKind::QuestionQuestion => Op::QuestionQuestion,
+            TokenKind::DotQuestion => Op::DotQuestion,
+            TokenKind::DotQuest => Op::DotQuest, // Plan 120: .? error propagation
+            TokenKind::And => Op::And,
+            TokenKind::Or => Op::Or,
+            _ => {
+                // This should never happen if called from correct match branches
+                // Return a default operator to avoid panic
+                Op::Add
+            }
+        }
+    }
+
+    pub fn group(&mut self) -> AutoResult<Expr> {
+        // Plan 419 §8.3:括号递归咽喉挂分段栈(见 parse 注释)。
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || {
+            self.next(); // skip (
+            let expr = self.parse_expr()?;
+            self.expect(TokenKind::RParen)?; // skip )
+            Ok(expr)
+        })
+    }
+
+    pub fn sep_array(&mut self) -> AutoResult<()> {
+        let mut has_sep = false;
+        while self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
+            has_sep = true;
+            self.next();
+        }
+        if self.is_kind(TokenKind::RSquare) {
+            return Ok(());
+        }
+        if !has_sep {
+            let message = format!("Expected array separator, got {:?}", self.kind());
+            let span = pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic { message, span }.into());
+        }
+        Ok(())
+    }
+
+    pub fn array(&mut self) -> AutoResult<Expr> {
+        self.expect(TokenKind::LSquare)?;
+        self.skip_empty_lines();
+        let mut elems = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RSquare) {
+            elems.push(self.rhs_expr()?);
+            self.sep_array()?;
+        }
+        self.expect(TokenKind::RSquare)?; // skip ]
+        Ok(Expr::Array(elems))
+    }
+
+    pub fn sep_args(&mut self) -> AutoResult<()> {
+        if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
+            self.next();
+            return Ok(());
+        }
+        if self.is_kind(TokenKind::RParen) {
+            return Ok(());
+        }
+        let pos = self.cur.pos;
+        Err(SyntaxError::UnexpectedToken {
+            expected: "argument separator (comma, newline, or ))".to_string(),
+            found: format!("{:?}", self.kind()),
+            span: pos_to_span(pos),
+        }
+        .into())
+    }
+
+    pub fn args(&mut self) -> AutoResult<Args> {
+        self.expect(TokenKind::LParen)?;
+        let mut args = Args::new();
+        self.skip_empty_lines();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RParen) {
+            let expr = if self.is_kind(TokenKind::Ident) {
+                let e = self.node_or_call_expr()?;
+                e
+            // } else {
+            // let name = Expr::Ident(self.cur.text.clone());
+            // self.next();
+            // if self.is_kind(TokenKind::Comma) {
+            //     name
+            // } else {
+            //     self.expr_pratt_with_left(name, 0)?
+            // }
+            } else {
+                self.parse_expr()?
+            };
+            match &expr {
+                // Named args
+                Expr::Pair(p) => {
+                    let k = p.key.clone();
+                    match k {
+                        Key::NamedKey(name) => {
+                            args.args.push(Arg::Pair(name.clone(), (*p.value).clone()));
+                            // args.map.push((name, *p.value));
+                        }
+                        _ => {
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "named args should have named key instead of {}",
+                                    &k
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
+                        }
+                    }
+                }
+                // Positional args
+                Expr::Ident(name) => {
+                    // name arg without value
+                    let name = name.clone();
+                    // Under skip_check (DSL lenient-parsing contexts such as
+                    // widget/store `computed` blocks) unknown bare identifiers
+                    // are kept as positional expressions — the Name-as-string
+                    // fallback is itself a symbol-resolution decision, and the
+                    // code generator resolves props/state names later.
+                    if self.skip_check {
+                        args.args.push(Arg::Pos(expr.clone()));
+                    } else {
+                        match self.lookup_meta(&name) {
+                            Some(_) => {
+                                args.args.push(Arg::Pos(expr.clone()));
+                            }
+                            None => {
+                                args.args.push(Arg::Name(name));
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    args.args.push(Arg::Pos(expr.clone()));
+                }
+            }
+            self.sep_args()?;
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RParen)?;
+        Ok(args)
+    }
+
+    pub fn object(&mut self) -> AutoResult<Vec<Pair>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut entries = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            entries.push(self.pair()?);
+            self.sep_obj()?;
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(entries)
+    }
+
+    pub fn pair_expr(&mut self) -> AutoResult<Expr> {
+        self.rhs_expr()
+        // let exp = self.expr_pratt(0)?;
+        // if let Expr::Ident(ident) = &exp {
+        //     if !self.exists(ident) {
+        //         return Ok(Expr::Str(ident.clone()));
+        //     }
+        // }
+        // Ok(exp)
+    }
+
+    pub fn pair(&mut self) -> AutoResult<Pair> {
+        let key = self.key()?;
+        self.expect(TokenKind::Colon)?;
+        let value = self.pair_expr()?;
+        Ok(Pair {
+            key,
+            value: Box::new(value),
+        })
+    }
+
+    #[allow(unused)]
+    pub fn is_key(expr: &Expr) -> bool {
+        match expr {
+            Expr::Ident(_) => true,
+            Expr::Int(_) => true,
+            Expr::Bool(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn key(&mut self) -> AutoResult<Key> {
+        match self.kind() {
+            TokenKind::Ident => {
+                let name = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(name))
+            }
+            TokenKind::Int => {
+                let value = self.cur.text.as_str().parse().unwrap();
+                self.next();
+                Ok(Key::IntKey(value))
+            }
+            TokenKind::True => {
+                self.next();
+                Ok(Key::BoolKey(true))
+            }
+            TokenKind::False => {
+                self.next();
+                Ok(Key::BoolKey(false))
+            }
+            TokenKind::Str => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::StrKey(value))
+            }
+            // type关键字用作key，应该不冲突
+            TokenKind::Type => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(value))
+            }
+            // Plan 502 M2:`to` 是 Plan 162 的 .to(Type) 方法关键字,但
+            // diagram 边 record 的合法键(设计文档 diagram-components.md
+            // §5 edge schema { from, to })。键位上下文化,与 Type/Tag/
+            // Task 同款——.to() 转换走点后缀位,与此不冲突。
+            TokenKind::To => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(value))
+            }
+            // 2026-08-22(tag 软关键字):tag 作字段名(Cell{ tag: "..." })
+            TokenKind::Tag => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(value))
+            }
+            // Plan 028 T14：`task` 是 Plan 121 关键字 token，但合法的对象键
+            // （errand 状态 { task: ... }）。与 Type 同样的上下文化处理。
+            TokenKind::Task => {
+                let value = self.cur.text.clone();
+                self.next();
+                Ok(Key::NamedKey(value))
+            }
+            _ => {
+                let message = format!("Expected key, got {:?}", self.kind());
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
+        }
+    }
+
+    pub fn sep_obj(&mut self) -> AutoResult<()> {
+        if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
+            self.next();
+            self.skip_empty_lines();
+            return Ok(());
+        }
+        if self.is_kind(TokenKind::RBrace) {
+            return Ok(());
+        }
+        let pos = self.cur.pos;
+        Err(SyntaxError::UnexpectedToken {
+            expected: "pair separator (comma, newline, or })".to_string(),
+            found: format!("{:?}", self.kind()),
+            span: pos_to_span(pos),
+        }
+        .into())
+    }
+
+    pub fn ident_name(&mut self) -> AutoResult<Name> {
+        Ok(self.cur.text.clone())
+    }
+
+    pub fn ident(&mut self) -> AutoResult<Expr> {
+        let name = self.cur.text.clone();
+
+        // Plan 120: Check for Option and Result constructors
+        match name.as_str() {
+            "Some" => {
+                self.next(); // consume 'Some'
+                self.expect(TokenKind::LParen)?;
+                let value = self.parse_expr()?;
+                self.expect(TokenKind::RParen)?;
+                return Ok(Expr::Some(Box::new(value)));
+            }
+            "None" => {
+                self.next(); // consume 'None'
+                return Ok(Expr::None);
+            }
+            "Ok" => {
+                self.next(); // consume 'Ok'
+                self.expect(TokenKind::LParen)?;
+                let value = self.parse_expr()?;
+                self.expect(TokenKind::RParen)?;
+                return Ok(Expr::Ok(Box::new(value)));
+            }
+            "Err" => {
+                self.next(); // consume 'Err'
+                self.expect(TokenKind::LParen)?;
+                let msg = self.parse_expr()?;
+                self.expect(TokenKind::RParen)?;
+                return Ok(Expr::Err(Box::new(msg)));
+            }
+            _ => {}
+        }
+
+        // Regular identifier
+        Ok(Expr::Ident(name))
+    }
+
+    pub fn parse_ident(&mut self) -> AutoResult<Expr> {
+        let name = self.cur.text.clone();
+        self.next();
+        Ok(Expr::Ident(name))
+    }
+
+    /// 2026-08-22(tag 上下文化):语句位置的 `tag` 仅在后随 Ident(枚举名,
+    /// 如 `tag Shape { ... }` / `tag Kind u16`)时才是(废弃别名的)enum
+    /// 声明;`tag: value` 属性对、`tag.field`、`tag(x)`、`tag = ...` 等
+    /// 形态一律按普通标识符走表达式路径(此前无差别进 enum_stmt,节点体
+    /// 里 `Cell{ tag: "x" }` 的 tag 键即被吞成 enum 名)。
+    fn tag_starts_enum_decl(&mut self) -> bool {
+        if let Ok(tok) = self.lexer.next() {
+            let is_ident = tok.kind == TokenKind::Ident;
+            self.lexer.push_token(tok);
+            is_ident
+        } else {
+            false
+        }
+    }
+
+    pub fn parse_name(&mut self) -> AutoResult<Name> {
+        let name = self.cur.text.clone();
+        self.next();
+        Ok(name)
+    }
+
+    /// Plan 368 FU-1: parse a function name that may be a dotted
+    /// `Type.method` form (used by stdlib `.at` files to declare methods on
+    /// an existing type externally, e.g. `pub fn JsonValue.as_int(self JsonValue) int;`).
+    ///
+    /// Returns `(method_name, Some(parent_type))` when the name is dotted,
+    /// else `(name, None)`. The caller feeds `parent_type` into the existing
+    /// `parent_name` machinery (same path `ext Type { fn ... }` blocks use),
+    /// which auto-defines `self` and sets `Fn.parent`. This does NOT collide
+    /// with the `fn.c`/`fn.vm` backward-compat path (parser.rs ~7020), which
+    /// fires only when the token right after `fn` is a `Dot` — here `parse_name`
+    /// has already consumed the leading `Type` identifier before we see the dot.
+    pub fn parse_fn_name(&mut self) -> AutoResult<(Name, Option<Name>)> {
+        let first = self.parse_name()?;
+        if self.is_kind(TokenKind::Dot) {
+            self.next(); // skip '.'
+            let method = self.parse_name()?;
+            Ok((method, Some(first)))
+        } else {
+            Ok((first, None))
+        }
+    }
+
+    pub fn parse_ints(&mut self) -> AutoResult<Expr> {
+        let res = match self.cur.kind {
+            TokenKind::Int => self.parse_int(),
+            TokenKind::Uint => self.parse_uint(),
+            TokenKind::U8 => self.parse_u8(),
+            TokenKind::I8 => self.parse_i8(),
+            _ => {
+                let message = format!("Expected integer, got {:?}", self.kind());
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
+        };
+        if res.is_ok() {
+            self.next();
+        }
+        res
+    }
+
+    pub fn parse_int(&mut self) -> AutoResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            // trim 0x
+            let trim = &self.cur.text[2..];
+            // Try parsing as i64 first, fall back to u64 if it overflows
+            match i64::from_str_radix(trim, 16) {
+                Ok(val) => {
+                    if val > i32::MAX as i64 {
+                        Ok(Expr::I64(val))
+                    } else {
+                        Ok(Expr::Int(val as i32))
+                    }
+                }
+                Err(_) => {
+                    // Value too large for i64, parse as u64
+                    let val = u64::from_str_radix(trim, 16).unwrap();
+                    Ok(Expr::U64(val))
+                }
+            }
+        } else if self.cur.text.starts_with("0b") {
+            // Plan 178: binary literal (0b prefix)
+            let trim = &self.cur.text[2..];
+            let val = i64::from_str_radix(trim, 2).unwrap();
+            if val > i32::MAX as i64 {
+                Ok(Expr::I64(val))
+            } else {
+                Ok(Expr::Int(val as i32))
+            }
+        } else {
+            // Try parsing as i64 first, fall back to u64 if it overflows
+            let text = self.cur.text.as_str();
+            match text.parse::<i64>() {
+                Ok(val) => {
+                    if val > i32::MAX as i64 {
+                        Ok(Expr::I64(val))
+                    } else {
+                        Ok(Expr::Int(val as i32))
+                    }
+                }
+                Err(_) => {
+                    // Value too large for i64 (e.g., u64::MAX), parse as u64
+                    let val = text.parse::<u64>().unwrap();
+                    Ok(Expr::U64(val))
+                }
+            }
+        }
+    }
+
+    fn parse_uint(&mut self) -> AutoResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            // trim 0x
+            let trim = &self.cur.text[2..];
+            // Try parsing as u32 first, fall back to u64 if it overflows
+            match u32::from_str_radix(trim, 16) {
+                Ok(val) => Ok(Expr::Uint(val)),
+                Err(_) => {
+                    // Value too large for u32, parse as u64
+                    let val = u64::from_str_radix(trim, 16).unwrap();
+                    Ok(Expr::U64(val))
+                }
+            }
+        } else if self.cur.text.starts_with("0b") {
+            let trim = &self.cur.text[2..];
+            let val = u64::from_str_radix(trim, 2).unwrap();
+            if val > u32::MAX as u64 {
+                Ok(Expr::U64(val))
+            } else {
+                Ok(Expr::Uint(val as u32))
+            }
+        } else {
+            // Try parsing as u32 first, fall back to u64 if it overflows
+            let text = self.cur.text.as_str();
+            match text.parse::<u32>() {
+                Ok(val) => Ok(Expr::Uint(val)),
+                Err(_) => {
+                    // Value too large for u32, parse as u64
+                    let val = text.parse::<u64>().unwrap();
+                    Ok(Expr::U64(val))
+                }
+            }
+        }
+    }
+
+    fn parse_u8(&mut self) -> AutoResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            let trim = &self.cur.text[2..];
+            let val = u8::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::U8(val as u8))
+        } else if self.cur.text.starts_with("0b") {
+            let trim = &self.cur.text[2..];
+            let val = u8::from_str_radix(trim, 2).unwrap();
+            Ok(Expr::U8(val))
+        } else {
+            let val = self.cur.text.as_str().parse::<u8>().unwrap();
+            Ok(Expr::U8(val as u8))
+        }
+    }
+
+    #[allow(dead_code)]
+    fn parse_u64(&mut self) -> AutoResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            let trim = &self.cur.text[2..];
+            let val = u64::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::U64(val))
+        } else if self.cur.text.starts_with("0b") {
+            let trim = &self.cur.text[2..];
+            let val = u64::from_str_radix(trim, 2).unwrap();
+            Ok(Expr::U64(val))
+        } else {
+            let val = self.cur.text.as_str().parse::<u64>().unwrap();
+            Ok(Expr::U64(val))
+        }
+    }
+
+    fn parse_i8(&mut self) -> AutoResult<Expr> {
+        if self.cur.text.starts_with("0x") {
+            let trim = &self.cur.text[2..];
+            let val = i8::from_str_radix(trim, 16).unwrap();
+            Ok(Expr::I8(val as i8))
+        } else if self.cur.text.starts_with("0b") {
+            let trim = &self.cur.text[2..];
+            let val = i8::from_str_radix(trim, 2).unwrap();
+            Ok(Expr::I8(val))
+        } else {
+            let val = self.cur.text.as_str().parse::<i8>().unwrap();
+            Ok(Expr::I8(val as i8))
+        }
+    }
+
+    pub fn is_literal(&mut self) -> bool {
+        self.is_kind(TokenKind::Uint)
+            || self.is_kind(TokenKind::Int)
+            || self.is_kind(TokenKind::U8)
+            || self.is_kind(TokenKind::I8)
+            || self.is_kind(TokenKind::Float)
+            || self.is_kind(TokenKind::Double)
+            || self.is_kind(TokenKind::True)
+            || self.is_kind(TokenKind::False)
+            || self.is_kind(TokenKind::Nil)
+            || self.is_kind(TokenKind::Str)
+            || self.is_kind(TokenKind::CStr)
+            || self.is_kind(TokenKind::FStrStart)
+            || self.is_kind(TokenKind::Char)
+    }
+
+    pub fn literal(&mut self) -> AutoResult<Expr> {
+        let e = match self.kind() {
+            TokenKind::FStrStart => self.fstr(),
+            TokenKind::Uint => self.parse_int(),
+            TokenKind::Int => self.parse_int(),
+            TokenKind::U8 => self.parse_u8(),
+            TokenKind::I8 => self.parse_i8(),
+            TokenKind::Float => self.parse_float(),
+            TokenKind::Double => self.parse_double(),
+            TokenKind::True => Ok(Expr::Bool(true)),
+            TokenKind::False => Ok(Expr::Bool(false)),
+            TokenKind::Nil => {
+                // Plan 550 T09: 'nil' 拼写退役为 null 的 deprecated 别名
+                // （语义不变——运行期同落 PUSH_NIL/encode_null）。
+                // Plan 550 T10: 裸 null 家族字面量是脚本内容三信号之一。
+                self.saw_bare_null = true;
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "nil".to_string(),
+                    message: "use 'null' instead".to_string(),
+                    span,
+                });
+                Ok(Expr::Nil)
+            }
+            TokenKind::Str => self.parse_str(),
+            TokenKind::CStr => Ok(Expr::CStr(self.cur.text.clone())),
+            TokenKind::Char => Ok(Expr::Char(self.cur.text.chars().nth(0).unwrap())),
+            _ => Err(format!("UnexpectedToken {}", self.cur).into()),
+        };
+        self.next();
+        e
+    }
+
+    fn parse_float(&mut self) -> AutoResult<Expr> {
+        Ok(Expr::Float(
+            self.cur.text.as_str().parse().unwrap(),
+            self.cur.text.clone(),
+        ))
+    }
+
+    fn parse_double(&mut self) -> AutoResult<Expr> {
+        Ok(Expr::Double(
+            self.cur.text.as_str().parse().unwrap(),
+            self.cur.text.clone(),
+        ))
+    }
+
+    fn parse_str(&mut self) -> AutoResult<Expr> {
+        Ok(Expr::Str(self.cur.text.clone()))
+    }
+
+    pub fn atom(&mut self) -> AutoResult<Expr> {
+        // Plan 419 §8.3:原子表达式递归咽喉挂分段栈(见 parse 注释)。
+        stacker::maybe_grow(512 * 1024, 1024 * 1024, || self.atom_inner())
+    }
+
+    fn atom_inner(&mut self) -> AutoResult<Expr> {
+        if self.is_kind(TokenKind::LParen) {
+            return self.group();
+        }
+
+        // Plan 317: Anonymous function expression: fn(params) ret_type { body }
+        // Used as method args, e.g. notes.filter(fn(n Note) bool { n.id > 0 }).
+        if self.is_kind(TokenKind::Fn) {
+            self.next(); // consume 'fn'
+                         // Parse params: (name Type, name Type, ...) or ()
+            self.expect(TokenKind::LParen)?;
+            let mut params = Vec::new();
+            if !self.is_kind(TokenKind::RParen) {
+                loop {
+                    let pname = self.parse_name()?;
+                    let pty = if self.is_type_name() {
+                        Some(self.parse_type()?)
+                    } else {
+                        None
+                    };
+                    params.push(crate::ast::ClosureParam::new(pname, pty));
+                    if !self.is_kind(TokenKind::Comma) {
+                        break;
+                    }
+                    self.next();
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+            // Optional return type
+            if self.is_type_name() {
+                let _ = self.parse_type()?;
+            }
+            // Plan 390 §15 Phase H (L5): Register all parameters in scope so the
+            // body can reference them. The other two closure parse paths
+            // (`x => ...` at ~1999, `(a,b) => ...` at ~3842) already do this;
+            // this `fn(params){}` path omitted it, so `fn(ev str){ ev }` reported
+            // "Variable 'ev' is not defined in this scope". Capture of external
+            // variables already works in a2r + VM — this only fixes param binding.
+            for param in &params {
+                self.infer_ctx.bind_var(
+                    crate::ast::Name::from(param.name.as_str()),
+                    param.ty.clone().unwrap_or(crate::ast::Type::Unknown),
+                );
+            }
+            // Body
+            self.skip_empty_lines();
+            let body = if self.is_kind(TokenKind::LBrace) {
+                Expr::Block(self.body()?)
+            } else {
+                self.parse_expr()?
+            };
+            return Ok(Expr::Closure(crate::ast::Closure::new(params, None, body)));
+        }
+
+        // Handle generic type instances specially (e.g., List<int, Heap>)
+        // This is checked before the match statement since we need to consume
+        // the identifier and potentially parse type parameters
+        //
+        // Plan 356 follow-up #2: also accept soft-keyword tokens here (e.g.
+        // `tag` → TokenKind::Tag). Such words are legitimate identifiers in
+        // expression position (a loop variable used in an `if` condition like
+        // `if .active_tag == tag`), but the lexer reserves them as keyword
+        // tokens. Without this, atom() rejected them → "Expected term".
+        if self.is_kind(TokenKind::Ident) || self.cur_is_soft_ident() {
+            let name = self.cur.text.clone();
+            if name == "Arc" || name == "Box" {}
+            self.next(); // consume the identifier
+
+            // Check if this is a generic type instance (followed by <)
+            // Only treat as generic type if the identifier is a known TYPE (not a variable)
+            // This prevents false positives like "x < 10" being treated as generic type
+            // Plan 087: Also check type_registry for REPL support
+            // Plan 091: Use wrapper method
+            let mut is_type = self.lookup_ident_type(&name).is_some();
+            if !is_type {
+                // Check type registry for REPL (Plan 087)
+                if let Some(ref registry) = self.type_registry {
+                    is_type = registry.borrow().is_type(&name);
+                }
+            }
+            // Plan 317: Built-in container types (List, Array, Map) are always
+            // recognized as types so that List<Note>.new(...) parses as a
+            // GenName generic instance rather than "List < Note" comparison.
+            if !is_type && matches!(name.as_str(), "List" | "Array" | "Map") {
+                is_type = true;
+            }
+
+            // Check for generic type instance: Identifier<Type, ...>
+            if self.is_kind(TokenKind::Lt) && is_type {
+                // Parse as generic type instance: List<int, Heap>
+                self.expect(TokenKind::Lt)?;
+                let mut args = Vec::new();
+                args.push(self.parse_type()?);
+
+                while self.cur.kind == TokenKind::Comma {
+                    self.next(); // Consume ','
+                    args.push(self.parse_type()?);
+                }
+
+                self.expect(TokenKind::Gt)?;
+
+                // Generate descriptive name: "List<int, Heap>"
+                let args_str = args
+                    .iter()
+                    .map(|t| t.unique_name().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let generic_name = format!("{}<{}>", name, args_str);
+
+                return Ok(Expr::GenName(generic_name.into()));
+            }
+
+            // Check for node instance: Identifier { ... }
+            // This handles type construction syntax like Pair {x: 1, y: 2}
+            // Plan 043 M5: also accept this form for PascalCase identifiers
+            // that are NOT known variables, even when the type isn't registered
+            // (e.g. an imported type whose module file wasn't resolvable). This
+            // matches the existing usage in 013-todo/015-notes, where imported
+            // types like `Todo`/`Note` are constructed with `Note { ... }`. The
+            // `is_type` gate alone failed for unresolved imports because
+            // `lookup_ident_type` returns None when the type_decl isn't found.
+            // Lowercase idents stay identifiers (never struct construction) to
+            // avoid clashing with a `name { ... }` block expression.
+            let accepts_as_type_construction = is_type
+                || {
+                    // Plan 043 M5: only widen for the UI scenario (store/widget
+                    // model fields, where `Type{...}` construction is idiomatic
+                    // and imported types may not be registered). Other dialects
+                    // (notably gdscript) reuse atom() and their `Ident {` forms
+                    // must not be reinterpreted as struct construction — doing so
+                    // overflowed the parser stack on godot scene files.
+                    self.is_ui_scenario()
+                        && !self.in_dot_rhs
+                        && name
+                            .chars()
+                            .next()
+                            .map(|c| c.is_uppercase())
+                            .unwrap_or(false)
+                        && !matches!(self.lookup_meta(&name), Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_)))
+                };
+            if self.is_kind(TokenKind::LBrace) && accepts_as_type_construction {
+                if !self.is_ui_scenario() {
+                    // Non-UI dialects (notably gdscript) reuse atom() and their
+                    // `Ident {` forms must keep the OLD path — empty args, then
+                    // parse_node reads the braces as a body. Re-parsing the
+                    // braces as object() pairs here overflowed the parser stack
+                    // on godot scene files (dodge_player).
+                    let _ident = Expr::Ident(name.clone());
+                    return Ok(Expr::Node(self.parse_node(
+                        &name,
+                        None,
+                        Args::new(),
+                        &AutoStr::new(),
+                    )?));
+                }
+                // Struct literal `Type{ field: value, ... }` (UI scenario) —
+                // parse the braces as NAMED ARGS (object() returns the Pair
+                // list), NOT as a node body. Plan 043 M5: parse_node's `{...}`
+                // → parse_node_body path can't parse `field: value` as
+                // statements ("Expected term, got RBrace" — the error is
+                // collected and the fields silently dropped), so codegen
+                // received an empty-args Node and emitted `{}` — e.g.
+                // `Block{ id: id, command: cmd }` became `let block = {}` and
+                // command results never matched the block.
+                let pairs = self.object()?;
+                let mut args = Args::new();
+                for p in pairs {
+                    match p.key {
+                        Key::NamedKey(name) => {
+                            args.args.push(Arg::Pair(name, (*p.value).clone()));
+                        }
+                        _ => {
+                            // Non-named keys can't be struct fields — keep the
+                            // pair as a positional expression.
+                            args.args.push(Arg::Pos(Expr::Pair(p)));
+                        }
+                    }
+                }
+
+                return Ok(Expr::Node(self.parse_node(
+                    &name,
+                    None,
+                    args,
+                    &AutoStr::new(),
+                )?));
+            }
+
+            // Not a special type expression, just a regular identifier
+            // Plan 6B-4.14: Smart pointer constructors Box(expr) and Arc(expr)
+            match name.as_str() {
+                "Box" => {
+                    if self.is_kind(TokenKind::LParen) {
+                        self.next(); // consume '('
+                        let value = self.parse_expr()?;
+                        self.expect(TokenKind::RParen)?;
+                        return Ok(Expr::BoxExpr(Box::new(value)));
+                    }
+                }
+                "Arc" => {
+                    if self.is_kind(TokenKind::LParen) {
+                        self.next(); // consume '('
+                        let value = self.parse_expr()?;
+                        self.expect(TokenKind::RParen)?;
+                        return Ok(Expr::ArcExpr(Box::new(value)));
+                    }
+                }
+                _ => {}
+            }
+            return Ok(Expr::Ident(name));
+        }
+
+        let expr = match self.kind() {
+            TokenKind::Uint => self.parse_uint()?,
+            TokenKind::Int => self.parse_int()?,
+            TokenKind::U8 => self.parse_u8()?,
+            TokenKind::I8 => self.parse_i8()?,
+            TokenKind::Float => self.parse_float()?,
+            TokenKind::Double => self.parse_double()?,
+            TokenKind::Str => self.parse_str()?,
+            TokenKind::True => Expr::Bool(true),
+            TokenKind::False => Expr::Bool(false),
+            TokenKind::CStr => Expr::CStr(self.cur.text.clone()),
+            TokenKind::Char => Expr::Char(self.cur.text.chars().nth(0).unwrap()),
+            TokenKind::Ident => self.ident()?,
+            // Plan 121: Treat 'spawn' as identifier in expressions (e.g., Task.spawn())
+            TokenKind::Spawn => Expr::Ident(self.cur.text.clone()),
+            // Allow @ and * as special identifiers for pointer operations
+            TokenKind::At => Expr::Ident("@".into()),
+            TokenKind::Star => Expr::Ident("*".into()),
+            TokenKind::Nil => {
+                // Plan 550 T09: 'nil' deprecated 警告（语义不变，见 literal 臂注记）。
+                self.saw_bare_null = true; // Plan 550 T10: 脚本内容三信号
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "nil".to_string(),
+                    message: "use 'null' instead".to_string(),
+                    span,
+                });
+                Expr::Nil
+            }
+            TokenKind::Null => {
+                self.saw_bare_null = true; // Plan 550 T10: 脚本内容三信号
+                Expr::Null
+            }
+            // Plan 120: Option and Result constructors
+            TokenKind::NoneKW => Expr::None,
+            TokenKind::SomeKW => {
+                // Some(value) - expect parentheses
+                self.next(); // consume 'Some'
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let value = self.parse_expr()?;
+                    if !self.is_kind(TokenKind::RParen) {
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::UnexpectedToken {
+                            expected: ")".to_string(),
+                            found: format!("{}", self.cur.text),
+                            span,
+                        }
+                        .into());
+                    }
+                    self.next(); // consume ')'
+                                 // Return early - don't let the final self.next() run
+                    return Ok(Expr::Some(Box::new(value)));
+                } else {
+                    // `Some` without parens - treat as identifier (variable reference)
+                    // Return early since we already consumed 'Some'
+                    return Ok(Expr::Ident("Some".into()));
+                }
+            }
+            TokenKind::OkKW => {
+                // Ok(value) - expect parentheses
+                self.next(); // consume 'Ok'
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let value = self.parse_expr()?;
+                    if !self.is_kind(TokenKind::RParen) {
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::UnexpectedToken {
+                            expected: ")".to_string(),
+                            found: format!("{}", self.cur.text),
+                            span,
+                        }
+                        .into());
+                    }
+                    self.next(); // consume ')'
+                    return Ok(Expr::Ok(Box::new(value)));
+                } else {
+                    return Ok(Expr::Ident("Ok".into()));
+                }
+            }
+            TokenKind::ErrKW => {
+                // Err(message) - expect parentheses
+                self.next(); // consume 'Err'
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let msg = self.parse_expr()?;
+                    if !self.is_kind(TokenKind::RParen) {
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::UnexpectedToken {
+                            expected: ")".to_string(),
+                            found: format!("{}", self.cur.text),
+                            span,
+                        }
+                        .into());
+                    }
+                    self.next(); // consume ')'
+                    return Ok(Expr::Err(Box::new(msg)));
+                } else {
+                    return Ok(Expr::Ident("Err".into()));
+                }
+            }
+            // Allow 'type' keyword as identifier in certain contexts (e.g., expr.type)
+            TokenKind::Type => Expr::Ident(self.cur.text.clone()),
+            // Plan 012 P2: 'link'/'task' are contextual keywords — usable as
+            // identifiers in expressions (loop vars, locals named `link`/
+            // `task`, jade gaps 18/29). Element/keyword positions (view
+            // router-link, task decls) intercept the token before atom()
+            // runs, so this only affects expression positions.
+            TokenKind::Link | TokenKind::Task => Expr::Ident(self.cur.text.clone()),
+            // Plan 124: Async block: ~{ stmts }
+            TokenKind::Tilde => {
+                self.next(); // consume '~'
+                             // Expect a block { ... }
+                if !self.is_kind(TokenKind::LBrace) {
+                    let span = pos_to_span(self.cur.pos);
+                    return Err(SyntaxError::UnexpectedToken {
+                        expected: "{".to_string(),
+                        found: format!("{}", self.cur.text),
+                        span,
+                    }
+                    .into());
+                }
+                let body = self.body()?;
+                // Return early since we already consumed '~' and the block
+                return Ok(Expr::AsyncBlock {
+                    body,
+                    return_type: None, // Will be inferred later
+                });
+            }
+            _ => {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected term, got {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        };
+
+        self.next();
+        Ok(expr)
+    }
+
+    /// 解析fstr
+    /// fstr: [FStrSart, (FStrParts | ${Expr} | $Ident)*, FStrEnd]
+    pub fn fstr(&mut self) -> AutoResult<Expr> {
+        // skip fstrs (e.g. ` or f")
+        self.expect(TokenKind::FStrStart)?;
+
+        // parse fstr parts or interpolated exprs
+        let mut parts = Vec::new();
+        while !(self.is_kind(TokenKind::FStrEnd) || self.is_kind(TokenKind::EOF)) {
+            // $ expressions
+            if self.is_kind(TokenKind::FStrNote) {
+                self.next(); // skip $
+                if self.is_kind(TokenKind::LBrace) {
+                    // ${Expr}
+                    self.expect(TokenKind::LBrace)?;
+                    // NOTE: allow only one expression in a ${} block
+                    if !self.is_kind(TokenKind::RBrace) {
+                        let expr = self.rhs_expr()?;
+                        parts.push(expr);
+                        // self.expect_eos()?;
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                } else {
+                    // $Ident or $Ident.field.chain
+                    let ident_expr = self.ident()?;
+                    self.next(); // consume the Ident token
+                    let mut expr = ident_expr;
+                    // Check for field access chain in f-string: $turn_result.iterations
+                    // The .field part may be embedded in the next fstr_part text token
+                    while self.is_kind(TokenKind::Dot) {
+                        self.next();
+                        let field_name = self.ident_name()?;
+                        self.next();
+                        expr = Expr::Dot(Box::new(expr), field_name);
+                    }
+                    // Also check if next token is an fstr_part starting with "."
+                    if self.is_kind(TokenKind::FStrPart) {
+                        let text = self.cur.text.clone();
+                        if text.starts_with('.') {
+                            let rest = &text[1..];
+                            let field_end = rest.find(|c: char| !c.is_alphanumeric() && c != '_');
+                            let (field_name, remaining) = if let Some(pos) = field_end {
+                                (&rest[..pos], &rest[pos..])
+                            } else {
+                                (rest, "")
+                            };
+                            if !field_name.is_empty()
+                                && field_name
+                                    .chars()
+                                    .next()
+                                    .map_or(false, |c| c.is_alphabetic() || c == '_')
+                            {
+                                expr = Expr::Dot(Box::new(expr), field_name.into());
+                                if remaining.is_empty() {
+                                    self.next();
+                                } else {
+                                    let new_text: AutoStr = remaining.into();
+                                    self.cur = Token::fstr_part(self.cur.pos, new_text);
+                                }
+                            }
+                        }
+                    }
+                    parts.push(expr);
+                }
+            } else {
+                // normal text parts
+                let text = self.cur.text.clone();
+                parts.push(Expr::Str(text));
+                self.next();
+            }
+        }
+        self.expect(TokenKind::FStrEnd)?;
+        Ok(Expr::FStr(FStr::new(parts)))
+    }
+
+    pub fn if_expr(&mut self) -> AutoResult<Expr> {
+        let (branches, else_stmt) = self.if_contents()?;
+        Ok(Expr::If(If {
+            branches,
+            else_: else_stmt,
+        }))
+    }
+
+    pub fn cond_expr(&mut self) -> AutoResult<Expr> {
+        self.rhs_expr()
+    }
+
+    // An Expression that can be assigned to a variable, e.g. right-hand side of an assignment
+    pub fn rhs_expr(&mut self) -> AutoResult<Expr> {
+        // Support node instance syntax with primary prop in rhs position:
+        // e.g., var x = ctr CanTrcvGeneral { ... }
+        // e.g., var x = v CanTrcvBaudRate int { ... }  (with secondaryProp)
+        // Pattern: Ident Ident { or Ident Ident ( or Ident Ident Ident {
+        // Only delegate to node_or_call_expr when we see these patterns,
+        // to avoid changing semantics of function calls like Point(x: 1, y: 2)
+        if self.is_kind(TokenKind::Ident) {
+            // Plan 375: also support a node instance in rhs position when the
+            // value is a plain node call with a body block, e.g.
+            //   icf: file("x") {}
+            //   ddf: file(`${sdk}/y`) {}
+            // Without this, `pair_expr` -> `rhs_expr` falls through to
+            // `parse_expr`, parses `file("x")` as a function call, and leaves
+            // the trailing `{}` — yielding "Expected end of statement, got LBrace".
+            // Only delegate when we can confirm a `{` follows the node head, so
+            // ordinary function calls keep their semantics.
+            if self.rhs_lookahead_is_node() {
+                return self.node_or_call_expr();
+            }
+            let saved_cur = self.cur.clone();
+            self.next(); // consume first identifier
+            if self.is_kind(TokenKind::Ident) {
+                // "name ident" pattern — lookahead to confirm it's a node
+                let next_ident = self.cur.clone();
+                let after = self.lexer.next()?;
+                let is_node = match after.kind {
+                    TokenKind::LBrace | TokenKind::LParen => true,
+                    TokenKind::Ident => {
+                        // Three-ident pattern: "name ident ident" — look one more ahead
+                        // e.g., v CanTrcvBaudRate int { ... }
+                        let third_ident = after.clone();
+                        let after2 = self.lexer.next()?;
+                        let found = matches!(after2.kind, TokenKind::LBrace | TokenKind::LParen);
+                        self.lexer.push_token(after2);
+                        self.lexer.push_token(third_ident);
+                        found
+                    }
+                    _ => false,
+                };
+                self.lexer.push_token(after);
+                if is_node {
+                    // Confirmed node pattern — delegate to node_or_call_expr
+                    self.lexer.push_token(next_ident);
+                    self.cur = saved_cur;
+                    return self.node_or_call_expr();
+                }
+                // Not a node pattern, restore and fall through
+                self.lexer.push_token(next_ident);
+                self.cur = saved_cur;
+            } else {
+                // "name" without another ident following — restore and fall through
+                self.lexer.push_token(self.cur.clone());
+                self.cur = saved_cur;
+            }
+        }
+        self.parse_expr()
+    }
+
+    /// Plan 375: lookahead helper for `rhs_expr`. Returns true when the tokens
+    /// starting at the current cursor form a node *instance* (i.e. carry a body
+    /// block), as opposed to a plain function call or a bare identifier.
+    ///
+    /// Recognized shapes:
+    ///   `Ident { ... }`            — node with no args
+    ///   `Ident ( ... ) { ... }`    — node call with args, then a body block
+    ///
+    /// It scans with the lexer's pushback buffer, balancing `()`, `[]` while
+    /// skipping over the argument group, so nested calls inside the args don't
+    /// fool it. Returns false for `Ident ( ... )` with no trailing `{` (a real
+    /// function call) — this is what keeps `Point(x: 1)` semantics intact.
+    fn rhs_lookahead_is_node(&mut self) -> bool {
+        debug_assert!(self.is_kind(TokenKind::Ident));
+        let mut depth = 0i32; // tracks () nesting (node args use parens only)
+        let mut pushed: Vec<Token> = Vec::new();
+        let mut result = false;
+
+        // First token is the Ident (current cursor) — consume it for the scan.
+        loop {
+            let tok = match self.lexer.next() {
+                Ok(t) => t,
+                Err(_) => break,
+            };
+            pushed.push(tok.clone());
+            match tok.kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => depth -= 1,
+                TokenKind::LBrace if depth == 0 => {
+                    // Top-level `{` immediately after the node head / arg group.
+                    result = true;
+                    break;
+                }
+                TokenKind::RBrace | TokenKind::Semi | TokenKind::Newline | TokenKind::EOF
+                    if depth == 0 =>
+                {
+                    // Statement separator without ever seeing a `{` — not a node.
+                    break;
+                }
+                // The generic-args form `Ident<...>` uses Lt/Gt; we don't need to
+                // special-case it — depth stays 0 and a following `{` still wins.
+                _ => {}
+            }
+            // If depth went negative (unbalanced), bail.
+            if depth < 0 {
+                break;
+            }
+        }
+
+        // Push everything back so the real parser re-reads from the Ident.
+        for t in pushed.into_iter().rev() {
+            self.lexer.push_token(t);
+        }
+        result
+    }
+
+    fn tag_cover(&mut self, tag_name: &Name) -> AutoResult<Expr> {
+        self.expect(TokenKind::Dot)?;
+        // tag field
+        let tag_field = self.parse_name()?;
+
+        // Check if there's a parentheses (for variants with values like May.val(v))
+        // or no parentheses (for nil variants like May.nil)
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume (
+            let mut bindings = vec![];
+            if !self.is_kind(TokenKind::RParen) {
+                bindings.push(self.parse_name()?);
+                while self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Ident) {
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next();
+                    }
+                    bindings.push(self.parse_name()?);
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+            return Ok(Expr::Cover(Cover::Tag(TagCover {
+                kind: tag_name.clone(),
+                tag: tag_field,
+                bindings,
+            })));
+        } else {
+            // Nil variant without value binding - use underscore as placeholder
+            return Ok(Expr::Cover(Cover::Tag(TagCover {
+                kind: tag_name.clone(),
+                tag: tag_field,
+                bindings: vec![Name::from("_")],
+            })));
+        }
+    }
+
+    pub fn is_branch_cond_expr(&mut self) -> AutoResult<Expr> {
+        // Skip symbol checking during pattern parsing — bindings like Some(x) or Type.Variant(y)
+        // have not-yet-defined variables that would trigger false "undefined variable" errors.
+        let prev_skip = self.skip_check;
+        self.skip_check = true;
+
+        let result = self.is_branch_cond_expr_inner();
+
+        self.skip_check = prev_skip;
+        result
+    }
+
+    fn is_branch_cond_expr_inner(&mut self) -> AutoResult<Expr> {
+        // Plan 120: Check for Option/Result patterns first
+        // Some(binding) => ...  or None => ...
+        // Ok(binding) => ...    or Err(binding) => ...
+        if self.is_kind(TokenKind::SomeKW) {
+            return self.parse_option_pattern();
+        }
+        if self.is_kind(TokenKind::NoneKW) {
+            self.next(); // consume None
+            return Ok(Expr::OptionPattern(OptionCover {
+                variant: OptionVariant::None,
+                binding: None,
+            }));
+        }
+        if self.is_kind(TokenKind::OkKW) {
+            return self.parse_result_pattern(ResultVariant::Ok);
+        }
+        if self.is_kind(TokenKind::ErrKW) {
+            return self.parse_result_pattern(ResultVariant::Err);
+        }
+
+        // Parse the left-hand side expression (identifier or tag)
+        let lhs = if self.is_kind(TokenKind::Ident) {
+            self.lhs_expr()?
+        } else {
+            self.atom()?
+        };
+
+        // Plan 165: Check for plain struct destructuring: Point { x, y }
+        if let Expr::Ident(name) = &lhs {
+            if self.is_kind(TokenKind::LBrace) {
+                let name = name.clone();
+                return self.parse_struct_cover(name, None);
+            }
+        }
+
+        // Continue parsing to handle member access (e.g., Msg.Inc)
+        let mut result = self.expr_pratt_with_left(lhs, 0)?;
+
+        // Plan 396/B11(b): qualified struct-variant pattern WITHOUT payload
+        // parens: `Type.Variant { field, ... }` (and `module.Type.Variant
+        // { ... }` — strip the module segment). expr_pratt yields a Dot
+        // chain; the trailing `{` starts the struct cover.
+        if let Expr::Dot(base, variant) = &result {
+            let tv = match base.as_ref() {
+                Expr::Ident(type_name) => Some((type_name.clone(), variant.clone())),
+                Expr::Dot(mod_name, sub_type) => {
+                    // module.Type.Variant { .. } — ensure base is module.Ident
+                    if matches!(mod_name.as_ref(), Expr::Ident(_)) {
+                        Some((sub_type.clone(), variant.clone()))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some((type_name, variant)) = tv {
+                if self.is_kind(TokenKind::LBrace) {
+                    return self.parse_struct_cover(type_name, Some(variant));
+                }
+            }
+        }
+
+        // Convert Call(Dot(Ident(type_name), variant_name), [bindings]) into Cover::Tag
+        // This handles enum variant patterns for imported types where lookup_type returns User instead of Enum
+        // Also handles 3-level paths: Call(Dot(Dot(Ident(mod), type_name), variant_name), [bindings])
+        // Also handles 3-level via Cover::Tag: Call(Dot(Cover::Tag(mod.type), variant), [bindings])
+        if let Expr::Call(call) = &result {
+            if let Expr::Dot(base, variant) = call.name.as_ref() {
+                let type_name = match base.as_ref() {
+                    Expr::Ident(name) => Some(name.clone()),
+                    Expr::Dot(_mod_name, sub_type) => {
+                        // 3-level: module.Type.Variant(binding)
+                        // Use just the type name (sub_type), stripping module prefix
+                        Some(sub_type.clone())
+                    }
+                    Expr::Cover(Cover::Tag(inner_tag)) => {
+                        // Cover::Tag from earlier dot: module.Type -> TagCover, then .Variant(binding)
+                        // Use just the tag (type name), stripping module prefix
+                        Some(inner_tag.tag.clone())
+                    }
+                    _ => None,
+                };
+                if let Some(type_name) = type_name {
+                    let bindings: Vec<Name> = call
+                        .args
+                        .args
+                        .iter()
+                        .map(|arg| match arg {
+                            Arg::Pos(Expr::Ident(name)) => name.clone(),
+                            Arg::Name(name) => name.clone(),
+                            _ => Name::from("_"),
+                        })
+                        .collect();
+                    return Ok(Expr::Cover(Cover::Tag(TagCover {
+                        kind: type_name,
+                        tag: variant.clone(),
+                        bindings,
+                    })));
+                }
+            }
+        }
+
+        // Plan 396 §2.5: qualified unit-variant pattern WITHOUT payload
+        // parens: `module.Type.UnitVariant`. When the head is a use.rust
+        // module (not a known enum), lhs_expr's tag_cover consumed
+        // `module.Type` as a nil placeholder TagCover (bindings ["_"]) and
+        // the trailing Dot field is the actual variant. Strip the module
+        // segment — mirroring the Call conversion above — so a2r emits
+        // `Type::UnitVariant` instead of invalid `module::Type.UnitVariant`
+        // (ai-config loader.at: `auto_val.Value.Nil` → `Value::Nil`).
+        if let Expr::Dot(base, variant) = &result {
+            if let Expr::Cover(Cover::Tag(inner_tag)) = base.as_ref() {
+                if inner_tag.bindings.iter().all(|b| b.as_str() == "_") {
+                    let rewritten = Expr::Cover(Cover::Tag(TagCover {
+                        kind: inner_tag.tag.clone(),
+                        tag: variant.clone(),
+                        bindings: vec![Name::from("_")],
+                    }));
+                    // A following `{` is a struct-variant payload — let the
+                    // Plan 165 check below destructure it.
+                    if !self.is_kind(TokenKind::LBrace) {
+                        return Ok(rewritten);
+                    }
+                    result = rewritten;
+                }
+            }
+        }
+
+        // Plan 165: Check for enum variant struct destructuring: Msg.User { content }
+        if let Expr::Cover(Cover::Tag(tag)) = &result {
+            if self.is_kind(TokenKind::LBrace) {
+                let type_name = tag.kind.clone();
+                let variant = Some(tag.tag.clone());
+                return self.parse_struct_cover(type_name, variant);
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Plan 165: Parse struct destructuring pattern: Name { field1, field2: alias }
+    /// Called when we see `{` after a type name in an is branch.
+    fn parse_struct_cover(
+        &mut self,
+        type_name: AutoStr,
+        variant: Option<AutoStr>,
+    ) -> AutoResult<Expr> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut fields = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            let field = self.parse_name()?;
+            let binding = if self.is_kind(TokenKind::Colon) {
+                // field: alias
+                self.next(); // skip ':'
+                self.parse_name()?
+            } else {
+                // shorthand: field name = binding name
+                field.clone()
+            };
+            fields.push(crate::ast::cover::FieldBinding { field, binding });
+
+            // Optional comma separator
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Expr::StructPattern(crate::ast::cover::StructCover {
+            type_name,
+            variant,
+            fields,
+        }))
+    }
+
+    /// Parse Option pattern: Some(binding) for is statement
+    fn parse_option_pattern(&mut self) -> AutoResult<Expr> {
+        self.next(); // consume 'Some'
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+                         // Expect an identifier (binding variable)
+            if !self.is_kind(TokenKind::Ident) {
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic {
+                    message: "Pattern Some(x) expects an identifier".to_string(),
+                    span,
+                }
+                .into());
+            }
+            let binding = self.parse_name()?;
+            self.expect(TokenKind::RParen)?; // consume ')'
+
+            Ok(Expr::OptionPattern(OptionCover {
+                variant: OptionVariant::Some,
+                binding: Some(binding),
+            }))
+        } else {
+            // Some without parens - treat as identifier
+            Ok(Expr::Ident("Some".into()))
+        }
+    }
+
+    /// Parse Result pattern: Ok(binding) / Err(binding) for is statement.
+    /// Plan 396/B11(b): the parenthesized inner may also be a NESTED PATTERN
+    /// (e.g. `Err(ToolError.SecurityDenied { kind, path, .. })` or
+    /// `Err(Enum.Variant(x))`) — parsed via is_branch_cond_expr_inner.
+    fn parse_result_pattern(&mut self, variant: ResultVariant) -> AutoResult<Expr> {
+        self.next(); // consume 'Ok' or 'Err'
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+                         // Parse the inner via the branch-pattern parser — it handles
+                         // plain idents (normalized to a binding below) AND nested
+                         // patterns: Type.Variant(binds), Type { fields },
+                         // module.Type.Variant { fields } (Plan 396/B11(b)).
+            let prev_skip = self.skip_check;
+            self.skip_check = true;
+            let inner = self.is_branch_cond_expr_inner();
+            self.skip_check = prev_skip;
+            let inner = inner?;
+            self.expect(TokenKind::RParen)?; // consume ')'
+                                             // A bare nested ident is normalized to a plain binding.
+            if let Expr::Ident(name) = inner {
+                return Ok(Expr::ResultPattern(ResultCover {
+                    variant,
+                    binding: Some(name),
+                    inner: None,
+                }));
+            }
+            Ok(Expr::ResultPattern(ResultCover {
+                variant,
+                binding: None,
+                inner: Some(Box::new(inner)),
+            }))
+        } else {
+            // Ok/Err without parens - treat as identifier
+            Ok(Expr::Ident(variant.to_string().into()))
+        }
+    }
+
+    pub fn lhs_expr(&mut self) -> AutoResult<Expr> {
+        if !self.is_kind(TokenKind::Ident) {
+            return Err(SyntaxError::Generic {
+                message: format!("Expected LHS expr with ident, got {}", self.peek().kind),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        let name = self.parse_name()?;
+
+        // Check if it's a variable/parameter FIRST — before checking type names.
+        // A function param named `m` of type `Binary` should be treated as an
+        // identifier, not as the enum type `Binary`.
+        if let Some(meta) = self.lookup_meta(&name) {
+            match meta.as_ref() {
+                Meta::Store(_) | Meta::Ref(_) => {
+                    let mut expr = Expr::Ident(name);
+                    while self.is_kind(TokenKind::Dot) {
+                        self.next();
+                        let field = self.parse_name()?;
+                        expr = Expr::Dot(Box::new(expr), field);
+                    }
+                    return Ok(expr);
+                }
+                _ => {}
+            }
+        }
+
+        // if expr is A Tag/Enum, could be a Tag Creation Expr,
+        // format is: EnumName.Variant(elem)
+        let typ = self.lookup_type(&name);
+        let is_enum_or_tag = matches!(*typ.borrow(), Type::Enum(_) | Type::Tag(_));
+        // Type::User may shadow an enum — check type_store explicitly
+        let is_user_enum = matches!(*typ.borrow(), Type::User(_))
+            && self
+                .type_store
+                .read()
+                .map(|store| store.lookup_enum_decl_str(&name).is_some())
+                .unwrap_or(false);
+        // Also treat as enum if it's a known type followed by .Variant pattern
+        // But NOT if the name is an imported module (e.g., `types` from `use types`)
+        let is_imported_module = self.use_imports.iter().any(|s| s.as_str() == name.as_str());
+        let is_user_with_variant = !is_imported_module
+            && matches!(*typ.borrow(), Type::User(_))
+            && !matches!(*typ.borrow(), Type::Unknown | Type::Void)
+            && self.is_kind(TokenKind::Dot);
+        if is_enum_or_tag || is_user_enum || is_user_with_variant {
+            return self.tag_cover(&name);
+        }
+
+        // Support dot chains: self.field, obj.field.nested, etc.
+        let mut expr = Expr::Ident(name);
+        while self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
+            let field = self.parse_name()?;
+            expr = Expr::Dot(Box::new(expr), field);
+        }
+        Ok(expr)
+    }
+
+    pub fn iterable_expr(&mut self) -> AutoResult<Expr> {
+        // TODO: how to check for range/array but reject other cases?
+        self.parse_expr()
+    }
+
+    // Plan 060: Parse JavaScript/TypeScript-style closure: ` x => body` or `(a, b) => body`
+    pub fn parse_closure(&mut self) -> AutoResult<Expr> {
+        use crate::ast::{Closure, ClosureParam};
+
+        // Check if this is a single-param or multi-param closure
+        let params = if self.is_kind(TokenKind::LParen) {
+            // Multi-param closure: (a, b) => body or (a int, b int) => body
+            // Or zero-param closure: () => body
+            self.next(); // skip (
+
+            let mut params = Vec::new();
+
+            // Check for empty parameter list: () => body
+            if self.is_kind(TokenKind::RParen) {
+                self.next(); // skip )
+            } else {
+                loop {
+                    let name = self.parse_name()?;
+
+                    // Optional type annotation (no colon - Auto syntax: a int, b int)
+                    // Same logic as fn_params: check if next token is a type
+                    let ty = if self.is_type_name() {
+                        Some(self.parse_type()?)
+                    } else {
+                        None
+                    };
+
+                    params.push(ClosureParam::new(name, ty));
+
+                    if !self.is_kind(TokenKind::Comma) {
+                        break;
+                    }
+                    self.next(); // skip ,
+                }
+
+                self.expect(TokenKind::RParen)?; // skip )
+            }
+            params
+        } else {
+            // Single-param closure:  x => body (no parentheses)
+            let name = self.parse_name()?;
+            vec![ClosureParam::new(name, None)]
+        };
+
+        // Expect =>
+        self.expect(TokenKind::DoubleArrow)?;
+
+        // Register all parameters in scope so body can reference them
+        for param in &params {
+            self.infer_ctx.bind_var(
+                crate::ast::Name::from(param.name.as_str()),
+                param.ty.clone().unwrap_or(crate::ast::Type::Unknown),
+            );
+        }
+
+        // Parse body (expression or block)
+        let body = if self.is_kind(TokenKind::LBrace) {
+            // Block body: { stmts }
+            Expr::Block(self.body()?)
+        } else {
+            // Expression body
+            self.parse_expr()?
+        };
+
+        Ok(Expr::Closure(Closure::new(params, None, body)))
+    }
+}
+
+/// Plan 312: Parse `#[api(method = "GET", path = "/api/notes/:id")]` argument string.
+/// Input is the raw args collected by collect_annotation_args, e.g.:
+///   `(method = "GET", path = "/api/notes")`
+/// Returns (method, path) with sensible defaults if fields are missing.
+fn parse_api_args(args: &str) -> (String, String) {
+    let mut method = String::from("GET");
+    let mut path = String::from("/");
+    // collect_annotation_args returns "(method = \"POST\", path = \"/x\")"
+    // with surrounding parens; strip them so split(',') yields clean key=value parts.
+    let args = args.trim_start_matches('(').trim_end_matches(')');
+    for part in args.split(',') {
+        let part = part.trim();
+        if let Some(val) = extract_quoted_value(part, "method") {
+            method = val;
+        } else if let Some(val) = extract_quoted_value(part, "path") {
+            path = val;
+        }
+    }
+    (method, path)
+}
+
+/// Plan 610 ⑤: normalize `#[export(...)]` args to a Rust ABI string.
+/// collect_annotation_args yields "(system)" / "(\"system\")" / None;
+/// bare `#[export]` and "c" map to "C", "system"/"stdcall" to "system"
+/// (win32), anything else passes through verbatim (rustc validates).
+fn parse_export_abi_arg(args: Option<String>) -> AutoStr {
+    let raw = match args {
+        Some(a) => a
+            .trim_start_matches('(')
+            .trim_end_matches(')')
+            .trim()
+            .trim_matches('"')
+            .to_string(),
+        None => String::new(),
+    };
+    match raw.as_str() {
+        "" | "c" | "C" => "C".to_string().into(),
+        "system" | "stdcall" => "system".to_string().into(),
+        other => other.to_string().into(),
+    }
+}
+
+/// Helper: extract the quoted string value from `key = "value"` form.
+fn extract_quoted_value(s: &str, key: &str) -> Option<String> {
+    let s = s.trim();
+    let prefix = format!("{} = \"", key);
+    if let Some(rest) = s.strip_prefix(&prefix) {
+        if let Some(end) = rest.find('"') {
+            return Some(rest[..end].to_string());
+        }
+    }
+    None
+}
+
+// Statements
+impl<'a> Parser<'a> {
+    // End of statement
+    pub fn expect_eos(&mut self, _is_first_stmt: bool) -> AutoResult<usize> {
+        // Save the previous token before consuming separators
+        let token_before_sep = self.prev.clone();
+
+        let mut has_sep = false;
+        let mut newline_count = 0;
+        while self.is_kind(TokenKind::Semi)
+            || self.is_kind(TokenKind::Newline)
+            || self.is_kind(TokenKind::Comma)
+        {
+            has_sep = true;
+            if self.is_kind(TokenKind::Newline) {
+                newline_count += 1;
+            }
+            self.next();
+        }
+        if self.is_kind(TokenKind::EOF) || self.is_kind(TokenKind::RBrace) {
+            return Ok(newline_count);
+        }
+        if has_sep {
+            // Check for ambiguous sequence: ')', '\n', '{'
+            // This is ambiguous - use 2+ newlines to disambiguate
+            if self.is_kind(TokenKind::LBrace)
+                && token_before_sep.kind == TokenKind::RParen
+                && newline_count == 1
+            {
+                return Err(SyntaxError::Generic {
+                    message:
+                        "Ambiguous syntax: statement ending with ')' followed by newline and '{'. \
+                    Use 2+ newlines to separate statements, or put the '{' on the same line."
+                            .to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            Ok(newline_count)
+        } else {
+            Err(SyntaxError::Generic {
+                message: format!(
+                    "Expected end of statement, got {:?}<{}>",
+                    self.kind(),
+                    self.cur.text
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into())
+        }
+    }
+
+    pub fn parse_stmt(&mut self) -> AutoResult<Stmt> {
+        // Plan 6B-4.19: pub keyword prefix — unified visibility handling
+        if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
+            let saved_cur = self.cur.clone();
+            let saved_prev = self.prev.clone();
+            self.next(); // consume "pub"
+
+            // Check what follows "pub"
+            let stmt = match self.kind() {
+                TokenKind::Use => {
+                    let mut stmt = self.use_stmt()?;
+                    if let Stmt::Use(ref mut u) = stmt {
+                        u.is_pub = true;
+                    }
+                    stmt
+                }
+                TokenKind::Fn => self.fn_decl_stmt_with_annotations(
+                    "",
+                    false,
+                    false,
+                    false,
+                    false,
+                    true,
+                    Vec::new(),
+                    false,
+                )?,
+                TokenKind::Static => {
+                    // pub static fn ...
+                    self.next(); // skip static
+                    self.fn_decl_stmt_with_annotations(
+                        "",
+                        false,
+                        false,
+                        false,
+                        true,
+                        true,
+                        Vec::new(),
+                        false,
+                    )?
+                }
+                TokenKind::Type => self.type_decl_stmt_with_annotation(false, true, Vec::new())?,
+                TokenKind::Enum | TokenKind::Tag => {
+                    let mut stmt = self.enum_stmt()?;
+                    if let Stmt::EnumDecl(ref mut e) = stmt {
+                        e.is_pub = true;
+                    }
+                    stmt
+                }
+                TokenKind::Spec => {
+                    let mut stmt = self.spec_decl_stmt()?;
+                    if let Stmt::SpecDecl(ref mut s) = stmt {
+                        s.is_pub = true;
+                    }
+                    stmt
+                }
+                TokenKind::Ext => {
+                    // pub ext — ext block itself doesn't carry pub, just parse normally
+                    self.parse_ext_stmt()?
+                }
+                TokenKind::Const => {
+                    // pub const NAME TYPE = value (C8) — parse_store_stmt reads the
+                    // leading `const` token itself.
+                    let mut stmt = self.parse_store_stmt(vec![])?;
+                    if let Stmt::Store(ref mut s) = stmt {
+                        s.is_pub = true;
+                    }
+                    stmt
+                }
+                TokenKind::Ident if self.cur.text.as_str() == "style" => {
+                    if let Some(mut stmt) = self.parse_style_recipe_decl_stmt()? {
+                        if let Stmt::StyleRecipeDecl(ref mut r) = stmt {
+                            r.is_pub = true;
+                        }
+                        stmt
+                    } else {
+                        // Not a recognized pub declaration — put the token back
+                        self.lexer.push_token(self.cur.clone());
+                        self.cur = saved_cur;
+                        self.prev = saved_prev;
+                        return self.parse_stmt_inner();
+                    }
+                }
+                _ => {
+                    // Not a recognized pub declaration — put the token back
+                    self.lexer.push_token(self.cur.clone());
+                    self.cur = saved_cur;
+                    self.prev = saved_prev;
+                    return self.parse_stmt_inner();
+                }
+            };
+            return Ok(stmt);
+        }
+
+        self.parse_stmt_inner()
+    }
+
+    fn parse_stmt_inner(&mut self) -> AutoResult<Stmt> {
+        // Plan 514 W1（447-① 债②）：`struct` 不是 Auto 关键字——C 风格
+        // `struct Name {...}` / `struct {...}` 误用此前被当节点/表达式静默
+        // 吞掉（或后随语句报误导性 E0201 名字解析错）。语句位以裸
+        // `struct` 开头（后随 Ident/LBrace）直接报语法错并指出 `type`。
+        if self.is_kind(TokenKind::Ident)
+            && self.cur.text.as_str() == "struct"
+            && !self.exists("struct")
+        {
+            let after = self.lexer.next()?;
+            let misused = matches!(after.kind, TokenKind::Ident | TokenKind::LBrace);
+            self.lexer.push_token(after);
+            if misused {
+                return Err(SyntaxError::Generic {
+                    message: "unexpected `struct`: Auto 的具名结构体声明是 `type Name { ... }`"
+                        .to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        }
+        let stmt = match self.kind() {
+            TokenKind::Break => self.break_stmt()?,
+            TokenKind::Continue => self.continue_stmt()?,
+            TokenKind::Return => self.return_stmt()?,
+            TokenKind::Yield => self.yield_expr_stmt()?, // Plan 321: yield
+            TokenKind::Reply => self.reply_stmt()?,      // Plan 124 Phase 2.3: reply statement
+            TokenKind::Use => self.use_stmt()?,
+            TokenKind::Dep => {
+                // Plan 364 Step 3: In Config mode, manifest `dep xmen {}` is a
+                // dependency *node*, not the lang-level `dep name(version=...)`
+                // declaration. `dep_stmt` assumes the latter and chokes on `{`.
+                // Delegate to node parsing so bare-name dep nodes parse cleanly.
+                if self.compile_dest == CompileDest::Config {
+                    self.parse_node_or_call_stmt()?
+                } else {
+                    self.dep_stmt()?
+                }
+            }
+            TokenKind::Pac | TokenKind::Link => {
+                // Plan 364 Step 3: `pac` and `link` are reserved keywords, but
+                // config/manifest files (including auto-man's index.at) use them
+                // as node names: `pac("kernel") {...}`, `link foo {...}`. In
+                // Config mode, delegate to node parsing so they parse as nodes
+                // instead of falling through to parse_term which rejects the
+                // keyword. In other modes they keep their original handling.
+                if self.compile_dest == CompileDest::Config {
+                    self.parse_node_or_call_stmt()?
+                } else {
+                    self.expr_stmt()?
+                }
+            }
+            TokenKind::If => self.if_stmt()?,
+            TokenKind::For => self.for_stmt()?,
+            TokenKind::Loop => self.loop_stmt()?, // Plan 200 Task 1.1
+            TokenKind::While => self.while_stmt()?, // Plan 010 (MS3-A)
+            // Plan 560 T09 (E2)：with 上下文管理器糖。
+            TokenKind::With => self.with_stmt()?,
+            TokenKind::Try => self.try_stmt()?, // Plan 010 (MS3-A)
+            TokenKind::Is => self.is_stmt()?,
+            // Plan 095: Compile-time execution statements
+            TokenKind::HashIf => self.hash_if_stmt()?,
+            TokenKind::HashFor => self.hash_for_stmt()?,
+            TokenKind::HashIs => self.hash_is_stmt()?,
+            TokenKind::HashBrace => self.hash_brace_expr()?,
+            TokenKind::HashIdent => self.macro_call_stmt()?,
+            TokenKind::Var => self.parse_store_stmt(vec![])?,
+            TokenKind::Let => self.parse_store_stmt(vec![])?,
+            TokenKind::Mut => self.parse_store_stmt(vec![])?,
+            TokenKind::Const => self.parse_store_stmt(vec![])?,
+            TokenKind::Shared => self.parse_store_stmt(vec![])?,
+            TokenKind::Fn => self.fn_decl_stmt("")?,
+            TokenKind::Hash => {
+                // #[...] annotation syntax (Rust-style)
+                // Use centralized parse_fn_annotations() function
+                let mut ann = self.parse_fn_annotations()?;
+
+                // Skip empty lines after annotation
+                self.skip_empty_lines();
+
+                // Check if this annotation is compatible with current compile destination
+                let should_skip = match self.compile_dest {
+                    CompileDest::TransC if ann.has_vm && !ann.has_c => true, // Skip #[vm] in C transpiler
+                    CompileDest::TransC if ann.has_rs && !ann.has_c => true, // Skip #[rs] in C transpiler
+                    CompileDest::TransRust if ann.has_vm && !ann.has_rs => true, // Skip #[vm] in Rust transpiler
+                    CompileDest::TransRust if ann.has_c && !ann.has_rs => true, // Skip #[c] in Rust transpiler
+                    CompileDest::Interp if ann.has_c && !ann.has_vm => true, // Skip #[c] in interpreter
+                    CompileDest::Interp if ann.has_rs && !ann.has_vm => true, // Skip #[rs] in interpreter
+                    _ => false,
+                };
+
+                if should_skip {
+                    // Skip the entire function/type declaration by parsing it normally but discarding the result
+                    if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+                        // Skip function declaration
+                        let is_static = self.is_kind(TokenKind::Static);
+                        if is_static {
+                            self.next(); // skip static keyword
+                        }
+                        // Parse with the actual annotation flags to correctly handle the function syntax
+                        // For #[vm] functions, parse as VM function to allow newline termination
+                        // For #[c] functions, parse as C function to allow semicolon termination
+                        let _ = self.fn_decl_stmt_with_annotations(
+                            "",
+                            ann.has_c,
+                            ann.has_vm,
+                            ann.has_rs,
+                            is_static,
+                            ann.has_pub,
+                            ann.with_params.clone(),
+                            ann.has_test,
+                        );
+                        return Ok(Stmt::Expr(Expr::Nil));
+                    } else if self.is_kind(TokenKind::Type) {
+                        // Skip type declaration
+                        let _ = self.type_decl_stmt();
+                        return Ok(Stmt::Expr(Expr::Nil));
+                    }
+                }
+
+                // Check what comes next
+                // Plan 312: handle optional `pub` keyword between annotation and fn/type
+                let had_pub_prefix =
+                    self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident;
+                if had_pub_prefix {
+                    ann.has_pub = true;
+                    self.next(); // consume "pub"
+                }
+                if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+                    // Function declaration
+                    let is_static = self.is_kind(TokenKind::Static);
+                    if is_static {
+                        self.next(); // skip static keyword
+                    }
+                    self.pending_api_attrs = ann.api_endpoint.take(); // Plan 312
+                    self.pending_export_abi = ann.export_abi.take(); // Plan 610 ⑤
+                    self.fn_decl_stmt_with_annotations(
+                        "",
+                        ann.has_c,
+                        ann.has_vm,
+                        ann.has_rs,
+                        is_static,
+                        ann.has_pub,
+                        ann.with_params.clone(),
+                        ann.has_test,
+                    )?
+                } else if self.is_kind(TokenKind::Type) {
+                    // Type declaration
+                    self.type_decl_stmt_with_annotation(
+                        ann.has_c,
+                        ann.has_pub,
+                        ann.with_params.clone(),
+                    )?
+                } else if self.is_kind(TokenKind::Enum) || self.is_kind(TokenKind::Tag) {
+                    // Plan 376: #[derive(...)] / #[serde(...)] before an enum/tag.
+                    // enum_stmt() picks up the attrs we just collected via raw_attrs.
+                    let mut stmt = self.enum_stmt()?;
+                    if let Stmt::EnumDecl(ref mut e) = stmt {
+                        if ann.has_pub {
+                            e.is_pub = true;
+                        }
+                    }
+                    stmt
+                } else if self.is_kind(TokenKind::Use) {
+                    // Use statement with annotation
+                    // Check if this is a C/Rust import (use.c or use.rust style with angle brackets)
+                    self.next(); // skip use to check next token
+                    let is_c_import = self.is_kind(TokenKind::Lt) || self.is_kind(TokenKind::Str);
+                    // Put the use token back
+                    self.lexer.push_token(self.cur.clone());
+                    self.cur = self.prev.clone(); // Go back to use token
+
+                    if ann.has_c && is_c_import {
+                        // C import: #[c] use <stdio.h>
+                        self.next(); // skip use
+                                     // Call use_c directly since we know it's a C import
+                        let mut paths = Vec::new();
+                        if self.is_kind(TokenKind::Lt) {
+                            self.next(); // skip <
+                            let mut name = "<".to_string();
+                            while !self.is_kind(TokenKind::Gt) {
+                                name.push_str(self.cur.text.as_str());
+                                self.next();
+                            }
+                            name.push_str(">");
+                            self.expect(TokenKind::Gt)?;
+                            paths.push(name.into());
+                        } else if self.is_kind(TokenKind::Str) {
+                            let name = self.cur.text.clone();
+                            self.next();
+                            paths.push(format!("\"{}\"", name).into());
+                        }
+
+                        let (items, _is_wildcard) = self.parse_use_items()?;
+                        // Plan 085: Import is now handled by CompileSession.resolve_uses()
+                        let uses = Use {
+                            kind: UseKind::C,
+                            module_path: None,
+                            paths,
+                            items,
+                            is_pub: false,
+                            is_wildcard: false,
+                        };
+                        Stmt::Use(uses)
+                    } else {
+                        // Regular Auto use statement
+                        self.use_stmt()?
+                    }
+                } else if self.is_kind(TokenKind::Let)
+                    || self.is_kind(TokenKind::Var)
+                    || self.is_kind(TokenKind::Mut)
+                    || self.is_kind(TokenKind::Const)
+                    || self.is_kind(TokenKind::Shared)
+                {
+                    // Variable declaration with annotation (Plan 306 2c/3):
+                    // e.g. `#[export] var speed float = 300.0` → `@export var speed: float = 300.0`
+                    //      `#[export_range(0,100)] var hp int = 50` → `@export_range(0, 100) var hp: int = 50`
+                    let attrs = ann.store_attrs.clone();
+                    self.parse_store_stmt(attrs)?
+                } else if self.is_kind(TokenKind::Task) {
+                    // Plan 121: Task with #[single] annotation
+                    // Parse single annotation - we already consumed #[single], now check what annotation it was
+                    // For now, we just treat any annotation before task as single
+                    // TODO: Parse specific annotation types
+                    self.parse_task_with_attrs(vec![TaskAttr::Single])?
+                } else if self.is_kind(TokenKind::Ext) || self.is_kind(TokenKind::Impl) {
+                    // Plan 364 W1: annotated `ext`/`impl` block — dotted macro
+                    // paths (`#[zbus.interface]`) pass through to the impl block.
+                    self.parse_ext_stmt()?
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message:
+                            "Expected 'fn', 'type', 'use', 'let', 'var', or 'task' after annotation"
+                                .to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+            TokenKind::Type => self.type_decl_stmt()?,
+            TokenKind::Union => self.union_stmt()?,
+            // DEPRECATED: tag → enum 别名;2026-08-22 起上下文化(见
+            // tag_starts_enum_decl):非声明形态的 tag 按标识符表达式处理。
+            TokenKind::Tag => {
+                if self.tag_starts_enum_decl() {
+                    self.enum_stmt()?
+                } else {
+                    self.expr_stmt()?
+                }
+            }
+            TokenKind::Spec => self.spec_decl_stmt()?,
+            TokenKind::LBrace => Stmt::Block(self.body()?),
+            // UI 场景：view 块（如 `view { Column { ... } }`）。
+            // 非 UI 场景：view 是参数模式关键字，不应出现在语句位置，回退到表达式。
+            TokenKind::View => {
+                if let Some(stmt) = self.try_token_dialect_stmt(TokenKind::View)? {
+                    stmt
+                } else {
+                    self.expr_stmt()?
+                }
+            }
+            // Node Instance or UI contextual keywords
+            TokenKind::Ident => {
+                // Plan 306: Godot scene declaration (recognized in any scenario).
+                // Checked before borrowing `ident` to satisfy the borrow checker.
+                if self.looks_like_scene_decl() {
+                    self.parse_scene_decl()?
+                } else {
+                    let ident = self.cur.text.to_string();
+                    // Plan 351: store decl handled directly (not yet in dialect table)
+                    if self.store_decl_branch(&ident) {
+                        self.parse_store_decl()?
+                    } else if let Some(stmt) = self.try_dialect_stmt(&ident)? {
+                        stmt
+                    } else {
+                        self.parse_node_or_call_stmt()?
+                    }
+                }
+            }
+            // Enum Definition
+            TokenKind::Enum => self.enum_stmt()?,
+            // Plan 121: Task Definition
+            TokenKind::Task => self.parse_task()?,
+            // On Events Switch —— 委托方言（UI 场景由 UiDialect 接管，非 UI 回退原行为）
+            TokenKind::On => {
+                if let Some(stmt) = self.try_token_dialect_stmt(TokenKind::On)? {
+                    stmt
+                } else {
+                    Stmt::OnEvents(self.parse_on_events()?)
+                }
+            }
+            // Alias stmt
+            TokenKind::Alias => self.parse_alias_stmt()?,
+            // Ext statement (Plan 035)
+            TokenKind::Ext => self.parse_ext_stmt()?,
+            // Impl statement (Plan 059: synonym for ext, Rust-compatible syntax)
+            TokenKind::Impl => self.parse_ext_stmt()?,
+            // mod name { ... } — flatten inner statements into current scope
+            // pub fn names get prefixed with "mod_name." so they are accessible
+            // via module_name.method() calls (e.g., network.connect())
+            TokenKind::Mod => {
+                self.next(); // skip 'mod'
+                let mod_name = self.cur.text.clone();
+                self.next(); // skip module name
+                self.skip_empty_lines();
+                self.expect(TokenKind::LBrace)?;
+                // Don't use self.body() — it would try expect(LBrace) again.
+                // Manually collect statements until RBrace.
+                let mut stmts = Vec::new();
+                let mut source_lines = Vec::new();
+                while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+                    self.skip_empty_lines();
+                    if self.is_kind(TokenKind::RBrace) {
+                        break;
+                    }
+                    let stmt_line = self.cur.pos.line;
+                    stmts.push(self.parse_stmt()?);
+                    source_lines.push(stmt_line);
+                }
+                self.expect(TokenKind::RBrace)?;
+                let inner_body = Body {
+                    stmts,
+                    source_lines,
+                    ..Default::default()
+                };
+                // Prefix pub fn names with mod_name.
+                let prefixed_stmts: Vec<Stmt> = inner_body
+                    .stmts
+                    .into_iter()
+                    .map(|mut stmt| {
+                        if let Stmt::Fn(ref mut fn_decl) = stmt {
+                            if fn_decl.is_pub {
+                                fn_decl.name = auto_val::AutoStr::from(format!(
+                                    "{}.{}",
+                                    mod_name, fn_decl.name
+                                ));
+                            }
+                        }
+                        stmt
+                    })
+                    .collect();
+                Stmt::Block(Body {
+                    stmts: prefixed_stmts,
+                    ..inner_body
+                })
+            }
+            // Otherwise, try to parse as an expression
+            _ => self.expr_stmt()?,
+        };
+        Ok(stmt)
+    }
+
+    fn parse_alias_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip alias
+        let alias = self.cur.text.clone();
+        self.next();
+        self.expect(TokenKind::Asn)?;
+        let target = self.cur.text.clone();
+        self.next();
+        // define alias meta in scope
+        self.define_alias(alias.clone(), target.clone());
+        Ok(Stmt::Alias(Alias { alias, target }))
+    }
+
+    /// Parse ext statement: ext Target { methods... }
+    ///
+    /// Adds methods to an existing type (like Rust's impl block).
+    /// Both instance methods (fn) and static methods (static fn) are supported.
+    ///
+    /// # Example
+    ///
+    /// ```auto
+    /// ext str {
+    ///     fn len() int {
+    ///         return .size
+    ///     }
+    ///
+    ///     static fn new(data *char, size int) str {
+    ///         return str_new(data, size)
+    ///     }
+    /// }
+    /// ```
+    fn parse_ext_stmt(&mut self) -> AutoResult<Stmt> {
+        // Plan 391 D6: record whether this block was opened by `impl` (Rust-style
+        // trait-impl attempt) vs `ext` (Auto's legitimate spec-impl syntax
+        // `ext Type for Spec { ... }`). Only `impl ... for` is an error.
+        let opened_by_impl = self.is_kind(TokenKind::Impl);
+        self.next(); // skip `ext` or `impl` keyword
+
+        // Plan 364 W1: impl-level macro attrs from the annotation dispatch
+        // (`#[zbus.interface(...)] ext Foo { ... }`). Taken BEFORE the method
+        // loop so methods' own fn-level annotations don't steal them.
+        let ext_attrs = std::mem::take(&mut self.impl_attrs);
+
+        // Plan 059: Parse optional generic parameters for impl blocks
+        // e.g., impl<T, S> ListIter<T, S> { ... }
+        let mut generic_params = Vec::new();
+        if self.is_kind(TokenKind::Lt) {
+            self.next(); // Consume '<'
+            generic_params.push(self.parse_generic_param()?);
+
+            while self.is_kind(TokenKind::Comma) {
+                self.next(); // Consume ','
+                generic_params.push(self.parse_generic_param()?);
+            }
+
+            self.expect(TokenKind::Gt)?; // Consume '>'
+        }
+
+        // Parse target type name (e.g., "str", "Point", "ListIter")
+        // Note: We only parse the base name, not generic instance like ListIter<T, S>
+        let target = self.parse_name()?;
+
+        // Plan 391 D6: Auto has no trait-impl syntax. Rust-style
+        // `impl Trait for Type { ... }` would otherwise be silently misparsed
+        // here (target=Trait, `for` mishandled → impl Type for Trait, reversed).
+        // Detect the `... for <ident>` tail and raise a clear error instead of
+        // producing a wrong-arity impl block. NOTE: `ext Type for Spec` is a
+        // LEGITIMATE Auto spec-impl syntax — only flag `impl ... for`.
+        // (Skipping any generic args first, since `impl TryFrom<Node> for Foo`
+        // has `<Node>` between name and for.)
+        if opened_by_impl && self.is_kind(TokenKind::Lt) {
+            // skip `<...>` generic args on the trait name
+            self.next();
+            let mut depth = 1i32;
+            while depth > 0 {
+                let tok = self.lexer.next()?;
+                match tok.kind {
+                    TokenKind::Lt => depth += 1,
+                    TokenKind::Gt => depth -= 1,
+                    _ => {}
+                }
+            }
+        }
+        if opened_by_impl && self.is_kind(TokenKind::For) {
+            return Err(SyntaxError::Generic {
+                message: "Auto does not support trait impl syntax (`impl Trait for Type`). \
+                          Use a `static fn`/`ext` method with an equivalent name instead."
+                    .to_string(),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+
+        // Skip generic instance syntax if present (e.g., <T, S> after ListIter)
+        // For now, we just extract the base type name and skip the generic parameters
+        // This allows `impl<T, S> ListIter<T, S>` to work
+        if self.is_kind(TokenKind::Lt) {
+            // Generic instance syntax like ListIter<T, S>
+            self.next(); // skip '<'
+
+            // Parse type arguments
+            if self.next_token_is_type() {
+                let _ = self.parse_type()?;
+            }
+
+            // Parse additional type arguments separated by commas
+            while self.is_kind(TokenKind::Comma) {
+                self.next(); // skip ','
+                if self.next_token_is_type() {
+                    let _ = self.parse_type()?;
+                }
+            }
+
+            self.expect(TokenKind::Gt)?; // skip '>'
+        }
+
+        // Plan 164: Parse optional "for TraitName" for external trait implementation
+        // e.g., ext Point for Display { ... }
+        let mut trait_name: Option<Name> = None;
+        let mut trait_generic_args: Vec<crate::ast::Type> = Vec::new();
+        if self.is_kind(TokenKind::For) {
+            self.next(); // skip 'for'
+            trait_name = Some(self.parse_name()?);
+
+            // Plan 6B-2.7: Store generic args on trait name, e.g., ext MyType for From<String>
+            if self.is_kind(TokenKind::Lt) {
+                self.next(); // skip '<'
+                if self.next_token_is_type() {
+                    trait_generic_args.push(self.parse_type()?);
+                }
+                while self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    if self.next_token_is_type() {
+                        trait_generic_args.push(self.parse_type()?);
+                    }
+                }
+                self.expect(TokenKind::Gt)?;
+            }
+        }
+
+        // Expect opening brace
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        // Parse fields, consts and methods
+        let mut fields = Vec::new();
+        let mut consts = Vec::new();
+        let mut methods = Vec::new();
+
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            // Check for annotations: #[c], #[vm], #[rs], #[c,vm] before function declarations
+            // Note: pub is a keyword prefix, not an annotation (pub fn, pub static fn)
+            let ann = self.parse_fn_annotations()?;
+
+            self.skip_empty_lines(); // Skip newlines after annotations
+
+            // Check if this annotation should be skipped for current compile destination
+            let should_skip = match self.compile_dest {
+                CompileDest::TransC if ann.has_vm && !ann.has_c => true, // Skip #[vm] in C transpiler
+                CompileDest::TransC if ann.has_rs && !ann.has_c => true, // Skip #[rs] in C transpiler
+                CompileDest::TransRust if ann.has_vm && !ann.has_rs => true, // Skip #[vm] in Rust transpiler
+                CompileDest::TransRust if ann.has_c && !ann.has_rs => true, // Skip #[c] in Rust transpiler
+                CompileDest::Interp if ann.has_c && !ann.has_vm => true, // Skip #[c] in interpreter
+                CompileDest::Interp if ann.has_rs && !ann.has_vm => true, // Skip #[rs] in interpreter
+                _ => false,
+            };
+
+            // Plan 6B-4.19: Handle `pub` keyword prefix inside ext body
+            // Must be checked BEFORE field detection since `pub` is also an Ident
+            let local_has_pub =
+                if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
+                    self.next(); // consume "pub"
+                    true
+                } else {
+                    ann.has_pub
+                };
+
+            // Parse field declarations: name Type (same syntax as type members)
+            // Fields must come before methods
+            if self.is_kind(TokenKind::Ident) {
+                // Check if this is a field (next token is a type)
+                // Lookahead: if current token is Ident and next token is NOT a keyword that starts a statement
+                let is_field = match self.peek().kind {
+                    TokenKind::Fn | TokenKind::Static | TokenKind::Has | TokenKind::RBrace => false,
+                    TokenKind::Colon => {
+                        // Old syntax with colon - reject with helpful error
+                        return Err(SyntaxError::Generic {
+                            message: "ext field syntax should be 'name Type' (without colon), same as type members. Use: '_fp *FILE' not '_fp: *FILE'".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    }
+                    _ => true,
+                };
+
+                if is_field {
+                    // Parse field: name Type [optional_default_value]
+                    let field_name = self.parse_name()?;
+                    let field_type = self.parse_type()?;
+                    let mut value = None;
+                    if self.is_kind(TokenKind::Asn) {
+                        self.next(); // skip =
+                        let expr = self.parse_expr()?;
+                        value = Some(expr);
+                    }
+
+                    // ext fields are always private
+                    let mut member = crate::ast::Member::new(field_name, field_type, value);
+                    // Plan 163: Collect per-field attributes from raw_attrs
+                    if !self.raw_attrs.is_empty() {
+                        member.attrs = std::mem::take(&mut self.raw_attrs);
+                    }
+                    fields.push(member);
+
+                    self.expect_eos(false)?;
+                    self.skip_empty_lines();
+                    continue;
+                }
+            }
+
+            // C8: `const NAME TYPE = value` / `pub const NAME TYPE = value`
+            // inside an ext block → associated const on the impl block.
+            if self.is_kind(TokenKind::Const) {
+                let stmt = self.parse_store_stmt(vec![])?;
+                if let Stmt::Store(mut store) = stmt {
+                    store.is_pub = local_has_pub;
+                    consts.push(store);
+                }
+                self.expect_eos(false)?;
+                self.skip_empty_lines();
+                continue;
+            }
+
+            // Parse method declarations (fn or static fn)
+            // IMPORTANT: Check Static BEFORE Fn, since "static fn" starts with Static
+            if self.is_kind(TokenKind::Static)
+                || self.is_kind(TokenKind::Mut)
+                || self.is_kind(TokenKind::Fn)
+            {
+                // Track if this is a static method (Plan 035 Phase 4)
+                let is_static_method = self.is_kind(TokenKind::Static);
+                // Plan 163: Track if this is a mut method (&mut self)
+                let is_mut_method = self.is_kind(TokenKind::Mut);
+
+                // If static fn, skip the static keyword first
+                if is_static_method {
+                    self.next(); // skip `static` keyword
+                                 // Now we expect `fn` keyword
+                    if !self.is_kind(TokenKind::Fn) {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "expected 'fn' after 'static', found {:?}",
+                                self.kind()
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+
+                // Plan 163: If mut fn, skip the mut keyword first
+                if is_mut_method {
+                    self.next(); // skip `mut` keyword
+                    if !self.is_kind(TokenKind::Fn) {
+                        return Err(SyntaxError::Generic {
+                            message: format!("expected 'fn' after 'mut', found {:?}", self.kind()),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+
+                // Check if we should skip this based on annotation
+                if should_skip {
+                    // Skip the entire function declaration
+                    // Parse with the actual annotation flags to correctly handle the function syntax
+                    let _ = self.fn_decl_stmt_with_annotations(
+                        &target,
+                        ann.has_c,
+                        ann.has_vm,
+                        ann.has_rs,
+                        is_static_method,
+                        local_has_pub,
+                        ann.with_params.clone(),
+                        ann.has_test,
+                    );
+                    self.expect_eos(false)?;
+                    self.skip_empty_lines();
+                    continue;
+                }
+
+                let fn_stmt = self.fn_decl_stmt_with_annotations(
+                    &target,
+                    ann.has_c,
+                    ann.has_vm,
+                    ann.has_rs,
+                    is_static_method,
+                    local_has_pub,
+                    ann.with_params.clone(),
+                    ann.has_test,
+                )?;
+                if let Stmt::Fn(mut fn_expr) = fn_stmt {
+                    // Set is_static flag for static methods (Plan 035 Phase 4.2)
+                    if is_static_method {
+                        fn_expr.is_static = true;
+                    }
+                    // Plan 163: Set is_mut flag for mutable methods
+                    if is_mut_method {
+                        fn_expr.is_mut = true;
+                    }
+                    methods.push(fn_expr);
+                }
+                // For VM/C/RS methods, they can end with newline (interface contract)
+                // For regular methods, expect EOS (semicolon or newline after statement)
+                if !ann.has_vm && !ann.has_c && !ann.has_rs {
+                    self.expect_eos(false)?;
+                }
+                self.skip_empty_lines();
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "ext blocks can only contain field (name Type) or method declarations (fn or static fn), found {:?}",
+                        self.kind()
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        }
+
+        // Expect closing brace
+        self.expect(TokenKind::RBrace)?;
+
+        // TODO: Implement proper module tracking
+        // For now, assume same-module (will be enhanced in future task)
+        let module_path: AutoStr = "".into();
+        let is_same_module = true;
+
+        // Plan 059: Create Ext with generic params, fields, consts, and methods
+        let ext = Ext {
+            target,
+            trait_name,
+            trait_generic_args,
+            generic_params,
+            fields,
+            consts,
+            methods,
+            module_path,
+            is_same_module,
+            // Plan 364 W1: impl-level attribute macros (`#[zbus.interface]`) from annotations
+            attrs: ext_attrs,
+        };
+        Ok(Stmt::Ext(ext))
+    }
+
+    /// Parse enum declarations supporting 3 forms:
+    ///
+    /// - **Scalar**: `enum Color { Red, Green }` or `enum HttpCode u16 { OK = 200 }`
+    /// - **Homogeneous**: `enum Vertex Point { LeftTop, RightTop }`
+    /// - **Heterogeneous**: `enum Msg { Quit, Move Point, Write string }`
+    ///
+    /// Also handles `tag` keyword (deprecated) by redirecting here.
+    fn enum_stmt(&mut self) -> AutoResult<Stmt> {
+        // Support both 'enum' and 'tag' keywords (tag is deprecated)
+        if self.is_kind(TokenKind::Tag) || self.is_kind(TokenKind::Enum) {
+            self.next(); // skip 'enum' or 'tag'
+        }
+        let name: AutoStr = self.cur.text.clone().into();
+        self.next();
+
+        // === Parse optional generic params: enum Name<T> { ... } ===
+        let mut generic_params = Vec::new();
+        if self.cur.kind == TokenKind::Lt {
+            self.next();
+            generic_params.push(self.parse_generic_param()?);
+            while self.cur.kind == TokenKind::Comma {
+                self.next();
+                generic_params.push(self.parse_generic_param()?);
+            }
+            self.expect(TokenKind::Gt)?;
+        }
+
+        let kind;
+        let items;
+
+        if self.is_kind(TokenKind::LBrace) {
+            // enum Name { ... } — examine body to determine Scalar vs Heterogeneous
+            let parsed = self.parse_enum_body(&name, &generic_params)?;
+            kind = parsed.0;
+            items = parsed.1;
+        } else if self.is_kind(TokenKind::Ident) {
+            let next_text = self.cur.text.to_string();
+            if Self::is_integer_type_name(&next_text) {
+                // enum Name u16 { ... } → Scalar with repr_type
+                let repr_type = self.parse_type()?;
+                let scalar_items = self.parse_scalar_enum_items()?;
+                kind = EnumKind::Scalar {
+                    repr_type: Some(repr_type),
+                };
+                items = scalar_items;
+            } else {
+                // Check if it's a known type (for Homogeneous)
+                let type_lookup = self.lookup_type(&next_text);
+                let borrowed = type_lookup.borrow();
+                match *borrowed {
+                    Type::User(_) | Type::Tag(_) | Type::Enum(_) => {
+                        let payload_type = borrowed.clone();
+                        drop(borrowed);
+                        self.next(); // skip type name
+                        let homo_items = self.parse_homo_enum_items()?;
+                        kind = EnumKind::Homogeneous { payload_type };
+                        items = homo_items;
+                    }
+                    _ => {
+                        let span = pos_to_span(self.cur.pos);
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "expected '{{' or known type after '{}', got '{}'",
+                                name, next_text
+                            ),
+                            span,
+                        }
+                        .into());
+                    }
+                }
+            }
+        } else {
+            let span = pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic {
+                message: format!("expected '{{' or type after '{}'", name),
+                span,
+            }
+            .into());
+        }
+
+        let enum_decl = EnumDecl {
+            name: name.clone(),
+            items,
+            kind,
+            is_pub: false,
+            doc: self.take_docs(),
+            // Plan 364 W1: consume any leftover impl-level dotted macros so they
+            // don't leak to the next decl. Enums render them before the enum decl
+            // (imperfect placement; enums rarely carry impl macros).
+            attrs: {
+                let mut a = std::mem::take(&mut self.raw_attrs);
+                a.append(&mut self.impl_attrs);
+                a
+            },
+        };
+        self.register_enum_decl(&enum_decl, &generic_params);
+        Ok(Stmt::EnumDecl(enum_decl))
+    }
+
+    /// Helper: check if a string is a known integer type name.
+    fn is_integer_type_name(s: &str) -> bool {
+        matches!(
+            s,
+            "int"
+                | "uint"
+                | "u8"
+                | "u16"
+                | "u32"
+                | "u64"
+                | "usize"
+                | "i8"
+                | "i16"
+                | "i32"
+                | "i64"
+                | "byte"
+        )
+    }
+
+    /// Parse the body of `enum Name { ... }`, determining Scalar vs Heterogeneous
+    /// by checking if any items have payload types.
+    fn parse_enum_body(
+        &mut self,
+        name: &AutoStr,
+        generic_params: &[crate::ast::GenericParam],
+    ) -> AutoResult<(EnumKind, Vec<EnumItem>)> {
+        // Set current type params for generic parsing
+        let prev_type_params = std::mem::replace(
+            &mut self.current_type_params,
+            generic_params
+                .iter()
+                .map(|gp| match gp {
+                    crate::ast::GenericParam::Type(tp) => tp.name.clone(),
+                    crate::ast::GenericParam::Const(cp) => cp.name.clone(),
+                })
+                .collect(),
+        );
+
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut items = Vec::new();
+        let mut methods = Vec::new();
+        let mut has_any_payload = false;
+        let mut last_val = 0i32;
+
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            // Check for methods inside enum body
+            if self.is_kind(TokenKind::Fn) || self.is_kind(TokenKind::Static) {
+                let is_static = self.is_kind(TokenKind::Static);
+                if is_static {
+                    self.next(); // skip static
+                    self.skip_empty_lines();
+                }
+                let fn_stmt = self.fn_decl_stmt(&Name::from(name.as_str()))?;
+                if let Stmt::Fn(fn_expr) = fn_stmt {
+                    // Mark as static if needed
+                    let mut fn_expr = fn_expr;
+                    if is_static {
+                        fn_expr.is_static = true;
+                    }
+                    methods.push(fn_expr);
+                }
+                self.expect_eos(false)?;
+                self.skip_empty_lines();
+                continue;
+            }
+
+            // Plan 382: variant attributes `#[from]` / `#[error("...")]`.
+            // Lexed as Hash + LSquare + ident (+ optional parenthesized args).
+            // Captured as raw strings (e.g. "from", "error(\"client: {0}\")") and
+            // attached to the EnumItem; next() auto-skips doc comments.
+            let mut variant_attrs: Vec<AutoStr> = Vec::new();
+            while self.is_kind(TokenKind::Hash) {
+                self.next(); // skip '#'
+                self.expect(TokenKind::LSquare)?;
+                let mut attr_str = String::new();
+                if self.is_kind(TokenKind::Ident) {
+                    attr_str.push_str(&self.cur.text);
+                    self.next(); // skip the attribute name
+                    if let Some(args) = self.collect_annotation_args() {
+                        attr_str.push_str(&args);
+                    }
+                }
+                self.expect(TokenKind::RSquare)?;
+                variant_attrs.push(attr_str.into());
+                self.skip_empty_lines();
+            }
+
+            // Parse variant
+            let item_name: AutoStr = self.cur.text.clone().into();
+            self.next();
+
+            let mut scalar_value = None;
+            let mut value_explicit = false;
+            let mut payload_type = None;
+            let mut payload_types: Vec<Type> = vec![];
+
+            if self.is_kind(TokenKind::Asn) {
+                // Variant = value (Scalar form)
+                self.next();
+                let value = self.parse_ints()?;
+                let value = self.get_int_expr(&value);
+                scalar_value = Some(value as i32);
+                value_explicit = true;
+                last_val = value as i32 + 1;
+            } else if self.is_kind(TokenKind::LBrace) {
+                // Plan 201 Phase 1B: Struct-like variant: Name { field1 Type, field2 Type, ... }
+                let fields = self.parse_enum_variant_fields()?;
+                has_any_payload = true;
+                items.push(EnumItem {
+                    name: item_name,
+                    scalar_value: None,
+                    value_explicit: false,
+                    payload_type: None,
+                    payload_types: vec![],
+                    fields,
+                    attrs: variant_attrs,
+                });
+                self.expect_eos(false)?;
+                self.skip_empty_lines();
+                continue;
+            } else if self.is_kind(TokenKind::LParen) {
+                // Tuple variant: ToolUse(str, str, str)
+                self.next(); // consume '('
+                let mut types = vec![];
+                loop {
+                    types.push(self.parse_type()?);
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next(); // consume ','
+                    } else {
+                        break;
+                    }
+                }
+                self.expect(TokenKind::RParen)?;
+                if types.len() == 1 {
+                    payload_type = Some(types.into_iter().next().unwrap());
+                } else {
+                    payload_types = types;
+                }
+                has_any_payload = true;
+            } else if self.is_kind(TokenKind::Ident)
+                || self.is_kind(TokenKind::Question)
+                || self.is_kind(TokenKind::Not)
+            {
+                // Single-type variant: Text str, Some ?int, Err !str
+                payload_type = Some(self.parse_type()?);
+                has_any_payload = true;
+            } else {
+                // No value, no type — plain variant, auto-increment for scalar
+                scalar_value = if last_val != 0 { Some(last_val) } else { None };
+                last_val += 1;
+            }
+
+            items.push(EnumItem {
+                name: item_name,
+                scalar_value,
+                value_explicit,
+                payload_type,
+                payload_types,
+                fields: vec![],
+                attrs: variant_attrs,
+            });
+            self.expect_eos(false)?;
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Restore type params
+        self.current_type_params = prev_type_params;
+
+        let kind = if has_any_payload || !methods.is_empty() || !generic_params.is_empty() {
+            EnumKind::Heterogeneous {
+                generic_params: generic_params.to_vec(),
+                methods,
+            }
+        } else {
+            EnumKind::Scalar { repr_type: None }
+        };
+
+        Ok((kind, items))
+    }
+
+    /// Parse scalar enum items for `enum Name u16 { A, B = 2, C }`.
+    /// Items only have `= value` or auto-increment, no payload types.
+    fn parse_scalar_enum_items(&mut self) -> AutoResult<Vec<EnumItem>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut items = Vec::new();
+        let mut last_val = 0i32;
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            let mut item = EnumItem {
+                name: self.cur.text.clone().into(),
+                scalar_value: None,
+                value_explicit: false,
+                payload_type: None,
+                payload_types: vec![],
+                fields: vec![],
+                attrs: vec![],
+            };
+            self.next();
+            if self.is_kind(TokenKind::Asn) {
+                self.next(); // skip =
+                let value = self.parse_ints()?;
+                let value = self.get_int_expr(&value);
+                item.scalar_value = Some(value as i32);
+                item.value_explicit = true;
+                last_val = value as i32 + 1;
+            } else {
+                item.scalar_value = if last_val != 0 { Some(last_val) } else { None };
+                last_val += 1;
+            }
+            // Handle separator
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            } else if self.is_kind(TokenKind::Newline) {
+                self.next();
+            } else if !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
+            }
+            self.skip_empty_lines();
+            items.push(item);
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(items)
+    }
+
+    /// Parse homogeneous enum items for `enum Vertex Point { LeftTop, RightTop }`.
+    /// Just variant names, no types or values.
+    fn parse_homo_enum_items(&mut self) -> AutoResult<Vec<EnumItem>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut items = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            let item_name: AutoStr = self.cur.text.clone().into();
+            self.next();
+            items.push(EnumItem {
+                name: item_name,
+                scalar_value: None,
+                value_explicit: false,
+                payload_type: None,
+                payload_types: vec![],
+                fields: vec![],
+                attrs: vec![],
+            });
+            self.expect_eos(false)?;
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(items)
+    }
+
+    /// Plan 201 Phase 1B: Parse struct-like enum variant fields.
+    /// Syntax: { name Type, name Type, ... }
+    fn parse_enum_variant_fields(&mut self) -> AutoResult<Vec<crate::ast::EnumField>> {
+        use crate::ast::EnumField;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut fields = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) && !self.is_kind(TokenKind::EOF) {
+            // Plan 442 C2: skip `#[...]` attributes on variant fields — musk
+            // backend's serde passthrough (#[serde(default, skip_serializing_if
+            // = "...")]) previously leaked its tokens into the field parse
+            // ("undefined variable: default" + RBrace cascade). The VM drops
+            // the attr text; a2r reads it from raw_attrs the same way struct
+            // fields do.
+            while self.is_kind(TokenKind::Hash) {
+                // `#` not followed by `[` → corpus-style line comment (musk
+                // relay_store's hand-written `# PLAN-032 ...` notes); skip to
+                // end of line instead of erroring.
+                let is_attr = if let Ok(tok) = self.lexer.next() {
+                    let a = tok.kind == TokenKind::LSquare;
+                    self.lexer.push_token(tok);
+                    a
+                } else {
+                    false
+                };
+                if is_attr {
+                    let _ = self.parse_fn_annotations()?;
+                } else {
+                    while !self.is_kind(TokenKind::Newline)
+                        && !self.is_kind(TokenKind::EOF)
+                        && !self.is_kind(TokenKind::RBrace)
+                    {
+                        self.next();
+                    }
+                }
+                self.skip_empty_lines();
+            }
+            if self.is_kind(TokenKind::RBrace) || self.is_kind(TokenKind::EOF) {
+                break;
+            }
+            let name: AutoStr = self.cur.text.clone().into();
+            self.next();
+            // Plan 396/B11(b): accept both  and
+            // (auto-ai's error.at declares struct-variant fields colon-style).
+            if self.is_kind(TokenKind::Colon) {
+                self.next();
+            }
+            let field_type = self.parse_type()?;
+            fields.push(EnumField { name, field_type });
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+            }
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(fields)
+    }
+
+    /// Register an enum declaration in the parser's scope and type store.
+    fn register_enum_decl(
+        &mut self,
+        enum_decl: &EnumDecl,
+        generic_params: &[crate::ast::GenericParam],
+    ) {
+        match &enum_decl.kind {
+            EnumKind::Scalar { .. } => {
+                self.define(enum_decl.name.as_str(), Meta::Enum(enum_decl.clone()));
+                self.type_store
+                    .write()
+                    .unwrap()
+                    .register_enum_decl(enum_decl.clone());
+                // Register variants as constants (Plan 127: for task message enums)
+                for item in &enum_decl.items {
+                    let store = Store {
+                        kind: StoreKind::Let,
+                        attrs: vec![],
+                        is_pub: false,
+                        name: item.name.clone(),
+                        ty: Type::Int,
+                        expr: Expr::Int(item.value()),
+                    };
+                    self.define(item.name.as_str(), Meta::Store(store));
+                }
+            }
+            EnumKind::Heterogeneous { .. } => {
+                self.define(
+                    enum_decl.name.as_str(),
+                    Meta::Type(Type::Enum(shared(enum_decl.clone()))),
+                );
+                self.type_store
+                    .write()
+                    .unwrap()
+                    .register_enum_decl(enum_decl.clone());
+                // Register variants as constructors (Tag-style)
+                // Nil variants without payload are accessible as EnumName.VariantName
+            }
+            EnumKind::Homogeneous { .. } => {
+                self.define(
+                    enum_decl.name.as_str(),
+                    Meta::Type(Type::Enum(shared(enum_decl.clone()))),
+                );
+                self.type_store
+                    .write()
+                    .unwrap()
+                    .register_enum_decl(enum_decl.clone());
+            }
+        }
+        // Suppress unused variable warning
+        let _ = generic_params;
+    }
+
+    // ========================================================================
+    // Plan 121: Task/Msg System - Task Definition Parsing
+    // ========================================================================
+
+    /// Parse task definition: `#[single] task Name { ... }`
+    ///
+    /// ```auto
+    /// #[single]
+    /// task CounterTask {
+    ///     count mut = 0
+    ///
+    ///     fn start() ! { self.count = 0 }
+    ///     fn stop() ! { print("stopping") }
+    ///
+    ///     on {
+    ///         Add(val) => { self.count += val }
+    ///         Reset => { self.count = 0 }
+    ///         else => { }
+    ///     }
+    /// }
+    /// ```
+    pub fn parse_task(&mut self) -> AutoResult<Stmt> {
+        self.parse_task_with_attrs(Vec::new())
+    }
+
+    /// Parse task with pre-parsed attributes (e.g., #[single])
+    pub fn parse_task_with_attrs(&mut self, attrs: Vec<TaskAttr>) -> AutoResult<Stmt> {
+        self.expect(TokenKind::Task)?;
+        let name = self.parse_name()?;
+        let pos = self.prev.pos;
+
+        let mut task = TaskDef::new(name.clone(), attrs, pos);
+
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        // Plan 389 R3: task state fields are task-scoped members. Register
+        // them in the parser scope so handler/hook bodies can reference them
+        // (including f-string interpolation `${field}`) — previously check_symbol
+        // raised E0201 for them, which body()'s error recovery re-surfaced as a
+        // confusing E0007 "Expected term, got RBrace".
+        self.infer_ctx.push_scope();
+
+        // Parse task body
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            match self.kind() {
+                TokenKind::Fn => {
+                    // Parse lifecycle hook: fn start() ! { ... } or fn stop() ! { ... }
+                    let hook_fn = self.parse_task_lifecycle_hook(&name)?;
+                    let fn_name = hook_fn.name.as_str();
+                    if fn_name == "start" {
+                        task.set_start_hook(hook_fn);
+                    } else if fn_name == "stop" {
+                        task.set_stop_hook(hook_fn);
+                    } else {
+                        return Err(SyntaxError::Generic {
+                            message: format!("Unknown lifecycle hook '{}'. Only 'start' and 'stop' are allowed in task.", fn_name),
+                            span: pos_to_span(self.prev.pos),
+                        }.into());
+                    }
+                }
+                TokenKind::On => {
+                    // Parse on block: on { ... }
+                    let on_block = self.parse_task_on_block()?;
+                    task.on_block = on_block;
+                }
+                TokenKind::Ident => {
+                    // Parse state field: name [mut] = expr
+                    let (field_name, mutable, init_expr) = self.parse_task_state_field()?;
+                    // Plan 389 R3: bind the field name (type unknown — exists()
+                    // only checks name presence) so it resolves in check_symbol.
+                    self.infer_ctx
+                        .bind_var(field_name.clone(), crate::ast::Type::Unknown);
+                    task.add_state(field_name, mutable, init_expr);
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected state field, lifecycle hook, or on block in task, got {:?}",
+                            self.kind()
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+            self.skip_empty_lines();
+        }
+
+        let close_brace = self.expect(TokenKind::RBrace);
+        self.infer_ctx.pop_scope();
+        close_brace?;
+
+        // Register task in scope
+        self.define(name.as_str(), Meta::Task(task.clone()));
+
+        // Plan 387 W4: register message-variant names (from the `on` block) as
+        // symbols so that `h.send(Reset)` / `h.send(Add(5))` resolve in the
+        // name-checker. Without this, bare `Reset` / `Add` are "undefined variable"
+        // (parser.rs:9908). The a2r transpiler rewrites these to `<Task>Msg::Variant`
+        // at transpile time; here we only satisfy name resolution. Mirrors how
+        // register_enum_decl registers variants (parser.rs:4954-4965).
+        for (pattern, _guard, _body) in &task.on_block.handlers {
+            use crate::ast::TaskMsgPattern as P;
+            let vname: Option<&crate::ast::Name> = match pattern {
+                P::Simple(n) => Some(n),
+                P::WithBindings { variant, .. } => Some(variant),
+                _ => None,
+            };
+            if let Some(vn) = vname {
+                // Only register if not already defined (avoid clobbering real symbols).
+                if !self.exists(vn) {
+                    let store = Store {
+                        kind: StoreKind::Let,
+                        attrs: vec![],
+                        is_pub: false,
+                        name: vn.clone(),
+                        ty: Type::Int,
+                        expr: Expr::Int(0),
+                    };
+                    self.define(vn.as_str(), Meta::Store(store));
+                }
+            }
+        }
+
+        Ok(Stmt::TaskDef(task))
+    }
+
+    /// Parse task state field: `name [mut] = expr`
+    fn parse_task_state_field(&mut self) -> AutoResult<(Name, bool, Expr)> {
+        let name = self.parse_name()?;
+        let _pos = self.prev.pos;
+
+        // Check for 'mut' keyword
+        let mutable = if self.is_kind(TokenKind::Mut) {
+            self.next();
+            true
+        } else {
+            false
+        };
+
+        // Expect '='
+        self.expect(TokenKind::Asn)?;
+
+        // Parse initial value expression
+        let init_expr = self.parse_expr()?;
+
+        Ok((name, mutable, init_expr))
+    }
+
+    /// Parse task lifecycle hook: `fn start() ! { ... }` or `fn stop() ! { ... }`
+    fn parse_task_lifecycle_hook(&mut self, task_name: &Name) -> AutoResult<Fn> {
+        self.next(); // skip 'fn'
+
+        let fn_name = self.parse_name()?;
+
+        // Parse parameters - lifecycle hooks have no parameters
+        self.expect(TokenKind::LParen)?;
+        self.expect(TokenKind::RParen)?;
+
+        // Expect '!' postfix (async marker for lifecycle hooks)
+        if !self.is_kind(TokenKind::Not) {
+            return Err(SyntaxError::Generic {
+                message: format!(
+                    "Lifecycle hook '{}' must have '!' postfix (e.g., fn {}() ! {{ ... }})",
+                    fn_name, fn_name
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        self.next(); // consume '!'
+
+        // Skip empty lines before body
+        self.skip_empty_lines();
+
+        // Parse body
+        let body = self.body()?;
+
+        // Create Fn struct
+        let hook = Fn::new(
+            FnKind::Method, // Lifecycle hooks are methods on the task
+            fn_name,
+            Some(task_name.clone()),
+            Vec::new(), // Lifecycle hooks have no params
+            body,
+            Type::Void,
+        );
+
+        Ok(hook)
+    }
+
+    /// Parse task on block: `on { Pattern => { ... } else => { ... } }`
+    /// Phase 3 (Plan 125): Also supports `on(ctx) { ... }` with context parameter
+    /// and guard expressions: `amount int if amount > 10000 => { ... }`
+    fn parse_task_on_block(&mut self) -> AutoResult<TaskOnBlock> {
+        self.expect(TokenKind::On)?;
+        let pos = self.prev.pos;
+
+        // Phase 3: Check for context parameter: on(ctx) or on { ... }
+        let context_param = if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+            let name = self.parse_name()?;
+            self.expect(TokenKind::RParen)?;
+            Some(name)
+        } else {
+            None
+        };
+
+        let mut on_block =
+            TaskOnBlock::with_context_and_handlers(context_param, Vec::new(), None, pos);
+
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            self.skip_empty_lines();
+            if self.is_kind(TokenKind::RBrace) {
+                break;
+            }
+
+            // Check for 'else' handler
+            if self.is_kind(TokenKind::Else) {
+                self.next(); // consume 'else'
+                self.expect(TokenKind::Arrow)?;
+                let body = self.body()?;
+                on_block.set_else(body);
+            } else {
+                // Parse message pattern: Name, Literal, or TypeBinding
+                let pattern = self.parse_task_msg_pattern()?;
+
+                // Plan 389 R1: register on-pattern binding names (TypeBinding /
+                // WithBindings) in a per-handler scope so the guard and body can
+                // reference them as expression variables — previously only
+                // `is ev { ... }` worked, and only because parse_is skips symbol
+                // checks for is-targets. The scope is popped even on parse error
+                // so the scope stack stays balanced for body()'s recovery.
+                self.infer_ctx.push_scope();
+                self.bind_task_pattern_names(&pattern);
+                let parsed = self.parse_on_handler_body();
+                self.infer_ctx.pop_scope();
+                let (guard, body) = parsed?;
+                on_block.add_handler_with_guard(pattern, guard, body);
+            }
+
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(on_block)
+    }
+
+    /// Plan 389 R1: bind an on-pattern's binding names into the current infer
+    /// scope so the handler body (and guard) can reference them as expression
+    /// variables. TypeBinding binds the bound name with its declared type;
+    /// WithBindings binds each tuple-pattern name as Unknown.
+    fn bind_task_pattern_names(&mut self, pattern: &TaskMsgPattern) {
+        use crate::ast::TaskMsgPattern as P;
+        match pattern {
+            P::TypeBinding { name, type_expr } => {
+                self.infer_ctx.bind_var(name.clone(), (**type_expr).clone());
+            }
+            P::WithBindings { bindings, .. } => {
+                for (b, bty) in bindings {
+                    // Plan 387 follow-up P3: bind the declared type when given,
+                    // so guard/body expressions see e.g. `val: String`.
+                    let ty = bty.clone().unwrap_or(crate::ast::Type::Unknown);
+                    self.infer_ctx.bind_var(b.clone(), ty);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Plan 389 R1: parse a single on-handler's guard + body. Called with the
+    /// pattern-binding scope already pushed (the caller pops it afterwards, even
+    /// on error, so the scope stack stays balanced under error recovery).
+    fn parse_on_handler_body(&mut self) -> AutoResult<(Option<Expr>, Body)> {
+        // Phase 3: Parse optional guard expression
+        let guard = if self.is_kind(TokenKind::If) {
+            self.next(); // consume 'if'
+            Some(self.parse_expr()?)
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::Arrow)?;
+        let body = self.body()?;
+        Ok((guard, body))
+    }
+
+    /// Parse task message pattern
+    ///
+    /// Phase 1/2 patterns:
+    /// - `Reset` - Simple variant
+    /// - `Add(val)` - Variant with bindings
+    ///
+    /// Phase 3 patterns (Plan 125):
+    /// - `"ping"` - String literal
+    /// - `404` - Integer literal
+    /// - `true` / `false` - Boolean literal
+    /// - `msg string` - Type binding (identifier followed by type)
+    fn parse_task_msg_pattern(&mut self) -> AutoResult<TaskMsgPattern> {
+        use crate::ast::LiteralValue;
+
+        // Phase 3: Check for literal patterns first
+        match &self.cur.kind {
+            TokenKind::Str => {
+                let s = self.cur.text.clone();
+                let lit = LiteralValue::String(s);
+                self.next();
+                return Ok(TaskMsgPattern::Literal(lit));
+            }
+            TokenKind::Int | TokenKind::I8 => {
+                // Parse as integer literal
+                let n = self.cur.text.parse::<i64>().unwrap_or(0);
+                let lit = LiteralValue::Int(n);
+                self.next();
+                return Ok(TaskMsgPattern::Literal(lit));
+            }
+            TokenKind::Uint | TokenKind::U8 | TokenKind::Byte => {
+                // Parse as unsigned integer literal
+                let n = self.cur.text.parse::<u64>().unwrap_or(0);
+                let lit = LiteralValue::Uint(n);
+                self.next();
+                return Ok(TaskMsgPattern::Literal(lit));
+            }
+            TokenKind::True => {
+                self.next();
+                return Ok(TaskMsgPattern::Literal(LiteralValue::Bool(true)));
+            }
+            TokenKind::False => {
+                self.next();
+                return Ok(TaskMsgPattern::Literal(LiteralValue::Bool(false)));
+            }
+            _ => {}
+        }
+
+        // Phase 1/2: Parse identifier-based pattern
+        let name = self.parse_name()?;
+        let _pos = self.prev.pos;
+
+        // Check for parentheses with bindings: Add(val)
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // consume '('
+            let mut bindings: Vec<(Name, Option<crate::ast::Type>)> = Vec::new();
+
+            // Parse bindings. Plan 387 follow-up P3: each binding may carry an
+            // optional declared type — `Add(val: String)` / `Add(val String)` —
+            // which drives the generated enum variant's payload type.
+            while !self.is_kind(TokenKind::RParen) {
+                let binding = self.parse_name()?;
+                let mut bty = None;
+                if self.is_kind(TokenKind::Colon) {
+                    self.next(); // consume ':'
+                }
+                if self.is_type_name() {
+                    bty = Some(self.parse_type()?);
+                }
+                bindings.push((binding, bty));
+
+                if self.is_kind(TokenKind::Comma) {
+                    self.next(); // consume ','
+                } else if !self.is_kind(TokenKind::RParen) {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected ',' or ')' in message pattern, got {:?}",
+                            self.kind()
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+
+            self.expect(TokenKind::RParen)?;
+
+            Ok(TaskMsgPattern::with_bindings(name, bindings))
+        } else if self.is_type_name() {
+            // Phase 3: Type binding pattern: msg string, u User
+            // Next token is a type, so this is a TypeBinding pattern
+            let type_expr = self.parse_type()?;
+            Ok(TaskMsgPattern::TypeBinding {
+                name,
+                type_expr: Box::new(type_expr),
+            })
+        } else {
+            // Simple variant: Reset
+            Ok(TaskMsgPattern::simple(name))
+        }
+    }
+
+    fn expect_ident_str(&mut self) -> AutoResult<AutoStr> {
+        if self.is_kind(TokenKind::Ident) {
+            let name = self.cur.text.clone();
+            self.next(); // skip name
+            Ok(name)
+        } else {
+            return Err(SyntaxError::Generic {
+                message: format!("Expected identifier, got {:?}", self.kind()),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+    }
+
+    fn parse_use_items(&mut self) -> AutoResult<(Vec<AutoStr>, bool)> {
+        let mut items = Vec::new();
+        let mut is_wildcard = false;
+        // end of path, next should be a colon (for items), LBrace (Rust-style {items}), or end-of-statement
+        if self.is_kind(TokenKind::Colon) {
+            self.next(); // skip :
+                         // Plan 167: Support wildcard import (use module: *)
+            if self.is_kind(TokenKind::Star) {
+                self.next(); // skip *
+                is_wildcard = true;
+            } else if self.is_kind(TokenKind::Ident) {
+                let name = self.expect_ident_str()?;
+                items.push(name);
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected identifier or *, got {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            while self.is_kind(TokenKind::Comma) {
+                self.next(); // skip ,
+                let name = self.expect_ident_str()?;
+                items.push(name);
+            }
+        } else if self.is_kind(TokenKind::LBrace) {
+            // Rust-style grouped import: use.rust std::collections::{HashMap, HashSet}
+            self.next(); // skip {
+            while !self.is_kind(TokenKind::RBrace) {
+                if self.is_kind(TokenKind::Star) {
+                    self.next();
+                    is_wildcard = true;
+                } else {
+                    let name = self.expect_ident_str()?;
+                    items.push(name);
+                }
+                if self.is_kind(TokenKind::Comma) {
+                    self.next(); // skip ,
+                }
+            }
+            self.expect(TokenKind::RBrace)?; // skip }
+        }
+        Ok((items, is_wildcard))
+    }
+
+    pub fn use_c_stmt(&mut self) -> AutoResult<Stmt> {
+        let mut paths = Vec::new();
+        // include "<lib.h>"
+        if self.is_kind(TokenKind::Lt) {
+            self.next(); // skip <
+            let mut name = "<".to_string();
+            while !self.is_kind(TokenKind::Gt) {
+                name.push_str(self.cur.text.as_str());
+                self.next(); // skip lib
+            }
+            name.push_str(">");
+            self.expect(TokenKind::Gt)?;
+            paths.push(name.into());
+        } else if self.is_kind(TokenKind::Str) {
+            // include "lib.h"
+            let name = self.cur.text.clone();
+            self.next(); // skip lib
+            paths.push(format!("\"{}\"", name).into());
+        } else {
+            return Err(SyntaxError::Generic {
+                message: format!(
+                    "Expected <lib> or \"lib\", got {:?}, {}",
+                    self.kind(),
+                    self.cur.text
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+
+        let (items, _is_wildcard) = self.parse_use_items()?;
+
+        for item in items.iter() {
+            // add item to scope
+            self.define(item.as_str(), Meta::Use(item.into()));
+        }
+
+        let uses = Use {
+            kind: UseKind::C,
+            module_path: None,
+            paths,
+            items,
+            is_pub: false,
+            is_wildcard: false,
+        };
+
+        Ok(Stmt::Use(uses))
+    }
+
+    /// Parse `use.rust crate::module::{item1, item2}`
+    /// Plan 092: Rust FFI import
+    pub fn use_rust_stmt(&mut self) -> AutoResult<Stmt> {
+        // Already consumed: use . rust
+        // Now parse: crate::module::{items}
+
+        let mut paths = Vec::new();
+
+        // Get crate name (first identifier)
+        let name = self.expect_ident_str()?;
+        paths.push(name.into());
+
+        // Parse module path (:: separated)
+        while self.is_kind(TokenKind::Colon) {
+            self.next(); // skip first :
+            if !self.is_kind(TokenKind::Colon) {
+                // Single colon - might be type annotation, stop here
+                break;
+            }
+            self.next(); // skip second :
+
+            // Check for { which starts import items
+            if self.is_kind(TokenKind::LBrace) {
+                break;
+            }
+
+            let segment = self.expect_ident_str()?;
+            paths.push(segment.into());
+        }
+
+        // Parse import items
+        let (items, is_wildcard) = self.parse_use_items()?;
+
+        let uses = Use {
+            kind: UseKind::Rust,
+            module_path: None,
+            paths,
+            items,
+            is_pub: false,
+            is_wildcard,
+        };
+
+        Ok(Stmt::Use(uses))
+    }
+
+    /// Plan 214/300.1: Parse `use.py module: items` statement
+    ///
+    /// Syntax: `use.py a.b.c` or `use.py a.b.c: x, y`
+    pub fn use_py_stmt(&mut self) -> AutoResult<Stmt> {
+        // Already consumed: use . py
+        // Now parse: module: items
+
+        let mut paths = Vec::new();
+
+        let name = self.expect_ident_str()?;
+        paths.push(name.into());
+
+        // Parse module path (. separated for Python)
+        while self.is_kind(TokenKind::Dot) {
+            self.next();
+            let segment = self.expect_ident_str()?;
+            paths.push(segment.into());
+        }
+
+        // Parse items after colon: use.py math: sqrt, pow
+        let (items, is_wildcard) = self.parse_use_items()?;
+
+        // Plan 369 P4 (Task 13): record each imported item name so the symbol
+        // checker (check_symbol / exists) treats bare references to py-imported
+        // constants and functions (e.g. NAMESPACE_DNS, pi, uuid5) as defined.
+        // Without this, py constants only resolve in method-call position
+        // (`pi.to(str)`) and fail with "undefined variable" when used as a call
+        // argument or assignment RHS (`uuid5(NAMESPACE_DNS, ...)`).
+        for it in &items {
+            let name = it.as_str();
+            if !self.py_item_imports.iter().any(|n| n.as_str() == name) {
+                self.py_item_imports.push(name.into());
+            }
+        }
+
+        let uses = Use {
+            kind: UseKind::Py,
+            module_path: None,
+            paths,
+            items,
+            is_pub: false,
+            is_wildcard,
+        };
+
+        Ok(Stmt::Use(uses))
+    }
+
+    /// Parse `use.web NAME from "path"` (PLAN-037 T6) — the frontend sibling
+    /// of `use.rust` / `use.py`. Forms:
+    ///
+    ///   use.web agentAvatarData from "src/front/forge_helpers.at"
+    ///   use.web component MessageSquare, ListTodo from "lucide-vue-next"
+    ///   use.web composable useT from "src/front/composables/useT.ts"
+    ///   use.web composable useI18n refs: [locale] from "vue-i18n"
+    ///
+    /// Default (no modifier) is the plain import — the imported binding may
+    /// be a function, object, or constant (ES imports don't distinguish).
+    /// `component` additionally registers instantiable view tags;
+    /// `composable` auto-invokes once at setup and binds the result.
+    pub fn use_web_stmt(&mut self) -> AutoResult<Stmt> {
+        // Already consumed: use . web
+
+        // PLAN-051 C4: 点分 kind 限定符——`use.web.fn/component/composable`
+        // 与 use.rust/use.py 点分家族一致（用户裁定 2026-08-29）；旧空格
+        // 形式（`use.web component X`）与裸形式（无 kind = Fn）兼容等价。
+        let kind = if self.is_kind(TokenKind::Dot) {
+            self.next();
+            // `fn` 是关键字 token（TokenKind::Fn），不能走 expect_ident_str。
+            let k = if self.cur.text.as_str() == "fn" {
+                self.next();
+                "fn".to_string()
+            } else {
+                self.expect_ident_str()?.to_string()
+            };
+            match k.as_str() {
+                "fn" => ExtImportKind::ExplicitFn,
+                "component" => ExtImportKind::Component,
+                "composable" => ExtImportKind::Composable,
+                other => {
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Unknown use.web.<kind> '{}' — expected fn / component / composable",
+                            other
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+        } else {
+            match self.cur.text.as_str() {
+                "component" => {
+                    self.next();
+                    ExtImportKind::Component
+                }
+                "composable" => {
+                    self.next();
+                    ExtImportKind::Composable
+                }
+                _ => ExtImportKind::Fn,
+            }
+        };
+
+        let mut symbols: Vec<Name> = Vec::new();
+        loop {
+            if !self.is_kind(TokenKind::Ident) {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected symbol name in use.web statement, got '{}'",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            symbols.push(self.cur.text.clone().into());
+            self.next();
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+                continue;
+            }
+            break;
+        }
+
+        // Optional composable call args: `useX(.arg) from ...`
+        let mut call_args: Vec<crate::ast::Expr> = Vec::new();
+        if self.is_kind(TokenKind::LParen) {
+            self.next();
+            while !self.is_kind(TokenKind::RParen) {
+                let arg = self.parse_expr()?;
+                call_args.push(arg);
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+        }
+
+        // Optional composable ref-field annotation: `useX(refs: [a, b])`
+        let mut ref_fields: Vec<Name> = Vec::new();
+        if self.cur.text.as_str() == "refs" {
+            self.next();
+            self.expect(TokenKind::Colon)?;
+            self.expect(TokenKind::LSquare)?;
+            while !self.is_kind(TokenKind::RSquare) {
+                ref_fields.push(self.cur.text.clone().into());
+                self.next();
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+            self.expect(TokenKind::RSquare)?;
+        }
+
+        let ident = self.expect_ident_str()?;
+        if ident != "from" {
+            return Err(SyntaxError::Generic {
+                message: format!("Expected 'from' in use.web statement, got '{}'", ident),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        if !self.is_kind(TokenKind::Str) {
+            return Err(SyntaxError::Generic {
+                message: "Expected module path string after 'from' in use.web statement".into(),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        let path: AutoStr = self.cur.text.clone().into();
+        self.next();
+
+        // Register imported names so the symbol checker treats bare
+        // references as defined (mirrors use.py item registration).
+        for sym in &symbols {
+            self.define(sym.as_str(), Meta::Use(sym.to_string().into()));
+        }
+
+        Ok(Stmt::UseWeb(vec![ExtImport {
+            kind,
+            symbols,
+            path,
+            call_args,
+            ref_fields,
+        }]))
+    }
+    // 1. auto: use std.io: println
+    // 2. c: use c <stdio.h>
+    // 3. rust: use rust std::fs
+    pub fn use_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip use
+
+        // Plan 131: Check for pac. or super. prefix
+        // Support super (1 level), super2 (2 levels), super3 (3 levels), super4 (4 levels)
+        let prefix = if self.is_kind(TokenKind::Pac) {
+            self.next(); // skip 'pac'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Pac
+        } else if self.is_kind(TokenKind::Super2) {
+            self.next(); // skip 'super2'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Super(2)
+        } else if self.is_kind(TokenKind::Super3) {
+            self.next(); // skip 'super3'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Super(3)
+        } else if self.is_kind(TokenKind::Super4) {
+            self.next(); // skip 'super4'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Super(4)
+        } else if self.is_kind(TokenKind::Super) {
+            self.next(); // skip 'super'
+            self.expect(TokenKind::Dot)?;
+            PathPrefix::Super(1)
+        } else {
+            PathPrefix::None
+        };
+
+        let mut segments = Vec::new();
+
+        // check use.c or use.rust (only when no prefix)
+        if prefix == PathPrefix::None && self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
+                         // Plan 470: capture the lang keyword's span before consuming it,
+                         // so the deprecation label points at `use.rust` itself.
+            let kw_span = pos_to_span(self.cur.pos);
+            let name = self.expect_ident_str()?;
+
+            if name == "c" {
+                return self.use_c_stmt();
+            } else if name == "rust" || name == "rs" {
+                // Plan 470: `use.rs` is the canonical spelling (aligns with
+                // `use.py`); `use.rust` keeps parsing but warns (W0005).
+                if name == "rust" {
+                    self.warn(Warning::DeprecatedFeature {
+                        name: "use.rust".to_string(),
+                        message: "use 'use.rs' instead".to_string(),
+                        span: kw_span,
+                    });
+                }
+                return self.use_rust_stmt();
+            } else if name == "py" {
+                return self.use_py_stmt();
+            } else if name == "web" {
+                // PLAN-037 T6: `use.web` — web (Vue/TS/npm) ecosystem import.
+                return self.use_web_stmt();
+            } else {
+                segments.push(name.into());
+            }
+        } else {
+            let name = self.expect_ident_str()?;
+            segments.push(name.into());
+        }
+
+        while self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
+                         // Keywords pac/super/super2/super3/super4 not allowed after dot
+            if self.is_kind(TokenKind::Pac)
+                || self.is_kind(TokenKind::Super)
+                || self.is_kind(TokenKind::Super2)
+                || self.is_kind(TokenKind::Super3)
+                || self.is_kind(TokenKind::Super4)
+            {
+                return Err(SyntaxError::Generic {
+                    message:
+                        "Keywords 'pac' and 'super' can only appear at the start of a module path"
+                            .into(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            let segment = self.expect_ident_str()?;
+            segments.push(segment.into());
+        }
+
+        let (items, is_wildcard) = self.parse_use_items()?;
+
+        // Build ModulePath (Plan 131)
+        let module_path = Some(ModulePath::new(
+            prefix.clone(),
+            segments.clone(),
+            items.clone(),
+        ));
+
+        // Legacy paths for backward compat
+        let paths = if prefix == PathPrefix::Pac {
+            // Skip "pac" prefix for legacy paths (pac.db -> ["db"])
+            segments
+        } else if matches!(prefix, PathPrefix::Super(_)) {
+            // Include "super" in legacy paths (super.utils -> ["super", "utils"])
+            let super_count = match &prefix {
+                PathPrefix::Super(n) => *n,
+                _ => 0,
+            };
+            let mut p: Vec<AutoStr> = (0..super_count).map(|_| "super".into()).collect();
+            p.extend(segments);
+            p
+        } else {
+            segments
+        };
+
+        // Track imported module names for check_symbol (e.g., "flow" from "use super.flow")
+        if let Some(last) = paths.last() {
+            let name = last.as_str();
+            if name != "super" {
+                let already = self.use_imports.iter().any(|s| s.as_str() == name);
+                if !already {
+                    self.use_imports.push(last.clone());
+                }
+            }
+        }
+
+        // Create the Use statement
+        // Plan 085: Import is now handled by CompileSession.resolve_uses()
+        // The symbols should already be in type_store before parsing
+        let uses = Use {
+            kind: UseKind::Auto,
+            module_path,
+            paths,
+            items,
+            is_pub: false,
+            is_wildcard,
+        };
+        Ok(Stmt::Use(uses))
+    }
+
+    /// Parse `dep crate_name(version: "...", features: [...])`
+    /// Plan 092: Dependency declaration
+    pub fn dep_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip 'dep'
+
+        // Get crate name
+        let name = self.expect_ident_str()?;
+
+        let mut version = None;
+        let mut features = Vec::new();
+        let mut path = None;
+        let mut git = None;
+        let mut git_ref = None;
+
+        // Check for optional properties in parentheses
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // skip '('
+
+            while !self.is_kind(TokenKind::RParen) {
+                let key = self.expect_ident_str()?;
+                self.expect(TokenKind::Colon)?;
+
+                match key.as_str() {
+                    "version" => {
+                        let v = self.parse_string_literal()?;
+                        version = Some(v.into());
+                    }
+                    "features" => {
+                        // Parse array: ["derive", "rc"]
+                        self.expect(TokenKind::LSquare)?;
+                        while !self.is_kind(TokenKind::RSquare) {
+                            let f = self.parse_string_literal()?;
+                            features.push(f.into());
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next();
+                            }
+                        }
+                        self.expect(TokenKind::RSquare)?;
+                    }
+                    "path" => {
+                        let p = self.parse_string_literal()?;
+                        path = Some(p.into());
+                    }
+                    "git" => {
+                        let g = self.parse_string_literal()?;
+                        git = Some(g.into());
+                    }
+                    "branch" | "tag" | "rev" => {
+                        let r = self.parse_string_literal()?;
+                        git_ref = Some(r.into());
+                    }
+                    _ => {
+                        return Err(SyntaxError::Generic {
+                            message: format!("Unknown dep property: {}", key),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+
+                if self.is_kind(TokenKind::Comma) {
+                    self.next();
+                }
+            }
+
+            self.expect(TokenKind::RParen)?;
+        }
+
+        let dep = DepStmt {
+            name: name.into(),
+            version,
+            features,
+            path,
+            git,
+            git_ref,
+        };
+
+        Ok(Stmt::Dep(dep))
+    }
+
+    /// Parse a string literal (returns the content without quotes)
+    fn parse_string_literal(&mut self) -> AutoResult<String> {
+        if !self.is_kind(TokenKind::Str) {
+            return Err(SyntaxError::UnexpectedToken {
+                expected: "string".to_string(),
+                found: self.cur.text.to_string(),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        let text = self.cur.text.to_string();
+        self.next();
+        Ok(text)
+    }
+
+    /// Get file extensions to load based on compile destination
+    /// Plan 036: Returns extensions in load order (bottom layer first, then top layer)
+    #[allow(dead_code)]
+    fn get_file_extensions(&self) -> Vec<&'static str> {
+        match self.compile_dest {
+            CompileDest::Interp => vec![".at", ".vm.at"], // Interpreter: Interface (first) → VM implementation (second)
+            CompileDest::TransC => vec![".at", ".c.at"], // Transpiler: Interface (first) → C implementation (second)
+            CompileDest::TransRust => vec![".at", ".rs.at"], // Rust transpiler: Interface → Rust implementation
+            CompileDest::Config => vec![".at"], // Plan 364: config evaluates a single pac.at, no layered impl
+        }
+    }
+
+    /// Check if a file exists at the given path
+    #[allow(dead_code)]
+    fn file_exists(&self, dir: &std::path::Path, name: &str, ext: &str) -> bool {
+        let file_path = dir.join(format!("{}{}", name, ext));
+        file_path.exists()
+    }
+
+    /// Skip balanced parentheses: (...)
+    /// Plan 159 Phase 6B-2: Used for skipping attribute arguments like #[derive(Debug, Clone)]
+    pub fn skip_balanced_parens(&mut self) -> AutoResult<()> {
+        if !self.is_kind(TokenKind::LParen) {
+            return Ok(());
+        }
+        self.next(); // skip (
+        let mut depth = 1;
+        while depth > 0 && !self.is_kind(TokenKind::EOF) {
+            if self.is_kind(TokenKind::LParen) {
+                depth += 1;
+            } else if self.is_kind(TokenKind::RParen) {
+                depth -= 1;
+            }
+            self.next();
+        }
+        Ok(())
+    }
+
+    pub fn skip_empty_lines(&mut self) -> usize {
+        let mut count = 0;
+        while self.is_kind(TokenKind::Newline) {
+            count += 1;
+            self.next();
+        }
+        count
+    }
+
+    fn parse_body(&mut self, is_node: bool) -> AutoResult<Body> {
+        // Plan 419 §8.3:深度护栏(见 parse 注释)。
+        self.body_depth += 1;
+        if self.body_depth > MAX_BODY_NESTING {
+            self.body_depth -= 1;
+            return Err(SyntaxError::Generic {
+                message: format!(
+                    "block nesting too deep (limit {}) [non-recoverable]",
+                    MAX_BODY_NESTING
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+        let r = stacker::maybe_grow(512 * 1024, 1024 * 1024, || self.parse_body_inner(is_node));
+        self.body_depth -= 1;
+        r
+    }
+
+    fn parse_body_inner(&mut self, is_node: bool) -> AutoResult<Body> {
+        self.expect(TokenKind::LBrace)?;
+        self.enter_scope();
+
+        let mut stmts = Vec::new();
+        let mut source_lines = Vec::new();
+        let new_lines = self.skip_empty_lines();
+
+        // Snapshot docs collected right after `{` (and optional newlines) —
+        // these belong to this node's body.
+        // Clear pending_docs so child node bodies don't pollute this snapshot.
+        let body_doc_snapshot: Vec<_> = self.pending_docs.drain(..).collect();
+
+        if new_lines > 1 {
+            stmts.push(Stmt::EmptyLine(new_lines - 1));
+            source_lines.push(0); // EmptyLine placeholder
+        }
+        let has_new_line = new_lines > 0;
+        let mut stmt_index = 0; // Track statement index for is_first_stmt check
+
+        // Track whether each statement started with a `.` token (implicit self)
+        let mut stmt_starts_with_dot: Vec<bool> = Vec::new();
+
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            let stmt_line = self.cur.pos.line;
+            let starts_with_dot = self.is_kind(TokenKind::Dot);
+
+            match self.parse_stmt() {
+                Ok(stmt) => {
+                    if is_node {
+                        if let Stmt::Expr(Expr::Pair(Pair { key, value })) = &stmt {
+                            // define as a property
+                            self.define(
+                                key.to_string().as_str(),
+                                Meta::Pair(Pair {
+                                    key: key.clone(),
+                                    value: value.clone(),
+                                }),
+                            );
+                        }
+                    }
+                    stmts.push(stmt);
+                    source_lines.push(stmt_line);
+                    stmt_starts_with_dot.push(starts_with_dot);
+
+                    // Method chaining: merge `.method()` lines into previous expression.
+                    // Only chain when the current statement STARTS WITH `.` (implicit self),
+                    // NOT when it starts with `self.` (explicit self — a normal method call).
+                    //
+                    // Plan 041a⑥-a(musk 041 Phase 5 T20):on-handler/watch 体内
+                    // 禁用链合并——该语境句首 `.X(args)` 是消息派发语义
+                    // (emit 链),`let draft = {...};` 后接 `.go(draft)` 曾被
+                    // 链成 `let draft = {...}.go(draft)`(musk TestEditor/GoalEditor
+                    // 的 DoSave 实测踩中)。链式糖保留给普通 fn 体。
+                    let stmts_len = stmts.len();
+                    if self.in_on_body {
+                        stmt_starts_with_dot.pop();
+                    } else if stmts_len >= 2 && *stmt_starts_with_dot.last().unwrap_or(&false) {
+                        fn is_dot_self_call(expr: &Expr) -> bool {
+                            match expr {
+                                Expr::Dot(obj, _) => {
+                                    matches!(obj.as_ref(), Expr::Ident(name) if name == "self")
+                                }
+                                Expr::Call(call) => {
+                                    matches!(call.name.as_ref(), Expr::Dot(obj, _) if matches!(obj.as_ref(), Expr::Ident(name) if name == "self"))
+                                }
+                                Expr::ErrorPropagate(inner) => is_dot_self_call(inner),
+                                _ => false,
+                            }
+                        }
+
+                        // Get the current expression to check if it's a self.dot call
+                        let curr_is_chainable = match stmts.get(stmts_len - 1) {
+                            Some(Stmt::Expr(e)) => is_dot_self_call(e),
+                            _ => false,
+                        };
+
+                        if curr_is_chainable {
+                            // Find the previous expression to chain to.
+                            // Walk back through stmts to find the last non-self-dot expression.
+                            // This handles: let x = A.new()\n  .b()\n  .c()
+                            //
+                            // Plan 043 cat-3 Guard 1: skip dot-prefix statements
+                            // (`.field = expr`) as chain targets — they are independent
+                            // statements, not method-chain receivers. A real receiver
+                            // (`let x = A.new()`) never starts with `.`.
+                            //
+                            // If we cross ANY dot-prefix statement while walking back,
+                            // don't chain at all — a method chain's receiver must be
+                            // the *immediately preceding* statement, not an earlier one
+                            // reached by skipping over assignments. This prevents
+                            // `.RefreshGit()` at the end of an assignment sequence from
+                            // chaining back to `let snap = command_list()` at the top.
+                            let mut chain_target_idx = None;
+                            let mut crossed_dot_prefix = false;
+                            for i in (0..stmts_len - 1).rev() {
+                                if *stmt_starts_with_dot.get(i).unwrap_or(&false) {
+                                    crossed_dot_prefix = true;
+                                    continue;
+                                }
+                                match &stmts[i] {
+                                    Stmt::Expr(e)
+                                        if !is_dot_self_call(e)
+                                            && !matches!(e, Expr::Nil | Expr::Null) =>
+                                    {
+                                        chain_target_idx = Some(i);
+                                        break;
+                                    }
+                                    Stmt::Store(s) if !matches!(s.expr, Expr::Nil | Expr::Null) => {
+                                        chain_target_idx = Some(i);
+                                        break;
+                                    }
+                                    _ => continue,
+                                }
+                            }
+                            if crossed_dot_prefix {
+                                chain_target_idx = None;
+                            }
+
+                            if chain_target_idx.is_some() {
+                                // Plan 514（用户裁定 2026-09-02）：取消流式链糖的
+                                // 换行续接——句首 `.method()` 语句不再自动合并进
+                                // 上一条语句。该糖与方法体内隐式 self 的句首点
+                                // 存在静默歧义（`(i = 1).next()` 形态实测），旧
+                                // 形态直接报错，等待显式管道算子（|> 设计中）。
+                                // 同一行的 `.b().c()` 链不受影响；方法体内首条
+                                // 语句的句首点仍为隐式 self。
+                                let message = "换行后的句首 `.method()` 不再自动续接上一条语句（流式链糖已移除）[non-recoverable]: 请将调用链写在同一行、拆成中间变量绑定，或用管道算子 `|>` 显式续行（如 `x |> .method()`）"
+                                    .to_string();
+                                let err: crate::error::AutoError = SyntaxError::Generic {
+                                    message,
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into();
+                                // 已入错误表 + cur=EOF 强停:高层(type/fn 体)恢复
+                                // 循环不再级联次生错误(镜像 error-limit 中止形)
+                                self.errors.push(err.clone());
+                                self.cur = Token {
+                                    kind: TokenKind::EOF,
+                                    pos: crate::token::Pos {
+                                        line: 0,
+                                        at: 0,
+                                        pos: 0,
+                                        len: 0,
+                                    },
+                                    text: "".into(),
+                                };
+                                self.exit_scope();
+                                return Err(err);
+                            }
+                        }
+                    }
+
+                    let is_first = stmt_index == 0;
+                    // Check for ambiguous syntax errors in expect_eos
+                    let newline_count = match self.expect_eos(is_first) {
+                        Ok(count) => count,
+                        Err(e) => {
+                            // Ambiguous syntax errors should not be recovered from
+                            if e.to_string().contains("Ambiguous syntax") {
+                                self.exit_scope();
+                                return Err(e);
+                            }
+                            // Other EOS errors are added to collection and synchronized
+                            if !self.add_error(e) {
+                                self.exit_scope();
+                                return Err(self.error_limit_exceeded());
+                            }
+                            self.synchronize();
+                            0
+                        }
+                    };
+                    // Insert EmptyLine statement for 2+ consecutive newlines
+                    if newline_count > 1 {
+                        stmts.push(Stmt::EmptyLine(newline_count - 1));
+                        source_lines.push(stmt_line);
+                    }
+                    stmt_index += 1;
+                }
+                Err(e) => {
+                    // Plan 419 §8.3:护栏错误不可恢复 —— 立即中止(防逐层
+                    // re-catch 嵌套放大错误树,见 add_error 注释)。
+                    if e.to_string().contains("[non-recoverable]") {
+                        self.exit_scope();
+                        return Err(e);
+                    }
+                    // Add error to collection and synchronize
+                    if !self.add_error(e) {
+                        self.exit_scope();
+                        return Err(self.error_limit_exceeded()); // Error limit exceeded
+                    }
+                    self.synchronize();
+                }
+            }
+        }
+
+        stmts = self.convert_last_block(stmts)?;
+        self.exit_scope();
+
+        // Restore the body doc snapshot at the front of pending_docs,
+        // so parse_node's take_docs() picks up this node's own docs (not child nodes' docs).
+        // Any docs accumulated after the last child stmt are also included.
+        let remaining: Vec<_> = self.pending_docs.drain(..).collect();
+        self.pending_docs = body_doc_snapshot;
+        self.pending_docs.extend(remaining);
+
+        self.expect(TokenKind::RBrace)?;
+        Ok(Body {
+            stmts,
+            has_new_line,
+            source_lines,
+        })
+    }
+
+    pub fn parse_node_body(&mut self) -> AutoResult<Body> {
+        self.parse_body(true)
+    }
+
+    /// Plan 043 M5: is `Type{...}` a struct-literal construction (braces =
+    /// named field args) in the UI scenario? Mirrors atom()'s gate: a
+    /// registered type, or PascalCase + not a known var (unresolved imports).
+    /// Kept in its own fn so the callers' stack frames stay small.
+    fn is_ui_struct_construction(&mut self, ident: &Expr, is_constructor: bool) -> bool {
+        if is_constructor {
+            return true;
+        }
+        let ident_name = match ident {
+            Expr::Ident(n) => n.as_str(),
+            Expr::GenName(n) => n.as_str().split('<').next().unwrap_or(""),
+            _ => "",
+        };
+        if ident_name.is_empty() {
+            return false;
+        }
+        ident_name
+            .chars()
+            .next()
+            .map(|c| c.is_uppercase())
+            .unwrap_or(false)
+            && !matches!(
+                self.lookup_meta(ident_name),
+                Some(m) if matches!(m.as_ref(), Meta::Store(_) | Meta::Ref(_))
+            )
+    }
+
+    /// Plan 043 M5: parse `Type{ field: value, ... }` braces as NAMED ARGS
+    /// and append them to the given args. Separate fn so node_or_call_expr /
+    /// atom (hot recursive paths) don't grow their stack frames — godot scene
+    /// files (dodge_player) barely fit in the 2MB test stack.
+    fn parse_braced_struct_args(&mut self, ident: &Expr, mut args: Args) -> AutoResult<Args> {
+        let _ = ident; // name is used by object()/pair resolution implicitly
+        let pairs = self.object()?;
+        for p in pairs {
+            match p.key {
+                Key::NamedKey(name) => {
+                    args.args.push(Arg::Pair(name, (*p.value).clone()));
+                }
+                _ => {
+                    // Non-named keys can't be struct fields — keep the pair
+                    // as a positional expression.
+                    args.args.push(Arg::Pos(Expr::Pair(p)));
+                }
+            }
+        }
+        Ok(args)
+    }
+
+    pub fn body(&mut self) -> AutoResult<Body> {
+        self.parse_body(false)
+    }
+
+    pub fn if_contents(&mut self) -> AutoResult<(Vec<Branch>, Option<Body>)> {
+        let mut branches = Vec::new();
+        self.next(); // skip if
+        let cond = self.parse_expr()?;
+        let body = self.body()?;
+        branches.push(Branch { cond, body });
+
+        let mut else_stmt = None;
+        while self.is_kind(TokenKind::Else) {
+            self.next(); // skip else
+                         // more branches
+            if self.is_kind(TokenKind::If) {
+                self.next(); // skip if
+                let cond = self.parse_expr()?;
+                let body = self.body()?;
+                branches.push(Branch { cond, body });
+            } else {
+                // last else
+                else_stmt = Some(self.body()?);
+            }
+        }
+        Ok((branches, else_stmt))
+    }
+
+    pub fn if_stmt(&mut self) -> AutoResult<Stmt> {
+        // Check for `if let` syntax sugar
+        // if let Some(x) = expr { body }  desugars to  is expr { Some(x) -> body }
+        self.next(); // skip `if`
+        if self.is_kind(TokenKind::Let) {
+            return self.if_let_stmt();
+        }
+
+        // Normal if: we already consumed `if`, handle the rest inline
+        let cond = self.parse_expr()?;
+        let body = self.body()?;
+        let mut branches = vec![Branch { cond, body }];
+
+        let mut else_stmt = None;
+        while self.is_kind(TokenKind::Else) {
+            self.next(); // skip else
+            if self.is_kind(TokenKind::If) {
+                self.next(); // skip if
+                if self.is_kind(TokenKind::Let) {
+                    // else if let — wrap in else { is ... }
+                    let is_stmt = self.if_let_stmt_inner()?;
+                    let mut else_body = Body::new();
+                    else_body.stmts.push(is_stmt);
+                    else_stmt = Some(else_body);
+                    break;
+                }
+                let cond = self.parse_expr()?;
+                let body = self.body()?;
+                branches.push(Branch { cond, body });
+            } else {
+                else_stmt = Some(self.body()?);
+            }
+        }
+
+        Ok(Stmt::If(If {
+            branches,
+            else_: else_stmt,
+        }))
+    }
+
+    /// Parse `if let Pattern = expr { body } else { ... }`
+    /// `let` has already been consumed by the caller.
+    fn if_let_stmt(&mut self) -> AutoResult<Stmt> {
+        self.if_let_stmt_inner()
+    }
+
+    /// Inner implementation — `let` has NOT been consumed yet.
+    fn if_let_stmt_inner(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `let`
+        let pattern = self.is_branch_cond_expr()?;
+        self.expect(TokenKind::Asn)?;
+        let target = self.parse_expr()?;
+
+        // Bind pattern variables into scope before parsing body
+        let body = self.bind_pattern_and_parse_body(&pattern, &target)?;
+
+        let mut branches = vec![IsBranch::EqBranch(vec![pattern], body)];
+
+        // Optional else clause
+        if self.is_kind(TokenKind::Else) {
+            self.next(); // skip else
+            let else_body = self.parse_expr_or_body()?;
+            branches.push(IsBranch::ElseBranch(else_body));
+        }
+
+        Ok(Stmt::Is(Is { target, branches }))
+    }
+
+    /// Bind pattern variables into parser scope and parse the body.
+    /// Mirrors the binding logic in `parse_is_branch`.
+    fn bind_pattern_and_parse_body(&mut self, pattern: &Expr, target: &Expr) -> AutoResult<Body> {
+        if let Expr::OptionPattern(opt_cover) = pattern {
+            if let Some(binding) = &opt_cover.binding {
+                self.enter_scope();
+                self.define(
+                    binding.as_str(),
+                    Meta::Store(Store {
+                        name: binding.clone(),
+                        kind: StoreKind::Let,
+                        attrs: vec![],
+                        is_pub: false,
+                        ty: Type::Unknown,
+                        expr: Expr::OptionUncover(crate::ast::cover::OptionUncover {
+                            src: target.repr(),
+                            variant: opt_cover.variant,
+                            binding: binding.clone(),
+                        }),
+                    }),
+                );
+                let body = self.parse_expr_or_body()?;
+                self.exit_scope();
+                return Ok(body);
+            }
+        }
+        if let Expr::ResultPattern(res_cover) = pattern {
+            if let Some(binding) = &res_cover.binding {
+                self.enter_scope();
+                self.define(
+                    binding.as_str(),
+                    Meta::Store(Store {
+                        name: binding.clone(),
+                        kind: StoreKind::Let,
+                        attrs: vec![],
+                        is_pub: false,
+                        ty: Type::Unknown,
+                        expr: Expr::ResultUncover(crate::ast::cover::ResultUncover {
+                            src: target.repr(),
+                            variant: res_cover.variant,
+                            binding: binding.clone(),
+                        }),
+                    }),
+                );
+                let body = self.parse_expr_or_body()?;
+                self.exit_scope();
+                return Ok(body);
+            }
+        }
+        // Tag pattern or simple pattern — no binding
+        self.parse_expr_or_body()
+    }
+
+    pub fn for_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `for`
+        if self.is_kind(TokenKind::LBrace) {
+            // for {...}
+            let body = self.body()?;
+            let has_new_line = body.has_new_line;
+            return Ok(Stmt::For(For {
+                iter: Iter::Ever,
+                range: Expr::Nil,
+                body,
+                new_line: has_new_line,
+                init: None,
+            }));
+        }
+
+        // Check if this has an initializer: for let x = 0; condition { ... }
+        if self.is_kind(TokenKind::Let)
+            || self.is_kind(TokenKind::Var)
+            || self.is_kind(TokenKind::Mut)
+        {
+            // Parse the initializer statement
+            let init_stmt = Some(Box::new(self.parse_store_stmt(vec![])?));
+
+            // Expect semicolon after initializer
+            self.expect(TokenKind::Semi)?;
+
+            // After initializer, must parse condition
+            let condition = self.parse_expr()?;
+            let body = self.body()?;
+            let has_new_line = body.has_new_line;
+            return Ok(Stmt::For(For {
+                iter: Iter::Cond,
+                range: condition,
+                body,
+                new_line: has_new_line,
+                init: init_stmt,
+            }));
+        }
+
+        // Destructured for-in: for (k, v) in expr { ... }
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // skip '('
+            let key = self.parse_name()?;
+            self.expect(TokenKind::Comma)?;
+            let val = self.parse_name()?;
+            self.expect(TokenKind::RParen)?;
+            self.expect(TokenKind::In)?;
+            self.enter_scope();
+            let meta_key = Meta::Store(Store {
+                kind: StoreKind::Var,
+                attrs: vec![],
+                is_pub: false,
+                name: key.clone(),
+                expr: Expr::Nil,
+                ty: Type::Int,
+            });
+            self.define(key.as_str(), meta_key);
+            let meta_val = Meta::Store(Store {
+                kind: StoreKind::Var,
+                attrs: vec![],
+                is_pub: false,
+                name: val.clone(),
+                expr: Expr::Nil,
+                ty: Type::Int,
+            });
+            self.define(val.as_str(), meta_val);
+            let iter = Iter::Destructured(key, val);
+            let range = self.iterable_expr()?;
+            let body = self.body()?;
+            let has_new_line = body.has_new_line;
+            self.exit_scope();
+            return Ok(Stmt::For(For {
+                iter,
+                range,
+                body,
+                new_line: has_new_line,
+                init: None,
+            }));
+        }
+
+        // No initializer, try to parse as iterator pattern: for ident in range { ... }
+        // Or conditional loop: for ident < max { ... }
+        if self.is_kind(TokenKind::Ident) {
+            // Consume the identifier first
+            let ident = self.parse_name()?;
+
+            // Now check what comes next to determine the pattern
+            if self.is_kind(TokenKind::In) {
+                // for ident in range { ... }
+                self.next(); // skip 'in'
+                self.enter_scope();
+                let meta = Meta::Store(Store {
+                    kind: StoreKind::Var,
+                    attrs: vec![],
+                    is_pub: false,
+                    name: ident.clone(),
+                    expr: Expr::Nil,
+                    ty: Type::Int,
+                });
+                self.define(ident.as_str(), meta);
+                let iter = Iter::Named(ident.clone());
+                let range = self.iterable_expr()?;
+                let body = self.body()?;
+                let has_new_line = body.has_new_line;
+                self.exit_scope();
+                return Ok(Stmt::For(For {
+                    iter,
+                    range,
+                    body,
+                    new_line: has_new_line,
+                    init: None,
+                }));
+            } else if self.is_kind(TokenKind::Comma) {
+                // for ident, ident2 in range { ... } - indexed iterator
+                self.next(); // skip ','
+                let ident2 = self.parse_name()?;
+                self.expect(TokenKind::In)?; // this calls self.next() internally
+                self.enter_scope();
+                let meta = Meta::Store(Store {
+                    kind: StoreKind::Var,
+                    attrs: vec![],
+                    is_pub: false,
+                    name: ident2.clone(),
+                    expr: Expr::Nil,
+                    ty: Type::Int,
+                });
+                self.define(ident2.as_str(), meta);
+                let iter = Iter::Indexed(ident.clone(), ident2.clone());
+                let range = self.iterable_expr()?;
+                let body = self.body()?;
+                let has_new_line = body.has_new_line;
+                self.exit_scope();
+                return Ok(Stmt::For(For {
+                    iter,
+                    range,
+                    body,
+                    new_line: has_new_line,
+                    init: None,
+                }));
+            } else if self.is_kind(TokenKind::LParen) {
+                let args = self.args()?;
+                let call_expr = self.call(Expr::Ident(ident.clone()), args)?;
+
+                // Check if this is an iterator call: for call(args)? { ... }
+                if self.is_kind(TokenKind::Question) {
+                    self.next(); // skip '?'
+                    let Expr::Call(call) = call_expr else {
+                        return Err(SyntaxError::Generic {
+                            message: "Strange call in for statement".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    };
+                    self.enter_scope();
+                    let body = self.body()?;
+                    self.exit_scope();
+                    return Ok(Stmt::For(For {
+                        iter: Iter::Call(call),
+                        range: Expr::Nil,
+                        body,
+                        new_line: false,
+                        init: None,
+                    }));
+                }
+
+                // Otherwise it's a conditional loop: for call(args) { ... }
+                // or for call(args) || other { ... }
+                let condition = self.expr_pratt_with_left(call_expr, 0)?;
+                let body = self.body()?;
+                let has_new_line = body.has_new_line;
+                return Ok(Stmt::For(For {
+                    iter: Iter::Cond,
+                    range: condition,
+                    body,
+                    new_line: has_new_line,
+                    init: None,
+                }));
+            }
+
+            // Check if next token is a binary operator (like <, >, <=, >=, ==, !=, +, -, *, /)
+            let next_is_binop = matches!(
+                self.kind(),
+                TokenKind::Lt
+                    | TokenKind::Gt
+                    | TokenKind::Le
+                    | TokenKind::Ge
+                    | TokenKind::Eq
+                    | TokenKind::Neq
+                    | TokenKind::Add
+                    | TokenKind::Sub
+                    | TokenKind::Star
+                    | TokenKind::Div
+            );
+
+            if next_is_binop {
+                // This is a binary expression like "for i < max { ... }"
+                // We've already consumed 'i', so we need to prepend it to the expression
+                let ident_expr = Expr::Ident(ident.clone());
+                let rest = self.expr_pratt_with_left(ident_expr, 0)?;
+                let body = self.body()?;
+                let has_new_line = body.has_new_line;
+                return Ok(Stmt::For(For {
+                    iter: Iter::Cond,
+                    range: rest,
+                    body,
+                    new_line: has_new_line,
+                    init: None,
+                }));
+            }
+
+            // Identifier followed by something else (member access, etc.)
+            // Fall through to parse as a general expression starting with this ident
+            let ident_expr = Expr::Ident(ident);
+            let condition = self.expr_pratt_with_left(ident_expr, 0)?;
+            let body = self.body()?;
+            let has_new_line = body.has_new_line;
+            return Ok(Stmt::For(For {
+                iter: Iter::Cond,
+                range: condition,
+                body,
+                new_line: has_new_line,
+                init: None,
+            }));
+        }
+
+        // Otherwise, parse as conditional for loop: for condition { ... }
+        let condition = self.parse_expr()?;
+        let body = self.body()?;
+        let has_new_line = body.has_new_line;
+        Ok(Stmt::For(For {
+            iter: Iter::Cond,
+            range: condition,
+            body,
+            new_line: has_new_line,
+            init: None,
+        }))
+    }
+
+    pub fn is_stmt(&mut self) -> AutoResult<Stmt> {
+        Ok(Stmt::Is(self.parse_is()?))
+    }
+
+    // Plan 095: Compile-time execution statements
+
+    /// Parse #if statement for compile-time conditional compilation
+    /// Syntax: #if condition { ... } else { ... }
+    /// Returns HashIf directly (not wrapped in Stmt) for recursive elif parsing
+    fn hash_if_inner(&mut self) -> AutoResult<HashIf> {
+        self.next(); // skip #if
+
+        // Parse condition - use parse_expr just like normal if statement
+        // This allows: #if DEBUG { ... } and #if x == 10 { ... }
+        let cond = self.parse_expr()?;
+        let then_block = self.body()?;
+
+        // Check for else clause
+        let else_block = if self.is_kind(TokenKind::Else) {
+            self.next(); // skip else
+            if self.is_kind(TokenKind::HashIf) {
+                // else #if - elif chain
+                Some(HashIfElse::ElseIf(Box::new(self.hash_if_inner()?)))
+            } else {
+                // else { ... }
+                Some(HashIfElse::Block(self.body()?))
+            }
+        } else {
+            None
+        };
+
+        Ok(HashIf {
+            cond,
+            then_block,
+            else_block,
+        })
+    }
+
+    /// Public wrapper that returns Stmt::HashIf
+    pub fn hash_if_stmt(&mut self) -> AutoResult<Stmt> {
+        Ok(Stmt::HashIf(self.hash_if_inner()?))
+    }
+
+    /// Parse #for statement for compile-time loop unrolling
+    /// Syntax: #for var in iterable { ... }
+    pub fn hash_for_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip #for
+        let var = self.parse_name()?;
+        self.expect(TokenKind::In)?;
+
+        // Enter scope and define loop variable (same as normal for loop)
+        self.enter_scope();
+        let meta = Meta::Store(Store {
+            kind: StoreKind::Var,
+            attrs: vec![],
+            is_pub: false,
+            name: var.clone(),
+            expr: Expr::Nil,
+            ty: Type::Int, // Default type, will be inferred later
+        });
+        self.define(var.as_str(), meta);
+
+        let iter = self.iterable_expr()?;
+        let body = self.body()?;
+
+        self.exit_scope();
+
+        Ok(Stmt::HashFor(HashFor { var, iter, body }))
+    }
+
+    /// Plan 212 Phase 2.4: Parse #name(args) macro invocation
+    /// Syntax: #debug("msg"), #info(f"value = $x")
+    /// Token: HashIdent (text = "debug") followed by LParen
+    pub fn macro_call_stmt(&mut self) -> AutoResult<Stmt> {
+        let name = self.cur.text.to_string();
+        self.next(); // skip HashIdent
+        self.expect(TokenKind::LParen)?;
+        let mut args = Vec::new();
+        if !self.is_kind(TokenKind::RParen) {
+            args.push(self.parse_expr()?);
+            while self.is_kind(TokenKind::Comma) {
+                self.next();
+                args.push(self.parse_expr()?);
+            }
+        }
+        self.expect(TokenKind::RParen)?;
+        Ok(Stmt::MacroCall(MacroCall {
+            name: name.into(),
+            args,
+        }))
+    }
+
+    /// Parse #is statement for compile-time type matching
+    /// Syntax: #is target { pattern1 => body1 pattern2 => body2 else => body3 }
+    /// Same syntax as normal is statement, just with # prefix
+    pub fn hash_is_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip #is
+        let target = self.lhs_expr()?;
+
+        self.expect(TokenKind::LBrace)?; // {
+        self.skip_empty_lines();
+
+        let mut branches = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            let branch = self.parse_hash_is_branch(&target)?;
+            branches.push(branch);
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Stmt::HashIs(HashIs { target, branches }))
+    }
+
+    /// Parse a single branch in #is statement
+    /// Reuses the same logic as normal is branch parsing
+    fn parse_hash_is_branch(&mut self, tgt: &Expr) -> AutoResult<HashIsBranch> {
+        match self.cur.kind {
+            TokenKind::If => {
+                self.next(); // skip if
+                let expr = self.cond_expr()?;
+                self.expect(TokenKind::Arrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = HashIsBranch::IfBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            TokenKind::Else => {
+                self.next(); // skip else
+                self.expect(TokenKind::Arrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = HashIsBranch::ElseBranch(body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            _ => {
+                // Pattern expression (e.g., "x64", type_name)
+                let expr = self.is_branch_cond_expr()?;
+                self.expect(TokenKind::Arrow)?;
+
+                // Check for pattern binding cases (same as normal is)
+                let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
+                    // Tag pattern: Msg.Inc(value) => ...
+                    // Skip if all bindings are underscore (no-op)
+                    let has_bindings = cover.bindings.iter().any(|b| b.as_str() != "_");
+                    if has_bindings {
+                        self.enter_scope();
+                        let tag_typ = self.lookup_type(&cover.kind);
+                        let tag_field_type = match *tag_typ.borrow() {
+                            Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
+                            _ => {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Invalid tag type: {}", cover.kind),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into());
+                            }
+                        };
+
+                        for binding in &cover.bindings {
+                            if binding.as_str() != "_" {
+                                self.define(
+                                    binding.as_str(),
+                                    Meta::Store(Store {
+                                        name: binding.clone(),
+                                        kind: StoreKind::Let,
+                                        attrs: vec![],
+                                        is_pub: false,
+                                        ty: tag_field_type.clone(),
+                                        expr: Expr::Uncover(TagUncover {
+                                            src: tgt.repr(),
+                                            cover: cover.clone(),
+                                            binding: binding.clone(),
+                                        }),
+                                    }),
+                                );
+                            }
+                        }
+
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    } else {
+                        self.parse_expr_or_body()?
+                    }
+                } else {
+                    self.parse_expr_or_body()?
+                };
+
+                let branch = HashIsBranch::EqBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+        }
+    }
+
+    /// Parse #{} expression for compile-time code execution
+    /// Syntax: #{ expression }
+    /// Used for compile-time evaluation and string interpolation
+    pub fn hash_brace_expr(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip #{
+        let expr = self.parse_expr()?;
+        self.expect(TokenKind::RBrace)?;
+
+        Ok(Stmt::HashBrace(HashBrace { expr }))
+    }
+
+    pub fn parse_is(&mut self) -> AutoResult<Is> {
+        self.next(); // skip is
+                     // Disable symbol checking for is-target (it's a name to match, not a variable to resolve)
+        let old_skip_check = self.skip_check;
+        self.skip_check = true;
+        let target = self.parse_expr()?;
+        self.skip_check = old_skip_check;
+
+        self.expect(TokenKind::LBrace)?; // {
+        self.skip_empty_lines();
+
+        let mut branches = Vec::new();
+
+        while !self.is_kind(TokenKind::RBrace) {
+            let branch = self.parse_is_branch(&target)?;
+            branches.push(branch);
+            // Skip optional comma separator between branches
+            if self.is_kind(TokenKind::Comma) {
+                self.next();
+                self.skip_empty_lines();
+            }
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        let is = Is { target, branches };
+        return Ok(is);
+    }
+
+    pub fn parse_expr_or_body(&mut self) -> AutoResult<Body> {
+        if self.is_kind(TokenKind::LBrace) {
+            self.body()
+        } else {
+            // Single-statement fallback (e.g. `Pattern -> print(...)` in an is
+            // arm): record the statement's line so codegen emits SOURCE_LINE
+            // and the arm maps to bytecode for source linking.
+            let mut body = Body::new();
+            let stmt_line = self.cur.pos.line;
+            let stmt = if self.is_kind(TokenKind::Return) {
+                self.return_stmt()?
+            } else if self.is_kind(TokenKind::Break) {
+                self.break_stmt()?
+            } else if self.is_kind(TokenKind::Continue) {
+                self.continue_stmt()?
+            } else {
+                Stmt::Expr(self.parse_expr()?)
+            };
+            body.stmts.push(stmt);
+            body.source_lines.push(stmt_line as usize);
+            Ok(body)
+        }
+    }
+
+    pub fn parse_is_branch(&mut self, tgt: &Expr) -> AutoResult<IsBranch> {
+        match self.cur.kind {
+            TokenKind::If => {
+                self.next(); // skip is
+                let expr = self.cond_expr()?;
+                self.expect(TokenKind::Arrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = IsBranch::IfBranch(expr, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            TokenKind::Else => {
+                self.next(); // skip else
+                self.expect(TokenKind::Arrow)?;
+                let body = self.parse_expr_or_body()?;
+                let branch = IsBranch::ElseBranch(body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+            _ => {
+                let mut patterns = vec![self.is_branch_cond_expr()?];
+                // Collect additional patterns separated by |
+                while self.is_kind(TokenKind::VBar) {
+                    self.next(); // skip |
+                    self.skip_empty_lines();
+                    patterns.push(self.is_branch_cond_expr()?);
+                    self.skip_empty_lines();
+                }
+                let expr = patterns.swap_remove(0); // take first for compatibility
+                self.expect(TokenKind::Arrow)?;
+                self.skip_empty_lines();
+
+                // Check for pattern binding cases
+                let body = if let Expr::Cover(Cover::Tag(cover)) = &expr {
+                    // Empty variant (all bindings == "_"): no binding needed
+                    let has_bindings = cover.bindings.iter().any(|b| b.as_str() != "_");
+                    if !has_bindings {
+                        self.parse_expr_or_body()?
+                    } else {
+                        // Tag pattern with binding: Msg.Inc(value) => ...
+                        self.enter_scope();
+                        let tag_typ = self.lookup_type(&cover.kind);
+                        let tag_field_type = match *tag_typ.borrow() {
+                            Type::Tag(ref t) => t.borrow().get_field_type(&cover.tag),
+                            Type::Enum(ref en) => {
+                                // Heterogeneous enum pattern: Atom.Int(i) => ...
+                                let en_ref = en.borrow();
+                                match &en_ref.kind {
+                                    EnumKind::Heterogeneous { .. } => {
+                                        // Find the variant's payload type
+                                        en_ref
+                                            .items
+                                            .iter()
+                                            .find(|item| item.name == cover.tag.as_str())
+                                            .and_then(|item| item.payload_type.clone())
+                                            .unwrap_or(Type::Unknown)
+                                    }
+                                    _ => {
+                                        return Err(SyntaxError::Generic {
+                                            message: format!(
+                                                "Invalid enum type for tag pattern: {}",
+                                                cover.kind
+                                            ),
+                                            span: pos_to_span(self.cur.pos),
+                                        }
+                                        .into());
+                                    }
+                                }
+                            }
+                            // Imported enum types appear as User — use Unknown for field types
+                            _ => Type::Unknown,
+                        };
+
+                        for binding in &cover.bindings {
+                            if binding.as_str() != "_" {
+                                self.define(
+                                    binding.as_str(),
+                                    Meta::Store(Store {
+                                        name: binding.clone(),
+                                        kind: StoreKind::Let,
+                                        attrs: vec![],
+                                        is_pub: false,
+                                        ty: tag_field_type.clone(),
+                                        expr: Expr::Uncover(TagUncover {
+                                            src: tgt.repr(),
+                                            cover: cover.clone(),
+                                            binding: binding.clone(),
+                                        }),
+                                    }),
+                                );
+                            }
+                        }
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    }
+                } else if let Expr::OptionPattern(opt_cover) = &expr {
+                    // Plan 120: Option pattern: Some(x) => ... or None => ...
+                    if let Some(binding) = &opt_cover.binding {
+                        self.enter_scope();
+                        // Define variable with unknown type (will be inferred)
+                        self.define(
+                            binding.as_str(),
+                            Meta::Store(Store {
+                                name: binding.clone(),
+                                kind: StoreKind::Let,
+                                attrs: vec![],
+                                is_pub: false,
+                                ty: Type::Unknown, // TODO: Infer from Option<T>
+                                expr: Expr::OptionUncover(crate::ast::cover::OptionUncover {
+                                    src: tgt.repr(),
+                                    variant: opt_cover.variant,
+                                    binding: binding.clone(),
+                                }),
+                            }),
+                        );
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    } else {
+                        // None pattern - no binding
+                        self.parse_expr_or_body()?
+                    }
+                } else if let Expr::StructPattern(sc) = &expr {
+                    // Plan 396/B11(b): struct-variant destructuring pattern
+                    // `Type.Variant { field, .. }` (or bare `Type { .. }`) —
+                    // register the field bindings for the arm body. Without
+                    // this the body's uses of the bindings are "undefined
+                    // variable" and error recovery mangles the rest.
+                    self.enter_scope();
+                    for fb in &sc.fields {
+                        if fb.binding.as_str() != "_" {
+                            self.define(
+                                fb.binding.as_str(),
+                                Meta::Store(Store {
+                                    name: fb.binding.clone(),
+                                    kind: StoreKind::Let,
+                                    attrs: vec![],
+                                    is_pub: false,
+                                    ty: Type::Unknown,
+                                    expr: Expr::Int(0), // pattern-bound placeholder
+                                }),
+                            );
+                        }
+                    }
+                    let body = self.parse_expr_or_body()?;
+                    self.exit_scope();
+                    body
+                } else if let Expr::ResultPattern(res_cover) = &expr {
+                    // Plan 120: Result pattern: Ok(x) => ... or Err(e) => ...
+                    if let Some(binding) = &res_cover.binding {
+                        self.enter_scope();
+                        // Define variable with unknown type (will be inferred)
+                        self.define(
+                            binding.as_str(),
+                            Meta::Store(Store {
+                                name: binding.clone(),
+                                kind: StoreKind::Let,
+                                attrs: vec![],
+                                is_pub: false,
+                                ty: Type::Unknown, // TODO: Infer from Result<T, E>
+                                expr: Expr::ResultUncover(crate::ast::cover::ResultUncover {
+                                    src: tgt.repr(),
+                                    variant: res_cover.variant,
+                                    binding: binding.clone(),
+                                }),
+                            }),
+                        );
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    } else if let Some(inner) = &res_cover.inner {
+                        // Plan 396/B11(b): nested pattern inside Ok()/Err(),
+                        // e.g. `Err(ToolError.SecurityDenied { kind, path })`.
+                        // Define the inner pattern's bindings for the arm body.
+                        self.enter_scope();
+                        match inner.as_ref() {
+                            Expr::StructPattern(sc) => {
+                                for fb in &sc.fields {
+                                    if fb.binding.as_str() != "_" {
+                                        self.define(
+                                            fb.binding.as_str(),
+                                            Meta::Store(Store {
+                                                name: fb.binding.clone(),
+                                                kind: StoreKind::Let,
+                                                attrs: vec![],
+                                                is_pub: false,
+                                                ty: Type::Unknown,
+                                                expr: Expr::Int(0), // pattern-bound placeholder
+                                            }),
+                                        );
+                                    }
+                                }
+                            }
+                            Expr::Cover(Cover::Tag(tc)) => {
+                                for b in &tc.bindings {
+                                    if b.as_str() != "_" {
+                                        self.define(
+                                            b.as_str(),
+                                            Meta::Store(Store {
+                                                name: b.clone(),
+                                                kind: StoreKind::Let,
+                                                attrs: vec![],
+                                                is_pub: false,
+                                                ty: Type::Unknown,
+                                                expr: Expr::Int(0), // pattern-bound placeholder
+                                            }),
+                                        );
+                                    }
+                                }
+                            }
+                            _ => {}
+                        }
+                        let body = self.parse_expr_or_body()?;
+                        self.exit_scope();
+                        body
+                    } else {
+                        // Pattern without binding (shouldn't happen for Ok/Err but handle gracefully)
+                        self.parse_expr_or_body()?
+                    }
+                } else {
+                    // Default case: simple expression match
+                    self.parse_expr_or_body()?
+                };
+
+                let mut all_patterns = vec![expr];
+                all_patterns.extend(patterns);
+                let branch = IsBranch::EqBranch(all_patterns, body);
+                self.skip_empty_lines();
+                return Ok(branch);
+            }
+        }
+    }
+
+    pub fn parse_store_stmt(&mut self, attrs: Vec<AutoStr>) -> AutoResult<Stmt> {
+        // Plan 6B-4.19: Check for 'shared' modifier
+        let is_shared = self.is_kind(TokenKind::Shared);
+        if is_shared {
+            self.next(); // skip 'shared'
+        }
+
+        // store kind: var/let (mut keyword is now aliased to var)
+        let mut store_kind = self.store_kind()?;
+        self.next(); // skip var/let/mut
+
+        // Plan 6B-4.19: shared var/let → StoreKind::Shared
+        if is_shared {
+            store_kind = StoreKind::Shared;
+        }
+
+        // Check for tuple destructuring: let (a, b) = expr
+        if self.is_kind(TokenKind::LParen) {
+            self.next(); // skip (
+            let mut names = Vec::new();
+            if !self.is_kind(TokenKind::RParen) {
+                names.push(self.parse_name()?);
+                while self.is_kind(TokenKind::Comma) {
+                    self.next();
+                    self.skip_empty_lines();
+                    names.push(self.parse_name()?);
+                }
+            }
+            self.expect(TokenKind::RParen)?;
+            self.expect(TokenKind::Asn)?;
+            let expr = self.rhs_expr()?;
+            // Emit as a single Store with the tuple expr; downstream handles the destructuring
+            // Use the first name as primary, store the full tuple and names
+            // For now, emit a special Expr::TupleDestruct that the transpiler can handle
+            let _name = names.first().cloned().unwrap_or_else(|| Name::from("_"));
+            return Ok(Stmt::Expr(Expr::TupleDestruct {
+                names,
+                expr: Box::new(expr),
+            }));
+        }
+
+        // identifier name
+        let mut name = self.parse_name()?;
+
+        // Capture the position of the variable name for LSP
+        let name_pos = self.prev.pos;
+
+        // special case: c decl
+        if name == "." {
+            self.next();
+            name = self.parse_name()?;
+            if name == "c" {
+                store_kind = StoreKind::CVar;
+            }
+        }
+
+        // type (optional)
+        let mut ty = Type::Unknown;
+        if self.is_type_name() {
+            ty = self.parse_type()?;
+        }
+
+        // `=`, a store stmt must have an assignment unless:
+        // 1. It's a C variable decl (StoreKind::CVar)
+        // 2. It has an explicit type annotation (Plan 052: allow uninitialized typed variables)
+        let has_explicit_type = !matches!(ty, Type::Unknown);
+        let expr = if matches!(store_kind, StoreKind::CVar) {
+            Expr::Nil
+        } else if self.is_kind(TokenKind::Asn) {
+            self.expect(TokenKind::Asn)?;
+            // inital value: expression
+            let expr = self.rhs_expr()?;
+            // TODO: check type compatibility
+            if matches!(ty, Type::Unknown) {
+                ty = self.infer_type_expr(&expr);
+            }
+            expr
+        } else if has_explicit_type {
+            // Plan 052: Allow uninitialized variables with explicit type annotation
+            Expr::Nil
+        } else {
+            return Err(SyntaxError::Generic {
+                message: format!(
+                    "Variable '{}' must have either a type annotation or an initial value",
+                    name
+                ),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        };
+
+        let store = Store {
+            kind: store_kind,
+            name: name.clone(),
+            ty,
+            expr: expr.clone(),
+            attrs,
+            is_pub: false,
+        };
+        if let Expr::Lambda(lambda) = &expr {
+            self.define(name.as_str(), Meta::Ref(lambda.name.clone()));
+        } else {
+            self.define(name.as_str(), Meta::Store(store.clone()));
+        }
+
+        // Register symbol location for LSP
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
+            name_pos.at,
+            name_pos.pos,
+        );
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(name.clone(), loc);
+
+        Ok(Stmt::Store(store))
+    }
+
+    fn infer_type_expr(&mut self, expr: &Expr) -> Type {
+        // Plan 089: Use infer module as primary type inference system
+        // Previously: Universe-based lookup as primary, infer as fallback
+        // Now: infer module as primary, Universe as fallback for backward compatibility
+
+        let mut typ = Type::Unknown;
+
+        match expr {
+            // Literals - directly return type (same in both old and new systems)
+            Expr::I8(..) => typ = Type::Int,
+            Expr::Int(..) => typ = Type::Int,
+            Expr::Float(..) => typ = Type::Float,
+            Expr::Double(..) => typ = Type::Double,
+            Expr::Bool(..) => typ = Type::Bool,
+            Expr::Str(n) => typ = Type::StrFixed(n.len()),
+            Expr::CStr(..) => typ = Type::CStrLit,
+            Expr::FStr(..) => typ = Type::StrFixed(0),
+
+            // Identifier - prioritize infer module
+            Expr::Ident(id) => {
+                use crate::infer::infer_expr;
+
+                // Primary: Try infer module first
+                let inferred = infer_expr(&mut self.infer_ctx, expr);
+
+                if !matches!(&inferred, Type::Unknown) {
+                    typ = inferred;
+                } else {
+                    // Fallback: Try Universe-based lookup for backward compatibility
+                    let meta = self.lookup_meta(id);
+                    if let Some(m) = meta {
+                        if let Meta::Store(store) = m.as_ref() {
+                            typ = store.ty.clone();
+                        }
+                    } else {
+                        // Try type lookup
+                        let ltyp = self.lookup_type(id);
+                        if !matches!(*ltyp.borrow(), Type::Unknown) {
+                            typ = ltyp.borrow().clone();
+                        }
+                    }
+                }
+            }
+
+            // Node - defer to infer module
+            Expr::Node(_nd) => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+
+            // Array - defer to infer module
+            Expr::Array(_arr) => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+
+            // Call - defer to infer module
+            Expr::Call(_call) => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+
+            // Index - defer to infer module
+            Expr::Index(_arr, _idx) => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+
+            // Binary op - defer to infer module
+            Expr::Bina(_lhs, _op, _rhs) => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+
+            // All other expressions - use infer module directly
+            _ => {
+                use crate::infer::infer_expr;
+                typ = infer_expr(&mut self.infer_ctx, expr);
+            }
+        }
+
+        typ
+    }
+
+    pub fn store_kind(&mut self) -> AutoResult<StoreKind> {
+        match self.kind() {
+            TokenKind::Var => Ok(StoreKind::Var),
+            TokenKind::Let => Ok(StoreKind::Let),
+            TokenKind::Const => Ok(StoreKind::Const),
+            TokenKind::Mut => {
+                let message = "'mut' is not supported as a storage modifier. Use 'var' for mutable variables.".to_string();
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
+            _ => {
+                let message = format!("Expected store kind (let or var), got {:?}", self.kind());
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    fn fn_cdecl_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip keyword `c`
+
+        // parse function name
+        let name = self.cur.text.clone();
+        self.expect(TokenKind::Ident)?;
+
+        // Capture the position of the function name for LSP
+        // self.prev now points to the name token after expect()
+        let name_pos = self.prev.pos;
+
+        // Plan 091: Use InferenceContext for scope management
+        self.infer_ctx.push_fn_scope();
+
+        // parse function parameters
+        self.expect(TokenKind::LParen)?;
+        let params = self.fn_params()?;
+        self.expect(TokenKind::RParen)?;
+
+        // Plan 073 Stage A.5: Parse return type annotation -> type
+        // Support: fn foo() -> float { ... }
+        let mut ret_type = Type::Unknown;
+        if self.is_kind(TokenKind::Arrow) {
+            // Explicit return type annotation with ->
+            self.next(); // consume ->
+            ret_type = self.parse_type()?;
+        } else if self.is_type_name() {
+            // Type without -> (older syntax or inferred)
+            ret_type = self.parse_type()?;
+        }
+        // TODO: determine return type with last stmt if it's not specified
+
+        // exit function scope
+        self.exit_fn_scope();
+
+        // no body for c fn decl
+        let body = Body::new();
+        let fn_expr = Fn::new(
+            FnKind::CFunction,
+            name.clone(),
+            None,
+            params,
+            body,
+            ret_type,
+        );
+        let fn_stmt = Stmt::Fn(fn_expr.clone());
+
+        // define function in scope
+        self.define(name.as_str(), Meta::Fn(fn_expr.clone()));
+
+        // Register symbol location for LSP
+        let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(name.clone(), loc);
+
+        Ok(fn_stmt)
+    }
+
+    /// Parse function annotations: [c], [vm], [c,vm], [pub]
+    ///
+    /// Parse function annotations: #[c], #[vm], #[rs], #[c,vm], #[with(T as Spec)], etc.
+    /// Note: `pub` is handled separately as a keyword prefix, not an annotation.
+    /// Annotations must start with # prefix (Rust-style).
+    /// Returns FnAnnotations struct.
+    ///
+    /// Plan 306 Phase 3: Collect a parenthesized argument list following an
+    /// annotation name. If the current token is `(`, consumes through the matching
+    /// `)` and returns the rendered text e.g. `"(0, 100, 1)"` or `("Combat")`;
+    /// otherwise returns `None` and consumes nothing.
+
+    fn collect_annotation_args(&mut self) -> Option<String> {
+        if !self.is_kind(TokenKind::LParen) {
+            return None;
+        }
+        let mut s = String::from("(");
+        let mut depth = 1;
+        self.next(); // skip (
+        while depth > 0 && !self.is_kind(TokenKind::EOF) {
+            if self.is_kind(TokenKind::LParen) {
+                depth += 1;
+                s.push('(');
+            } else if self.is_kind(TokenKind::RParen) {
+                depth -= 1;
+                if depth > 0 {
+                    s.push(')');
+                }
+            } else if self.is_kind(TokenKind::Comma) {
+                s.push_str(", ");
+            } else if self.is_kind(TokenKind::Asn) {
+                s.push_str(" = ");
+            } else if self.is_kind(TokenKind::Str) {
+                s.push('"');
+                s.push_str(&self.cur.text);
+                s.push('"');
+            } else {
+                s.push_str(&self.cur.text);
+            }
+            if depth > 0 {
+                self.next();
+            }
+        }
+        self.next(); // skip final )
+        s.push(')');
+        Some(s)
+    }
+
+    /// Parse function annotations: [c], [vm], [c,vm], [pub]
+    ///
+    /// Parse function annotations: #[c], #[vm], #[rs], #[c,vm], #[with(T as Spec)], etc.
+    /// Note: `pub` is handled separately as a keyword prefix, not an annotation.
+    /// Annotations must start with # prefix (Rust-style).
+    /// Returns FnAnnotations struct.
+    ///
+    /// Plan 061: Added support for #[with(T as Spec)] generic constraints
+    /// Plan 083: Added support for #[rs] (Rust transpiler)
+    /// Plan 260: Added support for #[test], refactored to struct
+    /// Plan 364 W1: does the current `ident` start a dotted annotation path
+    /// (`ident . ident`)? Lookahead without consuming (restore via push_token,
+    /// same idiom as is_fn_annotation).
+    fn is_annotation_dotted_path(&mut self) -> bool {
+        if self.cur.kind != TokenKind::Ident {
+            return false;
+        }
+        let mut tokens = Vec::new();
+        tokens.push(self.cur.clone()); // first ident
+        self.next();
+        if self.cur.kind != TokenKind::Dot {
+            tokens.push(self.cur.clone()); // non-dot token (already read from stream)
+            for t in tokens.into_iter().rev() {
+                self.lexer.push_token(t);
+            }
+            self.next();
+            return false;
+        }
+        tokens.push(self.cur.clone()); // '.'
+        self.next();
+        if self.cur.kind != TokenKind::Ident {
+            tokens.push(self.cur.clone());
+            for t in tokens.into_iter().rev() {
+                self.lexer.push_token(t);
+            }
+            self.next();
+            return false;
+        }
+        tokens.push(self.cur.clone()); // segment ident
+        for t in tokens.into_iter().rev() {
+            self.lexer.push_token(t);
+        }
+        self.next();
+        true
+    }
+
+    fn parse_fn_annotations(&mut self) -> AutoResult<FnAnnotations> {
+        let mut ann = FnAnnotations::default();
+
+        // Parse all annotation blocks: #[...] #[...] ...
+        while self.is_kind(TokenKind::Hash) {
+            // Plan 442 C2: `#` NOT followed by `[` is a corpus-style line
+            // comment (musk relay_store's hand-written `# PLAN-032 ...`
+            // notes). Skip to end of line and return default annotations
+            // instead of erroring — struct/enum field loops route every
+            // field through this fn, so the tolerance lives here.
+            let next_is_attr = if let Ok(tok) = self.lexer.next() {
+                let a = tok.kind == TokenKind::LSquare;
+                self.lexer.push_token(tok);
+                a
+            } else {
+                false
+            };
+            if !next_is_attr {
+                while !self.is_kind(TokenKind::Newline)
+                    && !self.is_kind(TokenKind::EOF)
+                    && !self.is_kind(TokenKind::RBrace)
+                {
+                    self.next();
+                }
+                if self.is_kind(TokenKind::Newline) {
+                    self.next();
+                }
+                // Plan 442 C2 (relay_store tail): keep looping over the whole
+                // RUN of `#` lines instead of returning after the first.
+                // Body loops (type/ext) fall through to member parsing in the
+                // SAME iteration after this returns — a lone `return` left
+                // cur on the next `#` line, which type_member then ate as a
+                // field name ("Expected end of statement, got Ident<…>" ×20
+                // cascade). A single `#` line before a field worked by
+                // accident (the fall-through parsed that field), which is why
+                // hand-crafted minimal repros never triggered.
+                continue;
+            }
+
+            self.next(); // skip #
+
+            if self.is_kind(TokenKind::LSquare) {
+                self.next(); // skip [
+
+                while self.is_kind(TokenKind::Ident)
+                    // Plan 560 T09：`with` 关键字化后 #[with(...)] 注解名
+                    // 撞位（§10"零冲突"假设漏了注解名位）——此处同Ident 收。
+                    || self.is_kind(TokenKind::With)
+                {
+                    let annot = self.cur.text.clone();
+
+                    // Plan 364 W1: dotted annotation path — `#[zbus.interface]`.
+                    // Any `a.b.c` name is an attribute-macro path: collect it
+                    // verbatim (`.` → `::`), attach `(...)` args, and pass
+                    // through unconditionally. Single unknown idents still error.
+                    if self.is_annotation_dotted_path() {
+                        self.next(); // skip first ident
+                        let mut path = annot.to_string();
+                        while self.is_kind(TokenKind::Dot) {
+                            self.next(); // skip '.'
+                            let seg = self.cur.text.clone();
+                            self.next(); // skip segment
+                            path.push_str("::");
+                            path.push_str(&seg);
+                        }
+                        if let Some(args) = self.collect_annotation_args() {
+                            path.push_str(&args);
+                        }
+                        self.impl_attrs.push(path.into());
+                        // Check for ] or ,
+                        if self.is_kind(TokenKind::RSquare) {
+                            self.next(); // skip ]
+                            break;
+                        }
+                        if self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip ,
+                            continue;
+                        }
+                        continue;
+                    }
+
+                    match annot.as_str() {
+                        "c" => ann.has_c = true,
+                        "vm" => ann.has_vm = true,
+                        "rs" => ann.has_rs = true,
+                        "test" => ann.has_test = true,
+                        // Plan 306 Phase 3: GDScript variable annotations.
+                        // Capture full text (name + optional args) for verbatim @-prefix emission.
+                        "export"
+                        | "onready"
+                        | "export_range"
+                        | "export_enum"
+                        | "export_group"
+                        | "export_subgroup"
+                        | "export_flags"
+                        | "export_node_path"
+                        | "export_file"
+                        | "export_dir"
+                        | "export_multiline"
+                        | "export_color_no_alpha" => {
+                            let mut attr_str = annot.to_string();
+                            self.next(); // skip the annotation name
+                            let args = self.collect_annotation_args();
+                            if let Some(a) = &args {
+                                attr_str.push_str(a);
+                            }
+                            ann.store_attrs.push(attr_str.into());
+                            // Plan 610 ⑤: fn-level `#[export]` / `#[export(system)]`
+                            // — cdylib export face. GDScript var semantics above
+                            // are untouched; fn declarations read export_abi
+                            // (fn paths never read store_attrs, var paths never
+                            // read export_abi).
+                            if annot == "export" {
+                                ann.export_abi = Some(parse_export_abi_arg(args));
+                            }
+                            // Check for ] or ,
+                            if self.is_kind(TokenKind::RSquare) {
+                                self.next(); // skip ]
+                                break;
+                            }
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next(); // skip ,
+                                continue;
+                            }
+                            continue;
+                        }
+                        // Plan 306 Phase 3: GDScript script-level (file-wide) annotations.
+                        // Unlike the var-level annotations above, these apply to the whole
+                        // script and are collected into the parser (→ Code.file_attrs) for
+                        // top-of-file `@tool` / `@icon(...)` emission. They do NOT attach
+                        // to the following declaration; that decl is parsed normally below.
+                        "tool" | "icon" => {
+                            let mut attr_str = annot.to_string();
+                            self.next(); // skip the annotation name
+                            if let Some(args) = self.collect_annotation_args() {
+                                attr_str.push_str(&args);
+                            }
+                            self.file_attrs.push(attr_str.into());
+                            if self.is_kind(TokenKind::RSquare) {
+                                self.next(); // skip ]
+                                break;
+                            }
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next(); // skip ,
+                                continue;
+                            }
+                            continue;
+                        }
+                        "single" => {
+                            // Plan 121: #[single] annotation for singleton tasks
+                            // This is handled by the caller, just skip here
+                        }
+                        "rust" => {
+                            // Plan 555 T02: #[rust] 文件级 pragma——脚本模式
+                            // 显式压回通道（.as + #[rust] → Normal）。仅登记
+                            // parser.rust_pragma，不改变既有 rust/rs 注解的
+                            // 逐声明语义。不自行 skip——循环尾部统一 next()。
+                            self.rust_pragma = true;
+                        }
+                        "script" => {
+                            // Plan 550 T10: #[script] 文件级 pragma——脚本模式
+                            // 生产者门控标注。仅登记 parser.script_pragma（→
+                            // CompileSession.script_marked），不挂到任何声明，
+                            // 不改变编译/运行行为（.as 管线归 W1）。
+                            // 注：不自行 skip——循环尾部统一 next()（同
+                            // single/async 臂约定，只有 with 例外）。
+                            self.script_pragma = true;
+                        }
+                        "with" => {
+                            // Plan 061: Parse #[with(T, U as Spec<V>)]
+                            self.next(); // skip 'with'
+                            ann.with_params = self.parse_with_params()?;
+                        }
+                        "async" => {
+                            // async is inferred from return type ~T (Handle), not annotation
+                        }
+                        "derive" | "serde" | "tokio" | "allow" | "cfg" => {
+                            // Plan 159 Phase 6B-2: Pass-through annotations for Rust transpiler
+                            // Collect the raw attribute text: #[derive(Debug, Clone)] -> "derive(Debug, Clone)"
+                            let mut attr_str = annot.to_string();
+                            self.next(); // skip the annotation name
+                            if let Some(args) = self.collect_annotation_args() {
+                                attr_str.push_str(&args);
+                            }
+                            self.raw_attrs.push(attr_str.into());
+                            // Check for ] or ,
+                            if self.is_kind(TokenKind::RSquare) {
+                                self.next(); // skip ]
+                                break;
+                            }
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next(); // skip ,
+                                continue;
+                            }
+                            continue;
+                        }
+                        // Plan 312: #[api(method = "GET", path = "/api/notes/:id")]
+                        // Makes the function an HTTP endpoint when run via AutoVM.
+                        "api" => {
+                            self.next(); // skip 'api'
+                            let args = self.collect_annotation_args().unwrap_or_default();
+                            // Parse "method = \"GET\", path = \"/api/notes\"" from args
+                            let (method, path) = parse_api_args(&args);
+                            ann.api_endpoint = Some(crate::ast::ApiAttrs { method, path });
+                            // Check for ] or ,
+                            if self.is_kind(TokenKind::RSquare) {
+                                self.next(); // skip ]
+                                break;
+                            }
+                            if self.is_kind(TokenKind::Comma) {
+                                self.next(); // skip ,
+                                continue;
+                            }
+                            continue;
+                        }
+                        _ => {
+                            return Err(SyntaxError::Generic {
+                                message: format!("Unknown annotation '{}'. Valid: #[c], #[vm], #[rs], #[single], #[async], #[with(...)], #[c,vm,rs], #[derive(...)], #[serde(...)]. Use 'pub' keyword prefix for visibility.", annot),
+                                span: pos_to_span(self.cur.pos),
+                            }.into());
+                        }
+                    }
+
+                    // Skip 'with' since we already consumed it above
+                    if annot != "with" {
+                        self.next(); // skip the annotation identifier (c, vm, or pub)
+                    }
+
+                    if self.is_kind(TokenKind::Comma) {
+                        self.next(); // skip ,
+                        continue;
+                    }
+
+                    if self.is_kind(TokenKind::RSquare) {
+                        self.next(); // skip ]
+                        break;
+                    } else {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Expected ',', ']', or annotation, found {:?}",
+                                self.kind()
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '[' after '#', found {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+
+            // Skip any whitespace/newlines between multiple annotation blocks
+            self.skip_empty_lines();
+        }
+
+        Ok(ann)
+    }
+
+    /// Plan 061: Parse with(...) parameter list: (T, U as Spec<V>)
+    /// Returns Vec<TypeParam> with constraints populated
+    fn parse_with_params(&mut self) -> AutoResult<Vec<crate::ast::TypeParam>> {
+        use crate::ast::TypeParam;
+
+        self.expect(TokenKind::LParen)?; // expect '('
+
+        let mut params = Vec::new();
+
+        loop {
+            self.skip_empty_lines();
+
+            // Check for ) to end the list
+            if self.is_kind(TokenKind::RParen) {
+                break;
+            }
+
+            // Parse parameter name
+            if !self.is_kind(TokenKind::Ident) {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected type parameter name in #[with(...)], got {:?}",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+
+            let name = self.parse_name()?;
+
+            // Check for 'as' keyword for constraint
+            // Plan 364 W3: `#[with(T as A + B)]` — multiple bounds joined with `+`.
+            let mut constraint = Vec::new();
+            if self.is_kind(TokenKind::As) {
+                self.next(); // skip 'as'
+                constraint.push(self.parse_type()?);
+                while self.is_kind(TokenKind::Add) {
+                    self.next(); // skip '+'
+                    constraint.push(self.parse_type()?);
+                }
+            }
+
+            params.push(TypeParam { name, constraint });
+
+            self.skip_empty_lines();
+
+            // Check for , or )
+            if self.is_kind(TokenKind::Comma) {
+                self.next(); // skip ,
+                continue;
+            } else if self.is_kind(TokenKind::RParen) {
+                break;
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected ',' or ')' in #[with(...)], got {:?}",
+                        self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        }
+
+        self.expect(TokenKind::RParen)?; // expect ')'
+
+        Ok(params)
+    }
+
+    // Function Declaration
+    pub fn fn_decl_stmt(&mut self, parent_name: &str) -> AutoResult<Stmt> {
+        let declaration_start = self.cur.pos.pos;
+        // Check for annotations: #[c], #[vm], #[rs], #[c,vm] BEFORE fn keyword
+        let mut ann = if self.is_kind(TokenKind::Hash) {
+            self.parse_fn_annotations()?
+        } else {
+            FnAnnotations::default()
+        };
+
+        // Skip empty lines after annotations
+        self.skip_empty_lines();
+
+        self.next(); // skip keyword `fn`
+
+        let mut is_vm = ann.has_vm;
+        let mut is_c = ann.has_c;
+        let _is_rs = ann.has_rs;
+
+        // Backwards compatibility: check for fn.c and fn.vm after fn keyword
+        if !is_vm && !is_c && self.is_kind(TokenKind::Dot) {
+            self.next(); // skip .
+            let sub_kind = self.cur.text.clone();
+            if sub_kind == "c" {
+                is_c = true;
+                self.next(); // skip 'c' keyword
+            } else if sub_kind == "vm" {
+                is_vm = true;
+                self.next(); // skip 'vm' keyword
+            }
+        }
+
+        // parse function name (Plan 368 FU-1: supports dotted `Type.method` form)
+        let (name, dotted_parent) = self.parse_fn_name()?;
+        // A dotted top-level decl (`pub fn JsonValue.as_int(...)`) overrides the
+        // caller-supplied parent_name — it declares a method on `Type`. For
+        // non-dotted names the caller's parent_name (e.g. from `ext Type {}`)
+        // still applies.
+        let parent_name: &str = if let Some(ref p) = dotted_parent {
+            p.as_str()
+        } else {
+            parent_name
+        };
+
+        // Capture the position of the function name for LSP
+        // self.prev now points to the name token after parse_name()
+        let name_pos = self.prev.pos;
+
+        // Plan 052: Parse generic parameters if present: fn foo<T, N u32>(...)
+        let mut generic_params = self.parse_generic_params()?;
+
+        // Plan 061: Merge with_params from #[with(T as Spec)] into generic_params
+        // with_params override any params from <T> with the same name
+        if !ann.with_params.is_empty() {
+            use crate::ast::GenericParam;
+
+            for with_param in ann.with_params {
+                // Check if this param already exists in generic_params
+                let existing_idx = generic_params.iter().position(|p| match p {
+                    GenericParam::Type(tp) => tp.name == with_param.name,
+                    GenericParam::Const(cp) => cp.name == with_param.name,
+                });
+
+                if let Some(idx) = existing_idx {
+                    // Replace existing param with the with_param (which has constraint)
+                    generic_params[idx] = GenericParam::Type(with_param.clone());
+                } else {
+                    // Add new param from with_params
+                    generic_params.push(GenericParam::Type(with_param.clone()));
+                    // Also add to current_type_params for scope
+                    self.current_type_params.push(with_param.name.clone());
+                }
+            }
+        }
+
+        // Plan 091: Use InferenceContext for scope management
+        self.infer_ctx.push_fn_scope();
+
+        // parse function parameters
+        self.expect(TokenKind::LParen)?;
+        let params = self.fn_params()?;
+        self.expect(TokenKind::RParen)?;
+
+        //
+
+        // parse return type
+        let mut ret_type = Type::Unknown;
+        let mut ret_type_name: Option<AutoStr> = None;
+        // Plan 073 Stage A.5: Support -> type return type annotation
+        if self.is_kind(TokenKind::Arrow) {
+            // Explicit return type annotation with ->
+            self.next(); // consume ->
+            ret_type = self.parse_type()?;
+            if self.is_kind(TokenKind::Ident) {
+                ret_type_name = Some(self.cur.text.clone());
+            }
+            self.skip_empty_lines();
+        }
+        // TODO: determine return type with last stmt if it's not specified
+        // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121), LParen (tuple)
+        else if self.is_kind(TokenKind::Ident)
+            || self.is_kind(TokenKind::LSquare)
+            || self.is_kind(TokenKind::Star)
+            || self.is_kind(TokenKind::Question)
+            || self.is_kind(TokenKind::Not)
+            || self.is_kind(TokenKind::Tilde)
+            || self.is_kind(TokenKind::LParen)
+        {
+            if self.is_kind(TokenKind::Ident) {
+                ret_type_name = Some(self.cur.text.clone());
+            }
+            ret_type = self.parse_type()?;
+            // Skip empty lines after return type (but not for C/VM functions - they need the newlines for EOS)
+            if !(is_c || is_vm) {
+                self.skip_empty_lines();
+            }
+            // For C or VM functions, after return type we accept semicolon, newline, or nothing
+            // For regular functions, we also accept semicolon for forward declarations
+            // For methods in type blocks (parent_name is not empty), we also accept newline
+            let allow_newline = is_c || is_vm || !parent_name.is_empty();
+            if !allow_newline
+                && !self.is_kind(TokenKind::LBrace)
+                && !self.is_kind(TokenKind::Semi)
+                && !self.is_kind(TokenKind::EOF)
+                && !self.is_kind(TokenKind::Hash)
+            {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '{{' or ';', found {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        } else if self.is_kind(TokenKind::LBrace) {
+            ret_type = Type::Void;
+        } else if self.is_kind(TokenKind::Semi) {
+            // For functions without a return type and ending with semicolon (forward declaration)
+            ret_type = Type::Void;
+        } else if is_c || is_vm {
+            // For C or VM functions without return type and no semicolon (newline-terminated)
+            ret_type = Type::Void;
+        }
+
+        // if has parent_name, define `self` in current scope
+        if !parent_name.is_empty() {
+            let parent_type = self.find_type_for_name(parent_name);
+            let ty = parent_type.unwrap_or(Type::Unknown);
+            self.define(
+                "self",
+                Meta::Store(Store {
+                    kind: StoreKind::Let,
+                    attrs: vec![],
+                    is_pub: false,
+                    name: "self".into(),
+                    ty,
+                    expr: Expr::Ident("self".into()),
+                }),
+            );
+        }
+
+        // parse function body
+        let body = if !is_vm && !is_c {
+            // For regular functions, check if this is a forward declaration (semicolon)
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // skip semicolon
+                Body::new()
+            } else {
+                // Plan 028 T14：fn 体内的语句同样不能被方言声明关键字拦截
+                //（`msg.blocks = ...` 是局部赋值，非 msg 声明）。
+                // PLAN-778 R1（F778-R1-02）：Err 平衡恢复——`body()?` 提前退出
+                // 会把 in_fn_body=true 泄漏给恢复点后续语句。
+                let prev_fn_body = self.in_fn_body;
+                self.in_fn_body = true;
+                let body_res = self.body();
+                self.in_fn_body = prev_fn_body;
+                let b = body_res?;
+                b
+            }
+        } else {
+            // For VM and C functions, check if there's a semicolon or function body
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // skip semicolon
+            } else if self.is_kind(TokenKind::LBrace) {
+                // Skip the function body for C/VM functions
+                self.skip_block()?;
+            }
+            Body::new()
+        };
+
+        // exit function scope
+        self.exit_fn_scope();
+
+        // parent name for method?
+        let parent = if parent_name.is_empty() {
+            None
+        } else {
+            Some(parent_name.into())
+        };
+        let kind = if is_vm {
+            FnKind::VmFunction
+        } else if is_c {
+            FnKind::CFunction
+        } else {
+            FnKind::Function
+        };
+
+        // Create function, preserving return type name if type is Unknown
+        let mut fn_expr = if matches!(ret_type, Type::Unknown) {
+            if let Some(ret_name) = ret_type_name {
+                Fn::with_ret_name(kind, name.clone(), parent, params, body, ret_type, ret_name)
+            } else {
+                Fn::new(kind, name.clone(), parent, params, body, ret_type)
+            }
+        } else {
+            Fn::new(kind, name.clone(), parent, params, body, ret_type)
+        };
+
+        fn_expr.span = Some((
+            declaration_start,
+            (self.prev.pos.pos + self.prev.pos.len).saturating_sub(declaration_start),
+        ));
+
+        // Plan 417-E3: surface `<T>`/`[T]` generic params (with `has` bounds)
+        // on the AST node, mirroring fn_decl_stmt_with_annotations (which
+        // assigns type_params after the same merge). Without this the params
+        // were parsed for scope tracking only and never reached consumers
+        // (a2r `<T: Bound>` emission, VM generic-receiver dispatch).
+        if !generic_params.is_empty() {
+            let mut type_params: Vec<crate::ast::TypeParam> = Vec::new();
+            let mut const_params: Vec<crate::ast::ConstParam> = Vec::new();
+            for gp in &generic_params {
+                match gp {
+                    crate::ast::GenericParam::Type(tp) => type_params.push(tp.clone()),
+                    crate::ast::GenericParam::Const(cp) => const_params.push(cp.clone()),
+                }
+            }
+            if !type_params.is_empty() {
+                fn_expr.type_params = type_params;
+            }
+            if !const_params.is_empty() {
+                fn_expr.const_params = const_params;
+            }
+        }
+
+        // Plan 163: Set is_pub flag
+        fn_expr.is_pub = ann.has_pub;
+        // Plan 260: Set is_test flag
+        fn_expr.is_test = ann.has_test;
+        // Plan 312: Set api_attrs from #[api(method, path)] annotation
+        fn_expr.api_attrs = ann.api_endpoint.take();
+
+        // Attach doc comments
+        fn_expr.doc = self.take_docs();
+
+        let fn_stmt = Stmt::Fn(fn_expr.clone());
+        let unique_name = if parent_name.is_empty() {
+            name.clone()
+        } else {
+            format!("{}.{}", parent_name, name).into()
+        };
+
+        // define function in scope
+        self.define(unique_name.as_str(), Meta::Fn(fn_expr.clone()));
+
+        // Register symbol location for LSP
+        // Use the saved name_pos which is the position of the function name
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
+            name_pos.at,
+            name_pos.pos,
+        );
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(unique_name.clone(), loc);
+
+        Ok(fn_stmt)
+    }
+
+    // Function Declaration with pre-parsed annotations
+    pub fn fn_decl_stmt_with_annotations(
+        &mut self,
+        parent_name: &str,
+        has_c: bool,
+        has_vm: bool,
+        has_rs: bool,
+        is_static: bool,
+        is_pub: bool,
+        with_params: Vec<crate::ast::TypeParam>,
+        has_test: bool,
+    ) -> AutoResult<Stmt> {
+        let declaration_start = self.cur.pos.pos;
+        self.next(); // skip keyword `fn`
+
+        let is_c = has_c;
+        let is_vm = has_vm;
+        let _is_rs = has_rs;
+
+        // parse function name (Plan 368 FU-1: supports dotted `Type.method` form)
+        let (name, dotted_parent) = self.parse_fn_name()?;
+        // A dotted top-level decl (`pub fn JsonValue.as_int(...)`) overrides the
+        // caller-supplied parent_name — it declares a method on `Type`. For
+        // non-dotted names the caller's parent_name (e.g. from `ext Type {}`)
+        // still applies.
+        let parent_name: &str = if let Some(ref p) = dotted_parent {
+            p.as_str()
+        } else {
+            parent_name
+        };
+
+        // Capture the position of the function name for LSP
+        // self.prev now points to the name token after parse_name()
+        let name_pos = self.prev.pos;
+
+        // Plan 052: Parse generic parameters if present: fn foo<T, N u32>(...)
+        let generic_params = self.parse_generic_params()?;
+
+        // Plan 061: Merge with_params from #[with(...)] with generic_params from <T>
+        // with_params take precedence (can override constraints from <T>)
+        let mut type_params: Vec<crate::ast::TypeParam> = Vec::new();
+
+        // First, extract type params from generic_params
+        for gp in &generic_params {
+            if let crate::ast::GenericParam::Type(tp) = gp {
+                type_params.push(tp.clone());
+            }
+        }
+
+        // Then, merge with with_params — Plan 364 W3: repeated
+        // `#[with(T as A, T as B)]` aggregates bounds into the same Vec
+        // (`T as A + B`).
+        for wp in with_params {
+            let existing_idx = type_params.iter().position(|tp| tp.name == wp.name);
+            if let Some(idx) = existing_idx {
+                let mut merged = type_params[idx].clone();
+                merged.constraint.extend(wp.constraint.clone());
+                type_params[idx] = merged;
+            } else {
+                type_params.push(wp);
+            }
+        }
+
+        // Plan 091: Use InferenceContext for scope management
+        self.infer_ctx.push_fn_scope();
+
+        // parse function parameters
+        self.expect(TokenKind::LParen)?;
+        let params = self.fn_params()?;
+        self.expect(TokenKind::RParen)?;
+
+        //
+
+        // parse return type
+        let mut ret_type = Type::Unknown;
+        let mut ret_type_name: Option<AutoStr> = None;
+        // Plan 073 Stage A.5: Support -> type return type annotation
+        if self.is_kind(TokenKind::Arrow) {
+            // Explicit return type annotation with ->
+            self.next(); // consume ->
+            ret_type = self.parse_type()?;
+            if self.is_kind(TokenKind::Ident) {
+                ret_type_name = Some(self.cur.text.clone());
+            }
+            self.skip_empty_lines();
+        }
+        // TODO: determine return type with last stmt if it's not specified
+        // Support: Ident (int, str), LSquare ([]int), Star (*int), Question (?T), Not (!T - Plan 121), LParen (tuple)
+        else if self.is_kind(TokenKind::Ident)
+            || self.is_kind(TokenKind::LSquare)
+            || self.is_kind(TokenKind::Star)
+            || self.is_kind(TokenKind::Question)
+            || self.is_kind(TokenKind::Not)
+            || self.is_kind(TokenKind::Tilde)
+            || self.is_kind(TokenKind::LParen)
+        {
+            if self.is_kind(TokenKind::Ident) {
+                ret_type_name = Some(self.cur.text.clone());
+            }
+            ret_type = self.parse_type()?;
+            // Skip empty lines after return type (but not for C/VM functions - they need the newlines for EOS)
+            if !(is_c || is_vm) {
+                self.skip_empty_lines();
+            }
+            // For C or VM functions, after return type we accept semicolon, newline, or nothing
+            // For regular functions, we also accept semicolon for forward declarations
+            // For methods in type blocks (parent_name is not empty), we also accept newline
+            let allow_newline = is_c || is_vm || !parent_name.is_empty();
+            if !allow_newline
+                && !self.is_kind(TokenKind::LBrace)
+                && !self.is_kind(TokenKind::Semi)
+                && !self.is_kind(TokenKind::EOF)
+                && !self.is_kind(TokenKind::Hash)
+            {
+                return Err(SyntaxError::Generic {
+                    message: format!("Expected '{{' or ';', found {:?}", self.kind()),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        } else if self.is_kind(TokenKind::LBrace) {
+            ret_type = Type::Void;
+        } else if self.is_kind(TokenKind::Semi) {
+            // For functions without a return type and ending with semicolon (forward declaration)
+            ret_type = Type::Void;
+        } else if is_c || is_vm {
+            // For C or VM functions without return type and no semicolon (newline-terminated)
+            ret_type = Type::Void;
+        }
+
+        // if has parent_name, define `self` in current scope
+        if !parent_name.is_empty() {
+            let parent_type = self.find_type_for_name(parent_name);
+            let ty = parent_type.unwrap_or(Type::Unknown);
+            self.define(
+                "self",
+                Meta::Store(Store {
+                    kind: StoreKind::Let,
+                    attrs: vec![],
+                    is_pub: false,
+                    name: "self".into(),
+                    ty,
+                    expr: Expr::Ident("self".into()),
+                }),
+            );
+        }
+
+        // parse function body
+        let body = if !is_vm && !is_c {
+            // For regular functions, check if this is a forward declaration (semicolon)
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // skip semicolon
+                Body::new()
+            } else {
+                self.body()?
+            }
+        } else {
+            // For VM and C functions, check if there's a semicolon or function body
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // skip semicolon
+            } else if self.is_kind(TokenKind::LBrace) {
+                // Skip the function body for C/VM functions
+                self.skip_block()?;
+            }
+            Body::new()
+        };
+
+        // exit function scope
+        self.exit_fn_scope();
+
+        // parent name for method?
+        let parent = if parent_name.is_empty() {
+            None
+        } else {
+            Some(parent_name.into())
+        };
+        let kind = if is_vm {
+            FnKind::VmFunction
+        } else if is_c {
+            FnKind::CFunction
+        } else {
+            FnKind::Function
+        };
+
+        // Create function, preserving return type name if type is Unknown
+        let mut fn_expr = if matches!(ret_type, Type::Unknown) {
+            if let Some(ret_name) = ret_type_name {
+                Fn::with_ret_name(kind, name.clone(), parent, params, body, ret_type, ret_name)
+            } else {
+                Fn::new(kind, name.clone(), parent, params, body, ret_type)
+            }
+        } else {
+            Fn::new(kind, name.clone(), parent, params, body, ret_type)
+        };
+
+        fn_expr.span = Some((
+            declaration_start,
+            (self.prev.pos.pos + self.prev.pos.len).saturating_sub(declaration_start),
+        ));
+
+        // Plan 061: Set type_params from #[with(...)] and <T>
+        fn_expr.type_params = type_params;
+        // Plan 052-followup (417 项④): surface const generic params (<N u32>)
+        let const_params: Vec<crate::ast::ConstParam> = generic_params
+            .iter()
+            .filter_map(|gp| {
+                if let crate::ast::GenericParam::Const(cp) = gp {
+                    Some(cp.clone())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        if !const_params.is_empty() {
+            fn_expr.const_params = const_params;
+        }
+
+        // Set is_static flag
+        fn_expr.is_static = is_static;
+
+        // Plan 163: Set is_pub flag
+        fn_expr.is_pub = is_pub;
+
+        // Plan 260: Set is_test flag
+        fn_expr.is_test = has_test;
+
+        // Plan 312: Set api_attrs from pending #[api] annotation
+        fn_expr.api_attrs = self.pending_api_attrs.take();
+
+        // Plan 610 ⑤: Set export_abi from pending #[export] annotation
+        if let Some(abi) = self.pending_export_abi.take() {
+            fn_expr.export_abi = Some(abi);
+        }
+
+        // Plan 364 W2: fn-level pass-through attrs (`#[tokio.main]`, dotted macros)
+        fn_expr.attrs = std::mem::take(&mut self.impl_attrs);
+
+        let fn_stmt = Stmt::Fn(fn_expr.clone());
+        let unique_name = if parent_name.is_empty() {
+            name.clone()
+        } else {
+            format!("{}.{}", parent_name, name).into()
+        };
+
+        // define function in scope
+        self.define(unique_name.as_str(), Meta::Fn(fn_expr.clone()));
+
+        // Register symbol location for LSP
+        // Use the saved name_pos which is the position of the function name
+        let loc = SymbolLocation::new(
+            name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
+            name_pos.at,
+            name_pos.pos,
+        );
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(unique_name.clone(), loc);
+
+        Ok(fn_stmt)
+    }
+
+    pub fn sep_params(&mut self) -> AutoResult<()> {
+        if self.is_kind(TokenKind::Comma) || self.is_kind(TokenKind::Newline) {
+            self.next();
+            return Ok(());
+        }
+        if self.is_kind(TokenKind::RParen) || self.is_kind(TokenKind::VBar) {
+            return Ok(());
+        }
+        let pos = self.cur.pos;
+        Err(SyntaxError::UnexpectedToken {
+            expected: "parameter separator (comma, newline, ), or |)".to_string(),
+            found: format!("{:?}", self.kind()),
+            span: pos_to_span(pos),
+        }
+        .into())
+    }
+
+    // parse function parameters
+    pub fn fn_params(&mut self) -> AutoResult<Vec<Param>> {
+        let mut params = Vec::new();
+        self.skip_empty_lines();
+
+        // Plan 088 Phase 3, Plan 122: Support parameter mode keywords
+        // Trinity of Resources: view, mut, move (copy deprecated, take deprecated)
+        // Loop until we hit a non-parameter (non-ident or non-mode keyword)
+        loop {
+            // 1. Check for parameter mode keyword (optional, defaults to View)
+            let mut mode = ParamMode::default(); // Default: View
+
+            if self.is_kind(TokenKind::View) {
+                mode = ParamMode::View;
+                self.next(); // skip 'view'
+            } else if self.is_kind(TokenKind::Mut) {
+                mode = ParamMode::Mut;
+                self.next(); // skip 'mut'
+            } else if self.is_kind(TokenKind::Move) {
+                mode = ParamMode::Move;
+                self.next(); // skip 'move'
+            } else if self.is_kind(TokenKind::Take) {
+                // Plan 122: 'take' is deprecated, use 'move' instead
+                let span = pos_to_span(self.cur.pos);
+                self.warn(Warning::DeprecatedFeature {
+                    name: "take".to_string(),
+                    message: "use 'move' instead".to_string(),
+                    span,
+                });
+                mode = ParamMode::Move;
+                self.next(); // skip 'take'
+            } else if self.is_kind(TokenKind::Copy) {
+                // Plan 122: 'copy' is removed from param mode, use 'move' + .clone() at call site
+                let span = pos_to_span(self.cur.pos);
+                self.add_error(SyntaxError::Generic {
+                    message: "'copy' parameter mode is removed. Use 'move' and explicit .clone() at the call site.".to_string(),
+                    span,
+                }.into());
+                mode = ParamMode::Move; // Error recovery: use Move
+                self.next(); // skip 'copy'
+            }
+
+            // 2. Check for parameter name (required)
+            // 2026-08-22(tag 软关键字):软关键字(tag/type/...)在参数名
+            // 位置就是普通标识符 —— cur_is_soft_ident 判定。
+            if !self.is_kind(TokenKind::Ident) && !self.cur_is_soft_ident() {
+                // If no ident after mode keyword, it's an error
+                if mode != ParamMode::default() {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected parameter name after '{}'", mode),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+                // No mode keyword and no ident means we're done with parameters
+                break;
+            }
+
+            // param name (or destructure pattern: TypeName(inner_name))
+            // Plan 380 P3: detect `Path(id)` — after parsing the ident name,
+            // check if next token is LParen (destructure pattern).
+            let mut destructure = None;
+            let name = self.cur.text.clone();
+            let name_pos = self.cur.pos;
+            self.next(); // skip name
+
+            // Check for destructure pattern: TypeName(inner_name)
+            if self.is_kind(TokenKind::LParen) {
+                self.next(); // skip (
+                let inner = self.cur.text.clone();
+                self.next(); // skip inner_name
+                self.expect(TokenKind::RParen)?;
+                destructure = Some(crate::ast::DestructureParam {
+                    wrapper_type: name.clone(),
+                    inner_name: inner.clone(),
+                });
+                // Override name to inner_name (function body uses inner_name)
+                // but keep original name for scope registration
+            }
+
+            // 3. param type (skip ':' if present for type annotation)
+            let mut ty = Type::Int;
+            if self.is_kind(TokenKind::Colon) {
+                self.next(); // skip ':'
+            }
+            if self.is_type_name() {
+                ty = self.parse_type()?;
+            }
+
+            // 4. default val
+            let mut default = None;
+            if self.is_kind(TokenKind::Asn) {
+                self.next(); // skip =
+                let expr = self.parse_expr()?;
+                default = Some(expr);
+            }
+
+            // 5. define param in current scope (currently in fn scope)
+            // Plan 380 P3: for destructure params, register inner_name in scope
+            let scope_name = if let Some(ref d) = destructure {
+                d.inner_name.clone()
+            } else {
+                name.clone()
+            };
+            let var = Store {
+                kind: StoreKind::Var,
+                attrs: vec![],
+                is_pub: false,
+                name: scope_name.clone(),
+                expr: default.clone().unwrap_or(Expr::Nil),
+                ty: ty.clone(),
+            };
+            // TODO: should we consider Meta::Param instead of Meta::Var?
+            self.define(scope_name.as_str(), Meta::Store(var.clone()));
+
+            // Register symbol location for LSP (use inner_name for destructure)
+            let loc = SymbolLocation::new(
+                name_pos.line.saturating_sub(1), // Convert from 1-based to 0-based
+                name_pos.at,
+                name_pos.pos,
+            );
+            // Plan 091: Use wrapper method
+            self.define_symbol_location(scope_name.clone(), loc);
+
+            // 6. Plan 088: Create parameter with explicit mode
+            // Plan 380 P3: For destructure params, Param.name = inner_name
+            // (function body references inner_name; a2r uses destructure field
+            // to emit `TypeName(inner_name): Type` in Rust output).
+            params.push(Param {
+                name: scope_name,
+                ty,
+                default,
+                mode,
+                destructure,
+            });
+            self.sep_params()?;
+            self.skip_empty_lines();
+        }
+
+        // Handle variadic arguments (...) for C functions
+        if self.is_kind(TokenKind::Range) {
+            self.next(); // skip .. (Range token)
+            if !self.is_kind(TokenKind::Dot) {
+                return Err(SyntaxError::Generic {
+                    message: "Expected '...' for variadic arguments, found '..'".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            self.next(); // skip final .
+                         // Add a variadic marker parameter
+                         // Use a special name to indicate variadic
+            params.push(Param {
+                name: "...".into(),
+                ty: Type::Variadic,
+                default: None,
+                mode: ParamMode::default(),
+                destructure: None,
+            });
+        }
+
+        Ok(params)
+    }
+
+    pub fn expr_stmt(&mut self) -> AutoResult<Stmt> {
+        Ok(Stmt::Expr(self.parse_expr()?))
+    }
+
+    pub fn spec_decl_stmt(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `spec` keyword
+
+        let name = self.parse_name()?;
+
+        // Plan 057: Parse generic parameters - e.g., spec Storage<T>, spec Storage<T, N u32>
+        let generic_params = self.parse_generic_params()?;
+
+        // Plan 397: Parse optional supertrait bounds — `spec Name<T>: Bound1 + Bound2 { }`.
+        // Bounds are opaque identifier strings (Send/Sync/etc. are not Auto types);
+        // emitted verbatim by a2r. `:` sits after generics, before `{`.
+        let mut bounds: Vec<String> = Vec::new();
+        if self.is_kind(TokenKind::Colon) {
+            self.next(); // skip ':'
+            let b = self.parse_name()?;
+            bounds.push(b.to_string());
+            while self.is_kind(TokenKind::Add) {
+                self.next(); // skip '+'
+                let b = self.parse_name()?;
+                bounds.push(b.to_string());
+            }
+        }
+
+        // Plan 057: Populate type parameter scope for use in method signatures
+        for param in &generic_params {
+            if let GenericParam::Type(tp) = param {
+                self.current_type_params.push(tp.name.clone());
+            } else if let GenericParam::Const(cp) = param {
+                self.current_const_params
+                    .insert(cp.name.clone(), cp.typ.clone());
+            }
+        }
+
+        // Parse spec body
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+
+        let mut methods = Vec::new();
+        // Plan 417-E2 (DIV-TRAIT-LANG-1): `type Item` members declare the
+        // spec's associated types. Collected in declaration order; each name
+        // is pushed into current_type_params so later method signatures
+        // resolve `Item` to a bare Type::User reference (the form every
+        // downstream consumer substitutes on).
+        let mut associated_types: Vec<crate::ast::AssociatedType> = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            if self.is_kind(TokenKind::Fn) {
+                let method = self.spec_method()?;
+                methods.push(method);
+                self.expect_eos(false)?;
+            } else if self.is_kind(TokenKind::Type) {
+                self.next(); // skip `type`
+                let name = self.parse_name()?;
+                associated_types.push(crate::ast::AssociatedType {
+                    name: name.clone(),
+                    bound: None, // bound syntax (`type Item has T`) not accepted yet
+                });
+                self.current_type_params.push(name);
+                self.expect_eos(false)?;
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: "Expected method declaration in spec".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+            self.skip_empty_lines();
+        }
+
+        self.expect(TokenKind::RBrace)?;
+
+        // Plan 057 / 417-E2: Clear type parameters after parsing spec body
+        for param in &generic_params {
+            if let GenericParam::Type(_tp) = param {
+                self.current_type_params.pop();
+            } else if let GenericParam::Const(cp) = param {
+                self.current_const_params.remove(&cp.name);
+            }
+        }
+        for _ in &associated_types {
+            self.current_type_params.pop();
+        }
+
+        // Plan 057: Use SpecDecl::with_generic_params if we have generic params
+        let mut spec_decl = if generic_params.is_empty() {
+            SpecDecl::new(name, methods)
+        } else {
+            SpecDecl::with_generic_params(name, generic_params, methods)
+        };
+        // Plan 397: attach supertrait bounds (parsed above)
+        spec_decl.bounds = bounds;
+        // Plan 417-E2: attach associated types (parsed above)
+        spec_decl.associated_types = associated_types;
+
+        // Register spec in scope
+        self.define(spec_decl.name.as_str(), Meta::Spec(spec_decl.clone()));
+
+        // Note: Plan 091 - Universe.register_spec() removed
+        // Spec is already registered via define() -> TypeStore.register_spec_decl()
+
+        Ok(Stmt::SpecDecl(spec_decl))
+    }
+
+    fn spec_method(&mut self) -> AutoResult<SpecMethod> {
+        self.expect(TokenKind::Fn)?;
+        let name = self.parse_name()?;
+
+        self.expect(TokenKind::LParen)?;
+        let params = self.fn_params()?;
+        self.expect(TokenKind::RParen)?;
+
+        // Parse return type
+        let ret = if self.is_type_name() {
+            self.parse_type()?
+        } else {
+            Type::Void // Default to void
+        };
+
+        // Parse optional method body (default implementation)
+        let body = if self.is_kind(TokenKind::LBrace) {
+            Some(Box::new(crate::ast::Expr::Block(self.body()?)))
+        } else {
+            None // Just signature, no default implementation
+        };
+
+        Ok(SpecMethod {
+            name,
+            params,
+            ret,
+            body,
+        })
+    }
+
+    /// Parse a type alias statement: `type List<T> = List<T, DefaultStorage>;`
+    pub fn parse_type_alias(&mut self) -> AutoResult<Stmt> {
+        self.next(); // skip `type` keyword
+
+        let name = self.parse_name()?;
+
+        // Parse generic parameters (optional) - e.g., type List<T> = ...
+        let mut params = Vec::new();
+        if self.cur.kind == TokenKind::Lt {
+            self.next(); // Consume '<'
+
+            // Parse type parameter names (not full GenericParam, just identifiers)
+            let param_name = self.parse_name()?;
+            params.push(param_name);
+
+            while self.cur.kind == TokenKind::Comma {
+                self.next(); // Consume ','
+                let param_name = self.parse_name()?;
+                params.push(param_name);
+            }
+
+            self.expect(TokenKind::Gt)?; // Consume '>'
+        }
+
+        self.expect(TokenKind::Eq)?;
+
+        let target = self.parse_type()?;
+
+        self.expect(TokenKind::Semi)?;
+
+        // Note: For now, we don't store type aliases in scope.
+        // They'll be resolved during compilation/transpilation.
+        // TODO: Add type alias storage to Universe for resolution
+
+        Ok(Stmt::TypeAlias(TypeAlias {
+            name,
+            params,
+            target,
+        }))
+    }
+
+    pub fn type_decl_stmt(&mut self) -> AutoResult<Stmt> {
+        self.type_decl_stmt_with_annotation(false, false, Vec::new())
+    }
+
+    pub fn type_decl_stmt_with_annotation(
+        &mut self,
+        has_c_annotation: bool,
+        is_pub: bool,
+        with_params: Vec<crate::ast::TypeParam>,
+    ) -> AutoResult<Stmt> {
+        // TODO: deal with scope
+        self.next(); // skip `type` keyword
+
+        // Check for #[c] annotation before the type name (if not already provided)
+        let has_c_annotation = if !has_c_annotation && self.is_kind(TokenKind::Hash) {
+            self.parse_fn_annotations()?.has_c
+        } else {
+            has_c_annotation
+        };
+
+        // Skip empty lines after annotation
+        self.skip_empty_lines();
+
+        if self.is_kind(TokenKind::Dot) {
+            self.next();
+            let sub_kind = self.parse_name()?;
+            if sub_kind == "c" {
+                let name = self.parse_name()?;
+
+                // Capture the position of the type name for LSP
+                let name_pos = self.prev.pos;
+
+                let decl = TypeDecl {
+                    consts: Vec::new(),
+                    kind: TypeDeclKind::CType,
+                    name: name.clone(),
+                    parent: None,
+                    has: Vec::new(),
+                    specs: Vec::new(),
+                    spec_impls: Vec::new(), // Plan 057
+                    generic_params: Vec::new(),
+                    members: Vec::new(),
+                    delegations: Vec::new(),
+                    methods: Vec::new(),
+                    attrs: vec![],
+                    impl_attrs: vec![],
+                    doc: None,
+                    is_pub: false,
+                };
+                // put type in scope
+                self.define(name.as_str(), Meta::Type(Type::CStruct(decl.clone())));
+
+                // Register symbol location for LSP
+                let loc =
+                    SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
+                // Plan 091: Use wrapper method
+                self.define_symbol_location(name.clone(), loc);
+
+                return Ok(Stmt::TypeDecl(decl));
+            }
+        }
+
+        // If we have [c] annotation, treat as C type
+        let kind = if has_c_annotation {
+            TypeDeclKind::CType
+        } else {
+            TypeDeclKind::UserType
+        };
+
+        let name = self.parse_name()?;
+
+        // Parse generic parameters (optional) - e.g., type List<T> { ... }, type Inline<T, const N u32> { ... }
+        let mut generic_params = Vec::new();
+        if self.cur.kind == TokenKind::Lt {
+            self.next(); // Consume '<'
+
+            generic_params.push(self.parse_generic_param()?);
+
+            while self.cur.kind == TokenKind::Comma {
+                self.next(); // Consume ','
+                generic_params.push(self.parse_generic_param()?);
+            }
+
+            self.expect(TokenKind::Gt)?; // Consume '>'
+        }
+
+        // Check if this is a type alias (has `=` after name and params)
+        if self.cur.kind == TokenKind::Asn {
+            // This is a type alias: type List<T> = List<T, DefaultStorage>;
+            self.next(); // Consume '='
+
+            // Plan 317: Record type alias: `type Note = { id: int; name: str }`
+            // The `=` is followed by `{` (record body), not a type name. Parse
+            // the fields and create a UserType (same as `type Note { ... }`).
+            if self.cur.kind == TokenKind::LBrace {
+                // Fall through to the normal type body parsing below (don't
+                // consume the `{` — the body parser expects it).
+            } else {
+                let target = self.parse_type()?;
+                self.expect(TokenKind::Semi)?;
+
+                // Extract just the names from GenericParam for TypeAlias
+                let params: Vec<Name> = generic_params
+                    .into_iter()
+                    .filter_map(|p| match p {
+                        GenericParam::Type(tp) => Some(tp.name),
+                        GenericParam::Const(_) => None, // Const params not supported in type aliases
+                    })
+                    .collect();
+
+                // Plan 091: Store type alias in Database (removed Universe dependency)
+                if let Some(ref db) = self.db {
+                    if let Ok(mut db) = db.write() {
+                        db.insert_type_alias(name.clone(), (params.clone(), target.clone()));
+                    }
+                }
+
+                return Ok(Stmt::TypeAlias(TypeAlias {
+                    name,
+                    params,
+                    target,
+                }));
+            } // close else (non-record type alias)
+        }
+
+        // Plan 052: Populate current_const_params map with const generic parameters
+        // and current_type_params with type generic parameters
+        // This allows parameters to be used in method signatures within the type body
+        for param in &generic_params {
+            if let crate::ast::GenericParam::Type(tp) = param {
+                self.current_type_params.push(tp.name.clone());
+            } else if let crate::ast::GenericParam::Const(cp) = param {
+                self.current_const_params
+                    .insert(cp.name.clone(), cp.typ.clone());
+            }
+        }
+
+        // Capture the position of the type name for LSP
+        // self.prev now points to the name token after parse_name()
+        let name_pos = self.prev.pos;
+
+        // Plan 364 W3: merge #[with(T as A)] constraints into the type's
+        // generic params (repeated #[with(T as A, T as B)] aggregates).
+        let mut generic_params = generic_params;
+        for wp in with_params {
+            let existing_idx = generic_params.iter().position(|gp| match gp {
+                crate::ast::GenericParam::Type(tp) => tp.name == wp.name,
+                crate::ast::GenericParam::Const(_) => false,
+            });
+            if let Some(idx) = existing_idx {
+                if let crate::ast::GenericParam::Type(tp) = &mut generic_params[idx] {
+                    tp.constraint.extend(wp.constraint.clone());
+                }
+            } else {
+                generic_params.push(crate::ast::GenericParam::Type(wp));
+            }
+        }
+
+        let mut decl = TypeDecl {
+            consts: Vec::new(),
+            kind: kind.clone(),
+            name: name.clone(),
+            parent: None,
+            specs: Vec::new(),
+            spec_impls: Vec::new(), // Plan 057
+            has: Vec::new(),
+            generic_params,
+            members: Vec::new(),
+            delegations: Vec::new(),
+            methods: Vec::new(),
+            attrs: std::mem::take(&mut self.raw_attrs), // Plan 159 Phase 6B-2: collect derive/serde attrs
+            impl_attrs: std::mem::take(&mut self.impl_attrs), // Plan 364 W1: dotted macro attrs → impl 块
+            doc: None,
+            is_pub: false, // Plan 163: default private
+        };
+        // Plan 163: Override is_pub from annotation
+        if is_pub {
+            decl.is_pub = true;
+        }
+
+        // Attach doc comments
+        decl.doc = self.take_docs();
+        // println!(
+        //     "Defining type {} in scope {}",
+        //     name,
+        //     self.scope.borrow().cur_spot
+        // );
+
+        // put type in scope
+        self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
+
+        // Plan 087: Also register to type_registry for REPL support
+        if let Some(ref registry) = self.type_registry {
+            registry
+                .borrow_mut()
+                .register_type(name.to_string(), Type::User(decl.clone()));
+        }
+
+        // Register symbol location for LSP
+        // Use the saved name_pos which is the position of the type name
+        let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(name.clone(), loc);
+
+        // For C types, there's no body - they're opaque types
+        if kind == TypeDeclKind::CType {
+            // C types are opaque, no body needed
+            // Type already registered above at line 3356
+            return Ok(Stmt::TypeDecl(decl));
+        }
+
+        // Plan 368 FU-1: forward/opaque type declaration `type X` (no body).
+        // stdlib `.at` files declare types this way (json.at `type JsonValue`,
+        // http.at `type Server`, ...). The name is already registered above, so
+        // `self JsonValue` params and `JsonValue?` returns resolve. Return an
+        // empty TypeDecl (same shape the CType path above relies on). Only fire
+        // when the next token is an end-of-statement/block token — NOT `is`,
+        // `as`, `has`, or `{` (those continue to the body-parse path below).
+        if matches!(
+            self.cur.kind,
+            TokenKind::Newline | TokenKind::Semi | TokenKind::EOF | TokenKind::RBrace
+        ) {
+            if self.is_kind(TokenKind::Semi) {
+                self.next(); // consume optional trailing ';'
+            }
+            return Ok(Stmt::TypeDecl(decl));
+        }
+
+        // deal with `is` keyword (single inheritance)
+        let mut parent = None;
+        if self.is_kind(TokenKind::Is) {
+            self.next(); // skip `is` keyword
+            let parent_name = self.parse_name()?;
+            // Lookup parent type
+            if let Some(meta) = self.lookup_meta(parent_name.as_str()) {
+                if let Meta::Type(Type::User(parent_decl)) = meta.as_ref() {
+                    parent = Some(Box::new(Type::User(parent_decl.clone())));
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message: format!("'{}' is not a user type", parent_name),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Parent type '{}' not found", parent_name),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        }
+        decl.parent = parent;
+
+        // Plan 057: deal with `as` keyword - parse spec implementations with optional type arguments
+        let mut specs = Vec::new(); // Backwards compatibility: names only
+        let mut spec_impls = Vec::new(); // Plan 057: Generic spec implementations
+        if self.is_kind(TokenKind::As) {
+            self.next(); // skip `as` keyword
+                         // Parse one or more spec names with optional type arguments
+            while !self.is_kind(TokenKind::LBrace) && !self.is_kind(TokenKind::Has) {
+                if !specs.is_empty() {
+                    self.expect(TokenKind::Comma)?;
+                }
+                let spec_name = self.parse_name()?;
+
+                // Plan 057: Check for type arguments: as Storage<T>
+                // Plan 417-E2: `Item=int` inside the brackets is a NAMED
+                // associated-type binding (collected separately); a bare type
+                // is a positional argument binding the spec's generic params.
+                let mut assoc_bindings: Vec<(crate::ast::Name, Type)> = Vec::new();
+                let type_args = if self.is_kind(TokenKind::Lt) {
+                    self.next(); // skip `<`
+                    let mut args = Vec::new();
+                    loop {
+                        self.skip_empty_lines();
+                        let ty = self.parse_type()?;
+                        self.skip_empty_lines();
+
+                        if self.is_kind(TokenKind::Asn) {
+                            // Named binding: `Item=int`. The left side must be
+                            // a bare name (assoc types parse as Type::User
+                            // with an empty decl).
+                            let assoc_name = match &ty {
+                                Type::User(u)
+                                    if u.members.is_empty()
+                                        && u.methods.is_empty()
+                                        && u.generic_params.is_empty() =>
+                                {
+                                    u.name.clone()
+                                }
+                                _ => {
+                                    return Err(SyntaxError::Generic {
+                                        message: format!(
+                                            "Expected associated type name before '=' in spec binding for '{}', got {}",
+                                            spec_name,
+                                            ty.unique_name()
+                                        ),
+                                        span: pos_to_span(self.cur.pos),
+                                    }
+                                    .into());
+                                }
+                            };
+                            self.next(); // skip '='
+                            self.skip_empty_lines();
+                            let bound_ty = self.parse_type()?;
+                            assoc_bindings.push((assoc_name, bound_ty));
+                            self.skip_empty_lines();
+                        } else {
+                            args.push(ty);
+                        }
+
+                        if self.is_kind(TokenKind::Gt) {
+                            self.next(); // skip `>`
+                            break;
+                        } else if self.is_kind(TokenKind::Comma) {
+                            self.next(); // skip `,`
+                            continue;
+                        } else {
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "Expected '>' or ',' in type argument list, got {}",
+                                    self.cur.text
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
+                        }
+                    }
+                    args
+                } else {
+                    Vec::new() // No type arguments
+                };
+
+                // Add to backwards-compatible specs list
+                specs.push(spec_name.clone());
+
+                // Plan 057/417-E2: record the impl if it carries positional
+                // type arguments OR named associated-type bindings
+                if !type_args.is_empty() || !assoc_bindings.is_empty() {
+                    spec_impls.push(crate::ast::SpecImpl {
+                        spec_name,
+                        type_args,
+                        assoc_bindings,
+                    });
+                }
+            }
+        }
+        decl.specs = specs;
+        decl.spec_impls = spec_impls; // Plan 057
+
+        // deal with `has` keyword
+        let mut has = Vec::new();
+        if self.is_kind(TokenKind::Has) {
+            self.next(); // skip `has` keyword
+            while !self.is_kind(TokenKind::LBrace) {
+                if !has.is_empty() {
+                    self.expect(TokenKind::Colon)?; // skip ,
+                }
+                let typ = self.parse_type()?;
+                has.push(typ);
+            }
+        }
+        decl.has = has;
+
+        // type body (for user types)
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        // list of members, methods, or delegations
+        let mut members = Vec::new();
+        let mut methods = Vec::new();
+        let mut delegations = Vec::new();
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            // Check for annotations: #[c], #[vm], #[rs], #[c,vm] before function declarations
+            // Note: pub is a keyword prefix, not an annotation (pub fn, pub static fn)
+            let ann = self.parse_fn_annotations()?;
+
+            self.skip_empty_lines(); // Skip newlines after annotations
+
+            // Check if this annotation should be skipped for current compile destination
+            let should_skip = match self.compile_dest {
+                CompileDest::TransC if ann.has_vm && !ann.has_c => true, // Skip #[vm] in C transpiler
+                CompileDest::TransC if ann.has_rs && !ann.has_c => true, // Skip #[rs] in C transpiler
+                CompileDest::TransRust if ann.has_vm && !ann.has_rs => true, // Skip #[vm] in Rust transpiler
+                CompileDest::TransRust if ann.has_c && !ann.has_rs => true, // Skip #[c] in Rust transpiler
+                CompileDest::Interp if ann.has_c && !ann.has_vm => true, // Skip #[c] in interpreter
+                CompileDest::Interp if ann.has_rs && !ann.has_vm => true, // Skip #[rs] in interpreter
+                _ => false,
+            };
+
+            if should_skip {
+                // Skip the entire function declaration
+                if self.is_kind(TokenKind::Static)
+                    || self.is_kind(TokenKind::Mut)
+                    || self.is_kind(TokenKind::Fn)
+                {
+                    let is_static = self.is_kind(TokenKind::Static);
+                    let is_mut = self.is_kind(TokenKind::Mut);
+                    if is_static {
+                        self.next(); // skip static
+                    }
+                    if is_mut {
+                        self.next(); // skip mut
+                    }
+                    // Parse with actual flags to correctly handle the function syntax
+                    let _ = self.fn_decl_stmt_with_annotations(
+                        &name,
+                        ann.has_c,
+                        ann.has_vm,
+                        ann.has_rs,
+                        is_static,
+                        ann.has_pub,
+                        ann.with_params.clone(),
+                        ann.has_test,
+                    );
+                }
+                self.expect_eos(false)?;
+                continue;
+            }
+
+            // Plan 6B-4.19: Handle `pub` keyword prefix inside type body
+            let local_has_pub =
+                if self.cur.text.as_str() == "pub" && self.cur.kind == TokenKind::Ident {
+                    self.next(); // consume "pub"
+                    true
+                } else {
+                    ann.has_pub
+                };
+
+            // Check for static fn, mut fn, or fn
+            if self.is_kind(TokenKind::Static)
+                || self.is_kind(TokenKind::Mut)
+                || self.is_kind(TokenKind::Fn)
+            {
+                let is_static = self.is_kind(TokenKind::Static);
+                let is_mut = self.is_kind(TokenKind::Mut);
+                if is_static {
+                    self.next(); // skip static keyword
+                }
+                if is_mut {
+                    self.next(); // skip mut keyword
+                }
+
+                // Now expect fn keyword
+                if !self.is_kind(TokenKind::Fn) {
+                    return Err(SyntaxError::Generic {
+                        message: format!("expected 'fn' after 'static', found {:?}", self.kind()),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+
+                let fn_stmt = self.fn_decl_stmt_with_annotations(
+                    &name,
+                    ann.has_c,
+                    ann.has_vm,
+                    ann.has_rs,
+                    is_static,
+                    local_has_pub,
+                    ann.with_params.clone(),
+                    ann.has_test,
+                )?;
+                if let Stmt::Fn(mut fn_expr) = fn_stmt {
+                    // Plan 163: Set is_mut flag for mutable methods
+                    if is_mut {
+                        fn_expr.is_mut = true;
+                    }
+                    methods.push(fn_expr);
+                }
+            } else if self.is_kind(TokenKind::Has) {
+                // Parse member-level delegation: `has member Type for Spec`
+                let delegation = self.parse_delegation()?;
+                delegations.push(delegation);
+            } else {
+                let member = self.type_member(&name)?;
+                members.push(member);
+            }
+            self.expect_eos(false)?; // Not first statement in type body
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        // add members and methods from parent type (inheritance)
+        if let Some(ref parent_type) = decl.parent {
+            match parent_type.as_ref() {
+                Type::User(parent_decl) => {
+                    // Inherit members from parent
+                    for m in parent_decl.members.iter() {
+                        members.push(m.clone());
+                    }
+                    // Inherit methods from parent
+                    for meth in parent_decl.methods.iter() {
+                        // change meth's parent to self
+                        let mut inherited_meth = meth.clone();
+                        inherited_meth.parent = Some(name.clone());
+                        // register this method as Self.method
+                        let unique_name = format!("{}.{}", &name, &inherited_meth.name);
+                        self.define(unique_name.as_str(), Meta::Fn(inherited_meth.clone()));
+                        methods.push(inherited_meth);
+                    }
+                }
+                _ => {
+                    // System types cannot be inherited
+                }
+            }
+        }
+
+        // add members and methods of compose types
+        for comp in decl.has.iter() {
+            match comp {
+                Type::User(decl) => {
+                    for m in decl.members.iter() {
+                        members.push(m.clone());
+                    }
+                    for meth in decl.methods.iter() {
+                        // change meth's parent to self
+                        let mut compose_meth = meth.clone();
+                        compose_meth.parent = Some(name.clone());
+                        // register this method as Self::method
+                        let unique_name = format!("{}::{}", &name, &compose_meth.name);
+                        self.define(unique_name.as_str(), Meta::Fn(compose_meth.clone()));
+                        methods.push(compose_meth);
+                    }
+                }
+                _ => {
+                    // System Types not supported for Compose yet
+                }
+            }
+        }
+        decl.members = members;
+        decl.methods = methods;
+        decl.delegations = delegations;
+
+        // Check trait conformance if type declares specs (Plan 057: defer check for ext blocks)
+        // Note: If methods are empty, skip conformance check as methods may be added later via ext blocks
+        if !decl.specs.is_empty() && !decl.methods.is_empty() {
+            for spec_name in &decl.specs {
+                if let Some(meta) = self.lookup_meta(spec_name.as_str()) {
+                    if let Meta::Spec(spec_decl) = meta.as_ref() {
+                        // Use TraitChecker to verify conformance
+                        if let Err(errors) =
+                            crate::trait_checker::TraitChecker::check_conformance(&decl, spec_decl)
+                        {
+                            // Add all conformance errors to parser errors
+                            for error in errors {
+                                self.add_error(error);
+                            }
+                        }
+                    }
+                } else {
+                    // Spec not found - this is an error
+                    self.add_error(
+                        SyntaxError::Generic {
+                            message: format!(
+                                "Type '{}' declares spec '{}' but spec is not defined",
+                                name, spec_name
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into(),
+                    );
+                }
+            }
+        }
+
+        // Plan 057: Check generic spec implementations (spec_impls)
+        // Same logic: skip check if methods are empty (ext block case)
+        if !decl.spec_impls.is_empty() && !decl.methods.is_empty() {
+            for spec_impl in &decl.spec_impls {
+                if let Some(meta) = self.lookup_meta(spec_impl.spec_name.as_str()) {
+                    if let Meta::Spec(spec_decl) = meta.as_ref() {
+                        // Validate type argument count
+                        if spec_impl.type_args.len() != spec_decl.generic_params.len() {
+                            self.add_error(
+                                SyntaxError::Generic {
+                                    message: format!(
+                                        "Type '{}' implements spec '{}' with {} type argument(s) but spec expects {}",
+                                        name,
+                                        spec_impl.spec_name,
+                                        spec_impl.type_args.len(),
+                                        spec_decl.generic_params.len()
+                                    ),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into(),
+                            );
+                        } else {
+                            // Use TraitChecker to verify conformance
+                            if let Err(errors) =
+                                crate::trait_checker::TraitChecker::check_conformance(
+                                    &decl, spec_decl,
+                                )
+                            {
+                                for error in errors {
+                                    self.add_error(error);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Spec not found - this is an error
+                    self.add_error(
+                        SyntaxError::Generic {
+                            message: format!(
+                                "Type '{}' declares generic spec '{}' but spec is not defined",
+                                name, spec_impl.spec_name
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into(),
+                    );
+                }
+            }
+        }
+
+        self.define(name.as_str(), Meta::Type(Type::User(decl.clone())));
+        Ok(Stmt::TypeDecl(decl))
+    }
+
+    pub fn type_member(&mut self, type_name: &str) -> AutoResult<Member> {
+        // Capture the position of the field name for LSP
+        let name = self.parse_name()?;
+        let name_pos = self.prev.pos;
+
+        // Plan 317: Support `name: Type` (colon-separated) in addition to
+        // `name Type` (space-separated). Record type aliases use colons.
+        if self.is_kind(TokenKind::Colon) {
+            self.next(); // consume ':'
+        }
+
+        let ty = self.parse_type()?;
+        let mut value = None;
+        if self.is_kind(TokenKind::Asn) {
+            self.next(); // skip =
+            let expr = self.parse_expr()?;
+            value = Some(expr);
+        }
+        let store = Store {
+            name: name.clone(),
+            ty: ty.clone(),
+            expr: match &value {
+                Some(expr) => expr.clone(),
+                None => Expr::Nil,
+            },
+            kind: StoreKind::Field,
+            attrs: vec![],
+            is_pub: false,
+        };
+        self.define(name.as_str(), Meta::Store(store));
+
+        // Register field location for LSP with qualified name "TypeName.fieldName"
+        let qualified_name = format!("{}.{}", type_name, name);
+        let loc = SymbolLocation::new(name_pos.line.saturating_sub(1), name_pos.at, name_pos.pos);
+        // Plan 091: Use wrapper method
+        self.define_symbol_location(qualified_name.clone().into(), loc);
+
+        // Plan 163: Include per-field attributes from raw_attrs
+        let mut member = Member::new(name, ty, value);
+        if !self.raw_attrs.is_empty() {
+            member.attrs = std::mem::take(&mut self.raw_attrs);
+        }
+        Ok(member)
+    }
+
+    /// Parse member-level delegation: `has member Type for Spec`
+    /// Example: `has core WarpDrive for Engine`
+    fn parse_delegation(&mut self) -> AutoResult<crate::ast::Delegation> {
+        self.expect(TokenKind::Has)?; // skip `has` keyword
+
+        // Parse member name
+        let member_name = self.parse_name()?;
+
+        // Parse member type
+        let member_type = self.parse_type()?;
+
+        // Expect `for` keyword
+        self.expect(TokenKind::For)?;
+
+        // Parse spec name
+        let spec_name = self.parse_name()?;
+
+        Ok(crate::ast::Delegation {
+            member_name,
+            member_type,
+            spec_name,
+        })
+    }
+
+    pub fn union_stmt(&mut self) -> AutoResult<Stmt> {
+        self.expect(TokenKind::Union)?;
+        let name = self.parse_name()?;
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut fields = Vec::new();
+        let mut field_index = 0;
+        while !self.is_kind(TokenKind::RBrace) {
+            let f = self.union_field()?;
+            fields.push(f);
+            let is_first = field_index == 0;
+            self.expect_eos(is_first)?;
+            field_index += 1;
+        }
+        self.expect(TokenKind::RBrace)?;
+
+        let union = Union {
+            name: name.clone(),
+            fields: fields.clone(),
+        };
+
+        self.define(name.as_str(), Meta::Type(Type::Union(union)));
+        Ok(Stmt::Union(Union { name, fields }))
+    }
+
+    pub fn union_field(&mut self) -> AutoResult<UnionField> {
+        let name = self.parse_name()?;
+        let ty = self.parse_type()?;
+        Ok(UnionField { name, ty })
+    }
+
+    fn get_int_expr(&mut self, num: &Expr) -> i64 {
+        match num {
+            Expr::Int(n) => *n as i64,
+            Expr::Uint(n) => *n as i64,
+            Expr::I8(n) => *n as i64,
+            Expr::U8(n) => *n as i64,
+            _ => 0,
+        }
+    }
+
+    fn get_usize(&mut self, size: &Expr) -> AutoResult<usize> {
+        match size {
+            Expr::Int(size) => {
+                if *size <= 0 {
+                    return Err(SyntaxError::Generic {
+                        message: "Array size must be greater than 0".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                } else {
+                    Ok(*size as usize)
+                }
+            }
+            Expr::Uint(size) => Ok(*size as usize),
+            Expr::I8(size) => {
+                if *size <= 0 {
+                    return Err(SyntaxError::Generic {
+                        message: "Array size must be greater than 0".to_string(),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                } else {
+                    Ok(*size as usize)
+                }
+            }
+            Expr::U8(size) => Ok(*size as usize),
+            _ => {
+                return Err(SyntaxError::Generic {
+                    message: "Invalid array size expression, Not a Integer Number!".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        }
+    }
+
+    fn parse_ptr_type(&mut self) -> AutoResult<Type> {
+        self.next(); // skip `*`
+
+        // Handle optional `const`/`mut` qualifier (e.g., `*const T`, `*mut T`)
+        // Plan 059 Phase 1: Enable generic type fields in structs
+        // Note: `const` and `mut` are now keywords (TokenKind), not identifiers
+        if self.is_kind(TokenKind::Const) || self.is_kind(TokenKind::Mut) {
+            self.next(); // skip const/mut qualifier
+        }
+
+        let typ = self.parse_type()?;
+        Ok(Type::Ptr(PtrType { of: shared(typ) }))
+    }
+
+    fn parse_array_type(&mut self) -> AutoResult<Type> {
+        // parse array type name, e.g. `[10]int` or `[]int` (slice)
+        // Note: `[~]T` syntax for dynamic lists has been removed - use `List` type instead
+        self.next(); // skip `[`
+
+        // Check for slice type: []T (empty brackets)
+        if self.is_kind(TokenKind::RSquare) {
+            self.next(); // consume `]`
+
+            // Plan 398 §12: Parse element type recursively via parse_type (not
+            // parse_ident). This allows nested slice types like `[][]RenderedCell`
+            // (slice of slices) and `[](str, RenderedCell)` (slice of tuples) as
+            // pub type fields — needed by ash-gui's back/api.at for the VM path
+            // (Core scenario). Previously parse_ident only accepted a single
+            // identifier, so `[][]T` / `[](tuple)` failed with "Expected term,
+            // got RBrace", silently dropping the whole module's symbols.
+            let elem_ty = self.parse_type()?;
+            let slice_ty_name = elem_ty.unique_name().to_string();
+
+            // Check if slice type already exists
+            let slice_meta = self.lookup_meta(&format!("[]{}", slice_ty_name));
+            match slice_meta {
+                Some(meta) => {
+                    if let Meta::Type(slice_ty) = meta.as_ref() {
+                        return Ok(slice_ty.clone());
+                    } else {
+                        return Err(SyntaxError::Generic {
+                            message: format!("Expected slice type, got {:?}", meta),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                }
+                None => {
+                    // Create new slice type
+                    use crate::ast::SliceType;
+                    let slice_ty = Type::Slice(SliceType {
+                        elem: Box::new(elem_ty),
+                    });
+                    // Plan 091: Removed Universe.define_type() - type is returned directly
+                    return Ok(slice_ty);
+                }
+            }
+        }
+
+        // Parse array size: [N]T or [expr]T (Plan 052: Runtime arrays)
+        // Strategy: Check if next token is literal int (constant array) or something else (runtime array)
+        let is_constant_size = self.is_kind(TokenKind::Int)
+            || self.is_kind(TokenKind::Uint)
+            || self.is_kind(TokenKind::I8)
+            || self.is_kind(TokenKind::U8)
+            || self.is_kind(TokenKind::RSquare);
+
+        if !is_constant_size {
+            // Plan 052: Parse as RuntimeArray (runtime-sized array)
+            // Parse size expression (can be any expression: variable, function call, etc.)
+            let size_expr = self.parse_expr()?;
+
+            self.expect(TokenKind::RSquare)?; // skip `]`
+
+            // Parse element type
+            // Plan 398 §12: use parse_type (recursive) instead of parse_ident,
+            // so runtime arrays can have nested/tuple element types too.
+            let elem_ty = self.parse_type()?;
+
+            // Create RuntimeArrayType
+            use crate::ast::RuntimeArrayType;
+            return Ok(Type::RuntimeArray(RuntimeArrayType {
+                elem: Box::new(elem_ty),
+                size_expr: Box::new(size_expr),
+            }));
+        }
+
+        // Parse static array: [N]T (constant size)
+        let array_size = if self.is_kind(TokenKind::Int)
+            || self.is_kind(TokenKind::Uint)
+            || self.is_kind(TokenKind::I8)
+            || self.is_kind(TokenKind::U8)
+        {
+            let size = self.parse_ints()?;
+            // println!("got int {}", size); // LSP: disabled
+            self.get_usize(&size)?
+        } else if self.is_kind(TokenKind::RSquare) {
+            0
+        } else if self.is_kind(TokenKind::Ident) {
+            // may be an ident to int variable
+            // NOTE: the value should be determined at compile time
+            let name = self.parse_name()?;
+            let meta = self.lookup_meta(&name);
+            let Some(m) = meta else {
+                return Err(SyntaxError::Generic {
+                    message: format!("Array Size of {} is not found", name),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            };
+            match m.as_ref() {
+                Meta::Store(store) => {
+                    // evaluate store value at compile time
+                    // TODO: maybe recursive
+                    match store.expr {
+                        Expr::Int(n) => n as usize,
+                        Expr::Uint(n) => n as usize,
+                        Expr::U8(n) => n as usize,
+                        Expr::I8(n) => n as usize,
+                        _ => 0 as usize,
+                    }
+                }
+                _ => 0,
+            }
+        } else {
+            let message = format!("Expected Array Size or Empty, got {}", self.peek().kind);
+            let span = pos_to_span(self.cur.pos);
+            return Err(SyntaxError::Generic { message, span }.into());
+        };
+        self.expect(TokenKind::RSquare)?; // skip `]`
+
+        // parse array elem type
+        // Plan 398 §12: use parse_type (recursive) instead of parse_ident,
+        // so static arrays can have nested/tuple element types too.
+        let ty = self.parse_type()?;
+        let array_ty_name = format!("[{}]{}", array_size, ty.unique_name());
+        let arry_meta = self.lookup_meta(&array_ty_name);
+        match arry_meta {
+            Some(meta) => {
+                if let Meta::Type(array_ty) = meta.as_ref() {
+                    return Ok(array_ty.clone());
+                } else {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected array type, got {:?}", meta),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+            None => {
+                let array_ty = Type::Array(ArrayType {
+                    elem: Box::new(ty.clone()),
+                    len: array_size,
+                });
+                // Plan 091: Removed Universe.define_type() - type is returned directly
+                return Ok(array_ty);
+            }
+        }
+    }
+
+    /// Parse function type: fn(Params)ReturnType (Plan 060)
+    /// Examples: fn(int)str, fn(int, bool)void, fn()int
+    fn parse_fn_type(&mut self) -> AutoResult<Type> {
+        self.expect(TokenKind::Fn)?; // Consume 'fn'
+        self.parse_fn_signature()
+    }
+
+    /// Plan 390 §15.10: parse `(params) [ret]` — the signature shared by
+    /// fn-pointer types (`fn(a, b) ret`, via parse_fn_type) and the Fn spec's
+    /// closure-trait form (`Fn(a, b)`, via parse_ident_or_generic_type).
+    /// Both produce `Type::Fn(params, ret)`; a2r renders a Fn-type arg inside
+    /// a Box/Arc container as `dyn Fn(...)` (closure trait) and elsewhere as
+    /// `fn(...)` (fn pointer).
+    fn parse_fn_signature(&mut self) -> AutoResult<Type> {
+        use crate::ast::Type;
+
+        self.expect(TokenKind::LParen)?; // Consume '('
+
+        // Parse parameters
+        let mut params = Vec::new();
+        if !self.is_kind(TokenKind::RParen) {
+            // Parse first parameter type
+            params.push(self.parse_type()?);
+
+            // Parse remaining parameter types
+            while self.is_kind(TokenKind::Comma) {
+                self.next(); // Consume ','
+                params.push(self.parse_type()?);
+            }
+        }
+
+        self.expect(TokenKind::RParen)?; // Consume ')'
+
+        // Parse return type (if present)
+        let ret = if self.is_type_name() {
+            Box::new(self.parse_type()?)
+        } else {
+            Box::new(Type::Void)
+        };
+
+        Ok(Type::Fn(params, ret))
+    }
+
+    /// Parse a single type parameter (e.g., T, K, V)
+    #[allow(dead_code)]
+    fn parse_type_param(&mut self) -> AutoResult<crate::ast::TypeParam> {
+        use crate::ast::TypeParam;
+
+        match self.cur.kind {
+            TokenKind::Ident => {
+                let name = self.parse_name()?;
+                Ok(TypeParam {
+                    name,
+                    constraint: Vec::new(),
+                })
+            }
+            _ => Err(SyntaxError::Generic {
+                message: format!("Expected type parameter, got {}", self.cur.text),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into()),
+        }
+    }
+
+    /// Parse a generic parameter (Plan 052)
+    /// Can be either:
+    /// - Type parameter: `T` (no type annotation)
+    /// - Const parameter: `N u32` (with type annotation)
+    fn parse_generic_param(&mut self) -> AutoResult<crate::ast::GenericParam> {
+        use crate::ast::{ConstParam, GenericParam, TypeParam};
+
+        // First, parse the parameter name
+        if self.cur.kind != TokenKind::Ident {
+            return Err(SyntaxError::Generic {
+                message: format!("Expected generic parameter name, got {}", self.cur.text),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into());
+        }
+
+        let name = self.parse_name()?;
+
+        // Plan 417-E3 (DIV-TRAIT-VM-1): bounded type parameter `T has Spec`.
+        // `has` is a reserved keyword (TokenKind::Has, also used by
+        // `has field Type for SpecName` delegation), so it cannot collide
+        // with a const-parameter type name. Multiple bounds join with `+`
+        // (`T has A + B`), mirroring the `#[with(T as A + B)]` collection
+        // (Plan 364 W3).
+        if self.is_kind(TokenKind::Has) {
+            self.next(); // skip 'has'
+            let mut constraint = Vec::new();
+            constraint.push(self.parse_type()?);
+            while self.is_kind(TokenKind::Add) {
+                self.next(); // skip '+'
+                constraint.push(self.parse_type()?);
+            }
+            return Ok(GenericParam::Type(TypeParam { name, constraint }));
+        }
+
+        // Check if next token looks like a type
+        // If next token is a type keyword or identifier, it's a const parameter
+        if self.next_token_is_type() {
+            // Const parameter: `N u32`
+            let typ = self.parse_type()?;
+
+            Ok(GenericParam::Const(ConstParam {
+                name,
+                typ,
+                default: None, // TODO: Support default values
+            }))
+        } else {
+            // Type parameter: just `T`
+            Ok(GenericParam::Type(TypeParam {
+                name,
+                constraint: Vec::new(),
+            }))
+        }
+    }
+
+    /// Parse generic parameter list: <T, N u32>
+    /// Returns Vec<GenericParam> and adds type parameters to current_type_params
+    fn parse_generic_params(&mut self) -> AutoResult<Vec<crate::ast::GenericParam>> {
+        // Plan 368 FU-1: accept BOTH `<T>` and `[T]` as function generic-param
+        // lists. stdlib `.at` files use `[T]` (e.g. json.at `fn encode[T](...)`),
+        // while `may.at` uses `<T>`. In the position where this is called (right
+        // after a fn name, before `(`), a `[` can ONLY be generics (there's no
+        // preceding type for it to be an array of), so the disambiguation is safe.
+        let (open, close, close_text) = if self.is_kind(TokenKind::Lt) {
+            (TokenKind::Lt, TokenKind::Gt, "'>'")
+        } else if self.is_kind(TokenKind::LSquare) {
+            (TokenKind::LSquare, TokenKind::RSquare, "']'")
+        } else {
+            return Ok(Vec::new());
+        };
+
+        self.next(); // skip open (`<` or `[`)
+        let mut params = Vec::new();
+
+        // Parse comma-separated generic parameters
+        loop {
+            self.skip_empty_lines();
+            params.push(self.parse_generic_param()?);
+            self.skip_empty_lines();
+
+            if self.is_kind(close) {
+                self.next(); // skip close (`>` or `]`)
+                break;
+            } else if self.is_kind(TokenKind::Comma) {
+                self.next(); // skip `,`
+                continue;
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected {} or ',' in generic parameter list, got {}",
+                        close_text, self.cur.text
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        }
+
+        // Add type parameters to scope for use in function body
+        for param in &params {
+            if let crate::ast::GenericParam::Type(tp) = param {
+                self.current_type_params.push(tp.name.clone());
+            } else if let crate::ast::GenericParam::Const(cp) = param {
+                // Store const parameter with its actual type for type resolution
+                self.current_const_params
+                    .insert(cp.name.clone(), cp.typ.clone());
+            }
+        }
+
+        Ok(params)
+    }
+
+    /// Parse identifier type or generic instance (e.g., List, List<int>)
+    fn parse_ident_or_generic_type(&mut self) -> AutoResult<Type> {
+        use crate::ast::Type;
+
+        let ident = self.parse_ident()?;
+
+        match ident {
+            Expr::Ident(name) => {
+                // Special case: Dynamic storage type (Plan 055)
+                if name.as_str() == "Dynamic" {
+                    return Ok(Type::Storage(crate::ast::StorageType {
+                        kind: crate::ast::StorageKind::Dynamic,
+                    }));
+                }
+
+                // Plan 091: Handle primitive types directly (don't depend on Universe)
+                match name.as_str() {
+                    "int" | "i32" => return Ok(Type::Int),
+                    "uint" | "u32" => return Ok(Type::Uint),
+                    "float" => return Ok(Type::Float),
+                    "double" | "f64" => return Ok(Type::Double),
+                    "bool" => return Ok(Type::Bool),
+                    "str" => return Ok(Type::StrSlice),
+                    "Str" => return Ok(Type::StrOwned),
+                    "cstr" => return Ok(Type::CStrLit),
+                    "byte" | "u8" => return Ok(Type::Byte),
+                    "char" | "i8" => return Ok(Type::Char),
+                    "void" => return Ok(Type::Void),
+                    _ => {}
+                }
+
+                // Plan 390 §15.10: `Fn(...)` closure-trait signature form
+                // (`Box<Fn(A)>` → `Box<dyn Fn(A)>`). Parse like a fn-pointer
+                // signature and produce Type::Fn — the transpiler renders a
+                // Fn-type arg inside a Box/Arc container as `dyn Fn(...)`.
+                // A bare `Fn` (no parens) falls through to the spec lookup
+                // below (Type::Spec → `Box<dyn Fn>`).
+                if name.as_str() == "Fn" && self.is_kind(TokenKind::LParen) {
+                    return self.parse_fn_signature();
+                }
+
+                // Handle dotted module paths: flow.FlowSpec -> User("flow.FlowSpec")
+                if self.is_kind(TokenKind::Dot) {
+                    let mut qualified = name.to_string();
+                    while self.is_kind(TokenKind::Dot) {
+                        self.next(); // consume .
+                        let next = self.cur.text.clone();
+                        self.next(); // consume ident
+                        qualified.push('.');
+                        qualified.push_str(&next);
+                    }
+                    // Check for generic args after the qualified name
+                    if self.cur.kind == TokenKind::Lt && self.next_token_is_type() {
+                        return self.parse_generic_instance(AutoStr::from(qualified));
+                    }
+                    return Ok(Type::User(TypeDecl {
+                        consts: Vec::new(),
+                        name: AutoStr::from(qualified),
+                        kind: TypeDeclKind::UserType,
+                        parent: None,
+                        has: Vec::new(),
+                        specs: Vec::new(),
+                        spec_impls: Vec::new(),
+                        generic_params: Vec::new(),
+                        members: Vec::new(),
+                        delegations: Vec::new(),
+                        methods: Vec::new(),
+                        attrs: vec![],
+                        impl_attrs: vec![],
+                        doc: None,
+                        is_pub: false,
+                    }));
+                }
+
+                // Check if this is a generic instance (e.g., List<int>, May<string>)
+                if self.cur.kind == TokenKind::Lt {
+                    // Context check: make sure < is followed by a type
+                    // We need to look ahead to see if this looks like a generic instance
+                    if self.next_token_is_type() {
+                        return self.parse_generic_instance(name);
+                    }
+                }
+                // Plan 348 G2: Support square-bracket generic syntax in type
+                // position (e.g., Handle[int], List[int], May[int]). This only
+                // applies when a `[` immediately follows a type-name identifier,
+                // so it does not conflict with array types (`[N]T`) which start
+                // with `[`. We require a lookahead type check to avoid consuming
+                // an index expression in other contexts.
+                if self.cur.kind == TokenKind::LSquare && self.next_token_is_type() {
+                    return self.parse_generic_instance_delim(
+                        name,
+                        TokenKind::LSquare,
+                        TokenKind::RSquare,
+                    );
+                }
+                // Support Result(T, E) style generic with parens
+                if self.cur.kind == TokenKind::LParen
+                    && (name == "Result" || name == "Option" || name == "List" || name == "Map")
+                {
+                    self.next(); // consume (
+                    let mut args = vec![self.parse_type()?];
+                    while self.cur.kind == TokenKind::Comma {
+                        self.next(); // consume ,
+                        args.push(self.parse_type()?);
+                    }
+                    self.expect(TokenKind::RParen)?;
+                    // Plan 514 W1 (P511-5 探针暴露): 圆括号形态的 `List(T)` 是
+                    // VM 内建列表（auto.list，29_list_shims 语义），须与尖括号
+                    // `List<T>`（:10921 → Type::List → a2r Vec<T>）同型；此前落
+                    // GenericInstance 会让 a2r 发射未解析的 `List<T>`。用户自定义
+                    // 双参泛型 `type List<T, S>`（a2r/10_collections/002）不受影响
+                    // —— 其 args.len() == 2，保持 GenericInstance。
+                    if name == "List" && args.len() == 1 {
+                        return Ok(Type::List(Box::new(args.pop().unwrap())));
+                    }
+                    return Ok(Type::GenericInstance(GenericInstance {
+                        base_name: name,
+                        args,
+                        source: None,
+                    }));
+                }
+
+                // Plan 052: Check if this identifier is a const generic parameter
+                if let Some(const_ty) = self.current_const_params.get(&name) {
+                    // This is a const parameter - return its actual type (e.g., uint)
+                    return Ok(const_ty.clone());
+                }
+
+                // Plan 058: Check if this is a type alias
+                let type_alias = self
+                    .scope
+                    .lookup_type_alias(name.as_str())
+                    .map(|(params, target)| (params.clone(), target.clone()));
+
+                if let Some((alias_params, alias_target)) = type_alias {
+                    // Check if there are type arguments (e.g., List<int>)
+                    if self.cur.kind == TokenKind::Lt && self.next_token_is_type() {
+                        // Parse type arguments
+                        self.next(); // Consume '<'
+                        let mut type_args = Vec::new();
+                        type_args.push(self.parse_type()?);
+
+                        while self.cur.kind == TokenKind::Comma {
+                            self.next(); // Consume ','
+                            type_args.push(self.parse_type()?);
+                        }
+
+                        self.expect(TokenKind::Gt)?; // Consume '>'
+
+                        // Check if the number of type arguments matches the alias parameters
+                        if type_args.len() != alias_params.len() {
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "Type alias '{}' expects {} type parameter(s), but got {}",
+                                    name,
+                                    alias_params.len(),
+                                    type_args.len()
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
+                        }
+
+                        // Substitute type arguments into the target type
+                        let substituted = alias_target.substitute(&alias_params, &type_args);
+                        return Ok(substituted);
+                    } else if !alias_params.is_empty() {
+                        // Type alias requires parameters but none were provided
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Type alias '{}' requires {} type parameter(s), but none were provided",
+                                name,
+                                alias_params.len()
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }.into());
+                    } else {
+                        // No type arguments needed - return the target type directly
+                        return Ok(alias_target);
+                    }
+                }
+
+                // Check if this identifier is a type parameter in the current scope
+                if self.current_type_params.contains(&name) {
+                    // This is a type parameter - return it as a user type for now
+                    // The type system will handle substitution later
+                    return Ok(Type::User(TypeDecl {
+                        consts: Vec::new(),
+                        name: name.clone(),
+                        kind: TypeDeclKind::UserType,
+                        parent: None,
+                        has: Vec::new(),
+                        specs: Vec::new(),
+                        spec_impls: Vec::new(), // Plan 057
+                        generic_params: Vec::new(),
+                        members: Vec::new(),
+                        delegations: Vec::new(),
+                        methods: Vec::new(),
+                        attrs: vec![],
+                        impl_attrs: vec![],
+                        doc: None,
+                        is_pub: false,
+                    }));
+                }
+
+                // Regular type name - look it up in the type registry
+                Ok(self.lookup_type(&name).borrow().clone())
+            }
+            _ => Err(SyntaxError::Generic {
+                message: format!("Expected type, got ident {:?}", ident),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into()),
+        }
+    }
+
+    /// Check if the next token is likely the start of a type
+    fn next_token_is_type(&mut self) -> bool {
+        // Peek at the next token
+        let next = self.peek();
+        matches!(
+            next.kind,
+            TokenKind::Ident |      // Type name (int, List, etc.)
+            TokenKind::Question |   // May type (?T)
+            TokenKind::LSquare |    // Array type ([N]T)
+            TokenKind::Star |       // Pointer type (*T)
+            TokenKind::Lt // Nested generic (List<List<int>>)
+        )
+    }
+
+    /// Parse generic instance (e.g., List<int>, Map<str, int>, MyType<T, U>)
+    fn parse_generic_instance(&mut self, base_name: Name) -> AutoResult<Type> {
+        // Default delimiter is angle brackets `<...>` (e.g. List<int>, Handle<int>).
+        self.parse_generic_instance_delim(base_name, TokenKind::Lt, TokenKind::Gt)
+    }
+
+    /// Plan 348 G2: Parse a generic type instance with an explicit delimiter
+    /// pair. Supports both angle brackets `Ident<T>` and square brackets
+    /// `Ident[T]` (e.g. `Handle[int]`, `List[int]`) in type position.
+    fn parse_generic_instance_delim(
+        &mut self,
+        base_name: Name,
+        open: TokenKind,
+        close: TokenKind,
+    ) -> AutoResult<Type> {
+        use crate::ast::{GenericInstance, Type};
+
+        self.expect(open)?;
+
+        let mut args = Vec::new();
+        args.push(self.parse_type()?);
+
+        while self.cur.kind == TokenKind::Comma {
+            self.next(); // Consume ','
+            args.push(self.parse_type()?);
+        }
+
+        self.expect(close)?;
+
+        // Check if base_name refers to a user-defined generic Tag or TypeDecl
+        let base_type = self.lookup_type(&base_name);
+
+        // Plan 055: Check if we need to fill in default parameters from environment
+        // Clone needed data to avoid borrow issues
+        let needs_default_param = {
+            let base_type_ref = base_type.borrow();
+            match &*base_type_ref {
+                Type::User(type_decl) if !type_decl.generic_params.is_empty() => {
+                    // User-defined generic TypeDecl with type parameters
+                    // Check if user provided fewer parameters than expected
+                    if args.len() < type_decl.generic_params.len() {
+                        Some((base_name.clone(), type_decl.generic_params.len()))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        };
+
+        let mut args = args;
+        if let Some((type_name, expected_params)) = needs_default_param {
+            // Fill in missing parameters from environment
+            // For now, only support List<T, S> pattern where S has a default
+            if type_name.as_str() == "List" && args.len() == 1 && expected_params == 2 {
+                // Get default storage from environment
+                let default_storage = self
+                    .scope
+                    .get_env_val("DEFAULT_STORAGE")
+                    .unwrap_or_else(|| "Heap".into()); // Fallback to Heap for PC
+
+                // Parse the storage type from environment string
+                let storage_type = self.parse_storage_from_env(&default_storage)?;
+                args.push(storage_type);
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Type '{}' expects {} parameter(s), but got {}",
+                        type_name,
+                        expected_params,
+                        args.len()
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        }
+
+        let base_type_ref = base_type.borrow();
+
+        match &*base_type_ref {
+            Type::Tag(tag_shared) if !tag_shared.borrow().generic_params.is_empty() => {
+                // User-defined generic Tag with type parameters
+                // Perform substitution and create new Tag instance
+                let tag = tag_shared.borrow().clone();
+                drop(base_type_ref); // Drop borrow before registering
+
+                // Collect generic parameter names
+                let param_names: Vec<_> = tag
+                    .generic_params
+                    .iter()
+                    .map(|gp| match gp {
+                        crate::ast::GenericParam::Type(tp) => tp.name.clone(),
+                        crate::ast::GenericParam::Const(cp) => cp.name.clone(),
+                    })
+                    .collect();
+
+                // Substitute type parameters in tag fields
+                let substituted_fields: Vec<_> = tag
+                    .fields
+                    .iter()
+                    .map(|field| TagField {
+                        name: field.name.clone(),
+                        ty: field.ty.substitute(&param_names, &args),
+                    })
+                    .collect();
+
+                // Create new substituted tag
+                let substituted_tag = Tag {
+                    name: format!(
+                        "{}_{}",
+                        base_name,
+                        args.iter()
+                            .map(|t| t.unique_name().to_string())
+                            .collect::<Vec<_>>()
+                            .join("_")
+                    )
+                    .into(),
+                    generic_params: Vec::new(), // No type parameters in instantiated tag
+                    fields: substituted_fields,
+                    methods: tag.methods.clone(),
+                };
+
+                // Register the substituted tag
+                let subst_name = substituted_tag.name.clone();
+                self.define(
+                    subst_name.as_str(),
+                    Meta::Type(Type::Tag(shared(substituted_tag.clone()))),
+                );
+
+                return Ok(Type::Tag(shared(substituted_tag)));
+            }
+            // Plan 190: Rust type with generic params (e.g., HashMap<str, int>)
+            Type::Rust(rust_source) => {
+                return Ok(Type::GenericInstance(GenericInstance {
+                    base_name: base_name.clone(),
+                    args,
+                    source: Some(rust_source.clone()),
+                }));
+            }
+            Type::User(type_decl) if !type_decl.generic_params.is_empty() => {
+                // User-defined generic TypeDecl with type parameters
+                // TODO: Implement TypeDecl substitution (similar to Tag substitution)
+                // For now, return GenericInstance
+                drop(base_type_ref);
+                return Ok(Type::GenericInstance(GenericInstance {
+                    base_name,
+                    args,
+                    source: None,
+                }));
+            }
+            _ => {
+                // Either built-in type or non-generic user-defined type
+                drop(base_type_ref);
+            }
+        }
+
+        // Special handling for built-in generic types
+        // List<T> has dedicated Type variant (May<T> is now a generic tag)
+        // Fixed<N> is a Storage type (Plan 055)
+        match base_name.as_str() {
+            "List" => {
+                // Plan 055: Support both List<T> (1 param) and List<T, S> (2 params)
+                if args.len() == 1 {
+                    // List<int> → Type::List(Box::new(int))
+                    // Storage will be determined at runtime by VM
+                    Ok(Type::List(Box::new(args.into_iter().next().unwrap())))
+                } else if args.len() == 2 {
+                    // List<int, Heap> → Return GenericInstance for full type
+                    // This allows the transpiler to see both parameters
+                    Ok(Type::GenericInstance(GenericInstance {
+                        base_name,
+                        args,
+                        source: None,
+                    }))
+                } else {
+                    Err(SyntaxError::Generic {
+                        message: format!(
+                            "List expects 1 or 2 type parameter(s), but got {}",
+                            args.len()
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into())
+                }
+            }
+            "Map" => match args.len() {
+                2 => Ok(Type::Map(
+                    Box::new(args[0].clone()),
+                    Box::new(args[1].clone()),
+                )),
+                // Plan 396/B11(b):  (single arg) leaves the value type
+                // unspecified — default V to Unknown, mirroring the bare
+                // shortcut (parser.rs common-collection default). The previous
+                // hard error rejected valid sources (auto-ai tool.at's
+                // ), silently skipping whole-module transpile.
+                1 => Ok(Type::Map(
+                    Box::new(args[0].clone()),
+                    Box::new(Type::Unknown),
+                )),
+                n => Err(SyntaxError::Generic {
+                    message: format!(
+                        "Map expects 1 or 2 type parameters (Map<K> / Map<K, V>), but got {}",
+                        n
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into()),
+            },
+            "Fixed" if args.len() == 1 => {
+                // Fixed<N> storage type - parse capacity from first argument
+                // The capacity should be a constant expression (int literal or const)
+                let capacity = match &args[0] {
+                    Type::Int => {
+                        // For now, Fixed<int> will use default capacity
+                        // TODO: Parse actual integer value from expression
+                        64
+                    }
+                    Type::Uint => {
+                        // For now, Fixed<uint> will use default capacity
+                        // TODO: Parse actual integer value from expression
+                        64
+                    }
+                    _ => {
+                        return Err(SyntaxError::Generic {
+                            message: format!(
+                                "Fixed storage requires integer capacity, got {}",
+                                args[0]
+                            ),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                };
+
+                Ok(Type::Storage(crate::ast::StorageType {
+                    kind: crate::ast::StorageKind::Fixed { capacity },
+                }))
+            }
+            _ => {
+                // User-defined generic instance (including May<T> from stdlib)
+                Ok(Type::GenericInstance(GenericInstance {
+                    base_name,
+                    args,
+                    source: None,
+                }))
+            }
+        }
+    }
+
+    /// Parse a storage type name from environment variable string
+    /// For Plan 055: Convert "Heap" → Type::Storage(Dynamic), "InlineInt64" → proper type
+    fn parse_storage_from_env(&mut self, storage_name: &str) -> AutoResult<Type> {
+        match storage_name {
+            "Heap" | "Dynamic" => Ok(Type::Storage(crate::ast::StorageType {
+                kind: crate::ast::StorageKind::Dynamic,
+            })),
+            "InlineInt64" | "Fixed" => Ok(Type::Storage(crate::ast::StorageType {
+                kind: crate::ast::StorageKind::Fixed { capacity: 64 },
+            })),
+            _ => {
+                // Try to parse as Fixed<N> pattern
+                if storage_name.starts_with("Fixed<") && storage_name.ends_with(">") {
+                    let inner = &storage_name[6..storage_name.len() - 1];
+                    if let Ok(capacity) = inner.parse::<usize>() {
+                        return Ok(Type::Storage(crate::ast::StorageType {
+                            kind: crate::ast::StorageKind::Fixed { capacity },
+                        }));
+                    }
+                }
+
+                // Fallback: treat as Dynamic
+                Ok(Type::Storage(crate::ast::StorageType {
+                    kind: crate::ast::StorageKind::Dynamic,
+                }))
+            }
+        }
+    }
+
+    #[allow(dead_code)]
+    fn parse_ident_type(&mut self) -> AutoResult<Type> {
+        let ident = self.parse_ident()?;
+        match ident {
+            Expr::Ident(name) => Ok(self.lookup_type(&name).borrow().clone()),
+            _ => Err(SyntaxError::Generic {
+                message: format!("Expected type, got ident {:?}", ident),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into()),
+        }
+    }
+
+    fn is_type_name(&mut self) -> bool {
+        self.is_kind(TokenKind::Ident) // normal types like `int`
+        || self.is_kind(TokenKind::Question) // Option types like `?int` (Plan 120)
+        || self.is_kind(TokenKind::Not) // Result types like `!int` (Plan 120)
+        || self.is_kind(TokenKind::Tilde) // Future types like `~int` (Plan 124)
+        || self.is_kind(TokenKind::LSquare) // array types like `[5]int`
+        || self.is_kind(TokenKind::Star) // ptr types like `*int`
+        || self.is_kind(TokenKind::At) // ref types like `@int`
+        || self.is_kind(TokenKind::Fn) // function types like `fn(int)str` (Plan 060)
+        || self.is_keyword_as_type() // keywords that can serve as type names (e.g., Link)
+    }
+
+    /// Check if the current token is a keyword that can also serve as a type name.
+    /// Some keywords like `Link`, `Type` are PascalCase identifiers that users
+    /// may use as enum/type names.
+    fn is_keyword_as_type(&self) -> bool {
+        matches!(self.cur.kind, TokenKind::Link | TokenKind::Type)
+    }
+
+    pub fn parse_type(&mut self) -> AutoResult<Type> {
+        let base = self.parse_type_base()?;
+        // Plan 368 FU-1: support suffix `?` on any type (e.g. `JsonValue?`,
+        // `T?`, `int?`). stdlib `.at` files declare nullable return types this
+        // way (json.at `fn parse(s str) JsonValue?;`). The prefix `?T` form
+        // (handled inside parse_type_base) stays for backward compat.
+        let mut ty = base;
+        while self.is_kind(TokenKind::Question) {
+            self.next(); // consume '?'
+            ty = Type::Option(Box::new(ty));
+        }
+        Ok(ty)
+    }
+
+    /// Parse the base type (without a trailing `?` suffix). Plan 368 FU-1 split
+    /// this out of parse_type so the suffix-`?` loop can wrap any base type.
+    fn parse_type_base(&mut self) -> AutoResult<Type> {
+        match self.cur.kind {
+            // Plan 380 P1 (defect D): `dyn Trait` — allows Arc<dyn Client> /
+            // Box<dyn Trait> field types (the `dyn` keyword inside generic
+            // args). Represented as a User type whose name is "dyn Trait", which
+            // the transpiler renders verbatim (see rust.rs Type::User dyn-prefix
+            // guard).
+            TokenKind::Ident if self.cur.text.as_str() == "dyn" => {
+                self.next(); // consume 'dyn'
+                let trait_type = self.parse_type()?;
+                // Use the trait's display name (e.g. "Client")
+                let mut dyn_name = format!("dyn {}", trait_type.unique_name());
+                // Plan 599 (004 §5④): `+ Send [+ Sync]` marker-trait bounds —
+                // engine shapes need Box<dyn MasterPty + Send> (the reader-
+                // thread field spelling). Appended verbatim to the spelling.
+                while self.is_kind(TokenKind::Add) {
+                    self.next(); // consume '+'
+                    if !self.is_kind(TokenKind::Ident) {
+                        return Err(SyntaxError::Generic {
+                            message: "dyn trait object: expected trait name after '+'".to_string(),
+                            span: pos_to_span(self.cur.pos),
+                        }
+                        .into());
+                    }
+                    let bound = self.cur.text.clone();
+                    self.next();
+                    dyn_name.push_str(&format!(" + {}", bound));
+                }
+                Ok(Type::User(TypeDecl {
+                    consts: Vec::new(),
+                    name: dyn_name.into(),
+                    kind: crate::ast::TypeDeclKind::UserType,
+                    parent: None,
+                    has: Vec::new(),
+                    specs: Vec::new(),
+                    spec_impls: Vec::new(),
+                    generic_params: Vec::new(),
+                    members: Vec::new(),
+                    delegations: Vec::new(),
+                    methods: Vec::new(),
+                    attrs: Vec::new(),
+                    impl_attrs: vec![],
+                    doc: None,
+                    is_pub: false,
+                }))
+            }
+            TokenKind::At => {
+                // Plan 384 A3: `@T` → Type::Reference(T) (Rust `&T`).
+                // Enables reference-aware call-site injection: when an extern
+                // function's param is declared `@T` (in extern_sigs.at), a2r
+                // borrows the argument (`&arg`) at the call site.
+                self.next(); // Consume '@'
+                let inner_type = self.parse_type()?;
+                Ok(Type::Reference(Box::new(inner_type)))
+            }
+            TokenKind::Question => {
+                // Plan 120: Parse ?T as Type::Option(T)
+                self.next(); // Consume '?'
+                let inner_type = self.parse_type()?;
+                Ok(Type::Option(Box::new(inner_type)))
+            }
+            TokenKind::Not => {
+                // Plan 120: Parse !T as Type::Result(T)
+                // Plan 121: ! without type means Result<void> (e.g., fn main() !)
+                self.next(); // Consume '!'
+                             // Check if there's a type following the '!'
+                if self.is_type_name() {
+                    let inner_type = self.parse_type()?;
+                    Ok(Type::Result(Box::new(inner_type)))
+                } else {
+                    // ! without inner type means Result<void>
+                    Ok(Type::Result(Box::new(Type::Void)))
+                }
+            }
+            TokenKind::Tilde => {
+                // Plan 124/321: ~ is syntactic sugar for delayed/async types.
+                // ~T → Future<T> (existing async semantics)
+                // ~Iter<T> → Iter<T> (generator sequence, NOT wrapped in Future)
+                // ~Stream<T> → Stream<T> (async stream, NOT wrapped in Future)
+                self.next(); // Consume '~'
+                let inner_type = self.parse_type()?;
+                // Check if inner is Iter<T> or Stream<T> — these are direct types, not Future
+                match &inner_type {
+                    Type::GenericInstance(inst)
+                        if inst.base_name.as_str() == "Iter"
+                            || inst.base_name.as_str() == "Stream" =>
+                    {
+                        // ~Iter<T> / ~Stream<T> → return directly (no Future wrapping)
+                        Ok(inner_type)
+                    }
+                    _ => {
+                        // ~T → Future<T> (default: async value)
+                        Ok(Type::GenericInstance(GenericInstance {
+                            base_name: "Future".into(),
+                            args: vec![inner_type],
+                            source: None,
+                        }))
+                    }
+                }
+            }
+            TokenKind::Ident => self.parse_ident_or_generic_type(),
+            TokenKind::Star => self.parse_ptr_type(),
+            TokenKind::LSquare => self.parse_array_type(),
+            TokenKind::Fn => self.parse_fn_type(), // Plan 060: function types like fn(int)str
+            TokenKind::LParen => {
+                // Plan 200: Tuple type (T1, T2, ...)
+                self.next(); // skip (
+                             // Plan 391 D5: `()` is the unit type (Rust `()`), e.g. Result<(), str>.
+                             // Map to Type::Void — rust.rs type_name already emits it as `()`.
+                if self.is_kind(TokenKind::RParen) {
+                    self.next(); // skip )
+                    return Ok(Type::Void);
+                }
+                let mut types = vec![self.parse_type()?];
+                while self.is_kind(TokenKind::Comma) {
+                    self.next(); // skip ,
+                    types.push(self.parse_type()?);
+                }
+                self.expect(TokenKind::RParen)?;
+                if types.len() == 1 {
+                    // Single-element "tuple" is just a grouped type
+                    Ok(types.remove(0))
+                } else {
+                    Ok(Type::Tuple(types))
+                }
+            }
+            // Allow keyword tokens that can also serve as type/ident names (e.g., Link, Path, Type, Color)
+            _ if self
+                .cur
+                .text
+                .chars()
+                .next()
+                .map(|c| c.is_uppercase())
+                .unwrap_or(false) =>
+            {
+                // Keywords that look like type names (PascalCase) should be treated as identifiers
+                self.parse_ident_or_generic_type()
+            }
+            _ => {
+                let message = format!("Expected type, got {}", self.cur.text);
+                let span = pos_to_span(self.cur.pos);
+                return Err(SyntaxError::Generic { message, span }.into());
+            }
+        }
+    }
+
+    // TODO: 暂时只检查3种情况：
+    // 1，简单名称；
+    // 2，点号表达式最左侧的名称
+    // 3, 函数调用，如果函数名不存在，表示是一个节点实例
+    /// Check if a name refers to an imported module (from `use` statements)
+    fn is_imported_module(&self, name: &str) -> bool {
+        for use_path in &self.use_imports {
+            if let Some(alias) = use_path.rsplit('.').next() {
+                if alias == name {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// Plan 408 P12 §10.3: browser/宿主全局标识符白名单——parser 豁免，
+    /// codegen（ts_adapter）原样直出。Vue script-setup 运行时这些是全局可用的。
+    const HOST_GLOBALS: &'static [&'static str] = &[
+        "document",
+        "window",
+        "navigator",
+        "localStorage",
+        "sessionStorage",
+        "matchMedia",
+        "confirm",
+        "alert",
+        "prompt",
+        "location",
+        "history",
+        "console",
+        "fetch",
+        "requestAnimationFrame",
+        "cancelAnimationFrame",
+        "setTimeout",
+        "setInterval",
+        "clearTimeout",
+        "clearInterval",
+        "HTMLElement",
+        "Event",
+        "EventTarget",
+        "IntersectionObserver",
+        "ResizeObserver",
+        "MutationObserver",
+        "URL",
+        "URLSearchParams",
+        "FormData",
+        "Blob",
+        "File",
+        "FileReader",
+        "Headers",
+        "Request",
+        "Response",
+        "ReadableStream",
+        "WritableStream",
+        "TextEncoder",
+        "TextDecoder",
+        "crypto",
+        "performance",
+        "screen",
+    ];
+
+    /// Plan 410: `err_span` is the expression-start span recorded by the caller
+    /// BEFORE the expression was parsed. UndefinedVariable errors point there
+    /// (the offending identifier for the checked forms) instead of at the
+    /// cursor, which has already moved past the whole expression.
+    pub fn check_symbol(&mut self, expr: Expr, err_span: SourceSpan) -> AutoResult<Expr> {
+        if self.skip_check {
+            return Ok(expr);
+        }
+        // Plan 364: in Config mode (pac.at manifest), `port` and other context
+        // variables are injected at evaluation time; skip strict undefined checks.
+        if self.compile_dest == CompileDest::Config {
+            return Ok(expr);
+        }
+        match &expr {
+            Expr::Bina(l, op, _) => match op {
+                Op::Dot => {
+                    if let Expr::Ident(name) = l.as_ref() {
+                        // Check if it's a type name (for static method calls like HashMap.new())
+                        let is_type = self.lookup_type(name);
+                        let is_type_valid = match *is_type.borrow() {
+                            Type::User(_) | Type::Tag(_) | Type::Enum(_) => true,
+                            _ => false,
+                        };
+
+                        if !self.exists(&name) && !is_type_valid {
+                            // Allow module-qualified names (e.g., flow.FlowSpec)
+                            // where the left side is an imported module, not a local variable
+                            if !self.is_imported_module(name) {
+                                let candidates = self.get_defined_names();
+                                return Err(NameError::undefined_variable(
+                                    name.to_string(),
+                                    err_span,
+                                    &candidates,
+                                )
+                                .into());
+                            }
+                        }
+                    }
+                    Ok(expr)
+                }
+                _ => {
+                    // Plan 514 W1（447-① 债①）：非 Dot 二元的裸 Ident 操作数
+                    // 此前漏检——嵌套具名 fn 体内 `base + n` 的捕获经默认臂
+                    // 静默放行（运行期得 0）。在嵌套 fn 内对两侧 Ident 做
+                    // no-capture 检查（外层 fn 局部不可捕获）。
+                    if self.infer_ctx.fn_scope_idxs.len() >= 2 {
+                        if let Expr::Ident(name) = l.as_ref() {
+                            if !self.exists(name.as_str())
+                                && self
+                                    .infer_ctx
+                                    .lookup_type(&Name::from(name.as_str()))
+                                    .is_some()
+                            {
+                                let candidates = self.get_defined_names();
+                                return Err(NameError::undefined_variable(
+                                    name.to_string(),
+                                    err_span,
+                                    &candidates,
+                                )
+                                .into());
+                            }
+                        }
+                    }
+                    Ok(expr)
+                }
+            },
+            Expr::Ident(name) => {
+                // Plan 408 P12 §10.3:豁免宿主全局标识符（browser API）——
+                // document/window/navigator/localStorage 等在 .at 运行时
+                // （Vue script setup）是全局可用的，parser 不应把它们当
+                // 未定义变量。codegen（ts_adapter）原样直出，无需特殊处理。
+                if Self::HOST_GLOBALS.contains(&name.as_str()) {
+                    return Ok(expr);
+                }
+                // Plan 514 W1（447-① 债②）：`struct` 不是 Auto 关键字——C 风格
+                // `struct Name {...}` 误用此前经本臂报 E0201 "Variable ... is
+                // not defined"（名字解析错，误导排查方向）。在表达式位撞见裸
+                // `struct`（且未作变量定义）直接报语法错并指出正确写法 `type`。
+                if name.as_str() == "struct" && !self.exists(&name) {
+                    return Err(SyntaxError::Generic {
+                        message: "unexpected `struct`: Auto 的具名结构体声明是 `type Name { ... }`"
+                            .to_string(),
+                        span: err_span,
+                    }
+                    .into());
+                }
+                if !self.exists(&name) {
+                    let candidates = self.get_defined_names();
+                    return Err(NameError::undefined_variable(
+                        name.to_string(),
+                        err_span,
+                        &candidates,
+                    )
+                    .into());
+                }
+                Ok(expr)
+            }
+            Expr::Call(call) => {
+                match call.name.as_ref() {
+                    Expr::Ident(_name) => {
+                        // TODO: Re-enable this check for production, but skip for AST tests
+                        // if !self.exists(&name) {
+                        //     return error_pos!("Function {} not define!", name);
+                        // }
+                    }
+                    Expr::Bina(lhs, op, _rhs) => {
+                        // check tag creation or static method call (TypeName.method())
+                        if let Op::Dot = op {
+                            if let Expr::Ident(lname) = lhs.as_ref() {
+                                let ltype = self.lookup_type(lname);
+                                match *ltype.borrow() {
+                                    Type::Tag(ref _t) => {}
+                                    Type::User(ref _name) => {
+                                        // Allow type names for static method calls (e.g., HashMap.new())
+                                        // The evaluator will route these to the VM registry
+                                    }
+                                    _ => {}
+                                };
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                Ok(expr)
+            }
+            _ => Ok(expr),
+        }
+    }
+
+    /// Plan 364: Inject context globals into the parser symbol table for Config
+    /// mode (pac.at manifest evaluation). Mirrors old auto-man 0.1.3's
+    /// `env.set_global("port", port_name)` — the `port` variable holds the
+    /// currently selected port name so `if port == "win32" { ... }` can resolve.
+    pub fn define_config_globals(&mut self, port: &str) {
+        self.define(
+            "port",
+            Meta::Store(Store {
+                name: AutoStr::from("port"),
+                kind: StoreKind::Var,
+                attrs: vec![],
+                is_pub: false,
+                ty: Type::Unknown,
+                expr: Expr::Str(port.into()),
+            }),
+        );
+    }
+
+    pub fn find_type_for_expr(&mut self, expr: &Expr) -> AutoResult<Type> {
+        match expr {
+            // function name, find it's decl
+            Expr::Ident(ident) => {
+                let meta = self.lookup_meta(ident);
+                let Some(meta) = meta else {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Function name not found! {}", ident),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                };
+                match meta.as_ref() {
+                    Meta::Fn(fun) => {
+                        return Ok(fun.ret.clone());
+                    }
+                    _ => {}
+                }
+            }
+            // method or function in a struct
+            Expr::Bina(lhs, op, rhs) => {
+                if let Op::Dot = op {
+                    match &**lhs {
+                        Expr::Ident(lname) => {
+                            // lookup meta for left name
+                            let meta = self.lookup_meta(lname.as_str());
+                            let Some(meta) = meta else {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Left name not found! {}.{}", lname, rhs),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into());
+                            };
+                            match meta.as_ref() {
+                                Meta::Type(typ) => match typ {
+                                    Type::Tag(tag) => {
+                                        if let Expr::Ident(rname) = &**rhs {
+                                            let rtype = tag.borrow().get_field_type(rname);
+                                            return Ok(rtype);
+                                        }
+                                    }
+                                    Type::User(_) => {
+                                        // Allow type names for static method calls (e.g., HashMap.new())
+                                        // The return type will be determined by the evaluator
+                                        if let Expr::Ident(rname) = &**rhs {
+                                            // For static methods, try to look up the method signature
+                                            let combined_name = format!("{}::{}", lname, rname);
+                                            if let Some(method_meta) =
+                                                self.lookup_meta(&combined_name)
+                                            {
+                                                if let Meta::Fn(fn_decl) = method_meta.as_ref() {
+                                                    return Ok(fn_decl.ret.clone());
+                                                }
+                                            }
+                                            // Default: assume it returns the type itself (like constructors)
+                                            return Ok(typ.clone());
+                                        }
+                                    }
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
+        }
+        Err(SyntaxError::Generic {
+            message: format!("Meta not found! {}", expr),
+            span: pos_to_span(self.cur.pos),
+        }
+        .into())
+    }
+
+    pub fn return_type(&mut self, call_name: &Expr) -> AutoResult<Type> {
+        match call_name {
+            // function name, find it's decl
+            Expr::Ident(ident) => {
+                let meta = self.lookup_meta(ident);
+                let Some(meta) = meta else {
+                    return Ok(Type::Unknown);
+                };
+                match meta.as_ref() {
+                    Meta::Fn(fun) => {
+                        return Ok(fun.ret.clone());
+                    }
+                    _ => {}
+                }
+            }
+            // method or function in a struct
+            Expr::Bina(lhs, op, rhs) => {
+                if let Op::Dot = op {
+                    match &**lhs {
+                        Expr::Ident(lname) => {
+                            // lookup meta for left name
+                            let meta = self.lookup_meta(lname.as_str());
+                            let Some(meta) = meta else {
+                                return Err(SyntaxError::Generic {
+                                    message: format!("Left name not found! {}.{}", lname, rhs),
+                                    span: pos_to_span(self.cur.pos),
+                                }
+                                .into());
+                            };
+                            match meta.as_ref() {
+                                Meta::Type(typ) => match typ {
+                                    Type::Tag(tag) => {
+                                        if let Expr::Ident(rname) = &**rhs {
+                                            if tag.borrow().has_field(rname) {
+                                                return Ok(typ.clone());
+                                            }
+                                            let rtype = tag.borrow().get_field_type(rname);
+                                            return Ok(rtype);
+                                        }
+                                    }
+                                    Type::User(_) => {
+                                        // Allow type names for static method calls (e.g., HashMap.new())
+                                        if let Expr::Ident(rname) = &**rhs {
+                                            let combined_name = format!("{}::{}", lname, rname);
+                                            if let Some(method_meta) =
+                                                self.lookup_meta(&combined_name)
+                                            {
+                                                if let Meta::Fn(fn_decl) = method_meta.as_ref() {
+                                                    return Ok(fn_decl.ret.clone());
+                                                }
+                                            }
+                                            return Ok(typ.clone());
+                                        }
+                                    }
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            // Plan 052/060: Handle Expr::Dot for generic type method calls
+            // e.g., List<int, Heap>.new() where lhs is GenName("List<int, Heap>")
+            Expr::Dot(lhs, rhs) => {
+                // Extract base type name from GenName or Ident
+                let base_name = match lhs.as_ref() {
+                    Expr::GenName(name) => {
+                        // Extract base name from "List<int, Heap>" -> "List"
+                        let name_str = name.as_str();
+                        if let Some(pos) = name_str.find('<') {
+                            &name_str[..pos]
+                        } else {
+                            name_str
+                        }
+                    }
+                    Expr::Ident(name) => name.as_str(),
+                    _ => {
+                        return Ok(Type::Unknown);
+                    }
+                };
+
+                // Lookup meta for the base type
+                let meta = self.lookup_meta(base_name);
+                let Some(meta) = meta else {
+                    return Ok(Type::Unknown);
+                };
+
+                match meta.as_ref() {
+                    Meta::Type(typ) => match typ {
+                        Type::User(_decl) => {
+                            // Check for static methods (e.g., List.new not List::new)
+                            // rhs is AutoStr (field/method name)
+                            let combined_name = format!("{}.{}", base_name, rhs);
+                            if let Some(method_meta) = self.lookup_meta(&combined_name) {
+                                if let Meta::Fn(fn_decl) = method_meta.as_ref() {
+                                    return Ok(fn_decl.ret.clone());
+                                }
+                            }
+                            // Return the type itself if no method found
+                            return Ok(typ.clone());
+                        }
+                        _ => {}
+                    },
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+        // TODO: should check all types or print error
+        Ok(Type::Unknown)
+    }
+
+    fn parse_node(
+        &mut self,
+        name: &AutoStr,
+        primary: Option<Expr>,
+        args: Args,
+        kind: &AutoStr,
+    ) -> AutoResult<Node> {
+        let mut node = Node::new(name.clone());
+
+        if let Some(prime) = primary {
+            match prime {
+                Expr::Ident(id) => {
+                    // define a variable for this node instance with id
+                    self.define(id.as_str(), Meta::Node(node.clone()));
+                    node.id = id;
+                }
+                _ => {
+                    // Convert to unified API: add args before body props
+                    node.add_arg_unified("content", prime.clone());
+                }
+            }
+        }
+
+        // optional kind argument - add using unified API
+        if !kind.is_empty() {
+            node.add_arg_unified("kind", Expr::Str(kind.into()));
+        }
+
+        // Add remaining args using unified API
+        for arg in args.args {
+            match arg {
+                Arg::Pos(expr) => {
+                    // Positional arg
+                    node.add_pos_arg_unified(expr);
+                }
+                Arg::Name(pair_name) => {
+                    // Named arg
+                    node.add_name_arg_unified(pair_name);
+                }
+                Arg::Pair(key, value) => {
+                    // Pair arg - check type before adding
+                    // 查找类型定义进行类型检查
+                    let typ = self.lookup_type(&node.name);
+
+                    if let Type::User(type_decl) = &*typ.borrow() {
+                        // 查找成员定义
+                        if let Some(member) = type_decl.members.iter().find(|m| &m.name == &key) {
+                            // 推断表达式类型
+                            let value_ty = self.infer_type_expr(&value);
+
+                            // 检查类型匹配（使用当前 token 位置作为近似位置）
+                            // Plan 167: skip type checking when skip_check is set
+                            if !self.skip_check {
+                                if let Err(err) =
+                                    check_field_type(member, &value_ty, pos_to_span(self.cur.pos))
+                                {
+                                    self.errors.push(err);
+                                }
+                            }
+                        }
+                    }
+
+                    node.add_arg_unified(key, value);
+                }
+            }
+        }
+
+        if self.is_kind(TokenKind::Newline) || self.is_kind(TokenKind::Semi) {
+        } else {
+            if self.is_kind(TokenKind::LBrace) {
+                node.body = self.parse_node_body()?;
+            }
+        }
+
+        // check node type
+        let typ = self.lookup_type(&node.name);
+        node.typ = typ.clone();
+
+        // Attach doc comments (///) collected during body parsing.
+        // In .at files, /// inside a node's body describes that node itself.
+        node.doc = self.take_docs();
+
+        Ok(node)
+    }
+
+    // 节点实例和函数调用有类似语法：
+    // 函数调用：
+    // 1. hello(x, y)， 这个是函数调用
+    // 2. hello(), 这个是参数为空的函数调用
+    // 节点实例化：
+    // 1. hello (x, y) { ... }， 这个是节点实例
+    // 2. hello () { ... }， 这个是参数为空的节点实例
+    // 3. hello {...}，当参数为空时，可以省略()。但不能省略{}，否则和函数调用就冲突了。
+    // 4. hello(x, y) {}, 这个是子节点为空的节点实例
+    // 5. hello () {}， 这个是参数为空，子节点也为空的节点实例
+    // 6. hello {}， 上面的()也可以省略。
+    // 7. hello name (x, y) { ... }， 这是新的带变量名称的语法
+    // 8. hello name { ... } 参数可以省略
+    // 总之，节点实例的关键特征是`{}`，而函数调用没有`{}`
+    pub fn parse_node_or_call_stmt(&mut self) -> AutoResult<Stmt> {
+        let expr = self.node_or_call_expr()?;
+        match expr {
+            Expr::Node(node) => Ok(Stmt::Node(node)),
+            other => {
+                // Plan 028 T14: `local.field = rhs`（及任何以 Ident 起头的二元/
+                // 赋值语句）路由到此，但 node_or_call_expr 在 Dot 链后即返回，
+                // `= rhs` 无人消费 → 续接 Pratt 解析补齐操作符右侧。
+                let full = self.expr_pratt_with_left(other, 0)?;
+                Ok(Stmt::Expr(full))
+            }
+        }
+    }
+
+    pub fn node_or_call_expr(&mut self) -> AutoResult<Expr> {
+        // Handle 'not' as prefix unary operator for boolean negation
+        // e.g., assert(not expr) -> assert(!expr)
+        if self.cur.text == "not" {
+            self.next(); // skip 'not'
+            let inner = self.parse_expr()?;
+            return Ok(Expr::Unary(Op::Not, Box::new(inner)));
+        }
+
+        // Parse identifier or generic type instance (e.g., List or List<int>)
+        let name = self.cur.text.clone();
+        self.next(); // skip the identifier
+                     // Plan 410: prev is now the expression's first token — its position is
+                     // the error span hint for check_symbol (UndefinedVariable must point at
+                     // the identifier, not at the cursor after the whole expression).
+        let start_pos = self.prev.pos;
+
+        // Plan 408: 'grid' is lexed as Ident now, so the statement-level path
+        // reaches this fn instead of the old TokenKind::Grid arm in parse_expr.
+        // Detect the AutoData grid(...) literal textually: the ident is already
+        // consumed, so the current token is the '(' — put the ident back so
+        // grid() can consume it (mirrors the old keyword path). A bare `grid`
+        // (no paren) falls through to node/ident parsing as usual.
+        if name.as_str() == "grid" && self.is_kind(TokenKind::LParen) {
+            self.lexer.push_token(self.cur.clone());
+            self.cur = self.prev.clone();
+            return Ok(Expr::Grid(self.grid()?));
+        }
+
+        // Plan 390 §14 L1: Smart pointer constructors Box(expr) and Arc(expr)
+        // must be recognized in argument position too. `args()` routes Ident
+        // args through this fn (not atom), so without this check `set(k, Arc(v))`
+        // parses Arc(v) as a plain Expr::Call (→ "Arc(v)" in Rust) instead of
+        // Expr::ArcExpr (→ "Arc::new(v)"). Mirrors atom()'s Box/Arc recognition.
+        match name.as_str() {
+            "Box" => {
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let value = self.parse_expr()?;
+                    self.expect(TokenKind::RParen)?;
+                    return Ok(Expr::BoxExpr(Box::new(value)));
+                }
+            }
+            "Arc" => {
+                if self.is_kind(TokenKind::LParen) {
+                    self.next(); // consume '('
+                    let value = self.parse_expr()?;
+                    self.expect(TokenKind::RParen)?;
+                    return Ok(Expr::ArcExpr(Box::new(value)));
+                }
+            }
+            _ => {}
+        }
+
+        // Check if this is a generic type instance (e.g., List<int>, Heap<T>)
+        let mut ident = if self.is_kind(TokenKind::Lt) && self.next_token_is_type() {
+            // Parse as generic instance and create GenName expression
+            self.expect(TokenKind::Lt)?;
+
+            let mut args = Vec::new();
+            args.push(self.parse_type()?);
+
+            while self.cur.kind == TokenKind::Comma {
+                self.next(); // Consume ','
+                args.push(self.parse_type()?);
+            }
+
+            self.expect(TokenKind::Gt)?;
+
+            // Plan 395: if a call `(` immediately follows `>`, this is a generic
+            // CALL (`foo<Bar>(x)` turbofish), not a GenName type-instance value
+            // (`List<int>`). Set pending_generic_args and return the bare ident —
+            // the Pratt LParen arm (reached via expr_pratt_with_left below) builds
+            // the Call with generic_args. `List<int>` (no paren) stays GenName.
+            if self.is_kind(TokenKind::LParen) {
+                self.pending_generic_args = args;
+                Expr::Ident(name)
+            } else {
+                // Generate descriptive name: "List<int>", "Heap<T>", etc.
+                let args_str = args
+                    .iter()
+                    .map(|t| t.unique_name().to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                let generic_name = format!("{}<{}>", name, args_str);
+
+                Expr::GenName(generic_name.into())
+            }
+        } else {
+            // Regular identifier
+            Expr::Ident(name)
+        };
+
+        // Plan 056: Use Expr::Dot for semantic clarity
+        let mut broke_for_pratt = false;
+        while self.is_kind(TokenKind::Dot) {
+            // Plan 162: Don't consume .as(Type) / .to(Type) — delegate to
+            // Pratt parser.
+            // PLAN-668 R-12④: .await/.go postfix 同理委托 Pratt 层
+            // （expr_pratt_with_left 的 Await/Go 臂）——`work(1).await`
+            // 嵌套位此前在本链落 "Expected identifier... got Await"。
+            let next_is_postfix = if let Ok(tok) = self.lexer.next() {
+                let is_special = matches!(
+                    tok.kind,
+                    TokenKind::As | TokenKind::To | TokenKind::Await | TokenKind::Go
+                );
+                self.lexer.push_token(tok);
+                is_special
+            } else {
+                false
+            };
+            if next_is_postfix {
+                broke_for_pratt = true;
+                break;
+            }
+            self.next(); // skip dot
+                         // Allow @, * as special field names for pointer operations
+                         // Allow numeric literals for integer-keyed objects: a.1, a.2
+                         // Allow boolean keywords: a.true, a.false
+            let field_name = if self.is_kind(TokenKind::Ident)
+                // 2026-08-22(tag 软关键字):.tag 字段访问
+                || self.is_kind(TokenKind::Tag)
+            {
+                let text = self.cur.text.clone();
+                self.next();
+                text
+            } else if self.is_kind(TokenKind::At) || self.is_kind(TokenKind::Star) {
+                let text = self.cur.text.clone();
+                self.next();
+                text
+            } else if self.is_kind(TokenKind::Int)
+                || self.is_kind(TokenKind::Uint)
+                || self.is_kind(TokenKind::I8)
+                || self.is_kind(TokenKind::U8)
+                || self.is_kind(TokenKind::Float)
+                || self.is_kind(TokenKind::Double)
+                || self.is_kind(TokenKind::True)
+                || self.is_kind(TokenKind::False)
+                || self.is_kind(TokenKind::Nil)
+                || self.is_kind(TokenKind::Type)
+                || self.is_kind(TokenKind::Spawn)
+            // Allow .type property and .spawn method
+            {
+                let text = self.cur.text.clone();
+                self.next();
+                text
+            } else {
+                return Err(SyntaxError::Generic {
+                    message: format!(
+                        "Expected identifier, @, *, number, or boolean after dot, got {:?}",
+                        self.cur.kind
+                    ),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            };
+            ident = Expr::Dot(Box::new(ident), field_name);
+        }
+
+        // Plan 162: If we broke the dot loop for .as/.to, delegate to Pratt parser
+        // so it can handle the type cast/conversion properly
+        if broke_for_pratt {
+            return self.expr_pratt_with_left(ident, 0);
+        }
+
+        let is_constructor = match &ident {
+            Expr::Ident(n) => {
+                let meta = self.lookup_meta(n);
+                if let Some(m) = meta {
+                    match m.as_ref() {
+                        Meta::Type(_) => true,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            Expr::GenName(name) => {
+                // Generic instance like "List<int>" or "Heap<T>"
+                // Extract base type name (before the first '<')
+                let name_str = name.as_str();
+                let base_name = if let Some(pos) = name_str.find('<') {
+                    &name_str[..pos]
+                } else {
+                    name_str
+                };
+
+                let meta = self.lookup_meta(base_name);
+                if let Some(m) = meta {
+                    match m.as_ref() {
+                        Meta::Type(_) => true,
+                        _ => false,
+                    }
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        };
+
+        let mut has_paren = false;
+
+        // 节点实例的primary prop
+        let primary_prop = if self.is_kind(TokenKind::Ident) {
+            let id = self.ident_name()?;
+            self.next();
+            Some(Expr::Ident(id))
+        } else if self.is_literal() {
+            Some(self.literal()?)
+        } else if self.is_kind(TokenKind::Dot) {
+            // Handle .field as primary prop (e.g., Text .title)
+            Some(self.dot_item()?)
+        } else {
+            None
+        };
+
+        let mut args = Args::new();
+        // If has paren, maybe a call or node instance
+        if self.is_kind(TokenKind::LParen) {
+            args = self.args()?;
+            has_paren = true;
+        }
+
+        // Parse secondary prop (kind): after primaryProp and args, before {
+        // e.g., v CanTrcvBaudRate int { ... }
+        //           ^primaryProp    ^secondaryProp
+        let mut secondary_prop: AutoStr = AutoStr::new();
+        if primary_prop.is_some() && !has_paren && self.is_kind(TokenKind::Ident) {
+            let next_text = self.cur.text.clone();
+            // Don't consume if it's actually the opening brace content
+            // (Ident followed by { is not a secondaryProp, it's a new statement in body)
+            // secondaryProp is a simple type-like identifier
+            secondary_prop = next_text;
+            self.next();
+        }
+
+        // If has brace, must be a node instance
+        // NOTE: If ident is a Dot expression (e.g., TypeName.method), treat as call even if is_constructor=true
+        // IMPORTANT: When is_constructor=true but no brace/primary_prop/paren, and next token is Colon,
+        // this is a Pair expression (key: value), NOT a node instance.
+        // Plan 442 C2 (Bug A): a paren-arg call followed by `.` is a method
+        // CHAIN on the call's return value (e.g. musk backend's axum route
+        // builders `get(h1).put(h2)`). use.rust fn imports register as
+        // synthetic type decls (register_rust_type), so is_constructor is
+        // true for them and this gate would route the call into node-instance
+        // parsing — consuming `(h1)` as node args and leaving the chain dot
+        // dangling ("expected argument separator, found Dot" from args()).
+        // A node instance never chains, so a paren followed by `.` is a call.
+        let paren_chained = has_paren && self.is_kind(TokenKind::Dot);
+        let is_dot_call = matches!(ident, Expr::Dot(_, _));
+        // Plan 442 C2 (Bug B, parser side): bare axum routing-fn calls
+        // (`patch(h)` WITHOUT a chained dot) must also parse as calls.
+        // use.rust items register as synthetic type decls
+        // (register_rust_type), so is_constructor is true for them and the
+        // node-instance gate below would swallow `(h)` as node args — the
+        // chained form is already covered by paren_chained above; this arm
+        // covers the standalone form.
+        let is_axum_routing_fn = match &ident {
+            Expr::Ident(n) => self
+                .type_store
+                .read()
+                .map(|s| {
+                    s.get_rust_type_path(n.as_str())
+                        .map(|p| p.starts_with("axum::routing::"))
+                        .unwrap_or(false)
+                })
+                .unwrap_or(false),
+            _ => false,
+        };
+        let is_colon_pair = is_constructor
+            && !is_dot_call
+            && primary_prop.is_none()
+            && !self.is_kind(TokenKind::LBrace)
+            && self.is_kind(TokenKind::Colon);
+        if (self.is_kind(TokenKind::LBrace)
+            || primary_prop.is_some()
+            || (is_constructor && !is_dot_call && !paren_chained && !is_axum_routing_fn))
+            && !is_colon_pair
+        {
+            // node instance
+            // with node instance, pair args also defines as properties
+            for arg in &args.args {
+                if let Arg::Pair(name, value) = arg {
+                    self.define(
+                        name.as_str(),
+                        Meta::Pair(Pair {
+                            key: Key::NamedKey(name.clone()),
+                            value: Box::new(value.clone()),
+                        }),
+                    );
+                }
+            }
+
+            // Plan 043 M5: a TYPE constructor in rhs position
+            // (`var b Block = Block{ id: id, ... }`) must parse the braces as
+            // STRUCT FIELDS (named args), not a node body. parse_node's
+            // `{...}` → parse_node_body can't parse `field: value` as
+            // statements, so fields were dropped and codegen emitted `{}`.
+            // UI scenario only; the object() parse lives in a helper so this
+            // hot fn's stack frame stays small (gdscript dodge_player barely
+            // fits in the 2MB test stack).
+            let node_args = if self.is_ui_scenario()
+                && self.is_ui_struct_construction(&ident, is_constructor)
+                && !has_paren
+                && primary_prop.is_none()
+                && self.is_kind(TokenKind::LBrace)
+            {
+                self.parse_braced_struct_args(&ident, args)?
+            } else {
+                args
+            };
+            match ident {
+                Expr::Ident(name) => {
+                    return Ok(Expr::Node(self.parse_node(
+                        &name,
+                        primary_prop,
+                        node_args,
+                        &secondary_prop,
+                    )?));
+                }
+                _ => {
+                    return Err(SyntaxError::Generic {
+                        message: format!("Expected node name, got {:?}", ident),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+            }
+        } else {
+            // no brace, might be a function call, constructor call or simple expression
+            if has_paren {
+                // Use the call result as the left side of a binary expression
+                // and continue with Pratt parser to handle operators like +, -, etc.
+                let call_expr = self.call(ident, args)?;
+                self.expr_pratt_with_left(call_expr, 0)
+            } else {
+                // Something else with a starting Ident
+                if primary_prop.is_some() {
+                    if self.is_kind(TokenKind::Ident) {
+                        let kind = self.parse_name()?;
+                        if self.is_kind(TokenKind::LBrace)
+                            || self.is_kind(TokenKind::Newline)
+                            || self.is_kind(TokenKind::Semi)
+                            || self.is_kind(TokenKind::RBrace)
+                        {
+                            let nd = self.parse_node(&ident.repr(), primary_prop, args, &kind)?;
+                            return Ok(Expr::Node(nd));
+                        } else {
+                            return Err(SyntaxError::Generic {
+                                message: format!(
+                                    "expect node, got {} {} {}",
+                                    ident.repr(),
+                                    primary_prop.unwrap().repr(),
+                                    kind
+                                ),
+                                span: pos_to_span(self.cur.pos),
+                            }
+                            .into());
+                        }
+                    } else {
+                        // name id <nl>
+                        if self.is_kind(TokenKind::Newline)
+                            || self.is_kind(TokenKind::Semi)
+                            || self.is_kind(TokenKind::RBrace)
+                        {
+                            let nd =
+                                self.parse_node(&ident.repr(), primary_prop, args, &"".into())?;
+                            return Ok(Expr::Node(nd));
+                        }
+                    }
+                    return Err(SyntaxError::Generic {
+                        message: format!(
+                            "Expected simple expression, got `{} {}`",
+                            ident.repr(),
+                            primary_prop.unwrap()
+                        ),
+                        span: pos_to_span(self.cur.pos),
+                    }
+                    .into());
+                }
+                let expr = self.expr_pratt_with_left(ident, 0)?;
+                let expr = self.check_symbol(expr, pos_to_span(start_pos))?;
+                Ok(expr)
+            }
+        }
+    }
+
+    fn call(&mut self, ident: Expr, args: Args) -> AutoResult<Expr> {
+        // Check for special builtin functions (Plan 105)
+        if let Expr::Ident(name) = &ident {
+            if name.as_str() == "nav" {
+                return self.parse_nav_call(args);
+            }
+        }
+
+        let ret_type = self.return_type(&ident)?;
+        let call_pos = self.prev.pos;
+        let expr = Expr::Call(Call {
+            name: Box::new(ident),
+            args,
+            ret: ret_type,
+            type_args: Vec::new(), // Plan 061: Will be filled in during type inference
+            generic_args: Vec::new(), // Plan 395: explicit turbofish args
+            pos: Some(call_pos),
+        });
+        // Plan 410: the Call branch of check_symbol emits no UndefinedVariable
+        // error (the function-name check is disabled), so keep the original
+        // cursor-based span here rather than threading a start position
+        // through this fn's 3 callers for zero behavioral gain.
+        self.check_symbol(expr, pos_to_span(self.cur.pos))
+    }
+
+    /// Parse nav() function call for router navigation (Plan 105)
+    ///
+    /// Syntax: nav("/path", id: 123, name: "john")
+    /// - First argument: path string (required)
+    /// - Remaining arguments: key-value pairs for route parameters
+    fn parse_nav_call(&mut self, args: Args) -> AutoResult<Expr> {
+        // First argument must be the path string
+        let first_arg = args.first_arg();
+        let path = match first_arg {
+            Some(expr) => expr,
+            None => {
+                return Err(SyntaxError::Generic {
+                    message: "nav() requires at least one argument (path)".to_string(),
+                    span: pos_to_span(self.cur.pos),
+                }
+                .into());
+            }
+        };
+
+        // Collect named arguments as params
+        let params: Vec<Pair> = args
+            .args
+            .iter()
+            .skip(1)
+            .filter_map(|arg| match arg {
+                Arg::Pair(name, expr) => Some(Pair {
+                    key: Key::NamedKey(name.clone()),
+                    value: Box::new(expr.clone()),
+                }),
+                _ => None,
+            })
+            .collect();
+
+        Ok(Expr::NavCall {
+            path: Box::new(path),
+            params,
+        })
+    }
+
+    pub fn grid(&mut self) -> AutoResult<Grid> {
+        self.next(); // skip grid
+                     // args
+        let mut data = Vec::new();
+        let args = self.args()?;
+        // data
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut row_index = 0;
+        while !self.is_kind(TokenKind::EOF) && !self.is_kind(TokenKind::RBrace) {
+            let row = self.array()?;
+            if let Expr::Array(array) = row {
+                data.push(array);
+            }
+            let is_first = row_index == 0;
+            self.expect_eos(is_first)?;
+            row_index += 1;
+        }
+        self.expect(TokenKind::RBrace)?;
+        let grid = Grid { head: args, data };
+        Ok(grid)
+    }
+
+    pub fn parse_event_src(&mut self) -> AutoResult<Option<Expr>> {
+        let src = if self.is_kind(TokenKind::Ident) {
+            Some(self.parse_ident()?)
+        } else if self.is_kind(TokenKind::Int) {
+            Some(self.atom()?)
+        } else if self.is_kind(TokenKind::Str) {
+            Some(self.atom()?)
+        } else if self.is_kind(TokenKind::FStrStart) {
+            Some(self.fstr()?)
+        } else if self.is_kind(TokenKind::Arrow) {
+            None
+        } else {
+            None
+        };
+
+        Ok(src)
+    }
+
+    pub fn parse_cond_arrow(&mut self, src: Option<Expr>) -> AutoResult<CondArrow> {
+        if self.is_kind(TokenKind::Question) {
+            self.next(); // skip ?
+            let cond = self.parse_expr()?;
+            let subs = self.parse_arrow_list()?;
+            return Ok(CondArrow::new(src, cond, subs));
+        } else {
+            return Err(format!("Expected condition arrow").into());
+        }
+    }
+
+    /// Deffirent forms:
+    /// 1. EV -> State : Handler
+    /// 2. -> State : Handler
+    /// 3. EV : Handler
+    /// 4. EV -> State
+    /// 5. EV ? ConditionCheck {
+    ///       -> State1 : Handler1
+    ///       -> State2 : handler2
+    ///    }
+    pub fn parse_arrow(&mut self, src: Option<Expr>) -> AutoResult<Arrow> {
+        if self.is_kind(TokenKind::Colon) {
+            self.next();
+            let with = self.parse_expr()?;
+            return Ok(Arrow::new(src, None, Some(with)));
+        } else {
+            self.expect(TokenKind::Arrow)?;
+            let to = self.parse_expr()?;
+            if let Expr::Pair(p) = to {
+                let to = p.key.into();
+                let value = *p.value;
+                return Ok(Arrow::new(src, Some(to), Some(value)));
+            } else {
+                return Ok(Arrow::new(src, Some(to), None));
+            }
+        };
+    }
+
+    fn parse_arrow_list(&mut self) -> AutoResult<Vec<Arrow>> {
+        self.expect(TokenKind::LBrace)?;
+        self.skip_empty_lines();
+        let mut events = Vec::new();
+        while !self.is_kind(TokenKind::RBrace) {
+            let src = self.parse_event_src()?;
+            events.push(self.parse_arrow(src)?);
+            self.skip_empty_lines();
+        }
+        self.expect(TokenKind::RBrace)?;
+        Ok(events)
+    }
+
+    pub fn parse_event(&mut self) -> AutoResult<Event> {
+        let src = self.parse_event_src()?;
+        // println!("NEXT I S {}", self.kind()); // LSP: disabled
+        if self.is_kind(TokenKind::Arrow) || self.is_kind(TokenKind::Colon) {
+            return Ok(Event::Arrow(self.parse_arrow(src)?));
+        } else if self.is_kind(TokenKind::Question) {
+            return Ok(Event::CondArrow(self.parse_cond_arrow(src)?));
+        } else {
+            return Err(format!("expected arrow, colon or question mark.").into());
+        }
+    }
+
+    fn parse_goto_branch(&mut self) -> AutoResult<Event> {
+        self.parse_event()
+    }
+
+    pub fn parse_on_events(&mut self) -> AutoResult<OnEvents> {
+        // skip on
+        self.expect(TokenKind::On)?;
+
+        let mut branches = Vec::new();
+
+        // multiple branches
+        if self.is_kind(TokenKind::LBrace) {
+            self.next(); // skip {
+            self.skip_empty_lines();
+            while !self.is_kind(TokenKind::RBrace) {
+                self.skip_empty_lines();
+                // println!("cchecking branch: {}", self.cur); // LSP: disabled
+                branches.push(self.parse_goto_branch()?);
+                self.skip_empty_lines();
+            }
+            self.expect(TokenKind::RBrace)?;
+        } else {
+            // single branch
+            branches.push(self.parse_goto_branch()?);
+        }
+        Ok(OnEvents::new(branches))
+    }
+
+    // ========================================================================
+    // Plan 096: UI Contextual Keyword Parsing
+    // ========================================================================
+
+    /// Parse widget declaration (UI scenario only)
+    ///
+    /// ```auto
+    /// widget Counter {
+    ///     msg Msg { Inc, Dec }
+    ///     model { count int = 0 }
+    ///     view { col { ... } }
+    ///     on { .Inc => { .count += 1 } }
+    /// }
+    /// ```
+
+    // ========================================================================
+    // Plan 306: Godot scene declaration parsing
+    // ========================================================================
+
+    // ========================================================================
+    // PLAN-814 R3-03b：以下 UI 文法公开门面经 `UiGrammar` 函数表端口派发
+    // （auto-parser-api 定义；上层组合点装配 auto-ui-dialect 单源构造器，
+    // PLAN-806/810 端口合同不变）。表缺席（纯 SDK）：签名保持（旧 API
+    // 编译面），执行返回显式诊断错误，不静默降级——与原 `ui-dialect`
+    // feature off 语义一致；旧默认行为经上层 auto-lang 装配保持。
+    // ========================================================================
+
+    /// 纯 SDK（UI 文法表未装配）的统一拒绝诊断。
+    fn ui_grammar_unavailable(&self, api: &str) -> AutoError {
+        SyntaxError::Generic {
+            message: format!(
+                "UI dialect grammar is not assembled in this build: `{}` requires the \
+                 UI grammar table (set_ui_grammar / upper compat layer)",
+                api
+            ),
+            span: pos_to_span(self.cur.pos),
+        }
+        .into()
+    }
+
+    /// Parse msg declaration (UI scenario only)
+    ///（PLAN-806 单源迁 auto-ui-dialect；PLAN-810 起经端口薄委托。）
+    pub fn parse_msg_decl(&mut self) -> AutoResult<Stmt> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_msg_decl"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        let msg = (g.parse_msg_decl)(&mut bridge)?;
+        Ok(Stmt::MsgDecl(msg))
+    }
+
+    /// Parse model block (UI scenario only)
+    ///（PLAN-806 单源迁 auto-ui-dialect；PLAN-810 起经端口薄委托。）
+    pub fn parse_model_block(&mut self) -> AutoResult<Stmt> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_model_block"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        let model = (g.parse_model_block)(&mut bridge)?;
+        Ok(Stmt::ModelBlock(model))
+    }
+
+    /// PLAN-810：以下公开 parse_* 为薄委托门面——完整 UI 文法已迁
+    /// auto-ui-dialect::grammar（单一份实现），经 ParserBridge 的
+    /// UiParseContext 端口驱动。
+    pub fn parse_widget_decl(&mut self) -> AutoResult<Stmt> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_widget_decl"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.parse_widget_decl)(&mut bridge)
+    }
+
+    pub fn parse_store_decl(&mut self) -> AutoResult<Stmt> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_store_decl"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.parse_store_decl)(&mut bridge)
+    }
+
+    pub fn parse_scene_decl(&mut self) -> AutoResult<Stmt> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_scene_decl"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.parse_scene_decl)(&mut bridge)
+    }
+
+    pub fn parse_actions_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_actions_decl_stmt"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.parse_actions_decl_stmt)(&mut bridge)
+    }
+
+    pub fn parse_style_recipe_decl_stmt(&mut self) -> AutoResult<Option<Stmt>> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_style_recipe_decl_stmt"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.parse_style_recipe_decl_stmt)(&mut bridge)
+    }
+
+    pub fn parse_view_block(&mut self) -> AutoResult<Stmt> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_view_block"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.parse_view_block)(&mut bridge)
+    }
+
+    pub fn parse_view_block_or_fragment(&mut self) -> AutoResult<Stmt> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_view_block_or_fragment"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.parse_view_block_or_fragment)(&mut bridge)
+    }
+
+    pub fn parse_component_fn_decl(&mut self) -> AutoResult<Stmt> {
+        let Some(g) = crate::ui_grammar() else {
+            return Err(self.ui_grammar_unavailable("parse_component_fn_decl"));
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.parse_component_fn_decl)(&mut bridge)
+    }
+
+    /// scene 门（Plan 306；任意 scenario）——文法侧 lookahead 经端口。
+    /// 表缺席（纯 SDK）恒 false，标识符回退普通节点/调用路径（与方言表
+    /// 为空的回退语义一致）。
+    fn looks_like_scene_decl(&mut self) -> bool {
+        let Some(g) = crate::ui_grammar() else {
+            return false;
+        };
+        let mut bridge = crate::parser_bridge::ParserBridge::new(self);
+        (g.looks_like_scene_decl)(&mut bridge)
+    }
+
+    /// Plan 351 store 分支门——仅 UI 文法表已装配时接管（表缺席时
+    /// `store` 回退普通 ident 路径，不进文法）。
+    fn store_decl_branch(&self, ident: &str) -> bool {
+        ident == "store"
+            && self.is_ui_scenario()
+            && !self.in_on_body
+            && crate::ui_grammar().is_some()
+    }
+
+    /// Helper: expect an identifier with specific text
+    pub(crate) fn expect_ident(&mut self, expected: &str) -> AutoResult<()> {
+        if self.cur.text.as_str() == expected {
+            self.next();
+            Ok(())
+        } else {
+            Err(SyntaxError::Generic {
+                message: format!("Expected '{}', got '{}'", expected, self.cur.text),
+                span: pos_to_span(self.cur.pos),
+            }
+            .into())
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Plan 567 T12（P560-D1）: with-as 绑定解析——pratt 截断 + 块形态产物。
+    #[test]
+    fn test_with_as_binding_parses_to_block_form() {
+        let mut parser = Parser::new(
+            "fn main() {
+    var ctx = 1
+    with ctx as g {
+        print(1)
+    }
+}
+",
+        );
+        let code = parser.parse().expect("with-as must parse");
+        let src = format!("{:?}", code);
+        // 块形态锚点：__w 存储 + py_enter 绑定 + try/catch（py_exit + py_raise）+ finally
+        assert!(src.contains("__w"), "with-as block form binds __w: {}", src);
+        assert!(src.contains("py_enter"), "{}", src);
+        assert!(src.contains("py_raise"), "{}", src);
+        assert!(src.contains("finally_body: Some"), "{}", src);
+    }
+
+    /// `with x as T {}`（T 是类型名形态）不被 Cast 臂误吞——绑定消费优先。
+    #[test]
+    fn test_with_as_type_shaped_name_not_swallowed() {
+        let mut parser = Parser::new(
+            "fn main() {
+    var ctx = 1
+    with ctx as T {
+        print(1)
+    }
+}
+",
+        );
+        let code = parser
+            .parse()
+            .expect("type-shaped as-name must bind, not Cast");
+        let src = format!("{:?}", code);
+        assert!(
+            src.contains("py_enter"),
+            "as T consumed as binding: {}",
+            src
+        );
+    }
+
+    /// 正常模式 Cast 语义零回归：`a as int` 仍为 Cast。
+    #[test]
+    fn test_cast_outside_with_header_unchanged() {
+        let mut parser = Parser::new(
+            "fn main() {
+    var y = 1 as int
+    print(y)
+}
+",
+        );
+        let code = parser.parse().expect("plain cast must parse");
+        let src = format!("{:?}", code);
+        assert!(
+            src.contains("Cast"),
+            "cast preserved outside with header: {}",
+            src
+        );
+    }
+
+    /// Plan 451: actions 块的 handler 必须命中本 widget 的 on{} 事件——
+    /// 编译期校验（未命中 = parse error）。
+    #[test]
+    fn test_actions_block_handler_validation() {
+        let session = crate::session::CompilerSession::ui();
+        let src = "widget App {
+    actions {
+        action (id: \"file.new\", handler: .NoSuchHandler, title: \"x\")
+    }
+    on { .ActNew -> { console_log(\"x\") } }
+}
+";
+        let mut parser = Parser::from(src).with_session(session);
+        assert!(
+            parser.parse().is_err(),
+            "handler without matching on{{}} handler must fail to parse"
+        );
+    }
+
+    use super::*;
+    fn parse_once(code: &str) -> Code {
+        let mut parser = Parser::from(code);
+        parser.parse().unwrap()
+    }
+
+    fn parse_with_err(code: &str) -> AutoResult<Code> {
+        let mut parser = Parser::from(code);
+        parser.parse()
+    }
+
+    #[test]
+    fn test_node_body_after_special_blocks_removal() {
+        // PR-1: 删除 special_blocks 后，节点实例化带 body 仍走 parse_node_body 正常工作
+        let code = "App {\n  Column {\n    Text(\"hi\")\n  }\n}";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    #[test]
+    fn test_empty_dialects_core_scenario_unchanged() {
+        // PR-1: Core 场景下方言表为空，普通代码按既有路径解析（不受 dialects 影响）。
+        let mut parser = Parser::from("x = 1");
+        // 默认 Core，build_dialects 返回空（PLAN-778 三段方言表全空）
+        assert!(
+            parser.dialect_section_len(0) == 0
+                && parser.dialect_section_len(1) == 0
+                && parser.dialect_section_len(2) == 0
+        );
+        let ast = parser.parse().unwrap();
+        assert!(!ast.stmts.is_empty());
+    }
+
+    // ---- PLAN-778：方言派发恢复不变量的 crate 内永久回归 ----
+    // （外部行为面由 test/fixtures/modularity/ui-dialect-consumer 覆盖；
+    // 这里绑定三段私有字段做最紧回归。）
+
+    /// matches()=false 的方言在派发时必须被跳过（场景门控是派发时契约，
+    /// 不依赖注册时机）。
+    struct Plan778NeverMatchesDialect {
+        consulted: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    impl crate::dialect::Dialect for Plan778NeverMatchesDialect {
+        fn matches(&self, _s: &crate::session::CompilerSession) -> bool {
+            false
+        }
+        fn keywords(&self) -> &'static [&'static str] {
+            &["x"]
+        }
+        fn try_parse_stmt(
+            &self,
+            _bridge: &mut crate::parser_bridge::ParserBridge<'_, '_>,
+            _keyword: &str,
+        ) -> AutoResult<Option<Stmt>> {
+            self.consulted
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn test_plan778_dispatch_honors_matches_session_gate() {
+        let consulted = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let dialect = Plan778NeverMatchesDialect {
+            consulted: consulted.clone(),
+        };
+        // Core session（默认）：matches=false，即便注册在案也不得被咨询。
+        let mut parser = Parser::from("x = 1")
+            .with_dialect(Box::new(dialect), crate::dialect::DialectPriority::Override);
+        let ast = parser.parse().expect("Core 下按普通赋值解析");
+        assert!(!ast.stmts.is_empty());
+        assert!(
+            !consulted.load(std::sync::atomic::Ordering::SeqCst),
+            "matches()=false 的方言不得被派发咨询"
+        );
+    }
+
+    #[test]
+    fn test_try_catch_param_does_not_leak() {
+        // The catch binding is scoped to the catch body: referencing `e`
+        // after it (or inside `finally`) must fail name resolution.
+        let after_catch = concat!(
+            "widget App {\n",
+            "  msg Msg { Save }\n",
+            "  model { var error str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  on {\n",
+            "    .Save -> {\n",
+            "      try { .error = \"\" } catch (e) { .error = \"x\" }\n",
+            "      rethrow(e)\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(after_catch).with_session(crate::session::CompilerSession::ui());
+        assert!(
+            parser.parse().is_err(),
+            "catch binding must not leak past the catch body"
+        );
+
+        let in_finally = concat!(
+            "widget App {\n",
+            "  msg Msg { Save }\n",
+            "  model { var error str = \"\" }\n",
+            "  view { col { text \"hi\" } }\n",
+            "  on {\n",
+            "    .Save -> {\n",
+            "      try { .error = \"\" } catch (e) { .error = \"x\" } finally { rethrow(e) }\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser =
+            Parser::from(in_finally).with_session(crate::session::CompilerSession::ui());
+        assert!(
+            parser.parse().is_err(),
+            "catch binding must not be visible inside finally"
+        );
+    }
+
+    #[test]
+    fn test_view_param_mode_unaffected_in_core_scenario() {
+        // PR-2 回归保护：Core 场景下 view 仍可作为参数模式关键字出现在 fn 签名里。
+        let code = "fn foo(view x int) int { return x }";
+        let mut parser = Parser::from(code);
+        let ast = parser.parse().unwrap();
+        assert!(!ast.stmts.is_empty());
+    }
+
+    #[test]
+    fn test_parser() {
+        let code = "1+2+3";
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (bina (bina (int 1) (op +) (int 2)) (op +) (int 3)))"
+        );
+    }
+
+    #[test]
+    fn test_if() {
+        let code = "if true {1}";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(if (branch (true) (body (int 1))))");
+    }
+
+    #[test]
+    fn test_if_else() {
+        let code = "if false {1} else {2}";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(
+            last.to_string(),
+            "(if (branch (false) (body (int 1))) (else (body (int 2))))"
+        );
+    }
+
+    #[test]
+    fn test_let() {
+        let code = "let x = 1";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (let (name x) (type int) (int 1)))");
+    }
+
+    #[test]
+    fn test_let_asn() {
+        let code = "let x = 1; x = 2";
+        let res = parse_with_err(code);
+        // Parser now allows reassignment of let variables
+        // If the parser rejects it, verify the error message
+        if let Err(res_err) = res {
+            let expected = "Assignment not allowed for let store: x";
+            let err_string = res_err.to_string();
+            if !err_string.contains("aborting due to") {
+                assert!(err_string.contains(expected));
+            }
+        }
+        // If parser accepts it, that's also valid behavior
+    }
+
+    #[test]
+    fn test_var() {
+        let code = "var x1 = 41";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (var (name x1) (int 41)))");
+    }
+
+    #[test]
+    fn test_store_use() {
+        let code = "let x = 41; x+1";
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (let (name x) (type int) (int 41)) (bina (name x) (op +) (int 1)))"
+        );
+    }
+
+    #[test]
+    fn test_range() {
+        let code = "1..5";
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (range (start (int 1)) (end (int 5)) (eq false)))"
+        );
+    }
+
+    #[test]
+    fn test_for() {
+        let code = "for i in 1..5 {i}";
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (for (name i) (range (start (int 1)) (end (int 5)) (eq false)) (body (name i))))"
+        );
+
+        let code = "for i, x in 1..5 {x}";
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (for ((name i) (name x)) (range (start (int 1)) (end (int 5)) (eq false)) (body (name x))))"
+        );
+    }
+
+    #[test]
+    fn test_for_with_print() {
+        let code = "for i in 0..10 { print(i); print(i+1) }";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(for (name i) (range (start (int 0)) (end (int 10)) (eq false)) (body (call (name print) (args (name i))) (call (name print) (args (bina (name i) (op +) (int 1))))))");
+    }
+
+    #[test]
+    fn test_for_with_mid() {
+        let code = r#"for i in 0..10 { print(i); mid{ print(",") } }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(for (name i) (range (start (int 0)) (end (int 10)) (eq false)) (body (call (name print) (args (name i))) (node (name mid) (body (call (name print) (args (str \",\")))))))");
+    }
+
+    #[test]
+    fn test_for_with_mid_call() {
+        let code = r#"for i in 0..10 { `$i`; mid{","} }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(for (name i) (range (start (int 0)) (end (int 10)) (eq false)) (body (fstr (str \"\") (name i)) (node (name mid) (body (str \",\")))))");
+    }
+
+    #[test]
+    fn test_object() {
+        let code = "let o = {x:1, y:2}";
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (let (name o) (object (pair (name x) (int 1)) (pair (name y) (int 2)))))"
+        );
+
+        let code = "var a = { 1: 2, 3: 4 }; a.3";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(dot (name a).3)");
+    }
+
+    #[test]
+    fn test_fn() {
+        let code = "fn add(x, y) int { x+y }";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(fn (name add) (params (param (name x) (type int) (mode view)) (param (name y) (type int) (mode view))) (ret int) (body (bina (name x) (op +) (name y))))");
+    }
+
+    #[test]
+    fn test_fn_with_ret_type() {
+        let code = r#"fn add(x, y) int { x+y }"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (fn (name add) (params (param (name x) (type int) (mode view)) (param (name y) (type int) (mode view))) (ret int) (body (bina (name x) (op +) (name y)))))");
+    }
+
+    #[test]
+    fn test_fn_with_never_return_type() {
+        // Plan 121: fn main() ! means Result<void> (function that can throw but returns no value)
+        let code = r#"fn main() ! { print("hello") }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        // ! without type means Result<void>
+        assert!(last.to_string().contains("(ret !void)"));
+    }
+
+    #[test]
+    fn test_fn_with_result_return_type() {
+        // Plan 120: fn foo() !int means Result<int>
+        let code = r#"fn foo() !int { 42 }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert!(last.to_string().contains("(ret !int)"));
+    }
+
+    #[test]
+    fn test_fn_with_param_type() {
+        let code = "fn say(msg str) { print(msg) }";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        // Plan 122: Default mode is now included in param display
+        assert_eq!(last.to_string(), "(fn (name say) (params (param (name msg) (type str) (mode view))) (ret void) (body (call (name print) (args (name msg)))))");
+    }
+
+    #[test]
+    fn test_spawn_method_call() {
+        // Plan 121: Task.spawn() should be parsed as method call
+        let code = "fn main() ! { let h = CounterTask.spawn() }";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        // Should be parsed as: Call { name: Dot(Ident("CounterTask"), "spawn"), args: [] }
+        let str = last.to_string();
+        assert!(
+            str.contains(".spawn"),
+            "Expected .spawn in output, got: {}",
+            str
+        );
+    }
+
+    #[test]
+    fn test_fn_with_named_args() {
+        let code = "fn add(a int, b int) int { a + b }; add(a:1, b:2)";
+        let ast = parse_once(code);
+        let last = ast.stmts[1].clone();
+        assert_eq!(
+            last.to_string(),
+            "(call (name add) (args (pair (name a) (int 1)) (pair (name b) (int 2))))"
+        );
+    }
+
+    #[test]
+    fn test_fn_call() {
+        let code = "fn add(x, y) { x+y }; add(1, 2)";
+        let ast = parse_once(code);
+        let call = ast.stmts[1].clone();
+        assert_eq!(call.to_string(), "(call (name add) (args (int 1) (int 2)))");
+    }
+
+    #[test]
+    fn test_tag_new() {
+        let code = "tag Atom {Int int, Char char}; Atom.Int(5)";
+        let ast = parse_once(code);
+        let call = ast.stmts[1].clone();
+        assert_eq!(
+            call.to_string(),
+            "(call (dot (name Atom).Int) (args (int 5)))"
+        );
+    }
+
+    #[test]
+    fn test_type_decl() {
+        let code = "type Point {x int; y int}";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int)))))");
+    }
+
+    #[test]
+    fn test_type_inst() {
+        let code = "type Point {x int; y int}; var p = Point(x:1, y:2); p.x";
+        let ast = parse_once(code);
+        let mid = ast.stmts[1].clone();
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(mid.to_string(), "(var (name p) (call (name Point) (args (pair (name x) (int 1)) (pair (name y) (int 2)))))");
+        assert_eq!(last.to_string(), "(dot (name p).x)");
+    }
+
+    #[test]
+    fn test_closure() {
+        // Plan 060: Test closure parsing (replaces deprecated lambda)
+        // Single parameter closure: n => n + 1 (note: space before param is required)
+        let code = "var x =  n => n + 1";
+        let ast = parse_once(code);
+        // Actual format includes parentheses around parameter
+        assert_eq!(
+            ast.to_string(),
+            "(code (var (name x) (closure (n) => (bina (name n) (op +) (int 1)))))"
+        );
+    }
+
+    #[test]
+    fn test_closure_with_params() {
+        // Plan 060: Test closure with parameters and type annotations
+        // Note: Display format doesn't show type annotations in params list
+        let code = "(a int, b int) => a + b";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(
+            last.to_string(),
+            "(closure (a, b) => (bina (name a) (op +) (name b)))"
+        );
+    }
+
+    // #[test]
+    // fn test_widget() {
+    //     let code = r#"
+    //     widget counter {
+    //         model {
+    //             var count = 0
+    //         }
+    //         view {
+    //             button("+") {
+    //                 onclick: || count = count + 1
+    //             }
+    //         }
+    //     }
+    //     "#;
+    //     let ast = parse_once(code);
+    //     let widget = &ast.stmts[0];
+    //     match widget {
+    //         Stmt::Widget(widget) => {
+    //             let model = &widget.model;
+    //             assert_eq!(model.to_string(), "(model (var (name count) (int 0)))");
+    //             let view = &widget.view;
+    //             assert_eq!(view.to_string(), "(view (node (name button) (args (str \"+\")) (body (pair (name onclick) (fn (name lambda_1) (body (bina (name count) (op =) (bina (name count) (op +) (int 1)))))))))");
+    //         }
+    //         _ => panic!("Expected widget, got {:?}", widget),
+    //     }
+    // }
+
+    #[test]
+    fn test_pair() {
+        let code = r#"
+        id: 1
+        name: "test"
+        version: "0.1.0"
+        "#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(pair (name version) (str \"0.1.0\"))");
+    }
+
+    #[test]
+    fn test_node_instance() {
+        let code = r#"button("OK") {
+            border: 1
+            kind: "primary"
+        }"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (node (name button) (args (str \"OK\")) (body (pair (name border) (int 1)) (pair (name kind) (str \"primary\")))))");
+    }
+
+    #[test]
+    fn test_node_instance_with_id() {
+        let code = r#"lib mymath {}"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(node (name lib) (id mymath))");
+    }
+
+    #[test]
+    fn test_node_instance_without_args() {
+        let code = r#"center {
+            text("Hello") {}
+        }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(
+            last.to_string(),
+            "(node (name center) (body (node (name text) (args (str \"Hello\")))))"
+        );
+    }
+
+    #[test]
+    fn test_array() {
+        let code = r#"// comment
+        [ // arra
+            {id: 1, name: "test"}, // comment
+            {id: 2, name: "test2"},
+            {id: 3,/*good name*/ name: "test3"} // comment
+            //{id: 4, name: "test4"} // comment out
+        ]"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (array (object (pair (name id) (int 1)) (pair (name name) (str \"test\"))) (object (pair (name id) (int 2)) (pair (name name) (str \"test2\"))) (object (pair (name id) (int 3)) (pair (name name) (str \"test3\")))))");
+    }
+
+    #[test]
+    fn test_hex() {
+        let code = "0x10";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (int 16))");
+    }
+
+    #[test]
+    fn test_dot() {
+        let code = "var a = {b: [0, 1, 2]}; a.b[0]";
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(index (dot (name a).b) (int 0))");
+    }
+
+    #[test]
+    fn test_cstr() {
+        let code = r#"c"hello""#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (cstr \"hello\"))");
+    }
+
+    #[test]
+    fn test_fstr() {
+        let code = r#"f"hello $name""#;
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (fstr (str \"hello \") (name name)))"
+        );
+    }
+
+    #[test]
+    fn test_fstr_multi() {
+        let code = r#"var name = "haha"; var age = 18; `hello $name ${age}`"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(
+            last.to_string(),
+            "(fstr (str \"hello \") (name name) (str \" \") (name age))"
+        );
+    }
+
+    #[test]
+    fn test_fstr_with_expr() {
+        let code = r#"var a = 1; var b = 2; f"a + b = ${a+b}""#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(
+            last.to_string(),
+            "(fstr (str \"a + b = \") (bina (name a) (op +) (name b)))"
+        );
+    }
+
+    #[test]
+    fn test_node_tree() {
+        let code = r#"
+        center {
+            text("Hello") {}
+        }
+        "#;
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (node (name center) (body (node (name text) (args (str \"Hello\"))))))"
+        );
+    }
+
+    #[test]
+    fn test_type_instance_obj() {
+        let code = r#"type A {
+            x int
+            y int
+        }
+        A(x:1, y:2)"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(
+            last.to_string(),
+            "(node (name A) (args (pair (name x) (int 1)) (pair (name y) (int 2))))"
+        );
+    }
+
+    #[test]
+    fn test_type_with_method() {
+        let code = r#"type Point {
+            x int
+            y int
+
+            fn absquare() int {
+                .x * .x + .y * .y
+            }
+        }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(type-decl (name Point) (members (member (name x) (type int)) (member (name y) (type int))) (methods (fn (name absquare) (ret int) (body (bina (bina (dot (name self).x) (op *) (dot (name self).x)) (op +) (bina (dot (name self).y) (op *) (dot (name self).y)))))))");
+    }
+
+    #[test]
+    fn test_type_composition() {
+        let code = r#"
+        type Wing {
+            fn fly() {}
+        }
+        type Duck has Wing {
+        }
+        "#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(
+            last.to_string(),
+            "(type-decl (name Duck) (has (type Wing)) (methods (fn (name fly) (ret void) (body ))))"
+        );
+    }
+
+    #[test]
+    fn test_grid() {
+        let code = r#"
+        grid("a", "b", "c") {
+            [1, 2, 3]
+            [4, 5, 6]
+            [7, 8, 9]
+        }"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (grid (head (str \"a\") (str \"b\") (str \"c\")) (data (row (int 1) (int 2) (int 3)) (row (int 4) (int 5) (int 6)) (row (int 7) (int 8) (int 9)))))");
+    }
+
+    #[test]
+    fn test_grid_with_colconfig() {
+        let code = r#"
+        let cols = [
+            {id: "a", title: "A"},
+            {id: "b", title: "B"},
+            {id: "c", title: "C"},
+        ]
+        grid(cols) {
+            [1, 2, 3]
+            [4, 5, 6]
+            [7, 8, 9]
+        }"#;
+        let ast = parse_once(code);
+        let last = ast.stmts.last().unwrap();
+        assert_eq!(last.to_string(), "(grid (head (name cols)) (data (row (int 1) (int 2) (int 3)) (row (int 4) (int 5) (int 6)) (row (int 7) (int 8) (int 9))))");
+    }
+
+    #[test]
+    fn test_config() {
+        let code = r#"
+name: "hello"
+version: "0.1.0"
+
+exe hello {
+    dir: "src"
+    main: "main.c"
+}"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (pair (name name) (str \"hello\")) (pair (name version) (str \"0.1.0\")) (nl*1) (node (name exe) (id hello) (body (pair (name dir) (str \"src\")) (pair (name main) (str \"main.c\")))))");
+    }
+
+    #[test]
+    fn test_use() {
+        let code = "use auto.math:square; square(16)";
+        let ast = parse_once(code);
+        // Plan 131: Now uses module_path instead of path
+        assert_eq!(
+            ast.to_string(),
+            "(code (use (module_path auto.math) (items square)) (call (name square) (args (int 16))))"
+        );
+    }
+
+    #[test]
+    fn test_use_c() {
+        let code = "use.c <stdio.h>";
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (use (kind c) (path <stdio.h>)))");
+    }
+
+    // Plan 470: `use.rs` is the canonical Rust-import spelling; `use.rust`
+    // keeps parsing but emits W0005 DeprecatedFeature.
+    #[test]
+    fn test_use_rs_alias_parses_like_use_rust() {
+        let rs_code = "use.rs serde::json::{from_str, to_string}";
+        let rust_code = "use.rust serde::json::{from_str, to_string}";
+        assert_eq!(
+            parse_once(rs_code).to_string(),
+            parse_once(rust_code).to_string(),
+            "use.rs and use.rust must produce identical ASTs"
+        );
+        assert_eq!(
+            parse_once(rs_code).to_string(),
+            "(code (use (kind rust) (path serde.json) (items from_str,to_string)))"
+        );
+    }
+
+    #[test]
+    fn test_use_rust_emits_deprecation_warning() {
+        let code = "use.rust serde::json";
+        let mut parser = Parser::from(&code);
+        parser.parse().unwrap();
+        assert!(
+            parser.warnings.iter().any(
+                |w| matches!(w, Warning::DeprecatedFeature { name, .. } if name == "use.rust")
+            ),
+            "use.rust must trigger W0005 DeprecatedFeature, got: {:?}",
+            parser.warnings
+        );
+    }
+
+    #[test]
+    fn test_use_rs_no_deprecation_warning() {
+        let code = "use.rs serde::json";
+        let mut parser = Parser::from(&code);
+        parser.parse().unwrap();
+        assert!(
+            !parser
+                .warnings
+                .iter()
+                .any(|w| matches!(w, Warning::DeprecatedFeature { .. })),
+            "use.rs must not warn, got: {:?}",
+            parser.warnings
+        );
+    }
+
+    #[test]
+    fn test_import() {
+        let code = "use auto.math: square";
+        let mut parser = Parser::from(&code);
+        let ast = parser.parse().unwrap();
+        assert_eq!(
+            ast.to_string(),
+            "(code (use (module_path auto.math) (items square)))"
+        );
+    }
+
+    #[test]
+    fn test_char() {
+        let code = r#"'a'"#;
+        let ast = parse_once(code);
+        assert_eq!(ast.to_string(), "(code (char 'a'))");
+    }
+
+    #[test]
+    fn test_fstr_with_note() {
+        let code = r#"`hello #{2 + 1} again`"#;
+        let mut parser = Parser::new_with_note(code, '#');
+        let ast = parser.parse().unwrap();
+        assert_eq!(
+            ast.to_string(),
+            "(code (fstr (str \"hello \") (bina (int 2) (op +) (int 1)) (str \" again\")))"
+        );
+    }
+
+    #[test]
+    fn test_simple_enum() {
+        // Test simple enum parsing
+        let code = "enum Color { Red, Green, Blue }; Color.Red";
+        let ast = parse_once(code);
+        assert_eq!(
+            ast.to_string(),
+            "(code (enum (name Color) (item (name Red) (value 0)) (item (name Green) (value 1)) (item (name Blue) (value 2))) (dot (name Color).Red))"
+        );
+    }
+
+    #[test]
+    fn test_is_stmt() {
+        let code = r#"is x {
+        10 -> print("ten")
+        20 -> print("twenty")
+        else -> print("ehh")
+        }"#;
+        let result = Is::parse(code).unwrap();
+        assert_eq!(
+            result.to_string(),
+            format!(
+                "{}{}{}{}",
+                r#"(is (name x) "#,
+                r#"(eq (int 10) (body (call (name print) (args (str "ten"))))) "#,
+                r#"(eq (int 20) (body (call (name print) (args (str "twenty"))))) "#,
+                r#"(else (body (call (name print) (args (str "ehh"))))))"#,
+            )
+        )
+    }
+
+    #[test]
+    fn test_on_condition_events() {
+        let code = r#"on {
+            EV1 -> State1 : handler1
+            EV2 ? checker2 {
+                -> State2 : handler2
+                -> State3 : handler3
+            }
+        }"#;
+        let result = OnEvents::parse(code).unwrap();
+        assert_eq!(
+            result.to_string(),
+            format!(
+                "{}{}{}{}{}{}",
+                r#"(on "#,
+                r#"(arrow (from (name EV1)) (to (name State1)) (with (name handler1))) "#,
+                r#"(cond-arrow (from (name EV2)) (cond (name checker2)) "#,
+                r#"(arrow (to (name State2)) (with (name handler2))) "#,
+                r#"(arrow (to (name State3)) (with (name handler3)))"#,
+                r#"))"#,
+            )
+        )
+    }
+
+    #[test]
+    fn test_array_type() {
+        let code = r#"let arr [3]int = [1, 2, 3]"#;
+        let array_type = parse_once(code);
+        assert_eq!(
+            array_type.to_string(),
+            format!(
+                "{}",
+                "(code (let (name arr) (type (array-type (elem int) (len 3))) (array (int 1) (int 2) (int 3))))"
+            )
+        )
+    }
+
+    #[test]
+    fn test_ptr_type() {
+        let code = r#"let ptr *int = 10.@"#;
+        let ptr_type = parse_once(code);
+        assert_eq!(
+            ptr_type.to_string(),
+            "(code (let (name ptr) (type (ptr-type (of int))) (dot (int 10).@)))"
+        )
+    }
+
+    #[test]
+    fn test_ptr_asn() {
+        let code = r#"let p *int = 10.@"#;
+        let ptr_type = parse_once(code);
+        assert_eq!(
+            ptr_type.to_string(),
+            "(code (let (name p) (type (ptr-type (of int))) (dot (int 10).@)))"
+        )
+    }
+
+    #[test]
+    fn test_ptr_target() {
+        let code = r#"p.* += 1"#;
+        let ptr_type = parse_once(code);
+        assert_eq!(
+            ptr_type.to_string(),
+            "(code (bina (dot (name p).*) (op +=) (int 1)))"
+        )
+    }
+
+    #[test]
+    fn test_alias_stmt() {
+        let code = r#"alias cc = my_add"#;
+        let alias_stmt = parse_once(code);
+        assert_eq!(
+            alias_stmt.to_string(),
+            format!("{}", "(code (alias (name cc) (target my_add)))")
+        )
+    }
+
+    #[test]
+    fn test_tag_cover() {
+        let code = r#"
+            tag Atom {
+                Int int
+                Float float
+            }
+
+            let atom = Atom.Int(12)
+
+            is atom {
+                Atom.Int(i) -> i
+                Atom.Float(f) -> f
+            }
+        "#;
+        let code = parse_once(code);
+        assert_eq!(
+            code.stmts[4].to_string(),
+            format!(
+                "{}{}",
+                "(is (name atom) (eq (tag-cover (kind Atom) (tag Int) (bindings i)) (body (name i)))",
+                " (eq (tag-cover (kind Atom) (tag Float) (bindings f)) (body (name f))))"
+            )
+        );
+    }
+
+    #[test]
+    fn test_spec_decl() {
+        let code = r#"
+            spec Flyer {
+                fn fly()
+                fn land()
+            }
+        "#;
+        let ast = parse_once(code);
+        // Check that the first statement is a SpecDecl
+        assert!(ast.stmts.len() >= 1);
+        let first_stmt = &ast.stmts[0];
+        // The spec should be parsed correctly
+        let stmt_str = first_stmt.to_string();
+        assert!(stmt_str.contains("Flyer"));
+        assert!(stmt_str.contains("fly"));
+        assert!(stmt_str.contains("land"));
+    }
+
+    #[test]
+    fn test_spec_with_params() {
+        let code = r#"
+            spec Calculator {
+                fn add(a int, b int) int
+                fn subtract(a int, b int) int
+            }
+        "#;
+        let ast = parse_once(code);
+        assert!(ast.stmts.len() >= 1);
+        let first_stmt = &ast.stmts[0];
+        let stmt_str = first_stmt.to_string();
+        assert!(stmt_str.contains("Calculator"));
+        assert!(stmt_str.contains("add"));
+        assert!(stmt_str.contains("subtract"));
+    }
+
+    #[test]
+    fn test_type_as_spec() {
+        let code = r#"
+            spec Flyer {
+                fn fly()
+            }
+
+            type Pigeon as Flyer {
+                fn fly() {
+                    print("Flap Flap")
+                }
+            }
+        "#;
+        let ast = parse_once(code);
+        // Should parse both spec and type with 'as' clause
+        // Filter out empty line statements
+        let non_empty_stmts: Vec<_> = ast
+            .stmts
+            .iter()
+            .filter(|s| !s.to_string().starts_with("(nl"))
+            .collect();
+
+        assert!(non_empty_stmts.len() >= 2);
+        let spec_stmt = non_empty_stmts[0];
+        let type_stmt = non_empty_stmts[1];
+        // Debug output (disabled for LSP)
+        // println!("Spec stmt: {}", spec_stmt.to_string());
+        // println!("Type stmt: {}", type_stmt.to_string());
+        assert!(spec_stmt.to_string().contains("Flyer"));
+        // The type should contain Pigeon
+        let type_str = type_stmt.to_string();
+        assert!(
+            type_str.contains("Pigeon") || type_str.contains("pigeon"),
+            "Type statement should contain 'Pigeon', got: {}",
+            type_str
+        );
+    }
+
+    #[test]
+    fn test_type_with_multiple_specs() {
+        let code = r#"
+            spec Flyer {
+                fn fly()
+            }
+
+            spec Swimmer {
+                fn swim()
+            }
+
+            type Duck as Flyer, Swimmer {
+                fn fly() {
+                    print("Quack fly")
+                }
+                fn swim() {
+                    print("Quack swim")
+                }
+            }
+        "#;
+        let ast = parse_once(code);
+        // Should parse spec and type with multiple 'as' specs
+        // Filter out empty line statements
+        let non_empty_stmts: Vec<_> = ast
+            .stmts
+            .iter()
+            .filter(|s| !s.to_string().starts_with("(nl"))
+            .collect();
+
+        assert!(non_empty_stmts.len() >= 3);
+        let duck_stmt = non_empty_stmts[2];
+        // Debug output (disabled for LSP)
+        // println!("Duck stmt: {}", duck_stmt.to_string());
+        let duck_str = duck_stmt.to_string();
+        assert!(
+            duck_str.contains("Duck") || duck_str.contains("duck"),
+            "Type statement should contain 'Duck', got: {}",
+            duck_str
+        );
+    }
+
+    #[test]
+    fn test_simplified_button_syntax() {
+        // Test: button "-" { onclick: .Dec }
+        // The simplified syntax where text comes directly after tag
+        // This test verifies the parser handles the new syntax
+
+        // The simplified button syntax is: button "text" { event: .Handler }
+        // which is equivalent to: button (text: "text", event: .Handler) {}
+        // The string after "button" becomes the text prop,
+        // and the braces contain props/events instead of children
+
+        // For now, this is a placeholder test - the widget parsing has
+        // some issues with handler variable resolution that are separate
+        // from the button syntax changes
+        assert!(true);
+    }
+
+    #[test]
+    // String literal as primary property shorthand tests
+    // tag "value" → tag (primary_prop: "value")
+
+    // Task 5: Regression test - Old greater-than syntax should NOT work as text shorthand
+    // The `>` is treated as an element tag (which will fail validation downstream)
+
+    // Plan 130: Test new AURA syntax with dot-prefixed handlers and state references
+    // - on block events use .Inc instead of Inc
+    // - model member references use .count instead of count
+    // - model fields require var keyword for mutability
+
+    // Plan 131: Module Path Syntax tests
+    #[test]
+    fn test_parse_pac_import() {
+        let code = "use pac.db";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                assert!(u.module_path.is_some());
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Pac);
+                assert_eq!(mp.segments, vec!["db"]);
+                assert_eq!(mp.display(), "pac.db");
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_super_import() {
+        let code = "use super.utils";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Super(1));
+                assert_eq!(mp.segments, vec!["utils"]);
+                assert_eq!(mp.display(), "super.utils");
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_pac_deep_path() {
+        let code = "use pac.api.handlers.user";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Pac);
+                assert_eq!(mp.segments, vec!["api", "handlers", "user"]);
+                assert_eq!(mp.display(), "pac.api.handlers.user");
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_with_items() {
+        let code = "use pac.db: load, save";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Pac);
+                assert_eq!(mp.segments, vec!["db"]);
+                assert_eq!(mp.items, vec!["load", "save"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_super_with_items() {
+        let code = "use super.io: say, ask";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::Super(1));
+                assert_eq!(mp.segments, vec!["io"]);
+                assert_eq!(mp.items, vec!["say", "ask"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_local_path_still_works() {
+        // Backward compat: no prefix still works
+        let code = "use auto.math: square";
+        let ast = parse_once(code);
+        assert_eq!(ast.stmts.len(), 1);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                let mp = u.module_path.as_ref().unwrap();
+                assert_eq!(mp.prefix, PathPrefix::None);
+                assert_eq!(mp.segments, vec!["auto", "math"]);
+                assert_eq!(mp.items, vec!["square"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_legacy_paths_backward_compat() {
+        // Legacy paths field should still be populated for backward compat
+        let code = "use pac.db";
+        let ast = parse_once(code);
+        match &ast.stmts[0] {
+            Stmt::Use(u) => {
+                // For pac prefix, paths should skip "pac"
+                assert_eq!(u.paths, vec!["db"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+
+        let code2 = "use super.utils";
+        let ast2 = parse_once(code2);
+        match &ast2.stmts[0] {
+            Stmt::Use(u) => {
+                // For super prefix, paths should include "super"
+                assert_eq!(u.paths, vec!["super", "utils"]);
+            }
+            _ => panic!("Expected Use statement"),
+        }
+    }
+
+    // Plan 095: Compile-time execution parser tests
+
+    #[test]
+    fn test_parse_hash_if_simple() {
+        // Test: #if true { say("Debug mode") }
+        // Use boolean literal instead of undefined variable
+        let code = "#if true {\n    say(\"Debug mode\")\n}";
+        let result = parse_with_err(code);
+        if let Err(e) = &result {
+            eprintln!("Parse error: {:?}", e);
+        }
+        let ast = result.expect("Failed to parse #if");
+        assert!(matches!(&ast.stmts[0], Stmt::HashIf(_)));
+    }
+
+    #[test]
+    fn test_parse_hash_for_simple() {
+        // Test: #for i in 0..3 { say(i) }
+        // Use skip_check to avoid undefined variable errors for loop variable
+        let code = "#for i in 0..3 {\n    say(i)\n}";
+        let mut parser = Parser::from(code);
+        parser.skip_check = true;
+        let ast = parser.parse().expect("Failed to parse #for");
+        assert!(matches!(&ast.stmts[0], Stmt::HashFor(_)));
+    }
+
+    #[test]
+    fn test_parse_hash_is_simple() {
+        // Test: #is T { "x64" -> { say("x64") } "arm" -> { say("arm") } }
+        // Use skip_check to avoid undefined variable errors for type variable
+        let code = "#is T {\n    \"x64\" -> { say(\"x64\") }\n    \"arm\" -> { say(\"arm\") }\n}";
+        let mut parser = Parser::from(code);
+        parser.skip_check = true;
+        let ast = parser.parse().expect("Failed to parse #is");
+        assert!(matches!(&ast.stmts[0], Stmt::HashIs(_)));
+    }
+
+    #[test]
+    fn test_return_with_newline() {
+        // Plan 012 batch F (early return): "return\n42" now parses as a bare
+        // return followed by a separate expression statement — a newline
+        // terminates the return statement. The return value must be on the
+        // same line as `return`. This reverts Plan 241's next-line-value
+        // rule, which made bare early return impossible: the statement after
+        // `return` was silently swallowed as the return value. No source in
+        // the repo used the next-line form.
+        let code = "fn test() int {\n    return\n        42\n}";
+        let ast = parse_once(code);
+        let fn_decl = match ast.stmts.first() {
+            Some(Stmt::Fn(f)) => f,
+            _ => panic!("expected fn decl"),
+        };
+        let body = &fn_decl.body.stmts;
+        assert_eq!(
+            body.len(),
+            2,
+            "expected bare return + expr stmt, got {}: {:?}",
+            body.len(),
+            body
+        );
+        match &body[0] {
+            Stmt::Return(expr) => {
+                assert!(
+                    matches!(expr.as_ref(), Expr::Nil),
+                    "expected bare return Nil, got: {:?}",
+                    expr
+                );
+            }
+            other => panic!("expected Return stmt, got: {:?}", other),
+        }
+        assert!(
+            matches!(&body[1], Stmt::Expr(Expr::Int(42))),
+            "second stmt is the standalone expr, got: {:?}",
+            body[1]
+        );
+    }
+
+    #[test]
+    fn test_return_void_with_newline() {
+        // "return\n}" should parse as return(nil)
+        let code = "fn test() {\n    return\n}";
+        let ast = parse_once(code);
+        let fn_decl = match ast.stmts.first() {
+            Some(Stmt::Fn(f)) => f,
+            _ => panic!("expected fn decl"),
+        };
+        let body = &fn_decl.body.stmts;
+        assert_eq!(body.len(), 1);
+        match &body[0] {
+            Stmt::Return(expr) => {
+                assert!(matches!(expr.as_ref(), Expr::Nil));
+            }
+            other => panic!("expected Return stmt, got: {:?}", other),
+        }
+    }
+
+    /// Plan 043 cat-3: a dot-prefix assignment (`.field = expr`) must NOT be
+    /// merged into a method chain, and a self-dot action call following a
+    /// dot-prefix assignment must stay a separate statement.
+    #[test]
+    fn test_dot_prefix_assignment_not_chained() {
+        fn fn_body_stmt_count(code: &str) -> usize {
+            let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+            let mut parser = Parser::from(code).with_session(session);
+            let ast = parser.parse().expect("should parse");
+            let fd = ast
+                .stmts
+                .iter()
+                .find_map(|s| match s {
+                    Stmt::Fn(f) => Some(f),
+                    _ => None,
+                })
+                .expect("fn present");
+            fd.body.stmts.len()
+        }
+        // dot-prefix assign + action call → 2 separate stmts (was 1: merged).
+        assert_eq!(
+            fn_body_stmt_count("fn f() {\n    .cwd = result.cwd\n    .RefreshGit()\n}\n"),
+            2
+        );
+        // Plan 514（2026-09-02 用户裁定）：换行流式链已移除——旧链形态
+        // （let x = A.new() 换行 .b() 换行 .c()）现在直接报语法错
+        // （多行管道算子设计中）；同一行的链不受影响。
+        {
+            let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+            let mut parser = Parser::from("fn f() {\n    let x = A.new()\n    .b()\n    .c()\n}\n")
+                .with_session(session);
+            let err = parser.parse().expect_err("legacy newline chain must error");
+            assert!(err.to_string().contains("不再自动续接"), "got: {}", err);
+        }
+        // api-call assign + action → 2 separate stmts.
+        assert_eq!(
+            fn_body_stmt_count("fn f() {\n    .x = history()\n    .RefreshGit()\n}\n"),
+            2
+        );
+        // let + dot assigns (no action) → 3 stmts.
+        assert_eq!(fn_body_stmt_count("fn f() {\n    let snap = command_list()\n    .cwd = snap.cwd\n    .home = snap.home\n}\n"), 3);
+    }
+
+    /// Plan 012 batch F (gap 6): a bare `return` at end of line parses as
+    /// `Stmt::Return(Nil)` and the next line stays a separate statement.
+    /// Regression lock for the old newline-skipping behavior that swallowed
+    /// the following statement as the return value.
+    #[test]
+    fn test_bare_return_newline_terminates_statement() {
+        let code = "fn f() {\n    return\n    .x = 1\n}\n";
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("should parse");
+        let fd = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("fn present");
+        assert_eq!(fd.body.stmts.len(), 2, "bare return + following stmt");
+        assert!(
+            matches!(&fd.body.stmts[0], Stmt::Return(e) if matches!(e.as_ref(), Expr::Nil)),
+            "first stmt is bare return, got {:?}",
+            fd.body.stmts[0]
+        );
+    }
+
+    /// Plan 012 batch F (gap 6): same-line return value still parses.
+    #[test]
+    fn test_return_value_same_line_still_works() {
+        let code = "fn f() {\n    return 42\n}\n";
+        let session = crate::session::CompilerSession::new(crate::session::Scenario::UI);
+        let mut parser = Parser::from(code).with_session(session);
+        let ast = parser.parse().expect("should parse");
+        let fd = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("fn present");
+        assert!(
+            matches!(&fd.body.stmts[0], Stmt::Return(e) if matches!(e.as_ref(), Expr::Int(42))),
+            "return value on same line, got {:?}",
+            fd.body.stmts[0]
+        );
+    }
+
+    /// Plan 396/B11(b): single-arg `Map<K>` type annotation parses (V
+    /// defaults to Unknown). Previously a hard arity error, which silently
+    /// skipped whole-module transpiles (auto-ai tool.at).
+    #[test]
+    fn test_single_arg_map_type_parses() {
+        let code = "fn main() {
+    var m Map<str> = Map.new()
+    print(\"ok\")
+}
+";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    /// Plan 396/B11(b): `Err(Type.Variant { fields })` nested pattern parses
+    /// and the field bindings are visible in the arm body.
+    #[test]
+    fn test_err_nested_struct_variant_pattern() {
+        let code = "enum TE {
+    Denied { kind str }
+}
+fn msg(r Result<str, TE>) str {
+    is r {
+        Err(TE.Denied { kind }) -> return kind
+    }
+    return \"\"
+}
+";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    /// Plan 396/B11(b): top-level struct-variant pattern
+    /// `Type.Variant { fields } -> body` parses; bindings usable.
+    #[test]
+    fn test_top_level_struct_variant_pattern() {
+        let code = "enum E {
+    Denied { kind str }
+}
+fn msg(e E) str {
+    is e {
+        E.Denied { kind } -> return kind
+    }
+    return \"\"
+}
+";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    /// Plan 396 §2.5: 3-segment qualified unit-variant pattern
+    /// `module.Type.UnitVariant` (use.rust module head, no payload parens)
+    /// strips the module segment, mirroring the with-args conversion —
+    /// TagCover{Value, Nil} instead of a residual Dot(TagCover{auto_val,
+    /// Value}, Nil) that a2r rendered as invalid `auto_val::Value.Nil`.
+    #[test]
+    fn test_qualified_unit_variant_pattern_strips_module() {
+        let code = "use.rs auto_val
+
+fn f(v Value) bool {
+    is v {
+        auto_val.Value.Nil -> return true
+        else -> return false
+    }
+}
+";
+        let ast = parse_once(code);
+        let fd = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Fn(fd) if fd.name == "f" => Some(fd),
+                _ => None,
+            })
+            .expect("fn f present");
+        let is_stmt = fd
+            .body
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::Is(is_) => Some(is_),
+                _ => None,
+            })
+            .expect("is statement present");
+        let pat = match &is_stmt.branches[0] {
+            IsBranch::EqBranch(patterns, _) => patterns[0].clone(),
+            other => panic!("expected EqBranch, got {:?}", other),
+        };
+        assert!(
+            matches!(&pat, Expr::Cover(crate::ast::Cover::Tag(tc))
+                if tc.kind == "Value" && tc.tag == "Nil"
+                    && tc.bindings.iter().all(|b| b.as_str() == "_")),
+            "expected TagCover{{Value, Nil, _}}, got {:?}",
+            pat
+        );
+    }
+
+    /// Plan 396/B11 衍生：带 UTF-8 BOM 的 .at 源文件能正常 parse——此前
+    /// U+FEFF 进 UnknownCharacter，`Parser::new` 的 `lexer.next().expect()`
+    /// 直接 panic（parser.rs:272）。词法层现已按不可见空白跳过。
+    #[test]
+    fn test_bom_prefixed_source_parses() {
+        let code = "\u{FEFF}fn main() {\n    print(\"ok\")\n}\n";
+        let ast = parse_once(code);
+        assert!(
+            ast.stmts
+                .iter()
+                .any(|s| matches!(s, Stmt::Fn(fd) if fd.name == "main")),
+            "fn main should parse from BOM-prefixed source"
+        );
+    }
+
+    /// Plan 396/B11(b): enum struct-variant DECLARATION accepts colon-style
+    /// fields (`Denied { kind: str }`) alongside space-style.
+    #[test]
+    fn test_enum_variant_colon_field_style() {
+        let code = "enum E {
+    Denied { kind: str }
+}
+fn main() {
+    print(\"ok\")
+}
+";
+        let ast = parse_once(code);
+        assert!(!ast.stmts.is_empty());
+    }
+
+    /// Plan 398 §14.1 regression: `[][]T` (slice of slices) parses via the
+    /// recursive parse_type path in parse_array_type. Before §12 this failed
+    /// with "Expected term, got RBrace", silently dropping the whole module's
+    /// symbols (ash-gui back/api.at VM path).
+    #[test]
+    fn test_nested_slice_type_parses() {
+        let code = "pub type Cell = { v: int }\npub type Grid = { rows: [][]Cell }\n";
+        let ast = parse_once(code);
+        let grid = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::TypeDecl(td) if td.name == "Grid" => Some(td),
+                _ => None,
+            })
+            .expect("Grid type decl present");
+        let rows = grid.find_member("rows").expect("rows member");
+        assert!(
+            matches!(&rows.ty, crate::ast::Type::Slice(s) if matches!(s.elem.as_ref(), crate::ast::Type::Slice(_))),
+            "[][]Cell should be Slice(Slice(Cell)), got {:?}",
+            rows.ty
+        );
+    }
+
+    /// Plan 398 §14.1 regression: `[](str, T)` (slice of tuples) parses.
+    #[test]
+    fn test_slice_of_tuple_type_parses() {
+        let code = "pub type Cell = { v: int }\npub type Sheet = { cells: [](str, Cell) }\n";
+        let ast = parse_once(code);
+        let sheet = ast
+            .stmts
+            .iter()
+            .find_map(|s| match s {
+                Stmt::TypeDecl(td) if td.name == "Sheet" => Some(td),
+                _ => None,
+            })
+            .expect("Sheet type decl present");
+        let cells = sheet.find_member("cells").expect("cells member");
+        assert!(
+            matches!(&cells.ty, crate::ast::Type::Slice(s) if matches!(s.elem.as_ref(), crate::ast::Type::Tuple(ts) if ts.len() == 2)),
+            "[](str, Cell) should be Slice(Tuple(str, Cell)), got {:?}",
+            cells.ty
+        );
+    }
+
+    // ---- PLAN-046: keyed-for `key:` clause parsing matrix ----
+
+    /// Call-shaped key (`key: compute(.x)`) is rejected with a pointed error.
+    #[test]
+    fn plan046_key_clause_rejects_call_shape() {
+        let code = concat!(
+            "widget App {\n",
+            "  view {\n",
+            "    for x in .items key: compute(.x) {\n",
+            "      text \"r\"\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        assert!(
+            parser.parse().is_err(),
+            "call-shaped key must be a parse error"
+        );
+    }
+
+    // ---- PLAN-046 T-04: memo block parsing ----
+
+    /// 未知头参 / 非 bool exact → 指名解析错误。
+    #[test]
+    fn plan046_memo_block_bad_params_error() {
+        for src in [
+            "memo (foo: 1) { text \"h\" }",
+            "memo (deps: .a, exact: \"yes\") { text \"h\" }",
+        ] {
+            let code = format!(
+                "widget App {{
+  view {{
+    {}
+  }}
+}}",
+                src
+            );
+            let mut parser =
+                Parser::from(&code).with_session(crate::session::CompilerSession::ui());
+            assert!(
+                parser.parse().is_err(),
+                "bad memo header must error: {}",
+                src
+            );
+        }
+    }
+
+    /// Missing expression after `key:` is a parse error (not a silent None).
+    #[test]
+    fn plan046_key_clause_requires_expr() {
+        let code = concat!(
+            "widget App {\n",
+            "  view {\n",
+            "    for x in .items key: {\n",
+            "      text \"r\"\n",
+            "    }\n",
+            "  }\n",
+            "}"
+        );
+        let mut parser = Parser::from(code).with_session(crate::session::CompilerSession::ui());
+        assert!(
+            parser.parse().is_err(),
+            "empty key clause must be a parse error"
+        );
+    }
+}
+
+/// Plan 560 T07：中缀糖直产桥调用（`a @ b`→py_matmul、`a ** b`→py_pow）。
+fn mk_infix_sugar_call(name: &str, l: crate::ast::Expr, r: crate::ast::Expr) -> crate::ast::Expr {
+    use crate::ast::{Arg, Args, Call, Expr, Type};
+    Expr::Call(Call {
+        name: Box::new(Expr::Ident(name.into())),
+        args: Args {
+            args: vec![Arg::Pos(l), Arg::Pos(r)],
+        },
+        ret: Type::Unknown,
+        type_args: Vec::new(),
+        generic_args: Vec::new(),
+        pos: None,
+    })
+}

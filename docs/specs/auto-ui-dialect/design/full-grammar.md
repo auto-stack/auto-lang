@@ -25,9 +25,12 @@ model/component/actions/style/view/on）、`parse_stmt_inner` 直连段（scene
 
 ## 2. UiParseContext 端口（对象安全子 trait）
 
-`UiParseContext: ParseContext`（定义在本 crate——UI 伴随能力**不入**
-auto-parser-api Core 包，既有 `ParseContext` 实现面零改动）。由 auto-lang
-`ParserBridge` 实现；文法函数签名统一 `fn(cx: &mut dyn UiParseContext)`。
+`UiParseContext: ParseContext`（**定义在 auto-parser-api**——PLAN-814 r3
+修订：轻端口 crate 承载 opt-in UI 端口定义，本 crate 经 re-export 保旧
+路径与类型身份、继续拥有全部文法实现；既有 `ParseContext` 实现面零
+改动）。由语言核心 `ParserBridge` 实现；文法函数签名统一
+`fn(cx: &mut dyn UiParseContext)`。本 crate 另提供 `ui_grammar()`——
+SDK `UiGrammar` 函数表的单一份构造器（r3 装配端口）。
 能力面与事务合同（冻结于 `docs/plans/attachments/810/contract-baseline.md`
 §2/§3）：
 

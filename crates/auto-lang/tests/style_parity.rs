@@ -19,7 +19,9 @@
 
 use std::collections::BTreeMap;
 
-use auto_lang::ui::style::{IcedStyle, Style, StyleClass};
+// PLAN-814 T-03：IcedStyle 是 iced 后端适配器（auto_lang::ui::style_iced_adapter）。
+use auto_lang::ui::style::{Style, StyleClass};
+use auto_lang::ui::style_iced_adapter::IcedStyle;
 
 const MANIFEST: &str = include_str!("fixtures/tailwind-v34-utilities.txt");
 

@@ -111,13 +111,13 @@ impl FromStr for Version {
 /// Version comparison operators
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Op {
-    Exact,    // =1.2.3 or just 1.2.3
-    Greater,  // >1.2.3
+    Exact,     // =1.2.3 or just 1.2.3
+    Greater,   // >1.2.3
     GreaterEq, // >=1.2.3
-    Less,     // <1.2.3
-    LessEq,   // <=1.2.3
-    Caret,    // ^1.2.3 (compatible)
-    Tilde,    // ~1.2.3 (approximately)
+    Less,      // <1.2.3
+    LessEq,    // <=1.2.3
+    Caret,     // ^1.2.3 (compatible)
+    Tilde,     // ~1.2.3 (approximately)
 }
 
 impl Op {
@@ -138,7 +138,8 @@ impl Op {
                     if required.minor == 0 {
                         version.major == 0 && version.minor == 0 && version.patch >= required.patch
                     } else {
-                        version.major == 0 && version.minor == required.minor
+                        version.major == 0
+                            && version.minor == required.minor
                             && (version.patch >= required.patch || version.minor > required.minor)
                     }
                 } else {
@@ -178,28 +179,30 @@ impl Requirement {
             // 1.2.* => ~1.2.0 (any 1.2.x version)
             // 1.x => ~1.0.0 (any 1.x.x version)
             // 1.x.x => ~1.0.0 (any 1.x.x version)
-            let normalized = s
-                .replace('X', "0")
-                .replace('x', "0")
-                .replace('*', "0");
+            let normalized = s.replace('X', "0").replace('x', "0").replace('*', "0");
 
             let parts: Vec<&str> = normalized.split('.').collect();
-            let version_str = if parts.len() >= 3 && parts[2] == "0" && (s.contains('*') || s[2..].contains('x')) {
-                // Third component is wildcard, keep first two
-                format!("{}.{}.0", parts[0], parts[1])
-            } else if parts.len() >= 2 && parts[1] == "0" && s[1..].contains('x') {
-                // Second component is wildcard (e.g., 1.x or 1.x.x)
-                format!("{}.0.0", parts[0])
-            } else if parts.len() >= 3 {
-                format!("{}.{}.0", parts[0], parts[1])
-            } else if parts.len() == 2 {
-                format!("{}.0.0", parts[0])
-            } else {
-                return Err(format!("Invalid wildcard version: '{}'", s));
-            };
+            let version_str =
+                if parts.len() >= 3 && parts[2] == "0" && (s.contains('*') || s[2..].contains('x'))
+                {
+                    // Third component is wildcard, keep first two
+                    format!("{}.{}.0", parts[0], parts[1])
+                } else if parts.len() >= 2 && parts[1] == "0" && s[1..].contains('x') {
+                    // Second component is wildcard (e.g., 1.x or 1.x.x)
+                    format!("{}.0.0", parts[0])
+                } else if parts.len() >= 3 {
+                    format!("{}.{}.0", parts[0], parts[1])
+                } else if parts.len() == 2 {
+                    format!("{}.0.0", parts[0])
+                } else {
+                    return Err(format!("Invalid wildcard version: '{}'", s));
+                };
 
             let version = Version::from_str(&version_str)?;
-            return Ok(Self { op: Op::Tilde, version });
+            return Ok(Self {
+                op: Op::Tilde,
+                version,
+            });
         }
 
         // Determine operator

@@ -1,11 +1,13 @@
-use auto_lang::{value, atom};
+// PLAN-814 R3-03：dev 依 SDK——宏展开内 auto_lang:: 路径经别名解析。
+use auto_lang_core as auto_lang;
+use auto_macros::{atom, value};
 use auto_val::Value;
 
 // 测试 value! 宏 - 节点
 #[test]
 #[ignore = "AtomReader no longer parses node syntax correctly — interpreter behavior changed"]
 fn test_value_node() {
-    let val = value!{
+    let val = value! {
         config {
             version: "1.0",
             debug: true,
@@ -29,14 +31,14 @@ fn test_value_array() {
 // 测试 value! 宏 - 对象
 #[test]
 fn test_value_object() {
-    let val = value!{name: "Alice", age: 30};
+    let val = value! {name: "Alice", age: 30};
 
     assert!(matches!(val, Value::Obj(_)));
 }
 
 #[test]
 fn test_value_let() {
-    let val = value!{
+    let val = value! {
         let name = "Alice";
         let age = 30;
         {name: name, age: age}
@@ -58,7 +60,7 @@ fn test_value_let() {
 #[test]
 fn test_atom_let() {
     use auto_lang::atom::Atom;
-    let atom = atom!{
+    let atom = atom! {
         let name = "Bob";
         let age = 25;
         {name: name, age: age}
@@ -82,7 +84,7 @@ fn test_value_interpolation() {
     let active: bool = true;
 
     // 测试多个插值（混合隐式和显式插值）
-    let val = value!{name: name, count: #{count}, active: #{active}};
+    let val = value! {name: name, count: #{count}, active: #{active}};
     println!("Value: {:?}", val);
 
     // 验证结果是一个对象，包含正确的值
@@ -109,7 +111,7 @@ fn test_value_explicit_interpolation() {
     let debug: bool = false;
 
     // 全部使用显式插值
-    let val = value!{host: #{host}, port: #{port}, debug: #{debug}};
+    let val = value! {host: #{host}, port: #{port}, debug: #{debug}};
 
     if let Value::Obj(obj) = val {
         assert_eq!(obj.len(), 3);
@@ -127,14 +129,18 @@ fn test_value_float_interpolation() {
     let pi: f64 = 3.14159;
     let e: f32 = 2.71828;
 
-    let val = value!{pi: #{pi}, e: #{e}};
+    let val = value! {pi: #{pi}, e: #{e}};
 
     if let Value::Obj(obj) = val {
         assert_eq!(obj.len(), 2);
         assert_eq!(obj.get("pi"), Some(Value::Double(3.14159)));
         // f32 转换为 f64 会有精度损失，使用近似比较
         if let Some(Value::Float(actual)) = obj.get("e") {
-            assert!((actual - 2.71828).abs() < 0.0001, "Expected ~2.71828, got {}", actual);
+            assert!(
+                (actual - 2.71828).abs() < 0.0001,
+                "Expected ~2.71828, got {}",
+                actual
+            );
         } else {
             panic!("Expected Float value");
         }
@@ -150,13 +156,16 @@ fn test_value_mixed_literal_interpolation() {
     let name: &str = "test";
 
     // 混合字面量和变量插值（使用单行格式以避免解析问题）
-    let val = value!{name: name, version: #{version}, description: "A test config", active: true};
+    let val = value! {name: name, version: #{version}, description: "A test config", active: true};
 
     if let Value::Obj(obj) = val {
         assert_eq!(obj.len(), 4);
         assert_eq!(obj.get("name"), Some(Value::Str("test".into())));
         assert_eq!(obj.get("version"), Some(Value::Uint(2)));
-        assert_eq!(obj.get("description"), Some(Value::Str("A test config".into())));
+        assert_eq!(
+            obj.get("description"),
+            Some(Value::Str("A test config".into()))
+        );
         assert_eq!(obj.get("active"), Some(Value::Bool(true)));
     } else {
         panic!("Expected Obj value");
@@ -167,7 +176,7 @@ fn test_value_mixed_literal_interpolation() {
 #[test]
 #[ignore = "AtomReader no longer parses node syntax correctly — interpreter behavior changed"]
 fn test_value_nested() {
-    let val = value!{
+    let val = value! {
         config {
             version: "1.0",
             database {
@@ -184,14 +193,14 @@ fn test_value_nested() {
 #[test]
 #[ignore = "AtomReader no longer parses node syntax correctly — interpreter behavior changed"]
 fn test_value_vs_atom() {
-    let atom_val = atom!{
+    let atom_val = atom! {
         config {
             version: "1.0",
             debug: true,
         }
     };
 
-    let val_val = value!{
+    let val_val = value! {
         config {
             version: "1.0",
             debug: true,

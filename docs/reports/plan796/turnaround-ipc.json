@@ -4,8 +4,8 @@
   "reference_bytes": 1048733,
   "samples": [
     {
-      "total_ms": 1208.1770999999999,
-      "edit_session_ms": 591.0,
+      "total_ms": 1053.8554,
+      "edit_session_ms": 278.0,
       "status": "Pass",
       "stages": [
         [
@@ -38,7 +38,7 @@
         ],
         [
           "publish",
-          355
+          9
         ]
       ],
       "edit_query_stages": [
@@ -56,17 +56,17 @@
         ],
         [
           "publish",
-          355
+          9
         ]
       ],
-      "edit_session_prep_us": 51308,
-      "edit_session_worker_us": 537745,
-      "edit_session_admit_us": 2168,
-      "edit_session_wall_us": 591222
+      "edit_session_prep_us": 54369,
+      "edit_session_worker_us": 222142,
+      "edit_session_admit_us": 2167,
+      "edit_session_wall_us": 278680
     },
     {
-      "total_ms": 837.394,
-      "edit_session_ms": 241.0,
+      "total_ms": 735.7517,
+      "edit_session_ms": 269.0,
       "status": "Pass",
       "stages": [
         [
@@ -84,921 +84,6 @@
         [
           "publish",
           4
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          5
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          5
-        ]
-      ],
-      "edit_session_prep_us": 53319,
-      "edit_session_worker_us": 185611,
-      "edit_session_admit_us": 2204,
-      "edit_session_wall_us": 241135
-    },
-    {
-      "total_ms": 1048.9973,
-      "edit_session_ms": 489.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          252
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          252
-        ]
-      ],
-      "edit_session_prep_us": 51607,
-      "edit_session_worker_us": 435499,
-      "edit_session_admit_us": 2095,
-      "edit_session_wall_us": 489203
-    },
-    {
-      "total_ms": 1678.1348999999998,
-      "edit_session_ms": 632.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          395
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          395
-        ]
-      ],
-      "edit_session_prep_us": 51506,
-      "edit_session_worker_us": 578802,
-      "edit_session_admit_us": 2173,
-      "edit_session_wall_us": 632482
-    },
-    {
-      "total_ms": 1054.2301,
-      "edit_session_ms": 513.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          274
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          274
-        ]
-      ],
-      "edit_session_prep_us": 55077,
-      "edit_session_worker_us": 456548,
-      "edit_session_admit_us": 2156,
-      "edit_session_wall_us": 513782
-    },
-    {
-      "total_ms": 1403.5963,
-      "edit_session_ms": 702.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          459
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          459
-        ]
-      ],
-      "edit_session_prep_us": 56926,
-      "edit_session_worker_us": 642863,
-      "edit_session_admit_us": 2245,
-      "edit_session_wall_us": 702035
-    },
-    {
-      "total_ms": 1346.8743000000002,
-      "edit_session_ms": 566.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          325
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          325
-        ]
-      ],
-      "edit_session_prep_us": 52427,
-      "edit_session_worker_us": 511678,
-      "edit_session_admit_us": 2132,
-      "edit_session_wall_us": 566238
-    },
-    {
-      "total_ms": 1353.9683,
-      "edit_session_ms": 694.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          457
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          457
-        ]
-      ],
-      "edit_session_prep_us": 52655,
-      "edit_session_worker_us": 639968,
-      "edit_session_admit_us": 2203,
-      "edit_session_wall_us": 694827
-    },
-    {
-      "total_ms": 1081.21,
-      "edit_session_ms": 600.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          4
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          359
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          359
-        ]
-      ],
-      "edit_session_prep_us": 54612,
-      "edit_session_worker_us": 543257,
-      "edit_session_admit_us": 2140,
-      "edit_session_wall_us": 600011
-    },
-    {
-      "total_ms": 928.4961000000001,
-      "edit_session_ms": 262.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          16
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          16
-        ]
-      ],
-      "edit_session_prep_us": 54778,
-      "edit_session_worker_us": 205855,
-      "edit_session_admit_us": 2108,
-      "edit_session_wall_us": 262742
-    },
-    {
-      "total_ms": 714.808,
-      "edit_session_ms": 250.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          4
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          18
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          18
-        ]
-      ],
-      "edit_session_prep_us": 51464,
-      "edit_session_worker_us": 196564,
-      "edit_session_admit_us": 2118,
-      "edit_session_wall_us": 250146
-    },
-    {
-      "total_ms": 719.2583999999999,
-      "edit_session_ms": 251.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          17
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          17
-        ]
-      ],
-      "edit_session_prep_us": 51361,
-      "edit_session_worker_us": 197779,
-      "edit_session_admit_us": 2164,
-      "edit_session_wall_us": 251305
-    },
-    {
-      "total_ms": 703.7216,
-      "edit_session_ms": 247.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          4
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          7
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          7
-        ]
-      ],
-      "edit_session_prep_us": 53847,
-      "edit_session_worker_us": 191480,
-      "edit_session_admit_us": 2100,
-      "edit_session_wall_us": 247428
-    },
-    {
-      "total_ms": 711.9823,
-      "edit_session_ms": 254.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          4
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          18
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          18
-        ]
-      ],
-      "edit_session_prep_us": 52676,
-      "edit_session_worker_us": 199385,
-      "edit_session_admit_us": 2114,
-      "edit_session_wall_us": 254176
-    },
-    {
-      "total_ms": 709.9036,
-      "edit_session_ms": 257.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          16
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          16
-        ]
-      ],
-      "edit_session_prep_us": 52740,
-      "edit_session_worker_us": 202347,
-      "edit_session_admit_us": 2114,
-      "edit_session_wall_us": 257202
-    },
-    {
-      "total_ms": 705.573,
-      "edit_session_ms": 252.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          17
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          17
-        ]
-      ],
-      "edit_session_prep_us": 53095,
-      "edit_session_worker_us": 196859,
-      "edit_session_admit_us": 2154,
-      "edit_session_wall_us": 252109
-    },
-    {
-      "total_ms": 715.1958000000001,
-      "edit_session_ms": 252.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
         ],
         [
           "request",
@@ -1035,14 +120,14 @@
           8
         ]
       ],
-      "edit_session_prep_us": 56665,
-      "edit_session_worker_us": 193793,
-      "edit_session_admit_us": 2153,
-      "edit_session_wall_us": 252612
+      "edit_session_prep_us": 51679,
+      "edit_session_worker_us": 214438,
+      "edit_session_admit_us": 3004,
+      "edit_session_wall_us": 269123
     },
     {
-      "total_ms": 721.055,
-      "edit_session_ms": 258.0,
+      "total_ms": 731.3025,
+      "edit_session_ms": 267.0,
       "status": "Pass",
       "stages": [
         [
@@ -1075,7 +160,7 @@
         ],
         [
           "publish",
-          17
+          9
         ]
       ],
       "edit_query_stages": [
@@ -1093,78 +178,17 @@
         ],
         [
           "publish",
-          17
+          9
         ]
       ],
-      "edit_session_prep_us": 52082,
-      "edit_session_worker_us": 204605,
-      "edit_session_admit_us": 2104,
-      "edit_session_wall_us": 258792
+      "edit_session_prep_us": 53282,
+      "edit_session_worker_us": 211739,
+      "edit_session_admit_us": 2093,
+      "edit_session_wall_us": 267115
     },
     {
-      "total_ms": 724.2346,
-      "edit_session_ms": 255.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          17
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          17
-        ]
-      ],
-      "edit_session_prep_us": 51943,
-      "edit_session_worker_us": 200886,
-      "edit_session_admit_us": 2197,
-      "edit_session_wall_us": 255028
-    },
-    {
-      "total_ms": 713.683,
-      "edit_session_ms": 244.0,
+      "total_ms": 750.4328999999999,
+      "edit_session_ms": 275.0,
       "status": "Pass",
       "stages": [
         [
@@ -1197,7 +221,7 @@
         ],
         [
           "publish",
-          7
+          9
         ]
       ],
       "edit_query_stages": [
@@ -1215,17 +239,17 @@
         ],
         [
           "publish",
-          7
+          9
         ]
       ],
-      "edit_session_prep_us": 52246,
-      "edit_session_worker_us": 189895,
-      "edit_session_admit_us": 2150,
-      "edit_session_wall_us": 244292
+      "edit_session_prep_us": 52085,
+      "edit_session_worker_us": 220981,
+      "edit_session_admit_us": 2081,
+      "edit_session_wall_us": 275149
     },
     {
-      "total_ms": 718.8852999999999,
-      "edit_session_ms": 254.0,
+      "total_ms": 753.6437999999999,
+      "edit_session_ms": 272.0,
       "status": "Pass",
       "stages": [
         [
@@ -1258,7 +282,7 @@
         ],
         [
           "publish",
-          17
+          9
         ]
       ],
       "edit_query_stages": [
@@ -1276,16 +300,1114 @@
         ],
         [
           "publish",
-          17
+          9
         ]
       ],
-      "edit_session_prep_us": 51734,
-      "edit_session_worker_us": 200751,
-      "edit_session_admit_us": 2177,
-      "edit_session_wall_us": 254663
+      "edit_session_prep_us": 52150,
+      "edit_session_worker_us": 217812,
+      "edit_session_admit_us": 2183,
+      "edit_session_wall_us": 272146
     },
     {
-      "total_ms": 713.5264999999999,
+      "total_ms": 773.6681,
+      "edit_session_ms": 294.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_session_prep_us": 52010,
+      "edit_session_worker_us": 239164,
+      "edit_session_admit_us": 3228,
+      "edit_session_wall_us": 294404
+    },
+    {
+      "total_ms": 738.4721,
+      "edit_session_ms": 269.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_session_prep_us": 51452,
+      "edit_session_worker_us": 215520,
+      "edit_session_admit_us": 2141,
+      "edit_session_wall_us": 269114
+    },
+    {
+      "total_ms": 740.9955,
+      "edit_session_ms": 267.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_session_prep_us": 51963,
+      "edit_session_worker_us": 213420,
+      "edit_session_admit_us": 2182,
+      "edit_session_wall_us": 267566
+    },
+    {
+      "total_ms": 743.9346999999999,
+      "edit_session_ms": 271.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          5
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_session_prep_us": 51359,
+      "edit_session_worker_us": 218397,
+      "edit_session_admit_us": 2218,
+      "edit_session_wall_us": 271975
+    },
+    {
+      "total_ms": 745.2733000000001,
+      "edit_session_ms": 265.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_session_prep_us": 50974,
+      "edit_session_worker_us": 212044,
+      "edit_session_admit_us": 2167,
+      "edit_session_wall_us": 265186
+    },
+    {
+      "total_ms": 806.5708000000001,
+      "edit_session_ms": 314.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_session_prep_us": 68672,
+      "edit_session_worker_us": 243246,
+      "edit_session_admit_us": 2138,
+      "edit_session_wall_us": 314058
+    },
+    {
+      "total_ms": 754.9082000000001,
+      "edit_session_ms": 268.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          5
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_session_prep_us": 51076,
+      "edit_session_worker_us": 214983,
+      "edit_session_admit_us": 2103,
+      "edit_session_wall_us": 268162
+    },
+    {
+      "total_ms": 757.0163,
+      "edit_session_ms": 282.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          5
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_session_prep_us": 56380,
+      "edit_session_worker_us": 223494,
+      "edit_session_admit_us": 2179,
+      "edit_session_wall_us": 282054
+    },
+    {
+      "total_ms": 736.8124,
+      "edit_session_ms": 268.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_session_prep_us": 53451,
+      "edit_session_worker_us": 212870,
+      "edit_session_admit_us": 2120,
+      "edit_session_wall_us": 268443
+    },
+    {
+      "total_ms": 787.4303,
+      "edit_session_ms": 318.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          63
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          63
+        ]
+      ],
+      "edit_session_prep_us": 51084,
+      "edit_session_worker_us": 265250,
+      "edit_session_admit_us": 2114,
+      "edit_session_wall_us": 318450
+    },
+    {
+      "total_ms": 769.4041000000001,
+      "edit_session_ms": 277.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          18
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          18
+        ]
+      ],
+      "edit_session_prep_us": 53687,
+      "edit_session_worker_us": 221474,
+      "edit_session_admit_us": 2062,
+      "edit_session_wall_us": 277224
+    },
+    {
+      "total_ms": 742.5192000000001,
+      "edit_session_ms": 263.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_session_prep_us": 51457,
+      "edit_session_worker_us": 209867,
+      "edit_session_admit_us": 2147,
+      "edit_session_wall_us": 263472
+    },
+    {
+      "total_ms": 787.4863,
+      "edit_session_ms": 275.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_session_prep_us": 58256,
+      "edit_session_worker_us": 215030,
+      "edit_session_admit_us": 2116,
+      "edit_session_wall_us": 275404
+    },
+    {
+      "total_ms": 774.0926000000001,
+      "edit_session_ms": 272.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          18
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          18
+        ]
+      ],
+      "edit_session_prep_us": 50354,
+      "edit_session_worker_us": 219816,
+      "edit_session_admit_us": 2125,
+      "edit_session_wall_us": 272296
+    },
+    {
+      "total_ms": 755.6862,
+      "edit_session_ms": 263.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_session_prep_us": 51454,
+      "edit_session_worker_us": 209928,
+      "edit_session_admit_us": 2075,
+      "edit_session_wall_us": 263459
+    },
+    {
+      "total_ms": 736.3367,
+      "edit_session_ms": 268.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_session_prep_us": 51831,
+      "edit_session_worker_us": 214588,
+      "edit_session_admit_us": 2162,
+      "edit_session_wall_us": 268582
+    },
+    {
+      "total_ms": 748.1879,
+      "edit_session_ms": 263.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_session_prep_us": 51470,
+      "edit_session_worker_us": 209555,
+      "edit_session_admit_us": 2124,
+      "edit_session_wall_us": 263150
+    },
+    {
+      "total_ms": 762.2314,
+      "edit_session_ms": 270.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          16
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          16
+        ]
+      ],
+      "edit_session_prep_us": 51889,
+      "edit_session_worker_us": 216073,
+      "edit_session_admit_us": 2129,
+      "edit_session_wall_us": 270092
+    },
+    {
+      "total_ms": 769.7844,
       "edit_session_ms": 266.0,
       "status": "Pass",
       "stages": [
@@ -1319,7 +1441,7 @@
         ],
         [
           "publish",
-          11
+          9
         ]
       ],
       "edit_query_stages": [
@@ -1337,78 +1459,17 @@
         ],
         [
           "publish",
-          11
+          9
         ]
       ],
-      "edit_session_prep_us": 59550,
-      "edit_session_worker_us": 204670,
-      "edit_session_admit_us": 2160,
-      "edit_session_wall_us": 266381
+      "edit_session_prep_us": 51980,
+      "edit_session_worker_us": 212306,
+      "edit_session_admit_us": 2242,
+      "edit_session_wall_us": 266529
     },
     {
-      "total_ms": 702.2903,
-      "edit_session_ms": 249.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          8
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          8
-        ]
-      ],
-      "edit_session_prep_us": 52218,
-      "edit_session_worker_us": 195032,
-      "edit_session_admit_us": 2127,
-      "edit_session_wall_us": 249378
-    },
-    {
-      "total_ms": 706.8987,
-      "edit_session_ms": 268.0,
+      "total_ms": 752.9421,
+      "edit_session_ms": 280.0,
       "status": "Pass",
       "stages": [
         [
@@ -1429,7 +1490,7 @@
         ],
         [
           "request",
-          1
+          0
         ],
         [
           "cache-read-validate",
@@ -1441,13 +1502,13 @@
         ],
         [
           "publish",
-          12
+          18
         ]
       ],
       "edit_query_stages": [
         [
           "request",
-          1
+          0
         ],
         [
           "cache-read-validate",
@@ -1459,16 +1520,138 @@
         ],
         [
           "publish",
-          12
+          18
         ]
       ],
-      "edit_session_prep_us": 52730,
-      "edit_session_worker_us": 213328,
-      "edit_session_admit_us": 2812,
-      "edit_session_wall_us": 268872
+      "edit_session_prep_us": 52041,
+      "edit_session_worker_us": 226169,
+      "edit_session_admit_us": 2158,
+      "edit_session_wall_us": 280369
     },
     {
-      "total_ms": 757.9650999999999,
+      "total_ms": 751.5075,
+      "edit_session_ms": 266.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          9
+        ]
+      ],
+      "edit_session_prep_us": 52000,
+      "edit_session_worker_us": 212275,
+      "edit_session_admit_us": 2099,
+      "edit_session_wall_us": 266376
+    },
+    {
+      "total_ms": 745.5921,
+      "edit_session_ms": 263.0,
+      "status": "Pass",
+      "stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          4
+        ],
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_query_stages": [
+        [
+          "request",
+          0
+        ],
+        [
+          "cache-read-validate",
+          0
+        ],
+        [
+          "infer",
+          0
+        ],
+        [
+          "publish",
+          8
+        ]
+      ],
+      "edit_session_prep_us": 52057,
+      "edit_session_worker_us": 209607,
+      "edit_session_admit_us": 2083,
+      "edit_session_wall_us": 263748
+    },
+    {
+      "total_ms": 745.4832,
       "edit_session_ms": 265.0,
       "status": "Pass",
       "stages": [
@@ -1486,7 +1669,7 @@
         ],
         [
           "publish",
-          3
+          4
         ],
         [
           "request",
@@ -1523,14 +1706,14 @@
           8
         ]
       ],
-      "edit_session_prep_us": 55449,
-      "edit_session_worker_us": 207003,
-      "edit_session_admit_us": 2833,
-      "edit_session_wall_us": 265286
+      "edit_session_prep_us": 52121,
+      "edit_session_worker_us": 211441,
+      "edit_session_admit_us": 2179,
+      "edit_session_wall_us": 265743
     },
     {
-      "total_ms": 715.4568,
-      "edit_session_ms": 255.0,
+      "total_ms": 727.4104,
+      "edit_session_ms": 267.0,
       "status": "Pass",
       "stages": [
         [
@@ -1584,14 +1767,14 @@
           8
         ]
       ],
-      "edit_session_prep_us": 57588,
-      "edit_session_worker_us": 195812,
-      "edit_session_admit_us": 2419,
-      "edit_session_wall_us": 255821
+      "edit_session_prep_us": 52507,
+      "edit_session_worker_us": 212727,
+      "edit_session_admit_us": 2123,
+      "edit_session_wall_us": 267358
     },
     {
-      "total_ms": 701.0971999999999,
-      "edit_session_ms": 246.0,
+      "total_ms": 761.9123,
+      "edit_session_ms": 263.0,
       "status": "Pass",
       "stages": [
         [
@@ -1608,7 +1791,7 @@
         ],
         [
           "publish",
-          3
+          4
         ],
         [
           "request",
@@ -1624,7 +1807,7 @@
         ],
         [
           "publish",
-          7
+          8
         ]
       ],
       "edit_query_stages": [
@@ -1642,203 +1825,20 @@
         ],
         [
           "publish",
-          7
+          8
         ]
       ],
-      "edit_session_prep_us": 51944,
-      "edit_session_worker_us": 192258,
-      "edit_session_admit_us": 2318,
-      "edit_session_wall_us": 246521
-    },
-    {
-      "total_ms": 724.8911,
-      "edit_session_ms": 256.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          17
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          17
-        ]
-      ],
-      "edit_session_prep_us": 52211,
-      "edit_session_worker_us": 201443,
-      "edit_session_admit_us": 2445,
-      "edit_session_wall_us": 256100
-    },
-    {
-      "total_ms": 687.9103,
-      "edit_session_ms": 246.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          5
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          7
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          7
-        ]
-      ],
-      "edit_session_prep_us": 52255,
-      "edit_session_worker_us": 191823,
-      "edit_session_admit_us": 2172,
-      "edit_session_wall_us": 246253
-    },
-    {
-      "total_ms": 698.9427999999999,
-      "edit_session_ms": 247.0,
-      "status": "Pass",
-      "stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          3
-        ],
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          6
-        ]
-      ],
-      "edit_query_stages": [
-        [
-          "request",
-          0
-        ],
-        [
-          "cache-read-validate",
-          0
-        ],
-        [
-          "infer",
-          0
-        ],
-        [
-          "publish",
-          6
-        ]
-      ],
-      "edit_session_prep_us": 53291,
-      "edit_session_worker_us": 192039,
-      "edit_session_admit_us": 2174,
-      "edit_session_wall_us": 247505
+      "edit_session_prep_us": 52166,
+      "edit_session_worker_us": 209323,
+      "edit_session_admit_us": 2064,
+      "edit_session_wall_us": 263555
     }
   ],
   "gate": "edit session (request preparation + spawn/IPC + worker execution + parent-side admission), cold warm-up query excluded; prep/worker/admit segments tile the window",
-  "p50_ms": 256.0,
-  "p95_ms": 694.0,
-  "p99_ms": 702.0,
-  "total_p95_ms": 1403.5963,
+  "p50_ms": 269.0,
+  "p95_ms": 314.0,
+  "p99_ms": 318.0,
+  "total_p95_ms": 806.5708000000001,
   "hard_gate_ms": 1000,
   "verdict": "PASS"
 }

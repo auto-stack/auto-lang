@@ -65,6 +65,15 @@ schema = "module-boundaries/1"
 #（闭包由 test/fixtures/modularity/ui-declarations-consumer 钉住），
 # auto-lang 单向依赖之——UI 声明文法脱离语言实现包。
 "auto-ui-dialect" = "lang-core"
+# PLAN-814 T-02/T-03：语言核心 SDK 本体（非 UI 语言栈单源；对 auto-ui-dialect
+# 的文法组合为 optional 显式 feature 边——normal/build 默认闭包零 UI 文法，
+# 闭包钉 test/fixtures/modularity/language-sdk-consumer）。
+"auto-lang-core" = "lang-core"
+# PLAN-814 T-03：UI 编译域（style/aura/a2ui/四生成器/registry/route 分析；
+# 依赖 lang-core 合法单向，禁被 lang-core 反向依赖；闭包钉
+# test/fixtures/modularity/ui-package-consumer）。runtime 同域（T-04 迁入）。
+"auto-ui-compiler" = "ui"
+"auto-ui-runtime" = "ui"
 # PLAN-807：文本基础 crate（持久化 rope/文件后援分页/快照/diff 引擎，
 # 自 auto-lang ui/code_editor 逐字抽取；依赖闭包 = imara-diff+std，闭包由
 # test/fixtures/modularity/text-core-consumer 钉住）。auto-lang 单向依赖之
@@ -129,6 +138,10 @@ schema = "module-boundaries/1"
 # auto-ui-tools 静态链接/auto-man/auto-lang/UI；工具发现归 T-04
 # （闭包由 test/fixtures/modularity/tool-client-consumer 钉住）。
 "auto-tool-client" = "man-ecosystem"
+# PLAN-815 T-04: API 生成核心（api_gen/sidecar/rust_workspace 单算法，
+# 自 auto-man 析出；owner=lang-service-adapter——man 域(http_service)与
+# ui 域(auto-ui-tools)双消费的最低层，落 man-ecosystem）。
+"auto-api-gen" = "man-ecosystem"
 # 顶层装配/工具/CLI（允许依赖任意下层域）。
 "auto" = "cli"
 "auto-lsp" = "tool"
@@ -325,7 +338,7 @@ evidence = "调研 §4.3：lib.rs:4411/4426 WidgetRegistry 参数、4513/5494 Dy
 id = "weld-vm-ui-natives"
 coverage_group = "core-ui-weld"
 kind = "weld"
-path = "crates/auto-lang/src/vm/native.rs"
+path = "crates/auto-lang-core/src/vm/native.rs"
 owner = "auto-ui"
 exit_phase = "R2"
 status = "active"
@@ -335,7 +348,7 @@ evidence = "调研 §4.3：vm/native.rs:1612-2391 编辑器/clipboard/scroll 直
 id = "weld-media-asset-types"
 coverage_group = "core-ui-weld"
 kind = "weld"
-path = "crates/auto-lang/src/vm/ffi/stdlib.rs"
+path = "crates/auto-lang-core/src/vm/ffi/stdlib.rs"
 owner = "runtime+auto-ui"
 exit_phase = "R2"
 status = "active"
@@ -345,7 +358,7 @@ evidence = "调研 §4.3：stdlib.rs:34/4933/4960 MediaAssetKey/MediaAssetTicket
 id = "weld-term-engine-loader"
 coverage_group = "core-ui-weld"
 kind = "weld"
-path = "crates/auto-lang/src/vm/ffi/term_engine.rs"
+path = "crates/auto-lang-core/src/vm/ffi/term_engine.rs"
 owner = "runtime+auto-ui"
 exit_phase = "R2"
 status = "active"
@@ -365,7 +378,7 @@ evidence = "调研 §4.3：back_proxy.rs:151 持有 MediaIndex、:1069 返回 Ph
 id = "weld-a2r-std-ui-calls"
 coverage_group = "core-ui-weld"
 kind = "weld"
-path = "crates/auto-lang/src/a2r_std.rs"
+path = "crates/auto-lang-core/src/a2r_std.rs"
 owner = "runtime"
 exit_phase = "R2"
 status = "active"
@@ -375,7 +388,7 @@ evidence = "调研 §4.3：a2r_std.rs:1231-1306 调 ui::frame_bench 与 code_edi
 id = "weld-database-ui-artifacts"
 coverage_group = "core-ui-weld"
 kind = "weld"
-path = "crates/auto-lang/src/database/mod.rs"
+path = "crates/auto-lang-core/src/database/mod.rs"
 owner = "lang-core"
 exit_phase = "R4"
 status = "active"
@@ -395,7 +408,7 @@ evidence = "调研 §4.3：build.rs:39 扫 ui_gen、91-107 扫整个 crates 与�
 id = "weld-aura-validate-generator-dep"
 coverage_group = "core-ui-weld"
 kind = "weld"
-path = "crates/auto-lang/src/aura/validate.rs"
+path = "crates/auto-ui-compiler/src/aura/validate.rs"
 owner = "ui-core"
 exit_phase = "R4"
 status = "active"
@@ -405,7 +418,7 @@ evidence = "调研 §4.5：aura/validate.rs:20 反引 ui_gen::widget::AUTO_IMPOR
 [[ownership]]
 id = "weld-ast-ui-variants"
 kind = "weld"
-path = "crates/auto-lang/src/ast.rs"
+path = "crates/auto-lang-core/src/ast.rs"
 owner = "auto-ui"
 exit_phase = "R8"
 status = "active"
@@ -415,7 +428,7 @@ evidence = "调研 §4.1：ast.rs:207,220-236 闭合 Stmt enum 拥有 WidgetDecl
 [[ownership]]
 id = "weld-parser-ui-grammar"
 kind = "weld"
-path = "crates/auto-lang/src/parser.rs"
+path = "crates/auto-lang-core/src/parser.rs"
 owner = "lang-core"
 exit_phase = "R1"
 status = "active"
@@ -425,7 +438,7 @@ evidence = "调研 §4.1/§4.2：UI 文法在核心 parser（build_dialects 硬�
 [[ownership]]
 id = "weld-dialect-bridge"
 kind = "weld"
-path = "crates/auto-lang/src/dialect.rs"
+path = "crates/auto-lang-core/src/dialect.rs"
 owner = "lang-core"
 exit_phase = "R1"
 status = "active"
@@ -435,7 +448,7 @@ evidence = "调研 §4.2：Dialect trait 存在但不具备外部实现能力（
 [[ownership]]
 id = "weld-dialect-ui"
 kind = "weld"
-path = "crates/auto-lang/src/dialect/ui.rs"
+path = "crates/auto-lang-core/src/dialect/ui.rs"
 owner = "auto-ui"
 exit_phase = "R1"
 status = "active"
@@ -468,7 +481,7 @@ evidence = "调研 §5.2：pac/git/index/lock/pull/resolver 归 man core；resol
 id = "split-man-ui-orchestration"
 coverage_group = "man-split"
 kind = "split"
-path = "crates/auto-man/src/vue.rs"
+path = "crates/auto-ui-tools/src/vue.rs"  # PLAN-815 T-04 迁入 auto-ui-tools
 owner = "auto-ui-tool-plugin"
 exit_phase = "R5"
 status = "active"
@@ -478,7 +491,7 @@ evidence = "调研 §5.2：vue/vue_shadcn/rust_ui/jet/ark/tauri、gallery/wm/ima
 id = "split-man-service-gen"
 coverage_group = "man-split"
 kind = "split"
-path = "crates/auto-man/src/api_gen.rs"
+path = "crates/auto-api-gen/src/api_gen.rs"  # PLAN-815 T-04 析出独立 crate
 owner = "lang-service-adapter"
 exit_phase = "R5"
 status = "active"
@@ -508,7 +521,7 @@ evidence = "调研 §5.2：auto-gen 拆纯模板核心与 Auto 可执行模板 a
 id = "split-man-rust-ui"
 coverage_group = "man-split"
 kind = "split"
-path = "crates/auto-man/src/rust_ui.rs"
+path = "crates/auto-ui-tools/src/rust_ui.rs"  # PLAN-815 T-04 迁入 auto-ui-tools
 owner = "auto-ui-tool-plugin"
 exit_phase = "R5"
 status = "active"
@@ -619,6 +632,26 @@ to = "auto-lang"
 kind = "normal"
 owner = "man-core"
 exit_phase = "R5"
+status = "active"
+
+# PLAN-814：SDK（auto-lang-core=lang-core）对 runtime 域轻能力的存量消费——
+# a2r-std（stdlib 装配/转译支撑）与 auto-terminal-core（轻宿主 terminal
+# capability，plan §3 语义）。规则 lang-core-no-monolith... 书写时仅覆盖
+# 轻词法层成员；SDK 抽取后这两条为设计内边，终态域规则随 R8 拆分复核。
+[[baseline.edge_notes]]
+from = "auto-lang-core"
+to = "a2r-std"
+kind = "normal"
+owner = "PLAN-814"
+exit_phase = "R8"
+status = "active"
+
+[[baseline.edge_notes]]
+from = "auto-lang-core"
+to = "auto-terminal-core"
+kind = "normal"
+owner = "PLAN-814"
+exit_phase = "R8"
 status = "active"
 note = "man→完整语言栈（含 VM）；调研 §5.1/Design 37 §5——包管理核心与语言/服务构建 adapter 分层后退出"
 

@@ -10,7 +10,25 @@ license = "MIT"
 auto-tool-protocol = { path = "../auto-tool-protocol" }
 # I-PROJECT 单源请求类型 + wire 解码(动态求值仍归 auto-man adapter,不在此复制)。
 auto-project-model = { path = "../auto-project-model", features = ["wire"] }
+# ---- PLAN-815 T-04: 生成主体闭包(M814-A 公开面 + 单算法 api 生成) ----
+# UI 编译域(aura/ui_gen 四生成器/style/theme;指纹源)。
+auto-ui-compiler = { path = "../auto-ui-compiler" }
+# 纯语言 SDK(Parser/ast/api/config/design_tokens/vm/http 服务面)。
+auto-lang-core = { path = "../auto-lang-core" }
+# 声明单源(rust_sidecar/theme 的 core 规则;PacSource legacy 臂直读)。
+auto-man-core = { path = "../auto-man-core" }
+# API 生成单算法(generate_api/rust server/ts client + 共享 rust 工作区布局)。
+auto-api-gen = { path = "../auto-api-gen" }
+auto-val = { path = "../auto-val" }
+serde = { workspace = true }
 serde_json = { workspace = true }
+colored = { workspace = true }
+rust-embed = { workspace = true }
+base64 = "0.22"
+blake3 = { workspace = true }
+sha2 = "0.10"
+toml = { workspace = true }
+dirs = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

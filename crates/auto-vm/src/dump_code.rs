@@ -1,5 +1,5 @@
-use auto_lang::parser::Parser as AutoParser;
-use auto_lang::vm::codegen::Codegen;
+use auto_lang_core::parser::Parser as AutoParser;
+use auto_lang_core::vm::codegen::Codegen;
 
 fn main() {
     let source = std::fs::read_to_string("tmp/test_debug.at").unwrap();

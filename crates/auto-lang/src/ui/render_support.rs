@@ -442,7 +442,10 @@ mod tests {
             let a = get_support(canon);
             let b = get_support(alias);
             assert_eq!(a.level, b.level, "{canon} vs {alias}: level");
-            assert_eq!(a.ignored_props, b.ignored_props, "{canon} vs {alias}: ignored");
+            assert_eq!(
+                a.ignored_props, b.ignored_props,
+                "{canon} vs {alias}: ignored"
+            );
             assert_eq!(a.note, b.note, "{canon} vs {alias}: note");
         }
     }
@@ -531,15 +534,15 @@ mod tests {
             model { var query str = "hello" }
             view { col { command-input (placeholder: "Search", value: .query) {} } }
         }"#;
-        let component = crate::build_dynamic_component(source, None)
-            .expect("build command-input fixture");
+        let component =
+            crate::build_dynamic_component(source, None).expect("build command-input fixture");
         let (view, _, _) = component.view_with_debug_gated(false);
         let mut inputs = Vec::new();
         find_inputs(&view, &mut inputs);
         assert!(
-            inputs.iter().any(|(p, v, styled)| *p == "Search"
-                && *v == "hello"
-                && *styled),
+            inputs
+                .iter()
+                .any(|(p, v, styled)| *p == "Search" && *v == "hello" && *styled),
             "command-input 须转出原生 Input(placeholder/value/style 落位),实际: {:?}",
             inputs
         );

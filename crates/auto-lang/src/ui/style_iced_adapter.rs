@@ -1,0 +1,1784 @@
+// PLAN-814 T-03：style DSL 的 iced 后端适配器——分析/模型单源已迁
+// auto-ui-compiler::style；本文件是 iced 运行时件（iced::Color/Radius/
+// Padding 映射），按 owner 留本包，类型面经 compiler 公开 style 消费。
+
+// Iced Adapter - Convert StyleClass IR to Iced style objects
+//
+// This adapter translates the unified StyleClass IR into Iced-specific
+// style objects for styling components.
+
+use crate::ui::style::{Color, SizeValue, Style, StyleClass};
+
+// Theme state + semantic color resolution now live in `super::theme`
+// (backend-neutral, so `code-editor`-only builds keep dark-mode-aware
+// semantic alpha blending in class.rs). Re-exported here for the many
+// existing `iced_adapter::…` call sites.
+pub use crate::ui::style::theme::{
+    accent_name, dark_mode, resolve_border_rgb, resolve_semantic_rgb, set_accent_name,
+    set_dark_mode, set_window_height, set_window_width, window_height, window_width,
+};
+
+// Plan 412 §1.3:降级必须"显式" — iced 物理不支持的能力(flex-wrap/self-*/order/
+// inset/fixed/sticky)在首次遇到时 eprintln 提示一次(开发期可见),之后静默降级。
+// from_style 每帧都会被调用,必须去重避免刷屏。
+fn warn_layout_degradation(class_name: &str) {
+    thread_local! {
+        static WARNED: std::cell::RefCell<std::collections::HashSet<&'static str>> =
+            std::cell::RefCell::new(std::collections::HashSet::new());
+    }
+    // 泛型 class(order-N)按桶去重:泄漏 'static 通过手工固定 key 集合实现。
+    let key: &'static str = match class_name {
+        "flex-wrap" => "flex-wrap",
+        "flex-wrap-reverse" => "flex-wrap-reverse",
+        "self-start" => "self-start",
+        "self-center" => "self-center",
+        "self-end" => "self-end",
+        "self-stretch" => "self-stretch",
+        "order-N" => "order-N",
+        "inset-N" => "inset-N",
+        "fixed" => "fixed",
+        "sticky" => "sticky",
+        _ => "other",
+    };
+    WARNED.with(|w| {
+        if w.borrow_mut().insert(key) {
+            eprintln!(
+                "[auto-lang/plan412] `{}` is not supported by the native (iced) renderer — \
+                 degrading per Plan 412 §5 (see /position page degradation matrix).",
+                class_name
+            );
+        }
+    });
+}
+
+/// Iced style representation
+///
+/// Iced has a more traditional style system with separate Style, Theme, and layout objects.
+/// This adapter converts StyleClass IR into Iced-compatible structures.
+///
+/// NOTE: Iced does not support margin - margin-related classes will be ignored
+/// Plan 527 T2: `Default + PartialEq` power the parity audit's mechanical
+/// applied check — `from_style(single class) != IcedStyle::default()` means
+/// the adapter consumed the class (a field was set), vs a no-op arm.
+#[derive(Clone, Default, PartialEq)]
+pub struct IcedStyle {
+    // Spacing (L1 + L2)
+    pub padding: Option<f32>,
+    pub padding_x: Option<f32>,
+    pub padding_y: Option<f32>,
+    pub padding_top: Option<f32>,
+    pub padding_bottom: Option<f32>,
+    pub padding_left: Option<f32>,
+    pub padding_right: Option<f32>,
+    // NOTE: Iced doesn't support margin - these fields are handled as external spacing
+    pub margin: Option<f32>,        // Not supported by Iced
+    pub margin_x: Option<f32>,      // Not supported by Iced
+    pub margin_y: Option<f32>,      // Not supported by Iced
+    pub margin_top: Option<f32>,    // Converted to external top spacing
+    pub margin_bottom: Option<f32>, // mb-N: converted to external bottom spacing (Plan 448 对齐批)
+    pub margin_left: Option<f32>,   // ml-N: converted to external left spacing
+    pub margin_right: Option<f32>,  // mr-N: converted to external right spacing
+    pub margin_left_auto: bool,     // ml-auto: push element to right in row
+    pub margin_top_auto: bool,      // mt-auto: push element to bottom in column (PLAN-080)
+    pub margin_right_auto: bool,    // mr-auto: push element to left in row
+    /// PLAN-663 C2: my-auto/m-auto — 定高列内垂直安全居中标记
+    pub margin_y_auto: bool,
+    pub gap: Option<f32>,
+    // Plan 412: axis-specific gaps — Row consumes gap_x, Column consumes gap_y.
+    pub gap_x: Option<f32>,
+    pub gap_y: Option<f32>,
+
+    // Colors (L1)
+    pub background_color: Option<iced::Color>,
+    pub text_color: Option<iced::Color>,
+    pub gradient_dir: Option<crate::ui::style::class::GradientDir>,
+    pub gradient_from: Option<iced::Color>,
+    pub gradient_to: Option<iced::Color>,
+    /// Plan 527 T4: via 中间 stop(iced 多 stop 渐变真消费,默认 50% 位)
+    pub gradient_via: Option<iced::Color>,
+    /// Plan 527 T4: stop 位置百分比(from 默认 0/via 50/to 100,归一 0.0..1.0)
+    pub gradient_from_pos: Option<f32>,
+    pub gradient_via_pos: Option<f32>,
+    pub gradient_to_pos: Option<f32>,
+    /// PLAN-625 T-05: `bg-clip-text` 渐变裁剪文字标记——适配器消费:文字回落
+    /// 继承可读色(text-transparent 不生效)、渲染器抑制渐变背景盒。
+    pub gradient_clip_text: bool,
+
+    // Plan 527 T4: ring(focus 环模拟,渲染层分期消费)
+    pub ring_width: Option<f32>,
+    pub ring_color: Option<iced::Color>,
+    pub ring_inset: bool,
+
+    // Plan 527 T4: object-fit(Image ContentFit 消费面)
+    pub object_fit: Option<crate::ui::style::ObjectFit>,
+
+    /// PLAN-621: icon state 契约的描边加重（绝对值，builder 算好）——仅
+    /// renderer 的 lucide 路径消费，其余视图忽略。
+    pub stroke_width: Option<f32>,
+
+    // Plan 527 T4: 彩色阴影(渲染层分期消费,默认半透明黑)
+    pub shadow_color: Option<iced::Color>,
+
+    // Sizing (L1)
+    pub width: Option<IcedSize>,
+    pub height: Option<IcedSize>,
+    pub max_width: Option<f32>,  // pixels
+    pub max_height: Option<f32>, // pixels
+    /// PLAN-077: `max-w-[N%]` 百分比上限（0-100，layout 期相对父级求值）。
+    pub max_width_pct: Option<f32>,
+
+    // Border Radius (L1 + L2)
+    pub rounded: bool,
+    pub border_radius: Option<f32>,
+    pub border_radius_tl: Option<f32>,
+    pub border_radius_tr: Option<f32>,
+    pub border_radius_br: Option<f32>,
+    pub border_radius_bl: Option<f32>,
+
+    // Border (L2)
+    pub border: bool,
+    pub border_width: Option<f32>,
+    pub border_color: Option<iced::Color>,
+    // PLAN-050 C2: 单侧边框（renderer 以 1px 填充条模拟）
+    pub border_bottom: bool,
+    pub border_top: bool,
+    pub border_left: bool,
+    pub border_right: bool,
+    /// PLAN-054 T1: 单侧宽度档（border-l-N）——只供 apply_side_borders 的
+    /// 条宽，不进 border_width（否则 build_container_style 的 border_width>0
+    /// 条件会再画四边整圈边框——quote 去框根因的次生面）。
+    pub side_border_width: Option<f32>,
+
+    // Typography (L2)
+    pub font_size: Option<IcedFontSize>,
+    pub font_weight: Option<IcedFontWeight>,
+    pub font_family: Option<String>, // "serif" | "sans" | "mono"
+    pub text_align: Option<IcedTextAlign>,
+    /// truncate / whitespace-nowrap:单行渲染(iced Wrapping::None),
+    /// renderer 侧配合 clip 容器实现 CSS truncate 语义。
+    pub wrap_none: bool,
+    /// L0 fix(2026-10-11):truncate 与 whitespace-nowrap 分流标记——
+    /// 前者 fill+clip 独占截断语义，后者仅禁折行保自然宽。
+    pub truncate_flag: bool,
+    /// line-through: 文本删除线
+    pub line_through: bool,
+    /// underline: 文本下划线
+    pub underline: bool,
+
+    // Effects (L3)
+    pub shadow: bool,
+    pub shadow_size: Option<IcedShadowSize>,
+    pub opacity: Option<f32>,
+
+    // Position (L3)
+    // NOTE: Iced doesn't support absolute positioning - these fields are ignored
+    pub position: Option<IcedPosition>,
+    pub z_index: Option<i16>, // Not supported by Iced
+    /// PLAN-095 T-03: 浮层穿透标记（pointer-events-none）与百分比定位/尺寸。
+    pub pointer_events_none: bool,
+    pub top_percent: Option<f32>,
+    pub right_percent: Option<f32>,
+    pub bottom_percent: Option<f32>,
+    pub left_percent: Option<f32>,
+
+    // Overflow (L3)
+    pub overflow_x: Option<IcedOverflow>,
+    pub overflow_y: Option<IcedOverflow>,
+
+    // Layout (L1 Core)
+    pub align_items: Option<IcedAlign>,
+    pub justify_content: Option<IcedJustify>,
+    /// Plan 527 T3: display 类 IR(flex/block/inline/inline-block/inline-flex)
+    pub display: Option<IcedDisplay>,
+    // PLAN-054 T4 (A6): self-start/center/end —— 此前仅降级告警,musk
+    // 用户消息行 `self-end items-end` 右对齐失效(气泡贴左裸排)。
+    pub align_self: Option<IcedAlign>,
+
+    // Plan 412 — Layout engine extras
+    pub items_stretch: bool, // cross-axis Fill (build_row/build_column wrap children)
+    pub row_reverse: bool,   // flex-row-reverse: reverse children at build time
+    pub col_reverse: bool,   // flex-col-reverse: reverse children at build time
+    pub flex_wrap: bool,     // flex-wrap: iced 无 wrap — 降级单行标记(仅提示)
+
+    // Grid (L3)
+    // NOTE: Iced doesn't support grid layout - these fields are ignored
+    pub grid: bool,            // Not supported by Iced
+    pub grid_cols: Option<u8>, // Not supported by Iced
+    pub grid_rows: Option<u8>, // Not supported by Iced
+    pub col_span: Option<u8>,  // Not supported by Iced
+    pub row_span: Option<u8>,  // Not supported by Iced
+    pub col_start: Option<u8>, // Not supported by Iced
+    pub row_start: Option<u8>, // Not supported by Iced
+    // Plan 527 T3: grid 定位扩档(存字段,渲染降级同 col_start/row_start)
+    pub col_end: Option<u8>, // Not supported by Iced
+    pub row_end: Option<u8>, // Not supported by Iced
+    /// Plan 527 T3: order-N 存字段(渲染按源码序,降级语义,KNOWN-DEBT 登记)
+    pub order: Option<i16>,
+    /// Plan 527 T3: flex-basis(Fill-ratio/像素近似,渲染层分期消费)
+    pub flex_basis: Option<crate::ui::style::SizeValue>,
+
+    // Extended sizing
+    pub min_height: Option<f32>,
+    pub min_width: Option<f32>,
+
+    // Extended typography
+    pub font_size_arbitrary: Option<f32>,
+    pub line_height: Option<f32>,
+    /// Plan 527 T5: 绝对行高(leading-3..10,px 固定值,优先于相对倍率)
+    pub line_height_px: Option<f32>,
+    /// Plan 527 T5: 字距(tracking-*,em;iced 0.14 文本无 letter_spacing,渲染分期)
+    pub letter_spacing: Option<f32>,
+    /// Plan 527 T5: 行数截断(line-clamp-N;0 = none;渲染层以行高裁剪)
+    pub line_clamp: Option<u8>,
+
+    // Shadow extended
+    pub shadow_arbitrary: Option<String>,
+
+    // Position offsets (not fully supported by Iced)
+    pub top_offset: Option<f32>,
+    pub bottom_offset: Option<f32>,
+    pub right_offset: Option<f32>,
+    pub left_offset: Option<f32>,
+
+    // Transform (not supported by Iced, stored for reference)
+    pub rotate: Option<f32>,
+
+    // Visibility
+    pub hidden: bool,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedAlign {
+    Start,
+    Center,
+    End,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedJustify {
+    Start,
+    Center,
+    End,
+    Between,
+    // Plan 412: 由 FillPortion spacer 精确模拟(lead/trail=1, between=2)。
+    Around,
+    // Plan 412: n+1 个等权 spacer(含两端)。
+    Evenly,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedShadowSize {
+    Sm,
+    Md,
+    Lg,
+    Xl,
+    Xxl,
+    None,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedPosition {
+    Relative,
+    Absolute, // Not supported by Iced
+    /// Plan 527 T3: fixed/sticky 落 position 字段(渲染降级为文档流位,表可见)
+    Fixed, // Not supported by Iced (degrades to in-flow)
+    Sticky,   // Not supported by Iced (degrades to in-flow)
+}
+
+/// Plan 527 T3: display 类 IR 记录 —— flex/block/inline 等由 view builder
+/// 消费(布局分派),此前 IcedStyle 无字段导致审计机械差分误判 parsed-only。
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedDisplay {
+    Flex,
+    Block,
+    Inline,
+    InlineBlock,
+    InlineFlex,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum IcedOverflow {
+    Auto,
+    Hidden,
+    Visible,
+    Scroll,
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum IcedSize {
+    Full,
+    /// PLAN-663 C1a: 视口单位（h-screen 族）。消费端缺省=Fill（窗口根，历
+    /// 史行为）；定高(px)嵌入边界子树内由 rewrite_viewport_units 预重写为
+    /// Fixed(边界)，本变体到不了渲染端即为重写完成态。
+    Screen,
+    FillPortion(u16),
+    Fixed(f32),
+    /// PLAN-526 T27：`w-auto`/`h-auto`（hug 内容）。此前 Auto 误映射
+    /// Full——popover 面板等"无 width 类"场景被撑满宿主宽。
+    Shrink,
+    /// PLAN-095 T-03: 百分比尺寸（`width:30%`/`w-[30%]`）——iced
+    /// Length::Relative(v/100)，浮层语境相对宿主内容矩形。
+    Percent(f32),
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedFontSize {
+    Xs,   // 12px
+    Sm,   // 14px
+    Base, // 16px
+    Lg,   // 18px
+    Xl,   // 20px
+    Xxl,  // 24px
+    X3xl, // 30px
+    X4xl, // 36px
+    X5xl, // 48px (Plan 411)
+    X6xl, // 60px
+    X7xl, // 72px
+    X8xl, // 96px
+    X9xl, // 128px
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedFontWeight {
+    // Plan 527 T5: 全字重档(thin..black 9 档,对齐 iced::font::Weight)
+    Thin,
+    ExtraLight,
+    Light,
+    Normal,
+    Medium,
+    SemiBold,
+    Bold,
+    ExtraBold,
+    Black,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum IcedTextAlign {
+    Left,
+    Center,
+    Right,
+}
+
+impl IcedStyle {
+    /// Convert a Style to IcedStyle
+    pub fn from_style(style: &Style) -> Self {
+        let mut iced_style = IcedStyle {
+            padding: None,
+            padding_x: None,
+            padding_y: None,
+            padding_top: None,
+            padding_bottom: None,
+            padding_left: None,
+            padding_right: None,
+            margin: None,   // Not supported by Iced
+            margin_x: None, // Not supported by Iced
+            margin_y: None, // Not supported by Iced
+            margin_top: None,
+            margin_bottom: None,
+            margin_left: None,
+            margin_right: None,
+            margin_left_auto: false,
+            margin_top_auto: false,
+            margin_right_auto: false,
+            margin_y_auto: false,
+            gap: None,
+            gap_x: None,
+            gap_y: None,
+            background_color: None,
+            text_color: None,
+            gradient_dir: None,
+            gradient_from: None,
+            gradient_to: None,
+            // Plan 527 T4
+            gradient_via: None,
+            gradient_from_pos: None,
+            gradient_via_pos: None,
+            gradient_to_pos: None,
+            ring_width: None,
+            ring_color: None,
+            ring_inset: false,
+            object_fit: None,
+            stroke_width: None,
+            shadow_color: None,
+            width: None,
+            height: None,
+            max_width: None,
+            max_height: None,
+            max_width_pct: None,
+            rounded: false,
+            border_radius: None,
+            border_radius_tl: None,
+            border_radius_tr: None,
+            border_radius_br: None,
+            border_radius_bl: None,
+            border: false,
+            border_width: None,
+            border_color: None,
+            border_bottom: false,
+            border_top: false,
+            border_left: false,
+            border_right: false,
+            side_border_width: None,
+            font_size: None,
+            font_weight: None,
+            font_family: None,
+            text_align: None,
+            wrap_none: false,
+            truncate_flag: false,
+            line_through: false,
+            underline: false,
+            // L3
+            shadow: false,
+            shadow_size: None,
+            opacity: None,
+            position: None,
+            z_index: None, // Not supported by Iced
+            overflow_x: None,
+            overflow_y: None,
+            align_items: None,
+            justify_content: None,
+            display: None,
+            align_self: None,
+            items_stretch: false,
+            row_reverse: false,
+            col_reverse: false,
+            flex_wrap: false,
+            grid: false,     // Not supported by Iced
+            grid_cols: None, // Not supported by Iced
+            grid_rows: None, // Not supported by Iced
+            col_span: None,  // Not supported by Iced
+            row_span: None,  // Not supported by Iced
+            col_start: None, // Not supported by Iced
+            row_start: None, // Not supported by Iced
+            // Plan 527 T3
+            col_end: None,
+            row_end: None,
+            order: None,
+            flex_basis: None,
+            // Extended sizing
+            min_height: None,
+            min_width: None,
+            // Extended typography
+            font_size_arbitrary: None,
+            line_height: None,
+            // Plan 527 T5
+            line_height_px: None,
+            letter_spacing: None,
+            line_clamp: None,
+            // Shadow extended
+            shadow_arbitrary: None,
+            // Position offsets
+            top_offset: None,
+            bottom_offset: None,
+            right_offset: None,
+            left_offset: None,
+            // PLAN-095 T-03: 浮层穿透与百分比定位/尺寸
+            pointer_events_none: false,
+            top_percent: None,
+            bottom_percent: None,
+            right_percent: None,
+            left_percent: None,
+
+            // Transform
+            rotate: None,
+            // Visibility
+            hidden: false,
+            // PLAN-625 T-05: 渐变裁剪文字标记(见同名字段注)
+            gradient_clip_text: false,
+        };
+
+        for class in &style.classes {
+            iced_style.apply_class(class);
+        }
+
+        // PLAN-625 T-05: bg-clip-text + text-transparent 组合降级——iced 无
+        // 文字填充渐变,透明文字叠渐变底 = 不可读色块(ui-gallery 顶栏实证);
+        // 文字色清空回落继承可读色,渐变背景盒由渲染容器臂抑制。
+        if iced_style.gradient_clip_text && iced_style.text_color.map_or(false, |c| c.a == 0.0) {
+            iced_style.text_color = None;
+        }
+
+        // Plan 370 (Issue 1): post-process flex-1 height. During per-class
+        // application, flex-1 can't see overflow/min-h classes that appear
+        // later in the class list. Now that all classes are applied, if
+        // flex-1 set width=Fill AND a vertical-fill signal is present, also
+        // set height=Fill. Signals:
+        //   - overflow-x/overflow-y: scroll container that should fill
+        //   - min_height == 0.0 (min-h-0): CSS flexbox idiom pairing flex-1
+        //     with min-h-0 to allow the child to shrink — strongly implies
+        //     vertical fill intent. A non-zero min-height (min-h-64) does NOT
+        //     trigger this (e.g. a textarea that should be at least 64px, not
+        //     fill all space).
+        //   - EDGE-16 问题2(已撤,概要页对拍 2026-08-29): 曾按"FlexCol 在场"
+        //     猜测补 height=Fill。该猜测把"自身方向"误当"父轴向":横向
+        //     Shrink row 里的 flex-col 子项(height=Fill 无界可填)整卡塌 0
+        //     (auto-os-config System Overview 六卡片全灭的根因)。纵向主轴
+        //     场景由 renderer Row/Column 分派点的轴向预修正接管(Column 分支
+        //     把 Flex1/FlexAuto/Grow 转写为显式 Height(Full)),此处不再猜测。
+        let is_scroll_overflow = matches!(
+            iced_style.overflow_x,
+            Some(IcedOverflow::Auto | IcedOverflow::Scroll)
+        ) || matches!(
+            iced_style.overflow_y,
+            Some(IcedOverflow::Auto | IcedOverflow::Scroll)
+        );
+        if iced_style.width == Some(IcedSize::Full)
+            && iced_style.height.is_none()
+            && (is_scroll_overflow || iced_style.min_height == Some(0.0))
+        {
+            iced_style.height = Some(IcedSize::Full);
+        }
+
+        // margin_top is kept as-is — the renderer wraps the element in a container
+        // with external top padding to simulate margin-top, separate from internal padding.
+        // This avoids visual-wrap elements (gradient cards, bordered cols) absorbing
+        // mt-* into their internal padding.
+
+        iced_style
+    }
+
+    /// Plan 527 T6: base + 指定变体类合并(变体后应用胜出,hover 先例同构)。
+    /// 按钮状态回调面(Hovered/Focused/Pressed/Disabled)经此构建各状态样式;
+    /// 无变体声明时等价 base。
+    pub fn merged_with_variant(base: &Style, variant: crate::ui::style::Variant) -> IcedStyle {
+        let mut merged = base.classes.clone();
+        merged.extend(base.variant_slice(variant));
+        IcedStyle::from_style(&Style {
+            classes: merged,
+            hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
+        })
+    }
+
+    /// Calculate the effective 4-corner iced border radius
+    pub fn effective_border_radius(&self) -> iced::border::Radius {
+        // 方向性圆角类(RoundedT/B/L/R/TL/TR/BL/BR)只设对角字段、不设
+        // 标量:未指定角必须为 0,不得被 `rounded` 布尔的默认抬高——
+        // 修复前 base 回退 4.0 使 rounded-b-[15px] 的上角被凭空圆 ~4px
+        // (VM 轨状态栏实测上角 ~6 物理 px ≈ 4 逻辑 × DPI)。
+        // 命名族(rounded/sm/md/.../full)全部成对携带标量,无消费方
+        // 依赖"布尔真而无标量"的 4.0 回退。
+        let base = self.border_radius.unwrap_or(0.0);
+        let tl = self.border_radius_tl.unwrap_or(base);
+        let tr = self.border_radius_tr.unwrap_or(base);
+        let br = self.border_radius_br.unwrap_or(base);
+        let bl = self.border_radius_bl.unwrap_or(base);
+        iced::border::Radius {
+            top_left: tl,
+            top_right: tr,
+            bottom_right: br,
+            bottom_left: bl,
+        }
+    }
+
+    /// Check if any corner radius is active
+    pub fn has_border_radius(&self) -> bool {
+        self.rounded
+            || self.border_radius.map_or(false, |r| r > 0.0)
+            || self.border_radius_tl.map_or(false, |r| r > 0.0)
+            || self.border_radius_tr.map_or(false, |r| r > 0.0)
+            || self.border_radius_br.map_or(false, |r| r > 0.0)
+            || self.border_radius_bl.map_or(false, |r| r > 0.0)
+    }
+
+    /// Resolve the four-side padding box (PLAN-619 R2).
+    ///
+    /// Precedence per axis mirrors Tailwind's emitted CSS order — the more
+    /// specific utility always wins regardless of the class attribute order:
+    /// explicit side (`pt-*`) > axis (`px-*`/`py-*`) > uniform (`p-*`) >
+    /// legacy `padding` attribute. The previous early-return on uniform
+    /// padding silently discarded every per-axis override (`p-2 py-1.5`),
+    /// which is what made the VM note rows taller than Vue's.
+    pub fn effective_padding(&self, legacy: u16) -> iced::Padding {
+        let base = self.padding.unwrap_or(legacy as f32);
+        let px = self.padding_x.unwrap_or(base);
+        let py = self.padding_y.unwrap_or(base);
+        iced::Padding {
+            top: self.padding_top.unwrap_or(py),
+            right: self.padding_right.unwrap_or(px),
+            bottom: self.padding_bottom.unwrap_or(py),
+            left: self.padding_left.unwrap_or(px),
+        }
+    }
+
+    /// Resolve the four-side margin box (PLAN-619 R3).
+    ///
+    /// Same precedence ladder as [`Self::effective_padding`]: side > axis >
+    /// uniform. iced has no margin in its layout model, so consumers fold
+    /// this into external padding. Every `m-*` family member reaches here —
+    /// before this existed only the explicit per-side utilities (`mt-*`)
+    /// were read, so `mx-*` / `my-*` / `m-*` were dropped entirely.
+    pub fn effective_margin(&self) -> (f32, f32, f32, f32) {
+        let m = self.margin.unwrap_or(0.0);
+        let mx = self.margin_x.unwrap_or(m);
+        let my = self.margin_y.unwrap_or(m);
+        (
+            self.margin_top.unwrap_or(my),
+            self.margin_right.unwrap_or(mx),
+            self.margin_bottom.unwrap_or(my),
+            self.margin_left.unwrap_or(mx),
+        )
+    }
+
+    /// True when any margin source (uniform / axis / side) contributes or an
+    /// `*-auto` push is declared — the gate for [`Self::effective_margin`]
+    /// consumers before they wrap an element.
+    pub fn has_margin(&self) -> bool {
+        self.margin.is_some()
+            || self.margin_x.is_some()
+            || self.margin_y.is_some()
+            || self.margin_top.is_some()
+            || self.margin_bottom.is_some()
+            || self.margin_left.is_some()
+            || self.margin_right.is_some()
+            || self.margin_left_auto
+            || self.margin_right_auto
+            || self.margin_top_auto
+    }
+
+    /// Apply a single StyleClass to this IcedStyle
+    fn apply_class(&mut self, class: &StyleClass) {
+        match class {
+            // ========== Spacing (L1 + L2) ==========
+            StyleClass::Padding(size) => {
+                self.padding = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingX(size) => {
+                self.padding_x = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingY(size) => {
+                self.padding_y = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingTop(size) => {
+                self.padding_top = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingBottom(size) => {
+                self.padding_bottom = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingLeft(size) => {
+                self.padding_left = Some(size.to_pixels() as f32);
+            }
+            StyleClass::PaddingRight(size) => {
+                self.padding_right = Some(size.to_pixels() as f32);
+            }
+            StyleClass::Margin(size) => {
+                // Iced doesn't support margin - store but will be ignored
+                self.margin = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginX(size) => {
+                // Iced doesn't support margin - store but will be ignored
+                self.margin_x = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginY(size) => {
+                // Iced doesn't support margin - store but will be ignored
+                self.margin_y = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginTop(size) => {
+                // PLAN-080: mt-auto 的推底语义——此前 Auto 落 to_pixels()=0
+                // 静默丢失（musk rail 底簇不被推到栏底，y 偏 ~310px 实机
+                // 对拍定罪）。像素值维持外部 padding 包装语义不变。
+                if matches!(size, crate::ui::style::SizeValue::Auto) {
+                    self.margin_top_auto = true;
+                } else {
+                    self.margin_top = Some(size.to_pixels() as f32);
+                }
+            }
+            StyleClass::MarginBottom(size) => {
+                self.margin_bottom = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginLeft(size) => {
+                self.margin_left = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginRight(size) => {
+                self.margin_right = Some(size.to_pixels() as f32);
+            }
+            StyleClass::MarginLeftAuto => {
+                self.margin_left_auto = true;
+            }
+            StyleClass::MarginRightAuto => {
+                self.margin_right_auto = true;
+            }
+            StyleClass::MarginXAuto => {
+                // mx-auto = center horizontally: both flags set
+                self.margin_left_auto = true;
+                self.margin_right_auto = true;
+            }
+            StyleClass::MarginYAuto => {
+                // PLAN-663 C2: 垂直安全居中标记（渲染前由
+                // expand_margin_y_auto 消费,展开 h-full justify-center 包裹）
+                self.margin_y_auto = true;
+            }
+            StyleClass::MarginAuto => {
+                // PLAN-663 C2: 水平+垂直双向 auto
+                self.margin_left_auto = true;
+                self.margin_right_auto = true;
+                self.margin_y_auto = true;
+            }
+            StyleClass::Gap(size) => {
+                self.gap = Some(size.to_pixels() as f32);
+            }
+            StyleClass::GapX(size) => {
+                self.gap_x = Some(size.to_pixels() as f32);
+            }
+            StyleClass::GapY(size) => {
+                self.gap_y = Some(size.to_pixels() as f32);
+            }
+            // Plan 412: space-x/y 视觉等价 gap-x/y(Tailwind per-child margin ≈ gap)。
+            StyleClass::SpaceX(size) => {
+                if self.gap_x.is_none() {
+                    self.gap_x = Some(size.to_pixels() as f32);
+                }
+            }
+            StyleClass::SpaceY(size) => {
+                if self.gap_y.is_none() {
+                    self.gap_y = Some(size.to_pixels() as f32);
+                }
+            }
+
+            // ========== Colors (L1) ==========
+            StyleClass::BackgroundColor(color) => {
+                self.background_color = Some(convert_color(color));
+            }
+            StyleClass::TextColor(color) => {
+                self.text_color = Some(convert_color(color));
+            }
+            StyleClass::BgGradient(dir) => {
+                self.gradient_dir = Some(*dir);
+            }
+            StyleClass::BgClipText => {
+                self.gradient_clip_text = true;
+            }
+            StyleClass::GradientFrom(color) => {
+                self.gradient_from = Some(convert_color(color));
+                if self.background_color.is_none() {
+                    self.background_color = Some(convert_color(color));
+                }
+            }
+            StyleClass::GradientTo(color) => {
+                self.gradient_to = Some(convert_color(color));
+            }
+            // Plan 527 T4: via 中间 stop + stop 位置百分比(默认 0/50/100)
+            StyleClass::GradientVia(color) => {
+                self.gradient_via = Some(convert_color(color));
+            }
+            StyleClass::GradientFromStop(pct) => {
+                self.gradient_from_pos = Some(*pct as f32 / 100.0);
+            }
+            StyleClass::GradientViaStop(pct) => {
+                self.gradient_via_pos = Some(*pct as f32 / 100.0);
+            }
+            StyleClass::GradientToStop(pct) => {
+                self.gradient_to_pos = Some(*pct as f32 / 100.0);
+            }
+            // Plan 527 T4: ring / object-fit / 彩色阴影(渲染层分期消费面)
+            StyleClass::RingWidth(w) => {
+                self.ring_width = Some(*w);
+            }
+            StyleClass::RingColor(color) => {
+                self.ring_color = Some(convert_color(color));
+            }
+            StyleClass::RingInset => {
+                self.ring_inset = true;
+            }
+            StyleClass::ObjectFit(fit) => {
+                self.object_fit = Some(*fit);
+            }
+            // PLAN-621: icon state 激活加重（绝对值直读；parity 审计语义 =
+            // 「类被消费」——字段被置即非 default）。
+            StyleClass::StrokeWidth(w) => {
+                self.stroke_width = Some(*w);
+            }
+            StyleClass::ShadowColor(color) => {
+                self.shadow_color = Some(convert_color(color));
+            }
+
+            // ========== Sizing (L1) ==========
+            StyleClass::Width(size) => {
+                self.width = Some(convert_size(size));
+            }
+            StyleClass::WidthPercent(v) => {
+                self.width = Some(IcedSize::Percent(*v));
+            }
+            StyleClass::Height(size) => {
+                self.height = Some(convert_size(size));
+            }
+            StyleClass::HeightPercent(v) => {
+                self.height = Some(IcedSize::Percent(*v));
+            }
+            StyleClass::MaxWidth(px) => {
+                self.max_width = Some(*px);
+            }
+            StyleClass::MaxWidthPct(pct) => {
+                self.max_width_pct = Some(*pct);
+            }
+            StyleClass::MaxHeight(px) => {
+                self.max_height = Some(*px);
+            }
+
+            // ========== Border Radius (L1 + L2) ==========
+            StyleClass::RoundedNone => {
+                self.rounded = false;
+                self.border_radius = Some(0.0);
+                self.border_radius_tl = Some(0.0);
+                self.border_radius_tr = Some(0.0);
+                self.border_radius_br = Some(0.0);
+                self.border_radius_bl = Some(0.0);
+            }
+            StyleClass::Rounded => {
+                self.rounded = true;
+                self.border_radius = Some(4.0);
+            }
+            StyleClass::RoundedSm => {
+                self.rounded = true;
+                self.border_radius = Some(2.0);
+            }
+            StyleClass::RoundedMd => {
+                self.rounded = true;
+                self.border_radius = Some(4.0);
+            }
+            StyleClass::RoundedLg => {
+                self.rounded = true;
+                self.border_radius = Some(8.0);
+            }
+            StyleClass::RoundedXl => {
+                self.rounded = true;
+                self.border_radius = Some(12.0);
+            }
+            StyleClass::Rounded2Xl => {
+                self.rounded = true;
+                self.border_radius = Some(16.0);
+            }
+            StyleClass::Rounded3Xl => {
+                self.rounded = true;
+                self.border_radius = Some(24.0);
+            }
+            StyleClass::RoundedFull => {
+                self.rounded = true;
+                self.border_radius = Some(9999.0); // Effectively full
+            }
+            StyleClass::RoundedT(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tl = Some(r);
+                self.border_radius_tr = Some(r);
+            }
+            StyleClass::RoundedB(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_bl = Some(r);
+                self.border_radius_br = Some(r);
+            }
+            StyleClass::RoundedL(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tl = Some(r);
+                self.border_radius_bl = Some(r);
+            }
+            StyleClass::RoundedR(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tr = Some(r);
+                self.border_radius_br = Some(r);
+            }
+            StyleClass::RoundedTL(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tl = Some(r);
+            }
+            StyleClass::RoundedTR(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_tr = Some(r);
+            }
+            StyleClass::RoundedBL(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_bl = Some(r);
+            }
+            StyleClass::RoundedBR(sz) => {
+                self.rounded = true;
+                let r = sz.as_ref().map_or(4.0, |s| s.to_pixels());
+                self.border_radius_br = Some(r);
+            }
+
+            // ========== Negative Margin ==========
+            StyleClass::NegativeMargin(size) => {
+                self.margin = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginX(size) => {
+                self.margin_x = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginY(size) => {
+                self.margin_y = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginTop(size) => {
+                self.margin_top = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginBottom(size) => {
+                self.margin_bottom = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginLeft(size) => {
+                self.margin_left = Some(-size.to_pixels_f32());
+            }
+            StyleClass::NegativeMarginRight(size) => {
+                self.margin_right = Some(-size.to_pixels_f32());
+            }
+
+            // ========== Border (L2) ==========
+            StyleClass::BorderBottom => {
+                self.border_bottom = true;
+            }
+            StyleClass::BorderTop => {
+                self.border_top = true;
+            }
+            StyleClass::BorderLeft => {
+                self.border_left = true;
+            }
+            StyleClass::BorderRight => {
+                self.border_right = true;
+            }
+            StyleClass::Border => {
+                self.border = true;
+                self.border_width = Some(1.0);
+            }
+            StyleClass::Border0 => {
+                self.border = false;
+                self.border_width = Some(0.0);
+            }
+            StyleClass::BorderWidth(width) => {
+                self.border = true;
+                self.border_width = Some(*width);
+            }
+            // PLAN-054 T1: 左条宽度档——只供 apply_side_borders 的左条宽
+            // （side_border_width），不进 border_width（build_container_style
+            // 的 border_width>0 条件会画四边整圈边框），也不置 border。
+            StyleClass::BorderLeftWidth(width) => {
+                self.border_left = true;
+                self.side_border_width = Some(*width);
+            }
+            StyleClass::BorderColor(color) => {
+                self.border_color = Some(convert_color(color));
+            }
+
+            // ========== Typography (L2) ==========
+            StyleClass::TextXs => {
+                self.font_size = Some(IcedFontSize::Xs);
+            }
+            StyleClass::TextSm => {
+                self.font_size = Some(IcedFontSize::Sm);
+            }
+            StyleClass::TextBase => {
+                self.font_size = Some(IcedFontSize::Base);
+            }
+            StyleClass::TextLg => {
+                self.font_size = Some(IcedFontSize::Lg);
+            }
+            StyleClass::TextXl => {
+                self.font_size = Some(IcedFontSize::Xl);
+            }
+            StyleClass::Text2Xl => {
+                self.font_size = Some(IcedFontSize::Xxl);
+            }
+            StyleClass::Text3Xl => {
+                self.font_size = Some(IcedFontSize::X3xl);
+            }
+            StyleClass::Text4Xl => {
+                self.font_size = Some(IcedFontSize::X4xl);
+            }
+            StyleClass::Text5Xl => {
+                self.font_size = Some(IcedFontSize::X5xl);
+            }
+            StyleClass::Text6Xl => {
+                self.font_size = Some(IcedFontSize::X6xl);
+            }
+            StyleClass::Text7Xl => {
+                self.font_size = Some(IcedFontSize::X7xl);
+            }
+            StyleClass::Text8Xl => {
+                self.font_size = Some(IcedFontSize::X8xl);
+            }
+            StyleClass::Text9Xl => {
+                self.font_size = Some(IcedFontSize::X9xl);
+            }
+            StyleClass::FontBold => {
+                self.font_weight = Some(IcedFontWeight::Bold);
+            }
+            StyleClass::FontSerif => {
+                self.font_family = Some("serif".to_string());
+            }
+            StyleClass::FontSans => {
+                self.font_family = Some("sans".to_string());
+            }
+            StyleClass::FontMono => {
+                self.font_family = Some("mono".to_string());
+            }
+            StyleClass::FontMedium => {
+                self.font_weight = Some(IcedFontWeight::Medium);
+            }
+            StyleClass::FontNormal => {
+                self.font_weight = Some(IcedFontWeight::Normal);
+            }
+            StyleClass::TextCenter => {
+                self.text_align = Some(IcedTextAlign::Center);
+            }
+            StyleClass::TextLeft => {
+                self.text_align = Some(IcedTextAlign::Left);
+            }
+            StyleClass::TextRight => {
+                self.text_align = Some(IcedTextAlign::Right);
+            }
+            StyleClass::LineThrough => {
+                self.line_through = true;
+            }
+            StyleClass::Underline => {
+                self.underline = true;
+            }
+            StyleClass::NoUnderline => {
+                self.line_through = false;
+                self.underline = false;
+            }
+
+            // ========== Effects (L3) ==========
+            StyleClass::Shadow => {
+                self.shadow = true;
+                self.shadow_size = Some(IcedShadowSize::Md);
+            }
+            StyleClass::ShadowSm => {
+                self.shadow = true;
+                self.shadow_size = Some(IcedShadowSize::Sm);
+            }
+            StyleClass::ShadowMd => {
+                self.shadow = true;
+                self.shadow_size = Some(IcedShadowSize::Md);
+            }
+            StyleClass::ShadowLg => {
+                self.shadow = true;
+                self.shadow_size = Some(IcedShadowSize::Lg);
+            }
+            StyleClass::ShadowXl => {
+                self.shadow = true;
+                self.shadow_size = Some(IcedShadowSize::Xl);
+            }
+            StyleClass::Shadow2Xl => {
+                self.shadow = true;
+                self.shadow_size = Some(IcedShadowSize::Xxl);
+            }
+            StyleClass::ShadowNone => {
+                self.shadow = false;
+                self.shadow_size = Some(IcedShadowSize::None);
+            }
+            StyleClass::Opacity(value) => {
+                self.opacity = Some(*value as f32 / 100.0);
+            }
+
+            // ========== Position (L3) ==========
+            StyleClass::Relative => {
+                self.position = Some(IcedPosition::Relative);
+            }
+            StyleClass::Absolute => {
+                // Iced doesn't support absolute positioning - store but will be ignored
+                self.position = Some(IcedPosition::Absolute);
+            }
+            StyleClass::ZIndex(z) => {
+                // Iced doesn't support z-index - store but will be ignored
+                self.z_index = Some(*z);
+            }
+
+            // ========== Overflow (L3) ==========
+            StyleClass::OverflowAuto => {
+                self.overflow_x = Some(IcedOverflow::Auto);
+                self.overflow_y = Some(IcedOverflow::Auto);
+            }
+            StyleClass::OverflowHidden => {
+                self.overflow_x = Some(IcedOverflow::Hidden);
+                self.overflow_y = Some(IcedOverflow::Hidden);
+            }
+            StyleClass::OverflowVisible => {
+                self.overflow_x = Some(IcedOverflow::Visible);
+                self.overflow_y = Some(IcedOverflow::Visible);
+            }
+            StyleClass::OverflowScroll => {
+                self.overflow_x = Some(IcedOverflow::Scroll);
+                self.overflow_y = Some(IcedOverflow::Scroll);
+            }
+            StyleClass::OverflowXAuto => {
+                self.overflow_x = Some(IcedOverflow::Auto);
+            }
+            StyleClass::OverflowYAuto => {
+                self.overflow_y = Some(IcedOverflow::Auto);
+            }
+            // Plan 527 T3: 轴向量 overflow 全档(clip 语义已在解析面归并 Hidden)
+            StyleClass::OverflowXHidden => {
+                self.overflow_x = Some(IcedOverflow::Hidden);
+            }
+            StyleClass::OverflowXVisible => {
+                self.overflow_x = Some(IcedOverflow::Visible);
+            }
+            StyleClass::OverflowXScroll => {
+                self.overflow_x = Some(IcedOverflow::Scroll);
+            }
+            StyleClass::OverflowYHidden => {
+                self.overflow_y = Some(IcedOverflow::Hidden);
+            }
+            StyleClass::OverflowYVisible => {
+                self.overflow_y = Some(IcedOverflow::Visible);
+            }
+            StyleClass::OverflowYScroll => {
+                self.overflow_y = Some(IcedOverflow::Scroll);
+            }
+
+            // ========== Grid (L3) ==========
+            StyleClass::Grid => {
+                // Iced doesn't support grid - store but will be ignored
+                self.grid = true;
+            }
+            StyleClass::GridCols(cols) => {
+                // Iced doesn't support grid - store but will be ignored
+                self.grid_cols = Some(*cols);
+            }
+            StyleClass::GridRows(rows) => {
+                // Iced doesn't support grid - store but will be ignored
+                self.grid_rows = Some(*rows);
+            }
+            StyleClass::ColSpan(span) => {
+                // Iced doesn't support grid - store but will be ignored
+                self.col_span = Some(*span);
+            }
+            StyleClass::RowSpan(span) => {
+                // Iced doesn't support grid - store but will be ignored
+                self.row_span = Some(*span);
+            }
+            StyleClass::ColStart(start) => {
+                // Iced doesn't support grid - store but will be ignored
+                self.col_start = Some(*start);
+            }
+            StyleClass::RowStart(start) => {
+                // Iced doesn't support grid - store but will be ignored
+                self.row_start = Some(*start);
+            }
+            // Plan 527 T3: grid 定位扩档(存字段,渲染降级)
+            StyleClass::ColEnd(v) => {
+                self.col_end = Some(*v);
+            }
+            StyleClass::RowEnd(v) => {
+                self.row_end = Some(*v);
+            }
+            // Plan 527 T3: order 存字段 —— 渲染按源码序(降级语义),表可见。
+            StyleClass::Order(v) => {
+                self.order = Some(*v);
+                warn_layout_degradation("order-N");
+            }
+            // Plan 527 T3: flex-basis —— Fill-ratio/像素近似 IR,渲染层分期消费。
+            StyleClass::FlexBasis(size) => {
+                self.flex_basis = Some(*size);
+            }
+
+            // ========== Layout styles ==========
+            // Plan 527 T3: display 类落 display 字段(flex/block/inline…由
+            // view builder 布局分派消费;方向类 flex-row/col 隐含 flex)。
+            StyleClass::Flex | StyleClass::FlexRow | StyleClass::FlexCol => {
+                self.display = Some(IcedDisplay::Flex);
+            }
+            StyleClass::Block => {
+                self.display = Some(IcedDisplay::Block);
+            }
+            StyleClass::Inline => {
+                self.display = Some(IcedDisplay::Inline);
+            }
+            StyleClass::InlineBlock => {
+                self.display = Some(IcedDisplay::InlineBlock);
+            }
+            StyleClass::InlineFlex => {
+                self.display = Some(IcedDisplay::InlineFlex);
+            }
+            StyleClass::Flex1 => {
+                // flex-1: expand to fill available space along the main axis.
+                // In CSS Tailwind, flex-1 means flex-grow:1 flex-shrink:1
+                // flex-basis:0%. We set ONLY width=Fill here (Row main axis).
+                // height=Fill is added post-hoc in from_style() when a
+                // vertical-fill signal (overflow / min-height) is present,
+                // avoiding order-dependency between flex-1 and overflow-y-auto
+                // in the class list. This prevents Row children (tab buttons)
+                // from stretching vertically. (Plan 370 Issue 1.)
+                if self.width.is_none() {
+                    self.width = Some(IcedSize::Full);
+                }
+            }
+            StyleClass::ItemsCenter => {
+                self.align_items = Some(IcedAlign::Center);
+            }
+            StyleClass::ItemsStart => {
+                self.align_items = Some(IcedAlign::Start);
+            }
+            StyleClass::ItemsEnd => {
+                self.align_items = Some(IcedAlign::End);
+            }
+            // Plan 412: items-stretch — 交叉轴 Fill。由 build_row/build_column
+            // 把每个 child 包进交叉轴 Fill 容器实现(iced Row/Column 无 stretch 对齐)。
+            StyleClass::ItemsStretch => {
+                self.items_stretch = true;
+                self.align_items = None;
+            }
+            StyleClass::JustifyCenter => {
+                self.justify_content = Some(IcedJustify::Center);
+            }
+            StyleClass::JustifyBetween => {
+                self.justify_content = Some(IcedJustify::Between);
+            }
+            StyleClass::JustifyStart => {
+                self.justify_content = Some(IcedJustify::Start);
+            }
+            StyleClass::JustifyEnd => {
+                self.justify_content = Some(IcedJustify::End);
+            }
+            StyleClass::JustifyAround => {
+                self.justify_content = Some(IcedJustify::Around);
+            }
+            StyleClass::JustifyEvenly => {
+                self.justify_content = Some(IcedJustify::Evenly);
+            }
+
+            // ========== Plan 412 — Flex variants ==========
+            // flex-auto/grow ≈ flex-1(主轴 Fill);flex-initial/flex-none/grow-0/
+            // shrink 为 CSS 默认或 no-op(iced 子元素默认 Shrink,天然不伸缩)。
+            StyleClass::FlexAuto | StyleClass::Grow => {
+                if self.width.is_none() {
+                    self.width = Some(IcedSize::Full);
+                }
+            }
+            StyleClass::FlexInitial
+            | StyleClass::FlexNone
+            | StyleClass::Grow0
+            | StyleClass::Shrink => {}
+            StyleClass::FlexRowReverse => {
+                self.row_reverse = true;
+            }
+            StyleClass::FlexColReverse => {
+                self.col_reverse = true;
+            }
+            StyleClass::FlexWrap | StyleClass::FlexWrapReverse => {
+                // iced 0.14 无 wrapped row — 降级为单行(Plan 412 §5 降级矩阵),
+                // 一次性提示,不静默歪曲。
+                self.flex_wrap = true;
+                warn_layout_degradation(match class {
+                    StyleClass::FlexWrap => "flex-wrap",
+                    _ => "flex-wrap-reverse",
+                });
+            }
+            StyleClass::FlexNowrap => {}
+            // PLAN-054 T4 (A6): self-start/center/end 由渲染层消费——列臂把
+            // 该子项包进 Fill+align 容器实现交叉轴对齐(此前仅降级告警,
+            // musk 用户消息行 `self-end` 右对齐失效)。SelfStretch/Order 仍降级。
+            StyleClass::SelfStart => {
+                self.align_self = Some(IcedAlign::Start);
+            }
+            StyleClass::SelfCenter => {
+                self.align_self = Some(IcedAlign::Center);
+            }
+            StyleClass::SelfEnd => {
+                self.align_self = Some(IcedAlign::End);
+            }
+            StyleClass::SelfStretch => {
+                warn_layout_degradation("self-stretch");
+            }
+            // iced 无绝对/视口定位 — inset 落四向 offset 字段(Plan 527 T3:
+            // 表可见,渲染层无 Stack 上下文时降级内联,KNOWN-DEBT 登记),
+            // fixed/sticky 落 position 字段(降级为就近布局位)。
+            StyleClass::Inset(px) => {
+                self.top_offset = Some(*px);
+                self.bottom_offset = Some(*px);
+                self.right_offset = Some(*px);
+                self.left_offset = Some(*px);
+                warn_layout_degradation("inset-N");
+            }
+            StyleClass::Fixed => {
+                self.position = Some(IcedPosition::Fixed);
+                warn_layout_degradation("fixed");
+            }
+            StyleClass::Sticky => {
+                self.position = Some(IcedPosition::Sticky);
+                warn_layout_degradation("sticky");
+            }
+            // Plan 442 A6: lang-<token> 是代码高亮的元数据通道,非视觉
+            // utility — 不产生任何样式,由 iced renderer 的 code 高亮
+            // 路径读取。
+            StyleClass::CodeLang(_) => {}
+
+            // ========== Extended Sizing ==========
+            StyleClass::MinHeight(px) => {
+                self.min_height = Some(*px);
+            }
+            StyleClass::MinWidth(px) => {
+                self.min_width = Some(*px);
+            }
+
+            // ========== Extended Typography ==========
+            StyleClass::TextArbitrary(px) => {
+                self.font_size_arbitrary = Some(*px);
+            }
+            StyleClass::FontLight => {
+                self.font_weight = Some(IcedFontWeight::Light);
+            }
+            StyleClass::FontExtraLight => {
+                self.font_weight = Some(IcedFontWeight::ExtraLight);
+            }
+            StyleClass::FontSemiBold => {
+                self.font_weight = Some(IcedFontWeight::SemiBold);
+            }
+            StyleClass::LineHeight(lh) => {
+                self.line_height = Some(*lh);
+            }
+            StyleClass::LineHeightNone => {
+                self.line_height = Some(1.0);
+            }
+            // Plan 527 T5: 文本家族新臂
+            StyleClass::LineHeightPx(px) => {
+                self.line_height_px = Some(*px);
+            }
+            StyleClass::Tracking(em) => {
+                self.letter_spacing = Some(*em);
+            }
+            StyleClass::LineClamp(n) => {
+                self.line_clamp = Some(*n);
+            }
+            StyleClass::LineClampNone => {
+                self.line_clamp = Some(0);
+            }
+            StyleClass::FontThin => {
+                self.font_weight = Some(IcedFontWeight::Thin);
+            }
+            StyleClass::FontExtraBold => {
+                self.font_weight = Some(IcedFontWeight::ExtraBold);
+            }
+            StyleClass::FontBlack => {
+                self.font_weight = Some(IcedFontWeight::Black);
+            }
+
+            // ========== Text Control ==========
+            StyleClass::Truncate => {
+                // 2026-08-22(侧栏描述换行治理):CSS truncate/whitespace-nowrap →
+                // iced text Wrapping::None(renderer Text 臂消费 wrap_none,
+                // 并套 clip 容器裁掉横向溢出)。
+                self.wrap_none = true;
+                // L0 fix(2026-10-11):truncate 与 whitespace-nowrap 分流——
+                // 前者=fill+clip 语义(独占整行宽,截断溢出),后者=仅禁折行
+                // (自然宽,多段同行时不得抢 Fill)。此前合并臂致并排 diff
+                // 行内多段 shrink-0 文本齐抢 Fill 被裁成等宽三截。
+                self.truncate_flag = true;
+            }
+            StyleClass::WhitespaceNowrap => {
+                self.wrap_none = true;
+            }
+            StyleClass::BreakWords => {
+                // iced 无词级断行控制,保持默认 Word 换行
+            }
+
+            // ========== Interaction ==========
+            StyleClass::CursorPointer => {
+                // Iced doesn't have explicit cursor styling per element
+            }
+
+            // ========== Outline/Border ==========
+            StyleClass::OutlineNone | StyleClass::BorderNone => {
+                self.border = false;
+                self.border_width = Some(0.0);
+            }
+
+            // ========== Shadow Extended ==========
+            StyleClass::ShadowArbitrary(s) => {
+                self.shadow = true;
+                self.shadow_arbitrary = Some(s.clone());
+                if self.shadow_size.is_none() {
+                    self.shadow_size = Some(IcedShadowSize::Md);
+                }
+            }
+
+            // ========== Flex Extended ==========
+            StyleClass::Shrink0 => {
+                // Iced doesn't support flex-shrink directly
+            }
+
+            // ========== List Style ==========
+            StyleClass::ListNone => {
+                // Iced doesn't have list style concept
+            }
+
+            // ========== Font Smoothing ==========
+            StyleClass::Antialiased => {
+                // Iced handles font smoothing natively
+            }
+
+            // ========== Visibility ==========
+            StyleClass::Hidden => {
+                self.hidden = true;
+            }
+
+            // ========== Transition ==========
+            StyleClass::TransitionColors | StyleClass::TransitionDuration(_) => {
+                // Iced doesn't support CSS transitions
+            }
+
+            // ========== Transform ==========
+            StyleClass::Rotate(deg) => {
+                self.rotate = Some(*deg);
+            }
+
+            // ========== Position Offsets ==========
+            StyleClass::TopOffset(px) => {
+                self.top_offset = Some(*px);
+            }
+            StyleClass::TopPercent(v) => {
+                self.top_percent = Some(*v);
+            }
+            StyleClass::BottomPercent(v) => {
+                self.bottom_percent = Some(*v);
+            }
+            StyleClass::RightPercent(v) => {
+                self.right_percent = Some(*v);
+            }
+            StyleClass::LeftPercent(v) => {
+                self.left_percent = Some(*v);
+            }
+            StyleClass::PointerEventsNone => {
+                self.pointer_events_none = true;
+            }
+            StyleClass::BottomOffset(px) => {
+                self.bottom_offset = Some(*px);
+            }
+            StyleClass::RightOffset(px) => {
+                self.right_offset = Some(*px);
+            }
+            StyleClass::LeftOffset(px) => {
+                self.left_offset = Some(*px);
+            }
+
+            // ========== Accent Color ==========
+            StyleClass::AccentColor(_) => {
+                // Iced checkbox accent color not directly controllable
+            }
+
+            // ========== Plan 518 — Backdrop（声明冻结,渲染分期）==========
+            // consumed by future RenderQueue lowering; renderers ignore
+            // today（hover_classes 先例同款注释）。iced 0.14 无 backdrop
+            // primitive/pass 口（已验源码）——视觉 no-op 为既定降级语义,
+            // 不报错不 not-yet（装饰性降级非错绘）;真 backdrop 渲染挂
+            // RenderQueue 宿主栅格化（KNOWN-DEBT planned-debt）。
+            StyleClass::BackdropBlur(_) | StyleClass::BackdropSaturate(_) => {}
+        }
+    }
+
+    // Note: Iced 0.14+ uses theme-based styling
+    // Style conversion methods are deprecated
+}
+
+/// Convert a SizeValue to IcedSize
+fn convert_size(size: &SizeValue) -> IcedSize {
+    match size {
+        SizeValue::Full => IcedSize::Full,
+        // PLAN-663 C1a: 视口单位独立成变体;渲染端 iced_length(Screen)=Fill
+        // (窗口根缺省),嵌入边界内已在 pre-pass 重写为 Fixed。
+        SizeValue::Screen => IcedSize::Screen,
+        SizeValue::Half => IcedSize::FillPortion(1),
+        SizeValue::Third => IcedSize::FillPortion(1),
+        SizeValue::TwoThirds => IcedSize::FillPortion(2),
+        SizeValue::Quarter => IcedSize::FillPortion(1),
+        SizeValue::ThreeQuarters => IcedSize::FillPortion(3),
+        // Plan 527 T3: 通用分数 N/M → FillPortion(n) —— 无容器查询语义下的
+        // Fill-ratio 近似:同分母互补分数(3/12+9/12)比例保真,混分母退化等分
+        // (口径与 SizeValue::Fraction 文档注释一致,KNOWN-DEBT 登记)。
+        SizeValue::Fraction(n, _) => IcedSize::FillPortion(*n),
+        // PLAN-526 T27：Auto = hug 内容（CSS width:auto 的 shrink-to-fit
+        // 语义）——此前误映射 Full，popover 面板被撑满宿主宽。
+        SizeValue::Auto => IcedSize::Shrink,
+        SizeValue::Fixed(_) => IcedSize::Fixed(size.to_pixels() as f32),
+        SizeValue::Pixels(px) => IcedSize::Fixed(*px),
+    }
+}
+
+/// Convert a Color to iced::Color
+/// pub since 2026-08-21 方案 A: renderer 的 svg hover 着色需要把 icon 的
+/// hover:text-* StyleClass::TextColor(Color) 转成 iced::Color。
+pub fn convert_color(color: &Color) -> iced::Color {
+    match color {
+        Color::Rgba { r, g, b, a } => iced::Color::from_rgba(
+            *r as f32 / 255.0,
+            *g as f32 / 255.0,
+            *b as f32 / 255.0,
+            *a as f32 / 255.0,
+        ),
+        Color::Hex(value) => {
+            let r = ((value >> 16) & 0xFF) as f32 / 255.0;
+            let g = ((value >> 8) & 0xFF) as f32 / 255.0;
+            let b = (value & 0xFF) as f32 / 255.0;
+            let a = if *value > 0xFFFFFF {
+                ((value >> 24) & 0xFF) as f32 / 255.0
+            } else {
+                1.0
+            };
+            iced::Color::from_rgba(r, g, b, a)
+        }
+        // Plan 370 D-GAP-2/D-GAP-5: semantic colors use dark-mode + accent-aware RGB
+        Color::Primary
+        | Color::Secondary
+        | Color::Background
+        | Color::Surface
+        | Color::Muted
+        | Color::Popover
+        | Color::PopoverForeground
+        | Color::Error
+        | Color::Warning
+        | Color::Success
+        | Color::Info
+        | Color::OnPrimary
+        | Color::OnSecondary
+        | Color::OnBackground
+        | Color::OnSurface
+        | Color::OnDestructive
+        | Color::Border => {
+            let (r, g, b) = resolve_semantic_rgb(color).unwrap_or((128, 128, 128));
+            iced::Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+        }
+        _ => {
+            let (r, g, b) = color.to_rgb8();
+            iced::Color::from_rgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0)
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_convert_simple_style() {
+        let style = Style::parse("p-4 bg-white").unwrap();
+        let iced_style = IcedStyle::from_style(&style);
+
+        assert_eq!(iced_style.padding, Some(16.0));
+    }
+
+    /// fix-statusbar-style:方向性圆角类只圆指定角——未指定角必须为 0
+    /// (修复前 `rounded` 布尔把 base 抬到 4.0,rounded-b-[15px] 的上角
+    /// 被凭空圆 4px;VM 轨状态栏实录,PLAN-027 会话诊断)。
+    #[test]
+    fn directional_rounded_leaves_unspecified_corners_square() {
+        let style = Style::parse("rounded-b-[15px]").unwrap();
+        let is = IcedStyle::from_style(&style);
+        let r = is.effective_border_radius();
+        assert_eq!((r.top_left, r.top_right), (0.0, 0.0), "上角必须方");
+        assert_eq!((r.bottom_left, r.bottom_right), (15.0, 15.0));
+        assert!(is.has_border_radius());
+        // 命名族回归钉:裸 rounded 仍全角 4.0(自带标量,不受回退改动影响)。
+        let bare = IcedStyle::from_style(&Style::parse("rounded").unwrap());
+        let rb = bare.effective_border_radius();
+        assert_eq!((rb.top_left, rb.bottom_right), (4.0, 4.0));
+    }
+
+    /// PLAN-625 T-05: bg-clip-text + text-transparent + 渐变 → 文字回落
+    /// 继承色(text_color 清空),渐变字段保留供渲染容器臂抑制判据。
+    #[test]
+    fn test_clip_text_degrades_transparent_text() {
+        let style = Style::parse(
+            "text-lg font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent",
+        )
+        .unwrap();
+        let is = IcedStyle::from_style(&style);
+        assert!(is.gradient_clip_text, "clip flag set");
+        assert!(
+            is.gradient_from.is_some() && is.gradient_to.is_some(),
+            "gradient kept (renderer suppresses box)"
+        );
+        assert!(
+            is.text_color.is_none(),
+            "transparent text color cleared to inherit"
+        );
+    }
+
+    /// PLAN-625 T-05 反向守卫:无 bg-clip-text 时 text-transparent 仍生效
+    /// (渐变按钮等合法透明文字场景不受降级波及)。
+    #[test]
+    fn test_transparent_text_without_clip_untouched() {
+        let style =
+            Style::parse("bg-gradient-to-r from-primary to-primary/60 text-transparent").unwrap();
+        let is = IcedStyle::from_style(&style);
+        assert!(!is.gradient_clip_text);
+        assert!(
+            is.text_color.map_or(false, |c| c.a == 0.0),
+            "transparent kept"
+        );
+    }
+
+    #[test]
+    fn test_hover_classes_merge_over_base() {
+        // The button renderer merges base + hover classes (base first, hover
+        // second — later application wins) before calling from_style.
+        let s = Style::parse("bg-transparent hover:bg-muted/60").unwrap();
+        let mut merged = s.classes.clone();
+        merged.extend(s.hover_classes.iter().cloned());
+        let is = IcedStyle::from_style(&Style {
+            classes: merged,
+            hover_classes: Vec::new(),
+            variant_classes: Vec::new(),
+        });
+        // hover bg-muted/60 wins over bg-transparent: semi-opaque surface.
+        let bg = is.background_color.expect("hover bg must be set");
+        assert!(
+            bg.a > 0.0 && bg.a < 1.0,
+            "expected muted/60 alpha, got {}",
+            bg.a
+        );
+    }
+
+    // PLAN-050 T6 (C4): bg-<token>/<nn> 全链 alpha 保留——解析侧 Plan 409 已库
+    // (test_semantic_color_with_alpha_is_dark_aware),此处钉住渲染侧:经
+    // from_style/convert_color 进 IcedStyle.background_color 后 alpha 不得拍平,
+    // renderer Background::Color 直绘即得半透明高亮(rail 激活底色 bg-primary/10)。
+    #[test]
+    fn plan050_bg_alpha_survives_to_iced_style() {
+        let style = Style::parse("bg-primary/10").unwrap();
+        let is = IcedStyle::from_style(&style);
+        let bg = is
+            .background_color
+            .expect("bg-primary/10 must set background_color");
+        assert!(
+            (bg.a - 25.0 / 255.0).abs() < 1e-4,
+            "10% alpha → 25/255, got {}",
+            bg.a
+        );
+        // 非语义色同样保 alpha:bg-gray-500/50 → 127/255。
+        let style = Style::parse("bg-gray-500/50").unwrap();
+        let is = IcedStyle::from_style(&style);
+        let bg = is
+            .background_color
+            .expect("bg-gray-500/50 must set background_color");
+        assert!(
+            (bg.a - 127.0 / 255.0).abs() < 1e-4,
+            "50% alpha → 127/255, got {}",
+            bg.a
+        );
+    }
+
+    // PLAN-050 T8 (C6): absolute 定位工具类在 VM 轨的降级契约——解析不报错、
+    // 不产生任何样式类（iced 无浮层,position 类整体丢弃=文档流内联展开）,
+    // 而同串的布局/外观类（宽度/底色/边框/圆角/阴影）必须存活。settings_menu
+    // 面板类串依赖此形态:vue 轨 absolute 浮层,VM 轨同名串降级内联面板。
+    #[test]
+    fn plan050_absolute_utilities_degrade_to_inline_flow() {
+        let s = Style::parse(
+            "absolute bottom-full left-0 mb-2 min-w-[220px] w-full bg-card border border-border rounded-[10px] shadow-md p-2.5 flex flex-col",
+        )
+        .expect("面板类串必须可解析");
+        // 定位类解析为 Absolute/LeftOffset 变体（iced_adapter:"store but will
+        // be ignored" —— 渲染端不消费即文档流内联展开,这正是 VM 降级形态）。
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::Absolute)),
+            "absolute 应解析为 Absolute 变体"
+        );
+        assert!(
+            !matches!(IcedStyle::from_style(&s).position, None),
+            "IcedStyle.position 应记录 Absolute（渲染端忽略=内联降级）"
+        );
+        // 外观/布局类存活
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::Width(_))),
+            "w-full 必须存活"
+        );
+        assert!(
+            s.classes
+                .iter()
+                .any(|c| matches!(c, StyleClass::BackgroundColor(_))),
+            "bg-card 必须存活"
+        );
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::Border)),
+            "border 必须存活"
+        );
+        assert!(
+            s.classes.iter().any(|c| matches!(c, StyleClass::FlexCol)),
+            "flex-col 必须存活"
+        );
+    }
+
+    #[test]
+    fn test_convert_color() {
+        let white = convert_color(&Color::White);
+        assert_eq!(white.r, 1.0);
+        assert_eq!(white.g, 1.0);
+        assert_eq!(white.b, 1.0);
+    }
+
+    // Plan 527 T3:布局家族新臂的 iced 消费(单类机械差分的采样实证)。
+    #[test]
+    fn test_plan527_t3_iced_consumes_layout_extensions() {
+        // inset-N 落四向 offset 字段(渲染层无 Stack 上下文时降级内联,表可见)
+        let is = IcedStyle::from_style(&Style::parse("inset-4").unwrap());
+        assert_eq!(is.top_offset, Some(16.0));
+        assert_eq!(is.bottom_offset, Some(16.0));
+        assert_eq!(is.left_offset, Some(16.0));
+        assert_eq!(is.right_offset, Some(16.0));
+        // order-N 存字段(渲染按源码序,降级语义)
+        let is = IcedStyle::from_style(&Style::parse("order-2").unwrap());
+        assert_eq!(is.order, Some(2));
+        // basis 存字段(渲染层分期消费)
+        let is = IcedStyle::from_style(&Style::parse("basis-4").unwrap());
+        assert_eq!(is.flex_basis, Some(SizeValue::Fixed(4)));
+        // 轴向量 overflow + 分数宽 Fill-ratio
+        let is = IcedStyle::from_style(&Style::parse("overflow-x-scroll w-7/12").unwrap());
+        assert_eq!(is.overflow_x, Some(IcedOverflow::Scroll));
+        assert_eq!(is.width, Some(IcedSize::FillPortion(7)));
+        // grid 定位扩档存字段
+        let is = IcedStyle::from_style(&Style::parse("col-end-4 row-end-2").unwrap());
+        assert_eq!(is.col_end, Some(4));
+        assert_eq!(is.row_end, Some(2));
+    }
+
+    // Plan 527 T4:视觉家族新臂的 iced 消费(单类机械差分的采样实证)。
+    #[test]
+    fn test_plan527_t4_iced_consumes_visual_extensions() {
+        // ring 宽度+颜色组合
+        let is = IcedStyle::from_style(&Style::parse("ring-2 ring-red-500").unwrap());
+        assert_eq!(is.ring_width, Some(2.0));
+        assert!(is.ring_color.is_some());
+        // object-fit / 彩色阴影
+        let is =
+            IcedStyle::from_style(&Style::parse("object-cover shadow-red-500 shadow-md").unwrap());
+        assert!(matches!(
+            is.object_fit,
+            Some(crate::ui::style::ObjectFit::Cover)
+        ));
+        assert!(is.shadow_color.is_some());
+        // 渐变三 stop + 位置
+        let is = IcedStyle::from_style(
+            &Style::parse("bg-gradient-to-r from-red-500 via-yellow-300 to-blue-500 from-10 to-90")
+                .unwrap(),
+        );
+        assert!(is.gradient_via.is_some());
+        assert_eq!(is.gradient_from_pos, Some(0.1));
+        assert_eq!(is.gradient_to_pos, Some(0.9));
+        // 新色板
+        let is = IcedStyle::from_style(&Style::parse("bg-lime-500").unwrap());
+        let bg = is.background_color.unwrap();
+        assert_eq!(
+            (bg.r, bg.g, bg.b),
+            (132.0 / 255.0, 204.0 / 255.0, 22.0 / 255.0)
+        );
+    }
+
+    #[test]
+    fn test_chat_bubble_style() {
+        set_dark_mode(true);
+        let style_str =
+            "text-sm bg-muted text-foreground px-4 py-2 rounded-2xl rounded-bl-sm max-w-md";
+        let style = Style::parse(style_str).expect("should parse chat bubble style");
+        let iced_style = IcedStyle::from_style(&style);
+        assert!(
+            iced_style.background_color.is_some(),
+            "background_color must be Some"
+        );
+        let bg = iced_style.background_color.unwrap();
+        println!("bg-muted in dark mode: {:?}", bg);
+        assert_eq!(iced_style.padding_x, Some(16.0));
+        assert_eq!(iced_style.padding_y, Some(8.0));
+        assert_eq!(iced_style.max_width, Some(448.0));
+    }
+}

@@ -1,10 +1,11 @@
-//! UI asset manifest (PLAN-815 T-02, M815-A scope).
+//! UI asset manifest (PLAN-815 T-02 registration; T-04 one-shot migration
+//! completed).
 //!
-//! Registration only: owner/source/license/relocation for every UI asset
-//! group that M815-B will migrate into this package. The production embed
-//! sources stay in `auto-man` until the one-shot migration (T-04) — this
-//! table neither duplicates nor moves them. Tests pin the manifest against
-//! the actual current sources so drift is caught before the migration.
+//! The production embed sources for every UI asset group now live in this
+//! package (single source; the historic auto-man copies are gone). The
+//! manifest keeps owner/source/license/relocation provenance for review and
+//! delivery audits; tests pin the manifest against the actual sources so
+//! drift is caught.
 
 /// License of an asset group.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -20,14 +21,15 @@ pub enum License {
 pub struct AssetGroup {
     /// Stable group id.
     pub id: &'static str,
-    /// Current production location (repo-relative, embed source of truth
-    /// until T-04 performs the one-shot migration).
+    /// Production location (repo-relative, embed source of truth — the
+    /// T-04 one-shot migration moved these into this package).
     pub current_source: &'static str,
     /// External build inputs referenced from outside the source dir
     /// (repo-relative).
     pub external_inputs: &'static [&'static str],
-    /// Destination inside this package after migration (T-04).
-    pub target: &'static str,
+    /// Historic pre-T-04 location (auto-man) — kept for provenance; must
+    /// stay empty after the one-shot migration.
+    pub migrated_from: &'static str,
     pub license: License,
     /// How the source enters builds today.
     pub embed: EmbedKind,
@@ -42,32 +44,33 @@ pub enum EmbedKind {
     IncludeStr,
 }
 
-/// The frozen asset manifest (T-01 §2.4). `wm`'s external inputs live in
-/// `packages/drawlist-renderer` and must move with the group.
+/// The frozen asset manifest (T-01 §2.4; relocation executed in T-04).
+/// `wm`'s external inputs live in this package's `drawlist-renderer/`
+/// (moved together with the group from the repo-root `packages/` location).
 pub const ASSET_GROUPS: &[AssetGroup] = &[
     AssetGroup {
         id: "gallery",
-        current_source: "crates/auto-man/assets/gallery",
+        current_source: "crates/auto-ui-tools/assets/gallery",
         external_inputs: &[],
-        target: "crates/auto-ui-tools/assets/gallery",
+        migrated_from: "crates/auto-man/assets/gallery",
         license: License::InHouse,
         embed: EmbedKind::RustEmbed,
     },
     AssetGroup {
         id: "wm",
-        current_source: "crates/auto-man/assets/wm",
-        external_inputs: &["packages/drawlist-renderer/src"],
-        target: "crates/auto-ui-tools/assets/wm",
+        current_source: "crates/auto-ui-tools/assets/wm",
+        external_inputs: &["crates/auto-ui-tools/drawlist-renderer/src"],
+        migrated_from: "crates/auto-man/assets/wm",
         license: License::InHouse,
         embed: EmbedKind::RustEmbed,
     },
     AssetGroup {
         id: "shadcn-ui",
-        current_source: "crates/auto-man/assets/shadcn-ui",
+        current_source: "crates/auto-ui-tools/assets/shadcn-ui",
         external_inputs: &[],
-        target: "crates/auto-ui-tools/assets/shadcn-ui",
+        migrated_from: "crates/auto-man/assets/shadcn-ui",
         license: License::Mit {
-            upstream: "https://shadcn-vue.com registry snapshot 2026-08-27 (see SNAPSHOT.md; PLAN-571 button cva + sonner icon patches)",
+            upstream: "https://shadcn-vue.com registry snapshot 2026-08-27 (see SNAPSHOT.md; PLAN-571 button cva + sonner icon patches; LICENSE travels with the group since T-04)",
         },
         embed: EmbedKind::RustEmbed,
     },

@@ -187,8 +187,7 @@ fn scan_match_tables(src: &str) -> Vec<BTreeSet<String>> {
             let skel = skeleton(line);
             let opens = skel.matches('{').count() as i32;
             let closes = skel.matches('}').count() as i32;
-            let parens =
-                skel.matches('(').count() as i32 - skel.matches(')').count() as i32;
+            let parens = skel.matches('(').count() as i32 - skel.matches(')').count() as i32;
             let trimmed = skel.trim();
             if !in_body {
                 if line.trim().starts_with("//") {
@@ -215,9 +214,8 @@ fn scan_match_tables(src: &str) -> Vec<BTreeSet<String>> {
             } else {
                 depth += opens - closes;
                 paren += parens;
-                let arm_done = depth == 1
-                    && paren == 0
-                    && (trimmed.ends_with(',') || trimmed.ends_with('}'));
+                let arm_done =
+                    depth == 1 && paren == 0 && (trimmed.ends_with(',') || trimmed.ends_with('}'));
                 if arm_done {
                     in_body = false;
                 }
@@ -330,7 +328,10 @@ fn extract_rs_elements(src: &str) -> BTreeMap<String, RsElement> {
         let line = lines[i];
         if let Some(pos) = line.find("elements.insert(\"") {
             let rest = &line[pos + "elements.insert(\"".len()..];
-            let Some(q1) = rest.find('"') else { i += 1; continue };
+            let Some(q1) = rest.find('"') else {
+                i += 1;
+                continue;
+            };
             let tag = rest[..q1].to_string();
             // 花括号配对收集块体(基于骨架,免疫注释/字符串干扰)
             let mut depth = 0i32;
@@ -339,14 +340,12 @@ fn extract_rs_elements(src: &str) -> BTreeMap<String, RsElement> {
             while j < lines.len() {
                 let skel = skeleton(lines[j]);
                 if j == i {
-                    depth += skel.matches('{').count() as i32
-                        - skel.matches('}').count() as i32;
+                    depth += skel.matches('{').count() as i32 - skel.matches('}').count() as i32;
                     body.push(lines[j]);
                     j += 1;
                     continue;
                 }
-                depth += skel.matches('{').count() as i32
-                    - skel.matches('}').count() as i32;
+                depth += skel.matches('{').count() as i32 - skel.matches('}').count() as i32;
                 if depth <= 0 {
                     break;
                 }
@@ -410,7 +409,13 @@ fn parse_rs_prop(line: &str) -> Option<RsProp> {
         None
     };
     let description = extract_field_str(line, "description:").unwrap_or_default();
-    Some(RsProp { name, type_str, required, default, description })
+    Some(RsProp {
+        name,
+        type_str,
+        required,
+        default,
+        description,
+    })
 }
 
 /// 从 `rest` 起取一个平衡括号的表达式:裸标识符到首个逗号;
@@ -451,7 +456,11 @@ fn map_proptype(expr: &str) -> String {
             .split("PropType::")
             .filter_map(|t| {
                 let n = t.trim().trim_end_matches(',');
-                if n.is_empty() { None } else { Some(map_type_name(n)) }
+                if n.is_empty() {
+                    None
+                } else {
+                    Some(map_type_name(n))
+                }
             })
             .collect::<Vec<_>>()
             .join(",");
@@ -524,8 +533,7 @@ fn scan_match_arm_groups(src: &str) -> Vec<Vec<String>> {
             let skel = skeleton(line);
             let opens = skel.matches('{').count() as i32;
             let closes = skel.matches('}').count() as i32;
-            let parens =
-                skel.matches('(').count() as i32 - skel.matches(')').count() as i32;
+            let parens = skel.matches('(').count() as i32 - skel.matches(')').count() as i32;
             let trimmed = skel.trim();
             if !in_body {
                 if line.trim().starts_with("//") {
@@ -557,9 +565,8 @@ fn scan_match_arm_groups(src: &str) -> Vec<Vec<String>> {
             } else {
                 depth += opens - closes;
                 paren += parens;
-                let arm_done = depth == 1
-                    && paren == 0
-                    && (trimmed.ends_with(',') || trimmed.ends_with('}'));
+                let arm_done =
+                    depth == 1 && paren == 0 && (trimmed.ends_with(',') || trimmed.ends_with('}'));
                 if arm_done {
                     in_body = false;
                 }
@@ -573,9 +580,7 @@ fn scan_match_arm_groups(src: &str) -> Vec<Vec<String>> {
 /// scan_match_arm_groups 的伴生:同时返回单 tag 臂,供 render 级别提取用。
 /// 返回 (臂 tags, 级别串) 列表;级别取臂行 `TagSupport::xxx` 首个匹配,
 /// 无匹配(struct 字面量等)记 "custom"。
-fn scan_match_arm_groups_plus_singles(
-    src: &str,
-) -> Vec<(Vec<String>, String)> {
+fn scan_match_arm_groups_plus_singles(src: &str) -> Vec<(Vec<String>, String)> {
     let lines: Vec<&str> = src.lines().collect();
     let mut out = Vec::new();
     let mut i = 0;
@@ -594,8 +599,7 @@ fn scan_match_arm_groups_plus_singles(
             let skel = skeleton(line);
             let opens = skel.matches('{').count() as i32;
             let closes = skel.matches('}').count() as i32;
-            let parens =
-                skel.matches('(').count() as i32 - skel.matches(')').count() as i32;
+            let parens = skel.matches('(').count() as i32 - skel.matches(')').count() as i32;
             let trimmed = skel.trim();
             if !in_body {
                 if line.trim().starts_with("//") {
@@ -633,9 +637,8 @@ fn scan_match_arm_groups_plus_singles(
             } else {
                 depth += opens - closes;
                 paren += parens;
-                let arm_done = depth == 1
-                    && paren == 0
-                    && (trimmed.ends_with(',') || trimmed.ends_with('}'));
+                let arm_done =
+                    depth == 1 && paren == 0 && (trimmed.ends_with(',') || trimmed.ends_with('}'));
                 if arm_done {
                     in_body = false;
                 }
@@ -654,9 +657,7 @@ fn scan_vue_imports(src: &str) -> BTreeMap<String, String> {
     let needle = b"components.insert(\"";
     let mut i = 0;
     while i + needle.len() <= bytes.len() {
-        if &bytes[i..i + needle.len()] == needle
-            && (i == 0 || !is_ident_char(bytes[i - 1]))
-        {
+        if &bytes[i..i + needle.len()] == needle && (i == 0 || !is_ident_char(bytes[i - 1])) {
             let rest = &src[i + needle.len()..];
             if let Some(q1) = rest.find('"') {
                 let tag = rest[..q1].to_string();
@@ -690,7 +691,9 @@ fn gallery_dir() -> Option<PathBuf> {
 }
 
 fn scan_gallery_tags() -> BTreeSet<String> {
-    let Some(dir) = gallery_dir() else { return BTreeSet::new() };
+    let Some(dir) = gallery_dir() else {
+        return BTreeSet::new();
+    };
     let mut local: BTreeSet<String> = BTreeSet::new();
     let mut files: Vec<PathBuf> = Vec::new();
     if let Ok(rd) = fs::read_dir(&dir) {
@@ -699,28 +702,70 @@ fn scan_gallery_tags() -> BTreeSet<String> {
         }
     }
     for f in &files {
-        let Ok(text) = fs::read_to_string(f) else { continue };
+        let Ok(text) = fs::read_to_string(f) else {
+            continue;
+        };
         for m in text.lines().filter_map(|l| {
             let t = l.trim_start();
-            t.strip_prefix("widget ").and_then(|r| r.split_whitespace().next())
+            t.strip_prefix("widget ")
+                .and_then(|r| r.split_whitespace().next())
         }) {
             local.insert(m.to_string());
         }
     }
     const KW: &[&str] = &[
-        "widget", "model", "view", "msg", "on", "computed", "style", "use",
-        "fn", "let", "state", "store", "route", "routes", "config", "handler",
-        "effect", "prop", "props", "emits", "head", "script", "template",
-        "import", "export", "const", "type", "struct", "enum", "impl", "if",
-        "else", "for", "while", "return", "match", "block", "ui_config",
-        "menus", "actions", "f",
+        "widget",
+        "model",
+        "view",
+        "msg",
+        "on",
+        "computed",
+        "style",
+        "use",
+        "fn",
+        "let",
+        "state",
+        "store",
+        "route",
+        "routes",
+        "config",
+        "handler",
+        "effect",
+        "prop",
+        "props",
+        "emits",
+        "head",
+        "script",
+        "template",
+        "import",
+        "export",
+        "const",
+        "type",
+        "struct",
+        "enum",
+        "impl",
+        "if",
+        "else",
+        "for",
+        "while",
+        "return",
+        "match",
+        "block",
+        "ui_config",
+        "menus",
+        "actions",
+        "f",
     ];
     let mut out = BTreeSet::new();
     for f in &files {
-        let Ok(text) = fs::read_to_string(f) else { continue };
+        let Ok(text) = fs::read_to_string(f) else {
+            continue;
+        };
         for line in text.lines() {
             let t = line.trim_start();
-            let Some(first) = t.chars().next() else { continue };
+            let Some(first) = t.chars().next() else {
+                continue;
+            };
             if !first.is_ascii_alphabetic() {
                 continue;
             }
@@ -800,18 +845,25 @@ fn scan_live_registry(src: &str) -> (BTreeSet<String>, usize, BTreeSet<String>) 
 /// 行 = 5 个 td(Property/Type/Default/Values/Description);表头行跳过。
 /// 返回 元素折叠键 → Vec<(name, type, default, one_of_values, desc)>。
 /// PLAN-590:画廊迁 auto-os 后经 gallery_dir() 解析序定位(见上)。
-fn scan_gallery_props() -> BTreeMap<String, Vec<(String, String, Option<String>, Vec<String>, String)>> {
-    let Some(dir) = gallery_dir().map(|g| g.join("src/front/pages")) else { return BTreeMap::new() };
+fn scan_gallery_props(
+) -> BTreeMap<String, Vec<(String, String, Option<String>, Vec<String>, String)>> {
+    let Some(dir) = gallery_dir().map(|g| g.join("src/front/pages")) else {
+        return BTreeMap::new();
+    };
     let mut out: BTreeMap<String, Vec<(String, String, Option<String>, Vec<String>, String)>> =
         BTreeMap::new();
-    let Ok(rd) = fs::read_dir(&dir) else { return out };
+    let Ok(rd) = fs::read_dir(&dir) else {
+        return out;
+    };
     let mut files: Vec<PathBuf> = rd.flatten().map(|e| e.path()).collect();
     files.sort();
     for path in files {
         if path.extension().map_or(true, |x| x != "at") {
             continue;
         }
-        let Ok(src) = fs::read_to_string(&path) else { continue };
+        let Ok(src) = fs::read_to_string(&path) else {
+            continue;
+        };
         let stem = path.file_stem().unwrap().to_string_lossy().to_string();
         let mut cells: Vec<String> = Vec::new();
         // 深度计数:table { thead { tr { ... } } tbody { ... } } —— 首个 }
@@ -842,14 +894,34 @@ fn scan_gallery_props() -> BTreeMap<String, Vec<(String, String, Option<String>,
         // 按 5 分组(Property/Type/Default/Values/Description)。表头在部分页是
         // th(button 页)、部分页无表头(select 页)—— td 只收数据行;
         // 第二列必须是类型词,防页面内 demo 数据表(td 内容)混入。
-        let type_words = ["string", "str", "boolean", "bool", "number",
-            "float", "int", "integer", "color", "msg_ref", "state_ref",
-            "expr", "closure", "any", "String"];
+        let type_words = [
+            "string",
+            "str",
+            "boolean",
+            "bool",
+            "number",
+            "float",
+            "int",
+            "integer",
+            "color",
+            "msg_ref",
+            "state_ref",
+            "expr",
+            "closure",
+            "any",
+            "String",
+        ];
         let rows: Vec<[String; 5]> = cells
             .chunks(5)
             .filter_map(|c| {
                 if c.len() == 5 && type_words.contains(&c[1].as_str()) {
-                    Some([c[0].clone(), c[1].clone(), c[2].clone(), c[3].clone(), c[4].clone()])
+                    Some([
+                        c[0].clone(),
+                        c[1].clone(),
+                        c[2].clone(),
+                        c[3].clone(),
+                        c[4].clone(),
+                    ])
                 } else {
                     None
                 }
@@ -859,8 +931,9 @@ fn scan_gallery_props() -> BTreeMap<String, Vec<(String, String, Option<String>,
             continue;
         }
         let fold_key_val = fold_key(&stem);
-        out.entry(fold_key_val).or_default().extend(
-            rows.into_iter().map(|r| {
+        out.entry(fold_key_val)
+            .or_default()
+            .extend(rows.into_iter().map(|r| {
                 let ty = match r[1].as_str() {
                     "boolean" | "bool" => "bool".to_string(),
                     "str" | "string" | "String" => "string".to_string(),
@@ -868,15 +941,21 @@ fn scan_gallery_props() -> BTreeMap<String, Vec<(String, String, Option<String>,
                     "int" | "integer" => "int".to_string(),
                     other => other.to_string(),
                 };
-                let default = if r[2] == "-" || r[2].is_empty() { None } else { Some(r[2].clone()) };
+                let default = if r[2] == "-" || r[2].is_empty() {
+                    None
+                } else {
+                    Some(r[2].clone())
+                };
                 let values: Vec<String> = if r[3] == "-" || r[3].is_empty() {
                     Vec::new()
                 } else {
-                    r[3].split(',').map(|v| v.trim().to_string()).filter(|v| !v.is_empty()).collect()
+                    r[3].split(',')
+                        .map(|v| v.trim().to_string())
+                        .filter(|v| !v.is_empty())
+                        .collect()
                 };
                 (r[0].clone(), ty, default, values, r[4].clone())
-            }),
-        );
+            }));
     }
     out
 }
@@ -893,7 +972,9 @@ fn scan_aura_at_vue(src: &str) -> BTreeMap<String, RegistryVue> {
                 cur_fold = Some(fold_key(name.trim()));
             }
         } else if let Some(rest) = t.strip_prefix("vue: {") {
-            let Some(fold) = cur_fold.clone() else { continue };
+            let Some(fold) = cur_fold.clone() else {
+                continue;
+            };
             let inner = rest.strip_suffix('}').unwrap_or(rest);
             let component = quoted_after(inner, "component: \"").unwrap_or_default();
             let import = quoted_after(inner, "import: \"");
@@ -945,9 +1026,13 @@ fn scan_registry_vue(src: &str) -> Vec<RegistryVue> {
         let spec = rest[..q].to_string();
         let block_end = rest.find("self.register(").unwrap_or(rest.len().min(4000));
         let body = &rest[..block_end];
-        let Some(vpos) = body.find(".backends.insert(\"vue\"") else { continue };
+        let Some(vpos) = body.find(".backends.insert(\"vue\"") else {
+            continue;
+        };
         let vbody = &body[vpos..];
-        let Some(component) = quoted_after(vbody, "component: \"") else { continue };
+        let Some(component) = quoted_after(vbody, "component: \"") else {
+            continue;
+        };
         let import = quoted_after(vbody, "import: Some(\"");
         // extras: vec!["A", "B"]
         let mut extras = Vec::new();
@@ -974,7 +1059,13 @@ fn scan_registry_vue(src: &str) -> Vec<RegistryVue> {
                 specs.push(r[..e].to_string());
             }
         }
-        out.push(RegistryVue { specs, component, import, extras, npm });
+        out.push(RegistryVue {
+            specs,
+            component,
+            import,
+            extras,
+            npm,
+        });
     }
     // with_alias 别名 → 同一映射(从别名行无法回溯所属块,改为在匹配阶段
     // 同时用 spec 名与别名集合 —— 见 generate 侧)
@@ -1033,7 +1124,6 @@ fn scan_registry_pkg_exports(pkg_dir: &Path) -> BTreeSet<String> {
     }
     names
 }
-
 
 fn quoted_after(s: &str, needle: &str) -> Option<String> {
     let p = s.find(needle)?;
@@ -1329,7 +1419,10 @@ fn derive_tier(group: &BTreeSet<String>, inp: &AtGenInput) -> &'static str {
     }
     if group.iter().any(|t| inp.in_vb.contains(t)) {
         "builtin_widget"
-    } else if group.iter().any(|t| inp.in_vue_shadcn.contains(&fold_key(t))) {
+    } else if group
+        .iter()
+        .any(|t| inp.in_vue_shadcn.contains(&fold_key(t)))
+    {
         "web_component"
     } else if group.iter().any(|t| inp.in_vue_native.contains(t)) {
         "native_html"
@@ -1342,7 +1435,10 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
     // 组:canonical → members
     let mut groups: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for (tag, canonical) in &inp.canonical_of {
-        groups.entry(canonical.clone()).or_default().insert(tag.clone());
+        groups
+            .entry(canonical.clone())
+            .or_default()
+            .insert(tag.clone());
     }
     // rs 声明优先;否则偏好带分隔符的形态(kebab 命名规范 > 下划线 > 无分隔
     // 缩合 —— P7-2/D9:codeeditor 缩合拼写命中不了 vue.rs 的 code_editor|
@@ -1420,7 +1516,10 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
         }
         let tier = derive_tier(members, inp);
         if tier != current_tier {
-            out.push_str(&format!("\n// ============ tier: {} ============\n\n", tier));
+            out.push_str(&format!(
+                "\n// ============ tier: {} ============\n\n",
+                tier
+            ));
             current_tier = tier;
         }
         let rs_def = inp.rs_elements.get(canonical);
@@ -1434,7 +1533,10 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
             .cloned()
             .collect();
         // web:组件映射优先于原生直通(map_tag 解析顺序)
-        let web = if members.iter().any(|t| inp.in_vue_shadcn.contains(&fold_key(t))) {
+        let web = if members
+            .iter()
+            .any(|t| inp.in_vue_shadcn.contains(&fold_key(t)))
+        {
             "component"
         } else if members.iter().any(|t| inp.in_vue_native.contains(t)) {
             "native"
@@ -1551,8 +1653,11 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
             if let Some((pkg, ver)) = &rv.npm {
                 parts.push(format!("npm: {}", quote_at(&format!("{}@{}", pkg, ver))));
             }
-            out.push_str(&format!("    vue: {{ {} }}
-", parts.join(", ")));
+            out.push_str(&format!(
+                "    vue: {{ {} }}
+",
+                parts.join(", ")
+            ));
         }
         if !sub_widgets.is_empty() {
             let list = sub_widgets
@@ -1566,10 +1671,8 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
             Some(d) if !d.props.is_empty() => {
                 out.push_str("    props: [\n");
                 for p in &d.props {
-                    let mut entry = format!(
-                        "        {{ name: \"{}\", type: \"{}\"",
-                        p.name, p.type_str
-                    );
+                    let mut entry =
+                        format!("        {{ name: \"{}\", type: \"{}\"", p.name, p.type_str);
                     if p.required {
                         entry.push_str(", required: true");
                     }
@@ -1577,7 +1680,8 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
                         entry.push_str(&format!(", default: \"{}\"", def));
                     }
                     if !p.description.is_empty() {
-                        entry.push_str(&format!(", description: \"{}\"", escape_at(&p.description)));
+                        entry
+                            .push_str(&format!(", description: \"{}\"", escape_at(&p.description)));
                     }
                     entry.push_str(" }");
                     out.push_str(&entry);
@@ -1604,10 +1708,8 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
                         } else {
                             ty.clone()
                         };
-                        let mut entry = format!(
-                            "        {{ name: \"{}\", type: \"{}\"",
-                            name, type_str
-                        );
+                        let mut entry =
+                            format!("        {{ name: \"{}\", type: \"{}\"", name, type_str);
                         if let Some(d) = default {
                             entry.push_str(&format!(", default: \"{}\"", d));
                         }
@@ -1622,8 +1724,14 @@ fn generate_aura_at(inp: &AtGenInput) -> String {
                 }
             }
         }
-        out.push_str(&format!("    allows_children: {}\n", rs_def.map(|d| d.allows_children).unwrap_or(true)));
-        out.push_str(&format!("    description: \"{}\"\n", escape_at(&description)));
+        out.push_str(&format!(
+            "    allows_children: {}\n",
+            rs_def.map(|d| d.allows_children).unwrap_or(true)
+        ));
+        out.push_str(&format!(
+            "    description: \"{}\"\n",
+            escape_at(&description)
+        ));
         out.push_str("}\n\n");
     }
     out
@@ -1646,8 +1754,12 @@ const RETIRED_OFFICIAL_FAMILIES: &[&str] = &[
 /// ("0-100")或纯数字集合不是枚举面,不得发射 one_of(退回原类型)。
 fn plausible_enum_values(values: &[String]) -> bool {
     !values.is_empty()
-        && !values.iter().any(|v| v.contains('-') || v.contains('~') || v.contains('…'))
-        && !values.iter().all(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'))
+        && !values
+            .iter()
+            .any(|v| v.contains('-') || v.contains('~') || v.contains('…'))
+        && !values
+            .iter()
+            .all(|v| v.chars().all(|c| c.is_ascii_digit() || c == '.'))
 }
 
 fn escape_at(s: &str) -> String {
@@ -1676,8 +1788,8 @@ fn schema_drift_fence() {
         );
         return;
     }
-    let schema_rs = read("src/aura/schema.rs");
-    let vue_rs = read("src/ui_gen/vue.rs");
+    let schema_rs = read("../auto-ui-compiler/src/aura/schema.rs");
+    let vue_rs = read("../auto-ui-compiler/src/ui_gen/vue.rs");
     let vb_rs = read("src/ui/aura_view_builder.rs");
     let render_rs = read("src/ui/render_support.rs");
     let aura_at = read("../../docs/schema/aura.at");
@@ -1719,11 +1831,7 @@ fn schema_drift_fence() {
     // 并入 vb 并集，外部组件（含 autodown_editor 首迁）不再触发臂表孤儿误
     // 报；后续经 SPI 注册的新组件天然受同一围栏覆盖。
     let native_registered = scan_native_registrations(&read("src/ui/native_widget.rs"));
-    let vb_union: BTreeSet<String> = vb0
-        .union(vb1)
-        .cloned()
-        .chain(native_registered)
-        .collect();
+    let vb_union: BTreeSet<String> = vb0.union(vb1).cloned().chain(native_registered).collect();
 
     let render_tables = scan_match_tables(&render_rs);
     assert_eq!(
@@ -1764,7 +1872,7 @@ fn schema_drift_fence() {
     );
     let parser_tags = &parser_tables[0];
 
-    let a2ui_export_rs = read("src/a2ui/export.rs");
+    let a2ui_export_rs = read("../auto-ui-compiler/src/a2ui/export.rs");
     let a2ui_export_tables = scan_match_tables(&a2ui_export_rs);
     assert_eq!(
         a2ui_export_tables.len(),
@@ -1774,7 +1882,7 @@ fn schema_drift_fence() {
         a2ui_export_tables.len()
     );
     let a2ui_export = &a2ui_export_tables[0];
-    let a2ui_import = scan_tag_literals(&read("src/a2ui/import.rs"));
+    let a2ui_import = scan_tag_literals(&read("../auto-ui-compiler/src/a2ui/import.rs"));
 
     // ---- P1:别名归并 + 生成输入 ----
     let rs_elements = extract_rs_elements(&schema_rs);
@@ -1825,16 +1933,15 @@ fn schema_drift_fence() {
     // 各自成组入册(unclassified;隐式 fallback / ext 组件路径,P2 告警收编)
     let gallery_tags = scan_gallery_tags();
     let gallery_props = scan_gallery_props();
-    let mut prod_fold: BTreeSet<String> =
-        prod_union.iter().map(|t| fold_key(t)).collect();
+    let mut prod_fold: BTreeSet<String> = prod_union.iter().map(|t| fold_key(t)).collect();
     // 第 11 源:活注册表 spec(ui_gen/widget/registry.rs)—— 其他表未登记的
     // (chart/scroll-area/toast 家族等)入册;Pascal spec 名与 kebab 别名同折叠合并
     let (registry_names, _vue_mappings, _registry_imported) =
-        scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
-    let registry_vue = scan_registry_vue(&read("src/ui_gen/widget/registry.rs"));
+        scan_live_registry(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
+    let registry_vue =
+        scan_registry_vue(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
     let carried_vue = scan_aura_at_vue(&aura_at);
-    let other_fold: BTreeSet<String> =
-        prod_union.iter().map(|t| fold_key(t)).collect();
+    let other_fold: BTreeSet<String> = prod_union.iter().map(|t| fold_key(t)).collect();
     prod_fold.extend(registry_names.iter().map(|t| fold_key(t)));
     let mut canonical_of = canonical_of;
     let mut gallery_only: BTreeSet<String> = BTreeSet::new();
@@ -1902,8 +2009,7 @@ fn schema_drift_fence() {
     // 生成 gate(复核流程同 baseline)
     if std::env::var("SCHEMA_DRIFT_GENERATE_AT").is_ok() {
         let text = generate_aura_at(&inp);
-        let at_path =
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/schema/aura.at");
+        let at_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/schema/aura.at");
         fs::write(&at_path, &text).expect("write docs/schema/aura.at");
         panic!(
             "docs/schema/aura.at 已重生成({} bytes,{} 元素)—— 复核 diff 后重跑(不带环境变量)确认绿",
@@ -1912,8 +2018,15 @@ fn schema_drift_fence() {
         );
     }
 
-    println!("四表规模: schema.rs={} aura.at={} vue.shadcn={} vb0={} vb1={} render={}",
-        rs.len(), at.len(), vue_shadcn.len(), vb0.len(), vb1.len(), render.len());
+    println!(
+        "四表规模: schema.rs={} aura.at={} vue.shadcn={} vb0={} vb1={} render={}",
+        rs.len(),
+        at.len(),
+        vue_shadcn.len(),
+        vb0.len(),
+        vb1.len(),
+        render.len()
+    );
 
     // ---- P1 覆盖断言(硬闸,无 baseline 豁免)----
     // 1) 生产表 tag ⊆ aura.at(tags ∪ aliases):新增组件必须重生成 schema。
@@ -1952,7 +2065,7 @@ fn schema_drift_fence() {
     // —— spec 名(含别名)折叠后必须被 schema 覆盖;vue 映射数变更是显式事件。
     {
         let (registry_names, _vue_mappings, _imported) =
-            scan_live_registry(&read("src/ui_gen/widget/registry.rs"));
+            scan_live_registry(&read("../auto-ui-compiler/src/ui_gen/widget/registry.rs"));
         // P4-4:手写 vue insert 已退役(overlay 从 schema 重建)。
         let schema = auto_lang::aura::default_schema_cached().expect("schema");
         assert_eq!(
@@ -1960,11 +2073,7 @@ fn schema_drift_fence() {
             "手写 vue insert 应已退役(P4-4 overlay);新映射请走 docs/schema/aura.at"
         );
         // 数据不回退:schema 的 vue 声明量守恒(手写退役后由 carried_vue 保留)
-        let vue_count = schema
-            .meta
-            .values()
-            .filter(|m| m.vue.is_some())
-            .count();
+        let vue_count = schema.meta.values().filter(|m| m.vue.is_some()).count();
         assert!(
             vue_count >= 160,
             "schema vue 映射量异常偏少({}) —— 再生成丢失数据?",
@@ -1994,10 +2103,8 @@ fn schema_drift_fence() {
         .collect();
     // P4-5a:schema 自身的 vue 行是 sanctioned 源(死表退役后)
     allowed_tags.extend(carried_keys.iter().cloned());
-    let allowed_folds: BTreeSet<String> =
-        allowed_tags.iter().map(|t| fold_key(t)).collect();
-    let allowed_folds: BTreeSet<String> =
-        allowed_tags.iter().map(|t| fold_key(t)).collect();
+    let allowed_folds: BTreeSet<String> = allowed_tags.iter().map(|t| fold_key(t)).collect();
+    let allowed_folds: BTreeSet<String> = allowed_tags.iter().map(|t| fold_key(t)).collect();
     // 归约到 canonical 判 provenance:别名随 canonical 获得许可
     // (P4-5a 后 carried vue 行的 canonical 是 sanctioned 源)
     let phantom: Vec<String> = only_in(&at_all, &prod_union)
@@ -2007,13 +2114,10 @@ fn schema_drift_fence() {
             let canon_ok = default_schema_cached()
                 .and_then(|s| s.resolve_tag(t))
                 .map(|(canon, _)| {
-                    allowed_folds.contains(&fold_key(canon))
-                        || inp.carried_elements.contains(canon)
+                    allowed_folds.contains(&fold_key(canon)) || inp.carried_elements.contains(canon)
                 })
                 .unwrap_or(false);
-            !allowed_folds.contains(&fold_key(t))
-                && !canon_ok
-                && !inp.carried_elements.contains(t)
+            !allowed_folds.contains(&fold_key(t)) && !canon_ok && !inp.carried_elements.contains(t)
         })
         .collect();
     assert!(
@@ -2039,8 +2143,7 @@ fn schema_drift_fence() {
     // (get_support 已 schema 优先;此断言保证静态表不与 schema 漂移)。
     {
         use auto_lang::aura::default_schema_cached;
-        let schema = default_schema_cached()
-            .expect("schema 应可加载");
+        let schema = default_schema_cached().expect("schema 应可加载");
         let mut mismatches: Vec<String> = Vec::new();
         for (tags, level) in scan_match_arm_groups_plus_singles(&render_rs) {
             if level.is_empty() {
@@ -2057,8 +2160,7 @@ fn schema_drift_fence() {
                     .map(|m| m.backends.iced.clone())
                     .unwrap_or_default();
                 if meta_iced != level {
-                    mismatches
-                        .push(format!("{}: 静态={} schema={}", tag, level, meta_iced));
+                    mismatches.push(format!("{}: 静态={} schema={}", tag, level, meta_iced));
                 }
             }
         }
@@ -2084,7 +2186,10 @@ fn schema_drift_fence() {
             }
             let cf = fold_key(canon);
             if !render.iter().any(|t| fold_key(t) == cf) {
-                no_arm.push(format!("{}: iced={} 但静态详情表无臂", canon, meta.backends.iced));
+                no_arm.push(format!(
+                    "{}: iced={} 但静态详情表无臂",
+                    canon, meta.backends.iced
+                ));
             }
         }
         assert!(
@@ -2109,18 +2214,19 @@ fn schema_drift_fence() {
         let schema = default_schema_cached().expect("schema 应可加载");
         let local_ui_pkgs: BTreeSet<&str> =
             // "nav":NavGroup/NavItem 手写组件(Plan 482),实现位于脚手架资产
-            // crates/auto-man/assets/shadcn-ui/nav/Nav{Item,Group}.vue,
+            // crates/auto-ui-tools/assets/shadcn-ui/nav/Nav{Item,Group}.vue(PLAN-815 T-04 迁),
             // 双端 class 契约由 ui_gen/nav_contract.rs 单测锁定——482 落地时
             // 只登记了 nav-link,漏了本包(481 merge 修 Slot 红后围栏揭出)。
             ["data-table", "nav", "nav-link", "toast"].into_iter().collect();
-        let installable =
-            scan_shadcn_install_table(&read("../../crates/auto/src/cmd_vue.rs"));
+        let installable = scan_shadcn_install_table(&read("../../crates/auto/src/cmd_vue.rs"));
         let registry_root = repo_file("../../packages/widgets/registry");
         let mut bad: Vec<String> = Vec::new();
         for (canon, meta) in &schema.meta {
             let Some(v) = &meta.vue else { continue };
             let Some(path) = &v.import else { continue };
-            let Some(pkg) = path.strip_prefix("@/components/ui/") else { continue };
+            let Some(pkg) = path.strip_prefix("@/components/ui/") else {
+                continue;
+            };
             let pkg_dir = registry_root.join(pkg);
             if pkg_dir.is_dir() {
                 let exports = scan_registry_pkg_exports(&pkg_dir);
@@ -2165,8 +2271,16 @@ fn schema_drift_fence() {
     add(&mut drift, "vue_mt0_not_in_rs", only_in(vue_mt0, &rs));
 
     add(&mut drift, "parser_not_in_rs", only_in(parser_tags, &rs));
-    add(&mut drift, "a2ui_export_not_in_rs", only_in(a2ui_export, &rs));
-    add(&mut drift, "a2ui_import_not_in_rs", only_in(&a2ui_import, &rs));
+    add(
+        &mut drift,
+        "a2ui_export_not_in_rs",
+        only_in(a2ui_export, &rs),
+    );
+    add(
+        &mut drift,
+        "a2ui_import_not_in_rs",
+        only_in(&a2ui_import, &rs),
+    );
 
     // ---- baseline:只拦新增 ----
     let baseline_path =
@@ -2205,7 +2319,10 @@ fn schema_drift_fence() {
             continue;
         }
         if let Some((dim, tag)) = line.split_once('\t') {
-            baseline.entry(dim.to_string()).or_default().insert(tag.to_string());
+            baseline
+                .entry(dim.to_string())
+                .or_default()
+                .insert(tag.to_string());
         }
     }
 
@@ -2256,7 +2373,6 @@ fn schema_drift_fence() {
     }
 }
 
-
 // ============================================================================
 // Plan 507 T2 —— queue 臂元素级覆盖漂移围栏（第三端 parity 债闸门）。
 //
@@ -2271,21 +2387,21 @@ fn schema_drift_fence() {
 
 #[test]
 fn queue_coverage_drift_fence() {
-    use auto_lang::aura::element_coverage::{
-        element_counts, element_table, QueueStatus,
-    };
+    use auto_lang::aura::element_coverage::{element_counts, element_table, QueueStatus};
 
     let aura_at = read("../../docs/schema/aura.at");
     let declared = scan_aura_at(&aura_at);
-    let registered: BTreeSet<String> =
-        element_table().iter().map(|(tag, _)| tag.to_string()).collect();
+    let registered: BTreeSet<String> = element_table()
+        .iter()
+        .map(|(tag, _)| tag.to_string())
+        .collect();
 
     // 方向一：未登记即红（Plan 507 G5 防烂尾刹车）。
     let unregistered: BTreeSet<String> = only_in(&declared, &registered);
     assert!(
         unregistered.is_empty(),
         "aura.at 新增 element 未在 element_coverage 登记:\n  {}\n\
-         登记路径:crates/auto-lang/src/aura/element_coverage.rs\n\
+         登记路径:crates/auto-ui-compiler/src/aura/element_coverage.rs\n\
          (默认 not-yet/not-consumed 即过——登记动作不可省)",
         unregistered.iter().cloned().collect::<Vec<_>>().join(", ")
     );

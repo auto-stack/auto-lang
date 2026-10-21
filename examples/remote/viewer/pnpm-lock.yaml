@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@auto/drawlist-renderer':
-        specifier: file:../../../packages/drawlist-renderer
-        version: file:../../../packages/drawlist-renderer
+        specifier: file:../../../crates/auto-ui-tools/drawlist-renderer
+        version: file:../../../crates/auto-ui-tools/drawlist-renderer
     devDependencies:
       typescript:
         specifier: ~6.0.2
@@ -21,8 +21,8 @@ importers:
 
 packages:
 
-  '@auto/drawlist-renderer@file:../../../packages/drawlist-renderer':
-    resolution: {directory: ../../../packages/drawlist-renderer, type: directory}
+  '@auto/drawlist-renderer@file:../../../crates/auto-ui-tools/drawlist-renderer':
+    resolution: {directory: ../../../crates/auto-ui-tools/drawlist-renderer, type: directory}
 
   '@oxc-project/types@0.147.0':
     resolution: {integrity: sha512-IJ3s6ltHLp45S0bh7phkX+gJO7A1Wuz2EaqpAhb8WjqDwbzMiWKHhyyT42tskaWjEYXtHtVCPpnBJVT9+dcRLg==}
@@ -297,7 +297,7 @@ packages:
 
 snapshots:
 
-  '@auto/drawlist-renderer@file:../../../packages/drawlist-renderer': {}
+  '@auto/drawlist-renderer@file:../../../crates/auto-ui-tools/drawlist-renderer': {}
 
   '@oxc-project/types@0.147.0': {}
 

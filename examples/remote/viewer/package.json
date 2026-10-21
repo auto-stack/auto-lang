@@ -10,7 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@auto/drawlist-renderer": "file:../../../packages/drawlist-renderer"
+    "@auto/drawlist-renderer": "file:../../../crates/auto-ui-tools/drawlist-renderer"
   },
   "devDependencies": {
     "typescript": "~6.0.2",

@@ -23,6 +23,16 @@ members = [
     # test/fixtures/modularity/media-core-consumer).
     "crates/auto-media-core",
     "crates/auto-lang",
+    # PLAN-814: 纯语言 SDK——非 UI 语言栈单一来源（use_scanner 起步，
+    # parser/compile/VM/trans 随 T-02..T-06 迁入）；normal/build/dev 闭包
+    # 无 UI 实现/Man（闭包钉：test/fixtures/modularity/language-sdk-consumer）。
+    "crates/auto-lang-core",
+    # PLAN-814: UI 编译/生成域——aura 提取/design tokens/四生成器
+    # （T-03 迁入）；依赖 SDK，不被 SDK 反向依赖。
+    "crates/auto-ui-compiler",
+    # PLAN-814: UI 运行/renderer/宿主域——VM 渲染轨与桌面栈（T-04 迁入）；
+    # 依赖 SDK 与 UI compiler；宿主能力装配收敛于此。
+    "crates/auto-ui-runtime",
     # PLAN-807: text foundation crate (persistent rope, file-backed paging,
     # snapshots, diff engine), extracted verbatim from auto-lang's
     # ui/code_editor; auto-lang keeps thin re-export facades at the old
@@ -129,6 +139,10 @@ members = [
     # generation/build/run closure lands with M815-B. No Man/legacy big-lib
     # deps (closure pinned by test/fixtures/modularity/ui-tool-consumer).
     "crates/auto-ui-tools",
+    # PLAN-815 T-04: API generation core — single-algorithm api_gen +
+    # rust_sidecar effect adapter + shared rust workspace layout, extracted
+    # from auto-man (owner: lang-service-adapter; man/ui域双消费).
+    "crates/auto-api-gen",
     # "crates/xdm-gen",  # Temporarily disabled: broken dependency paths + gitignored
 ]
 exclude = [
@@ -146,6 +160,12 @@ exclude = [
     # [workspace]，模拟 crate 边界外的真实消费者），门禁经
     # cargo test --manifest-path test/fixtures/modularity/ui-dialect-consumer/Cargo.toml
     "test/fixtures/modularity/ui-dialect-consumer",
+    # PLAN-814 M814-A 纯 SDK 消费方探针（V-01/AC-08；闭包钉：
+    # cargo test --manifest-path test/fixtures/modularity/language-sdk-consumer/Cargo.toml）
+    "test/fixtures/modularity/language-sdk-consumer",
+    # PLAN-814 M814-A UI 编译包消费方探针（V-03/AC-08；闭包钉：
+    # cargo test --manifest-path test/fixtures/modularity/ui-package-consumer/Cargo.toml）
+    "test/fixtures/modularity/ui-package-consumer",
     # PLAN-801: 外部方言 API 消费方探针——独立 fixture crate（唯一依赖
     # auto-parser-api，证明外部文法实现闭包无 auto-lang/Parser/VM/UI；
     # model 单份实现迁此，解析集成测试在上层 ui-dialect-consumer
