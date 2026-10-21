@@ -10064,12 +10064,39 @@ pub fn host_exit_generation() -> u64 {
     HOST_EXIT_GENERATION.load(std::sync::atomic::Ordering::SeqCst)
 }
 
-/// 当前会话的启动快照（iced 每进程单事件循环——同一时刻仅一会话，
-/// 无并发写竞态；`run_session` 启动时写入）。
-static CURRENT_SESSION_SINCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// 当前退出窗口的启动快照（R3-02：窗口生命周期）。`u64::MAX` = 无窗口。
+/// [`host_exit_window_begin`] 在 VM 执行的**最早边界**（内部执行臂启动/
+/// `run_file_dynamic_ui_inner` 入口——组件构建之前）开启窗口；`run_session`
+/// 消费快照，会话结束后关闭窗口（store MAX）。开启与消费之间的任何
+/// 退出请求（含初始化/构建期间的 q）都 > 快照，不被吸收；上一会话的
+/// 陈旧请求在新窗口开启时 ≤ 新快照，不误杀下一会话。
+static CURRENT_SESSION_SINCE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(u64::MAX);
 
 fn current_host_exit_since() -> u64 {
     CURRENT_SESSION_SINCE.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// 开启本进程的退出请求窗口（PLAN-815 T-05 R3-02）：以当前代数为快照。
+/// 幂等且**不抬高**已开启窗口的快照（窗口已开则保持原值）。在 VM 执行
+/// 的最早边界调用——内部执行臂进程启动处、或 `run_file_dynamic_ui_inner`
+/// 入口（组件构建前）。
+pub fn host_exit_window_begin() {
+    let now = HOST_EXIT_GENERATION.load(std::sync::atomic::Ordering::SeqCst);
+    CURRENT_SESSION_SINCE
+        .compare_exchange(
+            u64::MAX,
+            now,
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+        )
+        .ok();
+}
+
+/// 会话结束：关闭退出请求窗口（下一会话开启新窗口时以彼时快照吸收
+/// 陈旧请求）。
+fn host_exit_window_end() {
+    CURRENT_SESSION_SINCE.store(u64::MAX, std::sync::atomic::Ordering::SeqCst);
 }
 
 /// Global MCP action channel receiver (Plan 278).
@@ -18947,8 +18974,10 @@ fn run_session(
     // PLAN-815 T-05（F03，R2 根修）：新会话快照退出请求代数——本会话只
     // 响应快照之后的新请求（初始化期间到达的取消不丢、上一会话的陈旧
     // 请求不误杀；订阅经 host_exit_poll_subscription(since) 消费）。
-    let host_exit_since = host_exit_generation();
-    CURRENT_SESSION_SINCE.store(host_exit_since, std::sync::atomic::Ordering::SeqCst);
+    // R3-02：优先沿用执行边界已开启的窗口（初始化/构建期间的退出请求
+    /// 因此 > 快照而不被吸收）；无窗口（桌面直入口）则在此开启。
+    host_exit_window_begin();
+    let host_exit_since = current_host_exit_since();
     // Stage B P-7：宿主显式 shell pack 注入（OnceLock 首值胜；后续幂等）。
     if let Some(pack_dir) = &opts.shell_pack {
         crate::ui::shell::set_shell_pack_override(pack_dir.clone());
@@ -25403,7 +25432,7 @@ fn run_session(
               _window: iced::window::Id|
               -> iced::Theme { shadcn_theme(crate::ui::style_iced_adapter::dark_mode()) };
 
-    iced::daemon(boot, update, view_desktop_fn)
+    let session_result = iced::daemon(boot, update, view_desktop_fn)
         .title(title_fn)
         // Plan 411 P1-C: 内嵌 Inter 三字重 + 默认 family(中文字形回退系统)。
         .font(INTER_FONT_REGULAR)
@@ -25801,7 +25830,9 @@ fn run_session(
                 crate::ui::session::desktop_window_events(),
             ])
         })
-        .run()?;
+        .run();
+    host_exit_window_end();
+    session_result?;
 
     // PLAN-575 D1 挂点③：正常返回路径（iced::exit() 关窗/电源键确认退出
     // 都落到这里）——区分"走到正常退出"与"被外界终止"（外界 TerminateProcess

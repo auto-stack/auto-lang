@@ -52,6 +52,21 @@ pub enum FlowEnd {
     Cancelled,
 }
 
+/// How a forwarder thread ended (F01/R3): distinguishes a natural pipe EOF
+/// from a teardown-forced stop and from a real read error — all three are
+/// separately named at join time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReaderEnd {
+    /// Still running.
+    Running,
+    /// The pipe reached EOF on its own (all write ends closed).
+    NaturalEof,
+    /// The stop flag ended the loop before any natural EOF.
+    Stopped,
+    /// The read failed with an I/O error (output may be truncated).
+    IoError(String),
+}
+
 /// Sentinel error text a hosted flow bails with at a cancellation
 /// checkpoint.
 pub const CANCELLED_ERR: &str = "operation cancelled";
@@ -152,9 +167,10 @@ impl TrackedSpawn {
 pub struct TrackedChild {
     proc: Mutex<Option<auto_tool_execution::OwnedProcess>>,
     stdin: Mutex<Option<auto_tool_execution::StdinPipe>>,
-    /// stdout/stderr forwarder threads with their natural-EOF flags
-    /// (joined with a real-finish oracle at teardown).
-    readers: Mutex<Vec<(std::thread::JoinHandle<()>, Arc<AtomicBool>)>>,
+    /// stdout/stderr forwarder threads with their end-cause slots (F01/R3:
+    /// NaturalEof / Stopped / IoError — a forced stop is NEVER reported as
+    /// a natural EOF; joined with a real-finish oracle at teardown).
+    readers: Mutex<Vec<(std::thread::JoinHandle<()>, Arc<Mutex<ReaderEnd>>)>>,
     /// Stop flag for the input writer's cancellable writes.
     input_stop: Arc<AtomicBool>,
     /// Stop flag for the forwarder's polling read loop (F01/R2: the reader
@@ -237,11 +253,21 @@ impl TrackedChild {
             if !failures.is_empty() {
                 continue;
             }
-            if !reached_eof.load(Ordering::SeqCst) {
-                failures.push(format!(
+            let end = reached_eof.lock().unwrap().clone();
+            match end {
+                ReaderEnd::NaturalEof => {}
+                ReaderEnd::Running => failures.push(format!(
+                    "reader for `{}` did not report an end cause",
+                    self.label
+                )),
+                ReaderEnd::Stopped => failures.push(format!(
                     "reader for `{}` stopped by teardown without a natural pipe EOF (a process outside the owned tree may still hold the pipe)",
                     self.label
-                ));
+                )),
+                ReaderEnd::IoError(reason) => failures.push(format!(
+                    "reader for `{}` ended with an I/O error (output may be truncated): {reason}",
+                    self.label
+                )),
             }
         }
         if failures.is_empty() {
@@ -511,24 +537,24 @@ pub fn spawn_tracked(spec: TrackedSpawn, label: &str) -> std::io::Result<Arc<Tra
     if let Some(stdout) = child_stdout {
         let forward_label = label.to_string();
         let reader_stop = Arc::clone(&tracked.reader_stop);
-        let reached_eof = Arc::new(AtomicBool::new(false));
-        let eof_flag = Arc::clone(&reached_eof);
+        let end_slot = Arc::new(Mutex::new(ReaderEnd::Running));
+        let slot = Arc::clone(&end_slot);
         let handle = std::thread::Builder::new()
             .name(format!("child-out:{forward_label}"))
-            .spawn(move || forward_stdout(stdout, &forward_label, &reader_stop, &reached_eof))
+            .spawn(move || forward_stdout(stdout, &forward_label, &reader_stop, &end_slot))
             .map_err(|e| std::io::Error::other(e.to_string()))?;
-        tracked.readers.lock().unwrap().push((handle, eof_flag));
+        tracked.readers.lock().unwrap().push((handle, slot));
     }
     if let Some(stderr) = child_stderr {
         let forward_label = label.to_string();
         let reader_stop = Arc::clone(&tracked.reader_stop);
-        let reached_eof = Arc::new(AtomicBool::new(false));
-        let eof_flag = Arc::clone(&reached_eof);
+        let end_slot = Arc::new(Mutex::new(ReaderEnd::Running));
+        let slot = Arc::clone(&end_slot);
         let handle = std::thread::Builder::new()
             .name(format!("child-err:{forward_label}"))
-            .spawn(move || forward_stderr(stderr, &forward_label, &reader_stop, &reached_eof))
+            .spawn(move || forward_stderr(stderr, &forward_label, &reader_stop, &end_slot))
             .map_err(|e| std::io::Error::other(e.to_string()))?;
-        tracked.readers.lock().unwrap().push((handle, eof_flag));
+        tracked.readers.lock().unwrap().push((handle, slot));
     }
     Ok(tracked)
 }
@@ -543,9 +569,9 @@ fn forward_stdout(
     stdout: std::process::ChildStdout,
     label: &str,
     stop: &AtomicBool,
-    reached_eof: &AtomicBool,
+    end_slot: &Mutex<ReaderEnd>,
 ) {
-    forward_pipe(stdout, label, stop, reached_eof)
+    forward_pipe(stdout, label, stop, end_slot)
 }
 
 /// stderr forwarder: same forwarding + sniffing semantics as stdout (the
@@ -554,26 +580,26 @@ fn forward_stderr(
     stderr: std::process::ChildStderr,
     label: &str,
     stop: &AtomicBool,
-    reached_eof: &AtomicBool,
+    end_slot: &Mutex<ReaderEnd>,
 ) {
-    forward_pipe(stderr, label, stop, reached_eof)
+    forward_pipe(stderr, label, stop, end_slot)
 }
 
 fn forward_pipe(
     pipe: impl std::io::Read + PipeAvailability,
     label: &str,
     stop: &AtomicBool,
-    reached_eof: &AtomicBool,
+    end_slot: &Mutex<ReaderEnd>,
 ) {
     let mut reader = std::io::BufReader::new(pipe);
     let mut announced = false;
     loop {
         if stop.load(Ordering::SeqCst) {
-            return; // teardown signalled — not a natural EOF
+            *end_slot.lock().unwrap() = ReaderEnd::Stopped;
+            return;
         }
-        let chunk = read_available(&mut reader, stop);
-        match chunk {
-            Some(bytes) if !bytes.is_empty() => {
+        match read_available(&mut reader) {
+            ReadOutcome::Chunk(bytes) if !bytes.is_empty() => {
                 log_chunk(&bytes);
                 if !announced
                     && (label == "dev-server" || label == "api-server" || label == "vm-session")
@@ -584,14 +610,31 @@ fn forward_pipe(
                     }
                 }
             }
-            Some(_) => continue,
-            None => {
-                // Natural end (EOF / broken pipe) without the stop flag.
-                reached_eof.store(true, Ordering::SeqCst);
+            ReadOutcome::Chunk(_) => {
+                // Zero available bytes (windows peek): brief backoff before
+                // the next poll; the loop head re-checks stop each tick.
+                std::thread::sleep(Duration::from_millis(10));
+                continue;
+            }
+            ReadOutcome::Eof => {
+                *end_slot.lock().unwrap() = ReaderEnd::NaturalEof;
+                return;
+            }
+            ReadOutcome::Err(reason) => {
+                *end_slot.lock().unwrap() = ReaderEnd::IoError(reason);
                 return;
             }
         }
     }
+}
+
+/// One poll result of [`read_available`].
+enum ReadOutcome {
+    Chunk(Vec<u8>),
+    /// The pipe broke / all write ends closed — a natural end.
+    Eof,
+    /// A real read error (not EOF).
+    Err(String),
 }
 
 /// Windows availability probe for the anonymous stdout pipe: zero-blocking
@@ -667,44 +710,48 @@ impl PipeAvailability for std::process::ChildStderr {
 /// teardown bound + named failure disclosure).
 fn read_available(
     reader: &mut std::io::BufReader<impl std::io::Read + PipeAvailability>,
-    stop: &AtomicBool,
-) -> Option<Vec<u8>> {
+) -> ReadOutcome {
     #[cfg(windows)]
     {
         use std::io::Read as _;
-        loop {
-            if stop.load(Ordering::SeqCst) {
-                return None;
-            }
-            let avail = match reader.get_ref().available() {
-                Ok(n) => n,
-                Err(_) => return None, // broken pipe = EOF after tree death
-            };
-            if avail == 0 {
-                std::thread::sleep(Duration::from_millis(10));
-                continue;
-            }
-            let mut chunk = vec![0u8; avail as usize];
-            let mut filled = 0usize;
-            while filled < chunk.len() {
-                match reader.read(&mut chunk[filled..]) {
-                    Ok(0) => return Some(chunk[..filled].to_vec()),
-                    Ok(n) => filled += n,
-                    Err(_) => return Some(chunk[..filled].to_vec()),
-                }
-            }
-            return Some(chunk);
+        let avail = match reader.get_ref().available() {
+            Ok(n) => n,
+            Err(e) => return classify_pipe_error(e),
+        };
+        if avail == 0 {
+            // No data right now: yield an empty chunk so the caller's loop
+            // head can re-check the stop flag and poll again.
+            return ReadOutcome::Chunk(Vec::new());
         }
+        let mut chunk = vec![0u8; avail as usize];
+        let mut filled = 0usize;
+        while filled < chunk.len() {
+            match reader.read(&mut chunk[filled..]) {
+                Ok(0) => return ReadOutcome::Eof,
+                Ok(n) => filled += n,
+                Err(e) => return classify_pipe_error(e),
+            }
+        }
+        ReadOutcome::Chunk(chunk)
     }
     #[cfg(not(windows))]
     {
         use std::io::BufRead;
         let mut buf = Vec::with_capacity(8192);
         match reader.read_until(b'\n', &mut buf) {
-            Ok(0) => None,
-            Ok(_) => Some(buf),
-            Err(_) => None,
+            Ok(0) => ReadOutcome::Eof,
+            Ok(_) => ReadOutcome::Chunk(buf),
+            Err(e) => ReadOutcome::Err(e.to_string()),
         }
+    }
+}
+
+/// Distinguish a broken pipe (all write ends gone = natural EOF) from a
+/// genuine read error (F01/R3's named disclosure).
+fn classify_pipe_error(e: std::io::Error) -> ReadOutcome {
+    match e.raw_os_error() {
+        Some(109) | Some(232) => ReadOutcome::Eof, // ERROR_BROKEN_PIPE / ERROR_NO_DATA
+        _ => ReadOutcome::Err(e.to_string()),
     }
 }
 

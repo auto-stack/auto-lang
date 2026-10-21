@@ -181,6 +181,30 @@ impl auto_lang_core::vm::backend_abi::BackendRegistry for VmHostRegistry {
     }
 }
 
+/// T-05 R3（R3-01）：执行进程的外部后端装配——链接 `back.*` 模块解析根
+/// 并装载 cdylib（宿主桥注册）。参数为**请求衍生**的绝对后端根（父进程
+/// 从单源请求求值后经 env 传递；子进程不重读主 pac，不制造第二真源）。
+/// 返回 keepalive——调用方必须持有到会话结束。
+pub fn prepare_external_backend_from_root(
+    backend_dir: &Path,
+) -> Result<auto_lang_core::vm::backend_abi::LoadedBackend, String> {
+    if backend_dir.join("api.at").is_file() {
+        auto_lang_core::set_external_back_root(backend_dir.to_path_buf());
+        println!(
+            "  {} external backend linked: back.* -> {}",
+            "✓".bright_green(),
+            backend_dir.display()
+        );
+    } else {
+        eprintln!(
+            "  {} external backend: no api.at in {}",
+            "⚠".bright_yellow(),
+            backend_dir.display()
+        );
+    }
+    load_external_backend(backend_dir)
+}
+
 /// 在后端项目的 target/{debug,release} 下定位其 cdylib 并装载注册。
 /// 库名 = 后端 pac.at `name` 规整('-'→'_',Windows `x.dll` / macOS
 /// `libx.dylib` / Linux `libx.so`);缺失时给出"先构建后端"的明确指引。
@@ -335,7 +359,23 @@ pub fn run_vm_ui_flow(
     // ABI 校验 + 注册进宿主桥(vm::host_bridge,与 ash-runner 同表)。
     // 无 back.project 配置时零行为变化(本地 back/ 现状)。
     let mut _backend_keepalive: Option<auto_lang_core::vm::backend_abi::LoadedBackend> = None;
-    if !split_mode {
+    // T-05 R3（R3-01）：托管形态下后端装配在**执行进程**（internal-vm-exec
+    // 子进程）进行——父进程仅把请求衍生的绝对后端根经 env 传递（见下），
+    // 不在本进程装载（跨进程非 env 状态不迁移）。
+    if !split_mode && proc_host::current().is_some() {
+        if let Ok(Some(backend_rel)) = source.external_backend(project_dir) {
+            let backend_dir = project_dir
+                .join(backend_rel.as_str())
+                .canonicalize()
+                .unwrap_or_else(|_| project_dir.join(backend_rel.as_str()));
+            if backend_dir.join("api.at").is_file() {
+                // SAFETY: edition 2021; set before the child spawns.
+                unsafe {
+                    std::env::set_var("AUTO_UI_TOOL_VM_BACK_ROOT", &backend_dir);
+                }
+            }
+        }
+    } else if !split_mode {
         match source.external_backend(project_dir) {
             Ok(Some(backend_rel)) => {
                 let backend_dir = project_dir
@@ -448,6 +488,26 @@ pub fn run_vm_ui_flow(
     // T-06 双端同源）。在 env 种子**之后**执行：声明只换 ACTIVE_THEME 色板
     // 槽,不清写 DARK_MODE/ACCENT_NAME——优先级链
     // CLI env > os-config/宿主 > pac.at 声明 > 内置缺省 语义成文。
+    if proc_host::current().is_some() {
+        // T-05 R3（R3-01）：托管形态把请求衍生的 theme{} lite 声明整体
+        // （JSON）传给执行子进程，子进程同链 compose 激活——组合主题不
+        // 是内置名，只传名字会退回缺省；声明即单源请求数据，无第二真源。
+        if let Some(lite) = source.theme_decl_lite() {
+            // 字段皆简单标量/字符串对偶——手写 JSON 组装（project-model 无
+            // serde 依赖，wire 为手写编解码，同族做法）。
+            let json = serde_json::json!({
+                "name": lite.name,
+                "extends": lite.extends,
+                "mode": lite.mode,
+                "colors": lite.colors,
+            })
+            .to_string();
+            // SAFETY: edition 2021; set before the child spawns.
+            unsafe {
+                std::env::set_var("AUTO_UI_TOOL_VM_THEME_DECL", json);
+            }
+        }
+    }
     if let Some(name) = source.apply_theme_decl(project_dir) {
         println!(
             "  {} theme declaration activated: {}",
@@ -458,7 +518,7 @@ pub fn run_vm_ui_flow(
 
     // PLAN-080 §10-9 足迹桩（CLI 调试遗留）：仅在未托管（CLI 直跑）形态
     // 安装——工具宿主进程不应被全局 panic 钩子/心跳线程改变生命周期语义。
-    if proc_host::current().is_none() {
+    if proc_host::current().is_none() && std::env::var_os("AUTO_UI_TOOL_VM_CHILD").is_none() {
         std::panic::set_hook(Box::new(|info| {
             eprintln!(
                 "[X9-PANIC] {info}

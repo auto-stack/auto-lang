@@ -1885,6 +1885,10 @@ fn run_file_dynamic_ui_inner(
     override_scenario: Option<&auto_lang_core::session::CompilerSession>,
 ) -> AutoResult<String> {
     use crate::ui::iced::run_dynamic_iced;
+    // PLAN-815 T-05（R3-02）：在组件构建**之前**开启退出请求窗口——
+    // 初始化/构建期间到达的退出请求（如内部执行臂的 q）不被随后的
+    // 快照吸收。
+    crate::ui::iced::renderer::host_exit_window_begin();
     // PLAN-779: UI 宿主能力装配——`auto run` UI 入口在组件/VM 构造前注册
     // frame provider 进程默认（覆盖库消费者不经 CLI main 的形态；-q
     // rqhost 客户端在 build 之后分岔，同样受益于此处注册）。

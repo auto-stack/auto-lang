@@ -3210,6 +3210,14 @@ impl<'a> PacSource<'a> {
         self.req.is_some()
     }
 
+    /// T-05 R3（R3-01）：请求携带的 theme{} lite 声明（单源数据——供
+    /// internal-vm-exec 执行子进程同链 compose 激活；legacy 返回 None）。
+    pub fn theme_decl_lite(
+        &self,
+    ) -> Option<&auto_project_model::generation_request::ThemeDeclLite> {
+        self.req.and_then(|r| r.theme_decl.as_ref())
+    }
+
     pub fn name(&self, pac_path: &Path) -> String {
         match self.req {
             Some(r) => r
