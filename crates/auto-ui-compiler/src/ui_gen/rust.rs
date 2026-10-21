@@ -8898,9 +8898,9 @@ impl RustGenerator {
 
     /// 操作数表达式的类型解析（R12/R13）：透明分组剥壳 → 一元符号（数值
     /// 型保持宽度）/布尔取反（bool 保持）→ 括号内顶层逻辑组合（bool⊕bool
-    /// →bool）→ 顶层四则合并 → 单项（bool/str 字面量、`.name` 声明引用、
-    /// 数字字面量）。非数值混型/未识别形态 → Unknown（默认 str 投影，与
-    /// 旧默认语义一致）。
+    /// →bool）→ 顶层比较子表达式（结果是 bool）→ 顶层四则合并 → 单项
+    /// （bool/str 字面量、`.name` 声明引用、数字字面量）。非数值混型/
+    /// 未识别形态 → Unknown（默认 str 投影，与旧默认语义一致）。
     fn classify_operand_expr(&self, s: &str) -> OperandTy {
         let s = s.trim();
         if s.is_empty() {
@@ -8934,6 +8934,13 @@ impl RustGenerator {
                 (OperandTy::Bool, OperandTy::Bool) => OperandTy::Bool,
                 _ => OperandTy::Unknown,
             };
+        }
+        // R14：比较子表达式的结果类型——`( .limit > 3 )` 剥壳后含顶层
+        // 比较运算符即 bool（六符全集；括号外、字符串字面量外）。与
+        // 取反/逻辑节点在同一递归传播规则中：`!(.limit > 3)`、
+        // `(.limit > 3) && .allowed` 由上方分支递归自然保型。
+        if Self::has_top_comparison(s) {
+            return OperandTy::Bool;
         }
         if let Some((l, r)) = Self::split_top_arith(s) {
             let lt = self.classify_operand_expr(l);
@@ -9086,6 +9093,37 @@ impl RustGenerator {
             i += 1;
         }
         None
+    }
+
+    /// 顶层（括号外、字符串字面量外）是否存在比较运算符（R14）——
+    /// 比较子表达式的结果类型是 bool。六符全集：`<`/`>`（含 `<=`/`>=`
+    /// 首字符）、`==`、`!=`；字符串内的 `<`/`==` 等不误报。
+    fn has_top_comparison(s: &str) -> bool {
+        let b = s.as_bytes();
+        let mut depth = 0usize;
+        let mut i = 0usize;
+        let mut in_str = false;
+        while i < b.len() {
+            let c = b[i];
+            if in_str {
+                if c == b'"' {
+                    in_str = false;
+                }
+                i += 1;
+                continue;
+            }
+            match c {
+                b'"' => in_str = true,
+                b'(' => depth += 1,
+                b')' => depth = depth.saturating_sub(1),
+                b'<' | b'>' if depth == 0 => return true,
+                b'=' if depth == 0 && i + 1 < b.len() && b[i + 1] == b'=' => return true,
+                b'!' if depth == 0 && i + 1 < b.len() && b[i + 1] == b'=' => return true,
+                _ => {}
+            }
+            i += 1;
+        }
+        false
     }
 
     /// Convert AURA condition to Rust expression
