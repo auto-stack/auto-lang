@@ -657,61 +657,253 @@ fn contract_828_admission_scaffold_still_legal_at_function_level() {
 }
 
 // ---------------------------------------------------------------------------
-// T01-C05 transaction first cases (`contract_828_transaction`): the
-// frozen D-03 mechanism — recheck grafts the candidate and hands "current"
-// back as a bounded single-slot save; failure/cancel restores, commit
-// publishes once, close explicitly releases the environment's owned
-// entries.
+// T01-C05 transaction cases (`contract_828_transaction`): the frozen D-03
+// candidate model — the CANDIDATE owns the new entry plus owner/base facts;
+// a successful prepare restores current BEFORE returning; commit is the
+// single publication point (validates closed/owner/base/slot, then
+// installs); cancel and drop take no environment reference, so they cannot
+// modify any current semantics by construction. Inputs and oracles adopted
+// from the de4cba702 review's `transaction-controls.rs` (same sources,
+// same expected states) on the new API.
 // ---------------------------------------------------------------------------
 
+const TWO_FNS_EDITED_B: &str =
+    "fn helper(n int) int { return n + 3 }\nfn main() int { return helper(2) }\n";
+const OTHER_HELPER_SRC: &str = "fn helper() int { return 9 }\nfn main() int { return helper() }\n";
+
+fn current_dump(env: &auto_ac_prototype::source::CheckedEnv, src: &str) -> Vec<u8> {
+    let (parts, _) = auto_ac_prototype::source::emit_function_body(env, 0, src, "probe.at")
+        .expect("current emission from an open environment");
+    helper_dump(parts.bundle.modules.first().unwrap(), "d_helper")
+}
+
+fn cold_dump(src: &str) -> Vec<u8> {
+    let parts = auto_ac_prototype::source::compile_parts_with(
+        src,
+        "probe.at",
+        &[],
+        auto_ac_prototype::source::SourceProfile::Scalar,
+    )
+    .unwrap();
+    helper_dump(parts.bundle.modules.first().unwrap(), "d_helper")
+}
+
+/// Controls "successful prepare does not publish" + "drop preserves
+/// current": a prepared candidate's OWN artifact is ready (its single-body
+/// document carries the new body), while the environment keeps serving the
+/// current semantics — and dropping the uncommitted candidate changes
+/// nothing.
 #[test]
-fn contract_828_transaction_cancel_then_continue() {
+fn contract_828_transaction_prepare_does_not_publish_and_drop_is_inert() {
     use auto_ac_prototype::source as ac;
     let parsed = ac::parse_program_with(TWO_FNS, ac::SourceProfile::Scalar).unwrap();
     let mut env = ac::resolve_env(&parsed, &[], ac::SourceProfile::Scalar).unwrap();
-    let cold_original =
-        ac::compile_parts_with(TWO_FNS, "probe.at", &[], ac::SourceProfile::Scalar).unwrap();
-    let cold_edited =
-        ac::compile_parts_with(TWO_FNS_EDITED, "probe.at", &[], ac::SourceProfile::Scalar).unwrap();
 
-    // Candidate A on the shared base: recheck ok, candidate grafted, save
-    // holds the displaced current entry — then CANCELLED.
-    let save_a =
-        ac::recheck_transactional(&mut env, &fn_item_of(TWO_FNS_EDITED, "helper"), 0).unwrap();
-    assert_eq!(save_a.slot_name(), "helper");
-    save_a.restore(&mut env).unwrap();
-
-    // Current is preserved across the cancelled candidate: emitting the
-    // ORIGINAL body from the same environment reproduces the cold compile.
-    let (parts, _) = ac::emit_function_body(&env, 0, TWO_FNS, "probe.at").unwrap();
+    let candidate = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS_EDITED, "helper"),
+        0,
+        TWO_FNS_EDITED,
+        "probe.at",
+    )
+    .unwrap();
+    assert_eq!(candidate.slot_name(), "helper");
+    assert_eq!(candidate.receipt().real_body_plans, 1);
+    // The candidate's own artifact IS the new body...
     assert_eq!(
-        helper_dump(parts.bundle.modules.first().unwrap(), "d_helper"),
-        helper_dump(cold_original.bundle.modules.first().unwrap(), "d_helper"),
-        "cancelled candidate did not publish"
+        helper_dump(
+            candidate.parts().bundle.modules.first().unwrap(),
+            "d_helper"
+        ),
+        cold_dump(TWO_FNS_EDITED),
+        "the real candidate artifact is ready"
+    );
+    // ...while current stays the committed base: preparing must not publish.
+    assert_eq!(
+        current_dump(&env, TWO_FNS),
+        cold_dump(TWO_FNS),
+        "preparing preserves the committed current environment"
     );
 
-    // Legitimate continuation: candidate B from the same base commits, and
-    // the environment now publishes B.
-    let save_b =
-        ac::recheck_transactional(&mut env, &fn_item_of(TWO_FNS_EDITED, "helper"), 0).unwrap();
-    save_b.commit(&env).unwrap();
-    let (parts, _) = ac::emit_function_body(&env, 0, TWO_FNS_EDITED, "probe.at").unwrap();
+    // Drop without disposition: current is untouched (cancel/drop have no
+    // environment access at all).
+    drop(candidate);
     assert_eq!(
-        helper_dump(parts.bundle.modules.first().unwrap(), "d_helper"),
-        helper_dump(cold_edited.bundle.modules.first().unwrap(), "d_helper"),
-        "committed candidate published exactly once"
+        current_dump(&env, TWO_FNS),
+        cold_dump(TWO_FNS),
+        "dropping an uncommitted candidate preserves current"
+    );
+}
+
+/// The legal sequential control: cancel keeps the base, a later commit
+/// publishes exactly its own candidate.
+#[test]
+fn contract_828_transaction_sequential_cancel_then_commit() {
+    use auto_ac_prototype::source as ac;
+    let parsed = ac::parse_program_with(TWO_FNS, ac::SourceProfile::Scalar).unwrap();
+    let mut env = ac::resolve_env(&parsed, &[], ac::SourceProfile::Scalar).unwrap();
+
+    let a = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS_EDITED, "helper"),
+        0,
+        TWO_FNS_EDITED,
+        "probe.at",
+    )
+    .unwrap();
+    a.cancel();
+    assert_eq!(current_dump(&env, TWO_FNS), cold_dump(TWO_FNS));
+
+    let b = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS_EDITED, "helper"),
+        0,
+        TWO_FNS_EDITED,
+        "probe.at",
+    )
+    .unwrap();
+    assert_eq!(b.base_generation(), env.generation());
+    b.commit(&mut env).unwrap();
+    assert_eq!(
+        current_dump(&env, TWO_FNS_EDITED),
+        cold_dump(TWO_FNS_EDITED)
+    );
+    assert_eq!(env.generation(), 1, "one publication");
+}
+
+/// Two candidates live on the SAME base: cancelling the first then
+/// committing the second publishes the second's body; a LATE cancellation
+/// never rewinds a newer commit; and a commit whose base has expired is a
+/// controlled stale rejection that overwrites nothing.
+#[test]
+fn contract_828_transaction_two_live_candidates_and_stale_base() {
+    use auto_ac_prototype::source as ac;
+    let parsed = ac::parse_program_with(TWO_FNS, ac::SourceProfile::Scalar).unwrap();
+    let mut env = ac::resolve_env(&parsed, &[], ac::SourceProfile::Scalar).unwrap();
+
+    // Two live candidates prepared on the same base.
+    let a = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS_EDITED, "helper"),
+        0,
+        TWO_FNS_EDITED,
+        "probe.at",
+    )
+    .unwrap();
+    let b = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS_EDITED_B, "helper"),
+        0,
+        TWO_FNS_EDITED_B,
+        "probe.at",
+    )
+    .unwrap();
+    a.cancel();
+    b.commit(&mut env).unwrap();
+    assert_eq!(
+        current_dump(&env, TWO_FNS_EDITED_B),
+        cold_dump(TWO_FNS_EDITED_B),
+        "an accepted commit publishes the candidate it names"
     );
 
-    // Foreign disposition guard: a save belonging to this environment's
-    // slot is refused by another environment (identity, not index trust).
-    let other_src = "fn main() int { return 1 }\n";
-    let other = ac::parse_program_with(other_src, ac::SourceProfile::Scalar).unwrap();
-    let mut other_env = ac::resolve_env(&other, &[], ac::SourceProfile::Scalar).unwrap();
-    let save_c =
-        ac::recheck_transactional(&mut env, &fn_item_of(TWO_FNS_EDITED, "helper"), 0).unwrap();
-    // The rejected (consumed) disposition leaves the save dead — a foreign
-    // restore is a rejection, never a silent fallback.
-    assert!(save_c.restore(&mut other_env).is_err());
+    // A late cancellation must not rewind the newer commit.
+    let late_a = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS, "helper"),
+        0,
+        TWO_FNS,
+        "probe.at",
+    )
+    .unwrap();
+    let late_b = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS_EDITED, "helper"),
+        0,
+        TWO_FNS_EDITED,
+        "probe.at",
+    )
+    .unwrap();
+    late_b.commit(&mut env).unwrap();
+    late_a.cancel();
+    assert_eq!(
+        current_dump(&env, TWO_FNS_EDITED),
+        cold_dump(TWO_FNS_EDITED),
+        "an old cancellation must not overwrite a newer committed body"
+    );
+
+    // A candidate whose base expired (a newer commit published since its
+    // prepare) is a controlled stale rejection — never a rewrite.
+    let s1 = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS_EDITED_B, "helper"),
+        0,
+        TWO_FNS_EDITED_B,
+        "probe.at",
+    )
+    .unwrap();
+    let s2 = ac::prepare_function_candidate(
+        &mut env,
+        &fn_item_of(TWO_FNS, "helper"),
+        0,
+        TWO_FNS,
+        "probe.at",
+    )
+    .unwrap();
+    s2.commit(&mut env).unwrap();
+    let stale = s1.commit(&mut env).unwrap_err();
+    assert!(
+        stale.iter().any(|d| d.code == "source.stale"),
+        "stale-base commit is a controlled rejection, got {stale:?}"
+    );
+    assert_eq!(
+        current_dump(&env, TWO_FNS),
+        cold_dump(TWO_FNS),
+        "a rejected stale commit overwrites nothing"
+    );
+}
+
+/// Foreign disposition: a matching function NAME and SLOT in a DIFFERENT
+/// environment is not environment identity. Committing another
+/// environment's candidate is rejected and modifies NEITHER environment;
+/// cancellation takes no environment reference, so it cannot touch either.
+#[test]
+fn contract_828_transaction_foreign_same_name_slot_rejected() {
+    use auto_ac_prototype::source as ac;
+    let parsed = ac::parse_program_with(TWO_FNS, ac::SourceProfile::Scalar).unwrap();
+    let mut first = ac::resolve_env(&parsed, &[], ac::SourceProfile::Scalar).unwrap();
+    let other_parsed = ac::parse_program_with(OTHER_HELPER_SRC, ac::SourceProfile::Scalar).unwrap();
+    let mut second = ac::resolve_env(&other_parsed, &[], ac::SourceProfile::Scalar).unwrap();
+    assert_ne!(first.env_id(), second.env_id());
+    assert_eq!(
+        current_dump(&second, OTHER_HELPER_SRC),
+        cold_dump(OTHER_HELPER_SRC),
+        "foreign env control baseline"
+    );
+
+    let candidate = ac::prepare_function_candidate(
+        &mut first,
+        &fn_item_of(TWO_FNS_EDITED, "helper"),
+        0,
+        TWO_FNS_EDITED,
+        "probe.at",
+    )
+    .unwrap();
+    // Same name (`helper`) and same slot (0) — still a foreign rejection.
+    let disposition = candidate.commit(&mut second).unwrap_err();
+    assert!(
+        disposition.iter().any(|d| d.code == "source.foreign"),
+        "environment identity is stronger than a matching name and index: {disposition:?}"
+    );
+    assert_eq!(
+        current_dump(&second, OTHER_HELPER_SRC),
+        cold_dump(OTHER_HELPER_SRC),
+        "the rejected foreign commit modifies nothing in the target env"
+    );
+    assert_eq!(
+        current_dump(&first, TWO_FNS),
+        cold_dump(TWO_FNS),
+        "...nor in the owning env"
+    );
 }
 
 /// The minimal post-rejection transaction case (the review's demonstrated
@@ -726,8 +918,6 @@ fn contract_828_transaction_post_verify_rejection_keeps_current() {
         "fn helper(n int) int { var x = 2 }\nfn main() int { return helper(2) }\n";
     let parsed = ac::parse_program_with(TWO_FNS, ac::SourceProfile::Scalar).unwrap();
     let mut env = ac::resolve_env(&parsed, &[], ac::SourceProfile::Scalar).unwrap();
-    let cold_original =
-        ac::compile_parts_with(TWO_FNS, "probe.at", &[], ac::SourceProfile::Scalar).unwrap();
 
     // The prepare transaction runs recheck -> emit -> verify; the verify
     // stage rejects (missing return) and the environment is restored.
@@ -759,14 +949,15 @@ fn contract_828_transaction_post_verify_rejection_keeps_current() {
     assert!(auto_ac_prototype::verify::verify_function(parts.bundle.clone(), def_idx).is_ok());
     assert_eq!(
         helper_dump(module, "d_helper"),
-        helper_dump(cold_original.bundle.modules.first().unwrap(), "d_helper"),
+        cold_dump(TWO_FNS),
         "a post-recheck rejection never replaces current semantics"
     );
 }
 
 /// D-03 close seam: release of the environment's owned body entries is an
 /// EXPLICIT call (never implied by field drops); post-close recheck, emit
-/// and prepare are controlled rejections; close is idempotent.
+/// and commit are controlled rejections; close is idempotent. Cancelling
+/// an uncommitted candidate stays safe after close (no environment access).
 #[test]
 fn contract_828_transaction_close_releases_owned_entries() {
     use auto_ac_prototype::source as ac;
@@ -774,8 +965,7 @@ fn contract_828_transaction_close_releases_owned_entries() {
     let mut env = ac::resolve_env(&parsed, &[], ac::SourceProfile::Scalar).unwrap();
     assert_eq!(ac::resolve::env_fn_count(&env), 2);
 
-    // A live candidate save at close time.
-    let (_, _, save) = ac::prepare_function_candidate(
+    let candidate = ac::prepare_function_candidate(
         &mut env,
         &fn_item_of(TWO_FNS_EDITED, "helper"),
         0,
@@ -791,9 +981,14 @@ fn contract_828_transaction_close_releases_owned_entries() {
         0,
         "owned resolved body entries explicitly released"
     );
-    // Closed disposition: commit is a rejection.
-    assert!(save.commit(&env).is_err());
-    // Post-close rejections on every entry point.
+    // Closed disposition: commit is a rejection (cancel/drop need no
+    // environment and remain inert).
+    let closed_commit = candidate.commit(&mut env).unwrap_err();
+    assert!(
+        closed_commit.iter().any(|d| d.code == "source.closed"),
+        "closed commit is a controlled rejection, got {closed_commit:?}"
+    );
+    // Post-close rejections on every environment entry point.
     let recheck = ac::recheck_function(&mut env, &fn_item_of(TWO_FNS_EDITED, "helper"), 0);
     assert!(
         recheck

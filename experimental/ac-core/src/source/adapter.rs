@@ -325,25 +325,145 @@ pub fn emit_function_body(
     ))
 }
 
+/// PLAN-828 D-03 (T01-C05): one prepared single-function CANDIDATE. The
+/// candidate — not the environment — owns the new body entry (moved out
+/// during prepare, never a clone) together with its ownership facts: the
+/// environment identity and publication generation it was prepared
+/// against and the slot it belongs to. While a candidate lives, the
+/// environment still serves the CURRENT published semantics; only
+/// [`FnCandidate::commit`] ever installs, exactly once, after validating
+/// closed/owner/base. Disposition never writes the wrong state:
+/// [`FnCandidate::cancel`] (and a plain drop) take no environment
+/// reference, so an uncommitted candidate cannot modify any current
+/// semantics by construction.
+pub struct FnCandidate {
+    env_id: u64,
+    base_generation: u64,
+    fn_index: usize,
+    slot_name: String,
+    entry: ResolvedFn,
+    parts: SourceParts,
+    receipt: BodyEmitReceipt,
+}
+
+impl FnCandidate {
+    /// The environment slot this candidate installs into on commit.
+    pub fn fn_index(&self) -> usize {
+        self.fn_index
+    }
+
+    /// The function name of the candidate's slot.
+    pub fn slot_name(&self) -> &str {
+        &self.slot_name
+    }
+
+    /// The environment identity this candidate was prepared against.
+    pub fn owner_env_id(&self) -> u64 {
+        self.env_id
+    }
+
+    /// The publication generation this candidate was prepared against; a
+    /// commit onto a newer generation is a controlled stale rejection.
+    pub fn base_generation(&self) -> u64 {
+        self.base_generation
+    }
+
+    /// The candidate's own frozen artifacts (single-body document bound
+    /// and re-anchored against the candidate source).
+    pub fn parts(&self) -> &SourceParts {
+        &self.parts
+    }
+
+    /// The producer attestation of the candidate's emission.
+    pub fn receipt(&self) -> BodyEmitReceipt {
+        self.receipt
+    }
+
+    /// Commit — the SINGLE publication point: validate closed → owner →
+    /// base → slot, then install THIS candidate's entry and bump the
+    /// environment generation. A closed environment, a foreign
+    /// environment (identity, not name+slot), an expired base (a newer
+    /// commit was published since prepare) or a slot that no longer holds
+    /// this function is a controlled rejection that modifies nothing.
+    /// The session calls this at its one commit point, together with the
+    /// root/source/revision publication.
+    pub fn commit(self, env: &mut super::resolve::CheckedEnv) -> Result<(), Vec<Diagnostic>> {
+        if env.closed {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.closed",
+                "the checked environment is closed; committing a candidate is a rejection",
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        if self.env_id != env.id {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.foreign",
+                format!(
+                    "candidate for `{}` was prepared against environment #{}; this is environment #{} — a matching function name and slot is not environment identity",
+                    self.slot_name, self.env_id, env.id
+                ),
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        if self.base_generation != env.generation {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.stale",
+                format!(
+                    "candidate for `{}` was prepared against generation {} but the environment is at generation {} (a newer commit was published); an old candidate never overwrites a newer result",
+                    self.slot_name, self.base_generation, env.generation
+                ),
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        if env.program.fns.get(self.fn_index).map(|f| f.name.as_str())
+            != Some(self.slot_name.as_str())
+        {
+            return Err(vec![Diagnostic::new(
+                Stage::Bind,
+                "source.incremental",
+                format!(
+                    "slot {} no longer holds `{}`; the candidate no longer applies",
+                    self.fn_index, self.slot_name
+                ),
+                Span { start: 0, end: 0 },
+            )]);
+        }
+        env.program.fns[self.fn_index] = self.entry;
+        env.generation += 1;
+        Ok(())
+    }
+
+    /// Cancel: discard the uncommitted candidate. Takes NO environment
+    /// reference — cancellation cannot modify any current semantics, of
+    /// any environment, by construction; dropping the candidate is
+    /// equivalent.
+    pub fn cancel(self) {}
+}
+
 /// PLAN-828 D-03 (T01-C05): the minimal transactional single-function
-/// prepare. Runs the candidate pipeline in one bounded transaction —
-/// transactional re-check (the displaced current entry becomes the
-/// single-slot save), single-body emission, function-level verification —
-/// and hands the LIVE save back with the artifacts. Disposition is the
-/// caller's: `save.commit(env)` at the session's single commit point
-/// (together with root/source/revision publication) or
-/// `save.restore(env)` on cancel. A failure at ANY stage restores the
-/// previous entry FIRST, so the environment always reflects the last
-/// published semantics — never a rejected candidate. No environment
-/// clone: the transaction's whole bounded state is one saved entry.
+/// prepare. Within one exclusive-access bounded transaction the candidate
+/// body is temporarily grafted so the REAL single-body resolve/typecheck,
+/// emission and function-level verification all run against it — then,
+/// BEFORE returning, the current entry is restored and the CANDIDATE
+/// carries the new entry (moved) plus its owner/base facts. The
+/// environment therefore never publishes at prepare time: a successful
+/// prepare leaves current semantics byte-identical; a failure at ANY
+/// stage restores the current entry first. No environment clone — the
+/// transaction's whole bounded state is the one moved entry plus the
+/// candidate's artifacts.
 pub fn prepare_function_candidate(
     env: &mut super::resolve::CheckedEnv,
     item: &super::ast::FnItem,
     fn_index: usize,
     src: &str,
     module_path: &str,
-) -> Result<(SourceParts, BodyEmitReceipt, super::resolve::FnSlotSave), Vec<Diagnostic>> {
-    let save = super::resolve::recheck_transactional(env, item, fn_index)?;
+) -> Result<FnCandidate, Vec<Diagnostic>> {
+    // Bounded temporary graft (exclusive access): the re-check grafts the
+    // candidate body and hands back the displaced CURRENT entry.
+    let current = super::resolve::recheck_swap(env, item, fn_index)?;
     let prepared =
         emit_function_body(env, fn_index, src, module_path).and_then(|(parts, receipt)| {
             let def = format!("d_{}", item.name.name);
@@ -358,17 +478,24 @@ pub fn prepare_function_candidate(
             }
         });
     match prepared {
-        Ok((parts, receipt)) => Ok((parts, receipt, save)),
-        Err(ds) => match save.restore(env) {
-            Ok(()) => Err(ds),
-            // Unreachable in practice (we just grafted this slot in this
-            // same open environment); surface both rather than mask.
-            Err(rd) => {
-                let mut all = ds;
-                all.extend(rd);
-                Err(all)
-            }
-        },
+        Ok((parts, receipt)) => {
+            // Restore current and take the candidate BEFORE returning —
+            // publication happens only at FnCandidate::commit.
+            let entry = std::mem::replace(&mut env.program.fns[fn_index], current);
+            Ok(FnCandidate {
+                env_id: env.id,
+                base_generation: env.generation,
+                fn_index,
+                slot_name: item.name.name.clone(),
+                entry,
+                parts,
+                receipt,
+            })
+        }
+        Err(ds) => {
+            env.program.fns[fn_index] = current;
+            Err(ds)
+        }
     }
 }
 
