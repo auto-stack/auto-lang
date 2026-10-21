@@ -13,9 +13,9 @@ use std::sync::Arc;
 use auto_project_model::GenerationRequest;
 use auto_val::AutoResult;
 
-/// UI 操作集（vue/rust_ui/jet/ark/tauri/vscode 生成·构建·运行 + VM 运行
-/// + 服务侧 workspace 重写）。签名与 auto-ui-tools/compat 公开面一一对应，
-/// 不复制算法——compat 侧纯委托。
+/// UI 操作集：vue、rust_ui、jet、ark、tauri、vscode 的生成、构建与
+/// 运行，VM UI 运行，以及服务侧 workspace 重写。签名与
+/// auto-ui-tools/compat 公开面一一对应，不复制算法（compat 侧纯委托）。
 pub trait UiOps: Send + Sync {
     // ---- vue ----
     fn vue_build(&self, root_dir: &Path) -> AutoResult<()>;
