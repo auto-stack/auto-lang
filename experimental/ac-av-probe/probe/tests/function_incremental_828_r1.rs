@@ -1124,3 +1124,87 @@ fn tail() int { return 9 }
         "B code was minted from B text, not previous A text"
     );
 }
+
+const R10A_SRC: &str = "fn helper() int { return 1 }
+fn main() int { var x = helper(); return 1 / 0 }
+fn tail() int { return 9 }
+";
+
+fn r10a_edit_compare(
+    s: &mut auto_av_probe::session::FunctionIncrementalSession,
+    a: usize,
+    b: usize,
+    bytes: &[u8],
+    label: &str,
+) {
+    let out = s.edit(a as u64, b as u64, bytes.to_vec()).unwrap();
+    assert!(out.ok, "{label}: {out:?}");
+    let cold = warmup(s.src(), "d_main", &[]).unwrap();
+    assert_eq!(trap_span(s), trap_span(&cold), "{label}");
+}
+
+/// r10a-check: adjacent-operator rewrite — non-whitespace runs are not
+/// lexer tokens; `1/0` and `1 / 0` share the token sequence.
+#[test]
+fn r10a_adjacent_operator_rewrite_keeps_lexical_tokens() {
+    let mut s = warmup(R10A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    r10a_edit_compare(&mut s, at, at + 5, b" 1/0 ", "dense operator rewrite");
+    assert!(s.counters().stage_of("reuse_hit", "main") > 0);
+}
+
+/// r10a-check: disjoint trivia edits — an earlier spacing rewrite must
+/// not lose the unchanged tail on a later fallback re-embedding.
+#[test]
+fn r10a_disjoint_trivia_edits_keep_tail() {
+    let src = "fn helper() int { return 1 }
+fn main() int { var y = 1 + 2; return 1 / 0 }
+fn tail() int { return 9 }
+";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let at = s.src().find("1 + 2").unwrap();
+    r10a_edit_compare(&mut s, at, at + 5, b"1+2", "first operator-spacing rewrite");
+    let at = s.src().find("1 / 0").unwrap();
+    r10a_edit_compare(
+        &mut s,
+        at,
+        at + 1,
+        b" 1 ",
+        "second trivia rewrite re-embeds with tail",
+    );
+    assert!(s.counters().stage_of("reuse_hit", "main") > 0);
+}
+
+/// r10a-check: the lexical-spacing matrix.
+#[test]
+fn r10a_lexical_spacing_matrix() {
+    let mut failures = Vec::new();
+    for initial in ["1 / 0", "1/0", "1  /  0"] {
+        let source = R10A_SRC.replacen("1 / 0", initial, 1);
+        for replacement in [" 1/0 ", " 1 /0 ", " 1/ 0 ", " 1 / 0 "] {
+            let mut s = warmup(&source, "d_main", &[]).unwrap();
+            let at = s.src().find(initial).unwrap();
+            let out = s
+                .edit(
+                    at as u64,
+                    (at + initial.len()) as u64,
+                    replacement.as_bytes().to_vec(),
+                )
+                .unwrap();
+            assert!(out.ok, "{initial:?}->{replacement:?}: {out:?}");
+            let cold = warmup(s.src(), "d_main", &[]).unwrap();
+            let (actual, expected) = (trap_span(&s), trap_span(&cold));
+            if actual != expected {
+                failures.push(format!(
+                    "{initial:?}->{replacement:?}: {actual:?} != {expected:?}"
+                ));
+            }
+        }
+    }
+    assert!(
+        failures.is_empty(),
+        "{}/12 fail: {:#?}",
+        failures.len(),
+        failures
+    );
+}

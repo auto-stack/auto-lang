@@ -314,20 +314,32 @@ fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
     hay.windows(needle.len()).position(|w| w == needle)
 }
 
-/// Non-whitespace runs of a byte string: (bytes, (start, end)) in order.
+/// LEXICAL tokens of a byte string: numbers, identifiers, and single-
+/// character operators, skipping whitespace (F-828-R1-04/R10a: a
+/// non-whitespace RUN is not a token — `1/0` is three tokens).
 fn runs(bytes: &[u8]) -> Vec<(&[u8], (usize, usize))> {
     let mut out = Vec::new();
     let mut i = 0usize;
     while i < bytes.len() {
-        if bytes[i].is_ascii_whitespace() {
+        let b = bytes[i];
+        if b.is_ascii_whitespace() {
             i += 1;
-            continue;
-        }
-        let start = i;
-        while i < bytes.len() && !bytes[i].is_ascii_whitespace() {
+        } else if b.is_ascii_digit() {
+            let start = i;
+            while i < bytes.len() && bytes[i].is_ascii_digit() {
+                i += 1;
+            }
+            out.push((&bytes[start..i], (start, i)));
+        } else if b.is_ascii_alphabetic() || b == b'_' {
+            let start = i;
+            while i < bytes.len() && (bytes[i].is_ascii_alphanumeric() || bytes[i] == b'_') {
+                i += 1;
+            }
+            out.push((&bytes[start..i], (start, i)));
+        } else {
+            out.push((&bytes[i..i + 1], (i, i + 1)));
             i += 1;
         }
-        out.push((&bytes[start..i], (start, i)));
     }
     out
 }
