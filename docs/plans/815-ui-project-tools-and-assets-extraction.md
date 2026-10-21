@@ -6,7 +6,7 @@ author: [Codex]
 created_at: 2026-10-19
 updated_at: 2026-10-21
 plan_revision: 3
-current_step: 10
+current_step: 11
 total_steps: 17
 supersedes_spec_components: [docs/specs/auto-man/project.md, docs/specs/auto-lang/ui/overview.md, docs/specs/project-model/project.md, docs/specs/repository-boundaries/generated-ui-distribution.md]
 new_spec_components: [docs/specs/auto-ui-tools/project.md, docs/specs/tool-protocol/project.md]
@@ -191,7 +191,7 @@ Category A：若只改专用脚本/临时fixture/ledger/文档，不另跑cargo 
 | [x] | T-02 | work | T-01只读资源映射;无WIP引用 | 新工具包私有资源模块/独立资产测试、来源/许可证映射;生产asset原源不动,单次迁移及embed切换在T-04完成,不改809数据/接线,不假建最终API | AC-01,04 |
 | [x] | T-03 | work | T-01协议决策+809已交付;不等814 | 新auto-tool-protocol复用I-PROJECT/codec,定义版本/能力/资源/结果/退出,正常负控编译/协议测试；R4确认7045e20fa的F-R3-01关闭：helper完整wire直接解码、双路径合法对照和目标分支/具名错误断言有效；14项wire复跑通过，R3其余未变证据复用 | AC-02,03 |
 | [x] | T-04 | work | T-14/M815-A+M814-A已发布 | Vue/Rust/Jet/Ark/Tauri等完整UI工具及真实请求接线、资产生产迁移/旧源删除;非UI分界具名adapter。**[2026-10-21 R3 提前定向复审 pass @ d0b7e6ebd：R1 六项全闭，T-04 完成；非 T-09 全计划终审]** 历史实施声称：[✅ 2026-10-21 主体完成 @ b6aa3c21e+90aed7fc7（唯一树）：vue/rust_ui/jet/ark/tauri/tauri_backend/vscode/vue_shadcn/gallery/wm/gallery_cache/image_viewer/pkg/util(4fn)/project_display_reader+plan075+内联测试迁 auto-ui-tools（auto_lang→compiler/core 重写，生成物模板串不动）；资产一次性切换（gallery/wm/shadcn-ui→assets/+drawlist+wm-test 随组迁+MIT 文本+清单翻转 4 锚定）；api_gen/sidecar/rust_workspace 成 auto-api-gen 单算法 crate（owner=lang-service-adapter，Man/ui域双消费门面）；DELIVERY_CRATES 19→23；M814-B 门残留=vue_run_compat+rust_ui_vm_compat（run 面，行为冻结）。验证：nextest 163/166（3 红 stash 对照=HEAD 预存）+tool_process 17/17+protocol 18/18+fixture 真进程 4/4+闭包门 PASS+777 strict pass（基线 90aed7fc7）+六 crate check 零错。偏差与预存红归因全录 §9 2026-10-21 work 记录。[R1 修复 2026-10-21 @ eea682150：六项全闭（详见 [fixes.md](attachments/815/review-t04-r1/fixes.md)+driver 证据）——F-01 交付闭包 25 项+静态钉+792 driver 真实全程 25/25；F-02 compiler tempfile dev-dep；F-03 六入口+根三函数旧路径转发+兼容断言；F-04 布局 17/17/契约锚/围栏/viewer 锁；F-05 plan734 金样非编译位+断言重放（附带消解幽灵目标 5 预存编译错）；F-06 卫生。gallery_vue_golden 内容红探针归因=基线预存]。[R2 2026-10-21：F-01..05 独立关闭；余 F06(P3) @ d0b7e6ebd 修复——store_deps 转发行 rustfmt 多行展开，单文件 0 diff（exit1 仅 cfg 门 mem_profile 解析告警=通过基线同形态）、root_compat 断言重放 PASS；其余输入不变按 R2 裁定复用本轮关闭证据] T-05 的 run/交互/取消等 M814-B 发布 | AC-01,02 |
-| [ ] | T-05 | work | T-04;完整runtime正控等M814-B | 在A真实tool上接完整UI执行/control/日志/交互/取消,保持已发布窄能力;实际runtime/build/run以M814-B为门;V-03完整范围 | AC-03 |
+| [x] | T-05 | work | T-04;完整runtime正控等M814-B | 在A真实tool上接完整UI执行/control/日志/交互/取消,保持已发布窄能力;实际runtime/build/run以M814-B为门;V-03完整范围。**[✅ 2026-10-21 完成 @ b0cbae18b（唯一树）：协议扩 generate_ui/run_ui/input+Launched/Cancelled/InputAck；宿主线程化（循环线程+主线程 iced 执行器+单飞+进度预算+取消杀 owned 子进程）；bin stdio 句柄分离；run 面迁入 run_vue/run_vm（Man 门面转发零回归）；scoped 全套收据与 8 项偏差披露见 §9 2026-10-21 work 记录；Launched/交互正控归 T-06 后端 fixture]** | AC-03 |
 | [ ] | T-06 | work | T-05 | 旧Man公开门面兼容承载、真生成/build/run及媒体/sidecar/backend/项目读取全路径,V-01/02/04 | AC-01,02,04 |
 | [ ] | T-07 | work | T-06 | 新consumer/上层plan815、V-01..04、777/792并集/fresh/locked/失败负控与资源审计 | AC-01..04 |
 | [ ] | T-08 | work | T-07 | SD-01..06草案、I-TOOL/tool指纹/来源/支持交接、attachments/815/handoff.md（新增），提交送审 | AC-04 |
