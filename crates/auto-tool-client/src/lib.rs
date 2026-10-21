@@ -615,8 +615,7 @@ impl ToolClient {
         if let Some(h) = &self.writer_cancel {
             h.cancel();
         }
-        let cancel_result = self.proc.cancel();
-        self.reader_closed.store(true, Ordering::Relaxed);
+        let cancel_result = self.proc.cancel_within(TEARDOWN_GRACE).map(|_| ());
         self.stderr_closed.store(true, Ordering::Relaxed);
         self.reader_stop.store(true, Ordering::Relaxed);
         self.stderr_stop.store(true, Ordering::Relaxed);
@@ -709,21 +708,35 @@ impl ToolClient {
         Ok(())
     }
 
-    /// 等待 writer 完成（有界；未完成即具名 PipesHeld——不冒充已清理。
-    /// Windows 写端经自建管道的空间探测永阻塞不了，stop 必然生效）。
+    /// 等待 writer 完成（有界）：等待期间**每轮询切片重发取消**（R7
+    /// 窗口闭合——写者任意时刻进入内核的写都会被随后的重发中止）；
+    /// 未完成即具名 PipesHeld，不冒充已清理。
     fn wait_writer_done(&mut self, grace: Duration) -> Result<(), ClientError> {
         if self.writer_done_seen {
             return Ok(());
         }
-        match self.writer_done.recv_timeout(grace) {
-            Ok(_) => {
-                self.writer_done_seen = true;
-                Ok(())
+        let deadline = Instant::now() + grace;
+        loop {
+            let slice = PIPE_POLL_SLICE.min(deadline.saturating_duration_since(Instant::now()));
+            match self.writer_done.recv_timeout(slice) {
+                Ok(_) => {
+                    self.writer_done_seen = true;
+                    return Ok(());
+                }
+                Err(RecvTimeoutError::Disconnected) => {
+                    return Err(ClientError::Panicked {
+                        which: "stdin writer",
+                    })
+                }
+                Err(RecvTimeoutError::Timeout) => {
+                    if let Some(h) = &self.writer_cancel {
+                        h.cancel();
+                    }
+                    if Instant::now() >= deadline {
+                        return Err(ClientError::PipesHeld { after: grace });
+                    }
+                }
             }
-            Err(RecvTimeoutError::Disconnected) => Err(ClientError::Panicked {
-                which: "stdin writer",
-            }),
-            Err(RecvTimeoutError::Timeout) => Err(ClientError::PipesHeld { after: grace }),
         }
     }
 
@@ -787,7 +800,8 @@ impl ToolClient {
             }
             Ok(None) => {
                 natural_exit = false;
-                match self.proc.cancel() {
+                // 有界取消（R7：终止失败不得无界 wait）。
+                match self.proc.cancel_within(TEARDOWN_GRACE) {
                     Ok(status) => status,
                     Err(source) => {
                         return Err(self.cleanup_then_error(ClientError::Io {

@@ -830,10 +830,10 @@ struct WriterWorker {
     stop: Arc<AtomicBool>,
     done: Receiver<()>,
     join: Option<JoinHandle<WriterOutcome>>,
-    /// 共享取消槽（平台中立别名）：Windows=CancelHandle 共享槽——写
-    /// 线程正常完成时关闭副本（EOF 不被凭证延迟,实测）、停止侧
-    /// cancel-then-close 且在等待期间重发（R6：覆盖“取消先到、写后
-    /// 进入内核”的合法调度）;Unix=轮询自停,槽仅为占位。
+    /// 共享取消槽（Windows）：写线程正常完成时置空（EOF 不被副本
+    /// 延迟,实测）;停止侧取出后本地保留并每切片重发取消（R7 窗口
+    /// 闭合）。Unix=非阻塞轮询自停,无此状态（R7-01：平台隔离）。
+    #[cfg(windows)]
     cancel: Option<CancelSlot>,
 }
 
@@ -867,6 +867,9 @@ impl WriterWorker {
     where
         W: StoppableWrite + Send + 'static,
     {
+        // Unix 下 cancel_slot 仅是签名占位（无取消状态,防未用告警）。
+        #[cfg(not(windows))]
+        let _ = cancel_slot;
         let (tx, done) = std::sync::mpsc::channel::<()>();
         let stop = Arc::new(AtomicBool::new(false));
         let flag = Arc::clone(&stop);
@@ -934,6 +937,7 @@ impl WriterWorker {
             stop,
             done,
             join: Some(join),
+            #[cfg(windows)]
             cancel: cancel_slot,
         }
     }
@@ -960,19 +964,27 @@ impl WriterWorker {
     /// 字节）。以 `is_finished` 轮询判定线程结束（join 收割）,不消费
     /// done 通知;宽限内未停即 [`ExecutionError::PipesHeld`]。
     fn stop_and_join(&mut self, grace: Duration) -> Result<WriterOutcome, ExecutionError> {
+        // F-816-R7 窗口闭合：入口检查与同步写之间仍可漏取消——凭证从槽中
+        // 取出（槽置 None）后**保留在停止侧本地并每轮询切片重发取消**,
+        // 直到观察到线程结束（join 收割）才关闭。任意时刻进入内核的写都
+        // 会被随后的重发取消中止;线程已死后的关闭不影响 EOF（写者不存在）。
         self.request_stop();
+        #[cfg(windows)]
+        let mut retained: Option<win_stdin::CancelHandle> = None;
         #[cfg(windows)]
         if let Some(shared) = &self.cancel {
             if let Ok(mut slot) = shared.lock() {
-                if let Some(h) = slot.take() {
-                    h.cancel();
-                }
+                retained = slot.take();
             }
         }
         let deadline = Instant::now() + grace;
         while self.join.as_ref().is_some_and(|h| !h.is_finished()) {
             if Instant::now() >= deadline {
                 return Err(ExecutionError::PipesHeld { after: grace });
+            }
+            #[cfg(windows)]
+            if let Some(h) = &retained {
+                h.cancel();
             }
             std::thread::sleep(
                 PIPE_POLL_SLICE.min(deadline.saturating_duration_since(Instant::now())),
@@ -1075,17 +1087,7 @@ const TEARDOWN_GRACE: Duration = Duration::from_secs(3);
 /// 有界取消：两次终止 + 有界收尸（R5：终止失败时不得无界 wait——
 /// `OwnedProcess::cancel` 内的 `wait` 无界）。失败即返回具名错误。
 fn bounded_cancel(proc: &mut OwnedProcess, grace: Duration) -> Result<(), io::Error> {
-    let _ = proc.terminate(); // 首次终止（失败交由第二次判定）
-    if matches!(proc.wait_deadline(grace), Ok(Some(_))) {
-        return Ok(());
-    }
-    proc.terminate()?;
-    match proc.wait_deadline(grace)? {
-        Some(_) => Ok(()),
-        None => Err(io::Error::other(
-            "process did not exit within two terminations",
-        )),
-    }
+    proc.cancel_within(grace).map(|_| ())
 }
 
 /// 一次性执行到终态(含可选 deadline)。deadline 覆盖**整次**执行:
@@ -1114,9 +1116,8 @@ pub fn run(spec: &ExecutionSpec) -> Result<ExecutionResult, ExecutionError> {
             let stdin = proc
                 .take_stdin()
                 .ok_or_else(|| ExecutionError::InvalidSpec("stdin pipe missing".into()))?;
-            let cancel = stdin.cancel_handle();
             #[cfg(windows)]
-            let slot = cancel.map(|h| Arc::new(Mutex::new(Some(h))));
+            let slot = stdin.cancel_handle().map(|h| Arc::new(Mutex::new(Some(h))));
             #[cfg(windows)]
             let w = WriterWorker::spawn_with(stdin, data, slot);
             #[cfg(not(windows))]
@@ -1387,6 +1388,26 @@ impl OwnedProcess {
             self.reaped = true;
         }
         Ok(status)
+    }
+
+    /// 有界取消（F-816-R7：终止失败路径不得无界 `wait`——两轮终止+
+    /// 有界收尸;失败返回具名 io 错误）。run/client 的超时与关闭路径
+    /// 统一使用本方法。
+    pub fn cancel_within(&mut self, grace: Duration) -> io::Result<ExitStatus> {
+        let first = self.terminate();
+        if first.is_ok() {
+            if let Ok(Some(status)) = self.wait_deadline(grace) {
+                return Ok(status);
+            }
+        }
+        // 第二轮终止:失败即为具名错误(第一轮失败也在此传播)。
+        self.terminate()?;
+        match self.wait_deadline(grace)? {
+            Some(status) => Ok(status),
+            None => Err(io::Error::other(
+                "process did not exit within two terminations",
+            )),
+        }
     }
 
     /// 带限等待:Ok(None) = 限期已到仍在运行(未终止、未收尸,调用方
