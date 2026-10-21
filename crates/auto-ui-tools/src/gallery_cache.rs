@@ -109,7 +109,11 @@ pub fn store(apps_dir: &Path, entries: &DiskEntries) {
             }
         }
     }
-    eprintln!("  {} gallery rows cache write failed: {}", "⚠".bright_yellow(), path.display());
+    eprintln!(
+        "  {} gallery rows cache write failed: {}",
+        "⚠".bright_yellow(),
+        path.display()
+    );
 }
 
 /// 目录内容摘要：walk（不跟符号链接）收集 `rel|size|mtime` 排序后 FNV。
@@ -164,7 +168,10 @@ fn dir_content_hash(root: &Path, memo: &mut HashMap<PathBuf, Option<String>>) ->
 
 /// demo 内容哈希：demo 目录 + pac.at 声明的路径依赖目录（dep 块的 path）。
 /// 依赖目录（如共享 stylekit）经 memo 每调用一次只摘要一遍。
-pub fn demo_content_hash(app_root: &Path, memo: &mut HashMap<PathBuf, Option<String>>) -> Option<String> {
+pub fn demo_content_hash(
+    app_root: &Path,
+    memo: &mut HashMap<PathBuf, Option<String>>,
+) -> Option<String> {
     let mut acc = dir_content_hash(app_root, memo)?;
     for dep in pac_dep_roots(app_root) {
         acc.push('\n');

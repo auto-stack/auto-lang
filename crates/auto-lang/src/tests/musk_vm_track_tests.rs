@@ -2177,8 +2177,8 @@ mod musk_vm_track_p054_t4_style_probe {
 /// PLAN-054 T4 (A6/A9/A11) 回归锁：会话卡片/消息行样式链。
 #[cfg(all(test, feature = "ui-iced"))]
 mod musk_vm_track_p054_t4_styles {
-    use crate::ui::style_iced_adapter::IcedStyle;
     use crate::ui::style::{Style, StyleClass};
+    use crate::ui::style_iced_adapter::IcedStyle;
 
     /// A9 锁①：border-primary/25 带解析（选中卡片淡描边）。
     /// 09-01 对拍"border alpha 未支持/描边过重"在当前 master 不成立,
@@ -3263,8 +3263,8 @@ mod musk_vm_track_p055_pre_code_arm {
             }
             _ => unreachable!(),
         };
-        use crate::ui::style_iced_adapter::IcedStyle;
         use crate::ui::style::StyleClass;
+        use crate::ui::style_iced_adapter::IcedStyle;
         // 类串解析面：border-top 类 + padding/max-h 适配值三键齐备。
         assert!(
             style

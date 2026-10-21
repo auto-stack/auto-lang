@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn sidebar_contract_matches_scaffold_assets() {
         let manifest = env!("CARGO_MANIFEST_DIR");
-        let dir = std::path::Path::new(manifest).join("../auto-man/assets/shadcn-ui/sidebar");
+        let dir = std::path::Path::new(manifest).join("../auto-ui-tools/assets/shadcn-ui/sidebar");
         for (file, consts) in ASSET_ANCHORS {
             let path = dir.join(file);
             let content = std::fs::read_to_string(&path).unwrap_or_else(|e| {

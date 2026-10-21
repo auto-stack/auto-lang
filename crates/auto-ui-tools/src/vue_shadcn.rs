@@ -20,7 +20,7 @@ use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 #[derive(Embed)]
 #[folder = "assets/shadcn-ui"]
@@ -267,15 +267,30 @@ mod plan571_button_asset_interlock_tests {
             .data;
         let ts = std::str::from_utf8(&ts).expect("utf8");
         for (key, needle) in [
-            ("default", "bg-muted border border-border text-foreground hover:bg-muted/70"),
-            ("primary", "bg-primary text-primary-foreground hover:bg-primary/90"),
-            ("submit", "bg-primary text-primary-foreground hover:bg-primary/90"),
+            (
+                "default",
+                "bg-muted border border-border text-foreground hover:bg-muted/70",
+            ),
+            (
+                "primary",
+                "bg-primary text-primary-foreground hover:bg-primary/90",
+            ),
+            (
+                "submit",
+                "bg-primary text-primary-foreground hover:bg-primary/90",
+            ),
         ] {
             let line = ts
                 .lines()
                 .find(|l| l.trim_start().starts_with(&format!("{}:", key)))
                 .unwrap_or_else(|| panic!("cva 缺 {} 键", key));
-            assert!(line.contains(needle), "cva[{}] = {} 缺 {:?}", key, line.trim(), needle);
+            assert!(
+                line.contains(needle),
+                "cva[{}] = {} 缺 {:?}",
+                key,
+                line.trim(),
+                needle
+            );
         }
     }
 }

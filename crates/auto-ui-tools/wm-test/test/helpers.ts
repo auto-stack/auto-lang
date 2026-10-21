@@ -1,7 +1,7 @@
 // Plan 516 T1/T2/T3 公共件：FakeWebSocket（时序可控的 WS 桩，508
 // connect.test 同型）+ Welcome/Frame/HitTable 服务器消息字节构造（codec
 // Writer 直构——codec 正确性由渲染器包 golden 对拍覆盖）。
-import { Channel, Writer, encodeEnvelope } from '../../../../packages/drawlist-renderer/src/codec.ts'
+import { Channel, Writer, encodeEnvelope } from '../../drawlist-renderer/src/codec.ts'
 
 /** 假 WebSocket：手动驱动 open/message/close（时序可控）。 */
 export class FakeWebSocket {

@@ -44,7 +44,9 @@ const TIER0_KEYS: &[&str] = &[
 ];
 
 fn reference_path(kind: &str, name: &str, variant: &str) -> PathBuf {
-    repo_root().join(format!("packages/blueprints/{kind}/{name}/reference/{variant}.at"))
+    repo_root().join(format!(
+        "packages/blueprints/{kind}/{name}/reference/{variant}.at"
+    ))
 }
 
 fn repo_root() -> PathBuf {

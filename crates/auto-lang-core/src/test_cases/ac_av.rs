@@ -1148,8 +1148,13 @@ fn fnv1a64_hex(bytes: &[u8]) -> String {
 }
 
 /// Test-only seam for the prep-executor controls (F798-R15-05).
-pub(crate) mod tests_seam {
-    pub(crate) fn locate_worker_for_test() -> Result<std::path::PathBuf, String> {
+/// PLAN-815 T-04 合并门归因修复：M814-A 合入解析把 master 侧
+/// test_cases/ac_av 迁至 SDK 新路径时，auto-lang 侧测试仍以
+/// `crate::test_cases::ac_av::tests_seam` 跨 crate 引用——pub(crate) 在
+/// 迁移后不可达（master 现状即编译红）。缝整体在 test-cases feature
+/// 门内（814 交付语义：测试基建面），pub 化零生产面变化。
+pub mod tests_seam {
+    pub fn locate_worker_for_test() -> Result<std::path::PathBuf, String> {
         super::locate_worker()
     }
 }

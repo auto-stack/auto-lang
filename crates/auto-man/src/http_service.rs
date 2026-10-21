@@ -76,7 +76,6 @@ pub fn serve_project(
     }
 }
 
-
 /// 以项目目录为锚解析 rust workspace 落点（resolve 序的 CWD 无关镜像）：
 /// 项目在框架仓内（向上找到含 crates/auto-lang 的仓根）→ 共享
 /// `<repo>/examples/rust-workspace`；仓外项目 → `<project>/rust-workspace`。
@@ -150,10 +149,7 @@ fn serve_vm(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, String
     }
     match bound {
         Some(addr) => {
-            println!(
-                "  ✓ VM HTTP service ready (bound {})",
-                addr
-            );
+            println!("  ✓ VM HTTP service ready (bound {})", addr);
             println!(
                 "  AUTO_SERVICE_READY {{\"bound\":\"{addr}\",\"profile\":\"{}\",\"config_hash\":\"{:016x}\"}}",
                 config.profile.as_str(),
@@ -231,20 +227,30 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
     // cwd = workspace 落点：cargo 从 CWD（非 manifest 目录）发现
     // .cargo/config.toml（shared target-dir + MSVC 栈 rustflags）——从项目
     // 目录 spawn 会拿不到配置 → 不同指纹 → 全量冷编（onig_sys C1083 链）。
-    cmd.args(["run", "--release", "--manifest-path", cargo_toml.to_str().unwrap_or(".")])
-        .env("AUTO_HTTP_SERVICE_JSON", &service_json)
-        .current_dir(&ws_dir)
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit());
+    cmd.args([
+        "run",
+        "--release",
+        "--manifest-path",
+        cargo_toml.to_str().unwrap_or("."),
+    ])
+    .env("AUTO_HTTP_SERVICE_JSON", &service_json)
+    .current_dir(&ws_dir)
+    .stdout(std::process::Stdio::inherit())
+    .stderr(std::process::Stdio::inherit());
 
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("failed to spawn backend cargo run: {e}"))?;
-    println!("  ✓ backend spawning (PID: {}); Ctrl+C stops the service", child.id());
+    println!(
+        "  ✓ backend spawning (PID: {}); Ctrl+C stops the service",
+        child.id()
+    );
 
     // 子进程 ready/身份判定（health 轮询）在 T-05 接管；T-02 以子进程退出码
     // 为准：bind 冲突/配置错误 = 子进程非零 → 本进程同样非零。
-    let status = child.wait().map_err(|e| format!("backend wait failed: {e}"))?;
+    let status = child
+        .wait()
+        .map_err(|e| format!("backend wait failed: {e}"))?;
     if status.success() {
         println!("  ✓ Rust HTTP service stopped cleanly");
         Ok(0)
@@ -263,7 +269,10 @@ mod tests {
     #[test]
     fn resolve_config_none_is_development_loopback() {
         let c = resolve_config(None, None).unwrap();
-        assert_eq!(c.profile, auto_lang::http_service_config::ServiceProfile::Development);
+        assert_eq!(
+            c.profile,
+            auto_lang::http_service_config::ServiceProfile::Development
+        );
         assert_eq!(c.listen_port, 8080);
     }
 
@@ -276,7 +285,9 @@ mod tests {
     #[test]
     fn resolve_config_bad_file_errors() {
         let e = resolve_config(
-            Some(&HttpConfigSource::File(PathBuf::from("Z:/definitely/missing/service.json"))),
+            Some(&HttpConfigSource::File(PathBuf::from(
+                "Z:/definitely/missing/service.json",
+            ))),
             None,
         )
         .unwrap_err();
@@ -286,7 +297,9 @@ mod tests {
     #[test]
     fn resolve_config_inline_bad_json_errors_named() {
         let e = resolve_config(
-            Some(&HttpConfigSource::Inline(r#"{"profile":"development","limits":{"max_connections":0}}"#.into())),
+            Some(&HttpConfigSource::Inline(
+                r#"{"profile":"development","limits":{"max_connections":0}}"#.into(),
+            )),
             None,
         )
         .unwrap_err();

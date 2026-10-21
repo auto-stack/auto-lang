@@ -17,7 +17,7 @@ import {
 import {
   encodeCharTyped,
   encodePointerPressed,
-} from '../../../../packages/drawlist-renderer/src/messages.ts'
+} from '../../drawlist-renderer/src/messages.ts'
 
 const WELCOME_WID = 7 // 远端会话自身的 wid（Welcome 回填；回发消息携带）
 

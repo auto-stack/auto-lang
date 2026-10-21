@@ -8,12 +8,12 @@
 use std::fs;
 use std::path::Path;
 
-use auto_lang::ui_gen::ark::{ArkGenerator, ArkProjectGenerator};
-use auto_lang::ui_gen::BackendGenerator;
-use auto_lang::Parser;
+use auto_lang_core::Parser;
+use auto_ui_compiler::ui_gen::ark::{ArkGenerator, ArkProjectGenerator};
+use auto_ui_compiler::ui_gen::BackendGenerator;
 use colored::Colorize;
 
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 /// Parse project name from pac.at content
 fn parse_pac_name(content: &str) -> Option<String> {
@@ -342,7 +342,7 @@ impl ArkProject {
             .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
 
         // Parse with UI scenario
-        use auto_lang::session::CompilerSession;
+        use auto_lang_core::session::CompilerSession;
         let session = CompilerSession::ui().with_backend("ark");
         let mut parser = Parser::from(code.as_str());
         parser = parser.with_session(session);
@@ -355,7 +355,7 @@ impl ArkProject {
 
         // First, generate model files for type definitions
         for stmt in &ast.stmts {
-            if let auto_lang::ast::Stmt::TypeDecl(type_decl) = stmt {
+            if let auto_lang_core::ast::Stmt::TypeDecl(type_decl) = stmt {
                 let model_code = Self::generate_model_file(type_decl);
                 if let Some((model_name, model_content)) = model_code {
                     let relative_path = format!("entry/src/main/ets/model/{}.ets", model_name);
@@ -367,8 +367,8 @@ impl ArkProject {
         // Extract AURA widgets from AST
         let mut widgets = Vec::new();
         for stmt in &ast.stmts {
-            if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-                let aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
+            if let auto_lang_core::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                let aura_widget = auto_ui_compiler::aura::extract_widget_from_decl(widget_decl)
                     .map_err(|e| e.to_string())?;
                 widgets.push(aura_widget);
             }
@@ -398,7 +398,7 @@ impl ArkProject {
     }
 
     /// Generate model file for a type definition
-    fn generate_model_file(type_decl: &auto_lang::ast::TypeDecl) -> Option<(String, String)> {
+    fn generate_model_file(type_decl: &auto_lang_core::ast::TypeDecl) -> Option<(String, String)> {
         let name = type_decl.name.as_str();
 
         // Skip if it looks like a built-in type
@@ -438,8 +438,8 @@ impl ArkProject {
     }
 
     /// Convert Type to ArkTS type string
-    fn type_to_arkts(ty: &auto_lang::ast::Type) -> String {
-        use auto_lang::ast::Type;
+    fn type_to_arkts(ty: &auto_lang_core::ast::Type) -> String {
+        use auto_lang_core::ast::Type;
         match ty {
             Type::Int | Type::Uint | Type::I64 | Type::U64 | Type::Float | Type::Double => {
                 "number".to_string()

@@ -8,14 +8,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use auto_lang::database::{UIArtifact, UIBackend, UICache};
-use auto_lang::ui_gen::jet::{JetGenerator, JetProjectConfig, ProjectGenerator};
-use auto_lang::ui_gen::BackendGenerator;
-use auto_lang::Parser;
+use auto_lang_core::database::{UIArtifact, UIBackend, UICache};
+use auto_lang_core::Parser;
+use auto_ui_compiler::ui_gen::jet::{JetGenerator, JetProjectConfig, ProjectGenerator};
+use auto_ui_compiler::ui_gen::BackendGenerator;
 use colored::Colorize;
 
 use crate::util::hash_string;
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 /// Parse project name from pac.at content
 fn parse_pac_name(content: &str) -> Option<String> {
@@ -346,7 +346,9 @@ impl JetProject {
         // Load cache
         // PLAN-814 R3-02：生成器指纹在 cache load/dirty 判定前注入（compiler
         // build.rs 单源经 SDK 槽；未注入则每次误判失效——Plan 698 SD-01 时序）。
-        auto_lang::database::set_generator_fingerprint(auto_lang::generator_fingerprint());
+        auto_lang_core::database::set_generator_fingerprint(
+            auto_ui_compiler::generator_fingerprint(),
+        );
         let mut cache = UICache::load(root_dir);
         let mut changed_files = Vec::new();
 
@@ -594,7 +596,7 @@ impl JetProject {
             .map_err(|e| format!("Failed to read {}: {}", at_path.display(), e))?;
 
         // Parse with UI scenario
-        use auto_lang::session::CompilerSession;
+        use auto_lang_core::session::CompilerSession;
         let session = CompilerSession::ui().with_backend("jet");
         let mut parser = Parser::from(code.as_str());
         parser = parser.with_session(session);
@@ -605,8 +607,8 @@ impl JetProject {
         // Extract AURA widgets from AST
         let mut widgets = Vec::new();
         for stmt in &ast.stmts {
-            if let auto_lang::ast::Stmt::WidgetDecl(widget_decl) = stmt {
-                let aura_widget = auto_lang::aura::extract_widget_from_decl(widget_decl)
+            if let auto_lang_core::ast::Stmt::WidgetDecl(widget_decl) = stmt {
+                let aura_widget = auto_ui_compiler::aura::extract_widget_from_decl(widget_decl)
                     .map_err(|e| e.to_string())?;
                 widgets.push(aura_widget);
             }

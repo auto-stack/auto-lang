@@ -11,7 +11,7 @@
 //! backend turns a [`StreamPlan`] into an actual streamed response; tests can
 //! cover the whole decision surface without a socket.
 //!
-//! Shape is mirrored from `crates/auto-man/src/image_viewer.rs` (the image
+//! Shape is mirrored from `crates/auto-ui-tools/src/image_viewer.rs` (the image
 //! viewer's proven index): recursive collect, relative paths with `/`
 //! separators, natural ordering, a blake3 token instead of an exposed absolute
 //! path. Only the extension whitelist and the byte-range part are new.

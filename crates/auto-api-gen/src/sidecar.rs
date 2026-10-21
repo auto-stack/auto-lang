@@ -24,7 +24,7 @@ use std::path::{Path, PathBuf};
 
 use auto_val::Obj;
 
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 /// pac.at `rust_sidecar` 解析结果(缺省 = 空,零行为)。
 #[derive(Debug, Default, Clone)]
@@ -48,7 +48,7 @@ pub fn load_sidecar(project_dir: &Path) -> SidecarSpec {
     if !pac.is_file() {
         return SidecarSpec::default();
     }
-    let Ok(config) = auto_lang::config::AutoConfig::from_file(&pac, &Obj::new()) else {
+    let Ok(config) = auto_lang_core::config::AutoConfig::from_file(&pac, &Obj::new()) else {
         return SidecarSpec::default();
     };
     // R2-F02（T01 §6.4）：声明解析单源在 auto_man_core::sidecar；

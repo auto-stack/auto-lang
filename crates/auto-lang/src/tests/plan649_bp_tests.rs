@@ -404,7 +404,8 @@ fn t10_e2e_vue_track_direct_import() {
     let _ = std::fs::remove_dir_all(app.parent().unwrap().parent().unwrap().parent().unwrap());
 
     // bp reference 本体发射面（empty-state first_use 关键文案进 SFC）。
-    let reference = repo_root().join("packages/blueprints/feedback/empty-state/reference/first_use.at");
+    let reference =
+        repo_root().join("packages/blueprints/feedback/empty-state/reference/first_use.at");
     let bp = crate::ui_gen::generate_component_from_file(
         &reference,
         crate::ui_gen::ComponentGenOptions::default(),

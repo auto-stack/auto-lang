@@ -167,7 +167,8 @@ pub mod layout;
 pub mod shell;
 
 // Plan 463 T7：应用注册表（apps 目录扫描 → LaunchApp 目标清单）。
-pub mod app_registry;
+// PLAN-815 T-04: moved to auto-ui-compiler; re-export keeps paths.
+pub use auto_ui_compiler::app_registry;
 
 // Plan 501：os-config daemon 生命周期（检活/发现序 spawn/AUTOOS_DAEMON env
 // 注入——外部仓 settings app 的宿主侧底座；纯逻辑全平台单测）。
@@ -275,7 +276,7 @@ pub mod native_widget;
 pub mod state_migration;
 
 #[cfg(feature = "ui-interpreter")]
-pub mod i18n_lookup;
+pub use auto_ui_compiler::i18n_lookup;
 
 #[cfg(feature = "ui-headless")]
 pub mod headless;

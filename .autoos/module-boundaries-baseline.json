@@ -1,6 +1,6 @@
 {
-  "base_revision": "81c8a57432c44c7363293af0addcd8dfeeba6e9a",
-  "config_sha256": "5e7219cef01f846a01d21dbf3ffa517984f035ae1238d3b9fab124ed459a149e",
+  "base_revision": "eea682150a78349b484d1b5cbfa371b15e67e94d",
+  "config_sha256": "cd626de3468aded8a70226ef0f352f83e5941bfa741b675e113dce66297d3a3d",
   "declared_edges": [
     {
       "dep_key": "auto-lang",
@@ -45,6 +45,33 @@
       "optional": false,
       "target": null,
       "to": "shell-pack",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-api-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man-core",
+      "from": "auto-api-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-api-gen",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
       "to_scope": "member"
     },
     {
@@ -543,6 +570,15 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-api-gen",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-api-gen",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-cache",
       "from": "auto-man",
       "kind": "normal",
@@ -639,6 +675,15 @@
       "optional": false,
       "target": null,
       "to": "auto-toolchain-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-tools",
+      "from": "auto-man",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-tools",
       "to_scope": "member"
     },
     {
@@ -768,6 +813,24 @@
       "to_scope": "nonmember-in-root"
     },
     {
+      "dep_key": "auto-project-model",
+      "from": "auto-tool-protocol",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-tool-protocol",
+      "kind": "dev",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-val",
       "from": "auto-toolchain-core",
       "kind": "normal",
@@ -849,6 +912,69 @@
       "to_scope": "member"
     },
     {
+      "dep_key": "auto-api-gen",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-api-gen",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-lang-core",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-lang-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-man-core",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-man-core",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-project-model",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-project-model",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-tool-protocol",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-tool-protocol",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-ui-compiler",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-ui-compiler",
+      "to_scope": "member"
+    },
+    {
+      "dep_key": "auto-val",
+      "from": "auto-ui-tools",
+      "kind": "normal",
+      "optional": false,
+      "target": null,
+      "to": "auto-val",
+      "to_scope": "member"
+    },
+    {
       "dep_key": "auto-lang-core",
       "from": "auto-vm",
       "kind": "normal",
@@ -871,7 +997,7 @@
   "schema": "module-boundaries-baseline/1",
   "text_scan_totals": {
     "core_to_ui": 842,
-    "man_to_language": 555,
+    "man_to_language": 119,
     "ui_to_language": 23
   }
 }

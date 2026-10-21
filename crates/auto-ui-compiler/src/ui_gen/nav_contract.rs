@@ -183,7 +183,7 @@ mod tests {
             ),
         ] {
             let path = std::path::Path::new(manifest)
-                .join("../auto-man/assets/shadcn-ui")
+                .join("../auto-ui-tools/assets/shadcn-ui")
                 .join(file);
             let content = match std::fs::read_to_string(&path) {
                 Ok(c) => c,

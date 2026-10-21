@@ -135,11 +135,17 @@ mod plan606_gallery_tests {
         }
 
         fn thumb_url(&self, id: &str) -> String {
-            format!("{}/apps/029-photo-gallery/api/photos/thumb/{id}", self.base())
+            format!(
+                "{}/apps/029-photo-gallery/api/photos/thumb/{id}",
+                self.base()
+            )
         }
 
         fn full_url(&self, id: &str) -> String {
-            format!("{}/apps/029-photo-gallery/api/photos/full/{id}", self.base())
+            format!(
+                "{}/apps/029-photo-gallery/api/photos/full/{id}",
+                self.base()
+            )
         }
     }
 
@@ -220,8 +226,9 @@ mod plan606_gallery_tests {
         let mut got_urls: std::collections::BTreeSet<String> =
             thumbnails.iter().map(|(src, _)| src.clone()).collect();
         for (i, (src, style)) in thumbnails.iter().enumerate() {
-            let expected: Vec<String> =
-                (1..=24).map(|n| stub.thumb_url(&format!("p{n:02}"))).collect();
+            let expected: Vec<String> = (1..=24)
+                .map(|n| stub.thumb_url(&format!("p{n:02}")))
+                .collect();
             assert!(
                 expected.contains(src),
                 "Thumbnail {i} src must be the exact stub thumb URL ({src})"

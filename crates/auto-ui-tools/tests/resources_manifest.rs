@@ -1,9 +1,8 @@
-//! Asset-manifest pinning (PLAN-815 T-02): the registration table must
-//! match the real production sources until the one-shot M815-B migration
-//! (T-04) — sources exist and are non-empty, licenses recorded, targets
-//! unique and not yet created. Runs only in the workspace (manifest-dir
-//! relative scan); the fixture consumer gate compiles the lib without
-//! running these.
+//! Asset-manifest pinning (PLAN-815 T-02 registration → T-04 one-shot
+//! migration completed): production embed sources live in this package,
+//! the historic auto-man copies must stay empty, licenses travel with the
+//! groups. Runs only in the workspace (manifest-dir relative scan); the
+//! fixture consumer gate compiles the lib without running these.
 
 use auto_ui_tools::resources::{group, License, ASSET_GROUPS};
 use std::path::{Path, PathBuf};
@@ -37,16 +36,13 @@ fn count_files(dir: &Path) -> usize {
 fn manifest_groups_are_registered_once_with_licenses() {
     let ids: Vec<&str> = ASSET_GROUPS.iter().map(|g| g.id).collect();
     assert_eq!(ids, vec!["gallery", "wm", "shadcn-ui"], "frozen group set");
-    let targets: Vec<&str> = ASSET_GROUPS.iter().map(|g| g.target).collect();
-    let mut unique = targets.clone();
+    let sources: Vec<&str> = ASSET_GROUPS.iter().map(|g| g.current_source).collect();
+    let mut unique = sources.clone();
     unique.sort_unstable();
     unique.dedup();
-    assert_eq!(targets.len(), unique.len(), "distinct relocation targets");
-    for group in ASSET_GROUPS {
-        assert!(matches!(
-            group.license,
-            License::InHouse | License::Mit { .. }
-        ));
+    assert_eq!(sources.len(), unique.len(), "distinct production sources");
+    for g in ASSET_GROUPS {
+        assert!(matches!(g.license, License::InHouse | License::Mit { .. }));
     }
     assert!(matches!(
         group("shadcn-ui").unwrap().license,
@@ -57,16 +53,16 @@ fn manifest_groups_are_registered_once_with_licenses() {
 #[test]
 fn production_sources_exist_and_are_non_empty() {
     let root = repo_root();
-    for group in ASSET_GROUPS {
-        let source = root.join(group.current_source);
+    for g in ASSET_GROUPS {
+        let source = root.join(g.current_source);
         assert!(
             source.is_dir(),
             "{} source missing: {}",
-            group.id,
+            g.id,
             source.display()
         );
         let files = count_files(&source);
-        assert!(files > 0, "{} source is empty", group.id);
+        assert!(files > 0, "{} source is empty", g.id);
     }
 }
 
@@ -75,23 +71,29 @@ fn known_source_anchors_are_present() {
     let root = repo_root();
     // gallery: single viewport host file
     assert!(root
-        .join("crates/auto-man/assets/gallery/AppViewport.vue")
+        .join("crates/auto-ui-tools/assets/gallery/AppViewport.vue")
         .is_file());
-    // wm: window manager hosts + remote renderer external input
+    // wm: window manager hosts + remote renderer external input (moved with
+    // the group in T-04 — packages/drawlist-renderer no longer exists)
     assert!(root
-        .join("crates/auto-man/assets/wm/VirtualWindow.vue")
+        .join("crates/auto-ui-tools/assets/wm/VirtualWindow.vue")
         .is_file());
-    assert!(root.join("packages/drawlist-renderer/src").is_dir());
+    assert!(root
+        .join("crates/auto-ui-tools/drawlist-renderer/src")
+        .is_dir());
     let wm = group("wm").unwrap();
     assert!(wm
         .external_inputs
-        .contains(&"packages/drawlist-renderer/src"));
-    // shadcn: snapshot provenance record travels with the group
+        .contains(&"crates/auto-ui-tools/drawlist-renderer/src"));
+    // shadcn: snapshot provenance + upstream MIT license travel with the group
     assert!(root
-        .join("crates/auto-man/assets/shadcn-ui/SNAPSHOT.md")
+        .join("crates/auto-ui-tools/assets/shadcn-ui/SNAPSHOT.md")
+        .is_file());
+    assert!(root
+        .join("crates/auto-ui-tools/assets/shadcn-ui/LICENSE")
         .is_file());
     // file-count anchors (coarse; catches wholesale source removal)
-    let shadcn = count_files(&root.join("crates/auto-man/assets/shadcn-ui"));
+    let shadcn = count_files(&root.join("crates/auto-ui-tools/assets/shadcn-ui"));
     assert!(
         shadcn > 300,
         "shadcn snapshot unexpectedly small: {shadcn} files"
@@ -99,12 +101,19 @@ fn known_source_anchors_are_present() {
 }
 
 #[test]
-fn migration_targets_do_not_exist_yet() {
-    // A-stage discipline: production embed sources stay in auto-man until
-    // the T-04 one-shot migration — no parallel copies may appear early.
+fn historic_auto_man_copies_stay_removed() {
+    // T-04 one-shot migration discipline: the pre-T-04 production sources in
+    // auto-man (and the repo-root drawlist package) must stay empty — no
+    // parallel embed sources may reappear.
     let root = repo_root();
-    for group in ASSET_GROUPS {
-        let target = root.join(group.target);
-        assert!(!target.exists(), "premature copy at {}", target.display());
+    for g in ASSET_GROUPS {
+        let old = root.join(g.migrated_from);
+        assert!(
+            !old.exists(),
+            "historic copy reappeared for {}: {}",
+            g.id,
+            old.display()
+        );
     }
+    assert!(!root.join("packages/drawlist-renderer").exists());
 }

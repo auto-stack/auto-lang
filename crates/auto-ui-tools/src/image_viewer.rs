@@ -132,7 +132,11 @@ impl ImageViewerService {
 
     pub fn navigate(&mut self, id: &str, delta: isize) -> Option<&ImageEntry> {
         let session = self.sessions.get_mut(id)?;
-        let next = cycle_index(session.snapshot.entries.len(), session.snapshot.selected, delta)?;
+        let next = cycle_index(
+            session.snapshot.entries.len(),
+            session.snapshot.selected,
+            delta,
+        )?;
         session.snapshot.selected = next;
         session.generation = session.generation.saturating_add(1);
         session.snapshot.generation = session.generation;
@@ -187,7 +191,10 @@ impl ImageViewerService {
 pub fn canonical_root(root: impl AsRef<Path>) -> io::Result<PathBuf> {
     let canonical = fs::canonicalize(root.as_ref())?;
     if !canonical.is_dir() {
-        return Err(io::Error::new(io::ErrorKind::NotADirectory, "image viewer root is not a directory"));
+        return Err(io::Error::new(
+            io::ErrorKind::NotADirectory,
+            "image viewer root is not a directory",
+        ));
     }
     Ok(canonical)
 }
@@ -249,14 +256,21 @@ pub fn natural_sort_key(name: &str) -> Vec<NaturalPart> {
     parts
 }
 
-fn collect_files(root: &Path, dir: &Path, out: &mut Vec<(PathBuf, fs::Metadata)>) -> io::Result<()> {
+fn collect_files(
+    root: &Path,
+    dir: &Path,
+    out: &mut Vec<(PathBuf, fs::Metadata)>,
+) -> io::Result<()> {
     for item in fs::read_dir(dir)? {
         let item = item?;
         let path = item.path();
         let metadata = item.metadata()?;
         if metadata.is_dir() {
             collect_files(root, &path, out)?;
-        } else if metadata.is_file() && is_supported_format(&path) && path.strip_prefix(root).is_ok() {
+        } else if metadata.is_file()
+            && is_supported_format(&path)
+            && path.strip_prefix(root).is_ok()
+        {
             out.push((path, metadata));
         }
     }
@@ -270,16 +284,44 @@ pub fn index_directory(root: impl AsRef<Path>) -> io::Result<ViewerSnapshot> {
     files.sort_by(|(a, _), (b, _)| {
         let a_rel = a.strip_prefix(&canonical).unwrap().to_string_lossy();
         let b_rel = b.strip_prefix(&canonical).unwrap().to_string_lossy();
-        natural_sort_key(&a_rel).cmp(&natural_sort_key(&b_rel)).then_with(|| a_rel.cmp(&b_rel))
+        natural_sort_key(&a_rel)
+            .cmp(&natural_sort_key(&b_rel))
+            .then_with(|| a_rel.cmp(&b_rel))
     });
-    let entries = files.into_iter().map(|(path, metadata)| {
-        let relative = path.strip_prefix(&canonical).unwrap().to_string_lossy().replace('\\', "/");
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default().to_string();
-        let extension = path.extension().and_then(|e| e.to_str()).unwrap_or_default().to_ascii_lowercase();
-        let id = blake3::hash(relative.as_bytes()).to_hex().to_string();
-        ImageEntry { id, name, relative_path: relative, extension, bytes: metadata.len() }
-    }).collect();
-    Ok(ViewerSnapshot { root: redact_path(&canonical, &canonical), entries, selected: 0, generation: 1 })
+    let entries = files
+        .into_iter()
+        .map(|(path, metadata)| {
+            let relative = path
+                .strip_prefix(&canonical)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default()
+                .to_string();
+            let extension = path
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let id = blake3::hash(relative.as_bytes()).to_hex().to_string();
+            ImageEntry {
+                id,
+                name,
+                relative_path: relative,
+                extension,
+                bytes: metadata.len(),
+            }
+        })
+        .collect();
+    Ok(ViewerSnapshot {
+        root: redact_path(&canonical, &canonical),
+        entries,
+        selected: 0,
+        generation: 1,
+    })
 }
 
 pub fn redact_path(root: &Path, path: &Path) -> String {
@@ -289,7 +331,11 @@ pub fn redact_path(root: &Path, path: &Path) -> String {
 }
 
 pub fn cycle_index(len: usize, current: usize, delta: isize) -> Option<usize> {
-    if len == 0 { None } else { Some((current as isize + delta).rem_euclid(len as isize) as usize) }
+    if len == 0 {
+        None
+    } else {
+        Some((current as isize + delta).rem_euclid(len as isize) as usize)
+    }
 }
 
 #[cfg(test)]
@@ -308,10 +354,23 @@ mod tests {
         fs::create_dir(&nested).unwrap();
         fs::write(nested.join("image3.jpeg"), b"nested").unwrap();
         let snapshot = index_directory(dir.path()).unwrap();
-        let names: Vec<_> = snapshot.entries.iter().map(|entry| entry.name.as_str()).collect();
-        assert_eq!(names, ["image01.webp", "image2.png", "image10.JPG", "image3.jpeg"]);
-        assert!(snapshot.entries.iter().all(|entry| !entry.relative_path.contains(':')));
-        assert!(snapshot.entries.iter().all(|entry| !entry.relative_path.contains('\\')));
+        let names: Vec<_> = snapshot
+            .entries
+            .iter()
+            .map(|entry| entry.name.as_str())
+            .collect();
+        assert_eq!(
+            names,
+            ["image01.webp", "image2.png", "image10.JPG", "image3.jpeg"]
+        );
+        assert!(snapshot
+            .entries
+            .iter()
+            .all(|entry| !entry.relative_path.contains(':')));
+        assert!(snapshot
+            .entries
+            .iter()
+            .all(|entry| !entry.relative_path.contains('\\')));
         assert_eq!(snapshot.root, "");
         assert_eq!(cycle_index(names.len(), 0, -1), Some(3));
         assert_eq!(cycle_index(names.len(), 3, 1), Some(0));
@@ -322,7 +381,10 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("one.png");
         fs::write(&file, b"x").unwrap();
-        assert_eq!(canonical_root(&file).unwrap_err().kind(), io::ErrorKind::NotADirectory);
+        assert_eq!(
+            canonical_root(&file).unwrap_err().kind(),
+            io::ErrorKind::NotADirectory
+        );
     }
 
     #[test]
@@ -333,10 +395,16 @@ mod tests {
         }
         let mut service = ImageViewerService::new();
         let session = service.open(dir.path()).unwrap();
-        assert_eq!(service.session(&session).unwrap().keep_indices(), vec![0, 2, 1]);
+        assert_eq!(
+            service.session(&session).unwrap().keep_indices(),
+            vec![0, 2, 1]
+        );
 
         service.navigate(&session, 1).unwrap();
-        assert_eq!(service.session(&session).unwrap().keep_indices(), vec![1, 0, 2]);
+        assert_eq!(
+            service.session(&session).unwrap().keep_indices(),
+            vec![1, 0, 2]
+        );
         let first = service.request_view(&session, 800, 600, 90).unwrap();
         let second = service.request_view(&session, 800, 600, 90).unwrap();
         assert!(!service.accept_settled(&session, first.revision, Duration::from_millis(80)));
@@ -384,12 +452,27 @@ mod tests {
             .join("../../examples/ui/031-image-viewer/src/back/api.at");
         let api = std::fs::read_to_string(api_path).unwrap();
         for endpoint in [
-            "open_file", "open_directory", "open_path", "snapshot",
-            "navigate", "request_view", "close_session", "image_stats",
+            "open_file",
+            "open_directory",
+            "open_path",
+            "snapshot",
+            "navigate",
+            "request_view",
+            "close_session",
+            "image_stats",
         ] {
-            assert!(api.contains(&format!("fn {endpoint}")), "missing API endpoint {endpoint}");
+            assert!(
+                api.contains(&format!("fn {endpoint}")),
+                "missing API endpoint {endpoint}"
+            );
         }
-        assert!(api.contains("auto.image"), "API must delegate media work to auto.image");
-        assert!(!api.contains("pixels"), "API contract must not carry pixel payloads");
+        assert!(
+            api.contains("auto.image"),
+            "API must delegate media work to auto.image"
+        );
+        assert!(
+            !api.contains("pixels"),
+            "API contract must not carry pixel payloads"
+        );
     }
 }

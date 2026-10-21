@@ -20,8 +20,7 @@ use std::path::{Path, PathBuf};
 /// 未解析(solo 检出)→ None,golden 主体 SKIP(不炸)。
 fn gallery_dir() -> Option<PathBuf> {
     let sibling_base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
-    auto_lang::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery")
-        .map(|g| g.join("src"))
+    auto_lang::os_paths::resolve_os_top_dir(&sibling_base, "widgets-gallery").map(|g| g.join("src"))
 }
 
 fn collect_at_files(dir: &Path, out: &mut Vec<PathBuf>) {
@@ -111,8 +110,8 @@ fn assert_ui_imports_resolve(full_text: &str) {
     }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let registry_root = root.join("packages/widgets/registry");
-    let cmd_vue = fs::read_to_string(root.join("crates/auto/src/cmd_vue.rs"))
-        .expect("read cmd_vue.rs");
+    let cmd_vue =
+        fs::read_to_string(root.join("crates/auto/src/cmd_vue.rs")).expect("read cmd_vue.rs");
     // 安装表行形如 ("@/components/ui/button", "button"),
     let mut installable: BTreeSet<String> = BTreeSet::new();
     for line in cmd_vue.lines() {
@@ -128,7 +127,8 @@ fn assert_ui_imports_resolve(full_text: &str) {
     let local_ui_pkgs = ["data-table", "nav-link", "toast"];
     // Plan 482: PLAN-457 打包快照(assets/shadcn-ui/<pkg>)同为独立来源——
     // nav/ 即由此物化(离线 write-if-missing,见 vue_shadcn::materialize)。
-    let bundled_root = root.join("crates/auto-man/assets/shadcn-ui");
+    // PLAN-815 T-04: 快照随 vue 闭包迁 auto-ui-tools(唯一来源)。
+    let bundled_root = root.join("crates/auto-ui-tools/assets/shadcn-ui");
     let bad: Vec<String> = pkgs
         .iter()
         .filter(|p| {
@@ -161,8 +161,8 @@ fn gallery_vue_golden() {
     files.sort();
     assert!(!files.is_empty(), "gallery .at 源未找到");
 
-    let baseline_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/gallery_vue_golden.txt");
+    let baseline_path =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/gallery_vue_golden.txt");
     // 逐文件:相对路径 + 输出长度 + 稳定哈希(避免基线文件爆炸;全文对比在
     // 失败时通过 REGEN 提示做)。哈希碰撞风险对本用途可忽略。
     let mut report = String::new();
@@ -182,7 +182,11 @@ fn gallery_vue_golden() {
     }
     let mut fh = DefaultHasher::new();
     full_text.hash(&mut fh);
-    report.push_str(&format!("TOTAL\t{}\t{:016x}\n", full_text.len(), fh.finish()));
+    report.push_str(&format!(
+        "TOTAL\t{}\t{:016x}\n",
+        full_text.len(),
+        fh.finish()
+    ));
 
     // P6-2(D1):golden 顺带做 import 存在性围栏(先于 UPDATE 采样执行,
     // 采样本身也不允许带出幻影 import)

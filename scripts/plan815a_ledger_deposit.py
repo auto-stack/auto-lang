@@ -2,24 +2,25 @@
 """PLAN-815 M815-A staged ledger projection (guarded offline channel).
 
 Phase increment only (no whole-plan delivery entries), following the
-plan810/811 precedent: byte-exact backup, four surgical items
-(designs/tests/reviews/reports), version bump by one, six-section schema
-validation, read-back of the written IDs.
+store schema: byte-exact backup, four surgical items, version bump by
+one, whole-document schema validation, exact read-back and rollback.
+A legacy or invalid store must be restored separately before projection.
 """
 
 from __future__ import annotations
 
 import json
-import shutil
-import subprocess
+import hashlib
+import time
+import copy
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LEDGER = ROOT / ".autoos/specs.json"
-BACKUP = ROOT / ".autoos/specs.json.bak-v57-815a"
 
-DELIVERY = "e609caf1a"  # M815-A staged master landing (ancestor-verified)
-REVIEWED = "7045e20fa"  # R4 stage pass commit
+DELIVERY = "e609caf1af511b96832f511ab9d1fa6c0c11f563"  # M815-A staged master landing (ancestor-verified)
+REVIEWED = "7045e20fa71ba437bc80075f17d9aace755f5abd"  # R4 stage pass commit
 
 DESIGN = {
     "id": "P815-A-D1",
@@ -36,7 +37,7 @@ DESIGN = {
         "canonical: docs/specs/tool-protocol/project.md + docs/specs/auto-ui-tools/project.md"
         " + docs/specs/project-model/project.md(wire节)。B（生成/build/run 迁移）未发布。"
     ),
-    "status": "active",
+    "status": "verified",
     "file": "docs/specs/tool-protocol/project.md",
     "tags": ["PLAN-815", "stage:M815-A", f"delivery:{DELIVERY}", f"reviewed:{REVIEWED}"],
 }
@@ -54,7 +55,7 @@ TESTS = {
         "冻结门（T-14）：裸 cargo t 5303/5303、fixture 双门禁、777 strict pass、"
         "二进制 SHA256 1dc1ec700c…（与 R3/R4 审查钉定一致）。"
     ),
-    "status": "active",
+    "status": "verified",
     "file": "docs/specs/auto-ui-tools/project.md",
     "tags": ["PLAN-815", "stage:M815-A", f"delivery:{DELIVERY}"],
 }
@@ -85,7 +86,7 @@ REPORTS = {
         "收据。816 可消费已发布窄能力；生成/build/run/资产物理迁移/旧门面退出属 M815-B。"
         "Plan 保持 executing，唯一树/分支保留同步 master 继续 B。"
     ),
-    "status": "active",
+    "status": "verified",
     "file": "docs/plans/attachments/815/m815-a-release.md",
     "tags": ["PLAN-815", "stage:M815-A", f"delivery:{DELIVERY}", "receipt:release"],
 }
@@ -95,34 +96,217 @@ SECTION_OF = {"designs": DESIGN, "tests": TESTS, "reviews": REVIEWS, "reports": 
 EXPECTED_SECTIONS = ["reports", "goals", "architecture", "designs", "tests", "reviews"]
 
 
+VALID_STATUSES = set("empty proposed draft under_review approved in_progress in_implementation implemented verified done archived rejected backlog ready in_review blocked superseded outdated stable deprecated published analysed obsolete".split())
+ITEM_FIELDS = set("id title content status depends_on related priority assignee test_file file milestone module tags created_at modified_at completed_at".split())
+SECTION_FIELDS = set("id section_type title items status content depends_on last_modified last_verified".split())
+
+
+def is_u64(value) -> bool:
+    return type(value) is int and 0 <= value <= 2**64 - 1
+
+
+def schema_errors(doc: dict) -> list[str]:
+    """Mirror required store fields; preserve compatible unknown fields."""
+    errors = []
+    if not isinstance(doc.get("project"), str) or not is_u64(doc.get("version")):
+        errors.append("root: project/version")
+    sections = doc.get("sections", [])
+    if [s.get("id") for s in sections] != EXPECTED_SECTIONS:
+        errors.append("root: six-section identity/order")
+    seen = set()
+    for section in sections:
+        sid = section.get("id", "?")
+        if SECTION_FIELDS - section.keys():
+            errors.append(f"section {sid}: missing {sorted(SECTION_FIELDS - section.keys())}")
+        # SectionType serde wire format is PASCAL CASE (real-loader
+        # verified in M815-L T-15): snake_case values fall into
+        # #[serde(other)] Unknown and SpecsStore::load silently drops the
+        # whole section. Section *id* stays snake_case.
+        wire_type = {"reports": "Reports", "goals": "Goals", "architecture": "Architecture",
+                     "designs": "Designs", "tests": "Tests", "reviews": "Reviews"}[sid]
+        if section.get("section_type") != wire_type or section.get("status") not in VALID_STATUSES:
+            errors.append(f"section {sid}: type/status")
+        for field in ("title", "content"):
+            if not isinstance(section.get(field), str):
+                errors.append(f"section {sid}: invalid {field}")
+        if not isinstance(section.get("depends_on"), list) or any(not isinstance(x, str) for x in section.get("depends_on", [])):
+            errors.append(f"section {sid}: invalid depends_on")
+        if not is_u64(section.get("last_modified")) or (section.get("last_verified") is not None and not is_u64(section["last_verified"])):
+            errors.append(f"section {sid}: invalid timestamp")
+        for item in section.get("items", []):
+            iid = item.get("id", "?")
+            problems = []
+            if iid in seen:
+                problems.append("duplicate id")
+            seen.add(iid)
+            missing = ITEM_FIELDS - item.keys()
+            if missing:
+                problems.append(f"missing {sorted(missing)}")
+            if item.get("status") not in VALID_STATUSES:
+                problems.append(f"invalid status {item.get('status')!r}")
+            for field in ("id", "title", "content"):
+                if not isinstance(item.get(field), str):
+                    problems.append(f"invalid {field}")
+            for field in ("depends_on", "related", "tags"):
+                if not isinstance(item.get(field), list) or any(not isinstance(x, str) for x in item.get(field, [])):
+                    problems.append(f"invalid {field}")
+            for field in ("created_at", "modified_at"):
+                if not is_u64(item.get(field)):
+                    problems.append(f"invalid {field}")
+            for field in ("priority", "assignee", "test_file", "file", "milestone", "module"):
+                if item.get(field) is not None and not isinstance(item[field], str):
+                    problems.append(f"invalid {field}")
+            if item.get("completed_at") is not None and not is_u64(item["completed_at"]):
+                problems.append("invalid completed_at")
+            if problems:
+                errors.append(f"{sid}/{iid}: " + "; ".join(problems))
+    return errors
+
+
+def validate(doc: dict) -> None:
+    errors = schema_errors(doc)
+    if errors:
+        raise ValueError(f"store schema rejected ({len(errors)} records/sections); " + " | ".join(errors[:3]))
+
+
+def proposed_items(root: Path) -> dict:
+    now = int(time.time())
+    result = copy.deepcopy(SECTION_OF)
+    for item in result.values():
+        item.update(depends_on=[], related=[], priority=None, assignee=None,
+                    test_file=None, milestone="M815-A", module="auto-ui-tools",
+                    created_at=now, modified_at=now, completed_at=now)
+        source_hash = hashlib.sha256((root / item["file"]).read_bytes()).hexdigest()
+        item["tags"] += ["guarded-offline-projection", f"source-sha256:{source_hash}"]
+    return result
+
+
+def encode(doc: dict) -> bytes:
+    return (json.dumps(doc, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def deposit(path: Path, items: dict, verify=validate) -> bool:
+    original = path.read_bytes()
+    ledger = json.loads(original)
+    # A parseable JSON object is insufficient: reject a store load failure
+    # before creating/overwriting any backup or modifying any ledger byte.
+    validate(ledger)
+    ids = {i["id"]: i for s in ledger["sections"] for i in s["items"]}
+    expected = {i["id"] for i in items.values()}
+    present = expected & ids.keys()
+    if present:
+        if present != expected:
+            raise ValueError("partial existing phase projection; reconcile before retry")
+        for item in items.values():
+            old = ids[item["id"]]
+            for field in ("title", "content", "status", "file", "tags"):
+                if old[field] != item[field]:
+                    raise ValueError(f"existing projection differs: {item['id']}/{field}")
+        return False
+    for sid, item in items.items():
+        next(s for s in ledger["sections"] if s["id"] == sid)["items"].append(item)
+    ledger["version"] += 1
+    validate(ledger)
+    stripped = copy.deepcopy(ledger)
+    for section in stripped["sections"]:
+        section["items"] = [i for i in section["items"] if i["id"] not in expected]
+    stripped["version"] -= 1
+    if encode(stripped) != original:
+        raise ValueError("unrelated bytes or original formatting would change")
+    backup = path.with_name(path.name + f".bak-v{ledger['version']}-815a-" + hashlib.sha256(original).hexdigest()[:12])
+    if backup.exists() and backup.read_bytes() != original:
+        raise ValueError("backup collision")
+    backup.write_bytes(original)
+    if path.read_bytes() != original:
+        raise ValueError("concurrent ledger edit before write")
+    wrote = encode(ledger)
+    try:
+        path.write_bytes(wrote)
+        reread = json.loads(path.read_bytes())
+        verify(reread)
+        if reread != ledger:
+            raise ValueError("read-back mismatch")
+    except Exception:
+        # guarded rollback (review L1 F-02): restore the original bytes
+        # ONLY if the current content is exactly what this run wrote — an
+        # external update is preserved, never overwritten
+        current = path.read_bytes()
+        if current == wrote:
+            path.write_bytes(original)
+        else:
+            raise RuntimeError(
+                "read-back failed AND the file changed beyond this run's write; "
+                "external update preserved (no rollback)"
+            ) from None
+        raise
+    return True
+
+
+def self_test() -> None:
+    # Tests protect the failure paths which previously allowed corrupt writes.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "specs.json"
+        wire = {"reports": "Reports", "goals": "Goals", "architecture": "Architecture",
+                "designs": "Designs", "tests": "Tests", "reviews": "Reviews"}
+        doc = {"project": "fixture", "version": 0, "sections": [
+            dict(id=sid, section_type=wire[sid], title=sid, items=[], status="empty",
+                 content="", depends_on=[], last_modified=0, last_verified=None)
+            for sid in EXPECTED_SECTIONS]}
+        items = proposed_items(ROOT)
+        path.write_bytes(encode(doc))
+        original = path.read_bytes()
+        def reject(_):
+            raise ValueError("injected read-back failure")
+        try:
+            deposit(path, items, verify=reject)
+            raise AssertionError("read-back failure accepted")
+        except ValueError:
+            assert path.read_bytes() == original
+        assert deposit(path, items)
+        written = path.read_bytes()
+        assert not deposit(path, items) and path.read_bytes() == written
+        bad = json.loads(written)
+        bad["sections"][0]["items"][0]["status"] = "active"
+        path.write_bytes(encode(bad))
+        rejected = path.read_bytes()
+        try:
+            deposit(path, items)
+            raise AssertionError("invalid status accepted")
+        except ValueError:
+            assert path.read_bytes() == rejected
+        bad["sections"][0]["items"][0]["status"] = "verified"
+        bad["sections"][1]["items"].append(copy.deepcopy(bad["sections"][0]["items"][0]))
+        assert any("duplicate id" in e for e in schema_errors(bad))
+        for field, value in (("last_modified", 2**64), ("title", 7), ("depends_on", [1])):
+            bad = copy.deepcopy(doc)
+            bad["sections"][0][field] = value
+            assert schema_errors(bad), field
+        bad = copy.deepcopy(doc)
+        bad["version"] = True
+        assert schema_errors(bad)
+    print("PASS: rollback, valid projection, idempotence, invalid-schema zero-write, duplicate-ID rejection")
+
+
 def main() -> None:
-    original = LEDGER.read_bytes()
-    shutil.copyfile(LEDGER, BACKUP)
-    ledger = json.loads(original.decode("utf-8"))
-
-    ids = {s["id"] for s in ledger["sections"] for i in s.get("items", [])}
-    for section_id, item in SECTION_OF.items():
-        if item["id"] in ids:
-            raise SystemExit(f"refusing to duplicate ledger id {item['id']}")
-        section = next(s for s in ledger["sections"] if s["id"] == section_id)
-        section.setdefault("items", []).append(item)
-
-    ledger["version"] = int(ledger["version"]) + 1
-    LEDGER.write_text(
-        json.dumps(ledger, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-
-    # validate: six sections, exact order, written ids read back
-    reread = json.loads(LEDGER.read_text(encoding="utf-8"))
-    assert [s["id"] for s in reread["sections"]] == EXPECTED_SECTIONS, "section schema drift"
-    written = {
-        i["id"] for s in reread["sections"] for i in s.get("items", []) if i["id"].startswith("P815-A-")
-    }
-    expected = {item["id"] for item in SECTION_OF.values()}
-    assert written == expected, f"read-back mismatch: {written} != {expected}"
-    print(f"ledger v{reread['version']}: upserted {sorted(written)}; backup {BACKUP.name}")
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--audit", action="store_true")
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return
+    if args.audit:
+        doc = json.loads(LEDGER.read_bytes())
+        errors = schema_errors(doc)
+        print(json.dumps(dict(version=doc["version"], errors=errors), ensure_ascii=False, indent=2))
+        raise SystemExit(bool(errors))
+    try:
+        changed = deposit(LEDGER, proposed_items(ROOT))
+        print("projection written" if changed else "already projected; no write")
+    except ValueError as exc:
+        raise SystemExit(f"BLOCKED, ledger unchanged: {exc}") from exc
 
 
 if __name__ == "__main__":
-    _ = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=ROOT, capture_output=True)
     main()

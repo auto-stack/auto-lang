@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 // (ui/mod.rs),本文件此前无条件引用——无该特征的组合(vue back 等)
 // E0432。cfg 分臂:无特征时回落英文(非 zh)判定。
 #[cfg(feature = "ui-interpreter")]
-use crate::ui::i18n_lookup::locale_prefers_zh;
+use crate::i18n_lookup::locale_prefers_zh;
 
 /// 一个可启动 App 的注册表条目（R10 最小面）。
 #[derive(Debug, Clone, PartialEq)]
@@ -165,7 +165,7 @@ pub(crate) fn framework_repo_root(from: &Path) -> Option<PathBuf> {
 /// 生成侧落点，auto build 实测 converter.exe 落位）。exe 名候选：pac
 /// name 蛇形 > pac name 原名（生成包名保 dash——hello-world.exe）> 目录名。
 /// 返回首个存在命中；全缺 = None。
-pub(crate) fn convention_native_exe(app_dir: &Path, name: Option<&str>) -> Option<PathBuf> {
+pub fn convention_native_exe(app_dir: &Path, name: Option<&str>) -> Option<PathBuf> {
     let dir_name = app_dir.file_name()?.to_string_lossy().to_string();
     let mut candidates: Vec<String> = Vec::new();
     if let Some(name) = name {
@@ -478,8 +478,8 @@ pub fn host_extra_roots() -> Vec<(String, PathBuf)> {
     let front = PathBuf::from("..").join("auto-os-config").join("auto");
     let apps = PathBuf::from("..").join("auto-os").join("apps");
     let mut roots = extra_roots_from(
-        crate::vm::ffi::stdlib::storage_host_read("shell.apps.extra_dirs").as_deref(),
-        crate::vm::ffi::stdlib::storage_host_read("shell.apps.scan_siblings").as_deref(),
+        auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.apps.extra_dirs").as_deref(),
+        auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.apps.scan_siblings").as_deref(),
         &front,
         &apps,
     );
@@ -501,7 +501,7 @@ pub fn host_extra_roots() -> Vec<(String, PathBuf)> {
 /// （对称 `shell.apps.scan_siblings`）。
 pub fn gallery_extra_roots() -> Vec<(String, PathBuf)> {
     let roots = gallery_extra_roots_from(
-        crate::vm::ffi::stdlib::storage_host_read("shell.apps.scan_galleries").as_deref(),
+        auto_lang_core::vm::ffi::stdlib::storage_host_read("shell.apps.scan_galleries").as_deref(),
         Path::new(".."),
     );
     if std::env::var("AUTO_MEMO_DIAG").ok().as_deref() == Some("1") {
@@ -552,7 +552,7 @@ pub fn resolve_os_manifest_root(parent: &Path) -> Option<PathBuf> {
 /// 迁入 auto-os 顶层/`apps/` 的资产）。实现在 [`crate::os_paths`]（无
 /// feature 门——`ui_gen` docs 管线与 CLI 的无 `ui` 构建形态同源消费），
 /// 此处 re-export 维持注册表家族聚合（与 `resolve_os_manifest_root` 同址）。
-pub use crate::os_paths::resolve_os_top_dir;
+pub use auto_lang_core::os_paths::resolve_os_top_dir;
 
 /// auto-os `apps.manifest` 条目（Stage B P-3 定稿 schema；宽容读取——
 /// 未知字段忽略，缺省 kind=repo / status=active，坏条目跳过不阻断启动）。

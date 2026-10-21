@@ -34,8 +34,11 @@ fn materialize_with_charts_fixture(track: &str) -> PathBuf {
     let pkg_dir = official_chart_pkg_dir();
     // 裸 cargo test 单进程内 t01/t02 并行——pid 后缀不足以区分调用方,须按
     // 轨道唯一化 scratch,否则互相 remove_dir_all/覆盖(os error 32 实录)。
-    let scratch =
-        std::env::temp_dir().join(format!("plan643_with_charts_{}_{}", std::process::id(), track));
+    let scratch = std::env::temp_dir().join(format!(
+        "plan643_with_charts_{}_{}",
+        std::process::id(),
+        track
+    ));
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(scratch.join("components")).expect("scratch components dir");
     for entry in std::fs::read_dir(&pkg_dir).expect("official package dir") {
@@ -45,7 +48,8 @@ fn materialize_with_charts_fixture(track: &str) -> PathBuf {
         std::fs::copy(entry.path(), &target)
             .unwrap_or_else(|e| panic!("copy {}: {e}", name.to_string_lossy()));
     }
-    let reference = repo_root().join("packages/blueprints/dashboard/overview/reference/with_charts.at");
+    let reference =
+        repo_root().join("packages/blueprints/dashboard/overview/reference/with_charts.at");
     let dest = scratch.join("with_charts.at");
     std::fs::copy(&reference, &dest).expect("copy reference into scratch");
     dest

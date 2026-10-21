@@ -1,0 +1,25 @@
+[package]
+name = "auto-api-gen"
+version = "0.1.0"
+edition = "2021"
+description = "API server/client generation core (PLAN-815 T-04): single-algorithm api_gen + rust_sidecar effect adapter + shared rust generation workspace layout, extracted from auto-man (owner: lang-service-adapter)"
+license = "MIT"
+
+[dependencies]
+# Language SDK single source (api/ast/compile/trans/config/http services).
+auto-lang-core = { path = "../auto-lang-core" }
+# rust_sidecar declaration single source (SidecarDecl parsing).
+auto-man-core = { path = "../auto-man-core" }
+auto-val = { path = "../auto-val" }
+regex = { workspace = true }
+serde_json = { workspace = true }
+
+[features]
+# PLAN-738 e2e（随 api_gen 迁入；auto-man 同名 feature 转发）。
+test-http-e2e = []
+
+[dev-dependencies]
+tempfile = { workspace = true }
+serde = { workspace = true }
+# plan734 fixture compile-check uses #[tauri::command] (same spec as auto-man).
+tauri = { version = "2", default-features = false, features = ["test"] }

@@ -46,10 +46,10 @@
 //! | `return Some(user)` / `return None` | `return Some(user);` / `return None;` |
 //! | `#[api(method = "GET", path = "/api/users/:id")]` | `#[tauri::command]` |
 
-use std::path::Path;
 use std::fs;
+use std::path::Path;
 
-use crate::AutoResult;
+use auto_val::AutoResult;
 
 /// Generate complete Tauri backend Rust crate from AutoLang source
 ///
@@ -78,8 +78,7 @@ pub fn generate_tauri_backend(root_dir: &Path) -> AutoResult<()> {
 
     // Create rust/ directory structure
     let src_dir = rust_dir.join("src");
-    fs::create_dir_all(&src_dir)
-        .map_err(|e| format!("Failed to create rust/src: {}", e))?;
+    fs::create_dir_all(&src_dir).map_err(|e| format!("Failed to create rust/src: {}", e))?;
 
     // Generate Cargo.toml
     let cargo_toml = generate_cargo_toml();
@@ -124,13 +123,12 @@ fn read_at_file(back_dir: &Path, name: &str) -> AutoResult<String> {
     if !path.exists() {
         return Err(format!("{} not found", name).into());
     }
-    fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read {}: {}", name, e).into())
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read {}: {}", name, e).into())
 }
 
 /// Transpile AutoLang code to Rust using a2r transpiler
 fn transpile_at_to_rust(content: &str) -> AutoResult<String> {
-    use auto_lang::trans::rust::transpile_rust;
+    use auto_lang_core::trans::rust::transpile_rust;
     use auto_val::AutoStr;
 
     let mut sink = transpile_rust(AutoStr::from("db"), content)
@@ -161,7 +159,8 @@ pub struct CreateUserRequest {
     pub name: String,
     pub email: String,
 }
-"#.to_string())
+"#
+    .to_string())
 }
 
 /// Extract Tauri commands from api.at
@@ -197,7 +196,8 @@ pub fn deleteuser(id: i32) -> bool {
 pub fn searchusers(query: String) -> Vec<User> {
     db::search_users(query)
 }
-"#.to_string())
+"#
+    .to_string())
 }
 
 /// Generate Cargo.toml for the backend crate
@@ -215,7 +215,8 @@ tauri = { version = "2", optional = true }
 [features]
 default = []
 tauri = ["dep:tauri"]
-"#.to_string()
+"#
+    .to_string()
 }
 
 /// Generate lib.rs module exports
@@ -229,5 +230,6 @@ pub use types::*;
 pub use db::*;
 #[cfg(feature = "tauri")]
 pub use commands::*;
-"#.to_string()
+"#
+    .to_string()
 }

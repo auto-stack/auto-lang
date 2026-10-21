@@ -1,5 +1,5 @@
 // Plan 465 T4 (I6): layout parity runner — asserts the TS port
-// (crates/auto-man/assets/wm/layout.ts) against the SAME expectation table
+// (crates/auto-ui-tools/assets/wm/layout.ts) against the SAME expectation table
 // the Rust engine (auto-lang ui/layout.rs) is held to
 // (crates/auto-lang/src/ui/layout_cases.json).
 //
@@ -12,7 +12,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const casesPath = path.join(repoRoot, 'crates', 'auto-lang', 'src', 'ui', 'layout_cases.json')
 const table = JSON.parse(readFileSync(casesPath, 'utf-8'))
 const wm = await import(
-  pathToFileURL(path.join(repoRoot, 'crates', 'auto-man', 'assets', 'wm', 'layout.ts')).href
+  pathToFileURL(path.join(repoRoot, 'crates', 'auto-ui-tools', 'assets', 'wm', 'layout.ts')).href
 )
 
 const EPS = 0.51
