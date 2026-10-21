@@ -50,3 +50,24 @@ compiler清单只声明`ui`/`ui-headless`，没有`ui-iced`，也不应反向依
 - 归档状态仍archived、原任务历史15/15；追加本恢复记录说明清理完成及新增对账阻断，避免覆盖历史实际交付。其它会话脏文档、未跟踪冻结证据及ledger备份均保留。
 
 本次仅提交本报告和归档计划的链接/恢复簿记，不改canonical、liveledger或实现。新提交为纯文档，不触发整档、docs_gen或再次批量回归；既有批量收据保留。
+
+## F814-MERGE-01 闭环（2026-10-21，L0 fix-p814-launch-test）
+
+- 修复提交 `f97a9e2a9`（master ff-only，基于本恢复提交 `6ec93ed61`）：
+  孤儿测试从 compiler `app_registry.rs` 迁出（留指针注释），新建
+  `auto-ui-runtime/src/ui_tests/plan814_app_registry_launch_tests.rs`
+  ——经 `crate::ui::app_registry` 再导出消费 compiler 单源注册表，
+  三真实 App/session 断言逐字保持；挂载门 `all(test, ui-iced)`
+  （runtime 真实 feature），不虚设 compiler feature 门、不引反向依赖。
+- 验证（scoped，按 L0/修复轮口径）：选择面 **matches=5328 恢复**
+  （nextest list 逐 ID，新 ID=`auto-ui-runtime
+  ui_tests::plan814_app_registry_launch_tests::
+  launch_three_real_apps_via_registry_resolver` 在集合内）；迁移测试
+  真实三 App 启动 **PASS**（0.53s）；compiler `app_registry` 25/25；
+  双包 `--tests` check 0 错；rustfmt 过。
+- 清理：wt-guard clean → worktree/分支/组目录（含 auto-down 兄弟
+  @c39ac7f9）全部移除。
+- 本节闭合上文 blocked 判定：PLAN-814 收尾验收的最后一项缺口（原
+  AC-05/T-07 选择面零丢失）恢复，收尾核验可判 pass。未触发整档
+  （测试迁移 scoped 验证即 L0 门禁）；批量回归收据 75b26c253 覆盖
+  窗口不含本提交，下次到期判定按新 last_covered 顺延。
