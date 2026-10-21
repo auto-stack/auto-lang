@@ -19,6 +19,8 @@ use auto_project_model::descriptor::SourceInfo;
 #[cfg(test)]
 use auto_project_model::{parse_document, GenerationRequest};
 #[cfg(test)]
+use auto_tool_client::discovery::{discover, DiscoveryError, DiscoverySpec};
+#[cfg(test)]
 use auto_tool_client::{BrokenReason, ClientError, ExitKind, Reply, ToolClient, ToolClientSpec};
 #[cfg(test)]
 use auto_tool_execution::TreeScope;
@@ -542,4 +544,98 @@ fn abort_stops_blocked_writer_for_real() {
     let shutdown = client.shutdown().expect("shutdown after abort");
     assert!(shutdown_started.elapsed() < Duration::from_secs(2));
     assert_eq!(shutdown.kind, ExitKind::Success);
+}
+
+// ============================================================================
+// T-04 窄能力发现：discovery/版本/能力 + 缺件/缺 UI 负控（M815-A 面）
+// ============================================================================
+
+/// T-04 正控：按发现序解析到真实 auto-ui-tool，describe 身份/版本/能力齐。
+#[test]
+fn discovery_finds_real_tool_with_m815a_surface() {
+    let mut spec = DiscoverySpec::auto_ui_tool();
+    spec.workspace_root = Some(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../..")
+            .canonicalize()
+            .expect("workspace root"),
+    );
+    let found = discover(&spec).expect("discover real auto-ui-tool");
+    assert!(found.path.exists());
+    assert_eq!(found.descriptor.tool_name, "auto-ui-tool");
+    assert_eq!(found.descriptor.protocol_version, PROTOCOL_VERSION);
+    assert!(found.descriptor.offers("describe"));
+    assert!(found.descriptor.offers("validate_project"));
+    // M815-A 窄面：无 generate/build/run UI 能力。
+    for ui_op in ["generate", "build", "run"] {
+        assert!(
+            !found.descriptor.offers(ui_op),
+            "narrow tool must not claim UI op `{ui_op}`"
+        );
+    }
+}
+
+/// T-04 负控（缺件）：env 指向不存在路径 → 具名 EnvPathMissing，无回落。
+#[test]
+fn discovery_missing_env_path_is_named() {
+    let mut spec = DiscoverySpec::auto_ui_tool();
+    spec.env_key = "T04_MISSING_TOOL_BIN".into();
+    std::env::set_var("T04_MISSING_TOOL_BIN", r"R:\definitely\not\a\tool.exe");
+    let err = discover(&spec).expect_err("missing env path");
+    assert!(
+        matches!(err, DiscoveryError::EnvPathMissing { .. }),
+        "got {err}"
+    );
+    std::env::remove_var("T04_MISSING_TOOL_BIN");
+}
+
+/// T-04 负控（缺件）：无 env、workspace 无该产物 → 具名 NotFound。
+#[test]
+fn discovery_not_found_is_named() {
+    let mut spec = DiscoverySpec::auto_ui_tool();
+    spec.env_key = "T04_NO_SUCH_ENV_KEY".into();
+    spec.tool_name = "t04-no-such-tool".into();
+    spec.workspace_root = Some(std::env::temp_dir().join("t04-empty-ws"));
+    std::fs::create_dir_all(spec.workspace_root.as_ref().unwrap()).ok();
+    let err = discover(&spec).expect_err("tool not found");
+    assert!(matches!(err, DiscoveryError::NotFound { .. }), "got {err}");
+}
+
+/// T-04 负控（缺 UI 能力）：要求 generate 而窄工具不提供 → CapabilityMissing，
+/// 且**不**静默 fallback。
+#[test]
+fn discovery_missing_ui_capability_is_named_no_fallback() {
+    let mut spec = DiscoverySpec::auto_ui_tool();
+    spec.workspace_root = Some(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../..")
+            .canonicalize()
+            .expect("workspace root"),
+    );
+    spec.required_operations = vec!["generate".into()];
+    let err = discover(&spec).expect_err("narrow tool has no generate");
+    match &err {
+        DiscoveryError::CapabilityMissing { operation, .. } => {
+            assert_eq!(operation, "generate");
+        }
+        other => panic!("expected CapabilityMissing, got {other}"),
+    }
+}
+
+/// T-04 负控（版本）：要求错误协议版本 → VersionMismatch。
+#[test]
+fn discovery_protocol_version_mismatch_is_named() {
+    let mut spec = DiscoverySpec::auto_ui_tool();
+    spec.workspace_root = Some(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../..")
+            .canonicalize()
+            .expect("workspace root"),
+    );
+    spec.protocol_version = 999;
+    let err = discover(&spec).expect_err("protocol 999 unsupported");
+    assert!(
+        matches!(err, DiscoveryError::VersionMismatch { .. }),
+        "got {err}"
+    );
 }

@@ -48,6 +48,9 @@ use auto_tool_protocol::{
 // 不需要直接依赖 auto-tool-execution。
 pub use auto_tool_execution::ExitKind;
 
+pub mod discovery;
+pub use discovery::{discover, resolve_existing, DiscoveredTool, DiscoveryError, DiscoverySpec};
+
 /// reader/writer 收尾的拆除宽限：stop 生效延迟 ≤ 轮询切片，正常远小于
 /// 本值；超时即管道被非拥有进程持有（F-816-R1/R2-06）。
 const TEARDOWN_GRACE: Duration = Duration::from_secs(3);
