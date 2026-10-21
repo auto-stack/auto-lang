@@ -43,6 +43,18 @@ impl SpanSegments {
         {
             q += 1;
         }
+        // Byte-level suffix matching can split a NEW-side digit token
+        // ('1' old vs '01' new: the '1' suffix-matches, leaving mid_new a
+        // bare '0'). Absorb suffix bytes that continue a digit run in the
+        // NEW text so both mids hold WHOLE tokens (' 1' vs '01' → the
+        // value-equal tokens align, F-828-R1-04/R12a).
+        while q > 0
+            && p + q < new.len()
+            && new[new.len() - q - 1].is_ascii_digit()
+            && new[new.len() - q].is_ascii_digit()
+        {
+            q -= 1;
+        }
         let mid_old = &old[p..old.len() - q];
         let mid_new = &new[p..new.len() - q];
         let mid_m0 = m0 + p as u64;
@@ -69,7 +81,7 @@ impl SpanSegments {
                     || old_runs
                         .iter()
                         .zip(new_runs.iter())
-                        .any(|((a, _), (b, _))| a != b)
+                        .any(|((a, _), (b, _))| !token_eq(a, b))
                 {
                     // No correspondence: a full-text rebuild would
                     // collapse the middle — keep the geometric map.
@@ -312,13 +324,39 @@ fn find_subslice(hay: &[u8], needle: &[u8]) -> Option<usize> {
         return None;
     }
     let comments = comment_ranges(hay);
-    hay.windows(needle.len()).enumerate().find_map(|(i, w)| {
+    let hit = hay.windows(needle.len()).enumerate().find_map(|(i, w)| {
         if w == needle && !comments.iter().any(|&(a, b)| a < i + needle.len() && i < b) {
             Some(i)
         } else {
             None
         }
-    })
+    })?;
+    // A match landing mid-digit-run ('1' matching the suffix of '01') is
+    // NOT the token start: snap left to the enclosing lexical token's
+    // start — a same-value spelling change re-anchors the WHOLE token
+    // (F-828-R1-04/R12a).
+    let mut k = hit;
+    while k > 0 && hay[k - 1].is_ascii_digit() && hay[k].is_ascii_digit() {
+        k -= 1;
+    }
+    Some(k)
+}
+
+/// Token equality: byte equality, or numeric equality for decimal
+/// literals ('1' and '01' are the same value token).
+fn token_eq(a: &[u8], b: &[u8]) -> bool {
+    if a == b {
+        return true;
+    }
+    let digits = |x: &[u8]| !x.is_empty() && x.iter().all(|c| c.is_ascii_digit());
+    if !digits(a) || !digits(b) {
+        return false;
+    }
+    fn strip(x: &[u8]) -> &[u8] {
+        let t = x.iter().position(|c| *c != b'0').unwrap_or(x.len() - 1);
+        &x[t..]
+    }
+    strip(a) == strip(b)
 }
 
 /// Comment regions of the text: from `//` to end of line (excluded from

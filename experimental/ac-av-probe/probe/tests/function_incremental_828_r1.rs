@@ -1295,3 +1295,81 @@ fn r11a_valid_parenthesized_line_comment_matrix() {
     }
     assert!(failures.is_empty(), "{failures:#?}");
 }
+
+/// r12a-check: same-value leading-zero literal maps to the TOKEN start,
+/// not the matching byte suffix.
+#[test]
+fn r12a_leading_zero_literal_maps_to_token_start() {
+    let mut s = warmup(R6A_SRC, "d_main", &[]).unwrap();
+    let at = s.src().find("1 / 0").unwrap();
+    let candidate = R6A_SRC.replacen("1 / 0", "01 / 0", 1);
+    let cold = warmup(&candidate, "d_main", &[]).expect("leading-zero in profile");
+    let code = s.current().find_code("d_main").unwrap().clone();
+    let out = s.edit(at as u64, (at + 1) as u64, b"01".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), candidate);
+    assert!(
+        Arc::ptr_eq(&code, s.current().find_code("d_main").unwrap()),
+        "same numeric value reuses code"
+    );
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "matching byte suffix is not the current token start of 01"
+    );
+}
+
+/// r12a-check: same-value literal edit then trivia rewrite keeps the tail.
+#[test]
+fn r12a_same_value_literal_then_trivia_rewrite_keeps_tail() {
+    let src = "fn helper() int { return 1 }
+fn main() int { var y = 1; return 1 / 0 }
+fn tail() int { return 9 }
+";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let at = s.src().find("var y = 1").unwrap() + 8;
+    let candidate = src.replacen("var y = 1", "var y = 01", 1);
+    let cold = warmup(&candidate, "d_main", &[]).unwrap();
+    let out = s.edit(at as u64, (at + 1) as u64, b"01".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "first same-value edit control"
+    );
+    let at = s.src().find("1 / 0").unwrap();
+    let candidate = s.src().replacen("1 / 0", " 1  / 0", 1);
+    let cold = warmup(&candidate, "d_main", &[]).unwrap();
+    let out = s.edit(at as u64, (at + 1) as u64, b" 1 ".to_vec()).unwrap();
+    assert!(out.ok, "{out:?}");
+    assert_eq!(s.src(), candidate);
+    assert_eq!(
+        trap_span(&s),
+        trap_span(&cold),
+        "same HIR with changed literal spelling reaches head/tail fallback"
+    );
+}
+
+/// r12a-check: the 9-cell equivalent-decimal-spelling matrix.
+#[test]
+fn r12a_equivalent_decimal_spelling_matrix() {
+    let mut failures = Vec::new();
+    for old in ["1", "01", "001"] {
+        for new in ["1", "01", "001"] {
+            let source = R6A_SRC.replacen("1 / 0", &format!("{old} / 0"), 1);
+            let mut s = warmup(&source, "d_main", &[]).unwrap();
+            let at = s.src().find(&format!("{old} / 0")).unwrap();
+            let candidate = source.replacen(&format!("{old} / 0"), &format!("{new} / 0"), 1);
+            let cold = warmup(&candidate, "d_main", &[]).unwrap();
+            let out = s
+                .edit(at as u64, (at + old.len()) as u64, new.as_bytes().to_vec())
+                .unwrap();
+            assert!(out.ok, "{old:?}->{new:?}: {out:?}");
+            let (actual, expected) = (trap_span(&s), trap_span(&cold));
+            if actual != expected {
+                failures.push(format!("{old:?}->{new:?}: {actual:?} != {expected:?}"));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
