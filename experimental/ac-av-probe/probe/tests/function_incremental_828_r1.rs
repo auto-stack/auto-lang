@@ -932,7 +932,7 @@ fn r8a_equivalent_expression_replacement_tracks_new_token_coordinates() {
     let (old, _) =
         auto_av_core::av::execute_program(&pinned, &ExecLimits::default(), &CancelFlag::new(false));
     assert!(
-        matches!(old, ExecOutcome::Trap { span: Some(sp), .. } if sp == before),
+        matches!(&old, ExecOutcome::Trap { span: Some(sp), .. } if *sp == before),
         "pinned source control"
     );
     assert_eq!(
@@ -2370,4 +2370,260 @@ fn r21a_good_v2_identity_and_relocation_control() {
         );
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// r21a-check adjacent matrix (adopted): three functions where main's
+/// LEGITIMATE func id is 1 — identity mutations (in-range wrong func,
+/// foreign func, duplicated instr, both axes) × moved/unmoved ×
+/// good-primary/good-repair/no-repair. Usable candidates restore all
+/// three units; no-repair falls cold first turn and heals the second.
+#[test]
+fn r22a_three_function_identity_selection_and_healing_matrix() {
+    use auto_av_probe::cache as scache;
+    const THREE: &str =
+        "fn helper() int { return 1 }\nfn main() int { return helper() / 0 }\nfn tail() int { return 9 }\n";
+    let seed = |dir: &std::path::Path, mode: &str, selection: &str| {
+        let s = warmup(THREE, "d_main", &[]).unwrap();
+        let compiled =
+            auto_ac_prototype::source::compile_scalar_source(THREE, "probe.at", &[]).unwrap();
+        let hir = &compiled.checked.bundle().modules[0];
+        let store = scache::open_store(dir).unwrap();
+        let mut d0 = 0u64;
+        for line in THREE.lines() {
+            let name = line
+                .split_whitespace()
+                .nth(1)
+                .unwrap()
+                .split('(')
+                .next()
+                .unwrap();
+            let def_id = format!("d_{name}");
+            let body = hir
+                .defs
+                .iter()
+                .find_map(|d| match &d.kind {
+                    auto_ac_prototype::hir::DefKind::Function { body, .. }
+                        if d.id_text == def_id =>
+                    {
+                        Some(*body)
+                    }
+                    _ => None,
+                })
+                .unwrap();
+            let cv = auto_av_probe::semrefs::content_version_of(&scache::canonical_hir_function(
+                hir, body,
+            ));
+            let mut unit = s
+                .current()
+                .find_code(&def_id)
+                .unwrap()
+                .unit()
+                .module()
+                .clone();
+            let good = std::mem::take(&mut unit.funcs[0].spans);
+            let mut bad = good.clone();
+            if name == "main" {
+                assert!(
+                    good.iter().all(|(_, sp)| sp.func == 1),
+                    "nonzero legitimate function id control"
+                );
+                if mode == "inrange-func" || mode == "both" {
+                    for (_, sp) in &mut bad {
+                        sp.func = 0;
+                    }
+                }
+                if mode == "foreign-func" {
+                    for (_, sp) in &mut bad {
+                        sp.func = u32::MAX;
+                    }
+                }
+                if mode == "instr" || mode == "both" {
+                    bad[0].0 = bad[1].0;
+                }
+                assert_ne!(good, bad, "actual identity mutation {mode}");
+            }
+            let mk = |table: &[(u32, auto_av_core::contract::SpanInfo)]| {
+                scache::encode_unit_sidecar(&scache::UnitSidecar {
+                    spans: table.to_vec(),
+                    mint: Some((d0, d0 + line.len() as u64, line.as_bytes().to_vec())),
+                })
+            };
+            let primary = if name != "main" || selection == "good-primary" {
+                mk(&good)
+            } else {
+                mk(&bad)
+            };
+            let bytes = auto_av_core::abc::encode_abc(&unit).unwrap().to_flat();
+            scache::put_enveloped(
+                &store,
+                &scache::abc_unit_key(&hir.id_text, &def_id, &cv, &scache::caps_fingerprint(&[])),
+                "A09",
+                &scache::EnvelopeIdentity::abc_bound(&hir.id_text, &def_id, &cv),
+                &bytes,
+                vec![],
+                Some("r22a"),
+            )
+            .unwrap();
+            let id = scache::EnvelopeIdentity::unit_span_sidecar(&hir.id_text, &def_id, &cv);
+            scache::put_enveloped(
+                &store,
+                &scache::unit_span_sidecar_key(&hir.id_text, &def_id, &cv),
+                "A09",
+                &id,
+                &primary,
+                vec![],
+                Some("r22a"),
+            )
+            .unwrap();
+            if name == "main" && selection != "no-repair" {
+                let repair = if selection == "good-primary" {
+                    mk(&bad)
+                } else {
+                    mk(&good)
+                };
+                scache::put_enveloped(
+                    &store,
+                    &scache::unit_span_sidecar_repair_key(&hir.id_text, &def_id, &cv),
+                    "A09",
+                    &id,
+                    &repair,
+                    vec![],
+                    Some("r22a"),
+                )
+                .unwrap();
+            }
+            d0 += line.len() as u64 + 1;
+        }
+    };
+    let mut cases = 0;
+    for mode in ["inrange-func", "foreign-func", "instr", "both"] {
+        for moved in [false, true] {
+            for selection in ["good-primary", "good-repair", "no-repair"] {
+                let dir = std::env::temp_dir().join(format!(
+                    "plan828-r22a-{}-{moved}-{selection}-{}",
+                    mode.replace('-', "_"),
+                    std::process::id()
+                ));
+                let _ = std::fs::remove_dir_all(&dir);
+                seed(&dir, mode, selection);
+                let source = if moved {
+                    THREE.replacen("return helper()", "                return helper()", 1)
+                } else {
+                    THREE.to_string()
+                };
+                let expected = trap_span(&warmup(&source, "d_main", &[]).unwrap());
+                assert_eq!(expected.func, 1, "legitimate nonzero function id");
+                let s = restore(&source, "d_main", &[], &dir, "r22a").unwrap();
+                assert_eq!(trap_span(&s), expected, "{mode} {moved} {selection}");
+                let (out, _) = auto_av_core::av::execute_program(
+                    &s.current(),
+                    &ExecLimits::default(),
+                    &CancelFlag::new(false),
+                );
+                assert!(matches!(out, ExecOutcome::Trap { span: Some(sp), .. } if sp == expected));
+                assert_eq!(
+                    s.counters().get("restore_units_admitted"),
+                    if selection == "no-repair" { 0 } else { 3 },
+                    "{mode} {moved} {selection}"
+                );
+                drop(s);
+                let second = restore(&source, "d_main", &[], &dir, "r22a").unwrap();
+                assert_eq!(
+                    second.counters().get("restore_units_admitted"),
+                    3,
+                    "second restore {mode} {moved} {selection}"
+                );
+                assert_eq!(trap_span(&second), expected);
+                let _ = std::fs::remove_dir_all(&dir);
+                cases += 1;
+            }
+        }
+    }
+    assert_eq!(cases, 24);
+}
+
+/// F-05b cancel state: a cancelled candidate is consumed and NEVER
+/// installs — revision, source and result stay put, the counter records
+/// the disposal, and the session keeps accepting edits. A candidate
+/// minted by ANOTHER session is refused exactly like a commit.
+#[test]
+fn f05b_cancel_prepared_never_installs() {
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return x + 1 }\nfn tail() int { return 9 }\n";
+    let mut a = warmup(src, "d_main", &[]).unwrap();
+    let rev0 = a.revision();
+    let before = value(&a);
+    let at = a.src().find("return 1").unwrap() + 7;
+    let prepared = a
+        .prepare_edit(at as u64, (at + 1) as u64, b"2".to_vec())
+        .unwrap()
+        .unwrap();
+    let out = a.cancel_prepared(prepared);
+    assert!(!out.ok, "{out:?}");
+    assert!(out
+        .non_fast_path_reason
+        .as_deref()
+        .unwrap()
+        .contains("cancelled"));
+    assert_eq!(a.revision(), rev0);
+    assert_eq!(a.src(), src);
+    assert_eq!(value(&a), before, "cancelled candidate did not install");
+    assert_eq!(a.counters().get("candidates_cancelled"), 1);
+    let out2 = a.edit(at as u64, (at + 1) as u64, b"2".to_vec()).unwrap();
+    assert!(out2.ok, "{out2:?}");
+    assert_eq!(value(&a), before + 1);
+    let mut b = warmup(src, "d_main", &[]).unwrap();
+    let foreign = b
+        .prepare_edit(at as u64, (at + 1) as u64, b"3".to_vec())
+        .unwrap()
+        .unwrap();
+    let refused = a.cancel_prepared(foreign);
+    assert!(!refused.ok);
+    assert!(refused
+        .non_fast_path_reason
+        .as_deref()
+        .unwrap()
+        .contains("cross-session"));
+    assert_eq!(a.counters().get("candidates_cancelled"), 1);
+}
+
+/// F-05b close state: closing is terminal — new runs/edits/prepares/
+/// commits are refused, the bounded history is released, and a snapshot
+/// PINNED before close keeps running correctly on its own revision.
+#[test]
+fn f05b_close_refuses_new_work_and_releases_history() {
+    let src = "fn helper() int { return 1 }\nfn main() int { var x = helper(); return 1 / 0 }\nfn tail() int { return 9 }\n";
+    let mut s = warmup(src, "d_main", &[]).unwrap();
+    let pinned = s.current();
+    let before = trap_span(&s);
+    assert!(s.history_len() > 0);
+    let at = s.src().find("return 1 / 0").unwrap();
+    let prepared = s
+        .prepare_edit(at as u64, at as u64, b" ".to_vec())
+        .unwrap()
+        .unwrap();
+    s.close();
+    assert!(s.closed());
+    assert_eq!(s.history_len(), 0, "bounded content history released");
+    let (out, _) = s.run(&ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(&out, ExecOutcome::Infra(m) if m.contains("closed")),
+        "{out:?}"
+    );
+    assert!(s.edit(at as u64, at as u64, b" ".to_vec()).is_err());
+    assert!(s.prepare_edit(at as u64, at as u64, b" ".to_vec()).is_err());
+    let refused = s.commit(prepared);
+    assert!(!refused.ok);
+    assert!(refused
+        .non_fast_path_reason
+        .as_deref()
+        .unwrap()
+        .contains("closed"));
+    s.close();
+    assert!(s.closed(), "close is idempotent");
+    let (old, _) =
+        auto_av_core::av::execute_program(&pinned, &ExecLimits::default(), &CancelFlag::new(false));
+    assert!(
+        matches!(&old, ExecOutcome::Trap { span: Some(sp), .. } if *sp == before),
+        "a pinned snapshot is never yanked by close"
+    );
 }

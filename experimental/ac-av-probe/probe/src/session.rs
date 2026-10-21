@@ -272,6 +272,10 @@ pub struct FunctionIncrementalSession {
     /// manifest ride the 783 store; a warm restart re-admits them instead
     /// of recompiling.
     store: Option<(ac_artifact_probe::store::ManagedStore, String)>,
+    /// Terminal CLOSE state (PLAN-828 T-06/F-05b): a closed session
+    /// refuses new work and has released its bounded content history and
+    /// store handle; snapshots pinned elsewhere stay alive and correct.
+    closed: bool,
 }
 
 /// Warm-up: the one whole-module compile of the session's life (cold path;
@@ -461,6 +465,7 @@ pub fn warmup(
         session_id,
         counters: SessionCounters::default(),
         store: None,
+        closed: false,
     })
 }
 
@@ -703,6 +708,12 @@ impl FunctionIncrementalSession {
     /// payloads are never touched. Runs against a PINNED older snapshot
     /// keep that revision's coordinates (its own source view).
     pub fn run(&self, limits: &ExecLimits, cancel: &CancelFlag) -> (ExecOutcome, ExecTrace) {
+        if self.closed {
+            return (
+                ExecOutcome::Infra("session closed".to_string()),
+                ExecTrace::default(),
+            );
+        }
         execute_program(&self.current, limits, cancel)
     }
 
@@ -716,6 +727,52 @@ impl FunctionIncrementalSession {
             Err(out) => return Ok(out),
         };
         Ok(self.commit(prepared))
+    }
+
+    /// CANCEL a prepared candidate (PLAN-828 T-06/F-05b): the candidate is
+    /// consumed and NEVER installs — the session stays on its current
+    /// revision, source and result, and keeps accepting new edits. A
+    /// candidate minted by another session is refused exactly like a
+    /// commit would be (the minting session can still dispose of its own).
+    pub fn cancel_prepared(&mut self, prepared: PreparedEdit) -> EditOutcome {
+        if self.closed {
+            return EditOutcome::rejected(self.revision, "session closed".to_string(), Vec::new());
+        }
+        if prepared.session_id != self.session_id {
+            return EditOutcome::rejected(
+                self.revision,
+                "cross-session candidate refused: prepared by a different session".to_string(),
+                Vec::new(),
+            );
+        }
+        self.counters.bump("candidates_cancelled");
+        EditOutcome::rejected(
+            self.revision,
+            format!(
+                "candidate cancelled (base revision {}); session remains at revision {}",
+                prepared.base_revision, self.revision
+            ),
+            Vec::new(),
+        )
+    }
+
+    /// CLOSE the session (PLAN-828 T-06/F-05b): a terminal, idempotent
+    /// state. New runs/edits/prepares/commits/cancels are refused, and the
+    /// bounded content history plus the store handle are released — a
+    /// closed session holds no reuse state. Snapshots pinned elsewhere
+    /// keep running correctly on their own revision (V-05: in-flight
+    /// chains are never yanked).
+    pub fn close(&mut self) {
+        self.closed = true;
+        self.store = None;
+        for rec in self.fns.iter_mut() {
+            rec.history.clear();
+        }
+    }
+
+    /// Whether this session has been closed (terminal state, F-05b).
+    pub fn closed(&self) -> bool {
+        self.closed
     }
 
     /// Bounded content-history insert (V-07): never evict the resident
@@ -1068,6 +1125,9 @@ impl FunctionIncrementalSession {
         end: u64,
         insert: Vec<u8>,
     ) -> Result<Result<PreparedEdit, EditOutcome>, String> {
+        if self.closed {
+            return Err("session closed".to_string());
+        }
         let edit = Edit { start, end, insert };
         let new_snap = self
             .snap
@@ -1359,6 +1419,9 @@ impl FunctionIncrementalSession {
     /// current is refused — a late/slow candidate never overwrites a newer
     /// committed result (its diagnostics carry the refusal reason).
     pub fn commit(&mut self, prepared: PreparedEdit) -> EditOutcome {
+        if self.closed {
+            return EditOutcome::rejected(self.revision, "session closed".to_string(), Vec::new());
+        }
         if prepared.session_id != self.session_id {
             return EditOutcome::rejected(
                 self.revision,
