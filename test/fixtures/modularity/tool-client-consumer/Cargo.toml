@@ -37,6 +37,12 @@ auto-tool-execution = { path = "../../../../crates/auto-tool-execution" }
 # 测试体在 lib 目标内(#[test] 函数随非 test cfg 的 lib 一同编译,dev-deps
 # 在该目标不可用——与既有 modularity fixture 同口径),按探针 crate 直挂。
 tempfile = "3.14"
+# 仅 t04-discovery-host 测试宿主编码 DescribeOk 帧。
+serde_json = "1"
+
+[[bin]]
+name = "t04-discovery-host"
+path = "src/bin/t04_discovery_host.rs"
 
 # 独立 workspace（见上）；无锁文件、无成员。
 [workspace]

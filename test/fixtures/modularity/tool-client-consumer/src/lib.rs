@@ -639,3 +639,75 @@ fn discovery_protocol_version_mismatch_is_named() {
         "got {err}"
     );
 }
+
+// ---- R1-01：describe 成功后收尾失败不得当作已发现成功 ----
+// （T04_HOST_MODE 为进程全局，四态串行于单测，避免并行污染。）
+
+#[cfg(test)]
+fn t04_host_bin() -> std::path::PathBuf {
+    let exe = if cfg!(windows) {
+        "t04-discovery-host.exe"
+    } else {
+        "t04-discovery-host"
+    };
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("target/debug")
+        .join(exe);
+    assert!(
+        path.exists(),
+        "t04-discovery-host not found at {} — cargo build --manifest-path this fixture",
+        path.display()
+    );
+    path
+}
+
+#[cfg(test)]
+fn discover_via_host(
+    mode: &str,
+) -> Result<auto_tool_client::discovery::DiscoveredTool, DiscoveryError> {
+    let mut spec = DiscoverySpec::auto_ui_tool();
+    spec.env_key = format!("T04_HOST_{mode}");
+    std::env::set_var(&spec.env_key, t04_host_bin());
+    std::env::set_var("T04_HOST_MODE", mode);
+    let r = discover(&spec);
+    std::env::remove_var(&spec.env_key);
+    std::env::remove_var("T04_HOST_MODE");
+    r
+}
+
+/// R1-01：合法 describe 后四态收尾——干净 EOF 可接受；坏帧/exit1/exit7
+/// 均 TeardownFailed 且不回落。
+#[test]
+fn discovery_teardown_failures_are_named_not_ok() {
+    // 正控：干净 EOF / exit 0。
+    let found = discover_via_host("good").expect("clean teardown accepted");
+    assert_eq!(found.descriptor.tool_name, "auto-ui-tool");
+
+    // 负控：EOF 后坏控制帧。
+    let err = discover_via_host("tailbad").expect_err("bad frame after describe");
+    assert!(
+        matches!(err, DiscoveryError::TeardownFailed { .. }),
+        "tailbad got {err}"
+    );
+
+    // 负控：exit 1（内部失败）。
+    let err = discover_via_host("exit1").expect_err("exit 1 after describe");
+    match &err {
+        DiscoveryError::TeardownFailed { reason, .. } => {
+            assert!(
+                reason.contains('1') || reason.to_lowercase().contains("failure"),
+                "exit1 reason={reason}"
+            );
+        }
+        other => panic!("expected TeardownFailed, got {other}"),
+    }
+
+    // 负控：exit 7（异常码，须原样出现在 reason）。
+    let err = discover_via_host("exit7").expect_err("exit 7 after describe");
+    match &err {
+        DiscoveryError::TeardownFailed { reason, .. } => {
+            assert!(reason.contains('7'), "exit7 reason must carry 7: {reason}");
+        }
+        other => panic!("expected TeardownFailed, got {other}"),
+    }
+}
