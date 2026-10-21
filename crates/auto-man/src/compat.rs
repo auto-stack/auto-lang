@@ -6,7 +6,7 @@
 //! CLI 入口（`auto` main）在启动时调用一次 [`install_default_ui_ops`]；
 //! runtime 未安装时 UI 臂具名失败，非 UI 路径不受影响。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use auto_man_runtime::ui_ops::UiOps;
@@ -199,18 +199,6 @@ impl UiOps for CompatUiOps {
         Ok(())
     }
 
-    fn run_language_file(&self, path: &str) -> AutoResult<String> {
-        auto_lang::run_file(path).map_err(|e| Box::<dyn std::error::Error>::from(e))
-    }
-
-    fn rust_ensure_shared_workspace(&self, project_dir: &Path) -> PathBuf {
-        crate::rust_ui::ensure_shared_workspace(project_dir)
-    }
-
-    fn rust_back_member_name(&self, project_dir: &Path) -> String {
-        crate::rust_ui::back_member_name(project_dir)
-    }
-
     fn pkg_display_name(&self) -> &'static str {
         crate::pkg::display_name()
     }
@@ -218,4 +206,13 @@ impl UiOps for CompatUiOps {
     fn pkg_run_script(&self, script: &str, extra_args: &[&str], cwd: &Path) -> Result<(), String> {
         crate::pkg::run_script(script, extra_args, cwd)
     }
+}
+
+/// PLAN-816 T-03 F-01：旧公开入口默认合同——链接本 crate 的进程在启动时
+/// 安装 CompatUiOps，`auto_man::Automan::create_jet` 等无需调用方显式
+/// 安装。runtime-only 消费者不链本 crate，UI seam 仍具名失败（闭包零 UI）。
+/// 显式 [`install_default_ui_ops`] 仍是合法正控（幂等）。
+#[ctor::ctor]
+fn auto_install_compat_ui_ops() {
+    install_default_ui_ops();
 }

@@ -31,6 +31,7 @@ pub mod version;
 
 pub mod git;
 pub mod index;
+pub mod language;
 pub mod lock;
 
 pub mod builder;

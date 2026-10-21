@@ -132,10 +132,9 @@ fn serve_vm(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, String
         .stack_size(32 * 1024 * 1024)
         .name("auto-vm-http-service".into())
         .spawn(move || {
-            crate::ui_ops::current()
-                .run_language_file(&api_str)
+            crate::language::run_language_file(&api_str)
                 .map(|_| ())
-                .map_err(|e| std::io::Error::other(e.to_string()))
+                .map_err(|e| e.to_string())
         })
         .map_err(|e| format!("failed to spawn VM service thread: {e}"))?;
 
@@ -205,11 +204,11 @@ fn serve_rust(project_dir: &Path, config: HttpServiceConfig) -> Result<i32, Stri
     // 共享 workspace 根重写（成员表+相对路径锚点按实际落点重算；serve 面无
     // generate_rust_ui 前置，必须自行 ensure——陈旧根的坏 path dep 会毒化
     // 整个 workspace 的 cargo 解析）。
-    let ws_dir = crate::ui_ops::current().rust_ensure_shared_workspace(project_dir);
+    let ws_dir = auto_api_gen::rust_workspace::ensure_shared_workspace(project_dir);
     // 真实生成链（734 strict 门；失败=Err 硬传播，不落旧产物）。
     crate::api_gen::generate_api(project_dir, "rust")
         .map_err(|e| format!("Failed to generate Rust backend: {e}"))?;
-    let back_name = crate::ui_ops::current().rust_back_member_name(project_dir);
+    let back_name = auto_api_gen::rust_workspace::back_member_name(project_dir);
     let backend_dir = ws_dir.join(&back_name);
     let cargo_toml = backend_dir.join("Cargo.toml");
     if !cargo_toml.exists() {

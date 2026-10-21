@@ -45,7 +45,8 @@ pub fn check_detached(dir: &AutoPath) -> AutoResult<()> {
         )
         .into());
     }
-    if !cmd.stdout.as_deref().unwrap_or_default().is_empty() {
+    // `git branch --show-current`：attached 分支输出非空，detached HEAD 输出空。
+    if cmd.stdout.as_deref().unwrap_or_default().is_empty() {
         return Err(format!("Dir {} is detached", dir).into());
     }
     Ok(())
@@ -106,4 +107,56 @@ pub fn switch_to_master(dir: &AutoPath) -> AutoResult<()> {
         );
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use auto_val::AutoPath;
+
+    fn init_repo(dir: &std::path::Path) -> AutoPath {
+        let _ = git_capture(["init"], dir);
+        let _ = git_capture(["config", "user.email", "t@example.com"], dir);
+        let _ = git_capture(["config", "user.name", "t"], dir);
+        std::fs::write(dir.join("f.txt"), "x").unwrap();
+        let _ = git_capture(["add", "f.txt"], dir);
+        let _ = git_capture(["commit", "-m", "init"], dir);
+        AutoPath::new(dir.to_string_lossy().to_string())
+    }
+
+    /// F-04 四状态：attached/detached × clean/dirty（真实临时仓）。
+    #[test]
+    fn check_detached_attached_vs_detached_and_clean_dirty() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let path = init_repo(root);
+
+        // attached + clean → Ok
+        assert!(check_detached(&path).is_ok(), "attached 应 Ok");
+        assert!(check_changes(&path).is_ok(), "clean 应 Ok");
+
+        // attached + dirty → Err(uncommitted)
+        std::fs::write(root.join("dirty.txt"), "y").unwrap();
+        assert!(
+            check_changes(&path).is_err(),
+            "dirty 应 Err(uncommitted changes)"
+        );
+        let _ = git_capture(["checkout", "--", "."], root);
+        let _ = std::fs::remove_file(root.join("dirty.txt"));
+
+        // detached + clean → Err(detached)
+        let _ = git_capture(["checkout", "--detach"], root);
+        assert!(check_detached(&path).is_err(), "detached 应 Err(detached)");
+        assert!(
+            check_changes(&path).is_ok(),
+            "detached+clean 的 dirty 检查仍 Ok"
+        );
+
+        // detached + dirty → Err(uncommitted)（dirty 语义独立于 attached）
+        std::fs::write(root.join("dirty.txt"), "y").unwrap();
+        assert!(
+            check_changes(&path).is_err(),
+            "detached+dirty 应 Err(uncommitted)"
+        );
+    }
 }

@@ -384,11 +384,129 @@ mod tests {
     use auto_project_model::generation_request::RequestOrigin;
 
     /// V-02 字段完备性：求值 Pac 的全部 A 组字段无损进入请求。
-
-    /// R5：sidecar 对象/嵌套 prop 形态经真实 pac→request→PacSource 全链
-    /// 不丢模块/依赖（R4-02 修复的回归锚——重建必须挂 root prop 而非
-    /// wrapper kid）。
     #[test]
+    fn request_from_pac_carries_all_fields() {
+        let config = auto_lang_core::config::AutoConfig::new(
+            r#"
+            name: "demo"
+            version: "0.2.0"
+            scene: "ui"
+            render: { front: "vue", back: "rust" }
+            api: "rust"
+            title: "Demo"
+            title_zh: "演示"
+            icon: "app-window"
+            category: "tool"
+            theme: "dark"
+            accent: "coral"
+            desktop_render: "queue"
+            ui_config: "auto-edit.at"
+            media_root: "E:/Video"
+            photo_root: "E:/Pics"
+            window: "1024x768"
+            front_port: 3018
+            back_port: 8018
+            members: ["m1"]
+            back: "../ash-server"
+            shadcn: off
+            dep "common" {
+                path: "../common"
+            }
+            "#,
+        )
+        .unwrap();
+        let pac = Pac::new(config);
+        let req = request_from_pac(&pac, SourceInfo::inline());
+        assert!(matches!(req.origin, RequestOrigin::DynamicEvaluated { .. }));
+        assert!(req.is_evaluated());
+        assert_eq!(req.identity.name.as_deref(), Some("demo"));
+        assert_eq!(req.identity.version.as_deref(), Some("0.2.0"));
+        assert_eq!(req.display.title.as_deref(), Some("Demo"));
+        assert_eq!(req.display_title(true).as_deref(), Some("演示"));
+        assert_eq!(req.display.icon.as_deref(), Some("app-window"));
+        assert_eq!(req.display.category.as_deref(), Some("tool"));
+        assert_eq!(req.display.theme.as_deref(), Some("dark"));
+        assert_eq!(req.display.accent.as_deref(), Some("coral"));
+        assert_eq!(req.display.desktop_render.as_deref(), Some("queue"));
+        assert_eq!(req.display.ui_config.as_deref(), Some("auto-edit.at"));
+        assert_eq!(req.runtime.api.as_deref(), Some("rust"));
+        assert_eq!(req.runtime.front_port, Some(3018));
+        assert_eq!(req.runtime.back_port, Some(8018));
+        assert_eq!(req.runtime.media_root.as_deref(), Some("E:/Video"));
+        assert_eq!(req.runtime.photo_root.as_deref(), Some("E:/Pics"));
+        assert_eq!(req.window_size(), Some((1024.0, 768.0)));
+        assert_eq!(req.scene, auto_project_model::descriptor::SceneKind::Ui);
+        assert_eq!(req.members, vec!["m1".to_string()]);
+        assert_eq!(req.external_backend.as_deref(), Some("../ash-server"));
+        assert!(!req.shadcn(), "shadcn: off 决策保持");
+        assert_eq!(
+            req.frontend_names(),
+            vec!["vue".to_string()],
+            "Split front 投影"
+        );
+        assert_eq!(req.backend_name(), Some("rust"));
+        assert_eq!(req.dep_roots.len(), 1);
+        assert_eq!(req.dep_roots[0].name, "common");
+        assert_eq!(req.dep_roots[0].path.as_deref(), Some("../common"));
+        // 窗口 fit 覆盖分支
+        let pac2 = Pac::new(
+            auto_lang_core::config::AutoConfig::new("name: \"f\"\nwindow: \"fit\"\n").unwrap(),
+        );
+        let req2 = request_from_pac(&pac2, SourceInfo::inline());
+        assert!(req2.window_fit());
+    }
+
+    /// R3-03：input_sources 用请求自身 front 解析（front 声明优先、递归、
+    /// 正交 src/front 干扰排除）。
+    #[test]
+    fn input_sources_follow_request_front() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let custom = root.join("custom").join("front");
+        std::fs::create_dir_all(custom.join("pages")).unwrap();
+        std::fs::create_dir_all(root.join("src").join("front")).unwrap();
+        std::fs::write(custom.join("app.at"), "widget A {}").unwrap();
+        std::fs::write(custom.join("pages").join("child.at"), "widget C {}").unwrap();
+        std::fs::write(
+            root.join("src").join("front").join("wrong.at"),
+            "widget W {}",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("pac.at"),
+            "name: \"cf\"
+render: \"vue\"
+front: \"custom/front\"
+",
+        )
+        .unwrap();
+        let pac_path = root.join("pac.at");
+        let config =
+            auto_lang_core::config::AutoConfig::from_file(&pac_path, &auto_val::Obj::new())
+                .unwrap();
+        let pac = Pac::new(config);
+        let req = request_of(&pac, &pac_path);
+        let names: Vec<String> = req
+            .input_sources
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(
+            names.contains(&"app.at".to_string()),
+            "custom front app.at：{:?}",
+            names
+        );
+        assert!(
+            names.contains(&"child.at".to_string()),
+            "递归 pages/child.at：{:?}",
+            names
+        );
+        assert!(
+            !names.contains(&"wrong.at".to_string()),
+            "src/front 干扰排除：{:?}",
+            names
+        );
+    }
 
     /// B 组键经求值 root 追加（npm_deps/exe_name/theme 块/sidecar）。
     #[test]

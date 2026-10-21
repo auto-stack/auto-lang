@@ -7,7 +7,7 @@
 //! 返回 [`NotInstalledUiOps`]——UI 臂具名失败（"UI ops not installed"），
 //! 非路径不受影响；服务包的依赖闭包因此不含 UI 实现。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use auto_project_model::GenerationRequest;
@@ -108,16 +108,9 @@ pub trait UiOps: Send + Sync {
     /// `auto new --jet` 的 Jetpack 工程脚手架（JetProjectConfig 全流程）。
     fn create_jet_project(&self, name: &str) -> AutoResult<()>;
 
-    // ---- 语言执行（run 臂中外层 auto-lang 兼容面）----
-    fn run_language_file(&self, path: &str) -> AutoResult<String>;
-
     // ---- pkg/npm 脚本编排（算法单源 auto-ui-tools::pkg;builder Vue 臂）----
     fn pkg_display_name(&self) -> &'static str;
     fn pkg_run_script(&self, script: &str, extra_args: &[&str], cwd: &Path) -> Result<(), String>;
-
-    // ---- 服务侧 rust workspace 重写（http_service serve 面）----
-    fn rust_ensure_shared_workspace(&self, project_dir: &Path) -> PathBuf;
-    fn rust_back_member_name(&self, project_dir: &Path) -> String;
 }
 
 /// 未安装时的具名失败实现（非 UI 路径不触达）。
@@ -255,17 +248,6 @@ impl UiOps for NotInstalledUiOps {
     }
     fn create_jet_project(&self, _name: &str) -> AutoResult<()> {
         Self::unavailable()
-    }
-    fn run_language_file(&self, _path: &str) -> AutoResult<String> {
-        Err(Box::<dyn std::error::Error>::from(
-            "UI ops not installed: run_language_file",
-        ))
-    }
-    fn rust_ensure_shared_workspace(&self, _project_dir: &Path) -> PathBuf {
-        PathBuf::new()
-    }
-    fn rust_back_member_name(&self, _project_dir: &Path) -> String {
-        String::new()
     }
     fn pkg_display_name(&self) -> &'static str {
         "auto"

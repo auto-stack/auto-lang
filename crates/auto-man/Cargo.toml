@@ -43,6 +43,8 @@ auto-api-gen = { path = "../auto-api-gen" }
 auto-ui-tools = { path = "../auto-ui-tools" }
 # PLAN-816 T-03: 非 UI 管理服务/执行单源（本 crate 为其 re-export 门面）。
 auto-man-runtime = { path = "../auto-man-runtime" }
+# PLAN-816 T-03 F-01: 链接本 crate 即自举 CompatUiOps（旧公开入口默认可用）
+ctor = "0.2"
 # PLAN-792 R1-F01: 资源 hash 用 SHA-256（随包 verify.py 经 python hashlib 独立可校验）
 sha2 = "0.10"
 
