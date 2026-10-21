@@ -15,6 +15,10 @@ cargo check --offline --locked --manifest-path <本目录>/Cargo.toml \
   --target-dir <原树>/target --bin r10-check [--features <name>]
 ```
 
+注：`Cargo.lock` 按 attachments/.gitignore 约定不入库——复现者可从
+review-r11 冻结件复制同锁，或去掉 `--locked` 重新解析（依赖均为本地
+path 指向原树四包，解析结果确定）。
+
 ## 回放收据
 
 `comparison-checks.log`：无 feature 正控 + 26 feature 全 exit0（27/27）。
