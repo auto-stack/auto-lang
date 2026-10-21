@@ -49,10 +49,16 @@ use crate::validate;
 /// Renders the `run_ui` operation serves in this build (T-05 scope; the
 /// full profile matrix lands with T-06/T-07 — other renders get a named
 /// rejection before any side effect).
-pub const RUN_UI_SERVED_PROFILES: &[&str] = &["vue", "vm", "rust"];
+pub const RUN_UI_SERVED_PROFILES: &[&str] = &["vue", "vm", "rust", "jet", "ark", "tauri", "vscode"];
 
-/// Renders the `generate_ui` operation serves in this build.
-pub const GENERATE_UI_SERVED_PROFILES: &[&str] = &["vue"];
+/// Renders the `generate_ui` operation serves in this build (T-06: full
+/// matrix — every generator closure lives in this crate since T-04).
+pub const GENERATE_UI_SERVED_PROFILES: &[&str] = &["vue", "rust", "jet", "ark", "tauri", "vscode"];
+
+/// Renders the `build_ui` operation serves in this build (T-06). `vm` has
+/// no separate build step (interpreted) — builds serve the compiled
+/// frontends only.
+pub const BUILD_UI_SERVED_PROFILES: &[&str] = &["vue", "rust", "jet", "ark", "vscode"];
 
 /// The B-stage capability list: bounded A operations plus the real
 /// execution operations. `run_ui` is honestly cancellable and interactive;
@@ -66,6 +72,11 @@ pub fn tool_descriptor() -> ToolDescriptor {
             Capability::non_interactive("describe", false),
             Capability::non_interactive("validate_project", false),
             Capability::non_interactive("generate_ui", false),
+            Capability {
+                operation: "build_ui".to_string(),
+                cancellable: true,
+                interactive: false,
+            },
             Capability {
                 operation: "run_ui".to_string(),
                 cancellable: true,
@@ -309,6 +320,13 @@ fn serve_loop<R: Read, W: Write + Send + 'static, L: Write + Send + 'static>(
             ClientBody::RunUi { request } => match start_work_op(&host, id, "run_ui") {
                 Ok(worker) => {
                     worker.spawn_run(request);
+                    None // response comes from the worker
+                }
+                Err(error) => Some(ServerEnvelope::error(id, error)),
+            },
+            ClientBody::BuildUi { request } => match start_work_op(&host, id, "build_ui") {
+                Ok(worker) => {
+                    worker.spawn_build(request);
                     None // response comes from the worker
                 }
                 Err(error) => Some(ServerEnvelope::error(id, error)),
@@ -622,6 +640,35 @@ impl<W: Write + Send + 'static, L: Write + Send + 'static> WorkStarter<W, L> {
             .expect("spawn work thread");
     }
 
+    fn spawn_build(self, request: WireRequest) {
+        let WorkStarter {
+            host,
+            id,
+            operation,
+            launched: _,
+        } = self;
+        std::thread::Builder::new()
+            .name(format!("work:{operation}"))
+            .spawn(move || {
+                let started = std::time::Instant::now();
+                let result = crate::tool_ops::build_report(&request.0);
+                proc_host::uninstall();
+                let response = match result {
+                    Ok(mut report) => {
+                        report.duration_ms = started.elapsed().as_millis() as u64;
+                        ServerEnvelope {
+                            id,
+                            body: ServerBody::BuildOk { report },
+                        }
+                    }
+                    Err(error) => ServerEnvelope::error(id, error),
+                };
+                host.respond_recorded(&response);
+                finish_op(&host, id);
+            })
+            .expect("spawn work thread");
+    }
+
     fn spawn_run(self, request: WireRequest) {
         let WorkStarter {
             host,
@@ -671,7 +718,7 @@ fn handle_input<W: Write, L: Write>(
 ) -> Option<ServerEnvelope> {
     match host.ops.lock().unwrap().lookup(target_id) {
         Lookup::InFlight(operation, _io) => {
-            if operation != "run_ui" {
+            if operation != "run_ui" && operation != "build_ui" {
                 return Some(ServerEnvelope::error(
                     id,
                     ToolError::invalid_field(
@@ -712,7 +759,7 @@ fn handle_cancel<W: Write, L: Write>(
 ) -> ServerEnvelope {
     match host.ops.lock().unwrap().lookup(target_id) {
         Lookup::InFlight(operation, io) => {
-            if operation == "run_ui" {
+            if operation == "run_ui" || operation == "build_ui" {
                 // Terminates owned trees, stops in-flight input writes,
                 // and requests the VM iced exit (F01/F03).
                 io.cancel();

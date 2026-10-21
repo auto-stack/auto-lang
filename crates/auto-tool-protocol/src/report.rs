@@ -120,6 +120,11 @@ impl RunOutcome {
     }
 }
 
+/// The `build_ui` answer (PLAN-815 T-06): same shape as a run report —
+/// a build is a bounded execution with a profile, outcome, duration and
+/// possible error.
+pub type BuildReport = RunReport;
+
 /// The `run_ui` answer (PLAN-815 T-05): the real run's session result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RunReport {

@@ -209,14 +209,23 @@ fn describe_returns_real_identity_and_capabilities() {
                     .iter()
                     .map(|c| c.operation.as_str())
                     .collect::<Vec<_>>(),
-                vec!["describe", "validate_project", "generate_ui", "run_ui"]
+                vec![
+                    "describe",
+                    "validate_project",
+                    "generate_ui",
+                    "build_ui",
+                    "run_ui",
+                ]
             );
             // T-05: the bounded A ops stay non-cancellable/non-interactive;
             // run_ui is honestly cancellable AND interactive (Vite reads
             // stdin; children are owned and killed on cancel).
+            // T-06: build_ui is cancellable (builds can be long) but not
+            // interactive (no stdin-consuming build children).
             for capability in &descriptor.capabilities {
                 match capability.operation.as_str() {
                     "run_ui" => assert!(capability.cancellable && capability.interactive),
+                    "build_ui" => assert!(capability.cancellable && !capability.interactive),
                     other => {
                         assert!(!capability.cancellable, "{other}");
                         assert!(!capability.interactive, "{other}");
@@ -921,10 +930,10 @@ fn walk_files(root: &std::path::Path) -> u64 {
 fn generate_ui_rejects_unserved_render_before_side_effects() {
     let dir = tempfile::tempdir().expect("tempdir");
     std::fs::create_dir_all(dir.path().join("front")).unwrap();
-    std::fs::write(dir.path().join("pac.at"), "name: \"x\"\nrender: \"jet\"\n").unwrap();
+    std::fs::write(dir.path().join("pac.at"), "name: \"x\"\nrender: \"unreal-engine\"\n").unwrap();
     let request = GenerationRequest::from_descriptor(
         &parse_document(
-            "name: \"x\"\nrender: \"jet\"\n",
+            "name: \"x\"\nrender: \"unreal-engine\"\n",
             SourceInfo::from_path(dir.path().join("pac.at")),
         )
         .expect("parse"),

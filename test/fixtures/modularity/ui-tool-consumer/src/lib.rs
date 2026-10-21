@@ -122,6 +122,7 @@ fn consumer_reads_tool_descriptor_from_lib() {
     assert_eq!(descriptor.tool_name, "auto-ui-tool");
     assert_eq!(descriptor.protocol_version, PROTOCOL_VERSION);
     assert!(descriptor.offers("generate_ui"));
+    assert!(descriptor.offers("build_ui"));
     assert!(descriptor.offers("run_ui"));
     // A-stage compatibility surface unchanged.
     assert!(descriptor.offers("describe"));
@@ -155,7 +156,13 @@ fn consumer_describes_real_process() {
                     .iter()
                     .map(|c| c.operation.as_str())
                     .collect::<Vec<_>>(),
-                vec!["describe", "validate_project", "generate_ui", "run_ui"]
+                vec![
+                    "describe",
+                    "validate_project",
+                    "generate_ui",
+                    "build_ui",
+                    "run_ui",
+                ]
             );
         }
         other => panic!("expected DescribeOk, got {other:?}"),

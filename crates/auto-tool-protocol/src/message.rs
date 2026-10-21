@@ -3,7 +3,7 @@
 
 use crate::descriptor::ToolDescriptor;
 use crate::error::ToolError;
-use crate::report::{GenerationReport, RunReport, ValidateProjectReport};
+use crate::report::{BuildReport, GenerationReport, RunReport, ValidateProjectReport};
 use auto_project_model::GenerationRequest;
 use serde::de::Error as DeError;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -62,6 +62,10 @@ pub enum ClientBody {
     /// the dev-server URL is announced via
     /// [`ToolEvent::Launched`] once the foreground child is up.
     RunUi { request: WireRequest },
+    /// Build the UI project for the request (PLAN-815 T-06): production
+    /// build through the profile's real build path. Bounded but
+    /// potentially long-running; cancellable like `run_ui`.
+    BuildUi { request: WireRequest },
     /// Forward raw bytes to the stdin of the operation's foreground owned
     /// child (PLAN-815 T-05 interactive channel). The Vite dev server
     /// genuinely consumes this — `q` + Enter terminates it. Protocol-level
@@ -81,6 +85,7 @@ impl ClientBody {
             ClientBody::ValidateProject { .. } => "validate_project",
             ClientBody::GenerateUi { .. } => "generate_ui",
             ClientBody::RunUi { .. } => "run_ui",
+            ClientBody::BuildUi { .. } => "build_ui",
             ClientBody::Input { .. } => "input",
             ClientBody::Cancel { .. } => "cancel",
         }
@@ -127,6 +132,9 @@ pub enum ServerBody {
     },
     RunOk {
         report: RunReport,
+    },
+    BuildOk {
+        report: BuildReport,
     },
     /// Receipt for an accepted `cancel` of an in-flight operation; the
     /// operation itself completes with its own final envelope
